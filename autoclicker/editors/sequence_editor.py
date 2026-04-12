@@ -3,11 +3,12 @@ Sequenz-Editor für den Autoclicker.
 Ermöglicht das Erstellen und Bearbeiten von Klick-Sequenzen.
 """
 
+import re
 import time
 from pathlib import Path
 from typing import Optional
 
-from ..models import ClickPoint, SequenceStep, LoopPhase, Sequence, AutoClickerState
+from ..models import ClickPoint, ElseConfig, WaitCondition, SequenceStep, LoopPhase, Sequence, AutoClickerState, ELSE_CLICK
 from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, warn, header, hint, cmd_hint, breadcrumb, suggest_command, coord_context, cancel_hint, parse_non_negative_float, parse_non_negative_range
 from ..winapi import get_cursor_pos, VK_CODES
 from ..persistence import (
@@ -25,16 +26,19 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
     """
     if not else_parts:
         return
-    if not step.wait_pixel and not step.item_scan:
+    if not step.wait_condition and not step.item_scan:
         print(warn("  -> 'else' hat keine Wirkung ohne 'pixel'/'gone' oder 'scan'-Bedingung!"))
         return
     else_result = parse_else_condition(else_parts, state)
-    step.else_action = else_result.get("else_action")
-    step.else_x = else_result.get("else_x", 0)
-    step.else_y = else_result.get("else_y", 0)
-    step.else_delay = else_result.get("else_delay", 0)
-    step.else_key = else_result.get("else_key")
-    step.else_name = else_result.get("else_name", "")
+    if else_result:
+        step.else_config = ElseConfig(
+            action=else_result["else_action"],
+            x=else_result.get("else_x", 0),
+            y=else_result.get("else_y", 0),
+            delay=else_result.get("else_delay", 0),
+            key=else_result.get("else_key"),
+            name=else_result.get("else_name", "")
+        )
 
 
 def capture_pixel_color() -> tuple:
@@ -126,13 +130,14 @@ def _remap_sequence_to_local_points(state: AutoClickerState, sequence: Sequence,
                     missing.add(step.name)
 
         # Else-Klick-Punkt
-        if step.else_action == "click" and step.else_name:
-            if step.else_name in local_by_name:
-                lp = local_by_name[step.else_name]
-                if step.else_x != lp.x or step.else_y != lp.y:
-                    updates.append((step, "else", step.else_x, step.else_y, lp.x, lp.y, step.else_name))
-            elif step.else_x != 0 or step.else_y != 0:
-                missing.add(step.else_name)
+        ec = step.else_config
+        if ec and ec.action == ELSE_CLICK and ec.name:
+            if ec.name in local_by_name:
+                lp = local_by_name[ec.name]
+                if ec.x != lp.x or ec.y != lp.y:
+                    updates.append((step, "else", ec.x, ec.y, lp.x, lp.y, ec.name))
+            elif ec.x != 0 or ec.y != 0:
+                missing.add(ec.name)
 
     if not updates and not missing:
         return
@@ -158,8 +163,8 @@ def _remap_sequence_to_local_points(state: AutoClickerState, sequence: Sequence,
                 step.x = new_x
                 step.y = new_y
             else:
-                step.else_x = new_x
-                step.else_y = new_y
+                step.else_config.x = new_x
+                step.else_config.y = new_y
         # Direkt in die Originaldatei speichern
         save_sequence_file(sequence, filepath)
         print(f"    {ok('Gespeichert in')} {filepath.name}")
@@ -175,13 +180,15 @@ def run_sequence_loader(state: AutoClickerState) -> None:
         return
 
     # Sequenzen einmal laden und cachen
+    with state.lock:
+        active_name = state.active_sequence.name if state.active_sequence else None
     loaded_sequences = []  # (seq, filepath) Paare
     menu_options = []
     for name, path in sequences:
         seq = load_sequence_file(path)
         if seq:
             loaded_sequences.append((seq, path))
-            active_marker = " *AKTIV*" if state.active_sequence and state.active_sequence.name == seq.name else ""
+            active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
             menu_options.append(f"{seq}{active_marker}")
 
     choice = interactive_select(menu_options, title="\nSEQUENZ LADEN:")
@@ -206,7 +213,7 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         print(f"\n--- Bearbeite Sequenz: {existing.name} ---")
         seq_name = existing.name
         init_steps = list(existing.init_steps)
-        loop_phases = [LoopPhase(lp.name, list(lp.steps), lp.repeat) for lp in existing.loop_phases]
+        loop_phases = [LoopPhase(lp.name, list(lp.steps), lp.repeat, lp.scheduled_start) for lp in existing.loop_phases]
         end_steps = list(existing.end_steps)
         total_cycles = existing.total_cycles
     else:
@@ -329,7 +336,7 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
 
     # Zusammenfassung
     all_steps = init_steps + [s for lp in loop_phases for s in lp.steps] + end_steps
-    pixel_triggers = sum(1 for s in all_steps if s.wait_pixel)
+    pixel_triggers = sum(1 for s in all_steps if s.wait_condition)
 
     print(f"\n{col('[ERFOLG]', 'green')} Sequenz '{seq_name}' gespeichert!")
     for i, lp in enumerate(loop_phases):
@@ -345,6 +352,17 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     if pixel_triggers > 0:
         print(f"         Farb-Trigger: {pixel_triggers} Schritt(e)")
     print()
+
+
+def _parse_time_input(time_str: str) -> Optional[str]:
+    """Parst eine Uhrzeit-Eingabe (z.B. '12:30', '9:05') und gibt 'HH:MM' zurück oder None."""
+    match = re.match(r'^(\d{1,2}):(\d{2})$', time_str.strip())
+    if match:
+        h, m = int(match.group(1)), int(match.group(2))
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return f"{h:02d}:{m:02d}"
+    print(err(f"  Ungültige Zeit '{time_str}' – Format: HH:MM (z.B. 12:30)"))
+    return None
 
 
 def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> Optional[list[LoopPhase]]:
@@ -367,6 +385,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
         print("  del <Nr>       - Loop-Phase löschen")
         print("  del <Nr>-<Nr>  - Bereich löschen (z.B. del 1-3)")
         print("  del all        - ALLE Loop-Phasen löschen")
+        print("  time <Nr>      - Startzeit setzen/ändern (z.B. 'time 1')")
         print("  show / s       - Alle Loop-Phasen anzeigen")
         print(f"  help / ? | done / d | cancel / {cancel_hint()}")
         print("-" * 60)
@@ -417,8 +436,16 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 except ValueError:
                     repeat = 1
 
-                loop_phases.append(LoopPhase(loop_name, steps, repeat))
-                print(f"  + {loop_name} hinzugefügt ({len(steps)} Schritte x{repeat})")
+                # Geplante Startzeit abfragen
+                scheduled_start = None
+                print(hint("  (Phase wird nur zur angegebenen Uhrzeit ausgeführt, sonst übersprungen)"))
+                time_input = safe_input(f"  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
+                if time_input:
+                    scheduled_start = _parse_time_input(time_input)
+
+                loop_phases.append(LoopPhase(loop_name, steps, repeat, scheduled_start=scheduled_start))
+                time_info = f", Start: {scheduled_start}" if scheduled_start else ""
+                print(f"  + {loop_name} hinzugefügt ({len(steps)} Schritte x{repeat}{time_info})")
                 continue
 
             elif user_input.startswith("edit "):
@@ -437,6 +464,13 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                                 lp.repeat = max(1, int(repeat_input))
                         except ValueError:
                             pass
+                        # Geplante Startzeit bearbeiten
+                        current_time = lp.scheduled_start or "sofort"
+                        time_input = safe_input(f"  Startzeit (aktuell {current_time}, Enter = behalten, '0' = entfernen): ").strip()
+                        if time_input == "0":
+                            lp.scheduled_start = None
+                        elif time_input:
+                            lp.scheduled_start = _parse_time_input(time_input)
                         print(f"  + {lp.name} aktualisiert")
                     else:
                         print(f"  -> Ungültige Nr! Verfügbar: 1-{len(loop_phases)}")
@@ -486,8 +520,29 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                     print("  -> Format: del <Nr>")
                 continue
 
+            elif user_input.startswith("time "):
+                try:
+                    time_num = int(user_input[5:])
+                    if 1 <= time_num <= len(loop_phases):
+                        lp = loop_phases[time_num - 1]
+                        current_time = lp.scheduled_start or "sofort"
+                        time_input = safe_input(f"  Startzeit für '{lp.name}' (aktuell {current_time}, '0' = entfernen): ").strip()
+                        if time_input == "0":
+                            lp.scheduled_start = None
+                            print(f"  + Startzeit für '{lp.name}' entfernt")
+                        elif time_input:
+                            parsed = _parse_time_input(time_input)
+                            if parsed:
+                                lp.scheduled_start = parsed
+                                print(f"  + '{lp.name}' startet ab jetzt um {parsed}")
+                    else:
+                        print(f"  -> Ungültige Nr! Verfügbar: 1-{len(loop_phases)}")
+                except ValueError:
+                    print("  -> Format: time <Nr>")
+                continue
+
             else:
-                _known = ["add", "edit", "del", "show", "help", "done", "cancel"]
+                _known = ["add", "edit", "del", "show", "time", "help", "done", "cancel"]
                 suggestion = suggest_command(user_input, _known)
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
@@ -573,6 +628,7 @@ def _print_phase_help(full: bool = False) -> None:
         print("  Kurzübersicht (? / ?? = vollständige Hilfe):")
         print(cmd_hint("<Nr> <Zeit>", "Warte Xs, klicke Punkt    (z.B. '1 30')"))
         print(cmd_hint("scan <Name>", "Item-Scan ausführen"))
+        print(cmd_hint("boss <Name>", "Boss-Scan (erkennt Boss → Aktion)"))
         print(cmd_hint("key <Taste>", "Taste drücken              (z.B. 'key enter')"))
         print(cmd_hint("wait <Zeit>", "Nur warten, kein Klick"))
         print(cmd_hint("del <Nr>", "Schritt löschen"))
@@ -600,7 +656,8 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("scan <Name>", "Item-Scan: bestes pro Kategorie (Standard)"))
     print(cmd_hint("scan <Name> best", "Item-Scan: nur 1 Item total"))
     print(cmd_hint("scan <Name> every", "Item-Scan: alle Treffer (für Duplikate)"))
-    print("ELSE-Bedingungen (falls Scan/Pixel fehlschlägt):")
+    print(cmd_hint("boss <Name>", "Boss-Scan: Boss erkennen → bedingte Aktion"))
+    print("ELSE-Bedingungen (falls Scan/Pixel/Boss fehlschlägt):")
     print(cmd_hint("... else skip", "Schritt überspringen, weiter (z.B. 'scan items else skip')"))
     print(cmd_hint("... else skip_cycle", "Zyklus abbrechen, nächster startet (z.B. 'scan items else skip_cycle')"))
     print(cmd_hint("... else restart", "Sequenz neu starten (z.B. 'scan items else restart')"))
@@ -817,6 +874,38 @@ def edit_phase(state: AutoClickerState, steps: list[SequenceStep], phase_name: s
                 add_step(step)
                 continue
 
+            # === BOSS-SCAN-BEFEHL ===
+            elif user_input.lower().startswith("boss "):
+                parts_raw = user_input.split()
+                # Parse else-Bedingung
+                else_parts = []
+                main_parts = []
+                in_else = False
+                for p in parts_raw[1:]:  # Skip "boss"
+                    if p.lower() == "else":
+                        in_else = True
+                        continue
+                    if in_else:
+                        else_parts.append(p)
+                    else:
+                        main_parts.append(p)
+
+                if not main_parts:
+                    print("  -> Format: boss <Name> [else ...]")
+                    continue
+
+                boss_name = main_parts[0]
+
+                step = SequenceStep(
+                    x=0, y=0, delay_before=0,
+                    name=f"Boss:{boss_name}",
+                    boss_scan=boss_name,
+                )
+
+                apply_else_to_step(step, else_parts, state)
+                add_step(step)
+                continue
+
             # === KEY-BEFEHL ===
             elif user_input.lower().startswith("key "):
                 parts = user_input.split()
@@ -890,13 +979,11 @@ def edit_phase(state: AutoClickerState, steps: list[SequenceStep], phase_name: s
                     px, py, color = capture_pixel_color()
                     if color is None:
                         continue
-                    step.wait_pixel = (px, py)
-                    step.wait_color = color
-                    if arg == "gone":
-                        step.wait_until_gone = True
-                        step.name = "Wait:Gone"
-                    else:
-                        step.name = "Wait:Pixel"
+                    step.wait_condition = WaitCondition(
+                        pixel=(px, py), color=color,
+                        until_gone=(arg == "gone")
+                    )
+                    step.name = "Wait:Gone" if arg == "gone" else "Wait:Pixel"
                 else:
                     # wait <Zeit> oder wait <Min>-<Max>
                     if "-" in arg:
@@ -1041,11 +1128,14 @@ def edit_phase(state: AutoClickerState, steps: list[SequenceStep], phase_name: s
                                     if opt == "gone":
                                         wait_until_gone = True
 
+                wait_cond = None
+                if wait_pixel and wait_color:
+                    wait_cond = WaitCondition(pixel=wait_pixel, color=wait_color,
+                                              until_gone=wait_until_gone)
                 step = SequenceStep(
                     x=point.x, y=point.y, delay_before=delay,
                     name=point.name or f"#{point_id}",
-                    wait_pixel=wait_pixel, wait_color=wait_color,
-                    wait_until_gone=wait_until_gone,
+                    wait_condition=wait_cond,
                     delay_max=delay_max
                 )
 

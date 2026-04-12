@@ -7,9 +7,47 @@ import random
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-from .config import DEFAULT_MIN_CONFIDENCE
+from .config import AppConfig, DEFAULT_MIN_CONFIDENCE
+
+
+# =============================================================================
+# STRING-KONSTANTEN (zentral definiert, verhindert Tippfehler)
+# =============================================================================
+# ElseConfig.action
+ELSE_SKIP = "skip"
+ELSE_SKIP_CYCLE = "skip_cycle"
+ELSE_RESTART = "restart"
+ELSE_CLICK = "click"
+ELSE_KEY = "key"
+VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
+
+# pixel_timeout_action (Config)
+TIMEOUT_SKIP_CYCLE = "skip_cycle"
+TIMEOUT_RESTART = "restart"
+TIMEOUT_STOP = "stop"
+
+# consecutive_timeout_action (Config)
+CONSEC_STOP = "stop"
+CONSEC_QUIT = "quit"
+CONSEC_EXIT = "exit"
+
+# SequenceStep.item_scan_mode
+SCAN_MODE_ALL = "all"         # Bestes pro Kategorie
+SCAN_MODE_BEST = "best"       # Nur 1 bestes Item total
+SCAN_MODE_EVERY = "every"     # Jedes gefundene Item
+VALID_SCAN_MODES = {SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY}
+
+# BossProfile.action
+BOSS_ACTION_SCAN = "item_scan"      # Item-Scan ausführen
+BOSS_ACTION_CLICK = "click"          # Punkt klicken
+BOSS_ACTION_KEY = "key"              # Taste drücken
+BOSS_ACTION_SKIP = "skip"            # Schritt überspringen
+BOSS_ACTION_SKIP_CYCLE = "skip_cycle"  # Zyklus überspringen
+BOSS_ACTION_RESTART = "restart"      # Sequenz neustarten
+VALID_BOSS_ACTIONS = {BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
+                      BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART}
 
 
 # =============================================================================
@@ -30,6 +68,25 @@ class ClickPoint:
 
 
 @dataclass
+class ElseConfig:
+    """Fallback-Aktion wenn eine Bedingung (Farbe/Scan) fehlschlägt."""
+    action: str                          # "skip", "skip_cycle", "restart", "click", "key"
+    x: int = 0                           # X für Fallback-Klick
+    y: int = 0                           # Y für Fallback-Klick
+    delay: float = 0                     # Delay vor Fallback
+    key: Optional[str] = None            # Taste für Fallback
+    name: str = ""                       # Name des Fallback-Punkts
+
+
+@dataclass
+class WaitCondition:
+    """Warten auf eine Farbe an einer Pixel-Position."""
+    pixel: tuple[int, int]               # (x, y) Position zum Prüfen
+    color: tuple[int, int, int]          # (r, g, b) Farbe die erscheinen soll
+    until_gone: bool = False             # True = warte bis Farbe WEG ist
+
+
+@dataclass
 class SequenceStep:
     """Ein Schritt in einer Sequenz: Erst warten/prüfen, DANN klicken."""
     x: int                # X-Koordinate (direkt gespeichert)
@@ -37,9 +94,7 @@ class SequenceStep:
     delay_before: float   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
     name: str = ""        # Optionaler Name des Punktes
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
-    wait_pixel: Optional[tuple[int, int]] = None   # (x, y) Position zum Prüfen
-    wait_color: Optional[tuple[int, int, int]] = None   # (r, g, b) Farbe die erscheinen soll
-    wait_until_gone: bool = False        # True = warte bis Farbe WEG ist, False = warte bis Farbe DA ist
+    wait_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
     item_scan: Optional[str] = None      # Name des Item-Scans
     item_scan_mode: str = "all"          # "all" = bestes pro Kategorie, "best" = nur 1 Item total
@@ -50,12 +105,9 @@ class SequenceStep:
     # Optional: Tastendruck statt Mausklick
     key_press: Optional[str] = None      # z.B. "enter", "space", "f1"
     # Optional: Fallback/Else-Aktion wenn Bedingung fehlschlägt
-    else_action: Optional[str] = None    # "skip", "restart", "click", "key"
-    else_x: int = 0                      # X für Fallback-Klick
-    else_y: int = 0                      # Y für Fallback-Klick
-    else_delay: float = 0                # Delay vor Fallback
-    else_key: Optional[str] = None       # Taste für Fallback
-    else_name: str = ""                  # Name des Fallback-Punkts
+    else_config: Optional[ElseConfig] = None
+    # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
+    boss_scan: Optional[str] = None      # Name der BossScanConfig
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
@@ -70,22 +122,25 @@ class SequenceStep:
         if self.key_press:
             delay_str = self._delay_str()
             return f"{delay_str} → drücke Taste '{self.key_press}'{else_str}"
+        if self.boss_scan:
+            return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
         if self.item_scan:
-            mode_strs = {"all": "bestes/Kategorie", "best": "1 bestes", "every": "JEDES"}
+            mode_strs = {SCAN_MODE_ALL: "bestes/Kategorie", SCAN_MODE_BEST: "1 bestes", SCAN_MODE_EVERY: "JEDES"}
             mode_str = mode_strs.get(self.item_scan_mode, self.item_scan_mode)
             return f"SCAN '{self.item_scan}' → klicke {mode_str}{else_str}"
+        wc = self.wait_condition
         if self.wait_only:
-            if self.wait_pixel and self.wait_color:
-                gone_str = "WEG ist" if self.wait_until_gone else "DA ist"
-                return f"WARTE bis Farbe {gone_str} bei ({self.wait_pixel[0]},{self.wait_pixel[1]}) (kein Klick){else_str}"
+            if wc:
+                gone_str = "WEG ist" if wc.until_gone else "DA ist"
+                return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
             return f"WARTE {self._delay_str()} (kein Klick)"
         pos_str = f"{self.name} ({self.x}, {self.y})" if self.name else f"({self.x}, {self.y})"
-        if self.wait_pixel and self.wait_color:
-            gone_str = "bis Farbe WEG" if self.wait_until_gone else "auf Farbe"
+        if wc:
+            gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
             delay_str = self._delay_str()
             if self.delay_before > 0:
-                return f"warte {delay_str}, dann {gone_str} bei ({self.wait_pixel[0]},{self.wait_pixel[1]}) → klicke {pos_str}{else_str}"
-            return f"warte {gone_str} bei ({self.wait_pixel[0]},{self.wait_pixel[1]}) → klicke {pos_str}{else_str}"
+                return f"warte {delay_str}, dann {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
+            return f"warte {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
         elif self.delay_before > 0:
             return f"warte {self._delay_str()} → klicke {pos_str}"
         else:
@@ -93,19 +148,20 @@ class SequenceStep:
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""
-        if not self.else_action:
+        ec = self.else_config
+        if not ec:
             return ""
-        if self.else_action == "skip":
+        if ec.action == ELSE_SKIP:
             return " | ELSE: skip"
-        elif self.else_action == "skip_cycle":
+        elif ec.action == ELSE_SKIP_CYCLE:
             return " | ELSE: skip_cycle"
-        elif self.else_action == "restart":
+        elif ec.action == ELSE_RESTART:
             return " | ELSE: restart"
-        elif self.else_action == "click":
-            name = self.else_name or f"({self.else_x},{self.else_y})"
+        elif ec.action == ELSE_CLICK:
+            name = ec.name or f"({ec.x},{ec.y})"
             return f" | ELSE: klicke {name}"
-        elif self.else_action == "key":
-            return f" | ELSE: Taste '{self.else_key}'"
+        elif ec.action == ELSE_KEY:
+            return f" | ELSE: Taste '{ec.key}'"
         return ""
 
     def _delay_str(self) -> str:
@@ -127,12 +183,14 @@ class LoopPhase:
     name: str
     steps: list[SequenceStep] = field(default_factory=list)
     repeat: int = 1  # Wie oft diese Phase wiederholt wird
+    scheduled_start: Optional[str] = None  # Startzeit z.B. "12:30" – wartet bis diese Uhrzeit
 
     def __str__(self) -> str:
         step_count = len(self.steps)
-        pixel_triggers = sum(1 for s in self.steps if s.wait_pixel)
+        pixel_triggers = sum(1 for s in self.steps if s.wait_condition)
         trigger_str = f" [Farb: {pixel_triggers}]" if pixel_triggers > 0 else ""
-        return f"{self.name}: {step_count} Schritte x{self.repeat}{trigger_str}"
+        time_str = f" [Start: {self.scheduled_start}]" if self.scheduled_start else ""
+        return f"{self.name}: {step_count} Schritte x{self.repeat}{trigger_str}{time_str}"
 
 
 @dataclass
@@ -155,7 +213,7 @@ class Sequence:
         else:
             loop_info += f" (x{self.total_cycles})"
         all_steps = self.init_steps + [s for lp in self.loop_phases for s in lp.steps] + self.end_steps
-        pixel_triggers = sum(1 for s in all_steps if s.wait_pixel)
+        pixel_triggers = sum(1 for s in all_steps if s.wait_condition)
         trigger_str = f" [Farb-Trigger: {pixel_triggers}]" if pixel_triggers > 0 else ""
         init_str = f"Init: {init_count}, " if init_count > 0 else ""
         end_str = f", End: {end_count}" if end_count > 0 else ""
@@ -222,6 +280,69 @@ class ItemScanConfig:
 
 
 # =============================================================================
+# BOSS-SCAN DATENKLASSEN
+# =============================================================================
+@dataclass
+class BossProfile:
+    """Ein Boss-Typ mit Erkennungsmethode und zugeordneter Aktion."""
+    name: str
+    marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Farb-Marker
+    template: Optional[str] = None              # Template-Bild (in items/templates/)
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
+    # Aktion wenn dieser Boss erkannt wird:
+    action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
+    action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
+    action_scan_mode: str = SCAN_MODE_ALL       # Scan-Modus ("all", "best", "every")
+    action_x: int = 0                           # Klick-X (wenn action="click")
+    action_y: int = 0                           # Klick-Y (wenn action="click")
+    action_key: Optional[str] = None            # Taste (wenn action="key")
+    action_delay: float = 0                     # Verzögerung vor Aktion
+
+    def __str__(self) -> str:
+        detect_parts = []
+        if self.template:
+            detect_parts.append(f"Template: {self.template} (≥{self.min_confidence:.0%})")
+        if self.marker_colors:
+            colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:2]])
+            if len(self.marker_colors) > 2:
+                colors_str += f" (+{len(self.marker_colors)-2})"
+            detect_parts.append(colors_str)
+        detect_str = " + ".join(detect_parts) if detect_parts else "keine Erkennung"
+
+        if self.action == BOSS_ACTION_SCAN:
+            mode_strs = {SCAN_MODE_ALL: "alle", SCAN_MODE_BEST: "bestes", SCAN_MODE_EVERY: "jedes"}
+            action_str = f"→ Scan '{self.action_scan}' ({mode_strs.get(self.action_scan_mode, self.action_scan_mode)})"
+        elif self.action == BOSS_ACTION_CLICK:
+            action_str = f"→ Klick ({self.action_x},{self.action_y})"
+        elif self.action == BOSS_ACTION_KEY:
+            action_str = f"→ Taste '{self.action_key}'"
+        elif self.action == BOSS_ACTION_SKIP:
+            action_str = "→ überspringen"
+        elif self.action == BOSS_ACTION_SKIP_CYCLE:
+            action_str = "→ Zyklus überspringen"
+        elif self.action == BOSS_ACTION_RESTART:
+            action_str = "→ Neustart"
+        else:
+            action_str = f"→ {self.action}"
+        return f"{self.name}: {detect_str} {action_str}"
+
+
+@dataclass
+class BossScanConfig:
+    """Konfiguration für Boss-Erkennung mit bedingten Aktionen."""
+    name: str
+    scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Feste Region wo der Boss erscheint
+    bosses: list[BossProfile] = field(default_factory=list)      # Erkennbare Bosse (Reihenfolge = Priorität)
+    color_tolerance: int = 30                                     # Farbtoleranz für Marker
+    default_action: str = BOSS_ACTION_SKIP                        # Fallback wenn kein Boss erkannt
+    default_scan: Optional[str] = None                            # Fallback Item-Scan
+
+    def __str__(self) -> str:
+        r = self.scan_region
+        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]}))"
+
+
+# =============================================================================
 # AUTOCLICKER STATE
 # =============================================================================
 @dataclass
@@ -240,6 +361,9 @@ class AutoClickerState:
     # Item-Scan Konfigurationen (verknüpft Slots + Items)
     item_scans: dict[str, ItemScanConfig] = field(default_factory=dict)
 
+    # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
+    boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
+
     # Aktive Sequenz
     active_sequence: Optional[Sequence] = None
 
@@ -253,6 +377,7 @@ class AutoClickerState:
     skipped_cycles: int = 0
     restarts: int = 0
     timeouts: int = 0
+    consecutive_timeouts: int = 0
     start_time: Optional[float] = None
 
     # Bereits geklickte Kategorien im aktuellen Zyklus mit bester Priorität
@@ -279,4 +404,4 @@ class AutoClickerState:
     session_screenshots_dir: Optional[Path] = None
 
     # Konfiguration (thread-safe über lock)
-    config: dict[str, Any] = field(default_factory=dict)
+    config: AppConfig = field(default_factory=AppConfig)

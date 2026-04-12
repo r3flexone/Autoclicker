@@ -228,7 +228,7 @@ def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
                 pixel = pixels[x, y][:3]
                 rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
                 color_counts[rounded] = color_counts.get(rounded, 0) + 1
-        marker_count = CONFIG.get("marker_count", 5)
+        marker_count = CONFIG.marker_count
         sorted_colors = sorted(color_counts.items(), key=lambda c: c[1], reverse=True)[:marker_count]
         print(f"  Top {marker_count} Farben in {slot_name}:")
         for i, (color, count) in enumerate(sorted_colors):
@@ -412,7 +412,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     img_bgr = img_array[:, :, ::-1].copy()
 
     hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    tol = state.config.get("slot_hsv_tolerance", 25)
+    tol = state.config.slot_hsv_tolerance
     lower = np.array([max(0, int(h) - tol), max(0, int(s) - 50), max(0, int(v) - 50)])
     upper = np.array([min(180, int(h) + tol), min(255, int(s) + 50), min(255, int(v) + 50)])
 
@@ -455,7 +455,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     slot_color = (r, g, b)
 
     # Slots hinzufügen
-    inset = state.config.get("slot_inset", 10)
+    inset = state.config.slot_inset
     added = 0
     start_num = len(state.global_slots) + 1
 

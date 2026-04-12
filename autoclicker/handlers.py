@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import CONFIG_FILE, SEQUENCES_DIR, DEFAULT_CONFIG
+from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, DEFAULT_CONFIG
 from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, confirm, interactive_select, col, ok, err, info, warn, header, hint, coord_context, dbg
 from .winapi import get_cursor_pos, set_cursor_pos, user32
@@ -124,7 +124,7 @@ def handle_reset(state: AutoClickerState) -> None:
 
         # Config auf Standard zurücksetzen
         with state.lock:
-            state.config = DEFAULT_CONFIG.copy()
+            state.config = AppConfig()
 
         print(f"\n{ok('Factory Reset abgeschlossen!')}")
         print(ok("Das Programm ist jetzt wie frisch von GitHub."))
@@ -278,12 +278,16 @@ def handle_toggle(state: AutoClickerState) -> None:
             return
 
     # Keine Sequenz geladen → automatisch Lade-Menü öffnen
-    if not state.active_sequence:
+    with state.lock:
+        has_sequence = state.active_sequence is not None
+    if not has_sequence:
         print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
         from .editors.sequence_editor import run_sequence_loader
         run_sequence_loader(state)
         # Nach dem Laden prüfen ob jetzt eine Sequenz da ist
-        if not state.active_sequence:
+        with state.lock:
+            has_sequence = state.active_sequence is not None
+        if not has_sequence:
             return  # Nichts geladen
 
     # Jetzt starten
@@ -337,13 +341,15 @@ def handle_switch(state: AutoClickerState) -> None:
         return
 
     # Sequenzen einmal laden und cachen
+    with state.lock:
+        active_name = state.active_sequence.name if state.active_sequence else None
     loaded_sequences = []
     menu_options = []
     for name, path in sequences:
         seq = load_sequence_file(path)
         if seq:
             loaded_sequences.append(seq)
-            active_marker = " *AKTIV*" if state.active_sequence and state.active_sequence.name == seq.name else ""
+            active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
             menu_options.append(f"{seq.name}{active_marker}")
 
     choice = interactive_select(menu_options, title="\nQUICK-SWITCH: Sequenz wählen")
@@ -366,18 +372,23 @@ def handle_schedule(state: AutoClickerState) -> None:
             return
 
     # Keine Sequenz geladen → automatisch Lade-Menü öffnen
-    if not state.active_sequence:
+    with state.lock:
+        has_sequence = state.active_sequence is not None
+    if not has_sequence:
         print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
         from .editors.sequence_editor import run_sequence_loader
         run_sequence_loader(state)
-        # Nach dem Laden prüfen ob jetzt eine Sequenz da ist
-        if not state.active_sequence:
+        with state.lock:
+            has_sequence = state.active_sequence is not None
+        if not has_sequence:
             return  # Nichts geladen
 
+    with state.lock:
+        seq_name = state.active_sequence.name if state.active_sequence else "?"
     print("\n" + col("=" * 50, 'cyan'))
     print(f"  {col('ZEITPLAN: Sequenz zu bestimmter Zeit starten', 'bold')}")
     print(col("=" * 50, 'cyan'))
-    print(f"\nAktive Sequenz: {col(state.active_sequence.name, 'cyan')}")
+    print(f"\nAktive Sequenz: {col(seq_name, 'cyan')}")
     print(f"\n{col('Zeit-Formate:', 'bold')}")
     print(f"  {col('14:30', 'yellow')}    - Startet um 14:30 Uhr")
     print(f"  {col('1430', 'yellow')}     - Startet um 14:30 Uhr (4-stellig, 0000-2359)")
@@ -397,7 +408,7 @@ def handle_schedule(state: AutoClickerState) -> None:
         seconds, desc, target_timestamp = parse_time_input(time_input)
 
         # Debug: Zeige was geparst wurde
-        if state.config.get("debug_mode", False):
+        if state.config.debug_mode:
             print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', target_timestamp={target_timestamp}"))
 
         if seconds < 0:
@@ -415,12 +426,14 @@ def handle_schedule(state: AutoClickerState) -> None:
         # Bei relativen Zeiten: target_timestamp ist None, wird nach Enter berechnet
         if target_timestamp is not None:
             target_time = target_timestamp
+            target_dt = datetime.fromtimestamp(target_time)
+            print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{seq_name}' startet {desc}")
+            print(f"          {col('Zielzeit:', 'cyan')} {target_dt.strftime('%H:%M:%S')}")
+            print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)}")
         else:
-            target_time = datetime.now().timestamp() + seconds
-        target_dt = datetime.fromtimestamp(target_time)
-        print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{state.active_sequence.name}' startet {desc}")
-        print(f"          {col('Zielzeit:', 'cyan')} {target_dt.strftime('%H:%M:%S')}")
-        print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)}")
+            target_time = datetime.now().timestamp() + seconds  # Nur für Vorschau
+            print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{seq_name}' startet {desc}")
+            print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)} (ab Enter-Bestätigung)")
         print(f"\n          {col('Enter', 'yellow')} drücken zum Starten, {col('cancel', 'yellow')} zum Abbrechen")
 
         # Bestätigung abwarten

@@ -6,13 +6,15 @@ Speichern/Laden von Sequenzen, Punkten, Slots, Items, Scans.
 import json
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
 from .config import SEQUENCES_DIR, DEFAULT_MIN_CONFIDENCE
 from .models import (
-    ClickPoint, SequenceStep, LoopPhase, Sequence,
-    ItemProfile, ItemSlot, ItemScanConfig, AutoClickerState
+    ClickPoint, ElseConfig, WaitCondition, SequenceStep, LoopPhase, Sequence,
+    ItemProfile, ItemSlot, ItemScanConfig, BossProfile, BossScanConfig, AutoClickerState,
+    BOSS_ACTION_SCAN, SCAN_MODE_ALL
 )
 from .utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, info, warn
 
@@ -20,6 +22,7 @@ from .utils import compact_json, sanitize_filename, save_tag, load_tag, delete_t
 logger = logging.getLogger("autoclicker")
 
 # Verzeichnisse
+BOSS_SCANS_DIR: str = "boss_scans"
 ITEM_SCANS_DIR: str = "item_scans"
 SLOTS_DIR: str = "slots"
 ITEMS_DIR: str = "items"
@@ -34,8 +37,8 @@ ITEM_PRESETS_DIR: str = os.path.join(ITEMS_DIR, "presets")
 
 def init_directories() -> None:
     """Erstellt alle benötigten Verzeichnisse."""
-    for folder in [ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR, SCREENSHOTS_DIR, SEQUENCE_SCREENSHOTS_DIR,
-                   TEMPLATES_DIR, SLOT_PRESETS_DIR, ITEM_PRESETS_DIR]:
+    for folder in [ITEM_SCANS_DIR, BOSS_SCANS_DIR, SLOTS_DIR, ITEMS_DIR, SCREENSHOTS_DIR,
+                   SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR, SLOT_PRESETS_DIR, ITEM_PRESETS_DIR]:
         os.makedirs(folder, exist_ok=True)
 
 
@@ -44,17 +47,12 @@ def init_directories() -> None:
 # =============================================================================
 
 def _item_to_dict(item: ItemProfile) -> dict:
-    """Serialisiert ein ItemProfile zu einem Dict."""
-    return {
-        "name": item.name,
-        "marker_colors": [list(c) for c in item.marker_colors] if item.marker_colors else [],
-        "category": item.category,
-        "priority": item.priority,
-        "confirm_point": {"x": item.confirm_point.x, "y": item.confirm_point.y} if item.confirm_point else None,
-        "confirm_delay": item.confirm_delay,
-        "template": item.template,
-        "min_confidence": item.min_confidence
-    }
+    """Serialisiert ein ItemProfile zu einem Dict (via dataclasses.asdict)."""
+    d = asdict(item)
+    # confirm_point: ClickPoint → nur {x, y} behalten (id/name nicht relevant)
+    if d["confirm_point"]:
+        d["confirm_point"] = {"x": d["confirm_point"]["x"], "y": d["confirm_point"]["y"]}
+    return d
 
 
 def _item_from_dict(data: dict) -> ItemProfile:
@@ -91,14 +89,20 @@ def ensure_sequences_dir() -> Path:
 
 def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
+    wc = s.wait_condition
+    ec = s.else_config
     return {"x": s.x, "y": s.y, "name": s.name, "delay_before": s.delay_before,
-            "wait_pixel": s.wait_pixel, "wait_color": s.wait_color,
-            "wait_until_gone": s.wait_until_gone,
+            "wait_pixel": wc.pixel if wc else None,
+            "wait_color": wc.color if wc else None,
+            "wait_until_gone": wc.until_gone if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
+            "boss_scan": s.boss_scan,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
-            "key_press": s.key_press, "else_action": s.else_action,
-            "else_x": s.else_x, "else_y": s.else_y, "else_delay": s.else_delay,
-            "else_key": s.else_key, "else_name": s.else_name,
+            "key_press": s.key_press,
+            "else_action": ec.action if ec else None,
+            "else_x": ec.x if ec else 0, "else_y": ec.y if ec else 0,
+            "else_delay": ec.delay if ec else 0,
+            "else_key": ec.key if ec else None, "else_name": ec.name if ec else "",
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None}
 
@@ -113,7 +117,8 @@ def _sequence_to_dict(seq: Sequence) -> dict:
             {
                 "name": lp.name,
                 "repeat": lp.repeat,
-                "steps": [_step_to_dict(s) for s in lp.steps]
+                "steps": [_step_to_dict(s) for s in lp.steps],
+                **({"scheduled_start": lp.scheduled_start} if lp.scheduled_start else {})
             }
             for lp in seq.loop_phases
         ],
@@ -181,11 +186,10 @@ def get_next_point_id(state: AutoClickerState) -> int:
 
 
 def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoint]:
-    """Findet einen Punkt anhand seiner ID."""
-    for p in state.points:
-        if p.id == point_id:
-            return p
-    return None
+    """Findet einen Punkt anhand seiner ID (O(1) Dict-Lookup mit Fallback)."""
+    # Schneller Dict-Lookup
+    points_by_id = {p.id: p for p in state.points}
+    return points_by_id.get(point_id)
 
 
 def load_sequence_file(filepath: Path) -> Optional[Sequence]:
@@ -210,25 +214,36 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                     if delay_raw is None:
                         delay_raw = 0
                     delay_max_raw = s.get("delay_max")
+                    # WaitCondition zusammenbauen
+                    wait_cond = None
+                    if wait_pixel and wait_color:
+                        wait_cond = WaitCondition(
+                            pixel=wait_pixel, color=wait_color,
+                            until_gone=s.get("wait_until_gone", False)
+                        )
+                    # ElseConfig zusammenbauen
+                    else_cfg = None
+                    else_action = s.get("else_action")
+                    if else_action:
+                        else_cfg = ElseConfig(
+                            action=else_action,
+                            x=s.get("else_x", 0), y=s.get("else_y", 0),
+                            delay=s.get("else_delay", 0),
+                            key=s.get("else_key"), name=s.get("else_name", "")
+                        )
                     step = SequenceStep(
                         x=s.get("x", 0),
                         y=s.get("y", 0),
                         delay_before=float(delay_raw),
                         name=s.get("name", ""),
-                        wait_pixel=wait_pixel,
-                        wait_color=wait_color,
-                        wait_until_gone=s.get("wait_until_gone", False),
+                        wait_condition=wait_cond,
                         item_scan=s.get("item_scan"),
                         item_scan_mode=s.get("item_scan_mode", "all"),
+                        boss_scan=s.get("boss_scan"),
                         wait_only=s.get("wait_only", False),
                         delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
                         key_press=s.get("key_press"),
-                        else_action=s.get("else_action"),
-                        else_x=s.get("else_x", 0),
-                        else_y=s.get("else_y", 0),
-                        else_delay=s.get("else_delay", 0),
-                        else_key=s.get("else_key"),
-                        else_name=s.get("else_name", ""),
+                        else_config=else_cfg,
                         screenshot_only=s.get("screenshot_only", False),
                         screenshot_region=tuple(int(v) for v in s["screenshot_region"]) if s.get("screenshot_region") else None,
                     )
@@ -250,7 +265,8 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                     lp = LoopPhase(
                         name=lp_data.get("name", "Loop"),
                         steps=parse_steps(lp_data.get("steps", [])),
-                        repeat=lp_data.get("repeat", 1)
+                        repeat=lp_data.get("repeat", 1),
+                        scheduled_start=lp_data.get("scheduled_start")
                     )
                     loop_phases.append(lp)
                 total_cycles = data.get("total_cycles", 1)
@@ -282,11 +298,24 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
         return None
 
 
+_seq_cache: list[tuple[str, Path]] = []
+_seq_cache_mtime: float = 0
+
+
 def list_available_sequences() -> list[tuple[str, Path]]:
-    """Listet alle verfügbaren Sequenz-Dateien auf."""
+    """Listet alle verfügbaren Sequenz-Dateien auf (mit mtime-Cache)."""
+    global _seq_cache, _seq_cache_mtime
     seq_dir = Path(SEQUENCES_DIR)
     if not seq_dir.exists():
         return []
+
+    try:
+        current_mtime = seq_dir.stat().st_mtime
+    except OSError:
+        return []
+
+    if _seq_cache and _seq_cache_mtime == current_mtime:
+        return _seq_cache
 
     sequences = []
     for f in seq_dir.glob("*.json"):
@@ -298,6 +327,8 @@ def list_available_sequences() -> list[tuple[str, Path]]:
                     sequences.append((name, f))
             except (json.JSONDecodeError, IOError, KeyError, TypeError):
                 pass  # Ungültige/korrupte Datei überspringen
+    _seq_cache = sequences
+    _seq_cache_mtime = current_mtime
     return sequences
 
 
@@ -404,6 +435,122 @@ def load_all_item_scans(state: AutoClickerState) -> None:
 
 
 # =============================================================================
+# BOSS-SCAN PERSISTENZ
+# =============================================================================
+def ensure_boss_scans_dir() -> Path:
+    """Stellt sicher, dass der Boss-Scans-Ordner existiert."""
+    path = Path(BOSS_SCANS_DIR)
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def _boss_profile_to_dict(boss: BossProfile) -> dict:
+    """Serialisiert ein BossProfile zu einem Dict."""
+    return {
+        "name": boss.name,
+        "marker_colors": [list(c) for c in boss.marker_colors],
+        "template": boss.template,
+        "min_confidence": boss.min_confidence,
+        "action": boss.action,
+        "action_scan": boss.action_scan,
+        "action_scan_mode": boss.action_scan_mode,
+        "action_x": boss.action_x,
+        "action_y": boss.action_y,
+        "action_key": boss.action_key,
+        "action_delay": boss.action_delay,
+    }
+
+
+def _boss_profile_from_dict(data: dict) -> BossProfile:
+    """Deserialisiert ein BossProfile aus einem Dict."""
+    return BossProfile(
+        name=data["name"],
+        marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
+        template=data.get("template"),
+        min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
+        action=data.get("action", BOSS_ACTION_SCAN),
+        action_scan=data.get("action_scan"),
+        action_scan_mode=data.get("action_scan_mode", SCAN_MODE_ALL),
+        action_x=data.get("action_x", 0),
+        action_y=data.get("action_y", 0),
+        action_key=data.get("action_key"),
+        action_delay=data.get("action_delay", 0),
+    )
+
+
+def save_boss_scan(config: BossScanConfig) -> None:
+    """Speichert eine Boss-Scan Konfiguration."""
+    ensure_boss_scans_dir()
+
+    data = {
+        "name": config.name,
+        "scan_region": list(config.scan_region),
+        "color_tolerance": config.color_tolerance,
+        "default_action": config.default_action,
+        "default_scan": config.default_scan,
+        "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
+    }
+
+    filename = f"{sanitize_filename(config.name)}.json"
+    try:
+        with open(Path(BOSS_SCANS_DIR) / filename, "w", encoding="utf-8") as f:
+            f.write(compact_json(data))
+        print(save_tag(f"Boss-Scan '{config.name}' gespeichert in '{BOSS_SCANS_DIR}/'"))
+    except (IOError, OSError) as e:
+        print(err(f"Boss-Scan konnte nicht gespeichert werden: {e}"))
+
+
+def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
+    """Lädt eine Boss-Scan Konfiguration."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+            bosses = [_boss_profile_from_dict(b) for b in data.get("bosses", [])]
+
+            return BossScanConfig(
+                name=data["name"],
+                scan_region=tuple(data["scan_region"]),
+                color_tolerance=data.get("color_tolerance", 30),
+                default_action=data.get("default_action", "skip"),
+                default_scan=data.get("default_scan"),
+                bosses=bosses,
+            )
+
+    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+        logger.error(f"Konnte {filepath} nicht laden: {e}")
+        return None
+
+
+def list_available_boss_scans() -> list[tuple[str, Path]]:
+    """Listet alle verfügbaren Boss-Scan Konfigurationen auf."""
+    scan_dir = Path(BOSS_SCANS_DIR)
+    if not scan_dir.exists():
+        return []
+
+    scans = []
+    for f in scan_dir.glob("*.json"):
+        try:
+            with open(f, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                name = data.get("name", f.stem)
+                scans.append((name, f))
+        except (json.JSONDecodeError, IOError, KeyError, TypeError):
+            pass
+    return scans
+
+
+def load_all_boss_scans(state: AutoClickerState) -> None:
+    """Lädt alle Boss-Scan Konfigurationen."""
+    for name, path in list_available_boss_scans():
+        config = load_boss_scan_file(path)
+        if config:
+            state.boss_scans[config.name] = config
+    if state.boss_scans:
+        print(load_tag(f"{len(state.boss_scans)} Boss-Scan(s) geladen"))
+
+
+# =============================================================================
 # GLOBALE SLOTS UND ITEMS PERSISTENZ
 # =============================================================================
 def save_global_slots(state: AutoClickerState) -> None:
@@ -475,11 +622,11 @@ def load_global_items(state: AutoClickerState) -> None:
 
 
 # =============================================================================
-# SLOT UND ITEM PRESETS
+# GENERISCHE PRESET-FUNKTIONEN
 # =============================================================================
-def list_slot_presets() -> list[tuple[str, Path, int]]:
-    """Listet alle verfügbaren Slot-Presets auf."""
-    preset_dir = Path(SLOT_PRESETS_DIR)
+def _list_presets(presets_dir: str) -> list[tuple[str, Path, int]]:
+    """Listet alle verfügbaren Presets in einem Verzeichnis auf."""
+    preset_dir = Path(presets_dir)
     if not preset_dir.exists():
         return []
     presets = []
@@ -487,12 +634,49 @@ def list_slot_presets() -> list[tuple[str, Path, int]]:
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
-                name = f.stem
-                count = len(data)
-                presets.append((name, f, count))
+                presets.append((f.stem, f, len(data)))
         except (json.JSONDecodeError, IOError, KeyError, TypeError):
             pass
     return presets
+
+
+def _save_preset(data: dict, preset_name: str, presets_dir: str, label: str) -> bool:
+    """Speichert Daten als Preset-Datei."""
+    safe_name = sanitize_filename(preset_name)
+    filepath = Path(presets_dir) / f"{safe_name}.json"
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(compact_json(data))
+        print(save_tag(f"{label}-Preset '{preset_name}' gespeichert ({len(data)} {label}s)"))
+        return True
+    except (IOError, OSError) as e:
+        print(err(f"{label}-Preset konnte nicht gespeichert werden: {e}"))
+        return False
+
+
+def _delete_preset(preset_name: str, presets_dir: str, label: str) -> bool:
+    """Löscht eine Preset-Datei."""
+    safe_name = sanitize_filename(preset_name)
+    filepath = Path(presets_dir) / f"{safe_name}.json"
+    if not filepath.exists():
+        print(err(f"Preset '{preset_name}' nicht gefunden!"))
+        return False
+    try:
+        filepath.unlink()
+        print(delete_tag(f"{label}-Preset '{preset_name}' gelöscht"))
+        return True
+    except OSError as e:
+        print(err(f"Preset konnte nicht gelöscht werden: {e}"))
+        return False
+
+
+# =============================================================================
+# SLOT UND ITEM PRESETS (delegieren an generische Funktionen)
+# =============================================================================
+def list_slot_presets() -> list[tuple[str, Path, int]]:
+    """Listet alle verfügbaren Slot-Presets auf."""
+    return _list_presets(SLOT_PRESETS_DIR)
 
 
 def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
@@ -500,7 +684,6 @@ def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not state.global_slots:
         print(err("Keine Slots vorhanden zum Speichern!"))
         return False
-
     data = {
         name: {
             "name": slot.name,
@@ -510,18 +693,7 @@ def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
         }
         for name, slot in state.global_slots.items()
     }
-
-    safe_name = sanitize_filename(preset_name)
-    filepath = Path(SLOT_PRESETS_DIR) / f"{safe_name}.json"
-    try:
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
-        print(save_tag(f"Slot-Preset '{preset_name}' gespeichert ({len(state.global_slots)} Slots)"))
-        return True
-    except (IOError, OSError) as e:
-        print(err(f"Slot-Preset konnte nicht gespeichert werden: {e}"))
-        return False
+    return _save_preset(data, preset_name, SLOT_PRESETS_DIR, "Slot")
 
 
 def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
@@ -531,11 +703,9 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not filepath.exists():
         print(err(f"Preset '{preset_name}' nicht gefunden!"))
         return False
-
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-
         with state.lock:
             state.global_slots.clear()
             for name, s in data.items():
@@ -546,8 +716,6 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
                     click_pos=tuple(s["click_pos"]),
                     slot_color=slot_color
                 )
-
-        # Auch in aktive Datei speichern
         save_global_slots(state)
         print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(state.global_slots)} Slots)"))
         return True
@@ -558,36 +726,12 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
 
 def delete_slot_preset(preset_name: str) -> bool:
     """Löscht ein Slot-Preset."""
-    safe_name = sanitize_filename(preset_name)
-    filepath = Path(SLOT_PRESETS_DIR) / f"{safe_name}.json"
-    if not filepath.exists():
-        print(err(f"Preset '{preset_name}' nicht gefunden!"))
-        return False
-    try:
-        filepath.unlink()
-        print(delete_tag(f"Slot-Preset '{preset_name}' gelöscht"))
-        return True
-    except OSError as e:
-        print(err(f"Preset konnte nicht gelöscht werden: {e}"))
-        return False
+    return _delete_preset(preset_name, SLOT_PRESETS_DIR, "Slot")
 
 
 def list_item_presets() -> list[tuple[str, Path, int]]:
     """Listet alle verfügbaren Item-Presets auf."""
-    preset_dir = Path(ITEM_PRESETS_DIR)
-    if not preset_dir.exists():
-        return []
-    presets = []
-    for f in preset_dir.glob("*.json"):
-        try:
-            with open(f, "r", encoding="utf-8") as file:
-                data = json.load(file)
-                name = f.stem
-                count = len(data)
-                presets.append((name, f, count))
-        except (json.JSONDecodeError, IOError, KeyError, TypeError):
-            pass
-    return presets
+    return _list_presets(ITEM_PRESETS_DIR)
 
 
 def save_item_preset(state: AutoClickerState, preset_name: str) -> bool:
@@ -595,22 +739,10 @@ def save_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not state.global_items:
         print(err("Keine Items vorhanden zum Speichern!"))
         return False
-
     sorted_items = sorted(state.global_items.items(),
                           key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
     data = {name: _item_to_dict(item) for name, item in sorted_items}
-
-    safe_name = sanitize_filename(preset_name)
-    filepath = Path(ITEM_PRESETS_DIR) / f"{safe_name}.json"
-    try:
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
-        print(save_tag(f"Item-Preset '{preset_name}' gespeichert ({len(state.global_items)} Items)"))
-        return True
-    except (IOError, OSError) as e:
-        print(err(f"Item-Preset konnte nicht gespeichert werden: {e}"))
-        return False
+    return _save_preset(data, preset_name, ITEM_PRESETS_DIR, "Item")
 
 
 def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
@@ -620,17 +752,13 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not filepath.exists():
         print(err(f"Preset '{preset_name}' nicht gefunden!"))
         return False
-
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-
         with state.lock:
             state.global_items.clear()
             for name, i in data.items():
                 state.global_items[name] = _item_from_dict(i)
-
-        # Auch in aktive Datei speichern
         save_global_items(state)
         print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(state.global_items)} Items)"))
         return True
@@ -641,18 +769,7 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
 
 def delete_item_preset(preset_name: str) -> bool:
     """Löscht ein Item-Preset."""
-    safe_name = sanitize_filename(preset_name)
-    filepath = Path(ITEM_PRESETS_DIR) / f"{safe_name}.json"
-    if not filepath.exists():
-        print(err(f"Preset '{preset_name}' nicht gefunden!"))
-        return False
-    try:
-        filepath.unlink()
-        print(delete_tag(f"Item-Preset '{preset_name}' gelöscht"))
-        return True
-    except OSError as e:
-        print(err(f"Preset konnte nicht gelöscht werden: {e}"))
-        return False
+    return _delete_preset(preset_name, ITEM_PRESETS_DIR, "Item")
 
 
 # =============================================================================
@@ -686,13 +803,18 @@ def shift_category_priorities(state: AutoClickerState, category: str) -> int:
     return shifted
 
 
-def update_item_in_scans(old_name: str, new_name: str, new_template: Optional[str] = None) -> int:
-    """Aktualisiert ein Item in allen Scan-Konfigurationen."""
+def update_item_in_scans(old_name: str, new_name: str, new_template: Optional[str] = None) -> tuple[int, int]:
+    """Aktualisiert ein Item in allen Scan-Konfigurationen.
+
+    Returns:
+        (updated_count, failed_count) - Anzahl aktualisierter und fehlgeschlagener Scans.
+    """
     updated_scans = 0
+    failed_scans = 0
     scan_dir = Path(ITEM_SCANS_DIR)
 
     if not scan_dir.exists():
-        return 0
+        return 0, 0
 
     for scan_file in scan_dir.glob("*.json"):
         try:
@@ -713,9 +835,10 @@ def update_item_in_scans(old_name: str, new_name: str, new_template: Optional[st
                 updated_scans += 1
 
         except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+            failed_scans += 1
             print(f"  {warn(f'Konnte {scan_file.name} nicht aktualisieren: {e}')}")
 
-    return updated_scans
+    return updated_scans, failed_scans
 
 
 def print_points(state: AutoClickerState) -> None:

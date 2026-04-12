@@ -19,6 +19,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Template-Matching**: Items per Screenshot erkennen (OpenCV)
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
+- **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
 - **Pause/Resume**: Sequenz pausieren ohne Fortschritt zu verlieren
 - **Skip**: Aktuelle Wartezeit überspringen
 - **Statistiken**: Laufzeit, Klicks, Items gefunden
@@ -75,23 +76,40 @@ Im Sequenz-Editor:
 
 ## Hotkeys
 
+### Aufnahme
+
 | Hotkey | Funktion |
 |--------|----------|
-| `CTRL+ALT+A` | Aktuelle Mausposition als Punkt speichern |
+| `CTRL+ALT+A` | Mausposition als Punkt speichern |
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
-| `CTRL+ALT+X` | Factory Reset (ALLES löschen - wie frisch von GitHub) |
-| `CTRL+ALT+E` | Sequenz-Editor öffnen |
-| `CTRL+ALT+N` | Item-Scan System (Slots, Items, Scans) |
+
+### Editoren
+
+| Hotkey | Funktion |
+|--------|----------|
+| `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
+| `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
-| `CTRL+ALT+P` | Punkte anzeigen/testen/umbenennen |
-| `CTRL+ALT+T` | Farb-Analysator |
-| `CTRL+ALT+S` | Start/Stop (öffnet Lade-Menü wenn keine Sequenz geladen, startet automatisch nach Laden) |
-| `CTRL+ALT+G` | Pause/Resume (während Sequenz läuft) |
+| `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
+| `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
+
+### Ausführung
+
+| Hotkey | Funktion |
+|--------|----------|
+| `CTRL+ALT+S` | Start/Stop der aktiven Sequenz |
+| `CTRL+ALT+F` | Sanft beenden (Zyklus abschließen, dann END + Stop) |
+| `CTRL+ALT+G` | Pause/Resume |
 | `CTRL+ALT+K` | Skip (aktuelle Wartezeit überspringen) |
-| `CTRL+ALT+F` | Sanfter Abbruch (aktuellen Zyklus abschließen, dann END + Stop) |
 | `CTRL+ALT+W` | Quick-Switch (schnell Sequenz wechseln) |
-| `CTRL+ALT+Z` | Zeitplan (Sequenz zu bestimmter Zeit starten) |
+| `CTRL+ALT+Z` | Zeitplan (Start zu bestimmter Zeit) |
+
+### System
+
+| Hotkey | Funktion |
+|--------|----------|
+| `CTRL+ALT+X` | Factory Reset (Punkte + Sequenzen) |
 | `CTRL+ALT+Q` | Programm beenden |
 
 ## Item-Scan System (`CTRL+ALT+N`)
@@ -238,6 +256,45 @@ Eine Sequenz besteht aus drei Phasen:
 2. **LOOP**: Wird wiederholt (konfigurierbare Anzahl, mehrere Loops möglich)
 3. **END**: Einmalig nach allen Zyklen (optional)
 
+### Loop-Phasen
+
+Jede Sequenz kann mehrere Loop-Phasen haben, die nacheinander durchlaufen werden. Beim Erstellen einer Loop-Phase werden Name und Wiederholungen abgefragt.
+
+**Befehle im Loop-Editor:**
+
+| Befehl | Beschreibung |
+|--------|--------------|
+| `add` | Neue Loop-Phase hinzufügen |
+| `edit <Nr>` | Schritte einer Loop-Phase bearbeiten |
+| `del <Nr>` | Loop-Phase löschen |
+| `time <Nr>` | Startzeit für Loop-Phase setzen/entfernen (z.B. `12:30`) |
+| `show` | Alle Loop-Phasen anzeigen |
+| `done` | Weiter zur END-Phase |
+
+### Zeitgesteuerte Loops
+
+Loop-Phasen können an eine bestimmte **Uhrzeit** gebunden werden (z.B. "Loop 3 startet nur um 12:30"):
+
+- **Normale Loops** (ohne Zeit) laufen im Zyklus wie gewohnt
+- **Zeitgesteuerte Loops** werden übersprungen, bis ihre Startzeit erreicht ist
+- Die Zeit wird **nie verpasst**: Ein Hintergrund-Thread überwacht die Uhr und setzt ein Pending-Flag
+- Die Ausführung erfolgt an der **natürlichen Position** im Zyklus (nicht als Interrupt)
+- Der **Failsafe-Timer** wird durch das Warten nicht ausgelöst
+
+**Einrichten:**
+- Beim Erstellen: `Startzeit (HH:MM, leer = immer):` eingeben
+- Nachträglich: `time <Nr>` im Loop-Editor (z.B. `time 3`)
+- Entfernen: `time <Nr>` und dann `0` eingeben
+
+**Beispiel:**
+```
+Loop 1: Ressourcen sammeln x5         ← läuft immer
+Loop 2: Items verkaufen x3            ← läuft immer
+Loop 3: Boss-Fight x1 [Start: 12:30] ← nur um 12:30
+```
+
+Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der nächste Zyklus auch Loop 3 aus – danach wird Loop 3 wieder übersprungen bis zum nächsten Tag um 12:30.
+
 ### Editor-Befehle
 
 | Befehl | Beschreibung |
@@ -302,6 +359,30 @@ Zyklen: 10                 # 10 Durchläufe
 [END: 2] > done
 ```
 
+### Beispiel mit zeitgesteuertem Loop
+
+```
+[INIT: 0] > 1 5            # Login
+[INIT: 1] > done
+
+[Loop 1: Sammeln x5]       # Läuft immer (5 Wiederholungen)
+  > 2 30-45                 # Ressourcen sammeln
+  > 3 0                     # Inventar öffnen
+  > done
+
+[Loop 2: Boss x1 [Start: 12:30]]  # Nur um 12:30 Uhr
+  > 4 pixel                 # Warte auf Boss-Spawn
+  > 5 0                     # Angreifen
+  > done
+
+Zyklen: 100
+
+[END: 0] > 6 0              # Logout
+[END: 1] > done
+```
+
+Loop 1 läuft in jedem Zyklus. Loop 2 wird übersprungen bis 12:30 erreicht ist – dann wird es einmal ausgeführt und danach wieder übersprungen bis zum nächsten Tag.
+
 ## Sequenzen zwischen PCs teilen
 
 Sequenzen können auf einen anderen PC kopiert werden (`sequences/`-Ordner). Beim Laden werden die Koordinaten automatisch anhand der **Punkt-Namen** abgeglichen:
@@ -329,6 +410,37 @@ Wenn ein Farb-Trigger die eingestellte Zeit (`pixel_wait_timeout`, Standard: 300
 
 **`pixel_wait_timeout: 0`** deaktiviert den Timeout komplett → wartet unendlich auf die Farbe (nur manueller Skip/Stop beendet)
 
+### Notbremse (Consecutive Timeout)
+
+Wenn ein Farb-Trigger **mehrfach hintereinander** in den Timeout läuft (z.B. weil das Spiel abgestürzt ist), greift die **Notbremse**. Das verhindert, dass der Autoclicker 200x sinnlos den Zyklus neu startet.
+
+**Konfiguration:**
+```json
+{
+  "max_consecutive_timeouts": 5,
+  "consecutive_timeout_action": "stop"
+}
+```
+
+| Option | Beschreibung |
+|--------|--------------|
+| `max_consecutive_timeouts` | Nach X Timeouts in Folge → Notbremse (`0` = deaktiviert) |
+| `consecutive_timeout_action` | Was passiert bei Auslösung (siehe unten) |
+
+**Eskalationsstufen:**
+
+| Wert | Verhalten |
+|------|-----------|
+| `stop` (Standard) | Sequenz wird gestoppt, Menü bleibt offen |
+| `quit` | Menü wird sauber beendet (END-Phase übersprungen) |
+| `exit` | Python-Prozess wird sofort beendet (`os._exit`), muss manuell neu gestartet werden |
+
+**Verhalten:**
+- Bei jedem Timeout wird der Zähler hochgezählt: `[TIMEOUT] Farbe nicht erkannt nach 300s! (3/5 in Folge)`
+- Bei **erfolgreicher** Farberkennung wird der Zähler auf 0 zurückgesetzt
+- Die Notbremse greift **vor** der normalen Timeout-Aktion (`pixel_timeout_action`)
+- In den Statistiken wird angezeigt ob die Notbremse ausgelöst wurde
+
 ### Restart vs. Skip Cycle
 
 | Aktion | Beschreibung |
@@ -348,9 +460,11 @@ STATISTIKEN:
   Items:          56
   Tasten:         12
   Timeouts:       3
+  Notbremse:      Ja (5x in Folge)
   Übersprungen:   2
   Neustarts:      1
 ```
+(Einträge erscheinen nur wenn > 0, Notbremse nur wenn ausgelöst)
 
 ### Zeitplan (`CTRL+ALT+Z`)
 
@@ -495,6 +609,8 @@ Wird beim ersten Start automatisch erstellt:
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
   "pixel_check_interval": 1,
+  "max_consecutive_timeouts": 5,
+  "consecutive_timeout_action": "stop",
   "scan_pixel_step": 2,
   "show_pixel_delay": 0.3,
   "scan_reverse": true,
@@ -544,6 +660,8 @@ Wird beim ersten Start automatisch erstellt:
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
 | `pixel_check_interval` | Wie oft auf Farbe prüfen (Sekunden) |
+| `max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
+| `consecutive_timeout_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
 | `scan_pixel_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
 | `show_pixel_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
 
@@ -585,7 +703,7 @@ Wird beim ersten Start automatisch erstellt:
 ```
 Autoclicker-Idleclans/
 ├── main.py                 # Einstiegspunkt
-├── autoclicker/            # Hauptmodul (~6600 Zeilen)
+├── autoclicker/            # Hauptmodul (~7600 Zeilen)
 │   ├── __init__.py
 │   ├── config.py           # Konfiguration (Hotkeys, Defaults)
 │   ├── models.py           # Datenmodelle (ClickPoint, Sequence, etc.)
@@ -628,7 +746,7 @@ Autoclicker-Idleclans/
 
 ### Architektur
 
-Das Programm ist modular aufgebaut (~6600 Zeilen in 15 Dateien):
+Das Programm ist modular aufgebaut (~7600 Zeilen in 15 Dateien):
 
 ```
 main.py                      Einstiegspunkt, Event-Loop
@@ -672,6 +790,20 @@ main.py                      Einstiegspunkt, Event-Loop
 │  - skip_event    │     │  - pause_event → Warten          │
 │  - quit_event    │     │  - skip_event → Wartezeit skip   │
 └──────────────────┘     └──────────────────────────────────┘
+                               │
+                               │ (nur bei zeitgesteuerten Loops)
+                               ▼
+                         ┌──────────────────────────────────┐
+                         │       Timer Thread (Daemon)      │
+                         │                                  │
+                         │  _schedule_watcher():             │
+                         │  - Prüft alle 10s die Uhrzeit    │
+                         │  - Setzt pending-Flag wenn Zeit  │
+                         │    erreicht (thread-safe)         │
+                         │  - Verhindert Doppel-Ausführung   │
+                         │    pro Tag                        │
+                         │  - Stoppt mit stop_event          │
+                         └──────────────────────────────────┘
 ```
 
 ### Abhängigkeiten
@@ -722,6 +854,23 @@ python tools/slot_tester.py
 ## Changelog
 
 ### Neueste Änderungen
+
+- **Zeitgesteuerte Loops**: Loop-Phasen können an eine Uhrzeit gebunden werden (z.B. `12:30`). Ein Daemon-Thread überwacht die Zeit im Hintergrund und setzt ein Pending-Flag – normale Loops laufen weiter, der zeitgesteuerte Loop wird nur an seiner natürlichen Position ausgeführt. Neuer `time <Nr>` Befehl im Loop-Editor.
+
+### Vorherige Änderungen
+
+- **Notbremse (Consecutive Timeout)**: Stoppt automatisch nach X aufeinanderfolgenden Timeouts (`max_consecutive_timeouts`). Drei Eskalationsstufen: `stop`, `quit`, `exit` (Prozess killen)
+- **Config-Validierung**: Ungültige Werte in `config.json` werden automatisch korrigiert mit Warnung (z.B. negative Timeouts, unbekannte Aktions-Strings)
+- **Race Condition Fix**: Alle Zugriffe auf `state.active_sequence` sind jetzt thread-safe unter Lock
+- **PILLOW-Guard**: Farb-Trigger bricht sofort ab wenn Pillow nicht installiert ist (statt sinnlos zu loopen)
+- **Bounds-Checks**: Region-Validierung bei Screenshots (BitBlt, ImageGrab, Region-Auswahl)
+- **GDI Cleanup**: Jeder GDI-Resource-Cleanup einzeln abgesichert (kein Überspringen bei Fehler)
+- **String-Konstanten**: `ELSE_SKIP`, `SCAN_MODE_ALL` etc. zentral definiert (verhindert Tippfehler)
+- **Screenshot-Ordner**: Session-Start-Datum statt `datetime.now()` (ein Ordner pro Session, auch über Mitternacht)
+- **scan_park_mouse**: Nutzt Virtual Screen Metrics für echte Bildschirmmitte (Multi-Monitor-kompatibel)
+- **NumPy-Optimierung**: `np.asarray` (Zero-Copy) + quadrierte Distanz ohne `sqrt`
+
+### Vorherige Änderungen
 
 - **Checkbox-Ansicht**: `show`/`s` im Scan-Editor zeigt `[X]`/`[ ]` für zugewiesene Slots/Items
 - **Screenshots nach Tag**: Sequenz-Screenshots werden nach Tag gruppiert (`YYYY-MM-DD/`) statt pro Session

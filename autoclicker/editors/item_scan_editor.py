@@ -23,6 +23,7 @@ from ..persistence import (
 )
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
+from .boss_scan_editor import run_boss_scan_editor
 
 
 
@@ -35,11 +36,13 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         slot_count = len(state.global_slots)
         item_count = len(state.global_items)
         scan_count = len(state.item_scans)
+        boss_count = len(state.boss_scans)
 
     menu_options = [
         f"Slots bearbeiten     ({slot_count} vorhanden)",
         f"Items bearbeiten     ({item_count} vorhanden)",
         f"Scans bearbeiten     ({scan_count} vorhanden)",
+        f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
     ]
 
     choice = interactive_select(menu_options)
@@ -50,6 +53,8 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         run_global_item_editor(state)
     elif choice == 2:
         run_item_scan_editor(state)
+    elif choice == 3:
+        run_boss_scan_editor(state)
 
 
 def run_item_scan_editor(state: AutoClickerState) -> None:
@@ -397,7 +402,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
 
                 # Bestätigungs-Klick?
                 confirm_point = None
-                confirm_delay = CONFIG.get("default_confirm_delay", 0.5)
+                confirm_delay = CONFIG.default_confirm_delay
                 confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
                 if confirm_input:
                     try:

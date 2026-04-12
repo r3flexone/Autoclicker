@@ -10,7 +10,7 @@ import sys
 import time
 
 # Modulare Imports
-from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE
+from autoclicker.config import AppConfig, CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
 from autoclicker.winapi import (
     user32, kernel32,
@@ -23,7 +23,8 @@ from autoclicker.winapi import (
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories,
-    load_points, load_global_slots, load_global_items, load_all_item_scans
+    load_points, load_global_slots, load_global_items, load_all_item_scans,
+    load_all_boss_scans
 )
 from autoclicker.execution import print_status
 from autoclicker.utils import col, info, warn, hint
@@ -111,7 +112,7 @@ def main() -> int:
 
     # State initialisieren
     state = AutoClickerState()
-    state.config = CONFIG.copy()
+    state.config = AppConfig.from_dict(CONFIG.to_dict())
     main_thread_id = kernel32.GetCurrentThreadId()
 
     # Ordner erstellen
@@ -124,6 +125,7 @@ def main() -> int:
     load_global_slots(state)
     load_global_items(state)
     load_all_item_scans(state)
+    load_all_boss_scans(state)
 
     # Hotkeys registrieren
     if not register_hotkeys():

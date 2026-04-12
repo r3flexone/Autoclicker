@@ -1,0 +1,523 @@
+================================================================================
+                         LASTENHEFT - AUTOCLICKER
+                       Idle Clans Automation Tool
+================================================================================
+
+Projekt:       Autoclicker für Idle Clans
+Plattform:     Windows (Desktop)
+Stand:         2026-03-11
+
+================================================================================
+  INHALTSVERZEICHNIS
+================================================================================
+
+  1.  Zielsetzung
+  2.  Punkte-System
+  3.  Sequenz-System
+  4.  Phasen-Modell (INIT / LOOP / END)
+  5.  Warte- und Timing-Funktionen
+  6.  Farb- und Pixelerkennung
+  7.  Tastatur-Aktionen
+  8.  Item-Scan-System
+  9.  Else-Bedingungen (Fallback-Aktionen)
+ 10.  Sicherheitsmechanismen
+ 11.  Scheduling & Zeitsteuerung
+ 12.  Hotkey-Steuerung
+ 13.  Editoren
+ 14.  Persistenz & Dateiverwaltung
+ 15.  Konfiguration
+ 16.  Anzeige & Benutzeroberfläche
+ 17.  Multi-Monitor-Unterstützung
+ 18.  Debug-Funktionen
+ 19.  Statistiken
+ 20.  Optionale Abhängigkeiten
+
+================================================================================
+  1. ZIELSETZUNG
+================================================================================
+
+Das Programm soll wiederkehrende Maus- und Tastaturaktionen für das Spiel
+"Idle Clans" automatisieren. Der Benutzer definiert Klick-Punkte, erstellt
+daraus Sequenzen mit Bedingungen und Zeitsteuerung und kann diese automatisch
+ausführen lassen. Das System muss robust gegen Spielabstürze, unerwartete
+Zustände und Endlosschleifen sein.
+
+================================================================================
+  2. PUNKTE-SYSTEM
+================================================================================
+
+/LF-0010/  Der Benutzer muss Bildschirmpositionen (x, y) als benannte Punkte
+           aufnehmen können.
+
+/LF-0020/  Jeder Punkt erhält eine eindeutige, stabile ID, die auch bei
+           Umordnung der Liste erhalten bleibt.
+
+/LF-0030/  Punkte müssen umbenannt, getestet (Maus bewegt sich zur Position)
+           und gelöscht werden können.
+
+/LF-0040/  Die Punkt-Liste muss persistent gespeichert und beim Programmstart
+           automatisch geladen werden.
+
+/LF-0050/  Punkte müssen zwischen verschiedenen PCs austauschbar sein. Beim
+           Laden einer fremden Sequenz müssen Koordinaten anhand der
+           Punkt-Namen auf die lokalen Positionen gemappt werden.
+
+================================================================================
+  3. SEQUENZ-SYSTEM
+================================================================================
+
+/LF-0100/  Der Benutzer muss Sequenzen aus aufgenommenen Punkten erstellen
+           können, wobei jeder Schritt eine Verzögerung und eine Aktion hat.
+
+/LF-0110/  Sequenzen müssen unter einem frei wählbaren Namen gespeichert
+           und geladen werden können.
+
+/LF-0120/  Es muss möglich sein, mehrere Sequenzen zu verwalten und zwischen
+           ihnen umzuschalten, auch während eine Sequenz aktiv ist.
+
+/LF-0130/  Die Gesamtanzahl der Zyklen muss konfigurierbar sein
+           (0 = unendlich).
+
+/LF-0140/  Sequenzen müssen gestartet, pausiert, fortgesetzt und gestoppt
+           werden können.
+
+/LF-0150/  Es muss ein "Soft Finish" geben: Der aktuelle Zyklus wird
+           abgeschlossen, die END-Phase ausgeführt und dann gestoppt.
+
+/LF-0160/  Der aktuelle Warteschritt muss übersprungen werden können
+           (sofort zum nächsten Schritt).
+
+================================================================================
+  4. PHASEN-MODELL (INIT / LOOP / END)
+================================================================================
+
+/LF-0200/  Jede Sequenz muss drei Phasen unterstützen:
+           - INIT:  Wird einmalig vor allen Zyklen ausgeführt
+           - LOOP:  Wird wiederholt (gemäß Zyklen-Konfiguration)
+           - END:   Wird einmalig nach allen Zyklen ausgeführt
+
+/LF-0210/  Die LOOP-Phase muss mehrere unabhängige Loop-Blöcke unterstützen,
+           jeder mit eigener Wiederholungsanzahl.
+
+/LF-0220/  Alle Phasen verwenden dieselbe Schritt-Syntax (Klicks, Wartezeiten,
+           Bedingungen, Tasten, Scans).
+
+/LF-0230/  Die END-Phase muss bei normalem Abschluss und bei Soft Finish
+           ausgeführt werden.
+
+/LF-0240/  Bei Notbremse-Aktion "quit" oder "exit" darf die END-Phase
+           übersprungen werden.
+
+================================================================================
+  5. WARTE- UND TIMING-FUNKTIONEN
+================================================================================
+
+/LF-0300/  Es müssen feste Wartezeiten in Sekunden unterstützt werden.
+
+/LF-0310/  Es müssen zufällige Wartezeiten als Bereich (min-max) unterstützt
+           werden.
+
+/LF-0320/  Es müssen Warte-Schritte ohne Klick-Aktion möglich sein
+           (reines Warten).
+
+/LF-0330/  Es muss auf eine bestimmte Uhrzeit gewartet werden können
+           (HH:MM-Format). Falls die Zeit heute bereits vorbei ist, muss
+           auf den nächsten Tag gewartet werden.
+
+/LF-0340/  Relative Zeitangaben müssen unterstützt werden:
+           Sekunden (30s), Minuten (5m), Stunden (2h).
+
+/LF-0350/  Zwischen Mausbewegung und Klick muss eine konfigurierbare Pause
+           liegen (click_move_delay).
+
+/LF-0360/  Nach jedem Klick muss eine konfigurierbare Pause eingehalten
+           werden (post_click_delay).
+
+================================================================================
+  6. FARB- UND PIXELERKENNUNG
+================================================================================
+
+/LF-0400/  Es muss möglich sein, die Farbe eines einzelnen Pixels an einer
+           bestimmten Bildschirmposition zu lesen.
+
+/LF-0410/  Ein Schritt muss auf das Erscheinen einer bestimmten Farbe an
+           einer Position warten können ("pixel"-Trigger).
+
+/LF-0420/  Ein Schritt muss auf das Verschwinden einer bestimmten Farbe
+           warten können ("gone"-Trigger).
+
+/LF-0430/  Die Farb-Toleranz für Pixel-Trigger muss konfigurierbar sein.
+
+/LF-0440/  Das Prüf-Intervall für Farbprüfungen muss konfigurierbar sein.
+
+/LF-0450/  Ein Timeout für Farb-Trigger muss konfigurierbar sein
+           (0 = unendlich warten).
+
+/LF-0460/  Die Aktion bei Timeout muss konfigurierbar sein:
+           - Zyklus überspringen
+           - Sequenz neu starten
+           - Sequenz stoppen
+
+/LF-0470/  Es muss ein interaktives Farb-Analyse-Werkzeug geben, mit dem
+           der Benutzer die RGB-Werte an der aktuellen Mausposition
+           auslesen kann.
+
+/LF-0480/  Farbvergleiche müssen mit konfigurierbarer Toleranz arbeiten
+           (euklidische Distanz im RGB-Farbraum).
+
+================================================================================
+  7. TASTATUR-AKTIONEN
+================================================================================
+
+/LF-0500/  Sequenz-Schritte müssen Tasten-Eingaben senden können
+           (einzelne Tasten).
+
+/LF-0510/  Unterstützte Tasten: Enter, Space, Tab, Escape, Backspace,
+           Delete, Pfeiltasten, F1-F12, Ziffern 0-9, Buchstaben a-z.
+
+/LF-0520/  Tasten-Aktionen müssen mit Verzögerung (fest oder zufällig)
+           kombinierbar sein.
+
+================================================================================
+  8. ITEM-SCAN-SYSTEM
+================================================================================
+
+/LF-0600/  Das System muss rechteckige Bildschirmbereiche ("Slots") als
+           Scan-Regionen definieren können.
+
+/LF-0610/  Slots müssen automatisch erkannt werden können (Farb-basierte
+           Erkennung mit konfigurierbarer HSV-Toleranz).
+
+/LF-0620/  Slots müssen auch manuell angelegt werden können (Scan-Region
+           + Klick-Position).
+
+/LF-0630/  Es müssen Item-Profile definierbar sein, bestehend aus:
+           - Name
+           - Marker-Farben (RGB-Liste zur Erkennung)
+           - Kategorie (optional, für Priorisierung)
+           - Priorität (1 = beste innerhalb der Kategorie)
+           - Template-Bild (optional, für visuellen Abgleich)
+           - Mindest-Konfidenz für Template-Matching
+           - Bestätigungs-Klick (optionaler Folge-Klick)
+
+/LF-0640/  Items müssen automatisch aus Slots gelernt werden können:
+           Screenshot → Marker-Farben scannen → Name/Kategorie eingeben.
+
+/LF-0650/  Massen-Lernen über Slot-Bereiche muss unterstützt werden.
+
+/LF-0660/  Item-Scans müssen Slots und Items zu einer Scan-Konfiguration
+           verknüpfen, die in Sequenzen referenziert werden kann.
+
+/LF-0670/  Drei Scan-Modi müssen unterstützt werden:
+           - "all":   Bestes Item pro Kategorie klicken
+           - "best":  Nur das eine beste Item global klicken
+           - "every": Alle gefundenen Items ohne Kategorie-Filter klicken
+
+/LF-0680/  Die Scan-Reihenfolge der Slots muss konfigurierbar sein
+           (vorwärts oder rückwärts).
+
+/LF-0690/  Sofort-Modus: Scan → Klick pro Slot (statt alle scannen,
+           dann alle klicken) muss unterstützt werden.
+
+/LF-0700/  Die Maus muss vor dem Scan optional an eine Position geparkt
+           werden können (um Tooltips zu vermeiden).
+
+/LF-0710/  Erkennung muss über Marker-Farben UND/ODER Template-Matching
+           funktionieren. Bei beiden aktiv: UND-Verknüpfung.
+
+/LF-0720/  Pro Zyklus darf pro Kategorie nur das beste Item geklickt
+           werden. Die Kategorie-Verfolgung muss bei jedem neuen Zyklus
+           zurückgesetzt werden.
+
+/LF-0730/  Slots, Items und Scan-Konfigurationen müssen als Presets
+           gespeichert und geladen werden können.
+
+================================================================================
+  9. ELSE-BEDINGUNGEN (FALLBACK-AKTIONEN)
+================================================================================
+
+/LF-0800/  Jeder Schritt mit Pixel-Trigger oder Item-Scan muss eine
+           Fallback-Aktion ("else") definieren können.
+
+/LF-0810/  Folgende Else-Aktionen müssen unterstützt werden:
+           - skip:       Nur diesen Schritt überspringen
+           - skip_cycle: Gesamten Zyklus überspringen
+           - restart:    Sequenz von INIT neu starten
+           - click:      Alternativen Punkt anklicken
+           - key:        Alternative Taste drücken
+
+/LF-0820/  Else-Klick-Aktionen müssen eine eigene Verzögerung haben
+           können.
+
+================================================================================
+  10. SICHERHEITSMECHANISMEN
+================================================================================
+
+/LF-0900/  Fail-Safe: Wenn die Maus in die obere linke Bildschirmecke
+           bewegt wird, muss sofort alles gestoppt werden.
+
+/LF-0910/  Die Größe der Fail-Safe-Zone muss konfigurierbar sein
+           (X- und Y-Schwellwert in Pixeln).
+
+/LF-0920/  Der Fail-Safe muss abschaltbar sein.
+
+/LF-0930/  Notbremse: Nach einer konfigurierbaren Anzahl aufeinander-
+           folgender Timeouts muss eine Notfall-Aktion ausgelöst werden.
+
+/LF-0940/  Die Notbremse muss drei Eskalationsstufen unterstützen:
+           - "stop":  Sequenz anhalten, Menü bleibt offen
+           - "quit":  Programm-Menü beenden (ohne END-Phase)
+           - "exit":  Python-Prozess sofort beenden
+
+/LF-0950/  Der Timeout-Zähler der Notbremse muss zurückgesetzt werden,
+           sobald eine Farbe erfolgreich erkannt wird.
+
+/LF-0960/  Die Notbremse muss deaktivierbar sein (Anzahl = 0).
+
+================================================================================
+  11. SCHEDULING & ZEITSTEUERUNG
+================================================================================
+
+/LF-1000/  Es muss möglich sein, den Start einer Sequenz auf einen
+           bestimmten Zeitpunkt zu planen.
+
+/LF-1010/  Unterstützte Zeitformate:
+           - HH:MM       (Uhrzeit, heute oder morgen)
+           - HHMM        (4-stellig)
+           - +Xm / +Xh   (relative Minuten/Stunden)
+           - Xs / Xm / Xh (Wartezeit)
+
+/LF-1020/  Während des Countdowns muss die verbleibende Zeit angezeigt
+           werden.
+
+/LF-1030/  Der geplante Start muss abbrechbar sein, ohne dass die
+           Sequenz gestartet wird.
+
+================================================================================
+  12. HOTKEY-STEUERUNG
+================================================================================
+
+/LF-1100/  Das Programm muss über globale Hotkeys steuerbar sein, die
+           auch bei inaktivem Programmfenster funktionieren.
+
+/LF-1110/  Folgende Hotkeys müssen unterstützt werden:
+
+           Punkte:
+           - Punkt aufnehmen
+           - Letzten Punkt rückgängig machen
+           - Alle Punkte löschen
+           - Punkte anzeigen/testen/umbenennen
+
+           Editoren:
+           - Sequenz-Editor öffnen
+           - Item-Scan-Menü öffnen (Slots/Items/Scans)
+           - Sequenz laden
+
+           Ausführung:
+           - Start/Stopp
+           - Pause/Fortsetzen
+           - Aktuellen Warte-Schritt überspringen
+           - Soft Finish
+           - Sequenz wechseln (Quick-Switch)
+           - Zeitplan setzen
+
+           System:
+           - Farb-Analyse-Tool
+           - Factory Reset
+           - Programm beenden
+
+================================================================================
+  13. EDITOREN
+================================================================================
+
+--- 13.1 Sequenz-Editor ---
+
+/LF-1200/  Der Sequenz-Editor muss das Erstellen und Bearbeiten von
+           Sequenzen mit allen drei Phasen ermöglichen.
+
+/LF-1210/  Befehle im Editor:
+           - Punkt-ID + Verzögerung       → Klick-Schritt
+           - Punkt-ID + pixel/gone        → Farb-Trigger
+           - wait + Zeitangabe            → Warte-Schritt
+           - key + Taste                  → Tastendruck
+           - scan + Name                  → Item-Scan ausführen
+           - learn + Name                 → Neuen Punkt direkt aufnehmen
+           - points                       → Alle Punkte anzeigen
+           - ins + Position               → Einfügemodus an Position
+           - del + Nummer                 → Schritt löschen
+           - clear                        → Alle Schritte löschen
+           - show                         → Aktuelle Schritte anzeigen
+           - done                         → Speichern und weiter
+           - cancel                       → Verwerfen
+
+/LF-1220/  Bestehende Sequenzen müssen bearbeitbar sein (nicht nur
+           neu erstellt).
+
+--- 13.2 Slot-Editor ---
+
+/LF-1300/  Slots müssen manuell oder automatisch (Farberkennung)
+           angelegt werden können.
+
+/LF-1310/  Slots müssen als benannte Presets gespeichert und geladen
+           werden können.
+
+/LF-1320/  Bereichs-Löschung (z.B. "del 3-7") muss unterstützt werden.
+
+--- 13.3 Item-Editor ---
+
+/LF-1400/  Items müssen manuell angelegt oder automatisch aus Slots
+           gelernt werden können.
+
+/LF-1410/  Items müssen umbennbar sein (inklusive zugehörigem Template).
+
+/LF-1420/  Template-Bilder müssen zuweisbar und entfernbar sein.
+
+/LF-1430/  Items müssen als benannte Presets gespeichert und geladen
+           werden können.
+
+/LF-1440/  Massen-Lernen über Slot-Bereiche muss unterstützt werden.
+
+--- 13.4 Item-Scan-Editor ---
+
+/LF-1500/  Scan-Konfigurationen müssen Slots und Items zu einer
+           ausführbaren Einheit verknüpfen.
+
+/LF-1510/  Bestehende Scan-Konfigurationen müssen bearbeitbar sein.
+
+================================================================================
+  14. PERSISTENZ & DATEIVERWALTUNG
+================================================================================
+
+/LF-1600/  Alle Benutzerdaten (Punkte, Sequenzen, Slots, Items, Scans,
+           Konfiguration) müssen als JSON-Dateien gespeichert werden.
+
+/LF-1610/  Dateinamen müssen bereinigt werden (Sonderzeichen entfernen,
+           Pfad-Traversal verhindern).
+
+/LF-1620/  Alte Datenformate müssen beim Laden automatisch in das
+           aktuelle Format konvertiert werden (Abwärtskompatibilität).
+
+/LF-1630/  Fehlende Config-Optionen müssen beim Laden automatisch mit
+           Standardwerten ergänzt werden.
+
+/LF-1640/  Verzeichnisse müssen bei Bedarf automatisch erstellt werden.
+
+/LF-1650/  Screenshots müssen in Unterordnern nach Session-Datum
+           organisiert werden (YYYY-MM-DD).
+
+/LF-1660/  Unicode-Zeichen (Umlaute etc.) müssen in Dateinamen und
+           JSON-Dateien unterstützt werden.
+
+================================================================================
+  15. KONFIGURATION
+================================================================================
+
+/LF-1700/  Alle konfigurierbaren Werte müssen in einer zentralen
+           Konfigurationsdatei zusammengefasst sein.
+
+/LF-1710/  Die Konfiguration muss beim ersten Start automatisch mit
+           Standardwerten erstellt werden.
+
+/LF-1720/  Ungültige Konfigurationswerte müssen automatisch korrigiert
+           und der Benutzer darüber informiert werden.
+
+/LF-1730/  Die Konfiguration muss zur Laufzeit geändert werden können
+           (z.B. durch Factory Reset).
+
+/LF-1740/  Konfigurierbare Bereiche:
+           - Klick-Verhalten (Anzahl, Verzögerungen)
+           - Sicherheit (Fail-Safe, Notbremse)
+           - Farb-/Pixel-Erkennung (Toleranzen, Timeouts, Intervalle)
+           - Item-Scan (Reihenfolge, Modi, Verzögerungen, Marker)
+           - Timing (Pause-Intervalle)
+           - Debug (Schrittweise Anzeige, Erkennung, Templates)
+
+================================================================================
+  16. ANZEIGE & BENUTZEROBERFLÄCHE
+================================================================================
+
+/LF-1800/  Die Benutzeroberfläche muss konsolenbasiert sein.
+
+/LF-1810/  Ausgaben müssen farbcodiert sein (Erfolg, Fehler, Warnung,
+           Info) mit automatischer Erkennung der Terminal-Fähigkeiten.
+
+/LF-1820/  Menüs müssen per Pfeiltasten navigierbar sein, mit
+           Nummern-Eingabe als Fallback.
+
+/LF-1830/  Während der Ausführung muss der aktuelle Schritt und die
+           verbleibende Wartezeit in Echtzeit angezeigt werden.
+
+/LF-1840/  Hilfetexte und Befehlsvorschläge müssen kontextabhängig
+           angezeigt werden.
+
+/LF-1850/  Abbruch-Eingaben ("q", "cancel", "abbruch") müssen in allen
+           Eingabefeldern erkannt werden.
+
+================================================================================
+  17. MULTI-MONITOR-UNTERSTÜTZUNG
+================================================================================
+
+/LF-1900/  Das Programm muss mit mehreren Monitoren funktionieren,
+           einschließlich negativer Koordinaten für links positionierte
+           Monitore.
+
+/LF-1910/  Screenshots müssen den gesamten virtuellen Bildschirm
+           abdecken können.
+
+/LF-1920/  Die Maus-Park-Position muss bei Multi-Monitor-Setups
+           korrekt berechnet werden (Mitte des virtuellen Bildschirms).
+
+/LF-1930/  DPI-Skalierung muss berücksichtigt werden.
+
+================================================================================
+  18. DEBUG-FUNKTIONEN
+================================================================================
+
+/LF-2000/  Ein Debug-Modus muss alle Sequenz-Schritte vor dem Start
+           anzeigen und auf Bestätigung warten.
+
+/LF-2010/  Im Debug-Modus müssen Ausgaben persistent sein (keine
+           Zeilenüberschreibung).
+
+/LF-2020/  Die Pixel-Position eines Farb-Triggers muss optional beim
+           Start visuell angezeigt werden (Maus bewegt sich kurz hin).
+
+/LF-2030/  Scan- und Template-Debug-Bilder müssen optional gespeichert
+           werden können.
+
+================================================================================
+  19. STATISTIKEN
+================================================================================
+
+/LF-2100/  Nach Abschluss einer Sequenz müssen Statistiken angezeigt
+           werden:
+           - Laufzeit (formatiert als Xh Ym Zs)
+           - Abgeschlossene Zyklen
+           - Gesamtanzahl Klicks
+           - Gefundene Items
+           - Gedrückte Tasten
+           - Aufgetretene Timeouts
+           - Übersprungene Zyklen
+           - Neustarts
+           - Notbremse-Auslösung (falls zutreffend)
+
+/LF-2110/  Nur Werte ungleich Null dürfen angezeigt werden.
+
+================================================================================
+  20. OPTIONALE ABHÄNGIGKEITEN
+================================================================================
+
+/LF-2200/  Für Bildschirmaufnahmen und Farblesung wird Pillow (PIL)
+           benötigt. Ohne Pillow müssen Farb-Funktionen sauber
+           deaktiviert werden (keine Endlosschleifen).
+
+/LF-2210/  NumPy soll für optimierte Farbsuche genutzt werden.
+           Ohne NumPy muss ein langsamerer Fallback funktionieren.
+
+/LF-2220/  OpenCV soll für Template-Matching genutzt werden.
+           Ohne OpenCV muss Template-Matching deaktiviert sein,
+           Marker-Erkennung aber weiterhin funktionieren.
+
+================================================================================
+  ENDE DES LASTENHEFTS
+================================================================================

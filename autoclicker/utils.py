@@ -267,7 +267,7 @@ def flush_input_buffer() -> None:
     if _REAL_CONSOLE:
         try:
             while msvcrt.kbhit():
-                msvcrt.getch()
+                msvcrt.getwch()  # getwch statt getch — gleicher Buffer-Typ wie safe_input
         except Exception:
             pass
     else:
@@ -306,7 +306,7 @@ def safe_input(prompt: str = "") -> str:
             if ch == '\x1b':  # ESC
                 print()
                 return "\x1b"
-            elif ch == '\r':  # Enter
+            elif ch in ('\r', '\n'):  # Enter (auch \n falls CTRL noch gehalten)
                 print()
                 return ''.join(chars)
             elif ch in ('\x08', '\x7f'):  # Backspace
@@ -710,7 +710,7 @@ def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
     Returns:
         True wenn fortgesetzt, False wenn gestoppt
     """
-    pause_interval = state.config.get("pause_check_interval", 0.5)
+    pause_interval = state.config.pause_check_interval
     while state.pause_event.is_set() and not state.stop_event.is_set():
         clear_line()
         print(f"{col('[PAUSE]', 'yellow')} {message} | Fortsetzen: {col('CTRL+ALT+G', 'yellow')}", end="", flush=True)

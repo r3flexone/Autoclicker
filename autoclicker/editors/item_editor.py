@@ -348,7 +348,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
 
     # Bestätigungs-Klick
     confirm_point = None
-    confirm_delay = CONFIG.get("default_confirm_delay", 0.5)
+    confirm_delay = CONFIG.default_confirm_delay
     print("\n  Bestätigungs-Punkt? (z.B. für Popup-Bestätigung)")
     confirm_input = safe_input("  Punkt-ID (Enter=Nein): ").strip()
     if confirm_input:
@@ -520,7 +520,7 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
     if exclude_color:
         exclude_rounded = (exclude_color[0] // 5 * 5, exclude_color[1] // 5 * 5, exclude_color[2] // 5 * 5)
 
-        slot_color_dist = CONFIG.get("slot_color_distance", 25)
+        slot_color_dist = CONFIG.slot_color_distance
         colors_to_remove = []
         for color in color_counts.keys():
             if color_distance(color, exclude_rounded) <= slot_color_dist:
@@ -535,7 +535,7 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
             print(f"  -> Slot-Hintergrund ~RGB{exclude_color} ({color_name}) ausgeschlossen ({total_excluded} Pixel, {len(colors_to_remove)} Farbtöne)")
 
     # Top N häufigste Farben (aus Config)
-    marker_count = CONFIG.get("marker_count", 5)
+    marker_count = CONFIG.marker_count
     sorted_colors = sorted(color_counts.items(), key=lambda x: x[1], reverse=True)[:marker_count]
     colors = [color for color, count in sorted_colors]
 
@@ -587,7 +587,7 @@ def item_learn_command(state: AutoClickerState, user_input: str) -> bool:
 
             # Bestätigungs-Punkt einmal für alle abfragen
             confirm_point = None
-            confirm_delay = state.config.get("default_confirm_delay", 0.5)
+            confirm_delay = state.config.default_confirm_delay
             confirm_input = safe_input("  Bestätigungs-Punkt-ID für alle (Enter = keine): ").strip()
             if confirm_input:
                 try:
@@ -762,7 +762,7 @@ def item_learn_command(state: AutoClickerState, user_input: str) -> bool:
 
     # Bestätigungs-Klick abfragen
     confirm_point = None
-    confirm_delay = state.config.get("default_confirm_delay", 0.5)
+    confirm_delay = state.config.default_confirm_delay
     print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
     confirm_input = safe_input("  Punkt-ID für Bestätigung (Enter = Nein): ").strip()
@@ -888,9 +888,11 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
             state.global_items[new_name] = item
 
         # Auch in allen Scan-Konfigurationen aktualisieren
-        updated_scans = update_item_in_scans(old_name, new_name, item.template)
+        updated_scans, failed_scans = update_item_in_scans(old_name, new_name, item.template)
         if updated_scans > 0:
             print(f"  + {updated_scans} Scan-Konfiguration(en) aktualisiert")
+        if failed_scans > 0:
+            print(f"  {warn(f'{failed_scans} Scan-Datei(en) konnten nicht aktualisiert werden!')}")
 
         print(f"  + Item umbenannt: '{old_name}' -> '{new_name}' (gespeichert)")
     except ValueError:
