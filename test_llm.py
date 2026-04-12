@@ -151,13 +151,23 @@ def analyze(provider, model, img, prompt, boss_names):
         print(f"  {color('Antwort:', 'bold')}")
         print(f"  {color(response, 'green')}")
 
-        if boss_names:
-            matched = match_boss_name(response, boss_names)
-            print()
-            if matched:
-                print(f"  {color('Boss erkannt:', 'bold')} {color(matched, 'green')}")
+        from autoclicker.llm_vision import is_no_boss, clean_boss_name
+        print()
+        if is_no_boss(response):
+            print(f"  {color('Ergebnis:', 'bold')} {color('Kein Boss erkannt', 'yellow')}")
+        else:
+            cleaned = clean_boss_name(response)
+            if boss_names:
+                matched, is_new = match_boss_name(response, boss_names)
+                if matched and not is_new:
+                    print(f"  {color('Boss erkannt:', 'bold')} {color(matched, 'green')} (bekannt)")
+                elif matched and is_new:
+                    print(f"  {color('Neuer Boss:', 'bold')} {color(matched, 'cyan')} (würde gespeichert werden)")
+                else:
+                    print(f"  {color('Kein Boss zugeordnet', 'yellow')}")
             else:
-                print(f"  {color('Kein bekannter Boss zugeordnet', 'yellow')}")
+                print(f"  {color('Boss-Name:', 'bold')} {color(cleaned, 'cyan')}")
+                print(f"  (Nutze --bosses um gegen bekannte Namen abzugleichen)")
     else:
         print(f"{color('FEHLER', 'red')} ({duration:.0f}ms)")
         print(f"  {response}")

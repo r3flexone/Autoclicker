@@ -98,14 +98,17 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
     base = (
         "Du bist ein Bild-Erkennungssystem für das Spiel Idle Clans. "
         "Deine Aufgabe ist es, den Boss auf dem Screenshot zu identifizieren. "
-        "Antworte NUR mit dem exakten Boss-Namen, NICHTS anderes. "
+        "Antworte NUR mit dem Boss-Namen, NICHTS anderes. "
+        "Kein ganzer Satz, keine Erklärung - nur der Name. "
         "Wenn du keinen Boss erkennst, antworte mit: KEIN_BOSS"
     )
 
     if boss_names:
         names_str = ", ".join(boss_names)
-        base += f"\n\nBekannte Bosse: {names_str}"
-        base += "\nAntworte nur mit einem dieser Namen oder KEIN_BOSS."
+        base += f"\n\nBereits bekannte Bosse: {names_str}"
+        base += "\nWenn du einen dieser Bosse erkennst, verwende exakt diesen Namen."
+        base += "\nWenn du einen ANDEREN Boss erkennst, antworte mit dessen Namen."
+        base += "\nWenn du KEINEN Boss erkennst, antworte mit: KEIN_BOSS"
 
     return base
 
@@ -213,7 +216,35 @@ def _extract_response_text(result: dict, provider: str) -> str:
         return ""
 
 
-def match_boss_name(response: str, boss_names: list[str]) -> Optional[str]:
+def is_no_boss(response: str) -> bool:
+    """Prüft ob die LLM-Antwort 'kein Boss' bedeutet."""
+    if not response:
+        return True
+    response_lower = response.lower().strip()
+    negative_keywords = ["kein_boss", "kein boss", "no boss", "none", "nichts",
+                         "nicht erkannt", "no enemy", "not found", "i don't see",
+                         "i cannot", "i can't", "there is no"]
+    return any(neg in response_lower for neg in negative_keywords)
+
+
+def clean_boss_name(response: str) -> str:
+    """Bereinigt den LLM-Antworttext zu einem sauberen Boss-Namen."""
+    name = response.strip().strip('"').strip("'").strip(".")
+    # Mehrzeilige Antworten: nur erste Zeile
+    if "\n" in name:
+        name = name.split("\n")[0].strip()
+    # Präfixe entfernen die manche LLMs hinzufügen
+    prefixes = ["the boss is ", "boss: ", "boss name: ", "it's ", "this is ",
+                "der boss ist ", "boss-name: ", "das ist "]
+    name_lower = name.lower()
+    for prefix in prefixes:
+        if name_lower.startswith(prefix):
+            name = name[len(prefix):].strip()
+            break
+    return name
+
+
+def match_boss_name(response: str, boss_names: list[str]) -> tuple[Optional[str], bool]:
     """Versucht den LLM-Antworttext einem bekannten Boss-Namen zuzuordnen.
 
     Args:
@@ -221,35 +252,42 @@ def match_boss_name(response: str, boss_names: list[str]) -> Optional[str]:
         boss_names: Liste bekannter Boss-Namen
 
     Returns:
-        Bester Match aus boss_names oder None
+        (boss_name, is_new) - Boss-Name + ob es ein neuer unbekannter Boss ist.
+        (None, False) wenn kein Boss erkannt wurde.
     """
-    if not response or not boss_names:
-        return None
+    if not response:
+        return None, False
 
-    response_lower = response.lower().strip()
+    # Kein Boss erkannt?
+    if is_no_boss(response):
+        return None, False
 
-    # "KEIN_BOSS" oder ähnliche Negativ-Antworten
-    negative_keywords = ["kein_boss", "kein boss", "no boss", "none", "nichts", "nicht erkannt"]
-    for neg in negative_keywords:
-        if neg in response_lower:
-            return None
+    # Bereinigten Namen extrahieren
+    cleaned = clean_boss_name(response)
+    if not cleaned:
+        return None, False
 
-    # Exakter Match (case-insensitive)
-    for name in boss_names:
-        if name.lower() == response_lower:
-            return name
+    # Gegen bekannte Bosse matchen
+    if boss_names:
+        cleaned_lower = cleaned.lower()
 
-    # Enthaltener Match (LLM-Antwort enthält Boss-Namen)
-    for name in boss_names:
-        if name.lower() in response_lower:
-            return name
+        # Exakter Match
+        for name in boss_names:
+            if name.lower() == cleaned_lower:
+                return name, False
 
-    # Boss-Name in LLM-Antwort enthalten
-    for name in boss_names:
-        if response_lower in name.lower():
-            return name
+        # Enthaltener Match (LLM-Antwort enthält Boss-Namen)
+        for name in boss_names:
+            if name.lower() in cleaned_lower:
+                return name, False
 
-    return None
+        # Boss-Name in LLM-Antwort enthalten
+        for name in boss_names:
+            if cleaned_lower in name.lower():
+                return name, False
+
+    # Neuer Boss - nicht in der Liste!
+    return cleaned, True
 
 
 def test_connection(provider: str = PROVIDER_OLLAMA,

@@ -620,6 +620,8 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg("  → LLM: Import fehlgeschlagen"))
         return None
 
+    from .persistence import save_boss_scan
+
     boss_names = [boss.name for boss in config.bosses]
 
     if debug:
@@ -644,17 +646,37 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
 
     # Antwort einem Boss zuordnen
-    matched_name = match_boss_name(response, boss_names)
-    if matched_name:
+    matched_name, is_new = match_boss_name(response, boss_names)
+
+    if matched_name is None:
+        if debug:
+            print(dbg("  → LLM: kein Boss erkannt"))
+        return None
+
+    if not is_new:
+        # Bekannter Boss
         for boss in config.bosses:
             if boss.name == matched_name:
                 if debug:
                     print(dbg(f"  → LLM: {boss.name} ERKANNT!"))
                 return boss
 
+    # Neuer Boss - automatisch speichern!
+    print(col(f"[LLM] Neuer Boss entdeckt: '{matched_name}' - wird gespeichert!", "green"))
+    new_boss = BossProfile(
+        name=matched_name,
+        action=BOSS_ACTION_SKIP,  # Erstmal keine Aktion bis Benutzer eine zuweist
+    )
+    config.bosses.append(new_boss)
+
+    # Persistieren
+    with state.lock:
+        state.boss_scans[config.name] = config
+    save_boss_scan(config)
+
     if debug:
-        print(dbg(f"  → LLM: kein Boss zugeordnet"))
-    return None
+        print(dbg(f"  → LLM: Neuer Boss '{matched_name}' gespeichert (Aktion: skip)"))
+    return new_boss
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
