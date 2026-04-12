@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""
+Schnelltest für LLM Vision (Ollama / LM Studio).
+Testet Verbindung und Bilderkennung ohne den Autoclicker starten zu müssen.
+
+Nutzung:
+    python test_llm.py                    # Verbindungstest
+    python test_llm.py screenshot         # Screenshot machen + analysieren
+    python test_llm.py bild.png           # Vorhandenes Bild analysieren
+    python test_llm.py --provider lmstudio  # LM Studio statt Ollama
+    python test_llm.py --model moondream  # Anderes Modell
+"""
+
+import sys
+import os
+import time
+
+# Projekt-Root zum Path hinzufügen
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from autoclicker.llm_vision import (
+    test_connection, analyze_image, match_boss_name,
+    PROVIDER_OLLAMA, PROVIDER_LMSTUDIO,
+)
+
+
+def color(text, c):
+    colors = {"green": "\033[92m", "red": "\033[91m", "yellow": "\033[93m",
+              "cyan": "\033[96m", "bold": "\033[1m", "reset": "\033[0m"}
+    return f"{colors.get(c, '')}{text}{colors['reset']}"
+
+
+def parse_args():
+    provider = PROVIDER_OLLAMA
+    model = None
+    action = "test"  # "test", "screenshot", oder Dateipfad
+    prompt = None
+    boss_names = []
+
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--provider" and i + 1 < len(args):
+            provider = args[i + 1]
+            i += 2
+        elif arg == "--model" and i + 1 < len(args):
+            model = args[i + 1]
+            i += 2
+        elif arg == "--prompt" and i + 1 < len(args):
+            prompt = args[i + 1]
+            i += 2
+        elif arg == "--bosses" and i + 1 < len(args):
+            boss_names = [b.strip() for b in args[i + 1].split(",")]
+            i += 2
+        elif arg == "screenshot":
+            action = "screenshot"
+            i += 1
+        elif arg in ("--help", "-h"):
+            action = "help"
+            i += 1
+        else:
+            action = arg  # Dateipfad
+            i += 1
+
+    return provider, model, action, prompt, boss_names
+
+
+def print_help():
+    print(f"""
+{color('LLM Vision Test-Script', 'bold')}
+
+{color('Nutzung:', 'cyan')}
+    python test_llm.py                          Verbindungstest
+    python test_llm.py screenshot               Screenshot + Analyse
+    python test_llm.py bild.png                 Bild-Datei analysieren
+
+{color('Optionen:', 'cyan')}
+    --provider ollama|lmstudio                  Provider (Standard: ollama)
+    --model <name>                              Modell (Standard: llava)
+    --prompt "Was siehst du?"                   Custom Prompt
+    --bosses "Boss1,Boss2,Boss3"                Bekannte Boss-Namen
+
+{color('Beispiele:', 'cyan')}
+    python test_llm.py                          Nur Verbindung testen
+    python test_llm.py screenshot               Screenshot vom Bildschirm
+    python test_llm.py screenshot --model moondream
+    python test_llm.py boss.png --bosses "Dragon,Goblin,Skeleton"
+    python test_llm.py screenshot --prompt "Beschreibe was du siehst"
+    python test_llm.py --provider lmstudio screenshot
+""")
+
+
+def test_conn(provider, model):
+    print(f"\n{color('=== VERBINDUNGSTEST ===', 'bold')}")
+    print(f"  Provider: {color(provider, 'cyan')}")
+
+    success, message = test_connection(provider)
+
+    if success:
+        print(f"  Status:   {color('OK', 'green')}")
+        print(f"  {message}")
+    else:
+        print(f"  Status:   {color('FEHLER', 'red')}")
+        print(f"  {message}")
+        print()
+        if provider == PROVIDER_OLLAMA:
+            print(f"  {color('Lösung:', 'yellow')}")
+            print(f"  1. Ollama installieren: https://ollama.com")
+            print(f"  2. Vision-Modell laden: ollama pull llava")
+            print(f"  3. Prüfen ob es läuft:  ollama list")
+        else:
+            print(f"  {color('Lösung:', 'yellow')}")
+            print(f"  1. LM Studio starten")
+            print(f"  2. Vision-Modell laden (z.B. LLaVA)")
+    return success
+
+
+def analyze(provider, model, img, prompt, boss_names):
+    print(f"\n{color('=== BILD-ANALYSE ===', 'bold')}")
+    print(f"  Provider: {color(provider, 'cyan')}")
+    print(f"  Modell:   {color(model or '(Standard)', 'cyan')}")
+    if boss_names:
+        print(f"  Bosse:    {color(', '.join(boss_names), 'cyan')}")
+
+    w, h = img.size
+    print(f"  Bild:     {w}x{h} Pixel")
+
+    if not prompt:
+        if boss_names:
+            prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
+        else:
+            prompt = "Was siehst du auf diesem Bild? Beschreibe es kurz."
+
+    print(f"  Prompt:   {prompt}")
+    print()
+    print(f"  Sende an LLM...", end=" ", flush=True)
+
+    success, response, duration = analyze_image(
+        img=img,
+        provider=provider,
+        model=model,
+        prompt=prompt,
+        boss_names=boss_names if boss_names else None,
+        timeout=60,
+    )
+
+    if success:
+        print(f"{color('OK', 'green')} ({duration:.0f}ms)")
+        print()
+        print(f"  {color('Antwort:', 'bold')}")
+        print(f"  {color(response, 'green')}")
+
+        if boss_names:
+            matched = match_boss_name(response, boss_names)
+            print()
+            if matched:
+                print(f"  {color('Boss erkannt:', 'bold')} {color(matched, 'green')}")
+            else:
+                print(f"  {color('Kein bekannter Boss zugeordnet', 'yellow')}")
+    else:
+        print(f"{color('FEHLER', 'red')} ({duration:.0f}ms)")
+        print(f"  {response}")
+
+
+def main():
+    provider, model, action, prompt, boss_names = parse_args()
+
+    if action == "help":
+        print_help()
+        return
+
+    # Immer zuerst Verbindung testen
+    if not test_conn(provider, model):
+        return
+
+    if action == "test":
+        print(f"\n{color('Verbindung OK!', 'green')} Nutze 'python test_llm.py screenshot' für einen Bildtest.")
+        return
+
+    # Bild laden
+    try:
+        from PIL import Image
+    except ImportError:
+        print(f"\n{color('Pillow nicht installiert!', 'red')} pip install pillow")
+        return
+
+    img = None
+
+    if action == "screenshot":
+        print(f"\n{color('=== SCREENSHOT ===', 'bold')}")
+
+        try:
+            from autoclicker.imaging import take_screenshot, select_region
+            print("  [1] Vollbild")
+            print("  [2] Region auswählen (2 Ecken)")
+            choice = input("  Wahl (Enter=1): ").strip()
+
+            if choice == "2":
+                print("\n  Region auswählen...")
+                region = select_region()
+                if region:
+                    img = take_screenshot(region)
+                    print(f"  Screenshot: {region}")
+                else:
+                    print("  -> Abgebrochen")
+                    return
+            else:
+                img = take_screenshot()
+                print("  Screenshot: Vollbild")
+        except Exception as e:
+            print(f"  Screenshot fehlgeschlagen: {e}")
+            print("  Tipp: Auf Windows muss das Script mit Bildschirmzugriff laufen")
+            return
+
+    else:
+        # Datei laden
+        filepath = action
+        if not os.path.exists(filepath):
+            print(f"\n{color(f'Datei nicht gefunden: {filepath}', 'red')}")
+            return
+        try:
+            img = Image.open(filepath)
+            print(f"\n  Bild geladen: {filepath}")
+        except Exception as e:
+            print(f"\n{color(f'Bild konnte nicht geladen werden: {e}', 'red')}")
+            return
+
+    if img is None:
+        print(f"\n{color('Kein Bild verfügbar!', 'red')}")
+        return
+
+    analyze(provider, model, img, prompt, boss_names)
+    print()
+
+
+if __name__ == "__main__":
+    main()
