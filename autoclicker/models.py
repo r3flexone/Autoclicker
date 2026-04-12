@@ -108,12 +108,16 @@ class SequenceStep:
     else_config: Optional[ElseConfig] = None
     # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
     boss_scan: Optional[str] = None      # Name der BossScanConfig
+    # Optional: Boss-Watcher (wartet bis Boss erkannt, dann Aktion)
+    boss_watcher: Optional[str] = None   # Name der BossScanConfig für Watcher-Modus
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
 
     def __str__(self) -> str:
         else_str = self._else_str()
+        if self.boss_watcher:
+            return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
             region = self.screenshot_region
             if region:
@@ -336,10 +340,14 @@ class BossScanConfig:
     color_tolerance: int = 30                                     # Farbtoleranz für Marker
     default_action: str = BOSS_ACTION_SKIP                        # Fallback wenn kein Boss erkannt
     default_scan: Optional[str] = None                            # Fallback Item-Scan
+    # LLM Vision Erkennung (optional, zusätzlich zu Template/Marker)
+    use_llm: bool = False                                         # LLM für Erkennung verwenden
+    llm_fallback: bool = True                                     # LLM nur als Fallback (wenn Template/Marker nichts finden)
 
     def __str__(self) -> str:
         r = self.scan_region
-        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]}))"
+        llm_str = " [LLM]" if self.use_llm else ""
+        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]})){llm_str}"
 
 
 # =============================================================================

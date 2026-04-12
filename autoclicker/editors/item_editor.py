@@ -5,7 +5,10 @@ Ermöglicht das Erstellen und Bearbeiten von Item-Definitionen für Item-Scans.
 
 import copy
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 from ..models import ClickPoint, ItemProfile, AutoClickerState
 from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
@@ -67,6 +70,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
     def _print_item_help(full=False):
         if not full:
             print("\n  Kurzübersicht (? / ?? = vollständige Hilfe):")
+            print("    autoscan         ALLE Slots automatisch scannen + Items erstellen")
             print("    learn <Nr>       Item aus Slot lernen")
             print("    add              Neues Item manuell")
             print("    edit <Nr>        Item bearbeiten")
@@ -76,6 +80,8 @@ def run_global_item_editor(state: AutoClickerState) -> None:
         else:
             print("\n" + "-" * 60)
             print("Befehle:")
+            print(cmd_hint("autoscan", "ALLE Slots automatisch scannen + Items erstellen"))
+            print(cmd_hint("autoscan nocolor", "Auto-Scan nur mit Templates (ohne Marker)"))
             print(cmd_hint("learn <Nr>", "Item aus Slot lernen (automatisch!)"))
             print(cmd_hint("learn <Nr>-<Nr>", "Bulk: Items für Slot-Bereich (mit Template)"))
             print(cmd_hint("learn <Nr>-<Nr> simple", "Bulk: ohne Template"))
@@ -132,6 +138,10 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                             print(f"  {i+1}. {item}")
                     else:
                         print("  (Keine Items)")
+                continue
+
+            elif cmd.startswith("autoscan"):
+                item_autoscan_command(state, cmd)
                 continue
 
             elif cmd.startswith("learn"):
@@ -232,7 +242,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 continue
 
             else:
-                _known = ["learn", "add", "edit", "rename", "del", "show", "template", "templates", "save", "load", "preset", "help", "done", "cancel"]
+                _known = ["autoscan", "learn", "add", "edit", "rename", "del", "show", "template", "templates", "save", "load", "preset", "help", "done", "cancel"]
                 suggestion = suggest_command(cmd, _known)
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
@@ -545,6 +555,208 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
         print(f"    {i+1}. RGB{color} - {color_name} ({count} Pixel)")
 
     return colors
+
+
+# =============================================================================
+# AUTOSCAN-BEFEHL (Alle Slots automatisch scannen)
+# =============================================================================
+
+def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
+    """Scannt automatisch ALLE Slots und erstellt Items mit Templates + Marker-Farben.
+
+    Der Benutzer muss nur Kategorie und Bestätigungs-Punkt einmal angeben.
+    Alles andere wird automatisch gemacht. Namen können danach mit 'rename' angepasst werden.
+
+    Unterstützte Modi:
+        autoscan          - Mit Templates + Marker-Farben (empfohlen)
+        autoscan nocolor  - Nur Templates, keine Marker-Farben
+    """
+    with state.lock:
+        slot_list = list(state.global_slots.values())
+
+    if not slot_list:
+        print(f"  -> {err('Keine Slots vorhanden!')} Erst Slots mit 'auto' im Slot-Editor erstellen.")
+        return True
+
+    if not OPENCV_AVAILABLE:
+        print(f"  -> {err('OpenCV nicht installiert!')} (pip install opencv-python)")
+        print("       OpenCV wird für Template-Matching benötigt.")
+        return True
+
+    # Modus parsen
+    args = user_input[8:].strip().lower()  # nach "autoscan"
+    use_markers = args != "nocolor"
+    mode_str = "Templates + Marker" if use_markers else "nur Templates"
+
+    print(header(f"AUTO-SCAN: {len(slot_list)} Slots ({mode_str})"))
+    print(f"\n  Scannt automatisch alle {len(slot_list)} Slots und erstellt Items.")
+    print("  Namen können danach mit 'rename <Nr>' angepasst werden.\n")
+
+    # === Einmalige Einstellungen für alle Items ===
+
+    # Kategorie
+    print("  Kategorie für ALLE Items (Enter = keine):")
+    category = select_category(state, show_explanation=False)
+
+    # Prioritäts-Modus
+    print("\n  Prioritäts-Vergabe:")
+    print("    [1] Automatisch (Slot-Reihenfolge: 1, 2, 3, ...)")
+    print("    [2] Alle gleich (Priorität 1)")
+    prio_choice = safe_input("  Wahl (Enter = 1): ").strip()
+    auto_priority = prio_choice != "2"
+
+    # Bestätigungs-Punkt
+    confirm_point = None
+    confirm_delay = CONFIG.default_confirm_delay
+    confirm_input = safe_input("\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ").strip()
+    if confirm_input:
+        try:
+            point_id = int(confirm_input)
+            found_point = get_point_by_id(state, point_id)
+            if found_point:
+                confirm_point = ClickPoint(found_point.x, found_point.y)
+                delay_input = safe_input(f"  Wartezeit vor Bestätigung (Enter = {confirm_delay}s): ").strip()
+                if delay_input:
+                    delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
+                    if delay_err:
+                        print(f"  -> {delay_err}, behalte {confirm_delay}s")
+                    else:
+                        confirm_delay = delay_val
+            else:
+                print(f"  -> Punkt #{point_id} existiert nicht, überspringe")
+        except ValueError:
+            pass
+
+    # Konfidenz
+    min_confidence = DEFAULT_MIN_CONFIDENCE
+    try:
+        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
+        if conf_input:
+            min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
+    except ValueError:
+        pass
+
+    # Bestätigung
+    print(f"\n  --- Zusammenfassung ---")
+    print(f"  Slots:       {len(slot_list)}")
+    print(f"  Kategorie:   {category or '(keine)'}")
+    print(f"  Priorität:   {'automatisch (1,2,3,...)' if auto_priority else 'alle gleich (1)'}")
+    print(f"  Konfidenz:   {min_confidence:.0%}")
+    if confirm_point:
+        print(f"  Bestätigung: ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s")
+    else:
+        print(f"  Bestätigung: keine")
+    print(f"  Marker:      {'Ja' if use_markers else 'Nein'}")
+
+    if not confirm("\n  Starten?"):
+        print("  -> Abgebrochen")
+        return True
+
+    # === Scanning ===
+    print(f"\n  === SCANNE {len(slot_list)} SLOTS ===\n")
+
+    created_count = 0
+    skipped_count = 0
+
+    for idx, slot in enumerate(slot_list):
+        slot_num = idx + 1
+        priority = slot_num if auto_priority else 1
+        item_name = f"{slot.name} Item"
+
+        # Eindeutigen Namen sicherstellen
+        base_name = item_name
+        counter = 1
+        with state.lock:
+            while item_name in state.global_items:
+                counter += 1
+                item_name = f"{base_name} {counter}"
+
+        print(f"  [{slot_num}/{len(slot_list)}] {slot.name}...", end=" ", flush=True)
+
+        # Screenshot vom Slot machen
+        template_img = take_screenshot(slot.scan_region)
+        if template_img is None:
+            print("FEHLER (Screenshot)")
+            skipped_count += 1
+            continue
+
+        # Template speichern
+        safe_name = sanitize_filename(item_name)
+        template_file = f"{safe_name}.png"
+        template_path = Path(TEMPLATES_DIR) / template_file
+        template_path.parent.mkdir(parents=True, exist_ok=True)
+        template_img.save(template_path)
+
+        # Marker-Farben sammeln (optional, leise)
+        marker_colors = []
+        if use_markers:
+            marker_colors = _collect_markers_silent(template_img, slot.slot_color)
+
+        # Item erstellen
+        item = ItemProfile(
+            name=item_name,
+            marker_colors=marker_colors,
+            category=category,
+            priority=priority,
+            confirm_point=confirm_point,
+            confirm_delay=confirm_delay,
+            template=template_file,
+            min_confidence=min_confidence
+        )
+
+        with state.lock:
+            state.global_items[item_name] = item
+        created_count += 1
+
+        marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
+        print(f"OK -> '{item_name}' (P{priority}){marker_str}")
+
+    # Speichern
+    save_global_items(state)
+
+    print(f"\n  === FERTIG: {created_count} Items erstellt", end="")
+    if skipped_count > 0:
+        print(f", {skipped_count} übersprungen", end="")
+    print(" ===")
+    print(f"\n  Tipp: 'rename <Nr>' zum Umbenennen, 'show' zum Anzeigen")
+    print(f"        'save <Name>' zum Speichern als Preset")
+
+    return True
+
+
+def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> list[tuple]:
+    """Sammelt Marker-Farben aus einem PIL-Bild (ohne Benutzer-Interaktion).
+
+    Args:
+        img: PIL Image des Slots
+        slot_color: Optional RGB-Tuple der Hintergrundfarbe (wird ausgeschlossen)
+
+    Returns:
+        Liste von RGB-Tuples der häufigsten Farben
+    """
+    # Farben zählen
+    color_counts = {}
+    pixels = img.load()
+    width, height = img.size
+
+    for x in range(width):
+        for y in range(height):
+            pixel = pixels[x, y][:3]
+            rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
+            color_counts[rounded] = color_counts.get(rounded, 0) + 1
+
+    # Slot-Hintergrundfarbe ausschließen
+    if slot_color:
+        exclude_rounded = (slot_color[0] // 5 * 5, slot_color[1] // 5 * 5, slot_color[2] // 5 * 5)
+        slot_color_dist = CONFIG.slot_color_distance
+        colors_to_remove = [c for c in color_counts if color_distance(c, exclude_rounded) <= slot_color_dist]
+        for color in colors_to_remove:
+            del color_counts[color]
+
+    # Top N Farben
+    marker_count = CONFIG.marker_count
+    sorted_colors = sorted(color_counts.items(), key=lambda x: x[1], reverse=True)[:marker_count]
+    return [color for color, count in sorted_colors]
 
 
 # =============================================================================

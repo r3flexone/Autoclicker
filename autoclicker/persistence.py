@@ -97,6 +97,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "wait_until_gone": wc.until_gone if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
+            "boss_watcher": s.boss_watcher,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
             "key_press": s.key_press,
             "else_action": ec.action if ec else None,
@@ -240,6 +241,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                         item_scan=s.get("item_scan"),
                         item_scan_mode=s.get("item_scan_mode", "all"),
                         boss_scan=s.get("boss_scan"),
+                        boss_watcher=s.get("boss_watcher"),
                         wait_only=s.get("wait_only", False),
                         delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
                         key_press=s.get("key_press"),
@@ -489,6 +491,8 @@ def save_boss_scan(config: BossScanConfig) -> None:
         "default_action": config.default_action,
         "default_scan": config.default_scan,
         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
+        "use_llm": config.use_llm,
+        "llm_fallback": config.llm_fallback,
     }
 
     filename = f"{sanitize_filename(config.name)}.json"
@@ -515,6 +519,8 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
                 default_action=data.get("default_action", "skip"),
                 default_scan=data.get("default_scan"),
                 bosses=bosses,
+                use_llm=data.get("use_llm", False),
+                llm_fallback=data.get("llm_fallback", True),
             )
 
     except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:

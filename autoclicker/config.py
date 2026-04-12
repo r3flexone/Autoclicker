@@ -62,6 +62,15 @@ class AppConfig:
     default_min_confidence: float = 0.8             # Standard-Konfidenz für Template-Matching (80%)
     default_confirm_delay: float = 0.5              # Standard-Wartezeit vor Bestätigungs-Klick
 
+    # === LLM VISION (Boss-Erkennung) ===
+    llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
+    llm_provider: str = "ollama"                    # "ollama" oder "lmstudio"
+    llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
+    llm_model: Optional[str] = None                 # Modell-Name (None = Standard je Provider)
+    llm_timeout: int = 30                           # Timeout für LLM-Anfragen in Sekunden
+    llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
+    llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
+
     # === TIMING ===
     pause_check_interval: float = 0.5               # Prüf-Intervall während Pause (Sekunden)
 
@@ -107,6 +116,16 @@ class AppConfig:
         if self.consecutive_timeout_action not in self._VALID_CONSEC_ACTIONS:
             warnings.append(f"consecutive_timeout_action='{self.consecutive_timeout_action}' → 'stop'")
             self.consecutive_timeout_action = "stop"
+        # LLM-Einstellungen validieren
+        if self.llm_provider not in ("ollama", "lmstudio"):
+            warnings.append(f"llm_provider='{self.llm_provider}' → 'ollama'")
+            self.llm_provider = "ollama"
+        if self.llm_timeout < 1:
+            warnings.append(f"llm_timeout={self.llm_timeout} → 10")
+            self.llm_timeout = 10
+        if self.llm_watcher_interval < 1:
+            warnings.append(f"llm_watcher_interval={self.llm_watcher_interval} → 2.0")
+            self.llm_watcher_interval = 2.0
         if warnings:
             for w in warnings:
                 print(warn(f"Config-Wert korrigiert: {w}"))

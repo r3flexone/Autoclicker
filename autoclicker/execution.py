@@ -536,7 +536,14 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
 
     if debug:
         r = config.scan_region
-        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse"))
+        llm_str = " [LLM]" if config.use_llm and state.config.llm_enabled else ""
+        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse{llm_str}"))
+
+    # LLM als primäre Erkennung (wenn nicht Fallback-Modus)
+    if config.use_llm and state.config.llm_enabled and not config.llm_fallback:
+        llm_result = _execute_llm_boss_detection(state, config, img, debug)
+        if llm_result is not None:
+            return True, llm_result
 
     # Bosse der Reihe nach prüfen (Reihenfolge = Priorität)
     for boss in config.bosses:
@@ -588,9 +595,66 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         if template_ok and marker_ok and (boss.template or boss.marker_colors):
             return True, boss
 
+    # 5. LLM Vision als Fallback (wenn aktiviert und kein Boss per Template/Marker erkannt)
+    if config.use_llm and state.config.llm_enabled:
+        llm_result = _execute_llm_boss_detection(state, config, img, debug)
+        if llm_result is not None:
+            return True, llm_result
+
     if debug:
         print(dbg("  → Kein Boss erkannt"))
     return False, None
+
+
+def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
+                                 img, debug: bool) -> BossProfile | None:
+    """Versucht einen Boss per LLM Vision zu erkennen.
+
+    Returns:
+        BossProfile wenn Boss erkannt, sonst None.
+    """
+    try:
+        from .llm_vision import analyze_image, match_boss_name
+    except ImportError:
+        if debug:
+            print(dbg("  → LLM: Import fehlgeschlagen"))
+        return None
+
+    boss_names = [boss.name for boss in config.bosses]
+
+    if debug:
+        print(dbg(f"  → LLM-Erkennung: {state.config.llm_provider} ({state.config.llm_model or 'Standard'})..."))
+
+    success, response, duration = analyze_image(
+        img=img,
+        provider=state.config.llm_provider,
+        endpoint=state.config.llm_endpoint,
+        model=state.config.llm_model,
+        prompt=state.config.llm_boss_prompt,
+        boss_names=boss_names,
+        timeout=state.config.llm_timeout,
+    )
+
+    if not success:
+        if debug:
+            print(dbg(f"  → LLM-Fehler: {response} ({duration:.0f}ms)"))
+        return None
+
+    if debug:
+        print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
+
+    # Antwort einem Boss zuordnen
+    matched_name = match_boss_name(response, boss_names)
+    if matched_name:
+        for boss in config.bosses:
+            if boss.name == matched_name:
+                if debug:
+                    print(dbg(f"  → LLM: {boss.name} ERKANNT!"))
+                return boss
+
+    if debug:
+        print(dbg(f"  → LLM: kein Boss zugeordnet"))
+    return None
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
@@ -739,6 +803,71 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
             print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Kein Boss erkannt", _c), end="", flush=True)
 
     return True
+
+
+def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
+                                step_num: int, total_steps: int, phase: str) -> bool:
+    """Boss-Watcher: Wartet in einer Schleife bis ein Boss erkannt wird, dann Aktion.
+
+    Der Watcher prüft periodisch die Boss-Region (Intervall aus config.llm_watcher_interval)
+    und führt die dem Boss zugeordnete Aktion aus, sobald einer erkannt wird.
+    """
+    debug = state.config.debug_mode
+    _c = _phase_color(phase)
+    watcher_name = step.boss_watcher
+    interval = state.config.llm_watcher_interval
+
+    if watcher_name not in state.boss_scans:
+        print(err(f"Boss-Watcher '{watcher_name}' nicht gefunden!"))
+        return True
+
+    if debug:
+        print(dbg(f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s)"))
+    else:
+        clear_line()
+        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher '{watcher_name}' - warte auf Boss...", _c), flush=True)
+
+    scan_count = 0
+    while not state.stop_event.is_set():
+        # Pause respektieren
+        if state.pause_event.is_set():
+            while state.pause_event.is_set() and not state.stop_event.is_set():
+                state.stop_event.wait(0.2)
+            if state.stop_event.is_set():
+                return False
+
+        # Skip prüfen
+        if state.skip_event.is_set():
+            state.skip_event.clear()
+            if debug:
+                print(dbg("Boss-Watcher: SKIP!"))
+            else:
+                clear_line()
+                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: übersprungen", _c), end="", flush=True)
+            return True
+
+        # Boss-Scan durchführen
+        scan_count += 1
+        found, boss = execute_boss_scan(state, watcher_name)
+
+        if found and boss:
+            if debug:
+                print(dbg(f"Boss-Watcher: {boss.name} ERKANNT! (nach {scan_count} Scan(s))"))
+            else:
+                clear_line()
+                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss erkannt: {boss.name}!", _c), flush=True)
+            return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
+
+        # Status anzeigen
+        if not debug:
+            clear_line()
+            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: kein Boss... (Scan #{scan_count})", _c), end="", flush=True)
+
+        # Warten vor nächstem Scan
+        if state.stop_event.wait(interval):
+            return False
+
+    return False
 
 
 def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
@@ -973,6 +1102,9 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.screenshot_only:
         return _execute_screenshot_step(state, step, step_num, total_steps, phase)
+
+    if step.boss_watcher:
+        return _execute_boss_watcher_step(state, step, step_num, total_steps, phase)
 
     if step.boss_scan:
         return _execute_boss_scan_step(state, step, step_num, total_steps, phase)

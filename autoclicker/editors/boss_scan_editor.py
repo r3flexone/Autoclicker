@@ -443,6 +443,43 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     except (ValueError, KeyboardInterrupt, EOFError):
         pass
 
+    # === SCHRITT 5: LLM Vision ===
+    use_llm = existing.use_llm if existing else False
+    llm_fallback = existing.llm_fallback if existing else True
+
+    print(header("SCHRITT 5: LLM VISION (optional)"))
+    print("\n  LLM-basierte Boss-Erkennung nutzt ein lokales KI-Modell (Ollama/LM Studio)")
+    print("  um Bosse per Bilderkennung zu identifizieren.")
+
+    llm_options = [
+        "Kein LLM verwenden",
+        "LLM als Fallback (wenn Template/Marker nichts finden)",
+        "LLM als primäre Erkennung (immer zuerst LLM fragen)",
+        "LLM-Verbindung testen",
+    ]
+
+    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:")
+    if llm_choice == 0:
+        use_llm = False
+    elif llm_choice == 1:
+        use_llm = True
+        llm_fallback = True
+        print(f"  {ok('LLM als Fallback aktiviert')}")
+        print(f"       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
+        print(f"       und Ollama/LM Studio läuft (Einstellungen in config.json)")
+    elif llm_choice == 2:
+        use_llm = True
+        llm_fallback = False
+        print(f"  {ok('LLM als primäre Erkennung aktiviert')}")
+    elif llm_choice == 3:
+        _test_llm_connection(state)
+        # Nochmal fragen
+        if confirm("  LLM aktivieren?"):
+            use_llm = True
+            llm_fallback = confirm("  Als Fallback? (Nein = primär)")
+        else:
+            use_llm = False
+
     # === Speichern ===
     config = BossScanConfig(
         name=scan_name,
@@ -451,6 +488,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         color_tolerance=tolerance,
         default_action=default_action,
         default_scan=default_scan,
+        use_llm=use_llm,
+        llm_fallback=llm_fallback,
     )
 
     with state.lock:
@@ -460,5 +499,42 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 
     save_msg = ok(f"Boss-Scan '{scan_name}' gespeichert!")
     print(f"\n{save_msg}")
-    print(f"         {len(bosses)} Boss(e), Region ({scan_region[0]},{scan_region[1]})-({scan_region[2]},{scan_region[3]})")
+    llm_str = " [LLM aktiv]" if use_llm else ""
+    print(f"         {len(bosses)} Boss(e), Region ({scan_region[0]},{scan_region[1]})-({scan_region[2]},{scan_region[3]}){llm_str}")
     print(f"         Nutze im Sequenz-Editor: 'boss {scan_name}'")
+
+
+def _test_llm_connection(state: AutoClickerState) -> None:
+    """Testet die Verbindung zum LLM-Provider."""
+    try:
+        from ..llm_vision import test_connection, PROVIDER_OLLAMA, PROVIDER_LMSTUDIO
+    except ImportError:
+        print(f"\n  {err('LLM Vision Modul konnte nicht geladen werden!')}")
+        return
+
+    provider = state.config.llm_provider
+    endpoint = state.config.llm_endpoint
+
+    print(f"\n  Teste Verbindung zu {provider}...")
+
+    # Teste den richtigen Endpoint (Tags/Models statt Chat)
+    if endpoint is None:
+        if provider == PROVIDER_OLLAMA:
+            test_endpoint = "http://localhost:11434/api/tags"
+        else:
+            test_endpoint = "http://localhost:1234/v1/models"
+    else:
+        # Leite den Test-Endpoint vom Chat-Endpoint ab
+        test_endpoint = endpoint
+
+    success, message = test_connection(provider, test_endpoint)
+
+    if success:
+        print(f"  {ok(message)}")
+    else:
+        print(f"  {err(message)}")
+        print(f"\n  Stelle sicher, dass {'Ollama' if provider == PROVIDER_OLLAMA else 'LM Studio'} läuft!")
+        if provider == PROVIDER_OLLAMA:
+            print("  Vision-Modell installieren: ollama pull llava")
+        else:
+            print("  Lade ein Vision-Modell in LM Studio (z.B. LLaVA, MiniCPM-V)")
