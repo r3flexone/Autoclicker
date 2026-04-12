@@ -655,21 +655,23 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
     # === Scanning ===
     print(f"\n  === SCANNE {len(slot_list)} SLOTS ===\n")
 
+    # Bestehende Items mit Templates sammeln (für Duplikat-Erkennung)
+    with state.lock:
+        existing_templates = [
+            (name, item) for name, item in state.global_items.items()
+            if item.template
+        ]
+
+    if existing_templates:
+        print(f"  ({len(existing_templates)} bestehende Items werden zum Vergleich genutzt)\n")
+
     created_count = 0
     skipped_count = 0
+    duplicate_count = 0
 
     for idx, slot in enumerate(slot_list):
         slot_num = idx + 1
         priority = slot_num if auto_priority else 1
-        item_name = f"{slot.name} Item"
-
-        # Eindeutigen Namen sicherstellen
-        base_name = item_name
-        counter = 1
-        with state.lock:
-            while item_name in state.global_items:
-                counter += 1
-                item_name = f"{base_name} {counter}"
 
         print(f"  [{slot_num}/{len(slot_list)}] {slot.name}...", end=" ", flush=True)
 
@@ -679,6 +681,22 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
             print("FEHLER (Screenshot)")
             skipped_count += 1
             continue
+
+        # Gegen bestehende Item-Templates vergleichen (Duplikat-Prüfung)
+        matched_item = _find_matching_existing_item(template_img, existing_templates, min_confidence)
+        if matched_item:
+            print(f"BEREITS VORHANDEN -> '{matched_item}' (übersprungen)")
+            duplicate_count += 1
+            continue
+
+        # Neuen Item-Namen vergeben
+        item_name = f"{slot.name} Item"
+        base_name = item_name
+        counter = 1
+        with state.lock:
+            while item_name in state.global_items:
+                counter += 1
+                item_name = f"{base_name} {counter}"
 
         # Template speichern
         safe_name = sanitize_filename(item_name)
@@ -708,20 +726,55 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
             state.global_items[item_name] = item
         created_count += 1
 
+        # Neues Item auch in die Vergleichsliste aufnehmen (für folgende Slots)
+        existing_templates.append((item_name, item))
+
         marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
-        print(f"OK -> '{item_name}' (P{priority}){marker_str}")
+        print(f"NEU -> '{item_name}' (P{priority}){marker_str}")
 
     # Speichern
-    save_global_items(state)
+    if created_count > 0:
+        save_global_items(state)
 
-    print(f"\n  === FERTIG: {created_count} Items erstellt", end="")
+    print(f"\n  === FERTIG: {created_count} neu erstellt", end="")
+    if duplicate_count > 0:
+        print(f", {duplicate_count} Duplikat(e) übersprungen", end="")
     if skipped_count > 0:
-        print(f", {skipped_count} übersprungen", end="")
+        print(f", {skipped_count} fehlgeschlagen", end="")
     print(" ===")
     print(f"\n  Tipp: 'rename <Nr>' zum Umbenennen, 'show' zum Anzeigen")
     print(f"        'save <Name>' zum Speichern als Preset")
 
     return True
+
+
+def _find_matching_existing_item(img: 'Image.Image', existing_items: list, min_confidence: float) -> str | None:
+    """Vergleicht ein Slot-Bild gegen alle bestehenden Item-Templates.
+
+    Args:
+        img: PIL Image des aktuellen Slots
+        existing_items: Liste von (name, ItemProfile) Tupeln mit Templates
+        min_confidence: Mindest-Konfidenz für einen Match
+
+    Returns:
+        Name des gematchten Items oder None wenn kein Duplikat.
+    """
+    if not OPENCV_AVAILABLE or not existing_items:
+        return None
+
+    from ..imaging import match_template_in_image
+
+    for name, item in existing_items:
+        if not item.template:
+            continue
+
+        match, confidence, pos = match_template_in_image(
+            img, item.template, min_confidence
+        )
+        if match:
+            return name
+
+    return None
 
 
 def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> list[tuple]:
