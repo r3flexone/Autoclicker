@@ -127,12 +127,12 @@ def analyze(provider, model, img, prompt, boss_names):
     print(f"  Bild:     {w}x{h} Pixel")
 
     if not prompt:
-        if boss_names:
-            prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
-        else:
-            prompt = "Was siehst du auf diesem Bild? Beschreibe es kurz."
+        prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
 
     print(f"  Prompt:   {prompt}")
+    if not boss_names:
+        print(f"  {color('Hinweis:', 'yellow')} Keine Boss-Namen angegeben (--bosses \"Name1,Name2\")")
+        print(f"            Ohne Namen kann das LLM nicht zuordnen!")
     print()
     print(f"  Sende an LLM...", end=" ", flush=True)
 
