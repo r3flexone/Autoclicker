@@ -1128,13 +1128,14 @@ def _execute_screenshot_step(state: AutoClickerState, step: SequenceStep,
         print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SCREENSHOT fehlgeschlagen", "red"))
         return True  # Nicht als Fehler werten, Sequenz läuft weiter
 
-    if not state.session_screenshots_dir:
-        # Session-Start-Datum verwenden (nicht aktuelles), damit über Mitternacht
-        # alle Screenshots einer Session im selben Ordner landen
-        session_dt = datetime.fromtimestamp(state.start_time) if state.start_time else datetime.now()
-        session_ts = session_dt.strftime("%Y-%m-%d")
-        state.session_screenshots_dir = Path(SCREENSHOTS_DIR) / session_ts
-    screenshots_dir = state.session_screenshots_dir
+    with state.lock:
+        if not state.session_screenshots_dir:
+            # Session-Start-Datum verwenden (nicht aktuelles), damit über Mitternacht
+            # alle Screenshots einer Session im selben Ordner landen
+            session_dt = datetime.fromtimestamp(state.start_time) if state.start_time else datetime.now()
+            session_ts = session_dt.strftime("%Y-%m-%d")
+            state.session_screenshots_dir = Path(SCREENSHOTS_DIR) / session_ts
+        screenshots_dir = state.session_screenshots_dir
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     filename = f"seq_{timestamp}.png"

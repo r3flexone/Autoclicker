@@ -14,7 +14,7 @@ from .config import SEQUENCES_DIR, DEFAULT_MIN_CONFIDENCE
 from .models import (
     ClickPoint, ElseConfig, WaitCondition, SequenceStep, LoopPhase, Sequence,
     ItemProfile, ItemSlot, ItemScanConfig, BossProfile, BossScanConfig, AutoClickerState,
-    BOSS_ACTION_SCAN, SCAN_MODE_ALL
+    BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, SCAN_MODE_ALL
 )
 from .utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, info, warn
 
@@ -142,16 +142,20 @@ def save_data(state: AutoClickerState) -> None:
     """Speichert Punkte und Sequenzen in JSON-Dateien."""
     ensure_sequences_dir()
 
+    # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
+    with state.lock:
+        points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name} for p in state.points]
+        sequences_snapshot = list(state.sequences.items())
+
     # Punkte speichern (mit stabiler ID)
     try:
-        points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name} for p in state.points]
         with open(Path(SEQUENCES_DIR) / "points.json", "w", encoding="utf-8") as f:
             f.write(compact_json(points_data))
     except (IOError, OSError) as e:
         print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
 
     # Sequenzen speichern
-    for name, seq in state.sequences.items():
+    for name, seq in sequences_snapshot:
         filename = f"{sanitize_filename(name)}.json"
         save_sequence_file(seq, Path(SEQUENCES_DIR) / filename)
 
@@ -222,6 +226,14 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                             pixel=wait_pixel, color=wait_color,
                             until_gone=s.get("wait_until_gone", False)
                         )
+                    # Screenshot-Region validieren (muss 4 Werte haben)
+                    screenshot_region_raw = s.get("screenshot_region")
+                    screenshot_region = None
+                    if screenshot_region_raw:
+                        if len(screenshot_region_raw) == 4:
+                            screenshot_region = tuple(int(v) for v in screenshot_region_raw)
+                        else:
+                            print(warn(f"Ungültige screenshot_region (erwarte 4 Werte, habe {len(screenshot_region_raw)}) - ignoriert"))
                     # ElseConfig zusammenbauen
                     else_cfg = None
                     else_action = s.get("else_action")
@@ -247,7 +259,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                         key_press=s.get("key_press"),
                         else_config=else_cfg,
                         screenshot_only=s.get("screenshot_only", False),
-                        screenshot_region=tuple(int(v) for v in s["screenshot_region"]) if s.get("screenshot_region") else None,
+                        screenshot_region=screenshot_region,
                     )
                     steps.append(step)
                 return steps
@@ -516,7 +528,7 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
                 name=data["name"],
                 scan_region=tuple(data["scan_region"]),
                 color_tolerance=data.get("color_tolerance", 30),
-                default_action=data.get("default_action", "skip"),
+                default_action=data.get("default_action", BOSS_ACTION_SKIP),
                 default_scan=data.get("default_scan"),
                 bosses=bosses,
                 use_llm=data.get("use_llm", False),
@@ -561,19 +573,20 @@ def load_all_boss_scans(state: AutoClickerState) -> None:
 # =============================================================================
 def save_global_slots(state: AutoClickerState) -> None:
     """Speichert alle globalen Slots."""
-    data = {
-        name: {
-            "name": slot.name,
-            "scan_region": list(slot.scan_region),
-            "click_pos": list(slot.click_pos),
-            "slot_color": list(slot.slot_color) if slot.slot_color else None
+    with state.lock:
+        data = {
+            name: {
+                "name": slot.name,
+                "scan_region": list(slot.scan_region),
+                "click_pos": list(slot.click_pos),
+                "slot_color": list(slot.slot_color) if slot.slot_color else None
+            }
+            for name, slot in state.global_slots.items()
         }
-        for name, slot in state.global_slots.items()
-    }
     try:
         with open(SLOTS_FILE, "w", encoding="utf-8") as f:
             f.write(compact_json(data))
-        print(save_tag(f"{len(state.global_slots)} Slot(s) gespeichert"))
+        print(save_tag(f"{len(data)} Slot(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Slots konnten nicht gespeichert werden: {e}"))
 
@@ -601,13 +614,14 @@ def load_global_slots(state: AutoClickerState) -> None:
 
 def save_global_items(state: AutoClickerState) -> None:
     """Speichert alle globalen Items, sortiert nach Kategorie und Priorität."""
-    sorted_items = sorted(state.global_items.items(),
-                          key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
-    data = {name: _item_to_dict(item) for name, item in sorted_items}
+    with state.lock:
+        sorted_items = sorted(state.global_items.items(),
+                              key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
+        data = {name: _item_to_dict(item) for name, item in sorted_items}
     try:
         with open(ITEMS_FILE, "w", encoding="utf-8") as f:
             f.write(compact_json(data))
-        print(save_tag(f"{len(state.global_items)} Item(s) gespeichert"))
+        print(save_tag(f"{len(data)} Item(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Items konnten nicht gespeichert werden: {e}"))
 

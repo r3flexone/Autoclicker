@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import socket
 import time
 from typing import Optional, TYPE_CHECKING
 
@@ -185,6 +186,11 @@ def analyze_image(
             # Antwort extrahieren
             text = _extract_response_text(result, provider)
             return True, text.strip(), duration_ms
+
+    except socket.timeout as e:
+        duration_ms = (time.time() - start_time) * 1000
+        logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
+        return False, f"Timeout nach {timeout}s", duration_ms
 
     except urllib.error.URLError as e:
         duration_ms = (time.time() - start_time) * 1000
