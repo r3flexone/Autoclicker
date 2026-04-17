@@ -39,9 +39,9 @@ VALID_PROVIDERS = {PROVIDER_OLLAMA, PROVIDER_LMSTUDIO}
 
 def _image_to_base64(img: 'Image.Image') -> str:
     """Konvertiert ein PIL Image zu Base64-String (PNG-Format)."""
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    with io.BytesIO() as buffer:
+        img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 def _build_ollama_request(model: str, image_b64: str, prompt: str,

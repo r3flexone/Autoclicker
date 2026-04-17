@@ -70,6 +70,8 @@ class AppConfig:
     llm_timeout: int = 30                           # Timeout für LLM-Anfragen in Sekunden
     llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
+    llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
+    llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
 
     # === TIMING ===
     pause_check_interval: float = 0.5               # Prüf-Intervall während Pause (Sekunden)
@@ -126,6 +128,12 @@ class AppConfig:
         if self.llm_watcher_interval < 1:
             warnings.append(f"llm_watcher_interval={self.llm_watcher_interval} → 2.0")
             self.llm_watcher_interval = 2.0
+        if self.llm_watcher_max_scans < 0:
+            warnings.append(f"llm_watcher_max_scans={self.llm_watcher_max_scans} → 0")
+            self.llm_watcher_max_scans = 0
+        if self.llm_watcher_timeout < 0:
+            warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
+            self.llm_watcher_timeout = 0
         if warnings:
             for w in warnings:
                 print(warn(f"Config-Wert korrigiert: {w}"))

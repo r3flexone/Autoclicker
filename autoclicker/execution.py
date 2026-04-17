@@ -539,8 +539,10 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         llm_str = " [LLM]" if config.use_llm and state.config.llm_enabled else ""
         print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse{llm_str}"))
 
+    llm_active = config.use_llm and state.config.llm_enabled
+
     # LLM als primäre Erkennung (wenn nicht Fallback-Modus)
-    if config.use_llm and state.config.llm_enabled and not config.llm_fallback:
+    if llm_active and not config.llm_fallback:
         llm_result = _execute_llm_boss_detection(state, config, img, debug)
         if llm_result is not None:
             return True, llm_result
@@ -595,8 +597,8 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         if template_ok and marker_ok and (boss.template or boss.marker_colors):
             return True, boss
 
-    # 5. LLM Vision als Fallback (wenn aktiviert und kein Boss per Template/Marker erkannt)
-    if config.use_llm and state.config.llm_enabled:
+    # 5. LLM Vision als Fallback (nur im Fallback-Modus - sonst lief es bereits oben als primär)
+    if llm_active and config.llm_fallback:
         llm_result = _execute_llm_boss_detection(state, config, img, debug)
         if llm_result is not None:
             return True, llm_result
@@ -667,10 +669,10 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         name=matched_name,
         action=BOSS_ACTION_SKIP,  # Erstmal keine Aktion bis Benutzer eine zuweist
     )
-    config.bosses.append(new_boss)
 
-    # Persistieren
+    # Persistieren (Modifikation der Liste unter Lock, da andere Threads sie lesen)
     with state.lock:
+        config.bosses.append(new_boss)
         state.boss_scans[config.name] = config
     save_boss_scan(config)
 
@@ -838,18 +840,28 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     _c = _phase_color(phase)
     watcher_name = step.boss_watcher
     interval = state.config.llm_watcher_interval
+    max_scans = state.config.llm_watcher_max_scans
+    timeout = state.config.llm_watcher_timeout
 
     if watcher_name not in state.boss_scans:
         print(err(f"Boss-Watcher '{watcher_name}' nicht gefunden!"))
         return True
 
+    limits = []
+    if max_scans > 0:
+        limits.append(f"max {max_scans} Scans")
+    if timeout > 0:
+        limits.append(f"Timeout {timeout:.0f}s")
+    limit_str = f", {', '.join(limits)}" if limits else ""
+
     if debug:
-        print(dbg(f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s)"))
+        print(dbg(f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s{limit_str})"))
     else:
         clear_line()
         print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher '{watcher_name}' - warte auf Boss...", _c), flush=True)
 
     scan_count = 0
+    start_time = time.time()
     while not state.stop_event.is_set():
         # Pause respektieren
         if state.pause_event.is_set():
@@ -880,10 +892,33 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
                 print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss erkannt: {boss.name}!", _c), flush=True)
             return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
 
+        # Limits prüfen
+        elapsed = time.time() - start_time
+        if max_scans > 0 and scan_count >= max_scans:
+            if debug:
+                print(dbg(f"Boss-Watcher: max. Scans ({max_scans}) erreicht - Abbruch"))
+            else:
+                clear_line()
+                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: max. Scans ({max_scans}) erreicht", _c))
+            return True
+        if timeout > 0 and elapsed >= timeout:
+            if debug:
+                print(dbg(f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht - Abbruch"))
+            else:
+                clear_line()
+                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: Timeout ({timeout:.0f}s) erreicht", _c))
+            return True
+
         # Status anzeigen
         if not debug:
             clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: kein Boss... (Scan #{scan_count})", _c), end="", flush=True)
+            status_parts = [f"Scan #{scan_count}"]
+            if max_scans > 0:
+                status_parts.append(f"von {max_scans}")
+            if timeout > 0:
+                status_parts.append(f"{elapsed:.0f}/{timeout:.0f}s")
+            status = ", ".join(status_parts)
+            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: kein Boss... ({status})", _c), end="", flush=True)
 
         # Warten vor nächstem Scan
         if state.stop_event.wait(interval):

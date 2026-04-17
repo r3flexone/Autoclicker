@@ -600,8 +600,9 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
 
     # Prioritäts-Modus
     print("\n  Prioritäts-Vergabe:")
-    print("    [1] Automatisch (Slot-Reihenfolge: 1, 2, 3, ...)")
-    print("    [2] Alle gleich (Priorität 1)")
+    print("    [1] Automatisch (Slot-Reihenfolge: P1, P2, P3, ... - frühere Slots bevorzugt)")
+    print("    [2] Alle gleich (P1 - erstgefundenes Item je Kategorie gewinnt)")
+    print(f"       {col('Hinweis:', 'yellow')} Bei gleicher Priorität + gleicher Kategorie entscheidet die Scan-Reihenfolge.")
     prio_choice = safe_input("  Wahl (Enter = 1): ").strip()
     auto_priority = prio_choice != "2"
 
