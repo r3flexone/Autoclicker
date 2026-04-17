@@ -247,6 +247,33 @@ def send_key(key_name: str) -> bool:
     return True
 
 
+def get_foreground_window_title() -> str:
+    """Gibt den Titel des aktuellen Vordergrund-Fensters zurück (leer bei Fehler)."""
+    try:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return ""
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, length + 1)
+        return buffer.value or ""
+    except (OSError, AttributeError):
+        return ""
+
+
+def is_target_window_active(title_substring: str) -> bool:
+    """Prüft ob der Titel des aktiven Fensters den gegebenen Substring enthält (case-insensitive).
+
+    Leerer Substring → immer True (Check deaktiviert).
+    """
+    if not title_substring:
+        return True
+    current = get_foreground_window_title()
+    return title_substring.lower() in current.lower()
+
+
 def check_failsafe(state: 'AutoClickerState' = None) -> bool:
     """Prüft, ob die Maus in der Fail-Safe-Ecke ist."""
     cfg = state.config if state else CONFIG

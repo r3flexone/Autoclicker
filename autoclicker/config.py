@@ -73,6 +73,24 @@ class AppConfig:
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
 
+    # === WINDOW-FOKUS-CHECK ===
+    window_focus_check: bool = False                # Vor Klick/Taste prüfen ob Ziel-Fenster aktiv ist
+    window_focus_title: str = "Idle Clans"          # Substring im Fenstertitel (case-insensitive)
+    window_focus_action: str = "pause"              # "pause" (auf Fokus warten) oder "stop"
+
+    # === HUMANIZATION ===
+    humanize_enabled: bool = False                  # Zufalls-Jitter + variable Delays aktivieren
+    humanize_click_jitter: int = 0                  # Max. Pixel-Abweichung pro Klick (0 = aus, sinnvoll: 2-5)
+    humanize_micro_delay_min: float = 0.0           # Zusätzliches Delay vor Klicks/Tasten: Min (Sek.)
+    humanize_micro_delay_max: float = 0.0           # Zusätzliches Delay vor Klicks/Tasten: Max (Sek.)
+    humanize_break_interval_min: float = 0          # Alle N Minuten Pause einlegen (0 = aus)
+    humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
+    humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
+
+    # === SESSION-LOG ===
+    session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
+    session_log_dir: str = "logs"                   # Verzeichnis für Log-Dateien
+
     # === TIMING ===
     pause_check_interval: float = 0.5               # Prüf-Intervall während Pause (Sekunden)
 
@@ -134,6 +152,24 @@ class AppConfig:
         if self.llm_watcher_timeout < 0:
             warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
             self.llm_watcher_timeout = 0
+        # Window-Fokus-Check
+        if self.window_focus_action not in ("pause", "stop"):
+            warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
+            self.window_focus_action = "pause"
+        # Humanization: min darf nicht > max sein
+        if self.humanize_click_jitter < 0:
+            warnings.append(f"humanize_click_jitter={self.humanize_click_jitter} → 0")
+            self.humanize_click_jitter = 0
+        if self.humanize_micro_delay_min < 0:
+            self.humanize_micro_delay_min = 0
+        if self.humanize_micro_delay_max < self.humanize_micro_delay_min:
+            self.humanize_micro_delay_max = self.humanize_micro_delay_min
+        if self.humanize_break_interval_min < 0:
+            self.humanize_break_interval_min = 0
+        if self.humanize_break_duration_min < 0:
+            self.humanize_break_duration_min = 0
+        if self.humanize_break_duration_max < self.humanize_break_duration_min:
+            self.humanize_break_duration_max = self.humanize_break_duration_min
         if warnings:
             for w in warnings:
                 print(warn(f"Config-Wert korrigiert: {w}"))

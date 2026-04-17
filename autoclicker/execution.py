@@ -5,6 +5,7 @@ Enthält die Worker-Funktion und Step-Ausführungslogik.
 
 import ctypes
 import os
+import random
 import threading
 import time
 from datetime import datetime
@@ -21,14 +22,136 @@ from .models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
 from .winapi import (
-    send_click, send_key, check_failsafe, set_cursor_pos
+    send_click, send_key, check_failsafe, set_cursor_pos,
+    is_target_window_active, get_foreground_window_title,
 )
+from .session_log import log_event
 from .utils import clear_line, wait_while_paused, safe_input, format_duration, col, ok, err, info, hint, dbg
 from .imaging import (
     PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name,
     find_color_in_image, match_template_in_image
 )
 from .persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
+
+
+# =============================================================================
+# WINDOW-FOKUS + HUMANIZATION + LOGGING WRAPPERS
+# =============================================================================
+
+def _wait_for_target_window(state: AutoClickerState, phase: str = "") -> bool:
+    """Wartet bis das Ziel-Fenster den Fokus hat. Respektiert stop/pause.
+
+    Returns:
+        True wenn Fenster aktiv (oder Check deaktiviert) - Aktion darf weiterlaufen.
+        False wenn gestoppt oder Fokus-Action=stop ausgelöst.
+    """
+    cfg = state.config
+    if not cfg.window_focus_check or not cfg.window_focus_title:
+        return True
+
+    if is_target_window_active(cfg.window_focus_title):
+        return True
+
+    if cfg.window_focus_action == "stop":
+        current = get_foreground_window_title()
+        print(col(f"\n[FOKUS-CHECK] Ziel-Fenster '{cfg.window_focus_title}' nicht aktiv (aktuell: '{current}') - STOP!", "red"))
+        log_event(state, "focus_lost_stop", detail=current)
+        state.stop_event.set()
+        return False
+
+    # Pause-Modus: warten bis Fenster wieder aktiv
+    log_event(state, "focus_lost_pause", detail=get_foreground_window_title())
+    print(col(f"\n[FOKUS-CHECK] Ziel-Fenster '{cfg.window_focus_title}' nicht aktiv - pausiert bis Re-Fokus...", "yellow"))
+    while not state.stop_event.is_set():
+        if is_target_window_active(cfg.window_focus_title):
+            log_event(state, "focus_restored")
+            print(col(f"[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
+            return True
+        if state.stop_event.wait(cfg.pause_check_interval):
+            return False
+    return False
+
+
+def _humanize_delay(state: AutoClickerState) -> None:
+    """Fügt einen zufälligen Mikro-Delay vor einer Aktion ein (wenn aktiviert)."""
+    cfg = state.config
+    if not cfg.humanize_enabled:
+        return
+    lo = cfg.humanize_micro_delay_min
+    hi = cfg.humanize_micro_delay_max
+    if hi <= 0 or hi < lo:
+        return
+    delay = random.uniform(lo, hi)
+    if delay > 0:
+        state.stop_event.wait(delay)
+
+
+def _humanize_jitter(x: int, y: int, state: AutoClickerState) -> tuple[int, int]:
+    """Fügt einem Klick-Punkt einen zufälligen Pixel-Offset hinzu."""
+    cfg = state.config
+    if not cfg.humanize_enabled or cfg.humanize_click_jitter <= 0:
+        return x, y
+    j = cfg.humanize_click_jitter
+    return x + random.randint(-j, j), y + random.randint(-j, j)
+
+
+def _humanize_check_break(state: AutoClickerState) -> None:
+    """Prüft ob eine Humanize-Pause eingelegt werden sollte."""
+    cfg = state.config
+    if not cfg.humanize_enabled or cfg.humanize_break_interval_min <= 0:
+        return
+    interval_sec = cfg.humanize_break_interval_min * 60
+    now = time.monotonic()
+    if state.humanize_last_break <= 0:
+        state.humanize_last_break = now
+        return
+    if now - state.humanize_last_break < interval_sec:
+        return
+    # Pause-Dauer bestimmen
+    dur_min = cfg.humanize_break_duration_min * 60
+    dur_max = max(cfg.humanize_break_duration_max * 60, dur_min)
+    if dur_max <= 0:
+        return
+    duration = random.uniform(dur_min, dur_max)
+    print(col(f"\n[HUMANIZE] Pause für {duration/60:.1f} Minuten...", "cyan"))
+    log_event(state, "humanize_break_start", extra=f"{duration:.0f}s")
+    if state.stop_event.wait(duration):
+        log_event(state, "humanize_break_interrupted")
+        return
+    state.humanize_last_break = time.monotonic()
+    log_event(state, "humanize_break_end")
+    print(col(f"[HUMANIZE] Pause beendet.", "cyan"))
+
+
+def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool:
+    """Wrapper für send_click mit Window-Fokus-Check, Humanization und Logging.
+
+    Returns:
+        True bei Erfolg, False wenn Stop/Fokus-Abbruch.
+    """
+    if not _wait_for_target_window(state):
+        return False
+    _humanize_check_break(state)
+    if state.stop_event.is_set():
+        return False
+    _humanize_delay(state)
+    jx, jy = _humanize_jitter(x, y, state)
+    send_click(jx, jy, state.config.click_move_delay, state.config.post_click_delay)
+    log_event(state, "click", detail=label, x=jx, y=jy)
+    return True
+
+
+def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
+    """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
+    if not _wait_for_target_window(state):
+        return False
+    _humanize_check_break(state)
+    if state.stop_event.is_set():
+        return False
+    _humanize_delay(state)
+    result = send_key(key)
+    log_event(state, "key", detail=key, extra=label)
+    return result
 
 
 def _phase_color(phase: str) -> str:
@@ -145,8 +268,8 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
             return False
 
         name = ec.name or f"({ec.x},{ec.y})"
-        send_click(ec.x, ec.y, state.config.click_move_delay,
-                   state.config.post_click_delay)
+        if not safe_click(state, ec.x, ec.y, label=f"else:{name}"):
+            return False
         with state.lock:
             state.total_clicks += 1
 
@@ -166,7 +289,7 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
         if state.stop_event.is_set():
             return False
 
-        if send_key(ec.key):
+        if safe_key(state, ec.key, label="else"):
             with state.lock:
                 state.key_presses += 1
             if debug:
@@ -375,8 +498,8 @@ def _click_scan_result(state: AutoClickerState, pos, item, priority, debug: bool
     if debug:
         print(dbg(f"Item-Klick: '{item.name}' (P{priority}) @ ({pos[0]}, {pos[1]})"))
 
-    send_click(pos[0], pos[1], state.config.click_move_delay,
-               state.config.post_click_delay)
+    if not safe_click(state, pos[0], pos[1], label=f"item:{item.name}"):
+        return False
     with state.lock:
         state.total_clicks += 1
         state.items_found += 1
@@ -394,9 +517,9 @@ def _click_scan_result(state: AutoClickerState, pos, item, priority, debug: bool
         if debug:
             print(dbg(f"Confirm-Klick @ ({item.confirm_point.x}, {item.confirm_point.y})"))
 
-        send_click(item.confirm_point.x, item.confirm_point.y,
-                   state.config.click_move_delay,
-                   state.config.post_click_delay)
+        if not safe_click(state, item.confirm_point.x, item.confirm_point.y,
+                          label=f"confirm:{item.name}"):
+            return False
         with state.lock:
             state.total_clicks += 1
 
@@ -722,7 +845,8 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
         else:
             clear_line()
             print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Klick ({boss.action_x},{boss.action_y})", _c), end="", flush=True)
-        send_click(boss.action_x, boss.action_y)
+        if not safe_click(state, boss.action_x, boss.action_y, label=f"boss:{boss.name}"):
+            return False
         with state.lock:
             state.total_clicks += 1
 
@@ -733,9 +857,9 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
             clear_line()
             print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Taste '{boss.action_key}'", _c), end="", flush=True)
         if boss.action_key:
-            send_key(boss.action_key)
-            with state.lock:
-                state.key_presses += 1
+            if safe_key(state, boss.action_key, label=f"boss:{boss.name}"):
+                with state.lock:
+                    state.key_presses += 1
 
     elif boss.action == BOSS_ACTION_SKIP:
         if debug:
@@ -940,7 +1064,7 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
     if state.stop_event.is_set():
         return False
 
-    if send_key(step.key_press):
+    if safe_key(state, step.key_press, label="step"):
         with state.lock:
             state.key_presses += 1
         if debug:
@@ -1093,8 +1217,8 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
             state.stop_event.set()
             return False
 
-        send_click(step.x, step.y, state.config.click_move_delay,
-                   state.config.post_click_delay)
+        if not safe_click(state, step.x, step.y, label=step.name or "step"):
+            return False
 
         with state.lock:
             state.total_clicks += 1
@@ -1274,7 +1398,15 @@ def sequence_worker(state: AutoClickerState) -> None:
         state.consecutive_timeouts = 0
         state.start_time = time.time()
         state.session_screenshots_dir = None  # Wird beim ersten Screenshot-Schritt angelegt
+        state.humanize_last_break = time.monotonic()
         state.finish_event.clear()
+
+    # Session-Log starten (wenn aktiviert)
+    from .session_log import start_session_log
+    state.session_log = start_session_log(state)
+    if state.session_log is not None:
+        print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
+        log_event(state, "session_start", detail=state.active_sequence or "")
 
     # Zeitgesteuerter Background-Thread (nur wenn nötig)
     scheduled_pending = {}
@@ -1420,6 +1552,13 @@ def sequence_worker(state: AutoClickerState) -> None:
     with state.lock:
         state.is_running = False
         duration = time.time() - state.start_time if state.start_time else 0
+
+    # Session-Log schließen
+    if state.session_log is not None:
+        log_event(state, "session_end",
+                  extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
+        state.session_log.close()
+        state.session_log = None
 
     print(col("\n[STOP] Sequenz gestoppt.", "red"))
     print(col("-" * 50, 'cyan'))

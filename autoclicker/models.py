@@ -411,5 +411,11 @@ class AutoClickerState:
     # Screenshot-Ordner für die aktuelle Sequenz-Session (z.B. "slots/Screenshots/2025-01-15_14-30-00")
     session_screenshots_dir: Optional[Path] = None
 
+    # Session-Log (CSV) für die aktuelle Sequenz (None wenn deaktiviert)
+    session_log: Optional[object] = None
+
+    # Zeitpunkt der letzten Humanize-Break (Monotone Zeit)
+    humanize_last_break: float = 0.0
+
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
