@@ -509,6 +509,16 @@ def handle_analyze(state: AutoClickerState) -> None:
     run_color_analyzer()
 
 
+def handle_import_export(state: AutoClickerState) -> None:
+    """Öffnet den Import/Export-Editor."""
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+    from .editors.import_export_editor import run_import_export_editor
+    run_import_export_editor(state)
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")

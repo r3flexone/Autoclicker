@@ -44,6 +44,7 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         f"Scans bearbeiten     ({scan_count} vorhanden)",
         f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
         "Auto-Scan (Slots scannen + Items + Scan in einem Schritt)",
+        "Import / Export (Setup teilen oder importieren)",
     ]
 
     choice = interactive_select(menu_options)
@@ -58,6 +59,9 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         run_boss_scan_editor(state)
     elif choice == 4:
         run_auto_scan_workflow(state)
+    elif choice == 5:
+        from .import_export_editor import run_import_export_editor
+        run_import_export_editor(state)
 
 
 def run_item_scan_editor(state: AutoClickerState) -> None:

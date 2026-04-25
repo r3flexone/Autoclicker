@@ -19,6 +19,7 @@ from autoclicker.winapi import (
     HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW,
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
+    HOTKEY_IMPORT_EXPORT,
     register_hotkeys, unregister_hotkeys
 )
 from autoclicker.persistence import (
@@ -32,7 +33,8 @@ from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
     handle_toggle, handle_pause, handle_skip, handle_switch,
-    handle_schedule, handle_analyze, handle_quit, handle_finish
+    handle_schedule, handle_analyze, handle_quit, handle_finish,
+    handle_import_export
 )
 
 
@@ -57,6 +59,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
+    print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()
 
@@ -157,6 +160,7 @@ def main() -> int:
         HOTKEY_SCHEDULE: handle_schedule,
         HOTKEY_ANALYZE: handle_analyze,
         HOTKEY_FINISH: handle_finish,
+        HOTKEY_IMPORT_EXPORT: handle_import_export,
     }
 
     try:
