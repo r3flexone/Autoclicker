@@ -6,6 +6,7 @@ Eine Datei pro Sequenz-Start. Bei deaktiviertem Log No-Op.
 import csv
 import logging
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
@@ -29,39 +30,44 @@ class SessionLog:
         self._writer = None
 
     def open(self) -> bool:
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._file = open(self._path, "w", newline="", encoding="utf-8")
-            self._writer = csv.DictWriter(self._file, fieldnames=_FIELDS)
-            self._writer.writeheader()
-            self._file.flush()
-            return True
-        except (IOError, OSError) as e:
-            logger.error(f"Session-Log konnte nicht geöffnet werden: {e}")
-            self._file = None
-            self._writer = None
-            return False
+        with self._lock:
+            try:
+                if self._file is not None:
+                    try:
+                        self._file.close()
+                    except (IOError, OSError):
+                        pass
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                self._file = open(self._path, "w", newline="", encoding="utf-8")
+                self._writer = csv.DictWriter(self._file, fieldnames=_FIELDS)
+                self._writer.writeheader()
+                self._file.flush()
+                return True
+            except (IOError, OSError) as e:
+                logger.error(f"Session-Log konnte nicht geöffnet werden: {e}")
+                self._file = None
+                self._writer = None
+                return False
 
     def log(self, event: str, detail: str = "", x: Optional[int] = None,
             y: Optional[int] = None, extra: str = "") -> None:
-        if self._writer is None:
-            return
-        import time as _time
-        now = _time.time()
+        now = time.time()
         row = {
             "timestamp": datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
             "elapsed_sec": f"{now - self._start_time:.2f}",
             "event": event,
-            "detail": detail,
+            "detail": str(detail),
             "x": "" if x is None else x,
             "y": "" if y is None else y,
             "extra": extra,
         }
         with self._lock:
+            if self._writer is None:
+                return
             try:
                 self._writer.writerow(row)
                 self._file.flush()
-            except (IOError, OSError, ValueError) as e:
+            except (IOError, OSError, ValueError, AttributeError) as e:
                 logger.error(f"Session-Log-Fehler: {e}")
 
     def close(self) -> None:
@@ -86,7 +92,8 @@ def start_session_log(state: 'AutoClickerState') -> Optional[SessionLog]:
     try:
         log_dir = Path(state.config.session_log_dir)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        seq_name = state.active_sequence or "session"
+        seq = state.active_sequence
+        seq_name = seq.name if seq and hasattr(seq, "name") else "session"
         from .utils import sanitize_filename
         safe_name = sanitize_filename(seq_name)
         log_path = log_dir / f"{timestamp}_{safe_name}.csv"

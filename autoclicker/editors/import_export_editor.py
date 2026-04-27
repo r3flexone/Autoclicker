@@ -229,7 +229,7 @@ def _run_import(state: AutoClickerState) -> None:
         choice = interactive_select(options)
         if choice < 0:
             return
-        if choice < len(unique_zips):
+        if choice < len(unique_zips[:10]):
             filepath = str(unique_zips[choice])
         else:
             filepath = _ask_filepath()

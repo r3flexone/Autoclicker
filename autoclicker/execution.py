@@ -1406,7 +1406,8 @@ def sequence_worker(state: AutoClickerState) -> None:
     state.session_log = start_session_log(state)
     if state.session_log is not None:
         print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
-        log_event(state, "session_start", detail=state.active_sequence or "")
+        seq = state.active_sequence
+        log_event(state, "session_start", detail=seq.name if seq and hasattr(seq, "name") else "")
 
     # Zeitgesteuerter Background-Thread (nur wenn nötig)
     scheduled_pending = {}

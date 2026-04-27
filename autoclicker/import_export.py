@@ -46,17 +46,22 @@ def compute_transform(src_ref1: tuple[int, int], src_ref2: tuple[int, int],
     """
     sx = src_ref2[0] - src_ref1[0]
     sy = src_ref2[1] - src_ref1[1]
-
-    if sx == 0 or sy == 0:
-        return {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
-
     dx = dst_ref2[0] - dst_ref1[0]
     dy = dst_ref2[1] - dst_ref1[1]
 
-    scale_x = dx / sx
-    scale_y = dy / sy
-    offset_x = dst_ref1[0] - src_ref1[0] * scale_x
-    offset_y = dst_ref1[1] - src_ref1[1] * scale_y
+    if sx != 0:
+        scale_x = dx / sx
+        offset_x = dst_ref1[0] - src_ref1[0] * scale_x
+    else:
+        scale_x = 1.0
+        offset_x = dst_ref1[0] - src_ref1[0]
+
+    if sy != 0:
+        scale_y = dy / sy
+        offset_y = dst_ref1[1] - src_ref1[1] * scale_y
+    else:
+        scale_y = 1.0
+        offset_y = dst_ref1[1] - src_ref1[1]
 
     return {"scale_x": scale_x, "scale_y": scale_y,
             "offset_x": offset_x, "offset_y": offset_y}
@@ -70,10 +75,10 @@ def remap_point(x: int, y: int, transform: dict) -> tuple[int, int]:
 
 
 def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[int, int, int, int]:
-    """Transformiert eine Region (x1, y1, x2, y2)."""
+    """Transformiert eine Region (x1, y1, x2, y2). Normalisiert die Eckpunkte."""
     x1, y1 = remap_point(region[0], region[1], transform)
     x2, y2 = remap_point(region[2], region[3], transform)
-    return (x1, y1, x2, y2)
+    return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
 
 
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
@@ -298,10 +303,14 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Templates zuerst extrahieren
             templates_dir = Path(TEMPLATES_DIR)
             templates_dir.mkdir(parents=True, exist_ok=True)
+            resolved_tpl_dir = templates_dir.resolve()
             for name in names:
                 if name.startswith("templates/") and name.endswith(".png"):
                     tpl_name = name[len("templates/"):]
                     tpl_path = templates_dir / tpl_name
+                    if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
+                        logger.warning(f"Template-Pfad außerhalb des Zielordners übersprungen: {name}")
+                        continue
                     tpl_path.write_bytes(zf.read(name))
                     stats["templates"] += 1
 
@@ -413,7 +422,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         bosses = []
                         for b in bscan_data.get("bosses", []):
                             boss = _boss_profile_from_dict(b)
-                            if boss.action_x or boss.action_y:
+                            if boss.action_x is not None or boss.action_y is not None:
                                 boss.action_x, boss.action_y = remap_point(
                                     boss.action_x, boss.action_y, transform)
                             bosses.append(boss)
@@ -436,6 +445,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Config
             if import_config and "config.json" in names:
                 cfg_data = json.loads(zf.read("config.json").decode("utf-8"))
+                _IMPORT_SKIP_KEYS = {"failsafe_enabled", "failsafe_x", "failsafe_y",
+                                     "session_log_enabled", "session_log_dir"}
+                for k in _IMPORT_SKIP_KEYS:
+                    cfg_data.pop(k, None)
                 current = state.config.to_dict()
                 current.update(cfg_data)
                 from .config import AppConfig
@@ -475,12 +488,12 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
     """Transformiert alle Koordinaten in einer Sequenz-JSON-Struktur (in-place)."""
     def remap_steps(steps: list) -> None:
         for s in steps:
-            if s.get("x") or s.get("y"):
+            if s.get("x") is not None or s.get("y") is not None:
                 s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
             if s.get("wait_pixel"):
                 wp = s["wait_pixel"]
                 s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
-            if s.get("else_x") or s.get("else_y"):
+            if s.get("else_x") is not None or s.get("else_y") is not None:
                 s["else_x"], s["else_y"] = remap_point(
                     s.get("else_x", 0), s.get("else_y", 0), transform)
             if s.get("screenshot_region"):
