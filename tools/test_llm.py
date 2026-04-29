@@ -4,9 +4,9 @@ Schnelltest für LLM Vision (Ollama / LM Studio).
 Testet Verbindung und Bilderkennung ohne den Autoclicker starten zu müssen.
 
 Nutzung:
-    python test_llm.py                              # Verbindungstest
-    python test_llm.py screenshot                   # Screenshot machen + analysieren
-    python test_llm.py screenshot --region x1,y1,x2,y2  # Direkter Region-Screenshot
+    python test_llm.py                              # Region per Maus auswählen + analysieren
+    python test_llm.py test                         # Nur Verbindungstest
+    python test_llm.py --region x1,y1,x2,y2         # Direkter Region-Screenshot
     python test_llm.py bild.png                     # Vorhandenes Bild analysieren
     python test_llm.py --provider lmstudio          # LM Studio statt Ollama
     python test_llm.py --model moondream            # Anderes Modell
@@ -34,7 +34,7 @@ def color(text, c):
 def parse_args():
     provider = PROVIDER_OLLAMA
     model = None
-    action = "test"  # "test", "screenshot", oder Dateipfad
+    action = "screenshot"  # Default: direkt screenshot. "test", "screenshot", oder Dateipfad
     prompt = None
     boss_names = []
     region = None  # (x1, y1, x2, y2) oder None
@@ -89,8 +89,9 @@ def print_help():
 {color('LLM Vision Test-Script', 'bold')}
 
 {color('Nutzung:', 'cyan')}
-    python test_llm.py                          Verbindungstest
-    python test_llm.py screenshot               Screenshot + Analyse
+    python test_llm.py                          Region per Maus auswählen + analysieren
+    python test_llm.py test                     Nur Verbindungstest (kein Bild)
+    python test_llm.py screenshot               Wie default (Region per Maus)
     python test_llm.py bild.png                 Bild-Datei analysieren
 
 {color('Optionen:', 'cyan')}
@@ -101,13 +102,13 @@ def print_help():
     --region x1,y1,x2,y2                        Region direkt angeben (statt interaktiv)
 
 {color('Beispiele:', 'cyan')}
-    python test_llm.py                          Nur Verbindung testen
-    python test_llm.py screenshot               Screenshot vom Bildschirm
-    python test_llm.py screenshot --model moondream
-    python test_llm.py screenshot --region 100,200,800,600
+    python test_llm.py                          Region per Maus → Analyse
+    python test_llm.py --model gemma4:e4b
+    python test_llm.py --region 100,200,800,600
     python test_llm.py boss.png --bosses "Dragon,Goblin,Skeleton"
-    python test_llm.py screenshot --prompt "Beschreibe was du siehst"
-    python test_llm.py --provider lmstudio screenshot
+    python test_llm.py --prompt "Beschreibe was du siehst"
+    python test_llm.py --provider lmstudio
+    python test_llm.py test                     Nur Verbindung prüfen
 """)
 
 
