@@ -14,15 +14,35 @@ Nutzung:
 
 import sys
 import os
+import json
 import time
 
-# Projekt-Root zum Path hinzufügen
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Projekt-Root zum Path hinzufügen (tools/ liegt unter projekt-root)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+sys.path.insert(0, _PROJECT_ROOT)
 
 from autoclicker.llm_vision import (
     test_connection, analyze_image, match_boss_name,
     PROVIDER_OLLAMA, PROVIDER_LMSTUDIO,
 )
+
+
+def load_config_defaults():
+    """Liest llm-defaults aus config.json (falls vorhanden) — provider/model/endpoint."""
+    cfg_path = os.path.join(_PROJECT_ROOT, "config.json")
+    if not os.path.exists(cfg_path):
+        return None, None, None
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return (
+            data.get("llm_provider") or None,
+            data.get("llm_model") or None,
+            data.get("llm_endpoint") or None,
+        )
+    except (IOError, OSError, ValueError, json.JSONDecodeError):
+        return None, None, None
 
 
 def color(text, c):
@@ -32,8 +52,12 @@ def color(text, c):
 
 
 def parse_args():
-    provider = PROVIDER_OLLAMA
-    model = None
+    # Defaults aus config.json laden (falls vorhanden)
+    cfg_provider, cfg_model, cfg_endpoint = load_config_defaults()
+
+    provider = cfg_provider or PROVIDER_OLLAMA
+    model = cfg_model
+    endpoint = cfg_endpoint
     action = "screenshot"  # Default: direkt screenshot. "test", "screenshot", oder Dateipfad
     prompt = None
     boss_names = []
@@ -81,7 +105,7 @@ def parse_args():
             action = arg  # Dateipfad
             i += 1
 
-    return provider, model, action, prompt, boss_names, region
+    return provider, model, action, prompt, boss_names, region, endpoint
 
 
 def print_help():
@@ -137,10 +161,12 @@ def test_conn(provider, model):
     return success
 
 
-def analyze(provider, model, img, prompt, boss_names):
+def analyze(provider, model, img, prompt, boss_names, endpoint=None):
     print(f"\n{color('=== BILD-ANALYSE ===', 'bold')}")
     print(f"  Provider: {color(provider, 'cyan')}")
-    print(f"  Modell:   {color(model or '(Standard)', 'cyan')}")
+    print(f"  Modell:   {color(model or '(Standard llava)', 'cyan')}")
+    if endpoint:
+        print(f"  Endpoint: {color(endpoint, 'cyan')}")
     if boss_names:
         print(f"  Bosse:    {color(', '.join(boss_names), 'cyan')}")
 
@@ -160,6 +186,7 @@ def analyze(provider, model, img, prompt, boss_names):
     success, response, duration = analyze_image(
         img=img,
         provider=provider,
+        endpoint=endpoint,
         model=model,
         prompt=prompt,
         boss_names=boss_names if boss_names else None,
@@ -195,7 +222,7 @@ def analyze(provider, model, img, prompt, boss_names):
 
 
 def main():
-    provider, model, action, prompt, boss_names, region = parse_args()
+    provider, model, action, prompt, boss_names, region, endpoint = parse_args()
 
     if action == "help":
         print_help()
@@ -258,7 +285,7 @@ def main():
         print(f"\n{color('Kein Bild verfügbar!', 'red')}")
         return
 
-    analyze(provider, model, img, prompt, boss_names)
+    analyze(provider, model, img, prompt, boss_names, endpoint)
     print()
 
 
