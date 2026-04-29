@@ -4,11 +4,12 @@ Schnelltest für LLM Vision (Ollama / LM Studio).
 Testet Verbindung und Bilderkennung ohne den Autoclicker starten zu müssen.
 
 Nutzung:
-    python test_llm.py                    # Verbindungstest
-    python test_llm.py screenshot         # Screenshot machen + analysieren
-    python test_llm.py bild.png           # Vorhandenes Bild analysieren
-    python test_llm.py --provider lmstudio  # LM Studio statt Ollama
-    python test_llm.py --model moondream  # Anderes Modell
+    python test_llm.py                              # Verbindungstest
+    python test_llm.py screenshot                   # Screenshot machen + analysieren
+    python test_llm.py screenshot --region x1,y1,x2,y2  # Direkter Region-Screenshot
+    python test_llm.py bild.png                     # Vorhandenes Bild analysieren
+    python test_llm.py --provider lmstudio          # LM Studio statt Ollama
+    python test_llm.py --model moondream            # Anderes Modell
 """
 
 import sys
@@ -36,6 +37,7 @@ def parse_args():
     action = "test"  # "test", "screenshot", oder Dateipfad
     prompt = None
     boss_names = []
+    region = None  # (x1, y1, x2, y2) oder None
 
     args = sys.argv[1:]
     i = 0
@@ -53,6 +55,22 @@ def parse_args():
         elif arg == "--bosses" and i + 1 < len(args):
             boss_names = [b.strip() for b in args[i + 1].split(",")]
             i += 2
+        elif arg == "--region" and i + 1 < len(args):
+            try:
+                parts = [int(p.strip()) for p in args[i + 1].split(",")]
+                if len(parts) != 4:
+                    raise ValueError(f"Erwarte 4 Werte (x1,y1,x2,y2), bekam {len(parts)}")
+                x1, y1, x2, y2 = parts
+                if x1 > x2:
+                    x1, x2 = x2, x1
+                if y1 > y2:
+                    y1, y2 = y2, y1
+                region = (x1, y1, x2, y2)
+            except ValueError as e:
+                print(f"{color('Ungültige --region:', 'red')} {e}")
+                print("  Format: --region x1,y1,x2,y2 (z.B. --region 100,200,800,600)")
+                sys.exit(1)
+            i += 2
         elif arg == "screenshot":
             action = "screenshot"
             i += 1
@@ -63,7 +81,7 @@ def parse_args():
             action = arg  # Dateipfad
             i += 1
 
-    return provider, model, action, prompt, boss_names
+    return provider, model, action, prompt, boss_names, region
 
 
 def print_help():
@@ -80,11 +98,13 @@ def print_help():
     --model <name>                              Modell (Standard: llava)
     --prompt "Was siehst du?"                   Custom Prompt
     --bosses "Boss1,Boss2,Boss3"                Bekannte Boss-Namen
+    --region x1,y1,x2,y2                        Region direkt angeben (statt interaktiv)
 
 {color('Beispiele:', 'cyan')}
     python test_llm.py                          Nur Verbindung testen
     python test_llm.py screenshot               Screenshot vom Bildschirm
     python test_llm.py screenshot --model moondream
+    python test_llm.py screenshot --region 100,200,800,600
     python test_llm.py boss.png --bosses "Dragon,Goblin,Skeleton"
     python test_llm.py screenshot --prompt "Beschreibe was du siehst"
     python test_llm.py --provider lmstudio screenshot
@@ -174,7 +194,7 @@ def analyze(provider, model, img, prompt, boss_names):
 
 
 def main():
-    provider, model, action, prompt, boss_names = parse_args()
+    provider, model, action, prompt, boss_names, region = parse_args()
 
     if action == "help":
         print_help()
@@ -202,22 +222,46 @@ def main():
 
         try:
             from autoclicker.imaging import take_screenshot, select_region
-            print("  [1] Vollbild")
-            print("  [2] Region auswählen (2 Ecken)")
-            choice = input("  Wahl (Enter=1): ").strip()
 
-            if choice == "2":
-                print("\n  Region auswählen...")
-                region = select_region()
-                if region:
-                    img = take_screenshot(region)
-                    print(f"  Screenshot: {region}")
-                else:
-                    print("  -> Abgebrochen")
-                    return
+            if region is not None:
+                # Region per CLI-Argument vorgegeben
+                img = take_screenshot(region)
+                print(f"  Screenshot: Region {region}")
             else:
-                img = take_screenshot()
-                print("  Screenshot: Vollbild")
+                print("  [1] Vollbild")
+                print("  [2] Region auswählen (2 Ecken)")
+                print("  [3] Region eintippen (x1,y1,x2,y2)")
+                choice = input("  Wahl (Enter=1): ").strip()
+
+                if choice == "2":
+                    print("\n  Region auswählen...")
+                    sel_region = select_region()
+                    if sel_region:
+                        img = take_screenshot(sel_region)
+                        print(f"  Screenshot: {sel_region}")
+                    else:
+                        print("  -> Abgebrochen")
+                        return
+                elif choice == "3":
+                    raw = input("  Koordinaten (x1,y1,x2,y2): ").strip()
+                    try:
+                        parts = [int(p.strip()) for p in raw.split(",")]
+                        if len(parts) != 4:
+                            raise ValueError(f"Erwarte 4 Werte, bekam {len(parts)}")
+                        x1, y1, x2, y2 = parts
+                        if x1 > x2:
+                            x1, x2 = x2, x1
+                        if y1 > y2:
+                            y1, y2 = y2, y1
+                        typed_region = (x1, y1, x2, y2)
+                        img = take_screenshot(typed_region)
+                        print(f"  Screenshot: {typed_region}")
+                    except ValueError as e:
+                        print(f"  {color('Ungültige Eingabe:', 'red')} {e}")
+                        return
+                else:
+                    img = take_screenshot()
+                    print("  Screenshot: Vollbild")
         except Exception as e:
             print(f"  Screenshot fehlgeschlagen: {e}")
             print("  Tipp: Auf Windows muss das Script mit Bildschirmzugriff laufen")
