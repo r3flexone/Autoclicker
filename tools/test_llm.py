@@ -224,44 +224,17 @@ def main():
             from autoclicker.imaging import take_screenshot, select_region
 
             if region is not None:
-                # Region per CLI-Argument vorgegeben
+                # Region per CLI-Argument vorgegeben (nicht-interaktiv)
                 img = take_screenshot(region)
                 print(f"  Screenshot: Region {region}")
             else:
-                print("  [1] Vollbild")
-                print("  [2] Region auswählen (2 Ecken)")
-                print("  [3] Region eintippen (x1,y1,x2,y2)")
-                choice = input("  Wahl (Enter=1): ").strip()
-
-                if choice == "2":
-                    print("\n  Region auswählen...")
-                    sel_region = select_region()
-                    if sel_region:
-                        img = take_screenshot(sel_region)
-                        print(f"  Screenshot: {sel_region}")
-                    else:
-                        print("  -> Abgebrochen")
-                        return
-                elif choice == "3":
-                    raw = input("  Koordinaten (x1,y1,x2,y2): ").strip()
-                    try:
-                        parts = [int(p.strip()) for p in raw.split(",")]
-                        if len(parts) != 4:
-                            raise ValueError(f"Erwarte 4 Werte, bekam {len(parts)}")
-                        x1, y1, x2, y2 = parts
-                        if x1 > x2:
-                            x1, x2 = x2, x1
-                        if y1 > y2:
-                            y1, y2 = y2, y1
-                        typed_region = (x1, y1, x2, y2)
-                        img = take_screenshot(typed_region)
-                        print(f"  Screenshot: {typed_region}")
-                    except ValueError as e:
-                        print(f"  {color('Ungültige Eingabe:', 'red')} {e}")
-                        return
+                # Default: Region per Maus auswählen (oben-links + unten-rechts mit Enter)
+                sel_region = select_region()
+                if sel_region:
+                    img = take_screenshot(sel_region)
                 else:
-                    img = take_screenshot()
-                    print("  Screenshot: Vollbild")
+                    print("  -> Abgebrochen")
+                    return
         except Exception as e:
             print(f"  Screenshot fehlgeschlagen: {e}")
             print("  Tipp: Auf Windows muss das Script mit Bildschirmzugriff laufen")
