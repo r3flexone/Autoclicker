@@ -174,7 +174,7 @@ def analyze(provider, model, img, prompt, boss_names, endpoint=None):
     print(f"  Bild:     {w}x{h} Pixel")
 
     if not prompt:
-        prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
+        prompt = "Identify the boss in this screenshot. Output ONLY the name, no extra words, labels, or punctuation."
 
     print(f"  Prompt:   {prompt}")
     if not boss_names:
