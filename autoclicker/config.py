@@ -294,7 +294,6 @@ def save_config(config: AppConfig) -> None:
                 if section != last_section:
                     if last_section is not None:
                         f.write("\n")
-                    f.write(f'\n  "__ {section} __": "───────────────────────────",\n')
                     last_section = section
                 comma = "," if i < len(entries) - 1 else ""
                 f.write(f'  "{key}": {val}{comma}\n')
