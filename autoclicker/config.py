@@ -64,7 +64,7 @@ class AppConfig:
 
     # === LLM VISION (Boss-Erkennung) ===
     llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
-    llm_provider: str = "ollama"                    # "ollama" oder "lmstudio"
+    llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
     llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
     llm_model: str = "gemma4:e4b"                   # Modell-Name (Standard: gemma4:e4b)
     llm_timeout: int = 30                           # Timeout für LLM-Anfragen in Sekunden

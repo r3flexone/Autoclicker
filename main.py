@@ -135,6 +135,22 @@ def main() -> int:
         print(warn("Nicht alle Hotkeys konnten registriert werden."))
         print()
 
+    # LLM-Verbindung prüfen wenn aktiviert
+    if state.config.llm_enabled:
+        try:
+            from autoclicker.llm_vision import test_connection
+            provider = state.config.llm_provider
+            ok, msg = test_connection(provider)
+            if ok:
+                print(col(f"[LLM] {provider} verbunden: {msg}", 'green'))
+            else:
+                provider_name = "LM Studio" if provider == "lmstudio" else "Ollama"
+                print(warn(f"[LLM] {provider_name} nicht erreichbar! {msg}"))
+                print(warn(f"       Bitte {provider_name} starten für Boss-Erkennung."))
+        except Exception:
+            pass
+        print()
+
     print(col("Bereit!", 'green') + f" Starte mit {col('CTRL+ALT+A', 'yellow')} um Punkte aufzunehmen.")
     print(f"        oder mit {col('CTRL+ALT+S', 'yellow')} eine Sequenz starten.")
     print_status(state)

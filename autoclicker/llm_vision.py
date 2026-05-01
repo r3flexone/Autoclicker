@@ -151,10 +151,7 @@ def analyze_image(
             endpoint = "http://localhost:1234/v1/chat/completions"
 
     if model is None:
-        if provider == PROVIDER_OLLAMA:
-            model = "gemma4:e4b"
-        else:
-            model = "default"
+        model = "gemma4:e4b"
 
     if prompt is None:
         prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
