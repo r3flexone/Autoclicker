@@ -116,7 +116,7 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
 
 def analyze_image(
     img: 'Image.Image',
-    provider: str = PROVIDER_OLLAMA,
+    provider: str = PROVIDER_LMSTUDIO,
     endpoint: str = None,
     model: str = None,
     prompt: str = None,
@@ -293,7 +293,7 @@ def match_boss_name(response: str, boss_names: list[str]) -> tuple[Optional[str]
     return cleaned, True
 
 
-def test_connection(provider: str = PROVIDER_OLLAMA,
+def test_connection(provider: str = PROVIDER_LMSTUDIO,
                     endpoint: str = None, model: str = None) -> tuple[bool, str]:
     """Testet die Verbindung zum LLM-Provider.
 
