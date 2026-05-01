@@ -409,7 +409,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
 
                 # Bestätigungs-Klick?
                 confirm_point = None
-                confirm_delay = CONFIG.default_confirm_delay
+                confirm_delay = CONFIG.scan_confirm_delay
                 confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
                 if confirm_input:
                     try:

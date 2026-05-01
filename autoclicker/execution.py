@@ -67,7 +67,7 @@ def _wait_for_target_window(state: AutoClickerState, phase: str = "") -> bool:
             log_event(state, "focus_restored")
             print(col(f"[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
             return True
-        if state.stop_event.wait(cfg.pause_check_interval):
+        if state.stop_event.wait(cfg.timing_pause_interval):
             return False
     return False
 
@@ -136,7 +136,7 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
         return False
     _humanize_delay(state)
     jx, jy = _humanize_jitter(x, y, state)
-    send_click(jx, jy, state.config.click_move_delay, state.config.post_click_delay)
+    send_click(jx, jy, state.config.click_move_delay, state.config.click_post_delay)
     log_event(state, "click", detail=label, x=jx, y=jy)
     return True
 
@@ -412,14 +412,14 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
             # 2. Marker-Farben prüfen (wenn vorhanden)
             if item.marker_colors:
-                tolerance = config.color_tolerance
+                tolerance = config.pixel_color_tolerance
                 markers_total = len(item.marker_colors)
                 markers_found = sum(1 for marker in item.marker_colors
                                    if find_color_in_image(img, marker, tolerance))
 
                 # Config-Einstellungen für Marker-Anforderung
-                require_all = state.config.require_all_markers
-                min_required = state.config.min_markers_required
+                require_all = state.config.scan_require_all_markers
+                min_required = state.config.scan_min_markers_required
 
                 if require_all:
                     marker_ok = (markers_found == markers_total)
@@ -523,7 +523,7 @@ def _click_scan_result(state: AutoClickerState, pos, item, priority, debug: bool
         with state.lock:
             state.total_clicks += 1
 
-    click_delay = state.config.item_click_delay
+    click_delay = state.config.scan_item_click_delay
     if click_delay > 0:
         if state.stop_event.wait(click_delay):
             return False
@@ -648,7 +648,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         return False, None
 
     debug = state.config.debug_detection
-    tolerance = config.color_tolerance
+    tolerance = config.pixel_color_tolerance
 
     # Screenshot der Boss-Region
     img = take_screenshot(config.scan_region)
@@ -691,8 +691,8 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
             markers_found = sum(1 for marker in boss.marker_colors
                                if find_color_in_image(img, marker, tolerance))
 
-            require_all = state.config.require_all_markers
-            min_required = state.config.min_markers_required
+            require_all = state.config.scan_require_all_markers
+            min_required = state.config.scan_min_markers_required
 
             if require_all:
                 marker_ok = (markers_found == markers_total)
@@ -1086,9 +1086,9 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
             return False
 
-    if state.config.show_pixel_position:
+    if state.config.debug_show_pixel_position:
         set_cursor_pos(wc.pixel[0], wc.pixel[1])
-        time.sleep(state.config.show_pixel_delay)
+        time.sleep(state.config.pixel_show_delay)
 
     if not PILLOW_AVAILABLE:
         print(col(f"\n[FEHLER] Pillow nicht installiert - Farbprüfung nicht möglich!", "red"))
@@ -1154,7 +1154,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                 state.consecutive_timeouts += 1
                 consec = state.consecutive_timeouts
             clear_line()
-            max_consec = state.config.max_consecutive_timeouts
+            max_consec = state.config.pixel_max_consecutive_timeouts
             if max_consec > 0:
                 print(col(f"\n[TIMEOUT] Farbe nicht erkannt nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
             else:
@@ -1162,7 +1162,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
 
             # Notbremse: Zu viele aufeinanderfolgende Timeouts
             if max_consec > 0 and consec >= max_consec:
-                consec_action = state.config.consecutive_timeout_action
+                consec_action = state.config.pixel_consecutive_action
                 if consec_action == CONSEC_EXIT:
                     print(col(f"\n[NOTBREMSE] {consec}x Timeout in Folge → Python-Prozess wird beendet!", "red"))
                     print(col("[NOTBREMSE] Programm muss manuell neu gestartet werden.", "red"), flush=True)
@@ -1207,7 +1207,7 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
                    step_num: int, total_steps: int, phase: str) -> bool:
     """Führt den eigentlichen Klick aus."""
     debug = state.config.debug_mode
-    clicks = state.config.clicks_per_point
+    clicks = state.config.click_per_point
     for _ in range(clicks):
         if state.stop_event.is_set():
             return False
@@ -1230,7 +1230,7 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
             clear_line()
             print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Klick! (Gesamt: {state.total_clicks})", _phase_color(phase)), end="", flush=True)
 
-        max_clicks = state.config.max_total_clicks
+        max_clicks = state.config.click_max_total
         if max_clicks and state.total_clicks >= max_clicks:
             print(f"\n{info(f'Maximum von {max_clicks} Klicks erreicht.')}")
             state.stop_event.set()
@@ -1573,7 +1573,7 @@ def sequence_worker(state: AutoClickerState) -> None:
         print(f"  {col('Tasten:', 'cyan'):22s} {state.key_presses}")
     if state.timeouts > 0:
         print(f"  {col('Timeouts:', 'yellow'):22s} {state.timeouts}")
-        max_consec = state.config.max_consecutive_timeouts
+        max_consec = state.config.pixel_max_consecutive_timeouts
         if max_consec > 0 and state.consecutive_timeouts >= max_consec:
             print(f"  {col('Notbremse:', 'red'):22s} Ja ({state.consecutive_timeouts}x in Folge)")
     if state.skipped_cycles > 0:

@@ -166,7 +166,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 for name, config in scans.items():
                     scan_data = {
                         "name": config.name,
-                        "color_tolerance": config.color_tolerance,
+                        "color_tolerance": config.pixel_color_tolerance,
                         "slots": [
                             {
                                 "name": s.name,
@@ -196,7 +196,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     bscan_data = {
                         "name": config.name,
                         "scan_region": list(config.scan_region),
-                        "color_tolerance": config.color_tolerance,
+                        "color_tolerance": config.pixel_color_tolerance,
                         "default_action": config.default_action,
                         "default_scan": config.default_scan,
                         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
@@ -242,7 +242,7 @@ def _export_config(config) -> dict:
     """Exportiert relevante Config-Werte (ohne interne/Debug-Felder)."""
     d = config.to_dict()
     skip = {"debug_mode", "debug_detection", "debug_save_templates",
-            "show_pixel_position", "show_pixel_delay",
+            "debug_show_pixel_position", "pixel_show_delay",
             "failsafe_enabled", "failsafe_x", "failsafe_y",
             "session_log_enabled", "session_log_dir"}
     return {k: v for k, v in d.items() if k not in skip and not k.startswith("_")}

@@ -362,7 +362,7 @@ def save_item_scan(config: ItemScanConfig) -> None:
 
     data = {
         "name": config.name,
-        "color_tolerance": config.color_tolerance,
+        "color_tolerance": config.pixel_color_tolerance,
         "slots": [
             {
                 "name": slot.name,
@@ -499,7 +499,7 @@ def save_boss_scan(config: BossScanConfig) -> None:
     data = {
         "name": config.name,
         "scan_region": list(config.scan_region),
-        "color_tolerance": config.color_tolerance,
+        "color_tolerance": config.pixel_color_tolerance,
         "default_action": config.default_action,
         "default_scan": config.default_scan,
         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
