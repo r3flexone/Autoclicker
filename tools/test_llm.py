@@ -56,6 +56,7 @@ def parse_args():
     cfg_provider, cfg_model, cfg_endpoint = load_config_defaults()
 
     provider = cfg_provider or PROVIDER_OLLAMA
+    provider_explicit = False  # wurde --provider explizit gesetzt?
     model = cfg_model
     endpoint = cfg_endpoint
     action = "screenshot"  # Default: direkt screenshot. "test", "screenshot", oder Dateipfad
@@ -69,6 +70,7 @@ def parse_args():
         arg = args[i]
         if arg == "--provider" and i + 1 < len(args):
             provider = args[i + 1]
+            provider_explicit = True
             i += 2
         elif arg == "--model" and i + 1 < len(args):
             model = args[i + 1]
@@ -105,7 +107,7 @@ def parse_args():
             action = arg  # Dateipfad
             i += 1
 
-    return provider, model, action, prompt, boss_names, region, endpoint
+    return provider, provider_explicit, model, action, prompt, boss_names, region, endpoint
 
 
 def print_help():
@@ -120,7 +122,7 @@ def print_help():
 
 {color('Optionen:', 'cyan')}
     --provider ollama|lmstudio                  Provider (Standard: ollama)
-    --model <name>                              Modell (Standard: llava)
+    --model <name>                              Modell (Standard: gemma4:e4b)
     --prompt "Was siehst du?"                   Custom Prompt
     --bosses "Boss1,Boss2,Boss3"                Bekannte Boss-Namen
     --region x1,y1,x2,y2                        Region direkt angeben (statt interaktiv)
@@ -139,6 +141,8 @@ def print_help():
 def test_conn(provider, model):
     print(f"\n{color('=== VERBINDUNGSTEST ===', 'bold')}")
     print(f"  Provider: {color(provider, 'cyan')}")
+    if model:
+        print(f"  Modell:   {color(model, 'cyan')}")
 
     success, message = test_connection(provider)
 
@@ -152,13 +156,49 @@ def test_conn(provider, model):
         if provider == PROVIDER_OLLAMA:
             print(f"  {color('Lösung:', 'yellow')}")
             print(f"  1. Ollama installieren: https://ollama.com")
-            print(f"  2. Vision-Modell laden: ollama pull llava")
+            print(f"  2. Vision-Modell laden: ollama pull gemma4:e4b")
             print(f"  3. Prüfen ob es läuft:  ollama list")
         else:
             print(f"  {color('Lösung:', 'yellow')}")
             print(f"  1. LM Studio starten")
-            print(f"  2. Vision-Modell laden (z.B. LLaVA)")
+            print(f"  2. Vision-Modell laden (z.B. Gemma, LLaVA)")
     return success
+
+
+def select_provider_interactive():
+    """Interaktive Provider-Auswahl wenn beide verfügbar."""
+    print(f"\n{color('=== PROVIDER-AUSWAHL ===', 'bold')}")
+
+    ollama_ok, ollama_msg = test_connection(PROVIDER_OLLAMA)
+    lmstudio_ok, lmstudio_msg = test_connection(PROVIDER_LMSTUDIO)
+
+    providers = []
+    if ollama_ok:
+        providers.append(("ollama", ollama_msg))
+    if lmstudio_ok:
+        providers.append(("lmstudio", lmstudio_msg))
+
+    if not providers:
+        print(f"  {color('Kein Provider erreichbar!', 'red')}")
+        print(f"  Starte Ollama oder LM Studio und versuch nochmal.")
+        return None
+    if len(providers) == 1:
+        name, msg = providers[0]
+        print(f"  {color(name, 'green')} erreichbar: {msg}")
+        return name
+
+    print(f"  Beide Provider erreichbar:\n")
+    for i, (name, msg) in enumerate(providers, 1):
+        print(f"  [{i}] {color(name, 'cyan')} — {msg}")
+    print()
+    try:
+        choice = input("  Wahl (Enter=1): ").strip()
+        idx = int(choice) - 1 if choice else 0
+        if 0 <= idx < len(providers):
+            return providers[idx][0]
+    except (ValueError, IndexError, KeyboardInterrupt, EOFError):
+        pass
+    return providers[0][0]
 
 
 def analyze(provider, model, img, prompt, boss_names, endpoint=None):
@@ -222,18 +262,24 @@ def analyze(provider, model, img, prompt, boss_names, endpoint=None):
 
 
 def main():
-    provider, model, action, prompt, boss_names, region, endpoint = parse_args()
+    provider, provider_explicit, model, action, prompt, boss_names, region, endpoint = parse_args()
 
     if action == "help":
         print_help()
         return
 
-    # Immer zuerst Verbindung testen
-    if not test_conn(provider, model):
-        return
+    # Provider-Auswahl: wenn nicht explizit gesetzt, interaktiv fragen falls beide da
+    if not provider_explicit:
+        selected = select_provider_interactive()
+        if selected is None:
+            return
+        provider = selected
+    else:
+        if not test_conn(provider, model):
+            return
 
     if action == "test":
-        print(f"\n{color('Verbindung OK!', 'green')} Nutze 'python test_llm.py screenshot' für einen Bildtest.")
+        print(f"\n{color('Verbindung OK!', 'green')}")
         return
 
     # Bild laden

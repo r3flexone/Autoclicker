@@ -152,9 +152,9 @@ def analyze_image(
 
     if model is None:
         if provider == PROVIDER_OLLAMA:
-            model = "llava"  # Standard-Vision-Modell für Ollama
+            model = "gemma4:e4b"
         else:
-            model = "default"  # LM Studio verwendet das geladene Modell
+            model = "default"
 
     if prompt is None:
         prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
@@ -320,7 +320,7 @@ def test_connection(provider: str = PROVIDER_OLLAMA,
             if provider == PROVIDER_OLLAMA:
                 models = [m.get("name", "?") for m in result.get("models", [])]
                 vision_models = [m for m in models if any(v in m.lower() for v in
-                                ["llava", "bakllava", "moondream", "vision", "minicpm"])]
+                                ["gemma", "llava", "bakllava", "moondream", "vision", "minicpm"])]
                 if vision_models:
                     return True, f"Verbunden! Vision-Modelle: {', '.join(vision_models)}"
                 elif models:
