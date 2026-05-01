@@ -219,11 +219,86 @@ def load_config() -> AppConfig:
     return AppConfig()
 
 
+_CONFIG_SECTIONS = [
+    ("KLICK-EINSTELLUNGEN", [
+        "clicks_per_point", "max_total_clicks",
+        "click_move_delay", "post_click_delay",
+    ]),
+    ("SICHERHEIT", [
+        "failsafe_enabled", "failsafe_x", "failsafe_y",
+    ]),
+    ("FARB-/PIXEL-ERKENNUNG", [
+        "color_tolerance", "pixel_wait_tolerance", "pixel_wait_timeout",
+        "pixel_timeout_action", "pixel_check_interval",
+        "max_consecutive_timeouts", "consecutive_timeout_action",
+        "scan_pixel_step", "show_pixel_delay",
+    ]),
+    ("ITEM-SCAN", [
+        "scan_reverse", "scan_click_immediate", "scan_park_mouse",
+        "scan_slot_delay", "item_click_delay",
+        "marker_count", "require_all_markers", "min_markers_required",
+        "slot_hsv_tolerance", "slot_inset", "slot_color_distance",
+        "default_min_confidence", "default_confirm_delay",
+    ]),
+    ("LLM VISION (Boss-Erkennung)", [
+        "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
+        "llm_timeout", "llm_boss_prompt",
+        "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
+    ]),
+    ("WINDOW-FOKUS-CHECK", [
+        "window_focus_check", "window_focus_title", "window_focus_action",
+    ]),
+    ("HUMANIZATION", [
+        "humanize_enabled", "humanize_click_jitter",
+        "humanize_micro_delay_min", "humanize_micro_delay_max",
+        "humanize_break_interval_min",
+        "humanize_break_duration_min", "humanize_break_duration_max",
+    ]),
+    ("SESSION-LOG", [
+        "session_log_enabled", "session_log_dir",
+    ]),
+    ("TIMING", [
+        "pause_check_interval",
+    ]),
+    ("DEBUG", [
+        "debug_mode", "debug_detection",
+        "show_pixel_position", "debug_save_templates",
+    ]),
+]
+
+
 def save_config(config: AppConfig) -> None:
-    """Speichert Konfiguration in config.json."""
+    """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
+    data = config.to_dict()
+
+    entries = []
+    written_keys = set()
+
+    for section_name, keys in _CONFIG_SECTIONS:
+        for key in keys:
+            if key not in data:
+                continue
+            val = json.dumps(data[key], ensure_ascii=False)
+            written_keys.add(key)
+            entries.append((section_name, key, val))
+
+    remaining = [(k, v) for k, v in data.items() if k not in written_keys]
+    for k, v in remaining:
+        entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
+
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
+            f.write("{\n")
+            last_section = None
+            for i, (section, key, val) in enumerate(entries):
+                if section != last_section:
+                    if last_section is not None:
+                        f.write("\n")
+                    f.write(f'\n  "__ {section} __": "───────────────────────────",\n')
+                    last_section = section
+                comma = "," if i < len(entries) - 1 else ""
+                f.write(f'  "{key}": {val}{comma}\n')
+            f.write("}\n")
     except IOError as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
 
