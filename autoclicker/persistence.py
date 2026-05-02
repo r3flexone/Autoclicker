@@ -55,6 +55,16 @@ def _item_to_dict(item: ItemProfile) -> dict:
     return d
 
 
+def _slot_to_dict(slot: 'ItemSlot') -> dict:
+    """Serialisiert einen ItemSlot zu einem Dict."""
+    return {
+        "name": slot.name,
+        "scan_region": list(slot.scan_region),
+        "click_pos": list(slot.click_pos),
+        "slot_color": list(slot.slot_color) if slot.slot_color else None,
+    }
+
+
 def _item_from_dict(data: dict) -> ItemProfile:
     """Deserialisiert ein ItemProfile aus einem Dict."""
     # confirm_point: kann {x, y} Dict, [x,y] Liste (alt) oder None sein
@@ -363,15 +373,7 @@ def save_item_scan(config: ItemScanConfig) -> None:
     data = {
         "name": config.name,
         "color_tolerance": config.color_tolerance,
-        "slots": [
-            {
-                "name": slot.name,
-                "scan_region": list(slot.scan_region),
-                "click_pos": list(slot.click_pos),
-                "slot_color": list(slot.slot_color) if slot.slot_color else None
-            }
-            for slot in config.slots
-        ],
+        "slots": [_slot_to_dict(slot) for slot in config.slots],
         "items": [_item_to_dict(item) for item in config.items]
     }
 
@@ -578,15 +580,7 @@ def load_all_boss_scans(state: AutoClickerState) -> None:
 def save_global_slots(state: AutoClickerState) -> None:
     """Speichert alle globalen Slots."""
     with state.lock:
-        data = {
-            name: {
-                "name": slot.name,
-                "scan_region": list(slot.scan_region),
-                "click_pos": list(slot.click_pos),
-                "slot_color": list(slot.slot_color) if slot.slot_color else None
-            }
-            for name, slot in state.global_slots.items()
-        }
+        data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     try:
         with open(SLOTS_FILE, "w", encoding="utf-8") as f:
             f.write(compact_json(data))
@@ -708,15 +702,7 @@ def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not state.global_slots:
         print(err("Keine Slots vorhanden zum Speichern!"))
         return False
-    data = {
-        name: {
-            "name": slot.name,
-            "scan_region": list(slot.scan_region),
-            "click_pos": list(slot.click_pos),
-            "slot_color": list(slot.slot_color) if slot.slot_color else None
-        }
-        for name, slot in state.global_slots.items()
-    }
+    data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     return _save_preset(data, preset_name, SLOT_PRESETS_DIR, "Slot")
 
 

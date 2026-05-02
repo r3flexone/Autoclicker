@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .models import AutoClickerState
 
 from .persistence import (
-    TEMPLATES_DIR, _sequence_to_dict, _step_to_dict, _item_to_dict,
+    TEMPLATES_DIR, _sequence_to_dict, _step_to_dict, _item_to_dict, _slot_to_dict,
     _boss_profile_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
@@ -132,15 +132,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
             # Slots
             if include_slots:
                 with state.lock:
-                    slots_data = {
-                        name: {
-                            "name": slot.name,
-                            "scan_region": list(slot.scan_region),
-                            "click_pos": list(slot.click_pos),
-                            "slot_color": list(slot.slot_color) if slot.slot_color else None
-                        }
-                        for name, slot in state.global_slots.items()
-                    }
+                    slots_data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
                 if slots_data:
                     zf.writestr("slots.json", compact_json(slots_data))
                     manifest["contents"]["slots"] = len(slots_data)
@@ -167,15 +159,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     scan_data = {
                         "name": config.name,
                         "color_tolerance": config.color_tolerance,
-                        "slots": [
-                            {
-                                "name": s.name,
-                                "scan_region": list(s.scan_region),
-                                "click_pos": list(s.click_pos),
-                                "slot_color": list(s.slot_color) if s.slot_color else None,
-                            }
-                            for s in config.slots
-                        ],
+                        "slots": [_slot_to_dict(s) for s in config.slots],
                         "items": [_item_to_dict(i) for i in config.items],
                     }
                     safe = sanitize_filename(name)

@@ -154,6 +154,17 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     return result
 
 
+def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,
+                  msg: str, dbg_msg: str = None) -> None:
+    """Gibt Schritt-Status aus: debug-print ODER überschreibbare Status-Zeile."""
+    if debug:
+        print(dbg(dbg_msg if dbg_msg is not None else msg))
+    else:
+        clear_line()
+        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {msg}",
+                  _phase_color(phase)), end="", flush=True)
+
+
 def _phase_color(phase: str) -> str:
     """Gibt die Farbe für eine Phase zurück."""
     p = phase.upper()
@@ -248,20 +259,14 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
 
     debug = state.config.debug_mode
 
-    _c = _phase_color(phase)
-
     if ec.action == ELSE_SKIP:
-        if debug:
-            print(dbg("ELSE: übersprungen"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | ELSE: übersprungen", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps, "ELSE: übersprungen")
         return True
 
     elif ec.action == ELSE_CLICK:
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        f"ELSE: klicke in"):
+                                        "ELSE: klicke in"):
                 return False
 
         if state.stop_event.is_set():
@@ -273,17 +278,14 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
         with state.lock:
             state.total_clicks += 1
 
-        if debug:
-            print(dbg(f"ELSE: Klick auf '{name}' ({ec.x}, {ec.y})"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | ELSE: Klick auf {name}!", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"ELSE: Klick auf {name}!", f"ELSE: Klick auf '{name}' ({ec.x}, {ec.y})")
         return True
 
     elif ec.action == ELSE_KEY:
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        f"ELSE: Taste in"):
+                                        "ELSE: Taste in"):
                 return False
 
         if state.stop_event.is_set():
@@ -292,28 +294,16 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
         if safe_key(state, ec.key, label="else"):
             with state.lock:
                 state.key_presses += 1
-            if debug:
-                print(dbg(f"ELSE: Taste '{ec.key}'"))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | ELSE: Taste '{ec.key}'!", _c), end="", flush=True)
+            _step_status(debug, phase, step_num, total_steps, f"ELSE: Taste '{ec.key}'!")
         return True
 
     elif ec.action == ELSE_RESTART:
-        if debug:
-            print(dbg("ELSE: Neustart!"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | ELSE: Neustart!", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps, "ELSE: Neustart!")
         state.restart_event.set()
         return False
 
     elif ec.action == ELSE_SKIP_CYCLE:
-        if debug:
-            print(dbg("ELSE: Zyklus überspringen!"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | ELSE: Zyklus überspringen!", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps, "ELSE: Zyklus überspringen!")
         state.skip_cycle_event.set()
         return False
 
@@ -397,55 +387,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
         for item in config.items:
-            template_ok = True
-            template_info = ""
-            marker_ok = True
-            marker_info = ""
-
-            # 1. Template-Matching (wenn vorhanden)
-            if item.template:
-                match, confidence, pos = match_template_in_image(
-                    img, item.template, item.min_confidence
-                )
-                template_ok = match
-                template_info = f"Template {confidence:.1%}" if match else f"Template {confidence:.1%} (min: {item.min_confidence:.0%})"
-
-            # 2. Marker-Farben prüfen (wenn vorhanden)
-            if item.marker_colors:
-                tolerance = config.color_tolerance
-                markers_total = len(item.marker_colors)
-                markers_found = sum(1 for marker in item.marker_colors
-                                   if find_color_in_image(img, marker, tolerance))
-
-                # Config-Einstellungen für Marker-Anforderung
-                require_all = state.config.scan_require_all_markers
-                min_required = state.config.scan_min_markers_required
-
-                if require_all:
-                    marker_ok = (markers_found == markers_total)
-                else:
-                    marker_ok = (markers_found >= min_required)
-
-                marker_info = f"Marker {markers_found}/{markers_total}"
-
-            # 3. Debug-Ausgabe
-            if debug:
-                # Kombiniere Info-Strings
-                info_parts = []
-                if item.template:
-                    info_parts.append(template_info)
-                if item.marker_colors:
-                    info_parts.append(marker_info)
-
-                if not info_parts:
-                    print(dbg(f"  → {item.name}: kein Template/Marker definiert"))
-                elif template_ok and marker_ok:
-                    print(dbg(f"  → {item.name} gefunden! ({', '.join(info_parts)})"))
-                else:
-                    print(dbg(f"  → {item.name}: {', '.join(info_parts)}"))
-
-            # 4. Item gefunden wenn Template UND Marker OK
-            if template_ok and marker_ok and (item.template or item.marker_colors):
+            if _check_profile_match(item, img, config.color_tolerance, state, debug, "gefunden!"):
                 found_items.append((slot, item, item.priority))
                 break
 
@@ -540,10 +482,13 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
 
     if debug:
         im_str = " [IMMEDIATE]" if immediate else ""
-        print(dbg(f"Starte Scan '{step.item_scan}' ({mode_str}{im_str})..."))
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Scan '{step.item_scan}' ({mode_str})...",
+                     f"Starte Scan '{step.item_scan}' ({mode_str}{im_str})...")
     else:
-        clear_line()
-        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Scan '{step.item_scan}' ({mode_str})...", _phase_color(phase)), flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Scan '{step.item_scan}' ({mode_str})...",
+                     f"Starte Scan '{step.item_scan}' ({mode_str})...")
 
     if immediate:
         return _execute_item_scan_immediate(state, step, step_num, total_steps, phase, mode, debug)
@@ -556,20 +501,13 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
                 return False
             if not _click_scan_result(state, pos, item, priority, debug):
                 return False
-
-        if debug:
-            print(dbg(f"Scan fertig: {len(scan_results)} Item(s) geklickt"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {len(scan_results)} Item(s)!", _phase_color(phase)), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"{len(scan_results)} Item(s)!", f"Scan fertig: {len(scan_results)} Item(s) geklickt")
     else:
         if step.else_config:
             return execute_else_action(state, step, phase, step_num, total_steps)
-        if debug:
-            print(dbg("Scan fertig: kein Item gefunden"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Scan: kein Item gefunden", _phase_color(phase)), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     "Scan: kein Item gefunden", "Scan fertig: kein Item gefunden")
 
     return True
 
@@ -612,21 +550,67 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                 total_clicked += 1
 
     if total_clicked > 0:
-        if debug:
-            print(dbg(f"Scan fertig: {total_clicked} Item(s) geklickt (immediate)"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {total_clicked} Item(s)!", _phase_color(phase)), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"{total_clicked} Item(s)!", f"Scan fertig: {total_clicked} Item(s) geklickt (immediate)")
     else:
         if step.else_config:
             return execute_else_action(state, step, phase, step_num, total_steps)
-        if debug:
-            print(dbg("Scan fertig: kein Item gefunden (immediate)"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Scan: kein Item gefunden", _phase_color(phase)), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     "Scan: kein Item gefunden", "Scan fertig: kein Item gefunden (immediate)")
 
     return True
+
+
+# =============================================================================
+# PROFIL-MATCHING HELPER (gemeinsam für Item- und Boss-Erkennung)
+# =============================================================================
+
+def _check_profile_match(profile, img, color_tolerance: int,
+                          state: 'AutoClickerState', debug: bool,
+                          found_label: str = "gefunden") -> bool:
+    """Prüft ob ein Profil (Item oder Boss) per Template/Marker im Screenshot erkannt wird.
+
+    Returns: True wenn Template UND Marker OK und mindestens eines definiert ist.
+    """
+    template_ok = True
+    template_info = ""
+    marker_ok = True
+    marker_info = ""
+
+    if profile.template:
+        match, confidence, _pos = match_template_in_image(
+            img, profile.template, profile.min_confidence
+        )
+        template_ok = match
+        template_info = (f"Template {confidence:.1%}" if match
+                         else f"Template {confidence:.1%} (min: {profile.min_confidence:.0%})")
+
+    if profile.marker_colors:
+        markers_total = len(profile.marker_colors)
+        markers_found = sum(1 for marker in profile.marker_colors
+                            if find_color_in_image(img, marker, color_tolerance))
+
+        require_all = state.config.scan_require_all_markers
+        min_required = state.config.scan_min_markers_required
+
+        marker_ok = (markers_found == markers_total) if require_all else (markers_found >= min_required)
+        marker_info = f"Marker {markers_found}/{markers_total}"
+
+    if debug:
+        info_parts = []
+        if profile.template:
+            info_parts.append(template_info)
+        if profile.marker_colors:
+            info_parts.append(marker_info)
+
+        if not info_parts:
+            print(dbg(f"  → {profile.name}: kein Template/Marker definiert"))
+        elif template_ok and marker_ok:
+            print(dbg(f"  → {profile.name} {found_label} ({', '.join(info_parts)})"))
+        else:
+            print(dbg(f"  → {profile.name}: {', '.join(info_parts)}"))
+
+    return template_ok and marker_ok and bool(profile.template or profile.marker_colors)
 
 
 # =============================================================================
@@ -684,52 +668,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
 
     # Bosse der Reihe nach prüfen (Reihenfolge = Priorität)
     for boss in config.bosses:
-        template_ok = True
-        template_info = ""
-        marker_ok = True
-        marker_info = ""
-
-        # 1. Template-Matching
-        if boss.template:
-            match, confidence, pos = match_template_in_image(
-                img, boss.template, boss.min_confidence
-            )
-            template_ok = match
-            template_info = f"Template {confidence:.1%}" if match else f"Template {confidence:.1%} (min: {boss.min_confidence:.0%})"
-
-        # 2. Marker-Farben
-        if boss.marker_colors:
-            markers_total = len(boss.marker_colors)
-            markers_found = sum(1 for marker in boss.marker_colors
-                               if find_color_in_image(img, marker, tolerance))
-
-            require_all = state.config.scan_require_all_markers
-            min_required = state.config.scan_min_markers_required
-
-            if require_all:
-                marker_ok = (markers_found == markers_total)
-            else:
-                marker_ok = (markers_found >= min_required)
-
-            marker_info = f"Marker {markers_found}/{markers_total}"
-
-        # 3. Debug-Ausgabe
-        if debug:
-            info_parts = []
-            if boss.template:
-                info_parts.append(template_info)
-            if boss.marker_colors:
-                info_parts.append(marker_info)
-
-            if not info_parts:
-                print(dbg(f"  → {boss.name}: kein Template/Marker definiert"))
-            elif template_ok and marker_ok:
-                print(dbg(f"  → {boss.name} ERKANNT! ({', '.join(info_parts)})"))
-            else:
-                print(dbg(f"  → {boss.name}: {', '.join(info_parts)}"))
-
-        # 4. Boss erkannt?
-        if template_ok and marker_ok and (boss.template or boss.marker_colors):
+        if _check_profile_match(boss, img, tolerance, state, debug, "ERKANNT!"):
             return True, boss
 
     # 5. OCR als Fallback
@@ -889,12 +828,9 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
         if not boss.action_scan:
             print(err(f"Boss '{boss.name}': Kein Item-Scan definiert!"))
             return True
-        if debug:
-            print(dbg(f"Boss '{boss.name}' → Starte Scan '{boss.action_scan}' ({boss.action_scan_mode})"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Scan '{boss.action_scan}'", _c), end="", flush=True)
-
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss '{boss.name}' → Scan '{boss.action_scan}'",
+                     f"Boss '{boss.name}' → Starte Scan '{boss.action_scan}' ({boss.action_scan_mode})")
         scan_results = execute_item_scan(state, boss.action_scan, boss.action_scan_mode)
         if scan_results:
             for pos, item, priority in scan_results:
@@ -909,22 +845,16 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
                 print(dbg("Boss-Scan: kein Item gefunden"))
 
     elif boss.action == BOSS_ACTION_CLICK:
-        if debug:
-            print(dbg(f"Boss '{boss.name}' → Klick ({boss.action_x},{boss.action_y})"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Klick ({boss.action_x},{boss.action_y})", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss '{boss.name}' → Klick ({boss.action_x},{boss.action_y})")
         if not safe_click(state, boss.action_x, boss.action_y, label=f"boss:{boss.name}"):
             return False
         with state.lock:
             state.total_clicks += 1
 
     elif boss.action == BOSS_ACTION_KEY:
-        if debug:
-            print(dbg(f"Boss '{boss.name}' → Taste '{boss.action_key}'"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Taste '{boss.action_key}'", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss '{boss.name}' → Taste '{boss.action_key}'")
         if boss.action_key:
             if safe_key(state, boss.action_key, label=f"boss:{boss.name}"):
                 with state.lock:
@@ -935,20 +865,15 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
             print(dbg(f"Boss '{boss.name}' → Schritt überspringen"))
 
     elif boss.action == BOSS_ACTION_SKIP_CYCLE:
-        if debug:
-            print(dbg(f"Boss '{boss.name}' → Zyklus überspringen"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Zyklus überspringen", _c))
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss '{boss.name}' → Zyklus überspringen")
         state.skip_cycle_event.set()
         return False
 
     elif boss.action == BOSS_ACTION_RESTART:
-        if debug:
-            print(dbg(f"Boss '{boss.name}' → Sequenz neustarten"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss '{boss.name}' → Neustart", _c))
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss '{boss.name}' → Neustart",
+                     f"Boss '{boss.name}' → Sequenz neustarten")
         state.restart_event.set()
         return False
 
@@ -959,22 +884,13 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
     debug = state.config.debug_mode
-    _c = _phase_color(phase)
 
-    if debug:
-        print(dbg(f"Starte Boss-Scan '{step.boss_scan}'..."))
-    else:
-        clear_line()
-        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Scan '{step.boss_scan}'...", _c), flush=True)
-
+    _step_status(debug, phase, step_num, total_steps, f"Boss-Scan '{step.boss_scan}'...")
     found, boss = execute_boss_scan(state, step.boss_scan)
 
     if found and boss:
-        if debug:
-            print(dbg(f"Boss erkannt: {boss.name}"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss: {boss.name}", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss: {boss.name}", f"Boss erkannt: {boss.name}")
         return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
     else:
         # Kein Boss erkannt → Else-Config oder Default-Aktion
@@ -987,19 +903,15 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
         config = state.boss_scans.get(step.boss_scan)
         if config and config.default_action != BOSS_ACTION_SKIP:
             if config.default_action == BOSS_ACTION_SKIP_CYCLE:
-                if debug:
-                    print(dbg("Kein Boss erkannt → Zyklus überspringen (Default)"))
-                else:
-                    clear_line()
-                    print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Kein Boss → Zyklus überspringen", _c))
+                _step_status(debug, phase, step_num, total_steps,
+                             "Kein Boss → Zyklus überspringen",
+                             "Kein Boss erkannt → Zyklus überspringen (Default)")
                 state.skip_cycle_event.set()
                 return False
             elif config.default_action == BOSS_ACTION_RESTART:
-                if debug:
-                    print(dbg("Kein Boss erkannt → Neustart (Default)"))
-                else:
-                    clear_line()
-                    print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Kein Boss → Neustart", _c))
+                _step_status(debug, phase, step_num, total_steps,
+                             "Kein Boss → Neustart",
+                             "Kein Boss erkannt → Neustart (Default)")
                 state.restart_event.set()
                 return False
             elif config.default_action == BOSS_ACTION_SCAN and config.default_scan:
@@ -1013,11 +925,8 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                         if not _click_scan_result(state, pos, item, priority, debug):
                             return False
 
-        if debug:
-            print(dbg("Kein Boss erkannt → übersprungen"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Kein Boss erkannt", _c), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     "Kein Boss erkannt", "Kein Boss erkannt → übersprungen")
 
     return True
 
@@ -1047,11 +956,9 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
         limits.append(f"Timeout {timeout:.0f}s")
     limit_str = f", {', '.join(limits)}" if limits else ""
 
-    if debug:
-        print(dbg(f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s{limit_str})"))
-    else:
-        clear_line()
-        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher '{watcher_name}' - warte auf Boss...", _c), flush=True)
+    _step_status(debug, phase, step_num, total_steps,
+                 f"Boss-Watcher '{watcher_name}' - warte auf Boss...",
+                 f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s{limit_str})")
 
     scan_count = 0
     start_time = time.time()
@@ -1066,11 +973,8 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
         # Skip prüfen
         if state.skip_event.is_set():
             state.skip_event.clear()
-            if debug:
-                print(dbg("Boss-Watcher: SKIP!"))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: übersprungen", _c), end="", flush=True)
+            _step_status(debug, phase, step_num, total_steps,
+                         "Boss-Watcher: übersprungen", "Boss-Watcher: SKIP!")
             return True
 
         # Boss-Scan durchführen
@@ -1078,40 +982,33 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
         found, boss = execute_boss_scan(state, watcher_name)
 
         if found and boss:
-            if debug:
-                print(dbg(f"Boss-Watcher: {boss.name} ERKANNT! (nach {scan_count} Scan(s))"))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss erkannt: {boss.name}!", _c), flush=True)
+            _step_status(debug, phase, step_num, total_steps,
+                         f"Boss erkannt: {boss.name}!",
+                         f"Boss-Watcher: {boss.name} ERKANNT! (nach {scan_count} Scan(s))")
             return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
 
         # Limits prüfen
         elapsed = time.time() - start_time
         if max_scans > 0 and scan_count >= max_scans:
-            if debug:
-                print(dbg(f"Boss-Watcher: max. Scans ({max_scans}) erreicht - Abbruch"))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: max. Scans ({max_scans}) erreicht", _c))
+            _step_status(debug, phase, step_num, total_steps,
+                         f"Boss-Watcher: max. Scans ({max_scans}) erreicht",
+                         f"Boss-Watcher: max. Scans ({max_scans}) erreicht - Abbruch")
             return True
         if timeout > 0 and elapsed >= timeout:
-            if debug:
-                print(dbg(f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht - Abbruch"))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: Timeout ({timeout:.0f}s) erreicht", _c))
+            _step_status(debug, phase, step_num, total_steps,
+                         f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht",
+                         f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht - Abbruch")
             return True
 
-        # Status anzeigen
+        # Status anzeigen (nur ohne debug, da _step_status im debug eine neue Zeile ausgibt)
         if not debug:
-            clear_line()
             status_parts = [f"Scan #{scan_count}"]
             if max_scans > 0:
                 status_parts.append(f"von {max_scans}")
             if timeout > 0:
                 status_parts.append(f"{elapsed:.0f}/{timeout:.0f}s")
-            status = ", ".join(status_parts)
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Boss-Watcher: kein Boss... ({status})", _c), end="", flush=True)
+            _step_status(False, phase, step_num, total_steps,
+                         f"Boss-Watcher: kein Boss... ({', '.join(status_parts)})")
 
         # Warten vor nächstem Scan
         if state.stop_event.wait(interval):
@@ -1136,11 +1033,9 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
     if safe_key(state, step.key_press, label="step"):
         with state.lock:
             state.key_presses += 1
-        if debug:
-            print(dbg(f"Taste '{step.key_press}' | Gesamt: {state.key_presses}"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Taste '{step.key_press}'!", _phase_color(phase)), end="", flush=True)
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Taste '{step.key_press}'!",
+                     f"Taste '{step.key_press}' | Gesamt: {state.key_presses}")
 
     return True
 
@@ -1173,11 +1068,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     while not state.stop_event.is_set():
         if state.skip_event.is_set():
             state.skip_event.clear()
-            if debug:
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP Farbwarten!", _phase_color(phase)))
-            else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP Farbwarten!", _phase_color(phase)), end="", flush=True)
+            _step_status(debug, phase, step_num, total_steps, "SKIP Farbwarten!")
             break
 
         if not wait_while_paused(state, "Warte auf Farbe..."):
@@ -1201,20 +1092,13 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                 with state.lock:
                     state.consecutive_timeouts = 0
                 msg = "Farbe weg!" if wc.until_gone else "Farbe erkannt!"
-                if debug:
-                    print(dbg(f"{msg} | Erwartet: {expected_name} RGB{wc.color} | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}"))
-                else:
-                    clear_line()
-                    print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {msg}", _phase_color(phase)), end="", flush=True)
+                _step_status(debug, phase, step_num, total_steps, msg,
+                             f"{msg} | Erwartet: {expected_name} RGB{wc.color} | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
                 break
 
-            if debug:
-                # Debug: Auf neuer Zeile ausgeben (nicht überschreiben)
-                print(dbg(f"Warte auf {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}"))
-            else:
-                # Ohne Debug: Auf gleicher Zeile überschreiben
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Warte auf {expected_name}... ({elapsed:.0f}s)", _phase_color(phase)), end="", flush=True)
+            _step_status(debug, phase, step_num, total_steps,
+                         f"Warte auf {expected_name}... ({elapsed:.0f}s)",
+                         f"Warte auf {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -1292,12 +1176,10 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
         with state.lock:
             state.total_clicks += 1
 
-        if debug:
-            name = step.name if step.name else f"Punkt"
-            print(dbg(f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {state.total_clicks}"))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Klick! (Gesamt: {state.total_clicks})", _phase_color(phase)), end="", flush=True)
+        name = step.name or "Punkt"
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Klick! (Gesamt: {state.total_clicks})",
+                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {state.total_clicks}")
 
         max_clicks = state.config.click_max_total
         if max_clicks and state.total_clicks >= max_clicks:
