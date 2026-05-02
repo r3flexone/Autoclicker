@@ -42,15 +42,72 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 
 - Windows 10/11
 - Python 3.10+
-- **Optional**: Pillow für Farberkennung (`pip install pillow`)
-- **Optional**: OpenCV für automatische Slot-Erkennung (`pip install opencv-python numpy`)
+
+| Paket | Funktion | Erforderlich |
+|-------|----------|:---:|
+| `pillow` | Screenshots, Farberkennung | Nein |
+| `numpy` | Optimierte Farberkennung | Nein |
+| `opencv-python` | Template-Matching, Slot-Erkennung | Nein |
+| `easyocr` | OCR Texterkennung für Boss-Namen | Nein |
+| `torch` | Abhängigkeit von EasyOCR | Nein |
+| `torchvision` | Abhängigkeit von EasyOCR | Nein |
+| `pytesseract` | Alternative OCR-Engine (+ Tesseract-Binary) | Nein |
 
 ## Installation
 
 ```bash
 git clone https://github.com/r3flexone/Autoclicker-Idleclans.git
 cd Autoclicker-Idleclans
-pip install pillow opencv-python numpy  # Optional, für erweiterte Features
+python main.py
+```
+
+### Minimale Installation (nur Grundfunktionen)
+
+Klicken, Hotkeys, Sequenzen — keine Bilderkennung:
+
+```bash
+python main.py
+```
+
+Keine zusätzlichen Pakete nötig.
+
+### Empfohlen (Farberkennung + Template-Matching)
+
+```bash
+pip install pillow opencv-python numpy
+python main.py
+```
+
+### Alle Features (inkl. OCR Boss-Erkennung)
+
+**Ohne GPU (CPU-only):**
+```bash
+pip install pillow opencv-python numpy easyocr
+python main.py
+```
+
+**Mit NVIDIA GPU (schneller):**
+
+Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner GPU (`nvidia-smi` zeigt sie oben rechts):
+
+| CUDA-Version | Befehl |
+|---|---|
+| 12.4+ | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124` |
+| 12.1 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121` |
+| 11.8 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118` |
+
+> **Hinweis für Python 3.13**: Nur `cu124` wird unterstützt. `cu121` und älter haben keine Python-3.13-Wheels.
+
+Dann EasyOCR installieren:
+```bash
+pip install easyocr
+python main.py
+```
+
+**Alternative OCR: Tesseract**
+```bash
+pip install pytesseract
+# + Tesseract-Binary: https://github.com/UB-Mannheim/tesseract/wiki
 python main.py
 ```
 
