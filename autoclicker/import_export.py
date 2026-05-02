@@ -166,7 +166,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 for name, config in scans.items():
                     scan_data = {
                         "name": config.name,
-                        "color_tolerance": config.pixel_color_tolerance,
+                        "color_tolerance": config.color_tolerance,
                         "slots": [
                             {
                                 "name": s.name,
@@ -196,7 +196,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     bscan_data = {
                         "name": config.name,
                         "scan_region": list(config.scan_region),
-                        "color_tolerance": config.pixel_color_tolerance,
+                        "color_tolerance": config.color_tolerance,
                         "default_action": config.default_action,
                         "default_scan": config.default_scan,
                         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],

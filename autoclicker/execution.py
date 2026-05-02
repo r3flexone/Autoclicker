@@ -412,7 +412,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
             # 2. Marker-Farben prüfen (wenn vorhanden)
             if item.marker_colors:
-                tolerance = config.pixel_color_tolerance
+                tolerance = config.color_tolerance
                 markers_total = len(item.marker_colors)
                 markers_found = sum(1 for marker in item.marker_colors
                                    if find_color_in_image(img, marker, tolerance))
@@ -648,7 +648,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         return False, None
 
     debug = state.config.debug_detection
-    tolerance = config.pixel_color_tolerance
+    tolerance = config.color_tolerance
 
     # Screenshot der Boss-Region
     img = take_screenshot(config.scan_region)
