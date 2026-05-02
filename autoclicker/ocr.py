@@ -57,12 +57,33 @@ def is_available() -> bool:
 _easyocr_reader = None
 
 
+def _cuda_available() -> bool:
+    """Prüft ob ein CUDA-fähiges PyTorch installiert ist.
+
+    Wichtig: Ohne diesen Check setzt EasyOCR bei gpu=True trotzdem
+    pin_memory=True im DataLoader und PyTorch loggt eine UserWarning,
+    wenn kein Accelerator gefunden wird (CPU-only torch).
+    """
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def _get_easyocr_reader(languages: list[str] = None):
     """Cached EasyOCR Reader (Erstinitialisierung dauert ~2-5s)."""
     global _easyocr_reader
     if _easyocr_reader is None:
         langs = languages or ["en"]
-        _easyocr_reader = _easyocr_mod.Reader(langs, gpu=True, verbose=False)
+        use_gpu = _cuda_available()
+        if not use_gpu:
+            logger.info(
+                "EasyOCR läuft auf CPU (kein CUDA-fähiges PyTorch gefunden). "
+                "Für GPU: torch mit CUDA-Support installieren, z.B. "
+                "pip install torch --index-url https://download.pytorch.org/whl/cu121"
+            )
+        _easyocr_reader = _easyocr_mod.Reader(langs, gpu=use_gpu, verbose=False)
     return _easyocr_reader
 
 
