@@ -9,6 +9,7 @@ Unterstützte Backends (Priorität):
 
 import logging
 import time
+import warnings
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -83,7 +84,9 @@ def _get_easyocr_reader(languages: list[str] = None):
                 "Für GPU: torch mit CUDA-Support installieren, z.B. "
                 "pip install torch --index-url https://download.pytorch.org/whl/cu121"
             )
-        _easyocr_reader = _easyocr_mod.Reader(langs, gpu=use_gpu, verbose=False)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*pin_memory.*accelerator.*")
+            _easyocr_reader = _easyocr_mod.Reader(langs, gpu=use_gpu, verbose=False)
     return _easyocr_reader
 
 
