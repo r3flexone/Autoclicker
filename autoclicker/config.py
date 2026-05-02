@@ -67,7 +67,8 @@ class AppConfig:
     llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
     llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
     llm_model: str = "gemma4:e4b"                   # Modell-Name (Standard: gemma4:e4b)
-    llm_timeout: int = 30                           # Timeout für LLM-Anfragen in Sekunden
+    llm_timeout: int = 60                           # Timeout für LLM-Anfragen in Sekunden
+    llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
@@ -157,6 +158,9 @@ class AppConfig:
         if self.llm_watcher_timeout < 0:
             warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
             self.llm_watcher_timeout = 0
+        if self.llm_retry_count < 0:
+            warnings.append(f"llm_retry_count={self.llm_retry_count} → 0")
+            self.llm_retry_count = 0
         # OCR-Einstellungen validieren
         if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
             warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
@@ -284,7 +288,7 @@ _CONFIG_SECTIONS = [
     ]),
     ("LLM VISION (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
-        "llm_timeout", "llm_boss_prompt",
+        "llm_timeout", "llm_retry_count", "llm_boss_prompt",
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
     ]),
     ("OCR (Texterkennung)", [

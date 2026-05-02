@@ -853,6 +853,8 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
                                  img, debug: bool) -> BossProfile | None:
     """Versucht einen Boss per LLM Vision zu erkennen.
 
+    Wiederholt den Scan bei KEIN_BOSS bis zu state.config.llm_retry_count Mal.
+
     Returns:
         BossProfile wenn Boss erkannt, sonst None.
     """
@@ -864,52 +866,64 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         return None
 
     boss_names = [boss.name for boss in config.bosses]
+    max_attempts = 1 + max(0, state.config.llm_retry_count)
 
-    if debug:
-        print(dbg(f"  → LLM-Erkennung: {state.config.llm_provider} ({state.config.llm_model or 'Standard'})..."))
+    for attempt in range(1, max_attempts + 1):
+        current_img = img if attempt == 1 else take_screenshot(config.scan_region)
+        if current_img is None:
+            if debug:
+                print(dbg(f"  → LLM Versuch {attempt}/{max_attempts}: Screenshot fehlgeschlagen"))
+            break
 
-    success, response, duration = analyze_image(
-        img=img,
-        provider=state.config.llm_provider,
-        endpoint=state.config.llm_endpoint,
-        model=state.config.llm_model,
-        prompt=state.config.llm_boss_prompt,
-        boss_names=boss_names,
-        timeout=state.config.llm_timeout,
-    )
-
-    if not success:
         if debug:
-            print(dbg(f"  → LLM-Fehler: {response} ({duration:.0f}ms)"))
+            attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
+            print(dbg(f"  → LLM-Erkennung ({attempt_info}{state.config.llm_provider}, {state.config.llm_model or 'Standard'})..."))
+
+        success, response, duration = analyze_image(
+            img=current_img,
+            provider=state.config.llm_provider,
+            endpoint=state.config.llm_endpoint,
+            model=state.config.llm_model,
+            prompt=state.config.llm_boss_prompt,
+            boss_names=boss_names,
+            timeout=state.config.llm_timeout,
+        )
+
+        if not success:
+            if debug:
+                print(dbg(f"  → LLM-Fehler: {response} ({duration:.0f}ms)"))
+            break
+
+        if debug:
+            print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
+
+        matched_name, is_new = match_boss_name(response, boss_names)
+
+        if matched_name is None:
+            if debug:
+                retry_msg = f" — Versuch {attempt + 1}/{max_attempts}..." if attempt < max_attempts else ""
+                print(dbg(f"  → LLM: kein Boss erkannt{retry_msg}"))
+            continue
+
+        if not is_new:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    if debug:
+                        print(dbg(f"  → LLM: {boss.name} ERKANNT! (Versuch {attempt})"))
+                    return boss
+
+        # Neuer Boss — über gemeinsamen Handler speichern und zur Bestätigung vormerken
+        new_boss = _handle_new_boss(state, config, matched_name, "LLM", debug)
+        if new_boss is not None:
+            return new_boss
+
+        # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
+        with state.lock:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    return boss
         return None
 
-    if debug:
-        print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
-
-    matched_name, is_new = match_boss_name(response, boss_names)
-
-    if matched_name is None:
-        if debug:
-            print(dbg("  → LLM: kein Boss erkannt"))
-        return None
-
-    if not is_new:
-        for boss in config.bosses:
-            if boss.name == matched_name:
-                if debug:
-                    print(dbg(f"  → LLM: {boss.name} ERKANNT!"))
-                return boss
-
-    # Neuer Boss — über gemeinsamen Handler speichern und zur Bestätigung vormerken
-    new_boss = _handle_new_boss(state, config, matched_name, "LLM", debug)
-    if new_boss is not None:
-        return new_boss
-
-    # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
-    with state.lock:
-        for boss in config.bosses:
-            if boss.name == matched_name:
-                return boss
     return None
 
 
