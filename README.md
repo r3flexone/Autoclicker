@@ -425,7 +425,7 @@ Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine 
 
 Ein `BossProfile` definiert wie ein Boss erkannt wird und was passieren soll:
 
-- **Erkennung**: Marker-Farben (wie bei Items) und/oder Template (Screenshot)
+- **Erkennung**: Marker-Farben (wie bei Items) und/oder Template (Screenshot), optional mit LLM Vision oder OCR-Texterkennung
 - **Aktion**: `scan` (Item-Scan starten), `click` (an Position klicken), `key` (Taste drücken), `skip` (Step übergehen), `skip_cycle` (Zyklus abbrechen), `restart` (Sequenz neu starten)
 - **Action-Delay**: Wartezeit vor der Aktion
 
@@ -460,6 +460,11 @@ Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
 - `llm_fallback: true` → LLM nur wenn Templates/Marker nichts finden (sicher, schnell)
 - `llm_fallback: false` → LLM **primär** statt Templates/Marker (langsam, aber flexibel)
 
+**SCHRITT 6 (OCR Texterkennung):**
+- `use_ocr: true` aktiviert OCR für diesen Scan (EasyOCR oder Tesseract)
+- `ocr_fallback: true` → OCR nur wenn Templates/Marker/LLM nichts finden (Fallback)
+- `ocr_fallback: false` → OCR **primär** für Texterkennung (schneller als LLM für reine Texterkennung)
+
 **Globale Einstellungen** (`config.json`):
 - `llm_enabled: true` muss zusätzlich gesetzt sein
 - `llm_provider: "ollama"` oder `"lmstudio"`
@@ -473,6 +478,46 @@ python test_llm.py                              # Verbindungstest
 python test_llm.py screenshot                   # Screenshot vom Bildschirm + Analyse
 python test_llm.py boss.png --bosses "A,B,C"    # Bestehende Datei testen
 python test_llm.py --provider lmstudio screenshot
+```
+
+### OCR Texterkennung Boss-Detection
+
+Alternative zu LLM Vision: Lokale OCR-Engine (EasyOCR oder Tesseract) für schnelle, deterministische Texterkennung von Boss-Namen. Besonders nützlich wenn Boss-Namen als Text im Screenshot stehen.
+
+**Voraussetzungen:**
+- **EasyOCR**: `pip install easyocr` (empfohlen, GPU-Unterstützung möglich)
+- **Tesseract**: `pip install pytesseract` + [Tesseract-Installation](https://github.com/UB-Mannheim/tesseract/wiki)
+
+**Vorteile gegenüber LLM:**
+- Schneller (kein HTTP-Request, lokal)
+- Determinisitsch (gleiche Eingabe = gleiche Ausgabe)
+- Ressourcenschonend
+- Gut für pure Text-Erkennung
+
+**Vorteile von LLM:**
+- Flexibel (versteht Kontext, Symbole, Layouts)
+- Kein Trainieren nötig
+- Bessere Genauigkeit bei komplizierten Layouts
+
+**Aktivierung pro Boss-Scan:**
+Im Boss-Scan-Editor → SCHRITT 6 (OCR Texterkennung):
+- `use_ocr: true` aktiviert OCR für diesen Scan
+- `ocr_fallback: true` → OCR nur als Fallback wenn Templates/Marker/LLM nichts finden
+- `ocr_fallback: false` → OCR **primär** (vor LLM/Templates)
+
+**Globale Einstellungen** (`config.json`):
+- `ocr_enabled: true` muss zusätzlich gesetzt sein
+- `ocr_backend: null` (Auto-Detect) oder `"easyocr"` / `"tesseract"`
+- `ocr_languages: "en"` (kommasepariert, z.B. `"en,de"` für English + Deutsch)
+- `ocr_min_confidence: 0.3` (Mindest-Konfidenz 0-1)
+
+**Standalone-Test**: `python tools/test_ocr.py` testet OCR-Backends und Texterkennung:
+```bash
+python tools/test_ocr.py                        # Backend-Status + Region wählen
+python tools/test_ocr.py test                   # Nur Backend-Verfügbarkeit prüfen
+python tools/test_ocr.py bild.png               # Bild-Datei analysieren
+python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
+python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
 ```
 
 ## Sicherheit & Tarnung
@@ -787,44 +832,48 @@ Wird beim ersten Start automatisch erstellt:
 
 ```json
 {
-  "clicks_per_point": 1,
-  "max_total_clicks": null,
+  "click_per_point": 1,
+  "click_max_total": null,
   "click_move_delay": 0.01,
-  "post_click_delay": 0.05,
+  "click_post_delay": 0.05,
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
-  "color_tolerance": 0,
+  "pixel_color_tolerance": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
   "pixel_check_interval": 1,
-  "max_consecutive_timeouts": 5,
-  "consecutive_timeout_action": "stop",
-  "scan_pixel_step": 2,
-  "show_pixel_delay": 0.3,
+  "pixel_max_consecutive_timeouts": 5,
+  "pixel_consecutive_action": "stop",
+  "pixel_scan_step": 2,
+  "pixel_show_delay": 0.3,
   "scan_reverse": true,
   "scan_click_immediate": false,
   "scan_park_mouse": false,
   "scan_slot_delay": 0.1,
-  "item_click_delay": 1.0,
-  "marker_count": 5,
-  "require_all_markers": true,
-  "min_markers_required": 2,
-  "slot_hsv_tolerance": 25,
-  "slot_inset": 10,
-  "slot_color_distance": 25,
-  "default_min_confidence": 0.8,
-  "default_confirm_delay": 0.5,
+  "scan_item_click_delay": 1.0,
+  "scan_marker_count": 5,
+  "scan_require_all_markers": true,
+  "scan_min_markers_required": 2,
+  "scan_slot_hsv_tolerance": 25,
+  "scan_slot_inset": 10,
+  "scan_slot_color_distance": 25,
+  "scan_min_confidence": 0.8,
+  "scan_confirm_delay": 0.5,
   "llm_enabled": false,
-  "llm_provider": "ollama",
+  "llm_provider": "lmstudio",
   "llm_endpoint": null,
-  "llm_model": null,
+  "llm_model": "gemma4:e4b",
   "llm_timeout": 30,
   "llm_boss_prompt": null,
   "llm_watcher_interval": 5.0,
   "llm_watcher_max_scans": 0,
   "llm_watcher_timeout": 0,
+  "ocr_enabled": false,
+  "ocr_backend": null,
+  "ocr_languages": "en",
+  "ocr_min_confidence": 0.3,
   "window_focus_check": false,
   "window_focus_title": "Idle Clans",
   "window_focus_action": "pause",
@@ -837,10 +886,10 @@ Wird beim ersten Start automatisch erstellt:
   "humanize_break_duration_max": 0,
   "session_log_enabled": false,
   "session_log_dir": "logs",
-  "pause_check_interval": 0.5,
+  "timing_pause_interval": 0.5,
   "debug_mode": false,
   "debug_detection": false,
-  "show_pixel_position": false,
+  "debug_show_pixel_position": false,
   "debug_save_templates": false
 }
 ```
@@ -849,10 +898,10 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `clicks_per_point` | Anzahl Klicks pro Punkt (Standard: 1) |
-| `max_total_clicks` | Maximale Klicks gesamt (`null` = unendlich) |
+| `click_per_point` | Anzahl Klicks pro Punkt (Standard: 1) |
+| `click_max_total` | Maximale Klicks gesamt (`null` = unendlich) |
 | `click_move_delay` | Pause zwischen Mausbewegung und Klick in Sekunden (Standard: 0.01) |
-| `post_click_delay` | Pause NACH dem Klick bevor Maus weiterbewegt wird (Standard: 0.05) |
+| `click_post_delay` | Pause NACH dem Klick bevor Maus weiterbewegt wird (Standard: 0.05) |
 
 ### Sicherheit
 
@@ -866,15 +915,15 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
+| `pixel_color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
 | `pixel_check_interval` | Wie oft auf Farbe prüfen (Sekunden) |
-| `max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
-| `consecutive_timeout_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
-| `scan_pixel_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
-| `show_pixel_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
+| `pixel_max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
+| `pixel_consecutive_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
+| `pixel_scan_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
+| `pixel_show_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
 
 ### Item-Scan Einstellungen
 
@@ -884,15 +933,15 @@ Wird beim ersten Start automatisch erstellt:
 | `scan_click_immediate` | `true` = Scan→Klick pro Slot (sofort klicken), `false` = alle scannen, dann alle klicken (Standard) |
 | `scan_park_mouse` | `true` = Maus zur Bildschirmmitte parken, `[x, y]` = Maus zu bestimmter Position parken, `false` = Maus nicht bewegen (Standard) |
 | `scan_slot_delay` | Pause zwischen Slot-Scans in Sekunden (Standard: 0.1) |
-| `item_click_delay` | Pause nach Item-Klick in Sekunden (Standard: 1.0) |
-| `marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
-| `require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
-| `min_markers_required` | Mindestanzahl Marker wenn `require_all_markers: false` |
-| `slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
-| `slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
-| `slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
-| `default_min_confidence` | Standard-Konfidenz für Template-Matching (Standard: 0.8 = 80%) |
-| `default_confirm_delay` | Standard-Wartezeit vor Bestätigungs-Klick in Sekunden (Standard: 0.5) |
+| `scan_item_click_delay` | Pause nach Item-Klick in Sekunden (Standard: 1.0) |
+| `scan_marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
+| `scan_require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
+| `scan_min_markers_required` | Mindestanzahl Marker wenn `scan_require_all_markers: false` |
+| `scan_slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
+| `scan_slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
+| `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
+| `scan_min_confidence` | Standard-Konfidenz für Template-Matching (Standard: 0.8 = 80%) |
+| `scan_confirm_delay` | Standard-Wartezeit vor Bestätigungs-Klick in Sekunden (Standard: 0.5) |
 
 ### LLM Vision (Boss-Erkennung)
 
@@ -907,6 +956,15 @@ Wird beim ersten Start automatisch erstellt:
 | `llm_watcher_interval` | Prüf-Intervall des Boss-Watchers in Sekunden (Standard: 5.0) |
 | `llm_watcher_max_scans` | Max. Scans bis Boss-Watcher abbricht (`0` = unbegrenzt) |
 | `llm_watcher_timeout` | Timeout in Sekunden bis Boss-Watcher abbricht (`0` = unbegrenzt) |
+
+### OCR Texterkennung (Boss-Erkennung)
+
+| Option | Beschreibung |
+|--------|--------------|
+| `ocr_enabled` | OCR-basierte Texterkennung global aktivieren (zusätzlich pro Boss-Scan `use_ocr: true`) |
+| `ocr_backend` | `null` (Auto-Detect), `"easyocr"` oder `"tesseract"` |
+| `ocr_languages` | Sprach-Codes kommasepariert (Standard: `"en"`, z.B. `"en,de"` für Englisch+Deutsch) |
+| `ocr_min_confidence` | Mindest-Konfidenz für OCR-Ergebnisse (0.0-1.0, Standard: 0.3) |
 
 ### Window-Fokus-Check
 
@@ -939,7 +997,7 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `pause_check_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
+| `timing_pause_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
 
 ### Debug-Einstellungen
 
@@ -947,7 +1005,7 @@ Wird beim ersten Start automatisch erstellt:
 |--------|--------------|
 | `debug_mode` | Zeigt Schritte VOR Start und wartet auf Enter |
 | `debug_detection` | Alle Ausgaben persistent (nicht überschrieben) |
-| `show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
+| `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
 ## Dateistruktur
@@ -956,7 +1014,7 @@ Wird beim ersten Start automatisch erstellt:
 Autoclicker-Idleclans/
 ├── main.py                 # Einstiegspunkt
 ├── test_llm.py             # Standalone-LLM-Verbindungs-/Bilderkennungstest
-├── autoclicker/            # Hauptmodul (~11.000 Zeilen)
+├── autoclicker/            # Hauptmodul (~11.500 Zeilen)
 │   ├── __init__.py
 │   ├── config.py           # Konfiguration (Hotkeys, Defaults)
 │   ├── models.py           # Datenmodelle (ClickPoint, Sequence, BossScanConfig, etc.)
@@ -967,6 +1025,7 @@ Autoclicker-Idleclans/
 │   ├── handlers.py         # Hotkey-Handler
 │   ├── execution.py        # Sequenz-Ausführung + safe_click/safe_key Wrapper
 │   ├── llm_vision.py       # LLM Vision (Ollama / LM Studio Boss-Erkennung)
+│   ├── ocr.py              # OCR Texterkennung (EasyOCR / Tesseract Boss-Erkennung)
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   └── editors/            # Interaktive Editoren
@@ -1119,6 +1178,19 @@ python tools/sync_json.py
 - Alte Formate konvertieren (z.B. `confirm_point` int → Koordinaten)
 - Presets erben Werte von globalen Dateien
 
+### OCR Test-Tool (`tools/test_ocr.py`)
+
+Testet OCR-Backend-Verfügbarkeit und Texterkennung ohne den Autoclicker:
+
+```bash
+python tools/test_ocr.py                        # Backend-Status + Region wählen
+python tools/test_ocr.py test                   # Nur Backend-Verfügbarkeit prüfen
+python tools/test_ocr.py bild.png               # Bild-Datei analysieren
+python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
+python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
+python tools/test_ocr.py --backend easyocr --languages "en,de"
+```
+
 ### Slot-Tester (`tools/slot_tester.py`)
 
 Testet die automatische Slot-Erkennung mit Debug-Ausgaben:
@@ -1152,6 +1224,27 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - Neuer Step-Typ `watcher <Name>` im Sequenz-Editor
 - Prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird, dann Aktion
 - Exit-Bedingungen: `llm_watcher_max_scans` (Anzahl) und `llm_watcher_timeout` (Sekunden) — beides `0` = unbegrenzt
+
+**OCR Texterkennung** (`autoclicker/ocr.py`)
+- Neues Modul für lokale Texterkennung via EasyOCR oder Tesseract
+- `read_text()` extrahiert Text + Konfidenz aus Screenshot
+- `detect_boss_name()` matched erkannten Text gegen bekannte Boss-Namen (exact/substring matching)
+- Im Boss-Scan-Editor pro Scan aktivierbar (`use_ocr` + `ocr_fallback`)
+- Globale Config-Werte: `ocr_enabled`, `ocr_backend` (auto-detect), `ocr_languages`, `ocr_min_confidence`
+- Schneller und determinisitischer als LLM für reine Texterkennung
+- Standalone-Test-Script `tools/test_ocr.py` (Backend-Test, Screenshot-Analyse, Datei-Analyse, Boss-Matching)
+
+**Config-Field-Renaming**
+- Alle Config-Felder systematisch in Gruppen unterteilt mit Präfixen: `click_*`, `scan_*`, `pixel_*`, `llm_*`, `ocr_*`, `humanize_*`, `window_focus_*`, `session_log_*`, `debug_*`, `timing_*`
+- Automatische Migration alter config.json-Dateien (`_FIELD_MIGRATION` dictionary in AppConfig)
+- Alte Configs werden automatisch auf neue Feldnamen gemappt, keine manuellen Änderungen nötig
+
+**Code-Cleanup**
+- Extrahiert `_check_profile_match()` Helper — vereinheitlicht 50 Zeilen Template/Marker-Erkennung in execute_boss_scan() und execute_item_scan()
+- Extrahiert `_slot_to_dict()` Helper — standardisiert ItemSlot-Serialisierung über 5 Speicherlokationen
+- Extrahiert `_step_status()` Helper — konsolidiert 24 if/debug/else/clear-Muster im Worker
+- Ersetzt manuelle pause-Event-Schleifen mit zentraler `wait_while_paused()` Funktion
+- Insgesamt -160 Zeilen Net-Reduktion durch Deduplication, keine Verhaltensänderungen
 
 **Window-Fokus-Check** (`autoclicker/winapi.py` + `execution.py`)
 - Verhindert dass Klicks in fremde Fenster gehen wenn man weg-tabbed
