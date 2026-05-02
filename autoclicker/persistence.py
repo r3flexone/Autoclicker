@@ -14,7 +14,7 @@ from .config import SEQUENCES_DIR, DEFAULT_MIN_CONFIDENCE
 from .models import (
     ClickPoint, ElseConfig, WaitCondition, SequenceStep, LoopPhase, Sequence,
     ItemProfile, ItemSlot, ItemScanConfig, BossProfile, BossScanConfig, AutoClickerState,
-    BOSS_ACTION_SCAN, SCAN_MODE_ALL
+    BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, SCAN_MODE_ALL
 )
 from .utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, info, warn
 
@@ -53,6 +53,16 @@ def _item_to_dict(item: ItemProfile) -> dict:
     if d["confirm_point"]:
         d["confirm_point"] = {"x": d["confirm_point"]["x"], "y": d["confirm_point"]["y"]}
     return d
+
+
+def _slot_to_dict(slot: 'ItemSlot') -> dict:
+    """Serialisiert einen ItemSlot zu einem Dict."""
+    return {
+        "name": slot.name,
+        "scan_region": list(slot.scan_region),
+        "click_pos": list(slot.click_pos),
+        "slot_color": list(slot.slot_color) if slot.slot_color else None,
+    }
 
 
 def _item_from_dict(data: dict) -> ItemProfile:
@@ -97,6 +107,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "wait_until_gone": wc.until_gone if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
+            "boss_watcher": s.boss_watcher,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
             "key_press": s.key_press,
             "else_action": ec.action if ec else None,
@@ -141,16 +152,20 @@ def save_data(state: AutoClickerState) -> None:
     """Speichert Punkte und Sequenzen in JSON-Dateien."""
     ensure_sequences_dir()
 
+    # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
+    with state.lock:
+        points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name} for p in state.points]
+        sequences_snapshot = list(state.sequences.items())
+
     # Punkte speichern (mit stabiler ID)
     try:
-        points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name} for p in state.points]
         with open(Path(SEQUENCES_DIR) / "points.json", "w", encoding="utf-8") as f:
             f.write(compact_json(points_data))
     except (IOError, OSError) as e:
         print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
 
     # Sequenzen speichern
-    for name, seq in state.sequences.items():
+    for name, seq in sequences_snapshot:
         filename = f"{sanitize_filename(name)}.json"
         save_sequence_file(seq, Path(SEQUENCES_DIR) / filename)
 
@@ -221,6 +236,14 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                             pixel=wait_pixel, color=wait_color,
                             until_gone=s.get("wait_until_gone", False)
                         )
+                    # Screenshot-Region validieren (muss 4 Werte haben)
+                    screenshot_region_raw = s.get("screenshot_region")
+                    screenshot_region = None
+                    if screenshot_region_raw:
+                        if len(screenshot_region_raw) == 4:
+                            screenshot_region = tuple(int(v) for v in screenshot_region_raw)
+                        else:
+                            print(warn(f"Ungültige screenshot_region (erwarte 4 Werte, habe {len(screenshot_region_raw)}) - ignoriert"))
                     # ElseConfig zusammenbauen
                     else_cfg = None
                     else_action = s.get("else_action")
@@ -240,12 +263,13 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                         item_scan=s.get("item_scan"),
                         item_scan_mode=s.get("item_scan_mode", "all"),
                         boss_scan=s.get("boss_scan"),
+                        boss_watcher=s.get("boss_watcher"),
                         wait_only=s.get("wait_only", False),
                         delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
                         key_press=s.get("key_press"),
                         else_config=else_cfg,
                         screenshot_only=s.get("screenshot_only", False),
-                        screenshot_region=tuple(int(v) for v in s["screenshot_region"]) if s.get("screenshot_region") else None,
+                        screenshot_region=screenshot_region,
                     )
                     steps.append(step)
                 return steps
@@ -349,15 +373,7 @@ def save_item_scan(config: ItemScanConfig) -> None:
     data = {
         "name": config.name,
         "color_tolerance": config.color_tolerance,
-        "slots": [
-            {
-                "name": slot.name,
-                "scan_region": list(slot.scan_region),
-                "click_pos": list(slot.click_pos),
-                "slot_color": list(slot.slot_color) if slot.slot_color else None
-            }
-            for slot in config.slots
-        ],
+        "slots": [_slot_to_dict(slot) for slot in config.slots],
         "items": [_item_to_dict(item) for item in config.items]
     }
 
@@ -489,6 +505,10 @@ def save_boss_scan(config: BossScanConfig) -> None:
         "default_action": config.default_action,
         "default_scan": config.default_scan,
         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
+        "use_llm": config.use_llm,
+        "llm_fallback": config.llm_fallback,
+        "use_ocr": config.use_ocr,
+        "ocr_fallback": config.ocr_fallback,
     }
 
     filename = f"{sanitize_filename(config.name)}.json"
@@ -512,9 +532,13 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
                 name=data["name"],
                 scan_region=tuple(data["scan_region"]),
                 color_tolerance=data.get("color_tolerance", 30),
-                default_action=data.get("default_action", "skip"),
+                default_action=data.get("default_action", BOSS_ACTION_SKIP),
                 default_scan=data.get("default_scan"),
                 bosses=bosses,
+                use_llm=data.get("use_llm", False),
+                llm_fallback=data.get("llm_fallback", True),
+                use_ocr=data.get("use_ocr", False),
+                ocr_fallback=data.get("ocr_fallback", True),
             )
 
     except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
@@ -555,19 +579,12 @@ def load_all_boss_scans(state: AutoClickerState) -> None:
 # =============================================================================
 def save_global_slots(state: AutoClickerState) -> None:
     """Speichert alle globalen Slots."""
-    data = {
-        name: {
-            "name": slot.name,
-            "scan_region": list(slot.scan_region),
-            "click_pos": list(slot.click_pos),
-            "slot_color": list(slot.slot_color) if slot.slot_color else None
-        }
-        for name, slot in state.global_slots.items()
-    }
+    with state.lock:
+        data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     try:
         with open(SLOTS_FILE, "w", encoding="utf-8") as f:
             f.write(compact_json(data))
-        print(save_tag(f"{len(state.global_slots)} Slot(s) gespeichert"))
+        print(save_tag(f"{len(data)} Slot(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Slots konnten nicht gespeichert werden: {e}"))
 
@@ -595,13 +612,14 @@ def load_global_slots(state: AutoClickerState) -> None:
 
 def save_global_items(state: AutoClickerState) -> None:
     """Speichert alle globalen Items, sortiert nach Kategorie und Priorität."""
-    sorted_items = sorted(state.global_items.items(),
-                          key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
-    data = {name: _item_to_dict(item) for name, item in sorted_items}
+    with state.lock:
+        sorted_items = sorted(state.global_items.items(),
+                              key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
+        data = {name: _item_to_dict(item) for name, item in sorted_items}
     try:
         with open(ITEMS_FILE, "w", encoding="utf-8") as f:
             f.write(compact_json(data))
-        print(save_tag(f"{len(state.global_items)} Item(s) gespeichert"))
+        print(save_tag(f"{len(data)} Item(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Items konnten nicht gespeichert werden: {e}"))
 
@@ -684,15 +702,7 @@ def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     if not state.global_slots:
         print(err("Keine Slots vorhanden zum Speichern!"))
         return False
-    data = {
-        name: {
-            "name": slot.name,
-            "scan_region": list(slot.scan_region),
-            "click_pos": list(slot.click_pos),
-            "slot_color": list(slot.slot_color) if slot.slot_color else None
-        }
-        for name, slot in state.global_slots.items()
-    }
+    data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     return _save_preset(data, preset_name, SLOT_PRESETS_DIR, "Slot")
 
 

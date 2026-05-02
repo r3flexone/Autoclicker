@@ -26,49 +26,84 @@ class AppConfig:
     """Typisierte Konfiguration für den Autoclicker.
     Feld-Reihenfolge bestimmt die Reihenfolge in config.json."""
     # === KLICK-EINSTELLUNGEN ===
-    clicks_per_point: int = 1                       # Anzahl Klicks pro Punkt
-    max_total_clicks: Optional[int] = None          # None = unendlich
+    click_per_point: int = 1                        # Anzahl Klicks pro Punkt
+    click_max_total: Optional[int] = None           # None = unendlich
     click_move_delay: float = 0.01                  # Pause zwischen Mausbewegung und Klick (Sekunden)
-    post_click_delay: float = 0.05                  # Pause NACH dem Klick bevor Maus weiterbewegt werden darf
+    click_post_delay: float = 0.05                  # Pause NACH dem Klick bevor Maus weiterbewegt werden darf
 
     # === SICHERHEIT ===
     failsafe_enabled: bool = True                   # Fail-Safe: Maus in Ecke stoppt alles
     failsafe_x: int = 5                             # Fail-Safe X-Bereich (Maus x <= Wert)
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
 
-    # === FARB-/PIXEL-ERKENNUNG ===
-    color_tolerance: int = 0                        # Farbtoleranz für Item-Scan (0 = exakt)
+    # === PIXEL-ERKENNUNG ===
+    pixel_color_tolerance: int = 0                  # Farbtoleranz für Scan (0 = exakt)
     pixel_wait_tolerance: int = 10                  # Toleranz für Pixel-Trigger
     pixel_wait_timeout: int = 300                   # Timeout für Pixel-Trigger in Sekunden (0 = unendlich)
     pixel_timeout_action: str = "skip_cycle"        # Aktion bei Timeout: "skip_cycle", "restart", "stop"
     pixel_check_interval: float = 1                 # Prüf-Intervall für Farbe in Sekunden
-    max_consecutive_timeouts: int = 5               # Nach X aufeinanderfolgenden Timeouts → Notbremse (0 = deaktiviert)
-    consecutive_timeout_action: str = "stop"        # Notbremse: "stop" = Sequenz stoppen, "quit" = Menü beenden, "exit" = Prozess killen
-    scan_pixel_step: int = 2                        # Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller)
-    show_pixel_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
+    pixel_max_consecutive_timeouts: int = 5         # Nach X aufeinanderfolgenden Timeouts → Notbremse (0 = deaktiviert)
+    pixel_consecutive_action: str = "stop"          # Notbremse: "stop", "quit", "exit"
+    pixel_scan_step: int = 2                        # Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller)
+    pixel_show_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
 
-    # === ITEM-SCAN EINSTELLUNGEN ===
+    # === SCAN-EINSTELLUNGEN ===
     scan_reverse: bool = True                       # True = Slots rückwärts scannen (4,3,2,1)
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
-    item_click_delay: float = 1.0                   # Pause nach Item-Klick in Sekunden
-    marker_count: int = 5                           # Anzahl Marker-Farben beim Item-Lernen
-    require_all_markers: bool = True                # True = ALLE Marker müssen gefunden werden
-    min_markers_required: int = 2                   # Minimum Marker (nur wenn require_all_markers=False)
-    slot_hsv_tolerance: int = 25                    # HSV-Toleranz für Slot-Erkennung
-    slot_inset: int = 10                            # Pixel-Einzug vom Slot-Rand
-    slot_color_distance: int = 25                   # Farbdistanz für Hintergrund-Ausschluss
-    default_min_confidence: float = 0.8             # Standard-Konfidenz für Template-Matching (80%)
-    default_confirm_delay: float = 0.5              # Standard-Wartezeit vor Bestätigungs-Klick
+    scan_item_click_delay: float = 1.0              # Pause nach Item-Klick in Sekunden
+    scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
+    scan_require_all_markers: bool = True            # True = ALLE Marker müssen gefunden werden
+    scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
+    scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
+    scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
+    scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
+    scan_min_confidence: float = 0.8                # Standard-Konfidenz für Template-Matching (80%)
+    scan_confirm_delay: float = 0.5                 # Standard-Wartezeit vor Bestätigungs-Klick
+
+    # === LLM VISION (Boss-Erkennung) ===
+    llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
+    llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
+    llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
+    llm_model: str = "gemma4:e4b"                   # Modell-Name (Standard: gemma4:e4b)
+    llm_timeout: int = 30                           # Timeout für LLM-Anfragen in Sekunden
+    llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
+    llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
+    llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
+    llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
+
+    # === OCR (Texterkennung) ===
+    ocr_enabled: bool = False                        # OCR-Texterkennung aktivieren
+    ocr_backend: Optional[str] = None                # "easyocr" oder "tesseract" (None = Auto)
+    ocr_languages: str = "en"                        # Sprach-Codes kommasepariert (z.B. "en,de")
+    ocr_min_confidence: float = 0.3                  # Mindest-Konfidenz für OCR-Ergebnisse (0-1)
+
+    # === WINDOW-FOKUS-CHECK ===
+    window_focus_check: bool = False                # Vor Klick/Taste prüfen ob Ziel-Fenster aktiv ist
+    window_focus_title: str = "Idle Clans"          # Substring im Fenstertitel (case-insensitive)
+    window_focus_action: str = "pause"              # "pause" (auf Fokus warten) oder "stop"
+
+    # === HUMANIZATION ===
+    humanize_enabled: bool = False                  # Zufalls-Jitter + variable Delays aktivieren
+    humanize_click_jitter: int = 0                  # Max. Pixel-Abweichung pro Klick (0 = aus, sinnvoll: 2-5)
+    humanize_micro_delay_min: float = 0.0           # Zusätzliches Delay vor Klicks/Tasten: Min (Sek.)
+    humanize_micro_delay_max: float = 0.0           # Zusätzliches Delay vor Klicks/Tasten: Max (Sek.)
+    humanize_break_interval_min: float = 0          # Alle N Minuten Pause einlegen (0 = aus)
+    humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
+    humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
+
+    # === SESSION-LOG ===
+    session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
+    session_log_dir: str = "logs"                   # Verzeichnis für Log-Dateien
 
     # === TIMING ===
-    pause_check_interval: float = 0.5               # Prüf-Intervall während Pause (Sekunden)
+    timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
     debug_mode: bool = False                        # Zeigt Schritte VOR Start + wartet auf Enter
     debug_detection: bool = False                   # Alle Ausgaben persistent (nicht überschrieben)
-    show_pixel_position: bool = False               # Maus kurz zum Prüf-Pixel bewegen beim Start
+    debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
     # Erlaubte Werte für String-Optionen
@@ -78,35 +113,74 @@ class AppConfig:
     def __post_init__(self):
         """Validiert Config-Werte nach Erstellung."""
         warnings = []
-        # Numerische Grenzen (negative Werte korrigieren)
-        if self.clicks_per_point < 1:
-            warnings.append(f"clicks_per_point={self.clicks_per_point} → 1")
-            self.clicks_per_point = 1
+        if self.click_per_point < 1:
+            warnings.append(f"click_per_point={self.click_per_point} → 1")
+            self.click_per_point = 1
         if self.pixel_wait_timeout < 0:
             warnings.append(f"pixel_wait_timeout={self.pixel_wait_timeout} → 0")
             self.pixel_wait_timeout = 0
         if self.pixel_check_interval <= 0:
             warnings.append(f"pixel_check_interval={self.pixel_check_interval} → 0.1")
             self.pixel_check_interval = 0.1
-        if self.pause_check_interval <= 0:
-            warnings.append(f"pause_check_interval={self.pause_check_interval} → 0.1")
-            self.pause_check_interval = 0.1
-        if self.max_consecutive_timeouts < 0:
-            warnings.append(f"max_consecutive_timeouts={self.max_consecutive_timeouts} → 0")
-            self.max_consecutive_timeouts = 0
-        if self.default_min_confidence < 0 or self.default_min_confidence > 1:
-            warnings.append(f"default_min_confidence={self.default_min_confidence} → 0.8")
-            self.default_min_confidence = 0.8
-        if self.marker_count < 1:
-            warnings.append(f"marker_count={self.marker_count} → 1")
-            self.marker_count = 1
-        # String-Werte validieren
+        if self.timing_pause_interval <= 0:
+            warnings.append(f"timing_pause_interval={self.timing_pause_interval} → 0.1")
+            self.timing_pause_interval = 0.1
+        if self.pixel_max_consecutive_timeouts < 0:
+            warnings.append(f"pixel_max_consecutive_timeouts={self.pixel_max_consecutive_timeouts} → 0")
+            self.pixel_max_consecutive_timeouts = 0
+        if self.scan_min_confidence < 0 or self.scan_min_confidence > 1:
+            warnings.append(f"scan_min_confidence={self.scan_min_confidence} → 0.8")
+            self.scan_min_confidence = 0.8
+        if self.scan_marker_count < 1:
+            warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
+            self.scan_marker_count = 1
         if self.pixel_timeout_action not in self._VALID_TIMEOUT_ACTIONS:
             warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → 'skip_cycle'")
             self.pixel_timeout_action = "skip_cycle"
-        if self.consecutive_timeout_action not in self._VALID_CONSEC_ACTIONS:
-            warnings.append(f"consecutive_timeout_action='{self.consecutive_timeout_action}' → 'stop'")
-            self.consecutive_timeout_action = "stop"
+        if self.pixel_consecutive_action not in self._VALID_CONSEC_ACTIONS:
+            warnings.append(f"pixel_consecutive_action='{self.pixel_consecutive_action}' → 'stop'")
+            self.pixel_consecutive_action = "stop"
+        # LLM-Einstellungen validieren
+        if self.llm_provider not in ("ollama", "lmstudio"):
+            warnings.append(f"llm_provider='{self.llm_provider}' → 'ollama'")
+            self.llm_provider = "ollama"
+        if self.llm_timeout < 1:
+            warnings.append(f"llm_timeout={self.llm_timeout} → 10")
+            self.llm_timeout = 10
+        if self.llm_watcher_interval < 1:
+            warnings.append(f"llm_watcher_interval={self.llm_watcher_interval} → 2.0")
+            self.llm_watcher_interval = 2.0
+        if self.llm_watcher_max_scans < 0:
+            warnings.append(f"llm_watcher_max_scans={self.llm_watcher_max_scans} → 0")
+            self.llm_watcher_max_scans = 0
+        if self.llm_watcher_timeout < 0:
+            warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
+            self.llm_watcher_timeout = 0
+        # OCR-Einstellungen validieren
+        if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
+            warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
+            self.ocr_backend = None
+        if self.ocr_min_confidence < 0 or self.ocr_min_confidence > 1:
+            warnings.append(f"ocr_min_confidence={self.ocr_min_confidence} → 0.3")
+            self.ocr_min_confidence = 0.3
+        # Window-Fokus-Check
+        if self.window_focus_action not in ("pause", "stop"):
+            warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
+            self.window_focus_action = "pause"
+        # Humanization: min darf nicht > max sein
+        if self.humanize_click_jitter < 0:
+            warnings.append(f"humanize_click_jitter={self.humanize_click_jitter} → 0")
+            self.humanize_click_jitter = 0
+        if self.humanize_micro_delay_min < 0:
+            self.humanize_micro_delay_min = 0
+        if self.humanize_micro_delay_max < self.humanize_micro_delay_min:
+            self.humanize_micro_delay_max = self.humanize_micro_delay_min
+        if self.humanize_break_interval_min < 0:
+            self.humanize_break_interval_min = 0
+        if self.humanize_break_duration_min < 0:
+            self.humanize_break_duration_min = 0
+        if self.humanize_break_duration_max < self.humanize_break_duration_min:
+            self.humanize_break_duration_max = self.humanize_break_duration_min
         if warnings:
             for w in warnings:
                 print(warn(f"Config-Wert korrigiert: {w}"))
@@ -115,11 +189,38 @@ class AppConfig:
         """Konvertiert zu JSON-serialisierbarem dict."""
         return asdict(self)
 
+    # Alte → Neue Feldnamen (Migration alter config.json Dateien)
+    _FIELD_MIGRATION = {
+        "clicks_per_point": "click_per_point",
+        "max_total_clicks": "click_max_total",
+        "post_click_delay": "click_post_delay",
+        "color_tolerance": "pixel_color_tolerance",
+        "max_consecutive_timeouts": "pixel_max_consecutive_timeouts",
+        "consecutive_timeout_action": "pixel_consecutive_action",
+        "scan_pixel_step": "pixel_scan_step",
+        "show_pixel_delay": "pixel_show_delay",
+        "item_click_delay": "scan_item_click_delay",
+        "marker_count": "scan_marker_count",
+        "require_all_markers": "scan_require_all_markers",
+        "min_markers_required": "scan_min_markers_required",
+        "slot_hsv_tolerance": "scan_slot_hsv_tolerance",
+        "slot_inset": "scan_slot_inset",
+        "slot_color_distance": "scan_slot_color_distance",
+        "default_min_confidence": "scan_min_confidence",
+        "default_confirm_delay": "scan_confirm_delay",
+        "show_pixel_position": "debug_show_pixel_position",
+        "pause_check_interval": "timing_pause_interval",
+    }
+
     @classmethod
     def from_dict(cls, data: dict) -> 'AppConfig':
-        """Erstellt AppConfig aus einem dict (ignoriert unbekannte Keys)."""
+        """Erstellt AppConfig aus einem dict. Migriert alte Feldnamen automatisch."""
+        migrated = {}
+        for k, v in data.items():
+            new_key = cls._FIELD_MIGRATION.get(k, k)
+            migrated[new_key] = v
         valid_keys = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        filtered = {k: v for k, v in migrated.items() if k in valid_keys}
         return cls(**filtered)
 
 
@@ -156,11 +257,88 @@ def load_config() -> AppConfig:
     return AppConfig()
 
 
+_CONFIG_SECTIONS = [
+    ("KLICK-EINSTELLUNGEN", [
+        "click_per_point", "click_max_total",
+        "click_move_delay", "click_post_delay",
+    ]),
+    ("SICHERHEIT", [
+        "failsafe_enabled", "failsafe_x", "failsafe_y",
+    ]),
+    ("PIXEL-ERKENNUNG", [
+        "pixel_color_tolerance", "pixel_wait_tolerance", "pixel_wait_timeout",
+        "pixel_timeout_action", "pixel_check_interval",
+        "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
+        "pixel_scan_step", "pixel_show_delay",
+    ]),
+    ("SCAN-EINSTELLUNGEN", [
+        "scan_reverse", "scan_click_immediate", "scan_park_mouse",
+        "scan_slot_delay", "scan_item_click_delay",
+        "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
+        "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
+        "scan_min_confidence", "scan_confirm_delay",
+    ]),
+    ("LLM VISION (Boss-Erkennung)", [
+        "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
+        "llm_timeout", "llm_boss_prompt",
+        "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
+    ]),
+    ("OCR (Texterkennung)", [
+        "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence",
+    ]),
+    ("WINDOW-FOKUS-CHECK", [
+        "window_focus_check", "window_focus_title", "window_focus_action",
+    ]),
+    ("HUMANIZATION", [
+        "humanize_enabled", "humanize_click_jitter",
+        "humanize_micro_delay_min", "humanize_micro_delay_max",
+        "humanize_break_interval_min",
+        "humanize_break_duration_min", "humanize_break_duration_max",
+    ]),
+    ("SESSION-LOG", [
+        "session_log_enabled", "session_log_dir",
+    ]),
+    ("TIMING", [
+        "timing_pause_interval",
+    ]),
+    ("DEBUG", [
+        "debug_mode", "debug_detection",
+        "debug_show_pixel_position", "debug_save_templates",
+    ]),
+]
+
+
 def save_config(config: AppConfig) -> None:
-    """Speichert Konfiguration in config.json."""
+    """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
+    data = config.to_dict()
+
+    entries = []
+    written_keys = set()
+
+    for section_name, keys in _CONFIG_SECTIONS:
+        for key in keys:
+            if key not in data:
+                continue
+            val = json.dumps(data[key], ensure_ascii=False)
+            written_keys.add(key)
+            entries.append((section_name, key, val))
+
+    remaining = [(k, v) for k, v in data.items() if k not in written_keys]
+    for k, v in remaining:
+        entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
+
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
+            f.write("{\n")
+            last_section = None
+            for i, (section, key, val) in enumerate(entries):
+                if section != last_section:
+                    if last_section is not None:
+                        f.write("\n")
+                    last_section = section
+                comma = "," if i < len(entries) - 1 else ""
+                f.write(f'  "{key}": {val}{comma}\n')
+            f.write("}\n")
     except IOError as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
 
@@ -171,4 +349,4 @@ CONFIG: AppConfig = load_config()
 # Konfig-Werte als Variablen (nur Werte die sich zur Laufzeit nicht ändern)
 # ACHTUNG: Werte die sich durch Factory Reset ändern können, immer über
 # state.config abrufen statt über Modul-Variablen!
-DEFAULT_MIN_CONFIDENCE: float = CONFIG.default_min_confidence
+DEFAULT_MIN_CONFIDENCE: float = CONFIG.scan_min_confidence

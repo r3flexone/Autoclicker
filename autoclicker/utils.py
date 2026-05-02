@@ -710,7 +710,7 @@ def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
     Returns:
         True wenn fortgesetzt, False wenn gestoppt
     """
-    pause_interval = state.config.pause_check_interval
+    pause_interval = state.config.timing_pause_interval
     while state.pause_event.is_set() and not state.stop_event.is_set():
         clear_line()
         print(f"{col('[PAUSE]', 'yellow')} {message} | Fortsetzen: {col('CTRL+ALT+G', 'yellow')}", end="", flush=True)

@@ -108,12 +108,16 @@ class SequenceStep:
     else_config: Optional[ElseConfig] = None
     # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
     boss_scan: Optional[str] = None      # Name der BossScanConfig
+    # Optional: Boss-Watcher (wartet bis Boss erkannt, dann Aktion)
+    boss_watcher: Optional[str] = None   # Name der BossScanConfig für Watcher-Modus
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
 
     def __str__(self) -> str:
         else_str = self._else_str()
+        if self.boss_watcher:
+            return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
             region = self.screenshot_region
             if region:
@@ -336,10 +340,22 @@ class BossScanConfig:
     color_tolerance: int = 30                                     # Farbtoleranz für Marker
     default_action: str = BOSS_ACTION_SKIP                        # Fallback wenn kein Boss erkannt
     default_scan: Optional[str] = None                            # Fallback Item-Scan
+    # LLM Vision Erkennung (optional, zusätzlich zu Template/Marker)
+    use_llm: bool = False                                         # LLM für Erkennung verwenden
+    llm_fallback: bool = True                                     # LLM nur als Fallback (wenn Template/Marker nichts finden)
+    # OCR-Texterkennung (optional, schnelle Alternative zu LLM)
+    use_ocr: bool = False                                         # OCR für Boss-Name-Erkennung
+    ocr_fallback: bool = True                                     # OCR nur als Fallback
 
     def __str__(self) -> str:
         r = self.scan_region
-        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]}))"
+        tags = []
+        if self.use_llm:
+            tags.append("LLM")
+        if self.use_ocr:
+            tags.append("OCR")
+        tag_str = f" [{'+'.join(tags)}]" if tags else ""
+        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]})){tag_str}"
 
 
 # =============================================================================
@@ -402,6 +418,12 @@ class AutoClickerState:
 
     # Screenshot-Ordner für die aktuelle Sequenz-Session (z.B. "slots/Screenshots/2025-01-15_14-30-00")
     session_screenshots_dir: Optional[Path] = None
+
+    # Session-Log (CSV) für die aktuelle Sequenz (None wenn deaktiviert)
+    session_log: Optional[object] = None
+
+    # Zeitpunkt der letzten Humanize-Break (Monotone Zeit)
+    humanize_last_break: float = 0.0
 
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)

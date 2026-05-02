@@ -15,8 +15,16 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Tastatureingaben**: Automatische Tastendrücke (Enter, Space, F1-F12, etc.)
 - **Automatische Slot-Erkennung**: OpenCV-basierte Erkennung von Item-Slots
 - **Item-Scan System**: Items anhand von Marker-Farben oder Templates erkennen
+- **Auto-Scan Items**: Alle Slots automatisch scannen und Items in einem Schritt erstellen (`autoscan`)
 - **Kategorie-System**: Items gruppieren (z.B. Hosen, Jacken) - nur bestes pro Kategorie klicken
 - **Template-Matching**: Items per Screenshot erkennen (OpenCV)
+- **Boss-Scan**: Bosse anhand von Templates oder Markern erkennen + Aktion auslösen (Klick, Taste, Item-Scan, Skip)
+- **LLM Vision Boss-Detection**: Lokale LLMs (Ollama / LM Studio) erkennen Bosse per Screenshot, unbekannte Bosse werden auto-gespeichert
+- **Boss-Watcher**: Step der kontinuierlich auf einen Boss wartet und beim Erscheinen reagiert
+- **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
+- **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
+- **Session-Log (CSV)**: Vollständiges Log aller Klicks/Tasten/Events pro Sequenz für Auswertung
+- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren mit automatischer Koordinaten-Anpassung (2-Punkt-Remapping)
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
 - **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
@@ -93,6 +101,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
+| `CTRL+ALT+I` | Import/Export (Setup teilen mit automatischem Remapping) |
 
 ### Ausführung
 
@@ -118,6 +127,9 @@ Das Item-Scan System bietet ein Menü mit folgenden Optionen:
 - **[1] Slots bearbeiten** - Bereiche wo Items erscheinen können
 - **[2] Items bearbeiten** - Item-Profile für die Erkennung
 - **[3] Scans bearbeiten** - Slots und Items verknüpfen
+- **[4] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
+- **[5] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
+- **[6] Import / Export** - Setup als ZIP teilen oder importieren
 
 ### Slot-Editor (Menü → 1)
 
@@ -168,6 +180,8 @@ Verwaltet Item-Profile für die Erkennung. Arbeitet mit **Presets** - wie beim S
 
 | Befehl | Beschreibung |
 |--------|--------------|
+| `autoscan` | **Alle Slots automatisch scannen + Items mit Templates + Markern erstellen** (Duplikate werden via Template-Match übersprungen) |
+| `autoscan nocolor` | Auto-Scan nur mit Templates (keine Marker-Farben) |
 | `learn <Nr>` | Item von Slot Nr. lernen (scannt Marker-Farben + Template) |
 | `add` | Manuell ein Item hinzufügen |
 | `edit <Nr>` | Item bearbeiten (Priorität, Farben, Bestätigung) |
@@ -180,6 +194,24 @@ Verwaltet Item-Profile für die Erkennung. Arbeitet mit **Presets** - wie beim S
 | `show` | Alle Items anzeigen |
 | `done` | Preset speichern und Editor verlassen |
 | `cancel` | Änderungen verwerfen und Editor verlassen |
+
+### Auto-Scan (`autoscan`)
+
+Der schnellste Weg, viele Items auf einmal anzulegen — perfekt für ein vollständiges Inventar:
+
+1. Slots vorab definieren (am besten via `auto` im Slot-Editor)
+2. `autoscan` im Item-Editor (oder Menü-Punkt 5 im Item-Scan-Menü)
+3. Einmalig konfigurieren: Kategorie, Prioritäts-Modus, Bestätigungs-Punkt, Konfidenz, Marker an/aus
+4. Programm scannt alle Slots, vergleicht gegen bestehende Items (Duplikate werden übersprungen) und legt für jeden neuen Slot ein Item mit Template + Marker-Farben an
+5. Anschließend nur noch via `rename <Nr>` umbenennen
+
+**Modi:**
+- `autoscan` — Templates + Marker-Farben (Standard, robust)
+- `autoscan nocolor` — Nur Templates, keine Marker (schneller wenn die Items sehr unterschiedlich aussehen)
+
+**Prioritäten:**
+- **[1] Automatisch** — Slot-Reihenfolge bestimmt P1, P2, P3, ... (frühere Slots bevorzugt)
+- **[2] Alle gleich (P1)** — Bei gleicher Kategorie entscheidet die Scan-Reihenfolge
 
 ### Item lernen
 
@@ -316,6 +348,8 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `scan <Name>` | Item-Scan ausführen (bestes pro Kategorie) |
 | `scan <Name> best` | Item-Scan: nur 1 Item total (das absolute Beste) |
 | `scan <Name> every` | Item-Scan: alle Treffer ohne Filter (für Duplikate) |
+| `boss <Name>` | Boss-Scan ausführen (einmalig prüfen, dann Aktion oder ELSE/Default) |
+| `watcher <Name>` | Boss-Watcher: wartet kontinuierlich bis ein Boss erscheint, dann Aktion |
 | `... else skip` | Bei Fehlschlag **diesen Schritt** überspringen (nächster Schritt läuft weiter) |
 | `... else skip_cycle` | Bei Fehlschlag **ganzen Zyklus** abbrechen (nächster Zyklus startet) |
 | `... else restart` | Bei Fehlschlag **komplett neu starten** (inkl. INIT) |
@@ -383,7 +417,208 @@ Zyklen: 100
 
 Loop 1 läuft in jedem Zyklus. Loop 2 wird übersprungen bis 12:30 erreicht ist – dann wird es einmal ausgeführt und danach wieder übersprungen bis zum nächsten Tag.
 
-## Sequenzen zwischen PCs teilen
+## Boss-Scan System
+
+Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine zugeordnete Aktion aus (Klick, Taste, Item-Scan, Skip, Restart). Erstellung über das Item-Scan-Menü → **[4] Boss-Scans bearbeiten**.
+
+### Boss-Profil
+
+Ein `BossProfile` definiert wie ein Boss erkannt wird und was passieren soll:
+
+- **Erkennung**: Marker-Farben (wie bei Items) und/oder Template (Screenshot), optional mit LLM Vision oder OCR-Texterkennung
+- **Aktion**: `scan` (Item-Scan starten), `click` (an Position klicken), `key` (Taste drücken), `skip` (Step übergehen), `skip_cycle` (Zyklus abbrechen), `restart` (Sequenz neu starten)
+- **Action-Delay**: Wartezeit vor der Aktion
+
+### Verwendung in Sequenzen
+
+| Befehl | Verhalten |
+|--------|-----------|
+| `boss <Name>` | Einmaliger Scan. Wenn nichts erkannt → ELSE-Action oder Default-Action |
+| `watcher <Name>` | Wartet in Schleife (alle `llm_watcher_interval` Sekunden) bis ein Boss erkannt wird, dann Aktion |
+
+**Boss-Watcher Exit-Bedingungen:**
+- `llm_watcher_max_scans` — nach N Scans ohne Treffer abbrechen (`0` = unbegrenzt)
+- `llm_watcher_timeout` — nach X Sekunden abbrechen (`0` = unbegrenzt)
+- `CTRL+ALT+S` (Sequenz stoppen) bricht den Watcher ebenfalls ab
+
+### LLM Vision Boss-Detection
+
+Optional kann ein lokales Vision-LLM (Ollama oder LM Studio) Bosse anhand des Screenshots erkennen — besonders nützlich wenn Templates/Marker zu unzuverlässig sind oder neue Bosse automatisch entdeckt werden sollen.
+
+**Voraussetzungen:**
+- **Ollama**: Installation von [ollama.com](https://ollama.com), dann ein Vision-Modell laden:
+  ```bash
+  ollama pull llava           # Standard, schnell
+  ollama pull moondream       # Kleiner, oft schneller
+  ollama pull bakllava        # Alternative
+  ```
+- **LM Studio**: App starten, ein LLaVA-kompatibles Modell laden, lokalen Server aktivieren
+
+**Aktivierung pro Boss-Scan:**
+Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
+- `use_llm: true` aktiviert LLM für diesen Scan
+- `llm_fallback: true` → LLM nur wenn Templates/Marker nichts finden (sicher, schnell)
+- `llm_fallback: false` → LLM **primär** statt Templates/Marker (langsam, aber flexibel)
+
+**SCHRITT 6 (OCR Texterkennung):**
+- `use_ocr: true` aktiviert OCR für diesen Scan (EasyOCR oder Tesseract)
+- `ocr_fallback: true` → OCR nur wenn Templates/Marker/LLM nichts finden (Fallback)
+- `ocr_fallback: false` → OCR **primär** für Texterkennung (schneller als LLM für reine Texterkennung)
+
+**Globale Einstellungen** (`config.json`):
+- `llm_enabled: true` muss zusätzlich gesetzt sein
+- `llm_provider: "ollama"` oder `"lmstudio"`
+- `llm_model: "llava"` etc.
+
+**Auto-Save unbekannter Bosse**: Wenn das LLM einen Boss-Namen nennt, der noch nicht in der Liste ist, wird er automatisch als neuer Boss mit `action: skip` gespeichert. Du musst nur noch eine Aktion zuweisen.
+
+**Standalone-Test**: `python test_llm.py` testet Verbindung und Bilderkennung ohne den Autoclicker:
+```bash
+python test_llm.py                              # Verbindungstest
+python test_llm.py screenshot                   # Screenshot vom Bildschirm + Analyse
+python test_llm.py boss.png --bosses "A,B,C"    # Bestehende Datei testen
+python test_llm.py --provider lmstudio screenshot
+```
+
+### OCR Texterkennung Boss-Detection
+
+Alternative zu LLM Vision: Lokale OCR-Engine (EasyOCR oder Tesseract) für schnelle, deterministische Texterkennung von Boss-Namen. Besonders nützlich wenn Boss-Namen als Text im Screenshot stehen.
+
+**Voraussetzungen:**
+- **EasyOCR**: `pip install easyocr` (empfohlen, GPU-Unterstützung möglich)
+- **Tesseract**: `pip install pytesseract` + [Tesseract-Installation](https://github.com/UB-Mannheim/tesseract/wiki)
+
+**Vorteile gegenüber LLM:**
+- Schneller (kein HTTP-Request, lokal)
+- Determinisitsch (gleiche Eingabe = gleiche Ausgabe)
+- Ressourcenschonend
+- Gut für pure Text-Erkennung
+
+**Vorteile von LLM:**
+- Flexibel (versteht Kontext, Symbole, Layouts)
+- Kein Trainieren nötig
+- Bessere Genauigkeit bei komplizierten Layouts
+
+**Aktivierung pro Boss-Scan:**
+Im Boss-Scan-Editor → SCHRITT 6 (OCR Texterkennung):
+- `use_ocr: true` aktiviert OCR für diesen Scan
+- `ocr_fallback: true` → OCR nur als Fallback wenn Templates/Marker/LLM nichts finden
+- `ocr_fallback: false` → OCR **primär** (vor LLM/Templates)
+
+**Globale Einstellungen** (`config.json`):
+- `ocr_enabled: true` muss zusätzlich gesetzt sein
+- `ocr_backend: null` (Auto-Detect) oder `"easyocr"` / `"tesseract"`
+- `ocr_languages: "en"` (kommasepariert, z.B. `"en,de"` für English + Deutsch)
+- `ocr_min_confidence: 0.3` (Mindest-Konfidenz 0-1)
+
+**Standalone-Test**: `python tools/test_ocr.py` testet OCR-Backends und Texterkennung:
+```bash
+python tools/test_ocr.py                        # Backend-Status + Region wählen
+python tools/test_ocr.py test                   # Nur Backend-Verfügbarkeit prüfen
+python tools/test_ocr.py bild.png               # Bild-Datei analysieren
+python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
+python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
+```
+
+## Sicherheit & Tarnung
+
+Drei Features für längere unbeaufsichtigte Sessions, alle deaktivierbar.
+
+### Window-Fokus-Check
+
+Verhindert dass Klicks in andere Fenster (Browser, Chat, IDE) gehen wenn man weg-tabbed.
+
+```json
+{
+  "window_focus_check": true,
+  "window_focus_title": "Idle Clans",
+  "window_focus_action": "pause"
+}
+```
+
+- Vor jedem Klick/Tastendruck wird der Titel des aktiven Fensters geprüft (case-insensitive Substring-Match)
+- `window_focus_action: "pause"` — wartet bis das Fenster wieder vorne ist
+- `window_focus_action: "stop"` — bricht die Sequenz sauber ab
+
+### Humanization
+
+Macht das Klick-Muster für Anti-Bot-Detection schwerer erkennbar.
+
+```json
+{
+  "humanize_enabled": true,
+  "humanize_click_jitter": 3,
+  "humanize_micro_delay_min": 0.05,
+  "humanize_micro_delay_max": 0.15,
+  "humanize_break_interval_min": 45,
+  "humanize_break_duration_min": 2,
+  "humanize_break_duration_max": 5
+}
+```
+
+- **Klick-Jitter**: ±N Pixel Zufalls-Offset um die Ziel-Koordinaten
+- **Mikro-Delays**: Zufällige Wartezeit (min-max Sekunden) **vor** jedem Klick/Tastendruck
+- **Periodische Pausen**: Alle X Minuten eine Pause von Y bis Z Minuten Länge (humanize_break_*)
+
+### Session-Log (CSV)
+
+Schreibt jede Aktion in eine CSV-Datei pro Sequenz-Start.
+
+```json
+{
+  "session_log_enabled": true,
+  "session_log_dir": "logs"
+}
+```
+
+Pro Session entsteht eine Datei `logs/YYYY-MM-DD_HHMMSS_<Sequenz>.csv` mit Spalten:
+`timestamp, elapsed_sec, event, detail, x, y, extra`
+
+**Geloggte Events**: `session_start`, `session_end`, `click`, `key`, `focus_lost_pause`, `focus_lost_stop`, `focus_restored`, `humanize_break_start`, `humanize_break_end`. Auch unerwartete LLM-Boss-Detections werden als Events sichtbar.
+
+Nützlich für: Items/Stunde-Auswertung, "warum hat der Bot heute weniger gemacht als gestern", Debugging von Sequenz-Aussetzern.
+
+## Setup importieren / exportieren (`CTRL+ALT+I`)
+
+Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koordinaten werden automatisch an den Ziel-Bildschirm angepasst**.
+
+### Export
+
+1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
+2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Config) Ja/Nein
+3. **Zwei Referenzpunkte setzen** (z.B. Oben-Links und Unten-Rechts im Spielfenster):
+   - Maus an die Stelle bewegen, Enter drücken
+4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
+5. ZIP wird in `exports/` gespeichert
+6. Anleitung für den Empfänger wird angezeigt
+
+Das ZIP enthält: `manifest.json`, alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+
+### Import
+
+1. Empfänger legt die ZIP-Datei in `exports/` (oder ins Hauptverzeichnis)
+2. `CTRL+ALT+I` → "Importieren"
+3. Datei aus der Liste auswählen
+4. Inhalt der ZIP wird angezeigt + Referenzpunkte des Exporters
+5. **Anpassungs-Modus wählen**:
+   - **[1] Remapping** (andere Auflösung/Fensterposition) → Zwei eigene Referenzpunkte setzen (gleiche Stellen wie der Exporter!)
+   - **[2] 1:1** (gleicher Bildschirm, kein Remapping)
+6. Pro Bereich Ja/Nein wählen was importiert werden soll
+7. **Merge** (bestehende Daten behalten + ergänzen) oder **Ersetzen**
+
+### Wie das Remapping funktioniert
+
+Aus den zwei Referenzpunkt-Paaren (Quelle → Ziel) berechnet das Programm Skalierung und Verschiebung:
+- `scale_x = (dst2.x - dst1.x) / (src2.x - src1.x)` (analog für Y)
+- `offset_x = dst1.x - src1.x * scale_x`
+
+Diese Transformation wird auf **alle** Koordinaten angewendet: Klick-Punkte, Scan-Regionen, Boss-Regionen, Wait-Pixel, Confirm-Points, Screenshot-Regionen, Else-Klick-Positionen.
+
+**Tipp**: Nutze als Referenzpunkte feste UI-Elemente die auf jedem Bildschirm leicht zu finden sind — z.B. die Ecken des Spielfensters oder feste Buttons.
+
+## Sequenzen zwischen PCs teilen (Legacy)
+
+> **Hinweis**: Für komplette Setups bevorzugt das oben beschriebene Import/Export-System (`CTRL+ALT+I`) verwenden. Der hier beschriebene Weg funktioniert weiter, deckt aber nur Sequenzen ab.
 
 Sequenzen können auf einen anderen PC kopiert werden (`sequences/`-Ordner). Beim Laden werden die Koordinaten automatisch anhand der **Punkt-Namen** abgeglichen:
 
@@ -597,39 +832,64 @@ Wird beim ersten Start automatisch erstellt:
 
 ```json
 {
-  "clicks_per_point": 1,
-  "max_total_clicks": null,
+  "click_per_point": 1,
+  "click_max_total": null,
   "click_move_delay": 0.01,
-  "post_click_delay": 0.05,
+  "click_post_delay": 0.05,
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
-  "color_tolerance": 0,
+  "pixel_color_tolerance": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
   "pixel_check_interval": 1,
-  "max_consecutive_timeouts": 5,
-  "consecutive_timeout_action": "stop",
-  "scan_pixel_step": 2,
-  "show_pixel_delay": 0.3,
+  "pixel_max_consecutive_timeouts": 5,
+  "pixel_consecutive_action": "stop",
+  "pixel_scan_step": 2,
+  "pixel_show_delay": 0.3,
   "scan_reverse": true,
   "scan_click_immediate": false,
   "scan_park_mouse": false,
   "scan_slot_delay": 0.1,
-  "item_click_delay": 1.0,
-  "marker_count": 5,
-  "require_all_markers": true,
-  "min_markers_required": 2,
-  "slot_hsv_tolerance": 25,
-  "slot_inset": 10,
-  "slot_color_distance": 25,
-  "default_min_confidence": 0.8,
-  "default_confirm_delay": 0.5,
-  "pause_check_interval": 0.5,
+  "scan_item_click_delay": 1.0,
+  "scan_marker_count": 5,
+  "scan_require_all_markers": true,
+  "scan_min_markers_required": 2,
+  "scan_slot_hsv_tolerance": 25,
+  "scan_slot_inset": 10,
+  "scan_slot_color_distance": 25,
+  "scan_min_confidence": 0.8,
+  "scan_confirm_delay": 0.5,
+  "llm_enabled": false,
+  "llm_provider": "lmstudio",
+  "llm_endpoint": null,
+  "llm_model": "gemma4:e4b",
+  "llm_timeout": 30,
+  "llm_boss_prompt": null,
+  "llm_watcher_interval": 5.0,
+  "llm_watcher_max_scans": 0,
+  "llm_watcher_timeout": 0,
+  "ocr_enabled": false,
+  "ocr_backend": null,
+  "ocr_languages": "en",
+  "ocr_min_confidence": 0.3,
+  "window_focus_check": false,
+  "window_focus_title": "Idle Clans",
+  "window_focus_action": "pause",
+  "humanize_enabled": false,
+  "humanize_click_jitter": 0,
+  "humanize_micro_delay_min": 0.0,
+  "humanize_micro_delay_max": 0.0,
+  "humanize_break_interval_min": 0,
+  "humanize_break_duration_min": 0,
+  "humanize_break_duration_max": 0,
+  "session_log_enabled": false,
+  "session_log_dir": "logs",
+  "timing_pause_interval": 0.5,
   "debug_mode": false,
   "debug_detection": false,
-  "show_pixel_position": false,
+  "debug_show_pixel_position": false,
   "debug_save_templates": false
 }
 ```
@@ -638,10 +898,10 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `clicks_per_point` | Anzahl Klicks pro Punkt (Standard: 1) |
-| `max_total_clicks` | Maximale Klicks gesamt (`null` = unendlich) |
+| `click_per_point` | Anzahl Klicks pro Punkt (Standard: 1) |
+| `click_max_total` | Maximale Klicks gesamt (`null` = unendlich) |
 | `click_move_delay` | Pause zwischen Mausbewegung und Klick in Sekunden (Standard: 0.01) |
-| `post_click_delay` | Pause NACH dem Klick bevor Maus weiterbewegt wird (Standard: 0.05) |
+| `click_post_delay` | Pause NACH dem Klick bevor Maus weiterbewegt wird (Standard: 0.05) |
 
 ### Sicherheit
 
@@ -655,15 +915,15 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
+| `pixel_color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
 | `pixel_check_interval` | Wie oft auf Farbe prüfen (Sekunden) |
-| `max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
-| `consecutive_timeout_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
-| `scan_pixel_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
-| `show_pixel_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
+| `pixel_max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
+| `pixel_consecutive_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
+| `pixel_scan_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
+| `pixel_show_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
 
 ### Item-Scan Einstellungen
 
@@ -673,21 +933,71 @@ Wird beim ersten Start automatisch erstellt:
 | `scan_click_immediate` | `true` = Scan→Klick pro Slot (sofort klicken), `false` = alle scannen, dann alle klicken (Standard) |
 | `scan_park_mouse` | `true` = Maus zur Bildschirmmitte parken, `[x, y]` = Maus zu bestimmter Position parken, `false` = Maus nicht bewegen (Standard) |
 | `scan_slot_delay` | Pause zwischen Slot-Scans in Sekunden (Standard: 0.1) |
-| `item_click_delay` | Pause nach Item-Klick in Sekunden (Standard: 1.0) |
-| `marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
-| `require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
-| `min_markers_required` | Mindestanzahl Marker wenn `require_all_markers: false` |
-| `slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
-| `slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
-| `slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
-| `default_min_confidence` | Standard-Konfidenz für Template-Matching (Standard: 0.8 = 80%) |
-| `default_confirm_delay` | Standard-Wartezeit vor Bestätigungs-Klick in Sekunden (Standard: 0.5) |
+| `scan_item_click_delay` | Pause nach Item-Klick in Sekunden (Standard: 1.0) |
+| `scan_marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
+| `scan_require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
+| `scan_min_markers_required` | Mindestanzahl Marker wenn `scan_require_all_markers: false` |
+| `scan_slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
+| `scan_slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
+| `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
+| `scan_min_confidence` | Standard-Konfidenz für Template-Matching (Standard: 0.8 = 80%) |
+| `scan_confirm_delay` | Standard-Wartezeit vor Bestätigungs-Klick in Sekunden (Standard: 0.5) |
+
+### LLM Vision (Boss-Erkennung)
+
+| Option | Beschreibung |
+|--------|--------------|
+| `llm_enabled` | LLM-basierte Boss-Erkennung global aktivieren (zusätzlich pro Boss-Scan `use_llm: true`) |
+| `llm_provider` | `"ollama"` oder `"lmstudio"` |
+| `llm_endpoint` | API-URL (`null` = Standard: `http://localhost:11434/api/chat` für Ollama, `http://localhost:1234/v1/chat/completions` für LM Studio) |
+| `llm_model` | Modell-Name (`null` = Standard `"llava"` für Ollama, `"default"` für LM Studio) |
+| `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 30) |
+| `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
+| `llm_watcher_interval` | Prüf-Intervall des Boss-Watchers in Sekunden (Standard: 5.0) |
+| `llm_watcher_max_scans` | Max. Scans bis Boss-Watcher abbricht (`0` = unbegrenzt) |
+| `llm_watcher_timeout` | Timeout in Sekunden bis Boss-Watcher abbricht (`0` = unbegrenzt) |
+
+### OCR Texterkennung (Boss-Erkennung)
+
+| Option | Beschreibung |
+|--------|--------------|
+| `ocr_enabled` | OCR-basierte Texterkennung global aktivieren (zusätzlich pro Boss-Scan `use_ocr: true`) |
+| `ocr_backend` | `null` (Auto-Detect), `"easyocr"` oder `"tesseract"` |
+| `ocr_languages` | Sprach-Codes kommasepariert (Standard: `"en"`, z.B. `"en,de"` für Englisch+Deutsch) |
+| `ocr_min_confidence` | Mindest-Konfidenz für OCR-Ergebnisse (0.0-1.0, Standard: 0.3) |
+
+### Window-Fokus-Check
+
+| Option | Beschreibung |
+|--------|--------------|
+| `window_focus_check` | Vor jedem Klick/Tastendruck prüfen ob Ziel-Fenster aktiv ist (Standard: false) |
+| `window_focus_title` | Substring im Fenstertitel (case-insensitive, Standard: `"Idle Clans"`) |
+| `window_focus_action` | `"pause"` = warten bis Fenster aktiv, `"stop"` = Sequenz abbrechen |
+
+### Humanization (Anti-Bot-Detection)
+
+| Option | Beschreibung |
+|--------|--------------|
+| `humanize_enabled` | Master-Switch für alle Humanize-Features (Standard: false) |
+| `humanize_click_jitter` | Max. Pixel-Abweichung pro Klick (Standard: 0, sinnvoll: 2-5) |
+| `humanize_micro_delay_min` | Zusatz-Delay vor jedem Klick/Taste: Min in Sekunden (Standard: 0) |
+| `humanize_micro_delay_max` | Zusatz-Delay vor jedem Klick/Taste: Max in Sekunden (Standard: 0) |
+| `humanize_break_interval_min` | Alle N Minuten eine Pause einlegen (`0` = keine Pausen) |
+| `humanize_break_duration_min` | Pause-Dauer Min in Minuten |
+| `humanize_break_duration_max` | Pause-Dauer Max in Minuten (Varianz) |
+
+### Session-Log
+
+| Option | Beschreibung |
+|--------|--------------|
+| `session_log_enabled` | CSV-Log aller Aktionen pro Sequenz schreiben (Standard: false) |
+| `session_log_dir` | Verzeichnis für CSV-Dateien (Standard: `"logs"`) |
 
 ### Timing
 
 | Option | Beschreibung |
 |--------|--------------|
-| `pause_check_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
+| `timing_pause_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
 
 ### Debug-Einstellungen
 
@@ -695,7 +1005,7 @@ Wird beim ersten Start automatisch erstellt:
 |--------|--------------|
 | `debug_mode` | Zeigt Schritte VOR Start und wartet auf Enter |
 | `debug_detection` | Alle Ausgaben persistent (nicht überschrieben) |
-| `show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
+| `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
 ## Dateistruktur
@@ -703,23 +1013,32 @@ Wird beim ersten Start automatisch erstellt:
 ```
 Autoclicker-Idleclans/
 ├── main.py                 # Einstiegspunkt
-├── autoclicker/            # Hauptmodul (~7600 Zeilen)
+├── test_llm.py             # Standalone-LLM-Verbindungs-/Bilderkennungstest
+├── autoclicker/            # Hauptmodul (~11.500 Zeilen)
 │   ├── __init__.py
 │   ├── config.py           # Konfiguration (Hotkeys, Defaults)
-│   ├── models.py           # Datenmodelle (ClickPoint, Sequence, etc.)
+│   ├── models.py           # Datenmodelle (ClickPoint, Sequence, BossScanConfig, etc.)
 │   ├── utils.py            # Hilfsfunktionen (Input, Zeit-Parsing)
-│   ├── winapi.py           # Windows API (Maus/Tastatur)
+│   ├── winapi.py           # Windows API (Maus/Tastatur, Window-Fokus)
 │   ├── imaging.py          # Bildverarbeitung (Screenshots, OpenCV)
 │   ├── persistence.py      # Speichern/Laden (JSON)
 │   ├── handlers.py         # Hotkey-Handler
-│   ├── execution.py        # Sequenz-Ausführung
+│   ├── execution.py        # Sequenz-Ausführung + safe_click/safe_key Wrapper
+│   ├── llm_vision.py       # LLM Vision (Ollama / LM Studio Boss-Erkennung)
+│   ├── ocr.py              # OCR Texterkennung (EasyOCR / Tesseract Boss-Erkennung)
+│   ├── session_log.py      # CSV-Session-Logger
+│   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   └── editors/            # Interaktive Editoren
 │       ├── __init__.py
 │       ├── sequence_editor.py
 │       ├── item_scan_editor.py
 │       ├── item_editor.py
-│       └── slot_editor.py
+│       ├── slot_editor.py
+│       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
+│       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
+├── CLAUDE.md               # Architektur-Notizen für Claude Code
+├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
 ├── sequences/              # Gespeicherte Sequenzen
 │   ├── points.json         # Aufgenommene Punkte (mit ID und Name)
@@ -735,6 +1054,12 @@ Autoclicker-Idleclans/
 │   └── presets/            # Item-Presets
 ├── item_scans/             # Item-Scan Konfigurationen
 │   └── *.json              # Scan-Konfigurationen (verknüpft Slots + Items)
+├── boss_scans/             # Boss-Scan Konfigurationen (mit optionaler LLM-Aktivierung)
+│   └── *.json
+├── exports/                # Importier-/Exportier-Bundles (ZIP)
+│   └── *.zip
+├── logs/                   # Session-Logs als CSV (wenn session_log_enabled=true)
+│   └── YYYY-MM-DD_HHMMSS_<seq>.csv
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
@@ -746,33 +1071,43 @@ Autoclicker-Idleclans/
 
 ### Architektur
 
-Das Programm ist modular aufgebaut (~7600 Zeilen in 15 Dateien):
+Das Programm ist modular aufgebaut (~11.000 Zeilen in 20 Dateien):
 
 ```
 main.py                      Einstiegspunkt, Event-Loop
+test_llm.py                  Standalone-LLM-Test
     │
     └── autoclicker/
-        ├── config.py        Konstanten, Hotkey-IDs
-        ├── models.py        Datenklassen (ClickPoint, Sequence, ...)
-        ├── utils.py         Hilfsfunktionen (Input, Zeit-Parsing)
-        ├── winapi.py        Windows API (Maus, Tastatur, Hotkeys)
-        ├── imaging.py       Screenshots, Farberkennung, OpenCV
-        ├── persistence.py   JSON-Persistenz, Presets
-        ├── handlers.py      Hotkey-Callbacks
-        ├── execution.py     Sequenz-Ausführung, Item-Scans
+        ├── config.py            Konstanten, Hotkey-IDs, AppConfig-Dataclass
+        ├── models.py            Datenklassen (ClickPoint, Sequence, BossScanConfig, ...)
+        ├── utils.py             Hilfsfunktionen (Input, Zeit-Parsing)
+        ├── winapi.py            Windows API (Maus, Tastatur, Hotkeys, Window-Fokus)
+        ├── imaging.py           Screenshots, Farberkennung, OpenCV
+        ├── persistence.py       JSON-Persistenz, Presets
+        ├── handlers.py          Hotkey-Callbacks
+        ├── execution.py         Sequenz-Ausführung, Item-Scans, safe_click/safe_key
+        ├── llm_vision.py        Ollama / LM Studio Integration für Boss-Erkennung
+        ├── session_log.py       CSV-Logger für Klick-/Key-Events
+        ├── import_export.py     ZIP-Bundle + 2-Punkt-Koordinaten-Remapping
         └── editors/
-            ├── sequence_editor.py    Sequenz erstellen/bearbeiten
-            ├── item_scan_editor.py   Scans konfigurieren
-            ├── item_editor.py        Items definieren
-            └── slot_editor.py        Slots definieren
+            ├── sequence_editor.py        Sequenz erstellen/bearbeiten
+            ├── item_scan_editor.py       Scans konfigurieren (inkl. Auto-Scan)
+            ├── item_editor.py            Items definieren (inkl. autoscan-Befehl)
+            ├── slot_editor.py            Slots definieren
+            ├── boss_scan_editor.py       Boss-Scans + LLM-Vision-Aktivierung
+            └── import_export_editor.py   Wizard für Setup-Export/Import
 ```
 
 **Datenfluss:**
 ```
-[Hotkey] → handlers.py → execution.py → winapi.py (Klicks/Tasten)
-                │                   └──→ imaging.py (Screenshots)
-                └──→ editors/*.py → persistence.py (Speichern)
+[Hotkey] → handlers.py → editors/*.py → persistence.py (Speichern)
+                      ↘ execution.py → safe_click/safe_key → winapi.py
+                                     ↘ imaging.py (Screenshots)
+                                     ↘ llm_vision.py (HTTP zu Ollama/LM Studio)
+                                     ↘ session_log.py (CSV-Append)
 ```
+
+**Wichtig**: Alle Klicks und Tastendrücke im Worker-Thread laufen über `safe_click(state, x, y, label)` / `safe_key(state, key, label)` (in `execution.py`). Diese Wrapper bündeln Window-Fokus-Check, Humanization (Jitter/Mikro-Delays/Breaks) und Session-Logging. Direkter Aufruf von `send_click` / `send_key` umgeht alle drei.
 
 ### Thread-Modell
 
@@ -843,6 +1178,19 @@ python tools/sync_json.py
 - Alte Formate konvertieren (z.B. `confirm_point` int → Koordinaten)
 - Presets erben Werte von globalen Dateien
 
+### OCR Test-Tool (`tools/test_ocr.py`)
+
+Testet OCR-Backend-Verfügbarkeit und Texterkennung ohne den Autoclicker:
+
+```bash
+python tools/test_ocr.py                        # Backend-Status + Region wählen
+python tools/test_ocr.py test                   # Nur Backend-Verfügbarkeit prüfen
+python tools/test_ocr.py bild.png               # Bild-Datei analysieren
+python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
+python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
+python tools/test_ocr.py --backend easyocr --languages "en,de"
+```
+
 ### Slot-Tester (`tools/slot_tester.py`)
 
 Testet die automatische Slot-Erkennung mit Debug-Ausgaben:
@@ -853,7 +1201,99 @@ python tools/slot_tester.py
 
 ## Changelog
 
-### Neueste Änderungen
+### Neueste Änderungen — Auto-Scan + LLM Vision + Sicherheit + Import/Export
+
+Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihenfolge entspricht dem Entstehungsverlauf.
+
+**Auto-Scan Items** (Item-Editor)
+- Neuer Befehl `autoscan` und `autoscan nocolor` im Item-Editor
+- Scannt alle Slots auf einmal, erstellt Items mit Templates + optional Marker-Farben
+- Duplikat-Erkennung: bestehende Items werden via Template-Matching übersprungen, nicht doppelt angelegt
+- Auch im Item-Scan-Menü als eigener Workflow-Punkt verfügbar
+
+**LLM Vision Boss-Detection** (`autoclicker/llm_vision.py`)
+- Neues Modul für lokale Vision-LLMs via Ollama oder LM Studio (HTTP, urllib)
+- `analyze_image()` schickt Screenshot + Boss-Namen-Liste an das Modell
+- `match_boss_name()` mappt die Antwort auf bekannten Boss oder markiert als neu
+- Im Boss-Scan-Editor pro Scan aktivierbar (`use_llm` + `llm_fallback`)
+- Globale Config-Werte: `llm_enabled`, `llm_provider`, `llm_endpoint`, `llm_model`, `llm_timeout`, `llm_boss_prompt`
+- **Auto-Save unbekannter Bosse**: Erkennt das LLM einen neuen Namen → wird als `BossProfile(action=skip)` gespeichert (unter `state.lock`)
+- Standalone-Test-Script `test_llm.py` (Verbindungstest, Screenshot-Analyse, Datei-Analyse)
+
+**Boss-Watcher** (Sequenz-Step)
+- Neuer Step-Typ `watcher <Name>` im Sequenz-Editor
+- Prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird, dann Aktion
+- Exit-Bedingungen: `llm_watcher_max_scans` (Anzahl) und `llm_watcher_timeout` (Sekunden) — beides `0` = unbegrenzt
+
+**OCR Texterkennung** (`autoclicker/ocr.py`)
+- Neues Modul für lokale Texterkennung via EasyOCR oder Tesseract
+- `read_text()` extrahiert Text + Konfidenz aus Screenshot
+- `detect_boss_name()` matched erkannten Text gegen bekannte Boss-Namen (exact/substring matching)
+- Im Boss-Scan-Editor pro Scan aktivierbar (`use_ocr` + `ocr_fallback`)
+- Globale Config-Werte: `ocr_enabled`, `ocr_backend` (auto-detect), `ocr_languages`, `ocr_min_confidence`
+- Schneller und determinisitischer als LLM für reine Texterkennung
+- Standalone-Test-Script `tools/test_ocr.py` (Backend-Test, Screenshot-Analyse, Datei-Analyse, Boss-Matching)
+
+**Config-Field-Renaming**
+- Alle Config-Felder systematisch in Gruppen unterteilt mit Präfixen: `click_*`, `scan_*`, `pixel_*`, `llm_*`, `ocr_*`, `humanize_*`, `window_focus_*`, `session_log_*`, `debug_*`, `timing_*`
+- Automatische Migration alter config.json-Dateien (`_FIELD_MIGRATION` dictionary in AppConfig)
+- Alte Configs werden automatisch auf neue Feldnamen gemappt, keine manuellen Änderungen nötig
+
+**Code-Cleanup**
+- Extrahiert `_check_profile_match()` Helper — vereinheitlicht 50 Zeilen Template/Marker-Erkennung in execute_boss_scan() und execute_item_scan()
+- Extrahiert `_slot_to_dict()` Helper — standardisiert ItemSlot-Serialisierung über 5 Speicherlokationen
+- Extrahiert `_step_status()` Helper — konsolidiert 24 if/debug/else/clear-Muster im Worker
+- Ersetzt manuelle pause-Event-Schleifen mit zentraler `wait_while_paused()` Funktion
+- Insgesamt -160 Zeilen Net-Reduktion durch Deduplication, keine Verhaltensänderungen
+
+**Window-Fokus-Check** (`autoclicker/winapi.py` + `execution.py`)
+- Verhindert dass Klicks in fremde Fenster gehen wenn man weg-tabbed
+- Vor jedem Klick/Tastendruck wird `GetForegroundWindow` geprüft
+- Config: `window_focus_check`, `window_focus_title` (Substring), `window_focus_action` (`pause` oder `stop`)
+
+**Humanization** (`autoclicker/execution.py`)
+- Klick-Jitter (±N Pixel Zufalls-Offset)
+- Mikro-Delays vor jeder Aktion (Zufall min-max Sekunden)
+- Periodische Pausen alle X Min für Y-Z Min Länge
+- Config: `humanize_enabled`, `humanize_click_jitter`, `humanize_micro_delay_min/max`, `humanize_break_interval_min`, `humanize_break_duration_min/max`
+
+**Session-Log** (`autoclicker/session_log.py`)
+- Thread-sicherer CSV-Logger pro Sequenz-Session
+- Pro Session eine Datei `logs/YYYY-MM-DD_HHMMSS_<seq>.csv`
+- Geloggte Events: `session_start/end`, `click`, `key`, `focus_lost_pause/stop`, `focus_restored`, `humanize_break_start/end`
+- Config: `session_log_enabled`, `session_log_dir`
+
+**Zentrale safe_click / safe_key Wrapper**
+- Neue Wrapper in `execution.py` bündeln Window-Fokus-Check + Humanization + Session-Logging
+- **Alle** `send_click`/`send_key`-Aufrufe im Worker wurden auf die Wrapper umgestellt
+- Direkt-Aufruf von `send_*` umgeht alle drei Features
+
+**Import / Export-Editor** (`autoclicker/import_export.py` + `editors/import_export_editor.py`)
+- Neuer Hotkey **CTRL+ALT+I**
+- Komplettes Setup als ZIP exportieren (alles oder mit Auswahl)
+- Empfänger importiert die ZIP — **2-Punkt-Koordinaten-Remapping** passt alle Klick-Punkte, Scan-Regionen, Boss-Regionen, Wait-Pixel, Confirm-Points, Screenshot-Regionen automatisch an den neuen Bildschirm an
+- Templates (PNG) sind im ZIP enthalten und werden bei Import nach `items/templates/` extrahiert
+- Merge- oder Ersetzen-Modus
+- Anleitung für den Empfänger wird nach Export angezeigt
+- Auch über das Item-Scan-Menü als Punkt 6 erreichbar
+
+**Reviews + Bugfixes** (mehrere Commits, Auswahl der wichtigsten)
+- Race Condition bei `config.bosses.append` (Auto-Save neuer Bosse) → Append jetzt unter `state.lock`
+- LLM-Fallback-Logik invertiert: bei `llm_fallback=True` lief das LLM doppelt → strikte Entweder-Oder-Logik
+- BytesIO-Memory-Leak in `_image_to_base64` → Context Manager
+- Boss-Watcher hatte keinen Exit außer Sequenz-Stop → `max_scans` + `timeout` als Exit-Bedingungen
+- `save_data` / `save_global_slots` / `save_global_items` iterierten ohne Lock → Snapshot unter `state.lock`
+- `state.session_screenshots_dir`-Zuweisung war nicht thread-safe → unter `state.lock`
+- `socket.timeout` in LLM-Calls jetzt explizit gefangen
+- `screenshot_region` aus JSON wird auf Länge 4 validiert
+- `BossScanConfig.default_action` nutzt `BOSS_ACTION_SKIP`-Konstante statt magisch `"skip"`-String
+
+**Doku-Updates**
+- `CLAUDE.md` neu — Architektur-Notizen für Claude Code Sessions
+- `IDEAS.md` neu — Feature-Backlog mit Tradeoffs (Disconnect-Detection, Webhook-Notifications, Inventory-Full-Detection, HP/Food-Trigger, Session-Zeitlimit, Dry-Run, Auto-Login etc.)
+- `README.md` (diese Datei) und `autoclicker/README.md` an alle neuen Features angepasst
+
+### Vorherige Änderungen
 
 - **Zeitgesteuerte Loops**: Loop-Phasen können an eine Uhrzeit gebunden werden (z.B. `12:30`). Ein Daemon-Thread überwacht die Zeit im Hintergrund und setzt ein Pending-Flag – normale Loops laufen weiter, der zeitgesteuerte Loop wird nur an seiner natürlichen Position ausgeführt. Neuer `time <Nr>` Befehl im Loop-Editor.
 

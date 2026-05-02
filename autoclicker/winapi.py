@@ -53,6 +53,7 @@ VK_K = 0x4B  # Skip current wait
 VK_W = 0x57  # Quick-Switch (Wechseln)
 VK_Z = 0x5A  # Schedule (Zeitplan)
 VK_F = 0x46  # Finish (Zyklus abschließen)
+VK_I = 0x49  # Import/Export
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -71,6 +72,7 @@ HOTKEY_SKIP = 13
 HOTKEY_SWITCH = 14
 HOTKEY_SCHEDULE = 15
 HOTKEY_FINISH = 16
+HOTKEY_IMPORT_EXPORT = 17
 
 # Window Messages
 WM_HOTKEY = 0x0312
@@ -247,6 +249,33 @@ def send_key(key_name: str) -> bool:
     return True
 
 
+def get_foreground_window_title() -> str:
+    """Gibt den Titel des aktuellen Vordergrund-Fensters zurück (leer bei Fehler)."""
+    try:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return ""
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, length + 1)
+        return buffer.value or ""
+    except (OSError, AttributeError):
+        return ""
+
+
+def is_target_window_active(title_substring: str) -> bool:
+    """Prüft ob der Titel des aktiven Fensters den gegebenen Substring enthält (case-insensitive).
+
+    Leerer Substring → immer True (Check deaktiviert).
+    """
+    if not title_substring:
+        return True
+    current = get_foreground_window_title()
+    return title_substring.lower() in current.lower()
+
+
 def check_failsafe(state: 'AutoClickerState' = None) -> bool:
     """Prüft, ob die Maus in der Fail-Safe-Ecke ist."""
     cfg = state.config if state else CONFIG
@@ -279,6 +308,7 @@ def register_hotkeys() -> bool:
         (HOTKEY_SWITCH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_W, "CTRL+ALT+W (Wechseln)"),
         (HOTKEY_SCHEDULE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Z, "CTRL+ALT+Z (Zeitplan)"),
         (HOTKEY_FINISH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F, "CTRL+ALT+F (Sanft beenden)"),
+        (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
     ]
 
     for hotkey_id, modifiers, vk, name in hotkeys:

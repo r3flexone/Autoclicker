@@ -43,6 +43,8 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         f"Items bearbeiten     ({item_count} vorhanden)",
         f"Scans bearbeiten     ({scan_count} vorhanden)",
         f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
+        "Auto-Scan (Slots scannen + Items + Scan in einem Schritt)",
+        "Import / Export (Setup teilen oder importieren)",
     ]
 
     choice = interactive_select(menu_options)
@@ -55,6 +57,11 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         run_item_scan_editor(state)
     elif choice == 3:
         run_boss_scan_editor(state)
+    elif choice == 4:
+        run_auto_scan_workflow(state)
+    elif choice == 5:
+        from .import_export_editor import run_import_export_editor
+        run_import_export_editor(state)
 
 
 def run_item_scan_editor(state: AutoClickerState) -> None:
@@ -402,7 +409,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
 
                 # Bestätigungs-Klick?
                 confirm_point = None
-                confirm_delay = CONFIG.default_confirm_delay
+                confirm_delay = CONFIG.scan_confirm_delay
                 confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
                 if confirm_input:
                     try:
@@ -523,4 +530,81 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     save_msg = ok(f"Scan '{scan_name}' gespeichert!")
     print(f"\n{save_msg}")
     print(f"         {len(slots)} Slots, {len(items)} Items")
+    print(f"         Nutze im Sequenz-Editor: 'scan {scan_name}'")
+
+
+def run_auto_scan_workflow(state: AutoClickerState) -> None:
+    """Kompletter Auto-Scan Workflow: Alle Slots scannen, Items erstellen, Scan-Config speichern."""
+    print(header("AUTO-SCAN WORKFLOW"))
+    print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Auto-Scan')}")
+    print("\n  Scannt automatisch alle Slots, erstellt Items und eine Scan-Konfiguration.")
+
+    if not PILLOW_AVAILABLE:
+        print(f"\n{err('Pillow nicht installiert!')}")
+        return
+
+    if not OPENCV_AVAILABLE:
+        print(f"\n{err('OpenCV nicht installiert!')} (pip install opencv-python)")
+        return
+
+    with state.lock:
+        slot_count = len(state.global_slots)
+
+    if slot_count == 0:
+        print(f"\n{err('Keine Slots vorhanden!')}")
+        print("         Erstelle zuerst Slots mit dem Slot-Editor (Option 1, dann 'auto')")
+        return
+
+    # Items automatisch erstellen via item_editor
+    from .item_editor import item_autoscan_command
+    item_autoscan_command(state, "autoscan")
+
+    # Prüfen ob Items erstellt wurden
+    with state.lock:
+        item_count = len(state.global_items)
+        slot_list = list(state.global_slots.keys())
+        item_list = list(state.global_items.keys())
+
+    if item_count == 0:
+        print(f"\n{err('Keine Items erstellt - Scan-Konfiguration wird nicht erstellt.')}")
+        return
+
+    # Scan-Config erstellen
+    print(header("SCAN-KONFIGURATION ERSTELLEN"))
+
+    scan_name = safe_input("\nName für den Scan (Enter = 'AutoScan'): ").strip()
+    if is_cancel(scan_name):
+        print(f"  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
+        return
+    if not scan_name:
+        scan_name = "AutoScan"
+
+    # Toleranz
+    tolerance = 40
+    try:
+        tol_input = safe_input(f"Farbtoleranz (Enter = {tolerance}): ").strip()
+        if tol_input:
+            tolerance = max(1, min(100, int(tol_input)))
+    except ValueError:
+        pass
+
+    # Alle Slots und Items verwenden
+    with state.lock:
+        slots = list(state.global_slots.values())
+        items = list(state.global_items.values())
+
+    config = ItemScanConfig(
+        name=scan_name,
+        slots=slots,
+        items=items,
+        color_tolerance=tolerance
+    )
+
+    with state.lock:
+        state.item_scans[scan_name] = config
+
+    save_item_scan(config)
+
+    print(f"\n{ok(f'Auto-Scan komplett!')}")
+    print(f"         Scan '{scan_name}': {len(slots)} Slots, {len(items)} Items")
     print(f"         Nutze im Sequenz-Editor: 'scan {scan_name}'")
