@@ -480,6 +480,43 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         else:
             use_llm = False
 
+    # === SCHRITT 6: OCR Texterkennung ===
+    use_ocr = existing.use_ocr if existing else False
+    ocr_fallback = existing.ocr_fallback if existing else True
+
+    print(header("SCHRITT 6: OCR TEXTERKENNUNG (optional)"))
+    print("\n  OCR liest den Boss-Namen direkt als Text vom Screenshot.")
+    print("  Schneller als LLM, braucht aber sichtbaren Text im Bild.")
+
+    ocr_available = False
+    try:
+        from autoclicker.ocr import is_available, get_status
+        ocr_available = is_available()
+        if not ocr_available:
+            print(f"\n  {warn(get_status())}")
+    except ImportError:
+        print(f"\n  {warn('OCR-Modul nicht verfügbar')}")
+
+    if ocr_available:
+        ocr_options = [
+            "Kein OCR verwenden",
+            "OCR als Fallback (wenn Template/Marker nichts finden)",
+            "OCR als primäre Erkennung (immer zuerst OCR)",
+        ]
+
+        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:")
+        if ocr_choice == 0:
+            use_ocr = False
+        elif ocr_choice == 1:
+            use_ocr = True
+            ocr_fallback = True
+            print(f"  {ok('OCR als Fallback aktiviert')}")
+            print(f"       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
+        elif ocr_choice == 2:
+            use_ocr = True
+            ocr_fallback = False
+            print(f"  {ok('OCR als primäre Erkennung aktiviert')}")
+
     # === Speichern ===
     config = BossScanConfig(
         name=scan_name,
@@ -490,6 +527,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         default_scan=default_scan,
         use_llm=use_llm,
         llm_fallback=llm_fallback,
+        use_ocr=use_ocr,
+        ocr_fallback=ocr_fallback,
     )
 
     with state.lock:
@@ -499,8 +538,13 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 
     save_msg = ok(f"Boss-Scan '{scan_name}' gespeichert!")
     print(f"\n{save_msg}")
-    llm_str = " [LLM aktiv]" if use_llm else ""
-    print(f"         {len(bosses)} Boss(e), Region ({scan_region[0]},{scan_region[1]})-({scan_region[2]},{scan_region[3]}){llm_str}")
+    tags = []
+    if use_llm:
+        tags.append("LLM")
+    if use_ocr:
+        tags.append("OCR")
+    tag_str = f" [{'+'.join(tags)}]" if tags else ""
+    print(f"         {len(bosses)} Boss(e), Region ({scan_region[0]},{scan_region[1]})-({scan_region[2]},{scan_region[3]}){tag_str}")
     print(f"         Nutze im Sequenz-Editor: 'boss {scan_name}'")
 
 

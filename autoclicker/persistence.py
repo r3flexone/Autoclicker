@@ -505,6 +505,8 @@ def save_boss_scan(config: BossScanConfig) -> None:
         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
         "use_llm": config.use_llm,
         "llm_fallback": config.llm_fallback,
+        "use_ocr": config.use_ocr,
+        "ocr_fallback": config.ocr_fallback,
     }
 
     filename = f"{sanitize_filename(config.name)}.json"
@@ -533,6 +535,8 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
                 bosses=bosses,
                 use_llm=data.get("use_llm", False),
                 llm_fallback=data.get("llm_fallback", True),
+                use_ocr=data.get("use_ocr", False),
+                ocr_fallback=data.get("ocr_fallback", True),
             )
 
     except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:

@@ -659,10 +659,22 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
 
     if debug:
         r = config.scan_region
-        llm_str = " [LLM]" if config.use_llm and state.config.llm_enabled else ""
-        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse{llm_str}"))
+        tags = []
+        if config.use_llm and state.config.llm_enabled:
+            tags.append("LLM")
+        if config.use_ocr and state.config.ocr_enabled:
+            tags.append("OCR")
+        tag_str = f" [{'+'.join(tags)}]" if tags else ""
+        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse{tag_str}"))
 
     llm_active = config.use_llm and state.config.llm_enabled
+    ocr_active = config.use_ocr and state.config.ocr_enabled
+
+    # OCR als primäre Erkennung (wenn nicht Fallback-Modus)
+    if ocr_active and not config.ocr_fallback:
+        ocr_result = _execute_ocr_boss_detection(state, config, img, debug)
+        if ocr_result is not None:
+            return True, ocr_result
 
     # LLM als primäre Erkennung (wenn nicht Fallback-Modus)
     if llm_active and not config.llm_fallback:
@@ -720,7 +732,13 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         if template_ok and marker_ok and (boss.template or boss.marker_colors):
             return True, boss
 
-    # 5. LLM Vision als Fallback (nur im Fallback-Modus - sonst lief es bereits oben als primär)
+    # 5. OCR als Fallback
+    if ocr_active and config.ocr_fallback:
+        ocr_result = _execute_ocr_boss_detection(state, config, img, debug)
+        if ocr_result is not None:
+            return True, ocr_result
+
+    # 6. LLM Vision als Fallback (nur im Fallback-Modus - sonst lief es bereits oben als primär)
     if llm_active and config.llm_fallback:
         llm_result = _execute_llm_boss_detection(state, config, img, debug)
         if llm_result is not None:
@@ -729,6 +747,57 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
     if debug:
         print(dbg("  → Kein Boss erkannt"))
     return False, None
+
+
+def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
+                                 img, debug: bool) -> BossProfile | None:
+    """Versucht einen Boss per OCR-Texterkennung zu erkennen.
+
+    Returns:
+        BossProfile wenn Boss erkannt, sonst None.
+    """
+    try:
+        from .ocr import detect_boss_name, is_available
+    except ImportError:
+        if debug:
+            print(dbg("  → OCR: Import fehlgeschlagen"))
+        return None
+
+    if not is_available():
+        if debug:
+            print(dbg("  → OCR: kein Backend verfügbar"))
+        return None
+
+    boss_names = [boss.name for boss in config.bosses]
+    languages = [l.strip() for l in state.config.ocr_languages.split(",")]
+
+    if debug:
+        print(dbg(f"  → OCR-Erkennung ({state.config.ocr_backend or 'Auto'})..."))
+
+    success, matched_name, raw_text, duration = detect_boss_name(
+        img=img,
+        boss_names=boss_names,
+        backend=state.config.ocr_backend,
+        languages=languages,
+        min_confidence=state.config.ocr_min_confidence,
+    )
+
+    if debug:
+        if raw_text:
+            print(dbg(f"  → OCR-Text: '{raw_text}' ({duration:.0f}ms)"))
+        else:
+            print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
+
+    if not success or matched_name is None:
+        return None
+
+    for boss in config.bosses:
+        if boss.name == matched_name:
+            if debug:
+                print(dbg(f"  → OCR: {boss.name} ERKANNT!"))
+            return boss
+
+    return None
 
 
 def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,

@@ -202,6 +202,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                         "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
                         "use_llm": config.use_llm,
                         "llm_fallback": config.llm_fallback,
+                        "use_ocr": config.use_ocr,
+                        "ocr_fallback": config.ocr_fallback,
                     }
                     safe = sanitize_filename(name)
                     zf.writestr(f"boss_scans/{safe}.json", compact_json(bscan_data))
@@ -436,6 +438,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             bosses=bosses,
                             use_llm=bscan_data.get("use_llm", False),
                             llm_fallback=bscan_data.get("llm_fallback", True),
+                            use_ocr=bscan_data.get("use_ocr", False),
+                            ocr_fallback=bscan_data.get("ocr_fallback", True),
                         )
                         with state.lock:
                             state.boss_scans[config.name] = config

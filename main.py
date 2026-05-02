@@ -151,6 +151,18 @@ def main() -> int:
             pass
         print()
 
+    # OCR-Status prüfen wenn aktiviert
+    if state.config.ocr_enabled:
+        try:
+            from autoclicker.ocr import is_available, get_status
+            if is_available():
+                print(col(f"[OCR] {get_status()}", 'green'))
+            else:
+                print(warn(f"[OCR] {get_status()}"))
+        except Exception:
+            pass
+        print()
+
     print(col("Bereit!", 'green') + f" Starte mit {col('CTRL+ALT+A', 'yellow')} um Punkte aufzunehmen.")
     print(f"        oder mit {col('CTRL+ALT+S', 'yellow')} eine Sequenz starten.")
     print_status(state)

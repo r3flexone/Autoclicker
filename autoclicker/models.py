@@ -343,11 +343,19 @@ class BossScanConfig:
     # LLM Vision Erkennung (optional, zusätzlich zu Template/Marker)
     use_llm: bool = False                                         # LLM für Erkennung verwenden
     llm_fallback: bool = True                                     # LLM nur als Fallback (wenn Template/Marker nichts finden)
+    # OCR-Texterkennung (optional, schnelle Alternative zu LLM)
+    use_ocr: bool = False                                         # OCR für Boss-Name-Erkennung
+    ocr_fallback: bool = True                                     # OCR nur als Fallback
 
     def __str__(self) -> str:
         r = self.scan_region
-        llm_str = " [LLM]" if self.use_llm else ""
-        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]})){llm_str}"
+        tags = []
+        if self.use_llm:
+            tags.append("LLM")
+        if self.use_ocr:
+            tags.append("OCR")
+        tag_str = f" [{'+'.join(tags)}]" if tags else ""
+        return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]})){tag_str}"
 
 
 # =============================================================================

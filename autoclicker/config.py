@@ -73,6 +73,12 @@ class AppConfig:
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
 
+    # === OCR (Texterkennung) ===
+    ocr_enabled: bool = False                        # OCR-Texterkennung aktivieren
+    ocr_backend: Optional[str] = None                # "easyocr" oder "tesseract" (None = Auto)
+    ocr_languages: str = "en"                        # Sprach-Codes kommasepariert (z.B. "en,de")
+    ocr_min_confidence: float = 0.3                  # Mindest-Konfidenz für OCR-Ergebnisse (0-1)
+
     # === WINDOW-FOKUS-CHECK ===
     window_focus_check: bool = False                # Vor Klick/Taste prüfen ob Ziel-Fenster aktiv ist
     window_focus_title: str = "Idle Clans"          # Substring im Fenstertitel (case-insensitive)
@@ -150,6 +156,13 @@ class AppConfig:
         if self.llm_watcher_timeout < 0:
             warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
             self.llm_watcher_timeout = 0
+        # OCR-Einstellungen validieren
+        if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
+            warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
+            self.ocr_backend = None
+        if self.ocr_min_confidence < 0 or self.ocr_min_confidence > 1:
+            warnings.append(f"ocr_min_confidence={self.ocr_min_confidence} → 0.3")
+            self.ocr_min_confidence = 0.3
         # Window-Fokus-Check
         if self.window_focus_action not in ("pause", "stop"):
             warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
@@ -269,6 +282,9 @@ _CONFIG_SECTIONS = [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
         "llm_timeout", "llm_boss_prompt",
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
+    ]),
+    ("OCR (Texterkennung)", [
+        "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence",
     ]),
     ("WINDOW-FOKUS-CHECK", [
         "window_focus_check", "window_focus_title", "window_focus_action",
