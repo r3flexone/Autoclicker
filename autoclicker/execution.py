@@ -375,15 +375,16 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             if state.stop_event.wait(scan_delay):
                 break
 
-        screenshot_start = time.time()
+        if debug:
+            screenshot_start = time.time()
         img = take_screenshot(slot.scan_region)
-        screenshot_ms = (time.time() - screenshot_start) * 1000
 
         if img is None:
             continue
 
         if debug:
-            size_info = f"{img.size[0]}x{img.size[1]}" if img else "?"
+            screenshot_ms = (time.time() - screenshot_start) * 1000
+            size_info = f"{img.size[0]}x{img.size[1]}"
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
         for item in config.items:
@@ -1080,10 +1081,10 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
             current_color = img.getpixel((0, 0))[:3]
             dist = color_distance(current_color, wc.color)
             pixel_tolerance = state.config.pixel_wait_tolerance
-            color_matches = dist <= pixel_tolerance
-            condition_met = (not color_matches) if wc.until_gone else color_matches
+            color_present = dist <= pixel_tolerance
+            # until_gone=True → warte bis Farbe WEG; until_gone=False → warte bis Farbe DA
+            condition_met = (not color_present) if wc.until_gone else color_present
 
-            # Debug-Ausgabe: Zeige erwartete und aktuelle Farbe
             elapsed = time.time() - start_time
             current_name = get_color_name(current_color)
 
