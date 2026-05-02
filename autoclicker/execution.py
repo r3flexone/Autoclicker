@@ -313,7 +313,9 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
 def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_MODE_ALL,
                       slots_override: list = None) -> list:
     """Führt einen Item-Scan aus und gibt Liste von (position, item, priority) zurück.
-    slots_override: Wenn gesetzt, werden nur diese Slots gescannt (ohne Reverse-Logik)."""
+
+    slots_override: Nur diese Slots scannen, Reverse-Reihenfolge ignorieren.
+                    Wird vom Immediate-Modus genutzt (ein Slot pro Aufruf)."""
     if scan_name not in state.item_scans:
         print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
         return []
@@ -364,12 +366,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         if state.stop_event.is_set() or state.skip_event.is_set():
             break
 
-        # Pause respektieren zwischen Slots
-        if state.pause_event.is_set():
-            while state.pause_event.is_set() and not state.stop_event.is_set():
-                state.stop_event.wait(0.2)
-            if state.stop_event.is_set():
-                break
+        if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
+            break
 
         if scan_delay > 0 and idx > 0:
             if state.stop_event.wait(scan_delay):
@@ -633,7 +631,6 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         return False, None
 
     debug = state.config.debug_detection
-    tolerance = config.color_tolerance
 
     # Screenshot der Boss-Region
     img = take_screenshot(config.scan_region)
@@ -669,7 +666,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
 
     # Bosse der Reihe nach prüfen (Reihenfolge = Priorität)
     for boss in config.bosses:
-        if _check_profile_match(boss, img, tolerance, state, debug, "ERKANNT!"):
+        if _check_profile_match(boss, img, config.color_tolerance, state, debug, "ERKANNT!"):
             return True, boss
 
     # 5. OCR als Fallback
@@ -964,14 +961,9 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     scan_count = 0
     start_time = time.time()
     while not state.stop_event.is_set():
-        # Pause respektieren
-        if state.pause_event.is_set():
-            while state.pause_event.is_set() and not state.stop_event.is_set():
-                state.stop_event.wait(0.2)
-            if state.stop_event.is_set():
-                return False
+        if not wait_while_paused(state, f"Boss-Watcher '{watcher_name}' pausiert..."):
+            return False
 
-        # Skip prüfen
         if state.skip_event.is_set():
             state.skip_event.clear()
             _step_status(debug, phase, step_num, total_steps,
@@ -1263,11 +1255,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.wait_only:
         debug_active = state.config.debug_mode or state.config.debug_detection
-        if debug_active:
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Warten beendet (kein Klick)", _phase_color(phase)))
-        else:
-            clear_line()
-            print(col(f"[{phase}] Schritt {step_num}/{total_steps} | Warten beendet (kein Klick)", _phase_color(phase)), end="", flush=True)
+        _step_status(debug_active, phase, step_num, total_steps, "Warten beendet (kein Klick)")
         return True
 
     return _execute_click(state, step, step_num, total_steps, phase)
