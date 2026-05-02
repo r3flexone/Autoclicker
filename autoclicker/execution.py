@@ -775,8 +775,9 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
                                  img, debug: bool) -> BossProfile | None:
     """Versucht einen Boss per OCR-Texterkennung zu erkennen.
 
-    Nutzt mindestens 80 % Konfidenz — liegt die Erkennungssicherheit darunter,
-    wird kein Ergebnis zurückgegeben (Watcher wiederholt den Scan beim nächsten Intervall).
+    Mindestens 80 % Konfidenz erforderlich. Liegt die Sicherheit darunter, wird
+    sofort ein neuer Screenshot gemacht und der Scan wiederholt — bis zu
+    state.config.ocr_retry_count Mal (0 = kein Retry, nur der erste Versuch).
 
     Returns:
         BossProfile wenn Boss erkannt, sonst None.
@@ -798,38 +799,52 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
 
     # Mindestens 80 % Konfidenz — sichert Zuverlässigkeit, verhindert Falschspeicherungen
     confidence_threshold = max(0.8, state.config.ocr_min_confidence)
+    max_attempts = 1 + max(0, state.config.ocr_retry_count)
 
-    if debug:
-        print(dbg(f"  → OCR-Erkennung ({state.config.ocr_backend or 'Auto'}, min. {confidence_threshold*100:.0f}%)..."))
+    for attempt in range(1, max_attempts + 1):
+        # Ab dem zweiten Versuch frischen Screenshot nehmen
+        current_img = img if attempt == 1 else take_screenshot(config.scan_region)
+        if current_img is None:
+            if debug:
+                print(dbg(f"  → OCR Versuch {attempt}/{max_attempts}: Screenshot fehlgeschlagen"))
+            break
 
-    success, matched_name, raw_text, duration, new_candidate = detect_boss_name(
-        img=img,
-        boss_names=boss_names,
-        backend=state.config.ocr_backend,
-        languages=languages,
-        min_confidence=confidence_threshold,
-        new_boss_min_confidence=0.8,
-    )
+        if debug:
+            attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
+            print(dbg(f"  → OCR-Erkennung ({attempt_info}{state.config.ocr_backend or 'Auto'}, min. {confidence_threshold*100:.0f}%)..."))
 
-    if debug:
-        if raw_text:
-            print(dbg(f"  → OCR-Text: '{raw_text}' ({duration:.0f}ms)"))
-        else:
-            print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
+        success, matched_name, raw_text, duration, new_candidate = detect_boss_name(
+            img=current_img,
+            boss_names=boss_names,
+            backend=state.config.ocr_backend,
+            languages=languages,
+            min_confidence=confidence_threshold,
+            new_boss_min_confidence=0.8,
+        )
 
-    if not success or matched_name is None:
-        # Kein bekannter Boss — prüfe ob unbekannter Name mit hoher Konfidenz erkannt wurde
+        if debug:
+            if raw_text:
+                print(dbg(f"  → OCR-Text: '{raw_text}' ({duration:.0f}ms)"))
+            else:
+                print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
+
+        if success and matched_name is not None:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    if debug:
+                        print(dbg(f"  → OCR: {boss.name} ERKANNT! (Versuch {attempt})"))
+                    return boss
+
         if new_candidate:
+            # Hohe Konfidenz aber unbekannter Name — sofort speichern, nicht weiter retry
             new_boss = _handle_new_boss(state, config, new_candidate, "OCR", debug)
             if new_boss is not None:
                 return new_boss
-        return None
+            break
 
-    for boss in config.bosses:
-        if boss.name == matched_name:
+        if attempt < max_attempts:
             if debug:
-                print(dbg(f"  → OCR: {boss.name} ERKANNT!"))
-            return boss
+                print(dbg(f"  → OCR: Konfidenz zu niedrig — Versuch {attempt + 1}/{max_attempts}..."))
 
     return None
 

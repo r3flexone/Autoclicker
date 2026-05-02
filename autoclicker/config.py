@@ -78,6 +78,7 @@ class AppConfig:
     ocr_backend: Optional[str] = None                # "easyocr" oder "tesseract" (None = Auto)
     ocr_languages: str = "en"                        # Sprach-Codes kommasepariert (z.B. "en,de")
     ocr_min_confidence: float = 0.3                  # Mindest-Konfidenz für OCR-Ergebnisse (0-1)
+    ocr_retry_count: int = 3                         # Wiederholungen bei zu niedriger Konfidenz (0 = kein Retry)
 
     # === WINDOW-FOKUS-CHECK ===
     window_focus_check: bool = False                # Vor Klick/Taste prüfen ob Ziel-Fenster aktiv ist
@@ -163,6 +164,9 @@ class AppConfig:
         if self.ocr_min_confidence < 0 or self.ocr_min_confidence > 1:
             warnings.append(f"ocr_min_confidence={self.ocr_min_confidence} → 0.3")
             self.ocr_min_confidence = 0.3
+        if self.ocr_retry_count < 0:
+            warnings.append(f"ocr_retry_count={self.ocr_retry_count} → 0")
+            self.ocr_retry_count = 0
         # Window-Fokus-Check
         if self.window_focus_action not in ("pause", "stop"):
             warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
@@ -284,7 +288,7 @@ _CONFIG_SECTIONS = [
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
     ]),
     ("OCR (Texterkennung)", [
-        "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence",
+        "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence", "ocr_retry_count",
     ]),
     ("WINDOW-FOKUS-CHECK", [
         "window_focus_check", "window_focus_title", "window_focus_action",
