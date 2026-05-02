@@ -62,7 +62,7 @@ def _build_ollama_request(model: str, image_b64: str, prompt: str,
         ],
         "stream": False,
         "options": {
-            "temperature": 0.1,  # Niedrige Temperatur für konsistente Erkennung
+            "temperature": 0.0,
         }
     }
 
@@ -89,27 +89,27 @@ def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
                 ]
             }
         ],
-        "temperature": 0.1,
-        "max_tokens": 200,
+        "temperature": 0.0,
+        "max_tokens": 50,
     }
 
 
 def _build_system_prompt(boss_names: list[str] = None) -> str:
     """Erstellt den System-Prompt für Boss-Erkennung."""
     base = (
-        "Du bist ein Bild-Erkennungssystem für das Spiel Idle Clans. "
-        "Deine Aufgabe ist es, den Boss auf dem Screenshot zu identifizieren. "
-        "Antworte NUR mit dem Boss-Namen, NICHTS anderes. "
-        "Kein ganzer Satz, keine Erklärung - nur der Name. "
-        "Wenn du keinen Boss erkennst, antworte mit: KEIN_BOSS"
+        "Du bist ein präziser OCR-Analyst für das Spiel Idle Clans. "
+        "DEINE REGELN:\n"
+        "1. Antworte NUR mit dem Eigennamen des Bosses/Gegners.\n"
+        "2. Ignoriere ALLES andere auf dem Bild (UI-Texte, 'Art', Level, Zahlen, Beschreibungen).\n"
+        "3. Wenn kein Name erkennbar ist, antworte NUR: KEIN_BOSS.\n"
+        "4. Keine Interpunktion, keine Erklärungen, kein Smalltalk."
     )
 
     if boss_names:
         names_str = ", ".join(boss_names)
-        base += f"\n\nBereits bekannte Bosse: {names_str}"
+        base += f"\n\nBekannte Bosse: {names_str}"
         base += "\nWenn du einen dieser Bosse erkennst, verwende exakt diesen Namen."
         base += "\nWenn du einen ANDEREN Boss erkennst, antworte mit dessen Namen."
-        base += "\nWenn du KEINEN Boss erkennst, antworte mit: KEIN_BOSS"
 
     return base
 
@@ -154,7 +154,7 @@ def analyze_image(
         model = "gemma4:e4b"
 
     if prompt is None:
-        prompt = "Welcher Boss ist auf diesem Screenshot zu sehen? Antworte nur mit dem Boss-Namen."
+        prompt = "Extrahiere nur den Boss-Namen:"
 
     # Bild zu Base64 konvertieren
     image_b64 = _image_to_base64(img)
