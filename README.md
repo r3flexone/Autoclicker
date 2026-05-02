@@ -74,7 +74,7 @@ Keine zusätzlichen Pakete nötig.
 ### Empfohlen (Farberkennung + Template-Matching)
 
 ```bash
-pip install pillow opencv-python numpy
+pip install -r requirements-minimal.txt
 python main.py
 ```
 
@@ -82,7 +82,7 @@ python main.py
 
 **Ohne GPU (CPU-only):**
 ```bash
-pip install pillow opencv-python numpy easyocr
+pip install -r requirements.txt
 python main.py
 ```
 
@@ -98,9 +98,9 @@ Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner
 
 > **Hinweis für Python 3.13**: Nur `cu124` wird unterstützt. `cu121` und älter haben keine Python-3.13-Wheels.
 
-Dann EasyOCR installieren:
+Dann den Rest installieren:
 ```bash
-pip install easyocr
+pip install -r requirements.txt
 python main.py
 ```
 
