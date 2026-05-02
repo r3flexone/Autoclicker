@@ -121,7 +121,7 @@ def analyze_image(
     model: str = None,
     prompt: str = None,
     boss_names: list[str] = None,
-    timeout: int = 30
+    timeout: int = 60
 ) -> tuple[bool, str, float]:
     """Analysiert ein Bild mit einem lokalen LLM.
 
@@ -151,7 +151,10 @@ def analyze_image(
             endpoint = "http://localhost:1234/v1/chat/completions"
 
     if model is None:
-        model = "gemma4:e4b"
+        if provider == PROVIDER_OLLAMA:
+            model = "gemma4:e4b"
+        else:
+            model = "google/gemma-4-e2b"
 
     if prompt is None:
         prompt = "Extrahiere nur den Boss-Namen:"
