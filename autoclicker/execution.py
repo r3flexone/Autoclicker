@@ -686,9 +686,97 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
     return False, None
 
 
+def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
+                      name: str, source: str, debug: bool) -> BossProfile | None:
+    """Speichert einen neu entdeckten Boss und merkt ihn zur Bestätigung am Sequenz-Ende vor.
+
+    Returns:
+        Das neu angelegte BossProfile, oder None wenn der Name bereits bekannt/vorgemerkt ist.
+    """
+    from .persistence import save_boss_scan
+
+    with state.lock:
+        existing_names = [b.name for b in config.bosses]
+        already_pending = any(
+            cfg == config.name and n == name
+            for cfg, n, _ in state.pending_new_bosses
+        )
+
+    if name in existing_names or already_pending:
+        return None
+
+    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — wird gespeichert (zur Bestätigung vorgemerkt)", "green"))
+    new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
+
+    with state.lock:
+        config.bosses.append(new_boss)
+        state.boss_scans[config.name] = config
+        state.pending_new_bosses.append((config.name, name, source))
+
+    save_boss_scan(config)
+
+    if debug:
+        print(dbg(f"  → {source}: Neuer Boss '{name}' gespeichert (Aktion: skip, Bestätigung ausstehend)"))
+    return new_boss
+
+
+def _confirm_new_bosses(state: AutoClickerState) -> None:
+    """Fragt nach der Sequenz ob neu entdeckte Boss-Namen korrekt waren.
+
+    Falsch erkannte Namen werden aus der Konfiguration entfernt und neu gespeichert.
+    Läuft im Worker-Thread — blockiert kurz den Main-Thread-Input nicht (Worker ist der Input-Thread hier).
+    """
+    from .persistence import save_boss_scan
+
+    with state.lock:
+        pending = list(state.pending_new_bosses)
+
+    if not pending:
+        return
+
+    print(col("\n" + "=" * 55, "yellow"))
+    print(col(f"[NEUE BOSSE] {len(pending)} neue Boss-Name(n) wurden in dieser Session gespeichert:", "yellow"))
+    for i, (cfg_name, boss_name, source) in enumerate(pending, 1):
+        print(f"  {i}. [{source}] '{boss_name}'  (Konfiguration: '{cfg_name}')")
+    print(col("Bitte prüfe ob die erkannten Namen korrekt sind.", "yellow"))
+    print(col("=" * 55, "yellow"))
+
+    to_remove: list[tuple[str, str]] = []
+
+    for cfg_name, boss_name, source in pending:
+        answer = safe_input(f"  War '{boss_name}' [{source}] korrekt erkannt? (j/n): ").strip().lower()
+        if answer in ("n", "nein", "no"):
+            to_remove.append((cfg_name, boss_name))
+            print(col(f"  → '{boss_name}' wird entfernt.", "red"))
+        else:
+            print(col(f"  → '{boss_name}' bleibt gespeichert.", "green"))
+
+    with state.lock:
+        state.pending_new_bosses.clear()
+
+    if not to_remove:
+        return
+
+    configs_to_save: set[str] = set()
+    with state.lock:
+        for cfg_name, boss_name in to_remove:
+            if cfg_name in state.boss_scans:
+                cfg = state.boss_scans[cfg_name]
+                cfg.bosses = [b for b in cfg.bosses if b.name != boss_name]
+                configs_to_save.add(cfg_name)
+
+    for cfg_name in configs_to_save:
+        if cfg_name in state.boss_scans:
+            save_boss_scan(state.boss_scans[cfg_name])
+            print(col(f"  → Konfiguration '{cfg_name}' aktualisiert.", "cyan"))
+
+
 def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
                                  img, debug: bool) -> BossProfile | None:
     """Versucht einen Boss per OCR-Texterkennung zu erkennen.
+
+    Nutzt mindestens 80 % Konfidenz — liegt die Erkennungssicherheit darunter,
+    wird kein Ergebnis zurückgegeben (Watcher wiederholt den Scan beim nächsten Intervall).
 
     Returns:
         BossProfile wenn Boss erkannt, sonst None.
@@ -708,15 +796,19 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
     boss_names = [boss.name for boss in config.bosses]
     languages = [l.strip() for l in state.config.ocr_languages.split(",")]
 
-    if debug:
-        print(dbg(f"  → OCR-Erkennung ({state.config.ocr_backend or 'Auto'})..."))
+    # Mindestens 80 % Konfidenz — sichert Zuverlässigkeit, verhindert Falschspeicherungen
+    confidence_threshold = max(0.8, state.config.ocr_min_confidence)
 
-    success, matched_name, raw_text, duration = detect_boss_name(
+    if debug:
+        print(dbg(f"  → OCR-Erkennung ({state.config.ocr_backend or 'Auto'}, min. {confidence_threshold*100:.0f}%)..."))
+
+    success, matched_name, raw_text, duration, new_candidate = detect_boss_name(
         img=img,
         boss_names=boss_names,
         backend=state.config.ocr_backend,
         languages=languages,
-        min_confidence=state.config.ocr_min_confidence,
+        min_confidence=confidence_threshold,
+        new_boss_min_confidence=0.8,
     )
 
     if debug:
@@ -726,6 +818,11 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
 
     if not success or matched_name is None:
+        # Kein bekannter Boss — prüfe ob unbekannter Name mit hoher Konfidenz erkannt wurde
+        if new_candidate:
+            new_boss = _handle_new_boss(state, config, new_candidate, "OCR", debug)
+            if new_boss is not None:
+                return new_boss
         return None
 
     for boss in config.bosses:
@@ -751,8 +848,6 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg("  → LLM: Import fehlgeschlagen"))
         return None
 
-    from .persistence import save_boss_scan
-
     boss_names = [boss.name for boss in config.bosses]
 
     if debug:
@@ -776,7 +871,6 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
     if debug:
         print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
 
-    # Antwort einem Boss zuordnen
     matched_name, is_new = match_boss_name(response, boss_names)
 
     if matched_name is None:
@@ -785,29 +879,23 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         return None
 
     if not is_new:
-        # Bekannter Boss
         for boss in config.bosses:
             if boss.name == matched_name:
                 if debug:
                     print(dbg(f"  → LLM: {boss.name} ERKANNT!"))
                 return boss
 
-    # Neuer Boss - automatisch speichern!
-    print(col(f"[LLM] Neuer Boss entdeckt: '{matched_name}' - wird gespeichert!", "green"))
-    new_boss = BossProfile(
-        name=matched_name,
-        action=BOSS_ACTION_SKIP,  # Erstmal keine Aktion bis Benutzer eine zuweist
-    )
+    # Neuer Boss — über gemeinsamen Handler speichern und zur Bestätigung vormerken
+    new_boss = _handle_new_boss(state, config, matched_name, "LLM", debug)
+    if new_boss is not None:
+        return new_boss
 
-    # Persistieren (Modifikation der Liste unter Lock, da andere Threads sie lesen)
+    # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
     with state.lock:
-        config.bosses.append(new_boss)
-        state.boss_scans[config.name] = config
-    save_boss_scan(config)
-
-    if debug:
-        print(dbg(f"  → LLM: Neuer Boss '{matched_name}' gespeichert (Aktion: skip)"))
-    return new_boss
+        for boss in config.bosses:
+            if boss.name == matched_name:
+                return boss
+    return None
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
@@ -1340,6 +1428,7 @@ def sequence_worker(state: AutoClickerState) -> None:
         state.session_screenshots_dir = None  # Wird beim ersten Screenshot-Schritt angelegt
         state.humanize_last_break = time.monotonic()
         state.finish_event.clear()
+        state.pending_new_bosses.clear()
 
     # Session-Log starten (wenn aktiviert)
     from .session_log import start_session_log
@@ -1489,6 +1578,9 @@ def sequence_worker(state: AutoClickerState) -> None:
 
         if not state.quit_event.is_set():
             print(col("\n[END] End-Sequenz abgeschlossen.", "cyan"))
+
+    # Neu entdeckte Boss-Namen bestätigen (vor Statistik-Anzeige)
+    _confirm_new_bosses(state)
 
     with state.lock:
         state.is_running = False

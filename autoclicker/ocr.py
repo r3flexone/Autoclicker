@@ -176,7 +176,8 @@ def detect_boss_name(
     backend: str = None,
     languages: list[str] = None,
     min_confidence: float = 0.3,
-) -> tuple[bool, Optional[str], str, float]:
+    new_boss_min_confidence: float = 0.8,
+) -> tuple[bool, Optional[str], str, float, Optional[str]]:
     """Versucht einen Boss-Namen per OCR im Bild zu erkennen.
 
     Args:
@@ -185,38 +186,47 @@ def detect_boss_name(
         backend: OCR-Backend (None = Auto)
         languages: Sprach-Codes
         min_confidence: Mindest-Konfidenz für OCR-Ergebnis
+        new_boss_min_confidence: Mindest-Konfidenz um unbekannten Text als neuen Boss zu melden
 
     Returns:
-        (success, matched_name, raw_text, duration_ms)
-        - success: True wenn ein Boss erkannt wurde
+        (success, matched_name, raw_text, duration_ms, new_name_candidate)
+        - success: True wenn ein bekannter Boss erkannt wurde
         - matched_name: Erkannter Boss-Name (oder None)
         - raw_text: Gesamter erkannter Text
         - duration_ms: Dauer in Millisekunden
+        - new_name_candidate: Bester Text wenn kein Boss passte aber Konfidenz >= new_boss_min_confidence
     """
     start = time.time()
 
     if not is_available():
-        return False, None, "Kein OCR-Backend verfügbar", 0.0
+        return False, None, "Kein OCR-Backend verfügbar", 0.0, None
 
     texts = read_text(img, backend=backend, languages=languages,
                       min_confidence=min_confidence)
     duration_ms = (time.time() - start) * 1000
 
     if not texts:
-        return False, None, "", duration_ms
+        return False, None, "", duration_ms, None
 
     full_text = " ".join(t for t, _c in texts)
 
     matched = _match_text_to_boss(full_text, boss_names)
     if matched:
-        return True, matched, full_text, duration_ms
+        return True, matched, full_text, duration_ms, None
 
     for text, _conf in texts:
         matched = _match_text_to_boss(text, boss_names)
         if matched:
-            return True, matched, full_text, duration_ms
+            return True, matched, full_text, duration_ms, None
 
-    return False, None, full_text, duration_ms
+    # Kein bekannter Boss — prüfe ob ein Text mit hoher Konfidenz als neuer Name gilt
+    new_candidate = None
+    if texts:
+        best_text, best_conf = texts[0]  # bereits nach Konfidenz absteigend sortiert
+        if best_conf >= new_boss_min_confidence and len(best_text.strip()) >= 3:
+            new_candidate = best_text.strip()
+
+    return False, None, full_text, duration_ms, new_candidate
 
 
 def _match_text_to_boss(text: str, boss_names: list[str]) -> Optional[str]:
