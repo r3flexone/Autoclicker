@@ -19,7 +19,7 @@ from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, hint, header, breadcrumb, suggest_command,
-    cancel_hint, parse_non_negative_float,
+    cancel_hint, parse_non_negative_float, warn,
 )
 from ..winapi import get_cursor_pos
 from ..imaging import (
