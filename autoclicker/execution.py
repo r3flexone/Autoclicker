@@ -129,6 +129,10 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     Returns:
         True bei Erfolg, False wenn Stop/Fokus-Abbruch.
     """
+    # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
+    if threading.current_thread() is not state.llm_thread:
+        while state.llm_action_event.is_set() and not state.stop_event.is_set():
+            time.sleep(0.05)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
@@ -143,6 +147,10 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
 
 def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
+    # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
+    if threading.current_thread() is not state.llm_thread:
+        while state.llm_action_event.is_set() and not state.stop_event.is_set():
+            time.sleep(0.05)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
@@ -686,9 +694,98 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
     return False, None
 
 
+def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
+                      name: str, source: str, debug: bool) -> BossProfile | None:
+    """Speichert einen neu entdeckten Boss und merkt ihn zur Bestätigung am Sequenz-Ende vor.
+
+    Returns:
+        Das neu angelegte BossProfile, oder None wenn der Name bereits bekannt/vorgemerkt ist.
+    """
+    from .persistence import save_boss_scan
+
+    with state.lock:
+        existing_names = [b.name for b in config.bosses]
+        already_pending = any(
+            cfg == config.name and n == name
+            for cfg, n, _ in state.pending_new_bosses
+        )
+
+    if name in existing_names or already_pending:
+        return None
+
+    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — wird gespeichert (zur Bestätigung vorgemerkt)", "green"))
+    new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
+
+    with state.lock:
+        config.bosses.append(new_boss)
+        state.boss_scans[config.name] = config
+        state.pending_new_bosses.append((config.name, name, source))
+
+    save_boss_scan(config)
+
+    if debug:
+        print(dbg(f"  → {source}: Neuer Boss '{name}' gespeichert (Aktion: skip, Bestätigung ausstehend)"))
+    return new_boss
+
+
+def _confirm_new_bosses(state: AutoClickerState) -> None:
+    """Fragt nach der Sequenz ob neu entdeckte Boss-Namen korrekt waren.
+
+    Falsch erkannte Namen werden aus der Konfiguration entfernt und neu gespeichert.
+    Läuft im Worker-Thread — blockiert kurz den Main-Thread-Input nicht (Worker ist der Input-Thread hier).
+    """
+    from .persistence import save_boss_scan
+
+    with state.lock:
+        pending = list(state.pending_new_bosses)
+
+    if not pending:
+        return
+
+    print(col("\n" + "=" * 55, "yellow"))
+    print(col(f"[NEUE BOSSE] {len(pending)} neue Boss-Name(n) wurden in dieser Session gespeichert:", "yellow"))
+    for i, (cfg_name, boss_name, source) in enumerate(pending, 1):
+        print(f"  {i}. [{source}] '{boss_name}'  (Konfiguration: '{cfg_name}')")
+    print(col("Bitte prüfe ob die erkannten Namen korrekt sind.", "yellow"))
+    print(col("=" * 55, "yellow"))
+
+    to_remove: list[tuple[str, str]] = []
+
+    for cfg_name, boss_name, source in pending:
+        answer = safe_input(f"  War '{boss_name}' [{source}] korrekt erkannt? (j/n): ").strip().lower()
+        if answer in ("n", "nein", "no"):
+            to_remove.append((cfg_name, boss_name))
+            print(col(f"  → '{boss_name}' wird entfernt.", "red"))
+        else:
+            print(col(f"  → '{boss_name}' bleibt gespeichert.", "green"))
+
+    with state.lock:
+        state.pending_new_bosses.clear()
+
+    if not to_remove:
+        return
+
+    configs_to_save: set[str] = set()
+    with state.lock:
+        for cfg_name, boss_name in to_remove:
+            if cfg_name in state.boss_scans:
+                cfg = state.boss_scans[cfg_name]
+                cfg.bosses = [b for b in cfg.bosses if b.name != boss_name]
+                configs_to_save.add(cfg_name)
+
+    for cfg_name in configs_to_save:
+        if cfg_name in state.boss_scans:
+            save_boss_scan(state.boss_scans[cfg_name])
+            print(col(f"  → Konfiguration '{cfg_name}' aktualisiert.", "cyan"))
+
+
 def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
                                  img, debug: bool) -> BossProfile | None:
     """Versucht einen Boss per OCR-Texterkennung zu erkennen.
+
+    Mindestens 80 % Konfidenz erforderlich. Liegt die Sicherheit darunter, wird
+    sofort ein neuer Screenshot gemacht und der Scan wiederholt — bis zu
+    state.config.ocr_retry_count Mal (0 = kein Retry, nur der erste Versuch).
 
     Returns:
         BossProfile wenn Boss erkannt, sonst None.
@@ -708,31 +805,54 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
     boss_names = [boss.name for boss in config.bosses]
     languages = [l.strip() for l in state.config.ocr_languages.split(",")]
 
-    if debug:
-        print(dbg(f"  → OCR-Erkennung ({state.config.ocr_backend or 'Auto'})..."))
+    # Mindestens 80 % Konfidenz — sichert Zuverlässigkeit, verhindert Falschspeicherungen
+    confidence_threshold = max(0.8, state.config.ocr_min_confidence)
+    max_attempts = 1 + max(0, state.config.ocr_retry_count)
 
-    success, matched_name, raw_text, duration = detect_boss_name(
-        img=img,
-        boss_names=boss_names,
-        backend=state.config.ocr_backend,
-        languages=languages,
-        min_confidence=state.config.ocr_min_confidence,
-    )
-
-    if debug:
-        if raw_text:
-            print(dbg(f"  → OCR-Text: '{raw_text}' ({duration:.0f}ms)"))
-        else:
-            print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
-
-    if not success or matched_name is None:
-        return None
-
-    for boss in config.bosses:
-        if boss.name == matched_name:
+    for attempt in range(1, max_attempts + 1):
+        # Ab dem zweiten Versuch frischen Screenshot nehmen
+        current_img = img if attempt == 1 else take_screenshot(config.scan_region)
+        if current_img is None:
             if debug:
-                print(dbg(f"  → OCR: {boss.name} ERKANNT!"))
-            return boss
+                print(dbg(f"  → OCR Versuch {attempt}/{max_attempts}: Screenshot fehlgeschlagen"))
+            break
+
+        if debug:
+            attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
+            print(dbg(f"  → OCR-Erkennung ({attempt_info}{state.config.ocr_backend or 'Auto'}, min. {confidence_threshold*100:.0f}%)..."))
+
+        success, matched_name, raw_text, duration, new_candidate = detect_boss_name(
+            img=current_img,
+            boss_names=boss_names,
+            backend=state.config.ocr_backend,
+            languages=languages,
+            min_confidence=confidence_threshold,
+            new_boss_min_confidence=0.8,
+        )
+
+        if debug:
+            if raw_text:
+                print(dbg(f"  → OCR-Text: '{raw_text}' ({duration:.0f}ms)"))
+            else:
+                print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
+
+        if success and matched_name is not None:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    if debug:
+                        print(dbg(f"  → OCR: {boss.name} ERKANNT! (Versuch {attempt})"))
+                    return boss
+
+        if new_candidate:
+            # Hohe Konfidenz aber unbekannter Name — sofort speichern, nicht weiter retry
+            new_boss = _handle_new_boss(state, config, new_candidate, "OCR", debug)
+            if new_boss is not None:
+                return new_boss
+            break
+
+        if attempt < max_attempts:
+            if debug:
+                print(dbg(f"  → OCR: Konfidenz zu niedrig — Versuch {attempt + 1}/{max_attempts}..."))
 
     return None
 
@@ -740,6 +860,8 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
 def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
                                  img, debug: bool) -> BossProfile | None:
     """Versucht einen Boss per LLM Vision zu erkennen.
+
+    Wiederholt den Scan bei KEIN_BOSS bis zu state.config.llm_retry_count Mal.
 
     Returns:
         BossProfile wenn Boss erkannt, sonst None.
@@ -751,63 +873,66 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg("  → LLM: Import fehlgeschlagen"))
         return None
 
-    from .persistence import save_boss_scan
-
     boss_names = [boss.name for boss in config.bosses]
+    max_attempts = 1 + max(0, state.config.llm_retry_count)
 
-    if debug:
-        print(dbg(f"  → LLM-Erkennung: {state.config.llm_provider} ({state.config.llm_model or 'Standard'})..."))
+    for attempt in range(1, max_attempts + 1):
+        current_img = img if attempt == 1 else take_screenshot(config.scan_region)
+        if current_img is None:
+            if debug:
+                print(dbg(f"  → LLM Versuch {attempt}/{max_attempts}: Screenshot fehlgeschlagen"))
+            break
 
-    success, response, duration = analyze_image(
-        img=img,
-        provider=state.config.llm_provider,
-        endpoint=state.config.llm_endpoint,
-        model=state.config.llm_model,
-        prompt=state.config.llm_boss_prompt,
-        boss_names=boss_names,
-        timeout=state.config.llm_timeout,
-    )
-
-    if not success:
         if debug:
-            print(dbg(f"  → LLM-Fehler: {response} ({duration:.0f}ms)"))
+            attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
+            print(dbg(f"  → LLM-Erkennung ({attempt_info}{state.config.llm_provider}, {state.config.llm_model or 'Standard'})..."))
+
+        success, response, duration = analyze_image(
+            img=current_img,
+            provider=state.config.llm_provider,
+            endpoint=state.config.llm_endpoint,
+            model=state.config.llm_model,
+            prompt=state.config.llm_boss_prompt,
+            boss_names=boss_names,
+            timeout=state.config.llm_timeout,
+        )
+
+        if not success:
+            if debug:
+                print(dbg(f"  → LLM-Fehler: {response} ({duration:.0f}ms)"))
+            break
+
+        if debug:
+            print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
+
+        matched_name, is_new = match_boss_name(response, boss_names)
+
+        if matched_name is None:
+            if debug:
+                retry_msg = f" — Versuch {attempt + 1}/{max_attempts}..." if attempt < max_attempts else ""
+                print(dbg(f"  → LLM: kein Boss erkannt{retry_msg}"))
+            continue
+
+        if not is_new:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    if debug:
+                        print(dbg(f"  → LLM: {boss.name} ERKANNT! (Versuch {attempt})"))
+                    return boss
+
+        # Neuer Boss — über gemeinsamen Handler speichern und zur Bestätigung vormerken
+        new_boss = _handle_new_boss(state, config, matched_name, "LLM", debug)
+        if new_boss is not None:
+            return new_boss
+
+        # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
+        with state.lock:
+            for boss in config.bosses:
+                if boss.name == matched_name:
+                    return boss
         return None
 
-    if debug:
-        print(dbg(f"  → LLM-Antwort: '{response}' ({duration:.0f}ms)"))
-
-    # Antwort einem Boss zuordnen
-    matched_name, is_new = match_boss_name(response, boss_names)
-
-    if matched_name is None:
-        if debug:
-            print(dbg("  → LLM: kein Boss erkannt"))
-        return None
-
-    if not is_new:
-        # Bekannter Boss
-        for boss in config.bosses:
-            if boss.name == matched_name:
-                if debug:
-                    print(dbg(f"  → LLM: {boss.name} ERKANNT!"))
-                return boss
-
-    # Neuer Boss - automatisch speichern!
-    print(col(f"[LLM] Neuer Boss entdeckt: '{matched_name}' - wird gespeichert!", "green"))
-    new_boss = BossProfile(
-        name=matched_name,
-        action=BOSS_ACTION_SKIP,  # Erstmal keine Aktion bis Benutzer eine zuweist
-    )
-
-    # Persistieren (Modifikation der Liste unter Lock, da andere Threads sie lesen)
-    with state.lock:
-        config.bosses.append(new_boss)
-        state.boss_scans[config.name] = config
-    save_boss_scan(config)
-
-    if debug:
-        print(dbg(f"  → LLM: Neuer Boss '{matched_name}' gespeichert (Aktion: skip)"))
-    return new_boss
+    return None
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
@@ -878,10 +1003,103 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
     return True
 
 
+def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
+                       step_num: int, total_steps: int, phase: str) -> None:
+    """Hintergrund-Thread: Boss-Detection + Aktion komplett asynchron.
+
+    Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
+    llm_action_event koordiniert: safe_click/safe_key warten bis das Event
+    gelöscht ist, bevor der Sequenz-Worker weitermacht.
+    """
+    debug = state.config.debug_mode
+    try:
+        if step.boss_scan:
+            # Einzel-Scan mit Retries
+            found, boss = execute_boss_scan(state, step.boss_scan)
+            if not found or not boss:
+                # else_config wird im async-Modus ignoriert: die Sequenz ist
+                # bereits weitergelaufen, ein verspätetes skip_cycle/restart
+                # würde einen falschen Zeitpunkt treffen.
+                return
+
+        else:
+            # Watcher-Schleife bis Boss erkannt oder Limit erreicht
+            watcher_name = step.boss_watcher
+            interval = state.config.llm_watcher_interval
+            max_scans = state.config.llm_watcher_max_scans
+            timeout = state.config.llm_watcher_timeout
+            scan_count = 0
+            start_time = time.time()
+            found = False
+            boss = None
+
+            while not state.stop_event.is_set():
+                scan_count += 1
+                found, boss = execute_boss_scan(state, watcher_name)
+                if found and boss:
+                    break
+
+                elapsed = time.time() - start_time
+                if max_scans > 0 and scan_count >= max_scans:
+                    if debug:
+                        print(dbg(f"  → Async-Watcher '{watcher_name}': max. Scans ({max_scans}) erreicht"))
+                    return
+                if timeout > 0 and elapsed >= timeout:
+                    if debug:
+                        print(dbg(f"  → Async-Watcher '{watcher_name}': Timeout ({timeout:.0f}s) erreicht"))
+                    return
+
+                state.stop_event.wait(interval)
+
+            if not found or not boss:
+                return
+
+        if state.stop_event.is_set():
+            return
+
+        # Boss erkannt → Aktion ausführen, Event sichert exklusiven Zugriff auf Maus/Tastatur
+        state.llm_action_event.set()
+        try:
+            _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
+        finally:
+            state.llm_action_event.clear()
+
+    except Exception as e:
+        if debug:
+            print(dbg(f"  → LLM-Async Fehler: {e}"))
+    finally:
+        state.llm_action_event.clear()
+
+
+def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
+                      step_num: int, total_steps: int, phase: str) -> None:
+    """Startet _boss_async_thread wenn kein Thread bereits läuft."""
+    if state.llm_thread and state.llm_thread.is_alive():
+        if state.config.debug_mode:
+            print(dbg("  → LLM-Async: vorheriger Thread noch aktiv, übersprungen"))
+        return
+    t = threading.Thread(
+        target=_boss_async_thread,
+        args=(state, step, step_num, total_steps, phase),
+        daemon=True,
+        name="llm-boss-async",
+    )
+    state.llm_thread = t
+    t.start()
+
+
 def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
     debug = state.config.debug_mode
+
+    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
+    if state.config.llm_async and state.config.llm_enabled:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss-Scan '{step.boss_scan}' (async)...",
+                     f"Boss-Scan '{step.boss_scan}' → Hintergrund-Thread gestartet")
+        _spawn_boss_async(state, step, step_num, total_steps, phase)
+        return True
 
     _step_status(debug, phase, step_num, total_steps, f"Boss-Scan '{step.boss_scan}'...")
     found, boss = execute_boss_scan(state, step.boss_scan)
@@ -937,6 +1155,15 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     und führt die dem Boss zugeordnete Aktion aus, sobald einer erkannt wird.
     """
     debug = state.config.debug_mode
+
+    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
+    if state.config.llm_async and state.config.llm_enabled:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss-Watcher '{step.boss_watcher}' (async)...",
+                     f"Boss-Watcher '{step.boss_watcher}' → Hintergrund-Thread gestartet")
+        _spawn_boss_async(state, step, step_num, total_steps, phase)
+        return True
+
     _c = _phase_color(phase)
     watcher_name = step.boss_watcher
     interval = state.config.llm_watcher_interval
@@ -1340,6 +1567,7 @@ def sequence_worker(state: AutoClickerState) -> None:
         state.session_screenshots_dir = None  # Wird beim ersten Screenshot-Schritt angelegt
         state.humanize_last_break = time.monotonic()
         state.finish_event.clear()
+        state.pending_new_bosses.clear()
 
     # Session-Log starten (wenn aktiviert)
     from .session_log import start_session_log
@@ -1489,6 +1717,9 @@ def sequence_worker(state: AutoClickerState) -> None:
 
         if not state.quit_event.is_set():
             print(col("\n[END] End-Sequenz abgeschlossen.", "cyan"))
+
+    # Neu entdeckte Boss-Namen bestätigen (vor Statistik-Anzeige)
+    _confirm_new_bosses(state)
 
     with state.lock:
         state.is_running = False

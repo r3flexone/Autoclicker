@@ -42,15 +42,72 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 
 - Windows 10/11
 - Python 3.10+
-- **Optional**: Pillow für Farberkennung (`pip install pillow`)
-- **Optional**: OpenCV für automatische Slot-Erkennung (`pip install opencv-python numpy`)
+
+| Paket | Funktion | Erforderlich |
+|-------|----------|:---:|
+| `pillow` | Screenshots, Farberkennung | Nein |
+| `numpy` | Optimierte Farberkennung | Nein |
+| `opencv-python` | Template-Matching, Slot-Erkennung | Nein |
+| `easyocr` | OCR Texterkennung für Boss-Namen | Nein |
+| `torch` | Abhängigkeit von EasyOCR | Nein |
+| `torchvision` | Abhängigkeit von EasyOCR | Nein |
+| `pytesseract` | Alternative OCR-Engine (+ Tesseract-Binary) | Nein |
 
 ## Installation
 
 ```bash
 git clone https://github.com/r3flexone/Autoclicker-Idleclans.git
 cd Autoclicker-Idleclans
-pip install pillow opencv-python numpy  # Optional, für erweiterte Features
+python main.py
+```
+
+### Minimale Installation (nur Grundfunktionen)
+
+Klicken, Hotkeys, Sequenzen — keine Bilderkennung:
+
+```bash
+python main.py
+```
+
+Keine zusätzlichen Pakete nötig.
+
+### Empfohlen (Farberkennung + Template-Matching)
+
+```bash
+pip install -r requirements-minimal.txt
+python main.py
+```
+
+### Alle Features (inkl. OCR Boss-Erkennung)
+
+**Ohne GPU (CPU-only):**
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+**Mit NVIDIA GPU (schneller):**
+
+Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner GPU (`nvidia-smi` zeigt sie oben rechts):
+
+| CUDA-Version | Befehl |
+|---|---|
+| 12.4+ | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124` |
+| 12.1 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121` |
+| 11.8 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118` |
+
+> **Hinweis für Python 3.13**: Nur `cu124` wird unterstützt. `cu121` und älter haben keine Python-3.13-Wheels.
+
+Dann den Rest installieren:
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+**Alternative OCR: Tesseract**
+```bash
+pip install pytesseract
+# + Tesseract-Binary: https://github.com/UB-Mannheim/tesseract/wiki
 python main.py
 ```
 
@@ -466,18 +523,27 @@ Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
 - `ocr_fallback: false` → OCR **primär** für Texterkennung (schneller als LLM für reine Texterkennung)
 
 **Globale Einstellungen** (`config.json`):
-- `llm_enabled: true` muss zusätzlich gesetzt sein
-- `llm_provider: "ollama"` oder `"lmstudio"`
-- `llm_model: "llava"` etc.
+
+| Feld | Standard | Beschreibung |
+|---|---|---|
+| `llm_enabled` | `false` | LLM-Erkennung global aktivieren |
+| `llm_provider` | `"lmstudio"` | `"ollama"` oder `"lmstudio"` |
+| `llm_model` | provider-abhängig | `"gemma4:e4b"` (Ollama) / `"google/gemma-4-e2b"` (LM Studio) |
+| `llm_timeout` | `60` | Timeout pro Anfrage in Sekunden |
+| `llm_retry_count` | `2` | Wiederholungen bei `KEIN_BOSS` (0 = kein Retry, 2 = 3 Versuche gesamt) |
+| `llm_async` | `false` | Boss-Scan/Watcher im Hintergrund-Thread — Sequenz läuft parallel weiter |
+| `llm_boss_prompt` | `null` | Custom-Prompt (null = eingebauter OCR-Analyst-Prompt) |
+
+**`llm_async` — Nicht-blockierender Modus:**
+Wenn aktiviert, startet der Boss-Scan/Watcher-Step einen Hintergrund-Thread und kehrt sofort zurück. Die Sequenz läuft parallel weiter — `Warte 20s`-Steps und andere Klicks werden nicht verzögert. Sobald der LLM-Thread die Boss-Aktion ausführt, pausiert der Sequenz-Worker kurz bis die Klicks abgeschlossen sind.
+
+> **Hinweis:** Im async-Modus wird `else_config` (ELSE-Aktion bei "kein Boss") ignoriert, da die Sequenz zu diesem Zeitpunkt bereits weitergelaufen ist.
 
 **Auto-Save unbekannter Bosse**: Wenn das LLM einen Boss-Namen nennt, der noch nicht in der Liste ist, wird er automatisch als neuer Boss mit `action: skip` gespeichert. Du musst nur noch eine Aktion zuweisen.
 
-**Standalone-Test**: `python test_llm.py` testet Verbindung und Bilderkennung ohne den Autoclicker:
+**Standalone-Test**: `python tools/test_llm.py` testet Bilderkennung ohne den Autoclicker:
 ```bash
-python test_llm.py                              # Verbindungstest
-python test_llm.py screenshot                   # Screenshot vom Bildschirm + Analyse
-python test_llm.py boss.png --bosses "A,B,C"    # Bestehende Datei testen
-python test_llm.py --provider lmstudio screenshot
+python tools/test_llm.py    # Interaktiver Screenshot-Modus (Region auswählen → Analyse)
 ```
 
 ### OCR Texterkennung Boss-Detection
@@ -1200,6 +1266,32 @@ python tools/slot_tester.py
 ```
 
 ## Changelog
+
+### LLM Vision — Genauigkeit + Retry + Async-Thread
+
+**Prompt-Verbesserungen** (`autoclicker/llm_vision.py`)
+- `temperature: 0.1 → 0.0` — verhindert Halluzinationen, deterministisches Ergebnis
+- System-Prompt zu nummerierten Regeln umgebaut: "Ignoriere UI-Texte, Level, Zahlen" verhindert False-Positives durch Spiel-UI
+- User-Prompt vereinfacht: `"Extrahiere nur den Boss-Namen:"` statt offener Frage
+- `max_tokens: 200 → 50` — ein Name braucht keine 200 Token
+- Provider-spezifische Modell-Defaults: `gemma4:e4b` (Ollama) / `google/gemma-4-e2b` (LM Studio)
+- Default-Timeout: 30s → 60s (Vision-Inferenz kann länger dauern)
+
+**Retry-Logik bei `KEIN_BOSS`** (`execution.py`, `config.py`)
+- Neues Config-Feld `llm_retry_count` (Standard: 2 = 3 Versuche gesamt)
+- Bei `KEIN_BOSS`-Antwort: frischer Screenshot + erneuter LLM-Aufruf
+- Verbindungsfehler bricht sofort ab, kein sinnloser Retry
+- Analog zu `ocr_retry_count`
+
+**Async-Modus** (`llm_async`) (`execution.py`, `models.py`, `config.py`)
+- Neues Flag `llm_async: false` in `config.json`
+- Bei `llm_async: true` läuft Boss-Scan/Watcher komplett im Hintergrund-Thread
+- Sequenz-Worker läuft parallel — Warte-Steps und Klicks werden nicht blockiert
+- Klick-Konflikte koordiniert über `llm_action_event`: Sequenz-Worker wartet nur während der eigentlichen Boss-Aktion (nicht während der 60s-Analyse)
+- Thread-Check verhindert Deadlock (LLM-Thread wartet nicht auf sich selbst)
+- Doppel-Spawn verhindert: neuer Thread nur wenn vorheriger beendet
+
+---
 
 ### Neueste Änderungen — Auto-Scan + LLM Vision + Sicherheit + Import/Export
 

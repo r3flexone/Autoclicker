@@ -422,8 +422,16 @@ class AutoClickerState:
     # Session-Log (CSV) für die aktuelle Sequenz (None wenn deaktiviert)
     session_log: Optional[object] = None
 
+    # Neu entdeckte Boss-Namen in dieser Session (zur Bestätigung am Ende)
+    # Liste von (config_name, boss_name, quelle) Tupeln — quelle z.B. "LLM" oder "OCR"
+    pending_new_bosses: list = field(default_factory=list)
+
     # Zeitpunkt der letzten Humanize-Break (Monotone Zeit)
     humanize_last_break: float = 0.0
+
+    # LLM Async-Thread (Boss-Scan/Watcher läuft im Hintergrund)
+    llm_thread: Optional[threading.Thread] = None
+    llm_action_event: threading.Event = field(default_factory=threading.Event)
 
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
