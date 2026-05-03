@@ -129,6 +129,10 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     Returns:
         True bei Erfolg, False wenn Stop/Fokus-Abbruch.
     """
+    # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
+    if threading.current_thread() is not state.llm_thread:
+        while state.llm_action_event.is_set() and not state.stop_event.is_set():
+            time.sleep(0.05)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
@@ -143,6 +147,10 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
 
 def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
+    # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
+    if threading.current_thread() is not state.llm_thread:
+        while state.llm_action_event.is_set() and not state.stop_event.is_set():
+            time.sleep(0.05)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
@@ -995,10 +1003,105 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
     return True
 
 
+def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
+                       step_num: int, total_steps: int, phase: str) -> None:
+    """Hintergrund-Thread: Boss-Detection + Aktion komplett asynchron.
+
+    Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
+    llm_action_event koordiniert: safe_click/safe_key warten bis das Event
+    gelöscht ist, bevor der Sequenz-Worker weitermacht.
+    """
+    debug = state.config.debug_mode
+    try:
+        if step.boss_scan:
+            # Einzel-Scan mit Retries
+            found, boss = execute_boss_scan(state, step.boss_scan)
+            if not found or not boss:
+                if step.else_config and not state.stop_event.is_set():
+                    state.llm_action_event.set()
+                    try:
+                        execute_else_action(state, step, phase, step_num, total_steps)
+                    finally:
+                        state.llm_action_event.clear()
+                return
+
+        else:
+            # Watcher-Schleife bis Boss erkannt oder Limit erreicht
+            watcher_name = step.boss_watcher
+            interval = state.config.llm_watcher_interval
+            max_scans = state.config.llm_watcher_max_scans
+            timeout = state.config.llm_watcher_timeout
+            scan_count = 0
+            start_time = time.time()
+            found = False
+            boss = None
+
+            while not state.stop_event.is_set():
+                scan_count += 1
+                found, boss = execute_boss_scan(state, watcher_name)
+                if found and boss:
+                    break
+
+                elapsed = time.time() - start_time
+                if max_scans > 0 and scan_count >= max_scans:
+                    if debug:
+                        print(dbg(f"  → Async-Watcher '{watcher_name}': max. Scans ({max_scans}) erreicht"))
+                    return
+                if timeout > 0 and elapsed >= timeout:
+                    if debug:
+                        print(dbg(f"  → Async-Watcher '{watcher_name}': Timeout ({timeout:.0f}s) erreicht"))
+                    return
+
+                state.stop_event.wait(interval)
+
+            if not found or not boss:
+                return
+
+        if state.stop_event.is_set():
+            return
+
+        # Boss erkannt → Aktion ausführen, Event sichert exklusiven Zugriff auf Maus/Tastatur
+        state.llm_action_event.set()
+        try:
+            _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
+        finally:
+            state.llm_action_event.clear()
+
+    except Exception as e:
+        if debug:
+            print(dbg(f"  → LLM-Async Fehler: {e}"))
+    finally:
+        state.llm_action_event.clear()
+
+
+def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
+                      step_num: int, total_steps: int, phase: str) -> None:
+    """Startet _boss_async_thread wenn kein Thread bereits läuft."""
+    if state.llm_thread and state.llm_thread.is_alive():
+        if state.config.debug_mode:
+            print(dbg("  → LLM-Async: vorheriger Thread noch aktiv, übersprungen"))
+        return
+    t = threading.Thread(
+        target=_boss_async_thread,
+        args=(state, step, step_num, total_steps, phase),
+        daemon=True,
+        name="llm-boss-async",
+    )
+    state.llm_thread = t
+    t.start()
+
+
 def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
     debug = state.config.debug_mode
+
+    if state.config.llm_async and state.config.llm_enabled:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss-Scan '{step.boss_scan}' (async)...",
+                     f"Boss-Scan '{step.boss_scan}' → Hintergrund-Thread gestartet")
+        _spawn_boss_async(state, step, step_num, total_steps, phase)
+        return True
 
     _step_status(debug, phase, step_num, total_steps, f"Boss-Scan '{step.boss_scan}'...")
     found, boss = execute_boss_scan(state, step.boss_scan)
@@ -1054,6 +1157,14 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     und führt die dem Boss zugeordnete Aktion aus, sobald einer erkannt wird.
     """
     debug = state.config.debug_mode
+
+    if state.config.llm_async and state.config.llm_enabled:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Boss-Watcher '{step.boss_watcher}' (async)...",
+                     f"Boss-Watcher '{step.boss_watcher}' → Hintergrund-Thread gestartet")
+        _spawn_boss_async(state, step, step_num, total_steps, phase)
+        return True
+
     _c = _phase_color(phase)
     watcher_name = step.boss_watcher
     interval = state.config.llm_watcher_interval

@@ -429,5 +429,9 @@ class AutoClickerState:
     # Zeitpunkt der letzten Humanize-Break (Monotone Zeit)
     humanize_last_break: float = 0.0
 
+    # LLM Async-Thread (Boss-Scan/Watcher läuft im Hintergrund)
+    llm_thread: Optional[threading.Thread] = None
+    llm_action_event: threading.Event = field(default_factory=threading.Event)
+
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
