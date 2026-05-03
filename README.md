@@ -523,18 +523,27 @@ Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
 - `ocr_fallback: false` → OCR **primär** für Texterkennung (schneller als LLM für reine Texterkennung)
 
 **Globale Einstellungen** (`config.json`):
-- `llm_enabled: true` muss zusätzlich gesetzt sein
-- `llm_provider: "ollama"` oder `"lmstudio"`
-- `llm_model: "llava"` etc.
+
+| Feld | Standard | Beschreibung |
+|---|---|---|
+| `llm_enabled` | `false` | LLM-Erkennung global aktivieren |
+| `llm_provider` | `"lmstudio"` | `"ollama"` oder `"lmstudio"` |
+| `llm_model` | provider-abhängig | `"gemma4:e4b"` (Ollama) / `"google/gemma-4-e2b"` (LM Studio) |
+| `llm_timeout` | `60` | Timeout pro Anfrage in Sekunden |
+| `llm_retry_count` | `2` | Wiederholungen bei `KEIN_BOSS` (0 = kein Retry, 2 = 3 Versuche gesamt) |
+| `llm_async` | `false` | Boss-Scan/Watcher im Hintergrund-Thread — Sequenz läuft parallel weiter |
+| `llm_boss_prompt` | `null` | Custom-Prompt (null = eingebauter OCR-Analyst-Prompt) |
+
+**`llm_async` — Nicht-blockierender Modus:**
+Wenn aktiviert, startet der Boss-Scan/Watcher-Step einen Hintergrund-Thread und kehrt sofort zurück. Die Sequenz läuft parallel weiter — `Warte 20s`-Steps und andere Klicks werden nicht verzögert. Sobald der LLM-Thread die Boss-Aktion ausführt, pausiert der Sequenz-Worker kurz bis die Klicks abgeschlossen sind.
+
+> **Hinweis:** Im async-Modus wird `else_config` (ELSE-Aktion bei "kein Boss") ignoriert, da die Sequenz zu diesem Zeitpunkt bereits weitergelaufen ist.
 
 **Auto-Save unbekannter Bosse**: Wenn das LLM einen Boss-Namen nennt, der noch nicht in der Liste ist, wird er automatisch als neuer Boss mit `action: skip` gespeichert. Du musst nur noch eine Aktion zuweisen.
 
-**Standalone-Test**: `python test_llm.py` testet Verbindung und Bilderkennung ohne den Autoclicker:
+**Standalone-Test**: `python tools/test_llm.py` testet Bilderkennung ohne den Autoclicker:
 ```bash
-python test_llm.py                              # Verbindungstest
-python test_llm.py screenshot                   # Screenshot vom Bildschirm + Analyse
-python test_llm.py boss.png --bosses "A,B,C"    # Bestehende Datei testen
-python test_llm.py --provider lmstudio screenshot
+python tools/test_llm.py    # Interaktiver Screenshot-Modus (Region auswählen → Analyse)
 ```
 
 ### OCR Texterkennung Boss-Detection
@@ -1257,6 +1266,32 @@ python tools/slot_tester.py
 ```
 
 ## Changelog
+
+### LLM Vision — Genauigkeit + Retry + Async-Thread
+
+**Prompt-Verbesserungen** (`autoclicker/llm_vision.py`)
+- `temperature: 0.1 → 0.0` — verhindert Halluzinationen, deterministisches Ergebnis
+- System-Prompt zu nummerierten Regeln umgebaut: "Ignoriere UI-Texte, Level, Zahlen" verhindert False-Positives durch Spiel-UI
+- User-Prompt vereinfacht: `"Extrahiere nur den Boss-Namen:"` statt offener Frage
+- `max_tokens: 200 → 50` — ein Name braucht keine 200 Token
+- Provider-spezifische Modell-Defaults: `gemma4:e4b` (Ollama) / `google/gemma-4-e2b` (LM Studio)
+- Default-Timeout: 30s → 60s (Vision-Inferenz kann länger dauern)
+
+**Retry-Logik bei `KEIN_BOSS`** (`execution.py`, `config.py`)
+- Neues Config-Feld `llm_retry_count` (Standard: 2 = 3 Versuche gesamt)
+- Bei `KEIN_BOSS`-Antwort: frischer Screenshot + erneuter LLM-Aufruf
+- Verbindungsfehler bricht sofort ab, kein sinnloser Retry
+- Analog zu `ocr_retry_count`
+
+**Async-Modus** (`llm_async`) (`execution.py`, `models.py`, `config.py`)
+- Neues Flag `llm_async: false` in `config.json`
+- Bei `llm_async: true` läuft Boss-Scan/Watcher komplett im Hintergrund-Thread
+- Sequenz-Worker läuft parallel — Warte-Steps und Klicks werden nicht blockiert
+- Klick-Konflikte koordiniert über `llm_action_event`: Sequenz-Worker wartet nur während der eigentlichen Boss-Aktion (nicht während der 60s-Analyse)
+- Thread-Check verhindert Deadlock (LLM-Thread wartet nicht auf sich selbst)
+- Doppel-Spawn verhindert: neuer Thread nur wenn vorheriger beendet
+
+---
 
 ### Neueste Änderungen — Auto-Scan + LLM Vision + Sicherheit + Import/Export
 
