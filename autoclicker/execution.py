@@ -1017,12 +1017,9 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
             # Einzel-Scan mit Retries
             found, boss = execute_boss_scan(state, step.boss_scan)
             if not found or not boss:
-                if step.else_config and not state.stop_event.is_set():
-                    state.llm_action_event.set()
-                    try:
-                        execute_else_action(state, step, phase, step_num, total_steps)
-                    finally:
-                        state.llm_action_event.clear()
+                # else_config wird im async-Modus ignoriert: die Sequenz ist
+                # bereits weitergelaufen, ein verspätetes skip_cycle/restart
+                # würde einen falschen Zeitpunkt treffen.
                 return
 
         else:
@@ -1096,6 +1093,7 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
     """Führt einen Boss-Scan Schritt aus."""
     debug = state.config.debug_mode
 
+    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
     if state.config.llm_async and state.config.llm_enabled:
         _step_status(debug, phase, step_num, total_steps,
                      f"Boss-Scan '{step.boss_scan}' (async)...",
@@ -1158,6 +1156,7 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     """
     debug = state.config.debug_mode
 
+    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
     if state.config.llm_async and state.config.llm_enabled:
         _step_status(debug, phase, step_num, total_steps,
                      f"Boss-Watcher '{step.boss_watcher}' (async)...",
