@@ -46,11 +46,12 @@ def _image_to_base64(img: 'Image.Image') -> str:
 
 
 def _build_ollama_request(model: str, image_b64: str, prompt: str,
-                          boss_names: list[str] = None) -> dict:
+                          boss_names: list[str] = None,
+                          reasoning: bool = False) -> dict:
     """Erstellt den Request-Body für die Ollama API."""
     system_prompt = _build_system_prompt(boss_names)
 
-    return {
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -65,14 +66,18 @@ def _build_ollama_request(model: str, image_b64: str, prompt: str,
             "temperature": 0.0,
         }
     }
+    if reasoning:
+        body["think"] = True
+    return body
 
 
 def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
-                             boss_names: list[str] = None) -> dict:
+                             boss_names: list[str] = None,
+                             reasoning: bool = False) -> dict:
     """Erstellt den Request-Body für die LM Studio API (OpenAI-kompatibel)."""
     system_prompt = _build_system_prompt(boss_names)
 
-    return {
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -92,6 +97,10 @@ def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
         "temperature": 0.0,
         "max_tokens": 50,
     }
+    if reasoning:
+        # Hinweis für Reasoning-fähige Modelle (z.B. QwQ, DeepSeek-R1); wird ignoriert wenn nicht unterstützt
+        body["reasoning_effort"] = "high"
+    return body
 
 
 def _build_system_prompt(boss_names: list[str] = None) -> str:
@@ -121,7 +130,8 @@ def analyze_image(
     model: str = None,
     prompt: str = None,
     boss_names: list[str] = None,
-    timeout: int = 60
+    timeout: int = 60,
+    reasoning: bool = False,
 ) -> tuple[bool, str, float]:
     """Analysiert ein Bild mit einem lokalen LLM.
 
@@ -164,9 +174,9 @@ def analyze_image(
 
     # Request erstellen
     if provider == PROVIDER_OLLAMA:
-        request_body = _build_ollama_request(model, image_b64, prompt, boss_names)
+        request_body = _build_ollama_request(model, image_b64, prompt, boss_names, reasoning)
     else:
-        request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names)
+        request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning)
 
     # API-Anfrage
     start_time = time.time()
@@ -210,15 +220,18 @@ def analyze_image(
 
 
 def _extract_response_text(result: dict, provider: str) -> str:
-    """Extrahiert den Antworttext aus der API-Antwort."""
+    """Extrahiert den Antworttext aus der API-Antwort (Reasoning-Inhalt wird ignoriert)."""
     if provider == PROVIDER_OLLAMA:
-        # Ollama: {"message": {"content": "..."}}
+        # Ollama: {"message": {"content": "...", "thinking": "..."}}
+        # Bei Reasoning-Modellen ist thinking separat — wir wollen nur content
         return result.get("message", {}).get("content", "")
     else:
-        # LM Studio (OpenAI): {"choices": [{"message": {"content": "..."}}]}
+        # LM Studio (OpenAI): {"choices": [{"message": {"content": "...", "reasoning_content": "..."}}]}
         choices = result.get("choices", [])
         if choices:
-            return choices[0].get("message", {}).get("content", "")
+            msg = choices[0].get("message", {})
+            # reasoning_content ignorieren, nur content verwenden
+            return msg.get("content", "")
         return ""
 
 

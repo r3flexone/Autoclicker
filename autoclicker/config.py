@@ -71,6 +71,7 @@ class AppConfig:
     llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_async: bool = False                         # Boss-Scan/Watcher im Hintergrund-Thread (Sequenz läuft parallel)
     llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
+    llm_reasoning: bool = False                      # Reasoning/Thinking aktivieren wenn Modell es unterstützt
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
@@ -289,7 +290,7 @@ _CONFIG_SECTIONS = [
     ]),
     ("LLM VISION (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
-        "llm_timeout", "llm_retry_count", "llm_async", "llm_boss_prompt",
+        "llm_timeout", "llm_retry_count", "llm_async", "llm_reasoning", "llm_boss_prompt",
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
     ]),
     ("OCR (Texterkennung)", [

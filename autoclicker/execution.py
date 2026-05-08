@@ -895,6 +895,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             prompt=state.config.llm_boss_prompt,
             boss_names=boss_names,
             timeout=state.config.llm_timeout,
+            reasoning=state.config.llm_reasoning,
         )
 
         if not success:
