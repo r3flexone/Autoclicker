@@ -324,21 +324,26 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
     slots_override: Nur diese Slots scannen, Reverse-Reihenfolge ignorieren.
                     Wird vom Immediate-Modus genutzt (ein Slot pro Aufruf)."""
-    if scan_name not in state.item_scans:
-        print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
-        return []
-
-    config = state.item_scans[scan_name]
-    if not config.slots or not config.items:
-        print(err(f"Item-Scan '{scan_name}' hat keine Slots oder Items!"))
-        return []
+    # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
+    # während wir iterieren (RuntimeError bei dict/list changed during iteration).
+    with state.lock:
+        config = state.item_scans.get(scan_name)
+        if config is None:
+            print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
+            return []
+        if not config.slots or not config.items:
+            print(err(f"Item-Scan '{scan_name}' hat keine Slots oder Items!"))
+            return []
+        slots_snapshot = list(config.slots)
+        items_snapshot = list(config.items)
+        color_tolerance = config.color_tolerance
 
     found_items = []
 
     if slots_override is not None:
         slots_to_scan = list(slots_override)
     else:
-        slots_to_scan = list(config.slots)
+        slots_to_scan = slots_snapshot
         if state.config.scan_reverse:
             slots_to_scan = list(reversed(slots_to_scan))
 
@@ -393,8 +398,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             size_info = f"{img.size[0]}x{img.size[1]}"
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
-        for item in config.items:
-            if _check_profile_match(item, img, config.color_tolerance, state, debug, "gefunden!"):
+        for item in items_snapshot:
+            if _check_profile_match(item, img, color_tolerance, state, debug, "gefunden!"):
                 found_items.append((slot, item, item.priority))
                 break
 
@@ -629,63 +634,67 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
     Returns:
         (found, boss_profile) - True + BossProfile wenn Boss erkannt, sonst (False, None).
     """
-    if config_name not in state.boss_scans:
-        print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
-        return False, None
-
-    config = state.boss_scans[config_name]
-    if not config.bosses:
-        print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert!"))
-        return False, None
+    # Snapshot von config + bosses-Liste unter Lock — der Editor kann während Scans laufen
+    with state.lock:
+        config = state.boss_scans.get(config_name)
+        if config is None:
+            print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
+            return False, None
+        if not config.bosses:
+            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert!"))
+            return False, None
+        bosses_snapshot = list(config.bosses)
+        color_tolerance = config.color_tolerance
+        scan_region = config.scan_region
 
     debug = state.config.debug_detection
 
     # Screenshot der Boss-Region
-    img = take_screenshot(config.scan_region)
+    img = take_screenshot(scan_region)
     if img is None:
         if debug:
             print(dbg("Boss-Scan: Screenshot fehlgeschlagen!"))
         return False, None
 
     if debug:
-        r = config.scan_region
+        r = scan_region
         tags = []
         if config.use_llm and state.config.llm_enabled:
             tags.append("LLM")
         if config.use_ocr and state.config.ocr_enabled:
             tags.append("OCR")
         tag_str = f" [{'+'.join(tags)}]" if tags else ""
-        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(config.bosses)} Bosse{tag_str}"))
+        print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(bosses_snapshot)} Bosse{tag_str}"))
 
     llm_active = config.use_llm and state.config.llm_enabled
     ocr_active = config.use_ocr and state.config.ocr_enabled
 
     # OCR als primäre Erkennung (wenn nicht Fallback-Modus)
     if ocr_active and not config.ocr_fallback:
-        ocr_result = _execute_ocr_boss_detection(state, config, img, debug)
+        ocr_result = _execute_ocr_boss_detection(state, config, img, debug, bosses_snapshot)
         if ocr_result is not None:
             return True, ocr_result
 
     # LLM als primäre Erkennung (wenn nicht Fallback-Modus)
     if llm_active and not config.llm_fallback:
-        llm_result = _execute_llm_boss_detection(state, config, img, debug)
+        llm_result = _execute_llm_boss_detection(state, config, img, debug, bosses_snapshot)
         if llm_result is not None:
             return True, llm_result
 
     # Bosse der Reihe nach prüfen (Reihenfolge = Priorität)
-    for boss in config.bosses:
-        if _check_profile_match(boss, img, config.color_tolerance, state, debug, "ERKANNT!"):
+    for boss in bosses_snapshot:
+        if _check_profile_match(boss, img, color_tolerance, state, debug, "ERKANNT!"):
             return True, boss
 
     # 5. OCR als Fallback
     if ocr_active and config.ocr_fallback:
-        ocr_result = _execute_ocr_boss_detection(state, config, img, debug)
+        ocr_result = _execute_ocr_boss_detection(state, config, img, debug, bosses_snapshot)
         if ocr_result is not None:
             return True, ocr_result
 
     # 6. LLM Vision als Fallback (nur im Fallback-Modus - sonst lief es bereits oben als primär)
     if llm_active and config.llm_fallback:
-        llm_result = _execute_llm_boss_detection(state, config, img, debug)
+        llm_result = _execute_llm_boss_detection(state, config, img, debug, bosses_snapshot)
         if llm_result is not None:
             return True, llm_result
 
@@ -780,7 +789,8 @@ def _confirm_new_bosses(state: AutoClickerState) -> None:
 
 
 def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
-                                 img, debug: bool) -> BossProfile | None:
+                                 img, debug: bool,
+                                 bosses_snapshot: list[BossProfile]) -> BossProfile | None:
     """Versucht einen Boss per OCR-Texterkennung zu erkennen.
 
     Mindestens 80 % Konfidenz erforderlich. Liegt die Sicherheit darunter, wird
@@ -802,7 +812,7 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg("  → OCR: kein Backend verfügbar"))
         return None
 
-    boss_names = [boss.name for boss in config.bosses]
+    boss_names = [boss.name for boss in bosses_snapshot]
     languages = [l.strip() for l in state.config.ocr_languages.split(",")]
 
     # Mindestens 80 % Konfidenz — sichert Zuverlässigkeit, verhindert Falschspeicherungen
@@ -837,7 +847,7 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
                 print(dbg(f"  → OCR: kein Text erkannt ({duration:.0f}ms)"))
 
         if success and matched_name is not None:
-            for boss in config.bosses:
+            for boss in bosses_snapshot:
                 if boss.name == matched_name:
                     if debug:
                         print(dbg(f"  → OCR: {boss.name} ERKANNT! (Versuch {attempt})"))
@@ -858,7 +868,8 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
 
 
 def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
-                                 img, debug: bool) -> BossProfile | None:
+                                 img, debug: bool,
+                                 bosses_snapshot: list[BossProfile]) -> BossProfile | None:
     """Versucht einen Boss per LLM Vision zu erkennen.
 
     Wiederholt den Scan bei KEIN_BOSS bis zu state.config.llm_retry_count Mal.
@@ -873,7 +884,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             print(dbg("  → LLM: Import fehlgeschlagen"))
         return None
 
-    boss_names = [boss.name for boss in config.bosses]
+    boss_names = [boss.name for boss in bosses_snapshot]
     max_attempts = 1 + max(0, state.config.llm_retry_count)
 
     for attempt in range(1, max_attempts + 1):
@@ -915,7 +926,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             continue
 
         if not is_new:
-            for boss in config.bosses:
+            for boss in bosses_snapshot:
                 if boss.name == matched_name:
                     if debug:
                         print(dbg(f"  → LLM: {boss.name} ERKANNT! (Versuch {attempt})"))
