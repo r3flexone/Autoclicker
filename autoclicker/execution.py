@@ -1022,16 +1022,27 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
     llm_action_event koordiniert: safe_click/safe_key warten bis das Event
     gelöscht ist, bevor der Sequenz-Worker weitermacht.
+
+    Respektiert pause_event und failsafe genau wie der Sync-Pfad — sonst würde
+    der Watcher bei pausierter Sequenz weiter Bosse erkennen und Aktionen feuern.
     """
     debug = state.config.debug_mode
     try:
         if step.boss_scan:
+            # Failsafe + Pause vor dem Scan prüfen
+            if check_failsafe(state):
+                state.stop_event.set()
+                return
+            if not wait_while_paused(state, f"Async-Scan '{step.boss_scan}' pausiert..."):
+                return
+
             # Einzel-Scan mit Retries
             found, boss = execute_boss_scan(state, step.boss_scan)
             if not found or not boss:
-                # else_config wird im async-Modus ignoriert: die Sequenz ist
-                # bereits weitergelaufen, ein verspätetes skip_cycle/restart
-                # würde einen falschen Zeitpunkt treffen.
+                # Für else_config: skip/skip_cycle/restart greifen zu spät (Sequenz
+                # läuft schon weiter), aber click/key sind harmlose Idempotenz-Aktionen
+                # und werden via llm_action_event genauso serialisiert wie ein Boss-Hit.
+                _maybe_execute_async_else(state, step, step_num, total_steps, phase, debug)
                 return
 
         else:
@@ -1046,6 +1057,13 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
             boss = None
 
             while not state.stop_event.is_set():
+                # Failsafe und Pause auch im Watcher-Loop prüfen
+                if check_failsafe(state):
+                    state.stop_event.set()
+                    return
+                if not wait_while_paused(state, f"Async-Watcher '{watcher_name}' pausiert..."):
+                    return
+
                 scan_count += 1
                 found, boss = execute_boss_scan(state, watcher_name)
                 if found and boss:
@@ -1068,6 +1086,11 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
 
         if state.stop_event.is_set():
             return
+        if check_failsafe(state):
+            state.stop_event.set()
+            return
+        if not wait_while_paused(state, "Async-Boss-Aktion pausiert..."):
+            return
 
         # Boss erkannt → Aktion ausführen, Event sichert exklusiven Zugriff auf Maus/Tastatur
         state.llm_action_event.set()
@@ -1079,6 +1102,45 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     except Exception as e:
         if debug:
             print(dbg(f"  → LLM-Async Fehler: {e}"))
+    finally:
+        state.llm_action_event.clear()
+
+
+def _maybe_execute_async_else(state: AutoClickerState, step: SequenceStep,
+                              step_num: int, total_steps: int, phase: str,
+                              debug: bool) -> None:
+    """Führt die else_config-Aktion im Async-Pfad aus — nur click/key.
+
+    skip/skip_cycle/restart werden bewusst verworfen, weil die Hauptsequenz
+    schon weitergelaufen ist und ein verspäteter Zyklus-Reset Chaos stiften würde.
+    """
+    ec = step.else_config
+    if ec is None:
+        return
+    if ec.action not in (ELSE_CLICK, ELSE_KEY):
+        return
+    if state.stop_event.is_set():
+        return
+    if check_failsafe(state):
+        state.stop_event.set()
+        return
+    if not wait_while_paused(state, "Async-Else-Aktion pausiert..."):
+        return
+
+    state.llm_action_event.set()
+    try:
+        if ec.delay > 0:
+            state.stop_event.wait(ec.delay)
+            if state.stop_event.is_set():
+                return
+        if ec.action == ELSE_CLICK:
+            safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
+            if debug:
+                print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))
+        elif ec.action == ELSE_KEY and ec.key:
+            safe_key(state, ec.key, ec.name or f"Async-Else-Taste {ec.key}")
+            if debug:
+                print(dbg(f"  → Async-Else: Taste '{ec.key}'"))
     finally:
         state.llm_action_event.clear()
 
