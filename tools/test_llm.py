@@ -62,6 +62,7 @@ def run_single_scan(config: AppConfig) -> None:
         boss_names=None,
         timeout=config.llm_timeout,
         reasoning=config.llm_reasoning,
+        max_tokens=config.llm_max_tokens,
     )
 
     if not success:
