@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import re
 import socket
 import time
 from typing import Optional, TYPE_CHECKING
@@ -51,6 +52,9 @@ def _build_ollama_request(model: str, image_b64: str, prompt: str,
     """Erstellt den Request-Body für die Ollama API."""
     system_prompt = _build_system_prompt(boss_names)
 
+    # Bei Reasoning-Modellen braucht es deutlich mehr Tokens — sonst wird das Thinking
+    # abgeschnitten und der Boss-Name kommt nie als Antwort raus. Ollama-Default: 128.
+    num_predict = 2048 if reasoning else 128
     body = {
         "model": model,
         "messages": [
@@ -64,9 +68,12 @@ def _build_ollama_request(model: str, image_b64: str, prompt: str,
         "stream": False,
         "options": {
             "temperature": 0.0,
+            "num_predict": num_predict,
         }
     }
     if reasoning:
+        # Bool funktioniert für qwen3/deepseek-r1/gemma3. gpt-oss erwartet "low"/"medium"/"high"
+        # und ignoriert bool — das ist ein bekannter Edge-Case.
         body["think"] = True
     return body
 
@@ -77,6 +84,9 @@ def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
     """Erstellt den Request-Body für die LM Studio API (OpenAI-kompatibel)."""
     system_prompt = _build_system_prompt(boss_names)
 
+    # Reasoning-Modelle (DeepSeek-R1, QwQ) packen <think>...</think> oft direkt in den content.
+    # Mit nur 50 Tokens wird das Thinking abgeschnitten bevor der eigentliche Boss-Name kommt.
+    max_tokens = 2048 if reasoning else 50
     body = {
         "model": model,
         "messages": [
@@ -95,10 +105,11 @@ def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
             }
         ],
         "temperature": 0.0,
-        "max_tokens": 50,
+        "max_tokens": max_tokens,
     }
     if reasoning:
-        # Hinweis für Reasoning-fähige Modelle (z.B. QwQ, DeepSeek-R1); wird ignoriert wenn nicht unterstützt
+        # OpenAI-Konvention für /v1/chat/completions — wird von gpt-oss in LM Studio genutzt.
+        # Andere Modelle ignorieren den Parameter, machen Reasoning aber ggf. trotzdem via <think>-Tags.
         body["reasoning_effort"] = "high"
     return body
 
@@ -219,20 +230,41 @@ def analyze_image(
         return False, f"Fehler: {e}", duration_ms
 
 
+# Reasoning-Tags die manche Modelle inline in den content packen (DeepSeek-R1, QwQ u.a.)
+# statt sie in ein separates Feld auszulagern. Wir strippen sie hier raus.
+_THINK_TAG_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning_tags(text: str) -> str:
+    """Entfernt <think>...</think>-Blöcke und ähnliche Reasoning-Marker aus dem Content."""
+    if not text:
+        return text
+    # Vollständige <think>...</think>-Blöcke entfernen
+    cleaned = _THINK_TAG_PATTERN.sub("", text)
+    # Unvollständiger Block am Anfang (kein schließendes Tag, weil truncated): alles bis </think>
+    if "</think>" in cleaned:
+        cleaned = cleaned.split("</think>", 1)[1]
+    # Falls nur ein offenes <think> ohne Schluss übrig ist → alles davor behalten, danach verwerfen
+    if "<think>" in cleaned:
+        cleaned = cleaned.split("<think>", 1)[0]
+    return cleaned.strip()
+
+
 def _extract_response_text(result: dict, provider: str) -> str:
     """Extrahiert den Antworttext aus der API-Antwort (Reasoning-Inhalt wird ignoriert)."""
     if provider == PROVIDER_OLLAMA:
         # Ollama: {"message": {"content": "...", "thinking": "..."}}
-        # Bei Reasoning-Modellen ist thinking separat — wir wollen nur content
-        return result.get("message", {}).get("content", "")
+        # Bei think:true ist thinking separat — sonst können <think>-Tags im content stecken.
+        content = result.get("message", {}).get("content", "")
     else:
         # LM Studio (OpenAI): {"choices": [{"message": {"content": "...", "reasoning_content": "..."}}]}
         choices = result.get("choices", [])
-        if choices:
-            msg = choices[0].get("message", {})
-            # reasoning_content ignorieren, nur content verwenden
-            return msg.get("content", "")
-        return ""
+        if not choices:
+            return ""
+        msg = choices[0].get("message", {})
+        # reasoning_content ignorieren, nur content verwenden
+        content = msg.get("content", "")
+    return _strip_reasoning_tags(content)
 
 
 def is_no_boss(response: str) -> bool:
