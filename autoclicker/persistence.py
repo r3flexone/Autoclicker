@@ -530,7 +530,7 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
 
             return BossScanConfig(
                 name=data["name"],
-                scan_region=tuple(data["scan_region"]),
+                scan_region=tuple(data.get("scan_region", (0, 0, 100, 100))),
                 color_tolerance=data.get("color_tolerance", 30),
                 default_action=data.get("default_action", BOSS_ACTION_SKIP),
                 default_scan=data.get("default_scan"),
