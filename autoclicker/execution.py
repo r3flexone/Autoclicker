@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from .config import CONFIG
 from .models import (
@@ -26,7 +27,7 @@ from .winapi import (
     is_target_window_active, get_foreground_window_title,
 )
 from .session_log import log_event
-from .utils import clear_line, wait_while_paused, safe_input, format_duration, col, ok, err, info, hint, dbg
+from .utils import clear_line, wait_while_paused, safe_input, format_duration, col, ok, err, info, warn, hint, dbg
 from .imaging import (
     PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name,
     find_color_in_image, match_template_in_image
@@ -1162,13 +1163,50 @@ def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
     t.start()
 
 
+def _should_run_async(state: AutoClickerState, config_name: Optional[str]) -> bool:
+    """Async-Pfad nur wenn der konkrete Boss-Scan LLM nutzt UND LLM global aktiv ist.
+
+    Vorher genügte globales llm_async+llm_enabled, was Template/Marker-Watcher
+    unnötig in den Hintergrund-Thread schickte.
+    """
+    if not state.config.llm_async or not state.config.llm_enabled:
+        return False
+    if not config_name:
+        return False
+    with state.lock:
+        cfg = state.boss_scans.get(config_name)
+    return bool(cfg and cfg.use_llm)
+
+
+def _warn_llm_config_inconsistencies(state: AutoClickerState, config_name: Optional[str]) -> None:
+    """Einmalige Warnung wenn ein Boss-Scan use_llm=True hat, aber das globale
+    llm_enabled aus ist — der User glaubt sonst, LLM würde laufen."""
+    if not config_name:
+        return
+    with state.lock:
+        cfg = state.boss_scans.get(config_name)
+        if cfg is None:
+            return
+        key = f"llm_disabled:{config_name}"
+        if cfg.use_llm and not state.config.llm_enabled and key not in state.warned_inconsistencies:
+            state.warned_inconsistencies.add(key)
+            should_warn = True
+        else:
+            should_warn = False
+    if should_warn:
+        print(warn(f"'{config_name}': use_llm aktiv, aber llm_enabled global aus — LLM wird ignoriert."))
+
+
 def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
     debug = state.config.debug_mode
 
-    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
-    if state.config.llm_async and state.config.llm_enabled:
+    _warn_llm_config_inconsistencies(state, step.boss_scan)
+
+    # async lohnt sich nur wenn die Erkennung dieses Scans tatsächlich LLM nutzt —
+    # reine Template/Marker-Scans sind schnell und der Sync-Pfad ist einfacher.
+    if _should_run_async(state, step.boss_scan):
         _step_status(debug, phase, step_num, total_steps,
                      f"Boss-Scan '{step.boss_scan}' (async)...",
                      f"Boss-Scan '{step.boss_scan}' → Hintergrund-Thread gestartet")
@@ -1230,8 +1268,11 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     """
     debug = state.config.debug_mode
 
-    # async nur wenn LLM aktiv — OCR/Template-Matching ist schnell genug für sync
-    if state.config.llm_async and state.config.llm_enabled:
+    _warn_llm_config_inconsistencies(state, step.boss_watcher)
+
+    # async lohnt sich nur wenn dieser Watcher LLM nutzt — sonst läuft Template/Marker
+    # schnell genug im Sync-Pfad, der pause_event/failsafe direkt prüft.
+    if _should_run_async(state, step.boss_watcher):
         _step_status(debug, phase, step_num, total_steps,
                      f"Boss-Watcher '{step.boss_watcher}' (async)...",
                      f"Boss-Watcher '{step.boss_watcher}' → Hintergrund-Thread gestartet")
@@ -1603,6 +1644,9 @@ def sequence_worker(state: AutoClickerState) -> None:
             print(err("Keine gültige Sequenz!"))
             state.is_running = False
             return
+
+        # Warning-Set für diese Sequenz zurücksetzen — Inkonsistenz-Warnungen einmalig
+        state.warned_inconsistencies.clear()
 
         has_init = len(sequence.init_steps) > 0
         has_loops = len(sequence.loop_phases) > 0
