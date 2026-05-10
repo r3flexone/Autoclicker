@@ -10,8 +10,8 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 
 ```bash
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
-python test_llm.py              # Standalone-Verbindungstest für Ollama/LM Studio
-python test_llm.py screenshot   # LLM-Screenshot-Test ohne Editor-Setup
+python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
+python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/sync_json.py       # Migriert alte JSON-Dateien aufs aktuelle Schema
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
