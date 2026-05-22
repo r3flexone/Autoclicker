@@ -1,0 +1,280 @@
+"""
+Hauptschleife des Item-Editors: interaktive Befehls-Verarbeitung.
+
+run_global_item_editor zeigt die Übersicht, sammelt User-Befehle und dispatcht
+an die passenden Handler in items.py, autoscan.py, learn.py, commands.py.
+Backup-Snapshot bei Editor-Start, Restore bei Cancel/Strg+C.
+"""
+
+import copy
+
+from ...imaging import PILLOW_AVAILABLE
+from ...models import AutoClickerState
+from ...persistence import (
+    delete_item_preset, list_item_presets, load_item_preset,
+    save_global_items, save_item_preset,
+)
+from ...utils import (
+    breadcrumb, cancel_hint, cmd_hint, col, confirm, err, header, hint,
+    is_cancel, ok, safe_input, suggest_command,
+)
+from .autoscan import item_autoscan_command
+from .commands import handle_rename_command, handle_template_command, handle_templates_command
+from .items import create_item, edit_item
+from .learn import item_learn_command
+
+
+def run_global_item_editor(state: AutoClickerState) -> None:
+    """Interaktiver Editor für globale Item-Definitionen."""
+    print(header("ITEM-EDITOR (Globale Item-Definitionen)"))
+    print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Items')}")
+
+    if not PILLOW_AVAILABLE:
+        print(f"\n{err('Pillow nicht installiert!')}")
+        print("         Installieren mit: pip install pillow")
+        return
+
+    # Backup für cancel
+    with state.lock:
+        items_backup = copy.deepcopy(state.global_items)
+
+    _print_editor_overview(state)
+    _print_item_help()
+
+    while True:
+        try:
+            with state.lock:
+                item_count = len(state.global_items)
+            prompt = f"[ITEMS: {item_count}]"
+            user_input = safe_input(f"{prompt} > ").strip()
+            cmd = user_input.lower()
+
+            if cmd in ("done", "d"):
+                save_global_items(state)
+                print(ok("Item-Editor beendet."))
+                return
+            elif is_cancel(cmd):
+                with state.lock:
+                    state.global_items = items_backup
+                print(col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
+                return
+            elif cmd == "":
+                continue
+
+            if not _dispatch_command(state, cmd, user_input):
+                _known = ["autoscan", "learn", "add", "edit", "rename", "del", "show",
+                          "template", "templates", "save", "load", "preset",
+                          "help", "done", "cancel"]
+                suggestion = suggest_command(cmd, _known)
+                print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
+
+        except (KeyboardInterrupt, EOFError):
+            with state.lock:
+                state.global_items = items_backup
+            print("\n" + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
+            return
+
+
+def _print_editor_overview(state: AutoClickerState) -> None:
+    """Druckt den Status-Block beim Editor-Start (Items, Slots, Presets)."""
+    with state.lock:
+        current_items = list(state.global_items.items())
+
+    if current_items:
+        print(f"\nAktuelle Items ({len(current_items)}):")
+        for i, (name, item) in enumerate(current_items):
+            print(f"  {i+1}. {item}")
+    else:
+        print("\n  (Keine Items vorhanden)")
+
+    with state.lock:
+        slots = dict(state.global_slots)
+    if slots:
+        print(f"\nVerfügbare Slots für Item-Lernen ({len(slots)}):")
+        for i, (name, slot) in enumerate(slots.items()):
+            print(f"  {i+1}. {slot.name}")
+
+    presets = list_item_presets()
+    if presets:
+        print(f"\nVerfügbare Presets ({len(presets)}):")
+        for name, path, count in presets:
+            print(f"  - {name} ({count} Items)")
+
+
+def _print_item_help(full: bool = False) -> None:
+    """Druckt die Befehls-Übersicht (kurz oder vollständig)."""
+    if not full:
+        print("\n  Kurzübersicht (? / ?? = vollständige Hilfe):")
+        print("    autoscan         ALLE Slots automatisch scannen + Items erstellen")
+        print("    learn <Nr>       Item aus Slot lernen")
+        print("    add              Neues Item manuell")
+        print("    edit <Nr>        Item bearbeiten")
+        print("    del <Nr>         Item löschen")
+        print("    show / s         Alle Items anzeigen")
+        print(f"    done / d | cancel / {cancel_hint()}  Fertig / Abbrechen")
+    else:
+        print("\n" + "-" * 60)
+        print("Befehle:")
+        print(cmd_hint("autoscan", "ALLE Slots automatisch scannen + Items erstellen"))
+        print(cmd_hint("autoscan nocolor", "Auto-Scan nur mit Templates (ohne Marker)"))
+        print(cmd_hint("learn <Nr>", "Item aus Slot lernen (automatisch!)"))
+        print(cmd_hint("learn <Nr>-<Nr>", "Bulk: Items für Slot-Bereich (mit Template)"))
+        print(cmd_hint("learn <Nr>-<Nr> simple", "Bulk: ohne Template"))
+        print(cmd_hint("add", "Neues Item manuell hinzufügen"))
+        print(cmd_hint("edit <Nr>", "Item bearbeiten"))
+        print(cmd_hint("rename <Nr>", "Item umbenennen (inkl. Template)"))
+        print(cmd_hint("del <Nr>", "Item löschen"))
+        print(cmd_hint("del all", "Alle Items löschen"))
+        print(cmd_hint("show / s", "Alle Items anzeigen"))
+        print(cmd_hint("template <Nr>", "Template für Item setzen/entfernen"))
+        print(cmd_hint("templates", "Verfügbare Templates anzeigen"))
+        print(cmd_hint("save <Name>", "Als Preset speichern"))
+        print(cmd_hint("load <Name>", "Preset laden"))
+        print(cmd_hint("preset del <N>", "Preset löschen"))
+        print(cmd_hint("help", "Kurzübersicht"))
+        print(cmd_hint("? / help full / ??", "Vollständige Hilfe"))
+        print(cmd_hint("done / d", "Fertig"))
+        print(cmd_hint(f"cancel / {cancel_hint()}", "Abbrechen"))
+        print("-" * 60)
+
+
+def _dispatch_command(state: AutoClickerState, cmd: str, user_input: str) -> bool:
+    """Verarbeitet einen Editor-Befehl. Gibt False zurück wenn der Befehl unbekannt ist."""
+    if cmd == "help":
+        _print_item_help()
+        return True
+
+    if cmd in ("?", "help full", "??"):
+        _print_item_help(full=True)
+        return True
+
+    if cmd in ("show", "s"):
+        with state.lock:
+            if state.global_items:
+                print(f"\nItems ({len(state.global_items)}):")
+                sorted_items = sorted(state.global_items.values(), key=lambda x: x.priority)
+                for i, item in enumerate(sorted_items):
+                    print(f"  {i+1}. {item}")
+            else:
+                print("  (Keine Items)")
+        return True
+
+    if cmd.startswith("autoscan"):
+        item_autoscan_command(state, cmd)
+        return True
+
+    if cmd.startswith("learn"):
+        item_learn_command(state, cmd)
+        return True
+
+    if cmd == "add":
+        item = create_item(state)
+        if item:
+            with state.lock:
+                state.global_items[item.name] = item
+            print(f"  + Item '{item.name}' hinzugefügt")
+        return True
+
+    if cmd.startswith("edit "):
+        _handle_edit(state, cmd)
+        return True
+
+    if cmd == "del all":
+        _handle_delete_all(state)
+        return True
+
+    if cmd.startswith("del "):
+        _handle_delete_single(state, cmd)
+        return True
+
+    if cmd.startswith("rename "):
+        handle_rename_command(state, cmd)
+        return True
+
+    if cmd == "templates":
+        handle_templates_command()
+        return True
+
+    if cmd.startswith("template "):
+        handle_template_command(state, cmd)
+        return True
+
+    if cmd.startswith("save "):
+        preset_name = user_input[5:].strip()
+        if preset_name:
+            save_item_preset(state, preset_name)
+        else:
+            print("  -> Format: save <Name>")
+        return True
+
+    if cmd.startswith("load "):
+        preset_name = user_input[5:].strip()
+        if preset_name:
+            load_item_preset(state, preset_name)
+        else:
+            print("  -> Format: load <Name>")
+        return True
+
+    if cmd.startswith("preset del "):
+        preset_name = user_input[11:].strip()
+        if preset_name:
+            delete_item_preset(preset_name)
+        else:
+            print("  -> Format: preset del <Name>")
+        return True
+
+    return False
+
+
+def _handle_edit(state: AutoClickerState, cmd: str) -> None:
+    """Edit-Befehl: Item bearbeiten."""
+    try:
+        edit_num = int(cmd[5:])
+        with state.lock:
+            item_list = list(state.global_items.items())
+            if not (1 <= edit_num <= len(item_list)):
+                print(f"  -> Ungültig! Verfügbar: 1-{len(item_list)}")
+                return
+            name, item = item_list[edit_num - 1]
+        # edit_item OHNE Lock (User-Input)
+        new_item = edit_item(state, item)
+        if new_item:
+            with state.lock:
+                # Falls Name geändert wurde, alten Eintrag entfernen
+                if new_item.name != name:
+                    state.global_items.pop(name, None)
+                state.global_items[new_item.name] = new_item
+            print(f"  + Item '{new_item.name}' aktualisiert")
+    except ValueError:
+        print("  -> Format: edit <Nr>")
+
+
+def _handle_delete_all(state: AutoClickerState) -> None:
+    """`del all` — alle Items mit Bestätigung löschen."""
+    with state.lock:
+        if not state.global_items:
+            print("  -> Keine Items vorhanden!")
+            return
+        count = len(state.global_items)
+    if confirm(f"  {count} Item(s) wirklich löschen?"):
+        with state.lock:
+            state.global_items.clear()
+        print(f"  + {count} Item(s) gelöscht!")
+    else:
+        print("  -> Abgebrochen")
+
+
+def _handle_delete_single(state: AutoClickerState, cmd: str) -> None:
+    """`del <Nr>` — ein einzelnes Item löschen."""
+    try:
+        del_num = int(cmd[4:])
+        with state.lock:
+            item_list = list(state.global_items.keys())
+            if 1 <= del_num <= len(item_list):
+                name = item_list[del_num - 1]
+                del state.global_items[name]
+                print(f"  + Item '{name}' gelöscht")
+            else:
+                print(f"  -> Ungültig! Verfügbar: 1-{len(item_list)}")
+    except ValueError:
+        print("  -> Format: del <Nr>")
