@@ -28,6 +28,10 @@ from ..winapi import check_failsafe
 from .actions import safe_click, safe_key, _step_status, _phase_color
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
 
+# Mindest-Konfidenz für OCR-Boss-Erkennung. Unterhalb davon wird nichts gespeichert —
+# sichert Zuverlässigkeit und verhindert dass Tippfehler/Garbled-Text als neuer Boss landen.
+_OCR_MIN_BOSS_CONFIDENCE = 0.8
+
 
 # =============================================================================
 # BOSS-SCAN AUSFÜHRUNG
@@ -223,8 +227,8 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
     boss_names = [boss.name for boss in bosses_snapshot]
     languages = [l.strip() for l in state.config.ocr_languages.split(",")]
 
-    # Mindestens 80 % Konfidenz — sichert Zuverlässigkeit, verhindert Falschspeicherungen
-    confidence_threshold = max(0.8, state.config.ocr_min_confidence)
+    # Mindestens _OCR_MIN_BOSS_CONFIDENCE erzwingen, auch wenn User-Config niedriger ist
+    confidence_threshold = max(_OCR_MIN_BOSS_CONFIDENCE, state.config.ocr_min_confidence)
     max_attempts = 1 + max(0, state.config.ocr_retry_count)
 
     for attempt in range(1, max_attempts + 1):
@@ -244,7 +248,7 @@ def _execute_ocr_boss_detection(state: AutoClickerState, config: BossScanConfig,
             backend=state.config.ocr_backend,
             languages=languages,
             min_confidence=confidence_threshold,
-            new_boss_min_confidence=0.8,
+            new_boss_min_confidence=_OCR_MIN_BOSS_CONFIDENCE,
         )
 
         if debug:

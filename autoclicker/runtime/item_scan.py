@@ -18,6 +18,20 @@ from ..utils import col, err, dbg, wait_while_paused
 from ..winapi import set_cursor_pos
 from .actions import safe_click
 
+# Windows GetSystemMetrics-Indizes für den virtuellen Desktop (Multi-Monitor-Spannweite).
+# https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
+_SM_XVIRTUALSCREEN = 76
+_SM_YVIRTUALSCREEN = 77
+_SM_CXVIRTUALSCREEN = 78
+_SM_CYVIRTUALSCREEN = 79
+# Fallback-Indizes für den Primärbildschirm (wenn Virtual-Screen-Abfrage fehlschlägt)
+_SM_CXSCREEN = 0
+_SM_CYSCREEN = 1
+
+# Settle-Zeit nach Maus-Park bevor der Scan beginnt — verhindert dass ein noch
+# sichtbarer Hover-Tooltip die Erkennung verfälscht.
+_MOUSE_PARK_SETTLE = 0.05
+
 
 # =============================================================================
 # PROFIL-MATCHING HELPER (gemeinsam für Item- und Boss-Erkennung)
@@ -152,21 +166,21 @@ def _park_mouse_for_scan(park_pos) -> None:
     else:
         # true = Bildschirmmitte (virtueller Desktop für Multi-Monitor)
         try:
-            SM_CXVIRTUALSCREEN = 78
-            SM_CYVIRTUALSCREEN = 79
-            SM_XVIRTUALSCREEN = 76
-            SM_YVIRTUALSCREEN = 77
-            vw = ctypes.windll.user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
-            vh = ctypes.windll.user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
-            vx = ctypes.windll.user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-            vy = ctypes.windll.user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            vw = ctypes.windll.user32.GetSystemMetrics(_SM_CXVIRTUALSCREEN)
+            vh = ctypes.windll.user32.GetSystemMetrics(_SM_CYVIRTUALSCREEN)
+            vx = ctypes.windll.user32.GetSystemMetrics(_SM_XVIRTUALSCREEN)
+            vy = ctypes.windll.user32.GetSystemMetrics(_SM_YVIRTUALSCREEN)
             px = vx + vw // 2
             py = vy + vh // 2
         except (AttributeError, OSError):
-            px = ctypes.windll.user32.GetSystemMetrics(0) // 2 if hasattr(ctypes, 'windll') else 960
-            py = ctypes.windll.user32.GetSystemMetrics(1) // 2 if hasattr(ctypes, 'windll') else 540
+            # Letzter Fallback: Primärmonitor (oder Hardcode wenn keine windll verfügbar)
+            if hasattr(ctypes, 'windll'):
+                px = ctypes.windll.user32.GetSystemMetrics(_SM_CXSCREEN) // 2
+                py = ctypes.windll.user32.GetSystemMetrics(_SM_CYSCREEN) // 2
+            else:
+                px, py = 960, 540
     set_cursor_pos(px, py)
-    time.sleep(0.05)  # Kurz warten bis Maus angekommen & Tooltip weg
+    time.sleep(_MOUSE_PARK_SETTLE)
 
 
 def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, debug: bool) -> list:

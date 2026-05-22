@@ -25,6 +25,10 @@ from ..winapi import (
     is_target_window_active, get_foreground_window_title,
 )
 
+# Polling-Intervall für die llm_action_event-Schleife in safe_click/safe_key.
+# 50 ms = reaktiv genug ohne CPU zu belasten.
+_LLM_ACTION_POLL_INTERVAL = 0.05
+
 
 # =============================================================================
 # WINDOW-FOKUS-CHECK
@@ -131,7 +135,7 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
     if threading.current_thread() is not state.llm_thread:
         while state.llm_action_event.is_set() and not state.stop_event.is_set():
-            time.sleep(0.05)
+            time.sleep(_LLM_ACTION_POLL_INTERVAL)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
@@ -148,7 +152,7 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
     if threading.current_thread() is not state.llm_thread:
         while state.llm_action_event.is_set() and not state.stop_event.is_set():
-            time.sleep(0.05)
+            time.sleep(_LLM_ACTION_POLL_INTERVAL)
     if not _wait_for_target_window(state):
         return False
     _humanize_check_break(state)
