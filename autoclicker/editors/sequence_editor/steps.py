@@ -1,0 +1,642 @@
+"""
+Phase-Editor: interaktiver Editor für die Schritt-Liste einer Phase.
+
+edit_phase() ist die öffentliche API — sie delegiert an die _PhaseEditor-Klasse,
+die den Zustand (steps, insert_position) hält und für jeden Befehl eine eigene
+_handle_*-Methode hat. So bleibt jede Befehlslogik unter ~50 Zeilen und ist
+einzeln verständlich, statt einer 470-Zeilen-If-elif-Kette.
+
+Befehle:
+  done/d / cancel              — Phase abschließen / verwerfen
+  show/s                       — Schritte anzeigen
+  help / ? / ??                — Hilfe (kurz/voll)
+  del N | del N-M | del all    — Schritt(e) löschen
+  ins N | ins 0 | ins end      — Insert-Modus setzen/abbrechen
+  points/p | learn [Name]      — Punkt-Verwaltung
+  scan/boss/watcher/key/wait/  — Spezielle Step-Typen
+    screenshot
+  <Nr> [<Zeit>|pixel|gone] ... — Direkter Punkt-Klick (Standard)
+"""
+
+from typing import Optional
+
+from ...imaging import PILLOW_AVAILABLE, select_region
+from ...models import ClickPoint, WaitCondition, SequenceStep, AutoClickerState
+from ...persistence import (
+    get_next_point_id, get_point_by_id, save_data,
+)
+from ...utils import (
+    cancel_hint, cmd_hint, col, coord_context, hint, is_cancel,
+    ok, err, safe_input, suggest_command,
+    parse_non_negative_float, parse_non_negative_range,
+)
+from ...winapi import get_cursor_pos, VK_CODES
+from .helpers import apply_else_to_step, capture_pixel_color
+
+
+# =============================================================================
+# HILFE-AUSGABE + KLEINE PARSER
+# =============================================================================
+
+def _print_phase_help(full: bool = False) -> None:
+    """Zeigt die Hilfe für den Phase-Editor an (kurz oder vollständig)."""
+    if not full:
+        print("\n" + "-" * 60)
+        print("  Kurzübersicht (? / ?? = vollständige Hilfe):")
+        print(cmd_hint("<Nr> <Zeit>", "Warte Xs, klicke Punkt    (z.B. '1 30')"))
+        print(cmd_hint("scan <Name>", "Item-Scan ausführen"))
+        print(cmd_hint("boss <Name>", "Boss-Scan (erkennt Boss → Aktion)"))
+        print(cmd_hint("watcher <Name>", "Boss-Watcher (wartet bis Boss erscheint)"))
+        print(cmd_hint("key <Taste>", "Taste drücken              (z.B. 'key enter')"))
+        print(cmd_hint("wait <Zeit>", "Nur warten, kein Klick"))
+        print(cmd_hint("del <Nr>", "Schritt löschen"))
+        print(cmd_hint("screenshot / ss", "Screenshot-Schritt (Bereich wählen)"))
+        print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Fertig / Abbrechen"))
+        print("-" * 60)
+        return
+
+    print("\n" + "-" * 60)
+    print("Befehle (Logik: erst warten, DANN klicken):")
+    print(cmd_hint("<Nr> <Zeit>", "Warte Xs, dann klicke (z.B. '1 30')"))
+    print(cmd_hint("<Nr> <Min>-<Max>", "Zufällig warten (z.B. '1 30-45')"))
+    print(cmd_hint("<Nr> 0", "Sofort klicken"))
+    print(cmd_hint("<Nr> pixel", "Warte auf Farbe, dann klicke"))
+    print(cmd_hint("<Nr> <Zeit> pixel", "Erst Xs warten, dann auf Farbe"))
+    print(cmd_hint("<Nr> gone", "Warte bis Farbe WEG, dann klicke"))
+    print(cmd_hint("<Nr> <Zeit> gone", "Erst Xs warten, dann bis Farbe WEG"))
+    print(cmd_hint("wait <Zeit>", "Nur warten, KEIN Klick (z.B. 'wait 10')"))
+    print(cmd_hint("wait <Min>-<Max>", "Zufällig warten (z.B. 'wait 30-45')"))
+    print(cmd_hint("wait pixel", "Auf Farbe warten, KEIN Klick"))
+    print(cmd_hint("wait gone", "Warten bis Farbe WEG ist, KEIN Klick"))
+    print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
+    print(cmd_hint("key <Zeit> <Taste>", "Warten, dann Taste (z.B. 'key 5 space')"))
+    print(cmd_hint("key <Min>-<Max> <Taste>", "Zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
+    print(cmd_hint("scan <Name>", "Item-Scan: bestes pro Kategorie (Standard)"))
+    print(cmd_hint("scan <Name> best", "Item-Scan: nur 1 Item total"))
+    print(cmd_hint("scan <Name> every", "Item-Scan: alle Treffer (für Duplikate)"))
+    print(cmd_hint("boss <Name>", "Boss-Scan: Boss erkennen → bedingte Aktion"))
+    print(cmd_hint("watcher <Name>", "Boss-Watcher: wartet bis Boss erscheint → Aktion"))
+    print("ELSE-Bedingungen (falls Scan/Pixel/Boss fehlschlägt):")
+    print(cmd_hint("... else skip", "Schritt überspringen, weiter (z.B. 'scan items else skip')"))
+    print(cmd_hint("... else skip_cycle", "Zyklus abbrechen, nächster startet (z.B. 'scan items else skip_cycle')"))
+    print(cmd_hint("... else restart", "Sequenz neu starten (z.B. 'scan items else restart')"))
+    print(cmd_hint("... else <Nr> [s]", "Punkt klicken (z.B. 'scan items else 2 5')"))
+    print(cmd_hint("... else key <T>", "Taste drücken (z.B. '1 pixel else key enter')"))
+    print("Punkte verwalten:")
+    print(cmd_hint("learn <Name>", "Neuen Punkt erstellen"))
+    print(cmd_hint("points", "Alle Punkte anzeigen"))
+    print(cmd_hint("del <Nr>", "Schritt löschen"))
+    print(cmd_hint("del <Nr>-<Nr>", "Bereich löschen (z.B. del 1-5)"))
+    print(cmd_hint("del all", "ALLE Schritte löschen"))
+    print(cmd_hint("ins <Nr>", "Nächsten Schritt an Position einfügen"))
+    print("Screenshot-Schritt (wird bei Ausführung automatisch gemacht):")
+    print(cmd_hint("screenshot / ss", "Bereich interaktiv wählen → Schritt erstellen"))
+    print(cmd_hint("screenshot full", "Vollbild-Screenshot-Schritt erstellen"))
+    print(cmd_hint("screenshot x1 y1 x2 y2", "Direkte Koordinaten (z.B. 'screenshot 0 0 800 600')"))
+    print(cmd_hint(f"help | ? / ?? | show | done | cancel | {cancel_hint()}", ""))
+    print("-" * 60)
+
+
+def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
+    """Trennt 'foo bar else baz qux' in (['foo','bar'], ['baz','qux'])."""
+    else_parts = []
+    main_parts = []
+    in_else = False
+    for p in parts_raw:
+        if p.lower() == "else":
+            in_else = True
+            continue
+        if in_else:
+            else_parts.append(p)
+        else:
+            main_parts.append(p)
+    return main_parts, else_parts
+
+
+# Bekannte Befehle für Tippfehler-Vorschläge (suggest_command)
+_KNOWN_COMMANDS = [
+    "done", "cancel", "help", "show", "del", "ins", "points", "learn",
+    "scan", "boss", "watcher", "key", "wait", "screenshot", "ss",
+]
+
+
+# =============================================================================
+# PHASE-EDITOR (interaktive Schleife + Handler-Methoden)
+# =============================================================================
+
+class _PhaseEditor:
+    """Interaktiver Editor für die Schritt-Liste einer Phase.
+
+    Hält den Zustand (steps, insert_position) und dispatcht User-Befehle an
+    spezialisierte _handle_*-Methoden. add_step() ist die zentrale Stelle
+    für Step-Hinzufügen — respektiert insert_position oder hängt am Ende an.
+    """
+
+    def __init__(self, state: AutoClickerState, steps: list[SequenceStep],
+                 phase_name: str) -> None:
+        self.state = state
+        self.steps = steps
+        self.phase_name = phase_name
+        self.insert_position: Optional[int] = None
+
+    # ---- Hauptschleife ----
+
+    def run(self) -> Optional[list[SequenceStep]]:
+        """Startet die interaktive Schleife. Returns steps (done) oder None (cancel)."""
+        if self.steps:
+            print(f"\nAktuelle {self.phase_name}-Schritte ({len(self.steps)}):")
+            for i, step in enumerate(self.steps):
+                print(f"  {i+1}. {step}")
+
+        _print_phase_help()
+
+        while True:
+            try:
+                user_input = safe_input(f"{self._prompt()} > ").strip()
+                cmd = user_input.lower()
+
+                if cmd in ("done", "d"):
+                    return self.steps
+                if is_cancel(user_input):
+                    print(col("[CANCEL]", "yellow") + " Phase abgebrochen.")
+                    return None
+                if cmd == "":
+                    continue
+
+                self._dispatch(user_input, cmd)
+            except (KeyboardInterrupt, EOFError):
+                raise
+
+    def _prompt(self) -> str:
+        """Erzeugt den Eingabe-Prompt — zeigt Insert-Modus an wenn aktiv."""
+        base = f"[{self.phase_name}: {len(self.steps)}]"
+        if self.insert_position is not None:
+            return f"{base} (ins->{self.insert_position})"
+        return base
+
+    def _dispatch(self, user_input: str, cmd: str) -> None:
+        """Routet einen Befehl an die passende Handler-Methode.
+
+        Reihenfolge wichtig: exakte Matches (ins 0/ins end, del all) müssen VOR
+        Präfix-Matches (ins , del ) stehen, sonst werden sie geschluckt.
+        """
+        if cmd == "help":
+            _print_phase_help()
+            return
+        if cmd in ("?", "help full", "??"):
+            _print_phase_help(full=True)
+            return
+        if cmd in ("show", "s"):
+            self._handle_show()
+            return
+
+        # Lösch-Befehle (exakt zuerst, dann Range, dann Single)
+        if cmd == "del all":
+            self._handle_del_all()
+            return
+        if cmd.startswith("del ") and "-" in user_input[4:]:
+            self._handle_del_range(user_input)
+            return
+        if cmd.startswith("del "):
+            self._handle_del_single(user_input)
+            return
+
+        # Insert-Modus (exakt zuerst — sonst schluckt startswith("ins ") "ins 0"/"ins end")
+        if cmd in ("ins 0", "ins end"):
+            self._handle_ins_clear()
+            return
+        if cmd.startswith("ins "):
+            self._handle_ins_set(user_input)
+            return
+
+        # Punkt-Verwaltung
+        if cmd in ("points", "p"):
+            self._handle_points()
+            return
+        if cmd.startswith("learn"):
+            self._handle_learn(user_input)
+            return
+
+        # Step-hinzufügen-Befehle
+        if cmd.startswith("scan "):
+            self._handle_scan(user_input)
+            return
+        if cmd.startswith("boss "):
+            self._handle_boss(user_input)
+            return
+        if cmd.startswith("watcher "):
+            self._handle_watcher(user_input)
+            return
+        if cmd.startswith("key "):
+            self._handle_key(user_input)
+            return
+        if cmd.startswith("wait "):
+            self._handle_wait(user_input)
+            return
+        if cmd.startswith(("screenshot", "ss")):
+            self._handle_screenshot(user_input)
+            return
+
+        # Default: Punkt-ID + Optionen (z.B. "1 30 pixel")
+        self._handle_point_click(user_input)
+
+    def add_step(self, step: SequenceStep) -> None:
+        """Fügt einen Schritt hinzu — an insert_position oder am Ende.
+
+        Setzt insert_position nach dem Einfügen zurück (Einmal-Modus).
+        """
+        if self.insert_position is not None:
+            self.steps.insert(self.insert_position - 1, step)
+            print(f"  + Eingefügt an Position {self.insert_position}: {step}")
+            self.insert_position = None
+        else:
+            self.steps.append(step)
+            print(f"  + Hinzugefügt: {step}")
+
+    # ---- Generische Befehle ----
+
+    def _handle_show(self) -> None:
+        if self.steps:
+            print(f"\n{self.phase_name}-Schritte:")
+            for i, step in enumerate(self.steps):
+                print(f"  {i+1}. {step}")
+        else:
+            print("  (Keine Schritte)")
+
+    def _handle_del_all(self) -> None:
+        if not self.steps:
+            print("  -> Keine Schritte vorhanden!")
+            return
+        count = len(self.steps)
+        self.steps.clear()
+        print(f"  + Alle {count} Schritte gelöscht")
+
+    def _handle_del_range(self, user_input: str) -> None:
+        try:
+            range_str = user_input[4:].strip()
+            parts = range_str.split("-")
+            start = int(parts[0])
+            end = int(parts[1])
+            if start < 1 or end > len(self.steps) or start > end:
+                print(f"  -> Ungültiger Bereich! Verfügbar: 1-{len(self.steps)}")
+                return
+            # Von hinten löschen um Indexe nicht zu verschieben
+            removed_count = 0
+            for i in range(end, start - 1, -1):
+                self.steps.pop(i - 1)
+                removed_count += 1
+            print(f"  + {removed_count} Schritte gelöscht ({start}-{end})")
+        except (ValueError, IndexError):
+            print("  -> Format: del <start>-<end> (z.B. del 1-5)")
+
+    def _handle_del_single(self, user_input: str) -> None:
+        try:
+            del_num = int(user_input[4:])
+            if 1 <= del_num <= len(self.steps):
+                removed = self.steps.pop(del_num - 1)
+                print(f"  + Schritt {del_num} gelöscht: {removed}")
+            else:
+                print(f"  -> Ungültiger Schritt! Verfügbar: 1-{len(self.steps)}")
+        except ValueError:
+            print("  -> Format: del <Nr>")
+
+    def _handle_ins_set(self, user_input: str) -> None:
+        try:
+            pos = int(user_input[4:])
+            if pos < 1:
+                print("  -> Position muss >= 1 sein!")
+                return
+            if pos > len(self.steps) + 1:
+                print(f"  -> Position zu groß! Max: {len(self.steps) + 1}")
+                return
+            self.insert_position = pos
+            print(f"  + Insert-Modus: Nächster Schritt wird an Position {pos} eingefügt")
+            print(f"    (Abbrechen mit 'ins 0' oder 'ins end')")
+        except ValueError:
+            print("  -> Format: ins <Nr>")
+
+    def _handle_ins_clear(self) -> None:
+        if self.insert_position is not None:
+            self.insert_position = None
+            print("  + Insert-Modus beendet - Schritte werden wieder am Ende angefügt")
+        else:
+            print("  -> Insert-Modus war nicht aktiv")
+
+    # ---- Punkt-Verwaltung ----
+
+    def _handle_points(self) -> None:
+        with self.state.lock:
+            if self.state.points:
+                print("\n  Verfügbare Punkte:")
+                for p in self.state.points:
+                    print(f"    {p}")
+            else:
+                print("  (Keine Punkte vorhanden)")
+
+    def _handle_learn(self, user_input: str) -> None:
+        """Format: 'learn' oder 'learn <Name>' — neuen Punkt an Mauspos. anlegen."""
+        parts = user_input.split(maxsplit=1)
+        if len(parts) > 1:
+            point_name = parts[1].strip()
+        else:
+            point_name = safe_input("  Punkt-Name: ").strip()
+            if not point_name or is_cancel(point_name):
+                print("  -> Abgebrochen")
+                return
+
+        print(f"\n  Bewege die Maus zur Position für '{point_name}'")
+        print("  Drücke Enter...")
+        safe_input()
+        x, y = get_cursor_pos()
+
+        with self.state.lock:
+            new_id = get_next_point_id(self.state)
+            new_point = ClickPoint(x, y, point_name, new_id)
+            self.state.points.append(new_point)
+
+        save_data(self.state)
+        print(f"  + Punkt #{new_id} '{point_name}' erstellt bei {coord_context(x, y)}")
+
+    # ---- Step-hinzufügen ----
+
+    def _handle_scan(self, user_input: str) -> None:
+        """Format: scan <Name> [best|every] [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if not main_parts:
+            print("  -> Format: scan <Name> [best|every] [else ...]")
+            return
+
+        scan_name = main_parts[0]
+        mode = "all"
+        if len(main_parts) > 1:
+            mode_str = main_parts[1].lower()
+            if mode_str in ("best", "every"):
+                mode = mode_str
+
+        step = SequenceStep(
+            x=0, y=0, delay_before=0,
+            name=f"Scan:{scan_name}",
+            item_scan=scan_name,
+            item_scan_mode=mode,
+        )
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _handle_boss(self, user_input: str) -> None:
+        """Format: boss <Name> [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if not main_parts:
+            print("  -> Format: boss <Name> [else ...]")
+            return
+
+        boss_name = main_parts[0]
+        step = SequenceStep(
+            x=0, y=0, delay_before=0,
+            name=f"Boss:{boss_name}",
+            boss_scan=boss_name,
+        )
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _handle_watcher(self, user_input: str) -> None:
+        """Format: watcher <Boss-Scan-Name> [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if not main_parts:
+            print("  -> Format: watcher <Boss-Scan-Name> [else ...]")
+            return
+
+        watcher_name = main_parts[0]
+        step = SequenceStep(
+            x=0, y=0, delay_before=0,
+            name=f"Watcher:{watcher_name}",
+            boss_watcher=watcher_name,
+        )
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _handle_key(self, user_input: str) -> None:
+        """Format: key <Taste> | key <Zeit> <Taste> | key <Min>-<Max> <Taste>"""
+        parts = user_input.split()
+        if len(parts) < 2:
+            print("  -> Format: key <Taste> oder key <Zeit> <Taste> oder key <Min>-<Max> <Taste>")
+            return
+
+        delay = 0
+        delay_max = None
+        key_name = None
+
+        if len(parts) == 2:
+            key_name = parts[1].lower()
+        else:
+            if "-" in parts[1]:
+                range_val, range_err = parse_non_negative_range(parts[1], "Verzögerung")
+                if range_err:
+                    print(f"  -> {range_err}")
+                    print("     Format: key <Min>-<Max> <Taste> (z.B. key 5-10 enter)")
+                    return
+                delay, delay_max = range_val
+            else:
+                delay_val, delay_err = parse_non_negative_float(parts[1], "Verzögerung")
+                if delay_err:
+                    print(f"  -> {delay_err}")
+                    print("     Format: key <Taste> oder key <Zeit> <Taste>")
+                    return
+                delay = delay_val
+            key_name = parts[2].lower()
+
+        if key_name not in VK_CODES:
+            print(f"  -> Unbekannte Taste: '{key_name}'")
+            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+            return
+
+        step = SequenceStep(
+            x=0, y=0, delay_before=delay, delay_max=delay_max,
+            name=f"Key:{key_name}",
+            key_press=key_name,
+        )
+        self.add_step(step)
+
+    def _handle_wait(self, user_input: str) -> None:
+        """Format: wait <Zeit> | wait <Min>-<Max> | wait pixel | wait gone [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if not main_parts:
+            print("  -> Format: wait <Zeit> oder wait pixel oder wait gone")
+            return
+
+        arg = main_parts[0].lower()
+        step = SequenceStep(x=0, y=0, delay_before=0, name="Wait", wait_only=True)
+
+        if arg in ("pixel", "gone"):
+            px, py, color = capture_pixel_color()
+            if color is None:
+                return
+            step.wait_condition = WaitCondition(
+                pixel=(px, py), color=color,
+                until_gone=(arg == "gone"),
+            )
+            step.name = "Wait:Gone" if arg == "gone" else "Wait:Pixel"
+        elif "-" in arg:
+            range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
+            if range_err:
+                print(f"  -> {range_err}")
+                print("     Format: wait <Min>-<Max> (z.B. wait 1-5)")
+                return
+            min_val, max_val = range_val
+            step.delay_before = min_val
+            step.delay_max = max_val
+            step.name = f"Wait:{min_val:g}-{max_val:g}s"
+        else:
+            delay_val, delay_err = parse_non_negative_float(arg, "Wartezeit")
+            if delay_err:
+                print(f"  -> {delay_err}")
+                print("     Format: wait <Zeit> (z.B. wait 5)")
+                return
+            step.delay_before = delay_val
+            step.name = f"Wait:{arg}s"
+
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _handle_screenshot(self, user_input: str) -> None:
+        """Format: screenshot [full | <x1> <y1> <x2> <y2>] (sonst interaktiv)"""
+        rest = user_input.split()[1:]  # alles nach dem Befehl
+
+        if rest and rest[0].lower() == "full":
+            step = SequenceStep(x=0, y=0, delay_before=0.0,
+                                screenshot_only=True, screenshot_region=None,
+                                name="Screenshot (Vollbild)")
+            self.add_step(step)
+            print(ok("Screenshot-Schritt (Vollbild) hinzugefügt"))
+            return
+
+        if len(rest) == 4 and all(r.lstrip("-").isdigit() for r in rest):
+            x1, y1, x2, y2 = (int(v) for v in rest)
+            region = (x1, y1, x2, y2)
+            step = SequenceStep(x=0, y=0, delay_before=0.0,
+                                screenshot_only=True, screenshot_region=region,
+                                name=f"Screenshot ({x1},{y1})→({x2},{y2})")
+            self.add_step(step)
+            print(ok(f"Screenshot-Schritt ({x1},{y1})→({x2},{y2}) hinzugefügt"))
+            return
+
+        # Interaktiv Bereich wählen
+        if not PILLOW_AVAILABLE:
+            print(f"  -> {err('Pillow nicht installiert!')} pip install pillow")
+            return
+        print("  Bereich für Screenshot-Schritt wählen:")
+        region = select_region()
+        if region is None:
+            return
+        step = SequenceStep(x=0, y=0, delay_before=0.0,
+                            screenshot_only=True, screenshot_region=region,
+                            name=f"Screenshot ({region[0]},{region[1]})→({region[2]},{region[3]})")
+        self.add_step(step)
+        print(ok(f"Screenshot-Schritt ({region[0]},{region[1]})→({region[2]},{region[3]}) hinzugefügt"))
+
+    def _handle_point_click(self, user_input: str) -> None:
+        """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split())
+        if not main_parts:
+            self._print_unknown_command(user_input)
+            return
+
+        try:
+            point_id = int(main_parts[0])
+        except ValueError:
+            self._print_unknown_command(user_input)
+            return
+
+        with self.state.lock:
+            point = get_point_by_id(self.state, point_id)
+        if not point:
+            print(f"  -> Punkt #{point_id} nicht gefunden!")
+            return
+
+        wait_cond, delay, delay_max = self._parse_point_options(main_parts)
+        if wait_cond is False:  # Sentinel: Parse-Fehler, schon ausgegeben
+            return
+
+        step = SequenceStep(
+            x=point.x, y=point.y, delay_before=delay,
+            name=point.name or f"#{point_id}",
+            wait_condition=wait_cond,
+            delay_max=delay_max,
+        )
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _parse_point_options(self, main_parts: list[str]):
+        """Parst die Optionen nach der Punkt-ID. Returns (wait_condition, delay, delay_max).
+
+        Bei Parse-Fehler: (False, 0, None) — der Caller bricht ab, Fehler ist
+        bereits ausgegeben.
+        """
+        delay = 0
+        delay_max = None
+        wait_pixel = None
+        wait_color = None
+        wait_until_gone = False
+
+        if len(main_parts) > 1:
+            arg = main_parts[1].lower()
+
+            if arg in ("pixel", "gone"):
+                # <Nr> pixel / <Nr> gone
+                px, py, color = capture_pixel_color()
+                if color:
+                    wait_pixel = (px, py)
+                    wait_color = color
+                    if arg == "gone":
+                        wait_until_gone = True
+            elif "-" in arg:
+                # <Nr> <Min>-<Max>
+                range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
+                if range_err:
+                    print(f"  -> {range_err}")
+                    print("     Format: <Nr> <Min>-<Max> (z.B. 1 5-10)")
+                    return False, 0, None
+                delay, delay_max = range_val
+            else:
+                # <Nr> <Zeit>
+                delay_val, delay_err = parse_non_negative_float(arg, "Wartezeit")
+                if delay_err:
+                    print(f"  -> {delay_err}")
+                    print("     Format: <Nr> <Zeit> (z.B. 1 5)")
+                    return False, 0, None
+                delay = delay_val
+
+                # Optional: <Nr> <Zeit> pixel/gone
+                if len(main_parts) > 2:
+                    opt = main_parts[2].lower()
+                    if opt in ("pixel", "gone"):
+                        px, py, color = capture_pixel_color()
+                        if color:
+                            wait_pixel = (px, py)
+                            wait_color = color
+                            if opt == "gone":
+                                wait_until_gone = True
+
+        wait_cond = None
+        if wait_pixel and wait_color:
+            wait_cond = WaitCondition(pixel=wait_pixel, color=wait_color,
+                                      until_gone=wait_until_gone)
+        return wait_cond, delay, delay_max
+
+    def _print_unknown_command(self, user_input: str) -> None:
+        """Druckt 'Unbekannter Befehl' + Tippfehler-Vorschlag."""
+        suggestion = suggest_command(user_input, _KNOWN_COMMANDS)
+        print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
+
+
+# =============================================================================
+# ÖFFENTLICHE API
+# =============================================================================
+
+def edit_phase(state: AutoClickerState, steps: list[SequenceStep],
+               phase_name: str) -> Optional[list[SequenceStep]]:
+    """Bearbeitet eine Phase (Init/Loop/End) der Sequenz interaktiv.
+
+    Returns:
+        Liste der Schritte bei 'done', None bei 'cancel'.
+    """
+    return _PhaseEditor(state, steps, phase_name).run()

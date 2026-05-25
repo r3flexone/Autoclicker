@@ -433,5 +433,9 @@ class AutoClickerState:
     llm_thread: Optional[threading.Thread] = None
     llm_action_event: threading.Event = field(default_factory=threading.Event)
 
+    # Set für einmalige Konfigurations-Warnungen pro Worker-Lauf (z.B. "use_llm aber !llm_enabled").
+    # Wird beim Sequenz-Start in sequence_worker geleert. Zugriff unter state.lock.
+    warned_inconsistencies: set = field(default_factory=set)
+
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)

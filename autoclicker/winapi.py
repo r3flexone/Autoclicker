@@ -288,38 +288,40 @@ def check_failsafe(state: 'AutoClickerState' = None) -> bool:
 # =============================================================================
 # HOTKEY-REGISTRIERUNG
 # =============================================================================
+# Zentrale Hotkey-Definition — register und unregister speisen sich beide hieraus,
+# damit neue Hotkeys nicht versehentlich aus dem unregister-Pfad rausfallen.
+_HOTKEY_DEFINITIONS = [
+    (HOTKEY_RECORD, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_A, "CTRL+ALT+A (Punkt speichern)"),
+    (HOTKEY_UNDO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_U, "CTRL+ALT+U (Rückgängig)"),
+    (HOTKEY_CLEAR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_C, "CTRL+ALT+C (Alle löschen)"),
+    (HOTKEY_RESET, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_X, "CTRL+ALT+X (Factory Reset)"),
+    (HOTKEY_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_E, "CTRL+ALT+E (Editor)"),
+    (HOTKEY_ITEM_SCAN, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_N, "CTRL+ALT+N (Item-Scan)"),
+    (HOTKEY_LOAD, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_L, "CTRL+ALT+L (Laden)"),
+    (HOTKEY_SHOW, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_P, "CTRL+ALT+P (Punkte anzeigen)"),
+    (HOTKEY_TOGGLE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_S, "CTRL+ALT+S (Start/Stop)"),
+    (HOTKEY_ANALYZE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_T, "CTRL+ALT+T (Farb-Analyse)"),
+    (HOTKEY_QUIT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Q, "CTRL+ALT+Q (Beenden)"),
+    (HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_G, "CTRL+ALT+G (Pause)"),
+    (HOTKEY_SKIP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_K, "CTRL+ALT+K (Skip)"),
+    (HOTKEY_SWITCH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_W, "CTRL+ALT+W (Wechseln)"),
+    (HOTKEY_SCHEDULE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Z, "CTRL+ALT+Z (Zeitplan)"),
+    (HOTKEY_FINISH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F, "CTRL+ALT+F (Sanft beenden)"),
+    (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
+]
+
+
 def register_hotkeys() -> bool:
     """Registriert alle globalen Hotkeys."""
     success = True
-    hotkeys = [
-        (HOTKEY_RECORD, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_A, "CTRL+ALT+A (Punkt speichern)"),
-        (HOTKEY_UNDO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_U, "CTRL+ALT+U (Rückgängig)"),
-        (HOTKEY_CLEAR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_C, "CTRL+ALT+C (Alle löschen)"),
-        (HOTKEY_RESET, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_X, "CTRL+ALT+X (Factory Reset)"),
-        (HOTKEY_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_E, "CTRL+ALT+E (Editor)"),
-        (HOTKEY_ITEM_SCAN, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_N, "CTRL+ALT+N (Item-Scan)"),
-        (HOTKEY_LOAD, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_L, "CTRL+ALT+L (Laden)"),
-        (HOTKEY_SHOW, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_P, "CTRL+ALT+P (Punkte anzeigen)"),
-        (HOTKEY_TOGGLE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_S, "CTRL+ALT+S (Start/Stop)"),
-        (HOTKEY_ANALYZE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_T, "CTRL+ALT+T (Farb-Analyse)"),
-        (HOTKEY_QUIT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Q, "CTRL+ALT+Q (Beenden)"),
-        (HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_G, "CTRL+ALT+G (Pause)"),
-        (HOTKEY_SKIP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_K, "CTRL+ALT+K (Skip)"),
-        (HOTKEY_SWITCH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_W, "CTRL+ALT+W (Wechseln)"),
-        (HOTKEY_SCHEDULE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Z, "CTRL+ALT+Z (Zeitplan)"),
-        (HOTKEY_FINISH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F, "CTRL+ALT+F (Sanft beenden)"),
-        (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
-    ]
-
-    for hotkey_id, modifiers, vk, name in hotkeys:
+    for hotkey_id, modifiers, vk, name in _HOTKEY_DEFINITIONS:
         if not user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
             print(warn(f"Konnte Hotkey nicht registrieren: {name}"))
             success = False
-
     return success
 
 
 def unregister_hotkeys() -> None:
     """Deregistriert alle globalen Hotkeys."""
-    for hotkey_id in range(1, HOTKEY_FINISH + 1):
+    for hotkey_id, _, _, _ in _HOTKEY_DEFINITIONS:
         user32.UnregisterHotKey(None, hotkey_id)

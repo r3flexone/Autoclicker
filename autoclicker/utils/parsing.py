@@ -1,0 +1,224 @@
+"""
+Parsing und Formatting: Zeit-Eingaben, Zahlen-Bereiche, Dauer-Formatierung,
+Dateinamen-Bereinigung, kompaktes JSON.
+
+Reine String-/Daten-Funktionen ohne I/O oder Konsolen-Abhängigkeiten.
+"""
+
+import json
+import re
+from datetime import datetime, timedelta
+
+
+# =============================================================================
+# ZEIT-EINGABEN PARSEN
+# =============================================================================
+
+def parse_time_input(time_str: str) -> tuple[float, str, float | None]:
+    """Parst Zeit-Eingaben in verschiedenen Formaten.
+
+    Unterstützte Formate:
+        14:30       → Sekunden bis 14:30 Uhr (heute oder morgen)
+        1430        → Sekunden bis 14:30 Uhr (4-stellig, 0000-2359)
+        30s         → 30 Sekunden
+        30m, 30min  → 30 Minuten
+        2h, 2std    → 2 Stunden
+        +30m        → In 30 Minuten (relativ)
+        +2          → In 2 Minuten (+ ohne Einheit = Minuten)
+
+    Returns:
+        (sekunden: float, beschreibung: str, zielzeit_timestamp: float | None)
+        - zielzeit_timestamp: Absolute Zielzeit bei Uhrzeiten (HH:MM, HHMM), sonst None
+        Bei Fehler: (-1, fehlermeldung, None)
+    """
+    time_str = time_str.strip().lower()
+
+    if not time_str:
+        return (-1, "Keine Zeit angegeben", None)
+
+    # Relative Zeit mit + Präfix: +30m, +2h, +2 (ohne Einheit = Minuten)
+    has_plus_prefix = time_str.startswith("+")
+    if has_plus_prefix:
+        time_str = time_str[1:]
+
+    def calculate_time_to_target(hour: int, minute: int) -> tuple[float, str, float]:
+        """Berechnet Sekunden bis zur Zielzeit und gibt (seconds, description, timestamp) zurück."""
+        now = datetime.now()
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        if target <= now:
+            target += timedelta(days=1)
+            day_str = "morgen"
+        else:
+            day_str = "heute"
+
+        seconds = (target - now).total_seconds()
+        target_timestamp = target.timestamp()
+
+        return (seconds, f"{day_str} um {hour:02d}:{minute:02d}", target_timestamp)
+
+    # Format: HH:MM (Uhrzeit mit Doppelpunkt)
+    if ":" in time_str:
+        try:
+            parts = time_str.split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                return (-1, f"Ungültige Uhrzeit: {time_str}", None)
+
+            return calculate_time_to_target(hour, minute)
+        except ValueError:
+            return (-1, f"Ungültiges Zeitformat: {time_str}", None)
+
+    # Format: HHMM (4-stellige Uhrzeit ohne Doppelpunkt, 0000-2359)
+    if time_str.isdigit() and len(time_str) == 4:
+        try:
+            hour = int(time_str[:2])
+            minute = int(time_str[2:])
+
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                return (-1, f"Ungültige Uhrzeit: {time_str} (gültig: 0000-2359)", None)
+
+            return calculate_time_to_target(hour, minute)
+        except ValueError:
+            return (-1, f"Ungültiges Zeitformat: {time_str}", None)
+
+    # Format: Zahl mit Einheit (30s, 30m, 30min, 2h, 2std)
+    try:
+        unit = None
+        value_str = time_str
+
+        if time_str.endswith("std"):
+            unit = "h"
+            value_str = time_str[:-3]
+        elif time_str.endswith("min"):
+            unit = "m"
+            value_str = time_str[:-3]
+        elif time_str.endswith("h"):
+            unit = "h"
+            value_str = time_str[:-1]
+        elif time_str.endswith("m"):
+            unit = "m"
+            value_str = time_str[:-1]
+        elif time_str.endswith("s"):
+            unit = "s"
+            value_str = time_str[:-1]
+        elif has_plus_prefix:
+            unit = "m"  # + Präfix ohne Einheit = Minuten
+        else:
+            return (-1, f"Einheit fehlt! Nutze z.B. '{time_str}s', '{time_str}m' oder '{time_str}h'", None)
+
+        value = float(value_str)
+
+        if value < 0:
+            return (-1, "Zeit muss positiv sein", None)
+
+        if unit == "h":
+            seconds = value * 3600
+            desc = f"{value:.0f}h" if value == int(value) else f"{value}h"
+        elif unit == "m":
+            seconds = value * 60
+            desc = f"{value:.0f}m" if value == int(value) else f"{value}m"
+        else:
+            seconds = value
+            desc = f"{value:.0f}s" if value == int(value) else f"{value}s"
+
+        return (seconds, desc, None)
+    except ValueError:
+        return (-1, f"Ungültige Zahl: {time_str}", None)
+
+
+# =============================================================================
+# ZAHLEN-EINGABEN PARSEN
+# =============================================================================
+
+def parse_non_negative_float(value: str, field_name: str = "Wert") -> tuple[float | None, str | None]:
+    """Parst einen nicht-negativen Float-Wert aus einem String.
+
+    Returns:
+        (wert, None) bei Erfolg, (None, fehlermeldung) bei Fehler.
+    """
+    try:
+        v = float(value)
+    except ValueError:
+        return None, f"'{value}' ist keine gültige Zahl"
+    if v < 0:
+        return None, f"{field_name} darf nicht negativ sein (Eingabe: {v:g})"
+    return v, None
+
+
+def parse_non_negative_range(value: str, field_name: str = "Bereich") -> tuple[tuple[float, float] | None, str | None]:
+    """Parst einen nicht-negativen Min-Max-Bereich aus einem String (Format: 'min-max').
+
+    Returns:
+        ((min, max), None) bei Erfolg, (None, fehlermeldung) bei Fehler.
+    """
+    parts = value.split("-", 1)
+    if len(parts) != 2:
+        return None, f"{field_name}: Format <Min>-<Max> erwartet (z.B. 1-5)"
+    min_val, min_err = parse_non_negative_float(parts[0], "Min")
+    if min_err:
+        return None, min_err
+    max_val, max_err = parse_non_negative_float(parts[1], "Max")
+    if max_err:
+        return None, max_err
+    if max_val < min_val:
+        return None, f"Max ({max_val:g}) muss >= Min ({min_val:g}) sein"
+    return (min_val, max_val), None
+
+
+# =============================================================================
+# FORMATTING + SANITIZING
+# =============================================================================
+
+def format_duration(seconds: float) -> str:
+    """Formatiert Sekunden als hh:mm:ss oder mm:ss."""
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def sanitize_filename(name: str) -> str:
+    """Bereinigt einen Namen für sichere Dateinamen.
+
+    Entfernt/ersetzt unsichere Zeichen wie ../, \\, :, *, ?, ", <, >, |
+    """
+    # Entferne Path-Traversal-Versuche
+    name = name.replace("..", "").replace("/", "_").replace("\\", "_")
+    # Entferne Windows-unsichere Zeichen
+    name = re.sub(r'[<>:"|?*]', '', name)
+    # Leerzeichen zu Unterstrichen
+    name = name.replace(' ', '_')
+    # Nur alphanumerische Zeichen, Unterstriche und Bindestriche erlauben
+    name = re.sub(r'[^\w\-]', '', name)
+    if not name:
+        name = "unnamed"
+    return name.lower()
+
+
+def compact_json(data: dict, indent: int = 2) -> str:
+    """Formatiert JSON mit kompakten Arrays (Koordinaten/Farben auf einer Zeile).
+
+    Wandelt:
+        [
+            55,
+            15,
+            50
+        ]
+    zu:
+        [55, 15, 50]
+    """
+    json_str = json.dumps(data, indent=indent, ensure_ascii=False)
+    # 4er-Arrays (scan_region: x1, y1, x2, y2)
+    pattern4 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
+    json_str = re.sub(pattern4, r'[\1, \2, \3, \4]', json_str)
+    # 3er-Arrays (RGB-Farben)
+    pattern3 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
+    json_str = re.sub(pattern3, r'[\1, \2, \3]', json_str)
+    # 2er-Arrays (x, y Koordinaten)
+    pattern2 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
+    json_str = re.sub(pattern2, r'[\1, \2]', json_str)
+    return json_str

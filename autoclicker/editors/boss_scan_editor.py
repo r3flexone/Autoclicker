@@ -13,13 +13,13 @@ from ..models import (
     BossProfile, BossScanConfig, AutoClickerState,
     BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
-    VALID_BOSS_ACTIONS, SCAN_MODE_ALL, VALID_SCAN_MODES,
+    SCAN_MODE_ALL,
 )
-from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from ..config import DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
-    col, ok, err, info, hint, header, breadcrumb, suggest_command,
-    cancel_hint, parse_non_negative_float, warn,
+    col, ok, err, info, header, breadcrumb, suggest_command,
+    parse_non_negative_float, warn,
 )
 from ..winapi import get_cursor_pos
 from ..imaging import (
@@ -27,7 +27,7 @@ from ..imaging import (
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, BOSS_SCANS_DIR, TEMPLATES_DIR,
+    list_available_item_scans, TEMPLATES_DIR,
 )
 
 

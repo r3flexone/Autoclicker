@@ -10,8 +10,8 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 
 ```bash
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
-python test_llm.py              # Standalone-Verbindungstest für Ollama/LM Studio
-python test_llm.py screenshot   # LLM-Screenshot-Test ohne Editor-Setup
+python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
+python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/sync_json.py       # Migriert alte JSON-Dateien aufs aktuelle Schema
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
@@ -26,13 +26,13 @@ Voller Import scheitert auf Linux an `msvcrt` — das ist normal, nicht reparier
 
 ### Threading-Modell
 - **Main-Thread**: Pumpt die Windows-Hotkey-Message-Loop (`main.py`), dispatcht zu Handlern, blockiert beim Editor-Input.
-- **Worker-Thread**: `sequence_worker()` in `execution.py` — führt die aktive Sequenz aus.
+- **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus. `execution.py` ist nur ein Backward-Compat-Shim.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
-**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `persistence.py` machen einen Snapshot unter Lock und schreiben die Datei außerhalb.
+**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei außerhalb.
 
 ### Aktions-Wrapper (zentral)
-Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `execution.py`. Diese bündeln:
+Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `autoclicker/runtime/actions.py`. Diese bündeln:
 1. **Window-Fokus-Check** (`window_focus_check` in Config — pausiert oder stoppt wenn Ziel-Fenster nicht aktiv)
 2. **Humanization** (Mikro-Delays, Klick-Jitter, periodische Breaks)
 3. **Session-Logging** (CSV-Event)
@@ -48,7 +48,7 @@ Beim Hinzufügen neuer Klick/Key-Aktionen im Worker: **immer** über die Wrapper
 Neuen Hotkey hinzufügen: Konstante in `winapi.py` (`HOTKEY_*` + `VK_*`) → `register_hotkeys()`-Liste → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
 ### Persistenz-Layout
-Mehrere JSON-Dateien an festen Orten (Konstanten in `persistence.py` + `config.py`):
+Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
 ```
 config.json                    AppConfig (alle Settings)
 sequences/points.json          state.points (ClickPoints)
@@ -68,15 +68,17 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
-- `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen aber in `execution.py`.
+- `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion.
-- `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Boss-Name-Extraktion + Matching gegen bekannte Namen.
+- `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset).
-- `autoclicker/execution.py` — Worker-Thread, Step-Dispatch, alle Klick-Wrapper. Größtes Modul (~1600 Zeilen).
-- `autoclicker/persistence.py` — Alle JSON-Loader/-Saver + Preset-Funktionen.
+- `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
+- `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
+- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict), `sequences.py`, `item_scans.py`, `boss_scans.py`, `globals.py`, `presets.py`.
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize), `item_scan.py`, `boss_detection.py`, `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
-- `autoclicker/editors/` — Interaktive Console-Editoren (Sequenz, Item-Scan, Slot, Item, Boss-Scan, Import/Export).
+- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
 
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.
@@ -88,7 +90,7 @@ Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `L
 LLM-Modi (`use_llm` + `llm_fallback` in `BossScanConfig`):
 - `llm_fallback=False` → LLM läuft **vor** Template/Marker-Matching (primär)
 - `llm_fallback=True` → LLM läuft **nur wenn** Template/Marker nichts findet (Fallback)
-- Bug-Sensibilität: Beide Modi dürfen LLM nicht doppelt aufrufen — siehe `execute_boss_scan()` in `execution.py`.
+- Bug-Sensibilität: Beide Modi dürfen LLM nicht doppelt aufrufen — siehe `execute_boss_scan()` in `runtime/boss_detection.py`.
 
 Unbekannte Bosse (LLM erkennt einen Namen der nicht in der Liste ist) werden automatisch als `BossProfile(action=BOSS_ACTION_SKIP)` gespeichert — Append unter `state.lock`.
 

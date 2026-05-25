@@ -71,6 +71,8 @@ class AppConfig:
     llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_async: bool = False                         # Boss-Scan/Watcher im Hintergrund-Thread (Sequenz läuft parallel)
     llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
+    llm_reasoning: bool = False                      # Reasoning/Thinking aktivieren wenn Modell es unterstützt
+    llm_max_tokens: int = 0                          # Max. Antwort-Tokens (0 = Auto: 128 / 2048 mit Reasoning)
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
@@ -109,12 +111,17 @@ class AppConfig:
     debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
-    # Erlaubte Werte für String-Optionen
-    _VALID_TIMEOUT_ACTIONS = {"skip_cycle", "restart", "stop"}
-    _VALID_CONSEC_ACTIONS = {"stop", "quit", "exit"}
-
     def __post_init__(self):
         """Validiert Config-Werte nach Erstellung."""
+        # Konstanten lokal importieren — vermeidet Zirkular-Import (models.py importiert
+        # bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
+        from .models import (
+            TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
+            CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
+        )
+        valid_timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
+        valid_consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
+
         warnings = []
         if self.click_per_point < 1:
             warnings.append(f"click_per_point={self.click_per_point} → 1")
@@ -137,12 +144,12 @@ class AppConfig:
         if self.scan_marker_count < 1:
             warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
             self.scan_marker_count = 1
-        if self.pixel_timeout_action not in self._VALID_TIMEOUT_ACTIONS:
-            warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → 'skip_cycle'")
-            self.pixel_timeout_action = "skip_cycle"
-        if self.pixel_consecutive_action not in self._VALID_CONSEC_ACTIONS:
-            warnings.append(f"pixel_consecutive_action='{self.pixel_consecutive_action}' → 'stop'")
-            self.pixel_consecutive_action = "stop"
+        if self.pixel_timeout_action not in valid_timeout_actions:
+            warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → '{TIMEOUT_SKIP_CYCLE}'")
+            self.pixel_timeout_action = TIMEOUT_SKIP_CYCLE
+        if self.pixel_consecutive_action not in valid_consec_actions:
+            warnings.append(f"pixel_consecutive_action='{self.pixel_consecutive_action}' → '{CONSEC_STOP}'")
+            self.pixel_consecutive_action = CONSEC_STOP
         # LLM-Einstellungen validieren
         if self.llm_provider not in ("ollama", "lmstudio"):
             warnings.append(f"llm_provider='{self.llm_provider}' → 'ollama'")
@@ -162,6 +169,9 @@ class AppConfig:
         if self.llm_retry_count < 0:
             warnings.append(f"llm_retry_count={self.llm_retry_count} → 0")
             self.llm_retry_count = 0
+        if self.llm_max_tokens < 0:
+            warnings.append(f"llm_max_tokens={self.llm_max_tokens} → 0")
+            self.llm_max_tokens = 0
         # OCR-Einstellungen validieren
         if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
             warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
@@ -289,7 +299,7 @@ _CONFIG_SECTIONS = [
     ]),
     ("LLM VISION (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
-        "llm_timeout", "llm_retry_count", "llm_async", "llm_boss_prompt",
+        "llm_timeout", "llm_retry_count", "llm_async", "llm_reasoning", "llm_max_tokens", "llm_boss_prompt",
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
     ]),
     ("OCR (Texterkennung)", [
