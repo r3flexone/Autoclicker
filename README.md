@@ -20,6 +20,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Template-Matching**: Items per Screenshot erkennen (OpenCV)
 - **Boss-Scan**: Bosse anhand von Templates oder Markern erkennen + Aktion auslösen (Klick, Taste, Item-Scan, Skip)
 - **LLM Vision Boss-Detection**: Lokale LLMs (Ollama / LM Studio) erkennen Bosse per Screenshot, unbekannte Bosse werden auto-gespeichert
+- **LLM Reasoning**: Optionaler Reasoning-Modus für bessere Erkennungsgenauigkeit (Ollama: `think: true`, LM Studio: `reasoning_effort: high`)
 - **Boss-Watcher**: Step der kontinuierlich auf einen Boss wartet und beim Erscheinen reagiert
 - **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
 - **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
@@ -543,7 +544,8 @@ Wenn aktiviert, startet der Boss-Scan/Watcher-Step einen Hintergrund-Thread und 
 
 **Standalone-Test**: `python tools/test_llm.py` testet Bilderkennung ohne den Autoclicker:
 ```bash
-python tools/test_llm.py    # Interaktiver Screenshot-Modus (Region auswählen → Analyse)
+python tools/test_llm.py             # Verbindungstest + interaktiver Screenshot-Modus
+python tools/test_llm.py screenshot  # Einmal-Screenshot direkt analysieren
 ```
 
 ### OCR Texterkennung Boss-Detection
@@ -932,6 +934,8 @@ Wird beim ersten Start automatisch erstellt:
   "llm_endpoint": null,
   "llm_model": "gemma4:e4b",
   "llm_timeout": 30,
+  "llm_reasoning": false,
+  "llm_max_tokens": 0,
   "llm_boss_prompt": null,
   "llm_watcher_interval": 5.0,
   "llm_watcher_max_scans": 0,
@@ -1019,6 +1023,8 @@ Wird beim ersten Start automatisch erstellt:
 | `llm_model` | Modell-Name (`null` = Standard `"llava"` für Ollama, `"default"` für LM Studio) |
 | `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 30) |
 | `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
+| `llm_reasoning` | Reasoning-Modus aktivieren — Ollama: `think: true`, LM Studio: `reasoning_effort: high` (Standard: false) |
+| `llm_max_tokens` | Token-Limit für Antworten (`0` = automatisch: 50 normal / 2048 mit Reasoning) |
 | `llm_watcher_interval` | Prüf-Intervall des Boss-Watchers in Sekunden (Standard: 5.0) |
 | `llm_watcher_max_scans` | Max. Scans bis Boss-Watcher abbricht (`0` = unbegrenzt) |
 | `llm_watcher_timeout` | Timeout in Sekunden bis Boss-Watcher abbricht (`0` = unbegrenzt) |
@@ -1079,26 +1085,41 @@ Wird beim ersten Start automatisch erstellt:
 ```
 Autoclicker-Idleclans/
 ├── main.py                 # Einstiegspunkt
-├── test_llm.py             # Standalone-LLM-Verbindungs-/Bilderkennungstest
-├── autoclicker/            # Hauptmodul (~11.500 Zeilen)
+├── autoclicker/            # Hauptmodul
 │   ├── __init__.py
-│   ├── config.py           # Konfiguration (Hotkeys, Defaults)
+│   ├── config.py           # Konfiguration (Hotkeys, Defaults, AppConfig)
 │   ├── models.py           # Datenmodelle (ClickPoint, Sequence, BossScanConfig, etc.)
-│   ├── utils.py            # Hilfsfunktionen (Input, Zeit-Parsing)
 │   ├── winapi.py           # Windows API (Maus/Tastatur, Window-Fokus)
 │   ├── imaging.py          # Bildverarbeitung (Screenshots, OpenCV)
-│   ├── persistence.py      # Speichern/Laden (JSON)
-│   ├── handlers.py         # Hotkey-Handler
-│   ├── execution.py        # Sequenz-Ausführung + safe_click/safe_key Wrapper
 │   ├── llm_vision.py       # LLM Vision (Ollama / LM Studio Boss-Erkennung)
 │   ├── ocr.py              # OCR Texterkennung (EasyOCR / Tesseract Boss-Erkennung)
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
+│   ├── handlers.py         # Hotkey-Handler
+│   ├── execution.py        # Backward-Compat-Shim → runtime/
+│   ├── utils/              # Hilfsfunktionen
+│   │   ├── console.py      # ANSI-Farben, Status-Tags
+│   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
+│   │   └── parsing.py      # parse_time_input, format_duration, sanitize_filename
+│   ├── persistence/        # Speichern/Laden (JSON)
+│   │   ├── paths.py        # Pfad-Konstanten + init_directories
+│   │   ├── serialization.py  # Dataclass ↔ JSON-Dict Konverter
+│   │   ├── sequences.py    # Sequenz- + Punkte-Persistenz
+│   │   ├── item_scans.py   # ItemScanConfig-Persistenz
+│   │   ├── boss_scans.py   # BossScanConfig-Persistenz
+│   │   ├── globals.py      # Global-Slots, Global-Items, Kategorien
+│   │   └── presets.py      # Slot- und Item-Presets
+│   ├── runtime/            # Sequenz-Ausführung (Worker-Thread)
+│   │   ├── actions.py      # safe_click/safe_key, Humanize, Fokus-Check, Else-Aktion
+│   │   ├── item_scan.py    # Item-Scan-Runtime + _check_profile_match
+│   │   ├── boss_detection.py  # Boss-Scan, OCR/LLM-Erkennung, Async-Pfad
+│   │   ├── steps.py        # Step-Dispatcher (_execute_*_step)
+│   │   └── worker.py       # sequence_worker + print_status
 │   └── editors/            # Interaktive Editoren
 │       ├── __init__.py
-│       ├── sequence_editor.py
+│       ├── sequence_editor/  # Sequenz erstellen/bearbeiten
+│       ├── item_editor/      # Items definieren (inkl. autoscan-Befehl)
 │       ├── item_scan_editor.py
-│       ├── item_editor.py
 │       ├── slot_editor.py
 │       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
@@ -1130,35 +1151,37 @@ Autoclicker-Idleclans/
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
     ├── sync_json.py        # JSON-Dateien synchronisieren/migrieren
-    └── slot_tester.py      # Slot-Erkennung testen
+    ├── slot_tester.py      # Slot-Erkennung testen
+    ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
+    └── test_ocr.py         # OCR-Backend-Test + Texterkennung
 ```
 
 ## Technische Details
 
 ### Architektur
 
-Das Programm ist modular aufgebaut (~11.000 Zeilen in 20 Dateien):
+Das Programm ist modular aufgebaut:
 
 ```
 main.py                      Einstiegspunkt, Event-Loop
-test_llm.py                  Standalone-LLM-Test
     │
     └── autoclicker/
         ├── config.py            Konstanten, Hotkey-IDs, AppConfig-Dataclass
         ├── models.py            Datenklassen (ClickPoint, Sequence, BossScanConfig, ...)
-        ├── utils.py             Hilfsfunktionen (Input, Zeit-Parsing)
         ├── winapi.py            Windows API (Maus, Tastatur, Hotkeys, Window-Fokus)
         ├── imaging.py           Screenshots, Farberkennung, OpenCV
-        ├── persistence.py       JSON-Persistenz, Presets
-        ├── handlers.py          Hotkey-Callbacks
-        ├── execution.py         Sequenz-Ausführung, Item-Scans, safe_click/safe_key
-        ├── llm_vision.py        Ollama / LM Studio Integration für Boss-Erkennung
+        ├── llm_vision.py        Ollama / LM Studio Integration (+ Reasoning)
+        ├── ocr.py               EasyOCR / Tesseract für Boss-Texterkennung
         ├── session_log.py       CSV-Logger für Klick-/Key-Events
         ├── import_export.py     ZIP-Bundle + 2-Punkt-Koordinaten-Remapping
+        ├── handlers.py          Hotkey-Callbacks
+        ├── utils/               Hilfsfunktionen (console, io, parsing)
+        ├── persistence/         JSON-Persistenz, Presets (paths, sequences, items, ...)
+        ├── runtime/             Sequenz-Ausführung (actions, item_scan, boss_detection, steps, worker)
         └── editors/
-            ├── sequence_editor.py        Sequenz erstellen/bearbeiten
+            ├── sequence_editor/          Sequenz erstellen/bearbeiten
+            ├── item_editor/              Items definieren (inkl. autoscan-Befehl)
             ├── item_scan_editor.py       Scans konfigurieren (inkl. Auto-Scan)
-            ├── item_editor.py            Items definieren (inkl. autoscan-Befehl)
             ├── slot_editor.py            Slots definieren
             ├── boss_scan_editor.py       Boss-Scans + LLM-Vision-Aktivierung
             └── import_export_editor.py   Wizard für Setup-Export/Import
@@ -1266,6 +1289,34 @@ python tools/slot_tester.py
 ```
 
 ## Changelog
+
+### Neueste Änderungen — LLM Reasoning + Codebase-Refactoring
+
+**LLM Reasoning** (`autoclicker/llm_vision.py`, `autoclicker/config.py`)
+- Neues Config-Feld `llm_reasoning: false` — aktiviert Reasoning-Modus für unterstützende Modelle
+  - Ollama: `think: true` in der Anfrage, Antwort aus `message.thinking`-Feld
+  - LM Studio: `reasoning_effort: "high"` in der Anfrage
+- `<think>...</think>`-Tags werden automatisch aus Antworten herausgestripped (auch abgeschnittene Tags)
+- Neues Config-Feld `llm_max_tokens: 0` — manuelles Token-Limit (`0` = auto: 50 normal / 2048 mit Reasoning)
+- `tools/test_llm.py` komplett überarbeitet: nutzt `llm_vision.analyze_image` + `test_connection`, lädt `config.json` wenn vorhanden
+
+**Codebase-Refactoring (Subpackages)**
+- `execution.py` (1874 Zeilen) → `autoclicker/runtime/` Subpackage: `actions.py`, `item_scan.py`, `boss_detection.py`, `steps.py`, `worker.py`
+- `utils.py` → `autoclicker/utils/` Subpackage: `console.py`, `io.py`, `parsing.py`
+- `persistence.py` → `autoclicker/persistence/` Subpackage: `paths.py`, `serialization.py`, `sequences.py`, `item_scans.py`, `boss_scans.py`, `globals.py`, `presets.py`
+- `editors/item_editor.py` → `editors/item_editor/` Subpackage
+- `editors/sequence_editor.py` → `editors/sequence_editor/` Subpackage
+- Alle Shims (`execution.py`, `utils/__init__.py`, etc.) behalten Backward-Compatibility — bestehende Imports unverändert
+- `edit_phase()` (470-Zeilen-Monolith) → `_PhaseEditor`-Klasse mit 22 fokussierten Methoden
+
+**Bugfixes (Code-Audit)**
+- `editors/sequence_editor/steps.py`: `ins 0`/`ins end` waren toter Code (vom `ins <Nr>`-Prefix überschattet) — Exact-Match-Prüfung jetzt vor Prefix-Prüfung
+- `editors/item_editor/commands.py`: `warn` wurde in `handle_rename_command` verwendet aber nie importiert → latenter `NameError`
+- `winapi.py`: `HOTKEY_IMPORT_EXPORT` wurde bei `unregister_hotkeys` nicht freigegeben → `_HOTKEY_DEFINITIONS`-Liste geteilt zwischen Register/Unregister
+- `config.py`: Zirkulärer Import in `__post_init__` (brauchte Konstanten aus `models.py`) → lokaler Import
+- 27 ungenutzte Imports aus 9 Dateien entfernt
+
+---
 
 ### LLM Vision — Genauigkeit + Retry + Async-Thread
 
