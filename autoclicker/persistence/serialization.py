@@ -13,7 +13,7 @@ from dataclasses import asdict
 
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import (
-    ClickPoint, ElseConfig, WaitCondition, SequenceStep, LoopPhase, Sequence,
+    ClickPoint, ElseConfig, WaitCondition, SequenceStep, Sequence,
     ItemProfile, ItemSlot, BossProfile,
     BOSS_ACTION_SCAN, SCAN_MODE_ALL,
 )

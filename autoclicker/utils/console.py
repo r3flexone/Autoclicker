@@ -8,7 +8,6 @@ _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM und _COLORS_ENABLED.
 
 import ctypes
 import os
-import sys
 
 # =============================================================================
 # ANSI-FARBCODES

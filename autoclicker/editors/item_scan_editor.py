@@ -7,18 +7,16 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ..models import ClickPoint, ItemSlot, ItemProfile, ItemScanConfig, AutoClickerState
+from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, hint, header, breadcrumb, suggest_command, cancel_hint, parse_non_negative_float
-from ..winapi import get_cursor_pos
+from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb, suggest_command, cancel_hint, parse_non_negative_float
 from ..imaging import (
-    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, get_pixel_color,
-    select_region, get_color_name
+    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
 from ..persistence import (
     save_item_scan, list_available_item_scans, load_item_scan_file,
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
-    save_global_items, get_existing_categories, shift_category_priorities,
+    save_global_items, shift_category_priorities,
     get_point_by_id, TEMPLATES_DIR
 )
 from .slot_editor import run_global_slot_editor

@@ -25,7 +25,7 @@ from ..models import (
 )
 from ..utils import col, err, dbg, warn, safe_input, wait_while_paused
 from ..winapi import check_failsafe
-from .actions import safe_click, safe_key, _step_status, _phase_color
+from .actions import safe_click, safe_key, _step_status
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
 
 # Mindest-Konfidenz für OCR-Boss-Erkennung. Unterhalb davon wird nichts gespeichert —

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .models import AutoClickerState
 
 from .persistence import (
-    TEMPLATES_DIR, _sequence_to_dict, _step_to_dict, _item_to_dict, _slot_to_dict,
+    TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
     _boss_profile_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
@@ -23,7 +23,7 @@ from .persistence import (
 )
 from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig,
-    BOSS_ACTION_SKIP, SCAN_MODE_ALL,
+    BOSS_ACTION_SKIP,
 )
 from .utils import compact_json, sanitize_filename
 

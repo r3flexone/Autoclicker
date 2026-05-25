@@ -5,12 +5,11 @@ mit optionalem Koordinaten-Remapping für andere Bildschirme.
 """
 
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
 from ..models import AutoClickerState
-from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, hint, header, breadcrumb
+from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb
 from ..winapi import get_cursor_pos
 
 
