@@ -924,6 +924,7 @@ Wird beim ersten Start automatisch erstellt:
   "scan_marker_count": 5,
   "scan_require_all_markers": true,
   "scan_min_markers_required": 2,
+  "scan_marker_min_pixels": 1,
   "scan_slot_hsv_tolerance": 25,
   "scan_slot_inset": 10,
   "scan_slot_color_distance": 25,
@@ -1007,6 +1008,7 @@ Wird beim ersten Start automatisch erstellt:
 | `scan_marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
 | `scan_require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
 | `scan_min_markers_required` | Mindestanzahl Marker wenn `scan_require_all_markers: false` |
+| `scan_marker_min_pixels` | Min. passende Pixel pro Marker-Farbe (Standard 1; höher = robuster gegen einzelne Rausch-Pixel, z.B. für ein rotes „!"-Icon) |
 | `scan_slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
 | `scan_slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
 | `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |

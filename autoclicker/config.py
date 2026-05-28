@@ -54,6 +54,7 @@ class AppConfig:
     scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
     scan_require_all_markers: bool = True            # True = ALLE Marker müssen gefunden werden
     scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
+    scan_marker_min_pixels: int = 1                 # Min. passende (abgetastete) Pixel pro Marker-Farbe (>1 = robuster gegen Rausch-Pixel)
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
     scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
@@ -142,6 +143,9 @@ class AppConfig:
         if self.scan_marker_count < 1:
             warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
             self.scan_marker_count = 1
+        if self.scan_marker_min_pixels < 1:
+            warnings.append(f"scan_marker_min_pixels={self.scan_marker_min_pixels} → 1")
+            self.scan_marker_min_pixels = 1
         if self.pixel_timeout_action not in valid_timeout_actions:
             warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → '{TIMEOUT_SKIP_CYCLE}'")
             self.pixel_timeout_action = TIMEOUT_SKIP_CYCLE
@@ -290,6 +294,7 @@ _CONFIG_SECTIONS = [
         "scan_reverse", "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
+        "scan_marker_min_pixels",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),

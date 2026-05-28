@@ -103,7 +103,8 @@ def color_distance(c1: tuple, c2: tuple) -> float:
     return ((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2 + (c1[2]-c2[2])**2) ** 0.5
 
 
-def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: float, pixel_step: int = 2) -> bool:
+def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: float,
+                        pixel_step: int = 2, min_pixels: int = 1) -> bool:
     """
     Prüft ob eine Farbe im Bild vorhanden ist (optimiert mit NumPy wenn verfügbar).
 
@@ -112,10 +113,15 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         target_color: RGB-Tuple (r, g, b)
         tolerance: Maximale Farbdistanz
         pixel_step: Schrittweite beim Scannen (1=genau, 2=schneller)
+        min_pixels: Mindestanzahl passender (abgetasteter) Pixel, damit als
+            gefunden gilt. 1 = altes Verhalten (ein Pixel reicht). Werte > 1
+            machen die Erkennung robuster gegen einzelne Rausch-Pixel — der
+            Schwellwert bezieht sich auf das durch pixel_step abgetastete Raster.
 
     Returns:
-        True wenn Farbe gefunden, sonst False
+        True wenn mindestens min_pixels passende Pixel gefunden, sonst False
     """
+    min_pixels = max(1, min_pixels)
     if NUMPY_AVAILABLE:
         # Schnelle NumPy-Version (ca. 100x schneller)
         # asarray vermeidet Kopie wenn PIL-Daten bereits im richtigen Format
@@ -126,17 +132,21 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
             target = np.array(target_color, dtype=np.float32)
             # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
             sq_distances = np.sum((rgb - target) ** 2, axis=2)
-            return bool(np.any(sq_distances <= tolerance * tolerance))
+            matches = int(np.count_nonzero(sq_distances <= tolerance * tolerance))
+            return matches >= min_pixels
         return False
     else:
         # Fallback: Langsame PIL-Version
         pixels = img.load()
         width, height = img.size
+        matches = 0
         for x in range(0, width, pixel_step):
             for y in range(0, height, pixel_step):
                 pixel = pixels[x, y][:3]
                 if color_distance(pixel, target_color) <= tolerance:
-                    return True
+                    matches += 1
+                    if matches >= min_pixels:
+                        return True
         return False
 
 

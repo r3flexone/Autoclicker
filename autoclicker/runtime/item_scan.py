@@ -59,8 +59,10 @@ def _check_profile_match(profile, img, color_tolerance: int,
 
     if profile.marker_colors:
         markers_total = len(profile.marker_colors)
+        min_pixels = state.config.scan_marker_min_pixels
         markers_found = sum(1 for marker in profile.marker_colors
-                            if find_color_in_image(img, marker, color_tolerance))
+                            if find_color_in_image(img, marker, color_tolerance,
+                                                    min_pixels=min_pixels))
 
         require_all = state.config.scan_require_all_markers
         min_required = state.config.scan_min_markers_required
