@@ -288,7 +288,10 @@ def is_no_boss(response: str) -> bool:
     negative_keywords = ["kein_boss", "kein boss", "no boss", "none", "nichts",
                          "nicht erkannt", "no enemy", "not found", "i don't see",
                          "i cannot", "i can't", "there is no"]
-    return any(neg in response_lower for neg in negative_keywords)
+    # Wortgrenzen statt reinem Substring — sonst matcht z.B. "none" innerhalb
+    # eines echten Boss-Namens wie "Stonekeeper" und unterdrückt die Erkennung.
+    return any(re.search(r"\b" + re.escape(neg) + r"\b", response_lower)
+               for neg in negative_keywords)
 
 
 def clean_boss_name(response: str) -> str:
@@ -340,15 +343,19 @@ def match_boss_name(response: str, boss_names: list[str]) -> tuple[Optional[str]
             if name.lower() == cleaned_lower:
                 return name, False
 
-        # Enthaltener Match (LLM-Antwort enthält Boss-Namen)
-        for name in boss_names:
-            if name.lower() in cleaned_lower:
-                return name, False
+        # LLM-Antwort enthält einen Boss-Namen → spezifischsten (längsten)
+        # Treffer wählen, nicht den ersten in der Liste (z.B. "Orkhäuptling"
+        # statt "Ork").
+        contained = [name for name in boss_names if name.lower() in cleaned_lower]
+        if contained:
+            return max(contained, key=len), False
 
-        # Boss-Name in LLM-Antwort enthalten
-        for name in boss_names:
-            if cleaned_lower in name.lower():
-                return name, False
+        # Boss-Name enthält die LLM-Antwort — nur bei hinreichend langer Antwort,
+        # sonst matcht ein Kürzel wie "a" jeden Namen, der diesen Buchstaben enthält.
+        if len(cleaned_lower) >= 3:
+            partial = [name for name in boss_names if cleaned_lower in name.lower()]
+            if partial:
+                return min(partial, key=len), False
 
     # Neuer Boss - nicht in der Liste!
     return cleaned, True

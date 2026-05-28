@@ -37,14 +37,12 @@ class AppConfig:
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
 
     # === PIXEL-ERKENNUNG ===
-    pixel_color_tolerance: int = 0                  # Farbtoleranz für Scan (0 = exakt)
     pixel_wait_tolerance: int = 10                  # Toleranz für Pixel-Trigger
     pixel_wait_timeout: int = 300                   # Timeout für Pixel-Trigger in Sekunden (0 = unendlich)
     pixel_timeout_action: str = "skip_cycle"        # Aktion bei Timeout: "skip_cycle", "restart", "stop"
     pixel_check_interval: float = 1                 # Prüf-Intervall für Farbe in Sekunden
     pixel_max_consecutive_timeouts: int = 5         # Nach X aufeinanderfolgenden Timeouts → Notbremse (0 = deaktiviert)
     pixel_consecutive_action: str = "stop"          # Notbremse: "stop", "quit", "exit"
-    pixel_scan_step: int = 2                        # Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller)
     pixel_show_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
 
     # === SCAN-EINSTELLUNGEN ===
@@ -213,10 +211,8 @@ class AppConfig:
         "clicks_per_point": "click_per_point",
         "max_total_clicks": "click_max_total",
         "post_click_delay": "click_post_delay",
-        "color_tolerance": "pixel_color_tolerance",
         "max_consecutive_timeouts": "pixel_max_consecutive_timeouts",
         "consecutive_timeout_action": "pixel_consecutive_action",
-        "scan_pixel_step": "pixel_scan_step",
         "show_pixel_delay": "pixel_show_delay",
         "item_click_delay": "scan_item_click_delay",
         "marker_count": "scan_marker_count",
@@ -285,10 +281,10 @@ _CONFIG_SECTIONS = [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
     ]),
     ("PIXEL-ERKENNUNG", [
-        "pixel_color_tolerance", "pixel_wait_tolerance", "pixel_wait_timeout",
+        "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
-        "pixel_scan_step", "pixel_show_delay",
+        "pixel_show_delay",
     ]),
     ("SCAN-EINSTELLUNGEN", [
         "scan_reverse", "scan_click_immediate", "scan_park_mouse",

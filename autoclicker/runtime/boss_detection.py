@@ -124,24 +124,24 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
     """
     from ..persistence import save_boss_scan
 
+    # Check und Append atomar im selben Lock-Block — sonst kann zwischen Prüfung
+    # und Mutation ein paralleler Pfad (Sync-Scan + Async-Watcher) denselben Boss
+    # doppelt anhängen (TOCTOU).
     with state.lock:
         existing_names = [b.name for b in config.bosses]
         already_pending = any(
             cfg == config.name and n == name
             for cfg, n, _ in state.pending_new_bosses
         )
+        if name in existing_names or already_pending:
+            return None
 
-    if name in existing_names or already_pending:
-        return None
-
-    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — wird gespeichert (zur Bestätigung vorgemerkt)", "green"))
-    new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
-
-    with state.lock:
+        new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
         config.bosses.append(new_boss)
         state.boss_scans[config.name] = config
         state.pending_new_bosses.append((config.name, name, source))
 
+    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — wird gespeichert (zur Bestätigung vorgemerkt)", "green"))
     save_boss_scan(config)
 
     if debug:

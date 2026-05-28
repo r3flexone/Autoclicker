@@ -82,7 +82,8 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                                   step_num: int, total_steps: int, phase: str,
                                   mode: str, debug: bool) -> bool:
     """Immediate-Modus: Scan→Klick pro Slot statt alle scannen, dann alle klicken."""
-    config = state.item_scans.get(step.item_scan)
+    with state.lock:
+        config = state.item_scans.get(step.item_scan)
     if not config or not config.slots or not config.items:
         return True
 
@@ -160,7 +161,8 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
         return execute_else_action(state, step, phase, step_num, total_steps)
 
     # Default-Aktion aus der BossScanConfig
-    config = state.boss_scans.get(step.boss_scan)
+    with state.lock:
+        config = state.boss_scans.get(step.boss_scan)
     if config and config.default_action != BOSS_ACTION_SKIP:
         if config.default_action == BOSS_ACTION_SKIP_CYCLE:
             _step_status(debug, phase, step_num, total_steps,
@@ -217,7 +219,9 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     max_scans = state.config.llm_watcher_max_scans
     timeout = state.config.llm_watcher_timeout
 
-    if watcher_name not in state.boss_scans:
+    with state.lock:
+        watcher_known = watcher_name in state.boss_scans
+    if not watcher_known:
         print(err(f"Boss-Watcher '{watcher_name}' nicht gefunden!"))
         return True
 

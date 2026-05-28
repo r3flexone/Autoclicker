@@ -12,7 +12,7 @@ import time
 
 from ..imaging import take_screenshot, find_color_in_image, match_template_in_image
 from ..models import (
-    AutoClickerState, SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
+    AutoClickerState, SCAN_MODE_ALL, SCAN_MODE_EVERY,
 )
 from ..utils import col, err, dbg, wait_while_paused
 from ..winapi import set_cursor_pos

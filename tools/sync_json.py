@@ -56,7 +56,6 @@ CONFIG_DEFAULTS = {
     "clicks_per_point": 1,
     "max_total_clicks": None,
     "failsafe_enabled": True,
-    "color_tolerance": 0,
     "pixel_wait_tolerance": 10,
     "pixel_wait_timeout": 300,
     "pixel_check_interval": 1,
@@ -96,7 +95,11 @@ SEQUENCE_STEP_DEFAULTS = {
     "else_y": None,
     "else_delay": None,
     "else_key": None,
-    "else_name": None
+    "else_name": None,
+    "boss_scan": None,
+    "boss_watcher": None,
+    "screenshot_only": False,
+    "screenshot_region": None
 }
 
 SLOT_DEFAULTS = {
@@ -279,14 +282,17 @@ def sync_points() -> tuple[int, int]:
 # 3. SEQUENCES SYNC
 # ==============================================================================
 def sync_step(step: dict) -> tuple[dict, int]:
-    """Synchronisiert einen Sequenz-Schritt."""
+    """Synchronisiert einen Sequenz-Schritt.
+
+    Behält ALLE vorhandenen Felder (auch solche, die nicht in
+    SEQUENCE_STEP_DEFAULTS stehen) und ergänzt nur fehlende Defaults — so gehen
+    z.B. boss_scan/boss_watcher/screenshot-Felder bei der Migration nicht verloren.
+    """
     fixes = 0
-    fixed = {}
+    fixed = dict(step)
 
     for key, default in SEQUENCE_STEP_DEFAULTS.items():
-        if key in step:
-            fixed[key] = step[key]
-        else:
+        if key not in fixed:
             fixed[key] = default
             fixes += 1
 
@@ -314,9 +320,9 @@ def sync_sequences() -> tuple[int, int]:
             data["name"] = seq_file.stem
             fixes += 1
 
-        # total_cycles
+        # total_cycles (Modell-Default = 1; None würde im Worker zu TypeError führen)
         if "total_cycles" not in data:
-            data["total_cycles"] = None
+            data["total_cycles"] = 1
             fixes += 1
 
         # start_steps
@@ -336,17 +342,19 @@ def sync_sequences() -> tuple[int, int]:
             fixed_phases = []
             for phase in data["loop_phases"]:
                 if isinstance(phase, dict):
-                    fixed_phase = {
-                        "name": phase.get("name", "Loop"),
-                        "repeat": phase.get("repeat", 1),
-                        "steps": []
-                    }
-                    if "steps" in phase and isinstance(phase["steps"], list):
+                    # Alle Phasen-Felder behalten (z.B. scheduled_start), nur
+                    # fehlende Pflichtfelder ergänzen und Steps synchronisieren.
+                    fixed_phase = dict(phase)
+                    fixed_phase.setdefault("name", "Loop")
+                    fixed_phase.setdefault("repeat", 1)
+                    new_steps = []
+                    if isinstance(phase.get("steps"), list):
                         for step in phase["steps"]:
                             if isinstance(step, dict):
                                 fixed, f = sync_step(step)
-                                fixed_phase["steps"].append(fixed)
+                                new_steps.append(fixed)
                                 fixes += f
+                    fixed_phase["steps"] = new_steps
                     fixed_phases.append(fixed_phase)
             data["loop_phases"] = fixed_phases
         else:

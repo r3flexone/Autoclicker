@@ -551,7 +551,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 def _test_llm_connection(state: AutoClickerState) -> None:
     """Testet die Verbindung zum LLM-Provider."""
     try:
-        from ..llm_vision import test_connection, PROVIDER_OLLAMA, PROVIDER_LMSTUDIO
+        from ..llm_vision import test_connection, PROVIDER_OLLAMA
     except ImportError:
         print(f"\n  {err('LLM Vision Modul konnte nicht geladen werden!')}")
         return

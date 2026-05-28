@@ -6,10 +6,9 @@ mit optionalem Koordinaten-Remapping für andere Bildschirme.
 
 import json
 import logging
-import os
 import zipfile
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import AutoClickerState
@@ -23,7 +22,7 @@ from .persistence import (
 )
 from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig,
-    BOSS_ACTION_SKIP,
+    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK,
 )
 from .utils import compact_json, sanitize_filename
 
@@ -408,7 +407,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         bosses = []
                         for b in bscan_data.get("bosses", []):
                             boss = _boss_profile_from_dict(b)
-                            if boss.action_x is not None or boss.action_y is not None:
+                            # Nur Klick-Bosse haben sinnvolle Koordinaten — für
+                            # skip/key-Bosse sind action_x/y bedeutungslos (Default 0)
+                            # und dürfen nicht durch den Affine-Transform verschoben werden.
+                            if boss.action == BOSS_ACTION_CLICK:
                                 boss.action_x, boss.action_y = remap_point(
                                     boss.action_x, boss.action_y, transform)
                             bosses.append(boss)
