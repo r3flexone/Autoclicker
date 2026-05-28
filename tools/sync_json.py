@@ -98,6 +98,7 @@ SEQUENCE_STEP_DEFAULTS = {
     "else_name": None,
     "boss_scan": None,
     "boss_watcher": None,
+    "icon_scan": None,
     "screenshot_only": False,
     "screenshot_region": None
 }

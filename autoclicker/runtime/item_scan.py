@@ -88,6 +88,32 @@ def _check_profile_match(profile, img, color_tolerance: int,
 
 
 # =============================================================================
+# ICON-SCAN (Symbol/Icon in einer Region erkennen)
+# =============================================================================
+
+def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
+    """Prüft ob das in der IconScanConfig definierte Icon in seiner Region sichtbar ist.
+
+    Nutzt dieselbe Template/Marker-Erkennung wie der Item-Scan (_check_profile_match),
+    aber als reines Ja/Nein — die Aktion bei Fund liegt im Step-Handler.
+    """
+    with state.lock:
+        config = state.icon_scans.get(scan_name)
+        if config is None:
+            print(err(f"Icon-Scan '{scan_name}' nicht gefunden!"))
+            return False
+        scan_region = config.scan_region
+        color_tolerance = config.color_tolerance
+
+    img = take_screenshot(scan_region)
+    if img is None:
+        return False
+
+    debug = state.config.debug_detection
+    return _check_profile_match(config, img, color_tolerance, state, debug, "Icon erkannt!")
+
+
+# =============================================================================
 # ITEM-SCAN (Hauptfunktion)
 # =============================================================================
 

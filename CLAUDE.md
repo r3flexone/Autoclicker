@@ -60,6 +60,7 @@ items/templates/<name>.png     Item-Templates (PNG, referenziert per Dateiname-o
 items/presets/<name>.json      Item-Presets
 item_scans/<name>.json         eine ItemScanConfig pro Datei
 boss_scans/<name>.json         eine BossScanConfig pro Datei
+icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
 exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 ```
@@ -75,8 +76,8 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset).
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
-- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict), `sequences.py`, `item_scans.py`, `boss_scans.py`, `globals.py`, `presets.py`.
-- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize), `item_scan.py`, `boss_detection.py`, `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
+- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py`, `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
 

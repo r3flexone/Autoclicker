@@ -19,6 +19,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Kategorie-System**: Items gruppieren (z.B. Hosen, Jacken) - nur bestes pro Kategorie klicken
 - **Template-Matching**: Items per Screenshot erkennen (OpenCV)
 - **Boss-Scan**: Bosse anhand von Templates oder Markern erkennen + Aktion auslösen (Klick, Taste, Item-Scan, Skip)
+- **Icon-Scan**: Ein Symbol/Icon (z.B. rotes „!" einer nicht machbaren Mission) per Template/Marker erkennen + Aktion (Klick/Taste/Skip)
 - **LLM Vision Boss-Detection**: Lokale LLMs (Ollama / LM Studio) erkennen Bosse per Screenshot, unbekannte Bosse werden auto-gespeichert
 - **LLM Reasoning**: Optionaler Reasoning-Modus für bessere Erkennungsgenauigkeit (Ollama: `think: true`, LM Studio: `reasoning_effort: high`)
 - **Boss-Watcher**: Step der kontinuierlich auf einen Boss wartet und beim Erscheinen reagiert
@@ -186,8 +187,9 @@ Das Item-Scan System bietet ein Menü mit folgenden Optionen:
 - **[2] Items bearbeiten** - Item-Profile für die Erkennung
 - **[3] Scans bearbeiten** - Slots und Items verknüpfen
 - **[4] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
-- **[5] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
-- **[6] Import / Export** - Setup als ZIP teilen oder importieren
+- **[5] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
+- **[6] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
+- **[7] Import / Export** - Setup als ZIP teilen oder importieren
 
 ### Slot-Editor (Menü → 1)
 
@@ -408,6 +410,7 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `scan <Name> every` | Item-Scan: alle Treffer ohne Filter (für Duplikate) |
 | `boss <Name>` | Boss-Scan ausführen (einmalig prüfen, dann Aktion oder ELSE/Default) |
 | `watcher <Name>` | Boss-Watcher: wartet kontinuierlich bis ein Boss erscheint, dann Aktion |
+| `icon <Name>` | Icon-Scan: Symbol/Icon (z.B. rotes „!") in Region erkennen → Aktion (Klick/Taste/Skip) |
 | `... else skip` | Bei Fehlschlag **diesen Schritt** überspringen (nächster Schritt läuft weiter) |
 | `... else skip_cycle` | Bei Fehlschlag **ganzen Zyklus** abbrechen (nächster Zyklus startet) |
 | `... else restart` | Bei Fehlschlag **komplett neu starten** (inkl. INIT) |
@@ -587,6 +590,28 @@ python tools/test_ocr.py bild.png               # Bild-Datei analysieren
 python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
 python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
 ```
+
+## Icon-Scan System
+
+Icon-Scans erkennen ein **einzelnes Symbol/Icon** in einer Region und lösen eine Aktion aus — gedacht für Status-Marker wie ein rotes „!", das z.B. eine nicht machbare Mission kennzeichnet. Im Gegensatz zum Item-Scan wird nichts „eingesammelt": es ist eine reine *erkennen → handeln*-Logik ohne Slots, Kategorien oder LLM. Erstellung über das Item-Scan-Menü → **[5] Icon-Scans bearbeiten**.
+
+Eine `IconScanConfig` definiert:
+
+- **Region**: wo gesucht wird (eng ums Icon legen — robuster fürs Template-Matching)
+- **Erkennung**: Template-Bild (OpenCV) **oder** Farb-Marker (mit `color_tolerance`). Für Farb-Marker empfiehlt sich `scan_marker_min_pixels > 1`, damit einzelne Rausch-Pixel nicht auslösen.
+- **Aktion** bei Fund: `click` (Standard, z.B. „Ablehnen"-Button), `key` (Taste), `skip` (nur erkennen), `skip_cycle` (Zyklus abbrechen), `restart` (Sequenz neu starten) — mit optionalem Action-Delay.
+
+### Verwendung in Sequenzen
+
+| Befehl | Verhalten |
+|--------|-----------|
+| `icon <Name>` | Region prüfen. Icon erkannt → Aktion. Nicht erkannt → ELSE-Action oder Schritt überspringen |
+
+**Beispiel** — eine nicht machbare Mission am roten „!" erkennen und ablehnen:
+1. Item-Scan-Menü → **[5] Icon-Scans bearbeiten** → Neuen Icon-Scan erstellen
+2. Region eng um das „!" wählen, Template aufnehmen (oder Farb-Marker des Rots setzen)
+3. Aktion „Punkt klicken" → auf den „Ablehnen/Abbrechen"-Button
+4. Im Sequenz-Editor: `icon MeinIcon`
 
 ## Sicherheit & Tarnung
 

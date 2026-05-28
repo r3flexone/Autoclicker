@@ -51,6 +51,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     include = {
         "points": True, "sequences": True, "slots": True,
         "items": True, "item_scans": True, "boss_scans": True,
+        "icon_scans": True,
         "config": True,
     }
 
@@ -62,6 +63,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
             "items": "Items + Templates",
             "item_scans": "Item-Scans",
             "boss_scans": "Boss-Scans",
+            "icon_scans": "Icon-Scans",
             "config": "Config-Einstellungen",
         }
         print("\n  Was soll exportiert werden?")
@@ -79,6 +81,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
             "items": len(state.global_items),
             "item_scans": len(state.item_scans),
             "boss_scans": len(state.boss_scans),
+            "icon_scans": len(state.icon_scans),
         }
 
     active = {k: v for k, v in include.items() if v and k != "config"}
@@ -89,7 +92,8 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     print(f"  {col('Wird exportiert:', 'bold')}")
     for key, label in [("points", "Punkte"), ("sequences", "Sequenzen"),
                        ("slots", "Slots"), ("items", "Items"),
-                       ("item_scans", "Item-Scans"), ("boss_scans", "Boss-Scans")]:
+                       ("item_scans", "Item-Scans"), ("boss_scans", "Boss-Scans"),
+                       ("icon_scans", "Icon-Scans")]:
         if include[key]:
             print(f"    {col('✓', 'green')} {label}: {counts.get(key, 0)}")
     if include["config"]:
@@ -149,6 +153,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         include_items=include["items"],
         include_item_scans=include["item_scans"],
         include_boss_scans=include["boss_scans"],
+        include_icon_scans=include["icon_scans"],
         include_config=include["config"],
     )
 
@@ -269,6 +274,9 @@ def _run_import(state: AutoClickerState) -> None:
     if "boss_scans" in contents:
         bscans = contents["boss_scans"]
         print(f"    Boss-Scans:  {len(bscans) if isinstance(bscans, list) else bscans}")
+    if "icon_scans" in contents:
+        iscans = contents["icon_scans"]
+        print(f"    Icon-Scans:  {len(iscans) if isinstance(iscans, list) else iscans}")
     if "templates" in contents:
         print(f"    Templates:   {contents['templates']}")
     if "config" in contents:
@@ -318,7 +326,8 @@ def _run_import(state: AutoClickerState) -> None:
     print(f"  {col('Was importieren?', 'bold')}")
     parts = [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
              ("items", "Items"), ("item_scans", "Item-Scans"),
-             ("boss_scans", "Boss-Scans"), ("config", "Config")]
+             ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
+             ("config", "Config")]
     for key, label in parts:
         if key in contents:
             choice = safe_input(f"    {label}? (j/n, Enter = ja): ").strip().lower()

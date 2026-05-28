@@ -18,11 +18,11 @@ from .persistence import (
     _boss_profile_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
-    save_item_scan, save_boss_scan,
+    save_item_scan, save_boss_scan, save_icon_scan,
 )
 from .models import (
-    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig,
-    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK,
+    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
+    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK,
 )
 from .utils import compact_json, sanitize_filename
 
@@ -92,6 +92,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                   include_points: bool = True, include_sequences: bool = True,
                   include_slots: bool = True, include_items: bool = True,
                   include_item_scans: bool = True, include_boss_scans: bool = True,
+                  include_icon_scans: bool = True,
                   include_config: bool = True) -> tuple[bool, str]:
     """Exportiert Setup als ZIP-Archiv.
 
@@ -197,6 +198,33 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 if bscan_names:
                     manifest["contents"]["boss_scans"] = bscan_names
 
+            # Icon-Scans
+            if include_icon_scans:
+                with state.lock:
+                    iscans = dict(state.icon_scans)
+                iscan_names = []
+                for name, config in iscans.items():
+                    iscan_data = {
+                        "name": config.name,
+                        "scan_region": list(config.scan_region),
+                        "template": config.template,
+                        "min_confidence": config.min_confidence,
+                        "marker_colors": [list(c) for c in config.marker_colors],
+                        "color_tolerance": config.color_tolerance,
+                        "action": config.action,
+                        "action_x": config.action_x,
+                        "action_y": config.action_y,
+                        "action_key": config.action_key,
+                        "action_delay": config.action_delay,
+                    }
+                    safe = sanitize_filename(name)
+                    zf.writestr(f"icon_scans/{safe}.json", compact_json(iscan_data))
+                    iscan_names.append(name)
+                    if config.template:
+                        template_files.add(config.template)
+                if iscan_names:
+                    manifest["contents"]["icon_scans"] = iscan_names
+
             # Template-PNGs einpacken
             packed_templates = 0
             for tpl in template_files:
@@ -262,6 +290,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                   import_points: bool = True, import_sequences: bool = True,
                   import_slots: bool = True, import_items: bool = True,
                   import_item_scans: bool = True, import_boss_scans: bool = True,
+                  import_icon_scans: bool = True,
                   import_config: bool = True, merge: bool = True) -> tuple[bool, str]:
     """Importiert ein Setup aus einer ZIP-Datei.
 
@@ -283,7 +312,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 return False, "Keine gültige Export-Datei"
 
             stats = {"points": 0, "sequences": 0, "slots": 0, "items": 0,
-                     "item_scans": 0, "boss_scans": 0, "templates": 0}
+                     "item_scans": 0, "boss_scans": 0, "icon_scans": 0, "templates": 0}
 
             # Templates zuerst extrahieren
             templates_dir = Path(TEMPLATES_DIR)
@@ -432,6 +461,35 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         save_boss_scan(config)
                         stats["boss_scans"] += 1
 
+            # Icon-Scans
+            if import_icon_scans:
+                for name in names:
+                    if name.startswith("icon_scans/") and name.endswith(".json"):
+                        iscan_data = json.loads(zf.read(name).decode("utf-8"))
+                        action = iscan_data.get("action", ICON_ACTION_CLICK)
+                        ax, ay = iscan_data.get("action_x", 0), iscan_data.get("action_y", 0)
+                        # Nur Klick-Aktionen haben sinnvolle Koordinaten zum Remappen.
+                        if action == ICON_ACTION_CLICK:
+                            ax, ay = remap_point(ax, ay, transform)
+                        region = remap_region(tuple(iscan_data["scan_region"]), transform)
+                        config = IconScanConfig(
+                            name=iscan_data["name"],
+                            scan_region=region,
+                            template=iscan_data.get("template"),
+                            min_confidence=iscan_data.get("min_confidence", 0.8),
+                            marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
+                            color_tolerance=iscan_data.get("color_tolerance", 30),
+                            action=action,
+                            action_x=ax,
+                            action_y=ay,
+                            action_key=iscan_data.get("action_key"),
+                            action_delay=iscan_data.get("action_delay", 0),
+                        )
+                        with state.lock:
+                            state.icon_scans[config.name] = config
+                        save_icon_scan(config)
+                        stats["icon_scans"] += 1
+
             # Config
             if import_config and "config.json" in names:
                 cfg_data = json.loads(zf.read("config.json").decode("utf-8"))
@@ -464,6 +522,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 parts.append(f"{stats['item_scans']} Item-Scan(s)")
             if stats["boss_scans"]:
                 parts.append(f"{stats['boss_scans']} Boss-Scan(s)")
+            if stats["icon_scans"]:
+                parts.append(f"{stats['icon_scans']} Icon-Scan(s)")
             if stats["templates"]:
                 parts.append(f"{stats['templates']} Template(s)")
 

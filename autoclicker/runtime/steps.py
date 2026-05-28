@@ -19,6 +19,8 @@ from ..models import (
     TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART,
     CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
+    ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
+    ICON_ACTION_SKIP_CYCLE, ICON_ACTION_RESTART,
 )
 from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..utils import clear_line, wait_while_paused, col, err, info, dbg
@@ -31,7 +33,7 @@ from .boss_detection import (
     execute_boss_scan, _execute_boss_action,
     _should_run_async, _warn_llm_config_inconsistencies, _spawn_boss_async,
 )
-from .item_scan import execute_item_scan, _click_scan_result
+from .item_scan import execute_item_scan, _click_scan_result, execute_icon_scan
 
 
 # =============================================================================
@@ -189,6 +191,82 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
 
     _step_status(debug, phase, step_num, total_steps,
                  "Kein Boss erkannt", "Kein Boss erkannt → übersprungen")
+    return True
+
+
+# =============================================================================
+# ICON-SCAN STEP
+# =============================================================================
+
+def _execute_icon_scan_step(state: AutoClickerState, step: SequenceStep,
+                            step_num: int, total_steps: int, phase: str) -> bool:
+    """Führt einen Icon-Scan Schritt aus: Icon erkennen → Aktion, sonst else/weiter."""
+    debug = state.config.debug_mode
+
+    _step_status(debug, phase, step_num, total_steps, f"Icon-Scan '{step.icon_scan}'...")
+    found = execute_icon_scan(state, step.icon_scan)
+
+    if found:
+        with state.lock:
+            config = state.icon_scans.get(step.icon_scan)
+        if config is None:
+            return True
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{step.icon_scan}' erkannt")
+        return _execute_icon_action(state, config, step_num, total_steps, phase, debug)
+
+    # Icon nicht erkannt → else-Config oder einfach weiter
+    if step.else_config:
+        if debug:
+            print(dbg("Icon nicht erkannt → else-Aktion"))
+        return execute_else_action(state, step, phase, step_num, total_steps)
+
+    _step_status(debug, phase, step_num, total_steps,
+                 f"Icon '{step.icon_scan}' nicht erkannt",
+                 f"Icon '{step.icon_scan}' nicht erkannt → übersprungen")
+    return True
+
+
+def _execute_icon_action(state: AutoClickerState, config, step_num: int,
+                         total_steps: int, phase: str, debug: bool) -> bool:
+    """Führt die einem erkannten Icon zugeordnete Aktion aus."""
+    if config.action_delay > 0:
+        if debug:
+            print(dbg(f"Icon-Aktion Delay: {config.action_delay}s"))
+        if state.stop_event.wait(config.action_delay):
+            return False
+
+    if config.action == ICON_ACTION_CLICK:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{config.name}' → Klick ({config.action_x},{config.action_y})")
+        if not safe_click(state, config.action_x, config.action_y, label=f"icon:{config.name}"):
+            return False
+        with state.lock:
+            state.total_clicks += 1
+
+    elif config.action == ICON_ACTION_KEY:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{config.name}' → Taste '{config.action_key}'")
+        if config.action_key and safe_key(state, config.action_key, label=f"icon:{config.name}"):
+            with state.lock:
+                state.key_presses += 1
+
+    elif config.action == ICON_ACTION_SKIP:
+        if debug:
+            print(dbg(f"Icon '{config.name}' → Schritt überspringen"))
+
+    elif config.action == ICON_ACTION_SKIP_CYCLE:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{config.name}' → Zyklus überspringen")
+        state.skip_cycle_event.set()
+        return False
+
+    elif config.action == ICON_ACTION_RESTART:
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{config.name}' → Neustart")
+        state.restart_event.set()
+        return False
+
     return True
 
 
@@ -539,6 +617,9 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.boss_scan:
         return _execute_boss_scan_step(state, step, step_num, total_steps, phase)
+
+    if step.icon_scan:
+        return _execute_icon_scan_step(state, step, step_num, total_steps, phase)
 
     if step.item_scan:
         return _execute_item_scan_step(state, step, step_num, total_steps, phase)

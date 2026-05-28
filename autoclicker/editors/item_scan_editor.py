@@ -22,6 +22,7 @@ from ..persistence import (
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
+from .icon_scan_editor import run_icon_scan_editor
 
 
 
@@ -35,12 +36,14 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         item_count = len(state.global_items)
         scan_count = len(state.item_scans)
         boss_count = len(state.boss_scans)
+        icon_count = len(state.icon_scans)
 
     menu_options = [
         f"Slots bearbeiten     ({slot_count} vorhanden)",
         f"Items bearbeiten     ({item_count} vorhanden)",
         f"Scans bearbeiten     ({scan_count} vorhanden)",
         f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
+        f"Icon-Scans bearbeiten ({icon_count} vorhanden)",
         "Auto-Scan (Slots scannen + Items + Scan in einem Schritt)",
         "Import / Export (Setup teilen oder importieren)",
     ]
@@ -56,8 +59,10 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
     elif choice == 3:
         run_boss_scan_editor(state)
     elif choice == 4:
-        run_auto_scan_workflow(state)
+        run_icon_scan_editor(state)
     elif choice == 5:
+        run_auto_scan_workflow(state)
+    elif choice == 6:
         from .import_export_editor import run_import_export_editor
         run_import_export_editor(state)
 
