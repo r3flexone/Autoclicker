@@ -100,30 +100,44 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         print(f"    {col('✓', 'green')} Config-Einstellungen")
     print()
 
-    # Referenzpunkte setzen
-    print(col("  === REFERENZPUNKTE ===", "bold"))
-    print()
-    print(f"  Beim Import werden diese Punkte auf dem neuen Bildschirm angeklickt.")
-    print(f"  Daraus berechnet das Programm die Koordinaten-Anpassung.")
-    print()
-    print(f"  {col('Tipp:', 'yellow')} Wähle zwei markante Ecken im Spielfenster,")
-    print(f"         die auf jedem Bildschirm leicht wiederzufinden sind.")
-    print(f"         z.B. linke obere Ecke + rechte untere Ecke des Spielfensters.")
-    print()
+    # Referenz: bevorzugt automatisch aus der Spielfenster-Größe, sonst manuell
+    from ..winapi import get_client_rect_by_title
+    win_title = state.config.window_focus_title
+    source_window = get_client_rect_by_title(win_title) if win_title else None
 
-    ref1 = _get_reference_point(1, "Oben-Links im Spielfenster")
-    if ref1 is None:
-        return
-    ref2 = _get_reference_point(2, "Unten-Rechts im Spielfenster")
-    if ref2 is None:
-        return
+    if source_window:
+        sl, st, sr, sb = source_window
+        ref1, ref2 = (sl, st), (sr, sb)
+        print(col("  === SPIELFENSTER ERKANNT ===", "bold"))
+        print(f"  Fenster '{win_title}': {sr - sl}x{sb - st} px @ ({sl}, {st})")
+        print(f"  {info('Beim Import wird die Skalierung automatisch aus der Fenstergröße abgeleitet.')}")
+        print()
+    else:
+        # Fallback: manuelle Referenzpunkte (Fenster nicht gefunden / kein Titel gesetzt)
+        print(col("  === REFERENZPUNKTE ===", "bold"))
+        print()
+        if win_title:
+            print(f"  {info(f'Spielfenster „{win_title}“ nicht gefunden — nutze manuelle Referenzpunkte.')}")
+        print(f"  Beim Import werden diese Punkte auf dem neuen Bildschirm angeklickt.")
+        print(f"  Daraus berechnet das Programm die Koordinaten-Anpassung.")
+        print()
+        print(f"  {col('Tipp:', 'yellow')} Wähle zwei markante Ecken im Spielfenster,")
+        print(f"         z.B. linke obere Ecke + rechte untere Ecke des Spielfensters.")
+        print()
 
-    if ref1 == ref2:
-        print(f"\n  {err('Die zwei Referenzpunkte sind identisch! Bitte verschiedene Punkte wählen.')}")
-        return
+        ref1 = _get_reference_point(1, "Oben-Links im Spielfenster")
+        if ref1 is None:
+            return
+        ref2 = _get_reference_point(2, "Unten-Rechts im Spielfenster")
+        if ref2 is None:
+            return
 
-    print(f"\n  Referenz 1: ({ref1[0]}, {ref1[1]})")
-    print(f"  Referenz 2: ({ref2[0]}, {ref2[1]})")
+        if ref1 == ref2:
+            print(f"\n  {err('Die zwei Referenzpunkte sind identisch! Bitte verschiedene Punkte wählen.')}")
+            return
+
+        print(f"\n  Referenz 1: ({ref1[0]}, {ref1[1]})")
+        print(f"  Referenz 2: ({ref2[0]}, {ref2[1]})")
 
     # Dateiname
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -155,6 +169,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         include_boss_scans=include["boss_scans"],
         include_icon_scans=include["icon_scans"],
         include_config=include["config"],
+        source_window=source_window,
     )
 
     if success:
@@ -286,14 +301,35 @@ def _run_import(state: AutoClickerState) -> None:
     print(f"    Punkt 1: ({src_ref1[0]}, {src_ref1[1]})")
     print(f"    Punkt 2: ({src_ref2[0]}, {src_ref2[1]})")
 
-    # Remapping oder 1:1?
+    # Koordinaten-Anpassung: bevorzugt automatisch aus der Spielfenster-Größe
+    from ..import_export import compute_transform, transform_from_windows
+    from ..winapi import get_client_rect_by_title
+
+    src_window = manifest.get("source_window")
+    dst_window = get_client_rect_by_title(state.config.window_focus_title) if src_window else None
+
     print(f"\n  {col('Koordinaten-Anpassung:', 'bold')}")
-    print(f"    [1] Remapping (andere Auflösung/Fensterposition)")
-    print(f"    [2] 1:1 übernehmen (gleicher Bildschirm)")
-    remap_choice = safe_input(f"    Wahl (Enter = 1): ").strip()
+    if src_window and dst_window:
+        sl, st, sr, sb = src_window
+        dl, dt, dr, db = dst_window
+        print(f"    Spielfenster beim Export: {sr - sl}x{sb - st} px, jetzt: {dr - dl}x{db - dt} px")
+        print(f"    [1] Automatisch aus Fenstergröße (empfohlen)")
+        print(f"    [2] Manuell (2 Punkte klicken)")
+        print(f"    [3] 1:1 übernehmen (gleicher Bildschirm)")
+        c = safe_input(f"    Wahl (Enter = 1): ").strip()
+        mode = "manual" if c == "2" else "identity" if c == "3" else "auto"
+    else:
+        if src_window and not dst_window:
+            print(f"    {info(f'Spielfenster nicht gefunden — bitte 2 Punkte manuell setzen.')}")
+        print(f"    [1] Remapping (andere Auflösung/Fensterposition)")
+        print(f"    [2] 1:1 übernehmen (gleicher Bildschirm)")
+        c = safe_input(f"    Wahl (Enter = 1): ").strip()
+        mode = "identity" if c == "2" else "manual"
 
     transform = None
-    if remap_choice != "2":
+    if mode == "auto":
+        transform = transform_from_windows(tuple(src_window), tuple(dst_window))
+    elif mode == "manual":
         print(f"\n  {col('Deine Referenzpunkte setzen:', 'bold')}")
         print(f"  Klicke die GLEICHEN Stellen im Spielfenster wie der Exporter:")
         print()
@@ -309,16 +345,15 @@ def _run_import(state: AutoClickerState) -> None:
             print(f"\n  {err('Referenzpunkte sind identisch!')}")
             return
 
-        from ..import_export import compute_transform
         transform = compute_transform(src_ref1, src_ref2, dst_ref1, dst_ref2)
 
+    if transform:
         scale_x = transform["scale_x"]
         scale_y = transform["scale_y"]
         print(f"\n  Skalierung: {scale_x:.2%} x {scale_y:.2%}")
-        if abs(scale_x - 1.0) < 0.01 and abs(scale_y - 1.0) < 0.01:
-            off_x = transform["offset_x"]
-            off_y = transform["offset_y"]
-            print(f"  Verschiebung: ({off_x:+.0f}, {off_y:+.0f}) Pixel")
+        off_x = transform["offset_x"]
+        off_y = transform["offset_y"]
+        print(f"  Verschiebung: ({off_x:+.0f}, {off_y:+.0f}) Pixel")
         print()
 
     # Was importieren?

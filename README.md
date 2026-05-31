@@ -678,14 +678,15 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 ### Export
 
 1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
-2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Config) Ja/Nein
-3. **Zwei Referenzpunkte setzen** (z.B. Oben-Links und Unten-Rechts im Spielfenster):
-   - Maus an die Stelle bewegen, Enter drücken
+2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Icon-Scans/Config) Ja/Nein
+3. **Referenz für die Koordinaten-Anpassung**:
+   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Größe automatisch** als Referenz genommen — kein manuelles Klicken nötig.
+   - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
 4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
 5. ZIP wird in `exports/` gespeichert
 6. Anleitung für den Empfänger wird angezeigt
 
-Das ZIP enthält: `manifest.json`, alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
 
 ### Import
 
@@ -694,14 +695,17 @@ Das ZIP enthält: `manifest.json`, alle JSON-Daten, gepackte Template-PNGs, opti
 3. Datei aus der Liste auswählen
 4. Inhalt der ZIP wird angezeigt + Referenzpunkte des Exporters
 5. **Anpassungs-Modus wählen**:
-   - **[1] Remapping** (andere Auflösung/Fensterposition) → Zwei eigene Referenzpunkte setzen (gleiche Stellen wie der Exporter!)
-   - **[2] 1:1** (gleicher Bildschirm, kein Remapping)
+   - Enthält das Export-Manifest die Spielfenster-Größe **und** das Spielfenster läuft gerade:
+     - **[1] Automatisch aus Fenstergröße** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergröße berechnet, kein Klicken nötig
+     - **[2] Manuell** (zwei Punkte klicken, gleiche Stellen wie der Exporter)
+     - **[3] 1:1** (gleicher Bildschirm)
+   - Sonst (kein Fenster-Rect / Fenster nicht gefunden): **[1] Remapping** (zwei Punkte manuell) oder **[2] 1:1**
 6. Pro Bereich Ja/Nein wählen was importiert werden soll
 7. **Merge** (bestehende Daten behalten + ergänzen) oder **Ersetzen**
 
 ### Wie das Remapping funktioniert
 
-Aus den zwei Referenzpunkt-Paaren (Quelle → Ziel) berechnet das Programm Skalierung und Verschiebung:
+Egal ob fenster-basiert (automatisch) oder per Hand: aus zwei Referenzpunkt-Paaren (Quelle → Ziel) berechnet das Programm Skalierung und Verschiebung. Bei der automatischen Variante sind die zwei Punkte die obere-linke und untere-rechte Ecke des Spielfenster-Client-Bereichs.
 - `scale_x = (dst2.x - dst1.x) / (src2.x - src1.x)` (analog für Y)
 - `offset_x = dst1.x - src1.x * scale_x`
 

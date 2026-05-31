@@ -276,6 +276,70 @@ def is_target_window_active(title_substring: str) -> bool:
     return title_substring.lower() in current.lower()
 
 
+# Fenster-Geometrie (für fenster-basiertes Koordinaten-Remapping bei Import/Export)
+_WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+user32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
+user32.EnumWindows.restype = wintypes.BOOL
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.IsWindowVisible.restype = wintypes.BOOL
+user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetClientRect.restype = wintypes.BOOL
+user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+user32.ClientToScreen.restype = wintypes.BOOL
+
+
+def _find_window_by_title(title_substring: str):
+    """Findet das HWND des ersten sichtbaren Fensters dessen Titel den Substring enthält."""
+    if not title_substring:
+        return None
+    target = title_substring.lower()
+    found = []
+
+    def _cb(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            if target in (buf.value or "").lower():
+                found.append(hwnd)
+                return False  # Enumeration abbrechen
+        return True
+
+    try:
+        user32.EnumWindows(_WNDENUMPROC(_cb), 0)
+    except (OSError, AttributeError):
+        return None
+    return found[0] if found else None
+
+
+def get_client_rect_by_title(title_substring: str):
+    """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
+    mit passendem Titel als absolute Bildschirm-Koordinaten.
+
+    Returns:
+        (left, top, right, bottom) oder None wenn kein passendes/sinnvolles Fenster.
+    """
+    hwnd = _find_window_by_title(title_substring)
+    if not hwnd:
+        return None
+    try:
+        rect = wintypes.RECT()
+        if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            return None
+        width = rect.right - rect.left
+        height = rect.bottom - rect.top
+        if width <= 0 or height <= 0:
+            return None
+        pt = wintypes.POINT(0, 0)
+        if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
+            return None
+        return (pt.x, pt.y, pt.x + width, pt.y + height)
+    except (OSError, AttributeError):
+        return None
+
+
 def check_failsafe(state: 'AutoClickerState' = None) -> bool:
     """Prüft, ob die Maus in der Fail-Safe-Ecke ist."""
     cfg = state.config if state else CONFIG

@@ -80,6 +80,19 @@ def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[in
     return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
 
 
+def transform_from_windows(src_window: tuple[int, int, int, int],
+                           dst_window: tuple[int, int, int, int]) -> dict:
+    """Baut die Affin-Transformation aus zwei Fenster-Client-Rects (l, t, r, b).
+
+    Verwendet obere-linke und untere-rechte Ecke des Fensters als die zwei
+    Referenzpunkte — damit skalieren+verschieben sich alle Koordinaten passend
+    zur (ggf. anderen) Spielfenster-Größe/Position auf dem Zielsystem.
+    """
+    sl, st, sr, sb = src_window
+    dl, dt, dr, db = dst_window
+    return compute_transform((sl, st), (sr, sb), (dl, dt), (dr, db))
+
+
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
 
 
@@ -93,8 +106,13 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                   include_slots: bool = True, include_items: bool = True,
                   include_item_scans: bool = True, include_boss_scans: bool = True,
                   include_icon_scans: bool = True,
-                  include_config: bool = True) -> tuple[bool, str]:
+                  include_config: bool = True,
+                  source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
     """Exportiert Setup als ZIP-Archiv.
+
+    source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
+    Manifest abgelegt, damit der Import die Skalierung automatisch aus der
+    Fenstergröße ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
 
     Returns:
         (success, message)
@@ -108,6 +126,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
             },
             "contents": {},
         }
+        if source_window:
+            manifest["source_window"] = list(source_window)
 
         with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
             # Punkte
