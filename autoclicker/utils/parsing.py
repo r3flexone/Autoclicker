@@ -2,10 +2,14 @@
 Parsing und Formatting: Zeit-Eingaben, Zahlen-Bereiche, Dauer-Formatierung,
 Dateinamen-Bereinigung, kompaktes JSON.
 
-Reine String-/Daten-Funktionen ohne I/O oder Konsolen-Abhängigkeiten.
+Überwiegend reine String-/Daten-Funktionen; Ausnahme: atomic_write() schreibt
+crash-sicher in eine Datei (Temp + os.replace) und wird von der Persistenz genutzt.
 """
 
 import json
+import os
+import tempfile
+from pathlib import Path
 import re
 from datetime import datetime, timedelta
 
@@ -222,3 +226,30 @@ def compact_json(data: dict, indent: int = 2) -> str:
     pattern2 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
     json_str = re.sub(pattern2, r'[\1, \2]', json_str)
     return json_str
+
+
+def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
+    """Schreibt `text` crash-sicher in `path`.
+
+    Schreibt zuerst in eine temporäre Datei im selben Verzeichnis, flusht +
+    fsynct sie und benennt sie dann per os.replace() atomar um. So bleibt bei
+    Absturz/Stromausfall mitten im Schreiben die alte Datei intakt statt eine
+    halb geschriebene, korrupte Datei zu hinterlassen. os.replace ist atomar,
+    solange Temp- und Zieldatei auf demselben Dateisystem liegen (hier: gleiches
+    Verzeichnis).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise

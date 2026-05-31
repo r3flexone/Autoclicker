@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from ..models import ItemSlot, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, atomic_write
 from .globals import save_global_items, save_global_slots
 from .paths import ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
@@ -40,9 +40,7 @@ def _save_preset(data: dict, preset_name: str, presets_dir: str, label: str) -> 
     safe_name = sanitize_filename(preset_name)
     filepath = Path(presets_dir) / f"{safe_name}.json"
     try:
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
+        atomic_write(filepath, compact_json(data))
         print(save_tag(f"{label}-Preset '{preset_name}' gespeichert ({len(data)} {label}s)"))
         return True
     except (IOError, OSError) as e:

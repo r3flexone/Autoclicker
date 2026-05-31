@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ItemScanConfig, ItemSlot, AutoClickerState
-from ..utils import compact_json, warn
+from ..utils import compact_json, warn, atomic_write
 from .paths import ITEM_SCANS_DIR
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
@@ -106,8 +106,7 @@ def update_item_in_scans(old_name: str, new_name: str,
                     modified = True
 
             if modified:
-                with open(scan_file, "w", encoding="utf-8") as f:
-                    f.write(compact_json(data))
+                atomic_write(scan_file, compact_json(data))
                 updated_scans += 1
 
         except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:

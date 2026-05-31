@@ -9,7 +9,7 @@ from dataclasses import dataclass, fields, asdict
 from pathlib import Path
 from typing import Optional, Union
 
-from .utils import col, ok, warn, err
+from .utils import col, ok, warn, err, atomic_write
 
 # Logger
 logger = logging.getLogger("autoclicker")
@@ -347,19 +347,20 @@ def save_config(config: AppConfig) -> None:
     for k, v in remaining:
         entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
 
+    lines = ["{\n"]
+    last_section = None
+    for i, (section, key, val) in enumerate(entries):
+        if section != last_section:
+            if last_section is not None:
+                lines.append("\n")
+            last_section = section
+        comma = "," if i < len(entries) - 1 else ""
+        lines.append(f'  "{key}": {val}{comma}\n')
+    lines.append("}\n")
+
     try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            f.write("{\n")
-            last_section = None
-            for i, (section, key, val) in enumerate(entries):
-                if section != last_section:
-                    if last_section is not None:
-                        f.write("\n")
-                    last_section = section
-                comma = "," if i < len(entries) - 1 else ""
-                f.write(f'  "{key}": {val}{comma}\n')
-            f.write("}\n")
-    except IOError as e:
+        atomic_write(CONFIG_FILE, "".join(lines))
+    except (IOError, OSError) as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
 
 

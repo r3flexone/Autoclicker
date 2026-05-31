@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import Callable
 
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, atomic_write
 
 logger = logging.getLogger("autoclicker")
 
@@ -30,8 +30,7 @@ def write_scan(directory: str, name: str, data: dict, type_label: str) -> None:
     ensure_dir(directory)
     filename = f"{sanitize_filename(name)}.json"
     try:
-        with open(Path(directory) / filename, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
+        atomic_write(Path(directory) / filename, compact_json(data))
         print(save_tag(f"{type_label} '{name}' gespeichert in '{directory}/'"))
     except (IOError, OSError) as e:
         print(err(f"{type_label} konnte nicht gespeichert werden: {e}"))
