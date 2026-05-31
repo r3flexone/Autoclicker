@@ -26,7 +26,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
 - **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
 - **Session-Log (CSV)**: Vollständiges Log aller Klicks/Tasten/Events pro Sequenz für Auswertung
-- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren mit automatischer Koordinaten-Anpassung (2-Punkt-Remapping)
+- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Größe angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele außerhalb des Fensters liegen
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
 - **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
@@ -936,14 +936,12 @@ Wird beim ersten Start automatisch erstellt:
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
-  "pixel_color_tolerance": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
   "pixel_check_interval": 1,
   "pixel_max_consecutive_timeouts": 5,
   "pixel_consecutive_action": "stop",
-  "pixel_scan_step": 2,
   "pixel_show_delay": 0.3,
   "scan_reverse": true,
   "scan_click_immediate": false,
@@ -1015,14 +1013,12 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `pixel_color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
 | `pixel_check_interval` | Wie oft auf Farbe prüfen (Sekunden) |
 | `pixel_max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
 | `pixel_consecutive_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
-| `pixel_scan_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
 | `pixel_show_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
 
 ### Item-Scan Einstellungen
