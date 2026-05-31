@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..models import AutoClickerState
-from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb
+from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, warn, header, breadcrumb
 from ..winapi import get_cursor_pos
 
 
@@ -389,6 +389,20 @@ def _run_import(state: AutoClickerState) -> None:
     if success:
         print(f"\n  {ok('Import erfolgreich!')}")
         print(f"  Importiert: {result}")
+
+        # Plausibilität: liegen die Klick-Ziele im Spielfenster? (nur Warnung)
+        check_win = get_client_rect_by_title(state.config.window_focus_title)
+        if check_win:
+            from ..import_export import clicks_outside_window
+            outside = clicks_outside_window(state, check_win)
+            if outside:
+                print(f"\n  {warn(f'{len(outside)} Klick-Position(en) liegen AUSSERHALB des Spielfensters:')}")
+                for label, x, y in outside[:8]:
+                    print(f"    - {label}: ({x}, {y})")
+                if len(outside) > 8:
+                    print(f"    ... und {len(outside) - 8} weitere")
+                print(f"  {info('Das kann gewollt sein, deutet aber meist auf falsche Skalierung/Position hin.')}")
+
         if transform and transform != {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}:
             print(f"\n  {col('Hinweis:', 'yellow')} Koordinaten wurden automatisch angepasst.")
             print(f"           Teste die Sequenz einmal im Debug-Modus (config.json → debug_mode: true)")

@@ -22,7 +22,7 @@ from .persistence import (
 )
 from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
-    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK,
+    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
 from .utils import compact_json, sanitize_filename
 
@@ -78,6 +78,55 @@ def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[in
     x1, y1 = remap_point(region[0], region[1], transform)
     x2, y2 = remap_point(region[2], region[3], transform)
     return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+
+
+def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, int]]:
+    """Sammelt die wichtigsten Klick-Koordinaten (Label, x, y) aus dem State.
+
+    Erfasst: Punkte, direkte Klick-Schritte in Sequenzen (inkl. else-Klick) sowie
+    Klick-Aktionen von Boss- und Icon-Scans. Scan-interne Positionen (Slots,
+    confirm_points) bleiben außen vor — es geht um die eigentlichen Klick-Ziele.
+    """
+    positions: list[tuple[str, int, int]] = []
+    with state.lock:
+        for p in state.points:
+            label = f"Punkt #{p.id}" + (f" {p.name}" if p.name else "")
+            positions.append((label, p.x, p.y))
+
+        for name, seq in state.sequences.items():
+            groups = [("Init", seq.init_steps), ("End", seq.end_steps)]
+            for lp in seq.loop_phases:
+                groups.append((lp.name, lp.steps))
+            for gname, steps in groups:
+                for i, s in enumerate(steps, 1):
+                    # Echter Klick-Schritt: nicht wait-only / kein Scan/Key/Screenshot
+                    if not (s.wait_only or s.item_scan or s.boss_scan or s.icon_scan
+                            or s.screenshot_only or s.key_press):
+                        positions.append((f"Seq '{name}'/{gname} #{i}", s.x, s.y))
+                    ec = s.else_config
+                    if ec and ec.action == ACTION_CLICK:
+                        positions.append((f"Seq '{name}'/{gname} #{i} (else)", ec.x, ec.y))
+
+        for cfg in state.boss_scans.values():
+            for b in cfg.bosses:
+                if b.action == ACTION_CLICK:
+                    positions.append((f"Boss '{b.name}'", b.action_x, b.action_y))
+
+        for cfg in state.icon_scans.values():
+            if cfg.action == ACTION_CLICK:
+                positions.append((f"Icon '{cfg.name}'", cfg.action_x, cfg.action_y))
+
+    return positions
+
+
+def clicks_outside_window(state: 'AutoClickerState',
+                          window_rect: tuple[int, int, int, int]) -> list[tuple[str, int, int]]:
+    """Liefert die Klick-Positionen, die außerhalb des Fenster-Rects (l, t, r, b) liegen."""
+    l, t, r, b = window_rect
+    lo_x, hi_x = min(l, r), max(l, r)
+    lo_y, hi_y = min(t, b), max(t, b)
+    return [(label, x, y) for label, x, y in collect_click_positions(state)
+            if not (lo_x <= x <= hi_x and lo_y <= y <= hi_y)]
 
 
 def transform_from_windows(src_window: tuple[int, int, int, int],
