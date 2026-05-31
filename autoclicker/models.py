@@ -15,12 +15,22 @@ from .config import AppConfig, DEFAULT_MIN_CONFIDENCE
 # =============================================================================
 # STRING-KONSTANTEN (zentral definiert, verhindert Tippfehler)
 # =============================================================================
+# Aktions-Typen (zentral, eine Quelle der Wahrheit).
+# ElseConfig, BossProfile und IconScanConfig teilen sich dieselben Aktionswerte —
+# die familienspezifischen Namen unten sind nur Aliase für Lesbarkeit/Kompat.
+ACTION_CLICK = "click"              # Punkt klicken
+ACTION_KEY = "key"                  # Taste drücken
+ACTION_SKIP = "skip"                # Schritt überspringen
+ACTION_SKIP_CYCLE = "skip_cycle"    # Zyklus überspringen
+ACTION_RESTART = "restart"          # Sequenz neustarten
+ACTION_ITEM_SCAN = "item_scan"      # Item-Scan ausführen (nur Boss)
+
 # ElseConfig.action
-ELSE_SKIP = "skip"
-ELSE_SKIP_CYCLE = "skip_cycle"
-ELSE_RESTART = "restart"
-ELSE_CLICK = "click"
-ELSE_KEY = "key"
+ELSE_SKIP = ACTION_SKIP
+ELSE_SKIP_CYCLE = ACTION_SKIP_CYCLE
+ELSE_RESTART = ACTION_RESTART
+ELSE_CLICK = ACTION_CLICK
+ELSE_KEY = ACTION_KEY
 VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
 # pixel_timeout_action (Config)
@@ -40,21 +50,21 @@ SCAN_MODE_EVERY = "every"     # Jedes gefundene Item
 VALID_SCAN_MODES = {SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY}
 
 # BossProfile.action
-BOSS_ACTION_SCAN = "item_scan"      # Item-Scan ausführen
-BOSS_ACTION_CLICK = "click"          # Punkt klicken
-BOSS_ACTION_KEY = "key"              # Taste drücken
-BOSS_ACTION_SKIP = "skip"            # Schritt überspringen
-BOSS_ACTION_SKIP_CYCLE = "skip_cycle"  # Zyklus überspringen
-BOSS_ACTION_RESTART = "restart"      # Sequenz neustarten
+BOSS_ACTION_SCAN = ACTION_ITEM_SCAN
+BOSS_ACTION_CLICK = ACTION_CLICK
+BOSS_ACTION_KEY = ACTION_KEY
+BOSS_ACTION_SKIP = ACTION_SKIP
+BOSS_ACTION_SKIP_CYCLE = ACTION_SKIP_CYCLE
+BOSS_ACTION_RESTART = ACTION_RESTART
 VALID_BOSS_ACTIONS = {BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
                       BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART}
 
 # IconScanConfig.action — Aktion wenn ein Icon (z.B. rotes "!") erkannt wird
-ICON_ACTION_CLICK = "click"          # Punkt klicken (Standard)
-ICON_ACTION_KEY = "key"              # Taste drücken
-ICON_ACTION_SKIP = "skip"            # Schritt überspringen (nichts tun)
-ICON_ACTION_SKIP_CYCLE = "skip_cycle"  # Zyklus überspringen
-ICON_ACTION_RESTART = "restart"      # Sequenz neustarten
+ICON_ACTION_CLICK = ACTION_CLICK
+ICON_ACTION_KEY = ACTION_KEY
+ICON_ACTION_SKIP = ACTION_SKIP
+ICON_ACTION_SKIP_CYCLE = ACTION_SKIP_CYCLE
+ICON_ACTION_RESTART = ACTION_RESTART
 VALID_ICON_ACTIONS = {ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
                       ICON_ACTION_SKIP_CYCLE, ICON_ACTION_RESTART}
 

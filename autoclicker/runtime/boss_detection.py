@@ -19,7 +19,7 @@ from typing import Optional
 from ..imaging import take_screenshot
 from ..models import (
     AutoClickerState, SequenceStep, BossScanConfig, BossProfile,
-    ELSE_CLICK, ELSE_KEY,
+    ELSE_CLICK, ELSE_KEY, SCAN_MODE_ALL,
     BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
@@ -364,24 +364,32 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
 # BOSS-AKTION (führt die im BossProfile hinterlegte Aktion aus)
 # =============================================================================
 
-def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
-                         step: SequenceStep, step_num: int, total_steps: int,
-                         phase: str, debug: bool) -> bool:
-    """Führt die einem Boss zugeordnete Aktion aus."""
-    if boss.action_delay > 0:
+def _execute_detection_action(state: AutoClickerState, *, subject: str, action: str,
+                              label: str, step_num: int, total_steps: int, phase: str,
+                              debug: bool, x: int = 0, y: int = 0,
+                              key: Optional[str] = None, delay: float = 0,
+                              scan: Optional[str] = None,
+                              scan_mode: str = SCAN_MODE_ALL) -> bool:
+    """Führt eine Erkennungs-Aktion aus (geteilt von Boss-Scan und Icon-Scan).
+
+    `subject` ist der Betreff für Status-Meldungen (z.B. "Boss 'Drache'" oder
+    "Icon 'Mission'"), `label` das Tag für safe_click/safe_key. Gibt False zurück
+    wenn die Sequenz abgebrochen werden soll (skip_cycle/restart/Stop).
+    """
+    if delay > 0:
         if debug:
-            print(dbg(f"Boss-Aktion Delay: {boss.action_delay}s"))
-        if state.stop_event.wait(boss.action_delay):
+            print(dbg(f"{subject}: Aktion-Delay {delay}s"))
+        if state.stop_event.wait(delay):
             return False
 
-    if boss.action == BOSS_ACTION_SCAN:
-        if not boss.action_scan:
-            print(err(f"Boss '{boss.name}': Kein Item-Scan definiert!"))
+    if action == BOSS_ACTION_SCAN:
+        if not scan:
+            print(err(f"{subject}: Kein Item-Scan definiert!"))
             return True
         _step_status(debug, phase, step_num, total_steps,
-                     f"Boss '{boss.name}' → Scan '{boss.action_scan}'",
-                     f"Boss '{boss.name}' → Starte Scan '{boss.action_scan}' ({boss.action_scan_mode})")
-        scan_results = execute_item_scan(state, boss.action_scan, boss.action_scan_mode)
+                     f"{subject} → Scan '{scan}'",
+                     f"{subject} → Starte Scan '{scan}' ({scan_mode})")
+        scan_results = execute_item_scan(state, scan, scan_mode)
         if scan_results:
             for pos, item, priority in scan_results:
                 if state.stop_event.is_set():
@@ -389,45 +397,58 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
                 if not _click_scan_result(state, pos, item, priority, debug):
                     return False
             if debug:
-                print(dbg(f"Boss-Scan fertig: {len(scan_results)} Item(s) geklickt"))
+                print(dbg(f"Scan fertig: {len(scan_results)} Item(s) geklickt"))
         else:
             if debug:
-                print(dbg("Boss-Scan: kein Item gefunden"))
+                print(dbg("Scan: kein Item gefunden"))
 
-    elif boss.action == BOSS_ACTION_CLICK:
+    elif action == BOSS_ACTION_CLICK:
         _step_status(debug, phase, step_num, total_steps,
-                     f"Boss '{boss.name}' → Klick ({boss.action_x},{boss.action_y})")
-        if not safe_click(state, boss.action_x, boss.action_y, label=f"boss:{boss.name}"):
+                     f"{subject} → Klick ({x},{y})")
+        if not safe_click(state, x, y, label=label):
             return False
         with state.lock:
             state.total_clicks += 1
 
-    elif boss.action == BOSS_ACTION_KEY:
+    elif action == BOSS_ACTION_KEY:
         _step_status(debug, phase, step_num, total_steps,
-                     f"Boss '{boss.name}' → Taste '{boss.action_key}'")
-        if boss.action_key:
-            if safe_key(state, boss.action_key, label=f"boss:{boss.name}"):
+                     f"{subject} → Taste '{key}'")
+        if key:
+            if safe_key(state, key, label=label):
                 with state.lock:
                     state.key_presses += 1
 
-    elif boss.action == BOSS_ACTION_SKIP:
+    elif action == BOSS_ACTION_SKIP:
         if debug:
-            print(dbg(f"Boss '{boss.name}' → Schritt überspringen"))
+            print(dbg(f"{subject} → Schritt überspringen"))
 
-    elif boss.action == BOSS_ACTION_SKIP_CYCLE:
+    elif action == BOSS_ACTION_SKIP_CYCLE:
         _step_status(debug, phase, step_num, total_steps,
-                     f"Boss '{boss.name}' → Zyklus überspringen")
+                     f"{subject} → Zyklus überspringen")
         state.skip_cycle_event.set()
         return False
 
-    elif boss.action == BOSS_ACTION_RESTART:
+    elif action == BOSS_ACTION_RESTART:
         _step_status(debug, phase, step_num, total_steps,
-                     f"Boss '{boss.name}' → Neustart",
-                     f"Boss '{boss.name}' → Sequenz neustarten")
+                     f"{subject} → Neustart",
+                     f"{subject} → Sequenz neustarten")
         state.restart_event.set()
         return False
 
     return True
+
+
+def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
+                         step: SequenceStep, step_num: int, total_steps: int,
+                         phase: str, debug: bool) -> bool:
+    """Führt die einem Boss zugeordnete Aktion aus (dünner Adapter)."""
+    return _execute_detection_action(
+        state, subject=f"Boss '{boss.name}'", action=boss.action,
+        label=f"boss:{boss.name}", step_num=step_num, total_steps=total_steps,
+        phase=phase, debug=debug,
+        x=boss.action_x, y=boss.action_y, key=boss.action_key,
+        delay=boss.action_delay, scan=boss.action_scan, scan_mode=boss.action_scan_mode,
+    )
 
 
 # =============================================================================

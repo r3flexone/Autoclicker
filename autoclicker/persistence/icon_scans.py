@@ -11,23 +11,19 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import IconScanConfig, AutoClickerState, ICON_ACTION_CLICK
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err
 from .paths import ICON_SCANS_DIR
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
 
 logger = logging.getLogger("autoclicker")
 
 
 def ensure_icon_scans_dir() -> Path:
     """Stellt sicher, dass der Icon-Scans-Ordner existiert."""
-    path = Path(ICON_SCANS_DIR)
-    path.mkdir(exist_ok=True)
-    return path
+    return ensure_dir(ICON_SCANS_DIR)
 
 
 def save_icon_scan(config: IconScanConfig) -> None:
     """Speichert eine Icon-Scan Konfiguration."""
-    ensure_icon_scans_dir()
-
     data = {
         "name": config.name,
         "scan_region": list(config.scan_region),
@@ -41,14 +37,7 @@ def save_icon_scan(config: IconScanConfig) -> None:
         "action_key": config.action_key,
         "action_delay": config.action_delay,
     }
-
-    filename = f"{sanitize_filename(config.name)}.json"
-    try:
-        with open(Path(ICON_SCANS_DIR) / filename, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
-        print(save_tag(f"Icon-Scan '{config.name}' gespeichert in '{ICON_SCANS_DIR}/'"))
-    except (IOError, OSError) as e:
-        print(err(f"Icon-Scan konnte nicht gespeichert werden: {e}"))
+    write_scan(ICON_SCANS_DIR, config.name, data, "Icon-Scan")
 
 
 def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
@@ -78,27 +67,9 @@ def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
 
 def list_available_icon_scans() -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Icon-Scan Konfigurationen auf."""
-    scan_dir = Path(ICON_SCANS_DIR)
-    if not scan_dir.exists():
-        return []
-
-    scans = []
-    for f in scan_dir.glob("*.json"):
-        try:
-            with open(f, "r", encoding="utf-8") as file:
-                data = json.load(file)
-                name = data.get("name", f.stem)
-                scans.append((name, f))
-        except (json.JSONDecodeError, IOError, KeyError, TypeError):
-            pass
-    return scans
+    return list_scan_files(ICON_SCANS_DIR)
 
 
 def load_all_icon_scans(state: AutoClickerState) -> None:
     """Lädt alle Icon-Scan Konfigurationen."""
-    for name, path in list_available_icon_scans():
-        config = load_icon_scan_file(path)
-        if config:
-            state.icon_scans[config.name] = config
-    if state.icon_scans:
-        print(load_tag(f"{len(state.icon_scans)} Icon-Scan(s) geladen"))
+    load_all_scans(ICON_SCANS_DIR, load_icon_scan_file, state.icon_scans, "Icon-Scan")

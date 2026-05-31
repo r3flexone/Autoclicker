@@ -11,38 +11,28 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ItemScanConfig, ItemSlot, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, warn
+from ..utils import compact_json, warn
 from .paths import ITEM_SCANS_DIR
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
 
 logger = logging.getLogger("autoclicker")
 
 
 def ensure_item_scans_dir() -> Path:
     """Stellt sicher, dass der Item-Scans-Ordner existiert."""
-    path = Path(ITEM_SCANS_DIR)
-    path.mkdir(exist_ok=True)
-    return path
+    return ensure_dir(ITEM_SCANS_DIR)
 
 
 def save_item_scan(config: ItemScanConfig) -> None:
     """Speichert eine Item-Scan Konfiguration."""
-    ensure_item_scans_dir()
-
     data = {
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "slots": [_slot_to_dict(slot) for slot in config.slots],
         "items": [_item_to_dict(item) for item in config.items]
     }
-
-    filename = f"{sanitize_filename(config.name)}.json"
-    try:
-        with open(Path(ITEM_SCANS_DIR) / filename, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
-        print(save_tag(f"Item-Scan '{config.name}' gespeichert in '{ITEM_SCANS_DIR}/'"))
-    except (IOError, OSError) as e:
-        print(err(f"Item-Scan konnte nicht gespeichert werden: {e}"))
+    write_scan(ITEM_SCANS_DIR, config.name, data, "Item-Scan")
 
 
 def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
@@ -80,30 +70,12 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
 
 def list_available_item_scans() -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Item-Scan Konfigurationen auf."""
-    scan_dir = Path(ITEM_SCANS_DIR)
-    if not scan_dir.exists():
-        return []
-
-    scans = []
-    for f in scan_dir.glob("*.json"):
-        try:
-            with open(f, "r", encoding="utf-8") as file:
-                data = json.load(file)
-                name = data.get("name", f.stem)
-                scans.append((name, f))
-        except (json.JSONDecodeError, IOError, KeyError, TypeError):
-            pass  # Ungültige/korrupte Datei überspringen
-    return scans
+    return list_scan_files(ITEM_SCANS_DIR)
 
 
 def load_all_item_scans(state: AutoClickerState) -> None:
     """Lädt alle Item-Scan Konfigurationen."""
-    for name, path in list_available_item_scans():
-        config = load_item_scan_file(path)
-        if config:
-            state.item_scans[config.name] = config
-    if state.item_scans:
-        print(load_tag(f"{len(state.item_scans)} Item-Scan(s) geladen"))
+    load_all_scans(ITEM_SCANS_DIR, load_item_scan_file, state.item_scans, "Item-Scan")
 
 
 def update_item_in_scans(old_name: str, new_name: str,

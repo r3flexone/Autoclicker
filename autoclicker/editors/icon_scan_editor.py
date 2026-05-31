@@ -24,12 +24,12 @@ from ..utils import (
 from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
-    get_pixel_color,
 )
 from ..persistence import (
     save_icon_scan, list_available_icon_scans, load_icon_scan_file,
     TEMPLATES_DIR,
 )
+from ._detection_capture import capture_markers
 
 
 def run_icon_scan_editor(state: AutoClickerState) -> None:
@@ -228,31 +228,11 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
             pass
 
     elif chosen_label == "Farb-Marker setzen":
-        marker_colors = []
-        template = None
-        print("\n  Farb-Marker aufnehmen (Maus auf Farbpunkt bewegen, Enter drücken)")
-        print("  'done' oder 'd' wenn fertig, 'cancel' zum Abbrechen")
-        while True:
-            try:
-                inp = safe_input(f"  Marker {len(marker_colors) + 1}: ").strip().lower()
-                if inp in ("done", "d"):
-                    break
-                if is_cancel(inp):
-                    return
-                if inp == "" or inp == "enter":
-                    x, y = get_cursor_pos()
-                    color = get_pixel_color(x, y)
-                    if color:
-                        marker_colors.append(color)
-                        print(f"    → RGB{color} bei ({x},{y})")
-                    else:
-                        print("    → Konnte Farbe nicht lesen!")
-            except (KeyboardInterrupt, EOFError):
-                return
-
-        if not marker_colors:
-            print(f"  {err('Mindestens 1 Marker benötigt!')}")
+        captured = capture_markers()
+        if captured is None:
             return
+        marker_colors = captured
+        template = None
 
         try:
             tol_input = safe_input(f"  Farbtoleranz (Enter={tolerance}): ").strip()
