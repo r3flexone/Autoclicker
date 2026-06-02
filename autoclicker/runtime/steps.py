@@ -28,10 +28,10 @@ from .actions import (
     wait_with_pause_skip, execute_else_action,
 )
 from .boss_detection import (
-    execute_boss_scan, _execute_boss_action,
+    execute_boss_scan, _execute_boss_action, _execute_detection_action,
     _should_run_async, _warn_llm_config_inconsistencies, _spawn_boss_async,
 )
-from .item_scan import execute_item_scan, _click_scan_result
+from .item_scan import execute_item_scan, _click_scan_result, execute_icon_scan
 
 
 # =============================================================================
@@ -82,7 +82,8 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                                   step_num: int, total_steps: int, phase: str,
                                   mode: str, debug: bool) -> bool:
     """Immediate-Modus: Scan→Klick pro Slot statt alle scannen, dann alle klicken."""
-    config = state.item_scans.get(step.item_scan)
+    with state.lock:
+        config = state.item_scans.get(step.item_scan)
     if not config or not config.slots or not config.items:
         return True
 
@@ -160,7 +161,8 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
         return execute_else_action(state, step, phase, step_num, total_steps)
 
     # Default-Aktion aus der BossScanConfig
-    config = state.boss_scans.get(step.boss_scan)
+    with state.lock:
+        config = state.boss_scans.get(step.boss_scan)
     if config and config.default_action != BOSS_ACTION_SKIP:
         if config.default_action == BOSS_ACTION_SKIP_CYCLE:
             _step_status(debug, phase, step_num, total_steps,
@@ -191,6 +193,45 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
 
 
 # =============================================================================
+# ICON-SCAN STEP
+# =============================================================================
+
+def _execute_icon_scan_step(state: AutoClickerState, step: SequenceStep,
+                            step_num: int, total_steps: int, phase: str) -> bool:
+    """Führt einen Icon-Scan Schritt aus: Icon erkennen → Aktion, sonst else/weiter."""
+    debug = state.config.debug_mode
+
+    _step_status(debug, phase, step_num, total_steps, f"Icon-Scan '{step.icon_scan}'...")
+    found = execute_icon_scan(state, step.icon_scan)
+
+    if found:
+        with state.lock:
+            config = state.icon_scans.get(step.icon_scan)
+        if config is None:
+            return True
+        _step_status(debug, phase, step_num, total_steps,
+                     f"Icon '{step.icon_scan}' erkannt")
+        return _execute_detection_action(
+            state, subject=f"Icon '{config.name}'", action=config.action,
+            label=f"icon:{config.name}", step_num=step_num, total_steps=total_steps,
+            phase=phase, debug=debug,
+            x=config.action_x, y=config.action_y, key=config.action_key,
+            delay=config.action_delay,
+        )
+
+    # Icon nicht erkannt → else-Config oder einfach weiter
+    if step.else_config:
+        if debug:
+            print(dbg("Icon nicht erkannt → else-Aktion"))
+        return execute_else_action(state, step, phase, step_num, total_steps)
+
+    _step_status(debug, phase, step_num, total_steps,
+                 f"Icon '{step.icon_scan}' nicht erkannt",
+                 f"Icon '{step.icon_scan}' nicht erkannt → übersprungen")
+    return True
+
+
+# =============================================================================
 # BOSS-WATCHER STEP
 # =============================================================================
 
@@ -217,7 +258,9 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     max_scans = state.config.llm_watcher_max_scans
     timeout = state.config.llm_watcher_timeout
 
-    if watcher_name not in state.boss_scans:
+    with state.lock:
+        watcher_known = watcher_name in state.boss_scans
+    if not watcher_known:
         print(err(f"Boss-Watcher '{watcher_name}' nicht gefunden!"))
         return True
 
@@ -535,6 +578,9 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.boss_scan:
         return _execute_boss_scan_step(state, step, step_num, total_steps, phase)
+
+    if step.icon_scan:
+        return _execute_icon_scan_step(state, step, step_num, total_steps, phase)
 
     if step.item_scan:
         return _execute_item_scan_step(state, step, step_num, total_steps, phase)

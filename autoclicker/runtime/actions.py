@@ -243,7 +243,12 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
 
 def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
                         step_num: int, total_steps: int) -> bool:
-    """Führt die Else-Aktion eines Schritts aus. Gibt False zurück wenn abgebrochen."""
+    """Führt die Else-Aktion eines Schritts aus. Gibt False zurück wenn abgebrochen.
+
+    Teilt sich bewusst NICHT den Dispatcher mit Boss/Icon (_execute_detection_action):
+    die Else-Verzögerung ist pause-/skip-aware (wait_with_pause_skip) statt eines
+    einfachen stop_event.wait — anderes Verhalten, daher eigener Pfad.
+    """
     ec = step.else_config
     if not ec:
         return True

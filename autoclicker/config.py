@@ -9,7 +9,7 @@ from dataclasses import dataclass, fields, asdict
 from pathlib import Path
 from typing import Optional, Union
 
-from .utils import col, ok, warn, err
+from .utils import col, ok, warn, err, atomic_write
 
 # Logger
 logger = logging.getLogger("autoclicker")
@@ -37,14 +37,12 @@ class AppConfig:
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
 
     # === PIXEL-ERKENNUNG ===
-    pixel_color_tolerance: int = 0                  # Farbtoleranz für Scan (0 = exakt)
     pixel_wait_tolerance: int = 10                  # Toleranz für Pixel-Trigger
     pixel_wait_timeout: int = 300                   # Timeout für Pixel-Trigger in Sekunden (0 = unendlich)
     pixel_timeout_action: str = "skip_cycle"        # Aktion bei Timeout: "skip_cycle", "restart", "stop"
     pixel_check_interval: float = 1                 # Prüf-Intervall für Farbe in Sekunden
     pixel_max_consecutive_timeouts: int = 5         # Nach X aufeinanderfolgenden Timeouts → Notbremse (0 = deaktiviert)
     pixel_consecutive_action: str = "stop"          # Notbremse: "stop", "quit", "exit"
-    pixel_scan_step: int = 2                        # Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller)
     pixel_show_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
 
     # === SCAN-EINSTELLUNGEN ===
@@ -56,6 +54,7 @@ class AppConfig:
     scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
     scan_require_all_markers: bool = True            # True = ALLE Marker müssen gefunden werden
     scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
+    scan_marker_min_pixels: int = 1                 # Min. passende (abgetastete) Pixel pro Marker-Farbe (>1 = robuster gegen Rausch-Pixel)
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
     scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
@@ -66,7 +65,7 @@ class AppConfig:
     llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
     llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
     llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
-    llm_model: str = "gemma4:e4b"                   # Modell-Name (Standard: gemma4:e4b)
+    llm_model: str = "gemma3n:e4b"                  # Modell-Name (Standard: gemma3n:e4b)
     llm_timeout: int = 60                           # Timeout für LLM-Anfragen in Sekunden
     llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_async: bool = False                         # Boss-Scan/Watcher im Hintergrund-Thread (Sequenz läuft parallel)
@@ -144,6 +143,9 @@ class AppConfig:
         if self.scan_marker_count < 1:
             warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
             self.scan_marker_count = 1
+        if self.scan_marker_min_pixels < 1:
+            warnings.append(f"scan_marker_min_pixels={self.scan_marker_min_pixels} → 1")
+            self.scan_marker_min_pixels = 1
         if self.pixel_timeout_action not in valid_timeout_actions:
             warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → '{TIMEOUT_SKIP_CYCLE}'")
             self.pixel_timeout_action = TIMEOUT_SKIP_CYCLE
@@ -213,10 +215,8 @@ class AppConfig:
         "clicks_per_point": "click_per_point",
         "max_total_clicks": "click_max_total",
         "post_click_delay": "click_post_delay",
-        "color_tolerance": "pixel_color_tolerance",
         "max_consecutive_timeouts": "pixel_max_consecutive_timeouts",
         "consecutive_timeout_action": "pixel_consecutive_action",
-        "scan_pixel_step": "pixel_scan_step",
         "show_pixel_delay": "pixel_show_delay",
         "item_click_delay": "scan_item_click_delay",
         "marker_count": "scan_marker_count",
@@ -285,15 +285,16 @@ _CONFIG_SECTIONS = [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
     ]),
     ("PIXEL-ERKENNUNG", [
-        "pixel_color_tolerance", "pixel_wait_tolerance", "pixel_wait_timeout",
+        "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
-        "pixel_scan_step", "pixel_show_delay",
+        "pixel_show_delay",
     ]),
     ("SCAN-EINSTELLUNGEN", [
         "scan_reverse", "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
+        "scan_marker_min_pixels",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),
@@ -346,19 +347,20 @@ def save_config(config: AppConfig) -> None:
     for k, v in remaining:
         entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
 
+    lines = ["{\n"]
+    last_section = None
+    for i, (section, key, val) in enumerate(entries):
+        if section != last_section:
+            if last_section is not None:
+                lines.append("\n")
+            last_section = section
+        comma = "," if i < len(entries) - 1 else ""
+        lines.append(f'  "{key}": {val}{comma}\n')
+    lines.append("}\n")
+
     try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            f.write("{\n")
-            last_section = None
-            for i, (section, key, val) in enumerate(entries):
-                if section != last_section:
-                    if last_section is not None:
-                        f.write("\n")
-                    last_section = section
-                comma = "," if i < len(entries) - 1 else ""
-                f.write(f'  "{key}": {val}{comma}\n')
-            f.write("}\n")
-    except IOError as e:
+        atomic_write(CONFIG_FILE, "".join(lines))
+    except (IOError, OSError) as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
 
 

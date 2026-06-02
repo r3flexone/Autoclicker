@@ -130,18 +130,29 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
     """Erstellt den System-Prompt für Boss-Erkennung."""
     base = (
         "Du bist ein präziser OCR-Analyst für das Spiel Idle Clans. "
+        "Deine Aufgabe: lies den Eigennamen des Bosses/Gegners vom Bild ab.\n"
         "DEINE REGELN:\n"
-        "1. Antworte NUR mit dem Eigennamen des Bosses/Gegners.\n"
+        "1. Antworte in GENAU EINER Zeile mit AUSSCHLIESSLICH dem Eigennamen — "
+        "keine Präfixe wie 'Der Boss ist', keine Anführungszeichen, keine Interpunktion, "
+        "keine Erklärungen, kein Smalltalk.\n"
         "2. Ignoriere ALLES andere auf dem Bild (UI-Texte, 'Art', Level, Zahlen, Beschreibungen).\n"
-        "3. Wenn kein Name erkennbar ist, antworte NUR: KEIN_BOSS.\n"
-        "4. Keine Interpunktion, keine Erklärungen, kein Smalltalk."
+        "3. Wenn kein Boss-Name lesbar ist, antworte mit GENAU diesem Wort: KEIN_BOSS\n"
+        "4. Gib den Namen exakt so wieder, wie er auf dem Bild steht — rate nicht "
+        "und verändere die Schreibweise nicht.\n"
+        "\n"
+        "Beispiele:\n"
+        "Bild zeigt 'Skeleton King' → Skeleton King\n"
+        "Bild zeigt nur Inventar/Menü → KEIN_BOSS"
     )
 
     if boss_names:
         names_str = ", ".join(boss_names)
-        base += f"\n\nBekannte Bosse: {names_str}"
-        base += "\nWenn du einen dieser Bosse erkennst, verwende exakt diesen Namen."
-        base += "\nWenn du einen ANDEREN Boss erkennst, antworte mit dessen Namen."
+        base += (
+            f"\n\nBereits bekannte Bosse (mögliche Referenz, NICHT abschließend): {names_str}\n"
+            "Wenn der abgelesene Name exakt einem davon entspricht, verwende genau diese Schreibweise. "
+            "Wenn du einen anderen oder unsicheren Namen liest, gib ihn trotzdem wörtlich wieder — "
+            "ordne ihn NICHT gewaltsam einem bekannten Boss zu."
+        )
 
     return base
 
@@ -186,12 +197,14 @@ def analyze_image(
 
     if model is None:
         if provider == PROVIDER_OLLAMA:
-            model = "gemma4:e4b"
+            model = "gemma3n:e4b"
         else:
-            model = "google/gemma-4-e2b"
+            model = "google/gemma-3n-e2b"
 
     if prompt is None:
-        prompt = "Extrahiere nur den Boss-Namen:"
+        # Knappe Aufgaben-Frage; die Formatregeln stehen im System-Prompt
+        # (nicht erneut wiederholen).
+        prompt = "Welcher Boss ist auf diesem Bild zu sehen?"
 
     # Bild zu Base64 konvertieren
     image_b64 = _image_to_base64(img)
@@ -288,7 +301,10 @@ def is_no_boss(response: str) -> bool:
     negative_keywords = ["kein_boss", "kein boss", "no boss", "none", "nichts",
                          "nicht erkannt", "no enemy", "not found", "i don't see",
                          "i cannot", "i can't", "there is no"]
-    return any(neg in response_lower for neg in negative_keywords)
+    # Wortgrenzen statt reinem Substring — sonst matcht z.B. "none" innerhalb
+    # eines echten Boss-Namens wie "Stonekeeper" und unterdrückt die Erkennung.
+    return any(re.search(r"\b" + re.escape(neg) + r"\b", response_lower)
+               for neg in negative_keywords)
 
 
 def clean_boss_name(response: str) -> str:
@@ -340,15 +356,19 @@ def match_boss_name(response: str, boss_names: list[str]) -> tuple[Optional[str]
             if name.lower() == cleaned_lower:
                 return name, False
 
-        # Enthaltener Match (LLM-Antwort enthält Boss-Namen)
-        for name in boss_names:
-            if name.lower() in cleaned_lower:
-                return name, False
+        # LLM-Antwort enthält einen Boss-Namen → spezifischsten (längsten)
+        # Treffer wählen, nicht den ersten in der Liste (z.B. "Orkhäuptling"
+        # statt "Ork").
+        contained = [name for name in boss_names if name.lower() in cleaned_lower]
+        if contained:
+            return max(contained, key=len), False
 
-        # Boss-Name in LLM-Antwort enthalten
-        for name in boss_names:
-            if cleaned_lower in name.lower():
-                return name, False
+        # Boss-Name enthält die LLM-Antwort — nur bei hinreichend langer Antwort,
+        # sonst matcht ein Kürzel wie "a" jeden Namen, der diesen Buchstaben enthält.
+        if len(cleaned_lower) >= 3:
+            partial = [name for name in boss_names if cleaned_lower in name.lower()]
+            if partial:
+                return min(partial, key=len), False
 
     # Neuer Boss - nicht in der Liste!
     return cleaned, True

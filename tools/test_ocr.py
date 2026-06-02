@@ -21,7 +21,6 @@ sys.path.insert(0, _PROJECT_ROOT)
 from autoclicker.ocr import (
     is_available, available_backends, get_status,
     read_text, detect_boss_name,
-    BACKEND_EASYOCR, BACKEND_TESSERACT,
 )
 
 

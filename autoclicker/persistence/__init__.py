@@ -19,6 +19,10 @@ from .boss_scans import (
     ensure_boss_scans_dir, save_boss_scan, load_boss_scan_file,
     list_available_boss_scans, load_all_boss_scans,
 )
+from .icon_scans import (
+    ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
+    list_available_icon_scans, load_all_icon_scans,
+)
 from .globals import (
     save_global_slots, load_global_slots,
     save_global_items, load_global_items,
@@ -30,7 +34,7 @@ from .item_scans import (
     update_item_in_scans,
 )
 from .paths import (
-    BOSS_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
+    BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
     SCREENSHOTS_DIR, SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
     SLOTS_FILE, ITEMS_FILE,
     SLOT_PRESETS_DIR, ITEM_PRESETS_DIR,
@@ -53,7 +57,7 @@ from .serialization import (
 
 __all__ = [
     # paths
-    'BOSS_SCANS_DIR', 'ITEM_SCANS_DIR', 'SLOTS_DIR', 'ITEMS_DIR',
+    'BOSS_SCANS_DIR', 'ICON_SCANS_DIR', 'ITEM_SCANS_DIR', 'SLOTS_DIR', 'ITEMS_DIR',
     'SCREENSHOTS_DIR', 'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
     'SLOTS_FILE', 'ITEMS_FILE', 'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
     'init_directories',
@@ -71,6 +75,9 @@ __all__ = [
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
+    # icon_scans
+    'ensure_icon_scans_dir', 'save_icon_scan', 'load_icon_scan_file',
+    'list_available_icon_scans', 'load_all_icon_scans',
     # globals
     'save_global_slots', 'load_global_slots',
     'save_global_items', 'load_global_items',

@@ -15,12 +15,22 @@ from .config import AppConfig, DEFAULT_MIN_CONFIDENCE
 # =============================================================================
 # STRING-KONSTANTEN (zentral definiert, verhindert Tippfehler)
 # =============================================================================
+# Aktions-Typen (zentral, eine Quelle der Wahrheit).
+# ElseConfig, BossProfile und IconScanConfig teilen sich dieselben Aktionswerte —
+# die familienspezifischen Namen unten sind nur Aliase für Lesbarkeit/Kompat.
+ACTION_CLICK = "click"              # Punkt klicken
+ACTION_KEY = "key"                  # Taste drücken
+ACTION_SKIP = "skip"                # Schritt überspringen
+ACTION_SKIP_CYCLE = "skip_cycle"    # Zyklus überspringen
+ACTION_RESTART = "restart"          # Sequenz neustarten
+ACTION_ITEM_SCAN = "item_scan"      # Item-Scan ausführen (nur Boss)
+
 # ElseConfig.action
-ELSE_SKIP = "skip"
-ELSE_SKIP_CYCLE = "skip_cycle"
-ELSE_RESTART = "restart"
-ELSE_CLICK = "click"
-ELSE_KEY = "key"
+ELSE_SKIP = ACTION_SKIP
+ELSE_SKIP_CYCLE = ACTION_SKIP_CYCLE
+ELSE_RESTART = ACTION_RESTART
+ELSE_CLICK = ACTION_CLICK
+ELSE_KEY = ACTION_KEY
 VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
 # pixel_timeout_action (Config)
@@ -40,14 +50,23 @@ SCAN_MODE_EVERY = "every"     # Jedes gefundene Item
 VALID_SCAN_MODES = {SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY}
 
 # BossProfile.action
-BOSS_ACTION_SCAN = "item_scan"      # Item-Scan ausführen
-BOSS_ACTION_CLICK = "click"          # Punkt klicken
-BOSS_ACTION_KEY = "key"              # Taste drücken
-BOSS_ACTION_SKIP = "skip"            # Schritt überspringen
-BOSS_ACTION_SKIP_CYCLE = "skip_cycle"  # Zyklus überspringen
-BOSS_ACTION_RESTART = "restart"      # Sequenz neustarten
+BOSS_ACTION_SCAN = ACTION_ITEM_SCAN
+BOSS_ACTION_CLICK = ACTION_CLICK
+BOSS_ACTION_KEY = ACTION_KEY
+BOSS_ACTION_SKIP = ACTION_SKIP
+BOSS_ACTION_SKIP_CYCLE = ACTION_SKIP_CYCLE
+BOSS_ACTION_RESTART = ACTION_RESTART
 VALID_BOSS_ACTIONS = {BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
                       BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART}
+
+# IconScanConfig.action — Aktion wenn ein Icon (z.B. rotes "!") erkannt wird
+ICON_ACTION_CLICK = ACTION_CLICK
+ICON_ACTION_KEY = ACTION_KEY
+ICON_ACTION_SKIP = ACTION_SKIP
+ICON_ACTION_SKIP_CYCLE = ACTION_SKIP_CYCLE
+ICON_ACTION_RESTART = ACTION_RESTART
+VALID_ICON_ACTIONS = {ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
+                      ICON_ACTION_SKIP_CYCLE, ICON_ACTION_RESTART}
 
 
 # =============================================================================
@@ -110,6 +129,8 @@ class SequenceStep:
     boss_scan: Optional[str] = None      # Name der BossScanConfig
     # Optional: Boss-Watcher (wartet bis Boss erkannt, dann Aktion)
     boss_watcher: Optional[str] = None   # Name der BossScanConfig für Watcher-Modus
+    # Optional: Icon-Scan (erkennt Symbol/Icon in Region → Aktion)
+    icon_scan: Optional[str] = None      # Name der IconScanConfig
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
@@ -358,6 +379,44 @@ class BossScanConfig:
         return f"{self.name} ({len(self.bosses)} Bosse, Region ({r[0]},{r[1]})-({r[2]},{r[3]})){tag_str}"
 
 
+@dataclass
+class IconScanConfig:
+    """Konfiguration für Icon-Erkennung in einer Region → Aktion.
+
+    Erkennt ein einzelnes Symbol/Icon (z.B. ein rotes "!" das eine nicht
+    machbare Mission markiert) per Template-Matching ODER Farb-Marker und führt
+    bei Fund eine Aktion aus (Klick / Taste / Zyklus überspringen / ...).
+    Kein Item-Sammeln, kein LLM — bewusst schlank gehalten.
+    """
+    name: str
+    scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird
+    template: Optional[str] = None                              # Template-Bild (in items/templates/)
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
+    marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
+    color_tolerance: int = 30                                   # Farbtoleranz für Marker
+    action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
+    action_x: int = 0                                          # Klick-X (wenn action="click")
+    action_y: int = 0                                          # Klick-Y (wenn action="click")
+    action_key: Optional[str] = None                           # Taste (wenn action="key")
+    action_delay: float = 0                                    # Verzögerung vor der Aktion
+
+    def __str__(self) -> str:
+        r = self.scan_region
+        if self.template:
+            detect = f"Template: {self.template} (≥{self.min_confidence:.0%})"
+        elif self.marker_colors:
+            detect = f"{len(self.marker_colors)} Marker"
+        else:
+            detect = "keine Erkennung"
+        if self.action == ICON_ACTION_CLICK:
+            act = f"→ Klick ({self.action_x},{self.action_y})"
+        elif self.action == ICON_ACTION_KEY:
+            act = f"→ Taste '{self.action_key}'"
+        else:
+            act = f"→ {self.action}"
+        return f"{self.name} ({detect}, Region ({r[0]},{r[1]})-({r[2]},{r[3]})) {act}"
+
+
 # =============================================================================
 # AUTOCLICKER STATE
 # =============================================================================
@@ -379,6 +438,9 @@ class AutoClickerState:
 
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
+
+    # Icon-Scan Konfigurationen (Symbol/Icon erkennen → Aktion)
+    icon_scans: dict[str, IconScanConfig] = field(default_factory=dict)
 
     # Aktive Sequenz
     active_sequence: Optional[Sequence] = None

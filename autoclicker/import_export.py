@@ -6,10 +6,9 @@ mit optionalem Koordinaten-Remapping für andere Bildschirme.
 
 import json
 import logging
-import os
 import zipfile
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import AutoClickerState
@@ -19,11 +18,11 @@ from .persistence import (
     _boss_profile_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
-    save_item_scan, save_boss_scan,
+    save_item_scan, save_boss_scan, save_icon_scan,
 )
 from .models import (
-    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig,
-    BOSS_ACTION_SKIP,
+    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
+    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
 from .utils import compact_json, sanitize_filename
 
@@ -81,6 +80,68 @@ def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[in
     return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
 
 
+def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, int]]:
+    """Sammelt die wichtigsten Klick-Koordinaten (Label, x, y) aus dem State.
+
+    Erfasst: Punkte, direkte Klick-Schritte in Sequenzen (inkl. else-Klick) sowie
+    Klick-Aktionen von Boss- und Icon-Scans. Scan-interne Positionen (Slots,
+    confirm_points) bleiben außen vor — es geht um die eigentlichen Klick-Ziele.
+    """
+    positions: list[tuple[str, int, int]] = []
+    with state.lock:
+        for p in state.points:
+            label = f"Punkt #{p.id}" + (f" {p.name}" if p.name else "")
+            positions.append((label, p.x, p.y))
+
+        for name, seq in state.sequences.items():
+            groups = [("Init", seq.init_steps), ("End", seq.end_steps)]
+            for lp in seq.loop_phases:
+                groups.append((lp.name, lp.steps))
+            for gname, steps in groups:
+                for i, s in enumerate(steps, 1):
+                    # Echter Klick-Schritt: nicht wait-only / kein Scan/Key/Screenshot
+                    if not (s.wait_only or s.item_scan or s.boss_scan or s.icon_scan
+                            or s.screenshot_only or s.key_press):
+                        positions.append((f"Seq '{name}'/{gname} #{i}", s.x, s.y))
+                    ec = s.else_config
+                    if ec and ec.action == ACTION_CLICK:
+                        positions.append((f"Seq '{name}'/{gname} #{i} (else)", ec.x, ec.y))
+
+        for cfg in state.boss_scans.values():
+            for b in cfg.bosses:
+                if b.action == ACTION_CLICK:
+                    positions.append((f"Boss '{b.name}'", b.action_x, b.action_y))
+
+        for cfg in state.icon_scans.values():
+            if cfg.action == ACTION_CLICK:
+                positions.append((f"Icon '{cfg.name}'", cfg.action_x, cfg.action_y))
+
+    return positions
+
+
+def clicks_outside_window(state: 'AutoClickerState',
+                          window_rect: tuple[int, int, int, int]) -> list[tuple[str, int, int]]:
+    """Liefert die Klick-Positionen, die außerhalb des Fenster-Rects (l, t, r, b) liegen."""
+    l, t, r, b = window_rect
+    lo_x, hi_x = min(l, r), max(l, r)
+    lo_y, hi_y = min(t, b), max(t, b)
+    return [(label, x, y) for label, x, y in collect_click_positions(state)
+            if not (lo_x <= x <= hi_x and lo_y <= y <= hi_y)]
+
+
+def transform_from_windows(src_window: tuple[int, int, int, int],
+                           dst_window: tuple[int, int, int, int]) -> dict:
+    """Baut die Affin-Transformation aus zwei Fenster-Client-Rects (l, t, r, b).
+
+    Verwendet obere-linke und untere-rechte Ecke des Fensters als die zwei
+    Referenzpunkte — damit skalieren+verschieben sich alle Koordinaten passend
+    zur (ggf. anderen) Spielfenster-Größe/Position auf dem Zielsystem.
+    """
+    sl, st, sr, sb = src_window
+    dl, dt, dr, db = dst_window
+    return compute_transform((sl, st), (sr, sb), (dl, dt), (dr, db))
+
+
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
 
 
@@ -93,8 +154,14 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                   include_points: bool = True, include_sequences: bool = True,
                   include_slots: bool = True, include_items: bool = True,
                   include_item_scans: bool = True, include_boss_scans: bool = True,
-                  include_config: bool = True) -> tuple[bool, str]:
+                  include_icon_scans: bool = True,
+                  include_config: bool = True,
+                  source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
     """Exportiert Setup als ZIP-Archiv.
+
+    source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
+    Manifest abgelegt, damit der Import die Skalierung automatisch aus der
+    Fenstergröße ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
 
     Returns:
         (success, message)
@@ -108,6 +175,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
             },
             "contents": {},
         }
+        if source_window:
+            manifest["source_window"] = list(source_window)
 
         with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
             # Punkte
@@ -198,6 +267,33 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 if bscan_names:
                     manifest["contents"]["boss_scans"] = bscan_names
 
+            # Icon-Scans
+            if include_icon_scans:
+                with state.lock:
+                    iscans = dict(state.icon_scans)
+                iscan_names = []
+                for name, config in iscans.items():
+                    iscan_data = {
+                        "name": config.name,
+                        "scan_region": list(config.scan_region),
+                        "template": config.template,
+                        "min_confidence": config.min_confidence,
+                        "marker_colors": [list(c) for c in config.marker_colors],
+                        "color_tolerance": config.color_tolerance,
+                        "action": config.action,
+                        "action_x": config.action_x,
+                        "action_y": config.action_y,
+                        "action_key": config.action_key,
+                        "action_delay": config.action_delay,
+                    }
+                    safe = sanitize_filename(name)
+                    zf.writestr(f"icon_scans/{safe}.json", compact_json(iscan_data))
+                    iscan_names.append(name)
+                    if config.template:
+                        template_files.add(config.template)
+                if iscan_names:
+                    manifest["contents"]["icon_scans"] = iscan_names
+
             # Template-PNGs einpacken
             packed_templates = 0
             for tpl in template_files:
@@ -263,6 +359,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                   import_points: bool = True, import_sequences: bool = True,
                   import_slots: bool = True, import_items: bool = True,
                   import_item_scans: bool = True, import_boss_scans: bool = True,
+                  import_icon_scans: bool = True,
                   import_config: bool = True, merge: bool = True) -> tuple[bool, str]:
     """Importiert ein Setup aus einer ZIP-Datei.
 
@@ -284,7 +381,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 return False, "Keine gültige Export-Datei"
 
             stats = {"points": 0, "sequences": 0, "slots": 0, "items": 0,
-                     "item_scans": 0, "boss_scans": 0, "templates": 0}
+                     "item_scans": 0, "boss_scans": 0, "icon_scans": 0, "templates": 0}
 
             # Templates zuerst extrahieren
             templates_dir = Path(TEMPLATES_DIR)
@@ -408,7 +505,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         bosses = []
                         for b in bscan_data.get("bosses", []):
                             boss = _boss_profile_from_dict(b)
-                            if boss.action_x is not None or boss.action_y is not None:
+                            # Nur Klick-Bosse haben sinnvolle Koordinaten — für
+                            # skip/key-Bosse sind action_x/y bedeutungslos (Default 0)
+                            # und dürfen nicht durch den Affine-Transform verschoben werden.
+                            if boss.action == BOSS_ACTION_CLICK:
                                 boss.action_x, boss.action_y = remap_point(
                                     boss.action_x, boss.action_y, transform)
                             bosses.append(boss)
@@ -429,6 +529,35 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             state.boss_scans[config.name] = config
                         save_boss_scan(config)
                         stats["boss_scans"] += 1
+
+            # Icon-Scans
+            if import_icon_scans:
+                for name in names:
+                    if name.startswith("icon_scans/") and name.endswith(".json"):
+                        iscan_data = json.loads(zf.read(name).decode("utf-8"))
+                        action = iscan_data.get("action", ICON_ACTION_CLICK)
+                        ax, ay = iscan_data.get("action_x", 0), iscan_data.get("action_y", 0)
+                        # Nur Klick-Aktionen haben sinnvolle Koordinaten zum Remappen.
+                        if action == ICON_ACTION_CLICK:
+                            ax, ay = remap_point(ax, ay, transform)
+                        region = remap_region(tuple(iscan_data["scan_region"]), transform)
+                        config = IconScanConfig(
+                            name=iscan_data["name"],
+                            scan_region=region,
+                            template=iscan_data.get("template"),
+                            min_confidence=iscan_data.get("min_confidence", 0.8),
+                            marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
+                            color_tolerance=iscan_data.get("color_tolerance", 30),
+                            action=action,
+                            action_x=ax,
+                            action_y=ay,
+                            action_key=iscan_data.get("action_key"),
+                            action_delay=iscan_data.get("action_delay", 0),
+                        )
+                        with state.lock:
+                            state.icon_scans[config.name] = config
+                        save_icon_scan(config)
+                        stats["icon_scans"] += 1
 
             # Config
             if import_config and "config.json" in names:
@@ -462,6 +591,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 parts.append(f"{stats['item_scans']} Item-Scan(s)")
             if stats["boss_scans"]:
                 parts.append(f"{stats['boss_scans']} Boss-Scan(s)")
+            if stats["icon_scans"]:
+                parts.append(f"{stats['icon_scans']} Icon-Scan(s)")
             if stats["templates"]:
                 parts.append(f"{stats['templates']} Template(s)")
 

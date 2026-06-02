@@ -119,6 +119,16 @@ def sequence_worker(state: AutoClickerState) -> None:
 
     _run_end_phase(state, sequence)
 
+    # Laufenden Async-LLM-Boss-Thread abwarten, bevor Log/Statistik abgeschlossen
+    # werden. Sonst kann der Daemon-Thread nach Sequenz-Ende noch Klicks/Tasten
+    # feuern (Phantom-Aktionen) und Zähler nach der Statistik-Ausgabe mutieren.
+    llm_thread = state.llm_thread
+    if llm_thread is not None and llm_thread.is_alive():
+        join_timeout = state.config.llm_timeout + 5
+        llm_thread.join(timeout=join_timeout)
+        if llm_thread.is_alive() and debug:
+            print(dbg(f"  → Async-LLM-Thread nach {join_timeout}s noch aktiv (Daemon, wird bei Beenden verworfen)"))
+
     # Neu entdeckte Boss-Namen bestätigen (vor Statistik-Anzeige)
     _confirm_new_bosses(state)
 

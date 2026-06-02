@@ -47,6 +47,7 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("scan <Name>", "Item-Scan ausführen"))
         print(cmd_hint("boss <Name>", "Boss-Scan (erkennt Boss → Aktion)"))
         print(cmd_hint("watcher <Name>", "Boss-Watcher (wartet bis Boss erscheint)"))
+        print(cmd_hint("icon <Name>", "Icon-Scan (erkennt Symbol → Aktion)"))
         print(cmd_hint("key <Taste>", "Taste drücken              (z.B. 'key enter')"))
         print(cmd_hint("wait <Zeit>", "Nur warten, kein Klick"))
         print(cmd_hint("del <Nr>", "Schritt löschen"))
@@ -76,6 +77,7 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("scan <Name> every", "Item-Scan: alle Treffer (für Duplikate)"))
     print(cmd_hint("boss <Name>", "Boss-Scan: Boss erkennen → bedingte Aktion"))
     print(cmd_hint("watcher <Name>", "Boss-Watcher: wartet bis Boss erscheint → Aktion"))
+    print(cmd_hint("icon <Name>", "Icon-Scan: Symbol/Icon erkennen → Aktion (z.B. rotes !)"))
     print("ELSE-Bedingungen (falls Scan/Pixel/Boss fehlschlägt):")
     print(cmd_hint("... else skip", "Schritt überspringen, weiter (z.B. 'scan items else skip')"))
     print(cmd_hint("... else skip_cycle", "Zyklus abbrechen, nächster startet (z.B. 'scan items else skip_cycle')"))
@@ -116,7 +118,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 # Bekannte Befehle für Tippfehler-Vorschläge (suggest_command)
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "del", "ins", "points", "learn",
-    "scan", "boss", "watcher", "key", "wait", "screenshot", "ss",
+    "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
 ]
 
 
@@ -226,6 +228,9 @@ class _PhaseEditor:
             return
         if cmd.startswith("watcher "):
             self._handle_watcher(user_input)
+            return
+        if cmd.startswith("icon "):
+            self._handle_icon(user_input)
             return
         if cmd.startswith("key "):
             self._handle_key(user_input)
@@ -410,6 +415,22 @@ class _PhaseEditor:
             x=0, y=0, delay_before=0,
             name=f"Watcher:{watcher_name}",
             boss_watcher=watcher_name,
+        )
+        apply_else_to_step(step, else_parts, self.state)
+        self.add_step(step)
+
+    def _handle_icon(self, user_input: str) -> None:
+        """Format: icon <Icon-Scan-Name> [else ...]"""
+        main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if not main_parts:
+            print("  -> Format: icon <Icon-Scan-Name> [else ...]")
+            return
+
+        icon_name = main_parts[0]
+        step = SequenceStep(
+            x=0, y=0, delay_before=0,
+            name=f"Icon:{icon_name}",
+            icon_scan=icon_name,
         )
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)

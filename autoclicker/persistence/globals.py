@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 from ..models import ItemSlot, AutoClickerState
-from ..utils import compact_json, save_tag, load_tag, err
+from ..utils import compact_json, save_tag, load_tag, err, atomic_write
 from .paths import ITEMS_FILE, SLOTS_FILE
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
 
@@ -26,8 +26,7 @@ def save_global_slots(state: AutoClickerState) -> None:
     with state.lock:
         data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     try:
-        with open(SLOTS_FILE, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
+        atomic_write(SLOTS_FILE, compact_json(data))
         print(save_tag(f"{len(data)} Slot(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Slots konnten nicht gespeichert werden: {e}"))
@@ -65,8 +64,7 @@ def save_global_items(state: AutoClickerState) -> None:
                               key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
         data = {name: _item_to_dict(item) for name, item in sorted_items}
     try:
-        with open(ITEMS_FILE, "w", encoding="utf-8") as f:
-            f.write(compact_json(data))
+        atomic_write(ITEMS_FILE, compact_json(data))
         print(save_tag(f"{len(data)} Item(s) gespeichert"))
     except (IOError, OSError) as e:
         print(err(f"Items konnten nicht gespeichert werden: {e}"))

@@ -22,7 +22,6 @@ except Exception:
         pass
 
 import json
-import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -39,7 +38,7 @@ DEBUG_DIR.mkdir(exist_ok=True)
 
 # Abhaengigkeiten pruefen
 try:
-    from PIL import Image, ImageGrab, ImageDraw, ImageFont
+    from PIL import Image, ImageGrab
     PILLOW_AVAILABLE = True
 except ImportError:
     PILLOW_AVAILABLE = False

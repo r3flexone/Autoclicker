@@ -19,13 +19,14 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Kategorie-System**: Items gruppieren (z.B. Hosen, Jacken) - nur bestes pro Kategorie klicken
 - **Template-Matching**: Items per Screenshot erkennen (OpenCV)
 - **Boss-Scan**: Bosse anhand von Templates oder Markern erkennen + Aktion auslösen (Klick, Taste, Item-Scan, Skip)
+- **Icon-Scan**: Ein Symbol/Icon (z.B. rotes „!" einer nicht machbaren Mission) per Template/Marker erkennen + Aktion (Klick/Taste/Skip)
 - **LLM Vision Boss-Detection**: Lokale LLMs (Ollama / LM Studio) erkennen Bosse per Screenshot, unbekannte Bosse werden auto-gespeichert
 - **LLM Reasoning**: Optionaler Reasoning-Modus für bessere Erkennungsgenauigkeit (Ollama: `think: true`, LM Studio: `reasoning_effort: high`)
 - **Boss-Watcher**: Step der kontinuierlich auf einen Boss wartet und beim Erscheinen reagiert
 - **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
 - **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
 - **Session-Log (CSV)**: Vollständiges Log aller Klicks/Tasten/Events pro Sequenz für Auswertung
-- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren mit automatischer Koordinaten-Anpassung (2-Punkt-Remapping)
+- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Größe angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele außerhalb des Fensters liegen
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
 - **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
@@ -186,8 +187,9 @@ Das Item-Scan System bietet ein Menü mit folgenden Optionen:
 - **[2] Items bearbeiten** - Item-Profile für die Erkennung
 - **[3] Scans bearbeiten** - Slots und Items verknüpfen
 - **[4] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
-- **[5] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
-- **[6] Import / Export** - Setup als ZIP teilen oder importieren
+- **[5] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
+- **[6] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
+- **[7] Import / Export** - Setup als ZIP teilen oder importieren
 
 ### Slot-Editor (Menü → 1)
 
@@ -408,6 +410,7 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `scan <Name> every` | Item-Scan: alle Treffer ohne Filter (für Duplikate) |
 | `boss <Name>` | Boss-Scan ausführen (einmalig prüfen, dann Aktion oder ELSE/Default) |
 | `watcher <Name>` | Boss-Watcher: wartet kontinuierlich bis ein Boss erscheint, dann Aktion |
+| `icon <Name>` | Icon-Scan: Symbol/Icon (z.B. rotes „!") in Region erkennen → Aktion (Klick/Taste/Skip) |
 | `... else skip` | Bei Fehlschlag **diesen Schritt** überspringen (nächster Schritt läuft weiter) |
 | `... else skip_cycle` | Bei Fehlschlag **ganzen Zyklus** abbrechen (nächster Zyklus startet) |
 | `... else restart` | Bei Fehlschlag **komplett neu starten** (inkl. INIT) |
@@ -529,7 +532,7 @@ Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
 |---|---|---|
 | `llm_enabled` | `false` | LLM-Erkennung global aktivieren |
 | `llm_provider` | `"lmstudio"` | `"ollama"` oder `"lmstudio"` |
-| `llm_model` | provider-abhängig | `"gemma4:e4b"` (Ollama) / `"google/gemma-4-e2b"` (LM Studio) |
+| `llm_model` | provider-abhängig | `"gemma3n:e4b"` (Ollama) / `"google/gemma-3n-e2b"` (LM Studio) |
 | `llm_timeout` | `60` | Timeout pro Anfrage in Sekunden |
 | `llm_retry_count` | `2` | Wiederholungen bei `KEIN_BOSS` (0 = kein Retry, 2 = 3 Versuche gesamt) |
 | `llm_async` | `false` | Boss-Scan/Watcher im Hintergrund-Thread — Sequenz läuft parallel weiter |
@@ -587,6 +590,28 @@ python tools/test_ocr.py bild.png               # Bild-Datei analysieren
 python tools/test_ocr.py --region 100,200,800,600   # Region direkt angeben
 python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
 ```
+
+## Icon-Scan System
+
+Icon-Scans erkennen ein **einzelnes Symbol/Icon** in einer Region und lösen eine Aktion aus — gedacht für Status-Marker wie ein rotes „!", das z.B. eine nicht machbare Mission kennzeichnet. Im Gegensatz zum Item-Scan wird nichts „eingesammelt": es ist eine reine *erkennen → handeln*-Logik ohne Slots, Kategorien oder LLM. Erstellung über das Item-Scan-Menü → **[5] Icon-Scans bearbeiten**.
+
+Eine `IconScanConfig` definiert:
+
+- **Region**: wo gesucht wird (eng ums Icon legen — robuster fürs Template-Matching)
+- **Erkennung**: Template-Bild (OpenCV) **oder** Farb-Marker (mit `color_tolerance`). Für Farb-Marker empfiehlt sich `scan_marker_min_pixels > 1`, damit einzelne Rausch-Pixel nicht auslösen.
+- **Aktion** bei Fund: `click` (Standard, z.B. „Ablehnen"-Button), `key` (Taste), `skip` (nur erkennen), `skip_cycle` (Zyklus abbrechen), `restart` (Sequenz neu starten) — mit optionalem Action-Delay.
+
+### Verwendung in Sequenzen
+
+| Befehl | Verhalten |
+|--------|-----------|
+| `icon <Name>` | Region prüfen. Icon erkannt → Aktion. Nicht erkannt → ELSE-Action oder Schritt überspringen |
+
+**Beispiel** — eine nicht machbare Mission am roten „!" erkennen und ablehnen:
+1. Item-Scan-Menü → **[5] Icon-Scans bearbeiten** → Neuen Icon-Scan erstellen
+2. Region eng um das „!" wählen, Template aufnehmen (oder Farb-Marker des Rots setzen)
+3. Aktion „Punkt klicken" → auf den „Ablehnen/Abbrechen"-Button
+4. Im Sequenz-Editor: `icon MeinIcon`
 
 ## Sicherheit & Tarnung
 
@@ -653,14 +678,15 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 ### Export
 
 1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
-2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Config) Ja/Nein
-3. **Zwei Referenzpunkte setzen** (z.B. Oben-Links und Unten-Rechts im Spielfenster):
-   - Maus an die Stelle bewegen, Enter drücken
+2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Icon-Scans/Config) Ja/Nein
+3. **Referenz für die Koordinaten-Anpassung**:
+   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Größe automatisch** als Referenz genommen — kein manuelles Klicken nötig.
+   - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
 4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
 5. ZIP wird in `exports/` gespeichert
 6. Anleitung für den Empfänger wird angezeigt
 
-Das ZIP enthält: `manifest.json`, alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
 
 ### Import
 
@@ -669,14 +695,17 @@ Das ZIP enthält: `manifest.json`, alle JSON-Daten, gepackte Template-PNGs, opti
 3. Datei aus der Liste auswählen
 4. Inhalt der ZIP wird angezeigt + Referenzpunkte des Exporters
 5. **Anpassungs-Modus wählen**:
-   - **[1] Remapping** (andere Auflösung/Fensterposition) → Zwei eigene Referenzpunkte setzen (gleiche Stellen wie der Exporter!)
-   - **[2] 1:1** (gleicher Bildschirm, kein Remapping)
+   - Enthält das Export-Manifest die Spielfenster-Größe **und** das Spielfenster läuft gerade:
+     - **[1] Automatisch aus Fenstergröße** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergröße berechnet, kein Klicken nötig
+     - **[2] Manuell** (zwei Punkte klicken, gleiche Stellen wie der Exporter)
+     - **[3] 1:1** (gleicher Bildschirm)
+   - Sonst (kein Fenster-Rect / Fenster nicht gefunden): **[1] Remapping** (zwei Punkte manuell) oder **[2] 1:1**
 6. Pro Bereich Ja/Nein wählen was importiert werden soll
 7. **Merge** (bestehende Daten behalten + ergänzen) oder **Ersetzen**
 
 ### Wie das Remapping funktioniert
 
-Aus den zwei Referenzpunkt-Paaren (Quelle → Ziel) berechnet das Programm Skalierung und Verschiebung:
+Egal ob fenster-basiert (automatisch) oder per Hand: aus zwei Referenzpunkt-Paaren (Quelle → Ziel) berechnet das Programm Skalierung und Verschiebung. Bei der automatischen Variante sind die zwei Punkte die obere-linke und untere-rechte Ecke des Spielfenster-Client-Bereichs.
 - `scale_x = (dst2.x - dst1.x) / (src2.x - src1.x)` (analog für Y)
 - `offset_x = dst1.x - src1.x * scale_x`
 
@@ -907,14 +936,12 @@ Wird beim ersten Start automatisch erstellt:
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
-  "pixel_color_tolerance": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
   "pixel_check_interval": 1,
   "pixel_max_consecutive_timeouts": 5,
   "pixel_consecutive_action": "stop",
-  "pixel_scan_step": 2,
   "pixel_show_delay": 0.3,
   "scan_reverse": true,
   "scan_click_immediate": false,
@@ -924,6 +951,7 @@ Wird beim ersten Start automatisch erstellt:
   "scan_marker_count": 5,
   "scan_require_all_markers": true,
   "scan_min_markers_required": 2,
+  "scan_marker_min_pixels": 1,
   "scan_slot_hsv_tolerance": 25,
   "scan_slot_inset": 10,
   "scan_slot_color_distance": 25,
@@ -932,7 +960,7 @@ Wird beim ersten Start automatisch erstellt:
   "llm_enabled": false,
   "llm_provider": "lmstudio",
   "llm_endpoint": null,
-  "llm_model": "gemma4:e4b",
+  "llm_model": "gemma3n:e4b",
   "llm_timeout": 30,
   "llm_reasoning": false,
   "llm_max_tokens": 0,
@@ -985,14 +1013,12 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `pixel_color_tolerance` | Toleranz für Item-Scan (0 = exakt, höher = toleranter) |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
 | `pixel_check_interval` | Wie oft auf Farbe prüfen (Sekunden) |
 | `pixel_max_consecutive_timeouts` | Nach X aufeinanderfolgenden Timeouts → Notbremse (`0` = deaktiviert, Standard: 5) |
 | `pixel_consecutive_action` | Notbremse-Aktion: `stop` (Sequenz stoppen), `quit` (Menü beenden), `exit` (Prozess killen) |
-| `pixel_scan_step` | Pixel-Schrittweite bei Farbsuche (1=genauer, 2=schneller) |
 | `pixel_show_delay` | Wie lange Pixel-Position angezeigt wird in Sekunden (Standard: 0.3) |
 
 ### Item-Scan Einstellungen
@@ -1007,6 +1033,7 @@ Wird beim ersten Start automatisch erstellt:
 | `scan_marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
 | `scan_require_all_markers` | Alle Marker müssen gefunden werden (true/false) |
 | `scan_min_markers_required` | Mindestanzahl Marker wenn `scan_require_all_markers: false` |
+| `scan_marker_min_pixels` | Min. passende Pixel pro Marker-Farbe (Standard 1; höher = robuster gegen einzelne Rausch-Pixel, z.B. für ein rotes „!"-Icon) |
 | `scan_slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
 | `scan_slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
 | `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
@@ -1020,7 +1047,7 @@ Wird beim ersten Start automatisch erstellt:
 | `llm_enabled` | LLM-basierte Boss-Erkennung global aktivieren (zusätzlich pro Boss-Scan `use_llm: true`) |
 | `llm_provider` | `"ollama"` oder `"lmstudio"` |
 | `llm_endpoint` | API-URL (`null` = Standard: `http://localhost:11434/api/chat` für Ollama, `http://localhost:1234/v1/chat/completions` für LM Studio) |
-| `llm_model` | Modell-Name (`null` = Standard `"llava"` für Ollama, `"default"` für LM Studio) |
+| `llm_model` | Modell-Name (`null` = Standard `"gemma3n:e4b"` für Ollama, `"google/gemma-3n-e2b"` für LM Studio) |
 | `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 30) |
 | `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
 | `llm_reasoning` | Reasoning-Modus aktivieren — Ollama: `think: true`, LM Studio: `reasoning_effort: high` (Standard: false) |
@@ -1325,7 +1352,7 @@ python tools/slot_tester.py
 - System-Prompt zu nummerierten Regeln umgebaut: "Ignoriere UI-Texte, Level, Zahlen" verhindert False-Positives durch Spiel-UI
 - User-Prompt vereinfacht: `"Extrahiere nur den Boss-Namen:"` statt offener Frage
 - `max_tokens: 200 → 50` — ein Name braucht keine 200 Token
-- Provider-spezifische Modell-Defaults: `gemma4:e4b` (Ollama) / `google/gemma-4-e2b` (LM Studio)
+- Provider-spezifische Modell-Defaults: `gemma3n:e4b` (Ollama) / `google/gemma-3n-e2b` (LM Studio)
 - Default-Timeout: 30s → 60s (Vision-Inferenz kann länger dauern)
 
 **Retry-Logik bei `KEIN_BOSS`** (`execution.py`, `config.py`)

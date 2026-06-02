@@ -13,7 +13,7 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write
 from .serialization import _parse_steps, _sequence_to_dict
 
 logger = logging.getLogger("autoclicker")
@@ -37,8 +37,7 @@ def ensure_sequences_dir() -> Path:
 def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
     """Speichert eine einzelne Sequenz direkt in die angegebene Datei."""
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(compact_json(_sequence_to_dict(seq)))
+        atomic_write(filepath, compact_json(_sequence_to_dict(seq)))
         return True
     except (IOError, OSError) as e:
         print(err(f"Sequenz konnte nicht gespeichert werden: {e}"))
@@ -155,8 +154,7 @@ def save_data(state: AutoClickerState) -> None:
 
     # Punkte speichern (mit stabiler ID)
     try:
-        with open(Path(SEQUENCES_DIR) / "points.json", "w", encoding="utf-8") as f:
-            f.write(compact_json(points_data))
+        atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
     except (IOError, OSError) as e:
         print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
 

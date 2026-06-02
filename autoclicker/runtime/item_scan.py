@@ -12,7 +12,7 @@ import time
 
 from ..imaging import take_screenshot, find_color_in_image, match_template_in_image
 from ..models import (
-    AutoClickerState, SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
+    AutoClickerState, SCAN_MODE_ALL, SCAN_MODE_EVERY,
 )
 from ..utils import col, err, dbg, wait_while_paused
 from ..winapi import set_cursor_pos
@@ -59,8 +59,10 @@ def _check_profile_match(profile, img, color_tolerance: int,
 
     if profile.marker_colors:
         markers_total = len(profile.marker_colors)
+        min_pixels = state.config.scan_marker_min_pixels
         markers_found = sum(1 for marker in profile.marker_colors
-                            if find_color_in_image(img, marker, color_tolerance))
+                            if find_color_in_image(img, marker, color_tolerance,
+                                                    min_pixels=min_pixels))
 
         require_all = state.config.scan_require_all_markers
         min_required = state.config.scan_min_markers_required
@@ -83,6 +85,32 @@ def _check_profile_match(profile, img, color_tolerance: int,
             print(dbg(f"  → {profile.name}: {', '.join(info_parts)}"))
 
     return template_ok and marker_ok and bool(profile.template or profile.marker_colors)
+
+
+# =============================================================================
+# ICON-SCAN (Symbol/Icon in einer Region erkennen)
+# =============================================================================
+
+def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
+    """Prüft ob das in der IconScanConfig definierte Icon in seiner Region sichtbar ist.
+
+    Nutzt dieselbe Template/Marker-Erkennung wie der Item-Scan (_check_profile_match),
+    aber als reines Ja/Nein — die Aktion bei Fund liegt im Step-Handler.
+    """
+    with state.lock:
+        config = state.icon_scans.get(scan_name)
+        if config is None:
+            print(err(f"Icon-Scan '{scan_name}' nicht gefunden!"))
+            return False
+        scan_region = config.scan_region
+        color_tolerance = config.color_tolerance
+
+    img = take_screenshot(scan_region)
+    if img is None:
+        return False
+
+    debug = state.config.debug_detection
+    return _check_profile_match(config, img, color_tolerance, state, debug, "Icon erkannt!")
 
 
 # =============================================================================

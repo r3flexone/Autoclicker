@@ -29,7 +29,7 @@ Voller Import scheitert auf Linux an `msvcrt` — das ist normal, nicht reparier
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus. `execution.py` ist nur ein Backward-Compat-Shim.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
-**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei außerhalb.
+**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei außerhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
 
 ### Aktions-Wrapper (zentral)
 Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `autoclicker/runtime/actions.py`. Diese bündeln:
@@ -60,6 +60,7 @@ items/templates/<name>.png     Item-Templates (PNG, referenziert per Dateiname-o
 items/presets/<name>.json      Item-Presets
 item_scans/<name>.json         eine ItemScanConfig pro Datei
 boss_scans/<name>.json         eine BossScanConfig pro Datei
+icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
 exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 ```
@@ -72,11 +73,12 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion.
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe.
-- `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset).
+- `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Größe (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
-- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict), `sequences.py`, `item_scans.py`, `boss_scans.py`, `globals.py`, `presets.py`.
-- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize), `item_scan.py`, `boss_detection.py`, `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
+- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
+- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
 
