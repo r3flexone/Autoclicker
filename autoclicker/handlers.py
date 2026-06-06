@@ -3,7 +3,10 @@ Hotkey-Handler für den Autoclicker.
 Verarbeitet Tastenkombinationen und führt entsprechende Aktionen aus.
 """
 
+import os
 import shutil
+import stat
+import sys
 import threading
 import time
 from datetime import datetime
@@ -20,6 +23,27 @@ from .persistence import (
 )
 from .execution import sequence_worker, print_status
 from .imaging import run_color_analyzer
+
+
+def _rmtree_robust(path: Path) -> None:
+    """Löscht einen Ordner rekursiv, behandelt Windows-Schreibschutz.
+
+    Auf Windows schlägt shutil.rmtree mit PermissionError (WinError 5) fehl, wenn
+    eine Datei das Read-only-Attribut trägt. Der Error-Handler entfernt das Flag
+    und versucht die Operation erneut, statt den Factory-Reset mittendrin abzubrechen.
+    """
+    def _on_error(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    # onerror ist seit Python 3.12 zugunsten von onexc deprecated (gleiche 3 Args).
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_on_error)
+    else:
+        shutil.rmtree(path, onerror=_on_error)
 
 
 def handle_record(state: AutoClickerState) -> None:
@@ -109,7 +133,7 @@ def handle_reset(state: AutoClickerState) -> None:
         for folder in folders_to_delete:
             folder_path = Path(folder)
             if folder_path.exists():
-                shutil.rmtree(folder_path)
+                _rmtree_robust(folder_path)
                 print(f"  {col('-', 'red')} {folder}/ {col('gelöscht', 'red')}")
 
         # Config löschen

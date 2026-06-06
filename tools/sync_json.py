@@ -19,6 +19,8 @@ Reihenfolge (Global -> Unterordner):
 """
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 # ==============================================================================
@@ -142,10 +144,26 @@ def load_json_safe(filepath: Path):
 
 
 def save_json(filepath: Path, data, indent=2):
-    """Speichert JSON mit korrekter Kodierung."""
+    """Speichert JSON crash-sicher (Temp-Datei + os.replace).
+
+    Schreibt zuerst in eine Temp-Datei im selben Verzeichnis und benennt sie atomar
+    um — so bleibt bei Abbruch mitten in der Migration die alte Datei intakt statt
+    halb überschrieben/korrupt. Standalone gehalten (kein autoclicker-Import nötig).
+    """
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=indent, ensure_ascii=False)
+    fd, tmp = tempfile.mkstemp(dir=str(filepath.parent), prefix=f".{filepath.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, filepath)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def normalize_color(color):

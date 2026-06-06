@@ -24,7 +24,7 @@ from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
     BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
-from .utils import compact_json, sanitize_filename
+from .utils import atomic_write, compact_json, sanitize_filename
 
 logger = logging.getLogger("autoclicker")
 
@@ -426,8 +426,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         safe = sanitize_filename(seq_name)
                         seq_path = Path("sequences") / f"{safe}.json"
                         seq_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(seq_path, "w", encoding="utf-8") as f:
-                            f.write(compact_json(seq_data))
+                        atomic_write(seq_path, compact_json(seq_data))
                         seq = load_sequence_file(seq_path)
                         if seq:
                             with state.lock:
