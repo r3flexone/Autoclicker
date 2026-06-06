@@ -11,9 +11,13 @@ Aufruf:
     python tools/test_llm.py items          # Item-/Mengen-Erkennung mit Verify-2.-Scan
 """
 
+import base64
+import io
 import json
 import re
 import sys
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 # Repo-Root in sys.path damit `autoclicker` importierbar ist, auch aus tools/
@@ -98,6 +102,46 @@ def run_single_scan(config: AppConfig) -> None:
     print(f"Boss-Name:     {color}{matched or '— (kein Boss)'}\033[0m")
     print(f"Reasoning:     {'an' if config.llm_reasoning else 'aus'}")
     print(f"Zeitaufwand:   {duration_ms / 1000:.2f}s")
+
+
+def _raw_lmstudio_debug(img, model: str, endpoint: str = "http://localhost:1234/v1/chat/completions") -> None:
+    """Sendet Bild direkt an LM Studio und druckt die vollständige Raw-Antwort.
+
+    Umgeht analyze_image() komplett — so sieht man exakt was LM Studio zurückgibt,
+    inkl. reasoning_content, ob content leer ist, etc.
+    """
+    _print_header("RAW LM-STUDIO DEBUG")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "Was siehst du auf diesem Bild? Beschreibe kurz die sichtbaren Zahlen."},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+        ]}],
+        "temperature": 0.0,
+        "max_tokens": 200,
+    }
+    try:
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+        print("Vollständige Antwort von LM Studio:")
+        print(json.dumps(raw, indent=2, ensure_ascii=False))
+        choices = raw.get("choices", [])
+        if choices:
+            msg = choices[0].get("message", {})
+            print(f"\ncontent:          '{msg.get('content', '')}'")
+            print(f"reasoning_content: '{str(msg.get('reasoning_content', ''))[:200]}'")
+    except Exception as e:
+        print(f"\033[91mFehler: {e}\033[0m")
 
 
 def _flush_stdin() -> None:
@@ -226,7 +270,10 @@ def run_item_scan(config: AppConfig) -> None:
     except OSError as e:
         print(f"\033[90mDebug-Screenshot konnte nicht gespeichert werden: {e}\033[0m")
 
-    print(f"Sende an {config.llm_provider} ({model})...")
+    # Raw-Debug zuerst: einfache Frage ohne JSON-Zwang, zeigt die echte LM-Studio-Antwort.
+    _raw_lmstudio_debug(img1, model)
+
+    print(f"\nSende an {config.llm_provider} ({model}) mit Item-Prompt...")
     items1 = _scan_items_once(config, img1, "Scan 1", model)
     if items1 is None:
         return
