@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .config import AppConfig, DEFAULT_MIN_CONFIDENCE
+from .config import AppConfig
+
+# Lokaler Fallback-Default für neue Profil-Instanzen — muss mit AppConfig.scan_min_confidence
+# übereinstimmen. Kein Import aus config, um den Zirkular-Import zu brechen:
+# config.py instanziiert AppConfig() auf Modulebene, dessen __post_init__ models.py importiert,
+# bevor DEFAULT_MIN_CONFIDENCE in config.py definiert wurde.
+_DEFAULT_MIN_CONFIDENCE: float = 0.8
 
 
 # =============================================================================
@@ -263,7 +269,7 @@ class ItemProfile:
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
 
     def __str__(self) -> str:
         if self.template:
@@ -313,7 +319,7 @@ class BossProfile:
     name: str
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Farb-Marker
     template: Optional[str] = None              # Template-Bild (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
     # Aktion wenn dieser Boss erkannt wird:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
     action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
@@ -391,7 +397,7 @@ class IconScanConfig:
     name: str
     scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird
     template: Optional[str] = None                              # Template-Bild (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
     action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
