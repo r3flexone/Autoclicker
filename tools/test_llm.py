@@ -38,6 +38,10 @@ ITEM_SYSTEM_PROMPT = (
 )
 ITEM_USER_PROMPT = "Lies alle Items und Mengen aus diesem Inventar-Ausschnitt ab."
 
+# Default-Vision-Modell für den Item-Test. Unabhängig von config.json, damit ein
+# veralteter llm_model-Eintrag (z.B. ein Nicht-Vision-Modell) hier nicht stört.
+DEFAULT_ITEM_MODEL = "google/gemma-4-12b-qat"
+
 
 def _print_header(title: str) -> None:
     print(f"\n\033[1m=== {title} ===\033[0m")
@@ -131,13 +135,13 @@ def _items_to_key(items) -> dict:
     return result
 
 
-def _scan_items_once(config: AppConfig, img, label: str):
+def _scan_items_once(config: AppConfig, img, label: str, model: str):
     """Ein LLM-Durchlauf fürs Item-Ablesen. Gibt geparste Liste zurück (oder None)."""
     success, response, duration_ms = analyze_image(
         img=img,
         provider=config.llm_provider,
         endpoint=config.llm_endpoint,
-        model=config.llm_model,
+        model=model,
         prompt=ITEM_USER_PROMPT,
         timeout=config.llm_timeout,
         reasoning=config.llm_reasoning,
@@ -149,6 +153,11 @@ def _scan_items_once(config: AppConfig, img, label: str):
         print(f"\033[91mFehler: {response}\033[0m")
         return None
     print(f"Roh-Antwort: '{response}'")
+    if not response or not response.strip():
+        print("\033[91mLeere Antwort.\033[0m \033[90mMögliche Ursachen: Modell ist nicht "
+              "Vision-fähig (kann das Bild nicht sehen), falscher Modellname, oder der "
+              "Screenshot war leer/schwarz (siehe gespeichertes Debug-Bild).\033[0m")
+        return None
     items, parse_err = _parse_item_json(response)
     if parse_err:
         print(f"\033[91mParse-Fehler: {parse_err}\033[0m")
@@ -162,8 +171,13 @@ def _scan_items_once(config: AppConfig, img, label: str):
 
 
 def run_item_scan(config: AppConfig) -> None:
-    """Liest Items+Mengen per LLM, macht einen 2. Scan und vergleicht (Verify-Konzept)."""
+    """Liest Items+Mengen per LLM, macht einen 2. Scan und vergleicht (Verify-Konzept).
+
+    Der Modellname wird hier direkt abgefragt (nicht aus config.json), damit ein
+    veralteter/falscher llm_model-Eintrag den Test nicht sabotiert."""
     from autoclicker.imaging import take_screenshot, select_region
+
+    model = input(f"\nModellname (Enter = {DEFAULT_ITEM_MODEL}): ").strip() or DEFAULT_ITEM_MODEL
 
     print("\nInventar-Region auswählen...")
     region = select_region()
@@ -176,14 +190,23 @@ def run_item_scan(config: AppConfig) -> None:
         print("\033[91mScreenshot fehlgeschlagen!\033[0m")
         return
 
-    print(f"Sende an {config.llm_provider} ({config.llm_model})...")
-    items1 = _scan_items_once(config, img1, "Scan 1")
+    # Screenshot zur Kontrolle speichern — so siehst du, ob die Region (z.B. bei
+    # negativen Multi-Monitor-Koordinaten) überhaupt korrekt erfasst wurde.
+    debug_path = Path("item_scan_debug.png")
+    try:
+        img1.save(debug_path)
+        print(f"\033[90mDebug-Screenshot gespeichert: {debug_path.resolve()}\033[0m")
+    except OSError as e:
+        print(f"\033[90mDebug-Screenshot konnte nicht gespeichert werden: {e}\033[0m")
+
+    print(f"Sende an {config.llm_provider} ({model})...")
+    items1 = _scan_items_once(config, img1, "Scan 1", model)
     if items1 is None:
         return
 
     # Verify: 2. Screenshot derselben Region, erneut lesen, Ergebnisse vergleichen.
     img2 = take_screenshot(region)
-    items2 = _scan_items_once(config, img2, "Scan 2 (Verify)") if img2 is not None else None
+    items2 = _scan_items_once(config, img2, "Scan 2 (Verify)", model) if img2 is not None else None
     if items2 is None:
         return
 
