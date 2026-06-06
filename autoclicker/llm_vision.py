@@ -49,12 +49,14 @@ def _image_to_base64(img: 'Image.Image') -> str:
 def _build_ollama_request(model: str, image_b64: str, prompt: str,
                           boss_names: list[str] = None,
                           reasoning: bool = False,
-                          max_tokens: int = 0) -> dict:
+                          max_tokens: int = 0,
+                          system_prompt: str = None) -> dict:
     """Erstellt den Request-Body für die Ollama API.
 
     max_tokens > 0 überschreibt den Auto-Default (128 ohne, 2048 mit Reasoning).
+    system_prompt überschreibt den Default-Boss-OCR-Prompt (z.B. für Item-Scan).
     """
-    system_prompt = _build_system_prompt(boss_names)
+    system_prompt = system_prompt or _build_system_prompt(boss_names)
 
     # Bei Reasoning-Modellen braucht es deutlich mehr Tokens — sonst wird das Thinking
     # abgeschnitten und der Boss-Name kommt nie als Antwort raus. Ollama-Default: 128.
@@ -88,12 +90,14 @@ def _build_ollama_request(model: str, image_b64: str, prompt: str,
 def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
                              boss_names: list[str] = None,
                              reasoning: bool = False,
-                             max_tokens: int = 0) -> dict:
+                             max_tokens: int = 0,
+                             system_prompt: str = None) -> dict:
     """Erstellt den Request-Body für die LM Studio API (OpenAI-kompatibel).
 
     max_tokens > 0 überschreibt den Auto-Default (50 ohne, 2048 mit Reasoning).
+    system_prompt überschreibt den Default-Boss-OCR-Prompt (z.B. für Item-Scan).
     """
-    system_prompt = _build_system_prompt(boss_names)
+    system_prompt = system_prompt or _build_system_prompt(boss_names)
 
     # Reasoning-Modelle (DeepSeek-R1, QwQ) packen <think>...</think> oft direkt in den content.
     # Mit nur 50 Tokens wird das Thinking abgeschnitten bevor der eigentliche Boss-Name kommt.
@@ -167,6 +171,7 @@ def analyze_image(
     timeout: int = 60,
     reasoning: bool = False,
     max_tokens: int = 0,
+    system_prompt: str = None,
 ) -> tuple[bool, str, float]:
     """Analysiert ein Bild mit einem lokalen LLM.
 
@@ -178,6 +183,8 @@ def analyze_image(
         prompt: Benutzer-Prompt (None = Standard Boss-Erkennung)
         boss_names: Liste bekannter Boss-Namen für den System-Prompt
         timeout: Timeout in Sekunden für die API-Anfrage
+        system_prompt: Überschreibt den Default-Boss-OCR-System-Prompt
+            (z.B. für Item-/Mengen-Erkennung). None = Boss-Erkennung.
 
     Returns:
         (success: bool, response_text: str, duration_ms: float)
@@ -211,9 +218,9 @@ def analyze_image(
 
     # Request erstellen
     if provider == PROVIDER_OLLAMA:
-        request_body = _build_ollama_request(model, image_b64, prompt, boss_names, reasoning, max_tokens)
+        request_body = _build_ollama_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
     else:
-        request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens)
+        request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
 
     # API-Anfrage
     start_time = time.time()
