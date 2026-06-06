@@ -253,18 +253,23 @@ def load_config() -> AppConfig:
 
     if config_path.exists():
         try:
+            # Nur das Lesen im with-Block — Handle MUSS geschlossen sein, bevor
+            # save_config() schreibt. Auf Windows scheitert os.replace sonst mit
+            # WinError 5, weil die Datei noch offen ist (open() setzt kein
+            # FILE_SHARE_DELETE). Auf POSIX ginge das Ersetzen offener Dateien.
             with open(config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-                config = AppConfig.from_dict(loaded)
 
-                # Prüfe ob neue Optionen hinzugefügt wurden
-                missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
-                if missing_keys:
-                    save_config(config)
-                    print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
-                else:
-                    print(col(f"[CONFIG] Geladen aus {CONFIG_FILE}", "green"))
-                return config
+            config = AppConfig.from_dict(loaded)
+
+            # Prüfe ob neue Optionen hinzugefügt wurden
+            missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
+            if missing_keys:
+                save_config(config)
+                print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
+            else:
+                print(col(f"[CONFIG] Geladen aus {CONFIG_FILE}", "green"))
+            return config
         except (json.JSONDecodeError, IOError) as e:
             print(warn(f"Config konnte nicht geladen werden: {e}"))
             print(col("[CONFIG] Verwende Standard-Konfiguration", "yellow"))
