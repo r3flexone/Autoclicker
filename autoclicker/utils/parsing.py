@@ -8,6 +8,7 @@ crash-sicher in eine Datei (Temp + os.replace) und wird von der Persistenz genut
 
 import json
 import os
+import stat
 import tempfile
 import time
 from pathlib import Path
@@ -247,10 +248,9 @@ def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        # os.replace kann auf Windows transient mit PermissionError (WinError 5)
-        # fehlschlagen, wenn ein Virenscanner (Defender), der Indexer oder ein
-        # offener Editor die frische Temp- oder Zieldatei kurz sperrt. Ein paar
-        # Retries mit kleinem Backoff lösen das fast immer.
+        # os.replace kann auf Windows mit PermissionError (WinError 5) fehlschlagen:
+        #  - persistent: die Ziel-Datei trägt das Read-only-Attribut → Flag entfernen
+        #  - transient: Virenscanner/Indexer/Editor sperrt Temp-/Zieldatei kurz → Retry
         last_err = None
         for attempt in range(5):
             try:
@@ -259,6 +259,12 @@ def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
                 break
             except PermissionError as e:
                 last_err = e
+                # Read-only-Flag des Ziels entfernen (häufigste persistente Ursache).
+                try:
+                    if path.exists():
+                        os.chmod(path, stat.S_IWRITE)
+                except OSError:
+                    pass
                 time.sleep(0.1 * (attempt + 1))
         if last_err is not None:
             raise last_err
