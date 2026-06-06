@@ -122,8 +122,10 @@ def _raw_lmstudio_debug(img, model: str, endpoint: str = "http://localhost:1234/
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
         ]}],
         "temperature": 0.0,
-        # Genug Tokens damit das Reasoning-Modell durchdenkt UND danach content liefert.
-        "max_tokens": 4096,
+        "max_tokens": 512,
+        # Explizit deaktivieren — ohne diesen Parameter denken Reasoning-Modelle
+        # trotzdem und füllen alle Tokens mit Reasoning, content bleibt leer.
+        "reasoning_effort": "none",
     }
     try:
         req = urllib.request.Request(

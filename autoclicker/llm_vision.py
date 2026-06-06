@@ -127,6 +127,11 @@ def _build_lmstudio_request(model: str, image_b64: str, prompt: str,
         # OpenAI-Konvention für /v1/chat/completions — wird von gpt-oss in LM Studio genutzt.
         # Andere Modelle ignorieren den Parameter, machen Reasoning aber ggf. trotzdem via <think>-Tags.
         body["reasoning_effort"] = "high"
+    else:
+        # Explizit deaktivieren — ohne diesen Parameter denken Reasoning-Modelle
+        # (z.B. Gemma-4-12b-qat) trotzdem und verbrauchen alle Tokens im Reasoning,
+        # sodass content leer bleibt.
+        body["reasoning_effort"] = "none"
     return body
 
 
