@@ -122,7 +122,8 @@ def _raw_lmstudio_debug(img, model: str, endpoint: str = "http://localhost:1234/
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
         ]}],
         "temperature": 0.0,
-        "max_tokens": 200,
+        # Genug Tokens damit das Reasoning-Modell durchdenkt UND danach content liefert.
+        "max_tokens": 4096,
     }
     try:
         req = urllib.request.Request(
@@ -131,7 +132,7 @@ def _raw_lmstudio_debug(img, model: str, endpoint: str = "http://localhost:1234/
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=180) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
         print("Vollständige Antwort von LM Studio:")
         print(json.dumps(raw, indent=2, ensure_ascii=False))
@@ -208,9 +209,12 @@ def _scan_items_once(config: AppConfig, img, label: str, model: str):
         model=model,
         prompt=ITEM_USER_PROMPT,
         reasoning=config.llm_reasoning,
-        max_tokens=max(config.llm_max_tokens, 512),  # JSON braucht mehr Tokens als ein Boss-Name
-        # 12B-Vision-Modelle brauchen ~20s — der Config-Timeout (oft 30s) ist zu knapp.
-        timeout=max(config.llm_timeout, 120),
+        # Reasoning-Modelle (z.B. gemma-4-12b-qat) verbrauchen erst viele Tokens fürs
+        # "Denken" (reasoning_content) und geben die eigentliche content-Antwort danach.
+        # Zu wenig Tokens → Abbruch mitten im Reasoning, content bleibt leer.
+        max_tokens=max(config.llm_max_tokens, 4096),
+        # 12B-Vision-Modelle mit Reasoning brauchen lange — Config-Timeout ist zu knapp.
+        timeout=max(config.llm_timeout, 180),
         system_prompt=ITEM_SYSTEM_PROMPT,
     )
     print(f"\n[{label}] {duration_ms / 1000:.2f}s")
