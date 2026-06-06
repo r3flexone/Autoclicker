@@ -100,6 +100,26 @@ def run_single_scan(config: AppConfig) -> None:
     print(f"Zeitaufwand:   {duration_ms / 1000:.2f}s")
 
 
+def _flush_stdin() -> None:
+    """Verwirft gepufferte Tastatureingaben vor einem Prompt.
+
+    Tippt man während eines langen Scans ungeduldig (z.B. 'i'), werden die Tasten
+    gepuffert und landen sonst im nächsten input() — so wurde schon mal 'i' als
+    Modellname interpretiert. Best-effort: msvcrt (Windows) / termios (POSIX)."""
+    try:
+        import msvcrt
+        while msvcrt.kbhit():
+            msvcrt.getch()
+        return
+    except ImportError:
+        pass
+    try:
+        import termios
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except (ImportError, OSError):
+        pass
+
+
 def _parse_item_json(response: str):
     """Extrahiert das JSON-Array aus der LLM-Antwort (tolerant ggü. Code-Fences/Text).
 
@@ -143,9 +163,10 @@ def _scan_items_once(config: AppConfig, img, label: str, model: str):
         endpoint=config.llm_endpoint,
         model=model,
         prompt=ITEM_USER_PROMPT,
-        timeout=config.llm_timeout,
         reasoning=config.llm_reasoning,
         max_tokens=max(config.llm_max_tokens, 512),  # JSON braucht mehr Tokens als ein Boss-Name
+        # 12B-Vision-Modelle brauchen ~20s — der Config-Timeout (oft 30s) ist zu knapp.
+        timeout=max(config.llm_timeout, 120),
         system_prompt=ITEM_SYSTEM_PROMPT,
     )
     print(f"\n[{label}] {duration_ms / 1000:.2f}s")
@@ -177,7 +198,13 @@ def run_item_scan(config: AppConfig) -> None:
     veralteter/falscher llm_model-Eintrag den Test nicht sabotiert."""
     from autoclicker.imaging import take_screenshot, select_region
 
+    _flush_stdin()  # gepufferte Tastendrücke aus einem vorherigen Scan verwerfen
     model = input(f"\nModellname (Enter = {DEFAULT_ITEM_MODEL}): ").strip() or DEFAULT_ITEM_MODEL
+    # Schutz vor verirrtem Müll (z.B. ein einzelnes 'i' aus dem Menü): zu kurze
+    # Namen sind nie echte LM-Studio-Identifier → auf Default zurückfallen.
+    if len(model) < 3:
+        print(f"\033[93mModellname '{model}' wirkt ungültig — nutze {DEFAULT_ITEM_MODEL}.\033[0m")
+        model = DEFAULT_ITEM_MODEL
 
     print("\nInventar-Region auswählen...")
     region = select_region()
