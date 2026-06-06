@@ -532,7 +532,7 @@ Im Boss-Scan-Editor → SCHRITT 5 (LLM Vision):
 |---|---|---|
 | `llm_enabled` | `false` | LLM-Erkennung global aktivieren |
 | `llm_provider` | `"lmstudio"` | `"ollama"` oder `"lmstudio"` |
-| `llm_model` | provider-abhängig | `"gemma3n:e4b"` (Ollama) / `"google/gemma-3n-e2b"` (LM Studio) |
+| `llm_model` | `"google/gemma-4-12b-qat"` | Modell-Name (Provider-Fallbacks: `"gemma3n:e4b"` für Ollama / `"google/gemma-4-12b-qat"` für LM Studio) |
 | `llm_timeout` | `60` | Timeout pro Anfrage in Sekunden |
 | `llm_retry_count` | `2` | Wiederholungen bei `KEIN_BOSS` (0 = kein Retry, 2 = 3 Versuche gesamt) |
 | `llm_async` | `false` | Boss-Scan/Watcher im Hintergrund-Thread — Sequenz läuft parallel weiter |
@@ -960,7 +960,7 @@ Wird beim ersten Start automatisch erstellt:
   "llm_enabled": false,
   "llm_provider": "lmstudio",
   "llm_endpoint": null,
-  "llm_model": "gemma3n:e4b",
+  "llm_model": "google/gemma-4-12b-qat",
   "llm_timeout": 30,
   "llm_reasoning": false,
   "llm_max_tokens": 0,
@@ -1047,7 +1047,7 @@ Wird beim ersten Start automatisch erstellt:
 | `llm_enabled` | LLM-basierte Boss-Erkennung global aktivieren (zusätzlich pro Boss-Scan `use_llm: true`) |
 | `llm_provider` | `"ollama"` oder `"lmstudio"` |
 | `llm_endpoint` | API-URL (`null` = Standard: `http://localhost:11434/api/chat` für Ollama, `http://localhost:1234/v1/chat/completions` für LM Studio) |
-| `llm_model` | Modell-Name (`null` = Standard `"gemma3n:e4b"` für Ollama, `"google/gemma-3n-e2b"` für LM Studio) |
+| `llm_model` | Modell-Name (Standard `"google/gemma-4-12b-qat"`; Provider-Fallback bei `null`: `"gemma3n:e4b"` für Ollama, `"google/gemma-4-12b-qat"` für LM Studio) |
 | `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 30) |
 | `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
 | `llm_reasoning` | Reasoning-Modus aktivieren — Ollama: `think: true`, LM Studio: `reasoning_effort: high` (Standard: false) |
@@ -1352,7 +1352,7 @@ python tools/slot_tester.py
 - System-Prompt zu nummerierten Regeln umgebaut: "Ignoriere UI-Texte, Level, Zahlen" verhindert False-Positives durch Spiel-UI
 - User-Prompt vereinfacht: `"Extrahiere nur den Boss-Namen:"` statt offener Frage
 - `max_tokens: 200 → 50` — ein Name braucht keine 200 Token
-- Provider-spezifische Modell-Defaults: `gemma3n:e4b` (Ollama) / `google/gemma-3n-e2b` (LM Studio)
+- Provider-spezifische Modell-Defaults: `gemma3n:e4b` (Ollama) / `google/gemma-4-12b-qat` (LM Studio)
 - Default-Timeout: 30s → 60s (Vision-Inferenz kann länger dauern)
 
 **Retry-Logik bei `KEIN_BOSS`** (`execution.py`, `config.py`)

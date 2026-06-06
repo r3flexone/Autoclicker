@@ -206,7 +206,7 @@ def analyze_image(
         if provider == PROVIDER_OLLAMA:
             model = "gemma3n:e4b"
         else:
-            model = "google/gemma-3n-e2b"
+            model = "google/gemma-4-12b-qat"
 
     if prompt is None:
         # Knappe Aufgaben-Frage; die Formatregeln stehen im System-Prompt

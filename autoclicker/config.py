@@ -65,7 +65,7 @@ class AppConfig:
     llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
     llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
     llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
-    llm_model: str = "gemma3n:e4b"                  # Modell-Name (Standard: gemma3n:e4b)
+    llm_model: str = "google/gemma-4-12b-qat"       # Modell-Name (Standard: google/gemma-4-12b-qat)
     llm_timeout: int = 60                           # Timeout für LLM-Anfragen in Sekunden
     llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_async: bool = False                         # Boss-Scan/Watcher im Hintergrund-Thread (Sequenz läuft parallel)
