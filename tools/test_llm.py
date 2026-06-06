@@ -232,10 +232,13 @@ def main() -> int:
 
     # Interaktive Schleife
     while True:
-        choice = input("\nEnter = Scan | q = Quit: ").strip().lower()
+        choice = input("\nEnter = Boss-Scan | i = Item-Scan | q = Quit: ").strip().lower()
         if choice == "q":
             return 0
-        run_single_scan(config)
+        if choice == "i":
+            run_item_scan(config)
+        else:
+            run_single_scan(config)
 
 
 if __name__ == "__main__":
