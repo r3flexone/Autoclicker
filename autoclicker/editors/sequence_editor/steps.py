@@ -28,7 +28,7 @@ from ...persistence import (
 )
 from ...utils import (
     cancel_hint, cmd_hint, col, coord_context, hint, is_cancel,
-    ok, err, safe_input, suggest_command,
+    ok, err, warn, safe_input, suggest_command,
     parse_non_negative_float, parse_non_negative_range,
 )
 from ...winapi import get_cursor_pos, VK_CODES
@@ -90,6 +90,7 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("gone <Nr>", "Schritt → warte bis Farbe WEG, dann klicke"))
     print(cmd_hint("noclick <Nr>", "Schritt → nur warten, nicht klicken"))
     print(cmd_hint("click <Nr>", "Schritt → wieder direkter Klick (Trigger entfernen)"))
+    print(cmd_hint("color <Nr>", "Trigger-Farbe per Maus neu abgreifen (Override)"))
     print(cmd_hint("time <Nr> <Zeit>", "Wartezeit eines Schritts ändern (z.B. 'time 3 5' / '3 2-4')"))
     print(cmd_hint("copy <Nr>", "Schritt duplizieren (Kopie direkt dahinter)"))
     print(cmd_hint("move <Nr> <Ziel>", "Schritt an andere Position verschieben (z.B. 'move 5 1')"))
@@ -131,7 +132,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "gone", "noclick", "click", "time", "copy", "move", "scale", "test",
+    "pixel", "gone", "noclick", "click", "color", "time", "copy", "move", "scale", "test",
 ]
 
 
@@ -270,6 +271,9 @@ class _PhaseEditor:
             return
         if cmd.startswith("click "):
             self._handle_make_click(user_input)
+            return
+        if cmd.startswith("color "):
+            self._handle_set_color(user_input)
             return
         if cmd.startswith("time "):
             self._handle_set_time(user_input)
@@ -670,6 +674,28 @@ class _PhaseEditor:
         step.wait_condition = None
         print(f"  + Schritt klickt wieder direkt: {step}")
 
+    def _handle_set_color(self, user_input: str) -> None:
+        """Ändert die Trigger-Farbe eines Schritts per Live-Abgriff (Override).
+
+        Für die Ausnahmefälle, in denen die Punkt-Farbe nicht passt. Greift die
+        Farbe an der aktuellen Mausposition ab und setzt sie als Trigger-Farbe.
+        Die Pixel-Position des Triggers bleibt unverändert.
+
+        Format: color <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        if not step.wait_condition:
+            print(warn("  -> Schritt hat keinen Farb-Trigger. Erst 'pixel <Nr>' oder 'gone <Nr>'."))
+            return
+        _, _, color = capture_pixel_color()
+        if color is None:
+            return
+        step.wait_condition.color = color
+        step.recorded_color = color
+        print(f"  + Trigger-Farbe geändert: RGB{color} bei {step.wait_condition.pixel}")
+
     def _handle_set_time(self, user_input: str) -> None:
         """Ändert die Wartezeit eines bestehenden Schritts.
 
@@ -867,7 +893,7 @@ class _PhaseEditor:
             print(f"  -> Punkt #{point_id} nicht gefunden!")
             return
 
-        wait_cond, delay, delay_max = self._parse_point_options(main_parts)
+        wait_cond, delay, delay_max = self._parse_point_options(main_parts, point)
         if wait_cond is False:  # Sentinel: Parse-Fehler, schon ausgegeben
             return
 
@@ -890,7 +916,24 @@ class _PhaseEditor:
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
-    def _parse_point_options(self, main_parts: list[str]):
+    def _resolve_trigger_color(self, arg: str, point):
+        """Liefert (pixel, color, until_gone) für einen 'pixel'/'gone'-Trigger.
+
+        Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
+        Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
+        live an der Mausposition abgegriffen. Override später per 'color <Nr>'.
+        """
+        until_gone = (arg == "gone")
+        if point.color:
+            print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "
+                  f"{hint('(mit color <Nr> änderbar)')}")
+            return (point.x, point.y), point.color, until_gone
+        px, py, color = capture_pixel_color()
+        if color:
+            return (px, py), color, until_gone
+        return None, None, until_gone
+
+    def _parse_point_options(self, main_parts: list[str], point):
         """Parst die Optionen nach der Punkt-ID. Returns (wait_condition, delay, delay_max).
 
         Bei Parse-Fehler: (False, 0, None) — der Caller bricht ab, Fehler ist
@@ -907,12 +950,8 @@ class _PhaseEditor:
 
             if arg in ("pixel", "gone"):
                 # <Nr> pixel / <Nr> gone
-                px, py, color = capture_pixel_color()
-                if color:
-                    wait_pixel = (px, py)
-                    wait_color = color
-                    if arg == "gone":
-                        wait_until_gone = True
+                wait_pixel, wait_color, wait_until_gone = \
+                    self._resolve_trigger_color(arg, point)
             elif "-" in arg:
                 # <Nr> <Min>-<Max>
                 range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
@@ -934,12 +973,8 @@ class _PhaseEditor:
                 if len(main_parts) > 2:
                     opt = main_parts[2].lower()
                     if opt in ("pixel", "gone"):
-                        px, py, color = capture_pixel_color()
-                        if color:
-                            wait_pixel = (px, py)
-                            wait_color = color
-                            if opt == "gone":
-                                wait_until_gone = True
+                        wait_pixel, wait_color, wait_until_gone = \
+                            self._resolve_trigger_color(opt, point)
 
         wait_cond = None
         if wait_pixel and wait_color:
