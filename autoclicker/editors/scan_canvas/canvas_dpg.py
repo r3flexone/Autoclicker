@@ -13,8 +13,12 @@ Läuft nur im Subprocess (Dear PyGui import).
 import dearpygui.dearpygui as dpg
 
 from ...config import DEFAULT_MIN_CONFIDENCE
-from ...models import ItemSlot, ItemProfile
+from ...models import ItemSlot, ItemProfile, ItemScanConfig
 from ...imaging import OPENCV_AVAILABLE
+from ...persistence import (
+    save_item_scan, ensure_item_scans_dir,
+    list_available_item_scans, load_item_scan_file,
+)
 from ...editors.item_editor.markers import _collect_markers_silent, _find_matching_existing_item
 from .texture import ViewTransform, pil_to_texture, fit_scale
 from .model import (
@@ -30,6 +34,8 @@ _TEX = "ac_ss_texture"
 _SLOT_LIST = "ac_ss_slotlist"
 _ITEM_LIST = "ac_ss_itemlist"
 _PROPS = "ac_ss_props"
+_SCAN = "ac_ss_scan"
+_SCAN_PICK = "ac_ss_scanpick"
 _STATUS = "ac_ss_status"
 
 # Modi
@@ -61,6 +67,11 @@ class ScanStudioApp:
         self.items_file = items_file
         self.selected: str | None = None
         self.selected_kind: str = KIND_SLOT
+        # Scan-Zusammenbau: welche Slots/Items sind angehakt + Name/Toleranz
+        self._slot_checked: dict[str, bool] = {}
+        self._item_checked: dict[str, bool] = {}
+        self._scan_name: str = ""
+        self._scan_tol: int = 40
         self.mode = MODE_SLOT
         self._drawing = False
         self._draw_start = (0.0, 0.0)
@@ -85,6 +96,7 @@ class ScanStudioApp:
         self.redraw_overlay()
         self.refresh_slot_list()
         self.refresh_item_list()
+        self.refresh_scan_panel()
         self.refresh_properties()
         dpg.start_dearpygui()
         dpg.destroy_context()
@@ -129,11 +141,13 @@ class ScanStudioApp:
                     with dpg.drawlist(width=disp_w, height=disp_h, tag=_DRAWLIST):
                         dpg.draw_image(_TEX, (0, 0), (disp_w, disp_h))
                         dpg.add_draw_layer(tag=_OVERLAY)
-                # rechts: Eigenschaften
-                with dpg.child_window(width=300):
-                    dpg.add_text("Eigenschaften", color=(120, 180, 255))
-                    dpg.add_separator()
-                    dpg.add_group(tag=_PROPS)
+                # rechts: Eigenschaften + Scan-Zusammenbau
+                with dpg.child_window(width=320):
+                    with dpg.tab_bar():
+                        with dpg.tab(label="Eigenschaften"):
+                            dpg.add_group(tag=_PROPS)
+                        with dpg.tab(label="Scan bauen"):
+                            dpg.add_group(tag=_SCAN)
 
     def _install_handlers(self) -> None:
         with dpg.handler_registry():
@@ -192,6 +206,7 @@ class ScanStudioApp:
         self.redraw_overlay()
         self.refresh_slot_list()
         self.refresh_item_list()
+        self.refresh_scan_panel()
         self.refresh_properties()
         self._set_status(f"Slot '{name}' angelegt.")
 
@@ -263,6 +278,93 @@ class ScanStudioApp:
             label = ("» " if sel else "") + f"P{item.priority} {name}{cat}"
             dpg.add_button(label=label, width=-1, parent=_ITEM_LIST,
                            user_data=name, callback=self._on_select_item)
+
+    def refresh_scan_panel(self) -> None:
+        """Baut den 'Scan bauen'-Tab neu auf (Slots/Items anhaken → ItemScanConfig)."""
+        if not dpg.does_item_exist(_SCAN):
+            return
+        for child in dpg.get_item_children(_SCAN, 1) or []:
+            dpg.delete_item(child)
+
+        # bestehenden Scan laden (vorbefüllen)
+        scan_names = [n for n, _ in list_available_item_scans()]
+        if scan_names:
+            with dpg.group(horizontal=True, parent=_SCAN):
+                dpg.add_combo(items=scan_names, width=-60, tag=_SCAN_PICK,
+                              default_value=scan_names[0])
+                dpg.add_button(label="Laden", callback=self._on_load_scan)
+            dpg.add_separator(parent=_SCAN)
+
+        def _on_name(s, a, u):
+            self._scan_name = a.strip()
+        dpg.add_input_text(label="Scan-Name", default_value=self._scan_name,
+                           parent=_SCAN, width=-80, callback=_on_name)
+
+        def _on_tol(s, a, u):
+            self._scan_tol = max(1, min(100, int(a)))
+        dpg.add_input_int(label="Farbtoleranz", default_value=self._scan_tol,
+                          parent=_SCAN, width=-80, min_value=1, max_value=100,
+                          callback=_on_tol)
+
+        dpg.add_separator(parent=_SCAN)
+        dpg.add_text(f"Slots im Scan ({len(self.slots)})", parent=_SCAN, color=(120, 180, 255))
+        for name in self.slots:
+            checked = self._slot_checked.get(name, True)
+            dpg.add_checkbox(label=name, default_value=checked, parent=_SCAN,
+                             user_data=("slot", name), callback=self._on_scan_check)
+
+        dpg.add_text(f"Items im Scan ({len(self.items)})", parent=_SCAN, color=(120, 180, 255))
+        for name, item in self.items.items():
+            checked = self._item_checked.get(name, True)
+            cat = f" [{item.category}]" if item.category else ""
+            dpg.add_checkbox(label=f"P{item.priority} {name}{cat}", default_value=checked,
+                             parent=_SCAN, user_data=("item", name), callback=self._on_scan_check)
+
+        dpg.add_separator(parent=_SCAN)
+        dpg.add_button(label="Scan speichern", width=-1, parent=_SCAN,
+                       callback=self._on_save_scan)
+
+    def _on_scan_check(self, sender, app_data, user_data):
+        kind, name = user_data
+        if kind == "slot":
+            self._slot_checked[name] = bool(app_data)
+        else:
+            self._item_checked[name] = bool(app_data)
+
+    def _on_load_scan(self, *_):
+        if not dpg.does_item_exist(_SCAN_PICK):
+            return
+        name = dpg.get_value(_SCAN_PICK)
+        path = next((p for n, p in list_available_item_scans() if n == name), None)
+        cfg = load_item_scan_file(path) if path else None
+        if not cfg:
+            self._set_status(f"Scan '{name}' nicht ladbar.", color=(220, 90, 90))
+            return
+        self._scan_name = cfg.name
+        self._scan_tol = cfg.color_tolerance
+        scan_slot_names = {s.name for s in cfg.slots}
+        scan_item_names = {i.name for i in cfg.items}
+        self._slot_checked = {n: (n in scan_slot_names) for n in self.slots}
+        self._item_checked = {n: (n in scan_item_names) for n in self.items}
+        self.refresh_scan_panel()
+        self._set_status(f"Scan '{name}' geladen.")
+
+    def _on_save_scan(self, *_):
+        if not self._scan_name:
+            self._set_status("Bitte Scan-Namen eingeben.", color=(220, 180, 90))
+            return
+        slots = [self.slots[n] for n in self.slots if self._slot_checked.get(n, True)]
+        items = [self.items[n] for n in self.items if self._item_checked.get(n, True)]
+        if not slots:
+            self._set_status("Mindestens 1 Slot anhaken.", color=(220, 180, 90))
+            return
+        ensure_item_scans_dir()
+        cfg = ItemScanConfig(name=self._scan_name, slots=slots, items=items,
+                             color_tolerance=self._scan_tol)
+        save_item_scan(cfg)
+        self._set_status(f"Scan '{self._scan_name}' gespeichert "
+                         f"({len(slots)} Slots, {len(items)} Items).")
+        self.refresh_scan_panel()
 
     def refresh_properties(self) -> None:
         if not dpg.does_item_exist(_PROPS):
@@ -387,6 +489,7 @@ class ScanStudioApp:
             self.selected = None
             self.redraw_overlay()
             self.refresh_slot_list()
+            self.refresh_scan_panel()
             self.refresh_properties()
 
     def _on_delete_item(self, *_):
@@ -394,6 +497,7 @@ class ScanStudioApp:
             del self.items[self.selected]
             self.selected = None
             self.refresh_item_list()
+            self.refresh_scan_panel()
             self.refresh_properties()
 
     def _learn_from_slot(self, slot: ItemSlot, name: str | None = None,
@@ -434,6 +538,7 @@ class ScanStudioApp:
             self.selected_kind = KIND_ITEM
             self.refresh_slot_list()
             self.refresh_item_list()
+            self.refresh_scan_panel()
             self.refresh_properties()
             self._set_status(f"Item '{name}' aus '{slot.name}' gelernt.")
         else:
@@ -452,6 +557,7 @@ class ScanStudioApp:
             else:
                 skipped += 1
         self.refresh_item_list()
+        self.refresh_scan_panel()
         self.refresh_properties()
         self._set_status(f"Autoscan: {created} neu, {skipped} übersprungen.")
 
