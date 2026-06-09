@@ -175,6 +175,21 @@ def save_data(state: AutoClickerState) -> None:
 # PUNKTE
 # =============================================================================
 
+def save_points(state: AutoClickerState) -> None:
+    """Speichert nur die globalen Punkte (points.json), crash-sicher."""
+    ensure_sequences_dir()
+    with state.lock:
+        points_data = [
+            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
+             **({"color": list(p.color)} if p.color else {})}
+            for p in state.points
+        ]
+    try:
+        atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
+    except (IOError, OSError) as e:
+        print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
+
+
 def load_points(state: AutoClickerState) -> None:
     """Lädt gespeicherte Punkte."""
     points_file = Path(SEQUENCES_DIR) / "points.json"

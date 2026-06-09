@@ -10,10 +10,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from ..models import AutoClickerState, Sequence, LoopPhase, SequenceStep
+from ..models import AutoClickerState, Sequence, LoopPhase, SequenceStep, ClickPoint
 from ..winapi import install_mouse_hook, remove_mouse_hook
 from ..utils import safe_input, col, ok, err, is_cancel, hint, info
-from ..persistence.sequences import save_sequence_file, ensure_sequences_dir
+from ..persistence.sequences import (
+    save_sequence_file, ensure_sequences_dir, save_points, get_next_point_id,
+)
 from ..utils import sanitize_filename
 from ..config import SEQUENCES_DIR
 
@@ -165,10 +167,32 @@ def stop_recording(state: AutoClickerState) -> None:
         with state.lock:
             state.sequences[seq_name] = seq
             state.active_sequence = seq
+
+        # Klicks zusätzlich als globale Punkte ablegen, damit sie im normalen
+        # Editor (TUI) und in der Node-Editor-Palette auftauchen. Dedup nach
+        # exakter Position: bereits vorhandene Koordinaten werden nicht doppelt
+        # angelegt.
+        added = 0
+        with state.lock:
+            existing = {(p.x, p.y) for p in state.points}
+            for i, (t, x, y, color) in enumerate(events):
+                if (x, y) in existing:
+                    continue
+                pid = get_next_point_id(state)
+                state.points.append(
+                    ClickPoint(x, y, f"{seq_name} {i + 1}", pid, color=color)
+                )
+                existing.add((x, y))
+                added += 1
+        if added:
+            save_points(state)
+
         cycles_str = "unendlich" if total_cycles == 0 else str(total_cycles)
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')
         print(f"\n{saved_msg}")
         print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
+        if added:
+            print(f"  {added} neue(r) Punkt(e) global gespeichert {hint('(im Editor + Node-Palette nutzbar)')}")
         print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
         print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")
         print(hint("  Tipp: Im Editor wandelt 'pixel <Nr>' einen Klick in einen"))
