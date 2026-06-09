@@ -121,7 +121,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
 
     # --- Typ-spezifische Felder ---------------------------------------------
     if cur_type in (BLOCK_CLICK, BLOCK_WAIT_CLICK):
-        _build_position(parent, step, points, on_changed)
+        _build_position(parent, step, points, on_changed, on_structure)
 
     if cur_type == BLOCK_WAIT_CLICK:
         _build_wait_condition(parent, step, on_changed)
@@ -148,7 +148,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
     _build_else(parent, step, points, on_changed, on_structure)
 
 
-def _build_position(parent, step, points, on_changed):
+def _build_position(parent, step, points, on_changed, on_structure=None):
     dpg.add_text("Klick-Position", parent=parent, color=(120, 180, 255))
 
     if points:
@@ -156,7 +156,10 @@ def _build_position(parent, step, points, on_changed):
             def _set(x, y):
                 step.x = x
                 step.y = y
-                on_changed()
+                if on_structure:
+                    on_structure()
+                else:
+                    on_changed()
             _apply_point(points, a, _set)
         dpg.add_combo(items=_point_items(points), default_value="(manuell)",
                       label="Punkt", parent=parent, width=-130, callback=_on_pt)
@@ -315,7 +318,7 @@ def _build_else(parent, step, points, on_changed, on_structure):
                 def _set(x, y):
                     ec.x = x
                     ec.y = y
-                    on_changed()
+                    on_structure()
                 _apply_point(points, a, _set)
             dpg.add_combo(items=_point_items(points), default_value="(manuell)",
                           label="ELSE Punkt", parent=parent, width=-130, callback=_on_pt)
