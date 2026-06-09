@@ -53,7 +53,7 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
     def _print_slot_help():
         print("\n" + "-" * 60)
         print("Befehle:")
-        print("  auto           - AUTOMATISCHE Slot-Erkennung (empfohlen)")
+        print("  auto           - AUTOMATISCHE Slot-Erkennung (fragt: Items gleich mitlernen?)")
         print("  add            - Neuen Slot hinzufügen")
         print("  edit <Nr>      - Slot bearbeiten")
         print("  del <Nr>       - Slot löschen")
@@ -458,6 +458,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     inset = state.config.scan_slot_inset
     added = 0
     start_num = len(state.global_slots) + 1
+    created_slots = []
 
     for i, (x, y, w, h_box) in enumerate(detected_slots):
         slot_name = f"Slot {start_num + i}"
@@ -480,9 +481,17 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         with state.lock:
             state.global_slots[slot_name] = new_slot
         added += 1
+        created_slots.append(new_slot)
         print(f"    + {slot_name}: {scan_region}")
 
     print(f"\n  {ok(f'{added} Slots hinzugefügt!')}")
+
+    # Optional: Items direkt aus DEMSELBEN Screenshot lernen (Templates werden
+    # aus img geschnitten, kein zweiter Screenshot nötig → garantiert konsistent).
+    if created_slots and OPENCV_AVAILABLE:
+        if confirm("\n  Items gleich aus diesem Screenshot mitlernen?"):
+            from .item_editor.autoscan import item_autoscan_from_image
+            item_autoscan_from_image(state, created_slots, img, (offset_x, offset_y))
 
     # Screenshots speichern
     try:

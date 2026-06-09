@@ -132,8 +132,45 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     }
 
 
-def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict) -> None:
-    """Führt den eigentlichen Auto-Scan-Loop aus."""
+def item_autoscan_from_image(state: AutoClickerState, slot_list: list,
+                             source_img, region_origin: tuple) -> None:
+    """Lernt Items für die gegebenen Slots aus EINEM bereits aufgenommenen Bild.
+
+    Wird vom Slot-Editor genutzt, damit Slots UND Items aus demselben Screenshot
+    gelernt werden können. Die Template-Bilder werden aus source_img geschnitten
+    (statt pro Slot neu zu screenshotten), region_origin = (offset_x, offset_y)
+    ist der Bild-Ursprung in absoluten Bildschirm-Koordinaten.
+    """
+    if not slot_list:
+        print(f"  -> {err('Keine Slots zum Lernen!')}")
+        return
+    if not OPENCV_AVAILABLE:
+        print(f"  -> {err('OpenCV nicht installiert!')} (pip install opencv-python)")
+        return
+
+    print(header(f"ITEMS LERNEN: {len(slot_list)} Slots (aus demselben Screenshot)"))
+    settings = _collect_autoscan_settings(state, slot_list, use_markers=True)
+    if settings is None:
+        return
+    _run_autoscan(state, slot_list, settings, source_img=source_img,
+                  region_origin=region_origin)
+
+
+def _crop_slot_template(slot, source_img, region_origin):
+    """Schneidet die Slot-Region aus dem Quellbild (lokale Koordinaten)."""
+    ox, oy = region_origin
+    x1, y1, x2, y2 = slot.scan_region
+    return source_img.crop((x1 - ox, y1 - oy, x2 - ox, y2 - oy))
+
+
+def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
+                  source_img=None, region_origin: tuple = None) -> None:
+    """Führt den eigentlichen Auto-Scan-Loop aus.
+
+    Wenn source_img + region_origin gesetzt sind, werden die Templates aus diesem
+    Bild geschnitten (gleicher Screenshot wie die Slot-Erkennung); sonst wird pro
+    Slot ein frischer Screenshot gemacht.
+    """
     use_markers = settings["use_markers"]
     category = settings["category"]
     auto_priority = settings["auto_priority"]
@@ -163,7 +200,13 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict) -> N
 
         print(f"  [{slot_num}/{len(slot_list)}] {slot.name}...", end=" ", flush=True)
 
-        template_img = take_screenshot(slot.scan_region)
+        if source_img is not None and region_origin is not None:
+            try:
+                template_img = _crop_slot_template(slot, source_img, region_origin)
+            except (ValueError, OSError):
+                template_img = None
+        else:
+            template_img = take_screenshot(slot.scan_region)
         if template_img is None:
             print("FEHLER (Screenshot)")
             skipped_count += 1
