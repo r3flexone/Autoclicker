@@ -558,6 +558,12 @@ def handle_record_sequence(state: AutoClickerState) -> None:
     _rec(state)
 
 
+def handle_record_pause(state: AutoClickerState) -> None:
+    """Pausiert/Setzt die laufende Sequenz-Aufnahme fort."""
+    from .editors.sequence_recorder import handle_record_pause as _pause
+    _pause(state)
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")

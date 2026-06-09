@@ -134,6 +134,7 @@ def _sequence_to_dict(seq: Sequence) -> dict:
     return {
         "name": seq.name,
         "total_cycles": seq.total_cycles,
+        **({"description": seq.description} if seq.description else {}),
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
             {

@@ -58,6 +58,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
 
         init_steps = _parse_steps(data.get("init_steps", []))
         end_steps = _parse_steps(data.get("end_steps", []))
+        description = data.get("description", "")
 
         # Rückwärtskompatibilität: alte start_steps → erste LoopPhase mit repeat=1
         old_start_steps = _parse_steps(data.get("start_steps", []))
@@ -76,7 +77,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
                 )
                 loop_phases.append(lp)
             total_cycles = data.get("total_cycles", 1)
-            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles)
+            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles, description)
 
         # Altes Format mit loop_steps (eine Loop-Phase) - konvertieren
         if "loop_steps" in data:
@@ -88,15 +89,15 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             if loop_steps:
                 loop_phases.append(LoopPhase("Loop 1", loop_steps, max_loops if max_loops > 0 else 1))
             total_cycles = 0 if max_loops == 0 else 1
-            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles)
+            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles, description)
 
         # Uraltes Format (nur steps) - konvertieren
         if "steps" in data:
             loop_steps = _parse_steps(data["steps"])
             loop_phases = [LoopPhase("Loop 1", loop_steps, 1)] if loop_steps else []
-            return Sequence(data["name"], [], loop_phases, [], 0)
+            return Sequence(data["name"], [], loop_phases, [], 0, description)
 
-        return Sequence(data["name"], [], [], [], 1)
+        return Sequence(data["name"], [], [], [], 1, description)
 
     except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")

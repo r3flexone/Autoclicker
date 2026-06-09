@@ -197,6 +197,13 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     safe = sanitize_filename(name)
                     zf.writestr(f"sequences/{safe}.json", compact_json(seq_data))
                 manifest["contents"]["sequences"] = list(seqs.keys())
+                # Beschreibungen separat ins Manifest, damit der Empfänger sie
+                # vor dem Import sieht (ohne jede Sequenz-Datei öffnen zu müssen)
+                descriptions = {name: seq_data["description"]
+                                for name, seq_data in seqs.items()
+                                if seq_data.get("description")}
+                if descriptions:
+                    manifest["sequence_descriptions"] = descriptions
 
             # Slots
             if include_slots:

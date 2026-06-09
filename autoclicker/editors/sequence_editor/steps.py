@@ -18,6 +18,7 @@ Befehle:
   <Nr> [<Zeit>|pixel|gone] ... — Direkter Punkt-Klick (Standard)
 """
 
+import copy
 from typing import Optional
 
 from ...imaging import PILLOW_AVAILABLE, select_region
@@ -90,6 +91,11 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("noclick <Nr>", "Schritt → nur warten, nicht klicken"))
     print(cmd_hint("click <Nr>", "Schritt → wieder direkter Klick (Trigger entfernen)"))
     print(cmd_hint("time <Nr> <Zeit>", "Wartezeit eines Schritts ändern (z.B. 'time 3 5' / '3 2-4')"))
+    print(cmd_hint("copy <Nr>", "Schritt duplizieren (Kopie direkt dahinter)"))
+    print(cmd_hint("move <Nr> <Ziel>", "Schritt an andere Position verschieben (z.B. 'move 5 1')"))
+    print(cmd_hint("scale <Faktor>", "Alle Wartezeiten dieser Phase skalieren (z.B. 'scale 1.5' / '0.5')"))
+    print(cmd_hint("show <Nr>", "Alle Details eines Schritts anzeigen"))
+    print(cmd_hint("test <Nr>", "Einen Schritt sofort ausführen (Probelauf — echter Klick!)"))
     print("Punkte verwalten:")
     print(cmd_hint("learn <Name>", "Neuen Punkt erstellen"))
     print(cmd_hint("points", "Alle Punkte anzeigen"))
@@ -125,7 +131,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "gone", "noclick", "click", "time",
+    "pixel", "gone", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
 
 
@@ -198,6 +204,9 @@ class _PhaseEditor:
         if cmd in ("show", "s"):
             self._handle_show()
             return
+        if cmd.startswith("show "):
+            self._handle_show_detail(user_input)
+            return
 
         # Lösch-Befehle (exakt zuerst, dann Range, dann Single)
         if cmd == "del all":
@@ -264,6 +273,18 @@ class _PhaseEditor:
             return
         if cmd.startswith("time "):
             self._handle_set_time(user_input)
+            return
+        if cmd.startswith("copy "):
+            self._handle_copy(user_input)
+            return
+        if cmd.startswith("move "):
+            self._handle_move(user_input)
+            return
+        if cmd.startswith("scale "):
+            self._handle_scale(user_input)
+            return
+        if cmd.startswith("test "):
+            self._handle_test(user_input)
             return
 
         # Default: Punkt-ID + Optionen (z.B. "1 30 pixel")
@@ -676,6 +697,156 @@ class _PhaseEditor:
             step.delay_before = delay_val
             step.delay_max = None
         print(f"  + Zeit geändert: {step}")
+
+    def _handle_show_detail(self, user_input: str) -> None:
+        """Zeigt alle Felder eines Schritts im Detail.
+
+        Format: show <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        num = self.steps.index(step) + 1
+        print(f"\n  {col(f'Schritt {num} — Details:', 'bold')}")
+        print(f"    Zusammenfassung: {step}")
+        print(f"    Name:            {step.name or '(keiner)'}")
+        print(f"    Position:        ({step.x}, {step.y})")
+        if step.delay_max and step.delay_max > step.delay_before:
+            print(f"    Wartezeit:       {step.delay_before:g}-{step.delay_max:g}s (zufällig)")
+        else:
+            print(f"    Wartezeit:       {step.delay_before:g}s")
+        print(f"    Nur warten:      {'ja' if step.wait_only else 'nein'}")
+        wc = step.wait_condition
+        if wc:
+            mode = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
+            print(f"    Farb-Trigger:    {mode} RGB{wc.color} bei ({wc.pixel[0]},{wc.pixel[1]})")
+        else:
+            print(f"    Farb-Trigger:    (keiner)")
+        if step.recorded_color:
+            tip = hint(f"   → 'pixel {num}' nutzt sie")
+            print(f"    Aufgen. Farbe:   RGB{step.recorded_color}{tip}")
+        if step.key_press:
+            print(f"    Taste:           {step.key_press}")
+        if step.item_scan:
+            print(f"    Item-Scan:       {step.item_scan} ({step.item_scan_mode})")
+        if step.boss_scan:
+            print(f"    Boss-Scan:       {step.boss_scan}")
+        if step.boss_watcher:
+            print(f"    Boss-Watcher:    {step.boss_watcher}")
+        if step.icon_scan:
+            print(f"    Icon-Scan:       {step.icon_scan}")
+        if step.screenshot_only:
+            print(f"    Screenshot:      {step.screenshot_region or 'Vollbild'}")
+        ec = step.else_config
+        if ec:
+            print(f"    ELSE:            {step._else_str().replace(' | ELSE: ', '')}")
+
+    def _handle_copy(self, user_input: str) -> None:
+        """Dupliziert einen Schritt und fügt die Kopie direkt dahinter ein.
+
+        Format: copy <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        idx = self.steps.index(step)
+        clone = copy.deepcopy(step)
+        self.steps.insert(idx + 1, clone)
+        print(f"  + Schritt {idx + 1} dupliziert → neue Position {idx + 2}: {clone}")
+
+    def _handle_move(self, user_input: str) -> None:
+        """Verschiebt einen Schritt an eine neue Position.
+
+        Format: move <Nr> <Ziel>
+        """
+        parts = user_input.split()
+        if len(parts) < 3:
+            print("  -> Format: move <Nr> <Ziel> (z.B. 'move 5 1')")
+            return
+        step = self._get_step_by_num(parts[1])
+        if step is None:
+            return
+        try:
+            target = int(parts[2])
+        except ValueError:
+            print("  -> Ziel muss eine Zahl sein (z.B. 'move 5 1')")
+            return
+        if not (1 <= target <= len(self.steps)):
+            print(f"  -> Ungültiges Ziel! Verfügbar: 1-{len(self.steps)}")
+            return
+        src = self.steps.index(step)
+        self.steps.pop(src)
+        self.steps.insert(target - 1, step)
+        print(f"  + Schritt von Position {src + 1} → {target} verschoben: {step}")
+
+    def _handle_scale(self, user_input: str) -> None:
+        """Skaliert alle Wartezeiten dieser Phase mit einem Faktor.
+
+        Format: scale <Faktor> (z.B. 'scale 1.5' = 50% länger, 'scale 0.5' = halbe Zeit)
+        """
+        parts = user_input.split()
+        if len(parts) < 2:
+            print("  -> Format: scale <Faktor> (z.B. 'scale 1.5' oder 'scale 0.5')")
+            return
+        try:
+            factor = float(parts[1].replace(",", "."))
+        except ValueError:
+            print("  -> Faktor muss eine Zahl sein (z.B. 'scale 1.5')")
+            return
+        if factor <= 0:
+            print("  -> Faktor muss größer als 0 sein!")
+            return
+        changed = 0
+        for step in self.steps:
+            if step.delay_before > 0:
+                step.delay_before = round(step.delay_before * factor, 2)
+                changed += 1
+            if step.delay_max:
+                step.delay_max = round(step.delay_max * factor, 2)
+        print(f"  + Wartezeiten dieser Phase mit Faktor {factor:g} skaliert ({changed} Schritt(e) betroffen)")
+
+    def _handle_test(self, user_input: str) -> None:
+        """Führt EINEN Schritt sofort aus (Probelauf für Koordinaten-Check).
+
+        Format: test <Nr>
+        Achtung: führt einen echten Klick/Tastendruck aus. Wartezeit und
+        Farb-Trigger werden für den Test übersprungen — es geht nur darum zu
+        sehen ob die Aktion (Klick/Taste/Scan) am richtigen Ort landet.
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        with self.state.lock:
+            if self.state.is_running:
+                print(f"  -> {err('Sequenz läuft gerade — erst stoppen (CTRL+ALT+S)')}")
+                return
+        num = self.steps.index(step) + 1
+        print(f"  {col('[TEST]', 'cyan')} Führe Schritt {num} aus: {step}")
+        print(hint("        (echter Klick/Tastendruck — Spielfenster muss aktiv sein,"))
+        print(hint("         Wartezeit + Farb-Trigger werden für den Test übersprungen)"))
+        # Auf einer Kopie testen: Wartezeit + Farb-Trigger nullen, damit die
+        # Aktion sofort feuert (sonst würde der Test z.B. 30s warten)
+        test_step = copy.deepcopy(step)
+        test_step.delay_before = 0.0
+        test_step.delay_max = None
+        test_step.wait_condition = None
+        from ...runtime.steps import execute_step
+        # Events sauber halten, damit der Test-Lauf nicht durch Altzustände abbricht
+        self.state.stop_event.clear()
+        self.state.skip_event.clear()
+        ok_run = False
+        try:
+            ok_run = execute_step(self.state, test_step, num, len(self.steps), "TEST")
+        except Exception as e:  # Test soll den Editor nie crashen
+            print(f"\n  -> {err(f'Test-Fehler: {e}')}")
+            return
+        finally:
+            # Ein Test darf keine Events (Stop/Skip/Restart) in einen echten Lauf tragen
+            self.state.stop_event.clear()
+            self.state.skip_event.clear()
+            self.state.skip_cycle_event.clear()
+            self.state.restart_event.clear()
+        print(f"\n  {ok('Test fertig.') if ok_run else col('Test abgebrochen.', 'yellow')}")
 
     def _handle_point_click(self, user_input: str) -> None:
         """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""

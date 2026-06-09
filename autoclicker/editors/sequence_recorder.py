@@ -18,12 +18,18 @@ from ..utils import sanitize_filename
 from ..config import SEQUENCES_DIR
 
 
+# Klicks die schneller als dieser Abstand (Sekunden) aufeinander folgen sind
+# fast immer versehentliche Doppel-/Zitterklicks — beim Stoppen wird darauf
+# hingewiesen (nicht automatisch gelöscht, um echte Doppelklicks zu erhalten).
+_FAST_CLICK_GAP = 0.08
+
+
 def _on_click_factory(state: AutoClickerState):
     """Erstellt den Klick-Callback für den Maus-Hook."""
     def _on_click(x: int, y: int, color) -> None:
         t = time.monotonic()
         with state.lock:
-            if not state.recording_active:
+            if not state.recording_active or state.recording_paused:
                 return
             idx = len(state.recording_events) + 1
             state.recording_events.append((t, x, y, color))
@@ -42,16 +48,19 @@ def start_recording(state: AutoClickerState) -> None:
         if state.recording_active:
             return
         state.recording_active = True
+        state.recording_paused = False
         state.recording_events = []
 
     callback = _on_click_factory(state)
     if install_mouse_hook(callback):
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print(f"  Klicke die gewünschten Positionen im Spiel.")
-        print(f"  Stoppen: {col('CTRL+ALT+R', 'yellow')} erneut drücken")
+        print(f"  Pausieren: {col('CTRL+ALT+H', 'yellow')} (navigieren ohne aufzuzeichnen)")
+        print(f"  Stoppen:   {col('CTRL+ALT+R', 'yellow')} erneut drücken")
     else:
         with state.lock:
             state.recording_active = False
+            state.recording_paused = False
             state.recording_events = []
         print(f"\n{err('Maus-Hook konnte nicht installiert werden!')}")
         print(f"  Mögliche Ursache: Administratorrechte erforderlich.")
@@ -63,6 +72,7 @@ def stop_recording(state: AutoClickerState) -> None:
         if not state.recording_active:
             return
         state.recording_active = False
+        state.recording_paused = False
         events = list(state.recording_events)
         state.recording_events = []
 
@@ -76,6 +86,7 @@ def stop_recording(state: AutoClickerState) -> None:
 
     # Aufgezeichnete Klicks zeigen
     print(f"\n{col('Aufgezeichnete Klicks:', 'bold')}")
+    fast_clicks = 0
     for i, (t, x, y, color) in enumerate(events):
         color_str = f"  RGB{color}" if color else ""
         if i == 0:
@@ -83,7 +94,14 @@ def stop_recording(state: AutoClickerState) -> None:
         else:
             d = events[i][0] - events[i - 1][0]
             delay_str = f"+{d:.2f}s"
+            if d < _FAST_CLICK_GAP:
+                fast_clicks += 1
+                delay_str = col(delay_str + " ⚡", "yellow")
         print(f"  {col(str(i+1), 'cyan'):>4}  ({x:5d}, {y:5d})  {delay_str}{color_str}")
+
+    if fast_clicks:
+        print(f"\n{col('Hinweis:', 'yellow')} {fast_clicks} sehr schnelle(r) Klick(s) (⚡, < {_FAST_CLICK_GAP:.2f}s Abstand).")
+        print(hint("        Falls das versehentliche Doppelklicks waren: im Editor mit 'del <Nr>' entfernen."))
 
     # Sequenzname eingeben
     auto_name = f"Aufnahme_{datetime.now().strftime('%H%M%S')}"
@@ -114,6 +132,15 @@ def stop_recording(state: AutoClickerState) -> None:
         except ValueError:
             pass
 
+    # Optionale Beschreibung (hilfreich beim späteren Wiederfinden / Weitergeben)
+    print(f"\nBeschreibung (optional, Enter = {col('keine', 'cyan')}):")
+    try:
+        description = safe_input("> ").strip()
+    except (KeyboardInterrupt, EOFError):
+        description = ""
+    if is_cancel(description):
+        description = ""
+
     # SequenceSteps aus den Events bauen
     steps = []
     for i, (t, x, y, color) in enumerate(events):
@@ -126,7 +153,8 @@ def stop_recording(state: AutoClickerState) -> None:
         steps.append(step)
 
     loop_phase = LoopPhase(name="Loop", steps=steps, repeat=1)
-    seq = Sequence(name=seq_name, loop_phases=[loop_phase], total_cycles=total_cycles)
+    seq = Sequence(name=seq_name, loop_phases=[loop_phase], total_cycles=total_cycles,
+                   description=description)
 
     # Speichern
     ensure_sequences_dir()
@@ -159,3 +187,19 @@ def handle_record_sequence(state: AutoClickerState) -> None:
         stop_recording(state)
     else:
         start_recording(state)
+
+
+def handle_record_pause(state: AutoClickerState) -> None:
+    """Togglet die Pause der laufenden Aufnahme (nur während einer Aufnahme aktiv)."""
+    with state.lock:
+        if not state.recording_active:
+            print(f"\n{hint('Keine Aufnahme aktiv — CTRL+ALT+R startet eine.')}")
+            return
+        state.recording_paused = not state.recording_paused
+        paused = state.recording_paused
+
+    if paused:
+        print(f"\n{col('[PAUSE]', 'yellow')} Aufnahme pausiert — Klicks werden NICHT aufgezeichnet.")
+        print(f"  Fortsetzen: {col('CTRL+ALT+H', 'yellow')} erneut drücken")
+    else:
+        print(f"\n{col('[REC]', 'red')} Aufnahme fortgesetzt — Klicks werden wieder aufgezeichnet.")

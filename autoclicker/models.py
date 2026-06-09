@@ -242,6 +242,10 @@ class Sequence:
     loop_phases: list[LoopPhase] = field(default_factory=list)     # Mehrere Loop-Phasen
     end_steps: list[SequenceStep] = field(default_factory=list)    # Einmalig nach allen Zyklen
     total_cycles: int = 1  # 0 = unendlich, >0 = wie oft alle Loops durchlaufen werden
+    # Freitext-Beschreibung (was macht die Sequenz?) — wird beim Laden/Listen und
+    # beim Export angezeigt, damit man/Empfänger weiß worum es geht. Reines
+    # Hilfsdatum, beeinflusst die Ausführung NICHT.
+    description: str = ""
 
     def __str__(self) -> str:
         init_count = len(self.init_steps)
@@ -520,5 +524,8 @@ class AutoClickerState:
 
     # Sequenz-Aufnahme (Maus-Hook)
     recording_active: bool = False
+    # Pausiert die laufende Aufnahme: Klicks werden ignoriert, ohne die Aufnahme
+    # zu beenden (z.B. um im Spiel zu navigieren). Toggle via CTRL+ALT+H.
+    recording_paused: bool = False
     # Jeder Eintrag: (monotonic_timestamp: float, x: int, y: int, color: tuple|None)
     recording_events: list = field(default_factory=list)

@@ -507,7 +507,7 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
 
         name = step.name or "Punkt"
         _step_status(debug, phase, step_num, total_steps,
-                     f"Klick! (Gesamt: {state.total_clicks})",
+                     f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {state.total_clicks}",
                      f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {state.total_clicks}")
 
         max_clicks = state.config.click_max_total

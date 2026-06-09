@@ -62,6 +62,7 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         loop_phases = [LoopPhase(lp.name, list(lp.steps), lp.repeat, lp.scheduled_start) for lp in existing.loop_phases]
         end_steps = list(existing.end_steps)
         total_cycles = existing.total_cycles
+        description = existing.description
     else:
         print("\n--- Neue Sequenz erstellen ---")
         seq_name = safe_input("Name der Sequenz: ").strip()
@@ -71,6 +72,20 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         loop_phases = []
         end_steps = []
         total_cycles = 1
+        description = ""
+
+    # Beschreibung (optional) — hilft beim Wiederfinden und beim Weitergeben
+    if existing and description:
+        print(f"\nBeschreibung: {description}")
+        desc_input = safe_input("Neue Beschreibung (Enter = behalten, '-' = löschen): ").strip()
+        if desc_input == "-":
+            description = ""
+        elif desc_input:
+            description = desc_input
+    else:
+        desc_input = safe_input("Beschreibung (optional, Enter = keine): ").strip()
+        if desc_input:
+            description = desc_input
 
     # Verfügbare Punkte anzeigen
     with state.lock:
@@ -117,7 +132,8 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         init_steps=init_steps,
         loop_phases=loop_phases,
         end_steps=end_steps,
-        total_cycles=total_cycles
+        total_cycles=total_cycles,
+        description=description
     )
 
     with state.lock:
