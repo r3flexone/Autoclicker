@@ -15,6 +15,7 @@ import dearpygui.dearpygui as dpg
 from ...models import (
     SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
     ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY,
+    WaitCondition,
 )
 from .model import (
     BLOCK_LABELS, BLOCK_CLICK, BLOCK_WAIT_CLICK, BLOCK_WAIT, BLOCK_KEY,
@@ -47,16 +48,34 @@ def _clamp_color(app_data) -> tuple:
     return tuple(out)
 
 
-def build_properties_panel(parent: str, step, lane, graph,
+def _point_items(points) -> list[str]:
+    """Hilfsliste für Punkt-Picker-Combos."""
+    items = ["(manuell)"]
+    for p in (points or []):
+        items.append(f"#{p.id} {p.name or ''} ({p.x},{p.y})".strip())
+    return items
+
+
+def _apply_point(points, label: str, set_xy):
+    """Überträgt die Koordinaten des gewählten Punkts via set_xy(x, y)."""
+    if label == "(manuell)" or not points:
+        return
+    for p in points:
+        entry = f"#{p.id} {p.name or ''} ({p.x},{p.y})".strip()
+        if entry == label:
+            set_xy(p.x, p.y)
+            return
+
+
+def build_properties_panel(parent: str, step, lane, graph, points,
                            on_changed, on_structure) -> None:
     """Baut das Eigenschaften-Formular für den gewählten Schritt neu auf."""
-    # Container leeren
     for child in dpg.get_item_children(parent, 1) or []:
         dpg.delete_item(child)
 
     if step is None:
         dpg.add_text("Kein Block ausgewählt.", parent=parent, color=(150, 150, 150))
-        dpg.add_text("Block anklicken zum Bearbeiten.", parent=parent, color=(150, 150, 150))
+        dpg.add_text("'Bearbeiten' klicken.", parent=parent, color=(150, 150, 150))
         return
 
     cur_type = block_type(step)
@@ -86,7 +105,7 @@ def build_properties_panel(parent: str, step, lane, graph,
         def _on_delay(s, a, u):
             step.delay_before = max(0.0, float(a))
             on_changed()
-        dpg.add_input_float(label="Delay (s)", default_value=float(step.delay_before),
+        dpg.add_input_float(label="Delay (s)", default_value=float(step.delay_before or 0.0),
                             parent=parent, width=-80, min_value=0.0, step=0.1,
                             format="%.2f", callback=_on_delay)
 
@@ -102,12 +121,14 @@ def build_properties_panel(parent: str, step, lane, graph,
 
     # --- Typ-spezifische Felder ---------------------------------------------
     if cur_type in (BLOCK_CLICK, BLOCK_WAIT_CLICK):
-        _build_position(parent, step, on_changed)
-    if cur_type == BLOCK_WAIT_CLICK or (cur_type == BLOCK_WAIT and step.wait_condition):
+        _build_position(parent, step, points, on_changed)
+
+    if cur_type == BLOCK_WAIT_CLICK:
         _build_wait_condition(parent, step, on_changed)
-    if cur_type == BLOCK_WAIT and not step.wait_condition:
-        dpg.add_text("Wartet nur die Delay-Zeit (kein Farb-Trigger).",
-                     parent=parent, color=(150, 150, 150))
+
+    if cur_type == BLOCK_WAIT:
+        _build_wait_toggle(parent, step, on_changed, on_structure)
+
     if cur_type == BLOCK_KEY:
         _build_key(parent, step, on_changed)
     if cur_type == BLOCK_ITEM_SCAN:
@@ -124,11 +145,21 @@ def build_properties_panel(parent: str, step, lane, graph,
 
     # --- ELSE / Fallback ----------------------------------------------------
     dpg.add_separator(parent=parent)
-    _build_else(parent, step, on_changed, on_structure)
+    _build_else(parent, step, points, on_changed, on_structure)
 
 
-def _build_position(parent, step, on_changed):
+def _build_position(parent, step, points, on_changed):
     dpg.add_text("Klick-Position", parent=parent, color=(120, 180, 255))
+
+    if points:
+        def _on_pt(s, a, u):
+            def _set(x, y):
+                step.x = x
+                step.y = y
+                on_changed()
+            _apply_point(points, a, _set)
+        dpg.add_combo(items=_point_items(points), default_value="(manuell)",
+                      label="Punkt", parent=parent, width=-80, callback=_on_pt)
 
     def _on_x(s, a, u):
         step.x = int(a)
@@ -137,16 +168,33 @@ def _build_position(parent, step, on_changed):
     def _on_y(s, a, u):
         step.y = int(a)
         on_changed()
-    dpg.add_input_int(label="X", default_value=int(step.x), parent=parent,
+    dpg.add_input_int(label="X", default_value=int(step.x or 0), parent=parent,
                       width=-80, callback=_on_x)
-    dpg.add_input_int(label="Y", default_value=int(step.y), parent=parent,
+    dpg.add_input_int(label="Y", default_value=int(step.y or 0), parent=parent,
                       width=-80, callback=_on_y)
 
 
+def _build_wait_toggle(parent, step, on_changed, on_structure):
+    """WARTEN-Block: optionalen Farb-Trigger ein-/ausschalten."""
+    def _on_toggle(s, a, u):
+        if a:
+            step.wait_condition = WaitCondition(pixel=(step.x or 0, step.y or 0),
+                                                color=(0, 0, 0))
+        else:
+            step.wait_condition = None
+        on_structure()
+    dpg.add_checkbox(label="Farb-Trigger verwenden",
+                     default_value=step.wait_condition is not None,
+                     parent=parent, callback=_on_toggle)
+    if step.wait_condition:
+        _build_wait_condition(parent, step, on_changed)
+    else:
+        dpg.add_text("Wartet nur die Delay-Zeit.", parent=parent, color=(150, 150, 150))
+
+
 def _build_wait_condition(parent, step, on_changed):
-    from ...models import WaitCondition
     if step.wait_condition is None:
-        step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=(0, 0, 0))
+        step.wait_condition = WaitCondition(pixel=(step.x or 0, step.y or 0), color=(0, 0, 0))
     wc = step.wait_condition
     dpg.add_text("Farb-Trigger (warte auf Farbe)", parent=parent, color=(120, 180, 255))
 
@@ -205,7 +253,7 @@ def _build_named_scan(parent, step, attr, label, on_changed):
     dpg.add_input_text(label="Name", default_value=getattr(step, attr) or "",
                        parent=parent, width=-80, callback=_on_name)
     dpg.add_text("(Name eines im Item-/Boss-/Icon-Editor angelegten Scans)",
-                 parent=parent, color=(150, 150, 150), wrap=260)
+                 parent=parent, color=(150, 150, 150), wrap=270)
 
 
 def _build_scan_mode(parent, step, on_changed):
@@ -226,7 +274,6 @@ def _build_screenshot(parent, step, on_changed, on_structure):
             step.screenshot_region = step.screenshot_region or (0, 0, 100, 100)
         else:
             step.screenshot_region = None
-        # Panel neu aufbauen, damit die Region-Felder ein-/ausgeblendet werden.
         on_structure()
     dpg.add_checkbox(label="Bereich statt Vollbild", default_value=has_region,
                      parent=parent, callback=_on_toggle)
@@ -245,7 +292,7 @@ def _build_screenshot(parent, step, on_changed, on_structure):
                               width=-80, callback=_mk(i))
 
 
-def _build_else(parent, step, on_changed, on_structure):
+def _build_else(parent, step, points, on_changed, on_structure):
     dpg.add_text("ELSE / Fallback (wenn Trigger fehlschlägt)", parent=parent,
                  color=(220, 120, 120))
     cur = step.else_config.action if step.else_config else "(keine)"
@@ -263,6 +310,16 @@ def _build_else(parent, step, on_changed, on_structure):
     if not ec:
         return
     if ec.action == ELSE_CLICK:
+        if points:
+            def _on_pt(s, a, u):
+                def _set(x, y):
+                    ec.x = x
+                    ec.y = y
+                    on_changed()
+                _apply_point(points, a, _set)
+            dpg.add_combo(items=_point_items(points), default_value="(manuell)",
+                          label="ELSE Punkt", parent=parent, width=-80, callback=_on_pt)
+
         def _ex(s, a, u):
             ec.x = int(a)
             on_changed()
@@ -270,9 +327,9 @@ def _build_else(parent, step, on_changed, on_structure):
         def _ey(s, a, u):
             ec.y = int(a)
             on_changed()
-        dpg.add_input_int(label="ELSE X", default_value=int(ec.x), parent=parent,
+        dpg.add_input_int(label="ELSE X", default_value=int(ec.x or 0), parent=parent,
                           width=-80, callback=_ex)
-        dpg.add_input_int(label="ELSE Y", default_value=int(ec.y), parent=parent,
+        dpg.add_input_int(label="ELSE Y", default_value=int(ec.y or 0), parent=parent,
                           width=-80, callback=_ey)
 
         def _en(s, a, u):

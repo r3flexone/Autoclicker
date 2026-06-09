@@ -301,7 +301,7 @@ class NodeEditorApp:
             else:
                 self.selected = None
         build_properties_panel(
-            _PROPS_PANEL, step, lane, self.graph,
+            _PROPS_PANEL, step, lane, self.graph, self.points,
             on_changed=self._on_step_changed,
             on_structure=self._on_structure_changed,
         )
