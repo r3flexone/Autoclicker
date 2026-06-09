@@ -157,12 +157,12 @@ class NodeEditorApp:
 
             def _on_name(s, a, u):
                 g.name = a
-            dpg.add_input_text(label="Name", default_value=g.name, width=-60, callback=_on_name)
+            dpg.add_input_text(label="Name", default_value=g.name, width=-90, callback=_on_name)
 
             def _on_cycles(s, a, u):
                 g.total_cycles = max(0, int(a))
-            dpg.add_input_int(label="Zyklen (0=∞)", default_value=g.total_cycles,
-                              width=-60, min_value=0, callback=_on_cycles)
+            dpg.add_input_int(label="Zyklen (0=inf)", default_value=g.total_cycles,
+                              width=-100, min_value=0, callback=_on_cycles)
 
             def _on_desc(s, a, u):
                 g.description = a
@@ -383,7 +383,7 @@ class NodeEditorApp:
                     dpg.add_button(label=" X ", user_data=(lane, row),
                                    callback=self._on_delete)
                 if step.else_config:
-                    dpg.add_text(f"ELSE: {step.else_config.action}", color=(220, 130, 130))
+                    dpg.add_text(_else_label(step.else_config), color=(220, 130, 130))
             out_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Output)
         # Theme (Farbe) binden
         if btype in self._themes:
@@ -420,3 +420,20 @@ def _ascii(text: str) -> str:
             .replace("∞", "inf")
             .replace("≥", ">=")
             .replace("×", "x"))
+
+
+def _else_label(ec) -> str:
+    """Lesbarer ELSE-Text für den Block-Node."""
+    from autoclicker.models import ELSE_CLICK, ELSE_KEY, ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART
+    if ec.action == ELSE_CLICK:
+        target = ec.name or f"({ec.x},{ec.y})"
+        return f"ELSE: klicke {target}, weiter"
+    if ec.action == ELSE_KEY:
+        return f"ELSE: Taste '{ec.key}', weiter"
+    if ec.action == ELSE_SKIP:
+        return "ELSE: diesen Schritt überspringen"
+    if ec.action == ELSE_SKIP_CYCLE:
+        return "ELSE: Zyklus abbrechen"
+    if ec.action == ELSE_RESTART:
+        return "ELSE: Sequenz neu starten"
+    return f"ELSE: {ec.action}"
