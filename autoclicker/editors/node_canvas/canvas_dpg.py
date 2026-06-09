@@ -264,6 +264,7 @@ class NodeEditorApp:
 
     def _on_select(self, sender, app_data, user_data):
         self.selected = user_data
+        self.rebuild_canvas()
         self.refresh_properties()
 
     def _on_move(self, sender, app_data, user_data):
@@ -359,7 +360,7 @@ class NodeEditorApp:
                 dpg.add_button(label="+ Block", width=160, user_data=lane,
                                callback=self._on_add_blank)
                 if lane.is_loop():
-                    dpg.add_input_int(label="×", default_value=lane.repeat, width=90,
+                    dpg.add_input_int(label="x", default_value=lane.repeat, width=90,
                                       min_value=1, user_data=lane, callback=self._on_repeat)
                     dpg.add_input_text(label="Start", default_value=lane.scheduled_start or "",
                                        width=90, hint="HH:MM", user_data=lane,
@@ -382,11 +383,11 @@ class NodeEditorApp:
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="Bearbeiten", user_data=(lane, row),
                                    callback=self._on_select)
-                    dpg.add_button(label="▲", user_data=(lane, row, -1),
+                    dpg.add_button(label=" ^ ", user_data=(lane, row, -1),
                                    callback=self._on_move)
-                    dpg.add_button(label="▼", user_data=(lane, row, 1),
+                    dpg.add_button(label=" v ", user_data=(lane, row, 1),
                                    callback=self._on_move)
-                    dpg.add_button(label="✕", user_data=(lane, row),
+                    dpg.add_button(label=" X ", user_data=(lane, row),
                                    callback=self._on_delete)
                 if step.else_config:
                     dpg.add_text(f"ELSE: {step.else_config.action}", color=(220, 130, 130))
