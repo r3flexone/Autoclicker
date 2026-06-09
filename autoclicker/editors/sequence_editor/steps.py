@@ -599,9 +599,9 @@ class _PhaseEditor:
     def _handle_make_pixel(self, user_input: str, until_gone: bool) -> None:
         """Wandelt einen bestehenden Schritt in einen Farb-Trigger um.
 
-        Nutzt die bei der Aufnahme erfasste Farbe (recorded_color) am Klickpunkt
-        des Schritts. Fehlt sie (z.B. manuell angelegter Schritt), wird die Farbe
-        live an der aktuellen Mausposition abgegriffen.
+        Nutzt recorded_color des Schritts (wird bei jeder Schritterstellung
+        automatisch erfasst). Fehlt sie ausnahmsweise, wird die Farbe live an
+        der aktuellen Mausposition abgegriffen.
 
         Format: pixel <Nr> | gone <Nr>
         """
@@ -674,6 +674,11 @@ class _PhaseEditor:
             wait_condition=wait_cond,
             delay_max=delay_max,
         )
+        try:
+            from ...winapi import get_screen_pixel
+            step.recorded_color = get_screen_pixel(point.x, point.y)
+        except Exception:
+            pass
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
