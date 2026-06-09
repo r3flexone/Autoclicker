@@ -107,7 +107,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
         def _on_name(s, a, u):
             step.name = a
             on_changed()
-        dpg.add_input_text(label="Name", default_value=step.name or "",
+        dpg.add_input_text(label="Name", tag="np_name", default_value=step.name or "",
                            parent=parent, width=-130, callback=_on_name)
 
         def _on_delay(s, a, u):
@@ -168,6 +168,10 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
             def _set(x, y, name):
                 step.x = x
                 step.y = y
+                if name:
+                    step.name = name
+                    if dpg.does_item_exist("np_name"):
+                        dpg.set_value("np_name", name)
                 dpg.set_value(x_tag, x)
                 dpg.set_value(y_tag, y)
                 on_changed()
