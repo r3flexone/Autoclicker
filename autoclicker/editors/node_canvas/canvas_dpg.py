@@ -383,7 +383,7 @@ class NodeEditorApp:
                     dpg.add_button(label=" X ", user_data=(lane, row),
                                    callback=self._on_delete)
                 if step.else_config:
-                    dpg.add_text(_else_label(step.else_config), color=(220, 130, 130))
+                    dpg.add_text(_else_label(step.else_config), color=(230, 180, 90))
             out_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Output)
         # Theme (Farbe) binden
         if btype in self._themes:

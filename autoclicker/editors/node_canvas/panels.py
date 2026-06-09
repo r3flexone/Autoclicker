@@ -48,12 +48,21 @@ def _clamp_color(app_data) -> tuple:
     return tuple(out)
 
 
+def _point_label(p) -> str:
+    return f"#{p.id} {p.name or ''} ({p.x},{p.y})".strip()
+
+
 def _point_items(points) -> list[str]:
     """Hilfsliste für Punkt-Picker-Combos."""
-    items = ["(manuell)"]
+    return ["(manuell)"] + [_point_label(p) for p in (points or [])]
+
+
+def _current_point_label(points, x, y) -> str:
+    """Findet den Punkt-Eintrag dessen Koordinaten zu (x,y) passen, sonst '(manuell)'."""
     for p in (points or []):
-        items.append(f"#{p.id} {p.name or ''} ({p.x},{p.y})".strip())
-    return items
+        if p.x == x and p.y == y:
+            return _point_label(p)
+    return "(manuell)"
 
 
 def _apply_point(points, label: str, set_xy):
@@ -61,8 +70,7 @@ def _apply_point(points, label: str, set_xy):
     if label == "(manuell)" or not points:
         return
     for p in points:
-        entry = f"#{p.id} {p.name or ''} ({p.x},{p.y})".strip()
-        if entry == label:
+        if _point_label(p) == label:
             set_xy(p.x, p.y)
             return
 
@@ -161,7 +169,8 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
                 else:
                     on_changed()
             _apply_point(points, a, _set)
-        dpg.add_combo(items=_point_items(points), default_value="(manuell)",
+        dpg.add_combo(items=_point_items(points),
+                      default_value=_current_point_label(points, step.x, step.y),
                       label="Punkt", parent=parent, width=-130, callback=_on_pt)
 
     def _on_x(s, a, u):
@@ -297,7 +306,7 @@ def _build_screenshot(parent, step, on_changed, on_structure):
 
 def _build_else(parent, step, points, on_changed, on_structure):
     dpg.add_text("ELSE / Fallback (wenn Trigger fehlschlägt)", parent=parent,
-                 color=(220, 120, 120))
+                 color=(230, 180, 90))
     cur = step.else_config.action if step.else_config else "(keine)"
 
     def _on_action(s, a, u):
@@ -320,7 +329,8 @@ def _build_else(parent, step, points, on_changed, on_structure):
                     ec.y = y
                     on_structure()
                 _apply_point(points, a, _set)
-            dpg.add_combo(items=_point_items(points), default_value="(manuell)",
+            dpg.add_combo(items=_point_items(points),
+                          default_value=_current_point_label(points, ec.x, ec.y),
                           label="ELSE Punkt", parent=parent, width=-130, callback=_on_pt)
 
         def _ex(s, a, u):
