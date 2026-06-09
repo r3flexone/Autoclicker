@@ -82,26 +82,15 @@ class NodeEditorApp:
     def _build_ui(self) -> None:
         with dpg.window(tag="ac_root"):
             with dpg.group(horizontal=True):
-                # --- linke Seitenleiste ---
-                with dpg.child_window(width=290, tag="ac_left"):
-                    # Lade-Bereich bleibt stehen, der Rest wird beim Sequenz-
-                    # Wechsel neu aufgebaut (Name/Zyklen/Info hängen an der Graph-
-                    # Instanz, darum kein In-Place-Update möglich).
+                # --- linke Seitenleiste (Sequenz-Info + Palette + Eigenschaften) ---
+                with dpg.child_window(width=310, tag="ac_left"):
                     self._build_loader()
                     dpg.add_separator()
                     dpg.add_group(tag=_SIDEBAR)
                     self._build_sidebar()
-                # --- Canvas (Mitte) ---
-                # Der node_editor wird NICHT hier angelegt, sondern in rebuild_canvas
-                # jedes Mal frisch erzeugt. Grund: einzelne Nodes mit bestehenden
-                # Links zu löschen lässt Dear PyGui abstürzen (dangling links) —
-                # darum verwerfen wir bei jedem Rebuild den ganzen Editor.
+                # --- Canvas (Mitte, füllt den Rest) ---
+                # node_editor wird in rebuild_canvas frisch erzeugt (DPG-Crashfix).
                 dpg.add_child_window(tag="ac_center", border=False)
-                # --- Eigenschaften (rechts) ---
-                with dpg.child_window(width=300, tag="ac_right"):
-                    dpg.add_text("Eigenschaften", color=(120, 180, 255))
-                    dpg.add_separator()
-                    dpg.add_group(tag=_PROPS_PANEL)
 
     def _build_loader(self) -> None:
         """Dropdown zum Laden einer gespeicherten Sequenz direkt im Editor."""
@@ -195,7 +184,7 @@ class NodeEditorApp:
             dpg.add_text("Punkte-Palette", color=(120, 180, 255))
             dpg.add_text("Klick fügt einen KLICK-Block\nin die Ziel-Lane ein.",
                          color=(150, 150, 150))
-            with dpg.child_window(height=-1, border=False):
+            with dpg.child_window(height=160, border=True):
                 if not self.points:
                     dpg.add_text("Keine Punkte aufgenommen.", color=(150, 150, 150))
                 for pt in self.points:
@@ -206,6 +195,10 @@ class NodeEditorApp:
                                                  width=18, height=18, no_border=True)
                         dpg.add_button(label=label, width=-1, user_data=pt,
                                        callback=self._on_add_point)
+
+            dpg.add_separator()
+            dpg.add_text("Eigenschaften", color=(120, 180, 255))
+            dpg.add_group(tag=_PROPS_PANEL)
         finally:
             dpg.pop_container_stack()
 
