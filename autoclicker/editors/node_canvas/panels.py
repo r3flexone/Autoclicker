@@ -158,18 +158,19 @@ def build_properties_panel(parent: str, step, lane, graph, points,
 
 def _build_position(parent, step, points, on_changed, on_structure=None):
     dpg.add_text("Klick-Position", parent=parent, color=(120, 180, 255))
+    x_tag, y_tag = "np_pos_x", "np_pos_y"
 
     if points:
+        # X/Y direkt setzen statt das Panel neu zu bauen – ein Rebuild würde
+        # dieses Combo mitten im eigenen Callback löschen (DPG-undefiniert) und
+        # die Auswahl abbrechen, sodass man keinen (anderen) Punkt wählen kann.
         def _on_pt(s, a, u):
             def _set(x, y, name):
                 step.x = x
                 step.y = y
-                if name and not step.name:
-                    step.name = name
-                if on_structure:
-                    on_structure()
-                else:
-                    on_changed()
+                dpg.set_value(x_tag, x)
+                dpg.set_value(y_tag, y)
+                on_changed()
             _apply_point(points, a, _set)
         dpg.add_combo(items=_point_items(points),
                       default_value=_current_point_label(points, step.x, step.y),
@@ -182,10 +183,10 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
     def _on_y(s, a, u):
         step.y = int(a)
         on_changed()
-    dpg.add_input_int(label="X", default_value=int(step.x or 0), parent=parent,
-                      width=-130, callback=_on_x)
-    dpg.add_input_int(label="Y", default_value=int(step.y or 0), parent=parent,
-                      width=-130, callback=_on_y)
+    dpg.add_input_int(label="X", tag=x_tag, default_value=int(step.x or 0),
+                      parent=parent, width=-130, callback=_on_x)
+    dpg.add_input_int(label="Y", tag=y_tag, default_value=int(step.y or 0),
+                      parent=parent, width=-130, callback=_on_y)
 
 
 def _build_wait_toggle(parent, step, on_changed, on_structure):
@@ -324,13 +325,19 @@ def _build_else(parent, step, points, on_changed, on_structure):
     if not ec:
         return
     if ec.action == ELSE_CLICK:
+        ex_tag, ey_tag, en_tag = "np_else_x", "np_else_y", "np_else_name"
         if points:
+            # In-place setzen (kein Panel-Rebuild im Combo-Callback, sonst bricht
+            # die Auswahl ab – siehe _build_position).
             def _on_pt(s, a, u):
                 def _set(x, y, name):
                     ec.x = x
                     ec.y = y
                     ec.name = name
-                    on_structure()
+                    dpg.set_value(ex_tag, x)
+                    dpg.set_value(ey_tag, y)
+                    dpg.set_value(en_tag, name)
+                    on_changed()
                 _apply_point(points, a, _set)
             dpg.add_combo(items=_point_items(points),
                           default_value=_current_point_label(points, ec.x, ec.y),
@@ -343,16 +350,17 @@ def _build_else(parent, step, points, on_changed, on_structure):
         def _ey(s, a, u):
             ec.y = int(a)
             on_changed()
-        dpg.add_input_int(label="ELSE X", default_value=int(ec.x or 0), parent=parent,
-                          width=-130, callback=_ex)
-        dpg.add_input_int(label="ELSE Y", default_value=int(ec.y or 0), parent=parent,
-                          width=-130, callback=_ey)
+        dpg.add_input_int(label="ELSE X", tag=ex_tag, default_value=int(ec.x or 0),
+                          parent=parent, width=-130, callback=_ex)
+        dpg.add_input_int(label="ELSE Y", tag=ey_tag, default_value=int(ec.y or 0),
+                          parent=parent, width=-130, callback=_ey)
 
         def _en(s, a, u):
             ec.name = a
             on_changed()
-        dpg.add_input_text(label="ELSE Name", default_value=ec.name or "",
-                           parent=parent, width=-130, callback=_en)
+        dpg.add_input_text(label="ELSE Name (für manuelle Punkte)", tag=en_tag,
+                           default_value=ec.name or "", parent=parent,
+                           width=-130, callback=_en)
     elif ec.action == ELSE_KEY:
         def _ek(s, a, u):
             ec.key = a
