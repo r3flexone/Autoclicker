@@ -85,6 +85,11 @@ class ClickPoint:
     y: int
     name: str = ""  # Optionaler Name für den Punkt
     id: int = 0     # Stabile ID für Referenzierung (bleibt bei Umsortierung erhalten)
+    # Pixelfarbe an der Position zum Aufnahme-Zeitpunkt (r,g,b) oder None.
+    # Wird beim Erstellen eines Schritts aus diesem Punkt als recorded_color
+    # übernommen — zuverlässiger als ein Live-Abgriff im Editor, da das Spiel
+    # bei der Aufnahme im richtigen Zustand war.
+    color: Optional[tuple[int, int, int]] = None
 
     def __str__(self) -> str:
         if self.name:

@@ -15,7 +15,7 @@ from pathlib import Path
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg
-from .winapi import get_cursor_pos, set_cursor_pos, user32
+from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_data, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
@@ -49,17 +49,19 @@ def _rmtree_robust(path: Path) -> None:
 def handle_record(state: AutoClickerState) -> None:
     """Nimmt die aktuelle Mausposition auf - sofort ohne Eingabe."""
     x, y = get_cursor_pos()
+    color = get_screen_pixel(x, y)  # Farbe am Aufnahme-Zeitpunkt mitspeichern
 
     with state.lock:
         new_id = get_next_point_id(state)
         name = f"P{new_id}"
-        point = ClickPoint(x, y, name, new_id)
+        point = ClickPoint(x, y, name, new_id, color=color)
         state.points.append(point)
 
     # Auto-speichern
     save_data(state)
 
-    print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}")
+    color_str = f"  RGB{color}" if color else ""
+    print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
     print_status(state)
 
 

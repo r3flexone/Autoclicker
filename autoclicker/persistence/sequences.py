@@ -149,7 +149,11 @@ def save_data(state: AutoClickerState) -> None:
 
     # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
     with state.lock:
-        points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name} for p in state.points]
+        points_data = [
+            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
+             **({"color": list(p.color)} if p.color else {})}
+            for p in state.points
+        ]
         sequences_snapshot = list(state.sequences.items())
 
     # Punkte speichern (mit stabiler ID)
@@ -181,7 +185,9 @@ def load_points(state: AutoClickerState) -> None:
                 state.points = []
                 for i, p in enumerate(data):
                     point_id = p.get("id", i + 1)  # Fallback: Index + 1 für alte Dateien
-                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id))
+                    color_raw = p.get("color")
+                    color = tuple(int(v) for v in color_raw) if color_raw else None
+                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id, color=color))
             print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             print(warn(f"points.json konnte nicht geladen werden: {e}"))

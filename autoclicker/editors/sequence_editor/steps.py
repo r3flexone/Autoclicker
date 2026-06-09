@@ -706,11 +706,16 @@ class _PhaseEditor:
             wait_condition=wait_cond,
             delay_max=delay_max,
         )
-        try:
-            from ...winapi import get_screen_pixel
-            step.recorded_color = get_screen_pixel(point.x, point.y)
-        except Exception:
-            pass
+        # Farbe übernehmen: bevorzugt die bei der Punkt-Aufnahme gespeicherte
+        # (Spiel war da im richtigen Zustand), sonst Live-Abgriff als Fallback.
+        if point.color:
+            step.recorded_color = point.color
+        else:
+            try:
+                from ...winapi import get_screen_pixel
+                step.recorded_color = get_screen_pixel(point.x, point.y)
+            except Exception:
+                pass
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
