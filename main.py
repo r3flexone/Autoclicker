@@ -62,7 +62,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
     print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
-    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots visuell auf Screenshot anlegen)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")

@@ -13,11 +13,18 @@ Läuft nur im Subprocess (Dear PyGui import).
 import dearpygui.dearpygui as dpg
 
 from ...config import DEFAULT_MIN_CONFIDENCE
-from ...models import ItemSlot, ItemProfile, ItemScanConfig
+from ...models import (
+    ItemSlot, ItemProfile, ItemScanConfig,
+    IconScanConfig, BossScanConfig, BossProfile,
+)
 from ...imaging import OPENCV_AVAILABLE
 from ...persistence import (
     save_item_scan, ensure_item_scans_dir,
     list_available_item_scans, load_item_scan_file,
+    save_icon_scan, ensure_icon_scans_dir,
+    list_available_icon_scans, load_icon_scan_file,
+    save_boss_scan, ensure_boss_scans_dir,
+    list_available_boss_scans, load_boss_scan_file,
 )
 from ...editors.item_editor.markers import _collect_markers_silent, _find_matching_existing_item
 from .texture import ViewTransform, pil_to_texture, fit_scale
@@ -36,7 +43,15 @@ _ITEM_LIST = "ac_ss_itemlist"
 _PROPS = "ac_ss_props"
 _SCAN = "ac_ss_scan"
 _SCAN_PICK = "ac_ss_scanpick"
+_ICON = "ac_ss_icon"
+_ICON_PICK = "ac_ss_iconpick"
+_BOSS = "ac_ss_boss"
+_BOSS_PICK = "ac_ss_bosspick"
 _STATUS = "ac_ss_status"
+
+# Aktions-Auswahl (Anzeige ↔ Wert)
+_ICON_ACTIONS = ["click", "key", "skip", "skip_cycle", "restart"]
+_BOSS_ACTIONS = ["item_scan", "click", "key", "skip", "skip_cycle", "restart"]
 
 # Modi
 MODE_SLOT = "slot"
@@ -76,6 +91,17 @@ class ScanStudioApp:
         self._drawing = False
         self._draw_start = (0.0, 0.0)
         self._draw_cur = (0.0, 0.0)
+        # Boss/Icon: laufende Konfigurationen + Pick-Callbacks
+        self._icon_cfg = IconScanConfig(name="")
+        self._icon_region = None        # zuletzt gezeichnete Icon-Region (Screen)
+        self._boss_cfg = BossScanConfig(name="")
+        self._boss_region = None
+        self._boss_sel: int | None = None
+        # Generalisierte Canvas-Eingaben (für Boss/Icon-Tabs):
+        self._region_cb = None          # nächstes Rechteck → cb(region)
+        self._marker_cb = None          # Klick pickt Farbe → cb(rgb)
+        self._marker_owner = None       # id() der Liste, in die Marker gepickt werden
+        self._point_cb = None           # nächster Klick → cb((x,y))
 
         scale = fit_scale(image.width, image.height, max_canvas[0], max_canvas[1])
         self.transform = ViewTransform(
@@ -97,6 +123,8 @@ class ScanStudioApp:
         self.refresh_slot_list()
         self.refresh_item_list()
         self.refresh_scan_panel()
+        self.refresh_icon_panel()
+        self.refresh_boss_panel()
         self.refresh_properties()
         dpg.start_dearpygui()
         dpg.destroy_context()
@@ -148,6 +176,10 @@ class ScanStudioApp:
                             dpg.add_group(tag=_PROPS)
                         with dpg.tab(label="Scan bauen"):
                             dpg.add_group(tag=_SCAN)
+                        with dpg.tab(label="Icon-Scan"):
+                            dpg.add_group(tag=_ICON)
+                        with dpg.tab(label="Boss-Scan"):
+                            dpg.add_group(tag=_BOSS)
 
     def _install_handlers(self) -> None:
         with dpg.handler_registry():
@@ -166,7 +198,8 @@ class ScanStudioApp:
         pos = self._canvas_pos()
         if pos is None:
             return
-        if self.mode == MODE_SLOT:
+        # Rechteck ziehen: für Slots (Modus SLOT) oder wenn eine Region angefragt ist
+        if self._region_cb is not None or self.mode == MODE_SLOT:
             self._drawing = True
             self._draw_start = pos
             self._draw_cur = pos
@@ -180,12 +213,32 @@ class ScanStudioApp:
 
     def _on_mouse_release(self, sender, app_data):
         pos = self._canvas_pos()
-        if self.mode == MODE_SLOT and self._drawing:
+        if self._drawing:
             self._drawing = False
             x0, y0 = self._draw_start
             x1, y1 = self._draw_cur
-            self._finish_draw(x0, y0, x1, y1)
-        elif pos is not None and self.mode in (MODE_CLICK, MODE_COLOR):
+            if self._region_cb is not None:
+                cb, self._region_cb = self._region_cb, None
+                sx0, sy0 = self.transform.draw_to_screen(x0, y0)
+                sx1, sy1 = self.transform.draw_to_screen(x1, y1)
+                cb(normalize_region(sx0, sy0, sx1, sy1))
+                self.redraw_overlay()
+            else:
+                self._finish_draw(x0, y0, x1, y1)
+            return
+        if pos is None:
+            return
+        # Einzelklick-Picks (Boss/Icon)
+        if self._point_cb is not None:
+            cb, self._point_cb = self._point_cb, None
+            cb(self.transform.draw_to_screen(pos[0], pos[1]))
+            return
+        if self._marker_cb is not None:
+            ix, iy = self.transform.draw_to_image(pos[0], pos[1])
+            px = self.image.convert("RGB").getpixel((ix, iy))
+            self._marker_cb((int(px[0]), int(px[1]), int(px[2])))
+            return
+        if self.mode in (MODE_CLICK, MODE_COLOR):
             self._handle_point(pos[0], pos[1])
 
     # --------------------------------------------------------- Kern-Aktionen
@@ -245,6 +298,16 @@ class ScanStudioApp:
             cx, cy = t.screen_to_draw(*slot.click_pos)
             dpg.draw_circle((cx, cy), 4, color=(255, 200, 60),
                             fill=(255, 200, 60), parent=_OVERLAY)
+        # Icon-/Boss-Scan-Regionen (andere Farben, klar unterscheidbar)
+        for region, color, label in (
+            (self._icon_region, (230, 150, 60), "ICON"),
+            (self._boss_region, (230, 70, 70), "BOSS"),
+        ):
+            if region:
+                rx1, ry1, rx2, ry2 = t.screen_region_to_draw(region)
+                dpg.draw_rectangle((rx1, ry1), (rx2, ry2), color=color, thickness=2,
+                                   parent=_OVERLAY)
+                dpg.draw_text((rx1 + 3, ry1 + 2), label, size=14, color=color, parent=_OVERLAY)
         # Vorschau-Rechteck beim Zeichnen
         if self._drawing:
             dpg.draw_rectangle(self._draw_start, self._draw_cur, color=(120, 255, 120),
@@ -365,6 +428,340 @@ class ScanStudioApp:
         self._set_status(f"Scan '{self._scan_name}' gespeichert "
                          f"({len(slots)} Slots, {len(items)} Items).")
         self.refresh_scan_panel()
+
+    # ----------------------------------------------------- generische Picks
+    def _request_region(self, setter, refresh, label: str) -> None:
+        def _cb(region):
+            setter(region)
+            self.redraw_overlay()
+            refresh()
+        self._region_cb = _cb
+        self._set_status(f"{label}: Rechteck auf dem Screenshot aufziehen.",
+                         color=(120, 200, 120))
+
+    def _toggle_marker(self, target_list, refresh) -> None:
+        # Schaltet aus, wenn bereits für DIESE Liste aktiv — sonst (auch bei
+        # anderem Ziel) auf diese Liste umschalten.
+        if self._marker_cb is not None and self._marker_owner == id(target_list):
+            self._marker_cb = None
+            self._marker_owner = None
+            self._set_status("Marker-Pick aus.")
+        else:
+            self._marker_owner = id(target_list)
+
+            def _cb(rgb):
+                target_list.append(rgb)
+                refresh()
+                self._set_status(f"Marker + RGB{rgb} (klicke weiter / Button = aus).",
+                                 color=(120, 200, 120))
+            self._marker_cb = _cb
+            self._set_status("Klick auf den Screenshot pickt Marker-Farben.",
+                             color=(120, 200, 120))
+        refresh()
+
+    # ----------------------------------------------------------- Icon-Scan
+    def refresh_icon_panel(self) -> None:
+        if not dpg.does_item_exist(_ICON):
+            return
+        for child in dpg.get_item_children(_ICON, 1) or []:
+            dpg.delete_item(child)
+        cfg = self._icon_cfg
+        p = _ICON
+
+        names = [n for n, _ in list_available_icon_scans()]
+        if names:
+            with dpg.group(horizontal=True, parent=p):
+                dpg.add_combo(items=names, width=-60, tag=_ICON_PICK, default_value=names[0])
+                dpg.add_button(label="Laden", callback=self._on_load_icon)
+            dpg.add_separator(parent=p)
+
+        def _name(s, a, u):
+            cfg.name = a.strip()
+        dpg.add_input_text(label="Name", default_value=cfg.name, parent=p, width=-80, callback=_name)
+
+        dpg.add_button(label="Region aufziehen", width=-1, parent=p, callback=self._on_icon_region)
+        r = cfg.scan_region
+        dpg.add_text(f"Region: ({r[0]},{r[1]})–({r[2]},{r[3]})", parent=p)
+
+        dpg.add_separator(parent=p)
+        dpg.add_text("Erkennung", parent=p, color=(120, 180, 255))
+        dpg.add_button(label="Template aus Region aufnehmen", width=-1, parent=p,
+                       callback=self._on_icon_template)
+        dpg.add_text(f"Template: {cfg.template or '—'}", parent=p)
+
+        def _conf(s, a, u):
+            cfg.min_confidence = max(0.1, min(1.0, float(a) / 100.0))
+        dpg.add_input_int(label="Konfidenz %", default_value=int(cfg.min_confidence * 100),
+                          parent=p, width=-80, min_value=10, max_value=100, callback=_conf)
+
+        mk_on = self._marker_cb is not None
+        dpg.add_button(label=("Marker-Pick: AN" if mk_on else "Marker hinzufügen"),
+                       width=-1, parent=p, callback=self._on_icon_marker)
+        dpg.add_text(f"Marker-Farben: {len(cfg.marker_colors)}", parent=p)
+        if cfg.marker_colors:
+            with dpg.group(horizontal=True, parent=p):
+                for c in cfg.marker_colors[:8]:
+                    dpg.add_color_button(default_value=tuple(c) + (255,), width=16, height=16,
+                                         no_border=True)
+            dpg.add_button(label="Marker löschen", parent=p, callback=self._on_icon_marker_clear)
+
+        def _tol(s, a, u):
+            cfg.color_tolerance = max(1, min(100, int(a)))
+        dpg.add_input_int(label="Farbtoleranz", default_value=cfg.color_tolerance,
+                          parent=p, width=-80, min_value=1, max_value=100, callback=_tol)
+
+        dpg.add_separator(parent=p)
+        dpg.add_text("Aktion bei Fund", parent=p, color=(120, 180, 255))
+
+        def _act(s, a, u):
+            cfg.action = a
+            self.refresh_icon_panel()
+        dpg.add_combo(items=_ICON_ACTIONS, default_value=cfg.action, parent=p, width=-80,
+                      callback=_act)
+        self._build_action_params(p, cfg, with_scan=False)
+
+        dpg.add_separator(parent=p)
+        dpg.add_button(label="Icon-Scan speichern", width=-1, parent=p, callback=self._on_save_icon)
+
+    def _build_action_params(self, parent, cfg, with_scan: bool) -> None:
+        """Gemeinsame Aktions-Felder für Icon/Boss (click→x/y, key→Taste, delay, ggf. scan)."""
+        if cfg.action == "click":
+            def _ax(s, a, u): cfg.action_x = int(a)
+            def _ay(s, a, u): cfg.action_y = int(a)
+            dpg.add_input_int(label="Klick X", default_value=cfg.action_x, parent=parent,
+                              width=-80, callback=_ax)
+            dpg.add_input_int(label="Klick Y", default_value=cfg.action_y, parent=parent,
+                              width=-80, callback=_ay)
+            dpg.add_button(label="Punkt auf Canvas wählen", width=-1, parent=parent,
+                           user_data=cfg, callback=self._on_pick_action_point)
+        elif cfg.action == "key":
+            def _ak(s, a, u): cfg.action_key = a
+            dpg.add_input_text(label="Taste", default_value=cfg.action_key or "", parent=parent,
+                               width=-80, callback=_ak)
+        elif cfg.action == "item_scan" and with_scan:
+            def _as(s, a, u): cfg.action_scan = a.strip() or None
+            dpg.add_input_text(label="Item-Scan", default_value=cfg.action_scan or "",
+                               parent=parent, width=-80, callback=_as)
+
+        def _ad(s, a, u): cfg.action_delay = max(0.0, float(a))
+        dpg.add_input_float(label="Delay (s)", default_value=float(cfg.action_delay),
+                            parent=parent, width=-80, min_value=0.0, step=0.1,
+                            format="%.2f", callback=_ad)
+
+    def _on_icon_region(self, *_):
+        def _set(region):
+            self._icon_cfg.scan_region = region
+            self._icon_region = region
+        self._request_region(_set, self.refresh_icon_panel, "Icon-Region")
+
+    def _on_icon_template(self, *_):
+        crop = crop_region(self.image, self._icon_cfg.scan_region,
+                           self.transform.virtual_left, self.transform.virtual_top)
+        fn = save_template(crop, self._icon_cfg.name or "icon")
+        if fn:
+            self._icon_cfg.template = fn
+            self._set_status(f"Template '{fn}' aufgenommen.")
+        else:
+            self._set_status("Template aufnehmen fehlgeschlagen.", color=(220, 90, 90))
+        self.refresh_icon_panel()
+
+    def _on_icon_marker(self, *_):
+        self._toggle_marker(self._icon_cfg.marker_colors, self.refresh_icon_panel)
+
+    def _on_icon_marker_clear(self, *_):
+        self._icon_cfg.marker_colors = []
+        self.refresh_icon_panel()
+
+    def _on_load_icon(self, *_):
+        name = dpg.get_value(_ICON_PICK) if dpg.does_item_exist(_ICON_PICK) else ""
+        path = next((p for n, p in list_available_icon_scans() if n == name), None)
+        cfg = load_icon_scan_file(path) if path else None
+        if cfg:
+            self._icon_cfg = cfg
+            self._icon_region = cfg.scan_region
+            self.redraw_overlay()
+            self.refresh_icon_panel()
+            self._set_status(f"Icon-Scan '{name}' geladen.")
+
+    def _on_save_icon(self, *_):
+        if not self._icon_cfg.name:
+            self._set_status("Bitte Icon-Scan-Namen eingeben.", color=(220, 180, 90))
+            return
+        ensure_icon_scans_dir()
+        save_icon_scan(self._icon_cfg)
+        self.refresh_icon_panel()
+        self._set_status(f"Icon-Scan '{self._icon_cfg.name}' gespeichert.")
+
+    def _on_pick_action_point(self, sender, app_data, user_data):
+        cfg = user_data
+
+        def _cb(pt):
+            cfg.action_x, cfg.action_y = pt
+            self.refresh_icon_panel()
+            self.refresh_boss_panel()
+            self._set_status(f"Aktions-Punkt: {pt}")
+        self._point_cb = _cb
+        self._set_status("Klick auf den Screenshot setzt den Aktions-Punkt.",
+                         color=(120, 200, 120))
+
+    # ----------------------------------------------------------- Boss-Scan
+    def refresh_boss_panel(self) -> None:
+        if not dpg.does_item_exist(_BOSS):
+            return
+        for child in dpg.get_item_children(_BOSS, 1) or []:
+            dpg.delete_item(child)
+        cfg = self._boss_cfg
+        p = _BOSS
+
+        names = [n for n, _ in list_available_boss_scans()]
+        if names:
+            with dpg.group(horizontal=True, parent=p):
+                dpg.add_combo(items=names, width=-60, tag=_BOSS_PICK, default_value=names[0])
+                dpg.add_button(label="Laden", callback=self._on_load_boss)
+            dpg.add_separator(parent=p)
+
+        def _name(s, a, u):
+            cfg.name = a.strip()
+        dpg.add_input_text(label="Name", default_value=cfg.name, parent=p, width=-80, callback=_name)
+        dpg.add_button(label="Region aufziehen", width=-1, parent=p, callback=self._on_boss_region)
+        r = cfg.scan_region
+        dpg.add_text(f"Region: ({r[0]},{r[1]})–({r[2]},{r[3]})", parent=p)
+
+        def _tol(s, a, u):
+            cfg.color_tolerance = max(1, min(100, int(a)))
+        dpg.add_input_int(label="Farbtoleranz", default_value=cfg.color_tolerance,
+                          parent=p, width=-80, min_value=1, max_value=100, callback=_tol)
+
+        def _def(s, a, u):
+            cfg.default_action = a
+        dpg.add_combo(items=["skip", "skip_cycle", "restart", "item_scan"],
+                      default_value=cfg.default_action, label="Default", parent=p, width=-80,
+                      callback=_def)
+
+        def _llm(s, a, u): cfg.use_llm = bool(a)
+        def _ocr(s, a, u): cfg.use_ocr = bool(a)
+        dpg.add_checkbox(label="LLM-Vision nutzen", default_value=cfg.use_llm, parent=p, callback=_llm)
+        dpg.add_checkbox(label="OCR nutzen", default_value=cfg.use_ocr, parent=p, callback=_ocr)
+
+        dpg.add_separator(parent=p)
+        with dpg.group(horizontal=True, parent=p):
+            dpg.add_text("Bosse", color=(120, 180, 255))
+            dpg.add_button(label="+ Boss", callback=self._on_boss_add)
+        for idx, b in enumerate(cfg.bosses):
+            label = ("» " if idx == self._boss_sel else "") + (b.name or f"Boss {idx+1}")
+            dpg.add_button(label=label, width=-1, parent=p, user_data=idx,
+                           callback=self._on_boss_select)
+
+        if self._boss_sel is not None and 0 <= self._boss_sel < len(cfg.bosses):
+            self._build_boss_editor(p, cfg.bosses[self._boss_sel])
+
+        dpg.add_separator(parent=p)
+        dpg.add_button(label="Boss-Scan speichern", width=-1, parent=p, callback=self._on_save_boss)
+
+    def _build_boss_editor(self, parent, boss: BossProfile) -> None:
+        dpg.add_separator(parent=parent)
+        dpg.add_text(f"Boss: {boss.name}", parent=parent, color=(230, 140, 140))
+
+        def _bn(s, a, u):
+            boss.name = a.strip()
+            self.refresh_boss_panel()
+        dpg.add_input_text(label="Boss-Name", default_value=boss.name, parent=parent,
+                           width=-80, on_enter=True, callback=_bn)
+
+        dpg.add_button(label="Template aus Region aufnehmen", width=-1, parent=parent,
+                       callback=self._on_boss_template)
+        dpg.add_text(f"Template: {boss.template or '—'}", parent=parent)
+
+        mk_on = self._marker_cb is not None
+        dpg.add_button(label=("Marker-Pick: AN" if mk_on else "Marker hinzufügen"),
+                       width=-1, parent=parent, callback=self._on_boss_marker)
+        dpg.add_text(f"Marker-Farben: {len(boss.marker_colors)}", parent=parent)
+        if boss.marker_colors:
+            with dpg.group(horizontal=True, parent=parent):
+                for c in boss.marker_colors[:8]:
+                    dpg.add_color_button(default_value=tuple(c) + (255,), width=16, height=16,
+                                         no_border=True)
+            dpg.add_button(label="Marker löschen", parent=parent, callback=self._on_boss_marker_clear)
+
+        def _act(s, a, u):
+            boss.action = a
+            self.refresh_boss_panel()
+        dpg.add_combo(items=_BOSS_ACTIONS, default_value=boss.action, label="Aktion",
+                      parent=parent, width=-80, callback=_act)
+        self._build_action_params(parent, boss, with_scan=True)
+        dpg.add_button(label="Boss löschen", width=-1, parent=parent, callback=self._on_boss_delete)
+
+    def _selected_boss(self) -> BossProfile | None:
+        if self._boss_sel is not None and 0 <= self._boss_sel < len(self._boss_cfg.bosses):
+            return self._boss_cfg.bosses[self._boss_sel]
+        return None
+
+    def _on_boss_region(self, *_):
+        def _set(region):
+            self._boss_cfg.scan_region = region
+            self._boss_region = region
+        self._request_region(_set, self.refresh_boss_panel, "Boss-Region")
+
+    def _on_boss_add(self, *_):
+        self._boss_cfg.bosses.append(BossProfile(name=f"Boss {len(self._boss_cfg.bosses)+1}"))
+        self._boss_sel = len(self._boss_cfg.bosses) - 1
+        self.refresh_boss_panel()
+
+    def _on_boss_select(self, sender, app_data, user_data):
+        self._boss_sel = user_data
+        self.refresh_boss_panel()
+
+    def _on_boss_delete(self, *_):
+        b = self._selected_boss()
+        if b is not None:
+            self._boss_cfg.bosses.remove(b)
+            self._boss_sel = None
+            self.refresh_boss_panel()
+
+    def _on_boss_template(self, *_):
+        b = self._selected_boss()
+        if b is None:
+            return
+        crop = crop_region(self.image, self._boss_cfg.scan_region,
+                           self.transform.virtual_left, self.transform.virtual_top)
+        fn = save_template(crop, b.name or "boss")
+        if fn:
+            b.template = fn
+            self._set_status(f"Template '{fn}' aufgenommen.")
+        self.refresh_boss_panel()
+
+    def _on_boss_marker(self, *_):
+        b = self._selected_boss()
+        if b is not None:
+            self._toggle_marker(b.marker_colors, self.refresh_boss_panel)
+
+    def _on_boss_marker_clear(self, *_):
+        b = self._selected_boss()
+        if b is not None:
+            b.marker_colors = []
+            self.refresh_boss_panel()
+
+    def _on_load_boss(self, *_):
+        name = dpg.get_value(_BOSS_PICK) if dpg.does_item_exist(_BOSS_PICK) else ""
+        path = next((p for n, p in list_available_boss_scans() if n == name), None)
+        cfg = load_boss_scan_file(path) if path else None
+        if cfg:
+            self._boss_cfg = cfg
+            self._boss_region = cfg.scan_region
+            self._boss_sel = 0 if cfg.bosses else None
+            self.redraw_overlay()
+            self.refresh_boss_panel()
+            self._set_status(f"Boss-Scan '{name}' geladen.")
+
+    def _on_save_boss(self, *_):
+        if not self._boss_cfg.name:
+            self._set_status("Bitte Boss-Scan-Namen eingeben.", color=(220, 180, 90))
+            return
+        ensure_boss_scans_dir()
+        save_boss_scan(self._boss_cfg)
+        self.refresh_boss_panel()
+        self._set_status(f"Boss-Scan '{self._boss_cfg.name}' gespeichert "
+                         f"({len(self._boss_cfg.bosses)} Boss(e)).")
 
     def refresh_properties(self) -> None:
         if not dpg.does_item_exist(_PROPS):
