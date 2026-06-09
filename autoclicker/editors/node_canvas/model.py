@@ -273,7 +273,8 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
         step.wait_condition = None
     elif new_type == BLOCK_WAIT_CLICK:
         if step.wait_condition is None:
-            step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=(0, 0, 0))
+            color = tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
+            step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=color)
     elif new_type == BLOCK_WAIT:
         step.wait_only = True
     elif new_type == BLOCK_KEY:

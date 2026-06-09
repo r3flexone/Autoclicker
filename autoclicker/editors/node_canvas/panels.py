@@ -66,12 +66,12 @@ def _current_point_label(points, x, y) -> str:
 
 
 def _apply_point(points, label: str, set_xy):
-    """Überträgt Koordinaten + Name des gewählten Punkts via set_xy(x, y, name)."""
+    """Überträgt Koordinaten + Name + Farbe des Punkts via set_xy(x, y, name, color)."""
     if label == "(manuell)" or not points:
         return
     for p in points:
         if _point_label(p) == label:
-            set_xy(p.x, p.y, p.name or "")
+            set_xy(p.x, p.y, p.name or "", p.color)
             return
 
 
@@ -165,15 +165,28 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
         # dieses Combo mitten im eigenen Callback löschen (DPG-undefiniert) und
         # die Auswahl abbrechen, sodass man keinen (anderen) Punkt wählen kann.
         def _on_pt(s, a, u):
-            def _set(x, y, name):
+            def _set(x, y, name, color):
                 step.x = x
                 step.y = y
                 if name:
                     step.name = name
                     if dpg.does_item_exist("np_name"):
                         dpg.set_value("np_name", name)
+                if color:
+                    step.recorded_color = tuple(color)
                 dpg.set_value(x_tag, x)
                 dpg.set_value(y_tag, y)
+                # Bei FARBE+KLICK den Trigger (Pixel + Farbe) gleich mitführen,
+                # damit man die Farbe nicht extra abgreifen muss.
+                if step.wait_condition is not None:
+                    step.wait_condition.pixel = (x, y)
+                    if color:
+                        step.wait_condition.color = tuple(color)
+                    if dpg.does_item_exist("np_wc_px"):
+                        dpg.set_value("np_wc_px", x)
+                        dpg.set_value("np_wc_py", y)
+                    if color and dpg.does_item_exist("np_wc_color"):
+                        dpg.set_value("np_wc_color", tuple(color) + (255,))
                 on_changed()
             _apply_point(points, a, _set)
         dpg.add_combo(items=_point_items(points),
@@ -230,15 +243,15 @@ def _build_wait_condition(parent, step, on_changed):
     def _on_py(s, a, u):
         step.wait_condition.pixel = (step.wait_condition.pixel[0], int(a))
         on_changed()
-    dpg.add_input_int(label="Pixel X", default_value=int(wc.pixel[0]), parent=parent,
-                      width=-130, callback=_on_px)
-    dpg.add_input_int(label="Pixel Y", default_value=int(wc.pixel[1]), parent=parent,
-                      width=-130, callback=_on_py)
+    dpg.add_input_int(label="Pixel X", tag="np_wc_px", default_value=int(wc.pixel[0]),
+                      parent=parent, width=-130, callback=_on_px)
+    dpg.add_input_int(label="Pixel Y", tag="np_wc_py", default_value=int(wc.pixel[1]),
+                      parent=parent, width=-130, callback=_on_py)
 
     def _on_color(s, a, u):
         step.wait_condition.color = _clamp_color(a)
         on_changed()
-    dpg.add_color_edit(label="Farbe", default_value=tuple(wc.color) + (255,),
+    dpg.add_color_edit(label="Farbe", tag="np_wc_color", default_value=tuple(wc.color) + (255,),
                        parent=parent, no_alpha=True, callback=_on_color)
 
     def _on_gone(s, a, u):
@@ -340,7 +353,7 @@ def _build_else(parent, step, points, on_changed, on_structure):
             # In-place setzen (kein Panel-Rebuild im Combo-Callback, sonst bricht
             # die Auswahl ab – siehe _build_position).
             def _on_pt(s, a, u):
-                def _set(x, y, name):
+                def _set(x, y, name, color):
                     ec.x = x
                     ec.y = y
                     ec.name = name
