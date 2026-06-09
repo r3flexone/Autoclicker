@@ -89,6 +89,7 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("gone <Nr>", "Schritt → warte bis Farbe WEG, dann klicke"))
     print(cmd_hint("noclick <Nr>", "Schritt → nur warten, nicht klicken"))
     print(cmd_hint("click <Nr>", "Schritt → wieder direkter Klick (Trigger entfernen)"))
+    print(cmd_hint("time <Nr> <Zeit>", "Wartezeit eines Schritts ändern (z.B. 'time 3 5' / '3 2-4')"))
     print("Punkte verwalten:")
     print(cmd_hint("learn <Name>", "Neuen Punkt erstellen"))
     print(cmd_hint("points", "Alle Punkte anzeigen"))
@@ -124,7 +125,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "gone", "noclick", "click",
+    "pixel", "gone", "noclick", "click", "time",
 ]
 
 
@@ -260,6 +261,9 @@ class _PhaseEditor:
             return
         if cmd.startswith("click "):
             self._handle_make_click(user_input)
+            return
+        if cmd.startswith("time "):
+            self._handle_set_time(user_input)
             return
 
         # Default: Punkt-ID + Optionen (z.B. "1 30 pixel")
@@ -644,6 +648,34 @@ class _PhaseEditor:
         step.wait_only = False
         step.wait_condition = None
         print(f"  + Schritt klickt wieder direkt: {step}")
+
+    def _handle_set_time(self, user_input: str) -> None:
+        """Ändert die Wartezeit eines bestehenden Schritts.
+
+        Format: time <Nr> <Zeit> | time <Nr> <Min>-<Max>
+        """
+        parts = user_input.split()
+        if len(parts) < 3:
+            print("  -> Format: time <Nr> <Zeit> (z.B. 'time 3 5' oder 'time 3 2-4')")
+            return
+        step = self._get_step_by_num(parts[1])
+        if step is None:
+            return
+        arg = parts[2]
+        if "-" in arg:
+            range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
+            if range_err:
+                print(f"  -> {range_err}")
+                return
+            step.delay_before, step.delay_max = range_val
+        else:
+            delay_val, delay_err = parse_non_negative_float(arg, "Wartezeit")
+            if delay_err:
+                print(f"  -> {delay_err}")
+                return
+            step.delay_before = delay_val
+            step.delay_max = None
+        print(f"  + Zeit geändert: {step}")
 
     def _handle_point_click(self, user_input: str) -> None:
         """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""
