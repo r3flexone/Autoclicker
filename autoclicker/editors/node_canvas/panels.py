@@ -135,7 +135,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
         _build_wait_condition(parent, step, on_changed)
 
     if cur_type == BLOCK_WAIT:
-        _build_wait_toggle(parent, step, on_changed, on_structure)
+        _build_wait_toggle(parent, step, points, on_changed, on_structure)
 
     if cur_type == BLOCK_KEY:
         _build_key(parent, step, on_changed)
@@ -156,42 +156,57 @@ def build_properties_panel(parent: str, step, lane, graph, points,
     _build_else(parent, step, points, on_changed, on_structure)
 
 
+def _point_setter(step, on_changed):
+    """Erzeugt die set_xy-Funktion für einen Punkt-Picker.
+
+    Setzt Position, Name und recorded_color des Schritts – und falls der Schritt
+    einen Farb-Trigger hat (FARBE+KLICK oder WARTEN-mit-Trigger), wird dessen
+    Pixel + Farbe gleich mitgeführt, damit man die Farbe nicht extra abgreifen
+    muss. Alle Felder werden in-place aktualisiert (kein Panel-Rebuild – ein
+    Rebuild würde das auslösende Combo mitten im eigenen Callback löschen).
+    """
+    def _set(x, y, name, color):
+        step.x = x
+        step.y = y
+        if name:
+            step.name = name
+            if dpg.does_item_exist("np_name"):
+                dpg.set_value("np_name", name)
+        if color:
+            step.recorded_color = tuple(color)
+        if dpg.does_item_exist("np_pos_x"):
+            dpg.set_value("np_pos_x", x)
+        if dpg.does_item_exist("np_pos_y"):
+            dpg.set_value("np_pos_y", y)
+        if step.wait_condition is not None:
+            step.wait_condition.pixel = (x, y)
+            if color:
+                step.wait_condition.color = tuple(color)
+            if dpg.does_item_exist("np_wc_px"):
+                dpg.set_value("np_wc_px", x)
+                dpg.set_value("np_wc_py", y)
+            if color and dpg.does_item_exist("np_wc_color"):
+                dpg.set_value("np_wc_color", tuple(color) + (255,))
+        on_changed()
+    return _set
+
+
+def _point_combo(parent, step, points, on_changed, label="Punkt"):
+    """Punkt-Picker-Combo: wählt einen ClickPoint und überträgt Position +
+    Farbe in den Schritt (in-place, siehe _point_setter)."""
+    if not points:
+        return
+
+    def _on_pt(s, a, u):
+        _apply_point(points, a, _point_setter(step, on_changed))
+    dpg.add_combo(items=_point_items(points),
+                  default_value=_current_point_label(points, step.x, step.y),
+                  label=label, parent=parent, width=-130, callback=_on_pt)
+
+
 def _build_position(parent, step, points, on_changed, on_structure=None):
     dpg.add_text("Klick-Position", parent=parent, color=(120, 180, 255))
-    x_tag, y_tag = "np_pos_x", "np_pos_y"
-
-    if points:
-        # X/Y direkt setzen statt das Panel neu zu bauen – ein Rebuild würde
-        # dieses Combo mitten im eigenen Callback löschen (DPG-undefiniert) und
-        # die Auswahl abbrechen, sodass man keinen (anderen) Punkt wählen kann.
-        def _on_pt(s, a, u):
-            def _set(x, y, name, color):
-                step.x = x
-                step.y = y
-                if name:
-                    step.name = name
-                    if dpg.does_item_exist("np_name"):
-                        dpg.set_value("np_name", name)
-                if color:
-                    step.recorded_color = tuple(color)
-                dpg.set_value(x_tag, x)
-                dpg.set_value(y_tag, y)
-                # Bei FARBE+KLICK den Trigger (Pixel + Farbe) gleich mitführen,
-                # damit man die Farbe nicht extra abgreifen muss.
-                if step.wait_condition is not None:
-                    step.wait_condition.pixel = (x, y)
-                    if color:
-                        step.wait_condition.color = tuple(color)
-                    if dpg.does_item_exist("np_wc_px"):
-                        dpg.set_value("np_wc_px", x)
-                        dpg.set_value("np_wc_py", y)
-                    if color and dpg.does_item_exist("np_wc_color"):
-                        dpg.set_value("np_wc_color", tuple(color) + (255,))
-                on_changed()
-            _apply_point(points, a, _set)
-        dpg.add_combo(items=_point_items(points),
-                      default_value=_current_point_label(points, step.x, step.y),
-                      label="Punkt", parent=parent, width=-130, callback=_on_pt)
+    _point_combo(parent, step, points, on_changed)
 
     def _on_x(s, a, u):
         step.x = int(a)
@@ -200,9 +215,9 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
     def _on_y(s, a, u):
         step.y = int(a)
         on_changed()
-    dpg.add_input_int(label="X", tag=x_tag, default_value=int(step.x or 0),
+    dpg.add_input_int(label="X", tag="np_pos_x", default_value=int(step.x or 0),
                       parent=parent, width=-130, callback=_on_x)
-    dpg.add_input_int(label="Y", tag=y_tag, default_value=int(step.y or 0),
+    dpg.add_input_int(label="Y", tag="np_pos_y", default_value=int(step.y or 0),
                       parent=parent, width=-130, callback=_on_y)
 
 
@@ -211,7 +226,7 @@ def _default_color(step) -> tuple:
     return tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
 
 
-def _build_wait_toggle(parent, step, on_changed, on_structure):
+def _build_wait_toggle(parent, step, points, on_changed, on_structure):
     """WARTEN-Block: optionalen Farb-Trigger ein-/ausschalten."""
     def _on_toggle(s, a, u):
         if a:
@@ -224,6 +239,10 @@ def _build_wait_toggle(parent, step, on_changed, on_structure):
                      default_value=step.wait_condition is not None,
                      parent=parent, callback=_on_toggle)
     if step.wait_condition:
+        # Punkt-Picker zuerst – beim Auswählen werden Pixel + Farbe des Punkts
+        # in den Trigger übernommen (genau für aufgenommene Punkte gedacht, bei
+        # denen Position + Farbe abgelegt sind, ohne dass geklickt werden soll).
+        _point_combo(parent, step, points, on_changed)
         _build_wait_condition(parent, step, on_changed)
     else:
         dpg.add_text("Wartet nur die Delay-Zeit.", parent=parent, color=(150, 150, 150))
