@@ -293,7 +293,7 @@ def handle_toggle(state: AutoClickerState) -> None:
     # Maus-Hook die synthetischen Klicks des Workers mit auf.
     with state.lock:
         if state.recording_active:
-            print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+R zum Stoppen)')}")
+            print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+J zum Stoppen)')}")
             return
 
     # Prüfe ob Countdown aktiv → nur abbrechen, nicht starten

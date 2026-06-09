@@ -66,12 +66,12 @@ def _current_point_label(points, x, y) -> str:
 
 
 def _apply_point(points, label: str, set_xy):
-    """Überträgt die Koordinaten des gewählten Punkts via set_xy(x, y)."""
+    """Überträgt Koordinaten + Name des gewählten Punkts via set_xy(x, y, name)."""
     if label == "(manuell)" or not points:
         return
     for p in points:
         if _point_label(p) == label:
-            set_xy(p.x, p.y)
+            set_xy(p.x, p.y, p.name or "")
             return
 
 
@@ -161,9 +161,11 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
 
     if points:
         def _on_pt(s, a, u):
-            def _set(x, y):
+            def _set(x, y, name):
                 step.x = x
                 step.y = y
+                if name and not step.name:
+                    step.name = name
                 if on_structure:
                     on_structure()
                 else:
@@ -324,9 +326,10 @@ def _build_else(parent, step, points, on_changed, on_structure):
     if ec.action == ELSE_CLICK:
         if points:
             def _on_pt(s, a, u):
-                def _set(x, y):
+                def _set(x, y, name):
                     ec.x = x
                     ec.y = y
+                    ec.name = name
                     on_structure()
                 _apply_point(points, a, _set)
             dpg.add_combo(items=_point_items(points),

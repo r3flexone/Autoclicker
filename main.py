@@ -53,7 +53,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+A', 'yellow')}  Mausposition als Punkt speichern")
     print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen")
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
-    print(f"  {col('CTRL+ALT+R', 'yellow')}  Sequenz aufnehmen {hint('(Klicks aufzeichnen → Sequenz erstellen)')}")
+    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klicks aufzeichnen → Sequenz erstellen)')}")
     print(f"  {col('CTRL+ALT+H', 'yellow')}  Aufnahme pausieren/fortsetzen {hint('(während einer Aufnahme)')}")
     print()
 

@@ -1,7 +1,7 @@
 """
 Sequenz-Aufnahme: Zeichnet echte Mausklicks auf und baut daraus eine Sequenz.
 
-Start/Stop über CTRL+ALT+R. Jeder Linksklick wird mit Position, Zeitstempel
+Start/Stop über CTRL+ALT+J. Jeder Linksklick wird mit Position, Zeitstempel
 und Pixelfarbe am Klickpunkt aufgezeichnet. Nach dem Stoppen wird eine Sequenz
 mit den aufgezeichneten Klicks erstellt und direkt geladen.
 """
@@ -56,7 +56,7 @@ def start_recording(state: AutoClickerState) -> None:
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print(f"  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Pausieren: {col('CTRL+ALT+H', 'yellow')} (navigieren ohne aufzuzeichnen)")
-        print(f"  Stoppen:   {col('CTRL+ALT+R', 'yellow')} erneut drücken")
+        print(f"  Stoppen:   {col('CTRL+ALT+J', 'yellow')} erneut drücken")
     else:
         with state.lock:
             state.recording_active = False
@@ -193,7 +193,7 @@ def handle_record_pause(state: AutoClickerState) -> None:
     """Togglet die Pause der laufenden Aufnahme (nur während einer Aufnahme aktiv)."""
     with state.lock:
         if not state.recording_active:
-            print(f"\n{hint('Keine Aufnahme aktiv — CTRL+ALT+R startet eine.')}")
+            print(f"\n{hint('Keine Aufnahme aktiv — CTRL+ALT+J startet eine.')}")
             return
         state.recording_paused = not state.recording_paused
         paused = state.recording_paused
