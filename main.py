@@ -19,7 +19,7 @@ from autoclicker.winapi import (
     HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW,
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
-    HOTKEY_IMPORT_EXPORT,
+    HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ,
     register_hotkeys, unregister_hotkeys
 )
 from autoclicker.persistence import (
@@ -34,7 +34,7 @@ from autoclicker.handlers import (
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
-    handle_import_export
+    handle_import_export, handle_record_sequence
 )
 
 
@@ -51,6 +51,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+A', 'yellow')}  Mausposition als Punkt speichern")
     print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen")
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
+    print(f"  {col('CTRL+ALT+R', 'yellow')}  Sequenz aufnehmen {hint('(Klicks aufzeichnen → Sequenz erstellen)')}")
     print()
 
     # Editoren (blau)
@@ -190,6 +191,7 @@ def main() -> int:
         HOTKEY_ANALYZE: handle_analyze,
         HOTKEY_FINISH: handle_finish,
         HOTKEY_IMPORT_EXPORT: handle_import_export,
+        HOTKEY_RECORD_SEQ: handle_record_sequence,
     }
 
     try:

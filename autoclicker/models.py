@@ -507,3 +507,8 @@ class AutoClickerState:
 
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
+
+    # Sequenz-Aufnahme (Maus-Hook)
+    recording_active: bool = False
+    # Jeder Eintrag: (monotonic_timestamp: float, x: int, y: int, color: tuple|None)
+    recording_events: list = field(default_factory=list)

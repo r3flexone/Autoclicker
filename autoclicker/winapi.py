@@ -54,6 +54,7 @@ VK_W = 0x57  # Quick-Switch (Wechseln)
 VK_Z = 0x5A  # Schedule (Zeitplan)
 VK_F = 0x46  # Finish (Zyklus abschließen)
 VK_I = 0x49  # Import/Export
+VK_R = 0x52  # Sequenz aufnehmen (Record)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -73,9 +74,11 @@ HOTKEY_SWITCH = 14
 HOTKEY_SCHEDULE = 15
 HOTKEY_FINISH = 16
 HOTKEY_IMPORT_EXPORT = 17
+HOTKEY_RECORD_SEQ = 18
 
 # Window Messages
 WM_HOTKEY = 0x0312
+WM_LBUTTONDOWN = 0x0201
 
 # Mouse Input
 INPUT_MOUSE = 0
@@ -185,6 +188,99 @@ user32.PostThreadMessageW.restype = wintypes.BOOL
 
 kernel32 = ctypes.windll.kernel32
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
+gdi32 = ctypes.windll.gdi32
+gdi32.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.GetPixel.restype = wintypes.COLORREF
+
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.GetDC.restype = wintypes.HDC
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+user32.ReleaseDC.restype = ctypes.c_int
+
+# Low-Level Mouse Hook
+_LRESULT = ctypes.c_ssize_t
+_HOOKPROC = ctypes.WINFUNCTYPE(_LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+user32.SetWindowsHookExW.argtypes = [ctypes.c_int, _HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+user32.SetWindowsHookExW.restype = wintypes.HHOOK
+user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+user32.CallNextHookEx.restype = _LRESULT
+
+WH_MOUSE_LL = 14
+
+
+class _POINT_LL(ctypes.Structure):
+    _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("pt", _POINT_LL),
+        ("mouseData", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
+_mouse_hook_handle = None
+_mouse_hook_proc = None  # Referenz halten, damit GC den Callback nicht räumt
+
+
+def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
+    """Liest die Pixelfarbe direkt via GDI (schnell, für Aufnahme-Callbacks)."""
+    try:
+        hdc = user32.GetDC(None)
+        colorref = gdi32.GetPixel(hdc, x, y)
+        user32.ReleaseDC(None, hdc)
+        if colorref == 0xFFFFFFFF:  # CLR_INVALID
+            return None
+        return (colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF)
+    except (OSError, AttributeError):
+        return None
+
+
+def install_mouse_hook(on_lbutton_down) -> bool:
+    """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks.
+
+    on_lbutton_down(x, y, color) wird bei jedem Linksklick aufgerufen.
+    color ist ein (r,g,b)-Tupel oder None.
+    """
+    global _mouse_hook_handle, _mouse_hook_proc
+
+    if _mouse_hook_handle:
+        return True  # bereits installiert
+
+    def _hook_proc(nCode, wParam, lParam):
+        if nCode >= 0 and wParam == WM_LBUTTONDOWN:
+            info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            x, y = info.pt.x, info.pt.y
+            color = get_screen_pixel(x, y)
+            try:
+                on_lbutton_down(x, y, color)
+            except Exception:
+                pass
+        return user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+    _mouse_hook_proc = _HOOKPROC(_hook_proc)
+    handle = user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_hook_proc, None, 0)
+    if handle:
+        _mouse_hook_handle = handle
+        return True
+    _mouse_hook_proc = None
+    return False
+
+
+def remove_mouse_hook() -> None:
+    """Entfernt den installierten Maus-Hook."""
+    global _mouse_hook_handle, _mouse_hook_proc
+    if _mouse_hook_handle:
+        user32.UnhookWindowsHookEx(_mouse_hook_handle)
+        _mouse_hook_handle = None
+    _mouse_hook_proc = None
 
 
 # =============================================================================
@@ -372,6 +468,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_SCHEDULE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Z, "CTRL+ALT+Z (Zeitplan)"),
     (HOTKEY_FINISH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F, "CTRL+ALT+F (Sanft beenden)"),
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
+    (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_R, "CTRL+ALT+R (Sequenz aufnehmen)"),
 ]
 
 

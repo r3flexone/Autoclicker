@@ -543,6 +543,12 @@ def handle_import_export(state: AutoClickerState) -> None:
     run_import_export_editor(state)
 
 
+def handle_record_sequence(state: AutoClickerState) -> None:
+    """Startet oder stoppt die Sequenz-Aufnahme via Maus-Hook."""
+    from .editors.sequence_recorder import handle_record_sequence as _rec
+    _rec(state)
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
