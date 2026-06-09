@@ -100,13 +100,13 @@ def build_properties_panel(parent: str, step, lane, graph, points,
             step.name = a
             on_changed()
         dpg.add_input_text(label="Name", default_value=step.name or "",
-                           parent=parent, width=-80, callback=_on_name)
+                           parent=parent, width=-130, callback=_on_name)
 
         def _on_delay(s, a, u):
             step.delay_before = max(0.0, float(a))
             on_changed()
         dpg.add_input_float(label="Delay (s)", default_value=float(step.delay_before or 0.0),
-                            parent=parent, width=-80, min_value=0.0, step=0.1,
+                            parent=parent, width=-130, min_value=0.0, step=0.1,
                             format="%.2f", callback=_on_delay)
 
         def _on_delay_max(s, a, u):
@@ -115,7 +115,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
             on_changed()
         dpg.add_input_float(label="Delay max (0=fest)",
                             default_value=float(step.delay_max or 0.0),
-                            parent=parent, width=-80, min_value=0.0, step=0.1,
+                            parent=parent, width=-130, min_value=0.0, step=0.1,
                             format="%.2f", callback=_on_delay_max)
         dpg.add_separator(parent=parent)
 
@@ -159,7 +159,7 @@ def _build_position(parent, step, points, on_changed):
                 on_changed()
             _apply_point(points, a, _set)
         dpg.add_combo(items=_point_items(points), default_value="(manuell)",
-                      label="Punkt", parent=parent, width=-80, callback=_on_pt)
+                      label="Punkt", parent=parent, width=-130, callback=_on_pt)
 
     def _on_x(s, a, u):
         step.x = int(a)
@@ -169,9 +169,9 @@ def _build_position(parent, step, points, on_changed):
         step.y = int(a)
         on_changed()
     dpg.add_input_int(label="X", default_value=int(step.x or 0), parent=parent,
-                      width=-80, callback=_on_x)
+                      width=-130, callback=_on_x)
     dpg.add_input_int(label="Y", default_value=int(step.y or 0), parent=parent,
-                      width=-80, callback=_on_y)
+                      width=-130, callback=_on_y)
 
 
 def _build_wait_toggle(parent, step, on_changed, on_structure):
@@ -206,9 +206,9 @@ def _build_wait_condition(parent, step, on_changed):
         step.wait_condition.pixel = (step.wait_condition.pixel[0], int(a))
         on_changed()
     dpg.add_input_int(label="Pixel X", default_value=int(wc.pixel[0]), parent=parent,
-                      width=-80, callback=_on_px)
+                      width=-130, callback=_on_px)
     dpg.add_input_int(label="Pixel Y", default_value=int(wc.pixel[1]), parent=parent,
-                      width=-80, callback=_on_py)
+                      width=-130, callback=_on_py)
 
     def _on_color(s, a, u):
         step.wait_condition.color = _clamp_color(a)
@@ -240,7 +240,7 @@ def _build_key(parent, step, on_changed):
         step.key_press = a
         on_changed()
     dpg.add_input_text(label="Taste", default_value=step.key_press or "",
-                       parent=parent, width=-80, hint="z.B. enter, space, f1",
+                       parent=parent, width=-130, hint="z.B. enter, space, f1",
                        callback=_on_key)
 
 
@@ -251,7 +251,7 @@ def _build_named_scan(parent, step, attr, label, on_changed):
         setattr(step, attr, a)
         on_changed()
     dpg.add_input_text(label="Name", default_value=getattr(step, attr) or "",
-                       parent=parent, width=-80, callback=_on_name)
+                       parent=parent, width=-130, callback=_on_name)
     dpg.add_text("(Name eines im Item-/Boss-/Icon-Editor angelegten Scans)",
                  parent=parent, color=(150, 150, 150), wrap=270)
 
@@ -262,7 +262,7 @@ def _build_scan_mode(parent, step, on_changed):
         on_changed()
     dpg.add_combo(items=_SCAN_MODES, label="Modus",
                   default_value=step.item_scan_mode or SCAN_MODE_ALL,
-                  parent=parent, width=-80, callback=_on_mode)
+                  parent=parent, width=-130, callback=_on_mode)
 
 
 def _build_screenshot(parent, step, on_changed, on_structure):
@@ -289,7 +289,7 @@ def _build_screenshot(parent, step, on_changed, on_structure):
             return _cb
         for i, lbl in enumerate(("X1", "Y1", "X2", "Y2")):
             dpg.add_input_int(label=lbl, default_value=int(r[i]), parent=parent,
-                              width=-80, callback=_mk(i))
+                              width=-130, callback=_mk(i))
 
 
 def _build_else(parent, step, points, on_changed, on_structure):
@@ -318,7 +318,7 @@ def _build_else(parent, step, points, on_changed, on_structure):
                     on_changed()
                 _apply_point(points, a, _set)
             dpg.add_combo(items=_point_items(points), default_value="(manuell)",
-                          label="ELSE Punkt", parent=parent, width=-80, callback=_on_pt)
+                          label="ELSE Punkt", parent=parent, width=-130, callback=_on_pt)
 
         def _ex(s, a, u):
             ec.x = int(a)
@@ -328,18 +328,18 @@ def _build_else(parent, step, points, on_changed, on_structure):
             ec.y = int(a)
             on_changed()
         dpg.add_input_int(label="ELSE X", default_value=int(ec.x or 0), parent=parent,
-                          width=-80, callback=_ex)
+                          width=-130, callback=_ex)
         dpg.add_input_int(label="ELSE Y", default_value=int(ec.y or 0), parent=parent,
-                          width=-80, callback=_ey)
+                          width=-130, callback=_ey)
 
         def _en(s, a, u):
             ec.name = a
             on_changed()
         dpg.add_input_text(label="ELSE Name", default_value=ec.name or "",
-                           parent=parent, width=-80, callback=_en)
+                           parent=parent, width=-130, callback=_en)
     elif ec.action == ELSE_KEY:
         def _ek(s, a, u):
             ec.key = a
             on_changed()
         dpg.add_input_text(label="ELSE Taste", default_value=ec.key or "",
-                           parent=parent, width=-80, callback=_ek)
+                           parent=parent, width=-130, callback=_ek)
