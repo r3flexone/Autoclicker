@@ -121,7 +121,8 @@ def stop_recording(state: AutoClickerState) -> None:
             delay = 0.0
         else:
             delay = round(events[i][0] - events[i - 1][0], 2)
-        step = SequenceStep(x=x, y=y, delay_before=delay, name=f"Klick {i + 1}")
+        step = SequenceStep(x=x, y=y, delay_before=delay, name=f"Klick {i + 1}",
+                            recorded_color=color)
         steps.append(step)
 
     loop_phase = LoopPhase(name="Loop", steps=steps, repeat=1)
@@ -142,6 +143,9 @@ def stop_recording(state: AutoClickerState) -> None:
         print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
         print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
         print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")
+        print(hint("  Tipp: Im Editor wandelt 'pixel <Nr>' einen Klick in einen"))
+        print(hint("        Farb-Trigger um (nutzt die aufgenommene Farbe),"))
+        print(hint("        'noclick <Nr>' macht reines Warten daraus."))
     else:
         print(f"\n{err('Sequenz konnte nicht gespeichert werden!')}")
 

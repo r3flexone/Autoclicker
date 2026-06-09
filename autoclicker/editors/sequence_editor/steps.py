@@ -84,6 +84,11 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("... else restart", "Sequenz neu starten (z.B. 'scan items else restart')"))
     print(cmd_hint("... else <Nr> [s]", "Punkt klicken (z.B. 'scan items else 2 5')"))
     print(cmd_hint("... else key <T>", "Taste drücken (z.B. '1 pixel else key enter')"))
+    print("Bestehende Schritte umbauen (ideal nach einer Aufnahme):")
+    print(cmd_hint("pixel <Nr>", "Schritt → warte auf (aufgenommene) Farbe, dann klicke"))
+    print(cmd_hint("gone <Nr>", "Schritt → warte bis Farbe WEG, dann klicke"))
+    print(cmd_hint("noclick <Nr>", "Schritt → nur warten, nicht klicken"))
+    print(cmd_hint("click <Nr>", "Schritt → wieder direkter Klick (Trigger entfernen)"))
     print("Punkte verwalten:")
     print(cmd_hint("learn <Name>", "Neuen Punkt erstellen"))
     print(cmd_hint("points", "Alle Punkte anzeigen"))
@@ -119,6 +124,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
+    "pixel", "gone", "noclick", "click",
 ]
 
 
@@ -148,7 +154,7 @@ class _PhaseEditor:
         if self.steps:
             print(f"\nAktuelle {self.phase_name}-Schritte ({len(self.steps)}):")
             for i, step in enumerate(self.steps):
-                print(f"  {i+1}. {step}")
+                print(self._format_step_line(i, step))
 
         _print_phase_help()
 
@@ -242,6 +248,20 @@ class _PhaseEditor:
             self._handle_screenshot(user_input)
             return
 
+        # Bestehenden Schritt nachträglich umbauen (z.B. aufgenommenen Klick)
+        if cmd.startswith("pixel "):
+            self._handle_make_pixel(user_input, until_gone=False)
+            return
+        if cmd.startswith("gone "):
+            self._handle_make_pixel(user_input, until_gone=True)
+            return
+        if cmd.startswith("noclick "):
+            self._handle_make_noclick(user_input)
+            return
+        if cmd.startswith("click "):
+            self._handle_make_click(user_input)
+            return
+
         # Default: Punkt-ID + Optionen (z.B. "1 30 pixel")
         self._handle_point_click(user_input)
 
@@ -264,9 +284,17 @@ class _PhaseEditor:
         if self.steps:
             print(f"\n{self.phase_name}-Schritte:")
             for i, step in enumerate(self.steps):
-                print(f"  {i+1}. {step}")
+                print(self._format_step_line(i, step))
         else:
             print("  (Keine Schritte)")
+
+    def _format_step_line(self, i: int, step: SequenceStep) -> str:
+        """Formatiert eine Schritt-Zeile, hängt einen Farb-Hinweis an wenn eine
+        aufgenommene Farbe vorliegt aber noch kein Farb-Trigger gesetzt ist."""
+        line = f"  {i+1}. {step}"
+        if step.recorded_color and not step.wait_condition:
+            line += col(f"   [aufgenommen: RGB{step.recorded_color} → 'pixel {i+1}']", "gray")
+        return line
 
     def _handle_del_all(self) -> None:
         if not self.steps:
@@ -553,6 +581,69 @@ class _PhaseEditor:
                             name=f"Screenshot ({region[0]},{region[1]})→({region[2]},{region[3]})")
         self.add_step(step)
         print(ok(f"Screenshot-Schritt ({region[0]},{region[1]})→({region[2]},{region[3]}) hinzugefügt"))
+
+    # ---- Bestehende Schritte umbauen (für Nachbearbeitung von Aufnahmen) ----
+
+    def _get_step_by_num(self, num_str: str):
+        """Validiert eine 1-basierte Schritt-Nummer. Returns Step oder None."""
+        try:
+            num = int(num_str)
+        except ValueError:
+            print("  -> Format erwartet eine Schritt-Nummer (z.B. 'pixel 3')")
+            return None
+        if not (1 <= num <= len(self.steps)):
+            print(f"  -> Ungültiger Schritt! Verfügbar: 1-{len(self.steps)}")
+            return None
+        return self.steps[num - 1]
+
+    def _handle_make_pixel(self, user_input: str, until_gone: bool) -> None:
+        """Wandelt einen bestehenden Schritt in einen Farb-Trigger um.
+
+        Nutzt die bei der Aufnahme erfasste Farbe (recorded_color) am Klickpunkt
+        des Schritts. Fehlt sie (z.B. manuell angelegter Schritt), wird die Farbe
+        live an der aktuellen Mausposition abgegriffen.
+
+        Format: pixel <Nr> | gone <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        if step.recorded_color:
+            pixel = (step.x, step.y)
+            color = step.recorded_color
+            print(f"  Nutze aufgenommene Farbe RGB{color} bei ({step.x}, {step.y})")
+        else:
+            px, py, color = capture_pixel_color()
+            if color is None:
+                return
+            pixel = (px, py)
+        step.wait_condition = WaitCondition(pixel=pixel, color=color, until_gone=until_gone)
+        step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        gone_str = "bis Farbe WEG" if until_gone else "auf Farbe"
+        print(f"  + Schritt umgebaut: warte {gone_str} bei {pixel} → {step}")
+
+    def _handle_make_noclick(self, user_input: str) -> None:
+        """Macht aus einem Schritt einen reinen Warte-Schritt (kein Klick).
+
+        Format: noclick <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        step.wait_only = True
+        print(f"  + Schritt klickt nicht mehr (nur warten): {step}")
+
+    def _handle_make_click(self, user_input: str) -> None:
+        """Setzt einen Schritt auf reinen Klick zurück (entfernt Farb-Trigger / Warte-nur).
+
+        Format: click <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        step.wait_only = False
+        step.wait_condition = None
+        print(f"  + Schritt klickt wieder direkt: {step}")
 
     def _handle_point_click(self, user_input: str) -> None:
         """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""

@@ -140,6 +140,11 @@ class SequenceStep:
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
+    # Optional: Bei der Aufnahme erfasste Pixelfarbe am Klickpunkt (r,g,b).
+    # Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt, einen
+    # aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne
+    # die Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
+    recorded_color: Optional[tuple[int, int, int]] = None
 
     def __str__(self) -> str:
         else_str = self._else_str()

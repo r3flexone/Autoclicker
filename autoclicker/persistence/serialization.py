@@ -125,7 +125,8 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "else_delay": ec.delay if ec else 0,
             "else_key": ec.key if ec else None, "else_name": ec.name if ec else "",
             "screenshot_only": s.screenshot_only,
-            "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None}
+            "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
+            "recorded_color": list(s.recorded_color) if s.recorded_color else None}
 
 
 def _sequence_to_dict(seq: Sequence) -> dict:
@@ -173,6 +174,9 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
                 pixel=wait_pixel, color=wait_color,
                 until_gone=s.get("wait_until_gone", False)
             )
+        # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
+        recorded_color_raw = s.get("recorded_color")
+        recorded_color = tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None
         # Screenshot-Region validieren (muss 4 Werte haben)
         screenshot_region_raw = s.get("screenshot_region")
         screenshot_region = None
@@ -208,6 +212,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,
+            recorded_color=recorded_color,
         )
         steps.append(step)
     return steps
