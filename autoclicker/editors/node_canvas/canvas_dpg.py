@@ -372,7 +372,7 @@ class NodeEditorApp:
             in_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Input)
             with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
                 # Kurzbeschreibung (nutzt das vorhandene __str__ des Steps)
-                dpg.add_text(_wrap(str(step), 34), color=(210, 210, 210))
+                dpg.add_text(_wrap(_ascii(str(step)), 34), color=(210, 210, 210))
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="Bearbeiten", user_data=(lane, row),
                                    callback=self._on_select)
@@ -411,3 +411,12 @@ def _wrap(text: str, width: int) -> str:
     if cur:
         lines.append(cur)
     return "\n".join(lines)
+
+
+def _ascii(text: str) -> str:
+    """Ersetzt Unicode-Zeichen die DPG nicht darstellen kann durch ASCII-Alternativen."""
+    return (text
+            .replace("→", "->")
+            .replace("∞", "inf")
+            .replace("≥", ">=")
+            .replace("×", "x"))
