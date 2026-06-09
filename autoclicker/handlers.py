@@ -289,6 +289,13 @@ def handle_finish(state: AutoClickerState) -> None:
 
 def handle_toggle(state: AutoClickerState) -> None:
     """Startet oder stoppt die Sequenz."""
+    # Während einer laufenden Aufnahme nicht starten — sonst zeichnet der
+    # Maus-Hook die synthetischen Klicks des Workers mit auf.
+    with state.lock:
+        if state.recording_active:
+            print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+R zum Stoppen)')}")
+            return
+
     # Prüfe ob Countdown aktiv → nur abbrechen, nicht starten
     with state.lock:
         if state.countdown_active:
@@ -554,6 +561,14 @@ def handle_record_sequence(state: AutoClickerState) -> None:
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
+
+    # Falls noch eine Aufnahme läuft, den Maus-Hook sauber entfernen.
+    with state.lock:
+        was_recording = state.recording_active
+        state.recording_active = False
+    if was_recording:
+        from .winapi import remove_mouse_hook
+        remove_mouse_hook()
 
     state.stop_event.set()
     state.quit_event.set()

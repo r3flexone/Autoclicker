@@ -188,6 +188,8 @@ user32.PostThreadMessageW.restype = wintypes.BOOL
 
 kernel32 = ctypes.windll.kernel32
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 gdi32 = ctypes.windll.gdi32
 gdi32.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
@@ -231,15 +233,27 @@ _mouse_hook_proc = None  # Referenz halten, damit GC den Callback nicht räumt
 
 
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
-    """Liest die Pixelfarbe direkt via GDI (schnell, für Aufnahme-Callbacks)."""
+    """Liest die Pixelfarbe an einer Bildschirmposition.
+
+    Schneller GDI-Pfad (GetDC/GetPixel) zuerst — ideal in Aufnahme-Callbacks.
+    GetDC(None) ist aber am primären Monitor verankert; auf Mehrmonitor-Setups
+    mit Fenstern bei negativen/grossen Koordinaten liefert GetPixel dort
+    CLR_INVALID. In dem Fall Fallback auf den Pillow-Pfad (all_screens=True),
+    der den gesamten virtuellen Desktop abdeckt.
+    """
     try:
         hdc = user32.GetDC(None)
         colorref = gdi32.GetPixel(hdc, x, y)
         user32.ReleaseDC(None, hdc)
-        if colorref == 0xFFFFFFFF:  # CLR_INVALID
-            return None
-        return (colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF)
+        if colorref != 0xFFFFFFFF:  # nicht CLR_INVALID
+            return (colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF)
     except (OSError, AttributeError):
+        pass
+    # Fallback: virtueller Desktop (zweiter Monitor, negative Koordinaten)
+    try:
+        from .imaging import get_pixel_color
+        return get_pixel_color(x, y)
+    except Exception:
         return None
 
 
@@ -266,7 +280,8 @@ def install_mouse_hook(on_lbutton_down) -> bool:
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
 
     _mouse_hook_proc = _HOOKPROC(_hook_proc)
-    handle = user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_hook_proc, None, 0)
+    h_module = kernel32.GetModuleHandleW(None)
+    handle = user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_hook_proc, h_module, 0)
     if handle:
         _mouse_hook_handle = handle
         return True
