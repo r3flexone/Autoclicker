@@ -371,8 +371,10 @@ class NodeEditorApp:
         with dpg.node(label=label, parent=_NODE_EDITOR, pos=[x, y]) as node_id:
             in_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Input)
             with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                # Kurzbeschreibung (nutzt das vorhandene __str__ des Steps)
-                dpg.add_text(_wrap(_ascii(str(step)), 34), color=(210, 210, 210))
+                # ELSE-Suffix aus der Beschreibung entfernen – wird separat als
+                # amber-farbene Zeile angezeigt.
+                desc = _ascii(str(step)).split(" | ELSE:")[0]
+                dpg.add_text(_wrap(desc, 34), color=(210, 210, 210))
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="Bearbeiten", user_data=(lane, row),
                                    callback=self._on_select)
