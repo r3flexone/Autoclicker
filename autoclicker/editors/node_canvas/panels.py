@@ -193,12 +193,17 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
                       parent=parent, width=-130, callback=_on_y)
 
 
+def _default_color(step) -> tuple:
+    """Aufgenommene Farbe des Schritts, sonst schwarz als Fallback."""
+    return tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
+
+
 def _build_wait_toggle(parent, step, on_changed, on_structure):
     """WARTEN-Block: optionalen Farb-Trigger ein-/ausschalten."""
     def _on_toggle(s, a, u):
         if a:
             step.wait_condition = WaitCondition(pixel=(step.x or 0, step.y or 0),
-                                                color=(0, 0, 0))
+                                                color=_default_color(step))
         else:
             step.wait_condition = None
         on_structure()
@@ -213,7 +218,8 @@ def _build_wait_toggle(parent, step, on_changed, on_structure):
 
 def _build_wait_condition(parent, step, on_changed):
     if step.wait_condition is None:
-        step.wait_condition = WaitCondition(pixel=(step.x or 0, step.y or 0), color=(0, 0, 0))
+        step.wait_condition = WaitCondition(pixel=(step.x or 0, step.y or 0),
+                                            color=_default_color(step))
     wc = step.wait_condition
     dpg.add_text("Farb-Trigger (warte auf Farbe)", parent=parent, color=(120, 180, 255))
 
