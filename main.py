@@ -20,7 +20,7 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_NODE_EDITOR,
+    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO,
     register_hotkeys, unregister_hotkeys
 )
 from autoclicker.persistence import (
@@ -36,7 +36,7 @@ from autoclicker.handlers import (
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
     handle_import_export, handle_record_sequence, handle_record_pause,
-    handle_node_editor
+    handle_node_editor, handle_scan_studio
 )
 
 
@@ -62,6 +62,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
     print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots visuell auf Screenshot anlegen)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
@@ -198,6 +199,7 @@ def main() -> int:
         HOTKEY_RECORD_SEQ: handle_record_sequence,
         HOTKEY_RECORD_PAUSE: handle_record_pause,
         HOTKEY_NODE_EDITOR: handle_node_editor,
+        HOTKEY_SCAN_STUDIO: handle_scan_studio,
     }
 
     try:

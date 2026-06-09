@@ -594,6 +594,31 @@ def handle_node_editor(state: AutoClickerState) -> None:
     print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
+def handle_scan_studio(state: AutoClickerState) -> None:
+    """Öffnet das visuelle Scan-Studio als separaten Subprocess.
+
+    Nimmt einen Screenshot auf und lässt Slots (perspektivisch auch Items/Scans)
+    direkt darauf anlegen. Bearbeitet slots/slots.json auf Disk — dieselbe Datei
+    wie der Konsolen-Slot-Editor; danach im Hauptprozess Item-Scan-Menü neu
+    aufrufen, um die geänderten Slots zu sehen.
+    """
+    import subprocess
+
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+
+    try:
+        subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])
+    except OSError as e:
+        print(f"\n{err(f'Konnte Scan-Studio nicht starten: {e}')}")
+        return
+
+    print(f"\n{col('[SCAN-STUDIO]', 'cyan')} Visuelles Scan-Studio geöffnet.")
+    print(f"     Slots werden in {col('slots/slots.json', 'yellow')} gespeichert.")
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
