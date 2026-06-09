@@ -56,6 +56,7 @@ VK_F = 0x46  # Finish (Zyklus abschließen)
 VK_I = 0x49  # Import/Export
 VK_R = 0x52  # Sequenz aufnehmen (Record)
 VK_H = 0x48  # Aufnahme pausieren (Halt)
+VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -77,6 +78,7 @@ HOTKEY_FINISH = 16
 HOTKEY_IMPORT_EXPORT = 17
 HOTKEY_RECORD_SEQ = 18
 HOTKEY_RECORD_PAUSE = 19
+HOTKEY_NODE_EDITOR = 20
 
 # Window Messages
 WM_HOTKEY = 0x0312
@@ -487,6 +489,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
     (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_R, "CTRL+ALT+R (Sequenz aufnehmen)"),
     (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
+    (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
 ]
 
 

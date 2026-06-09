@@ -564,6 +564,36 @@ def handle_record_pause(state: AutoClickerState) -> None:
     _pause(state)
 
 
+def handle_node_editor(state: AutoClickerState) -> None:
+    """Öffnet den visuellen Node-Editor als separaten Subprocess.
+
+    Der Editor läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
+    nicht mit der Hotkey-Message-Pump kollidiert. Er bearbeitet die aktive Sequenz
+    direkt auf Disk; nach dem Speichern mit CTRL+ALT+L neu laden.
+    """
+    import subprocess
+
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+        seq_name = state.active_sequence.name if state.active_sequence else ""
+
+    args = [sys.executable, "-m", "autoclicker.node_editor"]
+    if seq_name:
+        args.append(seq_name)
+
+    try:
+        subprocess.Popen(args)
+    except OSError as e:
+        print(f"\n{err(f'Konnte Node-Editor nicht starten: {e}')}")
+        return
+
+    target = f"'{seq_name}'" if seq_name else "neue Sequenz"
+    print(f"\n{col('[NODE-EDITOR]', 'cyan')} Visueller Editor geöffnet ({target}).")
+    print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")

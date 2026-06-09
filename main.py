@@ -20,6 +20,7 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
+    HOTKEY_NODE_EDITOR,
     register_hotkeys, unregister_hotkeys
 )
 from autoclicker.persistence import (
@@ -34,7 +35,8 @@ from autoclicker.handlers import (
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
-    handle_import_export, handle_record_sequence, handle_record_pause
+    handle_import_export, handle_record_sequence, handle_record_pause,
+    handle_node_editor
 )
 
 
@@ -58,6 +60,7 @@ def print_help() -> None:
     # Editoren (blau)
     print(col("Editoren:", 'blue'))
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
+    print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
@@ -194,6 +197,7 @@ def main() -> int:
         HOTKEY_IMPORT_EXPORT: handle_import_export,
         HOTKEY_RECORD_SEQ: handle_record_sequence,
         HOTKEY_RECORD_PAUSE: handle_record_pause,
+        HOTKEY_NODE_EDITOR: handle_node_editor,
     }
 
     try:
