@@ -14,7 +14,9 @@ import dearpygui.dearpygui as dpg
 from pathlib import Path
 
 from ...models import SequenceStep
-from ...persistence import save_sequence_file
+from ...persistence import (
+    save_sequence_file, list_available_sequences, load_sequence_file,
+)
 from .model import (
     BlockGraph, Lane,
     BLOCK_LABELS, BLOCK_COLORS,
@@ -28,6 +30,8 @@ _NODE_EDITOR = "ac_node_editor"
 _PROPS_PANEL = "ac_props_panel"
 _STATUS = "ac_status_text"
 _LANE_PICK = "ac_lane_pick"
+_SIDEBAR = "ac_sidebar_body"
+_SEQ_PICK = "ac_seq_pick"
 
 # Layout-Konstanten
 _COL_W = 270    # horizontaler Abstand zwischen Lanes
@@ -42,6 +46,7 @@ class NodeEditorApp:
     def __init__(self, seq, filepath: Path, sequences_dir: str):
         self.graph: BlockGraph = sequence_to_graph(seq)
         self.filepath = Path(filepath)
+        self.sequences_dir = sequences_dir
         self.points = load_palette_points(sequences_dir)
         self.selected: tuple[Lane, int] | None = None
         self._themes: dict[str, int] = {}
@@ -79,6 +84,12 @@ class NodeEditorApp:
             with dpg.group(horizontal=True):
                 # --- linke Seitenleiste ---
                 with dpg.child_window(width=290, tag="ac_left"):
+                    # Lade-Bereich bleibt stehen, der Rest wird beim Sequenz-
+                    # Wechsel neu aufgebaut (Name/Zyklen/Info hängen an der Graph-
+                    # Instanz, darum kein In-Place-Update möglich).
+                    self._build_loader()
+                    dpg.add_separator()
+                    dpg.add_group(tag=_SIDEBAR)
                     self._build_sidebar()
                 # --- Canvas (Mitte) ---
                 # Der node_editor wird NICHT hier angelegt, sondern in rebuild_canvas
@@ -92,50 +103,111 @@ class NodeEditorApp:
                     dpg.add_separator()
                     dpg.add_group(tag=_PROPS_PANEL)
 
+    def _build_loader(self) -> None:
+        """Dropdown zum Laden einer gespeicherten Sequenz direkt im Editor."""
+        dpg.add_text("Sequenz laden", color=(120, 180, 255))
+        names = self._available_names()
+        with dpg.group(horizontal=True):
+            dpg.add_combo(items=names, default_value=self.graph.name if self.graph.name in names else "",
+                          tag=_SEQ_PICK, width=-60)
+            dpg.add_button(label="Neu", callback=self._on_new_sequence)
+        dpg.add_button(label="Laden", width=-1, callback=self._on_load_sequence)
+
+    def _available_names(self) -> list[str]:
+        return sorted(name for name, _ in list_available_sequences())
+
+    def _refresh_seq_pick(self) -> None:
+        if dpg.does_item_exist(_SEQ_PICK):
+            names = self._available_names()
+            cur = self.graph.name if self.graph.name in names else (names[0] if names else "")
+            dpg.configure_item(_SEQ_PICK, items=names, default_value=cur)
+
+    def _on_load_sequence(self, *_):
+        name = dpg.get_value(_SEQ_PICK) if dpg.does_item_exist(_SEQ_PICK) else ""
+        if not name:
+            self._set_status("Keine Sequenz gewählt.", color=(220, 180, 90))
+            return
+        path = next((p for n, p in list_available_sequences() if n == name), None)
+        seq = load_sequence_file(path) if path else None
+        if not seq:
+            self._set_status(f"Konnte '{name}' nicht laden.", color=(220, 90, 90))
+            return
+        self.graph = sequence_to_graph(seq)
+        self.filepath = Path(path)
+        self.selected = None
+        self._reload_view()
+        self._set_status(f"Geladen: {name}")
+
+    def _on_new_sequence(self, *_):
+        import time
+        from ...models import Sequence
+        base = f"Sequenz_{int(time.time())}"
+        self.graph = sequence_to_graph(Sequence(name=base))
+        self.filepath = Path(self.sequences_dir) / f"{base}.json"
+        self.selected = None
+        self._reload_view()
+        self._set_status("Neue Sequenz – noch nicht gespeichert.", color=(220, 180, 90))
+
+    def _reload_view(self) -> None:
+        """Baut Seitenleiste, Canvas und Eigenschaften nach einem Sequenz-Wechsel neu auf."""
+        if dpg.does_item_exist(_SIDEBAR):
+            for child in dpg.get_item_children(_SIDEBAR, 1) or []:
+                dpg.delete_item(child)
+            self._build_sidebar()
+        self._refresh_seq_pick()
+        self.rebuild_canvas()
+        self.refresh_properties()
+
     def _build_sidebar(self) -> None:
         g = self.graph
-        dpg.add_text("Sequenz", color=(120, 180, 255))
+        # Alle Widgets in den _SIDEBAR-Container hängen (nicht ins ac_left direkt),
+        # damit _reload_view die Seitenleiste sauber neu aufbauen kann.
+        dpg.push_container_stack(_SIDEBAR)
+        try:
+            dpg.add_text("Sequenz", color=(120, 180, 255))
 
-        def _on_name(s, a, u):
-            g.name = a
-        dpg.add_input_text(label="Name", default_value=g.name, width=-60, callback=_on_name)
+            def _on_name(s, a, u):
+                g.name = a
+            dpg.add_input_text(label="Name", default_value=g.name, width=-60, callback=_on_name)
 
-        def _on_cycles(s, a, u):
-            g.total_cycles = max(0, int(a))
-        dpg.add_input_int(label="Zyklen (0=∞)", default_value=g.total_cycles,
-                          width=-60, min_value=0, callback=_on_cycles)
+            def _on_cycles(s, a, u):
+                g.total_cycles = max(0, int(a))
+            dpg.add_input_int(label="Zyklen (0=∞)", default_value=g.total_cycles,
+                              width=-60, min_value=0, callback=_on_cycles)
 
-        def _on_desc(s, a, u):
-            g.description = a
-        dpg.add_input_text(label="Info", default_value=g.description, width=-60,
-                           multiline=True, height=50, callback=_on_desc)
+            def _on_desc(s, a, u):
+                g.description = a
+            dpg.add_input_text(label="Info", default_value=g.description, width=-60,
+                               multiline=True, height=50, callback=_on_desc)
 
-        dpg.add_separator()
-        dpg.add_button(label="Speichern", width=-1, callback=self._on_save)
-        dpg.add_text("", tag=_STATUS, color=(110, 200, 110))
+            dpg.add_separator()
+            dpg.add_button(label="Speichern", width=-1, callback=self._on_save)
+            dpg.add_text("", tag=_STATUS, color=(110, 200, 110))
 
-        dpg.add_separator()
-        dpg.add_text("Ziel-Lane für neue Blöcke", color=(120, 180, 255))
-        dpg.add_combo(items=self._lane_names(), default_value=self._lane_names()[0],
-                      tag=_LANE_PICK, width=-1)
+            dpg.add_separator()
+            dpg.add_text("Ziel-Lane für neue Blöcke", color=(120, 180, 255))
+            dpg.add_combo(items=self._lane_names(), default_value=self._lane_names()[0],
+                          tag=_LANE_PICK, width=-1)
 
-        dpg.add_button(label="+ Loop-Phase", width=-1, callback=self._on_add_loop)
+            dpg.add_button(label="+ Loop-Phase", width=-1, callback=self._on_add_loop)
 
-        dpg.add_separator()
-        dpg.add_text("Punkte-Palette", color=(120, 180, 255))
-        dpg.add_text("Klick fügt einen KLICK-Block\nin die Ziel-Lane ein.",
-                     color=(150, 150, 150))
-        with dpg.child_window(height=-1, border=False):
-            if not self.points:
-                dpg.add_text("Keine Punkte aufgenommen.", color=(150, 150, 150))
-            for pt in self.points:
-                label = f"#{pt.id} {pt.name or ''} ({pt.x},{pt.y})".strip()
-                with dpg.group(horizontal=True):
-                    if pt.color:
-                        dpg.add_color_button(default_value=tuple(pt.color) + (255,),
-                                             width=18, height=18, no_border=True)
-                    dpg.add_button(label=label, width=-1, user_data=pt,
-                                   callback=self._on_add_point)
+            dpg.add_separator()
+            dpg.add_text("Punkte-Palette", color=(120, 180, 255))
+            dpg.add_text("Klick fügt einen KLICK-Block\nin die Ziel-Lane ein.",
+                         color=(150, 150, 150))
+            with dpg.child_window(height=-1, border=False):
+                if not self.points:
+                    dpg.add_text("Keine Punkte aufgenommen.", color=(150, 150, 150))
+                for pt in self.points:
+                    label = f"#{pt.id} {pt.name or ''} ({pt.x},{pt.y})".strip()
+                    with dpg.group(horizontal=True):
+                        if pt.color:
+                            dpg.add_color_button(default_value=tuple(pt.color) + (255,),
+                                                 width=18, height=18, no_border=True)
+                        dpg.add_button(label=label, width=-1, user_data=pt,
+                                       callback=self._on_add_point)
+        finally:
+            dpg.pop_container_stack()
 
     # --------------------------------------------------------- Hilfsfunktionen
     def _lane_names(self) -> list[str]:
