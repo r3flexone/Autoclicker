@@ -11,7 +11,6 @@ und die generische else_config-Aktion (Fallback bei Trigger-Miss).
 """
 
 import random
-import threading
 import time
 
 from ..models import (
@@ -24,10 +23,6 @@ from ..winapi import (
     send_click, send_key,
     is_target_window_active, get_foreground_window_title,
 )
-
-# Polling-Intervall für die llm_action_event-Schleife in safe_click/safe_key.
-# 50 ms = reaktiv genug ohne CPU zu belasten.
-_LLM_ACTION_POLL_INTERVAL = 0.05
 
 
 # =============================================================================
@@ -102,11 +97,14 @@ def _humanize_check_break(state: AutoClickerState) -> None:
         return
     interval_sec = cfg.humanize_break_interval_min * 60
     now = time.monotonic()
-    if state.humanize_last_break <= 0:
-        state.humanize_last_break = now
-        return
-    if now - state.humanize_last_break < interval_sec:
-        return
+    # Read-modify-write auf humanize_last_break unter state.lock (zwei Threads
+    # können safe_click/safe_key gleichzeitig erreichen).
+    with state.lock:
+        if state.humanize_last_break <= 0:
+            state.humanize_last_break = now
+            return
+        if now - state.humanize_last_break < interval_sec:
+            return
     dur_min = cfg.humanize_break_duration_min * 60
     dur_max = max(cfg.humanize_break_duration_max * 60, dur_min)
     if dur_max <= 0:
@@ -117,7 +115,8 @@ def _humanize_check_break(state: AutoClickerState) -> None:
     if state.stop_event.wait(duration):
         log_event(state, "humanize_break_interrupted")
         return
-    state.humanize_last_break = time.monotonic()
+    with state.lock:
+        state.humanize_last_break = time.monotonic()
     log_event(state, "humanize_break_end")
     print(col(f"[HUMANIZE] Pause beendet.", "cyan"))
 
@@ -132,34 +131,35 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     Returns:
         True bei Erfolg, False wenn Stop/Fokus-Abbruch.
     """
-    # Sequenz-Worker wartet wenn LLM-Thread gerade Boss-Aktion ausführt
-    if threading.current_thread() is not state.llm_thread:
-        while state.llm_action_event.is_set() and not state.stop_event.is_set():
-            time.sleep(_LLM_ACTION_POLL_INTERVAL)
-    if not _wait_for_target_window(state):
-        return False
-    _humanize_check_break(state)
-    if state.stop_event.is_set():
-        return False
-    _humanize_delay(state)
-    jx, jy = _humanize_jitter(x, y, state)
-    send_click(jx, jy, state.config.click_move_delay, state.config.click_post_delay)
+    # input_lock garantiert echte Mutual-Exclusion zwischen Sequenz-Worker und
+    # dem asynchronen LLM-Boss-Thread: Fokus-Check, Humanize-Delays und der
+    # SetCursorPos+SendInput-Block laufen atomar — kein interleaved Klick an
+    # falscher Position mehr. input_lock NIEMALS unter state.lock nehmen
+    # (Reihenfolge: input_lock zuerst, state.lock danach).
+    with state.input_lock:
+        if not _wait_for_target_window(state):
+            return False
+        _humanize_check_break(state)
+        if state.stop_event.is_set():
+            return False
+        _humanize_delay(state)
+        jx, jy = _humanize_jitter(x, y, state)
+        send_click(jx, jy, state.config.click_move_delay, state.config.click_post_delay)
     log_event(state, "click", detail=label, x=jx, y=jy)
     return True
 
 
 def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
-    if threading.current_thread() is not state.llm_thread:
-        while state.llm_action_event.is_set() and not state.stop_event.is_set():
-            time.sleep(_LLM_ACTION_POLL_INTERVAL)
-    if not _wait_for_target_window(state):
-        return False
-    _humanize_check_break(state)
-    if state.stop_event.is_set():
-        return False
-    _humanize_delay(state)
-    result = send_key(key)
+    # Siehe safe_click: input_lock sichert exklusiven Maus/Tastatur-Zugriff.
+    with state.input_lock:
+        if not _wait_for_target_window(state):
+            return False
+        _humanize_check_break(state)
+        if state.stop_event.is_set():
+            return False
+        _humanize_delay(state)
+        result = send_key(key)
     log_event(state, "key", detail=key, extra=label)
     return result
 

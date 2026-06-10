@@ -231,7 +231,11 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
                 )
             return (False, max_val, None)
 
-    except (ValueError, TypeError, AttributeError) as e:
+    except (ValueError, TypeError, AttributeError, cv2.error) as e:
+        # cv2.error explizit fangen (z.B. Größen-Mismatch nach Resize, leere Matrix) —
+        # sonst propagiert es in den Worker und reißt die Sequenz ab. cv2 ist hier
+        # garantiert verfügbar, da die Funktion oben bei not OPENCV_AVAILABLE früh
+        # zurückkehrt (OPENCV_AVAILABLE-Muster).
         logger.error(f"Template Matching Fehler: {e}")
         return (False, 0.0, None)
 
@@ -367,8 +371,13 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
         bmp = _gdi32.CreateCompatibleBitmap(hwndDC, width, height)
         old_bmp = _gdi32.SelectObject(memDC, bmp)
 
-        # BitBlt - Koordinaten funktionieren auch negativ (linker Monitor)
-        _gdi32.BitBlt(memDC, 0, 0, width, height, hwndDC, left, top, 0x00CC0020)
+        # BitBlt - Koordinaten funktionieren auch negativ (linker Monitor).
+        # Rückgabe prüfen: bei gesperrtem Desktop / Secure-Screen schlägt BitBlt fehl.
+        # Dann None zurückgeben, damit der ImageGrab-Fallback greift (statt einem
+        # schwarzen Bild, das die Erkennung still verfälscht).
+        if not _gdi32.BitBlt(memDC, 0, 0, width, height, hwndDC, left, top, 0x00CC0020):
+            logger.error("BitBlt fehlgeschlagen (Desktop gesperrt?) - Fallback auf ImageGrab")
+            return None
 
         # Bitmap-Daten auslesen
         bi = BITMAPINFOHEADER()
@@ -380,7 +389,10 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
         bi.biCompression = 0
 
         buffer = (ctypes.c_char * (width * height * 4))()
-        _gdi32.GetDIBits(memDC, bmp, 0, height, buffer, ctypes.byref(bi), 0)
+        # GetDIBits gibt die Anzahl kopierter Scanlines zurück (0 = Fehler).
+        if _gdi32.GetDIBits(memDC, bmp, 0, height, buffer, ctypes.byref(bi), 0) == 0:
+            logger.error("GetDIBits fehlgeschlagen - Fallback auf ImageGrab")
+            return None
 
         # In PIL Image konvertieren
         img_array = np.frombuffer(buffer, dtype=np.uint8).reshape((height, width, 4))

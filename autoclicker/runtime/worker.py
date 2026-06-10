@@ -19,6 +19,7 @@ from ..utils import (
     clear_line, col, ok, err, hint, dbg,
     format_duration, safe_input,
 )
+from ..utils.console import set_console_title
 from .boss_detection import _confirm_new_bosses
 from .steps import execute_step
 
@@ -28,14 +29,19 @@ from .steps import execute_step
 # =============================================================================
 
 def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_executed: dict,
-                      stop_event: 'threading.Event', lock: 'threading.Lock') -> None:
+                      stop_event: 'threading.Event', lock: 'threading.Lock',
+                      shutdown_event: 'threading.Event') -> None:
     """Background-Thread: Überwacht Uhrzeiten und setzt pending-Flags.
 
     Prüft alle 10 Sekunden ob eine geplante Startzeit erreicht ist.
     Setzt das pending-Flag thread-safe, damit die Phase an ihrer
     natürlichen Position im Ablauf ausgeführt wird.
+
+    Terminiert sowohl bei stop_event (Sequenz gestoppt) als auch bei
+    shutdown_event (Sequenz regulär beendet) — sonst liefe der Timer als
+    Geister-Thread ewig weiter und leakte bei jedem Neustart.
     """
-    while not stop_event.is_set():
+    while not stop_event.is_set() and not shutdown_event.is_set():
         now = datetime.now()
         current_h, current_m = now.hour, now.minute
         today = now.strftime('%Y-%m-%d')
@@ -44,7 +50,11 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
             if not lp.scheduled_start:
                 continue
 
-            h, m = map(int, lp.scheduled_start.split(":"))
+            try:
+                h, m = map(int, lp.scheduled_start.split(":"))
+            except (ValueError, AttributeError):
+                print(col(f"\n[TIMER] Ungültige Startzeit '{lp.scheduled_start}' für '{lp.name}' — Phase wird ignoriert.", "yellow"), flush=True)
+                continue
 
             if current_h == h and current_m == m:
                 tracking_key = f"{lp.scheduled_start}_{today}"
@@ -54,8 +64,12 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
                         scheduled_pending[lp.name] = True
                         print(col(f"\n[TIMER] {lp.name}: Startzeit {lp.scheduled_start} erreicht! (wird bei nächster Position ausgeführt)", "green"), flush=True)
 
-        # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit)
-        stop_event.wait(10.0)
+        # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit).
+        # shutdown_event beendet die Wartezeit sofort beim Sequenz-Ende.
+        if stop_event.wait(10.0):
+            break
+        if shutdown_event.is_set():
+            break
 
 
 # =============================================================================
@@ -103,7 +117,12 @@ def sequence_worker(state: AutoClickerState) -> None:
 
     sequence = _prepare_worker_state(state, debug)
     if sequence is None:
+        set_console_title("Autoclicker - bereit")
         return
+
+    global _last_pause_title_state
+    _last_pause_title_state = False  # Start = laufend (Titel bereits gesetzt)
+    set_console_title(f"> laeuft: {_ascii_title(sequence.name)}")
 
     # Session-Log starten (wenn aktiviert)
     from ..session_log import start_session_log
@@ -113,11 +132,19 @@ def sequence_worker(state: AutoClickerState) -> None:
         seq = state.active_sequence
         log_event(state, "session_start", detail=seq.name if seq and hasattr(seq, "name") else "")
 
-    schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(state, sequence)
+    # shutdown_event beendet den Schedule-Watcher IMMER am Worker-Ende (finally),
+    # auch bei regulärem Sequenz-Ende — sonst läuft der Timer als Geister-Thread weiter.
+    schedule_shutdown = threading.Event()
+    cycle_count = 0
+    try:
+        schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
+            state, sequence, schedule_shutdown)
 
-    cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
+        cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
 
-    _run_end_phase(state, sequence)
+        _run_end_phase(state, sequence)
+    finally:
+        schedule_shutdown.set()
 
     # Laufenden Async-LLM-Boss-Thread abwarten, bevor Log/Statistik abgeschlossen
     # werden. Sonst kann der Daemon-Thread nach Sequenz-Ende noch Klicks/Tasten
@@ -129,12 +156,13 @@ def sequence_worker(state: AutoClickerState) -> None:
         if llm_thread.is_alive() and debug:
             print(dbg(f"  → Async-LLM-Thread nach {join_timeout}s noch aktiv (Daemon, wird bei Beenden verworfen)"))
 
-    # Neu entdeckte Boss-Namen bestätigen (vor Statistik-Anzeige)
-    _confirm_new_bosses(state)
-
     with state.lock:
         state.is_running = False
         duration = time.time() - state.start_time if state.start_time else 0
+
+    # Neu entdeckte Boss-Namen informieren (NACH is_running=False, damit der
+    # Stop-Hotkey nicht durch einen blockierenden Prompt eingefroren wird).
+    _confirm_new_bosses(state)
 
     # Session-Log schließen
     if state.session_log is not None:
@@ -144,10 +172,38 @@ def sequence_worker(state: AutoClickerState) -> None:
         state.session_log = None
 
     _print_session_summary(state, cycle_count, duration)
+    set_console_title("Autoclicker - bereit")
+
+
+def _ascii_title(text: str) -> str:
+    """Reduziert einen Text auf ASCII für den Konsolentitel (Umlaute → ?)."""
+    return text.encode("ascii", "replace").decode("ascii")
+
+
+# Letzter im Titel gespiegelter Pause-Zustand — verhindert SetConsoleTitle-Spam.
+# None = noch nicht gesetzt (erzwingt erstes Update beim Worker-Start).
+_last_pause_title_state = None
+
+
+def _sync_pause_title(state: AutoClickerState, seq_name: str) -> None:
+    """Aktualisiert den Konsolentitel bei Wechsel des Pause-Zustands (nicht jede Iteration)."""
+    global _last_pause_title_state
+    paused = state.pause_event.is_set()
+    if paused == _last_pause_title_state:
+        return
+    _last_pause_title_state = paused
+    if paused:
+        set_console_title("|| pausiert")
+    else:
+        set_console_title(f"> laeuft: {_ascii_title(seq_name)}")
 
 
 def _prepare_worker_state(state: AutoClickerState, debug: bool):
-    """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück."""
+    """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück.
+
+    Der blockierende Debug-Prompt (sleep + safe_input) läuft bewusst NICHT unter
+    state.lock — sonst frören alle Hotkeys ein solange der Prompt offen ist.
+    """
     with state.lock:
         sequence = state.active_sequence
         if not sequence:
@@ -166,22 +222,6 @@ def _prepare_worker_state(state: AutoClickerState, debug: bool):
             state.is_running = False
             return None
 
-        if debug:
-            print("\n" + col("=" * 60, 'gray'))
-            print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
-            for i, step in enumerate(sequence.init_steps):
-                print(col(f"  INIT[{i+1}]: {step.name or 'unnamed'}", 'green'))
-            for lp in sequence.loop_phases:
-                print(col(f"  --- {lp.name} (x{lp.repeat}) ---", 'magenta'))
-                for i, step in enumerate(lp.steps):
-                    print(col(f"  {lp.name}[{i+1}]: {step.name or 'unnamed'}", 'magenta'))
-            print(col("=" * 60, 'gray'))
-            if not state.scheduled_start:
-                print(dbg("Drücke Enter zum Starten..."))
-                time.sleep(0.3)  # Rest-Events von CTRL+ALT+S abklingen lassen
-                safe_input()
-            state.scheduled_start = False
-
         state.total_clicks = 0
         state.items_found = 0
         state.key_presses = 0
@@ -193,12 +233,34 @@ def _prepare_worker_state(state: AutoClickerState, debug: bool):
         state.session_screenshots_dir = None  # Wird beim ersten Screenshot-Schritt angelegt
         state.humanize_last_break = time.monotonic()
         state.finish_event.clear()
+        # Stale Events aus der Vorsession löschen — sonst Phantom-Skip/Restart
+        state.restart_event.clear()
+        state.skip_cycle_event.clear()
         state.pending_new_bosses.clear()
+
+    # Debug-Ausgabe + blockierender Enter-Prompt AUSSERHALB des Locks
+    if debug:
+        print("\n" + col("=" * 60, 'gray'))
+        print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
+        for i, step in enumerate(sequence.init_steps):
+            print(col(f"  INIT[{i+1}]: {step.name or 'unnamed'}", 'green'))
+        for lp in sequence.loop_phases:
+            print(col(f"  --- {lp.name} (x{lp.repeat}) ---", 'magenta'))
+            for i, step in enumerate(lp.steps):
+                print(col(f"  {lp.name}[{i+1}]: {step.name or 'unnamed'}", 'magenta'))
+        print(col("=" * 60, 'gray'))
+        scheduled_start = state.scheduled_start
+        if not scheduled_start:
+            print(dbg("Drücke Enter zum Starten..."))
+            time.sleep(0.3)  # Rest-Events von CTRL+ALT+S abklingen lassen
+            safe_input()
+        state.scheduled_start = False
 
     return sequence
 
 
-def _maybe_start_schedule_watcher(state: AutoClickerState, sequence):
+def _maybe_start_schedule_watcher(state: AutoClickerState, sequence,
+                                  shutdown_event: threading.Event):
     """Startet den _schedule_watcher-Thread nur wenn mindestens eine Phase scheduled_start hat.
 
     Returns: (thread or None, scheduled_pending dict, schedule_lock)
@@ -212,7 +274,7 @@ def _maybe_start_schedule_watcher(state: AutoClickerState, sequence):
         schedule_thread = threading.Thread(
             target=_schedule_watcher,
             args=(sequence.loop_phases, scheduled_pending, scheduled_last_executed,
-                  state.stop_event, schedule_lock),
+                  state.stop_event, schedule_lock, shutdown_event),
             daemon=True
         )
         schedule_thread.start()
@@ -252,6 +314,11 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
         cycle_count = 0
 
         while not state.stop_event.is_set() and not state.quit_event.is_set():
+            # Pause-Status im Konsolentitel spiegeln (nur bei Wechsel, nicht
+            # jede Iteration). Mid-Step-Pausen behandelt wait_while_paused selbst —
+            # hier wird der Titel am Zyklus-Rand konsolidiert.
+            _sync_pause_title(state, sequence.name)
+
             if state.skip_cycle_event.is_set():
                 state.skip_cycle_event.clear()
                 with state.lock:
@@ -266,14 +333,15 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 print(col("\n[RESTART] Kompletter Neustart (inkl. INIT)...", "yellow"))
                 break  # Bricht innere Schleife ab → äußere Schleife startet INIT erneut
 
+            # Limit VOR dem Inkrement prüfen — sonst zeigt die Statistik N+1 Zyklen
+            if total_cycles > 0 and cycle_count >= total_cycles:
+                print(f"\n{ok(f'Alle {total_cycles} Zyklen abgeschlossen!')}")
+                break
+
             cycle_count += 1
 
             with state.lock:
                 state.clicked_categories.clear()
-
-            if total_cycles > 0 and cycle_count > total_cycles:
-                print(f"\n{ok(f'Alle {total_cycles} Zyklen abgeschlossen!')}")
-                break
 
             cycle_str = f"Zyklus {cycle_count}" if total_cycles == 0 else f"Zyklus {cycle_count}/{total_cycles}"
 

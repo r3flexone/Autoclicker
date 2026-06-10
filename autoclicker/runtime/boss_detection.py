@@ -23,7 +23,7 @@ from ..models import (
     BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
-from ..utils import col, err, dbg, warn, safe_input, wait_while_paused
+from ..utils import col, err, dbg, warn, wait_while_paused
 from ..winapi import check_failsafe
 from .actions import safe_click, safe_key, _step_status
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
@@ -55,6 +55,13 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         bosses_snapshot = list(config.bosses)
         color_tolerance = config.color_tolerance
         scan_region = config.scan_region
+        # Erkennungs-Flags im selben Lock-Snapshot einfrieren — sonst kann ein
+        # Editor sie zwischen mehreren frischen Reads toggeln und das LLM läuft
+        # doppelt (einmal primär, einmal als Fallback).
+        cfg_use_llm = config.use_llm
+        cfg_llm_fallback = config.llm_fallback
+        cfg_use_ocr = config.use_ocr
+        cfg_ocr_fallback = config.ocr_fallback
 
     debug = state.config.debug_detection
 
@@ -64,27 +71,27 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
             print(dbg("Boss-Scan: Screenshot fehlgeschlagen!"))
         return False, None
 
+    llm_active = cfg_use_llm and state.config.llm_enabled
+    ocr_active = cfg_use_ocr and state.config.ocr_enabled
+
     if debug:
         r = scan_region
         tags = []
-        if config.use_llm and state.config.llm_enabled:
+        if llm_active:
             tags.append("LLM")
-        if config.use_ocr and state.config.ocr_enabled:
+        if ocr_active:
             tags.append("OCR")
         tag_str = f" [{'+'.join(tags)}]" if tags else ""
         print(dbg(f"Boss-Scan '{config_name}': Region ({r[0]},{r[1]})-({r[2]},{r[3]}), {len(bosses_snapshot)} Bosse{tag_str}"))
 
-    llm_active = config.use_llm and state.config.llm_enabled
-    ocr_active = config.use_ocr and state.config.ocr_enabled
-
     # OCR als primäre Erkennung (wenn nicht Fallback-Modus)
-    if ocr_active and not config.ocr_fallback:
+    if ocr_active and not cfg_ocr_fallback:
         ocr_result = _execute_ocr_boss_detection(state, config, img, debug, bosses_snapshot)
         if ocr_result is not None:
             return True, ocr_result
 
     # LLM als primäre Erkennung (wenn nicht Fallback-Modus)
-    if llm_active and not config.llm_fallback:
+    if llm_active and not cfg_llm_fallback:
         llm_result = _execute_llm_boss_detection(state, config, img, debug, bosses_snapshot)
         if llm_result is not None:
             return True, llm_result
@@ -95,13 +102,13 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
             return True, boss
 
     # OCR als Fallback
-    if ocr_active and config.ocr_fallback:
+    if ocr_active and cfg_ocr_fallback:
         ocr_result = _execute_ocr_boss_detection(state, config, img, debug, bosses_snapshot)
         if ocr_result is not None:
             return True, ocr_result
 
     # LLM Vision als Fallback (nur im Fallback-Modus - sonst lief es bereits oben als primär)
-    if llm_active and config.llm_fallback:
+    if llm_active and cfg_llm_fallback:
         llm_result = _execute_llm_boss_detection(state, config, img, debug, bosses_snapshot)
         if llm_result is not None:
             return True, llm_result
@@ -150,53 +157,27 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
 
 
 def _confirm_new_bosses(state: AutoClickerState) -> None:
-    """Fragt nach der Sequenz ob neu entdeckte Boss-Namen korrekt waren.
+    """Informiert über neu entdeckte Boss-Namen dieser Session (nicht-blockierend).
 
-    Falsch erkannte Namen werden aus der Konfiguration entfernt und neu gespeichert.
+    Unbekannte Bosse werden bereits beim Erkennen automatisch als SKIP gespeichert
+    (_handle_new_boss). Früher fragte diese Funktion per safe_input nach Bestätigung —
+    das blockierte den Worker, sodass der Stop-Hotkey wirkungslos blieb und die App
+    eingefroren wirkte. Jetzt nur noch eine reine Info-Meldung; Korrekturen erfolgen
+    im Boss-Editor.
     """
-    from ..persistence import save_boss_scan
-
     with state.lock:
         pending = list(state.pending_new_bosses)
+        state.pending_new_bosses.clear()
 
     if not pending:
         return
 
     print(col("\n" + "=" * 55, "yellow"))
-    print(col(f"[NEUE BOSSE] {len(pending)} neue Boss-Name(n) wurden in dieser Session gespeichert:", "yellow"))
+    print(col(f"[NEUE BOSSE] {len(pending)} unbekannte(r) Boss(e) automatisch als SKIP gespeichert "
+              f"— im Boss-Editor anpassbar.", "yellow"))
     for i, (cfg_name, boss_name, source) in enumerate(pending, 1):
         print(f"  {i}. [{source}] '{boss_name}'  (Konfiguration: '{cfg_name}')")
-    print(col("Bitte prüfe ob die erkannten Namen korrekt sind.", "yellow"))
     print(col("=" * 55, "yellow"))
-
-    to_remove: list[tuple[str, str]] = []
-
-    for cfg_name, boss_name, source in pending:
-        answer = safe_input(f"  War '{boss_name}' [{source}] korrekt erkannt? (j/n): ").strip().lower()
-        if answer in ("n", "nein", "no"):
-            to_remove.append((cfg_name, boss_name))
-            print(col(f"  → '{boss_name}' wird entfernt.", "red"))
-        else:
-            print(col(f"  → '{boss_name}' bleibt gespeichert.", "green"))
-
-    with state.lock:
-        state.pending_new_bosses.clear()
-
-    if not to_remove:
-        return
-
-    configs_to_save: set[str] = set()
-    with state.lock:
-        for cfg_name, boss_name in to_remove:
-            if cfg_name in state.boss_scans:
-                cfg = state.boss_scans[cfg_name]
-                cfg.bosses = [b for b in cfg.bosses if b.name != boss_name]
-                configs_to_save.add(cfg_name)
-
-    for cfg_name in configs_to_save:
-        if cfg_name in state.boss_scans:
-            save_boss_scan(state.boss_scans[cfg_name])
-            print(col(f"  → Konfiguration '{cfg_name}' aktualisiert.", "cyan"))
 
 
 # =============================================================================
@@ -460,8 +441,9 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     """Hintergrund-Thread: Boss-Detection + Aktion komplett asynchron.
 
     Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
-    llm_action_event koordiniert: safe_click/safe_key warten bis das Event
-    gelöscht ist, bevor der Sequenz-Worker weitermacht.
+    state.input_lock in safe_click/safe_key garantiert: Worker und dieser Thread
+    können nie gleichzeitig SetCursorPos+SendInput senden (echte Mutual-Exclusion).
+    llm_action_event bleibt als Status-Marker erhalten.
 
     Respektiert pause_event und failsafe genau wie der Sync-Pfad — sonst würde
     der Watcher bei pausierter Sequenz weiter Bosse erkennen und Aktionen feuern.

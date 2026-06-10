@@ -92,17 +92,27 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         slots = list(reversed(slots))
 
     # clicked_categories VOR dem Loop sichern, damit Klicks innerhalb
-    # dieses Scan-Schritts sich nicht gegenseitig ausfiltern
+    # dieses Scan-Schritts sich nicht gegenseitig ausfiltern. Jeder Slot scannt
+    # gegen denselben Pre-Step-Stand (saved_categories) — aber die in diesem Step
+    # tatsächlich geklickten Kategorien werden gesammelt und am Ende mit dem
+    # globalen Dict GEMERGT, statt bei jedem Slot überschrieben (sonst gingen
+    # Klicks früherer Slots verloren).
     with state.lock:
         saved_categories = dict(state.clicked_categories)
 
+    step_clicked: dict[str, int] = {}
     total_clicked = 0
     for slot in slots:
         if state.stop_event.is_set():
             return False
 
+        # Baseline für diesen Slot: Pre-Step-Stand + bereits in diesem Step geklickte
         with state.lock:
-            state.clicked_categories = dict(saved_categories)
+            merged = dict(saved_categories)
+            for cat, prio in step_clicked.items():
+                if cat not in merged or prio < merged[cat]:
+                    merged[cat] = prio
+            state.clicked_categories = merged
 
         results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot])
 
@@ -113,6 +123,20 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                 if not _click_scan_result(state, pos, item, priority, debug):
                     return False
                 total_clicked += 1
+
+        # Was in diesem Slot zusätzlich geklickt wurde, in den Step-Akkumulator übernehmen
+        with state.lock:
+            for cat, prio in state.clicked_categories.items():
+                if cat not in step_clicked or prio < step_clicked[cat]:
+                    step_clicked[cat] = prio
+
+    # Step-Ergebnisse final ins globale Dict mergen (nicht überschreiben)
+    with state.lock:
+        merged = dict(saved_categories)
+        for cat, prio in step_clicked.items():
+            if cat not in merged or prio < merged[cat]:
+                merged[cat] = prio
+        state.clicked_categories = merged
 
     if total_clicked > 0:
         _step_status(debug, phase, step_num, total_steps,
@@ -502,16 +526,20 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
         if not safe_click(state, step.x, step.y, label=step.name or "step"):
             return False
 
+        # Inkrement + Max-Check atomar unter Lock (check-then-act ohne Lock wäre
+        # eine Race-Condition zwischen Worker und Async-LLM-Thread).
         with state.lock:
             state.total_clicks += 1
+            total_now = state.total_clicks
+            max_clicks = state.config.click_max_total
+            limit_reached = bool(max_clicks) and total_now >= max_clicks
 
         name = step.name or "Punkt"
         _step_status(debug, phase, step_num, total_steps,
-                     f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {state.total_clicks}",
-                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {state.total_clicks}")
+                     f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {total_now}",
+                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}")
 
-        max_clicks = state.config.click_max_total
-        if max_clicks and state.total_clicks >= max_clicks:
+        if limit_reached:
             print(f"\n{info(f'Maximum von {max_clicks} Klicks erreicht.')}")
             state.stop_event.set()
             return False

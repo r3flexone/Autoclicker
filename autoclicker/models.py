@@ -491,6 +491,12 @@ class AutoClickerState:
     skip_cycle_event: threading.Event = field(default_factory=threading.Event)
     finish_event: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Eigener Lock NUR für Maus/Tastatur-Eingaben (SetCursorPos + SendInput).
+    # Garantiert echte Mutual-Exclusion zwischen Sequenz-Worker und dem
+    # asynchronen LLM-Boss-Thread — verhindert interleaved Klicks an falscher
+    # Position. WICHTIG: input_lock niemals nehmen während state.lock gehalten
+    # wird (Deadlock-Gefahr — strikte Lock-Reihenfolge).
+    input_lock: threading.Lock = field(default_factory=threading.Lock)
 
     # Flag für geplanten Start (überspringt Debug-Enter-Prompt)
     scheduled_start: bool = False
