@@ -75,6 +75,8 @@ def _print_phase_help(full: bool = False) -> None:
     print("NUR warten / Taste / Scan (kein Punkt-Klick):")
     print(cmd_hint("wait <Sek>", "nur <Sek> warten, kein Klick (z.B. 'wait 10')"))
     print(cmd_hint("wait <Min>-<Max>", "zufällig warten, kein Klick (z.B. 'wait 30-45')"))
+    print(cmd_hint("wait <Punkt-Nr> pixel", "warten bis die PUNKT-Farbe erscheint, kein Klick (z.B. 'wait 3 pixel')"))
+    print(cmd_hint("wait <Punkt-Nr> gone", "warten bis die PUNKT-Farbe verschwindet, kein Klick (z.B. 'wait 3 gone')"))
     print(cmd_hint("wait pixel", "warten bis Farbe an der MAUSPOSITION erscheint (kein Klick)"))
     print(cmd_hint("wait gone", "warten bis Farbe an der MAUSPOSITION verschwindet (kein Klick)"))
     print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
@@ -549,14 +551,45 @@ class _PhaseEditor:
         self.add_step(step)
 
     def _handle_wait(self, user_input: str) -> None:
-        """Format: wait <Zeit> | wait <Min>-<Max> | wait pixel | wait gone [else ...]"""
+        """Format: wait <Zeit> | wait <Min>-<Max> | wait [<Punkt-Nr>] pixel|gone [else ...]
+
+        Mit <Punkt-Nr> wird die Position + aufgenommene Farbe dieses Punkts als
+        Farb-Trigger genutzt (kein Klick). Ohne Punkt-Nr: Farbe an der aktuellen
+        Mausposition (wie bisher).
+        """
         main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
         if not main_parts:
-            print("  -> Format: wait <Zeit> oder wait pixel oder wait gone")
+            print("  -> Format: wait <Zeit> | wait pixel|gone | wait <Punkt-Nr> pixel|gone")
             return
 
         arg = main_parts[0].lower()
         step = SequenceStep(x=0, y=0, delay_before=0, name="Wait", wait_only=True)
+
+        # wait <Punkt-Nr> pixel|gone → Farbe vom aufgenommenen Punkt (kein Klick)
+        if len(main_parts) >= 2 and main_parts[1].lower() in ("pixel", "gone"):
+            try:
+                point_id = int(arg)
+            except ValueError:
+                print("  -> Format: wait <Punkt-Nr> pixel|gone (z.B. 'wait 3 gone')")
+                return
+            with self.state.lock:
+                point = get_point_by_id(self.state, point_id)
+            if not point:
+                print(f"  -> Punkt #{point_id} nicht gefunden! {hint('(siehe points)')}")
+                return
+            mode = main_parts[1].lower()
+            # Punkt-Position + Farbe in den Schritt übernehmen, dann Trigger setzen.
+            # _apply_trigger nutzt recorded_color (sonst Live-Abgriff) und lässt
+            # wait_only=True unangetastet.
+            step.x, step.y = point.x, point.y
+            step.recorded_color = point.color
+            if not self._apply_trigger(step, mode):
+                return
+            label = point.name or f"#{point_id}"
+            step.name = f"Wait:Gone {label}" if mode == "gone" else f"Wait:Pixel {label}"
+            apply_else_to_step(step, else_parts, self.state)
+            self.add_step(step)
+            return
 
         if arg in ("pixel", "gone"):
             px, py, color = capture_pixel_color()
