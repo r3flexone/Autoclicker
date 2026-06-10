@@ -403,6 +403,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     timeout = state.config.pixel_wait_timeout
     start_time = time.time()
     expected_name = get_color_name(wc.color)
+    # Verb je nach Trigger-Richtung: bis Farbe DA (auf) vs. bis Farbe WEG (bis ... weg ist)
+    wait_verb = "bis weg:" if wc.until_gone else "auf"
 
     while not state.stop_event.is_set():
         if state.skip_event.is_set():
@@ -435,8 +437,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                 break
 
             _step_status(debug, phase, step_num, total_steps,
-                         f"Warte auf {expected_name}... ({elapsed:.0f}s)",
-                         f"Warte auf {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
+                         f"Warte {wait_verb} {expected_name}... ({elapsed:.0f}s)",
+                         f"Warte {wait_verb} {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -465,10 +467,14 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
         consec = state.consecutive_timeouts
     clear_line()
     max_consec = state.config.pixel_max_consecutive_timeouts
+    # Meldung an Trigger-Richtung anpassen: bei until_gone wartet der Schritt
+    # darauf dass die Farbe VERSCHWINDET — "nicht erkannt" wäre dann irreführend.
+    wc = step.wait_condition
+    reason = "Farbe nicht verschwunden" if (wc and wc.until_gone) else "Farbe nicht erkannt"
     if max_consec > 0:
-        print(col(f"\n[TIMEOUT] Farbe nicht erkannt nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
+        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
     else:
-        print(col(f"\n[TIMEOUT] Farbe nicht erkannt nach {timeout}s!", "red"), end="", flush=True)
+        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s!", "red"), end="", flush=True)
 
     # Notbremse: Zu viele aufeinanderfolgende Timeouts
     if max_consec > 0 and consec >= max_consec:
