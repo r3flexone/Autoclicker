@@ -255,7 +255,8 @@ class _PhaseEditor:
         if cmd.startswith("wait "):
             self._handle_wait(user_input)
             return
-        if cmd.startswith(("screenshot", "ss")):
+        if (cmd == "ss" or cmd == "screenshot"
+                or cmd.startswith("screenshot ") or cmd.startswith("ss ")):
             self._handle_screenshot(user_input)
             return
 
@@ -615,6 +616,18 @@ class _PhaseEditor:
 
     def _get_step_by_num(self, num_str: str):
         """Validiert eine 1-basierte Schritt-Nummer. Returns Step oder None."""
+        idx = self._get_step_index_by_num(num_str)
+        if idx is None:
+            return None
+        return self.steps[idx]
+
+    def _get_step_index_by_num(self, num_str: str):
+        """Validiert eine 1-basierte Schritt-Nummer. Returns 0-basierten Index oder None.
+
+        Index statt Step, weil SequenceStep eq=True ist: bei Duplikaten würde
+        self.steps.index(step) den ERSTEN inhaltsgleichen Schritt finden, nicht
+        den gemeinten. Wer die Position braucht (copy/move/show/test), nutzt das.
+        """
         try:
             num = int(num_str)
         except ValueError:
@@ -623,7 +636,7 @@ class _PhaseEditor:
         if not (1 <= num <= len(self.steps)):
             print(f"  -> Ungültiger Schritt! Verfügbar: 1-{len(self.steps)}")
             return None
-        return self.steps[num - 1]
+        return num - 1
 
     def _handle_make_pixel(self, user_input: str, until_gone: bool) -> None:
         """Wandelt einen bestehenden Schritt in einen Farb-Trigger um.
@@ -729,10 +742,11 @@ class _PhaseEditor:
 
         Format: show <Nr>
         """
-        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
-        if step is None:
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
             return
-        num = self.steps.index(step) + 1
+        step = self.steps[idx]
+        num = idx + 1
         print(f"\n  {col(f'Schritt {num} — Details:', 'bold')}")
         print(f"    Zusammenfassung: {step}")
         print(f"    Name:            {step.name or '(keiner)'}")
@@ -772,10 +786,10 @@ class _PhaseEditor:
 
         Format: copy <Nr>
         """
-        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
-        if step is None:
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
             return
-        idx = self.steps.index(step)
+        step = self.steps[idx]
         clone = copy.deepcopy(step)
         self.steps.insert(idx + 1, clone)
         print(f"  + Schritt {idx + 1} dupliziert → neue Position {idx + 2}: {clone}")
@@ -789,8 +803,8 @@ class _PhaseEditor:
         if len(parts) < 3:
             print("  -> Format: move <Nr> <Ziel> (z.B. 'move 5 1')")
             return
-        step = self._get_step_by_num(parts[1])
-        if step is None:
+        src = self._get_step_index_by_num(parts[1])
+        if src is None:
             return
         try:
             target = int(parts[2])
@@ -800,8 +814,7 @@ class _PhaseEditor:
         if not (1 <= target <= len(self.steps)):
             print(f"  -> Ungültiges Ziel! Verfügbar: 1-{len(self.steps)}")
             return
-        src = self.steps.index(step)
-        self.steps.pop(src)
+        step = self.steps.pop(src)
         self.steps.insert(target - 1, step)
         print(f"  + Schritt von Position {src + 1} → {target} verschoben: {step}")
 
@@ -839,14 +852,15 @@ class _PhaseEditor:
         Farb-Trigger werden für den Test übersprungen — es geht nur darum zu
         sehen ob die Aktion (Klick/Taste/Scan) am richtigen Ort landet.
         """
-        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
-        if step is None:
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
             return
+        step = self.steps[idx]
         with self.state.lock:
             if self.state.is_running:
                 print(f"  -> {err('Sequenz läuft gerade — erst stoppen (CTRL+ALT+S)')}")
                 return
-        num = self.steps.index(step) + 1
+        num = idx + 1
         print(f"  {col('[TEST]', 'cyan')} Führe Schritt {num} aus: {step}")
         print(hint("        (echter Klick/Tastendruck — Spielfenster muss aktiv sein,"))
         print(hint("         Wartezeit + Farb-Trigger werden für den Test übersprungen)"))
@@ -952,6 +966,12 @@ class _PhaseEditor:
                 # <Nr> pixel / <Nr> gone
                 wait_pixel, wait_color, wait_until_gone = \
                     self._resolve_trigger_color(arg, point)
+                if wait_color is None:
+                    # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
+                    # nicht erstellt werden. Lieber abbrechen als kommentarlos
+                    # einen normalen Klick anzulegen.
+                    print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
+                    return False, 0, None
             elif "-" in arg:
                 # <Nr> <Min>-<Max>
                 range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
@@ -975,6 +995,9 @@ class _PhaseEditor:
                     if opt in ("pixel", "gone"):
                         wait_pixel, wait_color, wait_until_gone = \
                             self._resolve_trigger_color(opt, point)
+                        if wait_color is None:
+                            print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
+                            return False, 0, None
 
         wait_cond = None
         if wait_pixel and wait_color:

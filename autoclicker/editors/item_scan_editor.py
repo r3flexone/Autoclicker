@@ -408,7 +408,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
                     if conf_input:
                         min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
                 except ValueError:
-                    pass
+                    print(f"  -> '{conf_input}' ungültig — behalte {int(DEFAULT_MIN_CONFIDENCE * 100)}")
 
                 # Bestätigungs-Klick?
                 confirm_point = None
@@ -510,7 +510,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         if tol_input:
             tolerance = max(1, min(100, int(tol_input)))
     except ValueError:
-        pass
+        print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
 
     # Slots und Items aus globalen Definitionen holen
     with state.lock:

@@ -92,7 +92,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 print(hint("  (Phase wird nur zur angegebenen Uhrzeit ausgeführt, sonst übersprungen)"))
                 time_input = safe_input(f"  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
                 if time_input:
-                    scheduled_start = parse_time_input(time_input)
+                    scheduled_start = parse_time_input(time_input)  # None bei Tippfehler = sofort
 
                 loop_phases.append(LoopPhase(loop_name, steps, repeat, scheduled_start=scheduled_start))
                 time_info = f", Start: {scheduled_start}" if scheduled_start else ""
@@ -121,7 +121,9 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                         if time_input == "0":
                             lp.scheduled_start = None
                         elif time_input:
-                            lp.scheduled_start = parse_time_input(time_input)
+                            parsed = parse_time_input(time_input)
+                            if parsed:
+                                lp.scheduled_start = parsed
                         print(f"  + {lp.name} aktualisiert")
                     else:
                         print(f"  -> Ungültige Nr! Verfügbar: 1-{len(loop_phases)}")

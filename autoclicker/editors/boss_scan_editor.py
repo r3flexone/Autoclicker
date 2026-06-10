@@ -21,7 +21,7 @@ from ..utils import (
     col, ok, err, info, header, breadcrumb, suggest_command,
     parse_non_negative_float, warn,
 )
-from ..winapi import get_cursor_pos
+from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
 )
@@ -139,9 +139,13 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
             return None
 
     elif action == BOSS_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', '1'): ").strip()
+        key = safe_input("  Taste (z.B. 'enter', 'space', '1'): ").strip().lower()
         if not key:
             print("  → Keine Taste angegeben!")
+            return None
+        if key not in VK_CODES:
+            print(f"  → Unbekannte Taste: '{key}'")
+            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
             return None
         result["action_key"] = key
 
@@ -312,13 +316,17 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         try:
             inp = safe_input("  Region (x1,y1,x2,y2): ").strip()
             parts = [int(x.strip()) for x in inp.split(",")]
-            if len(parts) == 4:
-                scan_region = tuple(parts)
-                print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-            else:
+            if len(parts) != 4:
                 print(f"  {err('Format: x1,y1,x2,y2')}")
                 if not existing:
                     return
+            elif parts[2] <= parts[0] or parts[3] <= parts[1]:
+                print(f"  {err('Ungültiger Bereich! x2>x1 und y2>y1 erforderlich.')}")
+                if not existing:
+                    return
+            else:
+                scan_region = tuple(parts)
+                print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
         except (ValueError, KeyboardInterrupt, EOFError):
             if not existing:
                 return
@@ -330,7 +338,9 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         for i, boss in enumerate(bosses):
             print(f"  [{i+1}] {boss}")
 
-    print("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', 'done / d', 'cancel'")
+    boss_help = ("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', "
+                 "'show / s', 'help / ?', 'done / d', 'cancel'")
+    print(boss_help)
 
     while True:
         try:
@@ -340,6 +350,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
                 break
             elif is_cancel(inp):
                 return
+            elif inp in ("help", "?"):
+                print(boss_help)
             elif inp == "add":
                 boss = _add_or_edit_boss(state)
                 if boss:
@@ -376,7 +388,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
                 else:
                     print("  (Keine Bosse definiert)")
             else:
-                _known = ["add", "edit", "del", "done", "cancel", "show"]
+                _known = ["add", "edit", "del", "done", "cancel", "show", "help"]
                 suggestion = suggest_command(inp, _known)
                 print(f"  → Unbekannter Befehl.{suggestion}")
 

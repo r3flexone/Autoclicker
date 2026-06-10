@@ -132,7 +132,7 @@ def stop_recording(state: AutoClickerState) -> None:
         try:
             total_cycles = max(0, int(cycles_input))
         except ValueError:
-            pass
+            print(f"  -> '{cycles_input}' ungültig — nutze unendlich")
 
     # Optionale Beschreibung (hilfreich beim späteren Wiederfinden / Weitergeben)
     print(f"\nBeschreibung (optional, Enter = {col('keine', 'cyan')}):")

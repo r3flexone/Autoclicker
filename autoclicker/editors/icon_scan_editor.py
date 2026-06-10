@@ -21,7 +21,7 @@ from ..utils import (
     safe_input, sanitize_filename, is_cancel, interactive_select,
     col, ok, err, header, breadcrumb, parse_non_negative_float,
 )
-from ..winapi import get_cursor_pos
+from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
 )
@@ -108,9 +108,13 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
             return None
 
     elif action == ICON_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', 'escape'): ").strip()
+        key = safe_input("  Taste (z.B. 'enter', 'space', 'escape'): ").strip().lower()
         if not key:
             print("  → Keine Taste angegeben!")
+            return None
+        if key not in VK_CODES:
+            print(f"  → Unbekannte Taste: '{key}'")
+            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
             return None
         result["action_key"] = key
 
@@ -181,12 +185,16 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
         try:
             inp = safe_input("  Region (x1,y1,x2,y2): ").strip()
             parts = [int(x.strip()) for x in inp.split(",")]
-            if len(parts) == 4:
-                scan_region = tuple(parts)
-            else:
+            if len(parts) != 4:
                 print(f"  {err('Bitte genau 4 Werte!')}")
                 if not existing:
                     return
+            elif parts[2] <= parts[0] or parts[3] <= parts[1]:
+                print(f"  {err('Ungültiger Bereich! x2>x1 und y2>y1 erforderlich.')}")
+                if not existing:
+                    return
+            else:
+                scan_region = tuple(parts)
         except ValueError:
             print(f"  {err('Ungültige Koordinaten!')}")
             if not existing:

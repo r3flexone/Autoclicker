@@ -15,7 +15,7 @@ from ...persistence import (
     list_available_sequences, load_sequence_file, save_data,
 )
 from ...utils import (
-    breadcrumb, col, err, header, hint, interactive_select, safe_input,
+    breadcrumb, col, confirm, err, header, hint, interactive_select, safe_input,
 )
 from .loops import edit_loop_phases
 from .steps import edit_phase
@@ -50,6 +50,19 @@ def run_sequence_editor(state: AutoClickerState) -> None:
         edit_sequence(state, None)
     elif 1 <= choice < len(menu_options):
         edit_sequence(state, loaded_sequences[choice - 1])
+
+
+def _confirm_discard(init_steps: list, loop_phases: list, end_steps: list) -> bool:
+    """Fragt beim Abbruch nach, ob erstellte Schritte verworfen werden sollen.
+
+    Returns True wenn verworfen werden darf (oder nichts zu verlieren ist).
+    """
+    total = (len(init_steps)
+             + sum(len(lp.steps) for lp in loop_phases)
+             + len(end_steps))
+    if total == 0:
+        return True
+    return confirm(f"  {total} erstellte(r) Schritt(e) verwerfen?")
 
 
 def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None:
@@ -98,16 +111,23 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     print("  (Optional: Login, Vorbereitung, etc. – läuft nur beim allerersten Start)")
     result = edit_phase(state, init_steps, "INIT")
     if result is None:
-        print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-        return
-    init_steps = result
+        # Bei Abbruch: erst nachfragen, falls schon Schritte existieren —
+        # sonst geht die Arbeit kommentarlos verloren.
+        if _confirm_discard(init_steps, loop_phases, end_steps):
+            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
+            return
+    else:
+        init_steps = result
 
     # LOOP-Phasen bearbeiten (mehrere möglich)
     print(header("PHASE 1: LOOP-PHASEN (können mehrere sein)"))
-    loop_phases = edit_loop_phases(state, loop_phases)
-    if loop_phases is None:
-        print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-        return
+    new_loops = edit_loop_phases(state, loop_phases)
+    if new_loops is None:
+        if _confirm_discard(init_steps, loop_phases, end_steps):
+            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
+            return
+    else:
+        loop_phases = new_loops
 
     # Gesamt-Zyklen abfragen
     if loop_phases:
@@ -120,9 +140,11 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     print("\n  (Optional: Aufräumen, Logout, etc.)")
     result = edit_phase(state, end_steps, "END")
     if result is None:
-        print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-        return
-    end_steps = result
+        if _confirm_discard(init_steps, loop_phases, end_steps):
+            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
+            return
+    else:
+        end_steps = result
 
     _print_pre_save_summary(existing, seq_name, init_steps, loop_phases, end_steps, total_cycles)
 
