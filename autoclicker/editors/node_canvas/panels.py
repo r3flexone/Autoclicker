@@ -36,6 +36,17 @@ _SCAN_MODES = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
 _ELSE_ACTIONS = ["(keine)", ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY]
 
 
+def _defer(fn) -> None:
+    """Verschiebt einen Panel-Rebuild auf den nächsten Frame.
+
+    Wird ein Combo-/Checkbox-Callback genutzt, der das Panel neu baut, löscht der
+    Rebuild das gerade laufende Widget mitten im eigenen Callback (DPG-undefiniert,
+    Crash). Über set_frame_callback läuft der Rebuild erst nachdem der Callback
+    fertig ist.
+    """
+    dpg.set_frame_callback(dpg.get_frame_count() + 1, callback=lambda: fn())
+
+
 def _clamp_color(app_data) -> tuple:
     """Dear-PyGui-Farbwert (Floats 0..255 oder 0..1) → (r,g,b) ints 0..255."""
     vals = list(app_data)[:3]
@@ -93,7 +104,7 @@ def build_properties_panel(parent: str, step, lane, graph, points,
 
     def _on_type(sender, app_data, user_data):
         set_block_type(step, _TYPE_LABEL_TO_KEY[app_data])
-        on_structure()
+        _defer(on_structure)  # Rebuild würde dieses Combo im eigenen Callback löschen
 
     dpg.add_combo(
         items=[BLOCK_LABELS[t] for t in _TYPE_ORDER],
@@ -234,7 +245,7 @@ def _build_wait_toggle(parent, step, points, on_changed, on_structure):
                                                 color=_default_color(step))
         else:
             step.wait_condition = None
-        on_structure()
+        _defer(on_structure)  # Rebuild würde diese Checkbox im eigenen Callback löschen
     dpg.add_checkbox(label="Farb-Trigger verwenden",
                      default_value=step.wait_condition is not None,
                      parent=parent, callback=_on_toggle)
@@ -331,7 +342,7 @@ def _build_screenshot(parent, step, on_changed, on_structure):
             step.screenshot_region = step.screenshot_region or (0, 0, 100, 100)
         else:
             step.screenshot_region = None
-        on_structure()
+        _defer(on_structure)  # Rebuild würde diese Checkbox im eigenen Callback löschen
     dpg.add_checkbox(label="Bereich statt Vollbild", default_value=has_region,
                      parent=parent, callback=_on_toggle)
     if has_region:
@@ -359,7 +370,7 @@ def _build_else(parent, step, points, on_changed, on_structure):
             step.else_config = None
         else:
             ensure_else(step, a)
-        on_structure()
+        _defer(on_structure)  # Rebuild würde dieses Combo im eigenen Callback löschen
     dpg.add_combo(items=_ELSE_ACTIONS, default_value=cur, parent=parent,
                   width=-1, callback=_on_action)
 

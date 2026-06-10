@@ -12,6 +12,7 @@ einfacher Round-Trip-Test ohne Dear PyGui).
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -53,10 +54,10 @@ def block_type(step: SequenceStep) -> str:
         return BLOCK_BOSS_WATCHER
     if step.boss_scan is not None:
         return BLOCK_BOSS_SCAN
-    if step.item_scan is not None:
-        return BLOCK_ITEM_SCAN
     if step.icon_scan is not None:
         return BLOCK_ICON_SCAN
+    if step.item_scan is not None:
+        return BLOCK_ITEM_SCAN
     if step.key_press is not None:
         return BLOCK_KEY
     if step.wait_only:
@@ -156,12 +157,14 @@ class BlockGraph:
         """Entfernt eine Loop-Lane (INIT/END bleiben immer erhalten)."""
         if lane.kind == LANE_LOOP and lane in self.lanes:
             self.lanes.remove(lane)
-            # Loop-Namen neu durchnummerieren
+            # Nur automatisch vergebene Default-Namen ("Loop N") neu
+            # durchnummerieren — benutzerdefinierte Namen ("Farmen") bleiben.
             n = 0
             for ln in self.lanes:
                 if ln.is_loop():
                     n += 1
-                    ln.name = f"Loop {n}"
+                    if re.fullmatch(r"Loop \d+", ln.name):
+                        ln.name = f"Loop {n}"
 
 
 def sequence_to_graph(seq: Sequence) -> BlockGraph:
@@ -241,15 +244,20 @@ def load_palette_points(sequences_dir: str) -> list[PalettePoint]:
         return []
     points: list[PalettePoint] = []
     for i, p in enumerate(data):
-        color_raw = p.get("color")
-        color = tuple(int(v) for v in color_raw) if color_raw else None
-        points.append(PalettePoint(
-            id=p.get("id", i + 1),
-            x=p.get("x", 0),
-            y=p.get("y", 0),
-            name=p.get("name", ""),
-            color=color,
-        ))
+        # Einzelne defekte Einträge (z.B. "color":"rot" oder Nicht-Dict) dürfen
+        # den Editor-Start nicht crashen — solche Einträge werden übersprungen.
+        try:
+            color_raw = p.get("color")
+            color = tuple(int(v) for v in color_raw) if color_raw else None
+            points.append(PalettePoint(
+                id=p.get("id", i + 1),
+                x=p.get("x", 0),
+                y=p.get("y", 0),
+                name=p.get("name", ""),
+                color=color,
+            ))
+        except (TypeError, ValueError, AttributeError, KeyError):
+            continue
     return points
 
 
@@ -269,6 +277,11 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     step.key_press = None
     step.wait_only = False
 
+    # screenshot_region nur für den SCREENSHOT-Typ behalten — sonst aufräumen,
+    # damit kein Rest-Feld den Round-Trip verschmutzt.
+    if new_type != BLOCK_SCREENSHOT:
+        step.screenshot_region = None
+
     if new_type == BLOCK_CLICK:
         step.wait_condition = None
     elif new_type == BLOCK_WAIT_CLICK:
@@ -276,18 +289,23 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
             color = tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
             step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=color)
     elif new_type == BLOCK_WAIT:
+        # wait_condition bleibt optional erhalten (Farb-Trigger-Feature).
         step.wait_only = True
     elif new_type == BLOCK_KEY:
         step.key_press = step.key_press or "enter"
         step.wait_condition = None
     elif new_type == BLOCK_ITEM_SCAN:
         step.item_scan = step.item_scan or ""
+        step.wait_condition = None
     elif new_type == BLOCK_ICON_SCAN:
         step.icon_scan = step.icon_scan or ""
+        step.wait_condition = None
     elif new_type == BLOCK_BOSS_SCAN:
         step.boss_scan = step.boss_scan or ""
+        step.wait_condition = None
     elif new_type == BLOCK_BOSS_WATCHER:
         step.boss_watcher = step.boss_watcher or ""
+        step.wait_condition = None
     elif new_type == BLOCK_SCREENSHOT:
         step.screenshot_only = True
         step.wait_condition = None
