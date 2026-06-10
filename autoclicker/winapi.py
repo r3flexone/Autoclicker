@@ -59,6 +59,7 @@ VK_J = 0x4A  # Sequenz aufnehmen (Record – J weil R/CTRL+ALT belegt)
 VK_H = 0x48  # Aufnahme pausieren (Halt)
 VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 VK_V = 0x56  # Visuelles Scan-Studio
+VK_O = 0x4F  # Hilfe anzeigen (Overview)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -82,6 +83,7 @@ HOTKEY_RECORD_SEQ = 18
 HOTKEY_RECORD_PAUSE = 19
 HOTKEY_NODE_EDITOR = 20
 HOTKEY_SCAN_STUDIO = 21
+HOTKEY_HELP = 22
 
 # Window Messages
 WM_HOTKEY = 0x0312
@@ -494,7 +496,11 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
     (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
+    (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
 ]
+
+# Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 
 def register_hotkeys() -> bool:
@@ -502,9 +508,25 @@ def register_hotkeys() -> bool:
     success = True
     for hotkey_id, modifiers, vk, name in _HOTKEY_DEFINITIONS:
         if not user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
-            print(warn(f"Konnte Hotkey nicht registrieren: {name}"))
+            error_code = kernel32.GetLastError()
+            print(warn(f"Konnte Hotkey nicht registrieren: {name} (Fehlercode {error_code})"))
+            if error_code == ERROR_HOTKEY_ALREADY_REGISTERED:
+                combo = name.split(" ", 1)[0]
+                print(warn(f"  {combo}: Tastenkombination ist bereits von einem anderen Programm belegt."))
             success = False
     return success
+
+
+def flush_hotkey_messages() -> None:
+    """Verwirft alle aufgestauten WM_HOTKEY-Messages.
+
+    Während ein blockierender Editor läuft, sammeln sich WM_HOTKEY-Messages in
+    der Queue des Main-Threads an und feuern danach als Burst. Nach Rückkehr
+    aus einem Handler aufrufen, um diese veralteten Hotkey-Events zu verwerfen.
+    """
+    msg = wintypes.MSG()
+    while user32.PeekMessageW(ctypes.byref(msg), None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
+        pass
 
 
 def unregister_hotkeys() -> None:

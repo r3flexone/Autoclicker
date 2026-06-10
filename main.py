@@ -20,8 +20,8 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO,
-    register_hotkeys, unregister_hotkeys
+    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP,
+    register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories,
@@ -81,6 +81,7 @@ def print_help() -> None:
 
     # System (rot)
     print(col("System:", 'red'))
+    print(f"  {col('CTRL+ALT+O', 'yellow')}  Diese Hilfe erneut anzeigen")
     print(f"  {col('CTRL+ALT+X', 'yellow')}  Factory Reset {hint('(Punkte + Sequenzen)')}")
     print(f"  {col('CTRL+ALT+Q', 'yellow')}  Programm beenden")
     print()
@@ -200,6 +201,7 @@ def main() -> int:
         HOTKEY_RECORD_PAUSE: handle_record_pause,
         HOTKEY_NODE_EDITOR: handle_node_editor,
         HOTKEY_SCAN_STUDIO: handle_scan_studio,
+        HOTKEY_HELP: lambda _state: print_help(),
     }
 
     try:
@@ -214,6 +216,9 @@ def main() -> int:
                         break
                     elif hk_id in hotkey_handlers:
                         hotkey_handlers[hk_id](state)
+                        # Während ein blockierender Handler lief, aufgestaute
+                        # WM_HOTKEY-Messages verwerfen (sonst feuern sie als Burst).
+                        flush_hotkey_messages()
             else:
                 time.sleep(0.01)
 
