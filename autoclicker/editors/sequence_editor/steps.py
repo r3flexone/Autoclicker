@@ -15,7 +15,7 @@ Befehle:
   points/p | learn [Name]      — Punkt-Verwaltung
   scan/boss/watcher/key/wait/  — Spezielle Step-Typen
     screenshot
-  <Nr> [<Zeit>|pixel|gone] ... — Direkter Punkt-Klick (Standard)
+  <Nr> [<Zeit>] [color|colorgone] — Direkter Punkt-Klick (Standard)
 """
 
 import copy
@@ -68,10 +68,10 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("<Punkt-Nr> <Sek>", "<Sek> warten, dann den Punkt klicken (z.B. '1 30')"))
     print(cmd_hint("<Punkt-Nr> <Min>-<Max>", "zufällig warten, dann klicken (z.B. '1 30-45')"))
     print(cmd_hint("<Punkt-Nr> 0", "ohne Warten sofort klicken"))
-    print(cmd_hint("<Punkt-Nr> pixel", "warten bis die Punkt-Farbe ERSCHEINT, dann klicken"))
-    print(cmd_hint("<Punkt-Nr> <Sek> pixel", "erst <Sek> warten, dann bis Farbe erscheint, dann klicken"))
-    print(cmd_hint("<Punkt-Nr> gone", "warten bis die Punkt-Farbe VERSCHWINDET, dann klicken"))
-    print(cmd_hint("<Punkt-Nr> <Sek> gone", "erst <Sek> warten, dann bis Farbe weg, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> color", "warten bis die Punkt-Farbe ERSCHEINT, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> <Sek> color", "erst <Sek> warten, dann bis Farbe erscheint, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> colorgone", "warten bis die Punkt-Farbe VERSCHWINDET, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> <Sek> colorgone", "erst <Sek> warten, dann bis Farbe weg, dann klicken"))
     print("NUR warten / Taste / Scan (kein Punkt-Klick):")
     print(cmd_hint("wait <Sek>", "nur <Sek> warten, kein Klick (z.B. 'wait 10')"))
     print(cmd_hint("wait <Min>-<Max>", "zufällig warten, kein Klick (z.B. 'wait 30-45')"))
@@ -109,7 +109,7 @@ def _print_phase_help(full: bool = False) -> None:
     print("Punkte (die Klick-Ziele):")
     print(cmd_hint("learn <Name>", "neuen Klick-Punkt aufnehmen (Maus positionieren)"))
     print(cmd_hint("points", "alle Punkte mit Nummer, Position und Farbe anzeigen"))
-    print("Schritte verwalten (Reihenfolge dieser Phase):")
+    print("Schritte löschen / einfügen:")
     print(cmd_hint("del <Schritt-Nr>", "einen Schritt löschen"))
     print(cmd_hint("del <Von>-<Bis>", "mehrere Schritte löschen (z.B. 'del 1-5')"))
     print(cmd_hint("del all", "ALLE Schritte dieser Phase löschen"))
@@ -1061,7 +1061,7 @@ class _PhaseEditor:
         print(f"\n  {ok('Test fertig.') if ok_run else col('Test abgebrochen.', 'yellow')}")
 
     def _handle_point_click(self, user_input: str) -> None:
-        """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""
+        """Default-Befehl: <Nr> [<Zeit>] [color|colorgone] [else ...]"""
         main_parts, else_parts = _split_main_and_else(user_input.split())
         if not main_parts:
             self._print_unknown_command(user_input)
@@ -1102,14 +1102,13 @@ class _PhaseEditor:
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
-    def _resolve_trigger_color(self, arg: str, point):
-        """Liefert (pixel, color, until_gone) für einen 'pixel'/'gone'-Trigger.
+    def _resolve_trigger_color(self, until_gone: bool, point):
+        """Liefert (pixel, color, until_gone) für einen color|colorgone-Trigger.
 
         Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
         Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
         live an der Mausposition abgegriffen. Override später per 'color <Nr>'.
         """
-        until_gone = (arg == "gone")
         if point.color:
             print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "
                   f"{hint('(mit color <Nr> änderbar)')}")
@@ -1134,10 +1133,11 @@ class _PhaseEditor:
         if len(main_parts) > 1:
             arg = main_parts[1].lower()
 
-            if arg in ("pixel", "gone"):
-                # <Nr> pixel / <Nr> gone
-                wait_pixel, wait_color, wait_until_gone = \
-                    self._resolve_trigger_color(arg, point)
+            if arg in _WAIT_POINT_TRIGGER_ALIASES:
+                # <Nr> color / <Nr> colorgone
+                wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
+                wait_pixel, wait_color, _ = \
+                    self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
                     # nicht erstellt werden. Lieber abbrechen als kommentarlos
@@ -1161,12 +1161,13 @@ class _PhaseEditor:
                     return False, 0, None
                 delay = delay_val
 
-                # Optional: <Nr> <Zeit> pixel/gone
+                # Optional: <Nr> <Zeit> color/colorgone
                 if len(main_parts) > 2:
                     opt = main_parts[2].lower()
-                    if opt in ("pixel", "gone"):
+                    if opt in _WAIT_POINT_TRIGGER_ALIASES:
+                        opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
                         wait_pixel, wait_color, wait_until_gone = \
-                            self._resolve_trigger_color(opt, point)
+                            self._resolve_trigger_color(opt_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
                             return False, 0, None
