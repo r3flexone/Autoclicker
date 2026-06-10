@@ -190,11 +190,17 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         else_cfg = None
         else_action = s.get("else_action")
         if else_action:
+            # Gegen explizites null in der JSON absichern: .get(key, default)
+            # liefert bei "else_delay": null den Wert None (nicht den Default),
+            # und None > 0 / safe_click(None, None) würde später crashen.
+            else_x = s.get("else_x") if s.get("else_x") is not None else 0
+            else_y = s.get("else_y") if s.get("else_y") is not None else 0
+            else_delay = s.get("else_delay") if s.get("else_delay") is not None else 0
             else_cfg = ElseConfig(
                 action=else_action,
-                x=s.get("else_x", 0), y=s.get("else_y", 0),
-                delay=s.get("else_delay", 0),
-                key=s.get("else_key"), name=s.get("else_name", "")
+                x=else_x, y=else_y,
+                delay=else_delay,
+                key=s.get("else_key"), name=s.get("else_name") or ""
             )
         step = SequenceStep(
             x=s.get("x", 0),
