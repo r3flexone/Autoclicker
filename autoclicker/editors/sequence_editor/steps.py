@@ -76,10 +76,9 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("wait <Sek>", "nur <Sek> warten, kein Klick (z.B. 'wait 10')"))
     print(cmd_hint("wait <Min>-<Max>", "zufällig warten, kein Klick (z.B. 'wait 30-45')"))
     print(cmd_hint("wait <Punkt-Nr> color", "warten bis die PUNKT-Farbe ERSCHEINT, kein Klick (z.B. 'wait 3 color')"))
-    print(cmd_hint("wait <Punkt-Nr> nocolor", "warten bis die PUNKT-Farbe VERSCHWINDET, kein Klick (z.B. 'wait 3 nocolor')"))
-    print(hint("    (alte Namen 'pixel'/'gone' funktionieren bei wait <Punkt-Nr> weiterhin)"))
+    print(cmd_hint("wait <Punkt-Nr> colorgone", "warten bis die PUNKT-Farbe VERSCHWINDET, kein Klick (z.B. 'wait 3 colorgone')"))
     print(cmd_hint("wait pixel", "warten bis Farbe an der MAUSPOSITION erscheint (kein Klick)"))
-    print(cmd_hint("wait gone", "warten bis Farbe an der MAUSPOSITION verschwindet (kein Klick)"))
+    print(cmd_hint("wait pixelgone", "warten bis Farbe an der MAUSPOSITION verschwindet (kein Klick)"))
     print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
     print(cmd_hint("key <Sek> <Taste>", "erst <Sek> warten, dann Taste (z.B. 'key 5 space')"))
     print(cmd_hint("key <Min>-<Max> <Taste>", "zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
@@ -143,16 +142,24 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "gone", "noclick", "click", "color", "time", "copy", "move", "scale", "test",
+    "pixel", "pixelgone", "gone", "colorgone", "noclick", "click", "color",
+    "time", "copy", "move", "scale", "test",
 ]
 
-# Aliase für 'wait <Punkt-Nr> ...': 'color'/'nocolor' sind die intuitiveren
-# Namen (Punkt liefert Position bereits mit, es geht nur um die Farbe).
-# 'pixel'/'gone' bleiben als alte Namen funktionsfähig. Mappt auf den
-# internen _apply_trigger-Modus ('pixel' = Farbe da, 'gone' = Farbe weg).
+# Aliase für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die Farbe,
+# daher 'color' (Farbe DA) / 'colorgone' (Farbe WEG). 'pixel'/'gone'/'nocolor'
+# bleiben als alte Namen funktionsfähig. Wert = interner _apply_trigger-Modus.
 _WAIT_POINT_TRIGGER_ALIASES = {
-    "pixel": "pixel", "color": "pixel",
-    "gone": "gone", "nocolor": "gone",
+    "color": "pixel", "pixel": "pixel",
+    "colorgone": "gone", "gone": "gone", "nocolor": "gone",
+}
+
+# Aliase für 'wait pixel|pixelgone' (Mausposition, kein Punkt). Hier wird ein
+# Pixel an der Maus abgegriffen, daher 'pixel' (DA) / 'pixelgone' (WEG).
+# 'gone' bleibt als alter Name funktionsfähig.
+_WAIT_MOUSE_TRIGGER_ALIASES = {
+    "pixel": False,
+    "pixelgone": True, "gone": True,
 }
 
 
@@ -561,26 +568,26 @@ class _PhaseEditor:
         self.add_step(step)
 
     def _handle_wait(self, user_input: str) -> None:
-        """Format: wait <Zeit> | wait <Min>-<Max> | wait [<Punkt-Nr>] pixel|gone [else ...]
+        """Format: wait <Zeit> | wait <Min>-<Max> | wait <Punkt-Nr> color|colorgone | wait pixel|pixelgone [else ...]
 
         Mit <Punkt-Nr> wird die Position + aufgenommene Farbe dieses Punkts als
-        Farb-Trigger genutzt (kein Klick). Ohne Punkt-Nr: Farbe an der aktuellen
-        Mausposition (wie bisher).
+        Farb-Trigger genutzt (color = bis DA, colorgone = bis WEG; kein Klick).
+        Ohne Punkt-Nr: Farbe an der aktuellen Mausposition (pixel/pixelgone).
         """
         main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
         if not main_parts:
-            print("  -> Format: wait <Zeit> | wait pixel|gone | wait <Punkt-Nr> pixel|gone")
+            print("  -> Format: wait <Zeit> | wait pixel|pixelgone | wait <Punkt-Nr> color|colorgone")
             return
 
         arg = main_parts[0].lower()
         step = SequenceStep(x=0, y=0, delay_before=0, name="Wait", wait_only=True)
 
-        # wait <Punkt-Nr> color|nocolor (bzw. pixel|gone) → Farbe vom aufgenommenen Punkt (kein Klick)
+        # wait <Punkt-Nr> color|colorgone → Farbe vom aufgenommenen Punkt (kein Klick)
         if len(main_parts) >= 2 and main_parts[1].lower() in _WAIT_POINT_TRIGGER_ALIASES:
             try:
                 point_id = int(arg)
             except ValueError:
-                print("  -> Format: wait <Punkt-Nr> color|nocolor (z.B. 'wait 3 nocolor')")
+                print("  -> Format: wait <Punkt-Nr> color|colorgone (z.B. 'wait 3 colorgone')")
                 return
             with self.state.lock:
                 point = get_point_by_id(self.state, point_id)
@@ -601,15 +608,16 @@ class _PhaseEditor:
             self.add_step(step)
             return
 
-        if arg in ("pixel", "gone"):
+        if arg in _WAIT_MOUSE_TRIGGER_ALIASES:
+            until_gone = _WAIT_MOUSE_TRIGGER_ALIASES[arg]
             px, py, color = capture_pixel_color()
             if color is None:
                 return
             step.wait_condition = WaitCondition(
                 pixel=(px, py), color=color,
-                until_gone=(arg == "gone"),
+                until_gone=until_gone,
             )
-            step.name = "Wait:Gone" if arg == "gone" else "Wait:Pixel"
+            step.name = "Wait:Gone" if until_gone else "Wait:Pixel"
         elif "-" in arg:
             range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
             if range_err:
