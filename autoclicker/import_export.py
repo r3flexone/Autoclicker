@@ -24,6 +24,7 @@ from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
     BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
+from .config import DEFAULT_MIN_CONFIDENCE
 from .utils import atomic_write, compact_json, sanitize_filename
 
 logger = logging.getLogger("autoclicker")
@@ -182,8 +183,11 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
             # Punkte
             if include_points:
                 with state.lock:
-                    points_data = [{"id": p.id, "x": p.x, "y": p.y, "name": p.name}
-                                   for p in state.points]
+                    points_data = [
+                        {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
+                         **({"color": list(p.color)} if p.color else {})}
+                        for p in state.points
+                    ]
                 if points_data:
                     zf.writestr("points.json", compact_json(points_data))
                     manifest["contents"]["points"] = len(points_data)
@@ -401,6 +405,9 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
                         logger.warning(f"Template-Pfad außerhalb des Zielordners übersprungen: {name}")
                         continue
+                    # Template kann in einem Unterordner liegen (templates/sub/x.png)
+                    # — Zielverzeichnis anlegen, sonst FileNotFoundError beim Schreiben.
+                    tpl_path.parent.mkdir(parents=True, exist_ok=True)
                     tpl_path.write_bytes(zf.read(name))
                     stats["templates"] += 1
 
@@ -418,7 +425,9 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         while pid in existing_ids:
                             pid = next_id
                             next_id += 1
-                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid))
+                        color_raw = p.get("color")
+                        color = tuple(int(v) for v in color_raw) if color_raw else None
+                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid, color=color))
                         existing_ids.add(pid)
                         next_id = max(next_id, pid + 1)
                         stats["points"] += 1
@@ -496,7 +505,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         config = ItemScanConfig(
                             name=scan_data["name"],
                             slots=slots, items=items,
-                            color_tolerance=scan_data.get("color_tolerance", 30),
+                            color_tolerance=scan_data.get("color_tolerance", 40),
                         )
                         with state.lock:
                             state.item_scans[config.name] = config
@@ -551,7 +560,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             name=iscan_data["name"],
                             scan_region=region,
                             template=iscan_data.get("template"),
-                            min_confidence=iscan_data.get("min_confidence", 0.8),
+                            min_confidence=iscan_data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
                             marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
                             color_tolerance=iscan_data.get("color_tolerance", 30),
                             action=action,

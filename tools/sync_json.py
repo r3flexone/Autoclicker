@@ -55,22 +55,22 @@ POINTS = []
 # STANDARDWERTE
 # ==============================================================================
 CONFIG_DEFAULTS = {
-    "clicks_per_point": 1,
-    "max_total_clicks": None,
+    "click_per_point": 1,
+    "click_max_total": None,
     "failsafe_enabled": True,
     "pixel_wait_tolerance": 10,
     "pixel_wait_timeout": 300,
     "pixel_check_interval": 1,
     "scan_reverse": True,
-    "marker_count": 5,
-    "require_all_markers": True,
-    "min_markers_required": 2,
-    "slot_hsv_tolerance": 25,
-    "slot_inset": 10,
-    "slot_color_distance": 25,
+    "scan_marker_count": 5,
+    "scan_require_all_markers": True,
+    "scan_min_markers_required": 2,
+    "scan_slot_hsv_tolerance": 25,
+    "scan_slot_inset": 10,
+    "scan_slot_color_distance": 25,
     "debug_mode": False,
     "debug_detection": False,
-    "show_pixel_position": False,
+    "debug_show_pixel_position": False,
 }
 
 POINT_DEFAULTS = {
@@ -93,11 +93,11 @@ SEQUENCE_STEP_DEFAULTS = {
     "delay_max": None,
     "key_press": None,
     "else_action": None,
-    "else_x": None,
-    "else_y": None,
-    "else_delay": None,
+    "else_x": 0,
+    "else_y": 0,
+    "else_delay": 0,
     "else_key": None,
-    "else_name": None,
+    "else_name": "",
     "boss_scan": None,
     "boss_watcher": None,
     "icon_scan": None,
@@ -279,12 +279,17 @@ def sync_points() -> tuple[int, int]:
         if "name" not in point:
             point_fixes += 1
 
-        # Normalisieren
+        # Normalisieren — id (stabile Referenz) und color (recorded_color)
+        # erhalten, sonst brechen Step-Referenzen bzw. die Farb-Aufnahme.
         fixed = {
+            "id": int(point.get("id", i + 1)),
             "x": int(point.get("x", 0)),
             "y": int(point.get("y", 0)),
             "name": str(point.get("name", ""))
         }
+        color = normalize_color(point.get("color"))
+        if color is not None:
+            fixed["color"] = color
 
         if point_fixes > 0:
             print(f"      Punkt {i+1}: {point_fixes} Feld(er) ergaenzt")
@@ -310,6 +315,15 @@ def sync_step(step: dict) -> tuple[dict, int]:
     fixes = 0
     fixed = dict(step)
 
+    # Alt-Format delay_after → delay_before migrieren (VOR dem Default-Füllen):
+    # der Loader (serialization._parse_steps) fällt nur dann auf delay_after
+    # zurück wenn delay_before FEHLT. Würden wir delay_before:0.0 als Default
+    # setzen ohne den alten Wert zu übernehmen, ginge die Wartezeit verloren.
+    if "delay_before" not in fixed and "delay_after" in fixed:
+        fixed["delay_before"] = fixed["delay_after"]
+        fixes += 1
+    fixed.pop("delay_after", None)
+
     for key, default in SEQUENCE_STEP_DEFAULTS.items():
         if key not in fixed:
             fixed[key] = default
@@ -318,8 +332,30 @@ def sync_step(step: dict) -> tuple[dict, int]:
     return fixed, fixes
 
 
+def _sync_step_list(steps, fixes_ref) -> list:
+    """Synchronisiert eine Liste von Schritten, gibt die neue Liste zurück.
+
+    fixes_ref ist eine 1-elementige Liste als Zähler-Referenz (mutierbar).
+    """
+    result = []
+    if isinstance(steps, list):
+        for step in steps:
+            if isinstance(step, dict):
+                fixed, f = sync_step(step)
+                result.append(fixed)
+                fixes_ref[0] += f
+    return result
+
+
 def sync_sequences() -> tuple[int, int]:
-    """Synchronisiert sequences/*.json (ausser points.json)."""
+    """Synchronisiert sequences/*.json (ausser points.json).
+
+    Spiegelt die Lade-Logik aus persistence/sequences.load_sequence_file:
+    Alt-Formate (loop_steps+max_loops, nur steps, start_steps) werden VOR dem
+    Schreiben nach loop_phases konvertiert — sonst gingen alle Loop-Schritte
+    verloren. Unbekannte Top-Level-Keys bleiben erhalten (wie sync_step für
+    Step-Felder), damit künftige/seltene Felder die Migration überleben.
+    """
     if not SEQUENCES_DIR.exists():
         return 0, 0
 
@@ -332,33 +368,44 @@ def sync_sequences() -> tuple[int, int]:
         if not data or not isinstance(data, dict):
             continue
 
-        fixes = 0
+        fixes_ref = [0]
+
+        # Unbekannte Top-Level-Keys generell erhalten — nur die bekannten
+        # Struktur-Keys werden unten normalisiert/konvertiert.
+        out = dict(data)
 
         # Name sicherstellen
-        if "name" not in data:
-            data["name"] = seq_file.stem
-            fixes += 1
+        if "name" not in out:
+            out["name"] = seq_file.stem
+            fixes_ref[0] += 1
 
         # total_cycles (Modell-Default = 1; None würde im Worker zu TypeError führen)
-        if "total_cycles" not in data:
-            data["total_cycles"] = 1
-            fixes += 1
+        if "total_cycles" not in out:
+            out["total_cycles"] = 1
+            fixes_ref[0] += 1
 
-        # start_steps
-        if "start_steps" in data and isinstance(data["start_steps"], list):
-            fixed_steps = []
-            for step in data["start_steps"]:
-                if isinstance(step, dict):
-                    fixed, f = sync_step(step)
-                    fixed_steps.append(fixed)
-                    fixes += f
-            data["start_steps"] = fixed_steps
-        else:
-            data["start_steps"] = []
+        # description erhalten (Modell-Default = "")
+        if "description" not in out:
+            out["description"] = ""
 
-        # loop_phases
+        # init_steps (NEU: vorher fälschlich verworfen)
+        out["init_steps"] = _sync_step_list(data.get("init_steps", []), fixes_ref)
+
+        # end_steps
+        out["end_steps"] = _sync_step_list(data.get("end_steps", []), fixes_ref)
+
+        # loop_phases — drei Formate (wie load_sequence_file):
+        #   aktuell: loop_phases (Liste von Phasen-Dicts)
+        #   alt:     loop_steps + max_loops (eine Phase)
+        #   uralt:   steps (keine Phasen)
+        # Rückwärtskompatibel: altes start_steps → erste Phase "Start" repeat=1.
+        old_start = _sync_step_list(data.get("start_steps", []), fixes_ref)
+        out.pop("start_steps", None)
+
         if "loop_phases" in data and isinstance(data["loop_phases"], list):
             fixed_phases = []
+            if old_start:
+                fixed_phases.append({"name": "Start", "repeat": 1, "steps": old_start})
             for phase in data["loop_phases"]:
                 if isinstance(phase, dict):
                     # Alle Phasen-Felder behalten (z.B. scheduled_start), nur
@@ -366,42 +413,43 @@ def sync_sequences() -> tuple[int, int]:
                     fixed_phase = dict(phase)
                     fixed_phase.setdefault("name", "Loop")
                     fixed_phase.setdefault("repeat", 1)
-                    new_steps = []
-                    if isinstance(phase.get("steps"), list):
-                        for step in phase["steps"]:
-                            if isinstance(step, dict):
-                                fixed, f = sync_step(step)
-                                new_steps.append(fixed)
-                                fixes += f
-                    fixed_phase["steps"] = new_steps
+                    fixed_phase["steps"] = _sync_step_list(phase.get("steps", []), fixes_ref)
                     fixed_phases.append(fixed_phase)
-            data["loop_phases"] = fixed_phases
+            out["loop_phases"] = fixed_phases
+        elif "loop_steps" in data:
+            # Altes Format: loop_steps + max_loops → eine Loop-Phase
+            loop_steps = _sync_step_list(data.get("loop_steps", []), fixes_ref)
+            max_loops = data.get("max_loops", 0)
+            phases = []
+            if old_start:
+                phases.append({"name": "Start", "repeat": 1, "steps": old_start})
+            if loop_steps:
+                phases.append({"name": "Loop 1",
+                               "repeat": max_loops if isinstance(max_loops, int) and max_loops > 0 else 1,
+                               "steps": loop_steps})
+            out["loop_phases"] = phases
+            out["total_cycles"] = 0 if max_loops == 0 else out.get("total_cycles", 1)
+            out.pop("loop_steps", None)
+            out.pop("max_loops", None)
+            fixes_ref[0] += 1
+        elif "steps" in data:
+            # Uraltes Format: nur steps → eine Loop-Phase
+            loop_steps = _sync_step_list(data.get("steps", []), fixes_ref)
+            out["loop_phases"] = [{"name": "Loop 1", "repeat": 1, "steps": loop_steps}] if loop_steps else []
+            out["total_cycles"] = 0
+            out.pop("steps", None)
+            fixes_ref[0] += 1
         else:
-            data["loop_phases"] = []
+            out["loop_phases"] = []
+            if old_start:
+                out["loop_phases"].append({"name": "Start", "repeat": 1, "steps": old_start})
 
-        # end_steps
-        if "end_steps" in data and isinstance(data["end_steps"], list):
-            fixed_steps = []
-            for step in data["end_steps"]:
-                if isinstance(step, dict):
-                    fixed, f = sync_step(step)
-                    fixed_steps.append(fixed)
-                    fixes += f
-            data["end_steps"] = fixed_steps
-        else:
-            data["end_steps"] = []
-
+        fixes = fixes_ref[0]
         if fixes > 0:
             print(f"    {seq_file.name}: {fixes} Korrekturen")
             total_fixes += fixes
 
-        save_json(seq_file, {
-            "name": data["name"],
-            "total_cycles": data["total_cycles"],
-            "start_steps": data["start_steps"],
-            "loop_phases": data["loop_phases"],
-            "end_steps": data["end_steps"]
-        })
+        save_json(seq_file, out)
         total_count += 1
 
     return total_count, total_fixes
@@ -701,7 +749,6 @@ def sync_scan_configs(global_items: dict) -> tuple[int, int, int]:
                     total_updated += 1
 
                 fixed, fixes = sync_item(item_name, item)
-                fixed["marker_colors"] = item.get("marker_colors", [])
                 fixed_items.append(fixed)
                 file_fixes += fixes
 
@@ -720,7 +767,6 @@ def sync_scan_configs(global_items: dict) -> tuple[int, int, int]:
                     total_user += 1
                 elif choice in global_items:
                     fixed, _ = sync_item(choice, dict(global_items[choice]))
-                    fixed["marker_colors"] = item.get("marker_colors", [])
                     fixed_items.append(fixed)
                     print(f"        -> ersetzt durch '{choice}'")
                     total_user += 1

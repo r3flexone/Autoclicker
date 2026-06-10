@@ -48,7 +48,7 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
                 scans.append((data.get("name", f.stem), f))
-        except (json.JSONDecodeError, IOError, KeyError, TypeError):
+        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
             pass  # Ungültige/korrupte Datei überspringen
     return scans
 

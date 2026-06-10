@@ -237,6 +237,12 @@ class AppConfig:
         migrated = {}
         for k, v in data.items():
             new_key = cls._FIELD_MIGRATION.get(k, k)
+            # Migrierten Alt-Key nur übernehmen wenn der neue Key NICHT bereits
+            # (direkt oder durch eine frühere Migration) gesetzt ist — sonst
+            # hängt das Ergebnis von der dict-Reihenfolge ab und ein alter
+            # Default könnte einen aktuellen Nutzerwert überschreiben.
+            if new_key != k and (new_key in migrated or new_key in data):
+                continue
             migrated[new_key] = v
         valid_keys = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in migrated.items() if k in valid_keys}
@@ -260,6 +266,12 @@ def load_config() -> AppConfig:
             with open(config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
 
+            # config.json muss ein Objekt sein — ein Top-Level-Array/Skalar
+            # würde sonst bei from_dict / loaded.keys() crashen und damit den
+            # gesamten App-Start (CONFIG = load_config() auf Modulebene) killen.
+            if not isinstance(loaded, dict):
+                raise ValueError(f"config.json ist kein Objekt (gefunden: {type(loaded).__name__})")
+
             config = AppConfig.from_dict(loaded)
 
             # Prüfe ob neue Optionen hinzugefügt wurden
@@ -270,7 +282,7 @@ def load_config() -> AppConfig:
             else:
                 print(col(f"[CONFIG] Geladen aus {CONFIG_FILE}", "green"))
             return config
-        except (json.JSONDecodeError, IOError) as e:
+        except (json.JSONDecodeError, IOError, OSError, TypeError, AttributeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"Config konnte nicht geladen werden: {e}"))
             print(col("[CONFIG] Verwende Standard-Konfiguration", "yellow"))
     else:

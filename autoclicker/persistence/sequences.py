@@ -99,7 +99,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
 
         return Sequence(data["name"], [], [], [], 1, description)
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 
@@ -133,7 +133,7 @@ def list_available_sequences() -> list[tuple[str, Path]]:
                     data = json.load(file)
                     name = data.get("name", f.stem)
                     sequences.append((name, f))
-            except (json.JSONDecodeError, IOError, KeyError, TypeError):
+            except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
                 pass  # Ungültige/korrupte Datei überspringen
     _seq_cache = sequences
     _seq_cache_mtime = current_mtime
@@ -205,7 +205,7 @@ def load_points(state: AutoClickerState) -> None:
                     color = tuple(int(v) for v in color_raw) if color_raw else None
                     state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id, color=color))
             print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"points.json konnte nicht geladen werden: {e}"))
             print(info("Starte mit leerer Punktliste."))
             state.points = []

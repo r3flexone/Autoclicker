@@ -30,7 +30,7 @@ def _list_presets(presets_dir: str) -> list[tuple[str, Path, int]]:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
                 presets.append((f.stem, f, len(data)))
-        except (json.JSONDecodeError, IOError, KeyError, TypeError):
+        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
             pass
     return presets
 
@@ -105,7 +105,7 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
         save_global_slots(state)
         print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(state.global_slots)} Slots)"))
         return True
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
         return False
 
@@ -152,7 +152,7 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
         save_global_items(state)
         print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(state.global_items)} Items)"))
         return True
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
         return False
 

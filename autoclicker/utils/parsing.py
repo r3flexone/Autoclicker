@@ -200,9 +200,18 @@ def sanitize_filename(name: str) -> str:
     name = name.replace(' ', '_')
     # Nur alphanumerische Zeichen, Unterstriche und Bindestriche erlauben
     name = re.sub(r'[^\w\-]', '', name)
+    name = name.lower()
+    # Leeres Ergebnis abfangen (z.B. Name bestand nur aus Sonderzeichen)
     if not name:
-        name = "unnamed"
-    return name.lower()
+        return "unbenannt"
+    # Windows-reservierte Gerätenamen dürfen nicht als Dateiname (auch mit
+    # Endung) verwendet werden — sonst schlägt das Erstellen/Öffnen fehl.
+    reserved = {"con", "prn", "aux", "nul"}
+    reserved |= {f"com{i}" for i in range(1, 10)}
+    reserved |= {f"lpt{i}" for i in range(1, 10)}
+    if name in reserved:
+        name = name + "_"
+    return name
 
 
 def compact_json(data: dict, indent: int = 2) -> str:
