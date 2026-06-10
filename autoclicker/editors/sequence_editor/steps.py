@@ -142,24 +142,22 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "pixelgone", "gone", "colorgone", "noclick", "click", "color",
-    "time", "copy", "move", "scale", "test",
+    "pixel", "gone", "noclick", "click", "color", "time", "copy", "move", "scale", "test",
 ]
 
-# Aliase für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die Farbe,
-# daher 'color' (Farbe DA) / 'colorgone' (Farbe WEG). 'pixel'/'gone'/'nocolor'
-# bleiben als alte Namen funktionsfähig. Wert = interner _apply_trigger-Modus.
+# Schlüsselwörter für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die
+# Farbe, daher 'color' (Farbe DA) / 'colorgone' (Farbe WEG). Wert = interner
+# _apply_trigger-Modus.
 _WAIT_POINT_TRIGGER_ALIASES = {
-    "color": "pixel", "pixel": "pixel",
-    "colorgone": "gone", "gone": "gone", "nocolor": "gone",
+    "color": "pixel",
+    "colorgone": "gone",
 }
 
-# Aliase für 'wait pixel|pixelgone' (Mausposition, kein Punkt). Hier wird ein
-# Pixel an der Maus abgegriffen, daher 'pixel' (DA) / 'pixelgone' (WEG).
-# 'gone' bleibt als alter Name funktionsfähig.
+# Schlüsselwörter für 'wait pixel|pixelgone' (Mausposition, kein Punkt). Hier
+# wird ein Pixel an der Maus abgegriffen, daher 'pixel' (DA) / 'pixelgone' (WEG).
 _WAIT_MOUSE_TRIGGER_ALIASES = {
     "pixel": False,
-    "pixelgone": True, "gone": True,
+    "pixelgone": True,
 }
 
 
