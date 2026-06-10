@@ -274,21 +274,29 @@ def load_config() -> AppConfig:
 
             config = AppConfig.from_dict(loaded)
 
+            # Absoluten Pfad anzeigen: config.json wird relativ zum Arbeits-
+            # verzeichnis geladen. Wird die App aus einem anderen Ordner gestartet,
+            # greift eine andere Datei — der volle Pfad macht das sofort sichtbar.
+            abs_path = config_path.resolve()
+
             # Prüfe ob neue Optionen hinzugefügt wurden
             missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
             if missing_keys:
                 save_config(config)
                 print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
             else:
-                print(col(f"[CONFIG] Geladen aus {CONFIG_FILE}", "green"))
+                print(col(f"[CONFIG] Geladen aus {abs_path}", "green"))
+            if config.debug_mode:
+                print(col(f"[CONFIG] debug_mode=AN (Quelle: {abs_path})", "yellow"))
             return config
         except (json.JSONDecodeError, IOError, OSError, TypeError, AttributeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"Config konnte nicht geladen werden: {e}"))
             print(col("[CONFIG] Verwende Standard-Konfiguration", "yellow"))
     else:
-        # Erstelle Standard-Config-Datei
+        # Erstelle Standard-Config-Datei. Absoluten Pfad zeigen, damit klar ist
+        # WO sie landet (= Arbeitsverzeichnis, evtl. nicht der Projektordner).
         save_config(AppConfig())
-        print(ok(f"Standard-Konfiguration erstellt: {CONFIG_FILE}"))
+        print(ok(f"Standard-Konfiguration erstellt: {config_path.resolve()}"))
 
     return AppConfig()
 
