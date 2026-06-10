@@ -98,10 +98,11 @@ class ScanStudioApp:
         self._boss_region = None
         self._boss_sel: int | None = None
         # Generalisierte Canvas-Eingaben (für Boss/Icon-Tabs):
-        self._region_cb = None          # nächstes Rechteck → cb(region)
-        self._marker_cb = None          # Klick pickt Farbe → cb(rgb)
-        self._marker_owner = None       # id() der Liste, in die Marker gepickt werden
-        self._point_cb = None           # nächster Klick → cb((x,y))
+        self._region_cb = None          # naechstes Rechteck -> cb(region)
+        self._marker_cb = None          # Klick pickt Farbe -> cb(rgb)
+        self._marker_owner = None       # (kind, name)-Tupel der Marker-Ziel-Config
+        self._point_cb = None           # naechster Klick -> cb((x,y))
+        self._tex_data = None           # Anker fuer Textur-Daten (GC-Schutz)
 
         scale = fit_scale(image.width, image.height, max_canvas[0], max_canvas[1])
         self.transform = ViewTransform(
@@ -134,8 +135,12 @@ class ScanStudioApp:
         if tex is None:
             raise RuntimeError("Textur-Konvertierung fehlgeschlagen (numpy fehlt?)")
         w, h, data = tex
+        # Referenz halten: Der Screenshot wird nie in-place aktualisiert, daher
+        # add_static_texture (DPG kopiert die Daten). Zusaetzlich self._tex_data
+        # als Anker behalten, falls eine DPG-Version den Buffer doch referenziert.
+        self._tex_data = data
         with dpg.texture_registry():
-            dpg.add_raw_texture(w, h, data, format=dpg.mvFormat_Float_rgba, tag=_TEX)
+            dpg.add_static_texture(w, h, data, format=dpg.mvFormat_Float_rgba, tag=_TEX)
 
     def _build_ui(self) -> None:
         disp_w, disp_h = self.transform.display_size
@@ -187,6 +192,16 @@ class ScanStudioApp:
             dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left, callback=self._on_mouse_drag)
             dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=self._on_mouse_release)
 
+    def _defer(self, fn) -> None:
+        """Fuehrt fn im naechsten Frame aus.
+
+        Noetig, wenn ein Widget-Callback sein eigenes Panel neu baut: ein Rebuild
+        loescht das gerade laufende Widget mitten in dessen Callback -> Crash
+        (besonders bei Combos mit offenem Popup). Der Aufschub um einen Frame
+        laesst den Callback sauber zurueckkehren, bevor der Rebuild startet.
+        """
+        dpg.set_frame_callback(dpg.get_frame_count() + 1, callback=lambda: fn())
+
     # --------------------------------------------------------- Maus-Handler
     def _canvas_pos(self) -> tuple[float, float] | None:
         """Mausposition im Drawlist-Koordinatensystem, oder None wenn außerhalb."""
@@ -221,7 +236,7 @@ class ScanStudioApp:
                 cb, self._region_cb = self._region_cb, None
                 sx0, sy0 = self.transform.draw_to_screen(x0, y0)
                 sx1, sy1 = self.transform.draw_to_screen(x1, y1)
-                cb(normalize_region(sx0, sy0, sx1, sy1))
+                cb(self._clamp_region(normalize_region(sx0, sy0, sx1, sy1)))
                 self.redraw_overlay()
             else:
                 self._finish_draw(x0, y0, x1, y1)
@@ -242,6 +257,21 @@ class ScanStudioApp:
             self._handle_point(pos[0], pos[1])
 
     # --------------------------------------------------------- Kern-Aktionen
+    def _clamp_region(self, region: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        """Klemmt eine Bildschirm-Region auf die Screenshot-Grenzen.
+
+        Ueber den Screenshot hinausgezogene Rechtecke wuerden spaeter zu
+        fehlerhaften take_screenshot-Ausschnitten fuehren.
+        """
+        t = self.transform
+        left, top = t.virtual_left, t.virtual_top
+        right, bottom = left + t.img_w, top + t.img_h
+        x1 = max(left, min(right, region[0]))
+        y1 = max(top, min(bottom, region[1]))
+        x2 = max(left, min(right, region[2]))
+        y2 = max(top, min(bottom, region[3]))
+        return (x1, y1, x2, y2)
+
     def _finish_draw(self, dx0, dy0, dx1, dy1) -> None:
         """Erzeugt aus einem aufgezogenen Rechteck einen neuen Slot."""
         if abs(dx1 - dx0) < _MIN_DRAW_PX or abs(dy1 - dy0) < _MIN_DRAW_PX:
@@ -249,7 +279,7 @@ class ScanStudioApp:
             return
         sx0, sy0 = self.transform.draw_to_screen(dx0, dy0)
         sx1, sy1 = self.transform.draw_to_screen(dx1, dy1)
-        region = normalize_region(sx0, sy0, sx1, sy1)
+        region = self._clamp_region(normalize_region(sx0, sy0, sx1, sy1))
         click = ((region[0] + region[2]) // 2, (region[1] + region[3]) // 2)
         name = next_slot_name(self.slots)
         self.slots[name] = ItemSlot(name=name, scan_region=region, click_pos=click,
@@ -323,7 +353,7 @@ class ScanStudioApp:
             return
         for name in self.slots:
             sel = (self.selected_kind == KIND_SLOT and name == self.selected)
-            label = ("» " if sel else "") + name
+            label = ("> " if sel else "") + name
             dpg.add_button(label=label, width=-1, parent=_SLOT_LIST,
                            user_data=name, callback=self._on_select_slot)
 
@@ -338,7 +368,7 @@ class ScanStudioApp:
         for name, item in self.items.items():
             sel = (self.selected_kind == KIND_ITEM and name == self.selected)
             cat = f" [{item.category}]" if item.category else ""
-            label = ("» " if sel else "") + f"P{item.priority} {name}{cat}"
+            label = ("> " if sel else "") + f"P{item.priority} {name}{cat}"
             dpg.add_button(label=label, width=-1, parent=_ITEM_LIST,
                            user_data=name, callback=self._on_select_item)
 
@@ -439,15 +469,29 @@ class ScanStudioApp:
         self._set_status(f"{label}: Rechteck auf dem Screenshot aufziehen.",
                          color=(120, 200, 120))
 
-    def _toggle_marker(self, target_list, refresh) -> None:
-        # Schaltet aus, wenn bereits für DIESE Liste aktiv — sonst (auch bei
-        # anderem Ziel) auf diese Liste umschalten.
-        if self._marker_cb is not None and self._marker_owner == id(target_list):
+    def _reset_picks(self) -> None:
+        """Setzt alle haengenden Canvas-Pick-Modi zurueck.
+
+        Wird beim Wechsel/Laden einer Config aufgerufen: ein noch aktiver
+        Marker- oder Punkt-Pick wuerde sonst in die verwaiste alte Config bzw.
+        Liste schreiben (Stale-Closure).
+        """
+        self._marker_cb = None
+        self._marker_owner = None
+        self._point_cb = None
+        self._region_cb = None
+
+    def _toggle_marker(self, target_list, refresh, owner) -> None:
+        # owner = (kind, name)-Tupel, identifiziert die Ziel-Config stabil (statt
+        # id(liste), das nach Config-Wechsel/Clear auf eine verwaiste Liste zeigt).
+        # Schaltet aus, wenn bereits fuer DIESES Ziel aktiv -- sonst (auch bei
+        # anderem Ziel) auf dieses Ziel umschalten.
+        if self._marker_cb is not None and self._marker_owner == owner:
             self._marker_cb = None
             self._marker_owner = None
             self._set_status("Marker-Pick aus.")
         else:
-            self._marker_owner = id(target_list)
+            self._marker_owner = owner
 
             def _cb(rgb):
                 target_list.append(rgb)
@@ -481,13 +525,13 @@ class ScanStudioApp:
 
         dpg.add_button(label="Region aufziehen", width=-1, parent=p, callback=self._on_icon_region)
         r = cfg.scan_region
-        dpg.add_text(f"Region: ({r[0]},{r[1]})–({r[2]},{r[3]})", parent=p)
+        dpg.add_text(f"Region: ({r[0]},{r[1]})-({r[2]},{r[3]})", parent=p)
 
         dpg.add_separator(parent=p)
         dpg.add_text("Erkennung", parent=p, color=(120, 180, 255))
         dpg.add_button(label="Template aus Region aufnehmen", width=-1, parent=p,
                        callback=self._on_icon_template)
-        dpg.add_text(f"Template: {cfg.template or '—'}", parent=p)
+        dpg.add_text(f"Template: {cfg.template or '-'}", parent=p)
 
         def _conf(s, a, u):
             cfg.min_confidence = max(0.1, min(1.0, float(a) / 100.0))
@@ -515,7 +559,7 @@ class ScanStudioApp:
 
         def _act(s, a, u):
             cfg.action = a
-            self.refresh_icon_panel()
+            self._defer(self.refresh_icon_panel)
         dpg.add_combo(items=_ICON_ACTIONS, default_value=cfg.action, parent=p, width=-80,
                       callback=_act)
         self._build_action_params(p, cfg, with_scan=False)
@@ -566,10 +610,14 @@ class ScanStudioApp:
         self.refresh_icon_panel()
 
     def _on_icon_marker(self, *_):
-        self._toggle_marker(self._icon_cfg.marker_colors, self.refresh_icon_panel)
+        self._toggle_marker(self._icon_cfg.marker_colors, self.refresh_icon_panel,
+                            ("icon", self._icon_cfg.name))
 
     def _on_icon_marker_clear(self, *_):
-        self._icon_cfg.marker_colors = []
+        # In-place leeren (clear) statt Neuzuweisung: ein noch aktiver Marker-Pick
+        # haelt eine Referenz auf genau diese Liste -- Neuzuweisung wuerde Picks
+        # in eine verwaiste Liste schreiben.
+        self._icon_cfg.marker_colors.clear()
         self.refresh_icon_panel()
 
     def _on_load_icon(self, *_):
@@ -577,6 +625,7 @@ class ScanStudioApp:
         path = next((p for n, p in list_available_icon_scans() if n == name), None)
         cfg = load_icon_scan_file(path) if path else None
         if cfg:
+            self._reset_picks()
             self._icon_cfg = cfg
             self._icon_region = cfg.scan_region
             self.redraw_overlay()
@@ -625,7 +674,7 @@ class ScanStudioApp:
         dpg.add_input_text(label="Name", default_value=cfg.name, parent=p, width=-80, callback=_name)
         dpg.add_button(label="Region aufziehen", width=-1, parent=p, callback=self._on_boss_region)
         r = cfg.scan_region
-        dpg.add_text(f"Region: ({r[0]},{r[1]})–({r[2]},{r[3]})", parent=p)
+        dpg.add_text(f"Region: ({r[0]},{r[1]})-({r[2]},{r[3]})", parent=p)
 
         def _tol(s, a, u):
             cfg.color_tolerance = max(1, min(100, int(a)))
@@ -648,7 +697,7 @@ class ScanStudioApp:
             dpg.add_text("Bosse", color=(120, 180, 255))
             dpg.add_button(label="+ Boss", callback=self._on_boss_add)
         for idx, b in enumerate(cfg.bosses):
-            label = ("» " if idx == self._boss_sel else "") + (b.name or f"Boss {idx+1}")
+            label = ("> " if idx == self._boss_sel else "") + (b.name or f"Boss {idx+1}")
             dpg.add_button(label=label, width=-1, parent=p, user_data=idx,
                            callback=self._on_boss_select)
 
@@ -664,13 +713,13 @@ class ScanStudioApp:
 
         def _bn(s, a, u):
             boss.name = a.strip()
-            self.refresh_boss_panel()
+            self._defer(self.refresh_boss_panel)
         dpg.add_input_text(label="Boss-Name", default_value=boss.name, parent=parent,
                            width=-80, on_enter=True, callback=_bn)
 
         dpg.add_button(label="Template aus Region aufnehmen", width=-1, parent=parent,
                        callback=self._on_boss_template)
-        dpg.add_text(f"Template: {boss.template or '—'}", parent=parent)
+        dpg.add_text(f"Template: {boss.template or '-'}", parent=parent)
 
         mk_on = self._marker_cb is not None
         dpg.add_button(label=("Marker-Pick: AN" if mk_on else "Marker hinzufügen"),
@@ -685,7 +734,7 @@ class ScanStudioApp:
 
         def _act(s, a, u):
             boss.action = a
-            self.refresh_boss_panel()
+            self._defer(self.refresh_boss_panel)
         dpg.add_combo(items=_BOSS_ACTIONS, default_value=boss.action, label="Aktion",
                       parent=parent, width=-80, callback=_act)
         self._build_action_params(parent, boss, with_scan=True)
@@ -708,12 +757,15 @@ class ScanStudioApp:
         self.refresh_boss_panel()
 
     def _on_boss_select(self, sender, app_data, user_data):
+        # Boss-Wechsel: haengenden Marker-Pick zuruecksetzen (Ziel war der alte Boss).
+        self._reset_picks()
         self._boss_sel = user_data
         self.refresh_boss_panel()
 
     def _on_boss_delete(self, *_):
         b = self._selected_boss()
         if b is not None:
+            self._reset_picks()
             self._boss_cfg.bosses.remove(b)
             self._boss_sel = None
             self.refresh_boss_panel()
@@ -733,12 +785,14 @@ class ScanStudioApp:
     def _on_boss_marker(self, *_):
         b = self._selected_boss()
         if b is not None:
-            self._toggle_marker(b.marker_colors, self.refresh_boss_panel)
+            self._toggle_marker(b.marker_colors, self.refresh_boss_panel,
+                                ("boss", self._boss_cfg.name, self._boss_sel))
 
     def _on_boss_marker_clear(self, *_):
         b = self._selected_boss()
         if b is not None:
-            b.marker_colors = []
+            # In-place leeren (siehe _on_icon_marker_clear).
+            b.marker_colors.clear()
             self.refresh_boss_panel()
 
     def _on_load_boss(self, *_):
@@ -746,6 +800,7 @@ class ScanStudioApp:
         path = next((p for n, p in list_available_boss_scans() if n == name), None)
         cfg = load_boss_scan_file(path) if path else None
         if cfg:
+            self._reset_picks()
             self._boss_cfg = cfg
             self._boss_region = cfg.scan_region
             self._boss_sel = 0 if cfg.bosses else None
@@ -785,14 +840,17 @@ class ScanStudioApp:
             if a and a != old_name and a not in self.slots:
                 self.slots[a] = self.slots.pop(old_name)
                 self.slots[a].name = a
+                # Checkbox-Status mit umziehen (Key-Rename)
+                if old_name in self._slot_checked:
+                    self._slot_checked[a] = self._slot_checked.pop(old_name)
                 self.selected = a
                 self.redraw_overlay()
                 self.refresh_slot_list()
-                self.refresh_properties()
+                self._defer(self.refresh_properties)
         dpg.add_input_text(label="Name", default_value=slot.name, parent=_PROPS,
                            width=-70, on_enter=True, callback=_on_name)
         r = slot.scan_region
-        dpg.add_text(f"Region: ({r[0]},{r[1]})–({r[2]},{r[3]})", parent=_PROPS)
+        dpg.add_text(f"Region: ({r[0]},{r[1]})-({r[2]},{r[3]})", parent=_PROPS)
         dpg.add_text(f"Klickpunkt: {slot.click_pos}", parent=_PROPS)
         with dpg.group(horizontal=True, parent=_PROPS):
             if slot.slot_color:
@@ -801,10 +859,10 @@ class ScanStudioApp:
                 dpg.add_text(f"RGB{slot.slot_color}")
             else:
                 dpg.add_text("Farbe: keine", color=(150, 150, 150))
-        dpg.add_text("→ Modus 'Klickpunkt'/'Farbe', dann\n   in den Slot klicken.",
+        dpg.add_text("-> Modus 'Klickpunkt'/'Farbe', dann\n   in den Slot klicken.",
                      parent=_PROPS, color=(150, 150, 150))
         dpg.add_separator(parent=_PROPS)
-        dpg.add_button(label="→ Item aus diesem Slot lernen", width=-1, parent=_PROPS,
+        dpg.add_button(label="-> Item aus diesem Slot lernen", width=-1, parent=_PROPS,
                        user_data=self.selected, callback=self._on_learn_item)
         dpg.add_button(label="Slot löschen", width=-1, parent=_PROPS,
                        callback=self._on_delete_slot)
@@ -821,9 +879,12 @@ class ScanStudioApp:
             if a and a != old_name and a not in self.items:
                 self.items[a] = self.items.pop(old_name)
                 self.items[a].name = a
+                # Checkbox-Status mit umziehen (Key-Rename)
+                if old_name in self._item_checked:
+                    self._item_checked[a] = self._item_checked.pop(old_name)
                 self.selected = a
                 self.refresh_item_list()
-                self.refresh_properties()
+                self._defer(self.refresh_properties)
         dpg.add_input_text(label="Name", default_value=item.name, parent=_PROPS,
                            width=-70, on_enter=True, callback=_on_name)
 
@@ -848,7 +909,7 @@ class ScanStudioApp:
         dpg.add_input_int(label="Konfidenz %", default_value=int(item.min_confidence * 100),
                           parent=_PROPS, width=-70, min_value=10, max_value=100, callback=_on_conf)
 
-        tpl = item.template or "—"
+        tpl = item.template or "-"
         dpg.add_text(f"Template: {tpl}", parent=_PROPS)
         dpg.add_text(f"Marker-Farben: {len(item.marker_colors)}", parent=_PROPS)
         if item.marker_colors:

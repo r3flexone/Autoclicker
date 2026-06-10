@@ -26,6 +26,9 @@ def load_slots(slots_file: str) -> dict[str, ItemSlot]:
             data = json.load(f)
     except (json.JSONDecodeError, IOError, OSError):
         return {}
+    if not isinstance(data, dict):
+        print(f"WARNUNG: {path} ist kein JSON-Objekt (Top-Level-Liste?) - ignoriert.")
+        return {}
     slots: dict[str, ItemSlot] = {}
     for name, s in data.items():
         try:
@@ -80,6 +83,9 @@ def load_items(items_file: str) -> dict[str, ItemProfile]:
             data = json.load(f)
     except (json.JSONDecodeError, IOError, OSError):
         return {}
+    if not isinstance(data, dict):
+        print(f"WARNUNG: {path} ist kein JSON-Objekt (Top-Level-Liste?) - ignoriert.")
+        return {}
     items: dict[str, ItemProfile] = {}
     for name, i in data.items():
         try:
@@ -131,11 +137,23 @@ def crop_region(full_img, region: tuple[int, int, int, int],
 
 
 def save_template(img, name: str) -> str | None:
-    """Speichert ein Bild als Template-PNG in items/templates/. Gibt den Dateinamen zurück."""
+    """Speichert ein Bild als Template-PNG in items/templates/. Gibt den Dateinamen zurück.
+
+    Items und Bosse teilen sich den Ordner items/templates/. Existiert die
+    Zieldatei bereits (z.B. Boss 'X' nach Item 'X'), wird ein nummeriertes
+    Suffix (_2, _3, ...) gewaehlt, statt das fremde Template zu ueberschreiben.
+    Der tatsaechlich verwendete Dateiname wird zurueckgegeben, damit die Config
+    konsistent darauf verweist.
+    """
     if img is None:
         return None
     Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
-    filename = f"{sanitize_filename(name)}.png"
+    base = sanitize_filename(name)
+    filename = f"{base}.png"
+    n = 2
+    while (Path(TEMPLATES_DIR) / filename).exists():
+        filename = f"{base}_{n}.png"
+        n += 1
     try:
         img.save(Path(TEMPLATES_DIR) / filename)
         return filename
