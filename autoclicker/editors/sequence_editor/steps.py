@@ -99,9 +99,9 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("show <Schritt-Nr>", "alle Felder eines Schritts im Detail anzeigen"))
     print(cmd_hint("scale <Faktor>", "alle Wartezeiten dieser Phase × Faktor (1.5 = länger, 0.5 = halbe Zeit)"))
     print("  " + hint("Kurzbefehle (machen 'edit' überflüssig, wenn man sie kennt):"))
-    print(cmd_hint("pixel/gone <Schritt-Nr>", "Schritt wartet auf / bis WEG der aufgenommenen Farbe, dann Klick"))
+    print(cmd_hint("color/colorgone <Schritt-Nr>", "Schritt wartet auf / bis WEG der aufgenommenen Farbe, dann Klick"))
     print(cmd_hint("noclick/click <Schritt-Nr>", "nur warten (kein Klick) / wieder normaler Klick"))
-    print(cmd_hint("color <Schritt-Nr>", "Trigger-Farbe per Maus neu setzen (Pixel-Position bleibt)"))
+    print(cmd_hint("recolor <Schritt-Nr>", "Trigger-Farbe per Maus neu setzen (Pixel-Position bleibt)"))
     print(cmd_hint("time <Schritt-Nr> <Sek>", "Wartezeit ändern (z.B. 'time 3 5' oder 'time 3 2-4')"))
     print(cmd_hint("copy <Schritt-Nr>", "Schritt duplizieren (Kopie direkt dahinter)"))
     print(cmd_hint("move <Schritt-Nr> <Ziel>", "Schritt an andere Position schieben (z.B. 'move 5 1')"))
@@ -142,7 +142,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "pixel", "gone", "noclick", "click", "color", "time", "copy", "move", "scale", "test",
+    "color", "colorgone", "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
 
 # Schlüsselwörter für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die
@@ -291,11 +291,11 @@ class _PhaseEditor:
             return
 
         # Bestehenden Schritt nachträglich umbauen (z.B. aufgenommenen Klick)
-        if cmd.startswith("pixel "):
-            self._handle_make_pixel(user_input, until_gone=False)
-            return
-        if cmd.startswith("gone "):
+        if cmd.startswith("colorgone "):
             self._handle_make_pixel(user_input, until_gone=True)
+            return
+        if cmd.startswith("color "):
+            self._handle_make_pixel(user_input, until_gone=False)
             return
         if cmd.startswith("noclick "):
             self._handle_make_noclick(user_input)
@@ -303,7 +303,7 @@ class _PhaseEditor:
         if cmd.startswith("click "):
             self._handle_make_click(user_input)
             return
-        if cmd.startswith("color "):
+        if cmd.startswith("recolor "):
             self._handle_set_color(user_input)
             return
         if cmd.startswith("time "):
@@ -353,7 +353,7 @@ class _PhaseEditor:
         aufgenommene Farbe vorliegt aber noch kein Farb-Trigger gesetzt ist."""
         line = f"  {i+1}. {step}"
         if step.recorded_color and not step.wait_condition:
-            line += col(f"   [aufgenommen: RGB{step.recorded_color} → 'pixel {i+1}']", "gray")
+            line += col(f"   [aufgenommen: RGB{step.recorded_color} → 'color {i+1}']", "gray")
         return line
 
     def _handle_del_all(self) -> None:
@@ -693,7 +693,7 @@ class _PhaseEditor:
         try:
             num = int(num_str)
         except ValueError:
-            print("  -> Format erwartet eine Schritt-Nummer (z.B. 'pixel 3')")
+            print("  -> Format erwartet eine Schritt-Nummer (z.B. 'color 3')")
             return None
         if not (1 <= num <= len(self.steps)):
             print(f"  -> Ungültiger Schritt! Verfügbar: 1-{len(self.steps)}")
@@ -731,7 +731,7 @@ class _PhaseEditor:
         automatisch erfasst). Fehlt sie ausnahmsweise, wird die Farbe live an
         der aktuellen Mausposition abgegriffen.
 
-        Format: pixel <Nr> | gone <Nr>
+        Format: color <Nr> | colorgone <Nr>
         """
         step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
         if step is None:
@@ -775,7 +775,7 @@ class _PhaseEditor:
         """Geführtes Bearbeiten eines Schritts über ein nummeriertes Menü.
 
         Ein einziger Einstieg für alle Schritt-Änderungen — man muss sich keine
-        Verben (pixel/gone/noclick/time/color/...) merken, sondern wählt Schritt
+        Verben (color/colorgone/noclick/time/recolor/...) merken, sondern wählt Schritt
         und Aktion per Nummer. Die Kurzbefehle bleiben als Shortcuts erhalten.
 
         Format: edit <Nr> | e <Nr>
@@ -820,7 +820,7 @@ class _PhaseEditor:
                 step.wait_only = not step.wait_only
                 print(f"  + Jetzt: {'nur warten (kein Klick)' if step.wait_only else 'klicken'}")
             elif choice == "4":
-                self._handle_set_color(f"color {num}")
+                self._handle_set_color(f"recolor {num}")
             elif choice == "5":
                 self._handle_show_detail(f"show {num}")
             elif choice == "6":
@@ -866,13 +866,13 @@ class _PhaseEditor:
         Farbe an der aktuellen Mausposition ab und setzt sie als Trigger-Farbe.
         Die Pixel-Position des Triggers bleibt unverändert.
 
-        Format: color <Nr>
+        Format: recolor <Nr>
         """
         step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
         if step is None:
             return
         if not step.wait_condition:
-            print(warn("  -> Schritt hat keinen Farb-Trigger. Erst 'pixel <Nr>' oder 'gone <Nr>'."))
+            print(warn("  -> Schritt hat keinen Farb-Trigger. Erst 'color <Nr>' oder 'colorgone <Nr>'."))
             return
         _, _, color = capture_pixel_color()
         if color is None:
@@ -935,7 +935,7 @@ class _PhaseEditor:
         else:
             print(f"    Farb-Trigger:    (keiner)")
         if step.recorded_color:
-            tip = hint(f"   → 'pixel {num}' nutzt sie")
+            tip = hint(f"   → 'color {num}' nutzt sie")
             print(f"    Aufgen. Farbe:   RGB{step.recorded_color}{tip}")
         if step.key_press:
             print(f"    Taste:           {step.key_press}")
@@ -1107,11 +1107,11 @@ class _PhaseEditor:
 
         Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
         Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
-        live an der Mausposition abgegriffen. Override später per 'color <Nr>'.
+        live an der Mausposition abgegriffen. Override später per 'recolor <Nr>'.
         """
         if point.color:
             print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "
-                  f"{hint('(mit color <Nr> änderbar)')}")
+                  f"{hint('(mit recolor <Nr> änderbar)')}")
             return (point.x, point.y), point.color, until_gone
         px, py, color = capture_pixel_color()
         if color:
