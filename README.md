@@ -5,7 +5,10 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 ## Features
 
 - **Punkte aufnehmen**: Mausposition speichern mit automatischer Benennung
+- **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
+- **Visueller Node-Editor**: Sequenzen als Blöcke + Verbindungen bearbeiten (`CTRL+ALT+B`, Dear PyGui)
+- **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
   - **LOOP-Phasen**: Mehrere Loops möglich, jeweils mit eigenen Wiederholungen
@@ -137,9 +140,10 @@ python main.py
 ### Mit Farb-Triggern (warte bis Farbe erscheint/verschwindet)
 
 Im Sequenz-Editor:
-- `1 pixel` → Warte bis bestimmte Farbe erscheint, dann Punkt 1 klicken
-- `1 gone` → Warte bis Farbe VERSCHWINDET, dann Punkt 1 klicken
-- `wait pixel` → Nur auf Farbe warten (kein Klick)
+- `1 color` → Warte bis die Farbe von Punkt 1 ERSCHEINT, dann Punkt 1 klicken
+- `1 colorgone` → Warte bis die Farbe von Punkt 1 VERSCHWINDET, dann Punkt 1 klicken
+- `wait 1 color` → Nur auf die Punkt-Farbe warten (kein Klick)
+- `wait pixel` → Auf eine Farbe an der aktuellen Mausposition warten (kein Punkt, kein Klick)
 
 ## Hotkeys
 
@@ -150,13 +154,17 @@ Im Sequenz-Editor:
 | `CTRL+ALT+A` | Mausposition als Punkt speichern |
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
+| `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
+| `CTRL+ALT+H` | Aufnahme pausieren/fortsetzen |
 
 ### Editoren
 
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
+| `CTRL+ALT+B` | Visueller Node-Editor (Sequenz als Blöcke, Dear PyGui) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
+| `CTRL+ALT+V` | Visuelles Scan-Studio (Slots/Items/Boss/Icon auf Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
@@ -177,6 +185,7 @@ Im Sequenz-Editor:
 
 | Hotkey | Funktion |
 |--------|----------|
+| `CTRL+ALT+O` | Hilfe / Hotkey-Übersicht anzeigen |
 | `CTRL+ALT+X` | Factory Reset (Punkte + Sequenzen) |
 | `CTRL+ALT+Q` | Programm beenden |
 
@@ -394,14 +403,16 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `<Nr> <Zeit>` | Warte X Sekunden, dann klicke Punkt (z.B. `1 30`) |
 | `<Nr> <Min>-<Max>` | Zufällige Wartezeit (z.B. `1 30-45`) |
 | `<Nr> 0` | Sofort klicken ohne Wartezeit |
-| `<Nr> pixel` | Warte auf Farbe, dann klicke |
-| `<Nr> gone` | Warte bis Farbe VERSCHWINDET, dann klicke |
-| `<Nr> <Zeit> pixel` | Warte X Sek, dann auf Farbe warten, dann klicke |
+| `<Nr> color` | Warte bis die Punkt-Farbe ERSCHEINT, dann klicke |
+| `<Nr> colorgone` | Warte bis die Punkt-Farbe VERSCHWINDET, dann klicke |
+| `<Nr> <Zeit> color` | Warte X Sek, dann auf die Punkt-Farbe warten, dann klicke |
 | `wait <Zeit>` | Nur warten, KEIN Klick (z.B. `wait 30`, `wait 30m`, `wait 2h`) |
 | `wait <Min>-<Max>` | Zufällig warten, KEIN Klick (z.B. `wait 30-45`) |
 | `wait 14:30` | Warte bis 14:30 Uhr (heute oder morgen), KEIN Klick |
-| `wait pixel` | Auf Farbe warten, KEIN Klick |
-| `wait gone` | Warten bis Farbe VERSCHWINDET, KEIN Klick |
+| `wait <Nr> color` | Auf die Farbe eines Punktes warten, KEIN Klick |
+| `wait <Nr> colorgone` | Warten bis die Punkt-Farbe VERSCHWINDET, KEIN Klick |
+| `wait pixel` | Auf Farbe an der aktuellen Mausposition warten, KEIN Klick |
+| `wait pixelgone` | Warten bis Farbe an der Mausposition VERSCHWINDET, KEIN Klick |
 | `key <Taste>` | Taste sofort drücken (z.B. `key enter`) |
 | `key <Zeit> <Taste>` | Warten, dann Taste drücken (z.B. `key 5 space`) |
 | `key <Min>-<Max> <Taste>` | Zufällig warten, dann Taste (z.B. `key 30-45 enter`) |
@@ -420,6 +431,11 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `ins 0` / `ins end` | Insert-Modus beenden |
 | `learn <Name>` | Neuen Punkt erstellen (direkt im Editor) |
 | `points` | Alle verfügbaren Punkte anzeigen |
+| `edit <Nr>` | Geführtes Menü zum Bearbeiten eines bestehenden Schritts |
+| `color <Nr>` / `colorgone <Nr>` | Bestehenden Schritt auf Farb-Trigger umstellen (auf/bis WEG der aufgenommenen Farbe), dann Klick |
+| `recolor <Nr>` | Trigger-Farbe eines Schritts per Maus neu setzen (Pixel-Position bleibt) |
+| `time <Nr> <Zeit>` | Wartezeit eines bestehenden Schritts ändern |
+| `noclick <Nr>` / `click <Nr>` | Schritt auf „nur warten" bzw. wieder auf Klick umstellen |
 | `del <Nr>` | Schritt löschen |
 | `clear` | Alle Schritte löschen |
 | `show` | Aktuelle Schritte anzeigen |
@@ -437,14 +453,14 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 
 ```
 [INIT: 0] > 1 5           # Punkt 1 klicken, 5s warten
-[INIT: 1] > 2 pixel       # Warten bis Farbe erscheint, dann Punkt 2 klicken
+[INIT: 1] > 2 color       # Warten bis Punkt-Farbe erscheint, dann Punkt 2 klicken
 [INIT: 2] > key enter     # Enter-Taste drücken
 [INIT: 3] > done
 
 [Loop 1: 0] > 3 30-45      # Punkt 3 klicken, 30-45s zufällig warten
 [Loop 1: 1] > scan items   # Item-Scan ausführen (bestes pro Kategorie)
 [Loop 1: 2] > wait 10-15   # 10-15s zufällig warten ohne Klick
-[Loop 1: 3] > 4 gone       # Warten bis Farbe verschwindet, dann Punkt 4 klicken
+[Loop 1: 3] > 4 colorgone  # Warten bis Punkt-Farbe verschwindet, dann Punkt 4 klicken
 [Loop 1: 4] > done
 
 Zyklen: 10                 # 10 Durchläufe
@@ -466,7 +482,7 @@ Zyklen: 10                 # 10 Durchläufe
   > done
 
 [Loop 2: Boss x1 [Start: 12:30]]  # Nur um 12:30 Uhr
-  > 4 pixel                 # Warte auf Boss-Spawn
+  > 4 color                 # Warte auf Boss-Spawn (Punkt-Farbe erscheint)
   > 5 0                     # Angreifen
   > done
 
@@ -866,7 +882,7 @@ Für Schritte mit Bedingungen (Scan, Pixel-Trigger) können Fallback-Aktionen de
 
 Beispiel-Sequenz mit 3 Schritten in einem Loop:
 ```
-Schritt 1: 1 pixel else ???    ← Farbe wird NICHT erkannt
+Schritt 1: 1 color else ???    ← Farbe wird NICHT erkannt
 Schritt 2: 2 5                 ← Punkt 2 klicken nach 5s
 Schritt 3: 3 0                 ← Punkt 3 klicken
 ```
@@ -885,11 +901,11 @@ scan items else skip_cycle     # Wenn kein Item: ganzen Zyklus abbrechen, nächs
 scan items else restart        # Wenn kein Item: Sequenz komplett neu starten (inkl. INIT)
 scan items else 2              # Wenn kein Item: Punkt 2 klicken
 scan items else 2 5            # Wenn kein Item: 5s warten, dann Punkt 2 klicken
-1 pixel else skip              # Wenn Timeout: nur diesen Schritt überspringen
-1 pixel else skip_cycle        # Wenn Timeout: ganzen Zyklus abbrechen
-1 pixel else restart           # Wenn Timeout: von vorne beginnen (inkl. INIT)
-1 pixel else key enter         # Wenn Timeout: Enter drücken
-wait gone else skip            # Wenn Farbe nicht verschwindet: überspringen
+1 color else skip              # Wenn Timeout: nur diesen Schritt überspringen
+1 color else skip_cycle        # Wenn Timeout: ganzen Zyklus abbrechen
+1 color else restart           # Wenn Timeout: von vorne beginnen (inkl. INIT)
+1 color else key enter         # Wenn Timeout: Enter drücken
+wait 1 colorgone else skip     # Wenn Punkt-Farbe nicht verschwindet: überspringen
 ```
 
 ### Wann wird ELSE ausgelöst?
@@ -1102,8 +1118,8 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `debug_mode` | Zeigt Schritte VOR Start und wartet auf Enter |
-| `debug_detection` | Alle Ausgaben persistent (nicht überschrieben) |
+| `debug_detection` | Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans |
+| `debug_mode` | Wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
@@ -1316,6 +1332,32 @@ python tools/slot_tester.py
 ```
 
 ## Changelog
+
+### Neueste Änderungen — Visuelle Editoren + Aufnahme + klarere Trigger-Keywords
+
+**Visueller Node-Editor** (`CTRL+ALT+B`, Dear PyGui)
+- Sequenzen als Blöcke + Verbindungen bearbeiten statt rein über die Konsole
+- Punkte-Palette, Eigenschaften-Panels je Block-Typ, ELSE-Zweige als eigene Pfeile
+- Punkt-Picker setzt Position **und** Trigger-Farbe direkt aus dem aufgenommenen Punkt
+- Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
+
+**Scan-Studio** (Dear PyGui)
+- Slots, Items, Boss- und Icon-Scans visuell auf einem Screenshot zusammenstellen
+- Items lernen mit Marker-Farben + Template in einem Schritt
+
+**Sequenz-Aufnahme** (`CTRL+ALT+R`)
+- Klicks per Maus-Hook aufnehmen; aufgenommene Pixel-Farbe bleibt erhalten und wird als Trigger-Standard übernommen
+- Aufgenommene Klicks landen zusätzlich als globale Punkte
+
+**Klarere Wait/Trigger-Keywords** (Sequenz-Editor)
+- Punktbasiert: `<Nr> color` / `<Nr> colorgone` (Farbe ERSCHEINT / VERSCHWINDET, dann Klick); ohne Klick: `wait <Nr> color` / `wait <Nr> colorgone`
+- Mausposition: `wait pixel` / `wait pixelgone`
+- Edit-Verben: `color <Nr>` / `colorgone <Nr>` (Schritt auf Trigger umstellen), `recolor <Nr>` (Trigger-Farbe neu setzen), `edit <Nr>` (geführtes Menü)
+- Alte Keywords (`pixel`/`gone`/`nocolor` als Punkt-Trigger) entfernt — reine Umbenennung, das JSON-Schema bleibt identisch
+
+**Debug-Flags entkoppelt** (`config.json`)
+- `debug_detection` = alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details
+- `debug_mode` = wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter
 
 ### Neueste Änderungen — LLM Reasoning + Codebase-Refactoring
 
