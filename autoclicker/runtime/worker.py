@@ -20,6 +20,7 @@ from ..utils import (
     format_duration, safe_input,
 )
 from ..utils.console import set_console_title
+from .actions import is_verbose_debug
 from .boss_detection import _confirm_new_bosses
 from .steps import execute_step
 
@@ -112,10 +113,11 @@ def print_status(state: AutoClickerState) -> None:
 
 def sequence_worker(state: AutoClickerState) -> None:
     """Worker-Thread, der die Sequenz ausführt."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
+    show_preview = state.config.debug_mode
     print(col("\n[START] Sequenz gestartet.", "green"))
 
-    sequence = _prepare_worker_state(state, debug)
+    sequence = _prepare_worker_state(state, show_preview)
     if sequence is None:
         set_console_title("Autoclicker - bereit")
         return
@@ -198,11 +200,12 @@ def _sync_pause_title(state: AutoClickerState, seq_name: str) -> None:
         set_console_title(f"> laeuft: {_ascii_title(seq_name)}")
 
 
-def _prepare_worker_state(state: AutoClickerState, debug: bool):
+def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
     """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück.
 
-    Der blockierende Debug-Prompt (sleep + safe_input) läuft bewusst NICHT unter
-    state.lock — sonst frören alle Hotkeys ein solange der Prompt offen ist.
+    Der blockierende Vorschau-Prompt (sleep + safe_input, nur bei debug_mode) läuft
+    bewusst NICHT unter state.lock — sonst frören alle Hotkeys ein solange der
+    Prompt offen ist.
     """
     with state.lock:
         sequence = state.active_sequence
@@ -238,8 +241,8 @@ def _prepare_worker_state(state: AutoClickerState, debug: bool):
         state.skip_cycle_event.clear()
         state.pending_new_bosses.clear()
 
-    # Debug-Ausgabe + blockierender Enter-Prompt AUSSERHALB des Locks
-    if debug:
+    # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_mode)
+    if show_preview:
         print("\n" + col("=" * 60, 'gray'))
         print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
         for i, step in enumerate(sequence.init_steps):

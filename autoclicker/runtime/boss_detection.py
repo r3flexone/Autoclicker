@@ -25,7 +25,7 @@ from ..models import (
 )
 from ..utils import col, err, dbg, warn, wait_while_paused
 from ..winapi import check_failsafe
-from .actions import safe_click, safe_key, _step_status
+from .actions import safe_click, safe_key, _step_status, is_verbose_debug
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
 
 # Mindest-Konfidenz für OCR-Boss-Erkennung. Unterhalb davon wird nichts gespeichert —
@@ -448,7 +448,7 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     Respektiert pause_event und failsafe genau wie der Sync-Pfad — sonst würde
     der Watcher bei pausierter Sequenz weiter Bosse erkennen und Aktionen feuern.
     """
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
     try:
         if step.boss_scan:
             if check_failsafe(state):
@@ -567,7 +567,7 @@ def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
                       step_num: int, total_steps: int, phase: str) -> None:
     """Startet _boss_async_thread wenn kein Thread bereits läuft."""
     if state.llm_thread and state.llm_thread.is_alive():
-        if state.config.debug_mode:
+        if is_verbose_debug(state):
             print(dbg("  → LLM-Async: vorheriger Thread noch aktiv, übersprungen"))
         return
     t = threading.Thread(

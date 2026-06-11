@@ -168,6 +168,16 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
 # STATUS-AUSGABE + PHASE-FARBEN
 # =============================================================================
 
+def is_verbose_debug(state: AutoClickerState) -> bool:
+    """True = jeder Schritt wird persistent geloggt statt die Status-Zeile zu überschreiben.
+
+    debug_mode UND debug_detection lösen das aus (debug_detection zeigt zusätzlich
+    Erkennungs-Details bei Item/Boss/Icon-Scans). debug_mode zeigt zusätzlich VOR
+    dem Start die ganze Sequenz + wartet auf Enter (siehe worker._prepare_worker_state).
+    """
+    return state.config.debug_mode or state.config.debug_detection
+
+
 def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,
                   msg: str, dbg_msg: str = None) -> None:
     """Gibt Schritt-Status aus: debug-print ODER überschreibbare Status-Zeile."""
@@ -199,7 +209,7 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
                          total_steps: int, message: str) -> bool:
     """Wartet die angegebene Zeit, respektiert Pause und Skip. Gibt False zurück wenn gestoppt."""
     remaining = seconds
-    debug_active = state.config.debug_mode or state.config.debug_detection
+    debug_active = is_verbose_debug(state)
     last_remaining = -1
 
     while remaining > 0:
@@ -253,7 +263,7 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
     if not ec:
         return True
 
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
 
     if ec.action == ELSE_SKIP:
         _step_status(debug, phase, step_num, total_steps, "ELSE: übersprungen")

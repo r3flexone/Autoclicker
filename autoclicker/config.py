@@ -105,8 +105,8 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
-    debug_mode: bool = False                        # Zeigt Schritte VOR Start + wartet auf Enter
-    debug_detection: bool = False                   # Alle Ausgaben persistent (nicht überschrieben)
+    debug_mode: bool = False                        # Wie debug_detection, zusätzlich Sequenz-Vorschau + Enter vor Start
+    debug_detection: bool = False                   # Alle Schritt-Ausgaben persistent (nicht überschrieben) + Erkennungs-Details
     debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
