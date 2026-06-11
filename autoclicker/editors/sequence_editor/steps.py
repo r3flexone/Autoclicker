@@ -15,9 +15,10 @@ Befehle:
   points/p | learn [Name]      — Punkt-Verwaltung
   scan/boss/watcher/key/wait/  — Spezielle Step-Typen
     screenshot
-  <Nr> [<Zeit>|pixel|gone] ... — Direkter Punkt-Klick (Standard)
+  <Nr> [<Zeit>] [color|colorgone] — Direkter Punkt-Klick (Standard)
 """
 
+import copy
 from typing import Optional
 
 from ...imaging import PILLOW_AVAILABLE, select_region
@@ -26,8 +27,8 @@ from ...persistence import (
     get_next_point_id, get_point_by_id, save_data,
 )
 from ...utils import (
-    cancel_hint, cmd_hint, col, coord_context, hint, is_cancel,
-    ok, err, safe_input, suggest_command,
+    cancel_hint, cmd_hint, col, confirm, coord_context, hint, is_cancel,
+    ok, err, warn, safe_input, suggest_command,
     parse_non_negative_float, parse_non_negative_range,
 )
 from ...winapi import get_cursor_pos, VK_CODES
@@ -42,60 +43,82 @@ def _print_phase_help(full: bool = False) -> None:
     """Zeigt die Hilfe für den Phase-Editor an (kurz oder vollständig)."""
     if not full:
         print("\n" + "-" * 60)
-        print("  Kurzübersicht (? / ?? = vollständige Hilfe):")
-        print(cmd_hint("<Nr> <Zeit>", "Warte Xs, klicke Punkt    (z.B. '1 30')"))
-        print(cmd_hint("scan <Name>", "Item-Scan ausführen"))
-        print(cmd_hint("boss <Name>", "Boss-Scan (erkennt Boss → Aktion)"))
-        print(cmd_hint("watcher <Name>", "Boss-Watcher (wartet bis Boss erscheint)"))
-        print(cmd_hint("icon <Name>", "Icon-Scan (erkennt Symbol → Aktion)"))
-        print(cmd_hint("key <Taste>", "Taste drücken              (z.B. 'key enter')"))
-        print(cmd_hint("wait <Zeit>", "Nur warten, kein Klick"))
-        print(cmd_hint("del <Nr>", "Schritt löschen"))
-        print(cmd_hint("screenshot / ss", "Screenshot-Schritt (Bereich wählen)"))
-        print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Fertig / Abbrechen"))
+        print("  Kurzübersicht (?? = ausführliche Hilfe mit Beispielen):")
+        print(hint("  <Punkt-Nr> = Punkt aus 'points' | <Schritt-Nr> = Position in der Liste"))
+        print(cmd_hint("<Punkt-Nr> <Sek>", "Punkt nach <Sek> Wartezeit klicken (z.B. '1 30')"))
+        print(cmd_hint("scan <Scan-Name>", "Item-Scan ausführen"))
+        print(cmd_hint("boss <Scan-Name>", "Boss erkennen → hinterlegte Aktion"))
+        print(cmd_hint("watcher <Scan-Name>", "Warten bis Boss erscheint → Aktion"))
+        print(cmd_hint("icon <Scan-Name>", "Symbol/Icon erkennen → Aktion"))
+        print(cmd_hint("key <Taste>", "Taste drücken (z.B. 'key enter')"))
+        print(cmd_hint("wait <Sek>", "Nur warten, NICHT klicken"))
+        print(cmd_hint("edit <Schritt-Nr>", "Schritt ändern (geführtes Menü)"))
+        print(cmd_hint("del <Schritt-Nr>", "Schritt löschen"))
+        print(cmd_hint("points", "Punkte mit ihren Nummern anzeigen"))
+        print(cmd_hint("screenshot / ss", "Screenshot-Schritt anlegen"))
+        print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Phase speichern / verwerfen"))
         print("-" * 60)
         return
 
     print("\n" + "-" * 60)
-    print("Befehle (Logik: erst warten, DANN klicken):")
-    print(cmd_hint("<Nr> <Zeit>", "Warte Xs, dann klicke (z.B. '1 30')"))
-    print(cmd_hint("<Nr> <Min>-<Max>", "Zufällig warten (z.B. '1 30-45')"))
-    print(cmd_hint("<Nr> 0", "Sofort klicken"))
-    print(cmd_hint("<Nr> pixel", "Warte auf Farbe, dann klicke"))
-    print(cmd_hint("<Nr> <Zeit> pixel", "Erst Xs warten, dann auf Farbe"))
-    print(cmd_hint("<Nr> gone", "Warte bis Farbe WEG, dann klicke"))
-    print(cmd_hint("<Nr> <Zeit> gone", "Erst Xs warten, dann bis Farbe WEG"))
-    print(cmd_hint("wait <Zeit>", "Nur warten, KEIN Klick (z.B. 'wait 10')"))
-    print(cmd_hint("wait <Min>-<Max>", "Zufällig warten (z.B. 'wait 30-45')"))
-    print(cmd_hint("wait pixel", "Auf Farbe warten, KEIN Klick"))
-    print(cmd_hint("wait gone", "Warten bis Farbe WEG ist, KEIN Klick"))
+    print(hint("Schreibweise: <Punkt-Nr> = Punkt aus 'points' (was geklickt wird) |"))
+    print(hint("              <Schritt-Nr> = Position in dieser Schrittliste (was bearbeitet wird) |"))
+    print(hint("              <Sek> = Wartezeit in Sekunden, <Min>-<Max> = zufällig dazwischen"))
+    print("NEUEN Klick-Schritt anlegen (Logik: erst warten, DANN klicken):")
+    print(cmd_hint("<Punkt-Nr> <Sek>", "<Sek> warten, dann den Punkt klicken (z.B. '1 30')"))
+    print(cmd_hint("<Punkt-Nr> <Min>-<Max>", "zufällig warten, dann klicken (z.B. '1 30-45')"))
+    print(cmd_hint("<Punkt-Nr> 0", "ohne Warten sofort klicken"))
+    print(cmd_hint("<Punkt-Nr> color", "warten bis die Punkt-Farbe ERSCHEINT, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> <Sek> color", "erst <Sek> warten, dann bis Farbe erscheint, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> colorgone", "warten bis die Punkt-Farbe VERSCHWINDET, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> <Sek> colorgone", "erst <Sek> warten, dann bis Farbe weg, dann klicken"))
+    print("NUR warten / Taste / Scan (kein Punkt-Klick):")
+    print(cmd_hint("wait <Sek>", "nur <Sek> warten, kein Klick (z.B. 'wait 10')"))
+    print(cmd_hint("wait <Min>-<Max>", "zufällig warten, kein Klick (z.B. 'wait 30-45')"))
+    print(cmd_hint("wait <Punkt-Nr> color", "warten bis die PUNKT-Farbe ERSCHEINT, kein Klick (z.B. 'wait 3 color')"))
+    print(cmd_hint("wait <Punkt-Nr> colorgone", "warten bis die PUNKT-Farbe VERSCHWINDET, kein Klick (z.B. 'wait 3 colorgone')"))
+    print(cmd_hint("wait pixel", "warten bis Farbe an der MAUSPOSITION erscheint (kein Klick)"))
+    print(cmd_hint("wait pixelgone", "warten bis Farbe an der MAUSPOSITION verschwindet (kein Klick)"))
     print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
-    print(cmd_hint("key <Zeit> <Taste>", "Warten, dann Taste (z.B. 'key 5 space')"))
-    print(cmd_hint("key <Min>-<Max> <Taste>", "Zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
-    print(cmd_hint("scan <Name>", "Item-Scan: bestes pro Kategorie (Standard)"))
-    print(cmd_hint("scan <Name> best", "Item-Scan: nur 1 Item total"))
-    print(cmd_hint("scan <Name> every", "Item-Scan: alle Treffer (für Duplikate)"))
-    print(cmd_hint("boss <Name>", "Boss-Scan: Boss erkennen → bedingte Aktion"))
-    print(cmd_hint("watcher <Name>", "Boss-Watcher: wartet bis Boss erscheint → Aktion"))
-    print(cmd_hint("icon <Name>", "Icon-Scan: Symbol/Icon erkennen → Aktion (z.B. rotes !)"))
-    print("ELSE-Bedingungen (falls Scan/Pixel/Boss fehlschlägt):")
-    print(cmd_hint("... else skip", "Schritt überspringen, weiter (z.B. 'scan items else skip')"))
-    print(cmd_hint("... else skip_cycle", "Zyklus abbrechen, nächster startet (z.B. 'scan items else skip_cycle')"))
-    print(cmd_hint("... else restart", "Sequenz neu starten (z.B. 'scan items else restart')"))
-    print(cmd_hint("... else <Nr> [s]", "Punkt klicken (z.B. 'scan items else 2 5')"))
-    print(cmd_hint("... else key <T>", "Taste drücken (z.B. '1 pixel else key enter')"))
-    print("Punkte verwalten:")
-    print(cmd_hint("learn <Name>", "Neuen Punkt erstellen"))
-    print(cmd_hint("points", "Alle Punkte anzeigen"))
-    print(cmd_hint("del <Nr>", "Schritt löschen"))
-    print(cmd_hint("del <Nr>-<Nr>", "Bereich löschen (z.B. del 1-5)"))
-    print(cmd_hint("del all", "ALLE Schritte löschen"))
-    print(cmd_hint("ins <Nr>", "Nächsten Schritt an Position einfügen"))
-    print("Screenshot-Schritt (wird bei Ausführung automatisch gemacht):")
-    print(cmd_hint("screenshot / ss", "Bereich interaktiv wählen → Schritt erstellen"))
-    print(cmd_hint("screenshot full", "Vollbild-Screenshot-Schritt erstellen"))
-    print(cmd_hint("screenshot x1 y1 x2 y2", "Direkte Koordinaten (z.B. 'screenshot 0 0 800 600')"))
-    print(cmd_hint(f"help | ? / ?? | show | done | cancel | {cancel_hint()}", ""))
+    print(cmd_hint("key <Sek> <Taste>", "erst <Sek> warten, dann Taste (z.B. 'key 5 space')"))
+    print(cmd_hint("key <Min>-<Max> <Taste>", "zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
+    print(cmd_hint("scan <Scan-Name>", "Item-Scan: je Kategorie das beste Item klicken (Standard)"))
+    print(cmd_hint("scan <Scan-Name> best", "Item-Scan: nur EIN Item insgesamt klicken (das beste)"))
+    print(cmd_hint("scan <Scan-Name> every", "Item-Scan: ALLE Treffer klicken (auch Duplikate)"))
+    print(cmd_hint("boss <Scan-Name>", "Einmal-Scan: Boss erkennen → in Boss-Liste hinterlegte Aktion"))
+    print(cmd_hint("watcher <Scan-Name>", "Schleife: wartet bis ein Boss erscheint → dann Aktion"))
+    print(cmd_hint("icon <Scan-Name>", "Symbol erkennen (z.B. rotes '!') → hinterlegte Aktion"))
+    print("ELSE = was tun, wenn Trigger/Scan NICHT zutrifft (an obige Befehle anhängen):")
+    print(cmd_hint("... else skip", "nur DIESEN Schritt überspringen, normal weiter"))
+    print(cmd_hint("... else skip_cycle", "Rest des Zyklus abbrechen, nächsten Zyklus starten"))
+    print(cmd_hint("... else restart", "ganze Sequenz von vorn (inkl. INIT)"))
+    print(cmd_hint("... else <Punkt-Nr> [Sek]", "stattdessen diesen Punkt klicken (z.B. 'scan x else 2 5')"))
+    print(cmd_hint("... else key <Taste>", "stattdessen Taste drücken (z.B. '1 pixel else key enter')"))
+    print("BESTEHENDE Schritte bearbeiten (<Schritt-Nr> = Position, siehe 'show'):")
+    print(cmd_hint("edit <Schritt-Nr>", "GEFÜHRTES MENÜ: Zeit/Trigger/Klick/Farbe/duplizieren/verschieben/testen/löschen"))
+    print(cmd_hint("show <Schritt-Nr>", "alle Felder eines Schritts im Detail anzeigen"))
+    print(cmd_hint("scale <Faktor>", "alle Wartezeiten dieser Phase × Faktor (1.5 = länger, 0.5 = halbe Zeit)"))
+    print("  " + hint("Kurzbefehle (machen 'edit' überflüssig, wenn man sie kennt):"))
+    print(cmd_hint("color/colorgone <Schritt-Nr>", "Schritt wartet auf / bis WEG der aufgenommenen Farbe, dann Klick"))
+    print(cmd_hint("noclick/click <Schritt-Nr>", "nur warten (kein Klick) / wieder normaler Klick"))
+    print(cmd_hint("recolor <Schritt-Nr>", "Trigger-Farbe per Maus neu setzen (Pixel-Position bleibt)"))
+    print(cmd_hint("time <Schritt-Nr> <Sek>", "Wartezeit ändern (z.B. 'time 3 5' oder 'time 3 2-4')"))
+    print(cmd_hint("copy <Schritt-Nr>", "Schritt duplizieren (Kopie direkt dahinter)"))
+    print(cmd_hint("move <Schritt-Nr> <Ziel>", "Schritt an andere Position schieben (z.B. 'move 5 1')"))
+    print(cmd_hint("test <Schritt-Nr>", "Schritt 1× sofort ausführen — ECHTER Klick! (ohne Wartezeit/Trigger)"))
+    print("Punkte (die Klick-Ziele):")
+    print(cmd_hint("learn <Name>", "neuen Klick-Punkt aufnehmen (Maus positionieren)"))
+    print(cmd_hint("points", "alle Punkte mit Nummer, Position und Farbe anzeigen"))
+    print("Schritte löschen / einfügen:")
+    print(cmd_hint("del <Schritt-Nr>", "einen Schritt löschen"))
+    print(cmd_hint("del <Von>-<Bis>", "mehrere Schritte löschen (z.B. 'del 1-5')"))
+    print(cmd_hint("del all", "ALLE Schritte dieser Phase löschen"))
+    print(cmd_hint("ins <Schritt-Nr>", "nächsten NEUEN Schritt an dieser Position einfügen (statt am Ende)"))
+    print("Screenshot-Schritt (wird beim Ausführen automatisch aufgenommen):")
+    print(cmd_hint("screenshot / ss", "Bereich mit der Maus aufziehen → Screenshot-Schritt"))
+    print(cmd_hint("screenshot full", "Vollbild-Screenshot-Schritt"))
+    print(cmd_hint("screenshot x1 y1 x2 y2", "feste Koordinaten (z.B. 'screenshot 0 0 800 600')"))
+    print(cmd_hint(f"help / ? | ?? | done / d | cancel / {cancel_hint()}", "Hilfe / diese Vollhilfe / speichern / verwerfen"))
     print("-" * 60)
 
 
@@ -117,9 +140,25 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 
 # Bekannte Befehle für Tippfehler-Vorschläge (suggest_command)
 _KNOWN_COMMANDS = [
-    "done", "cancel", "help", "show", "del", "ins", "points", "learn",
+    "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
+    "color", "colorgone", "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
+
+# Schlüsselwörter für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die
+# Farbe, daher 'color' (Farbe DA) / 'colorgone' (Farbe WEG). Wert = interner
+# _apply_trigger-Modus.
+_WAIT_POINT_TRIGGER_ALIASES = {
+    "color": "pixel",
+    "colorgone": "gone",
+}
+
+# Schlüsselwörter für 'wait pixel|pixelgone' (Mausposition, kein Punkt). Hier
+# wird ein Pixel an der Maus abgegriffen, daher 'pixel' (DA) / 'pixelgone' (WEG).
+_WAIT_MOUSE_TRIGGER_ALIASES = {
+    "pixel": False,
+    "pixelgone": True,
+}
 
 
 # =============================================================================
@@ -148,7 +187,7 @@ class _PhaseEditor:
         if self.steps:
             print(f"\nAktuelle {self.phase_name}-Schritte ({len(self.steps)}):")
             for i, step in enumerate(self.steps):
-                print(f"  {i+1}. {step}")
+                print(self._format_step_line(i, step))
 
         _print_phase_help()
 
@@ -190,6 +229,9 @@ class _PhaseEditor:
             return
         if cmd in ("show", "s"):
             self._handle_show()
+            return
+        if cmd.startswith("show "):
+            self._handle_show_detail(user_input)
             return
 
         # Lösch-Befehle (exakt zuerst, dann Range, dann Single)
@@ -238,8 +280,46 @@ class _PhaseEditor:
         if cmd.startswith("wait "):
             self._handle_wait(user_input)
             return
-        if cmd.startswith(("screenshot", "ss")):
+        if (cmd == "ss" or cmd == "screenshot"
+                or cmd.startswith("screenshot ") or cmd.startswith("ss ")):
             self._handle_screenshot(user_input)
+            return
+
+        # Geführtes Bearbeiten (empfohlen): ein Menü statt vieler Verben
+        if cmd.startswith("edit ") or cmd.startswith("e "):
+            self._handle_edit_menu(user_input)
+            return
+
+        # Bestehenden Schritt nachträglich umbauen (z.B. aufgenommenen Klick)
+        if cmd.startswith("colorgone "):
+            self._handle_make_pixel(user_input, until_gone=True)
+            return
+        if cmd.startswith("color "):
+            self._handle_make_pixel(user_input, until_gone=False)
+            return
+        if cmd.startswith("noclick "):
+            self._handle_make_noclick(user_input)
+            return
+        if cmd.startswith("click "):
+            self._handle_make_click(user_input)
+            return
+        if cmd.startswith("recolor "):
+            self._handle_set_color(user_input)
+            return
+        if cmd.startswith("time "):
+            self._handle_set_time(user_input)
+            return
+        if cmd.startswith("copy "):
+            self._handle_copy(user_input)
+            return
+        if cmd.startswith("move "):
+            self._handle_move(user_input)
+            return
+        if cmd.startswith("scale "):
+            self._handle_scale(user_input)
+            return
+        if cmd.startswith("test "):
+            self._handle_test(user_input)
             return
 
         # Default: Punkt-ID + Optionen (z.B. "1 30 pixel")
@@ -264,9 +344,17 @@ class _PhaseEditor:
         if self.steps:
             print(f"\n{self.phase_name}-Schritte:")
             for i, step in enumerate(self.steps):
-                print(f"  {i+1}. {step}")
+                print(self._format_step_line(i, step))
         else:
             print("  (Keine Schritte)")
+
+    def _format_step_line(self, i: int, step: SequenceStep) -> str:
+        """Formatiert eine Schritt-Zeile, hängt einen Farb-Hinweis an wenn eine
+        aufgenommene Farbe vorliegt aber noch kein Farb-Trigger gesetzt ist."""
+        line = f"  {i+1}. {step}"
+        if step.recorded_color and not step.wait_condition:
+            line += col(f"   [aufgenommen: RGB{step.recorded_color} → 'color {i+1}']", "gray")
+        return line
 
     def _handle_del_all(self) -> None:
         if not self.steps:
@@ -478,24 +566,56 @@ class _PhaseEditor:
         self.add_step(step)
 
     def _handle_wait(self, user_input: str) -> None:
-        """Format: wait <Zeit> | wait <Min>-<Max> | wait pixel | wait gone [else ...]"""
+        """Format: wait <Zeit> | wait <Min>-<Max> | wait <Punkt-Nr> color|colorgone | wait pixel|pixelgone [else ...]
+
+        Mit <Punkt-Nr> wird die Position + aufgenommene Farbe dieses Punkts als
+        Farb-Trigger genutzt (color = bis DA, colorgone = bis WEG; kein Klick).
+        Ohne Punkt-Nr: Farbe an der aktuellen Mausposition (pixel/pixelgone).
+        """
         main_parts, else_parts = _split_main_and_else(user_input.split()[1:])
         if not main_parts:
-            print("  -> Format: wait <Zeit> oder wait pixel oder wait gone")
+            print("  -> Format: wait <Zeit> | wait pixel|pixelgone | wait <Punkt-Nr> color|colorgone")
             return
 
         arg = main_parts[0].lower()
         step = SequenceStep(x=0, y=0, delay_before=0, name="Wait", wait_only=True)
 
-        if arg in ("pixel", "gone"):
+        # wait <Punkt-Nr> color|colorgone → Farbe vom aufgenommenen Punkt (kein Klick)
+        if len(main_parts) >= 2 and main_parts[1].lower() in _WAIT_POINT_TRIGGER_ALIASES:
+            try:
+                point_id = int(arg)
+            except ValueError:
+                print("  -> Format: wait <Punkt-Nr> color|colorgone (z.B. 'wait 3 colorgone')")
+                return
+            with self.state.lock:
+                point = get_point_by_id(self.state, point_id)
+            if not point:
+                print(f"  -> Punkt #{point_id} nicht gefunden! {hint('(siehe points)')}")
+                return
+            mode = _WAIT_POINT_TRIGGER_ALIASES[main_parts[1].lower()]
+            # Punkt-Position + Farbe in den Schritt übernehmen, dann Trigger setzen.
+            # _apply_trigger nutzt recorded_color (sonst Live-Abgriff) und lässt
+            # wait_only=True unangetastet.
+            step.x, step.y = point.x, point.y
+            step.recorded_color = point.color
+            if not self._apply_trigger(step, mode):
+                return
+            label = point.name or f"#{point_id}"
+            step.name = f"Wait:Gone {label}" if mode == "gone" else f"Wait:Pixel {label}"
+            apply_else_to_step(step, else_parts, self.state)
+            self.add_step(step)
+            return
+
+        if arg in _WAIT_MOUSE_TRIGGER_ALIASES:
+            until_gone = _WAIT_MOUSE_TRIGGER_ALIASES[arg]
             px, py, color = capture_pixel_color()
             if color is None:
                 return
             step.wait_condition = WaitCondition(
                 pixel=(px, py), color=color,
-                until_gone=(arg == "gone"),
+                until_gone=until_gone,
             )
-            step.name = "Wait:Gone" if arg == "gone" else "Wait:Pixel"
+            step.name = "Wait:Gone" if until_gone else "Wait:Pixel"
         elif "-" in arg:
             range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
             if range_err:
@@ -554,8 +674,394 @@ class _PhaseEditor:
         self.add_step(step)
         print(ok(f"Screenshot-Schritt ({region[0]},{region[1]})→({region[2]},{region[3]}) hinzugefügt"))
 
+    # ---- Bestehende Schritte umbauen (für Nachbearbeitung von Aufnahmen) ----
+
+    def _get_step_by_num(self, num_str: str):
+        """Validiert eine 1-basierte Schritt-Nummer. Returns Step oder None."""
+        idx = self._get_step_index_by_num(num_str)
+        if idx is None:
+            return None
+        return self.steps[idx]
+
+    def _get_step_index_by_num(self, num_str: str):
+        """Validiert eine 1-basierte Schritt-Nummer. Returns 0-basierten Index oder None.
+
+        Index statt Step, weil SequenceStep eq=True ist: bei Duplikaten würde
+        self.steps.index(step) den ERSTEN inhaltsgleichen Schritt finden, nicht
+        den gemeinten. Wer die Position braucht (copy/move/show/test), nutzt das.
+        """
+        try:
+            num = int(num_str)
+        except ValueError:
+            print("  -> Format erwartet eine Schritt-Nummer (z.B. 'color 3')")
+            return None
+        if not (1 <= num <= len(self.steps)):
+            print(f"  -> Ungültiger Schritt! Verfügbar: 1-{len(self.steps)}")
+            return None
+        return num - 1
+
+    def _apply_trigger(self, step: SequenceStep, mode: str) -> bool:
+        """Setzt/entfernt den Farb-Trigger eines Schritts. mode: 'none'|'pixel'|'gone'.
+
+        Lässt wait_only bewusst unangetastet — Trigger (warten-auf-was) und Klick
+        (klicken-oder-nicht) sind getrennte Achsen. Nutzt die aufgenommene Farbe
+        (recorded_color), sonst Live-Abgriff an der Mausposition. Returns True bei
+        Erfolg, False wenn keine Farbe lesbar war (Trigger nicht gesetzt).
+        """
+        if mode == "none":
+            step.wait_condition = None
+            return True
+        until_gone = (mode == "gone")
+        if step.recorded_color:
+            pixel = (step.x, step.y)
+            color = step.recorded_color
+            print(f"  Nutze aufgenommene Farbe RGB{color} bei ({step.x}, {step.y})")
+        else:
+            px, py, color = capture_pixel_color()
+            if color is None:
+                return False
+            pixel = (px, py)
+        step.wait_condition = WaitCondition(pixel=pixel, color=color, until_gone=until_gone)
+        return True
+
+    def _handle_make_pixel(self, user_input: str, until_gone: bool) -> None:
+        """Wandelt einen bestehenden Schritt in einen Farb-Trigger um.
+
+        Nutzt recorded_color des Schritts (wird bei jeder Schritterstellung
+        automatisch erfasst). Fehlt sie ausnahmsweise, wird die Farbe live an
+        der aktuellen Mausposition abgegriffen.
+
+        Format: color <Nr> | colorgone <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        if not self._apply_trigger(step, "gone" if until_gone else "pixel"):
+            return
+        step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        gone_str = "bis Farbe WEG" if until_gone else "auf Farbe"
+        print(f"  + Schritt umgebaut: warte {gone_str} → {step}")
+
+    def _handle_make_noclick(self, user_input: str) -> None:
+        """Macht aus einem Schritt einen reinen Warte-Schritt (kein Klick).
+
+        Format: noclick <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        step.wait_only = True
+        print(f"  + Schritt klickt nicht mehr (nur warten): {step}")
+
+    def _handle_make_click(self, user_input: str) -> None:
+        """Setzt einen Schritt auf reinen Klick zurück (entfernt Farb-Trigger / Warte-nur).
+
+        Format: click <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        step.wait_only = False
+        step.wait_condition = None
+        print(f"  + Schritt klickt wieder direkt: {step}")
+
+    def _delay_str(self, step: SequenceStep) -> str:
+        """Lesbare Wartezeit eines Schritts (fix oder Zufallsbereich)."""
+        if step.delay_max and step.delay_max > step.delay_before:
+            return f"{step.delay_before:g}-{step.delay_max:g}s (zufällig)"
+        return f"{step.delay_before:g}s"
+
+    def _handle_edit_menu(self, user_input: str) -> None:
+        """Geführtes Bearbeiten eines Schritts über ein nummeriertes Menü.
+
+        Ein einziger Einstieg für alle Schritt-Änderungen — man muss sich keine
+        Verben (color/colorgone/noclick/time/recolor/...) merken, sondern wählt Schritt
+        und Aktion per Nummer. Die Kurzbefehle bleiben als Shortcuts erhalten.
+
+        Format: edit <Nr> | e <Nr>
+        """
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
+            return
+        num = idx + 1
+
+        while True:
+            step = self.steps[idx]
+            wc = step.wait_condition
+            trig = ("bis Farbe WEG" if wc.until_gone else "auf Farbe") if wc else "keiner"
+            klick = "nur warten (kein Klick)" if step.wait_only else "klicken"
+
+            def _opt(n: str, label: str) -> str:
+                return f"    {col(f'[{n}]', 'yellow')} {label}"
+
+            print(f"\n  {col(f'Schritt {num} bearbeiten:', 'bold')} {step}")
+            print(_opt("1", f"Wartezeit    (aktuell: {self._delay_str(step)})"))
+            print(_opt("2", f"Trigger      (aktuell: {trig})"))
+            print(_opt("3", f"Klick an/aus (aktuell: {klick})"))
+            print(_opt("4", "Trigger-Farbe neu abgreifen"))
+            print(_opt("5", "Details anzeigen"))
+            print(_opt("6", "Duplizieren"))
+            print(_opt("7", "Verschieben"))
+            print(_opt("8", "Testen (echter Klick!)"))
+            print(_opt("9", "Löschen"))
+            print(_opt("0", "Menü schließen (oder 'zurück')"))
+
+            choice = safe_input("  edit> ").strip().lower()
+            if choice in ("0", "", "zurück", "zurueck", "back", "done", "d", "q") or is_cancel(choice):
+                return
+
+            if choice == "1":
+                val = safe_input("  Neue Wartezeit (Sek., oder Min-Max wie 2-4): ").strip()
+                if val and not is_cancel(val):
+                    self._handle_set_time(f"time {num} {val}")
+            elif choice == "2":
+                self._edit_trigger_submenu(step)
+            elif choice == "3":
+                step.wait_only = not step.wait_only
+                print(f"  + Jetzt: {'nur warten (kein Klick)' if step.wait_only else 'klicken'}")
+            elif choice == "4":
+                self._handle_set_color(f"recolor {num}")
+            elif choice == "5":
+                self._handle_show_detail(f"show {num}")
+            elif choice == "6":
+                self._handle_copy(f"copy {num}")
+                return  # Positionen verschoben — Menü schließen
+            elif choice == "7":
+                target = safe_input(f"  Neue Position (1-{len(self.steps)}): ").strip()
+                if target and not is_cancel(target):
+                    self._handle_move(f"move {num} {target}")
+                return  # Positionen verschoben — Menü schließen
+            elif choice == "8":
+                self._handle_test(f"test {num}")
+            elif choice == "9":
+                if confirm(f"  Schritt {num} wirklich löschen?"):
+                    self._handle_del_single(f"del {num}")
+                    return  # Schritt weg — Menü schließen
+            else:
+                print(f"  -> {hint('Bitte 0-9 wählen.')}")
+
+    def _edit_trigger_submenu(self, step: SequenceStep) -> None:
+        """Untermenü: Trigger-Richtung wählen (lässt Klick-Einstellung unberührt)."""
+        print(f"\n  {col('Trigger wählen:', 'bold')}")
+        print(f"    {col('[1]', 'yellow')} Kein Trigger (Wartezeit allein)")
+        print(f"    {col('[2]', 'yellow')} Warte bis Farbe DA ist")
+        print(f"    {col('[3]', 'yellow')} Warte bis Farbe WEG ist")
+        c = safe_input("  trigger> ").strip().lower()
+        if c in ("0", "", "zurück", "zurueck") or is_cancel(c):
+            return
+        mode = {"1": "none", "2": "pixel", "3": "gone"}.get(c)
+        if mode is None:
+            print(f"  -> {hint('Bitte 1-3 wählen.')}")
+            return
+        if self._apply_trigger(step, mode):
+            if mode == "none":
+                print("  + Trigger entfernt.")
+            else:
+                print(f"  + Trigger: warte {'bis Farbe WEG' if mode == 'gone' else 'auf Farbe'}.")
+
+    def _handle_set_color(self, user_input: str) -> None:
+        """Ändert die Trigger-Farbe eines Schritts per Live-Abgriff (Override).
+
+        Für die Ausnahmefälle, in denen die Punkt-Farbe nicht passt. Greift die
+        Farbe an der aktuellen Mausposition ab und setzt sie als Trigger-Farbe.
+        Die Pixel-Position des Triggers bleibt unverändert.
+
+        Format: recolor <Nr>
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        if not step.wait_condition:
+            print(warn("  -> Schritt hat keinen Farb-Trigger. Erst 'color <Nr>' oder 'colorgone <Nr>'."))
+            return
+        _, _, color = capture_pixel_color()
+        if color is None:
+            return
+        step.wait_condition.color = color
+        step.recorded_color = color
+        print(f"  + Trigger-Farbe geändert: RGB{color} bei {step.wait_condition.pixel}")
+
+    def _handle_set_time(self, user_input: str) -> None:
+        """Ändert die Wartezeit eines bestehenden Schritts.
+
+        Format: time <Nr> <Zeit> | time <Nr> <Min>-<Max>
+        """
+        parts = user_input.split()
+        if len(parts) < 3:
+            print("  -> Format: time <Nr> <Zeit> (z.B. 'time 3 5' oder 'time 3 2-4')")
+            return
+        step = self._get_step_by_num(parts[1])
+        if step is None:
+            return
+        arg = parts[2]
+        if "-" in arg:
+            range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
+            if range_err:
+                print(f"  -> {range_err}")
+                return
+            step.delay_before, step.delay_max = range_val
+        else:
+            delay_val, delay_err = parse_non_negative_float(arg, "Wartezeit")
+            if delay_err:
+                print(f"  -> {delay_err}")
+                return
+            step.delay_before = delay_val
+            step.delay_max = None
+        print(f"  + Zeit geändert: {step}")
+
+    def _handle_show_detail(self, user_input: str) -> None:
+        """Zeigt alle Felder eines Schritts im Detail.
+
+        Format: show <Nr>
+        """
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
+            return
+        step = self.steps[idx]
+        num = idx + 1
+        print(f"\n  {col(f'Schritt {num} — Details:', 'bold')}")
+        print(f"    Zusammenfassung: {step}")
+        print(f"    Name:            {step.name or '(keiner)'}")
+        print(f"    Position:        ({step.x}, {step.y})")
+        if step.delay_max and step.delay_max > step.delay_before:
+            print(f"    Wartezeit:       {step.delay_before:g}-{step.delay_max:g}s (zufällig)")
+        else:
+            print(f"    Wartezeit:       {step.delay_before:g}s")
+        print(f"    Nur warten:      {'ja' if step.wait_only else 'nein'}")
+        wc = step.wait_condition
+        if wc:
+            mode = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
+            print(f"    Farb-Trigger:    {mode} RGB{wc.color} bei ({wc.pixel[0]},{wc.pixel[1]})")
+        else:
+            print(f"    Farb-Trigger:    (keiner)")
+        if step.recorded_color:
+            tip = hint(f"   → 'color {num}' nutzt sie")
+            print(f"    Aufgen. Farbe:   RGB{step.recorded_color}{tip}")
+        if step.key_press:
+            print(f"    Taste:           {step.key_press}")
+        if step.item_scan:
+            print(f"    Item-Scan:       {step.item_scan} ({step.item_scan_mode})")
+        if step.boss_scan:
+            print(f"    Boss-Scan:       {step.boss_scan}")
+        if step.boss_watcher:
+            print(f"    Boss-Watcher:    {step.boss_watcher}")
+        if step.icon_scan:
+            print(f"    Icon-Scan:       {step.icon_scan}")
+        if step.screenshot_only:
+            print(f"    Screenshot:      {step.screenshot_region or 'Vollbild'}")
+        ec = step.else_config
+        if ec:
+            print(f"    ELSE:            {step._else_str().replace(' | ELSE: ', '')}")
+
+    def _handle_copy(self, user_input: str) -> None:
+        """Dupliziert einen Schritt und fügt die Kopie direkt dahinter ein.
+
+        Format: copy <Nr>
+        """
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
+            return
+        step = self.steps[idx]
+        clone = copy.deepcopy(step)
+        self.steps.insert(idx + 1, clone)
+        print(f"  + Schritt {idx + 1} dupliziert → neue Position {idx + 2}: {clone}")
+
+    def _handle_move(self, user_input: str) -> None:
+        """Verschiebt einen Schritt an eine neue Position.
+
+        Format: move <Nr> <Ziel>
+        """
+        parts = user_input.split()
+        if len(parts) < 3:
+            print("  -> Format: move <Nr> <Ziel> (z.B. 'move 5 1')")
+            return
+        src = self._get_step_index_by_num(parts[1])
+        if src is None:
+            return
+        try:
+            target = int(parts[2])
+        except ValueError:
+            print("  -> Ziel muss eine Zahl sein (z.B. 'move 5 1')")
+            return
+        if not (1 <= target <= len(self.steps)):
+            print(f"  -> Ungültiges Ziel! Verfügbar: 1-{len(self.steps)}")
+            return
+        step = self.steps.pop(src)
+        self.steps.insert(target - 1, step)
+        print(f"  + Schritt von Position {src + 1} → {target} verschoben: {step}")
+
+    def _handle_scale(self, user_input: str) -> None:
+        """Skaliert alle Wartezeiten dieser Phase mit einem Faktor.
+
+        Format: scale <Faktor> (z.B. 'scale 1.5' = 50% länger, 'scale 0.5' = halbe Zeit)
+        """
+        parts = user_input.split()
+        if len(parts) < 2:
+            print("  -> Format: scale <Faktor> (z.B. 'scale 1.5' oder 'scale 0.5')")
+            return
+        try:
+            factor = float(parts[1].replace(",", "."))
+        except ValueError:
+            print("  -> Faktor muss eine Zahl sein (z.B. 'scale 1.5')")
+            return
+        if factor <= 0:
+            print("  -> Faktor muss größer als 0 sein!")
+            return
+        changed = 0
+        for step in self.steps:
+            if step.delay_before > 0:
+                step.delay_before = round(step.delay_before * factor, 2)
+                changed += 1
+            if step.delay_max:
+                step.delay_max = round(step.delay_max * factor, 2)
+        print(f"  + Wartezeiten dieser Phase mit Faktor {factor:g} skaliert ({changed} Schritt(e) betroffen)")
+
+    def _handle_test(self, user_input: str) -> None:
+        """Führt EINEN Schritt sofort aus (Probelauf für Koordinaten-Check).
+
+        Format: test <Nr>
+        Achtung: führt einen echten Klick/Tastendruck aus. Wartezeit und
+        Farb-Trigger werden für den Test übersprungen — es geht nur darum zu
+        sehen ob die Aktion (Klick/Taste/Scan) am richtigen Ort landet.
+        """
+        idx = self._get_step_index_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if idx is None:
+            return
+        step = self.steps[idx]
+        with self.state.lock:
+            if self.state.is_running:
+                print(f"  -> {err('Sequenz läuft gerade — erst stoppen (CTRL+ALT+S)')}")
+                return
+        num = idx + 1
+        print(f"  {col('[TEST]', 'cyan')} Führe Schritt {num} aus: {step}")
+        print(hint("        (echter Klick/Tastendruck — Spielfenster muss aktiv sein,"))
+        print(hint("         Wartezeit + Farb-Trigger werden für den Test übersprungen)"))
+        # Auf einer Kopie testen: Wartezeit + Farb-Trigger nullen, damit die
+        # Aktion sofort feuert (sonst würde der Test z.B. 30s warten)
+        test_step = copy.deepcopy(step)
+        test_step.delay_before = 0.0
+        test_step.delay_max = None
+        test_step.wait_condition = None
+        from ...runtime.steps import execute_step
+        # Events sauber halten, damit der Test-Lauf nicht durch Altzustände abbricht
+        self.state.stop_event.clear()
+        self.state.skip_event.clear()
+        ok_run = False
+        try:
+            ok_run = execute_step(self.state, test_step, num, len(self.steps), "TEST")
+        except Exception as e:  # Test soll den Editor nie crashen
+            print(f"\n  -> {err(f'Test-Fehler: {e}')}")
+            return
+        finally:
+            # Ein Test darf keine Events (Stop/Skip/Restart) in einen echten Lauf tragen
+            self.state.stop_event.clear()
+            self.state.skip_event.clear()
+            self.state.skip_cycle_event.clear()
+            self.state.restart_event.clear()
+        print(f"\n  {ok('Test fertig.') if ok_run else col('Test abgebrochen.', 'yellow')}")
+
     def _handle_point_click(self, user_input: str) -> None:
-        """Default-Befehl: <Nr> [<Zeit>|pixel|gone] [pixel|gone] [else ...]"""
+        """Default-Befehl: <Nr> [<Zeit>] [color|colorgone] [else ...]"""
         main_parts, else_parts = _split_main_and_else(user_input.split())
         if not main_parts:
             self._print_unknown_command(user_input)
@@ -573,7 +1079,7 @@ class _PhaseEditor:
             print(f"  -> Punkt #{point_id} nicht gefunden!")
             return
 
-        wait_cond, delay, delay_max = self._parse_point_options(main_parts)
+        wait_cond, delay, delay_max = self._parse_point_options(main_parts, point)
         if wait_cond is False:  # Sentinel: Parse-Fehler, schon ausgegeben
             return
 
@@ -583,10 +1089,36 @@ class _PhaseEditor:
             wait_condition=wait_cond,
             delay_max=delay_max,
         )
+        # Farbe übernehmen: bevorzugt die bei der Punkt-Aufnahme gespeicherte
+        # (Spiel war da im richtigen Zustand), sonst Live-Abgriff als Fallback.
+        if point.color:
+            step.recorded_color = point.color
+        else:
+            try:
+                from ...winapi import get_screen_pixel
+                step.recorded_color = get_screen_pixel(point.x, point.y)
+            except Exception:
+                pass
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
-    def _parse_point_options(self, main_parts: list[str]):
+    def _resolve_trigger_color(self, until_gone: bool, point):
+        """Liefert (pixel, color, until_gone) für einen color|colorgone-Trigger.
+
+        Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
+        Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
+        live an der Mausposition abgegriffen. Override später per 'recolor <Nr>'.
+        """
+        if point.color:
+            print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "
+                  f"{hint('(mit recolor <Nr> änderbar)')}")
+            return (point.x, point.y), point.color, until_gone
+        px, py, color = capture_pixel_color()
+        if color:
+            return (px, py), color, until_gone
+        return None, None, until_gone
+
+    def _parse_point_options(self, main_parts: list[str], point):
         """Parst die Optionen nach der Punkt-ID. Returns (wait_condition, delay, delay_max).
 
         Bei Parse-Fehler: (False, 0, None) — der Caller bricht ab, Fehler ist
@@ -601,14 +1133,17 @@ class _PhaseEditor:
         if len(main_parts) > 1:
             arg = main_parts[1].lower()
 
-            if arg in ("pixel", "gone"):
-                # <Nr> pixel / <Nr> gone
-                px, py, color = capture_pixel_color()
-                if color:
-                    wait_pixel = (px, py)
-                    wait_color = color
-                    if arg == "gone":
-                        wait_until_gone = True
+            if arg in _WAIT_POINT_TRIGGER_ALIASES:
+                # <Nr> color / <Nr> colorgone
+                wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
+                wait_pixel, wait_color, _ = \
+                    self._resolve_trigger_color(wait_until_gone, point)
+                if wait_color is None:
+                    # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
+                    # nicht erstellt werden. Lieber abbrechen als kommentarlos
+                    # einen normalen Klick anzulegen.
+                    print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
+                    return False, 0, None
             elif "-" in arg:
                 # <Nr> <Min>-<Max>
                 range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
@@ -626,16 +1161,16 @@ class _PhaseEditor:
                     return False, 0, None
                 delay = delay_val
 
-                # Optional: <Nr> <Zeit> pixel/gone
+                # Optional: <Nr> <Zeit> color/colorgone
                 if len(main_parts) > 2:
                     opt = main_parts[2].lower()
-                    if opt in ("pixel", "gone"):
-                        px, py, color = capture_pixel_color()
-                        if color:
-                            wait_pixel = (px, py)
-                            wait_color = color
-                            if opt == "gone":
-                                wait_until_gone = True
+                    if opt in _WAIT_POINT_TRIGGER_ALIASES:
+                        opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
+                        wait_pixel, wait_color, wait_until_gone = \
+                            self._resolve_trigger_color(opt_until_gone, point)
+                        if wait_color is None:
+                            print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
+                            return False, 0, None
 
         wait_cond = None
         if wait_pixel and wait_color:

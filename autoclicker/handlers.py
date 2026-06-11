@@ -3,7 +3,10 @@ Hotkey-Handler für den Autoclicker.
 Verarbeitet Tastenkombinationen und führt entsprechende Aktionen aus.
 """
 
+import os
 import shutil
+import stat
+import sys
 import threading
 import time
 from datetime import datetime
@@ -12,42 +15,88 @@ from pathlib import Path
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg
-from .winapi import get_cursor_pos, set_cursor_pos, user32
+from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_data, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
-    ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, init_directories
+    ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
+    init_directories
 )
 from .execution import sequence_worker, print_status
+from .runtime.actions import is_verbose_debug
 from .imaging import run_color_analyzer
+
+
+def _rmtree_robust(path: Path) -> None:
+    """Löscht einen Ordner rekursiv, behandelt Windows-Schreibschutz.
+
+    Auf Windows schlägt shutil.rmtree mit PermissionError (WinError 5) fehl, wenn
+    eine Datei das Read-only-Attribut trägt. Der Error-Handler entfernt das Flag
+    und versucht die Operation erneut, statt den Factory-Reset mittendrin abzubrechen.
+    """
+    def _on_error(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    # onerror ist seit Python 3.12 zugunsten von onexc deprecated (gleiche 3 Args).
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_on_error)
+    else:
+        shutil.rmtree(path, onerror=_on_error)
+
+
+# Serialisiert den gesamten Start/Stop-Pfad von handle_toggle, damit Countdown-Thread
+# und Main-Thread nicht gleichzeitig den is_running-Check passieren und doppelt starten.
+_toggle_lock = threading.Lock()
+
+
+def _block_if_recording(state: AutoClickerState) -> bool:
+    """Blockiert Handler mit Konsolen-Eingaben während einer laufenden Aufnahme.
+
+    Der Low-Level-Maus-Hook braucht die Message-Pump des Main-Threads — blockierende
+    Editoren würden den Hook still entfernen und Klicks gingen verloren.
+    Gibt True zurück, wenn der Handler abbrechen soll.
+    """
+    with state.lock:
+        recording = state.recording_active
+    if recording:
+        print(f"\n{err('Aufnahme läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
+        return True
+    return False
 
 
 def handle_record(state: AutoClickerState) -> None:
     """Nimmt die aktuelle Mausposition auf - sofort ohne Eingabe."""
     x, y = get_cursor_pos()
+    color = get_screen_pixel(x, y)  # Farbe am Aufnahme-Zeitpunkt mitspeichern
 
     with state.lock:
         new_id = get_next_point_id(state)
         name = f"P{new_id}"
-        point = ClickPoint(x, y, name, new_id)
+        point = ClickPoint(x, y, name, new_id, color=color)
         state.points.append(point)
 
     # Auto-speichern
     save_data(state)
 
-    print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}")
+    color_str = f"  RGB{color}" if color else ""
+    print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
     print_status(state)
 
 
 def handle_undo(state: AutoClickerState) -> None:
     """Entfernt den letzten Punkt."""
     with state.lock:
-        if state.points:
-            removed = state.points.pop()
-            print(f"\n{col('[UNDO]', 'yellow')} Punkt entfernt: {removed}")
-            save_data(state)
-        else:
-            print(f"\n{col('[UNDO]', 'yellow')} Keine Punkte zum Entfernen.")
+        removed = state.points.pop() if state.points else None
+
+    if removed is not None:
+        print(f"\n{col('[UNDO]', 'yellow')} Punkt entfernt: {removed}")
+        save_data(state)
+    else:
+        print(f"\n{col('[UNDO]', 'yellow')} Keine Punkte zum Entfernen.")
     print_status(state)
 
 
@@ -73,18 +122,30 @@ def handle_clear(state: AutoClickerState) -> None:
 
 def handle_reset(state: AutoClickerState) -> None:
     """Löscht ALLES - kompletter Factory Reset wie frisch von GitHub."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
             return
 
+    with state.lock:
+        num_points = len(state.points)
+        num_slots = len(state.global_slots)
+        num_items = len(state.global_items)
+        num_item_scans = len(state.item_scans)
+        num_boss_scans = len(state.boss_scans)
+        num_icon_scans = len(state.icon_scans)
+
     print(header("FACTORY RESET - ALLES WIRD GELÖSCHT!"))
     print(f"\n{col('Folgendes wird gelöscht:', 'red')}")
-    print(f"  {col('-', 'red')} {len(state.points)} Punkt(e)")
+    print(f"  {col('-', 'red')} {num_points} Punkt(e)")
     print(f"  {col('-', 'red')} {len(list_available_sequences())} Sequenz-Datei(en)")
-    print(f"  {col('-', 'red')} {len(state.global_slots)} Slot(s)")
-    print(f"  {col('-', 'red')} {len(state.global_items)} Item(s)")
-    print(f"  {col('-', 'red')} {len(state.item_scans)} Item-Scan(s)")
+    print(f"  {col('-', 'red')} {num_slots} Slot(s)")
+    print(f"  {col('-', 'red')} {num_items} Item(s)")
+    print(f"  {col('-', 'red')} {num_item_scans} Item-Scan(s)")
+    print(f"  {col('-', 'red')} {num_boss_scans} Boss-Scan(s)")
+    print(f"  {col('-', 'red')} {num_icon_scans} Icon-Scan(s)")
     print(f"  {col('-', 'red')} Config-Einstellungen")
     print(f"\n{col('Das Programm wird danach wie frisch von GitHub sein!', 'yellow')}")
     print(f"\nBist du sicher? Tippe {col('JA', 'red')} zum Bestätigen:")
@@ -103,13 +164,16 @@ def handle_reset(state: AutoClickerState) -> None:
             state.global_slots.clear()
             state.global_items.clear()
             state.item_scans.clear()
+            state.boss_scans.clear()
+            state.icon_scans.clear()
 
         # Alle Ordner löschen
-        folders_to_delete = [SEQUENCES_DIR, ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR]
+        folders_to_delete = [SEQUENCES_DIR, ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR,
+                             BOSS_SCANS_DIR, ICON_SCANS_DIR]
         for folder in folders_to_delete:
             folder_path = Path(folder)
             if folder_path.exists():
-                shutil.rmtree(folder_path)
+                _rmtree_robust(folder_path)
                 print(f"  {col('-', 'red')} {folder}/ {col('gelöscht', 'red')}")
 
         # Config löschen
@@ -136,6 +200,8 @@ def handle_reset(state: AutoClickerState) -> None:
 
 def handle_editor(state: AutoClickerState) -> None:
     """Öffnet den Sequenz-Editor."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -146,6 +212,8 @@ def handle_editor(state: AutoClickerState) -> None:
 
 def handle_item_scan_editor(state: AutoClickerState) -> None:
     """Öffnet das Item-Scan Menü (Slots, Items, Scans)."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -156,6 +224,8 @@ def handle_item_scan_editor(state: AutoClickerState) -> None:
 
 def handle_load(state: AutoClickerState) -> None:
     """Lädt eine Sequenz."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -263,42 +333,52 @@ def handle_finish(state: AutoClickerState) -> None:
 
 def handle_toggle(state: AutoClickerState) -> None:
     """Startet oder stoppt die Sequenz."""
-    # Prüfe ob Countdown aktiv → nur abbrechen, nicht starten
-    with state.lock:
-        if state.countdown_active:
-            state.stop_event.set()
-            print(f"\n{col('[TOGGLE]', 'yellow')} Countdown abgebrochen.")
-            return
+    # _toggle_lock serialisiert den gesamten Start/Stop-Pfad, damit Countdown-Thread
+    # und Main-Thread nicht beide den is_running-Check passieren und doppelt starten.
+    with _toggle_lock:
+        # Während einer laufenden Aufnahme nicht starten — sonst zeichnet der
+        # Maus-Hook die synthetischen Klicks des Workers mit auf.
+        with state.lock:
+            if state.recording_active:
+                print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+J zum Stoppen)')}")
+                return
 
-    # Prüfe ob bereits läuft → stoppen
-    with state.lock:
-        if state.is_running:
-            state.stop_event.set()
-            print(f"\n{col('[TOGGLE]', 'yellow')} Stoppe Sequenz...")
-            return
+        # Prüfe ob Countdown aktiv → nur abbrechen, nicht starten
+        with state.lock:
+            if state.countdown_active:
+                state.stop_event.set()
+                print(f"\n{col('[TOGGLE]', 'yellow')} Countdown abgebrochen.")
+                return
 
-    # Keine Sequenz geladen → automatisch Lade-Menü öffnen
-    with state.lock:
-        has_sequence = state.active_sequence is not None
-    if not has_sequence:
-        print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
-        from .editors.sequence_editor import run_sequence_loader
-        run_sequence_loader(state)
-        # Nach dem Laden prüfen ob jetzt eine Sequenz da ist
+        # Prüfe ob bereits läuft → stoppen
+        with state.lock:
+            if state.is_running:
+                state.stop_event.set()
+                print(f"\n{col('[TOGGLE]', 'yellow')} Stoppe Sequenz...")
+                return
+
+        # Keine Sequenz geladen → automatisch Lade-Menü öffnen
         with state.lock:
             has_sequence = state.active_sequence is not None
         if not has_sequence:
-            return  # Nichts geladen
+            print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
+            from .editors.sequence_editor import run_sequence_loader
+            run_sequence_loader(state)
+            # Nach dem Laden prüfen ob jetzt eine Sequenz da ist
+            with state.lock:
+                has_sequence = state.active_sequence is not None
+            if not has_sequence:
+                return  # Nichts geladen
 
-    # Jetzt starten
-    with state.lock:
-        state.is_running = True
-        state.stop_event.clear()
-        state.pause_event.clear()
-        state.skip_event.clear()
+        # Jetzt starten
+        with state.lock:
+            state.is_running = True
+            state.stop_event.clear()
+            state.pause_event.clear()
+            state.skip_event.clear()
 
-        worker = threading.Thread(target=sequence_worker, args=(state,), daemon=True)
-        worker.start()
+            worker = threading.Thread(target=sequence_worker, args=(state,), daemon=True)
+            worker.start()
 
 
 def handle_pause(state: AutoClickerState) -> None:
@@ -329,6 +409,8 @@ def handle_skip(state: AutoClickerState) -> None:
 
 def handle_switch(state: AutoClickerState) -> None:
     """Schneller Wechsel zwischen gespeicherten Sequenzen."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -366,9 +448,14 @@ def handle_switch(state: AutoClickerState) -> None:
 
 def handle_schedule(state: AutoClickerState) -> None:
     """Plant den Start einer Sequenz zu einem bestimmten Zeitpunkt."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+        if state.countdown_active:
+            print(f"\n{err('Es läuft bereits ein Countdown')} {hint('(CTRL+ALT+S zum Abbrechen)')}")
             return
 
     # Keine Sequenz geladen → automatisch Lade-Menü öffnen
@@ -408,7 +495,7 @@ def handle_schedule(state: AutoClickerState) -> None:
         seconds, desc, target_timestamp = parse_time_input(time_input)
 
         # Debug: Zeige was geparst wurde
-        if state.config.debug_mode:
+        if is_verbose_debug(state):
             print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', target_timestamp={target_timestamp}"))
 
         if seconds < 0:
@@ -480,7 +567,8 @@ def handle_schedule(state: AutoClickerState) -> None:
                 # Zeit erreicht - starte Sequenz
                 print(f"\n{col('[START]', 'green')} Zeit erreicht - starte Sequenz!")
                 state.stop_event.clear()  # Reset falls gesetzt
-                state.scheduled_start = True  # Überspringt Debug-Enter-Prompt
+                with state.lock:
+                    state.scheduled_start = True  # Überspringt Debug-Enter-Prompt
             finally:
                 with state.lock:
                     state.countdown_active = False
@@ -502,6 +590,8 @@ def handle_schedule(state: AutoClickerState) -> None:
 
 def handle_analyze(state: AutoClickerState) -> None:
     """Startet den Farb-Analysator."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -511,6 +601,8 @@ def handle_analyze(state: AutoClickerState) -> None:
 
 def handle_import_export(state: AutoClickerState) -> None:
     """Öffnet den Import/Export-Editor."""
+    if _block_if_recording(state):
+        return
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
@@ -519,9 +611,84 @@ def handle_import_export(state: AutoClickerState) -> None:
     run_import_export_editor(state)
 
 
+def handle_record_sequence(state: AutoClickerState) -> None:
+    """Startet oder stoppt die Sequenz-Aufnahme via Maus-Hook."""
+    from .editors.sequence_recorder import handle_record_sequence as _rec
+    _rec(state)
+
+
+def handle_record_pause(state: AutoClickerState) -> None:
+    """Pausiert/Setzt die laufende Sequenz-Aufnahme fort."""
+    from .editors.sequence_recorder import handle_record_pause as _pause
+    _pause(state)
+
+
+def handle_node_editor(state: AutoClickerState) -> None:
+    """Öffnet den visuellen Node-Editor als separaten Subprocess.
+
+    Der Editor läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
+    nicht mit der Hotkey-Message-Pump kollidiert. Er bearbeitet die aktive Sequenz
+    direkt auf Disk; nach dem Speichern mit CTRL+ALT+L neu laden.
+    """
+    import subprocess
+
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+        seq_name = state.active_sequence.name if state.active_sequence else ""
+
+    args = [sys.executable, "-m", "autoclicker.node_editor"]
+    if seq_name:
+        args.append(seq_name)
+
+    try:
+        subprocess.Popen(args)
+    except OSError as e:
+        print(f"\n{err(f'Konnte Node-Editor nicht starten: {e}')}")
+        return
+
+    target = f"'{seq_name}'" if seq_name else "neue Sequenz"
+    print(f"\n{col('[NODE-EDITOR]', 'cyan')} Visueller Editor geöffnet ({target}).")
+    print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
+
+
+def handle_scan_studio(state: AutoClickerState) -> None:
+    """Öffnet das visuelle Scan-Studio als separaten Subprocess.
+
+    Nimmt einen Screenshot auf und lässt Slots (perspektivisch auch Items/Scans)
+    direkt darauf anlegen. Bearbeitet slots/slots.json auf Disk — dieselbe Datei
+    wie der Konsolen-Slot-Editor; danach im Hauptprozess Item-Scan-Menü neu
+    aufrufen, um die geänderten Slots zu sehen.
+    """
+    import subprocess
+
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+
+    try:
+        subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])
+    except OSError as e:
+        print(f"\n{err(f'Konnte Scan-Studio nicht starten: {e}')}")
+        return
+
+    print(f"\n{col('[SCAN-STUDIO]', 'cyan')} Visuelles Scan-Studio geöffnet.")
+    print(f"     Slots werden in {col('slots/slots.json', 'yellow')} gespeichert.")
+
+
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
+
+    # Falls noch eine Aufnahme läuft, den Maus-Hook sauber entfernen.
+    with state.lock:
+        was_recording = state.recording_active
+        state.recording_active = False
+    if was_recording:
+        from .winapi import remove_mouse_hook
+        remove_mouse_hook()
 
     state.stop_event.set()
     state.quit_event.set()

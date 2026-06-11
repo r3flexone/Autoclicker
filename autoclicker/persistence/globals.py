@@ -39,17 +39,22 @@ def load_global_slots(state: AutoClickerState) -> None:
     try:
         with open(SLOTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
+        # Per-Eintrag absichern — ein einzelner kaputter Slot soll nicht das
+        # Laden aller restlichen verhindern.
         for name, s in data.items():
-            slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-            state.global_slots[name] = ItemSlot(
-                name=s["name"],
-                scan_region=tuple(s["scan_region"]),
-                click_pos=tuple(s["click_pos"]),
-                slot_color=slot_color
-            )
+            try:
+                slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
+                state.global_slots[name] = ItemSlot(
+                    name=s["name"],
+                    scan_region=tuple(s["scan_region"]),
+                    click_pos=tuple(s["click_pos"]),
+                    slot_color=slot_color
+                )
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"Slot '{name}' übersprungen (ungültig): {e}")
         if state.global_slots:
             print(load_tag(f"{len(state.global_slots)} Slot(s) geladen"))
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Slots laden fehlgeschlagen: {e}")
 
 
@@ -77,11 +82,16 @@ def load_global_items(state: AutoClickerState) -> None:
     try:
         with open(ITEMS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
+        # Per-Eintrag absichern — ein einzelnes kaputtes Item soll nicht das
+        # Laden aller restlichen verhindern.
         for name, i in data.items():
-            state.global_items[name] = _item_from_dict(i)
+            try:
+                state.global_items[name] = _item_from_dict(i)
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"Item '{name}' übersprungen (ungültig): {e}")
         if state.global_items:
             print(load_tag(f"{len(state.global_items)} Item(s) geladen"))
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Items laden fehlgeschlagen: {e}")
 
 

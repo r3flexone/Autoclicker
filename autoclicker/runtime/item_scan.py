@@ -152,7 +152,12 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     _park_mouse_for_scan(state.config.scan_park_mouse)
 
     for idx, slot in enumerate(slots_to_scan):
-        if state.stop_event.is_set() or state.skip_event.is_set():
+        if state.stop_event.is_set():
+            break
+        if state.skip_event.is_set():
+            # Skip konsumieren — sonst überspringt ein Skip zwei Dinge
+            # (diesen Scan und den nächsten skip-fähigen Schritt).
+            state.skip_event.clear()
             break
 
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):

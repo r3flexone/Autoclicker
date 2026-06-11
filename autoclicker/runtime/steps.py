@@ -24,7 +24,7 @@ from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..utils import clear_line, wait_while_paused, col, err, info, dbg
 from ..winapi import check_failsafe, set_cursor_pos
 from .actions import (
-    safe_click, safe_key, _step_status, _phase_color,
+    safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, execute_else_action,
 )
 from .boss_detection import (
@@ -41,7 +41,7 @@ from .item_scan import execute_item_scan, _click_scan_result, execute_icon_scan
 def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Item-Scan Schritt aus."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
     mode = step.item_scan_mode
     mode_str = "alle" if mode == SCAN_MODE_ALL else "bestes"
     immediate = state.config.scan_click_immediate
@@ -92,17 +92,27 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         slots = list(reversed(slots))
 
     # clicked_categories VOR dem Loop sichern, damit Klicks innerhalb
-    # dieses Scan-Schritts sich nicht gegenseitig ausfiltern
+    # dieses Scan-Schritts sich nicht gegenseitig ausfiltern. Jeder Slot scannt
+    # gegen denselben Pre-Step-Stand (saved_categories) — aber die in diesem Step
+    # tatsächlich geklickten Kategorien werden gesammelt und am Ende mit dem
+    # globalen Dict GEMERGT, statt bei jedem Slot überschrieben (sonst gingen
+    # Klicks früherer Slots verloren).
     with state.lock:
         saved_categories = dict(state.clicked_categories)
 
+    step_clicked: dict[str, int] = {}
     total_clicked = 0
     for slot in slots:
         if state.stop_event.is_set():
             return False
 
+        # Baseline für diesen Slot: Pre-Step-Stand + bereits in diesem Step geklickte
         with state.lock:
-            state.clicked_categories = dict(saved_categories)
+            merged = dict(saved_categories)
+            for cat, prio in step_clicked.items():
+                if cat not in merged or prio < merged[cat]:
+                    merged[cat] = prio
+            state.clicked_categories = merged
 
         results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot])
 
@@ -113,6 +123,20 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                 if not _click_scan_result(state, pos, item, priority, debug):
                     return False
                 total_clicked += 1
+
+        # Was in diesem Slot zusätzlich geklickt wurde, in den Step-Akkumulator übernehmen
+        with state.lock:
+            for cat, prio in state.clicked_categories.items():
+                if cat not in step_clicked or prio < step_clicked[cat]:
+                    step_clicked[cat] = prio
+
+    # Step-Ergebnisse final ins globale Dict mergen (nicht überschreiben)
+    with state.lock:
+        merged = dict(saved_categories)
+        for cat, prio in step_clicked.items():
+            if cat not in merged or prio < merged[cat]:
+                merged[cat] = prio
+        state.clicked_categories = merged
 
     if total_clicked > 0:
         _step_status(debug, phase, step_num, total_steps,
@@ -133,7 +157,7 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
 def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
 
     _warn_llm_config_inconsistencies(state, step.boss_scan)
 
@@ -199,7 +223,7 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
 def _execute_icon_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Icon-Scan Schritt aus: Icon erkennen → Aktion, sonst else/weiter."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
 
     _step_status(debug, phase, step_num, total_steps, f"Icon-Scan '{step.icon_scan}'...")
     found = execute_icon_scan(state, step.icon_scan)
@@ -242,7 +266,7 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     Der Watcher prüft periodisch die Boss-Region (Intervall aus config.llm_watcher_interval)
     und führt die dem Boss zugeordnete Aktion aus, sobald einer erkannt wird.
     """
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
 
     _warn_llm_config_inconsistencies(state, step.boss_watcher)
 
@@ -331,7 +355,7 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
 def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Tastendruck-Schritt aus."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
     actual_delay = step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
@@ -358,7 +382,7 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
 def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Wartet auf eine Farbe an einer Pixel-Position."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
     wc = step.wait_condition
     actual_delay = step.get_actual_delay()
     if actual_delay > 0:
@@ -379,6 +403,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     timeout = state.config.pixel_wait_timeout
     start_time = time.time()
     expected_name = get_color_name(wc.color)
+    # Verb je nach Trigger-Richtung: bis Farbe DA (auf) vs. bis Farbe WEG (bis ... weg ist)
+    wait_verb = "bis weg:" if wc.until_gone else "auf"
 
     while not state.stop_event.is_set():
         if state.skip_event.is_set():
@@ -411,8 +437,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                 break
 
             _step_status(debug, phase, step_num, total_steps,
-                         f"Warte auf {expected_name}... ({elapsed:.0f}s)",
-                         f"Warte auf {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
+                         f"Warte {wait_verb} {expected_name}... ({elapsed:.0f}s)",
+                         f"Warte {wait_verb} {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -441,10 +467,14 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
         consec = state.consecutive_timeouts
     clear_line()
     max_consec = state.config.pixel_max_consecutive_timeouts
+    # Meldung an Trigger-Richtung anpassen: bei until_gone wartet der Schritt
+    # darauf dass die Farbe VERSCHWINDET — "nicht erkannt" wäre dann irreführend.
+    wc = step.wait_condition
+    reason = "Farbe nicht verschwunden" if (wc and wc.until_gone) else "Farbe nicht erkannt"
     if max_consec > 0:
-        print(col(f"\n[TIMEOUT] Farbe nicht erkannt nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
+        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
     else:
-        print(col(f"\n[TIMEOUT] Farbe nicht erkannt nach {timeout}s!", "red"), end="", flush=True)
+        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s!", "red"), end="", flush=True)
 
     # Notbremse: Zu viele aufeinanderfolgende Timeouts
     if max_consec > 0 and consec >= max_consec:
@@ -488,7 +518,7 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
 def _execute_click(state: AutoClickerState, step: SequenceStep,
                    step_num: int, total_steps: int, phase: str) -> bool:
     """Führt den eigentlichen Klick aus."""
-    debug = state.config.debug_mode
+    debug = is_verbose_debug(state)
     clicks = state.config.click_per_point
     for _ in range(clicks):
         if state.stop_event.is_set():
@@ -502,16 +532,20 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
         if not safe_click(state, step.x, step.y, label=step.name or "step"):
             return False
 
+        # Inkrement + Max-Check atomar unter Lock (check-then-act ohne Lock wäre
+        # eine Race-Condition zwischen Worker und Async-LLM-Thread).
         with state.lock:
             state.total_clicks += 1
+            total_now = state.total_clicks
+            max_clicks = state.config.click_max_total
+            limit_reached = bool(max_clicks) and total_now >= max_clicks
 
         name = step.name or "Punkt"
         _step_status(debug, phase, step_num, total_steps,
-                     f"Klick! (Gesamt: {state.total_clicks})",
-                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {state.total_clicks}")
+                     f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {total_now}",
+                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}")
 
-        max_clicks = state.config.click_max_total
-        if max_clicks and state.total_clicks >= max_clicks:
+        if limit_reached:
             print(f"\n{info(f'Maximum von {max_clicks} Klicks erreicht.')}")
             state.stop_event.set()
             return False
@@ -567,7 +601,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         state.stop_event.set()
         return False
 
-    if state.config.debug_mode:
+    if is_verbose_debug(state):
         print(dbg(f"Step {step_num}: name='{step.name}', x={step.x}, y={step.y}"))
 
     if step.screenshot_only:
@@ -601,7 +635,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return False
 
     if step.wait_only:
-        debug_active = state.config.debug_mode or state.config.debug_detection
+        debug_active = is_verbose_debug(state)
         _step_status(debug_active, phase, step_num, total_steps, "Warten beendet (kein Klick)")
         return True
 

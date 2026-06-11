@@ -26,6 +26,7 @@ def run_import_export_editor(state: AutoClickerState) -> None:
         "Exportieren (alles)",
         "Exportieren (mit Auswahl)",
         "Importieren",
+        "Übersicht: gespeicherte Daten & Presets",
     ]
 
     choice = interactive_select(menu_options)
@@ -38,6 +39,66 @@ def run_import_export_editor(state: AutoClickerState) -> None:
         _run_export(state, select_parts=True)
     elif choice == 2:
         _run_import(state)
+    elif choice == 3:
+        _show_data_overview(state)
+
+
+# =============================================================================
+# ÜBERSICHT (gespeicherte Daten + Presets)
+# =============================================================================
+
+def _show_data_overview(state: AutoClickerState) -> None:
+    """Zeigt was aktuell im State liegt und welche Presets/Sequenzen verfügbar sind.
+
+    Hilft, vor einem Export zu sehen was mitgenommen wird und welche Presets es
+    überhaupt gibt (Slot-/Item-Presets liegen separat von den aktiven Daten).
+    """
+    from ..persistence import (
+        list_slot_presets, list_item_presets, list_available_sequences,
+        load_sequence_file,
+    )
+
+    print(header("ÜBERSICHT: GESPEICHERTE DATEN"))
+
+    with state.lock:
+        print(f"\n  {col('Aktiver State (wird beim Export mitgenommen):', 'bold')}")
+        print(f"    Punkte:      {len(state.points)}")
+        print(f"    Sequenzen:   {len(state.sequences)}")
+        print(f"    Slots:       {len(state.global_slots)}")
+        print(f"    Items:       {len(state.global_items)}")
+        print(f"    Item-Scans:  {len(state.item_scans)}")
+        print(f"    Boss-Scans:  {len(state.boss_scans)}")
+        print(f"    Icon-Scans:  {len(state.icon_scans)}")
+
+    # Gespeicherte Sequenzen (mit Beschreibung)
+    sequences = list_available_sequences()
+    print(f"\n  {col('Gespeicherte Sequenzen:', 'bold')} ({len(sequences)})")
+    if sequences:
+        for name, path in sequences:
+            seq = load_sequence_file(path)
+            desc = f" — {seq.description}" if seq and seq.description else ""
+            print(f"    {col('•', 'cyan')} {name}{col(desc, 'gray') if desc else ''}")
+    else:
+        print(f"    {info('(keine)')}")
+
+    # Slot-Presets
+    slot_presets = list_slot_presets()
+    print(f"\n  {col('Slot-Presets:', 'bold')} ({len(slot_presets)})")
+    if slot_presets:
+        for pname, _, count in slot_presets:
+            print(f"    {col('•', 'cyan')} {pname} ({count} Slots)")
+    else:
+        print(f"    {info('(keine)')}")
+
+    # Item-Presets
+    item_presets = list_item_presets()
+    print(f"\n  {col('Item-Presets:', 'bold')} ({len(item_presets)})")
+    if item_presets:
+        for pname, _, count in item_presets:
+            print(f"    {col('•', 'cyan')} {pname} ({count} Items)")
+    else:
+        print(f"    {info('(keine)')}")
+    print()
 
 
 # =============================================================================
@@ -279,6 +340,11 @@ def _run_import(state: AutoClickerState) -> None:
     if "sequences" in contents:
         seqs = contents["sequences"]
         print(f"    Sequenzen:   {len(seqs) if isinstance(seqs, list) else seqs}")
+        descriptions = manifest.get("sequence_descriptions", {})
+        if isinstance(seqs, list) and descriptions:
+            for sname in seqs:
+                if descriptions.get(sname):
+                    print(f"      - {col(sname, 'cyan')}: {descriptions[sname]}")
     if "slots" in contents:
         print(f"    Slots:       {contents['slots']}")
     if "items" in contents:

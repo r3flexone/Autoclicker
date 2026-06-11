@@ -47,7 +47,7 @@ from .presets import (
 from .sequences import (
     ensure_sequences_dir, save_sequence_file, load_sequence_file,
     list_available_sequences, save_data,
-    load_points, get_next_point_id, get_point_by_id, print_points,
+    load_points, save_points, get_next_point_id, get_point_by_id, print_points,
 )
 from .serialization import (
     _item_to_dict, _slot_to_dict, _item_from_dict,
@@ -68,7 +68,7 @@ __all__ = [
     # sequences
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
     'list_available_sequences', 'save_data',
-    'load_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
+    'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
     'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',

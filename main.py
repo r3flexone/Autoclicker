@@ -19,8 +19,9 @@ from autoclicker.winapi import (
     HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW,
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
-    HOTKEY_IMPORT_EXPORT,
-    register_hotkeys, unregister_hotkeys
+    HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
+    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP,
+    register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories,
@@ -34,7 +35,8 @@ from autoclicker.handlers import (
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
-    handle_import_export
+    handle_import_export, handle_record_sequence, handle_record_pause,
+    handle_node_editor, handle_scan_studio
 )
 
 
@@ -51,12 +53,16 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+A', 'yellow')}  Mausposition als Punkt speichern")
     print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen")
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
+    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klicks aufzeichnen → Sequenz erstellen)')}")
+    print(f"  {col('CTRL+ALT+H', 'yellow')}  Aufnahme pausieren/fortsetzen {hint('(während einer Aufnahme)')}")
     print()
 
     # Editoren (blau)
     print(col("Editoren:", 'blue'))
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
+    print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
@@ -75,6 +81,7 @@ def print_help() -> None:
 
     # System (rot)
     print(col("System:", 'red'))
+    print(f"  {col('CTRL+ALT+O', 'yellow')}  Diese Hilfe erneut anzeigen")
     print(f"  {col('CTRL+ALT+X', 'yellow')}  Factory Reset {hint('(Punkte + Sequenzen)')}")
     print(f"  {col('CTRL+ALT+Q', 'yellow')}  Programm beenden")
     print()
@@ -190,6 +197,11 @@ def main() -> int:
         HOTKEY_ANALYZE: handle_analyze,
         HOTKEY_FINISH: handle_finish,
         HOTKEY_IMPORT_EXPORT: handle_import_export,
+        HOTKEY_RECORD_SEQ: handle_record_sequence,
+        HOTKEY_RECORD_PAUSE: handle_record_pause,
+        HOTKEY_NODE_EDITOR: handle_node_editor,
+        HOTKEY_SCAN_STUDIO: handle_scan_studio,
+        HOTKEY_HELP: lambda _state: print_help(),
     }
 
     try:
@@ -204,6 +216,9 @@ def main() -> int:
                         break
                     elif hk_id in hotkey_handlers:
                         hotkey_handlers[hk_id](state)
+                        # Während ein blockierender Handler lief, aufgestaute
+                        # WM_HOTKEY-Messages verwerfen (sonst feuern sie als Burst).
+                        flush_hotkey_messages()
             else:
                 time.sleep(0.01)
 

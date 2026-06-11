@@ -188,6 +188,19 @@ def clear_line() -> None:
     print("\r" + " " * 80 + "\r", end="", flush=True)
 
 
+def set_console_title(text: str) -> None:
+    """Setzt den Titel des Konsolenfensters (nur Windows, nur ASCII).
+
+    Plattform-/Fehler-tolerant: windll wird NUR lazy im Funktionskörper
+    angefasst (dieses Modul wird auch auf Linux importiert). Fehler werden
+    stillschweigend verworfen — der Titel ist reines UX-Beiwerk.
+    """
+    try:
+        ctypes.windll.kernel32.SetConsoleTitleW(str(text))
+    except (AttributeError, OSError):
+        pass
+
+
 # =============================================================================
 # KONSOLEN-ERKENNUNG (beim Import einmalig ausgeführt)
 # =============================================================================

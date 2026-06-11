@@ -8,7 +8,9 @@ crash-sicher in eine Datei (Temp + os.replace) und wird von der Persistenz genut
 
 import json
 import os
+import stat
 import tempfile
+import time
 from pathlib import Path
 import re
 from datetime import datetime, timedelta
@@ -198,9 +200,18 @@ def sanitize_filename(name: str) -> str:
     name = name.replace(' ', '_')
     # Nur alphanumerische Zeichen, Unterstriche und Bindestriche erlauben
     name = re.sub(r'[^\w\-]', '', name)
+    name = name.lower()
+    # Leeres Ergebnis abfangen (z.B. Name bestand nur aus Sonderzeichen)
     if not name:
-        name = "unnamed"
-    return name.lower()
+        return "unbenannt"
+    # Windows-reservierte Gerätenamen dürfen nicht als Dateiname (auch mit
+    # Endung) verwendet werden — sonst schlägt das Erstellen/Öffnen fehl.
+    reserved = {"con", "prn", "aux", "nul"}
+    reserved |= {f"com{i}" for i in range(1, 10)}
+    reserved |= {f"lpt{i}" for i in range(1, 10)}
+    if name in reserved:
+        name = name + "_"
+    return name
 
 
 def compact_json(data: dict, indent: int = 2) -> str:
@@ -246,7 +257,26 @@ def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        # os.replace kann auf Windows mit PermissionError (WinError 5) fehlschlagen:
+        #  - persistent: die Ziel-Datei trägt das Read-only-Attribut → Flag entfernen
+        #  - transient: Virenscanner/Indexer/Editor sperrt Temp-/Zieldatei kurz → Retry
+        last_err = None
+        for attempt in range(5):
+            try:
+                os.replace(tmp, path)
+                last_err = None
+                break
+            except PermissionError as e:
+                last_err = e
+                # Read-only-Flag des Ziels entfernen (häufigste persistente Ursache).
+                try:
+                    if path.exists():
+                        os.chmod(path, stat.S_IWRITE)
+                except OSError:
+                    pass
+                time.sleep(0.1 * (attempt + 1))
+        if last_err is not None:
+            raise last_err
     except BaseException:
         try:
             os.unlink(tmp)

@@ -65,7 +65,7 @@ class AppConfig:
     llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
     llm_provider: str = "lmstudio"                   # "ollama" oder "lmstudio"
     llm_endpoint: Optional[str] = None              # API-URL (None = Standard-Port)
-    llm_model: str = "gemma3n:e4b"                  # Modell-Name (Standard: gemma3n:e4b)
+    llm_model: str = "google/gemma-4-12b-qat"       # Modell-Name (Standard: google/gemma-4-12b-qat)
     llm_timeout: int = 60                           # Timeout für LLM-Anfragen in Sekunden
     llm_retry_count: int = 2                        # Wiederholungen bei KEIN_BOSS (0 = kein Retry)
     llm_async: bool = False                         # Boss-Scan/Watcher im Hintergrund-Thread (Sequenz läuft parallel)
@@ -105,8 +105,8 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
-    debug_mode: bool = False                        # Zeigt Schritte VOR Start + wartet auf Enter
-    debug_detection: bool = False                   # Alle Ausgaben persistent (nicht überschrieben)
+    debug_mode: bool = False                        # Wie debug_detection, zusätzlich Sequenz-Vorschau + Enter vor Start
+    debug_detection: bool = False                   # Alle Schritt-Ausgaben persistent (nicht überschrieben) + Erkennungs-Details
     debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
@@ -237,6 +237,12 @@ class AppConfig:
         migrated = {}
         for k, v in data.items():
             new_key = cls._FIELD_MIGRATION.get(k, k)
+            # Migrierten Alt-Key nur übernehmen wenn der neue Key NICHT bereits
+            # (direkt oder durch eine frühere Migration) gesetzt ist — sonst
+            # hängt das Ergebnis von der dict-Reihenfolge ab und ein alter
+            # Default könnte einen aktuellen Nutzerwert überschreiben.
+            if new_key != k and (new_key in migrated or new_key in data):
+                continue
             migrated[new_key] = v
         valid_keys = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in migrated.items() if k in valid_keys}
@@ -253,25 +259,42 @@ def load_config() -> AppConfig:
 
     if config_path.exists():
         try:
+            # Nur das Lesen im with-Block — Handle MUSS geschlossen sein, bevor
+            # save_config() schreibt. Auf Windows scheitert os.replace sonst mit
+            # WinError 5, weil die Datei noch offen ist (open() setzt kein
+            # FILE_SHARE_DELETE). Auf POSIX ginge das Ersetzen offener Dateien.
             with open(config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-                config = AppConfig.from_dict(loaded)
 
-                # Prüfe ob neue Optionen hinzugefügt wurden
-                missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
-                if missing_keys:
-                    save_config(config)
-                    print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
-                else:
-                    print(col(f"[CONFIG] Geladen aus {CONFIG_FILE}", "green"))
-                return config
-        except (json.JSONDecodeError, IOError) as e:
+            # config.json muss ein Objekt sein — ein Top-Level-Array/Skalar
+            # würde sonst bei from_dict / loaded.keys() crashen und damit den
+            # gesamten App-Start (CONFIG = load_config() auf Modulebene) killen.
+            if not isinstance(loaded, dict):
+                raise ValueError(f"config.json ist kein Objekt (gefunden: {type(loaded).__name__})")
+
+            config = AppConfig.from_dict(loaded)
+
+            # Absoluten Pfad anzeigen: config.json wird relativ zum Arbeits-
+            # verzeichnis geladen. Wird die App aus einem anderen Ordner gestartet,
+            # greift eine andere Datei — der volle Pfad macht das sofort sichtbar.
+            abs_path = config_path.resolve()
+
+            # Prüfe ob neue Optionen hinzugefügt wurden
+            missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
+            if missing_keys:
+                save_config(config)
+                print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
+            else:
+                print(col(f"[CONFIG] Geladen aus {abs_path}", "green"))
+            return config
+        except (json.JSONDecodeError, IOError, OSError, TypeError, AttributeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"Config konnte nicht geladen werden: {e}"))
             print(col("[CONFIG] Verwende Standard-Konfiguration", "yellow"))
     else:
-        # Erstelle Standard-Config-Datei
+        # Erstelle Standard-Config-Datei. Absoluten Pfad zeigen, damit klar ist
+        # WO sie landet (= Arbeitsverzeichnis, evtl. nicht der Projektordner).
         save_config(AppConfig())
-        print(ok(f"Standard-Konfiguration erstellt: {CONFIG_FILE}"))
+        print(ok(f"Standard-Konfiguration erstellt: {config_path.resolve()}"))
 
     return AppConfig()
 

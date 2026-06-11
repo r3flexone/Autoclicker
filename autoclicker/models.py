@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .config import AppConfig, DEFAULT_MIN_CONFIDENCE
+from .config import AppConfig
+
+# Lokaler Fallback-Default für neue Profil-Instanzen — muss mit AppConfig.scan_min_confidence
+# übereinstimmen. Kein Import aus config, um den Zirkular-Import zu brechen:
+# config.py instanziiert AppConfig() auf Modulebene, dessen __post_init__ models.py importiert,
+# bevor DEFAULT_MIN_CONFIDENCE in config.py definiert wurde.
+_DEFAULT_MIN_CONFIDENCE: float = 0.8
 
 
 # =============================================================================
@@ -79,6 +85,11 @@ class ClickPoint:
     y: int
     name: str = ""  # Optionaler Name für den Punkt
     id: int = 0     # Stabile ID für Referenzierung (bleibt bei Umsortierung erhalten)
+    # Pixelfarbe an der Position zum Aufnahme-Zeitpunkt (r,g,b) oder None.
+    # Wird beim Erstellen eines Schritts aus diesem Punkt als recorded_color
+    # übernommen — zuverlässiger als ein Live-Abgriff im Editor, da das Spiel
+    # bei der Aufnahme im richtigen Zustand war.
+    color: Optional[tuple[int, int, int]] = None
 
     def __str__(self) -> str:
         if self.name:
@@ -134,6 +145,11 @@ class SequenceStep:
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
+    # Optional: Bei der Aufnahme erfasste Pixelfarbe am Klickpunkt (r,g,b).
+    # Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt, einen
+    # aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne
+    # die Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
+    recorded_color: Optional[tuple[int, int, int]] = None
 
     def __str__(self) -> str:
         else_str = self._else_str()
@@ -226,6 +242,10 @@ class Sequence:
     loop_phases: list[LoopPhase] = field(default_factory=list)     # Mehrere Loop-Phasen
     end_steps: list[SequenceStep] = field(default_factory=list)    # Einmalig nach allen Zyklen
     total_cycles: int = 1  # 0 = unendlich, >0 = wie oft alle Loops durchlaufen werden
+    # Freitext-Beschreibung (was macht die Sequenz?) — wird beim Laden/Listen und
+    # beim Export angezeigt, damit man/Empfänger weiß worum es geht. Reines
+    # Hilfsdatum, beeinflusst die Ausführung NICHT.
+    description: str = ""
 
     def __str__(self) -> str:
         init_count = len(self.init_steps)
@@ -263,7 +283,7 @@ class ItemProfile:
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
 
     def __str__(self) -> str:
         if self.template:
@@ -313,7 +333,7 @@ class BossProfile:
     name: str
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Farb-Marker
     template: Optional[str] = None              # Template-Bild (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
     # Aktion wenn dieser Boss erkannt wird:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
     action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
@@ -391,7 +411,7 @@ class IconScanConfig:
     name: str
     scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird
     template: Optional[str] = None                              # Template-Bild (in items/templates/)
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
+    min_confidence: float = _DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
     action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
@@ -471,6 +491,12 @@ class AutoClickerState:
     skip_cycle_event: threading.Event = field(default_factory=threading.Event)
     finish_event: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Eigener Lock NUR für Maus/Tastatur-Eingaben (SetCursorPos + SendInput).
+    # Garantiert echte Mutual-Exclusion zwischen Sequenz-Worker und dem
+    # asynchronen LLM-Boss-Thread — verhindert interleaved Klicks an falscher
+    # Position. WICHTIG: input_lock niemals nehmen während state.lock gehalten
+    # wird (Deadlock-Gefahr — strikte Lock-Reihenfolge).
+    input_lock: threading.Lock = field(default_factory=threading.Lock)
 
     # Flag für geplanten Start (überspringt Debug-Enter-Prompt)
     scheduled_start: bool = False
@@ -501,3 +527,11 @@ class AutoClickerState:
 
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
+
+    # Sequenz-Aufnahme (Maus-Hook)
+    recording_active: bool = False
+    # Pausiert die laufende Aufnahme: Klicks werden ignoriert, ohne die Aufnahme
+    # zu beenden (z.B. um im Spiel zu navigieren). Toggle via CTRL+ALT+H.
+    recording_paused: bool = False
+    # Jeder Eintrag: (monotonic_timestamp: float, x: int, y: int, color: tuple|None)
+    recording_events: list = field(default_factory=list)

@@ -125,7 +125,8 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "else_delay": ec.delay if ec else 0,
             "else_key": ec.key if ec else None, "else_name": ec.name if ec else "",
             "screenshot_only": s.screenshot_only,
-            "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None}
+            "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
+            "recorded_color": list(s.recorded_color) if s.recorded_color else None}
 
 
 def _sequence_to_dict(seq: Sequence) -> dict:
@@ -133,6 +134,7 @@ def _sequence_to_dict(seq: Sequence) -> dict:
     return {
         "name": seq.name,
         "total_cycles": seq.total_cycles,
+        **({"description": seq.description} if seq.description else {}),
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
             {
@@ -173,6 +175,9 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
                 pixel=wait_pixel, color=wait_color,
                 until_gone=s.get("wait_until_gone", False)
             )
+        # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
+        recorded_color_raw = s.get("recorded_color")
+        recorded_color = tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None
         # Screenshot-Region validieren (muss 4 Werte haben)
         screenshot_region_raw = s.get("screenshot_region")
         screenshot_region = None
@@ -185,11 +190,17 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         else_cfg = None
         else_action = s.get("else_action")
         if else_action:
+            # Gegen explizites null in der JSON absichern: .get(key, default)
+            # liefert bei "else_delay": null den Wert None (nicht den Default),
+            # und None > 0 / safe_click(None, None) würde später crashen.
+            else_x = s.get("else_x") if s.get("else_x") is not None else 0
+            else_y = s.get("else_y") if s.get("else_y") is not None else 0
+            else_delay = s.get("else_delay") if s.get("else_delay") is not None else 0
             else_cfg = ElseConfig(
                 action=else_action,
-                x=s.get("else_x", 0), y=s.get("else_y", 0),
-                delay=s.get("else_delay", 0),
-                key=s.get("else_key"), name=s.get("else_name", "")
+                x=else_x, y=else_y,
+                delay=else_delay,
+                key=s.get("else_key"), name=s.get("else_name") or ""
             )
         step = SequenceStep(
             x=s.get("x", 0),
@@ -208,6 +219,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,
+            recorded_color=recorded_color,
         )
         steps.append(step)
     return steps

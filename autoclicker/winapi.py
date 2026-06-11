@@ -54,6 +54,12 @@ VK_W = 0x57  # Quick-Switch (Wechseln)
 VK_Z = 0x5A  # Schedule (Zeitplan)
 VK_F = 0x46  # Finish (Zyklus abschließen)
 VK_I = 0x49  # Import/Export
+VK_R = 0x52  # (frei – früher Record, CTRL+ALT+R ist oft vom System belegt)
+VK_J = 0x4A  # Sequenz aufnehmen (Record – J weil R/CTRL+ALT belegt)
+VK_H = 0x48  # Aufnahme pausieren (Halt)
+VK_B = 0x42  # Visueller Node-Editor (Blöcke)
+VK_V = 0x56  # Visuelles Scan-Studio
+VK_O = 0x4F  # Hilfe anzeigen (Overview)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -73,9 +79,15 @@ HOTKEY_SWITCH = 14
 HOTKEY_SCHEDULE = 15
 HOTKEY_FINISH = 16
 HOTKEY_IMPORT_EXPORT = 17
+HOTKEY_RECORD_SEQ = 18
+HOTKEY_RECORD_PAUSE = 19
+HOTKEY_NODE_EDITOR = 20
+HOTKEY_SCAN_STUDIO = 21
+HOTKEY_HELP = 22
 
 # Window Messages
 WM_HOTKEY = 0x0312
+WM_LBUTTONDOWN = 0x0201
 
 # Mouse Input
 INPUT_MOUSE = 0
@@ -185,6 +197,114 @@ user32.PostThreadMessageW.restype = wintypes.BOOL
 
 kernel32 = ctypes.windll.kernel32
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+
+gdi32 = ctypes.windll.gdi32
+gdi32.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.GetPixel.restype = wintypes.COLORREF
+
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.GetDC.restype = wintypes.HDC
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+user32.ReleaseDC.restype = ctypes.c_int
+
+# Low-Level Mouse Hook
+_LRESULT = ctypes.c_ssize_t
+_HOOKPROC = ctypes.WINFUNCTYPE(_LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+user32.SetWindowsHookExW.argtypes = [ctypes.c_int, _HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+user32.SetWindowsHookExW.restype = wintypes.HHOOK
+user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+user32.CallNextHookEx.restype = _LRESULT
+
+WH_MOUSE_LL = 14
+
+
+class _POINT_LL(ctypes.Structure):
+    _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("pt", _POINT_LL),
+        ("mouseData", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
+_mouse_hook_handle = None
+_mouse_hook_proc = None  # Referenz halten, damit GC den Callback nicht räumt
+
+
+def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
+    """Liest die Pixelfarbe an einer Bildschirmposition.
+
+    Schneller GDI-Pfad (GetDC/GetPixel) zuerst — ideal in Aufnahme-Callbacks.
+    GetDC(None) ist aber am primären Monitor verankert; auf Mehrmonitor-Setups
+    mit Fenstern bei negativen/grossen Koordinaten liefert GetPixel dort
+    CLR_INVALID. In dem Fall Fallback auf den Pillow-Pfad (all_screens=True),
+    der den gesamten virtuellen Desktop abdeckt.
+    """
+    try:
+        hdc = user32.GetDC(None)
+        colorref = gdi32.GetPixel(hdc, x, y)
+        user32.ReleaseDC(None, hdc)
+        if colorref != 0xFFFFFFFF:  # nicht CLR_INVALID
+            return (colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF)
+    except (OSError, AttributeError):
+        pass
+    # Fallback: virtueller Desktop (zweiter Monitor, negative Koordinaten)
+    try:
+        from .imaging import get_pixel_color
+        return get_pixel_color(x, y)
+    except Exception:
+        return None
+
+
+def install_mouse_hook(on_lbutton_down) -> bool:
+    """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks.
+
+    on_lbutton_down(x, y, color) wird bei jedem Linksklick aufgerufen.
+    color ist ein (r,g,b)-Tupel oder None.
+    """
+    global _mouse_hook_handle, _mouse_hook_proc
+
+    if _mouse_hook_handle:
+        return True  # bereits installiert
+
+    def _hook_proc(nCode, wParam, lParam):
+        if nCode >= 0 and wParam == WM_LBUTTONDOWN:
+            info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            x, y = info.pt.x, info.pt.y
+            color = get_screen_pixel(x, y)
+            try:
+                on_lbutton_down(x, y, color)
+            except Exception:
+                pass
+        return user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+    _mouse_hook_proc = _HOOKPROC(_hook_proc)
+    h_module = kernel32.GetModuleHandleW(None)
+    handle = user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_hook_proc, h_module, 0)
+    if handle:
+        _mouse_hook_handle = handle
+        return True
+    _mouse_hook_proc = None
+    return False
+
+
+def remove_mouse_hook() -> None:
+    """Entfernt den installierten Maus-Hook."""
+    global _mouse_hook_handle, _mouse_hook_proc
+    if _mouse_hook_handle:
+        user32.UnhookWindowsHookEx(_mouse_hook_handle)
+        _mouse_hook_handle = None
+    _mouse_hook_proc = None
 
 
 # =============================================================================
@@ -372,7 +492,15 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_SCHEDULE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_Z, "CTRL+ALT+Z (Zeitplan)"),
     (HOTKEY_FINISH, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F, "CTRL+ALT+F (Sanft beenden)"),
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
+    (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_J, "CTRL+ALT+J (Sequenz aufnehmen)"),
+    (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
+    (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
+    (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
+    (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
 ]
+
+# Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 
 def register_hotkeys() -> bool:
@@ -380,9 +508,25 @@ def register_hotkeys() -> bool:
     success = True
     for hotkey_id, modifiers, vk, name in _HOTKEY_DEFINITIONS:
         if not user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
-            print(warn(f"Konnte Hotkey nicht registrieren: {name}"))
+            error_code = kernel32.GetLastError()
+            print(warn(f"Konnte Hotkey nicht registrieren: {name} (Fehlercode {error_code})"))
+            if error_code == ERROR_HOTKEY_ALREADY_REGISTERED:
+                combo = name.split(" ", 1)[0]
+                print(warn(f"  {combo}: Tastenkombination ist bereits von einem anderen Programm belegt."))
             success = False
     return success
+
+
+def flush_hotkey_messages() -> None:
+    """Verwirft alle aufgestauten WM_HOTKEY-Messages.
+
+    Während ein blockierender Editor läuft, sammeln sich WM_HOTKEY-Messages in
+    der Queue des Main-Threads an und feuern danach als Burst. Nach Rückkehr
+    aus einem Handler aufrufen, um diese veralteten Hotkey-Events zu verwerfen.
+    """
+    msg = wintypes.MSG()
+    while user32.PeekMessageW(ctypes.byref(msg), None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
+        pass
 
 
 def unregister_hotkeys() -> None:
