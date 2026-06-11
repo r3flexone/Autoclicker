@@ -23,6 +23,7 @@ from .persistence import (
     init_directories
 )
 from .execution import sequence_worker, print_status
+from .runtime.actions import is_verbose_debug
 from .imaging import run_color_analyzer
 
 
@@ -494,7 +495,7 @@ def handle_schedule(state: AutoClickerState) -> None:
         seconds, desc, target_timestamp = parse_time_input(time_input)
 
         # Debug: Zeige was geparst wurde
-        if state.config.debug_mode:
+        if is_verbose_debug(state):
             print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', target_timestamp={target_timestamp}"))
 
         if seconds < 0:

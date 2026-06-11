@@ -286,8 +286,6 @@ def load_config() -> AppConfig:
                 print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))
             else:
                 print(col(f"[CONFIG] Geladen aus {abs_path}", "green"))
-            if config.debug_mode:
-                print(col(f"[CONFIG] debug_mode=AN (Quelle: {abs_path})", "yellow"))
             return config
         except (json.JSONDecodeError, IOError, OSError, TypeError, AttributeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"Config konnte nicht geladen werden: {e}"))
