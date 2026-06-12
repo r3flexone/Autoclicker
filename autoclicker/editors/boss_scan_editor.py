@@ -15,7 +15,7 @@ from ..models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     SCAN_MODE_ALL,
 )
-from ..config import DEFAULT_MIN_CONFIDENCE
+from ..config import DEFAULT_MIN_CONFIDENCE, save_config
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, header, breadcrumb, suggest_command,
@@ -42,35 +42,45 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         print("         Installieren mit: pip install pillow")
         return
 
-    # Bestehende Boss-Scans laden
-    available_scans = list_available_boss_scans()
-    loaded_scans = []
-    with state.lock:
-        num_global = len(state.global_bosses)
-    menu_options = [
-        "Neuen Boss-Scan erstellen",
-        f"Boss-Bibliothek verwalten ({num_global} globale Bosse)",
-    ]
-    num_fixed = len(menu_options)
-    for name, path in available_scans:
-        config = load_boss_scan_file(path)
-        if config:
-            loaded_scans.append(config)
-            menu_options.append(str(config))
-        else:
-            print(warn(f"Boss-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
+    # Menü-Loop: nach jeder Aktion zurück ins Menü, ESC/cancel beendet
+    while True:
+        available_scans = list_available_boss_scans()
+        loaded_scans = []
+        with state.lock:
+            num_global = len(state.global_bosses)
+        learn_target = "Bibliothek (global)" if state.config.boss_learn_global else "jeweiliger Scan"
+        menu_options = [
+            "Neuen Boss-Scan erstellen",
+            f"Boss-Bibliothek verwalten ({num_global} globale Bosse)",
+            f"Auto-Lernen neuer Bosse → {learn_target} [umschalten]",
+        ]
+        num_fixed = len(menu_options)
+        for name, path in available_scans:
+            config = load_boss_scan_file(path)
+            if config:
+                loaded_scans.append(config)
+                menu_options.append(str(config))
+            else:
+                print(warn(f"Boss-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
-    choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
+        choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
-    if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
-        return
-    elif choice == 0:
-        edit_boss_scan(state, None)
-    elif choice == 1:
-        edit_global_bosses(state)
-    elif num_fixed <= choice < len(menu_options):
-        edit_boss_scan(state, loaded_scans[choice - num_fixed])
+        if choice == -1:
+            print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+            return
+        elif choice == 0:
+            edit_boss_scan(state, None)
+        elif choice == 1:
+            edit_global_bosses(state)
+        elif choice == 2:
+            state.config.boss_learn_global = not state.config.boss_learn_global
+            save_config(state.config)
+            if state.config.boss_learn_global:
+                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
+            else:
+                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
+        elif num_fixed <= choice < len(menu_options):
+            edit_boss_scan(state, loaded_scans[choice - num_fixed])
 
 
 def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossProfile] = None) -> Optional[dict]:

@@ -192,6 +192,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_slot_names = [s.name for s in existing.slots]
         selected_item_names = [i.name for i in existing.items]
         tolerance = existing.color_tolerance
+        learn_unknown = existing.learn_unknown
     else:
         print("\n--- Neuen Scan erstellen ---")
         scan_name = safe_input("Name des Scans: ").strip()
@@ -200,6 +201,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_slot_names = []
         selected_item_names = []
         tolerance = 40
+        learn_unknown = False
 
     # Schritt 1: Slots auswählen
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
@@ -514,6 +516,14 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     except ValueError:
         print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
 
+    # Schritt 4: Auto-Lernen (opt-in)
+    print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
+    print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
+    print("  globale Items (Kategorie 'Auto'). Diese werden NICHT geklickt —")
+    print("  Aktion/Kategorie ordnest du später im Item-Editor zu.")
+    print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
+    learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
+
     # Slots und Items aus globalen Definitionen holen
     with state.lock:
         slots = [state.global_slots[n] for n in selected_slot_names if n in state.global_slots]
@@ -524,7 +534,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         name=scan_name,
         slots=slots,
         items=items,
-        color_tolerance=tolerance
+        color_tolerance=tolerance,
+        learn_unknown=learn_unknown
     )
 
     with state.lock:

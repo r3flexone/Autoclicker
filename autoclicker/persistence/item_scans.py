@@ -29,6 +29,7 @@ def save_item_scan(config: ItemScanConfig) -> None:
     data = {
         "name": config.name,
         "color_tolerance": config.color_tolerance,
+        "learn_unknown": config.learn_unknown,
         "slots": [_slot_to_dict(slot) for slot in config.slots],
         "items": [_item_to_dict(item) for item in config.items]
     }
@@ -60,7 +61,8 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
             name=data["name"],
             slots=slots,
             items=items,
-            color_tolerance=data.get("color_tolerance", 40)
+            color_tolerance=data.get("color_tolerance", 40),
+            learn_unknown=data.get("learn_unknown", False)
         )
 
     except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:

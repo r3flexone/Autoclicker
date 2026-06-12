@@ -244,6 +244,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     scan_data = {
                         "name": config.name,
                         "color_tolerance": config.color_tolerance,
+                        "learn_unknown": config.learn_unknown,
                         "slots": [_slot_to_dict(s) for s in config.slots],
                         "items": [_item_to_dict(i) for i in config.items],
                     }
@@ -523,6 +524,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             name=scan_data["name"],
                             slots=slots, items=items,
                             color_tolerance=scan_data.get("color_tolerance", 40),
+                            learn_unknown=scan_data.get("learn_unknown", False),
                         )
                         with state.lock:
                             state.item_scans[config.name] = config

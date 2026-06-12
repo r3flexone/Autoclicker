@@ -9,12 +9,13 @@ deswegen lebt es hier (Item-Erkennung ist der Haupt-User).
 
 import ctypes
 import time
+from pathlib import Path
 
 from ..imaging import take_screenshot, find_color_in_image, match_template_in_image
 from ..models import (
-    AutoClickerState, SCAN_MODE_ALL, SCAN_MODE_EVERY,
+    AutoClickerState, ItemProfile, SCAN_MODE_ALL, SCAN_MODE_EVERY,
 )
-from ..utils import col, err, dbg, wait_while_paused
+from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
 from ..winapi import set_cursor_pos
 from .actions import safe_click
 
@@ -130,12 +131,13 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         if config is None:
             print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
             return []
-        if not config.slots or not config.items:
+        if not config.slots or (not config.items and not config.learn_unknown):
             print(err(f"Item-Scan '{scan_name}' hat keine Slots oder Items!"))
             return []
         slots_snapshot = list(config.slots)
         items_snapshot = list(config.items)
         color_tolerance = config.color_tolerance
+        learn_unknown = config.learn_unknown
 
     found_items = []
 
@@ -179,15 +181,87 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             size_info = f"{img.size[0]}x{img.size[1]}"
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
+        matched = False
         for item in items_snapshot:
             if _check_profile_match(item, img, color_tolerance, state, debug, "gefunden!"):
                 found_items.append((slot, item, item.priority))
+                matched = True
                 break
+
+        if not matched and learn_unknown:
+            _learn_unknown_slot_item(state, slot, img, debug)
 
     if not found_items:
         return []
 
     return _filter_scan_results(state, found_items, mode, debug)
+
+
+def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) -> None:
+    """Lernt einen unbekannten Slot-Inhalt als neues globales Item (opt-in).
+
+    Dedup per Template-Matching gegen alle globalen Items; Slots die nur die
+    Hintergrundfarbe zeigen gelten als leer und werden übersprungen. Neue Items
+    landen NUR in state.global_items (Kategorie 'Auto') — nicht in der
+    Scan-Config, damit sie nicht ungeprüft geklickt werden.
+    """
+    from ..imaging import OPENCV_AVAILABLE
+    if not OPENCV_AVAILABLE:
+        return
+    # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
+    # kein Import-Zyklus mit runtime/)
+    from ..editors.item_editor.markers import (
+        _collect_markers_silent, _find_matching_existing_item,
+    )
+    from ..persistence import save_global_items, TEMPLATES_DIR
+
+    # Leer-Check: ohne Nicht-Hintergrund-Farben ist der Slot vermutlich leer
+    marker_colors = _collect_markers_silent(img, slot.slot_color)
+    if slot.slot_color and not marker_colors:
+        if debug:
+            print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
+        return
+
+    # Dedup: schon als globales Item bekannt (z.B. in früherem Zyklus gelernt)?
+    with state.lock:
+        existing = [(n, it) for n, it in state.global_items.items() if it.template]
+    min_confidence = state.config.scan_min_confidence
+    known = _find_matching_existing_item(img, existing, min_confidence)
+    if known:
+        if debug:
+            print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
+        return
+
+    # Eindeutigen Namen vergeben + sofort reservieren (Worker/Editor-Race)
+    item = ItemProfile(
+        name="", marker_colors=marker_colors, category="Auto",
+        priority=99, template=None, min_confidence=min_confidence,
+    )
+    base = f"Auto {slot.name}"
+    with state.lock:
+        name = base
+        counter = 1
+        while name in state.global_items:
+            counter += 1
+            name = f"{base} {counter}"
+        item.name = name
+        state.global_items[name] = item
+
+    template_file = f"{sanitize_filename(name)}.png"
+    template_path = Path(TEMPLATES_DIR) / template_file
+    try:
+        template_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(template_path)
+        item.template = template_file
+    except (OSError, ValueError) as e:
+        with state.lock:
+            state.global_items.pop(name, None)
+        print(warn(f"Auto-Lernen: Template für '{name}' konnte nicht gespeichert werden: {e}"))
+        return
+
+    save_global_items(state)
+    print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} gespeichert "
+              f"(Kategorie 'Auto', wird nicht geklickt)", "green"))
 
 
 def _park_mouse_for_scan(park_pos) -> None:

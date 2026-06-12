@@ -323,9 +323,13 @@ class ItemScanConfig:
     slots: list[ItemSlot] = field(default_factory=list)      # Wo gescannt wird
     items: list[ItemProfile] = field(default_factory=list)   # Welche Items erkannt werden
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
+    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
+    # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
+    learn_unknown: bool = False
 
     def __str__(self) -> str:
-        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items)"
+        learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
+        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items){learn_str}"
 
 
 # =============================================================================
