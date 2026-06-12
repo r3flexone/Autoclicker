@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_data, ensure_sequences_dir, list_available_sequences,
@@ -250,14 +250,13 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
-    print(f"  {col('done / d', 'yellow')}    - Zurück")
-    print(f"  {col('Enter', 'yellow')}       - Zurück")
+    print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
 
     while True:
         try:
             user_input = safe_input("> ").strip()
-            if not user_input or user_input.lower() in ("done", "d"):
+            if not user_input or user_input.lower() in ("done", "d") or is_cancel(user_input):
                 print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
                 return
 
@@ -322,6 +321,8 @@ def handle_show(state: AutoClickerState) -> None:
                 print(f"{col('[TEST]', 'cyan')} Maus ist jetzt bei {point.name}. Neuer Name? (Enter = behalten)")
 
                 new_name = safe_input("> ").strip()
+                if is_cancel(new_name):  # ESC/q darf nicht zum Namen werden
+                    new_name = ""
                 if new_name:
                     with state.lock:
                         point.name = new_name
