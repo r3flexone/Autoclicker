@@ -13,7 +13,7 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict
 
 logger = logging.getLogger("autoclicker")
@@ -240,6 +240,7 @@ def print_points(state: AutoClickerState) -> None:
         print(f"\nGespeicherte Punkte ({len(state.points)}):")
         print("-" * 50)
         for p in state.points:
+            color_str = f"  {describe_color(p.color)}" if p.color else ""
             src = f"  [{p.source}]" if p.source else ""
-            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d}){src}")
+            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d}){color_str}{src}")
         print("-" * 50)

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ..models import AutoClickerState, Sequence, LoopPhase, SequenceStep, ClickPoint
 from ..winapi import install_mouse_hook, remove_mouse_hook
-from ..utils import safe_input, col, ok, err, is_cancel, hint, info
+from ..utils import safe_input, col, ok, err, is_cancel, hint, info, describe_color
 from ..persistence.sequences import (
     save_sequence_file, ensure_sequences_dir, save_points, get_next_point_id,
 )
@@ -35,7 +35,7 @@ def _on_click_factory(state: AutoClickerState):
                 return
             idx = len(state.recording_events) + 1
             state.recording_events.append((t, x, y, color))
-        color_str = f" RGB{color}" if color else ""
+        color_str = f" {describe_color(color)}" if color else ""
         print(f"  {col('[REC]', 'red')} #{idx} ({x}, {y}){color_str}")
     return _on_click
 
@@ -90,7 +90,7 @@ def stop_recording(state: AutoClickerState) -> None:
     print(f"\n{col('Aufgezeichnete Klicks:', 'bold')}")
     fast_clicks = 0
     for i, (t, x, y, color) in enumerate(events):
-        color_str = f"  RGB{color}" if color else ""
+        color_str = f"  {describe_color(color)}" if color else ""
         if i == 0:
             delay_str = "sofort"
         else:

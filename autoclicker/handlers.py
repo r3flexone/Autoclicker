@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_data, ensure_sequences_dir, list_available_sequences,
@@ -82,7 +82,7 @@ def handle_record(state: AutoClickerState) -> None:
     # Auto-speichern
     save_data(state)
 
-    color_str = f"  RGB{color}" if color else ""
+    color_str = f"  {describe_color(color)}" if color else ""
     print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
     print_status(state)
 
@@ -245,7 +245,8 @@ def handle_show(state: AutoClickerState) -> None:
 
     print(col("-" * 50, 'gray'))
     print(col("Optionen:", 'bold'))
-    print(f"  {col('<Nr>', 'yellow')}        - Punkt testen (Maus hinbewegen ohne Klick)")
+    print(f"  {col('<Nr>', 'yellow')}        - Punkt testen (Maus hinbewegen, dann Umbenennen-Abfrage)")
+    print(f"  {col('show <Nr>', 'yellow')}   - Punkt zeigen (Maus hinbewegen + Details, ohne Abfrage)")
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('done / d', 'yellow')}    - Zurück")
@@ -259,6 +260,27 @@ def handle_show(state: AutoClickerState) -> None:
                 return
             if user_input.lower() in ("done", "d"):
                 return
+
+            # Zeigen-Befehl: Maus hinbewegen + Details, ohne Umbenennen-Abfrage
+            if user_input.lower().startswith("show "):
+                try:
+                    show_id = int(user_input[5:])
+                except ValueError:
+                    print(err("Format: show <Nr>"))
+                    continue
+                with state.lock:
+                    point = get_point_by_id(state, show_id)
+                if not point:
+                    print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(Enter = Punkte anzeigen)')}")
+                    continue
+                set_cursor_pos(point.x, point.y)
+                print(f"{col('[SHOW]', 'cyan')} #{point.id} {point.name} {coord_context(point.x, point.y)}")
+                if point.color:
+                    print(f"       Farbe:    {describe_color(point.color)}")
+                if point.source:
+                    print(f"       Herkunft: {point.source}")
+                print(hint("       Maus steht jetzt auf dem Punkt."))
+                continue
 
             # Löschen-Befehl (per ID)
             if user_input.lower().startswith("del "):

@@ -27,8 +27,8 @@ from ...persistence import (
     get_next_point_id, get_point_by_id, save_data,
 )
 from ...utils import (
-    cancel_hint, cmd_hint, col, confirm, coord_context, hint, is_cancel,
-    ok, err, warn, safe_input, suggest_command,
+    cancel_hint, cmd_hint, col, confirm, coord_context, describe_color, hint,
+    is_cancel, ok, err, warn, safe_input, suggest_command,
     parse_non_negative_float, parse_non_negative_range,
 )
 from ...winapi import get_cursor_pos, VK_CODES
@@ -422,7 +422,8 @@ class _PhaseEditor:
             if self.state.points:
                 print("\n  Verfügbare Punkte:")
                 for p in self.state.points:
-                    print(f"    {p}")
+                    color_str = f"  {describe_color(p.color)}" if p.color else ""
+                    print(f"    {p}{color_str}")
             else:
                 print("  (Keine Punkte vorhanden)")
 

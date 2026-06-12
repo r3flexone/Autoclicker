@@ -12,7 +12,7 @@ weiterfunktionieren.
 """
 
 from .console import (
-    col, ok, err, warn, info, hint, dbg,
+    col, ok, err, warn, info, hint, dbg, describe_color,
     save_tag, load_tag, delete_tag,
     header, cmd_hint, breadcrumb,
     suggest_command, coord_context,
@@ -31,7 +31,7 @@ from .parsing import (
 
 __all__ = [
     # console
-    'col', 'ok', 'err', 'warn', 'info', 'hint', 'dbg',
+    'col', 'ok', 'err', 'warn', 'info', 'hint', 'dbg', 'describe_color',
     'save_tag', 'load_tag', 'delete_tag',
     'header', 'cmd_hint', 'breadcrumb',
     'suggest_command', 'coord_context',
