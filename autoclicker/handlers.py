@@ -249,6 +249,7 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('show <Nr>', 'yellow')}   - Punkt zeigen (Maus hinbewegen + Details, ohne Abfrage)")
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
+    print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück")
     print(f"  {col('Enter', 'yellow')}       - Zurück")
     print(col("-" * 50, 'gray'))
@@ -256,10 +257,13 @@ def handle_show(state: AutoClickerState) -> None:
     while True:
         try:
             user_input = safe_input("> ").strip()
-            if not user_input:
+            if not user_input or user_input.lower() in ("done", "d"):
+                print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
                 return
-            if user_input.lower() in ("done", "d"):
-                return
+
+            if user_input.lower() in ("list", "l"):
+                print_points(state)
+                continue
 
             # Zeigen-Befehl: Maus hinbewegen + Details, ohne Umbenennen-Abfrage
             if user_input.lower().startswith("show "):
@@ -271,7 +275,7 @@ def handle_show(state: AutoClickerState) -> None:
                 with state.lock:
                     point = get_point_by_id(state, show_id)
                 if not point:
-                    print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(Enter = Punkte anzeigen)')}")
+                    print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
                     continue
                 set_cursor_pos(point.x, point.y)
                 print(f"{col('[SHOW]', 'cyan')} #{point.id} {point.name} {coord_context(point.x, point.y)}")
@@ -289,7 +293,7 @@ def handle_show(state: AutoClickerState) -> None:
                     with state.lock:
                         point_to_del = get_point_by_id(state, del_id)
                         if not point_to_del:
-                            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(Enter = Punkte anzeigen)')}")
+                            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
                             continue
                         state.points.remove(point_to_del)
                         num_points = len(state.points)
@@ -337,6 +341,7 @@ def handle_show(state: AutoClickerState) -> None:
         except ValueError:
             print(f"{err('Ungültige Eingabe!')} {hint('(Zahl = testen, <Nr> <Name> = umbenennen, del <Nr> = löschen)')}")
         except (KeyboardInterrupt, EOFError):
+            print(f"\n{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
             return
 
 
