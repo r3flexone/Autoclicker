@@ -49,10 +49,14 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         if config is None:
             print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
             return False, None
-        if not config.bosses:
-            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert!"))
+        # Lokale Bosse + globale Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
+        local_names = {b.name for b in config.bosses}
+        bosses_snapshot = list(config.bosses) + [
+            b for b in state.global_bosses if b.name not in local_names
+        ]
+        if not bosses_snapshot:
+            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine globalen)!"))
             return False, None
-        bosses_snapshot = list(config.bosses)
         color_tolerance = config.color_tolerance
         scan_region = config.scan_region
         # Erkennungs-Flags im selben Lock-Snapshot einfrieren — sonst kann ein

@@ -463,6 +463,10 @@ class AutoClickerState:
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
 
+    # Globale Boss-Bibliothek: gilt zusätzlich in JEDEM Boss-Scan.
+    # Lokale Bosse eines Scans haben bei Namensgleichheit Vorrang.
+    global_bosses: list[BossProfile] = field(default_factory=list)
+
     # Icon-Scan Konfigurationen (Symbol/Icon erkennen → Aktion)
     icon_scans: dict[str, IconScanConfig] = field(default_factory=dict)
 

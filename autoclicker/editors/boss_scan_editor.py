@@ -27,7 +27,7 @@ from ..imaging import (
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, TEMPLATES_DIR,
+    list_available_item_scans, TEMPLATES_DIR, save_global_bosses,
 )
 from ._detection_capture import capture_markers
 
@@ -45,7 +45,13 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
     # Bestehende Boss-Scans laden
     available_scans = list_available_boss_scans()
     loaded_scans = []
-    menu_options = ["Neuen Boss-Scan erstellen"]
+    with state.lock:
+        num_global = len(state.global_bosses)
+    menu_options = [
+        "Neuen Boss-Scan erstellen",
+        f"Boss-Bibliothek verwalten ({num_global} globale Bosse)",
+    ]
+    num_fixed = len(menu_options)
     for name, path in available_scans:
         config = load_boss_scan_file(path)
         if config:
@@ -61,8 +67,10 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         return
     elif choice == 0:
         edit_boss_scan(state, None)
-    elif 1 <= choice < len(menu_options):
-        edit_boss_scan(state, loaded_scans[choice - 1])
+    elif choice == 1:
+        edit_global_bosses(state)
+    elif num_fixed <= choice < len(menu_options):
+        edit_boss_scan(state, loaded_scans[choice - num_fixed])
 
 
 def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossProfile] = None) -> Optional[dict]:
@@ -268,6 +276,99 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
     )
 
 
+def _edit_boss_list(state: AutoClickerState, bosses: list, allow_empty: bool) -> bool:
+    """Interaktiver add/edit/del-Loop für eine BossProfile-Liste (mutiert in-place).
+
+    allow_empty: 'done' mit leerer Liste zulassen (Bibliothek / Scan mit
+    globalen Bossen) oder nicht.
+
+    Returns:
+        True bei 'done', False bei Abbruch (cancel/ESC/Strg+C).
+    """
+    if bosses:
+        print("\nAktuelle Bosse:")
+        for i, boss in enumerate(bosses):
+            print(f"  [{i+1}] {boss}")
+
+    boss_help = ("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', "
+                 "'show / s', 'help / ?', 'done / d', 'cancel'")
+    print(boss_help)
+
+    while True:
+        try:
+            inp = safe_input("[Bosse] > ").strip().lower()
+
+            if inp in ("done", "d"):
+                if not bosses and not allow_empty:
+                    print("  " + err("Mindestens 1 Boss erforderlich!") + " "
+                          + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
+                    continue
+                return True
+            elif is_cancel(inp):
+                return False
+            elif inp in ("help", "?"):
+                print(boss_help)
+            elif inp == "add":
+                boss = _add_or_edit_boss(state)
+                if boss:
+                    bosses.append(boss)
+                    print(f"  + Boss '{boss.name}' hinzugefügt")
+                    print(f"    {boss}")
+            elif inp.startswith("edit "):
+                try:
+                    num = int(inp[5:])
+                    if 1 <= num <= len(bosses):
+                        boss = _add_or_edit_boss(state, bosses[num - 1])
+                        if boss:
+                            bosses[num - 1] = boss
+                            print(f"  ~ Boss '{boss.name}' aktualisiert")
+                    else:
+                        print(f"  → Ungültig! 1-{len(bosses)}")
+                except ValueError:
+                    print("  → Format: edit <Nr>")
+            elif inp.startswith("del "):
+                try:
+                    num = int(inp[4:])
+                    if 1 <= num <= len(bosses):
+                        removed = bosses.pop(num - 1)
+                        print(f"  - Boss '{removed.name}' entfernt")
+                    else:
+                        print(f"  → Ungültig! 1-{len(bosses)}")
+                except ValueError:
+                    print("  → Format: del <Nr>")
+            elif inp in ("show", "s"):
+                if bosses:
+                    print(f"\nBosse ({len(bosses)}):")
+                    for i, boss in enumerate(bosses):
+                        print(f"  [{i+1}] {boss}")
+                else:
+                    print("  (Keine Bosse definiert)")
+            else:
+                _known = ["add", "edit", "del", "done", "cancel", "show", "help"]
+                suggestion = suggest_command(inp, _known)
+                print(f"  → Unbekannter Befehl.{suggestion}")
+
+        except (KeyboardInterrupt, EOFError):
+            return False
+
+
+def edit_global_bosses(state: AutoClickerState) -> None:
+    """Verwaltet die globale Boss-Bibliothek (gilt zusätzlich in jedem Boss-Scan)."""
+    print(header("BOSS-BIBLIOTHEK (globale Bosse)"))
+    print("  Diese Bosse gelten automatisch in JEDEM Boss-Scan.")
+    print(f"  {col('Hinweis:', 'cyan')} Lokale Bosse eines Scans haben bei gleichem Namen Vorrang.")
+
+    with state.lock:
+        bosses = list(state.global_bosses)
+
+    if _edit_boss_list(state, bosses, allow_empty=True):
+        with state.lock:
+            state.global_bosses = bosses
+        save_global_bosses(state)
+    else:
+        print(f"  {col('[CANCEL]', 'yellow')} Änderungen verworfen.")
+
+
 def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) -> None:
     """Erstellt oder bearbeitet eine Boss-Scan Konfiguration."""
 
@@ -340,71 +441,15 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 
     # === SCHRITT 2: Bosse definieren ===
     print(header("SCHRITT 2: BOSSE DEFINIEREN"))
-    if bosses:
-        print("\nAktuelle Bosse:")
-        for i, boss in enumerate(bosses):
-            print(f"  [{i+1}] {boss}")
+    with state.lock:
+        num_global = len(state.global_bosses)
+    if num_global:
+        print(f"\n  {info(f'{num_global} globale(r) Boss(e) aus der Bibliothek gelten zusätzlich.')}")
 
-    boss_help = ("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', "
-                 "'show / s', 'help / ?', 'done / d', 'cancel'")
-    print(boss_help)
-
-    while True:
-        try:
-            inp = safe_input("[Bosse] > ").strip().lower()
-
-            if inp in ("done", "d"):
-                if not bosses:
-                    print("  " + err("Mindestens 1 Boss erforderlich!") + " "
-                          + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
-                    continue
-                break
-            elif is_cancel(inp):
-                return
-            elif inp in ("help", "?"):
-                print(boss_help)
-            elif inp == "add":
-                boss = _add_or_edit_boss(state)
-                if boss:
-                    bosses.append(boss)
-                    print(f"  + Boss '{boss.name}' hinzugefügt")
-                    print(f"    {boss}")
-            elif inp.startswith("edit "):
-                try:
-                    num = int(inp[5:])
-                    if 1 <= num <= len(bosses):
-                        boss = _add_or_edit_boss(state, bosses[num - 1])
-                        if boss:
-                            bosses[num - 1] = boss
-                            print(f"  ~ Boss '{boss.name}' aktualisiert")
-                    else:
-                        print(f"  → Ungültig! 1-{len(bosses)}")
-                except ValueError:
-                    print("  → Format: edit <Nr>")
-            elif inp.startswith("del "):
-                try:
-                    num = int(inp[4:])
-                    if 1 <= num <= len(bosses):
-                        removed = bosses.pop(num - 1)
-                        print(f"  - Boss '{removed.name}' entfernt")
-                    else:
-                        print(f"  → Ungültig! 1-{len(bosses)}")
-                except ValueError:
-                    print("  → Format: del <Nr>")
-            elif inp in ("show", "s"):
-                if bosses:
-                    print(f"\nBosse ({len(bosses)}):")
-                    for i, boss in enumerate(bosses):
-                        print(f"  [{i+1}] {boss}")
-                else:
-                    print("  (Keine Bosse definiert)")
-            else:
-                _known = ["add", "edit", "del", "done", "cancel", "show", "help"]
-                suggestion = suggest_command(inp, _known)
-                print(f"  → Unbekannter Befehl.{suggestion}")
-
-        except (KeyboardInterrupt, EOFError):
-            return
+    if not _edit_boss_list(state, bosses, allow_empty=num_global > 0):
+        return
+    if not bosses and num_global:
+        print(f"  {info(f'Keine lokalen Bosse — der Scan nutzt die {num_global} globalen.')}")
 
     # === SCHRITT 3: Default-Aktion ===
     print(header("SCHRITT 3: DEFAULT-AKTION (wenn kein Boss erkannt)"))

@@ -18,7 +18,7 @@ from .persistence import (
     _boss_profile_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
-    save_item_scan, save_boss_scan, save_icon_scan,
+    save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
 from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
@@ -112,6 +112,10 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
             for b in cfg.bosses:
                 if b.action == ACTION_CLICK:
                     positions.append((f"Boss '{b.name}'", b.action_x, b.action_y))
+
+        for b in state.global_bosses:
+            if b.action == ACTION_CLICK:
+                positions.append((f"Boss '{b.name}' (global)", b.action_x, b.action_y))
 
         for cfg in state.icon_scans.values():
             if cfg.action == ACTION_CLICK:
@@ -278,6 +282,17 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                             template_files.add(b.template)
                 if bscan_names:
                     manifest["contents"]["boss_scans"] = bscan_names
+
+                # Globale Boss-Bibliothek (gilt in jedem Boss-Scan)
+                with state.lock:
+                    gbosses = list(state.global_bosses)
+                if gbosses:
+                    zf.writestr("global_bosses.json",
+                                compact_json([_boss_profile_to_dict(b) for b in gbosses]))
+                    manifest["contents"]["global_bosses"] = len(gbosses)
+                    for b in gbosses:
+                        if b.template:
+                            template_files.add(b.template)
 
             # Icon-Scans
             if include_icon_scans:
@@ -547,6 +562,25 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         save_boss_scan(config)
                         stats["boss_scans"] += 1
 
+                # Globale Boss-Bibliothek (Merge nach Name, Import gewinnt)
+                if "global_bosses.json" in names:
+                    gboss_data = json.loads(zf.read("global_bosses.json").decode("utf-8"))
+                    imported = []
+                    for b in gboss_data:
+                        boss = _boss_profile_from_dict(b)
+                        if boss.action == BOSS_ACTION_CLICK:
+                            boss.action_x, boss.action_y = remap_point(
+                                boss.action_x, boss.action_y, transform)
+                        imported.append(boss)
+                    if imported:
+                        with state.lock:
+                            imported_names = {b.name for b in imported}
+                            state.global_bosses = [
+                                b for b in state.global_bosses if b.name not in imported_names
+                            ] + imported
+                        save_global_bosses(state)
+                        stats["global_bosses"] = len(imported)
+
             # Icon-Scans
             if import_icon_scans:
                 for name in names:
@@ -608,6 +642,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 parts.append(f"{stats['item_scans']} Item-Scan(s)")
             if stats["boss_scans"]:
                 parts.append(f"{stats['boss_scans']} Boss-Scan(s)")
+            if stats.get("global_bosses"):
+                parts.append(f"{stats['global_bosses']} globale(r) Boss(e)")
             if stats["icon_scans"]:
                 parts.append(f"{stats['icon_scans']} Icon-Scan(s)")
             if stats["templates"]:

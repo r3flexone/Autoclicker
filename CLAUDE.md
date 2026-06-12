@@ -60,6 +60,7 @@ items/templates/<name>.png     Item-Templates (PNG, referenziert per Dateiname-o
 items/presets/<name>.json      Item-Presets
 item_scans/<name>.json         eine ItemScanConfig pro Datei
 boss_scans/<name>.json         eine BossScanConfig pro Datei
+boss_scans/global/bosses.json  globale Boss-Bibliothek (state.global_bosses, gilt in jedem Boss-Scan)
 icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
 exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
@@ -95,6 +96,8 @@ LLM-Modi (`use_llm` + `llm_fallback` in `BossScanConfig`):
 - Bug-Sensibilität: Beide Modi dürfen LLM nicht doppelt aufrufen — siehe `execute_boss_scan()` in `runtime/boss_detection.py`.
 
 Unbekannte Bosse (LLM erkennt einen Namen der nicht in der Liste ist) werden automatisch als `BossProfile(action=BOSS_ACTION_SKIP)` gespeichert — Append unter `state.lock`.
+
+**Globale Boss-Bibliothek**: `state.global_bosses` (Editor: Boss-Scan-Menü → "Boss-Bibliothek verwalten") gilt zusätzlich in jedem Boss-Scan. `execute_boss_scan()` merged lokal + global im Lock-Snapshot; lokale Bosse gewinnen bei Namensgleichheit.
 
 ## Wichtige Konventionen
 

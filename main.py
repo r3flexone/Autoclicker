@@ -26,7 +26,7 @@ from autoclicker.winapi import (
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories,
     load_points, load_global_slots, load_global_items, load_all_item_scans,
-    load_all_boss_scans, load_all_icon_scans
+    load_all_boss_scans, load_all_icon_scans, load_global_bosses
 )
 from autoclicker.execution import print_status
 from autoclicker.utils import col, info, warn, hint
@@ -136,6 +136,7 @@ def main() -> int:
     load_global_items(state)
     load_all_item_scans(state)
     load_all_boss_scans(state)
+    load_global_bosses(state)
     load_all_icon_scans(state)
 
     # Hotkeys registrieren

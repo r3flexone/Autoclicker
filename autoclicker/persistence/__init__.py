@@ -18,6 +18,7 @@ weiterhin unverändert funktioniert.
 from .boss_scans import (
     ensure_boss_scans_dir, save_boss_scan, load_boss_scan_file,
     list_available_boss_scans, load_all_boss_scans,
+    save_global_bosses, load_global_bosses,
 )
 from .icon_scans import (
     ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
@@ -75,6 +76,7 @@ __all__ = [
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
+    'save_global_bosses', 'load_global_bosses',
     # icon_scans
     'ensure_icon_scans_dir', 'save_icon_scan', 'load_icon_scan_file',
     'list_available_icon_scans', 'load_all_icon_scans',
