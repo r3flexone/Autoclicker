@@ -6,7 +6,7 @@ Bündelt interaktive Aufnahme-Abläufe, die sonst mehrfach kopiert würden.
 
 from typing import Optional
 
-from ..utils import safe_input, is_cancel, err
+from ..utils import safe_input, is_cancel, err, hint
 from ..winapi import get_cursor_pos
 from ..imaging import get_pixel_color
 
@@ -24,6 +24,10 @@ def capture_markers() -> Optional[list[tuple[int, int, int]]]:
         try:
             inp = safe_input(f"  Marker {len(marker_colors) + 1}: ").strip().lower()
             if inp in ("done", "d"):
+                if not marker_colors:
+                    print("  " + err("Mindestens 1 Marker benötigt!") + " "
+                          + hint("(Enter = Farbe aufnehmen, 'cancel' = abbrechen)"))
+                    continue
                 break
             if is_cancel(inp):
                 return None
@@ -38,7 +42,4 @@ def capture_markers() -> Optional[list[tuple[int, int, int]]]:
         except (KeyboardInterrupt, EOFError):
             return None
 
-    if not marker_colors:
-        print(f"  {err('Mindestens 1 Marker benötigt!')}")
-        return None
     return marker_colors

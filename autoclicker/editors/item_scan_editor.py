@@ -9,7 +9,7 @@ from typing import Optional
 
 from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb, suggest_command, cancel_hint, parse_non_negative_float
+from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -212,6 +212,10 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         try:
             inp = safe_input("[Slots] > ").strip().lower()
             if inp in ("done", "d"):
+                if not selected_slot_names:
+                    print("  " + err("Mindestens 1 Slot erforderlich!") + " "
+                          + hint("('<Nr>' = Slot wählen, 'cancel' = Editor verlassen)"))
+                    continue
                 break
             elif is_cancel(inp):
                 return
@@ -261,10 +265,6 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
                     print(f"  -> Unbekannter Befehl.{suggestion}")
         except (KeyboardInterrupt, EOFError):
             return
-
-    if not selected_slot_names:
-        print(f"\n{err('Mindestens 1 Slot erforderlich!')}")
-        return
 
     # Schritt 2: Items auswählen oder erstellen
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))

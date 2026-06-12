@@ -154,15 +154,13 @@ _VK_MAP = {
     0x0D: 'enter',     # VK_RETURN
     0x1B: 'escape',    # VK_ESCAPE
     0x08: 'backspace', # VK_BACK
-    # Numpad-Pfeiltasten
-    0x68: 'up',        # VK_NUMPAD8
-    0x62: 'down',      # VK_NUMPAD2
-    0x64: 'left',      # VK_NUMPAD4
-    0x66: 'right',     # VK_NUMPAD6
 }
-# Zifferntasten 0-9
+# Zifferntasten 0-9: Hauptreihe + Numpad. VK_NUMPAD* kommt nur bei aktivem
+# NumLock — dann erwartet der Nutzer Ziffern (Menü-Auswahl), keine Pfeile.
+# Bei NumLock aus sendet der Numpad ohnehin VK_UP/DOWN/LEFT/RIGHT (oben gemappt).
 for _i in range(10):
     _VK_MAP[0x30 + _i] = str(_i)
+    _VK_MAP[0x60 + _i] = str(_i)
 
 
 def _read_key_msvcrt() -> str:

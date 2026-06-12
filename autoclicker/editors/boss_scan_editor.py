@@ -19,7 +19,7 @@ from ..config import DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, header, breadcrumb, suggest_command,
-    parse_non_negative_float, warn,
+    parse_non_negative_float, warn, hint,
 )
 from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import (
@@ -347,6 +347,10 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             inp = safe_input("[Bosse] > ").strip().lower()
 
             if inp in ("done", "d"):
+                if not bosses:
+                    print("  " + err("Mindestens 1 Boss erforderlich!") + " "
+                          + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
+                    continue
                 break
             elif is_cancel(inp):
                 return
@@ -394,10 +398,6 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 
         except (KeyboardInterrupt, EOFError):
             return
-
-    if not bosses:
-        print(f"\n{err('Mindestens 1 Boss erforderlich!')}")
-        return
 
     # === SCHRITT 3: Default-Aktion ===
     print(header("SCHRITT 3: DEFAULT-AKTION (wenn kein Boss erkannt)"))
