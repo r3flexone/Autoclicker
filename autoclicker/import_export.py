@@ -185,7 +185,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 with state.lock:
                     points_data = [
                         {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-                         **({"color": list(p.color)} if p.color else {})}
+                         **({"color": list(p.color)} if p.color else {}),
+                         **({"source": p.source} if p.source else {})}
                         for p in state.points
                     ]
                 if points_data:
@@ -427,7 +428,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             next_id += 1
                         color_raw = p.get("color")
                         color = tuple(int(v) for v in color_raw) if color_raw else None
-                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid, color=color))
+                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid,
+                                                       color=color, source=p.get("source", "")))
                         existing_ids.add(pid)
                         next_id = max(next_id, pid + 1)
                         stats["points"] += 1

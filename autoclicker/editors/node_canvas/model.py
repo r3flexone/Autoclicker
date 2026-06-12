@@ -226,6 +226,7 @@ class PalettePoint:
     y: int
     name: str
     color: Optional[tuple[int, int, int]] = None
+    source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'"
 
 
 def load_palette_points(sequences_dir: str) -> list[PalettePoint]:
@@ -255,6 +256,7 @@ def load_palette_points(sequences_dir: str) -> list[PalettePoint]:
                 y=p.get("y", 0),
                 name=p.get("name", ""),
                 color=color,
+                source=p.get("source", ""),
             ))
         except (TypeError, ValueError, AttributeError, KeyError):
             continue

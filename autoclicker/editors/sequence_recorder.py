@@ -180,7 +180,8 @@ def stop_recording(state: AutoClickerState) -> None:
                     continue
                 pid = get_next_point_id(state)
                 state.points.append(
-                    ClickPoint(x, y, f"{seq_name} {i + 1}", pid, color=color)
+                    ClickPoint(x, y, f"{seq_name} {i + 1}", pid, color=color,
+                               source=f"Aufnahme '{seq_name}'")
                 )
                 existing.add((x, y))
                 added += 1

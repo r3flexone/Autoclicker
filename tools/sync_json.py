@@ -290,6 +290,9 @@ def sync_points() -> tuple[int, int]:
         color = normalize_color(point.get("color"))
         if color is not None:
             fixed["color"] = color
+        source = str(point.get("source", "") or "")
+        if source:
+            fixed["source"] = source
 
         if point_fixes > 0:
             print(f"      Punkt {i+1}: {point_fixes} Feld(er) ergaenzt")

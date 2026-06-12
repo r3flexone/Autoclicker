@@ -90,11 +90,15 @@ class ClickPoint:
     # übernommen — zuverlässiger als ein Live-Abgriff im Editor, da das Spiel
     # bei der Aufnahme im richtigen Zustand war.
     color: Optional[tuple[int, int, int]] = None
+    # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'" — bleibt auch nach
+    # Umbenennen des Punkts sichtbar, damit klar bleibt woher er stammt.
+    source: str = ""
 
     def __str__(self) -> str:
+        src = f"  [{self.source}]" if self.source else ""
         if self.name:
-            return f"#{self.id} {self.name} ({self.x}, {self.y})"
-        return f"#{self.id} ({self.x}, {self.y})"
+            return f"#{self.id} {self.name} ({self.x}, {self.y}){src}"
+        return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
 @dataclass

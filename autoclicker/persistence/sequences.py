@@ -152,7 +152,8 @@ def save_data(state: AutoClickerState) -> None:
     with state.lock:
         points_data = [
             {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {})}
+             **({"color": list(p.color)} if p.color else {}),
+             **({"source": p.source} if p.source else {})}
             for p in state.points
         ]
         sequences_snapshot = list(state.sequences.items())
@@ -181,7 +182,8 @@ def save_points(state: AutoClickerState) -> None:
     with state.lock:
         points_data = [
             {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {})}
+             **({"color": list(p.color)} if p.color else {}),
+             **({"source": p.source} if p.source else {})}
             for p in state.points
         ]
     try:
@@ -203,7 +205,8 @@ def load_points(state: AutoClickerState) -> None:
                     point_id = p.get("id", i + 1)  # Fallback: Index + 1 für alte Dateien
                     color_raw = p.get("color")
                     color = tuple(int(v) for v in color_raw) if color_raw else None
-                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id, color=color))
+                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id,
+                                                   color=color, source=p.get("source", "")))
             print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"points.json konnte nicht geladen werden: {e}"))
@@ -237,5 +240,6 @@ def print_points(state: AutoClickerState) -> None:
         print(f"\nGespeicherte Punkte ({len(state.points)}):")
         print("-" * 50)
         for p in state.points:
-            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d})")
+            src = f"  [{p.source}]" if p.source else ""
+            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d}){src}")
         print("-" * 50)
