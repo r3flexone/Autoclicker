@@ -19,7 +19,7 @@ from ..models import (
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, interactive_select,
-    col, ok, err, header, breadcrumb, parse_non_negative_float,
+    col, ok, err, warn, header, breadcrumb, parse_non_negative_float,
 )
 from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import (
@@ -50,6 +50,8 @@ def run_icon_scan_editor(state: AutoClickerState) -> None:
         if config:
             loaded_scans.append(config)
             menu_options.append(str(config))
+        else:
+            print(warn(f"Icon-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 

@@ -239,7 +239,7 @@ def read_key() -> str:
 # =============================================================================
 
 def interactive_select(options: list[str], title: str = "",
-                       allow_cancel: bool = True) -> int:
+                       allow_cancel: bool = True, default: int = 0) -> int:
     """Interaktive Menü-Auswahl mit Pfeiltasten.
 
     Navigation:
@@ -247,6 +247,9 @@ def interactive_select(options: list[str], title: str = "",
         Enter/Rechts - Bestätigen
         Escape/Links - Abbrechen (gibt -1 zurück)
         0-9          - Direkte Nummern-Eingabe
+
+    default: Index der vorausgewählten Option (z.B. der aktuelle Wert beim
+    Bearbeiten) — Enter bestätigt diesen direkt.
 
     Drei Modi je nach Konsolen-Umgebung:
         - cmd/PowerShell: Mehrzeiliges Menü mit Cursor-Bewegung
@@ -258,19 +261,20 @@ def interactive_select(options: list[str], title: str = "",
     """
     if not options:
         return -1
+    default = max(0, min(default, len(options) - 1))
 
     if _ANSI_ENABLED:
-        return _ansi_select(options, title, allow_cancel)
+        return _ansi_select(options, title, allow_cancel, default)
     elif _PYCHARM:
-        return _single_line_select(options, title, allow_cancel)
+        return _single_line_select(options, title, allow_cancel, default)
     else:
-        return _fallback_select(options, title, allow_cancel)
+        return _fallback_select(options, title, allow_cancel, default)
 
 
 def _ansi_select(options: list[str], title: str,
-                 allow_cancel: bool) -> int:
+                 allow_cancel: bool, default: int = 0) -> int:
     """Mehrzeiliges Menü mit ANSI-Cursor-Bewegung (echte Windows-Konsole)."""
-    selected = 0
+    selected = default
     num_options = len(options)
 
     flush_input_buffer()
@@ -317,13 +321,13 @@ def _ansi_select(options: list[str], title: str,
 
 
 def _single_line_select(options: list[str], title: str,
-                        allow_cancel: bool) -> int:
+                        allow_cancel: bool, default: int = 0) -> int:
     """Einzeilen-Navigation für PyCharm/IDE (kein Cursor-Movement nötig).
 
     Zeigt die aktuelle Auswahl auf EINER Zeile und überschreibt mit \\r.
     PyCharm unterstützt ANSI-Farben aber keine Cursor-Bewegung.
     """
-    selected = 0
+    selected = default
     num_options = len(options)
 
     if title:
@@ -393,12 +397,13 @@ def _clear_menu_lines(num_lines: int) -> None:
 
 
 def _fallback_select(options: list[str], title: str,
-                     allow_cancel: bool) -> int:
+                     allow_cancel: bool, default: int = 0) -> int:
     """Fallback-Auswahl ohne ANSI (klassische Nummern-Eingabe)."""
     if title:
         print(title)
     for i, opt in enumerate(options):
-        print(f"  [{i+1}] {opt}")
+        marker = " *" if i == default else ""
+        print(f"  [{i+1}] {opt}{marker}")
     if allow_cancel:
         print("  [0] Abbrechen")
 
@@ -407,6 +412,8 @@ def _fallback_select(options: list[str], title: str,
             choice = safe_input("> ").strip()
             if is_cancel(choice):
                 return -1
+            if not choice:  # Enter = markierte Default-Option
+                return default
             num = int(choice)
             if 1 <= num <= len(options):
                 return num - 1

@@ -9,7 +9,7 @@ from typing import Optional
 
 from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
+from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -86,6 +86,8 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         if config:
             loaded_scans.append(config)
             menu_options.append(str(config))
+        else:
+            print(warn(f"Item-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
     if available_scans:
         print("  (Tipp: 'del <Nr>' im Textmodus zum Löschen)")

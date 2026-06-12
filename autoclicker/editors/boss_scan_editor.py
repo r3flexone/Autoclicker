@@ -51,6 +51,8 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         if config:
             loaded_scans.append(config)
             menu_options.append(str(config))
+        else:
+            print(warn(f"Boss-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
@@ -90,7 +92,8 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
         except ValueError:
             pass
 
-    choice = interactive_select(action_options, title="\nAktion wenn dieser Boss erkannt wird:")
+    choice = interactive_select(action_options, title="\nAktion wenn dieser Boss erkannt wird:",
+                                default=default_idx)
     if choice == -1:
         return None
 
@@ -192,7 +195,9 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
     if existing and (existing.template or existing.marker_colors):
         detect_options.append("Bestehende Erkennung beibehalten")
 
-    detect_choice = interactive_select(detect_options, title="\nWie soll der Boss erkannt werden?")
+    has_keep = "Bestehende Erkennung beibehalten" in detect_options
+    detect_choice = interactive_select(detect_options, title="\nWie soll der Boss erkannt werden?",
+                                       default=len(detect_options) - 1 if has_keep else 0)
     if detect_choice == -1:
         return None
 
@@ -298,7 +303,9 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     if existing:
         region_options.append("Bestehende Region beibehalten")
 
-    region_choice = interactive_select(region_options)
+    # Beim Bearbeiten ist "beibehalten" die sicherste Vorauswahl
+    region_choice = interactive_select(region_options,
+                                       default=len(region_options) - 1 if existing else 0)
     if region_choice == -1:
         return
 
@@ -409,7 +416,11 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     ]
     default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, BOSS_ACTION_SCAN]
 
-    default_choice = interactive_select(default_options)
+    try:
+        preselect = default_map.index(default_action)
+    except ValueError:
+        preselect = 0
+    default_choice = interactive_select(default_options, default=preselect)
     if default_choice >= 0:
         default_action = default_map[default_choice]
 
@@ -449,7 +460,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         "LLM-Verbindung testen",
     ]
 
-    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:")
+    llm_preselect = 0 if not use_llm else (1 if llm_fallback else 2)
+    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:", default=llm_preselect)
     if llm_choice == 0:
         use_llm = False
     elif llm_choice == 1:
@@ -495,7 +507,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             "OCR als primäre Erkennung (immer zuerst OCR)",
         ]
 
-        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:")
+        ocr_preselect = 0 if not use_ocr else (1 if ocr_fallback else 2)
+        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:", default=ocr_preselect)
         if ocr_choice == 0:
             use_ocr = False
         elif ocr_choice == 1:
