@@ -116,7 +116,7 @@ def _color_name(r: int, g: int, b: int) -> str:
 def describe_color(color) -> str:
     """Beschreibt eine RGB-Farbe menschenlesbar: farbiger Block + Name.
 
-    Beispiel: '██ Rot (220,40,30)' — der Block ist via ANSI-Truecolor in der
+    Beispiel: '█ Rot (220,40,30)' — der Block ist via ANSI-Truecolor in der
     echten Farbe eingefärbt (Windows-Konsole mit VT-Processing und PyCharm
     können das). Ohne Farb-Support bleibt nur Name + Werte.
     """
@@ -127,7 +127,7 @@ def describe_color(color) -> str:
     name = _color_name(r, g, b)
     rgb = hint(f"({r},{g},{b})")
     if _COLORS_ENABLED:
-        return f"\033[38;2;{r};{g};{b}m██{_C['reset']} {name} {rgb}"
+        return f"\033[38;2;{r};{g};{b}m█{_C['reset']} {name} {rgb}"
     return f"{name} {rgb}"
 
 
