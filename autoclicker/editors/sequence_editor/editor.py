@@ -44,7 +44,7 @@ def run_sequence_editor(state: AutoClickerState) -> None:
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return
     if choice == 0:
         edit_sequence(state, None)

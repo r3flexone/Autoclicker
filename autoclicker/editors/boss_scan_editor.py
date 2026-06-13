@@ -21,7 +21,7 @@ from ..utils import (
     col, ok, err, info, header, breadcrumb, suggest_command,
     parse_non_negative_float, warn, hint,
 )
-from ..winapi import get_cursor_pos, VK_CODES
+from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -29,7 +29,7 @@ from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
     list_available_item_scans, TEMPLATES_DIR, save_global_bosses,
 )
-from ._detection_capture import capture_markers, select_scan_region
+from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -66,7 +66,7 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
         if choice == -1:
-            print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+            print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
             return
         elif choice == 0:
             edit_boss_scan(state, None)
@@ -160,13 +160,8 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
             return None
 
     elif action == BOSS_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', '1'): ").strip().lower()
-        if not key:
-            print("  → Keine Taste angegeben!")
-            return None
-        if key not in VK_CODES:
-            print(f"  → Unbekannte Taste: '{key}'")
-            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+        key = prompt_key()
+        if key is None:
             return None
         result["action_key"] = key
 
@@ -376,7 +371,7 @@ def edit_global_bosses(state: AutoClickerState) -> None:
             state.global_bosses = bosses
         save_global_bosses(state)
     else:
-        print(f"  {col('[CANCEL]', 'yellow')} Änderungen verworfen.")
+        print(f"  {col('[ABBRUCH]', 'yellow')} Änderungen verworfen.")
 
 
 def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) -> None:

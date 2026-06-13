@@ -95,7 +95,7 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return
     elif choice == 0:
         edit_item_scan(state, None)
@@ -502,7 +502,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if not selected_item_names:
         print(f"\n{info('Keine Items ausgewählt.')}")
         if not confirm("Trotzdem speichern?"):
-            print(f"{col('[CANCEL]', 'yellow')} Scan nicht gespeichert.")
+            print(f"{col('[ABBRUCH]', 'yellow')} Scan nicht gespeichert.")
             return
 
     # Schritt 3: Toleranz

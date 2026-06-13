@@ -21,7 +21,7 @@ from ..utils import (
     safe_input, sanitize_filename, is_cancel, interactive_select,
     col, ok, err, warn, header, breadcrumb, parse_non_negative_float,
 )
-from ..winapi import get_cursor_pos, VK_CODES
+from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -29,7 +29,7 @@ from ..persistence import (
     save_icon_scan, list_available_icon_scans, load_icon_scan_file,
     TEMPLATES_DIR,
 )
-from ._detection_capture import capture_markers, select_scan_region
+from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
 
 def run_icon_scan_editor(state: AutoClickerState) -> None:
@@ -56,7 +56,7 @@ def run_icon_scan_editor(state: AutoClickerState) -> None:
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return
     elif choice == 0:
         edit_icon_scan(state, None)
@@ -110,13 +110,8 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
             return None
 
     elif action == ICON_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', 'escape'): ").strip().lower()
-        if not key:
-            print("  → Keine Taste angegeben!")
-            return None
-        if key not in VK_CODES:
-            print(f"  → Unbekannte Taste: '{key}'")
-            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+        key = prompt_key()
+        if key is None:
             return None
         result["action_key"] = key
 
@@ -183,8 +178,11 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
     if existing and (existing.template or existing.marker_colors):
         detect_options.append("Bestehende Erkennung beibehalten")
 
-    detect_choice = interactive_select(detect_options, title="\nWie soll das Icon erkannt werden?")
+    has_keep = "Bestehende Erkennung beibehalten" in detect_options
+    detect_choice = interactive_select(detect_options, title="\nWie soll das Icon erkannt werden?",
+                                       default=len(detect_options) - 1 if has_keep else 0)
     if detect_choice == -1:
+        print(f"  {col('[ABBRUCH]', 'yellow')} Icon-Scan nicht gespeichert.")
         return
 
     chosen_label = detect_options[detect_choice]

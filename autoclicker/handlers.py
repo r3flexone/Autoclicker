@@ -236,6 +236,15 @@ def handle_load(state: AutoClickerState) -> None:
 
 def handle_show(state: AutoClickerState) -> None:
     """Zeigt alle Punkte an, ermöglicht Testen und Umbenennen."""
+    # Wie die anderen Editoren: nicht während Aufnahme/Lauf öffnen — sonst
+    # können Punkt-Mutationen mit dem Worker/Recorder kollidieren.
+    if _block_if_recording(state):
+        return
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+
     print_points(state)
 
     with state.lock:

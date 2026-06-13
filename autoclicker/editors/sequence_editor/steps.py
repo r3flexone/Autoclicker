@@ -199,7 +199,7 @@ class _PhaseEditor:
                 if cmd in ("done", "d"):
                     return self.steps
                 if is_cancel(user_input):
-                    print(col("[CANCEL]", "yellow") + " Phase abgebrochen.")
+                    print(col("[ABBRUCH]", "yellow") + " Phase abgebrochen.")
                     return None
                 if cmd == "":
                     continue
