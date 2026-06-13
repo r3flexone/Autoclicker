@@ -77,7 +77,10 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 print(f"\n  Schritte für {loop_name} hinzufügen:")
                 steps = edit_phase(state, [], loop_name)
                 if steps is None:
-                    return None  # Abbruch durchreichen
+                    # Abbruch im Schritt-Editor verwirft NUR diese neue Phase,
+                    # nicht die ganze Loop-Liste — zurück ins Loops-Menü.
+                    print(f"  {hint('Neue Loop-Phase verworfen.')}")
+                    continue
 
                 repeat = 1
                 try:
@@ -107,7 +110,10 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                         print(f"\n  Bearbeite {lp.name}:")
                         new_steps = edit_phase(state, lp.steps, lp.name)
                         if new_steps is None:
-                            return None  # Abbruch durchreichen
+                            # Abbruch verwirft nur die Schritt-Änderungen dieser
+                            # Phase (alte Schritte bleiben), zurück ins Loops-Menü.
+                            print(f"  {hint(f'Änderungen an {lp.name} verworfen.')}")
+                            continue
                         lp.steps = new_steps
                         try:
                             repeat_input = safe_input(f"  Wiederholungen (aktuell {lp.repeat}, Enter = behalten): ").strip()

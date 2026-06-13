@@ -405,6 +405,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     new_region = select_scan_region(scan_region if existing else None)
     if new_region is None:
         if not existing:
+            print(f"  {col('[ABBRUCH]', 'yellow')} Boss-Scan nicht gespeichert.")
             return  # Neu-Erstellung abgebrochen
         # Beim Bearbeiten: alte Region behalten
     else:
