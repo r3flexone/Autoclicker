@@ -42,6 +42,19 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
     }
 
 
+def _point_to_dict(p: 'ClickPoint') -> dict:
+    """Serialisiert einen ClickPoint zu einem Dict (points.json / Export).
+
+    color/source nur wenn gesetzt — hält alte Dateien schlank und vermeidet
+    leere Felder. Zentral, damit points.json-Writer und Export identisch sind.
+    """
+    return {
+        "id": p.id, "x": p.x, "y": p.y, "name": p.name,
+        **({"color": list(p.color)} if p.color else {}),
+        **({"source": p.source} if p.source else {}),
+    }
+
+
 def _item_from_dict(data: dict) -> ItemProfile:
     """Deserialisiert ein ItemProfile aus einem Dict."""
     # confirm_point: kann {x, y} Dict, [x,y] Liste (alt) oder None sein

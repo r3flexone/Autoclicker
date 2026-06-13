@@ -13,7 +13,7 @@ from typing import Optional
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import IconScanConfig, AutoClickerState, ICON_ACTION_CLICK
 from .paths import ICON_SCANS_DIR
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
@@ -61,7 +61,7 @@ def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
             action_delay=data.get("action_delay", 0),
         )
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 

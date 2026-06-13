@@ -11,7 +11,7 @@ from ..models import BossScanConfig, AutoClickerState, BOSS_ACTION_SKIP
 from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn
 from .paths import BOSS_SCANS_DIR
 from .serialization import _boss_profile_to_dict, _boss_profile_from_dict
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
@@ -59,7 +59,7 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
             ocr_fallback=data.get("ocr_fallback", True),
         )
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 

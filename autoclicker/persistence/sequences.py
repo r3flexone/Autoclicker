@@ -14,7 +14,7 @@ from typing import Optional
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
 from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write, describe_color
-from .serialization import _parse_steps, _sequence_to_dict
+from .serialization import _parse_steps, _sequence_to_dict, _point_to_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -150,12 +150,7 @@ def save_data(state: AutoClickerState) -> None:
 
     # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
     with state.lock:
-        points_data = [
-            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {}),
-             **({"source": p.source} if p.source else {})}
-            for p in state.points
-        ]
+        points_data = [_point_to_dict(p) for p in state.points]
         sequences_snapshot = list(state.sequences.items())
 
     # Punkte speichern (mit stabiler ID)
@@ -180,12 +175,7 @@ def save_points(state: AutoClickerState) -> None:
     """Speichert nur die globalen Punkte (points.json), crash-sicher."""
     ensure_sequences_dir()
     with state.lock:
-        points_data = [
-            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {}),
-             **({"source": p.source} if p.source else {})}
-            for p in state.points
-        ]
+        points_data = [_point_to_dict(p) for p in state.points]
     try:
         atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
     except (IOError, OSError) as e:

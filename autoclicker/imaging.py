@@ -40,6 +40,9 @@ _gdi32.DeleteObject.restype = wintypes.BOOL
 _gdi32.DeleteDC.argtypes = [wintypes.HDC]
 _gdi32.DeleteDC.restype = wintypes.BOOL
 
+# BitBlt-Rasteroperation: Quelle 1:1 kopieren (Windows GDI SRCCOPY).
+SRCCOPY = 0x00CC0020
+
 # BITMAPINFOHEADER für Screenshots (einmal definiert, wiederverwendbar)
 class BITMAPINFOHEADER(ctypes.Structure):
     _fields_ = [
@@ -375,7 +378,7 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
         # Rückgabe prüfen: bei gesperrtem Desktop / Secure-Screen schlägt BitBlt fehl.
         # Dann None zurückgeben, damit der ImageGrab-Fallback greift (statt einem
         # schwarzen Bild, das die Erkennung still verfälscht).
-        if not _gdi32.BitBlt(memDC, 0, 0, width, height, hwndDC, left, top, 0x00CC0020):
+        if not _gdi32.BitBlt(memDC, 0, 0, width, height, hwndDC, left, top, SRCCOPY):
             logger.error("BitBlt fehlgeschlagen (Desktop gesperrt?) - Fallback auf ImageGrab")
             return None
 
