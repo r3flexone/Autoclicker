@@ -13,7 +13,7 @@ from typing import Optional
 from ..models import ItemScanConfig, ItemSlot, AutoClickerState
 from ..utils import compact_json, warn, atomic_write
 from .paths import ITEM_SCANS_DIR
-from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
+from .serialization import _item_from_dict, _item_scan_to_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
@@ -26,14 +26,7 @@ def ensure_item_scans_dir() -> Path:
 
 def save_item_scan(config: ItemScanConfig) -> None:
     """Speichert eine Item-Scan Konfiguration."""
-    data = {
-        "name": config.name,
-        "color_tolerance": config.color_tolerance,
-        "learn_unknown": config.learn_unknown,
-        "slots": [_slot_to_dict(slot) for slot in config.slots],
-        "items": [_item_to_dict(item) for item in config.items]
-    }
-    write_scan(ITEM_SCANS_DIR, config.name, data, "Item-Scan")
+    write_scan(ITEM_SCANS_DIR, config.name, _item_scan_to_dict(config), "Item-Scan")
 
 
 def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
