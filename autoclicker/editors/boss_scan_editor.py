@@ -23,13 +23,13 @@ from ..utils import (
 )
 from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import (
-    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
+    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
     list_available_item_scans, TEMPLATES_DIR, save_global_bosses,
 )
-from ._detection_capture import capture_markers
+from ._detection_capture import capture_markers, select_scan_region
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -407,47 +407,13 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         r = scan_region
         print(f"  Aktuelle Region: ({r[0]},{r[1]}) → ({r[2]},{r[3]})")
 
-    region_options = [
-        "Per Maus auswählen (2 Ecken)",
-        "Koordinaten manuell eingeben",
-    ]
-    if existing:
-        region_options.append("Bestehende Region beibehalten")
-
-    # Beim Bearbeiten ist "beibehalten" die sicherste Vorauswahl
-    region_choice = interactive_select(region_options,
-                                       default=len(region_options) - 1 if existing else 0)
-    if region_choice == -1:
-        return
-
-    if region_options[region_choice] == "Per Maus auswählen (2 Ecken)":
-        result = select_region()
-        if result:
-            scan_region = result
-            print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-        else:
-            print(f"  {err('Region-Auswahl fehlgeschlagen!')}")
-            if not existing:
-                return
-
-    elif region_options[region_choice] == "Koordinaten manuell eingeben":
-        try:
-            inp = safe_input("  Region (x1,y1,x2,y2): ").strip()
-            parts = [int(x.strip()) for x in inp.split(",")]
-            if len(parts) != 4:
-                print(f"  {err('Format: x1,y1,x2,y2')}")
-                if not existing:
-                    return
-            elif parts[2] <= parts[0] or parts[3] <= parts[1]:
-                print(f"  {err('Ungültiger Bereich! x2>x1 und y2>y1 erforderlich.')}")
-                if not existing:
-                    return
-            else:
-                scan_region = tuple(parts)
-                print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-        except (ValueError, KeyboardInterrupt, EOFError):
-            if not existing:
-                return
+    new_region = select_scan_region(scan_region if existing else None)
+    if new_region is None:
+        if not existing:
+            return  # Neu-Erstellung abgebrochen
+        # Beim Bearbeiten: alte Region behalten
+    else:
+        scan_region = new_region
 
     # === SCHRITT 2: Bosse definieren ===
     print(header("SCHRITT 2: BOSSE DEFINIEREN"))
