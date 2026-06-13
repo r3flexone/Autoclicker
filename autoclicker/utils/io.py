@@ -271,53 +271,57 @@ def interactive_select(options: list[str], title: str = "",
         return _fallback_select(options, title, allow_cancel, default)
 
 
-def _ansi_select(options: list[str], title: str,
-                 allow_cancel: bool, default: int = 0) -> int:
-    """Mehrzeiliges Menü mit ANSI-Cursor-Bewegung (echte Windows-Konsole)."""
+def _navigate_select(num_options: int, allow_cancel: bool, default: int, redraw) -> int:
+    """Gemeinsame Tasten-Navigationsschleife der Pfeiltasten-Menüs.
+
+    Behandelt hoch/runter/enter/escape/Ziffern einheitlich; `redraw(selected)`
+    wird nach jeder Bewegung aufgerufen, damit jeder Modus selbst weiß, wie er
+    neu zeichnet (mehrzeilig vs. \\r-Einzeiler). Gibt den gewählten Index
+    zurück oder -1 bei Abbruch.
+    """
     selected = default
-    num_options = len(options)
-
-    flush_input_buffer()
-
-    if title:
-        print(title)
-
-    cancel_str = ", Esc=Abbruch" if allow_cancel else ""
-    print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
-
-    _draw_menu(options, selected)
-
     while True:
         key = read_key()
-
         if key == 'up':
             selected = (selected - 1) % num_options
         elif key == 'down':
             selected = (selected + 1) % num_options
         elif key in ('enter', 'right'):
-            _clear_menu_lines(num_options)
-            print(f"  > {options[selected]}")
             return selected
         elif key in ('escape', 'left') and allow_cancel:
-            _clear_menu_lines(num_options)
-            print("  (Abgebrochen)")
             return -1
         elif key.isdigit():
             num = int(key)
             if 1 <= num <= num_options:
-                _clear_menu_lines(num_options)
-                print(f"  > {options[num - 1]}")
                 return num - 1
-            elif num == 0 and allow_cancel:
-                _clear_menu_lines(num_options)
-                print("  (Abgebrochen)")
+            if num == 0 and allow_cancel:
                 return -1
             continue
         else:
             continue
+        redraw(selected)
 
+
+def _ansi_select(options: list[str], title: str,
+                 allow_cancel: bool, default: int = 0) -> int:
+    """Mehrzeiliges Menü mit ANSI-Cursor-Bewegung (echte Windows-Konsole)."""
+    num_options = len(options)
+    flush_input_buffer()
+
+    if title:
+        print(title)
+    cancel_str = ", Esc=Abbruch" if allow_cancel else ""
+    print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
+    _draw_menu(options, default)
+
+    def _redraw(selected: int) -> None:
         _clear_menu_lines(num_options)
         _draw_menu(options, selected)
+
+    choice = _navigate_select(num_options, allow_cancel, default, _redraw)
+    _clear_menu_lines(num_options)
+    print("  (Abgebrochen)" if choice == -1 else f"  > {options[choice]}")
+    return choice
 
 
 def _single_line_select(options: list[str], title: str,
@@ -327,50 +331,27 @@ def _single_line_select(options: list[str], title: str,
     Zeigt die aktuelle Auswahl auf EINER Zeile und überschreibt mit \\r.
     PyCharm unterstützt ANSI-Farben aber keine Cursor-Bewegung.
     """
-    selected = default
     num_options = len(options)
 
     if title:
         print(title)
-
     cancel_str = ", Esc=Abbruch" if allow_cancel else ""
     print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
-
-    # Alle Optionen einmal auflisten (statisch)
+    # Alle Optionen einmal auflisten (statisch), dann die Auswahl-Zeile
     for i, opt in enumerate(options):
         print(f"   {i+1}. {opt}")
+    _print_single_selection(options, default, num_options)
 
-    # Aktuelle Auswahl auf einer Zeile anzeigen (überschreibbar)
-    _print_single_selection(options, selected, num_options)
-
-    while True:
-        key = read_key()
-
-        if key == 'up':
-            selected = (selected - 1) % num_options
-        elif key == 'down':
-            selected = (selected + 1) % num_options
-        elif key in ('enter', 'right'):
-            text = f"  > {options[selected]}"
-            print(f"\r{text}{' ' * (60 - len(text))}")
-            return selected
-        elif key in ('escape', 'left') and allow_cancel:
-            print(f"\r  (Abgebrochen){' ' * 40}")
-            return -1
-        elif key.isdigit():
-            num = int(key)
-            if 1 <= num <= num_options:
-                text = f"  > {options[num - 1]}"
-                print(f"\r{text}{' ' * (60 - len(text))}")
-                return num - 1
-            elif num == 0 and allow_cancel:
-                print(f"\r  (Abgebrochen){' ' * 40}")
-                return -1
-            continue
-        else:
-            continue
-
+    def _redraw(selected: int) -> None:
         _print_single_selection(options, selected, num_options)
+
+    choice = _navigate_select(num_options, allow_cancel, default, _redraw)
+    if choice == -1:
+        print(f"\r  (Abgebrochen){' ' * 40}")
+    else:
+        text = f"  > {options[choice]}"
+        print(f"\r{text}{' ' * (60 - len(text))}")
+    return choice
 
 
 def _print_single_selection(options: list[str], selected: int,
