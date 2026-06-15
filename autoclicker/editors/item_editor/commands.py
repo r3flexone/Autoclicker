@@ -131,39 +131,24 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) ->
     return True
 
 
-def handle_autoname_command(state: AutoClickerState) -> None:
-    """Benennt auto-gelernte Items ('Auto …') per LLM aus ihren gespeicherten Templates.
+def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> int:
+    """Benennt die (name, template)-Items per LLM aus ihren gespeicherten Templates.
 
-    Läuft NUR auf Befehl — bewusst nicht während eines Scans, weil LLM-Antworten
-    je Item mehrere Sekunden dauern können und den Lauf ausbremsen würden.
+    Blockierend (LLM-Antworten dauern) — daher NUR außerhalb eines laufenden
+    Scans aufrufen (Editor/Setup). Speichert NICHT selbst; der Aufrufer macht
+    save_global_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
+    umbenannter Items zurück.
     """
-    if not state.config.llm_enabled:
-        print(f"  {err('LLM ist nicht aktiviert')} {hint('(llm_enabled=false in config.json)')}")
-        return
     try:
         from ...llm_vision import suggest_item_name
     except ImportError:
         print(f"  {err('LLM-Vision-Modul nicht verfügbar.')}")
-        return
+        return 0
     try:
         from PIL import Image
     except ImportError:
         print(f"  {err('Pillow nicht installiert.')}")
-        return
-
-    # Auto-gelernte Items mit Template (Kategorie 'Auto')
-    with state.lock:
-        targets = [(n, it.template) for n, it in state.global_items.items()
-                   if it.category == "Auto" and it.template]
-    if not targets:
-        print("  " + info("Keine auto-gelernten Items (Kategorie 'Auto') mit Template gefunden."))
-        return
-
-    print(f"\n  {len(targets)} Item(s) werden per LLM benannt.")
-    print(f"  {hint('Das kann je Item ein paar Sekunden dauern (LLM).')}")
-    if not confirm("  Jetzt starten?"):
-        print("  -> Abgebrochen")
-        return
+        return 0
 
     renamed = 0
     for old_name, template in targets:
@@ -201,7 +186,34 @@ def handle_autoname_command(state: AutoClickerState) -> None:
         if _apply_item_rename(state, old_name, new_name):
             print(f"    + '{old_name}' → '{new_name}'")
             renamed += 1
+    return renamed
 
+
+def handle_autoname_command(state: AutoClickerState) -> None:
+    """Benennt auto-gelernte Items ('Auto …') per LLM aus ihren gespeicherten Templates.
+
+    Läuft NUR auf Befehl — bewusst nicht während eines Scans, weil LLM-Antworten
+    je Item mehrere Sekunden dauern können und den Lauf ausbremsen würden.
+    """
+    if not state.config.llm_enabled:
+        print(f"  {err('LLM ist nicht aktiviert')} {hint('(llm_enabled=false in config.json)')}")
+        return
+
+    # Auto-gelernte Items mit Template (Kategorie 'Auto')
+    with state.lock:
+        targets = [(n, it.template) for n, it in state.global_items.items()
+                   if it.category == "Auto" and it.template]
+    if not targets:
+        print("  " + info("Keine auto-gelernten Items (Kategorie 'Auto') mit Template gefunden."))
+        return
+
+    print(f"\n  {len(targets)} Item(s) werden per LLM benannt.")
+    print(f"  {hint('Das kann je Item ein paar Sekunden dauern (LLM).')}")
+    if not confirm("  Jetzt starten?"):
+        print("  -> Abgebrochen")
+        return
+
+    renamed = llm_name_items(state, targets)
     if renamed:
         save_global_items(state)
     print(f"  {ok(f'{renamed} Item(s) benannt.')}")
