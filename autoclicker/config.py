@@ -60,7 +60,6 @@ class AppConfig:
     scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
     scan_min_confidence: float = 0.8                # Standard-Konfidenz für Template-Matching (80%)
     scan_confirm_delay: float = 0.5                 # Standard-Wartezeit vor Bestätigungs-Klick
-    scan_learn_llm_names: bool = False              # Auto-gelernte Items per LLM benennen (statt 'Auto Slot X'); braucht llm_enabled
 
     # === LLM VISION (Boss-Erkennung) ===
     llm_enabled: bool = False                       # LLM-basierte Boss-Erkennung aktivieren
@@ -321,7 +320,7 @@ _CONFIG_SECTIONS = [
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
         "scan_marker_min_pixels",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
-        "scan_min_confidence", "scan_confirm_delay", "scan_learn_llm_names",
+        "scan_min_confidence", "scan_confirm_delay",
     ]),
     ("LLM VISION (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",

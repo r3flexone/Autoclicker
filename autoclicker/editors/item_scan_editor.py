@@ -525,20 +525,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
 
     if learn_unknown:
-        from ..config import save_config
-        if state.config.llm_enabled:
-            print(f"\n  {col('LLM-Benennung:', 'cyan')} statt 'Auto Slot 1' kann das LLM")
-            print("  den gelernten Items einen Namen geben (grob, nicht exakt).")
-            print(f"  Aktuell: {'AN' if state.config.scan_learn_llm_names else 'AUS'}")
-            new_val = confirm("  Gelernte Items per LLM benennen?",
-                              default=state.config.scan_learn_llm_names)
-            if new_val != state.config.scan_learn_llm_names:
-                state.config.scan_learn_llm_names = new_val
-                save_config(state.config)
-        elif state.config.scan_learn_llm_names:
-            print(f"\n  {hint('LLM-Benennung ist aktiviert, aber llm_enabled=false — Items heißen Auto Slot X.')}")
-        else:
-            print(f"\n  {hint('Tipp: Mit aktivem LLM (llm_enabled) können gelernte Items automatisch benannt werden.')}")
+        print("\n  " + hint("Gelernte Items heißen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
+        print("  " + hint("vergibst du danach im Item-Editor mit 'autoname' — das läuft"))
+        print("  " + hint("NICHT während des Scans (würde ihn ausbremsen)."))
 
     # Slots und Items aus globalen Definitionen holen
     with state.lock:

@@ -232,8 +232,11 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
         return
 
-    # Basis-Namen bestimmen: optional per LLM, sonst nach Slot benannt.
-    base = _suggest_item_base_name(state, img, slot, debug)
+    # Schnellen Namen vergeben — KEIN LLM während des Scans (würde den Worker
+    # pro Item bis zu llm_timeout Sekunden blockieren). Sinnvolle Namen vergibt
+    # man danach manuell im Item-Editor ('autoname'), das die LLM-Benennung aus
+    # den gespeicherten Templates macht — wann man will, ohne den Lauf zu bremsen.
+    base = f"Auto {slot.name}"
 
     # Eindeutigen Namen vergeben + sofort reservieren (Worker/Editor-Race)
     item = ItemProfile(
@@ -264,44 +267,6 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     save_global_items(state)
     print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} gespeichert "
               f"(Kategorie 'Auto', wird nicht geklickt)", "green"))
-
-
-def _suggest_item_base_name(state: AutoClickerState, img, slot, debug: bool) -> str:
-    """Liefert den Basis-Namen für ein auto-gelerntes Item.
-
-    Mit aktivem scan_learn_llm_names + llm_enabled wird das LLM nach einem
-    kurzen Namen gefragt; scheitert das (kein Backend, Timeout, nichts erkannt),
-    fällt es auf 'Auto <Slotname>' zurück. Der Name wird sanitisiert, damit er
-    als Dateiname und Dict-Key taugt.
-    """
-    fallback = f"Auto {slot.name}"
-    if not (state.config.scan_learn_llm_names and state.config.llm_enabled):
-        return fallback
-
-    try:
-        from ..llm_vision import suggest_item_name
-    except ImportError:
-        return fallback
-
-    name = suggest_item_name(
-        img,
-        provider=state.config.llm_provider,
-        endpoint=state.config.llm_endpoint,
-        model=state.config.llm_model,
-        timeout=state.config.llm_timeout,
-    )
-    if not name:
-        if debug:
-            print(dbg(f"  → {slot.name}: LLM lieferte keinen Namen — nutze '{fallback}'"))
-        return fallback
-
-    # Sanitisieren: sanitize_filename macht den Namen datei-/key-tauglich
-    cleaned = sanitize_filename(name).strip()
-    if not cleaned:
-        return fallback
-    if debug:
-        print(dbg(f"  → {slot.name}: LLM-Name '{cleaned}'"))
-    return cleaned
 
 
 def _park_mouse_for_scan(park_pos) -> None:

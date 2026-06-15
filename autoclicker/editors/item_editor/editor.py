@@ -19,7 +19,7 @@ from ...utils import (
     is_cancel, ok, safe_input, suggest_command,
 )
 from .autoscan import item_autoscan_command
-from .commands import handle_rename_command, handle_template_command, handle_templates_command
+from .commands import handle_rename_command, handle_template_command, handle_templates_command, handle_autoname_command
 from .items import create_item, edit_item
 from .learn import item_learn_command
 
@@ -62,7 +62,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 continue
 
             if not _dispatch_command(state, cmd, user_input):
-                _known = ["autoscan", "learn", "add", "edit", "rename", "del", "show",
+                _known = ["autoscan", "learn", "add", "edit", "rename", "autoname", "del", "show",
                           "template", "templates", "save", "load", "preset",
                           "help", "done", "cancel"]
                 suggestion = suggest_command(cmd, _known)
@@ -123,6 +123,7 @@ def _print_item_help(full: bool = False) -> None:
         print(cmd_hint("add", "Neues Item manuell hinzufügen"))
         print(cmd_hint("edit <Nr>", "Item bearbeiten"))
         print(cmd_hint("rename <Nr>", "Item umbenennen (inkl. Template)"))
+        print(cmd_hint("autoname", "Auto-gelernte 'Auto …'-Items per LLM benennen (manuell, nicht im Scan)"))
         print(cmd_hint("del <Nr>", "Item löschen"))
         print(cmd_hint("del all", "Alle Items löschen"))
         print(cmd_hint("show / s", "Alle Items anzeigen"))
@@ -189,6 +190,10 @@ def _dispatch_command(state: AutoClickerState, cmd: str, user_input: str) -> boo
 
     if cmd.startswith("rename "):
         handle_rename_command(state, cmd)
+        return True
+
+    if cmd == "autoname":
+        handle_autoname_command(state)
         return True
 
     if cmd == "templates":
