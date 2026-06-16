@@ -50,7 +50,10 @@ besonders genau prüfen.
       nicht die ganze Sequenz (zurück ins Loops-Menü, andere Phasen bleiben).
 - [ ] Speichern → Datei in `sequences/` erscheint, lädt nach Neustart korrekt.
 
-## 5. Item-Editor (CTRL+ALT+I → Items)
+> Hinweis: Slot-/Item-/Item-Scan-/Boss-/Icon-Editor werden **alle** über das
+> Hub-Menü `CTRL+ALT+N` (Item-Scan-Editor) erreicht und dort ausgewählt.
+
+## 5. Item-Editor (CTRL+ALT+N → Items)
 - [ ] `add`, `edit <Nr>`, `del <Nr>`, `rename <Nr>` (Template wird mit umbenannt).
 - [ ] `learn <Nr>`, `learn <von>-<bis>`, `autoscan`, `autoscan nocolor`.
 - [ ] 🆕 `autoname`: benennt `Auto …`-Items per LLM aus ihren Templates
@@ -58,14 +61,14 @@ besonders genau prüfen.
 - [ ] `save`/`load`/`preset del` Presets.
 - [ ] Transaktional: `cancel`/`ESC` verwirft Änderungen seit Editor-Start.
 
-## 6. Slot-Editor (CTRL+ALT+I → Slots) 🆕 transaktional
+## 6. Slot-Editor (CTRL+ALT+N → Slots) 🆕 transaktional
 - [ ] `auto` (Slot-Auto-Erkennung), `add`, `edit <Nr>`, `del <Nr>`, `del all`.
 - [ ] 🆕 **Transaktional**: Änderungen (auch `auto`/Preset-`load`) werden erst bei
       `done` gespeichert; `cancel`/`ESC` stellt den Startzustand wieder her
       (Datei `slots/slots.json` zurückgesetzt).
 - [ ] 🆕 Duplikat-Check: neuer Slot mit existierendem Namen fragt „Überschreiben?".
 
-## 7. Item-Scan-Editor (CTRL+ALT+I)
+## 7. Item-Scan-Editor (CTRL+ALT+N → Item-Scan)
 - [ ] Neuen Scan: Slots wählen, Items wählen, Toleranz, **Schritt 4 Auto-Lernen** 🆕.
 - [ ] 🆕 `learn_unknown`: im laufenden Scan werden unbekannte Slots als `Auto <Slot>`
       gelernt (Kategorie 'Auto', **kein** LLM live).
@@ -74,7 +77,7 @@ besonders genau prüfen.
 - [ ] 🆕 `done` mit 0 Slots zeigt Fehler + bleibt im Menü (kein Komplett-Abbruch).
 - [ ] Defektes Scan-JSON 🆕: erscheint als `[WARNUNG] … fehlt im Menü!` statt still zu verschwinden.
 
-## 8. Boss-Scan-Editor (CTRL+ALT+B)
+## 8. Boss-Scan-Editor (CTRL+ALT+N → Boss-Scan)
 - [ ] Region: 🆕 manuelle Koordinaten-Eingabe wiederholt bei Tippfehler (z. B. `4691.`),
       bricht **nicht** den Editor ab; `cancel` = zurück ins Region-Menü.
 - [ ] Boss anlegen: Template **oder** Marker; Aktion (scan/click/key/skip/…).
@@ -87,13 +90,14 @@ besonders genau prüfen.
       sind **vorausgewählt** (Enter überschreibt nichts).
 - [ ] Menü kehrt nach jeder Aktion zurück (Loop), `ESC` beendet.
 
-## 9. Icon-Scan-Editor (CTRL+ALT+N)
+## 9. Icon-Scan-Editor (CTRL+ALT+N → Icon-Scan)
 - [ ] Region (wie Boss) + Erkennung (Template/Marker) + Aktion.
 - [ ] 🆕 Beim Bearbeiten ist „Bestehende Erkennung beibehalten" vorausgewählt.
 - [ ] 🆕 Tasten-Eingabe wiederholt bei Fehleingabe.
 
-## 10. Ausführung / Runtime (CTRL+ALT+S / +G / +K / +W / +F)
-- [ ] Start/Stop (`S`), Pause/Weiter (`G`), Skip (`K`), Skip-Cycle (`W`), Finish (`F`).
+## 10. Ausführung / Runtime (CTRL+ALT+S / +G / +K / +F / +W / +Z)
+- [ ] Start/Stop (`S`), Pause/Weiter (`G`), Skip Wartezeit (`K`), Sanft beenden (`F`),
+      Quick-Switch Sequenz (`W`), Zeitplan-Start (`Z`).
 - [ ] Echte Klicks landen an den Punktkoordinaten; Wartezeiten stimmen.
 - [ ] Farb-Trigger (`pixel`/`color`/`colorgone`) lösen korrekt aus / Timeout-Verhalten.
 - [ ] Item-Scan-Step klickt das beste Item je Kategorie (all/best/every).
@@ -114,14 +118,14 @@ besonders genau prüfen.
 - [ ] 🆕 `autoname` / Setup-Ende-Benennung: LLM liefert kurze Item-Namen,
       Timeout/„kein Name" → sauberer Fallback, App hängt nicht.
 
-## 12. Import/Export (CTRL+ALT+ … Import/Export-Editor)
+## 12. Import/Export (CTRL+ALT+I)
 - [ ] Export erzeugt ZIP unter `exports/` mit `manifest.json` + Daten + Templates.
 - [ ] 🆕 Globale Boss-Bibliothek (`global_bosses.json`) ist im Bundle.
 - [ ] Import auf **anderem Bildschirm/Auflösung**: Koordinaten-Remapping
       (automatisch aus Fenstergröße, sonst 2-Punkt) verschiebt Klicks korrekt.
 - [ ] Merge vs. Ersetzen verhält sich wie erwartet.
 
-## 13. Scan-Studio GUI (CTRL+ALT+ … ) 🆕 geführter Slot-Ablauf
+## 13. Scan-Studio GUI (CTRL+ALT+V) 🆕 geführter Slot-Ablauf
 - [ ] Startet als eigenes Fenster (Screenshot sichtbar).
 - [ ] 🆕 **Geführter Slot-Ablauf**: Rechteck ziehen → Werkzeug springt automatisch
       auf „Klickpunkt setzen" (Radio wechselt sichtbar) → Klick → springt auf
@@ -132,7 +136,7 @@ besonders genau prüfen.
 - [ ] Tabs „Scan bauen / Icon-Scan / Boss-Scan", „Autoscan"-Knopf, „Speichern".
 - [ ] Gespeicherte Slots erscheinen identisch im Konsolen-Slot-Editor (gleiche Datei).
 
-## 14. Node-/Sequenz-Editor GUI (CTRL+ALT+V)
+## 14. Node-/Visueller Editor GUI (CTRL+ALT+B)
 - [ ] Startet; Blöcke/Lanes anlegen, Punkte-Palette, Sequenz speichern.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
 
