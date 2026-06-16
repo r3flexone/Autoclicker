@@ -174,5 +174,86 @@ with zipfile.ZipFile(zpath) as zf:
 ok_man, man = read_manifest(zpath)
 check("read_manifest OK", ok_man and man.get("version") == 1)
 
+# ---------------------------------------------------------------- LLM-Vision-Logik
+# Reine Logik aus llm_vision.py — kein Netzwerk, kein Backend. Deckt die
+# Antwort-Nachbearbeitung ab (Reasoning-Strip, Boss-Name-Matching, no-boss-
+# Heuristik) sowie die Request-Body-Form je Provider.
+from autoclicker.llm_vision import (
+    is_no_boss, clean_boss_name, match_boss_name, _strip_reasoning_tags,
+    _extract_response_text, _build_ollama_request, _build_lmstudio_request,
+    _build_system_prompt)
+
+section("llm_vision: is_no_boss (Wortgrenzen-Heuristik)")
+check("leere Antwort = kein Boss", is_no_boss("") is True)
+check("KEIN_BOSS erkannt", is_no_boss("KEIN_BOSS") is True)
+check("'no boss' erkannt", is_no_boss("There is no boss here") is True)
+check("echter Name ist KEIN no-boss", is_no_boss("Skeleton King") is False)
+check("'none' matcht NICHT in 'Stonekeeper'", is_no_boss("Stonekeeper") is False)
+
+section("llm_vision: clean_boss_name (Präfixe/Quotes/Mehrzeiler)")
+check("Quotes entfernt", clean_boss_name('"Skeleton King"') == "Skeleton King")
+check("Präfix 'der boss ist' entfernt", clean_boss_name("Der Boss ist Drache") == "Drache")
+check("Präfix 'boss:' + Punkt entfernt", clean_boss_name("Boss: Ork.") == "Ork")
+check("nur erste Zeile", clean_boss_name("Drache\nirrelevant") == "Drache")
+
+section("llm_vision: match_boss_name (exakt / längster / neu)")
+_names = ["Ork", "Orkhäuptling", "Skeleton King"]
+check("exakter Match, nicht neu", match_boss_name("Skeleton King", _names) == ("Skeleton King", False))
+check("enthält -> längster gewinnt (Orkhäuptling > Ork)",
+      match_boss_name("Der Orkhäuptling erscheint", _names) == ("Orkhäuptling", False))
+check("Antwort ist Präfix eines Namens -> kürzester Treffer",
+      match_boss_name("Skel", _names) == ("Skeleton King", False))
+check("unbekannter Name -> is_new=True", match_boss_name("Goblin", _names) == ("Goblin", True))
+check("kein Boss -> (None, False)", match_boss_name("KEIN_BOSS", _names) == (None, False))
+check("leere Antwort -> (None, False)", match_boss_name("", _names) == (None, False))
+check("kurze Antwort (<3) matcht nicht versehentlich",
+      match_boss_name("or", _names) == ("or", True))
+
+section("llm_vision: _strip_reasoning_tags (<think>-Varianten)")
+check("vollständiger Block entfernt", _strip_reasoning_tags("<think>denke</think>Drache") == "Drache")
+check("ohne Tags unverändert", _strip_reasoning_tags("Drache") == "Drache")
+check("abgeschnitten: offenes <think> ohne Schluss -> leer",
+      _strip_reasoning_tags("<think>denke nur, kein Ende") == "")
+check("verwaistes </think> -> nimmt Teil danach",
+      _strip_reasoning_tags("Reasoning-Rest</think>Drache") == "Drache")
+
+section("llm_vision: _extract_response_text (Ollama vs. LM Studio)")
+check("Ollama: message.content + Strip",
+      _extract_response_text({"message": {"content": "<think>x</think>Drache"}}, "ollama") == "Drache")
+check("LM Studio: choices[0].message.content",
+      _extract_response_text({"choices": [{"message": {"content": "Drache"}}]}, "lmstudio") == "Drache")
+check("LM Studio: leere choices -> ''",
+      _extract_response_text({"choices": []}, "lmstudio") == "")
+
+section("llm_vision: Request-Body-Form (Ollama)")
+ob = _build_ollama_request("mymodel", "B64", "prompt")
+check("Ollama model/stream", ob["model"] == "mymodel" and ob["stream"] is False)
+check("Ollama Bild in messages[1].images", ob["messages"][1]["images"] == ["B64"])
+check("Ollama num_predict=128 ohne Reasoning", ob["options"]["num_predict"] == 128)
+check("Ollama kein 'think' ohne Reasoning", "think" not in ob)
+ob_r = _build_ollama_request("m", "B", "p", reasoning=True)
+check("Ollama Reasoning: think=True + num_predict=2048",
+      ob_r.get("think") is True and ob_r["options"]["num_predict"] == 2048)
+check("Ollama max_tokens override schlägt Default",
+      _build_ollama_request("m", "B", "p", max_tokens=500)["options"]["num_predict"] == 500)
+check("Ollama system_prompt override",
+      _build_ollama_request("m", "B", "p", system_prompt="CUSTOM")["messages"][0]["content"] == "CUSTOM")
+
+section("llm_vision: Request-Body-Form (LM Studio / OpenAI)")
+lb = _build_lmstudio_request("mymodel", "B64", "prompt")
+check("LM Studio max_tokens=50 ohne Reasoning", lb["max_tokens"] == 50)
+check("LM Studio reasoning_effort='none' ohne Reasoning", lb["reasoning_effort"] == "none")
+check("LM Studio Bild als data-URL",
+      lb["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+lb_r = _build_lmstudio_request("m", "B", "p", reasoning=True)
+check("LM Studio Reasoning: effort='high' + max_tokens=2048",
+      lb_r["reasoning_effort"] == "high" and lb_r["max_tokens"] == 2048)
+check("LM Studio max_tokens override",
+      _build_lmstudio_request("m", "B", "p", max_tokens=4096)["max_tokens"] == 4096)
+
+section("llm_vision: System-Prompt")
+check("Default-Prompt enthält KEIN_BOSS-Regel", "KEIN_BOSS" in _build_system_prompt())
+check("bekannte Bosse landen im Prompt", "Drache" in _build_system_prompt(["Drache"]))
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
