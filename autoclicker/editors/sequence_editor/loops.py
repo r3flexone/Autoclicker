@@ -108,7 +108,11 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                     if 1 <= edit_num <= len(loop_phases):
                         lp = loop_phases[edit_num - 1]
                         print(f"\n  Bearbeite {lp.name}:")
-                        new_steps = edit_phase(state, lp.steps, lp.name)
+                        # KOPIE übergeben: edit_phase mutiert die Schritt-Liste
+                        # in-place (append/pop/clear). Bei Abbruch (None) müssen die
+                        # Original-Schritte unangetastet bleiben — würden wir lp.steps
+                        # direkt übergeben, blieben die Änderungen trotz 'verworfen'.
+                        new_steps = edit_phase(state, list(lp.steps), lp.name)
                         if new_steps is None:
                             # Abbruch verwirft nur die Schritt-Änderungen dieser
                             # Phase (alte Schritte bleiben), zurück ins Loops-Menü.

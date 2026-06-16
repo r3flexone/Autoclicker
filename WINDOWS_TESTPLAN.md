@@ -10,13 +10,16 @@ besonders genau prüfen.
 - Spiel „Idle Clans" offen, damit echte Klicks/Screenshots etwas treffen.
 
 ## 0. Automatisiert (schon grün auf Linux — auf Windows gegenprüfen)
-- [ ] `python tools/test_logic.py` → erwartet `46 PASS / 0 FAIL`, Exit 0.
+- [x] `python tools/test_logic.py` → erwartet `46 PASS / 0 FAIL`, Exit 0.
+      **2026-06-16 Windows: 46 PASS / 0 FAIL, Exit 0 ✓**
       Deckt ab: Scan-Serialisierung (Item/Boss/Icon) Round-Trip, `_point_to_dict`,
       `LOAD_EXCEPTIONS` (kaputte Dateien → None), defensives Slot-Laden,
       `compact_json`, `sanitize_filename`, `describe_color`, Koordinaten-Remapping,
       Config-Backward-Compat (entferntes Feld), `export_bundle`-ZIP-Format.
-- [ ] `python tools/sync_json.py` läuft ohne Fehler über vorhandene JSON-Dateien.
-- [ ] App startet: `python main.py` → Begrüßung + Hilfe erscheinen, keine Exception.
+- [x] `python tools/sync_json.py` läuft ohne Fehler über vorhandene JSON-Dateien.
+      **2026-06-16 Windows: durchgelaufen, alle Migrationen ohne Fehler ✓**
+- [x] App startet: `python main.py` → Begrüßung + Hilfe erscheinen, keine Exception.
+      **2026-06-16 Windows: Begrüßung + Hilfe ok, alle Loader + LLM verbunden, keine Exception ✓**
 
 ---
 
