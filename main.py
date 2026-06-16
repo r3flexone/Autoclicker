@@ -9,6 +9,14 @@ import ctypes.wintypes as wintypes
 import sys
 import time
 
+# stdout/stderr auf UTF-8 zwingen, damit Unicode (→, ü, █) auch in
+# umgeleiteter Ausgabe oder bei Codepage <65001 nicht crasht.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 # Modulare Imports
 from autoclicker.config import AppConfig, CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
