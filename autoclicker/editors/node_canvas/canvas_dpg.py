@@ -212,8 +212,11 @@ class NodeEditorApp:
                         if pt.color:
                             dpg.add_color_button(default_value=tuple(pt.color) + (255,),
                                                  width=18, height=18, no_border=True)
-                        dpg.add_button(label=label, width=-1, user_data=pt,
-                                       callback=self._on_add_point)
+                        btn = dpg.add_button(label=label, width=-1, user_data=pt,
+                                             callback=self._on_add_point)
+                        if pt.source:
+                            with dpg.tooltip(btn):
+                                dpg.add_text(pt.source, color=(150, 150, 150))
 
             dpg.add_separator()
             dpg.add_text("Eigenschaften", color=(120, 180, 255))

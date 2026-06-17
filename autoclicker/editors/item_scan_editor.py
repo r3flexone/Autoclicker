@@ -9,7 +9,7 @@ from typing import Optional
 
 from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, info, header, breadcrumb, suggest_command, cancel_hint, parse_non_negative_float
+from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -86,6 +86,8 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         if config:
             loaded_scans.append(config)
             menu_options.append(str(config))
+        else:
+            print(warn(f"Item-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
     if available_scans:
         print("  (Tipp: 'del <Nr>' im Textmodus zum Löschen)")
@@ -93,7 +95,7 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return
     elif choice == 0:
         edit_item_scan(state, None)
@@ -190,6 +192,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_slot_names = [s.name for s in existing.slots]
         selected_item_names = [i.name for i in existing.items]
         tolerance = existing.color_tolerance
+        learn_unknown = existing.learn_unknown
     else:
         print("\n--- Neuen Scan erstellen ---")
         scan_name = safe_input("Name des Scans: ").strip()
@@ -198,6 +201,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_slot_names = []
         selected_item_names = []
         tolerance = 40
+        learn_unknown = False
 
     # Schritt 1: Slots auswählen
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
@@ -212,6 +216,10 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         try:
             inp = safe_input("[Slots] > ").strip().lower()
             if inp in ("done", "d"):
+                if not selected_slot_names:
+                    print("  " + err("Mindestens 1 Slot erforderlich!") + " "
+                          + hint("('<Nr>' = Slot wählen, 'cancel' = Editor verlassen)"))
+                    continue
                 break
             elif is_cancel(inp):
                 return
@@ -261,10 +269,6 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
                     print(f"  -> Unbekannter Befehl.{suggestion}")
         except (KeyboardInterrupt, EOFError):
             return
-
-    if not selected_slot_names:
-        print(f"\n{err('Mindestens 1 Slot erforderlich!')}")
-        return
 
     # Schritt 2: Items auswählen oder erstellen
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))
@@ -498,7 +502,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if not selected_item_names:
         print(f"\n{info('Keine Items ausgewählt.')}")
         if not confirm("Trotzdem speichern?"):
-            print(f"{col('[CANCEL]', 'yellow')} Scan nicht gespeichert.")
+            print(f"{col('[ABBRUCH]', 'yellow')} Scan nicht gespeichert.")
             return
 
     # Schritt 3: Toleranz
@@ -512,6 +516,19 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     except ValueError:
         print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
 
+    # Schritt 4: Auto-Lernen (opt-in)
+    print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
+    print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
+    print("  globale Items (Kategorie 'Auto'). Diese werden NICHT geklickt —")
+    print("  Aktion/Kategorie ordnest du später im Item-Editor zu.")
+    print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
+    learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
+
+    if learn_unknown:
+        print("\n  " + hint("Gelernte Items heißen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
+        print("  " + hint("vergibst du danach im Item-Editor mit 'autoname' — das läuft"))
+        print("  " + hint("NICHT während des Scans (würde ihn ausbremsen)."))
+
     # Slots und Items aus globalen Definitionen holen
     with state.lock:
         slots = [state.global_slots[n] for n in selected_slot_names if n in state.global_slots]
@@ -522,7 +539,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         name=scan_name,
         slots=slots,
         items=items,
-        color_tolerance=tolerance
+        color_tolerance=tolerance,
+        learn_unknown=learn_unknown
     )
 
     with state.lock:

@@ -9,6 +9,14 @@ import ctypes.wintypes as wintypes
 import sys
 import time
 
+# stdout/stderr auf UTF-8 zwingen, damit Unicode (→, ü, █) auch in
+# umgeleiteter Ausgabe oder bei Codepage <65001 nicht crasht.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 # Modulare Imports
 from autoclicker.config import AppConfig, CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
@@ -26,7 +34,7 @@ from autoclicker.winapi import (
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories,
     load_points, load_global_slots, load_global_items, load_all_item_scans,
-    load_all_boss_scans, load_all_icon_scans
+    load_all_boss_scans, load_all_icon_scans, load_global_bosses
 )
 from autoclicker.execution import print_status
 from autoclicker.utils import col, info, warn, hint
@@ -136,6 +144,7 @@ def main() -> int:
     load_global_items(state)
     load_all_item_scans(state)
     load_all_boss_scans(state)
+    load_global_bosses(state)
     load_all_icon_scans(state)
 
     # Hotkeys registrieren

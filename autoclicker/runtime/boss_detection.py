@@ -49,10 +49,14 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         if config is None:
             print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
             return False, None
-        if not config.bosses:
-            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert!"))
+        # Lokale Bosse + globale Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
+        local_names = {b.name for b in config.bosses}
+        bosses_snapshot = list(config.bosses) + [
+            b for b in state.global_bosses if b.name not in local_names
+        ]
+        if not bosses_snapshot:
+            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine globalen)!"))
             return False, None
-        bosses_snapshot = list(config.bosses)
         color_tolerance = config.color_tolerance
         scan_region = config.scan_region
         # Erkennungs-Flags im selben Lock-Snapshot einfrieren — sonst kann ein
@@ -129,27 +133,35 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
     Returns:
         Das neu angelegte BossProfile, oder None wenn der Name bereits bekannt/vorgemerkt ist.
     """
-    from ..persistence import save_boss_scan
+    from ..persistence import save_boss_scan, save_global_bosses
+
+    learn_global = state.config.boss_learn_global
 
     # Check und Append atomar im selben Lock-Block — sonst kann zwischen Prüfung
     # und Mutation ein paralleler Pfad (Sync-Scan + Async-Watcher) denselben Boss
     # doppelt anhängen (TOCTOU).
     with state.lock:
-        existing_names = [b.name for b in config.bosses]
-        already_pending = any(
-            cfg == config.name and n == name
-            for cfg, n, _ in state.pending_new_bosses
-        )
+        existing_names = ({b.name for b in config.bosses}
+                          | {b.name for b in state.global_bosses})
+        already_pending = any(n == name for _, n, _ in state.pending_new_bosses)
         if name in existing_names or already_pending:
             return None
 
         new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
-        config.bosses.append(new_boss)
-        state.boss_scans[config.name] = config
-        state.pending_new_bosses.append((config.name, name, source))
+        if learn_global:
+            state.global_bosses.append(new_boss)
+            target = "Bibliothek (global)"
+        else:
+            config.bosses.append(new_boss)
+            state.boss_scans[config.name] = config
+            target = f"Scan '{config.name}'"
+        state.pending_new_bosses.append((target, name, source))
 
-    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — wird gespeichert (zur Bestätigung vorgemerkt)", "green"))
-    save_boss_scan(config)
+    print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — gespeichert in {target}", "green"))
+    if learn_global:
+        save_global_bosses(state)
+    else:
+        save_boss_scan(config)
 
     if debug:
         print(dbg(f"  → {source}: Neuer Boss '{name}' gespeichert (Aktion: skip, Bestätigung ausstehend)"))
@@ -175,8 +187,8 @@ def _confirm_new_bosses(state: AutoClickerState) -> None:
     print(col("\n" + "=" * 55, "yellow"))
     print(col(f"[NEUE BOSSE] {len(pending)} unbekannte(r) Boss(e) automatisch als SKIP gespeichert "
               f"— im Boss-Editor anpassbar.", "yellow"))
-    for i, (cfg_name, boss_name, source) in enumerate(pending, 1):
-        print(f"  {i}. [{source}] '{boss_name}'  (Konfiguration: '{cfg_name}')")
+    for i, (target, boss_name, source) in enumerate(pending, 1):
+        print(f"  {i}. [{source}] '{boss_name}'  → {target}")
     print(col("=" * 55, "yellow"))
 
 

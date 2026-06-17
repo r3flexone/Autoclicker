@@ -42,6 +42,19 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
     }
 
 
+def _point_to_dict(p: 'ClickPoint') -> dict:
+    """Serialisiert einen ClickPoint zu einem Dict (points.json / Export).
+
+    color/source nur wenn gesetzt — hält alte Dateien schlank und vermeidet
+    leere Felder. Zentral, damit points.json-Writer und Export identisch sind.
+    """
+    return {
+        "id": p.id, "x": p.x, "y": p.y, "name": p.name,
+        **({"color": list(p.color)} if p.color else {}),
+        **({"source": p.source} if p.source else {}),
+    }
+
+
 def _item_from_dict(data: dict) -> ItemProfile:
     """Deserialisiert ein ItemProfile aus einem Dict."""
     # confirm_point: kann {x, y} Dict, [x,y] Liste (alt) oder None sein
@@ -100,6 +113,57 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
         action_key=data.get("action_key"),
         action_delay=data.get("action_delay", 0),
     )
+
+
+# =============================================================================
+# SCAN-KONFIGURATIONEN (eine JSON pro Scan)
+# =============================================================================
+# Diese Funktionen sind die EINE Quelle der Wahrheit für das Dateiformat der
+# Scans — genutzt von den persistence-Savern UND vom ZIP-Export, damit beide
+# garantiert dasselbe schreiben.
+
+def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
+    """Serialisiert eine ItemScanConfig zu einem Dict."""
+    return {
+        "name": config.name,
+        "color_tolerance": config.color_tolerance,
+        "learn_unknown": config.learn_unknown,
+        "slots": [_slot_to_dict(slot) for slot in config.slots],
+        "items": [_item_to_dict(item) for item in config.items],
+    }
+
+
+def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
+    """Serialisiert eine BossScanConfig zu einem Dict (ohne globale Bosse)."""
+    return {
+        "name": config.name,
+        "scan_region": list(config.scan_region),
+        "color_tolerance": config.color_tolerance,
+        "default_action": config.default_action,
+        "default_scan": config.default_scan,
+        "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
+        "use_llm": config.use_llm,
+        "llm_fallback": config.llm_fallback,
+        "use_ocr": config.use_ocr,
+        "ocr_fallback": config.ocr_fallback,
+    }
+
+
+def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
+    """Serialisiert eine IconScanConfig zu einem Dict."""
+    return {
+        "name": config.name,
+        "scan_region": list(config.scan_region),
+        "template": config.template,
+        "min_confidence": config.min_confidence,
+        "marker_colors": [list(c) for c in config.marker_colors],
+        "color_tolerance": config.color_tolerance,
+        "action": config.action,
+        "action_x": config.action_x,
+        "action_y": config.action_y,
+        "action_key": config.action_key,
+        "action_delay": config.action_delay,
+    }
 
 
 # =============================================================================

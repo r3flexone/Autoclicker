@@ -154,15 +154,13 @@ _VK_MAP = {
     0x0D: 'enter',     # VK_RETURN
     0x1B: 'escape',    # VK_ESCAPE
     0x08: 'backspace', # VK_BACK
-    # Numpad-Pfeiltasten
-    0x68: 'up',        # VK_NUMPAD8
-    0x62: 'down',      # VK_NUMPAD2
-    0x64: 'left',      # VK_NUMPAD4
-    0x66: 'right',     # VK_NUMPAD6
 }
-# Zifferntasten 0-9
+# Zifferntasten 0-9: Hauptreihe + Numpad. VK_NUMPAD* kommt nur bei aktivem
+# NumLock — dann erwartet der Nutzer Ziffern (Menü-Auswahl), keine Pfeile.
+# Bei NumLock aus sendet der Numpad ohnehin VK_UP/DOWN/LEFT/RIGHT (oben gemappt).
 for _i in range(10):
     _VK_MAP[0x30 + _i] = str(_i)
+    _VK_MAP[0x60 + _i] = str(_i)
 
 
 def _read_key_msvcrt() -> str:
@@ -241,7 +239,7 @@ def read_key() -> str:
 # =============================================================================
 
 def interactive_select(options: list[str], title: str = "",
-                       allow_cancel: bool = True) -> int:
+                       allow_cancel: bool = True, default: int = 0) -> int:
     """Interaktive Menü-Auswahl mit Pfeiltasten.
 
     Navigation:
@@ -249,6 +247,9 @@ def interactive_select(options: list[str], title: str = "",
         Enter/Rechts - Bestätigen
         Escape/Links - Abbrechen (gibt -1 zurück)
         0-9          - Direkte Nummern-Eingabe
+
+    default: Index der vorausgewählten Option (z.B. der aktuelle Wert beim
+    Bearbeiten) — Enter bestätigt diesen direkt.
 
     Drei Modi je nach Konsolen-Umgebung:
         - cmd/PowerShell: Mehrzeiliges Menü mit Cursor-Bewegung
@@ -260,115 +261,97 @@ def interactive_select(options: list[str], title: str = "",
     """
     if not options:
         return -1
+    default = max(0, min(default, len(options) - 1))
 
     if _ANSI_ENABLED:
-        return _ansi_select(options, title, allow_cancel)
+        return _ansi_select(options, title, allow_cancel, default)
     elif _PYCHARM:
-        return _single_line_select(options, title, allow_cancel)
+        return _single_line_select(options, title, allow_cancel, default)
     else:
-        return _fallback_select(options, title, allow_cancel)
+        return _fallback_select(options, title, allow_cancel, default)
 
 
-def _ansi_select(options: list[str], title: str,
-                 allow_cancel: bool) -> int:
-    """Mehrzeiliges Menü mit ANSI-Cursor-Bewegung (echte Windows-Konsole)."""
-    selected = 0
-    num_options = len(options)
+def _navigate_select(num_options: int, allow_cancel: bool, default: int, redraw) -> int:
+    """Gemeinsame Tasten-Navigationsschleife der Pfeiltasten-Menüs.
 
-    flush_input_buffer()
-
-    if title:
-        print(title)
-
-    cancel_str = ", Esc=Abbruch" if allow_cancel else ""
-    print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
-
-    _draw_menu(options, selected)
-
+    Behandelt hoch/runter/enter/escape/Ziffern einheitlich; `redraw(selected)`
+    wird nach jeder Bewegung aufgerufen, damit jeder Modus selbst weiß, wie er
+    neu zeichnet (mehrzeilig vs. \\r-Einzeiler). Gibt den gewählten Index
+    zurück oder -1 bei Abbruch.
+    """
+    selected = default
     while True:
         key = read_key()
-
         if key == 'up':
             selected = (selected - 1) % num_options
         elif key == 'down':
             selected = (selected + 1) % num_options
         elif key in ('enter', 'right'):
-            _clear_menu_lines(num_options)
-            print(f"  > {options[selected]}")
             return selected
         elif key in ('escape', 'left') and allow_cancel:
-            _clear_menu_lines(num_options)
-            print("  (Abgebrochen)")
             return -1
         elif key.isdigit():
             num = int(key)
             if 1 <= num <= num_options:
-                _clear_menu_lines(num_options)
-                print(f"  > {options[num - 1]}")
                 return num - 1
-            elif num == 0 and allow_cancel:
-                _clear_menu_lines(num_options)
-                print("  (Abgebrochen)")
+            if num == 0 and allow_cancel:
                 return -1
             continue
         else:
             continue
+        redraw(selected)
 
+
+def _ansi_select(options: list[str], title: str,
+                 allow_cancel: bool, default: int = 0) -> int:
+    """Mehrzeiliges Menü mit ANSI-Cursor-Bewegung (echte Windows-Konsole)."""
+    num_options = len(options)
+    flush_input_buffer()
+
+    if title:
+        print(title)
+    cancel_str = ", Esc=Abbruch" if allow_cancel else ""
+    print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
+    _draw_menu(options, default)
+
+    def _redraw(selected: int) -> None:
         _clear_menu_lines(num_options)
         _draw_menu(options, selected)
 
+    choice = _navigate_select(num_options, allow_cancel, default, _redraw)
+    _clear_menu_lines(num_options)
+    print("  (Abgebrochen)" if choice == -1 else f"  > {options[choice]}")
+    return choice
+
 
 def _single_line_select(options: list[str], title: str,
-                        allow_cancel: bool) -> int:
+                        allow_cancel: bool, default: int = 0) -> int:
     """Einzeilen-Navigation für PyCharm/IDE (kein Cursor-Movement nötig).
 
     Zeigt die aktuelle Auswahl auf EINER Zeile und überschreibt mit \\r.
     PyCharm unterstützt ANSI-Farben aber keine Cursor-Bewegung.
     """
-    selected = 0
     num_options = len(options)
 
     if title:
         print(title)
-
     cancel_str = ", Esc=Abbruch" if allow_cancel else ""
     print(f"  (Pfeiltasten: navigieren, Enter: wählen{cancel_str})")
-
-    # Alle Optionen einmal auflisten (statisch)
+    # Alle Optionen einmal auflisten (statisch), dann die Auswahl-Zeile
     for i, opt in enumerate(options):
         print(f"   {i+1}. {opt}")
+    _print_single_selection(options, default, num_options)
 
-    # Aktuelle Auswahl auf einer Zeile anzeigen (überschreibbar)
-    _print_single_selection(options, selected, num_options)
-
-    while True:
-        key = read_key()
-
-        if key == 'up':
-            selected = (selected - 1) % num_options
-        elif key == 'down':
-            selected = (selected + 1) % num_options
-        elif key in ('enter', 'right'):
-            text = f"  > {options[selected]}"
-            print(f"\r{text}{' ' * (60 - len(text))}")
-            return selected
-        elif key in ('escape', 'left') and allow_cancel:
-            print(f"\r  (Abgebrochen){' ' * 40}")
-            return -1
-        elif key.isdigit():
-            num = int(key)
-            if 1 <= num <= num_options:
-                text = f"  > {options[num - 1]}"
-                print(f"\r{text}{' ' * (60 - len(text))}")
-                return num - 1
-            elif num == 0 and allow_cancel:
-                print(f"\r  (Abgebrochen){' ' * 40}")
-                return -1
-            continue
-        else:
-            continue
-
+    def _redraw(selected: int) -> None:
         _print_single_selection(options, selected, num_options)
+
+    choice = _navigate_select(num_options, allow_cancel, default, _redraw)
+    if choice == -1:
+        print(f"\r  (Abgebrochen){' ' * 40}")
+    else:
+        text = f"  > {options[choice]}"
+        print(f"\r{text}{' ' * (60 - len(text))}")
+    return choice
 
 
 def _print_single_selection(options: list[str], selected: int,
@@ -395,12 +378,13 @@ def _clear_menu_lines(num_lines: int) -> None:
 
 
 def _fallback_select(options: list[str], title: str,
-                     allow_cancel: bool) -> int:
+                     allow_cancel: bool, default: int = 0) -> int:
     """Fallback-Auswahl ohne ANSI (klassische Nummern-Eingabe)."""
     if title:
         print(title)
     for i, opt in enumerate(options):
-        print(f"  [{i+1}] {opt}")
+        marker = " *" if i == default else ""
+        print(f"  [{i+1}] {opt}{marker}")
     if allow_cancel:
         print("  [0] Abbrechen")
 
@@ -409,6 +393,8 @@ def _fallback_select(options: list[str], title: str,
             choice = safe_input("> ").strip()
             if is_cancel(choice):
                 return -1
+            if not choice:  # Enter = markierte Default-Option
+                return default
             num = int(choice)
             if 1 <= num <= len(options):
                 return num - 1

@@ -14,7 +14,7 @@ from ...persistence import (
     get_point_by_id, save_global_items, TEMPLATES_DIR,
 )
 from ...utils import (
-    col, confirm, err, header, parse_non_negative_float, safe_input,
+    col, confirm, err, header, hint, parse_non_negative_float, safe_input,
     sanitize_filename,
 )
 from .items import select_category
@@ -193,6 +193,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     created_count = 0
     skipped_count = 0
     duplicate_count = 0
+    created_names: list[str] = []  # für optionale LLM-Benennung am Schluss
 
     for idx, slot in enumerate(slot_list):
         slot_num = idx + 1
@@ -254,6 +255,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         with state.lock:
             state.global_items[item_name] = item
         created_count += 1
+        created_names.append(item_name)
 
         existing_templates.append((item_name, item))
 
@@ -269,5 +271,21 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     if skipped_count > 0:
         print(f", {skipped_count} fehlgeschlagen", end="")
     print(" ===")
-    print(f"\n  Tipp: 'rename <Nr>' zum Umbenennen, 'show' zum Anzeigen")
+
+    # Optionale LLM-Benennung — hier (Setup, kein Zeitdruck) ist das ok, im
+    # laufenden Scan dagegen nicht (würde den Worker blockieren).
+    if created_names and state.config.llm_enabled:
+        print(f"\n  {len(created_names)} neue Item(s) könnten per LLM benannt werden "
+              f"{hint('(kann je Item ein paar Sekunden dauern)')}.")
+        if confirm("  Jetzt per LLM benennen?", default=True):
+            from .commands import llm_name_items
+            with state.lock:
+                targets = [(n, state.global_items[n].template) for n in created_names
+                           if n in state.global_items and state.global_items[n].template]
+            renamed = llm_name_items(state, targets)
+            if renamed:
+                save_global_items(state)
+            print(f"  -> {renamed} Item(s) benannt.")
+
+    print(f"\n  Tipp: 'rename <Nr>' zum Umbenennen, 'autoname' für LLM-Benennung, 'show' zum Anzeigen")
     print(f"        'save <Name>' zum Speichern als Preset")

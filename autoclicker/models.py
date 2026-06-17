@@ -90,11 +90,15 @@ class ClickPoint:
     # übernommen — zuverlässiger als ein Live-Abgriff im Editor, da das Spiel
     # bei der Aufnahme im richtigen Zustand war.
     color: Optional[tuple[int, int, int]] = None
+    # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'" — bleibt auch nach
+    # Umbenennen des Punkts sichtbar, damit klar bleibt woher er stammt.
+    source: str = ""
 
     def __str__(self) -> str:
+        src = f"  [{self.source}]" if self.source else ""
         if self.name:
-            return f"#{self.id} {self.name} ({self.x}, {self.y})"
-        return f"#{self.id} ({self.x}, {self.y})"
+            return f"#{self.id} {self.name} ({self.x}, {self.y}){src}"
+        return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
 @dataclass
@@ -319,9 +323,13 @@ class ItemScanConfig:
     slots: list[ItemSlot] = field(default_factory=list)      # Wo gescannt wird
     items: list[ItemProfile] = field(default_factory=list)   # Welche Items erkannt werden
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
+    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
+    # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
+    learn_unknown: bool = False
 
     def __str__(self) -> str:
-        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items)"
+        learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
+        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items){learn_str}"
 
 
 # =============================================================================
@@ -458,6 +466,10 @@ class AutoClickerState:
 
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
+
+    # Globale Boss-Bibliothek: gilt zusätzlich in JEDEM Boss-Scan.
+    # Lokale Bosse eines Scans haben bei Namensgleichheit Vorrang.
+    global_bosses: list[BossProfile] = field(default_factory=list)
 
     # Icon-Scan Konfigurationen (Symbol/Icon erkennen → Aktion)
     icon_scans: dict[str, IconScanConfig] = field(default_factory=dict)

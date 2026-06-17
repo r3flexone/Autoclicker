@@ -386,6 +386,45 @@ def match_boss_name(response: str, boss_names: list[str]) -> tuple[Optional[str]
     return cleaned, True
 
 
+_ITEM_NAME_SYSTEM_PROMPT = (
+    "Du benennst Gegenstände aus einem Inventar-Spiel. Antworte mit einem "
+    "kurzen, treffenden Namen (1-3 Wörter) für den Gegenstand auf dem Bild. "
+    "Nur der Name, keine Erklärung, keine Anführungszeichen. Wenn nichts "
+    "Eindeutiges erkennbar ist, antworte mit 'Unbekannt'."
+)
+
+
+def suggest_item_name(
+    img: 'Image.Image',
+    provider: str = PROVIDER_LMSTUDIO,
+    endpoint: str = None,
+    model: str = None,
+    timeout: int = 60,
+) -> Optional[str]:
+    """Fragt das LLM nach einem kurzen Namen für einen Gegenstand auf dem Bild.
+
+    Returns:
+        Bereinigter Name (max. ~40 Zeichen) oder None wenn nicht erkennbar /
+        LLM nicht erreichbar.
+    """
+    success, response, _duration = analyze_image(
+        img=img,
+        provider=provider,
+        endpoint=endpoint,
+        model=model,
+        prompt="Wie heißt dieser Gegenstand?",
+        timeout=timeout,
+        system_prompt=_ITEM_NAME_SYSTEM_PROMPT,
+    )
+    if not success:
+        return None
+    name = clean_boss_name(_strip_reasoning_tags(response))
+    if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
+        return None
+    # Auf eine sinnvolle Länge kürzen (Modelle plappern manchmal doch)
+    return name[:40].strip()
+
+
 def test_connection(provider: str = PROVIDER_LMSTUDIO,
                     endpoint: str = None, model: str = None) -> tuple[bool, str]:
     """Testet die Verbindung zum LLM-Provider.

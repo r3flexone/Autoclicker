@@ -19,17 +19,17 @@ from ..models import (
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, interactive_select,
-    col, ok, err, header, breadcrumb, parse_non_negative_float,
+    col, ok, err, warn, header, breadcrumb, parse_non_negative_float,
 )
-from ..winapi import get_cursor_pos, VK_CODES
+from ..winapi import get_cursor_pos
 from ..imaging import (
-    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
+    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
 from ..persistence import (
     save_icon_scan, list_available_icon_scans, load_icon_scan_file,
     TEMPLATES_DIR,
 )
-from ._detection_capture import capture_markers
+from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
 
 def run_icon_scan_editor(state: AutoClickerState) -> None:
@@ -50,11 +50,13 @@ def run_icon_scan_editor(state: AutoClickerState) -> None:
         if config:
             loaded_scans.append(config)
             menu_options.append(str(config))
+        else:
+            print(warn(f"Icon-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return
     elif choice == 0:
         edit_icon_scan(state, None)
@@ -108,13 +110,8 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
             return None
 
     elif action == ICON_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', 'escape'): ").strip().lower()
-        if not key:
-            print("  → Keine Taste angegeben!")
-            return None
-        if key not in VK_CODES:
-            print(f"  → Unbekannte Taste: '{key}'")
-            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+        key = prompt_key()
+        if key is None:
             return None
         result["action_key"] = key
 
@@ -164,41 +161,13 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
         r = scan_region
         print(f"  Aktuelle Region: ({r[0]},{r[1]}) → ({r[2]},{r[3]})")
 
-    region_options = ["Per Maus auswählen (2 Ecken)", "Koordinaten manuell eingeben"]
-    if existing:
-        region_options.append("Bestehende Region beibehalten")
-
-    region_choice = interactive_select(region_options)
-    if region_choice == -1:
-        return
-
-    chosen = region_options[region_choice]
-    if chosen == "Per Maus auswählen (2 Ecken)":
-        result = select_region()
-        if result:
-            scan_region = result
-            print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-        elif not existing:
-            print(f"  {err('Region-Auswahl fehlgeschlagen!')}")
-            return
-    elif chosen == "Koordinaten manuell eingeben":
-        try:
-            inp = safe_input("  Region (x1,y1,x2,y2): ").strip()
-            parts = [int(x.strip()) for x in inp.split(",")]
-            if len(parts) != 4:
-                print(f"  {err('Bitte genau 4 Werte!')}")
-                if not existing:
-                    return
-            elif parts[2] <= parts[0] or parts[3] <= parts[1]:
-                print(f"  {err('Ungültiger Bereich! x2>x1 und y2>y1 erforderlich.')}")
-                if not existing:
-                    return
-            else:
-                scan_region = tuple(parts)
-        except ValueError:
-            print(f"  {err('Ungültige Koordinaten!')}")
-            if not existing:
-                return
+    new_region = select_scan_region(scan_region if existing else None)
+    if new_region is None:
+        if not existing:
+            return  # Neu-Erstellung abgebrochen
+        # Beim Bearbeiten: alte Region behalten
+    else:
+        scan_region = new_region
 
     # === SCHRITT 2: Erkennung (Template oder Marker) ===
     print(header("SCHRITT 2: ERKENNUNG"))
@@ -209,8 +178,11 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
     if existing and (existing.template or existing.marker_colors):
         detect_options.append("Bestehende Erkennung beibehalten")
 
-    detect_choice = interactive_select(detect_options, title="\nWie soll das Icon erkannt werden?")
+    has_keep = "Bestehende Erkennung beibehalten" in detect_options
+    detect_choice = interactive_select(detect_options, title="\nWie soll das Icon erkannt werden?",
+                                       default=len(detect_options) - 1 if has_keep else 0)
     if detect_choice == -1:
+        print(f"  {col('[ABBRUCH]', 'yellow')} Icon-Scan nicht gespeichert.")
         return
 
     chosen_label = detect_options[detect_choice]

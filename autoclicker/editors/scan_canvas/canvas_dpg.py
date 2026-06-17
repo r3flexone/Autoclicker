@@ -57,6 +57,9 @@ _BOSS_ACTIONS = ["item_scan", "click", "key", "skip", "skip_cycle", "restart"]
 MODE_SLOT = "slot"
 MODE_CLICK = "click"
 MODE_COLOR = "color"
+# Label im Werkzeug-Radio (für _set_mode, um das Widget mit dem Modus zu syncen)
+_MODE_LABELS = {MODE_SLOT: "Slot zeichnen", MODE_CLICK: "Klickpunkt setzen",
+                MODE_COLOR: "Farbe picken"}
 
 # Auswahl-Art
 KIND_SLOT = "slot"
@@ -88,6 +91,9 @@ class ScanStudioApp:
         self._scan_name: str = ""
         self._scan_tol: int = 40
         self.mode = MODE_SLOT
+        # Geführter Slot-Ablauf: nach dem Aufziehen automatisch durch
+        # Klickpunkt → Farbe leiten (None = kein laufender geführter Schritt).
+        self._guided_step: str | None = None
         self._drawing = False
         self._draw_start = (0.0, 0.0)
         self._draw_cur = (0.0, 0.0)
@@ -159,7 +165,7 @@ class ScanStudioApp:
                     )
                     dpg.add_separator()
                     dpg.add_text("Slots", color=(120, 180, 255))
-                    dpg.add_text("Im Modus 'Slot zeichnen'\nRechteck aufziehen.",
+                    dpg.add_text("Rechteck aufziehen → führt\nautomatisch zu Klickpunkt\n+ Farbe (Status beachten).",
                                  color=(150, 150, 150))
                     dpg.add_group(tag=_SLOT_LIST)
                     dpg.add_separator()
@@ -291,7 +297,12 @@ class ScanStudioApp:
         self.refresh_item_list()
         self.refresh_scan_panel()
         self.refresh_properties()
-        self._set_status(f"Slot '{name}' angelegt.")
+        # Geführt weiter: direkt in den Klickpunkt-Schritt (Werkzeug springt mit),
+        # damit man nicht manuell umschalten muss — wie der Konsolen-Ablauf.
+        self._guided_step = "click"
+        self._set_mode(MODE_CLICK)
+        self._set_status(f"Slot '{name}' angelegt — jetzt Klickpunkt anklicken "
+                         f"(oder Werkzeug wechseln zum Überspringen).")
 
     def _handle_point(self, dx, dy) -> None:
         """Klick im Modus Klickpunkt/Farbe auf den gewählten Slot anwenden."""
@@ -301,12 +312,26 @@ class ScanStudioApp:
         slot = self.slots[self.selected]
         if self.mode == MODE_CLICK:
             slot.click_pos = self.transform.draw_to_screen(dx, dy)
-            self._set_status(f"Klickpunkt: {slot.click_pos}")
+            if self._guided_step == "click":
+                # Weiter zum Farbe-Schritt
+                self._guided_step = "color"
+                self._set_mode(MODE_COLOR)
+                self._set_status(f"Klickpunkt gesetzt — jetzt Hintergrundfarbe auf dem "
+                                 f"leeren Slot anklicken (oder 'Slot zeichnen' = überspringen).")
+            else:
+                self._set_status(f"Klickpunkt: {slot.click_pos}")
         elif self.mode == MODE_COLOR:
             ix, iy = self.transform.draw_to_image(dx, dy)
             px = self.image.convert("RGB").getpixel((ix, iy))
             slot.slot_color = (int(px[0]), int(px[1]), int(px[2]))
-            self._set_status(f"Farbe: RGB{slot.slot_color}")
+            if self._guided_step == "color":
+                # Ablauf fertig → zurück zum Zeichnen für den nächsten Slot
+                self._guided_step = None
+                self._set_mode(MODE_SLOT)
+                self._set_status(f"Slot '{slot.name}' fertig (Region + Klickpunkt + Farbe). "
+                                 f"Nächstes Rechteck ziehen.")
+            else:
+                self._set_status(f"Farbe: RGB{slot.slot_color}")
         self.redraw_overlay()
         self.refresh_properties()
 
@@ -922,7 +947,16 @@ class ScanStudioApp:
                        callback=self._on_delete_item)
 
     # --------------------------------------------------------------- Callbacks
+    def _set_mode(self, mode: str) -> None:
+        """Setzt das aktive Werkzeug und hält das Radio-Widget sichtbar in Sync."""
+        self.mode = mode
+        if dpg.does_item_exist("ac_ss_mode"):
+            dpg.set_value("ac_ss_mode", _MODE_LABELS.get(mode, "Slot zeichnen"))
+
     def _on_mode(self, sender, app_data):
+        # Manueller Werkzeug-Wechsel bricht einen laufenden geführten Ablauf ab,
+        # damit das Auto-Weiterschalten den Nutzer nicht überstimmt.
+        self._guided_step = None
         self.mode = {"Slot zeichnen": MODE_SLOT, "Klickpunkt setzen": MODE_CLICK,
                      "Farbe picken": MODE_COLOR}.get(app_data, MODE_SLOT)
 

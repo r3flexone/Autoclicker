@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, interactive_select, col, ok, err, info, header, hint, coord_context, dbg
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_data, ensure_sequences_dir, list_available_sequences,
@@ -82,7 +82,7 @@ def handle_record(state: AutoClickerState) -> None:
     # Auto-speichern
     save_data(state)
 
-    color_str = f"  RGB{color}" if color else ""
+    color_str = f"  {describe_color(color)}" if color else ""
     print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
     print_status(state)
 
@@ -236,6 +236,15 @@ def handle_load(state: AutoClickerState) -> None:
 
 def handle_show(state: AutoClickerState) -> None:
     """Zeigt alle Punkte an, ermöglicht Testen und Umbenennen."""
+    # Wie die anderen Editoren: nicht während Aufnahme/Lauf öffnen — sonst
+    # können Punkt-Mutationen mit dem Worker/Recorder kollidieren.
+    if _block_if_recording(state):
+        return
+    with state.lock:
+        if state.is_running:
+            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+            return
+
     print_points(state)
 
     with state.lock:
@@ -245,20 +254,45 @@ def handle_show(state: AutoClickerState) -> None:
 
     print(col("-" * 50, 'gray'))
     print(col("Optionen:", 'bold'))
-    print(f"  {col('<Nr>', 'yellow')}        - Punkt testen (Maus hinbewegen ohne Klick)")
+    print(f"  {col('<Nr>', 'yellow')}        - Punkt testen (Maus hinbewegen, dann Umbenennen-Abfrage)")
+    print(f"  {col('show <Nr>', 'yellow')}   - Punkt zeigen (Maus hinbewegen + Details, ohne Abfrage)")
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
-    print(f"  {col('done / d', 'yellow')}    - Zurück")
-    print(f"  {col('Enter', 'yellow')}       - Zurück")
+    print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
+    print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
 
     while True:
         try:
             user_input = safe_input("> ").strip()
-            if not user_input:
+            if not user_input or user_input.lower() in ("done", "d") or is_cancel(user_input):
+                print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
                 return
-            if user_input.lower() in ("done", "d"):
-                return
+
+            if user_input.lower() in ("list", "l"):
+                print_points(state)
+                continue
+
+            # Zeigen-Befehl: Maus hinbewegen + Details, ohne Umbenennen-Abfrage
+            if user_input.lower().startswith("show "):
+                try:
+                    show_id = int(user_input[5:])
+                except ValueError:
+                    print(err("Format: show <Nr>"))
+                    continue
+                with state.lock:
+                    point = get_point_by_id(state, show_id)
+                if not point:
+                    print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
+                    continue
+                set_cursor_pos(point.x, point.y)
+                print(f"{col('[SHOW]', 'cyan')} #{point.id} {point.name} {coord_context(point.x, point.y)}")
+                if point.color:
+                    print(f"       Farbe:    {describe_color(point.color)}")
+                if point.source:
+                    print(f"       Herkunft: {point.source}")
+                print(hint("       Maus steht jetzt auf dem Punkt."))
+                continue
 
             # Löschen-Befehl (per ID)
             if user_input.lower().startswith("del "):
@@ -267,7 +301,7 @@ def handle_show(state: AutoClickerState) -> None:
                     with state.lock:
                         point_to_del = get_point_by_id(state, del_id)
                         if not point_to_del:
-                            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(Enter = Punkte anzeigen)')}")
+                            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
                             continue
                         state.points.remove(point_to_del)
                         num_points = len(state.points)
@@ -296,6 +330,8 @@ def handle_show(state: AutoClickerState) -> None:
                 print(f"{col('[TEST]', 'cyan')} Maus ist jetzt bei {point.name}. Neuer Name? (Enter = behalten)")
 
                 new_name = safe_input("> ").strip()
+                if is_cancel(new_name):  # ESC/q darf nicht zum Namen werden
+                    new_name = ""
                 if new_name:
                     with state.lock:
                         point.name = new_name
@@ -315,6 +351,7 @@ def handle_show(state: AutoClickerState) -> None:
         except ValueError:
             print(f"{err('Ungültige Eingabe!')} {hint('(Zahl = testen, <Nr> <Name> = umbenennen, del <Nr> = löschen)')}")
         except (KeyboardInterrupt, EOFError):
+            print(f"\n{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
             return
 
 

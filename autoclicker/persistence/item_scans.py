@@ -13,8 +13,8 @@ from typing import Optional
 from ..models import ItemScanConfig, ItemSlot, AutoClickerState
 from ..utils import compact_json, warn, atomic_write
 from .paths import ITEM_SCANS_DIR
-from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
+from .serialization import _item_from_dict, _item_scan_to_dict
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
@@ -26,13 +26,7 @@ def ensure_item_scans_dir() -> Path:
 
 def save_item_scan(config: ItemScanConfig) -> None:
     """Speichert eine Item-Scan Konfiguration."""
-    data = {
-        "name": config.name,
-        "color_tolerance": config.color_tolerance,
-        "slots": [_slot_to_dict(slot) for slot in config.slots],
-        "items": [_item_to_dict(item) for item in config.items]
-    }
-    write_scan(ITEM_SCANS_DIR, config.name, data, "Item-Scan")
+    write_scan(ITEM_SCANS_DIR, config.name, _item_scan_to_dict(config), "Item-Scan")
 
 
 def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
@@ -41,18 +35,22 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # Defensiv pro Slot: ein einzelner kaputter/unvollständiger Slot soll
+        # nicht den ganzen Scan unladbar machen (wie globals.py beim Slot-Laden).
         slots = []
         for s in data.get("slots", []):
-            slot_color = s.get("slot_color")
-            if slot_color:
-                slot_color = tuple(slot_color)
-            slot = ItemSlot(
-                name=s["name"],
-                scan_region=tuple(s["scan_region"]),
-                click_pos=tuple(s["click_pos"]),
-                slot_color=slot_color
-            )
-            slots.append(slot)
+            try:
+                slot_color = s.get("slot_color")
+                if slot_color:
+                    slot_color = tuple(slot_color)
+                slots.append(ItemSlot(
+                    name=s["name"],
+                    scan_region=tuple(s["scan_region"]),
+                    click_pos=tuple(s["click_pos"]),
+                    slot_color=slot_color,
+                ))
+            except (KeyError, TypeError, ValueError):
+                logger.warning(f"{filepath.name}: Slot übersprungen (unvollständig): {s}")
 
         items = [_item_from_dict(i) for i in data.get("items", [])]
 
@@ -60,10 +58,11 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
             name=data["name"],
             slots=slots,
             items=items,
-            color_tolerance=data.get("color_tolerance", 40)
+            color_tolerance=data.get("color_tolerance", 40),
+            learn_unknown=data.get("learn_unknown", False)
         )
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 

@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import BossScanConfig, AutoClickerState, BOSS_ACTION_SKIP
+from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn
 from .paths import BOSS_SCANS_DIR
-from .serialization import _boss_profile_to_dict, _boss_profile_from_dict
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
+from .serialization import _boss_profile_to_dict, _boss_profile_from_dict, _boss_scan_to_dict
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
@@ -22,19 +23,7 @@ def ensure_boss_scans_dir() -> Path:
 
 def save_boss_scan(config: BossScanConfig) -> None:
     """Speichert eine Boss-Scan Konfiguration."""
-    data = {
-        "name": config.name,
-        "scan_region": list(config.scan_region),
-        "color_tolerance": config.color_tolerance,
-        "default_action": config.default_action,
-        "default_scan": config.default_scan,
-        "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
-        "use_llm": config.use_llm,
-        "llm_fallback": config.llm_fallback,
-        "use_ocr": config.use_ocr,
-        "ocr_fallback": config.ocr_fallback,
-    }
-    write_scan(BOSS_SCANS_DIR, config.name, data, "Boss-Scan")
+    write_scan(BOSS_SCANS_DIR, config.name, _boss_scan_to_dict(config), "Boss-Scan")
 
 
 def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
@@ -58,9 +47,45 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
             ocr_fallback=data.get("ocr_fallback", True),
         )
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
+
+
+def _global_bosses_file() -> Path:
+    # Unterordner statt boss_scans/*.json — sonst würde die Datei von
+    # list_scan_files als (defekte) Scan-Konfiguration mitgelistet.
+    return Path(BOSS_SCANS_DIR) / "global" / "bosses.json"
+
+
+def save_global_bosses(state: AutoClickerState) -> None:
+    """Speichert die globale Boss-Bibliothek (crash-sicher)."""
+    with state.lock:
+        data = [_boss_profile_to_dict(b) for b in state.global_bosses]
+    filepath = _global_bosses_file()
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        atomic_write(filepath, compact_json(data))
+        print(save_tag(f"Boss-Bibliothek gespeichert ({len(data)} Boss(e))"))
+    except (IOError, OSError) as e:
+        print(err(f"Boss-Bibliothek konnte nicht gespeichert werden: {e}"))
+
+
+def load_global_bosses(state: AutoClickerState) -> None:
+    """Lädt die globale Boss-Bibliothek (fehlende Datei = leere Bibliothek)."""
+    filepath = _global_bosses_file()
+    if not filepath.exists():
+        return
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        with state.lock:
+            state.global_bosses = [_boss_profile_from_dict(b) for b in data]
+            count = len(state.global_bosses)
+        print(load_tag(f"{count} globale(r) Boss(e) geladen"))
+    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
+        print(warn(f"Boss-Bibliothek konnte nicht geladen werden: {e}"))
+        logger.error(f"Konnte {filepath} nicht laden: {e}")
 
 
 def list_available_boss_scans() -> list[tuple[str, Path]]:

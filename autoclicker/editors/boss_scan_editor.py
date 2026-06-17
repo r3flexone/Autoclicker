@@ -15,21 +15,21 @@ from ..models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     SCAN_MODE_ALL,
 )
-from ..config import DEFAULT_MIN_CONFIDENCE
+from ..config import DEFAULT_MIN_CONFIDENCE, save_config
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, header, breadcrumb, suggest_command,
-    parse_non_negative_float, warn,
+    parse_non_negative_float, warn, hint,
 )
-from ..winapi import get_cursor_pos, VK_CODES
+from ..winapi import get_cursor_pos
 from ..imaging import (
-    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot, select_region,
+    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, TEMPLATES_DIR,
+    list_available_item_scans, TEMPLATES_DIR, save_global_bosses,
 )
-from ._detection_capture import capture_markers
+from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -42,25 +42,45 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         print("         Installieren mit: pip install pillow")
         return
 
-    # Bestehende Boss-Scans laden
-    available_scans = list_available_boss_scans()
-    loaded_scans = []
-    menu_options = ["Neuen Boss-Scan erstellen"]
-    for name, path in available_scans:
-        config = load_boss_scan_file(path)
-        if config:
-            loaded_scans.append(config)
-            menu_options.append(str(config))
+    # Menü-Loop: nach jeder Aktion zurück ins Menü, ESC/cancel beendet
+    while True:
+        available_scans = list_available_boss_scans()
+        loaded_scans = []
+        with state.lock:
+            num_global = len(state.global_bosses)
+        learn_target = "Bibliothek (global)" if state.config.boss_learn_global else "jeweiliger Scan"
+        menu_options = [
+            "Neuen Boss-Scan erstellen",
+            f"Boss-Bibliothek verwalten ({num_global} globale Bosse)",
+            f"Auto-Lernen neuer Bosse → {learn_target} [umschalten]",
+        ]
+        num_fixed = len(menu_options)
+        for name, path in available_scans:
+            config = load_boss_scan_file(path)
+            if config:
+                loaded_scans.append(config)
+                menu_options.append(str(config))
+            else:
+                print(warn(f"Boss-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
-    choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
+        choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
-    if choice == -1:
-        print(f"{col('[CANCEL]', 'yellow')} Editor beendet.")
-        return
-    elif choice == 0:
-        edit_boss_scan(state, None)
-    elif 1 <= choice < len(menu_options):
-        edit_boss_scan(state, loaded_scans[choice - 1])
+        if choice == -1:
+            print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
+            return
+        elif choice == 0:
+            edit_boss_scan(state, None)
+        elif choice == 1:
+            edit_global_bosses(state)
+        elif choice == 2:
+            state.config.boss_learn_global = not state.config.boss_learn_global
+            save_config(state.config)
+            if state.config.boss_learn_global:
+                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
+            else:
+                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
+        elif num_fixed <= choice < len(menu_options):
+            edit_boss_scan(state, loaded_scans[choice - num_fixed])
 
 
 def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossProfile] = None) -> Optional[dict]:
@@ -90,7 +110,8 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
         except ValueError:
             pass
 
-    choice = interactive_select(action_options, title="\nAktion wenn dieser Boss erkannt wird:")
+    choice = interactive_select(action_options, title="\nAktion wenn dieser Boss erkannt wird:",
+                                default=default_idx)
     if choice == -1:
         return None
 
@@ -139,13 +160,8 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
             return None
 
     elif action == BOSS_ACTION_KEY:
-        key = safe_input("  Taste (z.B. 'enter', 'space', '1'): ").strip().lower()
-        if not key:
-            print("  → Keine Taste angegeben!")
-            return None
-        if key not in VK_CODES:
-            print(f"  → Unbekannte Taste: '{key}'")
-            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+        key = prompt_key()
+        if key is None:
             return None
         result["action_key"] = key
 
@@ -192,7 +208,9 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
     if existing and (existing.template or existing.marker_colors):
         detect_options.append("Bestehende Erkennung beibehalten")
 
-    detect_choice = interactive_select(detect_options, title="\nWie soll der Boss erkannt werden?")
+    has_keep = "Bestehende Erkennung beibehalten" in detect_options
+    detect_choice = interactive_select(detect_options, title="\nWie soll der Boss erkannt werden?",
+                                       default=len(detect_options) - 1 if has_keep else 0)
     if detect_choice == -1:
         return None
 
@@ -263,76 +281,15 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
     )
 
 
-def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) -> None:
-    """Erstellt oder bearbeitet eine Boss-Scan Konfiguration."""
+def _edit_boss_list(state: AutoClickerState, bosses: list, allow_empty: bool) -> bool:
+    """Interaktiver add/edit/del-Loop für eine BossProfile-Liste (mutiert in-place).
 
-    if existing:
-        print(f"\n--- Bearbeite Boss-Scan: {existing.name} ---")
-        scan_name = existing.name
-        scan_region = existing.scan_region
-        bosses = list(existing.bosses)
-        tolerance = existing.color_tolerance
-        default_action = existing.default_action
-        default_scan = existing.default_scan
-    else:
-        print("\n--- Neuen Boss-Scan erstellen ---")
-        scan_name = safe_input("Name des Boss-Scans: ").strip()
-        if not scan_name:
-            scan_name = f"BossScan_{int(time.time())}"
-        scan_region = (0, 0, 100, 100)
-        bosses = []
-        tolerance = 30
-        default_action = BOSS_ACTION_SKIP
-        default_scan = None
+    allow_empty: 'done' mit leerer Liste zulassen (Bibliothek / Scan mit
+    globalen Bossen) oder nicht.
 
-    # === SCHRITT 1: Scan-Region ===
-    print(header("SCHRITT 1: SCAN-REGION (wo erscheint der Boss?)"))
-    if existing:
-        r = scan_region
-        print(f"  Aktuelle Region: ({r[0]},{r[1]}) → ({r[2]},{r[3]})")
-
-    region_options = [
-        "Per Maus auswählen (2 Ecken)",
-        "Koordinaten manuell eingeben",
-    ]
-    if existing:
-        region_options.append("Bestehende Region beibehalten")
-
-    region_choice = interactive_select(region_options)
-    if region_choice == -1:
-        return
-
-    if region_options[region_choice] == "Per Maus auswählen (2 Ecken)":
-        result = select_region()
-        if result:
-            scan_region = result
-            print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-        else:
-            print(f"  {err('Region-Auswahl fehlgeschlagen!')}")
-            if not existing:
-                return
-
-    elif region_options[region_choice] == "Koordinaten manuell eingeben":
-        try:
-            inp = safe_input("  Region (x1,y1,x2,y2): ").strip()
-            parts = [int(x.strip()) for x in inp.split(",")]
-            if len(parts) != 4:
-                print(f"  {err('Format: x1,y1,x2,y2')}")
-                if not existing:
-                    return
-            elif parts[2] <= parts[0] or parts[3] <= parts[1]:
-                print(f"  {err('Ungültiger Bereich! x2>x1 und y2>y1 erforderlich.')}")
-                if not existing:
-                    return
-            else:
-                scan_region = tuple(parts)
-                print(f"  → Region: ({scan_region[0]},{scan_region[1]}) → ({scan_region[2]},{scan_region[3]})")
-        except (ValueError, KeyboardInterrupt, EOFError):
-            if not existing:
-                return
-
-    # === SCHRITT 2: Bosse definieren ===
-    print(header("SCHRITT 2: BOSSE DEFINIEREN"))
+    Returns:
+        True bei 'done', False bei Abbruch (cancel/ESC/Strg+C).
+    """
     if bosses:
         print("\nAktuelle Bosse:")
         for i, boss in enumerate(bosses):
@@ -347,9 +304,13 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             inp = safe_input("[Bosse] > ").strip().lower()
 
             if inp in ("done", "d"):
-                break
+                if not bosses and not allow_empty:
+                    print("  " + err("Mindestens 1 Boss erforderlich!") + " "
+                          + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
+                    continue
+                return True
             elif is_cancel(inp):
-                return
+                return False
             elif inp in ("help", "?"):
                 print(boss_help)
             elif inp == "add":
@@ -393,11 +354,74 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
                 print(f"  → Unbekannter Befehl.{suggestion}")
 
         except (KeyboardInterrupt, EOFError):
-            return
+            return False
 
-    if not bosses:
-        print(f"\n{err('Mindestens 1 Boss erforderlich!')}")
+
+def edit_global_bosses(state: AutoClickerState) -> None:
+    """Verwaltet die globale Boss-Bibliothek (gilt zusätzlich in jedem Boss-Scan)."""
+    print(header("BOSS-BIBLIOTHEK (globale Bosse)"))
+    print("  Diese Bosse gelten automatisch in JEDEM Boss-Scan.")
+    print(f"  {col('Hinweis:', 'cyan')} Lokale Bosse eines Scans haben bei gleichem Namen Vorrang.")
+
+    with state.lock:
+        bosses = list(state.global_bosses)
+
+    if _edit_boss_list(state, bosses, allow_empty=True):
+        with state.lock:
+            state.global_bosses = bosses
+        save_global_bosses(state)
+    else:
+        print(f"  {col('[ABBRUCH]', 'yellow')} Änderungen verworfen.")
+
+
+def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) -> None:
+    """Erstellt oder bearbeitet eine Boss-Scan Konfiguration."""
+
+    if existing:
+        print(f"\n--- Bearbeite Boss-Scan: {existing.name} ---")
+        scan_name = existing.name
+        scan_region = existing.scan_region
+        bosses = list(existing.bosses)
+        tolerance = existing.color_tolerance
+        default_action = existing.default_action
+        default_scan = existing.default_scan
+    else:
+        print("\n--- Neuen Boss-Scan erstellen ---")
+        scan_name = safe_input("Name des Boss-Scans: ").strip()
+        if not scan_name:
+            scan_name = f"BossScan_{int(time.time())}"
+        scan_region = (0, 0, 100, 100)
+        bosses = []
+        tolerance = 30
+        default_action = BOSS_ACTION_SKIP
+        default_scan = None
+
+    # === SCHRITT 1: Scan-Region ===
+    print(header("SCHRITT 1: SCAN-REGION (wo erscheint der Boss?)"))
+    if existing:
+        r = scan_region
+        print(f"  Aktuelle Region: ({r[0]},{r[1]}) → ({r[2]},{r[3]})")
+
+    new_region = select_scan_region(scan_region if existing else None)
+    if new_region is None:
+        if not existing:
+            print(f"  {col('[ABBRUCH]', 'yellow')} Boss-Scan nicht gespeichert.")
+            return  # Neu-Erstellung abgebrochen
+        # Beim Bearbeiten: alte Region behalten
+    else:
+        scan_region = new_region
+
+    # === SCHRITT 2: Bosse definieren ===
+    print(header("SCHRITT 2: BOSSE DEFINIEREN"))
+    with state.lock:
+        num_global = len(state.global_bosses)
+    if num_global:
+        print(f"\n  {info(f'{num_global} globale(r) Boss(e) aus der Bibliothek gelten zusätzlich.')}")
+
+    if not _edit_boss_list(state, bosses, allow_empty=num_global > 0):
         return
+    if not bosses and num_global:
+        print(f"  {info(f'Keine lokalen Bosse — der Scan nutzt die {num_global} globalen.')}")
 
     # === SCHRITT 3: Default-Aktion ===
     print(header("SCHRITT 3: DEFAULT-AKTION (wenn kein Boss erkannt)"))
@@ -409,7 +433,11 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     ]
     default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, BOSS_ACTION_SCAN]
 
-    default_choice = interactive_select(default_options)
+    try:
+        preselect = default_map.index(default_action)
+    except ValueError:
+        preselect = 0
+    default_choice = interactive_select(default_options, default=preselect)
     if default_choice >= 0:
         default_action = default_map[default_choice]
 
@@ -449,7 +477,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         "LLM-Verbindung testen",
     ]
 
-    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:")
+    llm_preselect = 0 if not use_llm else (1 if llm_fallback else 2)
+    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:", default=llm_preselect)
     if llm_choice == 0:
         use_llm = False
     elif llm_choice == 1:
@@ -495,7 +524,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             "OCR als primäre Erkennung (immer zuerst OCR)",
         ]
 
-        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:")
+        ocr_preselect = 0 if not use_ocr else (1 if ocr_fallback else 2)
+        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:", default=ocr_preselect)
         if ocr_choice == 0:
             use_ocr = False
         elif ocr_choice == 1:

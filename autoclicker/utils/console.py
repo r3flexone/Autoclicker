@@ -7,6 +7,7 @@ _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM und _COLORS_ENABLED.
 """
 
 import ctypes
+import colorsys
 import os
 
 # =============================================================================
@@ -78,6 +79,56 @@ def hint(msg: str) -> str:
 def dbg(msg: str) -> str:
     """Formatiert eine Debug-Meldung: [DEBUG] in grau."""
     return f"{col('[DEBUG]', 'gray')} {msg}"
+
+
+def _color_name(r: int, g: int, b: int) -> str:
+    """Heuristischer deutscher Farbname für einen RGB-Wert (Hue-basiert)."""
+    mx, mn = max(r, g, b), min(r, g, b)
+    if mx - mn < 30:  # Grauachse: kaum Sättigung
+        if mx < 50:
+            return "Schwarz"
+        if mx < 120:
+            return "Dunkelgrau"
+        if mx < 200:
+            return "Grau"
+        return "Weiß"
+    hue = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)[0] * 360
+    dark = mx < 128
+    if hue < 15 or hue >= 345:
+        return "Dunkelrot" if dark else "Rot"
+    if hue < 45:
+        # Braun = dunkles Orange; Schwelle höher als die generelle Dark-Grenze,
+        # damit klassische Brauntöne (z.B. 139,69,19) nicht als Orange landen.
+        return "Braun" if mx < 170 else "Orange"
+    if hue < 70:
+        return "Oliv" if dark else "Gelb"
+    if hue < 160:
+        return "Dunkelgrün" if dark else "Grün"
+    if hue < 200:
+        return "Türkis"
+    if hue < 255:
+        return "Dunkelblau" if dark else "Blau"
+    if hue < 290:
+        return "Lila"
+    return "Pink"
+
+
+def describe_color(color) -> str:
+    """Beschreibt eine RGB-Farbe menschenlesbar: farbiger Block + Name.
+
+    Beispiel: '█ Rot (220,40,30)' — der Block ist via ANSI-Truecolor in der
+    echten Farbe eingefärbt (Windows-Konsole mit VT-Processing und PyCharm
+    können das). Ohne Farb-Support bleibt nur Name + Werte.
+    """
+    try:
+        r, g, b = (int(v) for v in color)
+    except (TypeError, ValueError):
+        return str(color)
+    name = _color_name(r, g, b)
+    rgb = hint(f"({r},{g},{b})")
+    if _COLORS_ENABLED:
+        return f"\033[38;2;{r};{g};{b}m█{_C['reset']} {name} {rgb}"
+    return f"{name} {rgb}"
 
 
 def save_tag(msg: str) -> str:

@@ -13,8 +13,8 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write
-from .serialization import _parse_steps, _sequence_to_dict
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write, describe_color
+from .serialization import _parse_steps, _sequence_to_dict, _point_to_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -150,11 +150,7 @@ def save_data(state: AutoClickerState) -> None:
 
     # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
     with state.lock:
-        points_data = [
-            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {})}
-            for p in state.points
-        ]
+        points_data = [_point_to_dict(p) for p in state.points]
         sequences_snapshot = list(state.sequences.items())
 
     # Punkte speichern (mit stabiler ID)
@@ -179,11 +175,7 @@ def save_points(state: AutoClickerState) -> None:
     """Speichert nur die globalen Punkte (points.json), crash-sicher."""
     ensure_sequences_dir()
     with state.lock:
-        points_data = [
-            {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-             **({"color": list(p.color)} if p.color else {})}
-            for p in state.points
-        ]
+        points_data = [_point_to_dict(p) for p in state.points]
     try:
         atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
     except (IOError, OSError) as e:
@@ -203,7 +195,8 @@ def load_points(state: AutoClickerState) -> None:
                     point_id = p.get("id", i + 1)  # Fallback: Index + 1 für alte Dateien
                     color_raw = p.get("color")
                     color = tuple(int(v) for v in color_raw) if color_raw else None
-                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id, color=color))
+                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id,
+                                                   color=color, source=p.get("source", "")))
             print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"points.json konnte nicht geladen werden: {e}"))
@@ -237,5 +230,7 @@ def print_points(state: AutoClickerState) -> None:
         print(f"\nGespeicherte Punkte ({len(state.points)}):")
         print("-" * 50)
         for p in state.points:
-            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d})")
+            color_str = f"  {describe_color(p.color)}" if p.color else ""
+            src = f"  [{p.source}]" if p.source else ""
+            print(f"  #{p.id:3d} {p.name:20s} ({p.x:4d}, {p.y:4d}){color_str}{src}")
         print("-" * 50)

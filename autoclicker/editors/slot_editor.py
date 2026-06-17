@@ -3,6 +3,7 @@ Slot-Editor für den Autoclicker.
 Ermöglicht das Erstellen und Bearbeiten von Slot-Definitionen für Item-Scans.
 """
 
+import copy
 import time
 from pathlib import Path
 from typing import Optional
@@ -31,6 +32,12 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
         print(f"\n{err('Pillow nicht installiert!')}")
         print("         Installieren mit: pip install pillow")
         return
+
+    # Transaktional wie der Item-Editor: Snapshot am Start, Änderungen passieren
+    # in-memory, gespeichert wird erst bei 'done' — 'cancel' stellt den
+    # Originalzustand wieder her (inkl. zwischenzeitlichem Preset-Laden).
+    with state.lock:
+        slots_backup = copy.deepcopy(state.global_slots)
 
     # Aktuelle Slots anzeigen
     with state.lock:
@@ -76,10 +83,14 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
             cmd = user_input.lower()
 
             if cmd in ("done", "d"):
+                save_global_slots(state)
                 print(ok("Slot-Editor beendet."))
                 return
             elif is_cancel(cmd):
-                print(col("[ABBRUCH]", "yellow") + " Slot-Editor beendet.")
+                with state.lock:
+                    state.global_slots = slots_backup
+                save_global_slots(state)
+                print(col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
                 return
             elif cmd == "":
                 continue
@@ -97,8 +108,7 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 continue
 
             elif cmd == "auto":
-                if slot_auto_detect(state):
-                    save_global_slots(state)
+                slot_auto_detect(state)  # gespeichert wird bei 'done'
                 continue
 
             elif cmd == "add":
@@ -106,7 +116,6 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 if slot:
                     with state.lock:
                         state.global_slots[slot.name] = slot
-                    save_global_slots(state)
                     print(f"  + Slot '{slot.name}' hinzugefügt")
                 continue
 
@@ -116,9 +125,8 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 except ValueError:
                     print("  -> Format: edit <Nr>")
                     continue
-                # Unter Lock nur Slot/Namen auflösen — edit_slot (blockiert auf
-                # Input) und save_global_slots (nimmt selbst den Lock) laufen
-                # AUSSERHALB des Locks, sonst Self-Deadlock.
+                # Unter Lock nur Slot/Namen auflösen — edit_slot blockiert auf
+                # Input und läuft daher AUSSERHALB des Locks.
                 with state.lock:
                     slot_list = list(state.global_slots.items())
                     valid = 1 <= edit_num <= len(slot_list)
@@ -134,7 +142,6 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                         if new_slot.name != name:
                             del state.global_slots[name]
                         state.global_slots[new_slot.name] = new_slot
-                    save_global_slots(state)
                     print(f"  + Slot '{new_slot.name}' aktualisiert")
                 continue
 
@@ -147,7 +154,6 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 if confirm(f"  {count} Slot(s) wirklich löschen?"):
                     with state.lock:
                         state.global_slots.clear()
-                    save_global_slots(state)
                     print(f"  + {count} Slot(s) gelöscht!")
                 else:
                     print("  -> Abgebrochen")
@@ -159,7 +165,6 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 except ValueError:
                     print("  -> Format: del <Nr>")
                     continue
-                # save_global_slots nimmt selbst den Lock → außerhalb aufrufen.
                 with state.lock:
                     slot_list = list(state.global_slots.keys())
                     valid = 1 <= del_num <= len(slot_list)
@@ -169,7 +174,6 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 if not valid:
                     print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
                     continue
-                save_global_slots(state)
                 print(f"  + Slot '{name}' gelöscht")
                 continue
 
@@ -203,7 +207,10 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
         except (KeyboardInterrupt, EOFError):
-            print("\n" + col("[ABBRUCH]", "yellow") + " Slot-Editor beendet.")
+            with state.lock:
+                state.global_slots = slots_backup
+            save_global_slots(state)
+            print("\n" + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
             return
 
 
@@ -218,6 +225,14 @@ def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
         return None
     if not slot_name:
         slot_name = f"Slot {slot_num}"
+
+    # Duplikat-Check (Slots sind per Name indexiert — sonst still überschrieben)
+    with state.lock:
+        name_exists = slot_name in state.global_slots
+    if name_exists:
+        if not confirm(f"  '{slot_name}' existiert bereits. Überschreiben?"):
+            print("  -> Slot-Erstellung abgebrochen")
+            return None
 
     # Scan-Region auswählen
     print("\n  Scan-Region definieren (Bereich wo das Item angezeigt wird):")

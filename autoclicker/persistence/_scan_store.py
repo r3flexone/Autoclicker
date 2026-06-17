@@ -17,6 +17,14 @@ from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, at
 
 logger = logging.getLogger("autoclicker")
 
+# Exceptions die beim Laden einer JSON-Konfiguration auftreten können
+# (korrupte/alte Datei, fehlende Felder, kaputtes Encoding etc.). Zentral
+# definiert, damit ALLE Loader gleich tolerant sind statt je eigenes Tupel.
+LOAD_EXCEPTIONS = (
+    json.JSONDecodeError, IOError, OSError, KeyError, TypeError,
+    ValueError, UnicodeDecodeError,
+)
+
 
 def ensure_dir(directory: str) -> Path:
     """Stellt sicher, dass der Scan-Ordner existiert."""

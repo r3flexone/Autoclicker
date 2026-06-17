@@ -10,8 +10,8 @@ from pathlib import Path
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import update_item_in_scans, TEMPLATES_DIR
-from ...utils import confirm, is_cancel, safe_input, sanitize_filename, warn
+from ...persistence import update_item_in_scans, save_global_items, TEMPLATES_DIR
+from ...utils import confirm, is_cancel, safe_input, sanitize_filename, warn, ok, err, info, hint
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -93,6 +93,130 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
         print(f"  + Item umbenannt: '{old_name}' -> '{new_name}' (gespeichert)")
     except ValueError:
         print("  -> Format: rename <Nr>")
+
+
+def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) -> bool:
+    """Benennt ein Item mechanisch um: Template-Datei, global_items, Scan-Configs.
+
+    Still (keine Prompts) — für programmatische Aufrufe wie 'autoname'. new_name
+    muss bereits eindeutig sein (Caller stellt das sicher). Gibt False zurück,
+    wenn old_name nicht mehr existiert.
+    """
+    with state.lock:
+        if old_name not in state.global_items:
+            return False
+        old_template = state.global_items[old_name].template
+
+    new_template = None
+    if old_template:
+        old_path = Path(TEMPLATES_DIR) / old_template
+        new_template = f"{sanitize_filename(new_name)}.png"
+        if old_path.exists():
+            try:
+                old_path.rename(Path(TEMPLATES_DIR) / new_template)
+            except (OSError, IOError):
+                pass  # Pfad trotzdem aktualisieren, Datei bleibt unter altem Namen
+
+    with state.lock:
+        if old_name not in state.global_items:
+            return False
+        item = state.global_items[old_name]
+        item.name = new_name
+        if new_template is not None:
+            item.template = new_template
+        del state.global_items[old_name]
+        state.global_items[new_name] = item
+
+    update_item_in_scans(old_name, new_name, item.template)
+    return True
+
+
+def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> int:
+    """Benennt die (name, template)-Items per LLM aus ihren gespeicherten Templates.
+
+    Blockierend (LLM-Antworten dauern) — daher NUR außerhalb eines laufenden
+    Scans aufrufen (Editor/Setup). Speichert NICHT selbst; der Aufrufer macht
+    save_global_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
+    umbenannter Items zurück.
+    """
+    try:
+        from ...llm_vision import suggest_item_name
+    except ImportError:
+        print(f"  {err('LLM-Vision-Modul nicht verfügbar.')}")
+        return 0
+    try:
+        from PIL import Image
+    except ImportError:
+        print(f"  {err('Pillow nicht installiert.')}")
+        return 0
+
+    renamed = 0
+    for old_name, template in targets:
+        tpl_path = Path(TEMPLATES_DIR) / template
+        if not tpl_path.exists():
+            print(f"    {old_name}: Template fehlt — übersprungen.")
+            continue
+        try:
+            img = Image.open(tpl_path)
+        except (OSError, ValueError):
+            print(f"    {old_name}: Template nicht lesbar — übersprungen.")
+            continue
+
+        suggestion = suggest_item_name(
+            img,
+            provider=state.config.llm_provider,
+            endpoint=state.config.llm_endpoint,
+            model=state.config.llm_model,
+            timeout=state.config.llm_timeout,
+        )
+        base = sanitize_filename(suggestion).strip() if suggestion else ""
+        if not base:
+            print(f"    {old_name}: kein Name vom LLM — bleibt.")
+            continue
+
+        # Eindeutigen Namen sicherstellen
+        with state.lock:
+            new_name = base
+            counter = 1
+            while new_name in state.global_items and new_name != old_name:
+                counter += 1
+                new_name = f"{base} {counter}"
+        if new_name == old_name:
+            continue
+        if _apply_item_rename(state, old_name, new_name):
+            print(f"    + '{old_name}' → '{new_name}'")
+            renamed += 1
+    return renamed
+
+
+def handle_autoname_command(state: AutoClickerState) -> None:
+    """Benennt auto-gelernte Items ('Auto …') per LLM aus ihren gespeicherten Templates.
+
+    Läuft NUR auf Befehl — bewusst nicht während eines Scans, weil LLM-Antworten
+    je Item mehrere Sekunden dauern können und den Lauf ausbremsen würden.
+    """
+    if not state.config.llm_enabled:
+        print(f"  {err('LLM ist nicht aktiviert')} {hint('(llm_enabled=false in config.json)')}")
+        return
+
+    # Auto-gelernte Items mit Template (Kategorie 'Auto')
+    with state.lock:
+        targets = [(n, it.template) for n, it in state.global_items.items()
+                   if it.category == "Auto" and it.template]
+    if not targets:
+        print("  " + info("Keine auto-gelernten Items (Kategorie 'Auto') mit Template gefunden."))
+        return
+
+    print(f"\n  {len(targets)} Item(s) werden per LLM benannt.")
+    print(f"  {hint('Das kann je Item ein paar Sekunden dauern (LLM).')}")
+    if not confirm("  Jetzt starten?"):
+        print("  -> Abgebrochen")
+        return
+
+    renamed = llm_name_items(state, targets)
+    if renamed:
+        save_global_items(state)
+    print(f"  {ok(f'{renamed} Item(s) benannt.')}")
 
 
 def handle_templates_command() -> None:

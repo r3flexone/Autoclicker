@@ -15,10 +15,11 @@ if TYPE_CHECKING:
 
 from .persistence import (
     TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
-    _boss_profile_to_dict,
+    _boss_profile_to_dict, _point_to_dict,
+    _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
     save_data, save_global_slots, save_global_items,
-    save_item_scan, save_boss_scan, save_icon_scan,
+    save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
 from .models import (
     ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
@@ -113,6 +114,10 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
                 if b.action == ACTION_CLICK:
                     positions.append((f"Boss '{b.name}'", b.action_x, b.action_y))
 
+        for b in state.global_bosses:
+            if b.action == ACTION_CLICK:
+                positions.append((f"Boss '{b.name}' (global)", b.action_x, b.action_y))
+
         for cfg in state.icon_scans.values():
             if cfg.action == ACTION_CLICK:
                 positions.append((f"Icon '{cfg.name}'", cfg.action_x, cfg.action_y))
@@ -183,11 +188,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
             # Punkte
             if include_points:
                 with state.lock:
-                    points_data = [
-                        {"id": p.id, "x": p.x, "y": p.y, "name": p.name,
-                         **({"color": list(p.color)} if p.color else {})}
-                        for p in state.points
-                    ]
+                    points_data = [_point_to_dict(p) for p in state.points]
                 if points_data:
                     zf.writestr("points.json", compact_json(points_data))
                     manifest["contents"]["points"] = len(points_data)
@@ -236,14 +237,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     scans = dict(state.item_scans)
                 scan_names = []
                 for name, config in scans.items():
-                    scan_data = {
-                        "name": config.name,
-                        "color_tolerance": config.color_tolerance,
-                        "slots": [_slot_to_dict(s) for s in config.slots],
-                        "items": [_item_to_dict(i) for i in config.items],
-                    }
                     safe = sanitize_filename(name)
-                    zf.writestr(f"item_scans/{safe}.json", compact_json(scan_data))
+                    zf.writestr(f"item_scans/{safe}.json", compact_json(_item_scan_to_dict(config)))
                     scan_names.append(name)
                     for i in config.items:
                         if i.template:
@@ -257,20 +252,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                     bscans = dict(state.boss_scans)
                 bscan_names = []
                 for name, config in bscans.items():
-                    bscan_data = {
-                        "name": config.name,
-                        "scan_region": list(config.scan_region),
-                        "color_tolerance": config.color_tolerance,
-                        "default_action": config.default_action,
-                        "default_scan": config.default_scan,
-                        "bosses": [_boss_profile_to_dict(b) for b in config.bosses],
-                        "use_llm": config.use_llm,
-                        "llm_fallback": config.llm_fallback,
-                        "use_ocr": config.use_ocr,
-                        "ocr_fallback": config.ocr_fallback,
-                    }
                     safe = sanitize_filename(name)
-                    zf.writestr(f"boss_scans/{safe}.json", compact_json(bscan_data))
+                    zf.writestr(f"boss_scans/{safe}.json", compact_json(_boss_scan_to_dict(config)))
                     bscan_names.append(name)
                     for b in config.bosses:
                         if b.template:
@@ -278,27 +261,25 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
                 if bscan_names:
                     manifest["contents"]["boss_scans"] = bscan_names
 
+                # Globale Boss-Bibliothek (gilt in jedem Boss-Scan)
+                with state.lock:
+                    gbosses = list(state.global_bosses)
+                if gbosses:
+                    zf.writestr("global_bosses.json",
+                                compact_json([_boss_profile_to_dict(b) for b in gbosses]))
+                    manifest["contents"]["global_bosses"] = len(gbosses)
+                    for b in gbosses:
+                        if b.template:
+                            template_files.add(b.template)
+
             # Icon-Scans
             if include_icon_scans:
                 with state.lock:
                     iscans = dict(state.icon_scans)
                 iscan_names = []
                 for name, config in iscans.items():
-                    iscan_data = {
-                        "name": config.name,
-                        "scan_region": list(config.scan_region),
-                        "template": config.template,
-                        "min_confidence": config.min_confidence,
-                        "marker_colors": [list(c) for c in config.marker_colors],
-                        "color_tolerance": config.color_tolerance,
-                        "action": config.action,
-                        "action_x": config.action_x,
-                        "action_y": config.action_y,
-                        "action_key": config.action_key,
-                        "action_delay": config.action_delay,
-                    }
                     safe = sanitize_filename(name)
-                    zf.writestr(f"icon_scans/{safe}.json", compact_json(iscan_data))
+                    zf.writestr(f"icon_scans/{safe}.json", compact_json(_icon_scan_to_dict(config)))
                     iscan_names.append(name)
                     if config.template:
                         template_files.add(config.template)
@@ -331,14 +312,25 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
         return False, str(e)
 
 
+# Maschinen-/sicherheitsspezifische Config-Felder, die NIE zwischen Setups
+# wandern sollen (Failsafe-Position, Log-Pfad). Werden weder exportiert noch
+# beim Import übernommen.
+_SENSITIVE_CONFIG_KEYS = {
+    "failsafe_enabled", "failsafe_x", "failsafe_y",
+    "session_log_enabled", "session_log_dir",
+}
+# Beim Export zusätzlich weggelassen: Debug/Anzeige — für den Empfänger irrelevant.
+_EXPORT_SKIP_CONFIG_KEYS = _SENSITIVE_CONFIG_KEYS | {
+    "debug_mode", "debug_detection", "debug_save_templates",
+    "debug_show_pixel_position", "pixel_show_delay",
+}
+
+
 def _export_config(config) -> dict:
     """Exportiert relevante Config-Werte (ohne interne/Debug-Felder)."""
     d = config.to_dict()
-    skip = {"debug_mode", "debug_detection", "debug_save_templates",
-            "debug_show_pixel_position", "pixel_show_delay",
-            "failsafe_enabled", "failsafe_x", "failsafe_y",
-            "session_log_enabled", "session_log_dir"}
-    return {k: v for k, v in d.items() if k not in skip and not k.startswith("_")}
+    return {k: v for k, v in d.items()
+            if k not in _EXPORT_SKIP_CONFIG_KEYS and not k.startswith("_")}
 
 
 # =============================================================================
@@ -427,7 +419,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             next_id += 1
                         color_raw = p.get("color")
                         color = tuple(int(v) for v in color_raw) if color_raw else None
-                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid, color=color))
+                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid,
+                                                       color=color, source=p.get("source", "")))
                         existing_ids.add(pid)
                         next_id = max(next_id, pid + 1)
                         stats["points"] += 1
@@ -506,6 +499,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             name=scan_data["name"],
                             slots=slots, items=items,
                             color_tolerance=scan_data.get("color_tolerance", 40),
+                            learn_unknown=scan_data.get("learn_unknown", False),
                         )
                         with state.lock:
                             state.item_scans[config.name] = config
@@ -545,6 +539,25 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                         save_boss_scan(config)
                         stats["boss_scans"] += 1
 
+                # Globale Boss-Bibliothek (Merge nach Name, Import gewinnt)
+                if "global_bosses.json" in names:
+                    gboss_data = json.loads(zf.read("global_bosses.json").decode("utf-8"))
+                    imported = []
+                    for b in gboss_data:
+                        boss = _boss_profile_from_dict(b)
+                        if boss.action == BOSS_ACTION_CLICK:
+                            boss.action_x, boss.action_y = remap_point(
+                                boss.action_x, boss.action_y, transform)
+                        imported.append(boss)
+                    if imported:
+                        with state.lock:
+                            imported_names = {b.name for b in imported}
+                            state.global_bosses = [
+                                b for b in state.global_bosses if b.name not in imported_names
+                            ] + imported
+                        save_global_bosses(state)
+                        stats["global_bosses"] = len(imported)
+
             # Icon-Scans
             if import_icon_scans:
                 for name in names:
@@ -577,9 +590,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Config
             if import_config and "config.json" in names:
                 cfg_data = json.loads(zf.read("config.json").decode("utf-8"))
-                _IMPORT_SKIP_KEYS = {"failsafe_enabled", "failsafe_x", "failsafe_y",
-                                     "session_log_enabled", "session_log_dir"}
-                for k in _IMPORT_SKIP_KEYS:
+                # Sicherheits-/maschinenspezifische Felder nie übernehmen
+                for k in _SENSITIVE_CONFIG_KEYS:
                     cfg_data.pop(k, None)
                 current = state.config.to_dict()
                 current.update(cfg_data)
@@ -606,6 +618,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 parts.append(f"{stats['item_scans']} Item-Scan(s)")
             if stats["boss_scans"]:
                 parts.append(f"{stats['boss_scans']} Boss-Scan(s)")
+            if stats.get("global_bosses"):
+                parts.append(f"{stats['global_bosses']} globale(r) Boss(e)")
             if stats["icon_scans"]:
                 parts.append(f"{stats['icon_scans']} Icon-Scan(s)")
             if stats["templates"]:

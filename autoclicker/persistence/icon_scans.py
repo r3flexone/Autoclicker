@@ -13,7 +13,8 @@ from typing import Optional
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import IconScanConfig, AutoClickerState, ICON_ACTION_CLICK
 from .paths import ICON_SCANS_DIR
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans
+from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
+from .serialization import _icon_scan_to_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -25,20 +26,7 @@ def ensure_icon_scans_dir() -> Path:
 
 def save_icon_scan(config: IconScanConfig) -> None:
     """Speichert eine Icon-Scan Konfiguration."""
-    data = {
-        "name": config.name,
-        "scan_region": list(config.scan_region),
-        "template": config.template,
-        "min_confidence": config.min_confidence,
-        "marker_colors": [list(c) for c in config.marker_colors],
-        "color_tolerance": config.color_tolerance,
-        "action": config.action,
-        "action_x": config.action_x,
-        "action_y": config.action_y,
-        "action_key": config.action_key,
-        "action_delay": config.action_delay,
-    }
-    write_scan(ICON_SCANS_DIR, config.name, data, "Icon-Scan")
+    write_scan(ICON_SCANS_DIR, config.name, _icon_scan_to_dict(config), "Icon-Scan")
 
 
 def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
@@ -61,7 +49,7 @@ def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
             action_delay=data.get("action_delay", 0),
         )
 
-    except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 
