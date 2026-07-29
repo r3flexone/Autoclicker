@@ -187,23 +187,26 @@ class SkillConfig:
 EQUIPMENT_BASE_BOOST = 0.55
 EQUIPPED_TOOL_BONUS = 0.06
 
-# has_tool wird BEWUSST NUR DORT auf True gesetzt, wo es ingame nachgemessen ist -
-# ein erfundener Werkzeug-Bonus blaeht Gold/h auf und macht die Zahlen wertlos.
-# Belegt sind bisher:
-#   Woodcutting  Boosts-Screen zeigt 61% (Axt getragen); Oak 2.2 s = Basis 6.0 s x 0.3705
-#   Mining       Titanium ore 13 s (Basis 35 s) und Coal ore 2.8 s (Basis 7.5 s), beide 61%
-# Gegenbeleg im selben Screenshot-Satz: Titanium bar zeigt 13.5 s = Basis 30 s x 0.45,
-# also 55% OHNE Werkzeug-Bonus - waehrend Mining gleichzeitig 61% hatte. Es kann eben
-# immer nur EIN Werkzeug getragen werden.
+# WICHTIG zur Lesart des Boosts-Screens: die Loadouts wechseln ingame AUTOMATISCH mit
+# der Taetigkeit. Der Screen zeigt darum immer nur den gerade aktiven Skill auf 61% und
+# alle anderen auf 55% - ein Screenshot, auf dem mehrere gleichzeitig 61% haetten, kann
+# es gar nicht geben. Aus "im Screen steht nur Woodcutting auf 61%" folgt also NICHT,
+# dass die anderen Skills kein Werkzeug haben.
 #
-# Fuer alle anderen Skills gibt es bisher keine Messung -> sie laufen konservativ mit
-# 55%. Sobald du fuer einen davon ein Werkzeug hast (oder es nachmisst): dort einfach
-# has_tool=True setzen, equip() zieht den Rest.
+# Massgeblich ist deshalb has_tool pro Skill (= besitzt du fuer diesen Skill ein
+# Werkzeug), nicht der Momentanwert im Screen. Ingame gegengemessen:
+#   Woodcutting  Oak 2.2 s          = Basis  6.0 s x 0.3705  -> 61%, Werkzeug vorhanden
+#   Mining       Titanium ore 13 s  = Basis 35.0 s x 0.3705  -> 61%, Werkzeug vorhanden
+#   Mining       Coal ore 2.8 s     = Basis  7.5 s x 0.3705  -> 61%
+#   Smithing     Titanium bar 13.5 s= Basis 30.0 s x 0.45    -> 55%, KEIN Werkzeug
+# Das deckt sich mit der urspruenglichen Konfiguration (Carpentry/Smithing/Farming ohne
+# Werkzeug, der Rest mit).
 #
-# ASSUME_TOOL_EQUIPPED_PER_SKILL=True heisst: jeder Skill mit has_tool=True bekommt den
-# Bonus, weil du beim Farmen das passende Werkzeug anlegst (und zwischen Ketten-Phasen
-# wechselst). Auf FALSE stellen, um stattdessen den IST-Zustand abzubilden - dann bekommt
-# ihn nur CURRENTLY_EQUIPPED_TOOL_SKILL.
+# ASSUME_TOOL_EQUIPPED_PER_SKILL=True bildet dieses Auto-Loadout ab: jeder Skill mit
+# has_tool=True rechnet mit Werkzeug, weil beim Farmen ohnehin umgeschaltet wird - auch
+# zwischen den Phasen einer Kette. FALSE friert stattdessen den Ist-Zustand ein (nur
+# CURRENTLY_EQUIPPED_TOOL_SKILL bekommt den Bonus); nur sinnvoll, wenn das Auto-Loadout
+# mal nicht greift.
 ASSUME_TOOL_EQUIPPED_PER_SKILL = True
 CURRENTLY_EQUIPPED_TOOL_SKILL = "Woodcutting"
 
@@ -281,25 +284,26 @@ SMELTING_MAGIC_EXCLUDED_ITEM_NAMES = ("astronomical_ore",)
 
 SKILLS: dict[str, SkillConfig] = {
     "Mining":      SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True),
-    "Fishing":     SkillConfig(equipment_speed_boost=equip(False), is_gathering=True, gloves_owned=True,
+    "Fishing":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
                                 yield_multiplier=2.0),   # Fisherman: 100% doppelte Ausbeute
-    "Foraging":    SkillConfig(equipment_speed_boost=equip(False), is_gathering=True, gloves_owned=True,
+    "Foraging":    SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
                                 yield_multiplier=1.5),   # Power Forager: 50% Chance auf doppelte Beute
     "Woodcutting": SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
                                 yield_multiplier=2.0),   # Lumberjack: 100% doppelte Ausbeute
-    "Cooking":     SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),
+    "Cooking":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),
     "Carpentry":   SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),
     "Smithing":    SkillConfig(equipment_speed_boost=equip(False)),  # Smelting Magic s. SMITHING_SMELTING_COST_MULTIPLIER oben, nicht hier
     # Farming: KEIN Gatherers-Perk (Processing-Skill lt. Wiki, is_gathering=False).
     # Farming trickery Tier 5 (hoechster Tier) = 50% Chance, Saatgut zu sparen.
     "Farming":     SkillConfig(equipment_speed_boost=equip(False), is_gathering=False, cost_multiplier=0.5),
-    # Crafting stand hier auf 0.55+0.08=63% - im Boosts-Screen steht KEIN Skilling-Skill
-    # ueber 61%, die 8% waren also zu hoch gegriffen.
-    "Crafting":    SkillConfig(equipment_speed_boost=equip(False)),
-    "Agility":     SkillConfig(equipment_speed_boost=equip(False)),  # produziert Samen fuer Beeren (kein Gathering-Skill lt. Wiki)
-    "Plundering":  SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),  # Ghostly-Outfit (3-teilig) bestaetigt
+    # Crafting stand hier auf 0.55+0.08=63%. Im Boosts-Screen liegt kein Skilling-Skill
+    # ueber 61% (55% Grundausruestung + 6% Werkzeug) - die 8% waren zu hoch gegriffen.
+    "Crafting":    SkillConfig(equipment_speed_boost=equip(), has_tool=True),
+    "Agility":     SkillConfig(equipment_speed_boost=equip(), has_tool=True),  # produziert Samen fuer Beeren (kein Gathering-Skill lt. Wiki)
+    "Plundering":  SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),  # Ghostly-Outfit (3-teilig) bestaetigt
     # Brewing stand auf 0% - laut Boosts-Screen gilt auch hier die 55%-Grundausruestung.
-    # Mit 0% waren alle Brewing-Aktionen um Faktor 2.2 zu langsam gerechnet.
+    # Mit 0% waren alle Brewing-Aktionen um Faktor 2.2 zu langsam gerechnet. Ob es ein
+    # Brewing-Werkzeug gibt, ist offen -> konservativ ohne. Falls doch: has_tool=True.
     "Brewing":     SkillConfig(equipment_speed_boost=equip(False)),
 
     # Skills ohne normales Markt-Item-Recipe -> komplett ausgeschlossen.
