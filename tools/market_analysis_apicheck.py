@@ -42,16 +42,15 @@ EXPECTED_MARKET_FIELDS = ["itemId", "highestBuyPrice", "lowestSellPrice",
                           "highestPriceVolume", "lowestPriceVolume", "dailyAveragePrice"]
 EXPECTED_RECIPE_FIELDS = ["Name", "BaseTime", "ItemReward", "ItemAmount", "ExpReward",
                           "LevelRequirement", "Costs", "TaskId", "Disabled"]
-EXPECTED_ITEM_FIELDS = ["ItemId", "Name", "BaseValue"]
-EXPECTED_COMPREHENSIVE_AVG_FIELDS = ["dailyAveragePrice", "weeklyAveragePrice", "monthlyAveragePrice"]
-EXPECTED_COMPREHENSIVE_VOLUME_FIELD = "dailyVolume"
+EXPECTED_ITEM_FIELDS = ["ItemId", "Name", "BaseValue", "CanNotBeTraded", "CanNotBeSoldToGameShop"]
+EXPECTED_COMPREHENSIVE_AVG_FIELDS = ["averagePrice1Day", "averagePrice7Days", "averagePrice30Days"]
+EXPECTED_COMPREHENSIVE_VOLUME_FIELD = "tradeVolume1Day"
 
 # Skill-Namen wie sie market_analysis.py in SKILLS erwartet (Punkt 2 des Checks).
 KNOWN_SKILL_NAMES = [
     "Mining", "Fishing", "Foraging", "Woodcutting", "Cooking", "Carpentry", "Smithing",
     "Farming", "Crafting", "Agility", "Plundering", "Brewing",
-    "Attack", "Strength", "Defence", "Archery", "Magic", "Health",
-    "Exterminating", "Enchanting", "Invocation", "Item creation",
+    "Combat", "Enchanting", "Invocation", "ItemCreation",
 ]
 
 # Fuer Punkt 7: so rechnet market_analysis.py aktuell (multiplikativ).
@@ -143,7 +142,8 @@ def check_market():
         ok(f"dailyAveragePrice bei {with_avg}/{len(data)} Items gesetzt")
 
     # Gegenprobe: liefert /latest/all mehr Items als /latest?
-    all_resp = get(MARKET_ALL_URL, timeout=30, context="Markt (/latest/all)")
+    # /latest/all ist optional - existiert der Endpunkt nicht, ist das kein Problem.
+    all_resp = get(MARKET_ALL_URL, timeout=30, context="Markt (/latest/all, optional)")
     all_count = len(all_resp.json()) if all_resp is not None and isinstance(all_resp.json(), list) else None
     if all_count is not None:
         if all_count > len(data):
@@ -151,6 +151,8 @@ def check_market():
                 f"-> in market_analysis.py auf /latest/all wechseln")
         else:
             ok(f"/latest/all liefert {all_count} Items (nicht mehr als /latest) - aktueller Endpunkt reicht")
+    else:
+        ok("/latest/all nicht verfuegbar - /latest ist der richtige Endpunkt")
 
     report["market"] = {
         "count": len(data),
@@ -311,8 +313,9 @@ def check_base_time_unit(recipes):
     report["base_time"] = {"min": times[0], "median": median, "max": times[-1], "count": len(times)}
 
 
-def check_bar_recipes(recipes):
+def check_bar_recipes(recipes, items):
     head("5. *_bar-REZEPTE (Smelting-Magic-Reichweite)")
+    ASTRO_ITEMS = [it for it in items if "astronomical_ore" in str(it.get("Name", "")).lower()]
     bars = [(s, r) for s, r in recipes
             if s == "Smithing" and str(r.get("Name", "")).endswith("_bar") and not r.get("Disabled")]
     if not bars:
@@ -328,13 +331,24 @@ def check_bar_recipes(recipes):
                      "costs": [{"Item": c.get("Item"), "Amount": c.get("Amount")} for c in costs]})
         marker = " <- Best/Worst-Case relevant" if len(costs) > 1 else ""
         print(f"    {r.get('Name'):<28} {len(costs)} Cost-Zeile(n){marker}")
-    astro = [row for row in rows if "astronomical" in str(row["name"]).lower()]
-    if astro:
-        ok(f"Astronomical-Bar-Rezept heisst: {[a['name'] for a in astro]} "
-           f"(vom Smelting-Magic-Rabatt ausgenommen, s. SMELTING_MAGIC_EXCLUDED_SUBSTRINGS)")
+    # market_analysis.py nimmt Astronomical ore als ZUTAT vom Rabatt aus (nicht das Rezept
+    # als Ganzes) - hier gegenpruefen, ob diese Zutat ueberhaupt in Bar-Rezepten vorkommt.
+    astro_ids = {it.get("ItemId") for it in ASTRO_ITEMS}
+    using_astro = [row for row in rows
+                   if any(c["Item"] in astro_ids for c in row["costs"])]
+    if astro_ids:
+        ok(f"Astronomical-Erz Item-ID(s): {sorted(i for i in astro_ids if i is not None)}")
+        if using_astro:
+            ok(f"Bar-Rezepte mit Astronomical ore als Zutat (dort greift die Ausnahme): "
+               f"{[r['name'] for r in using_astro]}")
+        else:
+            info("Kein Bar-Rezept nutzt Astronomical ore - die Ausnahme greift aktuell fuer nichts")
     else:
-        info("Kein Rezept mit 'astronomical' im Namen - Ausnahme greift aktuell fuer nichts")
-    report["bar_recipes"] = rows
+        bad("Kein Item mit 'astronomical_ore' im Namen gefunden -> die Ausnahme in "
+            "SMELTING_MAGIC_EXCLUDED_ITEM_NAMES matcht nichts mehr")
+    report["bar_recipes"] = {"recipes": rows,
+                             "astronomical_ore_item_ids": sorted(i for i in astro_ids if i is not None),
+                             "recipes_using_astronomical_ore": [r["name"] for r in using_astro]}
 
 
 def check_speed_formula(recipes):
@@ -458,7 +472,7 @@ def main():
         recipes = check_tasks(game)
         if recipes:
             check_base_time_unit(recipes)
-            check_bar_recipes(recipes)
+            check_bar_recipes(recipes, game.get('Items', {}).get('Items', []))
             check_speed_formula(recipes)
             check_npc_values(game, recipes)
     check_comprehensive(market_data)

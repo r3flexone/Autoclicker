@@ -28,6 +28,26 @@ Struktur:
   10. Lauf-Sanity-Check (Vergleich mit letztem Lauf)
   11. main()
 
+v13-Aenderungen (gegen die LIVE-API verifiziert, s. tools/market_analysis_apicheck.py):
+  - Skill-Key hiess in der API "ItemCreation", nicht "Item creation" -> der excluded-
+    Eintrag hat NIE gegriffen, die Rezepte liefen mit DEFAULT_SKILL_CONFIG (= voellig
+    ohne Boosts) mit. Ebenso fehlte "Combat" komplett. Beide jetzt korrekt ausgeschlossen.
+    Die restlichen Combat-Teilskills (Attack/Strength/...) existieren in Tasks gar nicht
+    und sind als tote Eintraege raus.
+  - Die Items-API hat sehr wohl Handelbarkeits-Flags: CanNotBeTraded (Player-Markt) und
+    CanNotBeSoldToGameShop (NPC-Vendor). Bisher bekam JEDES Item mit BaseValue > 0 einen
+    NPC-Preis zugewiesen - auch solche, die man dem NPC gar nicht verkaufen kann. Beide
+    Verkaufswege werden jetzt einzeln geprueft (neue Spalten Handelbar/NPCVerkaufMoeglich),
+    und is_player_shop_tradeable() ist kein NO-OP-Stub mehr.
+  - Feldnamen des comprehensive-Endpoints verifiziert: averagePrice1Day/7Days/30Days und
+    tradeVolume1Day (die bisherigen Rate-Namen gab es nicht) -> SHOW_LONGTERM_AVERAGES
+    liefert jetzt ueberhaupt erst Daten.
+  - Smelting-Magic-Ausnahme laeuft ueber die ZUTAT statt ueber den Rezeptnamen: sonst
+    waere otherworldly_bar (enthaelt Astronomical ore, heisst aber nicht so) durchgerutscht.
+    Ausserdem bekommt astronomical_bar dadurch nur auf der Erz-Zeile keinen Rabatt - die
+    Kohle-Zeile (5000 Stueck!) bleibt Teil der normalen Best-/Worst-Case-Spanne.
+  - BaseTime ist bestaetigt in MILLISEKUNDEN (Median 12000 = 12s/Aktion).
+
 v12-Aenderungen (Review-Durchgang, Details im jeweiligen Kommentar am Code):
   - API-Requests laufen ueber _get_json(): HTTP-Status wird geprueft, statt bei einem
     500er/HTML-Fehlerdokument mit einem kryptischen JSONDecodeError abzustuerzen.
@@ -211,9 +231,11 @@ AUTO_COOK_SOURCE_SKILL = "Fishing"
 SMITHING_SMELTING_COST_MULTIPLIER = 1.0 - 0.3
 
 # Ausnahme lt. Wiki/Community-Guide: Astronomical ore ist vom Smelting-Magic-Effekt
-# ausgenommen. Der Abgleich laeuft ueber den Rezeptnamen (klein, Teilstring), weil das
-# Script nur den Namen kennt - falls die API das Rezept anders benennt, hier ergaenzen.
-SMELTING_MAGIC_EXCLUDED_SUBSTRINGS = ("astronomical",)
+# ausgenommen. Der Abgleich laeuft ueber die ZUTAT (Item-Name), nicht ueber den
+# Rezeptnamen - sonst wuerde otherworldly_bar durchrutschen, das Astronomical ore als
+# Zutat hat, aber nicht so heisst (per Live-Check bestaetigt: otherworldly_bar =
+# 1x Item 926 + 2x Astronomical ore + 10000x Meteorite + 5000x Titanium).
+SMELTING_MAGIC_EXCLUDED_ITEM_NAMES = ("astronomical_ore",)
 
 SKILLS: dict[str, SkillConfig] = {
     "Mining":      SkillConfig(equipment_speed_boost=0.55 + 0.06, is_gathering=True, gloves_owned=True),
@@ -234,17 +256,17 @@ SKILLS: dict[str, SkillConfig] = {
     "Plundering":  SkillConfig(equipment_speed_boost=0.55 + 0.06, gloves_owned=True),  # Ghostly-Outfit (3-teilig) bestaetigt
     "Brewing":     SkillConfig(),  # TODO(Timo): equipment_speed_boost aus Boosts-Screen eintragen
 
-    # Skills ohne normales Markt-Item-Recipe -> komplett ausgeschlossen
-    "Attack": SkillConfig(excluded=True),
-    "Strength": SkillConfig(excluded=True),
-    "Defence": SkillConfig(excluded=True),
-    "Archery": SkillConfig(excluded=True),
-    "Magic": SkillConfig(excluded=True),
-    "Health": SkillConfig(excluded=True),
-    "Exterminating": SkillConfig(excluded=True),
+    # Skills ohne normales Markt-Item-Recipe -> komplett ausgeschlossen.
+    # Die Keys sind gegen die Live-API abgeglichen (Tasks-Block). Achtung: "ItemCreation"
+    # OHNE Leerzeichen - der frueher hier stehende Key "Item creation" hat nie gematcht,
+    # dadurch liefen die Rezepte ueber DEFAULT_SKILL_CONFIG (also voellig ohne Boosts)
+    # in der Auswertung mit. Dasselbe galt fuer "Combat", das gar nicht konfiguriert war.
+    # Die einzelnen Combat-Teilskills (Attack/Strength/Defence/Archery/Magic/Health) und
+    # "Exterminating" tauchen im Tasks-Block ueberhaupt nicht auf und sind deshalb raus.
+    "Combat": SkillConfig(excluded=True),
     "Enchanting": SkillConfig(excluded=True),
     "Invocation": SkillConfig(excluded=True),
-    "Item creation": SkillConfig(excluded=True),  # Key-Name gegen echte API noch unbestaetigt
+    "ItemCreation": SkillConfig(excluded=True),
 }
 
 DEFAULT_SKILL_CONFIG = SkillConfig()  # Fallback fuer unbekannte/neue Skills: konservativ, nichts ausgeschlossen
@@ -275,18 +297,18 @@ SHOW_PRICE_SENSITIVITY_CHART = True
 PRICE_SENSITIVITY_TOP_N = 10
 PRICE_SENSITIVITY_CHART_PATH = "price_sensitivity_chart.png"
 
-# 1-/7-/30-Tage-Durchschnittspreis + Tagesvolumen: kommen laut API-Doku aus dem
-# comprehensive-Endpoint (derselbe, der auch fuer Orderbook-Tiefe/Preis-Sensitivitaet
-# genutzt wird), sind aber bisher nicht typisiert/verifiziert. Feldnamen hier sind ein
-# informierter Best-Guess nach dem Muster des Bulk-Endpoints ("dailyAveragePrice").
+# 1-/7-/30-Tage-Durchschnittspreis + Tagesvolumen aus dem comprehensive-Endpoint
+# (derselbe, der auch fuer Orderbook-Tiefe/Preis-Sensitivitaet genutzt wird). Feldnamen
+# per Live-Check verifiziert - Achtung, sie folgen NICHT dem Muster des Bulk-Endpoints
+# ("dailyAveragePrice"), sondern heissen averagePrice1Day/7Days/30Days.
 # -> Meldet die Konsole beim Lauf "Erwartete Avg-Felder nicht gefunden", stehen die
 #    tatsaechlichen Keys direkt in derselben Meldung; hier eintragen.
 COMPREHENSIVE_AVG_FIELDS = {
-    "Avg1D": "dailyAveragePrice",
-    "Avg7D": "weeklyAveragePrice",
-    "Avg30D": "monthlyAveragePrice",
+    "Avg1D": "averagePrice1Day",
+    "Avg7D": "averagePrice7Days",
+    "Avg30D": "averagePrice30Days",
 }
-COMPREHENSIVE_VOLUME_FIELD = "dailyVolume"
+COMPREHENSIVE_VOLUME_FIELD = "tradeVolume1Day"
 
 # True = zusaetzlich 1 Request PRO EINDEUTIGEM ITEM in Rohdaten (koennen mehrere Hundert
 # sein -> mehrere Minuten Laufzeit). Ergaenzt Avg1D/Avg7D/Avg30D/Volume1D in Rohdaten.
@@ -357,16 +379,37 @@ def load_game_data() -> dict:
 
 
 def build_item_info_map(game: dict) -> dict:
-    """ItemId -> {name, base_value}. Eintraege ohne ItemId werden uebersprungen statt
-    den Lauf mit einem KeyError abzubrechen (die API hat schon Platzhalter-Eintraege
-    ohne alle Felder ausgeliefert)."""
+    """ItemId -> {name, base_value, can_trade, can_sell_to_npc}. Eintraege ohne ItemId
+    werden uebersprungen statt den Lauf mit einem KeyError abzubrechen.
+
+    Die beiden Handelbarkeits-Flags kommen als Negation aus der API (CanNotBeTraded /
+    CanNotBeSoldToGameShop) und werden hier positiv gedreht, damit sie an der
+    Nutzungsstelle lesbar sind. Default bei fehlendem Feld ist bewusst "erlaubt" -
+    verschwindet das Feld mal, faellt das Script auf das alte Verhalten zurueck statt
+    alles auszufiltern."""
     info = {}
     for it in game.get("Items", {}).get("Items", []):
         item_id = it.get("ItemId")
         if item_id is None:
             continue
-        info[item_id] = {"name": it.get("Name", f"item_{item_id}"), "base_value": it.get("BaseValue", 0)}
+        info[item_id] = {
+            "name": it.get("Name", f"item_{item_id}"),
+            "base_value": it.get("BaseValue", 0),
+            "can_trade": not it.get("CanNotBeTraded", False),
+            "can_sell_to_npc": not it.get("CanNotBeSoldToGameShop", False),
+            "market_buy_limit": it.get("PlayerMarketBuyLimit", 0),
+        }
     return info
+
+
+def resolve_smelting_magic_exclusions(item_info_map: dict) -> frozenset:
+    """Item-IDs der Erze, auf die Smelting Magic nicht wirkt (s.
+    SMELTING_MAGIC_EXCLUDED_ITEM_NAMES). Ueber den Namen aufgeloest statt hart verdrahtet,
+    damit eine ID-Verschiebung in der API das nicht still kaputt macht."""
+    return frozenset(
+        iid for iid, entry in item_info_map.items()
+        if any(name in str(entry.get("name", "")).lower() for name in SMELTING_MAGIC_EXCLUDED_ITEM_NAMES)
+    )
 
 
 # ============================================================
@@ -407,16 +450,28 @@ def npc_sell_price(item_id: int, item_info_map: dict) -> float:
     """Preis bei Sofortverkauf an den NPC-Vendor (unbegrenztes Volumen, im Gegensatz
     zum Player-Markt). base_value kommt aus der Items-API, Boost durch das permanente
     Clan-Upgrade "An offer they can't refuse" (+10%) plus Potion of negotiation (+5%),
-    multiplikativ = 1.155x (per Wiki bestaetigt, siehe NPC_SELL_BOOST_MULTIPLIER oben)."""
-    return item_info_map.get(item_id, {}).get("base_value", 0) * NPC_SELL_BOOST_MULTIPLIER
+    multiplikativ = 1.155x (per Wiki bestaetigt, siehe NPC_SELL_BOOST_MULTIPLIER oben).
+
+    Items mit CanNotBeSoldToGameShop bekommen 0 - vorher wurde ihnen ein NPC-Preis
+    zugerechnet, den es gar nicht gibt, und sie tauchten dadurch mit erfundenem Gold/h
+    in Ketten/Realistisch_Farmbar auf."""
+    entry = item_info_map.get(item_id)
+    if entry is None or not entry.get("can_sell_to_npc", True):
+        return 0.0
+    return entry.get("base_value", 0) * NPC_SELL_BOOST_MULTIPLIER
 
 
 def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict) -> tuple[float, bool]:
-    """Bester Verkaufsweg fuer das Endprodukt: Player-Market-Bid (nur wenn liquide genug,
-    sonst Verlustgefahr durch fehlende Abnahme) vs. NPC-Vendor-Preis. Gibt
-    (Preis, sold_to_npc) zurueck. sold_to_npc=True heisst: NPC ist die bessere/einzige Option."""
+    """Bester Verkaufsweg fuer das Endprodukt: Player-Market-Bid (nur wenn handelbar UND
+    liquide genug, sonst Verlustgefahr durch fehlende Abnahme) vs. NPC-Vendor-Preis. Gibt
+    (Preis, sold_to_npc) zurueck. sold_to_npc=True heisst: NPC ist die bessere/einzige Option.
+    Sind beide Wege gesperrt, kommt 0 zurueck -> das Item faellt aus Ketten raus und
+    bekommt in Rohdaten einen Klartext-Grund."""
     m = market_map.get(item_id)
-    market_price = m["buy"] if (m is not None and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME) else 0.0
+    tradeable = is_player_shop_tradeable(item_info_map.get(item_id, {}))
+    market_price = (
+        m["buy"] if (tradeable and m is not None and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME) else 0.0
+    )
     npc_price = npc_sell_price(item_id, item_info_map)
     if npc_price > market_price:
         return npc_price, True
@@ -424,11 +479,10 @@ def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict) ->
 
 
 def is_player_shop_tradeable(item_info: dict) -> bool:
-    """STUB: soll pruefen, ob ein Item im Player Market gelistet werden kann. Feldname
-    dafuer im rohen Item-JSON ist unbekannt (kein Live-Zugriff moeglich) - aktuell NO-OP.
-    In der Praxis filtert valid_market() (kein/kein liquider Markteintrag) das meiste
-    davon bereits automatisch raus, und der NPC-Preis-Fallback faengt den Rest ab."""
-    return True
+    """Kann das Item im Player Market gelistet werden? Basiert auf dem per Live-Check
+    bestaetigten Item-Feld CanNotBeTraded (in build_item_info_map als can_trade
+    gespeichert). Fehlt die Angabe, wird - wie frueher - Handelbarkeit angenommen."""
+    return bool(item_info.get("can_trade", True))
 
 
 def is_raid_recipe(name: str) -> bool:
@@ -446,15 +500,14 @@ def is_raid_recipe(name: str) -> bool:
 # ============================================================
 
 def _is_smelting_magic_recipe(skill_name: str, recipe_name: str) -> bool:
-    """Ore -> Bar Schmelzen, auf das Smelting Magic wirkt. Ausnahmen (Astronomical ore)
-    siehe SMELTING_MAGIC_EXCLUDED_SUBSTRINGS."""
-    if skill_name != "Smithing" or not recipe_name.endswith("_bar"):
-        return False
-    lowered = recipe_name.lower()
-    return not any(excl in lowered for excl in SMELTING_MAGIC_EXCLUDED_SUBSTRINGS)
+    """Ore -> Bar Schmelzen, auf das Smelting Magic ueberhaupt wirkt. Welche einzelnen
+    ZUTATEN davon ausgenommen sind, entscheidet normalize_recipe pro Cost-Zeile
+    (s. SMELTING_MAGIC_EXCLUDED_ITEM_NAMES)."""
+    return skill_name == "Smithing" and recipe_name.endswith("_bar")
 
 
-def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best") -> dict | None:
+def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
+                      excluded_cost_items: frozenset = frozenset()) -> dict | None:
     if raw_recipe.get("Disabled", False):
         return None  # z.B. Citadel-Raid-only-Content (bestaetigt per Live-Check: Disabled=True)
 
@@ -490,7 +543,12 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best") -> d
     costs = []
     for i, c in enumerate(raw_recipe.get("Costs") or []):
         if is_bar_smelt:
-            line_mult = SMITHING_SMELTING_COST_MULTIPLIER if (case == "best" or i == 0) else 1.0
+            if c.get("Item") in excluded_cost_items:
+                line_mult = 1.0   # Astronomical ore: vom Perk ausgenommen, immer voller Preis
+            elif case == "best" or i == 0:
+                line_mult = SMITHING_SMELTING_COST_MULTIPLIER
+            else:
+                line_mult = 1.0
         else:
             line_mult = cfg.cost_multiplier
         costs.append({"Item": c.get("Item"), "Amount": c.get("Amount", 0) * line_mult})
@@ -509,16 +567,28 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best") -> d
     }
 
 
-def build_all_recipes(tasks: dict, case: str = "best") -> list:
+def build_all_recipes(tasks: dict, case: str = "best",
+                       excluded_cost_items: frozenset = frozenset()) -> list:
     all_recipes = []
+    unknown_skills = []
     for skill_name, blocks in tasks.items():
+        if skill_name not in SKILLS:
+            unknown_skills.append(skill_name)
         if skill_cfg(skill_name).excluded:
             continue
         for block in blocks:
             for raw_recipe in block.get("Items", []):
-                normalized = normalize_recipe(skill_name, raw_recipe, case=case)
+                normalized = normalize_recipe(skill_name, raw_recipe, case=case,
+                                              excluded_cost_items=excluded_cost_items)
                 if normalized is not None:
                     all_recipes.append(normalized)
+
+    # Ein Skill, den SKILLS nicht kennt, laeuft still auf DEFAULT_SKILL_CONFIG - also
+    # ohne JEDEN Boost. Genau so ist frueher "ItemCreation" (Script-Key hatte ein
+    # Leerzeichen) unbemerkt in die Auswertung gerutscht.
+    if unknown_skills and case == "best":
+        print(f"⚠ Skills aus der API ohne Eintrag in SKILLS: {sorted(unknown_skills)} - sie laufen "
+              f"ohne Speed-/Yield-/Cost-Boosts mit. In SKILLS ergaenzen (oder excluded=True setzen).")
     return all_recipes
 
 
@@ -583,8 +653,12 @@ def build_fish_to_cooked_map(all_recipes: list, recipe_by_output: dict) -> dict:
 def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dict) -> pd.DataFrame:
     results = []
     for r in all_recipes:
-        if not is_player_shop_tradeable(item_info_map.get(r["item_id"], {})):
-            continue
+        # Nicht handelbare Items werden NICHT uebersprungen: sie koennen ueber den
+        # NPC-Vendor trotzdem Gold bringen, und wenn nicht, ist der Grund im Rohdaten-Tab
+        # sichtbar statt still zu verschwinden.
+        item_info = item_info_map.get(r["item_id"], {})
+        can_trade = is_player_shop_tradeable(item_info)
+        can_sell_npc = bool(item_info.get("can_sell_to_npc", True))
 
         sell_price, sold_to_npc = effective_sell_price(r["item_id"], market_map, item_info_map)
 
@@ -606,15 +680,21 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         in_ketten = sell_price > 0
         exclusion_reason = ""
         if not in_ketten:
-            if m["buy"] <= 0 or m["sell"] <= 0:
-                exclusion_reason = "Kein Markteintrag"
+            # Beide Verkaufswege einzeln begruenden: Player-Markt und NPC-Vendor koennen
+            # aus voellig verschiedenen Gruenden ausfallen.
+            if not can_trade:
+                market_reason = "Nicht am Player-Markt handelbar (CanNotBeTraded)"
+            elif m["buy"] <= 0 or m["sell"] <= 0:
+                market_reason = "Kein Markteintrag"
             elif not valid_market(m):
-                exclusion_reason = f"Markt zu duenn (Volumen < {MIN_MARKET_VOLUME})"
+                market_reason = f"Markt zu duenn (Volumen < {MIN_MARKET_VOLUME})"
             elif m["buyVol"] < MIN_SELL_VOLUME:
-                exclusion_reason = f"Zu wenig Nachfrage (BuyVol {m['buyVol']:,} < {MIN_SELL_VOLUME:,})"
+                market_reason = f"Zu wenig Nachfrage (BuyVol {m['buyVol']:,} < {MIN_SELL_VOLUME:,})"
             else:
-                exclusion_reason = "Kein Verkaufspreis"
-            exclusion_reason += " + kein NPC-Verkauf moeglich"  # bei sell_price<=0 immer der Fall
+                market_reason = "Kein Verkaufspreis"
+            npc_reason = ("kein NPC-Verkauf erlaubt (CanNotBeSoldToGameShop)" if not can_sell_npc
+                          else "kein NPC-Preis (BaseValue 0)")
+            exclusion_reason = f"{market_reason} + {npc_reason}"
 
         actions_per_hour = 3_600_000.0 / r["base_time_ms"]
         items_per_hour = actions_per_hour * r["item_amount"]
@@ -691,6 +771,8 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             "SoldToNPC": sold_to_npc,
             "NPCPreis": npc_sell_price(r["item_id"], item_info_map),
             "MarketAsk": m["sell"],
+            "Handelbar": can_trade,
+            "NPCVerkaufMoeglich": can_sell_npc,
             "CostDataComplete": cost_data_complete,
             "InKetten": in_ketten,
             "Status": status,
@@ -834,9 +916,9 @@ def resolve_chain(item_id, market_map, recipe_by_output, fish_to_cooked,
 def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict, fish_to_cooked: dict) -> pd.DataFrame:
     chain_results = []
     for item_id, recipe in recipe_by_output.items():
-        if not is_player_shop_tradeable(item_info_map.get(item_id, {})):
-            continue
-
+        # Handelbarkeit steckt in effective_sell_price (Player-Markt vs. NPC einzeln) -
+        # kein eigener Vorab-Filter mehr, sonst faellt auch raus, was man dem NPC
+        # sehr wohl verkaufen kann.
         sell_price, sold_to_npc = effective_sell_price(item_id, market_map, item_info_map)
         if sell_price <= 0:
             continue
@@ -1310,6 +1392,13 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
     if dupe_count:
         print(f"ℹ {dupe_count} Zeilen mit doppeltem Item-Namen (unterschiedliche Skills/Recipes) - Details im Rohdaten-Tab.")
 
+    if "Handelbar" in df.columns:
+        no_trade = int((~df["Handelbar"]).sum())
+        no_npc = int((~df["NPCVerkaufMoeglich"]).sum())
+        if no_trade or no_npc:
+            print(f"ℹ Laut API-Flags: {no_trade} Rezept-Ausgaben nicht am Player-Markt handelbar "
+                  f"(CanNotBeTraded), {no_npc} nicht an den NPC verkaufbar (CanNotBeSoldToGameShop).")
+
     npc_count = int(df["SoldToNPC"].sum())
     if npc_count:
         print(f"ℹ {npc_count} Items werden ueber NPC-Vendor statt Player-Markt verkauft (kein liquider Markt oder NPC-Preis besser).")
@@ -1352,8 +1441,9 @@ def main():
         return
 
     # Best-/Worst-Case parallel aufbauen (Smelting-Magic-Reichweite, s. Abschnitt 2/6)
-    all_recipes_best = build_all_recipes(tasks, case="best")
-    all_recipes_worst = build_all_recipes(tasks, case="worst")
+    smelting_exclusions = resolve_smelting_magic_exclusions(item_info_map)
+    all_recipes_best = build_all_recipes(tasks, case="best", excluded_cost_items=smelting_exclusions)
+    all_recipes_worst = build_all_recipes(tasks, case="worst", excluded_cost_items=smelting_exclusions)
     check_action_time_plausibility(all_recipes_best)
 
     recipe_by_output_best = build_recipe_by_output(all_recipes_best)
