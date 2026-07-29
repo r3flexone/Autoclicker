@@ -47,7 +47,8 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 | `Gold/h` | Ertrag pro Stunde, alles selbst gefarmt |
 | `Sek pro Stück` | wie lange ein Stück von Grund auf dauert |
 | `Verkauf an` | Spieler oder NPC-Vendor – der bessere der beiden Wege |
-| `Spielerpreis` / `NPC-Preis` | beide Wege nebeneinander, leer wenn nicht möglich |
+| `Erlös pro Stück` | was wirklich ankommt, beim Player Shop **nach** 1 % Marktsteuer |
+| `Spieler-Gebot (brutto)` / `NPC-Preis` | beide Wege nebeneinander, leer wenn nicht möglich |
 | `Vorteil` | wie deutlich der gewählte Weg besser ist |
 | `Alles selbst farmbar` | `False` heißt: eine Zutat muss gekauft werden |
 | `Warnung` | knapper Absatz, breiter Spread, untypischer Preis |
@@ -79,6 +80,18 @@ und Orderbuch sind zwei Momentaufnahmen.
 
 Umfang über `REASON_TOP_N` in `config.py`, abschalten mit `SHOW_REASON_ANALYSIS = False`.
 
+### Steuer
+
+Der Player Shop zieht **1 % vom Verkaufserlös** ab (ab 100 Gold Gesamtwert), der
+NPC-Vendor nicht. Das ist überall eingerechnet: im Gold/h, in den Ø-Preis-Spalten, in der
+Preis-Sensitivität und beim Durchrechnen des Orderbuchs. Materialkosten bleiben
+unberührt – Kaufangebote sind steuerfrei.
+
+Spalten mit `(brutto)` zeigen den Preis wie im Spiel, alles andere ist der Nettoerlös.
+Der Vergleich Spieler gegen NPC läuft netto gegen netto, sonst wäre er systematisch
+zugunsten des Player Shops verzerrt. Bei knappen Fällen kippt das die Entscheidung
+Richtung NPC. Satz änderbar über `PLAYER_MARKET_TAX` in `config.py`.
+
 **Rohdaten vs. Ketten:** Rohdaten kauft Zutaten am Markt, Ketten farmt sie selbst. Für
 `titanium_bar` heißt das: Rohdaten zieht 3 Erz + 9 Kohle vom Umsatz ab, Ketten rechnet
 stattdessen die Minenzeit dazu. Beim echten Farmen zählt die Kette.
@@ -109,6 +122,8 @@ Speed-Formel, per Anzeige im Skill-Panel gegengeprüft – Clan- und Equipment-B
 Weiter bestätigt:
 
 - **`BaseTime` kommt in Millisekunden** (Median 12000 = 12 s/Aktion)
+- **1 % Marktsteuer** auf Verkaufsangebote ab 100 Gold Gesamtwert im Player Shop;
+  Kaufangebote und der NPC-Vendor sind steuerfrei
 - **NPC-Verkaufsboost 1,155x** – „An offer they can't refuse" (+10 %) × Potion of
   negotiation (+5 %), laut Wiki exakt dieser Wert
 - **Gatherers +5 %** auf Gathering-Skills, **Clan house + House = 50 %** XP

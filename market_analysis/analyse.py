@@ -168,8 +168,11 @@ def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict) ->
     bekommt in Rohdaten einen Klartext-Grund."""
     m = market_map.get(item_id)
     tradeable = is_player_shop_tradeable(item_info_map.get(item_id, {}))
+    # Netto: der Player-Markt zieht Steuer ab, der NPC nicht - sonst waere der Vergleich
+    # der beiden Wege systematisch zugunsten der Spieler verzerrt.
     market_price = (
-        m["buy"] if (tradeable and m is not None and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME) else 0.0
+        net_player_price(m["buy"])
+        if (tradeable and m is not None and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME) else 0.0
     )
     npc_price = npc_sell_price(item_id, item_info_map)
     if npc_price > market_price:
@@ -377,7 +380,8 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         # Ø-Preis-Variante: dailyAveragePrice statt Bid, fuer Sell-Order-Strategie statt
         # Sofortverkauf (realistischer bei breitem Spread, siehe SpreadWarning). Nur
         # relevant, wenn ueberhaupt am Player-Markt verkauft wird.
-        revenue_per_hour_avg = items_per_hour * m["avg"] if (not sold_to_npc and m["avg"] > 0) else None
+        revenue_per_hour_avg = (items_per_hour * net_player_price(m["avg"])
+                                if (not sold_to_npc and m["avg"] > 0) else None)
 
         cost_per_action = 0.0
         cost_data_complete = True
@@ -609,7 +613,8 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
         profit_per_hour = revenue_per_hour - cost_per_hour
 
         # Ø-Preis-Variante (siehe Kommentar in build_single_step_df)
-        revenue_per_hour_avg = actions_per_hour * m["avg"] if (not sold_to_npc and m["avg"] > 0) else None
+        revenue_per_hour_avg = (actions_per_hour * net_player_price(m["avg"])
+                                if (not sold_to_npc and m["avg"] > 0) else None)
         profit_per_hour_avg = (revenue_per_hour_avg - cost_per_hour) if revenue_per_hour_avg is not None else None
 
         max_liquidity_ratio = raw_ratio * actions_per_hour
@@ -764,7 +769,8 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
         }
         for label, p in zip(PRICE_SENSITIVITY_LABELS_SHORT, prices):
             data[f"{label}_Preis"] = p
-            data[f"{label}_Gold_s"] = (items_per_sec * (p - cost_per_item)) if p is not None else None
+            data[f"{label}_Gold_s"] = ((items_per_sec * (net_player_price(p) - cost_per_item))
+                                       if p is not None else None)
         rows.append(data)
 
         if bool(row["SoldToNPC"]):
@@ -824,7 +830,7 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 RECOMMENDATION_COLUMNS = [
     "Rang", "Item", "Skills", "Gold/h", "Gold/h (ungünstigster Fall)",
     "Sek pro Stück", "Stück/h", "Gold pro Stück",
-    "Verkauf an", "Verkaufspreis", "Spielerpreis", "NPC-Preis", "Vorteil",
+    "Verkauf an", "Erlös pro Stück", "Spieler-Gebot (brutto)", "NPC-Preis", "Vorteil",
     "Alles selbst farmbar", "Warnung",
 ]
 
@@ -841,8 +847,10 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
     for rang, (_, r) in enumerate(src.iterrows(), 1):
         npc, spieler = r.get("NPCPreis", 0) or 0, r.get("SpielerpreisBid", 0) or 0
         an_npc = bool(r["SoldToNPC"])
-        # Wie deutlich ist die Entscheidung? Ohne Alternative gibt es keinen Vorsprung.
-        gewaehlt, alternative = (npc, spieler) if an_npc else (spieler, npc)
+        # Vergleich netto gegen netto: das Spielergebot verliert noch die Marktsteuer,
+        # der NPC-Preis nicht.
+        spieler_netto = net_player_price(spieler) if spieler else 0.0
+        gewaehlt, alternative = (npc, spieler_netto) if an_npc else (spieler_netto, npc)
         vorteil = (gewaehlt / alternative - 1) if alternative > 0 else None
 
         warn = []
@@ -866,8 +874,8 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Stück/h": round(r["Stück/h"], 1),
             "Gold pro Stück": round(r["Gold pro Stück"], 1),
             "Verkauf an": "NPC-Vendor" if an_npc else "Spieler",
-            "Verkaufspreis": round(r.get("Verkaufspreis", 0), 2),
-            "Spielerpreis": round(spieler, 2) if spieler else None,
+            "Erlös pro Stück": round(r.get("Verkaufspreis", 0), 2),
+            "Spieler-Gebot (brutto)": round(spieler, 2) if spieler else None,
             "NPC-Preis": round(npc, 2) if npc else None,
             "Vorteil": (f"+{vorteil:.0%}" if vorteil is not None
                         else ("nur NPC moeglich" if an_npc else "nur Spieler moeglich")),
@@ -888,17 +896,17 @@ def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
     print(f"\n=== TOP {min(top_n, len(liste))}: BESTES GOLD PRO ZEIT ===")
     if not sauber.empty:
         print("(komplett selbst farmbar, ohne Warnungen)")
-    print(f"{'#':>3}  {'Item':<26}{'Gold/h':>11}  {'Sek/Stk':>8}  {'an':<11}{'Preis':>10}  Skills")
+    print(f"{'#':>3}  {'Item':<26}{'Gold/h':>11}  {'Sek/Stk':>8}  {'an':<11}{'Erloes':>10}  Skills")
     for _, r in liste.head(top_n).iterrows():
         print(f"{r['Rang']:>3}  {str(r['Item']):<26}{r['Gold/h']:>11,}  {r['Sek pro Stück']:>8.2f}  "
-              f"{r['Verkauf an']:<11}{r['Verkaufspreis']:>10,.0f}  {r['Skills']}")
+              f"{r['Verkauf an']:<11}{r['Erlös pro Stück']:>10,.0f}  {r['Skills']}")
 
     npc = df_rec[df_rec["Verkauf an"] == "NPC-Vendor"]
     print(f"\nVerkaufsweg: {len(df_rec) - len(npc)} Items an Spieler, {len(npc)} an den NPC-Vendor.")
     if not npc.empty:
         best = npc.iloc[0]
         print(f"  Bester NPC-Kandidat: {best['Item']} mit {best['Gold/h']:,} Gold/h "
-              f"({best['Verkaufspreis']:,.0f}g/Stueck).")
+              f"({best['Erlös pro Stück']:,.0f}g/Stueck).")
 
 
 # ---------------------------------------------------------------
@@ -968,8 +976,8 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
 
 REASON_COLUMNS = [
     "Rang", "Item", "Gold/h", "Verkauf an", "Stück/h",
-    "Bestes Gebot", "Menge am besten Gebot", "Deckt Stunden",
-    "Schnitt bei 1h Produktion", "Preisverlust", "Gold/h realistisch",
+    "Bestes Gebot (brutto)", "Menge am besten Gebot", "Deckt Stunden",
+    "Schnitt bei 1h Produktion (netto)", "Preisverlust", "Gold/h realistisch",
     "NPC-Preis", "NPC besser", "Kaufgebote (Stufen)", "Bewertung",
 ]
 
@@ -1005,7 +1013,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
         material_h = _num(kosten_je_h.get(item_id))
         # Bezugsgroesse ist der Preis, auf dem das ausgewiesene Gold/h beruht - sonst
         # widersprechen sich "Preisverlust" und "Gold/h realistisch".
-        referenz = _num(r["Verkaufspreis"])
+        referenz = _num(r["Erlös pro Stück"])
 
         depth = fetch_orderbook_depth(int(item_id)) if item_id is not None else None
         levels = buy_levels_from_depth(depth) if depth else []
@@ -1013,8 +1021,9 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
         if levels:
             top_preis, top_menge = max(levels, key=lambda x: x[0])
             deckung = top_menge / stueck_h if stueck_h > 0 else 0.0
-            erloes, verkauft, _ = walk_orderbook(levels, stueck_h)
-            # Was nicht mehr ins Buch passt, geht zum NPC (falls moeglich) statt verloren
+            brutto, verkauft, _ = walk_orderbook(levels, stueck_h)
+            erloes = net_player_price(brutto)          # Marktsteuer auf den Spieler-Anteil
+            # Was nicht mehr ins Buch passt, geht zum NPC (steuerfrei) statt verloren
             rest = stueck_h - verkauft
             erloes += rest * npc
             schnitt = erloes / stueck_h if stueck_h > 0 else 0.0
@@ -1030,7 +1039,8 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
 
         # Orderbuch und Bulk-Endpoint sind zwei Momentaufnahmen - weichen sie stark ab,
         # ist das eher ein Zeitversatz als ein echter Preissturz.
-        abweichung = (abs(top_preis - referenz) / referenz) if (referenz > 0 and top_preis > 0) else 0.0
+        abweichung = ((abs(net_player_price(top_preis) - referenz) / referenz)
+                      if (referenz > 0 and top_preis > 0) else 0.0)
 
         rows.append({
             "Rang": r["Rang"],
@@ -1038,10 +1048,10 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
             "Gold/h": r["Gold/h"],
             "Verkauf an": r["Verkauf an"],
             "Stück/h": round(stueck_h, 1),
-            "Bestes Gebot": round(top_preis, 2) if top_preis else None,
+            "Bestes Gebot (brutto)": round(top_preis, 2) if top_preis else None,
             "Menge am besten Gebot": round(top_menge) if top_menge else None,
             "Deckt Stunden": round(deckung, 2) if deckung else None,
-            "Schnitt bei 1h Produktion": round(schnitt, 2),
+            "Schnitt bei 1h Produktion (netto)": round(schnitt, 2),
             "Preisverlust": f"-{verlust:.1%}" if verlust > 0.0005 else "0%",
             "Gold/h realistisch": round(erloes - material_h),
             "NPC-Preis": round(npc, 2) if npc else None,

@@ -73,6 +73,18 @@ NPC_SELL_BOOST_MULTIPLIER = (
     * (1.05 if POTION_OF_NEGOTIATION_ACTIVE else 1.0)
 )
 
+# Player-Market-Steuer: 1% auf Verkaufsangebote ab 100 Gold Gesamtwert (Wiki). Kauf-
+# angebote sind steuerfrei -> Materialkosten bleiben unveraendert. Der NPC-Vendor kennt
+# keine Steuer, was den Vergleich Spieler vs. NPC leicht Richtung NPC verschiebt.
+# Die 100-Gold-Untergrenze ist hier egal: ein Stundenertrag liegt immer darueber.
+PLAYER_MARKET_TAX = 0.01
+
+
+def net_player_price(price: float) -> float:
+    """Was nach Abzug der Marktsteuer beim Verkaeufer ankommt."""
+    return price * (1.0 - PLAYER_MARKET_TAX)
+
+
 AUTO_COOK_CHANCE = 0.5               # Anteil der Faenge, der bereits gekocht ankommt
 AUTO_COOK_SOURCE_SKILL = "Fishing"
 
