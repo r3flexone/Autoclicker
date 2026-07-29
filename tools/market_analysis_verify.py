@@ -9,6 +9,11 @@ Auto-Cook-Chance) zu bestaetigen oder zu widerlegen.
 Gedacht fuer "warum steht bei Item X dieses Gold/h?" - der Excel-Export zeigt nur das
 Ergebnis, hier sieht man jeden Zwischenschritt.
 
+Der Schwerpunkt liegt auf der KETTE (alles selbst gefarmt, nichts zugekauft): Abschnitt 5
+zeigt Zeitanteil und Gold/h der Kette, Abschnitt 6 die Ingame-Checkliste fuer JEDEN
+Schritt darin. Der Einzelschritt (Abschnitte 3/4) bleibt als Vergleich stehen - dort
+werden Zutaten zum Ask-Preis eingekauft.
+
 Braucht `requests` (pandas nur, wenn market_analysis importiert wird - das passiert hier).
 
 Aufruf:
@@ -52,7 +57,8 @@ def price_line(item_id: int, market_map: dict, item_info_map: dict) -> str:
 
 
 def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
-             excluded_cost_items: frozenset, recipe_by_output: dict, fish_to_cooked: dict):
+             excluded_cost_items: frozenset, recipe_by_output: dict, fish_to_cooked: dict,
+             tasks: dict):
     cfg = ma.skill_cfg(skill_name)
     name = raw.get("Name")
     item_id = raw.get("ItemReward")
@@ -156,19 +162,102 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
             print(f"        mitverkaufen, waeren es {beide:,.0f} Gold/h statt der ausgewiesenen Kette.")
 
     # --- 5. Kette ----------------------------------------------------------
-    if item_id in recipe_by_output:
-        total_ms, cost, steps, ratio, self_suff = ma.resolve_chain(
-            item_id, market_map, recipe_by_output, fish_to_cooked
-        )
-        if total_ms > 0:
-            per_hour = 3_600_000.0 / total_ms
-            print("\n5) KETTE (Eigenherstellung, so steht es im Ketten-Tab)")
-            print(f"     Zeit pro Stueck   {total_ms / 1000:.3f} s   ->   {per_hour:,.2f} Stueck/h")
-            print(f"     Zugekauft         {cost * per_hour:,.0f} Gold/h")
-            print(f"     Komplett selbst   {self_suff}")
-            for sname, sskill, qty, tms in steps:
-                print(f"          {sname:<34} {sskill:<14} {qty:>10,.3f} Stk   {tms / 1000:>9,.2f} s")
-            print(f"     -> Gold/h         {per_hour * b['sell_price'] - cost * per_hour:,.0f}")
+    if item_id not in recipe_by_output:
+        return
+    total_ms, cost, steps, ratio, self_suff = ma.resolve_chain(
+        item_id, market_map, recipe_by_output, fish_to_cooked
+    )
+    if total_ms <= 0:
+        return
+
+    per_hour = 3_600_000.0 / total_ms
+    chain_gold = per_hour * b["sell_price"] - cost * per_hour
+    print("\n5) KETTE - DAS IST DIE ZAHL, WENN DU ES WIRKLICH SELBST FARMST")
+    print(f"     Zeit pro Stueck   {total_ms / 1000:.3f} s   ->   {per_hour:,.2f} Stueck/h")
+    print(f"     Zugekauft         {cost * per_hour:,.0f} Gold/h")
+    print(f"     Komplett selbst   {self_suff}")
+    print(f"     -> Gold/h         {chain_gold:,.0f}")
+    print("     Zeitanteile je Schritt:")
+    for sname, sskill, qty, tms in steps:
+        share = tms / total_ms if total_ms else 0
+        bar = "#" * max(1, round(share * 30))
+        print(f"          {sname:<30} {sskill:<13} {qty:>9,.3f} Stk  {tms / 1000:>8,.2f} s  "
+              f"{share:>5.1%} {bar}")
+
+    # --- 6. Ingame-Checkliste fuer JEDEN Schritt der Kette ------------------
+    # Nur diese Zahlen bestimmen das Ketten-Gold/h - was der Markt fuer Zutaten
+    # verlangt, ist beim Selbstfarmen egal.
+    print("\n6) INGAME-CHECKLISTE FUER DIE GANZE KETTE")
+    by_name = {r["name"]: r for r in recipe_by_output.values()}
+    seen = set()
+    alt_total_ms = 0.0
+    for sname, sskill, qty, tms in steps:
+        clean = sname.replace(" (mit Auto-Cook)", "")
+        step_recipe = by_name.get(clean)
+        step_cfg = ma.skill_cfg(sskill)
+        step_clan = ma.CLAN_GATHERERS_SPEED_BOOST if step_cfg.is_gathering else 0.0
+        s_mult = (1.0 - step_clan) * (1.0 - step_cfg.equipment_speed_boost)
+        s_add = max(0.0, 1.0 - step_clan - step_cfg.equipment_speed_boost)
+        alt_total_ms += tms * (s_add / s_mult) if s_mult > 0 else tms
+        if clean in seen or step_recipe is None:
+            continue
+        seen.add(clean)
+
+        dur = step_recipe["base_time_ms"] / 1000
+        print(f"\n     [{clean}]  ({sskill})")
+        print(f"       Aktionsdauer     erwartet {dur:.3f} s"
+              + (f"   (additiv waeren es {dur * s_add / s_mult:.3f} s)" if abs(s_mult - s_add) > 1e-9
+                 else "   (kein Clan-Boost -> beide Formeln gleich)"))
+        print(f"       Ausbeute         erwartet {step_recipe['item_amount'] * 100:,.1f} Stueck / 100 Aktionen")
+        if step_recipe["costs"]:
+            worst_recipe = ma.normalize_recipe(sskill, _raw_of(tasks, sskill, clean), case="worst",
+                                               excluded_cost_items=excluded_cost_items)
+            print(f"       Verbrauch / 100 Aktionen:")
+            for idx, cb in enumerate(step_recipe["costs"]):
+                iname = item_info_map.get(cb["Item"], {}).get("name", f"item_{cb['Item']}")
+                cw_amount = worst_recipe["costs"][idx]["Amount"] if worst_recipe else cb["Amount"]
+                marker = "  <-- entscheidet best/worst" if abs(cb["Amount"] - cw_amount) > 1e-9 else ""
+                print(f"          {iname:<22} best {cb['Amount'] * 100:>10,.1f}   "
+                      f"worst {cw_amount * 100:>10,.1f}{marker}")
+
+    if abs(alt_total_ms - total_ms) > 1:
+        alt_hour = 3_600_000.0 / alt_total_ms
+        alt_gold = alt_hour * b["sell_price"] - cost * alt_hour
+        print(f"\n     Waere die Speed-Formel additiv statt multiplikativ, ergaebe die Kette "
+              f"{alt_gold:,.0f} Gold/h statt {chain_gold:,.0f} ({(alt_gold / chain_gold - 1):+.1%}).")
+
+    # Auto-Cook betrifft die Kette direkt: der rohe Rest faellt unter den Tisch
+    for raw_id, cooked_id in fish_to_cooked.items():
+        if item_id not in (raw_id, cooked_id):
+            continue
+        fish_recipe = recipe_by_output.get(raw_id)
+        if fish_recipe is None:
+            continue
+        raw_bid = market_map.get(raw_id, {}).get("buy", 0)
+        cooked_bid = market_map.get(cooked_id, {}).get("buy", 0)
+        if not (raw_bid and cooked_bid):
+            continue
+        secs = fish_recipe["base_time_ms"] / 1000
+        per_action = fish_recipe["item_amount"]
+        both = (per_action * ma.AUTO_COOK_CHANCE * cooked_bid
+                + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
+        rawname = item_info_map.get(raw_id, {}).get("name", raw_id)
+        cookedname = item_info_map.get(cooked_id, {}).get("name", cooked_id)
+        print(f"\n     ACHTUNG Auto-Cook: eine Fangaktion liefert laut Annahme "
+              f"{per_action * ma.AUTO_COOK_CHANCE:.2f}x {cookedname} UND "
+              f"{per_action * (1 - ma.AUTO_COOK_CHANCE):.2f}x {rawname}.")
+        print(f"     Die Ketten-Zeile rechnet immer nur EINE der beiden Haelften. Verkaufst du")
+        print(f"     beide, sind es {both:,.0f} Gold/h - mehr als jede Einzelzeile im Excel.")
+        break
+
+
+def _raw_of(tasks: dict, skill_name: str, recipe_name: str) -> dict:
+    """Rohes Rezept zurueckholen (fuer die Worst-Case-Gegenrechnung eines Kettenschritts)."""
+    for block in tasks.get(skill_name, []) or []:
+        for raw in block.get("Items", []) or []:
+            if raw.get("Name") == recipe_name:
+                return raw
+    return {}
 
 
 def main():
@@ -191,9 +280,10 @@ def main():
         return 1
 
     for skill_name, raw in found:
-        describe(skill_name, raw, market_map, item_info_map, excluded, recipe_by_output, fish_to_cooked)
+        describe(skill_name, raw, market_map, item_info_map, excluded, recipe_by_output,
+                 fish_to_cooked, tasks)
 
-    print(f"\n{SEP}\nFertig. Abschnitt 4 je Item enthaelt die Zahlen, die ingame gegenzupruefen sind.\n{SEP}")
+    print(f"\n{SEP}\nFertig. Abschnitt 5 = Gold/h beim echten Selbstfarmen, Abschnitt 6 = die\nIngame-Checkliste fuer jeden Schritt der Kette.\n{SEP}")
     return 0
 
 
