@@ -59,3 +59,4 @@ tools/debug/*
 idle_clans_farming*.xlsx
 price_sensitivity_chart.png
 run_stats_history.json
+api_check_report.json
