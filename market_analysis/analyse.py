@@ -856,11 +856,26 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 # Empfehlung: was farmen, was bringt es, an wen verkaufen
 # ---------------------------------------------------------------
 
+def chain_reliability(chain_skills: str) -> tuple[float, str]:
+    """Wie planbar ist der Nachschub fuer diese Kette? Es zaehlt der unzuverlaessigste
+    Schritt (min, nicht Produkt) - zwei zufallsabhaengige Skills machen eine Kette nicht
+    doppelt so unplanbar, sie bleibt schlicht so unplanbar wie ihr schwaechstes Glied."""
+    faktor, gruende = 1.0, []
+    for teil in str(chain_skills or "").split("->"):
+        skill = teil.strip()
+        eintrag = SKILL_RELIABILITY.get(skill)
+        if eintrag and eintrag[0] < 1.0:
+            faktor = min(faktor, eintrag[0])
+            gruende.append(f"{skill}: {eintrag[1]}")
+    return faktor, "; ".join(gruende)
+
+
 RECOMMENDATION_COLUMNS = [
-    "Rang", "Item", "Skills", "Gold/h", "Gold/h (ungünstigster Fall)",
+    "Rang", "Item", "Skills", "Gold/h gewichtet", "Gold/h", "Verlässlichkeit",
+    "Gold/h (ungünstigster Fall)",
     "Sek pro Stück", "Stück/h", "Gold pro Stück",
     "Verkauf an", "Erlös pro Stück", "Spieler-Gebot (brutto)", "NPC-Preis", "Vorteil",
-    "Alles selbst farmbar", "Warnung",
+    "Alles selbst farmbar", "Warnung", "Hinweis",
 ]
 
 
@@ -871,9 +886,16 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
     if df_chain.empty:
         return pd.DataFrame(columns=RECOMMENDATION_COLUMNS)
 
-    src = df_chain.sort_values("Gold/h (Eigenherstellung)", ascending=False)
+    # Nach gewichtetem Gold/h sortieren: unplanbarer Nachschub soll die Empfehlung nicht
+    # anfuehren, auch wenn die reine Rechnung dafuer spricht (s. SKILL_RELIABILITY).
+    src = df_chain.copy()
+    src["_faktor"] = src["ChainSkills"].map(lambda c: chain_reliability(c)[0])
+    src["_gewichtet"] = src["Gold/h (Eigenherstellung)"] * src["_faktor"]
+    src = src.sort_values("_gewichtet", ascending=False)
+
     rows = []
     for rang, (_, r) in enumerate(src.iterrows(), 1):
+        faktor, faktor_grund = chain_reliability(r["ChainSkills"])
         npc, spieler = r.get("NPCPreis", 0) or 0, r.get("SpielerpreisBid", 0) or 0
         an_npc = bool(r["SoldToNPC"])
         # Vergleich netto gegen netto: das Spielergebot verliert noch die Marktsteuer,
@@ -901,7 +923,9 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Rang": rang,
             "Item": r["Item"],
             "Skills": r["ChainSkills"],
+            "Gold/h gewichtet": round(r["Gold/h (Eigenherstellung)"] * faktor),
             "Gold/h": round(r["Gold/h (Eigenherstellung)"]),
+            "Verlässlichkeit": round(faktor, 2),
             "Gold/h (ungünstigster Fall)": round(worst) if pd.notna(worst) else None,
             "Sek pro Stück": round(r["TimePerItem_sec"], 2),
             "Stück/h": round(r["Stück/h"], 1),
@@ -915,6 +939,7 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
                               else "kein NPC-Verkauf erlaubt")),
             "Alles selbst farmbar": bool(r.get("FullySelfSufficient")),
             "Warnung": ", ".join(warn),
+            "Hinweis": faktor_grund,
         })
     return pd.DataFrame(rows, columns=RECOMMENDATION_COLUMNS)
 
@@ -930,10 +955,18 @@ def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
     print(f"\n=== TOP {min(top_n, len(liste))}: BESTES GOLD PRO ZEIT ===")
     if not sauber.empty:
         print("(komplett selbst farmbar, ohne Warnungen)")
-    print(f"{'#':>3}  {'Item':<26}{'Gold/h':>11}  {'Sek/Stk':>8}  {'an':<11}{'Erloes':>10}  Skills")
+    print(f"{'#':>3}  {'Item':<26}{'Gold/h':>22}  {'Sek/Stk':>8}  {'an':<11}{'Erloes':>10}  Skills")
     for _, r in liste.head(top_n).iterrows():
-        print(f"{r['Rang']:>3}  {str(r['Item']):<26}{r['Gold/h']:>11,}  {r['Sek pro Stück']:>8.2f}  "
+        # Abgewertete Ketten mit beiden Zahlen zeigen, sonst wirkt die Reihenfolge falsch
+        gold = (f"{r['Gold/h gewichtet']:,} ({r['Gold/h']:,})" if r["Verlässlichkeit"] < 1
+                else f"{r['Gold/h']:,}")
+        print(f"{r['Rang']:>3}  {str(r['Item']):<26}{gold:>22}  {r['Sek pro Stück']:>8.2f}  "
               f"{r['Verkauf an']:<11}{r['Erlös pro Stück']:>10,.0f}  {r['Skills']}")
+
+    abgewertet = liste.head(top_n)[liste.head(top_n)["Verlässlichkeit"] < 1]
+    if not abgewertet.empty:
+        print("  (Klammerwert = ungewichtetes Gold/h; abgewertet wegen: "
+              + "; ".join(sorted(set(abgewertet["Hinweis"]))) + ")")
 
     npc = df_rec[df_rec["Verkauf an"] == "NPC-Vendor"]
     print(f"\nVerkaufsweg: {len(df_rec) - len(npc)} Items an Spieler, {len(npc)} an den NPC-Vendor.")
@@ -1116,7 +1149,7 @@ def print_reason_highlights(df_reason: pd.DataFrame):
 # ---------------------------------------------------------------
 
 SORT_COLUMN_PER_SHEET = {
-    "Empfehlung": "Gold/h",
+    "Empfehlung": "Gold/h gewichtet",
     "Begruendung": "Gold/h realistisch",
     "Rohdaten": "Gold/h",
     "Nach_Skill_Level": "Level",

@@ -44,7 +44,10 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 
 | Spalte | Bedeutung |
 |---|---|
-| `Gold/h` | Ertrag pro Stunde, alles selbst gefarmt |
+| `Gold/h gewichtet` | **Sortierspalte:** Gold/h mal Verlässlichkeit |
+| `Gold/h` | der echte Ertrag pro Stunde, alles selbst gefarmt |
+| `Verlässlichkeit` | 1,0 = planbar farmbar, kleiner = Nachschub nur zufällig |
+| `Hinweis` | warum abgewertet wurde |
 | `Sek pro Stück` | wie lange ein Stück von Grund auf dauert |
 | `Verkauf an` | Spieler oder NPC-Vendor – der bessere der beiden Wege |
 | `Erlös pro Stück` | was wirklich ankommt, beim Player Shop **nach** 1 % Marktsteuer |
@@ -53,8 +56,29 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 | `Alles selbst farmbar` | `False` heißt: eine Zutat muss gekauft werden |
 | `Warnung` | knapper Absatz, breiter Spread, untypischer Preis |
 
+#### Verlässlichkeit
+
+Manche Ketten rechnen sich auf dem Papier hervorragend, lassen sich aber nicht auf Zuruf
+farmen. Papaya ist das Musterbeispiel: die Samen fallen nur als Zufallsdrop an, du kannst
+also nicht einfach „eine Stunde Papaya machen".
+
+`SKILL_RELIABILITY` in `config.py` dämpft solche Skills:
+
+```python
+SKILL_RELIABILITY = {
+    "Farming": (0.5, "Samen nur als Zufallsdrop"),
+}
+```
+
+Das wirkt **ausschließlich auf die Rangfolge der Empfehlung**. `Gold/h` bleibt der echte
+Wert, und Ketten, Rohdaten, Begründung und der Chart bleiben unverändert – dort willst du
+ja die ungeschönte Zahl sehen. Bei mehrstufigen Ketten zählt der unverlässlichste Schritt
+(Minimum, nicht Produkt): zwei zufallsabhängige Skills machen eine Kette nicht doppelt so
+unplanbar.
+
 Der Lauf druckt dieselbe Top-Liste auch in die Konsole – für die schnelle Antwort
-braucht man die Excel gar nicht zu öffnen.
+braucht man die Excel gar nicht zu öffnen. Abgewertete Ketten zeigen dort beide Zahlen:
+`3.227.359 (6.454.719)`.
 
 ### Preis-Sensitivität und Chart
 

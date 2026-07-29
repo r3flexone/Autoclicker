@@ -85,6 +85,17 @@ def net_player_price(price: float) -> float:
     return price * (1.0 - PLAYER_MARKET_TAX)
 
 
+# Verlaesslichkeit des Nachschubs je Skill: 1.0 = planbar farmbar, kleiner = die
+# Zutaten kommen nur zufaellig. Farming braucht Samen, die als Zufallsdrop anfallen -
+# ein Papaya-Gold/h ist rechnerisch korrekt, aber du kannst es nicht auf Zuruf farmen.
+#
+# Wirkt AUSSCHLIESSLICH auf die Rangfolge im Empfehlungs-Sheet (Spalte
+# "Gold/h gewichtet"). Gold/h selbst, Ketten, Rohdaten und alle anderen Sheets bleiben
+# unveraendert - dort steht weiter der echte Ertrag.
+SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
+    "Farming": (0.5, "Samen nur als Zufallsdrop"),
+}
+
 AUTO_COOK_CHANCE = 0.5               # Anteil der Faenge, der bereits gekocht ankommt
 AUTO_COOK_SOURCE_SKILL = "Fishing"
 
