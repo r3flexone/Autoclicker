@@ -1,129 +1,22 @@
 """
 Idle Clans - Gold/h Farming-Analyse
 
-Zieht Marktpreise + Rezept-Daten aus der Idle-Clans-API, rechnet fuer jedes farmbare
-Item Gold/h unter Beruecksichtigung deiner Account-Upgrades (Speed/Yield/Cost-Boosts,
-Handschuhe, XP-Boosts, NPC-Verkaufspreis) und exportiert das Ergebnis nach Excel.
+Zieht Marktpreise + Rezepte aus der Idle-Clans-API, rechnet fuer jedes farmbare Item
+Gold/h unter Beruecksichtigung der Account-Upgrades und exportiert nach Excel.
 
-EIGENSTAENDIGES SKRIPT: laeuft unabhaengig vom Autoclicker (kein Import aus `autoclicker/`,
-kein Windows noetig). Zusaetzliche Abhaengigkeiten, die der Autoclicker selbst NICHT
-braucht - deshalb bewusst nicht in requirements.txt:
+Was gerechnet wird, welche Annahmen ingame verifiziert sind und was noch offen ist:
+siehe README.md. Alles Einstellbare steht in config.py.
 
     pip install pandas requests openpyxl matplotlib
-
-(matplotlib nur fuer SHOW_PRICE_SENSITIVITY_CHART - fehlt es, laeuft der Rest weiter.)
-
-Aufruf:  python tools/market_analysis.py
-
-Struktur:
-  1. API-Endpunkte
-  2. Account-Konfiguration (SKILLS) - alles Spieler-Spezifische an einem Ort
-  3. Markt-Filter-Schwellenwerte
-  4. Daten laden (API)
-  5. Markt-/Preis-Hilfsfunktionen (inkl. NPC-Verkaufspreis-Fallback)
-  6. Rezept-Normalisierung (Upgrades + Best-/Worst-Case-Kosten)
-  7. Einzelschritt-Analyse ("Rohdaten"-Tab)
-  8. Ketten-Analyse ("Ketten"/"Realistisch_Farmbar"-Tabs) + Preis-Sensitivitaets-Chart
-  9. Excel-Export
-  10. Lauf-Sanity-Check (Vergleich mit letztem Lauf)
-  11. main()
-
-v13-Aenderungen (gegen die LIVE-API verifiziert, s. tools/market_analysis_apicheck.py):
-  - Skill-Key hiess in der API "ItemCreation", nicht "Item creation" -> der excluded-
-    Eintrag hat NIE gegriffen, die Rezepte liefen mit DEFAULT_SKILL_CONFIG (= voellig
-    ohne Boosts) mit. Ebenso fehlte "Combat" komplett. Beide jetzt korrekt ausgeschlossen.
-    Die restlichen Combat-Teilskills (Attack/Strength/...) existieren in Tasks gar nicht
-    und sind als tote Eintraege raus.
-  - Die Items-API hat sehr wohl Handelbarkeits-Flags: CanNotBeTraded (Player-Markt) und
-    CanNotBeSoldToGameShop (NPC-Vendor). Bisher bekam JEDES Item mit BaseValue > 0 einen
-    NPC-Preis zugewiesen - auch solche, die man dem NPC gar nicht verkaufen kann. Beide
-    Verkaufswege werden jetzt einzeln geprueft (neue Spalten Handelbar/NPCVerkaufMoeglich),
-    und is_player_shop_tradeable() ist kein NO-OP-Stub mehr.
-  - Feldnamen des comprehensive-Endpoints verifiziert: averagePrice1Day/7Days/30Days und
-    tradeVolume1Day (die bisherigen Rate-Namen gab es nicht) -> SHOW_LONGTERM_AVERAGES
-    liefert jetzt ueberhaupt erst Daten.
-  - Smelting-Magic-Ausnahme laeuft ueber die ZUTAT statt ueber den Rezeptnamen: sonst
-    waere otherworldly_bar (enthaelt Astronomical ore, heisst aber nicht so) durchgerutscht.
-    Ausserdem bekommt astronomical_bar dadurch nur auf der Erz-Zeile keinen Rabatt - die
-    Kohle-Zeile (5000 Stueck!) bleibt Teil der normalen Best-/Worst-Case-Spanne.
-  - BaseTime ist bestaetigt in MILLISEKUNDEN (Median 12000 = 12s/Aktion).
-
-v12-Aenderungen (Review-Durchgang, Details im jeweiligen Kommentar am Code):
-  - API-Requests laufen ueber _get_json(): HTTP-Status wird geprueft, statt bei einem
-    500er/HTML-Fehlerdokument mit einem kryptischen JSONDecodeError abzustuerzen.
-    Zusaetzlich Schema-Drift-Warnungen (leere Antwort / dailyAveragePrice nirgends
-    gesetzt / unplausible Aktionszeiten).
-  - Plausibilitaetscheck fuer die Zeiteinheit von BaseTime (Annahme: Millisekunden).
-    Kippt die API mal auf Sekunden, ist sonst JEDE Gold/h-Zahl um Faktor 1000 daneben,
-    ohne dass irgendwas auffaellt.
-  - Smelting Magic gilt lt. Wiki NICHT fuer Astronomical ore -> astronomical_bar bekommt
-    den Rabatt nicht mehr (SMELTING_MAGIC_EXCLUDED_SUBSTRINGS).
-  - Preis-Sensitivitaet rechnet jetzt NETTO (Gold/s minus Materialkosten), wie alle
-    anderen Gold/h-Spalten auch. Vorher war es Brutto-Umsatz und damit nicht mit dem
-    Gold/h aus Ketten/Realistisch_Farmbar vergleichbar.
-  - Worst-Case-Merges: how="left" + validate="one_to_one" statt Inner-Join. Ein
-    doppelter (ItemID, TaskId)-Schluessel haette sonst still Zeilen vervielfacht bzw.
-    verschluckt, statt einen Fehler zu werfen.
-  - matplotlib wird erst beim Chart importiert UND der ImportError abgefangen - vorher
-    ist der komplette Lauf (inkl. Excel-Export) daran gestorben, dass ein reines
-    Komfort-Feature nicht installiert war.
-  - run_stats_history.json fuehrt jetzt tatsaechlich eine Historie (Liste der letzten
-    RUN_STATS_HISTORY_LIMIT Laeufe) statt nur den letzten Lauf; altes Dict-Format wird
-    weiterhin gelesen.
-  - "Gold pro Stück" ohne max(..., 1)-Klemme (verfaelschte bei <1 Stueck/h das Ergebnis).
-  - Guard gegen speed_factor <= 0 (Equipment-Boost >= 100% haette eine Division durch
-    0 bzw. negative Zeiten erzeugt).
-
-v10-Aenderungen:
-  - Chart-Y-Achse auf Gold/s umgestellt (uebersichtlicher als Gold/h bei vielen Linien).
-  - Rohdaten hat keinen Hard-Filter mehr: JEDES Recipe landet in der Tabelle, auch wenn
-    es nicht in Ketten/Realistisch_Farmbar/Nach_Skill_Level auftaucht (die bleiben wie
-    gehabt gefiltert - "nur was Sinn macht"). Neue Spalten "InKetten"/"Status"/
-    "AusschlussGrund" zeigen, warum. Excel-Faerbung: ganze Zeile kraeftig orange
-    (F6B26B), das verantwortliche Feld "AusschlussGrund" zusaetzlich kraeftig rot
-    (E06666). Gold/h behaelt sein gelbes Sortier-Highlight.
-  - Neues Sheet "Preis_Sensitivitaet": dieselben Live-Orderbook-Daten, die auch in den
-    PNG-Chart einfliessen (SHOW_PRICE_SENSITIVITY_CHART), zusaetzlich tabellarisch.
-  - Neuer optionaler SHOW_LONGTERM_AVERAGES-Flag: ergaenzt Rohdaten um Avg1D/Avg7D/
-    Avg30D/Volume1D aus dem comprehensive-Endpoint (1 Request pro eindeutigem Item -
-    kann dauern). Feldnamen sind ein Best-Guess, s. COMPREHENSIVE_AVG_FIELDS.
-  - Neuer Lauf-Sanity-Check (Abschnitt 10): vergleicht Tasks-/Rezept-/Item-Anzahl sowie
-    Markt-Kennzahlen mit dem letzten Lauf (run_stats_history.json) und warnt bei
-    verdaechtigen Ausschlaegen, die eher auf ein kaputtes API-Feld als auf echte
-    Marktbewegung hindeuten.
-
-v9-Aenderungen:
-  - Best-/Worst-Case fuer "Smelting Magic" (30% erwartete Ore->Bar-Ersparnis): der Wiki-
-    Kommentar spricht nur von "Erz", das Script wendet den Rabatt bisher (Best-Case) auf
-    ALLE Cost-Zeilen der *_bar-Rezepte an (also auch auf z.B. Kohle). Worst-Case: Rabatt
-    gilt nur auf die erste Cost-Zeile (Haupt-Erz), Nebenzutaten voller Preis. Beide
-    Varianten werden jetzt PARALLEL durchgerechnet und als "_Worst"-Spalten in Rohdaten
-    UND Ketten/Realistisch_Farmbar ausgegeben (CostCaseAmbiguous=True markiert betroffene
-    Zeilen - betrifft nur *_bar-Rezepte selbst und alles, was direkt/indirekt davon
-    abhaengt, z.B. titanium_platebody haengt an titanium_bar).
-  - Neuer optionaler Preis-Sensitivitaets-Chart (SHOW_PRICE_SENSITIVITY_CHART, Standard
-    aus): matplotlib-Liniendiagramm ueber die Top-N FullySelfSufficient-Items (alle
-    Skills, wie Realistisch_Farmbar) mit Gold/s auf einer gemeinsamen Y-Achse ueber die
-    10 aktuellen Orderbook-Preispunkte (5 Buy aufsteigend, 5 Sell aufsteigend) je Item.
-    Nutzt die bereits vorhandene fetch_orderbook_depth()-Funktion (Live-Requests, s. Flag).
-
-v8-Aenderungen (per Ingame-Boosts-Breakdown verifiziert):
-  - Farming ist laut Wiki ein Processing-Skill, KEIN Gathering-Skill -> hat keinen
-    "Gatherers"-Perk (5% Clan-Speed). is_gathering wurde faelschlich auf True gesetzt.
-  - XP_BOOST_TOTAL war 25%+30% (Wiki-Beispielwerte), tatsaechlich aktiv sind laut
-    Boosts-Breakdown nur Clan house (25%) + House (25%) = 50%, kein Castle-Tier.
-  - NPC-Verkaufspreis (base_value aus Items-API) wird jetzt als Verkaufsweg
-    beruecksichtigt: manche Items haben keinen/kaum liquiden Player-Markt, sind aber
-    per Sofortverkauf an den NPC-Shop trotzdem brauchbar. "An offer they can't refuse"
-    (Clan-Upgrade, einmalig, kein Tier-System) gibt +10% auf diesen NPC-Preis.
+    python market_analysis/analyse.py
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
-from dataclasses import dataclass
 from datetime import datetime
 
 import pandas as pd
@@ -131,262 +24,12 @@ import requests
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-# ============================================================
-# 1. API-ENDPUNKTE
-# ============================================================
-
-# Hinweis: es gibt zusaetzlich /PlayerMarket/items/prices/latest/all. Falls der
-# Endpunkt unten irgendwann nur noch ein Teilset liefert (s. Sanity-Check-Warnung
-# "market_map_count eingebrochen"), ist /latest/all die erste Alternative zum Testen.
-MARKET_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest?includeAveragePrice=true"
-GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
-COMPREHENSIVE_URL_TEMPLATE = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/comprehensive/{item_id}"
-
-# ============================================================
-# 2. ACCOUNT-KONFIGURATION
-#
-# Alles, was von deinem Account/Equipment abhaengt, steht hier an EINER Stelle statt
-# verstreut. equipment_speed_boost = "Equipment skill boosts" aus dem Ingame Boosts-
-# Breakdown-Screen. is_gathering = bekommt den Gatherers-Clan-Bonus (+5% Speed) - NUR
-# echte Gathering-Skills (Mining/Fishing/Foraging/Woodcutting), NICHT Farming (laut
-# Wiki ein Processing-Skill, kein Gatherers-Perk vorhanden). gloves_owned = du besitzt
-# die Skilling-Handschuhe fuer diesen Skill (5% Chance auf doppelte Beute, stackt
-# multiplikativ mit yield_multiplier). yield_multiplier = fixe Verdopplungs-Upgrades
-# (Fisherman/Lumberjack/Power Forager). cost_multiplier = Anteil der Materialkosten,
-# der nach Trickery/Magic-Ersparnis noch anfaellt (uniform auf alle Cost-Zeilen - fuer
-# Smithing-*_bar-Rezepte gilt stattdessen die Best-/Worst-Case-Logik in normalize_recipe,
-# s. SMITHING_SMELTING_COST_MULTIPLIER). excluded = Skill komplett ignorieren
-# (Combat/Enchanting/etc., kein normales Markt-Item-Recipe).
-#
-# VERIFIZIERT (Ingame-Abgleich der angezeigten Aktionsdauer, 4 Aktionen ueber 3 Skills):
-# Clan-Speed und Equipment-Speed wirken MULTIPLIKATIV auf die Aktionszeit,
-# t * (1-0.05) * (1-0.61) - nicht additiv. Gemessen gegen die Anzeige im Skill-Panel:
-#     oak           Script 2.223 s  | additiv waere 2.040 s | ingame 2.2 s
-#     coal_ore      Script 2.779 s  | additiv waere 2.550 s | ingame 2.8 s
-#     titanium_ore  Script 12.967 s | additiv waere 11.900 s| ingame 13 s
-#     titanium_bar  Script 13.500 s (kein Clan-Boost, beide Formeln gleich) | ingame 13.5 s
-# Alle vier passen auf die multiplikative Variante, keine auf die additive.
-# ============================================================
+from config import *  # noqa: F401,F403  - Einstellungen, s. config.py
 
 
-@dataclass
-class SkillConfig:
-    equipment_speed_boost: float = 0.0
-    is_gathering: bool = False
-    gloves_owned: bool = False
-    yield_multiplier: float = 1.0
-    cost_multiplier: float = 1.0
-    excluded: bool = False
-    has_tool: bool = False   # Werkzeug fuer diesen Skill vorhanden (+EQUIPPED_TOOL_BONUS)
-
-
-# Equipment-Speed, abgelesen aus dem Ingame "Boosts breakdown"-Screen: die Grundaus-
-# ruestung gibt bei ALLEN Skilling-Skills dieselben 55%. Genau ein Skill stand dort auf
-# 61% - der, dessen Werkzeug gerade getragen wird (im Screenshot die Axt = Woodcutting).
-# Ingame kann immer nur EIN Werkzeug gleichzeitig getragen werden.
-EQUIPMENT_BASE_BOOST = 0.55
-EQUIPPED_TOOL_BONUS = 0.06
-
-# WICHTIG zur Lesart des Boosts-Screens: die Loadouts wechseln ingame AUTOMATISCH mit
-# der Taetigkeit. Der Screen zeigt darum immer nur den gerade aktiven Skill auf 61% und
-# alle anderen auf 55% - ein Screenshot, auf dem mehrere gleichzeitig 61% haetten, kann
-# es gar nicht geben. Aus "im Screen steht nur Woodcutting auf 61%" folgt also NICHT,
-# dass die anderen Skills kein Werkzeug haben.
-#
-# Massgeblich ist deshalb has_tool pro Skill (= besitzt du fuer diesen Skill ein
-# Werkzeug), nicht der Momentanwert im Screen. Ingame gegengemessen:
-#   Woodcutting  Oak 2.2 s          = Basis  6.0 s x 0.3705  -> 61%, Werkzeug vorhanden
-#   Mining       Titanium ore 13 s  = Basis 35.0 s x 0.3705  -> 61%, Werkzeug vorhanden
-#   Mining       Coal ore 2.8 s     = Basis  7.5 s x 0.3705  -> 61%
-#   Smithing     Titanium bar 13.5 s= Basis 30.0 s x 0.45    -> 55%, KEIN Werkzeug
-# Das deckt sich mit der urspruenglichen Konfiguration (Carpentry/Smithing/Farming ohne
-# Werkzeug, der Rest mit).
-#
-# ASSUME_TOOL_EQUIPPED_PER_SKILL=True bildet dieses Auto-Loadout ab: jeder Skill mit
-# has_tool=True rechnet mit Werkzeug, weil beim Farmen ohnehin umgeschaltet wird - auch
-# zwischen den Phasen einer Kette. FALSE friert stattdessen den Ist-Zustand ein (nur
-# CURRENTLY_EQUIPPED_TOOL_SKILL bekommt den Bonus); nur sinnvoll, wenn das Auto-Loadout
-# mal nicht greift.
-ASSUME_TOOL_EQUIPPED_PER_SKILL = True
-CURRENTLY_EQUIPPED_TOOL_SKILL = "Woodcutting"
-
-
-def equip(has_tool: bool = True) -> float:
-    return EQUIPMENT_BASE_BOOST + (EQUIPPED_TOOL_BONUS if has_tool else 0.0)
-
-
-GLOVES_DOUBLE_CHANCE = 0.05          # 5% Chance auf doppelte Beute, alle Skilling-Handschuhe
-CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur fuer is_gathering=True
-
-# XP-Boost: verifiziert per Ingame Boosts-Breakdown-Screen. Aktiv sind "Clan house"
-# (Clan-Upgrade, 25%) und "House" (persoenliches Upgrade, 25%). Kein Castle-Tier
-# vorhanden - falls spaeter eins dazukommt, hier ergaenzen.
-#
-# Ingame-Abgleich der angezeigten XP pro Aktion: Mining und Smithing stimmen exakt
-# (coal_ore 36.0, titanium_ore 270.0, titanium_bar 337.5 - jeweils Basis x 1.50).
-# Woodcutting weicht ab: oak zeigt 27.2 statt der gerechneten 26.25, also Faktor 1.554
-# statt 1.50 (+3.6%). Da liegt offenbar eine Woodcutting-spezifische XP-Quelle, die das
-# Modell nicht kennt. BETRIFFT NUR die Spalten XP/h und Gold per XP - Gold/h haengt
-# nicht an der XP - deshalb bewusst nicht "geraten korrigiert". Wer es aufloesen will:
-# Boosts-Breakdown oeffnen, waehrend Woodcutting laeuft.
-XP_BOOST_TOTAL = 0.25 + 0.25
-
-# Daily Boost ("Flamme" im Profil, alle 2h manuell aktivierbar, mit Premium-Token alle
-# 8h) - PER WIKI-FORMEL MULTIPLIKATIV mit XP_BOOST_TOTAL verknuepft, nicht additiv:
-#   XP = Base * (1 + Clan house + House) * (1 + Daily Boost) * (1 + Jewelry/Equip-Boost)
-# Per Live-Abgleich (Coal ore, Sunflowerberry) verifiziert: der Boost gibt +4%. Ist
-# TEMPORAER (laeuft nach einigen Stunden ab) - deshalb als An/Aus-Flag statt Rohwert:
-# vor dem Ausfuehren kurz pruefen, ob die Flamme im Profil gerade aktiv ist.
-#
-# ACHTUNG (Review): das Wiki nennt fuer den Daily Boost +30% XP fuer 2h (bis 4x/Tag,
-# max. 8h). Die hier gemessenen +4% passen nicht dazu - entweder wurde etwas anderes
-# gemessen (z.B. ein Jewelry-Boost) oder der Wert wurde im Spiel geaendert. Der Boost
-# beeinflusst NUR die XP-Spalten (XP/h, Gold per XP), kein Gold/h - deshalb hier nur
-# als Notiz und nicht "einfach korrigiert". Bei Gelegenheit gegenmessen.
-DAILY_BOOST_ACTIVE = False   # True setzen, wenn die Flamme im Profil gerade aktiv ist
-DAILY_XP_BOOST_PERCENT = 0.04
-DAILY_XP_BOOST = DAILY_XP_BOOST_PERCENT if DAILY_BOOST_ACTIVE else 0.0
-
-# NPC-Verkaufspreis-Boost: zwei permanente Quellen, multiplikativ kombiniert.
-# Per Wiki bestaetigt: +10% (Clan) kombiniert mit +5% (Potion of negotiation) ergibt
-# exakt 1.155x Vendor-Value - also multiplikativ, genau wie hier gerechnet.
-OFFER_THEY_CANT_REFUSE_ACTIVE = True   # Clan-Upgrade, einmalig, +10%
-POTION_OF_NEGOTIATION_ACTIVE = True    # bei Timo als PERMANENT bestaetigt, +5%
-NPC_SELL_BOOST_MULTIPLIER = (
-    (1.10 if OFFER_THEY_CANT_REFUSE_ACTIVE else 1.0)
-    * (1.05 if POTION_OF_NEGOTIATION_ACTIVE else 1.0)
-)
-
-AUTO_COOK_CHANCE = 0.5               # 50% der gefangenen Fische sind beim Fishing bereits gekocht
-AUTO_COOK_SOURCE_SKILL = "Fishing"
-
-# Smelting Magic (Wiki bestaetigt): Chance, Erz beim SCHMELZEN (Ore -> Bar) nicht zu
-# verbrauchen. Gilt NICHT fuers Schmieden von Bars zu Ruestung (war vorher ein Bug: der
-# Rabatt wurde faelschlich auf ALLE Smithing-Rezepte angewendet). Wird unten in
-# normalize_recipe() nur bei Rezepten angewendet, deren Name auf "_bar" endet.
-#
-# UNKLARE REICHWEITE (v9): der Wiki-Text nennt nur "Erz" - bei *_bar-Rezepten mit
-# mehreren Cost-Zeilen (z.B. titanium_bar = Erz + Kohle) ist unklar, ob der Rabatt auf
-# ALLE Zeilen wirkt oder nur auf die erste (das Haupt-Erz). Best-Case = alle Zeilen
-# (bisherige v8-Annahme), Worst-Case = nur die erste Zeile. Beide werden parallel
-# gerechnet, s. normalize_recipe(case=...) und die "_Worst"-Spalten in Rohdaten/Ketten.
-#
-# Tier-System: die Tiers stacken NICHT, der neueste Tier ueberschreibt den vorherigen -
-# 0.3 entspricht dem hoechsten Tier. Bei niedrigerem Tier hier anpassen.
-SMITHING_SMELTING_COST_MULTIPLIER = 1.0 - 0.3
-
-# Ausnahme lt. Wiki/Community-Guide: Astronomical ore ist vom Smelting-Magic-Effekt
-# ausgenommen. Der Abgleich laeuft ueber die ZUTAT (Item-Name), nicht ueber den
-# Rezeptnamen - sonst wuerde otherworldly_bar durchrutschen, das Astronomical ore als
-# Zutat hat, aber nicht so heisst (per Live-Check bestaetigt: otherworldly_bar =
-# 1x Item 926 + 2x Astronomical ore + 10000x Meteorite + 5000x Titanium).
-SMELTING_MAGIC_EXCLUDED_ITEM_NAMES = ("astronomical_ore",)
-
-SKILLS: dict[str, SkillConfig] = {
-    "Mining":      SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True),
-    "Fishing":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                                yield_multiplier=2.0),   # Fisherman: 100% doppelte Ausbeute
-    "Foraging":    SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                                yield_multiplier=1.5),   # Power Forager: 50% Chance auf doppelte Beute
-    "Woodcutting": SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                                yield_multiplier=2.0),   # Lumberjack: 100% doppelte Ausbeute
-    "Cooking":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),
-    "Carpentry":   SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),
-    "Smithing":    SkillConfig(equipment_speed_boost=equip(False)),  # Smelting Magic s. SMITHING_SMELTING_COST_MULTIPLIER oben, nicht hier
-    # Farming: KEIN Gatherers-Perk (Processing-Skill lt. Wiki, is_gathering=False).
-    # Farming trickery Tier 5 (hoechster Tier) = 50% Chance, Saatgut zu sparen.
-    "Farming":     SkillConfig(equipment_speed_boost=equip(False), is_gathering=False, cost_multiplier=0.5),
-    # Crafting stand hier auf 0.55+0.08=63%. Im Boosts-Screen liegt kein Skilling-Skill
-    # ueber 61% (55% Grundausruestung + 6% Werkzeug) - die 8% waren zu hoch gegriffen.
-    "Crafting":    SkillConfig(equipment_speed_boost=equip(), has_tool=True),
-    "Agility":     SkillConfig(equipment_speed_boost=equip(), has_tool=True),  # produziert Samen fuer Beeren (kein Gathering-Skill lt. Wiki)
-    "Plundering":  SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),  # Ghostly-Outfit (3-teilig) bestaetigt
-    # Brewing stand auf 0% - laut Boosts-Screen gilt auch hier die 55%-Grundausruestung.
-    # Mit 0% waren alle Brewing-Aktionen um Faktor 2.2 zu langsam gerechnet. Ob es ein
-    # Brewing-Werkzeug gibt, ist offen -> konservativ ohne. Falls doch: has_tool=True.
-    "Brewing":     SkillConfig(equipment_speed_boost=equip(False)),
-
-    # Skills ohne normales Markt-Item-Recipe -> komplett ausgeschlossen.
-    # Die Keys sind gegen die Live-API abgeglichen (Tasks-Block). Achtung: "ItemCreation"
-    # OHNE Leerzeichen - der frueher hier stehende Key "Item creation" hat nie gematcht,
-    # dadurch liefen die Rezepte ueber DEFAULT_SKILL_CONFIG (also voellig ohne Boosts)
-    # in der Auswertung mit. Dasselbe galt fuer "Combat", das gar nicht konfiguriert war.
-    # Die einzelnen Combat-Teilskills (Attack/Strength/Defence/Archery/Magic/Health) und
-    # "Exterminating" tauchen im Tasks-Block ueberhaupt nicht auf und sind deshalb raus.
-    "Combat": SkillConfig(excluded=True),
-    "Enchanting": SkillConfig(excluded=True),
-    "Invocation": SkillConfig(excluded=True),
-    "ItemCreation": SkillConfig(excluded=True),
-}
-
-# Ist-Zustand statt "passendes Werkzeug angelegt": allen ausser dem gerade getragenen
-# Werkzeug-Skill den Bonus wieder abziehen.
-if not ASSUME_TOOL_EQUIPPED_PER_SKILL:
-    for _name, _cfg in SKILLS.items():
-        if _cfg.has_tool and _name != CURRENTLY_EQUIPPED_TOOL_SKILL:
-            _cfg.equipment_speed_boost -= EQUIPPED_TOOL_BONUS
-            _cfg.has_tool = False
-
-DEFAULT_SKILL_CONFIG = SkillConfig()  # Fallback fuer unbekannte/neue Skills: konservativ, nichts ausgeschlossen
-
-
-def skill_cfg(skill_name: str) -> SkillConfig:
-    return SKILLS.get(skill_name, DEFAULT_SKILL_CONFIG)
-
-
-# ============================================================
-# 3. MARKT-FILTER (Account-unabhaengig)
-# ============================================================
-
-# ACHTUNG zur Aussagekraft: buyVol/highestPriceVolume ist die Menge AM BESTEN GEBOT,
-# nicht die Tiefe des Buchs. Ingame-Gegenprobe an Oak: bestes Gebot 76g mit nur 6.178
-# Stueck (also unter der Schwelle), waehrend direkt darunter 327.915 Stueck zu 70g
-# liegen und das 24h-Volumen bei 174.303 liegt. Ein Item kann also an dieser Schwelle
-# scheitern und trotzdem bestens handelbar sein - es kippt dann auf den NPC-Preis
-# (bei Oak: 258.462 -> 51.063 Gold/h) oder ganz aus der Auswertung.
-# Wer per Sell-Order statt Sofortverkauf handelt, sollte den Wert deutlich senken und
-# sich stattdessen an den Ø-Preis-Spalten + LiquidityWarning orientieren.
-MIN_SELL_VOLUME = 10000        # Mindest-BuyVol des Endprodukts (Nachfrage fuer Sofortverkauf), gilt nur wenn ueber Player-Markt verkauft wird
-MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite, damit ein Markt als "echt gehandelt" gilt
-MAX_SPREAD_RATIO = 1.0         # Ask darf hoechstens 2x Bid sein
-MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung, wenn Bid/Ask >50% vom 24h-Avg abweicht
-LIQUIDITY_WARNING_RATIO = 5.0  # Bedarf/Absatz > 5x verfuegbares Volumen -> unrealistisch
-
-TOP_N_RANKING = 25
-DEPTH_ANALYSIS_TOP_N = 25
-SHOW_ORDERBOOK_DEPTH = False    # True = zusaetzlich 25 Live-Requests fuer Orderbook-Tiefe (langsam)
-
-# Preis-Sensitivitaets-Chart (v9): matplotlib-Liniendiagramm, Gold/s ueber die 10
-# aktuellen Orderbook-Preispunkte (5 Buy + 5 Sell) je Item, Top-N FullySelfSufficient-
-# Items (alle Skills). Zusaetzliche Live-Requests wie SHOW_ORDERBOOK_DEPTH.
-SHOW_PRICE_SENSITIVITY_CHART = True
-PRICE_SENSITIVITY_TOP_N = 10
-PRICE_SENSITIVITY_CHART_PATH = "price_sensitivity_chart.png"
-
-# 1-/7-/30-Tage-Durchschnittspreis + Tagesvolumen aus dem comprehensive-Endpoint
-# (derselbe, der auch fuer Orderbook-Tiefe/Preis-Sensitivitaet genutzt wird). Feldnamen
-# per Live-Check verifiziert - Achtung, sie folgen NICHT dem Muster des Bulk-Endpoints
-# ("dailyAveragePrice"), sondern heissen averagePrice1Day/7Days/30Days.
-# -> Meldet die Konsole beim Lauf "Erwartete Avg-Felder nicht gefunden", stehen die
-#    tatsaechlichen Keys direkt in derselben Meldung; hier eintragen.
-COMPREHENSIVE_AVG_FIELDS = {
-    "Avg1D": "averagePrice1Day",
-    "Avg7D": "averagePrice7Days",
-    "Avg30D": "averagePrice30Days",
-}
-COMPREHENSIVE_VOLUME_FIELD = "tradeVolume1Day"
-
-# True = zusaetzlich 1 Request PRO EINDEUTIGEM ITEM in Rohdaten (koennen mehrere Hundert
-# sein -> mehrere Minuten Laufzeit). Ergaenzt Avg1D/Avg7D/Avg30D/Volume1D in Rohdaten.
-SHOW_LONGTERM_AVERAGES = False
-LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05  # kleine Pause zwischen Requests, um die API zu schonen
-
-EXPORT_PATH = "idle_clans_farming.xlsx"
-
-
-# ============================================================
-# 4. DATEN LADEN
-# ============================================================
+# ---------------------------------------------------------------
+# Daten Laden
+# ---------------------------------------------------------------
 
 def _get_json(url: str, timeout: int = 30, context: str = "API") -> requests.Response:
     """Ein Request, ein Fehlerbild: Netzwerkfehler und HTTP-Fehlercodes werden hier zu
@@ -445,14 +88,10 @@ def load_game_data() -> dict:
 
 
 def build_item_info_map(game: dict) -> dict:
-    """ItemId -> {name, base_value, can_trade, can_sell_to_npc}. Eintraege ohne ItemId
-    werden uebersprungen statt den Lauf mit einem KeyError abzubrechen.
+    """ItemId -> {name, base_value, can_trade, can_sell_to_npc}.
 
-    Die beiden Handelbarkeits-Flags kommen als Negation aus der API (CanNotBeTraded /
-    CanNotBeSoldToGameShop) und werden hier positiv gedreht, damit sie an der
-    Nutzungsstelle lesbar sind. Default bei fehlendem Feld ist bewusst "erlaubt" -
-    verschwindet das Feld mal, faellt das Script auf das alte Verhalten zurueck statt
-    alles auszufiltern."""
+    Die API-Flags heissen negiert (CanNotBeTraded / CanNotBeSoldToGameShop) und werden
+    hier gedreht. Default bei fehlendem Feld: erlaubt."""
     info = {}
     for it in game.get("Items", {}).get("Items", []):
         item_id = it.get("ItemId")
@@ -478,9 +117,9 @@ def resolve_smelting_magic_exclusions(item_info_map: dict) -> frozenset:
     )
 
 
-# ============================================================
-# 5. MARKT-/PREIS-HILFSFUNKTIONEN
-# ============================================================
+# ---------------------------------------------------------------
+# Markt-/Preis-Hilfsfunktionen
+# ---------------------------------------------------------------
 
 def valid_market(item: dict) -> bool:
     """Hard-Filter: hat das Item ueberhaupt einen echten, liquiden Markt? Spread ist
@@ -513,14 +152,8 @@ def price_anomaly(item: dict) -> bool:
 
 
 def npc_sell_price(item_id: int, item_info_map: dict) -> float:
-    """Preis bei Sofortverkauf an den NPC-Vendor (unbegrenztes Volumen, im Gegensatz
-    zum Player-Markt). base_value kommt aus der Items-API, Boost durch das permanente
-    Clan-Upgrade "An offer they can't refuse" (+10%) plus Potion of negotiation (+5%),
-    multiplikativ = 1.155x (per Wiki bestaetigt, siehe NPC_SELL_BOOST_MULTIPLIER oben).
-
-    Items mit CanNotBeSoldToGameShop bekommen 0 - vorher wurde ihnen ein NPC-Preis
-    zugerechnet, den es gar nicht gibt, und sie tauchten dadurch mit erfundenem Gold/h
-    in Ketten/Realistisch_Farmbar auf."""
+    """Sofortverkauf an den NPC-Vendor (unbegrenztes Volumen). Items mit
+    CanNotBeSoldToGameShop bekommen 0."""
     entry = item_info_map.get(item_id)
     if entry is None or not entry.get("can_sell_to_npc", True):
         return 0.0
@@ -555,15 +188,9 @@ def is_raid_recipe(name: str) -> bool:
     return "raids_" in str(name).lower()
 
 
-# ============================================================
-# 6. REZEPT-NORMALISIERUNG
-#
-# Jedes rohe Recipe wird GENAU EINMAL pro Case (best/worst) hier verarbeitet: Upgrades
-# anwenden (Speed/Yield/Cost/XP), ungueltige Eintraege aussortieren. Alle nachgelagerten
-# Analysen (Einzelschritt UND Ketten) lesen aus derselben Liste - keine doppelt
-# gepflegte Logik. Fuer die Best-/Worst-Case-Unterscheidung (Smelting-Magic-Reichweite)
-# wird build_all_recipes() zweimal aufgerufen (case="best"/"worst"), s. main().
-# ============================================================
+# ---------------------------------------------------------------
+# Rezept-Normalisierung
+# ---------------------------------------------------------------
 
 def _is_smelting_magic_recipe(skill_name: str, recipe_name: str) -> bool:
     """Ore -> Bar Schmelzen, auf das Smelting Magic ueberhaupt wirkt. Welche einzelnen
@@ -658,14 +285,6 @@ def build_all_recipes(tasks: dict, case: str = "best",
     return all_recipes
 
 
-# Plausibilitaetsfenster fuer eine einzelne Skilling-Aktion (nach Speed-Boosts).
-# Das ganze Script rechnet mit 3_600_000 ms/h, setzt also voraus, dass BaseTime aus der
-# API in MILLISEKUNDEN kommt. Waere es Sekunden, saehe man das nirgends - alle Gold/h
-# waeren einfach um Faktor 1000 daneben. Deshalb ein billiger Median-Check.
-MIN_PLAUSIBLE_ACTION_SEC = 0.3
-MAX_PLAUSIBLE_ACTION_SEC = 300.0
-
-
 def check_action_time_plausibility(all_recipes: list):
     if not all_recipes:
         return
@@ -680,15 +299,10 @@ def check_action_time_plausibility(all_recipes: list):
 
 
 def build_recipe_by_output(all_recipes: list) -> dict:
-    """1 Eintrag pro ItemId: das Recipe mit der kuerzesten Zeit/Stueck (Standardweg fuer
-    die Kettenaufloesung, falls mehrere Skills dasselbe Item produzieren). Zeit haengt
-    nicht vom Best-/Worst-Case ab, daher liefert dies fuer beide Cases dieselbe Auswahl.
+    """1 Eintrag pro ItemId: das Recipe mit der kuerzesten Zeit/Stueck.
 
-    BEWUSSTE VEREINFACHUNG: ausgewaehlt wird rein nach Zeit, nicht nach Gewinn. Gibt es
-    fuer ein Item einen schnellen-aber-teuren und einen langsamen-aber-guenstigen Weg,
-    rechnet die Ketten-Analyse mit dem schnellen - der kann in Summe schlechter sein.
-    Betrifft nur Items mit mehreren Herstellwegen; im Rohdaten-Tab sind beide Wege
-    weiterhin einzeln sichtbar."""
+    Vereinfachung: Auswahl rein nach Zeit, nicht nach Gewinn (s. README, "Bekannte
+    Vereinfachungen")."""
     best = {}
     for r in all_recipes:
         time_per_unit = r["base_time_ms"] / r["item_amount"]
@@ -733,16 +347,9 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         # schlechter als der NPC-Preis - Markt-Warnungen/Volumen sind dann irrelevant.
         m = market_map.get(r["item_id"]) or {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
 
-        # v10: KEIN Hard-Filter mehr hier - jedes Recipe landet im Rohdaten-Tab, damit man
-        # sieht, WESHALB ein Item in Ketten/Realistisch_Farmbar fehlt (dort gilt weiterhin
-        # exakt dieselbe Bedingung: sell_price<=0 -> ausgeschlossen, s. build_chain_df).
-        # Grund wird unten in "AusschlussGrund" als Klartext festgehalten und im Excel-
-        # Export rot/orange markiert statt die Zeile stillschweigend zu verwerfen.
-        #
-        # ACHTUNG zur Lesart: "InKetten" heisst genau "das Item ist ueberhaupt verkaufbar".
-        # Ein Item kann InKetten=True haben und trotzdem NICHT im Ketten-Tab auftauchen,
-        # naemlich wenn ein anderes (schnelleres) Rezept desselben Items den Platz belegt -
-        # build_chain_df kennt pro ItemId nur einen Weg (s. build_recipe_by_output).
+        # Rohdaten hat keinen Hard-Filter: jedes Recipe bleibt sichtbar, der Grund steht
+        # im Klartext in "AusschlussGrund". InKetten=True heisst nur "verkaufbar" - das
+        # Item kann trotzdem im Ketten-Tab fehlen (s. README).
         in_ketten = sell_price > 0
         exclusion_reason = ""
         if not in_ketten:
@@ -864,13 +471,8 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
 
 def _merge_worst_case(df_best: pd.DataFrame, df_worst: pd.DataFrame,
                        keys: list[str], worst_cols: list[str], label: str) -> pd.DataFrame:
-    """Gemeinsamer Merge-Kern fuer Rohdaten und Ketten.
-
-    how="left" + validate="one_to_one": Best-Case ist die fuehrende Tabelle, es duerfen
-    keine Zeilen dazukommen oder verschwinden. Ein Inner-Join haette bei doppelten
-    Schluesseln (z.B. zwei Rezepte mit derselben ItemID und TaskId=None - pandas
-    behandelt NaN-Schluessel beim Merge als gleich) stillschweigend Zeilen dupliziert
-    und damit jede Auswertung darueber verfaelscht."""
+    """Gemeinsamer Merge-Kern fuer Rohdaten und Ketten. how="left" + one_to_one, damit
+    doppelte Schluessel einen Fehler geben statt still Zeilen zu vervielfachen."""
     dup_best = df_best.duplicated(subset=keys).sum()
     dup_worst = df_worst.duplicated(subset=keys).sum()
     if dup_best or dup_worst:
@@ -917,10 +519,8 @@ def resolve_chain(item_id, market_map, recipe_by_output, fish_to_cooked,
         price = market_map.get(item_id, {}).get("sell", 0)
         return 0.0, price * qty_needed, [], 0.0, False
 
-    # Auto-Cook-Fall: item_id ist ein gekochter Fisch, der zu AUTO_COOK_CHANCE gratis mitkommt.
-    # BEWUSST KONSERVATIV: die restlichen (1 - AUTO_COOK_CHANCE) rohen Fische werden weder
-    # verkauft noch nachtraeglich gekocht - der Wert dieses "Beifangs" faellt unter den
-    # Tisch. Die Kette rechnet sich real also eher besser als hier ausgewiesen.
+    # Auto-Cook: gekochter Fisch kommt zu AUTO_COOK_CHANCE gratis beim Fischen mit.
+    # Bewusst konservativ - der rohe Rest wird nicht mitverkauft (s. README).
     fish_source_id = next((raw for raw, cooked in fish_to_cooked.items() if cooked == item_id), None)
     if fish_source_id is not None and fish_source_id not in visited:
         fish_recipe = recipe_by_output[fish_source_id]
@@ -1114,30 +714,6 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(avg_df, on="ItemID", how="left")
 
 
-def print_orderbook_depth(df_chain: pd.DataFrame):
-    """Optionale Live-Tiefenpruefung (5 Buy/Sell-Stufen) fuer die Top-Selbstversorger-
-    Items, zum direkten Abgleich mit dem Spiel-UI. Macht DEPTH_ANALYSIS_TOP_N zusaetzliche
-    Requests - nur bei Bedarf einschalten (SHOW_ORDERBOOK_DEPTH = True)."""
-    top = df_chain[df_chain["FullySelfSufficient"]].sort_values(
-        "Gold/h (Eigenherstellung)", ascending=False
-    ).head(DEPTH_ANALYSIS_TOP_N)
-
-    print(f"\n=== ORDERBOOK-TIEFE (Top-{DEPTH_ANALYSIS_TOP_N} selbst herstellbar) ===")
-    for _, row in top.iterrows():
-        data = fetch_orderbook_depth(int(row["ItemID"]))
-        if data is None:
-            continue
-        buys = sorted([(e["key"], int(e["value"])) for e in data.get("highestBuyPricesWithVolume", [])],
-                      key=lambda x: x[0], reverse=True)[:5]
-        sells = sorted([(e["key"], int(e["value"])) for e in data.get("lowestSellPricesWithVolume", [])],
-                       key=lambda x: x[0])[:5]
-        print(f"\n{row['Item']} - Gold/h: {row['Gold/h (Eigenherstellung)']:,.0f} ({row['FinalSkill']})")
-        for i in range(max(len(buys), len(sells))):
-            b = f"{buys[i][1]:>10,} @ {buys[i][0]:>6,}g" if i < len(buys) else ""
-            s = f"{sells[i][1]:>10,} @ {sells[i][0]:>6,}g" if i < len(sells) else ""
-            print(f"  BUY {b:30s}  SELL {s}")
-
-
 def price_points_from_depth(depth: dict) -> list:
     """5 hoechste Buy-Preise (aufsteigend, niedrigster zuerst) + 5 niedrigste Sell-Preise
     (aufsteigend). Fehlende Tiefenstufen (dünner Markt) werden mit None aufgefuellt."""
@@ -1155,16 +731,12 @@ PRICE_SENSITIVITY_LABELS_SHORT = ["Buy1", "Buy2", "Buy3", "Buy4", "Buy5", "Sell1
 
 
 def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """Holt einmalig die Live-Orderbook-Tiefe fuer die Top-N FullySelfSufficient-Items
-    (macht PRICE_SENSITIVITY_TOP_N Requests) und gibt sie tabellarisch zurueck: 1 Zeile
-    pro Item, je Preispunkt (Buy1..Sell5) zwei Spalten Preis + Gold/s. Wird sowohl fuer
-    den PNG-Chart als auch fuer das Excel-Sheet "Preis_Sensitivitaet" verwendet, damit
-    nicht zweimal live abgefragt wird. Gibt zusaetzlich die Liste der ueber NPC statt
-    Player-Markt verkauften Items zurueck (fixer Preis, nicht Teil der Orderbook-Kurve).
+    """Live-Orderbook-Tiefe der Top-N FullySelfSufficient-Items, 1 Zeile pro Item mit
+    Preis + Gold/s je Preispunkt. Speist Chart UND Excel-Sheet aus einem Abruf.
 
-    Die *_Gold_s-Spalten sind NETTO (Materialkosten der Kette schon abgezogen), damit sie
-    direkt mit "Gold/h (Eigenherstellung)" / 3600 vergleichbar sind. Bis v10 stand hier
-    der Brutto-Umsatz - dieselbe Achse, aber eine andere Groesse als ueberall sonst."""
+    Die *_Gold_s-Spalten sind NETTO (Materialkosten abgezogen), also direkt mit
+    "Gold/h (Eigenherstellung)"/3600 vergleichbar. Zweiter Rueckgabewert: Items, die
+    ueber den NPC verkauft werden (fixer Preis, nicht Teil der Kurve)."""
     top = df_chain[df_chain["FullySelfSufficient"]].sort_values(
         "Gold/h (Eigenherstellung)", ascending=False
     ).head(PRICE_SENSITIVITY_TOP_N)
@@ -1197,13 +769,9 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
 
 def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
                                    path: str = PRICE_SENSITIVITY_CHART_PATH):
-    """Matplotlib-Liniendiagramm: Gold/s NETTO (Best-Case-Kette) ueber die 10 aktuellen
-    Orderbook-Preispunkte, eine Linie pro Top-N-Item, gemeinsame Y-Achse. Nutzt die
-    bereits von build_price_sensitivity_data() geholten Daten (keine eigenen Requests).
-
-    matplotlib ist eine reine Komfort-Abhaengigkeit: fehlt sie, gibt es hier einen Hinweis
-    statt eines Absturzes - der Excel-Export (inkl. Sheet "Preis_Sensitivitaet" mit
-    denselben Zahlen) laeuft dann ganz normal weiter."""
+    """Liniendiagramm Gold/s (netto) ueber die 10 Orderbook-Preispunkte, eine Linie je
+    Item. Fehlt matplotlib, wird nur der Chart uebersprungen - das Excel-Sheet mit
+    denselben Zahlen entsteht trotzdem."""
     try:
         import matplotlib.pyplot as plt  # lazy: nur noetig, wenn Flag aktiv
     except ImportError:
@@ -1243,9 +811,9 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
         print(f"ℹ Aktuell ueber NPC-Vendor verkauft (fixer Preis, nicht auf der Kurve): {', '.join(npc_items)}")
 
 
-# ============================================================
-# 9. EXCEL-EXPORT
-# ============================================================
+# ---------------------------------------------------------------
+# Excel-Export
+# ---------------------------------------------------------------
 
 SORT_COLUMN_PER_SHEET = {
     "Rohdaten": "Gold/h",
@@ -1258,10 +826,7 @@ HIGHLIGHT_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type
 HIGHLIGHT_HEADER_FILL = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
 HIGHLIGHT_HEADER_FONT = Font(bold=True)
 
-# Rohdaten (v10): kein Hard-Filter mehr - Items, die aus Ketten/Realistisch_Farmbar/
-# Nach_Skill_Level rausfallen (die bleiben weiterhin gefiltert) bzw. eine Warnung haben,
-# bleiben in Rohdaten sichtbar und werden markiert: die ganze Zeile kraeftig orange,
-# und zusaetzlich das Feld, das den Ausschlag gab ("AusschlussGrund"), kraeftig rot.
+# Auffaellige Rohdaten-Zeilen werden markiert: Zeile orange, Grund-Feld rot.
 ROW_FLAG_FILL = PatternFill(start_color="F6B26B", end_color="F6B26B", fill_type="solid")     # Zeile: kraeftiges Orange
 REASON_FIELD_FILL = PatternFill(start_color="E06666", end_color="E06666", fill_type="solid")  # verantwortliches Feld: kraeftiges Rot
 
@@ -1330,25 +895,9 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str, df_sensiti
                         ws.cell(row=row, column=grund_col).fill = REASON_FIELD_FILL
 
 
-# ============================================================
-# 10. LAUF-SANITY-CHECK
-#
-# Vergleicht ein paar Kennzahlen mit dem letzten Lauf (run_stats_history.json), um
-# API-/Schema-Aenderungen von echten Marktbewegungen zu unterscheiden. Struktur-Werte
-# (Tasks/Rezepte/Items aus der Game-Data) sollten bei echten Content-Updates nur
-# WACHSEN, nie schrumpfen - jeder Ruecko dort ist verdaechtig auf einen kaputten
-# Parser/Endpoint. Markt-Werte duerfen organisch schwanken, ein ploetzlicher Einbruch
-# ist trotzdem eine Pruefung wert (koennte auch eine kaputte Markt-Antwort sein statt
-# eine echte Bewegung).
-# ============================================================
-
-RUN_STATS_PATH = "run_stats_history.json"
-RUN_STATS_HISTORY_LIMIT = 50     # so viele Laeufe werden aufgehoben (Datei heisst schliesslich *_history)
-MARKET_DROP_WARNING_RATIO = 0.3  # 30% Einbruch bei Markt-Kennzahlen wird gemeldet
-
-STRUCTURAL_STATS = ["tasks_count", "recipes_count", "item_info_count"]
-MARKET_STATS = ["market_map_count", "rohdaten_count", "in_ketten_count", "realistic_count"]
-
+# ---------------------------------------------------------------
+# Lauf-Sanity-Check
+# ---------------------------------------------------------------
 
 def compute_run_stats(tasks: dict, all_recipes: list, item_info_map: dict,
                        market_map: dict, df: pd.DataFrame, df_chain: pd.DataFrame) -> dict:
@@ -1444,9 +993,9 @@ def print_run_sanity_check(current: dict, previous: dict | None):
           "im Browser gegenpruefen statt den Zahlen blind zu vertrauen.\n")
 
 
-# ============================================================
-# 11. MAIN
-# ============================================================
+# ---------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------
 
 def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
     excluded_count = int((~df["InKetten"]).sum())
@@ -1512,6 +1061,7 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
 
 
 def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     previous_run_stats = load_last_run_stats()
 
     try:
@@ -1555,9 +1105,6 @@ def main():
     save_run_stats(current_run_stats)
 
     print_summary(df, df_chain)
-    if SHOW_ORDERBOOK_DEPTH and not df_chain.empty:
-        print_orderbook_depth(df_chain)
-
     df_sensitivity = pd.DataFrame()
     if SHOW_PRICE_SENSITIVITY_CHART and not df_chain.empty:
         df_sensitivity, npc_items = build_price_sensitivity_data(df_chain)

@@ -1,5 +1,5 @@
 """
-Einzelitem-Nachrechnung fuer tools/market_analysis.py
+Einzelitem-Nachrechnung fuer analyse.py
 
 Schluesselt fuer einzelne Rezepte den kompletten Rechenweg auf: Rohwerte aus der API ->
 jeder angewendete Boost -> Endergebnis. Dazu die konkreten Zahlen, die man ingame
@@ -14,11 +14,11 @@ zeigt Zeitanteil und Gold/h der Kette, Abschnitt 6 die Ingame-Checkliste fuer JE
 Schritt darin. Der Einzelschritt (Abschnitte 3/4) bleibt als Vergleich stehen - dort
 werden Zutaten zum Ask-Preis eingekauft.
 
-Braucht `requests` (pandas nur, wenn market_analysis importiert wird - das passiert hier).
+Braucht dieselben Pakete wie analyse.py (wird importiert).
 
 Aufruf:
-    python tools/market_analysis_verify.py                  # Standard-Auswahl
-    python tools/market_analysis_verify.py oak titanium_bar # beliebige Rezeptnamen
+    python market_analysis/verify.py                  # Standard-Auswahl
+    python market_analysis/verify.py oak titanium_bar # beliebige Rezeptnamen
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import market_analysis as ma  # noqa: E402
+import analyse as ma  # noqa: E402
 
 DEFAULT_ITEMS = ["oak", "titanium_bar", "tuna", "cooked_tuna"]
 
@@ -264,8 +264,12 @@ def main():
     names = sys.argv[1:] or DEFAULT_ITEMS
     print(f"Pruefe: {', '.join(names)}")
 
-    market_map = ma.load_market_map()
-    game = ma.load_game_data()
+    try:
+        market_map = ma.load_market_map()
+        game = ma.load_game_data()
+    except RuntimeError as exc:
+        print(f"⚠ Abbruch: {exc}")
+        return 1
     item_info_map = ma.build_item_info_map(game)
     tasks = game.get("Tasks", {})
 

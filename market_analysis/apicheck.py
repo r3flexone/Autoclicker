@@ -1,5 +1,5 @@
 """
-API-Check fuer tools/market_analysis.py
+API-Check fuer analyse.py
 
 Prueft die Annahmen, die die Gold/h-Analyse ueber die Idle-Clans-API trifft, gegen die
 echte API - alles, was ohne Live-Zugriff nicht verifizierbar ist:
@@ -17,7 +17,7 @@ echte API - alles, was ohne Live-Zugriff nicht verifizierbar ist:
 
 Braucht NUR `requests` (kein pandas/openpyxl/matplotlib) und aendert nichts - reines Lesen.
 
-Aufruf:  python tools/market_analysis_apicheck.py
+Aufruf:  python market_analysis/apicheck.py
 
 Schreibt zusaetzlich api_check_report.json mit allen Rohbefunden. Die Datei enthaelt nur
 oeffentliche Spiel-/Marktdaten (keine Accountdaten) und kann direkt weitergegeben werden.
@@ -26,6 +26,7 @@ oeffentliche Spiel-/Marktdaten (keine Accountdaten) und kann direkt weitergegebe
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -37,7 +38,7 @@ MARKET_ALL_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/late
 GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
 COMPREHENSIVE_URL_TEMPLATE = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/comprehensive/{item_id}"
 
-# Erwartungen, die market_analysis.py fest verdrahtet hat:
+# Erwartungen, die analyse.py/config.py fest verdrahtet hat:
 EXPECTED_MARKET_FIELDS = ["itemId", "highestBuyPrice", "lowestSellPrice",
                           "highestPriceVolume", "lowestPriceVolume", "dailyAveragePrice"]
 EXPECTED_RECIPE_FIELDS = ["Name", "BaseTime", "ItemReward", "ItemAmount", "ExpReward",
@@ -46,19 +47,19 @@ EXPECTED_ITEM_FIELDS = ["ItemId", "Name", "BaseValue", "CanNotBeTraded", "CanNot
 EXPECTED_COMPREHENSIVE_AVG_FIELDS = ["averagePrice1Day", "averagePrice7Days", "averagePrice30Days"]
 EXPECTED_COMPREHENSIVE_VOLUME_FIELD = "tradeVolume1Day"
 
-# Skill-Namen wie sie market_analysis.py in SKILLS erwartet (Punkt 2 des Checks).
+# Skill-Namen wie sie config.py in SKILLS erwartet (Punkt 2 des Checks).
 KNOWN_SKILL_NAMES = [
     "Mining", "Fishing", "Foraging", "Woodcutting", "Cooking", "Carpentry", "Smithing",
     "Farming", "Crafting", "Agility", "Plundering", "Brewing",
     "Combat", "Enchanting", "Invocation", "ItemCreation",
 ]
 
-# Fuer Punkt 7: so rechnet market_analysis.py aktuell (multiplikativ).
+# Fuer Punkt 7: so rechnet analyse.py aktuell (multiplikativ).
 SPEED_CHECK_SKILLS = ["Mining", "Fishing", "Woodcutting", "Smithing"]
 SPEED_CHECK_EQUIP_BOOST = 0.55 + 0.06
 SPEED_CHECK_CLAN_BOOST = 0.05
 
-REPORT_PATH = "api_check_report.json"
+REPORT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "api_check_report.json")
 
 report: dict = {}
 
@@ -148,7 +149,7 @@ def check_market():
     if all_count is not None:
         if all_count > len(data):
             bad(f"/latest/all liefert {all_count} Items, /latest nur {len(data)} "
-                f"-> in market_analysis.py auf /latest/all wechseln")
+                f"-> in config.py auf /latest/all wechseln")
         else:
             ok(f"/latest/all liefert {all_count} Items (nicht mehr als /latest) - aktueller Endpunkt reicht")
     else:
@@ -308,7 +309,7 @@ def check_base_time_unit(recipes):
         ok(f"Median {median} -> plausibel als MILLISEKUNDEN ({median / 1000:.1f}s pro Aktion). "
            f"Annahme im Script stimmt.")
     else:
-        bad(f"Median {median} sieht nach SEKUNDEN aus. Dann rechnet market_analysis.py mit "
+        bad(f"Median {median} sieht nach SEKUNDEN aus. Dann rechnet analyse.py mit "
             f"3_600_000ms/h um Faktor 1000 falsch - dort auf 3600 umstellen!")
     report["base_time"] = {"min": times[0], "median": median, "max": times[-1], "count": len(times)}
 
@@ -331,7 +332,7 @@ def check_bar_recipes(recipes, items):
                      "costs": [{"Item": c.get("Item"), "Amount": c.get("Amount")} for c in costs]})
         marker = " <- Best/Worst-Case relevant" if len(costs) > 1 else ""
         print(f"    {r.get('Name'):<28} {len(costs)} Cost-Zeile(n){marker}")
-    # market_analysis.py nimmt Astronomical ore als ZUTAT vom Rabatt aus (nicht das Rezept
+    # config.py nimmt Astronomical ore als ZUTAT vom Rabatt aus (nicht das Rezept
     # als Ganzes) - hier gegenpruefen, ob diese Zutat ueberhaupt in Bar-Rezepten vorkommt.
     astro_ids = {it.get("ItemId") for it in ASTRO_ITEMS}
     using_astro = [row for row in rows
@@ -355,7 +356,7 @@ def check_speed_formula(recipes):
     head("6. SPEED-FORMEL: MULTIPLIKATIV vs. ADDITIV (Stoppuhr-Abgleich)")
     print("  Starte die genannte Aktion ingame und vergleiche die angezeigte/gestoppte")
     print("  Aktionsdauer mit den beiden Spalten. Passt 'additiv' besser, in")
-    print("  market_analysis.py normalize_recipe() die Formel umstellen.\n")
+    print("  analyse.py normalize_recipe() die Formel umstellen.\n")
     print(f"  (angenommen: Equipment {SPEED_CHECK_EQUIP_BOOST:.0%}, Clan-Gatherers "
           f"{SPEED_CHECK_CLAN_BOOST:.0%} wo zutreffend)\n")
     rows = []
@@ -433,7 +434,7 @@ def check_comprehensive(market_data):
     avg_report = check_fields(keys, EXPECTED_COMPREHENSIVE_AVG_FIELDS, "Avg-Felder (COMPREHENSIVE_AVG_FIELDS)")
     if avg_report["missing"]:
         guesses = [k for k in keys if any(w in k.lower() for w in ("average", "avg", "week", "month", "daily"))]
-        bad(f"-> COMPREHENSIVE_AVG_FIELDS in market_analysis.py anpassen. Kandidaten: {guesses}")
+        bad(f"-> COMPREHENSIVE_AVG_FIELDS in config.py anpassen. Kandidaten: {guesses}")
 
     if EXPECTED_COMPREHENSIVE_VOLUME_FIELD in keys:
         ok(f"Volumen-Feld '{EXPECTED_COMPREHENSIVE_VOLUME_FIELD}' vorhanden")
@@ -463,7 +464,7 @@ def check_comprehensive(market_data):
 # ------------------------------------------------------------------
 
 def main():
-    print("API-Check fuer market_analysis.py - reines Lesen, aendert nichts.\n")
+    print("API-Check fuer analyse.py - reines Lesen, aendert nichts.\n")
     market_data = check_market()
     game = load_game()
     recipes = []
@@ -477,6 +478,7 @@ def main():
             check_npc_values(game, recipes)
     check_comprehensive(market_data)
 
+    os.makedirs(os.path.dirname(REPORT_PATH), exist_ok=True)
     with open(REPORT_PATH, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False, default=str)
 
