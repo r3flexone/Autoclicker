@@ -22,10 +22,14 @@ from ..models import (
 )
 from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..utils import clear_line, wait_while_paused, col, err, info, dbg
-from ..winapi import check_failsafe, set_cursor_pos
+from ..winapi import check_failsafe
 from .actions import (
     safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, execute_else_action,
+)
+from .debug import (
+    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_step_debug, show_point,
+    step_gate,
 )
 from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
@@ -389,9 +393,9 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
             return False
 
-    if state.config.debug_show_pixel_position:
-        set_cursor_pos(wc.pixel[0], wc.pixel[1])
-        time.sleep(state.config.pixel_show_delay)
+    # Zeiger auf den Prüf-Pixel. Im Einzelschritt-Modus ist das schon passiert.
+    if state.config.debug_show_pixel_position and not is_step_debug(state):
+        show_point(state, wc.pixel[0], wc.pixel[1], "Prüf-Pixel")
 
     if not PILLOW_AVAILABLE:
         print(col(f"\n[FEHLER] Pillow nicht installiert - Farbprüfung nicht möglich!", "red"))
@@ -403,6 +407,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     timeout = state.config.pixel_wait_timeout
     start_time = time.time()
     expected_name = get_color_name(wc.color)
+    if debug:
+        print(dbg(f"Farbprüfung an {wc.pixel}: {color_swatch(wc.color)}"))
     # Verb je nach Trigger-Richtung: bis Farbe DA (auf) vs. bis Farbe WEG (bis ... weg ist)
     wait_verb = "bis weg:" if wc.until_gone else "auf"
 
@@ -433,12 +439,13 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                     state.consecutive_timeouts = 0
                 msg = "Farbe weg!" if wc.until_gone else "Farbe erkannt!"
                 _step_status(debug, phase, step_num, total_steps, msg,
-                             f"{msg} | Erwartet: {expected_name} RGB{wc.color} | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
+                             f"{msg} | " + color_comparison(wc.color, current_color, dist, pixel_tolerance))
                 break
 
             _step_status(debug, phase, step_num, total_steps,
                          f"Warte {wait_verb} {expected_name}... ({elapsed:.0f}s)",
-                         f"Warte {wait_verb} {expected_name} RGB{wc.color} ({elapsed:.0f}s) | Aktuell: {current_name} RGB{current_color} Dist={dist:.0f}")
+                         f"Warte {wait_verb} ({elapsed:.0f}s) | "
+                         + color_comparison(wc.color, current_color, dist, pixel_tolerance))
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -603,6 +610,14 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if is_verbose_debug(state):
         print(dbg(f"Step {step_num}: name='{step.name}', x={step.x}, y={step.y}"))
+
+    # Einzelschritt-Modus: Punkt zeigen und auf Tastendruck warten. GATE_SKIP behandelt
+    # den Schritt wie erledigt, damit die Sequenz normal weiterläuft.
+    gate = step_gate(state, step, phase, step_num, total_steps)
+    if gate == GATE_SKIP:
+        return True
+    if gate != GATE_RUN:
+        return False
 
     if step.screenshot_only:
         return _execute_screenshot_step(state, step, step_num, total_steps, phase)

@@ -110,7 +110,7 @@ def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
     if img is None:
         return False
 
-    debug = state.config.debug_detection
+    debug = state.config.debug_log
     return _check_profile_match(config, img, color_tolerance, state, debug, "Icon erkannt!")
 
 
@@ -149,7 +149,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay
-    debug = state.config.debug_detection
+    debug = state.config.debug_log
 
     _park_mouse_for_scan(state.config.scan_park_mouse)
 

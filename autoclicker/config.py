@@ -106,9 +106,13 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
-    debug_mode: bool = False                        # Wie debug_detection, zusätzlich Sequenz-Vorschau + Enter vor Start
-    debug_detection: bool = False                   # Alle Schritt-Ausgaben persistent (nicht überschrieben) + Erkennungs-Details
-    debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
+    # Zwei unabhängige Modi (Details in runtime/debug.py):
+    #   debug_log  = beobachten: jeder Schritt persistent geloggt + Erkennungs-Details
+    #   debug_step = eingreifen: vor jedem Schritt anhalten, Zeiger auf den Punkt setzen,
+    #                Farbquadrat zeigen, auf Tastendruck warten
+    debug_log: bool = False                         # Ausführliche, persistente Schritt-Ausgabe
+    debug_step: bool = False                        # Einzelschritt-Durchgang (impliziert debug_log)
+    debug_show_pixel_position: bool = False         # Auch ohne debug_step: Zeiger kurz zum Prüf-Pixel
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
     def __post_init__(self):
@@ -229,6 +233,10 @@ class AppConfig:
         "default_min_confidence": "scan_min_confidence",
         "default_confirm_delay": "scan_confirm_delay",
         "show_pixel_position": "debug_show_pixel_position",
+        # Die alten Sammelflags: debug_mode war "Vorschau + Enter vor Start" und damit
+        # der Vorläufer des Einzelschritt-Modus, debug_detection die reine Log-Variante.
+        "debug_mode": "debug_step",
+        "debug_detection": "debug_log",
         "pause_check_interval": "timing_pause_interval",
     }
 
@@ -347,7 +355,7 @@ _CONFIG_SECTIONS = [
         "timing_pause_interval",
     ]),
     ("DEBUG", [
-        "debug_mode", "debug_detection",
+        "debug_log", "debug_step",
         "debug_show_pixel_position", "debug_save_templates",
     ]),
 ]

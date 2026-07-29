@@ -171,11 +171,12 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
 def is_verbose_debug(state: AutoClickerState) -> bool:
     """True = jeder Schritt wird persistent geloggt statt die Status-Zeile zu überschreiben.
 
-    debug_mode UND debug_detection lösen das aus (debug_detection zeigt zusätzlich
-    Erkennungs-Details bei Item/Boss/Icon-Scans). debug_mode zeigt zusätzlich VOR
-    dem Start die ganze Sequenz + wartet auf Enter (siehe worker._prepare_worker_state).
+    Der Einzelschritt-Modus impliziert das (eine überschreibbare Status-Zeile nützt beim
+    Durchsteppen nichts). Definition liegt in runtime/debug.py, hier nur weitergereicht,
+    damit bestehende Importe gültig bleiben.
     """
-    return state.config.debug_mode or state.config.debug_detection
+    from .debug import is_log_debug
+    return is_log_debug(state)
 
 
 def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,

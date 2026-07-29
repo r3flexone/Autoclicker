@@ -67,7 +67,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         cfg_use_ocr = config.use_ocr
         cfg_ocr_fallback = config.ocr_fallback
 
-    debug = state.config.debug_detection
+    debug = state.config.debug_log
 
     img = take_screenshot(scan_region)
     if img is None:

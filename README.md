@@ -1001,8 +1001,8 @@ Wird beim ersten Start automatisch erstellt:
   "session_log_enabled": false,
   "session_log_dir": "logs",
   "timing_pause_interval": 0.5,
-  "debug_mode": false,
-  "debug_detection": false,
+  "debug_log": false,
+  "debug_step": false,
   "debug_show_pixel_position": false,
   "debug_save_templates": false
 }
@@ -1118,8 +1118,8 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `debug_detection` | Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans |
-| `debug_mode` | Wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter |
+| `debug_log` | **Beobachten.** Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans. Läuft ohne Eingriff durch |
+| `debug_step` | **Eingreifen.** Einzelschritt-Durchgang: vor jedem Schritt springt der Zeiger auf den Punkt (ohne Klick), Farb-Bedingungen erscheinen als Farbquadrat, dann Tastendruck — `Enter` ausführen, `s` überspringen, `w` weiter ohne Stopps, `q` abbrechen. Impliziert `debug_log` |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
@@ -1356,8 +1356,11 @@ python tools/slot_tester.py
 - Alte Keywords (`pixel`/`gone`/`nocolor` als Punkt-Trigger) entfernt — reine Umbenennung, das JSON-Schema bleibt identisch
 
 **Debug-Flags entkoppelt** (`config.json`)
-- `debug_detection` = alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details
-- `debug_mode` = wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter
+- `debug_log` = beobachten: alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details
+- `debug_step` = eingreifen: Einzelschritt-Durchgang mit Zeiger-Sprung auf den Punkt, Farbquadrat und Tastendruck pro Schritt
+
+Die alten Namen `debug_detection` / `debug_mode` werden beim Laden automatisch auf
+`debug_log` / `debug_step` migriert — bestehende `config.json` bleibt gültig.
 
 ### Neueste Änderungen — LLM Reasoning + Codebase-Refactoring
 

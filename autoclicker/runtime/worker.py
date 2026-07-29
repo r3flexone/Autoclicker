@@ -114,7 +114,7 @@ def print_status(state: AutoClickerState) -> None:
 def sequence_worker(state: AutoClickerState) -> None:
     """Worker-Thread, der die Sequenz ausführt."""
     debug = is_verbose_debug(state)
-    show_preview = state.config.debug_mode
+    show_preview = state.config.debug_step
     print(col("\n[START] Sequenz gestartet.", "green"))
 
     sequence = _prepare_worker_state(state, show_preview)
@@ -203,7 +203,7 @@ def _sync_pause_title(state: AutoClickerState, seq_name: str) -> None:
 def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
     """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück.
 
-    Der blockierende Vorschau-Prompt (sleep + safe_input, nur bei debug_mode) läuft
+    Der blockierende Vorschau-Prompt (sleep + safe_input, nur bei debug_step) läuft
     bewusst NICHT unter state.lock — sonst frören alle Hotkeys ein solange der
     Prompt offen ist.
     """
@@ -241,7 +241,7 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         state.skip_cycle_event.clear()
         state.pending_new_bosses.clear()
 
-    # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_mode)
+    # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_step)
     if show_preview:
         print("\n" + col("=" * 60, 'gray'))
         print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
