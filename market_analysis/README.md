@@ -32,11 +32,52 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 
 | Sheet | Bedeutung |
 |---|---|
+| **Empfehlung** | **Die Antwort:** was bringt am meisten Gold pro Zeit, und geht es an Spieler oder NPC. Eine Zeile pro Item, nach Gold/h sortiert |
+| **Begründung** | **Warum** ist ein Item gut oder nicht: eine Stunde Produktion durch die echten Kaufgebot-Stufen im Player Shop gerechnet. Nur die Top 10 |
 | **Ketten** | Alles selbst gefarmt, nichts zugekauft. **Das ist die Zahl, die zählt.** |
 | **Realistisch_Farmbar** | Nur Ketten mit `FullySelfSufficient` – keine Zutat muss gekauft werden |
 | **Nach_Skill_Level** | Verkaufbare Items sortiert nach Skill und Level |
 | **Rohdaten** | Jedes Rezept einzeln, Zutaten zum Ask-Preis gekauft. Ungefiltert |
 | **Preis_Sensitivität** | Gold/s über die 10 aktuellen Orderbook-Preispunkte je Item |
+
+### Empfehlung lesen
+
+| Spalte | Bedeutung |
+|---|---|
+| `Gold/h` | Ertrag pro Stunde, alles selbst gefarmt |
+| `Sek pro Stück` | wie lange ein Stück von Grund auf dauert |
+| `Verkauf an` | Spieler oder NPC-Vendor – der bessere der beiden Wege |
+| `Spielerpreis` / `NPC-Preis` | beide Wege nebeneinander, leer wenn nicht möglich |
+| `Vorteil` | wie deutlich der gewählte Weg besser ist |
+| `Alles selbst farmbar` | `False` heißt: eine Zutat muss gekauft werden |
+| `Warnung` | knapper Absatz, breiter Spread, untypischer Preis |
+
+Der Lauf druckt dieselbe Top-Liste auch in die Konsole – für die schnelle Antwort
+braucht man die Excel gar nicht zu öffnen.
+
+### Begründung lesen
+
+Die Gold/h-Werte aller anderen Sheets unterstellen, dass du beliebig viel zum **besten**
+Gebot los wirst. Das stimmt nur, solange dort genug Volumen liegt. Dieses Sheet verkauft
+eine Stunde Produktion tatsächlich durchs Orderbuch.
+
+| Spalte | Bedeutung |
+|---|---|
+| `Bestes Gebot` / `Menge am besten Gebot` | oberste Stufe im Player Shop |
+| `Deckt Stunden` | wie lange deine Produktion auf dieser Stufe Platz hat |
+| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst |
+| `Preisverlust` | wie weit das unter dem Listenpreis liegt |
+| `Gold/h realistisch` | Gold/h mit diesem Schnitt statt mit dem Top-Gebot |
+| `NPC besser` | der Vendor zahlt mehr als der Schnitt |
+| `Kaufgebote (Stufen)` | die obersten fünf Stufen als Text |
+| `Bewertung` | ein Satz Klartext, warum das Item taugt oder nicht |
+
+Deckt das Top-Gebot mehrere Stunden, kannst du sofort verkaufen. Ist es nach Minuten
+leer, rutschst du auf die nächste Stufe – dann steht die Wahrheit in `Gold/h realistisch`.
+Weicht das Orderbuch stark vom Listenpreis ab, sagt die Bewertung das dazu: Bulk-Endpoint
+und Orderbuch sind zwei Momentaufnahmen.
+
+Umfang über `REASON_TOP_N` in `config.py`, abschalten mit `SHOW_REASON_ANALYSIS = False`.
 
 **Rohdaten vs. Ketten:** Rohdaten kauft Zutaten am Markt, Ketten farmt sie selbst. Für
 `titanium_bar` heißt das: Rohdaten zieht 3 Erz + 9 Kohle vom Umsatz ab, Ketten rechnet

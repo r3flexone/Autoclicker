@@ -142,6 +142,11 @@ LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 SHOW_PRICE_SENSITIVITY_CHART = True   # PNG + Excel-Sheet, 1 Request je Top-N-Item
 PRICE_SENSITIVITY_TOP_N = 10
 
+# Sheet "Begruendung": rechnet eine Stunde Produktion durch die echten Kaufgebot-Stufen
+# im Player Shop, statt zu unterstellen, dass alles zum besten Gebot weggeht.
+SHOW_REASON_ANALYSIS = True
+REASON_TOP_N = 10                     # nur die Top-Items, 1 Request pro Item
+
 SHOW_LONGTERM_AVERAGES = False        # 1 Request PRO ITEM in Rohdaten -> Minuten
 LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05
 

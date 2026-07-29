@@ -591,7 +591,10 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             continue
 
         m = market_map.get(item_id) or {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
-        if not sold_to_npc and m["buyVol"] < MIN_SELL_VOLUME:
+        # Ist der Player-Markt ueberhaupt ein gangbarer Weg? (Handelbar + liquide genug)
+        spieler_moeglich = (is_player_shop_tradeable(item_info_map.get(item_id, {}))
+                            and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME)
+        if not sold_to_npc and not spieler_moeglich:
             continue
 
         total_time_ms, raw_cost, steps, raw_ratio, fully_self_sufficient = resolve_chain(
@@ -632,7 +635,10 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "Revenue/h (Ø-Preis)": revenue_per_hour_avg,
             "RawMaterialCost/h": cost_per_hour,
             "SoldToNPC": sold_to_npc,
+            "Verkaufspreis": sell_price,
             "NPCPreis": npc_sell_price(item_id, item_info_map),
+            "SpielerpreisBid": m["buy"] if spieler_moeglich else 0.0,
+            "SpielerVerkaufMoeglich": spieler_moeglich,
             "MarketAsk": m["sell"],
             "LiquidityWarning": max_liquidity_ratio > LIQUIDITY_WARNING_RATIO,
             "LiquidityRatio": round(max_liquidity_ratio, 1),
@@ -812,10 +818,262 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 
 
 # ---------------------------------------------------------------
+# Empfehlung: was farmen, was bringt es, an wen verkaufen
+# ---------------------------------------------------------------
+
+RECOMMENDATION_COLUMNS = [
+    "Rang", "Item", "Skills", "Gold/h", "Gold/h (ungünstigster Fall)",
+    "Sek pro Stück", "Stück/h", "Gold pro Stück",
+    "Verkauf an", "Verkaufspreis", "Spielerpreis", "NPC-Preis", "Vorteil",
+    "Alles selbst farmbar", "Warnung",
+]
+
+
+def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
+    """Eine Zeile pro Endprodukt, sortiert nach Gold/h - reduziert auf die Frage
+    "was lohnt sich pro Zeit und an wen verkaufe ich es?". Alles andere steht in den
+    ausfuehrlichen Sheets."""
+    if df_chain.empty:
+        return pd.DataFrame(columns=RECOMMENDATION_COLUMNS)
+
+    src = df_chain.sort_values("Gold/h (Eigenherstellung)", ascending=False)
+    rows = []
+    for rang, (_, r) in enumerate(src.iterrows(), 1):
+        npc, spieler = r.get("NPCPreis", 0) or 0, r.get("SpielerpreisBid", 0) or 0
+        an_npc = bool(r["SoldToNPC"])
+        # Wie deutlich ist die Entscheidung? Ohne Alternative gibt es keinen Vorsprung.
+        gewaehlt, alternative = (npc, spieler) if an_npc else (spieler, npc)
+        vorteil = (gewaehlt / alternative - 1) if alternative > 0 else None
+
+        warn = []
+        if r.get("LiquidityWarning"):
+            warn.append("Absatz knapp")
+        if r.get("SpreadWarning"):
+            warn.append("breiter Spread")
+        if r.get("PriceAnomaly"):
+            warn.append("Preis untypisch")
+        if not r.get("FullySelfSufficient"):
+            warn.append("Zutat muss gekauft werden")
+
+        worst = r.get("Gold/h (Eigenherstellung)_Worst")
+        rows.append({
+            "Rang": rang,
+            "Item": r["Item"],
+            "Skills": r["ChainSkills"],
+            "Gold/h": round(r["Gold/h (Eigenherstellung)"]),
+            "Gold/h (ungünstigster Fall)": round(worst) if pd.notna(worst) else None,
+            "Sek pro Stück": round(r["TimePerItem_sec"], 2),
+            "Stück/h": round(r["Stück/h"], 1),
+            "Gold pro Stück": round(r["Gold pro Stück"], 1),
+            "Verkauf an": "NPC-Vendor" if an_npc else "Spieler",
+            "Verkaufspreis": round(r.get("Verkaufspreis", 0), 2),
+            "Spielerpreis": round(spieler, 2) if spieler else None,
+            "NPC-Preis": round(npc, 2) if npc else None,
+            "Vorteil": (f"+{vorteil:.0%}" if vorteil is not None
+                        else ("nur NPC moeglich" if an_npc else "nur Spieler moeglich")),
+            "Alles selbst farmbar": bool(r.get("FullySelfSufficient")),
+            "Warnung": ", ".join(warn),
+        })
+    return pd.DataFrame(rows, columns=RECOMMENDATION_COLUMNS)
+
+
+def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
+    """Antwort auf die eigentliche Frage direkt in der Konsole - ohne Excel zu oeffnen."""
+    if df_rec.empty:
+        print("Keine farmbaren Items gefunden.")
+        return
+    sauber = df_rec[df_rec["Alles selbst farmbar"] & (df_rec["Warnung"] == "")]
+    liste = sauber if not sauber.empty else df_rec
+
+    print(f"\n=== TOP {min(top_n, len(liste))}: BESTES GOLD PRO ZEIT ===")
+    if not sauber.empty:
+        print("(komplett selbst farmbar, ohne Warnungen)")
+    print(f"{'#':>3}  {'Item':<26}{'Gold/h':>11}  {'Sek/Stk':>8}  {'an':<11}{'Preis':>10}  Skills")
+    for _, r in liste.head(top_n).iterrows():
+        print(f"{r['Rang']:>3}  {str(r['Item']):<26}{r['Gold/h']:>11,}  {r['Sek pro Stück']:>8.2f}  "
+              f"{r['Verkauf an']:<11}{r['Verkaufspreis']:>10,.0f}  {r['Skills']}")
+
+    npc = df_rec[df_rec["Verkauf an"] == "NPC-Vendor"]
+    print(f"\nVerkaufsweg: {len(df_rec) - len(npc)} Items an Spieler, {len(npc)} an den NPC-Vendor.")
+    if not npc.empty:
+        best = npc.iloc[0]
+        print(f"  Bester NPC-Kandidat: {best['Item']} mit {best['Gold/h']:,} Gold/h "
+              f"({best['Verkaufspreis']:,.0f}g/Stueck).")
+
+
+# ---------------------------------------------------------------
+# Begruendung: warum lohnt sich ein Item - und warum nicht
+# ---------------------------------------------------------------
+
+def walk_orderbook(levels: list, qty: float) -> tuple[float, float, float]:
+    """Verkauft `qty` Stueck ins Buch, beste Gebote zuerst.
+
+    levels: [(preis, menge)], beliebige Reihenfolge. Gibt zurueck:
+    (Erloes, tatsaechlich verkaufte Menge, Preis der zuletzt getroffenen Stufe)."""
+    rest, erloes, letzter = qty, 0.0, 0.0
+    for preis, menge in sorted(levels, key=lambda x: x[0], reverse=True):
+        if rest <= 0:
+            break
+        nimm = min(rest, menge)
+        erloes += nimm * preis
+        letzter = preis
+        rest -= nimm
+    return erloes, qty - rest, letzter
+
+
+def buy_levels_from_depth(depth: dict) -> list:
+    """Kaufgebote als [(Preis, Menge)] - das ist die Seite, an die DU verkaufst."""
+    return [(e["key"], float(e["value"])) for e in depth.get("highestBuyPricesWithVolume", [])
+            if e.get("key") and e.get("value")]
+
+
+def _format_levels(levels: list, max_n: int = 5) -> str:
+    top = sorted(levels, key=lambda x: x[0], reverse=True)[:max_n]
+    return "  |  ".join(f"{p:,.0f}g x {m:,.0f}" for p, m in top)
+
+
+def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
+             schnitt: float, verlust: float, warnung: str, abweichung: float = 0.0) -> str:
+    """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
+    if an_npc:
+        if top_preis <= 0:
+            return "Nur NPC: kein brauchbares Kaufgebot im Player Shop."
+        return (f"NPC zahlt {npc:,.0f}g und damit mehr als das beste Spielergebot "
+                f"({top_preis:,.0f}g) - unbegrenzt und sofort.")
+
+    teile = []
+    if stunden_deckung >= 8:
+        teile.append(f"Top-Gebot schluckt {stunden_deckung:,.1f} h Produktion - sofort verkaufbar")
+    elif stunden_deckung >= 1:
+        teile.append(f"Top-Gebot reicht nur fuer {stunden_deckung:,.1f} h, danach faellt der Preis")
+    elif stunden_deckung > 0:
+        teile.append(f"Top-Gebot ist nach {stunden_deckung * 60:,.0f} min leer")
+    else:
+        teile.append("kein Volumen am Top-Gebot")
+
+    if verlust > 0.02:
+        teile.append(f"1 h Produktion druecken den Schnitt auf {schnitt:,.0f}g ({-verlust:.0%})")
+    elif stunden_deckung >= 1:
+        teile.append("eine Stunde Produktion bewegt den Preis kaum")
+
+    if npc > schnitt > 0:
+        teile.append(f"NPC waere mit {npc:,.0f}g besser")
+    if abweichung > 0.1:
+        teile.append(f"Achtung: Orderbuch weicht {abweichung:.0%} vom Listenpreis ab "
+                     f"(zwei Momentaufnahmen)")
+    if warnung:
+        teile.append(warnung)
+    return "; ".join(teile) + "."
+
+
+REASON_COLUMNS = [
+    "Rang", "Item", "Gold/h", "Verkauf an", "Stück/h",
+    "Bestes Gebot", "Menge am besten Gebot", "Deckt Stunden",
+    "Schnitt bei 1h Produktion", "Preisverlust", "Gold/h realistisch",
+    "NPC-Preis", "NPC besser", "Kaufgebote (Stufen)", "Bewertung",
+]
+
+
+def _num(value) -> float:
+    """Leere Zellen und NaN als 0 - `NaN or 0` liefert in Python NaN, nicht 0."""
+    return 0.0 if value is None or pd.isna(value) else float(value)
+
+
+def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFrame:
+    """Warum lohnt sich ein Item - mit den echten Kaufgebot-Stufen aus dem Player Shop.
+
+    Der Gold/h-Wert der uebrigen Sheets unterstellt, dass du beliebig viel zum besten
+    Gebot los wirst. Das stimmt nur, solange dort genug Volumen liegt. Hier wird eine
+    Stunde Produktion tatsaechlich durchs Orderbuch gerechnet.
+
+    Kostet REASON_TOP_N Live-Requests (1 pro Item)."""
+    if df_rec.empty:
+        return pd.DataFrame(columns=REASON_COLUMNS)
+
+    kosten_je_h = df_chain.set_index("ItemID")["RawMaterialCost/h"].to_dict() if not df_chain.empty else {}
+    id_von_item = df_chain.set_index("Item")["ItemID"].to_dict() if not df_chain.empty else {}
+
+    print(f"\nHole Kaufgebot-Stufen fuer die Top-{REASON_TOP_N} Items "
+          f"({REASON_TOP_N} Requests)...")
+
+    rows = []
+    for _, r in df_rec.head(REASON_TOP_N).iterrows():
+        item_id = id_von_item.get(r["Item"])
+        an_npc = r["Verkauf an"] == "NPC-Vendor"
+        npc = _num(r["NPC-Preis"])
+        stueck_h = _num(r["Stück/h"])
+        material_h = _num(kosten_je_h.get(item_id))
+        # Bezugsgroesse ist der Preis, auf dem das ausgewiesene Gold/h beruht - sonst
+        # widersprechen sich "Preisverlust" und "Gold/h realistisch".
+        referenz = _num(r["Verkaufspreis"])
+
+        depth = fetch_orderbook_depth(int(item_id)) if item_id is not None else None
+        levels = buy_levels_from_depth(depth) if depth else []
+
+        if levels:
+            top_preis, top_menge = max(levels, key=lambda x: x[0])
+            deckung = top_menge / stueck_h if stueck_h > 0 else 0.0
+            erloes, verkauft, _ = walk_orderbook(levels, stueck_h)
+            # Was nicht mehr ins Buch passt, geht zum NPC (falls moeglich) statt verloren
+            rest = stueck_h - verkauft
+            erloes += rest * npc
+            schnitt = erloes / stueck_h if stueck_h > 0 else 0.0
+            verlust = (1 - schnitt / referenz) if referenz > 0 else 0.0
+        else:
+            top_preis, top_menge, deckung = 0.0, 0.0, 0.0
+            schnitt = npc if an_npc else 0.0
+            erloes = schnitt * stueck_h
+            verlust = 0.0
+
+        if an_npc:   # NPC hat unbegrenztes Volumen, das Buch ist dann egal
+            schnitt, erloes, verlust = npc, npc * stueck_h, 0.0
+
+        # Orderbuch und Bulk-Endpoint sind zwei Momentaufnahmen - weichen sie stark ab,
+        # ist das eher ein Zeitversatz als ein echter Preissturz.
+        abweichung = (abs(top_preis - referenz) / referenz) if (referenz > 0 and top_preis > 0) else 0.0
+
+        rows.append({
+            "Rang": r["Rang"],
+            "Item": r["Item"],
+            "Gold/h": r["Gold/h"],
+            "Verkauf an": r["Verkauf an"],
+            "Stück/h": round(stueck_h, 1),
+            "Bestes Gebot": round(top_preis, 2) if top_preis else None,
+            "Menge am besten Gebot": round(top_menge) if top_menge else None,
+            "Deckt Stunden": round(deckung, 2) if deckung else None,
+            "Schnitt bei 1h Produktion": round(schnitt, 2),
+            "Preisverlust": f"-{verlust:.1%}" if verlust > 0.0005 else "0%",
+            "Gold/h realistisch": round(erloes - material_h),
+            "NPC-Preis": round(npc, 2) if npc else None,
+            "NPC besser": bool(npc > schnitt) if not an_npc else True,
+            "Kaufgebote (Stufen)": _format_levels(levels) if levels else "keine",
+            "Bewertung": _verdict(an_npc, npc, top_preis, deckung, schnitt, verlust,
+                                  "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
+                                  abweichung),
+        })
+    return pd.DataFrame(rows, columns=REASON_COLUMNS)
+
+
+def print_reason_highlights(df_reason: pd.DataFrame):
+    """Die Faelle, in denen der ausgewiesene Gold/h-Wert nicht haltbar ist."""
+    if df_reason.empty:
+        return
+    schoen = df_reason[df_reason["Gold/h realistisch"] < df_reason["Gold/h"] * 0.9]
+    if not schoen.empty:
+        print(f"\n⚠ {len(schoen)} Items halten ihren Gold/h-Wert nicht, wenn man eine ganze "
+              f"Stunde Produktion ins Buch verkauft:")
+        for _, r in schoen.head(8).iterrows():
+            print(f"    {str(r['Item']):<26}{r['Gold/h']:>11,} -> {r['Gold/h realistisch']:>11,}  "
+                  f"({r['Preisverlust']} Preisverlust)")
+
+
+# ---------------------------------------------------------------
 # Excel-Export
 # ---------------------------------------------------------------
 
 SORT_COLUMN_PER_SHEET = {
+    "Empfehlung": "Gold/h",
+    "Begruendung": "Gold/h realistisch",
     "Rohdaten": "Gold/h",
     "Nach_Skill_Level": "Level",
     "Ketten": "Gold/h (Eigenherstellung)",
@@ -834,8 +1092,17 @@ SKILL_LEVEL_COLUMNS = ["Skill", "Level", "Item", "Gold/h", "Gold/h_Worst", "Gold
                         "XP/h", "SoldToNPC", "NPCPreis", "ItemID"]
 
 
-def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str, df_sensitivity: pd.DataFrame | None = None):
+def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
+                 df_sensitivity: pd.DataFrame | None = None,
+                 df_recommendation: pd.DataFrame | None = None,
+                 df_reason: pd.DataFrame | None = None):
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        # Empfehlung zuerst: beantwortet die Frage "was farmen, an wen verkaufen?"
+        if df_recommendation is not None and not df_recommendation.empty:
+            df_recommendation.to_excel(writer, sheet_name="Empfehlung", index=False)
+        # Begruendung: warum steht das Item da, wo es steht
+        if df_reason is not None and not df_reason.empty:
+            df_reason.to_excel(writer, sheet_name="Begruendung", index=False)
         # Reihenfolge bewusst: Ketten -> Realistisch_Farmbar -> Nach_Skill_Level -> Rohdaten
         # -> Preis_Sensitivitaet (die tatsaechlich farmbaren/relevanten Sichten zuerst,
         # Rohdaten + Chart-Daten als Referenz zuletzt).
@@ -1104,6 +1371,14 @@ def main():
     print_run_sanity_check(current_run_stats, previous_run_stats)
     save_run_stats(current_run_stats)
 
+    df_recommendation = build_recommendation_df(df_chain)
+    print_recommendation(df_recommendation)
+
+    df_reason = pd.DataFrame()
+    if SHOW_REASON_ANALYSIS and not df_recommendation.empty:
+        df_reason = build_reason_df(df_recommendation, df_chain)
+        print_reason_highlights(df_reason)
+
     print_summary(df, df_chain)
     df_sensitivity = pd.DataFrame()
     if SHOW_PRICE_SENSITIVITY_CHART and not df_chain.empty:
@@ -1112,14 +1387,14 @@ def main():
 
     export_path = EXPORT_PATH
     try:
-        export_excel(df, df_chain, export_path, df_sensitivity)
+        export_excel(df, df_chain, export_path, df_sensitivity, df_recommendation, df_reason)
     except PermissionError:
         print(f"⚠ '{export_path}' ist gesperrt (meist: Datei ist noch in Excel geoeffnet).")
         fallback_path = f"{EXPORT_PATH.removesuffix('.xlsx')}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
         print(f"  Schliesse die Datei in Excel fuer den Standardnamen - speichere stattdessen unter: {fallback_path}")
-        export_excel(df, df_chain, fallback_path, df_sensitivity)
+        export_excel(df, df_chain, fallback_path, df_sensitivity, df_recommendation, df_reason)
         export_path = fallback_path
-    sheets = "Ketten, Realistisch_Farmbar, Nach_Skill_Level, Rohdaten"
+    sheets = "Empfehlung, Begruendung, Ketten, Realistisch_Farmbar, Nach_Skill_Level, Rohdaten"
     if not df_sensitivity.empty:
         sheets += ", Preis_Sensitivitaet"
     print(f"\nExcel gespeichert: {export_path} (Sheets: {sheets})")
