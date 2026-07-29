@@ -60,6 +60,7 @@ VK_H = 0x48  # Aufnahme pausieren (Halt)
 VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
+VK_M = 0x4D  # Manueller Modus (Schritt fuer Schritt)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -84,6 +85,7 @@ HOTKEY_RECORD_PAUSE = 19
 HOTKEY_NODE_EDITOR = 20
 HOTKEY_SCAN_STUDIO = 21
 HOTKEY_HELP = 22
+HOTKEY_STEP_MODE = 23
 
 # Window Messages
 WM_HOTKEY = 0x0312
@@ -529,6 +531,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
+    (HOTKEY_STEP_MODE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Manueller Modus)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)

@@ -106,13 +106,16 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
-    # Zwei unabhängige Modi (Details in runtime/debug.py):
-    #   debug_log  = beobachten: jeder Schritt persistent geloggt + Erkennungs-Details
-    #   debug_step = eingreifen: vor jedem Schritt anhalten, Zeiger auf den Punkt setzen,
-    #                Farbquadrat zeigen, auf Tastendruck warten
-    debug_log: bool = False                         # Ausführliche, persistente Schritt-Ausgabe
-    debug_step: bool = False                        # Einzelschritt-Durchgang (impliziert debug_log)
-    debug_show_pixel_position: bool = False         # Auch ohne debug_step: Zeiger kurz zum Prüf-Pixel
+    # Zwei UNABHÄNGIGE Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
+    # Keine der beiden verändert den Ablauf - nur wie viel du zu sehen bekommst.
+    #   debug_log    = alles ausgeben, nichts überschreiben
+    #   debug_detail = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort
+    #                  passieren soll (mit Farbquadrat bei Farb-Bedingungen)
+    # Der MANUELLE Modus (Schritt für Schritt auf Bestätigung) ist bewusst KEINE Config,
+    # sondern per Hotkey CTRL+ALT+M umschaltbar - auch mitten im Lauf.
+    debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe
+    debug_detail: bool = False                      # Stufe 2: Zeiger + Detailausgabe
+    debug_show_pixel_position: bool = False         # Zeiger kurz zum Prüf-Pixel beim Farbwarten
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
     def __post_init__(self):
@@ -233,10 +236,11 @@ class AppConfig:
         "default_min_confidence": "scan_min_confidence",
         "default_confirm_delay": "scan_confirm_delay",
         "show_pixel_position": "debug_show_pixel_position",
-        # Die alten Sammelflags: debug_mode war "Vorschau + Enter vor Start" und damit
-        # der Vorläufer des Einzelschritt-Modus, debug_detection die reine Log-Variante.
-        "debug_mode": "debug_step",
+        # Alte Sammelflags: debug_detection war die reine Log-Variante, debug_mode die
+        # ausführlichere. debug_step war eine Zwischenstufe, die beides vermischte.
         "debug_detection": "debug_log",
+        "debug_mode": "debug_detail",
+        "debug_step": "debug_detail",
         "pause_check_interval": "timing_pause_interval",
     }
 
@@ -355,7 +359,7 @@ _CONFIG_SECTIONS = [
         "timing_pause_interval",
     ]),
     ("DEBUG", [
-        "debug_log", "debug_step",
+        "debug_log", "debug_detail",
         "debug_show_pixel_position", "debug_save_templates",
     ]),
 ]

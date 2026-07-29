@@ -1005,7 +1005,7 @@ Wird beim ersten Start automatisch erstellt:
   "session_log_dir": "logs",
   "timing_pause_interval": 0.5,
   "debug_log": false,
-  "debug_step": false,
+  "debug_detail": false,
   "debug_show_pixel_position": false,
   "debug_save_templates": false
 }
@@ -1122,7 +1122,7 @@ Wird beim ersten Start automatisch erstellt:
 | Option | Beschreibung |
 |--------|--------------|
 | `debug_log` | **Beobachten.** Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans. Läuft ohne Eingriff durch |
-| `debug_step` | **Eingreifen.** Einzelschritt-Durchgang: vor jedem Schritt springt der Zeiger auf den Punkt (ohne Klick), Farb-Bedingungen erscheinen als Farbquadrat, dann Tastendruck — `Enter` ausführen, `s` überspringen, `w` weiter ohne Stopps, `q` abbrechen. Impliziert `debug_log` |
+| `debug_detail` | **Stufe 2.** Zusätzlich springt der Zeiger vor jedem Schritt auf den Zielpunkt (ohne Klick) und es wird ausgeschrieben, *was* dort passieren soll — mit Farbquadrat bei Farb-Bedingungen. Läuft weiter durch |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
@@ -1359,11 +1359,29 @@ python tools/slot_tester.py
 - Alte Keywords (`pixel`/`gone`/`nocolor` als Punkt-Trigger) entfernt — reine Umbenennung, das JSON-Schema bleibt identisch
 
 **Debug-Flags entkoppelt** (`config.json`)
-- `debug_log` = beobachten: alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details
-- `debug_step` = eingreifen: Einzelschritt-Durchgang mit Zeiger-Sprung auf den Punkt, Farbquadrat und Tastendruck pro Schritt
+**Zwei unabhängige Ausgabe-Stufen** — jede Kombination ist erlaubt, keine impliziert die
+andere, und **keine verändert den Ablauf**:
 
-Die alten Namen `debug_detection` / `debug_mode` werden beim Laden automatisch auf
-`debug_log` / `debug_step` migriert — bestehende `config.json` bleibt gültig.
+- `debug_log` = alles ausgeben, nichts überschreiben
+- `debug_detail` = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort passiert
+
+**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config, sondern per
+`CTRL+ALT+M` umschaltbar — auch mitten im Lauf:
+
+- Wartezeiten werden übersprungen
+- vor jedem Schritt springt der Zeiger auf das Ziel und es wird gewartet
+- erst auf `w` wird tatsächlich geklickt
+
+Damit gehst du die Sequenz von Hand durch und siehst, wo falsch geklickt oder falsch
+erkannt wird. Im Schritt: `w` ausführen · `s` überspringen · `c` normal weiterlaufen ·
+`q` abbrechen.
+
+Punkte einzeln durchgehen, ohne die ganze Liste zu lesen: im Punkte-Menü (`CTRL+ALT+P`)
+der Befehl `walk` — der Zeiger springt auf jeden Punkt, `w` weiter, `a` zurück, `q` Ende.
+Es wird nichts geklickt.
+
+Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
+automatisch migriert — bestehende `config.json` bleibt gültig.
 
 ### Neueste Änderungen — LLM Reasoning + Codebase-Refactoring
 

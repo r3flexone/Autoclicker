@@ -234,6 +234,30 @@ def handle_load(state: AutoClickerState) -> None:
     run_sequence_loader(state)
 
 
+def handle_step_mode(state: AutoClickerState) -> None:
+    """Schaltet den manuellen Modus um (CTRL+ALT+M).
+
+    Läuft gerade eine Sequenz, greift die Umschaltung ab dem nächsten Schritt - man kann
+    also mitten im Lauf auf manuell gehen, wenn etwas nicht stimmt, und danach mit 'c'
+    im Gate oder erneutem Hotkey zurück in den Normalbetrieb.
+    """
+    with state.lock:
+        state.step_mode = not state.step_mode
+        aktiv = state.step_mode
+        laeuft = state.is_running
+
+    if aktiv:
+        print(f"\n{col('[MANUELL]', 'yellow')} Manueller Modus AN — Wartezeiten werden "
+              f"übersprungen, jeder Schritt wartet auf Bestätigung.")
+        print(f"           Im Schritt: {col('w', 'yellow')} ausführen | "
+              f"{col('s', 'yellow')} überspringen | "
+              f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
+        if not laeuft:
+            print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
+    else:
+        print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
+
+
 def handle_show(state: AutoClickerState) -> None:
     """Zeigt alle Punkte an, ermöglicht Testen und Umbenennen."""
     # Wie die anderen Editoren: nicht während Aufnahme/Lauf öffnen — sonst
@@ -258,6 +282,7 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('show <Nr>', 'yellow')}   - Punkt zeigen (Maus hinbewegen + Details, ohne Abfrage)")
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
+    print(f"  {col('walk / w', 'yellow')}    - alle Punkte einzeln durchgehen (Maus springt hin, Taste = weiter)")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -268,6 +293,11 @@ def handle_show(state: AutoClickerState) -> None:
             if not user_input or user_input.lower() in ("done", "d") or is_cancel(user_input):
                 print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
                 return
+
+            if user_input.lower() in ("walk", "w"):
+                from .runtime.debug import walk_points
+                walk_points(state)
+                continue
 
             if user_input.lower() in ("list", "l"):
                 print_points(state)

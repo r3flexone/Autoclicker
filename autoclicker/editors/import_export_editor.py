@@ -471,7 +471,7 @@ def _run_import(state: AutoClickerState) -> None:
 
         if transform and transform != {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}:
             print(f"\n  {col('Hinweis:', 'yellow')} Koordinaten wurden automatisch angepasst.")
-            print(f"           Teste die Sequenz einmal im Debug-Modus (config.json → debug_step: true)")
+            print(f"           Teste die Sequenz einmal im Debug-Modus (config.json → debug_detail: true)")
             print(f"           um zu prüfen ob alle Positionen stimmen.")
     else:
         print(f"\n  {err(f'Import fehlgeschlagen: {result}')}")

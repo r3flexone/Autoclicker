@@ -321,7 +321,7 @@ _SENSITIVE_CONFIG_KEYS = {
 }
 # Beim Export zusätzlich weggelassen: Debug/Anzeige — für den Empfänger irrelevant.
 _EXPORT_SKIP_CONFIG_KEYS = _SENSITIVE_CONFIG_KEYS | {
-    "debug_log", "debug_step", "debug_save_templates",
+    "debug_log", "debug_detail", "debug_save_templates",
     "debug_show_pixel_position", "pixel_show_delay",
 }
 

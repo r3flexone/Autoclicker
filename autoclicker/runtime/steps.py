@@ -28,8 +28,8 @@ from .actions import (
     wait_with_pause_skip, execute_else_action,
 )
 from .debug import (
-    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_step_debug, show_point,
-    step_gate,
+    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_step_mode,
+    print_step_detail, show_point, skip_waits, step_gate,
 )
 from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
@@ -360,7 +360,7 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Tastendruck-Schritt aus."""
     debug = is_verbose_debug(state)
-    actual_delay = step.get_actual_delay()
+    actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
                                     f"Taste '{step.key_press}' in"):
@@ -388,7 +388,7 @@ def _execute_scroll_step(state: AutoClickerState, step: SequenceStep,
     """Dreht das Mausrad. Vorher wird wie beim Klick gewartet (Zeit oder Farb-Trigger)."""
     debug = is_verbose_debug(state)
     richtung = "hoch" if step.scroll > 0 else "runter"
-    actual_delay = step.get_actual_delay()
+    actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
                                     f"Scroll {richtung} in"):
@@ -412,13 +412,13 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     """Wartet auf eine Farbe an einer Pixel-Position."""
     debug = is_verbose_debug(state)
     wc = step.wait_condition
-    actual_delay = step.get_actual_delay()
+    actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
             return False
 
     # Zeiger auf den Prüf-Pixel. Im Einzelschritt-Modus ist das schon passiert.
-    if state.config.debug_show_pixel_position and not is_step_debug(state):
+    if state.config.debug_show_pixel_position and not is_step_mode(state):
         show_point(state, wc.pixel[0], wc.pixel[1], "Prüf-Pixel")
 
     if not PILLOW_AVAILABLE:
@@ -677,8 +677,11 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     if is_verbose_debug(state):
         print(dbg(f"Step {step_num}: name='{step.name}', x={step.x}, y={step.y}"))
 
-    # Einzelschritt-Modus: Punkt zeigen und auf Tastendruck warten. GATE_SKIP behandelt
-    # den Schritt wie erledigt, damit die Sequenz normal weiterläuft.
+    # Stufe 2: ausschreiben was kommt + Zeiger hinsetzen (blockiert nicht).
+    print_step_detail(state, step, phase, step_num, total_steps)
+
+    # Manueller Modus: Ziel zeigen und auf Bestätigung warten. GATE_SKIP behandelt den
+    # Schritt wie erledigt, damit die Sequenz normal weiterläuft.
     gate = step_gate(state, step, phase, step_num, total_steps)
     if gate == GATE_SKIP:
         return True
@@ -709,7 +712,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     if step.wait_condition:
         if not _execute_wait_for_color(state, step, step_num, total_steps, phase):
             return False
-    elif step.delay_before > 0 or step.delay_max:
+    elif (step.delay_before > 0 or step.delay_max) and not skip_waits(state):
         actual_delay = step.get_actual_delay()
         action = "Warten" if step.wait_only else "Klicke in"
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, action):

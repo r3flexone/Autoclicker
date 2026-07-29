@@ -13,6 +13,28 @@ try:
     import msvcrt  # noqa: F401  (echtes Modul auf Windows)
 except ImportError:
     sys.modules['msvcrt'] = types.ModuleType('msvcrt')  # Stub auf Linux/Mac
+
+# ctypes.windll gibt es nur auf Windows. Damit auch die Runtime-/Debug-Schicht hier
+# pruefbar ist (die importiert winapi), wird es auf Linux/Mac minimal gestubbt. Die
+# Stubs tun nichts - getestet wird ausschliesslich Logik, keine echten Maus-Aktionen.
+import ctypes
+if not hasattr(ctypes, 'windll'):
+    class _StubFn:
+        def __init__(self, *a): self.argtypes = None; self.restype = None
+        def __call__(self, *a, **kw): return 0
+
+    class _StubLib:
+        def __getattr__(self, name):
+            fn = _StubFn(); setattr(self, name, fn); return fn
+
+    class _StubWinDLL:
+        def __getattr__(self, name):
+            lib = _StubLib(); setattr(self, name, lib); return lib
+        def LoadLibrary(self, name): return _StubLib()
+
+    ctypes.windll = _StubWinDLL()
+    ctypes.WinDLL = lambda *a, **kw: _StubLib()
+    ctypes.WINFUNCTYPE = ctypes.CFUNCTYPE
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 PASS, FAIL = 0, 0
@@ -296,11 +318,73 @@ from autoclicker.config import AppConfig
 
 _c = AppConfig.from_dict({"debug_detection": True, "debug_mode": True})
 check("debug_detection -> debug_log", _c.debug_log is True)
-check("debug_mode -> debug_step", _c.debug_step is True)
-_c2 = AppConfig.from_dict({"debug_log": True})
-check("debug_log allein setzt nicht debug_step", _c2.debug_log is True and _c2.debug_step is False)
-_c3 = AppConfig.from_dict({})
-check("Standard: beide Debug-Modi aus", _c3.debug_log is False and _c3.debug_step is False)
+check("debug_mode -> debug_detail", _c.debug_detail is True)
+check("debug_step (Zwischenstufe) -> debug_detail",
+      AppConfig.from_dict({"debug_step": True}).debug_detail is True)
+
+# Die beiden Stufen muessen in JEDER Kombination unabhaengig schaltbar sein
+for _log, _det in ((True, False), (False, True), (True, True), (False, False)):
+    _cc = AppConfig.from_dict({"debug_log": _log, "debug_detail": _det})
+    check(f"unabhaengig: log={_log}, detail={_det}",
+          _cc.debug_log is _log and _cc.debug_detail is _det)
+
+# Manueller Modus ist Laufzeit-Zustand, KEINE Config
+check("manueller Modus ist kein Config-Feld",
+      not any(f.name == "debug_step_mode" for f in __import__("dataclasses").fields(AppConfig)))
+from autoclicker.models import AutoClickerState as _ACS
+check("step_mode existiert am State und ist standardmaessig aus", _ACS().step_mode is False)
+
+# ------------------------------------------- Manueller Modus + Ausgabe-Stufen
+section("Manueller Modus (Laufzeit) vs. Ausgabe-Stufen (Config)")
+import autoclicker.runtime.debug as _dbg
+from autoclicker.models import WaitCondition as _WC
+
+_st = AutoClickerState()
+
+# Die zwei Config-Stufen aendern NUR die Ausgabe, nie den Ablauf
+_unabhaengig = True
+for _l, _d in ((True, False), (False, True), (True, True), (False, False)):
+    _st.config.debug_log, _st.config.debug_detail, _st.step_mode = _l, _d, False
+    if not (_dbg.is_log_debug(_st) is _l and _dbg.is_detail_debug(_st) is _d
+            and _dbg.skip_waits(_st) is False):
+        _unabhaengig = False
+check("Ausgabe-Stufen in jeder Kombination unabhaengig", _unabhaengig)
+check("Ausgabe-Stufen ueberspringen KEINE Wartezeiten", _dbg.skip_waits(_st) is False)
+
+# Manueller Modus: eigenstaendig, haengt an keinem Config-Flag
+_st.config.debug_log = _st.config.debug_detail = False
+_st.step_mode = True
+check("manueller Modus ueberspringt Wartezeiten", _dbg.skip_waits(_st) is True)
+check("manueller Modus erzwingt persistente Ausgabe", _dbg.is_log_debug(_st) is True)
+check("manueller Modus schaltet Stufe 2 NICHT ein", _dbg.is_detail_debug(_st) is False)
+
+# Gate-Tasten
+_step = SequenceStep(x=100, y=200, delay_before=5, name="Testpunkt")
+_orig_read_key = _dbg.read_key
+_ergebnisse = {}
+for _taste in ("w", "enter", "s", "q", "c"):
+    _st.step_mode = True
+    _st.stop_event.clear()
+    _dbg.read_key = (lambda _t=_taste: _t)
+    _ergebnisse[_taste] = _dbg.step_gate(_st, _step, "LOOP", 1, 3)
+_dbg.read_key = _orig_read_key
+check("Gate: 'w' fuehrt aus", _ergebnisse["w"] == _dbg.GATE_RUN)
+check("Gate: Enter fuehrt aus", _ergebnisse["enter"] == _dbg.GATE_RUN)
+check("Gate: 's' ueberspringt", _ergebnisse["s"] == _dbg.GATE_SKIP)
+check("Gate: 'q' bricht ab", _ergebnisse["q"] == _dbg.GATE_STOP)
+check("Gate: 'c' laeuft weiter UND schaltet den Modus aus",
+      _ergebnisse["c"] == _dbg.GATE_RUN and _st.step_mode is False)
+_st.step_mode = False
+check("Gate ohne manuellen Modus: sofort run",
+      _dbg.step_gate(_st, _step, "LOOP", 1, 3) == _dbg.GATE_RUN)
+
+# Zielpunkt: bei Farb-Bedingung zaehlt der Pruef-Pixel, nicht der Klickpunkt
+check("Zielpunkt Klick", _dbg.target_of(SequenceStep(x=10, y=20, delay_before=0))[:2] == (10, 20))
+check("Zielpunkt Farbe = Pruef-Pixel", _dbg.target_of(SequenceStep(
+    x=10, y=20, delay_before=0,
+    wait_condition=_WC(pixel=(77, 88), color=(1, 2, 3))))[:2] == (77, 88))
+check("Zielpunkt Tastendruck = keiner", _dbg.target_of(
+    SequenceStep(x=0, y=0, delay_before=0, key_press="enter")) is None)
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
