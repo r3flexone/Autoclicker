@@ -386,5 +386,56 @@ check("Zielpunkt Farbe = Pruef-Pixel", _dbg.target_of(SequenceStep(
 check("Zielpunkt Tastendruck = keiner", _dbg.target_of(
     SequenceStep(x=0, y=0, delay_before=0, key_press="enter")) is None)
 
+# ---------------------------------------- Punkt-Referenzen (verrutschtes Fenster)
+section("Punkt-Referenzen: Schritte folgen dem Punkte-Pool")
+from autoclicker.models import Sequence as _Seq, LoopPhase as _LP, ClickPoint as _CP
+from autoclicker.persistence.sequences import resolve_point_references as _resolve
+from autoclicker.runtime.debug import step_label as _label
+
+_st2 = AutoClickerState()
+_st2.points = [_CP(x=100, y=200, name="Marktbutton", id=3),
+               _CP(x=300, y=400, name="Verkaufen", id=7),
+               _CP(x=500, y=600, name="Bestaetigen", id=9)]
+_seq = _Seq(name="Verkauf", loop_phases=[_LP(name="LOOP", steps=[
+    SequenceStep(x=100, y=200, delay_before=0, name="Marktbutton", point_id=3,
+                 wait_condition=_WC(pixel=(100, 200), color=(1, 2, 3))),
+    SequenceStep(x=300, y=400, delay_before=0, name="Verkaufen", point_id=7,
+                 wait_condition=_WC(pixel=(999, 999), color=(4, 5, 6))),
+    SequenceStep(x=500, y=600, delay_before=0, name="Bestaetigen"),   # Altbestand
+    SequenceStep(x=11, y=22, delay_before=0, name="Weg", point_id=42),  # verwaist
+])])
+
+# Fenster war beim Aufnehmen um (+8,+5) verschoben -> Punkte korrigiert
+for _p in _st2.points:
+    _p.x += 8
+    _p.y += 5
+_meldungen = _resolve(_st2, _seq)
+_s = _seq.loop_phases[0].steps
+
+check("verknuepfter Schritt folgt dem Punkt", (_s[0].x, _s[0].y) == (108, 205))
+check("Pruef-Pixel AM Klickpunkt zieht mit", tuple(_s[0].wait_condition.pixel) == (108, 205))
+check("Pruef-Pixel ANDERSWO bleibt unberuehrt", tuple(_s[1].wait_condition.pixel) == (999, 999))
+check("Schritt ohne Referenz bleibt unberuehrt", (_s[2].x, _s[2].y) == (500, 600))
+check("verwaiste Referenz aendert keine Koordinaten", (_s[3].x, _s[3].y) == (11, 22))
+check("verwaiste Referenz wird gemeldet",
+      any("#42" in m and "nicht mehr gibt" in m for m in _meldungen))
+check("Meldung nennt alte UND neue Position",
+      any("(100, 200) -> (108, 205)" in m for m in _meldungen))
+
+# Zweiter Lauf: keine Verschiebungen mehr, aber die verwaiste Referenz nervt weiter
+_zweiter = _resolve(_st2, _seq)
+check("zweiter Lauf meldet keine Verschiebung mehr",
+      not any("->" in m for m in _zweiter))
+check("verwaiste Referenz wird dauerhaft gemeldet", len(_zweiter) == 1)
+
+check("Label nennt die Punkt-ID", "#3" in _label(_s[0]))
+check("Label sagt klar, wenn kein Punkt dahintersteht", "kein Punkt" in _label(_s[2]))
+
+# Serialisierung der Referenz
+_rt = _parse_steps([_step_to_dict(_s[0])])
+check("point_id ueberlebt Round-Trip", _rt[0].point_id == 3)
+check("alte Schritte ohne point_id -> None",
+      _parse_steps([{"x": 1, "y": 2, "delay_before": 0}])[0].point_id is None)
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

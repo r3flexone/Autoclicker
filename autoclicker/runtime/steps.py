@@ -29,7 +29,7 @@ from .actions import (
 )
 from .debug import (
     GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_step_mode,
-    print_step_detail, show_point, skip_waits, step_gate,
+    print_step_detail, show_point, skip_waits, step_gate, step_label,
 )
 from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
@@ -675,7 +675,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return False
 
     if is_verbose_debug(state):
-        print(dbg(f"Step {step_num}: name='{step.name}', x={step.x}, y={step.y}"))
+        print(dbg(f"Step {step_num}: {step_label(step)}, x={step.x}, y={step.y}"))
 
     # Stufe 2: ausschreiben was kommt + Zeiger hinsetzen (blockiert nicht).
     print_step_detail(state, step, phase, step_num, total_steps)

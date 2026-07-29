@@ -219,6 +219,57 @@ def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoi
     return points_by_id.get(point_id)
 
 
+def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:
+    """Zieht bei Schritten mit point_id die Koordinaten aus dem Punkte-Pool nach.
+
+    Der Punkt ist die Wahrheit: verschiebt man ihn, ziehen alle Schritte mit, die auf ihn
+    zeigen. Genau das war vorher das Problem - eine verrutschte Aufnahme musste in jedem
+    Schritt einzeln nachgezogen werden, und man musste den falschen Schritt erst finden.
+
+    Gibt Klartext-Meldungen zurueck (nachgezogene Schritte, verwaiste Referenzen).
+    Schritte ohne point_id bleiben unberuehrt - Aufnahmen, Tastendruecke und Scans
+    funktionieren unveraendert wie bisher.
+
+    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen: die Funktion liest
+    state.points und schreibt in die Sequenz-Schritte.
+    """
+    meldungen = []
+    punkte = {p.id: p for p in state.points}
+
+    phasen = [("INIT", sequence.init_steps)]
+    for lp in sequence.loop_phases:
+        phasen.append((lp.name, lp.steps))
+    phasen.append(("END", sequence.end_steps))
+
+    for phase_name, steps in phasen:
+        for i, step in enumerate(steps, 1):
+            if step.point_id is None:
+                continue
+            punkt = punkte.get(step.point_id)
+            if punkt is None:
+                meldungen.append(
+                    f"{phase_name}[{i}] '{step.name}' zeigt auf Punkt #{step.point_id}, "
+                    f"den es nicht mehr gibt - Schritt bleibt bei ({step.x}, {step.y})")
+                continue
+            if (punkt.x, punkt.y) == (step.x, step.y):
+                continue
+
+            alt = (step.x, step.y)
+            step.x, step.y = punkt.x, punkt.y
+            # Prüf-Pixel NUR mitziehen, wenn er genau auf dem alten Klickpunkt lag.
+            # Ein bewusst anderswo gesetzter Pixel (z.B. per 'wait pixel') bleibt, wo er
+            # ist - sonst würde das Nachziehen fremde Prüfstellen verschieben.
+            wc = step.wait_condition
+            pixel_info = ""
+            if wc is not None and tuple(wc.pixel) == alt:
+                wc.pixel = (punkt.x, punkt.y)
+                pixel_info = " (Prüf-Pixel mitgezogen)"
+            meldungen.append(
+                f"{phase_name}[{i}] '{step.name}' folgt Punkt #{punkt.id}: "
+                f"{alt} -> ({punkt.x}, {punkt.y}){pixel_info}")
+    return meldungen
+
+
 def print_points(state: AutoClickerState) -> None:
     """Zeigt alle gespeicherten Punkte an."""
     with state.lock:

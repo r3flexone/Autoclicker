@@ -90,6 +90,19 @@ def color_comparison(expected, actual, dist: float, tolerance: float) -> str:
             f"|  Abstand {dist:.0f} -> {verdict}")
 
 
+def step_label(step: SequenceStep) -> str:
+    """Name + Punkt-Referenz, damit man den Schritt in der JSON wiederfindet.
+
+    Das war der eigentliche Schmerz: ohne ID musste man den falschen Schritt in der
+    Sequenzdatei erst suchen und dann noch den passenden Punkt dazu. Mit "#3" steht die
+    Referenz direkt da - suchbar in points.json UND in der Sequenzdatei ("point_id": 3).
+    """
+    name = step.name or "unbenannt"
+    if step.point_id is not None:
+        return f"{name}  [Punkt #{step.point_id}]"
+    return f"{name}  [kein Punkt - Koordinaten stehen im Schritt]"
+
+
 def describe_step(step: SequenceStep) -> str:
     """Was tut dieser Schritt? Eine Zeile."""
     if step.key_press:
@@ -147,8 +160,7 @@ def print_step_detail(state: AutoClickerState, step: SequenceStep, phase: str,
     Blockiert nicht - der Lauf geht danach normal weiter."""
     if not is_detail_debug(state):
         return
-    name = step.name or "unbenannt"
-    print(col(f"── [{phase}] Schritt {step_num}/{total_steps}: {name}", "cyan"))
+    print(col(f"── [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}", "cyan"))
     print(col(f"   {describe_step(step)}", "gray"))
 
     wc = step.wait_condition
@@ -181,9 +193,9 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     if not is_step_mode(state):
         return GATE_RUN
 
-    name = step.name or "unbenannt"
     print()
-    print(col(f"■ MANUELL [{phase}] Schritt {step_num}/{total_steps}: {name}", "yellow"))
+    print(col(f"■ MANUELL [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
+              "yellow"))
     print(col(f"   {describe_step(step)}", "gray"))
 
     wc = step.wait_condition

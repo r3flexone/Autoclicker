@@ -1359,6 +1359,37 @@ python tools/slot_tester.py
 - Alte Keywords (`pixel`/`gone`/`nocolor` als Punkt-Trigger) entfernt — reine Umbenennung, das JSON-Schema bleibt identisch
 
 **Debug-Flags entkoppelt** (`config.json`)
+### Punkte und Sequenz-Schritte: eine Quelle der Wahrheit
+
+Ein Schritt, der aus einem Punkt entstanden ist, speichert dessen `point_id`. Beim
+Sequenz-Start gilt dann **der Punkt** als Wahrheit für die Koordinaten: korrigierst du
+einen verrutschten Punkt, ziehen alle Schritte mit, die auf ihn zeigen — und der Lauf
+meldet es im Klartext:
+
+```
+[PUNKTE] 2 Schritt(e) folgen ihrem Punkt:
+         LOOP[1] 'Marktbutton' folgt Punkt #3: (100, 200) -> (108, 205) (Prüf-Pixel mitgezogen)
+         LOOP[4] 'Weg' zeigt auf Punkt #42, den es nicht mehr gibt - Schritt bleibt bei (11, 22)
+```
+
+Der Prüf-Pixel einer Farb-Bedingung zieht **nur** mit, wenn er vorher genau auf dem
+Klickpunkt lag. Ein bewusst anderswo gesetzter Pixel bleibt, wo er ist.
+
+In jeder Debug-Ausgabe steht die Referenz dabei — damit findest du den Schritt in der
+Sequenzdatei (`"point_id": 3`) und den Punkt in `points.json` (`"id": 3`):
+
+```
+■ MANUELL [LOOP] Schritt 1/3: Marktbutton  [Punkt #3]
+```
+
+Steht dort `[kein Punkt - Koordinaten stehen im Schritt]`, hat der Schritt keine Referenz
+(Aufnahme, Tastendruck, Scan) und behält seine eigenen Werte.
+
+**Bestehende Sequenzen nachträglich verknüpfen:** im Phasen-Editor der Befehl `link`.
+Er ordnet Schritte über exakt übereinstimmende Koordinaten den Punkten zu. Mehrdeutige
+Fälle (zwei Punkte an derselben Stelle) werden gemeldet und **nicht** verknüpft, damit
+nicht stillschweigend der falsche Punkt gewinnt.
+
 **Zwei unabhängige Ausgabe-Stufen** — jede Kombination ist erlaubt, keine impliziert die
 andere, und **keine verändert den Ablauf**:
 

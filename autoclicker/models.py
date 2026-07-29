@@ -130,6 +130,14 @@ class SequenceStep:
     y: int                # Y-Koordinate (direkt gespeichert)
     delay_before: float   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
     name: str = ""        # Optionaler Name des Punktes
+    # Referenz auf den Punkt im Punkte-Pool, aus dem dieser Schritt entstanden ist.
+    # x/y/name bleiben als Kopie erhalten (Schritte ohne Punkt-Herkunft - Aufnahme,
+    # Tastendruck, Scans - haben point_id=None und funktionieren unverändert).
+    # Ist point_id gesetzt UND der Punkt existiert, gilt der PUNKT als Wahrheit für
+    # die Koordinaten: verschiebt man den Punkt, ziehen alle Schritte mit. Genau das
+    # war vorher das Problem - eine verrutschte Aufnahme musste man in jedem Schritt
+    # einzeln nachziehen und erst mal finden.
+    point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
@@ -194,7 +202,9 @@ class SequenceStep:
                             f"({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}")
                 return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
             return f"WARTE {self._delay_str()} (kein Klick)"
-        pos_str = f"{self.name} ({self.x}, {self.y})" if self.name else f"({self.x}, {self.y})"
+        ref = f" #{self.point_id}" if self.point_id is not None else ""
+        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
+                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
         if wc:
             if wc.check_only:
                 zustand = "WEG" if wc.until_gone else "DA"

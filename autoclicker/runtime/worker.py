@@ -241,6 +241,19 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         state.skip_cycle_event.clear()
         state.pending_new_bosses.clear()
 
+        # Punkt-Referenzen aufloesen: Schritte mit point_id folgen dem Punkte-Pool.
+        # Hier statt beim Laden, damit ein zwischenzeitlich korrigierter Punkt garantiert
+        # greift - egal ob die Sequenz per Laden, Quick-Switch oder Zeitplan aktiv wurde.
+        from ..persistence import resolve_point_references
+        punkt_meldungen = resolve_point_references(state, sequence)
+
+    # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
+    # klickt als in der Sequenzdatei steht.
+    if punkt_meldungen:
+        print(col(f"\n[PUNKTE] {len(punkt_meldungen)} Schritt(e) folgen ihrem Punkt:", "cyan"))
+        for m in punkt_meldungen:
+            print(f"         {m}")
+
     # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_detail)
     if show_preview:
         print("\n" + col("=" * 60, 'gray'))

@@ -174,7 +174,8 @@ def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
     wc = s.wait_condition
     ec = s.else_config
-    return {"x": s.x, "y": s.y, "name": s.name, "delay_before": s.delay_before,
+    return {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
+            "delay_before": s.delay_before,
             "wait_pixel": wc.pixel if wc else None,
             "wait_color": wc.color if wc else None,
             "wait_until_gone": wc.until_gone if wc else False,
@@ -274,6 +275,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             y=s.get("y", 0),
             delay_before=float(delay_raw),
             name=s.get("name", ""),
+            point_id=s.get("point_id"),
             wait_condition=wait_cond,
             item_scan=s.get("item_scan"),
             item_scan_mode=s.get("item_scan_mode", "all"),

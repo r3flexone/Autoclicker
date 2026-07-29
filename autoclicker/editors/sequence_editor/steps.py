@@ -56,6 +56,7 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("edit <Schritt-Nr>", "Schritt ändern (geführtes Menü)"))
         print(cmd_hint("del <Schritt-Nr>", "Schritt löschen"))
         print(cmd_hint("points", "Punkte mit ihren Nummern anzeigen"))
+        print(cmd_hint("link", "Schritte mit Punkten verknüpfen (Referenz nachtragen)"))
         print(cmd_hint("screenshot / ss", "Screenshot-Schritt anlegen"))
         print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Phase speichern / verwerfen"))
         print("-" * 60)
@@ -147,7 +148,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "color", "colorgone", "checkcolor", "checkgone", "scroll",
+    "color", "colorgone", "checkcolor", "checkgone", "scroll", "link",
     "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
 
@@ -287,6 +288,10 @@ class _PhaseEditor:
         if cmd.startswith("icon "):
             self._handle_icon(user_input)
             return
+        if cmd in ("link", "link all"):
+            self._handle_link()
+            return
+
         if cmd.startswith("scroll "):
             self._handle_scroll(user_input)
             return
@@ -583,6 +588,68 @@ class _PhaseEditor:
         )
         self.add_step(step)
 
+    def _handle_link(self) -> None:
+        """Verknüpft Schritte ohne point_id nachträglich mit Punkten aus dem Pool.
+
+        Zugeordnet wird über exakt übereinstimmende Koordinaten - das ist die einzige
+        verlässliche Brücke für Sequenzen, die vor der Referenz-Umstellung entstanden
+        sind. Mehrdeutige Fälle (zwei Punkte auf derselben Stelle) werden gemeldet und
+        NICHT verknüpft, damit nicht stillschweigend der falsche Punkt gewinnt.
+        """
+        with self.state.lock:
+            punkte = list(self.state.points)
+
+        if not punkte:
+            print("  -> Keine Punkte im Pool - nichts zu verknüpfen.")
+            return
+
+        # Koordinate -> Punkte (mehrere = mehrdeutig)
+        nach_pos = {}
+        for p in punkte:
+            nach_pos.setdefault((p.x, p.y), []).append(p)
+
+        verknuepft, mehrdeutig, ohne_punkt, schon_ok = [], [], [], 0
+        for i, step in enumerate(self.steps, 1):
+            if step.point_id is not None:
+                schon_ok += 1
+                continue
+            # Schritte ohne echte Position (Taste/Scan/Wait) haben keinen Punkt
+            if step.key_press or step.item_scan or step.boss_scan or step.boss_watcher \
+                    or step.icon_scan or step.screenshot_only or step.wait_only:
+                continue
+            treffer = nach_pos.get((step.x, step.y), [])
+            if len(treffer) == 1:
+                step.point_id = treffer[0].id
+                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{treffer[0].id} "
+                                  f"'{treffer[0].name or '(ohne Name)'}'")
+            elif len(treffer) > 1:
+                ids = ", ".join(f"#{p.id}" for p in treffer)
+                mehrdeutig.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                                  f"mehrere Punkte passen ({ids}) - nicht verknüpft")
+            else:
+                ohne_punkt.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                                  f"kein Punkt an dieser Stelle")
+
+        if verknuepft:
+            print(f"  {ok(f'{len(verknuepft)} Schritt(e) verknüpft:')}")
+            for z in verknuepft:
+                print(f"    {z}")
+        if mehrdeutig:
+            print(f"  {warn(f'{len(mehrdeutig)} mehrdeutig:')}")
+            for z in mehrdeutig:
+                print(f"    {z}")
+        if ohne_punkt:
+            print(f"  {warn(f'{len(ohne_punkt)} ohne passenden Punkt:')}")
+            for z in ohne_punkt:
+                print(f"    {z}")
+            print(f"    {hint('Diese Schritte behalten ihre eigenen Koordinaten - das ist ok.')}")
+        if schon_ok:
+            print(f"  {hint(f'{schon_ok} Schritt(e) waren schon verknüpft.')}")
+        if not (verknuepft or mehrdeutig or ohne_punkt):
+            print("  -> Nichts zu tun.")
+        elif verknuepft:
+            print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
+
     def _handle_scroll(self, user_input: str) -> None:
         """Format: scroll <Punkt-Nr> <Stufen> | scroll <Punkt-Nr> <Sek> <Stufen>
 
@@ -641,6 +708,7 @@ class _PhaseEditor:
         step = SequenceStep(
             x=point.x, y=point.y, delay_before=delay, delay_max=delay_max,
             name=f"Scroll {richtung} x{abs(stufen)} @ {point.name or f'#{point_id}'}",
+            point_id=point_id,
             scroll=stufen,
         )
         apply_else_to_step(step, else_parts, self.state)
@@ -1167,6 +1235,7 @@ class _PhaseEditor:
         step = SequenceStep(
             x=point.x, y=point.y, delay_before=delay,
             name=point.name or f"#{point_id}",
+            point_id=point_id,          # Referenz statt blosser Kopie
             wait_condition=wait_cond,
             delay_max=delay_max,
         )
