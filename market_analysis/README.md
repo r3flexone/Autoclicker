@@ -38,7 +38,7 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 | **Realistisch_Farmbar** | Nur Ketten mit `FullySelfSufficient` – keine Zutat muss gekauft werden |
 | **Nach_Skill_Level** | Verkaufbare Items sortiert nach Skill und Level |
 | **Rohdaten** | Jedes Rezept einzeln, Zutaten zum Ask-Preis gekauft. Ungefiltert |
-| **Preis_Sensitivität** | Gold/s über die 10 aktuellen Orderbook-Preispunkte je Item |
+| **Preis_Sensitivität** | Gold/h über die 10 aktuellen Orderbook-Preispunkte je Item, plus NPC-Vergleichswert |
 
 ### Empfehlung lesen
 
@@ -55,6 +55,17 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 
 Der Lauf druckt dieselbe Top-Liste auch in die Konsole – für die schnelle Antwort
 braucht man die Excel gar nicht zu öffnen.
+
+### Preis-Sensitivität und Chart
+
+`output/price_sensitivity_chart.png` zeigt für die Top-N-Items den Gold/h-Verlauf über
+die zehn aktuellen Orderbook-Preispunkte – links die fünf Kaufgebote, rechts die fünf
+Verkaufsangebote. Alles netto: Materialkosten und die 1 % Marktsteuer sind abgezogen.
+
+**Rote Punkte** markieren Preisstufen, auf denen der NPC-Vendor mindestens genauso viel
+bringt – dort lohnt der Player Shop nicht mehr. Verglichen wird gegen `NPC_Gold_h`,
+also den NPC-Erlös desselben Items bei gleichem Zeitaufwand. Items ohne NPC-Verkauf
+haben keine roten Punkte.
 
 ### Begründung lesen
 

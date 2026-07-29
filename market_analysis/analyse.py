@@ -745,9 +745,10 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
     """Live-Orderbook-Tiefe der Top-N FullySelfSufficient-Items, 1 Zeile pro Item mit
     Preis + Gold/s je Preispunkt. Speist Chart UND Excel-Sheet aus einem Abruf.
 
-    Die *_Gold_s-Spalten sind NETTO (Materialkosten abgezogen), also direkt mit
-    "Gold/h (Eigenherstellung)"/3600 vergleichbar. Zweiter Rueckgabewert: Items, die
-    ueber den NPC verkauft werden (fixer Preis, nicht Teil der Kurve)."""
+    Die *_Gold_h-Spalten sind NETTO: Materialkosten abgezogen und die 1% Marktsteuer
+    schon eingerechnet, also direkt mit "Gold/h (Eigenherstellung)" vergleichbar.
+    NPC_Gold_h ist die steuerfreie Vergleichslinie desselben Items. Zweiter
+    Rueckgabewert: Items, die ohnehin ueber den NPC verkauft werden."""
     top = df_chain[df_chain["FullySelfSufficient"]].sort_values(
         "Gold/h (Eigenherstellung)", ascending=False
     ).head(PRICE_SENSITIVITY_TOP_N)
@@ -759,17 +760,22 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
         if depth is None:
             continue
         prices = price_points_from_depth(depth)
-        items_per_sec = row["Stück/h"] / 3600.0
-        cost_per_item = (row["RawMaterialCost/h"] / row["Stück/h"]) if row["Stück/h"] > 0 else 0.0
+        stueck_h = row["Stück/h"]
+        cost_per_item = (row["RawMaterialCost/h"] / stueck_h) if stueck_h > 0 else 0.0
+        npc_preis = row.get("NPCPreis", 0) or 0.0
+        # Vergleichslinie: was dasselbe Zeitbudget beim NPC einbraechte (steuerfrei)
+        npc_gold_h = stueck_h * (npc_preis - cost_per_item) if npc_preis else None
 
         data = {
             "Item": row["Item"], "ItemID": int(row["ItemID"]), "FinalSkill": row["FinalSkill"],
             "SoldToNPC": bool(row["SoldToNPC"]),
             "Kosten_pro_Stück": cost_per_item,
+            "NPC-Preis": npc_preis or None,
+            "NPC_Gold_h": round(npc_gold_h) if npc_gold_h is not None else None,
         }
         for label, p in zip(PRICE_SENSITIVITY_LABELS_SHORT, prices):
             data[f"{label}_Preis"] = p
-            data[f"{label}_Gold_s"] = ((items_per_sec * (net_player_price(p) - cost_per_item))
+            data[f"{label}_Gold_h"] = ((stueck_h * (net_player_price(p) - cost_per_item))
                                        if p is not None else None)
         rows.append(data)
 
@@ -781,9 +787,10 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
 
 def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
                                    path: str = PRICE_SENSITIVITY_CHART_PATH):
-    """Liniendiagramm Gold/s (netto) ueber die 10 Orderbook-Preispunkte, eine Linie je
-    Item. Fehlt matplotlib, wird nur der Chart uebersprungen - das Excel-Sheet mit
-    denselben Zahlen entsteht trotzdem."""
+    """Liniendiagramm Gold/h (netto) ueber die 10 Orderbook-Preispunkte, eine Linie je
+    Item. Punkte auf oder unter dem NPC-Niveau desselben Items werden rot markiert -
+    dort lohnt der Player Shop nicht mehr. Fehlt matplotlib, wird nur der Chart
+    uebersprungen; das Excel-Sheet mit denselben Zahlen entsteht trotzdem."""
     try:
         import matplotlib.pyplot as plt  # lazy: nur noetig, wenn Flag aktiv
     except ImportError:
@@ -800,18 +807,32 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
               "Sell1\n(billigster)", "Sell2", "Sell3", "Sell4", "Sell5\n(teuerster)"]
 
     fig, ax = plt.subplots(figsize=(12, 7))
+    rot_x, rot_y = [], []
     for _, row in df_sens.iterrows():
-        ys_raw = [row[f"{label}_Gold_s"] for label in PRICE_SENSITIVITY_LABELS_SHORT]
+        ys_raw = [row[f"{label}_Gold_h"] for label in PRICE_SENSITIVITY_LABELS_SHORT]
         xs = [i for i, v in enumerate(ys_raw) if pd.notna(v)]
         ys = [v for v in ys_raw if pd.notna(v)]
-        ax.plot(xs, ys, marker="o", label=str(row["Item"]))
+        ax.plot(xs, ys, marker="o", markersize=5, label=str(row["Item"]))
+
+        # Punkte einsammeln, an denen der Player Shop den NPC nicht mehr schlaegt
+        npc = row.get("NPC_Gold_h")
+        if pd.notna(npc):
+            for x, y in zip(xs, ys):
+                if y <= npc:
+                    rot_x.append(x)
+                    rot_y.append(y)
+
+    if rot_x:
+        ax.scatter(rot_x, rot_y, color="red", s=70, zorder=5, edgecolors="darkred",
+                   label="NPC-Verkauf gleich gut oder besser")
 
     ax.set_xticks(range(10))
     ax.set_xticklabels(labels)
     ax.axvline(4.5, color="gray", linestyle="--", linewidth=1)
     ax.axhline(0, color="black", linewidth=0.8)
-    ax.set_ylabel("Gold/s (netto, Materialkosten abgezogen)")
-    ax.set_title(f"Top-{PRICE_SENSITIVITY_TOP_N} FullySelfSufficient: Gold/s über Orderbook-Tiefe (Best-Case-Kette)")
+    ax.set_ylabel("Gold/h (netto: Materialkosten und 1% Marktsteuer abgezogen)")
+    ax.set_title(f"Top-{PRICE_SENSITIVITY_TOP_N} FullySelfSufficient: Gold/h über Orderbook-Tiefe\n"
+                 f"rote Punkte = NPC-Vendor bringt hier mindestens genauso viel")
     ax.legend(loc="best", fontsize=8, ncol=2)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
