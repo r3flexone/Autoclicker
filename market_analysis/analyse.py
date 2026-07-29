@@ -595,10 +595,16 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             continue
 
         m = market_map.get(item_id) or {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
-        # Ist der Player-Markt ueberhaupt ein gangbarer Weg? (Handelbar + liquide genug)
-        spieler_moeglich = (is_player_shop_tradeable(item_info_map.get(item_id, {}))
-                            and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME)
-        if not sold_to_npc and not spieler_moeglich:
+        # Zwei verschiedene Dinge, die frueher vermischt waren:
+        #   erlaubt  = das Item DARF im Player Shop gehandelt werden (API-Flag)
+        #   liquide  = am besten Gebot liegt genug Volumen fuer den Sofortverkauf
+        # Ein duennes Top-Gebot macht ein Item nicht unhandelbar - direkt darunter kann
+        # tiefe Nachfrage stehen (Titanium platebody: 6 Stueck oben, 53.139 eine Stufe
+        # tiefer). Fuer die Preiswahl bleibt die Schwelle massgeblich, fuer die
+        # Begruendung nicht.
+        spieler_erlaubt = is_player_shop_tradeable(item_info_map.get(item_id, {}))
+        spieler_liquide = spieler_erlaubt and valid_market(m) and m["buyVol"] >= MIN_SELL_VOLUME
+        if not sold_to_npc and not spieler_liquide:
             continue
 
         total_time_ms, raw_cost, steps, raw_ratio, fully_self_sufficient = resolve_chain(
@@ -642,8 +648,10 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "SoldToNPC": sold_to_npc,
             "Verkaufspreis": sell_price,
             "NPCPreis": npc_sell_price(item_id, item_info_map),
-            "SpielerpreisBid": m["buy"] if spieler_moeglich else 0.0,
-            "SpielerVerkaufMoeglich": spieler_moeglich,
+            "SpielerpreisBid": m["buy"] if (spieler_erlaubt and m["buy"] > 0) else 0.0,
+            "SpielerVerkaufMoeglich": spieler_erlaubt,
+            "SpielerMarktDuenn": bool(spieler_erlaubt and m["buy"] > 0 and not spieler_liquide),
+            "BidVolumen": m["buyVol"],
             "MarketAsk": m["sell"],
             "LiquidityWarning": max_liquidity_ratio > LIQUIDITY_WARNING_RATIO,
             "LiquidityRatio": round(max_liquidity_ratio, 1),
@@ -875,6 +883,10 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
         vorteil = (gewaehlt / alternative - 1) if alternative > 0 else None
 
         warn = []
+        if r.get("SpielerMarktDuenn"):
+            warn.append(f"Top-Gebot dünn ({int(_num(r.get('BidVolumen'))):,} Stk)")
+        if an_npc and spieler_netto > npc:
+            warn.append("Spielergebot wäre höher, Top-Gebot aber zu dünn – s. Begründung")
         if r.get("LiquidityWarning"):
             warn.append("Absatz knapp")
         if r.get("SpreadWarning"):
@@ -899,7 +911,8 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Spieler-Gebot (brutto)": round(spieler, 2) if spieler else None,
             "NPC-Preis": round(npc, 2) if npc else None,
             "Vorteil": (f"+{vorteil:.0%}" if vorteil is not None
-                        else ("nur NPC moeglich" if an_npc else "nur Spieler moeglich")),
+                        else ("kein Spielerverkauf erlaubt" if an_npc
+                              else "kein NPC-Verkauf erlaubt")),
             "Alles selbst farmbar": bool(r.get("FullySelfSufficient")),
             "Warnung": ", ".join(warn),
         })

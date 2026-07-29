@@ -170,6 +170,20 @@ Betrifft nur `XP/h` und `Gold per XP`, **nicht** Gold/h.
 
 ## Bekannte Vereinfachungen
 
+**„Handelbar" und „liquide genug" sind zwei verschiedene Dinge.** Ob ein Item im Player
+Shop gehandelt werden *darf*, sagt das API-Flag `CanNotBeTraded`. Ob sich ein
+Sofortverkauf *lohnt*, hängt am Volumen am besten Gebot. Die Empfehlung zeigt deshalb das
+Spielergebot immer an, wenn der Handel erlaubt ist – auch wenn die Preiswahl am Ende auf
+den NPC fällt. Ein dünnes Top-Gebot erscheint als Warnung `Top-Gebot dünn (N Stk)`, nicht
+als „kein Spielerverkauf".
+
+> Beispiel Titanium platebody: Top-Gebot 18.006 g für **6** Stück, eine Stufe tiefer
+> 53.139 Stück zu 18.005 g. Der NPC gewinnt hier trotzdem knapp (18.018 g gegen 17.826 g
+> netto) – aber eben mit 1 % Vorsprung, nicht weil Spielerverkauf unmöglich wäre.
+
+Die Flags einzelner Items prüfst du mit `python market_analysis/apicheck.py`
+(Abschnitt 2b, Liste in `ITEM_FLAG_CHECKS`).
+
 **`MIN_SELL_VOLUME` misst nur die Spitze des Orderbuchs.** Das API-Feld `buyVol` ist die
 Menge *am besten Gebot*, nicht die Tiefe. Beispiel Oak: bestes Gebot 76 g für 6.178 Stück
 – unter der Schwelle von 10.000 –, während direkt darunter 327.915 Stück zu 70 g liegen

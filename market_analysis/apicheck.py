@@ -59,6 +59,11 @@ SPEED_CHECK_SKILLS = ["Mining", "Fishing", "Woodcutting", "Smithing"]
 SPEED_CHECK_EQUIP_BOOST = 0.55 + 0.06
 SPEED_CHECK_CLAN_BOOST = 0.05
 
+# Items, deren Handelbarkeits-Flags einzeln ausgewiesen werden (Punkt 2c). Praktisch,
+# wenn ein Item ingame handelbar ist, in der Auswertung aber nicht so erscheint.
+ITEM_FLAG_CHECKS = ["titanium_platebody", "titanium_platelegs", "titanium_shield",
+                    "titanium_helmet", "titanium_bar", "oak_log"]
+
 REPORT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "api_check_report.json")
 
 report: dict = {}
@@ -191,7 +196,7 @@ def load_game():
 
 
 def check_items(game: dict):
-    head("2b. ITEMS + PLAYER-MARKET-FLAG")
+    head("2b. ITEMS + HANDELBARKEITS-FLAGS")
     items = game.get("Items", {}).get("Items", [])
     if not items:
         bad("Items.Items ist leer - Pfad im Script (game['Items']['Items']) stimmt nicht mehr")
@@ -218,11 +223,29 @@ def check_items(game: dict):
         info("Kein Feld gefunden, das nach Handelbarkeit aussieht "
              "-> is_player_shop_tradeable() bleibt zu Recht ein NO-OP")
 
+    # Gezielter Abgleich fuer einzelne Items - beantwortet "warum steht das Item nicht
+    # als handelbar in der Auswertung?" ohne die ganze Items-Liste durchzugehen.
+    flag_rows = []
+    for name in ITEM_FLAG_CHECKS:
+        it = next((i for i in items if str(i.get("Name", "")).lower() == name.lower()), None)
+        if it is None:
+            info(f"    {name:<24} nicht in der Items-Liste gefunden")
+            continue
+        handelbar = not it.get("CanNotBeTraded", False)
+        npc = not it.get("CanNotBeSoldToGameShop", False)
+        flag_rows.append({"name": name, "item_id": it.get("ItemId"),
+                          "base_value": it.get("BaseValue"),
+                          "handelbar": handelbar, "npc_verkauf": npc})
+        print(f"    {name:<24} ID {str(it.get('ItemId')):<5} BaseValue {str(it.get('BaseValue')):<8}"
+              f" Player-Markt: {'ja' if handelbar else 'NEIN'}   NPC: {'ja' if npc else 'NEIN'}")
+    report_flags = flag_rows
+
     sample = next((it for it in items if it.get("ItemId") is not None), items[0])
     info(f"Beispiel-Item: {json.dumps(sample, ensure_ascii=False)[:600]}")
 
     report["items"] = {
         "count": len(items),
+        "flag_checks": report_flags,
         "fields": field_report,
         "without_item_id": without_id,
         "tradeable_flag_candidates": candidates,
