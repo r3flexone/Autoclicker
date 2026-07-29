@@ -24,7 +24,7 @@ from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..utils import clear_line, wait_while_paused, col, err, info, dbg
 from ..winapi import check_failsafe
 from .actions import (
-    safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
+    safe_click, safe_key, safe_scroll, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, execute_else_action,
 )
 from .debug import (
@@ -383,6 +383,30 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
 # WAIT-FOR-COLOR STEP
 # =============================================================================
 
+def _execute_scroll_step(state: AutoClickerState, step: SequenceStep,
+                          step_num: int, total_steps: int, phase: str) -> bool:
+    """Dreht das Mausrad. Vorher wird wie beim Klick gewartet (Zeit oder Farb-Trigger)."""
+    debug = is_verbose_debug(state)
+    richtung = "hoch" if step.scroll > 0 else "runter"
+    actual_delay = step.get_actual_delay()
+    if actual_delay > 0:
+        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
+                                    f"Scroll {richtung} in"):
+            return False
+    if state.stop_event.is_set():
+        return False
+
+    label = step.name or f"Scroll {richtung}"
+    _step_status(debug, phase, step_num, total_steps,
+                 f"Scroll {richtung} x{abs(step.scroll)}",
+                 f"Scroll {richtung} x{abs(step.scroll)} an ({step.x}, {step.y})")
+    if not safe_scroll(state, step.scroll, step.x, step.y, label):
+        return False
+    with state.lock:
+        state.total_clicks += 1
+    return True
+
+
 def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Wartet auf eine Farbe an einer Pixel-Position."""
@@ -403,6 +427,11 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
             return execute_else_action(state, step, phase, step_num, total_steps)
         state.stop_event.set()
         return False
+
+    # check_only: einmal prüfen statt warten. Passt die Farbe nicht, greift sofort
+    # else_config (Standard skip) - kein Blockieren bis zum Timeout.
+    if getattr(wc, "check_only", False):
+        return _check_color_once(state, step, step_num, total_steps, phase)
 
     timeout = state.config.pixel_wait_timeout
     start_time = time.time()
@@ -460,6 +489,43 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     if state.stop_event.is_set():
         return False
     return True
+
+
+def _check_color_once(state: AutoClickerState, step: SequenceStep,
+                      step_num: int, total_steps: int, phase: str) -> bool:
+    """Einmalige Farbprüfung (WaitCondition.check_only). Trifft sie zu, läuft der Schritt
+    normal weiter; trifft sie nicht zu, entscheidet else_config - ohne else_config wird
+    der Schritt einfach übersprungen.
+
+    Rückgabe False heißt "Schritt hier beenden" - das ist beim Überspringen der
+    Normalfall, nicht ein Fehler.
+    """
+    debug = is_verbose_debug(state)
+    wc = step.wait_condition
+    tol = state.config.pixel_wait_tolerance
+
+    img = take_screenshot((wc.pixel[0], wc.pixel[1], wc.pixel[0] + 1, wc.pixel[1] + 1))
+    if img is None:
+        print(col("\n[FEHLER] Screenshot für Farbprüfung fehlgeschlagen!", "red"))
+        return False
+
+    current = img.getpixel((0, 0))[:3]
+    dist = color_distance(current, wc.color)
+    passt = dist <= tol
+    if wc.until_gone:
+        passt = not passt
+
+    vergleich = color_comparison(wc.color, current, dist, tol)
+    if passt:
+        _step_status(debug, phase, step_num, total_steps, "Farbe passt",
+                     f"Farbprüfung erfüllt | {vergleich}")
+        return True
+
+    _step_status(debug, phase, step_num, total_steps, "Farbe passt nicht - übersprungen",
+                 f"Farbprüfung NICHT erfüllt | {vergleich}")
+    if step.else_config is not None:
+        return execute_else_action(state, step, phase, step_num, total_steps)
+    return False
 
 
 def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phase: str,
@@ -636,6 +702,9 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.key_press:
         return _execute_key_press_step(state, step, step_num, total_steps, phase)
+
+    if step.scroll:
+        return _execute_scroll_step(state, step, step_num, total_steps, phase)
 
     if step.wait_condition:
         if not _execute_wait_for_color(state, step, step_num, total_steps, phase):

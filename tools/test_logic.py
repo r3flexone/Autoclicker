@@ -255,5 +255,52 @@ section("llm_vision: System-Prompt")
 check("Default-Prompt enthält KEIN_BOSS-Regel", "KEIN_BOSS" in _build_system_prompt())
 check("bekannte Bosse landen im Prompt", "Drache" in _build_system_prompt(["Drache"]))
 
+# ------------------------------------------------- Scroll + Einmal-Farbpruefung
+section("Scroll-Schritt + Farbpruefung ohne Warten")
+from autoclicker.models import SequenceStep, WaitCondition
+from autoclicker.persistence.serialization import _step_to_dict, _parse_steps
+
+_scroll = SequenceStep(x=10, y=20, delay_before=0.5, name="scrollen", scroll=-3)
+_check = SequenceStep(x=30, y=40, delay_before=0, name="farbcheck",
+                      wait_condition=WaitCondition(pixel=(5, 6), color=(1, 2, 3),
+                                                   check_only=True, until_gone=True))
+_back = _parse_steps([_step_to_dict(x) for x in (_scroll, _check)])
+check("scroll ueberlebt Round-Trip", _back[0].scroll == -3)
+check("check_only ueberlebt Round-Trip", _back[1].wait_condition.check_only is True)
+check("until_gone ueberlebt Round-Trip", _back[1].wait_condition.until_gone is True)
+
+_alt = _parse_steps([{"x": 1, "y": 2, "delay_before": 1, "name": "alt"}])
+check("alte Schritte ohne neue Keys: scroll=None", _alt[0].scroll is None)
+check("alte Schritte ohne neue Keys: keine WaitCondition", _alt[0].wait_condition is None)
+_alt_color = _parse_steps([{"x": 1, "y": 2, "delay_before": 0, "wait_pixel": [3, 4],
+                            "wait_color": [5, 6, 7]}])
+check("alter Farb-Trigger bleibt Warten (check_only=False)",
+      _alt_color[0].wait_condition.check_only is False)
+
+check("Scroll-Anzeige nennt Richtung und Stufen",
+      "scrolle runter x3" in str(_scroll))
+_check_text = str(SequenceStep(
+    x=1, y=2, delay_before=0,
+    wait_condition=WaitCondition(pixel=(1, 2), color=(3, 4, 5), check_only=True)))
+check("Einmal-Pruefung wird als 'prüfe einmal' angezeigt", "prüfe einmal" in _check_text)
+check("Einmal-Pruefung nennt den Standard-Fallback", "überspringen" in _check_text)
+
+# Scroll-Delta als 32-Bit-Zweierkomplement (mouseData ist ein DWORD)
+_WHEEL = 120
+check("Scroll runter wird korrekt maskiert", ((-1 * _WHEEL) & 0xFFFFFFFF) == 0xFFFFFF88)
+check("Scroll hoch bleibt positiv", ((3 * _WHEEL) & 0xFFFFFFFF) == 360)
+
+# ------------------------------------------------------------- Debug-Modi
+section("Debug-Modi: getrennte Flags + Migration alter Keys")
+from autoclicker.config import AppConfig
+
+_c = AppConfig.from_dict({"debug_detection": True, "debug_mode": True})
+check("debug_detection -> debug_log", _c.debug_log is True)
+check("debug_mode -> debug_step", _c.debug_step is True)
+_c2 = AppConfig.from_dict({"debug_log": True})
+check("debug_log allein setzt nicht debug_step", _c2.debug_log is True and _c2.debug_step is False)
+_c3 = AppConfig.from_dict({})
+check("Standard: beide Debug-Modi aus", _c3.debug_log is False and _c3.debug_step is False)
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

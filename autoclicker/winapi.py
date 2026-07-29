@@ -93,6 +93,8 @@ WM_LBUTTONDOWN = 0x0201
 INPUT_MOUSE = 0
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120          # Windows-Einheit fuer eine Rasterstufe des Mausrads
 
 # Keyboard Input
 INPUT_KEYBOARD = 1
@@ -338,6 +340,36 @@ def send_click(x: int, y: int, move_delay: float = 0.01, post_delay: float = 0.0
         logger.warning(f"SendInput Klick: nur {sent}/2 Events gesendet @ ({x}, {y})")
 
     # Warte nach dem Klick damit das Ziel-Programm den Klick verarbeiten kann
+    if post_delay > 0:
+        time.sleep(post_delay)
+
+
+def send_scroll(clicks: int, x: int = None, y: int = None,
+                move_delay: float = 0.01, post_delay: float = 0.05) -> None:
+    """Dreht das Mausrad um `clicks` Rasterstufen. Positiv = hoch, negativ = runter.
+
+    Windows liefert das Scroll-Event an das Fenster UNTER dem Cursor, nicht an das
+    fokussierte - deshalb muss der Zeiger vorher auf die Zielposition. Ohne x/y wird
+    dort gescrollt, wo die Maus gerade steht.
+    """
+    if not clicks:
+        return
+    if x is not None and y is not None:
+        set_cursor_pos(x, y)
+        time.sleep(move_delay)
+
+    inputs = (INPUT * 1)()
+    inputs[0].type = INPUT_MOUSE
+    inputs[0].union.mi.dwFlags = MOUSEEVENTF_WHEEL
+    # mouseData ist ein DWORD (unsigned). Runterscrollen braucht einen negativen Delta,
+    # der als Zweierkomplement in 32 Bit passen muss - explizit maskieren statt auf die
+    # Breite von c_ulong zu vertrauen (auf Windows 32 Bit, anderswo 64).
+    inputs[0].union.mi.mouseData = (clicks * WHEEL_DELTA) & 0xFFFFFFFF
+
+    sent = user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
+    if sent != 1:
+        logger.warning(f"SendInput Scroll: {sent}/1 Events gesendet ({clicks} Stufen)")
+
     if post_delay > 0:
         time.sleep(post_delay)
 

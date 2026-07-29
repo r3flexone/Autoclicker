@@ -114,10 +114,13 @@ class ElseConfig:
 
 @dataclass
 class WaitCondition:
-    """Warten auf eine Farbe an einer Pixel-Position."""
+    """Farb-Bedingung an einer Pixel-Position: warten oder einmal prüfen."""
     pixel: tuple[int, int]               # (x, y) Position zum Prüfen
     color: tuple[int, int, int]          # (r, g, b) Farbe die erscheinen soll
     until_gone: bool = False             # True = warte bis Farbe WEG ist
+    # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
+    # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
+    check_only: bool = False
 
 
 @dataclass
@@ -138,6 +141,10 @@ class SequenceStep:
     delay_max: Optional[float] = None    # None = feste Zeit, sonst Bereich
     # Optional: Tastendruck statt Mausklick
     key_press: Optional[str] = None      # z.B. "enter", "space", "f1"
+    # Optional: Mausrad drehen statt klicken. Positiv = hoch, negativ = runter,
+    # Betrag = Rasterstufen. Gescrollt wird an (x, y), weil Windows das Rad-Event an
+    # das Fenster UNTER dem Cursor liefert.
+    scroll: Optional[int] = None
     # Optional: Fallback/Else-Aktion wenn Bedingung fehlschlägt
     else_config: Optional[ElseConfig] = None
     # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
@@ -167,6 +174,11 @@ class SequenceStep:
         if self.key_press:
             delay_str = self._delay_str()
             return f"{delay_str} → drücke Taste '{self.key_press}'{else_str}"
+        if self.scroll:
+            richtung = "hoch" if self.scroll > 0 else "runter"
+            ziel = f"{self.name} " if self.name else ""
+            return (f"{self._delay_str()} → scrolle {richtung} x{abs(self.scroll)} "
+                    f"bei {ziel}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
         if self.item_scan:
@@ -177,10 +189,19 @@ class SequenceStep:
         if self.wait_only:
             if wc:
                 gone_str = "WEG ist" if wc.until_gone else "DA ist"
+                if wc.check_only:
+                    return (f"PRÜFE einmal ob Farbe {gone_str} bei "
+                            f"({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}")
                 return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
             return f"WARTE {self._delay_str()} (kein Klick)"
         pos_str = f"{self.name} ({self.x}, {self.y})" if self.name else f"({self.x}, {self.y})"
         if wc:
+            if wc.check_only:
+                zustand = "WEG" if wc.until_gone else "DA"
+                vorlauf = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+                return (f"{vorlauf}prüfe einmal ob Farbe {zustand} bei "
+                        f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
+                        f"{else_str or ' | sonst: überspringen'}")
             gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
             delay_str = self._delay_str()
             if self.delay_before > 0:

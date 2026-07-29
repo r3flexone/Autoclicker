@@ -178,12 +178,14 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "wait_pixel": wc.pixel if wc else None,
             "wait_color": wc.color if wc else None,
             "wait_until_gone": wc.until_gone if wc else False,
+            "wait_check_only": wc.check_only if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
             "boss_watcher": s.boss_watcher,
             "icon_scan": s.icon_scan,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
             "key_press": s.key_press,
+            "scroll": s.scroll,
             "else_action": ec.action if ec else None,
             "else_x": ec.x if ec else 0, "else_y": ec.y if ec else 0,
             "else_delay": ec.delay if ec else 0,
@@ -237,7 +239,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         if wait_pixel and wait_color:
             wait_cond = WaitCondition(
                 pixel=wait_pixel, color=wait_color,
-                until_gone=s.get("wait_until_gone", False)
+                until_gone=s.get("wait_until_gone", False),
+                check_only=s.get("wait_check_only", False),
             )
         # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
         recorded_color_raw = s.get("recorded_color")
@@ -280,6 +283,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             wait_only=s.get("wait_only", False),
             delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
             key_press=s.get("key_press"),
+            scroll=s.get("scroll"),
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,

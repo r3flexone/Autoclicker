@@ -413,6 +413,9 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `wait <Nr> colorgone` | Warten bis die Punkt-Farbe VERSCHWINDET, KEIN Klick |
 | `wait pixel` | Auf Farbe an der aktuellen Mausposition warten, KEIN Klick |
 | `wait pixelgone` | Warten bis Farbe an der Mausposition VERSCHWINDET, KEIN Klick |
+| `scroll <Punkt-Nr> <Stufen>` | Mausrad am Punkt drehen, `+` hoch / `-` runter (z.B. `scroll 3 -5`) |
+| `<Punkt-Nr> checkcolor` | Farbe **einmal** prüfen: passt sie → klicken, sonst Schritt überspringen |
+| `<Punkt-Nr> checkgone` | einmal prüfen, ob die Farbe **weg** ist – sonst überspringen |
 | `key <Taste>` | Taste sofort drücken (z.B. `key enter`) |
 | `key <Zeit> <Taste>` | Warten, dann Taste drücken (z.B. `key 5 space`) |
 | `key <Min>-<Max> <Taste>` | Zufällig warten, dann Taste (z.B. `key 30-45 enter`) |

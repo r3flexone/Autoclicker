@@ -20,7 +20,7 @@ from ..models import (
 from ..session_log import log_event
 from ..utils import clear_line, wait_while_paused, col, dbg
 from ..winapi import (
-    send_click, send_key,
+    send_click, send_key, send_scroll,
     is_target_window_active, get_foreground_window_title,
 )
 
@@ -146,6 +146,29 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
         jx, jy = _humanize_jitter(x, y, state)
         send_click(jx, jy, state.config.click_move_delay, state.config.click_post_delay)
     log_event(state, "click", detail=label, x=jx, y=jy)
+    return True
+
+
+def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = None,
+                label: str = "") -> bool:
+    """Wrapper für send_scroll mit Window-Fokus-Check, Humanization und Logging.
+
+    Wie safe_click/safe_key: NIE send_scroll direkt aufrufen, sonst fehlen Fokus-Check,
+    Humanize-Delays und der Log-Eintrag. Der Zeiger-Jitter greift hier ebenfalls, weil
+    Windows das Rad-Event an das Fenster unter dem Cursor liefert.
+    """
+    with state.input_lock:
+        if not _wait_for_target_window(state):
+            return False
+        _humanize_check_break(state)
+        if state.stop_event.is_set():
+            return False
+        _humanize_delay(state)
+        if x is not None and y is not None:
+            x, y = _humanize_jitter(x, y, state)
+        send_scroll(clicks, x, y, state.config.click_move_delay,
+                    state.config.click_post_delay)
+    log_event(state, "scroll", detail=str(clicks), x=x, y=y, extra=label)
     return True
 
 
