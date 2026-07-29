@@ -158,13 +158,14 @@ COMPREHENSIVE_URL_TEMPLATE = "https://query.idleclans.com/api/PlayerMarket/items
 # s. SMITHING_SMELTING_COST_MULTIPLIER). excluded = Skill komplett ignorieren
 # (Combat/Enchanting/etc., kein normales Markt-Item-Recipe).
 #
-# OFFENE ANNAHME (bewusst nicht "korrigiert", weil nur ingame messbar): das Script
-# verrechnet Clan-Speed und Equipment-Speed MULTIPLIKATIV auf die Aktionszeit
-# (t * (1-0.05) * (1-0.61)). Rechnet das Spiel stattdessen additiv (t * (1-0.66)),
-# faellt jede Gold/h-Zahl ca. 9% zu niedrig aus - die RANGFOLGE der Items bleibt aber
-# gleich, weil der Faktor auf alle Rezepte desselben Skills identisch wirkt.
-# Gegenprobe: eine bekannte Aktion ingame stoppen und mit Time_sec in Rohdaten
-# vergleichen; weicht es ab, hier auf die additive Variante umstellen.
+# VERIFIZIERT (Ingame-Abgleich der angezeigten Aktionsdauer, 4 Aktionen ueber 3 Skills):
+# Clan-Speed und Equipment-Speed wirken MULTIPLIKATIV auf die Aktionszeit,
+# t * (1-0.05) * (1-0.61) - nicht additiv. Gemessen gegen die Anzeige im Skill-Panel:
+#     oak           Script 2.223 s  | additiv waere 2.040 s | ingame 2.2 s
+#     coal_ore      Script 2.779 s  | additiv waere 2.550 s | ingame 2.8 s
+#     titanium_ore  Script 12.967 s | additiv waere 11.900 s| ingame 13 s
+#     titanium_bar  Script 13.500 s (kein Clan-Boost, beide Formeln gleich) | ingame 13.5 s
+# Alle vier passen auf die multiplikative Variante, keine auf die additive.
 # ============================================================
 
 
@@ -184,6 +185,14 @@ CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur fuer is_gat
 # XP-Boost: verifiziert per Ingame Boosts-Breakdown-Screen. Aktiv sind "Clan house"
 # (Clan-Upgrade, 25%) und "House" (persoenliches Upgrade, 25%). Kein Castle-Tier
 # vorhanden - falls spaeter eins dazukommt, hier ergaenzen.
+#
+# Ingame-Abgleich der angezeigten XP pro Aktion: Mining und Smithing stimmen exakt
+# (coal_ore 36.0, titanium_ore 270.0, titanium_bar 337.5 - jeweils Basis x 1.50).
+# Woodcutting weicht ab: oak zeigt 27.2 statt der gerechneten 26.25, also Faktor 1.554
+# statt 1.50 (+3.6%). Da liegt offenbar eine Woodcutting-spezifische XP-Quelle, die das
+# Modell nicht kennt. BETRIFFT NUR die Spalten XP/h und Gold per XP - Gold/h haengt
+# nicht an der XP - deshalb bewusst nicht "geraten korrigiert". Wer es aufloesen will:
+# Boosts-Breakdown oeffnen, waehrend Woodcutting laeuft.
 XP_BOOST_TOTAL = 0.25 + 0.25
 
 # Daily Boost ("Flamme" im Profil, alle 2h manuell aktivierbar, mit Premium-Token alle
@@ -280,6 +289,14 @@ def skill_cfg(skill_name: str) -> SkillConfig:
 # 3. MARKT-FILTER (Account-unabhaengig)
 # ============================================================
 
+# ACHTUNG zur Aussagekraft: buyVol/highestPriceVolume ist die Menge AM BESTEN GEBOT,
+# nicht die Tiefe des Buchs. Ingame-Gegenprobe an Oak: bestes Gebot 76g mit nur 6.178
+# Stueck (also unter der Schwelle), waehrend direkt darunter 327.915 Stueck zu 70g
+# liegen und das 24h-Volumen bei 174.303 liegt. Ein Item kann also an dieser Schwelle
+# scheitern und trotzdem bestens handelbar sein - es kippt dann auf den NPC-Preis
+# (bei Oak: 258.462 -> 51.063 Gold/h) oder ganz aus der Auswertung.
+# Wer per Sell-Order statt Sofortverkauf handelt, sollte den Wert deutlich senken und
+# sich stattdessen an den Ø-Preis-Spalten + LiquidityWarning orientieren.
 MIN_SELL_VOLUME = 10000        # Mindest-BuyVol des Endprodukts (Nachfrage fuer Sofortverkauf), gilt nur wenn ueber Player-Markt verkauft wird
 MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite, damit ein Markt als "echt gehandelt" gilt
 MAX_SPREAD_RATIO = 1.0         # Ask darf hoechstens 2x Bid sein
@@ -770,6 +787,7 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             "Cost/h": cost_per_hour,
             "SoldToNPC": sold_to_npc,
             "NPCPreis": npc_sell_price(r["item_id"], item_info_map),
+            "MarketBid": m["buy"],
             "MarketAsk": m["sell"],
             "Handelbar": can_trade,
             "NPCVerkaufMoeglich": can_sell_npc,
@@ -1398,6 +1416,26 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
         if no_trade or no_npc:
             print(f"ℹ Laut API-Flags: {no_trade} Rezept-Ausgaben nicht am Player-Markt handelbar "
                   f"(CanNotBeTraded), {no_npc} nicht an den NPC verkaufbar (CanNotBeSoldToGameShop).")
+
+    # Grenzfaelle an MIN_SELL_VOLUME sichtbar machen: das Gebot existiert und ist besser
+    # als der NPC-Preis, wird aber verworfen, weil AM BESTEN GEBOT zu wenig Stueck liegen
+    # (die Tiefe darunter kennt der Bulk-Endpoint nicht). Das kippt Items sprunghaft
+    # zwischen zwei Laeufen - siehe Kommentar bei MIN_SELL_VOLUME.
+    if {"MarketBid", "BuyVol", "NPCPreis", "Handelbar"} <= set(df.columns):
+        borderline = df[df["Handelbar"] & (df["MarketBid"] > 0)
+                        & (df["BuyVol"] < MIN_SELL_VOLUME)
+                        & (df["MarketBid"] > df["NPCPreis"])]
+        if not borderline.empty:
+            print(f"⚠ {len(borderline)} Items verlieren ihren Marktpreis nur an der Schwelle "
+                  f"MIN_SELL_VOLUME ({MIN_SELL_VOLUME:,}) - am besten Gebot liegen zu wenig Stueck, "
+                  f"obwohl darunter tiefe Nachfrage stehen kann:")
+            worst = borderline.assign(
+                _verlust=(borderline["MarketBid"] - borderline["NPCPreis"]) * borderline["Stück/h"]
+            ).nlargest(5, "_verlust")
+            for _, row in worst.iterrows():
+                print(f"    {str(row['Item']):<26} Bid {row['MarketBid']:>8,.0f}g bei nur "
+                      f"{row['BuyVol']:>8,.0f} Stueck  ->  gerechnet wird "
+                      f"{'NPC ' + format(row['NPCPreis'], ',.2f') + 'g' if row['NPCPreis'] > 0 else 'gar nichts'}")
 
     npc_count = int(df["SoldToNPC"].sum())
     if npc_count:
