@@ -54,3 +54,8 @@ tools/debug/*
 
 # Logs
 *.log
+
+# Markt-Analyse (tools/market_analysis.py) - generierte Ausgaben
+idle_clans_farming*.xlsx
+price_sensitivity_chart.png
+run_stats_history.json
