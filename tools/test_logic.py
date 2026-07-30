@@ -504,5 +504,35 @@ check("Loader: Schritt liegt in einer Loop-Phase",
 check("Loader: point_id kam aus der Migration",
       _seq_alt is not None and _seq_alt.loop_phases[0].steps[0].point_id == 3)
 
+# ------------------------------------------------------- Hotkey-Ausweichtasten
+section("Hotkey-Registrierung: Ausweichtasten bei Konflikt")
+import autoclicker.winapi as _w
+
+_orig_reg, _orig_err = _w.user32.RegisterHotKey, _w.kernel32.GetLastError
+_belegt = set()
+_w.user32.RegisterHotKey = lambda hwnd, hid, mods, vk: 0 if vk in _belegt else 1
+_w.kernel32.GetLastError = lambda: _w.ERROR_HOTKEY_ALREADY_REGISTERED
+
+_belegt = {_w.VK_M}
+_ok1 = _w.register_hotkeys()
+check("belegte Wunschtaste -> Ausweichtaste, Lauf bleibt erfolgreich", _ok1 is True)
+check("Ausweichtaste ist CTRL+ALT+D",
+      _w.REGISTERED_HOTKEYS.get(_w.HOTKEY_STEP_MODE, "").startswith("CTRL+ALT+D"))
+
+_belegt = {_w.VK_M, _w.VK_D, _w.VK_Y, _w.VK_R}
+_ok2 = _w.register_hotkeys()
+check("alle Kandidaten belegt -> meldet Fehlschlag", _ok2 is False)
+check("nicht registrierter Hotkey taucht nicht als registriert auf",
+      _w.HOTKEY_STEP_MODE not in _w.REGISTERED_HOTKEYS)
+
+_belegt = set()
+_w.register_hotkeys()
+check("nichts belegt -> Wunschtaste CTRL+ALT+M",
+      _w.REGISTERED_HOTKEYS.get(_w.HOTKEY_STEP_MODE, "").startswith("CTRL+ALT+M"))
+check("Hotkeys ohne Fallback bleiben unveraendert",
+      _w.REGISTERED_HOTKEYS.get(_w.HOTKEY_TOGGLE, "").startswith("CTRL+ALT+S"))
+
+_w.user32.RegisterHotKey, _w.kernel32.GetLastError = _orig_reg, _orig_err
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

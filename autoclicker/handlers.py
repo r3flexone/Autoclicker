@@ -235,7 +235,11 @@ def handle_load(state: AutoClickerState) -> None:
 
 
 def handle_step_mode(state: AutoClickerState) -> None:
-    """Schaltet den manuellen Modus um (CTRL+ALT+M).
+    """Schaltet den manuellen Modus um.
+
+    Erreichbar per Hotkey UND über das Punkte-Menü (CTRL+ALT+P -> 'manuell'). Der
+    Menü-Weg ist der verlässliche: CTRL+ALT+<Buchstabe> ist auf Windows häufig von
+    anderen Programmen belegt, dann greift der Hotkey nicht.
 
     Läuft gerade eine Sequenz, greift die Umschaltung ab dem nächsten Schritt - man kann
     also mitten im Lauf auf manuell gehen, wenn etwas nicht stimmt, und danach mit 'c'
@@ -254,6 +258,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
               f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
         if not laeuft:
             print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
+            print(f"           {hint('Menü hier schließen (Enter), dann die Sequenz starten.')}")
     else:
         print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
 
@@ -283,6 +288,7 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('walk / w', 'yellow')}    - alle Punkte einzeln durchgehen (Maus springt hin, Taste = weiter)")
+    print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -297,6 +303,12 @@ def handle_show(state: AutoClickerState) -> None:
             if user_input.lower() in ("walk", "w"):
                 from .runtime.debug import walk_points
                 walk_points(state)
+                continue
+
+            if user_input.lower() in ("manuell", "m"):
+                # Bewusst auch hier und nicht nur als Hotkey: CTRL+ALT+<Buchstabe> ist
+                # auf Windows oft von anderen Programmen belegt.
+                handle_step_mode(state)
                 continue
 
             if user_input.lower() in ("list", "l"):

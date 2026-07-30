@@ -1396,8 +1396,11 @@ andere, und **keine verändert den Ablauf**:
 - `debug_log` = alles ausgeben, nichts überschreiben
 - `debug_detail` = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort passiert
 
-**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config, sondern per
-`CTRL+ALT+M` umschaltbar — auch mitten im Lauf:
+**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config, sondern zur
+Laufzeit umschaltbar — **im Punkte-Menü** (`CTRL+ALT+P` → `manuell`) oder per Hotkey
+`CTRL+ALT+M`. Ist die Tastenkombination von einem anderen Programm belegt, weicht der
+Start automatisch auf `CTRL+ALT+D`, `+Y` oder `+R` aus und sagt welche es wurde — und
+über das Menü geht es ohnehin immer:
 
 - Wartezeiten werden übersprungen
 - vor jedem Schritt springt der Zeiger auf das Ziel und es wird gewartet

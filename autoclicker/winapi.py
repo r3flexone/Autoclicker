@@ -61,6 +61,8 @@ VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
 VK_M = 0x4D  # Manueller Modus (Schritt fuer Schritt)
+VK_D = 0x44  # Ausweichtaste manueller Modus (Durchgehen)
+VK_Y = 0x59  # Ausweichtaste manueller Modus
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -534,21 +536,56 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_STEP_MODE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Manueller Modus)"),
 ]
 
+# Ausweichtasten, falls die Wunschtaste schon von einem anderen Programm belegt ist.
+# CTRL+ALT+<Buchstabe> ist auf Windows haeufig vergeben (Grafiktreiber, Office,
+# Tastatur-Layouts) - ohne Alternative faellt der Hotkey sonst einfach aus.
+_HOTKEY_FALLBACKS = {
+    HOTKEY_STEP_MODE: [
+        (VK_D, "CTRL+ALT+D (Manueller Modus)"),
+        (VK_Y, "CTRL+ALT+Y (Manueller Modus)"),
+        (VK_R, "CTRL+ALT+R (Manueller Modus)"),
+    ],
+}
+
+# Was am Ende WIRKLICH registriert wurde: hotkey_id -> Anzeigename. Der Hilfetext liest
+# hier, damit er nicht eine Taste nennt, die gar nicht greift.
+REGISTERED_HOTKEYS: dict[int, str] = {}
+
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
 ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 
 def register_hotkeys() -> bool:
-    """Registriert alle globalen Hotkeys."""
+    """Registriert alle globalen Hotkeys.
+
+    Ist eine Wunschtaste belegt, werden die in _HOTKEY_FALLBACKS hinterlegten
+    Alternativen probiert - erst wenn auch die scheitern, gilt der Hotkey als
+    fehlgeschlagen. Was tatsaechlich registriert wurde, steht danach in
+    REGISTERED_HOTKEYS und wird vom Hilfetext gelesen.
+    """
     success = True
+    REGISTERED_HOTKEYS.clear()
+
     for hotkey_id, modifiers, vk, name in _HOTKEY_DEFINITIONS:
-        if not user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
-            error_code = kernel32.GetLastError()
-            print(warn(f"Konnte Hotkey nicht registrieren: {name} (Fehlercode {error_code})"))
-            if error_code == ERROR_HOTKEY_ALREADY_REGISTERED:
-                combo = name.split(" ", 1)[0]
-                print(warn(f"  {combo}: Tastenkombination ist bereits von einem anderen Programm belegt."))
+        kandidaten = [(vk, name)] + _HOTKEY_FALLBACKS.get(hotkey_id, [])
+        letzter_fehler = 0
+        vergeben = []
+
+        for kandidat_vk, kandidat_name in kandidaten:
+            if user32.RegisterHotKey(None, hotkey_id, modifiers, kandidat_vk):
+                REGISTERED_HOTKEYS[hotkey_id] = kandidat_name
+                if vergeben:
+                    print(warn(f"{vergeben[0]} war belegt - benutze stattdessen "
+                               f"{kandidat_name.split(' ', 1)[0]}"))
+                break
+            letzter_fehler = kernel32.GetLastError()
+            vergeben.append(kandidat_name.split(" ", 1)[0])
+        else:
+            print(warn(f"Konnte Hotkey nicht registrieren: {name} (Fehlercode {letzter_fehler})"))
+            if letzter_fehler == ERROR_HOTKEY_ALREADY_REGISTERED:
+                print(warn(f"  {' / '.join(vergeben)}: bereits von einem anderen Programm belegt."))
             success = False
+
     return success
 
 
@@ -565,6 +602,10 @@ def flush_hotkey_messages() -> None:
 
 
 def unregister_hotkeys() -> None:
-    """Deregistriert alle globalen Hotkeys."""
+    """Deregistriert alle globalen Hotkeys.
+
+    UnregisterHotKey arbeitet ueber die Hotkey-ID, nicht ueber die Taste - eine per
+    Fallback vergebene Alternative wird dadurch mit abgeraeumt.
+    """
     for hotkey_id, _, _, _ in _HOTKEY_DEFINITIONS:
         user32.UnregisterHotKey(None, hotkey_id)
