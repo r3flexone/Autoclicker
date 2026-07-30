@@ -238,6 +238,24 @@ wird.)
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.
 
+**`else` ist ein *stattdessen*, kein *zusätzlich*.** Greift die else-Aktion, entfällt die
+eigene Aktion des Schritts — so steht es in der Editor-Hilfe (`else skip` = „nur DIESEN
+Schritt überspringen", `else <Punkt-Nr>` = „**stattdessen** diesen Punkt klicken").
+
+Damit das durchsetzbar ist, reicht ein bool nicht: er kann „Schritt erledigt, weiter zum
+nächsten" nicht von „Sequenz abbrechen" unterscheiden. Beides als `False` zu melden riss
+den Rest der Phase mit ab, beides als `True` ließ den Schritt nach der else-Aktion noch
+sein eigenes Ziel klicken. Deshalb geben Vorab-Entscheidungen über einen Schritt
+`GATE_RUN` / `GATE_SKIP` / `GATE_STOP` zurück (Konstanten in `runtime/debug.py`,
+genutzt von `step_gate` und `_execute_wait_for_color`).
+
+Regel beim Erweitern: **wer eine else-Aktion auslöst, gibt `GATE_SKIP` zurück** — nie
+`GATE_RUN` und nie stumpf `True`. Die Übersetzung macht `_gate_nach_else()`; nur
+`restart`/`skip_cycle` werden zu `GATE_STOP`. Step-Handler, die die else-Aktion als
+Letztes tun und danach nichts mehr ausführen (Item-/Boss-/Icon-Scan), dürfen weiterhin
+`return execute_else_action(...)` — dort gibt es keine nachgelagerte eigene Aktion, die
+irrtümlich noch feuern könnte.
+
 ### Boss-Scan vs. Boss-Watcher
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.
 - **Boss-Watcher**: Schleife im Step, prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird (mit `llm_watcher_max_scans` und `llm_watcher_timeout` als Exit-Bedingungen). Erst dann `_execute_boss_action`.
