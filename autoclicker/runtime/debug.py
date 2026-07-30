@@ -10,8 +10,15 @@ getrennt schaltbar waren:
                            und es wird ausgeschrieben, WAS dort passieren soll - inklusive
                            Farbquadrat bei Farb-Bedingungen. Läuft weiter durch.
 
-Beide sind UNABHÄNGIG: jede Kombination ist erlaubt, keiner impliziert den anderen.
-Nur Ausgabe, nie Ablauf - eine Sequenz läuft mit beiden Flags genauso wie ohne.
+Beide sind getrennt schaltbar, jede Kombination ist erlaubt. Eine Abhängigkeit gibt es
+technisch: Stufe 2 gibt mehrzeilig aus, damit ist die überschreibbare Status-Zeile aus
+Stufe 1 nicht mehr möglich - sie würde von der nächsten Zeile überklebt. Stufe 2 zieht
+die persistente Ausgabe deshalb mit, umgekehrt gilt das nicht.
+
+Beide betreffen NUR die Ausgabe, nie den Ablauf - eine Sequenz läuft mit beiden Flags
+genauso wie ohne. Und keine Information wird zweimal ausgegeben: ist Stufe 2 an, entfällt
+die Ankündigungszeile von Stufe 1 und die Ergebnis-Zeile schrumpft auf das, was die
+Kopfzeile nicht schon gesagt hat.
 
 3. Manueller Modus (Laufzeit, KEINE Config)
                            state.step_mode - im Punkte-Menü umschaltbar ('manuell').
@@ -49,11 +56,13 @@ _KEYS_STOP = ("q", "escape")
 def is_log_debug(state: AutoClickerState) -> bool:
     """Stufe 1: persistente Ausgabe statt überschreibbarer Status-Zeile.
 
-    Der manuelle Modus erzwingt das zusätzlich - nicht als Kopplung der beiden
-    Config-Stufen, sondern weil eine sich selbst überschreibende Status-Zeile den
-    Bestätigungs-Prompt zerschießen würde.
+    Detail-Stufe und manueller Modus erzwingen das zusätzlich. Das ist KEINE Kopplung der
+    Schalter, sondern eine Frage der Darstellung: eine Status-Zeile ohne Zeilenumbruch
+    (`end=""`) wird von der nächsten Ausgabe überschrieben bzw. die nächste Zeile klebt
+    hinten dran ("... Gesamt: 14── [Loop] Schritt 15"). Sobald oberhalb mehrzeilig
+    ausgegeben wird, muss die Status-Zeile eine echte Zeile sein.
     """
-    return state.config.debug_log or is_step_mode(state)
+    return state.config.debug_log or is_detail_debug(state) or is_step_mode(state)
 
 
 def is_detail_debug(state: AutoClickerState) -> bool:
@@ -160,8 +169,10 @@ def print_step_detail(state: AutoClickerState, step: SequenceStep, phase: str,
     Blockiert nicht - der Lauf geht danach normal weiter."""
     if not is_detail_debug(state):
         return
-    print(col(f"── [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}", "cyan"))
-    print(col(f"   {describe_step(step)}", "gray"))
+    # Kopf und Beschreibung in EINER Zeile: getrennt sagten sie bei einem einfachen Klick
+    # zweimal dasselbe. Zusatzzeilen kommen nur, wenn es wirklich mehr zu sagen gibt.
+    print(col(f"── [{phase}] Schritt {step_num}/{total_steps}  {step_label(step)}"
+              f"  →  {describe_step(step)}", "cyan"))
 
     wc = step.wait_condition
     if wc is not None:
@@ -175,8 +186,9 @@ def print_step_detail(state: AutoClickerState, step: SequenceStep, phase: str,
     ziel = target_of(step)
     if ziel is not None:
         # Im manuellen Modus setzt step_gate() den Zeiger - nicht doppelt springen.
+        # Ohne Label: die Koordinaten stehen schon in der Kopfzeile.
         if not is_step_mode(state):
-            show_point(state, ziel[0], ziel[1], ziel[2])
+            show_point(state, ziel[0], ziel[1])
 
 
 # ---------------------------------------------------------------------------

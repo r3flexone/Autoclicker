@@ -28,7 +28,7 @@ from .actions import (
     wait_with_pause_skip, execute_else_action,
 )
 from .debug import (
-    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_step_mode,
+    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_detail_debug, is_step_mode,
     print_step_detail, show_point, skip_waits, step_gate, step_label,
 )
 from .boss_detection import (
@@ -614,9 +614,15 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
             limit_reached = bool(max_clicks) and total_now >= max_clicks
 
         name = step.name or "Punkt"
+        # In Detail-Stufe steht Name und Ziel schon in der Kopfzeile darüber - die
+        # Ergebnis-Zeile trägt dann nur noch bei, DASS geklickt wurde, und den Zähler.
+        if is_detail_debug(state):
+            ergebnis = f"geklickt | Gesamt: {total_now}"
+        else:
+            ergebnis = f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}"
         _step_status(debug, phase, step_num, total_steps,
                      f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {total_now}",
-                     f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}")
+                     ergebnis)
 
         if limit_reached:
             print(f"\n{info(f'Maximum von {max_clicks} Klicks erreicht.')}")
@@ -674,7 +680,9 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         state.stop_event.set()
         return False
 
-    if is_verbose_debug(state):
+    # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
+    # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.
+    if is_verbose_debug(state) and not is_detail_debug(state):
         print(dbg(f"Step {step_num}: {step_label(step)}, x={step.x}, y={step.y}"))
 
     # Stufe 2: ausschreiben was kommt + Zeiger hinsetzen (blockiert nicht).

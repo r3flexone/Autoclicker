@@ -106,11 +106,13 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DEBUG-EINSTELLUNGEN ===
-    # Zwei UNABHÄNGIGE Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
+    # Zwei getrennt schaltbare Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
     # Keine der beiden verändert den Ablauf - nur wie viel du zu sehen bekommst.
     #   debug_log    = alles ausgeben, nichts überschreiben
     #   debug_detail = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort
     #                  passieren soll (mit Farbquadrat bei Farb-Bedingungen)
+    # debug_detail gibt mehrzeilig aus und zieht die persistente Ausgabe damit zwangsläufig
+    # mit - eine Status-Zeile, die sich selbst überschreibt, wäre sonst überklebt.
     # Der MANUELLE Modus (Schritt für Schritt auf Bestätigung) ist bewusst KEINE Config,
     # sondern Laufzeit-Zustand: Punkte-Menü (CTRL+ALT+P) -> 'manuell'.
     debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe

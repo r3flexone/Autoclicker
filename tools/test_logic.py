@@ -341,14 +341,24 @@ from autoclicker.models import WaitCondition as _WC
 
 _st = AutoClickerState()
 
-# Die zwei Config-Stufen aendern NUR die Ausgabe, nie den Ablauf
-_unabhaengig = True
+# Die zwei Config-Stufen aendern NUR die Ausgabe, nie den Ablauf.
+# is_detail_debug haengt ausschliesslich an debug_detail - das ist die Unabhaengigkeit.
+# is_log_debug ist dagegen eine Darstellungsfrage: sobald mehrzeilig ausgegeben wird,
+# darf die Status-Zeile nicht mehr die ueberschreibbare Variante ohne \n sein.
+_detail_unabhaengig = True
+_zeilen_ok = True
 for _l, _d in ((True, False), (False, True), (True, True), (False, False)):
     _st.config.debug_log, _st.config.debug_detail, _st.step_mode = _l, _d, False
-    if not (_dbg.is_log_debug(_st) is _l and _dbg.is_detail_debug(_st) is _d
-            and _dbg.skip_waits(_st) is False):
-        _unabhaengig = False
-check("Ausgabe-Stufen in jeder Kombination unabhaengig", _unabhaengig)
+    if _dbg.is_detail_debug(_st) is not _d or _dbg.skip_waits(_st) is not False:
+        _detail_unabhaengig = False
+    if _dbg.is_log_debug(_st) is not (_l or _d):
+        _zeilen_ok = False
+check("Detail-Stufe haengt nur an ihrem eigenen Flag", _detail_unabhaengig)
+check("Detail-Stufe erzwingt echte Zeilen statt Ueberschreiben", _zeilen_ok)
+
+# Ohne beide Flags bleibt die ueberschreibbare Status-Zeile
+_st.config.debug_log = _st.config.debug_detail = False
+check("ohne Flags: ueberschreibbare Status-Zeile", _dbg.is_log_debug(_st) is False)
 check("Ausgabe-Stufen ueberspringen KEINE Wartezeiten", _dbg.skip_waits(_st) is False)
 
 # Manueller Modus: eigenstaendig, haengt an keinem Config-Flag
@@ -385,6 +395,35 @@ check("Zielpunkt Farbe = Pruef-Pixel", _dbg.target_of(SequenceStep(
     wait_condition=_WC(pixel=(77, 88), color=(1, 2, 3))))[:2] == (77, 88))
 check("Zielpunkt Tastendruck = keiner", _dbg.target_of(
     SequenceStep(x=0, y=0, delay_before=0, key_press="enter")) is None)
+
+# Detail-Stufe: EINE Kopfzeile pro Klick-Schritt. Vorher waren es drei Zeilen, die alle
+# dasselbe sagten (Kopf, Beschreibung, "Zeiger auf ...") - plus die Status-Zeile danach.
+import io as _io, contextlib as _ctx
+_st.config.debug_detail = True
+_st.config.pixel_show_delay = 0
+_st.step_mode = False
+
+
+def _detail_zeilen(step):
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        _dbg.print_step_detail(_st, step, "LOOP", 15, 67)
+    return [z for z in buf.getvalue().splitlines() if z.strip()]
+
+
+_zeilen = _detail_zeilen(SequenceStep(x=10, y=20, delay_before=0, name="Klick 15"))
+check("Detail: Klick-Schritt belegt genau eine Zeile", len(_zeilen) == 1)
+check("Detail: Zeile nennt Schritt, Name und Ziel",
+      "15/67" in _zeilen[0] and "Klick 15" in _zeilen[0] and "(10, 20)" in _zeilen[0])
+
+# Nur wo es wirklich mehr zu sagen gibt, kommen Zusatzzeilen dazu
+_zeilen_farbe = _detail_zeilen(SequenceStep(
+    x=10, y=20, delay_before=0, name="Farbschritt",
+    wait_condition=_WC(pixel=(77, 88), color=(10, 20, 30))))
+check("Detail: Farb-Bedingung ergaenzt Zeilen", len(_zeilen_farbe) > 1)
+check("Detail: Farb-Bedingung nennt den Pruef-Pixel",
+      any("77" in z and "88" in z for z in _zeilen_farbe))
+_st.config.debug_detail = False
 
 # ---------------------------------------- Punkt-Referenzen (verrutschtes Fenster)
 section("Punkt-Referenzen: Schritte folgen dem Punkte-Pool")
