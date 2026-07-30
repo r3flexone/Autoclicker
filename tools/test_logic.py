@@ -1081,6 +1081,54 @@ check("Datei enthaelt nur Namen, keine Kopien",
       and "slots" not in _gespeichert and "items" not in _gespeichert)
 
 
+# ------------------------------------------------------- Setup-Pruefung
+section("Setup-Pruefung findet die stillen Fehler")
+from autoclicker.diagnose import pruefe_setup, STUFE_FEHLER, STUFE_HINWEIS
+from autoclicker.models import (BossProfile as _BP2, BossScanConfig as _BSC2,
+                                IconScanConfig as _ISC4)
+
+_st6 = _ACS()
+_st6.global_slots = {"S1": _IS3("S1", (0, 0, 10, 10), (5, 5))}
+_st6.global_items = {
+    "MitTemplate": _IP3("MitTemplate", template="gibtsnicht.png"),
+    "OhneAlles": _IP3("OhneAlles"),
+}
+_st6.item_scans = {
+    "inv": _ISC3(name="inv", slot_names=["S1", "FEHLT"], item_names=["MitTemplate"]),
+    "leer": _ISC3(name="leer"),
+}
+_st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True)}
+_st6.icon_scans = {"ico": _ISC4(name="ico")}
+
+_ber = pruefe_setup(_st6, mit_sequenzen=False)
+_texte = [f"{b.bereich}: {b.text}" for b in _ber.befunde]
+
+
+def _hat(teil):
+    return any(teil in t for t in _texte)
+
+
+check("fehlendes Template wird gefunden", _hat("gibtsnicht.png"))
+check("Boss ohne Template UND ohne Marker wird gefunden",
+      _hat("Hydra") and _hat("wird nie erkannt"))
+check("Icon-Scan ohne Erkennung wird gefunden", _hat("Icon-Scan 'ico'"))
+check("fehlender Slot im Scan wird gefunden", _hat("FEHLT"))
+check("Scan ganz ohne Slot wird gefunden", _hat("kein einziger Slot"))
+check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
+check("Fehler und Hinweise sind getrennt",
+      len(_ber.fehler) >= 4 and len(_ber.hinweise) >= 2
+      and all(b.stufe in (STUFE_FEHLER, STUFE_HINWEIS) for b in _ber.befunde))
+
+# Ein sauberes Setup darf NICHTS melden - sonst gewoehnt man sich das Ignorieren an
+_st7 = _ACS()
+_st7.global_slots = {"S1": _IS3("S1", (0, 0, 10, 10), (5, 5))}
+_st7.global_items = {"Kohle": _IP3("Kohle", marker_colors=[(1, 2, 3)])}
+_st7.item_scans = {"inv": _ISC3(name="inv", slot_names=["S1"], item_names=["Kohle"])}
+_sauber = pruefe_setup(_st7, mit_sequenzen=False)
+check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
+check("trotzdem steht da, was geprueft wurde", len(_sauber.geprueft) >= 3)
+
+
 # ------------------------------------------------------- Template-Cache
 section("Template-Cache: einmal lesen, bei Aenderung neu")
 from autoclicker import imaging as _img

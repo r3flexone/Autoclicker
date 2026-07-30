@@ -321,6 +321,7 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
     print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
     print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
+    print(f"  {col('check', 'yellow')}       - Setup prüfen (fehlende Templates, tote Verweise, leere Scans)")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -343,6 +344,11 @@ def handle_show(state: AutoClickerState) -> None:
 
             if user_input.lower() in ("log", "detail"):
                 handle_debug_toggle(state, user_input.lower())
+                continue
+
+            if user_input.lower() in ("check", "pruefen", "prüfen"):
+                from .diagnose import pruefe_setup, print_bericht
+                print_bericht(pruefe_setup(state))
                 continue
 
             if user_input.lower() in ("list", "l"):

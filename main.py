@@ -36,6 +36,7 @@ from autoclicker.persistence import (
     load_points, load_global_slots, load_global_items, load_all_item_scans,
     load_all_boss_scans, load_all_icon_scans, load_global_bosses
 )
+from autoclicker.diagnose import check_beim_start
 from autoclicker.execution import print_status
 from autoclicker.utils import col, info, warn, hint
 from autoclicker.handlers import (
@@ -73,7 +74,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: walk, manuell = Schritt-Modus, log/detail = Debug-Stufen)')}")
+          f"{hint('(dort auch: check = Setup prüfen, walk, manuell, log/detail)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()
@@ -152,6 +153,11 @@ def main() -> int:
     load_all_boss_scans(state)
     load_global_bosses(state)
     load_all_icon_scans(state)
+
+    # Setup pruefen - meldet nur, wenn etwas nicht stimmt (Sequenzdateien bleiben
+    # aussen vor, das waere beim Start eine Bremse; die volle Pruefung liegt auf
+    # CTRL+ALT+P -> check).
+    check_beim_start(state)
 
     # Hotkeys registrieren
     if not register_hotkeys():
