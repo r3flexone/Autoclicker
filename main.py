@@ -32,7 +32,7 @@ from autoclicker.winapi import (
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
 from autoclicker.persistence import (
-    ensure_sequences_dir, ensure_item_scans_dir, init_directories,
+    ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
     load_points, load_global_slots, load_global_items, load_all_item_scans,
     load_all_boss_scans, load_all_icon_scans, load_global_bosses
 )
@@ -138,6 +138,11 @@ def main() -> int:
     ensure_sequences_dir()
     ensure_item_scans_dir()
     init_directories()
+
+    # Alle JSON-Dateien aufs aktuelle Format heben - VOR dem Laden, damit der Rest des
+    # Starts schon die aufgeraeumten Dateien liest. Meldet nur, wenn es etwas zu tun gab.
+    if state.config.migrate_on_start:
+        sweep_beim_start()
 
     # Gespeicherte Daten laden
     load_points(state)

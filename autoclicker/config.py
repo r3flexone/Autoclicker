@@ -105,6 +105,12 @@ class AppConfig:
     # === TIMING ===
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
+    # === DATEIEN ===
+    # Beim Start alle JSON-Dateien aufs aktuelle Format heben (persistence/sweep.py).
+    # Nur ausschalten, wenn man Altbestand absichtlich einfrieren will - dann hebt
+    # tools/migrate.py von Hand.
+    migrate_on_start: bool = True
+
     # === DEBUG-EINSTELLUNGEN ===
     # Zwei getrennt schaltbare Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
     # Keine der beiden verändert den Ablauf - nur wie viel du zu sehen bekommst.
@@ -359,6 +365,9 @@ _CONFIG_SECTIONS = [
     ]),
     ("TIMING", [
         "timing_pause_interval",
+    ]),
+    ("DATEIEN", [
+        "migrate_on_start",
     ]),
     ("DEBUG", [
         "debug_log", "debug_detail",

@@ -704,6 +704,66 @@ check("Umbenennen hebt dabei auch das Altformat",
       _nach_rename["items"][0]["confirm_point"] == {"x": 3, "y": 4})
 
 
+# ------------------------------------------- Start-Durchgang (persistence/sweep)
+section("Start-Durchgang: alle Dateien beim Programmstart aufs aktuelle Format")
+import os as _os
+from autoclicker.persistence.sweep import sweep as _sweep, sammle_dateien as _sammle
+
+_sw = Path(tempfile.mkdtemp())
+for _d in ("sequences", "items/presets", "slots/presets", "item_scans",
+           "boss_scans/global", "icon_scans"):
+    (_sw / _d).mkdir(parents=True, exist_ok=True)
+(_sw / "sequences/points.json").write_text(json.dumps(
+    [{"id": 1, "x": 100, "y": 200, "name": "A"},
+     {"x": 300, "y": 400, "name": "B", "legacy_flag": True}]), encoding="utf-8")
+(_sw / "sequences/alt.json").write_text(json.dumps(
+    {"name": "alt", "steps": [{"x": 300, "y": 400, "name": "E", "delay_before": 1,
+                               "clicks": 2, "point_index": 0}]}), encoding="utf-8")
+(_sw / "items/items.json").write_text(json.dumps(
+    {"K": {"name": "K", "marker_colors": [], "confirm_point": [5, 6], "uralt": 1}}),
+    encoding="utf-8")
+(_sw / "item_scans/kaputt.json").write_text("{ kein json", encoding="utf-8")
+
+_cwd = _os.getcwd()
+try:
+    _os.chdir(_sw)
+    check("Sweep findet alle angelegten Dateien", len(_sammle()) == 4)
+
+    _e1 = _sweep(write=True)
+    check("Sweep hebt die Altbestaende", _e1.anzahl_geaendert == 3)
+    check("Sweep meldet 'es gab was zu tun'", bool(_e1) is True)
+    check("kaputte Datei wird uebersprungen, nicht geschrieben",
+          len(_e1.uebersprungen) == 1 and _e1.uebersprungen[0].name == "kaputt.json")
+    check("kaputte Datei bleibt unveraendert",
+          (_sw / "item_scans/kaputt.json").read_text(encoding="utf-8") == "{ kein json")
+    check("Sicherung angelegt", (_sw / "sequences/alt.json.bak").exists())
+
+    # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
+    _e2 = _sweep(write=True)
+    check("zweiter Durchgang aendert nichts mehr", _e2.anzahl_geaendert == 0)
+    check("zweiter Durchgang zaehlt alles als aktuell", _e2.aktuell == 3)
+
+    # Ergebnis pruefen: Inhalt gehoben, Sequenz funktionsfaehig
+    _pts = json.loads((_sw / "sequences/points.json").read_text(encoding="utf-8"))
+    check("Start-Durchgang nummeriert Punkte", [p["id"] for p in _pts] == [1, 2])
+    _sq = json.loads((_sw / "sequences/alt.json").read_text(encoding="utf-8"))
+    check("Start-Durchgang stempelt die Sequenz-Version",
+          _sq.get("schema_version") == _mg.SCHEMA_VERSION)
+    check("Start-Durchgang verknuepft den Schritt mit seinem Punkt",
+          _sq["loop_phases"][0]["steps"][0]["point_id"] == 2)
+    check("Start-Durchgang entfernt tote Schritt-Felder",
+          "clicks" not in _sq["loop_phases"][0]["steps"][0])
+    _it = json.loads((_sw / "items/items.json").read_text(encoding="utf-8"))["K"]
+    check("Start-Durchgang hebt confirm_point", _it["confirm_point"] == {"x": 5, "y": 6})
+    check("Start-Durchgang entfernt totes Item-Feld", "uralt" not in _it)
+finally:
+    _os.chdir(_cwd)
+
+# Abschaltbar, falls man Altbestand einfrieren will
+check("migrate_on_start ist ein Config-Feld mit Default an",
+      AppConfig().migrate_on_start is True)
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

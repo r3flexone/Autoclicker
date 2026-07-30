@@ -12,7 +12,8 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
-python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Schema (--write zum Schreiben)
+python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
+                                # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
 python tools/sync_json.py       # Feld-für-Feld-Nachpflege (ältere Dateitypen)
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
@@ -128,13 +129,24 @@ Regeln beim Format-Ändern:
 3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
 4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
 
-`tools/migrate.py` erfasst **alle** JSON-Dateien der App (config, points, sequences,
-item/boss/icon-Scans, globale Bosse, items, slots, beide Preset-Ordner) und macht zwei
-Dinge pro Datei: Migration/Normalisierung **und** einen Round-Trip durch Loader +
-Serializer. Der Round-Trip ist die eigentliche Reinigung — was der Loader nicht kennt,
-schreibt der Serializer nicht zurück. Deshalb werden auch Dateitypen ohne jeden
-Migrationsschritt sauber. Zweiter Lauf muss „0 angepasst" melden; tut er das nicht, ist
-ein Schritt nicht idempotent.
+**Der Durchgang läuft beim Programmstart**, nicht beim Speichern: `persistence/sweep.py`,
+aufgerufen in `main.py` nach `init_directories()` und vor dem Laden (abschaltbar über
+`migrate_on_start`). Speichern schreibt sowieso aktuelles Format — das Problem sind
+Dateien, die man *nicht* anfasst. Nach dem ersten Start mit einer neuen Version sind alle
+Dateien aktuell, und der Migrationsschritt darf gelöscht werden. Genau so schrumpft das
+Modul.
+
+`sweep.py` erfasst **alle** JSON-Dateien (config, points, sequences, item/boss/icon-Scans,
+globale Bosse, items, slots, beide Preset-Ordner) und macht zwei Dinge pro Datei:
+Migration/Normalisierung **und** einen Round-Trip durch Loader + Serializer. Der
+Round-Trip ist die eigentliche Reinigung — was der Loader nicht kennt, schreibt der
+Serializer nicht zurück. Deshalb werden auch Dateitypen ohne jeden Migrationsschritt
+sauber. `tools/migrate.py` ist nur noch die CLI über derselben Funktion.
+
+Zwei Regeln für den Start-Durchgang: **still, wenn nichts zu tun ist** (Normalfall — kein
+Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladbare Dateien
+bleiben unangetastet). Zweiter Start muss „0 geändert" ergeben; tut er das nicht, ist ein
+Schritt nicht idempotent.
 
 Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
 default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.

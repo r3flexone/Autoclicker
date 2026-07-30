@@ -11,6 +11,8 @@ Modul-Aufteilung:
     presets.py        Slot- und Item-Presets
     migration.py      Schema-Versionierung + Normalisierer (die EINE Schleuse fuer
                       Altformate - Loader lesen nur das aktuelle Format)
+    sweep.py          hebt beim Programmstart ALLE Dateien in einem Durchgang
+                      (gleiche Logik nutzt tools/migrate.py)
 
 Re-exportiert die komplette bisherige API damit `from .persistence import ...`
 in main.py, handlers.py, import_export.py, imaging.py, runtime/, editors/
@@ -27,6 +29,7 @@ from .migration import (
     KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
     file_version, migrate, needs_migration, stamp,
 )
+from .sweep import sweep, sweep_beim_start, SweepErgebnis
 from .icon_scans import (
     ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
     list_available_icon_scans, load_all_icon_scans,
@@ -103,4 +106,6 @@ __all__ = [
     'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_POINTS', 'KIND_SEQUENCE', 'KIND_SLOTS',
     'SCHEMA_VERSION',
     'file_version', 'migrate', 'needs_migration', 'stamp',
+    # sweep
+    'sweep', 'sweep_beim_start', 'SweepErgebnis',
 ]
