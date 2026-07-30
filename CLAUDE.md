@@ -170,7 +170,8 @@ Schritt nicht idempotent.
 
 **Nur gesetzte Felder werden geschrieben.** Jeder Serializer läuft durch
 `_ohne_defaults(daten, tabelle)`; die Tabellen (`_ITEM_DEFAULTS`, `_SLOT_DEFAULTS`,
-`_BOSS_DEFAULTS`, `_BOSS_SCAN_DEFAULTS`, `_ICON_SCAN_DEFAULTS`, `_STEP_DEFAULTS`) **müssen
+`_BOSS_DEFAULTS`, `_BOSS_SCAN_DEFAULTS`, `_ICON_SCAN_DEFAULTS`, `_ITEM_SCAN_DEFAULTS`,
+`_STEP_DEFAULTS`) **müssen
 mit den Dataclass-Defaults übereinstimmen** — sonst verschwindet ein Feld beim Speichern
 und kommt beim Laden mit einem anderen Wert zurück. Ein Test prüft das gegen die
 Dataclasses; beim Ändern eines Defaults immer beide Stellen anfassen.

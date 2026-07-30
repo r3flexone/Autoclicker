@@ -203,6 +203,16 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 # Scans — genutzt von den persistence-Savern UND vom ZIP-Export, damit beide
 # garantiert dasselbe schreiben.
 
+# Als benannte Tabelle wie alle anderen - inline stehende Literale waren der Grund, warum
+# der Item-Scan als einziger Typ nicht vom Drift-Test gegen die Dataclass geprueft wurde.
+_ITEM_SCAN_DEFAULTS = {
+    "color_tolerance": 40,
+    "learn_unknown": False,
+    "slot_names": [],
+    "item_names": [],
+}
+
+
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
     """Serialisiert eine ItemScanConfig zu einem Dict.
 
@@ -218,8 +228,7 @@ def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
         "learn_unknown": config.learn_unknown,
         "slot_names": slot_names,
         "item_names": item_names,
-    }, {"color_tolerance": 40, "learn_unknown": False,
-        "slot_names": [], "item_names": []})
+    }, _ITEM_SCAN_DEFAULTS)
 
 
 _BOSS_SCAN_DEFAULTS = {

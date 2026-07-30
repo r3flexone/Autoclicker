@@ -894,7 +894,8 @@ import dataclasses as _dc
 from autoclicker.persistence import serialization as _ser
 from autoclicker.models import (ItemProfile as _IP, ItemSlot as _IS2,
                                 BossProfile as _BP, BossScanConfig as _BSC,
-                                IconScanConfig as _ISC2, SequenceStep as _SS2)
+                                IconScanConfig as _ISC2, SequenceStep as _SS2,
+                                ItemScanConfig as _ISCFG)
 
 def _dataclass_defaults(cls):
     raus = {}
@@ -914,6 +915,7 @@ _tabellen = [
     ("Boss", _ser._BOSS_DEFAULTS, _BP),
     ("Boss-Scan", _ser._BOSS_SCAN_DEFAULTS, _BSC),
     ("Icon-Scan", _ser._ICON_SCAN_DEFAULTS, _ISC2),
+    ("Item-Scan", _ser._ITEM_SCAN_DEFAULTS, _ISCFG),
     ("Schritt", _ser._STEP_DEFAULTS, _SS2),
 ]
 for _label, _tabelle, _cls in _tabellen:
