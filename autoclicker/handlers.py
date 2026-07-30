@@ -17,7 +17,7 @@ from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
-    save_data, ensure_sequences_dir, list_available_sequences,
+    save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
@@ -79,8 +79,10 @@ def handle_record(state: AutoClickerState) -> None:
         point = ClickPoint(x, y, name, new_id, color=color)
         state.points.append(point)
 
-    # Auto-speichern
-    save_data(state)
+    # Auto-speichern. Bewusst nur die Punkte: save_data() wuerde zusaetzlich alle
+    # Sequenzen aus dem Speicher schreiben und damit Aenderungen ueberbuegeln, die
+    # inzwischen von aussen an der Datei passiert sind (z.B. Node-Editor-Subprozess).
+    save_points(state)
 
     color_str = f"  {describe_color(color)}" if color else ""
     print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
@@ -94,7 +96,7 @@ def handle_undo(state: AutoClickerState) -> None:
 
     if removed is not None:
         print(f"\n{col('[UNDO]', 'yellow')} Punkt entfernt: {removed}")
-        save_data(state)
+        save_points(state)
     else:
         print(f"\n{col('[UNDO]', 'yellow')} Keine Punkte zum Entfernen.")
     print_status(state)
@@ -115,7 +117,7 @@ def handle_clear(state: AutoClickerState) -> None:
         state.points.clear()
         state.active_sequence = None
 
-    save_data(state)
+    save_points(state)
     print(f"\n{ok(f'Alle {count} Punkte gelöscht!')}")
     print_status(state)
 
@@ -376,7 +378,7 @@ def handle_show(state: AutoClickerState) -> None:
                             continue
                         state.points.remove(point_to_del)
                         num_points = len(state.points)
-                    save_data(state)
+                    save_points(state)
                     print(f"{ok(f'Punkt #{del_id} gelöscht: {point_to_del}')}")
                     if num_points == 0:
                         print(info("Keine Punkte mehr vorhanden."))
@@ -406,7 +408,7 @@ def handle_show(state: AutoClickerState) -> None:
                 if new_name:
                     with state.lock:
                         point.name = new_name
-                    save_data(state)
+                    save_points(state)
                     print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
                 else:
                     print(ok(f"Name '{point.name}' beibehalten."))
@@ -416,7 +418,7 @@ def handle_show(state: AutoClickerState) -> None:
                 new_name = parts[1]
                 with state.lock:
                     point.name = new_name
-                save_data(state)
+                save_points(state)
                 print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
 
         except ValueError:
