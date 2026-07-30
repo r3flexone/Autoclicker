@@ -405,7 +405,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     tpl_path.write_bytes(zf.read(name))
                     stats["templates"] += 1
 
-            # Punkte
+            # Punkte. Kollidiert eine importierte ID mit einer lokalen, bekommt der Punkt
+            # eine neue - und id_map merkt sich das, damit die Sequenz-Schritte ihren
+            # point_id nachziehen koennen.
+            id_map: dict[int, int] = {}
             if import_points and "points.json" in names:
                 points_data = json.loads(zf.read("points.json").decode("utf-8"))
                 points_data, _m = migrate(points_data, KIND_POINTS)
@@ -416,7 +419,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     next_id = max(existing_ids) + 1 if existing_ids else 1
                     for p in points_data:
                         x, y = remap_point(p["x"], p["y"], transform)
-                        pid = p.get("id", next_id)
+                        alt_id = p.get("id")
+                        pid = alt_id if alt_id is not None else next_id
                         while pid in existing_ids:
                             pid = next_id
                             next_id += 1
@@ -426,6 +430,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                                                        color=color, source=p.get("source", "")))
                         existing_ids.add(pid)
                         next_id = max(next_id, pid + 1)
+                        if alt_id is not None:
+                            id_map[alt_id] = pid
                         stats["points"] += 1
 
             # Sequenzen
@@ -434,6 +440,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     if name.startswith("sequences/") and name.endswith(".json"):
                         seq_data = json.loads(zf.read(name).decode("utf-8"))
                         _remap_sequence_data(seq_data, transform)
+                        _remap_point_ids(seq_data, id_map, bool(import_points))
                         seq_name = seq_data.get("name", Path(name).stem)
                         safe = sanitize_filename(seq_name)
                         seq_path = Path("sequences") / f"{safe}.json"
@@ -628,25 +635,51 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
         return False, str(e)
 
 
+def _iter_import_steps(seq_data: dict):
+    """Alle Schritt-Dicts einer Sequenz-JSON - egal in welcher Phase sie stehen."""
+    for key in ("init_steps", "end_steps"):
+        for s in seq_data.get(key) or []:
+            yield s
+    for lp in seq_data.get("loop_phases") or []:
+        for s in lp.get("steps") or []:
+            yield s
+
+
 def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
     """Transformiert alle Koordinaten in einer Sequenz-JSON-Struktur (in-place)."""
-    def remap_steps(steps: list) -> None:
-        for s in steps:
-            if s.get("x") is not None or s.get("y") is not None:
-                s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
-            if s.get("wait_pixel"):
-                wp = s["wait_pixel"]
-                s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
-            if s.get("else_x") is not None or s.get("else_y") is not None:
-                s["else_x"], s["else_y"] = remap_point(
-                    s.get("else_x", 0), s.get("else_y", 0), transform)
-            if s.get("screenshot_region"):
-                sr = s["screenshot_region"]
-                s["screenshot_region"] = list(remap_region(tuple(sr), transform))
+    for s in _iter_import_steps(seq_data):
+        if s.get("x") is not None or s.get("y") is not None:
+            s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
+        if s.get("wait_pixel"):
+            wp = s["wait_pixel"]
+            s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
+        if s.get("else_x") is not None or s.get("else_y") is not None:
+            s["else_x"], s["else_y"] = remap_point(
+                s.get("else_x", 0), s.get("else_y", 0), transform)
+        if s.get("screenshot_region"):
+            sr = s["screenshot_region"]
+            s["screenshot_region"] = list(remap_region(tuple(sr), transform))
 
-    for key in ("init_steps", "end_steps"):
-        if key in seq_data:
-            remap_steps(seq_data[key])
-    for lp in seq_data.get("loop_phases", []):
-        if "steps" in lp:
-            remap_steps(lp["steps"])
+
+def _remap_point_ids(seq_data: dict, id_map: dict[int, int],
+                     punkte_importiert: bool) -> None:
+    """Zieht `point_id` der Schritte auf die IDs nach, die die Punkte hier bekommen haben.
+
+    Der Import vergibt einem Punkt eine neue ID, wenn seine alte lokal schon belegt ist.
+    Bleibt der Schritt dann auf der alten ID stehen, zeigt er auf einen FREMDEN lokalen
+    Punkt - und `resolve_point_references()` zieht den Schritt beim naechsten Lauf brav
+    dorthin und meldet das auch noch als Erfolg. Genau deshalb wird hier nachgezogen.
+
+    Ohne Punkt-Import gibt es hier ueberhaupt keine passenden Punkte: dann faellt die
+    Referenz weg und der Schritt bleibt bei seinen (umgerechneten) Koordinaten. Lieber
+    keine Referenz als die falsche - dieselbe Regel wie in der Migration.
+    """
+    for s in _iter_import_steps(seq_data):
+        alt = s.get("point_id")
+        if alt is None:
+            continue
+        neu = id_map.get(alt) if punkte_importiert else None
+        if neu is None:
+            s.pop("point_id", None)
+        elif neu != alt:
+            s["point_id"] = neu

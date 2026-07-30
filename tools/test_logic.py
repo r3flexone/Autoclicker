@@ -936,6 +936,65 @@ check("Datei-Default ist konstant, nicht der Config-Wert",
       _FILE_DEFAULT == 0.8 and _IP(name="x").min_confidence == _FILE_DEFAULT)
 
 
+# ------------------------------------------------------- Import: point_id
+section("Import zieht point_id auf die neu vergebenen Punkt-IDs nach")
+import os as _os, zipfile as _zip
+from autoclicker.import_export import import_bundle as _import_bundle
+from autoclicker.models import AutoClickerState as _ACS, ClickPoint as _CP3
+
+
+def _bundle_bauen(pfad, punkt_id=1, step_point_id=1):
+    """Minimal-Bundle: ein Punkt + eine Sequenz, deren Schritt auf ihn zeigt."""
+    with _zip.ZipFile(pfad, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(
+            {"version": 1, "reference_points": {"point1": [0, 0], "point2": [10, 10]},
+             "contents": {}}))
+        zf.writestr("points.json", json.dumps(
+            [{"id": punkt_id, "x": 500, "y": 500, "name": "Ofen"}]))
+        zf.writestr("sequences/farm.json", json.dumps(
+            {"name": "farm", "schema_version": 2, "init_steps": [], "end_steps": [],
+             "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
+                 {"x": 500, "y": 500, "delay_before": 0, "name": "Ofen",
+                  "point_id": step_point_id}]}]}))
+
+
+_alt_cwd = _os.getcwd()
+_imp_dir = tempfile.mkdtemp()
+try:
+    _os.chdir(_imp_dir)
+    _bundle = Path(_imp_dir) / "b.zip"
+    _bundle_bauen(_bundle)
+
+    # Lokal existiert bereits ein Punkt #1 an GANZ anderer Stelle
+    _st = _ACS()
+    _st.points = [_CP3(50, 50, "Werkbank", 1)]
+    _ok, _msg = _import_bundle(_st, str(_bundle), import_config=False, merge=True)
+
+    _neu = [p for p in _st.points if p.name == "Ofen"]
+    check("importierter Punkt bekommt eine freie ID", bool(_neu) and _neu[0].id != 1)
+
+    _seq = _st.sequences.get("farm")
+    _schritt = _seq.loop_phases[0].steps[0] if _seq else None
+    check("Schritt zeigt auf den importierten Punkt, nicht auf den lokalen",
+          _schritt is not None and _schritt.point_id == _neu[0].id)
+
+    # Gegenprobe: der lokale Punkt darf den Schritt nicht an sich ziehen
+    from autoclicker.persistence import resolve_point_references as _rpr
+    _rpr(_st, _seq)
+    check("Aufloesung landet auf den richtigen Koordinaten",
+          (_schritt.x, _schritt.y) == (500, 500))
+
+    # Ohne Punkt-Import darf keine Referenz stehenbleiben
+    _st2 = _ACS()
+    _st2.points = [_CP3(50, 50, "Werkbank", 1)]
+    _import_bundle(_st2, str(_bundle), import_points=False, import_config=False)
+    _s2 = _st2.sequences["farm"].loop_phases[0].steps[0]
+    check("ohne Punkt-Import faellt die Referenz weg", _s2.point_id is None)
+    check("Koordinaten bleiben erhalten", (_s2.x, _s2.y) == (500, 500))
+finally:
+    _os.chdir(_alt_cwd)
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
