@@ -171,6 +171,11 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
 _template_cache: dict = {}
 _TEMPLATE_CACHE_MAX = 256
 
+# Schon gemeldete Groessen-Konflikte (Template != Slot). Einmal pro Template und
+# Groesse warnen, nicht bei jedem Scan - sonst ist die Konsole nach einer Minute voll
+# und man liest die Meldung nicht mehr.
+_gemeldete_groessen: set = set()
+
 
 def _load_template(template_path: str):
     """Lädt ein Template-Bild (BGR) aus dem Cache oder von Platte. None wenn nicht da.
@@ -285,11 +290,14 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         else:
             # Bei sehr niedrigen Werten: Größen-Mismatch als mögliche Ursache loggen
             if max_val < 0.3 and (tw != iw or th != ih):
-                logger.debug(
-                    f"Template '{template_name}': {max_val:.1%} - "
-                    f"Größen-Mismatch (Template {tw}x{th}, Scan {iw}x{ih}) könnte Ursache sein. "
-                    f"Templates neu erstellen empfohlen."
-                )
+                schluessel = (template_name, tw, th, iw, ih)
+                if schluessel not in _gemeldete_groessen:
+                    _gemeldete_groessen.add(schluessel)
+                    logger.warning(
+                        f"Template '{template_name}' passt nicht zur Scan-Region: "
+                        f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
+                        f"Slot-Region geändert? Template neu aufnehmen."
+                    )
             return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:

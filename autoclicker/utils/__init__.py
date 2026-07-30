@@ -16,7 +16,7 @@ from .console import (
     save_tag, load_tag, delete_tag,
     header, cmd_hint, breadcrumb,
     suggest_command, coord_context,
-    clear_line,
+    clear_line, init_logging,
 )
 from .io import (
     is_cancel, cancel_hint,
@@ -35,7 +35,7 @@ __all__ = [
     'save_tag', 'load_tag', 'delete_tag',
     'header', 'cmd_hint', 'breadcrumb',
     'suggest_command', 'coord_context',
-    'clear_line',
+    'clear_line', 'init_logging',
     # io
     'is_cancel', 'cancel_hint',
     'flush_input_buffer', 'safe_input', 'confirm',

@@ -39,7 +39,7 @@ from autoclicker.persistence import (
 )
 from autoclicker.diagnose import check_beim_start
 from autoclicker.execution import print_status
-from autoclicker.utils import col, info, warn, hint
+from autoclicker.utils import col, info, warn, hint, init_logging
 from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
@@ -168,6 +168,10 @@ def main() -> int:
     # State initialisieren
     state = AutoClickerState()
     state.config = AppConfig.from_dict(CONFIG.to_dict())
+    # Logger-Meldungen sichtbar und im Stil des Programms. DEBUG nur, wenn eine der
+    # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
+    # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.
+    init_logging(state.config.debug_log or state.config.debug_detail)
     main_thread_id = kernel32.GetCurrentThreadId()
 
     # Ordner erstellen
