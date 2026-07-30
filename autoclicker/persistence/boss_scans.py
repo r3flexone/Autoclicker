@@ -9,6 +9,7 @@ from typing import Optional
 
 from ..models import BossScanConfig, AutoClickerState, BOSS_ACTION_SKIP
 from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn
+from .migration import KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, migrate
 from .paths import BOSS_SCANS_DIR
 from .serialization import _boss_profile_to_dict, _boss_profile_from_dict, _boss_scan_to_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
@@ -31,6 +32,7 @@ def load_boss_scan_file(filepath: Path) -> Optional[BossScanConfig]:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_BOSS_SCAN)
 
         bosses = [_boss_profile_from_dict(b) for b in data.get("bosses", [])]
 
@@ -79,6 +81,7 @@ def load_global_bosses(state: AutoClickerState) -> None:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_GLOBAL_BOSSES)
         with state.lock:
             state.global_bosses = [_boss_profile_from_dict(b) for b in data]
             count = len(state.global_bosses)

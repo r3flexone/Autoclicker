@@ -631,6 +631,79 @@ check("jede Umschaltung wird persistiert", len(_gespeichert) == 3)
 _cfgmod.save_config = _orig_save
 
 
+# ------------------------------------- Zusage: jeder Dateityp hat eine Schleuse
+section("Migration greift bei JEDEM Dateityp (Formatwechsel ohne Neuaufnahme)")
+import inspect as _insp
+from autoclicker.persistence import migration as _mg
+
+# 1. Kein Dateityp ohne Eintrag. Faellt hier etwas durch, wuerde eine spaetere
+#    Formataenderung fuer diesen Typ stillschweigend NICHT migriert.
+_ohne = [k for k in _mg.ALL_KINDS if k not in _mg._CHAINS and k not in _mg._NORMALIZER]
+check("jeder Dateityp ist in _CHAINS oder _NORMALIZER registriert", _ohne == [])
+
+# 2. Jeder Loader, der eine dieser Dateien liest, ruft migrate() auf.
+_loader_quellen = {
+    "sequences": "autoclicker/persistence/sequences.py",
+    "globals": "autoclicker/persistence/globals.py",
+    "presets": "autoclicker/persistence/presets.py",
+    "item_scans": "autoclicker/persistence/item_scans.py",
+    "boss_scans": "autoclicker/persistence/boss_scans.py",
+    "icon_scans": "autoclicker/persistence/icon_scans.py",
+}
+_repo = Path(__file__).resolve().parent.parent
+_ohne_aufruf = [name for name, rel in _loader_quellen.items()
+                if "migrate(" not in (_repo / rel).read_text(encoding="utf-8")]
+check("jedes Persistenz-Modul ruft migrate() auf", _ohne_aufruf == [])
+
+# 3. Unbekannter Typ ist ein Programmierfehler, kein stiller No-Op-Pfad:
+#    migrate() laesst die Daten unangetastet, aber ALL_KINDS deckt alles ab (s. 1.)
+check("ALL_KINDS deckt alle KIND_-Konstanten ab",
+      set(_mg.ALL_KINDS) == {v for n, v in vars(_mg).items()
+                             if n.startswith("KIND_") and isinstance(v, str)})
+
+# 4. "Schon neu" heisst: nichts wird angefasst. Fuer JEDEN Typ.
+_aktuell = {
+    _mg.KIND_SEQUENCE: {"schema_version": _mg.SCHEMA_VERSION, "name": "s",
+                        "init_steps": [], "loop_phases": [], "end_steps": []},
+    _mg.KIND_POINTS: [{"id": 1, "x": 1, "y": 2, "name": "P"}],
+    _mg.KIND_ITEMS: {"I": {"name": "I", "confirm_point": {"x": 1, "y": 2}}},
+    _mg.KIND_ITEM_SCAN: {"name": "sc", "items": [{"name": "I", "confirm_point": None}]},
+    _mg.KIND_SLOTS: {"S": {"name": "S", "scan_region": [0, 0, 1, 1], "click_pos": [0, 0]}},
+    _mg.KIND_BOSS_SCAN: {"name": "b", "bosses": []},
+    _mg.KIND_ICON_SCAN: {"name": "i", "scan_region": [0, 0, 1, 1]},
+    _mg.KIND_GLOBAL_BOSSES: [{"name": "Drache"}],
+}
+check("Testdaten decken alle Dateitypen ab", set(_aktuell) == set(_mg.ALL_KINDS))
+_unberuehrt = True
+for _kind, _daten in _aktuell.items():
+    _vorher = json.dumps(_daten, sort_keys=True)
+    _raus, _meld = _mg.migrate(_daten, _kind)
+    # Der Versions-Stempel darf gesetzt werden, der Inhalt nicht wandern.
+    _nachher = json.dumps(_raus, sort_keys=True)
+    if _meld or (_kind != _mg.KIND_SEQUENCE and _vorher != _nachher):
+        _unberuehrt = False
+        print(f"        -> {_kind} wurde angefasst: {_meld}")
+check("aktuelle Daten werden bei keinem Typ veraendert", _unberuehrt)
+
+# 5. Umbenennen ist ein Save-Pfad - der muss genauso reinigen wie der Loader.
+from autoclicker.persistence.item_scans import update_item_in_scans as _uiis
+import autoclicker.persistence.item_scans as _ismod
+_scandir = Path(tempfile.mkdtemp())
+(_scandir / "alt.json").write_text(json.dumps({
+    "name": "alt", "slots": [],
+    "items": [{"name": "Kohle", "marker_colors": [], "confirm_point": [3, 4]}]}),
+    encoding="utf-8")
+_orig_dir = _ismod.ITEM_SCANS_DIR
+_ismod.ITEM_SCANS_DIR = str(_scandir)
+_uiis("Kohle", "Steinkohle")
+_ismod.ITEM_SCANS_DIR = _orig_dir
+_nach_rename = json.loads((_scandir / "alt.json").read_text(encoding="utf-8"))
+check("Umbenennen schreibt den neuen Namen",
+      _nach_rename["items"][0]["name"] == "Steinkohle")
+check("Umbenennen hebt dabei auch das Altformat",
+      _nach_rename["items"][0]["confirm_point"] == {"x": 3, "y": 4})
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

@@ -40,7 +40,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from autoclicker.persistence.migration import (  # noqa: E402
-    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, SCHEMA_VERSION,
+    KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, KIND_ICON_SCAN, KIND_ITEMS, KIND_ITEM_SCAN,
+    KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
     file_version, migrate, stamp,
 )
 from autoclicker.persistence import serialization as ser  # noqa: E402
@@ -153,8 +154,8 @@ def _sammle() -> list[tuple[Path, str, object]]:
 
     for ordner, kind, rt in (
         ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
-        ("boss_scans", "boss_scan", _rt_boss_scan),
-        ("icon_scans", "icon_scan", _rt_icon_scan),
+        ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
+        ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
     ):
         d = ROOT / ordner
         if d.exists():
@@ -163,18 +164,18 @@ def _sammle() -> list[tuple[Path, str, object]]:
 
     gb = ROOT / "boss_scans" / "global" / "bosses.json"
     if gb.exists():
-        dateien.append((gb, "global_bosses", _rt_bosses))
+        dateien.append((gb, KIND_GLOBAL_BOSSES, _rt_bosses))
 
     for datei, kind, rt in (
         (ROOT / "items" / "items.json", KIND_ITEMS, _rt_items),
-        (ROOT / "slots" / "slots.json", "slots", _rt_slots),
+        (ROOT / "slots" / "slots.json", KIND_SLOTS, _rt_slots),
     ):
         if datei.exists():
             dateien.append((datei, kind, rt))
 
     for ordner, kind, rt in (
         (ROOT / "items" / "presets", KIND_ITEMS, _rt_items),
-        (ROOT / "slots" / "presets", "slots", _rt_slots),
+        (ROOT / "slots" / "presets", KIND_SLOTS, _rt_slots),
     ):
         if ordner.exists():
             for p in sorted(ordner.glob("*.json")):

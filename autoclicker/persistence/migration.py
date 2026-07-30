@@ -39,10 +39,18 @@ VERSION_KEY = "schema_version"
 
 # Dateitypen. Versioniert (mit `schema_version` in der Datei) ist nur, was ein Dict als
 # obersten Knoten hat - der Rest laeuft ueber _NORMALIZER, s.u.
-KIND_SEQUENCE = "sequence"      # sequences/<name>.json        versioniert
-KIND_POINTS = "points"          # sequences/points.json        Liste
-KIND_ITEMS = "items"            # items/items.json, items/presets/*.json
-KIND_ITEM_SCAN = "item_scan"    # item_scans/<name>.json
+KIND_SEQUENCE = "sequence"          # sequences/<name>.json     versioniert
+KIND_POINTS = "points"              # sequences/points.json     Liste
+KIND_ITEMS = "items"                # items/items.json, items/presets/*.json
+KIND_ITEM_SCAN = "item_scan"        # item_scans/<name>.json
+KIND_SLOTS = "slots"                # slots/slots.json, slots/presets/*.json
+KIND_BOSS_SCAN = "boss_scan"        # boss_scans/<name>.json
+KIND_ICON_SCAN = "icon_scan"        # icon_scans/<name>.json
+KIND_GLOBAL_BOSSES = "global_bosses"  # boss_scans/global/bosses.json
+
+# Jeder Dateityp MUSS in _CHAINS oder _NORMALIZER stehen, auch wenn es (noch) nichts zu
+# tun gibt - dann als _norm_noop. Sonst muesste man sich beim naechsten Formatwechsel
+# daran erinnern, den Haken im Loader ueberhaupt erst einzubauen. Ein Test prueft das.
 
 # Ergebnis eines Migrationsschritts: (Daten, Meldungen)
 MigrationStep = Callable[[dict, dict], list[str]]
@@ -271,11 +279,31 @@ def _norm_points(data, context: dict) -> list[str]:
     return meldungen
 
 
+def _norm_noop(data, context: dict) -> list[str]:
+    """Kein Altbestand - aber der Haken sitzt.
+
+    Diese Typen haben heute nichts zu heben. Der Eintrag steht trotzdem hier und der
+    Loader ruft trotzdem migrate() auf: eine spaetere Formataenderung kostet dann genau
+    eine Funktion an dieser Stelle, statt zusaetzlich die Frage "wo muss der Aufruf
+    ueberhaupt hin". Genau daran scheitern Migrationen sonst - nicht am Umrechnen,
+    sondern daran, dass die Schleuse an der Stelle fehlt.
+    """
+    return []
+
+
 _NORMALIZER: dict[str, MigrationStep] = {
     KIND_POINTS: _norm_points,
     KIND_ITEMS: _norm_items,
     KIND_ITEM_SCAN: _norm_item_scan,
+    KIND_SLOTS: _norm_noop,
+    KIND_BOSS_SCAN: _norm_noop,
+    KIND_ICON_SCAN: _norm_noop,
+    KIND_GLOBAL_BOSSES: _norm_noop,
 }
+
+# Alle bekannten Dateitypen - fuer den Test, dass keiner ohne Schleuse dasteht.
+ALL_KINDS = (KIND_SEQUENCE, KIND_POINTS, KIND_ITEMS, KIND_ITEM_SCAN,
+             KIND_SLOTS, KIND_BOSS_SCAN, KIND_ICON_SCAN, KIND_GLOBAL_BOSSES)
 
 
 # ---------------------------------------------------------------------------

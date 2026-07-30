@@ -98,7 +98,11 @@ def update_item_in_scans(old_name: str, new_name: str,
             with open(scan_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            modified = False
+            # Auch dieser Weg schreibt die Datei - also durch die gleiche Schleuse wie
+            # der Loader. Sonst waere Umbenennen der einzige Save, der Altformat
+            # unveraendert zurueckschreibt.
+            data, meldungen = migrate(data, KIND_ITEM_SCAN)
+            modified = bool(meldungen)
             for item in data.get("items", []):
                 if item.get("name") == old_name:
                     item["name"] = new_name

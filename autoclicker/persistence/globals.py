@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..models import ItemSlot, AutoClickerState
 from ..utils import compact_json, save_tag, load_tag, err, atomic_write
-from .migration import KIND_ITEMS, migrate
+from .migration import KIND_ITEMS, KIND_SLOTS, migrate
 from .paths import ITEMS_FILE, SLOTS_FILE
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
 
@@ -40,6 +40,7 @@ def load_global_slots(state: AutoClickerState) -> None:
     try:
         with open(SLOTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_SLOTS)
         # Per-Eintrag absichern — ein einzelner kaputter Slot soll nicht das
         # Laden aller restlichen verhindern.
         for name, s in data.items():

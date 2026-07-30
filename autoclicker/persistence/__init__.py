@@ -23,7 +23,8 @@ from .boss_scans import (
     save_global_bosses, load_global_bosses,
 )
 from .migration import (
-    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, SCHEMA_VERSION,
+    ALL_KINDS, KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, KIND_ICON_SCAN, KIND_ITEMS,
+    KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
     file_version, migrate, needs_migration, stamp,
 )
 from .icon_scans import (
@@ -98,6 +99,8 @@ __all__ = [
     'list_slot_presets', 'save_slot_preset', 'load_slot_preset', 'delete_slot_preset',
     'list_item_presets', 'save_item_preset', 'load_item_preset', 'delete_item_preset',
     # migration
-    'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_POINTS', 'KIND_SEQUENCE', 'SCHEMA_VERSION',
+    'ALL_KINDS', 'KIND_BOSS_SCAN', 'KIND_GLOBAL_BOSSES', 'KIND_ICON_SCAN',
+    'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_POINTS', 'KIND_SEQUENCE', 'KIND_SLOTS',
+    'SCHEMA_VERSION',
     'file_version', 'migrate', 'needs_migration', 'stamp',
 ]

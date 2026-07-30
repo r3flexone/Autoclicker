@@ -12,6 +12,7 @@ from typing import Optional
 
 from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import IconScanConfig, AutoClickerState, ICON_ACTION_CLICK
+from .migration import KIND_ICON_SCAN, migrate
 from .paths import ICON_SCANS_DIR
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 from .serialization import _icon_scan_to_dict
@@ -34,6 +35,7 @@ def load_icon_scan_file(filepath: Path) -> Optional[IconScanConfig]:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_ICON_SCAN)
 
         return IconScanConfig(
             name=data["name"],
