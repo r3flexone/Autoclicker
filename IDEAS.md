@@ -21,6 +21,28 @@ aufmacht und weiß, wie das Feld heißt.
 - **Tradeoff:** 66 Werte sind zu viele für ein flaches Menü — es braucht die Sektionen, sonst wird es unübersichtlicher als die JSON. Und jeder neue Config-Wert muss im Menü landen, sonst entsteht wieder eine Zwei-Klassen-Config.
 - **Ansatz:** Das Gerüst liegt schon da: `_CONFIG_SECTIONS` in `config.py` gruppiert alle Felder nach Thema, die Kommentare an den Dataclass-Feldern sind brauchbare Erklärtexte. Das Menü daraus **generieren** statt handschreiben — dann kann kein Feld vergessen werden. Bool umschalten, Zahlen mit Bereichsangabe, feste Auswahl (`pixel_timeout_action`) als Liste; Validierung übernimmt `AppConfig.__post_init__`, gespeichert wird sofort über `save_config`.
 
+## Performance
+
+### Ein Screenshot pro Scan statt einer pro Slot
+`execute_item_scan()` macht für jeden Slot eine eigene Bildschirmaufnahme (BitBlt +
+GetDIBits). Bei 5 Slots sind das 5 Aufnahmen, wo eine über das umschließende Rechteck
+plus Zuschneiden reichen würde.
+
+- **Nutzen:** Weniger GDI-Aufrufe pro Scan-Schritt. Nebeneffekt: alle Slots stammen aus
+  demselben Frame, der Vergleich zwischen ihnen wird also konsistenter.
+- **Tradeoff:** Genau dieser Nebeneffekt ist die Frage. Heute liegt zwischen den Slots
+  `scan_slot_delay` (Default 0.1 s) und jeder Slot sieht einen etwas späteren Spielstand —
+  bei einem statischen Inventar egal, bei animierten Inhalten nicht. Zweitens hilft die
+  Bündelung nur, wenn die Slots nah beieinander liegen: sind sie über den Bildschirm
+  verteilt, nimmt das umschließende Rechteck fast das ganze Bild auf und die Aufnahme wird
+  teurer statt billiger. Es bräuchte also eine Schranke (Rechteckfläche vs. Summe der
+  Slot-Flächen), und damit eine Heuristik, die man auf einem echten Windows-Setup messen
+  muss — auf Linux ist das nicht prüfbar.
+- **Ansatz:** In `execute_item_scan()` einmal das umschließende Rechteck aller Slots
+  aufnehmen und pro Slot `img.crop()` statt `take_screenshot(slot.scan_region)`. Die
+  Slot-Schleife mit ihren Stop-/Pause-/Skip-Prüfungen bleibt unverändert. Vorher auf
+  Windows messen, ob sich der Aufwand überhaupt lohnt.
+
 ## Reliability
 
 ### Disconnect-Detection
