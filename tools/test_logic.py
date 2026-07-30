@@ -1162,6 +1162,86 @@ else:
     check("fehlendes Template meldet sauber None", _img._load_template(_tpl + "_weg") is None)
 
 
+# ------------------------------- else bei Farb-Schritten: 'stattdessen', nicht 'zusaetzlich'
+section("Farb-Schritt + else: der eigene Klick entfaellt")
+# Die Hilfe im Sequenz-Editor sagt: 'else skip' = nur DIESEN Schritt ueberspringen,
+# 'else <Punkt>' / 'else key' = STATTDESSEN das tun. Vorher lief beides: erst die
+# else-Aktion, dann trotzdem der eigene Klick. Und ein nicht erfuellter checkcolor-
+# Schritt gab False zurueck, was im Worker den Rest der Phase abbrach.
+import autoclicker.runtime.steps as _RS
+import autoclicker.runtime.actions as _RA
+from autoclicker.models import ElseConfig as _EC2
+from autoclicker.config import AppConfig as _AC2
+
+class _Pixel:
+    def __init__(self, rgb): self._rgb = rgb
+    def getpixel(self, _xy): return self._rgb
+
+_klicks, _tasten = [], []
+_orig_click, _orig_key = _RS.safe_click, _RS.safe_key
+_orig_shot, _orig_pillow = _RS.take_screenshot, _RS.PILLOW_AVAILABLE
+_orig_failsafe = _RS.check_failsafe
+_RS.safe_click = _RA.safe_click = lambda st, x, y, label="": (_klicks.append((x, y, label)), True)[1]
+_RS.safe_key = _RA.safe_key = lambda st, key, label="": (_tasten.append(key), True)[1]
+_RS.check_failsafe = lambda st: False
+_RS.PILLOW_AVAILABLE = True
+
+def _farbschritt(trifft, else_cfg, check_only=True):
+    """Fuehrt einen Farb-Schritt aus. Returns (rueckgabe, klicks, tasten)."""
+    _klicks.clear(); _tasten.clear()
+    _RS.take_screenshot = lambda region=None: _Pixel((10, 10, 10) if trifft else (200, 200, 200))
+    st = AutoClickerState(); st.config = _AC2()
+    st.config.pixel_wait_timeout = 0.05
+    st.config.pixel_check_interval = 0.01
+    st.config.pixel_max_consecutive_timeouts = 0
+    schritt = _SS(x=1, y=2, delay_before=0, name="Ziel",
+                  wait_condition=_WCx(pixel=(5, 5), color=(10, 10, 10), check_only=check_only),
+                  else_config=else_cfg)
+    r = _RS.execute_step(st, schritt, 1, 3, "T")
+    return r, [k for k in _klicks if k[2] == "Ziel"], list(_tasten)
+
+try:
+    # Referenz: Bedingung erfuellt -> der Schritt klickt ganz normal
+    _r, _eigen, _ = _farbschritt(True, None)
+    check("checkcolor erfuellt -> eigener Klick laeuft", _r is True and len(_eigen) == 1)
+
+    # Nicht erfuellt, kein else -> nur diesen Schritt ueberspringen (True!), kein Klick
+    _r, _eigen, _ = _farbschritt(False, None)
+    check("checkcolor nicht erfuellt -> Schritt uebersprungen, Phase laeuft weiter",
+          _r is True and _eigen == [])
+
+    # else skip -> kein eigener Klick
+    _r, _eigen, _ = _farbschritt(False, _EC2(action="skip"))
+    check("checkcolor + 'else skip' -> kein eigener Klick", _r is True and _eigen == [])
+
+    # else <Punkt> -> NUR der Else-Punkt, nicht auch das eigene Ziel
+    _r, _eigen, _ = _farbschritt(False, _EC2(action="click", x=999, y=999, name="E"))
+    check("checkcolor + 'else <Punkt>' -> nur der Else-Punkt",
+          _r is True and _eigen == [] and (999, 999, "else:E") in _klicks)
+
+    # else key -> Taste statt Klick
+    _r, _eigen, _t = _farbschritt(False, _EC2(action="key", key="enter"))
+    check("checkcolor + 'else key' -> Taste statt eigenem Klick",
+          _r is True and _eigen == [] and _t == ["enter"])
+
+    # else restart/skip_cycle muessen weiterhin abbrechen
+    _r, _eigen, _ = _farbschritt(False, _EC2(action="restart"))
+    check("checkcolor + 'else restart' bricht ab", _r is False and _eigen == [])
+
+    # Dasselbe auf dem Warte-Pfad: Timeout -> else, danach KEIN eigener Klick
+    _r, _eigen, _ = _farbschritt(False, _EC2(action="skip"), check_only=False)
+    check("Warten + Timeout + 'else skip' -> kein eigener Klick", _eigen == [])
+    _r, _eigen, _ = _farbschritt(False, _EC2(action="click", x=999, y=999, name="E"),
+                                 check_only=False)
+    check("Warten + Timeout + 'else <Punkt>' -> nur der Else-Punkt",
+          _eigen == [] and (999, 999, "else:E") in _klicks)
+finally:
+    _RS.safe_click = _RA.safe_click = _orig_click
+    _RS.safe_key = _RA.safe_key = _orig_key
+    _RS.take_screenshot = _orig_shot
+    _RS.PILLOW_AVAILABLE = _orig_pillow
+    _RS.check_failsafe = _orig_failsafe
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

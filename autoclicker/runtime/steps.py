@@ -28,8 +28,8 @@ from .actions import (
     wait_with_pause_skip, execute_else_action,
 )
 from .debug import (
-    GATE_RUN, GATE_SKIP, color_comparison, color_swatch, is_detail_debug, is_step_mode,
-    print_step_detail, show_point, skip_waits, step_gate, step_label,
+    GATE_RUN, GATE_SKIP, GATE_STOP, color_comparison, color_swatch, is_detail_debug,
+    is_step_mode, print_step_detail, show_point, skip_waits, step_gate, step_label,
 )
 from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
@@ -408,8 +408,18 @@ def _execute_scroll_step(state: AutoClickerState, step: SequenceStep,
 
 
 def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
-                            step_num: int, total_steps: int, phase: str) -> bool:
-    """Wartet auf eine Farbe an einer Pixel-Position."""
+                            step_num: int, total_steps: int, phase: str) -> str:
+    """Wartet auf eine Farbe an einer Pixel-Position.
+
+    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück:
+      GATE_RUN  = Bedingung erfüllt → der Schritt darf seinen Klick ausführen
+      GATE_SKIP = Schritt ist erledigt (else-Aktion lief / übersprungen) → nächster Schritt
+      GATE_STOP = Sequenz abbrechen (Stop, Notbremse, restart/skip_cycle)
+
+    Die Unterscheidung SKIP vs. STOP ist der Kern: mit einem bool klickte der Schritt
+    nach 'else skip'/'else <Punkt>'/'else key' zusätzlich noch sein eigenes Ziel, und
+    ein nicht erfüllter checkcolor-Schritt riss den Rest der Phase mit ab.
+    """
     debug = is_verbose_debug(state)
     wc = step.wait_condition
     actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
@@ -424,11 +434,11 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
         show_point(state, wc.pixel[0], wc.pixel[1], "Prüf-Pixel")
 
     if not PILLOW_AVAILABLE:
-        print(col(f"\n[FEHLER] Pillow nicht installiert - Farbprüfung nicht möglich!", "red"))
+        print(col("\n[FEHLER] Pillow nicht installiert - Farbprüfung nicht möglich!", "red"))
         if step.else_config:
-            return execute_else_action(state, step, phase, step_num, total_steps)
+            return _gate_nach_else(state, step, phase, step_num, total_steps)
         state.stop_event.set()
-        return False
+        return GATE_STOP
 
     # check_only: einmal prüfen statt warten. Passt die Farbe nicht, greift sofort
     # else_config (Standard skip) - kein Blockieren bis zum Timeout.
@@ -446,8 +456,9 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     while not state.stop_event.is_set():
         if state.skip_event.is_set():
             state.skip_event.clear()
+            # SKIP überspringt das WARTEN, nicht den Schritt — der Klick folgt.
             _step_status(debug, phase, step_num, total_steps, "SKIP Farbwarten!")
-            break
+            return GATE_RUN
 
         if not wait_while_paused(state, "Warte auf Farbe..."):
             break
@@ -470,7 +481,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                 msg = "Farbe weg!" if wc.until_gone else "Farbe erkannt!"
                 _step_status(debug, phase, step_num, total_steps, msg,
                              f"{msg} | " + color_comparison(wc.color, current_color, dist, pixel_tolerance))
-                break
+                return GATE_RUN
 
             _step_status(debug, phase, step_num, total_steps,
                          f"Warte {wait_verb} {expected_name}... ({elapsed:.0f}s)",
@@ -479,27 +490,34 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
-            if not _handle_color_wait_timeout(state, step, phase, step_num, total_steps, timeout):
-                return False
-            break
+            return _handle_color_wait_timeout(state, step, phase, step_num, total_steps, timeout)
 
         check_interval = state.config.pixel_check_interval
         if state.stop_event.wait(check_interval):
-            return False
+            return GATE_STOP
 
-    if state.stop_event.is_set():
-        return False
-    return True
+    return GATE_STOP
+
+
+def _gate_nach_else(state: AutoClickerState, step: SequenceStep, phase: str,
+                    step_num: int, total_steps: int) -> str:
+    """Führt die else-Aktion aus und übersetzt ihr Ergebnis in ein Gate.
+
+    else ist laut Hilfe ein *stattdessen*: skip/Klick/Taste erledigen den Schritt,
+    sein eigener Klick entfällt (GATE_SKIP). restart/skip_cycle brechen ab (GATE_STOP).
+    """
+    if execute_else_action(state, step, phase, step_num, total_steps):
+        return GATE_SKIP
+    return GATE_STOP
 
 
 def _check_color_once(state: AutoClickerState, step: SequenceStep,
-                      step_num: int, total_steps: int, phase: str) -> bool:
-    """Einmalige Farbprüfung (WaitCondition.check_only). Trifft sie zu, läuft der Schritt
-    normal weiter; trifft sie nicht zu, entscheidet else_config - ohne else_config wird
-    der Schritt einfach übersprungen.
+                      step_num: int, total_steps: int, phase: str) -> str:
+    """Einmalige Farbprüfung (WaitCondition.check_only).
 
-    Rückgabe False heißt "Schritt hier beenden" - das ist beim Überspringen der
-    Normalfall, nicht ein Fehler.
+    Trifft sie zu, darf der Schritt klicken (GATE_RUN). Trifft sie nicht zu, entscheidet
+    else_config - ohne else_config wird nur DIESER Schritt übersprungen (GATE_SKIP),
+    die Phase läuft weiter.
     """
     debug = is_verbose_debug(state)
     wc = step.wait_condition
@@ -508,7 +526,7 @@ def _check_color_once(state: AutoClickerState, step: SequenceStep,
     img = take_screenshot((wc.pixel[0], wc.pixel[1], wc.pixel[0] + 1, wc.pixel[1] + 1))
     if img is None:
         print(col("\n[FEHLER] Screenshot für Farbprüfung fehlgeschlagen!", "red"))
-        return False
+        return GATE_STOP
 
     current = img.getpixel((0, 0))[:3]
     dist = color_distance(current, wc.color)
@@ -520,20 +538,22 @@ def _check_color_once(state: AutoClickerState, step: SequenceStep,
     if passt:
         _step_status(debug, phase, step_num, total_steps, "Farbe passt",
                      f"Farbprüfung erfüllt | {vergleich}")
-        return True
+        return GATE_RUN
 
     _step_status(debug, phase, step_num, total_steps, "Farbe passt nicht - übersprungen",
                  f"Farbprüfung NICHT erfüllt | {vergleich}")
     if step.else_config is not None:
-        return execute_else_action(state, step, phase, step_num, total_steps)
-    return False
+        return _gate_nach_else(state, step, phase, step_num, total_steps)
+    return GATE_SKIP
 
 
 def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phase: str,
-                                step_num: int, total_steps: int, timeout: float) -> bool:
+                                step_num: int, total_steps: int, timeout: float) -> str:
     """Reagiert auf einen Pixel-Wait-Timeout: Notbremse → else_config → globale Timeout-Aktion.
 
-    Returns False wenn Sequenz abbrechen soll, True wenn weitermachen.
+    Gibt GATE_SKIP zurück, wenn die else-Aktion den Schritt erledigt hat (Sequenz läuft
+    weiter), sonst GATE_STOP. GATE_RUN kommt hier nie vor: nach einem Timeout ist die
+    Farb-Bedingung nicht erfüllt, der eigene Klick des Schritts also nicht gerechtfertigt.
     """
     with state.lock:
         state.timeouts += 1
@@ -565,24 +585,24 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
         else:
             print(col(f"\n[NOTBREMSE] {consec}x Timeout in Folge → Stoppe Sequenz!", "red"))
             state.stop_event.set()
-        return False
+        return GATE_STOP
 
     if step.else_config:
         print()  # Newline nach TIMEOUT-Zeile (end="" oben)
-        return execute_else_action(state, step, phase, step_num, total_steps)
+        return _gate_nach_else(state, step, phase, step_num, total_steps)
 
     # Kein else definiert → globale Config-Option auswerten
     timeout_action = state.config.pixel_timeout_action
     if timeout_action == TIMEOUT_SKIP_CYCLE:
-        print(col(f" → Zyklus wird übersprungen", "yellow"))
+        print(col(" → Zyklus wird übersprungen", "yellow"))
         state.skip_cycle_event.set()
     elif timeout_action == TIMEOUT_RESTART:
-        print(col(f" → Sequenz wird neu gestartet (inkl. INIT)", "yellow"))
+        print(col(" → Sequenz wird neu gestartet (inkl. INIT)", "yellow"))
         state.restart_event.set()
     else:
-        print(col(f" → Stoppe.", "red"))
+        print(col(" → Stoppe.", "red"))
         state.stop_event.set()
-    return False
+    return GATE_STOP
 
 
 # =============================================================================
@@ -719,7 +739,10 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return _execute_scroll_step(state, step, step_num, total_steps, phase)
 
     if step.wait_condition:
-        if not _execute_wait_for_color(state, step, step_num, total_steps, phase):
+        farb_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
+        if farb_gate == GATE_SKIP:
+            return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — kein eigener Klick
+        if farb_gate != GATE_RUN:
             return False
     elif (step.delay_before > 0 or step.delay_max) and not skip_waits(state):
         actual_delay = step.get_actual_delay()

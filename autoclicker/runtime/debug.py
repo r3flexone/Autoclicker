@@ -41,9 +41,12 @@ from ..models import AutoClickerState, SequenceStep
 from ..utils import col, dbg, describe_color, read_key
 from ..winapi import get_cursor_pos, set_cursor_pos
 
-# Rückgabewerte von step_gate()
+# Ausgang einer Vorab-Entscheidung über einen Schritt (step_gate im manuellen Modus,
+# _execute_wait_for_color bei Farb-Bedingungen). Drei Ausgänge, nicht zwei: ein bool
+# kann "Schritt erledigt, weiter zum nächsten" nicht von "Sequenz abbrechen" trennen —
+# genau daran klickte ein Farb-Schritt nach einer else-Aktion noch sein eigenes Ziel.
 GATE_RUN = "run"        # Schritt normal ausführen
-GATE_SKIP = "skip"      # Diesen Schritt überspringen
+GATE_SKIP = "skip"      # Diesen Schritt überspringen, Sequenz läuft normal weiter
 GATE_STOP = "stop"      # Sequenz abbrechen
 
 # Tasten im manuellen Modus
