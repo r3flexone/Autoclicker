@@ -235,15 +235,11 @@ def handle_load(state: AutoClickerState) -> None:
 
 
 def handle_step_mode(state: AutoClickerState) -> None:
-    """Schaltet den manuellen Modus um.
+    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manuell').
 
-    Erreichbar per Hotkey UND über das Punkte-Menü (CTRL+ALT+P -> 'manuell'). Der
-    Menü-Weg ist der verlässliche: CTRL+ALT+<Buchstabe> ist auf Windows häufig von
-    anderen Programmen belegt, dann greift der Hotkey nicht.
-
-    Läuft gerade eine Sequenz, greift die Umschaltung ab dem nächsten Schritt - man kann
-    also mitten im Lauf auf manuell gehen, wenn etwas nicht stimmt, und danach mit 'c'
-    im Gate oder erneutem Hotkey zurück in den Normalbetrieb.
+    Bewusst kein eigener Hotkey: CTRL+ALT+<Buchstabe> ist auf Windows häufig von anderen
+    Programmen belegt, und gebraucht wird der Schalter ohnehin nur vor dem Start. Zurück
+    in den Normalbetrieb geht es auch mit 'c' direkt im Schritt-Prompt.
     """
     with state.lock:
         state.step_mode = not state.step_mode
@@ -306,8 +302,6 @@ def handle_show(state: AutoClickerState) -> None:
                 continue
 
             if user_input.lower() in ("manuell", "m"):
-                # Bewusst auch hier und nicht nur als Hotkey: CTRL+ALT+<Buchstabe> ist
-                # auf Windows oft von anderen Programmen belegt.
                 handle_step_mode(state)
                 continue
 

@@ -24,8 +24,7 @@ from autoclicker.winapi import (
     user32, kernel32,
     WM_HOTKEY, PM_REMOVE,
     HOTKEY_RECORD, HOTKEY_UNDO, HOTKEY_CLEAR, HOTKEY_RESET,
-    HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW, HOTKEY_STEP_MODE,
-    REGISTERED_HOTKEYS,
+    HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW,
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
@@ -45,18 +44,8 @@ from autoclicker.handlers import (
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
     handle_import_export, handle_record_sequence, handle_record_pause,
-    handle_node_editor, handle_scan_studio, handle_step_mode
+    handle_node_editor, handle_scan_studio
 )
-
-
-def step_mode_hotkey() -> str:
-    """Tastenkombination des manuellen Modus, wie sie WIRKLICH registriert wurde.
-
-    Ist CTRL+ALT+M belegt, greift eine Ausweichtaste - der Hilfetext soll dann nicht
-    weiter die belegte Kombination nennen.
-    """
-    name = REGISTERED_HOTKEYS.get(HOTKEY_STEP_MODE)
-    return name.split(" ", 1)[0] if name else "CTRL+ALT+M (nicht verfügbar)"
 
 
 def print_help() -> None:
@@ -83,7 +72,8 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
-    print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen")
+    print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
+          f"{hint('(dort auch: walk = durchgehen, manuell = Schritt-Modus)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()
@@ -94,8 +84,6 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschließen, dann END + Stop)')}")
     print(f"  {col('CTRL+ALT+G', 'yellow')}  Pause/Resume")
     print(f"  {col('CTRL+ALT+K', 'yellow')}  Skip {hint('(aktuelle Wartezeit überspringen)')}")
-    schritt_taste = step_mode_hotkey()
-    print(f"  {col(schritt_taste, 'yellow')}  Manueller Modus {hint('(Schritt für Schritt bestätigen, ohne Wartezeiten)')}")
     print(f"  {col('CTRL+ALT+W', 'yellow')}  Quick-Switch {hint('(schnell Sequenz wechseln)')}")
     print(f"  {col('CTRL+ALT+Z', 'yellow')}  Zeitplan {hint('(Start zu bestimmter Zeit)')}")
     print()
@@ -223,7 +211,6 @@ def main() -> int:
         HOTKEY_RECORD_PAUSE: handle_record_pause,
         HOTKEY_NODE_EDITOR: handle_node_editor,
         HOTKEY_SCAN_STUDIO: handle_scan_studio,
-        HOTKEY_STEP_MODE: handle_step_mode,
         HOTKEY_HELP: lambda _state: print_help(),
     }
 

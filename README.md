@@ -1396,11 +1396,10 @@ andere, und **keine verändert den Ablauf**:
 - `debug_log` = alles ausgeben, nichts überschreiben
 - `debug_detail` = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort passiert
 
-**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config, sondern zur
-Laufzeit umschaltbar — **im Punkte-Menü** (`CTRL+ALT+P` → `manuell`) oder per Hotkey
-`CTRL+ALT+M`. Ist die Tastenkombination von einem anderen Programm belegt, weicht der
-Start automatisch auf `CTRL+ALT+D`, `+Y` oder `+R` aus und sagt welche es wurde — und
-über das Menü geht es ohnehin immer:
+**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config: er wird im
+Punkte-Menü (`CTRL+ALT+P`) mit `manuell` ein- und ausgeschaltet. Kein eigener Hotkey —
+`CTRL+ALT+<Buchstabe>` ist auf Windows oft belegt, und gebraucht wird der Schalter
+ohnehin nur vor dem Start:
 
 - Wartezeiten werden übersprungen
 - vor jedem Schritt springt der Zeiger auf das Ziel und es wird gewartet
@@ -1410,9 +1409,13 @@ Damit gehst du die Sequenz von Hand durch und siehst, wo falsch geklickt oder fa
 erkannt wird. Im Schritt: `w` ausführen · `s` überspringen · `c` normal weiterlaufen ·
 `q` abbrechen.
 
-Punkte einzeln durchgehen, ohne die ganze Liste zu lesen: im Punkte-Menü (`CTRL+ALT+P`)
-der Befehl `walk` — der Zeiger springt auf jeden Punkt, `w` weiter, `a` zurück, `q` Ende.
-Es wird nichts geklickt.
+Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
+
+| Befehl | was es tut |
+|---|---|
+| `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
+| `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
+| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schließen und normal starten |
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.
