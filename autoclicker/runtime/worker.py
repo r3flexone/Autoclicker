@@ -16,7 +16,7 @@ from datetime import datetime
 from ..models import AutoClickerState
 from ..session_log import log_event
 from ..utils import (
-    clear_line, col, ok, err, hint, dbg,
+    clear_line, col, ok, err, hint, dbg, warn,
     format_duration,
 )
 from ..utils.console import set_console_title
@@ -246,12 +246,21 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         from ..persistence import resolve_point_references
         punkt_meldungen = resolve_point_references(state, sequence)
 
+    # Item-/Slot-Referenzen der Scans frisch auflösen: ein Editor kann zwischendurch ein
+    # globales Item geändert haben, und der Scan soll dem folgen. Ausserhalb des Locks,
+    # weil resolve_scan_references selbst lockt.
+    from ..persistence import resolve_scan_references
+    scan_meldungen = resolve_scan_references(state)
+
     # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
     # klickt als in der Sequenzdatei steht.
     if punkt_meldungen:
         print(col(f"\n[PUNKTE] {len(punkt_meldungen)} Schritt(e) folgen ihrem Punkt:", "cyan"))
         for m in punkt_meldungen:
             print(f"         {m}")
+
+    for m in scan_meldungen:
+        print(warn(m))
 
     # Schritt-Uebersicht ausgeben (nur Detail-Stufe). Bewusst OHNE Enter-Prompt: die
     # Ausgabe-Stufen aendern nur, was man sieht. Wer Schritt fuer Schritt bestaetigen

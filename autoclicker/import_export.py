@@ -17,7 +17,7 @@ from .persistence import (
     TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
     _boss_profile_to_dict, _point_to_dict,
     _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
-    load_sequence_file, _item_from_dict, _boss_profile_from_dict,
+    load_sequence_file, _item_from_dict, _boss_profile_from_dict, resolve_scan_references,
     KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, migrate,
     save_data, save_global_slots, save_global_items,
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
@@ -27,7 +27,7 @@ from .models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
 from .config import DEFAULT_MIN_CONFIDENCE
-from .utils import atomic_write, compact_json, sanitize_filename
+from .utils import atomic_write, compact_json, sanitize_filename, warn
 
 logger = logging.getLogger("autoclicker")
 
@@ -483,25 +483,13 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     if name.startswith("item_scans/") and name.endswith(".json"):
                         scan_data = json.loads(zf.read(name).decode("utf-8"))
                         scan_data, _m = migrate(scan_data, KIND_ITEM_SCAN)
-                        slots = []
-                        for s in scan_data.get("slots", []):
-                            region = remap_region(tuple(s["scan_region"]), transform)
-                            click = remap_point(s["click_pos"][0], s["click_pos"][1], transform)
-                            slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                            slots.append(ItemSlot(
-                                name=s["name"], scan_region=region,
-                                click_pos=click, slot_color=slot_color
-                            ))
-                        items = []
-                        for i in scan_data.get("items", []):
-                            item = _item_from_dict(i)
-                            if item.confirm_point:
-                                nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y, transform)
-                                item.confirm_point = ClickPoint(nx, ny)
-                            items.append(item)
+                        # Nur Namen - die Koordinaten der Slots werden beim Import von
+                        # slots.json umgerechnet, nicht ein zweites Mal pro Scan. Genau
+                        # diese Doppelpflege fiel mit der Referenz weg.
                         config = ItemScanConfig(
                             name=scan_data["name"],
-                            slots=slots, items=items,
+                            slot_names=[str(n) for n in scan_data.get("slot_names", [])],
+                            item_names=[str(n) for n in scan_data.get("item_names", [])],
                             color_tolerance=scan_data.get("color_tolerance", 40),
                             learn_unknown=scan_data.get("learn_unknown", False),
                         )
@@ -509,6 +497,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             state.item_scans[config.name] = config
                         save_item_scan(config)
                         stats["item_scans"] += 1
+                # Referenzen gegen die (gerade importierten) globalen Slots/Items
+                # auflösen - sonst laufen die Scans bis zum nächsten Start leer.
+                for _meldung in resolve_scan_references(state):
+                    print(warn(_meldung))
 
             # Boss-Scans
             if import_boss_scans:

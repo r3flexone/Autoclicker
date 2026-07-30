@@ -258,11 +258,31 @@ def _norm_items(data, context: dict) -> list[str]:
 
 
 def _norm_item_scan(data, context: dict) -> list[str]:
-    """item_scans/*.json - enthaelt eingebettete Items in data['items']."""
+    """item_scans/*.json - Kopien von Slots/Items werden zu Namens-Referenzen.
+
+    Vorher lag jeder Slot und jedes Item vollstaendig im Scan. Der Name war schon immer
+    die Identitaet - also bleibt nur der Name, und aufgeloest wird gegen slots.json /
+    items.json. Damit wirken Aenderungen am globalen Eintrag sofort in jedem Scan.
+
+    Namen, die es global nicht gibt, meldet resolve_scan_references() beim Laden. Die
+    vollen Daten stehen bis dahin noch in der .bak-Sicherung.
+    """
     if not isinstance(data, dict):
         return []
-    fixed = sum(1 for i in data.get("items") or [] if isinstance(i, dict) and _fix_item(i))
-    return [f"{fixed} eingebettete(s) Item(s): confirm_point [x,y] -> {{x,y}}"] if fixed else []
+    meldungen = []
+    for feld, namensfeld, label in (("slots", "slot_names", "Slot"),
+                                    ("items", "item_names", "Item")):
+        eingebettet = data.pop(feld, None)
+        if eingebettet is None:
+            continue
+        namen = [e["name"] for e in eingebettet
+                 if isinstance(e, dict) and e.get("name")]
+        # Schon vorhandene Namensliste gewinnt - sie ist das aktuelle Feld.
+        if not data.get(namensfeld):
+            data[namensfeld] = namen
+        meldungen.append(f"{len(namen)} {label}(s) als Referenz statt Kopie "
+                         f"({feld} -> {namensfeld})")
+    return meldungen
 
 
 # Felder, die ein Punkt haben darf. Alles andere ist Altbestand und fliegt raus -

@@ -71,9 +71,11 @@ item = ItemProfile(name="Schwert", marker_colors=[(200, 30, 30)], category="Waff
 isc = ItemScanConfig(name="MyScan", slots=[slot], items=[item], color_tolerance=42, learn_unknown=True)
 r = roundtrip(_item_scan_to_dict, load_item_scan_file, isc)
 check("ItemScan name/tol/learn_unknown", r.name == "MyScan" and r.color_tolerance == 42 and r.learn_unknown is True)
-check("ItemScan slot erhalten", r.slots[0].name == "Slot 1" and r.slots[0].scan_region == (10, 20, 110, 120) and r.slots[0].slot_color == (30, 40, 50))
-check("ItemScan item erhalten", r.items[0].name == "Schwert" and r.items[0].category == "Waffe" and r.items[0].template == "schwert.png" and abs(r.items[0].min_confidence-0.85) < 1e-9)
-check("ItemScan confirm_point erhalten", r.items[0].confirm_point is not None and (r.items[0].confirm_point.x, r.items[0].confirm_point.y) == (5, 6))
+# Ein Item-Scan speichert nur NAMEN - Slots/Items selbst liegen global.
+# Aufgeloest wird von resolve_scan_references(state), s. eigener Abschnitt weiter unten.
+check("ItemScan speichert Slot-Namen", r.slot_names == ["Slot 1"])
+check("ItemScan speichert Item-Namen", r.item_names == ["Schwert"])
+check("ItemScan laedt keine Kopien mehr", r.slots == [] and r.items == [])
 
 boss = BossProfile(name="Drache", marker_colors=[(10, 20, 30)], template="drache.png", min_confidence=0.9,
                    action="click", action_x=111, action_y=222, action_delay=1.5)
@@ -106,16 +108,17 @@ check("IconScan korrupt -> None", load_icon_scan_file(bad) is None)
 empty = tmp / "empty.json"; empty.write_text("{}", encoding="utf-8")  # name fehlt -> KeyError gefangen
 check("ItemScan ohne 'name' -> None", load_item_scan_file(empty) is None)
 
-# ---------------------------------------------------------------- defensives Slot-Laden
-section("item_scans: defekter Slot wird übersprungen, Scan lädt trotzdem")
+# ------------------------------------------------- Altformat-Scan (eingebettete Kopien)
+section("item_scans: eingebettete Slot-/Item-Kopien werden zu Namens-Referenzen")
 mixed = {"name": "S", "slots": [
     {"name": "ok", "scan_region": [0, 0, 5, 5], "click_pos": [2, 2]},
-    {"name": "kaputt"}],  # fehlende Felder
-    "items": []}
+    {"name": "kaputt"}],  # unvollstaendig - der Name genuegt jetzt trotzdem
+    "items": [{"name": "Schwert", "marker_colors": []}]}
 pm = tmp / "mixed.json"; pm.write_text(json.dumps(mixed), encoding="utf-8")
 rm = load_item_scan_file(pm)
-check("Mixed-Scan lädt", rm is not None)
-check("nur der gute Slot übrig", rm is not None and len(rm.slots) == 1 and rm.slots[0].name == "ok")
+check("Altformat-Scan lädt", rm is not None)
+check("Slot-Kopien wurden zu Namen", rm is not None and rm.slot_names == ["ok", "kaputt"])
+check("Item-Kopien wurden zu Namen", rm is not None and rm.item_names == ["Schwert"])
 
 # ---------------------------------------------------------------- compact_json
 section("compact_json (Arrays kompakt, Strings NICHT korrumpiert)")
@@ -579,12 +582,21 @@ check("Items: None bleibt None", _items["Leer"]["confirm_point"] is None)
 check("Items: nur das Geaenderte wird gemeldet", len(_m) == 1)
 check("Items: zweiter Lauf meldet nichts", _mig(_items, _K_ITEMS)[1] == [])
 
-# Item-Scans tragen ihre Items eingebettet
-_scan = {"name": "inv", "items": [{"name": "Kohle", "confirm_point": [7, 8]}]}
+# Item-Scans trugen ihre Slots/Items als Kopie - jetzt nur noch Namen
+_scan = {"name": "inv",
+         "slots": [{"name": "S1", "scan_region": [0, 0, 1, 1], "click_pos": [0, 0]}],
+         "items": [{"name": "Kohle", "confirm_point": [7, 8]}]}
 _scan, _m = _mig(_scan, _K_ISCAN)
-check("Item-Scan: eingebettetes Item gehoben",
-      _scan["items"][0]["confirm_point"] == {"x": 7, "y": 8})
-check("Item-Scan: Aenderung gemeldet", len(_m) == 1)
+check("Item-Scan: Kopien werden zu Namen",
+      _scan["slot_names"] == ["S1"] and _scan["item_names"] == ["Kohle"])
+check("Item-Scan: eingebettete Kopien sind weg",
+      "slots" not in _scan and "items" not in _scan)
+check("Item-Scan: beide Umstellungen gemeldet", len(_m) == 2)
+check("Item-Scan: zweiter Lauf meldet nichts", _mig(_scan, _K_ISCAN)[1] == [])
+# Vorhandene Namensliste gewinnt gegen eine Alt-Kopie
+_beides = {"name": "x", "item_names": ["Neu"], "items": [{"name": "Alt"}]}
+_beides, _ = _mig(_beides, _K_ISCAN)
+check("Item-Scan: vorhandene Namensliste gewinnt", _beides["item_names"] == ["Neu"])
 
 # Der Loader kennt die alte Liste NICHT mehr - dafuer ist die Migration da
 from autoclicker.persistence.serialization import _item_from_dict as _ifd
@@ -667,7 +679,7 @@ _aktuell = {
                         "init_steps": [], "loop_phases": [], "end_steps": []},
     _mg.KIND_POINTS: [{"id": 1, "x": 1, "y": 2, "name": "P"}],
     _mg.KIND_ITEMS: {"I": {"name": "I", "confirm_point": {"x": 1, "y": 2}}},
-    _mg.KIND_ITEM_SCAN: {"name": "sc", "items": [{"name": "I", "confirm_point": None}]},
+    _mg.KIND_ITEM_SCAN: {"name": "sc", "slot_names": ["S"], "item_names": ["I"]},
     _mg.KIND_SLOTS: {"S": {"name": "S", "scan_region": [0, 0, 1, 1], "click_pos": [0, 0]}},
     _mg.KIND_BOSS_SCAN: {"name": "b", "bosses": []},
     _mg.KIND_ICON_SCAN: {"name": "i", "scan_region": [0, 0, 1, 1]},
@@ -692,16 +704,16 @@ _scandir = Path(tempfile.mkdtemp())
 (_scandir / "alt.json").write_text(json.dumps({
     "name": "alt", "slots": [],
     "items": [{"name": "Kohle", "marker_colors": [], "confirm_point": [3, 4]}]}),
-    encoding="utf-8")
+    encoding="utf-8")  # Altformat: Kopie statt Referenz
 _orig_dir = _ismod.ITEM_SCANS_DIR
 _ismod.ITEM_SCANS_DIR = str(_scandir)
 _uiis("Kohle", "Steinkohle")
 _ismod.ITEM_SCANS_DIR = _orig_dir
 _nach_rename = json.loads((_scandir / "alt.json").read_text(encoding="utf-8"))
-check("Umbenennen schreibt den neuen Namen",
-      _nach_rename["items"][0]["name"] == "Steinkohle")
-check("Umbenennen hebt dabei auch das Altformat",
-      _nach_rename["items"][0]["confirm_point"] == {"x": 3, "y": 4})
+check("Umbenennen zieht die Namens-Referenz nach",
+      _nach_rename["item_names"] == ["Steinkohle"])
+check("Umbenennen hebt dabei auch das Altformat (Kopie -> Referenz)",
+      "items" not in _nach_rename)
 
 
 # ------------------------------------------- Start-Durchgang (persistence/sweep)
@@ -825,6 +837,53 @@ check("delay_after ist danach weg", "delay_after" not in _step)
 check("Umbenennung wird gemeldet", any("delay_after" in m for m in _m))
 check("Loader kennt delay_after nicht mehr",
       _p2s([{"x": 1, "y": 2, "delay_after": 9}])[0].delay_before == 0)
+
+
+# ------------------------------- Items/Slots referenzieren statt kopieren
+section("Item-Scans verweisen auf globale Slots/Items (keine Kopien mehr)")
+from autoclicker.persistence.item_scans import resolve_scan_references as _resolve_scans
+from autoclicker.models import ItemScanConfig as _ISC
+
+_st4 = AutoClickerState()
+_st4.global_slots = {"S1": ItemSlot(name="S1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))}
+_st4.global_items = {"Kohle": ItemProfile(name="Kohle", marker_colors=[(1, 2, 3)],
+                                         category="Erz", priority=1)}
+_st4.item_scans = {"inv": _ISC(name="inv", slot_names=["S1"], item_names=["Kohle"])}
+
+_meld = _resolve_scans(_st4)
+_cfg = _st4.item_scans["inv"]
+check("Referenz wird zum globalen Slot aufgeloest",
+      len(_cfg.slots) == 1 and _cfg.slots[0] is _st4.global_slots["S1"])
+check("Referenz wird zum globalen Item aufgeloest",
+      len(_cfg.items) == 1 and _cfg.items[0] is _st4.global_items["Kohle"])
+check("nichts zu meckern wenn alles da ist", _meld == [])
+
+# Der Kern der Sache: Aenderung am globalen Item wirkt im Scan
+_st4.global_items["Kohle"].marker_colors = [(9, 9, 9)]
+_resolve_scans(_st4)
+check("Aenderung am globalen Item wirkt im Scan",
+      _st4.item_scans["inv"].items[0].marker_colors == [(9, 9, 9)])
+
+# Fehlende Namen: melden und weiterlaufen, nicht den Scan sprengen
+_st4.item_scans["inv"].item_names = ["Kohle", "Gibtsnicht"]
+_st4.item_scans["inv"].slot_names = ["S1", "AuchNicht"]
+_meld = _resolve_scans(_st4)
+check("fehlender Slot wird gemeldet", any("AuchNicht" in m for m in _meld))
+check("fehlendes Item wird gemeldet", any("Gibtsnicht" in m for m in _meld))
+check("der Rest bleibt nutzbar",
+      len(_st4.item_scans["inv"].items) == 1 and len(_st4.item_scans["inv"].slots) == 1)
+
+# Speichern leitet die Namen aus den aufgeloesten Objekten ab, wenn Editoren
+# direkt slots/items setzen - so muss kein Editor umgebaut werden
+from autoclicker.persistence.serialization import _item_scan_to_dict as _isc2d
+_vom_editor = _ISC(name="neu",
+                   slots=[_st4.global_slots["S1"]],
+                   items=[_st4.global_items["Kohle"]])
+_gespeichert = _isc2d(_vom_editor)
+check("Editor-Config wird als Namen gespeichert",
+      _gespeichert["slot_names"] == ["S1"] and _gespeichert["item_names"] == ["Kohle"])
+check("keine Kopien in der Datei",
+      "slots" not in _gespeichert and "items" not in _gespeichert)
 
 
 

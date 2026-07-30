@@ -80,6 +80,27 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 - **Vor Editoren mit Konsolen-Input**: `_block_if_recording(state)` + `is_running`-Check (sonst kollidiert Konsolen-Input mit Worker/Recorder).
 - **Feedback-Bausteine** aus `utils/console.py` nutzen: `ok/err/warn/info/hint`, `header`, `breadcrumb`, `cmd_hint`, `describe_color` — keine rohen ANSI-Strings.
 
+### Referenzen statt Kopien
+Zwei Stellen, an denen früher eine Kopie lag und deshalb still veraltete. Beide folgen
+jetzt demselben Muster: **der globale Eintrag ist die Wahrheit, aufgelöst beim Start und
+vor jedem Sequenzlauf.**
+
+| wer verweist | worauf | Feld in der Datei | auflösen |
+|---|---|---|---|
+| `SequenceStep` | `points.json` | `point_id` | `resolve_point_references()` |
+| `ItemScanConfig` | `slots.json`, `items.json` | `slot_names`, `item_names` | `resolve_scan_references()` |
+
+Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
+Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht. `_item_scan_to_dict`
+leitet die Namen aus den Objekten ab, wenn die Namenslisten leer sind; deshalb musste kein
+Editor angefasst werden.
+
+Namen, die global fehlen, werden gemeldet und übersprungen — der Scan läuft mit dem Rest
+weiter. Lieber ein Slot weniger als ein toter Scan.
+
+Beim Umbenennen bleibt `update_item_in_scans()` nötig: der Name *ist* die Referenz. Alles
+andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
+
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
 ```
@@ -91,7 +112,7 @@ slots/presets/<name>.json      Slot-Presets
 items/items.json               state.global_items
 items/templates/<name>.png     Item-Templates (PNG, referenziert per Dateiname-only)
 items/presets/<name>.json      Item-Presets
-item_scans/<name>.json         eine ItemScanConfig pro Datei
+item_scans/<name>.json         eine ItemScanConfig pro Datei (verweist per Name auf slots/items)
 boss_scans/<name>.json         eine BossScanConfig pro Datei
 boss_scans/global/bosses.json  globale Boss-Bibliothek (state.global_bosses, gilt in jedem Boss-Scan)
 icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
@@ -146,6 +167,12 @@ Zwei Regeln für den Start-Durchgang: **still, wenn nichts zu tun ist** (Normalf
 Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladbare Dateien
 bleiben unangetastet). Zweiter Start muss „0 geändert" ergeben; tut er das nicht, ist ein
 Schritt nicht idempotent.
+
+**Speichern wird geschrieben, als gäbe es keine Altbestände.** Die Serializer schreiben
+das optimale Format, nicht das kompatible: nur gesetzte Felder (`_STEP_DEFAULTS`), nur
+Referenzen statt Kopien. Alles Alte hebt die Migration beim Start — und was sie nicht
+heben kann, ist verloren. Das ist die bewusste Entscheidung: lieber ein optimales Format
+mit einem Migrationsschritt als ein Format, das für immer seine Vorgeschichte mitträgt.
 
 Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
 default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.

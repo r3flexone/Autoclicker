@@ -121,13 +121,20 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 # garantiert dasselbe schreiben.
 
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
-    """Serialisiert eine ItemScanConfig zu einem Dict."""
+    """Serialisiert eine ItemScanConfig zu einem Dict.
+
+    Geschrieben werden nur Namen. Sind die Namenslisten leer (Editoren setzen direkt
+    `slots`/`items`), werden sie aus den aufgelösten Objekten abgeleitet - so muss kein
+    Editor umgebaut werden.
+    """
+    slot_names = list(config.slot_names) or [s.name for s in config.slots]
+    item_names = list(config.item_names) or [i.name for i in config.items]
     return {
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "learn_unknown": config.learn_unknown,
-        "slots": [_slot_to_dict(slot) for slot in config.slots],
-        "items": [_item_to_dict(item) for item in config.items],
+        "slot_names": slot_names,
+        "item_names": item_names,
     }
 
 

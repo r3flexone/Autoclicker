@@ -349,10 +349,27 @@ class ItemSlot:
 
 @dataclass
 class ItemScanConfig:
-    """Konfiguration für Item-Erkennung und -Vergleich."""
+    """Konfiguration für Item-Erkennung und -Vergleich.
+
+    WAS IN DER DATEI STEHT sind nur die Namen (`slot_names`, `item_names`). Slots und
+    Items selbst leben in slots/slots.json bzw. items/items.json - der Scan verweist
+    darauf, statt sie zu kopieren.
+
+    Vorher lag jedes Item zweimal auf Platte: global und vollständig eingebettet in jedem
+    Scan, der es benutzt. Änderte man die Marker-Farben des globalen Items, passierte im
+    Scan nichts. Dass das wehtat, sieht man daran, dass es `update_item_in_scans()` gab -
+    eine Funktion, die nach einem Umbenennen alle Scan-Dateien nachzieht. Genau dieselbe
+    Falle wie bei den Punkten in Sequenzen.
+
+    `slots` und `items` sind die AUFGELÖSTEN Arbeitslisten, gefüllt von
+    `resolve_scan_references()`. Der Worker liest sie, die Editoren schreiben sie - beides
+    unverändert. Nur gespeichert werden sie nicht mehr.
+    """
     name: str
-    slots: list[ItemSlot] = field(default_factory=list)      # Wo gescannt wird
-    items: list[ItemProfile] = field(default_factory=list)   # Welche Items erkannt werden
+    slots: list[ItemSlot] = field(default_factory=list)      # aufgelöst, nicht gespeichert
+    items: list[ItemProfile] = field(default_factory=list)   # aufgelöst, nicht gespeichert
+    slot_names: list[str] = field(default_factory=list)      # das steht in der Datei
+    item_names: list[str] = field(default_factory=list)      # das steht in der Datei
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).

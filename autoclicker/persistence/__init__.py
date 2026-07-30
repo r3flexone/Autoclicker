@@ -42,7 +42,7 @@ from .globals import (
 from .item_scans import (
     ensure_item_scans_dir, save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
-    update_item_in_scans,
+    update_item_in_scans, resolve_scan_references,
 )
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
@@ -87,6 +87,7 @@ __all__ = [
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
     'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',
+    'resolve_scan_references',
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
