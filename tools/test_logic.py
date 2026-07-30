@@ -437,5 +437,72 @@ check("point_id ueberlebt Round-Trip", _rt[0].point_id == 3)
 check("alte Schritte ohne point_id -> None",
       _parse_steps([{"x": 1, "y": 2, "delay_before": 0}])[0].point_id is None)
 
+# ------------------------------------------------------- Schema-Migration
+section("Schema-Migration: Altformate -> aktuelles Schema")
+from autoclicker.persistence.migration import (
+    KIND_SEQUENCE, SCHEMA_VERSION, file_version, migrate, needs_migration, stamp)
+from autoclicker.persistence.sequences import load_sequence_file as _load_seq
+
+_pts = [{"id": 3, "x": 100, "y": 200, "name": "Markt"},
+        {"id": 7, "x": 300, "y": 400, "name": "Verkauf"},
+        {"id": 9, "x": 500, "y": 600, "name": "A"},
+        {"id": 10, "x": 500, "y": 600, "name": "B"}]      # mehrdeutig
+
+check("Datei ohne Feld ist Version 0", file_version({"name": "x"}) == 0)
+check("needs_migration erkennt Altdatei", needs_migration({"name": "x"}) is True)
+check("gestempelte Datei braucht keine Migration", needs_migration(stamp({})) is False)
+
+# uraltes Format: nur "steps", dazu tote Felder
+_uralt = {"name": "U", "steps": [
+    {"x": 100, "y": 200, "name": "Markt", "delay_before": 1, "clicks": 2, "point_index": 0}]}
+_d, _m = migrate(_uralt, KIND_SEQUENCE, {"points": _pts})
+check("uraltes 'steps' wird zu loop_phases", len(_d["loop_phases"]) == 1)
+check("uralt: Schritt wird verknuepft", _d["loop_phases"][0]["steps"][0]["point_id"] == 3)
+check("uralt: tote Felder entfernt",
+      "clicks" not in _d["loop_phases"][0]["steps"][0]
+      and "point_index" not in _d["loop_phases"][0]["steps"][0])
+check("uralt: Versions-Stempel gesetzt", _d["schema_version"] == SCHEMA_VERSION)
+
+# altes Format: start_steps + loop_steps + max_loops
+_alt = {"name": "A",
+        "start_steps": [{"x": 300, "y": 400, "name": "V", "delay_before": 0}],
+        "loop_steps": [{"x": 500, "y": 600, "name": "Mehrdeutig", "delay_before": 0},
+                       {"x": 0, "y": 0, "name": "T", "delay_before": 0, "key_press": "enter"}],
+        "max_loops": 5}
+_d2, _m2 = migrate(_alt, KIND_SEQUENCE, {"points": _pts})
+check("start_steps wird eigene erste Phase", _d2["loop_phases"][0]["name"] == "Start")
+check("loop_steps behaelt max_loops als repeat", _d2["loop_phases"][1]["repeat"] == 5)
+check("max_loops ist weg", "max_loops" not in _d2)
+check("start_steps ist weg", "start_steps" not in _d2)
+check("mehrdeutige Koordinate bleibt UNverknuepft",
+      _d2["loop_phases"][1]["steps"][0].get("point_id") is None)
+check("Tastendruck bekommt keine point_id",
+      _d2["loop_phases"][1]["steps"][1].get("point_id") is None)
+
+# Idempotenz: zweiter Lauf aendert nichts mehr
+import copy as _copy
+_vorher = _copy.deepcopy(_d2)
+_d3, _m3 = migrate(_d2, KIND_SEQUENCE, {"points": _pts})
+check("zweiter Migrationslauf meldet nichts", _m3 == [])
+check("zweiter Migrationslauf aendert nichts", _d3 == _vorher)
+
+# Neuere Schema-Version wird nicht heruntergerechnet
+_neuer = {"name": "Z", "schema_version": SCHEMA_VERSION + 5, "loop_phases": []}
+_d4, _m4 = migrate(_neuer, KIND_SEQUENCE, {})
+check("neuere Version wird nicht angefasst", _d4["schema_version"] == SCHEMA_VERSION + 5)
+check("neuere Version wird gemeldet", any("kennt nur" in m for m in _m4))
+
+# Loader liest ein Altformat ueber die Migration
+_mp = tmp / "altformat.json"
+_mp.write_text(json.dumps({"name": "Alt", "steps": [
+    {"x": 100, "y": 200, "name": "Markt", "delay_before": 0}]}), encoding="utf-8")
+_seq_alt = _load_seq(_mp, _pts)
+check("Loader laedt uraltes Format ueber die Migration", _seq_alt is not None)
+check("Loader: Schritt liegt in einer Loop-Phase",
+      _seq_alt is not None and len(_seq_alt.loop_phases) == 1
+      and len(_seq_alt.loop_phases[0].steps) == 1)
+check("Loader: point_id kam aus der Migration",
+      _seq_alt is not None and _seq_alt.loop_phases[0].steps[0].point_id == 3)
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

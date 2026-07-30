@@ -12,7 +12,8 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
-python tools/sync_json.py       # Migriert alte JSON-Dateien aufs aktuelle Schema
+python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Schema (--write zum Schreiben)
+python tools/sync_json.py       # Feld-für-Feld-Nachpflege (ältere Dateitypen)
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
 
@@ -75,7 +76,25 @@ exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 ```
 
-**Backward Compatibility ist kritisch**: Alle Loader nutzen `data.get(key, default)`. Beim Hinzufügen neuer Felder zu Dataclasses **immer** Default-Wert setzen, **nie** `data[key]` direkt verwenden. `AppConfig.from_dict()` filtert unbekannte Keys raus, sodass alte Configs gegen neuen Code laden. `tools/sync_json.py` migriert ältere Dateien wenn nötig.
+**Backward Compatibility läuft über Migration, nicht über Sonderfälle im Loader**:
+`persistence/migration.py` hebt geladene Dicts aufs aktuelle Schema (`schema_version`),
+bevor ein Loader sie liest. Loader kennen deshalb **nur das aktuelle Format** — neue
+Umstellungen kosten einen Migrationsschritt statt einer weiteren Verzweigung.
+
+Regeln beim Schema-Ändern:
+1. `SCHEMA_VERSION` hochzählen, Schritt in die passende Kette in `_CHAINS` eintragen.
+2. Entfallene Felder in `_DEAD_STEP_KEYS` eintragen — dann räumt die Migration sie weg.
+3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
+4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
+
+Sind alle Dateien auf der aktuellen Version, ist der zugehörige Migrationsschritt tot
+und wird **ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das Modul soll
+schrumpfen, nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
+
+Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
+default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.
+`AppConfig.from_dict()` filtert unbekannte Keys raus. `tools/sync_json.py` bleibt für
+das Feld-für-Feld-Nachpflegen anderer Dateitypen.
 
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
@@ -86,7 +105,7 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Größe (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
-- `autoclicker/persistence/` — JSON-Persistenz: `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
+- `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).

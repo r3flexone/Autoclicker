@@ -13,7 +13,8 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, atomic_write, describe_color
+from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
+from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, hint, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict, _point_to_dict
 
 logger = logging.getLogger("autoclicker")
@@ -37,67 +38,52 @@ def ensure_sequences_dir() -> Path:
 def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
     """Speichert eine einzelne Sequenz direkt in die angegebene Datei."""
     try:
-        atomic_write(filepath, compact_json(_sequence_to_dict(seq)))
+        atomic_write(filepath, compact_json(stamp(_sequence_to_dict(seq))))
         return True
     except (IOError, OSError) as e:
         print(err(f"Sequenz konnte nicht gespeichert werden: {e}"))
         return False
 
 
-def load_sequence_file(filepath: Path) -> Optional[Sequence]:
-    """Lädt eine einzelne Sequenz-Datei (mit Start + mehreren Loop-Phasen).
+def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optional[Sequence]:
+    """Lädt eine einzelne Sequenz-Datei.
 
-    Unterstützt drei Formate:
-      - aktuell: loop_phases (Liste von LoopPhase-Dicts)
-      - alt:     loop_steps + max_loops (eine Phase)
-      - uralt:   steps (keine Phasen)
+    Die Altformate (start_steps / loop_steps+max_loops / steps) kennt dieser Loader
+    NICHT mehr - darum kümmert sich migration.migrate(), bevor hier gelesen wird. So
+    steht hier nur noch das aktuelle Schema, und neue Umstellungen kosten einen
+    Migrationsschritt statt einer weiteren Sonderfall-Verzweigung.
+
+    `points` (optional) erlaubt der Migration, Schritte über ihre Koordinaten mit
+    Punkten zu verknüpfen.
     """
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        init_steps = _parse_steps(data.get("init_steps", []))
-        end_steps = _parse_steps(data.get("end_steps", []))
-        description = data.get("description", "")
+        data, meldungen = migrate(data, KIND_SEQUENCE, {"points": points or []})
+        if meldungen:
+            print(info(f"'{filepath.stem}' auf Schema {SCHEMA_VERSION} gehoben:"))
+            for m in meldungen:
+                print(f"         - {m}")
+            print(f"         {hint('Beim nächsten Speichern wird das Format dauerhaft sauber.')}")
 
-        # Rückwärtskompatibilität: alte start_steps → erste LoopPhase mit repeat=1
-        old_start_steps = _parse_steps(data.get("start_steps", []))
-
-        # Neues Format mit loop_phases (mehrere Loop-Phasen)
-        if "loop_phases" in data:
-            loop_phases = []
-            if old_start_steps:
-                loop_phases.append(LoopPhase("Start", old_start_steps, 1))
-            for lp_data in data["loop_phases"]:
-                lp = LoopPhase(
-                    name=lp_data.get("name", "Loop"),
-                    steps=_parse_steps(lp_data.get("steps", [])),
-                    repeat=lp_data.get("repeat", 1),
-                    scheduled_start=lp_data.get("scheduled_start")
-                )
-                loop_phases.append(lp)
-            total_cycles = data.get("total_cycles", 1)
-            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles, description)
-
-        # Altes Format mit loop_steps (eine Loop-Phase) - konvertieren
-        if "loop_steps" in data:
-            loop_steps = _parse_steps(data.get("loop_steps", []))
-            max_loops = data.get("max_loops", 0)
-            loop_phases = []
-            if old_start_steps:
-                loop_phases.append(LoopPhase("Start", old_start_steps, 1))
-            if loop_steps:
-                loop_phases.append(LoopPhase("Loop 1", loop_steps, max_loops if max_loops > 0 else 1))
-            total_cycles = 0 if max_loops == 0 else 1
-            return Sequence(data["name"], init_steps, loop_phases, end_steps, total_cycles, description)
-
-        # Uraltes Format (nur steps) - konvertieren
-        if "steps" in data:
-            loop_steps = _parse_steps(data["steps"])
-            loop_phases = [LoopPhase("Loop 1", loop_steps, 1)] if loop_steps else []
-            return Sequence(data["name"], [], loop_phases, [], 0, description)
-
-        return Sequence(data["name"], [], [], [], 1, description)
+        loop_phases = [
+            LoopPhase(
+                name=lp.get("name", "Loop"),
+                steps=_parse_steps(lp.get("steps", [])),
+                repeat=lp.get("repeat", 1),
+                scheduled_start=lp.get("scheduled_start"),
+            )
+            for lp in data.get("loop_phases", [])
+        ]
+        return Sequence(
+            data["name"],
+            _parse_steps(data.get("init_steps", [])),
+            loop_phases,
+            _parse_steps(data.get("end_steps", [])),
+            data.get("total_cycles", 1),
+            data.get("description", ""),
+        )
 
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")

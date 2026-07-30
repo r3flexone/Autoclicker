@@ -26,7 +26,7 @@ def run_sequence_loader(state: AutoClickerState) -> None:
     loaded_sequences = []  # (seq, filepath) Paare
     menu_options = []
     for name, path in sequences:
-        seq = load_sequence_file(path)
+        seq = load_sequence_file(path, list(state.points))
         if seq:
             loaded_sequences.append((seq, path))
             active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""

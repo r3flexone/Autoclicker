@@ -495,7 +495,11 @@ def handle_switch(state: AutoClickerState) -> None:
     loaded_sequences = []
     menu_options = []
     for name, path in sequences:
-        seq = load_sequence_file(path)
+        # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
+        # Koordinaten mit dem Punkte-Pool (point_id).
+        with state.lock:
+            punkte = list(state.points)
+        seq = load_sequence_file(path, punkte)
         if seq:
             loaded_sequences.append(seq)
             active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
