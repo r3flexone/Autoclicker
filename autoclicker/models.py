@@ -379,9 +379,38 @@ class ItemScanConfig:
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
     learn_unknown: bool = False
 
+    def __post_init__(self) -> None:
+        self.sync_names()
+
+    def sync_names(self) -> None:
+        """Leitet fehlende Namenslisten aus den Objekten ab.
+
+        DER GRUND: Namen und Objekte sind zwei Darstellungen derselben Sache, und wer nur
+        eine davon setzt, hinterlässt eine halbe Config. Genau das ist passiert - Editoren
+        und Scan-Studio bauen die Config aus Objekten, der Loader aus Namen, und niemand
+        füllte die jeweils andere Seite:
+
+        * Beim Öffnen waren `slots`/`items` leer, also zeigte das Menü "0 Slots, 0 Items"
+          und beim Bearbeiten war nichts vorausgewählt.
+        * Beim Speichern waren `slot_names`/`item_names` leer - und
+          `resolve_scan_references()` (läuft vor JEDEM Sequenzstart) leerte daraufhin die
+          Objekte. Ein gerade bearbeiteter Scan lief bis zum Neustart ins Leere.
+
+        Die Namen sind die Wahrheit (sie stehen in der Datei), die Objekte werden
+        aufgelöst. Diese Methode stellt sicher, dass die Wahrheit nie fehlt - egal von
+        welcher Seite die Config gebaut wurde.
+        """
+        if not self.slot_names and self.slots:
+            self.slot_names = [s.name for s in self.slots]
+        if not self.item_names and self.items:
+            self.item_names = [i.name for i in self.items]
+
     def __str__(self) -> str:
         learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
-        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items){learn_str}"
+        # Über die Namen zählen: frisch geladen sind die Objekte noch nicht aufgelöst,
+        # und "0 Slots" wäre dann schlicht falsch.
+        return (f"{self.name} ({len(self.slot_names)} Slots, "
+                f"{len(self.item_names)} Items){learn_str}")
 
 
 # =============================================================================

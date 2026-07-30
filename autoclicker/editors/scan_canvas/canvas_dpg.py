@@ -460,8 +460,9 @@ class ScanStudioApp:
             return
         self._scan_name = cfg.name
         self._scan_tol = cfg.color_tolerance
-        scan_slot_names = {s.name for s in cfg.slots}
-        scan_item_names = {i.name for i in cfg.items}
+        # Namen statt Objekte - siehe ItemScanConfig.sync_names()
+        scan_slot_names = set(cfg.slot_names)
+        scan_item_names = set(cfg.item_names)
         self._slot_checked = {n: (n in scan_slot_names) for n in self.slots}
         self._item_checked = {n: (n in scan_item_names) for n in self.items}
         self.refresh_scan_panel()

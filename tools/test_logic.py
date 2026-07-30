@@ -1030,6 +1030,57 @@ check("erst die Aufloesung zieht ihn nach", (_verknuepft.x, _verknuepft.y) == (5
 check("und meldet das im Klartext", len(_meld) == 1 and "P3" in _meld[0])
 
 
+# -------------------------------------------- Item-Scan: Namen sind die Wahrheit
+section("Item-Scan: Namen und Objekte bleiben synchron")
+from autoclicker.models import ItemScanConfig as _ISC3, ItemSlot as _IS3, ItemProfile as _IP3
+from autoclicker.persistence import resolve_scan_references as _rsr
+
+_slot_a, _slot_b = _IS3("S1", (0, 0, 10, 10), (5, 5)), _IS3("S2", (0, 0, 10, 10), (5, 5))
+_item_a = _IP3("Kohle")
+
+# So baut der EDITOR (und das Scan-Studio) eine Config: nur Objekte.
+_cfg_editor = _ISC3(name="inv", slots=[_slot_a, _slot_b], items=[_item_a])
+check("Editor-Config bekommt die Namen automatisch",
+      _cfg_editor.slot_names == ["S1", "S2"] and _cfg_editor.item_names == ["Kohle"])
+
+# So baut der LOADER: nur Namen. __str__ muss trotzdem die richtige Zahl zeigen -
+# vorher stand im Menue bei jedem gespeicherten Scan "0 Slots, 0 Items".
+_cfg_datei = _ISC3(name="inv", slot_names=["S1", "S2"], item_names=["Kohle"])
+check("frisch geladen zeigt das Menue die richtige Anzahl",
+      "2 Slots" in str(_cfg_datei) and "1 Items" in str(_cfg_datei))
+check("Vorauswahl beim Bearbeiten kommt aus den Namen",
+      list(_cfg_datei.slot_names) == ["S1", "S2"])
+
+# Der Fall, der den Scan bis zum Neustart totlegte: bearbeiten, dann Sequenz starten.
+# resolve_scan_references laeuft vor JEDEM Lauf und ging ueber die (leeren) Namen.
+_st5 = _ACS()
+_st5.global_slots = {"S1": _slot_a, "S2": _slot_b}
+_st5.global_items = {"Kohle": _item_a}
+_st5.item_scans["inv"] = _cfg_editor
+_rsr(_st5)
+check("frisch bearbeiteter Scan ueberlebt den Sequenzstart",
+      len(_cfg_editor.slots) == 2 and len(_cfg_editor.items) == 1)
+
+# Und andersherum: aus Namen werden Objekte
+_st5.item_scans["inv2"] = _cfg_datei
+_rsr(_st5)
+check("Namen werden zu Objekten aufgeloest",
+      [s.name for s in _cfg_datei.slots] == ["S1", "S2"])
+
+# Nachtraegliche Zuweisung an .slots (der Weg, der urspruenglich schiefging)
+_cfg_spaet = _ISC3(name="spaet")
+_cfg_spaet.slots = [_slot_a]
+_cfg_spaet.sync_names()
+check("nachtraeglich gesetzte Objekte tragen ihre Namen nach",
+      _cfg_spaet.slot_names == ["S1"])
+
+# Gespeichert werden weiterhin nur Namen
+_gespeichert = _item_scan_to_dict(_cfg_editor)
+check("Datei enthaelt nur Namen, keine Kopien",
+      _gespeichert.get("slot_names") == ["S1", "S2"]
+      and "slots" not in _gespeichert and "items" not in _gespeichert)
+
+
 # ------------------------------------------------------- Template-Cache
 section("Template-Cache: einmal lesen, bei Aenderung neu")
 from autoclicker import imaging as _img

@@ -91,9 +91,22 @@ vor jedem Sequenzlauf.**
 | `ItemScanConfig` | `slots.json`, `items.json` | `slot_names`, `item_names` | `resolve_scan_references()` |
 
 Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
-Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht. `_item_scan_to_dict`
-leitet die Namen aus den Objekten ab, wenn die Namenslisten leer sind; deshalb musste kein
-Editor angefasst werden.
+Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht.
+
+**Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
+(aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
+Namenslisten aus den Objekten. Ohne das hinterlässt jede Seite eine halbe Config, und beide
+Richtungen gehen kaputt:
+
+- Editoren und Scan-Studio bauen die Config aus **Objekten** → ohne Namen leerte
+  `resolve_scan_references()` beim nächsten Sequenzstart die Objekte wieder. Ein gerade
+  bearbeiteter Scan lief bis zum Neustart ins Leere.
+- Der Loader baut sie aus **Namen** → ohne Objekte zeigte das Menü „0 Slots, 0 Items" und
+  beim Bearbeiten war nichts vorausgewählt.
+
+Regel beim Erweitern: **Anzeige und Vorauswahl immer über `slot_names`/`item_names`**, nie
+über `slots`/`items` — die sind erst nach dem Auflösen gefüllt. Wer `config.slots` von außen
+setzt, ruft danach `sync_names()`.
 
 Namen, die global fehlen, werden gemeldet und übersprungen — der Scan läuft mit dem Rest
 weiter. Lieber ein Slot weniger als ein toter Scan.

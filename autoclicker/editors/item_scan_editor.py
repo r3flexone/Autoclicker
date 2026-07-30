@@ -189,8 +189,10 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if existing:
         print(f"\n--- Bearbeite Scan: {existing.name} ---")
         scan_name = existing.name
-        selected_slot_names = [s.name for s in existing.slots]
-        selected_item_names = [i.name for i in existing.items]
+        # Namen, nicht Objekte: load_item_scan_file() liefert nur die Namen, die
+        # Objekte werden erst von resolve_scan_references() aufgeloest.
+        selected_slot_names = list(existing.slot_names)
+        selected_item_names = list(existing.item_names)
         tolerance = existing.color_tolerance
         learn_unknown = existing.learn_unknown
     else:

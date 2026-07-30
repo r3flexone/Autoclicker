@@ -84,6 +84,11 @@ def resolve_scan_references(state: AutoClickerState) -> list[str]:
         scans = list(state.item_scans.values())
 
     for config in scans:
+        # Absicherung gegen eine Config, der jemand nur die Objekte gesetzt hat: ohne
+        # Namen wuerde die Schleife unten die Objekte leeren statt sie aufzuloesen.
+        # __post_init__ deckt den Normalfall ab, das hier auch nachtraegliche Zuweisungen.
+        config.sync_names()
+
         slots, fehlende_slots = [], []
         for name in config.slot_names:
             if name in globale_slots:
