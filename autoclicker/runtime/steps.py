@@ -88,59 +88,34 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
     """Immediate-Modus: Scan→Klick pro Slot statt alle scannen, dann alle klicken."""
     with state.lock:
         config = state.item_scans.get(step.item_scan)
-    if not config or not config.slots or not config.items:
+    # Dieselbe Bedingung wie in execute_item_scan: ein Scan, der nur lernen soll,
+    # braucht keine Items. Stand hier vorher ohne learn_unknown — ein reiner
+    # Lern-Scan tat im Immediate-Modus dadurch gar nichts.
+    if not config or not config.slots or (not config.items and not config.learn_unknown):
         return True
 
     slots = list(config.slots)
     if state.config.scan_reverse:
         slots = list(reversed(slots))
 
-    # clicked_categories VOR dem Loop sichern, damit Klicks innerhalb
-    # dieses Scan-Schritts sich nicht gegenseitig ausfiltern. Jeder Slot scannt
-    # gegen denselben Pre-Step-Stand (saved_categories) — aber die in diesem Step
-    # tatsächlich geklickten Kategorien werden gesammelt und am Ende mit dem
-    # globalen Dict GEMERGT, statt bei jedem Slot überschrieben (sonst gingen
-    # Klicks früherer Slots verloren).
-    with state.lock:
-        saved_categories = dict(state.clicked_categories)
-
-    step_clicked: dict[str, int] = {}
+    # state.clicked_categories wird bewusst NICHT gesondert verwaltet: _click_scan_result
+    # traegt jeden Klick selbst ein, _filter_scan_results liest nur. Damit ist der Stand
+    # vor Slot N automatisch "Vorher-Stand + alles, was in diesem Step bisher geklickt
+    # wurde" — genau die Baseline, die hier vorher aus einem Snapshot plus zwei
+    # Merge-Schleifen nachgebaut wurde. Nachgerechnet: identisches Ergebnis, und das
+    # Zurueckschreiben des Snapshots verwarf sogar Klicks des Async-Boss-Threads.
     total_clicked = 0
     for slot in slots:
         if state.stop_event.is_set():
             return False
 
-        # Baseline für diesen Slot: Pre-Step-Stand + bereits in diesem Step geklickte
-        with state.lock:
-            merged = dict(saved_categories)
-            for cat, prio in step_clicked.items():
-                if cat not in merged or prio < merged[cat]:
-                    merged[cat] = prio
-            state.clicked_categories = merged
-
         results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot])
-
-        if results:
-            for pos, item, priority in results:
-                if state.stop_event.is_set():
-                    return False
-                if not _click_scan_result(state, pos, item, priority, debug):
-                    return False
-                total_clicked += 1
-
-        # Was in diesem Slot zusätzlich geklickt wurde, in den Step-Akkumulator übernehmen
-        with state.lock:
-            for cat, prio in state.clicked_categories.items():
-                if cat not in step_clicked or prio < step_clicked[cat]:
-                    step_clicked[cat] = prio
-
-    # Step-Ergebnisse final ins globale Dict mergen (nicht überschreiben)
-    with state.lock:
-        merged = dict(saved_categories)
-        for cat, prio in step_clicked.items():
-            if cat not in merged or prio < merged[cat]:
-                merged[cat] = prio
-        state.clicked_categories = merged
+        for pos, item, priority in results:
+            if state.stop_event.is_set():
+                return False
+            if not _click_scan_result(state, pos, item, priority, debug):
+                return False
+            total_clicked += 1
 
     if total_clicked > 0:
         _step_status(debug, phase, step_num, total_steps,

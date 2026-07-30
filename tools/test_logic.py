@@ -1243,5 +1243,98 @@ finally:
     _RS.check_failsafe = _orig_failsafe
 
 
+# ------------------------------- Immediate-Modus: Kategorie-Filter ueber Slots hinweg
+section("Item-Scan im Immediate-Modus (Scan->Klick pro Slot)")
+# Die Buchhaltung um state.clicked_categories wurde entfernt (nachweislich dasselbe
+# Ergebnis wie 'nichts tun'). Diese Tests halten das Verhalten fest, das bleiben muss:
+# je Kategorie nur einmal klicken, auch ueber mehrere Slots - und ein reiner Lern-Scan
+# ohne Items darf nicht stillschweigend aussteigen.
+import autoclicker.runtime.item_scan as _IS
+
+_orig_prof, _orig_shot2, _orig_park = _IS._check_profile_match, _IS.take_screenshot, _IS._park_mouse_for_scan
+_orig_click2 = _IS.safe_click
+_orig_failsafe2 = _RS.check_failsafe
+_RS.check_failsafe = lambda st: False   # gestubbtes get_cursor_pos liefert (0,0) = Ecke
+_geklickt = []
+_IS.take_screenshot = lambda region=None: object()
+_IS._park_mouse_for_scan = lambda p: None
+_IS.safe_click = lambda st, x, y, label="": (_geklickt.append(label), True)[1]
+
+def _immediate_lauf(items, slots, treffer):
+    """treffer: dict slot_name -> item_name (was in diesem Slot erkannt wird)."""
+    _geklickt.clear()
+    st = AutoClickerState(); st.config = _AC2()
+    st.config.scan_click_immediate = True
+    st.config.scan_reverse = False   # feste Slot-Reihenfolge, sonst haengt das Ergebnis
+                                     # an der Prioritaet des zuerst gesehenen Items
+    cfg = _ISC(name="inv", slots=slots, items=items)
+    st.item_scans = {"inv": cfg}
+    # Erkennung: Slot X erkennt Item Y. _check_profile_match sieht nur das Item,
+    # daher ueber den gerade gescannten Slot mitgefuehrt.
+    zustand = {"slot": None}
+    _orig_exec = _IS.execute_item_scan
+    def _prof(profile, img, tol, state, debug, label="gefunden"):
+        return treffer.get(zustand["slot"]) == profile.name
+    _IS._check_profile_match = _prof
+    def _exec(state, name, mode="all", slots_override=None):
+        zustand["slot"] = slots_override[0].name if slots_override else None
+        return _orig_exec(state, name, mode, slots_override)
+    _IS.execute_item_scan = _exec
+    _RS.execute_item_scan = _exec
+    try:
+        schritt = _SS(x=0, y=0, delay_before=0, name="S", item_scan="inv")
+        _RS.execute_step(st, schritt, 1, 1, "T")
+    finally:
+        _IS.execute_item_scan = _orig_exec
+        _RS.execute_item_scan = _orig_exec
+    return list(_geklickt)
+
+try:
+    _slots = [ItemSlot(name=f"S{i}", scan_region=(0, 0, 8, 8), click_pos=(i, i))
+              for i in (1, 2, 3)]
+    # Zwei Slots zeigen dieselbe Kategorie 'Erz' -> nur der erste darf geklickt werden
+    _items = [ItemProfile(name="Kohle", marker_colors=[(1, 2, 3)], category="Erz", priority=1),
+              ItemProfile(name="Eisen", marker_colors=[(4, 5, 6)], category="Erz", priority=5),
+              ItemProfile(name="Fisch", marker_colors=[(7, 8, 9)], category="Nahrung", priority=1)]
+    # S1 = Kohle (Erz, P1), S2 = Eisen (Erz, P5): das schlechtere Eisen faellt raus
+    _r = _immediate_lauf(_items, _slots, {"S1": "Kohle", "S2": "Eisen", "S3": "Fisch"})
+    check("Immediate: schlechteres Item derselben Kategorie faellt raus",
+          _r == ["item:Kohle", "item:Fisch"])
+
+    # Umgekehrt: erst Eisen (P5), dann Kohle (P1) — das BESSERE darf noch klicken
+    _r = _immediate_lauf(_items, _slots, {"S1": "Eisen", "S2": "Kohle"})
+    check("Immediate: besseres Item derselben Kategorie klickt nach",
+          _r == ["item:Eisen", "item:Kohle"])
+
+    # Andere Kategorien bleiben unabhaengig voneinander
+    _r = _immediate_lauf(_items, _slots, {"S1": "Fisch", "S2": "Kohle"})
+    check("Immediate: verschiedene Kategorien werden beide geklickt",
+          _r == ["item:Fisch", "item:Kohle"])
+
+    # Reiner Lern-Scan (keine Items, learn_unknown=True) darf nicht vorzeitig aussteigen
+    _st_lern = AutoClickerState(); _st_lern.config = _AC2()
+    _st_lern.config.scan_click_immediate = True
+    _st_lern.config.scan_reverse = False
+    _st_lern.item_scans = {"lern": _ISC(name="lern", slots=_slots, items=[],
+                                        learn_unknown=True)}
+    _besucht = []
+    _IS._check_profile_match = lambda *a, **k: False
+    _orig_lern = _IS._learn_unknown_slot_item
+    _IS._learn_unknown_slot_item = lambda st, slot, img, dbg: _besucht.append(slot.name)
+    try:
+        _RS.execute_step(_st_lern, _SS(x=0, y=0, delay_before=0, name="L",
+                                       item_scan="lern"), 1, 1, "T")
+    finally:
+        _IS._learn_unknown_slot_item = _orig_lern
+    check("Immediate: reiner Lern-Scan besucht alle Slots",
+          _besucht == ["S1", "S2", "S3"])
+finally:
+    _IS._check_profile_match = _orig_prof
+    _IS.take_screenshot = _orig_shot2
+    _IS._park_mouse_for_scan = _orig_park
+    _IS.safe_click = _orig_click2
+    _RS.check_failsafe = _orig_failsafe2
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
