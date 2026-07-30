@@ -33,6 +33,7 @@ from autoclicker.winapi import (
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
+    list_available_sequences,
     load_points, load_global_slots, load_global_items, load_all_item_scans,
     load_all_boss_scans, load_all_icon_scans, load_global_bosses
 )
@@ -49,7 +50,25 @@ from autoclicker.handlers import (
 )
 
 
-def print_help() -> None:
+def print_banner() -> None:
+    """Vier Zeilen fuer den Wiedereinstieg — die volle Hilfe liegt auf CTRL+ALT+O.
+
+    Frueher stand hier bei JEDEM Start die komplette Hilfe samt drei Tutorials: rund 70
+    Zeilen, die alles Wichtige (Config-Pfad, geladene Daten, LLM/OCR-Status) nach oben
+    aus dem Fenster geschoben haben. Beim ersten Start ist die Anleitung Gold wert, beim
+    fuenfzigsten ist sie Rauschen.
+    """
+    line = col("=" * 65, 'cyan')
+    print(line)
+    print(f"  {col('WINDOWS AUTOCLICKER', 'bold')}")
+    print(f"  {col('CTRL+ALT+A', 'yellow')} Punkt aufnehmen   "
+          f"{col('CTRL+ALT+E', 'yellow')} Sequenz-Editor   "
+          f"{col('CTRL+ALT+S', 'yellow')} Start/Stop")
+    print(f"  {col('CTRL+ALT+O', 'yellow')} {hint('alle Hotkeys + Anleitung')}")
+    print(line)
+
+
+def print_help(mit_anleitung: bool = True) -> None:
     """Zeigt die Hilfe mit farbigen Kategorien an."""
     line = col("=" * 65, 'cyan')
     print(line)
@@ -96,7 +115,17 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+Q', 'yellow')}  Programm beenden")
     print()
 
-    # Schritt-für-Schritt-Anleitung
+    if mit_anleitung:
+        print_anleitung()
+    else:
+        print(hint(f"  Daten: '{SEQUENCES_DIR}/' | Einstellungen: '{CONFIG_FILE}'"))
+        print(line)
+        print()
+
+
+def print_anleitung() -> None:
+    """Schritt-fuer-Schritt-Anleitung — beim ersten Start und ueber CTRL+ALT+O."""
+    line = col("=" * 65, 'cyan')
     print(col("Anleitung:", 'bold'))
     print()
     print(f"  {col('Einfache Klick-Sequenz:', 'cyan')}")
@@ -126,9 +155,15 @@ def print_help() -> None:
     print()
 
 
+def _erster_start(state) -> bool:
+    """Nichts aufgenommen, nichts gespeichert — dann ist die Anleitung das Wichtigste."""
+    return not (state.points or state.global_slots or state.global_items
+                or state.item_scans or list_available_sequences())
+
+
 def main() -> int:
     """Hauptfunktion."""
-    print_help()
+    print_banner()
 
     # State initialisieren
     state = AutoClickerState()
@@ -153,6 +188,12 @@ def main() -> int:
     load_all_boss_scans(state)
     load_global_bosses(state)
     load_all_icon_scans(state)
+
+    # Beim allerersten Start die volle Anleitung zeigen - da ist sie das Wichtigste
+    # im Fenster. Danach reicht der Banner oben, alles Weitere liegt auf CTRL+ALT+O.
+    if _erster_start(state):
+        print()
+        print_help()
 
     # Setup pruefen - meldet nur, wenn etwas nicht stimmt (Sequenzdateien bleiben
     # aussen vor, das waere beim Start eine Bremse; die volle Pruefung liegt auf
