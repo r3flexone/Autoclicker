@@ -14,7 +14,7 @@ Beide sind UNABHÄNGIG: jede Kombination ist erlaubt, keiner impliziert den ande
 Nur Ausgabe, nie Ablauf - eine Sequenz läuft mit beiden Flags genauso wie ohne.
 
 3. Manueller Modus (Laufzeit, KEINE Config)
-                           state.step_mode - per Hotkey umschaltbar, auch mitten im Lauf.
+                           state.step_mode - im Punkte-Menü umschaltbar ('manuell').
                            Wartezeiten werden übersprungen, vor jedem Schritt springt der
                            Zeiger auf das Ziel und es wird gewartet, bis du bestätigst.
                            Erst dann wird tatsächlich geklickt. Damit gehst du die Sequenz

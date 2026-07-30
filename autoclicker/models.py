@@ -486,8 +486,8 @@ class AutoClickerState:
     points: list[ClickPoint] = field(default_factory=list)
 
     # Manueller Modus: Sequenz Schritt für Schritt auf Bestätigung, Wartezeiten
-    # übersprungen. Bewusst Laufzeit-Zustand statt Config - per Hotkey CTRL+ALT+M
-    # auch mitten im Lauf umschaltbar. Mutation unter state.lock.
+    # übersprungen. Bewusst Laufzeit-Zustand statt Config - im Punkte-Menü
+    # (CTRL+ALT+P -> 'manuell') umschaltbar. Mutation unter state.lock.
     step_mode: bool = False
 
     # Gespeicherte Sequenzen

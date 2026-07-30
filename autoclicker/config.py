@@ -112,7 +112,7 @@ class AppConfig:
     #   debug_detail = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort
     #                  passieren soll (mit Farbquadrat bei Farb-Bedingungen)
     # Der MANUELLE Modus (Schritt für Schritt auf Bestätigung) ist bewusst KEINE Config,
-    # sondern per Hotkey CTRL+ALT+M umschaltbar - auch mitten im Lauf.
+    # sondern Laufzeit-Zustand: Punkte-Menü (CTRL+ALT+P) -> 'manuell'.
     debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe
     debug_detail: bool = False                      # Stufe 2: Zeiger + Detailausgabe
     debug_show_pixel_position: bool = False         # Zeiger kurz zum Prüf-Pixel beim Farbwarten
