@@ -544,5 +544,93 @@ check("Loader: point_id kam aus der Migration",
       _seq_alt is not None and _seq_alt.loop_phases[0].steps[0].point_id == 3)
 
 
+# ------------------------------------------------ Migration: alle Dateitypen
+section("Migration: Normalisierer fuer Dateitypen ohne Versions-Feld")
+from autoclicker.persistence.migration import (
+    KIND_ITEMS as _K_ITEMS, KIND_ITEM_SCAN as _K_ISCAN, KIND_POINTS as _K_PTS,
+    KIND_SEQUENCE as _K_SEQ, file_version as _fv, migrate as _mig,
+)
+
+# file_version muss auch Listen und Muell vertragen - points.json IST eine Liste.
+# Vorher knallte hier AttributeError und tools/migrate.py starb an der ersten Datei.
+check("file_version(Liste) = 0", _fv([{"x": 1}]) == 0)
+check("file_version(None) = 0", _fv(None) == 0)
+check("file_version(dict ohne Feld) = 0", _fv({"name": "x"}) == 0)
+
+# Punkte: fehlende IDs nachnummerieren, tote Felder entfernen
+_pts = [{"id": 1, "x": 10, "y": 20, "name": "A"},
+        {"x": 30, "y": 40, "name": "B", "legacy_flag": True}]
+_pts, _m = _mig(_pts, _K_PTS)
+check("Punkte: fehlende ID wird vergeben", _pts[1]["id"] is not None)
+check("Punkte: vergebene ID kollidiert nicht", _pts[1]["id"] != _pts[0]["id"])
+check("Punkte: totes Feld entfernt", "legacy_flag" not in _pts[1])
+check("Punkte: Meldungen im Klartext", len(_m) == 2)
+_wieder = _mig([dict(p) for p in _pts], _K_PTS)[1]
+check("Punkte: zweiter Lauf meldet nichts", _wieder == [])
+
+# Items: confirm_point [x,y] -> {x,y}
+_items = {"Kohle": {"name": "Kohle", "confirm_point": [55, 66]},
+          "Erz": {"name": "Erz", "confirm_point": {"x": 1, "y": 2}},
+          "Leer": {"name": "Leer", "confirm_point": None}}
+_items, _m = _mig(_items, _K_ITEMS)
+check("Items: alte Liste wird zu {x,y}", _items["Kohle"]["confirm_point"] == {"x": 55, "y": 66})
+check("Items: aktuelles Format bleibt", _items["Erz"]["confirm_point"] == {"x": 1, "y": 2})
+check("Items: None bleibt None", _items["Leer"]["confirm_point"] is None)
+check("Items: nur das Geaenderte wird gemeldet", len(_m) == 1)
+check("Items: zweiter Lauf meldet nichts", _mig(_items, _K_ITEMS)[1] == [])
+
+# Item-Scans tragen ihre Items eingebettet
+_scan = {"name": "inv", "items": [{"name": "Kohle", "confirm_point": [7, 8]}]}
+_scan, _m = _mig(_scan, _K_ISCAN)
+check("Item-Scan: eingebettetes Item gehoben",
+      _scan["items"][0]["confirm_point"] == {"x": 7, "y": 8})
+check("Item-Scan: Aenderung gemeldet", len(_m) == 1)
+
+# Der Loader kennt die alte Liste NICHT mehr - dafuer ist die Migration da
+from autoclicker.persistence.serialization import _item_from_dict as _ifd
+check("Loader ignoriert das alte confirm_point-Format",
+      _ifd({"name": "X", "confirm_point": [1, 2]}).confirm_point is None)
+check("Loader liest das aktuelle Format",
+      _ifd({"name": "X", "confirm_point": {"x": 1, "y": 2}}).confirm_point.x == 1)
+
+# Verknuepfung darf nicht auf einen Punkt ohne ID zeigen (sonst point_id=null und der
+# naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz)
+_seq_roh = {"name": "s", "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+    {"x": 30, "y": 40, "name": "K", "delay_before": 0}]}]}
+_seq_roh, _ = _mig(_seq_roh, _K_SEQ, {"points": [{"x": 30, "y": 40, "name": "ohne ID"}]})
+check("Punkt ohne ID wird nicht referenziert",
+      _seq_roh["loop_phases"][0]["steps"][0].get("point_id") is None)
+
+# scheduled_start war nur da, um den Debug-Enter-Prompt zu ueberspringen - beides weg
+check("kein scheduled_start-Flag mehr am State",
+      not any(f.name == "scheduled_start"
+              for f in __import__("dataclasses").fields(AutoClickerState)))
+
+
+# ------------------------------------------------ Debug-Stufen zur Laufzeit
+section("Debug-Stufen im Punkte-Menue umschaltbar (ohne config.json editieren)")
+import autoclicker.config as _cfgmod
+import autoclicker.handlers as _hnd
+
+_gespeichert = []
+_orig_save = _cfgmod.save_config
+_cfgmod.save_config = lambda c: _gespeichert.append((c.debug_log, c.debug_detail))
+
+_st3 = AutoClickerState()
+_st3.config.debug_log = _st3.config.debug_detail = False
+_hnd.handle_debug_toggle(_st3, "log")
+check("Toggle 'log' schaltet Stufe 1 an", _st3.config.debug_log is True)
+check("Toggle 'log' laesst Stufe 2 in Ruhe", _st3.config.debug_detail is False)
+_hnd.handle_debug_toggle(_st3, "detail")
+check("Toggle 'detail' schaltet Stufe 2 an", _st3.config.debug_detail is True)
+check("Toggle 'detail' laesst Stufe 1 in Ruhe", _st3.config.debug_log is True)
+_hnd.handle_debug_toggle(_st3, "log")
+check("geflippt: Stufe 1 aus, Stufe 2 bleibt an",
+      _st3.config.debug_log is False and _st3.config.debug_detail is True)
+check("jede Umschaltung wird persistiert", len(_gespeichert) == 3)
+_cfgmod.save_config = _orig_save
+
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

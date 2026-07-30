@@ -40,6 +40,29 @@ Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, la
 
 Beim Hinzufügen neuer Klick/Key-Aktionen im Worker: **immer** über die Wrapper gehen, nie direkt `send_click`/`send_key` aufrufen. Sonst umgehen sie Fokus-Check + Humanize + Log.
 
+### Debug-Ausgabe vs. manueller Modus (`runtime/debug.py`)
+Drei Dinge, die auseinandergehalten werden müssen — sie hingen früher in einem Flag:
+
+| | wo | was |
+|---|---|---|
+| Stufe 1 | `config.debug_log` | jeder Schritt als eigene Zeile statt überschreibbarer Status-Zeile |
+| Stufe 2 | `config.debug_detail` | zusätzlich Zeiger auf das Ziel + ausschreiben, was kommt (Farbquadrat bei Farb-Bedingungen) |
+| manuell | `state.step_mode` (Laufzeit, **keine** Config) | Wartezeiten übersprungen, jeder Schritt wartet auf Bestätigung (`w`/`s`/`c`/`q`) |
+
+Beide Stufen sind im Punkte-Menü (`CTRL+ALT+P` → `log` / `detail`) umschaltbar und werden
+sofort in `config.json` persistiert. Regeln:
+
+- **Die Stufen ändern nur Ausgabe, nie den Ablauf.** Kein blockierender Prompt, kein
+  Überspringen, keine zusätzliche Wartezeit. Wer bestätigen will, nimmt den manuellen Modus.
+- **Stufe 2 zieht persistente Ausgabe mit** (`is_log_debug` ist deshalb `debug_log or
+  debug_detail or step_mode`). Kein Design-Wunsch, sondern Technik: die Status-Zeile wird
+  ohne `\n` geschrieben, damit sie sich selbst überschreiben kann — sobald darüber
+  mehrzeilig ausgegeben wird, klebt die nächste Zeile hinten dran.
+- **Nichts doppelt ausgeben.** Ist Stufe 2 an, entfällt die Ankündigungszeile von Stufe 1
+  und die Ergebnis-Zeile schrumpft auf das, was die Kopfzeile nicht schon gesagt hat.
+- Im Worker nie `state.config.debug_log` direkt lesen, sondern `is_log_debug(state)` —
+  sonst schweigt die Stelle in Stufe 2 und im manuellen Modus.
+
 ### Hotkey-Flow
 1. `winapi.py` definiert `HOTKEY_*` IDs + `register_hotkeys()` → `RegisterHotKey`.
 2. `main.py` mappt IDs auf `handle_*`-Funktionen aus `handlers.py`.
@@ -81,15 +104,37 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 bevor ein Loader sie liest. Loader kennen deshalb **nur das aktuelle Format** — neue
 Umstellungen kosten einen Migrationsschritt statt einer weiteren Verzweigung.
 
-Regeln beim Schema-Ändern:
-1. `SCHEMA_VERSION` hochzählen, Schritt in die passende Kette in `_CHAINS` eintragen.
-2. Entfallene Felder in `_DEAD_STEP_KEYS` eintragen — dann räumt die Migration sie weg.
+Zwei Wege, je nach Dateiform:
+
+- **Versioniert** (`_CHAINS`) — nur Dateien mit einem Dict als oberstem Knoten, also
+  heute `sequences/<name>.json`. Die tragen `schema_version`, die Kette hebt Schritt für
+  Schritt (Eintrag i: Version i → i+1), Saver stempeln mit `stamp()`.
+- **Normalisiert** (`_NORMALIZER`) — alles andere: `points.json` ist eine Liste,
+  `items.json`/`slots.json`/Presets sind Name→Eintrag-Dicts. Da ist kein Platz für ein
+  `schema_version` ohne Struktur-Umbau (ein Key „schema_version" zwischen lauter
+  Item-Namen wäre ein Fremdkörper). Statt einer Kette gibt es eine **idempotente**
+  Funktion: erkennt die Altform, hebt sie, zweiter Lauf ändert nichts.
+
+Beide Wege haben denselben Zweck und dasselbe Ende: Loader lesen nur das aktuelle Format,
+und sobald keine Altbestände mehr existieren, wird der Schritt bzw. Normalisierer
+**ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das Modul soll schrumpfen,
+nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
+
+Regeln beim Format-Ändern:
+1. Versioniert: `SCHEMA_VERSION` hochzählen, Schritt in `_CHAINS` eintragen.
+   Unversioniert: Normalisierer in `_NORMALIZER` erweitern — muss idempotent bleiben.
+2. Entfallene Felder in `_DEAD_STEP_KEYS` (Schritte) bzw. `_POINT_KEYS` (Punkte)
+   eintragen — dann räumt die Migration sie weg.
 3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
 4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
 
-Sind alle Dateien auf der aktuellen Version, ist der zugehörige Migrationsschritt tot
-und wird **ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das Modul soll
-schrumpfen, nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
+`tools/migrate.py` erfasst **alle** JSON-Dateien der App (config, points, sequences,
+item/boss/icon-Scans, globale Bosse, items, slots, beide Preset-Ordner) und macht zwei
+Dinge pro Datei: Migration/Normalisierung **und** einen Round-Trip durch Loader +
+Serializer. Der Round-Trip ist die eigentliche Reinigung — was der Loader nicht kennt,
+schreibt der Serializer nicht zurück. Deshalb werden auch Dateitypen ohne jeden
+Migrationsschritt sauber. Zweiter Lauf muss „0 angepasst" melden; tut er das nicht, ist
+ein Schritt nicht idempotent.
 
 Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
 default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.

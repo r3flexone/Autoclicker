@@ -73,7 +73,7 @@ def print_help() -> None:
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: walk = durchgehen, manuell = Schritt-Modus)')}")
+          f"{hint('(dort auch: walk, manuell = Schritt-Modus, log/detail = Debug-Stufen)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()

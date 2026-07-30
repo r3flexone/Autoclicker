@@ -37,16 +37,26 @@ SCHEMA_VERSION = 1
 
 VERSION_KEY = "schema_version"
 
-# Dateitypen
-KIND_SEQUENCE = "sequence"
-KIND_POINTS = "points"
+# Dateitypen. Versioniert (mit `schema_version` in der Datei) ist nur, was ein Dict als
+# obersten Knoten hat - der Rest laeuft ueber _NORMALIZER, s.u.
+KIND_SEQUENCE = "sequence"      # sequences/<name>.json        versioniert
+KIND_POINTS = "points"          # sequences/points.json        Liste
+KIND_ITEMS = "items"            # items/items.json, items/presets/*.json
+KIND_ITEM_SCAN = "item_scan"    # item_scans/<name>.json
 
 # Ergebnis eines Migrationsschritts: (Daten, Meldungen)
 MigrationStep = Callable[[dict, dict], list[str]]
 
 
-def file_version(data: dict) -> int:
-    """Version einer geladenen Datei. Ohne Feld: 0 (vor der Versionierung)."""
+def file_version(data) -> int:
+    """Version einer geladenen Datei. Ohne Feld: 0 (vor der Versionierung).
+
+    Nimmt bewusst auch Nicht-Dicts entgegen: points.json ist eine Liste, items.json und
+    slots.json sind Name->Eintrag-Dicts. Die tragen kein Versions-Feld (s. _NORMALIZER)
+    und zaehlen deshalb als 0.
+    """
+    if not isinstance(data, dict):
+        return 0
     try:
         return int(data.get(VERSION_KEY, 0))
     except (TypeError, ValueError):
@@ -165,7 +175,13 @@ def _link_step_to_point(step: dict, nach_pos: dict) -> int:
     treffer = nach_pos.get(pos, [])
     if len(treffer) != 1:
         return 0
-    step["point_id"] = treffer[0].get("id")
+    # Punkt ohne ID taugt nicht als Referenz - sonst landet `"point_id": null` im
+    # Schritt und wird beim naechsten Lauf erneut als Treffer gemeldet. Punkte ohne ID
+    # bekommen von _norm_points eine, danach greift die Verknuepfung.
+    punkt_id = treffer[0].get("id")
+    if punkt_id is None:
+        return 0
+    step["point_id"] = punkt_id
     return 1
 
 
@@ -179,26 +195,116 @@ def _drop_dead_keys(step: dict) -> set:
 
 
 # ---------------------------------------------------------------------------
+# Dateitypen OHNE Versions-Feld
+# ---------------------------------------------------------------------------
+# points.json ist eine Liste, items.json/slots.json und die Presets sind
+# Name->Eintrag-Dicts. Da laesst sich kein `schema_version` unterbringen, ohne die
+# Struktur umzubauen - ein Key "schema_version" neben lauter Item-Namen waere ein
+# Fremdkoerper im selben Namensraum.
+#
+# Statt einer Kette bekommen diese Typen einen NORMALISIERER: eine Funktion, die die
+# Altform erkennt und in die aktuelle hebt, und die man beliebig oft laufen lassen kann
+# (zweiter Lauf aendert nichts). Der Effekt ist derselbe - die Loader duerfen nur noch
+# das aktuelle Format kennen - und geloescht wird der Normalisierer genauso, sobald
+# keine Altbestaende mehr existieren.
+
+def _fix_item(item: dict) -> bool:
+    """Hebt ein einzelnes Item-Dict. True = es wurde etwas geaendert."""
+    cp = item.get("confirm_point")
+    # confirm_point war frueher [x, y], heute {"x": .., "y": ..}
+    if isinstance(cp, (list, tuple)) and len(cp) == 2:
+        item["confirm_point"] = {"x": cp[0], "y": cp[1]}
+        return True
+    return False
+
+
+def _norm_items(data, context: dict) -> list[str]:
+    """items.json, items/presets/*.json - Name -> Item-Dict."""
+    if not isinstance(data, dict):
+        return []
+    fixed = sum(1 for v in data.values() if isinstance(v, dict) and _fix_item(v))
+    return [f"{fixed} Item(s): confirm_point [x,y] -> {{x,y}}"] if fixed else []
+
+
+def _norm_item_scan(data, context: dict) -> list[str]:
+    """item_scans/*.json - enthaelt eingebettete Items in data['items']."""
+    if not isinstance(data, dict):
+        return []
+    fixed = sum(1 for i in data.get("items") or [] if isinstance(i, dict) and _fix_item(i))
+    return [f"{fixed} eingebettete(s) Item(s): confirm_point [x,y] -> {{x,y}}"] if fixed else []
+
+
+# Felder, die ein Punkt haben darf. Alles andere ist Altbestand und fliegt raus -
+# _point_to_dict schreibt ohnehin nur diese.
+_POINT_KEYS = ("id", "x", "y", "name", "color", "source")
+
+
+def _norm_points(data, context: dict) -> list[str]:
+    """points.json - Liste von Punkten.
+
+    Faengt zwei Altlasten ab: fehlende IDs (frueher zaehlte die Position) und Felder,
+    die es nicht mehr gibt. Damit darf load_points die ID als gesetzt voraussetzen.
+    """
+    if not isinstance(data, list):
+        return []
+    meldungen = []
+    ohne_id = [p for p in data if isinstance(p, dict) and p.get("id") is None]
+    if ohne_id:
+        vergeben = {p["id"] for p in data if isinstance(p, dict) and p.get("id") is not None}
+        naechste = 1
+        for p in ohne_id:
+            while naechste in vergeben:
+                naechste += 1
+            p["id"] = naechste
+            vergeben.add(naechste)
+        meldungen.append(f"{len(ohne_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
+
+    entfernt = set()
+    for p in data:
+        if not isinstance(p, dict):
+            continue
+        for key in [k for k in p if k not in _POINT_KEYS]:
+            del p[key]
+            entfernt.add(key)
+    if entfernt:
+        meldungen.append(f"tote Punkt-Felder entfernt: {', '.join(sorted(entfernt))}")
+    return meldungen
+
+
+_NORMALIZER: dict[str, MigrationStep] = {
+    KIND_POINTS: _norm_points,
+    KIND_ITEMS: _norm_items,
+    KIND_ITEM_SCAN: _norm_item_scan,
+}
+
+
+# ---------------------------------------------------------------------------
 # Migrations-Ketten je Dateityp
 # ---------------------------------------------------------------------------
 
 # Eintrag i hebt von Version i auf i+1.
 _CHAINS: dict[str, list[MigrationStep]] = {
     KIND_SEQUENCE: [_seq_v0_to_v1],
-    KIND_POINTS: [],          # points.json ist bereits sauber - Kette bleibt leer
 }
 
 
-def migrate(data: dict, kind: str, context: Optional[dict] = None) -> tuple[dict, list[str]]:
-    """Hebt ein geladenes dict auf SCHEMA_VERSION.
+def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
+    """Hebt geladene Daten auf den aktuellen Stand.
 
-    Gibt (Daten, Meldungen) zurück. Leere Meldungen = war schon aktuell. Das dict wird
+    Gibt (Daten, Meldungen) zurück. Leere Meldungen = war schon aktuell. Die Daten werden
     in-place verändert und zusätzlich zurückgegeben, damit sich beides aufrufen lässt.
+
+    Zwei Wege, je nach Dateityp: versionierte Typen laufen ihre Kette ab und bekommen den
+    Versions-Stempel, unversionierte (Liste/Name-Dict) laufen durch ihren Normalisierer.
     """
+    context = context or {}
+
+    if kind in _NORMALIZER:
+        return data, _NORMALIZER[kind](data, context)
+
     if not isinstance(data, dict):
         return data, []
 
-    context = context or {}
     kette = _CHAINS.get(kind, [])
     version = file_version(data)
     meldungen = []

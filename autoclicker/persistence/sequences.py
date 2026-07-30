@@ -13,7 +13,7 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
-from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
+from .migration import KIND_POINTS, KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
 from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, hint, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict, _point_to_dict
 
@@ -175,14 +175,20 @@ def load_points(state: AutoClickerState) -> None:
         try:
             with open(points_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Lade Punkte mit ID (Fallback für alte Dateien ohne ID)
-                state.points = []
-                for i, p in enumerate(data):
-                    point_id = p.get("id", i + 1)  # Fallback: Index + 1 für alte Dateien
-                    color_raw = p.get("color")
-                    color = tuple(int(v) for v in color_raw) if color_raw else None
-                    state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), point_id,
-                                                   color=color, source=p.get("source", "")))
+            # Altlasten (fehlende IDs, tote Felder) raeumt die Migration weg - hier wird
+            # nur noch das aktuelle Format gelesen.
+            data, meldungen = migrate(data, KIND_POINTS)
+            if meldungen:
+                print(info("points.json aufgeraeumt:"))
+                for m in meldungen:
+                    print(f"         - {m}")
+                print(hint("         Beim nächsten Speichern wird das dauerhaft."))
+            state.points = []
+            for p in data:
+                color_raw = p.get("color")
+                color = tuple(int(v) for v in color_raw) if color_raw else None
+                state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), p["id"],
+                                               color=color, source=p.get("source", "")))
             print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
             print(warn(f"points.json konnte nicht geladen werden: {e}"))

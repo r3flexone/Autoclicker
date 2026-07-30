@@ -11,6 +11,7 @@ from pathlib import Path
 from ..models import ItemSlot, AutoClickerState
 from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, atomic_write
 from .globals import save_global_items, save_global_slots
+from .migration import KIND_ITEMS, migrate
 from .paths import ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
 
@@ -145,6 +146,7 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_ITEMS)
         with state.lock:
             state.global_items.clear()
             for name, i in data.items():

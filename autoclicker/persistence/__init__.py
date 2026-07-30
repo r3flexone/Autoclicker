@@ -9,6 +9,8 @@ Modul-Aufteilung:
     boss_scans.py     BossScanConfig
     globals.py        global_slots, global_items, Kategorien
     presets.py        Slot- und Item-Presets
+    migration.py      Schema-Versionierung + Normalisierer (die EINE Schleuse fuer
+                      Altformate - Loader lesen nur das aktuelle Format)
 
 Re-exportiert die komplette bisherige API damit `from .persistence import ...`
 in main.py, handlers.py, import_export.py, imaging.py, runtime/, editors/
@@ -19,6 +21,10 @@ from .boss_scans import (
     ensure_boss_scans_dir, save_boss_scan, load_boss_scan_file,
     list_available_boss_scans, load_all_boss_scans,
     save_global_bosses, load_global_bosses,
+)
+from .migration import (
+    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, SCHEMA_VERSION,
+    file_version, migrate, needs_migration, stamp,
 )
 from .icon_scans import (
     ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
@@ -91,4 +97,7 @@ __all__ = [
     # presets
     'list_slot_presets', 'save_slot_preset', 'load_slot_preset', 'delete_slot_preset',
     'list_item_presets', 'save_item_preset', 'load_item_preset', 'delete_item_preset',
+    # migration
+    'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_POINTS', 'KIND_SEQUENCE', 'SCHEMA_VERSION',
+    'file_version', 'migrate', 'needs_migration', 'stamp',
 ]

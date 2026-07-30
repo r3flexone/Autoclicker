@@ -57,14 +57,12 @@ def _point_to_dict(p: 'ClickPoint') -> dict:
 
 def _item_from_dict(data: dict) -> ItemProfile:
     """Deserialisiert ein ItemProfile aus einem Dict."""
-    # confirm_point: kann {x, y} Dict, [x,y] Liste (alt) oder None sein
+    # confirm_point: {x, y} oder None. Die alte [x, y]-Liste hebt migration._fix_item,
+    # bevor hier gelesen wird - hier steht deshalb nur das aktuelle Format.
     cp_data = data.get("confirm_point")
     cp = None
-    if cp_data:
-        if isinstance(cp_data, dict) and "x" in cp_data and "y" in cp_data:
-            cp = ClickPoint(cp_data["x"], cp_data["y"])
-        elif isinstance(cp_data, list) and len(cp_data) == 2:
-            cp = ClickPoint(cp_data[0], cp_data[1])  # Alte Format-Unterstützung
+    if isinstance(cp_data, dict) and "x" in cp_data and "y" in cp_data:
+        cp = ClickPoint(cp_data["x"], cp_data["y"])
     return ItemProfile(
         name=data["name"],
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],

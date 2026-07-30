@@ -259,6 +259,35 @@ def handle_step_mode(state: AutoClickerState) -> None:
         print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
 
 
+def handle_debug_toggle(state: AutoClickerState, stufe: str) -> None:
+    """Schaltet eine der beiden Ausgabe-Stufen um (Punkte-Menü -> 'log' / 'detail').
+
+    Wird direkt in config.json gespeichert, damit die Einstellung den Neustart übersteht -
+    vorher liess sich das nur durch Editieren der Datei ändern.
+    """
+    from .config import save_config
+
+    with state.lock:
+        if stufe == "log":
+            state.config.debug_log = not state.config.debug_log
+            aktiv, name = state.config.debug_log, "Stufe 1 (alles ausgeben)"
+        else:
+            state.config.debug_detail = not state.config.debug_detail
+            aktiv, name = state.config.debug_detail, "Stufe 2 (Detail + Zeiger)"
+        log_an, detail_an = state.config.debug_log, state.config.debug_detail
+        snapshot = state.config
+
+    save_config(snapshot)
+    zustand = col('AN', 'green') if aktiv else col('AUS', 'cyan')
+    print(f"\n{col('[DEBUG]', 'cyan')} {name}: {zustand}")
+    print(f"         Jetzt aktiv: Stufe 1 {'an' if log_an else 'aus'}, "
+          f"Stufe 2 {'an' if detail_an else 'aus'}")
+    if detail_an and not log_an:
+        note = ("Stufe 2 gibt mehrzeilig aus und schreibt deshalb immer persistent - "
+                "Stufe 1 ist darin enthalten.")
+        print(f"         {hint(note)}")
+
+
 def handle_show(state: AutoClickerState) -> None:
     """Zeigt alle Punkte an, ermöglicht Testen und Umbenennen."""
     # Wie die anderen Editoren: nicht während Aufnahme/Lauf öffnen — sonst
@@ -285,6 +314,8 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('walk / w', 'yellow')}    - alle Punkte einzeln durchgehen (Maus springt hin, Taste = weiter)")
     print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
+    print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
+    print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -303,6 +334,10 @@ def handle_show(state: AutoClickerState) -> None:
 
             if user_input.lower() in ("manuell", "m"):
                 handle_step_mode(state)
+                continue
+
+            if user_input.lower() in ("log", "detail"):
+                handle_debug_toggle(state, user_input.lower())
                 continue
 
             if user_input.lower() in ("list", "l"):
@@ -644,8 +679,6 @@ def handle_schedule(state: AutoClickerState) -> None:
                 # Zeit erreicht - starte Sequenz
                 print(f"\n{col('[START]', 'green')} Zeit erreicht - starte Sequenz!")
                 state.stop_event.clear()  # Reset falls gesetzt
-                with state.lock:
-                    state.scheduled_start = True  # Überspringt Debug-Enter-Prompt
             finally:
                 with state.lock:
                     state.countdown_active = False

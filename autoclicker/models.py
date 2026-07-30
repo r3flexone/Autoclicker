@@ -546,9 +546,6 @@ class AutoClickerState:
     # wird (Deadlock-Gefahr — strikte Lock-Reihenfolge).
     input_lock: threading.Lock = field(default_factory=threading.Lock)
 
-    # Flag für geplanten Start (überspringt Debug-Enter-Prompt)
-    scheduled_start: bool = False
-
     # Flag für aktiven Countdown (verhindert Sequenz-Start durch CTRL+ALT+S)
     countdown_active: bool = False
 

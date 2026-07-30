@@ -17,7 +17,7 @@ from ..models import AutoClickerState
 from ..session_log import log_event
 from ..utils import (
     clear_line, col, ok, err, hint, dbg,
-    format_duration, safe_input,
+    format_duration,
 )
 from ..utils.console import set_console_title
 from .actions import is_verbose_debug
@@ -203,9 +203,8 @@ def _sync_pause_title(state: AutoClickerState, seq_name: str) -> None:
 def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
     """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück.
 
-    Der blockierende Vorschau-Prompt (sleep + safe_input, nur bei debug_detail) läuft
-    bewusst NICHT unter state.lock — sonst frören alle Hotkeys ein solange der
-    Prompt offen ist.
+    Die Schritt-Übersicht (nur bei debug_detail) wird bewusst AUSSERHALB von state.lock
+    ausgegeben — Konsolen-Ausgabe unter Lock hält die Hotkeys unnötig auf.
     """
     with state.lock:
         sequence = state.active_sequence
@@ -254,7 +253,9 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         for m in punkt_meldungen:
             print(f"         {m}")
 
-    # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_detail)
+    # Schritt-Uebersicht ausgeben (nur Detail-Stufe). Bewusst OHNE Enter-Prompt: die
+    # Ausgabe-Stufen aendern nur, was man sieht. Wer Schritt fuer Schritt bestaetigen
+    # will, nimmt den manuellen Modus (Punkte-Menue -> 'manuell').
     if show_preview:
         print("\n" + col("=" * 60, 'gray'))
         print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
@@ -265,12 +266,6 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
             for i, step in enumerate(lp.steps):
                 print(col(f"  {lp.name}[{i+1}]: {step.name or 'unnamed'}", 'magenta'))
         print(col("=" * 60, 'gray'))
-        scheduled_start = state.scheduled_start
-        if not scheduled_start:
-            print(dbg("Drücke Enter zum Starten..."))
-            time.sleep(0.3)  # Rest-Events von CTRL+ALT+S abklingen lassen
-            safe_input()
-        state.scheduled_start = False
 
     return sequence
 

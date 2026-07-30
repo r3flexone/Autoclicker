@@ -18,6 +18,7 @@ from .persistence import (
     _boss_profile_to_dict, _point_to_dict,
     _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
     load_sequence_file, _item_from_dict, _boss_profile_from_dict,
+    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, migrate,
     save_data, save_global_slots, save_global_items,
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
@@ -406,6 +407,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Punkte
             if import_points and "points.json" in names:
                 points_data = json.loads(zf.read("points.json").decode("utf-8"))
+                points_data, _m = migrate(points_data, KIND_POINTS)
                 with state.lock:
                     if not merge:
                         state.points.clear()
@@ -462,6 +464,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Items
             if import_items and "items.json" in names:
                 items_data = json.loads(zf.read("items.json").decode("utf-8"))
+                items_data, _m = migrate(items_data, KIND_ITEMS)
                 with state.lock:
                     if not merge:
                         state.global_items.clear()
@@ -479,6 +482,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 for name in names:
                     if name.startswith("item_scans/") and name.endswith(".json"):
                         scan_data = json.loads(zf.read(name).decode("utf-8"))
+                        scan_data, _m = migrate(scan_data, KIND_ITEM_SCAN)
                         slots = []
                         for s in scan_data.get("slots", []):
                             region = remap_region(tuple(s["scan_region"]), transform)

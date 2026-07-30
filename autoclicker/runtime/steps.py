@@ -417,8 +417,10 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
             return False
 
-    # Zeiger auf den Prüf-Pixel. Im Einzelschritt-Modus ist das schon passiert.
-    if state.config.debug_show_pixel_position and not is_step_mode(state):
+    # Zeiger auf den Prüf-Pixel. Detail-Stufe und manueller Modus haben ihn schon
+    # dorthin gesetzt - ein zweiter Sprung wäre nur eine weitere Wartezeit.
+    if (state.config.debug_show_pixel_position
+            and not is_step_mode(state) and not is_detail_debug(state)):
         show_point(state, wc.pixel[0], wc.pixel[1], "Prüf-Pixel")
 
     if not PILLOW_AVAILABLE:

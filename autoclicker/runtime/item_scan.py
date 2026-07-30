@@ -18,6 +18,7 @@ from ..models import (
 from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
 from ..winapi import set_cursor_pos
 from .actions import safe_click
+from .debug import is_log_debug
 
 # Windows GetSystemMetrics-Indizes für den virtuellen Desktop (Multi-Monitor-Spannweite).
 # https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
@@ -110,7 +111,7 @@ def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
     if img is None:
         return False
 
-    debug = state.config.debug_log
+    debug = is_log_debug(state)
     return _check_profile_match(config, img, color_tolerance, state, debug, "Icon erkannt!")
 
 
@@ -149,7 +150,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay
-    debug = state.config.debug_log
+    debug = is_log_debug(state)
 
     _park_mouse_for_scan(state.config.scan_park_mouse)
 

@@ -12,6 +12,7 @@ from typing import Optional
 
 from ..models import ItemScanConfig, ItemSlot, AutoClickerState
 from ..utils import compact_json, warn, atomic_write
+from .migration import KIND_ITEM_SCAN, migrate
 from .paths import ITEM_SCANS_DIR
 from .serialization import _item_from_dict, _item_scan_to_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
@@ -34,6 +35,7 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+        data, _meldungen = migrate(data, KIND_ITEM_SCAN)
 
         # Defensiv pro Slot: ein einzelner kaputter/unvollständiger Slot soll
         # nicht den ganzen Scan unladbar machen (wie globals.py beim Slot-Laden).
