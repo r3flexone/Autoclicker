@@ -1,6 +1,11 @@
+# Basis — das braucht der Autoclicker fuer Bilderkennung (Farb-Trigger, Item-Scans,
+# Template-Matching). Zusammen rund 70 MB.
+#
+# Ganz ohne Pakete laeuft er auch: Klicken, Hotkeys und Sequenzen brauchen nichts
+# ausser Python. Der Code prueft PILLOW_AVAILABLE / OPENCV_AVAILABLE und degradiert
+# sauber.
+#
+# Die schweren Extras (OCR, visuelle Editoren) stehen in requirements-optional.txt.
 pillow
 opencv-python
 numpy
-easyocr
-pytesseract
-dearpygui

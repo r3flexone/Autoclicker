@@ -79,15 +79,21 @@ Keine zusätzlichen Pakete nötig.
 ### Empfohlen (Farberkennung + Template-Matching)
 
 ```bash
-pip install -r requirements-minimal.txt
+pip install -r requirements.txt
 python main.py
 ```
 
-### Alle Features (inkl. OCR Boss-Erkennung)
+Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
+
+### Optionale Extras (OCR, visuelle Editoren)
+
+`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `dearpygui`. Alle drei
+gehören zu Features, die per Default **abgeschaltet** sind — installiere sie nur, wenn du
+sie einschaltest. **`easyocr` zieht PyTorch nach: mehrere GB Download.**
 
 **Ohne GPU (CPU-only):**
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-optional.txt
 python main.py
 ```
 
@@ -105,7 +111,7 @@ Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner
 
 Dann den Rest installieren:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-optional.txt
 python main.py
 ```
 
