@@ -14,7 +14,6 @@ python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM 
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
-python tools/sync_json.py       # Feld-für-Feld-Nachpflege (ältere Dateitypen)
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
 
@@ -150,8 +149,14 @@ Schritt nicht idempotent.
 
 Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
 default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.
-`AppConfig.from_dict()` filtert unbekannte Keys raus. `tools/sync_json.py` bleibt für
-das Feld-für-Feld-Nachpflegen anderer Dateitypen.
+`AppConfig.from_dict()` filtert unbekannte Keys raus.
+
+Das frühere `tools/sync_json.py` ist **gelöscht**: es pflegte fehlende Felder mit ihren
+Standardwerten nach — also genau die Felder, die heute absichtlich weggelassen werden. Es
+hätte jede Sequenz beim nächsten Lauf wieder aufgebläht. Alles, was es konnte, macht der
+Start-Durchgang besser, weil er über Loader + Serializer geht statt über eine
+handgepflegte Feldliste. (`git show <commit>^:tools/sync_json.py`, falls es je gebraucht
+wird.)
 
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text

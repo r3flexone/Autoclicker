@@ -172,7 +172,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
     wc = s.wait_condition
     ec = s.else_config
-    return {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
+    voll = {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
             "delay_before": s.delay_before,
             "wait_pixel": wc.pixel if wc else None,
             "wait_color": wc.color if wc else None,
@@ -192,6 +192,70 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "recorded_color": list(s.recorded_color) if s.recorded_color else None}
+    return _ohne_standardwerte(voll)
+
+
+# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist. Steht der Wert drin, ist das Feld
+# ueberfluessig und wird nicht geschrieben - der Loader setzt exakt diesen Default.
+#
+# Warum: ein normaler Klick-Schritt hat 27 Felder, davon 21 leer. Eine 67-Schritt-Sequenz
+# war zu vier Fuenfteln aus "wait_pixel": null und Konsorten. Das Problem ist nicht die
+# Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
+# Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
+#
+# x, y und delay_before stehen NICHT hier: das sind die Pflicht-Argumente von
+# SequenceStep, die bleiben immer sichtbar.
+
+# Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
+_KEIN_DEFAULT = object()
+
+_STEP_DEFAULTS = {
+    "name": "",
+    "point_id": None,
+    "wait_pixel": None,
+    "wait_color": None,
+    "wait_until_gone": False,
+    "wait_check_only": False,
+    "item_scan": None,
+    "item_scan_mode": "all",
+    "boss_scan": None,
+    "boss_watcher": None,
+    "icon_scan": None,
+    "wait_only": False,
+    "delay_max": None,
+    "key_press": None,
+    "scroll": None,
+    "else_action": None,
+    "else_x": 0,
+    "else_y": 0,
+    "else_delay": 0,
+    "else_key": None,
+    "else_name": "",
+    "screenshot_only": False,
+    "screenshot_region": None,
+    "recorded_color": None,
+}
+
+
+def _ist_default(wert, default) -> bool:
+    """Trägt das Feld seinen Standardwert?
+
+    In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"scroll": 0` als
+    False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
+    (0 vs 0.0) sollen dagegen als gleich zählen.
+    """
+    if isinstance(wert, bool) != isinstance(default, bool):
+        return False
+    if isinstance(wert, (int, float)) and isinstance(default, (int, float)):
+        return wert == default
+    return type(wert) is type(default) and wert == default
+
+
+def _ohne_standardwerte(step: dict) -> dict:
+    """Entfernt alle Felder, die ihren Standardwert tragen."""
+    return {k: v for k, v in step.items()
+            if not (_STEP_DEFAULTS.get(k, _KEIN_DEFAULT) is not _KEIN_DEFAULT
+                    and _ist_default(v, _STEP_DEFAULTS[k]))}
 
 
 def _sequence_to_dict(seq: Sequence) -> dict:
@@ -226,10 +290,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         wait_color = s.get("wait_color")
         if wait_color:
             wait_color = tuple(int(v) for v in wait_color)
-        # Unterstütze beide Formate: delay_before (neu) und delay_after (alt)
+        # delay_after (Vorlaeufer) hebt migration._seq_v1_to_v2, bevor hier gelesen wird.
         delay_raw = s.get("delay_before")
-        if delay_raw is None:
-            delay_raw = s.get("delay_after")
         if delay_raw is None:
             delay_raw = 0
         delay_max_raw = s.get("delay_max")

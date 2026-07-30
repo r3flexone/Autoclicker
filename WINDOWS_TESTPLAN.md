@@ -18,7 +18,8 @@ besonders genau prüfen.
       Config-Backward-Compat (entferntes Feld), `export_bundle`-ZIP-Format,
       LLM-Vision-Logik (is_no_boss/clean_boss_name/match_boss_name/Reasoning-Strip/
       Antwort-Extraktion/Request-Builder — ohne Backend).
-- [x] `python tools/sync_json.py` läuft ohne Fehler über vorhandene JSON-Dateien.
+- [ ] Erster Start hebt vorhandene JSON-Dateien (`[MIGRATION]`-Meldung), zweiter Start ist still.
+- [ ] `python tools/migrate.py` meldet danach „0 angepasst".
       **2026-06-16 Windows: durchgelaufen, alle Migrationen ohne Fehler ✓**
 - [x] App startet: `python main.py` → Begrüßung + Hilfe erscheinen, keine Exception.
       **2026-06-16 Windows: Begrüßung + Hilfe ok, alle Loader + LLM verbunden, keine Exception ✓**

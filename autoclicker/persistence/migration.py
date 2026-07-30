@@ -33,7 +33,7 @@ from typing import Callable, Optional
 
 # Aktuelles Schema. Bei jeder Änderung, die alte Dateien unlesbar oder unsauber macht:
 # hochzählen UND einen Schritt in die passende Kette eintragen.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 VERSION_KEY = "schema_version"
 
@@ -203,6 +203,29 @@ def _drop_dead_keys(step: dict) -> set:
 
 
 # ---------------------------------------------------------------------------
+# Sequenzen: Version 1 -> 2
+# ---------------------------------------------------------------------------
+
+def _seq_v1_to_v2(data: dict, context: dict) -> list[str]:
+    """Raeumt `delay_after` weg - den Vorlaeufer von `delay_before`.
+
+    Der Loader hat das Feld bisher selbst abgefangen ("Unterstuetze beide Formate").
+    Genau diese Art Verzweigung soll hier landen und dort verschwinden: ein Schritt in
+    der Kette, danach kennt der Loader nur noch `delay_before`.
+    """
+    umbenannt = 0
+    for _phase, steps in _iter_step_lists(data):
+        for step in steps:
+            if "delay_after" in step:
+                alt = step.pop("delay_after")
+                # delay_before gewinnt, falls beide dastehen - es ist das aktuelle Feld.
+                if step.get("delay_before") is None:
+                    step["delay_before"] = alt if alt is not None else 0
+                umbenannt += 1
+    return [f"{umbenannt} Schritt(e): delay_after -> delay_before"] if umbenannt else []
+
+
+# ---------------------------------------------------------------------------
 # Dateitypen OHNE Versions-Feld
 # ---------------------------------------------------------------------------
 # points.json ist eine Liste, items.json/slots.json und die Presets sind
@@ -312,7 +335,7 @@ ALL_KINDS = (KIND_SEQUENCE, KIND_POINTS, KIND_ITEMS, KIND_ITEM_SCAN,
 
 # Eintrag i hebt von Version i auf i+1.
 _CHAINS: dict[str, list[MigrationStep]] = {
-    KIND_SEQUENCE: [_seq_v0_to_v1],
+    KIND_SEQUENCE: [_seq_v0_to_v1, _seq_v1_to_v2],
 }
 
 

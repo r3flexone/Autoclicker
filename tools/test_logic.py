@@ -764,6 +764,69 @@ check("migrate_on_start ist ein Config-Feld mit Default an",
       AppConfig().migrate_on_start is True)
 
 
+# --------------------------------- Schlanke Schritte (nur benutzte Felder)
+section("Sequenz-Schritte: nur gesetzte Felder werden geschrieben")
+from autoclicker.models import SequenceStep as _SS, WaitCondition as _WCx, ElseConfig as _ECx
+from autoclicker.persistence.serialization import (
+    _step_to_dict as _s2d, _parse_steps as _p2s, _STEP_DEFAULTS as _SD)
+
+_klick = _s2d(_SS(x=100, y=200, delay_before=1, name="Klick 15", point_id=7))
+check("einfacher Klick braucht nur 5 Felder", len(_klick) == 5)
+check("Pflichtfelder bleiben immer sichtbar",
+      all(k in _klick for k in ("x", "y", "delay_before")))
+check("kein leeres wait_pixel mehr", "wait_pixel" not in _klick)
+check("kein leeres else_action mehr", "else_action" not in _klick)
+check("kein item_scan_mode ohne item_scan", "item_scan_mode" not in _klick)
+
+# Gesetzte Felder muessen selbstverstaendlich drinbleiben
+_farb = _s2d(_SS(x=1, y=2, delay_before=0, name="F",
+                 wait_condition=_WCx(pixel=(5, 6), color=(7, 8, 9), until_gone=True),
+                 else_config=_ECx(action="click", x=10, y=11)))
+check("gesetzte Farb-Bedingung wird geschrieben",
+      _farb.get("wait_pixel") == (5, 6) and _farb.get("wait_until_gone") is True)
+check("gesetzte Else-Aktion wird geschrieben",
+      _farb.get("else_action") == "click" and _farb.get("else_x") == 10)
+
+# 0 ist nicht False: scroll=0 waere ein echter Wert, screenshot_only=0 nicht
+check("scroll wird bei 0 nicht als False verschluckt",
+      _s2d(_SS(x=0, y=0, delay_before=0, scroll=0)).get("scroll") == 0)
+
+# Round-Trip: jeder Schritt muss identisch zurueckkommen
+_faelle = [
+    _SS(x=100, y=200, delay_before=1, name="Klick", point_id=7),
+    _SS(x=1, y=2, delay_before=0, name="Farbe",
+        wait_condition=_WCx(pixel=(5, 6), color=(7, 8, 9), check_only=True),
+        else_config=_ECx(action="skip")),
+    _SS(x=0, y=0, delay_before=0.5, name="Taste", key_press="enter"),
+    _SS(x=8, y=9, delay_before=0, name="Scroll", scroll=-3),
+    _SS(x=0, y=0, delay_before=0, name="Scan", item_scan="inv", item_scan_mode="best"),
+    _SS(x=0, y=0, delay_before=0, name="Shot", screenshot_only=True,
+        screenshot_region=(1, 2, 3, 4)),
+    _SS(x=5, y=5, delay_before=2, name="Zufall", delay_max=4.0, wait_only=True),
+]
+_abweichungen = [st for st in _faelle if _p2s([_s2d(st)])[0] != st]
+check("Round-Trip aendert keinen Schritt", _abweichungen == [])
+
+# Die Default-Tabelle darf nicht von der Dataclass abdriften
+_dc_defaults = {f.name: f.default for f in __import__("dataclasses").fields(_SS)}
+_abgedriftet = [k for k, v in _SD.items()
+                if k in _dc_defaults and _dc_defaults[k] is not v
+                and _dc_defaults[k] != v]
+check("Default-Tabelle passt zur Dataclass", _abgedriftet == [])
+
+# delay_after: Altlast raus aus dem Loader, rein in die Migration
+_alt = {"schema_version": 1, "name": "s", "init_steps": [], "end_steps": [],
+        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+            {"x": 1, "y": 2, "name": "A", "delay_after": 3}]}]}
+_alt, _m = _mig(_alt, _K_SEQ)
+_step = _alt["loop_phases"][0]["steps"][0]
+check("delay_after wird zu delay_before", _step.get("delay_before") == 3)
+check("delay_after ist danach weg", "delay_after" not in _step)
+check("Umbenennung wird gemeldet", any("delay_after" in m for m in _m))
+check("Loader kennt delay_after nicht mehr",
+      _p2s([{"x": 1, "y": 2, "delay_after": 9}])[0].delay_before == 0)
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

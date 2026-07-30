@@ -1196,7 +1196,7 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
-    ├── sync_json.py        # JSON-Dateien synchronisieren/migrieren
+    ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
     └── test_ocr.py         # OCR-Backend-Test + Texterkennung
@@ -1301,17 +1301,23 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
-### Sync-Tool (`tools/sync_json.py`)
+### Migrations-Tool (`tools/migrate.py`)
 
-Bringt alle JSON-Dateien auf den aktuellen Code-Stand:
+Hebt alle JSON-Dateien aufs aktuelle Format. **Normalerweise brauchst du das nicht** —
+der Autoclicker macht denselben Durchgang bei jedem Start (Einstellung
+`migrate_on_start`, Standard an) und meldet sich nur, wenn es etwas zu tun gab.
 
 ```bash
-python tools/sync_json.py
+python tools/migrate.py            # zeigt nur an, was passieren würde
+python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 ```
 
-- Fehlende Felder mit Standardwerten ergänzen
-- Alte Formate konvertieren (z.B. `confirm_point` int → Koordinaten)
-- Presets erben Werte von globalen Dateien
+- Alte Formate ins aktuelle heben (Sequenz-Phasen, `point_id`, `confirm_point`, Punkt-IDs)
+- Tote Felder entfernen, die es im Code nicht mehr gibt
+- Erfasst alle Dateien: config, Punkte, Sequenzen, Item-/Boss-/Icon-Scans,
+  Boss-Bibliothek, Items, Slots und beide Preset-Ordner
+
+Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 
 ### OCR Test-Tool (`tools/test_ocr.py`)
 
