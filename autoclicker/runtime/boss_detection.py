@@ -344,9 +344,13 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         if new_boss is not None:
             return new_boss
 
-        # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
+        # Falls _handle_new_boss None zurückgab (Name schon bekannt oder vorgemerkt),
+        # das Profil trotzdem liefern. Auch aus der globalen Bibliothek: mit
+        # boss_learn_global landen neue Bosse dort und NICHT in config.bosses —
+        # die Suche allein in config.bosses ging in dem Fall ins Leere und der
+        # Scan meldete "kein Boss", obwohl er den Namen gerade erkannt hatte.
         with state.lock:
-            for boss in config.bosses:
+            for boss in list(config.bosses) + list(state.global_bosses):
                 if boss.name == matched_name:
                     return boss
         return None
