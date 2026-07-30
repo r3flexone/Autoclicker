@@ -111,8 +111,10 @@ def list_available_sequences() -> list[tuple[str, Path]]:
     if _seq_cache and _seq_cache_mtime == current_mtime:
         return _seq_cache
 
+    # sorted(): sonst haengt die Menue-Reihenfolge vom Dateisystem ab und der
+    # dritte Eintrag ist mal seq02, mal seq13.
     sequences = []
-    for f in seq_dir.glob("*.json"):
+    for f in sorted(seq_dir.glob("*.json")):
         if f.name != "points.json":
             try:
                 with open(f, "r", encoding="utf-8") as file:

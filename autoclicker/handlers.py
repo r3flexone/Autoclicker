@@ -539,28 +539,32 @@ def handle_switch(state: AutoClickerState) -> None:
         print(f"\n{info('Keine Sequenzen vorhanden!')} Erstelle eine mit {col('CTRL+ALT+E', 'yellow')}")
         return
 
-    # Sequenzen einmal laden und cachen
+    # Nur die AUSGEWÄHLTE Sequenz laden. Vorher wurde jede Datei komplett geladen -
+    # inklusive Migration und Punkt-Auflösung -, nur um im Menü den Namen anzuzeigen,
+    # den list_available_sequences() schon mitgeliefert hat. Bei vielen Sequenzen
+    # hakte das Menü spürbar, und geöffnet wurde am Ende genau eine.
     with state.lock:
         active_name = state.active_sequence.name if state.active_sequence else None
-    loaded_sequences = []
-    menu_options = []
-    for name, path in sequences:
-        # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
-        # Koordinaten mit dem Punkte-Pool (point_id).
-        with state.lock:
-            punkte = list(state.points)
-        seq = load_sequence_file(path, punkte)
-        if seq:
-            loaded_sequences.append(seq)
-            active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
-            menu_options.append(f"{seq.name}{active_marker}")
+
+    menu_options = [f"{name}{' *AKTIV*' if name == active_name else ''}"
+                    for name, _path in sequences]
 
     choice = interactive_select(menu_options, title="\nQUICK-SWITCH: Sequenz wählen")
 
-    if choice == -1 or choice >= len(loaded_sequences):
+    if choice == -1 or choice >= len(sequences):
         return
 
-    seq = loaded_sequences[choice]
+    _name, pfad = sequences[choice]
+    # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
+    # Koordinaten mit dem Punkte-Pool (point_id).
+    with state.lock:
+        punkte = list(state.points)
+    seq = load_sequence_file(pfad, punkte)
+    if seq is None:
+        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+              f"{hint('(Datei beschädigt?)')}")
+        return
+
     with state.lock:
         state.active_sequence = seq
     print(f"\n{ok(f'Gewechselt zu: {seq.name}')}")

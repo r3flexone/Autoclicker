@@ -26,7 +26,7 @@ def _list_presets(presets_dir: str) -> list[tuple[str, Path, int]]:
     if not preset_dir.exists():
         return []
     presets = []
-    for f in preset_dir.glob("*.json"):
+    for f in sorted(preset_dir.glob("*.json")):
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)

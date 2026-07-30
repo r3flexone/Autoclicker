@@ -51,7 +51,7 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
         return []
 
     scans = []
-    for f in scan_dir.glob("*.json"):
+    for f in sorted(scan_dir.glob("*.json")):
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
