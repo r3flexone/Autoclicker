@@ -214,8 +214,22 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
-def compact_json(data: dict, indent: int = 2) -> str:
+# Kurze Zahlen-Arrays wieder auf eine Zeile ziehen: 2er (x,y), 3er (RGB), 4er (Region).
+# Das Vorzeichen MUSS mit: auf einem Monitor links vom Hauptbildschirm sind x/y negativ,
+# und ohne `-?` blieben genau diese Koordinaten mehrzeilig stehen - ausgerechnet die,
+# die man am ehesten nachschlagen will.
+_ZAHL = r'(-?\d+)'
+_KOMPAKT = [
+    (re.compile(r'\[\s*\n\s*' + r',\s*\n\s*'.join([_ZAHL] * n) + r'\s*\n\s*\]'),
+     '[' + ', '.join(f'\\{i + 1}' for i in range(n)) + ']')
+    for n in (4, 3, 2)
+]
+
+
+def compact_json(data, indent: int = 2) -> str:
     """Formatiert JSON mit kompakten Arrays (Koordinaten/Farben auf einer Zeile).
+
+    `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
 
     Wandelt:
         [
@@ -227,15 +241,8 @@ def compact_json(data: dict, indent: int = 2) -> str:
         [55, 15, 50]
     """
     json_str = json.dumps(data, indent=indent, ensure_ascii=False)
-    # 4er-Arrays (scan_region: x1, y1, x2, y2)
-    pattern4 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
-    json_str = re.sub(pattern4, r'[\1, \2, \3, \4]', json_str)
-    # 3er-Arrays (RGB-Farben)
-    pattern3 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
-    json_str = re.sub(pattern3, r'[\1, \2, \3]', json_str)
-    # 2er-Arrays (x, y Koordinaten)
-    pattern2 = r'\[\s*\n\s*(\d+),\s*\n\s*(\d+)\s*\n\s*\]'
-    json_str = re.sub(pattern2, r'[\1, \2]', json_str)
+    for muster, ersatz in _KOMPAKT:
+        json_str = muster.sub(ersatz, json_str)
     return json_str
 
 

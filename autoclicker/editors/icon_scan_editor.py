@@ -84,7 +84,8 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
         except ValueError:
             pass
 
-    choice = interactive_select(action_options, title="\nAktion wenn das Icon erkannt wird:")
+    choice = interactive_select(action_options, title="\nAktion wenn das Icon erkannt wird:",
+                                default=default_idx)
     if choice == -1:
         return None
 

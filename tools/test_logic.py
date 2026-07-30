@@ -128,6 +128,13 @@ check("3er-Array kompakt", "[5, 6, 7]" in cj)
 check("2er-Array kompakt", "[8, 9]" in cj)
 cj2 = compact_json({"text": "[1,\n2,\n3]", "n": [1, 2, 3]})
 check("String mit Zahlen bleibt unangetastet", '"[1,\\n2,\\n3]"' in cj2 or "[1,\n2,\n3]" in json.loads('"' + cj2.split('"text": "')[1].split('",')[0] + '"'))
+# Monitor links vom Hauptbildschirm: negative Koordinaten sind der Normalfall, nicht die
+# Ausnahme - ohne Vorzeichen im Muster blieben genau die mehrzeilig stehen.
+cjn = compact_json({"region": [-1920, 0, -1000, 500], "xy": [-5, -7]})
+check("negative Koordinaten ebenfalls kompakt",
+      "[-1920, 0, -1000, 500]" in cjn and "[-5, -7]" in cjn)
+check("compact_json nimmt auch Listen (points.json, bosses.json)",
+      compact_json([{"id": 1, "x": 2, "y": 3}]).startswith("["))
 
 # ---------------------------------------------------------------- sanitize_filename
 section("sanitize_filename")
@@ -170,7 +177,7 @@ check("scan_min_confidence Default vorhanden", hasattr(cfg, "scan_min_confidence
 
 # ---------------------------------------------------------------- export_bundle (Zip-Inhalt)
 section("export_bundle: erzeugt ZIP, Scan-JSON == Serializer-Format")
-import zipfile, threading
+import zipfile
 from autoclicker.models import AutoClickerState
 st = AutoClickerState()
 st.points = [ClickPoint(1, 2, "P1", 1, color=(3, 4, 5), source="Aufnahme 'A'")]
@@ -647,7 +654,6 @@ _cfgmod.save_config = _orig_save
 
 # ------------------------------------- Zusage: jeder Dateityp hat eine Schleuse
 section("Migration greift bei JEDEM Dateityp (Formatwechsel ohne Neuaufnahme)")
-import inspect as _insp
 from autoclicker.persistence import migration as _mg
 
 # 1. Kein Dateityp ohne Eintrag. Faellt hier etwas durch, wuerde eine spaetere
@@ -918,11 +924,11 @@ _tabellen = [
     ("Item-Scan", _ser._ITEM_SCAN_DEFAULTS, _ISCFG),
     ("Schritt", _ser._STEP_DEFAULTS, _SS2),
 ]
-for _label, _tabelle, _cls in _tabellen:
+for _tab_name, _tabelle, _cls in _tabellen:
     _dcd = _dataclass_defaults(_cls)
     _drift = [k for k, v in _tabelle.items()
               if k in _dcd and not (_dcd[k] == v and type(_dcd[k]) is type(v))]
-    check(f"{_label}-Defaults ohne Abweichung", _drift == [])
+    check(f"{_tab_name}-Defaults ohne Abweichung", _drift == [])
 
 # Der Datei-Default darf NICHT aus der Config kommen. Frueher war
 # `config.DEFAULT_MIN_CONFIDENCE = CONFIG.scan_min_confidence`, womit die Tabellen oben

@@ -68,6 +68,20 @@ def _block_if_recording(state: AutoClickerState) -> bool:
     return False
 
 
+def _block_if_running(state: AutoClickerState) -> bool:
+    """Blockiert Handler, solange eine Sequenz läuft. True = Handler soll abbrechen.
+
+    Das Gegenstück zu _block_if_recording: Editoren mit Konsolen-Eingabe duerfen nicht
+    parallel zum Worker laufen, weil beide von stdin lesen und dieselben Daten mutieren
+    wuerden. Stand vorher zwölfmal als identischer Vierzeiler in dieser Datei.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+    return laeuft
+
+
 def handle_record(state: AutoClickerState) -> None:
     """Nimmt die aktuelle Mausposition auf - sofort ohne Eingabe."""
     x, y = get_cursor_pos()
@@ -104,11 +118,10 @@ def handle_undo(state: AutoClickerState) -> None:
 
 def handle_clear(state: AutoClickerState) -> None:
     """Löscht ALLE Punkte."""
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
+    with state.lock:
         count = len(state.points)
         if count == 0:
             print(f"\n{col('[CLEAR]', 'yellow')} Keine Punkte vorhanden.")
@@ -126,10 +139,8 @@ def handle_reset(state: AutoClickerState) -> None:
     """Löscht ALLES - kompletter Factory Reset wie frisch von GitHub."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     with state.lock:
         num_points = len(state.points)
@@ -204,10 +215,8 @@ def handle_editor(state: AutoClickerState) -> None:
     """Öffnet den Sequenz-Editor."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.sequence_editor import run_sequence_editor
     run_sequence_editor(state)
 
@@ -216,10 +225,8 @@ def handle_item_scan_editor(state: AutoClickerState) -> None:
     """Öffnet das Item-Scan Menü (Slots, Items, Scans)."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.item_scan_editor import run_item_scan_menu
     run_item_scan_menu(state)
 
@@ -228,10 +235,8 @@ def handle_load(state: AutoClickerState) -> None:
     """Lädt eine Sequenz."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.sequence_editor import run_sequence_loader
     run_sequence_loader(state)
 
@@ -296,10 +301,8 @@ def handle_show(state: AutoClickerState) -> None:
     # können Punkt-Mutationen mit dem Worker/Recorder kollidieren.
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     print_points(state)
 
@@ -521,10 +524,8 @@ def handle_switch(state: AutoClickerState) -> None:
     """Schneller Wechsel zwischen gespeicherten Sequenzen."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     sequences = list_available_sequences()
 
@@ -564,10 +565,9 @@ def handle_schedule(state: AutoClickerState) -> None:
     """Plant den Start einer Sequenz zu einem bestimmten Zeitpunkt."""
     if _block_if_recording(state):
         return
+    if _block_if_running(state):
+        return
     with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
         if state.countdown_active:
             print(f"\n{err('Es läuft bereits ein Countdown')} {hint('(CTRL+ALT+S zum Abbrechen)')}")
             return
@@ -651,7 +651,6 @@ def handle_schedule(state: AutoClickerState) -> None:
 
         # Countdown in separatem Thread starten, damit Hotkeys weiter funktionieren
         def countdown_worker():
-            nonlocal target_time  # Zugriff auf target_time aus dem äußeren Scope
             with state.lock:
                 state.countdown_active = True
 
@@ -704,10 +703,8 @@ def handle_analyze(state: AutoClickerState) -> None:
     """Startet den Farb-Analysator."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     run_color_analyzer()
 
 
@@ -715,10 +712,8 @@ def handle_import_export(state: AutoClickerState) -> None:
     """Öffnet den Import/Export-Editor."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.import_export_editor import run_import_export_editor
     run_import_export_editor(state)
 
@@ -744,10 +739,9 @@ def handle_node_editor(state: AutoClickerState) -> None:
     """
     import subprocess
 
+    if _block_if_running(state):
+        return
     with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
         seq_name = state.active_sequence.name if state.active_sequence else ""
 
     args = [sys.executable, "-m", "autoclicker.node_editor"]
@@ -775,10 +769,8 @@ def handle_scan_studio(state: AutoClickerState) -> None:
     """
     import subprocess
 
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     try:
         subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])

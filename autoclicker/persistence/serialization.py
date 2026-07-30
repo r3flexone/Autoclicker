@@ -10,6 +10,7 @@ bleiben stabil, um nicht alle Callsites anfassen zu müssen.
 """
 
 from dataclasses import asdict
+from typing import TYPE_CHECKING
 
 from ..models import (
     DEFAULT_MIN_CONFIDENCE,
@@ -17,6 +18,9 @@ from ..models import (
     ItemProfile, ItemSlot, BossProfile,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, ICON_ACTION_CLICK, SCAN_MODE_ALL,
 )
+
+if TYPE_CHECKING:  # nur fuer die Annotationen unten
+    from ..models import ItemScanConfig, BossScanConfig, IconScanConfig
 
 
 # =============================================================================

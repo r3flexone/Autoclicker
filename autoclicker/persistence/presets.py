@@ -8,7 +8,7 @@ list/save/load/delete-Funktionen wiederverwendet.
 import json
 from pathlib import Path
 
-from ..models import ItemSlot, AutoClickerState
+from ..models import AutoClickerState
 from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, atomic_write
 from .globals import save_global_items, save_global_slots
 from .migration import KIND_ITEMS, KIND_SLOTS, migrate

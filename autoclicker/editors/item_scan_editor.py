@@ -583,8 +583,6 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
     # Prüfen ob Items erstellt wurden
     with state.lock:
         item_count = len(state.global_items)
-        slot_list = list(state.global_slots.keys())
-        item_list = list(state.global_items.keys())
 
     if item_count == 0:
         print(f"\n{err('Keine Items erstellt - Scan-Konfiguration wird nicht erstellt.')}")

@@ -34,7 +34,7 @@ from typing import Callable, Optional
 
 from .migration import (
     KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, KIND_ICON_SCAN, KIND_ITEMS, KIND_ITEM_SCAN,
-    KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, file_version, migrate, stamp,
+    KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, migrate, stamp,
 )
 from ..utils import atomic_write, compact_json
 from . import serialization as ser
@@ -295,7 +295,7 @@ def sweep_beim_start() -> SweepErgebnis:
     Bewusst nach `init_directories()` und VOR dem Laden aufrufen - dann liest der Rest
     des Starts schon die aufgeraeumten Dateien und die Loader haben nichts zu melden.
     """
-    from ..utils import col, hint, info, warn
+    from ..utils import col, hint, warn
 
     ergebnis = sweep(write=True)
     if not ergebnis:

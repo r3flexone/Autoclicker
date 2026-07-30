@@ -139,7 +139,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     schedule_shutdown = threading.Event()
     cycle_count = 0
     try:
-        schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
+        _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
 
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)

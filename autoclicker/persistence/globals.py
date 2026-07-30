@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 
-from ..models import ItemSlot, AutoClickerState
+from ..models import AutoClickerState
 from ..utils import compact_json, save_tag, load_tag, err, atomic_write
 from .migration import KIND_ITEMS, KIND_SLOTS, migrate
 from .paths import ITEMS_FILE, SLOTS_FILE

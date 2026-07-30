@@ -463,7 +463,6 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
             condition_met = (not color_present) if wc.until_gone else color_present
 
             elapsed = time.time() - start_time
-            current_name = get_color_name(current_color)
 
             if condition_met:
                 with state.lock:

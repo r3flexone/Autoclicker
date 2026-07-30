@@ -246,7 +246,7 @@ def analyze_image(
             text = _extract_response_text(result, provider)
             return True, text.strip(), duration_ms
 
-    except socket.timeout as e:
+    except socket.timeout:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
         return False, f"Timeout nach {timeout}s", duration_ms

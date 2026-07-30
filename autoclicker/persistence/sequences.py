@@ -206,9 +206,12 @@ def get_next_point_id(state: AutoClickerState) -> int:
 
 
 def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoint]:
-    """Findet einen Punkt anhand seiner ID (O(1) Dict-Lookup mit Fallback)."""
-    points_by_id = {p.id: p for p in state.points}
-    return points_by_id.get(point_id)
+    """Findet einen Punkt anhand seiner ID.
+
+    Der Docstring versprach frueher O(1) - gebaut wurde aber bei JEDEM Aufruf das
+    komplette Dict neu, also O(n) plus Allokation. Ein Durchlauf tut dasselbe billiger.
+    """
+    return next((p for p in state.points if p.id == point_id), None)
 
 
 def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:

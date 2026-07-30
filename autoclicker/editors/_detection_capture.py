@@ -6,7 +6,7 @@ Bündelt interaktive Aufnahme-Abläufe, die sonst mehrfach kopiert würden.
 
 from typing import Optional
 
-from ..utils import safe_input, is_cancel, err, hint, interactive_select, col
+from ..utils import safe_input, is_cancel, err, hint, interactive_select
 from ..winapi import get_cursor_pos, VK_CODES
 from ..imaging import get_pixel_color, select_region
 

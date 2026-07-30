@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ..models import AutoClickerState, Sequence, LoopPhase, SequenceStep, ClickPoint
 from ..winapi import install_mouse_hook, remove_mouse_hook
-from ..utils import safe_input, col, ok, err, is_cancel, hint, info, describe_color
+from ..utils import safe_input, col, ok, err, is_cancel, hint, describe_color
 from ..persistence.sequences import (
     save_sequence_file, ensure_sequences_dir, save_points, get_next_point_id,
 )
@@ -42,7 +42,6 @@ def _on_click_factory(state: AutoClickerState):
 
 def start_recording(state: AutoClickerState) -> None:
     """Startet die Sequenz-Aufnahme."""
-    from ..execution import print_status
     with state.lock:
         if state.is_running:
             print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")

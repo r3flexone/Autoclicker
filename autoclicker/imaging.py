@@ -7,7 +7,10 @@ import ctypes
 import ctypes.wintypes as wintypes
 import logging
 import os
-from typing import Optional, TYPE_CHECKING
+# 'Image.Image' in den Annotationen ist ein String und wird nie ausgewertet - der Name
+# kommt aus dem optionalen Pillow-Import weiter unten. Ein zusaetzlicher TYPE_CHECKING-
+# Import waere nur eine zweite Definition desselben Namens.
+from typing import Optional
 
 from .config import CONFIG
 from .models import DEFAULT_MIN_CONFIDENCE
@@ -54,9 +57,6 @@ class BITMAPINFOHEADER(ctypes.Structure):
         ('biYPelsPerMeter', ctypes.c_int32), ('biClrUsed', ctypes.c_uint32),
         ('biClrImportant', ctypes.c_uint32),
     ]
-
-if TYPE_CHECKING:
-    from PIL import Image
 
 # Logger
 logger = logging.getLogger("autoclicker")
