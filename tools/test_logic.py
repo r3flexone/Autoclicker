@@ -995,6 +995,33 @@ finally:
     _os.chdir(_alt_cwd)
 
 
+# ------------------------------------------------- Laden veraendert nichts
+section("Sequenz laden meldet nur, schreibt nicht")
+from autoclicker.editors.sequence_editor.loader import _report_point_mismatches
+from autoclicker.models import Sequence as _Seq3, LoopPhase as _LP3, SequenceStep as _SS3
+
+# Aufgenommene Punkte heissen per Default P<id> - eine Sequenz von einem anderen Rechner
+# bringt also "P3" mit, und der lokale P3 liegt woanders. Frueher wurde der Schritt still
+# dorthin verschoben UND die Datei ueberschrieben.
+_st3 = _ACS()
+_st3.points = [_CP3(50, 50, "P3", 3)]
+_fremd = _SS3(x=900, y=900, delay_before=0, name="P3")
+_seq3 = _Seq3("fremd", [], [_LP3("Loop", [_fremd])], [])
+_report_point_mismatches(_st3, _seq3)
+check("Schritt-Koordinaten bleiben unangetastet", (_fremd.x, _fremd.y) == (900, 900))
+check("keine Referenz wird stillschweigend gesetzt", _fremd.point_id is None)
+
+# Mit Referenz ist die Aufloesung zustaendig - dort wird der Schritt auch gemeldet
+_verknuepft = _SS3(x=900, y=900, delay_before=0, name="P3", point_id=3)
+_seq4 = _Seq3("mit_ref", [], [_LP3("Loop", [_verknuepft])], [])
+_report_point_mismatches(_st3, _seq4)
+check("Schritt mit point_id bleibt dem Loader egal", (_verknuepft.x, _verknuepft.y) == (900, 900))
+from autoclicker.persistence import resolve_point_references as _rpr2
+_meld = _rpr2(_st3, _seq4)
+check("erst die Aufloesung zieht ihn nach", (_verknuepft.x, _verknuepft.y) == (50, 50))
+check("und meldet das im Klartext", len(_meld) == 1 and "P3" in _meld[0])
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
