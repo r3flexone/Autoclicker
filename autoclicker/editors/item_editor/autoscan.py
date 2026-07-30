@@ -7,7 +7,7 @@ mit dem rename-Befehl angepasst werden.
 
 from pathlib import Path
 
-from ...config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ClickPoint, ItemProfile, AutoClickerState
 from ...persistence import (
@@ -98,9 +98,9 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
             pass
 
     # Konfidenz
-    min_confidence = DEFAULT_MIN_CONFIDENCE
+    min_confidence = state.config.scan_min_confidence
     try:
-        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
+        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(min_confidence * 100)}): ").strip()
         if conf_input:
             min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
     except ValueError:

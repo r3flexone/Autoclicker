@@ -175,6 +175,13 @@ mit den Dataclass-Defaults übereinstimmen** — sonst verschwindet ein Feld bei
 und kommt beim Laden mit einem anderen Wert zurück. Ein Test prüft das gegen die
 Dataclasses; beim Ändern eines Defaults immer beide Stellen anfassen.
 
+**Ein Default darf nie aus der Config kommen.** `models.DEFAULT_MIN_CONFIDENCE` (konstant
+0.8) ist der *Datei*-Default: was gilt, wenn das Feld in der JSON fehlt.
+`AppConfig.scan_min_confidence` ist die *Voreinstellung für neue Profile*, die die Editoren
+über `state.config` vorschlagen. Beides war früher derselbe Name — dadurch ließ der
+Serializer ein Feld weg, das gerade auf dem Config-Wert stand, und beim nächsten Ändern der
+Config kam es mit einem anderen Wert zurück. Zwei Dinge, zwei Namen.
+
 Der Name steht in Name→Eintrag-Dicts nur noch im Schlüssel (`items.json`, `slots.json`,
 Presets). `_item_from_dict(data, name)` und `_slot_from_dict(name, data)` bekommen ihn von
 dort. In Listen (Bosse, wo die Reihenfolge Priorität ist) bleibt `name` im Eintrag.

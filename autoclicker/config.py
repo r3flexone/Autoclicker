@@ -415,7 +415,14 @@ def save_config(config: AppConfig) -> None:
 # Konfiguration laden (wird beim Import ausgeführt)
 CONFIG: AppConfig = load_config()
 
-# Konfig-Werte als Variablen (nur Werte die sich zur Laufzeit nicht ändern)
-# ACHTUNG: Werte die sich durch Factory Reset ändern können, immer über
-# state.config abrufen statt über Modul-Variablen!
-DEFAULT_MIN_CONFIDENCE: float = CONFIG.scan_min_confidence
+# Hier stand früher `DEFAULT_MIN_CONFIDENCE = CONFIG.scan_min_confidence` — ein Name für
+# zwei verschiedene Dinge, und damit die Ursache stillen Datenverlusts:
+#
+#   * der DATEI-Default (was gilt, wenn min_confidence in der JSON fehlt) ist konstant
+#     und liegt jetzt als models.DEFAULT_MIN_CONFIDENCE bei den Dataclasses,
+#   * die VOREINSTELLUNG für neu angelegte Profile ist `scan_min_confidence` und wird
+#     über state.config gelesen (Factory Reset wirkt dann sofort).
+#
+# Solange beides derselbe Wert war, liess der Serializer ein Feld weg, das exakt auf dem
+# Config-Wert stand - und beim naechsten Aendern der Config kam es mit einem anderen Wert
+# zurueck. Nicht wieder zusammenlegen.

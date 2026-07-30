@@ -9,7 +9,8 @@ import logging
 import os
 from typing import Optional, TYPE_CHECKING
 
-from .config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from .config import CONFIG
+from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
 from .winapi import get_cursor_pos
 

@@ -16,7 +16,6 @@ from ..models import (
     ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
     ICON_ACTION_SKIP_CYCLE, ICON_ACTION_RESTART,
 )
-from ..config import DEFAULT_MIN_CONFIDENCE
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, interactive_select,
     col, ok, err, warn, header, breadcrumb, parse_non_negative_float,
@@ -150,7 +149,7 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
             scan_name = f"IconScan_{int(time.time())}"
         scan_region = (0, 0, 100, 100)
         template = None
-        min_confidence = DEFAULT_MIN_CONFIDENCE
+        min_confidence = state.config.scan_min_confidence
         marker_colors = []
         tolerance = 30
 

@@ -8,7 +8,7 @@ und learn.py genutzt.
 from pathlib import Path
 from typing import Optional
 
-from ...config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from ...config import CONFIG
 from ...imaging import (
     OPENCV_AVAILABLE, take_screenshot, select_region,
 )
@@ -75,7 +75,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
 
     # Template erstellen (Screenshot von Slot)
     template_file = None
-    min_confidence = DEFAULT_MIN_CONFIDENCE
+    min_confidence = state.config.scan_min_confidence
 
     if OPENCV_AVAILABLE:
         print("\n  Template erstellen?")
@@ -95,7 +95,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
                     print(f"  -> Template gespeichert: {template_path}")
 
                     try:
-                        conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
+                        conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
                         if conf_input:
                             min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
                     except ValueError:

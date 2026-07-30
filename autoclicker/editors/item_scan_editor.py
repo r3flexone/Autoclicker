@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
-from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from ..config import CONFIG
 from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
@@ -406,13 +406,13 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
                     pass
 
                 # Konfidenz
-                min_confidence = DEFAULT_MIN_CONFIDENCE
+                min_confidence = state.config.scan_min_confidence
                 try:
-                    conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
+                    conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
                     if conf_input:
                         min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
                 except ValueError:
-                    print(f"  -> '{conf_input}' ungültig — behalte {int(DEFAULT_MIN_CONFIDENCE * 100)}")
+                    print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
 
                 # Bestätigungs-Klick?
                 confirm_point = None

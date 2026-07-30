@@ -11,8 +11,8 @@ bleiben stabil, um nicht alle Callsites anfassen zu müssen.
 
 from dataclasses import asdict
 
-from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import (
+    DEFAULT_MIN_CONFIDENCE,
     ClickPoint, ElseConfig, WaitCondition, SequenceStep, Sequence,
     ItemProfile, ItemSlot, BossProfile,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, ICON_ACTION_CLICK, SCAN_MODE_ALL,

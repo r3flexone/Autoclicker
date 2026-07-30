@@ -11,7 +11,6 @@ ohne die Daten zu verlieren.
 
 from pathlib import Path
 
-from ...config import DEFAULT_MIN_CONFIDENCE
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ClickPoint, ItemProfile, AutoClickerState
 from ...persistence import (
@@ -108,7 +107,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 priority=priority,
                 confirm_point=confirm_point,
                 confirm_delay=confirm_delay,
-                min_confidence=DEFAULT_MIN_CONFIDENCE
+                min_confidence=state.config.scan_min_confidence
             )
 
             if use_template and OPENCV_AVAILABLE:

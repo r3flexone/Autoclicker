@@ -15,7 +15,7 @@ from ..models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     SCAN_MODE_ALL,
 )
-from ..config import DEFAULT_MIN_CONFIDENCE, save_config
+from ..config import save_config
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, header, breadcrumb, suggest_command,
@@ -215,7 +215,8 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
         return None
 
     template = existing.template if existing else None
-    min_confidence = existing.min_confidence if existing else DEFAULT_MIN_CONFIDENCE
+    min_confidence = (existing.min_confidence if existing
+                      else state.config.scan_min_confidence)
     marker_colors = list(existing.marker_colors) if existing else []
 
     chosen_label = detect_options[detect_choice]

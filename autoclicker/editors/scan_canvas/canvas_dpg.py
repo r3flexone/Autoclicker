@@ -12,7 +12,7 @@ Läuft nur im Subprocess (Dear PyGui import).
 
 import dearpygui.dearpygui as dpg
 
-from ...config import DEFAULT_MIN_CONFIDENCE
+from ...config import CONFIG
 from ...models import (
     ItemSlot, ItemProfile, ItemScanConfig,
     IconScanConfig, BossScanConfig, BossProfile,
@@ -1004,7 +1004,7 @@ class ScanStudioApp:
             return None
         if dedup:
             dup = _find_matching_existing_item(
-                crop, list(self.items.items()), DEFAULT_MIN_CONFIDENCE)
+                crop, list(self.items.items()), CONFIG.scan_min_confidence)
             if dup:
                 return None
         item_name = name or next_item_name(self.items)
@@ -1016,7 +1016,7 @@ class ScanStudioApp:
             category=None,
             priority=len(self.items) + 1,
             template=template,
-            min_confidence=DEFAULT_MIN_CONFIDENCE,
+            min_confidence=CONFIG.scan_min_confidence,
         )
         return item_name
 

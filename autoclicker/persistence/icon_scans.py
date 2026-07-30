@@ -10,8 +10,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ..config import DEFAULT_MIN_CONFIDENCE
-from ..models import IconScanConfig, AutoClickerState, ICON_ACTION_CLICK
+from ..models import (
+    DEFAULT_MIN_CONFIDENCE, IconScanConfig, AutoClickerState, ICON_ACTION_CLICK,
+)
 from .migration import KIND_ICON_SCAN, migrate
 from .paths import ICON_SCANS_DIR
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS

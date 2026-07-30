@@ -922,6 +922,19 @@ for _label, _tabelle, _cls in _tabellen:
               if k in _dcd and not (_dcd[k] == v and type(_dcd[k]) is type(v))]
     check(f"{_label}-Defaults ohne Abweichung", _drift == [])
 
+# Der Datei-Default darf NICHT aus der Config kommen. Frueher war
+# `config.DEFAULT_MIN_CONFIDENCE = CONFIG.scan_min_confidence`, womit die Tabellen oben
+# vom Nutzerwert abhingen: ein Item, dessen Konfidenz zufaellig auf dem Config-Wert stand,
+# verlor sein Feld beim Speichern und kam nach einer Config-Aenderung mit einem anderen
+# Wert zurueck. Die Pruefung oben findet das nur, wenn die Config gerade abweicht - dieser
+# Test findet es immer.
+import autoclicker.config as _cfgmod
+from autoclicker.models import DEFAULT_MIN_CONFIDENCE as _FILE_DEFAULT
+check("Datei-Default liegt bei den Dataclasses, nicht in der Config",
+      not hasattr(_cfgmod, "DEFAULT_MIN_CONFIDENCE"))
+check("Datei-Default ist konstant, nicht der Config-Wert",
+      _FILE_DEFAULT == 0.8 and _IP(name="x").min_confidence == _FILE_DEFAULT)
+
 
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")

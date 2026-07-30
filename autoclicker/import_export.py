@@ -24,10 +24,10 @@ from .persistence import (
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
 from .models import (
-    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
+    DEFAULT_MIN_CONFIDENCE,
+    ClickPoint, ItemScanConfig, BossScanConfig, IconScanConfig,
     BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
-from .config import DEFAULT_MIN_CONFIDENCE
 from .utils import atomic_write, compact_json, sanitize_filename, warn
 
 logger = logging.getLogger("autoclicker")
