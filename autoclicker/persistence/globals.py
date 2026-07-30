@@ -13,7 +13,7 @@ from ..models import ItemSlot, AutoClickerState
 from ..utils import compact_json, save_tag, load_tag, err, atomic_write
 from .migration import KIND_ITEMS, KIND_SLOTS, migrate
 from .paths import ITEMS_FILE, SLOTS_FILE
-from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
+from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict, _slot_from_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -45,13 +45,7 @@ def load_global_slots(state: AutoClickerState) -> None:
         # Laden aller restlichen verhindern.
         for name, s in data.items():
             try:
-                slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                state.global_slots[name] = ItemSlot(
-                    name=s["name"],
-                    scan_region=tuple(s["scan_region"]),
-                    click_pos=tuple(s["click_pos"]),
-                    slot_color=slot_color
-                )
+                state.global_slots[name] = _slot_from_dict(name, s)
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning(f"Slot '{name}' übersprungen (ungültig): {e}")
         if state.global_slots:
@@ -89,7 +83,7 @@ def load_global_items(state: AutoClickerState) -> None:
         # Laden aller restlichen verhindern.
         for name, i in data.items():
             try:
-                state.global_items[name] = _item_from_dict(i)
+                state.global_items[name] = _item_from_dict(i, name)
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning(f"Item '{name}' übersprungen (ungültig): {e}")
         if state.global_items:

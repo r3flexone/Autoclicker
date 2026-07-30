@@ -36,6 +36,7 @@ from .migration import (
     KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, KIND_ICON_SCAN, KIND_ITEMS, KIND_ITEM_SCAN,
     KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, file_version, migrate, stamp,
 )
+from ..utils import atomic_write, compact_json
 from . import serialization as ser
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEMS_FILE, ITEM_PRESETS_DIR,
@@ -103,19 +104,16 @@ def _rt_items(pfad: Path, punkte: list):
     data, _ = migrate(_lade(pfad), KIND_ITEMS)
     if not isinstance(data, dict):
         return None
-    return {name: ser._item_to_dict(ser._item_from_dict(i)) for name, i in data.items()}
+    return {name: ser._item_to_dict(ser._item_from_dict(i, name))
+            for name, i in data.items()}
 
 
 def _rt_slots(pfad: Path, punkte: list):
-    from ..models import ItemSlot
     data, _ = migrate(_lade(pfad), KIND_SLOTS)
     if not isinstance(data, dict):
         return None
-    return {name: ser._slot_to_dict(ItemSlot(
-        name=s["name"], scan_region=tuple(s["scan_region"]),
-        click_pos=tuple(s["click_pos"]),
-        slot_color=tuple(s["slot_color"]) if s.get("slot_color") else None))
-        for name, s in data.items()}
+    return {name: ser._slot_to_dict(ser._slot_from_dict(name, s))
+            for name, s in data.items()}
 
 
 def _rt_bosses(pfad: Path, punkte: list):
@@ -220,10 +218,16 @@ def _gleich(a, b) -> bool:
 
 
 def _schreibe(pfad: Path, data) -> None:
+    """Sicherung anlegen, dann schreiben - im selben Format wie die App selbst.
+
+    compact_json + atomic_write, damit die Datei nach dem Start-Durchgang genauso aussieht
+    wie nach einem normalen Speichern. Sonst wechselte die Formatierung bei jedem Save
+    hin und her.
+    """
     backup = pfad.with_suffix(pfad.suffix + ".bak")
     if not backup.exists():
         backup.write_text(pfad.read_text(encoding="utf-8"), encoding="utf-8")
-    pfad.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write(pfad, compact_json(data))
 
 
 class SweepErgebnis:

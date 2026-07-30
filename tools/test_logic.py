@@ -601,9 +601,11 @@ check("Item-Scan: vorhandene Namensliste gewinnt", _beides["item_names"] == ["Ne
 # Der Loader kennt die alte Liste NICHT mehr - dafuer ist die Migration da
 from autoclicker.persistence.serialization import _item_from_dict as _ifd
 check("Loader ignoriert das alte confirm_point-Format",
-      _ifd({"name": "X", "confirm_point": [1, 2]}).confirm_point is None)
+      _ifd({"confirm_point": [1, 2]}, "X").confirm_point is None)
 check("Loader liest das aktuelle Format",
-      _ifd({"name": "X", "confirm_point": {"x": 1, "y": 2}}).confirm_point.x == 1)
+      _ifd({"confirm_point": {"x": 1, "y": 2}}, "X").confirm_point.x == 1)
+# Der Name kommt aus dem Schluessel, nicht mehr aus dem Eintrag
+check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
 # Verknuepfung darf nicht auf einen Punkt ohne ID zeigen (sonst point_id=null und der
 # naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz)
@@ -884,6 +886,41 @@ check("Editor-Config wird als Namen gespeichert",
       _gespeichert["slot_names"] == ["S1"] and _gespeichert["item_names"] == ["Kohle"])
 check("keine Kopien in der Datei",
       "slots" not in _gespeichert and "items" not in _gespeichert)
+
+
+# ----------------------- Default-Tabellen duerfen nicht von den Dataclasses abdriften
+section("Default-Tabellen passen zu den Dataclasses")
+import dataclasses as _dc
+from autoclicker.persistence import serialization as _ser
+from autoclicker.models import (ItemProfile as _IP, ItemSlot as _IS2,
+                                BossProfile as _BP, BossScanConfig as _BSC,
+                                IconScanConfig as _ISC2, SequenceStep as _SS2)
+
+def _dataclass_defaults(cls):
+    raus = {}
+    for f in _dc.fields(cls):
+        if f.default is not _dc.MISSING:
+            raus[f.name] = f.default
+        elif f.default_factory is not _dc.MISSING:      # type: ignore[misc]
+            raus[f.name] = f.default_factory()          # type: ignore[misc]
+    return raus
+
+# Steht in der Tabelle ein anderer Wert als in der Dataclass, wuerde das Feld beim
+# Speichern weggelassen und beim Laden mit einem ANDEREN Wert wieder auftauchen -
+# stiller Datenverlust. Deshalb hart pruefen.
+_tabellen = [
+    ("Item", _ser._ITEM_DEFAULTS, _IP),
+    ("Slot", _ser._SLOT_DEFAULTS, _IS2),
+    ("Boss", _ser._BOSS_DEFAULTS, _BP),
+    ("Boss-Scan", _ser._BOSS_SCAN_DEFAULTS, _BSC),
+    ("Icon-Scan", _ser._ICON_SCAN_DEFAULTS, _ISC2),
+    ("Schritt", _ser._STEP_DEFAULTS, _SS2),
+]
+for _label, _tabelle, _cls in _tabellen:
+    _dcd = _dataclass_defaults(_cls)
+    _drift = [k for k, v in _tabelle.items()
+              if k in _dcd and not (_dcd[k] == v and type(_dcd[k]) is type(v))]
+    check(f"{_label}-Defaults ohne Abweichung", _drift == [])
 
 
 

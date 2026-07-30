@@ -13,7 +13,7 @@ from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_
 from .globals import save_global_items, save_global_slots
 from .migration import KIND_ITEMS, KIND_SLOTS, migrate
 from .paths import ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
-from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict
+from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict, _slot_from_dict
 
 
 # =============================================================================
@@ -97,13 +97,7 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
         with state.lock:
             state.global_slots.clear()
             for name, s in data.items():
-                slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                state.global_slots[name] = ItemSlot(
-                    name=s["name"],
-                    scan_region=tuple(s["scan_region"]),
-                    click_pos=tuple(s["click_pos"]),
-                    slot_color=slot_color
-                )
+                state.global_slots[name] = _slot_from_dict(name, s)
         save_global_slots(state)
         print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(state.global_slots)} Slots)"))
         return True
@@ -151,7 +145,7 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
         with state.lock:
             state.global_items.clear()
             for name, i in data.items():
-                state.global_items[name] = _item_from_dict(i)
+                state.global_items[name] = _item_from_dict(i, name)
         save_global_items(state)
         print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(state.global_items)} Items)"))
         return True

@@ -17,8 +17,9 @@ from .persistence import (
     TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
     _boss_profile_to_dict, _point_to_dict,
     _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
-    load_sequence_file, _item_from_dict, _boss_profile_from_dict, resolve_scan_references,
-    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, migrate,
+    load_sequence_file, _item_from_dict, _slot_from_dict, _boss_profile_from_dict,
+    resolve_scan_references,
+    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SLOTS, migrate,
     save_data, save_global_slots, save_global_items,
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
@@ -447,17 +448,16 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Slots
             if import_slots and "slots.json" in names:
                 slots_data = json.loads(zf.read("slots.json").decode("utf-8"))
+                slots_data, _m = migrate(slots_data, KIND_SLOTS)
                 with state.lock:
                     if not merge:
                         state.global_slots.clear()
                     for sname, s in slots_data.items():
-                        region = remap_region(tuple(s["scan_region"]), transform)
-                        click = remap_point(s["click_pos"][0], s["click_pos"][1], transform)
-                        slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                        state.global_slots[sname] = ItemSlot(
-                            name=s["name"], scan_region=region,
-                            click_pos=click, slot_color=slot_color
-                        )
+                        slot = _slot_from_dict(sname, s)
+                        slot.scan_region = remap_region(slot.scan_region, transform)
+                        slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1],
+                                                     transform)
+                        state.global_slots[sname] = slot
                         stats["slots"] += 1
                 save_global_slots(state)
 
@@ -469,7 +469,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     if not merge:
                         state.global_items.clear()
                     for iname, i in items_data.items():
-                        item = _item_from_dict(i)
+                        item = _item_from_dict(i, iname)
                         if item.confirm_point:
                             nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y, transform)
                             item.confirm_point = ClickPoint(nx, ny)

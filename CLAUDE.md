@@ -168,6 +168,17 @@ Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladba
 bleiben unangetastet). Zweiter Start muss „0 geändert" ergeben; tut er das nicht, ist ein
 Schritt nicht idempotent.
 
+**Nur gesetzte Felder werden geschrieben.** Jeder Serializer läuft durch
+`_ohne_defaults(daten, tabelle)`; die Tabellen (`_ITEM_DEFAULTS`, `_SLOT_DEFAULTS`,
+`_BOSS_DEFAULTS`, `_BOSS_SCAN_DEFAULTS`, `_ICON_SCAN_DEFAULTS`, `_STEP_DEFAULTS`) **müssen
+mit den Dataclass-Defaults übereinstimmen** — sonst verschwindet ein Feld beim Speichern
+und kommt beim Laden mit einem anderen Wert zurück. Ein Test prüft das gegen die
+Dataclasses; beim Ändern eines Defaults immer beide Stellen anfassen.
+
+Der Name steht in Name→Eintrag-Dicts nur noch im Schlüssel (`items.json`, `slots.json`,
+Presets). `_item_from_dict(data, name)` und `_slot_from_dict(name, data)` bekommen ihn von
+dort. In Listen (Bosse, wo die Reihenfolge Priorität ist) bleibt `name` im Eintrag.
+
 **Speichern wird geschrieben, als gäbe es keine Altbestände.** Die Serializer schreiben
 das optimale Format, nicht das kompatible: nur gesetzte Felder (`_STEP_DEFAULTS`), nur
 Referenzen statt Kopien. Alles Alte hebt die Migration beim Start — und was sie nicht
