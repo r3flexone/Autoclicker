@@ -154,6 +154,71 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         return False
 
 
+# =============================================================================
+# TEMPLATE-CACHE
+# =============================================================================
+# Ein Template wurde bisher bei JEDEM Vergleich neu von Platte gelesen und dekodiert -
+# also pro Item x pro Slot x pro Scan-Schritt, in jedem Zyklus, fuer Bytes die sich nie
+# aendern. Bei 20 Items und 5 Slots sind das 100 Dateizugriffe je Scan.
+#
+# Der Cache haelt das dekodierte Bild und die auf eine Slot-Groesse angepasste Variante.
+# Schluessel ist (mtime, size) der Datei: wird ein Template neu gelernt oder ueberschrieben,
+# faellt der Eintrag von selbst raus - kein manuelles Invalidieren, kein Neustart noetig.
+#
+# Ohne Lock: Dict-Zugriffe sind unter dem GIL atomar. Schlimmstenfalls dekodieren zwei
+# Threads (Worker + Async-Boss) dasselbe Bild doppelt - das kostet nichts und geht nicht
+# kaputt. Ein Lock waere hier teurer als der Schaden.
+_template_cache: dict = {}
+_TEMPLATE_CACHE_MAX = 256
+
+
+def _load_template(template_path: str):
+    """Lädt ein Template-Bild (BGR) aus dem Cache oder von Platte. None wenn nicht da.
+
+    Unicode-Pfade: cv2.imread scheitert an Umlauten, deshalb fromfile + imdecode.
+    """
+    try:
+        st = os.stat(template_path)
+    except OSError:
+        logger.error(f"Template nicht gefunden: {template_path}")
+        return None
+
+    stand = (st.st_mtime, st.st_size)
+    eintrag = _template_cache.get(template_path)
+    if eintrag is not None and eintrag["stand"] == stand:
+        return eintrag["bild"]
+
+    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if bild is None:
+        logger.error(f"Konnte Template nicht laden: {template_path}")
+        return None
+
+    if len(_template_cache) >= _TEMPLATE_CACHE_MAX:
+        _template_cache.clear()
+    _template_cache[template_path] = {"stand": stand, "bild": bild, "skaliert": {}}
+    return bild
+
+
+def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
+    """Gibt das Template in der gewünschten Größe zurück (skaliert + gemerkt).
+
+    Die Größen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
+    geändert wurde. Sie ist pro Slot-Größe immer dieselbe Rechnung — also einmal.
+    """
+    if bild.shape[1] == breite and bild.shape[0] == hoehe:
+        return bild
+    eintrag = _template_cache.get(template_path)
+    schluessel = (breite, hoehe)
+    if eintrag is not None:
+        fertig = eintrag["skaliert"].get(schluessel)
+        if fertig is not None:
+            return fertig
+    skaliert = cv2.resize(bild, (breite, hoehe), interpolation=cv2.INTER_AREA)
+    if eintrag is not None:
+        eintrag["skaliert"][schluessel] = skaliert
+    return skaliert
+
+
 def match_template_in_image(img: 'Image.Image', template_name: str, min_confidence: float = DEFAULT_MIN_CONFIDENCE) -> tuple:
     """
     Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
@@ -175,34 +240,26 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         logger.warning("NumPy nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
-    # Template-Pfad erstellen
     template_path = os.path.join(TEMPLATES_DIR, template_name)
-    if not os.path.exists(template_path):
-        logger.error(f"Template nicht gefunden: {template_path}")
-        return (False, 0.0, None)
 
     try:
         # PIL-Bild zu OpenCV-Format konvertieren (RGB -> BGR)
         img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-        # Template laden (mit Unicode-Pfad-Unterstützung für Windows)
-        # cv2.imread hat Probleme mit Umlauten (ü, ä, ö) - daher imdecode verwenden
-        template_cv = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        template_cv = _load_template(template_path)
         if template_cv is None:
-            logger.error(f"Konnte Template nicht laden: {template_path}")
             return (False, 0.0, None)
 
         # Größenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
 
-        if tw != iw or th != ih:
+        if (tw != iw or th != ih) and tw > 0 and th > 0:
             # Größen-Diskrepanz! Template an Scan-Bildgröße anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
-            if tw > 0 and th > 0:
-                logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
-                template_cv = cv2.resize(template_cv, (iw, ih), interpolation=cv2.INTER_AREA)
+            logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
+            template_cv = _template_in_groesse(template_path, template_cv, iw, ih)
 
         # Debug: Scan-Bild und Template speichern zum Vergleich
         if CONFIG.debug_save_templates:

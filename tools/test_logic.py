@@ -1022,6 +1022,39 @@ check("erst die Aufloesung zieht ihn nach", (_verknuepft.x, _verknuepft.y) == (5
 check("und meldet das im Klartext", len(_meld) == 1 and "P3" in _meld[0])
 
 
+# ------------------------------------------------------- Template-Cache
+section("Template-Cache: einmal lesen, bei Aenderung neu")
+from autoclicker import imaging as _img
+
+if not (_img.OPENCV_AVAILABLE and _img.NUMPY_AVAILABLE):
+    print("  ---   uebersprungen (OpenCV/NumPy fehlen in dieser Umgebung)")
+else:
+    import numpy as _np, time as _t
+    _tpl_dir = tempfile.mkdtemp()
+    _tpl = str(Path(_tpl_dir) / "t.png")
+    _img.cv2.imwrite(_tpl, _np.zeros((8, 8, 3), dtype=_np.uint8))
+    _img._template_cache.clear()
+
+    _a = _img._load_template(_tpl)
+    _b = _img._load_template(_tpl)
+    check("zweiter Aufruf liefert dasselbe Objekt (kein Neu-Dekodieren)", _a is _b)
+
+    # Neu gelerntes Template muss sofort greifen - Schluessel ist (mtime, size)
+    _t.sleep(0.01)
+    _img.cv2.imwrite(_tpl, _np.full((8, 8, 3), 255, dtype=_np.uint8))
+    _c = _img._load_template(_tpl)
+    check("geaendertes Template wird neu geladen", _c is not _a and int(_c[0, 0, 0]) == 255)
+
+    # Skalierte Variante wird ebenfalls gemerkt
+    _s1 = _img._template_in_groesse(_tpl, _c, 16, 16)
+    _s2 = _img._template_in_groesse(_tpl, _c, 16, 16)
+    check("skalierte Variante kommt aus dem Cache", _s1 is _s2 and _s1.shape[:2] == (16, 16))
+    check("passende Groesse wird nicht skaliert",
+          _img._template_in_groesse(_tpl, _c, 8, 8) is _c)
+
+    check("fehlendes Template meldet sauber None", _img._load_template(_tpl + "_weg") is None)
+
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
