@@ -84,7 +84,7 @@ def load_game_data() -> dict:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Game-Data-Endpoint: Antwort ist kein gueltiges JSON ({exc}) - "
-                           f"evtl. neues Extended-JSON-Konstrukt neben ObjectId(...).") from exc
+                           "evtl. neues Extended-JSON-Konstrukt neben ObjectId(...).") from exc
 
 
 def build_item_info_map(game: dict) -> dict:
@@ -227,7 +227,7 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
         # negativ). Lieber laut und einmalig scheitern als stillschweigend Gold/h=inf.
         raise ValueError(
             f"Skill '{skill_name}': equipment_speed_boost={cfg.equipment_speed_boost} ergibt "
-            f"Aktionszeit <= 0. Wert in SKILLS pruefen (0.61 = 61% schneller, nicht 61)."
+            "Aktionszeit <= 0. Wert in SKILLS pruefen (0.61 = 61% schneller, nicht 61)."
         )
     yield_factor = cfg.yield_multiplier * (1.0 + GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
 
@@ -284,7 +284,7 @@ def build_all_recipes(tasks: dict, case: str = "best",
     # Leerzeichen) unbemerkt in die Auswertung gerutscht.
     if unknown_skills and case == "best":
         print(f"⚠ Skills aus der API ohne Eintrag in SKILLS: {sorted(unknown_skills)} - sie laufen "
-              f"ohne Speed-/Yield-/Cost-Boosts mit. In SKILLS ergaenzen (oder excluded=True setzen).")
+              "ohne Speed-/Yield-/Cost-Boosts mit. In SKILLS ergaenzen (oder excluded=True setzen).")
     return all_recipes
 
 
@@ -297,8 +297,8 @@ def check_action_time_plausibility(all_recipes: list):
         return
     print(f"⚠ Median-Aktionszeit liegt bei {median:.4f}s (erwartet {MIN_PLAUSIBLE_ACTION_SEC}-"
           f"{MAX_PLAUSIBLE_ACTION_SEC}s). Das Script setzt voraus, dass 'BaseTime' in "
-          f"MILLISEKUNDEN geliefert wird - stimmt das nicht mehr, sind ALLE Gold/h- und "
-          f"XP/h-Werte um denselben Faktor falsch. Einheit im API-Feld pruefen.")
+          "MILLISEKUNDEN geliefert wird - stimmt das nicht mehr, sind ALLE Gold/h- und "
+          "XP/h-Werte um denselben Faktor falsch. Einheit im API-Feld pruefen.")
 
 
 def build_recipe_by_output(all_recipes: list) -> dict:
@@ -482,7 +482,7 @@ def _merge_worst_case(df_best: pd.DataFrame, df_worst: pd.DataFrame,
     if dup_best or dup_worst:
         print(f"⚠ {label}: {dup_best} doppelte Schluessel im Best-Case, {dup_worst} im Worst-Case "
               f"(Schluessel: {keys}). Worst-Case-Spalten werden uebersprungen, damit keine "
-              f"Zeilen vervielfacht werden - bitte Rezeptdaten pruefen.")
+              "Zeilen vervielfacht werden - bitte Rezeptdaten pruefen.")
         return df_best
     return df_best.merge(df_worst[keys + worst_cols], on=keys, how="left",
                          suffixes=("", "_Worst"), validate="one_to_one")
@@ -703,7 +703,7 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     Ketten/Realistisch_Farmbar/Nach_Skill_Level bleiben bewusst schlank (s. Absprache)."""
     unique_ids = [int(x) for x in df["ItemID"].unique().tolist()]
     print(f"Hole 1-/7-/30-Tage-Durchschnitt fuer {len(unique_ids)} eindeutige Items "
-          f"(comprehensive-Endpoint, 1 Request/Item, das dauert einen Moment)...")
+          "(comprehensive-Endpoint, 1 Request/Item, das dauert einen Moment)...")
 
     rows = []
     fields_missing_warned = False
@@ -717,7 +717,7 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
             if not fields_missing_warned and all(entry[c] is None for c in COMPREHENSIVE_AVG_FIELDS):
                 print(f"⚠ Erwartete Avg-Felder {list(COMPREHENSIVE_AVG_FIELDS.values())} nicht in der "
                       f"Antwort gefunden. Tatsaechliche Keys: {sorted(depth.keys())}\n"
-                      f"  -> Feldnamen in COMPREHENSIVE_AVG_FIELDS anpassen.")
+                      "  -> Feldnamen in COMPREHENSIVE_AVG_FIELDS anpassen.")
                 fields_missing_warned = True
         else:
             for col in COMPREHENSIVE_AVG_FIELDS:
@@ -840,7 +840,7 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
     ax.axhline(0, color="black", linewidth=0.8)
     ax.set_ylabel("Gold/h (netto: Materialkosten und 1% Marktsteuer abgezogen)")
     ax.set_title(f"Top-{PRICE_SENSITIVITY_TOP_N} FullySelfSufficient: Gold/h über Orderbook-Tiefe\n"
-                 f"rote Punkte = NPC-Vendor bringt hier mindestens genauso viel")
+                 "rote Punkte = NPC-Vendor bringt hier mindestens genauso viel")
     ax.legend(loc="best", fontsize=8, ncol=2)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -1035,7 +1035,7 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
         teile.append(f"NPC waere mit {npc:,.0f}g besser")
     if abweichung > 0.1:
         teile.append(f"Achtung: Orderbuch weicht {abweichung:.0%} vom Listenpreis ab "
-                     f"(zwei Momentaufnahmen)")
+                     "(zwei Momentaufnahmen)")
     if warnung:
         teile.append(warnung)
     return "; ".join(teile) + "."
@@ -1138,7 +1138,7 @@ def print_reason_highlights(df_reason: pd.DataFrame):
     schoen = df_reason[df_reason["Gold/h realistisch"] < df_reason["Gold/h"] * 0.9]
     if not schoen.empty:
         print(f"\n⚠ {len(schoen)} Items halten ihren Gold/h-Wert nicht, wenn man eine ganze "
-              f"Stunde Produktion ins Buch verkauft:")
+              "Stunde Produktion ins Buch verkauft:")
         for _, r in schoen.head(8).iterrows():
             print(f"    {str(r['Item']):<26}{r['Gold/h']:>11,} -> {r['Gold/h realistisch']:>11,}  "
                   f"({r['Preisverlust']} Preisverlust)")
@@ -1302,7 +1302,7 @@ def sanity_check_run_stats(current: dict, previous: dict | None) -> list[str]:
         if new < old:
             warnings.append(
                 f"'{key}': {old} -> {new} (GESUNKEN). Struktur-Werte aus der Game-Data sollten "
-                f"bei echten Updates nur wachsen - moeglicher Hinweis auf ein kaputtes API-Feld/Parsing."
+                "bei echten Updates nur wachsen - moeglicher Hinweis auf ein kaputtes API-Feld/Parsing."
             )
 
     for key in MARKET_STATS:
@@ -1313,7 +1313,7 @@ def sanity_check_run_stats(current: dict, previous: dict | None) -> list[str]:
         if drop_ratio > MARKET_DROP_WARNING_RATIO:
             warnings.append(
                 f"'{key}': {old} -> {new} ({drop_ratio:.0%} Einbruch). Kann eine echte Marktbewegung "
-                f"sein, oder eine kaputte/unvollstaendige API-Antwort - pruefen lohnt sich."
+                "sein, oder eine kaputte/unvollstaendige API-Antwort - pruefen lohnt sich."
             )
 
     return warnings
@@ -1370,7 +1370,7 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
         if not borderline.empty:
             print(f"⚠ {len(borderline)} Items verlieren ihren Marktpreis nur an der Schwelle "
                   f"MIN_SELL_VOLUME ({MIN_SELL_VOLUME:,}) - am besten Gebot liegen zu wenig Stueck, "
-                  f"obwohl darunter tiefe Nachfrage stehen kann:")
+                  "obwohl darunter tiefe Nachfrage stehen kann:")
             worst = borderline.assign(
                 _verlust=(borderline["MarketBid"] - borderline["NPCPreis"]) * borderline["Stück/h"]
             ).nlargest(5, "_verlust")

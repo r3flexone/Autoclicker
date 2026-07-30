@@ -130,9 +130,9 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     print(f"     a) Aktionsdauer: erwartet {b['r']['base_time_ms'] / 1000:.3f} s")
     if abs(speed_mult - speed_add) > 1e-9:
         print(f"        Waere die Formel additiv statt multiplikativ: {base_time_ms / 1000 * speed_add:.3f} s")
-        print(f"        -> Diese beiden unterscheiden sich, hier laesst sich die Formel entscheiden.")
+        print("        -> Diese beiden unterscheiden sich, hier laesst sich die Formel entscheiden.")
     else:
-        print(f"        (kein Clan-Boost auf diesen Skill -> beide Formeln identisch, nicht aussagekraeftig)")
+        print("        (kein Clan-Boost auf diesen Skill -> beide Formeln identisch, nicht aussagekraeftig)")
     print(f"     b) Ausbeute: erwartet {b['r']['item_amount'] * 100:,.1f} Stueck pro 100 Aktionen")
     print(f"     c) XP: erwartet {b['r']['xp']:,.2f} pro Aktion")
 
@@ -149,7 +149,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
         cooked_name = item_info_map.get(cooked_id, {}).get("name", f"item_{cooked_id}")
         per_action = b["r"]["item_amount"]
         print(f"     e) Auto-Cook: das Script nimmt an, dass {ma.AUTO_COOK_CHANCE:.0%} der Faenge bereits")
-        print(f"        gekocht ankommen -> pro 100 Aktionen erwartet:")
+        print("        gekocht ankommen -> pro 100 Aktionen erwartet:")
         print(f"          {cooked_name:<22} {per_action * 100 * ma.AUTO_COOK_CHANCE:>10,.1f}")
         print(f"          {str(raw.get('Name')):<22} {per_action * 100 * (1 - ma.AUTO_COOK_CHANCE):>10,.1f}  (roh)")
         raw_bid = market_map.get(item_id, {}).get("buy", 0)
@@ -158,7 +158,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
             secs = 3600.0 / b["actions_per_hour"]
             beide = (per_action * ma.AUTO_COOK_CHANCE * cooked_bid
                      + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
-            print(f"        HINWEIS: die Ketten-Analyse wirft den rohen Rest weg. Wuerde man ihn")
+            print("        HINWEIS: die Ketten-Analyse wirft den rohen Rest weg. Wuerde man ihn")
             print(f"        mitverkaufen, waeren es {beide:,.0f} Gold/h statt der ausgewiesenen Kette.")
 
     # --- 5. Kette ----------------------------------------------------------
@@ -212,7 +212,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
         if step_recipe["costs"]:
             worst_recipe = ma.normalize_recipe(sskill, _raw_of(tasks, sskill, clean), case="worst",
                                                excluded_cost_items=excluded_cost_items)
-            print(f"       Verbrauch / 100 Aktionen:")
+            print("       Verbrauch / 100 Aktionen:")
             for idx, cb in enumerate(step_recipe["costs"]):
                 iname = item_info_map.get(cb["Item"], {}).get("name", f"item_{cb['Item']}")
                 cw_amount = worst_recipe["costs"][idx]["Amount"] if worst_recipe else cb["Amount"]
@@ -223,7 +223,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     if abs(alt_total_ms - total_ms) > 1:
         alt_hour = 3_600_000.0 / alt_total_ms
         alt_gold = alt_hour * b["sell_price"] - cost * alt_hour
-        print(f"\n     Waere die Speed-Formel additiv statt multiplikativ, ergaebe die Kette "
+        print("\n     Waere die Speed-Formel additiv statt multiplikativ, ergaebe die Kette "
               f"{alt_gold:,.0f} Gold/h statt {chain_gold:,.0f} ({(alt_gold / chain_gold - 1):+.1%}).")
 
     # Auto-Cook betrifft die Kette direkt: der rohe Rest faellt unter den Tisch
@@ -243,10 +243,10 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
                 + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
         rawname = item_info_map.get(raw_id, {}).get("name", raw_id)
         cookedname = item_info_map.get(cooked_id, {}).get("name", cooked_id)
-        print(f"\n     ACHTUNG Auto-Cook: eine Fangaktion liefert laut Annahme "
+        print("\n     ACHTUNG Auto-Cook: eine Fangaktion liefert laut Annahme "
               f"{per_action * ma.AUTO_COOK_CHANCE:.2f}x {cookedname} UND "
               f"{per_action * (1 - ma.AUTO_COOK_CHANCE):.2f}x {rawname}.")
-        print(f"     Die Ketten-Zeile rechnet immer nur EINE der beiden Haelften. Verkaufst du")
+        print("     Die Ketten-Zeile rechnet immer nur EINE der beiden Haelften. Verkaufst du")
         print(f"     beide, sind es {both:,.0f} Gold/h - mehr als jede Einzelzeile im Excel.")
         break
 
@@ -280,7 +280,7 @@ def main():
 
     found = find_recipes(tasks, names)
     if not found:
-        print(f"Keine Rezepte gefunden. Verfuegbare Namen stehen in der Spalte 'Item' im Excel.")
+        print("Keine Rezepte gefunden. Verfuegbare Namen stehen in der Spalte 'Item' im Excel.")
         return 1
 
     for skill_name, raw in found:

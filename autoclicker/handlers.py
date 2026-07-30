@@ -255,7 +255,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
 
     if aktiv:
         print(f"\n{col('[MANUELL]', 'yellow')} Manueller Modus AN — Wartezeiten werden "
-              f"übersprungen, jeder Schritt wartet auf Bestätigung.")
+              "übersprungen, jeder Schritt wartet auf Bestätigung.")
         print(f"           Im Schritt: {col('w', 'yellow')} ausführen | "
               f"{col('s', 'yellow')} überspringen | "
               f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
@@ -309,7 +309,6 @@ def handle_show(state: AutoClickerState) -> None:
     with state.lock:
         if not state.points:
             return
-        num_points = len(state.points)
 
     print(col("-" * 50, 'gray'))
     print(col("Optionen:", 'bold'))

@@ -374,7 +374,7 @@ def _draw_menu(options: list[str], selected: int) -> None:
 def _clear_menu_lines(num_lines: int) -> None:
     """Bewegt den Cursor num_lines nach oben und löscht jede Zeile (nur echte Konsole)."""
     for _ in range(num_lines):
-        print(f"\033[A\033[2K", end="", flush=True)
+        print("\033[A\033[2K", end="", flush=True)
 
 
 def _fallback_select(options: list[str], title: str,

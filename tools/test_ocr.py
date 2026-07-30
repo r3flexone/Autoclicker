@@ -113,8 +113,8 @@ def test_backends():
         print(f"  Status: {color('Kein Backend verfügbar', 'red')}")
         print()
         print(f"  {color('Installation:', 'yellow')}")
-        print(f"  pip install easyocr        (empfohlen, GPU-Unterstützung)")
-        print(f"  pip install pytesseract     (+ Tesseract installieren)")
+        print("  pip install easyocr        (empfohlen, GPU-Unterstützung)")
+        print("  pip install pytesseract     (+ Tesseract installieren)")
         return False
 
     for b in backends:
@@ -135,7 +135,7 @@ def analyze(backend, img, boss_names, languages):
     if boss_names:
         print(f"  Bosse:     {color(', '.join(boss_names), 'cyan')}")
     print()
-    print(f"  Lese Text...", end=" ", flush=True)
+    print("  Lese Text...", end=" ", flush=True)
 
     start = time.time()
     texts = read_text(img, backend=backend, languages=languages)
@@ -180,8 +180,8 @@ def main():
 
     if not is_available():
         print(f"\n{color('Kein OCR-Backend installiert!', 'red')}")
-        print(f"  pip install easyocr        (empfohlen)")
-        print(f"  pip install pytesseract     (Alternative)")
+        print("  pip install easyocr        (empfohlen)")
+        print("  pip install pytesseract     (Alternative)")
         return
 
     try:

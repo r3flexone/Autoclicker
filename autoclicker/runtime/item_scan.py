@@ -267,7 +267,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
 
     save_global_items(state)
     print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} gespeichert "
-              f"(Kategorie 'Auto', wird nicht geklickt)", "green"))
+              "(Kategorie 'Auto', wird nicht geklickt)", "green"))
 
 
 def _park_mouse_for_scan(park_pos) -> None:

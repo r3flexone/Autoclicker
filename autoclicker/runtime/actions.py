@@ -56,7 +56,7 @@ def _wait_for_target_window(state: AutoClickerState, phase: str = "") -> bool:
     while not state.stop_event.is_set():
         if is_target_window_active(cfg.window_focus_title):
             log_event(state, "focus_restored")
-            print(col(f"[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
+            print(col("[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
             return True
         if state.stop_event.wait(cfg.timing_pause_interval):
             return False
@@ -118,7 +118,7 @@ def _humanize_check_break(state: AutoClickerState) -> None:
     with state.lock:
         state.humanize_last_break = time.monotonic()
     log_event(state, "humanize_break_end")
-    print(col(f"[HUMANIZE] Pause beendet.", "cyan"))
+    print(col("[HUMANIZE] Pause beendet.", "cyan"))
 
 
 # =============================================================================

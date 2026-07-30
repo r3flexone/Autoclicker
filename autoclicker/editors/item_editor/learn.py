@@ -287,6 +287,6 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         state.global_items[item_name] = item
 
     confirm_str = f" -> ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s" if confirm_point else ""
-    template_str = f" + Template" if item.template else ""
+    template_str = " + Template" if item.template else ""
     print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
     return True

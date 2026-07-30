@@ -55,7 +55,7 @@ def start_recording(state: AutoClickerState) -> None:
     callback = _on_click_factory(state)
     if install_mouse_hook(callback):
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
-        print(f"  Klicke die gewünschten Positionen im Spiel.")
+        print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Pausieren: {col('CTRL+ALT+H', 'yellow')} (navigieren ohne aufzuzeichnen)")
         print(f"  Stoppen:   {col('CTRL+ALT+J', 'yellow')} erneut drücken")
     else:
@@ -64,7 +64,7 @@ def start_recording(state: AutoClickerState) -> None:
             state.recording_paused = False
             state.recording_events = []
         print(f"\n{err('Maus-Hook konnte nicht installiert werden!')}")
-        print(f"  Mögliche Ursache: Administratorrechte erforderlich.")
+        print("  Mögliche Ursache: Administratorrechte erforderlich.")
 
 
 def stop_recording(state: AutoClickerState) -> None:

@@ -59,7 +59,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 continue
             elif user_input in ("show", "s"):
                 if loop_phases:
-                    print(f"\nLoop-Phasen:")
+                    print("\nLoop-Phasen:")
                     for i, lp in enumerate(loop_phases):
                         print(f"  {i+1}. {lp}")
                         for j, step in enumerate(lp.steps):
@@ -93,7 +93,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 # Geplante Startzeit abfragen
                 scheduled_start = None
                 print(hint("  (Phase wird nur zur angegebenen Uhrzeit ausgeführt, sonst übersprungen)"))
-                time_input = safe_input(f"  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
+                time_input = safe_input("  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
                 if time_input:
                     scheduled_start = parse_time_input(time_input)  # None bei Tippfehler = sofort
 

@@ -296,7 +296,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
                     logger.warning(
                         f"Template '{template_name}' passt nicht zur Scan-Region: "
                         f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
-                        f"Slot-Region geändert? Template neu aufnehmen."
+                        "Slot-Region geändert? Template neu aufnehmen."
                     )
             return (False, max_val, None)
 

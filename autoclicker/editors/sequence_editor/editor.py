@@ -247,9 +247,9 @@ def _print_post_save_summary(seq_name: str, init_steps: list, loop_phases: list,
     if end_steps:
         print(f"         End: {len(end_steps)} Schritte (einmal am Ende)")
     if total_cycles == 0:
-        print(f"         Gesamt: Unendlich wiederholen")
+        print("         Gesamt: Unendlich wiederholen")
     elif total_cycles == 1:
-        print(f"         Gesamt: Einmal durchlaufen")
+        print("         Gesamt: Einmal durchlaufen")
     else:
         print(f"         Gesamt: {total_cycles}x wiederholen")
     if pixel_triggers > 0:

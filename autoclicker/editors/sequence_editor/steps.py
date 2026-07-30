@@ -426,7 +426,7 @@ class _PhaseEditor:
                 return
             self.insert_position = pos
             print(f"  + Insert-Modus: Nächster Schritt wird an Position {pos} eingefügt")
-            print(f"    (Abbrechen mit 'ins 0' oder 'ins end')")
+            print("    (Abbrechen mit 'ins 0' oder 'ins end')")
         except ValueError:
             print("  -> Format: ins <Nr>")
 
@@ -628,7 +628,7 @@ class _PhaseEditor:
                                   f"mehrere Punkte passen ({ids}) - nicht verknüpft")
             else:
                 ohne_punkt.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
-                                  f"kein Punkt an dieser Stelle")
+                                  "kein Punkt an dieser Stelle")
 
         if verknuepft:
             print(f"  {ok(f'{len(verknuepft)} Schritt(e) verknüpft:')}")
@@ -1082,7 +1082,7 @@ class _PhaseEditor:
             mode = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
             print(f"    Farb-Trigger:    {mode} RGB{wc.color} bei ({wc.pixel[0]},{wc.pixel[1]})")
         else:
-            print(f"    Farb-Trigger:    (keiner)")
+            print("    Farb-Trigger:    (keiner)")
         if step.recorded_color:
             tip = hint(f"   → 'color {num}' nutzt sie")
             print(f"    Aufgen. Farbe:   RGB{step.recorded_color}{tip}")

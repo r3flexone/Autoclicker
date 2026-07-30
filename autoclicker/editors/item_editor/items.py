@@ -241,7 +241,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                                     print(f"  -> {delay_err}, behalte {new_confirm_delay}s")
                                 else:
                                     new_confirm_delay = delay_val
-                            print(f"  -> Bestätigung gesetzt")
+                            print("  -> Bestätigung gesetzt")
                         else:
                             print(f"  -> Punkt #{point_id} existiert nicht")
                 except ValueError:

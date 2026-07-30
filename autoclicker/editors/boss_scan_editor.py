@@ -486,8 +486,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         use_llm = True
         llm_fallback = True
         print(f"  {ok('LLM als Fallback aktiviert')}")
-        print(f"       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
-        print(f"       und Ollama/LM Studio läuft (Einstellungen in config.json)")
+        print("       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
+        print("       und Ollama/LM Studio läuft (Einstellungen in config.json)")
     elif llm_choice == 2:
         use_llm = True
         llm_fallback = False
@@ -533,7 +533,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             use_ocr = True
             ocr_fallback = True
             print(f"  {ok('OCR als Fallback aktiviert')}")
-            print(f"       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
+            print("       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
         elif ocr_choice == 2:
             use_ocr = True
             ocr_fallback = False

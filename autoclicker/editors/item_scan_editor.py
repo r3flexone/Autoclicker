@@ -463,7 +463,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
 
                 cat_str = f" [{category}]" if category else ""
                 print(f"  + Item '{item_name}'{cat_str} erstellt mit Template '{template_file}' ({min_confidence:.0%})")
-                print(f"  + Automatisch zum Scan hinzugefügt")
+                print("  + Automatisch zum Scan hinzugefügt")
 
             elif "-" in inp_lower and not inp_lower.startswith("new"):
                 # Bereich: 1-5
@@ -595,7 +595,7 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
 
     scan_name = safe_input("\nName für den Scan (Enter = 'AutoScan'): ").strip()
     if is_cancel(scan_name):
-        print(f"  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
+        print("  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
         return
     if not scan_name:
         scan_name = "AutoScan"

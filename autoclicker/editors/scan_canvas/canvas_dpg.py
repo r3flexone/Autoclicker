@@ -302,7 +302,7 @@ class ScanStudioApp:
         self._guided_step = "click"
         self._set_mode(MODE_CLICK)
         self._set_status(f"Slot '{name}' angelegt — jetzt Klickpunkt anklicken "
-                         f"(oder Werkzeug wechseln zum Überspringen).")
+                         "(oder Werkzeug wechseln zum Überspringen).")
 
     def _handle_point(self, dx, dy) -> None:
         """Klick im Modus Klickpunkt/Farbe auf den gewählten Slot anwenden."""
@@ -316,8 +316,8 @@ class ScanStudioApp:
                 # Weiter zum Farbe-Schritt
                 self._guided_step = "color"
                 self._set_mode(MODE_COLOR)
-                self._set_status(f"Klickpunkt gesetzt — jetzt Hintergrundfarbe auf dem "
-                                 f"leeren Slot anklicken (oder 'Slot zeichnen' = überspringen).")
+                self._set_status("Klickpunkt gesetzt — jetzt Hintergrundfarbe auf dem "
+                                 "leeren Slot anklicken (oder 'Slot zeichnen' = überspringen).")
             else:
                 self._set_status(f"Klickpunkt: {slot.click_pos}")
         elif self.mode == MODE_COLOR:
@@ -329,7 +329,7 @@ class ScanStudioApp:
                 self._guided_step = None
                 self._set_mode(MODE_SLOT)
                 self._set_status(f"Slot '{slot.name}' fertig (Region + Klickpunkt + Farbe). "
-                                 f"Nächstes Rechteck ziehen.")
+                                 "Nächstes Rechteck ziehen.")
             else:
                 self._set_status(f"Farbe: RGB{slot.slot_color}")
         self.redraw_overlay()

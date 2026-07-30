@@ -246,7 +246,7 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
 
                 templates = list(Path(TEMPLATES_DIR).glob("*.png")) if Path(TEMPLATES_DIR).exists() else []
                 if templates:
-                    print(f"\n  Verfügbare Templates:")
+                    print("\n  Verfügbare Templates:")
                     for i, t in enumerate(sorted(templates)):
                         print(f"    {i+1}. {t.name}")
 
@@ -274,7 +274,7 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
                 else:
                     _assign_template_to_item(item, template_input, templates)
             else:
-                print(f"  -> Ungültiges Item!")
+                print("  -> Ungültiges Item!")
     except ValueError:
         print("  -> Format: template <Nr>")
 
@@ -286,7 +286,7 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
 
     region = None
     if slot_list:
-        print(f"\n  Screenshot von:")
+        print("\n  Screenshot von:")
         print("    0. Freie Region wählen")
         for i, slot in enumerate(slot_list):
             print(f"    {i+1}. {slot.name}")

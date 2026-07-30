@@ -154,7 +154,7 @@ def check_market():
     if all_count is not None:
         if all_count > len(data):
             bad(f"/latest/all liefert {all_count} Items, /latest nur {len(data)} "
-                f"-> in config.py auf /latest/all wechseln")
+                "-> in config.py auf /latest/all wechseln")
         else:
             ok(f"/latest/all liefert {all_count} Items (nicht mehr als /latest) - aktueller Endpunkt reicht")
     else:
@@ -291,7 +291,7 @@ def check_tasks(game: dict):
     stale = [s for s in KNOWN_SKILL_NAMES if s not in api_skills]
     info(f"Skills in der API: {api_skills}")
     if unknown:
-        bad(f"Skills in der API, die SKILLS nicht kennt (laufen auf DEFAULT_SKILL_CONFIG "
+        bad("Skills in der API, die SKILLS nicht kennt (laufen auf DEFAULT_SKILL_CONFIG "
             f"= keine Boosts!): {unknown}")
     else:
         ok("Alle API-Skills sind in SKILLS konfiguriert")
@@ -330,10 +330,10 @@ def check_base_time_unit(recipes):
     info(f"min={times[0]}  median={median}  max={times[-1]}  (n={len(times)})")
     if median >= 500:
         ok(f"Median {median} -> plausibel als MILLISEKUNDEN ({median / 1000:.1f}s pro Aktion). "
-           f"Annahme im Script stimmt.")
+           "Annahme im Script stimmt.")
     else:
         bad(f"Median {median} sieht nach SEKUNDEN aus. Dann rechnet analyse.py mit "
-            f"3_600_000ms/h um Faktor 1000 falsch - dort auf 3600 umstellen!")
+            "3_600_000ms/h um Faktor 1000 falsch - dort auf 3600 umstellen!")
     report["base_time"] = {"min": times[0], "median": median, "max": times[-1], "count": len(times)}
 
 
@@ -363,7 +363,7 @@ def check_bar_recipes(recipes, items):
     if astro_ids:
         ok(f"Astronomical-Erz Item-ID(s): {sorted(i for i in astro_ids if i is not None)}")
         if using_astro:
-            ok(f"Bar-Rezepte mit Astronomical ore als Zutat (dort greift die Ausnahme): "
+            ok("Bar-Rezepte mit Astronomical ore als Zutat (dort greift die Ausnahme): "
                f"{[r['name'] for r in using_astro]}")
         else:
             info("Kein Bar-Rezept nutzt Astronomical ore - die Ausnahme greift aktuell fuer nichts")

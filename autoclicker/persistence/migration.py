@@ -383,7 +383,7 @@ def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
     if version > SCHEMA_VERSION:
         # Datei aus einer neueren Version - nicht herunterrechnen, nur warnen.
         return data, [f"Datei hat Schema {version}, dieser Code kennt nur {SCHEMA_VERSION} "
-                      f"- unbekannte Felder bleiben unangetastet"]
+                      "- unbekannte Felder bleiben unangetastet"]
 
     while version < SCHEMA_VERSION:
         if version >= len(kette):

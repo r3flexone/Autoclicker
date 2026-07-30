@@ -187,7 +187,7 @@ def _confirm_new_bosses(state: AutoClickerState) -> None:
 
     print(col("\n" + "=" * 55, "yellow"))
     print(col(f"[NEUE BOSSE] {len(pending)} unbekannte(r) Boss(e) automatisch als SKIP gespeichert "
-              f"— im Boss-Editor anpassbar.", "yellow"))
+              "— im Boss-Editor anpassbar.", "yellow"))
     for i, (target, boss_name, source) in enumerate(pending, 1):
         print(f"  {i}. [{source}] '{boss_name}'  → {target}")
     print(col("=" * 55, "yellow"))
