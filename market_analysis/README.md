@@ -204,6 +204,38 @@ Handschuhen (der Perk ist laut Wiki an The fisherman/The lumberjack gekoppelt):
 
 Betrifft **nur die XP-Spalten, nicht Gold/h.**
 
+### Wonach die Top-10 sortiert ist
+
+Nicht nach dem gerechneten Gold/h, sondern nach **`Gold/h realistisch`**: eine Stunde
+Produktion wird durch das echte Orderbuch verkauft, Marktsteuer abgezogen, der Rest an den
+NPC. Gemessen werden `REASON_CANDIDATES` (30) Kandidaten, angezeigt die besten
+`REASON_TOP_N` (10).
+
+Der Unterschied ist keine Kosmetik – das gerechnete Gold/h unterstellt, dass du beliebig
+viel zum besten Gebot los wirst:
+
+| | Papier | realistisch | Buch |
+|---|---|---|---|
+| dünnes Top-Gebot | 1.000.000 | **332.145** | nach 3 min leer |
+| tiefes Buch | 700.000 | **699.930** | trägt 5 h |
+
+Vorher wurde `Gold/h realistisch` erst **nach** der Rangfolge für die schon feststehende
+Top-10 berechnet und konnte die Reihenfolge gar nicht mehr beeinflussen.
+
+Items ohne Messung behalten ihre Position hinter den gemessenen und lassen die Spalte leer
+– eine Zahl dort wäre eine Behauptung, die niemand geprüft hat.
+
+### Preis-Position: ist die Momentaufnahme repräsentativ?
+
+Gold/h sagt nur, was der Markt **heute** zahlt. Die Spalten `Preis vs 30-Tage-Schnitt` und
+`Markt-Trend` ordnen das ein: liegt der Kurs 23 % unter seinem 30-Tage-Schnitt, verkauft
+man in eine Delle; liegt er darüber, ist der ausgewiesene Wert eher die Ausnahme.
+
+Das ist **keine Prognose**, nur Kontext. Der Trend wird nur ausgesprochen, wenn 1-, 7- und
+30-Tage-Schnitt in dieselbe Richtung zeigen – zwei Stützstellen sind wenig, ein Wackler
+soll nicht wie ein Trend aussehen. Beides kommt aus derselben Antwort wie das Orderbuch
+und kostet keinen zusätzlichen Request.
+
 ## Offene Punkte
 
 **Reichweite von Smelting Magic.** Der Perk spart 30 % Erz beim Ore→Bar-Schmelzen. Unklar

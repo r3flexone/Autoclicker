@@ -895,7 +895,8 @@ def chain_reliability(chain_skills: str) -> tuple[float, str]:
 
 
 RECOMMENDATION_COLUMNS = [
-    "Rang", "Item", "Skills", "Gold/h gewichtet", "Gold/h", "Verlässlichkeit",
+    "Rang", "Item", "Skills", "Gold/h realistisch", "Gold/h gewichtet", "Gold/h",
+    "Verlässlichkeit",
     "Gold/h (ungünstigster Fall)",
     "Sek pro Stück", "Stück/h", "Gold pro Stück",
     "Verkauf an", "Erlös pro Stück", "Spieler-Gebot (brutto)", "NPC-Preis", "Vorteil",
@@ -982,8 +983,14 @@ def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
     print(f"{'#':>3}  {'Item':<26}{'Gold/h':>22}  {'Sek/Stk':>8}  {'an':<11}{'Erloes':>10}  Skills")
     for _, r in liste.head(top_n).iterrows():
         # Abgewertete Ketten mit beiden Zahlen zeigen, sonst wirkt die Reihenfolge falsch
-        gold = (f"{r['Gold/h gewichtet']:,} ({r['Gold/h']:,})" if r["Verlässlichkeit"] < 1
-                else f"{r['Gold/h']:,}")
+        gemessen = r.get("Gold/h realistisch")
+        if gemessen is not None and not pd.isna(gemessen):
+            # Gemessen schlaegt gerechnet: das ist die Zahl, nach der auch sortiert wird
+            gold = f"{int(gemessen):,} ({r['Gold/h']:,})"
+        elif r["Verlässlichkeit"] < 1:
+            gold = f"{r['Gold/h gewichtet']:,} ({r['Gold/h']:,})"
+        else:
+            gold = f"{r['Gold/h']:,}"
         print(f"{r['Rang']:>3}  {str(r['Item']):<26}{gold:>22}  {r['Sek pro Stück']:>8.2f}  "
               f"{r['Verkauf an']:<11}{r['Erlös pro Stück']:>10,.0f}  {r['Skills']}")
 
@@ -1031,8 +1038,20 @@ def _format_levels(levels: list, max_n: int = 5) -> str:
     return "  |  ".join(f"{p:,.0f}g x {m:,.0f}" for p, m in top)
 
 
+def _preis_position_text(position: float | None, trend: str) -> str:
+    """Einordnung der Momentaufnahme gegen den eigenen 30-Tage-Verlauf."""
+    if position is None or abs(position) < PRICE_POSITION_HINT_RATIO:
+        return ""
+    if position < 0:
+        satz = f"Kurs liegt {-position:.0%} UNTER dem 30-Tage-Schnitt (Verkauf in eine Delle)"
+    else:
+        satz = f"Kurs liegt {position:.0%} ueber dem 30-Tage-Schnitt (eher Ausnahme als Normalfall)"
+    return f"{satz}, Trend {trend}" if trend else satz
+
+
 def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
-             schnitt: float, verlust: float, warnung: str, abweichung: float = 0.0) -> str:
+             schnitt: float, verlust: float, warnung: str, abweichung: float = 0.0,
+             position: float | None = None, trend: str = "") -> str:
     """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
     if an_npc:
         if top_preis <= 0:
@@ -1060,17 +1079,54 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
     if abweichung > 0.1:
         teile.append(f"Achtung: Orderbuch weicht {abweichung:.0%} vom Listenpreis ab "
                      "(zwei Momentaufnahmen)")
+    pos_text = _preis_position_text(position, trend)
+    if pos_text:
+        teile.append(pos_text)
     if warnung:
         teile.append(warnung)
     return "; ".join(teile) + "."
 
 
 REASON_COLUMNS = [
-    "Rang", "Item", "Gold/h", "Verkauf an", "Stück/h",
+    "Rang", "Item", "Gold/h realistisch", "Gold/h (Papier)", "Verkauf an", "Stück/h",
     "Bestes Gebot (brutto)", "Menge am besten Gebot", "Deckt Stunden",
-    "Schnitt bei 1h Produktion (netto)", "Preisverlust", "Gold/h realistisch",
+    "Schnitt bei 1h Produktion (netto)", "Preisverlust",
+    "Preis vs 30-Tage-Schnitt", "Markt-Trend",
     "NPC-Preis", "NPC besser", "Kaufgebote (Stufen)", "Bewertung",
 ]
+
+
+def preis_position(referenz: float, depth: dict | None) -> tuple[float | None, str]:
+    """Wo steht der aktuelle Preis gegenueber seinem eigenen Verlauf?
+
+    Gibt (Abweichung zum 30-Tage-Schnitt als Anteil, Trend-Text) zurueck. Beides kommt
+    aus DERSELBEN comprehensive-Antwort wie das Orderbuch — kostet also keinen Request
+    extra.
+
+    Warum das zaehlt: Gold/h sagt nur, was der Markt HEUTE zahlt. Liegt der Kurs 20 %
+    unter seinem 30-Tage-Schnitt, verkauft man in eine Delle; liegt er darueber, ist der
+    ausgewiesene Wert eher die Ausnahme als der Normalfall. Das ist keine Prognose —
+    nur die Einordnung, ob die Momentaufnahme repraesentativ ist.
+    """
+    if not depth or referenz <= 0:
+        return None, ""
+    avg30 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or 0
+    avg7 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg7D"]) or 0
+    avg1 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg1D"]) or 0
+
+    position = (referenz / avg30 - 1.0) if avg30 > 0 else None
+
+    # Trend nur aussprechen, wenn beide Vergleiche in dieselbe Richtung zeigen -
+    # zwei Stuetzstellen sind wenig, ein Wackler soll nicht wie ein Trend aussehen.
+    trend = ""
+    if avg1 > 0 and avg7 > 0 and avg30 > 0:
+        if avg1 > avg7 > avg30:
+            trend = "steigend"
+        elif avg1 < avg7 < avg30:
+            trend = "fallend"
+        else:
+            trend = "seitwaerts"
+    return position, trend
 
 
 def _num(value) -> float:
@@ -1092,11 +1148,12 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
     kosten_je_h = df_chain.set_index("ItemID")["RawMaterialCost/h"].to_dict() if not df_chain.empty else {}
     id_von_item = df_chain.set_index("Item")["ItemID"].to_dict() if not df_chain.empty else {}
 
-    print(f"\nHole Kaufgebot-Stufen fuer die Top-{REASON_TOP_N} Items "
-          f"({REASON_TOP_N} Requests)...")
+    kandidaten = max(REASON_CANDIDATES, REASON_TOP_N)
+    print(f"\nHole Kaufgebot-Stufen fuer {min(kandidaten, len(df_rec))} Kandidaten "
+          f"(1 Request pro Item), sortiere danach nach 'Gold/h realistisch'...")
 
     rows = []
-    for _, r in df_rec.head(REASON_TOP_N).iterrows():
+    for _, r in df_rec.head(kandidaten).iterrows():
         item_id = id_von_item.get(r["Item"])
         an_npc = r["Verkauf an"] == "NPC-Vendor"
         npc = _num(r["NPC-Preis"])
@@ -1133,10 +1190,13 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
         abweichung = ((abs(net_player_price(top_preis) - referenz) / referenz)
                       if (referenz > 0 and top_preis > 0) else 0.0)
 
+        # Aus derselben Antwort, ohne zusaetzlichen Request
+        position, trend = preis_position(referenz, depth)
+
         rows.append({
-            "Rang": r["Rang"],
+            "Rang": 0,   # wird nach der Neusortierung vergeben
             "Item": r["Item"],
-            "Gold/h": r["Gold/h"],
+            "Gold/h (Papier)": r["Gold/h"],
             "Verkauf an": r["Verkauf an"],
             "Stück/h": round(stueck_h, 1),
             "Bestes Gebot (brutto)": round(top_preis, 2) if top_preis else None,
@@ -1144,27 +1204,64 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
             "Deckt Stunden": round(deckung, 2) if deckung else None,
             "Schnitt bei 1h Produktion (netto)": round(schnitt, 2),
             "Preisverlust": f"-{verlust:.1%}" if verlust > 0.0005 else "0%",
+            "Preis vs 30-Tage-Schnitt": f"{position:+.0%}" if position is not None else None,
+            "Markt-Trend": trend or None,
             "Gold/h realistisch": round(erloes - material_h),
             "NPC-Preis": round(npc, 2) if npc else None,
             "NPC besser": bool(npc > schnitt) if not an_npc else True,
             "Kaufgebote (Stufen)": _format_levels(levels) if levels else "keine",
             "Bewertung": _verdict(an_npc, npc, top_preis, deckung, schnitt, verlust,
                                   "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
-                                  abweichung),
+                                  abweichung, position, trend),
         })
-    return pd.DataFrame(rows, columns=REASON_COLUMNS)
+
+    if not rows:
+        return pd.DataFrame(columns=REASON_COLUMNS)
+
+    # DER eigentliche Punkt: nach der gemessenen Zahl sortieren, nicht nach der
+    # gerechneten. Vorher wurde 'Gold/h realistisch' erst fuer die bereits feststehende
+    # Top-10 ermittelt und konnte die Reihenfolge gar nicht mehr beeinflussen.
+    df_reason = pd.DataFrame(rows, columns=REASON_COLUMNS)
+    df_reason = df_reason.sort_values("Gold/h realistisch", ascending=False).head(REASON_TOP_N)
+    df_reason["Rang"] = range(1, len(df_reason) + 1)
+    return df_reason.reset_index(drop=True)
+
+
+def sortiere_nach_messung(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.DataFrame:
+    """Bringt die Empfehlung in die Reihenfolge der gemessenen Zahl.
+
+    Gemessene Items zuerst (nach 'Gold/h realistisch'), dahinter unveraendert der Rest —
+    der wurde nicht durchs Orderbuch gerechnet und darf deshalb nicht so tun, als waere
+    er geprueft. `Rang` wird durchgezaehlt, damit Empfehlung und Begruendung dieselbe
+    Nummer meinen.
+    """
+    if df_rec.empty or df_reason.empty:
+        return df_rec
+    reihenfolge = {item: i for i, item in enumerate(df_reason["Item"])}
+    src = df_rec.copy()
+    src["_pos"] = src["Item"].map(reihenfolge)
+    gemessen = src[src["_pos"].notna()].sort_values("_pos")
+    rest = src[src["_pos"].isna()]
+    raus = pd.concat([gemessen, rest], ignore_index=True).drop(columns=["_pos"])
+    raus["Rang"] = range(1, len(raus) + 1)
+    # Die gemessene Zahl mitnehmen, damit das Empfehlungs-Blatt fuer sich steht.
+    # Leer bei allem, was nicht durchs Orderbuch gerechnet wurde - eine Zahl dort
+    # waere eine Behauptung, die niemand geprueft hat.
+    gemessene_werte = dict(zip(df_reason["Item"], df_reason["Gold/h realistisch"]))
+    raus["Gold/h realistisch"] = raus["Item"].map(gemessene_werte)
+    return raus[[c for c in RECOMMENDATION_COLUMNS if c in raus.columns]]
 
 
 def print_reason_highlights(df_reason: pd.DataFrame):
     """Die Faelle, in denen der ausgewiesene Gold/h-Wert nicht haltbar ist."""
     if df_reason.empty:
         return
-    schoen = df_reason[df_reason["Gold/h realistisch"] < df_reason["Gold/h"] * 0.9]
+    schoen = df_reason[df_reason["Gold/h realistisch"] < df_reason["Gold/h (Papier)"] * 0.9]
     if not schoen.empty:
         print(f"\n⚠ {len(schoen)} Items halten ihren Gold/h-Wert nicht, wenn man eine ganze "
               "Stunde Produktion ins Buch verkauft:")
         for _, r in schoen.head(8).iterrows():
-            print(f"    {str(r['Item']):<26}{r['Gold/h']:>11,} -> {r['Gold/h realistisch']:>11,}  "
+            print(f"    {str(r['Item']):<26}{r['Gold/h (Papier)']:>11,} -> {r['Gold/h realistisch']:>11,}  "
                   f"({r['Preisverlust']} Preisverlust)")
 
 
@@ -1173,7 +1270,7 @@ def print_reason_highlights(df_reason: pd.DataFrame):
 # ---------------------------------------------------------------
 
 SORT_COLUMN_PER_SHEET = {
-    "Empfehlung": "Gold/h gewichtet",
+    "Empfehlung": "Gold/h realistisch",
     "Begruendung": "Gold/h realistisch",
     "Rohdaten": "Gold/h",
     "Nach_Skill_Level": "Level",
@@ -1473,11 +1570,17 @@ def main():
     save_run_stats(current_run_stats)
 
     df_recommendation = build_recommendation_df(df_chain)
-    print_recommendation(df_recommendation)
 
+    # Erst messen, dann drucken: die Begruendung rechnet eine Stunde Produktion durchs
+    # echte Orderbuch und liefert damit die belastbarere Rangfolge. Wird sie wie frueher
+    # NACH der Ausgabe gebaut, kann sie die Reihenfolge nicht mehr beeinflussen.
     df_reason = pd.DataFrame()
     if SHOW_REASON_ANALYSIS and not df_recommendation.empty:
         df_reason = build_reason_df(df_recommendation, df_chain)
+        df_recommendation = sortiere_nach_messung(df_recommendation, df_reason)
+
+    print_recommendation(df_recommendation)
+    if not df_reason.empty:
         print_reason_highlights(df_reason)
 
     print_summary(df, df_chain)

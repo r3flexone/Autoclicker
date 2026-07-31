@@ -183,7 +183,19 @@ PRICE_SENSITIVITY_TOP_N = 10
 # Sheet "Begruendung": rechnet eine Stunde Produktion durch die echten Kaufgebot-Stufen
 # im Player Shop, statt zu unterstellen, dass alles zum besten Gebot weggeht.
 SHOW_REASON_ANALYSIS = True
-REASON_TOP_N = 10                     # nur die Top-Items, 1 Request pro Item
+REASON_TOP_N = 10                     # so viele Zeilen stehen am Ende in der Begruendung
+
+# Wie viele Kandidaten VORHER durchs Orderbuch gerechnet werden. Muss groesser sein als
+# REASON_TOP_N, sonst kann die Messung die Rangfolge nicht mehr aendern: das Papier-
+# Gold/h unterstellt, dass du beliebig viel zum besten Gebot los wirst, und genau das
+# hebelt ein duennes Buch aus. Ein Item mit Platz 1 auf dem Papier kann nach 12 Minuten
+# sein Top-Gebot leergeraeumt haben, waehrend Platz 12 acht Stunden lang traegt.
+# Kostet 1 Request pro Kandidat.
+REASON_CANDIDATES = 30
+
+# Preis-Position: aktueller Erloes gegen den 30-Tage-Schnitt desselben Items. Ab dieser
+# Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).
+PRICE_POSITION_HINT_RATIO = 0.10
 
 SHOW_LONGTERM_AVERAGES = False        # 1 Request PRO ITEM in Rohdaten -> Minuten
 LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05
