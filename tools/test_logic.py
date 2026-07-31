@@ -1441,5 +1441,82 @@ finally:
     _RS.check_failsafe = _orig_f3
 
 
+# ------------------------------- Editor-Regel vs. Runtime-Verhalten fuer 'else'
+section("'else' im Editor erlauben genau dort, wo die Runtime es auswertet")
+# Der Editor verwarf 'boss X else skip' mit einer Warnung, obwohl der Boss-Scan die
+# else-Aktion ausfuehrt. Dieser Test misst BEIDE Seiten und vergleicht sie, statt die
+# Liste nur abzuschreiben: erlaubt der Editor else, muss die Aktion auch feuern.
+from autoclicker.editors.sequence_editor.helpers import (
+    apply_else_to_step as _apply_else, _kann_else)
+import autoclicker.runtime.boss_detection as _BD
+import io as _io2, contextlib as _cl2
+
+_orig_c4, _orig_shot4 = _RS.safe_click, _RS.take_screenshot
+_orig_f4, _orig_p4 = _RS.check_failsafe, _RS.PILLOW_AVAILABLE
+_orig_bscan, _orig_iscan = _RS.execute_boss_scan, _RS.execute_icon_scan
+_orig_iscan2 = _RS.execute_item_scan
+_else_klicks = []
+_RS.safe_click = _RA.safe_click = lambda st, x, y, label="": (_else_klicks.append((x, y)), True)[1]
+_RS.check_failsafe = lambda st: False
+_RS.PILLOW_AVAILABLE = True
+# Alles schlaegt fehl -> falls else ausgewertet wird, muss es feuern
+_RS.execute_boss_scan = lambda st, n: (False, None)
+_RS.execute_icon_scan = lambda st, n: False
+_RS.execute_item_scan = lambda st, n, m=None, slots_override=None: []
+_RS.take_screenshot = lambda region=None: _Pix2((200, 200, 200))
+
+def _else_feuert(**kw):
+    """Baut einen Schritt, haengt 'else <99,99>' an und prueft, ob es klickt."""
+    _else_klicks.clear()
+    schritt = _SS(x=1, y=2, delay_before=0, name="s", **kw)
+    schritt.else_config = _EC2(action="click", x=99, y=99, name="E")
+    st = AutoClickerState(); st.config = _AC2()
+    st.config.pixel_wait_timeout = 0.05
+    st.config.pixel_check_interval = 0.01
+    st.config.pixel_max_consecutive_timeouts = 0
+    st.config.llm_watcher_max_scans = 1
+    st.boss_scans = {"X": _BSC(name="X")} if (kw.get("boss_scan") or kw.get("boss_watcher")) else {}
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _RS.execute_step(st, schritt, 1, 2, "T")
+    return (99, 99) in _else_klicks
+
+try:
+    from autoclicker.models import BossScanConfig as _BSC
+    _faelle = {
+        "Farb-Trigger": dict(wait_condition=_WCx(pixel=(5, 5), color=(10, 10, 10))),
+        "Item-Scan":    dict(item_scan="X"),
+        "Boss-Scan":    dict(boss_scan="X"),
+        "Icon-Scan":    dict(icon_scan="X"),
+        "Boss-Watcher": dict(boss_watcher="X"),
+        "reiner Klick": dict(),
+    }
+    for _name, _kw in _faelle.items():
+        _schritt = _SS(x=1, y=2, delay_before=0, name="s", **_kw)
+        _editor_erlaubt = _kann_else(_schritt)
+        _runtime_wertet_aus = _else_feuert(**_kw)
+        check(f"{_name}: Editor-Regel deckt sich mit der Runtime",
+              _editor_erlaubt == _runtime_wertet_aus)
+
+    # Und die konkreten Faelle, die vorher verworfen wurden
+    for _name, _kw in [("boss", dict(boss_scan="X")), ("icon", dict(icon_scan="X"))]:
+        _s = _SS(x=0, y=0, delay_before=0, name="s", **_kw)
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _apply_else(_s, ["skip"], AutoClickerState())
+        check(f"'{_name} X else skip' wird uebernommen", _s.else_config is not None)
+    # Watcher bleibt bewusst aussen vor
+    _s = _SS(x=0, y=0, delay_before=0, name="s", boss_watcher="X")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _apply_else(_s, ["skip"], AutoClickerState())
+    check("'watcher X else skip' wird weiterhin abgelehnt", _s.else_config is None)
+finally:
+    _RS.safe_click = _RA.safe_click = _orig_c4
+    _RS.take_screenshot = _orig_shot4
+    _RS.check_failsafe = _orig_f4
+    _RS.PILLOW_AVAILABLE = _orig_p4
+    _RS.execute_boss_scan = _orig_bscan
+    _RS.execute_icon_scan = _orig_iscan
+    _RS.execute_item_scan = _orig_iscan2
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
