@@ -1803,5 +1803,74 @@ finally:
     _os.chdir(_kalib_cwd)
 
 
+# -------------------------------------------------------- Slot-Reparatur
+section("Slot-Reparatur uebernimmt nur eine eindeutige Zuordnung")
+
+# Eine Maus-Position trifft den Pixel nie genau; bei einer Scan-Region zaehlt das.
+# Die Reparatur misst die Slots deshalb neu — darf die neuen Koordinaten aber nur
+# uebernehmen, wenn die Zuordnung alt->neu zweifelsfrei ist.
+from autoclicker.editors.slot_editor import _zuordnung_pruefen as _zp
+
+_INSET = 2
+_BASIS = [(100, 100, 150, 150), (160, 100, 210, 150),
+          (220, 100, 270, 150), (100, 160, 150, 210)]
+
+
+def _rep_slots(regionen):
+    return [_KIS(name=f"Slot {i+1}", scan_region=r,
+                 click_pos=((r[0]+r[2])//2, (r[1]+r[3])//2))
+            for i, r in enumerate(regionen)]
+
+
+def _rep_rects(regionen, dx=0, dy=0):
+    """Macht aus gespeicherten Regionen wieder rohe Erkennungs-Rechtecke (x,y,w,h)."""
+    return [(x1 - _INSET + dx, y1 - _INSET + dy,
+             (x2 - x1) + 2 * _INSET, (y2 - y1) + 2 * _INSET)
+            for (x1, y1, x2, y2) in regionen]
+
+
+_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS), _INSET, (0, 0))
+check("unveraendert: Zuordnung gilt, Versatz ist null", bool(_p) and _v == (0, 0))
+
+_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS, 37, -14), _INSET, (0, 0))
+check("durchgaengige Verschiebung wird uebernommen", bool(_p) and _v == (37, -14))
+check("jeder Slot bekommt seine eigene gemessene Region",
+      _p[0][1] == (137, 86, 187, 136) and _p[1][1] == (197, 86, 247, 136))
+check("Namen bleiben an ihren Slots", [s.name for s, _ in _p] ==
+      ["Slot 1", "Slot 2", "Slot 3", "Slot 4"])
+
+# Ablehnen, wo die Zuordnung geraten waere
+_p, _, _m = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS[:3], 37, -14), _INSET, (0, 0))
+check("ein Slot weniger erkannt -> abgelehnt", not _p and _m)
+_p, _, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS + [(280, 100, 330, 150)]),
+               _INSET, (0, 0))
+check("ein Slot zu viel erkannt -> abgelehnt", not _p)
+
+_verdreht = _rep_rects([_BASIS[1], _BASIS[0], _BASIS[2], _BASIS[3]], 37, -14)
+_p, _, _ = _zp(_rep_slots(_BASIS), _verdreht, _INSET, (0, 0))
+check("vertauschte Reihenfolge -> abgelehnt (Versaetze streuen)", not _p)
+
+_groesser = [(x, y, int(w * 1.4), int(h * 1.4)) for (x, y, w, h) in _rep_rects(_BASIS, 10, 10)]
+_p, _, _m = _zp(_rep_slots(_BASIS), _groesser, _INSET, (0, 0))
+check("andere Slot-Groesse -> abgelehnt (Aufloesung, nicht Verschiebung)",
+      not _p and any("Aufloesung" in m for m in _m))
+
+# Toleranzgrenze: Erkennungs-Rauschen ja, Ausreisser nein
+_leicht = _rep_rects(_BASIS, 37, -14)
+_leicht[2] = (_leicht[2][0] + 3, _leicht[2][1], _leicht[2][2], _leicht[2][3])
+_p, _, _ = _zp(_rep_slots(_BASIS), _leicht, _INSET, (0, 0))
+check("3 px Rauschen bleiben in der Toleranz", bool(_p))
+
+_grob = _rep_rects(_BASIS, 37, -14)
+_grob[2] = (_grob[2][0] + 9, _grob[2][1], _grob[2][2], _grob[2][3])
+_p, _, _ = _zp(_rep_slots(_BASIS), _grob, _INSET, (0, 0))
+check("9 px Ausreisser -> abgelehnt", not _p)
+
+# Der Offset der markierten Region muss herausgerechnet werden, sonst haengt das
+# Ergebnis davon ab, wie der Nutzer den Bereich gezogen hat
+_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS, -50, -50), _INSET, (50, 50))
+check("Offset der markierten Region wird eingerechnet", _v == (0, 0))
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

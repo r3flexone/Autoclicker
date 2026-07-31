@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..models import ItemSlot, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, eindeutiger_name, is_cancel, confirm, interactive_select, col, ok, err, warn, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
+from ..utils import safe_input, sanitize_filename, eindeutiger_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
 from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, NUMPY_AVAILABLE,
@@ -61,6 +61,7 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
         print("\n" + "-" * 60)
         print("Befehle:")
         print("  auto           - AUTOMATISCHE Slot-Erkennung (fragt: Items gleich mitlernen?)")
+        print("  repair         - Slots NEU VERMESSEN (Namen bleiben, nur Koordinaten neu)")
         print("  add            - Neuen Slot hinzufügen")
         print("  edit <Nr>      - Slot bearbeiten")
         print("  del <Nr>       - Slot löschen")
@@ -109,6 +110,17 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
 
             elif cmd == "auto":
                 slot_auto_detect(state)  # gespeichert wird bei 'done'
+                continue
+
+            elif cmd in ("repair", "reparieren", "fix"):
+                # Anders als 'auto' schreibt die Reparatur sofort — und sie fasst
+                # optional Punkte und Sequenzdateien mit an, die 'cancel' gar nicht
+                # zuruecknehmen koennte. Damit 'cancel' nicht die halbe Aenderung
+                # rueckgaengig macht, wird der Snapshot nachgezogen.
+                if slot_repair(state):
+                    with state.lock:
+                        slots_backup = copy.deepcopy(state.global_slots)
+                    print(f"  {hint('Bereits gespeichert — cancel nimmt das nicht zurueck.')}")
                 continue
 
             elif cmd == "add":
@@ -366,6 +378,85 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     )
 
 
+def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
+                          verbose: bool = False):
+    """Findet die Slot-Rechtecke in einem Bild anhand der Hintergrundfarbe.
+
+    Gibt `(rechtecke, img_bgr)` zurück; die Rechtecke sind `(x, y, w, h)` relativ
+    zum Bild, auf die Median-Größe normalisiert und zeilenweise sortiert.
+
+    Die Normalisierung ist der Grund, warum die Erkennung für die Reparatur taugt:
+    sie liefert für jeden Slot dieselbe Größe und Kantenlage, unabhängig davon, wie
+    grob der Bereich markiert wurde. Eine Maus-Position kann das nicht.
+
+    Getrennt von `slot_auto_detect`, damit die Reparatur exakt dieselbe Erkennung
+    benutzt — zwei Kopien wären zwei Ergebnisse.
+    """
+    import numpy as np
+    import cv2
+
+    r, g, b = slot_color_rgb
+
+    # RGB zu HSV
+    r_n, g_n, b_n = r / 255, g / 255, b / 255
+    max_c, min_c = max(r_n, g_n, b_n), min(r_n, g_n, b_n)
+    diff = max_c - min_c
+
+    if diff == 0:
+        h = 0
+    elif max_c == r_n:
+        h = (60 * ((g_n - b_n) / diff) + 360) % 360
+    elif max_c == g_n:
+        h = (60 * ((b_n - r_n) / diff) + 120) % 360
+    else:
+        h = (60 * ((r_n - g_n) / diff) + 240) % 360
+
+    s = 0 if max_c == 0 else (diff / max_c) * 255
+    v = max_c * 255
+    h = h / 2  # OpenCV Hue: 0-180
+
+    if verbose:
+        print(f"  HSV: ({int(h)}, {int(s)}, {int(v)})")
+
+    img_array = np.array(img)
+    img_bgr = img_array[:, :, ::-1].copy()
+
+    hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    tol = hsv_toleranz
+    lower = np.array([max(0, int(h) - tol), max(0, int(s) - 50), max(0, int(v) - 50)])
+    upper = np.array([min(180, int(h) + tol), min(255, int(s) + 50), min(255, int(v) + 50)])
+
+    mask = cv2.inRange(hsv_img, lower, upper)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    detected = []
+    for contour in contours:
+        x, y, w, h_box = cv2.boundingRect(contour)
+        if w >= 40 and h_box >= 40:
+            aspect = w / h_box
+            if 0.5 < aspect < 2.0:
+                detected.append((x, y, w, h_box))
+
+    detected.sort(key=lambda s: (s[1] // 50, s[0]))
+
+    # Groessen normalisieren
+    if len(detected) >= 2:
+        widths = [s[2] for s in detected]
+        heights = [s[3] for s in detected]
+        median_w = sorted(widths)[len(widths) // 2]
+        median_h = sorted(heights)[len(heights) // 2]
+
+        normalized = []
+        for x, y, w, h_box in detected:
+            if 0.7 * median_w <= w <= 1.3 * median_w:
+                new_x = x + (w - median_w) // 2
+                new_y = y + (h_box - median_h) // 2
+                normalized.append((new_x, new_y, median_w, median_h))
+        detected = normalized
+
+    return detected, img_bgr
+
+
 def slot_auto_detect(state: AutoClickerState) -> bool:
     """Automatische Slot-Erkennung mit OpenCV. Gibt True zurück wenn erfolgreich."""
     if not OPENCV_AVAILABLE:
@@ -375,8 +466,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         print(f"  {err('NumPy nicht installiert!')} pip install numpy")
         return False
 
-    import numpy as np
-    import cv2
+    import cv2   # nur noch fuer die Vorschau-Grafik am Ende
 
     print(header("AUTOMATISCHE SLOT-ERKENNUNG", width=50))
     print("\nMarkiere den Bereich mit den Slots:")
@@ -413,68 +503,13 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     r, g, b = slot_color_rgb
     print(f"  Farbe: RGB({r}, {g}, {b})")
 
-    # RGB zu HSV
-    r_n, g_n, b_n = r / 255, g / 255, b / 255
-    max_c, min_c = max(r_n, g_n, b_n), min(r_n, g_n, b_n)
-    diff = max_c - min_c
-
-    if diff == 0:
-        h = 0
-    elif max_c == r_n:
-        h = (60 * ((g_n - b_n) / diff) + 360) % 360
-    elif max_c == g_n:
-        h = (60 * ((b_n - r_n) / diff) + 120) % 360
-    else:
-        h = (60 * ((r_n - g_n) / diff) + 240) % 360
-
-    s = 0 if max_c == 0 else (diff / max_c) * 255
-    v = max_c * 255
-    h = h / 2  # OpenCV Hue: 0-180
-
-    print(f"  HSV: ({int(h)}, {int(s)}, {int(v)})")
-
-    # Slots im Bild suchen
-    img_array = np.array(img)
-    img_bgr = img_array[:, :, ::-1].copy()
-
-    hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    tol = state.config.scan_slot_hsv_tolerance
-    lower = np.array([max(0, int(h) - tol), max(0, int(s) - 50), max(0, int(v) - 50)])
-    upper = np.array([min(180, int(h) + tol), min(255, int(s) + 50), min(255, int(v) + 50)])
-
-    mask = cv2.inRange(hsv_img, lower, upper)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Slots filtern
-    detected_slots = []
-    for contour in contours:
-        x, y, w, h_box = cv2.boundingRect(contour)
-        if w >= 40 and h_box >= 40:
-            aspect = w / h_box
-            if 0.5 < aspect < 2.0:
-                detected_slots.append((x, y, w, h_box))
-
-    detected_slots.sort(key=lambda s: (s[1] // 50, s[0]))
+    detected_slots, img_bgr = erkenne_slots_im_bild(
+        img, slot_color_rgb, state.config.scan_slot_hsv_tolerance, verbose=True)
 
     if not detected_slots:
         print(f"\n  {err('Keine Slots erkannt!')}")
         print("  Versuche es mit einer anderen Farbe.")
         return False
-
-    # Groessen normalisieren
-    if len(detected_slots) >= 2:
-        widths = [s[2] for s in detected_slots]
-        heights = [s[3] for s in detected_slots]
-        median_w = sorted(widths)[len(widths) // 2]
-        median_h = sorted(heights)[len(heights) // 2]
-
-        normalized = []
-        for x, y, w, h_box in detected_slots:
-            if 0.7 * median_w <= w <= 1.3 * median_w:
-                new_x = x + (w - median_w) // 2
-                new_y = y + (h_box - median_h) // 2
-                normalized.append((new_x, new_y, median_w, median_h))
-        detected_slots = normalized
 
     print(f"\n  {len(detected_slots)} Slots erkannt!")
 
@@ -562,4 +597,184 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     except (OSError, IOError, ValueError) as e:
         print(f"  {warn(f'Screenshots speichern: {e}')}")
 
+    return True
+
+
+# =============================================================================
+# REPARATUR (Slots neu vermessen, Identität behalten)
+# =============================================================================
+
+def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
+                       inset: int, offset: tuple[int, int]) -> tuple:
+    """Prüft, ob die neu erkannten Rechtecke zu den bestehenden Slots passen.
+
+    Gibt `(paare, versatz, meldungen)` zurück; `paare` ist leer, wenn die Zuordnung
+    nicht eindeutig ist.
+
+    Die Prüfung ist der ganze Punkt: übernommen wird nur, wenn die Verschiebung für
+    ALLE Slots dieselbe ist. Streuen die Einzelversätze, stimmt die Zuordnung nicht
+    (andere Reihenfolge, ein Slot mehr erkannt, halb verdeckt) — dann lieber nichts
+    tun als 20 Regionen falsch überschreiben.
+    """
+    meldungen = []
+    if len(neue_rects) != len(alte_slots):
+        meldungen.append(
+            f"{len(neue_rects)} Slot(s) erkannt, aber {len(alte_slots)} gespeichert — "
+            f"die Zuordnung waere geraten.")
+        return [], None, meldungen
+
+    ox, oy = offset
+    paare = []
+    for slot, (x, y, w, h) in zip(alte_slots, neue_rects):
+        neue_region = (x + ox + inset, y + oy + inset,
+                       x + ox + w - inset, y + oy + h - inset)
+        paare.append((slot, neue_region))
+
+    # Einzelversaetze: bei einer reinen Verschiebung sind alle gleich
+    versaetze = [(neu[0] - slot.scan_region[0], neu[1] - slot.scan_region[1])
+                 for slot, neu in paare]
+    xs = [v[0] for v in versaetze]
+    ys = [v[1] for v in versaetze]
+    streuung = max(max(xs) - min(xs), max(ys) - min(ys))
+
+    # Groessen muessen ebenfalls passen — sonst hat sich die Aufloesung geaendert
+    # und eine reine Verschiebung waere die falsche Antwort.
+    groessen_diff = 0
+    for slot, neu in paare:
+        alt_b = slot.scan_region[2] - slot.scan_region[0]
+        alt_h = slot.scan_region[3] - slot.scan_region[1]
+        groessen_diff = max(groessen_diff,
+                            abs((neu[2] - neu[0]) - alt_b),
+                            abs((neu[3] - neu[1]) - alt_h))
+
+    if groessen_diff > _REPAIR_MAX_GROESSEN_DIFF:
+        meldungen.append(
+            f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
+            f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
+    if streuung > _REPAIR_MAX_STREUUNG:
+        meldungen.append(
+            f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
+            f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
+
+    if meldungen:
+        return [], None, meldungen
+
+    # Mittlerer Versatz nur zur Anzeige/Weitergabe
+    versatz = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+    return paare, versatz, meldungen
+
+
+_REPAIR_MAX_STREUUNG = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
+_REPAIR_MAX_GROESSEN_DIFF = 4     # px, die die Slot-Groesse abweichen darf
+
+
+def slot_repair(state: AutoClickerState) -> bool:
+    """Vermisst die bestehenden Slots neu und übernimmt die Koordinaten.
+
+    Namen, Reihenfolge und alles, was per Namen darauf verweist, bleiben —
+    ersetzt werden nur `scan_region` und `click_pos`. Eine Maus-Position trifft
+    den Pixel nie genau; die Erkennung schon.
+    """
+    if not OPENCV_AVAILABLE or not NUMPY_AVAILABLE:
+        print(f"  {err('OpenCV/NumPy nicht installiert!')} pip install opencv-python numpy")
+        return False
+
+    with state.lock:
+        alte_slots = list(state.global_slots.values())
+    if not alte_slots:
+        print(f"  {err('Keine Slots gespeichert — es gibt nichts zu reparieren.')}")
+        return False
+
+    print(header("SLOTS REPARIEREN", width=50))
+    print(f"\n  {len(alte_slots)} gespeicherte Slots werden neu vermessen.")
+    print(f"  {hint('Namen und Verweise bleiben — nur die Koordinaten werden ersetzt.')}")
+    print("\nMarkiere den Bereich mit den Slots (grosszuegig ist ok):")
+    print("  1. Maus auf OBEN-LINKS, ENTER")
+    print("  2. Maus auf UNTEN-RECHTS, ENTER")
+
+    region = select_region()
+    if not region:
+        print(f"  {info('[ABBRUCH] Keine Region ausgewaehlt.')}")
+        return False
+
+    # Die gespeicherte Slot-Farbe wiederverwenden — die haengt nicht am Bildschirm-
+    # Layout, und nochmal picken zu lassen waere eine Fehlerquelle ohne Gewinn.
+    farben = [s.slot_color for s in alte_slots if s.slot_color]
+    if farben:
+        slot_color = max(set(farben), key=farben.count)
+        print(f"\n  Slot-Farbe aus dem Bestand: RGB{slot_color}")
+    else:
+        print("\n  Keine Farbe gespeichert — bitte einmalig picken.")
+        print("  Bewege Maus auf den SLOT-HINTERGRUND...")
+        safe_input("  ENTER wenn bereit...")
+        mx, my = get_cursor_pos()
+        slot_color = get_pixel_color(mx, my)
+        if not slot_color:
+            print(f"  {err('Konnte Farbe nicht lesen!')}")
+            return False
+
+    print("  Mache Screenshot in 2 Sekunden...")
+    time.sleep(2)
+    img = take_screenshot(region)
+    if img is None:
+        print(f"  {err('Screenshot fehlgeschlagen!')}")
+        return False
+
+    neue_rects, _ = erkenne_slots_im_bild(img, slot_color,
+                                          state.config.scan_slot_hsv_tolerance)
+    print(f"  {len(neue_rects)} Slot(s) erkannt.")
+
+    inset = state.config.scan_slot_inset
+    paare, versatz, meldungen = _zuordnung_pruefen(
+        alte_slots, neue_rects, inset, (region[0], region[1]))
+
+    if not paare:
+        print()
+        for m in meldungen:
+            print(f"  {err(m)}")
+        print(f"  {info('Nichts geaendert.')}")
+        print(f"  {hint('Tipp: Bereich enger markieren, oder die Slots muessen alle')}")
+        print(f"  {hint('sichtbar und unverdeckt sein (kein Tooltip daruber).')}")
+        return False
+
+    print()
+    print(col("  VORSCHAU:", 'bold'))
+    for slot, neu in paare[:12]:
+        print(f"    {slot.name:<18} {slot.scan_region}  ->  {neu}")
+    if len(paare) > 12:
+        print(f"    {info(f'... und {len(paare) - 12} weitere')}")
+    print()
+    print(f"  Versatz durchgaengig: {col(f'{versatz[0]:+} X, {versatz[1]:+} Y', 'yellow')}")
+
+    if versatz == (0, 0):
+        print(f"  {info('Die Slots sitzen schon richtig — nichts zu tun.')}")
+        return False
+
+    if not confirm("\n  Neue Koordinaten uebernehmen?", default=False):
+        print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
+        return False
+
+    with state.lock:
+        for slot, neu in paare:
+            slot.scan_region = neu
+            slot.click_pos = ((neu[0] + neu[2]) // 2, (neu[1] + neu[3]) // 2)
+            if not slot.slot_color:
+                slot.slot_color = slot_color
+    save_global_slots(state)
+    print(f"  {ok(f'{len(paare)} Slot(s) neu vermessen.')}")
+
+    # Der hier gemessene Versatz ist pixelgenau — deutlich besser als eine
+    # Maus-Position. Deshalb anbieten, ihn gleich auf den Rest anzuwenden.
+    print()
+    print(f"  {info('Dieser Versatz wurde gemessen, nicht mit der Maus gesetzt —')}")
+    print(f"  {info('er ist genauer als eine Kalibrierung von Hand.')}")
+    if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
+        from ..import_export import transform_aus_verschiebung, kalibriere_bestand
+        t = transform_aus_verschiebung((0, 0), versatz)
+        zahl = kalibriere_bestand(state, t, mit_scans=False, mit_sequenzen=True)
+        # mit_scans=False: die Slots sind gerade schon exakt vermessen worden und
+        # duerfen kein zweites Mal verschoben werden.
+        print(f"  {ok('Uebernommen:')} "
+              + ", ".join(f"{v} {k}" for k, v in zahl.items() if v))
+        print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")
     return True
