@@ -771,9 +771,11 @@ def slot_repair(state: AutoClickerState) -> bool:
     if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
         from ..import_export import transform_aus_verschiebung, kalibriere_bestand
         t = transform_aus_verschiebung((0, 0), versatz)
-        zahl = kalibriere_bestand(state, t, mit_scans=False, mit_sequenzen=True)
-        # mit_scans=False: die Slots sind gerade schon exakt vermessen worden und
-        # duerfen kein zweites Mal verschoben werden.
+        # mit_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
+        # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
+        # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
+        zahl = kalibriere_bestand(state, t, mit_scans=True, mit_sequenzen=True,
+                                  mit_slots=False)
         print(f"  {ok('Uebernommen:')} "
               + ", ".join(f"{v} {k}" for k, v in zahl.items() if v))
         print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")

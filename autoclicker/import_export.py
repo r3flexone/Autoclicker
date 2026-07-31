@@ -208,12 +208,20 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
 
 
 def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
-                       mit_scans: bool = True, mit_sequenzen: bool = True) -> dict:
+                       mit_scans: bool = True, mit_sequenzen: bool = True,
+                       mit_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `mit_scans` zieht Slots, Item-Bestätigungsklicks sowie Boss-/
-    Icon-Scans mit; `mit_sequenzen` die Koordinaten in den Sequenz-DATEIEN (nicht
-    nur den geladenen) — Trigger-Pixel, else-Klicks, Screenshot-Regionen.
+    Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-Scans
+    mit; `mit_sequenzen` die Koordinaten in den Sequenz-DATEIEN (nicht nur den
+    geladenen) — Trigger-Pixel, else-Klicks, Screenshot-Regionen.
+
+    `mit_slots` steht bewusst getrennt, obwohl Slots zu den Scans gehören: eine
+    aus einer Maus-Position abgeleitete Verschiebung ist für ein Klick-Ziel gut
+    genug, für eine Scan-Region aber nur eine Näherung — ein paar Pixel daneben
+    schneiden das Item-Icon an. Dafür gibt es `slot_repair()`, das die Slots misst
+    statt sie zu verschieben. Deshalb muss sich beides einzeln schalten lassen:
+    nach einer Reparatur dürfen die Slots kein zweites Mal wandern.
 
     Schritte mit `point_id` werden mit umgerechnet, obwohl `resolve_point_references()`
     sie beim nächsten Lauf ohnehin aus dem Punkt nachzieht: sonst stünde in der Datei
@@ -234,12 +242,13 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
             p.x, p.y = remap_point(p.x, p.y, transform)
             zahl["punkte"] += 1
 
-        if mit_scans:
+        if mit_scans and mit_slots:
             for slot in state.global_slots.values():
                 slot.scan_region = remap_region(slot.scan_region, transform)
                 slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
                 zahl["slots"] += 1
 
+        if mit_scans:
             for item in state.global_items.values():
                 if item.confirm_point is not None:
                     cp = item.confirm_point
@@ -271,8 +280,9 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
         icon_scans = list(state.icon_scans.values()) if mit_scans else []
 
     save_points(state)
-    if mit_scans:
+    if mit_scans and mit_slots:
         save_global_slots(state)
+    if mit_scans:
         save_global_items(state)
         save_global_bosses(state)
         for cfg in boss_scans:

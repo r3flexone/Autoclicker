@@ -1768,6 +1768,26 @@ try:
     check("nur Punkte: Sequenz-Schritt bleibt unberuehrt",
           (_schritt2.x, _schritt2.y) == (100, 200))
 
+    # Slots getrennt ausklammerbar: eine aus der Maus abgeleitete Verschiebung ist
+    # fuer eine Scan-Region nur eine Naeherung — dafuer gibt es slot_repair().
+    # Nach einer Reparatur duerfen die Slots kein zweites Mal wandern.
+    _st4, _schritt4, _, _ = _kalib_state()
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _z4 = _IE.kalibriere_bestand(_st4, _t, mit_scans=True, mit_sequenzen=True,
+                                     mit_slots=False)
+    check("ohne Slots: Slot-Region bleibt exakt stehen",
+          _st4.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
+    check("ohne Slots: Slot-Klickposition bleibt stehen",
+          _st4.global_slots["Slot 1"].click_pos == (35, 45))
+    check("ohne Slots: die Zaehlung meldet keine Slots", _z4["slots"] == 0)
+    check("ohne Slots: Boss-Scan wandert trotzdem",
+          _st4.boss_scans["B"].scan_region == (40, -25, 140, 75))
+    check("ohne Slots: Item-Bestaetigungsklick wandert trotzdem",
+          (_st4.global_items["Erz"].confirm_point.x,
+           _st4.global_items["Erz"].confirm_point.y) == (340, 375))
+    check("ohne Slots: Sequenz-Schritt wandert trotzdem",
+          (_schritt4.x, _schritt4.y) == (140, 175))
+
     # Sequenz-DATEIEN erfassen, nicht nur die geladenen Sequenzen
     from autoclicker.persistence import ensure_sequences_dir as _esd
     from autoclicker.config import SEQUENCES_DIR as _SQD
@@ -1791,6 +1811,42 @@ try:
     check("Trigger-Pixel in der Datei", _s1["wait_pixel"] == [680, 455])
     check("else-Klick in der Datei", (_s1["else_x"], _s1["else_y"]) == (940, 925))
     check("Farben bleiben unangetastet", _s1["wait_color"] == [1, 2, 3])
+
+    # Versatz von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
+    # Weiss man, dass eine Achse stimmt, ist eine eingetippte 0 genauer.
+    from autoclicker.editors.import_export_editor import _versatz_anpassen as _va
+    import autoclicker.editors.import_export_editor as _IEE
+
+    def _anpassen_mit(eingaben):
+        folge = list(eingaben)
+        _o = _IEE.safe_input
+        _IEE.safe_input = lambda _p="": folge.pop(0)
+        try:
+            with _cl2.redirect_stdout(_io2.StringIO()):
+                return _va({"scale_x": 1.0, "scale_y": 1.0,
+                            "offset_x": 2, "offset_y": -25})
+        finally:
+            _IEE.safe_input = _o
+
+    _r = _anpassen_mit(["", ""])
+    check("Versatz anpassen: Enter behaelt beide Achsen",
+          (_r["offset_x"], _r["offset_y"]) == (2, -25))
+    _r = _anpassen_mit(["0", ""])
+    check("Versatz anpassen: X auf 0, Y bleibt gemessen",
+          (_r["offset_x"], _r["offset_y"]) == (0, -25))
+    _r = _anpassen_mit(["0", "0"])
+    check("Versatz anpassen: beide auf 0 -> Identitaet",
+          _IE.ist_identitaet(_r))
+    _r = _anpassen_mit(["", "-24"])
+    check("Versatz anpassen: Y von Hand korrigiert",
+          (_r["offset_x"], _r["offset_y"]) == (2, -24))
+    _r = _anpassen_mit(["-3,5", ""])
+    check("Versatz anpassen: Komma-Zahl wird gerundet", _r["offset_x"] == -4)
+    _r = _anpassen_mit(["quatsch", "5", ""])
+    check("Versatz anpassen: Fehleingabe fragt erneut statt abzubrechen",
+          _r is not None and _r["offset_x"] == 5)
+    check("Versatz anpassen: Ergebnis bleibt eine reine Verschiebung",
+          _r["scale_x"] == 1.0 and _r["scale_y"] == 1.0)
 
     # Gegen-Verschiebung muss exakt zum Ausgangswert zurueckfuehren
     with _cl2.redirect_stdout(_io2.StringIO()):

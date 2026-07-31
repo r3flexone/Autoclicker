@@ -547,8 +547,17 @@ def run_kalibrierung(state: AutoClickerState) -> None:
                 print()
                 print(f"  Skalierung: {col(faktor, 'yellow')}")
 
+    # --- Versatz von Hand nachziehen --------------------------------------------
+    # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
+    # stimmt, ist eine erzwungene 0 genauer als jede Messung.
+    if transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0:
+        transform = _versatz_anpassen(transform)
+        if transform is None:
+            print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+            return
+
     if ist_identitaet(transform):
-        print(f"\n  {info('Der Punkt sitzt schon richtig — nichts zu tun.')}")
+        print(f"\n  {info('Der Versatz ist null — nichts zu tun.')}")
         return
 
     # --- Vorschau ----------------------------------------------------------------
@@ -568,18 +577,31 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  {info('als diese Ziele — dann stimmt die Verschiebung fuer sie nicht.')}")
 
     # --- Umfang -------------------------------------------------------------------
+    with state.lock:
+        anzahl_slots = len(state.global_slots)
+
+    if anzahl_slots:
+        print()
+        print(f"  {warn('Fuer Slots ist das nur eine Naeherung.')}")
+        print("  Ein Klick-Ziel vertraegt ein paar Pixel Abweichung — eine Scan-Region")
+        print("  nicht: die schneidet dann das Item-Icon an oder zieht Nachbarpixel")
+        print("  rein, und das Template-Matching wird unzuverlaessig.")
+        print(f"  {info('Genauer: Item-Scan -> Slots -> ' + col('repair', 'yellow'))}")
+        print(f"  {info('Das misst die ' + str(anzahl_slots) + ' Slots neu, statt sie zu verschieben.')}")
+
     print()
     print(col("  Was soll mitgezogen werden?", 'bold'))
     umfang = interactive_select([
-        "Alles (Punkte, Slots, Scan-Regionen, Sequenzen)",
-        "Punkte + Slots/Scan-Regionen (Sequenzdateien unangetastet)",
+        "Alles ausser Slots (Punkte, Scan-Regionen, Sequenzen) — Slots per 'repair'",
+        "Alles inkl. Slots (Naeherung, s.o.)",
         "Nur die Punkte",
     ], default=0)
     if umfang < 0:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
+    mit_slots = umfang == 1
     mit_scans = umfang in (0, 1)
-    mit_sequenzen = umfang == 0
+    mit_sequenzen = umfang in (0, 1)
 
     print()
     print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
@@ -588,7 +610,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         return
 
     zahl = kalibriere_bestand(state, transform, mit_scans=mit_scans,
-                              mit_sequenzen=mit_sequenzen)
+                              mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
 
     print()
     print(f"  {ok('Kalibriert:')}")
@@ -601,6 +623,53 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     if mit_sequenzen:
         print()
         print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
+
+    if anzahl_slots:
+        print()
+        if mit_slots:
+            print(f"  {warn('Die Slots wurden nur VERSCHOBEN, nicht neu vermessen —')}")
+            print("  fuer Scan-Regionen ist das eine Naeherung.")
+        else:
+            print(f"  {info('Die Slots blieben unberuehrt — sie brauchen die genaue Messung.')}")
+        print(f"  Pixelgenau macht es {col('Item-Scan -> Slots -> repair', 'yellow')}.")
+
+
+def _versatz_anpassen(transform: dict) -> dict | None:
+    """Lässt den gemessenen Versatz je Achse von Hand korrigieren.
+
+    Der Grund: mit der Maus trifft man den Zielpixel nicht exakt. Steht da
+    „+2 X" und man weiss, dass die X-Achse gar nicht verrutscht ist, dann ist
+    eine eingetippte 0 genauer als die Messung. Umgekehrt genauso — oft stimmt
+    eine Achse und nur die andere hat sich verschoben.
+
+    Gibt den (ggf. geänderten) Transform zurück, oder None bei Abbruch.
+    """
+    vx, vy = round(transform["offset_x"]), round(transform["offset_y"])
+    print()
+    print(col("  Versatz nachjustieren:", 'bold'))
+    print(f"  {info('Enter = uebernehmen. Stimmt eine Achse schon, hier 0 eintragen —')}")
+    print(f"  {info('das ist genauer als die Maus-Messung.')}")
+
+    neu = []
+    for achse, wert in (("X", vx), ("Y", vy)):
+        while True:
+            eingabe = safe_input(f"    {achse}-Versatz (Enter = {wert:+d}): ").strip()
+            if is_cancel(eingabe):
+                return None
+            if not eingabe:
+                neu.append(wert)
+                break
+            try:
+                neu.append(int(round(float(eingabe.replace(",", ".")))))
+                break
+            except ValueError:
+                # Wiederholen statt abbrechen — wie in den anderen Editoren
+                print(f"    {err('Bitte eine ganze Zahl, z.B. 0 oder -25.')}")
+
+    if (neu[0], neu[1]) != (vx, vy):
+        print(f"  {ok(f'Versatz von Hand gesetzt: {neu[0]:+d} X, {neu[1]:+d} Y')}")
+    return {"scale_x": 1.0, "scale_y": 1.0,
+            "offset_x": neu[0], "offset_y": neu[1]}
 
 
 def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
