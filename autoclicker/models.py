@@ -184,12 +184,11 @@ class SequenceStep:
                 return f"SCREENSHOT ({region[0]},{region[1]})→({region[2]},{region[3]})"
             return "SCREENSHOT (Vollbild)"
         if self.key_press:
-            delay_str = self._delay_str()
-            return f"{delay_str} → drücke Taste '{self.key_press}'{else_str}"
+            return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
         if self.scroll:
             richtung = "hoch" if self.scroll > 0 else "runter"
             ziel = f"{self.name} " if self.name else ""
-            return (f"{self._delay_str()} → scrolle {richtung} x{abs(self.scroll)} "
+            return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
                     f"bei {ziel}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
@@ -225,6 +224,26 @@ class SequenceStep:
             return f"warte {self._delay_str()} → klicke {pos_str}"
         else:
             return f"sofort → klicke {pos_str}"
+
+    def _trigger_str(self) -> str:
+        """Was VOR der Aktion passiert: Farb-Bedingung und/oder Wartezeit.
+
+        Taste und Scroll zeigten hier früher nur die Wartezeit. Eine Farb-Bedingung
+        an so einem Schritt war damit unsichtbar — man konnte sie im edit-Menü setzen
+        und sah sie in der Schritt-Liste nirgends wieder.
+        """
+        wc = self.wait_condition
+        if not wc:
+            return self._delay_str()
+        zustand = "WEG" if wc.until_gone else "DA"
+        pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
+        if wc.check_only:
+            art = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+        else:
+            art = f"warte bis Farbe {zustand} bei {pixel}"
+        if self.delay_before > 0:
+            return f"warte {self._delay_str()}, dann {art}"
+        return art
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""

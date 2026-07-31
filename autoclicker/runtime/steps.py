@@ -331,19 +331,10 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
 # KEY-PRESS STEP
 # =============================================================================
 
-def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
-                            step_num: int, total_steps: int, phase: str) -> bool:
-    """Führt einen Tastendruck-Schritt aus."""
+def _fuehre_taste_aus(state: AutoClickerState, step: SequenceStep,
+                      step_num: int, total_steps: int, phase: str) -> bool:
+    """Drückt die Taste. Gewartet (Zeit oder Farb-Bedingung) hat execute_step bereits."""
     debug = is_verbose_debug(state)
-    actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
-    if actual_delay > 0:
-        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                    f"Taste '{step.key_press}' in"):
-            return False
-
-    if state.stop_event.is_set():
-        return False
-
     if safe_key(state, step.key_press, label="step"):
         with state.lock:
             state.key_presses += 1
@@ -358,19 +349,11 @@ def _execute_key_press_step(state: AutoClickerState, step: SequenceStep,
 # WAIT-FOR-COLOR STEP
 # =============================================================================
 
-def _execute_scroll_step(state: AutoClickerState, step: SequenceStep,
-                          step_num: int, total_steps: int, phase: str) -> bool:
-    """Dreht das Mausrad. Vorher wird wie beim Klick gewartet (Zeit oder Farb-Trigger)."""
+def _fuehre_scroll_aus(state: AutoClickerState, step: SequenceStep,
+                       step_num: int, total_steps: int, phase: str) -> bool:
+    """Dreht das Mausrad. Gewartet (Zeit oder Farb-Bedingung) hat execute_step bereits."""
     debug = is_verbose_debug(state)
     richtung = "hoch" if step.scroll > 0 else "runter"
-    actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
-    if actual_delay > 0:
-        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                    f"Scroll {richtung} in"):
-            return False
-    if state.stop_event.is_set():
-        return False
-
     label = step.name or f"Scroll {richtung}"
     _step_status(debug, phase, step_num, total_steps,
                  f"Scroll {richtung} x{abs(step.scroll)}",
@@ -707,26 +690,33 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     if step.item_scan:
         return _execute_item_scan_step(state, step, step_num, total_steps, phase)
 
-    if step.key_press:
-        return _execute_key_press_step(state, step, step_num, total_steps, phase)
-
-    if step.scroll:
-        return _execute_scroll_step(state, step, step_num, total_steps, phase)
-
+    # Ab hier die Aktions-Schritte: Klick, Taste, Scroll, reines Warten. Sie
+    # unterscheiden sich NUR in der Aktion am Ende — gewartet wird davor für alle
+    # gleich, an genau einer Stelle. Vorher hatten Taste und Scroll ihre eigene
+    # Wartezeit-Behandlung und wurden VOR der Farb-Bedingung abgefertigt: ein
+    # Farb-Trigger an einem Tasten- oder Scroll-Schritt wurde dadurch stillschweigend
+    # ignoriert (und mit ihm dessen else-Aktion).
     if step.wait_condition:
         farb_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
         if farb_gate == GATE_SKIP:
-            return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — kein eigener Klick
+            return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — keine eigene Aktion
         if farb_gate != GATE_RUN:
             return False
-    elif (step.delay_before > 0 or step.delay_max) and not skip_waits(state):
+    elif not skip_waits(state):
         actual_delay = step.get_actual_delay()
-        action = "Warten" if step.wait_only else "Klicke in"
-        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, action):
-            return False
+        if actual_delay > 0:
+            if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
+                                        _warte_text(step)):
+                return False
 
     if state.stop_event.is_set():
         return False
+
+    if step.key_press:
+        return _fuehre_taste_aus(state, step, step_num, total_steps, phase)
+
+    if step.scroll:
+        return _fuehre_scroll_aus(state, step, step_num, total_steps, phase)
 
     if step.wait_only:
         debug_active = is_verbose_debug(state)
@@ -734,3 +724,14 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return True
 
     return _execute_click(state, step, step_num, total_steps, phase)
+
+
+def _warte_text(step: SequenceStep) -> str:
+    """Beschriftung der Wartezeit-Anzeige, passend zur Aktion die danach kommt."""
+    if step.key_press:
+        return f"Taste '{step.key_press}' in"
+    if step.scroll:
+        return f"Scroll {'hoch' if step.scroll > 0 else 'runter'} in"
+    if step.wait_only:
+        return "Warten"
+    return "Klicke in"

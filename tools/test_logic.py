@@ -1336,5 +1336,96 @@ finally:
     _RS.check_failsafe = _orig_failsafe2
 
 
+# ------------------------------- Farb-Bedingung gilt fuer JEDE Aktion
+section("Farb-Bedingung an Taste/Scroll (nicht nur am Klick)")
+# Taste und Scroll wurden vor der Farb-Bedingung abgefertigt: ein Trigger an so einem
+# Schritt wurde ignoriert, die Aktion feuerte sofort. Jetzt wartet execute_step zentral
+# fuer alle Aktions-Schritte an einer Stelle.
+_orig_c3, _orig_k3 = _RS.safe_click, _RS.safe_key
+_orig_s3, _orig_shot3 = _RS.safe_scroll, _RS.take_screenshot
+_orig_p3, _orig_f3 = _RS.PILLOW_AVAILABLE, _RS.check_failsafe
+_akt = {"klick": [], "taste": [], "scroll": []}
+_shots = []
+
+class _Pix2:
+    def __init__(self, rgb): self._rgb = rgb
+    def getpixel(self, _xy): return self._rgb
+
+_RS.safe_click = _RA.safe_click = lambda st, x, y, label="": (_akt["klick"].append((x, y)), True)[1]
+_RS.safe_key = _RA.safe_key = lambda st, k, label="": (_akt["taste"].append(k), True)[1]
+_RS.safe_scroll = _RA.safe_scroll = lambda st, c, x=None, y=None, label="": (_akt["scroll"].append(c), True)[1]
+_RS.PILLOW_AVAILABLE = True
+_RS.check_failsafe = lambda st: False
+
+def _mit_trigger(schritt, trifft):
+    for v in _akt.values():
+        v.clear()
+    _shots.clear()
+    def _shot(region=None):
+        _shots.append(region)
+        return _Pix2((10, 10, 10) if trifft else (200, 200, 200))
+    _RS.take_screenshot = _shot
+    st = AutoClickerState(); st.config = _AC2()
+    st.config.pixel_wait_timeout = 0.05
+    st.config.pixel_check_interval = 0.01
+    st.config.pixel_max_consecutive_timeouts = 0
+    _RS.execute_step(st, schritt, 1, 2, "T")
+    return len(_shots) > 0, {k: list(v) for k, v in _akt.items()}
+
+try:
+    _wc3 = lambda **kw: _WCx(pixel=(5, 5), color=(10, 10, 10), **kw)
+
+    # Trifft NICHT zu -> keine Aktion, egal welcher Schritt-Typ
+    for _name, _schritt, _feld in [
+        ("Klick", _SS(x=1, y=2, delay_before=0, name="K", wait_condition=_wc3()), "klick"),
+        ("Taste", _SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
+                      wait_condition=_wc3()), "taste"),
+        ("Scroll", _SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
+                       wait_condition=_wc3()), "scroll"),
+    ]:
+        _geprueft, _was = _mit_trigger(_schritt, trifft=False)
+        check(f"{_name}-Schritt: Farb-Bedingung wird geprueft", _geprueft)
+        check(f"{_name}-Schritt: Aktion feuert NICHT bei Nichttreffer", _was[_feld] == [])
+
+    # Trifft zu -> Aktion laeuft
+    _, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
+                               wait_condition=_wc3()), trifft=True)
+    check("Taste-Schritt: Aktion laeuft bei Treffer", _was["taste"] == ["enter"])
+    _, _was = _mit_trigger(_SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
+                               wait_condition=_wc3()), trifft=True)
+    check("Scroll-Schritt: Aktion laeuft bei Treffer", _was["scroll"] == [-3])
+
+    # else greift jetzt auch hier — und ersetzt die Aktion
+    _, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
+                               wait_condition=_wc3(check_only=True),
+                               else_config=_EC2(action="click", x=99, y=99, name="E")),
+                           trifft=False)
+    check("Taste-Schritt: else greift und ersetzt die Taste",
+          _was["taste"] == [] and _was["klick"] == [(99, 99)])
+
+    # Ohne Farb-Bedingung bleibt es beim reinen Warten (keine Screenshots)
+    _geprueft, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T",
+                                       key_press="enter"), trifft=True)
+    check("Taste ohne Bedingung: kein Screenshot, Taste laeuft",
+          not _geprueft and _was["taste"] == ["enter"])
+
+    # Anzeige muss die Bedingung zeigen, sonst ist sie im Editor unsichtbar
+    check("Anzeige: Taste-Schritt zeigt die Farb-Bedingung",
+          "Farbe DA bei (5,5)" in str(_SS(x=0, y=0, delay_before=0, key_press="enter",
+                                          wait_condition=_wc3())))
+    check("Anzeige: Scroll-Schritt zeigt die Farb-Bedingung",
+          "Farbe WEG bei (5,5)" in str(_SS(x=1, y=1, delay_before=0, scroll=2,
+                                           wait_condition=_wc3(until_gone=True))))
+    check("Anzeige: ohne Bedingung weiterhin nur die Wartezeit",
+          "Farbe" not in str(_SS(x=0, y=0, delay_before=3, key_press="enter")))
+finally:
+    _RS.safe_click = _RA.safe_click = _orig_c3
+    _RS.safe_key = _RA.safe_key = _orig_k3
+    _RS.safe_scroll = _RA.safe_scroll = _orig_s3
+    _RS.take_screenshot = _orig_shot3
+    _RS.PILLOW_AVAILABLE = _orig_p3
+    _RS.check_failsafe = _orig_f3
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
