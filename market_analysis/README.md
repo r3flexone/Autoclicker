@@ -169,6 +169,31 @@ Weiter bestätigt:
   (= Werkzeug vorhanden) und nicht der Momentanwert im Boosts-Screen – der kann immer
   nur einen Skill auf 61 % zeigen.
 
+### Per Wiki gegengeprüft (Juli 2026)
+
+Abgleich der Config gegen das offizielle Wiki – alles unten **stimmt mit dem Code überein**:
+
+| Wert | Config | Wiki |
+|---|---|---|
+| Gatherers | `CLAN_GATHERERS_SPEED_BOOST = 0.05` | +5 % Speed auf alle Gathering-Skills |
+| NPC-Boost | `1.10 × 1.05 = 1.155` | „An offer they can't refuse" +10 %, Potion of negotiation +5 % |
+| Marktsteuer | `PLAYER_MARKET_TAX = 0.01`, nur beim Verkauf | 1 % ab 100 Gold, Kaufangebote steuerfrei |
+| Skilling-Handschuhe | `GLOVES_DOUBLE_CHANCE = 0.05`, multiplikativ zum `yield_multiplier` | 5 % doppelte Beute, **stapelt auf** Fisherman/Lumberjack; gibt **keine** XP |
+| Smelting Magic | `1.0 - 0.3` (höchster Tier) | 10–30 % je Tier, Tiers stapeln **nicht**, neuester überschreibt |
+| Astronomical ore | `SMELTING_MAGIC_EXCLUDED_ITEM_NAMES` | vom Perk ausgenommen |
+| Fisherman/Lumberjack | XP wird **nicht** mit `yield_factor` multipliziert | „XP is only given for ONE fish/log" |
+
+**Nicht per Wiki belegbar** (Seiten liefern 403, Werte sind account-/tierabhängig): die
+Tier-Prozente von The fisherman / The lumberjack / Power forager (Config nimmt
+100 %/100 %/50 %), Farming trickery 50 %, sowie `AUTO_COOK_CHANCE`.
+
+### Bekannte Lücke: „Better fisherman" / „Better lumberjack"
+
+Diese beiden Perks geben **25 % XP für die zusätzlich erbeutete Ware** zurück – genau die
+XP, die Fisherman/Lumberjack sonst unterschlagen. Die Config modelliert sie nicht, `XP/h`
+ist bei Fishing und Woodcutting also eher zu niedrig, sofern man die Perks besitzt.
+Betrifft **nur die XP-Spalten, nicht Gold/h.**
+
 ## Offene Punkte
 
 **Reichweite von Smelting Magic.** Der Perk spart 30 % Erz beim Ore→Bar-Schmelzen. Unklar
