@@ -1529,6 +1529,119 @@ finally:
     _RS.execute_item_scan = _orig_iscan2
 
 
+# ------------------------------------------- Zeitgesteuerte Phasen: Identitaet
+section("Zeitgesteuerte Loop-Phasen werden ueber die Position unterschieden")
+
+# Der Timer-Thread setzt ein pending-Flag, die Ausfuehrung holt es wieder ab. Lag der
+# Schluessel auf dem Phasen-NAMEN, riss bei zwei gleichnamigen Phasen die erste das Flag
+# der zweiten an sich: um 20:00 lief die 08:00-Phase ein zweites Mal, die Abend-Phase nie.
+# Namen sind frei waehlbar und der Vorschlag 'Loop <len+1>' kollidiert nach jedem 'del'.
+from autoclicker.runtime.worker import _schedule_watcher as _sw, _run_loop_phases as _rlp
+import threading as _th
+
+
+class _FakeLP:
+    def __init__(self, name, sched):
+        self.name = name; self.scheduled_start = sched; self.repeat = 1
+        # Der Schritt traegt die Identitaet der Phase. Ueber den Namen laesst sich
+        # nicht pruefen, welche Phase lief — im Fehlerfall heissen ja beide gleich,
+        # und der Test wuerde die falsche Phase fuer die richtige halten.
+        self.steps = [f"{name}@{sched}"]
+
+
+class _FakeSeq:
+    def __init__(self, phasen): self.loop_phases = phasen
+
+
+class _EinTick:
+    """stop_event-Ersatz, der genau EINEN Schleifendurchlauf zulaesst.
+
+    Der Watcher prueft `while not stop_event.is_set()` VOR dem Rumpf und wartet
+    danach mit `stop_event.wait(10)`. Ein vorab gesetztes Event wuerde den Rumpf
+    also nie ausfuehren, ein echtes Event 10 Sekunden kosten.
+    """
+    def __init__(self): self._fertig = False
+    def is_set(self): return self._fertig
+    def wait(self, timeout=None): self._fertig = True; return True   # -> break
+
+
+def _watcher_tick(phasen, h, m, pending=None, last=None):
+    """Laesst den echten _schedule_watcher einen Tick zur Uhrzeit h:m laufen."""
+    pending = {} if pending is None else pending
+    last = {} if last is None else last
+
+    class _FixeZeit(_dt_mod.datetime):
+        @classmethod
+        def now(cls, tz=None): return cls(2026, 7, 31, h, m, 0)
+
+    orig_dt = _WK.datetime
+    _WK.datetime = _FixeZeit
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _sw(phasen, pending, last, _EinTick(), _th.Lock(), _th.Event())
+    finally:
+        _WK.datetime = orig_dt
+    return pending
+
+
+def _timer_lauf(phasen, h, m):
+    """Ein Watcher-Tick zur Uhrzeit h:m, danach ein echter Phasen-Durchlauf.
+
+    Beide Seiten sind die Original-Funktionen; nur execute_step ist gestubbt und
+    protokolliert, welche Phase wirklich drankam.
+    """
+    pending = _watcher_tick(phasen, h, m)
+    gelaufen = []
+    orig_step = _WK.execute_step
+    _WK.execute_step = lambda s, step, i, n, ph: (gelaufen.append(step), True)[1]
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _rlp(AutoClickerState(), _FakeSeq(phasen), pending, _th.Lock(), "Zyklus 1", False)
+    finally:
+        _WK.execute_step = orig_step
+    return gelaufen
+
+
+import datetime as _dt_mod
+import autoclicker.runtime.worker as _WK
+
+# A) eindeutige Namen — muss unveraendert funktionieren
+_a = [_FakeLP("Morgen", "08:00"), _FakeLP("Abend", "20:00")]
+check("eindeutige Namen: um 08:00 laeuft nur die Morgen-Phase",
+      _timer_lauf(_a, 8, 0) == ["Morgen@08:00"])
+_a = [_FakeLP("Morgen", "08:00"), _FakeLP("Abend", "20:00")]
+check("eindeutige Namen: um 20:00 laeuft nur die Abend-Phase",
+      _timer_lauf(_a, 20, 0) == ["Abend@20:00"])
+_a = [_FakeLP("Morgen", "08:00"), _FakeLP("Abend", "20:00")]
+check("eindeutige Namen: um 12:00 laeuft keine der beiden",
+      _timer_lauf(_a, 12, 0) == [])
+
+# B) gleicher Name (entsteht durch 'del' + 'add', Vorschlag ist 'Loop <len+1>')
+_b = [_FakeLP("Loop 3", "08:00"), _FakeLP("Loop 3", "20:00")]
+check("gleicher Name: um 20:00 laeuft die 20-Uhr-Phase (nicht die von 08:00)",
+      _timer_lauf(_b, 20, 0) == ["Loop 3@20:00"])
+_b = [_FakeLP("Loop 3", "08:00"), _FakeLP("Loop 3", "20:00")]
+check("gleicher Name: um 08:00 laeuft die 08-Uhr-Phase",
+      _timer_lauf(_b, 8, 0) == ["Loop 3@08:00"])
+# Beide heissen gleich — nachweisbar ist es ueber das pending-Dict: der Schluessel
+# muss die POSITION der 20-Uhr-Phase sein, nicht ihr Name.
+_pending = _watcher_tick([_FakeLP("Loop 3", "08:00"), _FakeLP("Loop 3", "20:00")], 20, 0)
+check("gleicher Name: das Flag haengt an Position 1 (der 20-Uhr-Phase)",
+      _pending == {1: True})
+check("gleicher Name: der Name taucht als Schluessel nicht mehr auf",
+      "Loop 3" not in _pending)
+
+# C) gleicher Name, gleiche Uhrzeit -> beide muessen laufen
+_c = [_FakeLP("Loop 2", "09:30"), _FakeLP("Loop 2", "09:30")]
+check("gleicher Name und gleiche Uhrzeit: beide Phasen laufen",
+      _timer_lauf(_c, 9, 30) == ["Loop 2@09:30", "Loop 2@09:30"])
+
+# D) ungeplante Phasen bleiben von alldem unberuehrt
+_d = [_FakeLP("Immer", None), _FakeLP("Immer", None)]
+check("Phasen ohne Startzeit laufen weiterhin jedes Mal",
+      _timer_lauf(_d, 3, 45) == ["Immer@None", "Immer@None"])
+
+
 # ------------------------------------------------------- Eindeutige Namen
 section("Namensvergabe kollidiert nicht mit bestehenden Eintraegen")
 from autoclicker.utils import eindeutiger_name as _en

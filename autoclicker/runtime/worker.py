@@ -38,6 +38,15 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
     Setzt das pending-Flag thread-safe, damit die Phase an ihrer
     natürlichen Position im Ablauf ausgeführt wird.
 
+    Beide Dicts sind über die POSITION der Phase indiziert, nicht über ihren
+    Namen: Namen sind frei wählbar und doppelt vergebbar (Vorschlag ist
+    'Loop <len+1>', nach einem 'del' kollidiert das). Bei zwei gleichnamigen
+    Phasen lief sonst die falsche — das Flag der 20-Uhr-Phase wurde von der
+    08-Uhr-Phase abgeräumt, die daraufhin abends ein zweites Mal lief und die
+    eigentliche Abend-Phase nie. Die Position ist eindeutig und stabil: Watcher
+    und Ausführung laufen über dieselbe Liste, und während eines Laufs kann sie
+    kein Editor ändern.
+
     Terminiert sowohl bei stop_event (Sequenz gestoppt) als auch bei
     shutdown_event (Sequenz regulär beendet) — sonst liefe der Timer als
     Geister-Thread ewig weiter und leakte bei jedem Neustart.
@@ -47,7 +56,7 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
         current_h, current_m = now.hour, now.minute
         today = now.strftime('%Y-%m-%d')
 
-        for lp in loop_phases:
+        for idx, lp in enumerate(loop_phases):
             if not lp.scheduled_start:
                 continue
 
@@ -60,9 +69,9 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
             if current_h == h and current_m == m:
                 tracking_key = f"{lp.scheduled_start}_{today}"
                 with lock:
-                    if scheduled_last_executed.get(lp.name) != tracking_key:
-                        scheduled_last_executed[lp.name] = tracking_key
-                        scheduled_pending[lp.name] = True
+                    if scheduled_last_executed.get(idx) != tracking_key:
+                        scheduled_last_executed[idx] = tracking_key
+                        scheduled_pending[idx] = True
                         print(col(f"\n[TIMER] {lp.name}: Startzeit {lp.scheduled_start} erreicht! (wird bei nächster Position ausgeführt)", "green"), flush=True)
 
         # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit).
@@ -395,7 +404,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                      schedule_lock: threading.Lock, cycle_str: str, debug: bool) -> None:
     """Führt alle Loop-Phasen einmal aus."""
-    for loop_phase in sequence.loop_phases:
+    for idx, loop_phase in enumerate(sequence.loop_phases):
         if state.stop_event.is_set() or state.quit_event.is_set():
             break
 
@@ -403,10 +412,11 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         if total_steps == 0:
             continue
 
-        # Zeitgesteuerte Phase: nur ausführen wenn pending-Flag gesetzt (vom Timer-Thread)
+        # Zeitgesteuerte Phase: nur ausführen wenn pending-Flag gesetzt (vom Timer-Thread).
+        # Schlüssel ist die Position, nicht der Name — siehe _schedule_watcher.
         if loop_phase.scheduled_start:
             with schedule_lock:
-                is_pending = scheduled_pending.pop(loop_phase.name, False)
+                is_pending = scheduled_pending.pop(idx, False)
             if not is_pending:
                 if debug:
                     print(dbg(f"'{loop_phase.name}' übersprungen (wartet auf {loop_phase.scheduled_start})"))
