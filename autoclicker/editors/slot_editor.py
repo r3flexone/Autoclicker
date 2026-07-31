@@ -754,6 +754,13 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
         return False
 
+    from ..import_export import sichere_vor_kalibrierung
+    sicherung = sichere_vor_kalibrierung(state)
+    if sicherung:
+        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    else:
+        print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
+
     with state.lock:
         for slot, neu in paare:
             slot.scan_region = neu
@@ -769,8 +776,30 @@ def slot_repair(state: AutoClickerState) -> bool:
     print(f"  {info('Dieser Versatz wurde gemessen, nicht mit der Maus gesetzt —')}")
     print(f"  {info('er ist genauer als eine Kalibrierung von Hand.')}")
     if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
-        from ..import_export import transform_aus_verschiebung, kalibriere_bestand
+        from ..import_export import (transform_aus_verschiebung, kalibriere_bestand,
+                                     kalibrier_vorschau)
+        from .import_export_editor import _ausserhalb_der_monitore
         t = transform_aus_verschiebung((0, 0), versatz)
+
+        # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
+        # genauer gemessen, aber er stammt von EINEM Bildschirm: liegen Punkte auf
+        # einem anderen, stimmt er fuer die nicht. Gleiche Schreiboperation,
+        # gleiche Absicherung.
+        vorschau = kalibrier_vorschau(state, t)
+        print()
+        print(col("  VORSCHAU (Auszug):", 'bold'))
+        for label, alt, neu in vorschau[:8]:
+            print(f"    {label:<32} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+        if len(vorschau) > 8:
+            print(f"    {info(f'... und {len(vorschau) - 8} weitere')}")
+        draussen = _ausserhalb_der_monitore([n for _, _, n in vorschau])
+        if draussen:
+            print(f"  {warn(f'{draussen} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
+            print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")
+        if not confirm("  Wirklich uebernehmen?", default=False):
+            print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")
+            return True
+
         # mit_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
         # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
         # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.

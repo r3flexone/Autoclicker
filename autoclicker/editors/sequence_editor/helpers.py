@@ -4,7 +4,9 @@ Geteilte Helfer für den Sequenz-Editor.
 apply_else_to_step + parse_else_condition werden überall dort gebraucht wo ein
 Step einen optionalen `else <Bedingung>`-Suffix haben kann (scan, boss, watcher,
 wait, pixel-click). capture_pixel_color liest die aktuelle Maus-Position+Farbe
-und _parse_time_input parst eine HH:MM-Eingabe.
+und parse_uhrzeit parst eine HH:MM-Eingabe. Bewusst NICHT parse_time_input wie in
+utils/parsing.py: die heisst gleich, nimmt auch einen String, gibt aber ein Tripel
+(Sekunden, Text, Zeitstempel) fuer den Countdown zurueck. Zwei Vertraege, zwei Namen.
 """
 
 import re
@@ -88,7 +90,7 @@ def capture_pixel_color() -> tuple:
     return x, y, color
 
 
-def parse_time_input(time_str: str) -> Optional[str]:
+def parse_uhrzeit(time_str: str) -> Optional[str]:
     """Parst eine Uhrzeit-Eingabe (z.B. '12:30', '9:05') und gibt 'HH:MM' zurück oder None."""
     match = re.match(r'^(\d{1,2}):(\d{2})$', time_str.strip())
     if match:

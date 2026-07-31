@@ -609,6 +609,13 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
 
+    from ..import_export import sichere_vor_kalibrierung
+    sicherung = sichere_vor_kalibrierung(state)
+    if sicherung:
+        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    else:
+        print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
+
     zahl = kalibriere_bestand(state, transform, mit_scans=mit_scans,
                               mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
 

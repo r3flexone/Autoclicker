@@ -207,6 +207,32 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
                 s.screenshot_region = remap_region(s.screenshot_region, transform)
 
 
+def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
+    """Legt vor dem Umrechnen ein vollständiges Export-ZIP als Sicherung an.
+
+    Die Kalibrierung schreibt Punkte, Slots, Scans und Sequenzdateien in einem Rutsch
+    um — ohne Rückweg, wenn der Referenzpunkt danebenlag. Ein eigenes Backup-Format
+    dafür zu bauen wäre Doppelarbeit: der Export kann das längst, und der Import
+    spielt es wieder ein.
+
+    Gibt den Pfad zurück, oder None wenn die Sicherung fehlschlug.
+    """
+    import time as _time
+
+    # Derselbe Ordner, in dem der Editor seine Exporte sucht — damit die Sicherung
+    # im Import-Menue ohne Pfadeingabe auftaucht.
+    ziel = Path("exports") / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    # Referenzpunkte sind hier bedeutungslos (es wird nichts remappt beim
+    # Zurückspielen), aber identisch dürfen sie nicht sein — sonst rechnet ein
+    # späterer Import mit einer Nulldistanz.
+    erfolg, meldung = export_bundle(state, str(ziel), (0, 0), (1000, 1000))
+    if not erfolg:
+        logger.warning("Sicherung vor Kalibrierung fehlgeschlagen: %s", meldung)
+        return None
+    return str(ziel)
+
+
 def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                        mit_scans: bool = True, mit_sequenzen: bool = True,
                        mit_slots: bool = True) -> dict:
