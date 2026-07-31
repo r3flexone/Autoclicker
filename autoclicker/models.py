@@ -192,6 +192,10 @@ class SequenceStep:
                     f"bei {ziel}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
+        if self.icon_scan:
+            # Fehlte hier komplett: ein Icon-Scan-Schritt fiel bis ans Ende durch und
+            # wurde in der Schritt-Liste als "sofort → klicke (0, 0)" angezeigt.
+            return f"ICON-SCAN '{self.icon_scan}'{else_str}"
         if self.item_scan:
             mode_strs = {SCAN_MODE_ALL: "bestes/Kategorie", SCAN_MODE_BEST: "1 bestes", SCAN_MODE_EVERY: "JEDES"}
             mode_str = mode_strs.get(self.item_scan_mode, self.item_scan_mode)
@@ -242,7 +246,8 @@ class SequenceStep:
         else:
             art = f"warte bis Farbe {zustand} bei {pixel}"
         if self.delay_before > 0:
-            return f"warte {self._delay_str()}, dann {art}"
+            # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
+            return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
         return art
 
     def _else_str(self) -> str:

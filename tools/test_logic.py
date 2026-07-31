@@ -1432,6 +1432,17 @@ try:
                                            wait_condition=_wc3(until_gone=True))))
     check("Anzeige: ohne Bedingung weiterhin nur die Wartezeit",
           "Farbe" not in str(_SS(x=0, y=0, delay_before=3, key_press="enter")))
+    # Jeder Schritt-Typ muss sich in der Liste als das zeigen, was er ist. Der
+    # Icon-Scan hatte gar keinen Zweig und erschien als "sofort -> klicke (0, 0)".
+    for _typ, _kw, _erwartet in [
+        ("Icon-Scan", dict(icon_scan="Mission"), "ICON-SCAN 'Mission'"),
+        ("Boss-Scan", dict(boss_scan="B"), "BOSS-SCAN 'B'"),
+        ("Watcher", dict(boss_watcher="W"), "BOSS-WATCHER 'W'"),
+        ("Item-Scan", dict(item_scan="I"), "SCAN 'I'"),
+        ("Screenshot", dict(screenshot_only=True), "SCREENSHOT"),
+    ]:
+        check(f"Anzeige: {_typ} wird als solcher angezeigt",
+              _erwartet in str(_SS(x=0, y=0, delay_before=0, **_kw)))
 finally:
     _RS.safe_click = _RA.safe_click = _orig_c3
     _RS.safe_key = _RA.safe_key = _orig_k3
