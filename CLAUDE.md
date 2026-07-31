@@ -202,6 +202,20 @@ Der Name steht in Name→Eintrag-Dicts nur noch im Schlüssel (`items.json`, `sl
 Presets). `_item_from_dict(data, name)` und `_slot_from_dict(name, data)` bekommen ihn von
 dort. In Listen (Bosse, wo die Reihenfolge Priorität ist) bleibt `name` im Eintrag.
 
+**Weil der Name der Schlüssel ist, darf er nie doppelt vergeben werden.** Ein zweiter
+Eintrag mit demselben Namen ersetzt den ersten kommentarlos — und weil Scans ihre Slots
+und Items *per Name* referenzieren, zeigt der Scan danach nicht ins Leere, sondern auf den
+neuen Eintrag: er läuft weiter und tut etwas anderes. `len(...) + 1` als Namensvorschlag
+trägt das nicht, sobald einmal gelöscht oder umbenannt wurde. Wer einen Namen automatisch
+vergibt, nimmt `eindeutiger_name(basis, vorhandene)` aus `utils/parsing.py`; wer einen vom
+Nutzer eingegebenen Namen übernimmt, fragt vor dem Überschreiben (`create_slot`,
+`create_item` machen das vor).
+
+Dieselbe Regel gilt für **Identität außerhalb der Persistenz**: Loop-Phasen-Namen sind
+frei wählbar und doppelt vergebbar, deshalb hängt der Zeitplan-Zustand im Worker an der
+*Position* der Phase, nicht an ihrem Namen (`_schedule_watcher`). Ein Name ist eine
+Beschriftung — als Schlüssel taugt er nur da, wo etwas ihn erzwingt.
+
 **Speichern wird geschrieben, als gäbe es keine Altbestände.** Die Serializer schreiben
 das optimale Format, nicht das kompatible: nur gesetzte Felder (`_STEP_DEFAULTS`), nur
 Referenzen statt Kopien. Alles Alte hebt die Migration beim Start — und was sie nicht
@@ -224,6 +238,7 @@ wird.)
 - `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Größe der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
+- `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
 - `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_beim_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Größe (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
@@ -234,6 +249,23 @@ wird.)
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
+
+**Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: der
+Dear-PyGui-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
+Thread. Gestartet werden sie vom Handler per `subprocess.Popen([sys.executable, "-m", ...])`,
+Dear PyGui ist optional und wird beim Start des Subprozesses geprüft.
+
+| Einstiegspunkt | Canvas | arbeitet auf |
+|---|---|---|
+| `autoclicker/scan_studio.py` (`handle_scan_studio`) | `editors/scan_canvas/` | `slots/slots.json` |
+| `autoclicker/node_editor.py` (`handle_node_editor`) | `editors/node_canvas/` | `sequences/<name>.json` |
+
+Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
+Der Subprozess liest die Datei beim Start und schreibt sie beim Speichern; der
+Hauptprozess hält seinen eigenen Stand im Speicher und lädt mit `CTRL+ALT+L` nach. Wer im
+Hauptprozess speichert, während der Subprozess offen ist, verliert eine der beiden
+Fassungen. Beim Erweitern also nichts einbauen, das auf gemeinsamen State setzt — der
+gemeinsame Nenner ist die Datei.
 
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.
@@ -260,12 +292,24 @@ irrtümlich noch feuern könnte.
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.
 - **Boss-Watcher**: Schleife im Step, prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird (mit `llm_watcher_max_scans` und `llm_watcher_timeout` als Exit-Bedingungen). Erst dann `_execute_boss_action`.
 
-LLM-Modi (`use_llm` + `llm_fallback` in `BossScanConfig`):
-- `llm_fallback=False` → LLM läuft **vor** Template/Marker-Matching (primär)
-- `llm_fallback=True` → LLM läuft **nur wenn** Template/Marker nichts findet (Fallback)
-- Bug-Sensibilität: Beide Modi dürfen LLM nicht doppelt aufrufen — siehe `execute_boss_scan()` in `runtime/boss_detection.py`.
+**Zwei Zusatz-Erkenner, gleiche Bauart**: OCR (`use_ocr` + `ocr_fallback`) und LLM
+(`use_llm` + `llm_fallback`), beide in `BossScanConfig`, beide zusätzlich per Config
+scharfgeschaltet (`ocr_enabled` / `llm_enabled`). `*_fallback=False` heißt **vor**
+Template/Marker-Matching, `*_fallback=True` heißt **nur wenn** Template/Marker nichts
+findet. Bei gleicher Einstellung läuft **OCR vor LLM** — OCR ist lokal und schnell, das
+LLM kostet bis `llm_timeout`.
 
-Unbekannte Bosse (LLM erkennt einen Namen der nicht in der Liste ist) werden automatisch als `BossProfile(action=BOSS_ACTION_SKIP)` gespeichert — Append unter `state.lock`.
+Zwei Regeln, an denen `execute_boss_scan()` in `runtime/boss_detection.py` hängt:
+- **Kein Erkenner darf doppelt laufen.** Primär- und Fallback-Zweig schließen sich über
+  `not cfg_*_fallback` / `cfg_*_fallback` gegenseitig aus.
+- **Alle Flags im selben Lock-Snapshot einfrieren.** Wer sie zweimal frisch liest, kann
+  einen Editor dazwischen umschalten sehen und läuft dann doch doppelt.
+
+Beide Erkenner bekommen die **gemergte** Boss-Liste (lokal + global) als
+`bosses_snapshot` übergeben und dürfen nicht auf `config.bosses` zurückgreifen — sonst
+findet der Treffer die Bibliotheks-Bosse nicht wieder.
+
+Unbekannte Bosse (OCR/LLM erkennt einen Namen der nicht in der Liste ist) werden automatisch als `BossProfile(action=BOSS_ACTION_SKIP)` gespeichert — Prüfung und Append im selben `state.lock`-Block, sonst hängt ein Sync-Scan neben dem Async-Watcher denselben Boss doppelt an.
 
 **Globale Boss-Bibliothek**: `state.global_bosses` (Editor: Boss-Scan-Menü → "Boss-Bibliothek verwalten") gilt zusätzlich in jedem Boss-Scan. `execute_boss_scan()` merged lokal + global im Lock-Snapshot; lokale Bosse gewinnen bei Namensgleichheit. Mit `boss_learn_global=true` (Config, umschaltbar im Boss-Scan-Menü) landen neu entdeckte Bosse in der Bibliothek statt im Scan.
 
