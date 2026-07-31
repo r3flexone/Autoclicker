@@ -1328,6 +1328,20 @@ try:
         _IS._learn_unknown_slot_item = _orig_lern
     check("Immediate: reiner Lern-Scan besucht alle Slots",
           _besucht == ["S1", "S2", "S3"])
+
+    # Tippfehler im Scan-Namen muss in BEIDEN Modi gemeldet werden, nicht nur im einen
+    import io as _io, contextlib as _cl
+    def _stiller_lauf(immediate):
+        _st_t = AutoClickerState(); _st_t.config = _AC2()
+        _st_t.config.scan_click_immediate = immediate
+        _st_t.item_scans = {}
+        _b = _io.StringIO()
+        with _cl.redirect_stdout(_b):
+            _RS.execute_step(_st_t, _SS(x=0, y=0, delay_before=0, name="S",
+                                        item_scan="gibtsnicht"), 1, 1, "T")
+        return "nicht gefunden" in _b.getvalue()
+    check("fehlender Scan wird im Normal-Modus gemeldet", _stiller_lauf(False))
+    check("fehlender Scan wird auch im Immediate-Modus gemeldet", _stiller_lauf(True))
 finally:
     _IS._check_profile_match = _orig_prof
     _IS.take_screenshot = _orig_shot2

@@ -35,7 +35,9 @@ from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
     _should_run_async, _warn_llm_config_inconsistencies, _spawn_boss_async,
 )
-from .item_scan import execute_item_scan, _click_scan_result, execute_icon_scan
+from .item_scan import (
+    execute_item_scan, _click_scan_result, execute_icon_scan, lauffaehige_scan_config,
+)
 
 
 # =============================================================================
@@ -86,15 +88,14 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                                   step_num: int, total_steps: int, phase: str,
                                   mode: str, debug: bool) -> bool:
     """Immediate-Modus: Scan→Klick pro Slot statt alle scannen, dann alle klicken."""
+    # Dieselbe Prüfung wie im normalen Pfad — inklusive Meldung. Hier stand vorher
+    # eine eigene, stumme Abbruchbedingung: sie verlangte Items (ein reiner Lern-Scan
+    # tat damit gar nichts) und schwieg bei einem Tippfehler im Scan-Namen.
     with state.lock:
-        config = state.item_scans.get(step.item_scan)
-    # Dieselbe Bedingung wie in execute_item_scan: ein Scan, der nur lernen soll,
-    # braucht keine Items. Stand hier vorher ohne learn_unknown — ein reiner
-    # Lern-Scan tat im Immediate-Modus dadurch gar nichts.
-    if not config or not config.slots or (not config.items and not config.learn_unknown):
-        return True
-
-    slots = list(config.slots)
+        config = lauffaehige_scan_config(state, step.item_scan)
+        if config is None:
+            return True
+        slots = list(config.slots)
     if state.config.scan_reverse:
         slots = list(reversed(slots))
 

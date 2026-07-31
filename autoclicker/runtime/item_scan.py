@@ -119,6 +119,30 @@ def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
 # ITEM-SCAN (Hauptfunktion)
 # =============================================================================
 
+def lauffaehige_scan_config(state: AutoClickerState, scan_name: str):
+    """Gibt die Scan-Config zurück, oder None samt Meldung wenn sie nicht laufen kann.
+
+    Aufrufer MUSS state.lock halten.
+
+    Eine Stelle für beide Scan-Pfade (normal und Immediate). Vorher hatte der
+    Immediate-Modus seine eigene, stillschweigende Abbruchbedingung — ein Tippfehler
+    im Scan-Namen war dort unsichtbar, während der normale Pfad ihn meldete.
+    """
+    config = state.item_scans.get(scan_name)
+    if config is None:
+        print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
+        return None
+    if not config.slots:
+        print(err(f"Item-Scan '{scan_name}' hat keine Slots!"))
+        return None
+    # Ohne Items ist ein Scan nur sinnvoll, wenn er unbekannte Inhalte lernen soll.
+    if not config.items and not config.learn_unknown:
+        print(err(f"Item-Scan '{scan_name}' hat keine Items "
+                  f"(und Auto-Lernen ist aus)!"))
+        return None
+    return config
+
+
 def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_MODE_ALL,
                       slots_override: list = None) -> list:
     """Führt einen Item-Scan aus und gibt Liste von (position, item, priority) zurück.
@@ -128,12 +152,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
     # während wir iterieren (RuntimeError bei dict/list changed during iteration).
     with state.lock:
-        config = state.item_scans.get(scan_name)
+        config = lauffaehige_scan_config(state, scan_name)
         if config is None:
-            print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
-            return []
-        if not config.slots or (not config.items and not config.learn_unknown):
-            print(err(f"Item-Scan '{scan_name}' hat keine Slots oder Items!"))
             return []
         slots_snapshot = list(config.slots)
         items_snapshot = list(config.items)
