@@ -38,6 +38,7 @@ class SkillConfig:
     cost_multiplier: float = 1.0     # Anteil der Materialkosten nach Trickery-Ersparnis
     excluded: bool = False           # Skill komplett ignorieren
     has_tool: bool = False           # Werkzeug fuer diesen Skill vorhanden (+EQUIPPED_TOOL_BONUS)
+    extra_yield_xp: bool = False     # "Better fisherman"/"Better lumberjack" vorhanden (s.u.)
 
 
 # Grundausruestung 55% bei allen Skilling-Skills, +6% durch das Werkzeug des gerade
@@ -57,6 +58,17 @@ def equip(has_tool: bool = True) -> float:
 
 GLOVES_DOUBLE_CHANCE = 0.05          # alle Skilling-Handschuhe
 CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur is_gathering=True
+
+# "Better fisherman" / "Better lumberjack": geben 25% XP fuer die ZUSAETZLICHE Beute
+# zurueck, die The fisherman / The lumberjack einbringen. Ohne diese Perks gibt es fuer
+# das doppelte Stueck ueberhaupt keine XP ("XP is only given for ONE fish", Wiki).
+#
+# Wirkt nur auf den yield_multiplier, NICHT auf die Handschuh-Verdopplung: der Perk ist
+# laut Wiki an The fisherman/The lumberjack gekoppelt, nicht an die Handschuhe.
+#
+# Standardmaessig AUS, weil es ein eigener Kauf ist — nicht jeder mit Fisherman hat auch
+# Better fisherman. Besitzt du sie, hier extra_yield_xp=True beim jeweiligen Skill setzen.
+EXTRA_YIELD_XP_SHARE = 0.25
 
 XP_BOOST_TOTAL = 0.25 + 0.25         # Clan house + House
 
@@ -111,11 +123,14 @@ SMELTING_MAGIC_EXCLUDED_ITEM_NAMES = ("astronomical_ore",)
 SKILLS: dict[str, SkillConfig] = {
     "Mining":      SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True),
     "Fishing":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                               yield_multiplier=2.0),    # Fisherman: 100% doppelte Ausbeute
+                               yield_multiplier=2.0,     # Fisherman: 100% doppelte Ausbeute
+                               extra_yield_xp=False),    # True, wenn "Better fisherman" gekauft
     "Foraging":    SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                               yield_multiplier=1.5),    # Power Forager: 50% Chance auf doppelte Beute
+                               yield_multiplier=1.5,     # Power Forager: 50% Chance auf doppelte Beute
+                               extra_yield_xp=False),    # nur setzen, falls es einen XP-Rueckgabe-Perk gibt
     "Woodcutting": SkillConfig(equipment_speed_boost=equip(), has_tool=True, is_gathering=True, gloves_owned=True,
-                               yield_multiplier=2.0),    # Lumberjack: 100% doppelte Ausbeute
+                               yield_multiplier=2.0,     # Lumberjack: 100% doppelte Ausbeute
+                               extra_yield_xp=False),    # True, wenn "Better lumberjack" gekauft
     "Cooking":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),
     "Carpentry":   SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),
     "Smithing":    SkillConfig(equipment_speed_boost=equip(False)),

@@ -82,7 +82,11 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     speed_mult = (1.0 - clan) * (1.0 - cfg.equipment_speed_boost)
     speed_add = max(0.0, 1.0 - clan - cfg.equipment_speed_boost)
     yield_factor = cfg.yield_multiplier * (1.0 + ma.GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
-    xp_factor = (1.0 + ma.XP_BOOST_TOTAL) * (1.0 + ma.DAILY_XP_BOOST)
+    # Muss dieselbe Formel sein wie in normalize_recipe — dieses Skript ist die
+    # Gegenprobe zur Analyse, eine abweichende Rechnung waere hier schlimmer als keine.
+    extra_yield_xp = (1.0 + ma.EXTRA_YIELD_XP_SHARE * (cfg.yield_multiplier - 1.0)
+                      if cfg.extra_yield_xp and cfg.yield_multiplier > 1.0 else 1.0)
+    xp_factor = extra_yield_xp * (1.0 + ma.XP_BOOST_TOTAL) * (1.0 + ma.DAILY_XP_BOOST)
 
     print("\n2) ANGEWENDETE BOOSTS (aus SKILLS)")
     print(f"     Equipment-Speed   {cfg.equipment_speed_boost:.0%}"
@@ -91,7 +95,9 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     print(f"     Yield-Faktor      {yield_factor:.3f}"
           f"   (Upgrade {cfg.yield_multiplier:.2f}"
           f"{f' x Handschuhe {1 + ma.GLOVES_DOUBLE_CHANCE:.2f}' if cfg.gloves_owned else ', keine Handschuhe'})")
-    print(f"     XP-Faktor         {xp_factor:.3f}")
+    print(f"     XP-Faktor         {xp_factor:.3f}"
+          + (f"   (davon {extra_yield_xp:.3f} aus 'Better fisherman/lumberjack')"
+             if extra_yield_xp != 1.0 else ""))
     if cfg.cost_multiplier != 1.0:
         print(f"     Kosten-Faktor     {cfg.cost_multiplier:.2f} (Trickery/Magic-Ersparnis)")
 

@@ -231,6 +231,14 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
         )
     yield_factor = cfg.yield_multiplier * (1.0 + GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
 
+    # Die doppelte Beute aus The fisherman/The lumberjack bringt normalerweise KEINE XP.
+    # "Better fisherman"/"Better lumberjack" geben davon EXTRA_YIELD_XP_SHARE zurueck.
+    # Bezugsgroesse ist nur der yield_multiplier, nicht der Handschuh-Anteil: der Perk
+    # haengt laut Wiki an The fisherman/The lumberjack, nicht an den Handschuhen.
+    xp_factor = 1.0
+    if cfg.extra_yield_xp and cfg.yield_multiplier > 1.0:
+        xp_factor = 1.0 + EXTRA_YIELD_XP_SHARE * (cfg.yield_multiplier - 1.0)
+
     # Smelting Magic wirkt nur beim Ore->Bar-Schmelzen (Recipe-Name endet auf "_bar"),
     # nicht generell auf alle Smithing-Rezepte (siehe Kommentar bei SMITHING_SMELTING_COST_MULTIPLIER).
     # Reichweite innerhalb des Rezepts ist unklar (s. Kommentar oben) -> pro Cost-Zeile:
@@ -255,7 +263,8 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
         "item_id": item_id,
         "base_time_ms": base_time * speed_factor,
         "item_amount": item_amount * yield_factor,
-        "xp": raw_recipe.get("ExpReward", 0.0) * (1.0 + XP_BOOST_TOTAL) * (1.0 + DAILY_XP_BOOST),
+        "xp": (raw_recipe.get("ExpReward", 0.0) * xp_factor
+               * (1.0 + XP_BOOST_TOTAL) * (1.0 + DAILY_XP_BOOST)),
         "level": raw_recipe.get("LevelRequirement"),
         "costs": costs,
         "task_id": raw_recipe.get("TaskId"),

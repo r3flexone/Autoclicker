@@ -187,11 +187,21 @@ Abgleich der Config gegen das offizielle Wiki – alles unten **stimmt mit dem C
 Tier-Prozente von The fisherman / The lumberjack / Power forager (Config nimmt
 100 %/100 %/50 %), Farming trickery 50 %, sowie `AUTO_COOK_CHANCE`.
 
-### Bekannte Lücke: „Better fisherman" / „Better lumberjack"
+### „Better fisherman" / „Better lumberjack"
 
-Diese beiden Perks geben **25 % XP für die zusätzlich erbeutete Ware** zurück – genau die
-XP, die Fisherman/Lumberjack sonst unterschlagen. Die Config modelliert sie nicht, `XP/h`
-ist bei Fishing und Woodcutting also eher zu niedrig, sofern man die Perks besitzt.
+Diese Perks geben **25 % XP für die zusätzlich erbeutete Ware** zurück – genau die XP, die
+Fisherman/Lumberjack sonst unterschlagen. Schalter: `extra_yield_xp=True` beim jeweiligen
+Skill in `SKILLS`, Anteil über `EXTRA_YIELD_XP_SHARE`.
+
+**Standardmäßig aus**, weil es ein eigener Kauf ist – wer The fisherman hat, hat nicht
+zwangsläufig auch Better fisherman. Der Zuschlag hängt am `yield_multiplier`, nicht an den
+Handschuhen (der Perk ist laut Wiki an The fisherman/The lumberjack gekoppelt):
+
+| Skill | `yield_multiplier` | XP-Faktor mit Schalter |
+|---|---|---|
+| Fishing, Woodcutting | 2,0 | ×1,25 |
+| Foraging | 1,5 | ×1,125 |
+
 Betrifft **nur die XP-Spalten, nicht Gold/h.**
 
 ## Offene Punkte
