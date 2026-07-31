@@ -17,8 +17,8 @@ from ...persistence import (
     get_point_by_id, shift_category_priorities, TEMPLATES_DIR,
 )
 from ...utils import (
-    confirm, is_cancel, ok, parse_non_negative_float, safe_input,
-    sanitize_filename,
+    confirm, eindeutiger_name, is_cancel, ok, parse_non_negative_float,
+    safe_input, sanitize_filename,
 )
 from .items import select_category
 from .markers import collect_marker_colors
@@ -89,14 +89,8 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         created_count = 0
         for slot_idx in range(start_slot - 1, end_slot):
             slot = slot_list[slot_idx]
-            item_name = f"{slot.name} Item"
-
-            # Eindeutigen Namen sicherstellen
-            base_name = item_name
-            counter = 1
-            while item_name in state.global_items:
-                counter += 1
-                item_name = f"{base_name} {counter}"
+            with state.lock:
+                item_name = eindeutiger_name(f"{slot.name} Item", state.global_items)
 
             priority = slot_idx - start_slot + 2
 

@@ -1529,5 +1529,32 @@ finally:
     _RS.execute_item_scan = _orig_iscan2
 
 
+# ------------------------------------------------------- Eindeutige Namen
+section("Namensvergabe kollidiert nicht mit bestehenden Eintraegen")
+from autoclicker.utils import eindeutiger_name as _en
+
+check("freier Name bleibt unveraendert", _en("Slot 5", {"Slot 1": 1}) == "Slot 5")
+check("belegter Name bekommt eine 2", _en("Slot 1", {"Slot 1": 1}) == "Slot 1 2")
+check("zaehlt weiter bis frei", _en("Slot 1", {"Slot 1": 1, "Slot 1 2": 1}) == "Slot 1 3")
+check("funktioniert auch mit einem Set", _en("A", {"A"}) == "A 2")
+check("leeres Verzeichnis: Name bleibt", _en("A", {}) == "A")
+# Der Fall aus der Praxis: 'Slot 2' geloescht -> len+1 zeigt auf das bestehende 'Slot 3'
+_bestand = {"Slot 1": 1, "Slot 3": 1}
+_vorschlag = f"Slot {len(_bestand) + 1}"
+check("len+1 trifft nach einem 'del' einen bestehenden Namen",
+      _vorschlag == "Slot 3" and _vorschlag in _bestand)
+check("...und wird auf einen freien Namen ausgewichen",
+      _en(_vorschlag, _bestand) == "Slot 3 2")
+
+# Und der Ablauf der Auto-Erkennung: N Slots anlegen darf nie einen bestehenden treffen
+_slots = {"Slot 1": "alt", "Slot 3": "alt"}
+for _ in range(4):
+    _n = _en(f"Slot {len(_slots) + 1}", _slots)
+    _slots[_n] = "neu"
+check("Auto-Erkennung ueberschreibt keinen bestehenden Slot",
+      _slots["Slot 1"] == "alt" and _slots["Slot 3"] == "alt")
+check("Auto-Erkennung legt alle 4 Slots wirklich an", len(_slots) == 6)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

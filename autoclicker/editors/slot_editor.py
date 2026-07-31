@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..models import ItemSlot, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, warn, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
+from ..utils import safe_input, sanitize_filename, eindeutiger_name, is_cancel, confirm, interactive_select, col, ok, err, warn, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
 from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, NUMPY_AVAILABLE,
@@ -483,12 +483,9 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     # Slots hinzufügen
     inset = state.config.scan_slot_inset
     added = 0
-    start_num = len(state.global_slots) + 1
     created_slots = []
 
     for i, (x, y, w, h_box) in enumerate(detected_slots):
-        slot_name = f"Slot {start_num + i}"
-
         abs_x = x + offset_x + inset
         abs_y = y + offset_y + inset
         abs_w = w - (2 * inset)
@@ -497,14 +494,19 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         scan_region = (abs_x, abs_y, abs_x + abs_w, abs_y + abs_h)
         click_pos = (abs_x + abs_w // 2, abs_y + abs_h // 2)
 
-        new_slot = ItemSlot(
-            name=slot_name,
-            scan_region=scan_region,
-            click_pos=click_pos,
-            slot_color=slot_color
-        )
-
+        # Namen erst im Lock vergeben, direkt vor dem Einfügen: 'Slot <len+1>'
+        # trifft nach einem gelöschten oder umbenannten Slot einen bestehenden
+        # Namen, und das Dict überschreibt ihn kommentarlos. 'add' und der
+        # Item-Lernpfad sichern das längst ab — hier fehlte es.
         with state.lock:
+            slot_name = eindeutiger_name(f"Slot {len(state.global_slots) + 1}",
+                                         state.global_slots)
+            new_slot = ItemSlot(
+                name=slot_name,
+                scan_region=scan_region,
+                click_pos=click_pos,
+                slot_color=slot_color
+            )
             state.global_slots[slot_name] = new_slot
         added += 1
         created_slots.append(new_slot)
@@ -543,7 +545,9 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
             cv2.line(preview, (click_x - cross_size, click_y), (click_x + cross_size, click_y), (0, 0, 255), 2)
             cv2.line(preview, (click_x, click_y - cross_size), (click_x, click_y + cross_size), (0, 0, 255), 2)
 
-            slot_num_text = str(start_num + i)
+            # Der tatsächlich vergebene Name, nicht die laufende Nummer: die beiden
+            # gehen auseinander, sobald ein Name schon belegt war.
+            slot_num_text = created_slots[i].name if i < len(created_slots) else str(i + 1)
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.6
             thickness = 2

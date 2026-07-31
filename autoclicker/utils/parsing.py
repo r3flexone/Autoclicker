@@ -214,6 +214,27 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
+def eindeutiger_name(basis: str, vergeben) -> str:
+    """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
+
+    Items, Slots und Presets liegen in Name→Eintrag-Dicts: ein doppelter Name
+    überschreibt den alten Eintrag still, und weil Scans ihre Slots/Items per
+    Name referenzieren, zeigt der Scan danach auf die neue Region statt ins
+    Leere — er läuft weiter und tut etwas anderes. Genau deshalb reicht es
+    nicht, sich auf 'Slot <len+1>' zu verlassen: sobald einer gelöscht oder
+    umbenannt wurde, ist die Nummerierung lückenhaft und die nächste Vergabe
+    trifft einen bestehenden Namen.
+
+    `vergeben` ist alles, was `in` beantwortet (Dict, Set, Liste).
+    """
+    if basis not in vergeben:
+        return basis
+    n = 2
+    while f"{basis} {n}" in vergeben:
+        n += 1
+    return f"{basis} {n}"
+
+
 # Kurze Zahlen-Arrays wieder auf eine Zeile ziehen: 2er (x,y), 3er (RGB), 4er (Region).
 # Das Vorzeichen MUSS mit: auf einem Monitor links vom Hauptbildschirm sind x/y negativ,
 # und ohne `-?` blieben genau diese Koordinaten mehrzeilig stehen - ausgerechnet die,
