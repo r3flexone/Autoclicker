@@ -228,7 +228,9 @@ Kettenanalyse den schnellsten Weg – der kann teurer und in Summe schlechter se
 Rohdaten-Tab sind alle Wege einzeln sichtbar.
 
 **Nur der letzte Schritt zählt XP.** `XP/h (letzter Schritt)` ignoriert die XP der
-Vorstufen.
+Vorstufen. Bei Auto-Cook ist der letzte Schritt das *Fischen*, nicht das Kochen – der
+Kochschritt findet ja nie statt. `FinalSkill` und `Level` kommen dort deshalb ebenfalls
+vom Fisch-Rezept, sonst stünde „FinalSkill: Cooking" neben „ChainSkills: Fishing".
 
 ## Wenn etwas nicht stimmt
 

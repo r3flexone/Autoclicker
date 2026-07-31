@@ -628,11 +628,26 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             max_liquidity_ratio = max(max_liquidity_ratio, actions_per_hour / m["buyVol"])
 
         skills_involved = sorted(set(s[1] for s in steps))
-        xp_per_unit_final_step = recipe["xp"] / recipe["item_amount"]
+        # Auto-Cook: die Kette FISCHT nur, der Kochschritt findet nie statt (s.
+        # resolve_chain). Das Koch-Rezept als "letzten Schritt" abzurechnen kreidete
+        # XP fuer eine Aktion an, die niemand ausfuehrt - bei cooked_tuna 72.000
+        # Cooking-XP/h statt der 27.000 Fishing-XP/h, die real anfallen. Skill und
+        # Level muessen aus demselben Grund vom Fisch-Rezept kommen, sonst steht in
+        # der Zeile "FinalSkill: Cooking" neben "ChainSkills: Fishing".
+        final_recipe, final_xp_teiler = recipe, recipe["item_amount"]
+        auto_cook_quelle = next(
+            (raw for raw, cooked in fish_to_cooked.items() if cooked == item_id), None)
+        if auto_cook_quelle is not None and auto_cook_quelle in recipe_by_output \
+                and AUTO_COOK_CHANCE > 0:
+            final_recipe = recipe_by_output[auto_cook_quelle]
+            # Pro Fischzug kommen item_amount * AUTO_COOK_CHANCE gekochte Stueck an
+            final_xp_teiler = final_recipe["item_amount"] * AUTO_COOK_CHANCE
+
+        xp_per_unit_final_step = final_recipe["xp"] / final_xp_teiler
 
         chain_results.append({
-            "Item": recipe["name"], "ItemID": item_id, "Level": recipe["level"],
-            "FinalSkill": recipe["skill"],
+            "Item": recipe["name"], "ItemID": item_id, "Level": final_recipe["level"],
+            "FinalSkill": final_recipe["skill"],
             "ChainSkills": " -> ".join(skills_involved),
             "ChainDepth": len(steps),
             "FullySelfSufficient": fully_self_sufficient,
