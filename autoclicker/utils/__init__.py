@@ -3,7 +3,7 @@ Utils-Subpaket: Konsole, I/O, Parsing.
 
 Modul-Aufteilung:
     console.py   ANSI-Farben, Status-Tags, Konsolen-Detection, Layout-Helper
-    io.py        safe_input, interactive_select, read_key, wait_while_paused
+    io.py        safe_input, interactive_select, read_key, read_command, wait_while_paused
     parsing.py   parse_time_input, parse_non_negative_*, format_duration, sanitize_filename, compact_json
 
 Re-exportiert die komplette bisherige API damit `from .utils import ...`
@@ -21,7 +21,7 @@ from .console import (
 from .io import (
     is_cancel, cancel_hint,
     flush_input_buffer, safe_input, confirm,
-    read_key, interactive_select,
+    read_key, read_command, interactive_select,
     wait_while_paused,
 )
 from .parsing import (
@@ -39,7 +39,7 @@ __all__ = [
     # io
     'is_cancel', 'cancel_hint',
     'flush_input_buffer', 'safe_input', 'confirm',
-    'read_key', 'interactive_select',
+    'read_key', 'read_command', 'interactive_select',
     'wait_while_paused',
     # parsing
     'parse_time_input', 'parse_non_negative_float', 'parse_non_negative_range',

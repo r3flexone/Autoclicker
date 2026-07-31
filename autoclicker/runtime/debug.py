@@ -38,7 +38,7 @@ from __future__ import annotations
 import time
 
 from ..models import AutoClickerState, SequenceStep
-from ..utils import col, dbg, describe_color, read_key
+from ..utils import col, dbg, describe_color, read_command
 from ..winapi import get_cursor_pos, set_cursor_pos
 
 # Ausgang einer Vorab-Entscheidung über einen Schritt (step_gate im manuellen Modus,
@@ -49,11 +49,16 @@ GATE_RUN = "run"        # Schritt normal ausführen
 GATE_SKIP = "skip"      # Diesen Schritt überspringen, Sequenz läuft normal weiter
 GATE_STOP = "stop"      # Sequenz abbrechen
 
-# Tasten im manuellen Modus
-_KEYS_RUN = ("w", "enter", " ")
-_KEYS_SKIP = ("s",)
+# Tasten im manuellen Modus. Buchstabe UND Pfeiltaste, weil beides ankommt und
+# niemand nachschlagen will, welche Variante gerade gilt.
+_KEYS_RUN = ("w", "enter", " ", "right")
+_KEYS_SKIP = ("s", "down")
 _KEYS_CONTINUE = ("c",)
 _KEYS_STOP = ("q", "escape")
+
+# Tasten im Punkte-Durchgang
+_KEYS_VOR = ("w", "d", "enter", " ", "right", "down")
+_KEYS_ZURUECK = ("a", "left", "up")
 
 
 def is_log_debug(state: AutoClickerState) -> bool:
@@ -226,11 +231,11 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         print(col(f"   Zeiger steht auf {ziel[2]} ({ziel[0]}, {ziel[1]}) - stimmt die Stelle?",
                   "gray"))
 
-    print(col("   [w] ausführen   [s] überspringen   [c] normal weiterlaufen   "
-              "[q] abbrechen", "yellow"))
+    print(col("   [w /→] ausführen   [s /↓] überspringen   [c] normal weiterlaufen   "
+              "[q /ESC] abbrechen", "yellow"))
 
     while not state.stop_event.is_set():
-        taste = (read_key() or "").lower()
+        taste = read_command()
         if taste in _KEYS_RUN:
             return GATE_RUN
         if taste in _KEYS_SKIP:
@@ -265,7 +270,8 @@ def walk_points(state: AutoClickerState) -> None:
     print()
     print(col(f"■ PUNKTE DURCHGEHEN ({len(punkte)} Punkte) - es wird nichts geklickt",
               "cyan"))
-    print(col("   [w] weiter   [a] zurück   [q] beenden", "yellow"))
+    print(col("   [w /→] weiter   [a /←] zurück   [q /ESC] beenden", "yellow"))
+    print(col("   (einzelner Tastendruck, kein Enter nötig)", "gray"))
 
     i = 0
     while 0 <= i < len(punkte):
@@ -276,12 +282,16 @@ def walk_points(state: AutoClickerState) -> None:
         print(f"   {i + 1}/{len(punkte)}  #{p.id} {p.name or '(ohne Name)'} "
               f"({p.x}, {p.y}){farbe}{quelle}")
 
-        taste = (read_key() or "").lower()
+        taste = read_command()
         if taste in _KEYS_STOP:
             break
-        if taste == "a":
+        if taste in _KEYS_ZURUECK:
             i = max(0, i - 1)
             continue
-        i += 1
+        if taste in _KEYS_VOR:
+            i += 1
+            continue
+        # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst
+        # schiebt jeder Fehlgriff den Durchgang vor und man sucht die Stelle neu.
 
     print(col("   Punkte-Durchgang beendet.", "cyan"))

@@ -380,14 +380,14 @@ check("manueller Modus schaltet Stufe 2 NICHT ein", _dbg.is_detail_debug(_st) is
 
 # Gate-Tasten
 _step = SequenceStep(x=100, y=200, delay_before=5, name="Testpunkt")
-_orig_read_key = _dbg.read_key
+_orig_read_key = _dbg.read_command
 _ergebnisse = {}
 for _taste in ("w", "enter", "s", "q", "c"):
     _st.step_mode = True
     _st.stop_event.clear()
-    _dbg.read_key = (lambda _t=_taste: _t)
+    _dbg.read_command = (lambda _t=_taste: _t)
     _ergebnisse[_taste] = _dbg.step_gate(_st, _step, "LOOP", 1, 3)
-_dbg.read_key = _orig_read_key
+_dbg.read_command = _orig_read_key
 check("Gate: 'w' fuehrt aus", _ergebnisse["w"] == _dbg.GATE_RUN)
 check("Gate: Enter fuehrt aus", _ergebnisse["enter"] == _dbg.GATE_RUN)
 check("Gate: 's' ueberspringt", _ergebnisse["s"] == _dbg.GATE_SKIP)
@@ -1870,6 +1870,121 @@ check("9 px Ausreisser -> abgelehnt", not _p)
 # Ergebnis davon ab, wie der Nutzer den Bereich gezogen hat
 _p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS, -50, -50), _INSET, (50, 50))
 check("Offset der markierten Region wird eingerechnet", _v == (0, 0))
+
+
+# ------------------------------------------------- Tasten in IDE-Konsolen
+section("Menue-Tasten wirken auch in IDE-Konsolen (kein msvcrt)")
+
+# _read_key_polling erkennt nur, was in _VK_MAP steht: Pfeile, Enter, Escape,
+# Ziffern — KEINE Buchstaben. Ein getipptes 'a' fiel durch, das Enter danach kam
+# als 'enter' an, und jede Taste landete auf demselben Zweig: im Punkte-Durchgang
+# lief 'a' (zurueck) vorwaerts, im manuellen Modus waren 's'/'c'/'q' unerreichbar.
+import autoclicker.utils.io as _IO
+
+check("_VK_MAP enthaelt weiterhin keine Buchstaben (nur fuer interactive_select)",
+      not any(0x41 <= _vk <= 0x5A for _vk in _IO._VK_MAP))
+check("read_command kennt alle 26 Buchstaben", len(_IO._VK_BUCHSTABEN) == 26)
+check("die Befehlstasten w/a/s/c/d/q sind dabei",
+      all(_b in _IO._VK_BUCHSTABEN.values() for _b in "wascdq"))
+
+# In der IDE-Konsole liest read_command per Polling MIT den Buchstaben — ohne Enter.
+_orig_real = _IO._REAL_CONSOLE
+_orig_poll = _IO._read_key_polling
+_gesehen = {}
+try:
+    _IO._REAL_CONSOLE = False          # IDE-Konsole erzwingen
+    _IO._read_key_polling = lambda zusatz=None: _gesehen.update(zusatz=zusatz) or "a"
+    check("IDE-Konsole: read_command liefert den Buchstaben direkt",
+          _IO.read_command() == "a")
+    check("IDE-Konsole: die Buchstaben werden ans Polling durchgereicht",
+          _gesehen["zusatz"] is _IO._VK_BUCHSTABEN)
+finally:
+    _IO._REAL_CONSOLE = _orig_real
+    _IO._read_key_polling = _orig_poll
+
+# Der eigentliche Beweis: der Navigationspfad durch walk_points
+import autoclicker.runtime.debug as _DBG
+from autoclicker.models import ClickPoint as _WCP
+
+
+def _walk_pfad(tasten):
+    """Gibt die Reihenfolge der besuchten Punkt-Indizes zurueck."""
+    st = AutoClickerState()
+    st.points = [_WCP(x=i * 10, y=i * 10, name=f"P{i}", id=i) for i in range(1, 6)]
+    besucht = []
+    folge = list(tasten)
+    _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
+    _DBG.read_command = lambda: folge.pop(0) if folge else "q"
+    _DBG.set_cursor_pos = lambda x, y: besucht.append(x // 10)
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _DBG.walk_points(st)
+    finally:
+        _DBG.read_command, _DBG.set_cursor_pos = _o_read, _o_cursor
+    return besucht
+
+
+check("walk: 'w' blaettert vorwaerts",
+      _walk_pfad(["w", "w", "w", "q"]) == [1, 2, 3, 4])
+check("walk: 'a' blaettert ZURUECK (lief vorher vorwaerts)",
+      _walk_pfad(["w", "w", "a", "q"]) == [1, 2, 3, 2])
+check("walk: 'a' am Anfang bleibt beim ersten Punkt",
+      _walk_pfad(["a", "a", "q"]) == [1, 1, 1])
+check("walk: Enter blaettert vorwaerts", _walk_pfad(["enter", "enter", "q"]) == [1, 2, 3])
+check("walk: 'q' beendet sofort", _walk_pfad(["q"]) == [1])
+check("walk: hin und zurueck landet wieder am Ausgangspunkt",
+      _walk_pfad(["w", "a", "q"]) == [1, 2, 1])
+# Pfeiltasten gleichwertig — die kommen in IDE-Konsolen ohnehin an
+check("walk: Pfeil rechts blaettert vorwaerts",
+      _walk_pfad(["right", "right", "q"]) == [1, 2, 3])
+check("walk: Pfeil links blaettert zurueck",
+      _walk_pfad(["right", "right", "left", "q"]) == [1, 2, 3, 2])
+check("walk: Pfeil runter/hoch wirken wie rechts/links",
+      _walk_pfad(["down", "down", "up", "q"]) == [1, 2, 3, 2])
+check("walk: 'd' blaettert vorwaerts (WASD)",
+      _walk_pfad(["d", "d", "q"]) == [1, 2, 3])
+check("walk: ESC beendet wie 'q'", _walk_pfad(["escape"]) == [1])
+# Fehlgriff darf nicht weiterblaettern — sonst sucht man die Stelle neu
+check("walk: unbekannte Taste bleibt stehen",
+      _walk_pfad(["x", "x", "w", "q"]) == [1, 1, 1, 2])
+
+# Manueller Modus: s/c/q waren unerreichbar, jede Taste fuehrte den Schritt aus
+from autoclicker.runtime.debug import (GATE_RUN as _GR, GATE_SKIP as _GS,
+                                       GATE_STOP as _GT)
+
+
+def _step_gate_mit(taste):
+    st = AutoClickerState()
+    st.step_mode = True
+    schritt = _SS(x=5, y=5, delay_before=0, name="s")
+    _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
+    _DBG.read_command = lambda: taste
+    _DBG.set_cursor_pos = lambda x, y: None
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            return _DBG.step_gate(st, schritt, "L", 1, 1), st
+    finally:
+        _DBG.read_command, _DBG.set_cursor_pos = _o_read, _o_cursor
+
+
+_g, _ = _step_gate_mit("w")
+check("manuell: 'w' fuehrt den Schritt aus", _g == _GR)
+_g, _ = _step_gate_mit("enter")
+check("manuell: Enter fuehrt den Schritt aus", _g == _GR)
+_g, _ = _step_gate_mit("s")
+check("manuell: 's' ueberspringt (war unerreichbar)", _g == _GS)
+_g, _st_c = _step_gate_mit("c")
+check("manuell: 'c' laeuft normal weiter (war unerreichbar)",
+      _g == _GR and _st_c.step_mode is False)
+_g, _st_q = _step_gate_mit("q")
+check("manuell: 'q' bricht ab (war unerreichbar)",
+      _g == _GT and _st_q.stop_event.is_set())
+_g, _ = _step_gate_mit("right")
+check("manuell: Pfeil rechts fuehrt aus", _g == _GR)
+_g, _ = _step_gate_mit("down")
+check("manuell: Pfeil runter ueberspringt", _g == _GS)
+_g, _st_e = _step_gate_mit("escape")
+check("manuell: ESC bricht ab", _g == _GT and _st_e.stop_event.is_set())
 
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")

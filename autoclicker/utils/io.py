@@ -193,21 +193,32 @@ def _read_key_msvcrt() -> str:
         return 'unknown'
 
 
-def _read_key_polling() -> str:
+def _read_key_polling(zusatz: dict | None = None) -> str:
     """Liest Tastendruck via GetAsyncKeyState (funktioniert in PyCharm/IDE).
 
     Nutzt die gleiche Windows API wie die Hotkeys - funktioniert überall,
     auch ohne echtes Console-Handle.
+
+    `zusatz` erweitert die Tastentabelle fuer diesen einen Aufruf — genutzt von
+    `read_command()` fuer die Buchstaben. Die stehen absichtlich nicht dauerhaft
+    in `_VK_MAP`: in `interactive_select` navigiert man mit Pfeilen und Ziffern,
+    da wuerde ein Buchstabe nur eine Auswahl ausloesen, die niemand wollte.
+
+    Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL
+    zaehlt: beim naechsten Aufruf steht sie schon als gedrueckt im Ausgangsbild.
     """
     user32 = ctypes.windll.user32
+    tasten = dict(_VK_MAP)
+    if zusatz:
+        tasten.update(zusatz)
 
     # Vorherige Zustände initialisieren (Flanken-Erkennung)
     prev_states = {}
-    for vk in _VK_MAP:
+    for vk in tasten:
         prev_states[vk] = bool(user32.GetAsyncKeyState(vk) & 0x8000)
 
     while True:
-        for vk, name in _VK_MAP.items():
+        for vk, name in tasten.items():
             is_down = bool(user32.GetAsyncKeyState(vk) & 0x8000)
             was_down = prev_states[vk]
             prev_states[vk] = is_down
@@ -232,6 +243,30 @@ def read_key() -> str:
     if _REAL_CONSOLE:
         return _read_key_msvcrt()
     return _read_key_polling()
+
+
+# Buchstabentasten fuer Menue-Befehle (w/a/s/c/q ...). Bewusst NICHT in _VK_MAP:
+# das gilt fuer interactive_select, wo Buchstaben nichts zu suchen haben — dort
+# navigiert man mit Pfeilen und waehlt mit Ziffern.
+_VK_BUCHSTABEN = {0x41 + _n: chr(ord('a') + _n) for _n in range(26)}
+
+
+def read_command() -> str:
+    """Liest einen Menü-Befehl wie 'w', 'a', 's', 'c', 'q' — ohne Enter.
+
+    Ein einzelner Tastendruck, in jeder Konsole: echte Konsolen ueber msvcrt,
+    PyCharm/IDE-Konsolen ueber GetAsyncKeyState-Polling.
+
+    Warum es das ueberhaupt gibt: `_read_key_polling()` erkennt nur, was in
+    `_VK_MAP` steht, und da stehen ausschliesslich Pfeile, Enter, Escape und
+    Ziffern — keine Buchstaben. In IDE-Konsolen fiel ein getipptes 'a' deshalb
+    durch; angekommen ist nur das Enter danach, und damit landete JEDE Taste auf
+    demselben Zweig. Im Punkte-Durchgang lief 'a' (zurueck) vorwaerts, im
+    manuellen Modus waren 's', 'c' und 'q' gar nicht erreichbar.
+    """
+    if _REAL_CONSOLE:
+        return (read_key() or "").lower()
+    return _read_key_polling(zusatz=_VK_BUCHSTABEN)
 
 
 # =============================================================================
