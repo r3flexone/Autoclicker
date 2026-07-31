@@ -321,6 +321,8 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
     print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
     print(f"  {col('check', 'yellow')}       - Setup prüfen (fehlende Templates, tote Verweise, leere Scans)")
+    print(f"  {col('fix', 'yellow')}         - Kalibrieren: einen Punkt neu setzen, Rest umrechnen "
+          f"{hint('(nach Bildschirm-Umbau)')}")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -348,6 +350,12 @@ def handle_show(state: AutoClickerState) -> None:
             if user_input.lower() in ("check", "pruefen", "prüfen"):
                 from .diagnose import pruefe_setup, print_bericht
                 print_bericht(pruefe_setup(state))
+                continue
+
+            if user_input.lower() in ("fix", "kalib", "kalibrieren"):
+                from .editors.import_export_editor import run_kalibrierung
+                run_kalibrierung(state)
+                print_points(state)
                 continue
 
             if user_input.lower() in ("list", "l"):

@@ -1669,5 +1669,139 @@ check("Auto-Erkennung ueberschreibt keinen bestehenden Slot",
 check("Auto-Erkennung legt alle 4 Slots wirklich an", len(_slots) == 6)
 
 
+# ------------------------------------------------------------- Kalibrierung
+section("Kalibrierung rechnet den Bestand auf ein neues Bildschirm-Layout um")
+
+# Nach einem Windows-Neuaufbau sitzen die Monitore anders im virtuellen Desktop:
+# alle gespeicherten Koordinaten sind um denselben Betrag verschoben. Ein neu
+# gesetzter Referenzpunkt liefert die Differenz, der Rest wird daraus umgerechnet.
+from autoclicker import import_export as _IE
+from autoclicker.models import (ItemSlot as _KIS, ItemProfile as _KIP,
+    BossScanConfig as _KBSC, BossProfile as _KBP, IconScanConfig as _KISC,
+    Sequence as _KSEQ, SequenceStep as _KSS, LoopPhase as _KLP,
+    WaitCondition as _KWC, ElseConfig as _KEC, ClickPoint as _KCP)
+
+_t = _IE.transform_aus_verschiebung((100, 200), (140, 175))       # +40 / -25
+check("ein Punkt ergibt eine reine Verschiebung",
+      (_t["offset_x"], _t["offset_y"], _t["scale_x"], _t["scale_y"]) == (40, -25, 1.0, 1.0))
+check("gleicher Punkt = Identitaet (nichts zu tun)",
+      _IE.ist_identitaet(_IE.transform_aus_verschiebung((5, 5), (5, 5))))
+check("verschobener Punkt ist keine Identitaet", not _IE.ist_identitaet(_t))
+# Zwei Punkte koennen zusaetzlich skalieren — fuer den Fall geaenderter Aufloesung
+check("zwei Punkte skalieren zusaetzlich",
+      _IE.remap_point(400, 600, _IE.compute_transform((0,0), (1000,1000),
+                                                      (0,0), (500,500))) == (200, 300))
+
+
+def _kalib_state():
+    """Ein Bestand mit je einem Vertreter jeder Koordinaten-Art."""
+    s = AutoClickerState()
+    s.points = [_KCP(x=100, y=200, name="Bank", id=1), _KCP(x=500, y=800, name="Ofen", id=2)]
+    s.global_slots = {"Slot 1": _KIS(name="Slot 1", scan_region=(10, 20, 60, 70),
+                                     click_pos=(35, 45))}
+    s.global_items = {"Erz": _KIP(name="Erz", confirm_point=_KCP(x=300, y=400, name=""))}
+    s.boss_scans = {"B": _KBSC(name="B", scan_region=(0, 0, 100, 100),
+                               bosses=[_KBP(name="Drache", action="click",
+                                            action_x=700, action_y=750)])}
+    _icon = _KISC(name="I", scan_region=(5, 5, 55, 55))
+    _icon.action_x, _icon.action_y = 60, 65
+    s.icon_scans = {"I": _icon}
+    s.global_bosses = [_KBP(name="Global", action="click", action_x=11, action_y=22)]
+    _schritt = _KSS(x=100, y=200, delay_before=0, name="klick", point_id=1)
+    _trig = _KSS(x=0, y=0, delay_before=0, name="trigger",
+                 wait_condition=_KWC(pixel=(640, 480), color=(1, 2, 3)),
+                 else_config=_KEC(action="click", x=900, y=950))
+    _shot = _KSS(x=0, y=0, delay_before=0, name="shot", screenshot_only=True,
+                 screenshot_region=(1, 2, 3, 4))
+    s.sequences = {"Seq": _KSEQ(name="Seq", init_steps=[_schritt],
+                                loop_phases=[_KLP("L", [_trig, _shot], 1)], end_steps=[])}
+    return s, _schritt, _trig, _shot
+
+
+# Die Vorschau darf nichts anfassen — sonst waere ein 'nein' beim Nachfragen wirkungslos
+_vs, _, _, _ = _kalib_state()
+_vorschau = _IE.kalibrier_vorschau(_vs, _t)
+check("Vorschau laesst den Bestand unveraendert",
+      (_vs.points[0].x, _vs.points[0].y) == (100, 200))
+check("Vorschau meldet vorher und nachher",
+      ("Punkt #1 Bank", (100, 200), (140, 175)) in _vorschau)
+
+# In einem temporaeren Verzeichnis arbeiten: kalibriere_bestand SCHREIBT
+_kalib_tmp = tempfile.mkdtemp()
+_kalib_cwd = _os.getcwd()
+_os.chdir(_kalib_tmp)
+try:
+    _st, _schritt, _trig, _shot = _kalib_state()
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _zahl = _IE.kalibriere_bestand(_st, _t, mit_scans=True, mit_sequenzen=True)
+
+    for _was, _ist, _soll in [
+        ("Punkt (der Referenzpunkt selbst)", (_st.points[0].x, _st.points[0].y), (140, 175)),
+        ("Punkt (ein anderer)", (_st.points[1].x, _st.points[1].y), (540, 775)),
+        ("Slot-Scanregion", _st.global_slots["Slot 1"].scan_region, (50, -5, 100, 45)),
+        ("Slot-Klickposition", _st.global_slots["Slot 1"].click_pos, (75, 20)),
+        ("Item-Bestaetigungsklick", (_st.global_items["Erz"].confirm_point.x,
+                                     _st.global_items["Erz"].confirm_point.y), (340, 375)),
+        ("Boss-Scanregion", _st.boss_scans["B"].scan_region, (40, -25, 140, 75)),
+        ("Boss-Klickaktion", (_st.boss_scans["B"].bosses[0].action_x,
+                              _st.boss_scans["B"].bosses[0].action_y), (740, 725)),
+        ("globaler Boss", (_st.global_bosses[0].action_x,
+                           _st.global_bosses[0].action_y), (51, -3)),
+        ("Icon-Scanregion", _st.icon_scans["I"].scan_region, (45, -20, 95, 30)),
+        ("Icon-Klickaktion", (_st.icon_scans["I"].action_x,
+                              _st.icon_scans["I"].action_y), (100, 40)),
+        ("Schritt mit point_id", (_schritt.x, _schritt.y), (140, 175)),
+        ("Trigger-Pixel", _trig.wait_condition.pixel, (680, 455)),
+        ("else-Klick", (_trig.else_config.x, _trig.else_config.y), (940, 925)),
+        ("Screenshot-Region", _shot.screenshot_region, (41, -23, 43, -21)),
+    ]:
+        check(f"kalibriert: {_was}", _ist == _soll)
+
+    # Umfang muss sich begrenzen lassen
+    _st2, _schritt2, _, _ = _kalib_state()
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.kalibriere_bestand(_st2, _t, mit_scans=False, mit_sequenzen=False)
+    check("nur Punkte: Punkt wandert",
+          (_st2.points[0].x, _st2.points[0].y) == (140, 175))
+    check("nur Punkte: Slot bleibt unberuehrt",
+          _st2.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
+    check("nur Punkte: Sequenz-Schritt bleibt unberuehrt",
+          (_schritt2.x, _schritt2.y) == (100, 200))
+
+    # Sequenz-DATEIEN erfassen, nicht nur die geladenen Sequenzen
+    from autoclicker.persistence import ensure_sequences_dir as _esd
+    from autoclicker.config import SEQUENCES_DIR as _SQD
+    _esd()
+    _sq = Path(_SQD) / "nicht_geladen.json"
+    _sq.write_text(json.dumps({
+        "name": "nicht_geladen", "schema_version": 2, "total_cycles": 1,
+        "init_steps": [{"x": 100, "y": 200, "delay_before": 0, "name": "a"}],
+        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+            {"x": 10, "y": 20, "delay_before": 0, "name": "b",
+             "wait_pixel": [640, 480], "wait_color": [1, 2, 3],
+             "else_action": "click", "else_x": 900, "else_y": 950}]}],
+        "end_steps": []}), encoding="utf-8")
+    _st3 = AutoClickerState()
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.kalibriere_bestand(_st3, _t, mit_scans=False, mit_sequenzen=True)
+    _d = json.loads(_sq.read_text(encoding="utf-8"))
+    _s0, _s1 = _d["init_steps"][0], _d["loop_phases"][0]["steps"][0]
+    check("nicht geladene Sequenzdatei wird mitgerechnet",
+          (_s0["x"], _s0["y"]) == (140, 175))
+    check("Trigger-Pixel in der Datei", _s1["wait_pixel"] == [680, 455])
+    check("else-Klick in der Datei", (_s1["else_x"], _s1["else_y"]) == (940, 925))
+    check("Farben bleiben unangetastet", _s1["wait_color"] == [1, 2, 3])
+
+    # Gegen-Verschiebung muss exakt zum Ausgangswert zurueckfuehren
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.kalibriere_bestand(_st3, _IE.transform_aus_verschiebung((140, 175), (100, 200)),
+                               mit_scans=False, mit_sequenzen=True)
+    _d2 = json.loads(_sq.read_text(encoding="utf-8"))
+    check("Rueckrechnung trifft den Ausgangswert genau",
+          (_d2["init_steps"][0]["x"], _d2["init_steps"][0]["y"]) == (100, 200))
+finally:
+    _os.chdir(_kalib_cwd)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

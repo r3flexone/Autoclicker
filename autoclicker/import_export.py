@@ -153,6 +153,151 @@ def transform_from_windows(src_window: tuple[int, int, int, int],
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
 
 
+def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
+    """Reine Verschiebung aus EINEM Referenzpunkt: wo er war, wo er hingehört.
+
+    Ein Punkt kann nur verschieben, nicht skalieren — dafür braucht es zwei
+    (`compute_transform`). Das reicht, solange die Auflösung dieselbe ist und sich
+    nur die Lage des Monitors im virtuellen Desktop geändert hat; genau das
+    passiert, wenn Windows die Bildschirme neu anordnet.
+    """
+    return {"scale_x": 1.0, "scale_y": 1.0,
+            "offset_x": neu[0] - alt[0], "offset_y": neu[1] - alt[1]}
+
+
+def ist_identitaet(transform: dict) -> bool:
+    """True, wenn der Transform nichts verändern würde."""
+    return (transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0
+            and round(transform["offset_x"]) == 0 and round(transform["offset_y"]) == 0)
+
+
+# =============================================================================
+# KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
+# =============================================================================
+#
+# Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand statt auf ein
+# frisch entpacktes Bundle. Der Import kann das nicht ersetzen: er legt Daten an,
+# statt vorhandene zu korrigieren — importiert man sein eigenes Export-ZIP zurück,
+# steht am Ende alles doppelt da.
+
+def kalibrier_vorschau(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
+    """Was der Transform ändern würde — (Bezeichnung, vorher, nachher), ohne Mutation."""
+    return [(label, (x, y), remap_point(x, y, transform))
+            for label, x, y in collect_click_positions(state)]
+
+
+def _remap_sequence_obj(seq, transform: dict) -> None:
+    """Wie _remap_sequence_data, aber auf einer geladenen Sequenz (in-place).
+
+    Die geladenen Sequenzen MÜSSEN mitgezogen werden, nicht nur die Dateien: sonst
+    schreibt der nächste `save_data()` den alten Stand aus dem Speicher wieder über
+    die frisch umgerechnete Datei.
+    """
+    phasen = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
+    for steps in phasen:
+        for s in steps:
+            s.x, s.y = remap_point(s.x, s.y, transform)
+            if s.wait_condition is not None:
+                px = s.wait_condition.pixel
+                s.wait_condition.pixel = remap_point(px[0], px[1], transform)
+            if s.else_config is not None:
+                ec = s.else_config
+                ec.x, ec.y = remap_point(ec.x, ec.y, transform)
+            if s.screenshot_region is not None:
+                s.screenshot_region = remap_region(s.screenshot_region, transform)
+
+
+def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
+                       mit_scans: bool = True, mit_sequenzen: bool = True) -> dict:
+    """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
+
+    Punkte immer; `mit_scans` zieht Slots, Item-Bestätigungsklicks sowie Boss-/
+    Icon-Scans mit; `mit_sequenzen` die Koordinaten in den Sequenz-DATEIEN (nicht
+    nur den geladenen) — Trigger-Pixel, else-Klicks, Screenshot-Regionen.
+
+    Schritte mit `point_id` werden mit umgerechnet, obwohl `resolve_point_references()`
+    sie beim nächsten Lauf ohnehin aus dem Punkt nachzieht: sonst stünde in der Datei
+    bis dahin eine Koordinate, die zu keinem Bildschirm mehr passt, und ein Schritt,
+    dessen Punkt fehlt, bliebe endgültig auf dem alten Wert stehen.
+
+    Gibt eine Zählung nach Bereich zurück.
+    """
+    from .persistence import list_available_sequences, save_points
+    from .utils import atomic_write, compact_json
+
+    zahl = {"punkte": 0, "slots": 0, "items": 0, "boss_scans": 0,
+            "icon_scans": 0, "bosse": 0, "sequenzen": 0}
+
+    # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
+    with state.lock:
+        for p in state.points:
+            p.x, p.y = remap_point(p.x, p.y, transform)
+            zahl["punkte"] += 1
+
+        if mit_scans:
+            for slot in state.global_slots.values():
+                slot.scan_region = remap_region(slot.scan_region, transform)
+                slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
+                zahl["slots"] += 1
+
+            for item in state.global_items.values():
+                if item.confirm_point is not None:
+                    cp = item.confirm_point
+                    cp.x, cp.y = remap_point(cp.x, cp.y, transform)
+                    zahl["items"] += 1
+
+            for cfg in state.boss_scans.values():
+                cfg.scan_region = remap_region(cfg.scan_region, transform)
+                for b in cfg.bosses:
+                    b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
+                zahl["boss_scans"] += 1
+
+            for b in state.global_bosses:
+                b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
+                zahl["bosse"] += 1
+
+            for cfg in state.icon_scans.values():
+                cfg.scan_region = remap_region(cfg.scan_region, transform)
+                cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
+                zahl["icon_scans"] += 1
+
+        # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
+        # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
+        if mit_sequenzen:
+            for seq in state.sequences.values():
+                _remap_sequence_obj(seq, transform)
+
+        boss_scans = list(state.boss_scans.values()) if mit_scans else []
+        icon_scans = list(state.icon_scans.values()) if mit_scans else []
+
+    save_points(state)
+    if mit_scans:
+        save_global_slots(state)
+        save_global_items(state)
+        save_global_bosses(state)
+        for cfg in boss_scans:
+            save_boss_scan(cfg)
+        for cfg in icon_scans:
+            save_icon_scan(cfg)
+
+    # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
+    if mit_sequenzen:
+        for _name, pfad in list_available_sequences():
+            try:
+                daten = json.loads(pfad.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+                logger.warning("Kalibrierung: %s nicht lesbar (%s)", pfad.name, e)
+                continue
+            _remap_sequence_data(daten, transform)
+            try:
+                atomic_write(pfad, compact_json(daten))
+                zahl["sequenzen"] += 1
+            except (IOError, OSError) as e:
+                logger.warning("Kalibrierung: %s nicht schreibbar (%s)", pfad.name, e)
+
+    return zahl
+
+
 # =============================================================================
 # EXPORT
 # =============================================================================

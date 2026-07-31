@@ -197,7 +197,8 @@ def _pruefe_koordinaten(state: AutoClickerState, bericht: Pruefbericht) -> None:
         bericht.melde(STUFE_FEHLER, f"Punkt #{p.id} {p.name}".strip(),
                       f"({p.x}, {p.y}) liegt ausserhalb aller Monitore "
                       f"({links},{oben})-({rechts},{unten})",
-                      "Punkt neu aufnehmen — Bildschirm-Layout hat sich geaendert?")
+                      "Bildschirm-Layout geaendert? Punkte-Menue -> 'fix' rechnet "
+                      "alle Koordinaten aus einem neu gesetzten Punkt um")
 
 
 def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:

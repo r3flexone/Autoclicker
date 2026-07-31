@@ -93,7 +93,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: check = Setup prüfen, walk, manuell, log/detail)')}")
+          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, manuell, log/detail)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()

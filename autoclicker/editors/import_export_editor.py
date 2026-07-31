@@ -488,3 +488,159 @@ def _ask_filepath() -> str | None:
         print(f"  {err(f'Datei nicht gefunden: {path}')}")
         return None
     return path
+
+
+# =============================================================================
+# KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
+# =============================================================================
+
+def run_kalibrierung(state: AutoClickerState) -> None:
+    """Rechnet alle gespeicherten Koordinaten auf ein geändertes Bildschirm-Layout um.
+
+    Der Nutzer setzt einen bekannten Punkt neu; die Differenz gilt für alles andere.
+    Optional ein zweiter Punkt, dann wird zusätzlich skaliert (andere Auflösung).
+    """
+    from ..import_export import (
+        compute_transform, transform_aus_verschiebung, ist_identitaet,
+        kalibrier_vorschau, kalibriere_bestand,
+    )
+    print(header("KALIBRIERUNG"))
+    print(f"  {breadcrumb('Punkte', 'Kalibrierung')}")
+    print()
+    print("  Wenn Windows die Bildschirme neu angeordnet hat, sind alle gespeicherten")
+    print("  Koordinaten um denselben Betrag verschoben. Du setzt EINEN Punkt neu,")
+    print("  der Rest wird daraus umgerechnet.")
+    print()
+
+    with state.lock:
+        punkte = list(state.points)
+    if not punkte:
+        print(f"  {err('Keine Punkte vorhanden — es gibt nichts zu kalibrieren.')}")
+        return
+
+    # --- Referenzpunkt 1: Verschiebung ------------------------------------------
+    ref1 = _kalib_referenz(state, punkte, "Referenzpunkt")
+    if ref1 is None:
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+    p_alt, p_neu = ref1
+    transform = transform_aus_verschiebung(p_alt, p_neu)
+
+    versatz = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
+    print()
+    print(f"  Verschiebung: {col(versatz, 'yellow')}")
+
+    # --- Referenzpunkt 2 (optional): Skalierung ---------------------------------
+    if len(punkte) > 1:
+        print()
+        print("  Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht —")
+        print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
+        if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
+            ref2 = _kalib_referenz(state, punkte, "Zweiter Referenzpunkt",
+                                   ausser=p_alt)
+            if ref2 is None:
+                print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
+            else:
+                q_alt, q_neu = ref2
+                transform = compute_transform(p_alt, q_alt, p_neu, q_neu)
+                faktor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
+                print()
+                print(f"  Skalierung: {col(faktor, 'yellow')}")
+
+    if ist_identitaet(transform):
+        print(f"\n  {info('Der Punkt sitzt schon richtig — nichts zu tun.')}")
+        return
+
+    # --- Vorschau ----------------------------------------------------------------
+    vorschau = kalibrier_vorschau(state, transform)
+    print()
+    print(col("  VORSCHAU (Auszug):", 'bold'))
+    for label, alt, neu in vorschau[:12]:
+        print(f"    {label:<34} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+    if len(vorschau) > 12:
+        print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
+
+    draussen = _ausserhalb_der_monitore([neu for _, _, neu in vorschau])
+    if draussen:
+        print()
+        print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
+        print(f"  {info('Meist heisst das: der Referenzpunkt lag auf einem anderen Bildschirm')}")
+        print(f"  {info('als diese Ziele — dann stimmt die Verschiebung fuer sie nicht.')}")
+
+    # --- Umfang -------------------------------------------------------------------
+    print()
+    print(col("  Was soll mitgezogen werden?", 'bold'))
+    umfang = interactive_select([
+        "Alles (Punkte, Slots, Scan-Regionen, Sequenzen)",
+        "Punkte + Slots/Scan-Regionen (Sequenzdateien unangetastet)",
+        "Nur die Punkte",
+    ], default=0)
+    if umfang < 0:
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+    mit_scans = umfang in (0, 1)
+    mit_sequenzen = umfang == 0
+
+    print()
+    print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
+    if not confirm("  Jetzt übernehmen?", default=False):
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+
+    zahl = kalibriere_bestand(state, transform, mit_scans=mit_scans,
+                              mit_sequenzen=mit_sequenzen)
+
+    print()
+    print(f"  {ok('Kalibriert:')}")
+    beschriftung = {"punkte": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+                    "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
+                    "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
+    for schluessel, anzahl in zahl.items():
+        if anzahl:
+            print(f"    {anzahl:>4}  {beschriftung[schluessel]}")
+    if mit_sequenzen:
+        print()
+        print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
+
+
+def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
+                    ausser: tuple | None = None):
+    """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
+
+    Gibt ((alt_x, alt_y), (neu_x, neu_y)) zurück oder None bei Abbruch.
+    """
+    from ..winapi import set_cursor_pos
+
+    auswahl = [p for p in punkte if ausser is None or (p.x, p.y) != ausser]
+    if not auswahl:
+        return None
+
+    print()
+    print(col(f"  {titel}:", 'bold'))
+    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in auswahl]
+    idx = interactive_select(beschriftung, default=0)
+    if idx < 0:
+        return None
+    punkt = auswahl[idx]
+
+    # Maus dorthin, wo der Punkt AKTUELL zeigt — dann sieht man die Abweichung
+    set_cursor_pos(punkt.x, punkt.y)
+    print(f"  Die Maus steht jetzt auf der GESPEICHERTEN Position ({punkt.x}, {punkt.y}).")
+    print("  Bewege sie dorthin, wo dieser Punkt WIRKLICH hingehört, dann Enter.")
+    print(f"  {info('(x = abbrechen)')}")
+    if is_cancel(safe_input("    > ").strip()):
+        return None
+    neu = get_cursor_pos()
+    print(f"    -> ({neu[0]}, {neu[1]})")
+    return (punkt.x, punkt.y), neu
+
+
+def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
+    """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
+    from ..diagnose import _virtueller_desktop
+    rect = _virtueller_desktop()
+    if rect is None:
+        return 0
+    links, oben, rechts, unten = rect
+    return sum(1 for x, y in ziele
+               if not (links <= x < rechts and oben <= y < unten))
