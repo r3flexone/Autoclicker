@@ -202,7 +202,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
             scan_name = f"Scan_{int(time.time())}"
         selected_slot_names = []
         selected_item_names = []
-        tolerance = 40
+        tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
 
     # Schritt 1: Slots auswählen
@@ -601,7 +601,7 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
         scan_name = "AutoScan"
 
     # Toleranz
-    tolerance = 40
+    tolerance = ItemScanConfig.color_tolerance
     try:
         tol_input = safe_input(f"Farbtoleranz (Enter = {tolerance}): ").strip()
         if tol_input:

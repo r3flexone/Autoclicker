@@ -1659,14 +1659,31 @@ check("len+1 trifft nach einem 'del' einen bestehenden Namen",
 check("...und wird auf einen freien Namen ausgewichen",
       _en(_vorschlag, _bestand) == "Slot 3 2")
 
-# Und der Ablauf der Auto-Erkennung: N Slots anlegen darf nie einen bestehenden treffen
+# Durchnummerierte Serien nehmen die erste FREIE Nummer statt einen Zaehler
+# anzuhaengen — 'Slot 3 2' waere ein Name, den niemand lesen will.
+from autoclicker.utils import naechster_freier_name as _nf
+
+check("Serie: leeres Verzeichnis beginnt bei 1", _nf("Slot", {}) == "Slot 1")
+check("Serie: Luecke wird aufgefuellt", _nf("Slot", {"Slot 1": 1, "Slot 3": 1}) == "Slot 2")
+check("Serie: lueckenlos zaehlt weiter",
+      _nf("Slot", {"Slot 1": 1, "Slot 2": 1, "Slot 3": 1}) == "Slot 4")
+
+# Der Ablauf der Auto-Erkennung: N Slots anlegen darf nie einen bestehenden treffen
 _slots = {"Slot 1": "alt", "Slot 3": "alt"}
+_vergeben = []
 for _ in range(4):
-    _n = _en(f"Slot {len(_slots) + 1}", _slots)
+    _n = _nf("Slot", _slots)
     _slots[_n] = "neu"
+    _vergeben.append(_n)
 check("Auto-Erkennung ueberschreibt keinen bestehenden Slot",
       _slots["Slot 1"] == "alt" and _slots["Slot 3"] == "alt")
 check("Auto-Erkennung legt alle 4 Slots wirklich an", len(_slots) == 6)
+check("Auto-Erkennung vergibt lesbare Namen",
+      _vergeben == ["Slot 2", "Slot 4", "Slot 5", "Slot 6"])
+
+# Beide Helfer haben ihren Platz: fuer einen VORGEGEBENEN Namen gibt es keine Serie
+check("eindeutiger_name bleibt fuer vorgegebene Namen zustaendig",
+      _en("Beutel oben", {"Beutel oben": 1}) == "Beutel oben 2")
 
 
 # ------------------------------------------------------------- Kalibrierung

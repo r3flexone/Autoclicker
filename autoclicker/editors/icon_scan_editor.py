@@ -152,7 +152,7 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
         template = None
         min_confidence = state.config.scan_min_confidence
         marker_colors = []
-        tolerance = 30
+        tolerance = IconScanConfig.color_tolerance
 
     # === SCHRITT 1: Scan-Region ===
     print(header("SCHRITT 1: SCAN-REGION (wo erscheint das Icon?)"))

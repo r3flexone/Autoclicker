@@ -214,6 +214,22 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
+def naechster_freier_name(praefix: str, vergeben) -> str:
+    """Erste freie Nummer einer Serie: 'Slot 1', 'Slot 2', ...
+
+    Fuer durchnummerierte Serien die bessere Wahl als `eindeutiger_name`: die fuellt
+    Luecken wieder auf und liefert saubere Namen, waehrend ein angehaengter Zaehler
+    'Slot 3 2' ergaebe. Genau deshalb machen es Scan-Studio und Slot-Erkennung gleich.
+
+    Fuer einen VORGEGEBENEN Namen, der zufaellig kollidiert, bleibt `eindeutiger_name`
+    zustaendig — dort gibt es keine Serie, an die man anschliessen koennte.
+    """
+    n = 1
+    while f"{praefix} {n}" in vergeben:
+        n += 1
+    return f"{praefix} {n}"
+
+
 def eindeutiger_name(basis: str, vergeben) -> str:
     """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
 

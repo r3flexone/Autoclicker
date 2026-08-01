@@ -36,6 +36,27 @@ except ImportError:
 
 PROVIDER_OLLAMA = "ollama"
 PROVIDER_LMSTUDIO = "lmstudio"
+
+# Standard-Endpunkte je Anbieter. An EINER Stelle, weil sie sonst dreifach dastehen:
+# hier fuer den Chat, hier fuer den Verbindungstest, und nochmal im Boss-Scan-Editor.
+DEFAULT_CHAT_ENDPOINT = {
+    PROVIDER_OLLAMA: "http://localhost:11434/api/chat",
+    PROVIDER_LMSTUDIO: "http://localhost:1234/v1/chat/completions",
+}
+DEFAULT_TEST_ENDPOINT = {
+    PROVIDER_OLLAMA: "http://localhost:11434/api/tags",
+    PROVIDER_LMSTUDIO: "http://localhost:1234/v1/models",
+}
+
+
+def chat_endpoint(provider: str) -> str:
+    """Chat-Endpunkt des Anbieters (LM Studio als Rueckfall)."""
+    return DEFAULT_CHAT_ENDPOINT.get(provider, DEFAULT_CHAT_ENDPOINT[PROVIDER_LMSTUDIO])
+
+
+def test_endpoint_for(provider: str) -> str:
+    """Endpunkt fuer den Verbindungstest (Modell-Liste statt Chat)."""
+    return DEFAULT_TEST_ENDPOINT.get(provider, DEFAULT_TEST_ENDPOINT[PROVIDER_LMSTUDIO])
 VALID_PROVIDERS = {PROVIDER_OLLAMA, PROVIDER_LMSTUDIO}
 
 
@@ -202,10 +223,7 @@ def analyze_image(
         return False, f"Unbekannter Provider: {provider}. Erlaubt: {VALID_PROVIDERS}", 0.0
 
     if endpoint is None:
-        if provider == PROVIDER_OLLAMA:
-            endpoint = "http://localhost:11434/api/chat"
-        else:
-            endpoint = "http://localhost:1234/v1/chat/completions"
+        endpoint = chat_endpoint(provider)
 
     if model is None:
         if provider == PROVIDER_OLLAMA:
@@ -436,10 +454,7 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
         return False, "HTTP-Bibliothek nicht verfügbar"
 
     if endpoint is None:
-        if provider == PROVIDER_OLLAMA:
-            endpoint = "http://localhost:11434/api/tags"
-        else:
-            endpoint = "http://localhost:1234/v1/models"
+        endpoint = test_endpoint_for(provider)
 
     try:
         req = urllib.request.Request(endpoint, method="GET")

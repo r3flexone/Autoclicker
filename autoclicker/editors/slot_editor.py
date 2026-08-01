@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..models import ItemSlot, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, eindeutiger_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
+from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
 from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, NUMPY_AVAILABLE,
@@ -534,8 +534,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         # Namen, und das Dict überschreibt ihn kommentarlos. 'add' und der
         # Item-Lernpfad sichern das längst ab — hier fehlte es.
         with state.lock:
-            slot_name = eindeutiger_name(f"Slot {len(state.global_slots) + 1}",
-                                         state.global_slots)
+            slot_name = naechster_freier_name("Slot", state.global_slots)
             new_slot = ItemSlot(
                 name=slot_name,
                 scan_region=scan_region,

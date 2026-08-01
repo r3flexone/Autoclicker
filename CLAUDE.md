@@ -9,6 +9,9 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 ## Run / Lint / Test
 
 ```bash
+python tools/test_logic.py      # DIE Test-Suite — laeuft auch auf Linux/Mac, Exit 0 = gruen
+python3 -m pyflakes autoclicker/ main.py tools/    # Linter
+
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
@@ -17,11 +20,19 @@ python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (-
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 ```
 
-Es gibt **keine Test-Suite und keinen Linter**. Vor Commits stattdessen:
-```bash
-python3 -c "import ast; [ast.parse(open(f).read()) for f in <changed-files>]"
-```
-Voller Import scheitert auf Linux an `msvcrt` — das ist normal, nicht reparieren.
+**`tools/test_logic.py` vor jedem Commit laufen lassen.** Es prüft Serialisierung,
+Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
+GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
+deshalb läuft die komplette Logik-Schicht auch hier.
+
+Regeln beim Erweitern:
+- **Jeder Bugfix bekommt einen Test**, der ohne den Fix umfällt. Gegenprobe: Fix
+  entschärfen, Test muss rot werden. Ein Test, der auch ohne den Fix grün bleibt,
+  prüft etwas anderes als er behauptet.
+- **Nicht die Implementierung abschreiben, sondern beide Seiten messen.** Wo Editor und
+  Runtime dieselbe Regel kennen müssen, fragt der Test beide und vergleicht.
+
+Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet.
 
 ## Architektur
 
@@ -207,9 +218,17 @@ Eintrag mit demselben Namen ersetzt den ersten kommentarlos — und weil Scans i
 und Items *per Name* referenzieren, zeigt der Scan danach nicht ins Leere, sondern auf den
 neuen Eintrag: er läuft weiter und tut etwas anderes. `len(...) + 1` als Namensvorschlag
 trägt das nicht, sobald einmal gelöscht oder umbenannt wurde. Wer einen Namen automatisch
-vergibt, nimmt `eindeutiger_name(basis, vorhandene)` aus `utils/parsing.py`; wer einen vom
-Nutzer eingegebenen Namen übernimmt, fragt vor dem Überschreiben (`create_slot`,
-`create_item` machen das vor).
+vergibt, nimmt einen der beiden Helfer aus `utils/parsing.py`; wer einen vom Nutzer
+eingegebenen Namen übernimmt, fragt vor dem Überschreiben (`create_slot`, `create_item`
+machen das vor).
+
+| Helfer | wofür | Beispiel |
+|---|---|---|
+| `naechster_freier_name(praefix, vorhandene)` | durchnummerierte **Serien** — füllt Lücken | `Slot 1`, `Slot 2`, … |
+| `eindeutiger_name(basis, vorhandene)` | ein **vorgegebener** Name, der kollidiert | `Beutel oben` → `Beutel oben 2` |
+
+Für Serien immer den ersten: ein angehängter Zähler ergäbe `Slot 3 2`, und das liest
+niemand gern.
 
 Dieselbe Regel gilt für **Identität außerhalb der Persistenz**: Loop-Phasen-Namen sind
 frei wählbar und doppelt vergebbar, deshalb hängt der Zeitplan-Zustand im Worker an der
@@ -314,6 +333,46 @@ Unbekannte Bosse (OCR/LLM erkennt einen Namen der nicht in der Liste ist) werden
 **Globale Boss-Bibliothek**: `state.global_bosses` (Editor: Boss-Scan-Menü → "Boss-Bibliothek verwalten") gilt zusätzlich in jedem Boss-Scan. `execute_boss_scan()` merged lokal + global im Lock-Snapshot; lokale Bosse gewinnen bei Namensgleichheit. Mit `boss_learn_global=true` (Config, umschaltbar im Boss-Scan-Menü) landen neu entdeckte Bosse in der Bibliothek statt im Scan.
 
 **Item-Auto-Lernen** (opt-in pro Scan, `ItemScanConfig.learn_unknown`): `execute_item_scan()` lernt unbekannte, nicht-leere Slot-Inhalte als neue globale Items (Kategorie 'Auto', Template + Marker) — nur nach `state.global_items`, nie in die Scan-Config, damit sie nicht ungeprüft geklickt werden. Dedup per Template-Match gegen alle globalen Items. Die Items heißen erst 'Auto <Slot>'; **die LLM-Benennung läuft bewusst NICHT im Scan** (würde den Worker pro Item bis `llm_timeout` blockieren), sondern manuell über den Item-Editor-Befehl `autoname` (`editors/item_editor/commands.py::handle_autoname_command`), der `llm_vision.suggest_item_name()` aus den gespeicherten Templates aufruft.
+
+### Koordinaten nach einem Bildschirm-Umbau
+
+Ändert Windows die Monitor-Anordnung, sind alle gespeicherten Koordinaten um denselben
+Betrag verschoben. Zwei Wege, und die Reihenfolge zählt:
+
+| Weg | wo | Genauigkeit |
+|---|---|---|
+| `repair` | Slot-Editor | **misst** die Slots neu — pixelgenau |
+| `fix` | Punkte-Menü (`CTRL+ALT+P`) | Referenzpunkt mit der Maus — ein paar Pixel Streuung |
+
+**Zuerst `repair`**, dann dessen gemessenen Versatz auf den Rest anwenden lassen: eine
+Maus-Position trifft den Pixel nie genau, und bei einer Scan-Region schneiden drei Pixel
+das Item-Icon an. `fix` bleibt für den Fall ohne Slots.
+
+Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
+`kalibriere_bestand()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
+und die Sequenz-**Dateien** um. Regeln:
+
+- **`mit_slots` steht getrennt von `mit_scans`.** Nach einer Reparatur dürfen die Slots
+  kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
+- **Geladene Sequenzen im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
+  der nächste `save_data()` den alten Stand aus dem Speicher zurück.
+- **Vorher sichern**: `sichere_vor_kalibrierung()` legt ein Export-ZIP an. Kein eigenes
+  Backup-Format — der Export kann das, der Import spielt es zurück.
+- `repair` übernimmt nur bei **eindeutiger Zuordnung**: gleiche Anzahl, gleiche Größe,
+  durchgängiger Versatz. Streuen die Einzelversätze, passiert nichts.
+
+### Tastendruck in Menüs
+
+`read_command()` aus `utils/io.py`, **nicht** `read_key()`. Das Polling für IDE-Konsolen
+kennt nur die Tasten aus `_VK_MAP` (Pfeile, Enter, Escape, Ziffern) — ein getipptes `a`
+fiel dort durch, und jede Taste landete auf demselben Zweig. `read_command()` schaltet die
+Buchstaben für diesen einen Aufruf dazu.
+
+Buchstaben gehören **nicht** dauerhaft in `_VK_MAP`: das gilt auch für
+`interactive_select`, wo mit Pfeilen navigiert und mit Ziffern gewählt wird.
+
+Menüs nehmen Buchstabe **und** Pfeiltaste (`_KEYS_VOR`/`_KEYS_ZURUECK` in
+`runtime/debug.py`). Eine unbekannte Taste blättert nicht weiter, sondern bleibt stehen.
 
 ### Region-Auswahl (Scan-Editoren)
 Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_capture.select_scan_region()` (Maus / manuelle Koordinaten / beibehalten). Die manuelle Eingabe wiederholt bei Fehleingabe statt den Editor abzubrechen; `None` = Abbruch (beim Bearbeiten bleibt die alte Region).

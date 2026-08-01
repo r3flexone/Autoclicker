@@ -26,7 +26,8 @@ from .io import (
 )
 from .parsing import (
     parse_time_input, parse_non_negative_float, parse_non_negative_range,
-    format_duration, sanitize_filename, eindeutiger_name, compact_json, atomic_write,
+    format_duration, sanitize_filename, eindeutiger_name, naechster_freier_name,
+    compact_json, atomic_write,
 )
 
 __all__ = [
@@ -43,6 +44,6 @@ __all__ = [
     'wait_while_paused',
     # parsing
     'parse_time_input', 'parse_non_negative_float', 'parse_non_negative_range',
-    'format_duration', 'sanitize_filename', 'eindeutiger_name',
+    'format_duration', 'sanitize_filename', 'eindeutiger_name', 'naechster_freier_name',
     'compact_json', 'atomic_write',
 ]

@@ -11,7 +11,8 @@ import json
 from pathlib import Path
 
 from ...models import ItemSlot, ItemProfile
-from ...utils import compact_json, atomic_write, sanitize_filename
+from ...utils import (compact_json, atomic_write, sanitize_filename,
+                      naechster_freier_name)
 from ...persistence.serialization import (
     _slot_to_dict, _item_to_dict, _item_from_dict, _slot_from_dict)
 from ...persistence.paths import TEMPLATES_DIR
@@ -53,10 +54,7 @@ def save_slots(slots: dict[str, ItemSlot], slots_file: str) -> bool:
 
 def next_slot_name(slots: dict[str, ItemSlot]) -> str:
     """Liefert einen freien Standard-Slotnamen ('Slot 1', 'Slot 2', ...)."""
-    n = 1
-    while f"Slot {n}" in slots:
-        n += 1
-    return f"Slot {n}"
+    return naechster_freier_name("Slot", slots)
 
 
 def normalize_region(x1: int, y1: int, x2: int, y2: int) -> tuple[int, int, int, int]:
@@ -108,10 +106,7 @@ def save_items(items: dict[str, ItemProfile], items_file: str) -> bool:
 
 def next_item_name(items: dict[str, ItemProfile]) -> str:
     """Liefert einen freien Standard-Itemnamen ('Item 1', 'Item 2', ...)."""
-    n = 1
-    while f"Item {n}" in items:
-        n += 1
-    return f"Item {n}"
+    return naechster_freier_name("Item", items)
 
 
 def existing_categories(items: dict[str, ItemProfile]) -> list[str]:

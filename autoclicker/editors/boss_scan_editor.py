@@ -393,7 +393,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             scan_name = f"BossScan_{int(time.time())}"
         scan_region = (0, 0, 100, 100)
         bosses = []
-        tolerance = 30
+        tolerance = BossScanConfig.color_tolerance
         default_action = BOSS_ACTION_SKIP
         default_scan = None
 
@@ -573,7 +573,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 def _test_llm_connection(state: AutoClickerState) -> None:
     """Testet die Verbindung zum LLM-Provider."""
     try:
-        from ..llm_vision import test_connection, PROVIDER_OLLAMA
+        from ..llm_vision import test_connection, test_endpoint_for, PROVIDER_OLLAMA
     except ImportError:
         print(f"\n  {err('LLM Vision Modul konnte nicht geladen werden!')}")
         return
@@ -585,10 +585,7 @@ def _test_llm_connection(state: AutoClickerState) -> None:
 
     # Teste den richtigen Endpoint (Tags/Models statt Chat)
     if endpoint is None:
-        if provider == PROVIDER_OLLAMA:
-            test_endpoint = "http://localhost:11434/api/tags"
-        else:
-            test_endpoint = "http://localhost:1234/v1/models"
+        test_endpoint = test_endpoint_for(provider)
     else:
         # Leite den Test-Endpoint vom Chat-Endpoint ab
         test_endpoint = endpoint
