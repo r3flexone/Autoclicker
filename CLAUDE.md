@@ -348,6 +348,15 @@ Betrag verschoben. Zwei Wege, und die Reihenfolge zählt:
 Maus-Position trifft den Pixel nie genau, und bei einer Scan-Region schneiden drei Pixel
 das Item-Icon an. `fix` bleibt für den Fall ohne Slots.
 
+**Einzelne Punkte statt aller**: Punkte-Menü → `walk`, dann `n` (Maus an die richtige
+Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmäßig
+verschoben ist, sondern einzelne Ziele umgezogen sind. Weil Schritte über `point_id` auf
+Punkte zeigen und ihre Koordinaten vor jedem Lauf von dort holen, repariert das jeden
+Schritt, der den Punkt benutzt — Wartezeiten, else-Aktionen und Scans bleiben unberührt.
+Schritte **ohne** `point_id` erreicht das nicht; die verknüpft man vorher im
+Sequenz-Editor mit `link`. Die Farbe wird beim Neusetzen mitgezogen, aber nur wenn der
+Punkt schon eine hatte — sonst schliche sich ein Trigger ein, den niemand gesetzt hat.
+
 Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
 `kalibriere_bestand()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
 und die Sequenz-**Dateien** um. Regeln:

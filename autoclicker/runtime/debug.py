@@ -254,12 +254,24 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
 
 
 def walk_points(state: AutoClickerState) -> None:
-    """Punkte einzeln durchgehen: der Zeiger springt auf jeden Punkt, du siehst wo er
-    landet und blätterst mit einem Tastendruck weiter. Kein Klick, nichts wird verändert.
+    """Punkte einzeln durchgehen — ansehen und bei Bedarf neu setzen.
+
+    Der Zeiger springt auf jeden Punkt, du siehst wo er landet und blätterst weiter.
+    Sitzt er falsch: Maus an die richtige Stelle, `n` drücken. Nichts wird geklickt.
+
+    Warum das hier steht und nicht im Sequenz-Editor: Schritte zeigen über `point_id`
+    auf Punkte und holen sich die Koordinaten vor jedem Lauf von dort
+    (`resolve_point_references`). Einen Punkt neu zu setzen repariert also JEDEN
+    Schritt, der ihn benutzt — Wartezeiten, else-Aktionen und Scans bleiben unberührt.
+    Schritte ohne `point_id` erreicht das nicht; die verknüpft man vorher im
+    Sequenz-Editor mit `link`.
 
     Läuft im Main-Thread (Hotkey-Handler), nicht im Worker - blockiert also nur die
     Hotkey-Loop, keine laufende Sequenz.
     """
+    from ..imaging import get_pixel_color
+    from ..persistence import save_points
+
     with state.lock:
         punkte = list(state.points)
 
@@ -271,8 +283,11 @@ def walk_points(state: AutoClickerState) -> None:
     print(col(f"■ PUNKTE DURCHGEHEN ({len(punkte)} Punkte) - es wird nichts geklickt",
               "cyan"))
     print(col("   [w /→] weiter   [a /←] zurück   [q /ESC] beenden", "yellow"))
+    print(col("   [n] Maus an die richtige Stelle, dann n = Punkt neu setzen", "yellow"))
+    print(col("   [f] nur die Farbe an dieser Stelle neu einlesen", "yellow"))
     print(col("   (einzelner Tastendruck, kein Enter nötig)", "gray"))
 
+    geaendert = 0
     i = 0
     while 0 <= i < len(punkte):
         p = punkte[i]
@@ -288,10 +303,51 @@ def walk_points(state: AutoClickerState) -> None:
         if taste in _KEYS_ZURUECK:
             i = max(0, i - 1)
             continue
+
+        if taste == "n":
+            neu_x, neu_y = get_cursor_pos()
+            if (neu_x, neu_y) == (p.x, p.y):
+                print(col("      Maus steht noch auf der alten Stelle - nichts geändert.",
+                          "yellow"))
+                continue
+            alt = (p.x, p.y)
+            with state.lock:
+                p.x, p.y = neu_x, neu_y
+                # Die Farbe gehört zur Position. Hatte der Punkt eine, wird sie
+                # mitgezogen — sonst zeigt ein Farb-Trigger auf die alte Farbe an
+                # der neuen Stelle und schlägt bei jedem Lauf fehl.
+                if p.color:
+                    neue_farbe = get_pixel_color(neu_x, neu_y)
+                    if neue_farbe:
+                        p.color = neue_farbe
+            save_points(state)
+            geaendert += 1
+            print(col(f"      gesetzt: {alt} -> ({neu_x}, {neu_y})"
+                      f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
+            i += 1
+            continue
+
+        if taste == "f":
+            neue_farbe = get_pixel_color(p.x, p.y)
+            if not neue_farbe:
+                print(col("      Farbe konnte nicht gelesen werden.", "yellow"))
+                continue
+            with state.lock:
+                alt_farbe, p.color = p.color, neue_farbe
+            save_points(state)
+            geaendert += 1
+            print(col(f"      Farbe: {color_swatch(alt_farbe) if alt_farbe else '(keine)'}"
+                      f"  ->  {color_swatch(neue_farbe)}", "green"))
+            continue
+
         if taste in _KEYS_VOR:
             i += 1
             continue
         # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst
         # schiebt jeder Fehlgriff den Durchgang vor und man sucht die Stelle neu.
 
+    if geaendert:
+        print(col(f"   {geaendert} Punkt(e) neu gesetzt und gespeichert.", "green"))
+        print(col("   Schritte mit point_id ziehen beim nächsten Lauf automatisch nach.",
+                  "gray"))
     print(col("   Punkte-Durchgang beendet.", "cyan"))

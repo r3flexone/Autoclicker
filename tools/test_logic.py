@@ -2021,6 +2021,61 @@ check("walk: ESC beendet wie 'q'", _walk_pfad(["escape"]) == [1])
 check("walk: unbekannte Taste bleibt stehen",
       _walk_pfad(["x", "x", "w", "q"]) == [1, 1, 1, 2])
 
+
+# 'n' setzt den Punkt auf die aktuelle Mausposition — damit repariert man eine Sequenz,
+# ohne Wartezeiten/else/Scans anzufassen: Schritte mit point_id ziehen automatisch nach.
+def _walk_setzen(tasten, maus, farbe=(9, 9, 9)):
+    """Gibt die Punkte nach dem Durchgang zurueck."""
+    st = AutoClickerState()
+    st.points = [_WCP(x=10, y=10, name="P1", id=1, color=(1, 2, 3)),
+                 _WCP(x=20, y=20, name="P2", id=2)]
+    folge = list(tasten)
+    _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
+    _o_get = _DBG.get_cursor_pos
+    import autoclicker.imaging as _IMG
+    import autoclicker.persistence as _PERS
+    _o_pix, _o_save = _IMG.get_pixel_color, _PERS.save_points
+    _DBG.read_command = lambda: folge.pop(0) if folge else "q"
+    _DBG.set_cursor_pos = lambda x, y: None
+    _DBG.get_cursor_pos = lambda: maus
+    _IMG.get_pixel_color = lambda x, y: farbe
+    _PERS.save_points = lambda s: None
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _DBG.walk_points(st)
+    finally:
+        _DBG.read_command, _DBG.set_cursor_pos = _o_read, _o_cursor
+        _DBG.get_cursor_pos = _o_get
+        _IMG.get_pixel_color, _PERS.save_points = _o_pix, _o_save
+    return st.points
+
+
+_pk = _walk_setzen(["n", "q"], maus=(77, 88))
+check("walk 'n': Punkt uebernimmt die Mausposition",
+      (_pk[0].x, _pk[0].y) == (77, 88))
+check("walk 'n': Farbe wird mitgezogen (sie gehoert zur Position)",
+      _pk[0].color == (9, 9, 9))
+check("walk 'n': andere Punkte bleiben unberuehrt",
+      (_pk[1].x, _pk[1].y) == (20, 20))
+check("walk 'n': Name und ID bleiben (Schritte zeigen per ID darauf)",
+      _pk[0].id == 1 and _pk[0].name == "P1")
+
+# Punkt ohne Farbe bekommt auch keine — sonst schleicht sich ein Trigger ein,
+# den niemand gesetzt hat
+_pk = _walk_setzen(["w", "n", "q"], maus=(55, 66))
+check("walk 'n': Punkt ohne Farbe bekommt keine", _pk[1].color is None)
+check("walk 'n': Position trotzdem gesetzt", (_pk[1].x, _pk[1].y) == (55, 66))
+
+# Maus steht noch auf der alten Stelle -> nichts tun, nicht weiterblaettern
+_pk = _walk_setzen(["n", "q"], maus=(10, 10))
+check("walk 'n' ohne Mausbewegung aendert nichts",
+      (_pk[0].x, _pk[0].y) == (10, 10))
+
+# 'f' liest nur die Farbe neu, die Position bleibt
+_pk = _walk_setzen(["f", "q"], maus=(77, 88), farbe=(4, 5, 6))
+check("walk 'f': nur die Farbe wird neu gelesen",
+      _pk[0].color == (4, 5, 6) and (_pk[0].x, _pk[0].y) == (10, 10))
+
 # Manueller Modus: s/c/q waren unerreichbar, jede Taste fuehrte den Schritt aus
 from autoclicker.runtime.debug import (GATE_RUN as _GR, GATE_SKIP as _GS,
                                        GATE_STOP as _GT)
