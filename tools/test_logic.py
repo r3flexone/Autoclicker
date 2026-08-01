@@ -2167,5 +2167,79 @@ check("get_screen_center faellt auf eine brauchbare Mitte zurueck",
       get_screen_center() == (960, 540))
 
 
+# ------------------------------------------- Klick-Schritte referenzieren Punkte
+section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
+
+# Der Punkt ist die Wahrheit, der Schritt verweist nur. Haelt ein Schritt seine
+# Koordinaten selbst, zieht ein verschobener Punkt ihn NICHT mit — und genau dafuer
+# gibt es point_id. Der Recorder legte frueher beides unabhaengig an: Schritte ohne
+# Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
+# Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
+from autoclicker.editors.sequence_recorder import punkte_fuer_events as _pfe
+
+_st_rec = AutoClickerState()
+_events = [(0.0, 100, 200, (1, 2, 3)), (1.0, 300, 400, None), (2.0, 100, 200, (1, 2, 3))]
+_map, _neu = _pfe(_st_rec, _events, "Aufnahme")
+check("Recorder legt fuer jede Position einen Punkt an", _neu == 2)
+check("gleiche Position zweimal geklickt -> nur ein Punkt", len(_st_rec.points) == 2)
+check("jede Klick-Position hat eine ID", set(_map) == {(100, 200), (300, 400)})
+check("beide Klicks auf dieselbe Stelle teilen sich die ID",
+      _map[(100, 200)] == _st_rec.points[0].id)
+
+# Bestehende Punkte gewinnen, statt Dubletten anzulegen
+_st_rec2 = AutoClickerState()
+_st_rec2.points = [_WCP(x=100, y=200, name="schon da", id=42)]
+_map2, _neu2 = _pfe(_st_rec2, _events, "Aufnahme")
+check("bestehender Punkt wird referenziert statt verdoppelt", _neu2 == 1)
+check("und behaelt seine ID", _map2[(100, 200)] == 42)
+
+# Die eigentliche Wirkung: Punkt verschieben -> Schritt zieht nach
+_seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
+    _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[(100, 200)])], 1)])
+_st_rec2.sequences = {"R": _seq_rec}
+_st_rec2.points[0].x, _st_rec2.points[0].y = 777, 888
+from autoclicker.persistence import resolve_point_references as _rpr
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _rpr(_st_rec2, _seq_rec)
+_schritt_rec = _seq_rec.loop_phases[0].steps[0]
+check("verschobener Punkt zieht den aufgenommenen Schritt mit",
+      (_schritt_rec.x, _schritt_rec.y) == (777, 888))
+
+# Node-Editor: ein Block AUS einem Punkt muss ihn auch referenzieren
+from autoclicker.editors.node_canvas.model import (step_from_point as _sfp,
+                                                   PalettePoint as _PP)
+_block = _sfp(_PP(id=7, x=11, y=22, name="Bank", color=(1, 2, 3)))
+check("Node-Editor: Block aus Punkt behaelt die Referenz", _block.point_id == 7)
+check("Node-Editor: Koordinaten und Farbe kommen mit",
+      (_block.x, _block.y) == (11, 22) and _block.recorded_color == (1, 2, 3))
+
+# Und die Gegenrichtung: kein Erzeuger von Klick-Schritten darf point_id vergessen.
+# Ein Blanko-Block (0,0) ist ausgenommen — der hat noch gar keine Position.
+import ast as _ast_p
+_KEIN_KLICK = {"wait_only", "item_scan", "boss_scan", "boss_watcher", "icon_scan",
+               "screenshot_only", "key_press"}
+_ohne_ref = []
+for _pf in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob("*.py")):
+    try: _b = _ast_p.parse(_pf.read_text(encoding="utf-8"))
+    except SyntaxError: continue
+    for _n in _ast_p.walk(_b):
+        if not (isinstance(_n, _ast_p.Call)
+                and getattr(_n.func, "id", None) == "SequenceStep"):
+            continue
+        _kw = {k.arg: k.value for k in _n.keywords}
+        if _KEIN_KLICK & set(_kw) or "point_id" in _kw:
+            continue
+        # Blanko: x=0, y=0 als Literale -> noch keine echte Position
+        def _null(a):
+            v = _kw.get(a)
+            return isinstance(v, _ast_p.Constant) and v.value == 0
+        if _null("x") and _null("y"):
+            continue
+        _ohne_ref.append(f"{_pf.name}:{_n.lineno}")
+check("kein Klick-Schritt wird ohne point_id gebaut", _ohne_ref == [])
+if _ohne_ref:
+    print("        " + ", ".join(_ohne_ref))
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

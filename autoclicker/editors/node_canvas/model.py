@@ -323,11 +323,18 @@ def ensure_else(step: SequenceStep, action: str) -> ElseConfig:
 
 
 def step_from_point(pt: PalettePoint) -> SequenceStep:
-    """Erzeugt einen Klick-Block aus einem Palette-Punkt (übernimmt x,y,Farbe)."""
+    """Erzeugt einen Klick-Block aus einem Palette-Punkt.
+
+    `point_id` MUSS mit: der Block kommt aus einem Punkt, also soll er ihm auch
+    folgen. Ohne die Referenz haelt er seine Koordinaten selbst, und ein spaeter
+    verschobener Punkt zieht ihn nicht mit — obwohl er aus genau diesem Punkt
+    entstanden ist. `resolve_point_references()` zieht x/y vor jedem Lauf nach.
+    """
     return SequenceStep(
         x=pt.x,
         y=pt.y,
         delay_before=0.0,
         name=pt.name,
         recorded_color=pt.color,
+        point_id=pt.id,
     )

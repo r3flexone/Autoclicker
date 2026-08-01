@@ -67,6 +67,42 @@ def start_recording(state: AutoClickerState) -> None:
         print("  Mögliche Ursache: Administratorrechte erforderlich.")
 
 
+def punkte_fuer_events(state: AutoClickerState, events: list,
+                       seq_name: str) -> tuple[dict, int]:
+    """Sorgt dafür, dass jeder aufgenommene Klick einen Punkt hat.
+
+    Gibt `({(x, y): point_id}, Anzahl neu angelegter)` zurück. Bestehende Punkte
+    gewinnen: liegt schon einer auf der Stelle, wird er referenziert statt ein
+    zweiter danebengelegt.
+
+    Warum das VOR dem Bauen der Schritte laufen muss: die Schritte sollen den Punkt
+    über `point_id` referenzieren, statt ihre Koordinaten selbst zu halten. Vorher
+    entstanden beide unabhängig voneinander — die Punkte wurden erst hinterher
+    angelegt, und nichts verband sie. Die Migration verknüpft zwar nach Koordinaten,
+    läuft aber nur auf Dateien mit ALTEM Schema; eine frisch aufgenommene Sequenz ist
+    bereits auf dem aktuellen Stand gestempelt und wurde deshalb nie verknüpft.
+
+    Folge war: ein später verschobener Punkt zog die Aufnahme nicht mit, obwohl beide
+    auf derselben Stelle sassen — genau die Unstimmigkeit, die `point_id` verhindern soll.
+    """
+    punkt_id_fuer: dict[tuple[int, int], int] = {}
+    neu = 0
+    with state.lock:
+        for p in state.points:
+            punkt_id_fuer.setdefault((p.x, p.y), p.id)
+        for i, (_t, x, y, color) in enumerate(events):
+            if (x, y) in punkt_id_fuer:
+                continue
+            pid = get_next_point_id(state)
+            state.points.append(
+                ClickPoint(x, y, f"{seq_name} {i + 1}", pid, color=color,
+                           source=f"Aufnahme '{seq_name}'")
+            )
+            punkt_id_fuer[(x, y)] = pid
+            neu += 1
+    return punkt_id_fuer, neu
+
+
 def stop_recording(state: AutoClickerState) -> None:
     """Stoppt die Aufnahme und baut eine Sequenz aus den Klicks."""
     with state.lock:
@@ -142,7 +178,12 @@ def stop_recording(state: AutoClickerState) -> None:
     if is_cancel(description):
         description = ""
 
-    # SequenceSteps aus den Events bauen
+    # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
+    punkt_id_fuer, added = punkte_fuer_events(state, events, seq_name)
+    if added:
+        save_points(state)
+
+    # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
     steps = []
     for i, (t, x, y, color) in enumerate(events):
         if i == 0:
@@ -150,7 +191,8 @@ def stop_recording(state: AutoClickerState) -> None:
         else:
             delay = round(events[i][0] - events[i - 1][0], 2)
         step = SequenceStep(x=x, y=y, delay_before=delay, name=f"Klick {i + 1}",
-                            recorded_color=color)
+                            recorded_color=color,
+                            point_id=punkt_id_fuer.get((x, y)))
         steps.append(step)
 
     loop_phase = LoopPhase(name="Loop", steps=steps, repeat=1)
@@ -166,26 +208,6 @@ def stop_recording(state: AutoClickerState) -> None:
         with state.lock:
             state.sequences[seq_name] = seq
             state.active_sequence = seq
-
-        # Klicks zusätzlich als globale Punkte ablegen, damit sie im normalen
-        # Editor (TUI) und in der Node-Editor-Palette auftauchen. Dedup nach
-        # exakter Position: bereits vorhandene Koordinaten werden nicht doppelt
-        # angelegt.
-        added = 0
-        with state.lock:
-            existing = {(p.x, p.y) for p in state.points}
-            for i, (t, x, y, color) in enumerate(events):
-                if (x, y) in existing:
-                    continue
-                pid = get_next_point_id(state)
-                state.points.append(
-                    ClickPoint(x, y, f"{seq_name} {i + 1}", pid, color=color,
-                               source=f"Aufnahme '{seq_name}'")
-                )
-                existing.add((x, y))
-                added += 1
-        if added:
-            save_points(state)
 
         cycles_str = "unendlich" if total_cycles == 0 else str(total_cycles)
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')

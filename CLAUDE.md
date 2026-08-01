@@ -127,6 +127,17 @@ weiter. Lieber ein Slot weniger als ein toter Scan.
 Beim Umbenennen bleibt `update_item_in_scans()` nötig: der Name *ist* die Referenz. Alles
 andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
 
+**Jeder Klick-Schritt wird MIT `point_id` gebaut**, nicht nachträglich verknüpft. Ein Test
+(`kein Klick-Schritt wird ohne point_id gebaut`) prüft jede `SequenceStep(...)`-Konstruktion
+im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Screenshot) und
+der Blanko-Block `(0, 0)` des Node-Editors, der noch gar keine Stelle hat.
+
+Darauf zu vertrauen, dass die Migration schon nachverknüpft, reicht **nicht**: sie läuft nur
+auf Dateien mit altem Schema. Frisch Gespeichertes trägt bereits die aktuelle Version und
+wird nie angefasst. Genau daran hing der Recorder — er legte Schritte und Punkte unabhängig
+voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft. `link` im
+Sequenz-Editor ist deshalb nur noch für Altbestände da, nicht Teil des normalen Wegs.
+
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
 ```
