@@ -225,6 +225,37 @@ Top-10 berechnet und konnte die Reihenfolge gar nicht mehr beeinflussen.
 Items ohne Messung behalten ihre Position hinter den gemessenen und lassen die Spalte leer
 – eine Zahl dort wäre eine Behauptung, die niemand geprüft hat.
 
+### Was du verlangen kannst, wenn du warten kannst
+
+Der Rest der Analyse rechnet mit dem **Sofortverkauf** ins beste Gebot. Wer das Gold nicht
+sofort braucht, stellt stattdessen ein eigenes Angebot ein und bekommt die Spanne zwischen
+Gebot und Angebot:
+
+| Spalte | Bedeutung |
+|---|---|
+| `Ansetzbarer Preis` | tiefstes fremdes Angebot −1 (unterbieten), nie unter dem besten Gebot |
+| `Erlös dabei (netto)` | davon nach 1 % Marktsteuer |
+| `Gold/h mit Geduld` | Stück/h × (Erlös − Materialkosten) |
+| `Aufschlag vs Sofort` | wie viel mehr als beim Reinverkaufen ins Gebot |
+| `Wartezeit (h)` | wie lange der Markt braucht, um **eine Stunde** Produktion aufzunehmen |
+| `Angebot im Buch` | wie viele Stück schon auf Käufer warten |
+
+Der Unterschied kann die Rangfolge umdrehen:
+
+```
+Item              sofort      mit Geduld    Aufschlag   Wartezeit
+dünnes Gebot     332.145      1.385.010        +39 %        20 h
+tiefes Buch      699.930        703.890         +1 %       2,7 h
+```
+
+Beim ersten Item ist Geduld viermal so viel wert – aber eine Stunde Produktion liegt dann
+20 Stunden im Buch. Sortieren lässt sich nach beidem: `RANKING_BASIS = "sofort"` (Standard)
+oder `"geduld"` in `config.py`.
+
+**Was die Wartezeit nicht modelliert:** Warteschlangen. Wer unterbietet, liegt vorn – aber
+der Nächste unterbietet zurück. Übrig bleibt die belastbare Frage, ob der Tagesumsatz die
+Menge überhaupt hergibt. `Angebot im Buch` steht als rohe Zahl daneben, ohne Modell.
+
 ### Preis-Position: ist die Momentaufnahme repräsentativ?
 
 Gold/h sagt nur, was der Markt **heute** zahlt. Die Spalten `Preis vs 30-Tage-Schnitt` und

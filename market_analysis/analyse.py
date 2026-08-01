@@ -1033,6 +1033,68 @@ def buy_levels_from_depth(depth: dict) -> list:
             if e.get("key") and e.get("value")]
 
 
+def sell_levels_from_depth(depth: dict) -> list:
+    """Verkaufsangebote als [(Preis, Menge)] - die Seite, gegen die DU konkurrierst,
+    wenn du ein eigenes Angebot einstellst statt ins Gebot zu verkaufen."""
+    return [(e["key"], float(e["value"])) for e in depth.get("lowestSellPricesWithVolume", [])
+            if e.get("key") and e.get("value")]
+
+
+def geduld_analyse(depth: dict | None, top_bid: float, stueck_h: float,
+                   kosten_je_stueck: float) -> dict:
+    """Was laesst sich verlangen, wenn man NICHT sofort verkaufen muss?
+
+    Der Rest der Analyse rechnet mit dem Sofortverkauf ins beste Gebot - richtig, wenn
+    das Gold jetzt gebraucht wird. Wer warten kann, stellt stattdessen ein eigenes
+    Angebot ein und bekommt die Spanne zwischen Gebot und Angebot.
+
+    Der ansetzbare Preis ist das tiefste fremde Angebot minus 1 (unterbieten = vorne in
+    der Schlange), aber nie unter dem besten Gebot - darunter wuerde man sofort ins
+    Gebot verkauft und waere wieder beim Sofortverkauf.
+
+    Die Wartezeit ist die ehrliche Kehrseite: eine Stunde Produktion braucht so lange,
+    wie der Markt braucht, um sie aufzunehmen. Produzierst du 1000/h und das Item
+    handelt 500 am Tag, liegt eine Stunde Arbeit 48 Stunden im Buch.
+    """
+    leer = {"preis": None, "erloes": None, "gold_h": None, "aufschlag": None,
+            "wartezeit_h": None, "angebot_im_buch": None}
+    if not depth or stueck_h <= 0:
+        return leer
+
+    angebote = sell_levels_from_depth(depth)
+    if angebote:
+        tiefstes = min(p for p, _ in angebote)
+        preis = max(tiefstes - 1, top_bid)
+    elif top_bid > 0:
+        # Kein fremdes Angebot: der Preis ist offen. Konservativ der 30-Tage-Schnitt,
+        # sonst wuerde eine leere Angebotsseite als beliebig hoher Preis durchgehen.
+        preis = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or top_bid
+    else:
+        return leer
+
+    if preis <= 0:
+        return leer
+
+    erloes = net_player_price(preis)
+    tagesvolumen = depth.get(COMPREHENSIVE_VOLUME_FIELD) or 0
+
+    # Wie lange der Markt braucht, um EINE Stunde Produktion aufzunehmen. Bewusst ohne
+    # Warteschlangen-Modell: wer unterbietet, liegt vorn — aber der naechste unterbietet
+    # zurueck. Was bleibt, ist die Frage, ob der Umsatz die Menge ueberhaupt hergibt.
+    wartezeit = (stueck_h / tagesvolumen * 24.0) if tagesvolumen > 0 else None
+
+    netto_bid = net_player_price(top_bid) if top_bid > 0 else 0.0
+    return {
+        "preis": preis,
+        "erloes": erloes,
+        "gold_h": stueck_h * (erloes - kosten_je_stueck),
+        "aufschlag": (erloes / netto_bid - 1.0) if netto_bid > 0 else None,
+        "wartezeit_h": wartezeit,
+        # Rohe Tatsache statt Modell: so viel wartet schon auf Kaeufer
+        "angebot_im_buch": sum(m for _, m in angebote),
+    }
+
+
 def _format_levels(levels: list, max_n: int = 5) -> str:
     top = sorted(levels, key=lambda x: x[0], reverse=True)[:max_n]
     return "  |  ".join(f"{p:,.0f}g x {m:,.0f}" for p, m in top)
@@ -1049,9 +1111,23 @@ def _preis_position_text(position: float | None, trend: str) -> str:
     return f"{satz}, Trend {trend}" if trend else satz
 
 
+def _geduld_text(geduld: dict | None) -> str:
+    """Was ein eigenes Angebot brächte - nur erwähnen, wenn es sich lohnt."""
+    if not geduld or geduld.get("aufschlag") is None or geduld["aufschlag"] < 0.02:
+        return ""
+    satz = (f"mit eigenem Angebot zu {geduld['preis']:,.0f}g waeren es "
+            f"{geduld['aufschlag']:+.0%} ({geduld['gold_h']:,.0f} Gold/h)")
+    warte = geduld.get("wartezeit_h")
+    if warte is not None:
+        satz += (f", 1 h Produktion liegt dann ~{warte:,.0f} h im Buch"
+                 if warte >= 1 else ", 1 h Produktion ist in unter 1 h weg")
+    return satz
+
+
 def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
              schnitt: float, verlust: float, warnung: str, abweichung: float = 0.0,
-             position: float | None = None, trend: str = "") -> str:
+             position: float | None = None, trend: str = "",
+             geduld: dict | None = None) -> str:
     """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
     if an_npc:
         if top_preis <= 0:
@@ -1082,6 +1158,9 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
     pos_text = _preis_position_text(position, trend)
     if pos_text:
         teile.append(pos_text)
+    geduld_text = _geduld_text(geduld)
+    if geduld_text:
+        teile.append(geduld_text)
     if warnung:
         teile.append(warnung)
     return "; ".join(teile) + "."
@@ -1091,6 +1170,9 @@ REASON_COLUMNS = [
     "Rang", "Item", "Gold/h realistisch", "Gold/h (Papier)", "Verkauf an", "Stück/h",
     "Bestes Gebot (brutto)", "Menge am besten Gebot", "Deckt Stunden",
     "Schnitt bei 1h Produktion (netto)", "Preisverlust",
+    # Wer nicht sofort verkaufen muss: eigenes Angebot einstellen statt ins Gebot
+    "Ansetzbarer Preis", "Erlös dabei (netto)", "Gold/h mit Geduld",
+    "Aufschlag vs Sofort", "Wartezeit (h)", "Angebot im Buch",
     "Preis vs 30-Tage-Schnitt", "Markt-Trend",
     "NPC-Preis", "NPC besser", "Kaufgebote (Stufen)", "Bewertung",
 ]
@@ -1192,6 +1274,10 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
 
         # Aus derselben Antwort, ohne zusaetzlichen Request
         position, trend = preis_position(referenz, depth)
+        kosten_je_stueck = (material_h / stueck_h) if stueck_h > 0 else 0.0
+        # Beim NPC gibt es nichts zu verhandeln — der zahlt immer denselben Preis.
+        geduld = (geduld_analyse(depth, top_preis, stueck_h, kosten_je_stueck)
+                  if not an_npc else geduld_analyse(None, 0.0, 0.0, 0.0))
 
         rows.append({
             "Rang": 0,   # wird nach der Neusortierung vergeben
@@ -1204,6 +1290,15 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
             "Deckt Stunden": round(deckung, 2) if deckung else None,
             "Schnitt bei 1h Produktion (netto)": round(schnitt, 2),
             "Preisverlust": f"-{verlust:.1%}" if verlust > 0.0005 else "0%",
+            "Ansetzbarer Preis": round(geduld["preis"], 2) if geduld["preis"] else None,
+            "Erlös dabei (netto)": round(geduld["erloes"], 2) if geduld["erloes"] else None,
+            "Gold/h mit Geduld": round(geduld["gold_h"]) if geduld["gold_h"] is not None else None,
+            "Aufschlag vs Sofort": (f"{geduld['aufschlag']:+.0%}"
+                                    if geduld["aufschlag"] is not None else None),
+            "Wartezeit (h)": (round(geduld["wartezeit_h"], 1)
+                              if geduld["wartezeit_h"] is not None else None),
+            "Angebot im Buch": (round(geduld["angebot_im_buch"])
+                                if geduld["angebot_im_buch"] is not None else None),
             "Preis vs 30-Tage-Schnitt": f"{position:+.0%}" if position is not None else None,
             "Markt-Trend": trend or None,
             "Gold/h realistisch": round(erloes - material_h),
@@ -1212,7 +1307,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
             "Kaufgebote (Stufen)": _format_levels(levels) if levels else "keine",
             "Bewertung": _verdict(an_npc, npc, top_preis, deckung, schnitt, verlust,
                                   "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
-                                  abweichung, position, trend),
+                                  abweichung, position, trend, geduld),
         })
 
     if not rows:
@@ -1222,7 +1317,16 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> pd.DataFram
     # gerechneten. Vorher wurde 'Gold/h realistisch' erst fuer die bereits feststehende
     # Top-10 ermittelt und konnte die Reihenfolge gar nicht mehr beeinflussen.
     df_reason = pd.DataFrame(rows, columns=REASON_COLUMNS)
-    df_reason = df_reason.sort_values("Gold/h realistisch", ascending=False).head(REASON_TOP_N)
+
+    # Welche der beiden gemessenen Zahlen den Rang bestimmt, haengt davon ab, ob das
+    # Gold sofort gebraucht wird (s. RANKING_BASIS). Fehlt die Geduld-Zahl - beim
+    # NPC-Verkauf gibt es nichts zu verhandeln -, zaehlt die Sofort-Zahl.
+    if RANKING_BASIS == "geduld":
+        schluessel = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
+    else:
+        schluessel = df_reason["Gold/h realistisch"]
+    df_reason = df_reason.assign(_rang=schluessel).sort_values(
+        "_rang", ascending=False).drop(columns=["_rang"]).head(REASON_TOP_N)
     df_reason["Rang"] = range(1, len(df_reason) + 1)
     return df_reason.reset_index(drop=True)
 

@@ -197,6 +197,16 @@ REASON_CANDIDATES = 30
 # Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).
 PRICE_POSITION_HINT_RATIO = 0.10
 
+# Wonach die Top-Liste sortiert wird:
+#   "sofort" - alles ins beste Gebot verkauft, Geld ist sofort da
+#   "geduld" - eigenes Angebot eingestellt und gewartet
+#
+# Der Unterschied ist gross: ein Item kann beim Sofortverkauf einbrechen (duennes Gebot)
+# und mit eigenem Angebot trotzdem das beste sein. Wer das Gold nicht sofort braucht,
+# stellt hier "geduld" ein — dann zaehlt aber die Spalte "Wartezeit (h)": eine Stunde
+# Produktion kann Tage im Buch liegen.
+RANKING_BASIS = "sofort"
+
 SHOW_LONGTERM_AVERAGES = False        # 1 Request PRO ITEM in Rohdaten -> Minuten
 LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05
 
