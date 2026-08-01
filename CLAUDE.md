@@ -325,6 +325,37 @@ Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_captur
 - **Commit-Messages auf Deutsch**, knapper Imperativ-Stil, mehrzeilig erlaubt für Begründung.
 - **Branch-Konvention**: Feature-Branches `claude/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
 
+### Plattform-Schicht (Windows-Abhängigkeiten)
+
+Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/test_logic.py`
+(`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf `ctypes.windll`,
+`ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt die Datei.
+
+| Modul | was |
+|---|---|
+| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie** |
+| `imaging.py` | Screenshot über GDI BitBlt |
+| `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
+| `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |
+
+Der Test prüft **beide** Richtungen: kein Windows-Aufruf außerhalb der Liste, und kein
+Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält — sonst wächst
+sie zur Fiktion.
+
+**Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
+lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnose`, `scan_studio`,
+`utils/console`), jedes Mal mit eigenen `SM_*`-Konstanten und eigenem `try/except`. Wer
+die Fenstergröße oder den virtuellen Desktop braucht, nimmt:
+
+- `get_virtual_desktop()` → `(l, t, r, b)` über alle Monitore, oder `None`
+- `get_virtual_origin()` → linke/obere Kante, `(0, 0)` als Rückfall
+- `get_screen_size()` → Primärmonitor, oder `None`
+- `get_screen_center()` → Mitte, mit Rückfallkette bis `(960, 540)`
+
+`None` statt `(0, 0, 0, 0)` ist Absicht: eine Fläche von 0×0 würde jede Koordinate als
+„außerhalb aller Monitore" melden — genau der Fehler, den `diagnose.py` sonst produziert
+hätte.
+
 ## Bekannte Stolperfallen
 
 - **Linux-Sandbox**: Voller Import scheitert an `msvcrt`/`ctypes.windll`. Für Korrektheits-Checks reicht `ast.parse`.

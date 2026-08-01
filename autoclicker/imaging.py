@@ -15,7 +15,7 @@ from typing import Optional
 from .config import CONFIG
 from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
-from .winapi import get_cursor_pos
+from .winapi import get_cursor_pos, get_virtual_desktop, get_virtual_origin
 
 # GDI32 Funktions-Deklarationen (restype nötig um Handle-Trunkierung auf 64-bit zu vermeiden)
 _gdi32 = ctypes.windll.gdi32
@@ -374,10 +374,7 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
         if region:
             # Bei Region: Erst alle Screens erfassen, dann zuschneiden
             full_screenshot = ImageGrab.grab(all_screens=True)
-            SM_XVIRTUALSCREEN = 76
-            SM_YVIRTUALSCREEN = 77
-            x_offset = ctypes.windll.user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-            y_offset = ctypes.windll.user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            x_offset, y_offset = get_virtual_origin()
             adjusted_region = (
                 region[0] - x_offset,
                 region[1] - y_offset,
@@ -411,14 +408,8 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
     bmp = None
     old_bmp = None
     try:
-        # Virtual Screen Metriken für Multi-Monitor-Support
-        SM_XVIRTUALSCREEN = 76   # Linke Kante des virtuellen Desktops
-        SM_YVIRTUALSCREEN = 77   # Obere Kante des virtuellen Desktops
-        SM_CXVIRTUALSCREEN = 78  # Breite des virtuellen Desktops
-        SM_CYVIRTUALSCREEN = 79  # Höhe des virtuellen Desktops
-
-        virtual_left = _user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-        virtual_top = _user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+        # Multi-Monitor: Ursprung des virtuellen Desktops (kann negativ sein)
+        virtual_left, virtual_top = get_virtual_origin()
 
         if region:
             left, top, right, bottom = region
@@ -428,10 +419,11 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
                 return None
         else:
             # Vollbild: gesamter virtueller Desktop (alle Monitore)
-            left = virtual_left
-            top = virtual_top
-            width = _user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
-            height = _user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+            rect = get_virtual_desktop()
+            if rect is None:
+                return None
+            left, top = rect[0], rect[1]
+            width, height = rect[2] - rect[0], rect[3] - rect[1]
 
         # Device Contexts - GetWindowDC(GetDesktopWindow()) liefert DC für gesamten virtuellen Desktop
         hwnd = _user32.GetDesktopWindow()

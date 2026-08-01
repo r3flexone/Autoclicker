@@ -2043,5 +2043,57 @@ _g, _st_e = _step_gate_mit("escape")
 check("manuell: ESC bricht ab", _g == _GT and _st_e.stop_event.is_set())
 
 
+# --------------------------------------------------- Plattform-Grenze
+section("Windows-Abhaengigkeiten liegen nur in der Plattform-Schicht")
+
+# Wer spaeter auf Linux portiert, muss genau diese Dateien anfassen — und sonst keine.
+# Ohne diesen Test wandert der naechste GetSystemMetrics-Aufruf wieder irgendwohin:
+# vorher lag dieselbe Abfrage fuenfmal im Baum (imaging, item_scan, diagnose,
+# scan_studio, console), jedes Mal mit eigenen SM_*-Konstanten.
+import re as _re_p
+
+PLATTFORM_MODULE = {
+    "autoclicker/winapi.py",        # Maus, Tastatur, Fenster, Hotkeys, Bildschirm-Geometrie
+    "autoclicker/imaging.py",       # Screenshot ueber GDI BitBlt
+    "autoclicker/utils/io.py",      # Tastendruck-Erfassung (msvcrt / GetAsyncKeyState)
+    "autoclicker/utils/console.py", # Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung
+}
+_WIN_MUSTER = _re_p.compile(r"ctypes\.(windll|WinDLL|WINFUNCTYPE)|\bwintypes\b|\bmsvcrt\b")
+
+_paket = Path(__file__).resolve().parent.parent / "autoclicker"
+_ausreisser = []
+for _pfad in sorted(_paket.rglob("*.py")):
+    _rel = _pfad.relative_to(_paket.parent).as_posix()
+    if _rel in PLATTFORM_MODULE:
+        continue
+    _treffer = _WIN_MUSTER.findall(_pfad.read_text(encoding="utf-8"))
+    if _treffer:
+        _ausreisser.append(f"{_rel} ({len(_treffer)}x)")
+
+check("kein Windows-Aufruf ausserhalb der Plattform-Schicht",
+      _ausreisser == [])
+if _ausreisser:
+    print("        " + "; ".join(_ausreisser))
+
+# Die Gegenrichtung: steht ein Modul auf der Liste, das gar nichts Windows-Spezifisches
+# mehr enthaelt, gehoert es runter — sonst waechst die Liste zur Fiktion.
+_ueberfluessig = [m for m in sorted(PLATTFORM_MODULE)
+                  if not _WIN_MUSTER.search((_paket.parent / m).read_text(encoding="utf-8"))]
+check("jedes gelistete Plattform-Modul ist auch wirklich eines", _ueberfluessig == [])
+if _ueberfluessig:
+    print("        unnoetig gelistet: " + ", ".join(_ueberfluessig))
+
+# Die Geometrie-Helfer muessen ohne Windows sauber None/Fallback liefern, sonst kann der
+# Rest des Baums sie nicht gefahrlos aufrufen.
+from autoclicker.winapi import (get_virtual_desktop, get_virtual_origin,
+                                get_screen_center, get_screen_size)
+check("get_virtual_desktop meldet None statt einer 0x0-Flaeche",
+      get_virtual_desktop() is None)
+check("get_screen_size meldet None statt 0x0", get_screen_size() is None)
+check("get_virtual_origin faellt auf (0, 0) zurueck", get_virtual_origin() == (0, 0))
+check("get_screen_center faellt auf eine brauchbare Mitte zurueck",
+      get_screen_center() == (960, 540))
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

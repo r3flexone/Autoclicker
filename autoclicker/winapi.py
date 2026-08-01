@@ -310,6 +310,63 @@ def remove_mouse_hook() -> None:
 
 
 # =============================================================================
+# BILDSCHIRM-GEOMETRIE
+# =============================================================================
+# Lag vorher fuenfmal im Baum verstreut (imaging, item_scan, diagnose, scan_studio,
+# console), jedes Mal mit eigenen SM_*-Konstanten und eigenem try/except. Genau solche
+# Kopien machen eine Portierung teuer: fuer Linux muesste man alle fuenf finden.
+
+_SM_CXSCREEN, _SM_CYSCREEN = 0, 1
+_SM_XVIRTUALSCREEN, _SM_YVIRTUALSCREEN = 76, 77
+_SM_CXVIRTUALSCREEN, _SM_CYVIRTUALSCREEN = 78, 79
+
+
+def get_screen_size() -> tuple[int, int] | None:
+    """Groesse des Primaermonitors, oder None wenn nicht ermittelbar."""
+    try:
+        b, h = user32.GetSystemMetrics(_SM_CXSCREEN), user32.GetSystemMetrics(_SM_CYSCREEN)
+    except (AttributeError, OSError):
+        return None
+    return (b, h) if b > 0 and h > 0 else None
+
+
+def get_virtual_desktop() -> tuple[int, int, int, int] | None:
+    """(links, oben, rechts, unten) ueber ALLE Monitore, oder None.
+
+    Auf Nicht-Windows (oder bei gestubbtem ctypes) kommt 0 zurueck - dann lieber None
+    liefern als eine Flaeche von 0x0 zu behaupten, gegen die jede Koordinate ausserhalb
+    liegt.
+    """
+    try:
+        x = user32.GetSystemMetrics(_SM_XVIRTUALSCREEN)
+        y = user32.GetSystemMetrics(_SM_YVIRTUALSCREEN)
+        b = user32.GetSystemMetrics(_SM_CXVIRTUALSCREEN)
+        h = user32.GetSystemMetrics(_SM_CYVIRTUALSCREEN)
+    except (AttributeError, OSError):
+        return None
+    if b <= 0 or h <= 0:
+        return None
+    return (x, y, x + b, y + h)
+
+
+def get_virtual_origin() -> tuple[int, int]:
+    """Linke/obere Kante des virtuellen Desktops. (0, 0), wenn nicht ermittelbar."""
+    rect = get_virtual_desktop()
+    return (rect[0], rect[1]) if rect else (0, 0)
+
+
+def get_screen_center() -> tuple[int, int]:
+    """Mitte des virtuellen Desktops, sonst des Primaermonitors, sonst 960x540."""
+    rect = get_virtual_desktop()
+    if rect:
+        return (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
+    groesse = get_screen_size()
+    if groesse:
+        return groesse[0] // 2, groesse[1] // 2
+    return 960, 540
+
+
+# =============================================================================
 # MAUS- UND TASTATUR-FUNKTIONEN
 # =============================================================================
 def get_cursor_pos() -> tuple[int, int]:

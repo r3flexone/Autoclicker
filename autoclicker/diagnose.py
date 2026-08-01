@@ -18,17 +18,13 @@ ist das in Ordnung, bei jedem Programmstart wäre es eine Bremse, die niemand be
 
 from __future__ import annotations
 
-import ctypes
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import AutoClickerState
 from .persistence import TEMPLATES_DIR
 from .utils import col, err, hint, info, ok, warn
-
-# Windows GetSystemMetrics: Spannweite des virtuellen Desktops (alle Monitore).
-_SM_XVIRTUALSCREEN, _SM_YVIRTUALSCREEN = 76, 77
-_SM_CXVIRTUALSCREEN, _SM_CYVIRTUALSCREEN = 78, 79
+from .winapi import get_virtual_desktop
 
 # Ab wie vielen gleichartigen Befunden nur noch gezählt statt aufgezählt wird.
 _MAX_EINZELN = 8
@@ -167,24 +163,9 @@ def _pruefe_llm_ocr(state: AutoClickerState, bericht: Pruefbericht) -> None:
                           "ocr_enabled in config.json setzen oder use_ocr abschalten")
 
 
-def _virtueller_desktop():
-    """(links, oben, rechts, unten) über alle Monitore — oder None, wenn nicht ermittelbar."""
-    try:
-        u = ctypes.windll.user32
-        x, y = u.GetSystemMetrics(_SM_XVIRTUALSCREEN), u.GetSystemMetrics(_SM_YVIRTUALSCREEN)
-        b, h = u.GetSystemMetrics(_SM_CXVIRTUALSCREEN), u.GetSystemMetrics(_SM_CYVIRTUALSCREEN)
-    except (AttributeError, OSError):
-        return None
-    # Auf Nicht-Windows (oder bei gestubbtem ctypes) kommt 0 zurück - dann lieber gar
-    # nicht pruefen als jede Koordinate faelschlich anmeckern.
-    if b <= 0 or h <= 0:
-        return None
-    return (x, y, x + b, y + h)
-
-
 def _pruefe_koordinaten(state: AutoClickerState, bericht: Pruefbericht) -> None:
     """Punkte außerhalb aller Monitore klicken ins Nichts."""
-    rect = _virtueller_desktop()
+    rect = get_virtual_desktop()
     if rect is None:
         return
     links, oben, rechts, unten = rect

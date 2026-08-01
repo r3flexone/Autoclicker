@@ -14,18 +14,8 @@ Liest/schreibt slots/slots.json — dieselbe Datei wie der Konsolen-Slot-Editor.
 import sys
 
 from .persistence import init_directories
+from .winapi import get_virtual_origin
 from .persistence.paths import SLOTS_FILE
-
-
-def _virtual_origin() -> tuple[int, int]:
-    """Linke/obere Kante des virtuellen Desktops (Multi-Monitor-Offset)."""
-    try:
-        import ctypes
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
-        u = ctypes.windll.user32
-        return u.GetSystemMetrics(SM_XVIRTUALSCREEN), u.GetSystemMetrics(SM_YVIRTUALSCREEN)
-    except (AttributeError, OSError):
-        return 0, 0
 
 
 def main(argv: list[str]) -> int:
@@ -48,7 +38,7 @@ def main(argv: list[str]) -> int:
         print("Screenshot fehlgeschlagen — Scan-Studio kann nicht starten.")
         return 1
 
-    vleft, vtop = _virtual_origin()
+    vleft, vtop = get_virtual_origin()
 
     from .editors.scan_canvas.canvas_dpg import ScanStudioApp
     app = ScanStudioApp(img, vleft, vtop, SLOTS_FILE)
