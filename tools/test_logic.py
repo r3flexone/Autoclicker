@@ -2343,5 +2343,75 @@ finally:
     _os.chdir(_once_cwd)
 
 
+# ------------------------------------------------ Item-Scan-Assistent
+section("Mehrfachauswahl im Item-Scan-Assistenten")
+
+# Schritt 1 (Slots) und Schritt 2 (Items) hatten dieselbe Schleife zweimal
+# ausgeschrieben. Jetzt eine — und die ist testbar, weil sie nur safe_input braucht.
+import autoclicker.editors.item_scan_editor as _ISE
+from autoclicker.editors.item_scan_editor import bereich_parsen as _bp
+
+check("Bereich '1-5' wird gelesen", _bp("1-5", 10) == (1, 5))
+check("Bereich rueckwaerts wird normalisiert", _bp("5-1", 10) == (1, 5))
+check("Bereich ausserhalb der Liste -> None", _bp("1-11", 10) is None)
+check("Bereich mit 0 -> None", _bp("0-3", 10) is None)
+check("kein Bereich -> None", _bp("7", 10) is None)
+check("Unsinn mit Strich -> None", _bp("a-b", 10) is None)
+check("zu viele Teile -> None", _bp("1-2-3", 10) is None)
+
+
+def _auswahl(eingaben, eintraege=None, vorgewaehlt=(), **kw):
+    """Fuettert mehrfach_auswahl mit einer Tastenfolge."""
+    eintraege = list(eintraege if eintraege is not None else ["A", "B", "C", "D"])
+    folge = list(eingaben)
+    _o = _ISE.safe_input
+    _ISE.safe_input = lambda _p="": folge.pop(0) if folge else "cancel"
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            return _ISE.mehrfach_auswahl(
+                "> ", eintraege, list(vorgewaehlt),
+                lambda i, n, an: f"{i} {n} {an}", **kw)
+    finally:
+        _ISE.safe_input = _o
+
+
+check("Einzelauswahl per Nummer", _auswahl(["2", "done"]) == ["B"])
+check("nochmal dieselbe Nummer waehlt ab", _auswahl(["2", "2", "done"]) == [])
+check("Bereich waehlt mehrere", _auswahl(["2-4", "done"]) == ["B", "C", "D"])
+check("'all' waehlt alles", _auswahl(["all", "done"]) == ["A", "B", "C", "D"])
+check("'clear' leert die Auswahl", _auswahl(["all", "clear", "done"]) == [])
+check("Vorauswahl bleibt erhalten",
+      _auswahl(["done"], vorgewaehlt=["C"]) == ["C"])
+check("'cancel' gibt None zurueck", _auswahl(["2", "cancel"]) is None)
+check("Bereich fuegt nichts doppelt hinzu",
+      _auswahl(["1-3", "2-4", "done"]) == ["A", "B", "C", "D"])
+check("ungueltige Nummer aendert nichts", _auswahl(["9", "1", "done"]) == ["A"])
+check("unbekannter Befehl aendert nichts", _auswahl(["quatsch", "1", "done"]) == ["A"])
+check("'show' aendert die Auswahl nicht", _auswahl(["1", "show", "done"]) == ["A"])
+
+# leer_fehler erzwingt mindestens einen Eintrag — 'done' darf dann nicht durchgehen
+check("leer_fehler: 'done' ohne Auswahl wird abgelehnt",
+      _auswahl(["done", "1", "done"], leer_fehler="Mindestens 1!") == ["A"])
+check("ohne leer_fehler ist eine leere Auswahl erlaubt", _auswahl(["done"]) == [])
+
+# Der 'new'-Befehl haengt einen Eintrag an UND waehlt ihn aus
+_neu_liste = ["A", "B"]
+_ergebnis = _auswahl(["new 1", "done"], eintraege=_neu_liste,
+                     extra_praefix="new", extra_fn=lambda roh: "Frisch")
+check("'new' waehlt den neuen Eintrag gleich mit", _ergebnis == ["Frisch"])
+check("'new' bekommt die Roh-Eingabe (Slot-Nummer bleibt lesbar)",
+      _auswahl(["new 3", "done"], extra_praefix="new",
+               extra_fn=lambda roh: roh) == ["new 3"])
+check("'new' ohne Ergebnis aendert nichts",
+      _auswahl(["new 1", "done"], extra_praefix="new",
+               extra_fn=lambda roh: None) == [])
+
+# Regression: '1-5' darf nicht als unbekannter Befehl durchfallen, und 'new' nicht
+# als Bereich gelesen werden (beides stand vorher in derselben elif-Kette)
+check("'new' wird nicht als Bereich missverstanden",
+      _auswahl(["new-quatsch", "1", "done"], extra_praefix="new",
+               extra_fn=lambda roh: None) == ["A"])
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

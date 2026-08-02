@@ -92,6 +92,17 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 - **Bearbeiten = aktuellen Wert vorauswählen**: `interactive_select(..., default=<idx>)` bei Edit-Flows, damit Enter nichts überschreibt.
 - **Vor Editoren mit Konsolen-Input**: `_block_if_recording(state)` + `_block_if_running(state)` aus `handlers.py` (sonst kollidiert Konsolen-Input mit Worker/Recorder). Beide melden selbst und geben `True` zurück, wenn der Handler abbrechen soll.
 - **Feedback-Bausteine** aus `utils/console.py` nutzen: `ok/err/warn/info/hint`, `header`, `breadcrumb`, `cmd_hint`, `describe_color` — keine rohen ANSI-Strings.
+- **Mehrfachauswahl aus einer Liste**: `mehrfach_auswahl()` aus `editors/item_scan_editor.py`
+  (`<Nr>`, `<Von>-<Bis>`, `all`, `clear`, `show`, `done`, `cancel`, optional ein eigener
+  Befehl wie `new <Slot-Nr>`). Sie stand vorher zweimal ausgeschrieben da — für Slots und
+  für Items —, und eine Korrektur an der einen ging an der anderen vorbei.
+
+**Assistenten in Stufen zerlegen, nicht am Stück schreiben.** `edit_item_scan()` war
+450 Zeilen mit 125 Verzweigungen; jetzt ruft sie `_schritt_presets` → Auswahl → Auswahl →
+`_schritt_toleranz` → `_schritt_auto_lernen` und speichert. Jede Stufe gibt ihr Ergebnis
+zurück oder signalisiert Abbruch (`None` bzw. `False`). Das ist auch der einzige Weg, an
+Editor-Code überhaupt Tests zu bekommen: was nur `safe_input` braucht, lässt sich mit
+einer Tastenfolge füttern — `mehrfach_auswahl` hat so 24 Tests, wo vorher keiner war.
 
 ### Referenzen statt Kopien
 Zwei Stellen, an denen früher eine Kopie lag und deshalb still veraltete. Beide folgen
