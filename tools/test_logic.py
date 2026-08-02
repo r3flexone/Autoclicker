@@ -2240,6 +2240,49 @@ check("kein Klick-Schritt wird ohne point_id gebaut", _ohne_ref == [])
 if _ohne_ref:
     print("        " + ", ".join(_ohne_ref))
 
+# Altbestand: Aufnahmen von VOR dem Fix stehen schon auf Schema 2 und wurden von der
+# Kette nie angefasst. Der Migrationsschritt v2->v3 holt sie einmal nach — von selbst
+# beim Start, nicht per Hand ueber 'link'.
+from autoclicker.persistence.migration import (migrate as _mig, KIND_SEQUENCE as _KSQ,
+                                               SCHEMA_VERSION as _SV)
+
+_alt_punkte = [{"id": 5, "x": 100, "y": 200, "name": "Bank"},
+               {"id": 6, "x": 300, "y": 400, "name": "Ofen"},
+               {"id": 7, "x": 50, "y": 50, "name": "A"},
+               {"id": 8, "x": 50, "y": 50, "name": "B"}]   # zwei auf derselben Stelle
+_alt_seq = {"name": "Aufnahme", "schema_version": 2, "total_cycles": 1,
+            "init_steps": [], "end_steps": [],
+            "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
+                {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"},
+                {"x": 300, "y": 400, "delay_before": 1.5, "name": "Klick 2"},
+                {"x": 50, "y": 50, "delay_before": 0.5, "name": "Klick 3"},
+                {"x": 0, "y": 0, "delay_before": 2, "name": "Taste", "key_press": "f"},
+            ]}]}
+
+_gehoben, _meld = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _alt_punkte})
+_gs = _gehoben["loop_phases"][0]["steps"]
+check("Altbestand: Schema wird auf die aktuelle Version gehoben",
+      _gehoben["schema_version"] == _SV)
+check("Altbestand: eindeutige Schritte werden verknuepft",
+      (_gs[0].get("point_id"), _gs[1].get("point_id")) == (5, 6))
+check("Altbestand: zwei Punkte auf derselben Stelle bleiben unverknuepft",
+      _gs[2].get("point_id") is None)
+check("Altbestand: ein Tastendruck bekommt keinen Punkt",
+      _gs[3].get("point_id") is None)
+check("Altbestand: Wartezeiten bleiben unberuehrt",
+      [s["delay_before"] for s in _gs] == [0, 1.5, 0.5, 2])
+check("Altbestand: die Migration meldet, was sie getan hat",
+      any("verknüpft" in m for m in _meld))
+
+# Idempotent: der zweite Start darf nichts mehr finden
+_zweimal, _meld2 = _mig(json.loads(json.dumps(_gehoben)), _KSQ, {"points": _alt_punkte})
+check("Altbestand: zweiter Lauf aendert nichts", _zweimal == _gehoben and _meld2 == [])
+
+# Und ohne Punkte im Kontext darf nichts kaputtgehen
+_ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": []})
+check("Altbestand: ohne Punkte bleibt alles unverknuepft statt zu scheitern",
+      all(s.get("point_id") is None for s in _ohne_punkte["loop_phases"][0]["steps"]))
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

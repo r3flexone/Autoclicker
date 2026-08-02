@@ -33,7 +33,7 @@ from typing import Callable, Optional
 
 # Aktuelles Schema. Bei jeder Änderung, die alte Dateien unlesbar oder unsauber macht:
 # hochzählen UND einen Schritt in die passende Kette eintragen.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 VERSION_KEY = "schema_version"
 
@@ -225,6 +225,36 @@ def _seq_v1_to_v2(data: dict, context: dict) -> list[str]:
     return [f"{umbenannt} Schritt(e): delay_after -> delay_before"] if umbenannt else []
 
 
+def _seq_v2_to_v3(data: dict, context: dict) -> list[str]:
+    """Verknüpft Klick-Schritte nachträglich mit ihrem Punkt (`point_id`).
+
+    Warum ein eigener Schritt, obwohl v0→v1 schon verknüpft: der Recorder legte
+    Schritte und Punkte unabhängig voneinander an, ohne Referenz dazwischen. Die
+    Sequenz wurde dabei sofort auf die damals aktuelle Version gestempelt — also
+    lief die Kette nie über sie, und die Verknüpfung passierte nie.
+
+    Der Recorder baut die Referenz inzwischen selbst ein. Dieser Schritt ist
+    ausschliesslich für den Bestand da, der davor entstanden ist: einmal beim Start
+    durchgezogen, danach ist Ruhe.
+
+    **Löschen, sobald keine Altbestände mehr existieren** — samt Hochzählen von
+    SCHEMA_VERSION. Das Modul soll schrumpfen.
+    """
+    punkte = context.get("points") or []
+    nach_pos: dict = {}
+    for p in punkte:
+        try:
+            nach_pos.setdefault((int(p["x"]), int(p["y"])), []).append(p)
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    verknuepft = 0
+    for _phase, steps in _iter_step_lists(data):
+        for step in steps:
+            verknuepft += _link_step_to_point(step, nach_pos)
+    return [f"{verknuepft} Schritt(e) nachträglich mit ihrem Punkt verknüpft"] if verknuepft else []
+
+
 # ---------------------------------------------------------------------------
 # Dateitypen OHNE Versions-Feld
 # ---------------------------------------------------------------------------
@@ -355,7 +385,7 @@ ALL_KINDS = (KIND_SEQUENCE, KIND_POINTS, KIND_ITEMS, KIND_ITEM_SCAN,
 
 # Eintrag i hebt von Version i auf i+1.
 _CHAINS: dict[str, list[MigrationStep]] = {
-    KIND_SEQUENCE: [_seq_v0_to_v1, _seq_v1_to_v2],
+    KIND_SEQUENCE: [_seq_v0_to_v1, _seq_v1_to_v2, _seq_v2_to_v3],
 }
 
 

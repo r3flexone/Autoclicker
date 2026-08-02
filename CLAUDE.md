@@ -135,8 +135,17 @@ der Blanko-Block `(0, 0)` des Node-Editors, der noch gar keine Stelle hat.
 Darauf zu vertrauen, dass die Migration schon nachverknüpft, reicht **nicht**: sie läuft nur
 auf Dateien mit altem Schema. Frisch Gespeichertes trägt bereits die aktuelle Version und
 wird nie angefasst. Genau daran hing der Recorder — er legte Schritte und Punkte unabhängig
-voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft. `link` im
-Sequenz-Editor ist deshalb nur noch für Altbestände da, nicht Teil des normalen Wegs.
+voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft.
+
+**Den Altbestand holt die Migration nach, nicht der Nutzer.** `_seq_v2_to_v3` verknüpft
+Aufnahmen von vor dem Fix beim nächsten Start automatisch — sie standen ja schon auf
+Schema 2 und wurden von der Kette nie angefasst. Mehrdeutige Stellen (zwei Punkte
+übereinander) bleiben bewusst unverknüpft: lieber keine Referenz als die falsche.
+
+Das ist der vorgesehene Weg für so etwas: **neue Daten entstehen korrekt, Altlasten gehen
+einmal durch die Schleuse.** `link` im Sequenz-Editor bleibt für die Fälle, die die
+Migration nicht eindeutig auflösen kann — nicht Teil des normalen Wegs. Sobald keine
+Altbestände mehr existieren, wird `_seq_v2_to_v3` ersatzlos gelöscht.
 
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
