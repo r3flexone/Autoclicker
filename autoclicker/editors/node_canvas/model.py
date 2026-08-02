@@ -229,8 +229,31 @@ class PalettePoint:
     source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'"
 
 
+def save_palette_points(sequences_dir: str, points: list) -> bool:
+    """Schreibt die Palette zurueck nach sequences/points.json.
+
+    Frueher las der Node-Editor die Punkte nur. Das ging, solange die Sequenz ihre
+    Koordinaten selbst trug — seit sie das nicht mehr tut, waere eine hier eingetippte
+    Position beim Speichern verloren. Deshalb wandert die Palette mit.
+
+    Wie ueberall im Subprozess gilt: die Datei ist der gemeinsame Nenner. Wer im
+    Hauptprozess gleichzeitig speichert, ueberschreibt eine der beiden Fassungen.
+    """
+    from ...models import ClickPoint
+    from ...persistence.serialization import _point_to_dict
+    from ...utils import atomic_write, compact_json
+    try:
+        daten = [_point_to_dict(ClickPoint(p.x, p.y, p.name, p.id,
+                                           color=p.color, source=p.source))
+                 for p in points]
+        atomic_write(Path(sequences_dir) / "points.json", compact_json(daten))
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 def load_palette_points(sequences_dir: str) -> list[PalettePoint]:
-    """Lädt die aufgenommenen Punkte aus sequences/points.json (read-only).
+    """Lädt die aufgenommenen Punkte aus sequences/points.json.
 
     Eigene schlanke Ladefunktion statt persistence.load_points, da letztere ein
     AutoClickerState-Objekt braucht — der Subprocess hat keinen State.

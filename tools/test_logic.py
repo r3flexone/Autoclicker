@@ -442,16 +442,17 @@ from autoclicker.persistence.sequences import resolve_point_references as _resol
 from autoclicker.runtime.debug import step_label as _label
 
 _st2 = AutoClickerState()
-_st2.points = [_CP(x=100, y=200, name="Marktbutton", id=3),
+_st2.points = [_CP(x=100, y=200, name="Marktbutton", id=3, color=(1, 2, 3)),
                _CP(x=300, y=400, name="Verkaufen", id=7),
-               _CP(x=500, y=600, name="Bestaetigen", id=9)]
+               _CP(x=500, y=600, name="Bestaetigen", id=9),
+               _CP(x=999, y=999, name="Ladebalken", id=11, color=(4, 5, 6))]
 _seq = _Seq(name="Verkauf", loop_phases=[_LP(name="LOOP", steps=[
-    SequenceStep(x=100, y=200, delay_before=0, name="Marktbutton", point_id=3,
-                 wait_condition=_WC(pixel=(100, 200), color=(1, 2, 3))),
-    SequenceStep(x=300, y=400, delay_before=0, name="Verkaufen", point_id=7,
-                 wait_condition=_WC(pixel=(999, 999), color=(4, 5, 6))),
-    SequenceStep(x=500, y=600, delay_before=0, name="Bestaetigen"),   # Altbestand
-    SequenceStep(x=11, y=22, delay_before=0, name="Weg", point_id=42),  # verwaist
+    # Klick + Pruef-Pixel AN DERSELBEN Stelle: eine ID, zwei Verwendungen
+    SequenceStep(delay_before=0, point_id=3, wait_condition=_WC(point_id=3)),
+    # Klick hier, geprueft wird woanders: zwei verschiedene Punkte
+    SequenceStep(delay_before=0, point_id=7, wait_condition=_WC(point_id=11)),
+    SequenceStep(delay_before=0, key_press="enter"),         # ohne Stelle
+    SequenceStep(delay_before=0, point_id=42),               # verwaist
 ])])
 
 # Fenster war beim Aufnehmen um (+8,+5) verschoben -> Punkte korrigiert
@@ -462,14 +463,28 @@ _meldungen = _resolve(_st2, _seq)
 _s = _seq.loop_phases[0].steps
 
 check("verknuepfter Schritt folgt dem Punkt", (_s[0].x, _s[0].y) == (108, 205))
-check("Pruef-Pixel AM Klickpunkt zieht mit", tuple(_s[0].wait_condition.pixel) == (108, 205))
-check("Pruef-Pixel ANDERSWO bleibt unberuehrt", tuple(_s[1].wait_condition.pixel) == (999, 999))
-check("Schritt ohne Referenz bleibt unberuehrt", (_s[2].x, _s[2].y) == (500, 600))
-check("verwaiste Referenz aendert keine Koordinaten", (_s[3].x, _s[3].y) == (11, 22))
+check("Name kommt aus dem Punkt", _s[0].name == "Marktbutton")
+check("recorded_color kommt aus dem Punkt", _s[0].recorded_color == (1, 2, 3))
+# Der Pruef-Pixel ist eine eigene Referenz - er zieht nicht mit dem Klick mit, sondern
+# mit SEINEM Punkt. Zeigen beide auf denselben, ist das Ergebnis dasselbe wie frueher;
+# der Unterschied ist, dass es jetzt in der Datei steht statt geraten zu werden.
+check("Pruef-Pixel am selben Punkt landet auf derselben Stelle",
+      tuple(_s[0].wait_condition.pixel) == (108, 205))
+check("Pruef-Pixel holt seine Farbe aus seinem Punkt",
+      tuple(_s[0].wait_condition.color) == (1, 2, 3))
+check("Pruef-Pixel an eigenem Punkt folgt DIESEM Punkt",
+      tuple(_s[1].wait_condition.pixel) == (1007, 1004))
+check("Schritt ohne Stelle bleibt bei (0, 0)", (_s[2].x, _s[2].y) == (0, 0))
 check("verwaiste Referenz wird gemeldet",
       any("#42" in m and "nicht mehr gibt" in m for m in _meldungen))
-check("Meldung nennt alte UND neue Position",
-      any("(100, 200) -> (108, 205)" in m for m in _meldungen))
+
+# Der Kern der Umstellung: eine tote Referenz hat KEINE Rueckfall-Koordinate mehr.
+# Frueher blieb der Schritt auf seinem alten x/y stehen und klickte dorthin - also auf
+# eine Stelle, deren Punkt jemand bewusst geloescht hatte.
+check("verwaiste Referenz klickt nicht ersatzweise irgendwohin",
+      (_s[3].x, _s[3].y) == (0, 0))
+check("verwaiste Referenz ist als unresolved markiert", _s[3].unresolved is True)
+check("aufgeloester Schritt ist NICHT unresolved", _s[0].unresolved is False)
 
 # Zweiter Lauf: keine Verschiebungen mehr, aber die verwaiste Referenz nervt weiter
 _zweiter = _resolve(_st2, _seq)
@@ -477,14 +492,42 @@ check("zweiter Lauf meldet keine Verschiebung mehr",
       not any("->" in m for m in _zweiter))
 check("verwaiste Referenz wird dauerhaft gemeldet", len(_zweiter) == 1)
 
+# Der verwaiste Schritt darf die Sequenz weder abbrechen noch irgendwohin klicken.
+# Gegenprobe zum Fix: ohne die unresolved-Abfrage in step_gate liefert das GATE_RUN,
+# und _s[3] klickt mit seinen aufgeloesten (0, 0) in die Bildschirmecke.
+from autoclicker.runtime.debug import (step_gate as _gate, GATE_SKIP as _G_SKIP,
+                                       GATE_RUN as _G_RUN, target_of as _ziel)
+_st2.step_mode = False
+check("verwaister Schritt wird zur Laufzeit uebersprungen",
+      _gate(_st2, _s[3], "LOOP", 4, 4) == _G_SKIP)
+check("ein aufgeloester Schritt laeuft normal", _gate(_st2, _s[0], "LOOP", 1, 4) == _G_RUN)
+check("verwaister Schritt hat kein Ziel fuer den Zeiger", _ziel(_s[3]) is None)
+
 check("Label nennt die Punkt-ID", "#3" in _label(_s[0]))
-check("Label sagt klar, wenn kein Punkt dahintersteht", "kein Punkt" in _label(_s[2]))
+check("Label sagt klar, wenn es gar keine Stelle gibt", "ohne Stelle" in _label(_s[2]))
+check("Label nennt einen fehlenden Punkt beim Namen", "FEHLT" in _label(_s[3]))
 
 # Serialisierung der Referenz
 _rt = _parse_steps([_step_to_dict(_s[0])])
 check("point_id ueberlebt Round-Trip", _rt[0].point_id == 3)
+check("wait_point_id ueberlebt Round-Trip", _rt[0].wait_condition.point_id == 3)
 check("alte Schritte ohne point_id -> None",
       _parse_steps([{"x": 1, "y": 2, "delay_before": 0}])[0].point_id is None)
+
+# DIE Invariante der Umstellung: in einer gespeicherten Sequenz steht keine Koordinate.
+# Sie hier gegen den Serializer zu pruefen ist der Zweck der ganzen Uebung - faellt sie,
+# ist eine Kopie zurueck, und die naechste Kalibrierung erwischt sie nicht.
+_KOORD_KEYS = ("x", "y", "wait_pixel", "wait_color", "else_x", "else_y",
+               "recorded_color", "name", "else_name")
+_gespeichert = [_step_to_dict(st) for st in _s]
+check("kein Schritt MIT Punkt speichert noch eine Koordinate",
+      all(not any(k in d for k in _KOORD_KEYS)
+          for d, st in zip(_gespeichert, _s) if st.point_id is not None))
+check("die ID wird stattdessen gespeichert",
+      all("point_id" in d for d, st in zip(_gespeichert, _s) if st.point_id is not None))
+check("auch der Pruef-Pixel speichert nur seine ID",
+      _gespeichert[1].get("wait_point_id") == 11
+      and "wait_pixel" not in _gespeichert[1])
 
 # ------------------------------------------------------- Schema-Migration
 section("Schema-Migration: Altformate -> aktuelles Schema")
@@ -523,10 +566,18 @@ check("start_steps wird eigene erste Phase", _d2["loop_phases"][0]["name"] == "S
 check("loop_steps behaelt max_loops als repeat", _d2["loop_phases"][1]["repeat"] == 5)
 check("max_loops ist weg", "max_loops" not in _d2)
 check("start_steps ist weg", "start_steps" not in _d2)
-check("mehrdeutige Koordinate bleibt UNverknuepft",
-      _d2["loop_phases"][1]["steps"][0].get("point_id") is None)
+# Frueher blieben mehrdeutige Stellen (zwei Punkte uebereinander) bewusst unverknuepft -
+# "lieber keine Referenz als die falsche". Das geht seit Schema 4 nicht mehr: ohne
+# Referenz gaebe es die Koordinate nirgends, der Schritt waere verloren. Zwei Punkte auf
+# derselben Stelle sind ohnehin derselbe Ort, also gewinnt der erste.
+check("mehrdeutige Koordinate wird verknuepft (erster Punkt gewinnt)",
+      _d2["loop_phases"][1]["steps"][0].get("point_id") is not None)
 check("Tastendruck bekommt keine point_id",
       _d2["loop_phases"][1]["steps"][1].get("point_id") is None)
+check("Migration laesst keine Koordinate im Schritt zurueck",
+      all(not any(k in s for k in ("x", "y", "wait_pixel", "else_x"))
+          for _p in _d2["loop_phases"] for s in _p["steps"]
+          if s.get("point_id") is not None))
 
 # Idempotenz: zweiter Lauf aendert nichts mehr
 import copy as _copy
@@ -615,12 +666,17 @@ check("Loader liest das aktuelle Format",
 check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
 # Verknuepfung darf nicht auf einen Punkt ohne ID zeigen (sonst point_id=null und der
-# naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz)
+# naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz).
+# Seit Schema 4 bleibt der Schritt deswegen nicht unverknuepft, sondern bekommt einen
+# NEUEN Punkt mit ID - unverknuepft hiesse jetzt "Koordinate weg".
+_kontext = {"points": [{"x": 30, "y": 40, "name": "ohne ID"}]}
 _seq_roh = {"name": "s", "loop_phases": [{"name": "L", "repeat": 1, "steps": [
     {"x": 30, "y": 40, "name": "K", "delay_before": 0}]}]}
-_seq_roh, _ = _mig(_seq_roh, _K_SEQ, {"points": [{"x": 30, "y": 40, "name": "ohne ID"}]})
-check("Punkt ohne ID wird nicht referenziert",
-      _seq_roh["loop_phases"][0]["steps"][0].get("point_id") is None)
+_seq_roh, _ = _mig(_seq_roh, _K_SEQ, _kontext)
+_pid = _seq_roh["loop_phases"][0]["steps"][0].get("point_id")
+check("Punkt ohne ID wird nicht referenziert", isinstance(_pid, int))
+check("stattdessen entsteht ein Punkt MIT ID an derselben Stelle",
+      any(p.get("id") == _pid and (p["x"], p["y"]) == (30, 40) for p in _kontext["points"]))
 
 # scheduled_start war nur da, um den Debug-Enter-Prompt zu ueberspringen - beides weg
 check("kein scheduled_start-Flag mehr am State",
@@ -791,9 +847,15 @@ from autoclicker.persistence.serialization import (
     _step_to_dict as _s2d, _parse_steps as _p2s, _STEP_DEFAULTS as _SD)
 
 _klick = _s2d(_SS(x=100, y=200, delay_before=1, name="Klick 15", point_id=7))
-check("einfacher Klick braucht nur 5 Felder", len(_klick) == 5)
-check("Pflichtfelder bleiben immer sichtbar",
-      all(k in _klick for k in ("x", "y", "delay_before")))
+# Seit Schema 4 bleiben genau zwei Felder: worauf gezeigt wird und wie lange vorher
+# gewartet wird. x/y/name kommen aus dem Punkt und werden nicht mitgeschrieben.
+check("einfacher Klick braucht nur 2 Felder", len(_klick) == 2)
+check("die Stelle steht als ID drin, nicht als Koordinate",
+      _klick.get("point_id") == 7 and "x" not in _klick and "y" not in _klick)
+check("delay_before bleibt immer sichtbar", "delay_before" in _klick)
+# Ein Schritt OHNE Punkt hat auch keine Koordinate zu speichern (Taste, Scan, ...)
+check("Schritt ohne Stelle speichert erst recht keine Koordinate",
+      "x" not in _s2d(_SS(delay_before=0, key_press="enter")))
 check("kein leeres wait_pixel mehr", "wait_pixel" not in _klick)
 check("kein leeres else_action mehr", "else_action" not in _klick)
 check("kein item_scan_mode ohne item_scan", "item_scan_mode" not in _klick)
@@ -811,21 +873,37 @@ check("gesetzte Else-Aktion wird geschrieben",
 check("scroll wird bei 0 nicht als False verschluckt",
       _s2d(_SS(x=0, y=0, delay_before=0, scroll=0)).get("scroll") == 0)
 
-# Round-Trip: jeder Schritt muss identisch zurueckkommen
+# Round-Trip ohne Referenzen: diese Schritte tragen nichts Abgeleitetes, sie muessen
+# unveraendert zurueckkommen.
 _faelle = [
-    _SS(x=100, y=200, delay_before=1, name="Klick", point_id=7),
-    _SS(x=1, y=2, delay_before=0, name="Farbe",
-        wait_condition=_WCx(pixel=(5, 6), color=(7, 8, 9), check_only=True),
-        else_config=_ECx(action="skip")),
-    _SS(x=0, y=0, delay_before=0.5, name="Taste", key_press="enter"),
-    _SS(x=8, y=9, delay_before=0, name="Scroll", scroll=-3),
-    _SS(x=0, y=0, delay_before=0, name="Scan", item_scan="inv", item_scan_mode="best"),
-    _SS(x=0, y=0, delay_before=0, name="Shot", screenshot_only=True,
+    _SS(delay_before=0.5, name="Taste", key_press="enter"),
+    _SS(delay_before=0, name="Scan", item_scan="inv", item_scan_mode="best"),
+    _SS(delay_before=0, name="Shot", screenshot_only=True,
         screenshot_region=(1, 2, 3, 4)),
-    _SS(x=5, y=5, delay_before=2, name="Zufall", delay_max=4.0, wait_only=True),
+    _SS(delay_before=2, name="Zufall", delay_max=4.0, wait_only=True),
 ]
 _abweichungen = [st for st in _faelle if _p2s([_s2d(st)])[0] != st]
-check("Round-Trip aendert keinen Schritt", _abweichungen == [])
+check("Round-Trip aendert keinen Schritt ohne Referenz", _abweichungen == [])
+
+# Round-Trip MIT Referenzen: die abgeleiteten Werte fehlen nach dem Parsen (sie stehen
+# ja nicht in der Datei) und kommen erst durch das Aufloesen zurueck. Genau diese zwei
+# Haelften zusammen muessen den Ausgangszustand ergeben - sonst geht beim Speichern
+# etwas verloren, das niemand wiederherstellen kann.
+from autoclicker.persistence.sequences import aufloesen as _aufl
+_pool = {7: _CP(x=100, y=200, name="Klick", id=7),
+         8: _CP(x=5, y=6, name="Pruef", id=8, color=(7, 8, 9)),
+         9: _CP(x=10, y=11, name="Ausweich", id=9)}
+_mit_ref = [
+    _SS(x=100, y=200, delay_before=1, name="Klick", point_id=7),
+    _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7,
+        wait_condition=_WCx(point_id=8, pixel=(5, 6), color=(7, 8, 9), check_only=True),
+        else_config=_ECx(action="click", point_id=9, x=10, y=11, name="Ausweich")),
+    _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7, scroll=-3),
+]
+_zurueck = _p2s([_s2d(st) for st in _mit_ref])
+_aufl(_pool, _Seq(name="rt", loop_phases=[_LP(name="L", steps=_zurueck)]), still=True)
+check("Round-Trip + Aufloesen stellt den Schritt vollstaendig wieder her",
+      [st for a, st in zip(_zurueck, _mit_ref) if a != st] == [])
 
 # Die Default-Tabelle darf nicht von der Dataclass abdriften
 _dc_defaults = {f.name: f.default for f in __import__("dataclasses").fields(_SS)}
@@ -992,12 +1070,17 @@ try:
     check("Aufloesung landet auf den richtigen Koordinaten",
           (_schritt.x, _schritt.y) == (500, 500))
 
-    # Ohne Punkt-Import darf keine Referenz stehenbleiben
+    # Ohne Punkt-Import kaeme frueher eine Sequenz ohne Referenzen an - die haette dank
+    # ihrer x/y-Kopie noch funktioniert. Heute waere sie tot, also holt der Import die
+    # gebrauchten Punkte trotzdem mit; "keine Punkte" heisst nur "keine ungenutzten".
     _st2 = _ACS()
     _st2.points = [_CP3(50, 50, "Werkbank", 1)]
     _import_bundle(_st2, str(_bundle), import_points=False, import_config=False)
     _s2 = _st2.sequences["farm"].loop_phases[0].steps[0]
-    check("ohne Punkt-Import faellt die Referenz weg", _s2.point_id is None)
+    check("ohne Punkt-Import kommt der gebrauchte Punkt trotzdem mit",
+          _s2.point_id is not None)
+    check("und der Schritt landet auf den richtigen Koordinaten",
+          (_s2.x, _s2.y) == (500, 500))
     check("Koordinaten bleiben erhalten", (_s2.x, _s2.y) == (500, 500))
 finally:
     _os.chdir(_alt_cwd)
@@ -1767,12 +1850,21 @@ try:
         ("Icon-Scanregion", _st.icon_scans["I"].scan_region, (45, -20, 95, 30)),
         ("Icon-Klickaktion", (_st.icon_scans["I"].action_x,
                               _st.icon_scans["I"].action_y), (100, 40)),
-        ("Schritt mit point_id", (_schritt.x, _schritt.y), (140, 175)),
-        ("Trigger-Pixel", _trig.wait_condition.pixel, (680, 455)),
-        ("else-Klick", (_trig.else_config.x, _trig.else_config.y), (940, 925)),
+        ("Trigger-Pixel ohne Punkt", _trig.wait_condition.pixel, (680, 455)),
+        ("else-Klick ohne Punkt", (_trig.else_config.x, _trig.else_config.y), (940, 925)),
         ("Screenshot-Region", _shot.screenshot_region, (41, -23, 43, -21)),
     ]:
         check(f"kalibriert: {_was}", _ist == _soll)
+
+    # Ein Schritt MIT point_id wird von der Kalibrierung selbst NICHT angefasst - sonst
+    # wanderte er zweimal: einmal als Punkt und einmal als Schritt. Er landet trotzdem
+    # richtig, weil er seine Stelle vom (bereits umgerechneten) Punkt holt.
+    check("kalibriert: Schritt mit point_id wird nicht selbst verschoben",
+          (_schritt.x, _schritt.y) == (100, 200))
+    _IE_resolve = __import__("autoclicker.persistence", fromlist=["x"]).resolve_point_references
+    _IE_resolve(_st, _st.sequences["Seq"])
+    check("kalibriert: Schritt mit point_id folgt dem Punkt (einfach, nicht doppelt)",
+          (_schritt.x, _schritt.y) == (140, 175))
 
     # Umfang muss sich begrenzen lassen
     _st2, _schritt2, _, _ = _kalib_state()
@@ -1802,7 +1894,10 @@ try:
     check("ohne Slots: Item-Bestaetigungsklick wandert trotzdem",
           (_st4.global_items["Erz"].confirm_point.x,
            _st4.global_items["Erz"].confirm_point.y) == (340, 375))
-    check("ohne Slots: Sequenz-Schritt wandert trotzdem",
+    # Der Schritt haengt am Punkt, und der ist umgerechnet - er landet also richtig,
+    # ohne dass die Kalibrierung ihn selbst anfassen musste.
+    _IE_resolve(_st4, _st4.sequences["Seq"])
+    check("ohne Slots: Sequenz-Schritt landet trotzdem richtig",
           (_schritt4.x, _schritt4.y) == (140, 175))
 
     # Sequenz-DATEIEN erfassen, nicht nur die geladenen Sequenzen
@@ -1828,6 +1923,49 @@ try:
     check("Trigger-Pixel in der Datei", _s1["wait_pixel"] == [680, 455])
     check("else-Klick in der Datei", (_s1["else_x"], _s1["else_y"]) == (940, 925))
     check("Farben bleiben unangetastet", _s1["wait_color"] == [1, 2, 3])
+
+    # --- Altbestand ohne points.json: die Migration legt Punkte an, und die muessen
+    # AUF PLATTE landen. Gegenprobe zum Fehler, der genau hier sass: `_als_dicts`
+    # lieferte eine Kopie der Punkte-Liste, also liefen die Anhaenge der Migration ins
+    # Leere - die Sequenz zeigte danach auf IDs, die es nirgends gab, und jeder Schritt
+    # stand auf (0, 0). Faellt dieser Test, ist genau das zurueck.
+    from autoclicker.persistence import load_sequence_file as _lsf2
+    _pj = Path(_SQD) / "points.json"
+    if _pj.exists():
+        _pj.unlink()
+    _alt2 = Path(_SQD) / "ohne_punkte.json"
+    _alt2.write_text(json.dumps({
+        "name": "ohne_punkte", "schema_version": 2, "total_cycles": 1,
+        "init_steps": [], "end_steps": [],
+        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+            {"x": 111, "y": 222, "delay_before": 0, "name": "Erster",
+             "recorded_color": [10, 20, 30]},
+            {"x": 333, "y": 444, "delay_before": 0, "name": "Zweiter",
+             "wait_pixel": [555, 666], "wait_color": [1, 2, 3],
+             "else_action": "click", "else_x": 777, "else_y": 888},
+        ]}]}), encoding="utf-8")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _gel = _lsf2(_alt2)
+    check("Altbestand ohne points.json: die Datei wird angelegt", _pj.exists())
+    _pdaten = json.loads(_pj.read_text(encoding="utf-8")) if _pj.exists() else []
+    check("Altbestand ohne points.json: alle vier Stellen sind Punkte geworden",
+          sorted((p["x"], p["y"]) for p in _pdaten)
+          == [(111, 222), (333, 444), (555, 666), (777, 888)])
+    _gs2 = _gel.loop_phases[0].steps if _gel else []
+    check("Altbestand ohne points.json: der Schritt klickt weiter dieselbe Stelle",
+          bool(_gs2) and (_gs2[0].x, _gs2[0].y) == (111, 222))
+    check("Altbestand ohne points.json: kein Schritt gilt als verwaist",
+          bool(_gs2) and not any(s.unresolved for s in _gs2))
+    check("Altbestand ohne points.json: Pruef-Pixel und Else haengen an eigenen Punkten",
+          bool(_gs2) and tuple(_gs2[1].wait_condition.pixel) == (555, 666)
+          and (_gs2[1].else_config.x, _gs2[1].else_config.y) == (777, 888))
+    check("Altbestand ohne points.json: die Farbe zieht in den Punkt um",
+          any(p.get("color") == [10, 20, 30] for p in _pdaten))
+    # Drei Stellen desselben Schritts bekommen unterscheidbare Namen - sonst stehen im
+    # Punkte-Menue drei Zeilen "Zweiter" und keiner weiss, welche welche ist.
+    check("Altbestand ohne points.json: die Namen sind unterscheidbar",
+          len({p.get("name") for p in _pdaten}) == len(_pdaten))
+
 
     # Versatz von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     # Weiss man, dass eine Achse stimmt, ist eine eingetippte 0 genauer.
@@ -1874,6 +2012,58 @@ try:
           (_d2["init_steps"][0]["x"], _d2["init_steps"][0]["y"]) == (100, 200))
 finally:
     _os.chdir(_kalib_cwd)
+
+
+# ------------------------------------------- Start-Durchgang ueber MEHRERE Altdateien
+section("Start-Durchgang: zwei Altdateien teilen sich ihre Punkte")
+
+# Hier zeigt sich, warum die Punkte-Liste durchgereicht und nicht kopiert werden darf:
+# sonst sieht die zweite Datei die Punkte der ersten nicht, vergibt dieselben IDs
+# erneut - und points.json haette zwei Eintraege mit derselben ID. Die ID IST die
+# Referenz; doppelte IDs heissen, dass Schritte auf den falschen Punkt zeigen.
+# Eigenes Verzeichnis, weil `sweep` alles migriert, was es findet.
+_sw_tmp = tempfile.mkdtemp()
+_sw_cwd = _os.getcwd()
+_os.chdir(_sw_tmp)
+try:
+    from autoclicker.persistence import sweep as _sweep2
+    _sdir = Path("sequences")
+    _sdir.mkdir()
+    for _nr in (1, 2):
+        (_sdir / f"doppelt{_nr}.json").write_text(json.dumps({
+            "name": f"doppelt{_nr}", "schema_version": 2, "total_cycles": 1,
+            "init_steps": [], "end_steps": [],
+            "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+                {"x": 400, "y": 500, "delay_before": 0, "name": "gleich"},
+                {"x": 10 * _nr, "y": 20 * _nr, "delay_before": 0, "name": "eigen"},
+            ]}]}), encoding="utf-8")
+
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _erg2 = _sweep2(write=True)
+    _pd2 = json.loads((_sdir / "points.json").read_text(encoding="utf-8"))
+    _ids = [p["id"] for p in _pd2]
+    check("zwei Altdateien: keine doppelt vergebene Punkt-ID",
+          len(_ids) == len(set(_ids)))
+    check("zwei Altdateien: die gemeinsame Stelle wird EIN Punkt",
+          sum(1 for p in _pd2 if (p["x"], p["y"]) == (400, 500)) == 1)
+    check("zwei Altdateien: drei Punkte insgesamt (eine geteilte + zwei eigene)",
+          len(_pd2) == 3)
+    _ref = [json.loads((_sdir / f"doppelt{_nr}.json").read_text(encoding="utf-8"))
+            ["loop_phases"][0]["steps"][0]["point_id"] for _nr in (1, 2)]
+    check("zwei Altdateien: beide Sequenzen zeigen auf denselben Punkt",
+          _ref[0] == _ref[1] and _ref[0] is not None)
+    check("zwei Altdateien: der Durchgang meldet die uebernommenen Punkte",
+          any("points.json" in p.name for p, _m in _erg2.geaendert))
+
+    # Zweiter Durchgang: nichts mehr zu tun, und vor allem keine neuen Punkte
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _erg3 = _sweep2(write=True)
+    check("zwei Altdateien: zweiter Durchgang aendert nichts",
+          _erg3.anzahl_geaendert == 0)
+    check("zwei Altdateien: zweiter Durchgang legt keine Punkte nach",
+          len(json.loads((_sdir / "points.json").read_text(encoding="utf-8"))) == 3)
+finally:
+    _os.chdir(_sw_cwd)
 
 
 # -------------------------------------------------------- Slot-Reparatur
@@ -2284,8 +2474,8 @@ check("Altbestand: Schema wird auf die aktuelle Version gehoben",
       _gehoben["schema_version"] == _SV)
 check("Altbestand: eindeutige Schritte werden verknuepft",
       (_gs[0].get("point_id"), _gs[1].get("point_id")) == (5, 6))
-check("Altbestand: zwei Punkte auf derselben Stelle bleiben unverknuepft",
-      _gs[2].get("point_id") is None)
+check("Altbestand: zwei Punkte auf derselben Stelle -> der erste gewinnt",
+      _gs[2].get("point_id") == 7)
 check("Altbestand: ein Tastendruck bekommt keinen Punkt",
       _gs[3].get("point_id") is None)
 check("Altbestand: Wartezeiten bleiben unberuehrt",
@@ -2297,10 +2487,21 @@ check("Altbestand: die Migration meldet, was sie getan hat",
 _zweimal, _meld2 = _mig(json.loads(json.dumps(_gehoben)), _KSQ, {"points": _alt_punkte})
 check("Altbestand: zweiter Lauf aendert nichts", _zweimal == _gehoben and _meld2 == [])
 
-# Und ohne Punkte im Kontext darf nichts kaputtgehen
-_ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": []})
-check("Altbestand: ohne Punkte bleibt alles unverknuepft statt zu scheitern",
-      all(s.get("point_id") is None for s in _ohne_punkte["loop_phases"][0]["steps"]))
+# Und ohne Punkte im Kontext darf nichts kaputtgehen. Frueher blieb dann alles
+# unverknuepft; heute legt die Migration die fehlenden Punkte selbst an - sonst waere
+# genau dieser Fall der eine, bei dem Koordinaten verloren gingen.
+_leerer_pool: list = []
+_ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
+_ohne_gs = _ohne_punkte["loop_phases"][0]["steps"]
+check("Altbestand: ohne Punkte werden welche angelegt statt zu scheitern",
+      [s.get("point_id") for s in _ohne_gs[:3]] == [1, 2, 3])
+check("Altbestand: die angelegten Punkte tragen die alten Koordinaten",
+      [(p["x"], p["y"]) for p in _leerer_pool] == [(100, 200), (300, 400), (50, 50)])
+check("Altbestand: der Tastendruck bekommt auch hier keinen Punkt",
+      _ohne_gs[3].get("point_id") is None and len(_leerer_pool) == 3)
+# Zweiter Lauf ueber DIESELBE Liste darf keine Dubletten erzeugen
+_mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
+check("Altbestand: erneutes Heben legt keine Punkte doppelt an", len(_leerer_pool) == 3)
 
 # Und die Garantie, auf die es ankommt: die Kette laeuft, solange es etwas zu heben gibt,
 # danach NIE wieder. `migrate()` ruft zwar jeder Loader, aber die Schleife

@@ -26,7 +26,7 @@ from .model import (
     BLOCK_LABELS, BLOCK_COLORS,
     BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
     block_type, sequence_to_graph, graph_to_sequence,
-    load_palette_points, step_from_point,
+    load_palette_points, save_palette_points, step_from_point,
 )
 from .panels import build_properties_panel
 
@@ -324,6 +324,13 @@ class NodeEditorApp:
         renamed = new_path != old_path
 
         seq = graph_to_sequence(self.graph)
+        # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlaegt das fehl,
+        # zeigten frisch angelegte Referenzen ins Leere - dann lieber gar nicht
+        # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
+        if not save_palette_points(self.sequences_dir, self.points):
+            self._set_status("points.json nicht schreibbar - nichts gespeichert.",
+                             color=(220, 90, 90))
+            return
         ok = save_sequence_file(seq, new_path)
         if not ok:
             self._set_status("Speichern fehlgeschlagen!", color=(220, 90, 90))

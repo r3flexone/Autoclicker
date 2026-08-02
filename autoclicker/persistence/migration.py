@@ -33,7 +33,7 @@ from typing import Callable, Optional
 
 # Aktuelles Schema. Bei jeder Änderung, die alte Dateien unlesbar oder unsauber macht:
 # hochzählen UND einen Schritt in die passende Kette eintragen.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 VERSION_KEY = "schema_version"
 
@@ -256,6 +256,144 @@ def _seq_v2_to_v3(data: dict, context: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Sequenzen: Version 3 -> 4
+# ---------------------------------------------------------------------------
+# Ab hier gilt: eine Koordinate steht in points.json, sonst nirgends. Die Sequenz
+# speichert nur noch IDs.
+#
+# Der Schritt davor (_seq_v2_to_v3) hat Schritte VERKNUEPFT, wenn zufaellig ein Punkt
+# auf derselben Stelle lag. Das reicht jetzt nicht mehr: bliebe auch nur ein Schritt
+# unverknuepft, muesste seine Koordinate weiterhin in der Sequenz stehen - und die
+# ganze Regel haette wieder eine Ausnahme. Dieser Schritt legt deshalb NOTFALLS EINEN
+# PUNKT AN. Danach ist die Regel ausnahmslos.
+
+# Was ein Schritt anfassen kann, und woher die Farbe des Punktes kommt.
+# (Schluessel im Schritt-Dict fuer x, y, ID-Feld, Farb-Feld, Namensvorschlag)
+_STELLEN = (
+    ("x", "y", "point_id", "recorded_color", ""),
+    ("wait_pixel", None, "wait_point_id", "wait_color", "Pruef-Pixel"),
+    ("else_x", "else_y", "else_point_id", None, "Else"),
+)
+
+
+def _naechste_punkt_id(punkte: list) -> int:
+    ids = [p.get("id") for p in punkte if isinstance(p.get("id"), int)]
+    return max(ids) + 1 if ids else 1
+
+
+def _punkt_finden_oder_anlegen(punkte: list, nach_pos: dict, pos: tuple,
+                               farbe, name: str) -> int:
+    """ID des Punktes an `pos` - notfalls wird einer angelegt und angehaengt.
+
+    Liegen mehrere Punkte auf derselben Stelle, gewinnt der erste. Frueher galten
+    solche Stellen als mehrdeutig und blieben unverknuepft; das geht nicht mehr, weil
+    "unverknuepft" jetzt "Koordinate verloren" heisst. Dieselbe Stelle ist derselbe
+    Ort - welcher der beiden identischen Punkte es wird, ist gleichgueltig.
+    """
+    treffer = nach_pos.get(pos)
+    if treffer:
+        for p in treffer:
+            if isinstance(p.get("id"), int):
+                return p["id"]
+
+    neu = {"id": _naechste_punkt_id(punkte), "x": pos[0], "y": pos[1], "name": name,
+           "source": "Migration (Koordinate aus der Sequenz)"}
+    if farbe:
+        neu["color"] = list(farbe)
+    punkte.append(neu)
+    nach_pos.setdefault(pos, []).append(neu)
+    return neu["id"]
+
+
+def _seq_v3_to_v4(data: dict, context: dict) -> list[str]:
+    """Zieht jede Koordinate aus der Sequenz in points.json.
+
+    Drei Stellen pro Schritt: der Klick selbst, der Pruef-Pixel und der Else-Klick.
+    Jede bekommt eine `*_point_id`; die Koordinaten-Felder verschwinden.
+
+    Die angelegten Punkte haengt der Schritt an `context["points"]` - der Aufrufer
+    (sweep.py) schreibt die Liste danach zurueck. Ohne das waeren die IDs beim
+    naechsten Start wieder unbekannt.
+
+    **Loeschen, sobald keine Altbestaende mehr existieren** - samt Hochzaehlen von
+    SCHEMA_VERSION. Das Modul soll schrumpfen.
+    """
+    punkte = context.get("points")
+    if punkte is None:
+        punkte = context["points"] = []
+
+    nach_pos: dict = {}
+    for p in punkte:
+        try:
+            nach_pos.setdefault((int(p["x"]), int(p["y"])), []).append(p)
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    angelegt_vorher = len(punkte)
+    gezogen = 0
+
+    for _phase, steps in _iter_step_lists(data):
+        for step in steps:
+            for x_key, y_key, id_key, farb_key, label in _STELLEN:
+                if step.get(id_key) is not None:
+                    continue
+                pos = _stelle_lesen(step, x_key, y_key)
+                if pos is None:
+                    continue
+                farbe = step.get(farb_key) if farb_key else None
+                # Drei Stellen eines Schritts sind drei verschiedene Orte - sie duerfen
+                # im Punkte-Menue nicht dreimal gleich heissen.
+                basis = step.get("name") or "Schritt"
+                name = f"{basis} ({label})" if label else basis
+                step[id_key] = _punkt_finden_oder_anlegen(punkte, nach_pos, pos,
+                                                          farbe, name)
+                gezogen += 1
+
+            # Die Koordinaten-Felder selbst fliegen raus - der Punkt traegt sie jetzt.
+            for key in ("x", "y", "name", "recorded_color", "wait_pixel", "wait_color",
+                        "else_x", "else_y", "else_name"):
+                step.pop(key, None)
+
+    if not gezogen:
+        return []
+    neu = len(punkte) - angelegt_vorher
+    meldung = f"{gezogen} Koordinate(n) nach points.json gezogen"
+    if neu:
+        meldung += f", davon {neu} als neuer Punkt"
+    return [meldung]
+
+
+def _stelle_lesen(step: dict, x_key: str, y_key):
+    """Position einer der drei Stellen, oder None wenn der Schritt sie nicht hat.
+
+    `wait_pixel` ist ein Paar in EINEM Feld, x/y und else_x/else_y sind zwei Felder -
+    daher die Fallunterscheidung an genau einer Stelle statt dreimal ausgeschrieben.
+    """
+    if y_key is None:
+        paar = step.get(x_key)
+        if not paar or len(paar) != 2:
+            return None
+        try:
+            return (int(paar[0]), int(paar[1]))
+        except (TypeError, ValueError):
+            return None
+
+    if x_key == "else_x" and step.get("else_action") != "click":
+        return None  # else ohne Klick hat keine Stelle
+    if x_key == "x" and (step.get("key_press") or step.get("item_scan")
+                         or step.get("boss_scan") or step.get("boss_watcher")
+                         or step.get("icon_scan") or step.get("screenshot_only")
+                         or step.get("wait_only")):
+        return None  # Schritte ohne echte Position
+    try:
+        pos = (int(step.get(x_key)), int(step.get(y_key)))
+    except (TypeError, ValueError):
+        return None
+    # (0, 0) ist der Blanko-Block des Node-Editors, keine echte Stelle.
+    return None if pos == (0, 0) else pos
+
+
+# ---------------------------------------------------------------------------
 # Dateitypen OHNE Versions-Feld
 # ---------------------------------------------------------------------------
 # points.json ist eine Liste, items.json/slots.json und die Presets sind
@@ -385,7 +523,7 @@ ALL_KINDS = (KIND_SEQUENCE, KIND_POINTS, KIND_ITEMS, KIND_ITEM_SCAN,
 
 # Eintrag i hebt von Version i auf i+1.
 _CHAINS: dict[str, list[MigrationStep]] = {
-    KIND_SEQUENCE: [_seq_v0_to_v1, _seq_v1_to_v2, _seq_v2_to_v3],
+    KIND_SEQUENCE: [_seq_v0_to_v1, _seq_v1_to_v2, _seq_v2_to_v3, _seq_v3_to_v4],
 }
 
 

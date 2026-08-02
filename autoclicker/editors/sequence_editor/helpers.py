@@ -38,6 +38,7 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
     if else_result:
         step.else_config = ElseConfig(
             action=else_result["else_action"],
+            point_id=else_result.get("else_point_id"),
             x=else_result.get("else_x", 0),
             y=else_result.get("else_y", 0),
             delay=else_result.get("else_delay", 0),
@@ -141,8 +142,12 @@ def parse_else_condition(else_parts: list[str], state: AutoClickerState) -> dict
         with state.lock:
             point = get_point_by_id(state, point_id)
             if point:
+                # Die ID ist das Ergebnis, nicht die Koordinate: der Nutzer hat ohnehin
+                # einen Punkt genannt. x/y stehen nur als Arbeitswert daneben, damit der
+                # Editor sie sofort anzeigen kann - gespeichert wird die ID.
                 result = {
                     "else_action": "click",
+                    "else_point_id": point_id,
                     "else_x": point.x,
                     "else_y": point.y,
                     "else_name": point.name or f"Punkt #{point_id}"

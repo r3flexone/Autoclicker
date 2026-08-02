@@ -105,22 +105,56 @@ class ClickPoint:
         return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
+# =============================================================================
+# KOORDINATEN GEHÖREN IN points.json — NIRGENDWO SONST
+# =============================================================================
+# Jede Stelle, auf die eine Sequenz klickt oder schaut, ist ein Punkt aus dem
+# Punkte-Pool. Die Sequenz speichert nur die `point_id`; x/y/Farbe stehen in
+# `points.json` und werden beim Laden von dort geholt.
+#
+# Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an
+# einer der beiden Stellen falsch sein kann. Wer die Sequenzdatei liest, sieht
+# dann etwas anderes als das, was die App klickt — und beim Nachrechnen (Monitor
+# umgestellt, Import auf einen anderen Rechner) muss jede Kopie einzeln erwischt
+# werden. Genau daran hing die Kalibrierung.
+#
+# Es gibt deshalb bewusst KEINEN Rückfallwert: hat ein Schritt eine tote
+# `point_id`, wird er übersprungen und gemeldet. Ein Schritt, der "sicherheits-
+# halber" auf eine veraltete Kopie klickt, ist schlimmer als einer, der stehen
+# bleibt und sagt warum.
+#
+# `pixel`/`color` bzw. `x`/`y`/`name` unten bleiben trotzdem als Felder bestehen:
+# sie sind die AUFGELÖSTEN ARBEITSWERTE, die `resolve_point_references()` beim
+# Laden füllt — dasselbe Muster wie `ItemScanConfig.slots`/`items`. Worker und
+# Editoren lesen sie unverändert; gespeichert werden sie nicht.
+
 @dataclass
 class ElseConfig:
     """Fallback-Aktion wenn eine Bedingung (Farbe/Scan) fehlschlägt."""
     action: str                          # "skip", "skip_cycle", "restart", "click", "key"
-    x: int = 0                           # X für Fallback-Klick
-    y: int = 0                           # Y für Fallback-Klick
+    # Referenz auf den Fallback-Punkt (nur bei action="click"). DAS ist der
+    # gespeicherte Wert — x/y/name darunter werden daraus abgeleitet.
+    point_id: Optional[int] = None
+    x: int = 0                           # abgeleitet: X für Fallback-Klick
+    y: int = 0                           # abgeleitet: Y für Fallback-Klick
     delay: float = 0                     # Delay vor Fallback
     key: Optional[str] = None            # Taste für Fallback
-    name: str = ""                       # Name des Fallback-Punkts
+    name: str = ""                       # abgeleitet: Name des Fallback-Punkts
 
 
 @dataclass
 class WaitCondition:
     """Farb-Bedingung an einer Pixel-Position: warten oder einmal prüfen."""
-    pixel: tuple[int, int]               # (x, y) Position zum Prüfen
-    color: tuple[int, int, int]          # (r, g, b) Farbe die erscheinen soll
+    # Referenz auf den Punkt, dessen Position UND Farbe geprüft werden. DAS ist
+    # der gespeicherte Wert — pixel/color darunter werden daraus abgeleitet.
+    #
+    # Dass die erwartete Farbe aus dem Punkt kommt, ist Absicht: sie war vorher
+    # eine zweite Kopie von `ClickPoint.color`. Soll an derselben Stelle auf eine
+    # ANDERE Farbe geprüft werden, ist das ein eigener Punkt — im Punkte-Menü
+    # liest man dann auch, dass es zwei Prüfungen sind.
+    point_id: Optional[int] = None
+    pixel: tuple[int, int] = (0, 0)      # abgeleitet: (x, y) Position zum Prüfen
+    color: tuple[int, int, int] = (0, 0, 0)  # abgeleitet: (r,g,b) die erscheinen soll
     until_gone: bool = False             # True = warte bis Farbe WEG ist
     # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
     # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
@@ -130,17 +164,20 @@ class WaitCondition:
 @dataclass
 class SequenceStep:
     """Ein Schritt in einer Sequenz: Erst warten/prüfen, DANN klicken."""
-    x: int                # X-Koordinate (direkt gespeichert)
-    y: int                # Y-Koordinate (direkt gespeichert)
-    delay_before: float   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
-    name: str = ""        # Optionaler Name des Punktes
-    # Referenz auf den Punkt im Punkte-Pool, aus dem dieser Schritt entstanden ist.
-    # x/y/name bleiben als Kopie erhalten (Schritte ohne Punkt-Herkunft - Aufnahme,
-    # Tastendruck, Scans - haben point_id=None und funktionieren unverändert).
-    # Ist point_id gesetzt UND der Punkt existiert, gilt der PUNKT als Wahrheit für
-    # die Koordinaten: verschiebt man den Punkt, ziehen alle Schritte mit. Genau das
-    # war vorher das Problem - eine verrutschte Aufnahme musste man in jedem Schritt
-    # einzeln nachziehen und erst mal finden.
+    # x/y/name sind abgeleitet (siehe Block oben) und deshalb optional: Pflicht ist die
+    # `point_id`, nicht die Koordinate. Frueher war es umgekehrt - da MUSSTE jeder
+    # Aufrufer x und y angeben, und genau das hat die Kopien erzeugt.
+    x: int = 0
+    y: int = 0
+    delay_before: float = 0.0   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
+    name: str = ""              # abgeleitet: Name des Punktes
+    # Referenz auf den Punkt im Punkte-Pool. DAS ist der gespeicherte Wert; x/y/name
+    # und recorded_color werden beim Laden daraus geholt.
+    #
+    # Ein Schritt, der irgendwohin zeigt, MUSS eine point_id haben — die Migration legt
+    # notfalls einen Punkt an, damit das ausnahmslos gilt. `None` bleibt genau den
+    # Schritten, die gar keine Stelle haben: Tastendruck, Wait-only, Scans, Screenshot
+    # und der Blanko-Block des Node-Editors.
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
@@ -168,11 +205,16 @@ class SequenceStep:
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
-    # Optional: Bei der Aufnahme erfasste Pixelfarbe am Klickpunkt (r,g,b).
-    # Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt, einen
-    # aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne
-    # die Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
+    # Abgeleitet aus `ClickPoint.color`: die bei der Aufnahme erfasste Pixelfarbe am
+    # Klickpunkt (r,g,b). Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt,
+    # einen aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne die
+    # Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
     recorded_color: Optional[tuple[int, int, int]] = None
+    # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
+    # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
+    # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
+    # mehr, und das ist genau so gewollt.
+    unresolved: bool = False
 
     def __str__(self) -> str:
         else_str = self._else_str()

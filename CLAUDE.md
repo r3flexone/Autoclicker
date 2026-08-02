@@ -123,11 +123,42 @@ vor jedem Sequenzlauf.**
 
 | wer verweist | worauf | Feld in der Datei | auflösen |
 |---|---|---|---|
-| `SequenceStep` | `points.json` | `point_id` | `resolve_point_references()` |
+| `SequenceStep` | `points.json` | `point_id` | `aufloesen()` / `resolve_point_references()` |
+| `WaitCondition` | `points.json` | `wait_point_id` | dito |
+| `ElseConfig` | `points.json` | `else_point_id` | dito |
 | `ItemScanConfig` | `slots.json`, `items.json` | `slot_names`, `item_names` | `resolve_scan_references()` |
 
 Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
 Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht.
+
+**Eine Koordinate steht in `points.json`, sonst nirgends.** Das gilt ausnahmslos für alle
+drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `step.x/y`,
+`step.name`, `step.recorded_color`, `wait_condition.pixel/color` und `else_config.x/y/name`
+sind **abgeleitete Arbeitswerte** — im Speicher gefüllt, in der Datei nicht vorhanden.
+Dasselbe Muster wie `ItemScanConfig.slots`, nur konsequenter.
+
+Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an einer der
+beiden falsch sein kann. Wer die Sequenzdatei liest, sah dann etwas anderes als das, was
+die App klickt — und bei einer Kalibrierung musste jede Kopie einzeln erwischt werden.
+`kalibriere_bestand()` rechnet Sequenz-Klickstellen deshalb **nicht mehr** um: die Punkte
+sind schon umgerechnet, ein zweiter Durchgang hieße doppelt verschoben.
+
+**Es gibt bewusst keinen Rückfallwert.** Zeigt eine `point_id` ins Leere, setzt
+`aufloesen()` `step.unresolved = True`; `step_gate()` überspringt den Schritt und sagt
+warum. Ein Schritt, der ersatzweise auf eine veraltete Kopie klickt, ist schlimmer als
+einer, der stehenbleibt — und ohne Kopie wäre die Alternative ein Klick auf (0, 0).
+
+Regeln beim Erweitern:
+- **Wer im Editor eine Stelle erzeugt, legt einen Punkt an**: `punkt_fuer_stelle(state, x,
+  y, color, name)` gibt die ID zurück, nie ein Koordinatenpaar. Die Funktion verwendet
+  einen vorhandenen Punkt an derselben Stelle wieder — klickt eine Sequenz zweimal
+  denselben Knopf, ist das EIN Punkt, sonst wandert beim Nachjustieren nur die Hälfte mit.
+- **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
+  die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
+  Hand (Node-Editor, Canvas, Export) — die bekämen sonst lauter Nullen.
+- **Eine vierte Stelle** trägt man in `_STELLEN` (Migration), `_REF_KEYS`
+  (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
+  nächsten Import oder die nächste Migration nicht.
 
 **Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
 (aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
@@ -162,13 +193,26 @@ voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft.
 
 **Den Altbestand holt die Migration nach, nicht der Nutzer.** `_seq_v2_to_v3` verknüpft
 Aufnahmen von vor dem Fix beim nächsten Start automatisch — sie standen ja schon auf
-Schema 2 und wurden von der Kette nie angefasst. Mehrdeutige Stellen (zwei Punkte
-übereinander) bleiben bewusst unverknüpft: lieber keine Referenz als die falsche.
+Schema 2 und wurden von der Kette nie angefasst.
+
+`_seq_v3_to_v4` geht einen Schritt weiter: es **legt notfalls einen Punkt an**. Bliebe auch
+nur ein Schritt unverknüpft, müsste seine Koordinate weiterhin in der Sequenz stehen — und
+die ganze Regel hätte wieder eine Ausnahme. Deshalb gilt hier auch nicht mehr „mehrdeutige
+Stellen bleiben unverknüpft": liegen zwei Punkte übereinander, gewinnt der erste. Dieselbe
+Stelle ist derselbe Ort; unverknüpft hieße jetzt *Koordinate weg*.
+
+**Angelegte Punkte müssen auf Platte.** Die Migration hängt sie an die Liste in
+`context["points"]`, und der Aufrufer schreibt sie: `sweep.py` am Ende des Durchgangs
+(points.json zuletzt, erst dann steht die Zahl fest), `load_sequence_file()` über
+`_sichere_neue_punkte()` für alle anderen Wege. Die Liste wird deshalb **durchgereicht,
+nicht kopiert** (`_als_dicts`) — mit einer Kopie sähe die zweite Sequenz die Punkte der
+ersten nicht, vergäbe dieselben IDs erneut, und points.json hätte zwei Einträge mit
+derselben ID. Drei Tests pinnen das fest.
 
 Das ist der vorgesehene Weg für so etwas: **neue Daten entstehen korrekt, Altlasten gehen
 einmal durch die Schleuse.** `link` im Sequenz-Editor bleibt für die Fälle, die die
 Migration nicht eindeutig auflösen kann — nicht Teil des normalen Wegs. Sobald keine
-Altbestände mehr existieren, wird `_seq_v2_to_v3` ersatzlos gelöscht.
+Altbestände mehr existieren, werden `_seq_v2_to_v3` und `_seq_v3_to_v4` ersatzlos gelöscht.
 
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
@@ -409,17 +453,20 @@ das Item-Icon an. `fix` bleibt für den Fall ohne Slots.
 Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmäßig
 verschoben ist, sondern einzelne Ziele umgezogen sind. Weil Schritte über `point_id` auf
 Punkte zeigen und ihre Koordinaten vor jedem Lauf von dort holen, repariert das jeden
-Schritt, der den Punkt benutzt — Wartezeiten, else-Aktionen und Scans bleiben unberührt.
-Schritte **ohne** `point_id` erreicht das nicht; die verknüpft man vorher im
-Sequenz-Editor mit `link`. Die Farbe wird beim Neusetzen mitgezogen, aber nur wenn der
-Punkt schon eine hatte — sonst schliche sich ein Trigger ein, den niemand gesetzt hat.
+Schritt, der den Punkt benutzt — **auch dessen Prüf-Pixel und else-Klick**, denn die
+hängen seit Schema 4 ebenfalls an Punkten. Die Farbe wird beim Neusetzen mitgezogen, aber
+nur wenn der Punkt schon eine hatte — sonst schliche sich ein Trigger ein, den niemand
+gesetzt hat.
 
 Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
 `kalibriere_bestand()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
-und die Sequenz-**Dateien** um. Regeln:
+und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
 
 - **`mit_slots` steht getrennt von `mit_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
+- **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
+  zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`
+  und `_remap_sequence_data` prüfen deshalb `point_id is None`, bevor sie rechnen.
 - **Geladene Sequenzen im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
   der nächste `save_data()` den alten Stand aus dem Speicher zurück.
 - **Vorher sichern**: `sichere_vor_kalibrierung()` legt ein Export-ZIP an. Kein eigenes

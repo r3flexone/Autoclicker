@@ -298,13 +298,31 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
 # =============================================================================
 
 def _step_to_dict(s: SequenceStep) -> dict:
-    """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
+    """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict.
+
+    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht — sie
+    stehen dann in `points.json`, und das ist die einzige Stelle, an der sie stehen
+    duerfen. Betrifft drei Paare: den Klick selbst (x/y + recorded_color), den
+    Pruef-Pixel (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
+
+    `x`/`y` bleiben nur fuer die Schritte uebrig, die gar keinen Punkt haben koennen
+    (Tastendruck, Scans, Screenshot) — dort sind sie ohnehin 0 und fallen durch
+    `_ohne_defaults` weg.
+    """
     wc = s.wait_condition
     ec = s.else_config
-    voll = {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
+    # Der Punkt traegt die Stelle: alles, was sich daraus ableiten laesst, entfaellt.
+    klick_am_punkt = s.point_id is not None
+    wait_am_punkt = wc is not None and wc.point_id is not None
+    else_am_punkt = ec is not None and ec.point_id is not None
+    voll = {"x": 0 if klick_am_punkt else s.x,
+            "y": 0 if klick_am_punkt else s.y,
+            "name": "" if klick_am_punkt else s.name,
+            "point_id": s.point_id,
             "delay_before": s.delay_before,
-            "wait_pixel": wc.pixel if wc else None,
-            "wait_color": wc.color if wc else None,
+            "wait_point_id": wc.point_id if wc else None,
+            "wait_pixel": None if (wc is None or wait_am_punkt) else wc.pixel,
+            "wait_color": None if (wc is None or wait_am_punkt) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
@@ -315,12 +333,16 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "key_press": s.key_press,
             "scroll": s.scroll,
             "else_action": ec.action if ec else None,
-            "else_x": ec.x if ec else 0, "else_y": ec.y if ec else 0,
+            "else_point_id": ec.point_id if ec else None,
+            "else_x": 0 if (ec is None or else_am_punkt) else ec.x,
+            "else_y": 0 if (ec is None or else_am_punkt) else ec.y,
             "else_delay": ec.delay if ec else 0,
-            "else_key": ec.key if ec else None, "else_name": ec.name if ec else "",
+            "else_key": ec.key if ec else None,
+            "else_name": "" if (ec is None or else_am_punkt) else ec.name,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
-            "recorded_color": list(s.recorded_color) if s.recorded_color else None}
+            "recorded_color": None if klick_am_punkt or not s.recorded_color
+                              else list(s.recorded_color)}
     return _ohne_defaults(voll, _STEP_DEFAULTS)
 
 
@@ -332,11 +354,20 @@ def _step_to_dict(s: SequenceStep) -> dict:
 # Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
 # Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
 #
-# x, y und delay_before stehen NICHT hier: das sind die Pflicht-Argumente von
-# SequenceStep, die bleiben immer sichtbar.
+# delay_before steht NICHT hier: es ergibt sich als einziges nicht aus dem Punkt und
+# bleibt immer sichtbar - eine Wartezeit von 0 will man in der Datei sehen.
+#
+# x/y standen frueher aus demselben Grund nicht hier. Seit die Stelle im Punkt wohnt,
+# sind sie ein abgeleiteter Wert wie jeder andere: bei einem Schritt MIT point_id setzt
+# `_step_to_dict` sie auf 0, und damit raeumt diese Tabelle sie weg. Uebrig bleiben sie
+# nur bei Schritten ohne Stelle (Taste, Scan, Screenshot) - und dort sind sie 0.
 _STEP_DEFAULTS = {
     "name": "",
+    "x": 0,
+    "y": 0,
     "point_id": None,
+    "wait_point_id": None,
+    "else_point_id": None,
     "wait_pixel": None,
     "wait_color": None,
     "wait_until_gone": False,
@@ -402,9 +433,17 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         if delay_raw is None:
             delay_raw = 0
         delay_max_raw = s.get("delay_max")
-        # WaitCondition zusammenbauen
+        # WaitCondition zusammenbauen. Mit `wait_point_id` liefert der Punkt Position UND
+        # Farbe nach - pixel/color bleiben hier leer und fuellt resolve_point_references().
         wait_cond = None
-        if wait_pixel and wait_color:
+        wait_point_id = s.get("wait_point_id")
+        if wait_point_id is not None:
+            wait_cond = WaitCondition(
+                point_id=wait_point_id,
+                until_gone=s.get("wait_until_gone", False),
+                check_only=s.get("wait_check_only", False),
+            )
+        elif wait_pixel and wait_color:
             wait_cond = WaitCondition(
                 pixel=wait_pixel, color=wait_color,
                 until_gone=s.get("wait_until_gone", False),
@@ -433,6 +472,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_delay = s.get("else_delay") if s.get("else_delay") is not None else 0
             else_cfg = ElseConfig(
                 action=else_action,
+                point_id=s.get("else_point_id"),
                 x=else_x, y=else_y,
                 delay=else_delay,
                 key=s.get("else_key"), name=s.get("else_name") or ""

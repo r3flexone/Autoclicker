@@ -8,7 +8,7 @@ import json
 import logging
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import AutoClickerState
@@ -196,11 +196,14 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
     phasen = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
     for steps in phasen:
         for s in steps:
-            s.x, s.y = remap_point(s.x, s.y, transform)
-            if s.wait_condition is not None:
+            # Referenzierte Stellen ueberspringen: ihr Punkt ist schon umgerechnet,
+            # und der naechste `aufloesen()`-Lauf holt den Wert ohnehin von dort.
+            if s.point_id is None:
+                s.x, s.y = remap_point(s.x, s.y, transform)
+            if s.wait_condition is not None and s.wait_condition.point_id is None:
                 px = s.wait_condition.pixel
                 s.wait_condition.pixel = remap_point(px[0], px[1], transform)
-            if s.else_config is not None:
+            if s.else_config is not None and s.else_config.point_id is None:
                 ec = s.else_config
                 ec.x, ec.y = remap_point(ec.x, ec.y, transform)
             if s.screenshot_region is not None:
@@ -239,8 +242,12 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
     Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-Scans
-    mit; `mit_sequenzen` die Koordinaten in den Sequenz-DATEIEN (nicht nur den
-    geladenen) — Trigger-Pixel, else-Klicks, Screenshot-Regionen.
+    mit; `mit_sequenzen` die Screenshot-Regionen in den Sequenz-DATEIEN.
+
+    Die Klick-Stellen der Sequenzen stehen NICHT mehr in dieser Liste: sie sind
+    Punkte, und die sind oben schon umgerechnet. Das ist der eigentliche Gewinn der
+    Umstellung — vorher musste jede Kopie einzeln erwischt werden, und die eine, die
+    man vergaß, fiel erst beim nächsten Lauf auf.
 
     `mit_slots` steht bewusst getrennt, obwohl Slots zu den Scans gehören: eine
     aus einer Maus-Position abgeleitete Verschiebung ist für ein Klick-Ziel gut
@@ -248,11 +255,6 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
     schneiden das Item-Icon an. Dafür gibt es `slot_repair()`, das die Slots misst
     statt sie zu verschieben. Deshalb muss sich beides einzeln schalten lassen:
     nach einer Reparatur dürfen die Slots kein zweites Mal wandern.
-
-    Schritte mit `point_id` werden mit umgerechnet, obwohl `resolve_point_references()`
-    sie beim nächsten Lauf ohnehin aus dem Punkt nachzieht: sonst stünde in der Datei
-    bis dahin eine Koordinate, die zu keinem Bildschirm mehr passt, und ein Schritt,
-    dessen Punkt fehlt, bliebe endgültig auf dem alten Wert stehen.
 
     Gibt eine Zählung nach Bereich zurück.
     """
@@ -590,9 +592,24 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # eine neue - und id_map merkt sich das, damit die Sequenz-Schritte ihren
             # point_id nachziehen koennen.
             id_map: dict[int, int] = {}
-            if import_points and "points.json" in names:
+            # Sequenzen ohne ihre Punkte gibt es nicht mehr: seit die Koordinate nur noch
+            # im Punkt steht, waere eine Sequenz ohne Punkte eine Liste von Schritten, die
+            # nirgendwohin zeigen. `import_points=False` heisst deshalb "keine Punkte, die
+            # niemand braucht" - die referenzierten kommen trotzdem mit.
+            seq_namen = [n for n in names
+                         if n.startswith("sequences/") and n.endswith(".json")]
+            gebraucht: Optional[set] = None
+            if not import_points and import_sequences:
+                gebraucht = set()
+                for n in seq_namen:
+                    gebraucht |= _referenzierte_punkte(
+                        json.loads(zf.read(n).decode("utf-8")))
+
+            if (import_points or gebraucht) and "points.json" in names:
                 points_data = json.loads(zf.read("points.json").decode("utf-8"))
                 points_data, _m = migrate(points_data, KIND_POINTS)
+                if gebraucht is not None:
+                    points_data = [p for p in points_data if p.get("id") in gebraucht]
                 with state.lock:
                     if not merge:
                         state.points.clear()
@@ -617,21 +634,22 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
 
             # Sequenzen
             if import_sequences:
-                for name in names:
-                    if name.startswith("sequences/") and name.endswith(".json"):
-                        seq_data = json.loads(zf.read(name).decode("utf-8"))
-                        _remap_sequence_data(seq_data, transform)
-                        _remap_point_ids(seq_data, id_map, bool(import_points))
-                        seq_name = seq_data.get("name", Path(name).stem)
-                        safe = sanitize_filename(seq_name)
-                        seq_path = Path("sequences") / f"{safe}.json"
-                        seq_path.parent.mkdir(parents=True, exist_ok=True)
-                        atomic_write(seq_path, compact_json(seq_data))
-                        seq = load_sequence_file(seq_path)
-                        if seq:
-                            with state.lock:
-                                state.sequences[seq.name] = seq
-                            stats["sequences"] += 1
+                for name in seq_namen:
+                    seq_data = json.loads(zf.read(name).decode("utf-8"))
+                    _remap_sequence_data(seq_data, transform)
+                    _remap_point_ids(seq_data, id_map)
+                    seq_name = seq_data.get("name", Path(name).stem)
+                    safe = sanitize_filename(seq_name)
+                    seq_path = Path("sequences") / f"{safe}.json"
+                    seq_path.parent.mkdir(parents=True, exist_ok=True)
+                    atomic_write(seq_path, compact_json(seq_data))
+                    # Mit den frisch importierten Punkten aufloesen, nicht mit denen von
+                    # Platte: points.json wird erst am Ende des Imports geschrieben.
+                    seq = load_sequence_file(seq_path, list(state.points))
+                    if seq:
+                        with state.lock:
+                            state.sequences[seq.name] = seq
+                        stats["sequences"] += 1
 
             # Slots
             if import_slots and "slots.json" in names:
@@ -827,14 +845,20 @@ def _iter_import_steps(seq_data: dict):
 
 
 def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
-    """Transformiert alle Koordinaten in einer Sequenz-JSON-Struktur (in-place)."""
+    """Transformiert die Koordinaten in einer Sequenz-JSON-Struktur (in-place).
+
+    Was eine Punkt-Referenz hat, wird hier NICHT angefasst - der Punkt ist schon
+    umgerechnet, und ein zweites Mal hiesse doppelt verschoben. Uebrig bleibt, was
+    keinen Punkt haben kann: die Screenshot-Region.
+    """
     for s in _iter_import_steps(seq_data):
-        if s.get("x") is not None or s.get("y") is not None:
+        if s.get("point_id") is None and (s.get("x") is not None or s.get("y") is not None):
             s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
-        if s.get("wait_pixel"):
+        if s.get("wait_point_id") is None and s.get("wait_pixel"):
             wp = s["wait_pixel"]
             s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
-        if s.get("else_x") is not None or s.get("else_y") is not None:
+        if s.get("else_point_id") is None and (
+                s.get("else_x") is not None or s.get("else_y") is not None):
             s["else_x"], s["else_y"] = remap_point(
                 s.get("else_x", 0), s.get("else_y", 0), transform)
         if s.get("screenshot_region"):
@@ -842,25 +866,40 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
             s["screenshot_region"] = list(remap_region(tuple(sr), transform))
 
 
-def _remap_point_ids(seq_data: dict, id_map: dict[int, int],
-                     punkte_importiert: bool) -> None:
-    """Zieht `point_id` der Schritte auf die IDs nach, die die Punkte hier bekommen haben.
+# Die drei Referenz-Felder eines Schritts. Wer eine vierte Stelle einbaut, traegt sie
+# hier ein - sonst zeigt sie nach einem Import auf einen fremden lokalen Punkt.
+_REF_KEYS = ("point_id", "wait_point_id", "else_point_id")
+
+
+def _referenzierte_punkte(seq_data: dict) -> set:
+    """Alle Punkt-IDs, auf die diese Sequenz zeigt."""
+    raus = set()
+    for s in _iter_import_steps(seq_data):
+        for key in _REF_KEYS:
+            if s.get(key) is not None:
+                raus.add(s[key])
+    return raus
+
+
+def _remap_point_ids(seq_data: dict, id_map: dict[int, int]) -> None:
+    """Zieht die Punkt-Referenzen der Schritte auf die IDs nach, die die Punkte hier
+    bekommen haben.
 
     Der Import vergibt einem Punkt eine neue ID, wenn seine alte lokal schon belegt ist.
     Bleibt der Schritt dann auf der alten ID stehen, zeigt er auf einen FREMDEN lokalen
     Punkt - und `resolve_point_references()` zieht den Schritt beim naechsten Lauf brav
     dorthin und meldet das auch noch als Erfolg. Genau deshalb wird hier nachgezogen.
 
-    Ohne Punkt-Import gibt es hier ueberhaupt keine passenden Punkte: dann faellt die
-    Referenz weg und der Schritt bleibt bei seinen (umgerechneten) Koordinaten. Lieber
-    keine Referenz als die falsche - dieselbe Regel wie in der Migration.
+    Eine Referenz wird NICHT mehr fallengelassen, wenn die Zuordnung fehlt: seit die
+    Koordinate nur noch im Punkt steht, waere der Schritt danach ein Schritt ohne Ziel.
+    Er behaelt die Referenz und wird beim Laden als verwaist gemeldet - das ist ein
+    Problem, das man sieht und beheben kann.
     """
     for s in _iter_import_steps(seq_data):
-        alt = s.get("point_id")
-        if alt is None:
-            continue
-        neu = id_map.get(alt) if punkte_importiert else None
-        if neu is None:
-            s.pop("point_id", None)
-        elif neu != alt:
-            s["point_id"] = neu
+        for key in _REF_KEYS:
+            alt = s.get(key)
+            if alt is None:
+                continue
+            neu = id_map.get(alt)
+            if neu is not None and neu != alt:
+                s[key] = neu
