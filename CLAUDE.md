@@ -195,6 +195,19 @@ Regeln beim Format-Ändern:
 3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
 4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
 
+**Ein Migrationsschritt läuft genau so lange, wie es etwas zu heben gibt.** `migrate()`
+ruft zwar jeder Loader auf (ein Test erzwingt das), aber die Schleife
+`while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer: kein Schritt, keine
+Änderung, kein Schreibzugriff. Gemessen an einer Sequenz auf Schema 2:
+
+| | Kette läuft |
+|---|---|
+| 1. Start | ja — Datei wird gehoben und zurückgeschrieben |
+| 2./3. Start | **nein** |
+| 20× Sequenz laden | **nein** |
+
+Ein Test pinnt das fest (`weitere Starts rufen keinen Migrationsschritt mehr auf`).
+
 **Der Durchgang läuft beim Programmstart**, nicht beim Speichern: `persistence/sweep.py`,
 aufgerufen in `main.py` nach `init_directories()` und vor dem Laden (abschaltbar über
 `migrate_on_start`). Speichern schreibt sowieso aktuelles Format — das Problem sind

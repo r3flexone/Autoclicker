@@ -2283,6 +2283,65 @@ _ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": []})
 check("Altbestand: ohne Punkte bleibt alles unverknuepft statt zu scheitern",
       all(s.get("point_id") is None for s in _ohne_punkte["loop_phases"][0]["steps"]))
 
+# Und die Garantie, auf die es ankommt: die Kette laeuft, solange es etwas zu heben gibt,
+# danach NIE wieder. `migrate()` ruft zwar jeder Loader, aber die Schleife
+# `while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer — kein Schritt,
+# keine Aenderung, kein Schreibzugriff.
+import autoclicker.persistence.migration as _MG
+from autoclicker.persistence.sweep import sweep_beim_start as _sweep_start
+from autoclicker.persistence import (ensure_sequences_dir as _esd2,
+                                     load_sequence_file as _lsf2)
+from autoclicker.config import SEQUENCES_DIR as _SQD2
+
+_once_tmp = tempfile.mkdtemp()
+_once_cwd = _os.getcwd()
+_os.chdir(_once_tmp)
+_zaehler = {"n": 0}
+_orig_v3 = _MG._seq_v2_to_v3
+_orig_kette = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
+try:
+    def _gezaehlt(data, context):
+        _zaehler["n"] += 1
+        return _orig_v3(data, context)
+    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette[:-1] + [_gezaehlt]
+
+    _esd2()
+    Path(_SQD2, "points.json").write_text(
+        json.dumps([{"id": 5, "x": 100, "y": 200, "name": "Bank"}]), encoding="utf-8")
+    _adatei = Path(_SQD2) / "aufnahme.json"
+    _adatei.write_text(json.dumps({
+        "name": "aufnahme", "schema_version": 2, "total_cycles": 1,
+        "init_steps": [], "end_steps": [],
+        "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
+            {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"}]}]}), encoding="utf-8")
+
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _sweep_start()
+    _nach_erstem = _zaehler["n"]
+    _dat = json.loads(_adatei.read_text(encoding="utf-8"))
+    check("erster Start hebt die Datei und verknuepft sie",
+          _dat["schema_version"] == _MG.SCHEMA_VERSION
+          and _dat["loop_phases"][0]["steps"][0].get("point_id") == 5)
+    check("erster Start ruft die Kette ueberhaupt auf", _nach_erstem > 0)
+
+    _inhalt_vorher = _adatei.read_text(encoding="utf-8")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _sweep_start()
+        _sweep_start()
+    check("weitere Starts rufen keinen Migrationsschritt mehr auf",
+          _zaehler["n"] == _nach_erstem)
+    check("weitere Starts lassen die Datei unveraendert",
+          _adatei.read_text(encoding="utf-8") == _inhalt_vorher)
+
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        for _ in range(20):
+            _lsf2(_adatei, [])
+    check("Sequenz laden ruft keinen Migrationsschritt mehr auf",
+          _zaehler["n"] == _nach_erstem)
+finally:
+    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette
+    _os.chdir(_once_cwd)
+
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
