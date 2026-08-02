@@ -41,18 +41,24 @@ Thumbs.db
 config.json
 
 # User data folders (auto-generated)
+# Reihenfolge wie das Persistenz-Layout in CLAUDE.md — wer dort einen Ordner ergaenzt,
+# ergaenzt ihn hier. Sonst landen fremde Boss-Profile und Session-Logs im naechsten PR.
 sequences/
 slots/
 items/
 item_scans/
+boss_scans/
+icon_scans/
+exports/
+# Screenshots gibt es zweimal: SCREENSHOTS_DIR (slots/Screenshots) und
+# SEQUENCE_SCREENSHOTS_DIR (screenshots, klein). Beide ausschreiben — auf Linux ist
+# das Muster gross/klein-empfindlich, ein einzelnes `Screenshots/` deckt dort nur eins ab.
 Screenshots/
 slots/Screenshots/
-
-# Tools debug output (keep .gitkeep)
-tools/debug/*
-!tools/debug/.gitkeep
+screenshots/
 
 # Logs
+logs/
 *.log
 
 # Markt-Analyse - generierte Ausgaben
