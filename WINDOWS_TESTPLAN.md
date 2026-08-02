@@ -1,8 +1,11 @@
 # Windows-Testplan — Idle-Clans-Autoclicker
 
-Stand: Branch `claude/magical-hawking-e0e84t`. Dieser Plan deckt die **ganze App** ab
-(nicht nur die jüngsten Änderungen). 🆕 = in den letzten Sessions neu/geändert — dort
-besonders genau prüfen.
+Stand: 2026-08-02, Branch `claude/idle-clans-gold-farming-e16x20`. Dieser Plan deckt die
+**ganze App** ab (nicht nur die jüngsten Änderungen). 🆕 = in den letzten Sessions
+neu/geändert — dort besonders genau prüfen.
+
+Was hier abgehakt ist, wurde auf echtem Windows geprüft — mit Datum dahinter. Ein Haken
+ohne Datum ist ein Vorsatz, kein Nachweis.
 
 ## Voraussetzungen
 - Windows, Python-Umgebung mit `pillow`, `opencv-python`, `numpy`, `dearpygui` (für GUI),
@@ -10,8 +13,14 @@ besonders genau prüfen.
 - Spiel „Idle Clans" offen, damit echte Klicks/Screenshots etwas treffen.
 
 ## 0. Automatisiert (schon grün auf Linux — auf Windows gegenprüfen)
-- [x] `python tools/test_logic.py` → erwartet `83 PASS / 0 FAIL`, Exit 0.
-      **2026-06-16 Windows: 83 PASS / 0 FAIL, Exit 0 ✓**
+- [x] `python tools/test_logic.py` → erwartet `475 PASS / 0 FAIL`, Exit 0.
+      **2026-08-02 Windows: 475 PASS / 0 FAIL, Exit 0 ✓**
+      Unter Windows mit `PYTHONIOENCODING=utf-8` starten — auf einer cp1252-Konsole
+      bricht die Ausgabe sonst mit `UnicodeEncodeError` ab (Box-Zeichen).
+      Bis 2026-08-02 waren hier 4 Checks dauerhaft rot: die Geometrie-Helfer
+      (`get_virtual_desktop` & Co.) wurden nur gegen ihr gestubbtes Linux-Verhalten
+      geprüft. Jetzt prüft der Test beide Plattformen.
+      **2026-06-16 Windows: 83 PASS / 0 FAIL, Exit 0 ✓** (damaliger Stand)
       Deckt ab: Scan-Serialisierung (Item/Boss/Icon) Round-Trip, `_point_to_dict`,
       `LOAD_EXCEPTIONS` (kaputte Dateien → None), defensives Slot-Laden,
       `compact_json`, `sanitize_filename`, `describe_color`, Koordinaten-Remapping,
@@ -23,6 +32,34 @@ besonders genau prüfen.
       **2026-06-16 Windows: durchgelaufen, alle Migrationen ohne Fehler ✓**
 - [x] App startet: `python main.py` → Begrüßung + Hilfe erscheinen, keine Exception.
       **2026-06-16 Windows: Begrüßung + Hilfe ok, alle Loader + LLM verbunden, keine Exception ✓**
+
+## 0b. Plattform-Schicht ohne laufendes Spiel (2026-08-02 Windows ✓)
+Das lässt sich prüfen, ohne Idle Clans zu öffnen — reine API-Pfade gegen echtes Windows.
+Alle Punkte unten sind an diesem Datum grün gewesen.
+
+- [x] Voller Import aller Module (`winapi`, `imaging`, `handlers`, `runtime.worker`)
+      — das ist der Teil, der in der Linux-Sandbox an `msvcrt`/`ctypes.windll` scheitert.
+- [x] `take_screenshot` / `take_screenshot_bitblt`: Region, Vollbild, **und Monitore mit
+      negativen Koordinaten** (links vom bzw. über dem primären), Regionen quer über
+      Monitorgrenzen, ImageGrab-Fallback. BitBlt-Pixel deckt sich mit `get_pixel_color`.
+- [x] `get_pixel_color` / `get_screen_pixel` / `color_distance` / `get_color_name`.
+- [x] `match_template_in_image`: Selbst-Match eines synthetischen Templates → 100 %.
+- [x] `get_foreground_window_title`, `is_target_window_active`,
+      `get_client_rect_by_title` (unbekannter Titel → sauber `False`/`None`).
+- [x] DPI-Awareness steht nach dem Import auf 2 (Per-Monitor).
+- [x] `register_hotkeys()` / `unregister_hotkeys()` als Zyklus.
+- [x] `send_click` / `send_key` / `set_cursor_pos` gegen ein neutrales Ziel (Notepad):
+      Text kam nachweislich im Zielfenster an.
+- [x] OCR end-to-end mit gerendertem Text: `read_text` erkennt, `detect_boss_name`
+      matcht bekannte Bosse, lehnt Nicht-Bosse ab und schlägt neue Namen vor.
+      ⚠ Der **erste** Aufruf lädt EasyOCR-Modelle aus dem Netz (Minuten, kann mit
+      HTTP-Fehler scheitern) — danach ~300 ms.
+- [x] `diagnose.pruefe_setup()` gegen echten Datenbestand → 0 Befunde.
+- [x] `export_bundle` → ZIP mit `manifest.json` + Templates; `import_bundle` stellt
+      denselben Stand wieder her. ⚠ Import **nur in einer CWD-Sandbox** testen, er
+      schreibt sonst echte Daten inkl. `config.json` (s. CLAUDE.md).
+
+Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 
 ---
 
@@ -152,6 +189,9 @@ besonders genau prüfen.
 - [ ] Manuell beschädigte Scan-/Slot-/Sequenz-Datei → App startet, meldet Warnung,
       überspringt nur die kaputte Datei.
 - [ ] DPI-Skalierung ≠ 100 %: Klick-/Screenshot-Koordinaten stimmen.
+      Teilweise erledigt: **Multi-Monitor mit negativen Koordinaten** ist geprüft
+      (2026-08-02, s. 0b). Offen bleibt der eigentliche Fall — **unterschiedliche DPIs
+      pro Monitor**; dafür muss die Skalierung eines Monitors abweichend gesetzt werden.
 
 ---
 

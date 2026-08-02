@@ -31,8 +31,20 @@ Regeln beim Erweitern:
   prüft etwas anderes als er behauptet.
 - **Nicht die Implementierung abschreiben, sondern beide Seiten messen.** Wo Editor und
   Runtime dieselbe Regel kennen müssen, fragt der Test beide und vergleicht.
+- **Was der Stub anders macht als Windows, wird auf beiden Seiten geprüft** — mit
+  `if sys.platform == "win32":` und einem `else`-Zweig, nie nur die eine Hälfte. Die
+  Geometrie-Helfer (`get_virtual_desktop` & Co.) liefern gestubbt `None`/`(0,0)`/`(960,540)`
+  und auf echtem Windows reale Werte; als der Test nur den Stub-Fall festschrieb, stand die
+  Suite auf der *Zielplattform* dauerhaft auf 4× FAIL. Eine Suite, die dort rot ist, wo die
+  App läuft, verdeckt echte Regressionen im Rauschen. Unter Windows prüft man deshalb die
+  Eigenschaft (Rechteck hat Fläche, Mitte liegt darin), nicht den konkreten Wert — der hängt
+  am Monitor-Setup.
 
-Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet.
+Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet. Die Suite
+läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen Checks. Auf einer
+cp1252-Konsole bricht sie allerdings mit `UnicodeEncodeError` ab (die Ausgabe nutzt
+Box-Zeichen); unter Windows deshalb mit `PYTHONIOENCODING=utf-8` starten, falls die Konsole
+nicht ohnehin auf UTF-8 steht.
 
 ## Architektur
 
@@ -312,6 +324,7 @@ wird.)
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
+- `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
 **Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: der
 Dear-PyGui-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
@@ -471,6 +484,9 @@ hätte.
 ## Bekannte Stolperfallen
 
 - **Linux-Sandbox**: Voller Import scheitert an `msvcrt`/`ctypes.windll`. Für Korrektheits-Checks reicht `ast.parse`.
-- **DPI-Awareness**: `winapi.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren, aber Multi-Monitor mit unterschiedlichen DPIs ist nicht getestet.
+- **DPI-Awareness**: `winapi.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
+- **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.
+- **Der erste OCR-Aufruf lädt Modelle aus dem Netz.** EasyOCR holt beim allerersten `read_text()` Detection- und Recognition-Modell per Download — Sekunden bis Minuten, und es kann mit HTTP-Fehler scheitern; danach liegt ein Aufruf bei ~300 ms. Passiert das im Worker, steht die Sequenz so lange. Dieselbe Klasse Problem wie beim LLM, weshalb die LLM-Benennung bewusst nicht im Scan läuft (s.o.). Wer `ocr_enabled` neu einschaltet, sollte den ersten Aufruf nicht in einen laufenden Scan legen.
+- **`import_bundle()` schreibt sofort auf Platte, `export_bundle()` nicht.** Der Import legt Templates an und ruft `save_global_slots`, `save_global_items`, `save_item_scan`, `save_boss_scan`, `save_global_bosses`, `save_data` **und `save_config`** — er befüllt also nicht bloß den State. Mit einem frischen `AutoClickerState()` schreibt `save_config()` die Default-Config über die vorhandene `config.json`; die Tests in `test_logic.py` übergeben deshalb `import_config=False`. Für einen vollen Roundtrip die Pfad-Relativität nutzen: Datenordner + `config.json` in einen Temp-Ordner kopieren und vorher dorthin `os.chdir()` — die Konstanten in `persistence/paths.py` sind bewusst CWD-relativ.
 - **Race-Condition-Sensibel**: Lange-laufende Loops im Worker (Boss-Watcher, Item-Scan) iterieren über shared dicts — Mutationen aus Editoren können während des Laufens passieren. Im Zweifel `dict(state.x)`-Snapshot unter Lock.
