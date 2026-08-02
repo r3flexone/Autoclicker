@@ -2157,14 +2157,33 @@ if _ueberfluessig:
 
 # Die Geometrie-Helfer muessen ohne Windows sauber None/Fallback liefern, sonst kann der
 # Rest des Baums sie nicht gefahrlos aufrufen.
+#
+# Auf echtem Windows liefern sie dagegen echte Werte - dort ist "None" kein Erfolg,
+# sondern ein Fehler. Frueher stand hier nur der Stub-Fall; damit war die Suite auf der
+# Zielplattform dauerhaft rot (4x FAIL), und wer unter Windows entwickelt, konnte echte
+# Regressionen nicht mehr von diesem Rauschen unterscheiden. Beide Seiten pruefen.
 from autoclicker.winapi import (get_virtual_desktop, get_virtual_origin,
                                 get_screen_center, get_screen_size)
-check("get_virtual_desktop meldet None statt einer 0x0-Flaeche",
-      get_virtual_desktop() is None)
-check("get_screen_size meldet None statt 0x0", get_screen_size() is None)
-check("get_virtual_origin faellt auf (0, 0) zurueck", get_virtual_origin() == (0, 0))
-check("get_screen_center faellt auf eine brauchbare Mitte zurueck",
-      get_screen_center() == (960, 540))
+_rect = get_virtual_desktop()
+if sys.platform == "win32":
+    check("get_virtual_desktop liefert ein Rechteck mit Flaeche",
+          _rect is not None and _rect[2] > _rect[0] and _rect[3] > _rect[1])
+    _groesse = get_screen_size()
+    check("get_screen_size liefert eine positive Groesse",
+          _groesse is not None and _groesse[0] > 0 and _groesse[1] > 0)
+    # Der Ursprung darf negativ sein - ein Monitor links vom bzw. ueber dem primaeren
+    # ist der Normalfall, nicht die Ausnahme.
+    check("get_virtual_origin ist die linke obere Ecke des Rechtecks",
+          get_virtual_origin() == (_rect[0], _rect[1]))
+    _mitte = get_screen_center()
+    check("get_screen_center liegt im virtuellen Desktop",
+          _rect[0] <= _mitte[0] <= _rect[2] and _rect[1] <= _mitte[1] <= _rect[3])
+else:
+    check("get_virtual_desktop meldet None statt einer 0x0-Flaeche", _rect is None)
+    check("get_screen_size meldet None statt 0x0", get_screen_size() is None)
+    check("get_virtual_origin faellt auf (0, 0) zurueck", get_virtual_origin() == (0, 0))
+    check("get_screen_center faellt auf eine brauchbare Mitte zurueck",
+          get_screen_center() == (960, 540))
 
 
 # ------------------------------------------- Klick-Schritte referenzieren Punkte
