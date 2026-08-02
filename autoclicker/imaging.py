@@ -7,11 +7,15 @@ import ctypes
 import ctypes.wintypes as wintypes
 import logging
 import os
-from typing import Optional, TYPE_CHECKING
+# 'Image.Image' in den Annotationen ist ein String und wird nie ausgewertet - der Name
+# kommt aus dem optionalen Pillow-Import weiter unten. Ein zusaetzlicher TYPE_CHECKING-
+# Import waere nur eine zweite Definition desselben Namens.
+from typing import Optional
 
-from .config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from .config import CONFIG
+from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
-from .winapi import get_cursor_pos
+from .winapi import get_cursor_pos, get_virtual_desktop, get_virtual_origin
 
 # GDI32 Funktions-Deklarationen (restype nötig um Handle-Trunkierung auf 64-bit zu vermeiden)
 _gdi32 = ctypes.windll.gdi32
@@ -53,9 +57,6 @@ class BITMAPINFOHEADER(ctypes.Structure):
         ('biYPelsPerMeter', ctypes.c_int32), ('biClrUsed', ctypes.c_uint32),
         ('biClrImportant', ctypes.c_uint32),
     ]
-
-if TYPE_CHECKING:
-    from PIL import Image
 
 # Logger
 logger = logging.getLogger("autoclicker")
@@ -153,6 +154,76 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         return False
 
 
+# =============================================================================
+# TEMPLATE-CACHE
+# =============================================================================
+# Ein Template wurde bisher bei JEDEM Vergleich neu von Platte gelesen und dekodiert -
+# also pro Item x pro Slot x pro Scan-Schritt, in jedem Zyklus, fuer Bytes die sich nie
+# aendern. Bei 20 Items und 5 Slots sind das 100 Dateizugriffe je Scan.
+#
+# Der Cache haelt das dekodierte Bild und die auf eine Slot-Groesse angepasste Variante.
+# Schluessel ist (mtime, size) der Datei: wird ein Template neu gelernt oder ueberschrieben,
+# faellt der Eintrag von selbst raus - kein manuelles Invalidieren, kein Neustart noetig.
+#
+# Ohne Lock: Dict-Zugriffe sind unter dem GIL atomar. Schlimmstenfalls dekodieren zwei
+# Threads (Worker + Async-Boss) dasselbe Bild doppelt - das kostet nichts und geht nicht
+# kaputt. Ein Lock waere hier teurer als der Schaden.
+_template_cache: dict = {}
+_TEMPLATE_CACHE_MAX = 256
+
+# Schon gemeldete Groessen-Konflikte (Template != Slot). Einmal pro Template und
+# Groesse warnen, nicht bei jedem Scan - sonst ist die Konsole nach einer Minute voll
+# und man liest die Meldung nicht mehr.
+_gemeldete_groessen: set = set()
+
+
+def _load_template(template_path: str):
+    """Lädt ein Template-Bild (BGR) aus dem Cache oder von Platte. None wenn nicht da.
+
+    Unicode-Pfade: cv2.imread scheitert an Umlauten, deshalb fromfile + imdecode.
+    """
+    try:
+        st = os.stat(template_path)
+    except OSError:
+        logger.error(f"Template nicht gefunden: {template_path}")
+        return None
+
+    stand = (st.st_mtime, st.st_size)
+    eintrag = _template_cache.get(template_path)
+    if eintrag is not None and eintrag["stand"] == stand:
+        return eintrag["bild"]
+
+    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if bild is None:
+        logger.error(f"Konnte Template nicht laden: {template_path}")
+        return None
+
+    if len(_template_cache) >= _TEMPLATE_CACHE_MAX:
+        _template_cache.clear()
+    _template_cache[template_path] = {"stand": stand, "bild": bild, "skaliert": {}}
+    return bild
+
+
+def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
+    """Gibt das Template in der gewünschten Größe zurück (skaliert + gemerkt).
+
+    Die Größen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
+    geändert wurde. Sie ist pro Slot-Größe immer dieselbe Rechnung — also einmal.
+    """
+    if bild.shape[1] == breite and bild.shape[0] == hoehe:
+        return bild
+    eintrag = _template_cache.get(template_path)
+    schluessel = (breite, hoehe)
+    if eintrag is not None:
+        fertig = eintrag["skaliert"].get(schluessel)
+        if fertig is not None:
+            return fertig
+    skaliert = cv2.resize(bild, (breite, hoehe), interpolation=cv2.INTER_AREA)
+    if eintrag is not None:
+        eintrag["skaliert"][schluessel] = skaliert
+    return skaliert
+
+
 def match_template_in_image(img: 'Image.Image', template_name: str, min_confidence: float = DEFAULT_MIN_CONFIDENCE) -> tuple:
     """
     Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
@@ -174,34 +245,26 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         logger.warning("NumPy nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
-    # Template-Pfad erstellen
     template_path = os.path.join(TEMPLATES_DIR, template_name)
-    if not os.path.exists(template_path):
-        logger.error(f"Template nicht gefunden: {template_path}")
-        return (False, 0.0, None)
 
     try:
         # PIL-Bild zu OpenCV-Format konvertieren (RGB -> BGR)
         img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-        # Template laden (mit Unicode-Pfad-Unterstützung für Windows)
-        # cv2.imread hat Probleme mit Umlauten (ü, ä, ö) - daher imdecode verwenden
-        template_cv = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        template_cv = _load_template(template_path)
         if template_cv is None:
-            logger.error(f"Konnte Template nicht laden: {template_path}")
             return (False, 0.0, None)
 
         # Größenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
 
-        if tw != iw or th != ih:
+        if (tw != iw or th != ih) and tw > 0 and th > 0:
             # Größen-Diskrepanz! Template an Scan-Bildgröße anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
-            if tw > 0 and th > 0:
-                logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
-                template_cv = cv2.resize(template_cv, (iw, ih), interpolation=cv2.INTER_AREA)
+            logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
+            template_cv = _template_in_groesse(template_path, template_cv, iw, ih)
 
         # Debug: Scan-Bild und Template speichern zum Vergleich
         if CONFIG.debug_save_templates:
@@ -227,11 +290,14 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         else:
             # Bei sehr niedrigen Werten: Größen-Mismatch als mögliche Ursache loggen
             if max_val < 0.3 and (tw != iw or th != ih):
-                logger.debug(
-                    f"Template '{template_name}': {max_val:.1%} - "
-                    f"Größen-Mismatch (Template {tw}x{th}, Scan {iw}x{ih}) könnte Ursache sein. "
-                    f"Templates neu erstellen empfohlen."
-                )
+                schluessel = (template_name, tw, th, iw, ih)
+                if schluessel not in _gemeldete_groessen:
+                    _gemeldete_groessen.add(schluessel)
+                    logger.warning(
+                        f"Template '{template_name}' passt nicht zur Scan-Region: "
+                        f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
+                        "Slot-Region geändert? Template neu aufnehmen."
+                    )
             return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:
@@ -308,10 +374,7 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
         if region:
             # Bei Region: Erst alle Screens erfassen, dann zuschneiden
             full_screenshot = ImageGrab.grab(all_screens=True)
-            SM_XVIRTUALSCREEN = 76
-            SM_YVIRTUALSCREEN = 77
-            x_offset = ctypes.windll.user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-            y_offset = ctypes.windll.user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            x_offset, y_offset = get_virtual_origin()
             adjusted_region = (
                 region[0] - x_offset,
                 region[1] - y_offset,
@@ -345,14 +408,8 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
     bmp = None
     old_bmp = None
     try:
-        # Virtual Screen Metriken für Multi-Monitor-Support
-        SM_XVIRTUALSCREEN = 76   # Linke Kante des virtuellen Desktops
-        SM_YVIRTUALSCREEN = 77   # Obere Kante des virtuellen Desktops
-        SM_CXVIRTUALSCREEN = 78  # Breite des virtuellen Desktops
-        SM_CYVIRTUALSCREEN = 79  # Höhe des virtuellen Desktops
-
-        virtual_left = _user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-        virtual_top = _user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+        # Multi-Monitor: Ursprung des virtuellen Desktops (kann negativ sein)
+        virtual_left, virtual_top = get_virtual_origin()
 
         if region:
             left, top, right, bottom = region
@@ -362,10 +419,11 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
                 return None
         else:
             # Vollbild: gesamter virtueller Desktop (alle Monitore)
-            left = virtual_left
-            top = virtual_top
-            width = _user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
-            height = _user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+            rect = get_virtual_desktop()
+            if rect is None:
+                return None
+            left, top = rect[0], rect[1]
+            width, height = rect[2] - rect[0], rect[3] - rect[1]
 
         # Device Contexts - GetWindowDC(GetDesktopWindow()) liefert DC für gesamten virtuellen Desktop
         hwnd = _user32.GetDesktopWindow()

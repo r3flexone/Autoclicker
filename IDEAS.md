@@ -1,6 +1,47 @@
 # Feature-Ideen (Backlog)
 
-Sammlung von Features, die diskutiert aber nicht umgesetzt wurden. Kurzbeschreibung + Tradeoff, damit eine spätere Entscheidung ohne erneute Analyse möglich ist.
+Sammlung von Features, die diskutiert aber **nicht umgesetzt** wurden. Kurzbeschreibung +
+Tradeoff, damit eine spätere Entscheidung ohne erneute Analyse möglich ist.
+
+Ist ein Eintrag gebaut, fliegt er hier raus — ein Backlog, das Erledigtes mitführt, verliert
+seinen Zweck. Zuletzt entfallen, weil umgesetzt: *Profile-Export/Import* (`import_export.py`,
+inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
+(`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
+*Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2).
+
+## Bedienung
+
+### Einstellungs-Menü (Config im Programm statt im Texteditor)
+`AppConfig` hat 66 Werte. Im Programm umschaltbar sind drei: `debug_log`, `debug_detail`,
+`boss_learn_global`. Alles andere — Klick-Verzögerungen, Pixel-Toleranz, Timeout-Verhalten,
+Humanization, Fokus-Check, LLM, OCR — geht nur, indem man `config.json` im Texteditor
+aufmacht und weiß, wie das Feld heißt.
+
+- **Nutzen:** Nimmt dem Programm die letzte Stelle, an der man eine Datei von Hand editieren muss. Wer die Toleranz eines Farb-Triggers nachziehen will, muss dafür nicht wissen, dass das Feld `pixel_wait_tolerance` heißt.
+- **Tradeoff:** 66 Werte sind zu viele für ein flaches Menü — es braucht die Sektionen, sonst wird es unübersichtlicher als die JSON. Und jeder neue Config-Wert muss im Menü landen, sonst entsteht wieder eine Zwei-Klassen-Config.
+- **Ansatz:** Das Gerüst liegt schon da: `_CONFIG_SECTIONS` in `config.py` gruppiert alle Felder nach Thema, die Kommentare an den Dataclass-Feldern sind brauchbare Erklärtexte. Das Menü daraus **generieren** statt handschreiben — dann kann kein Feld vergessen werden. Bool umschalten, Zahlen mit Bereichsangabe, feste Auswahl (`pixel_timeout_action`) als Liste; Validierung übernimmt `AppConfig.__post_init__`, gespeichert wird sofort über `save_config`.
+
+## Performance
+
+### Ein Screenshot pro Scan statt einer pro Slot
+`execute_item_scan()` macht für jeden Slot eine eigene Bildschirmaufnahme (BitBlt +
+GetDIBits). Bei 5 Slots sind das 5 Aufnahmen, wo eine über das umschließende Rechteck
+plus Zuschneiden reichen würde.
+
+- **Nutzen:** Weniger GDI-Aufrufe pro Scan-Schritt. Nebeneffekt: alle Slots stammen aus
+  demselben Frame, der Vergleich zwischen ihnen wird also konsistenter.
+- **Tradeoff:** Genau dieser Nebeneffekt ist die Frage. Heute liegt zwischen den Slots
+  `scan_slot_delay` (Default 0.1 s) und jeder Slot sieht einen etwas späteren Spielstand —
+  bei einem statischen Inventar egal, bei animierten Inhalten nicht. Zweitens hilft die
+  Bündelung nur, wenn die Slots nah beieinander liegen: sind sie über den Bildschirm
+  verteilt, nimmt das umschließende Rechteck fast das ganze Bild auf und die Aufnahme wird
+  teurer statt billiger. Es bräuchte also eine Schranke (Rechteckfläche vs. Summe der
+  Slot-Flächen), und damit eine Heuristik, die man auf einem echten Windows-Setup messen
+  muss — auf Linux ist das nicht prüfbar.
+- **Ansatz:** In `execute_item_scan()` einmal das umschließende Rechteck aller Slots
+  aufnehmen und pro Slot `img.crop()` statt `take_screenshot(slot.scan_region)`. Die
+  Slot-Schleife mit ihren Stop-/Pause-/Skip-Prüfungen bleibt unverändert. Vorher auf
+  Windows messen, ob sich der Aufwand überhaupt lohnt.
 
 ## Reliability
 
@@ -13,12 +54,16 @@ Pixel-Trigger oder Template-Match auf Login-Screen / Verbindungsfehler-Popup, da
 
 ## Safety
 
-### Session-Zeitlimit + Break-Scheduler
-Harte Obergrenze (z.B. max. 6h pro Tag), danach automatischer Stop. Plus geplante Pausen (z.B. alle 60min für 2-5min).
+### Session-Zeitlimit
+Harte Obergrenze (z.B. max. 6h pro Tag), danach automatischer Stop.
 
-- **Nutzen:** Schutz vor Bans durch 24/7-Laufzeit. Kombiniert mit Humanization zusätzliche Tarnung.
-- **Tradeoff:** Reduziert Throughput, muss konfigurierbar sein.
-- **Ansatz:** Zwei neue Config-Werte (`max_session_hours`, `break_interval_min` + `break_duration_min`). Im Main-Loop zwischen Zyklen prüfen.
+Der **Break-Scheduler dieses Eintrags ist gebaut**: `humanize_break_interval_min` +
+`humanize_break_duration_min/max` legen periodische Pausen ein (`_humanize_check_break`
+in `runtime/actions.py`). Offen ist nur die harte Obergrenze.
+
+- **Nutzen:** Schutz vor Bans durch 24/7-Laufzeit.
+- **Tradeoff:** Reduziert Throughput, muss konfigurierbar sein. Ein Stop mitten im Zyklus kann Items liegen lassen — sauberer wäre `finish_event` (Zyklus zu Ende, dann END-Phase).
+- **Ansatz:** Ein Config-Wert `max_session_hours`. In `_run_main_loop` am Zyklus-Rand gegen `state.start_time` prüfen und `finish_event` setzen.
 
 ## Observability
 
@@ -47,9 +92,6 @@ Bei niedrigem HP automatisch Food klicken (Pixel-Farbtest auf HP-Bar).
 
 ## Weitere Ideen (Kurzform)
 
-- **Dry-Run / Simulation**: Zeigt was passieren würde ohne zu klicken (für Sequenz-Debugging).
-- **Profile-Export/Import**: Komplette Config als Bundle teilen.
-- **Multi-Monitor / DPI-Awareness**: Korrekte Koordinaten bei Scaling ≠ 100%.
 - **XP-Tracker**: OCR oder Pixel-Tracking der XP-Anzeige für Skill-Progress-Schätzung.
 - **Death-Screen-Detection**: Analog zu Disconnect, spezifisch für Ingame-Tod.
 - **Auto-Login**: Automatisches Re-Login nach Session-Timeout (riskant – nur mit gespeicherten Credentials, potenzielles Sicherheitsrisiko).

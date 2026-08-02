@@ -105,10 +105,25 @@ class AppConfig:
     # === TIMING ===
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
+    # === DATEIEN ===
+    # Beim Start alle JSON-Dateien aufs aktuelle Format heben (persistence/sweep.py).
+    # Nur ausschalten, wenn man Altbestand absichtlich einfrieren will - dann hebt
+    # tools/migrate.py von Hand.
+    migrate_on_start: bool = True
+
     # === DEBUG-EINSTELLUNGEN ===
-    debug_mode: bool = False                        # Wie debug_detection, zusätzlich Sequenz-Vorschau + Enter vor Start
-    debug_detection: bool = False                   # Alle Schritt-Ausgaben persistent (nicht überschrieben) + Erkennungs-Details
-    debug_show_pixel_position: bool = False         # Maus kurz zum Prüf-Pixel bewegen beim Start
+    # Zwei getrennt schaltbare Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
+    # Keine der beiden verändert den Ablauf - nur wie viel du zu sehen bekommst.
+    #   debug_log    = alles ausgeben, nichts überschreiben
+    #   debug_detail = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort
+    #                  passieren soll (mit Farbquadrat bei Farb-Bedingungen)
+    # debug_detail gibt mehrzeilig aus und zieht die persistente Ausgabe damit zwangsläufig
+    # mit - eine Status-Zeile, die sich selbst überschreibt, wäre sonst überklebt.
+    # Der MANUELLE Modus (Schritt für Schritt auf Bestätigung) ist bewusst KEINE Config,
+    # sondern Laufzeit-Zustand: Punkte-Menü (CTRL+ALT+P) -> 'manuell'.
+    debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe
+    debug_detail: bool = False                      # Stufe 2: Zeiger + Detailausgabe
+    debug_show_pixel_position: bool = False         # Zeiger kurz zum Prüf-Pixel beim Farbwarten
     debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
 
     def __post_init__(self):
@@ -229,6 +244,11 @@ class AppConfig:
         "default_min_confidence": "scan_min_confidence",
         "default_confirm_delay": "scan_confirm_delay",
         "show_pixel_position": "debug_show_pixel_position",
+        # Alte Sammelflags: debug_detection war die reine Log-Variante, debug_mode die
+        # ausführlichere. debug_step war eine Zwischenstufe, die beides vermischte.
+        "debug_detection": "debug_log",
+        "debug_mode": "debug_detail",
+        "debug_step": "debug_detail",
         "pause_check_interval": "timing_pause_interval",
     }
 
@@ -346,8 +366,11 @@ _CONFIG_SECTIONS = [
     ("TIMING", [
         "timing_pause_interval",
     ]),
+    ("DATEIEN", [
+        "migrate_on_start",
+    ]),
     ("DEBUG", [
-        "debug_mode", "debug_detection",
+        "debug_log", "debug_detail",
         "debug_show_pixel_position", "debug_save_templates",
     ]),
 ]
@@ -392,7 +415,14 @@ def save_config(config: AppConfig) -> None:
 # Konfiguration laden (wird beim Import ausgeführt)
 CONFIG: AppConfig = load_config()
 
-# Konfig-Werte als Variablen (nur Werte die sich zur Laufzeit nicht ändern)
-# ACHTUNG: Werte die sich durch Factory Reset ändern können, immer über
-# state.config abrufen statt über Modul-Variablen!
-DEFAULT_MIN_CONFIDENCE: float = CONFIG.scan_min_confidence
+# Hier stand früher `DEFAULT_MIN_CONFIDENCE = CONFIG.scan_min_confidence` — ein Name für
+# zwei verschiedene Dinge, und damit die Ursache stillen Datenverlusts:
+#
+#   * der DATEI-Default (was gilt, wenn min_confidence in der JSON fehlt) ist konstant
+#     und liegt jetzt als models.DEFAULT_MIN_CONFIDENCE bei den Dataclasses,
+#   * die VOREINSTELLUNG für neu angelegte Profile ist `scan_min_confidence` und wird
+#     über state.config gelesen (Factory Reset wirkt dann sofort).
+#
+# Solange beides derselbe Wert war, liess der Serializer ein Feld weg, das exakt auf dem
+# Config-Wert stand - und beim naechsten Aendern der Config kam es mit einem anderen Wert
+# zurueck. Nicht wieder zusammenlegen.

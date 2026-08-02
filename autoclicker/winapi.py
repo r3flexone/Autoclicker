@@ -93,6 +93,8 @@ WM_LBUTTONDOWN = 0x0201
 INPUT_MOUSE = 0
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120          # Windows-Einheit fuer eine Rasterstufe des Mausrads
 
 # Keyboard Input
 INPUT_KEYBOARD = 1
@@ -308,6 +310,63 @@ def remove_mouse_hook() -> None:
 
 
 # =============================================================================
+# BILDSCHIRM-GEOMETRIE
+# =============================================================================
+# Lag vorher fuenfmal im Baum verstreut (imaging, item_scan, diagnose, scan_studio,
+# console), jedes Mal mit eigenen SM_*-Konstanten und eigenem try/except. Genau solche
+# Kopien machen eine Portierung teuer: fuer Linux muesste man alle fuenf finden.
+
+_SM_CXSCREEN, _SM_CYSCREEN = 0, 1
+_SM_XVIRTUALSCREEN, _SM_YVIRTUALSCREEN = 76, 77
+_SM_CXVIRTUALSCREEN, _SM_CYVIRTUALSCREEN = 78, 79
+
+
+def get_screen_size() -> tuple[int, int] | None:
+    """Groesse des Primaermonitors, oder None wenn nicht ermittelbar."""
+    try:
+        b, h = user32.GetSystemMetrics(_SM_CXSCREEN), user32.GetSystemMetrics(_SM_CYSCREEN)
+    except (AttributeError, OSError):
+        return None
+    return (b, h) if b > 0 and h > 0 else None
+
+
+def get_virtual_desktop() -> tuple[int, int, int, int] | None:
+    """(links, oben, rechts, unten) ueber ALLE Monitore, oder None.
+
+    Auf Nicht-Windows (oder bei gestubbtem ctypes) kommt 0 zurueck - dann lieber None
+    liefern als eine Flaeche von 0x0 zu behaupten, gegen die jede Koordinate ausserhalb
+    liegt.
+    """
+    try:
+        x = user32.GetSystemMetrics(_SM_XVIRTUALSCREEN)
+        y = user32.GetSystemMetrics(_SM_YVIRTUALSCREEN)
+        b = user32.GetSystemMetrics(_SM_CXVIRTUALSCREEN)
+        h = user32.GetSystemMetrics(_SM_CYVIRTUALSCREEN)
+    except (AttributeError, OSError):
+        return None
+    if b <= 0 or h <= 0:
+        return None
+    return (x, y, x + b, y + h)
+
+
+def get_virtual_origin() -> tuple[int, int]:
+    """Linke/obere Kante des virtuellen Desktops. (0, 0), wenn nicht ermittelbar."""
+    rect = get_virtual_desktop()
+    return (rect[0], rect[1]) if rect else (0, 0)
+
+
+def get_screen_center() -> tuple[int, int]:
+    """Mitte des virtuellen Desktops, sonst des Primaermonitors, sonst 960x540."""
+    rect = get_virtual_desktop()
+    if rect:
+        return (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
+    groesse = get_screen_size()
+    if groesse:
+        return groesse[0] // 2, groesse[1] // 2
+    return 960, 540
+
+
+# =============================================================================
 # MAUS- UND TASTATUR-FUNKTIONEN
 # =============================================================================
 def get_cursor_pos() -> tuple[int, int]:
@@ -338,6 +397,36 @@ def send_click(x: int, y: int, move_delay: float = 0.01, post_delay: float = 0.0
         logger.warning(f"SendInput Klick: nur {sent}/2 Events gesendet @ ({x}, {y})")
 
     # Warte nach dem Klick damit das Ziel-Programm den Klick verarbeiten kann
+    if post_delay > 0:
+        time.sleep(post_delay)
+
+
+def send_scroll(clicks: int, x: int = None, y: int = None,
+                move_delay: float = 0.01, post_delay: float = 0.05) -> None:
+    """Dreht das Mausrad um `clicks` Rasterstufen. Positiv = hoch, negativ = runter.
+
+    Windows liefert das Scroll-Event an das Fenster UNTER dem Cursor, nicht an das
+    fokussierte - deshalb muss der Zeiger vorher auf die Zielposition. Ohne x/y wird
+    dort gescrollt, wo die Maus gerade steht.
+    """
+    if not clicks:
+        return
+    if x is not None and y is not None:
+        set_cursor_pos(x, y)
+        time.sleep(move_delay)
+
+    inputs = (INPUT * 1)()
+    inputs[0].type = INPUT_MOUSE
+    inputs[0].union.mi.dwFlags = MOUSEEVENTF_WHEEL
+    # mouseData ist ein DWORD (unsigned). Runterscrollen braucht einen negativen Delta,
+    # der als Zweierkomplement in 32 Bit passen muss - explizit maskieren statt auf die
+    # Breite von c_ulong zu vertrauen (auf Windows 32 Bit, anderswo 64).
+    inputs[0].union.mi.mouseData = (clicks * WHEEL_DELTA) & 0xFFFFFFFF
+
+    sent = user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
+    if sent != 1:
+        logger.warning(f"SendInput Scroll: {sent}/1 Events gesendet ({clicks} Stufen)")
+
     if post_delay > 0:
         time.sleep(post_delay)
 

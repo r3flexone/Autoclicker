@@ -20,7 +20,7 @@ from ..models import (
 from ..session_log import log_event
 from ..utils import clear_line, wait_while_paused, col, dbg
 from ..winapi import (
-    send_click, send_key,
+    send_click, send_key, send_scroll,
     is_target_window_active, get_foreground_window_title,
 )
 
@@ -56,7 +56,7 @@ def _wait_for_target_window(state: AutoClickerState, phase: str = "") -> bool:
     while not state.stop_event.is_set():
         if is_target_window_active(cfg.window_focus_title):
             log_event(state, "focus_restored")
-            print(col(f"[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
+            print(col("[FOKUS-CHECK] Fenster wieder aktiv - weiter.", "green"))
             return True
         if state.stop_event.wait(cfg.timing_pause_interval):
             return False
@@ -118,7 +118,7 @@ def _humanize_check_break(state: AutoClickerState) -> None:
     with state.lock:
         state.humanize_last_break = time.monotonic()
     log_event(state, "humanize_break_end")
-    print(col(f"[HUMANIZE] Pause beendet.", "cyan"))
+    print(col("[HUMANIZE] Pause beendet.", "cyan"))
 
 
 # =============================================================================
@@ -149,6 +149,29 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     return True
 
 
+def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = None,
+                label: str = "") -> bool:
+    """Wrapper für send_scroll mit Window-Fokus-Check, Humanization und Logging.
+
+    Wie safe_click/safe_key: NIE send_scroll direkt aufrufen, sonst fehlen Fokus-Check,
+    Humanize-Delays und der Log-Eintrag. Der Zeiger-Jitter greift hier ebenfalls, weil
+    Windows das Rad-Event an das Fenster unter dem Cursor liefert.
+    """
+    with state.input_lock:
+        if not _wait_for_target_window(state):
+            return False
+        _humanize_check_break(state)
+        if state.stop_event.is_set():
+            return False
+        _humanize_delay(state)
+        if x is not None and y is not None:
+            x, y = _humanize_jitter(x, y, state)
+        send_scroll(clicks, x, y, state.config.click_move_delay,
+                    state.config.click_post_delay)
+    log_event(state, "scroll", detail=str(clicks), x=x, y=y, extra=label)
+    return True
+
+
 def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
     # Siehe safe_click: input_lock sichert exklusiven Maus/Tastatur-Zugriff.
@@ -171,11 +194,12 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
 def is_verbose_debug(state: AutoClickerState) -> bool:
     """True = jeder Schritt wird persistent geloggt statt die Status-Zeile zu überschreiben.
 
-    debug_mode UND debug_detection lösen das aus (debug_detection zeigt zusätzlich
-    Erkennungs-Details bei Item/Boss/Icon-Scans). debug_mode zeigt zusätzlich VOR
-    dem Start die ganze Sequenz + wartet auf Enter (siehe worker._prepare_worker_state).
+    Der Einzelschritt-Modus impliziert das (eine überschreibbare Status-Zeile nützt beim
+    Durchsteppen nichts). Definition liegt in runtime/debug.py, hier nur weitergereicht,
+    damit bestehende Importe gültig bleiben.
     """
-    return state.config.debug_mode or state.config.debug_detection
+    from .debug import is_log_debug
+    return is_log_debug(state)
 
 
 def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,

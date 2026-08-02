@@ -18,8 +18,8 @@ def run_import_export_editor(state: AutoClickerState) -> None:
     print(header("IMPORT / EXPORT"))
     print(f"  {breadcrumb('Hauptmenü', 'Import/Export')}")
     print()
-    print(f"  Setups als ZIP exportieren und auf anderen PCs importieren.")
-    print(f"  Koordinaten werden automatisch an den neuen Bildschirm angepasst.")
+    print("  Setups als ZIP exportieren und auf anderen PCs importieren.")
+    print("  Koordinaten werden automatisch an den neuen Bildschirm angepasst.")
     print()
 
     menu_options = [
@@ -179,11 +179,11 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         print()
         if win_title:
             print(f"  {info(f'Spielfenster „{win_title}“ nicht gefunden — nutze manuelle Referenzpunkte.')}")
-        print(f"  Beim Import werden diese Punkte auf dem neuen Bildschirm angeklickt.")
-        print(f"  Daraus berechnet das Programm die Koordinaten-Anpassung.")
+        print("  Beim Import werden diese Punkte auf dem neuen Bildschirm angeklickt.")
+        print("  Daraus berechnet das Programm die Koordinaten-Anpassung.")
         print()
         print(f"  {col('Tipp:', 'yellow')} Wähle zwei markante Ecken im Spielfenster,")
-        print(f"         z.B. linke obere Ecke + rechte untere Ecke des Spielfensters.")
+        print("         z.B. linke obere Ecke + rechte untere Ecke des Spielfensters.")
         print()
 
         ref1 = _get_reference_point(1, "Oben-Links im Spielfenster")
@@ -246,8 +246,8 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
 def _get_reference_point(num: int, description: str) -> tuple[int, int] | None:
     """Lässt den Benutzer einen Referenzpunkt setzen."""
     print(f"  Referenzpunkt {num} ({description}):")
-    print(f"    Maus an die Stelle bewegen und Enter drücken (oder 'x' zum Abbrechen)")
-    result = safe_input(f"    > ").strip()
+    print("    Maus an die Stelle bewegen und Enter drücken (oder 'x' zum Abbrechen)")
+    result = safe_input("    > ").strip()
     if is_cancel(result):
         print(f"  {info('Abgebrochen')}")
         return None
@@ -262,7 +262,7 @@ def _print_sharing_guide(filepath: Path, ref1: tuple, ref2: tuple) -> None:
     print()
     print(f"  {col('1.', 'cyan')} Die Datei '{filepath.name}' an den Empfänger schicken")
     print(f"  {col('2.', 'cyan')} Der Empfänger legt die Datei in seinen Autoclicker-Ordner")
-    print(f"     oder an einen beliebigen Ort")
+    print("     oder an einen beliebigen Ort")
     print(f"  {col('3.', 'cyan')} Im Autoclicker: {col('CTRL+ALT+I', 'yellow')} → Importieren")
     print(f"  {col('4.', 'cyan')} Beim Import wird nach 2 Referenzpunkten gefragt:")
     print(f"     - Punkt 1: {col('Oben-Links im Spielfenster', 'green')} (dein Punkt: {ref1[0]},{ref1[1]})")
@@ -270,8 +270,8 @@ def _print_sharing_guide(filepath: Path, ref1: tuple, ref2: tuple) -> None:
     print(f"  {col('5.', 'cyan')} Das Programm passt alle Koordinaten automatisch an!")
     print()
     print(f"  {col('Hinweis:', 'yellow')} Der Empfänger muss die gleichen Stellen im")
-    print(f"           Spielfenster anklicken, damit die Anpassung funktioniert.")
-    print(f"           Ideal: Fensterecken oder andere feste UI-Elemente.")
+    print("           Spielfenster anklicken, damit die Anpassung funktioniert.")
+    print("           Ideal: Fensterecken oder andere feste UI-Elemente.")
     print()
 
 
@@ -303,7 +303,7 @@ def _run_import(state: AutoClickerState) -> None:
             unique_zips.append(f)
 
     if unique_zips:
-        print(f"\n  Gefundene ZIP-Dateien:")
+        print("\n  Gefundene ZIP-Dateien:")
         options = [f"{f.name} ({f.stat().st_size / 1024:.1f} KB)" for f in unique_zips[:10]]
         options.append("Anderen Pfad eingeben...")
         choice = interactive_select(options)
@@ -316,7 +316,7 @@ def _run_import(state: AutoClickerState) -> None:
             if filepath is None:
                 return
     else:
-        print(f"\n  Keine ZIP-Dateien in ./exports/ oder ./ gefunden.")
+        print("\n  Keine ZIP-Dateien in ./exports/ oder ./ gefunden.")
         filepath = _ask_filepath()
         if filepath is None:
             return
@@ -361,9 +361,9 @@ def _run_import(state: AutoClickerState) -> None:
     if "templates" in contents:
         print(f"    Templates:   {contents['templates']}")
     if "config" in contents:
-        print(f"    Config:      ja")
+        print("    Config:      ja")
 
-    print(f"\n  Referenzpunkte des Exporters:")
+    print("\n  Referenzpunkte des Exporters:")
     print(f"    Punkt 1: ({src_ref1[0]}, {src_ref1[1]})")
     print(f"    Punkt 2: ({src_ref2[0]}, {src_ref2[1]})")
 
@@ -379,17 +379,17 @@ def _run_import(state: AutoClickerState) -> None:
         sl, st, sr, sb = src_window
         dl, dt, dr, db = dst_window
         print(f"    Spielfenster beim Export: {sr - sl}x{sb - st} px, jetzt: {dr - dl}x{db - dt} px")
-        print(f"    [1] Automatisch aus Fenstergröße (empfohlen)")
-        print(f"    [2] Manuell (2 Punkte klicken)")
-        print(f"    [3] 1:1 übernehmen (gleicher Bildschirm)")
-        c = safe_input(f"    Wahl (Enter = 1): ").strip()
+        print("    [1] Automatisch aus Fenstergröße (empfohlen)")
+        print("    [2] Manuell (2 Punkte klicken)")
+        print("    [3] 1:1 übernehmen (gleicher Bildschirm)")
+        c = safe_input("    Wahl (Enter = 1): ").strip()
         mode = "manual" if c == "2" else "identity" if c == "3" else "auto"
     else:
         if src_window and not dst_window:
             print(f"    {info(f'Spielfenster nicht gefunden — bitte 2 Punkte manuell setzen.')}")
-        print(f"    [1] Remapping (andere Auflösung/Fensterposition)")
-        print(f"    [2] 1:1 übernehmen (gleicher Bildschirm)")
-        c = safe_input(f"    Wahl (Enter = 1): ").strip()
+        print("    [1] Remapping (andere Auflösung/Fensterposition)")
+        print("    [2] 1:1 übernehmen (gleicher Bildschirm)")
+        c = safe_input("    Wahl (Enter = 1): ").strip()
         mode = "identity" if c == "2" else "manual"
 
     transform = None
@@ -397,7 +397,7 @@ def _run_import(state: AutoClickerState) -> None:
         transform = transform_from_windows(tuple(src_window), tuple(dst_window))
     elif mode == "manual":
         print(f"\n  {col('Deine Referenzpunkte setzen:', 'bold')}")
-        print(f"  Klicke die GLEICHEN Stellen im Spielfenster wie der Exporter:")
+        print("  Klicke die GLEICHEN Stellen im Spielfenster wie der Exporter:")
         print()
 
         dst_ref1 = _get_reference_point(1, "Oben-Links im Spielfenster")
@@ -435,10 +435,10 @@ def _run_import(state: AutoClickerState) -> None:
             import_flags[f"import_{key}"] = choice != "n"
 
     # Merge oder ersetzen?
-    print(f"\n  Bestehende Daten:")
-    print(f"    [1] Behalten + ergänzen (Merge)")
-    print(f"    [2] Ersetzen (bestehende Daten werden überschrieben)")
-    merge_choice = safe_input(f"    Wahl (Enter = 1): ").strip()
+    print("\n  Bestehende Daten:")
+    print("    [1] Behalten + ergänzen (Merge)")
+    print("    [2] Ersetzen (bestehende Daten werden überschrieben)")
+    merge_choice = safe_input("    Wahl (Enter = 1): ").strip()
     merge = merge_choice != "2"
 
     # Bestätigung
@@ -471,15 +471,15 @@ def _run_import(state: AutoClickerState) -> None:
 
         if transform and transform != {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}:
             print(f"\n  {col('Hinweis:', 'yellow')} Koordinaten wurden automatisch angepasst.")
-            print(f"           Teste die Sequenz einmal im Debug-Modus (config.json → debug_mode: true)")
-            print(f"           um zu prüfen ob alle Positionen stimmen.")
+            print("           Teste die Sequenz einmal im Debug-Modus (config.json → debug_detail: true)")
+            print("           um zu prüfen ob alle Positionen stimmen.")
     else:
         print(f"\n  {err(f'Import fehlgeschlagen: {result}')}")
 
 
 def _ask_filepath() -> str | None:
     """Fragt nach einem Dateipfad."""
-    print(f"  Pfad zur ZIP-Datei eingeben:")
+    print("  Pfad zur ZIP-Datei eingeben:")
     path = safe_input("  > ").strip().strip('"').strip("'")
     if is_cancel(path):
         print(f"  {info('Abgebrochen')}")
@@ -488,3 +488,235 @@ def _ask_filepath() -> str | None:
         print(f"  {err(f'Datei nicht gefunden: {path}')}")
         return None
     return path
+
+
+# =============================================================================
+# KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
+# =============================================================================
+
+def run_kalibrierung(state: AutoClickerState) -> None:
+    """Rechnet alle gespeicherten Koordinaten auf ein geändertes Bildschirm-Layout um.
+
+    Der Nutzer setzt einen bekannten Punkt neu; die Differenz gilt für alles andere.
+    Optional ein zweiter Punkt, dann wird zusätzlich skaliert (andere Auflösung).
+    """
+    from ..import_export import (
+        compute_transform, transform_aus_verschiebung, ist_identitaet,
+        kalibrier_vorschau, kalibriere_bestand,
+    )
+    print(header("KALIBRIERUNG"))
+    print(f"  {breadcrumb('Punkte', 'Kalibrierung')}")
+    print()
+    print("  Wenn Windows die Bildschirme neu angeordnet hat, sind alle gespeicherten")
+    print("  Koordinaten um denselben Betrag verschoben. Du setzt EINEN Punkt neu,")
+    print("  der Rest wird daraus umgerechnet.")
+    print()
+
+    with state.lock:
+        punkte = list(state.points)
+    if not punkte:
+        print(f"  {err('Keine Punkte vorhanden — es gibt nichts zu kalibrieren.')}")
+        return
+
+    # --- Referenzpunkt 1: Verschiebung ------------------------------------------
+    ref1 = _kalib_referenz(state, punkte, "Referenzpunkt")
+    if ref1 is None:
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+    p_alt, p_neu = ref1
+    transform = transform_aus_verschiebung(p_alt, p_neu)
+
+    versatz = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
+    print()
+    print(f"  Verschiebung: {col(versatz, 'yellow')}")
+
+    # --- Referenzpunkt 2 (optional): Skalierung ---------------------------------
+    if len(punkte) > 1:
+        print()
+        print("  Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht —")
+        print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
+        if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
+            ref2 = _kalib_referenz(state, punkte, "Zweiter Referenzpunkt",
+                                   ausser=p_alt)
+            if ref2 is None:
+                print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
+            else:
+                q_alt, q_neu = ref2
+                transform = compute_transform(p_alt, q_alt, p_neu, q_neu)
+                faktor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
+                print()
+                print(f"  Skalierung: {col(faktor, 'yellow')}")
+
+    # --- Versatz von Hand nachziehen --------------------------------------------
+    # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
+    # stimmt, ist eine erzwungene 0 genauer als jede Messung.
+    if transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0:
+        transform = _versatz_anpassen(transform)
+        if transform is None:
+            print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+            return
+
+    if ist_identitaet(transform):
+        print(f"\n  {info('Der Versatz ist null — nichts zu tun.')}")
+        return
+
+    # --- Vorschau ----------------------------------------------------------------
+    vorschau = kalibrier_vorschau(state, transform)
+    print()
+    print(col("  VORSCHAU (Auszug):", 'bold'))
+    for label, alt, neu in vorschau[:12]:
+        print(f"    {label:<34} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+    if len(vorschau) > 12:
+        print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
+
+    draussen = _ausserhalb_der_monitore([neu for _, _, neu in vorschau])
+    if draussen:
+        print()
+        print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
+        print(f"  {info('Meist heisst das: der Referenzpunkt lag auf einem anderen Bildschirm')}")
+        print(f"  {info('als diese Ziele — dann stimmt die Verschiebung fuer sie nicht.')}")
+
+    # --- Umfang -------------------------------------------------------------------
+    with state.lock:
+        anzahl_slots = len(state.global_slots)
+
+    if anzahl_slots:
+        print()
+        print(f"  {warn('Fuer Slots ist das nur eine Naeherung.')}")
+        print("  Ein Klick-Ziel vertraegt ein paar Pixel Abweichung — eine Scan-Region")
+        print("  nicht: die schneidet dann das Item-Icon an oder zieht Nachbarpixel")
+        print("  rein, und das Template-Matching wird unzuverlaessig.")
+        print(f"  {info('Genauer: Item-Scan -> Slots -> ' + col('repair', 'yellow'))}")
+        print(f"  {info('Das misst die ' + str(anzahl_slots) + ' Slots neu, statt sie zu verschieben.')}")
+
+    print()
+    print(col("  Was soll mitgezogen werden?", 'bold'))
+    umfang = interactive_select([
+        "Alles ausser Slots (Punkte, Scan-Regionen, Sequenzen) — Slots per 'repair'",
+        "Alles inkl. Slots (Naeherung, s.o.)",
+        "Nur die Punkte",
+    ], default=0)
+    if umfang < 0:
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+    mit_slots = umfang == 1
+    mit_scans = umfang in (0, 1)
+    mit_sequenzen = umfang in (0, 1)
+
+    print()
+    print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
+    if not confirm("  Jetzt übernehmen?", default=False):
+        print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
+        return
+
+    from ..import_export import sichere_vor_kalibrierung
+    sicherung = sichere_vor_kalibrierung(state)
+    if sicherung:
+        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    else:
+        print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
+
+    zahl = kalibriere_bestand(state, transform, mit_scans=mit_scans,
+                              mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
+
+    print()
+    print(f"  {ok('Kalibriert:')}")
+    beschriftung = {"punkte": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+                    "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
+                    "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
+    for schluessel, anzahl in zahl.items():
+        if anzahl:
+            print(f"    {anzahl:>4}  {beschriftung[schluessel]}")
+    if mit_sequenzen:
+        print()
+        print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
+
+    if anzahl_slots:
+        print()
+        if mit_slots:
+            print(f"  {warn('Die Slots wurden nur VERSCHOBEN, nicht neu vermessen —')}")
+            print("  fuer Scan-Regionen ist das eine Naeherung.")
+        else:
+            print(f"  {info('Die Slots blieben unberuehrt — sie brauchen die genaue Messung.')}")
+        print(f"  Pixelgenau macht es {col('Item-Scan -> Slots -> repair', 'yellow')}.")
+
+
+def _versatz_anpassen(transform: dict) -> dict | None:
+    """Lässt den gemessenen Versatz je Achse von Hand korrigieren.
+
+    Der Grund: mit der Maus trifft man den Zielpixel nicht exakt. Steht da
+    „+2 X" und man weiss, dass die X-Achse gar nicht verrutscht ist, dann ist
+    eine eingetippte 0 genauer als die Messung. Umgekehrt genauso — oft stimmt
+    eine Achse und nur die andere hat sich verschoben.
+
+    Gibt den (ggf. geänderten) Transform zurück, oder None bei Abbruch.
+    """
+    vx, vy = round(transform["offset_x"]), round(transform["offset_y"])
+    print()
+    print(col("  Versatz nachjustieren:", 'bold'))
+    print(f"  {info('Enter = uebernehmen. Stimmt eine Achse schon, hier 0 eintragen —')}")
+    print(f"  {info('das ist genauer als die Maus-Messung.')}")
+
+    neu = []
+    for achse, wert in (("X", vx), ("Y", vy)):
+        while True:
+            eingabe = safe_input(f"    {achse}-Versatz (Enter = {wert:+d}): ").strip()
+            if is_cancel(eingabe):
+                return None
+            if not eingabe:
+                neu.append(wert)
+                break
+            try:
+                neu.append(int(round(float(eingabe.replace(",", ".")))))
+                break
+            except ValueError:
+                # Wiederholen statt abbrechen — wie in den anderen Editoren
+                print(f"    {err('Bitte eine ganze Zahl, z.B. 0 oder -25.')}")
+
+    if (neu[0], neu[1]) != (vx, vy):
+        print(f"  {ok(f'Versatz von Hand gesetzt: {neu[0]:+d} X, {neu[1]:+d} Y')}")
+    return {"scale_x": 1.0, "scale_y": 1.0,
+            "offset_x": neu[0], "offset_y": neu[1]}
+
+
+def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
+                    ausser: tuple | None = None):
+    """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
+
+    Gibt ((alt_x, alt_y), (neu_x, neu_y)) zurück oder None bei Abbruch.
+    """
+    from ..winapi import set_cursor_pos
+
+    auswahl = [p for p in punkte if ausser is None or (p.x, p.y) != ausser]
+    if not auswahl:
+        return None
+
+    print()
+    print(col(f"  {titel}:", 'bold'))
+    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in auswahl]
+    idx = interactive_select(beschriftung, default=0)
+    if idx < 0:
+        return None
+    punkt = auswahl[idx]
+
+    # Maus dorthin, wo der Punkt AKTUELL zeigt — dann sieht man die Abweichung
+    set_cursor_pos(punkt.x, punkt.y)
+    print(f"  Die Maus steht jetzt auf der GESPEICHERTEN Position ({punkt.x}, {punkt.y}).")
+    print("  Bewege sie dorthin, wo dieser Punkt WIRKLICH hingehört, dann Enter.")
+    print(f"  {info('(x = abbrechen)')}")
+    if is_cancel(safe_input("    > ").strip()):
+        return None
+    neu = get_cursor_pos()
+    print(f"    -> ({neu[0]}, {neu[1]})")
+    return (punkt.x, punkt.y), neu
+
+
+def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
+    """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
+    from ..diagnose import _virtueller_desktop
+    rect = _virtueller_desktop()
+    if rect is None:
+        return 0
+    links, oben, rechts, unten = rect
+    return sum(1 for x, y in ziele
+               if not (links <= x < rechts and oben <= y < unten))

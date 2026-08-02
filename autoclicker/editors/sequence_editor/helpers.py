@@ -4,7 +4,9 @@ Geteilte Helfer für den Sequenz-Editor.
 apply_else_to_step + parse_else_condition werden überall dort gebraucht wo ein
 Step einen optionalen `else <Bedingung>`-Suffix haben kann (scan, boss, watcher,
 wait, pixel-click). capture_pixel_color liest die aktuelle Maus-Position+Farbe
-und _parse_time_input parst eine HH:MM-Eingabe.
+und parse_uhrzeit parst eine HH:MM-Eingabe. Bewusst NICHT parse_time_input wie in
+utils/parsing.py: die heisst gleich, nimmt auch einen String, gibt aber ein Tripel
+(Sekunden, Text, Zeitstempel) fuer den Countdown zurueck. Zwei Vertraege, zwei Namen.
 """
 
 import re
@@ -21,11 +23,16 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
     """Wendet eine geparste ELSE-Bedingung auf einen SequenceStep an.
 
     Vermeidet die 3-fache Duplizierung des Else-Anwendungscodes.
+
+    Die Liste unten MUSS zu dem passen, was die Runtime tatsächlich auswertet
+    (`step.else_config` in `runtime/steps.py`). Sie war stehengeblieben, während
+    Boss- und Icon-Scan dazukamen: 'boss X else skip' wurde mit einer Warnung
+    verworfen, obwohl der Scan die else-Aktion ausführt.
     """
     if not else_parts:
         return
-    if not step.wait_condition and not step.item_scan:
-        print(warn("  -> 'else' hat keine Wirkung ohne 'pixel'/'gone' oder 'scan'-Bedingung!"))
+    if not _kann_else(step):
+        print(warn(f"  -> 'else' hat hier keine Wirkung: {_warum_kein_else(step)}"))
         return
     else_result = parse_else_condition(else_parts, state)
     if else_result:
@@ -37,6 +44,29 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
             key=else_result.get("else_key"),
             name=else_result.get("else_name", "")
         )
+
+
+def _kann_else(step: SequenceStep) -> bool:
+    """True, wenn die Runtime für diesen Schritt-Typ eine else-Aktion auswertet.
+
+    Ein 'else' braucht etwas, das danebengehen kann: eine Farb-Bedingung oder
+    einen Scan, der nichts findet. Der Boss-Watcher zählt NICHT dazu — er wartet,
+    bis ein Boss erscheint, und gibt bei Timeout/Max-Scans einfach auf, ohne
+    else_config anzusehen.
+    """
+    return bool(step.wait_condition or step.item_scan or step.boss_scan
+                or step.icon_scan)
+
+
+def _warum_kein_else(step: SequenceStep) -> str:
+    """Erklärt, warum 'else' an diesem Schritt nichts tut."""
+    if step.boss_watcher:
+        return ("ein Watcher wartet, bis ein Boss erscheint — er kann nicht "
+                "'danebengehen'. Nimm 'boss <Name> else ...' für einen Einmal-Scan.")
+    if step.screenshot_only:
+        return "ein Screenshot-Schritt kann nicht fehlschlagen."
+    return ("es fehlt eine Bedingung, die danebengehen kann — also ein Farb-Trigger "
+            "(color/colorgone/checkcolor) oder ein scan/boss/icon.")
 
 
 def capture_pixel_color() -> tuple:
@@ -60,7 +90,7 @@ def capture_pixel_color() -> tuple:
     return x, y, color
 
 
-def parse_time_input(time_str: str) -> Optional[str]:
+def parse_uhrzeit(time_str: str) -> Optional[str]:
     """Parst eine Uhrzeit-Eingabe (z.B. '12:30', '9:05') und gibt 'HH:MM' zurück oder None."""
     match = re.match(r'^(\d{1,2}):(\d{2})$', time_str.strip())
     if match:

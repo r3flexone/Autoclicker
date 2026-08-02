@@ -1,0 +1,15 @@
+# Optionale Extras. NICHT noetig fuer den normalen Betrieb — jedes Feature hier ist
+# per Default in der Config abgeschaltet.
+#
+# easyocr zieht PyTorch nach: mehrere GB Download. Nur installieren, wenn du OCR
+# wirklich einschaltest (ocr_enabled). Fuer GPU-Nutzung vorher die passende
+# CUDA-Variante von torch installieren — siehe README.
+easyocr
+
+# Leichtere OCR-Alternative. Braucht zusaetzlich die Tesseract-Binary:
+# https://github.com/UB-Mannheim/tesseract/wiki
+pytesseract
+
+# Visueller Node-Editor (CTRL+ALT+B) und Scan-Studio (CTRL+ALT+V).
+# Ohne dearpygui melden beide sauber, dass sie fehlen.
+dearpygui

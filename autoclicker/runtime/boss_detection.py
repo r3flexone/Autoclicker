@@ -26,6 +26,7 @@ from ..models import (
 from ..utils import col, err, dbg, warn, wait_while_paused
 from ..winapi import check_failsafe
 from .actions import safe_click, safe_key, _step_status, is_verbose_debug
+from .debug import is_log_debug
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
 
 # Mindest-Konfidenz für OCR-Boss-Erkennung. Unterhalb davon wird nichts gespeichert —
@@ -67,7 +68,7 @@ def execute_boss_scan(state: AutoClickerState, config_name: str) -> tuple[bool, 
         cfg_use_ocr = config.use_ocr
         cfg_ocr_fallback = config.ocr_fallback
 
-    debug = state.config.debug_detection
+    debug = is_log_debug(state)
 
     img = take_screenshot(scan_region)
     if img is None:
@@ -186,7 +187,7 @@ def _confirm_new_bosses(state: AutoClickerState) -> None:
 
     print(col("\n" + "=" * 55, "yellow"))
     print(col(f"[NEUE BOSSE] {len(pending)} unbekannte(r) Boss(e) automatisch als SKIP gespeichert "
-              f"— im Boss-Editor anpassbar.", "yellow"))
+              "— im Boss-Editor anpassbar.", "yellow"))
     for i, (target, boss_name, source) in enumerate(pending, 1):
         print(f"  {i}. [{source}] '{boss_name}'  → {target}")
     print(col("=" * 55, "yellow"))
@@ -343,9 +344,13 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         if new_boss is not None:
             return new_boss
 
-        # Falls _handle_new_boss None zurückgab (z.B. bereits vorgemerkt), Profil trotzdem liefern
+        # Falls _handle_new_boss None zurückgab (Name schon bekannt oder vorgemerkt),
+        # das Profil trotzdem liefern. Auch aus der globalen Bibliothek: mit
+        # boss_learn_global landen neue Bosse dort und NICHT in config.bosses —
+        # die Suche allein in config.bosses ging in dem Fall ins Leere und der
+        # Scan meldete "kein Boss", obwohl er den Namen gerade erkannt hatte.
         with state.lock:
-            for boss in config.bosses:
+            for boss in list(config.bosses) + list(state.global_bosses):
                 if boss.name == matched_name:
                     return boss
         return None

@@ -12,7 +12,7 @@ Läuft nur im Subprocess (Dear PyGui import).
 
 import dearpygui.dearpygui as dpg
 
-from ...config import DEFAULT_MIN_CONFIDENCE
+from ...config import CONFIG
 from ...models import (
     ItemSlot, ItemProfile, ItemScanConfig,
     IconScanConfig, BossScanConfig, BossProfile,
@@ -302,7 +302,7 @@ class ScanStudioApp:
         self._guided_step = "click"
         self._set_mode(MODE_CLICK)
         self._set_status(f"Slot '{name}' angelegt — jetzt Klickpunkt anklicken "
-                         f"(oder Werkzeug wechseln zum Überspringen).")
+                         "(oder Werkzeug wechseln zum Überspringen).")
 
     def _handle_point(self, dx, dy) -> None:
         """Klick im Modus Klickpunkt/Farbe auf den gewählten Slot anwenden."""
@@ -316,8 +316,8 @@ class ScanStudioApp:
                 # Weiter zum Farbe-Schritt
                 self._guided_step = "color"
                 self._set_mode(MODE_COLOR)
-                self._set_status(f"Klickpunkt gesetzt — jetzt Hintergrundfarbe auf dem "
-                                 f"leeren Slot anklicken (oder 'Slot zeichnen' = überspringen).")
+                self._set_status("Klickpunkt gesetzt — jetzt Hintergrundfarbe auf dem "
+                                 "leeren Slot anklicken (oder 'Slot zeichnen' = überspringen).")
             else:
                 self._set_status(f"Klickpunkt: {slot.click_pos}")
         elif self.mode == MODE_COLOR:
@@ -329,7 +329,7 @@ class ScanStudioApp:
                 self._guided_step = None
                 self._set_mode(MODE_SLOT)
                 self._set_status(f"Slot '{slot.name}' fertig (Region + Klickpunkt + Farbe). "
-                                 f"Nächstes Rechteck ziehen.")
+                                 "Nächstes Rechteck ziehen.")
             else:
                 self._set_status(f"Farbe: RGB{slot.slot_color}")
         self.redraw_overlay()
@@ -460,8 +460,9 @@ class ScanStudioApp:
             return
         self._scan_name = cfg.name
         self._scan_tol = cfg.color_tolerance
-        scan_slot_names = {s.name for s in cfg.slots}
-        scan_item_names = {i.name for i in cfg.items}
+        # Namen statt Objekte - siehe ItemScanConfig.sync_names()
+        scan_slot_names = set(cfg.slot_names)
+        scan_item_names = set(cfg.item_names)
         self._slot_checked = {n: (n in scan_slot_names) for n in self.slots}
         self._item_checked = {n: (n in scan_item_names) for n in self.items}
         self.refresh_scan_panel()
@@ -1004,7 +1005,7 @@ class ScanStudioApp:
             return None
         if dedup:
             dup = _find_matching_existing_item(
-                crop, list(self.items.items()), DEFAULT_MIN_CONFIDENCE)
+                crop, list(self.items.items()), CONFIG.scan_min_confidence)
             if dup:
                 return None
         item_name = name or next_item_name(self.items)
@@ -1016,7 +1017,7 @@ class ScanStudioApp:
             category=None,
             priority=len(self.items) + 1,
             template=template,
-            min_confidence=DEFAULT_MIN_CONFIDENCE,
+            min_confidence=CONFIG.scan_min_confidence,
         )
         return item_name
 

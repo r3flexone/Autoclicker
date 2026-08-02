@@ -17,16 +17,18 @@ from .persistence import (
     TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
     _boss_profile_to_dict, _point_to_dict,
     _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
-    load_sequence_file, _item_from_dict, _boss_profile_from_dict,
+    load_sequence_file, _item_from_dict, _slot_from_dict, _boss_profile_from_dict,
+    resolve_scan_references,
+    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SLOTS, migrate,
     save_data, save_global_slots, save_global_items,
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
 from .models import (
-    ClickPoint, ItemSlot, ItemScanConfig, BossScanConfig, IconScanConfig,
+    DEFAULT_MIN_CONFIDENCE,
+    ClickPoint, ItemScanConfig, BossScanConfig, IconScanConfig,
     BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
 )
-from .config import DEFAULT_MIN_CONFIDENCE
-from .utils import atomic_write, compact_json, sanitize_filename
+from .utils import atomic_write, compact_json, sanitize_filename, warn
 
 logger = logging.getLogger("autoclicker")
 
@@ -149,6 +151,187 @@ def transform_from_windows(src_window: tuple[int, int, int, int],
 
 
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
+
+
+def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
+    """Reine Verschiebung aus EINEM Referenzpunkt: wo er war, wo er hingehört.
+
+    Ein Punkt kann nur verschieben, nicht skalieren — dafür braucht es zwei
+    (`compute_transform`). Das reicht, solange die Auflösung dieselbe ist und sich
+    nur die Lage des Monitors im virtuellen Desktop geändert hat; genau das
+    passiert, wenn Windows die Bildschirme neu anordnet.
+    """
+    return {"scale_x": 1.0, "scale_y": 1.0,
+            "offset_x": neu[0] - alt[0], "offset_y": neu[1] - alt[1]}
+
+
+def ist_identitaet(transform: dict) -> bool:
+    """True, wenn der Transform nichts verändern würde."""
+    return (transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0
+            and round(transform["offset_x"]) == 0 and round(transform["offset_y"]) == 0)
+
+
+# =============================================================================
+# KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
+# =============================================================================
+#
+# Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand statt auf ein
+# frisch entpacktes Bundle. Der Import kann das nicht ersetzen: er legt Daten an,
+# statt vorhandene zu korrigieren — importiert man sein eigenes Export-ZIP zurück,
+# steht am Ende alles doppelt da.
+
+def kalibrier_vorschau(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
+    """Was der Transform ändern würde — (Bezeichnung, vorher, nachher), ohne Mutation."""
+    return [(label, (x, y), remap_point(x, y, transform))
+            for label, x, y in collect_click_positions(state)]
+
+
+def _remap_sequence_obj(seq, transform: dict) -> None:
+    """Wie _remap_sequence_data, aber auf einer geladenen Sequenz (in-place).
+
+    Die geladenen Sequenzen MÜSSEN mitgezogen werden, nicht nur die Dateien: sonst
+    schreibt der nächste `save_data()` den alten Stand aus dem Speicher wieder über
+    die frisch umgerechnete Datei.
+    """
+    phasen = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
+    for steps in phasen:
+        for s in steps:
+            s.x, s.y = remap_point(s.x, s.y, transform)
+            if s.wait_condition is not None:
+                px = s.wait_condition.pixel
+                s.wait_condition.pixel = remap_point(px[0], px[1], transform)
+            if s.else_config is not None:
+                ec = s.else_config
+                ec.x, ec.y = remap_point(ec.x, ec.y, transform)
+            if s.screenshot_region is not None:
+                s.screenshot_region = remap_region(s.screenshot_region, transform)
+
+
+def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
+    """Legt vor dem Umrechnen ein vollständiges Export-ZIP als Sicherung an.
+
+    Die Kalibrierung schreibt Punkte, Slots, Scans und Sequenzdateien in einem Rutsch
+    um — ohne Rückweg, wenn der Referenzpunkt danebenlag. Ein eigenes Backup-Format
+    dafür zu bauen wäre Doppelarbeit: der Export kann das längst, und der Import
+    spielt es wieder ein.
+
+    Gibt den Pfad zurück, oder None wenn die Sicherung fehlschlug.
+    """
+    import time as _time
+
+    # Derselbe Ordner, in dem der Editor seine Exporte sucht — damit die Sicherung
+    # im Import-Menue ohne Pfadeingabe auftaucht.
+    ziel = Path("exports") / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    # Referenzpunkte sind hier bedeutungslos (es wird nichts remappt beim
+    # Zurückspielen), aber identisch dürfen sie nicht sein — sonst rechnet ein
+    # späterer Import mit einer Nulldistanz.
+    erfolg, meldung = export_bundle(state, str(ziel), (0, 0), (1000, 1000))
+    if not erfolg:
+        logger.warning("Sicherung vor Kalibrierung fehlgeschlagen: %s", meldung)
+        return None
+    return str(ziel)
+
+
+def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
+                       mit_scans: bool = True, mit_sequenzen: bool = True,
+                       mit_slots: bool = True) -> dict:
+    """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
+
+    Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-Scans
+    mit; `mit_sequenzen` die Koordinaten in den Sequenz-DATEIEN (nicht nur den
+    geladenen) — Trigger-Pixel, else-Klicks, Screenshot-Regionen.
+
+    `mit_slots` steht bewusst getrennt, obwohl Slots zu den Scans gehören: eine
+    aus einer Maus-Position abgeleitete Verschiebung ist für ein Klick-Ziel gut
+    genug, für eine Scan-Region aber nur eine Näherung — ein paar Pixel daneben
+    schneiden das Item-Icon an. Dafür gibt es `slot_repair()`, das die Slots misst
+    statt sie zu verschieben. Deshalb muss sich beides einzeln schalten lassen:
+    nach einer Reparatur dürfen die Slots kein zweites Mal wandern.
+
+    Schritte mit `point_id` werden mit umgerechnet, obwohl `resolve_point_references()`
+    sie beim nächsten Lauf ohnehin aus dem Punkt nachzieht: sonst stünde in der Datei
+    bis dahin eine Koordinate, die zu keinem Bildschirm mehr passt, und ein Schritt,
+    dessen Punkt fehlt, bliebe endgültig auf dem alten Wert stehen.
+
+    Gibt eine Zählung nach Bereich zurück.
+    """
+    from .persistence import list_available_sequences, save_points
+    from .utils import atomic_write, compact_json
+
+    zahl = {"punkte": 0, "slots": 0, "items": 0, "boss_scans": 0,
+            "icon_scans": 0, "bosse": 0, "sequenzen": 0}
+
+    # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
+    with state.lock:
+        for p in state.points:
+            p.x, p.y = remap_point(p.x, p.y, transform)
+            zahl["punkte"] += 1
+
+        if mit_scans and mit_slots:
+            for slot in state.global_slots.values():
+                slot.scan_region = remap_region(slot.scan_region, transform)
+                slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
+                zahl["slots"] += 1
+
+        if mit_scans:
+            for item in state.global_items.values():
+                if item.confirm_point is not None:
+                    cp = item.confirm_point
+                    cp.x, cp.y = remap_point(cp.x, cp.y, transform)
+                    zahl["items"] += 1
+
+            for cfg in state.boss_scans.values():
+                cfg.scan_region = remap_region(cfg.scan_region, transform)
+                for b in cfg.bosses:
+                    b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
+                zahl["boss_scans"] += 1
+
+            for b in state.global_bosses:
+                b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
+                zahl["bosse"] += 1
+
+            for cfg in state.icon_scans.values():
+                cfg.scan_region = remap_region(cfg.scan_region, transform)
+                cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
+                zahl["icon_scans"] += 1
+
+        # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
+        # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
+        if mit_sequenzen:
+            for seq in state.sequences.values():
+                _remap_sequence_obj(seq, transform)
+
+        boss_scans = list(state.boss_scans.values()) if mit_scans else []
+        icon_scans = list(state.icon_scans.values()) if mit_scans else []
+
+    save_points(state)
+    if mit_scans and mit_slots:
+        save_global_slots(state)
+    if mit_scans:
+        save_global_items(state)
+        save_global_bosses(state)
+        for cfg in boss_scans:
+            save_boss_scan(cfg)
+        for cfg in icon_scans:
+            save_icon_scan(cfg)
+
+    # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
+    if mit_sequenzen:
+        for _name, pfad in list_available_sequences():
+            try:
+                daten = json.loads(pfad.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+                logger.warning("Kalibrierung: %s nicht lesbar (%s)", pfad.name, e)
+                continue
+            _remap_sequence_data(daten, transform)
+            try:
+                atomic_write(pfad, compact_json(daten))
+                zahl["sequenzen"] += 1
+            except (IOError, OSError) as e:
+                logger.warning("Kalibrierung: %s nicht schreibbar (%s)", pfad.name, e)
+
+    return zahl
 
 
 # =============================================================================
@@ -321,7 +504,7 @@ _SENSITIVE_CONFIG_KEYS = {
 }
 # Beim Export zusätzlich weggelassen: Debug/Anzeige — für den Empfänger irrelevant.
 _EXPORT_SKIP_CONFIG_KEYS = _SENSITIVE_CONFIG_KEYS | {
-    "debug_mode", "debug_detection", "debug_save_templates",
+    "debug_log", "debug_detail", "debug_save_templates",
     "debug_show_pixel_position", "pixel_show_delay",
 }
 
@@ -403,9 +586,13 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     tpl_path.write_bytes(zf.read(name))
                     stats["templates"] += 1
 
-            # Punkte
+            # Punkte. Kollidiert eine importierte ID mit einer lokalen, bekommt der Punkt
+            # eine neue - und id_map merkt sich das, damit die Sequenz-Schritte ihren
+            # point_id nachziehen koennen.
+            id_map: dict[int, int] = {}
             if import_points and "points.json" in names:
                 points_data = json.loads(zf.read("points.json").decode("utf-8"))
+                points_data, _m = migrate(points_data, KIND_POINTS)
                 with state.lock:
                     if not merge:
                         state.points.clear()
@@ -413,7 +600,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     next_id = max(existing_ids) + 1 if existing_ids else 1
                     for p in points_data:
                         x, y = remap_point(p["x"], p["y"], transform)
-                        pid = p.get("id", next_id)
+                        alt_id = p.get("id")
+                        pid = alt_id if alt_id is not None else next_id
                         while pid in existing_ids:
                             pid = next_id
                             next_id += 1
@@ -423,6 +611,8 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                                                        color=color, source=p.get("source", "")))
                         existing_ids.add(pid)
                         next_id = max(next_id, pid + 1)
+                        if alt_id is not None:
+                            id_map[alt_id] = pid
                         stats["points"] += 1
 
             # Sequenzen
@@ -431,6 +621,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     if name.startswith("sequences/") and name.endswith(".json"):
                         seq_data = json.loads(zf.read(name).decode("utf-8"))
                         _remap_sequence_data(seq_data, transform)
+                        _remap_point_ids(seq_data, id_map, bool(import_points))
                         seq_name = seq_data.get("name", Path(name).stem)
                         safe = sanitize_filename(seq_name)
                         seq_path = Path("sequences") / f"{safe}.json"
@@ -445,28 +636,28 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Slots
             if import_slots and "slots.json" in names:
                 slots_data = json.loads(zf.read("slots.json").decode("utf-8"))
+                slots_data, _m = migrate(slots_data, KIND_SLOTS)
                 with state.lock:
                     if not merge:
                         state.global_slots.clear()
                     for sname, s in slots_data.items():
-                        region = remap_region(tuple(s["scan_region"]), transform)
-                        click = remap_point(s["click_pos"][0], s["click_pos"][1], transform)
-                        slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                        state.global_slots[sname] = ItemSlot(
-                            name=s["name"], scan_region=region,
-                            click_pos=click, slot_color=slot_color
-                        )
+                        slot = _slot_from_dict(sname, s)
+                        slot.scan_region = remap_region(slot.scan_region, transform)
+                        slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1],
+                                                     transform)
+                        state.global_slots[sname] = slot
                         stats["slots"] += 1
                 save_global_slots(state)
 
             # Items
             if import_items and "items.json" in names:
                 items_data = json.loads(zf.read("items.json").decode("utf-8"))
+                items_data, _m = migrate(items_data, KIND_ITEMS)
                 with state.lock:
                     if not merge:
                         state.global_items.clear()
                     for iname, i in items_data.items():
-                        item = _item_from_dict(i)
+                        item = _item_from_dict(i, iname)
                         if item.confirm_point:
                             nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y, transform)
                             item.confirm_point = ClickPoint(nx, ny)
@@ -479,25 +670,14 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 for name in names:
                     if name.startswith("item_scans/") and name.endswith(".json"):
                         scan_data = json.loads(zf.read(name).decode("utf-8"))
-                        slots = []
-                        for s in scan_data.get("slots", []):
-                            region = remap_region(tuple(s["scan_region"]), transform)
-                            click = remap_point(s["click_pos"][0], s["click_pos"][1], transform)
-                            slot_color = tuple(s["slot_color"]) if s.get("slot_color") else None
-                            slots.append(ItemSlot(
-                                name=s["name"], scan_region=region,
-                                click_pos=click, slot_color=slot_color
-                            ))
-                        items = []
-                        for i in scan_data.get("items", []):
-                            item = _item_from_dict(i)
-                            if item.confirm_point:
-                                nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y, transform)
-                                item.confirm_point = ClickPoint(nx, ny)
-                            items.append(item)
+                        scan_data, _m = migrate(scan_data, KIND_ITEM_SCAN)
+                        # Nur Namen - die Koordinaten der Slots werden beim Import von
+                        # slots.json umgerechnet, nicht ein zweites Mal pro Scan. Genau
+                        # diese Doppelpflege fiel mit der Referenz weg.
                         config = ItemScanConfig(
                             name=scan_data["name"],
-                            slots=slots, items=items,
+                            slot_names=[str(n) for n in scan_data.get("slot_names", [])],
+                            item_names=[str(n) for n in scan_data.get("item_names", [])],
                             color_tolerance=scan_data.get("color_tolerance", 40),
                             learn_unknown=scan_data.get("learn_unknown", False),
                         )
@@ -505,6 +685,10 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                             state.item_scans[config.name] = config
                         save_item_scan(config)
                         stats["item_scans"] += 1
+                # Referenzen gegen die (gerade importierten) globalen Slots/Items
+                # auflösen - sonst laufen die Scans bis zum nächsten Start leer.
+                for _meldung in resolve_scan_references(state):
+                    print(warn(_meldung))
 
             # Boss-Scans
             if import_boss_scans:
@@ -632,25 +816,51 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
         return False, str(e)
 
 
+def _iter_import_steps(seq_data: dict):
+    """Alle Schritt-Dicts einer Sequenz-JSON - egal in welcher Phase sie stehen."""
+    for key in ("init_steps", "end_steps"):
+        for s in seq_data.get(key) or []:
+            yield s
+    for lp in seq_data.get("loop_phases") or []:
+        for s in lp.get("steps") or []:
+            yield s
+
+
 def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
     """Transformiert alle Koordinaten in einer Sequenz-JSON-Struktur (in-place)."""
-    def remap_steps(steps: list) -> None:
-        for s in steps:
-            if s.get("x") is not None or s.get("y") is not None:
-                s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
-            if s.get("wait_pixel"):
-                wp = s["wait_pixel"]
-                s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
-            if s.get("else_x") is not None or s.get("else_y") is not None:
-                s["else_x"], s["else_y"] = remap_point(
-                    s.get("else_x", 0), s.get("else_y", 0), transform)
-            if s.get("screenshot_region"):
-                sr = s["screenshot_region"]
-                s["screenshot_region"] = list(remap_region(tuple(sr), transform))
+    for s in _iter_import_steps(seq_data):
+        if s.get("x") is not None or s.get("y") is not None:
+            s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
+        if s.get("wait_pixel"):
+            wp = s["wait_pixel"]
+            s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
+        if s.get("else_x") is not None or s.get("else_y") is not None:
+            s["else_x"], s["else_y"] = remap_point(
+                s.get("else_x", 0), s.get("else_y", 0), transform)
+        if s.get("screenshot_region"):
+            sr = s["screenshot_region"]
+            s["screenshot_region"] = list(remap_region(tuple(sr), transform))
 
-    for key in ("init_steps", "end_steps"):
-        if key in seq_data:
-            remap_steps(seq_data[key])
-    for lp in seq_data.get("loop_phases", []):
-        if "steps" in lp:
-            remap_steps(lp["steps"])
+
+def _remap_point_ids(seq_data: dict, id_map: dict[int, int],
+                     punkte_importiert: bool) -> None:
+    """Zieht `point_id` der Schritte auf die IDs nach, die die Punkte hier bekommen haben.
+
+    Der Import vergibt einem Punkt eine neue ID, wenn seine alte lokal schon belegt ist.
+    Bleibt der Schritt dann auf der alten ID stehen, zeigt er auf einen FREMDEN lokalen
+    Punkt - und `resolve_point_references()` zieht den Schritt beim naechsten Lauf brav
+    dorthin und meldet das auch noch als Erfolg. Genau deshalb wird hier nachgezogen.
+
+    Ohne Punkt-Import gibt es hier ueberhaupt keine passenden Punkte: dann faellt die
+    Referenz weg und der Schritt bleibt bei seinen (umgerechneten) Koordinaten. Lieber
+    keine Referenz als die falsche - dieselbe Regel wie in der Migration.
+    """
+    for s in _iter_import_steps(seq_data):
+        alt = s.get("point_id")
+        if alt is None:
+            continue
+        neu = id_map.get(alt) if punkte_importiert else None
+        if neu is None:
+            s.pop("point_id", None)
+        elif neu != alt:
+            s["point_id"] = neu

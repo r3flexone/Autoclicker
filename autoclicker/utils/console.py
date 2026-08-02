@@ -316,3 +316,53 @@ if not _REAL_CONSOLE:
         print(info("PyCharm erkannt - Pfeiltasten-Navigation via GetAsyncKeyState aktiv"))
     else:
         print(info("IDE-Konsole erkannt - Fallback auf Nummern-Eingabe"))
+
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+# Logging war nirgends konfiguriert. Python faellt dann auf den "lastResort"-Handler
+# zurueck: WARNING und ERROR erscheinen — nackt, ohne Tag, mitten in der farbigen
+# Ausgabe — und DEBUG verschwindet komplett. Genau dort standen aber die zwei Zeilen,
+# die man beim Debuggen am dringendsten braucht (Template passt nicht zur Slot-Groesse).
+#
+# Der Formatter uebersetzt die Level in dieselben Tags, die der Rest des Programms
+# benutzt, damit Logger-Meldungen nicht wie Fremdkoerper aussehen.
+
+import logging as _logging
+
+_LEVEL_TAGS = {
+    _logging.DEBUG: ("DEBUG", "gray"),
+    _logging.INFO: ("INFO", "cyan"),
+    _logging.WARNING: ("WARNUNG", "yellow"),
+    _logging.ERROR: ("FEHLER", "red"),
+    _logging.CRITICAL: ("FEHLER", "red"),
+}
+
+
+class _TagFormatter(_logging.Formatter):
+    """Formatiert Logger-Meldungen im Stil der uebrigen Konsolen-Ausgabe."""
+
+    def format(self, record: '_logging.LogRecord') -> str:
+        tag, farbe = _LEVEL_TAGS.get(record.levelno, ("LOG", "cyan"))
+        return f"{col(f'[{tag}]', farbe)} {record.getMessage()}"
+
+
+def init_logging(debug: bool = False) -> None:
+    """Haengt einen Handler an den 'autoclicker'-Logger. Mehrfachaufruf ist harmlos.
+
+    `debug=True` (Ausgabe-Stufe 1 oder 2 aktiv) laesst auch DEBUG-Meldungen durch —
+    sonst nur WARNING und darueber.
+    """
+    logger = _logging.getLogger("autoclicker")
+    logger.setLevel(_logging.DEBUG if debug else _logging.WARNING)
+    for h in logger.handlers:
+        if getattr(h, "_autoclicker", False):
+            h.setLevel(logger.level)
+            return
+    handler = _logging.StreamHandler()
+    handler.setFormatter(_TagFormatter())
+    handler.setLevel(logger.level)
+    handler._autoclicker = True
+    logger.addHandler(handler)
+    logger.propagate = False

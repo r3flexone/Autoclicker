@@ -51,7 +51,7 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
         return []
 
     scans = []
-    for f in scan_dir.glob("*.json"):
+    for f in sorted(scan_dir.glob("*.json")):
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
@@ -62,8 +62,17 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
 
 
 def load_all_scans(directory: str, loader: Callable, target: dict, type_label: str) -> None:
-    """Lädt alle Konfigurationen aus dem Ordner in das target-Dict (Key = config.name)."""
-    for name, path in list_scan_files(directory):
+    """Lädt alle Konfigurationen aus dem Ordner in das target-Dict (Key = config.name).
+
+    Geht direkt über den Ordner statt über list_scan_files: das liest jede Datei nur, um
+    den Namen anzuzeigen — den der Loader hier ohnehin gleich noch einmal mitbringt. Jede
+    Scan-Datei wurde dadurch beim Start zweimal geparst, und der Name aus dem ersten
+    Durchgang wurde nicht einmal benutzt.
+    """
+    scan_dir = Path(directory)
+    if not scan_dir.exists():
+        return
+    for path in sorted(scan_dir.glob("*.json")):
         config = loader(path)
         if config:
             target[config.name] = config

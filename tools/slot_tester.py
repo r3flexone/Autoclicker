@@ -331,7 +331,7 @@ def test_single_slot(slot_name: str, slot_data: dict, use_bitblt: bool = False):
     print("\n  Farb-Analyse...")
     result = analyze_slot_colors(img, slot_color)
 
-    print(f"\n  Alle Farben (Top 10):")
+    print("\n  Alle Farben (Top 10):")
     for i, (color, count) in enumerate(result["all_colors"][:10]):
         name = get_color_name(color)
         print(f"    {i+1}. RGB{color} - {name} ({count} Pixel)")
@@ -347,7 +347,7 @@ def test_single_slot(slot_name: str, slot_data: dict, use_bitblt: bool = False):
         mask_path = DEBUG_DIR / f"{safe_name}_{ts}_mask.png"
         result["mask_image"].save(mask_path)
         print(f"\n  -> Maske gespeichert: {mask_path.name}")
-        print(f"     (Rot = ausgeschlossener Hintergrund)")
+        print("     (Rot = ausgeschlossener Hintergrund)")
 
 
 def test_all_slots(use_bitblt: bool = False):

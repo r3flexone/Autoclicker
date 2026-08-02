@@ -15,7 +15,7 @@ from ..models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     SCAN_MODE_ALL,
 )
-from ..config import DEFAULT_MIN_CONFIDENCE, save_config
+from ..config import save_config
 from ..utils import (
     safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
     col, ok, err, info, header, breadcrumb, suggest_command,
@@ -215,7 +215,8 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
         return None
 
     template = existing.template if existing else None
-    min_confidence = existing.min_confidence if existing else DEFAULT_MIN_CONFIDENCE
+    min_confidence = (existing.min_confidence if existing
+                      else state.config.scan_min_confidence)
     marker_colors = list(existing.marker_colors) if existing else []
 
     chosen_label = detect_options[detect_choice]
@@ -392,7 +393,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             scan_name = f"BossScan_{int(time.time())}"
         scan_region = (0, 0, 100, 100)
         bosses = []
-        tolerance = 30
+        tolerance = BossScanConfig.color_tolerance
         default_action = BOSS_ACTION_SKIP
         default_scan = None
 
@@ -485,8 +486,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         use_llm = True
         llm_fallback = True
         print(f"  {ok('LLM als Fallback aktiviert')}")
-        print(f"       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
-        print(f"       und Ollama/LM Studio läuft (Einstellungen in config.json)")
+        print("       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
+        print("       und Ollama/LM Studio läuft (Einstellungen in config.json)")
     elif llm_choice == 2:
         use_llm = True
         llm_fallback = False
@@ -532,7 +533,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             use_ocr = True
             ocr_fallback = True
             print(f"  {ok('OCR als Fallback aktiviert')}")
-            print(f"       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
+            print("       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
         elif ocr_choice == 2:
             use_ocr = True
             ocr_fallback = False
@@ -572,7 +573,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
 def _test_llm_connection(state: AutoClickerState) -> None:
     """Testet die Verbindung zum LLM-Provider."""
     try:
-        from ..llm_vision import test_connection, PROVIDER_OLLAMA
+        from ..llm_vision import test_connection, test_endpoint_for, PROVIDER_OLLAMA
     except ImportError:
         print(f"\n  {err('LLM Vision Modul konnte nicht geladen werden!')}")
         return
@@ -584,10 +585,7 @@ def _test_llm_connection(state: AutoClickerState) -> None:
 
     # Teste den richtigen Endpoint (Tags/Models statt Chat)
     if endpoint is None:
-        if provider == PROVIDER_OLLAMA:
-            test_endpoint = "http://localhost:11434/api/tags"
-        else:
-            test_endpoint = "http://localhost:1234/v1/models"
+        test_endpoint = test_endpoint_for(provider)
     else:
         # Leite den Test-Endpoint vom Chat-Endpoint ab
         test_endpoint = endpoint

@@ -11,15 +11,14 @@ ohne die Daten zu verlieren.
 
 from pathlib import Path
 
-from ...config import DEFAULT_MIN_CONFIDENCE
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ClickPoint, ItemProfile, AutoClickerState
 from ...persistence import (
     get_point_by_id, shift_category_priorities, TEMPLATES_DIR,
 )
 from ...utils import (
-    confirm, is_cancel, ok, parse_non_negative_float, safe_input,
-    sanitize_filename,
+    confirm, eindeutiger_name, is_cancel, ok, parse_non_negative_float,
+    safe_input, sanitize_filename,
 )
 from .items import select_category
 from .markers import collect_marker_colors
@@ -90,14 +89,8 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         created_count = 0
         for slot_idx in range(start_slot - 1, end_slot):
             slot = slot_list[slot_idx]
-            item_name = f"{slot.name} Item"
-
-            # Eindeutigen Namen sicherstellen
-            base_name = item_name
-            counter = 1
-            while item_name in state.global_items:
-                counter += 1
-                item_name = f"{base_name} {counter}"
+            with state.lock:
+                item_name = eindeutiger_name(f"{slot.name} Item", state.global_items)
 
             priority = slot_idx - start_slot + 2
 
@@ -108,7 +101,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 priority=priority,
                 confirm_point=confirm_point,
                 confirm_delay=confirm_delay,
-                min_confidence=DEFAULT_MIN_CONFIDENCE
+                min_confidence=state.config.scan_min_confidence
             )
 
             if use_template and OPENCV_AVAILABLE:
@@ -288,6 +281,6 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         state.global_items[item_name] = item
 
     confirm_str = f" -> ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s" if confirm_point else ""
-    template_str = f" + Template" if item.template else ""
+    template_str = " + Template" if item.template else ""
     print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
     return True

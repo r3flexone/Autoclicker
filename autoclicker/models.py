@@ -11,11 +11,15 @@ from typing import Optional
 
 from .config import AppConfig
 
-# Lokaler Fallback-Default für neue Profil-Instanzen — muss mit AppConfig.scan_min_confidence
-# übereinstimmen. Kein Import aus config, um den Zirkular-Import zu brechen:
-# config.py instanziiert AppConfig() auf Modulebene, dessen __post_init__ models.py importiert,
-# bevor DEFAULT_MIN_CONFIDENCE in config.py definiert wurde.
-_DEFAULT_MIN_CONFIDENCE: float = 0.8
+# Der DATEI-Default für min_confidence: was gilt, wenn das Feld in der JSON fehlt.
+# Konstant, bewusst NICHT aus der Config abgeleitet — sonst würde ein Feld, das gerade
+# zufällig dem Config-Wert entspricht, beim Speichern weggelassen und beim nächsten Start
+# mit einem ANDEREN Wert zurückkommen, sobald man die Config anfasst.
+#
+# Davon zu unterscheiden: `AppConfig.scan_min_confidence` ist die Voreinstellung, die die
+# Editoren beim Anlegen NEUER Profile vorschlagen. Zwei verschiedene Dinge — sie hier
+# zusammenzulegen war die Ursache stillen Datenverlusts.
+DEFAULT_MIN_CONFIDENCE: float = 0.8
 
 
 # =============================================================================
@@ -114,10 +118,13 @@ class ElseConfig:
 
 @dataclass
 class WaitCondition:
-    """Warten auf eine Farbe an einer Pixel-Position."""
+    """Farb-Bedingung an einer Pixel-Position: warten oder einmal prüfen."""
     pixel: tuple[int, int]               # (x, y) Position zum Prüfen
     color: tuple[int, int, int]          # (r, g, b) Farbe die erscheinen soll
     until_gone: bool = False             # True = warte bis Farbe WEG ist
+    # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
+    # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
+    check_only: bool = False
 
 
 @dataclass
@@ -127,6 +134,14 @@ class SequenceStep:
     y: int                # Y-Koordinate (direkt gespeichert)
     delay_before: float   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
     name: str = ""        # Optionaler Name des Punktes
+    # Referenz auf den Punkt im Punkte-Pool, aus dem dieser Schritt entstanden ist.
+    # x/y/name bleiben als Kopie erhalten (Schritte ohne Punkt-Herkunft - Aufnahme,
+    # Tastendruck, Scans - haben point_id=None und funktionieren unverändert).
+    # Ist point_id gesetzt UND der Punkt existiert, gilt der PUNKT als Wahrheit für
+    # die Koordinaten: verschiebt man den Punkt, ziehen alle Schritte mit. Genau das
+    # war vorher das Problem - eine verrutschte Aufnahme musste man in jedem Schritt
+    # einzeln nachziehen und erst mal finden.
+    point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
@@ -138,6 +153,10 @@ class SequenceStep:
     delay_max: Optional[float] = None    # None = feste Zeit, sonst Bereich
     # Optional: Tastendruck statt Mausklick
     key_press: Optional[str] = None      # z.B. "enter", "space", "f1"
+    # Optional: Mausrad drehen statt klicken. Positiv = hoch, negativ = runter,
+    # Betrag = Rasterstufen. Gescrollt wird an (x, y), weil Windows das Rad-Event an
+    # das Fenster UNTER dem Cursor liefert.
+    scroll: Optional[int] = None
     # Optional: Fallback/Else-Aktion wenn Bedingung fehlschlägt
     else_config: Optional[ElseConfig] = None
     # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
@@ -165,10 +184,18 @@ class SequenceStep:
                 return f"SCREENSHOT ({region[0]},{region[1]})→({region[2]},{region[3]})"
             return "SCREENSHOT (Vollbild)"
         if self.key_press:
-            delay_str = self._delay_str()
-            return f"{delay_str} → drücke Taste '{self.key_press}'{else_str}"
+            return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
+        if self.scroll:
+            richtung = "hoch" if self.scroll > 0 else "runter"
+            ziel = f"{self.name} " if self.name else ""
+            return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
+                    f"bei {ziel}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
+        if self.icon_scan:
+            # Fehlte hier komplett: ein Icon-Scan-Schritt fiel bis ans Ende durch und
+            # wurde in der Schritt-Liste als "sofort → klicke (0, 0)" angezeigt.
+            return f"ICON-SCAN '{self.icon_scan}'{else_str}"
         if self.item_scan:
             mode_strs = {SCAN_MODE_ALL: "bestes/Kategorie", SCAN_MODE_BEST: "1 bestes", SCAN_MODE_EVERY: "JEDES"}
             mode_str = mode_strs.get(self.item_scan_mode, self.item_scan_mode)
@@ -177,10 +204,21 @@ class SequenceStep:
         if self.wait_only:
             if wc:
                 gone_str = "WEG ist" if wc.until_gone else "DA ist"
+                if wc.check_only:
+                    return (f"PRÜFE einmal ob Farbe {gone_str} bei "
+                            f"({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}")
                 return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
             return f"WARTE {self._delay_str()} (kein Klick)"
-        pos_str = f"{self.name} ({self.x}, {self.y})" if self.name else f"({self.x}, {self.y})"
+        ref = f" #{self.point_id}" if self.point_id is not None else ""
+        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
+                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
         if wc:
+            if wc.check_only:
+                zustand = "WEG" if wc.until_gone else "DA"
+                vorlauf = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+                return (f"{vorlauf}prüfe einmal ob Farbe {zustand} bei "
+                        f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
+                        f"{else_str or ' | sonst: überspringen'}")
             gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
             delay_str = self._delay_str()
             if self.delay_before > 0:
@@ -190,6 +228,27 @@ class SequenceStep:
             return f"warte {self._delay_str()} → klicke {pos_str}"
         else:
             return f"sofort → klicke {pos_str}"
+
+    def _trigger_str(self) -> str:
+        """Was VOR der Aktion passiert: Farb-Bedingung und/oder Wartezeit.
+
+        Taste und Scroll zeigten hier früher nur die Wartezeit. Eine Farb-Bedingung
+        an so einem Schritt war damit unsichtbar — man konnte sie im edit-Menü setzen
+        und sah sie in der Schritt-Liste nirgends wieder.
+        """
+        wc = self.wait_condition
+        if not wc:
+            return self._delay_str()
+        zustand = "WEG" if wc.until_gone else "DA"
+        pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
+        if wc.check_only:
+            art = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+        else:
+            art = f"warte bis Farbe {zustand} bei {pixel}"
+        if self.delay_before > 0:
+            # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
+            return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
+        return art
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""
@@ -287,7 +346,7 @@ class ItemProfile:
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
-    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
 
     def __str__(self) -> str:
         if self.template:
@@ -318,18 +377,64 @@ class ItemSlot:
 
 @dataclass
 class ItemScanConfig:
-    """Konfiguration für Item-Erkennung und -Vergleich."""
+    """Konfiguration für Item-Erkennung und -Vergleich.
+
+    WAS IN DER DATEI STEHT sind nur die Namen (`slot_names`, `item_names`). Slots und
+    Items selbst leben in slots/slots.json bzw. items/items.json - der Scan verweist
+    darauf, statt sie zu kopieren.
+
+    Vorher lag jedes Item zweimal auf Platte: global und vollständig eingebettet in jedem
+    Scan, der es benutzt. Änderte man die Marker-Farben des globalen Items, passierte im
+    Scan nichts. Dass das wehtat, sieht man daran, dass es `update_item_in_scans()` gab -
+    eine Funktion, die nach einem Umbenennen alle Scan-Dateien nachzieht. Genau dieselbe
+    Falle wie bei den Punkten in Sequenzen.
+
+    `slots` und `items` sind die AUFGELÖSTEN Arbeitslisten, gefüllt von
+    `resolve_scan_references()`. Der Worker liest sie, die Editoren schreiben sie - beides
+    unverändert. Nur gespeichert werden sie nicht mehr.
+    """
     name: str
-    slots: list[ItemSlot] = field(default_factory=list)      # Wo gescannt wird
-    items: list[ItemProfile] = field(default_factory=list)   # Welche Items erkannt werden
+    slots: list[ItemSlot] = field(default_factory=list)      # aufgelöst, nicht gespeichert
+    items: list[ItemProfile] = field(default_factory=list)   # aufgelöst, nicht gespeichert
+    slot_names: list[str] = field(default_factory=list)      # das steht in der Datei
+    item_names: list[str] = field(default_factory=list)      # das steht in der Datei
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
     learn_unknown: bool = False
 
+    def __post_init__(self) -> None:
+        self.sync_names()
+
+    def sync_names(self) -> None:
+        """Leitet fehlende Namenslisten aus den Objekten ab.
+
+        DER GRUND: Namen und Objekte sind zwei Darstellungen derselben Sache, und wer nur
+        eine davon setzt, hinterlässt eine halbe Config. Genau das ist passiert - Editoren
+        und Scan-Studio bauen die Config aus Objekten, der Loader aus Namen, und niemand
+        füllte die jeweils andere Seite:
+
+        * Beim Öffnen waren `slots`/`items` leer, also zeigte das Menü "0 Slots, 0 Items"
+          und beim Bearbeiten war nichts vorausgewählt.
+        * Beim Speichern waren `slot_names`/`item_names` leer - und
+          `resolve_scan_references()` (läuft vor JEDEM Sequenzstart) leerte daraufhin die
+          Objekte. Ein gerade bearbeiteter Scan lief bis zum Neustart ins Leere.
+
+        Die Namen sind die Wahrheit (sie stehen in der Datei), die Objekte werden
+        aufgelöst. Diese Methode stellt sicher, dass die Wahrheit nie fehlt - egal von
+        welcher Seite die Config gebaut wurde.
+        """
+        if not self.slot_names and self.slots:
+            self.slot_names = [s.name for s in self.slots]
+        if not self.item_names and self.items:
+            self.item_names = [i.name for i in self.items]
+
     def __str__(self) -> str:
         learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
-        return f"{self.name} ({len(self.slots)} Slots, {len(self.items)} Items){learn_str}"
+        # Über die Namen zählen: frisch geladen sind die Objekte noch nicht aufgelöst,
+        # und "0 Slots" wäre dann schlicht falsch.
+        return (f"{self.name} ({len(self.slot_names)} Slots, "
+                f"{len(self.item_names)} Items){learn_str}")
 
 
 # =============================================================================
@@ -341,7 +446,7 @@ class BossProfile:
     name: str
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Farb-Marker
     template: Optional[str] = None              # Template-Bild (in items/templates/)
-    min_confidence: float = _DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
     # Aktion wenn dieser Boss erkannt wird:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
     action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
@@ -419,7 +524,7 @@ class IconScanConfig:
     name: str
     scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird
     template: Optional[str] = None                              # Template-Bild (in items/templates/)
-    min_confidence: float = _DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
     action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
@@ -453,6 +558,11 @@ class AutoClickerState:
     """Zustand des Autoclickers."""
     # Punkte-Pool (wiederverwendbar)
     points: list[ClickPoint] = field(default_factory=list)
+
+    # Manueller Modus: Sequenz Schritt für Schritt auf Bestätigung, Wartezeiten
+    # übersprungen. Bewusst Laufzeit-Zustand statt Config - im Punkte-Menü
+    # (CTRL+ALT+P -> 'manuell') umschaltbar. Mutation unter state.lock.
+    step_mode: bool = False
 
     # Gespeicherte Sequenzen
     sequences: dict[str, Sequence] = field(default_factory=dict)
@@ -509,9 +619,6 @@ class AutoClickerState:
     # Position. WICHTIG: input_lock niemals nehmen während state.lock gehalten
     # wird (Deadlock-Gefahr — strikte Lock-Reihenfolge).
     input_lock: threading.Lock = field(default_factory=threading.Lock)
-
-    # Flag für geplanten Start (überspringt Debug-Enter-Prompt)
-    scheduled_start: bool = False
 
     # Flag für aktiven Countdown (verhindert Sequenz-Start durch CTRL+ALT+S)
     countdown_active: bool = False

@@ -7,7 +7,6 @@ _check_profile_match wird sowohl von Item- als auch Boss-Erkennung genutzt —
 deswegen lebt es hier (Item-Erkennung ist der Haupt-User).
 """
 
-import ctypes
 import time
 from pathlib import Path
 
@@ -16,18 +15,13 @@ from ..models import (
     AutoClickerState, ItemProfile, SCAN_MODE_ALL, SCAN_MODE_EVERY,
 )
 from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
-from ..winapi import set_cursor_pos
+from ..winapi import set_cursor_pos, get_screen_center
 from .actions import safe_click
+from .debug import is_log_debug
 
 # Windows GetSystemMetrics-Indizes für den virtuellen Desktop (Multi-Monitor-Spannweite).
 # https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
-_SM_XVIRTUALSCREEN = 76
-_SM_YVIRTUALSCREEN = 77
-_SM_CXVIRTUALSCREEN = 78
-_SM_CYVIRTUALSCREEN = 79
 # Fallback-Indizes für den Primärbildschirm (wenn Virtual-Screen-Abfrage fehlschlägt)
-_SM_CXSCREEN = 0
-_SM_CYSCREEN = 1
 
 # Settle-Zeit nach Maus-Park bevor der Scan beginnt — verhindert dass ein noch
 # sichtbarer Hover-Tooltip die Erkennung verfälscht.
@@ -110,13 +104,37 @@ def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
     if img is None:
         return False
 
-    debug = state.config.debug_detection
+    debug = is_log_debug(state)
     return _check_profile_match(config, img, color_tolerance, state, debug, "Icon erkannt!")
 
 
 # =============================================================================
 # ITEM-SCAN (Hauptfunktion)
 # =============================================================================
+
+def lauffaehige_scan_config(state: AutoClickerState, scan_name: str):
+    """Gibt die Scan-Config zurück, oder None samt Meldung wenn sie nicht laufen kann.
+
+    Aufrufer MUSS state.lock halten.
+
+    Eine Stelle für beide Scan-Pfade (normal und Immediate). Vorher hatte der
+    Immediate-Modus seine eigene, stillschweigende Abbruchbedingung — ein Tippfehler
+    im Scan-Namen war dort unsichtbar, während der normale Pfad ihn meldete.
+    """
+    config = state.item_scans.get(scan_name)
+    if config is None:
+        print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
+        return None
+    if not config.slots:
+        print(err(f"Item-Scan '{scan_name}' hat keine Slots!"))
+        return None
+    # Ohne Items ist ein Scan nur sinnvoll, wenn er unbekannte Inhalte lernen soll.
+    if not config.items and not config.learn_unknown:
+        print(err(f"Item-Scan '{scan_name}' hat keine Items "
+                  f"(und Auto-Lernen ist aus)!"))
+        return None
+    return config
+
 
 def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_MODE_ALL,
                       slots_override: list = None) -> list:
@@ -127,12 +145,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
     # während wir iterieren (RuntimeError bei dict/list changed during iteration).
     with state.lock:
-        config = state.item_scans.get(scan_name)
+        config = lauffaehige_scan_config(state, scan_name)
         if config is None:
-            print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
-            return []
-        if not config.slots or (not config.items and not config.learn_unknown):
-            print(err(f"Item-Scan '{scan_name}' hat keine Slots oder Items!"))
             return []
         slots_snapshot = list(config.slots)
         items_snapshot = list(config.items)
@@ -149,7 +163,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay
-    debug = state.config.debug_detection
+    debug = is_log_debug(state)
 
     _park_mouse_for_scan(state.config.scan_park_mouse)
 
@@ -266,7 +280,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
 
     save_global_items(state)
     print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} gespeichert "
-              f"(Kategorie 'Auto', wird nicht geklickt)", "green"))
+              "(Kategorie 'Auto', wird nicht geklickt)", "green"))
 
 
 def _park_mouse_for_scan(park_pos) -> None:
@@ -277,20 +291,7 @@ def _park_mouse_for_scan(park_pos) -> None:
         px, py = int(park_pos[0]), int(park_pos[1])
     else:
         # true = Bildschirmmitte (virtueller Desktop für Multi-Monitor)
-        try:
-            vw = ctypes.windll.user32.GetSystemMetrics(_SM_CXVIRTUALSCREEN)
-            vh = ctypes.windll.user32.GetSystemMetrics(_SM_CYVIRTUALSCREEN)
-            vx = ctypes.windll.user32.GetSystemMetrics(_SM_XVIRTUALSCREEN)
-            vy = ctypes.windll.user32.GetSystemMetrics(_SM_YVIRTUALSCREEN)
-            px = vx + vw // 2
-            py = vy + vh // 2
-        except (AttributeError, OSError):
-            # Letzter Fallback: Primärmonitor (oder Hardcode wenn keine windll verfügbar)
-            if hasattr(ctypes, 'windll'):
-                px = ctypes.windll.user32.GetSystemMetrics(_SM_CXSCREEN) // 2
-                py = ctypes.windll.user32.GetSystemMetrics(_SM_CYSCREEN) // 2
-            else:
-                px, py = 960, 540
+        px, py = get_screen_center()
     set_cursor_pos(px, py)
     time.sleep(_MOUSE_PARK_SETTLE)
 

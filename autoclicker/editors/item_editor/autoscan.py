@@ -7,7 +7,7 @@ mit dem rename-Befehl angepasst werden.
 
 from pathlib import Path
 
-from ...config import CONFIG, DEFAULT_MIN_CONFIDENCE
+from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ClickPoint, ItemProfile, AutoClickerState
 from ...persistence import (
@@ -98,16 +98,16 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
             pass
 
     # Konfidenz
-    min_confidence = DEFAULT_MIN_CONFIDENCE
+    min_confidence = state.config.scan_min_confidence
     try:
-        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
+        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(min_confidence * 100)}): ").strip()
         if conf_input:
             min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
     except ValueError:
         pass
 
     # Bestätigung
-    print(f"\n  --- Zusammenfassung ---")
+    print("\n  --- Zusammenfassung ---")
     print(f"  Slots:       {len(slot_list)}")
     print(f"  Kategorie:   {category or '(keine)'}")
     print(f"  Priorität:   {'automatisch (1,2,3,...)' if auto_priority else 'alle gleich (1)'}")
@@ -115,7 +115,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     if confirm_point:
         print(f"  Bestätigung: ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s")
     else:
-        print(f"  Bestätigung: keine")
+        print("  Bestätigung: keine")
     print(f"  Marker:      {'Ja' if use_markers else 'Nein'}")
 
     if not confirm("\n  Starten?"):
@@ -287,5 +287,5 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                 save_global_items(state)
             print(f"  -> {renamed} Item(s) benannt.")
 
-    print(f"\n  Tipp: 'rename <Nr>' zum Umbenennen, 'autoname' für LLM-Benennung, 'show' zum Anzeigen")
-    print(f"        'save <Name>' zum Speichern als Preset")
+    print("\n  Tipp: 'rename <Nr>' zum Umbenennen, 'autoname' für LLM-Benennung, 'show' zum Anzeigen")
+    print("        'save <Name>' zum Speichern als Preset")

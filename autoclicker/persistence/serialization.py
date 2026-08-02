@@ -10,36 +10,107 @@ bleiben stabil, um nicht alle Callsites anfassen zu müssen.
 """
 
 from dataclasses import asdict
+from typing import TYPE_CHECKING
 
-from ..config import DEFAULT_MIN_CONFIDENCE
 from ..models import (
+    DEFAULT_MIN_CONFIDENCE,
     ClickPoint, ElseConfig, WaitCondition, SequenceStep, Sequence,
     ItemProfile, ItemSlot, BossProfile,
-    BOSS_ACTION_SCAN, SCAN_MODE_ALL,
+    BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, ICON_ACTION_CLICK, SCAN_MODE_ALL,
 )
+
+if TYPE_CHECKING:  # nur fuer die Annotationen unten
+    from ..models import ItemScanConfig, BossScanConfig, IconScanConfig
+
+
+# =============================================================================
+# GESCHRIEBEN WIRD NUR, WAS GESETZT IST
+# =============================================================================
+# Jede Datei soll das enthalten, was du eingestellt hast - nicht zusätzlich jedes Feld,
+# das den Standardwert trägt. Der Loader setzt genau diesen Default, also ist das Feld
+# in der Datei überflüssig; und was überflüssig ist, macht die Datei unlesbar.
+#
+# Beim Lesen der Dateien ist der Standardwert die einzige Quelle der Wahrheit: steht ein
+# Feld nicht drin, gilt der Default aus der Dataclass. Deshalb müssen die Tabellen hier
+# und die Dataclasses zusammenpassen - ein Test prüft das.
+
+# Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
+_KEIN_DEFAULT = object()
+
+
+def _ist_default(wert, default) -> bool:
+    """Trägt das Feld seinen Standardwert?
+
+    In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"scroll": 0` als
+    False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
+    (0 vs 0.0) sollen dagegen als gleich zählen.
+    """
+    if isinstance(wert, bool) != isinstance(default, bool):
+        return False
+    if isinstance(wert, (int, float)) and isinstance(default, (int, float)):
+        return wert == default
+    return type(wert) is type(default) and wert == default
+
+
+def _ohne_defaults(daten: dict, defaults: dict) -> dict:
+    """Entfernt alle Felder, die ihren Standardwert tragen."""
+    return {k: v for k, v in daten.items()
+            if not (defaults.get(k, _KEIN_DEFAULT) is not _KEIN_DEFAULT
+                    and _ist_default(v, defaults[k]))}
 
 
 # =============================================================================
 # ITEM + SLOT
 # =============================================================================
+# Items und Slots liegen ausschliesslich in Name->Eintrag-Dicts (items.json, slots.json,
+# die Preset-Ordner). Der Name steht damit schon im Schlüssel - ihn zusätzlich im Eintrag
+# zu führen war doppelt, und genau die Stelle, an der ein Umbenennen inkonsistent wird.
+
+_ITEM_DEFAULTS = {
+    "marker_colors": [],
+    "category": None,
+    "priority": 1,
+    "confirm_point": None,
+    "confirm_delay": 0.5,
+    "template": None,
+    "min_confidence": DEFAULT_MIN_CONFIDENCE,
+}
+
+_SLOT_DEFAULTS = {"slot_color": None}
+
 
 def _item_to_dict(item: ItemProfile) -> dict:
-    """Serialisiert ein ItemProfile zu einem Dict (via dataclasses.asdict)."""
+    """Serialisiert ein ItemProfile - ohne `name` (steht im Schlüssel) und ohne Defaults."""
     d = asdict(item)
+    d.pop("name", None)
     # confirm_point: ClickPoint → nur {x, y} behalten (id/name nicht relevant)
     if d["confirm_point"]:
         d["confirm_point"] = {"x": d["confirm_point"]["x"], "y": d["confirm_point"]["y"]}
-    return d
+    return _ohne_defaults(d, _ITEM_DEFAULTS)
 
 
 def _slot_to_dict(slot: 'ItemSlot') -> dict:
-    """Serialisiert einen ItemSlot zu einem Dict."""
-    return {
-        "name": slot.name,
+    """Serialisiert einen ItemSlot - ohne `name` (steht im Schlüssel)."""
+    return _ohne_defaults({
         "scan_region": list(slot.scan_region),
         "click_pos": list(slot.click_pos),
         "slot_color": list(slot.slot_color) if slot.slot_color else None,
-    }
+    }, _SLOT_DEFAULTS)
+
+
+def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
+    """Deserialisiert einen ItemSlot. `name` kommt aus dem Schlüssel.
+
+    Zentral, damit globals.py, presets.py und der Import dasselbe lesen - vorher stand
+    dieselbe Schleife dreimal da.
+    """
+    farbe = data.get("slot_color")
+    return ItemSlot(
+        name=name,
+        scan_region=tuple(data["scan_region"]),
+        click_pos=tuple(data["click_pos"]),
+        slot_color=tuple(farbe) if farbe else None,
+    )
 
 
 def _point_to_dict(p: 'ClickPoint') -> dict:
@@ -49,24 +120,23 @@ def _point_to_dict(p: 'ClickPoint') -> dict:
     leere Felder. Zentral, damit points.json-Writer und Export identisch sind.
     """
     return {
-        "id": p.id, "x": p.x, "y": p.y, "name": p.name,
+        "id": p.id, "x": p.x, "y": p.y,
+        **({"name": p.name} if p.name else {}),
         **({"color": list(p.color)} if p.color else {}),
         **({"source": p.source} if p.source else {}),
     }
 
 
-def _item_from_dict(data: dict) -> ItemProfile:
-    """Deserialisiert ein ItemProfile aus einem Dict."""
-    # confirm_point: kann {x, y} Dict, [x,y] Liste (alt) oder None sein
+def _item_from_dict(data: dict, name: str) -> ItemProfile:
+    """Deserialisiert ein ItemProfile. `name` kommt aus dem Schlüssel des Dicts."""
+    # confirm_point: {x, y} oder None. Die alte [x, y]-Liste hebt migration._fix_item,
+    # bevor hier gelesen wird - hier steht deshalb nur das aktuelle Format.
     cp_data = data.get("confirm_point")
     cp = None
-    if cp_data:
-        if isinstance(cp_data, dict) and "x" in cp_data and "y" in cp_data:
-            cp = ClickPoint(cp_data["x"], cp_data["y"])
-        elif isinstance(cp_data, list) and len(cp_data) == 2:
-            cp = ClickPoint(cp_data[0], cp_data[1])  # Alte Format-Unterstützung
+    if isinstance(cp_data, dict) and "x" in cp_data and "y" in cp_data:
+        cp = ClickPoint(cp_data["x"], cp_data["y"])
     return ItemProfile(
-        name=data["name"],
+        name=name,
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
         category=data.get("category"),
         priority=data.get("priority", 1),
@@ -81,9 +151,24 @@ def _item_from_dict(data: dict) -> ItemProfile:
 # BOSS-PROFILE
 # =============================================================================
 
+# Bosse liegen in einer LISTE (Reihenfolge = Prioritaet), deshalb bleibt `name` hier drin.
+_BOSS_DEFAULTS = {
+    "marker_colors": [],
+    "template": None,
+    "min_confidence": DEFAULT_MIN_CONFIDENCE,
+    "action": BOSS_ACTION_SCAN,
+    "action_scan": None,
+    "action_scan_mode": SCAN_MODE_ALL,
+    "action_x": 0,
+    "action_y": 0,
+    "action_key": None,
+    "action_delay": 0,
+}
+
+
 def _boss_profile_to_dict(boss: BossProfile) -> dict:
     """Serialisiert ein BossProfile zu einem Dict."""
-    return {
+    return _ohne_defaults({
         "name": boss.name,
         "marker_colors": [list(c) for c in boss.marker_colors],
         "template": boss.template,
@@ -95,7 +180,7 @@ def _boss_profile_to_dict(boss: BossProfile) -> dict:
         "action_y": boss.action_y,
         "action_key": boss.action_key,
         "action_delay": boss.action_delay,
-    }
+    }, _BOSS_DEFAULTS)
 
 
 def _boss_profile_from_dict(data: dict) -> BossProfile:
@@ -122,20 +207,49 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 # Scans — genutzt von den persistence-Savern UND vom ZIP-Export, damit beide
 # garantiert dasselbe schreiben.
 
+# Als benannte Tabelle wie alle anderen - inline stehende Literale waren der Grund, warum
+# der Item-Scan als einziger Typ nicht vom Drift-Test gegen die Dataclass geprueft wurde.
+_ITEM_SCAN_DEFAULTS = {
+    "color_tolerance": 40,
+    "learn_unknown": False,
+    "slot_names": [],
+    "item_names": [],
+}
+
+
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
-    """Serialisiert eine ItemScanConfig zu einem Dict."""
-    return {
+    """Serialisiert eine ItemScanConfig zu einem Dict.
+
+    Geschrieben werden nur Namen. Sind die Namenslisten leer (Editoren setzen direkt
+    `slots`/`items`), werden sie aus den aufgelösten Objekten abgeleitet - so muss kein
+    Editor umgebaut werden.
+    """
+    slot_names = list(config.slot_names) or [s.name for s in config.slots]
+    item_names = list(config.item_names) or [i.name for i in config.items]
+    return _ohne_defaults({
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "learn_unknown": config.learn_unknown,
-        "slots": [_slot_to_dict(slot) for slot in config.slots],
-        "items": [_item_to_dict(item) for item in config.items],
-    }
+        "slot_names": slot_names,
+        "item_names": item_names,
+    }, _ITEM_SCAN_DEFAULTS)
+
+
+_BOSS_SCAN_DEFAULTS = {
+    "color_tolerance": 30,
+    "default_action": BOSS_ACTION_SKIP,
+    "default_scan": None,
+    "bosses": [],
+    "use_llm": False,
+    "llm_fallback": True,
+    "use_ocr": False,
+    "ocr_fallback": True,
+}
 
 
 def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
     """Serialisiert eine BossScanConfig zu einem Dict (ohne globale Bosse)."""
-    return {
+    return _ohne_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),
         "color_tolerance": config.color_tolerance,
@@ -146,12 +260,25 @@ def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
         "llm_fallback": config.llm_fallback,
         "use_ocr": config.use_ocr,
         "ocr_fallback": config.ocr_fallback,
-    }
+    }, _BOSS_SCAN_DEFAULTS)
+
+
+_ICON_SCAN_DEFAULTS = {
+    "template": None,
+    "min_confidence": DEFAULT_MIN_CONFIDENCE,
+    "marker_colors": [],
+    "color_tolerance": 30,
+    "action": ICON_ACTION_CLICK,
+    "action_x": 0,
+    "action_y": 0,
+    "action_key": None,
+    "action_delay": 0,
+}
 
 
 def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
     """Serialisiert eine IconScanConfig zu einem Dict."""
-    return {
+    return _ohne_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),
         "template": config.template,
@@ -163,7 +290,7 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
         "action_y": config.action_y,
         "action_key": config.action_key,
         "action_delay": config.action_delay,
-    }
+    }, _ICON_SCAN_DEFAULTS)
 
 
 # =============================================================================
@@ -174,16 +301,19 @@ def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
     wc = s.wait_condition
     ec = s.else_config
-    return {"x": s.x, "y": s.y, "name": s.name, "delay_before": s.delay_before,
+    voll = {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
+            "delay_before": s.delay_before,
             "wait_pixel": wc.pixel if wc else None,
             "wait_color": wc.color if wc else None,
             "wait_until_gone": wc.until_gone if wc else False,
+            "wait_check_only": wc.check_only if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
             "boss_watcher": s.boss_watcher,
             "icon_scan": s.icon_scan,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
             "key_press": s.key_press,
+            "scroll": s.scroll,
             "else_action": ec.action if ec else None,
             "else_x": ec.x if ec else 0, "else_y": ec.y if ec else 0,
             "else_delay": ec.delay if ec else 0,
@@ -191,13 +321,55 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "recorded_color": list(s.recorded_color) if s.recorded_color else None}
+    return _ohne_defaults(voll, _STEP_DEFAULTS)
+
+
+# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist. Steht der Wert drin, ist das Feld
+# ueberfluessig und wird nicht geschrieben - der Loader setzt exakt diesen Default.
+#
+# Warum: ein normaler Klick-Schritt hat 27 Felder, davon 21 leer. Eine 67-Schritt-Sequenz
+# war zu vier Fuenfteln aus "wait_pixel": null und Konsorten. Das Problem ist nicht die
+# Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
+# Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
+#
+# x, y und delay_before stehen NICHT hier: das sind die Pflicht-Argumente von
+# SequenceStep, die bleiben immer sichtbar.
+_STEP_DEFAULTS = {
+    "name": "",
+    "point_id": None,
+    "wait_pixel": None,
+    "wait_color": None,
+    "wait_until_gone": False,
+    "wait_check_only": False,
+    "item_scan": None,
+    "item_scan_mode": "all",
+    "boss_scan": None,
+    "boss_watcher": None,
+    "icon_scan": None,
+    "wait_only": False,
+    "delay_max": None,
+    "key_press": None,
+    "scroll": None,
+    "else_action": None,
+    "else_x": 0,
+    "else_y": 0,
+    "else_delay": 0,
+    "else_key": None,
+    "else_name": "",
+    "screenshot_only": False,
+    "screenshot_region": None,
+    "recorded_color": None,
+}
+
+
+
 
 
 def _sequence_to_dict(seq: Sequence) -> dict:
     """Konvertiert eine Sequence in ein JSON-serialisierbares dict."""
     return {
         "name": seq.name,
-        "total_cycles": seq.total_cycles,
+        **({"total_cycles": seq.total_cycles} if seq.total_cycles != 1 else {}),
         **({"description": seq.description} if seq.description else {}),
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
@@ -225,10 +397,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         wait_color = s.get("wait_color")
         if wait_color:
             wait_color = tuple(int(v) for v in wait_color)
-        # Unterstütze beide Formate: delay_before (neu) und delay_after (alt)
+        # delay_after (Vorlaeufer) hebt migration._seq_v1_to_v2, bevor hier gelesen wird.
         delay_raw = s.get("delay_before")
-        if delay_raw is None:
-            delay_raw = s.get("delay_after")
         if delay_raw is None:
             delay_raw = 0
         delay_max_raw = s.get("delay_max")
@@ -237,7 +407,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         if wait_pixel and wait_color:
             wait_cond = WaitCondition(
                 pixel=wait_pixel, color=wait_color,
-                until_gone=s.get("wait_until_gone", False)
+                until_gone=s.get("wait_until_gone", False),
+                check_only=s.get("wait_check_only", False),
             )
         # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
         recorded_color_raw = s.get("recorded_color")
@@ -271,6 +442,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             y=s.get("y", 0),
             delay_before=float(delay_raw),
             name=s.get("name", ""),
+            point_id=s.get("point_id"),
             wait_condition=wait_cond,
             item_scan=s.get("item_scan"),
             item_scan_mode=s.get("item_scan_mode", "all"),
@@ -280,6 +452,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             wait_only=s.get("wait_only", False),
             delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
             key_press=s.get("key_press"),
+            scroll=s.get("scroll"),
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,

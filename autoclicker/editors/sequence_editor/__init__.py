@@ -7,7 +7,7 @@ Modul-Aufteilung:
     loops.py     edit_loop_phases
     steps.py     edit_phase (Hauptarbeit) + Phase-Help
     helpers.py   apply_else_to_step, capture_pixel_color, parse_else_condition,
-                  parse_time_input
+                  parse_uhrzeit
 
 Externe Konsumenten: editors/__init__.py braucht run_sequence_editor und
 run_sequence_loader. Beides hier re-exportiert.

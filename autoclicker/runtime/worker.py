@@ -16,8 +16,8 @@ from datetime import datetime
 from ..models import AutoClickerState
 from ..session_log import log_event
 from ..utils import (
-    clear_line, col, ok, err, hint, dbg,
-    format_duration, safe_input,
+    clear_line, col, ok, err, hint, dbg, warn,
+    format_duration,
 )
 from ..utils.console import set_console_title
 from .actions import is_verbose_debug
@@ -38,6 +38,15 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
     Setzt das pending-Flag thread-safe, damit die Phase an ihrer
     natürlichen Position im Ablauf ausgeführt wird.
 
+    Beide Dicts sind über die POSITION der Phase indiziert, nicht über ihren
+    Namen: Namen sind frei wählbar und doppelt vergebbar (Vorschlag ist
+    'Loop <len+1>', nach einem 'del' kollidiert das). Bei zwei gleichnamigen
+    Phasen lief sonst die falsche — das Flag der 20-Uhr-Phase wurde von der
+    08-Uhr-Phase abgeräumt, die daraufhin abends ein zweites Mal lief und die
+    eigentliche Abend-Phase nie. Die Position ist eindeutig und stabil: Watcher
+    und Ausführung laufen über dieselbe Liste, und während eines Laufs kann sie
+    kein Editor ändern.
+
     Terminiert sowohl bei stop_event (Sequenz gestoppt) als auch bei
     shutdown_event (Sequenz regulär beendet) — sonst liefe der Timer als
     Geister-Thread ewig weiter und leakte bei jedem Neustart.
@@ -47,7 +56,7 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
         current_h, current_m = now.hour, now.minute
         today = now.strftime('%Y-%m-%d')
 
-        for lp in loop_phases:
+        for idx, lp in enumerate(loop_phases):
             if not lp.scheduled_start:
                 continue
 
@@ -60,9 +69,9 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
             if current_h == h and current_m == m:
                 tracking_key = f"{lp.scheduled_start}_{today}"
                 with lock:
-                    if scheduled_last_executed.get(lp.name) != tracking_key:
-                        scheduled_last_executed[lp.name] = tracking_key
-                        scheduled_pending[lp.name] = True
+                    if scheduled_last_executed.get(idx) != tracking_key:
+                        scheduled_last_executed[idx] = tracking_key
+                        scheduled_pending[idx] = True
                         print(col(f"\n[TIMER] {lp.name}: Startzeit {lp.scheduled_start} erreicht! (wird bei nächster Position ausgeführt)", "green"), flush=True)
 
         # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit).
@@ -114,7 +123,7 @@ def print_status(state: AutoClickerState) -> None:
 def sequence_worker(state: AutoClickerState) -> None:
     """Worker-Thread, der die Sequenz ausführt."""
     debug = is_verbose_debug(state)
-    show_preview = state.config.debug_mode
+    show_preview = state.config.debug_detail
     print(col("\n[START] Sequenz gestartet.", "green"))
 
     sequence = _prepare_worker_state(state, show_preview)
@@ -139,7 +148,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     schedule_shutdown = threading.Event()
     cycle_count = 0
     try:
-        schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
+        _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
 
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
@@ -203,9 +212,8 @@ def _sync_pause_title(state: AutoClickerState, seq_name: str) -> None:
 def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
     """Validiert die Sequenz, resettet Zähler/Events. Gibt die Sequence oder None bei Fehler zurück.
 
-    Der blockierende Vorschau-Prompt (sleep + safe_input, nur bei debug_mode) läuft
-    bewusst NICHT unter state.lock — sonst frören alle Hotkeys ein solange der
-    Prompt offen ist.
+    Die Schritt-Übersicht (nur bei debug_detail) wird bewusst AUSSERHALB von state.lock
+    ausgegeben — Konsolen-Ausgabe unter Lock hält die Hotkeys unnötig auf.
     """
     with state.lock:
         sequence = state.active_sequence
@@ -241,7 +249,31 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         state.skip_cycle_event.clear()
         state.pending_new_bosses.clear()
 
-    # Vorschau + blockierender Enter-Prompt AUSSERHALB des Locks (nur debug_mode)
+        # Punkt-Referenzen aufloesen: Schritte mit point_id folgen dem Punkte-Pool.
+        # Hier statt beim Laden, damit ein zwischenzeitlich korrigierter Punkt garantiert
+        # greift - egal ob die Sequenz per Laden, Quick-Switch oder Zeitplan aktiv wurde.
+        from ..persistence import resolve_point_references
+        punkt_meldungen = resolve_point_references(state, sequence)
+
+    # Item-/Slot-Referenzen der Scans frisch auflösen: ein Editor kann zwischendurch ein
+    # globales Item geändert haben, und der Scan soll dem folgen. Ausserhalb des Locks,
+    # weil resolve_scan_references selbst lockt.
+    from ..persistence import resolve_scan_references
+    scan_meldungen = resolve_scan_references(state)
+
+    # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
+    # klickt als in der Sequenzdatei steht.
+    if punkt_meldungen:
+        print(col(f"\n[PUNKTE] {len(punkt_meldungen)} Schritt(e) folgen ihrem Punkt:", "cyan"))
+        for m in punkt_meldungen:
+            print(f"         {m}")
+
+    for m in scan_meldungen:
+        print(warn(m))
+
+    # Schritt-Uebersicht ausgeben (nur Detail-Stufe). Bewusst OHNE Enter-Prompt: die
+    # Ausgabe-Stufen aendern nur, was man sieht. Wer Schritt fuer Schritt bestaetigen
+    # will, nimmt den manuellen Modus (Punkte-Menue -> 'manuell').
     if show_preview:
         print("\n" + col("=" * 60, 'gray'))
         print(dbg("GELADENE SEQUENZ-SCHRITTE:"))
@@ -252,12 +284,6 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
             for i, step in enumerate(lp.steps):
                 print(col(f"  {lp.name}[{i+1}]: {step.name or 'unnamed'}", 'magenta'))
         print(col("=" * 60, 'gray'))
-        scheduled_start = state.scheduled_start
-        if not scheduled_start:
-            print(dbg("Drücke Enter zum Starten..."))
-            time.sleep(0.3)  # Rest-Events von CTRL+ALT+S abklingen lassen
-            safe_input()
-        state.scheduled_start = False
 
     return sequence
 
@@ -378,7 +404,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                      schedule_lock: threading.Lock, cycle_str: str, debug: bool) -> None:
     """Führt alle Loop-Phasen einmal aus."""
-    for loop_phase in sequence.loop_phases:
+    for idx, loop_phase in enumerate(sequence.loop_phases):
         if state.stop_event.is_set() or state.quit_event.is_set():
             break
 
@@ -386,10 +412,11 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         if total_steps == 0:
             continue
 
-        # Zeitgesteuerte Phase: nur ausführen wenn pending-Flag gesetzt (vom Timer-Thread)
+        # Zeitgesteuerte Phase: nur ausführen wenn pending-Flag gesetzt (vom Timer-Thread).
+        # Schlüssel ist die Position, nicht der Name — siehe _schedule_watcher.
         if loop_phase.scheduled_start:
             with schedule_lock:
-                is_pending = scheduled_pending.pop(loop_phase.name, False)
+                is_pending = scheduled_pending.pop(idx, False)
             if not is_pending:
                 if debug:
                     print(dbg(f"'{loop_phase.name}' übersprungen (wartet auf {loop_phase.scheduled_start})"))

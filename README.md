@@ -79,15 +79,21 @@ Keine zusätzlichen Pakete nötig.
 ### Empfohlen (Farberkennung + Template-Matching)
 
 ```bash
-pip install -r requirements-minimal.txt
+pip install -r requirements.txt
 python main.py
 ```
 
-### Alle Features (inkl. OCR Boss-Erkennung)
+Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
+
+### Optionale Extras (OCR, visuelle Editoren)
+
+`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `dearpygui`. Alle drei
+gehören zu Features, die per Default **abgeschaltet** sind — installiere sie nur, wenn du
+sie einschaltest. **`easyocr` zieht PyTorch nach: mehrere GB Download.**
 
 **Ohne GPU (CPU-only):**
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-optional.txt
 python main.py
 ```
 
@@ -105,7 +111,7 @@ Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner
 
 Dann den Rest installieren:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-optional.txt
 python main.py
 ```
 
@@ -413,6 +419,9 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `wait <Nr> colorgone` | Warten bis die Punkt-Farbe VERSCHWINDET, KEIN Klick |
 | `wait pixel` | Auf Farbe an der aktuellen Mausposition warten, KEIN Klick |
 | `wait pixelgone` | Warten bis Farbe an der Mausposition VERSCHWINDET, KEIN Klick |
+| `scroll <Punkt-Nr> <Stufen>` | Mausrad am Punkt drehen, `+` hoch / `-` runter (z.B. `scroll 3 -5`) |
+| `<Punkt-Nr> checkcolor` | Farbe **einmal** prüfen: passt sie → klicken, sonst Schritt überspringen |
+| `<Punkt-Nr> checkgone` | einmal prüfen, ob die Farbe **weg** ist – sonst überspringen |
 | `key <Taste>` | Taste sofort drücken (z.B. `key enter`) |
 | `key <Zeit> <Taste>` | Warten, dann Taste drücken (z.B. `key 5 space`) |
 | `key <Min>-<Max> <Taste>` | Zufällig warten, dann Taste (z.B. `key 30-45 enter`) |
@@ -1001,8 +1010,8 @@ Wird beim ersten Start automatisch erstellt:
   "session_log_enabled": false,
   "session_log_dir": "logs",
   "timing_pause_interval": 0.5,
-  "debug_mode": false,
-  "debug_detection": false,
+  "debug_log": false,
+  "debug_detail": false,
   "debug_show_pixel_position": false,
   "debug_save_templates": false
 }
@@ -1118,8 +1127,8 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `debug_detection` | Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans |
-| `debug_mode` | Wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter |
+| `debug_log` | **Beobachten.** Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans. Läuft ohne Eingriff durch |
+| `debug_detail` | **Stufe 2.** Zusätzlich springt der Zeiger vor jedem Schritt auf den Zielpunkt (ohne Klick) und es wird ausgeschrieben, *was* dort passieren soll — mit Farbquadrat bei Farb-Bedingungen. Läuft weiter durch |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
 | `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
 
@@ -1193,7 +1202,7 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
-    ├── sync_json.py        # JSON-Dateien synchronisieren/migrieren
+    ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
     └── test_ocr.py         # OCR-Backend-Test + Texterkennung
@@ -1298,17 +1307,23 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
-### Sync-Tool (`tools/sync_json.py`)
+### Migrations-Tool (`tools/migrate.py`)
 
-Bringt alle JSON-Dateien auf den aktuellen Code-Stand:
+Hebt alle JSON-Dateien aufs aktuelle Format. **Normalerweise brauchst du das nicht** —
+der Autoclicker macht denselben Durchgang bei jedem Start (Einstellung
+`migrate_on_start`, Standard an) und meldet sich nur, wenn es etwas zu tun gab.
 
 ```bash
-python tools/sync_json.py
+python tools/migrate.py            # zeigt nur an, was passieren würde
+python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 ```
 
-- Fehlende Felder mit Standardwerten ergänzen
-- Alte Formate konvertieren (z.B. `confirm_point` int → Koordinaten)
-- Presets erben Werte von globalen Dateien
+- Alte Formate ins aktuelle heben (Sequenz-Phasen, `point_id`, `confirm_point`, Punkt-IDs)
+- Tote Felder entfernen, die es im Code nicht mehr gibt
+- Erfasst alle Dateien: config, Punkte, Sequenzen, Item-/Boss-/Icon-Scans,
+  Boss-Bibliothek, Items, Slots und beide Preset-Ordner
+
+Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 
 ### OCR Test-Tool (`tools/test_ocr.py`)
 
@@ -1356,8 +1371,66 @@ python tools/slot_tester.py
 - Alte Keywords (`pixel`/`gone`/`nocolor` als Punkt-Trigger) entfernt — reine Umbenennung, das JSON-Schema bleibt identisch
 
 **Debug-Flags entkoppelt** (`config.json`)
-- `debug_detection` = alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details
-- `debug_mode` = wie `debug_detection`, zeigt **zusätzlich** vor dem Start die komplette Sequenz und wartet auf Enter
+### Punkte und Sequenz-Schritte: eine Quelle der Wahrheit
+
+Ein Schritt, der aus einem Punkt entstanden ist, speichert dessen `point_id`. Beim
+Sequenz-Start gilt dann **der Punkt** als Wahrheit für die Koordinaten: korrigierst du
+einen verrutschten Punkt, ziehen alle Schritte mit, die auf ihn zeigen — und der Lauf
+meldet es im Klartext:
+
+```
+[PUNKTE] 2 Schritt(e) folgen ihrem Punkt:
+         LOOP[1] 'Marktbutton' folgt Punkt #3: (100, 200) -> (108, 205) (Prüf-Pixel mitgezogen)
+         LOOP[4] 'Weg' zeigt auf Punkt #42, den es nicht mehr gibt - Schritt bleibt bei (11, 22)
+```
+
+Der Prüf-Pixel einer Farb-Bedingung zieht **nur** mit, wenn er vorher genau auf dem
+Klickpunkt lag. Ein bewusst anderswo gesetzter Pixel bleibt, wo er ist.
+
+In jeder Debug-Ausgabe steht die Referenz dabei — damit findest du den Schritt in der
+Sequenzdatei (`"point_id": 3`) und den Punkt in `points.json` (`"id": 3`):
+
+```
+■ MANUELL [LOOP] Schritt 1/3: Marktbutton  [Punkt #3]
+```
+
+Steht dort `[kein Punkt - Koordinaten stehen im Schritt]`, hat der Schritt keine Referenz
+(Aufnahme, Tastendruck, Scan) und behält seine eigenen Werte.
+
+**Bestehende Sequenzen nachträglich verknüpfen:** im Phasen-Editor der Befehl `link`.
+Er ordnet Schritte über exakt übereinstimmende Koordinaten den Punkten zu. Mehrdeutige
+Fälle (zwei Punkte an derselben Stelle) werden gemeldet und **nicht** verknüpft, damit
+nicht stillschweigend der falsche Punkt gewinnt.
+
+**Zwei unabhängige Ausgabe-Stufen** — jede Kombination ist erlaubt, keine impliziert die
+andere, und **keine verändert den Ablauf**:
+
+- `debug_log` = alles ausgeben, nichts überschreiben
+- `debug_detail` = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort passiert
+
+**Der manuelle Modus ist etwas anderes** und bewusst *keine* Config: er wird im
+Punkte-Menü (`CTRL+ALT+P`) mit `manuell` ein- und ausgeschaltet. Kein eigener Hotkey —
+`CTRL+ALT+<Buchstabe>` ist auf Windows oft belegt, und gebraucht wird der Schalter
+ohnehin nur vor dem Start:
+
+- Wartezeiten werden übersprungen
+- vor jedem Schritt springt der Zeiger auf das Ziel und es wird gewartet
+- erst auf `w` wird tatsächlich geklickt
+
+Damit gehst du die Sequenz von Hand durch und siehst, wo falsch geklickt oder falsch
+erkannt wird. Im Schritt: `w` ausführen · `s` überspringen · `c` normal weiterlaufen ·
+`q` abbrechen.
+
+Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
+
+| Befehl | was es tut |
+|---|---|
+| `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
+| `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
+| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schließen und normal starten |
+
+Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
+automatisch migriert — bestehende `config.json` bleibt gültig.
 
 ### Neueste Änderungen — LLM Reasoning + Codebase-Refactoring
 

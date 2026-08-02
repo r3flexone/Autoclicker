@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
-from ..config import CONFIG, DEFAULT_MIN_CONFIDENCE
-from ..utils import safe_input, sanitize_filename, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
+from ..config import CONFIG
+from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -24,6 +24,125 @@ from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
 from .icon_scan_editor import run_icon_scan_editor
 
+
+
+# =============================================================================
+# GETEILTE BAUSTEINE DES ASSISTENTEN
+# =============================================================================
+# Schritt 1 (Slots) und Schritt 2 (Items) hatten dieselbe Auswahl-Schleife zweimal
+# ausgeschrieben: <Nr>, <Von>-<Bis>, all, clear, show, done, cancel. Zwei Kopien sind
+# zwei Verhaltensweisen — eine Korrektur an der einen ging an der anderen vorbei.
+
+def bereich_parsen(eingabe: str, anzahl: int) -> Optional[tuple[int, int]]:
+    """'1-5' → (1, 5), aufsteigend normalisiert.
+
+    None, wenn es kein Bereich ist oder eine Grenze ausserhalb 1..anzahl liegt.
+    '5-1' ergibt (1, 5) — wer rueckwaerts tippt, meint dasselbe.
+    """
+    if "-" not in eingabe:
+        return None
+    teile = eingabe.split("-")
+    if len(teile) != 2:
+        return None
+    try:
+        von, bis = int(teile[0]), int(teile[1])
+    except ValueError:
+        return None
+    if not (1 <= von <= anzahl and 1 <= bis <= anzahl):
+        return None
+    return (min(von, bis), max(von, bis))
+
+
+def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
+                     zeile, extra_praefix: str = "", extra_fn=None,
+                     leer_fehler: str = "") -> Optional[list]:
+    """Mehrfachauswahl aus einer nummerierten Liste. None = Abbruch.
+
+    `eintraege` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `gewaehlt`
+    die Vorauswahl. `zeile(index, name, markiert)` liefert die Anzeigezeile.
+
+    `extra_praefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
+    'new <Slot-Nr>'): `extra_fn(eingabe)` gibt den Namen des neu angelegten Eintrags
+    zurueck oder None. Der wird angehaengt UND ausgewaehlt.
+
+    `leer_fehler` erzwingt mindestens einen Eintrag bei 'done'.
+    """
+    gewaehlt = list(gewaehlt)
+    befehle = ["done", "cancel", "all", "clear", "show"]
+    if extra_praefix:
+        befehle.append(extra_praefix)
+
+    def _zeige():
+        print(f"\n{len(gewaehlt)}/{len(eintraege)} ausgewählt:")
+        if not eintraege:
+            print("  (nichts vorhanden)")
+        for i, name in enumerate(eintraege):
+            print(zeile(i, name, name in gewaehlt))
+
+    while True:
+        try:
+            roh = safe_input(prompt).strip()
+            inp = roh.lower()
+
+            if inp in ("done", "d"):
+                if leer_fehler and not gewaehlt:
+                    print("  " + err(leer_fehler) + " "
+                          + hint("('<Nr>' = wählen, 'cancel' = Editor verlassen)"))
+                    continue
+                return gewaehlt
+            if is_cancel(inp):
+                return None
+            if inp == "all":
+                gewaehlt = list(eintraege)
+                print(f"  + Alle {len(eintraege)} ausgewählt")
+                continue
+            if inp == "clear":
+                gewaehlt = []
+                print("  + Auswahl gelöscht")
+                continue
+            if inp in ("show", "s"):
+                _zeige()
+                continue
+            if extra_praefix and inp.startswith(extra_praefix):
+                neuer = extra_fn(roh)
+                if neuer:
+                    if neuer not in eintraege:
+                        eintraege.append(neuer)
+                    if neuer not in gewaehlt:
+                        gewaehlt.append(neuer)
+                continue
+
+            # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
+            bereich = bereich_parsen(inp, len(eintraege))
+            if bereich:
+                von, bis = bereich
+                for nr in range(von, bis + 1):
+                    name = eintraege[nr - 1]
+                    if name not in gewaehlt:
+                        gewaehlt.append(name)
+                print(f"  + {von}-{bis} hinzugefügt")
+                continue
+            if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
+                print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(eintraege)}")
+                continue
+
+            try:
+                nr = int(inp)
+            except ValueError:
+                print(f"  -> Unbekannter Befehl.{suggest_command(inp, befehle)}")
+                continue
+            if not (1 <= nr <= len(eintraege)):
+                print(f"  -> Ungültig! 1-{len(eintraege)}")
+                continue
+            name = eintraege[nr - 1]
+            if name in gewaehlt:
+                gewaehlt.remove(name)
+                print(f"  - {name} entfernt")
+            else:
+                gewaehlt.append(name)
+                print(f"  + {name} hinzugefügt")
+        except (KeyboardInterrupt, EOFError):
+            return None
 
 
 def run_item_scan_menu(state: AutoClickerState) -> None:
@@ -103,75 +222,215 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         edit_item_scan(state, loaded_scans[choice - 1])
 
 
-def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
-    """Bearbeitet eine Item-Scan Konfiguration (verknüpft globale Slots + Items)."""
+def _schritt_presets(state: AutoClickerState) -> bool:
+    """Schritt 0: Slot-/Item-Preset laden. False = abgebrochen.
 
-    # === SCHRITT 0: Presets auswählen (nur wenn welche existieren) ===
+    Laeuft nur, wenn es ueberhaupt Presets gibt — sonst gibt es nichts zu waehlen.
+    """
     slot_presets = list_slot_presets()
     item_presets = list_item_presets()
+    if not (slot_presets or item_presets):
+        return True
 
-    if slot_presets or item_presets:
-        print(header("PRESETS AUSWÄHLEN"))
+    print(header("PRESETS AUSWÄHLEN"))
+    with state.lock:
+        cur_slots = len(state.global_slots)
+        cur_items = len(state.global_items)
 
-        with state.lock:
-            cur_slots = len(state.global_slots)
-            cur_items = len(state.global_items)
+    for presets, titel, aktuell, laden in (
+        (slot_presets, "Slot-Presets", cur_slots, load_slot_preset),
+        (item_presets, "Item-Presets", cur_items, load_item_preset),
+    ):
+        if not presets:
+            continue
+        art = titel.split("-")[0]
+        print(f"\n{titel}:")
+        for i, (name, _pfad, anzahl) in enumerate(presets):
+            print(f"  [{i+1}] {name} ({anzahl} {art}s)")
+        print(f"  [0] Aktuelle {art}s verwenden ({aktuell} geladen)")
 
-        # Slot-Presets (nur anzeigen wenn welche existieren)
-        if slot_presets:
-            print("\nSlot-Presets:")
-            for i, (name, path, count) in enumerate(slot_presets):
-                print(f"  [{i+1}] {name} ({count} Slots)")
-            print(f"  [0] Aktuelle Slots verwenden ({cur_slots} geladen)")
+        while True:
+            try:
+                wahl = safe_input(f"\n{art}-Preset wählen (Enter=0, 'cancel'): ").strip()
+                if is_cancel(wahl):
+                    print("  -> Abgebrochen")
+                    return False
+                if not wahl or wahl == "0":
+                    break
+                nr = int(wahl)
+                if 1 <= nr <= len(presets):
+                    laden(state, presets[nr - 1][0])
+                    break
+                print(f"  -> Ungültig! 0-{len(presets)}")
+            except ValueError:
+                print("  -> Bitte eine Nummer eingeben!")
+            except (KeyboardInterrupt, EOFError):
+                return False
+    return True
 
-            while True:
-                try:
-                    slot_choice = safe_input("\nSlot-Preset wählen (Enter=0, 'cancel'): ").strip()
-                    if is_cancel(slot_choice):
-                        print("  -> Abgebrochen")
-                        return
-                    if not slot_choice or slot_choice == "0":
-                        break
-                    slot_num = int(slot_choice)
-                    if 1 <= slot_num <= len(slot_presets):
-                        preset_name, _, _ = slot_presets[slot_num - 1]
-                        load_slot_preset(state, preset_name)
-                        break
-                    else:
-                        print(f"  -> Ungültig! 0-{len(slot_presets)}")
-                except ValueError:
-                    print("  -> Bitte eine Nummer eingeben!")
-                except (KeyboardInterrupt, EOFError):
-                    return
 
-        # Item-Presets (nur anzeigen wenn welche existieren)
-        if item_presets:
-            print("\nItem-Presets:")
-            for i, (name, path, count) in enumerate(item_presets):
-                print(f"  [{i+1}] {name} ({count} Items)")
-            print(f"  [0] Aktuelle Items verwenden ({cur_items} geladen)")
+def _neues_item_per_template(state: AutoClickerState, eingabe: str,
+                             slot_list: list, available_slots: dict,
+                             available_items: dict) -> Optional[str]:
+    """Legt ein Item aus einem Slot-Screenshot an. Gibt den Namen zurück, oder None.
 
-            while True:
-                try:
-                    item_choice = safe_input("\nItem-Preset wählen (Enter=0, 'cancel'): ").strip()
-                    if is_cancel(item_choice):
-                        print("  -> Abgebrochen")
-                        return
-                    if not item_choice or item_choice == "0":
-                        break
-                    item_num = int(item_choice)
-                    if 1 <= item_num <= len(item_presets):
-                        preset_name, _, _ = item_presets[item_num - 1]
-                        load_item_preset(state, preset_name)
-                        break
-                    else:
-                        print(f"  -> Ungültig! 0-{len(item_presets)}")
-                except ValueError:
-                    print("  -> Bitte eine Nummer eingeben!")
-                except (KeyboardInterrupt, EOFError):
-                    return
+    Der 'new'-Zweig des Item-Schritts — mit Abstand der laengste, und der einzige,
+    der etwas anlegt statt nur auszuwaehlen.
+    """
+    if not OPENCV_AVAILABLE:
+        print("  -> OpenCV nicht installiert! (pip install opencv-python)")
+        return None
 
-    # Prüfe ob globale Slots vorhanden sind
+    slot_num = None
+    if eingabe.lower().startswith("new "):
+        try:
+            slot_num = int(eingabe[4:])
+        except ValueError:
+            pass
+    if slot_num is None:
+        print(f"\n  Von welchem Slot Screenshot machen? (1-{len(slot_list)})")
+        try:
+            slot_num = int(safe_input("  Slot-Nr: ").strip())
+        except ValueError:
+            print("  -> Ungültige Eingabe!")
+            return None
+    if slot_num < 1 or slot_num > len(slot_list):
+        print(f"  -> Ungültiger Slot! Verfügbar: 1-{len(slot_list)}")
+        return None
+
+    slot_name = slot_list[slot_num - 1]
+    slot = available_slots[slot_name]
+    print(f"\n  Mache Screenshot von {slot_name}...")
+    template_img = take_screenshot(slot.scan_region)
+    if not template_img:
+        print("  -> Screenshot fehlgeschlagen!")
+        return None
+
+    item_name = safe_input("  Item-Name: ").strip()
+    if not item_name:
+        item_name = naechster_freier_name("Item", available_items)
+    if item_name in available_items:
+        if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
+            print("  -> Abgebrochen")
+            return None
+        print(f"  -> '{item_name}' wird überschrieben")
+
+    safe_name = sanitize_filename(item_name)
+    template_file = f"{safe_name}.png"
+    template_path = Path(TEMPLATES_DIR) / template_file
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    template_img.save(template_path)
+
+    category = select_category(state)      # zuerst: die Prioritaets-Verschiebung braucht sie
+
+    priority = 1
+    try:
+        prio_input = safe_input(
+            f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
+        if prio_input:
+            prio_val = int(prio_input)
+            if prio_val == 0:
+                if category:
+                    shift_category_priorities(state, category)
+                    priority = 1
+                else:
+                    print("  -> Priorität 0 nur mit Kategorie möglich!")
+                    priority = 1
+            else:
+                priority = max(1, prio_val)
+    except ValueError:
+        pass
+
+    min_confidence = state.config.scan_min_confidence
+    try:
+        conf_input = safe_input(
+            f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
+        if conf_input:
+            min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
+    except ValueError:
+        print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
+
+    confirm_point = None
+    confirm_delay = CONFIG.scan_confirm_delay
+    confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
+    if confirm_input:
+        try:
+            point_id = int(confirm_input)
+            with state.lock:
+                found_point = get_point_by_id(state, point_id)
+                if found_point:
+                    confirm_point = ClickPoint(found_point.x, found_point.y)
+                    delay_input = safe_input(
+                        "  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
+                    if delay_input:
+                        delay_val, delay_err = parse_non_negative_float(
+                            delay_input, "Wartezeit")
+                        if delay_err:
+                            print(f"  -> {delay_err}, behalte {confirm_delay}s")
+                        else:
+                            confirm_delay = delay_val
+                else:
+                    print(f"  -> Punkt #{point_id} existiert nicht")
+        except ValueError:
+            pass
+
+    new_item = ItemProfile(
+        name=item_name, marker_colors=[], category=category, priority=priority,
+        confirm_point=confirm_point, confirm_delay=confirm_delay,
+        template=template_file, min_confidence=min_confidence,
+    )
+    with state.lock:
+        state.global_items[item_name] = new_item
+    save_global_items(state)
+    available_items[item_name] = new_item
+
+    cat_str = f" [{category}]" if category else ""
+    print(f"  + Item '{item_name}'{cat_str} erstellt mit Template "
+          f"'{template_file}' ({min_confidence:.0%})")
+    print("  + Automatisch zum Scan hinzugefügt")
+    return item_name
+
+
+def _schritt_toleranz(tolerance: int) -> int:
+    """Schritt 3: Farbtoleranz. Fehleingabe behaelt den alten Wert."""
+    print(header("SCHRITT 3: FARBTOLERANZ"))
+    print(f"\nAktuelle Toleranz: {tolerance}")
+    print("(Höher = mehr Farben werden als 'gleich' erkannt)")
+    tol_input = ""
+    try:
+        tol_input = safe_input(f"Neue Toleranz (Enter = {tolerance}): ").strip()
+        if tol_input:
+            tolerance = max(1, min(100, int(tol_input)))
+    except ValueError:
+        print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
+    return tolerance
+
+
+def _schritt_auto_lernen(learn_unknown: bool) -> bool:
+    """Schritt 4: Auto-Lernen unbekannter Slot-Inhalte (opt-in)."""
+    print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
+    print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
+    print("  globale Items (Kategorie 'Auto'). Diese werden NICHT geklickt —")
+    print("  Aktion/Kategorie ordnest du später im Item-Editor zu.")
+    print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
+    learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
+    if learn_unknown:
+        print("\n  " + hint("Gelernte Items heißen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
+        print("  " + hint("vergibst du danach im Item-Editor mit 'autoname' — das läuft"))
+        print("  " + hint("NICHT während des Scans (würde ihn ausbremsen)."))
+    return learn_unknown
+
+
+def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
+    """Bearbeitet eine Item-Scan-Konfiguration (verknüpft globale Slots + Items).
+
+    Ein Assistent in fünf Stufen. Jede Stufe steckt in einer eigenen Funktion und gibt
+    ihr Ergebnis zurück oder signalisiert Abbruch — vorher waren es 450 Zeilen am Stück,
+    und die Auswahl-Schleife stand zweimal darin.
+    """
+    if not _schritt_presets(state):
+        return
+
     with state.lock:
         available_slots = dict(state.global_slots)
         available_items = dict(state.global_items)
@@ -180,8 +439,6 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         print(f"\n{err('Keine Slots im gewählten Preset!')}")
         print("         Erstelle zuerst Slots im Slot-Editor (Option 1)")
         return
-
-    # Items sind optional - können im Scan-Editor erstellt werden
     if not available_items:
         print(f"\n{info('Keine Items im gewählten Preset.')}")
         print("       Du kannst sie gleich per Template erstellen!")
@@ -189,8 +446,10 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if existing:
         print(f"\n--- Bearbeite Scan: {existing.name} ---")
         scan_name = existing.name
-        selected_slot_names = [s.name for s in existing.slots]
-        selected_item_names = [i.name for i in existing.items]
+        # Namen, nicht Objekte: load_item_scan_file() liefert nur die Namen, die
+        # Objekte werden erst von resolve_scan_references() aufgeloest.
+        selected_slot_names = list(existing.slot_names)
+        selected_item_names = list(existing.item_names)
         tolerance = existing.color_tolerance
         learn_unknown = existing.learn_unknown
     else:
@@ -200,99 +459,47 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
             scan_name = f"Scan_{int(time.time())}"
         selected_slot_names = []
         selected_item_names = []
-        tolerance = 40
+        tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
 
-    # Schritt 1: Slots auswählen
+    # --- Schritt 1: Slots ---------------------------------------------------------
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
-    print("\nVerfügbare Slots:")
     slot_list = list(available_slots.keys())
+    print("\nVerfügbare Slots:")
     for i, name in enumerate(slot_list):
-        selected = "X" if name in selected_slot_names else " "
-        print(f"  [{selected}] {i+1}. {available_slots[name]}")
+        markiert = "X" if name in selected_slot_names else " "
+        print(f"  [{markiert}] {i+1}. {available_slots[name]}")
+    print(f"\nBefehle: '<Nr>', '<Von>-<Bis>' (z.B. 1-5), 'all', 'clear', "
+          f"'show / s', 'done / d', 'cancel / {cancel_hint()}")
 
-    print(f"\nBefehle: '<Nr>', '<Von>-<Bis>' (z.B. 1-5), 'all', 'clear', 'show / s', 'done / d', 'cancel / {cancel_hint()}")
-    while True:
-        try:
-            inp = safe_input("[Slots] > ").strip().lower()
-            if inp in ("done", "d"):
-                if not selected_slot_names:
-                    print("  " + err("Mindestens 1 Slot erforderlich!") + " "
-                          + hint("('<Nr>' = Slot wählen, 'cancel' = Editor verlassen)"))
-                    continue
-                break
-            elif is_cancel(inp):
-                return
-            elif inp == "all":
-                selected_slot_names = list(slot_list)
-                print(f"  + Alle {len(slot_list)} Slots ausgewählt")
-            elif inp == "clear":
-                selected_slot_names = []
-                print("  + Auswahl gelöscht")
-            elif inp in ("show", "s"):
-                print(f"\nSlots ({len(selected_slot_names)}/{len(slot_list)} ausgewählt):")
-                for i, name in enumerate(slot_list):
-                    marker = "X" if name in selected_slot_names else " "
-                    print(f"  [{marker}] {i+1}. {available_slots[name]}")
-            elif "-" in inp:
-                # Bereich: 1-5
-                try:
-                    parts = inp.split("-")
-                    start = int(parts[0])
-                    end = int(parts[1])
-                    if 1 <= start <= len(slot_list) and 1 <= end <= len(slot_list):
-                        for num in range(min(start, end), max(start, end) + 1):
-                            name = slot_list[num - 1]
-                            if name not in selected_slot_names:
-                                selected_slot_names.append(name)
-                        print(f"  + Slots {start}-{end} hinzugefügt")
-                    else:
-                        print(f"  -> Ungültig! 1-{len(slot_list)}")
-                except (ValueError, IndexError):
-                    print("  -> Format: <Von>-<Bis> (z.B. 1-5)")
-            else:
-                try:
-                    num = int(inp)
-                    if 1 <= num <= len(slot_list):
-                        name = slot_list[num - 1]
-                        if name in selected_slot_names:
-                            selected_slot_names.remove(name)
-                            print(f"  - {name} entfernt")
-                        else:
-                            selected_slot_names.append(name)
-                            print(f"  + {name} hinzugefügt")
-                    else:
-                        print(f"  -> Ungültig! 1-{len(slot_list)}")
-                except ValueError:
-                    _known = ["done", "cancel", "all", "clear", "show"]
-                    suggestion = suggest_command(inp, _known)
-                    print(f"  -> Unbekannter Befehl.{suggestion}")
-        except (KeyboardInterrupt, EOFError):
-            return
+    gewaehlt = mehrfach_auswahl(
+        "[Slots] > ", slot_list, selected_slot_names,
+        lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_slots[name]}",
+        leer_fehler="Mindestens 1 Slot erforderlich!")
+    if gewaehlt is None:
+        return
+    selected_slot_names = gewaehlt
 
-    # Schritt 2: Items auswählen oder erstellen
+    # --- Schritt 2: Items ---------------------------------------------------------
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))
-
-    # Zeige verfügbare Templates
     templates_dir = Path(TEMPLATES_DIR)
     templates = list(templates_dir.glob("*.png")) if templates_dir.exists() else []
     if templates:
         print(f"\nVerfügbare Templates ({len(templates)}):")
-        for t in sorted(templates)[:10]:  # Max 10 anzeigen
+        for t in sorted(templates)[:10]:
             print(f"    {t.name}")
         if len(templates) > 10:
             print(f"    ... und {len(templates) - 10} weitere")
 
-    # Aktualisiere available_items
     with state.lock:
         available_items = dict(state.global_items)
+    item_list = list(available_items.keys())
 
     print("\nVerfügbare Items:")
-    item_list = list(available_items.keys())
     if item_list:
         for i, name in enumerate(item_list):
-            selected = "X" if name in selected_item_names else " "
-            print(f"  [{selected}] {i+1}. {available_items[name]}")
+            markiert = "X" if name in selected_item_names else " "
+            print(f"  [{markiert}] {i+1}. {available_items[name]}")
     else:
         print("  (Keine Items - erstelle welche mit 'new')")
 
@@ -305,199 +512,15 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print(f"  show / s | done / d | cancel / {cancel_hint()}")
     print("-" * 40)
 
-    while True:
-        try:
-            inp = safe_input("[Items] > ").strip()
-            inp_lower = inp.lower()
-
-            if inp_lower in ("done", "d"):
-                break
-            elif is_cancel(inp_lower):
-                return
-            elif inp_lower == "all":
-                selected_item_names = list(item_list)
-                print(f"  + Alle {len(item_list)} Items ausgewählt")
-            elif inp_lower == "clear":
-                selected_item_names = []
-                print("  + Auswahl gelöscht")
-            elif inp_lower in ("show", "s"):
-                print(f"\nItems ({len(selected_item_names)}/{len(item_list)} ausgewählt):")
-                if item_list:
-                    for i, name in enumerate(item_list):
-                        marker = "X" if name in selected_item_names else " "
-                        print(f"  [{marker}] {i+1}. {available_items[name]}")
-                else:
-                    print("  (Keine Items vorhanden)")
-
-            elif inp_lower.startswith("new"):
-                # Neues Item per Template erstellen
-                if not OPENCV_AVAILABLE:
-                    print("  -> OpenCV nicht installiert! (pip install opencv-python)")
-                    continue
-
-                # Slot-Nummer parsen
-                slot_num = None
-                if inp_lower.startswith("new "):
-                    try:
-                        slot_num = int(inp[4:])
-                    except ValueError:
-                        pass
-
-                if slot_num is None:
-                    print(f"\n  Von welchem Slot Screenshot machen? (1-{len(slot_list)})")
-                    try:
-                        slot_num = int(safe_input("  Slot-Nr: ").strip())
-                    except ValueError:
-                        print("  -> Ungültige Eingabe!")
-                        continue
-
-                if slot_num < 1 or slot_num > len(slot_list):
-                    print(f"  -> Ungültiger Slot! Verfügbar: 1-{len(slot_list)}")
-                    continue
-
-                # Screenshot vom Slot machen
-                slot_name = slot_list[slot_num - 1]
-                slot = available_slots[slot_name]
-                print(f"\n  Mache Screenshot von {slot_name}...")
-
-                template_img = take_screenshot(slot.scan_region)
-                if not template_img:
-                    print("  -> Screenshot fehlgeschlagen!")
-                    continue
-
-                # Item-Name abfragen
-                item_name = safe_input("  Item-Name: ").strip()
-                if not item_name:
-                    item_name = f"Item_{len(item_list) + 1}"
-
-                # Prüfen ob Name schon existiert
-                if item_name in available_items:
-                    if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
-                        print("  -> Abgebrochen")
-                        continue
-                    print(f"  -> '{item_name}' wird überschrieben")
-
-                # Template speichern
-                safe_name = sanitize_filename(item_name)
-                template_file = f"{safe_name}.png"
-                template_path = Path(TEMPLATES_DIR) / template_file
-                template_path.parent.mkdir(parents=True, exist_ok=True)
-                template_img.save(template_path)
-
-                # Kategorie zuerst (für Prioritäts-Verschiebung)
-                category = select_category(state)
-
-                # Priorität
-                priority = 1
-                try:
-                    prio_input = safe_input(f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-                    if prio_input:
-                        prio_val = int(prio_input)
-                        if prio_val == 0:
-                            if category:
-                                shift_category_priorities(state, category)
-                                priority = 1
-                            else:
-                                print("  -> Priorität 0 nur mit Kategorie möglich!")
-                                priority = 1
-                        else:
-                            priority = max(1, prio_val)
-                except ValueError:
-                    pass
-
-                # Konfidenz
-                min_confidence = DEFAULT_MIN_CONFIDENCE
-                try:
-                    conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(DEFAULT_MIN_CONFIDENCE * 100)}): ").strip()
-                    if conf_input:
-                        min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
-                except ValueError:
-                    print(f"  -> '{conf_input}' ungültig — behalte {int(DEFAULT_MIN_CONFIDENCE * 100)}")
-
-                # Bestätigungs-Klick?
-                confirm_point = None
-                confirm_delay = CONFIG.scan_confirm_delay
-                confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
-                if confirm_input:
-                    try:
-                        point_id = int(confirm_input)
-                        with state.lock:
-                            found_point = get_point_by_id(state, point_id)
-                            if found_point:
-                                confirm_point = ClickPoint(found_point.x, found_point.y)
-                                delay_input = safe_input("  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
-                                if delay_input:
-                                    delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                                    if delay_err:
-                                        print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                                    else:
-                                        confirm_delay = delay_val
-                            else:
-                                print(f"  -> Punkt #{point_id} existiert nicht")
-                    except ValueError:
-                        pass
-
-                # Item erstellen
-                new_item = ItemProfile(
-                    name=item_name,
-                    marker_colors=[],
-                    category=category,
-                    priority=priority,
-                    confirm_point=confirm_point,
-                    confirm_delay=confirm_delay,
-                    template=template_file,
-                    min_confidence=min_confidence
-                )
-
-                # Global speichern
-                with state.lock:
-                    state.global_items[item_name] = new_item
-                save_global_items(state)
-
-                # Listen aktualisieren
-                available_items[item_name] = new_item
-                item_list.append(item_name)
-                selected_item_names.append(item_name)
-
-                cat_str = f" [{category}]" if category else ""
-                print(f"  + Item '{item_name}'{cat_str} erstellt mit Template '{template_file}' ({min_confidence:.0%})")
-                print(f"  + Automatisch zum Scan hinzugefügt")
-
-            elif "-" in inp_lower and not inp_lower.startswith("new"):
-                # Bereich: 1-5
-                try:
-                    parts = inp_lower.split("-")
-                    start = int(parts[0])
-                    end = int(parts[1])
-                    if 1 <= start <= len(item_list) and 1 <= end <= len(item_list):
-                        for num in range(min(start, end), max(start, end) + 1):
-                            name = item_list[num - 1]
-                            if name not in selected_item_names:
-                                selected_item_names.append(name)
-                        print(f"  + Items {start}-{end} hinzugefügt")
-                    else:
-                        print(f"  -> Ungültig! 1-{len(item_list)}")
-                except (ValueError, IndexError):
-                    print("  -> Format: <Von>-<Bis> (z.B. 1-5)")
-            else:
-                try:
-                    num = int(inp)
-                    if 1 <= num <= len(item_list):
-                        name = item_list[num - 1]
-                        if name in selected_item_names:
-                            selected_item_names.remove(name)
-                            print(f"  - {name} entfernt")
-                        else:
-                            selected_item_names.append(name)
-                            print(f"  + {name} hinzugefügt")
-                    else:
-                        print(f"  -> Ungültig! 1-{len(item_list)}")
-                except ValueError:
-                    _known = ["done", "cancel", "all", "clear", "show", "new"]
-                    suggestion = suggest_command(inp, _known)
-                    print(f"  -> Unbekannter Befehl.{suggestion}")
-        except (KeyboardInterrupt, EOFError):
-            return
+    gewaehlt = mehrfach_auswahl(
+        "[Items] > ", item_list, selected_item_names,
+        lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_items[name]}",
+        extra_praefix="new",
+        extra_fn=lambda roh: _neues_item_per_template(
+            state, roh, slot_list, available_slots, available_items))
+    if gewaehlt is None:
+        return
+    selected_item_names = gewaehlt
 
     if not selected_item_names:
         print(f"\n{info('Keine Items ausgewählt.')}")
@@ -505,51 +528,24 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
             print(f"{col('[ABBRUCH]', 'yellow')} Scan nicht gespeichert.")
             return
 
-    # Schritt 3: Toleranz
-    print(header("SCHRITT 3: FARBTOLERANZ"))
-    print(f"\nAktuelle Toleranz: {tolerance}")
-    print("(Höher = mehr Farben werden als 'gleich' erkannt)")
-    try:
-        tol_input = safe_input(f"Neue Toleranz (Enter = {tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except ValueError:
-        print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
+    # --- Schritt 3 + 4 ------------------------------------------------------------
+    tolerance = _schritt_toleranz(tolerance)
+    learn_unknown = _schritt_auto_lernen(learn_unknown)
 
-    # Schritt 4: Auto-Lernen (opt-in)
-    print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
-    print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
-    print("  globale Items (Kategorie 'Auto'). Diese werden NICHT geklickt —")
-    print("  Aktion/Kategorie ordnest du später im Item-Editor zu.")
-    print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
-    learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
-
-    if learn_unknown:
-        print("\n  " + hint("Gelernte Items heißen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
-        print("  " + hint("vergibst du danach im Item-Editor mit 'autoname' — das läuft"))
-        print("  " + hint("NICHT während des Scans (würde ihn ausbremsen)."))
-
-    # Slots und Items aus globalen Definitionen holen
+    # --- Speichern ----------------------------------------------------------------
     with state.lock:
         slots = [state.global_slots[n] for n in selected_slot_names if n in state.global_slots]
         items = [state.global_items[n] for n in selected_item_names if n in state.global_items]
 
-    # Speichern
     config = ItemScanConfig(
-        name=scan_name,
-        slots=slots,
-        items=items,
-        color_tolerance=tolerance,
-        learn_unknown=learn_unknown
+        name=scan_name, slots=slots, items=items,
+        color_tolerance=tolerance, learn_unknown=learn_unknown,
     )
-
     with state.lock:
         state.item_scans[scan_name] = config
-
     save_item_scan(config)
 
-    save_msg = ok(f"Scan '{scan_name}' gespeichert!")
-    print(f"\n{save_msg}")
+    print(f"\n{ok(f'Scan {scan_name!r} gespeichert!')}")
     print(f"         {len(slots)} Slots, {len(items)} Items")
     print(f"         Nutze im Sequenz-Editor: 'scan {scan_name}'")
 
@@ -583,8 +579,6 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
     # Prüfen ob Items erstellt wurden
     with state.lock:
         item_count = len(state.global_items)
-        slot_list = list(state.global_slots.keys())
-        item_list = list(state.global_items.keys())
 
     if item_count == 0:
         print(f"\n{err('Keine Items erstellt - Scan-Konfiguration wird nicht erstellt.')}")
@@ -595,13 +589,13 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
 
     scan_name = safe_input("\nName für den Scan (Enter = 'AutoScan'): ").strip()
     if is_cancel(scan_name):
-        print(f"  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
+        print("  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
         return
     if not scan_name:
         scan_name = "AutoScan"
 
     # Toleranz
-    tolerance = 40
+    tolerance = ItemScanConfig.color_tolerance
     try:
         tol_input = safe_input(f"Farbtoleranz (Enter = {tolerance}): ").strip()
         if tol_input:

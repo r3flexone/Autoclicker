@@ -17,7 +17,7 @@ from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
-    save_data, ensure_sequences_dir, list_available_sequences,
+    save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
@@ -68,6 +68,20 @@ def _block_if_recording(state: AutoClickerState) -> bool:
     return False
 
 
+def _block_if_running(state: AutoClickerState) -> bool:
+    """Blockiert Handler, solange eine Sequenz läuft. True = Handler soll abbrechen.
+
+    Das Gegenstück zu _block_if_recording: Editoren mit Konsolen-Eingabe duerfen nicht
+    parallel zum Worker laufen, weil beide von stdin lesen und dieselben Daten mutieren
+    wuerden. Stand vorher zwölfmal als identischer Vierzeiler in dieser Datei.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
+    return laeuft
+
+
 def handle_record(state: AutoClickerState) -> None:
     """Nimmt die aktuelle Mausposition auf - sofort ohne Eingabe."""
     x, y = get_cursor_pos()
@@ -79,8 +93,10 @@ def handle_record(state: AutoClickerState) -> None:
         point = ClickPoint(x, y, name, new_id, color=color)
         state.points.append(point)
 
-    # Auto-speichern
-    save_data(state)
+    # Auto-speichern. Bewusst nur die Punkte: save_data() wuerde zusaetzlich alle
+    # Sequenzen aus dem Speicher schreiben und damit Aenderungen ueberbuegeln, die
+    # inzwischen von aussen an der Datei passiert sind (z.B. Node-Editor-Subprozess).
+    save_points(state)
 
     color_str = f"  {describe_color(color)}" if color else ""
     print(f"\n{col('[RECORD]', 'green')} #{new_id} {name} hinzugefügt: {coord_context(x, y)}{color_str}")
@@ -94,7 +110,7 @@ def handle_undo(state: AutoClickerState) -> None:
 
     if removed is not None:
         print(f"\n{col('[UNDO]', 'yellow')} Punkt entfernt: {removed}")
-        save_data(state)
+        save_points(state)
     else:
         print(f"\n{col('[UNDO]', 'yellow')} Keine Punkte zum Entfernen.")
     print_status(state)
@@ -102,11 +118,10 @@ def handle_undo(state: AutoClickerState) -> None:
 
 def handle_clear(state: AutoClickerState) -> None:
     """Löscht ALLE Punkte."""
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
+    with state.lock:
         count = len(state.points)
         if count == 0:
             print(f"\n{col('[CLEAR]', 'yellow')} Keine Punkte vorhanden.")
@@ -115,7 +130,7 @@ def handle_clear(state: AutoClickerState) -> None:
         state.points.clear()
         state.active_sequence = None
 
-    save_data(state)
+    save_points(state)
     print(f"\n{ok(f'Alle {count} Punkte gelöscht!')}")
     print_status(state)
 
@@ -124,10 +139,8 @@ def handle_reset(state: AutoClickerState) -> None:
     """Löscht ALLES - kompletter Factory Reset wie frisch von GitHub."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     with state.lock:
         num_points = len(state.points)
@@ -202,10 +215,8 @@ def handle_editor(state: AutoClickerState) -> None:
     """Öffnet den Sequenz-Editor."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.sequence_editor import run_sequence_editor
     run_sequence_editor(state)
 
@@ -214,10 +225,8 @@ def handle_item_scan_editor(state: AutoClickerState) -> None:
     """Öffnet das Item-Scan Menü (Slots, Items, Scans)."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.item_scan_editor import run_item_scan_menu
     run_item_scan_menu(state)
 
@@ -226,12 +235,64 @@ def handle_load(state: AutoClickerState) -> None:
     """Lädt eine Sequenz."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.sequence_editor import run_sequence_loader
     run_sequence_loader(state)
+
+
+def handle_step_mode(state: AutoClickerState) -> None:
+    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manuell').
+
+    Bewusst kein eigener Hotkey: CTRL+ALT+<Buchstabe> ist auf Windows häufig von anderen
+    Programmen belegt, und gebraucht wird der Schalter ohnehin nur vor dem Start. Zurück
+    in den Normalbetrieb geht es auch mit 'c' direkt im Schritt-Prompt.
+    """
+    with state.lock:
+        state.step_mode = not state.step_mode
+        aktiv = state.step_mode
+        laeuft = state.is_running
+
+    if aktiv:
+        print(f"\n{col('[MANUELL]', 'yellow')} Manueller Modus AN — Wartezeiten werden "
+              "übersprungen, jeder Schritt wartet auf Bestätigung.")
+        print(f"           Im Schritt: {col('w', 'yellow')} ausführen | "
+              f"{col('s', 'yellow')} überspringen | "
+              f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
+        if not laeuft:
+            print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
+            print(f"           {hint('Menü hier schließen (Enter), dann die Sequenz starten.')}")
+    else:
+        print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
+
+
+def handle_debug_toggle(state: AutoClickerState, stufe: str) -> None:
+    """Schaltet eine der beiden Ausgabe-Stufen um (Punkte-Menü -> 'log' / 'detail').
+
+    Wird direkt in config.json gespeichert, damit die Einstellung den Neustart übersteht -
+    vorher liess sich das nur durch Editieren der Datei ändern.
+    """
+    from .config import save_config
+
+    with state.lock:
+        if stufe == "log":
+            state.config.debug_log = not state.config.debug_log
+            aktiv, name = state.config.debug_log, "Stufe 1 (alles ausgeben)"
+        else:
+            state.config.debug_detail = not state.config.debug_detail
+            aktiv, name = state.config.debug_detail, "Stufe 2 (Detail + Zeiger)"
+        log_an, detail_an = state.config.debug_log, state.config.debug_detail
+        snapshot = state.config
+
+    save_config(snapshot)
+    zustand = col('AN', 'green') if aktiv else col('AUS', 'cyan')
+    print(f"\n{col('[DEBUG]', 'cyan')} {name}: {zustand}")
+    print(f"         Jetzt aktiv: Stufe 1 {'an' if log_an else 'aus'}, "
+          f"Stufe 2 {'an' if detail_an else 'aus'}")
+    if detail_an and not log_an:
+        note = ("Stufe 2 gibt mehrzeilig aus und schreibt deshalb immer persistent - "
+                "Stufe 1 ist darin enthalten.")
+        print(f"         {hint(note)}")
 
 
 def handle_show(state: AutoClickerState) -> None:
@@ -240,17 +301,14 @@ def handle_show(state: AutoClickerState) -> None:
     # können Punkt-Mutationen mit dem Worker/Recorder kollidieren.
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     print_points(state)
 
     with state.lock:
         if not state.points:
             return
-        num_points = len(state.points)
 
     print(col("-" * 50, 'gray'))
     print(col("Optionen:", 'bold'))
@@ -258,6 +316,14 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('show <Nr>', 'yellow')}   - Punkt zeigen (Maus hinbewegen + Details, ohne Abfrage)")
     print(f"  {col('<Nr> <Name>', 'yellow')} - Punkt umbenennen")
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
+    print(f"  {col('walk / w', 'yellow')}    - alle Punkte durchgehen; dort 'n' = Punkt auf die "
+          f"Mausposition neu setzen {hint('(repariert Sequenzen ohne sie anzufassen)')}")
+    print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
+    print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
+    print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
+    print(f"  {col('check', 'yellow')}       - Setup prüfen (fehlende Templates, tote Verweise, leere Scans)")
+    print(f"  {col('fix', 'yellow')}         - Kalibrieren: einen Punkt neu setzen, Rest umrechnen "
+          f"{hint('(nach Bildschirm-Umbau)')}")
     print(f"  {col('list', 'yellow')}        - Punktliste erneut anzeigen")
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
@@ -268,6 +334,30 @@ def handle_show(state: AutoClickerState) -> None:
             if not user_input or user_input.lower() in ("done", "d") or is_cancel(user_input):
                 print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
                 return
+
+            if user_input.lower() in ("walk", "w"):
+                from .runtime.debug import walk_points
+                walk_points(state)
+                continue
+
+            if user_input.lower() in ("manuell", "m"):
+                handle_step_mode(state)
+                continue
+
+            if user_input.lower() in ("log", "detail"):
+                handle_debug_toggle(state, user_input.lower())
+                continue
+
+            if user_input.lower() in ("check", "pruefen", "prüfen"):
+                from .diagnose import pruefe_setup, print_bericht
+                print_bericht(pruefe_setup(state))
+                continue
+
+            if user_input.lower() in ("fix", "kalib", "kalibrieren"):
+                from .editors.import_export_editor import run_kalibrierung
+                run_kalibrierung(state)
+                print_points(state)
+                continue
 
             if user_input.lower() in ("list", "l"):
                 print_points(state)
@@ -305,7 +395,7 @@ def handle_show(state: AutoClickerState) -> None:
                             continue
                         state.points.remove(point_to_del)
                         num_points = len(state.points)
-                    save_data(state)
+                    save_points(state)
                     print(f"{ok(f'Punkt #{del_id} gelöscht: {point_to_del}')}")
                     if num_points == 0:
                         print(info("Keine Punkte mehr vorhanden."))
@@ -335,7 +425,7 @@ def handle_show(state: AutoClickerState) -> None:
                 if new_name:
                     with state.lock:
                         point.name = new_name
-                    save_data(state)
+                    save_points(state)
                     print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
                 else:
                     print(ok(f"Name '{point.name}' beibehalten."))
@@ -345,7 +435,7 @@ def handle_show(state: AutoClickerState) -> None:
                 new_name = parts[1]
                 with state.lock:
                     point.name = new_name
-                save_data(state)
+                save_points(state)
                 print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
 
         except ValueError:
@@ -448,10 +538,8 @@ def handle_switch(state: AutoClickerState) -> None:
     """Schneller Wechsel zwischen gespeicherten Sequenzen."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     sequences = list_available_sequences()
 
@@ -459,24 +547,32 @@ def handle_switch(state: AutoClickerState) -> None:
         print(f"\n{info('Keine Sequenzen vorhanden!')} Erstelle eine mit {col('CTRL+ALT+E', 'yellow')}")
         return
 
-    # Sequenzen einmal laden und cachen
+    # Nur die AUSGEWÄHLTE Sequenz laden. Vorher wurde jede Datei komplett geladen -
+    # inklusive Migration und Punkt-Auflösung -, nur um im Menü den Namen anzuzeigen,
+    # den list_available_sequences() schon mitgeliefert hat. Bei vielen Sequenzen
+    # hakte das Menü spürbar, und geöffnet wurde am Ende genau eine.
     with state.lock:
         active_name = state.active_sequence.name if state.active_sequence else None
-    loaded_sequences = []
-    menu_options = []
-    for name, path in sequences:
-        seq = load_sequence_file(path)
-        if seq:
-            loaded_sequences.append(seq)
-            active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
-            menu_options.append(f"{seq.name}{active_marker}")
+
+    menu_options = [f"{name}{' *AKTIV*' if name == active_name else ''}"
+                    for name, _path in sequences]
 
     choice = interactive_select(menu_options, title="\nQUICK-SWITCH: Sequenz wählen")
 
-    if choice == -1 or choice >= len(loaded_sequences):
+    if choice == -1 or choice >= len(sequences):
         return
 
-    seq = loaded_sequences[choice]
+    _name, pfad = sequences[choice]
+    # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
+    # Koordinaten mit dem Punkte-Pool (point_id).
+    with state.lock:
+        punkte = list(state.points)
+    seq = load_sequence_file(pfad, punkte)
+    if seq is None:
+        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+              f"{hint('(Datei beschädigt?)')}")
+        return
+
     with state.lock:
         state.active_sequence = seq
     print(f"\n{ok(f'Gewechselt zu: {seq.name}')}")
@@ -487,10 +583,9 @@ def handle_schedule(state: AutoClickerState) -> None:
     """Plant den Start einer Sequenz zu einem bestimmten Zeitpunkt."""
     if _block_if_recording(state):
         return
+    if _block_if_running(state):
+        return
     with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
         if state.countdown_active:
             print(f"\n{err('Es läuft bereits ein Countdown')} {hint('(CTRL+ALT+S zum Abbrechen)')}")
             return
@@ -574,7 +669,6 @@ def handle_schedule(state: AutoClickerState) -> None:
 
         # Countdown in separatem Thread starten, damit Hotkeys weiter funktionieren
         def countdown_worker():
-            nonlocal target_time  # Zugriff auf target_time aus dem äußeren Scope
             with state.lock:
                 state.countdown_active = True
 
@@ -604,8 +698,6 @@ def handle_schedule(state: AutoClickerState) -> None:
                 # Zeit erreicht - starte Sequenz
                 print(f"\n{col('[START]', 'green')} Zeit erreicht - starte Sequenz!")
                 state.stop_event.clear()  # Reset falls gesetzt
-                with state.lock:
-                    state.scheduled_start = True  # Überspringt Debug-Enter-Prompt
             finally:
                 with state.lock:
                     state.countdown_active = False
@@ -629,10 +721,8 @@ def handle_analyze(state: AutoClickerState) -> None:
     """Startet den Farb-Analysator."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     run_color_analyzer()
 
 
@@ -640,10 +730,8 @@ def handle_import_export(state: AutoClickerState) -> None:
     """Öffnet den Import/Export-Editor."""
     if _block_if_recording(state):
         return
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
     from .editors.import_export_editor import run_import_export_editor
     run_import_export_editor(state)
 
@@ -669,10 +757,9 @@ def handle_node_editor(state: AutoClickerState) -> None:
     """
     import subprocess
 
+    if _block_if_running(state):
+        return
     with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
         seq_name = state.active_sequence.name if state.active_sequence else ""
 
     args = [sys.executable, "-m", "autoclicker.node_editor"]
@@ -700,10 +787,8 @@ def handle_scan_studio(state: AutoClickerState) -> None:
     """
     import subprocess
 
-    with state.lock:
-        if state.is_running:
-            print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-            return
+    if _block_if_running(state):
+        return
 
     try:
         subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])

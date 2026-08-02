@@ -51,10 +51,12 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("watcher <Scan-Name>", "Warten bis Boss erscheint → Aktion"))
         print(cmd_hint("icon <Scan-Name>", "Symbol/Icon erkennen → Aktion"))
         print(cmd_hint("key <Taste>", "Taste drücken (z.B. 'key enter')"))
+        print(cmd_hint("scroll <Punkt-Nr> <Stufen>", "Mausrad drehen (+ hoch / - runter)"))
         print(cmd_hint("wait <Sek>", "Nur warten, NICHT klicken"))
         print(cmd_hint("edit <Schritt-Nr>", "Schritt ändern (geführtes Menü)"))
         print(cmd_hint("del <Schritt-Nr>", "Schritt löschen"))
         print(cmd_hint("points", "Punkte mit ihren Nummern anzeigen"))
+        print(cmd_hint("link", "Schritte mit Punkten verknüpfen (Referenz nachtragen)"))
         print(cmd_hint("screenshot / ss", "Screenshot-Schritt anlegen"))
         print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Phase speichern / verwerfen"))
         print("-" * 60)
@@ -71,6 +73,8 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("<Punkt-Nr> color", "warten bis die Punkt-Farbe ERSCHEINT, dann klicken"))
     print(cmd_hint("<Punkt-Nr> <Sek> color", "erst <Sek> warten, dann bis Farbe erscheint, dann klicken"))
     print(cmd_hint("<Punkt-Nr> colorgone", "warten bis die Punkt-Farbe VERSCHWINDET, dann klicken"))
+    print(cmd_hint("<Punkt-Nr> checkcolor", "Farbe EINMAL pruefen: passt sie, klicken - sonst Schritt ueberspringen"))
+    print(cmd_hint("<Punkt-Nr> checkgone", "einmal pruefen, ob die Farbe WEG ist - sonst ueberspringen"))
     print(cmd_hint("<Punkt-Nr> <Sek> colorgone", "erst <Sek> warten, dann bis Farbe weg, dann klicken"))
     print("NUR warten / Taste / Scan (kein Punkt-Klick):")
     print(cmd_hint("wait <Sek>", "nur <Sek> warten, kein Klick (z.B. 'wait 10')"))
@@ -82,6 +86,8 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
     print(cmd_hint("key <Sek> <Taste>", "erst <Sek> warten, dann Taste (z.B. 'key 5 space')"))
     print(cmd_hint("key <Min>-<Max> <Taste>", "zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
+    print(cmd_hint("scroll <Punkt-Nr> <Stufen>", "Mausrad am Punkt drehen, + = hoch, - = runter (z.B. 'scroll 3 -5')"))
+    print(cmd_hint("scroll <Punkt-Nr> <Sek> <Stufen>", "erst <Sek> warten, dann scrollen"))
     print(cmd_hint("scan <Scan-Name>", "Item-Scan: je Kategorie das beste Item klicken (Standard)"))
     print(cmd_hint("scan <Scan-Name> best", "Item-Scan: nur EIN Item insgesamt klicken (das beste)"))
     print(cmd_hint("scan <Scan-Name> every", "Item-Scan: ALLE Treffer klicken (auch Duplikate)"))
@@ -142,7 +148,8 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "color", "colorgone", "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
+    "color", "colorgone", "checkcolor", "checkgone", "scroll", "link",
+    "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
 
 # Schlüsselwörter für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die
@@ -155,6 +162,13 @@ _WAIT_POINT_TRIGGER_ALIASES = {
 
 # Schlüsselwörter für 'wait pixel|pixelgone' (Mausposition, kein Punkt). Hier
 # wird ein Pixel an der Maus abgegriffen, daher 'pixel' (DA) / 'pixelgone' (WEG).
+# Wie _WAIT_POINT_TRIGGER_ALIASES, aber OHNE Warten: einmal pruefen und bei
+# Nichttreffer den Schritt ueberspringen (WaitCondition.check_only). Wert = until_gone.
+_CHECK_POINT_TRIGGER_ALIASES = {
+    "checkcolor": False,
+    "checkgone": True,
+}
+
 _WAIT_MOUSE_TRIGGER_ALIASES = {
     "pixel": False,
     "pixelgone": True,
@@ -274,6 +288,14 @@ class _PhaseEditor:
         if cmd.startswith("icon "):
             self._handle_icon(user_input)
             return
+        if cmd in ("link", "link all"):
+            self._handle_link()
+            return
+
+        if cmd.startswith("scroll "):
+            self._handle_scroll(user_input)
+            return
+
         if cmd.startswith("key "):
             self._handle_key(user_input)
             return
@@ -404,7 +426,7 @@ class _PhaseEditor:
                 return
             self.insert_position = pos
             print(f"  + Insert-Modus: Nächster Schritt wird an Position {pos} eingefügt")
-            print(f"    (Abbrechen mit 'ins 0' oder 'ins end')")
+            print("    (Abbrechen mit 'ins 0' oder 'ins end')")
         except ValueError:
             print("  -> Format: ins <Nr>")
 
@@ -564,6 +586,132 @@ class _PhaseEditor:
             name=f"Key:{key_name}",
             key_press=key_name,
         )
+        self.add_step(step)
+
+    def _handle_link(self) -> None:
+        """Verknüpft Schritte ohne point_id nachträglich mit Punkten aus dem Pool.
+
+        Zugeordnet wird über exakt übereinstimmende Koordinaten - das ist die einzige
+        verlässliche Brücke für Sequenzen, die vor der Referenz-Umstellung entstanden
+        sind. Mehrdeutige Fälle (zwei Punkte auf derselben Stelle) werden gemeldet und
+        NICHT verknüpft, damit nicht stillschweigend der falsche Punkt gewinnt.
+        """
+        with self.state.lock:
+            punkte = list(self.state.points)
+
+        if not punkte:
+            print("  -> Keine Punkte im Pool - nichts zu verknüpfen.")
+            return
+
+        # Koordinate -> Punkte (mehrere = mehrdeutig)
+        nach_pos = {}
+        for p in punkte:
+            nach_pos.setdefault((p.x, p.y), []).append(p)
+
+        verknuepft, mehrdeutig, ohne_punkt, schon_ok = [], [], [], 0
+        for i, step in enumerate(self.steps, 1):
+            if step.point_id is not None:
+                schon_ok += 1
+                continue
+            # Schritte ohne echte Position (Taste/Scan/Wait) haben keinen Punkt
+            if step.key_press or step.item_scan or step.boss_scan or step.boss_watcher \
+                    or step.icon_scan or step.screenshot_only or step.wait_only:
+                continue
+            treffer = nach_pos.get((step.x, step.y), [])
+            if len(treffer) == 1:
+                step.point_id = treffer[0].id
+                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{treffer[0].id} "
+                                  f"'{treffer[0].name or '(ohne Name)'}'")
+            elif len(treffer) > 1:
+                ids = ", ".join(f"#{p.id}" for p in treffer)
+                mehrdeutig.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                                  f"mehrere Punkte passen ({ids}) - nicht verknüpft")
+            else:
+                ohne_punkt.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                                  "kein Punkt an dieser Stelle")
+
+        if verknuepft:
+            print(f"  {ok(f'{len(verknuepft)} Schritt(e) verknüpft:')}")
+            for z in verknuepft:
+                print(f"    {z}")
+        if mehrdeutig:
+            print(f"  {warn(f'{len(mehrdeutig)} mehrdeutig:')}")
+            for z in mehrdeutig:
+                print(f"    {z}")
+        if ohne_punkt:
+            print(f"  {warn(f'{len(ohne_punkt)} ohne passenden Punkt:')}")
+            for z in ohne_punkt:
+                print(f"    {z}")
+            print(f"    {hint('Diese Schritte behalten ihre eigenen Koordinaten - das ist ok.')}")
+        if schon_ok:
+            print(f"  {hint(f'{schon_ok} Schritt(e) waren schon verknüpft.')}")
+        if not (verknuepft or mehrdeutig or ohne_punkt):
+            print("  -> Nichts zu tun.")
+        elif verknuepft:
+            print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
+
+    def _handle_scroll(self, user_input: str) -> None:
+        """Format: scroll <Punkt-Nr> <Stufen> | scroll <Punkt-Nr> <Sek> <Stufen>
+
+        Gescrollt wird AN der Punkt-Position, weil Windows das Mausrad-Event an das
+        Fenster unter dem Cursor liefert - ein Punkt ist also Pflicht, kein Extra.
+        Stufen: positiv = hoch, negativ = runter, Betrag = Rasterstufen.
+        """
+        parts, else_parts = _split_main_and_else(user_input.split()[1:])
+        if len(parts) < 2:
+            print("  -> Format: scroll <Punkt-Nr> <Stufen> oder scroll <Punkt-Nr> <Sek> <Stufen>")
+            print("     Beispiel: 'scroll 3 -5' = am Punkt 3 fuenf Stufen runter")
+            return
+
+        try:
+            point_id = int(parts[0])
+        except ValueError:
+            print(f"  -> '{parts[0]}' ist keine Punkt-Nr. Format: scroll <Punkt-Nr> <Stufen>")
+            return
+        point = get_point_by_id(self.state, point_id)
+        if not point:
+            print(f"  -> Punkt #{point_id} nicht gefunden!")
+            return
+
+        delay = 0
+        delay_max = None
+        if len(parts) >= 3:
+            # Wartezeit dazwischen. Achtung: "-5" ist ein negativer Stufenwert, kein
+            # Bereich - deshalb erst pruefen, ob es ueberhaupt wie ein Bereich aussieht.
+            zeit_arg = parts[1]
+            if "-" in zeit_arg.lstrip("-") :
+                range_val, range_err = parse_non_negative_range(zeit_arg, "Wartezeit")
+                if range_err:
+                    print(f"  -> {range_err}")
+                    return
+                delay, delay_max = range_val
+            else:
+                delay_val, delay_err = parse_non_negative_float(zeit_arg, "Wartezeit")
+                if delay_err:
+                    print(f"  -> {delay_err}")
+                    return
+                delay = delay_val
+            stufen_raw = parts[2]
+        else:
+            stufen_raw = parts[1]
+
+        try:
+            stufen = int(stufen_raw)
+        except ValueError:
+            print(f"  -> '{stufen_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
+            return
+        if stufen == 0:
+            print("  -> 0 Stufen waere ein Schritt ohne Wirkung.")
+            return
+
+        richtung = "hoch" if stufen > 0 else "runter"
+        step = SequenceStep(
+            x=point.x, y=point.y, delay_before=delay, delay_max=delay_max,
+            name=f"Scroll {richtung} x{abs(stufen)} @ {point.name or f'#{point_id}'}",
+            point_id=point_id,
+            scroll=stufen,
+        )
+        apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
     def _handle_wait(self, user_input: str) -> None:
@@ -934,7 +1082,7 @@ class _PhaseEditor:
             mode = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
             print(f"    Farb-Trigger:    {mode} RGB{wc.color} bei ({wc.pixel[0]},{wc.pixel[1]})")
         else:
-            print(f"    Farb-Trigger:    (keiner)")
+            print("    Farb-Trigger:    (keiner)")
         if step.recorded_color:
             tip = hint(f"   → 'color {num}' nutzt sie")
             print(f"    Aufgen. Farbe:   RGB{step.recorded_color}{tip}")
@@ -1087,6 +1235,7 @@ class _PhaseEditor:
         step = SequenceStep(
             x=point.x, y=point.y, delay_before=delay,
             name=point.name or f"#{point_id}",
+            point_id=point_id,          # Referenz statt blosser Kopie
             wait_condition=wait_cond,
             delay_max=delay_max,
         )
@@ -1130,11 +1279,21 @@ class _PhaseEditor:
         wait_pixel = None
         wait_color = None
         wait_until_gone = False
+        check_only = False
 
         if len(main_parts) > 1:
             arg = main_parts[1].lower()
 
-            if arg in _WAIT_POINT_TRIGGER_ALIASES:
+            if arg in _CHECK_POINT_TRIGGER_ALIASES:
+                # <Nr> checkcolor / <Nr> checkgone - einmal pruefen, sonst ueberspringen
+                check_only = True
+                wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[arg]
+                wait_pixel, wait_color, _ = \
+                    self._resolve_trigger_color(wait_until_gone, point)
+                if wait_color is None:
+                    print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
+                    return False, 0, None
+            elif arg in _WAIT_POINT_TRIGGER_ALIASES:
                 # <Nr> color / <Nr> colorgone
                 wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
                 wait_pixel, wait_color, _ = \
@@ -1162,10 +1321,18 @@ class _PhaseEditor:
                     return False, 0, None
                 delay = delay_val
 
-                # Optional: <Nr> <Zeit> color/colorgone
+                # Optional: <Nr> <Zeit> color/colorgone/checkcolor/checkgone
                 if len(main_parts) > 2:
                     opt = main_parts[2].lower()
-                    if opt in _WAIT_POINT_TRIGGER_ALIASES:
+                    if opt in _CHECK_POINT_TRIGGER_ALIASES:
+                        check_only = True
+                        wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[opt]
+                        wait_pixel, wait_color, _ = \
+                            self._resolve_trigger_color(wait_until_gone, point)
+                        if wait_color is None:
+                            print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
+                            return False, 0, None
+                    elif opt in _WAIT_POINT_TRIGGER_ALIASES:
                         opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
                         wait_pixel, wait_color, wait_until_gone = \
                             self._resolve_trigger_color(opt_until_gone, point)
@@ -1176,7 +1343,8 @@ class _PhaseEditor:
         wait_cond = None
         if wait_pixel and wait_color:
             wait_cond = WaitCondition(pixel=wait_pixel, color=wait_color,
-                                      until_gone=wait_until_gone)
+                                      until_gone=wait_until_gone,
+                                      check_only=check_only)
         return wait_cond, delay, delay_max
 
     def _print_unknown_command(self, user_input: str) -> None:
