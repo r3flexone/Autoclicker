@@ -2589,6 +2589,54 @@ _st_gleich = AutoClickerState()
 _map_gleich, _ = _pfe(_st_gleich, _ev_gleich, "Gleich")
 check("gleiche Stelle, gleiche Farbe -> ein Punkt", _map_gleich[0] == _map_gleich[1])
 
+# Der haeufigste Fall: man wartet auf die Farbe DER Stelle, die man dann klickt
+# ("klick, klick, warte bis Punkt 3 rot wird, klick Punkt 3"). Das ist EIN Schritt —
+# genau das, was der Editor mit 'color <Nr>' baut. Zwei Schritte daraus zu machen
+# waere zwar gleichwertig, saehe aber anders aus als die Handarbeit.
+_ev_zusammen = [_RE(_R_CLICK, 0.0, 10, 10, (5, 5, 5)),
+                _RE(_R_CLICK, 1.0, 20, 20, (6, 6, 6)),
+                _RE(_R_WAIT, 2.0, 30, 30, (200, 30, 30)),
+                _RE(_R_CLICK, 9.0, 30, 30, (200, 30, 30))]
+_st_zus = AutoClickerState()
+_map_zus, _ = _pfe(_st_zus, _ev_zusammen, "Z")
+_steps_zus = _sae(_ev_zusammen, _map_zus)
+check("Marker auf der Klick-Stelle wird EIN Schritt", len(_steps_zus) == 3)
+check("Marker und Klick teilen sich einen Punkt", len(_st_zus.points) == 3)
+_z = _steps_zus[2]
+check("der zusammengelegte Schritt klickt", _z.wait_only is False and _z.point_id is not None)
+check("und prueft VORHER dieselbe Stelle",
+      _z.wait_condition is not None and _z.wait_condition.point_id == _z.point_id)
+# Marker bei t=2.0, davor der Klick bei t=1.0 -> 1.0s echte Wartezeit. Die 7s
+# zwischen Marker und Klick (t=9.0) sind das Warten und tauchen NICHT als Zeit auf.
+check("die Wartezeit bis zum Marker bleibt am Schritt", _z.delay_before == 1.0)
+
+# Zeigt der Marker WOANDERS hin (Ladebalken beobachten, anderswo klicken), bleibt er
+# ein eigener Schritt — dort sind es ja wirklich zwei Stellen.
+_ev_getrennt = [_RE(_R_CLICK, 0.0, 10, 10, (5, 5, 5)),
+                _RE(_R_WAIT, 2.0, 30, 30, (200, 30, 30)),
+                _RE(_R_CLICK, 9.0, 77, 88, (1, 1, 1))]
+_st_getr = AutoClickerState()
+_map_getr, _ = _pfe(_st_getr, _ev_getrennt, "G")
+_steps_getr = _sae(_ev_getrennt, _map_getr)
+check("Marker auf anderer Stelle bleibt ein eigener Schritt", len(_steps_getr) == 3)
+check("und klickt weiterhin nichts", _steps_getr[1].wait_only is True)
+check("der Klick danach zeigt auf SEINE Stelle, nicht auf die des Markers",
+      _steps_getr[2].point_id != _steps_getr[1].wait_condition.point_id)
+
+# Ein paar Pixel daneben ist ein anderer Punkt — und wird NICHT stillschweigend
+# zusammengezogen. Genau diese Ungenauigkeit haben die Punkt-Referenzen abgeschafft.
+_ev_daneben = [_RE(_R_WAIT, 0.0, 30, 30, (200, 30, 30)),
+               _RE(_R_CLICK, 5.0, 33, 28, (200, 30, 30))]
+_st_dan = AutoClickerState()
+_map_dan, _ = _pfe(_st_dan, _ev_daneben, "D")
+check("3 px daneben wird nicht zusammengelegt", len(_sae(_ev_daneben, _map_dan)) == 2)
+
+# Und der zusammengelegte Schritt speichert NUR Referenzen — keine Koordinate doppelt
+_d_zus = _s2d(_z)
+check("zusammengelegt: in der Datei stehen nur die zwei Referenzen",
+      _d_zus.get("point_id") == _d_zus.get("wait_point_id") == _z.point_id
+      and not {"x", "y", "pixel", "color"} & set(_d_zus))
+
 # Die Farbe wird NACHGELESEN, nicht beim Druecken erfasst. Beim Druecken liegt an der
 # Stelle ja noch der Hintergrund — auf den zu warten waere ab der ersten Sekunde erfuellt.
 import autoclicker.editors.sequence_recorder as _rec_mod

@@ -274,29 +274,64 @@ def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
     erst auf die Farbe warten UND danach nochmal die volle Zeit schlafen.
 
     Der Marker selbst behält seine Wartezeit: bis zum Drücken lief ja normal etwas ab.
+
+    **Wartet der Marker auf DIE Stelle, die als nächstes geklickt wird, wird daraus
+    EIN Schritt** — „warte auf Rot an Punkt 3, dann klicke Punkt 3". Genau das baut
+    der Editor mit `color <Nr>`, und `_apply_trigger` sagt dazu: der Schritt prüft
+    seinen eigenen Klickpunkt, kein zweiter Punkt. Eine Aufnahme soll dasselbe
+    ergeben wie die Handarbeit, sonst liest sich das Ergebnis fremd.
+
+    Zeigt der Marker woanders hin (auf einen Ladebalken, während geklickt wird), ist
+    er ein eigener Warte-Schritt — dort sind es ja auch wirklich zwei Stellen.
     """
     steps = []
+    verbraucht = set()      # Marker, die in den nächsten Schritt gewandert sind
     for i, ev in enumerate(events):
+        if i in verbraucht:
+            continue
         delay = 0.0 if i == 0 else round(ev.t - events[i - 1].t, 2)
-        if i > 0 and events[i - 1].kind == REC_WAIT_COLOR:
+        vorher = events[i - 1] if i > 0 else None
+        bedingung = None
+        if vorher is not None and vorher.kind == REC_WAIT_COLOR:
+            # Die Spanne seit dem Marker ist das Warten, das die Bedingung ersetzt.
             delay = 0.0
         pid = punkt_id_fuer.get(i)
 
+        if ev.kind == REC_WAIT_COLOR:
+            naechster = events[i + 1] if i + 1 < len(events) else None
+            # Zusammenlegen nur bei DEMSELBEN Punkt — nicht bei „ungefähr derselben
+            # Stelle". Ein paar Pixel Unterschied sind ein anderer Punkt, und den
+            # stillschweigend zu verschieben wäre genau die Ungenauigkeit, die die
+            # Punkt-Referenzen abgeschafft haben.
+            if (naechster is not None and naechster.kind in (REC_CLICK, REC_SCROLL)
+                    and punkt_id_fuer.get(i + 1) == pid):
+                verbraucht.add(i)
+                # Der Marker verschwindet als eigener Schritt; seine Wartezeit und
+                # seine Bedingung gehen an den Klick, der ihn ablöst.
+                ev, bedingung = naechster, WaitCondition(point_id=pid)
+                i_naechst = i + 1
+                verbraucht.add(i_naechst)
+                pid = punkt_id_fuer.get(i_naechst)
+            else:
+                # wait_only: der Marker wartet nur, er klickt nichts. Deshalb hat der
+                # SCHRITT keine point_id (er zeigt nirgendwohin) — die Referenz sitzt
+                # an der Bedingung, die Prüf-Pixel und Farbe daraus ableitet.
+                steps.append(SequenceStep(delay_before=delay, wait_only=True,
+                                          wait_condition=WaitCondition(point_id=pid)))
+                continue
+
         if ev.kind == REC_KEY:
-            steps.append(SequenceStep(delay_before=delay, key_press=ev.key))
+            steps.append(SequenceStep(delay_before=delay, key_press=ev.key,
+                                      wait_condition=bedingung))
         elif ev.kind == REC_SCROLL:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay, scroll=ev.scroll,
-                                      point_id=pid, recorded_color=ev.color))
-        elif ev.kind == REC_WAIT_COLOR:
-            # wait_only: der Marker wartet nur, er klickt nichts. Deshalb hat der
-            # SCHRITT keine point_id (er zeigt nirgendwohin) — die Referenz sitzt an
-            # der Bedingung, die den Prüf-Pixel und die erwartete Farbe daraus ableitet.
-            steps.append(SequenceStep(delay_before=delay, wait_only=True,
-                                      wait_condition=WaitCondition(point_id=pid)))
+                                      point_id=pid, recorded_color=ev.color,
+                                      wait_condition=bedingung))
         else:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay,
-                                      name=f"Klick {i + 1}", recorded_color=ev.color,
-                                      point_id=pid))
+                                      name=f"Klick {len(steps) + 1}",
+                                      recorded_color=ev.color, point_id=pid,
+                                      wait_condition=bedingung))
     return steps
 
 
