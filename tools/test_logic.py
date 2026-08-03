@@ -2535,12 +2535,13 @@ section("Aufnahme schneidet mehr mit als nur Linksklicks")
 
 from autoclicker.editors.sequence_recorder import (
     schritte_aus_events as _sae, _anhaengen as _anh, _SCROLL_MERGE_GAP as _SMG,
-    verwirf_letztes as _verwirf)
+    verwirf_letztes as _verwirf, farben_nachlesen as _fnl)
 
-# Eine Aufnahme, die alle vier Arten enthaelt. Der Warte-Marker sitzt 5s nach dem
-# ersten Klick — das ist die Zeit, die der Nutzer auf das Popup gewartet hat.
+# Eine Aufnahme, die alle vier Arten enthaelt. Der Marker wird 2s nach dem ersten
+# Klick gedrueckt (bis dahin lief normal etwas ab — das bleibt Wartezeit), und erst
+# 3.4s SPAETER kommt der naechste Klick: das ist das Warten auf die Farbe.
 _ev_alle = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
-            _RE(_R_WAIT, 5.0, 30, 40, (9, 9, 9)),
+            _RE(_R_WAIT, 2.0, 30, 40, (9, 9, 9)),
             _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
             _RE(_R_KEY, 6.0, key="enter"),
             _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
@@ -2563,10 +2564,14 @@ check("Warte-Marker wird ein reiner Warte-Schritt", _ws.wait_only is True)
 check("Warte-Marker haengt seine Bedingung an einen Punkt",
       _ws.wait_condition is not None and _ws.wait_condition.point_id == _map_alle[1])
 check("Warte-Marker klickt nichts (kein eigener point_id)", _ws.point_id is None)
-check("Warte-Marker wartet nicht ZUSAETZLICH die verstrichene Zeit ab",
-      _ws.delay_before == 0.0)
-check("der Klick danach misst ab dem Marker, nicht ab dem Klick davor",
-      _steps_alle[2].delay_before == 0.4)
+# Die Zeit BIS zum Marker ist echte Wartezeit (bis dahin lief normal etwas ab) ...
+check("Warte-Marker behaelt die Zeit bis zu seinem Druecken", _ws.delay_before == 2.0)
+# ... die Zeit DANACH ist das Warten, das die Bedingung ersetzt. Bliebe sie stehen,
+# wuerde die Sequenz erst auf die Farbe warten UND danach nochmal 3.4s schlafen.
+check("der Schritt nach dem Marker schlaeft die Wartezeit nicht nochmal ab",
+      _steps_alle[2].delay_before == 0.0)
+check("spaetere Schritte messen wieder normal",
+      _steps_alle[3].delay_before == 0.6 and _steps_alle[4].delay_before == 0.5)
 
 # Die Farbe der Bedingung kommt aus dem Punkt — genau dafuer braucht der Marker einen
 # EIGENEN Punkt, wenn an derselben Stelle eine andere Farbe erwartet wird.
@@ -2583,6 +2588,60 @@ _ev_gleich = [_RE(_R_WAIT, 0.0, 30, 40, (9, 9, 9)),
 _st_gleich = AutoClickerState()
 _map_gleich, _ = _pfe(_st_gleich, _ev_gleich, "Gleich")
 check("gleiche Stelle, gleiche Farbe -> ein Punkt", _map_gleich[0] == _map_gleich[1])
+
+# Die Farbe wird NACHGELESEN, nicht beim Druecken erfasst. Beim Druecken liegt an der
+# Stelle ja noch der Hintergrund — auf den zu warten waere ab der ersten Sekunde erfuellt.
+import autoclicker.editors.sequence_recorder as _rec_mod
+_gelesen = []
+_echt_pixel = _rec_mod.get_screen_pixel
+
+
+def _pixel_stub(x, y):
+    _gelesen.append((x, y))
+    return (42, 43, 44)          # das, was NACH dem Warten dort steht
+
+
+_rec_mod.get_screen_pixel = _pixel_stub
+try:
+    _st_spaet = AutoClickerState()
+    _st_spaet.recording_active = True
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _anh(_st_spaet, _RE(_R_WAIT, 0.0, 30, 40))       # Marker: noch ohne Farbe
+    check("beim Druecken wird KEINE Farbe gelesen",
+          _gelesen == [] and _st_spaet.recording_events[0].color is None)
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _anh(_st_spaet, _RE(_R_CLICK, 3.0, 50, 60, (7, 7, 7)))
+    check("das naechste Ereignis liest die Farbe an der MARKER-Stelle nach",
+          _gelesen == [(30, 40)])
+    check("und traegt sie in den Marker ein",
+          _st_spaet.recording_events[0].color == (42, 43, 44))
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _anh(_st_spaet, _RE(_R_CLICK, 4.0, 70, 80, (1, 1, 1)))
+    check("ein fertiger Marker wird nicht nochmal nachgelesen", _gelesen == [(30, 40)])
+
+    # Marker als LETZTES Ereignis: das Nachlesen beim Stoppen ist die letzte Gelegenheit
+    _st_ende = AutoClickerState()
+    _st_ende.recording_active = True
+    _st_ende.recording_events = [_RE(_R_WAIT, 0.0, 11, 22)]
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _fnl(_st_ende)
+    check("ein Marker am Ende bekommt seine Farbe beim Stoppen",
+          _st_ende.recording_events[0].color == (42, 43, 44))
+finally:
+    _rec_mod.get_screen_pixel = _echt_pixel
+
+# Bleibt der Pixel unlesbar, ist der Marker wertlos — er wuerde auf Schwarz warten.
+_rec_mod.get_screen_pixel = lambda x, y: None
+try:
+    _st_blind = AutoClickerState()
+    _st_blind.recording_active = True
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _anh(_st_blind, _RE(_R_WAIT, 0.0, 30, 40))
+        _anh(_st_blind, _RE(_R_CLICK, 1.0, 50, 60, (7, 7, 7)))
+    check("unlesbarer Pixel laesst den Marker farblos",
+          _st_blind.recording_events[0].color is None)
+finally:
+    _rec_mod.get_screen_pixel = _echt_pixel
 
 # Mausrad-Zusammenfassung: eine Drehung um 5 Rasten ist EIN Schritt, nicht fuenf.
 _st_scroll = AutoClickerState()
