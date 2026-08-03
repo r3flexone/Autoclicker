@@ -35,7 +35,8 @@ from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
     list_available_sequences,
     load_points, load_global_slots, load_global_items, load_all_item_scans,
-    load_all_boss_scans, load_all_icon_scans, load_global_bosses
+    load_all_boss_scans, load_all_icon_scans, load_global_bosses,
+    resolve_klick_referenzen
 )
 from autoclicker.diagnose import check_beim_start
 from autoclicker.execution import print_status
@@ -192,6 +193,12 @@ def main() -> int:
     load_all_boss_scans(state)
     load_global_bosses(state)
     load_all_icon_scans(state)
+
+    # Klick-Ziele aufloesen, NACHDEM alles geladen ist. `load_all_item_scans` loest zwar
+    # schon auf, sieht die Boss- und Icon-Scans an dieser Stelle aber noch gar nicht -
+    # deren Klick-Punkte staenden bis zum ersten Sequenzlauf auf (0, 0).
+    for meldung in resolve_klick_referenzen(state):
+        print(warn(meldung))
 
     # Beim allerersten Start die volle Anleitung zeigen - da ist sie das Wichtigste
     # im Fenster. Danach reicht der Banner oben, alles Weitere liegt auf CTRL+ALT+O.

@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ..models import ItemScanConfig, AutoClickerState
+from ..models import ClickPoint, ItemScanConfig, AutoClickerState
 from ..utils import compact_json, warn, atomic_write
 from .migration import KIND_ITEM_SCAN, migrate
 from .paths import ITEM_SCANS_DIR
@@ -113,6 +113,62 @@ def resolve_scan_references(state: AutoClickerState) -> list[str]:
         if fehlende_items:
             meldungen.append(f"Scan '{config.name}': Item(s) fehlen in items.json - "
                              f"{', '.join(fehlende_items)}")
+
+    meldungen += resolve_klick_referenzen(state)
+    return meldungen
+
+
+def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
+    """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
+
+    Drei Stellen ausserhalb der Sequenzen zeigen auf Punkte:
+
+    | wer | Feld | fuellt |
+    |---|---|---|
+    | `ItemProfile` | `confirm_point_id` | `confirm_point` |
+    | `BossProfile` | `action_point_id` | `action_x`, `action_y` |
+    | `IconScanConfig` | `action_point_id` | `action_x`, `action_y` |
+
+    Gleiches Muster wie `aufloesen()` bei den Sequenz-Schritten: gespeichert ist die
+    ID, der Rest wird abgeleitet. Eine tote Referenz wird gemeldet und das Klick-Ziel
+    bleibt leer - die Aktion tut dann nichts, statt auf (0, 0) zu klicken.
+    """
+    meldungen = []
+    with state.lock:
+        punkte = {p.id: p for p in state.points}
+        items = list(state.global_items.values())
+        bosse = list(state.global_bosses)
+        for cfg in state.boss_scans.values():
+            bosse += list(cfg.bosses)
+        icons = list(state.icon_scans.values())
+
+    def hol(pid, wo):
+        punkt = punkte.get(pid)
+        if punkt is None:
+            meldungen.append(f"{wo} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
+                             f"- Klick entfaellt")
+        return punkt
+
+    with state.lock:
+        for item in items:
+            if item.confirm_point_id is None:
+                item.confirm_point = None
+                continue
+            punkt = hol(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
+            item.confirm_point = ClickPoint(punkt.x, punkt.y, punkt.name,
+                                            punkt.id) if punkt else None
+
+        for traeger, wo in ([(b, f"Boss '{b.name}'") for b in bosse]
+                            + [(i, f"Icon-Scan '{i.name}'") for i in icons]):
+            if traeger.action_point_id is None:
+                continue
+            punkt = hol(traeger.action_point_id, wo)
+            if punkt is not None:
+                traeger.action_x, traeger.action_y = punkt.x, punkt.y
+            else:
+                # Kein Rueckfall auf (0, 0): die Aktion wird uebersprungen.
+                traeger.action_x = traeger.action_y = 0
+                traeger.action_point_id = None
     return meldungen
 
 

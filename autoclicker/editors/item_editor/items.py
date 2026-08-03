@@ -12,7 +12,7 @@ from ...config import CONFIG
 from ...imaging import (
     OPENCV_AVAILABLE, take_screenshot, select_region,
 )
-from ...models import ClickPoint, ItemProfile, AutoClickerState
+from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
     get_existing_categories, get_point_by_id, shift_category_priorities,
     TEMPLATES_DIR,
@@ -125,7 +125,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
         pass
 
     # Bestätigungs-Klick
-    confirm_point = None
+    confirm_point_id = None
     confirm_delay = CONFIG.scan_confirm_delay
     print("\n  Bestätigungs-Punkt? (z.B. für Popup-Bestätigung)")
     confirm_input = safe_input("  Punkt-ID (Enter=Nein): ").strip()
@@ -135,7 +135,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
             with state.lock:
                 found_point = get_point_by_id(state, point_id)
                 if found_point:
-                    confirm_point = ClickPoint(found_point.x, found_point.y)
+                    confirm_point_id = point_id
                     delay_input = safe_input("  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
                     if delay_input:
                         delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
@@ -153,7 +153,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
         marker_colors=[],
         category=category,
         priority=priority,
-        confirm_point=confirm_point,
+        confirm_point_id=confirm_point_id,
         confirm_delay=confirm_delay,
         template=template_file,
         min_confidence=min_confidence
@@ -169,15 +169,15 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
     print(f"    Priorität: {item.priority}")
     if item.template:
         print(f"    Template: {item.template} ({item.min_confidence:.0%})")
-    if item.confirm_point:
-        print(f"    Bestätigung: ({item.confirm_point.x}, {item.confirm_point.y}) nach {item.confirm_delay}s")
+    if item.confirm_point_id:
+        print(f"    Bestätigung: Punkt #{item.confirm_point_id} nach {item.confirm_delay}s")
 
     new_name = item.name
     new_category = item.category
     new_priority = item.priority
     new_template = item.template
     new_confidence = item.min_confidence
-    new_confirm = item.confirm_point
+    new_confirm_id = item.confirm_point_id
     new_confirm_delay = item.confirm_delay
 
     while True:
@@ -233,7 +233,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                     with state.lock:
                         found_point = get_point_by_id(state, point_id)
                         if found_point:
-                            new_confirm = ClickPoint(found_point.x, found_point.y)
+                            new_confirm_id = point_id
                             delay_input = safe_input(f"  Wartezeit (Enter={new_confirm_delay}s): ").strip()
                             if delay_input:
                                 delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
@@ -247,7 +247,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                 except ValueError:
                     print("  -> Ungültige Eingabe")
             else:
-                new_confirm = None
+                new_confirm_id = None
                 print("  -> Bestätigung entfernt")
 
     return ItemProfile(
@@ -255,7 +255,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         marker_colors=item.marker_colors,
         category=new_category,
         priority=new_priority,
-        confirm_point=new_confirm,
+        confirm_point_id=new_confirm_id,
         confirm_delay=new_confirm_delay,
         template=new_template,
         min_confidence=new_confidence

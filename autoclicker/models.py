@@ -384,7 +384,15 @@ class ItemProfile:
     # Kategorie für Prioritäts-Vergleich (z.B. "Hosen", "Jacken", "Juwelen")
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
-    confirm_point: Optional[ClickPoint] = None  # ClickPoint für Bestätigung nach Klick
+    # Referenz auf den Punkt, der nach dem Klick bestätigt (Popup o.ä.). DAS ist der
+    # gespeicherte Wert; `confirm_point` darunter ist der abgeleitete Arbeitswert und
+    # wird von `resolve_scan_references()` gefüllt.
+    #
+    # Der Editor fragt ohnehin nach einer Punkt-ID — die wurde bisher nur weggeworfen
+    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben ließ
+    # den Bestätigungsklick stehen, und die Kalibrierung brauchte einen Sonderfall.
+    confirm_point_id: Optional[int] = None
+    confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
@@ -493,8 +501,11 @@ class BossProfile:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
     action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
     action_scan_mode: str = SCAN_MODE_ALL       # Scan-Modus ("all", "best", "every")
-    action_x: int = 0                           # Klick-X (wenn action="click")
-    action_y: int = 0                           # Klick-Y (wenn action="click")
+    # Referenz auf den Klick-Punkt (wenn action="click"). Gespeichert wird die ID,
+    # action_x/y sind abgeleitet — siehe Block bei ElseConfig.
+    action_point_id: Optional[int] = None
+    action_x: int = 0                           # abgeleitet: Klick-X
+    action_y: int = 0                           # abgeleitet: Klick-Y
     action_key: Optional[str] = None            # Taste (wenn action="key")
     action_delay: float = 0                     # Verzögerung vor Aktion
 
@@ -570,8 +581,10 @@ class IconScanConfig:
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
     action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
-    action_x: int = 0                                          # Klick-X (wenn action="click")
-    action_y: int = 0                                          # Klick-Y (wenn action="click")
+    # Referenz auf den Klick-Punkt (wenn action="click"); action_x/y sind abgeleitet.
+    action_point_id: Optional[int] = None
+    action_x: int = 0                                          # abgeleitet: Klick-X
+    action_y: int = 0                                          # abgeleitet: Klick-Y
     action_key: Optional[str] = None                           # Taste (wenn action="key")
     action_delay: float = 0                                    # Verzögerung vor der Aktion
 

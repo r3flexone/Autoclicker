@@ -407,22 +407,12 @@ def _stelle_lesen(step: dict, x_key: str, y_key):
 # das aktuelle Format kennen - und geloescht wird der Normalisierer genauso, sobald
 # keine Altbestaende mehr existieren.
 
-def _fix_item(item: dict) -> bool:
-    """Hebt ein einzelnes Item-Dict. True = es wurde etwas geaendert."""
-    cp = item.get("confirm_point")
-    # confirm_point war frueher [x, y], heute {"x": .., "y": ..}
-    if isinstance(cp, (list, tuple)) and len(cp) == 2:
-        item["confirm_point"] = {"x": cp[0], "y": cp[1]}
-        return True
-    return False
-
-
-def _norm_items(data, context: dict) -> list[str]:
-    """items.json, items/presets/*.json - Name -> Item-Dict."""
-    if not isinstance(data, dict):
-        return []
-    fixed = sum(1 for v in data.values() if isinstance(v, dict) and _fix_item(v))
-    return [f"{fixed} Item(s): confirm_point [x,y] -> {{x,y}}"] if fixed else []
+# `_norm_items` ist ersatzlos entfallen. Es hob `confirm_point` von [x, y] auf
+# {"x":.., "y":..} - ein Feld, das der Loader seit der Umstellung auf Punkt-Referenzen
+# gar nicht mehr liest. Einen Normalisierer zu pflegen, der ein totes Feld in ein
+# anderes totes Format bringt, ist genau das Anwachsen, das dieses Modul vermeiden
+# soll. Ein altes confirm_point meldet jetzt der Loader (`_alt_gemeldet`), und der
+# Bestaetigungs-Punkt wird einmal neu gesetzt.
 
 
 def _norm_item_scan(data, context: dict) -> list[str]:
@@ -504,7 +494,7 @@ def _norm_noop(data, context: dict) -> list[str]:
 
 _NORMALIZER: dict[str, MigrationStep] = {
     KIND_POINTS: _norm_points,
-    KIND_ITEMS: _norm_items,
+    KIND_ITEMS: _norm_noop,
     KIND_ITEM_SCAN: _norm_item_scan,
     KIND_SLOTS: _norm_noop,
     KIND_BOSS_SCAN: _norm_noop,

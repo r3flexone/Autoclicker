@@ -78,13 +78,17 @@ check("ItemScan speichert Item-Namen", r.item_names == ["Schwert"])
 check("ItemScan laedt keine Kopien mehr", r.slots == [] and r.items == [])
 
 boss = BossProfile(name="Drache", marker_colors=[(10, 20, 30)], template="drache.png", min_confidence=0.9,
-                   action="click", action_x=111, action_y=222, action_delay=1.5)
+                   action="click", action_point_id=4, action_delay=1.5)
 bsc = BossScanConfig(name="BScan", scan_region=(1, 2, 3, 4), bosses=[boss], color_tolerance=33,
                      default_action="skip", use_llm=True, llm_fallback=False, use_ocr=True, ocr_fallback=False)
 r = roundtrip(_boss_scan_to_dict, load_boss_scan_file, bsc)
 check("BossScan flags (llm/ocr)", r.use_llm and not r.llm_fallback and r.use_ocr and not r.ocr_fallback)
 check("BossScan region/tol/default", r.scan_region == (1, 2, 3, 4) and r.color_tolerance == 33 and r.default_action == "skip")
-check("BossScan boss action", r.bosses[0].name == "Drache" and r.bosses[0].action == "click" and r.bosses[0].action_x == 111 and r.bosses[0].action_y == 222)
+# Das Klick-Ziel ist eine Punkt-ID; action_x/y sind abgeleitet und stehen nicht in der
+# Datei - gefuellt werden sie von resolve_klick_referenzen(), s. eigener Abschnitt.
+check("BossScan boss action", r.bosses[0].name == "Drache" and r.bosses[0].action == "click" and r.bosses[0].action_point_id == 4)
+check("BossScan speichert keine Klick-Koordinate",
+      "action_x" not in _boss_scan_to_dict(bsc)["bosses"][0])
 
 icn = IconScanConfig(name="IScan", scan_region=(7, 8, 9, 10), template="icon.png", min_confidence=0.77,
                      marker_colors=[(1, 2, 3), (4, 5, 6)], color_tolerance=25, action="key", action_key="enter", action_delay=2.0)
@@ -529,6 +533,72 @@ check("auch der Pruef-Pixel speichert nur seine ID",
       _gespeichert[1].get("wait_point_id") == 11
       and "wait_pixel" not in _gespeichert[1])
 
+# --------------------------------- Klick-Ziele ausserhalb der Sequenzen
+section("Punkt-Referenzen: auch Bestaetigung, Boss- und Icon-Aktion")
+
+# Dieselbe Regel wie bei den Schritten, nur an drei anderen Stellen. Der Item-Editor
+# fragt ohnehin nach einer Punkt-ID - frueher wurde sie weggeworfen und durch eine
+# Koordinaten-Kopie ersetzt, sodass ein verschobener Punkt den Bestaetigungsklick
+# stehenliess. Boss- und Icon-Klick hingen an gar keinem Punkt.
+from autoclicker.models import (ItemProfile as _IP, BossScanConfig as _BSC2,
+                                IconScanConfig as _ISC2)
+from autoclicker.persistence import resolve_klick_referenzen as _rkr
+from autoclicker.persistence.serialization import _item_to_dict
+
+_st5 = AutoClickerState()
+_st5.points = [_CP(x=10, y=20, name="Popup-OK", id=1),
+               _CP(x=30, y=40, name="Boss-Angriff", id=2),
+               _CP(x=50, y=60, name="Icon-Weg", id=3)]
+_st5.global_items = {"Kohle": _IP(name="Kohle", confirm_point_id=1),
+                     "Erz": _IP(name="Erz"),
+                     "Tot": _IP(name="Tot", confirm_point_id=99)}
+_st5.global_bosses = [BossProfile(name="Drache", action="click", action_point_id=2)]
+_ic5 = _ISC2(name="I", action="click", action_point_id=3)
+_st5.icon_scans = {"I": _ic5}
+_meld5 = _rkr(_st5)
+
+check("Bestaetigungsklick kommt aus dem Punkt",
+      (_st5.global_items["Kohle"].confirm_point.x,
+       _st5.global_items["Kohle"].confirm_point.y) == (10, 20))
+check("Item ohne Referenz hat keinen Bestaetigungsklick",
+      _st5.global_items["Erz"].confirm_point is None)
+check("Boss-Klick kommt aus dem Punkt",
+      (_st5.global_bosses[0].action_x, _st5.global_bosses[0].action_y) == (30, 40))
+check("Icon-Klick kommt aus dem Punkt", (_ic5.action_x, _ic5.action_y) == (50, 60))
+
+# Punkt verschieben -> alle drei ziehen mit. Das ist der ganze Zweck.
+for _p in _st5.points:
+    _p.x += 7
+    _p.y += 9
+_rkr(_st5)
+check("verschobener Punkt zieht den Bestaetigungsklick mit",
+      (_st5.global_items["Kohle"].confirm_point.x,
+       _st5.global_items["Kohle"].confirm_point.y) == (17, 29))
+check("verschobener Punkt zieht den Boss-Klick mit",
+      (_st5.global_bosses[0].action_x, _st5.global_bosses[0].action_y) == (37, 49))
+check("verschobener Punkt zieht den Icon-Klick mit",
+      (_ic5.action_x, _ic5.action_y) == (57, 69))
+
+check("tote Referenz wird gemeldet",
+      any("#99" in m and "nicht mehr gibt" in m for m in _meld5))
+check("tote Referenz laesst den Klick weg statt auf (0,0) zu zielen",
+      _st5.global_items["Tot"].confirm_point is None)
+
+# Boss-Profile INNERHALB eines Scans zaehlen mit, nicht nur die globalen
+_bp6 = BossProfile(name="Lokal", action="click", action_point_id=1)
+_st5.boss_scans = {"B": _BSC2(name="B", bosses=[_bp6])}
+_rkr(_st5)
+check("auch Bosse in einem Scan werden aufgeloest", (_bp6.action_x, _bp6.action_y) == (17, 29))
+
+# Und die Datei traegt nur die ID
+check("gespeichert wird nur die Referenz",
+      "confirm_point" not in _item_to_dict(_st5.global_items["Kohle"])
+      and _item_to_dict(_st5.global_items["Kohle"]).get("confirm_point_id") == 1)
+check("Icon-Scan speichert keine Klick-Koordinate",
+      "action_x" not in _icon_scan_to_dict(_ic5)
+      and _icon_scan_to_dict(_ic5).get("action_point_id") == 3)
+
+
 # ------------------------------------------------------- Schema-Migration
 section("Schema-Migration: Altformate -> aktuelles Schema")
 from autoclicker.persistence.migration import (
@@ -629,16 +699,15 @@ check("Punkte: Meldungen im Klartext", len(_m) == 2)
 _wieder = _mig([dict(p) for p in _pts], _K_PTS)[1]
 check("Punkte: zweiter Lauf meldet nichts", _wieder == [])
 
-# Items: confirm_point [x,y] -> {x,y}
-_items = {"Kohle": {"name": "Kohle", "confirm_point": [55, 66]},
-          "Erz": {"name": "Erz", "confirm_point": {"x": 1, "y": 2}},
-          "Leer": {"name": "Leer", "confirm_point": None}}
+# items.json hat keinen Normalisierer mehr: der einzige hob `confirm_point` von [x, y]
+# auf {x, y} - ein Feld, das der Loader seit den Punkt-Referenzen nicht mehr liest.
+# Ein Normalisierer, der totes Format in totes Format ueberfuehrt, gehoert geloescht,
+# nicht gepflegt. Was bleibt, ist die Regel: der Typ ist trotzdem eingetragen.
+_items = {"Kohle": {"name": "Kohle", "confirm_point": [55, 66]}}
+_items_vorher = json.loads(json.dumps(_items))
 _items, _m = _mig(_items, _K_ITEMS)
-check("Items: alte Liste wird zu {x,y}", _items["Kohle"]["confirm_point"] == {"x": 55, "y": 66})
-check("Items: aktuelles Format bleibt", _items["Erz"]["confirm_point"] == {"x": 1, "y": 2})
-check("Items: None bleibt None", _items["Leer"]["confirm_point"] is None)
-check("Items: nur das Geaenderte wird gemeldet", len(_m) == 1)
-check("Items: zweiter Lauf meldet nichts", _mig(_items, _K_ITEMS)[1] == [])
+check("Items: kein Normalisierer mehr, nichts wird angefasst",
+      _items == _items_vorher and _m == [])
 
 # Item-Scans trugen ihre Slots/Items als Kopie - jetzt nur noch Namen
 _scan = {"name": "inv",
@@ -660,8 +729,11 @@ check("Item-Scan: vorhandene Namensliste gewinnt", _beides["item_names"] == ["Ne
 from autoclicker.persistence.serialization import _item_from_dict as _ifd
 check("Loader ignoriert das alte confirm_point-Format",
       _ifd({"confirm_point": [1, 2]}, "X").confirm_point is None)
-check("Loader liest das aktuelle Format",
-      _ifd({"confirm_point": {"x": 1, "y": 2}}, "X").confirm_point.x == 1)
+# Auch das juengere {x,y}-Format ist tot - der Bestaetigungsklick ist heute ein Punkt.
+check("Loader ignoriert auch die {x,y}-Form",
+      _ifd({"confirm_point": {"x": 1, "y": 2}}, "X").confirm_point is None)
+check("Loader liest die Punkt-Referenz",
+      _ifd({"confirm_point_id": 9}, "X").confirm_point_id == 9)
 # Der Name kommt aus dem Schluessel, nicht mehr aus dem Eintrag
 check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
@@ -830,7 +902,10 @@ try:
     check("Start-Durchgang entfernt tote Schritt-Felder",
           "clicks" not in _sq["loop_phases"][0]["steps"][0])
     _it = json.loads((_sw / "items/items.json").read_text(encoding="utf-8"))["K"]
-    check("Start-Durchgang hebt confirm_point", _it["confirm_point"] == {"x": 5, "y": 6})
+    # Der Round-Trip raeumt das alte confirm_point weg - der Loader liest es nicht mehr,
+    # also schreibt der Serializer es auch nicht zurueck. Genau dafuer ist der
+    # Durchgang da: er braucht keinen Migrationsschritt, um ein totes Feld loszuwerden.
+    check("Start-Durchgang entfernt das tote confirm_point", "confirm_point" not in _it)
     check("Start-Durchgang entfernt totes Item-Feld", "uralt" not in _it)
 finally:
     _os.chdir(_cwd)

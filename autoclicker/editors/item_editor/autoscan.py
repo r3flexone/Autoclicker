@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
-from ...models import ClickPoint, ItemProfile, AutoClickerState
+from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
     get_point_by_id, save_global_items, TEMPLATES_DIR,
 )
@@ -76,7 +76,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     auto_priority = prio_choice != "2"
 
     # Bestätigungs-Punkt
-    confirm_point = None
+    confirm_point_id = None
     confirm_delay = CONFIG.scan_confirm_delay
     confirm_input = safe_input("\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ").strip()
     if confirm_input:
@@ -84,7 +84,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
             point_id = int(confirm_input)
             found_point = get_point_by_id(state, point_id)
             if found_point:
-                confirm_point = ClickPoint(found_point.x, found_point.y)
+                confirm_point_id = point_id
                 delay_input = safe_input(f"  Wartezeit vor Bestätigung (Enter = {confirm_delay}s): ").strip()
                 if delay_input:
                     delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
@@ -112,8 +112,8 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     print(f"  Kategorie:   {category or '(keine)'}")
     print(f"  Priorität:   {'automatisch (1,2,3,...)' if auto_priority else 'alle gleich (1)'}")
     print(f"  Konfidenz:   {min_confidence:.0%}")
-    if confirm_point:
-        print(f"  Bestätigung: ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s")
+    if confirm_point_id:
+        print(f"  Bestätigung: Punkt #{confirm_point_id} nach {confirm_delay}s")
     else:
         print("  Bestätigung: keine")
     print(f"  Marker:      {'Ja' if use_markers else 'Nein'}")
@@ -125,7 +125,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     return {
         "category": category,
         "auto_priority": auto_priority,
-        "confirm_point": confirm_point,
+        "confirm_point_id": confirm_point_id,
         "confirm_delay": confirm_delay,
         "min_confidence": min_confidence,
         "use_markers": use_markers,
@@ -174,7 +174,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     use_markers = settings["use_markers"]
     category = settings["category"]
     auto_priority = settings["auto_priority"]
-    confirm_point = settings["confirm_point"]
+    confirm_point_id = settings["confirm_point_id"]
     confirm_delay = settings["confirm_delay"]
     min_confidence = settings["min_confidence"]
 
@@ -246,7 +246,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
             marker_colors=marker_colors,
             category=category,
             priority=priority,
-            confirm_point=confirm_point,
+            confirm_point_id=confirm_point_id,
             confirm_delay=confirm_delay,
             template=template_file,
             min_confidence=min_confidence
