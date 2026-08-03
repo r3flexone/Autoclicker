@@ -606,6 +606,45 @@ class IconScanConfig:
 
 
 # =============================================================================
+# SEQUENZ-AUFNAHME
+# =============================================================================
+# Ereignisarten der Aufnahme. Frueher war jedes Ereignis ein Linksklick und lag als
+# nacktes (t, x, y, color)-Tupel in der Liste; seit auch Tastendruck, Mausrad und
+# Farb-Warten mitgeschnitten werden, muss die Art mitgefuehrt werden.
+REC_CLICK = "click"         # Linksklick an (x, y)
+REC_KEY = "key"             # Tastendruck (key)
+REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch)
+REC_WAIT_COLOR = "wait"     # Warte-Marker: warten bis die Farbe an (x, y) da ist
+
+
+@dataclass
+class RecordEvent:
+    """Ein aufgezeichnetes Ereignis der Sequenz-Aufnahme.
+
+    Rein transient: lebt nur in `AutoClickerState.recording_events` und wird nie
+    gespeichert — `stop_recording()` baut daraus SequenceSteps und wirft die Liste weg.
+    Deshalb steht das hier auch ohne Serialisierer und ohne Default-Tabelle.
+    """
+    kind: str
+    t: float                                    # time.monotonic() beim Auslösen
+    x: int = 0
+    y: int = 0
+    color: Optional[tuple[int, int, int]] = None
+    key: Optional[str] = None                   # nur REC_KEY
+    scroll: int = 0                             # nur REC_SCROLL, Rasterstufen
+
+    def __str__(self) -> str:
+        if self.kind == REC_KEY:
+            return f"Taste '{self.key}'"
+        if self.kind == REC_SCROLL:
+            richtung = "hoch" if self.scroll > 0 else "runter"
+            return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
+        if self.kind == REC_WAIT_COLOR:
+            return f"Warte auf Farbe bei ({self.x}, {self.y})"
+        return f"Klick ({self.x}, {self.y})"
+
+
+# =============================================================================
 # AUTOCLICKER STATE
 # =============================================================================
 @dataclass
@@ -702,10 +741,11 @@ class AutoClickerState:
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
 
-    # Sequenz-Aufnahme (Maus-Hook)
+    # Sequenz-Aufnahme (Maus-Hook + Tastatur-Hook)
     recording_active: bool = False
-    # Pausiert die laufende Aufnahme: Klicks werden ignoriert, ohne die Aufnahme
+    # Pausiert die laufende Aufnahme: Ereignisse werden ignoriert, ohne die Aufnahme
     # zu beenden (z.B. um im Spiel zu navigieren). Toggle via CTRL+ALT+H.
     recording_paused: bool = False
-    # Jeder Eintrag: (monotonic_timestamp: float, x: int, y: int, color: tuple|None)
+    # Liste von RecordEvent. Zugriff unter state.lock - der Maus- und der
+    # Tastatur-Hook schreiben aus der Message-Pump, die Hotkey-Handler lesen.
     recording_events: list = field(default_factory=list)

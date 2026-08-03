@@ -2460,26 +2460,31 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 # Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
 # Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
 from autoclicker.editors.sequence_recorder import punkte_fuer_events as _pfe
+from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
+                                REC_KEY as _R_KEY, REC_SCROLL as _R_SCROLL,
+                                REC_WAIT_COLOR as _R_WAIT)
 
 _st_rec = AutoClickerState()
-_events = [(0.0, 100, 200, (1, 2, 3)), (1.0, 300, 400, None), (2.0, 100, 200, (1, 2, 3))]
+_events = [_RE(_R_CLICK, 0.0, 100, 200, (1, 2, 3)),
+           _RE(_R_CLICK, 1.0, 300, 400, None),
+           _RE(_R_CLICK, 2.0, 100, 200, (1, 2, 3))]
 _map, _neu = _pfe(_st_rec, _events, "Aufnahme")
 check("Recorder legt fuer jede Position einen Punkt an", _neu == 2)
 check("gleiche Position zweimal geklickt -> nur ein Punkt", len(_st_rec.points) == 2)
-check("jede Klick-Position hat eine ID", set(_map) == {(100, 200), (300, 400)})
+check("jedes Ereignis mit Stelle hat eine ID", set(_map) == {0, 1, 2})
 check("beide Klicks auf dieselbe Stelle teilen sich die ID",
-      _map[(100, 200)] == _st_rec.points[0].id)
+      _map[0] == _map[2] == _st_rec.points[0].id)
 
 # Bestehende Punkte gewinnen, statt Dubletten anzulegen
 _st_rec2 = AutoClickerState()
 _st_rec2.points = [_WCP(x=100, y=200, name="schon da", id=42)]
 _map2, _neu2 = _pfe(_st_rec2, _events, "Aufnahme")
 check("bestehender Punkt wird referenziert statt verdoppelt", _neu2 == 1)
-check("und behaelt seine ID", _map2[(100, 200)] == 42)
+check("und behaelt seine ID", _map2[0] == 42)
 
 # Die eigentliche Wirkung: Punkt verschieben -> Schritt zieht nach
 _seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
-    _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[(100, 200)])], 1)])
+    _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)])
 _st_rec2.sequences = {"R": _seq_rec}
 _st_rec2.points[0].x, _st_rec2.points[0].y = 777, 888
 from autoclicker.persistence import resolve_point_references as _rpr
@@ -2523,6 +2528,126 @@ for _pf in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob
 check("kein Klick-Schritt wird ohne point_id gebaut", _ohne_ref == [])
 if _ohne_ref:
     print("        " + ", ".join(_ohne_ref))
+
+
+# --------------------------- Aufnahme: Taste, Mausrad, Warte-Marker
+section("Aufnahme schneidet mehr mit als nur Linksklicks")
+
+from autoclicker.editors.sequence_recorder import (
+    schritte_aus_events as _sae, _anhaengen as _anh, _SCROLL_MERGE_GAP as _SMG,
+    verwirf_letztes as _verwirf)
+
+# Eine Aufnahme, die alle vier Arten enthaelt. Der Warte-Marker sitzt 5s nach dem
+# ersten Klick — das ist die Zeit, die der Nutzer auf das Popup gewartet hat.
+_ev_alle = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
+            _RE(_R_WAIT, 5.0, 30, 40, (9, 9, 9)),
+            _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
+            _RE(_R_KEY, 6.0, key="enter"),
+            _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
+_st_alle = AutoClickerState()
+_map_alle, _neu_alle = _pfe(_st_alle, _ev_alle, "Alles")
+_steps_alle = _sae(_ev_alle, _map_alle)
+
+check("Tastendruck bekommt keinen Punkt", 3 not in _map_alle)
+check("Warte-Marker und Scroll bekommen einen", {0, 1, 2, 4} <= set(_map_alle))
+check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_alle[2] == _map_alle[4])
+
+check("Tastendruck wird ein key_press-Schritt",
+      _steps_alle[3].key_press == "enter" and _steps_alle[3].point_id is None)
+check("Mausrad wird ein scroll-Schritt", _steps_alle[4].scroll == -3)
+check("Scroll behaelt seinen Punkt", _steps_alle[4].point_id == _map_alle[4])
+
+# Der Kern des Warte-Markers
+_ws = _steps_alle[1]
+check("Warte-Marker wird ein reiner Warte-Schritt", _ws.wait_only is True)
+check("Warte-Marker haengt seine Bedingung an einen Punkt",
+      _ws.wait_condition is not None and _ws.wait_condition.point_id == _map_alle[1])
+check("Warte-Marker klickt nichts (kein eigener point_id)", _ws.point_id is None)
+check("Warte-Marker wartet nicht ZUSAETZLICH die verstrichene Zeit ab",
+      _ws.delay_before == 0.0)
+check("der Klick danach misst ab dem Marker, nicht ab dem Klick davor",
+      _steps_alle[2].delay_before == 0.4)
+
+# Die Farbe der Bedingung kommt aus dem Punkt — genau dafuer braucht der Marker einen
+# EIGENEN Punkt, wenn an derselben Stelle eine andere Farbe erwartet wird.
+_pkt_warte = [p for p in _st_alle.points if p.id == _map_alle[1]][0]
+check("der Punkt des Markers traegt die gemerkte Farbe", _pkt_warte.color == (9, 9, 9))
+
+_st_zwei = AutoClickerState()
+_ev_zwei = [_RE(_R_WAIT, 0.0, 30, 40, (9, 9, 9)),
+            _RE(_R_WAIT, 1.0, 30, 40, (1, 1, 1))]
+_map_zwei, _ = _pfe(_st_zwei, _ev_zwei, "Zwei")
+check("gleiche Stelle, andere Farbe -> zwei Punkte", _map_zwei[0] != _map_zwei[1])
+_ev_gleich = [_RE(_R_WAIT, 0.0, 30, 40, (9, 9, 9)),
+              _RE(_R_WAIT, 1.0, 30, 40, (9, 9, 9))]
+_st_gleich = AutoClickerState()
+_map_gleich, _ = _pfe(_st_gleich, _ev_gleich, "Gleich")
+check("gleiche Stelle, gleiche Farbe -> ein Punkt", _map_gleich[0] == _map_gleich[1])
+
+# Mausrad-Zusammenfassung: eine Drehung um 5 Rasten ist EIN Schritt, nicht fuenf.
+_st_scroll = AutoClickerState()
+_st_scroll.recording_active = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    for _k in range(5):
+        _anh(_st_scroll, _RE(_R_SCROLL, _k * (_SMG / 2), 10, 20, None, scroll=-1))
+check("eine Raddrehung wird EIN Ereignis", len(_st_scroll.recording_events) == 1)
+check("und summiert die Rasterstufen", _st_scroll.recording_events[0].scroll == -5)
+
+_st_scroll2 = AutoClickerState()
+_st_scroll2.recording_active = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _anh(_st_scroll2, _RE(_R_SCROLL, 0.0, 10, 20, None, scroll=-1))
+    _anh(_st_scroll2, _RE(_R_SCROLL, _SMG * 3, 10, 20, None, scroll=-1))
+check("zwei getrennte Drehungen bleiben zwei Ereignisse",
+      len(_st_scroll2.recording_events) == 2)
+
+# Pausiert wird nichts aufgezeichnet — das galt fuer Klicks und muss fuer alles gelten
+_st_pause = AutoClickerState()
+_st_pause.recording_active = True
+_st_pause.recording_paused = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _angenommen = _anh(_st_pause, _RE(_R_KEY, 0.0, key="a"))
+check("pausierte Aufnahme nimmt auch Tasten nicht an",
+      _angenommen is False and _st_pause.recording_events == [])
+
+# Zuruecknehmen
+_st_undo = AutoClickerState()
+_st_undo.recording_active = True
+_st_undo.recording_events = [_RE(_R_CLICK, 0.0, 1, 2), _RE(_R_KEY, 1.0, key="x")]
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _verwirf(_st_undo)
+check("Zuruecknehmen entfernt genau das letzte Ereignis",
+      len(_st_undo.recording_events) == 1
+      and _st_undo.recording_events[0].kind == _R_CLICK)
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _verwirf(_st_undo)
+    _verwirf(_st_undo)          # eins zu viel darf nicht knallen
+check("Zuruecknehmen auf leerer Aufnahme bleibt still stehen",
+      _st_undo.recording_events == [])
+
+# CTRL+ALT+U trifft waehrend der Aufnahme die Aufnahme, sonst die Punkte
+from autoclicker.handlers import handle_undo as _hu
+_st_ctx = AutoClickerState()
+_st_ctx.points = [_WCP(x=1, y=2, name="P1", id=1)]
+_st_ctx.recording_active = True
+_st_ctx.recording_events = [_RE(_R_CLICK, 0.0, 5, 6)]
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _hu(_st_ctx)
+check("waehrend der Aufnahme nimmt CTRL+ALT+U das Ereignis zurueck",
+      _st_ctx.recording_events == [] and len(_st_ctx.points) == 1)
+
+# Die Umkehrung im Editor: 'colorgone' dreht einen Warte-Marker, statt eine
+# LIVE-Farbe an der Mausposition abzugreifen (die Maus steht beim Editieren woanders).
+from autoclicker.editors.sequence_editor.steps import _PhaseEditor as _SE_cls
+_marker = _SS(delay_before=0.0, wait_only=True,
+              wait_condition=_WC(point_id=_map_alle[1]))
+_drehen = _SE_cls.__dict__["_apply_trigger"]
+check("colorgone dreht die Richtung des Markers um",
+      _drehen(None, _marker, "gone") is True
+      and _marker.wait_condition.until_gone is True)
+check("und laesst den gemerkten Punkt in Ruhe",
+      _marker.wait_condition.point_id == _map_alle[1])
+check("der Marker bleibt ein reiner Warte-Schritt", _marker.wait_only is True)
 
 # Altbestand: Aufnahmen von VOR dem Fix stehen schon auf Schema 2 und wurden von der
 # Kette nie angefasst. Der Migrationsschritt v2->v3 holt sie einmal nach — von selbst

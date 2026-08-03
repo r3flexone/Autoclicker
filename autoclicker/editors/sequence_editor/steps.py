@@ -862,6 +862,12 @@ class _PhaseEditor:
             step.wait_condition = None
             return True
         until_gone = (mode == "gone")
+        if step.wait_condition is not None and step.wait_condition.point_id is not None:
+            # Schon eine Bedingung da (z.B. ein Warte-Marker aus der Aufnahme): nur die
+            # Richtung drehen. Sonst griffe der Zweig unten eine LIVE-Farbe an der
+            # Mausposition ab und ueberschriebe damit genau das, was gemerkt wurde.
+            step.wait_condition.until_gone = until_gone
+            return True
         if step.recorded_color:
             # Der Schritt prüft seinen EIGENEN Klickpunkt - also dieselbe Referenz, kein
             # zweiter Punkt. Genau der Fall, den das alte "Prüf-Pixel zieht mit" per
@@ -894,7 +900,10 @@ class _PhaseEditor:
             return
         if not self._apply_trigger(step, "gone" if until_gone else "pixel"):
             return
-        step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        if step.point_id is not None:
+            step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        # Ohne point_id gibt es nichts zu klicken — ein Warte-Marker aus der Aufnahme
+        # bleibt reines Warten. `wait_only = False` haette ihn auf (0, 0) zeigen lassen.
         gone_str = "bis Farbe WEG" if until_gone else "auf Farbe"
         print(f"  + Schritt umgebaut: warte {gone_str} → {step}")
 

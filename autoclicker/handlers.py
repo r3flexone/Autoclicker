@@ -104,7 +104,19 @@ def handle_record(state: AutoClickerState) -> None:
 
 
 def handle_undo(state: AutoClickerState) -> None:
-    """Entfernt den letzten Punkt."""
+    """Entfernt den letzten Punkt — während einer Aufnahme das letzte Ereignis.
+
+    Derselbe Hotkey, dieselbe Bedeutung ("das eben war nichts"), nur der Gegenstand
+    hängt am Zustand. Ein eigener Buchstabe wäre die Alternative gewesen; es sind aber
+    nur noch vier frei, und ein zweites "Rückgängig" daneben liest sich falsch.
+    """
+    with state.lock:
+        recording = state.recording_active
+    if recording:
+        from .editors.sequence_recorder import verwirf_letztes
+        verwirf_letztes(state)
+        return
+
     with state.lock:
         removed = state.points.pop() if state.points else None
 
@@ -748,6 +760,12 @@ def handle_record_pause(state: AutoClickerState) -> None:
     _pause(state)
 
 
+def handle_record_color(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme einen Warte-Marker an der Mausposition."""
+    from .editors.sequence_recorder import merke_farbe
+    merke_farbe(state)
+
+
 def handle_node_editor(state: AutoClickerState) -> None:
     """Öffnet den visuellen Node-Editor als separaten Subprocess.
 
@@ -804,13 +822,15 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     """Beendet das Programm."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
 
-    # Falls noch eine Aufnahme läuft, den Maus-Hook sauber entfernen.
+    # Falls noch eine Aufnahme läuft, BEIDE Hooks sauber entfernen — ein liegen
+    # gebliebener Tastatur-Hook haengt sonst systemweit an jedem Tastendruck.
     with state.lock:
         was_recording = state.recording_active
         state.recording_active = False
     if was_recording:
-        from .winapi import remove_mouse_hook
+        from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()
+        remove_keyboard_hook()
 
     state.stop_event.set()
     state.quit_event.set()

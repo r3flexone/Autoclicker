@@ -28,7 +28,7 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP,
+    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
 from autoclicker.persistence import (
@@ -47,6 +47,7 @@ from autoclicker.handlers import (
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
     handle_import_export, handle_record_sequence, handle_record_pause,
+    handle_record_color,
     handle_node_editor, handle_scan_studio
 )
 
@@ -80,9 +81,10 @@ def print_help(mit_anleitung: bool = True) -> None:
     # Aufnahme (grün)
     print(col("Aufnahme:", 'green'))
     print(f"  {col('CTRL+ALT+A', 'yellow')}  Mausposition als Punkt speichern")
-    print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen")
+    print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen {hint('(während einer Aufnahme: letztes Ereignis)')}")
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
-    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klicks aufzeichnen → Sequenz erstellen)')}")
+    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klick/Taste/Mausrad → Sequenz erstellen)')}")
+    print(f"  {col('CTRL+ALT+M', 'yellow')}  Aufnahme: auf Farbe warten {hint('(Maus über die Stelle, sobald sie da ist)')}")
     print(f"  {col('CTRL+ALT+H', 'yellow')}  Aufnahme pausieren/fortsetzen {hint('(während einer Aufnahme)')}")
     print()
 
@@ -272,6 +274,7 @@ def main() -> int:
         HOTKEY_IMPORT_EXPORT: handle_import_export,
         HOTKEY_RECORD_SEQ: handle_record_sequence,
         HOTKEY_RECORD_PAUSE: handle_record_pause,
+        HOTKEY_RECORD_COLOR: handle_record_color,
         HOTKEY_NODE_EDITOR: handle_node_editor,
         HOTKEY_SCAN_STUDIO: handle_scan_studio,
         HOTKEY_HELP: lambda _state: print_help(),
