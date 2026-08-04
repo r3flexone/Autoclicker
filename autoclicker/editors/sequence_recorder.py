@@ -25,6 +25,7 @@ from ..winapi import (
 from ..utils import safe_input, col, ok, err, warn, is_cancel, hint, describe_color
 from ..persistence.sequences import (
     save_sequence_file, ensure_sequences_dir, save_points, get_next_point_id,
+    resolve_point_references,
 )
 from ..utils import sanitize_filename
 from ..config import SEQUENCES_DIR
@@ -402,6 +403,11 @@ def stop_recording(state: AutoClickerState) -> None:
 
     if save_sequence_file(seq, filepath):
         with state.lock:
+            # Die frisch gebauten Schritte tragen nur Referenzen; Prüf-Pixel und Farbe
+            # der Warte-Bedingung sind noch leer. Der Worker löst zwar vor jedem Lauf
+            # selbst auf — wer aber direkt nach der Aufnahme in den Editor geht, sähe
+            # sonst "(0,0)" statt der Stelle, auf die gewartet wird.
+            resolve_point_references(state, seq)
             state.sequences[seq_name] = seq
             state.active_sequence = seq
 

@@ -2596,6 +2596,22 @@ check("echte Aufnahme: geprueft wird die Klick-Stelle",
       _steps_echt[1].wait_condition.point_id == _steps_echt[1].point_id)
 check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_st_echt.points) == 2)
 
+# Frisch gebaute Schritte tragen NUR Referenzen — Pruef-Pixel und Farbe sind leer, bis
+# aufgeloest wird. Der Worker macht das vor jedem Lauf; wer direkt nach der Aufnahme in
+# den Editor geht, saehe sonst "(0,0)" statt der Stelle, auf die gewartet wird.
+from autoclicker.models import Sequence as _SEQ3, LoopPhase as _LP3
+from autoclicker.persistence import resolve_point_references as _rpr3
+check("vor dem Aufloesen ist der Pruef-Pixel noch leer",
+      _steps_echt[1].wait_condition.pixel == (0, 0))
+_seq_frisch = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_echt, repeat=1)])
+_st_echt.sequences = {"F": _seq_frisch}
+_rpr3(_st_echt, _seq_frisch)
+_sf = _seq_frisch.loop_phases[0].steps[1]
+check("nach dem Aufloesen zeigt die Bedingung auf die Klick-Stelle",
+      _sf.wait_condition.pixel == (_sf.x, _sf.y) == (4764, 29))
+check("und traegt die beim Klick erfasste Farbe",
+      _sf.wait_condition.color == (179, 57, 57))
+
 # Ein Marker ohne folgenden Klick kann nichts: er wird verworfen statt zu verschwinden
 _g1, _v1 = _mpr([_RE(_R_CLICK, 0.0, 1, 2), _RE(_R_WAIT, 1.0)])
 check("Marker am Ende wird verworfen", _v1 == 1 and len(_g1) == 1)
