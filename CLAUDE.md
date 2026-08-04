@@ -117,15 +117,18 @@ Editor-Code überhaupt Tests zu bekommen: was nur `safe_input` braucht, lässt s
 einer Tastenfolge füttern — `mehrfach_auswahl` hat so 24 Tests, wo vorher keiner war.
 
 ### Referenzen statt Kopien
-Zwei Stellen, an denen früher eine Kopie lag und deshalb still veraltete. Beide folgen
-jetzt demselben Muster: **der globale Eintrag ist die Wahrheit, aufgelöst beim Start und
-vor jedem Sequenzlauf.**
+Überall dort, wo früher eine Kopie lag und deshalb still veraltete, gilt jetzt dasselbe
+Muster: **der globale Eintrag ist die Wahrheit, aufgelöst beim Start und vor jedem
+Sequenzlauf.**
 
 | wer verweist | worauf | Feld in der Datei | auflösen |
 |---|---|---|---|
 | `SequenceStep` | `points.json` | `point_id` | `aufloesen()` / `resolve_point_references()` |
 | `WaitCondition` | `points.json` | `wait_point_id` | dito |
 | `ElseConfig` | `points.json` | `else_point_id` | dito |
+| `ItemProfile` | `points.json` | `confirm_point_id` | `resolve_klick_referenzen()` |
+| `BossProfile` | `points.json` | `action_point_id` | dito |
+| `IconScanConfig` | `points.json` | `action_point_id` | dito |
 | `ItemScanConfig` | `slots.json`, `items.json` | `slot_names`, `item_names` | `resolve_scan_references()` |
 
 Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
@@ -136,6 +139,20 @@ drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `ste
 `step.name`, `step.recorded_color`, `wait_condition.pixel/color` und `else_config.x/y/name`
 sind **abgeleitete Arbeitswerte** — im Speicher gefüllt, in der Datei nicht vorhanden.
 Dasselbe Muster wie `ItemScanConfig.slots`, nur konsequenter.
+
+Dieselbe Regel gilt außerhalb der Sequenzen: `ItemProfile.confirm_point`,
+`BossProfile.action_x/y` und `IconScanConfig.action_x/y` sind ebenfalls abgeleitet.
+`resolve_klick_referenzen()` (in `persistence/item_scans.py`) füllt sie und läuft in
+`main.py` **nach** dem Laden aller Scans — `load_all_item_scans()` sieht die Boss- und
+Icon-Scans an seiner Stelle noch gar nicht, deren Klicks stünden sonst bis zum ersten
+Sequenzlauf auf (0, 0).
+
+Für diese drei gibt es **bewusst keine Migration**: die alten Koordinaten ließen sich
+zwar in Punkte heben, aber der Weg dorthin — die Punkte-Liste durch jeden Item-, Boss-
+und Icon-Loader reichen — kostet mehr, als das Feld einmal neu zu setzen. Der Loader
+meldet ein Altfeld stattdessen einmal pro Fundstelle (`_alt_gemeldet` in
+`serialization.py`) und nennt den Editor, in dem es neu gesetzt wird. Still verschwinden
+darf es nicht.
 
 Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an einer der
 beiden falsch sein kann. Wer die Sequenzdatei liest, sah dann etwas anderes als das, was
@@ -254,6 +271,12 @@ und sobald keine Altbestände mehr existieren, wird der Schritt bzw. Normalisier
 **ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das Modul soll schrumpfen,
 nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
 
+Genau das ist mit `_norm_items` passiert (steht heute als `_norm_noop`): es hob
+`confirm_point` von `[x, y]` auf `{x, y}` — ein Feld, das der Loader seit der Umstellung
+auf `confirm_point_id` gar nicht mehr liest. Einen Normalisierer zu pflegen, der ein
+totes Feld in ein anderes totes Format bringt, ist das Anwachsen, das hier vermieden
+werden soll.
+
 Regeln beim Format-Ändern:
 1. Versioniert: `SCHEMA_VERSION` hochzählen, Schritt in `_CHAINS` eintragen.
    Unversioniert: Normalisierer in `_NORMALIZER` erweitern — muss idempotent bleiben.
@@ -367,7 +390,7 @@ wird.)
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
-- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages.
+- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
 **Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: der
@@ -407,6 +430,55 @@ Regel beim Erweitern: **wer eine else-Aktion auslöst, gibt `GATE_SKIP` zurück*
 Letztes tun und danach nichts mehr ausführen (Item-/Boss-/Icon-Scan), dürfen weiterhin
 `return execute_else_action(...)` — dort gibt es keine nachgelagerte eigene Aktion, die
 irrtümlich noch feuern könnte.
+
+### Sequenz-Aufnahme (`editors/sequence_recorder.py`)
+Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck, Mausrad** und
+per `CTRL+ALT+M` ein **Warte-Marker auf eine Farbe**. Jedes Ereignis ist ein
+`RecordEvent` (`models.py`, `REC_*`) — rein transient, wird nie gespeichert;
+`stop_recording()` baut daraus Schritte und wirft die Liste weg.
+
+**Alles muss mit EINEM globalen Tastendruck gehen.** Während der Aufnahme steht der
+Nutzer im Spiel, nicht in der Konsole — ein blockierender Prompt käme nie an. Nachfragen
+sind erst beim Stoppen möglich, und dort passieren sie auch (Name, Zyklen, Beschreibung).
+
+Drei Regeln, an denen die Aufnahme hängt:
+
+- **Der Warte-Marker wird gesetzt, BEVOR das Erwartete da ist** („ab hier warte ich").
+  Die Zeit *bis* zum Marker bleibt echte Wartezeit, die Zeit *danach* fällt weg — sie
+  ist genau das Warten, das die Farb-Bedingung ersetzt. Bliebe sie stehen, würde die
+  Sequenz erst auf die Farbe warten UND danach nochmal die volle Zeit schlafen.
+- **Die Farbe wird deshalb nachgelesen**, nicht beim Drücken (`farben_nachlesen()`):
+  beim Drücken liegt dort ja noch der Hintergrund, und darauf zu warten wäre ab der
+  ersten Sekunde erfüllt. Gelesen wird beim nächsten Ereignis, notfalls beim Stoppen.
+  Willkommener Nebeneffekt: die Maus hängt dann meist nicht mehr über der Stelle, ein
+  Hover-Effekt des Spiels landet also nicht in der Bedingung — beim Abspielen steht der
+  Zeiger dort auch nicht.
+- **Wartet der Marker auf DIE Stelle, die als nächstes geklickt wird, ist das EIN
+  Schritt** (Trigger + Klick), genau wie `color <Nr>` im Editor ihn baut. Zusammengelegt
+  wird nur bei **demselben Punkt**, nie bei „ungefähr derselben Stelle" — ein paar Pixel
+  Unterschied sind ein anderer Punkt, und den stillschweigend zu verschieben wäre die
+  Ungenauigkeit, welche die Punkt-Referenzen abgeschafft haben.
+
+`CTRL+ALT+U` nimmt während der Aufnahme das letzte Ereignis zurück, sonst den letzten
+Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: von
+den 26 sind nur noch D/R/Y frei.
+
+Der **Tastatur-Hook** meldet nichts bei gedrücktem CTRL oder ALT (dort liegen die
+Hotkeys — sonst stünde ein `j` in der Sequenz, sobald man mit `CTRL+ALT+J` stoppt),
+nichts, was `send_key()` nicht abspielen kann, und keine Wiederholung einer
+festgehaltenen Taste. Er ist die Kür: schlägt er fehl, läuft die Aufnahme ohne ihn
+weiter — eine Aufnahme ohne Klicks wäre dagegen sinnlos. Beide Hooks werden auch beim
+Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weiter.
+
+**Rechtsklick wird bewusst nicht aufgezeichnet**: der Autoclicker kann gar keinen
+ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es gibt kein Modellfeld
+und keinen Editor-Befehl). Ihn mitzuschneiden hieße, etwas aufzunehmen, das beim
+Abspielen zum Linksklick wird. Wer ihn nachrüstet, braucht die ganze Kette:
+`winapi` → Modellfeld → `safe_click` → Serializer-Default → Editor-Anzeige.
+
+Der Hook liefert beim Mausrad die **rohe** Windows-Distanz, nicht schon Rasterstufen:
+hochauflösende Räder senden Bruchteile, und einzeln abgerundet ergäben die null. Der
+Recorder summiert erst (eine Drehung = ein Ereignis, `_SCROLL_MERGE_GAP`) und teilt dann.
 
 ### Boss-Scan vs. Boss-Watcher
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.
@@ -505,7 +577,7 @@ Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/te
 
 | Modul | was |
 |---|---|
-| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie** |
+| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks |
 | `imaging.py` | Screenshot über GDI BitBlt |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |
