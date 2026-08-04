@@ -614,7 +614,10 @@ class IconScanConfig:
 REC_CLICK = "click"         # Linksklick an (x, y)
 REC_KEY = "key"             # Tastendruck (key)
 REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch)
-REC_WAIT_COLOR = "wait"     # Warte-Marker: warten bis die Farbe an (x, y) da ist
+# Warte-Marker: "ab hier warte ich". Hat BEWUSST keine eigene Stelle — beim Drücken
+# parkt die Maus irgendwo, und diese Stelle waere Zufall. Er haengt sich an den
+# naechsten Klick und laesst DEN auf seine eigene Farbe warten.
+REC_WAIT_COLOR = "wait"
 
 
 @dataclass
@@ -640,7 +643,7 @@ class RecordEvent:
             richtung = "hoch" if self.scroll > 0 else "runter"
             return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
-            return f"Warte auf Farbe bei ({self.x}, {self.y})"
+            return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
         return f"Klick ({self.x}, {self.y})"
 
 

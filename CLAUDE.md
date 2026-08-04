@@ -443,21 +443,24 @@ sind erst beim Stoppen möglich, und dort passieren sie auch (Name, Zyklen, Besc
 
 Drei Regeln, an denen die Aufnahme hängt:
 
-- **Der Warte-Marker wird gesetzt, BEVOR das Erwartete da ist** („ab hier warte ich").
-  Die Zeit *bis* zum Marker bleibt echte Wartezeit, die Zeit *danach* fällt weg — sie
-  ist genau das Warten, das die Farb-Bedingung ersetzt. Bliebe sie stehen, würde die
-  Sequenz erst auf die Farbe warten UND danach nochmal die volle Zeit schlafen.
-- **Die Farbe wird deshalb nachgelesen**, nicht beim Drücken (`farben_nachlesen()`):
-  beim Drücken liegt dort ja noch der Hintergrund, und darauf zu warten wäre ab der
-  ersten Sekunde erfüllt. Gelesen wird beim nächsten Ereignis, notfalls beim Stoppen.
-  Willkommener Nebeneffekt: die Maus hängt dann meist nicht mehr über der Stelle, ein
-  Hover-Effekt des Spiels landet also nicht in der Bedingung — beim Abspielen steht der
-  Zeiger dort auch nicht.
-- **Wartet der Marker auf DIE Stelle, die als nächstes geklickt wird, ist das EIN
-  Schritt** (Trigger + Klick), genau wie `color <Nr>` im Editor ihn baut. Zusammengelegt
-  wird nur bei **demselben Punkt**, nie bei „ungefähr derselben Stelle" — ein paar Pixel
-  Unterschied sind ein anderer Punkt, und den stillschweigend zu verschieben wäre die
-  Ungenauigkeit, welche die Punkt-Referenzen abgeschafft haben.
+- **Der Warte-Marker hat keine eigene Stelle.** Er wird gedrückt, sobald man anfängt zu
+  warten — die Maus parkt dabei irgendwo, und diese Position wäre reiner Zufall. Ein
+  erster Entwurf legte darauf einen Punkt an; in einer echten Aufnahme stand da dann
+  `Warte auf Farbe bei (4483, 1038) Schwarz (3,4,5)`, also Müll in `points.json`.
+- **Gewartet wird auf die Farbe DES Klicks, der folgt.** Der Marker hängt sich an ihn
+  und macht daraus einen Schritt: „warte auf die Farbe dieser Stelle, dann klicke sie" —
+  ein Punkt, zweimal referenziert (`point_id` + `wait_point_id`), exakt das, was
+  `color <Nr>` im Editor baut. Die beim Klick erfasste Farbe ist die richtige: geklickt
+  wird ja erst, wenn das Erwartete zu sehen ist. Folgt dem Marker kein Klick (sondern
+  eine Taste oder gar nichts), wird er verworfen und gemeldet — `marker_pruefen()`.
+- **Der Marker hält nur die Uhr an.** Die Zeit *bis* zu seinem Drücken bleibt echte
+  Wartezeit, die Zeit *danach* fällt weg — sie ist genau das Warten, das die Bedingung
+  ersetzt. Bliebe sie stehen, würde die Sequenz erst auf die Farbe warten UND danach
+  nochmal die volle Zeit schlafen (in der echten Aufnahme: 434 s).
+
+Warten an einer **anderen** Stelle als der geklickten kann die Aufnahme bewusst nicht —
+dafür gibt es `wait <Punkt-Nr> color` im Editor. Der Marker wäre sonst wieder auf eine
+Position angewiesen, die beim Drücken niemand bewusst wählt.
 
 `CTRL+ALT+U` nimmt während der Aufnahme das letzte Ereignis zurück, sonst den letzten
 Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: von

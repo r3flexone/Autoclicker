@@ -2535,13 +2535,13 @@ section("Aufnahme schneidet mehr mit als nur Linksklicks")
 
 from autoclicker.editors.sequence_recorder import (
     schritte_aus_events as _sae, _anhaengen as _anh, _SCROLL_MERGE_GAP as _SMG,
-    verwirf_letztes as _verwirf, farben_nachlesen as _fnl)
+    verwirf_letztes as _verwirf, marker_pruefen as _mpr)
 
 # Eine Aufnahme, die alle vier Arten enthaelt. Der Marker wird 2s nach dem ersten
 # Klick gedrueckt (bis dahin lief normal etwas ab — das bleibt Wartezeit), und erst
-# 3.4s SPAETER kommt der naechste Klick: das ist das Warten auf die Farbe.
+# 3.4s SPAETER kommt der Klick: das ist das Warten auf die Farbe.
 _ev_alle = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
-            _RE(_R_WAIT, 2.0, 30, 40, (9, 9, 9)),
+            _RE(_R_WAIT, 2.0),
             _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
             _RE(_R_KEY, 6.0, key="enter"),
             _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
@@ -2550,146 +2550,63 @@ _map_alle, _neu_alle = _pfe(_st_alle, _ev_alle, "Alles")
 _steps_alle = _sae(_ev_alle, _map_alle)
 
 check("Tastendruck bekommt keinen Punkt", 3 not in _map_alle)
-check("Warte-Marker und Scroll bekommen einen", {0, 1, 2, 4} <= set(_map_alle))
+# DAS war der Fehler aus der echten Aufnahme: der Marker legte einen Punkt an der
+# zufaelligen Mausposition an — Muell in points.json, mit einer Farbe von irgendwo.
+check("Warte-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_alle)
+check("nur Klick und Scroll bekommen einen", set(_map_alle) == {0, 2, 4})
 check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_alle[2] == _map_alle[4])
+check("kein Punkt ohne echte Stelle", len(_st_alle.points) == 2)
 
 check("Tastendruck wird ein key_press-Schritt",
-      _steps_alle[3].key_press == "enter" and _steps_alle[3].point_id is None)
-check("Mausrad wird ein scroll-Schritt", _steps_alle[4].scroll == -3)
-check("Scroll behaelt seinen Punkt", _steps_alle[4].point_id == _map_alle[4])
+      _steps_alle[2].key_press == "enter" and _steps_alle[2].point_id is None)
+check("Mausrad wird ein scroll-Schritt", _steps_alle[3].scroll == -3)
 
-# Der Kern des Warte-Markers
+# Der Kern: der Marker ist KEIN eigener Schritt, sondern eine Bedingung am naechsten
+check("Marker wird kein eigener Schritt", len(_steps_alle) == 4)
 _ws = _steps_alle[1]
-check("Warte-Marker wird ein reiner Warte-Schritt", _ws.wait_only is True)
-check("Warte-Marker haengt seine Bedingung an einen Punkt",
-      _ws.wait_condition is not None and _ws.wait_condition.point_id == _map_alle[1])
-check("Warte-Marker klickt nichts (kein eigener point_id)", _ws.point_id is None)
-# Die Zeit BIS zum Marker ist echte Wartezeit (bis dahin lief normal etwas ab) ...
-check("Warte-Marker behaelt die Zeit bis zu seinem Druecken", _ws.delay_before == 2.0)
-# ... die Zeit DANACH ist das Warten, das die Bedingung ersetzt. Bliebe sie stehen,
-# wuerde die Sequenz erst auf die Farbe warten UND danach nochmal 3.4s schlafen.
-check("der Schritt nach dem Marker schlaeft die Wartezeit nicht nochmal ab",
-      _steps_alle[2].delay_before == 0.0)
+check("der Klick danach traegt die Bedingung", _ws.wait_condition is not None)
+check("und prueft SEINE EIGENE Stelle (ein Punkt, zweimal referenziert)",
+      _ws.wait_condition.point_id == _ws.point_id == _map_alle[2])
+check("er klickt weiterhin", _ws.wait_only is False)
+# Die Zeit bis zum Marker (2.0 - 0.0) bleibt; die 3.4s danach sind das Warten.
+check("die Uhr wird beim Marker angehalten", _ws.delay_before == 2.0)
 check("spaetere Schritte messen wieder normal",
-      _steps_alle[3].delay_before == 0.6 and _steps_alle[4].delay_before == 0.5)
+      _steps_alle[2].delay_before == 0.6 and _steps_alle[3].delay_before == 0.5)
 
-# Die Farbe der Bedingung kommt aus dem Punkt — genau dafuer braucht der Marker einen
-# EIGENEN Punkt, wenn an derselben Stelle eine andere Farbe erwartet wird.
-_pkt_warte = [p for p in _st_alle.points if p.id == _map_alle[1]][0]
-check("der Punkt des Markers traegt die gemerkte Farbe", _pkt_warte.color == (9, 9, 9))
+# Die Wartefarbe ist die des Klicks — richtig, weil man erst klickt, wenn es da ist
+_pkt_klick = [p for p in _st_alle.points if p.id == _map_alle[2]][0]
+check("gewartet wird auf die Farbe, die der Klick vorfand", _pkt_klick.color == (7, 7, 7))
 
-_st_zwei = AutoClickerState()
-_ev_zwei = [_RE(_R_WAIT, 0.0, 30, 40, (9, 9, 9)),
-            _RE(_R_WAIT, 1.0, 30, 40, (1, 1, 1))]
-_map_zwei, _ = _pfe(_st_zwei, _ev_zwei, "Zwei")
-check("gleiche Stelle, andere Farbe -> zwei Punkte", _map_zwei[0] != _map_zwei[1])
-_ev_gleich = [_RE(_R_WAIT, 0.0, 30, 40, (9, 9, 9)),
-              _RE(_R_WAIT, 1.0, 30, 40, (9, 9, 9))]
-_st_gleich = AutoClickerState()
-_map_gleich, _ = _pfe(_st_gleich, _ev_gleich, "Gleich")
-check("gleiche Stelle, gleiche Farbe -> ein Punkt", _map_gleich[0] == _map_gleich[1])
-
-# Der haeufigste Fall: man wartet auf die Farbe DER Stelle, die man dann klickt
-# ("klick, klick, warte bis Punkt 3 rot wird, klick Punkt 3"). Das ist EIN Schritt —
-# genau das, was der Editor mit 'color <Nr>' baut. Zwei Schritte daraus zu machen
-# waere zwar gleichwertig, saehe aber anders aus als die Handarbeit.
-_ev_zusammen = [_RE(_R_CLICK, 0.0, 10, 10, (5, 5, 5)),
-                _RE(_R_CLICK, 1.0, 20, 20, (6, 6, 6)),
-                _RE(_R_WAIT, 2.0, 30, 30, (200, 30, 30)),
-                _RE(_R_CLICK, 9.0, 30, 30, (200, 30, 30))]
-_st_zus = AutoClickerState()
-_map_zus, _ = _pfe(_st_zus, _ev_zusammen, "Z")
-_steps_zus = _sae(_ev_zusammen, _map_zus)
-check("Marker auf der Klick-Stelle wird EIN Schritt", len(_steps_zus) == 3)
-check("Marker und Klick teilen sich einen Punkt", len(_st_zus.points) == 3)
-_z = _steps_zus[2]
-check("der zusammengelegte Schritt klickt", _z.wait_only is False and _z.point_id is not None)
-check("und prueft VORHER dieselbe Stelle",
-      _z.wait_condition is not None and _z.wait_condition.point_id == _z.point_id)
-# Marker bei t=2.0, davor der Klick bei t=1.0 -> 1.0s echte Wartezeit. Die 7s
-# zwischen Marker und Klick (t=9.0) sind das Warten und tauchen NICHT als Zeit auf.
-check("die Wartezeit bis zum Marker bleibt am Schritt", _z.delay_before == 1.0)
-
-# Zeigt der Marker WOANDERS hin (Ladebalken beobachten, anderswo klicken), bleibt er
-# ein eigener Schritt — dort sind es ja wirklich zwei Stellen.
-_ev_getrennt = [_RE(_R_CLICK, 0.0, 10, 10, (5, 5, 5)),
-                _RE(_R_WAIT, 2.0, 30, 30, (200, 30, 30)),
-                _RE(_R_CLICK, 9.0, 77, 88, (1, 1, 1))]
-_st_getr = AutoClickerState()
-_map_getr, _ = _pfe(_st_getr, _ev_getrennt, "G")
-_steps_getr = _sae(_ev_getrennt, _map_getr)
-check("Marker auf anderer Stelle bleibt ein eigener Schritt", len(_steps_getr) == 3)
-check("und klickt weiterhin nichts", _steps_getr[1].wait_only is True)
-check("der Klick danach zeigt auf SEINE Stelle, nicht auf die des Markers",
-      _steps_getr[2].point_id != _steps_getr[1].wait_condition.point_id)
-
-# Ein paar Pixel daneben ist ein anderer Punkt — und wird NICHT stillschweigend
-# zusammengezogen. Genau diese Ungenauigkeit haben die Punkt-Referenzen abgeschafft.
-_ev_daneben = [_RE(_R_WAIT, 0.0, 30, 30, (200, 30, 30)),
-               _RE(_R_CLICK, 5.0, 33, 28, (200, 30, 30))]
-_st_dan = AutoClickerState()
-_map_dan, _ = _pfe(_st_dan, _ev_daneben, "D")
-check("3 px daneben wird nicht zusammengelegt", len(_sae(_ev_daneben, _map_dan)) == 2)
-
-# Und der zusammengelegte Schritt speichert NUR Referenzen — keine Koordinate doppelt
-_d_zus = _s2d(_z)
-check("zusammengelegt: in der Datei stehen nur die zwei Referenzen",
-      _d_zus.get("point_id") == _d_zus.get("wait_point_id") == _z.point_id
+# In der Datei stehen nur zwei Referenzen auf denselben Punkt, keine Koordinate
+_d_zus = _s2d(_ws)
+check("in der Datei stehen nur die zwei Referenzen",
+      _d_zus.get("point_id") == _d_zus.get("wait_point_id") == _ws.point_id
       and not {"x", "y", "pixel", "color"} & set(_d_zus))
 
-# Die Farbe wird NACHGELESEN, nicht beim Druecken erfasst. Beim Druecken liegt an der
-# Stelle ja noch der Hintergrund — auf den zu warten waere ab der ersten Sekunde erfuellt.
-import autoclicker.editors.sequence_recorder as _rec_mod
-_gelesen = []
-_echt_pixel = _rec_mod.get_screen_pixel
+# Der Marker haengt an dem Klick, der ihm folgt — auch wenn dazwischen Zeit vergeht
+_ev_echt = [_RE(_R_CLICK, 0.0, 4464, 1357, (32, 135, 111)),
+            _RE(_R_WAIT, 1.0),
+            _RE(_R_CLICK, 435.34, 4764, 29, (179, 57, 57))]
+_st_echt = AutoClickerState()
+_map_echt, _ = _pfe(_st_echt, _ev_echt, "Echt")
+_steps_echt = _sae(_ev_echt, _map_echt)
+check("echte Aufnahme: 434s Warten werden zur Bedingung, nicht zur Schlafzeit",
+      _steps_echt[1].delay_before == 1.0)
+check("echte Aufnahme: geprueft wird die Klick-Stelle",
+      _steps_echt[1].wait_condition.point_id == _steps_echt[1].point_id)
+check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_st_echt.points) == 2)
 
-
-def _pixel_stub(x, y):
-    _gelesen.append((x, y))
-    return (42, 43, 44)          # das, was NACH dem Warten dort steht
-
-
-_rec_mod.get_screen_pixel = _pixel_stub
-try:
-    _st_spaet = AutoClickerState()
-    _st_spaet.recording_active = True
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _anh(_st_spaet, _RE(_R_WAIT, 0.0, 30, 40))       # Marker: noch ohne Farbe
-    check("beim Druecken wird KEINE Farbe gelesen",
-          _gelesen == [] and _st_spaet.recording_events[0].color is None)
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _anh(_st_spaet, _RE(_R_CLICK, 3.0, 50, 60, (7, 7, 7)))
-    check("das naechste Ereignis liest die Farbe an der MARKER-Stelle nach",
-          _gelesen == [(30, 40)])
-    check("und traegt sie in den Marker ein",
-          _st_spaet.recording_events[0].color == (42, 43, 44))
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _anh(_st_spaet, _RE(_R_CLICK, 4.0, 70, 80, (1, 1, 1)))
-    check("ein fertiger Marker wird nicht nochmal nachgelesen", _gelesen == [(30, 40)])
-
-    # Marker als LETZTES Ereignis: das Nachlesen beim Stoppen ist die letzte Gelegenheit
-    _st_ende = AutoClickerState()
-    _st_ende.recording_active = True
-    _st_ende.recording_events = [_RE(_R_WAIT, 0.0, 11, 22)]
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _fnl(_st_ende)
-    check("ein Marker am Ende bekommt seine Farbe beim Stoppen",
-          _st_ende.recording_events[0].color == (42, 43, 44))
-finally:
-    _rec_mod.get_screen_pixel = _echt_pixel
-
-# Bleibt der Pixel unlesbar, ist der Marker wertlos — er wuerde auf Schwarz warten.
-_rec_mod.get_screen_pixel = lambda x, y: None
-try:
-    _st_blind = AutoClickerState()
-    _st_blind.recording_active = True
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _anh(_st_blind, _RE(_R_WAIT, 0.0, 30, 40))
-        _anh(_st_blind, _RE(_R_CLICK, 1.0, 50, 60, (7, 7, 7)))
-    check("unlesbarer Pixel laesst den Marker farblos",
-          _st_blind.recording_events[0].color is None)
-finally:
-    _rec_mod.get_screen_pixel = _echt_pixel
+# Ein Marker ohne folgenden Klick kann nichts: er wird verworfen statt zu verschwinden
+_g1, _v1 = _mpr([_RE(_R_CLICK, 0.0, 1, 2), _RE(_R_WAIT, 1.0)])
+check("Marker am Ende wird verworfen", _v1 == 1 and len(_g1) == 1)
+_g2, _v2 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_KEY, 1.0, key="a")])
+check("Marker vor einem Tastendruck wird verworfen", _v2 == 1 and len(_g2) == 1)
+_g3, _v3 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_CLICK, 1.0, 5, 5)])
+check("Marker vor einem Klick bleibt", _v3 == 0 and len(_g3) == 2)
+_g4, _v4 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_WAIT, 0.5), _RE(_R_CLICK, 1.0, 5, 5)])
+check("zweimal M ist derselbe Wunsch -> ein Marker", _v4 == 1 and len(_g4) == 2)
+_g5, _v5 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_SCROLL, 1.0, 5, 5, scroll=2)])
+check("Marker vor einem Scroll bleibt (Scroll hat eine Stelle)", _v5 == 0)
 
 # Mausrad-Zusammenfassung: eine Drehung um 5 Rasten ist EIN Schritt, nicht fuenf.
 _st_scroll = AutoClickerState()
@@ -2743,18 +2660,18 @@ with _cl2.redirect_stdout(_io2.StringIO()):
 check("waehrend der Aufnahme nimmt CTRL+ALT+U das Ereignis zurueck",
       _st_ctx.recording_events == [] and len(_st_ctx.points) == 1)
 
-# Die Umkehrung im Editor: 'colorgone' dreht einen Warte-Marker, statt eine
-# LIVE-Farbe an der Mausposition abzugreifen (die Maus steht beim Editieren woanders).
+# Die Umkehrung im Editor: 'colorgone' dreht einen aufgenommenen Trigger um, statt
+# eine LIVE-Farbe abzugreifen (die Maus steht beim Editieren ja woanders).
 from autoclicker.editors.sequence_editor.steps import _PhaseEditor as _SE_cls
-_marker = _SS(delay_before=0.0, wait_only=True,
-              wait_condition=_WC(point_id=_map_alle[1]))
+_marker = _SS(x=50, y=60, point_id=_map_alle[2],
+              wait_condition=_WC(point_id=_map_alle[2]))
 _drehen = _SE_cls.__dict__["_apply_trigger"]
-check("colorgone dreht die Richtung des Markers um",
+check("colorgone dreht die Richtung des Triggers um",
       _drehen(None, _marker, "gone") is True
       and _marker.wait_condition.until_gone is True)
-check("und laesst den gemerkten Punkt in Ruhe",
-      _marker.wait_condition.point_id == _map_alle[1])
-check("der Marker bleibt ein reiner Warte-Schritt", _marker.wait_only is True)
+check("und laesst den aufgenommenen Punkt in Ruhe",
+      _marker.wait_condition.point_id == _map_alle[2])
+
 
 # Altbestand: Aufnahmen von VOR dem Fix stehen schon auf Schema 2 und wurden von der
 # Kette nie angefasst. Der Migrationsschritt v2->v3 holt sie einmal nach — von selbst

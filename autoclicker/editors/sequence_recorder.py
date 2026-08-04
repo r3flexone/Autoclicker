@@ -20,7 +20,7 @@ from ..models import (
 )
 from ..winapi import (
     install_mouse_hook, remove_mouse_hook, install_keyboard_hook, remove_keyboard_hook,
-    get_cursor_pos, get_screen_pixel, WHEEL_DELTA,
+    WHEEL_DELTA,
 )
 from ..utils import safe_input, col, ok, err, warn, is_cancel, hint, describe_color
 from ..persistence.sequences import (
@@ -47,33 +47,6 @@ def _melde(ereignis: RecordEvent, idx: int) -> None:
     print(f"  {col('[REC]', 'red')} #{idx} {ereignis}{farbe}")
 
 
-def farben_nachlesen(state: AutoClickerState) -> None:
-    """Liest die Farbe offener Warte-Marker JETZT nach.
-
-    Der Marker wird gesetzt, BEVOR das Erwartete da ist — genau das ist der Sinn:
-    "ab hier warten". Zu diesem Zeitpunkt liegt an der Stelle aber noch der
-    Hintergrund, und auf den zu warten wäre ab der ersten Sekunde erfüllt.
-
-    Deshalb wird die Farbe nicht beim Drücken gelesen, sondern beim nächsten
-    Ereignis: klickt der Nutzer weiter, ist ja da, worauf er gewartet hat. Die
-    Position steht seit dem Drücken fest, die Maus darf inzwischen weiterziehen.
-
-    Nebeneffekt, der uns entgegenkommt: die Maus hängt beim Nachlesen meist nicht
-    mehr über der Stelle. Ein Hover-Effekt des Spiels landet damit NICHT in der
-    Bedingung — beim Abspielen steht der Zeiger dort ja auch nicht.
-    """
-    with state.lock:
-        offen = [e for e in state.recording_events
-                 if e.kind == REC_WAIT_COLOR and e.color is None]
-    for ereignis in offen:
-        farbe = get_screen_pixel(ereignis.x, ereignis.y)
-        with state.lock:
-            ereignis.color = farbe
-        if farbe is not None:
-            print(f"  {col('[REC]', 'red')} Warte-Marker bei "
-                  f"({ereignis.x}, {ereignis.y}): {describe_color(farbe)}")
-
-
 def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
     """Hängt ein Ereignis an die Aufnahme. False = Aufnahme aus oder pausiert.
 
@@ -93,11 +66,7 @@ def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
         else:
             state.recording_events.append(ereignis)
             idx = len(state.recording_events)
-    # Erst melden, dann nachlesen: die Farbzeile gehoert unter das Ereignis, das sie
-    # ausgeloest hat. Ein Marker liest sich nicht selbst nach - er ist ja der Anlass.
     _melde(ereignis, idx)
-    if ereignis.kind != REC_WAIT_COLOR:
-        farben_nachlesen(state)
     return True
 
 
@@ -126,14 +95,15 @@ def _on_key_factory(state: AutoClickerState):
 
 
 def merke_farbe(state: AutoClickerState) -> None:
-    """Setzt an der Mausposition einen Warte-Marker (CTRL+ALT+M).
+    """Setzt einen Warte-Marker (CTRL+ALT+M): "ab hier warte ich".
 
-    Gedrückt wird, BEVOR das Erwartete da ist: "bis hierher lief es normal, ab hier
-    warte ich". Die Zeit davor bleibt deshalb als echte Wartezeit stehen — nur die
-    Zeit DANACH ersetzt die Farb-Bedingung.
+    Der Marker hat **keine eigene Stelle**. Beim Drücken parkt die Maus irgendwo —
+    diese Position wäre reiner Zufall, und ein Punkt darauf wäre Müll in points.json.
+    Gewartet wird stattdessen auf die Farbe DES Klicks, der als nächstes kommt: genau
+    dort, wo das Erwartete auftaucht, klickt man ja hin.
 
-    Die Farbe kommt später (siehe `farben_nachlesen`); jetzt stünde hier ja noch der
-    Hintergrund.
+    Damit hält der Marker nur die Uhr an: die Zeit bis zu seinem Drücken bleibt echte
+    Wartezeit, die Zeit danach ersetzt die Farb-Bedingung.
     """
     with state.lock:
         if not state.recording_active:
@@ -144,8 +114,7 @@ def merke_farbe(state: AutoClickerState) -> None:
         print(f"\n{hint('Aufnahme pausiert — CTRL+ALT+H setzt sie fort.')}")
         return
 
-    x, y = get_cursor_pos()
-    _anhaengen(state, RecordEvent(REC_WAIT_COLOR, time.monotonic(), x, y))
+    _anhaengen(state, RecordEvent(REC_WAIT_COLOR, time.monotonic()))
 
 
 def verwirf_letztes(state: AutoClickerState) -> None:
@@ -185,10 +154,10 @@ def start_recording(state: AutoClickerState) -> None:
         print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Aufgezeichnet: Linksklick, Mausrad{', Tastendruck' if tasten else ''}")
         print(f"  Auf Farbe warten: {col('CTRL+ALT+M', 'yellow')} "
-              f"{hint('(Maus auf die Stelle, BEVOR dort etwas kommt)')}")
-        print(hint("                    Ab da wartet die Sequenz, statt stur die Zeit"))
-        print(hint("                    abzusitzen. Die Farbe wird beim nächsten Klick"))
-        print(hint("                    nachgelesen — dann ist ja da, worauf du wartest."))
+              f"{hint('(drücken, sobald du anfängst zu warten)')}")
+        print(hint("                    Dein NÄCHSTER Klick wartet dann erst auf die"))
+        print(hint("                    Farbe, die er beim Klicken vorfindet. Die Maus"))
+        print(hint("                    darf beim Drücken irgendwo stehen."))
         print(f"  Zurücknehmen:     {col('CTRL+ALT+U', 'yellow')} (letztes Ereignis verwerfen)")
         print(f"  Pausieren:        {col('CTRL+ALT+H', 'yellow')} (navigieren ohne aufzuzeichnen)")
         print(f"  Stoppen:          {col('CTRL+ALT+J', 'yellow')} erneut drücken")
@@ -224,31 +193,19 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
     Folge war: ein später verschobener Punkt zog die Aufnahme nicht mit, obwohl beide
     auf derselben Stelle sassen — genau die Unstimmigkeit, die `point_id` verhindern soll.
 
-    Ein Warte-Marker teilt sich einen Punkt nur bei GLEICHER FARBE. Die erwartete
-    Farbe kommt aus dem Punkt (`WaitCondition` leitet sie ab); an derselben Stelle auf
-    etwas anderes zu warten ist deshalb ein eigener Punkt, sonst überschriebe der
-    zweite Marker die Bedingung des ersten.
+    Warte-Marker bekommen **keinen** Punkt: sie haben keine eigene Stelle. Sie warten
+    auf die Farbe des Klicks, der ihnen folgt, und benutzen dessen Punkt.
     """
-    nach_stelle: dict[tuple[int, int], int] = {}          # Klick / Scroll: nur die Stelle
-    nach_stelle_farbe: dict[tuple, int] = {}              # Warte-Marker: Stelle + Farbe
+    nach_stelle: dict[tuple[int, int], int] = {}
     punkt_id_fuer: dict[int, int] = {}
     neu = 0
-
-    def merken(x, y, color, pid):
-        nach_stelle.setdefault((x, y), pid)
-        if color:
-            nach_stelle_farbe.setdefault((x, y, tuple(color)), pid)
-
     with state.lock:
         for p in state.points:
-            merken(p.x, p.y, p.color, p.id)
+            nach_stelle.setdefault((p.x, p.y), p.id)
         for i, ev in enumerate(events):
-            if ev.kind == REC_KEY:
+            if ev.kind in (REC_KEY, REC_WAIT_COLOR):
                 continue
-            if ev.kind == REC_WAIT_COLOR:
-                treffer = nach_stelle_farbe.get((ev.x, ev.y, tuple(ev.color)))
-            else:
-                treffer = nach_stelle.get((ev.x, ev.y))
+            treffer = nach_stelle.get((ev.x, ev.y))
             if treffer is not None:
                 punkt_id_fuer[i] = treffer
                 continue
@@ -257,72 +214,72 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
                 ClickPoint(ev.x, ev.y, f"{seq_name} {i + 1}", pid, color=ev.color,
                            source=f"Aufnahme '{seq_name}'")
             )
-            merken(ev.x, ev.y, ev.color, pid)
+            nach_stelle[(ev.x, ev.y)] = pid
             punkt_id_fuer[i] = pid
             neu += 1
     return punkt_id_fuer, neu
 
 
-def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
-    """Baut die SequenceSteps. Jedes Ereignis wird genau ein Schritt.
+def marker_pruefen(events: list) -> tuple[list, int]:
+    """Wirft Warte-Marker weg, die sich an nichts hängen können.
 
-    Die Wartezeit eines Schritts ist der Abstand zum vorherigen Ereignis — mit einer
-    Ausnahme: **der Schritt NACH einem Warte-Marker bekommt keine.**
+    Ein Marker braucht einen Klick (oder ein Scroll) nach sich — von dem holt er
+    Stelle und Farbe. Folgt ein Tastendruck oder gar nichts mehr, gibt es nichts zu
+    warten; der Marker wird verworfen statt stillschweigend zu verschwinden.
 
-    Denn genau diese Spanne — vom Drücken des Markers bis zur nächsten Handlung — ist
-    das Warten, das die Farb-Bedingung ersetzt. Bliebe sie stehen, würde die Sequenz
-    erst auf die Farbe warten UND danach nochmal die volle Zeit schlafen.
+    Zwei Marker hintereinander sind derselbe Wunsch, zweimal geäußert: der erste
+    fällt weg, der zweite hält die Uhr an.
 
-    Der Marker selbst behält seine Wartezeit: bis zum Drücken lief ja normal etwas ab.
-
-    **Wartet der Marker auf DIE Stelle, die als nächstes geklickt wird, wird daraus
-    EIN Schritt** — „warte auf Rot an Punkt 3, dann klicke Punkt 3". Genau das baut
-    der Editor mit `color <Nr>`, und `_apply_trigger` sagt dazu: der Schritt prüft
-    seinen eigenen Klickpunkt, kein zweiter Punkt. Eine Aufnahme soll dasselbe
-    ergeben wie die Handarbeit, sonst liest sich das Ergebnis fremd.
-
-    Zeigt der Marker woanders hin (auf einen Ladebalken, während geklickt wird), ist
-    er ein eigener Warte-Schritt — dort sind es ja auch wirklich zwei Stellen.
+    Gibt `(bereinigte Ereignisse, Anzahl verworfener)` zurück.
     """
-    steps = []
-    verbraucht = set()      # Marker, die in den nächsten Schritt gewandert sind
+    behalten, verworfen = [], 0
     for i, ev in enumerate(events):
-        if i in verbraucht:
-            continue
-        delay = 0.0 if i == 0 else round(ev.t - events[i - 1].t, 2)
-        vorher = events[i - 1] if i > 0 else None
-        bedingung = None
-        if vorher is not None and vorher.kind == REC_WAIT_COLOR:
-            # Die Spanne seit dem Marker ist das Warten, das die Bedingung ersetzt.
-            delay = 0.0
-        pid = punkt_id_fuer.get(i)
-
         if ev.kind == REC_WAIT_COLOR:
             naechster = events[i + 1] if i + 1 < len(events) else None
-            # Zusammenlegen nur bei DEMSELBEN Punkt — nicht bei „ungefähr derselben
-            # Stelle". Ein paar Pixel Unterschied sind ein anderer Punkt, und den
-            # stillschweigend zu verschieben wäre genau die Ungenauigkeit, die die
-            # Punkt-Referenzen abgeschafft haben.
-            if (naechster is not None and naechster.kind in (REC_CLICK, REC_SCROLL)
-                    and punkt_id_fuer.get(i + 1) == pid):
-                verbraucht.add(i)
-                # Der Marker verschwindet als eigener Schritt; seine Wartezeit und
-                # seine Bedingung gehen an den Klick, der ihn ablöst.
-                ev, bedingung = naechster, WaitCondition(point_id=pid)
-                i_naechst = i + 1
-                verbraucht.add(i_naechst)
-                pid = punkt_id_fuer.get(i_naechst)
-            else:
-                # wait_only: der Marker wartet nur, er klickt nichts. Deshalb hat der
-                # SCHRITT keine point_id (er zeigt nirgendwohin) — die Referenz sitzt
-                # an der Bedingung, die Prüf-Pixel und Farbe daraus ableitet.
-                steps.append(SequenceStep(delay_before=delay, wait_only=True,
-                                          wait_condition=WaitCondition(point_id=pid)))
+            if naechster is None or naechster.kind not in (REC_CLICK, REC_SCROLL):
+                verworfen += 1
                 continue
+        behalten.append(ev)
+    return behalten, verworfen
 
+
+def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
+    """Baut die SequenceSteps.
+
+    Ein **Warte-Marker wird kein eigener Schritt**. Er hängt sich an den Klick, der
+    ihm folgt, und macht daraus „warte auf die Farbe DIESER Stelle, dann klicke sie" —
+    genau das, was der Editor mit `color <Nr>` baut: ein Schritt, ein Punkt, zweimal
+    referenziert (einmal als Klickziel, einmal als Prüf-Pixel).
+
+    Die Farbe ist die beim Klick erfasste. Das ist die richtige: geklickt wird ja
+    erst, wenn das Erwartete zu sehen ist.
+
+    Bei den Wartezeiten hält der Marker nur die Uhr an:
+
+    - Die Zeit **bis** zum Marker bleibt am Schritt — bis dahin lief normal etwas ab.
+    - Die Zeit **vom** Marker bis zum Klick fällt weg. Genau sie ist das Warten, das
+      die Bedingung ersetzt; bliebe sie stehen, würde die Sequenz erst auf die Farbe
+      warten UND danach nochmal die volle Zeit schlafen.
+
+    Erwartet bereits durch `marker_pruefen()` bereinigte Ereignisse.
+    """
+    steps = []
+    for i, ev in enumerate(events):
+        if ev.kind == REC_WAIT_COLOR:
+            continue                      # geht in den naechsten Schritt ein
+        delay = 0.0 if i == 0 else round(ev.t - events[i - 1].t, 2)
+        bedingung = None
+        vorher = events[i - 1] if i > 0 else None
+        if vorher is not None and vorher.kind == REC_WAIT_COLOR:
+            pid = punkt_id_fuer.get(i)
+            bedingung = WaitCondition(point_id=pid)
+            # Uhr anhalten: die Zeit bis zum MARKER zaehlt, die danach ist das Warten.
+            davor = events[i - 2] if i > 1 else None
+            delay = 0.0 if davor is None else round(vorher.t - davor.t, 2)
+
+        pid = punkt_id_fuer.get(i)
         if ev.kind == REC_KEY:
-            steps.append(SequenceStep(delay_before=delay, key_press=ev.key,
-                                      wait_condition=bedingung))
+            steps.append(SequenceStep(delay_before=delay, key_press=ev.key))
         elif ev.kind == REC_SCROLL:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay, scroll=ev.scroll,
                                       point_id=pid, recorded_color=ev.color,
@@ -337,11 +294,6 @@ def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
 
 def stop_recording(state: AutoClickerState) -> None:
     """Stoppt die Aufnahme und baut eine Sequenz aus den Ereignissen."""
-    # Ein Marker als LETZTES Ereignis hat noch keine Farbe — nach ihm kam ja nichts
-    # mehr. Jetzt ist der letzte Moment, in dem der Bildschirm noch das zeigt, worauf
-    # gewartet wurde. Muss VOR dem Abraeumen laufen, solange die Liste noch steht.
-    farben_nachlesen(state)
-
     with state.lock:
         if not state.recording_active:
             return
@@ -357,15 +309,11 @@ def stop_recording(state: AutoClickerState) -> None:
         print(f"\n{col('[AUFNAHME]', 'yellow')} Gestoppt — nichts aufgezeichnet.")
         return
 
-    # Marker ohne Farbe koennen keine Bedingung tragen (der Pixel war nicht lesbar).
-    # Lieber raus als ein Warte-Schritt, der auf Schwarz wartet und nie weiterkommt.
-    ohne_farbe = [e for e in events if e.kind == REC_WAIT_COLOR and e.color is None]
-    if ohne_farbe:
-        # Identitaet, nicht Gleichheit: RecordEvent ist eine Dataclass, und zwei Marker
-        # mit denselben Werten wuerden sich sonst gegenseitig mitloeschen.
-        verworfen = {id(e) for e in ohne_farbe}
-        events = [e for e in events if id(e) not in verworfen]
-        print(f"\n{warn(f'{len(ohne_farbe)} Warte-Marker ohne lesbare Farbe verworfen.')}")
+    # Ein Marker braucht einen Klick nach sich, von dem er Stelle und Farbe holt.
+    events, verworfen = marker_pruefen(events)
+    if verworfen:
+        print(f"\n{warn(f'{verworfen} Warte-Marker verworfen — danach kam kein Klick.')}")
+        print(hint("       Ein Marker wartet auf die Farbe DES Klicks, der ihm folgt."))
         if not events:
             print(f"{col('[AUFNAHME]', 'yellow')} Nichts Verwertbares übrig.")
             return
@@ -386,7 +334,8 @@ def stop_recording(state: AutoClickerState) -> None:
             if events[i - 1].kind == REC_WAIT_COLOR:
                 # Diese Spanne ersetzt die Farb-Bedingung (siehe schritte_aus_events);
                 # sie als Wartezeit oder gar als Doppelklick zu zeigen waere falsch.
-                delay_str = col("wartet auf Farbe", "cyan")
+                delay_str = col(f"wartet auf {describe_color(ev.color)}", "cyan") \
+                    if ev.color else col("wartet auf die Farbe hier", "cyan")
             elif d < _FAST_CLICK_GAP and ev.kind == REC_CLICK and events[i - 1].kind == REC_CLICK:
                 fast_clicks += 1
                 delay_str = col(delay_str + " ⚡", "yellow")
