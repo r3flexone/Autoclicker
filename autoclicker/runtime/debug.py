@@ -38,7 +38,7 @@ from __future__ import annotations
 import time
 
 from ..models import AutoClickerState, SequenceStep
-from ..utils import col, dbg, describe_color, read_command
+from ..utils import col, dbg, describe_color, hint, read_command, warn
 from ..winapi import get_cursor_pos, set_cursor_pos
 
 # Ausgang einer Vorab-Entscheidung über einen Schritt (step_gate im manuellen Modus,
@@ -115,9 +115,13 @@ def step_label(step: SequenceStep) -> str:
     Referenz direkt da - suchbar in points.json UND in der Sequenzdatei ("point_id": 3).
     """
     name = step.name or "unbenannt"
-    if step.point_id is not None:
-        return f"{name}  [Punkt #{step.point_id}]"
-    return f"{name}  [kein Punkt - Koordinaten stehen im Schritt]"
+    if step.point_id is None:
+        return f"{name}  [ohne Stelle]"
+    if step.unresolved:
+        # Deutlich sagen, was los ist: der Schritt tut nichts, und der Grund liegt in
+        # points.json, nicht in der Sequenz.
+        return f"{name}  [Punkt #{step.point_id} FEHLT]"
+    return f"{name}  [Punkt #{step.point_id}]"
 
 
 def describe_step(step: SequenceStep) -> str:
@@ -146,6 +150,8 @@ def target_of(step: SequenceStep):
     """Wohin der Zeiger für diesen Schritt zeigen soll - oder None, wenn es keinen Ort
     gibt (Tastendruck, Screenshot). Bei Farb-Bedingungen ist der Prüf-Pixel wichtiger
     als der Klickpunkt: dort entscheidet sich, ob der Schritt überhaupt läuft."""
+    if step.unresolved:
+        return None  # kein Ziel — sonst führe der Zeiger nach (0, 0)
     if step.wait_condition is not None:
         return step.wait_condition.pixel[0], step.wait_condition.pixel[1], "Prüf-Pixel"
     if step.key_press or step.screenshot_only:
@@ -209,7 +215,18 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
 
     Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück. Ist der manuelle Modus aus, kommt
     immer sofort GATE_RUN - der Aufruf ist dann praktisch kostenlos.
+
+    Ausnahme: ein Schritt mit toter Punkt-Referenz läuft NIE. Er hat keine Koordinate
+    mehr, auf die er ausweichen könnte (das ist der Sinn der Sache), und (0, 0) wäre
+    ein Klick in die Bildschirmecke — irgendwohin, nur nicht dorthin, wo er sollte.
     """
+    if step.unresolved:
+        print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
+                   f"{step_label(step)}"))
+        print(hint("       Punkt fehlt in points.json — im Punkte-Menü neu setzen "
+                   "oder den Schritt löschen."))
+        return GATE_SKIP
+
     if not is_step_mode(state):
         return GATE_RUN
 

@@ -12,7 +12,7 @@ ohne die Daten zu verlieren.
 from pathlib import Path
 
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
-from ...models import ClickPoint, ItemProfile, AutoClickerState
+from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
     get_point_by_id, shift_category_priorities, TEMPLATES_DIR,
 )
@@ -67,7 +67,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         category = select_category(state, show_explanation=False)
 
         # Bestätigungs-Punkt einmal für alle abfragen
-        confirm_point = None
+        confirm_point_id = None
         confirm_delay = state.config.scan_confirm_delay
         confirm_input = safe_input("  Bestätigungs-Punkt-ID für alle (Enter = keine): ").strip()
         if confirm_input:
@@ -75,7 +75,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 point_id = int(confirm_input)
                 found_point = get_point_by_id(state, point_id)
                 if found_point:
-                    confirm_point = ClickPoint(found_point.x, found_point.y)
+                    confirm_point_id = point_id
                     delay_input = safe_input(f"  Wartezeit vor Bestätigung (Enter = {confirm_delay}s): ").strip()
                     if delay_input:
                         delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
@@ -99,7 +99,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 marker_colors=[],
                 category=category,
                 priority=priority,
-                confirm_point=confirm_point,
+                confirm_point_id=confirm_point_id,
                 confirm_delay=confirm_delay,
                 min_confidence=state.config.scan_min_confidence
             )
@@ -235,7 +235,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         pass
 
     # Bestätigungs-Klick abfragen
-    confirm_point = None
+    confirm_point_id = None
     confirm_delay = state.config.scan_confirm_delay
     print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
@@ -249,7 +249,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
             point_id = int(confirm_input)
             found_point = get_point_by_id(state, point_id)
             if found_point:
-                confirm_point = ClickPoint(found_point.x, found_point.y)
+                confirm_point_id = point_id
                 delay_input = safe_input(f"  Wartezeit vor Bestätigung in Sek (Enter = {confirm_delay}): ").strip()
                 if delay_input:
                     delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
@@ -262,7 +262,8 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         except ValueError:
             print("  -> Keine gültige Zahl, keine Bestätigung")
 
-    item = ItemProfile(item_name, marker_colors, category, priority, confirm_point, confirm_delay)
+    item = ItemProfile(item_name, marker_colors, category, priority,
+                       confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)
 
     # Gecachtes Template dem Item zuweisen und umbenennen
     if cached_template_path and cached_template_path.exists():
@@ -280,7 +281,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     with state.lock:
         state.global_items[item_name] = item
 
-    confirm_str = f" -> ({confirm_point.x},{confirm_point.y}) nach {confirm_delay}s" if confirm_point else ""
+    confirm_str = f" -> Punkt #{confirm_point_id} nach {confirm_delay}s" if confirm_point_id else ""
     template_str = " + Template" if item.template else ""
     print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
     return True

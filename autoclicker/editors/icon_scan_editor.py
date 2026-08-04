@@ -26,7 +26,7 @@ from ..imaging import (
 )
 from ..persistence import (
     save_icon_scan, list_available_icon_scans, load_icon_scan_file,
-    TEMPLATES_DIR,
+    punkt_fuer_stelle, TEMPLATES_DIR,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
@@ -63,7 +63,8 @@ def run_icon_scan_editor(state: AutoClickerState) -> None:
         edit_icon_scan(state, loaded_scans[choice - 1])
 
 
-def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[dict]:
+def _select_icon_action(state: AutoClickerState,
+                        existing: Optional[IconScanConfig] = None) -> Optional[dict]:
     """Fragt die Aktion ab, die bei erkanntem Icon ausgeführt wird."""
     action_options = [
         "Punkt klicken (z.B. Ablehnen-Button)",
@@ -92,8 +93,7 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
     action = action_map[choice]
     result = {
         "action": action,
-        "action_x": 0,
-        "action_y": 0,
+        "action_point_id": None,
         "action_key": None,
         "action_delay": 0,
     }
@@ -103,9 +103,14 @@ def _select_icon_action(existing: Optional[IconScanConfig] = None) -> Optional[d
         try:
             safe_input()
             x, y = get_cursor_pos()
-            result["action_x"] = x
-            result["action_y"] = y
-            print(f"  → Klick-Position: ({x}, {y})")
+            # Die Stelle wird ein Punkt, gespeichert wird nur seine ID. Sonst haette
+            # dieser Klick eine Koordinate, die weder eine Reparatur im Punkte-Menue
+            # noch eine Kalibrierung ueber die Punkte je erreicht.
+            with state.lock:
+                pid = punkt_fuer_stelle(state, x, y, None, "Icon-Scan Klick",
+                                        source="Icon-Scan-Editor")
+            result["action_point_id"] = pid
+            print(f"  → Klick-Position: ({x}, {y})  [Punkt #{pid}]")
         except (KeyboardInterrupt, EOFError):
             return None
 
@@ -223,7 +228,7 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
 
     # === SCHRITT 3: Aktion bei Fund ===
     print(header("SCHRITT 3: AKTION BEI ERKANNTEM ICON"))
-    action_result = _select_icon_action(existing)
+    action_result = _select_icon_action(state, existing)
     if action_result is None:
         return
 

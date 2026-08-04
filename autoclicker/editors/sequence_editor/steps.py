@@ -761,6 +761,7 @@ class _PhaseEditor:
             if color is None:
                 return
             step.wait_condition = WaitCondition(
+                point_id=self._punkt_fuer(px, py, color, "Prüf-Pixel"),
                 pixel=(px, py), color=color,
                 until_gone=until_gone,
             )
@@ -861,16 +862,28 @@ class _PhaseEditor:
             step.wait_condition = None
             return True
         until_gone = (mode == "gone")
+        if step.wait_condition is not None and step.wait_condition.point_id is not None:
+            # Schon eine Bedingung da (z.B. ein Warte-Marker aus der Aufnahme): nur die
+            # Richtung drehen. Sonst griffe der Zweig unten eine LIVE-Farbe an der
+            # Mausposition ab und ueberschriebe damit genau das, was gemerkt wurde.
+            step.wait_condition.until_gone = until_gone
+            return True
         if step.recorded_color:
+            # Der Schritt prüft seinen EIGENEN Klickpunkt - also dieselbe Referenz, kein
+            # zweiter Punkt. Genau der Fall, den das alte "Prüf-Pixel zieht mit" per
+            # Koordinatenvergleich erraten musste; jetzt steht er in der Datei.
             pixel = (step.x, step.y)
             color = step.recorded_color
+            punkt_id = step.point_id
             print(f"  Nutze aufgenommene Farbe RGB{color} bei ({step.x}, {step.y})")
         else:
             px, py, color = capture_pixel_color()
             if color is None:
                 return False
             pixel = (px, py)
-        step.wait_condition = WaitCondition(pixel=pixel, color=color, until_gone=until_gone)
+            punkt_id = self._punkt_fuer(px, py, color, "Prüf-Pixel")
+        step.wait_condition = WaitCondition(point_id=punkt_id, pixel=pixel, color=color,
+                                            until_gone=until_gone)
         return True
 
     def _handle_make_pixel(self, user_input: str, until_gone: bool) -> None:
@@ -887,7 +900,10 @@ class _PhaseEditor:
             return
         if not self._apply_trigger(step, "gone" if until_gone else "pixel"):
             return
-        step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        if step.point_id is not None:
+            step.wait_only = False  # Trigger + Klick (nicht nur warten)
+        # Ohne point_id gibt es nichts zu klicken — ein Warte-Marker aus der Aufnahme
+        # bleibt reines Warten. `wait_only = False` haette ihn auf (0, 0) zeigen lassen.
         gone_str = "bis Farbe WEG" if until_gone else "auf Farbe"
         print(f"  + Schritt umgebaut: warte {gone_str} → {step}")
 
@@ -1252,21 +1268,35 @@ class _PhaseEditor:
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
 
+    def _punkt_fuer(self, x, y, color, name):
+        """Punkt-ID für eine frisch abgegriffene Stelle - legt sie notfalls an.
+
+        Jede Stelle, die ein Editor erzeugt, muss als Punkt existieren; sonst hätte
+        der Schritt eine Koordinate, die nirgends sonst steht.
+        """
+        from ...persistence import punkt_fuer_stelle
+        with self.state.lock:
+            return punkt_fuer_stelle(self.state, x, y, color, name,
+                                     source="Sequenz-Editor")
+
     def _resolve_trigger_color(self, until_gone: bool, point):
-        """Liefert (pixel, color, until_gone) für einen color|colorgone-Trigger.
+        """Liefert (pixel, color, punkt_id, until_gone) für einen color|colorgone-Trigger.
 
         Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
         Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
         live an der Mausposition abgegriffen. Override später per 'recolor <Nr>'.
+
+        Im Normalfall ist die Punkt-ID die des übergebenen Punkts - geprüft wird ja
+        genau dort, wo geklickt wird. Nur beim Live-Abgriff entsteht ein eigener Punkt.
         """
         if point.color:
             print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "
                   f"{hint('(mit recolor <Nr> änderbar)')}")
-            return (point.x, point.y), point.color, until_gone
+            return (point.x, point.y), point.color, point.id, until_gone
         px, py, color = capture_pixel_color()
         if color:
-            return (px, py), color, until_gone
-        return None, None, until_gone
+            return (px, py), color, self._punkt_fuer(px, py, color, "Prüf-Pixel"), until_gone
+        return None, None, None, until_gone
 
     def _parse_point_options(self, main_parts: list[str], point):
         """Parst die Optionen nach der Punkt-ID. Returns (wait_condition, delay, delay_max).
@@ -1278,6 +1308,7 @@ class _PhaseEditor:
         delay_max = None
         wait_pixel = None
         wait_color = None
+        wait_punkt_id = None
         wait_until_gone = False
         check_only = False
 
@@ -1288,7 +1319,7 @@ class _PhaseEditor:
                 # <Nr> checkcolor / <Nr> checkgone - einmal pruefen, sonst ueberspringen
                 check_only = True
                 wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[arg]
-                wait_pixel, wait_color, _ = \
+                wait_pixel, wait_color, wait_punkt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
@@ -1296,7 +1327,7 @@ class _PhaseEditor:
             elif arg in _WAIT_POINT_TRIGGER_ALIASES:
                 # <Nr> color / <Nr> colorgone
                 wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
-                wait_pixel, wait_color, _ = \
+                wait_pixel, wait_color, wait_punkt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
@@ -1327,14 +1358,14 @@ class _PhaseEditor:
                     if opt in _CHECK_POINT_TRIGGER_ALIASES:
                         check_only = True
                         wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[opt]
-                        wait_pixel, wait_color, _ = \
+                        wait_pixel, wait_color, wait_punkt_id, _ = \
                             self._resolve_trigger_color(wait_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
                             return False, 0, None
                     elif opt in _WAIT_POINT_TRIGGER_ALIASES:
                         opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
-                        wait_pixel, wait_color, wait_until_gone = \
+                        wait_pixel, wait_color, wait_punkt_id, wait_until_gone = \
                             self._resolve_trigger_color(opt_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
@@ -1342,7 +1373,8 @@ class _PhaseEditor:
 
         wait_cond = None
         if wait_pixel and wait_color:
-            wait_cond = WaitCondition(pixel=wait_pixel, color=wait_color,
+            wait_cond = WaitCondition(point_id=wait_punkt_id,
+                                      pixel=wait_pixel, color=wait_color,
                                       until_gone=wait_until_gone,
                                       check_only=check_only)
         return wait_cond, delay, delay_max

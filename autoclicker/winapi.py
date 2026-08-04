@@ -60,6 +60,7 @@ VK_H = 0x48  # Aufnahme pausieren (Halt)
 VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
+VK_M = 0x4D  # Aufnahme: Farbe merken (auf Farbe warten)
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -84,10 +85,14 @@ HOTKEY_RECORD_PAUSE = 19
 HOTKEY_NODE_EDITOR = 20
 HOTKEY_SCAN_STUDIO = 21
 HOTKEY_HELP = 22
+HOTKEY_RECORD_COLOR = 23
 
 # Window Messages
 WM_HOTKEY = 0x0312
 WM_LBUTTONDOWN = 0x0201
+WM_MOUSEWHEEL = 0x020A
+WM_KEYDOWN = 0x0100
+WM_SYSKEYDOWN = 0x0104     # Taste mit gedruecktem ALT (z.B. ALT+F4)
 
 # Mouse Input
 INPUT_MOUSE = 0
@@ -223,6 +228,7 @@ user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM,
 user32.CallNextHookEx.restype = _LRESULT
 
 WH_MOUSE_LL = 14
+WH_KEYBOARD_LL = 13
 
 
 class _POINT_LL(ctypes.Structure):
@@ -239,8 +245,30 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
     ]
 
 
+class KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("vkCode", wintypes.DWORD),
+        ("scanCode", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
 _mouse_hook_handle = None
 _mouse_hook_proc = None  # Referenz halten, damit GC den Callback nicht räumt
+_keyboard_hook_handle = None
+_keyboard_hook_proc = None
+
+
+# Rueckwaerts-Tabelle VK-Code -> Tastenname, fuer die Aufnahme: der Hook liefert einen
+# Code, `send_key()` will einen Namen. Bei Mehrfachnamen gewinnt der ERSTE aus VK_CODES
+# ("enter" vor "return", "space" vor "leertaste") - dict behaelt die Reihenfolge, und die
+# Erstnennung ist jeweils die gelaeufigere.
+VK_NAMES = {}
+for _name, _vk in VK_CODES.items():
+    VK_NAMES.setdefault(_vk, _name)
+del _name, _vk
 
 
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
@@ -268,11 +296,20 @@ def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
         return None
 
 
-def install_mouse_hook(on_lbutton_down) -> bool:
-    """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks.
+def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
+    """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks und Mausrad.
 
     on_lbutton_down(x, y, color) wird bei jedem Linksklick aufgerufen.
     color ist ein (r,g,b)-Tupel oder None.
+    on_wheel(x, y, delta) wird bei jeder Mausrad-Bewegung aufgerufen; `delta` ist die
+    ROHE Windows-Distanz (positiv = hoch), eine Rasterstufe = WHEEL_DELTA. Bewusst
+    nicht hier schon in Stufen umgerechnet: hochaufloesende Raeder senden Bruchteile,
+    und einzeln abgerundet ergaeben die null. Der Aufrufer summiert erst und teilt dann.
+    None = Mausrad wird ignoriert.
+
+    Rechtsklicks fehlen bewusst: der Autoclicker kann gar keine ausfuehren
+    (`send_click` ist auf LEFTDOWN/LEFTUP festgelegt). Sie aufzuzeichnen hiesse,
+    etwas mitzuschneiden, das beim Abspielen zum Linksklick wuerde.
     """
     global _mouse_hook_handle, _mouse_hook_proc
 
@@ -286,6 +323,18 @@ def install_mouse_hook(on_lbutton_down) -> bool:
             color = get_screen_pixel(x, y)
             try:
                 on_lbutton_down(x, y, color)
+            except Exception:
+                pass
+        elif nCode >= 0 and wParam == WM_MOUSEWHEEL and on_wheel is not None:
+            info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            # Die Rad-Distanz steht im HIGH word von mouseData und ist VORZEICHENBEHAFTET.
+            # mouseData ist ein DWORD (unsigned), deshalb von Hand ins Zweierkomplement
+            # zurueckrechnen - sonst wird jedes Runterscrollen zu einem riesigen Plus.
+            delta = (info.mouseData >> 16) & 0xFFFF
+            if delta >= 0x8000:
+                delta -= 0x10000
+            try:
+                on_wheel(info.pt.x, info.pt.y, delta)
             except Exception:
                 pass
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
@@ -307,6 +356,69 @@ def remove_mouse_hook() -> None:
         user32.UnhookWindowsHookEx(_mouse_hook_handle)
         _mouse_hook_handle = None
     _mouse_hook_proc = None
+
+
+# Modifier-Tasten. Waehrend der Aufnahme wird bei gedruecktem CTRL oder ALT NICHTS
+# mitgeschnitten - dort liegen die Hotkeys der App (alle CTRL+ALT+Buchstabe). Sonst
+# stuende ein 'j' in der Sequenz, sobald man die Aufnahme mit CTRL+ALT+J stoppt.
+_VK_CONTROL, _VK_MENU, _VK_SHIFT = 0x11, 0x12, 0x10
+
+
+def install_keyboard_hook(on_key_down) -> bool:
+    """Installiert einen systemweiten Low-Level-Tastatur-Hook für die Aufnahme.
+
+    on_key_down(name) wird beim Herunterdruecken einer Taste aufgerufen; `name` ist
+    ein Schluessel aus VK_CODES, also genau das, was `send_key()` wieder abspielen kann.
+
+    Drei Dinge werden bewusst NICHT gemeldet:
+    - Tasten mit gedruecktem CTRL oder ALT (das sind die Hotkeys der App)
+    - Tasten, die `send_key()` gar nicht kennt (waeren beim Abspielen still weg)
+    - die Wiederholungen einer festgehaltenen Taste (Windows feuert dann laufend
+      WM_KEYDOWN nach; ohne Filter entstuenden daraus dutzende Schritte)
+    """
+    global _keyboard_hook_handle, _keyboard_hook_proc
+
+    if _keyboard_hook_handle:
+        return True
+
+    gedrueckt = set()  # welche VK-Codes gerade unten sind -> Auto-Repeat erkennen
+
+    def _hook_proc(nCode, wParam, lParam):
+        if nCode >= 0:
+            info = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+            vk = info.vkCode
+            if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                if vk not in gedrueckt:
+                    gedrueckt.add(vk)
+                    hoch = user32.GetAsyncKeyState
+                    modifier = (hoch(_VK_CONTROL) & 0x8000) or (hoch(_VK_MENU) & 0x8000)
+                    name = VK_NAMES.get(vk)
+                    if name and not modifier:
+                        try:
+                            on_key_down(name)
+                        except Exception:
+                            pass
+            else:
+                gedrueckt.discard(vk)
+        return user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+    _keyboard_hook_proc = _HOOKPROC(_hook_proc)
+    h_module = kernel32.GetModuleHandleW(None)
+    handle = user32.SetWindowsHookExW(WH_KEYBOARD_LL, _keyboard_hook_proc, h_module, 0)
+    if handle:
+        _keyboard_hook_handle = handle
+        return True
+    _keyboard_hook_proc = None
+    return False
+
+
+def remove_keyboard_hook() -> None:
+    """Entfernt den installierten Tastatur-Hook."""
+    global _keyboard_hook_handle, _keyboard_hook_proc
+    if _keyboard_hook_handle:
+        user32.UnhookWindowsHookEx(_keyboard_hook_handle)
+        _keyboard_hook_handle = None
+    _keyboard_hook_proc = None
 
 
 # =============================================================================
@@ -586,6 +698,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
+    (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)

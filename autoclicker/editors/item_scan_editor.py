@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ..models import ClickPoint, ItemProfile, ItemScanConfig, AutoClickerState
+from ..models import ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG
 from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
 from ..imaging import (
@@ -350,7 +350,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
     except ValueError:
         print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
 
-    confirm_point = None
+    confirm_point_id = None
     confirm_delay = CONFIG.scan_confirm_delay
     confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
     if confirm_input:
@@ -359,7 +359,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
             with state.lock:
                 found_point = get_point_by_id(state, point_id)
                 if found_point:
-                    confirm_point = ClickPoint(found_point.x, found_point.y)
+                    confirm_point_id = point_id
                     delay_input = safe_input(
                         "  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
                     if delay_input:
@@ -376,7 +376,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
 
     new_item = ItemProfile(
         name=item_name, marker_colors=[], category=category, priority=priority,
-        confirm_point=confirm_point, confirm_delay=confirm_delay,
+        confirm_point_id=confirm_point_id, confirm_delay=confirm_delay,
         template=template_file, min_confidence=min_confidence,
     )
     with state.lock:

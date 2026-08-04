@@ -77,12 +77,16 @@ def _current_point_label(points, x, y) -> str:
 
 
 def _apply_point(points, label: str, set_xy):
-    """Überträgt Koordinaten + Name + Farbe des Punkts via set_xy(x, y, name, color)."""
+    """Überträgt ID + Koordinaten + Name + Farbe via set_xy(id, x, y, name, color).
+
+    Die ID muss mit: sie ist das, was gespeichert wird. Ohne sie hinterließ der
+    Punkt-Picker eine Koordinaten-Kopie, die beim Speichern verlorenging.
+    """
     if label == "(manuell)" or not points:
         return
     for p in points:
         if _point_label(p) == label:
-            set_xy(p.x, p.y, p.name or "", p.color)
+            set_xy(p.id, p.x, p.y, p.name or "", p.color)
             return
 
 
@@ -176,9 +180,13 @@ def _point_setter(step, on_changed):
     muss. Alle Felder werden in-place aktualisiert (kein Panel-Rebuild – ein
     Rebuild würde das auslösende Combo mitten im eigenen Callback löschen).
     """
-    def _set(x, y, name, color):
+    def _set(point_id, x, y, name, color):
+        step.point_id = point_id
         step.x = x
         step.y = y
+        # Prüft der Schritt seine eigene Stelle, zeigt der Trigger auf denselben Punkt.
+        if step.wait_condition is not None:
+            step.wait_condition.point_id = point_id
         if name:
             step.name = name
             if dpg.does_item_exist("np_name"):
@@ -219,17 +227,45 @@ def _build_position(parent, step, points, on_changed, on_structure=None):
     dpg.add_text("Klick-Position", parent=parent, color=(120, 180, 255))
     _point_combo(parent, step, points, on_changed)
 
-    def _on_x(s, a, u):
-        step.x = int(a)
+    # Die Zahlenfelder verschieben den PUNKT, nicht den Schritt. Nur so ueberlebt die
+    # Eingabe das Speichern - die Sequenz haelt keine Koordinaten mehr. Teilen sich
+    # mehrere Schritte den Punkt, wandern sie mit; das ist gewollt und im Punkte-Menue
+    # nachvollziehbar. Hat der Block noch keinen Punkt (Blanko), entsteht einer.
+    def _setze(achse, wert):
+        setattr(step, achse, int(wert))
+        punkt = _punkt_von(points, step.point_id)
+        if punkt is None:
+            punkt = _neuer_palette_punkt(points, step)
+            step.point_id = punkt.id
+        setattr(punkt, achse, int(wert))
+        if step.wait_condition is not None and step.wait_condition.point_id == punkt.id:
+            step.wait_condition.pixel = (step.x, step.y)
         on_changed()
 
-    def _on_y(s, a, u):
-        step.y = int(a)
-        on_changed()
     dpg.add_input_int(label="X", tag="np_pos_x", default_value=int(step.x or 0),
-                      parent=parent, width=-130, callback=_on_x)
+                      parent=parent, width=-130,
+                      callback=lambda s, a, u: _setze("x", a))
     dpg.add_input_int(label="Y", tag="np_pos_y", default_value=int(step.y or 0),
-                      parent=parent, width=-130, callback=_on_y)
+                      parent=parent, width=-130,
+                      callback=lambda s, a, u: _setze("y", a))
+    dpg.add_text("Verschiebt den Punkt - alle Schritte darauf ziehen mit.",
+                 parent=parent, color=(150, 150, 150))
+
+
+def _punkt_von(points, point_id):
+    return next((p for p in points if p.id == point_id), None) if point_id else None
+
+
+def _neuer_palette_punkt(points, step):
+    """Legt einen Palette-Punkt fuer einen Block an, der noch keinen hat."""
+    from .model import PalettePoint
+    neu = PalettePoint(id=max([p.id for p in points], default=0) + 1,
+                       x=int(step.x or 0), y=int(step.y or 0),
+                       name=step.name or "Node-Editor",
+                       color=tuple(step.recorded_color) if step.recorded_color else None,
+                       source="Node-Editor")
+    points.append(neu)
+    return neu
 
 
 def _default_color(step) -> tuple:

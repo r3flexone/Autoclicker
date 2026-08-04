@@ -27,7 +27,7 @@ from ..imaging import (
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, TEMPLATES_DIR, save_global_bosses,
+    list_available_item_scans, punkt_fuer_stelle, TEMPLATES_DIR, save_global_bosses,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
@@ -120,8 +120,7 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
         "action": action,
         "action_scan": None,
         "action_scan_mode": SCAN_MODE_ALL,
-        "action_x": 0,
-        "action_y": 0,
+        "action_point_id": None,
         "action_key": None,
         "action_delay": 0,
     }
@@ -153,9 +152,14 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
         try:
             safe_input()
             x, y = get_cursor_pos()
-            result["action_x"] = x
-            result["action_y"] = y
-            print(f"  → Klick-Position: ({x}, {y})")
+            # Die Stelle wird ein Punkt, gespeichert wird nur seine ID. Sonst haette
+            # dieser Klick eine Koordinate, die weder eine Reparatur im Punkte-Menue
+            # noch eine Kalibrierung ueber die Punkte je erreicht.
+            with state.lock:
+                pid = punkt_fuer_stelle(state, x, y, None, "Boss-Klick",
+                                        source="Boss-Scan-Editor")
+            result["action_point_id"] = pid
+            print(f"  → Klick-Position: ({x}, {y})  [Punkt #{pid}]")
         except (KeyboardInterrupt, EOFError):
             return None
 

@@ -105,22 +105,56 @@ class ClickPoint:
         return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
+# =============================================================================
+# KOORDINATEN GEHÖREN IN points.json — NIRGENDWO SONST
+# =============================================================================
+# Jede Stelle, auf die eine Sequenz klickt oder schaut, ist ein Punkt aus dem
+# Punkte-Pool. Die Sequenz speichert nur die `point_id`; x/y/Farbe stehen in
+# `points.json` und werden beim Laden von dort geholt.
+#
+# Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an
+# einer der beiden Stellen falsch sein kann. Wer die Sequenzdatei liest, sieht
+# dann etwas anderes als das, was die App klickt — und beim Nachrechnen (Monitor
+# umgestellt, Import auf einen anderen Rechner) muss jede Kopie einzeln erwischt
+# werden. Genau daran hing die Kalibrierung.
+#
+# Es gibt deshalb bewusst KEINEN Rückfallwert: hat ein Schritt eine tote
+# `point_id`, wird er übersprungen und gemeldet. Ein Schritt, der "sicherheits-
+# halber" auf eine veraltete Kopie klickt, ist schlimmer als einer, der stehen
+# bleibt und sagt warum.
+#
+# `pixel`/`color` bzw. `x`/`y`/`name` unten bleiben trotzdem als Felder bestehen:
+# sie sind die AUFGELÖSTEN ARBEITSWERTE, die `resolve_point_references()` beim
+# Laden füllt — dasselbe Muster wie `ItemScanConfig.slots`/`items`. Worker und
+# Editoren lesen sie unverändert; gespeichert werden sie nicht.
+
 @dataclass
 class ElseConfig:
     """Fallback-Aktion wenn eine Bedingung (Farbe/Scan) fehlschlägt."""
     action: str                          # "skip", "skip_cycle", "restart", "click", "key"
-    x: int = 0                           # X für Fallback-Klick
-    y: int = 0                           # Y für Fallback-Klick
+    # Referenz auf den Fallback-Punkt (nur bei action="click"). DAS ist der
+    # gespeicherte Wert — x/y/name darunter werden daraus abgeleitet.
+    point_id: Optional[int] = None
+    x: int = 0                           # abgeleitet: X für Fallback-Klick
+    y: int = 0                           # abgeleitet: Y für Fallback-Klick
     delay: float = 0                     # Delay vor Fallback
     key: Optional[str] = None            # Taste für Fallback
-    name: str = ""                       # Name des Fallback-Punkts
+    name: str = ""                       # abgeleitet: Name des Fallback-Punkts
 
 
 @dataclass
 class WaitCondition:
     """Farb-Bedingung an einer Pixel-Position: warten oder einmal prüfen."""
-    pixel: tuple[int, int]               # (x, y) Position zum Prüfen
-    color: tuple[int, int, int]          # (r, g, b) Farbe die erscheinen soll
+    # Referenz auf den Punkt, dessen Position UND Farbe geprüft werden. DAS ist
+    # der gespeicherte Wert — pixel/color darunter werden daraus abgeleitet.
+    #
+    # Dass die erwartete Farbe aus dem Punkt kommt, ist Absicht: sie war vorher
+    # eine zweite Kopie von `ClickPoint.color`. Soll an derselben Stelle auf eine
+    # ANDERE Farbe geprüft werden, ist das ein eigener Punkt — im Punkte-Menü
+    # liest man dann auch, dass es zwei Prüfungen sind.
+    point_id: Optional[int] = None
+    pixel: tuple[int, int] = (0, 0)      # abgeleitet: (x, y) Position zum Prüfen
+    color: tuple[int, int, int] = (0, 0, 0)  # abgeleitet: (r,g,b) die erscheinen soll
     until_gone: bool = False             # True = warte bis Farbe WEG ist
     # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
     # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
@@ -130,17 +164,20 @@ class WaitCondition:
 @dataclass
 class SequenceStep:
     """Ein Schritt in einer Sequenz: Erst warten/prüfen, DANN klicken."""
-    x: int                # X-Koordinate (direkt gespeichert)
-    y: int                # Y-Koordinate (direkt gespeichert)
-    delay_before: float   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
-    name: str = ""        # Optionaler Name des Punktes
-    # Referenz auf den Punkt im Punkte-Pool, aus dem dieser Schritt entstanden ist.
-    # x/y/name bleiben als Kopie erhalten (Schritte ohne Punkt-Herkunft - Aufnahme,
-    # Tastendruck, Scans - haben point_id=None und funktionieren unverändert).
-    # Ist point_id gesetzt UND der Punkt existiert, gilt der PUNKT als Wahrheit für
-    # die Koordinaten: verschiebt man den Punkt, ziehen alle Schritte mit. Genau das
-    # war vorher das Problem - eine verrutschte Aufnahme musste man in jedem Schritt
-    # einzeln nachziehen und erst mal finden.
+    # x/y/name sind abgeleitet (siehe Block oben) und deshalb optional: Pflicht ist die
+    # `point_id`, nicht die Koordinate. Frueher war es umgekehrt - da MUSSTE jeder
+    # Aufrufer x und y angeben, und genau das hat die Kopien erzeugt.
+    x: int = 0
+    y: int = 0
+    delay_before: float = 0.0   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
+    name: str = ""              # abgeleitet: Name des Punktes
+    # Referenz auf den Punkt im Punkte-Pool. DAS ist der gespeicherte Wert; x/y/name
+    # und recorded_color werden beim Laden daraus geholt.
+    #
+    # Ein Schritt, der irgendwohin zeigt, MUSS eine point_id haben — die Migration legt
+    # notfalls einen Punkt an, damit das ausnahmslos gilt. `None` bleibt genau den
+    # Schritten, die gar keine Stelle haben: Tastendruck, Wait-only, Scans, Screenshot
+    # und der Blanko-Block des Node-Editors.
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
@@ -168,11 +205,16 @@ class SequenceStep:
     # Optional: Screenshot machen (kein Klick, kein Scan)
     screenshot_only: bool = False        # True = nur Screenshot, kein Klick
     screenshot_region: Optional[tuple[int, int, int, int]] = None  # (x1,y1,x2,y2) oder None = Vollbild
-    # Optional: Bei der Aufnahme erfasste Pixelfarbe am Klickpunkt (r,g,b).
-    # Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt, einen
-    # aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne
-    # die Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
+    # Abgeleitet aus `ClickPoint.color`: die bei der Aufnahme erfasste Pixelfarbe am
+    # Klickpunkt (r,g,b). Reines Hilfs-/Referenzdatum für die Nachbearbeitung — erlaubt,
+    # einen aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne die
+    # Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
     recorded_color: Optional[tuple[int, int, int]] = None
+    # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
+    # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
+    # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
+    # mehr, und das ist genau so gewollt.
+    unresolved: bool = False
 
     def __str__(self) -> str:
         else_str = self._else_str()
@@ -342,7 +384,15 @@ class ItemProfile:
     # Kategorie für Prioritäts-Vergleich (z.B. "Hosen", "Jacken", "Juwelen")
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
-    confirm_point: Optional[ClickPoint] = None  # ClickPoint für Bestätigung nach Klick
+    # Referenz auf den Punkt, der nach dem Klick bestätigt (Popup o.ä.). DAS ist der
+    # gespeicherte Wert; `confirm_point` darunter ist der abgeleitete Arbeitswert und
+    # wird von `resolve_scan_references()` gefüllt.
+    #
+    # Der Editor fragt ohnehin nach einer Punkt-ID — die wurde bisher nur weggeworfen
+    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben ließ
+    # den Bestätigungsklick stehen, und die Kalibrierung brauchte einen Sonderfall.
+    confirm_point_id: Optional[int] = None
+    confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
@@ -451,8 +501,11 @@ class BossProfile:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
     action_scan: Optional[str] = None           # Name des Item-Scans (wenn action="item_scan")
     action_scan_mode: str = SCAN_MODE_ALL       # Scan-Modus ("all", "best", "every")
-    action_x: int = 0                           # Klick-X (wenn action="click")
-    action_y: int = 0                           # Klick-Y (wenn action="click")
+    # Referenz auf den Klick-Punkt (wenn action="click"). Gespeichert wird die ID,
+    # action_x/y sind abgeleitet — siehe Block bei ElseConfig.
+    action_point_id: Optional[int] = None
+    action_x: int = 0                           # abgeleitet: Klick-X
+    action_y: int = 0                           # abgeleitet: Klick-Y
     action_key: Optional[str] = None            # Taste (wenn action="key")
     action_delay: float = 0                     # Verzögerung vor Aktion
 
@@ -528,8 +581,10 @@ class IconScanConfig:
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
     action: str = ICON_ACTION_CLICK                            # Aktion bei Fund (Standard: klicken)
-    action_x: int = 0                                          # Klick-X (wenn action="click")
-    action_y: int = 0                                          # Klick-Y (wenn action="click")
+    # Referenz auf den Klick-Punkt (wenn action="click"); action_x/y sind abgeleitet.
+    action_point_id: Optional[int] = None
+    action_x: int = 0                                          # abgeleitet: Klick-X
+    action_y: int = 0                                          # abgeleitet: Klick-Y
     action_key: Optional[str] = None                           # Taste (wenn action="key")
     action_delay: float = 0                                    # Verzögerung vor der Aktion
 
@@ -548,6 +603,45 @@ class IconScanConfig:
         else:
             act = f"→ {self.action}"
         return f"{self.name} ({detect}, Region ({r[0]},{r[1]})-({r[2]},{r[3]})) {act}"
+
+
+# =============================================================================
+# SEQUENZ-AUFNAHME
+# =============================================================================
+# Ereignisarten der Aufnahme. Frueher war jedes Ereignis ein Linksklick und lag als
+# nacktes (t, x, y, color)-Tupel in der Liste; seit auch Tastendruck, Mausrad und
+# Farb-Warten mitgeschnitten werden, muss die Art mitgefuehrt werden.
+REC_CLICK = "click"         # Linksklick an (x, y)
+REC_KEY = "key"             # Tastendruck (key)
+REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch)
+REC_WAIT_COLOR = "wait"     # Warte-Marker: warten bis die Farbe an (x, y) da ist
+
+
+@dataclass
+class RecordEvent:
+    """Ein aufgezeichnetes Ereignis der Sequenz-Aufnahme.
+
+    Rein transient: lebt nur in `AutoClickerState.recording_events` und wird nie
+    gespeichert — `stop_recording()` baut daraus SequenceSteps und wirft die Liste weg.
+    Deshalb steht das hier auch ohne Serialisierer und ohne Default-Tabelle.
+    """
+    kind: str
+    t: float                                    # time.monotonic() beim Auslösen
+    x: int = 0
+    y: int = 0
+    color: Optional[tuple[int, int, int]] = None
+    key: Optional[str] = None                   # nur REC_KEY
+    scroll: int = 0                             # nur REC_SCROLL, Rasterstufen
+
+    def __str__(self) -> str:
+        if self.kind == REC_KEY:
+            return f"Taste '{self.key}'"
+        if self.kind == REC_SCROLL:
+            richtung = "hoch" if self.scroll > 0 else "runter"
+            return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
+        if self.kind == REC_WAIT_COLOR:
+            return f"Warte auf Farbe bei ({self.x}, {self.y})"
+        return f"Klick ({self.x}, {self.y})"
 
 
 # =============================================================================
@@ -647,10 +741,11 @@ class AutoClickerState:
     # Konfiguration (thread-safe über lock)
     config: AppConfig = field(default_factory=AppConfig)
 
-    # Sequenz-Aufnahme (Maus-Hook)
+    # Sequenz-Aufnahme (Maus-Hook + Tastatur-Hook)
     recording_active: bool = False
-    # Pausiert die laufende Aufnahme: Klicks werden ignoriert, ohne die Aufnahme
+    # Pausiert die laufende Aufnahme: Ereignisse werden ignoriert, ohne die Aufnahme
     # zu beenden (z.B. um im Spiel zu navigieren). Toggle via CTRL+ALT+H.
     recording_paused: bool = False
-    # Jeder Eintrag: (monotonic_timestamp: float, x: int, y: int, color: tuple|None)
+    # Liste von RecordEvent. Zugriff unter state.lock - der Maus- und der
+    # Tastatur-Hook schreiben aus der Message-Pump, die Hotkey-Handler lesen.
     recording_events: list = field(default_factory=list)

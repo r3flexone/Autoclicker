@@ -38,6 +38,40 @@ if TYPE_CHECKING:  # nur fuer die Annotationen unten
 _KEIN_DEFAULT = object()
 
 
+# Schon gemeldete Altfelder - sonst steht dieselbe Zeile bei 40 Items vierzigmal da.
+_ALT_GEMELDET: set = set()
+
+
+def _klick_referenz(data: dict, wo: str, was_tun: str):
+    """`action_point_id` lesen - und ein altes `action_x/y` melden statt es zu schlucken.
+
+    Boss- und Icon-Aktionen klicken heute einen Punkt. Die alte Koordinate im Scan war
+    zwar nie doppelt gespeichert, hing aber auch an keinem Punkt: sie folgte weder einer
+    Reparatur im Punkte-Menue noch einer Kalibrierung ueber die Punkte.
+    """
+    if data.get("action_point_id") is None and (data.get("action_x") or data.get("action_y")):
+        _alt_gemeldet(wo, "action_x/action_y", was_tun)
+    return data.get("action_point_id")
+
+
+def _alt_gemeldet(wo: str, feld: str, was_tun: str) -> None:
+    """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
+
+    Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
+    keine Migration: sie liesse sich bauen, kostet aber mehr als das Feld einmal neu
+    zu setzen - und ein Feld, das niemand hat, braucht keinen Migrationsschritt. Still
+    verschwinden darf es trotzdem nicht.
+    """
+    from ..utils import hint, warn
+    schluessel = f"{wo}:{feld}"
+    if schluessel in _ALT_GEMELDET:
+        return
+    _ALT_GEMELDET.add(schluessel)
+    print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
+               f"in points.json."))
+    print(hint(f"       {was_tun}."))
+
+
 def _ist_default(wert, default) -> bool:
     """Trägt das Feld seinen Standardwert?
 
@@ -70,7 +104,7 @@ _ITEM_DEFAULTS = {
     "marker_colors": [],
     "category": None,
     "priority": 1,
-    "confirm_point": None,
+    "confirm_point_id": None,
     "confirm_delay": 0.5,
     "template": None,
     "min_confidence": DEFAULT_MIN_CONFIDENCE,
@@ -83,9 +117,9 @@ def _item_to_dict(item: ItemProfile) -> dict:
     """Serialisiert ein ItemProfile - ohne `name` (steht im Schlüssel) und ohne Defaults."""
     d = asdict(item)
     d.pop("name", None)
-    # confirm_point: ClickPoint → nur {x, y} behalten (id/name nicht relevant)
-    if d["confirm_point"]:
-        d["confirm_point"] = {"x": d["confirm_point"]["x"], "y": d["confirm_point"]["y"]}
+    # Der Bestätigungsklick steht als ID drin, nicht als Koordinate: die wohnt im Punkt.
+    # `confirm_point` ist nur der aufgelöste Arbeitswert und wird nicht geschrieben.
+    d.pop("confirm_point", None)
     return _ohne_defaults(d, _ITEM_DEFAULTS)
 
 
@@ -129,18 +163,20 @@ def _point_to_dict(p: 'ClickPoint') -> dict:
 
 def _item_from_dict(data: dict, name: str) -> ItemProfile:
     """Deserialisiert ein ItemProfile. `name` kommt aus dem Schlüssel des Dicts."""
-    # confirm_point: {x, y} oder None. Die alte [x, y]-Liste hebt migration._fix_item,
-    # bevor hier gelesen wird - hier steht deshalb nur das aktuelle Format.
-    cp_data = data.get("confirm_point")
-    cp = None
-    if isinstance(cp_data, dict) and "x" in cp_data and "y" in cp_data:
-        cp = ClickPoint(cp_data["x"], cp_data["y"])
+    # Ein altes `confirm_point` (Koordinate im Item) wird NICHT mehr gelesen - der
+    # Bestätigungsklick ist heute ein Punkt. Bewusst ohne Migration: die Koordinate
+    # liesse sich zwar in einen Punkt heben, aber der Weg dorthin (Punkte-Liste durch
+    # alle Item-Loader reichen) kostet mehr, als das Feld neu zu setzen. Gemeldet wird
+    # es, damit es nicht still verschwindet.
+    if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
+        _alt_gemeldet(f"Item '{name}'", "confirm_point",
+                      "Bestätigungs-Punkt im Item-Editor neu setzen")
     return ItemProfile(
         name=name,
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
         category=data.get("category"),
         priority=data.get("priority", 1),
-        confirm_point=cp,
+        confirm_point_id=data.get("confirm_point_id"),
         confirm_delay=data.get("confirm_delay", 0.5),
         template=data.get("template"),
         min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE)
@@ -159,8 +195,7 @@ _BOSS_DEFAULTS = {
     "action": BOSS_ACTION_SCAN,
     "action_scan": None,
     "action_scan_mode": SCAN_MODE_ALL,
-    "action_x": 0,
-    "action_y": 0,
+    "action_point_id": None,
     "action_key": None,
     "action_delay": 0,
 }
@@ -176,8 +211,7 @@ def _boss_profile_to_dict(boss: BossProfile) -> dict:
         "action": boss.action,
         "action_scan": boss.action_scan,
         "action_scan_mode": boss.action_scan_mode,
-        "action_x": boss.action_x,
-        "action_y": boss.action_y,
+        "action_point_id": boss.action_point_id,
         "action_key": boss.action_key,
         "action_delay": boss.action_delay,
     }, _BOSS_DEFAULTS)
@@ -193,8 +227,8 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
         action=data.get("action", BOSS_ACTION_SCAN),
         action_scan=data.get("action_scan"),
         action_scan_mode=data.get("action_scan_mode", SCAN_MODE_ALL),
-        action_x=data.get("action_x", 0),
-        action_y=data.get("action_y", 0),
+        action_point_id=_klick_referenz(data, f"Boss '{data.get('name', '?')}'",
+                                        "Klick-Punkt im Boss-Scan-Editor neu setzen"),
         action_key=data.get("action_key"),
         action_delay=data.get("action_delay", 0),
     )
@@ -269,8 +303,7 @@ _ICON_SCAN_DEFAULTS = {
     "marker_colors": [],
     "color_tolerance": 30,
     "action": ICON_ACTION_CLICK,
-    "action_x": 0,
-    "action_y": 0,
+    "action_point_id": None,
     "action_key": None,
     "action_delay": 0,
 }
@@ -286,8 +319,7 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
         "marker_colors": [list(c) for c in config.marker_colors],
         "color_tolerance": config.color_tolerance,
         "action": config.action,
-        "action_x": config.action_x,
-        "action_y": config.action_y,
+        "action_point_id": config.action_point_id,
         "action_key": config.action_key,
         "action_delay": config.action_delay,
     }, _ICON_SCAN_DEFAULTS)
@@ -298,13 +330,31 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
 # =============================================================================
 
 def _step_to_dict(s: SequenceStep) -> dict:
-    """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict."""
+    """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict.
+
+    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht — sie
+    stehen dann in `points.json`, und das ist die einzige Stelle, an der sie stehen
+    duerfen. Betrifft drei Paare: den Klick selbst (x/y + recorded_color), den
+    Pruef-Pixel (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
+
+    `x`/`y` bleiben nur fuer die Schritte uebrig, die gar keinen Punkt haben koennen
+    (Tastendruck, Scans, Screenshot) — dort sind sie ohnehin 0 und fallen durch
+    `_ohne_defaults` weg.
+    """
     wc = s.wait_condition
     ec = s.else_config
-    voll = {"x": s.x, "y": s.y, "name": s.name, "point_id": s.point_id,
+    # Der Punkt traegt die Stelle: alles, was sich daraus ableiten laesst, entfaellt.
+    klick_am_punkt = s.point_id is not None
+    wait_am_punkt = wc is not None and wc.point_id is not None
+    else_am_punkt = ec is not None and ec.point_id is not None
+    voll = {"x": 0 if klick_am_punkt else s.x,
+            "y": 0 if klick_am_punkt else s.y,
+            "name": "" if klick_am_punkt else s.name,
+            "point_id": s.point_id,
             "delay_before": s.delay_before,
-            "wait_pixel": wc.pixel if wc else None,
-            "wait_color": wc.color if wc else None,
+            "wait_point_id": wc.point_id if wc else None,
+            "wait_pixel": None if (wc is None or wait_am_punkt) else wc.pixel,
+            "wait_color": None if (wc is None or wait_am_punkt) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
@@ -315,12 +365,16 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "key_press": s.key_press,
             "scroll": s.scroll,
             "else_action": ec.action if ec else None,
-            "else_x": ec.x if ec else 0, "else_y": ec.y if ec else 0,
+            "else_point_id": ec.point_id if ec else None,
+            "else_x": 0 if (ec is None or else_am_punkt) else ec.x,
+            "else_y": 0 if (ec is None or else_am_punkt) else ec.y,
             "else_delay": ec.delay if ec else 0,
-            "else_key": ec.key if ec else None, "else_name": ec.name if ec else "",
+            "else_key": ec.key if ec else None,
+            "else_name": "" if (ec is None or else_am_punkt) else ec.name,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
-            "recorded_color": list(s.recorded_color) if s.recorded_color else None}
+            "recorded_color": None if klick_am_punkt or not s.recorded_color
+                              else list(s.recorded_color)}
     return _ohne_defaults(voll, _STEP_DEFAULTS)
 
 
@@ -332,11 +386,20 @@ def _step_to_dict(s: SequenceStep) -> dict:
 # Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
 # Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
 #
-# x, y und delay_before stehen NICHT hier: das sind die Pflicht-Argumente von
-# SequenceStep, die bleiben immer sichtbar.
+# delay_before steht NICHT hier: es ergibt sich als einziges nicht aus dem Punkt und
+# bleibt immer sichtbar - eine Wartezeit von 0 will man in der Datei sehen.
+#
+# x/y standen frueher aus demselben Grund nicht hier. Seit die Stelle im Punkt wohnt,
+# sind sie ein abgeleiteter Wert wie jeder andere: bei einem Schritt MIT point_id setzt
+# `_step_to_dict` sie auf 0, und damit raeumt diese Tabelle sie weg. Uebrig bleiben sie
+# nur bei Schritten ohne Stelle (Taste, Scan, Screenshot) - und dort sind sie 0.
 _STEP_DEFAULTS = {
     "name": "",
+    "x": 0,
+    "y": 0,
     "point_id": None,
+    "wait_point_id": None,
+    "else_point_id": None,
     "wait_pixel": None,
     "wait_color": None,
     "wait_until_gone": False,
@@ -402,9 +465,17 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         if delay_raw is None:
             delay_raw = 0
         delay_max_raw = s.get("delay_max")
-        # WaitCondition zusammenbauen
+        # WaitCondition zusammenbauen. Mit `wait_point_id` liefert der Punkt Position UND
+        # Farbe nach - pixel/color bleiben hier leer und fuellt resolve_point_references().
         wait_cond = None
-        if wait_pixel and wait_color:
+        wait_point_id = s.get("wait_point_id")
+        if wait_point_id is not None:
+            wait_cond = WaitCondition(
+                point_id=wait_point_id,
+                until_gone=s.get("wait_until_gone", False),
+                check_only=s.get("wait_check_only", False),
+            )
+        elif wait_pixel and wait_color:
             wait_cond = WaitCondition(
                 pixel=wait_pixel, color=wait_color,
                 until_gone=s.get("wait_until_gone", False),
@@ -433,6 +504,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_delay = s.get("else_delay") if s.get("else_delay") is not None else 0
             else_cfg = ElseConfig(
                 action=else_action,
+                point_id=s.get("else_point_id"),
                 x=else_x, y=else_y,
                 delay=else_delay,
                 key=s.get("else_key"), name=s.get("else_name") or ""

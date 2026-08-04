@@ -42,7 +42,7 @@ from .globals import (
 from .item_scans import (
     ensure_item_scans_dir, save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
-    update_item_in_scans, resolve_scan_references,
+    update_item_in_scans, resolve_scan_references, resolve_klick_referenzen,
 )
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
@@ -59,6 +59,7 @@ from .sequences import (
     ensure_sequences_dir, save_sequence_file, load_sequence_file,
     list_available_sequences, save_data,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
+    punkt_fuer_stelle, aufloesen,
     resolve_point_references,
 )
 from .serialization import (
@@ -83,11 +84,12 @@ __all__ = [
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
     'list_available_sequences', 'save_data',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
+    'punkt_fuer_stelle', 'aufloesen',
     'resolve_point_references',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
     'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',
-    'resolve_scan_references',
+    'resolve_scan_references', 'resolve_klick_referenzen',
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
