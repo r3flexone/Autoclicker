@@ -42,10 +42,11 @@ _FAST_CLICK_GAP = 0.08
 _SCROLL_MERGE_GAP = 0.25
 
 
-def _melde(ereignis: RecordEvent, idx: int) -> None:
+def _melde(ereignis: RecordEvent, idx: int, delay: float | None) -> None:
     """Eine Zeile pro aufgezeichnetem Ereignis — der Nutzer sieht nur die Konsole."""
     farbe = f" {describe_color(ereignis.color)}" if ereignis.color else ""
-    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}{farbe}")
+    zeit = "sofort" if delay is None else f"+{delay:.2f}s"
+    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}  {zeit}{farbe}")
 
 
 def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
@@ -58,6 +59,7 @@ def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
         if not state.recording_active or state.recording_paused:
             return False
         vorherige = state.recording_events[-1] if state.recording_events else None
+        delay = None if vorherige is None else round(ereignis.t - vorherige.t, 2)
         if (ereignis.kind == REC_SCROLL and vorherige is not None
                 and vorherige.kind == REC_SCROLL
                 and ereignis.t - vorherige.t <= _SCROLL_MERGE_GAP):
@@ -67,7 +69,7 @@ def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
         else:
             state.recording_events.append(ereignis)
             idx = len(state.recording_events)
-    _melde(ereignis, idx)
+    _melde(ereignis, idx, delay)
     return True
 
 
