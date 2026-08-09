@@ -766,6 +766,30 @@ def handle_record_color(state: AutoClickerState) -> None:
     merke_farbe(state)
 
 
+def handle_record_screenshot(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme einen Screenshot-Marker an dieser Stelle im Ablauf."""
+    from .editors.sequence_recorder import merke_screenshot
+    merke_screenshot(state)
+
+
+def handle_rec_region(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme eine Bereichs-Ecke (zwei davon = ein Rechteck)."""
+    from .editors.sequence_recorder import merke_bereich
+    merke_bereich(state)
+
+
+def handle_rec_watch(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme einen Beobachtungs-Marker (warten ohne Klick)."""
+    from .editors.sequence_recorder import merke_beobachten
+    merke_beobachten(state)
+
+
+def handle_rec_phase(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme eine Phasengrenze (INIT | LOOP | END)."""
+    from .editors.sequence_recorder import merke_phase
+    merke_phase(state)
+
+
 def handle_node_editor(state: AutoClickerState) -> None:
     """Öffnet den visuellen Node-Editor als separaten Subprocess.
 

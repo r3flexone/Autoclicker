@@ -34,7 +34,16 @@ except (AttributeError, OSError):
 # =============================================================================
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
 MOD_NOREPEAT = 0x4000
+
+# CTRL+ALT+<Buchstabe> ist voll: 24 der 26 Buchstaben sind vergeben, frei blieben nur
+# R (laut Erfahrung oft vom System belegt) und Y. Die Aufnahme-Marker bekommen deshalb
+# eine eigene Ebene mit SHIFT — das verdoppelt den Vorrat UND traegt eine Bedeutung:
+# was hier liegt, wirkt nur waehrend einer laufenden Aufnahme. Der Tastatur-Hook der
+# Aufnahme ignoriert alles bei gedruecktem CTRL/ALT, die Marker landen also nicht
+# versehentlich als Tastendruck in der Sequenz.
+MOD_REC = MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
 
 # Virtual Key Codes
 VK_A = 0x41  # Add Point
@@ -61,6 +70,7 @@ VK_B = 0x42  # Visueller Node-Editor (Blöcke)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
 VK_M = 0x4D  # Aufnahme: Farbe merken (auf Farbe warten)
+VK_D = 0x44  # Aufnahme: Screenshot-Marker
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -86,6 +96,11 @@ HOTKEY_NODE_EDITOR = 20
 HOTKEY_SCAN_STUDIO = 21
 HOTKEY_HELP = 22
 HOTKEY_RECORD_COLOR = 23
+HOTKEY_RECORD_SCREENSHOT = 24
+# Aufnahme-Ebene (CTRL+ALT+SHIFT+…)
+HOTKEY_REC_PHASE = 25
+HOTKEY_REC_REGION = 26
+HOTKEY_REC_WATCH = 27
 
 # Window Messages
 WM_HOTKEY = 0x0312
@@ -699,6 +714,10 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
     (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),
+    (HOTKEY_RECORD_SCREENSHOT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_D, "CTRL+ALT+D (Aufnahme: Screenshot-Marker)"),
+    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: Phasengrenze)"),
+    (HOTKEY_REC_REGION, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Bereichs-Ecke)"),
+    (HOTKEY_REC_WATCH, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: beobachten ohne Klick)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
