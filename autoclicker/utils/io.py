@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from .console import (
     _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM,
-    col, clear_line,
+    col, status_line,
 )
 
 if TYPE_CHECKING:
@@ -448,7 +448,7 @@ def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
     """Wartet solange pausiert ist. Gibt False zurück wenn gestoppt wurde."""
     pause_interval = state.config.timing_pause_interval
     while state.pause_event.is_set() and not state.stop_event.is_set():
-        clear_line()
-        print(f"{col('[PAUSE]', 'yellow')} {message} | Fortsetzen: {col('CTRL+ALT+G', 'yellow')}", end="", flush=True)
+        status_line(f"{col('[PAUSE]', 'yellow')} {message} | "
+                    f"Fortsetzen: {col('CTRL+ALT+G', 'yellow')}")
         time.sleep(pause_interval)
     return not state.stop_event.is_set()
