@@ -23,6 +23,11 @@ OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 EXPORT_PATH = os.path.join(OUTPUT_DIR, "idle_clans_farming.xlsx")
 PRICE_SENSITIVITY_CHART_PATH = os.path.join(OUTPUT_DIR, "price_sensitivity_chart.png")
 RUN_STATS_PATH = os.path.join(OUTPUT_DIR, "run_stats_history.json")
+# Schlanke Item-Name -> Gold-pro-Stueck-Tabelle. EINZIGE Beruehrung mit dem
+# Autoclicker, und zwar nur als Datei: der Autoclicker LIEST sie (falls in seiner
+# config.json ein Pfad eingetragen ist), diese Analyse weiss nichts von ihm. Kein
+# Import in beide Richtungen, keine gemeinsame Abhaengigkeit - nur eine JSON.
+MARKET_VALUE_PATH = os.path.join(OUTPUT_DIR, "marktwert.json")
 
 
 # ------------------------------------------------------------------
@@ -179,6 +184,48 @@ LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 
 SHOW_PRICE_SENSITIVITY_CHART = True   # PNG + Excel-Sheet, 1 Request je Top-N-Item
 PRICE_SENSITIVITY_TOP_N = 10
+
+# Farben der Item-Linien im Sensitivitaets-Chart. Feste Reihenfolge, NICHT zyklisch
+# ueber matplotlibs Standardzyklus - der vergibt an Position 4 ein Rot, und Rot ist hier
+# fuer die NPC-Markierung reserviert. Eine Linie in dieser Farbe war von der Markierung
+# nicht zu unterscheiden.
+#
+# Ausgeschlossen ist nicht "Rot" als Familie, sondern nur, was mit NPC_MARKER_COLOR
+# verwechselbar ist. Die Grenze liegt bei Delta-E 10 (Normalsicht): am naechsten kommt
+# orange mit 10.8, dann altrosa 12.8, dunkelorange 13.9, weinrot 15.5, der Rest darueber.
+# Dass Serienfarben naeher an einer Status-Farbe liegen duerfen als Serien untereinander,
+# ist so vorgesehen - die Markierung wird durch ihre FORM getragen (dicker Punkt mit
+# weissem Ring gegen duenne Linie) plus Legendeneintrag, nicht durch den Farbabstand.
+# Das Standard-Rot von matplotlib bleibt draussen: das war identisch mit der Markierung.
+#
+# Die REIHENFOLGE ist kein Geschmack, sondern der Sicherheitsmechanismus: geprueft werden
+# BENACHBARTE Paare, und aehnliche Toene (blau/hellblau, violett/lila, gelb/oliv,
+# magenta/altrosa, orange/dunkelorange) duerfen sich deshalb nicht beruehren. Diese
+# Anordnung legt zusaetzlich die kraeftigen Farben nach vorn - bei TOP_N=10 kommen genau
+# die ersten zehn zum Einsatz. Wer umsortiert oder ergaenzt, prueft neu.
+# Schlechtestes benachbartes Paar: Delta-E 9.1 farbfehlsichtig, 15.6 normalsichtig.
+PRICE_SENSITIVITY_SERIES_COLORS = [
+    "#2a78d6",  # blau
+    "#eb6834",  # orange
+    "#1baf7a",  # aqua
+    "#eda100",  # gelb
+    "#b05fd6",  # lila
+    "#e87ba4",  # magenta
+    "#4a3aa7",  # violett
+    "#8c2f5a",  # weinrot
+    "#6da7ec",  # hellblau
+    "#008300",  # gruen
+    "#d95f9a",  # altrosa
+    "#c77800",  # dunkelorange
+    "#7b3f00",  # braun
+    "#7f8c1a",  # oliv
+]
+# Reserve, falls TOP_N ueber 14 steigt: dann traegt zusaetzlich der Linienstil die
+# Unterscheidung (14 Farben x 3 Stile = 42 Kombinationen). Bei TOP_N <= 14 bleibt jede
+# Linie durchgezogen - eine fuenfzehnte Farbe zu erfinden waere der falsche Weg, die haelt
+# die Abstaende nicht mehr ein.
+PRICE_SENSITIVITY_SERIES_STYLES = ["-", "--", ":"]
+NPC_MARKER_COLOR = "#d03b3b"          # reserviert: "NPC-Verkauf gleich gut oder besser"
 
 # Sheet "Begruendung": rechnet eine Stunde Produktion durch die echten Kaufgebot-Stufen
 # im Player Shop, statt zu unterstellen, dass alles zum besten Gebot weggeht.
