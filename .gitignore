@@ -50,6 +50,8 @@ item_scans/
 boss_scans/
 icon_scans/
 exports/
+# Sicherungen des Start-Durchgangs (persistence/sweep.py) - spiegelt die Ordner darueber
+backups/
 # Screenshots gibt es zweimal: SCREENSHOTS_DIR (slots/Screenshots) und
 # SEQUENCE_SCREENSHOTS_DIR (screenshots, klein). Beide ausschreiben — auf Linux ist
 # das Muster gross/klein-empfindlich, ein einzelnes `Screenshots/` deckt dort nur eins ab.

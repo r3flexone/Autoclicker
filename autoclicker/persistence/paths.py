@@ -20,6 +20,12 @@ SLOTS_FILE: str = os.path.join(SLOTS_DIR, "slots.json")
 ITEMS_FILE: str = os.path.join(ITEMS_DIR, "items.json")
 SLOT_PRESETS_DIR: str = os.path.join(SLOTS_DIR, "presets")
 ITEM_PRESETS_DIR: str = os.path.join(ITEMS_DIR, "presets")
+# Sicherungen des Start-Durchgangs. Der Ordner spiegelt die Datenstruktur darunter
+# (backups/sequences/<name>.json.bak), sonst ueberschriebe die Sicherung von
+# item_scans/foo.json die von boss_scans/foo.json - gleicher Dateiname, anderer Ordner.
+# Bewusst NICHT in init_directories(): der Ordner soll erst entstehen, wenn es wirklich
+# etwas zu sichern gab. Ein leeres backups/ bei jeder frischen Installation waere Rauschen.
+BACKUPS_DIR: str = "backups"
 
 
 def init_directories() -> None:

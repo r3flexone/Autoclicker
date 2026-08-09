@@ -19,8 +19,8 @@ drumherum. Zwei Aufraeum-Arten laufen pro Datei:
                 dazwischen wegfaellt, war Altbestand. Das raeumt auch Dateitypen auf,
                 die gar keinen Migrationsschritt haben.
 
-Backups landen als <datei>.bak neben dem Original. Ein zweiter Lauf findet nichts mehr
-zu tun - genau daran erkennt man, dass alles sauber ist.
+Backups landen unter backups/<ordner>/<datei>.bak, die Struktur wird gespiegelt. Ein
+zweiter Lauf findet nichts mehr zu tun - genau daran erkennt man, dass alles sauber ist.
 """
 
 from __future__ import annotations
@@ -38,13 +38,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from autoclicker.persistence.migration import SCHEMA_VERSION  # noqa: E402
+from autoclicker.persistence.paths import BACKUPS_DIR  # noqa: E402
 from autoclicker.persistence.sweep import sammle_dateien, sweep  # noqa: E402
 
 
 def main() -> int:
     schreiben = "--write" in sys.argv
     print(f"Ziel-Schema: {SCHEMA_VERSION}")
-    print("Modus:", "SCHREIBEN (Backups als *.bak)" if schreiben
+    print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if schreiben
           else "nur anzeigen (--write zum Schreiben)")
 
     dateien = sammle_dateien()
