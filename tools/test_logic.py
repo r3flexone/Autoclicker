@@ -789,19 +789,55 @@ from autoclicker.persistence import migration as _mg
 _ohne = [k for k in _mg.ALL_KINDS if k not in _mg._CHAINS and k not in _mg._NORMALIZER]
 check("jeder Dateityp ist in _CHAINS oder _NORMALIZER registriert", _ohne == [])
 
-# 2. Jeder Loader, der eine dieser Dateien liest, ruft migrate() auf.
-_loader_quellen = {
-    "sequences": "autoclicker/persistence/sequences.py",
-    "globals": "autoclicker/persistence/globals.py",
-    "presets": "autoclicker/persistence/presets.py",
-    "item_scans": "autoclicker/persistence/item_scans.py",
-    "boss_scans": "autoclicker/persistence/boss_scans.py",
-    "icon_scans": "autoclicker/persistence/icon_scans.py",
-}
+# 2. JEDER Loader ruft migrate() auf - gesucht statt aufgezaehlt.
+#
+# Vorher stand hier eine handgepflegte Liste von sechs Dateien. Die deckte genau die
+# ab, an die jemand gedacht hatte; drei weitere Module lesen dieselben Dateien direkt
+# (die GUI-Subprozesse) und fielen durch. Eine Liste, die nur das prueft, woran man
+# ohnehin denkt, ist keine Pruefung - dasselbe Argument wie bei PLATTFORM_MODULE.
 _repo = Path(__file__).resolve().parent.parent
-_ohne_aufruf = [name for name, rel in _loader_quellen.items()
-                if "migrate(" not in (_repo / rel).read_text(encoding="utf-8")]
-check("jedes Persistenz-Modul ruft migrate() auf", _ohne_aufruf == [])
+
+# Bewusste Ausnahmen, mit Grund. Wer eine neue eintraegt, muss sie begruenden koennen.
+_MIGRATE_AUSNAHMEN = {
+    # Die Config hat kein schema_version und laeuft ueber AppConfig.from_dict(),
+    # das unbekannte Keys wegfiltert - der Normalisierer waere hier wirkungslos.
+    "autoclicker/config.py":
+        "AppConfig.from_dict filtert unbekannte Keys selbst",
+    # Die beiden GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken
+    # Ladern (sie haben keinen AutoClickerState). Sie werden AUS dem Hauptprozess
+    # gestartet, der beim Start bereits alles gehoben hat.
+    "autoclicker/editors/scan_canvas/model.py":
+        "Subprozess - Hauptprozess hat beim Start gesweept",
+    "autoclicker/editors/node_canvas/model.py":
+        "Subprozess - Hauptprozess hat beim Start gesweept",
+    # list_scan_files() liest EIN Feld ("name") fuer die Auswahlliste und baut keine
+    # Dataclass. Es gibt nichts zu heben - solange `name` das Feld bleibt, an dem ein
+    # Scan haengt. Wuerde es je umbenannt, gehoert diese Zeile hier weg.
+    "autoclicker/persistence/_scan_store.py":
+        "liest nur das Feld 'name', baut keine Dataclass",
+    # Die Marktwert-Datei kommt von aussen (market_analysis) und ist kein Datenformat
+    # dieses Programms: Name -> Zahl, kein schema_version, nichts zu heben. Sie wird
+    # gelesen wie eine Fremddatei - fehlerhafte Eintraege fliegen einzeln raus.
+    "autoclicker/runtime/item_scan.py":
+        "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
+}
+_leser, _ohne_aufruf = [], []
+for _pf in sorted((_repo / "autoclicker").rglob("*.py")):
+    _txt = _pf.read_text(encoding="utf-8")
+    if "json.load(" not in _txt:
+        continue
+    _rel = _pf.relative_to(_repo).as_posix()
+    _leser.append(_rel)
+    if "migrate(" not in _txt and _rel not in _MIGRATE_AUSNAHMEN:
+        _ohne_aufruf.append(_rel)
+check("jeder Loader ruft migrate() auf (oder steht begruendet auf der Ausnahmeliste)",
+      _ohne_aufruf == [])
+if _ohne_aufruf:
+    print("        " + ", ".join(_ohne_aufruf))
+# Gegenrichtung: eine Ausnahme, die gar nicht mehr laedt, ist eine Fiktion
+_tote_ausnahmen = [a for a in _MIGRATE_AUSNAHMEN if a not in _leser]
+check("keine Ausnahme fuer eine Datei, die gar nichts mehr laedt", _tote_ausnahmen == [])
+check("der Test findet ueberhaupt Loader", len(_leser) >= 6)
 
 # 3. Unbekannter Typ ist ein Programmierfehler, kein stiller No-Op-Pfad:
 #    migrate() laesst die Daten unangetastet, aber ALL_KINDS deckt alles ab (s. 1.)
@@ -884,7 +920,12 @@ try:
           len(_e1.uebersprungen) == 1 and _e1.uebersprungen[0].name == "kaputt.json")
     check("kaputte Datei bleibt unveraendert",
           (_sw / "item_scans/kaputt.json").read_text(encoding="utf-8") == "{ kein json")
-    check("Sicherung angelegt", (_sw / "sequences/alt.json.bak").exists())
+    # Sicherungen gehoeren unter backups/, nicht neben das Original: dort verstellen sie
+    # den Blick auf die Daten und ein *.json-Glob koennte sie erwischen.
+    check("Sicherung liegt unter backups/", (_sw / "backups/sequences/alt.json.bak").exists())
+    check("und NICHT mehr neben dem Original", not (_sw / "sequences/alt.json.bak").exists())
+    check("Sicherung hat den Stand VOR dem Heben",
+          "point_index" in (_sw / "backups/sequences/alt.json.bak").read_text(encoding="utf-8"))
 
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
     _e2 = _sweep(write=True)
@@ -907,8 +948,61 @@ try:
     # Durchgang da: er braucht keinen Migrationsschritt, um ein totes Feld loszuwerden.
     check("Start-Durchgang entfernt das tote confirm_point", "confirm_point" not in _it)
     check("Start-Durchgang entfernt totes Item-Feld", "uralt" not in _it)
+
+    # Von Hand getippte Wartezeit: `600` statt `600.0`. In JSON ist das dieselbe Zahl,
+    # also gibt es nichts aufzuraeumen. Vorher schrieb der Durchgang die Datei deswegen
+    # um, legte ein .bak an und meldete eine Migration, die inhaltlich nichts tat —
+    # bei JEDEM Start, an dem jemand eine runde Zahl in die JSON getippt hatte.
+    _hand = _sw / "sequences/hand.json"
+    _hand.write_text(json.dumps(
+        {"name": "hand", "schema_version": _mg.SCHEMA_VERSION,
+         "init_steps": [], "end_steps": [],
+         "loop_phases": [{"name": "L", "repeat": 1,
+                          "steps": [{"point_id": 1, "delay_before": 1.5}]}]}),
+        encoding="utf-8")
+    _sweep(write=True)                    # einmal in die Normalform bringen
+    (_sw / "backups/sequences/hand.json.bak").unlink(missing_ok=True)
+    # ... und jetzt genau EINE Zahl auf int zurueckdrehen, sonst nichts
+    _norm = json.loads(_hand.read_text(encoding="utf-8"))
+    _norm["loop_phases"][0]["steps"][0]["delay_before"] = 600
+    _hand.write_text(json.dumps(_norm, indent=2), encoding="utf-8")
+    _vorher = _hand.read_text(encoding="utf-8")
+
+    _e3 = _sweep(write=True)
+    check("von Hand getippte 600 gilt nicht als Aenderung", _e3.anzahl_geaendert == 0)
+    check("die Datei bleibt dabei unangetastet",
+          _hand.read_text(encoding="utf-8") == _vorher)
+    check("und es entsteht kein .bak fuer nichts",
+          not (_sw / "backups/sequences/hand.json.bak").exists())
 finally:
     _os.chdir(_cwd)
+
+# Die Struktur unter backups/ wird gespiegelt. Ohne das ueberschriebe die Sicherung von
+# item_scans/foo.json die von boss_scans/foo.json - gleicher Name, anderer Ordner, und
+# eine der beiden haette keine Sicherung mehr.
+from autoclicker.persistence.sweep import sicherungspfad as _sp
+check("Sicherung landet unter backups/ mit gespiegeltem Ordner",
+      _sp(Path("sequences/all_dayli.json")) == Path("backups/sequences/all_dayli.json.bak"))
+check("gleiche Dateinamen in verschiedenen Ordnern kollidieren nicht",
+      _sp(Path("item_scans/foo.json")) != _sp(Path("boss_scans/foo.json")))
+check("Datei im Wurzelverzeichnis behaelt ihren Platz",
+      _sp(Path("config.json")) == Path("backups/config.json.bak"))
+# Ein absoluter Pfad darf unter backups/ nicht den halben Laufwerkspfad nachbauen
+check("absoluter Pfad wird relativ zum Arbeitsverzeichnis gelegt",
+      _sp(Path.cwd() / "sequences" / "x.json") == Path("backups/sequences/x.json.bak"))
+check("Pfad ausserhalb des Arbeitsverzeichnisses behaelt nur den Namen",
+      _sp(Path(tempfile.gettempdir()) / "fremd.json") == Path("backups/fremd.json.bak"))
+
+# _gleich muss die Zahlentypen angleichen, ohne echte Unterschiede zu verschlucken.
+# Beide Richtungen, sonst waere auch ein "alles ist gleich" gruen.
+from autoclicker.persistence.sweep import _gleich as _gl
+check("_gleich: 600 und 600.0 sind dieselbe Zahl", _gl({"d": 600}, {"d": 600.0}))
+check("_gleich: auch verschachtelt", _gl({"s": [{"d": 1}]}, {"s": [{"d": 1.0}]}))
+check("_gleich: echte Wertaenderung faellt weiterhin auf", not _gl({"d": 600}, {"d": 700}))
+# bool ist in Python ein int - ohne Sonderfall waere ein umgekipptes Flag unsichtbar
+check("_gleich: True geht nicht als 1.0 durch", not _gl({"b": True}, {"b": 1.0}))
+check("_gleich: fehlender Schluessel faellt weiterhin auf", not _gl({"d": 1}, {"d": 1, "x": 2}))
+check("_gleich: Zeichenkette bleibt Zeichenkette", not _gl({"d": "600"}, {"d": 600}))
 
 # Abschaltbar, falls man Altbestand einfrieren will
 check("migrate_on_start ist ein Config-Feld mit Default an",
@@ -2624,6 +2718,256 @@ check("zweimal M ist derselbe Wunsch -> ein Marker", _v4 == 1 and len(_g4) == 2)
 _g5, _v5 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_SCROLL, 1.0, 5, 5, scroll=2)])
 check("Marker vor einem Scroll bleibt (Scroll hat eine Stelle)", _v5 == 0)
 
+# Screenshot-Marker (CTRL+ALT+D): anders als der Warte-Marker wird er SEIN EIGENER
+# Schritt — er hat keine Folge-Aktion, an die er sich haengen koennte. Eine Stelle hat
+# er trotzdem nicht: beim Druecken parkt die Maus irgendwo, ein Punkt darauf waere
+# derselbe Muell, den der Warte-Marker frueher in points.json geschrieben hat.
+from autoclicker.models import REC_SCREENSHOT as _R_SHOT
+from autoclicker.editors.sequence_recorder import merke_screenshot as _mshot
+
+_ev_shot = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
+            _RE(_R_SHOT, 1.5),
+            _RE(_R_CLICK, 2.0, 30, 40, (4, 5, 6))]
+_st_shot = AutoClickerState()
+_map_shot, _neu_shot = _pfe(_st_shot, _ev_shot, "Shot")
+_steps_shot = _sae(_ev_shot, _map_shot)
+
+check("Screenshot-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_shot)
+check("und legt damit auch keinen an", len(_st_shot.points) == 2)
+check("er wird aber SEIN EIGENER Schritt (anders als der Warte-Marker)",
+      len(_steps_shot) == 3 and _steps_shot[1].screenshot_only is True)
+check("als Vollbild — der Bereich kommt spaeter im Editor",
+      _steps_shot[1].screenshot_region is None)
+check("ohne Klickziel und ohne Punkt-Referenz",
+      _steps_shot[1].point_id is None and _steps_shot[1].wait_only is False)
+check("die Wartezeit bis dahin bleibt echte Wartezeit",
+      _steps_shot[1].delay_before == 1.5)
+check("und der Klick danach misst ab dem Marker weiter",
+      _steps_shot[2].delay_before == 0.5)
+
+# Er darf NICHT wie der Warte-Marker verworfen werden, wenn nichts folgt: er braucht
+# keine Folge-Aktion. Ein Marker am Ende ist ein Screenshot am Ende — voellig gueltig.
+_g6, _v6 = _mpr([_RE(_R_CLICK, 0.0, 1, 2), _RE(_R_SHOT, 1.0)])
+check("Screenshot-Marker am Ende bleibt (er braucht keinen Klick nach sich)",
+      _v6 == 0 and len(_g6) == 2)
+_steps_ende = _sae(_g6, _pfe(AutoClickerState(), _g6, "E")[0])
+check("und wird dort zum letzten Schritt", _steps_ende[-1].screenshot_only is True)
+
+# Ein Warte-Marker VOR einem Screenshot-Marker hat nichts zum Anhaengen: der
+# Screenshot hat keine Stelle und keine Farbe, auf die man warten koennte.
+_g7, _v7 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_SHOT, 1.0)])
+check("Warte-Marker vor einem Screenshot-Marker wird verworfen", _v7 == 1)
+
+# Der Hotkey haengt am Aufnahme-Zustand: ohne laufende Aufnahme passiert nichts
+_st_aus = AutoClickerState()
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _mshot(_st_aus)
+check("ohne laufende Aufnahme zeichnet CTRL+ALT+D nichts auf",
+      _st_aus.recording_events == [])
+_st_pau = AutoClickerState()
+_st_pau.recording_active = True
+_st_pau.recording_paused = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _mshot(_st_pau)
+check("und pausiert ebenso wenig", _st_pau.recording_events == [])
+_st_an = AutoClickerState()
+_st_an.recording_active = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _mshot(_st_an)
+check("waehrend der Aufnahme landet genau ein Screenshot-Ereignis in der Liste",
+      len(_st_an.recording_events) == 1
+      and _st_an.recording_events[0].kind == _R_SHOT)
+
+# Der Schritt muss die Datei ueberleben — sonst ist der Marker beim naechsten Start weg
+_d_shot = _s2d(_steps_shot[1])
+check("screenshot_only steht in der Datei", _d_shot.get("screenshot_only") is True)
+check("und ohne Klick-Koordinaten", not {"x", "y", "point_id"} & set(_d_shot))
+
+
+# --------------------------- Aufnahme: Bereich, Beobachten, Phasengrenze
+section("Aufnahme kann Bereich, Beobachten und Phasengrenze")
+
+from autoclicker.models import (REC_REGION as _R_REG, REC_WATCH as _R_WATCH,
+                                REC_PHASE as _R_PHASE)
+from autoclicker.editors.sequence_recorder import (
+    bereiche_zusammenfassen as _bz, phasen_grenzen as _pg,
+    phasen_aufteilen as _pa, merke_bereich as _mber, merke_phase as _mph)
+
+# --- Bereich: zwei Ecken werden EIN Screenshot mit Rechteck ---
+_ev_ber = [_RE(_R_CLICK, 0.0, 1, 1),
+           _RE(_R_REG, 1.0, 300, 400),      # Ecke 1
+           _RE(_R_REG, 3.0, 100, 200),      # Ecke 2 (verkehrt herum angefahren)
+           _RE(_R_CLICK, 4.0, 2, 2)]
+_g_ber, _halb = _bz(_ev_ber)
+check("zwei Ecken werden EIN Ereignis", len(_g_ber) == 3 and _halb == 0)
+check("und zwar ein Screenshot mit Rechteck",
+      _g_ber[1].kind == _R_SHOT and _g_ber[1].region == (100, 200, 300, 400))
+# Normalisiert: egal in welcher Reihenfolge die Ecken angefahren wurden
+check("das Rechteck wird normalisiert (links/oben zuerst)",
+      _g_ber[1].region[0] < _g_ber[1].region[2]
+      and _g_ber[1].region[1] < _g_ber[1].region[3])
+# Der Zeitstempel ist der der ERSTEN Ecke — die 2s Mausweg sind Bedienzeit
+check("der Zeitstempel ist der der ersten Ecke", _g_ber[1].t == 1.0)
+_steps_ber = _sae(_g_ber, _pfe(AutoClickerState(), _g_ber, "B")[0])
+check("der Screenshot sitzt dort, wo die erste Ecke gesetzt wurde",
+      _steps_ber[1].delay_before == 1.0)
+# Die Aufnahme erfindet keine Zeit und wirft keine weg: die Summe der Wartezeiten
+# muss die verstrichene Zeit ergeben. Die 2s Mausweg zwischen den Ecken bleiben
+# deshalb in der Wartezeit des NAECHSTEN Schritts stehen — Bedienzeit von Spielzeit
+# zu trennen kann die Aufnahme nicht (Nachdenken sieht genauso aus).
+check("keine Zeit geht durch das Falten verloren",
+      sum(s.delay_before for s in _steps_ber) == _ev_ber[-1].t - _ev_ber[0].t)
+check("und der Schritt traegt den Bereich statt Vollbild",
+      _steps_ber[1].screenshot_region == (100, 200, 300, 400))
+
+# Eine halbe Ecke ist kein Bereich — verwerfen, nicht still zu Vollbild degradieren
+_g_halb, _n_halb = _bz([_RE(_R_CLICK, 0.0, 1, 1), _RE(_R_REG, 1.0, 5, 5)])
+check("eine einzelne Ecke wird verworfen und gemeldet",
+      _n_halb == 1 and len(_g_halb) == 1)
+check("und wird KEIN Vollbild-Screenshot",
+      not any(e.kind == _R_SHOT for e in _g_halb))
+# Vier Ecken = zwei Bereiche (die Paarbildung darf nicht durcheinanderkommen)
+_g_vier, _ = _bz([_RE(_R_REG, 0.0, 0, 0), _RE(_R_REG, 1.0, 10, 10),
+                  _RE(_R_REG, 2.0, 20, 20), _RE(_R_REG, 3.0, 30, 30)])
+check("vier Ecken ergeben zwei Bereiche",
+      len(_g_vier) == 2 and _g_vier[0].region == (0, 0, 10, 10)
+      and _g_vier[1].region == (20, 20, 30, 30))
+
+# --- Beobachten: wait_only-Schritt mit Punkt auf der beobachteten Stelle ---
+_ev_watch = [_RE(_R_CLICK, 0.0, 10, 10, (1, 1, 1)),
+             _RE(_R_WATCH, 2.0, 500, 600, (9, 9, 9)),
+             _RE(_R_CLICK, 3.0, 20, 20, (2, 2, 2))]
+_st_watch = AutoClickerState()
+_map_watch, _ = _pfe(_st_watch, _ev_watch, "W")
+_steps_watch = _sae(_ev_watch, _map_watch)
+# Anders als der Warte-Marker: die Stelle ist BEWUSST gewaehlt, also bekommt sie
+# einen Punkt — points.json ist die einzige Quelle fuer Koordinaten.
+check("der Beobachtungs-Marker bekommt einen eigenen Punkt", 1 in _map_watch)
+check("und der liegt auf der beobachteten Stelle",
+      any((p.x, p.y) == (500, 600) for p in _st_watch.points))
+_ws2 = _steps_watch[1]
+check("er wird ein Schritt, der NICHT klickt", _ws2.wait_only is True)
+check("ohne Klickziel, aber mit Pruef-Pixel-Referenz",
+      _ws2.point_id is None and _ws2.wait_condition.point_id == _map_watch[1])
+check("die Wartezeit davor bleibt echte Wartezeit", _ws2.delay_before == 2.0)
+# In der Datei steht nur die Referenz, keine Koordinate
+_d_watch = _s2d(_ws2)
+check("in der Datei steht nur die Pruef-Referenz",
+      _d_watch.get("wait_point_id") == _map_watch[1]
+      and not {"x", "y", "pixel", "color", "point_id"} & set(_d_watch))
+# Aufloesen fuellt Stelle und Farbe nach
+_seq_w = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=_steps_watch, repeat=1)])
+_st_watch.sequences = {"W": _seq_w}
+_rpr3(_st_watch, _seq_w)
+_wa = _seq_w.loop_phases[0].steps[1]
+check("nach dem Aufloesen zeigt er auf die beobachtete Stelle",
+      _wa.wait_condition.pixel == (500, 600)
+      and _wa.wait_condition.color == (9, 9, 9))
+
+# --- Phasengrenze: schneidet die Schrittliste in INIT | LOOP | END ---
+# Die Grenze wird ENTFERNT, nicht uebersprungen: sonst wuerde die Wartezeit des
+# naechsten Schritts ab dem Tastendruck statt ab der letzten echten Aktion gemessen.
+_ev_ph = [_RE(_R_CLICK, 0.0, 1, 1),      # INIT
+          _RE(_R_PHASE, 5.0),            # Grenze — 5s nach dem Klick gedrueckt
+          _RE(_R_CLICK, 6.0, 2, 2),      # LOOP, echte Wartezeit = 6s
+          _RE(_R_CLICK, 7.0, 3, 3),
+          _RE(_R_PHASE, 7.5),
+          _RE(_R_CLICK, 8.0, 4, 4)]      # END
+_ohne, _gr = _pg(_ev_ph)
+check("die Grenzen verschwinden aus dem Ereignisstrom",
+      not any(e.kind == _R_PHASE for e in _ohne) and len(_ohne) == 4)
+check("und werden als Schritt-Indizes gemerkt", _gr == [1, 3])
+_steps_ph = _sae(_ohne, _pfe(AutoClickerState(), _ohne, "P")[0])
+check("die Grenze frisst keine Wartezeit weg", _steps_ph[1].delay_before == 6.0)
+_i, _l, _e = _pa(_steps_ph, _gr)
+check("INIT bekommt die Schritte davor", len(_i) == 1)
+check("LOOP die dazwischen", len(_l) == 2)
+check("END die danach", len(_e) == 1)
+check("und keiner geht verloren", len(_i) + len(_l) + len(_e) == len(_steps_ph))
+
+# Ohne Grenze bleibt alles im Loop — das bisherige Verhalten
+_i0, _l0, _e0 = _pa(_steps_ph, [])
+check("ohne Grenze bleibt alles in LOOP",
+      _i0 == [] and _e0 == [] and len(_l0) == len(_steps_ph))
+# Eine Grenze: nur INIT/LOOP, kein END
+_i1, _l1, _e1 = _pa(_steps_ph, [2])
+check("eine Grenze trennt nur INIT von LOOP",
+      len(_i1) == 2 and len(_l1) == 2 and _e1 == [])
+# Grenze ganz am Anfang = kein INIT (und kein leerer Schritt)
+_i2, _l2, _e2 = _pa(_steps_ph, [0])
+check("Grenze als erstes gedrueckt heisst: kein INIT", _i2 == [])
+
+# Warte-Marker erzeugen keinen eigenen Schritt und duerfen den Schnitt nicht verschieben
+_ev_mix = [_RE(_R_CLICK, 0.0, 1, 1), _RE(_R_WAIT, 1.0), _RE(_R_CLICK, 2.0, 2, 2),
+           _RE(_R_PHASE, 3.0), _RE(_R_CLICK, 4.0, 3, 3)]
+_ohne_mix, _gr_mix = _pg(_ev_mix)
+check("ein Warte-Marker verschiebt den Schnitt nicht", _gr_mix == [2])
+_steps_mix = _sae(*(lambda e: (e, _pfe(AutoClickerState(), e, "M")[0]))(_ohne_mix))
+_im, _lm, _em = _pa(_steps_mix, _gr_mix)
+check("und der Schnitt trifft die richtige Stelle",
+      len(_im) == 2 and len(_lm) == 1)
+
+# Mehr als zwei Grenzen nimmt der Marker gar nicht erst an
+_st_ph = AutoClickerState()
+_st_ph.recording_active = True
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _mph(_st_ph); _mph(_st_ph); _mph(_st_ph)
+check("hoechstens zwei Phasengrenzen — die dritte wird abgelehnt",
+      sum(1 for e in _st_ph.recording_events if e.kind == _R_PHASE) == 2)
+
+# Alle drei Marker haengen am Aufnahme-Zustand
+_st_off = AutoClickerState()
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _mber(_st_off)
+    _mph(_st_off)
+check("ohne laufende Aufnahme zeichnen die neuen Marker nichts auf",
+      _st_off.recording_events == [])
+
+
+# --------------------------- OCR und LLM muessen denselben Boss meinen
+section("OCR und LLM bilden denselben Text auf denselben Boss ab")
+
+# Beide Erkenner bekommen laut Vertrag dieselbe (gemergte) Boss-Liste und ersetzen
+# einander je nach *_fallback-Einstellung. Bilden sie denselben Text auf VERSCHIEDENE
+# Bosse ab, laeuft dieselbe Sequenz unterschiedlich — jedes BossProfile hat seine
+# eigene Aktion. Der Test misst beide Seiten, statt eine abzuschreiben.
+from autoclicker.ocr import _match_text_to_boss as _ocr_match
+from autoclicker.llm_vision import match_boss_name as _llm_match
+
+_FAELLE = [
+    # (Boss-Liste, erkannter Text)
+    (["Ork", "Orkhaeuptling"], "Der Orkhaeuptling erscheint"),   # <- war der Bug
+    (["Orkhaeuptling", "Ork"], "Der Orkhaeuptling erscheint"),   # Reihenfolge egal
+    (["Drache", "Feuerdrache"], "Ein Feuerdrache!"),
+    (["Feuerdrache", "Drache"], "Ein Feuerdrache!"),
+    (["Ork", "Orkhaeuptling"], "Orkhaeuptling"),                 # exakt
+    (["Goblin", "Goblinkoenig"], "Goblinkoenig greift an"),
+]
+_uneinig = []
+for _bosse, _text in _FAELLE:
+    _o = _ocr_match(_text, _bosse)
+    _l = _llm_match(_text, _bosse)[0]
+    if _o != _l:
+        _uneinig.append(f"{_text!r} bei {_bosse}: OCR={_o!r} LLM={_l!r}")
+check("beide Erkenner sind sich bei jedem Fall einig", _uneinig == [])
+if _uneinig:
+    for _z in _uneinig:
+        print("        " + _z)
+
+# Die Regel selbst, damit der Test auch dann etwas sagt, wenn beide zusammen falsch waeren
+check("der laengste enthaltene Name gewinnt (nicht der erste in der Liste)",
+      _ocr_match("Der Orkhaeuptling erscheint", ["Ork", "Orkhaeuptling"]) == "Orkhaeuptling")
+check("das gilt unabhaengig von der Listenreihenfolge",
+      _ocr_match("Der Orkhaeuptling erscheint", ["Orkhaeuptling", "Ork"]) == "Orkhaeuptling")
+# Umgekehrte Richtung: steckt der Text in mehreren Namen, gewinnt der kuerzeste —
+# er behauptet am wenigsten ueber das hinaus, was gelesen wurde.
+check("steckt der Text in mehreren Namen, gewinnt der kuerzeste",
+      _ocr_match("Ork", ["Orkhaeuptling", "Orkschamane"]) is None
+      or _ocr_match("Orkh", ["Orkhaeuptling", "Orkhaeuptling der Grosse"]) == "Orkhaeuptling")
+check("ein zu kurzes Kuerzel matcht gar nichts",
+      _ocr_match("or", ["Orkhaeuptling"]) is None)
+check("leerer Text matcht nichts", _ocr_match("   ", ["Ork"]) is None)
+
 # Mausrad-Zusammenfassung: eine Drehung um 5 Rasten ist EIN Schritt, nicht fuenf.
 _st_scroll = AutoClickerState()
 _st_scroll.recording_active = True
@@ -2640,6 +2984,26 @@ with _cl2.redirect_stdout(_io2.StringIO()):
     _anh(_st_scroll2, _RE(_R_SCROLL, _SMG * 3, 10, 20, None, scroll=-1))
 check("zwei getrennte Drehungen bleiben zwei Ereignisse",
       len(_st_scroll2.recording_events) == 2)
+
+# record_scroll: der Schalter wirkt am Hook, nicht erst im Callback. Beide Richtungen
+# pruefen — ein Test nur auf None waere auch gruen, wenn das Rad NIE ankaeme.
+from autoclicker.editors.sequence_recorder import _on_wheel_factory as _owf
+_st_rad = AutoClickerState()
+check("Standard nimmt das Mausrad auf", _st_rad.config.record_scroll is True)
+check("und liefert dafuer einen Callback", callable(_owf(_st_rad)))
+_st_rad.config.record_scroll = False
+check("record_scroll=false liefert keinen Callback", _owf(_st_rad) is None)
+# install_mouse_hook(cb, None) ignoriert das Rad laut Vertrag — das ist der Zweck von None
+import inspect as _insp2
+from autoclicker.winapi import install_mouse_hook as _imh
+check("None ist der dokumentierte Weg, das Rad zu ignorieren",
+      _insp2.signature(_imh).parameters["on_wheel"].default is None)
+
+# Der Schalter muss die config.json ueberleben, sonst steht er beim naechsten Start wieder auf True
+_cfg_rad = AppConfig.from_dict({"record_scroll": False})
+check("record_scroll ueberlebt den Weg durch die config.json",
+      _cfg_rad.record_scroll is False
+      and AppConfig.from_dict(_cfg_rad.to_dict()).record_scroll is False)
 
 # Pausiert wird nichts aufgezeichnet — das galt fuer Klicks und muss fuer alles gelten
 _st_pause = AutoClickerState()
@@ -2664,6 +3028,82 @@ with _cl2.redirect_stdout(_io2.StringIO()):
     _verwirf(_st_undo)          # eins zu viel darf nicht knallen
 check("Zuruecknehmen auf leerer Aufnahme bleibt still stehen",
       _st_undo.recording_events == [])
+
+
+# --------------------------- Status-Zeile: EIN Schreibvorgang, volle Loeschbreite
+section("Die Status-Zeile ueberschreibt sich in einem Stueck")
+
+# Die Status-Zeile wird ohne \n geschrieben, damit sie sich selbst ueberschreibt.
+# Vorher waren das ZWEI einzeln geflushte Schreibvorgaenge (clear_line(), dann
+# print(...)). Ein echtes Terminal fasst die zusammen; eine IDE-Konsole verarbeitet
+# jeden Flush als eigenen Block und kann die Zeile dazwischen festschreiben — dann
+# blieb eine alte Status-Zeile im Ablauf stehen, statt ueberschrieben zu werden.
+from autoclicker.utils import status_line as _sl
+import autoclicker.utils.console as _CONS
+
+
+class _Mitschnitt:
+    """Faengt die einzelnen write()-Aufrufe ab (print() ruft pro Teil einmal)."""
+
+    def __init__(self):
+        self.writes = []
+
+    def write(self, s):
+        if s:
+            self.writes.append(s)
+        return len(s)
+
+    def flush(self):
+        pass
+
+
+_CONS._letzte_status_laenge = 0
+_mit = _Mitschnitt()
+_echt_out = sys.stdout
+try:
+    sys.stdout = _mit
+    _sl("kurz")
+    _sl("[Loop] Schritt 2/50 | " + "X" * 90)     # laenger als die alten 80 Spalten
+    _sl("danach wieder kurz")
+finally:
+    sys.stdout = _echt_out
+
+check("jede Status-Zeile geht als EIN write() raus", len(_mit.writes) == 3)
+check("und traegt ihr eigenes \\r bei sich",
+      all(w.startswith("\r") for w in _mit.writes))
+check("keine Status-Zeile schliesst sich mit \\n ab",
+      not any("\n" in w for w in _mit.writes))
+
+# Volle Loeschbreite: die 112 sichtbaren Zeichen der zweiten Zeile muessen weg sein,
+# bevor die dritte (18 Zeichen) sie ersetzt. Mit fixen 80 blieb der Rest stehen.
+_dritte = _mit.writes[2]
+_breite = _dritte.count(" ", 0, _dritte.rfind("\r"))
+check("die Loeschbreite folgt der vorherigen Zeile statt fixer 80",
+      _breite >= len("[Loop] Schritt 2/50 | ") + 90)
+
+# ANSI-Sequenzen belegen keine Spalte — mitgezaehlt waere die Breite absurd gross
+_CONS._letzte_status_laenge = 0
+_mit2 = _Mitschnitt()
+try:
+    sys.stdout = _mit2
+    _sl(_CONS.col("abc", "red"))
+finally:
+    sys.stdout = _echt_out
+check("ANSI-Codes zaehlen nicht zur Zeilenbreite",
+      _CONS._sichtbare_laenge(_CONS.col("abc", "red")) == 3)
+
+# Eine Meldung, die die Status-Zeile bewusst abschliesst (\n mittendrin), darf die
+# Breite nicht aus dem Teil DAVOR nehmen — dort steht nichts mehr zu ueberschreiben.
+_CONS._letzte_status_laenge = 0
+_mit3 = _Mitschnitt()
+try:
+    sys.stdout = _mit3
+    _sl("A" * 50 + "\nkurz")
+finally:
+    sys.stdout = _echt_out
+check("nach einem \\n zaehlt nur der Teil dahinter",
+      _CONS._letzte_status_laenge == 4)
+_CONS._letzte_status_laenge = 0
 
 # CTRL+ALT+U trifft waehrend der Aufnahme die Aufnahme, sonst die Punkte
 from autoclicker.handlers import handle_undo as _hu
@@ -2871,6 +3311,346 @@ check("'new' ohne Ergebnis aendert nichts",
 check("'new' wird nicht als Bereich missverstanden",
       _auswahl(["new-quatsch", "1", "done"], extra_praefix="new",
                extra_fn=lambda roh: None) == ["A"])
+
+
+
+
+# --------------------------- Nachpruefung: "hat die Aktion gewirkt?"
+section("Nachpruefung wiederholt die Aktion, statt blind weiterzulaufen")
+
+# Ein Klick war bis hierher ein Schuss ins Dunkle: geht er ins Leere (Lag, Fenster
+# nicht vorn, Popup davor), lief die Sequenz weiter und alles Folgende traf daneben.
+# `verify_condition` prueft NACH der Aktion und wiederholt sie notfalls.
+from autoclicker.models import WaitCondition as _WC4, ElseConfig as _EC4, ELSE_SKIP as _ESK4
+import autoclicker.runtime.steps as _RS
+import autoclicker.runtime.actions as _RA
+
+# --- Datei: nur die Referenz, keine Koordinate (die vierte Stelle) ---
+_st_v = _SS(x=10, y=20, delay_before=0.0, name="Bank", point_id=1,
+            verify_condition=_WC4(point_id=7, pixel=(50, 60), color=(0, 255, 0)))
+_d_v = _s2d(_st_v)
+check("die Nachpruefung steht als Referenz in der Datei",
+      _d_v.get("verify_point_id") == 7)
+check("und OHNE eigene Koordinate oder Farbe",
+      "verify_pixel" not in _d_v and "verify_color" not in _d_v)
+_zurueck_v = _p2s([_d_v])[0]
+check("sie ueberlebt den Datei-Zyklus",
+      _zurueck_v.verify_condition is not None
+      and _zurueck_v.verify_condition.point_id == 7)
+check("ein Schritt ohne Nachpruefung schreibt das Feld gar nicht",
+      "verify_point_id" not in _s2d(_SS(x=1, y=2, delay_before=0, point_id=1)))
+# until_gone muss mit - sonst kippt die Richtung beim Laden
+_d_vg = _s2d(_SS(x=1, y=2, delay_before=0, point_id=1,
+                 verify_condition=_WC4(point_id=7, until_gone=True)))
+check("die Richtung (WEG statt DA) ueberlebt ebenfalls",
+      _p2s([_d_vg])[0].verify_condition.until_gone is True)
+
+# --- Import: die vierte Stelle muss remapped werden, sonst zeigt sie ins Leere ---
+from autoclicker.import_export import _REF_KEYS as _RK4
+check("der Import zieht auch die Nachpruef-Referenz nach",
+      "verify_point_id" in _RK4)
+
+# --- Aufloesen: Punkt fuellt pixel/color; fehlt er, entfaellt NUR die Pruefung ---
+_st_res = AutoClickerState()
+_st_res.points = [_WCP(x=111, y=222, name="Wirkung", id=7, color=(0, 255, 0))]
+_seq_v = _SEQ3(name="V", loop_phases=[_LP3(name="L", steps=[
+    _SS(x=1, y=2, delay_before=0, point_id=None,
+        verify_condition=_WC4(point_id=7))], repeat=1)])
+_st_res.sequences = {"V": _seq_v}
+with _cl2.redirect_stdout(_io2.StringIO()):
+    _rpr3(_st_res, _seq_v)
+_sv = _seq_v.loop_phases[0].steps[0]
+check("der Punkt fuellt Stelle und Farbe der Nachpruefung",
+      _sv.verify_condition.pixel == (111, 222)
+      and _sv.verify_condition.color == (0, 255, 0))
+
+# Fehlender Punkt: Vorbedingung wuerde den Schritt ueberspringen — die NACHpruefung
+# ist Zusatzsicherung, der Schritt laeuft weiter. Aber gemeldet wird es.
+_st_weg = AutoClickerState()
+_seq_weg = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=[
+    _SS(x=1, y=2, delay_before=0, point_id=None,
+        verify_condition=_WC4(point_id=999))], repeat=1)])
+_st_weg.sequences = {"W": _seq_weg}
+_meld = _rpr3(_st_weg, _seq_weg)
+_sw = _seq_weg.loop_phases[0].steps[0]
+check("verwaiste Nachpruefung entfaellt, statt den Schritt zu reissen",
+      _sw.verify_condition is None and _sw.unresolved is False)
+check("und wird gemeldet", any("Nachpruefung" in m for m in _meld))
+
+# --- Laufzeit: wiederholen bis es wirkt, dann aufgeben ---
+class _FakeImg:
+    def __init__(self, farbe): self.farbe = farbe
+    def getpixel(self, _): return self.farbe
+
+def _lauf(wirkt_ab_klick, retries, else_cfg=None):
+    """Fuehrt einen Schritt mit Nachpruefung aus. Gibt (ergebnis, klicks, shots) zurueck.
+
+    Die Attrappe haengt am KLICK-Zaehler, nicht am Screenshot-Zaehler: eine Pruefung
+    pollt mehrfach innerhalb ihres Zeitfensters, ein Screenshot-Zaehler wuerde also
+    schon beim ersten Versuch gruen werden und nie eine Wiederholung ausloesen.
+    """
+    st = AutoClickerState()
+    st.config = AppConfig()
+    st.config.click_move_delay = st.config.click_post_delay = 0.0
+    st.config.verify_timeout, st.config.verify_interval = 0.06, 0.02
+    st.config.verify_retries = retries
+    zaehler = {"shots": 0}
+    def _shot(region=None):
+        zaehler["shots"] += 1
+        return _FakeImg((0, 255, 0) if st.total_clicks >= wirkt_ab_klick else (255, 0, 0))
+    alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
+    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: None), (lambda s: False)
+    try:
+        step = _SS(x=1, y=2, delay_before=0.0, name="T", point_id=1,
+                   verify_condition=_WC4(point_id=2, pixel=(5, 6), color=(0, 255, 0)),
+                   else_config=else_cfg)
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            erg = _RS.execute_step(st, step, 1, 1, "Loop")
+        return erg, st.total_clicks, zaehler["shots"]
+    finally:
+        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
+
+_erg, _klicks, _shots = _lauf(wirkt_ab_klick=1, retries=2)
+check("wirkt die Aktion sofort, wird sie NICHT wiederholt",
+      _erg is True and _klicks == 1)
+_erg, _klicks, _shots = _lauf(wirkt_ab_klick=2, retries=2)
+check("wirkt sie erst nach einer Wiederholung, wird sie wiederholt", _klicks == 2)
+check("und der Schritt gilt als erledigt", _erg is True)
+_erg, _klicks, _shots = _lauf(wirkt_ab_klick=9999, retries=2)
+check("bleibt die Wirkung aus, wird genau (retries+1)x versucht", _klicks == 3)
+check("danach reisst die Sequenz NICHT ab (Hinweis, kein Abbruch)", _erg is True)
+_erg0, _klicks0, _ = _lauf(wirkt_ab_klick=9999, retries=0)
+check("verify_retries=0 heisst: ein Versuch, keine Wiederholung", _klicks0 == 1)
+# Mit else greift dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung
+_erg_e, _, _ = _lauf(wirkt_ab_klick=9999, retries=1, else_cfg=_EC4(action=_ESK4))
+check("mit else_config greift else nach dem letzten Versuch", _erg_e is True)
+
+# Der Normalfall darf nichts kosten: ohne Bedingung kein einziger Screenshot
+def _lauf_ohne():
+    st = AutoClickerState(); st.config = AppConfig()
+    st.config.click_move_delay = st.config.click_post_delay = 0.0
+    zaehler = {"shots": 0}
+    def _shot(region=None):
+        zaehler["shots"] += 1
+        return _FakeImg((0, 255, 0))
+    alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
+    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: None), (lambda s: False)
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _RS.execute_step(st, _SS(x=1, y=2, delay_before=0.0, point_id=1), 1, 1, "Loop")
+        return zaehler["shots"]
+    finally:
+        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
+check("ohne Nachpruefung kostet der Schritt keinen Screenshot", _lauf_ohne() == 0)
+
+
+
+
+# --------------------------- Scan-Configs: Schreib- und Leseseite gegeneinander
+section("Scan-Configs: jedes Feld ueberlebt den Datei-Zyklus")
+
+# Fuer Items, Slots, Punkte, Bosse und Schritte liegen Schreib- UND Leseseite in
+# serialization.py. Bei den drei Scan-Typen steht dort nur der Writer; der Reader ist
+# in persistence/<typ>.py ausgeschrieben. Zwei handgepflegte Feldlisten, die driften
+# koennen - ein Feld, das nur der Writer kennt, faellt sonst niemandem auf.
+#
+# Der Test setzt jedes Feld auf einen Nicht-Default-Wert, schreibt eine echte Datei
+# und liest sie zurueck. Was nicht ankommt, ist ein Loch.
+import dataclasses as _dc5
+import tempfile as _tf5, os as _os5
+from autoclicker.models import (ItemScanConfig as _ISC5, BossScanConfig as _BSC5,
+                                IconScanConfig as _ICS5)
+
+# Abgeleitete Felder - stehen bewusst nicht in der Datei (siehe CLAUDE.md)
+_SCAN_FLUECHTIG = {
+    "ItemScanConfig": {"slots", "items"},        # aus slot_names/item_names aufgeloest
+    "BossScanConfig": {"bosses"},                # eigene Liste, eigener Serialisierer
+    "IconScanConfig": {"action_x", "action_y"},  # aus action_point_id
+}
+
+
+def _probe_wert(feld):
+    """Ein Wert, der garantiert vom Default abweicht (None = Feld nicht pruefbar)."""
+    t = str(feld.type)
+    d = feld.default if feld.default is not _dc5.MISSING else None
+    if "bool" in t:
+        return not bool(d)
+    if "float" in t:
+        return (d or 0.0) + 3.5
+    if "int" in t and "tuple" not in t and "list" not in t:
+        return (d or 0) + 7
+    if "str" in t and "list" not in t and "dict" not in t:
+        return "PROBE"
+    return None
+
+
+_alt_cwd5 = _os5.getcwd()
+_sandkasten5 = _tf5.mkdtemp(prefix="scanfelder_")
+_scan_loecher = []
+try:
+    _os5.chdir(_sandkasten5)
+    from autoclicker.persistence import init_directories as _init5
+    from autoclicker.persistence.item_scans import (save_item_scan as _svi5,
+                                                    load_item_scan_file as _ldi5)
+    from autoclicker.persistence.boss_scans import (save_boss_scan as _svb5,
+                                                    load_boss_scan_file as _ldb5)
+    from autoclicker.persistence.icon_scans import (save_icon_scan as _svc5,
+                                                    load_icon_scan_file as _ldc5)
+    from autoclicker.persistence.paths import (ITEM_SCANS_DIR as _ID5,
+                                               BOSS_SCANS_DIR as _BD5,
+                                               ICON_SCANS_DIR as _CD5)
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _init5()
+        for _label5, _kls5, _save5, _load5, _dir5 in (
+                ("ItemScanConfig", _ISC5, _svi5, _ldi5, _ID5),
+                ("BossScanConfig", _BSC5, _svb5, _ldb5, _BD5),
+                ("IconScanConfig", _ICS5, _svc5, _ldc5, _CD5)):
+            _fl5 = _SCAN_FLUECHTIG.get(_label5, set())
+            for _f5 in _dc5.fields(_kls5):
+                if _f5.name in _fl5 or _f5.name == "name":
+                    continue
+                _w5 = _probe_wert(_f5)
+                if _w5 is None:
+                    continue
+                _cfg5 = _kls5(name="Probe")
+                setattr(_cfg5, _f5.name, _w5)
+                _save5(_cfg5)
+                _zur5 = _load5(Path(_dir5) / "Probe.json")
+                if _zur5 is None:
+                    _scan_loecher.append(f"{_label5}.{_f5.name}: Datei nicht ladbar")
+                elif getattr(_zur5, _f5.name, "<fehlt>") != _w5:
+                    _scan_loecher.append(
+                        f"{_label5}.{_f5.name}: geschrieben={_w5!r} -> "
+                        f"gelesen={getattr(_zur5, _f5.name, '<fehlt>')!r}")
+finally:
+    _os5.chdir(_alt_cwd5)
+    import shutil as _sh5
+    _sh5.rmtree(_sandkasten5, ignore_errors=True)
+
+check("jedes Scan-Feld kommt so zurueck, wie es geschrieben wurde", _scan_loecher == [])
+if _scan_loecher:
+    for _z5 in _scan_loecher:
+        print("        " + _z5)
+
+
+
+
+# --------------------------- Marktwert-Bruecke (market_analysis -> Item-Scan)
+section("Item-Klicks koennen nach Marktwert statt nach Handpriorität sortieren")
+
+# Die einzige Verbindung zwischen den zwei Teilprojekten, und zwar in EINE Richtung:
+# market_analysis schreibt eine Name->Gold-JSON in seinen eigenen output/-Ordner, der
+# Autoclicker liest sie, falls in seiner config.json ein Pfad steht. Kein Import in
+# irgendeine Richtung - ein Test prueft genau das.
+import json as _js6, tempfile as _tf6, os as _os6
+from autoclicker.runtime.item_scan import (lade_marktwerte as _lmw,
+                                           _effektive_prioritaet as _eprio,
+                                           _marktwert_cache as _mwc)
+from autoclicker.models import ItemProfile as _IP6
+
+# Die Trennung ist die halbe Idee - sie muss gemessen werden, nicht behauptet
+# Gemessen wird der IMPORT-Baum, nicht die Erwaehnung: in Kommentaren darf (und soll)
+# stehen, woher die Datei kommt - eine Abhaengigkeit ist erst ein import.
+import ast as _ast6
+
+def _importierte_module(ordner: Path, muster: str) -> list[str]:
+    treffer = []
+    for _p in sorted(ordner.rglob("*.py")):
+        try:
+            baum = _ast6.parse(_p.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for _n in _ast6.walk(baum):
+            namen = []
+            if isinstance(_n, _ast6.Import):
+                namen = [a.name for a in _n.names]
+            elif isinstance(_n, _ast6.ImportFrom) and _n.module:
+                namen = [_n.module]
+            if any(nm == muster or nm.startswith(muster + ".") for nm in namen):
+                treffer.append(f"{_p.name}:{_n.lineno}")
+    return treffer
+
+_wurzel6 = Path(__file__).resolve().parent.parent
+_ma_dir = _wurzel6 / "market_analysis"
+check("der Autoclicker importiert nichts aus market_analysis",
+      _importierte_module(_wurzel6 / "autoclicker", "market_analysis") == [])
+check("und market_analysis importiert nichts aus dem Autoclicker",
+      _importierte_module(_ma_dir, "autoclicker") == [])
+
+# Leerer Pfad = aus. Das ist der Standard und muss ohne Datei funktionieren.
+check("ohne konfigurierten Pfad bleibt alles wie bisher", _lmw("") == {})
+check("ein Pfad ins Leere kippt nicht um", _lmw("gibt/es/nicht.json") == {})
+
+_fd6, _pfad6 = _tf6.mkstemp(suffix=".json")
+_os6.close(_fd6)
+try:
+    Path(_pfad6).write_text(_js6.dumps({"Kohle": 12.5, "Gold": 900, "Murks": "keine Zahl"}),
+                            encoding="utf-8")
+    _w6 = _lmw(_pfad6)
+    check("Werte werden gelesen", _w6.get("Kohle") == 12.5 and _w6.get("Gold") == 900.0)
+    check("unbrauchbare Eintraege fliegen einzeln raus, nicht die ganze Datei",
+          "Murks" not in _w6 and len(_w6) == 2)
+
+    # Sortierung: kleiner gewinnt. Wertvoller muss also kleiner werden.
+    _kohle = _IP6(name="Kohle", priority=5)
+    _gold = _IP6(name="Gold", priority=9)
+    _egal = _IP6(name="Ohne Wert", priority=1)
+    check("der wertvollere gewinnt, obwohl seine Handpriorität schlechter ist",
+          _eprio(_gold, 9, _w6) < _eprio(_kohle, 5, _w6))
+    check("ein Item ohne Marktwert behaelt seine gesetzte Prioritaet",
+          _eprio(_egal, 1, _w6) == 1.0)
+    # Die Folge, die man kennen muss - deshalb steht sie auch im Docstring
+    check("jedes Item MIT Wert gewinnt gegen jedes ohne",
+          _eprio(_kohle, 5, _w6) < _eprio(_egal, 1, _w6))
+    check("ohne Wertetabelle entscheidet weiter die Handpriorität",
+          _eprio(_kohle, 5, {}) == 5.0 and _eprio(_egal, 1, {}) == 1.0)
+
+    # Neu gerechnete Analyse muss ohne Neustart greifen (Cache am mtime)
+    _mwc.clear()
+    _lmw(_pfad6)
+    Path(_pfad6).write_text(_js6.dumps({"Kohle": 999.0}), encoding="utf-8")
+    _os6.utime(_pfad6, (0, 0))            # mtime sicher veraendern
+    check("eine neu geschriebene Wertetabelle greift ohne Neustart",
+          _lmw(_pfad6).get("Kohle") == 999.0)
+finally:
+    _os6.unlink(_pfad6)
+
+# Die Schreibseite: market_analysis baut die Datei aus seinem DataFrame
+try:
+    import pandas as _pd6
+except ImportError:
+    _pd6 = None
+if _pd6 is not None:
+    import importlib.util as _ilu6
+    _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analyse.py")
+    # analyse.py macht `from config import *` - dafuer muss sein Ordner im Pfad sein
+    sys.path.insert(0, str(_ma_dir))
+    try:
+        _ma6 = _ilu6.module_from_spec(_spec6)
+        _spec6.loader.exec_module(_ma6)
+        _df6 = _pd6.DataFrame([
+            {"Item": "Kohle", "Gold pro Stück": 12.5},
+            {"Item": "Kohle", "Gold pro Stück": 30.0},   # zweites Rezept, besserer Wert
+            {"Item": "Murks", "Gold pro Stück": float("nan")},
+        ])
+        _fd7, _pfad7 = _tf6.mkstemp(suffix=".json")
+        _os6.close(_fd7)
+        try:
+            _n6 = _ma6.export_market_values(_df6, _pfad7)
+            _raus6 = _js6.loads(Path(_pfad7).read_text(encoding="utf-8"))
+            check("die Analyse schreibt Name -> Wert", _n6 == 1 and "Kohle" in _raus6)
+            check("bei mehreren Rezepten gewinnt der beste Wert", _raus6["Kohle"] == 30.0)
+            check("NaN landet nicht in der Datei", "Murks" not in _raus6)
+            check("und der Autoclicker liest genau das wieder",
+                  _lmw(_pfad7).get("Kohle") == 30.0)
+        finally:
+            _os6.unlink(_pfad7)
+    except Exception as _e6:               # pandas/openpyxl fehlt o.ae. - kein Testfehler
+        print(f"  {'-':>4}  Schreibseite uebersprungen ({type(_e6).__name__})")
+    finally:
+        sys.path.remove(str(_ma_dir))
+else:
+    print("  ----  Schreibseite uebersprungen (pandas nicht installiert)")
 
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")

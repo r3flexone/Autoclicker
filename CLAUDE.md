@@ -18,6 +18,8 @@ python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
+python tools/log_report.py      # Wertet die Session-Logs aus (welcher Schritt haengt?)
+                                # --letzte = nur die neueste Session
 ```
 
 **`tools/test_logic.py` vor jedem Commit laufen lassen.** Es prüft Serialisierung,
@@ -86,6 +88,24 @@ sofort in `config.json` persistiert. Regeln:
 - Im Worker nie `state.config.debug_log` direkt lesen, sondern `is_log_debug(state)` —
   sonst schweigt die Stelle in Stufe 2 und im manuellen Modus.
 
+**Die Status-Zeile schreibt sich in EINEM Schreibvorgang** — `status_line()` in
+`utils/console.py`, nicht `clear_line()` gefolgt von einem eigenen `print()`. Beides
+zusammen ergibt zwar dieselben Zeichen, aber zwei einzeln geflushte Blöcke: ein echtes
+Terminal fasst sie zusammen, eine **IDE-Konsole** (PyCharm-Run-Fenster, dort ist
+`_REAL_CONSOLE` schon `False`) verarbeitet jeden Flush einzeln und kann die Zeile
+dazwischen festschreiben. Dann bleibt mitten im Lauf eine alte Status-Zeile stehen,
+statt überschrieben zu werden. Zusammen geschrieben gehört das `\r` untrennbar zu dem
+Text, der es benutzt.
+
+Die Löschbreite folgt der **vorher geschriebenen Zeile** (`_letzte_status_laenge`), nicht
+mehr festen 80 Spalten: ein langer Punkt-Name ließ den Rest der alten Zeile hinter der
+neuen stehen. ANSI-Sequenzen zählen dabei nicht mit — sie belegen keine Spalte.
+
+Wer eine Meldung ausgeben will, die **stehen bleiben soll** (Screenshot-Dateiname,
+Timeout, Fokus-Verlust), räumt vorher mit `clear_line()` ab oder stellt der Meldung ein
+`\n` voran. Ohne das überschreibt sie nur den Anfang der Status-Zeile und lässt den Rest
+daneben stehen.
+
 ### Hotkey-Flow
 1. `winapi.py` definiert `HOTKEY_*` IDs + `register_hotkeys()` → `RegisterHotKey`.
 2. `main.py` mappt IDs auf `handle_*`-Funktionen aus `handlers.py`.
@@ -93,6 +113,17 @@ sofort in `config.json` persistiert. Regeln:
 4. Editoren sind **synchron, blockierend** (Console-Input via `safe_input`). Während ein Editor läuft, ist der Main-Thread blockiert — der Worker kann parallel weiterlaufen.
 
 Neuen Hotkey hinzufügen: Konstante in `winapi.py` (`HOTKEY_*` + `VK_*`) → `register_hotkeys()`-Liste → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
+
+**`CTRL+ALT+<Buchstabe>` ist voll.** 24 der 26 Buchstaben sind vergeben, frei blieben
+nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
+letzten zwei, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
+(`CTRL+ALT+SHIFT+…`), und die trägt eine Bedeutung: **was dort liegt, wirkt nur während
+einer laufenden Aufnahme.** Der Buchstabe darf derselbe bleiben wie in der Basis-Ebene,
+solange die Bedeutung verwandt ist — `M`/`SHIFT+M` sind beide „warte auf eine Farbe",
+`D`/`SHIFT+D` beide „Screenshot".
+
+Dass die Marker nicht in der Aufnahme landen, ist kein Zufall: der Tastatur-Hook meldet
+nichts bei gedrücktem CTRL oder ALT, und beide sind hier gedrückt.
 
 Beim Start läuft nur `print_banner()` (vier Zeilen). Die volle Hilfe zeigt `print_help()` — automatisch beim allerersten Start (keine Punkte, keine Sequenzen, keine Items) und sonst auf `CTRL+ALT+O`. Neue Hotkeys gehören trotzdem in `print_help()`, nicht in den Banner: der bleibt kurz.
 
@@ -126,6 +157,7 @@ Sequenzlauf.**
 | `SequenceStep` | `points.json` | `point_id` | `aufloesen()` / `resolve_point_references()` |
 | `WaitCondition` | `points.json` | `wait_point_id` | dito |
 | `ElseConfig` | `points.json` | `else_point_id` | dito |
+| `SequenceStep.verify_condition` | `points.json` | `verify_point_id` | dito |
 | `ItemProfile` | `points.json` | `confirm_point_id` | `resolve_klick_referenzen()` |
 | `BossProfile` | `points.json` | `action_point_id` | dito |
 | `IconScanConfig` | `points.json` | `action_point_id` | dito |
@@ -159,6 +191,12 @@ beiden falsch sein kann. Wer die Sequenzdatei liest, sah dann etwas anderes als 
 die App klickt — und bei einer Kalibrierung musste jede Kopie einzeln erwischt werden.
 `kalibriere_bestand()` rechnet Sequenz-Klickstellen deshalb **nicht mehr** um: die Punkte
 sind schon umgerechnet, ein zweiter Durchgang hieße doppelt verschoben.
+
+**Vier Stellen pro Schritt, zwei Klassen.** `point_id` (Klick) und
+`wait_condition.point_id` (Vorbedingung) *sind* der Schritt — fehlt ihr Punkt, darf er
+nicht laufen. `verify_condition.point_id` (Nachprüfung) und `else_config.point_id`
+(Ersatzaktion) sind Zusatz — fehlt deren Punkt, läuft der Schritt weiter, nur eben
+ungeprüft bzw. mit `else = skip`. Gemeldet wird beides.
 
 **Es gibt bewusst keinen Rückfallwert.** Zeigt eine `point_id` ins Leere, setzt
 `aufloesen()` `step.unresolved = True`; `step_gate()` überspringt den Schritt und sagt
@@ -247,6 +285,7 @@ boss_scans/<name>.json         eine BossScanConfig pro Datei
 boss_scans/global/bosses.json  globale Boss-Bibliothek (state.global_bosses, gilt in jedem Boss-Scan)
 icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
 exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
+backups/<pfad>.bak             Sicherungen des Start-Durchgangs (Struktur gespiegelt)
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 ```
 
@@ -317,6 +356,24 @@ Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladba
 bleiben unangetastet). Zweiter Start muss „0 geändert" ergeben; tut er das nicht, ist ein
 Schritt nicht idempotent.
 
+Die Sicherungen liegen unter **`backups/`** mit **gespiegelter Ordnerstruktur**
+(`sequences/all_dayli.json` → `backups/sequences/all_dayli.json.bak`, `sicherungspfad()`).
+Beides ist nötig: neben dem Original verstellten sie den Blick auf die Daten und ein
+`*.json`-Glob über `sequences/` konnte sie erwischen — und ohne den Unterordner
+überschriebe die Sicherung von `item_scans/foo.json` die von `boss_scans/foo.json`,
+gleicher Dateiname, andere Datei. Der Ordner entsteht **erst beim ersten Sichern**, nicht
+in `init_directories()`: ein leeres `backups/` bei jeder frischen Installation wäre
+Rauschen. Wie bisher gilt `if not backup.exists()` — die **erste** Sicherung bleibt die
+älteste und wird nie überschrieben.
+
+„Still, wenn nichts zu tun ist" gilt auch für **Zahlentypen**: JSON kennt nur eine Zahl,
+`600` und `600.0` sind dieselbe. `_gleich()` zieht beide Seiten deshalb durch
+`_zahlen_normalisieren()`, bevor es vergleicht. Ohne das galt eine von Hand auf `600`
+getippte Wartezeit als aufzuräumen — der Loader macht `600.0` daraus —, und der Durchgang
+schrieb die Datei um, legte ein `.bak` an und meldete eine Migration, die inhaltlich nichts
+tat. `bool` bleibt dabei ausgenommen: `True` darf nicht als `1.0` durchgehen, sonst wäre
+ein umgekipptes Flag unsichtbar.
+
 **Nur gesetzte Felder werden geschrieben.** Jeder Serializer läuft durch
 `_ohne_defaults(daten, tabelle)`; die Tabellen (`_ITEM_DEFAULTS`, `_SLOT_DEFAULTS`,
 `_BOSS_DEFAULTS`, `_BOSS_SCAN_DEFAULTS`, `_ICON_SCAN_DEFAULTS`, `_ITEM_SCAN_DEFAULTS`,
@@ -382,7 +439,14 @@ wird.)
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
 - `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_beim_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
-- `autoclicker/session_log.py` — CSV-Logger, thread-safe.
+- `autoclicker/session_log.py` — CSV-Logger, thread-safe. **Ausgewertet wird er mit
+  `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig). Geloggt wird
+  nicht nur, *was geklickt* wurde, sondern auch, *was gesehen* wurde: `timeout` (welcher
+  Schritt hängt — das diagnostisch wertvollste Ereignis), `item_found`, `detected`,
+  `verify_ok`/`verify_miss`. Ohne diese Ereignisse konnte der Bericht die eine Frage
+  nicht beantworten, für die man ihn aufmacht. Wer eine neue Ereignisart einführt,
+  trägt sie in `log_report.py` ein — der Bericht meldet sonst „nicht ausgewertete
+  Ereignisarten" und weist selbst darauf hin.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Größe (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
@@ -392,6 +456,21 @@ wird.)
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
+
+  **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
+  `output/marktwert.json` (Item-Name → Gold pro Stück); trägt man den Pfad in der
+  `config.json` des Autoclickers unter `scan_market_value_file` ein, sortiert der
+  Item-Scan seine Klicks danach statt nach der von Hand getippten `priority`
+  (`lade_marktwerte()` in `runtime/item_scan.py`, zwischengespeichert am mtime — eine
+  neu gerechnete Analyse greift ohne Neustart). Zwei Tests messen die Trennung im
+  **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt).
+
+  Zwei Eigenschaften, die man kennen muss: die gespeicherte `item.priority` wird
+  **nicht** überschrieben — die Sortierung gilt nur für den Lauf, `items.json` bleibt
+  unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
+  negiert einsortiert wird. Das ist gewollt (ein gemessener Wert schlägt eine getippte
+  Zahl), heißt aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
+  will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
 
 **Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: der
 Dear-PyGui-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
@@ -424,6 +503,27 @@ sein eigenes Ziel klicken. Deshalb geben Vorab-Entscheidungen über einen Schrit
 `GATE_RUN` / `GATE_SKIP` / `GATE_STOP` zurück (Konstanten in `runtime/debug.py`,
 genutzt von `step_gate` und `_execute_wait_for_color`).
 
+### Nachprüfung: „hat die Aktion gewirkt?"
+
+`wait_condition` fragt **vor** dem Schritt, ob er dran ist. `verify_condition` fragt
+**danach**, ob er etwas bewirkt hat — bis dahin war jeder Klick ein Schuss ins Dunkle:
+ging er ins Leere (Lag, Fenster nicht vorn, Popup davor), lief die Sequenz weiter und
+alles Folgende traf daneben.
+
+Dieselbe `WaitCondition` wie die Vorbedingung — die kann schon alles Nötige. Gesetzt
+wird sie im Sequenz-Editor mit `verify <Schritt-Nr> <Punkt-Nr> [gone]`.
+
+Drei Regeln:
+
+- **Der Gewinn ist die Wiederholung, nicht die Meldung.** Bleibt die Wirkung aus, wird
+  die Aktion bis zu `verify_retries` mal neu ausgeführt. Der häufigste Grund für einen
+  wirkungslosen Klick ist vorübergehend, und ein zweiter Klick löst ihn.
+- **Ohne `verify_condition` kostet es nichts.** Kein Screenshot, kein Zweig — ein Test
+  pinnt fest, dass der Normalfall unverändert bleibt.
+- **Eine ausgebliebene Wirkung reißt die Sequenz nicht.** Nach dem letzten Versuch
+  entscheidet `else_config`; ohne else gilt der Schritt als erledigt. Das ist ein
+  Hinweis, kein Abbruchgrund — anders als eine nicht erfüllte *Vor*bedingung.
+
 Regel beim Erweitern: **wer eine else-Aktion auslöst, gibt `GATE_SKIP` zurück** — nie
 `GATE_RUN` und nie stumpf `True`. Die Übersetzung macht `_gate_nach_else()`; nur
 `restart`/`skip_cycle` werden zu `GATE_STOP`. Step-Handler, die die else-Aktion als
@@ -432,10 +532,11 @@ Letztes tun und danach nichts mehr ausführen (Item-/Boss-/Icon-Scan), dürfen w
 irrtümlich noch feuern könnte.
 
 ### Sequenz-Aufnahme (`editors/sequence_recorder.py`)
-Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck, Mausrad** und
-per `CTRL+ALT+M` ein **Warte-Marker auf eine Farbe**. Jedes Ereignis ist ein
-`RecordEvent` (`models.py`, `REC_*`) — rein transient, wird nie gespeichert;
-`stop_recording()` baut daraus Schritte und wirft die Liste weg.
+Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck, Mausrad**,
+per `CTRL+ALT+M` ein **Warte-Marker auf eine Farbe** und per `CTRL+ALT+D` ein
+**Screenshot-Marker**. Jedes Ereignis ist ein `RecordEvent` (`models.py`, `REC_*`) —
+rein transient, wird nie gespeichert; `stop_recording()` baut daraus Schritte und
+wirft die Liste weg.
 
 **Alles muss mit EINEM globalen Tastendruck gehen.** Während der Aufnahme steht der
 Nutzer im Spiel, nicht in der Konsole — ein blockierender Prompt käme nie an. Nachfragen
@@ -462,9 +563,76 @@ Warten an einer **anderen** Stelle als der geklickten kann die Aufnahme bewusst 
 dafür gibt es `wait <Punkt-Nr> color` im Editor. Der Marker wäre sonst wieder auf eine
 Position angewiesen, die beim Drücken niemand bewusst wählt.
 
+#### Die fünf Marker
+
+Alles außer Klick/Taste/Rad ist ein **Marker**: ein globaler Tastendruck ohne
+Rückfrage, der beim Stoppen zu Struktur wird. Sie unterscheiden sich in genau drei
+Fragen, und daran hängt der jeweilige Bau:
+
+| Marker | Taste | eigener Schritt? | eigener Punkt? | Mausposition |
+|---|---|---|---|---|
+| Warte auf Farbe | `CTRL+ALT+M` | nein — geht in den nächsten Klick ein | nein | **zufällig**, wird ignoriert |
+| Screenshot Vollbild | `CTRL+ALT+D` | ja | nein | irrelevant |
+| Screenshot Bereich | `CTRL+ALT+SHIFT+D` | ja (aus **zwei** Drücken) | nein | **bewusst** — die Ecken |
+| Beobachten ohne Klick | `CTRL+ALT+SHIFT+M` | ja (`wait_only`) | **ja** | **bewusst** — das Beobachtete |
+| Phasengrenze | `CTRL+ALT+SHIFT+P` | nein — schneidet nur | nein | irrelevant |
+
+**Die Mausposition ist die entscheidende Unterscheidung.** Beim Warte-Marker parkt die
+Maus irgendwo, deshalb wird sie verworfen (ein früher Entwurf legte dort einen Punkt an
+— in einer echten Aufnahme stand dann `Warte auf Farbe bei (4483, 1038) Schwarz` in
+points.json). Bei Bereichs-Ecke und Beobachten fährt der Nutzer die Stelle *an* und
+drückt dort — dieselbe Geste, aber bewusst, also darf sie verwendet werden. Wer einen
+neuen Marker baut, beantwortet zuerst diese Frage; sie entscheidet über `punkte_fuer_events`.
+
+**Aufbereitet wird in fester Reihenfolge**, jede Stufe entfernt eine Sonderform, damit
+die nächste sie nicht mehr kennen muss:
+
+1. `bereiche_zusammenfassen()` — zwei `REC_REGION`-Ecken → **ein** `REC_SCREENSHOT`
+   mit Rechteck. Danach existiert `REC_REGION` nicht mehr. Eine einzelne Ecke wird
+   verworfen und gemeldet, **nicht** still zu Vollbild degradiert — das wäre etwas
+   anderes als das Gewollte.
+2. `phasen_grenzen()` — Grenzen **raus** aus dem Strom, gemerkt als Schritt-Indizes.
+   Sie zu überspringen statt zu entfernen reichte nicht: eine Grenze wäre dann das
+   „vorherige Ereignis" des nächsten Schritts, und dessen Wartezeit würde ab dem
+   Tastendruck statt ab der letzten echten Aktion gemessen (aus 6 s würde 1 s).
+3. `marker_pruefen()` — haltlose Warte-Marker weg.
+
+Danach ist `schritte_aus_events()` frei von Sonderfällen, und `phasen_aufteilen()`
+schneidet die fertige Liste in INIT/LOOP/END.
+
+**Die Aufnahme erfindet keine Zeit und wirft keine weg.** Die Sekunden zwischen den
+beiden Bereichs-Ecken bleiben in der Wartezeit des *nächsten* Schritts stehen. Bedienzeit
+von Spielzeit zu trennen kann die Aufnahme nicht (Nachdenken sieht genauso aus), und für
+„das soll nicht zählen" gibt es `CTRL+ALT+H`. Einzige Ausnahme ist der Warte-Marker —
+dort ersetzt eine *Bedingung* die Zeit, sie geht also nicht verloren, sondern über.
+
+**Die Phasengrenze ist der Marker, der sich am wenigsten nachholen lässt.** Der
+Sequenz-Editor bearbeitet jede Phase für sich (`edit_phase`); einen Befehl, einen
+Schritt in eine *andere* Phase zu verschieben, gibt es nicht. Nachträglich aufteilen
+hieße löschen und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus. Ohne
+Marker bleibt alles in einer Loop-Phase, also im bisherigen Verhalten.
+
+#### Was NICHT in die Aufnahme gehört
+
+Der Filter ist nicht „geht das mit einem Tastendruck", sondern: **ist es hinterher
+verloren?**
+
+- **Nein → Editor.** `noclick`, `checkcolor`/`checkgone`, Wartezeit ändern,
+  Zufallsbereiche, `else …` sind Umformungen *eines einzelnen Schritts*, und `edit <Nr>`
+  führt durch alle. Dafür einen Hotkey zu verbrennen spart zehn Zeichen Tipparbeit und
+  kostet Bedienoberfläche.
+- **Geht gar nicht → Editor.** Item-/Boss-/Icon-Scan verweisen **per Namen** auf eine
+  Konfiguration; ohne Auswahl gibt es nichts aufzunehmen. Ein Platzhalter-Schritt wäre
+  ein Schritt, der zur Laufzeit nichts tut — dasselbe Problem wie ein Rückfallwert.
+
+Das allgemeine Muster für alles Neue: **beim Aufnehmen die Stelle im Ablauf markieren,
+im Editor konfigurieren.** Ein blockierender Prompt während der Aufnahme kommt nie an.
+
 `CTRL+ALT+U` nimmt während der Aufnahme das letzte Ereignis zurück, sonst den letzten
-Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: von
-den 26 sind nur noch D/R/Y frei.
+Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: in
+der Basis-Ebene sind nur noch R/Y frei (D ging an den Screenshot-Marker). Es nimmt
+**jedes** Ereignis zurück, auch Marker — eine versehentlich gesetzte Phasengrenze oder
+eine falsch angefahrene Bereichs-Ecke räumt man damit weg.
 
 Der **Tastatur-Hook** meldet nichts bei gedrücktem CTRL oder ALT (dort liegen die
 Hotkeys — sonst stünde ein `j` in der Sequenz, sobald man mit `CTRL+ALT+J` stoppt),
@@ -482,6 +650,13 @@ Abspielen zum Linksklick wird. Wer ihn nachrüstet, braucht die ganze Kette:
 Der Hook liefert beim Mausrad die **rohe** Windows-Distanz, nicht schon Rasterstufen:
 hochauflösende Räder senden Bruchteile, und einzeln abgerundet ergäben die null. Der
 Recorder summiert erst (eine Drehung = ein Ereignis, `_SCROLL_MERGE_GAP`) und teilt dann.
+
+Das Rad lässt sich per `record_scroll: false` (Config) ganz abschalten — für Spiele, in
+denen es nur die Ansicht dreht und solche Drehungen die Sequenz bloß aufblähen.
+Abgeschaltet gibt `_on_wheel_factory()` **`None`** zurück, und `install_mouse_hook`
+ignoriert das Rad schon in der Hook-Prozedur. Absichtlich dort und nicht in
+`_anhaengen`: ein Callback, der jedes Ereignis nur entgegennimmt, um es wegzuwerfen,
+liefe bei jeder Radbewegung mit — auch wenn gerade niemand aufnimmt.
 
 ### Boss-Scan vs. Boss-Watcher
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.

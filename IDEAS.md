@@ -48,9 +48,16 @@ plus Zuschneiden reichen würde.
 ### Disconnect-Detection
 Pixel-Trigger oder Template-Match auf Login-Screen / Verbindungsfehler-Popup, dann Auto-Reconnect oder sauberer Stop.
 
+Ein Teil davon ist inzwischen gebaut: die **Nachprüfung** (`verify <Nr> <Punkt-Nr>` im
+Sequenz-Editor) merkt, dass ein Klick nicht gewirkt hat, wiederholt ihn und meldet es
+im Log. Ein Disconnect fällt damit als Häufung von `verify_miss` auf
+(`tools/log_report.py`), statt stundenlang unbemerkt zu bleiben. Offen bleibt das
+gezielte Erkennen *des Login-Screens* und die Reaktion darauf.
+
 - **Nutzen:** Verhindert dass der Bot stundenlang ins Leere klickt, wenn das Spiel abstürzt oder die Verbindung weg ist.
 - **Tradeoff:** Benötigt eine kalibrierte Pixel-Position/Template pro Benutzer. Auto-Reconnect ist riskant (Passwort-Eingabe o.ä.) – sicherer: nur Stop + Notify.
-- **Ansatz:** Neuer SequenceStep-Typ oder Background-Watcher (ähnlich Boss-Watcher), der periodisch prüft.
+- **Ansatz:** Ein Background-Watcher (ähnlich Boss-Watcher). Die Schwelle könnte aus
+  dem Log kommen: N `verify_miss` oder `timeout` in Folge = vermutlich Disconnect.
 
 ## Safety
 
