@@ -181,6 +181,17 @@ class SequenceStep:
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
+    # Optional: Nachprüfung NACH der Aktion — "hat der Klick gewirkt?".
+    #
+    # `wait_condition` fragt vor dem Schritt, ob er dran ist; hier wird danach gefragt,
+    # ob er etwas bewirkt hat. Bis dahin war jeder Klick ein Schuss ins Dunkle: geht er
+    # ins Leere (Lag, Fenster nicht vorn, Popup davor), lief die Sequenz munter weiter
+    # und alles Folgende traf daneben.
+    #
+    # Dieselbe WaitCondition wie oben — die kann bereits alles, was gebraucht wird
+    # (Punkt-Referenz, Farbe da/weg). `verify_retries` in der Config sagt, wie oft die
+    # Aktion wiederholt wird, bevor `else_config` greift.
+    verify_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
     item_scan: Optional[str] = None      # Name des Item-Scans
     item_scan_mode: str = "all"          # "all" = bestes pro Kategorie, "best" = nur 1 Item total
@@ -217,7 +228,7 @@ class SequenceStep:
     unresolved: bool = False
 
     def __str__(self) -> str:
-        else_str = self._else_str()
+        else_str = self._verify_str() + self._else_str()
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
@@ -291,6 +302,18 @@ class SequenceStep:
             # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
             return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
         return art
+
+    def _verify_str(self) -> str:
+        """Was NACH der Aktion geprüft wird — leer, wenn nichts geprüft wird.
+
+        Steht vor dem else-Teil: erst was nachgeprüft wird, dann was passiert, wenn
+        die Prüfung scheitert. In der Reihenfolge liest man es auch.
+        """
+        vc = self.verify_condition
+        if not vc:
+            return ""
+        zustand = "WEG" if vc.until_gone else "DA"
+        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {zustand}"
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""
@@ -618,6 +641,25 @@ REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch
 # parkt die Maus irgendwo, und diese Stelle waere Zufall. Er haengt sich an den
 # naechsten Klick und laesst DEN auf seine eigene Farbe warten.
 REC_WAIT_COLOR = "wait"
+# Screenshot-Marker: "hier einen Screenshot machen". Anders als der Warte-Marker
+# braucht er KEINE Folge-Aktion — er wird selbst zu einem eigenstaendigen
+# Screenshot-Step an genau dieser Stelle der Zeitachse. `region` ist None
+# (Vollbild) oder das aus zwei Ecken zusammengesetzte Rechteck.
+REC_SCREENSHOT = "screenshot"
+# Bereichs-Ecke: zwei davon ergeben EIN Rechteck. Ein Rechteck aufzuziehen braucht
+# zwei Stellen, und mehr als einen Tastendruck gibt es waehrend der Aufnahme nicht —
+# also zweimal derselbe Druck an zwei Mauspositionen. `bereiche_zusammenfassen()`
+# faltet die Paare zu REC_SCREENSHOT-Ereignissen; danach existiert diese Art nicht mehr.
+REC_REGION = "region"
+# Beobachten ohne Klick: "warte, bis die Farbe UNTER der Maus da ist" — und dann NICHT
+# hinklicken. Anders als beim Warte-Marker ist die Mausposition hier bewusst gewaehlt
+# (man legt die Maus auf das Ding, das man beobachtet), deshalb bekommt er einen Punkt.
+# Entspricht `wait pixel` im Sequenz-Editor.
+REC_WATCH = "watch"
+# Phasengrenze: "ab hier beginnt die naechste Phase". Erster Marker trennt INIT von
+# LOOP, zweiter LOOP von END. Er wird selbst kein Schritt — er schneidet die fertige
+# Schrittliste. Ohne ihn landet alles wie bisher in einer einzigen Loop-Phase.
+REC_PHASE = "phase"
 
 
 @dataclass
@@ -635,6 +677,8 @@ class RecordEvent:
     color: Optional[tuple[int, int, int]] = None
     key: Optional[str] = None                   # nur REC_KEY
     scroll: int = 0                             # nur REC_SCROLL, Rasterstufen
+    # nur REC_SCREENSHOT: (x1, y1, x2, y2) oder None = Vollbild
+    region: Optional[tuple[int, int, int, int]] = None
 
     def __str__(self) -> str:
         if self.kind == REC_KEY:
@@ -644,6 +688,17 @@ class RecordEvent:
             return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
             return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
+        if self.kind == REC_SCREENSHOT:
+            if self.region:
+                r = self.region
+                return f"Screenshot ({r[0]},{r[1]})→({r[2]},{r[3]})"
+            return "Screenshot (Vollbild)"
+        if self.kind == REC_REGION:
+            return f"Bereichs-Ecke ({self.x}, {self.y})"
+        if self.kind == REC_WATCH:
+            return f"Beobachte ({self.x}, {self.y}) ohne Klick"
+        if self.kind == REC_PHASE:
+            return "Phasengrenze (ab hier die nächste Phase)"
         return f"Klick ({self.x}, {self.y})"
 
 

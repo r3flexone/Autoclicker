@@ -343,10 +343,12 @@ def _step_to_dict(s: SequenceStep) -> dict:
     """
     wc = s.wait_condition
     ec = s.else_config
+    vc = s.verify_condition
     # Der Punkt traegt die Stelle: alles, was sich daraus ableiten laesst, entfaellt.
     klick_am_punkt = s.point_id is not None
     wait_am_punkt = wc is not None and wc.point_id is not None
     else_am_punkt = ec is not None and ec.point_id is not None
+    verify_am_punkt = vc is not None and vc.point_id is not None
     voll = {"x": 0 if klick_am_punkt else s.x,
             "y": 0 if klick_am_punkt else s.y,
             "name": "" if klick_am_punkt else s.name,
@@ -371,6 +373,10 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "else_delay": ec.delay if ec else 0,
             "else_key": ec.key if ec else None,
             "else_name": "" if (ec is None or else_am_punkt) else ec.name,
+            "verify_point_id": vc.point_id if vc else None,
+            "verify_pixel": None if (vc is None or verify_am_punkt) else vc.pixel,
+            "verify_color": None if (vc is None or verify_am_punkt) else vc.color,
+            "verify_until_gone": vc.until_gone if vc else False,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "recorded_color": None if klick_am_punkt or not s.recorded_color
@@ -404,6 +410,10 @@ _STEP_DEFAULTS = {
     "wait_color": None,
     "wait_until_gone": False,
     "wait_check_only": False,
+    "verify_point_id": None,
+    "verify_pixel": None,
+    "verify_color": None,
+    "verify_until_gone": False,
     "item_scan": None,
     "item_scan_mode": "all",
     "boss_scan": None,
@@ -481,6 +491,22 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
                 until_gone=s.get("wait_until_gone", False),
                 check_only=s.get("wait_check_only", False),
             )
+        # Nachpruefung ("hat der Klick gewirkt?") - gleiche Bauart wie wait_condition.
+        verify_cond = None
+        verify_point_id = s.get("verify_point_id")
+        verify_pixel = s.get("verify_pixel")
+        verify_color = s.get("verify_color")
+        if verify_point_id is not None:
+            verify_cond = WaitCondition(
+                point_id=verify_point_id,
+                until_gone=s.get("verify_until_gone", False),
+            )
+        elif verify_pixel and verify_color:
+            verify_cond = WaitCondition(
+                pixel=tuple(int(v) for v in verify_pixel),
+                color=tuple(int(v) for v in verify_color),
+                until_gone=s.get("verify_until_gone", False),
+            )
         # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
         recorded_color_raw = s.get("recorded_color")
         recorded_color = tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None
@@ -516,6 +542,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             name=s.get("name", ""),
             point_id=s.get("point_id"),
             wait_condition=wait_cond,
+            verify_condition=verify_cond,
             item_scan=s.get("item_scan"),
             item_scan_mode=s.get("item_scan_mode", "all"),
             boss_scan=s.get("boss_scan"),

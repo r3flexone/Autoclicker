@@ -21,7 +21,8 @@ from ..models import (
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
 from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
-from ..utils import clear_line, wait_while_paused, col, err, info, dbg
+from ..session_log import log_event
+from ..utils import clear_line, status_line, wait_while_paused, col, err, info, dbg
 from ..winapi import check_failsafe
 from .actions import (
     safe_click, safe_key, safe_scroll, _step_status, _phase_color, is_verbose_debug,
@@ -518,16 +519,21 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
         state.timeouts += 1
         state.consecutive_timeouts += 1
         consec = state.consecutive_timeouts
-    clear_line()
     max_consec = state.config.pixel_max_consecutive_timeouts
     # Meldung an Trigger-Richtung anpassen: bei until_gone wartet der Schritt
     # darauf dass die Farbe VERSCHWINDET — "nicht erkannt" wäre dann irreführend.
     wc = step.wait_condition
     reason = "Farbe nicht verschwunden" if (wc and wc.until_gone) else "Farbe nicht erkannt"
+    # Das diagnostisch wertvollste Ereignis ueberhaupt: WELCHER Schritt haengt.
+    # Ohne diese Zeile stand im Log nur die Klick-Folge, und die Luecke dazwischen
+    # musste man aus den Zeitstempeln erraten.
+    log_event(state, "timeout", detail=step.name or f"{phase}[{step_num}]",
+              x=wc.pixel[0] if wc else 0, y=wc.pixel[1] if wc else 0,
+              extra=f"nach={timeout}s,in_folge={consec}")
     if max_consec > 0:
-        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"), end="", flush=True)
+        status_line(col(f"\n[TIMEOUT] {reason} nach {timeout}s! ({consec}/{max_consec} in Folge)", "red"))
     else:
-        print(col(f"\n[TIMEOUT] {reason} nach {timeout}s!", "red"), end="", flush=True)
+        status_line(col(f"\n[TIMEOUT] {reason} nach {timeout}s!", "red"))
 
     # Notbremse: Zu viele aufeinanderfolgende Timeouts
     if max_consec > 0 and consec >= max_consec:
@@ -618,14 +624,22 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
 
 def _execute_screenshot_step(state: AutoClickerState, step: SequenceStep,
                               step_num: int, total_steps: int, phase: str) -> bool:
-    """Führt einen Screenshot-Schritt aus: macht ein Bild und speichert es."""
+    """Führt einen Screenshot-Schritt aus: macht ein Bild und speichert es.
+
+    Die drei Meldungen bleiben bewusst **stehen** (eigene Zeile statt Status-Zeile):
+    welcher Dateiname geschrieben wurde, will man später noch lesen können. Sie
+    räumen die laufende Status-Zeile aber vorher ab — ohne das schriebe die neue Zeile
+    nur über deren Anfang und liesse den Rest daneben stehen.
+    """
     if not PILLOW_AVAILABLE:
+        clear_line()
         print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SCREENSHOT übersprungen (Pillow fehlt)", "yellow"))
         return True
 
     region = step.screenshot_region  # (x1,y1,x2,y2) oder None
     img = take_screenshot(region)
     if img is None:
+        clear_line()
         print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SCREENSHOT fehlgeschlagen", "red"))
         return True  # Nicht als Fehler werten, Sequenz läuft weiter
 
@@ -644,6 +658,7 @@ def _execute_screenshot_step(state: AutoClickerState, step: SequenceStep,
     img.save(path)
 
     region_str = f"({region[0]},{region[1]})→({region[2]},{region[3]})" if region else "Vollbild"
+    clear_line()
     print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SCREENSHOT {region_str} → {filename}", _phase_color(phase)))
     return True
 
@@ -713,18 +728,109 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     if state.stop_event.is_set():
         return False
 
-    if step.key_press:
-        return _fuehre_taste_aus(state, step, step_num, total_steps, phase)
-
-    if step.scroll:
-        return _fuehre_scroll_aus(state, step, step_num, total_steps, phase)
-
     if step.wait_only:
+        # Reines Warten hat keine Wirkung, die man nachpruefen koennte.
         debug_active = is_verbose_debug(state)
         _step_status(debug_active, phase, step_num, total_steps, "Warten beendet (kein Klick)")
         return True
 
-    return _execute_click(state, step, step_num, total_steps, phase)
+    if step.key_press:
+        aktion = _fuehre_taste_aus
+    elif step.scroll:
+        aktion = _fuehre_scroll_aus
+    else:
+        aktion = _execute_click
+
+    return _mit_nachpruefung(state, step, step_num, total_steps, phase, aktion)
+
+
+# =============================================================================
+# NACHPRUEFUNG ("hat die Aktion gewirkt?")
+# =============================================================================
+
+def _wirkung_eingetreten(state: AutoClickerState, vc, timeout: float) -> tuple[bool, str]:
+    """Wartet bis `timeout`, ob die Nachpruef-Bedingung eintritt.
+
+    Gibt `(erfuellt, beschreibung)` zurueck. Abbruch ueber stop_event wird als
+    "nicht erfuellt" gemeldet — der Aufrufer prueft stop_event ohnehin selbst.
+    """
+    tol = state.config.pixel_wait_tolerance
+    intervall = max(0.05, state.config.verify_interval)
+    ende = time.time() + max(0.0, timeout)
+    letzter = "kein Screenshot"
+    while True:
+        img = take_screenshot((vc.pixel[0], vc.pixel[1], vc.pixel[0] + 1, vc.pixel[1] + 1))
+        if img is not None:
+            aktuell = img.getpixel((0, 0))[:3]
+            dist = color_distance(aktuell, vc.color)
+            passt = dist <= tol
+            if vc.until_gone:
+                passt = not passt
+            letzter = color_comparison(vc.color, aktuell, dist, tol)
+            if passt:
+                return True, letzter
+        if time.time() >= ende or state.stop_event.is_set():
+            return False, letzter
+        if state.stop_event.wait(intervall):
+            return False, letzter
+
+
+def _mit_nachpruefung(state: AutoClickerState, step: SequenceStep, step_num: int,
+                      total_steps: int, phase: str, aktion) -> bool:
+    """Fuehrt `aktion` aus und prueft danach, ob sie gewirkt hat.
+
+    Ohne `verify_condition` passiert genau das, was vorher passierte: die Aktion laeuft,
+    fertig. Das ist der Normalfall und kostet keinen Screenshot.
+
+    Mit Bedingung wird die Aktion bis zu `verify_retries` mal WIEDERHOLT, bevor
+    `else_config` greift. Die Wiederholung ist der eigentliche Gewinn: der haeufigste
+    Grund fuer einen wirkungslosen Klick (Lag, Fenster kurz nicht vorn, Popup davor) ist
+    voruebergehend, und ein zweiter Klick loest ihn. Vorher lief die Sequenz einfach
+    weiter und alles Folgende traf daneben.
+
+    Bleibt die Wirkung auch nach allen Versuchen aus, entscheidet `else_config` —
+    dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung. Ohne else wird der
+    Schritt als erledigt behandelt (GATE_SKIP-Bedeutung: weiter, nicht abbrechen); eine
+    ausgebliebene Wirkung ist ein Hinweis, kein Grund die Sequenz zu reissen.
+    """
+    vc = step.verify_condition
+    if vc is None:
+        return aktion(state, step, step_num, total_steps, phase)
+
+    debug = is_verbose_debug(state)
+    versuche = max(0, state.config.verify_retries) + 1
+    timeout = state.config.verify_timeout
+
+    for versuch in range(1, versuche + 1):
+        if not aktion(state, step, step_num, total_steps, phase):
+            return False
+        if state.stop_event.is_set():
+            return False
+
+        erfuellt, vergleich = _wirkung_eingetreten(state, vc, timeout)
+        if erfuellt:
+            _step_status(debug, phase, step_num, total_steps, "Wirkung bestaetigt",
+                         f"Nachpruefung erfuellt | {vergleich}")
+            log_event(state, "verify_ok", detail=step.name or "step",
+                      x=vc.pixel[0], y=vc.pixel[1], extra=f"versuch={versuch}")
+            return True
+
+        if state.stop_event.is_set():
+            return False
+        log_event(state, "verify_miss", detail=step.name or "step",
+                  x=vc.pixel[0], y=vc.pixel[1],
+                  extra=f"versuch={versuch}/{versuche}")
+        if versuch < versuche:
+            _step_status(debug, phase, step_num, total_steps,
+                         f"keine Wirkung - wiederhole ({versuch}/{versuche - 1})",
+                         f"Nachpruefung nicht erfuellt | {vergleich} - Wiederholung {versuch}")
+
+    _step_status(debug, phase, step_num, total_steps,
+                 "keine Wirkung - aufgegeben",
+                 f"Nachpruefung nach {versuche} Versuch(en) nicht erfuellt")
+    if step.else_config is not None:
+        return _gate_nach_else(state, step, phase, step_num, total_steps) != GATE_STOP
+    return True
 
 
 def _warte_text(step: SequenceStep) -> str:

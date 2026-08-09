@@ -45,6 +45,12 @@ class AppConfig:
     pixel_consecutive_action: str = "stop"          # Notbremse: "stop", "quit", "exit"
     pixel_show_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
 
+    # === NACHPRUEFUNG ("hat der Klick gewirkt?") ===
+    # Greift nur bei Schritten mit gesetzter verify_condition — ohne die passiert nichts.
+    verify_timeout: float = 3.0                     # Sekunden auf die erwartete Wirkung warten
+    verify_retries: int = 1                         # Wiederholungen der Aktion, bevor else greift (0 = keine)
+    verify_interval: float = 0.2                    # Prüf-Intervall der Nachprüfung in Sekunden
+
     # === SCAN-EINSTELLUNGEN ===
     scan_reverse: bool = True                       # True = Slots rückwärts scannen (4,3,2,1)
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
@@ -55,6 +61,9 @@ class AppConfig:
     scan_require_all_markers: bool = True            # True = ALLE Marker müssen gefunden werden
     scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
     scan_marker_min_pixels: int = 1                 # Min. passende (abgetastete) Pixel pro Marker-Farbe (>1 = robuster gegen Rausch-Pixel)
+    # Pfad zu einer Item-Name -> Gold-pro-Stueck-JSON (schreibt market_analysis).
+    # Leer = aus: dann entscheidet wie bisher die von Hand gesetzte Item-Prioritaet.
+    scan_market_value_file: str = ""
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
     scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
@@ -97,6 +106,12 @@ class AppConfig:
     humanize_break_interval_min: float = 0          # Alle N Minuten Pause einlegen (0 = aus)
     humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
     humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
+
+    # === AUFNAHME ===
+    # False = das Mausrad wird beim Aufnehmen ignoriert. Gedacht für Spiele, in denen
+    # das Rad nur die Ansicht dreht: solche Drehungen gehören nicht in die Sequenz,
+    # blähen sie aber auf. Der Hook lässt das Rad dann schon in winapi liegen.
+    record_scroll: bool = True                      # Mausrad mit aufzeichnen
 
     # === SESSION-LOG ===
     session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
@@ -334,11 +349,14 @@ _CONFIG_SECTIONS = [
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
         "pixel_show_delay",
     ]),
+    ("NACHPRUEFUNG", [
+        "verify_timeout", "verify_retries", "verify_interval",
+    ]),
     ("SCAN-EINSTELLUNGEN", [
         "scan_reverse", "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
-        "scan_marker_min_pixels",
+        "scan_marker_min_pixels", "scan_market_value_file",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),
@@ -359,6 +377,9 @@ _CONFIG_SECTIONS = [
         "humanize_micro_delay_min", "humanize_micro_delay_max",
         "humanize_break_interval_min",
         "humanize_break_duration_min", "humanize_break_duration_max",
+    ]),
+    ("AUFNAHME", [
+        "record_scroll",
     ]),
     ("SESSION-LOG", [
         "session_log_enabled", "session_log_dir",

@@ -58,6 +58,7 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("points", "Punkte mit ihren Nummern anzeigen"))
         print(cmd_hint("link", "Schritte mit Punkten verknüpfen (Referenz nachtragen)"))
         print(cmd_hint("screenshot / ss", "Screenshot-Schritt anlegen"))
+        print(cmd_hint("verify <Nr> <Punkt-Nr>", "nachpruefen, ob der Schritt gewirkt hat"))
         print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Phase speichern / verwerfen"))
         print("-" * 60)
         return
@@ -100,6 +101,11 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("... else restart", "ganze Sequenz von vorn (inkl. INIT)"))
     print(cmd_hint("... else <Punkt-Nr> [Sek]", "stattdessen diesen Punkt klicken (z.B. 'scan x else 2 5')"))
     print(cmd_hint("... else key <Taste>", "stattdessen Taste drücken (z.B. '1 pixel else key enter')"))
+    print("NACHPRUEFUNG - hat der Schritt gewirkt? (wiederholt die Aktion, sonst else):")
+    print(cmd_hint("verify <Schritt-Nr> <Punkt-Nr>", "nach der Aktion muss die Punkt-Farbe DA sein"))
+    print(cmd_hint("verify <Schritt-Nr> <Punkt-Nr> gone", "... muss WEG sein"))
+    print(cmd_hint("verify <Schritt-Nr> maus [gone]", "Stelle unter der Maus abgreifen"))
+    print(cmd_hint("verify <Schritt-Nr> off", "Nachpruefung entfernen"))
     print("BESTEHENDE Schritte bearbeiten (<Schritt-Nr> = Position, siehe 'show'):")
     print(cmd_hint("edit <Schritt-Nr>", "GEFÜHRTES MENÜ: Zeit/Trigger/Klick/Farbe/duplizieren/verschieben/testen/löschen"))
     print(cmd_hint("show <Schritt-Nr>", "alle Felder eines Schritts im Detail anzeigen"))
@@ -148,7 +154,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "color", "colorgone", "checkcolor", "checkgone", "scroll", "link",
+    "color", "colorgone", "checkcolor", "checkgone", "scroll", "link", "verify",
     "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
 ]
 
@@ -305,6 +311,9 @@ class _PhaseEditor:
         if (cmd == "ss" or cmd == "screenshot"
                 or cmd.startswith("screenshot ") or cmd.startswith("ss ")):
             self._handle_screenshot(user_input)
+            return
+        if cmd.startswith("verify "):
+            self._handle_verify(user_input)
             return
 
         # Geführtes Bearbeiten (empfohlen): ein Menü statt vieler Verben
@@ -1267,6 +1276,71 @@ class _PhaseEditor:
                 pass
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
+
+    def _handle_verify(self, user_input: str) -> None:
+        """Nachprüfung setzen/entfernen: "hat dieser Schritt gewirkt?".
+
+        Formate:
+          verify <Schritt-Nr> <Punkt-Nr> [gone]   — Punkt aus der Punkte-Liste prüfen
+          verify <Schritt-Nr> maus [gone]         — Stelle unter der Maus abgreifen
+          verify <Schritt-Nr> off                 — Nachprüfung entfernen
+
+        Warum ein eigener Punkt statt des Klickziels: geprüft wird meist NICHT dort,
+        wo geklickt wurde, sondern die Wirkung woanders (Fenster geht auf, Zähler
+        springt). Deshalb eine freie Stelle — dieselbe Mechanik wie `wait <Punkt-Nr>`.
+        """
+        teile = user_input.split()
+        if len(teile) < 3:
+            print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
+            print(f"     {hint('prueft NACH der Aktion, ob sie gewirkt hat')}")
+            return
+        step = self._get_step_by_num(teile[1])
+        if step is None:
+            return
+        ziel = teile[2].lower()
+        until_gone = len(teile) > 3 and teile[3].lower() in ("gone", "weg")
+
+        if ziel in ("off", "aus", "none"):
+            step.verify_condition = None
+            print(ok("Nachprüfung entfernt"))
+            return
+
+        if ziel in ("maus", "mouse"):
+            px, py, color = capture_pixel_color()
+            if color is None:
+                return
+            punkt_id = self._punkt_fuer(px, py, color, "Nachprüfung")
+        else:
+            try:
+                punkt_id = int(ziel)
+            except ValueError:
+                print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
+                return
+            with self.state.lock:
+                punkt = get_point_by_id(self.state, punkt_id)
+            if not punkt:
+                print(f"  -> Punkt #{punkt_id} nicht gefunden! {hint('(siehe points)')}")
+                return
+            if not punkt.color:
+                print(warn(f"  -> Punkt #{punkt_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
+                print(hint("     Im Punkte-Menü mit 'walk' die Farbe nachtragen."))
+                return
+            px, py = punkt.x, punkt.y
+
+        step.verify_condition = WaitCondition(point_id=punkt_id, pixel=(px, py),
+                                              until_gone=until_gone)
+        # Farbe direkt aus dem Punkt mitnehmen, damit die Anzeige sofort stimmt;
+        # gespeichert wird nur die Referenz.
+        with self.state.lock:
+            p = get_point_by_id(self.state, punkt_id)
+        if p and p.color:
+            step.verify_condition.color = p.color
+        zustand = "WEG ist" if until_gone else "DA ist"
+        print(ok(f"Nachprüfung gesetzt: nach der Aktion muss die Farbe bei "
+                 f"({px},{py}) {zustand}"))
+        n = max(0, self.state.config.verify_retries)
+        print(hint(f"       Bleibt sie aus, wird die Aktion {n}× wiederholt "
+                   f"(config: verify_retries), dann greift else."))
 
     def _punkt_fuer(self, x, y, color, name):
         """Punkt-ID für eine frisch abgegriffene Stelle - legt sie notfalls an.

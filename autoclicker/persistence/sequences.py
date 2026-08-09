@@ -359,13 +359,19 @@ def _phasen(sequence):
 def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `punkte` ist id -> ClickPoint.
 
-    Drei Referenzen pro Schritt, alle nach demselben Muster:
+    Vier Referenzen pro Schritt, alle nach demselben Muster:
 
-    | Referenz                | fuellt                          |
-    |-------------------------|---------------------------------|
-    | `step.point_id`         | x, y, name, recorded_color      |
-    | `wait_condition.point_id` | pixel, color                  |
-    | `else_config.point_id`  | x, y, name                      |
+    | Referenz                    | fuellt                      | fehlt der Punkt      |
+    |-----------------------------|-----------------------------|----------------------|
+    | `step.point_id`             | x, y, name, recorded_color  | Schritt uebersprungen|
+    | `wait_condition.point_id`   | pixel, color                | Schritt uebersprungen|
+    | `verify_condition.point_id` | pixel, color                | Pruefung entfaellt   |
+    | `else_config.point_id`      | x, y, name                  | else wird 'skip'     |
+
+    Die letzte Spalte ist der Unterschied: Klick und Vorbedingung sind der Schritt
+    selbst - ohne sie darf er nicht laufen. Nachpruefung und else sind Zusatz; faellt
+    ihr Punkt weg, laeuft der Schritt weiter, nur eben ungeprueft. Gemeldet wird
+    beides.
 
     Die Arbeitswerte sind das, was Worker und Editoren lesen; gespeichert wird nur die
     ID. Deshalb laeuft das hier direkt beim Laden - sonst saehe jeder Aufrufer, der die
@@ -417,6 +423,26 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
                         meldungen.append(
                             f"{ort} Pruef-Pixel folgt Punkt #{punkt.id}: "
                             f"{alt} -> {wc.pixel}")
+
+            vc = step.verify_condition
+            if vc is not None and vc.point_id is not None:
+                punkt = punkte.get(vc.point_id)
+                if punkt is None:
+                    # Anders als beim Pruef-Pixel wird der Schritt NICHT uebersprungen:
+                    # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
+                    # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
+                    meldungen.append(
+                        f"{ort} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
+                        f"den es nicht mehr gibt - wird nicht mehr geprueft")
+                    step.verify_condition = None
+                else:
+                    alt = tuple(vc.pixel)
+                    vc.pixel = (punkt.x, punkt.y)
+                    vc.color = punkt.color if punkt.color else vc.color
+                    if alt != (0, 0) and alt != vc.pixel and not still:
+                        meldungen.append(
+                            f"{ort} Nachpruefung folgt Punkt #{punkt.id}: "
+                            f"{alt} -> {vc.pixel}")
 
             ec = step.else_config
             if ec is not None and ec.point_id is not None:

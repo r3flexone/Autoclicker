@@ -868,7 +868,7 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
 
 # Die drei Referenz-Felder eines Schritts. Wer eine vierte Stelle einbaut, traegt sie
 # hier ein - sonst zeigt sie nach einem Import auf einen fremden lokalen Punkt.
-_REF_KEYS = ("point_id", "wait_point_id", "else_point_id")
+_REF_KEYS = ("point_id", "wait_point_id", "else_point_id", "verify_point_id")
 
 
 def _referenzierte_punkte(seq_data: dict) -> set:
