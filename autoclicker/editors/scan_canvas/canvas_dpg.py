@@ -146,7 +146,12 @@ class ScanStudioApp:
         # als Anker behalten, falls eine DPG-Version den Buffer doch referenziert.
         self._tex_data = data
         with dpg.texture_registry():
-            dpg.add_static_texture(w, h, data, format=dpg.mvFormat_Float_rgba, tag=_TEX)
+            # OHNE format=: `add_static_texture` kennt das Argument in Dear PyGui 2.x
+            # nicht mehr (nur `add_raw_texture` hat es noch) und wirft sonst
+            # "format keyword does not exist". Statische Texturen sind dort immer
+            # RGBA-Float — genau das, was `pil_to_texture` liefert. Das Argument war
+            # also schon vorher nur eine Wiederholung des Standards.
+            dpg.add_static_texture(w, h, data, tag=_TEX)
 
     def _build_ui(self) -> None:
         disp_w, disp_h = self.transform.display_size

@@ -3653,5 +3653,75 @@ else:
     print("  ----  Schreibseite uebersprungen (pandas nicht installiert)")
 
 
+
+
+# --------------------------- GUI-Code gegen die installierte Dear-PyGui-Version
+section("dpg-Aufrufe passen zur installierten Dear-PyGui-Version")
+
+# Die beiden GUI-Werkzeuge laufen in KEINEM Test - sie brauchen ein Fenster. Eine
+# entfallene oder umbenannte API faellt deshalb erst beim Start auf, und zwar mit
+# einem Absturz: `add_static_texture(..., format=...)` gab es in Dear PyGui 1.x, in
+# 2.x nur noch bei `add_raw_texture`. Das Scan-Studio startete dadurch gar nicht mehr.
+#
+# Ausfuehren laesst sich der Code hier nicht, seine Aufrufe pruefen aber schon:
+# jeder `dpg.<name>(..., kwarg=...)` wird gegen die Signatur der INSTALLIERTEN
+# Version gehalten. Das ist der Teil der GUI, der ueberhaupt statisch pruefbar ist -
+# und genau der Teil, der bei einem Versionswechsel bricht.
+try:
+    import dearpygui.dearpygui as _dpg7
+    import dearpygui as _dpgpkg7
+except ImportError:
+    _dpg7 = None
+
+if _dpg7 is None:
+    print("  ----  uebersprungen (dearpygui nicht installiert)")
+else:
+    import ast as _ast7
+    import inspect as _insp7
+    # Generisch by design: nehmen beliebige Item-Eigenschaften als **kwargs entgegen.
+    # Sie gegen eine Signatur zu halten waere Unsinn - sie HABEN keine.
+    _DPG_GENERISCH = {"configure_item", "configure_app", "configure_viewport"}
+    _dpg_quelle7 = Path(_dpg7.__file__).read_text(encoding="utf-8")
+    _fehlt_func7, _fehlt_kw7, _n_aufrufe7 = [], [], 0
+    for _pf7 in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob("*.py")):
+        try:
+            _baum7 = _ast7.parse(_pf7.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for _k7 in _ast7.walk(_baum7):
+            if not (isinstance(_k7, _ast7.Call) and isinstance(_k7.func, _ast7.Attribute)
+                    and isinstance(_k7.func.value, _ast7.Name)
+                    and _k7.func.value.id == "dpg"):
+                continue
+            _n_aufrufe7 += 1
+            _name7 = _k7.func.attr
+            if getattr(_dpg7, _name7, None) is None:
+                _fehlt_func7.append(f"{_pf7.name}:{_k7.lineno} dpg.{_name7}")
+                continue
+            if _name7 in _DPG_GENERISCH or not _k7.keywords:
+                continue
+            # Gegen die ausgeschriebene Signatur im Quelltext pruefen: die
+            # DPG-Wrapper haben zwar alle **kwargs, benutzen die aber nur fuer
+            # veraltete Aliase - inspect allein wuerde jedes Argument durchwinken.
+            _i7 = _dpg_quelle7.find(f"\ndef {_name7}(")
+            if _i7 < 0:
+                continue
+            _kopf7 = _dpg_quelle7[_i7:_dpg_quelle7.find(") ->", _i7)]
+            for _kw7 in _k7.keywords:
+                if _kw7.arg and f"{_kw7.arg} :" not in _kopf7 and f"{_kw7.arg}:" not in _kopf7:
+                    _fehlt_kw7.append(
+                        f"{_pf7.name}:{_k7.lineno} dpg.{_name7}(..., {_kw7.arg}=)")
+    check("der Test findet ueberhaupt dpg-Aufrufe", _n_aufrufe7 > 50)
+    check("jede benutzte dpg-Funktion existiert in dieser Version", _fehlt_func7 == [])
+    if _fehlt_func7:
+        for _z7 in _fehlt_func7:
+            print("        " + _z7)
+    check("jedes benannte Argument steht in der Signatur dieser Version",
+          sorted(set(_fehlt_kw7)) == [])
+    if _fehlt_kw7:
+        for _z7 in sorted(set(_fehlt_kw7)):
+            print("        " + _z7)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
