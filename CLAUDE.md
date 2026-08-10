@@ -517,6 +517,17 @@ Regeln beim Erweitern:
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.
+- **Die gewählte Zeile klappt auf** (`_build_row_inline`) und zeigt Punkt, Wartezeit,
+  Farb-Trigger und „nur warten" direkt darunter — aber **nur die eine**: 50 Zeilen mal
+  vier Widgets wären weder lesbar noch schnell. Alles Seltenere (else, Nachprüfung,
+  Scan-Namen, Screenshot-Bereich) bleibt im Eigenschaften-Feld links.
+- **Combo/Checkbox bauen neu, Zahlenfelder nicht.** Ein Neuaufbau mitten in einer
+  Texteingabe löscht das Feld, in das gerade getippt wird — der Fokus wäre nach jedem
+  Zeichen weg. Diskrete Bedienelemente (ein Klick, fertig) dürfen deshalb neu bauen,
+  damit die Zeilenbeschriftung sofort stimmt; Zahlenfelder melden nur die Änderung und
+  die Beschriftung zieht beim nächsten Neuaufbau nach.
+- **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
+  dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`.
 - **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
   Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
   und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.

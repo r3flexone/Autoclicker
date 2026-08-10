@@ -31,7 +31,7 @@ import dearpygui.dearpygui as dpg
 
 from pathlib import Path
 
-from ...models import SequenceStep
+from ...models import SequenceStep, WaitCondition
 from ...persistence import (
     save_sequence_file, list_available_sequences, load_sequence_file,
 )
@@ -40,10 +40,11 @@ from .model import (
     SequenceBoard, Lane, LANE_INIT, LANE_LOOP, LANE_END,
     BLOCK_LABELS, BLOCK_COLORS,
     BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
+    BLOCK_KEY, BLOCK_SCREENSHOT, BLOCK_CLICK, BLOCK_WAIT, BLOCK_WAIT_CLICK,
     block_type, sequence_to_board, board_to_sequence,
     load_palette_points, save_palette_points, step_from_point,
 )
-from .panels import build_properties_panel
+from .panels import build_properties_panel, _point_combo
 
 # Feste Tags
 _PROPS_PANEL = "ac_props_panel"
@@ -609,6 +610,103 @@ class SequenceStudioApp:
         dpg.configure_item(sel, drop_callback=self._on_drop)
         with dpg.tooltip(sel):
             dpg.add_text(_wrap(_ascii(str(step)), 60))
+
+        # Die gewaehlte Zeile klappt auf und zeigt ihre haeufigsten Einstellungen
+        # direkt darunter. Nur die eine: 50 Zeilen mal vier Widgets waeren weder
+        # lesbar noch schnell. Alles Seltenere (else, Nachpruefung, Scan-Namen,
+        # Screenshot-Bereich) bleibt im Eigenschaften-Feld links.
+        if ist_gewaehlt and len(self.sel_rows) == 1:
+            self._build_row_inline(lane, row, step, btype)
+
+    def _build_row_inline(self, lane: Lane, row: int, step: SequenceStep,
+                          btype: str) -> None:
+        """Kompakte Einstellungen unter der gewaehlten Zeile.
+
+        **Combo/Checkbox bauen neu, Zahlenfelder nicht.** Ein Neuaufbau mitten in
+        einer Texteingabe loescht das Feld, in das gerade getippt wird - der Fokus
+        waere nach jedem Zeichen weg. Diskrete Bedienelemente (ein Klick, fertig)
+        duerfen deshalb neu bauen, damit die Zeilenbeschriftung sofort stimmt;
+        Zahlenfelder merken sich nur den Wert und melden die Aenderung. Die
+        Beschriftung zieht dann beim naechsten Neuaufbau nach.
+        """
+        def _neu_bauen() -> None:
+            self._mark_dirty()
+            self.rebuild_board()
+            self.refresh_properties()
+
+        with dpg.group(indent=22):
+            # --- Ziel: Punkt bzw. Taste ---
+            if btype == BLOCK_KEY:
+                def _on_key(s, a, u):
+                    step.key_press = (a or "").strip() or None
+                    self._mark_dirty()
+                dpg.add_input_text(label="Taste", default_value=step.key_press or "",
+                                   width=110, callback=_on_key)
+            elif btype not in (BLOCK_SCREENSHOT, BLOCK_ITEM_SCAN, BLOCK_BOSS_SCAN,
+                               BLOCK_BOSS_WATCHER, BLOCK_ICON_SCAN):
+                _point_combo(dpg.last_container(), step, self.points,
+                             on_changed=_neu_bauen, label="Punkt")
+
+            with dpg.group(horizontal=True):
+                # --- Wartezeit ---
+                def _on_delay(s, a, u):
+                    step.delay_before = max(0.0, float(a))
+                    self._mark_dirty()          # KEIN Neuaufbau: siehe Docstring
+                dpg.add_input_float(label="s", default_value=float(step.delay_before),
+                                    width=80, step=0.1, format="%.2f",
+                                    callback=_on_delay)
+
+                # --- Farb-Trigger ---
+                if btype not in (BLOCK_SCREENSHOT,):
+                    def _on_trigger(s, a, u):
+                        self._set_trigger(step, a)
+                        _neu_bauen()
+                    dpg.add_combo(items=list(_TRIGGER_WAHL),
+                                  default_value=_trigger_name(step),
+                                  width=132, callback=_on_trigger)
+
+            # --- klicken oder nur warten ---
+            if btype in (BLOCK_CLICK, BLOCK_WAIT_CLICK, BLOCK_WAIT):
+                def _on_wait_only(s, a, u):
+                    step.wait_only = bool(a)
+                    _neu_bauen()
+                dpg.add_checkbox(label="nur warten (kein Klick)",
+                                 default_value=step.wait_only, callback=_on_wait_only)
+
+    def _set_trigger(self, step: SequenceStep, wahl: str) -> None:
+        """Setzt den Farb-Trigger eines Schritts aus der Inline-Auswahl.
+
+        Der Punkt ist die Quelle fuer Stelle UND Farbe — geprueft wird die eigene
+        Klick-Stelle. Ohne `point_id` gibt es nichts zu pruefen; dann bleibt es beim
+        bisherigen Zustand, statt eine Bedingung auf (0,0) anzulegen.
+        """
+        if wahl == _TRIGGER_KEIN:
+            step.wait_condition = None
+            return
+        if step.wait_condition is None:
+            if step.point_id is None:
+                self._set_status("Ohne Punkt gibt es nichts zu pruefen — erst einen waehlen.",
+                                 color=(220, 180, 90))
+                return
+            step.wait_condition = WaitCondition(point_id=step.point_id,
+                                                pixel=(step.x, step.y),
+                                                color=step.recorded_color or (0, 0, 0))
+        step.wait_condition.until_gone = (wahl == _TRIGGER_WEG)
+
+
+# Auswahl des Farb-Triggers in der Inline-Leiste. Die Reihenfolge ist die Antwort auf
+# "was soll vor diesem Schritt passieren?" - erst gar nichts, dann die zwei Richtungen.
+_TRIGGER_KEIN = "kein Trigger"
+_TRIGGER_DA = "warte bis Farbe DA"
+_TRIGGER_WEG = "warte bis Farbe WEG"
+_TRIGGER_WAHL = (_TRIGGER_KEIN, _TRIGGER_DA, _TRIGGER_WEG)
+
+
+def _trigger_name(step: SequenceStep) -> str:
+    wc = step.wait_condition
+    if wc is None:
+        return _TRIGGER_KEIN
+    return _TRIGGER_WEG if wc.until_gone else _TRIGGER_DA
 
 
 # Farbe pro Phasenart - INIT/LOOP/END sollen sich auf einen Blick unterscheiden.

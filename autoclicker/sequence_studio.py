@@ -54,7 +54,14 @@ def main(argv: list[str]) -> int:
     # Erst hier importieren — zieht Dear PyGui nur wenn wirklich gebraucht.
     from .editors.sequence_studio.view_dpg import SequenceStudioApp
     app = SequenceStudioApp(seq, path, SEQUENCES_DIR)
-    app.run()
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        # Beendet man den Hauptprozess mit CTRL+C, bekommt dieser Subprozess das
+        # Signal mit (gleiche Konsolengruppe) — mitten im DPG-Renderframe. Ohne
+        # diesen Zweig landet ein Traceback aus `start_dearpygui()` in der Konsole,
+        # der wie ein Absturz aussieht, obwohl nur zugemacht wurde.
+        return 0
     return 0
 
 

@@ -3850,5 +3850,99 @@ else:
           sorted(_namen(_i8) + _namen(_l8) + _namen(_e8)) == _vorher8)
 
 
+
+
+# --------------------------- Inline-Einstellungen in der gewaehlten Zeile
+section("Die gewaehlte Zeile klappt ihre haeufigsten Einstellungen auf")
+
+# Wer den Trigger eines Schritts aendern wollte, musste den Blick in die
+# Seitenleiste verlegen. Jetzt sitzt das Noetigste direkt unter der Zeile.
+try:
+    import dearpygui.dearpygui as _dpg9      # noqa: F401
+except ImportError:
+    _dpg9 = None
+
+if _dpg9 is None:
+    print("  ----  uebersprungen (dearpygui nicht installiert)")
+else:
+    from autoclicker.editors.sequence_studio.view_dpg import (
+        SequenceStudioApp as _SSA9, _trigger_name as _tn9,
+        _TRIGGER_KEIN as _TK9, _TRIGGER_DA as _TDA9, _TRIGGER_WEG as _TWEG9)
+    from autoclicker.models import Sequence as _SEQ9, LoopPhase as _LP9
+
+    def _app9():
+        seq = _SEQ9(name="I", loop_phases=[_LP9(name="Loop", repeat=1, steps=[
+            _SS(x=10, y=20, delay_before=0.5, name="Bank", point_id=1,
+                recorded_color=(1, 2, 3))])])
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            a = _SSA9(seq, Path("sequences/I.json"), "sequences")
+        a.rebuild_board = lambda *x: None
+        a.refresh_properties = lambda *x: None
+        a._set_status = lambda *x, **k: None
+        a._update_title = lambda *x: None
+        return a, a.board.lanes[1].steps[0]
+
+    # --- Trigger setzen und wieder wegnehmen ---
+    _a9, _s9 = _app9()
+    check("ohne Bedingung meldet die Auswahl 'kein Trigger'", _tn9(_s9) == _TK9)
+    _a9._set_trigger(_s9, _TDA9)
+    check("'warte bis Farbe DA' legt die Bedingung an", _s9.wait_condition is not None)
+    check("und nimmt Stelle UND Farbe aus dem Punkt des Schritts",
+          _s9.wait_condition.point_id == 1
+          and _s9.wait_condition.pixel == (10, 20)
+          and _s9.wait_condition.color == (1, 2, 3))
+    check("die Auswahl zeigt danach denselben Zustand an", _tn9(_s9) == _TDA9)
+    _a9._set_trigger(_s9, _TWEG9)
+    check("Umschalten auf WEG dreht nur die Richtung",
+          _s9.wait_condition.until_gone is True and _s9.wait_condition.point_id == 1)
+    check("und die Anzeige folgt", _tn9(_s9) == _TWEG9)
+    _a9._set_trigger(_s9, _TK9)
+    check("'kein Trigger' entfernt die Bedingung wieder", _s9.wait_condition is None)
+
+    # --- Ohne Punkt gibt es nichts zu pruefen ---
+    # Sonst entstuende eine Bedingung auf (0,0) - genau die Sorte stiller Unsinn,
+    # gegen die es auch keinen Rueckfallwert bei point_id gibt.
+    _a9, _ = _app9()
+    _ohne9 = _SS(delay_before=0)
+    _a9._set_trigger(_ohne9, _TDA9)
+    check("ohne Punkt entsteht KEINE Bedingung auf (0,0)", _ohne9.wait_condition is None)
+
+    # --- Aufklappen baut fuer jeden Block-Typ durch ---
+    # Die Leiste zeigt je nach Typ anderes (Taste statt Punkt, kein Trigger beim
+    # Screenshot). Ein Typ, der dabei knallt, macht die Zeile unanklickbar.
+    _seq_typen = _SEQ9(name="T", loop_phases=[_LP9(name="Loop", repeat=1, steps=[
+        _SS(x=1, y=2, delay_before=0.5, name="K", point_id=1),      # Klick
+        _SS(delay_before=1.0, key_press="enter"),                   # Taste
+        _SS(delay_before=0, screenshot_only=True, name="S"),        # Screenshot
+        _SS(delay_before=0, wait_only=True, name="W"),              # nur warten
+        _SS(delay_before=0, item_scan="inv"),                       # Item-Scan
+        _SS(delay_before=0, boss_scan="b"),                         # Boss-Scan
+        _SS(delay_before=0, icon_scan="i"),                         # Icon-Scan
+    ])])
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _at9 = _SSA9(_seq_typen, Path("sequences/T.json"), "sequences")
+    _at9._update_title = lambda *x: None
+    _at9._set_status = lambda *x, **k: None
+    _lane9 = _at9.board.lanes[1]
+    _gebaut9, _fehler9 = 0, []
+    _dpg9.create_context()
+    try:
+        _at9._build_ui()
+        for _r9 in range(len(_lane9.steps)):
+            _at9.sel_lane, _at9.sel_rows = _lane9, {_r9}
+            try:
+                _at9.rebuild_board()
+                _gebaut9 += 1
+            except Exception as _e9:
+                _fehler9.append(f"Zeile {_r9}: {type(_e9).__name__} {_e9}")
+    finally:
+        _dpg9.destroy_context()
+    check("jeder Block-Typ laesst sich aufklappen", _fehler9 == [])
+    if _fehler9:
+        for _z9 in _fehler9:
+            print("        " + _z9)
+    check("und zwar alle sieben", _gebaut9 == 7)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)
