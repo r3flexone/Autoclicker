@@ -3944,5 +3944,87 @@ else:
     check("und zwar alle sieben", _gebaut9 == 7)
 
 
+
+
+# --------------------------- Jedes Modul laesst sich ueberhaupt importieren
+section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
+
+# Eine Massen-Umbenennung hat einmal `scan_canvas.canvas_dpg` zu
+# `scan_canvas.view_dpg` gemacht - eine Datei, die es dort nie gab. pyflakes sah
+# nichts (es loest keine Fremdmodule auf), die Suite auch nicht, und aufgefallen
+# waere es erst beim Druecken von CTRL+ALT+V.
+#
+# Der Test importiert deshalb JEDES Modul einmal. Das ist der billigste Beweis,
+# dass die Importe wirklich aufgehen - und er kostet nichts, weil die Suite die
+# meisten davon ohnehin laedt.
+import importlib as _il10
+
+_wurzel10 = Path(__file__).resolve().parent.parent
+_hat_dpg10 = True
+try:
+    import dearpygui.dearpygui as _d10      # noqa: F401
+except ImportError:
+    _hat_dpg10 = False
+
+_kaputt10, _geprueft10, _uebersprungen10 = [], 0, 0
+for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
+    if "__pycache__" in _pf10.parts:
+        continue
+    _rel10 = _pf10.relative_to(_wurzel10).with_suffix("")
+    _mod10 = ".".join(_rel10.parts)
+    if _mod10.endswith(".__init__"):
+        _mod10 = _mod10[: -len(".__init__")]
+    # Ohne Dear PyGui koennen die GUI-Module nicht laden - das ist kein Fehler,
+    # sie sind optional (die Suite laeuft auch auf Linux ohne).
+    if not _hat_dpg10 and ("canvas" in _mod10 or "studio" in _mod10):
+        _uebersprungen10 += 1
+        continue
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            _il10.import_module(_mod10)
+        _geprueft10 += 1
+    except Exception as _e10:
+        _kaputt10.append(f"{_mod10}: {type(_e10).__name__} {_e10}")
+
+check("jedes Modul laesst sich importieren", _kaputt10 == [])
+if _kaputt10:
+    for _z10 in _kaputt10:
+        print("        " + _z10)
+check("und der Test hat wirklich etwas geprueft", _geprueft10 >= 50)
+
+# Das allein reicht NICHT: genau der Fehler von oben sass in einem Import INNERHALB
+# einer Funktion (scan_studio.main importiert den Canvas erst beim Start, damit Dear
+# PyGui nicht am Modul haengt). Einen Modulrumpf zu importieren fuehrt solche Zeilen
+# nie aus - der Test war gruen, die App kaputt.
+#
+# Deshalb zusaetzlich statisch: jede relative Import-Zeile, egal wo sie steht, muss
+# auf eine Datei zeigen, die es gibt.
+import ast as _ast10
+
+_tote10 = []
+for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
+    if "__pycache__" in _pf10.parts:
+        continue
+    try:
+        _baum10 = _ast10.parse(_pf10.read_text(encoding="utf-8"))
+    except SyntaxError:
+        continue
+    for _k10 in _ast10.walk(_baum10):
+        if not (isinstance(_k10, _ast10.ImportFrom) and _k10.level and _k10.module):
+            continue
+        # level=1 -> eigenes Paket, level=2 -> eins darueber, ...
+        _basis10 = _pf10.parent
+        for _ in range(_k10.level - 1):
+            _basis10 = _basis10.parent
+        _ziel10 = _basis10.joinpath(*_k10.module.split("."))
+        if not (_ziel10.with_suffix(".py").exists() or (_ziel10 / "__init__.py").exists()):
+            _tote10.append(f"{_pf10.name}:{_k10.lineno} from {'.' * _k10.level}{_k10.module}")
+check("auch Importe INNERHALB von Funktionen zeigen auf existierende Module",
+      _tote10 == [])
+if _tote10:
+    for _z10 in _tote10:
+        print("        " + _z10)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

@@ -20,7 +20,7 @@ from .models import Sequence
 from .persistence import (
     ensure_sequences_dir, list_available_sequences, load_sequence_file,
 )
-from .utils import sanitize_filename
+from .utils import sanitize_filename, col
 
 
 def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
@@ -61,8 +61,31 @@ def main(argv: list[str]) -> int:
         # Signal mit (gleiche Konsolengruppe) — mitten im DPG-Renderframe. Ohne
         # diesen Zweig landet ein Traceback aus `start_dearpygui()` in der Konsole,
         # der wie ein Absturz aussieht, obwohl nur zugemacht wurde.
+        print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Abgebrochen.")
         return 0
+
+    _schlussmeldung(app)
     return 0
+
+
+def _schlussmeldung(app) -> None:
+    """Sagt beim Zumachen, was passiert ist — und was jetzt noch zu tun ist.
+
+    Die Meldung landet in der Konsole des HAUPTPROZESSES (der Subprozess erbt sie),
+    also genau dort, wo vorher „Sequenz-Studio geöffnet" stand. Ohne sie bleibt das
+    Öffnen als letzte Zeile stehen und man weiß nicht, ob das Fenster noch lebt.
+
+    Der Hinweis aufs Neuladen ist der eigentliche Zweck: der Hauptprozess hält
+    seinen eigenen Stand im Speicher und merkt von der geschriebenen Datei nichts.
+    Deshalb erscheint er nur, wenn wirklich gespeichert wurde — sonst wäre es eine
+    Aufforderung, etwas nachzuladen, das sich gar nicht geändert hat.
+    """
+    tag = col("[SEQUENZ-STUDIO]", "cyan")
+    if getattr(app, "_gespeichert", False):
+        print(f"\n{tag} Geschlossen — '{app.board.name}' gespeichert.")
+        print(f"     Im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
+    else:
+        print(f"\n{tag} Geschlossen — nichts gespeichert.")
 
 
 if __name__ == "__main__":

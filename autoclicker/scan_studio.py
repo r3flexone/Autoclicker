@@ -40,7 +40,9 @@ def main(argv: list[str]) -> int:
 
     vleft, vtop = get_virtual_origin()
 
-    from .editors.scan_canvas.view_dpg import ScanStudioApp
+    # Heisst hier weiterhin canvas_dpg: das Scan-Studio IST ein Canvas — es zeichnet
+    # Rechtecke auf einen Screenshot. Nur die Sequenz-Ansicht war faelschlich eine.
+    from .editors.scan_canvas.canvas_dpg import ScanStudioApp
     app = ScanStudioApp(img, vleft, vtop, SLOTS_FILE)
     app.run()
     return 0

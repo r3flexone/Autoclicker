@@ -70,6 +70,9 @@ class SequenceStudioApp:
         self.sel_lane: Lane | None = None
         self.sel_rows: set[int] = set()
         self._dirty = False
+        # Wurde in dieser Sitzung mindestens einmal gespeichert? Nur dafür da, dass
+        # die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.
+        self._gespeichert = False
         # Welche Aktion (_on_load_sequence/_on_new_sequence) auf Bestätigung
         # wartet, weil ungespeicherte Änderungen existieren (2-Klick-Schutz).
         self._pending_discard: str | None = None
@@ -365,6 +368,10 @@ class SequenceStudioApp:
             return
 
         self.filepath = new_path
+        # Merken, dass ueberhaupt geschrieben wurde: die Schlussmeldung erinnert dann
+        # ans Neuladen im Hauptprozess. Der haelt seinen eigenen Stand im Speicher und
+        # merkt von dieser Datei sonst nichts — das ist der haeufigste Stolperstein.
+        self._gespeichert = True
         msg = f"Gespeichert: {new_path.name}"
         if renamed and old_path.exists():
             try:
