@@ -1,10 +1,25 @@
 """
-Dear PyGui Canvas-Renderer für den visuellen Sequenz-Editor.
+Dear PyGui Ansicht für den visuellen Sequenz-Editor.
 
-Zeichnet die Lane-Struktur (INIT / Loop-Phasen / END) als Spalten von Blöcken,
-verbindet aufeinanderfolgende Blöcke mit Pfeilen (= Ausführungsreihenfolge) und
-zeigt ELSE-Fallbacks als rote Abzweigung. Links: Punkte-Palette + Sequenz-
-Einstellungen + Speichern. Rechts: Eigenschaften des gewählten Blocks.
+Zeigt die Phasen (INIT / Loop-Phasen / END) als Spalten nebeneinander, jede eine
+Liste ihrer Schritte. Links: Sequenz-Einstellungen, Punkte-Palette, Speichern und
+die Eigenschaften des gewählten Schritts.
+
+**Warum Listen und kein Node-Graph.** Bis Schema 4 war das hier ein
+`dpg.node_editor` mit frei liegenden Kacheln — und das war der Grund, warum sich
+der Editor unbedienbar anfühlte: ein Node-Graph verspricht mit jedem Pixel, dass
+man Verbindungen ziehen darf. Es gab aber keinen einzigen Link-Callback (die
+Pfeile waren Dekoration), die Positionen wurden bei jedem Neuaufbau aus
+(Spalte, Zeile) neu gerechnet (verschobene Blöcke sprangen zurück), und
+umsortiert wurde mit `^`/`v` — ein Schritt pro Klick, jedes Mal mit komplettem
+Neuaufbau des Editors.
+
+Eine Sequenz **ist** kein Graph: pro Phase ist sie eine lineare Liste, und die
+einzige Verzweigung (`else_config`) ist ein Attribut, keine Kante. Die Liste
+verspricht deshalb nur, was sie einlösen kann — kann das dafür richtig: Ziehen
+sortiert um, auch über Phasengrenzen hinweg (das kann der Konsolen-Editor bis
+heute nicht), Mehrfachauswahl mit STRG, und 50 aufgenommene Schritte passen
+untereinander auf einen Blick.
 
 Läuft ausschließlich im Editor-Subprocess (Dear PyGui import).
 """
@@ -22,7 +37,7 @@ from ...persistence import (
 )
 from ...utils import sanitize_filename
 from .model import (
-    BlockGraph, Lane,
+    BlockGraph, Lane, LANE_INIT, LANE_LOOP, LANE_END,
     BLOCK_LABELS, BLOCK_COLORS,
     BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
     block_type, sequence_to_graph, graph_to_sequence,
@@ -31,18 +46,15 @@ from .model import (
 from .panels import build_properties_panel
 
 # Feste Tags
-_NODE_EDITOR = "ac_node_editor"
 _PROPS_PANEL = "ac_props_panel"
 _STATUS = "ac_status_text"
 _LANE_PICK = "ac_lane_pick"
 _SIDEBAR = "ac_sidebar_body"
 _SEQ_PICK = "ac_seq_pick"
 
-# Layout-Konstanten
-_COL_W = 270    # horizontaler Abstand zwischen Lanes
-_ROW_H = 130    # vertikaler Abstand zwischen Blöcken
-_X0 = 30
-_Y0 = 30
+# Breite einer Phasen-Spalte. Der Rest (Zeilenhoehe, Ursprung) entfiel mit dem
+# Node-Canvas: eine Liste setzt ihre Zeilen selbst, ohne gerechnete Positionen.
+_COL_W = 270
 
 
 class NodeEditorApp:
@@ -53,8 +65,9 @@ class NodeEditorApp:
         self.filepath = Path(filepath)
         self.sequences_dir = sequences_dir
         self.points = load_palette_points(sequences_dir)
-        self.selected: tuple[Lane, int] | None = None
-        self._themes: dict[str, int] = {}
+        # Auswahl lebt immer in GENAU EINER Phase (siehe _on_row_click).
+        self.sel_lane: Lane | None = None
+        self.sel_rows: set[int] = set()
         self._dirty = False
         # Welche Aktion (_on_load_sequence/_on_new_sequence) auf Bestätigung
         # wartet, weil ungespeicherte Änderungen existieren (2-Klick-Schutz).
@@ -63,7 +76,6 @@ class NodeEditorApp:
     # ---------------------------------------------------------------- Setup
     def run(self) -> None:
         dpg.create_context()
-        self._build_themes()
         self._build_ui()
         dpg.create_viewport(title=f"Node-Editor – {self.graph.name}", width=1400, height=820)
         dpg.setup_dearpygui()
@@ -75,20 +87,6 @@ class NodeEditorApp:
         dpg.start_dearpygui()
         dpg.destroy_context()
 
-    def _build_themes(self) -> None:
-        """Ein Theme pro Block-Typ für eine farbige Node-Titelzeile."""
-        for btype, color in BLOCK_COLORS.items():
-            hover = tuple(min(255, c + 30) for c in color)
-            with dpg.theme() as theme:
-                with dpg.theme_component(dpg.mvNode):
-                    dpg.add_theme_color(dpg.mvNodeCol_TitleBar, color,
-                                        category=dpg.mvThemeCat_Nodes)
-                    dpg.add_theme_color(dpg.mvNodeCol_TitleBarHovered, hover,
-                                        category=dpg.mvThemeCat_Nodes)
-                    dpg.add_theme_color(dpg.mvNodeCol_TitleBarSelected, hover,
-                                        category=dpg.mvThemeCat_Nodes)
-            self._themes[btype] = theme
-
     def _build_ui(self) -> None:
         with dpg.window(tag="ac_root"):
             with dpg.group(horizontal=True):
@@ -98,8 +96,8 @@ class NodeEditorApp:
                     dpg.add_separator()
                     dpg.add_group(tag=_SIDEBAR)
                     self._build_sidebar()
-                # --- Canvas (Mitte, füllt den Rest) ---
-                # node_editor wird in rebuild_canvas frisch erzeugt (DPG-Crashfix).
+                # --- Phasen-Spalten (Mitte, füllen den Rest) ---
+                # Inhalt entsteht in rebuild_canvas().
                 dpg.add_child_window(tag="ac_center", border=False)
 
     def _build_loader(self) -> None:
@@ -135,7 +133,7 @@ class NodeEditorApp:
             return
         self.graph = sequence_to_graph(seq)
         self.filepath = Path(path)
-        self.selected = None
+        self._clear_selection()
         self._reload_view()
         self._clear_dirty()
         self._set_status(f"Geladen: {name}")
@@ -148,7 +146,7 @@ class NodeEditorApp:
         base = f"Sequenz_{int(time.time())}"
         self.graph = sequence_to_graph(Sequence(name=base))
         self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(base)}.json"
-        self.selected = None
+        self._clear_selection()
         self._reload_view()
         self._clear_dirty()
         self._set_status("Neue Sequenz - noch nicht gespeichert.", color=(220, 180, 90))
@@ -359,7 +357,7 @@ class NodeEditorApp:
     def _on_add_point(self, sender, app_data, user_data):
         lane = self._target_lane()
         self.graph.add_step(lane, step_from_point(user_data))
-        self.selected = (lane, len(lane.steps) - 1)
+        self._select_only(lane, len(lane.steps) - 1)
         self._mark_dirty()
         self.rebuild_canvas()
         self.refresh_properties()
@@ -367,28 +365,7 @@ class NodeEditorApp:
     def _on_add_blank(self, sender, app_data, user_data):
         lane: Lane = user_data
         self.graph.add_step(lane, SequenceStep(x=0, y=0, delay_before=0.0))
-        self.selected = (lane, len(lane.steps) - 1)
-        self._mark_dirty()
-        self.rebuild_canvas()
-        self.refresh_properties()
-
-    def _on_select(self, sender, app_data, user_data):
-        self.selected = user_data
-        self.rebuild_canvas()
-        self.refresh_properties()
-
-    def _on_move(self, sender, app_data, user_data):
-        lane, idx, delta = user_data
-        new_idx = self.graph.move_step(lane, idx, delta)
-        self.selected = (lane, new_idx)
-        self._mark_dirty()
-        self.rebuild_canvas()
-        self.refresh_properties()
-
-    def _on_delete(self, sender, app_data, user_data):
-        lane, idx = user_data
-        self.graph.delete_step(lane, idx)
-        self.selected = None
+        self._select_only(lane, len(lane.steps) - 1)
         self._mark_dirty()
         self.rebuild_canvas()
         self.refresh_properties()
@@ -396,7 +373,7 @@ class NodeEditorApp:
     def _on_delete_lane(self, sender, app_data, user_data):
         lane: Lane = user_data
         self.graph.delete_loop_lane(lane)
-        self.selected = None
+        self._clear_selection()
         self._mark_dirty()
         self._refresh_lane_pick()
         self.rebuild_canvas()
@@ -432,15 +409,28 @@ class NodeEditorApp:
         self._mark_dirty()
 
     # --------------------------------------------------------------- Rendering
+    #
+    # Die Phasen stehen als Spalten nebeneinander, jede eine schlichte Liste. Das war
+    # vorher ein `node_editor` mit frei liegenden Kacheln - und genau das war die
+    # Ursache dafuer, dass sich der Editor nicht intuitiv anfuehlte: ein Node-Graph
+    # verspricht mit jedem Pixel, dass man Verbindungen ziehen darf. Es gab aber
+    # keinen einzigen Link-Callback, die Pfeile waren Dekoration, und die
+    # Block-Positionen wurden bei jedem Neuaufbau aus (Spalte, Zeile) neu gerechnet -
+    # verschobene Bloecke sprangen also zurueck.
+    #
+    # Eine Sequenz IST kein Graph: pro Phase ist sie eine lineare Liste, und die
+    # einzige Verzweigung (`else_config`) ist ein Attribut, keine Kante. Die Liste
+    # verspricht deshalb nur, was sie auch kann - dafuer kann sie es richtig:
+    # Ziehen sortiert um, auch ueber Phasengrenzen hinweg, und 50 aufgenommene
+    # Schritte passen untereinander auf einen Blick.
+
     def refresh_properties(self) -> None:
-        step = None
-        lane = None
-        if self.selected:
-            lane, idx = self.selected
-            if 0 <= idx < len(lane.steps):
-                step = lane.steps[idx]
-            else:
-                self.selected = None
+        """Zeigt den gewaehlten Schritt - aber nur, wenn es genau EINER ist."""
+        step = lane = None
+        if self.sel_lane is not None and len(self.sel_rows) == 1:
+            idx = next(iter(self.sel_rows))
+            if 0 <= idx < len(self.sel_lane.steps):
+                lane, step = self.sel_lane, self.sel_lane.steps[idx]
         build_properties_panel(
             _PROPS_PANEL, step, lane, self.graph, self.points,
             on_changed=self._on_step_changed,
@@ -448,7 +438,6 @@ class NodeEditorApp:
         )
 
     def _on_step_changed(self) -> None:
-        # Nur das Label des ausgewählten Nodes betroffen → günstiger Voll-Rebuild.
         self._mark_dirty()
         self.rebuild_canvas()
 
@@ -457,136 +446,226 @@ class NodeEditorApp:
         self.rebuild_canvas()
         self.refresh_properties()
 
+    # ---- Auswahl ---------------------------------------------------------
+    def _select_only(self, lane: Lane, row: int) -> None:
+        self.sel_lane, self.sel_rows = lane, {row}
+
+    def _clear_selection(self) -> None:
+        self.sel_lane, self.sel_rows = None, set()
+
+    def _on_row_click(self, sender, app_data, user_data) -> None:
+        """Klick = nur dieser Schritt. STRG+Klick = dazu bzw. weg.
+
+        Die Auswahl lebt immer in GENAU EINER Phase: sobald in einer anderen Spalte
+        geklickt wird, faengt sie dort neu an. Das haelt die Sammelaktionen
+        eindeutig - eine Auswahl quer ueber INIT und END haette bei "eine Position
+        hoch" keine sinnvolle Bedeutung.
+        """
+        lane, row = user_data
+        strg = dpg.is_key_down(dpg.mvKey_LControl) or dpg.is_key_down(dpg.mvKey_RControl)
+        if strg and self.sel_lane is lane:
+            self.sel_rows.symmetric_difference_update({row})
+            if not self.sel_rows:
+                self._clear_selection()
+        else:
+            self._select_only(lane, row)
+        self.rebuild_canvas()
+        self.refresh_properties()
+
+    def _sel_sorted(self) -> list[int]:
+        return sorted(self.sel_rows)
+
+    # ---- Sammelaktionen --------------------------------------------------
+    def _on_sel_delete(self, sender, app_data, user_data) -> None:
+        lane: Lane = user_data
+        if self.sel_lane is not lane or not self.sel_rows:
+            return
+        # Von hinten loeschen, sonst verschieben sich die noch offenen Indizes.
+        for idx in sorted(self.sel_rows, reverse=True):
+            self.graph.delete_step(lane, idx)
+        n = len(self.sel_rows)
+        self._clear_selection()
+        self._mark_dirty()
+        self.rebuild_canvas()
+        self.refresh_properties()
+        self._set_status(f"{n} Block/Bloecke geloescht.")
+
+    def _on_sel_move(self, sender, app_data, user_data) -> None:
+        """Verschiebt die Auswahl als BLOCK um eine Position."""
+        lane, delta = user_data
+        if self.sel_lane is not lane or not self.sel_rows:
+            return
+        rows = self._sel_sorted()
+        if delta < 0 and rows[0] == 0:
+            return
+        if delta > 0 and rows[-1] == len(lane.steps) - 1:
+            return
+        # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von hinten -
+        # sonst ueberholen sich die Elemente gegenseitig.
+        folge = rows if delta < 0 else list(reversed(rows))
+        self.sel_rows = {self.graph.move_step(lane, idx, delta) for idx in folge}
+        self._mark_dirty()
+        self.rebuild_canvas()
+        self.refresh_properties()
+
+    def _verschiebe(self, quelle: Lane, rows: list[int], ziel: Lane, at: int) -> None:
+        """Traegt `rows` aus `quelle` in `ziel` ab Position `at` ein.
+
+        Der eine Weg fuer beides: Umsortieren innerhalb einer Phase und Verschieben
+        zwischen Phasen. Letzteres gibt es im Konsolen-Editor gar nicht - eine
+        Aufnahme nachtraeglich in INIT/LOOP/END aufzuteilen hiess dort loeschen und
+        neu anlegen.
+        """
+        schritte = [quelle.steps[i] for i in sorted(rows)]
+        if not schritte:
+            return
+        # Wie viele der entfernten Schritte lagen VOR der Zielposition? Um so viele
+        # rutscht sie nach vorne - aber nur, wenn aus derselben Phase entfernt wird.
+        if quelle is ziel:
+            at -= sum(1 for i in rows if i < at)
+        for i in sorted(rows, reverse=True):
+            self.graph.delete_step(quelle, i)
+        at = max(0, min(at, len(ziel.steps)))
+        for versatz, schritt in enumerate(schritte):
+            self.graph.add_step(ziel, schritt, at=at + versatz)
+        self.sel_lane = ziel
+        self.sel_rows = set(range(at, at + len(schritte)))
+        self._mark_dirty()
+
+    def _on_drop(self, sender, app_data, user_data) -> None:
+        """Ziel eines Drag&Drop. `app_data` ist die drag_data der Quelle."""
+        if not app_data:
+            return
+        ziel_lane, ziel_row = user_data
+        quelle_lane, quelle_row = app_data
+        # Wird ein Schritt aus der aktuellen Auswahl gezogen, wandert die ganze
+        # Auswahl mit - sonst nur der angefasste.
+        rows = (self._sel_sorted()
+                if (self.sel_lane is quelle_lane and quelle_row in self.sel_rows)
+                else [quelle_row])
+        self._verschiebe(quelle_lane, rows, ziel_lane, ziel_row)
+        self.rebuild_canvas()
+        self.refresh_properties()
+
+    # ---- Aufbau ----------------------------------------------------------
     def rebuild_canvas(self) -> None:
-        # Ganzen Editor verwerfen und neu anlegen (statt einzelne Nodes zu
-        # löschen — das würde mit bestehenden Links zum Absturz führen).
-        if dpg.does_item_exist(_NODE_EDITOR):
-            dpg.delete_item(_NODE_EDITOR)
-        dpg.add_node_editor(
-            tag=_NODE_EDITOR, parent="ac_center", minimap=True,
-            minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
-        )
+        """Baut die Spalten neu.
 
-        links: list[tuple[int, int]] = []  # (out_attr, in_attr) Paare
+        Billig genug fuer jeden Klick - anders als der alte node_editor, der komplett
+        verworfen werden musste, weil das Loeschen einzelner Nodes mit bestehenden
+        Links abstuerzte.
+        """
+        for child in dpg.get_item_children("ac_center", 1) or []:
+            dpg.delete_item(child)
+        with dpg.group(horizontal=True, parent="ac_center"):
+            for lane in self.graph.lanes:
+                self._build_lane_column(lane)
 
-        for col, lane in enumerate(self.graph.lanes):
-            x = _X0 + col * _COL_W
-            # Lane-Kopf-Node
-            self._build_lane_header(lane, x, _Y0)
+    def _build_lane_column(self, lane: Lane) -> None:
+        gewaehlt = self.sel_lane is lane and bool(self.sel_rows)
+        with dpg.child_window(width=_COL_W, border=True):
+            titel = lane.name + (f"   x{lane.repeat}" if lane.is_loop() else "")
+            dpg.add_text(titel, color=_LANE_FARBE.get(lane.kind, (200, 200, 200)))
+            dpg.add_text(f"{len(lane.steps)} Schritt(e)", color=(130, 130, 130))
+            dpg.add_separator()
 
-            prev_out = None
-            for row, step in enumerate(lane.steps):
-                y = _Y0 + (row + 1) * _ROW_H
-                in_attr, out_attr = self._build_step_node(lane, row, step, x, y)
-                if prev_out is not None:
-                    links.append((prev_out, in_attr))
-                prev_out = out_attr
-
-        # Verbindungen zeichnen (nach allen Nodes)
-        for out_attr, in_attr in links:
-            dpg.add_node_link(out_attr, in_attr, parent=_NODE_EDITOR)
-
-    def _lane_header_tag(self, lane: Lane) -> str:
-        """Stabiler Tag für den Lane-Kopf-Node (für In-place-Label-Update)."""
-        return f"ac_lane_hdr_{id(lane)}"
-
-    def _lane_header_title(self, lane: Lane) -> str:
-        # × → x: das ×-Zeichen rendert mit dem DPG-Default-Font als "?".
-        if lane.is_loop():
-            return f"{lane.name}  (x{lane.repeat})"
-        return lane.name
-
-    def _build_lane_header(self, lane: Lane, x: int, y: int) -> None:
-        title = self._lane_header_title(lane)
-        with dpg.node(label=title, parent=_NODE_EDITOR, pos=[x, y],
-                      tag=self._lane_header_tag(lane)):
-            with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_button(label="+ Block", width=160, user_data=lane,
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="+ Block", width=78, user_data=lane,
                                callback=self._on_add_blank)
-                if lane.is_loop():
-                    dpg.add_input_int(label="x", default_value=lane.repeat, width=90,
-                                      min_value=1, user_data=lane, callback=self._on_repeat)
-                    dpg.add_input_text(label="Start", default_value=lane.scheduled_start or "",
-                                       width=90, hint="HH:MM", user_data=lane,
-                                       callback=self._on_schedule)
-                    dpg.add_button(label="Lane löschen", width=160, user_data=lane,
-                                   callback=self._on_delete_lane)
-
-    def _build_step_node(self, lane: Lane, row: int, step: SequenceStep,
-                         x: int, y: int) -> tuple[int, int]:
-        btype = block_type(step)
-        label = f"{BLOCK_LABELS[btype]}"
-        if step.name:
-            label += f": {step.name}"
-        is_sel = self.selected == (lane, row)
-        with dpg.node(label=label, parent=_NODE_EDITOR, pos=[x, y]) as node_id:
-            in_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Input)
-            with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                # ELSE-Suffix aus der Beschreibung entfernen – wird separat als
-                # amber-farbene Zeile angezeigt.
-                desc = _ascii(str(step)).split(" | ELSE:")[0]
-                dpg.add_text(_wrap(desc, 34), color=(210, 210, 210))
+                dpg.add_button(label=" ^ ", user_data=(lane, -1),
+                               callback=self._on_sel_move, enabled=gewaehlt)
+                dpg.add_button(label=" v ", user_data=(lane, 1),
+                               callback=self._on_sel_move, enabled=gewaehlt)
+                dpg.add_button(label=" X ", user_data=lane,
+                               callback=self._on_sel_delete, enabled=gewaehlt)
+            if lane.is_loop():
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label="Bearbeiten", user_data=(lane, row),
-                                   callback=self._on_select)
-                    dpg.add_button(label=" ^ ", user_data=(lane, row, -1),
-                                   callback=self._on_move)
-                    dpg.add_button(label=" v ", user_data=(lane, row, 1),
-                                   callback=self._on_move)
-                    dpg.add_button(label=" X ", user_data=(lane, row),
-                                   callback=self._on_delete)
-                if step.else_config:
-                    dpg.add_text(_else_label(step.else_config), color=(230, 180, 90))
-            out_attr = dpg.add_node_attribute(attribute_type=dpg.mvNode_Attr_Output)
-        # Theme (Farbe) binden
-        if btype in self._themes:
-            dpg.bind_item_theme(node_id, self._themes[btype])
-        if is_sel:
-            # ausgewählten Node optisch hervorheben (Node im Editor selektieren)
-            try:
-                dpg.configure_item(node_id, label=f"> {label}")
-            except Exception:
-                pass
-        return in_attr, out_attr
+                    dpg.add_input_int(label="x", default_value=lane.repeat, width=70,
+                                      min_value=1, user_data=lane,
+                                      callback=self._on_repeat)
+                    dpg.add_input_text(default_value=lane.scheduled_start or "",
+                                       width=60, hint="HH:MM", user_data=lane,
+                                       callback=self._on_schedule)
+                dpg.add_button(label="Phase loeschen", width=-1, user_data=lane,
+                               callback=self._on_delete_lane)
+            dpg.add_separator()
+
+            with dpg.child_window(border=False):
+                if not lane.steps:
+                    dpg.add_text("(leer)", color=(120, 120, 120))
+                for row, step in enumerate(lane.steps):
+                    self._build_row(lane, row, step)
+                # Ablage unter der Liste: haengt ans Ende an. Ohne sie gaebe es keine
+                # Moeglichkeit, einen Schritt HINTER den letzten zu ziehen.
+                ende = dpg.add_selectable(label="", span_columns=True,
+                                          user_data=(lane, len(lane.steps)))
+                dpg.configure_item(ende, drop_callback=self._on_drop)
+
+    def _build_row(self, lane: Lane, row: int, step: SequenceStep) -> None:
+        btype = block_type(step)
+        ist_gewaehlt = self.sel_lane is lane and row in self.sel_rows
+        with dpg.group(horizontal=True):
+            dpg.add_text(f"{row + 1:>3}", color=(120, 120, 120))
+            # Farbquadrat statt eingefaerbter Titelzeile: in einer Liste traegt die
+            # Farbe dieselbe Information auf einem Bruchteil der Flaeche.
+            dpg.add_color_button(
+                default_value=tuple(BLOCK_COLORS.get(btype, (120, 120, 120))) + (255,),
+                width=12, height=12, no_border=True, no_drag_drop=True)
+            sel = dpg.add_selectable(label=_zeilen_text(step, btype),
+                                     default_value=ist_gewaehlt, span_columns=True,
+                                     user_data=(lane, row), callback=self._on_row_click)
+        with dpg.drag_payload(parent=sel, drag_data=(lane, row)):
+            dpg.add_text(_zeilen_text(step, btype))
+        dpg.configure_item(sel, drop_callback=self._on_drop)
+        with dpg.tooltip(sel):
+            dpg.add_text(_wrap(_ascii(str(step)), 60))
+
+
+# Farbe pro Phasenart - INIT/LOOP/END sollen sich auf einen Blick unterscheiden.
+_LANE_FARBE = {
+    LANE_INIT: (120, 220, 120),
+    LANE_LOOP: (220, 160, 220),
+    LANE_END: (120, 200, 220),
+}
+
+
+def _zeilen_text(step: SequenceStep, btype: str) -> str:
+    """Eine Zeile pro Schritt: Typ, Ziel, Wartezeit - in dieser Reihenfolge.
+
+    Bewusst knapp: die vollstaendige Beschreibung steht im Tooltip und im
+    Eigenschaften-Feld. In der Liste zaehlt, dass 50 Zeilen untereinander passen.
+    """
+    teile = [BLOCK_LABELS.get(btype, "?")]
+    if step.name:
+        teile.append(_ascii(step.name))
+    elif not step.wait_only and not step.screenshot_only and (step.x or step.y):
+        teile.append(f"({step.x},{step.y})")
+    if step.delay_before:
+        teile.append(f"+{step.delay_before:g}s")
+    if step.verify_condition is not None:
+        teile.append("[prueft]")
+    if step.else_config is not None:
+        teile.append("[else]")
+    return "  ".join(teile)
 
 
 def _wrap(text: str, width: int) -> str:
-    """Einfaches Wort-Wrapping für die Node-Beschreibung."""
-    words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        if len(cur) + len(w) + 1 > width:
-            if cur:
-                lines.append(cur)
-            cur = w
+    """Einfaches Wort-Wrapping fuer den Tooltip."""
+    worte, zeilen, aktuell = text.split(), [], ""
+    for w in worte:
+        if len(aktuell) + len(w) + 1 > width:
+            zeilen.append(aktuell)
+            aktuell = w
         else:
-            cur = f"{cur} {w}".strip()
-    if cur:
-        lines.append(cur)
-    return "\n".join(lines)
+            aktuell = f"{aktuell} {w}".strip()
+    if aktuell:
+        zeilen.append(aktuell)
+    return "\n".join(zeilen)
 
 
 def _ascii(text: str) -> str:
-    """Ersetzt Unicode-Zeichen die DPG nicht darstellen kann durch ASCII-Alternativen."""
-    return (text
-            .replace("→", "->")
-            .replace("∞", "inf")
-            .replace("≥", ">=")
-            .replace("×", "x"))
-
-
-def _else_label(ec) -> str:
-    """Lesbarer ELSE-Text für den Block-Node."""
-    from autoclicker.models import ELSE_CLICK, ELSE_KEY, ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART
-    if ec.action == ELSE_CLICK:
-        target = ec.name or f"({ec.x},{ec.y})"
-        return f"ELSE: klicke {target}, weiter"
-    if ec.action == ELSE_KEY:
-        return f"ELSE: Taste '{ec.key}', weiter"
-    if ec.action == ELSE_SKIP:
-        return "ELSE: diesen Schritt überspringen"
-    if ec.action == ELSE_SKIP_CYCLE:
-        return "ELSE: Zyklus abbrechen"
-    if ec.action == ELSE_RESTART:
-        return "ELSE: Sequenz neu starten"
-    return f"ELSE: {ec.action}"
+    """Ersetzt Zeichen, die der DPG-Standardfont als '?' rendert."""
+    return (text.replace("→", "->").replace("×", "x")
+                .replace("ü", "ue").replace("ö", "oe").replace("ä", "ae")
+                .replace("Ü", "Ue").replace("Ö", "Oe").replace("Ä", "Ae")
+                .replace("ß", "ss"))

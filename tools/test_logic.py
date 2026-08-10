@@ -3723,5 +3723,132 @@ else:
             print("        " + _z7)
 
 
+
+
+# --------------------------- Node-Editor: Umsortieren und Phasenwechsel
+section("Node-Editor sortiert per Ziehen um - auch ueber Phasengrenzen")
+
+# Der Editor war ein Node-Graph fuer etwas, das kein Graph ist: kein einziger
+# Link-Callback, Positionen bei jedem Neuaufbau neu gerechnet, Umsortieren nur mit
+# ^/v einzeln. Jetzt sind es Listen pro Phase mit Ziehen und Mehrfachauswahl.
+#
+# Die Rechnung dahinter (welcher Index landet wo) ist genau die Art Logik, die
+# still falsch wird - und sie braucht kein Fenster, also wird sie hier geprueft.
+try:
+    import dearpygui.dearpygui as _dpg8      # noqa: F401  (nur Verfuegbarkeit)
+except ImportError:
+    _dpg8 = None
+
+if _dpg8 is None:
+    print("  ----  uebersprungen (dearpygui nicht installiert)")
+else:
+    from autoclicker.editors.node_canvas.canvas_dpg import NodeEditorApp as _NEA
+    from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
+
+    def _app8():
+        """Editor mit INIT[A] / Loop[1..5] / END[Z] - ohne jedes dpg-Fenster."""
+        seq = _SEQ8(
+            name="T",
+            init_steps=[_SS(x=1, y=1, delay_before=0, name="A", point_id=1)],
+            loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+                _SS(x=i, y=i, delay_before=0, name=str(i), point_id=i)
+                for i in range(1, 6)])],
+            end_steps=[_SS(x=9, y=9, delay_before=0, name="Z", point_id=9)])
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            a = _NEA(seq, Path("sequences/T.json"), "sequences")
+        # Alles, was ein DPG-Fenster braucht, stilllegen. _update_title MUSS dabei
+        # sein: es ruft dpg.set_viewport_title(), und das ist ohne Kontext kein
+        # Python-Fehler, sondern ein Segfault - der Test riss die ganze Suite mit.
+        a.rebuild_canvas = lambda *x: None
+        a.refresh_properties = lambda *x: None
+        a._set_status = lambda *x, **k: None
+        a._update_title = lambda *x: None
+        return a, a.graph.lanes[0], a.graph.lanes[1], a.graph.lanes[2]
+
+    def _namen(lane):
+        return [s.name for s in lane.steps]
+
+    # --- Ziehen innerhalb einer Phase ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0}
+    _a8._on_drop(None, (_l8, 0), (_l8, 3))       # "1" vor Position 3
+    check("Ziehen nach hinten setzt an die richtige Stelle",
+          _namen(_l8) == ["2", "3", "1", "4", "5"])
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {4}
+    _a8._on_drop(None, (_l8, 4), (_l8, 0))       # "5" ganz nach vorne
+    check("Ziehen nach vorne ebenso", _namen(_l8) == ["5", "1", "2", "3", "4"])
+    # Auf sich selbst gezogen darf nichts passieren
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {2}
+    _a8._on_drop(None, (_l8, 2), (_l8, 2))
+    check("auf die eigene Position gezogen aendert nichts",
+          _namen(_l8) == ["1", "2", "3", "4", "5"])
+
+    # --- Mehrere auf einmal: die Auswahl wandert als Block ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
+    _a8._on_drop(None, (_l8, 0), (_l8, 4))
+    check("eine mehrfache Auswahl wandert zusammenhaengend",
+          _namen(_l8) == ["3", "4", "1", "2", "5"])
+    check("und bleibt danach ausgewaehlt", sorted(_a8.sel_rows) == [2, 3])
+    # Ein Schritt AUSSERHALB der Auswahl zieht nur sich selbst
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
+    _a8._on_drop(None, (_l8, 4), (_l8, 0))
+    check("ein Schritt ausserhalb der Auswahl zieht nur sich selbst",
+          _namen(_l8) == ["5", "1", "2", "3", "4"])
+
+    # --- Ueber die Phasengrenze: das kann der Konsolen-Editor bis heute nicht ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
+    _a8._on_drop(None, (_l8, 0), (_i8, 1))
+    check("Schritte lassen sich in eine andere Phase ziehen",
+          _namen(_i8) == ["A", "1", "2"] and _namen(_l8) == ["3", "4", "5"])
+    check("die Auswahl folgt in die Zielphase",
+          _a8.sel_lane is _i8 and sorted(_a8.sel_rows) == [1, 2])
+    # Ans Ende einer Phase (die Ablage unter der Liste liefert at == len)
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {2}
+    _a8._on_drop(None, (_l8, 2), (_e8, len(_e8.steps)))
+    check("Ziehen ans Ende einer Phase haengt an", _namen(_e8) == ["Z", "3"])
+
+    # --- Sammel-Verschieben mit den Pfeilen ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {1, 2}
+    _a8._on_sel_move(None, None, (_l8, 1))
+    check("Pfeil runter schiebt die ganze Auswahl",
+          _namen(_l8) == ["1", "4", "2", "3", "5"] and sorted(_a8.sel_rows) == [2, 3])
+    _a8._on_sel_move(None, None, (_l8, -1))
+    check("Pfeil hoch bringt sie zurueck",
+          _namen(_l8) == ["1", "2", "3", "4", "5"] and sorted(_a8.sel_rows) == [1, 2])
+    # An den Raendern passiert nichts (und es wird nichts verschluckt)
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
+    _a8._on_sel_move(None, None, (_l8, -1))
+    check("am oberen Rand bleibt die Reihenfolge stehen",
+          _namen(_l8) == ["1", "2", "3", "4", "5"])
+    _a8.sel_rows = {3, 4}
+    _a8._on_sel_move(None, None, (_l8, 1))
+    check("am unteren Rand ebenso", _namen(_l8) == ["1", "2", "3", "4", "5"])
+
+    # --- Sammel-Loeschen ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _a8.sel_lane, _a8.sel_rows = _l8, {0, 2, 4}
+    _a8._on_sel_delete(None, None, _l8)
+    check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
+          _namen(_l8) == ["2", "4"])
+    check("und leert die Auswahl", _a8.sel_lane is None and _a8.sel_rows == set())
+
+    # --- Kein Schritt geht je verloren ---
+    _a8, _i8, _l8, _e8 = _app8()
+    _vorher8 = sorted(_namen(_i8) + _namen(_l8) + _namen(_e8))
+    _a8.sel_lane, _a8.sel_rows = _l8, {1, 3}
+    _a8._on_drop(None, (_l8, 1), (_e8, 0))
+    _a8._on_drop(None, (_e8, 0), (_i8, 0))
+    check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
+          sorted(_namen(_i8) + _namen(_l8) + _namen(_e8)) == _vorher8)
+
+
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

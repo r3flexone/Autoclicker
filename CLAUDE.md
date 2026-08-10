@@ -42,6 +42,16 @@ Regeln beim Erweitern:
   Eigenschaft (Rechteck hat Fläche, Mitte liegt darin), nicht den konkreten Wert — der hängt
   am Monitor-Setup.
 
+**Der GUI-Code lässt sich nicht ausführen, seine API-Verträglichkeit aber prüfen.**
+Die beiden Dear-PyGui-Werkzeuge brauchen ein Fenster und laufen in keinem Test — eine
+entfallene API fällt deshalb erst beim Start auf, mit einem Absturz. Genau so ist das
+Scan-Studio an `add_static_texture(..., format=...)` gestorben: das Argument gab es in
+DPG 1.x, in 2.x nur noch bei `add_raw_texture`. Ein Test hält jetzt jeden
+`dpg.<name>(..., kwarg=...)` gegen die Signatur der **installierten** Version
+(`dpg-Aufrufe passen zur installierten Dear-PyGui-Version`). Generische Funktionen mit
+`**kwargs` (`configure_item` & Co.) stehen begründet auf einer Ausnahmeliste. Ohne
+`dearpygui` im venv wird der Abschnitt übersprungen.
+
 Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet. Die Suite
 läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen Checks. Auf einer
 cp1252-Konsole bricht sie allerdings mit `UnicodeEncodeError` ab (die Ausgabe nutzt
@@ -488,6 +498,37 @@ Hauptprozess hält seinen eigenen Stand im Speicher und lädt mit `CTRL+ALT+L` n
 Hauptprozess speichert, während der Subprozess offen ist, verliert eine der beiden
 Fassungen. Beim Erweitern also nichts einbauen, das auf gemeinsamen State setzt — der
 gemeinsame Nenner ist die Datei.
+
+**Der Sequenz-Editor zeigt Listen, keinen Node-Graph** — obwohl der Ordner noch
+`node_canvas` heißt und der Hotkey „visueller Editor". Er *war* ein
+`dpg.node_editor`, und daran hing seine Unbedienbarkeit: ein Node-Graph verspricht
+mit jedem Pixel, dass man Verbindungen ziehen darf. Es gab aber keinen einzigen
+Link-Callback (die Pfeile waren Dekoration), die Block-Positionen wurden bei jedem
+Neuaufbau aus `(Spalte, Zeile)` neu gerechnet (verschobene Blöcke sprangen zurück),
+und umsortiert wurde mit `^`/`v` einzeln — bei einer 50-Schritt-Aufnahme unbenutzbar.
+
+**Eine Sequenz ist kein Graph.** Pro Phase ist sie eine lineare Liste, und die
+einzige Verzweigung (`else_config`) ist ein *Attribut*, keine Kante. Die Liste
+verspricht deshalb nur, was sie einlösen kann — dafür kann sie es richtig: Ziehen
+sortiert um, auch **über Phasengrenzen** (das kann der Konsolen-Editor bis heute
+nicht), Mehrfachauswahl mit STRG, Sammel-Aktionen auf der Auswahl.
+
+Regeln beim Erweitern:
+
+- **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
+  quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
+  Sammelaktionen wären nicht mehr eindeutig.
+- **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
+  Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
+  und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.
+- **Nichts in der Ansicht darf ohne DPG-Kontext laufen.** `_update_title()` ruft
+  `dpg.set_viewport_title()`, und das ist ohne Kontext kein Python-Fehler, sondern
+  ein **Segfault**. Die Tests legen es deshalb still; wer eine neue Methode testet,
+  prüft vorher, ob sie über `_mark_dirty()` dort landet.
+
+Die Umsortier-Rechnung ist getestet (`Node-Editor sortiert per Ziehen um`) — sie
+braucht kein Fenster. Was ein Fenster braucht, bleibt ungetestet; dafür hält ein
+zweiter Test wenigstens die **dpg-API-Verträglichkeit** fest (s.u.).
 
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.
