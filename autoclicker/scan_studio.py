@@ -40,7 +40,7 @@ def main(argv: list[str]) -> int:
 
     vleft, vtop = get_virtual_origin()
 
-    from .editors.scan_canvas.canvas_dpg import ScanStudioApp
+    from .editors.scan_canvas.view_dpg import ScanStudioApp
     app = ScanStudioApp(img, vleft, vtop, SLOTS_FILE)
     app.run()
     return 0

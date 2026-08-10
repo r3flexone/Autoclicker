@@ -389,7 +389,7 @@ def _stelle_lesen(step: dict, x_key: str, y_key):
         pos = (int(step.get(x_key)), int(step.get(y_key)))
     except (TypeError, ValueError):
         return None
-    # (0, 0) ist der Blanko-Block des Node-Editors, keine echte Stelle.
+    # (0, 0) ist der Blanko-Block des Sequenz-Studios, keine echte Stelle.
     return None if pos == (0, 0) else pos
 
 

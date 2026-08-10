@@ -4,8 +4,8 @@ Eigenschaften-Formulare je Block-Typ (Dear PyGui).
 build_properties_panel() leert den Panel-Container und baut die zum aktuellen
 Block-Typ passenden Formfelder neu auf. Jedes Feld schreibt seine Änderung
 direkt in das SequenceStep-Objekt zurück und ruft on_changed() (aktualisiert
-das Node-Label). Strukturändernde Aktionen (Typ-Wechsel, Löschen, Verschieben)
-rufen on_structure() (Canvas neu zeichnen).
+den Zeilentext). Strukturändernde Aktionen (Typ-Wechsel, Löschen, Verschieben)
+rufen on_structure() (Liste neu zeichnen).
 
 Dear PyGui wird hier importiert — dieses Modul läuft nur im Editor-Subprocess.
 """
@@ -261,9 +261,9 @@ def _neuer_palette_punkt(points, step):
     from .model import PalettePoint
     neu = PalettePoint(id=max([p.id for p in points], default=0) + 1,
                        x=int(step.x or 0), y=int(step.y or 0),
-                       name=step.name or "Node-Editor",
+                       name=step.name or "Sequenz-Studio",
                        color=tuple(step.recorded_color) if step.recorded_color else None,
-                       source="Node-Editor")
+                       source="Sequenz-Studio")
     points.append(neu)
     return neu
 

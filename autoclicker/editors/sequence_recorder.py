@@ -678,7 +678,7 @@ def stop_recording(state: AutoClickerState) -> None:
         else:
             print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
         if added:
-            print(f"  {added} neue(r) Punkt(e) global gespeichert {hint('(im Editor + Node-Palette nutzbar)')}")
+            print(f"  {added} neue(r) Punkt(e) global gespeichert {hint('(im Editor + Studio-Palette nutzbar)')}")
         print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
         print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")
         print(hint("  Tipp: Im Editor wandelt 'color <Nr>' einen Klick in einen"))

@@ -37,10 +37,10 @@ from ...persistence import (
 )
 from ...utils import sanitize_filename
 from .model import (
-    BlockGraph, Lane, LANE_INIT, LANE_LOOP, LANE_END,
+    SequenceBoard, Lane, LANE_INIT, LANE_LOOP, LANE_END,
     BLOCK_LABELS, BLOCK_COLORS,
     BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
-    block_type, sequence_to_graph, graph_to_sequence,
+    block_type, sequence_to_board, board_to_sequence,
     load_palette_points, save_palette_points, step_from_point,
 )
 from .panels import build_properties_panel
@@ -53,15 +53,15 @@ _SIDEBAR = "ac_sidebar_body"
 _SEQ_PICK = "ac_seq_pick"
 
 # Breite einer Phasen-Spalte. Der Rest (Zeilenhoehe, Ursprung) entfiel mit dem
-# Node-Canvas: eine Liste setzt ihre Zeilen selbst, ohne gerechnete Positionen.
+# frueheren Node-Canvas: eine Liste setzt ihre Zeilen selbst, ohne Positionsrechnung.
 _COL_W = 270
 
 
-class NodeEditorApp:
-    """Hält den Editor-Zustand und rendert das Canvas."""
+class SequenceStudioApp:
+    """Hält den Editor-Zustand und rendert die Phasen-Spalten."""
 
     def __init__(self, seq, filepath: Path, sequences_dir: str):
-        self.graph: BlockGraph = sequence_to_graph(seq)
+        self.board: SequenceBoard = sequence_to_board(seq)
         self.filepath = Path(filepath)
         self.sequences_dir = sequences_dir
         self.points = load_palette_points(sequences_dir)
@@ -77,12 +77,12 @@ class NodeEditorApp:
     def run(self) -> None:
         dpg.create_context()
         self._build_ui()
-        dpg.create_viewport(title=f"Node-Editor – {self.graph.name}", width=1400, height=820)
+        dpg.create_viewport(title=f"Sequenz-Studio – {self.board.name}", width=1400, height=820)
         dpg.setup_dearpygui()
         dpg.show_viewport()
         dpg.set_primary_window("ac_root", True)
         self._update_title()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
         dpg.start_dearpygui()
         dpg.destroy_context()
@@ -97,7 +97,7 @@ class NodeEditorApp:
                     dpg.add_group(tag=_SIDEBAR)
                     self._build_sidebar()
                 # --- Phasen-Spalten (Mitte, füllen den Rest) ---
-                # Inhalt entsteht in rebuild_canvas().
+                # Inhalt entsteht in rebuild_board().
                 dpg.add_child_window(tag="ac_center", border=False)
 
     def _build_loader(self) -> None:
@@ -105,7 +105,7 @@ class NodeEditorApp:
         dpg.add_text("Sequenz laden", color=(120, 180, 255))
         names = self._available_names()
         with dpg.group(horizontal=True):
-            dpg.add_combo(items=names, default_value=self.graph.name if self.graph.name in names else "",
+            dpg.add_combo(items=names, default_value=self.board.name if self.board.name in names else "",
                           tag=_SEQ_PICK, width=-60)
             dpg.add_button(label="Neu", callback=self._on_new_sequence)
         dpg.add_button(label="Laden", width=-1, callback=self._on_load_sequence)
@@ -116,7 +116,7 @@ class NodeEditorApp:
     def _refresh_seq_pick(self) -> None:
         if dpg.does_item_exist(_SEQ_PICK):
             names = self._available_names()
-            cur = self.graph.name if self.graph.name in names else (names[0] if names else "")
+            cur = self.board.name if self.board.name in names else (names[0] if names else "")
             dpg.configure_item(_SEQ_PICK, items=names, default_value=cur)
 
     def _on_load_sequence(self, *_):
@@ -131,7 +131,7 @@ class NodeEditorApp:
         if not seq:
             self._set_status(f"Konnte '{name}' nicht laden.", color=(220, 90, 90))
             return
-        self.graph = sequence_to_graph(seq)
+        self.board = sequence_to_board(seq)
         self.filepath = Path(path)
         self._clear_selection()
         self._reload_view()
@@ -144,7 +144,7 @@ class NodeEditorApp:
         if not self._confirm_discard("new"):
             return
         base = f"Sequenz_{int(time.time())}"
-        self.graph = sequence_to_graph(Sequence(name=base))
+        self.board = sequence_to_board(Sequence(name=base))
         self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(base)}.json"
         self._clear_selection()
         self._reload_view()
@@ -152,17 +152,17 @@ class NodeEditorApp:
         self._set_status("Neue Sequenz - noch nicht gespeichert.", color=(220, 180, 90))
 
     def _reload_view(self) -> None:
-        """Baut Seitenleiste, Canvas und Eigenschaften nach einem Sequenz-Wechsel neu auf."""
+        """Baut Seitenleiste, Spalten und Eigenschaften nach einem Sequenz-Wechsel neu auf."""
         if dpg.does_item_exist(_SIDEBAR):
             for child in dpg.get_item_children(_SIDEBAR, 1) or []:
                 dpg.delete_item(child)
             self._build_sidebar()
         self._refresh_seq_pick()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _build_sidebar(self) -> None:
-        g = self.graph
+        board = self.board
         # Alle Widgets in den _SIDEBAR-Container hängen (nicht ins ac_left direkt),
         # damit _reload_view die Seitenleiste sauber neu aufbauen kann.
         dpg.push_container_stack(_SIDEBAR)
@@ -170,20 +170,20 @@ class NodeEditorApp:
             dpg.add_text("Sequenz", color=(120, 180, 255))
 
             def _on_name(s, a, u):
-                g.name = a
+                board.name = a
                 self._mark_dirty()
-            dpg.add_input_text(label="Name", default_value=g.name, width=-90, callback=_on_name)
+            dpg.add_input_text(label="Name", default_value=board.name, width=-90, callback=_on_name)
 
             def _on_cycles(s, a, u):
-                g.total_cycles = max(0, int(a))
+                board.total_cycles = max(0, int(a))
                 self._mark_dirty()
-            dpg.add_input_int(label="Zyklen (0=inf)", default_value=g.total_cycles,
+            dpg.add_input_int(label="Zyklen (0=inf)", default_value=board.total_cycles,
                               width=-100, min_value=0, callback=_on_cycles)
 
             def _on_desc(s, a, u):
-                g.description = a
+                board.description = a
                 self._mark_dirty()
-            dpg.add_input_text(label="Info", default_value=g.description, width=-60,
+            dpg.add_input_text(label="Info", default_value=board.description, width=-60,
                                multiline=True, height=50, callback=_on_desc)
 
             dpg.add_separator()
@@ -224,14 +224,14 @@ class NodeEditorApp:
 
     # --------------------------------------------------------- Hilfsfunktionen
     def _lane_names(self) -> list[str]:
-        return [ln.name for ln in self.graph.lanes]
+        return [ln.name for ln in self.board.lanes]
 
     def _lane_by_name(self, name: str) -> Lane | None:
-        return next((ln for ln in self.graph.lanes if ln.name == name), None)
+        return next((ln for ln in self.board.lanes if ln.name == name), None)
 
     def _target_lane(self) -> Lane:
         name = dpg.get_value(_LANE_PICK) if dpg.does_item_exist(_LANE_PICK) else None
-        return self._lane_by_name(name) or self.graph.lanes[0]
+        return self._lane_by_name(name) or self.board.lanes[0]
 
     def _refresh_lane_pick(self) -> None:
         if dpg.does_item_exist(_LANE_PICK):
@@ -249,7 +249,7 @@ class NodeEditorApp:
         """Spiegelt das Dirty-Flag in den Viewport-Titel (Stern = ungespeichert)."""
         star = "*" if self._dirty else ""
         try:
-            dpg.set_viewport_title(f"Node-Editor - {star}{self.graph.name}")
+            dpg.set_viewport_title(f"Sequenz-Studio - {star}{self.board.name}")
         except Exception:
             pass
 
@@ -296,7 +296,7 @@ class NodeEditorApp:
             BLOCK_BOSS_SCAN: "boss_scan",
             BLOCK_BOSS_WATCHER: "boss_watcher",
         }
-        for lane in self.graph.lanes:
+        for lane in self.board.lanes:
             for row, step in enumerate(lane.steps, start=1):
                 btype = block_type(step)
                 attr = attr_by_type.get(btype)
@@ -305,7 +305,7 @@ class NodeEditorApp:
         return None
 
     def _on_save(self, *_):
-        if not (self.graph.name or "").strip():
+        if not (self.board.name or "").strip():
             self._set_status("Sequenz-Name fehlt - Speichern abgebrochen.",
                              color=(220, 90, 90))
             return
@@ -318,10 +318,10 @@ class NodeEditorApp:
         # Datei folgt dem (sanitisierten) Sequenz-Namen. Bei Umbenennung wird die
         # alte Datei nach erfolgreichem Speichern entfernt (sonst Duplikate).
         old_path = self.filepath
-        new_path = Path(self.sequences_dir) / f"{sanitize_filename(self.graph.name)}.json"
+        new_path = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
         renamed = new_path != old_path
 
-        seq = graph_to_sequence(self.graph)
+        seq = board_to_sequence(self.board)
         # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlaegt das fehl,
         # zeigten frisch angelegte Referenzen ins Leere - dann lieber gar nicht
         # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
@@ -347,36 +347,36 @@ class NodeEditorApp:
         self._set_status(msg)
 
     def _on_add_loop(self, *_):
-        lane = self.graph.add_loop_lane()
+        lane = self.board.add_loop_lane()
         self._mark_dirty()
         self._refresh_lane_pick()
         if dpg.does_item_exist(_LANE_PICK):
             dpg.set_value(_LANE_PICK, lane.name)
-        self.rebuild_canvas()
+        self.rebuild_board()
 
     def _on_add_point(self, sender, app_data, user_data):
         lane = self._target_lane()
-        self.graph.add_step(lane, step_from_point(user_data))
+        self.board.add_step(lane, step_from_point(user_data))
         self._select_only(lane, len(lane.steps) - 1)
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _on_add_blank(self, sender, app_data, user_data):
         lane: Lane = user_data
-        self.graph.add_step(lane, SequenceStep(x=0, y=0, delay_before=0.0))
+        self.board.add_step(lane, SequenceStep(x=0, y=0, delay_before=0.0))
         self._select_only(lane, len(lane.steps) - 1)
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _on_delete_lane(self, sender, app_data, user_data):
         lane: Lane = user_data
-        self.graph.delete_loop_lane(lane)
+        self.board.delete_loop_lane(lane)
         self._clear_selection()
         self._mark_dirty()
         self._refresh_lane_pick()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _on_repeat(self, sender, app_data, user_data):
@@ -410,19 +410,9 @@ class NodeEditorApp:
 
     # --------------------------------------------------------------- Rendering
     #
-    # Die Phasen stehen als Spalten nebeneinander, jede eine schlichte Liste. Das war
-    # vorher ein `node_editor` mit frei liegenden Kacheln - und genau das war die
-    # Ursache dafuer, dass sich der Editor nicht intuitiv anfuehlte: ein Node-Graph
-    # verspricht mit jedem Pixel, dass man Verbindungen ziehen darf. Es gab aber
-    # keinen einzigen Link-Callback, die Pfeile waren Dekoration, und die
-    # Block-Positionen wurden bei jedem Neuaufbau aus (Spalte, Zeile) neu gerechnet -
-    # verschobene Bloecke sprangen also zurueck.
-    #
-    # Eine Sequenz IST kein Graph: pro Phase ist sie eine lineare Liste, und die
-    # einzige Verzweigung (`else_config`) ist ein Attribut, keine Kante. Die Liste
-    # verspricht deshalb nur, was sie auch kann - dafuer kann sie es richtig:
-    # Ziehen sortiert um, auch ueber Phasengrenzen hinweg, und 50 aufgenommene
-    # Schritte passen untereinander auf einen Blick.
+    # Phasen als Spalten, jede eine Liste. Warum keine Nodes mehr: siehe
+    # Modul-Docstring - kurz, eine Sequenz ist pro Phase eine lineare Liste, und
+    # die einzige Verzweigung (else_config) ist ein Attribut, keine Kante.
 
     def refresh_properties(self) -> None:
         """Zeigt den gewaehlten Schritt - aber nur, wenn es genau EINER ist."""
@@ -432,18 +422,18 @@ class NodeEditorApp:
             if 0 <= idx < len(self.sel_lane.steps):
                 lane, step = self.sel_lane, self.sel_lane.steps[idx]
         build_properties_panel(
-            _PROPS_PANEL, step, lane, self.graph, self.points,
+            _PROPS_PANEL, step, lane, self.board, self.points,
             on_changed=self._on_step_changed,
             on_structure=self._on_structure_changed,
         )
 
     def _on_step_changed(self) -> None:
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
 
     def _on_structure_changed(self) -> None:
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     # ---- Auswahl ---------------------------------------------------------
@@ -469,7 +459,7 @@ class NodeEditorApp:
                 self._clear_selection()
         else:
             self._select_only(lane, row)
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _sel_sorted(self) -> list[int]:
@@ -482,11 +472,11 @@ class NodeEditorApp:
             return
         # Von hinten loeschen, sonst verschieben sich die noch offenen Indizes.
         for idx in sorted(self.sel_rows, reverse=True):
-            self.graph.delete_step(lane, idx)
+            self.board.delete_step(lane, idx)
         n = len(self.sel_rows)
         self._clear_selection()
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
         self._set_status(f"{n} Block/Bloecke geloescht.")
 
@@ -503,9 +493,9 @@ class NodeEditorApp:
         # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von hinten -
         # sonst ueberholen sich die Elemente gegenseitig.
         folge = rows if delta < 0 else list(reversed(rows))
-        self.sel_rows = {self.graph.move_step(lane, idx, delta) for idx in folge}
+        self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
         self._mark_dirty()
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     def _verschiebe(self, quelle: Lane, rows: list[int], ziel: Lane, at: int) -> None:
@@ -524,10 +514,10 @@ class NodeEditorApp:
         if quelle is ziel:
             at -= sum(1 for i in rows if i < at)
         for i in sorted(rows, reverse=True):
-            self.graph.delete_step(quelle, i)
+            self.board.delete_step(quelle, i)
         at = max(0, min(at, len(ziel.steps)))
         for versatz, schritt in enumerate(schritte):
-            self.graph.add_step(ziel, schritt, at=at + versatz)
+            self.board.add_step(ziel, schritt, at=at + versatz)
         self.sel_lane = ziel
         self.sel_rows = set(range(at, at + len(schritte)))
         self._mark_dirty()
@@ -544,11 +534,11 @@ class NodeEditorApp:
                 if (self.sel_lane is quelle_lane and quelle_row in self.sel_rows)
                 else [quelle_row])
         self._verschiebe(quelle_lane, rows, ziel_lane, ziel_row)
-        self.rebuild_canvas()
+        self.rebuild_board()
         self.refresh_properties()
 
     # ---- Aufbau ----------------------------------------------------------
-    def rebuild_canvas(self) -> None:
+    def rebuild_board(self) -> None:
         """Baut die Spalten neu.
 
         Billig genug fuer jeden Klick - anders als der alte node_editor, der komplett
@@ -558,10 +548,10 @@ class NodeEditorApp:
         for child in dpg.get_item_children("ac_center", 1) or []:
             dpg.delete_item(child)
         with dpg.group(horizontal=True, parent="ac_center"):
-            for lane in self.graph.lanes:
-                self._build_lane_column(lane)
+            for lane in self.board.lanes:
+                self._build_phase_column(lane)
 
-    def _build_lane_column(self, lane: Lane) -> None:
+    def _build_phase_column(self, lane: Lane) -> None:
         gewaehlt = self.sel_lane is lane and bool(self.sel_rows)
         with dpg.child_window(width=_COL_W, border=True):
             titel = lane.name + (f"   x{lane.repeat}" if lane.is_loop() else "")

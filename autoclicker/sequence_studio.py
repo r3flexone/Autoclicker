@@ -1,11 +1,11 @@
 """
-Einstiegspunkt für den visuellen Node-Editor (läuft als eigener Subprocess).
+Einstiegspunkt für das Sequenz-Studio (läuft als eigener Subprocess).
 
 Aufruf:
-    python -m autoclicker.node_editor "<Sequenz-Name>"
-    python -m autoclicker.node_editor            # leere/neue Sequenz
+    python -m autoclicker.sequence_studio "<Sequenz-Name>"
+    python -m autoclicker.sequence_studio            # leere/neue Sequenz
 
-Wird vom Hotkey-Handler (handle_node_editor in handlers.py) per subprocess.Popen
+Wird vom Hotkey-Handler (handle_sequence_studio in handlers.py) per subprocess.Popen
 gestartet, damit der Dear-PyGui-Event-Loop nicht mit der Windows-Hotkey-Message-
 Pump des Hauptprozesses kollidiert. Liest/schreibt sequences/<name>.json direkt;
 nach dem Speichern lädt man im Hauptprozess mit CTRL+ALT+L neu.
@@ -52,8 +52,8 @@ def main(argv: list[str]) -> int:
     seq, path = _resolve_sequence(seq_name)
 
     # Erst hier importieren — zieht Dear PyGui nur wenn wirklich gebraucht.
-    from .editors.node_canvas.canvas_dpg import NodeEditorApp
-    app = NodeEditorApp(seq, path, SEQUENCES_DIR)
+    from .editors.sequence_studio.view_dpg import SequenceStudioApp
+    app = SequenceStudioApp(seq, path, SEQUENCES_DIR)
     app.run()
     return 0
 

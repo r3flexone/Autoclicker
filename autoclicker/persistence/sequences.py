@@ -56,7 +56,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
     `points` sind die Punkte, aus denen die Koordinaten geholt werden. Ohne sie stünden
     im Ergebnis lauter Nullen — in der Datei stehen ja nur noch IDs. Deshalb lädt die
     Funktion sie selbst nach, wenn der Aufrufer keine übergibt: von den Aufrufern hat
-    die Hälfte gar keinen Punkte-Pool zur Hand (Node-Editor, Canvas, Export), und die
+    die Hälfte gar keinen Punkte-Pool zur Hand (Sequenz-Studio, Scan-Studio, Export), und die
     dürfen deswegen keine halbe Sequenz bekommen.
     """
     if points is None:
@@ -229,7 +229,7 @@ def _punkt_aus_dict(p: dict) -> ClickPoint:
 def _punkte_aus_datei() -> list[ClickPoint]:
     """points.json direkt lesen, ohne den globalen State anzufassen.
 
-    Fuer die Aufrufer von `load_sequence_file`, die keinen State haben (Node-Editor,
+    Fuer die Aufrufer von `load_sequence_file`, die keinen State haben (Sequenz-Studio,
     Canvas, Export). Fehlt oder bricht die Datei, gibt es eben keine Punkte - dann
     meldet `aufloesen()` die Schritte als verwaist, statt still Nullen zu liefern.
     """
@@ -250,7 +250,7 @@ def _sichere_neue_punkte(punkt_dicts: list, anzahl: int, seq_name: str) -> None:
 
     Der Normalweg fuer Altbestand ist der Start-Durchgang (`sweep`), und der schreibt
     points.json selbst. Diese Absicherung gilt allen anderen Aufrufern - Import,
-    Node-Editor, ein Ordner, der nachtraeglich hineinkopiert wurde: dort entstuenden
+    Sequenz-Studio, ein Ordner, der nachtraeglich hineinkopiert wurde: dort entstuenden
     IDs, die nach dem naechsten Neustart auf nichts mehr zeigen. Lieber einmal zu viel
     geschrieben als eine Sequenz, die ins Leere klickt.
     """

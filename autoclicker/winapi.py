@@ -66,7 +66,7 @@ VK_I = 0x49  # Import/Export
 VK_R = 0x52  # (frei – früher Record, CTRL+ALT+R ist oft vom System belegt)
 VK_J = 0x4A  # Sequenz aufnehmen (Record – J weil R/CTRL+ALT belegt)
 VK_H = 0x48  # Aufnahme pausieren (Halt)
-VK_B = 0x42  # Visueller Node-Editor (Blöcke)
+VK_B = 0x42  # Sequenz-Studio (Phasen + Schritte)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
 VK_M = 0x4D  # Aufnahme: Farbe merken (auf Farbe warten)
@@ -92,7 +92,7 @@ HOTKEY_FINISH = 16
 HOTKEY_IMPORT_EXPORT = 17
 HOTKEY_RECORD_SEQ = 18
 HOTKEY_RECORD_PAUSE = 19
-HOTKEY_NODE_EDITOR = 20
+HOTKEY_SEQUENCE_STUDIO = 20
 HOTKEY_SCAN_STUDIO = 21
 HOTKEY_HELP = 22
 HOTKEY_RECORD_COLOR = 23
@@ -710,7 +710,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
     (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_J, "CTRL+ALT+J (Sequenz aufnehmen)"),
     (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
-    (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
+    (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
     (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),

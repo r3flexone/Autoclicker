@@ -1,7 +1,7 @@
 """
-Visueller Node-Editor für Sequenzen (Dear PyGui).
+Sequenz-Studio: Phasen und Schritte visuell bearbeiten (Dear PyGui).
 
-Läuft als separater Subprocess (siehe autoclicker/node_editor.py), damit der
+Läuft als separater Subprocess (siehe autoclicker/sequence_studio.py), damit der
 GUI-Event-Loop nicht mit der Windows-Hotkey-Message-Pump im Hauptprozess
 kollidiert. Liest/schreibt dieselben sequences/<name>.json Dateien wie der
 Konsolen-Editor — der Executor bemerkt keinen Unterschied.

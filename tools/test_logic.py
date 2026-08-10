@@ -808,7 +808,7 @@ _MIGRATE_AUSNAHMEN = {
     # gestartet, der beim Start bereits alles gehoben hat.
     "autoclicker/editors/scan_canvas/model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept",
-    "autoclicker/editors/node_canvas/model.py":
+    "autoclicker/editors/sequence_studio/model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept",
     # list_scan_files() liest EIN Feld ("name") fuer die Auswahlliste und baut keine
     # Dataclass. Es gibt nichts zu heben - solange `name` das Feld bleibt, an dem ein
@@ -2588,12 +2588,12 @@ _schritt_rec = _seq_rec.loop_phases[0].steps[0]
 check("verschobener Punkt zieht den aufgenommenen Schritt mit",
       (_schritt_rec.x, _schritt_rec.y) == (777, 888))
 
-# Node-Editor: ein Block AUS einem Punkt muss ihn auch referenzieren
-from autoclicker.editors.node_canvas.model import (step_from_point as _sfp,
+# Sequenz-Studio: ein Block AUS einem Punkt muss ihn auch referenzieren
+from autoclicker.editors.sequence_studio.model import (step_from_point as _sfp,
                                                    PalettePoint as _PP)
 _block = _sfp(_PP(id=7, x=11, y=22, name="Bank", color=(1, 2, 3)))
-check("Node-Editor: Block aus Punkt behaelt die Referenz", _block.point_id == 7)
-check("Node-Editor: Koordinaten und Farbe kommen mit",
+check("Sequenz-Studio: Block aus Punkt behaelt die Referenz", _block.point_id == 7)
+check("Sequenz-Studio: Koordinaten und Farbe kommen mit",
       (_block.x, _block.y) == (11, 22) and _block.recorded_color == (1, 2, 3))
 
 # Und die Gegenrichtung: kein Erzeuger von Klick-Schritten darf point_id vergessen.
@@ -3725,10 +3725,10 @@ else:
 
 
 
-# --------------------------- Node-Editor: Umsortieren und Phasenwechsel
-section("Node-Editor sortiert per Ziehen um - auch ueber Phasengrenzen")
+# --------------------------- Sequenz-Studio: Umsortieren und Phasenwechsel
+section("Sequenz-Studio sortiert per Ziehen um - auch ueber Phasengrenzen")
 
-# Der Editor war ein Node-Graph fuer etwas, das kein Graph ist: kein einziger
+# Das Studio war ein Node-Graph fuer etwas, das kein Graph ist: kein einziger
 # Link-Callback, Positionen bei jedem Neuaufbau neu gerechnet, Umsortieren nur mit
 # ^/v einzeln. Jetzt sind es Listen pro Phase mit Ziehen und Mehrfachauswahl.
 #
@@ -3742,7 +3742,7 @@ except ImportError:
 if _dpg8 is None:
     print("  ----  uebersprungen (dearpygui nicht installiert)")
 else:
-    from autoclicker.editors.node_canvas.canvas_dpg import NodeEditorApp as _NEA
+    from autoclicker.editors.sequence_studio.view_dpg import SequenceStudioApp as _NEA
     from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
 
     def _app8():
@@ -3759,11 +3759,11 @@ else:
         # Alles, was ein DPG-Fenster braucht, stilllegen. _update_title MUSS dabei
         # sein: es ruft dpg.set_viewport_title(), und das ist ohne Kontext kein
         # Python-Fehler, sondern ein Segfault - der Test riss die ganze Suite mit.
-        a.rebuild_canvas = lambda *x: None
+        a.rebuild_board = lambda *x: None
         a.refresh_properties = lambda *x: None
         a._set_status = lambda *x, **k: None
         a._update_title = lambda *x: None
-        return a, a.graph.lanes[0], a.graph.lanes[1], a.graph.lanes[2]
+        return a, a.board.lanes[0], a.board.lanes[1], a.board.lanes[2]
 
     def _namen(lane):
         return [s.name for s in lane.steps]

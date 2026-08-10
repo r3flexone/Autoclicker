@@ -28,7 +28,7 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
+    HOTKEY_SEQUENCE_STUDIO, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
     HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
@@ -40,7 +40,7 @@ from autoclicker.persistence import (
     resolve_klick_referenzen
 )
 from autoclicker.diagnose import check_beim_start
-from autoclicker.execution import print_status
+from autoclicker.runtime import print_status
 from autoclicker.utils import col, info, warn, hint, init_logging
 from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
@@ -50,7 +50,7 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_node_editor, handle_scan_studio
+    handle_sequence_studio, handle_scan_studio
 )
 
 
@@ -97,7 +97,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     # Editoren (blau)
     print(col("Editoren:", 'blue'))
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
-    print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
+    print(f"  {col('CTRL+ALT+B', 'yellow')}  Sequenz-Studio {hint('(Phasen + Schritte visuell – braucht dearpygui)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
@@ -285,7 +285,7 @@ def main() -> int:
         HOTKEY_REC_PHASE: handle_rec_phase,
         HOTKEY_REC_REGION: handle_rec_region,
         HOTKEY_REC_WATCH: handle_rec_watch,
-        HOTKEY_NODE_EDITOR: handle_node_editor,
+        HOTKEY_SEQUENCE_STUDIO: handle_sequence_studio,
         HOTKEY_SCAN_STUDIO: handle_scan_studio,
         HOTKEY_HELP: lambda _state: print_help(),
     }

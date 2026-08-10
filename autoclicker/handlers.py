@@ -22,7 +22,7 @@ from .persistence import (
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
-from .execution import sequence_worker, print_status
+from .runtime import sequence_worker, print_status
 from .runtime.actions import is_verbose_debug
 from .imaging import run_color_analyzer
 
@@ -95,7 +95,7 @@ def handle_record(state: AutoClickerState) -> None:
 
     # Auto-speichern. Bewusst nur die Punkte: save_data() wuerde zusaetzlich alle
     # Sequenzen aus dem Speicher schreiben und damit Aenderungen ueberbuegeln, die
-    # inzwischen von aussen an der Datei passiert sind (z.B. Node-Editor-Subprozess).
+    # inzwischen von aussen an der Datei passiert sind (z.B. Sequenz-Studio-Subprozess).
     save_points(state)
 
     color_str = f"  {describe_color(color)}" if color else ""
@@ -790,11 +790,11 @@ def handle_rec_phase(state: AutoClickerState) -> None:
     merke_phase(state)
 
 
-def handle_node_editor(state: AutoClickerState) -> None:
-    """Öffnet den visuellen Node-Editor als separaten Subprocess.
+def handle_sequence_studio(state: AutoClickerState) -> None:
+    """Öffnet das Sequenz-Studio als separaten Subprocess.
 
-    Der Editor läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
-    nicht mit der Hotkey-Message-Pump kollidiert. Er bearbeitet die aktive Sequenz
+    Das Studio läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
+    nicht mit der Hotkey-Message-Pump kollidiert. Es bearbeitet die aktive Sequenz
     direkt auf Disk; nach dem Speichern mit CTRL+ALT+L neu laden.
     """
     import subprocess
@@ -804,14 +804,14 @@ def handle_node_editor(state: AutoClickerState) -> None:
     with state.lock:
         seq_name = state.active_sequence.name if state.active_sequence else ""
 
-    args = [sys.executable, "-m", "autoclicker.node_editor"]
+    args = [sys.executable, "-m", "autoclicker.sequence_studio"]
     if seq_name:
         args.append(seq_name)
 
     try:
         subprocess.Popen(args)
     except OSError as e:
-        print(f"\n{err(f'Konnte Node-Editor nicht starten: {e}')}")
+        print(f"\n{err(f'Konnte Sequenz-Studio nicht starten: {e}')}")
         return
 
     target = f"'{seq_name}'" if seq_name else "neue Sequenz"

@@ -7,7 +7,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Punkte aufnehmen**: Mausposition speichern mit automatischer Benennung
 - **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
-- **Visueller Node-Editor**: Sequenzen als Blöcke + Verbindungen bearbeiten (`CTRL+ALT+B`, Dear PyGui)
+- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen (`CTRL+ALT+B`, Dear PyGui)
 - **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
@@ -168,7 +168,7 @@ Im Sequenz-Editor:
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
-| `CTRL+ALT+B` | Visueller Node-Editor (Sequenz als Blöcke, Dear PyGui) |
+| `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, Dear PyGui) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
 | `CTRL+ALT+V` | Visuelles Scan-Studio (Slots/Items/Boss/Icon auf Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
@@ -1350,11 +1350,17 @@ python tools/slot_tester.py
 
 ### Neueste Änderungen — Visuelle Editoren + Aufnahme + klarere Trigger-Keywords
 
-**Visueller Node-Editor** (`CTRL+ALT+B`, Dear PyGui)
-- Sequenzen als Blöcke + Verbindungen bearbeiten statt rein über die Konsole
-- Punkte-Palette, Eigenschaften-Panels je Block-Typ, ELSE-Zweige als eigene Pfeile
-- Punkt-Picker setzt Position **und** Trigger-Farbe direkt aus dem aufgenommenen Punkt
+**Sequenz-Studio** (`CTRL+ALT+B`, Dear PyGui)
+- Phasen (INIT / Loop / END) als Spalten nebeneinander, jede eine Liste ihrer Schritte
+- **Ziehen sortiert um — auch über Phasengrenzen.** Das kann der Konsolen-Editor nicht:
+  dort heißt Aufteilen löschen und neu anlegen
+- Mehrfachauswahl mit STRG; Sammelaktionen (hoch/runter/löschen) auf der ganzen Auswahl
+- Punkte-Palette, Eigenschaften je Block-Typ, Punkt-Picker setzt Position **und** Trigger-Farbe
 - Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
+
+  *War früher ein Node-Graph. Der versprach mit jedem Pixel, dass man Verbindungen ziehen
+  darf — es gab aber keinen einzigen Link-Callback, und verschobene Blöcke sprangen zurück.
+  Eine Sequenz ist pro Phase eine lineare Liste; die Ansicht sagt das jetzt auch.*
 
 **Scan-Studio** (Dear PyGui)
 - Slots, Items, Boss- und Icon-Scans visuell auf einem Screenshot zusammenstellen

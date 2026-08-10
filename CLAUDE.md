@@ -220,7 +220,7 @@ Regeln beim Erweitern:
   denselben Knopf, ist das EIN Punkt, sonst wandert beim Nachjustieren nur die Hälfte mit.
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
-  Hand (Node-Editor, Canvas, Export) — die bekämen sonst lauter Nullen.
+  Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
 - **Eine vierte Stelle** trägt man in `_STELLEN` (Migration), `_REF_KEYS`
   (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
   nächsten Import oder die nächste Migration nicht.
@@ -249,7 +249,7 @@ andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
 **Jeder Klick-Schritt wird MIT `point_id` gebaut**, nicht nachträglich verknüpft. Ein Test
 (`kein Klick-Schritt wird ohne point_id gebaut`) prüft jede `SequenceStep(...)`-Konstruktion
 im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Screenshot) und
-der Blanko-Block `(0, 0)` des Node-Editors, der noch gar keine Stelle hat.
+der Blanko-Block `(0, 0)` des Sequenz-Studios, der noch gar keine Stelle hat.
 
 Darauf zu vertrauen, dass die Migration schon nachverknüpft, reicht **nicht**: sie läuft nur
 auf Dateien mit altem Schema. Frisch Gespeichertes trägt bereits die aktuelle Version und
@@ -490,7 +490,7 @@ Dear PyGui ist optional und wird beim Start des Subprozesses geprüft.
 | Einstiegspunkt | Canvas | arbeitet auf |
 |---|---|---|
 | `autoclicker/scan_studio.py` (`handle_scan_studio`) | `editors/scan_canvas/` | `slots/slots.json` |
-| `autoclicker/node_editor.py` (`handle_node_editor`) | `editors/node_canvas/` | `sequences/<name>.json` |
+| `autoclicker/sequence_studio.py` (`handle_sequence_studio`) | `editors/sequence_studio/` | `sequences/<name>.json` |
 
 Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
 Der Subprozess liest die Datei beim Start und schreibt sie beim Speichern; der
@@ -499,8 +499,7 @@ Hauptprozess speichert, während der Subprozess offen ist, verliert eine der bei
 Fassungen. Beim Erweitern also nichts einbauen, das auf gemeinsamen State setzt — der
 gemeinsame Nenner ist die Datei.
 
-**Der Sequenz-Editor zeigt Listen, keinen Node-Graph** — obwohl der Ordner noch
-`node_canvas` heißt und der Hotkey „visueller Editor". Er *war* ein
+**Das Sequenz-Studio zeigt Listen, keinen Node-Graph.** Es *war* ein
 `dpg.node_editor`, und daran hing seine Unbedienbarkeit: ein Node-Graph verspricht
 mit jedem Pixel, dass man Verbindungen ziehen darf. Es gab aber keinen einzigen
 Link-Callback (die Pfeile waren Dekoration), die Block-Positionen wurden bei jedem
@@ -526,7 +525,7 @@ Regeln beim Erweitern:
   ein **Segfault**. Die Tests legen es deshalb still; wer eine neue Methode testet,
   prüft vorher, ob sie über `_mark_dirty()` dort landet.
 
-Die Umsortier-Rechnung ist getestet (`Node-Editor sortiert per Ziehen um`) — sie
+Die Umsortier-Rechnung ist getestet (`Sequenz-Studio sortiert per Ziehen um`) — sie
 braucht kein Fenster. Was ein Fenster braucht, bleibt ungetestet; dafür hält ein
 zweiter Test wenigstens die **dpg-API-Verträglichkeit** fest (s.u.).
 

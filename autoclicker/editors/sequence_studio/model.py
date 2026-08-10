@@ -1,5 +1,5 @@
 """
-GUI-freier Modell-Layer für den visuellen Node-Editor.
+GUI-freier Modell-Layer für das Sequenz-Studio.
 
 Übersetzt eine Sequence in eine flache Lane-Struktur (INIT / Loop-Phasen / END)
 und zurück — verlustfrei. Die Blöcke SIND die originalen SequenceStep-Objekte
@@ -21,7 +21,7 @@ from ...models import (
     ElseConfig, LoopPhase, Sequence, SequenceStep, WaitCondition,
 )
 
-# Block-Typ-Konstanten (für Farbkodierung + Labels im Canvas).
+# Block-Typ-Konstanten (für Farbkodierung + Labels in der Liste).
 # Reihenfolge der Erkennung in block_type() entspricht der Executor-Priorität.
 BLOCK_SCREENSHOT = "screenshot"
 BLOCK_BOSS_WATCHER = "boss_watcher"
@@ -67,7 +67,7 @@ def block_type(step: SequenceStep) -> str:
     return BLOCK_CLICK
 
 
-# Anzeige-Label je Block-Typ (kurz, für die Node-Titelzeile)
+# Anzeige-Label je Block-Typ (kurz, für die Listenzeile)
 BLOCK_LABELS = {
     BLOCK_SCREENSHOT: "SCREENSHOT",
     BLOCK_BOSS_WATCHER: "BOSS-WATCHER",
@@ -80,7 +80,8 @@ BLOCK_LABELS = {
     BLOCK_CLICK: "KLICK",
 }
 
-# RGB-Farbe je Block-Typ für die Node-Titelzeile (Dear PyGui Theme).
+# RGB-Farbe je Block-Typ. Sie sitzt als kleines Quadrat vor der Listenzeile —
+# frueher faerbte sie die Titelzeile einer Node.
 BLOCK_COLORS = {
     BLOCK_SCREENSHOT: (150, 90, 200),   # Lila
     BLOCK_BOSS_WATCHER: (200, 60, 60),  # Rot
@@ -96,7 +97,7 @@ BLOCK_COLORS = {
 
 @dataclass
 class Lane:
-    """Eine Spalte im Canvas: INIT, eine Loop-Phase oder END."""
+    """Eine Spalte im Board: INIT, eine Loop-Phase oder END."""
     kind: str                              # LANE_INIT / LANE_LOOP / LANE_END
     name: str                              # Anzeigename ("INIT", "Loop 1", "END")
     steps: list[SequenceStep] = field(default_factory=list)
@@ -108,14 +109,14 @@ class Lane:
 
 
 @dataclass
-class BlockGraph:
+class SequenceBoard:
     """GUI-agnostische Darstellung einer Sequence als Lanes von Blöcken."""
     name: str
     total_cycles: int = 1
     description: str = ""
     lanes: list[Lane] = field(default_factory=list)
 
-    # --- Mutationen (vom Canvas aufgerufen) ---------------------------------
+    # --- Mutationen (von der Ansicht aufgerufen) ---------------------------------
 
     def loop_lanes(self) -> list[Lane]:
         return [ln for ln in self.lanes if ln.is_loop()]
@@ -167,7 +168,7 @@ class BlockGraph:
                         ln.name = f"Loop {n}"
 
 
-def sequence_to_graph(seq: Sequence) -> BlockGraph:
+def sequence_to_board(seq: Sequence) -> SequenceBoard:
     """Wandelt eine Sequence in eine Lane-Struktur (INIT, Loops…, END)."""
     lanes: list[Lane] = [Lane(kind=LANE_INIT, name="INIT", steps=list(seq.init_steps))]
     for lp in seq.loop_phases:
@@ -179,7 +180,7 @@ def sequence_to_graph(seq: Sequence) -> BlockGraph:
             scheduled_start=lp.scheduled_start,
         ))
     lanes.append(Lane(kind=LANE_END, name="END", steps=list(seq.end_steps)))
-    return BlockGraph(
+    return SequenceBoard(
         name=seq.name,
         total_cycles=seq.total_cycles,
         description=seq.description,
@@ -187,7 +188,7 @@ def sequence_to_graph(seq: Sequence) -> BlockGraph:
     )
 
 
-def graph_to_sequence(graph: BlockGraph) -> Sequence:
+def board_to_sequence(graph: SequenceBoard) -> Sequence:
     """Baut aus der Lane-Struktur wieder eine Sequence (verlustfrei)."""
     init_steps: list[SequenceStep] = []
     end_steps: list[SequenceStep] = []
@@ -232,7 +233,7 @@ class PalettePoint:
 def save_palette_points(sequences_dir: str, points: list) -> bool:
     """Schreibt die Palette zurueck nach sequences/points.json.
 
-    Frueher las der Node-Editor die Punkte nur. Das ging, solange die Sequenz ihre
+    Frueher las das Studio die Punkte nur. Das ging, solange die Sequenz ihre
     Koordinaten selbst trug — seit sie das nicht mehr tut, waere eine hier eingetippte
     Position beim Speichern verloren. Deshalb wandert die Palette mit.
 

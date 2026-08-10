@@ -177,7 +177,7 @@ class SequenceStep:
     # Ein Schritt, der irgendwohin zeigt, MUSS eine point_id haben — die Migration legt
     # notfalls einen Punkt an, damit das ausnahmslos gilt. `None` bleibt genau den
     # Schritten, die gar keine Stelle haben: Tastendruck, Wait-only, Scans, Screenshot
-    # und der Blanko-Block des Node-Editors.
+    # und der Blanko-Block des Sequenz-Studios.
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
