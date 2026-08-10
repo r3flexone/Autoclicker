@@ -787,6 +787,43 @@ Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_captur
 - **Commit-Messages auf Deutsch**, knapper Imperativ-Stil, mehrzeilig erlaubt für Begründung.
 - **Branch-Konvention**: Feature-Branches `claude/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
 
+### Altlasten werden entfernt, nicht mitgeschleppt
+
+**Wer etwas umbaut, räumt das Alte weg — im selben Zug.** Rückwärtskompatibilität
+„für alle Fälle" ist hier ausdrücklich *kein* Wert. Das Projekt wird von einer Person
+benutzt, es gibt keine fremden Abhängigkeiten und keine API-Zusagen; ein
+Kompatibilitätspfad kostet also nur, ohne je etwas einzubringen.
+
+Diese Haltung steckt schon in mehreren Regeln oben — hier steht sie als das, was sie
+ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
+
+- Migration: „Das Modul soll schrumpfen, nicht wachsen." Ein Schritt wird
+  **ersatzlos gelöscht**, sobald keine Altbestände mehr existieren — samt dem
+  Alt-Code, den er ersetzt hat.
+- Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
+- `tools/sync_json.py` wurde gelöscht statt gepflegt; `_norm_items` steht als
+  `_norm_noop` da, weil es ein totes Feld in ein anderes totes Format hob.
+
+Drei Sorten Altlast, die auffallen sollen:
+
+| Sorte | Beispiel aus diesem Repo | warum weg |
+|---|---|---|
+| **Weiterleitung ohne Inhalt** | `execution.py` — reiner Re-Export, Docstring sagte selbst „damit main.py und handlers.py ihre Imports unverändert lassen können" | eine Datei, deren einziger Zweck ist, zwei Zeilen nicht anzufassen |
+| **Name eines Paradigmas, das es nicht mehr gibt** | `node_editor`, `node_canvas`, `BlockGraph`, `rebuild_canvas` nach dem Umbau auf Listen | ein Name, der etwas Falsches verspricht, ist dieselbe Sorte Fehler wie eine Oberfläche, die es tut — er führt den nächsten Leser in die Irre |
+| **Totes Feld / toter Zweig** | `_STELLEN`-Eintrag für ein Feld, das nie eine Altform hatte | Pflegeaufwand für etwas, das nie eintritt |
+
+Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
+
+- **Daten sind keine Altlast.** Bestandsdateien werden über die Migration gehoben,
+  nicht fallengelassen — dafür ist sie da. Weg darf der *Code*, sobald die *Daten*
+  durch sind.
+- **Eine Begründung ist keine Altlast.** Steht irgendwo, *warum* etwas nicht mehr so
+  gebaut ist (z. B. „war mal ein `dpg.node_editor`, deshalb …"), bleibt das stehen.
+  Genau diese Sätze verhindern, dass jemand den alten Weg noch einmal einschlägt.
+
+Umbenennungen mit `git mv` machen — dann erkennt Git sie als Rename und die Historie
+der Datei bleibt lesbar.
+
 ### Plattform-Schicht (Windows-Abhängigkeiten)
 
 Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/test_logic.py`
