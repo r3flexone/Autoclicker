@@ -85,8 +85,37 @@ class SequenceStudioApp:
         self._update_title()
         self.rebuild_board()
         self.refresh_properties()
+        dpg.set_exit_callback(self._on_exit)
         dpg.start_dearpygui()
         dpg.destroy_context()
+
+    def _on_exit(self, *_) -> None:
+        """Rettet ungespeicherte Änderungen, wenn das Fenster geschlossen wird.
+
+        Das X schließt sofort — Dear PyGui ruft diesen Callback erst *während* des
+        Herunterfahrens, ein Rückfragen ist da nicht mehr möglich. Deshalb wird nicht
+        gefragt, sondern **gesichert**: `_confirm_discard` schützt Laden und Neu, das
+        Schließen ging bisher daran vorbei und warf die Arbeit still weg — obwohl der
+        Stern im Titel die ganze Zeit sagte, dass etwas offen ist.
+
+        Die Kopie landet unter `backups/`, nicht in `sequences/`: dort listet
+        `list_available_sequences()` jede `*.json` als Sequenz auf, und eine
+        halbfertige Rettungsdatei zwischen den echten wäre schlimmer als der Verlust.
+        """
+        if not self._dirty:
+            return
+        from ...persistence.sweep import sicherungspfad
+        # sicherungspfad() liefert "<name>.json.bak" - hier soll die Datei aber lesbar
+        # heissen und eine echte .json-Endung tragen, damit man sie direkt zurueckkopieren kann.
+        ziel = sicherungspfad(self.filepath).with_name(
+            f"{self.filepath.stem}.ungespeichert.json")
+        try:
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            if save_sequence_file(board_to_sequence(self.board), ziel):
+                print(f"\nUngespeicherte Aenderungen gesichert: {ziel}")
+                print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
+        except (IOError, OSError) as e:
+            print(f"\nUngespeicherte Aenderungen konnten NICHT gesichert werden: {e}")
 
     def _build_ui(self) -> None:
         with dpg.window(tag="ac_root"):
