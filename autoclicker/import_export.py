@@ -89,7 +89,7 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
 
     Erfasst: Punkte, direkte Klick-Schritte in Sequenzen (inkl. else-Klick) sowie
     Klick-Aktionen von Boss- und Icon-Scans. Scan-interne Positionen (Slots,
-    confirm_points) bleiben außen vor — es geht um die eigentlichen Klick-Ziele.
+    confirm_points) bleiben aussen vor — es geht um die eigentlichen Klick-Ziele.
     """
     positions: list[tuple[str, int, int]] = []
     with state.lock:
@@ -129,7 +129,7 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
 
 def clicks_outside_window(state: 'AutoClickerState',
                           window_rect: tuple[int, int, int, int]) -> list[tuple[str, int, int]]:
-    """Liefert die Klick-Positionen, die außerhalb des Fenster-Rects (l, t, r, b) liegen."""
+    """Liefert die Klick-Positionen, die ausserhalb des Fenster-Rects (l, t, r, b) liegen."""
     l, t, r, b = window_rect
     lo_x, hi_x = min(l, r), max(l, r)
     lo_y, hi_y = min(t, b), max(t, b)
@@ -143,7 +143,7 @@ def transform_from_windows(src_window: tuple[int, int, int, int],
 
     Verwendet obere-linke und untere-rechte Ecke des Fensters als die zwei
     Referenzpunkte — damit skalieren+verschieben sich alle Koordinaten passend
-    zur (ggf. anderen) Spielfenster-Größe/Position auf dem Zielsystem.
+    zur (ggf. anderen) Spielfenster-Grösse/Position auf dem Zielsystem.
     """
     sl, st, sr, sb = src_window
     dl, dt, dr, db = dst_window
@@ -247,7 +247,7 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
     Die Klick-Stellen der Sequenzen stehen NICHT mehr in dieser Liste: sie sind
     Punkte, und die sind oben schon umgerechnet. Das ist der eigentliche Gewinn der
     Umstellung — vorher musste jede Kopie einzeln erwischt werden, und die eine, die
-    man vergaß, fiel erst beim nächsten Lauf auf.
+    man vergass, fiel erst beim nächsten Lauf auf.
 
     `mit_slots` steht bewusst getrennt, obwohl Slots zu den Scans gehören: eine
     aus einer Maus-Position abgeleitete Verschiebung ist für ein Klick-Ziel gut
@@ -352,7 +352,7 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
 
     source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
     Manifest abgelegt, damit der Import die Skalierung automatisch aus der
-    Fenstergröße ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
+    Fenstergrösse ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
 
     Returns:
         (success, message)
@@ -580,7 +580,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     tpl_name = name[len("templates/"):]
                     tpl_path = templates_dir / tpl_name
                     if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
-                        logger.warning(f"Template-Pfad außerhalb des Zielordners übersprungen: {name}")
+                        logger.warning(f"Template-Pfad ausserhalb des Zielordners übersprungen: {name}")
                         continue
                     # Template kann in einem Unterordner liegen (templates/sub/x.png)
                     # — Zielverzeichnis anlegen, sonst FileNotFoundError beim Schreiben.

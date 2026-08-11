@@ -383,10 +383,10 @@ def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
     """Findet die Slot-Rechtecke in einem Bild anhand der Hintergrundfarbe.
 
     Gibt `(rechtecke, img_bgr)` zurück; die Rechtecke sind `(x, y, w, h)` relativ
-    zum Bild, auf die Median-Größe normalisiert und zeilenweise sortiert.
+    zum Bild, auf die Median-Grösse normalisiert und zeilenweise sortiert.
 
     Die Normalisierung ist der Grund, warum die Erkennung für die Reparatur taugt:
-    sie liefert für jeden Slot dieselbe Größe und Kantenlage, unabhängig davon, wie
+    sie liefert für jeden Slot dieselbe Grösse und Kantenlage, unabhängig davon, wie
     grob der Bereich markiert wurde. Eine Maus-Position kann das nicht.
 
     Getrennt von `slot_auto_detect`, damit die Reparatur exakt dieselbe Erkennung

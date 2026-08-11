@@ -175,7 +175,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     # Stop-Hotkey nicht durch einen blockierenden Prompt eingefroren wird).
     _confirm_new_bosses(state)
 
-    # Session-Log schließen
+    # Session-Log schliessen
     if state.session_log is not None:
         log_event(state, "session_end",
                   extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
@@ -360,7 +360,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 with state.lock:
                     state.restarts += 1
                 print(col("\n[RESTART] Kompletter Neustart (inkl. INIT)...", "yellow"))
-                break  # Bricht innere Schleife ab → äußere Schleife startet INIT erneut
+                break  # Bricht innere Schleife ab → äussere Schleife startet INIT erneut
 
             # Limit VOR dem Inkrement prüfen — sonst zeigt die Statistik N+1 Zyklen
             if total_cycles > 0 and cycle_count >= total_cycles:
@@ -450,7 +450,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
 
 
 def _run_end_phase(state: AutoClickerState, sequence) -> None:
-    """Führt die END-Steps aus (außer bei quit_event)."""
+    """Führt die END-Steps aus (ausser bei quit_event)."""
     if not sequence.end_steps or state.quit_event.is_set():
         return
 
@@ -467,7 +467,7 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
 
 
 def _print_session_summary(state: AutoClickerState, cycle_count: int, duration: float) -> None:
-    """Druckt die abschließende Statistik-Ausgabe inklusive print_status."""
+    """Druckt die abschliessende Statistik-Ausgabe inklusive print_status."""
     print(col("\n[STOP] Sequenz gestoppt.", "red"))
     print(col("-" * 50, 'cyan'))
     print(col("STATISTIKEN:", 'bold'))

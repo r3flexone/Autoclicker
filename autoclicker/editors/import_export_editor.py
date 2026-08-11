@@ -161,7 +161,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         print(f"    {col('✓', 'green')} Config-Einstellungen")
     print()
 
-    # Referenz: bevorzugt automatisch aus der Spielfenster-Größe, sonst manuell
+    # Referenz: bevorzugt automatisch aus der Spielfenster-Grösse, sonst manuell
     from ..winapi import get_client_rect_by_title
     win_title = state.config.window_focus_title
     source_window = get_client_rect_by_title(win_title) if win_title else None
@@ -171,7 +171,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         ref1, ref2 = (sl, st), (sr, sb)
         print(col("  === SPIELFENSTER ERKANNT ===", "bold"))
         print(f"  Fenster '{win_title}': {sr - sl}x{sb - st} px @ ({sl}, {st})")
-        print(f"  {info('Beim Import wird die Skalierung automatisch aus der Fenstergröße abgeleitet.')}")
+        print(f"  {info('Beim Import wird die Skalierung automatisch aus der Fenstergrösse abgeleitet.')}")
         print()
     else:
         # Fallback: manuelle Referenzpunkte (Fenster nicht gefunden / kein Titel gesetzt)
@@ -367,7 +367,7 @@ def _run_import(state: AutoClickerState) -> None:
     print(f"    Punkt 1: ({src_ref1[0]}, {src_ref1[1]})")
     print(f"    Punkt 2: ({src_ref2[0]}, {src_ref2[1]})")
 
-    # Koordinaten-Anpassung: bevorzugt automatisch aus der Spielfenster-Größe
+    # Koordinaten-Anpassung: bevorzugt automatisch aus der Spielfenster-Grösse
     from ..import_export import compute_transform, transform_from_windows
     from ..winapi import get_client_rect_by_title
 
@@ -379,7 +379,7 @@ def _run_import(state: AutoClickerState) -> None:
         sl, st, sr, sb = src_window
         dl, dt, dr, db = dst_window
         print(f"    Spielfenster beim Export: {sr - sl}x{sb - st} px, jetzt: {dr - dl}x{db - dt} px")
-        print("    [1] Automatisch aus Fenstergröße (empfohlen)")
+        print("    [1] Automatisch aus Fenstergrösse (empfohlen)")
         print("    [2] Manuell (2 Punkte klicken)")
         print("    [3] 1:1 übernehmen (gleicher Bildschirm)")
         c = safe_input("    Wahl (Enter = 1): ").strip()

@@ -145,8 +145,8 @@ def merke_screenshot(state: AutoClickerState) -> None:
 def _aufnahme_laeuft(state: AutoClickerState) -> bool:
     """True = es wird gerade aufgezeichnet. Meldet selbst, wenn nicht.
 
-    Jeder Marker braucht dieselbe Vorprüfung: keine Aufnahme heißt, es gibt nichts zu
-    markieren, und pausiert heißt, der Nutzer navigiert gerade absichtlich vorbei.
+    Jeder Marker braucht dieselbe Vorprüfung: keine Aufnahme heisst, es gibt nichts zu
+    markieren, und pausiert heisst, der Nutzer navigiert gerade absichtlich vorbei.
     """
     with state.lock:
         if not state.recording_active:
@@ -198,12 +198,12 @@ def merke_phase(state: AutoClickerState) -> None:
     """Setzt eine Phasengrenze (CTRL+ALT+SHIFT+P): ab hier die nächste Phase.
 
     Erster Druck trennt INIT von LOOP, zweiter LOOP von END — in genau der Reihenfolge,
-    in der man beim Spielen darauf stößt. Ohne Marker bleibt alles in einer Loop-Phase
+    in der man beim Spielen darauf stösst. Ohne Marker bleibt alles in einer Loop-Phase
     (das bisherige Verhalten).
 
     Das ist der Marker, der sich am wenigsten nachholen lässt: der Sequenz-Editor
     bearbeitet jede Phase für sich (`edit_phase`), einen Befehl zum Verschieben eines
-    Schritts in eine ANDERE Phase gibt es nicht. Nachträglich aufteilen hieße löschen
+    Schritts in eine ANDERE Phase gibt es nicht. Nachträglich aufteilen hiesse löschen
     und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus.
     """
     if not _aufnahme_laeuft(state):
@@ -396,7 +396,7 @@ def phasen_grenzen(events: list) -> tuple[list, list[int]]:
 
     Gibt `(Ereignisse OHNE Grenzen, Schnittstellen als Schritt-Indizes)` zurück.
 
-    Die Grenzen werden **entfernt**, nicht bloß übersprungen — genau wie die
+    Die Grenzen werden **entfernt**, nicht bloss übersprungen — genau wie die
     Bereichs-Ecken. Sonst wäre eine Grenze das „vorherige Ereignis" des nächsten
     Schritts, und dessen Wartezeit würde ab dem Tastendruck statt ab der letzten
     echten Aktion gemessen: aus 6 Sekunden Warten würde 1 Sekunde, weil 5 davon vor
@@ -438,7 +438,7 @@ def marker_pruefen(events: list) -> tuple[list, int]:
     Stelle und Farbe. Folgt ein Tastendruck oder gar nichts mehr, gibt es nichts zu
     warten; der Marker wird verworfen statt stillschweigend zu verschwinden.
 
-    Zwei Marker hintereinander sind derselbe Wunsch, zweimal geäußert: der erste
+    Zwei Marker hintereinander sind derselbe Wunsch, zweimal geäussert: der erste
     fällt weg, der zweite hält die Uhr an.
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener)` zurück.

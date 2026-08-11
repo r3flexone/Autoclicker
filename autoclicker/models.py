@@ -371,7 +371,7 @@ class Sequence:
     end_steps: list[SequenceStep] = field(default_factory=list)    # Einmalig nach allen Zyklen
     total_cycles: int = 1  # 0 = unendlich, >0 = wie oft alle Loops durchlaufen werden
     # Freitext-Beschreibung (was macht die Sequenz?) — wird beim Laden/Listen und
-    # beim Export angezeigt, damit man/Empfänger weiß worum es geht. Reines
+    # beim Export angezeigt, damit man/Empfänger weiss worum es geht. Reines
     # Hilfsdatum, beeinflusst die Ausführung NICHT.
     description: str = ""
 
@@ -412,7 +412,7 @@ class ItemProfile:
     # wird von `resolve_scan_references()` gefüllt.
     #
     # Der Editor fragt ohnehin nach einer Punkt-ID — die wurde bisher nur weggeworfen
-    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben ließ
+    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben liess
     # den Bestätigungsklick stehen, und die Kalibrierung brauchte einen Sonderfall.
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung

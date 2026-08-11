@@ -45,7 +45,7 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
             rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 
-    # Slot-Hintergrundfarbe ausschließen (falls vorhanden)
+    # Slot-Hintergrundfarbe ausschliessen (falls vorhanden)
     if exclude_color:
         exclude_rounded = (exclude_color[0] // 5 * 5, exclude_color[1] // 5 * 5, exclude_color[2] // 5 * 5)
 

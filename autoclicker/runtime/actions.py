@@ -6,7 +6,7 @@ die bündeln Window-Fokus-Check, Humanization und Session-Logging. Niemals
 direkt send_click/send_key aus winapi.py aufrufen, sonst werden diese
 Querschnitts-Aspekte umgangen.
 
-Außerdem hier: das Status-Output-Helper, die Wait-Mit-Pause-Skip-Schleife
+Ausserdem hier: das Status-Output-Helper, die Wait-Mit-Pause-Skip-Schleife
 und die generische else_config-Aktion (Fallback bei Trigger-Miss).
 """
 

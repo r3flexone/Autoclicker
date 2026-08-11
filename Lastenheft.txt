@@ -93,7 +93,7 @@ Zustände und Endlosschleifen sein.
 
 /LF-0200/  Jede Sequenz muss drei Phasen unterstützen:
            - INIT:  Wird einmalig vor allen Zyklen ausgeführt
-           - LOOP:  Wird wiederholt (gemäß Zyklen-Konfiguration)
+           - LOOP:  Wird wiederholt (gemäss Zyklen-Konfiguration)
            - END:   Wird einmalig nach allen Zyklen ausgeführt
 
 /LF-0210/  Die LOOP-Phase muss mehrere unabhängige Loop-Blöcke unterstützen,
@@ -256,7 +256,7 @@ Zustände und Endlosschleifen sein.
 /LF-0900/  Fail-Safe: Wenn die Maus in die obere linke Bildschirmecke
            bewegt wird, muss sofort alles gestoppt werden.
 
-/LF-0910/  Die Größe der Fail-Safe-Zone muss konfigurierbar sein
+/LF-0910/  Die Grösse der Fail-Safe-Zone muss konfigurierbar sein
            (X- und Y-Schwellwert in Pixeln).
 
 /LF-0920/  Der Fail-Safe muss abschaltbar sein.
@@ -458,7 +458,7 @@ Zustände und Endlosschleifen sein.
 ================================================================================
 
 /LF-1900/  Das Programm muss mit mehreren Monitoren funktionieren,
-           einschließlich negativer Koordinaten für links positionierte
+           einschliesslich negativer Koordinaten für links positionierte
            Monitore.
 
 /LF-1910/  Screenshots müssen den gesamten virtuellen Bildschirm

@@ -134,7 +134,7 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) ->
 def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> int:
     """Benennt die (name, template)-Items per LLM aus ihren gespeicherten Templates.
 
-    Blockierend (LLM-Antworten dauern) — daher NUR außerhalb eines laufenden
+    Blockierend (LLM-Antworten dauern) — daher NUR ausserhalb eines laufenden
     Scans aufrufen (Editor/Setup). Speichert NICHT selbst; der Aufrufer macht
     save_global_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
     umbenannter Items zurück.

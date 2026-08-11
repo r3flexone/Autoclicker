@@ -273,7 +273,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
               f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
         if not laeuft:
             print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
-            print(f"           {hint('Menü hier schließen (Enter), dann die Sequenz starten.')}")
+            print(f"           {hint('Menü hier schliessen (Enter), dann die Sequenz starten.')}")
     else:
         print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
 
@@ -714,7 +714,7 @@ def handle_schedule(state: AutoClickerState) -> None:
                 with state.lock:
                     state.countdown_active = False
 
-            # Sequenz starten (außerhalb von finally, damit countdown_active schon False ist)
+            # Sequenz starten (ausserhalb von finally, damit countdown_active schon False ist)
             handle_toggle(state)
 
         print(f"\n{col('[COUNTDOWN]', 'cyan')} Warte auf Startzeit... (Abbrechen mit {col('CTRL+ALT+S', 'yellow')})")
@@ -794,7 +794,7 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio als separaten Subprocess.
 
     Das Studio läuft in einem eigenen Prozess (eigenes Fenster mit eigener
-    Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beißt. Es
+    Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beisst. Es
     bearbeitet die aktive Sequenz direkt auf Disk; nach dem Speichern mit
     CTRL+ALT+L neu laden.
     """

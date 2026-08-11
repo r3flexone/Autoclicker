@@ -29,7 +29,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
 - **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
 - **Session-Log (CSV)**: Vollständiges Log aller Klicks/Tasten/Events pro Sequenz für Auswertung
-- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Größe angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele außerhalb des Fensters liegen
+- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Grösse angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele ausserhalb des Fensters liegen
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
 - **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
@@ -184,7 +184,7 @@ Im Sequenz-Editor:
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+S` | Start/Stop der aktiven Sequenz |
-| `CTRL+ALT+F` | Sanft beenden (Zyklus abschließen, dann END + Stop) |
+| `CTRL+ALT+F` | Sanft beenden (Zyklus abschliessen, dann END + Stop) |
 | `CTRL+ALT+G` | Pause/Resume |
 | `CTRL+ALT+K` | Skip (aktuelle Wartezeit überspringen) |
 | `CTRL+ALT+W` | Quick-Switch (schnell Sequenz wechseln) |
@@ -281,7 +281,7 @@ Der schnellste Weg, viele Items auf einmal anzulegen — perfekt für ein vollst
 2. `autoscan` im Item-Editor (oder Menü-Punkt 5 im Item-Scan-Menü)
 3. Einmalig konfigurieren: Kategorie, Prioritäts-Modus, Bestätigungs-Punkt, Konfidenz, Marker an/aus
 4. Programm scannt alle Slots, vergleicht gegen bestehende Items (Duplikate werden übersprungen) und legt für jeden neuen Slot ein Item mit Template + Marker-Farben an
-5. Anschließend nur noch via `rename <Nr>` umbenennen
+5. Anschliessend nur noch via `rename <Nr>` umbenennen
 
 **Modi:**
 - `autoscan` — Templates + Marker-Farben (Standard, robust)
@@ -451,7 +451,7 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `del <Nr>` | Schritt löschen |
 | `clear` | Alle Schritte löschen |
 | `show` | Aktuelle Schritte anzeigen |
-| `done` | Phase abschließen und speichern |
+| `done` | Phase abschliessen und speichern |
 | `cancel` | Editor abbrechen (ohne Speichern) |
 
 ### Verfügbare Tasten
@@ -708,13 +708,13 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
 2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Icon-Scans/Config) Ja/Nein
 3. **Referenz für die Koordinaten-Anpassung**:
-   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Größe automatisch** als Referenz genommen — kein manuelles Klicken nötig.
+   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Grösse automatisch** als Referenz genommen — kein manuelles Klicken nötig.
    - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
 4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
 5. ZIP wird in `exports/` gespeichert
 6. Anleitung für den Empfänger wird angezeigt
 
-Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
 
 ### Import
 
@@ -723,8 +723,8 @@ Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), al
 3. Datei aus der Liste auswählen
 4. Inhalt der ZIP wird angezeigt + Referenzpunkte des Exporters
 5. **Anpassungs-Modus wählen**:
-   - Enthält das Export-Manifest die Spielfenster-Größe **und** das Spielfenster läuft gerade:
-     - **[1] Automatisch aus Fenstergröße** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergröße berechnet, kein Klicken nötig
+   - Enthält das Export-Manifest die Spielfenster-Grösse **und** das Spielfenster läuft gerade:
+     - **[1] Automatisch aus Fenstergrösse** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergrösse berechnet, kein Klicken nötig
      - **[2] Manuell** (zwei Punkte klicken, gleiche Stellen wie der Exporter)
      - **[3] 1:1** (gleicher Bildschirm)
    - Sonst (kein Fenster-Rect / Fenster nicht gefunden): **[1] Remapping** (zwei Punkte manuell) oder **[2] 1:1**
@@ -757,7 +757,7 @@ So muss man Sequenzen nicht neu erstellen, sondern nur die Punkte einmal lokal a
 Während eine Sequenz läuft:
 
 - **CTRL+ALT+S** - Stoppt die Sequenz komplett
-- **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschließen, dann END-Phase + Stop)
+- **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschliessen, dann END-Phase + Stop)
 - **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten)
 - **CTRL+ALT+K** - Überspringt die aktuelle Wartezeit
 
@@ -1368,7 +1368,7 @@ steht auf einmal da.
   (inkl. „nur prüfen"), **Nachprüfung**, ELSE, Scan-Name/-Modus, Screenshot-Bereich —
   die Nachprüfung war in der alten Ansicht gar nicht erreichbar
 - **Stellen sind Punkte, keine Koordinaten**: der ELSE-Klick und der Prüf-Pixel zeigen
-  jetzt auf einen Punkt. Vorher ließen sie sich als Zahlen eintippen, und weil die
+  jetzt auf einen Punkt. Vorher liessen sie sich als Zahlen eintippen, und weil die
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
@@ -1382,7 +1382,7 @@ steht auf einmal da.
 **Sequenz-Studio** (`CTRL+ALT+B`, Dear PyGui)
 - Phasen (INIT / Loop / END) als Spalten nebeneinander, jede eine Liste ihrer Schritte
 - **Ziehen sortiert um — auch über Phasengrenzen.** Das kann der Konsolen-Editor nicht:
-  dort heißt Aufteilen löschen und neu anlegen
+  dort heisst Aufteilen löschen und neu anlegen
 - Mehrfachauswahl mit STRG; Sammelaktionen (hoch/runter/löschen) auf der ganzen Auswahl
 - Punkte-Palette, Eigenschaften je Block-Typ, Punkt-Picker setzt Position **und** Trigger-Farbe
 - Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
@@ -1462,7 +1462,7 @@ Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
 |---|---|
 | `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
 | `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
-| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schließen und normal starten |
+| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schliessen und normal starten |
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.
@@ -1601,7 +1601,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - Race Condition bei `config.bosses.append` (Auto-Save neuer Bosse) → Append jetzt unter `state.lock`
 - LLM-Fallback-Logik invertiert: bei `llm_fallback=True` lief das LLM doppelt → strikte Entweder-Oder-Logik
 - BytesIO-Memory-Leak in `_image_to_base64` → Context Manager
-- Boss-Watcher hatte keinen Exit außer Sequenz-Stop → `max_scans` + `timeout` als Exit-Bedingungen
+- Boss-Watcher hatte keinen Exit ausser Sequenz-Stop → `max_scans` + `timeout` als Exit-Bedingungen
 - `save_data` / `save_global_slots` / `save_global_items` iterierten ohne Lock → Snapshot unter `state.lock`
 - `state.session_screenshots_dir`-Zuweisung war nicht thread-safe → unter `state.lock`
 - `socket.timeout` in LLM-Calls jetzt explizit gefangen
@@ -1648,7 +1648,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 ### Vorherige Änderungen
 
 - **INIT-Phase**: Einmalige Initialisierung vor allen Zyklen (ersetzt START-Phase)
-- **Sanfter Abbruch** (`CTRL+ALT+F`): Aktuellen Zyklus abschließen, dann END-Phase ausführen und stoppen
+- **Sanfter Abbruch** (`CTRL+ALT+F`): Aktuellen Zyklus abschliessen, dann END-Phase ausführen und stoppen
 - **Item-Sortierung**: Items werden nach Priorität (aufsteigend) innerhalb jeder Kategorie sortiert
 - **Save-on-Done**: Item-Editor speichert nur bei `done`, verwirft Änderungen bei `cancel`/Abbruch
 - **Separate Screenshot-Ordner**: Slot-Screenshots in `slots/Screenshots/`, Sequenz-Screenshots in `screenshots/<Session>/`
@@ -1662,7 +1662,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - **ESC-Abbruch**: ESC-Taste funktioniert als Abbruch in allen Editoren (auch in PyCharm)
 - **ANSI-Farben**: Farbige Tags in der Konsole ([FEHLER] rot, [INFO] cyan, [OK] grün)
 - **Einheitliche Delay-Validierung**: Wartezeiten werden in allen Editoren gleich geprüft
-- **Template Auto-Resize**: Templates werden bei Größenunterschied automatisch skaliert
+- **Template Auto-Resize**: Templates werden bei Grössenunterschied automatisch skaliert
 - **Bug-Fixes**: Buchstaben-Verdoppelung in PyCharm, Debug-Mode Inkonsistenzen, Wartezeit-Anzeige
 
 ### Vorherige Änderungen

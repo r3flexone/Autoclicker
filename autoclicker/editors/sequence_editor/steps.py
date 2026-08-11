@@ -7,7 +7,7 @@ _handle_*-Methode hat. So bleibt jede Befehlslogik unter ~50 Zeilen und ist
 einzeln verständlich, statt einer 470-Zeilen-If-elif-Kette.
 
 Befehle:
-  done/d / cancel              — Phase abschließen / verwerfen
+  done/d / cancel              — Phase abschliessen / verwerfen
   show/s                       — Schritte anzeigen
   help / ? / ??                — Hilfe (kurz/voll)
   del N | del N-M | del all    — Schritt(e) löschen
@@ -431,7 +431,7 @@ class _PhaseEditor:
                 print("  -> Position muss >= 1 sein!")
                 return
             if pos > len(self.steps) + 1:
-                print(f"  -> Position zu groß! Max: {len(self.steps) + 1}")
+                print(f"  -> Position zu gross! Max: {len(self.steps) + 1}")
                 return
             self.insert_position = pos
             print(f"  + Insert-Modus: Nächster Schritt wird an Position {pos} eingefügt")
@@ -978,7 +978,7 @@ class _PhaseEditor:
             print(_opt("7", "Verschieben"))
             print(_opt("8", "Testen (echter Klick!)"))
             print(_opt("9", "Löschen"))
-            print(_opt("0", "Menü schließen (oder 'zurück')"))
+            print(_opt("0", "Menü schliessen (oder 'zurück')"))
 
             choice = safe_input("  edit> ").strip().lower()
             if choice in ("0", "", "zurück", "zurueck", "back", "done", "d", "q") or is_cancel(choice):
@@ -999,18 +999,18 @@ class _PhaseEditor:
                 self._handle_show_detail(f"show {num}")
             elif choice == "6":
                 self._handle_copy(f"copy {num}")
-                return  # Positionen verschoben — Menü schließen
+                return  # Positionen verschoben — Menü schliessen
             elif choice == "7":
                 target = safe_input(f"  Neue Position (1-{len(self.steps)}): ").strip()
                 if target and not is_cancel(target):
                     self._handle_move(f"move {num} {target}")
-                return  # Positionen verschoben — Menü schließen
+                return  # Positionen verschoben — Menü schliessen
             elif choice == "8":
                 self._handle_test(f"test {num}")
             elif choice == "9":
                 if confirm(f"  Schritt {num} wirklich löschen?"):
                     self._handle_del_single(f"del {num}")
-                    return  # Schritt weg — Menü schließen
+                    return  # Schritt weg — Menü schliessen
             else:
                 print(f"  -> {hint('Bitte 0-9 wählen.')}")
 
@@ -1179,7 +1179,7 @@ class _PhaseEditor:
             print("  -> Faktor muss eine Zahl sein (z.B. 'scale 1.5')")
             return
         if factor <= 0:
-            print("  -> Faktor muss größer als 0 sein!")
+            print("  -> Faktor muss grösser als 0 sein!")
             return
         changed = 0
         for step in self.steps:

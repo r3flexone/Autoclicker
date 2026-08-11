@@ -415,7 +415,7 @@ def _schritt_auto_lernen(learn_unknown: bool) -> bool:
     print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
     learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
     if learn_unknown:
-        print("\n  " + hint("Gelernte Items heißen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
+        print("\n  " + hint("Gelernte Items heissen erst 'Auto <Slot>'. Sinnvolle Namen per LLM"))
         print("  " + hint("vergibst du danach im Item-Editor mit 'autoname' — das läuft"))
         print("  " + hint("NICHT während des Scans (würde ihn ausbremsen)."))
     return learn_unknown

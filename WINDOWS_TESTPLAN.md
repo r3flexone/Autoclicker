@@ -31,8 +31,8 @@ ohne Datum ist ein Vorsatz, kein Nachweis.
 - [ ] Erster Start hebt vorhandene JSON-Dateien (`[MIGRATION]`-Meldung), zweiter Start ist still.
 - [ ] `python tools/migrate.py` meldet danach „0 angepasst".
       **2026-06-16 Windows: durchgelaufen, alle Migrationen ohne Fehler ✓**
-- [x] App startet: `python main.py` → Begrüßung + Hilfe erscheinen, keine Exception.
-      **2026-06-16 Windows: Begrüßung + Hilfe ok, alle Loader + LLM verbunden, keine Exception ✓**
+- [x] App startet: `python main.py` → Begrüssung + Hilfe erscheinen, keine Exception.
+      **2026-06-16 Windows: Begrüssung + Hilfe ok, alle Loader + LLM verbunden, keine Exception ✓**
 
 ## 0b. Plattform-Schicht ohne laufendes Spiel (2026-08-02 Windows ✓)
 Das lässt sich prüfen, ohne Idle Clans zu öffnen — reine API-Pfade gegen echtes Windows.
@@ -75,7 +75,7 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
   - [ ] `show <Nr>` 🆕 bewegt die Maus zum Punkt, zeigt Details (Position, Farbe, Herkunft), keine Umbenennen-Abfrage.
   - [ ] `<Nr>` testet (Maus hin) + fragt nach neuem Namen.
   - [ ] `<Nr> <Name>` benennt um; `del <Nr>` löscht; `list` zeigt Liste neu.
-  - [ ] `done`/`d`/`ESC`/`q` 🆕 schließt mit Meldung „Editor geschlossen — Hotkeys wieder aktiv".
+  - [ ] `done`/`d`/`ESC`/`q` 🆕 schliesst mit Meldung „Editor geschlossen — Hotkeys wieder aktiv".
   - [ ] 🆕 Während laufender Aufnahme/laufendem Klicker lässt sich der Punkte-Editor **nicht** öffnen (Warnung).
 - [ ] Punkt-Herkunft 🆕: Punkte aus einer Aufnahme zeigen `[Aufnahme '<Name>']` in der Liste.
 
@@ -146,7 +146,7 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Farb-Trigger (`pixel`/`color`/`colorgone`) lösen korrekt aus / Timeout-Verhalten.
 - [ ] Item-Scan-Step klickt das beste Item je Kategorie (all/best/every).
 - [ ] 🆕 Item-Auto-Lernen während des Scans bremst den Lauf **nicht** spürbar
-      (keine LLM-Pause), neue Items heißen `Auto <Slot>`.
+      (keine LLM-Pause), neue Items heissen `Auto <Slot>`.
 - [ ] Boss-Scan-Step / Boss-Watcher: Erkennung → hinterlegte Aktion;
       🆕 globale Bibliotheks-Bosse gelten zusätzlich; unbekannte Bosse landen je
       nach `boss_learn_global` in Scan oder Bibliothek.
@@ -166,7 +166,7 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Export erzeugt ZIP unter `exports/` mit `manifest.json` + Daten + Templates.
 - [ ] 🆕 Globale Boss-Bibliothek (`global_bosses.json`) ist im Bundle.
 - [ ] Import auf **anderem Bildschirm/Auflösung**: Koordinaten-Remapping
-      (automatisch aus Fenstergröße, sonst 2-Punkt) verschiebt Klicks korrekt.
+      (automatisch aus Fenstergrösse, sonst 2-Punkt) verschiebt Klicks korrekt.
 - [ ] Merge vs. Ersetzen verhält sich wie erwartet.
 
 ## 13. Scan-Studio GUI (CTRL+ALT+V) 🆕 geführter Slot-Ablauf
@@ -196,7 +196,7 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] X/Y im Feld „Stelle" verschieben den **Punkt**: alle Blöcke darauf ziehen mit.
 - [ ] Laden/Neu mit ungespeicherten Änderungen fragt nach (Speichern / Verwerfen /
       Abbrechen).
-- [ ] Fenster mit ungespeicherten Änderungen schließen → Konsole meldet eine
+- [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine
       Rettungskopie unter `backups/<name>.ungespeichert.json`, und die Datei ist da.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
 
@@ -214,8 +214,8 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 
 ### Bekannte Nicht-Abdeckung (bewusst offen)
 - Scan-Studio-GUI-Autoscan nutzt (noch) **keine** LLM-Benennung am Ende — dort
-  heißen Items generisch „Item N". (Konsolen-Autoscan tut es 🆕.)
+  heissen Items generisch „Item N". (Konsolen-Autoscan tut es 🆕.)
 - GUI (Dear PyGui / WebView2), echte Maus/Tastatur, LLM/OCR-Backends lassen sich nur
   auf Windows mit Hardware/Backends real prüfen — daher dieser manuelle Plan. Die
   Weboberfläche des Sequenz-Studios ist immerhin in Chromium durchgeklickt worden;
-  ungeprüft bleibt das Fenster selbst (WebView2, Schließen-Ereignis, DPI).
+  ungeprüft bleibt das Fenster selbst (WebView2, Schliessen-Ereignis, DPI).

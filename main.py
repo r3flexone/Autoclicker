@@ -110,7 +110,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     # Ausführung (magenta)
     print(col("Ausführung:", 'magenta'))
     print(f"  {col('CTRL+ALT+S', 'yellow')}  Start/Stop der aktiven Sequenz")
-    print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschließen, dann END + Stop)')}")
+    print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschliessen, dann END + Stop)')}")
     print(f"  {col('CTRL+ALT+G', 'yellow')}  Pause/Resume")
     print(f"  {col('CTRL+ALT+K', 'yellow')}  Skip {hint('(aktuelle Wartezeit überspringen)')}")
     print(f"  {col('CTRL+ALT+W', 'yellow')}  Quick-Switch {hint('(schnell Sequenz wechseln)')}")

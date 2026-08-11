@@ -57,7 +57,7 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
     1. Für "der Punkt ist die Wahrheit" gibt es die Referenz (`point_id`), die zur Laufzeit
        greift und nichts auf Platte anfasst. Zwei Mechanismen für dieselbe Aufgabe, einer
        davon still und schreibend - das war die Altlast.
-    2. Der Name taugt nicht als Schlüssel: aufgenommene Punkte heißen per Default `P<id>`.
+    2. Der Name taugt nicht als Schlüssel: aufgenommene Punkte heissen per Default `P<id>`.
        Eine Sequenz von einem anderen Rechner bringt also Schritte namens "P3" mit, und der
        lokale "P3" liegt garantiert woanders. Der Remap hat solche Schritte stillschweigend
        verschoben und gespeichert.

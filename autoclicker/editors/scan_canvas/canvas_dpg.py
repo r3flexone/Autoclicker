@@ -215,7 +215,7 @@ class ScanStudioApp:
 
     # --------------------------------------------------------- Maus-Handler
     def _canvas_pos(self) -> tuple[float, float] | None:
-        """Mausposition im Drawlist-Koordinatensystem, oder None wenn außerhalb."""
+        """Mausposition im Drawlist-Koordinatensystem, oder None wenn ausserhalb."""
         if not dpg.is_item_hovered(_DRAWLIST):
             return None
         return tuple(dpg.get_drawing_mouse_pos())

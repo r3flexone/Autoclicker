@@ -74,7 +74,7 @@ nicht ohnehin auf UTF-8 steht.
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus. `execution.py` ist nur ein Backward-Compat-Shim.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
-**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei außerhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
+**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
 
 ### Aktions-Wrapper (zentral)
 Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `autoclicker/runtime/actions.py`. Diese bündeln:
@@ -117,7 +117,7 @@ statt überschrieben zu werden. Zusammen geschrieben gehört das `\r` untrennbar
 Text, der es benutzt.
 
 Die Löschbreite folgt der **vorher geschriebenen Zeile** (`_letzte_status_laenge`), nicht
-mehr festen 80 Spalten: ein langer Punkt-Name ließ den Rest der alten Zeile hinter der
+mehr festen 80 Spalten: ein langer Punkt-Name liess den Rest der alten Zeile hinter der
 neuen stehen. ANSI-Sequenzen zählen dabei nicht mit — sie belegen keine Spalte.
 
 Wer eine Meldung ausgeben will, die **stehen bleiben soll** (Screenshot-Dateiname,
@@ -191,14 +191,14 @@ drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `ste
 sind **abgeleitete Arbeitswerte** — im Speicher gefüllt, in der Datei nicht vorhanden.
 Dasselbe Muster wie `ItemScanConfig.slots`, nur konsequenter.
 
-Dieselbe Regel gilt außerhalb der Sequenzen: `ItemProfile.confirm_point`,
+Dieselbe Regel gilt ausserhalb der Sequenzen: `ItemProfile.confirm_point`,
 `BossProfile.action_x/y` und `IconScanConfig.action_x/y` sind ebenfalls abgeleitet.
 `resolve_klick_referenzen()` (in `persistence/item_scans.py`) füllt sie und läuft in
 `main.py` **nach** dem Laden aller Scans — `load_all_item_scans()` sieht die Boss- und
 Icon-Scans an seiner Stelle noch gar nicht, deren Klicks stünden sonst bis zum ersten
 Sequenzlauf auf (0, 0).
 
-Für diese drei gibt es **bewusst keine Migration**: die alten Koordinaten ließen sich
+Für diese drei gibt es **bewusst keine Migration**: die alten Koordinaten liessen sich
 zwar in Punkte heben, aber der Weg dorthin — die Punkte-Liste durch jeden Item-, Boss-
 und Icon-Loader reichen — kostet mehr, als das Feld einmal neu zu setzen. Der Loader
 meldet ein Altfeld stattdessen einmal pro Fundstelle (`_alt_gemeldet` in
@@ -209,7 +209,7 @@ Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an ein
 beiden falsch sein kann. Wer die Sequenzdatei liest, sah dann etwas anderes als das, was
 die App klickt — und bei einer Kalibrierung musste jede Kopie einzeln erwischt werden.
 `kalibriere_bestand()` rechnet Sequenz-Klickstellen deshalb **nicht mehr** um: die Punkte
-sind schon umgerechnet, ein zweiter Durchgang hieße doppelt verschoben.
+sind schon umgerechnet, ein zweiter Durchgang hiesse doppelt verschoben.
 
 **Vier Stellen pro Schritt, zwei Klassen.** `point_id` (Klick) und
 `wait_condition.point_id` (Vorbedingung) *sind* der Schritt — fehlt ihr Punkt, darf er
@@ -246,7 +246,7 @@ Richtungen gehen kaputt:
   beim Bearbeiten war nichts vorausgewählt.
 
 Regel beim Erweitern: **Anzeige und Vorauswahl immer über `slot_names`/`item_names`**, nie
-über `slots`/`items` — die sind erst nach dem Auflösen gefüllt. Wer `config.slots` von außen
+über `slots`/`items` — die sind erst nach dem Auflösen gefüllt. Wer `config.slots` von aussen
 setzt, ruft danach `sync_names()`.
 
 Namen, die global fehlen, werden gemeldet und übersprungen — der Scan läuft mit dem Rest
@@ -273,7 +273,7 @@ Schema 2 und wurden von der Kette nie angefasst.
 nur ein Schritt unverknüpft, müsste seine Koordinate weiterhin in der Sequenz stehen — und
 die ganze Regel hätte wieder eine Ausnahme. Deshalb gilt hier auch nicht mehr „mehrdeutige
 Stellen bleiben unverknüpft": liegen zwei Punkte übereinander, gewinnt der erste. Dieselbe
-Stelle ist derselbe Ort; unverknüpft hieße jetzt *Koordinate weg*.
+Stelle ist derselbe Ort; unverknüpft hiesse jetzt *Koordinate weg*.
 
 **Angelegte Punkte müssen auf Platte.** Die Migration hängt sie an die Liste in
 `context["points"]`, und der Aufrufer schreibt sie: `sweep.py` am Ende des Durchgangs
@@ -404,7 +404,7 @@ Dataclasses; beim Ändern eines Defaults immer beide Stellen anfassen.
 **Ein Default darf nie aus der Config kommen.** `models.DEFAULT_MIN_CONFIDENCE` (konstant
 0.8) ist der *Datei*-Default: was gilt, wenn das Feld in der JSON fehlt.
 `AppConfig.scan_min_confidence` ist die *Voreinstellung für neue Profile*, die die Editoren
-über `state.config` vorschlagen. Beides war früher derselbe Name — dadurch ließ der
+über `state.config` vorschlagen. Beides war früher derselbe Name — dadurch liess der
 Serializer ein Feld weg, das gerade auf dem Config-Wert stand, und beim nächsten Ändern der
 Config kam es mit einem anderen Wert zurück. Zwei Dinge, zwei Namen.
 
@@ -429,7 +429,7 @@ machen das vor).
 Für Serien immer den ersten: ein angehängter Zähler ergäbe `Slot 3 2`, und das liest
 niemand gern.
 
-Dieselbe Regel gilt für **Identität außerhalb der Persistenz**: Loop-Phasen-Namen sind
+Dieselbe Regel gilt für **Identität ausserhalb der Persistenz**: Loop-Phasen-Namen sind
 frei wählbar und doppelt vergebbar, deshalb hängt der Zeitplan-Zustand im Worker an der
 *Position* der Phase, nicht an ihrem Namen (`_schedule_watcher`). Ein Name ist eine
 Beschriftung — als Schlüssel taugt er nur da, wo etwas ihn erzwingt.
@@ -454,7 +454,7 @@ wird.)
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
 - `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
-- `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Größe der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
+- `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
 - `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_beim_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
@@ -466,7 +466,7 @@ wird.)
   nicht beantworten, für die man ihn aufmacht. Wer eine neue Ereignisart einführt,
   trägt sie in `log_report.py` ein — der Bericht meldet sonst „nicht ausgewertete
   Ereignisarten" und weist selbst darauf hin.
-- `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Größe (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
+- `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
@@ -488,7 +488,7 @@ wird.)
   **nicht** überschrieben — die Sortierung gilt nur für den Lauf, `items.json` bleibt
   unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
   negiert einsortiert wird. Das ist gewollt (ein gemessener Wert schlägt eine getippte
-  Zahl), heißt aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
+  Zahl), heisst aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
   will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
 
 **Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: ein
@@ -553,13 +553,13 @@ Regeln beim Erweitern:
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
   dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`.
 - **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
-  Nachprüfung. Die DPG-Fassung ließ dort Zahlen eintippen — `_step_to_dict` schreibt
+  Nachprüfung. Die DPG-Fassung liess dort Zahlen eintippen — `_step_to_dict` schreibt
   die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten
   Öffnen weg.
 - **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
   Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
   und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.
-- **Die Seite lädt nichts nach.** Kein Framework, keine Schrift, kein Bild von außen:
+- **Die Seite lädt nichts nach.** Kein Framework, keine Schrift, kein Bild von aussen:
   das Fenster läuft ohne Netz, und alles Nachgeladene wäre beim Start eine leere Fläche.
   Es gibt auch keinen Build-Schritt — was in der Datei steht, ist was läuft.
 
@@ -577,7 +577,7 @@ Schritt überspringen", `else <Punkt-Nr>` = „**stattdessen** diesen Punkt klic
 
 Damit das durchsetzbar ist, reicht ein bool nicht: er kann „Schritt erledigt, weiter zum
 nächsten" nicht von „Sequenz abbrechen" unterscheiden. Beides als `False` zu melden riss
-den Rest der Phase mit ab, beides als `True` ließ den Schritt nach der else-Aktion noch
+den Rest der Phase mit ab, beides als `True` liess den Schritt nach der else-Aktion noch
 sein eigenes Ziel klicken. Deshalb geben Vorab-Entscheidungen über einen Schritt
 `GATE_RUN` / `GATE_SKIP` / `GATE_STOP` zurück (Konstanten in `runtime/debug.py`,
 genutzt von `step_gate` und `_execute_wait_for_color`).
@@ -599,7 +599,7 @@ Drei Regeln:
   wirkungslosen Klick ist vorübergehend, und ein zweiter Klick löst ihn.
 - **Ohne `verify_condition` kostet es nichts.** Kein Screenshot, kein Zweig — ein Test
   pinnt fest, dass der Normalfall unverändert bleibt.
-- **Eine ausgebliebene Wirkung reißt die Sequenz nicht.** Nach dem letzten Versuch
+- **Eine ausgebliebene Wirkung reisst die Sequenz nicht.** Nach dem letzten Versuch
   entscheidet `else_config`; ohne else gilt der Schritt als erledigt. Das ist ein
   Hinweis, kein Abbruchgrund — anders als eine nicht erfüllte *Vor*bedingung.
 
@@ -644,7 +644,7 @@ Position angewiesen, die beim Drücken niemand bewusst wählt.
 
 #### Die fünf Marker
 
-Alles außer Klick/Taste/Rad ist ein **Marker**: ein globaler Tastendruck ohne
+Alles ausser Klick/Taste/Rad ist ein **Marker**: ein globaler Tastendruck ohne
 Rückfrage, der beim Stoppen zu Struktur wird. Sie unterscheiden sich in genau drei
 Fragen, und daran hängt der jeweilige Bau:
 
@@ -688,7 +688,7 @@ dort ersetzt eine *Bedingung* die Zeit, sie geht also nicht verloren, sondern ü
 **Die Phasengrenze ist der Marker, der sich am wenigsten nachholen lässt.** Der
 Sequenz-Editor bearbeitet jede Phase für sich (`edit_phase`); einen Befehl, einen
 Schritt in eine *andere* Phase zu verschieben, gibt es nicht. Nachträglich aufteilen
-hieße löschen und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus. Ohne
+hiesse löschen und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus. Ohne
 Marker bleibt alles in einer Loop-Phase, also im bisherigen Verhalten.
 
 #### Was NICHT in die Aufnahme gehört
@@ -722,7 +722,7 @@ Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weit
 
 **Rechtsklick wird bewusst nicht aufgezeichnet**: der Autoclicker kann gar keinen
 ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es gibt kein Modellfeld
-und keinen Editor-Befehl). Ihn mitzuschneiden hieße, etwas aufzunehmen, das beim
+und keinen Editor-Befehl). Ihn mitzuschneiden hiesse, etwas aufzunehmen, das beim
 Abspielen zum Linksklick wird. Wer ihn nachrüstet, braucht die ganze Kette:
 `winapi` → Modellfeld → `safe_click` → Serializer-Default → Editor-Anzeige.
 
@@ -731,7 +731,7 @@ hochauflösende Räder senden Bruchteile, und einzeln abgerundet ergäben die nu
 Recorder summiert erst (eine Drehung = ein Ereignis, `_SCROLL_MERGE_GAP`) und teilt dann.
 
 Das Rad lässt sich per `record_scroll: false` (Config) ganz abschalten — für Spiele, in
-denen es nur die Ansicht dreht und solche Drehungen die Sequenz bloß aufblähen.
+denen es nur die Ansicht dreht und solche Drehungen die Sequenz bloss aufblähen.
 Abgeschaltet gibt `_on_wheel_factory()` **`None`** zurück, und `install_mouse_hook`
 ignoriert das Rad schon in der Hook-Prozedur. Absichtlich dort und nicht in
 `_anhaengen`: ein Callback, der jedes Ereignis nur entgegennimmt, um es wegzuwerfen,
@@ -743,13 +743,13 @@ liefe bei jeder Radbewegung mit — auch wenn gerade niemand aufnimmt.
 
 **Zwei Zusatz-Erkenner, gleiche Bauart**: OCR (`use_ocr` + `ocr_fallback`) und LLM
 (`use_llm` + `llm_fallback`), beide in `BossScanConfig`, beide zusätzlich per Config
-scharfgeschaltet (`ocr_enabled` / `llm_enabled`). `*_fallback=False` heißt **vor**
-Template/Marker-Matching, `*_fallback=True` heißt **nur wenn** Template/Marker nichts
+scharfgeschaltet (`ocr_enabled` / `llm_enabled`). `*_fallback=False` heisst **vor**
+Template/Marker-Matching, `*_fallback=True` heisst **nur wenn** Template/Marker nichts
 findet. Bei gleicher Einstellung läuft **OCR vor LLM** — OCR ist lokal und schnell, das
 LLM kostet bis `llm_timeout`.
 
 Zwei Regeln, an denen `execute_boss_scan()` in `runtime/boss_detection.py` hängt:
-- **Kein Erkenner darf doppelt laufen.** Primär- und Fallback-Zweig schließen sich über
+- **Kein Erkenner darf doppelt laufen.** Primär- und Fallback-Zweig schliessen sich über
   `not cfg_*_fallback` / `cfg_*_fallback` gegenseitig aus.
 - **Alle Flags im selben Lock-Snapshot einfrieren.** Wer sie zweimal frisch liest, kann
   einen Editor dazwischen umschalten sehen und läuft dann doch doppelt.
@@ -762,7 +762,7 @@ Unbekannte Bosse (OCR/LLM erkennt einen Namen der nicht in der Liste ist) werden
 
 **Globale Boss-Bibliothek**: `state.global_bosses` (Editor: Boss-Scan-Menü → "Boss-Bibliothek verwalten") gilt zusätzlich in jedem Boss-Scan. `execute_boss_scan()` merged lokal + global im Lock-Snapshot; lokale Bosse gewinnen bei Namensgleichheit. Mit `boss_learn_global=true` (Config, umschaltbar im Boss-Scan-Menü) landen neu entdeckte Bosse in der Bibliothek statt im Scan.
 
-**Item-Auto-Lernen** (opt-in pro Scan, `ItemScanConfig.learn_unknown`): `execute_item_scan()` lernt unbekannte, nicht-leere Slot-Inhalte als neue globale Items (Kategorie 'Auto', Template + Marker) — nur nach `state.global_items`, nie in die Scan-Config, damit sie nicht ungeprüft geklickt werden. Dedup per Template-Match gegen alle globalen Items. Die Items heißen erst 'Auto <Slot>'; **die LLM-Benennung läuft bewusst NICHT im Scan** (würde den Worker pro Item bis `llm_timeout` blockieren), sondern manuell über den Item-Editor-Befehl `autoname` (`editors/item_editor/commands.py::handle_autoname_command`), der `llm_vision.suggest_item_name()` aus den gespeicherten Templates aufruft.
+**Item-Auto-Lernen** (opt-in pro Scan, `ItemScanConfig.learn_unknown`): `execute_item_scan()` lernt unbekannte, nicht-leere Slot-Inhalte als neue globale Items (Kategorie 'Auto', Template + Marker) — nur nach `state.global_items`, nie in die Scan-Config, damit sie nicht ungeprüft geklickt werden. Dedup per Template-Match gegen alle globalen Items. Die Items heissen erst 'Auto <Slot>'; **die LLM-Benennung läuft bewusst NICHT im Scan** (würde den Worker pro Item bis `llm_timeout` blockieren), sondern manuell über den Item-Editor-Befehl `autoname` (`editors/item_editor/commands.py::handle_autoname_command`), der `llm_vision.suggest_item_name()` aus den gespeicherten Templates aufruft.
 
 ### Koordinaten nach einem Bildschirm-Umbau
 
@@ -779,7 +779,7 @@ Maus-Position trifft den Pixel nie genau, und bei einer Scan-Region schneiden dr
 das Item-Icon an. `fix` bleibt für den Fall ohne Slots.
 
 **Einzelne Punkte statt aller**: Punkte-Menü → `walk`, dann `n` (Maus an die richtige
-Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmäßig
+Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmässig
 verschoben ist, sondern einzelne Ziele umgezogen sind. Weil Schritte über `point_id` auf
 Punkte zeigen und ihre Koordinaten vor jedem Lauf von dort holen, repariert das jeden
 Schritt, der den Punkt benutzt — **auch dessen Prüf-Pixel und else-Klick**, denn die
@@ -800,7 +800,7 @@ und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
   der nächste `save_data()` den alten Stand aus dem Speicher zurück.
 - **Vorher sichern**: `sichere_vor_kalibrierung()` legt ein Export-ZIP an. Kein eigenes
   Backup-Format — der Export kann das, der Import spielt es zurück.
-- `repair` übernimmt nur bei **eindeutiger Zuordnung**: gleiche Anzahl, gleiche Größe,
+- `repair` übernimmt nur bei **eindeutiger Zuordnung**: gleiche Anzahl, gleiche Grösse,
   durchgängiger Versatz. Streuen die Einzelversätze, passiert nichts.
 
 ### Tastendruck in Menüs
@@ -822,7 +822,7 @@ Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_captur
 ## Wichtige Konventionen
 
 - **Keine neuen Dateien anlegen ohne Grund**, bestehende erweitern bevorzugt.
-- **Keine neuen Markdown-Dateien**, außer explizit gefragt. `IDEAS.md` ist das Backlog für noch nicht gebaute Features mit Nutzen+Tradeoff.
+- **Keine neuen Markdown-Dateien**, ausser explizit gefragt. `IDEAS.md` ist das Backlog für noch nicht gebaute Features mit Nutzen+Tradeoff.
 - **Commit-Messages auf Deutsch**, knapper Imperativ-Stil, mehrzeilig erlaubt für Begründung.
 - **Branch-Konvention**: Feature-Branches `claude/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
 
@@ -876,14 +876,14 @@ Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/te
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |
 
-Der Test prüft **beide** Richtungen: kein Windows-Aufruf außerhalb der Liste, und kein
+Der Test prüft **beide** Richtungen: kein Windows-Aufruf ausserhalb der Liste, und kein
 Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält — sonst wächst
 sie zur Fiktion.
 
 **Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
 lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnose`, `scan_studio`,
 `utils/console`), jedes Mal mit eigenen `SM_*`-Konstanten und eigenem `try/except`. Wer
-die Fenstergröße oder den virtuellen Desktop braucht, nimmt:
+die Fenstergrösse oder den virtuellen Desktop braucht, nimmt:
 
 - `get_virtual_desktop()` → `(l, t, r, b)` über alle Monitore, oder `None`
 - `get_virtual_origin()` → linke/obere Kante, `(0, 0)` als Rückfall
@@ -891,7 +891,7 @@ die Fenstergröße oder den virtuellen Desktop braucht, nimmt:
 - `get_screen_center()` → Mitte, mit Rückfallkette bis `(960, 540)`
 
 `None` statt `(0, 0, 0, 0)` ist Absicht: eine Fläche von 0×0 würde jede Koordinate als
-„außerhalb aller Monitore" melden — genau der Fehler, den `diagnose.py` sonst produziert
+„ausserhalb aller Monitore" melden — genau der Fehler, den `diagnose.py` sonst produziert
 hätte.
 
 ## Bekannte Stolperfallen
@@ -901,5 +901,5 @@ hätte.
 - **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.
 - **Der erste OCR-Aufruf lädt Modelle aus dem Netz.** EasyOCR holt beim allerersten `read_text()` Detection- und Recognition-Modell per Download — Sekunden bis Minuten, und es kann mit HTTP-Fehler scheitern; danach liegt ein Aufruf bei ~300 ms. Passiert das im Worker, steht die Sequenz so lange. Dieselbe Klasse Problem wie beim LLM, weshalb die LLM-Benennung bewusst nicht im Scan läuft (s.o.). Wer `ocr_enabled` neu einschaltet, sollte den ersten Aufruf nicht in einen laufenden Scan legen.
-- **`import_bundle()` schreibt sofort auf Platte, `export_bundle()` nicht.** Der Import legt Templates an und ruft `save_global_slots`, `save_global_items`, `save_item_scan`, `save_boss_scan`, `save_global_bosses`, `save_data` **und `save_config`** — er befüllt also nicht bloß den State. Mit einem frischen `AutoClickerState()` schreibt `save_config()` die Default-Config über die vorhandene `config.json`; die Tests in `test_logic.py` übergeben deshalb `import_config=False`. Für einen vollen Roundtrip die Pfad-Relativität nutzen: Datenordner + `config.json` in einen Temp-Ordner kopieren und vorher dorthin `os.chdir()` — die Konstanten in `persistence/paths.py` sind bewusst CWD-relativ.
+- **`import_bundle()` schreibt sofort auf Platte, `export_bundle()` nicht.** Der Import legt Templates an und ruft `save_global_slots`, `save_global_items`, `save_item_scan`, `save_boss_scan`, `save_global_bosses`, `save_data` **und `save_config`** — er befüllt also nicht bloss den State. Mit einem frischen `AutoClickerState()` schreibt `save_config()` die Default-Config über die vorhandene `config.json`; die Tests in `test_logic.py` übergeben deshalb `import_config=False`. Für einen vollen Roundtrip die Pfad-Relativität nutzen: Datenordner + `config.json` in einen Temp-Ordner kopieren und vorher dorthin `os.chdir()` — die Konstanten in `persistence/paths.py` sind bewusst CWD-relativ.
 - **Race-Condition-Sensibel**: Lange-laufende Loops im Worker (Boss-Watcher, Item-Scan) iterieren über shared dicts — Mutationen aus Editoren können während des Laufens passieren. Im Zweifel `dict(state.x)`-Snapshot unter Lock.

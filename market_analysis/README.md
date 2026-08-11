@@ -53,7 +53,7 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 | `Erlös pro Stück` | was wirklich ankommt, beim Player Shop **nach** 1 % Marktsteuer |
 | `Spieler-Gebot (brutto)` / `NPC-Preis` | beide Wege nebeneinander, leer wenn nicht möglich |
 | `Vorteil` | wie deutlich der gewählte Weg besser ist |
-| `Alles selbst farmbar` | `False` heißt: eine Zutat muss gekauft werden |
+| `Alles selbst farmbar` | `False` heisst: eine Zutat muss gekauft werden |
 | `Warnung` | knapper Absatz, breiter Spread, untypischer Preis |
 
 #### Verlässlichkeit
@@ -70,7 +70,7 @@ SKILL_RELIABILITY = {
 }
 ```
 
-Das wirkt **ausschließlich auf die Rangfolge der Empfehlung**. `Gold/h` bleibt der echte
+Das wirkt **ausschliesslich auf die Rangfolge der Empfehlung**. `Gold/h` bleibt der echte
 Wert, und Ketten, Rohdaten, Begründung und der Chart bleiben unverändert – dort willst du
 ja die ungeschönte Zahl sehen. Bei mehrstufigen Ketten zählt der unverlässlichste Schritt
 (Minimum, nicht Produkt): zwei zufallsabhängige Skills machen eine Kette nicht doppelt so
@@ -128,14 +128,14 @@ zugunsten des Player Shops verzerrt. Bei knappen Fällen kippt das die Entscheid
 Richtung NPC. Satz änderbar über `PLAYER_MARKET_TAX` in `config.py`.
 
 **Rohdaten vs. Ketten:** Rohdaten kauft Zutaten am Markt, Ketten farmt sie selbst. Für
-`titanium_bar` heißt das: Rohdaten zieht 3 Erz + 9 Kohle vom Umsatz ab, Ketten rechnet
+`titanium_bar` heisst das: Rohdaten zieht 3 Erz + 9 Kohle vom Umsatz ab, Ketten rechnet
 stattdessen die Minenzeit dazu. Beim echten Farmen zählt die Kette.
 
 **Rohdaten filtert nichts weg.** Fällt ein Item aus den anderen Sheets, steht der Grund
 im Klartext in `AusschlussGrund`, die Zeile ist orange markiert, das verantwortliche
 Feld rot.
 
-**`InKetten` heißt nur „verkaufbar".** Ein Item kann `InKetten=True` haben und trotzdem
+**`InKetten` heisst nur „verkaufbar".** Ein Item kann `InKetten=True` haben und trotzdem
 im Ketten-Tab fehlen – nämlich wenn ein anderes, schnelleres Rezept desselben Items den
 Platz belegt (pro ItemId kennt die Kettenanalyse nur einen Weg).
 
@@ -193,7 +193,7 @@ Diese Perks geben **25 % XP für die zusätzlich erbeutete Ware** zurück – ge
 Fisherman/Lumberjack sonst unterschlagen. Schalter: `extra_yield_xp=True` beim jeweiligen
 Skill in `SKILLS`, Anteil über `EXTRA_YIELD_XP_SHARE`.
 
-**Standardmäßig aus**, weil es ein eigener Kauf ist – wer The fisherman hat, hat nicht
+**Standardmässig aus**, weil es ein eigener Kauf ist – wer The fisherman hat, hat nicht
 zwangsläufig auch Better fisherman. Der Zuschlag hängt am `yield_multiplier`, nicht an den
 Handschuhen (der Perk ist laut Wiki an The fisherman/The lumberjack gekoppelt):
 
