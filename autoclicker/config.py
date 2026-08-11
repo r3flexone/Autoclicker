@@ -20,6 +20,15 @@ logger = logging.getLogger("autoclicker")
 CONFIG_FILE = "config.json"
 SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 
+# Laufstatus für Beobachter ausserhalb des Prozesses (runtime/status.py).
+# Bewusst im Wurzelverzeichnis neben config.json und NICHT in sequences/:
+# `Path.glob("*.json")` erfasst auch Dateien mit führendem Punkt, die Datei
+# stünde also als Sequenz im Studio-Menü, im Konsolen-Menü und in der
+# Start-Migration — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
+# `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
+# unter backups/ liegen statt neben dem Original.
+RUN_STATUS_FILE: str = ".lauf.json"
+
 
 @dataclass
 class AppConfig:

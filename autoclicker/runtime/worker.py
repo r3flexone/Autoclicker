@@ -20,6 +20,7 @@ from ..utils import (
     format_duration,
 )
 from ..utils.console import set_console_title
+from . import status
 from .actions import is_verbose_debug
 from .boss_detection import _confirm_new_bosses
 from .steps import execute_step
@@ -143,6 +144,11 @@ def sequence_worker(state: AutoClickerState) -> None:
         seq = state.active_sequence
         log_event(state, "session_start", detail=seq.name if seq and hasattr(seq, "name") else "")
 
+    # Laufstatus für das Sequenz-Studio (anderer Prozess, sieht diesen State nicht).
+    status.schreibe(state, {"aktiv": True, "sequenz": sequence.name,
+                            "zyklen": sequence.total_cycles,
+                            "start": state.start_time}, sofort=True)
+
     # shutdown_event beendet den Schedule-Watcher IMMER am Worker-Ende (finally),
     # auch bei regulärem Sequenz-Ende — sonst läuft der Timer als Geister-Thread weiter.
     schedule_shutdown = threading.Event()
@@ -156,6 +162,9 @@ def sequence_worker(state: AutoClickerState) -> None:
         _run_end_phase(state, sequence)
     finally:
         schedule_shutdown.set()
+        # Auch bei Abbruch: eine stehengebliebene Statusdatei behauptet einen
+        # Lauf, den es nicht gibt.
+        status.beende()
 
     # Laufenden Async-LLM-Boss-Thread abwarten, bevor Log/Statistik abgeschlossen
     # werden. Sonst kann der Daemon-Thread nach Sequenz-Ende noch Klicks/Tasten
@@ -332,6 +341,9 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
         if has_init and not state.stop_event.is_set():
             print(col("\n[INIT] Führe Initialisierung aus...", "green"))
             total_init = len(sequence.init_steps)
+            status.schreibe(state, {"phase": "INIT", "phase_index": -1,
+                                    "durchlauf": 1, "wiederholungen": 1,
+                                    "bloecke": total_init}, sofort=True)
             for i, step in enumerate(sequence.init_steps):
                 if state.stop_event.is_set() or state.quit_event.is_set():
                     break
@@ -373,6 +385,8 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 state.clicked_categories.clear()
 
             cycle_str = f"Zyklus {cycle_count}" if total_cycles == 0 else f"Zyklus {cycle_count}/{total_cycles}"
+            status.schreibe(state, {"zyklus": cycle_count, "zyklen": total_cycles},
+                            sofort=True)
 
             # LOOP-Phasen
             if has_loops and not state.stop_event.is_set():
@@ -423,10 +437,14 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                 continue
 
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
+        status.schreibe(state, {"phase": loop_phase.name, "phase_index": idx,
+                                "wiederholungen": loop_phase.repeat,
+                                "bloecke": total_steps}, sofort=True)
 
         for repeat_num in range(1, loop_phase.repeat + 1):
             if state.stop_event.is_set() or state.quit_event.is_set():
                 break
+            status.schreibe(state, {"durchlauf": repeat_num}, sofort=True)
 
             if debug:
                 print(dbg(f"Loop {repeat_num}/{loop_phase.repeat} von '{loop_phase.name}'"))
@@ -456,6 +474,9 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
 
     print(col("\n[END] Führe End-Sequenz aus...", "cyan"))
     total_end = len(sequence.end_steps)
+    status.schreibe(state, {"phase": "END", "phase_index": -1,
+                            "durchlauf": 1, "wiederholungen": 1,
+                            "bloecke": total_end}, sofort=True)
 
     for i, step in enumerate(sequence.end_steps):
         if state.quit_event.is_set():

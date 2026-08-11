@@ -125,13 +125,37 @@ def _stelle(step: SequenceStep) -> str:
     return f"{ref}({step.x},{step.y})"
 
 
+def scan_warnungen(board: SequenceBoard) -> list[str]:
+    """Alle Scan-Blöcke ohne Konfiguration, als lesbare Stellen.
+
+    Steht ausserhalb der Klasse, weil es zwei Fragen beantwortet: „hat die
+    OFFENE Sequenz noch einen leeren Scan?" (Meldung beim Speichern) und
+    „hat DIESE Datei welche?" (Übersicht). Zweimal dieselbe Regel getrennt
+    hinzuschreiben hiesse, dass eine Korrektur an der einen an der anderen
+    vorbeigeht — dieselbe Begründung wie bei `mehrfach_auswahl()`.
+    """
+    raus = []
+    for lane in board.lanes:
+        for row, step in enumerate(lane.steps, start=1):
+            typ = block_type(step)
+            feld = SCAN_FELD.get(typ)
+            if feld is not None and not (getattr(step, feld) or "").strip():
+                raus.append(f"{BLOCK_LABELS[typ]} in '{lane.name}' (Block {row})")
+    return raus
+
+
 class StudioBridge:
     """Hält Sequenz, Auswahl und Punkte-Palette. Jede Methode ist ein UI-Befehl.
 
-    Alle öffentlichen Methoden geben `snapshot()` zurück — die Oberfläche
+    Alle Methoden, die etwas ÄNDERN, geben `snapshot()` zurück — die Oberfläche
     rendert nach jedem Befehl neu und muss nichts selbst nachhalten. Compound-
     Argumente kommen als **ein** dict: pywebview reicht je nach Version nur ein
     Argument durch, und ein dict bleibt lesbar, wenn ein Feld dazukommt.
+
+    Zwei Methoden fallen heraus und **fragen nur**: `sequenz_liste()` und
+    `lauf_status()`. Ihre Antwort ist keine Momentaufnahme, sondern ein eigener
+    Gegenstand — die Oberfläche holt sie über `frage()` statt über `ruf()`,
+    sonst überschriebe die Antwort den Editor-Zustand.
     """
 
     def __init__(self, seq: Sequence, filepath, sequences_dir: str):
@@ -400,6 +424,92 @@ class StudioBridge:
 
     # ------------------------------------------------------------ Sequenz-Ebene
 
+    def sequenz_liste(self, daten: Optional[dict] = None) -> list[dict]:
+        """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
+
+        **Die eine Methode, die keine Momentaufnahme zurückgibt** (mit
+        `lauf_status()`). Deshalb ruft die Oberfläche sie über `frage()` statt
+        über `ruf()`: `ruf()` ersetzt `S` mit der Antwort, und eine Liste an
+        dieser Stelle hiesse Editor-Zustand weg, sobald man die Übersicht
+        aufmacht. Wer hier etwas ergänzt, prüft zuerst, welcher der beiden
+        Kanäle gemeint ist.
+
+        Bewusst über `load_sequence_file()` und nicht über einen eigenen
+        JSON-Leser: so laufen Migration und Punkt-Auflösung mit, und die Zahlen
+        hier sind dieselben, die der Editor beim Öffnen zeigt.
+
+        Nur Kennzahlen, keine Schritte — die Liste soll auch bei 40 Sequenzen
+        sofort stehen, und gelesen wird sie bei jedem Öffnen des Reiters neu
+        (im Hauptprozess kann zwischendurch eine dazugekommen sein).
+
+        **Der Ordner wird selbst durchgesehen, nicht `list_available_sequences()`
+        gefragt.** Die überspringt unlesbare Dateien stillschweigend — richtig für
+        ein Menü (laden liesse sie sich ohnehin nicht), falsch für eine Übersicht:
+        genau dann sucht man die Datei im Explorer, weil sie nirgends auftaucht.
+        Hier steht sie mit dem Vermerk, dass sie kaputt ist.
+        """
+        raus: list[dict] = []
+        ordner = Path(self.sequences_dir)
+        try:
+            dateien = sorted(p for p in ordner.glob("*.json") if p.name != "points.json")
+        except OSError:
+            return []
+        for pfad in dateien:
+            try:
+                geaendert = pfad.stat().st_mtime
+            except OSError:
+                geaendert = 0.0
+            seq = load_sequence_file(pfad)
+            if seq is None:
+                raus.append({"name": pfad.stem, "datei": pfad.name, "defekt": True,
+                             "geaendert": geaendert, "offen": pfad == self.filepath})
+                continue
+            raus.append({
+                "name": seq.name,
+                "datei": pfad.name,
+                "defekt": False,
+                "beschreibung": seq.description,
+                "zyklen": seq.total_cycles,
+                "init": len(seq.init_steps),
+                "end": len(seq.end_steps),
+                "phasen": [{"name": lp.name, "schritte": len(lp.steps),
+                            "wiederholungen": lp.repeat,
+                            "start": lp.scheduled_start or ""}
+                           for lp in seq.loop_phases],
+                "schritte": seq.total_steps(),
+                "geaendert": geaendert,
+                "offen": pfad == self.filepath,
+                "warnungen": scan_warnungen(sequence_to_board(seq)),
+            })
+        return raus
+
+    def lauf_status(self, daten: Optional[dict] = None) -> dict:
+        """Was gerade läuft — gelesen aus der Statusdatei des Hauptprozesses.
+
+        Der zweite Kanal neben `sequenz_liste()`: keine Momentaufnahme, deshalb
+        über `frage()` abzuholen. Und **nie ein Fehler** — dass nichts läuft ist
+        der Normalfall, nicht der Ausnahmefall.
+
+        Der Hauptprozess und dieses Fenster teilen keinen Speicher; die Datei
+        ist der gemeinsame Nenner, so wie überall sonst zwischen den beiden.
+        """
+        import json
+        from ...config import RUN_STATUS_FILE
+        try:
+            with open(RUN_STATUS_FILE, "r", encoding="utf-8") as f:
+                zustand = json.load(f)
+        except (OSError, ValueError):
+            return {"aktiv": False}
+        if not isinstance(zustand, dict):
+            return {"aktiv": False}
+        # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
+        # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
+        # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
+        # Farbe wartet, geht durch `execute_step`.
+        if time.time() - float(zustand.get("stand") or 0) > 5:
+            return {"aktiv": False, "verwaist": True}
+        return zustand
+
     def laden(self, daten: dict) -> dict:
         """Öffnet eine gespeicherte Sequenz. Fragt bei ungespeicherten Änderungen."""
         name = (daten or {}).get("name") or ""
@@ -450,13 +560,8 @@ class StudioBridge:
 
     def _scan_ohne_namen(self) -> Optional[str]:
         """Erster Scan-Block mit leerem Namen, als lesbare Stelle."""
-        for lane in self.board.lanes:
-            for row, step in enumerate(lane.steps, start=1):
-                typ = block_type(step)
-                feld = SCAN_FELD.get(typ)
-                if feld is not None and not (getattr(step, feld) or "").strip():
-                    return f"{BLOCK_LABELS[typ]} in '{lane.name}' (Block {row})"
-        return None
+        offen = scan_warnungen(self.board)
+        return offen[0] if offen else None
 
     def speichern(self, daten: Optional[dict] = None) -> dict:
         """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen.

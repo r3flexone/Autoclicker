@@ -23,6 +23,7 @@ from ..winapi import (
     send_click, send_key, send_scroll,
     is_target_window_active, get_foreground_window_title,
 )
+from . import status
 
 
 # =============================================================================
@@ -238,6 +239,9 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     while remaining > 0:
         if state.stop_event.is_set():
             return False
+
+        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
+        status.lebenszeichen(state)
 
         if state.skip_event.is_set():
             state.skip_event.clear()

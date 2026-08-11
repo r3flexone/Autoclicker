@@ -123,12 +123,15 @@ label.an input{width:auto}
   padding:9px 11px;display:flex;flex-direction:column;gap:7px}
 .phase-kopf.init{border-left:3px solid #64748B}
 .phase-kopf.loop{border-left:3px solid var(--accent)}
-.phase-kopf.end{border-left:3px solid #38BDF8}
+/* END stand auf #38BDF8 — ein fuenftes Blau neben dem KLICK-Blau, das nichts
+   bedeutete. Grau wie INIT sagt richtig, was beide sind: Rahmen, keine Schleife. */
+.phase-kopf.end{border-left:3px solid #64748B}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
-.zaehler{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none}
+.zaehler{font-family:var(--mono);font-size:10.5px;color:var(--accent);flex:none;
+  background:#F59E0B1F;border:1px solid #F59E0B59;border-radius:4px;padding:2px 6px}
 .phase-werkzeug{display:flex;gap:6px;align-items:center}
 .phase-werkzeug input{padding:3px 5px;font-size:11.5px}
 
@@ -138,27 +141,41 @@ label.an input{width:auto}
   cursor:grab;overflow:hidden;
 }
 .karte:hover{border-color:var(--dim)}
-.karte.gewaehlt{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-.karte-kopf{display:flex;align-items:center;gap:7px;padding:6px 9px;background:var(--sub);
-  border-bottom:1px solid var(--line)}
-.karte-typ{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;font-weight:600;
-  padding:2px 5px;border-radius:3px;color:#0C0F14;flex:none}
-.karte-nr{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:auto;flex:none}
-.karte-leib{padding:8px 10px;display:flex;flex-direction:column;gap:5px}
-.karte-titel{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.karte-zeile{font-family:var(--mono);font-size:11px;color:var(--muted)}
+/* Der Ring liegt AUSSEN. Ein `inset`-Schatten verschwand unter der farbigen
+   Kopfzeile — auf gelbem ITEM-SCAN-Grund war die gewaehlte Karte von einer
+   ungewaehlten nicht zu unterscheiden. */
+.karte.gewaehlt{border-color:var(--accent);box-shadow:0 0 0 3px #F59E0B1F}
+/* Die Kopfzeile traegt die Typfarbe ueber die volle Breite, nicht nur ein Chip
+   darin: eine Phase liest sich dann als Streifenmuster, statt dass man jede
+   Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
+   (#0C0F14) — die Grundfarben sind hell. */
+.karte-kopf{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
+.karte-typ{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
+  color:#0C0F14;padding:0;background:none;flex:none;opacity:.75}
+.karte-titel{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* margin-left:auto haelt die Nummer rechts, auch wenn die Karte keinen Titel
+   hat und damit das flex:1-Element fehlt, das sie sonst hinueberschiebt. Mit
+   Titel ist die Regel wirkungslos — der nimmt den freien Platz schon weg. */
+.karte-nr{font-family:var(--mono);font-size:10px;color:#0C0F1499;margin-left:auto;flex:none}
+.karte-leib{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
+.karte-zeile{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
 .karte-farbe{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
 .karte-farbe .feldchen{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
 .karte-else{display:flex;align-items:center;gap:6px;padding-top:6px;
   border-top:1px dashed var(--line);color:var(--accent);font-size:11px}
+/* Die Marken sitzen jetzt auf der farbigen Kopfzeile, also dunkel auf hell. Die
+   Warnmarke stand vorher auf Amber — auf einem ITEM-SCAN (ebenfalls Amber) waere
+   das Amber auf Amber gewesen, also unlesbar genau dort, wo sie am haeufigsten
+   auftaucht. Sie hebt sich deshalb ueber ein helles Feld ab, nicht ueber Farbe. */
 .marke-klein{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
-  border:1px solid var(--line);color:var(--dim)}
-.marke-klein.warn{color:var(--accent);border-color:var(--accent)}
+  border:1px solid #0C0F1440;color:#0C0F14AA;flex:none}
+.marke-klein.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
 
 /* Die Einfügestelle liegt zwischen zwei Karten und ist unsichtbar, bis etwas
    darüber schwebt. Die negativen Ränder heben die beiden Flex-Abstände wieder
    auf, die sie sonst zusätzlich zwischen die Karten schöbe. */
-.ablage{height:2px;border-radius:1px;background:transparent;margin:-5px 0}
+.ablage{height:3px;border-radius:2px;background:transparent;margin:-5px 0}
 .ablage.aktiv{background:var(--accent)}
 .leerzone{border:1px dashed var(--line);border-radius:6px;padding:9px;text-align:center;
   color:var(--dim);font-size:12px;cursor:pointer}
@@ -191,6 +208,59 @@ label.an input{width:auto}
 .mitinfo{display:flex;align-items:center;gap:5px}
 .leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
+/* ---------------------------------------------------------------- Ansichten */
+/* Die Umschaltleiste im Kopf. Welche Ansicht offen ist, ist reiner
+   Oberflaechenzustand — er gehoert nicht in die Momentaufnahme und nicht in
+   die Bruecke, denn er aendert nichts an der Sequenz. */
+.tabs{display:flex;gap:2px;background:var(--bg);border:1px solid var(--line);
+  border-radius:6px;padding:3px;flex:none}
+.tab{padding:4px 12px;border-radius:4px;font-size:12.5px;color:var(--muted)}
+.tab:hover{color:var(--text)}
+.tab.an{background:var(--sub);color:var(--accent);font-weight:600}
+
+/* ------------------------------------------------------------- Sequenzliste */
+.karten{flex:1;min-height:0;display:grid;align-content:start;
+  grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;
+  padding:24px 28px;overflow-y:auto}
+.seq-karte{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:16px;display:flex;flex-direction:column;gap:12px}
+.seq-karte.offen{border-color:var(--accent)}
+.seq-karte.defekt{border-color:var(--err)}
+.seq-kopf{display:flex;align-items:baseline;gap:8px}
+.seq-name{font-size:14px;font-weight:600;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seq-notiz{font-size:12px;color:var(--muted);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Der Phasenbalken ist die eigentliche Idee der Uebersicht: INIT/Loops/END als
+   Segmente, Breite nach Schrittzahl. Wie gross eine Sequenz ist und wo ihr
+   Gewicht liegt, steht damit im Bild statt in vier Zahlen. */
+.balken{display:flex;gap:3px;height:8px}
+.balken span{border-radius:2px;min-width:3px}
+.seq-zahlen{display:flex;flex-wrap:wrap;gap:6px}
+.zahl{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
+  border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+.seq-fuss{display:flex;align-items:center;gap:8px;margin-top:auto}
+.seq-warn{font-size:11.5px;color:var(--accent);line-height:1.5}
+
+/* ---------------------------------------------------------------- Live-Run */
+.lauf{flex:1;min-height:0;overflow-y:auto;padding:24px 28px;display:flex;
+  flex-direction:column;gap:18px;align-items:stretch}
+.lauf-kopf{display:flex;align-items:center;gap:12px}
+.lampe{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
+.lampe.an{background:var(--ok);box-shadow:0 0 0 4px #3ED07A26}
+.lauf-name{font-size:18px;font-weight:600;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tafel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:16px;display:flex;flex-direction:column;gap:10px}
+.tafel.laufend{border-left:3px solid var(--accent)}
+.fortschritt{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
+.fortschritt span{display:block;height:100%;background:var(--accent);border-radius:3px}
+.kachel{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
+.kachel > div{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:12px;display:flex;flex-direction:column;gap:4px}
+.kachel b{font-family:var(--mono);font-size:20px;font-weight:600}
+.kachel small{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
+
 /* ------------------------------------------------------------------- Dialog */
 .schleier{position:fixed;inset:0;background:#0C0F14CC;display:flex;align-items:center;
   justify-content:center;z-index:20}
@@ -214,6 +284,11 @@ label.an input{width:auto}
       </div>
       <span class="titel">SEQUENZ-STUDIO</span>
     </div>
+    <div class="tabs">
+      <button class="tab an" data-ansicht="editor">Editor</button>
+      <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
+      <button class="tab" data-ansicht="lauf">Live-Run</button>
+    </div>
     <div class="trenner"></div>
     <div class="reihe">
       <select id="seq-auswahl" style="width:200px"></select>
@@ -229,7 +304,7 @@ label.an input{width:auto}
     <span class="status" id="status"></span>
   </header>
 
-  <div class="rumpf">
+  <div class="rumpf" id="rumpf">
     <aside class="seite links">
       <div class="abschnitt">
         <span class="ueberschrift">SEQUENZ</span>
@@ -273,6 +348,13 @@ label.an input{width:auto}
       <div class="abschnitt wachsend" id="inspektor"></div>
     </aside>
   </div>
+
+  <!-- Die beiden anderen Ansichten. Sie liegen im Dokument statt gebaut zu
+       werden, damit `setzeAnsicht()` nur `hidden` umlegen muss: der Editor
+       behaelt so seinen DOM (und mit ihm Scrollstand und Tippfokus), waehrend
+       man drueben nachsieht, was gerade laeuft. -->
+  <div class="karten" id="sicht-sequenzen" hidden></div>
+  <div class="lauf" id="sicht-lauf" hidden></div>
 </div>
 
 <div class="schleier" id="schleier" hidden>
@@ -445,11 +527,46 @@ async function ruf(name, daten) {
   }
 }
 
+/** Wie ruf(), aber die Antwort ersetzt NICHT die Momentaufnahme.
+ *
+ * Für alles, was gefragt und nicht befohlen wird: Sequenzliste, Laufstatus.
+ * Über `ruf()` geholt würde ihre Antwort in `S` landen und den Editor-Zustand
+ * zerschiessen — ein Blick in die Übersicht wäre dann ein Datenverlust. */
+async function frage(name, daten) {
+  try {
+    return await window.pywebview.api[name](daten === undefined ? null : daten);
+  } catch (e) {
+    setzeStatus({text: String(e && e.message ? e.message : e), art: "err"});
+    return null;
+  }
+}
+
 function uebernimm(neu) {
   if (!neu) return;
   S = neu;
   zeichne();
   if (S.frage) zeigeFrage(S.frage);
+}
+
+/* ----------------------------------------------------------------- Ansichten */
+
+let ansicht = "editor";
+
+/** Schaltet zwischen Editor, Übersicht und Live-Run um.
+ *
+ * Reiner Oberflächenzustand: die Brücke erfährt davon nichts, und in der
+ * Momentaufnahme steht er auch nicht — er ändert ja nichts an der Sequenz.
+ * Der Editor bleibt dabei im Dokument stehen (nur `hidden`), damit
+ * Scrollstand und ungespeicherte Eingaben den Ausflug überleben. */
+function setzeAnsicht(neu) {
+  ansicht = neu;
+  for (const t of document.querySelectorAll(".tab"))
+    t.classList.toggle("an", t.dataset.ansicht === neu);
+  $("rumpf").hidden = neu !== "editor";
+  $("sicht-sequenzen").hidden = neu !== "sequenzen";
+  $("sicht-lauf").hidden = neu !== "lauf";
+  if (neu === "sequenzen") zeichneSequenzenliste();
+  laufTaktSetzen(neu === "lauf");
 }
 
 /* ------------------------------------------------------------------ Zeichnen */
@@ -613,8 +730,10 @@ function abwerfen(e, phase, zeile) {
 }
 
 function zeichneKarte(phase, block) {
+  // Der Titel steht in der Kopfzeile, nicht im Leib: dort traegt er die Typfarbe
+  // mit und steht NEBEN dem Typ statt darunter — eine Zeile weniger pro Karte,
+  // und bei 50 Karten untereinander ist das der Unterschied.
   const leib = el("div", {class: "karte-leib"},
-    block.titel ? el("div", {class: "karte-titel"}, block.titel) : null,
     block.zeilen.map((z) => el("div", {class: "karte-zeile"}, z)));
 
   if (block.farbfeld) {
@@ -649,13 +768,193 @@ function zeichneKarte(phase, block) {
       abwerfen(e, phase.index, block.zeile + (e.clientY > r.top + r.height / 2 ? 1 : 0));
     },
   },
-    el("div", {class: "karte-kopf"},
-      el("span", {class: "karte-typ", style: "background:" + block.farbe}, block.label),
+    el("div", {class: "karte-kopf", style: "background:" + block.farbe},
+      el("span", {class: "karte-typ"}, block.label),
+      block.titel ? el("span", {class: "karte-titel"}, block.titel) : null,
       block.prueft ? el("span", {class: "marke-klein", title: "prüft nach der Aktion nach"},
                         "prüft") : null,
       block.warnung ? el("span", {class: "marke-klein warn"}, block.warnung) : null,
       el("span", {class: "karte-nr"}, String(block.zeile + 1).padStart(2, "0"))),
     leib);
+}
+
+/* -------------------------------------------------------- Ansicht: Sequenzen */
+
+/** Zeitstempel (Sekunden) als „TT.MM.JJJJ HH:MM“.
+ *
+ * Von Hand statt `toLocaleString()`: das Fenster erbt seine Locale von der
+ * WebView, und die muss nicht die der Konsole sein. Ein Datum, das mal
+ * deutsch und mal amerikanisch herum steht, liest man zweimal falsch. */
+function zeitpunkt(sekunden) {
+  if (!sekunden) return "—";
+  const d = new Date(sekunden * 1000);
+  const zz = (n) => String(n).padStart(2, "0");
+  return zz(d.getDate()) + "." + zz(d.getMonth() + 1) + "." + d.getFullYear() +
+         " " + zz(d.getHours()) + ":" + zz(d.getMinutes());
+}
+
+/** INIT / Loop-Phasen / END als Segmente, Breite nach Schrittzahl.
+ *
+ * Leere Phasen fallen raus statt als Strich stehenzubleiben: ein Segment der
+ * Breite 0 sagt nichts, kostet aber eine Lücke. */
+function phasenBalken(s) {
+  const teile = [{n: s.init, farbe: "#64748B", was: "INIT: " + s.init}]
+    .concat((s.phasen || []).map((p) => ({n: p.schritte, farbe: "#F59E0B",
+      was: p.name + ": " + p.schritte + " Schritte ×" + p.wiederholungen +
+           (p.start ? " ab " + p.start : "")})))
+    .concat([{n: s.end, farbe: "#64748B", was: "END: " + s.end}]);
+  const summe = teile.reduce((a, t) => a + t.n, 0) || 1;
+  return el("div", {class: "balken"}, teile.filter((t) => t.n).map((t) =>
+    el("span", {style: "flex:" + t.n / summe + ";background:" + t.farbe, title: t.was})));
+}
+
+async function zeichneSequenzenliste() {
+  const ziel = $("sicht-sequenzen");
+  const liste = await frage("sequenz_liste");
+  // Zwischen Frage und Antwort kann umgeschaltet worden sein — dann gehoert
+  // die Antwort in eine Ansicht, die niemand mehr ansieht.
+  if (ansicht !== "sequenzen") return;
+  ziel.replaceChildren();
+  if (!liste || !liste.length) {
+    // grid-column: sonst stünde der Text in der ersten Spalte des Rasters und
+    // wäre auf einem breiten Fenster in die linke Ecke gequetscht.
+    ziel.appendChild(el("p", {class: "leer", style: "grid-column:1/-1"},
+      "Noch keine Sequenz gespeichert. Im Editor eine anlegen (Neu) oder im " +
+      "Hauptprozess mit CTRL+ALT+J eine aufnehmen."));
+    return;
+  }
+  for (const s of liste) ziel.appendChild(seqKarte(s));
+}
+
+function seqKarte(s) {
+  const karte = el("div", {class: "seq-karte" + (s.offen ? " offen" : "") +
+                                  (s.defekt ? " defekt" : "")});
+  karte.appendChild(el("div", {class: "seq-kopf"},
+    el("span", {class: "seq-name"}, s.name),
+    s.offen ? el("span", {class: "zahl", style: "color:var(--accent)"}, "offen") : null));
+
+  if (s.defekt) {
+    karte.appendChild(el("p", {class: "seq-warn"},
+      "Nicht ladbar — die Datei ist beschädigt oder kein gültiges Sequenz-Format. " +
+      "Sie bleibt unangetastet; nachsehen lohnt sich in " + s.datei + "."));
+  } else {
+    if (s.beschreibung) karte.appendChild(el("p", {class: "seq-notiz"}, s.beschreibung));
+    karte.appendChild(phasenBalken(s));
+    karte.appendChild(el("div", {class: "seq-zahlen"},
+      el("span", {class: "zahl"}, s.schritte + " Schritte"),
+      el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
+      el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")));
+    if (s.warnungen && s.warnungen.length) {
+      karte.appendChild(el("p", {class: "seq-warn"},
+        s.warnungen.length + "× Scan ohne Konfiguration — " + s.warnungen[0] +
+        (s.warnungen.length > 1 ? " u. a." : "")));
+    }
+  }
+
+  karte.appendChild(el("div", {class: "seq-fuss"},
+    el("span", {class: "klein mono wachse"}, s.datei + " · " + zeitpunkt(s.geaendert)),
+    // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
+    // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
+    s.defekt ? null : el("button", {
+      class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
+      onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
+    }, s.offen ? "geöffnet" : "Öffnen")));
+  return karte;
+}
+
+/* --------------------------------------------------------- Ansicht: Live-Run */
+
+let laufTakt = null;
+
+/** Nur pollen, solange der Reiter offen ist.
+ *
+ * Ein Fenster, das im Hintergrund alle 500 ms eine Datei liest, tut das die
+ * ganze Nacht — und die Datei liegt auf derselben Platte, auf die der Worker
+ * gerade schreibt. */
+function laufTaktSetzen(an) {
+  if (laufTakt) { clearInterval(laufTakt); laufTakt = null; }
+  if (!an) return;
+  zeichneLauf();
+  laufTakt = setInterval(zeichneLauf, 500);
+}
+
+/** Sekunden als „2:05“ bzw. „1:23:45“. */
+function dauer(sekunden) {
+  const s = Math.max(0, Math.floor(sekunden));
+  const zz = (n) => String(n).padStart(2, "0");
+  const std = Math.floor(s / 3600);
+  return (std ? std + ":" + zz(Math.floor(s / 60) % 60) : String(Math.floor(s / 60))) +
+         ":" + zz(s % 60);
+}
+
+function balken(ist, soll) {
+  const anteil = soll > 0 ? Math.max(0, Math.min(1, ist / soll)) : 0;
+  return el("div", {class: "fortschritt"}, el("span", {style: "width:" + anteil * 100 + "%"}));
+}
+
+async function zeichneLauf() {
+  const z = await frage("lauf_status");
+  if (ansicht !== "lauf") return;
+  const ziel = $("sicht-lauf");
+  ziel.replaceChildren();
+  if (!z || !z.aktiv) {
+    // Leerzustand ehrlich beschriften statt mit Nullen füllen: eine Tafel voller
+    // Nullen sieht aus wie ein Lauf, der nichts tut.
+    ziel.appendChild(el("div", {class: "lauf-kopf"},
+      el("span", {class: "lampe"}),
+      el("span", {class: "lauf-name"},
+         z && z.verwaist ? "Nicht sauber beendet" : "Es läuft gerade keine Sequenz")));
+    ziel.appendChild(el("p", {class: "hinweis"}, z && z.verwaist
+      ? "Der letzte Lauf hat sich nicht sauber beendet — der Hauptprozess wurde " +
+        "vermutlich hart abgeschossen. Ein neuer Start räumt das auf."
+      : "Gestartet wird im Hauptprozess mit CTRL+ALT+S. Diese Ansicht zeigt " +
+        "dann mit, wo die Sequenz gerade steht."));
+    return;
+  }
+
+  const jetzt = Date.now() / 1000;
+  ziel.appendChild(el("div", {class: "lauf-kopf"},
+    el("span", {class: "lampe an"}),
+    el("span", {class: "lauf-name"}, z.sequenz || "(ohne Namen)"),
+    el("span", {class: "zahl"},
+       "Zyklus " + (z.zyklus || 0) + " / " + (z.zyklen ? z.zyklen : "∞")),
+    el("span", {class: "zahl"}, "läuft " + dauer(jetzt - (z.start || jetzt)))));
+
+  // Phase: die laufende, mit ihrem Durchlauf. Die ÜBRIGEN Phasen stehen bewusst
+  // nicht daneben — die Statusdatei kennt sie nicht, und sie aus der geöffneten
+  // Sequenz zu holen wäre geraten: laufen kann eine ganz andere.
+  ziel.appendChild(el("div", {class: "tafel laufend"},
+    el("div", {class: "reihe"},
+      el("span", {class: "wachse", style: "font-weight:600"}, z.phase || "—"),
+      el("span", {class: "klein mono"},
+         "Durchlauf " + (z.durchlauf || 1) + " / " + (z.wiederholungen || 1))),
+    balken(z.durchlauf || 0, z.wiederholungen || 1)));
+
+  ziel.appendChild(el("div", {class: "tafel"},
+    el("div", {class: "reihe"},
+      el("span", {class: "ueberschrift wachse"}, "AKTUELLER BLOCK"),
+      el("span", {class: "klein mono"},
+         "Block " + (z.block || 0) + " / " + (z.bloecke || 0))),
+    el("div", {style: "font-size:14px;font-weight:600"}, z.block_titel || "(ohne Namen)"),
+    el("div", {class: "karte-zeile"}, z.block_label || ""),
+    balken(z.block || 0, z.bloecke || 1),
+    el("span", {class: "klein mono"},
+       "seit " + dauer(jetzt - (z.block_seit || jetzt)))));
+
+  const zaehler = z.zaehler || {};
+  ziel.appendChild(el("div", {class: "kachel"},
+    [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
+     ["Timeouts", "timeouts"], ["Übersprungen", "uebersprungen"],
+     ["Neustarts", "neustarts"]].map(([text, schluessel]) =>
+      el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
+                    el("small", {}, text.toUpperCase())))));
+
+  // Keine Steuerknöpfe: Start/Pause/Stopp gehören in den Hauptprozess, dieser
+  // hier hat keinen Zugriff auf `state.stop_event`. Ein Knopf, der nur so
+  // aussieht, als hielte er den Lauf an, wäre schlimmer als kein Knopf.
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Steuern im Hauptprozess: CTRL+ALT+S startet und stoppt, CTRL+ALT+G pausiert, " +
+    "CTRL+ALT+F beendet sanft nach dem laufenden Zyklus."));
 }
 
 /* ----------------------------------------------------------------- Inspektor */
@@ -931,6 +1230,9 @@ async function fortfahren(verwerfen) {
 /* --------------------------------------------------------------- Verdrahtung */
 
 function verdrahte() {
+  for (const t of document.querySelectorAll(".tab"))
+    t.addEventListener("click", () => setzeAnsicht(t.dataset.ansicht));
+
   $("btn-laden").addEventListener("click",
     () => ruf("laden", {name: $("seq-auswahl").value}));
   $("seq-auswahl").addEventListener("dblclick",
@@ -962,6 +1264,10 @@ async function speichere() {
   // Ohne das Blur ginge die letzte Eingabe beim Speichern verloren.
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   await ruf("speichern");
+  // Nur hier nachziehen, nicht in `zeichne()`: die Liste liest jede Sequenzdatei
+  // einmal, und `zeichne()` läuft nach JEDEM Befehl. Ändern kann sich die Liste
+  // ohnehin nur durch ein Speichern (Umbenennen legt eine neue Datei an).
+  if (ansicht === "sequenzen") zeichneSequenzenliste();
 }
 
 function imTextfeld() {

@@ -40,6 +40,11 @@ Thumbs.db
 # User config (auto-generated with defaults)
 config.json
 
+# Laufstatus des Workers (runtime/status.py) - existiert nur waehrend eine
+# Sequenz laeuft. Liegt hier oben und nicht in sequences/, weil ein
+# *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
+.lauf.json
+
 # User data folders (auto-generated)
 # Reihenfolge wie das Persistenz-Layout in CLAUDE.md — wer dort einen Ordner ergaenzt,
 # ergaenzt ihn hier. Sonst landen fremde Boss-Profile und Session-Logs im naechsten PR.

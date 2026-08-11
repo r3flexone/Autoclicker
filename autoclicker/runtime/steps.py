@@ -30,9 +30,11 @@ from .actions import (
     safe_click, safe_key, safe_scroll, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, execute_else_action,
 )
+from . import status
 from .debug import (
-    GATE_RUN, GATE_SKIP, GATE_STOP, color_comparison, color_swatch, is_detail_debug,
-    is_step_mode, print_step_detail, show_point, skip_waits, step_gate, step_label,
+    GATE_RUN, GATE_SKIP, GATE_STOP, color_comparison, color_swatch, describe_step,
+    is_detail_debug, is_step_mode, print_step_detail, show_point, skip_waits,
+    step_gate, step_label,
 )
 from .boss_detection import (
     execute_boss_scan, _execute_boss_action, _execute_detection_action,
@@ -285,6 +287,9 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     scan_count = 0
     start_time = time.time()
     while not state.stop_event.is_set():
+        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
+        status.lebenszeichen(state)
+
         if not wait_while_paused(state, f"Boss-Watcher '{watcher_name}' pausiert..."):
             return False
 
@@ -416,6 +421,9 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     wait_verb = "bis weg:" if wc.until_gone else "auf"
 
     while not state.stop_event.is_set():
+        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
+        status.lebenszeichen(state)
+
         if state.skip_event.is_set():
             state.skip_event.clear()
             # SKIP überspringt das WARTEN, nicht den Schritt — der Klick folgt.
@@ -696,6 +704,15 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         print(col("\n[FAILSAFE] Maus in Ecke erkannt! Stoppe...", "red"))
         state.stop_event.set()
         return False
+
+    # Laufstatus für das Sequenz-Studio. Gedrosselt (kein `sofort`): die Phasen-
+    # und Zykluswechsel im Worker schreiben immer, ein einzelner Block darf
+    # ausgelassen werden. `describe_step` statt eines Typ-Kürzels, weil es hier
+    # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
+    status.schreibe(state, {"block": step_num, "bloecke": total_steps,
+                            "block_label": describe_step(step),
+                            "block_titel": step.name or "",
+                            "block_seit": time.time()})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
     # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.

@@ -820,6 +820,12 @@ _MIGRATE_AUSNAHMEN = {
     # gelesen wie eine Fremddatei - fehlerhafte Eintraege fliegen einzeln raus.
     "autoclicker/runtime/item_scan.py":
         "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
+    # Der einzige json.load() in der Bruecke ist der Laufstatus (.lauf.json aus
+    # runtime/status.py): eine transiente Zustandsdatei, die der Worker beim Ende
+    # loescht - kein Bestand, also nichts zu heben. Sequenzen laedt sie ueber
+    # load_sequence_file(), und das migriert.
+    "autoclicker/editors/sequence_studio/bridge.py":
+        "liest nur den transienten Laufstatus; Sequenzen ueber load_sequence_file()",
 }
 _leser, _ohne_aufruf = [], []
 for _pf in sorted((_repo / "autoclicker").rglob("*.py")):
@@ -4265,8 +4271,15 @@ import inspect as _inspect13, re as _re13
 
 _html13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
            .read_text(encoding="utf-8"))
-_gerufen13 = sorted(set(_re13.findall(r'ruf\("([a-z_]+)"', _html13)))
+# BEIDE Kanaele: `ruf()` befiehlt (Antwort = neue Momentaufnahme), `frage()` fragt
+# nur (Sequenzliste, Laufstatus). Stuende hier nur `ruf`, waeren ausgerechnet die
+# zwei neuesten Methoden ungeprueft - und der Fehler, den dieser Test faengt, ist
+# nicht "falsche Logik", sondern "Name existiert gar nicht": eine leere Ansicht
+# mit einer Zeile in der Statusleiste.
+_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|frage)\("([a-z_]+)"', _html13)))
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
+check("und beide Kanaele sind erfasst - auch der fragende",
+      "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
 
 _fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
@@ -4363,6 +4376,183 @@ finally:
     _os.chdir(_st_cwd)
 
 
+# --------------------- Sequenz-Studio: Uebersicht und Live-Run (die zwei Fragen)
+section("Sequenz-Studio: Uebersicht und Laufstatus")
+
+# Beide Methoden sind der zweite Kanal: sie geben KEINE Momentaufnahme zurueck,
+# sondern einen eigenen Gegenstand. Die Seite holt sie deshalb ueber `frage()` -
+# ueber `ruf()` landete die Antwort in `S`, und ein Blick in die Uebersicht waere
+# ein Datenverlust im Editor.
+import threading as _thr16, time as _time16
+from autoclicker.editors.sequence_studio.bridge import scan_warnungen as _sw16
+from autoclicker.editors.sequence_studio.model import sequence_to_board as _s2b16
+
+_st16 = tempfile.mkdtemp()
+_cwd16 = _os.getcwd()
+_os.chdir(_st16)
+try:
+    Path("sequences").mkdir()
+
+    def _schreib16(datei, daten):
+        (Path("sequences") / datei).write_text(json.dumps(daten), encoding="utf-8")
+
+    _schreib16("gross.json", {
+        "name": "gross", "schema_version": 4, "total_cycles": 3,
+        "description": "zwei Phasen", "init_steps": [{"x": 1, "y": 1, "delay_before": 0}],
+        "end_steps": [], "loop_phases": [
+            {"name": "A", "repeat": 5, "steps": [{"x": 1, "y": 1, "delay_before": 0},
+                                                 {"x": 2, "y": 2, "delay_before": 0}]},
+            {"name": "B", "repeat": 1, "scheduled_start": "08:30",
+             "steps": [{"item_scan": "", "delay_before": 0}]}]})
+    _schreib16("klein.json", {
+        "name": "klein", "schema_version": 4, "total_cycles": 0,
+        "init_steps": [], "end_steps": [], "loop_phases": []})
+    (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
+
+    _b16 = _SB8(_SEQ8(name="gross"), Path("sequences") / "gross.json", "sequences")
+    _liste16 = _b16.sequenz_liste()
+    _nach16 = {e["name"]: e for e in _liste16}
+
+    check("die Uebersicht findet jede Datei", len(_liste16) == 3)
+    check("auch die kaputte - als kaputt, nicht als fehlend",
+          any(e.get("defekt") for e in _liste16))
+    check("die Kennzahlen stimmen mit der Datei ueberein",
+          _nach16["gross"]["schritte"] == 4 and _nach16["gross"]["init"] == 1
+          and len(_nach16["gross"]["phasen"]) == 2)
+    check("Wiederholungen und Startzeit stehen an der Phase",
+          _nach16["gross"]["phasen"][0]["wiederholungen"] == 5
+          and _nach16["gross"]["phasen"][1]["start"] == "08:30")
+    check("die offene Sequenz ist als offen markiert",
+          _nach16["gross"]["offen"] is True and _nach16["klein"]["offen"] is False)
+    # Der Scan ohne Konfiguration ist die eine Warnung, die man in der Uebersicht
+    # sehen will - sonst sucht man den Block hinterher in vier Phasen.
+    check("ein Scan ohne Konfiguration wird gemeldet",
+          len(_nach16["gross"]["warnungen"]) == 1
+          and "ITEM-SCAN" in _nach16["gross"]["warnungen"][0])
+    check("und eine saubere Sequenz meldet nichts", _nach16["klein"]["warnungen"] == [])
+    check("eine kaputte Datei bringt die Uebersicht nicht um",
+          _nach16["kaputt"]["datei"] == "kaputt.json")
+
+    # Gegenprobe zur Wiederverwendung: Speichern und Uebersicht duerfen nicht zwei
+    # getrennte Regeln haben. Beide fragen scan_warnungen() - der Test misst das,
+    # indem er beide Seiten befragt und vergleicht.
+    _b16b = _SB8(_SEQ8(name="gross"), Path("sequences") / "gross.json", "sequences")
+    _b16b.laden({"name": "gross"})
+    check("Speichern und Uebersicht benutzen dieselbe Regel",
+          _b16b._scan_ohne_namen() == _nach16["gross"]["warnungen"][0])
+    check("und ohne leeren Scan sagen beide nichts",
+          _sw16(_s2b16(_SEQ8(name="x"))) == [] and _b16._scan_ohne_namen() is None)
+
+    # --- Laufstatus: nichts laeuft ist der Normalfall, kein Fehler ---
+    from autoclicker.config import RUN_STATUS_FILE as _rsf16
+    check("ohne Statusdatei laeuft nichts", _b16.lauf_status() == {"aktiv": False})
+
+    Path(_rsf16).write_text("{kaputt", encoding="utf-8")
+    check("eine unlesbare Statusdatei ist auch nur 'nichts laeuft'",
+          _b16.lauf_status() == {"aktiv": False})
+
+    Path(_rsf16).write_text(json.dumps(
+        {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
+    check("ein frischer Stand kommt durch", _b16.lauf_status()["sequenz"] == "S")
+
+    # Aelter als 5 s heisst: der Schreiber lebt nicht mehr. Ein hart abgeschossener
+    # Hauptprozess soll nicht ewig als "laeuft" in der Oberflaeche stehen.
+    Path(_rsf16).write_text(json.dumps(
+        {"aktiv": True, "sequenz": "S", "stand": _time16.time() - 60}), encoding="utf-8")
+    _verwaist16 = _b16.lauf_status()
+    check("ein alter Stand gilt als verwaist",
+          _verwaist16 == {"aktiv": False, "verwaist": True})
+
+    # --- Die Statusdatei darf NIE als Sequenz durchgehen ---
+    # `Path.glob("*.json")` erfasst auch Dateien mit fuehrendem Punkt. Laege der
+    # Laufstatus in sequences/, stuende er im Studio-Menue, im Konsolen-Menue und
+    # in der Start-Migration - und weil er sich sekuendlich aendert, gewaenne er
+    # jedes Mal zuletzt_bearbeitet(). Dieselbe Falle wie bei den .bak-Sicherungen.
+    from autoclicker.persistence import list_available_sequences as _las16
+    check("der Laufstatus liegt nicht im Sequenz-Ordner",
+          Path(_rsf16).parent != Path("sequences"))
+    (Path("sequences") / ".probe.json").write_text("{}", encoding="utf-8")
+    check("...und das ist noetig: ein Punkt-Dateiname WIRD als Sequenz gelistet",
+          any(p.name == ".probe.json" for _, p in _las16()))
+    (Path("sequences") / ".probe.json").unlink()
+
+    # --- Der Schreiber: zwei Quellen, ein Zustand ---
+    # Der Worker weiss die Phase, execute_step weiss den Block. Keiner kennt das
+    # Ganze - deshalb fuehrt schreibe() seinen Teil ein, statt ihn zu ersetzen.
+    from autoclicker.runtime import status as _stat16
+
+    class _FakeState16:
+        lock = _thr16.Lock()
+        total_clicks, items_found, key_presses = 7, 2, 1
+        timeouts, skipped_cycles, restarts = 0, 0, 0
+
+    _fs16 = _FakeState16()
+    _stat16.beende()
+    _stat16.schreibe(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A"}, sofort=True)
+    _stat16.schreibe(_fs16, {"block": 3, "bloecke": 9}, sofort=True)
+    # .get() statt [] ueberall hier unten: faellt der Merge weg, fehlt der
+    # Schluessel ganz - und ein KeyError risse die restliche Suite mit, statt
+    # eine Zeile FAIL zu melden. Genau der Fall, den dieser Test faengt.
+    def _lauf16() -> dict:
+        return json.loads(Path(_rsf16).read_text(encoding="utf-8"))
+
+    _gelesen16 = _lauf16()
+    check("der zweite Schreiber loescht den ersten nicht",
+          _gelesen16.get("phase") == "A" and _gelesen16.get("block") == 3)
+    check("die Zaehler kommen aus dem State",
+          _gelesen16.get("zaehler", {}).get("klicks") == 7)
+
+    # Die Drossel wirft den SCHREIBVORGANG weg, nicht die Information: sonst zeigte
+    # der naechste Schreibvorgang einen Block, der laengst durch ist.
+    _stat16.schreibe(_fs16, {"block": 4})
+    check("ein gedrosselter Aufruf schreibt nicht", _lauf16().get("block") == 3)
+    _stat16.schreibe(_fs16, {}, sofort=True)
+    check("aber seine Information ist nicht verloren", _lauf16().get("block") == 4)
+
+    # Ein wartender Lauf ist kein toter Lauf: das Lebenszeichen haelt `stand`
+    # frisch, ohne etwas zu aendern. Ohne das saehe ein Schritt, der auf eine Farbe
+    # wartet, nach 5 s verwaist aus - der Fall, fuer den man die Ansicht aufmacht.
+    _alt16 = _lauf16().get("stand", 0)
+    _time16.sleep(0.25)
+    _stat16.lebenszeichen(_fs16)
+    _neu16 = _lauf16()
+    check("ein Lebenszeichen schiebt den Zeitstempel vor",
+          _neu16.get("stand", 0) > _alt16)
+    check("und aendert sonst nichts", _neu16.get("block") == 4)
+
+    # Gegenprobe zum Lebenszeichen: der Aufruf muss auch DORT stehen, wo der
+    # Worker lange haengt. Ein Lebenszeichen, das nur in status.py existiert und
+    # von keiner Schleife gerufen wird, laesst genau den wartenden Lauf nach 5 s
+    # als verwaist erscheinen - und wartende Laeufe sind der Grund fuer die
+    # Ansicht. Geprueft wird der Quelltext der Funktionen, nicht ihr Ablauf:
+    # ausfuehren liesse sich keine von ihnen ohne echtes Windows.
+    import inspect as _insp16
+    import autoclicker.runtime.actions as _act16
+    import autoclicker.runtime.steps as _stp16
+
+    _schleifen16 = [
+        ("wait_with_pause_skip", _act16.wait_with_pause_skip),
+        ("_execute_wait_for_color", _stp16._execute_wait_for_color),
+        ("_execute_boss_watcher_step", _stp16._execute_boss_watcher_step),
+    ]
+    # Auf den AUFRUF pruefen, nicht auf das Wort: der Kommentar ueber jeder
+    # Fundstelle nennt `status.lebenszeichen()` ebenfalls, und gegen das Wort
+    # geprueft blieb der Test gruen, nachdem der Aufruf darunter entfernt war.
+    _stumm16 = [n for n, f in _schleifen16
+                if "status.lebenszeichen(state)" not in _insp16.getsource(f)]
+    check("jede lange Warteschleife gibt ein Lebenszeichen", _stumm16 == [])
+    if _stumm16:
+        print("        ohne Lebenszeichen: " + ", ".join(_stumm16))
+
+    _stat16.beende()
+    check("am Ende ist die Datei weg", not Path(_rsf16).exists())
+    # Vergessen gehoert dazu: der naechste Lauf ist eine andere Sequenz, und ein
+    # stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
+    _stat16.schreibe(_fs16, {"aktiv": True}, sofort=True)
+    check("und der naechste Lauf faengt bei null an", "block" not in _lauf16())
+    _stat16.beende()
+finally:
+    _os.chdir(_cwd16)
 
 
 # --------------------------- Jedes Modul laesst sich ueberhaupt importieren

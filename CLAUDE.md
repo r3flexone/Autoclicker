@@ -306,7 +306,17 @@ icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen �
 exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
 backups/<pfad>.bak             Sicherungen des Start-Durchgangs (Struktur gespiegelt)
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
+.lauf.json                     Laufstatus fuer das Sequenz-Studio (transient)
 ```
+
+**`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
+beschreibt den Zustand JETZT, wird überschrieben statt angehängt und beim
+Sequenz-Ende gelöscht (`runtime/status.py`). Dass es **oben** liegt und nicht in
+`sequences/`, ist kein Zufall: `Path.glob("*.json")` erfasst auch Dateien mit
+führendem Punkt. Dort abgelegt stünde es als Sequenz im Studio-Menü, im
+Konsolen-Menü und im Start-Durchgang — und weil es sich sekündlich ändert,
+gewänne es jedes Mal `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die
+`.bak`-Sicherungen unter `backups/` liegen statt neben dem Original.
 
 **Backward Compatibility läuft über Migration, nicht über Sonderfälle im Loader**:
 `persistence/migration.py` hebt geladene Dicts aufs aktuelle Schema (`schema_version`),
@@ -470,7 +480,24 @@ wird.)
 - `autoclicker/execution.py` — Backward-Compat-Shim, re-exportiert `sequence_worker`/`print_status` aus `runtime/`.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
-- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker).
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
+  Beobachter ausserhalb des Prozesses).
+
+  **`status.py` ist reine Anzeige und darf den Lauf nie stören** — jeder Schreibfehler
+  wird geschluckt. Zwei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der
+  Worker kennt Zyklus und Phase, `execute_step` den Block, keiner das Ganze.
+  Geschrieben wird höchstens alle 200 ms; Phasen- und Zykluswechsel umgehen die
+  Drossel (`sofort=True`), weil ein übersprungener Sprung nicht nachgeholt wird.
+
+  **Ein wartender Lauf ist kein toter Lauf.** Der Leser erkennt einen abgestürzten
+  Lauf am Alter des Zeitstempels (älter als 5 s = verwaist), und das geht nur, wenn
+  ein lebender Lauf ihn frisch hält. Geschrieben wird sonst pro Schritt — aber ein
+  Schritt kann minutenlang dauern (Farb-Trigger bis `pixel_wait_timeout`,
+  Boss-Watcher bis `llm_watcher_timeout`). Deshalb ruft **jede Schleife, die den
+  Worker länger aufhält**, `status.lebenszeichen(state)`: heute
+  `wait_with_pause_skip`, `_execute_wait_for_color` und der Boss-Watcher. Ein Test
+  hält das fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet,
+  und das ist der Fall, für den man die Ansicht aufmacht.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
@@ -532,6 +559,39 @@ ganze Grund für den Wechsel; die Datenschicht (`model.py`) ist dieselbe geblieb
 Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befehl
 zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
 gespeicherte wäre nicht zwingend die angezeigte.
+
+**Drei Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
+Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
+Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
+Ausflug überleben.
+
+| Ansicht | was | Brücke |
+|---|---|---|
+| Editor | Phasen und Blöcke bearbeiten | `snapshot()` + Befehle |
+| Sequenzen | Übersicht, Kennzahlen, Öffnen | `sequenz_liste()` |
+| Live-Run | was gerade läuft | `lauf_status()` |
+
+**Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
+befiehlt und **ersetzt** mit der Antwort die Momentaufnahme `S`; `frage()` fragt nur
+und lässt `S` in Ruhe. Die beiden neuen Methoden geben keine Momentaufnahme zurück,
+sondern einen eigenen Gegenstand — über `ruf()` geholt zerschösse ihre Antwort den
+Editor-Zustand, und ein Blick in die Übersicht wäre ein Datenverlust. Wer eine
+Methode ergänzt, entscheidet zuerst, welcher der beiden Kanäle gemeint ist. Der Test
+`jeder Aufruf der Seite passt zur Brücke` erfasst **beide** Schreibweisen.
+
+Zwei Eigenschaften der Übersicht, die man kennen muss: sie sieht den Ordner **selbst**
+durch statt `list_available_sequences()` zu fragen (die überspringt unlesbare Dateien
+stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau dann sucht
+man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
+damit die Rückfrage bei ungespeicherten Änderungen greift.
+
+**Der Live-Run hat bewusst keine Steuerknöpfe.** Start/Pause/Stopp gehören in den
+Hauptprozess: dieser Subprozess hat keinen Zugriff auf `state.stop_event`, und ein
+Knopf, der nur so aussieht, als hielte er den Lauf an, ist schlimmer als kein Knopf.
+Die Ansicht nennt die Hotkeys, mehr nicht. Aus demselben Grund zeigt sie nur die
+*laufende* Phase und nicht alle: die Statusdatei kennt die übrigen nicht, und sie aus
+der geöffneten Sequenz zu holen wäre geraten — laufen kann eine ganz andere.
 
 Regeln beim Erweitern:
 
