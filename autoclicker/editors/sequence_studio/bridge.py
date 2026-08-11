@@ -33,6 +33,7 @@ from ...models import (
     Sequence, SequenceStep, WaitCondition,
 )
 from ...persistence import (
+    list_available_boss_scans, list_available_icon_scans, list_available_item_scans,
     list_available_sequences, load_sequence_file, save_sequence_file,
 )
 from ...utils import sanitize_filename
@@ -152,8 +153,15 @@ class StudioBridge:
 
     # ------------------------------------------------------------- Momentaufnahme
 
-    def snapshot(self) -> dict:
-        """Der komplette Zustand als JSON-Werte — alles, was die Ansicht braucht."""
+    def snapshot(self, daten: Optional[dict] = None) -> dict:
+        """Der komplette Zustand als JSON-Werte — alles, was die Ansicht braucht.
+
+        `daten` wird nicht gelesen, muss aber dastehen: die Oberfläche ruft jede
+        Brücken-Methode über denselben Helfer (`ruf()`), und der reicht `null`
+        durch, wenn es nichts zu übergeben gibt. Ohne den Parameter scheitert der
+        allererste Aufruf mit „takes 1 positional argument" — und weil das der
+        Aufruf ist, der die Ansicht überhaupt erst füllt, bleibt das Fenster leer.
+        """
         text, art = self._status
         frage, self._frage = self._frage, None
         return {
@@ -165,6 +173,7 @@ class StudioBridge:
             "status": {"text": text, "art": art},
             "frage": frage,
             "sequenzen": sorted(name for name, _ in list_available_sequences()),
+            "scan_namen": self._scan_namen(),
             "typen": [{"key": t, "label": BLOCK_LABELS[t],
                        "farbe": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
             "scan_modi": SCAN_MODI,
@@ -173,6 +182,37 @@ class StudioBridge:
             "punkte": [self._punkt_json(p) for p in self.points],
             "auswahl": {"phase": self._sel_index(), "zeilen": sorted(self.sel_rows)},
             "block": self._block_detail(),
+        }
+
+    def _scan_namen(self) -> dict:
+        """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.
+
+        Ein Scan-Block verweist **per Name** auf eine Datei in `item_scans/`,
+        `boss_scans/` bzw. `icon_scans/`; der Name IST die Referenz. Getippt
+        werden musste er trotzdem, und ein Tippfehler ergab einen Block, den der
+        Executor stillschweigend nicht ausführt. Hier steht deshalb, was
+        tatsächlich auf Platte liegt — auswählen statt abschreiben.
+
+        Der Boss-Watcher zieht dieselben Konfigurationen wie der Boss-Scan
+        (`state.boss_scans`), deshalb dieselbe Liste.
+
+        Gelesen wird bei jeder Momentaufnahme, nicht einmal beim Start: legt man
+        im Hauptprozess eine Konfiguration an, während das Studio offen ist,
+        taucht sie beim nächsten Klick auf. Das ist der einzige Weg — geteilten
+        Zustand gibt es zwischen den beiden Prozessen nicht.
+        """
+        def namen(auflisten) -> list[str]:
+            try:
+                return sorted(name for name, _ in auflisten())
+            except OSError:
+                return []
+
+        bosse = namen(list_available_boss_scans)
+        return {
+            BLOCK_ITEM_SCAN: namen(list_available_item_scans),
+            BLOCK_ICON_SCAN: namen(list_available_icon_scans),
+            BLOCK_BOSS_SCAN: bosse,
+            BLOCK_BOSS_WATCHER: bosse,
         }
 
     def _sel_index(self) -> Optional[int]:
@@ -419,12 +459,24 @@ class StudioBridge:
         return None
 
     def speichern(self, daten: Optional[dict] = None) -> dict:
-        """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen."""
+        """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen.
+
+        **Ein Scan ohne Konfiguration hält das Speichern nicht auf.** Das tat es
+        einmal, und die Begründung war richtig, aber an der falschen Stelle: ein
+        leerer Scan-Name fiel im Executor durch den Truthiness-Dispatch bis zum
+        Klick durch und wurde zu einem Klick auf (0, 0). Nur hat das den Editor
+        nichts anzugehen — wer einen Block anlegt, um seine Stelle im Ablauf
+        festzuhalten, und die Konfiguration erst danach baut (die entsteht in
+        einem anderen Prozess, mit CTRL+ALT+N), soll das speichern koennen.
+        Repariert ist es jetzt dort, wo es kaputt war: `execute_step` ueberspringt
+        so einen Block mit Ansage.
+
+        Gemeldet wird er trotzdem — still soll er nicht bleiben.
+        """
         if not (self.board.name or "").strip():
-            return self._melde("Sequenz-Name fehlt — nichts gespeichert.", "err")
-        leer = self._scan_ohne_namen()
-        if leer:
-            return self._melde(f"Scan ohne Namen: {leer} — nichts gespeichert.", "err")
+            # Der Name ist etwas anderes: er IST der Dateiname. Ohne ihn gibt es
+            # kein Ziel, das Speichern ist nicht unvollstaendig, sondern unmoeglich.
+            return self._melde("Nicht gespeichert: Sequenz-Name fehlt.", "err")
 
         alt = self.filepath
         neu = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
@@ -448,13 +500,18 @@ class StudioBridge:
                 text = f"Umbenannt → {neu.name} (alte Datei entfernt)"
             except OSError:
                 text = f"Gespeichert: {neu.name} (alte Datei {alt.name} blieb)"
+
+        leer = self._scan_ohne_namen()
+        if leer:
+            return self._melde(f"{text} — {leer} hat noch keine Konfiguration "
+                               f"und wird übersprungen.", "warn")
         return self._melde(text)
 
     def rettung_schreiben(self) -> Optional[Path]:
-        """Sichert ungespeicherte Änderungen beim Schließen des Fensters.
+        """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.
 
         Gefragt wird nicht: das Fenster ist zu diesem Zeitpunkt schon auf dem Weg
-        nach draußen. Die Kopie landet unter `backups/`, nicht in `sequences/` —
+        nach draussen. Die Kopie landet unter `backups/`, nicht in `sequences/` —
         dort listet `list_available_sequences()` jede `*.json` als Sequenz auf,
         und eine halbfertige Rettungsdatei zwischen den echten wäre schlimmer als
         der Verlust.
@@ -463,7 +520,7 @@ class StudioBridge:
             return None
         from ...persistence.sweep import sicherungspfad
         # sicherungspfad() liefert "<name>.json.bak" — hier soll die Datei lesbar
-        # heißen und eine echte .json-Endung tragen, damit man sie direkt
+        # heissen und eine echte .json-Endung tragen, damit man sie direkt
         # zurückkopieren kann.
         ziel = sicherungspfad(self.filepath).with_name(
             f"{self.filepath.stem}.ungespeichert.json")
@@ -504,9 +561,9 @@ class StudioBridge:
             return self._melde("Phase nicht gefunden.", "err")
         feld, wert = daten.get("feld"), daten.get("wert")
         if feld == "name":
-            # Nur Loop-Phasen tragen einen Namen: INIT und END heißen in der Datei
+            # Nur Loop-Phasen tragen einen Namen: INIT und END heissen in der Datei
             # gar nicht, `board_to_sequence()` wirft ihren Namen weg. Eine Umbenennung
-            # dort anzunehmen hieße, sie beim nächsten Öffnen still zu verlieren.
+            # dort anzunehmen hiesse, sie beim nächsten Öffnen still zu verlieren.
             if lane.kind != LANE_LOOP:
                 return self._melde("INIT und END tragen keinen eigenen Namen.", "warn")
             lane.name = str(wert or "").strip() or lane.name
@@ -522,7 +579,7 @@ class StudioBridge:
                     return self._melde(f"Startzeit '{roh}' — erwartet HH:MM.", "warn")
                 hh, mm = int(m.group(1)), int(m.group(2))
                 if not (0 <= hh <= 23 and 0 <= mm <= 59):
-                    return self._melde(f"Startzeit '{roh}' außerhalb 00:00–23:59.", "warn")
+                    return self._melde(f"Startzeit '{roh}' ausserhalb 00:00–23:59.", "warn")
                 lane.scheduled_start = f"{hh:02d}:{mm:02d}"
         else:
             return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
@@ -596,7 +653,7 @@ class StudioBridge:
 
         Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
         zwischen Phasen. Letzteres gibt es im Konsolen-Editor gar nicht — eine
-        Aufnahme nachträglich in INIT/LOOP/END aufzuteilen hieß dort löschen und
+        Aufnahme nachträglich in INIT/LOOP/END aufzuteilen hiess dort löschen und
         neu anlegen.
         """
         schritte = [quelle.steps[i] for i in sorted(rows)]
@@ -702,6 +759,59 @@ class StudioBridge:
                 return self._melde("Bereich braucht vier ganze Zahlen.", "warn")
         return self._geaendert()
 
+    def bereich_aufnehmen(self, daten: Optional[dict] = None) -> dict:
+        """Beide Ecken des Screenshot-Bereichs mit der Maus setzen — in einem Zug.
+
+        Vier Zahlenfelder sind kein Weg, einen Bildschirmbereich zu bestimmen —
+        niemand weiss auswendig, wo (1740, 300) liegt. Also dasselbe wie in den
+        Konsolen-Editoren: Maus hinbewegen, ENTER, zweite Ecke, ENTER. Nur ohne
+        Konsole, denn die hat dieses Fenster nicht.
+
+        **Beide Ecken in EINEM Aufruf**, nicht zwei Knoepfe. Ein erster Entwurf
+        hatte je einen Knopf pro Ecke, damit dazwischen eine Momentaufnahme
+        zurueckkommt und sagen kann, welche Ecke schon steht. Der Preis dafuer ist
+        aber, dass die Hand mitten in der Aufnahme von der Ecke zum Fenster
+        zurueckfahren muss — genau der Weg, den die Maus-Aufnahme ersparen soll.
+        Die Rueckmeldung ist es nicht wert: was dabei herauskam, steht danach in
+        vier Feldern und in der Groessen-Zeile.
+
+        Abgebrochen wird bei ESC und bei Zeitablauf, und zwar **vollstaendig** —
+        auch nach der ersten Ecke bleibt der alte Bereich stehen. Ein halb
+        gesetzter Bereich waere ein Bereich, den niemand so wollte.
+
+        Der Zahlenweg bleibt daneben stehen — fuer den Fall, dass man eine
+        Koordinate abschreibt statt sie anzufahren.
+        """
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+
+        # Erst hier importiert: das Modul soll ohne Windows ladbar bleiben, und
+        # die Tests messen alles andere an dieser Klasse plattformfrei.
+        from ...utils.io import warte_auf_taste
+        from ...winapi import get_cursor_pos
+
+        ecken = []
+        for _ in (1, 2):
+            taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
+            if taste != "enter":
+                return self._melde(
+                    "Abgebrochen — der Bereich bleibt, wie er war."
+                    if taste == "escape" else
+                    "Nichts gedrückt — der Bereich bleibt, wie er war.", "warn")
+            ecken.append(get_cursor_pos())
+
+        (x1, y1), (x2, y2) = ecken
+        x1, x2 = min(x1, x2), max(x1, x2)
+        y1, y2 = min(y1, y2), max(y1, y2)
+        if x2 - x1 < 2 or y2 - y1 < 2:
+            return self._melde(
+                f"Bereich zu klein: {x2 - x1}×{y2 - y1} Pixel — nichts geändert.", "warn")
+
+        step.screenshot_region = (x1, y1, x2, y2)
+        self._dirty = True
+        return self._melde(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
+
     def block_punkt(self, daten: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
 
@@ -782,7 +892,7 @@ class StudioBridge:
             if punkt is None:
                 return self._melde("Punkt nicht gefunden.", "warn")
             # Nur die Referenz zählt: `x`/`y`/`name` sind abgeleitet und stehen
-            # nicht in der Datei. Der DPG-Vorgänger ließ genau diese drei von Hand
+            # nicht in der Datei. Der DPG-Vorgänger liess genau diese drei von Hand
             # eintippen — beim nächsten Öffnen war die Eingabe weg.
             ec.point_id = punkt.id
             self._punkte_anwenden()

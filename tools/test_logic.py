@@ -154,7 +154,7 @@ spec = importlib.util.spec_from_file_location("console", str(Path(__file__).reso
 con = importlib.util.module_from_spec(spec); spec.loader.exec_module(con)
 con._COLORS_ENABLED = False
 cases = {(220, 30, 30): "Rot", (30, 180, 60): "Grün", (40, 80, 220): "Blau", (30, 30, 30): "Schwarz",
-         (245, 245, 245): "Weiß", (255, 165, 0): "Orange", (139, 69, 19): "Braun"}
+         (245, 245, 245): "Weiss", (255, 165, 0): "Orange", (139, 69, 19): "Braun"}
 for rgb, exp in cases.items():
     check(f"Farbname {rgb} -> {exp}", exp in con.describe_color(rgb))
 check("kaputte Farbe stürzt nicht ab", con.describe_color("rot") == "rot")
@@ -1668,6 +1668,19 @@ try:
                            trifft=False)
     check("Taste-Schritt: else greift und ersetzt die Taste",
           _was["taste"] == [] and _was["klick"] == [(99, 99)])
+
+    # Ein Scan-Block, dessen Konfiguration noch fehlt ("" statt None), darf NICHT
+    # bis zum Klick durchfallen. Genau das tat er: alle Scan-Zweige des Dispatchers
+    # fragen per Truthiness ab, und die Koordinate eines Scan-Blocks ist (0, 0) —
+    # ein Klick in die Bildschirmecke. Der Block ist erlaubt (man legt ihn an, um
+    # die Stelle im Ablauf festzuhalten), also muss ihn die Laufzeit tragen.
+    for _art, _kw in [("Item-Scan", dict(item_scan="")),
+                      ("Boss-Scan", dict(boss_scan="")),
+                      ("Icon-Scan", dict(icon_scan="")),
+                      ("Boss-Watcher", dict(boss_watcher=""))]:
+        _, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, **_kw), trifft=True)
+        check(f"{_art} ohne Konfiguration klickt NICHT in die Ecke",
+              _was["klick"] == [])
 
     # Ohne Farb-Bedingung bleibt es beim reinen Warten (keine Screenshots)
     _geprueft, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T",
@@ -4019,19 +4032,335 @@ check("ein unbekanntes Feld meldet sich als Fehler",
       _zustand11["status"]["art"] == "err")
 check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
 
-# --- Ein Scan ohne Namen wird nicht gespeichert ---
-# Er wuerde beim Executor durch den Truthiness-Dispatch fallen und still zu einem
-# Klick auf (0,0) degradieren.
-_seq12 = _SEQ8(name="S", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
-    _SS(delay_before=0, item_scan="")])])
-_b12 = _SB8(_seq12, Path("sequences/S.json"), "sequences")
-_zustand12 = _b12.speichern()
-check("ein Scan ohne Namen verhindert das Speichern",
-      _zustand12["status"]["art"] == "err" and "Scan ohne Namen" in _zustand12["status"]["text"])
-check("und die Karte warnt schon vorher",
-      _zustand12["phasen"][1]["bloecke"][0]["warnung"] == "Name fehlt")
-_b12.board.name = ""
-check("ohne Sequenz-Namen ebenso", _b12.speichern()["status"]["art"] == "err")
+# --- Der Typ-Chip ist das EINE Bedienelement fuer 'nur warten' ---
+# In der Ansicht stand darunter ein zweiter Schalter "nur warten (kein Klick)",
+# der `wait_only` setzte - also genau das, was der Chip WARTEN setzt. Ein Zustand
+# mit zwei Bedienelementen, und das rächte sich: der Schalter blendete sich bei
+# genau dem Typ aus, den sein eigenes Einschalten erzeugte. Einmal geklickt, war
+# er weg. Was die Chips koennen, steht hier - denn daran haengt, dass der zweite
+# Weg entbehrlich ist.
+_b13, _s13 = _bruecke9()
+_b13.block_trigger({"wahl": _TDA8})
+check("Ausgangslage: Farbe+Klick mit Trigger",
+      _b13.snapshot()["block"]["typ"] == "wait_click")
+
+_b13.block_typ({"typ": "wait"})
+check("der Chip WARTEN macht daraus einen Warte-Block",
+      _b13.snapshot()["block"]["typ"] == "wait"
+      and _b13.snapshot()["block"]["wait_only"] is True)
+check("und laesst den Farb-Trigger stehen", _s13.wait_condition is not None)
+
+_b13.block_typ({"typ": "wait_click"})
+check("der Chip FARBE+KLICK ist der verlustfreie Weg zurueck",
+      _b13.snapshot()["block"]["typ"] == "wait_click"
+      and _s13.wait_condition is not None and _s13.wait_condition.point_id == 1)
+
+# KLICK verliert den Trigger - das ist keine Nebenwirkung, sondern die Bedeutung
+# von KLICK. Nur deshalb braucht es FARBE+KLICK als zweiten Rueckweg.
+_b13.block_typ({"typ": "wait"})
+_b13.block_typ({"typ": "click"})
+check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is None)
+
+# Die Bruecke konnte das alles schon vorher - der Fehler sass in der ANSICHT, und
+# darum faengt ihn keiner der Tests darueber. Pruefbar ist von aussen das, was ihn
+# ausmachte: ein zweites Bedienelement fuer denselben Zustand.
+import re as _re13b
+
+_seite13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
+            .read_text(encoding="utf-8"))
+_schalter13 = _re13b.findall(r'schalter\(\s*"([^"]*)"', _seite13)
+check("die Ansicht hat ueberhaupt Schalter", len(_schalter13) >= 2)
+check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
+      not any("nur warten" in s for s in _schalter13))
+check("und keinen anderen, der wait_only setzt",
+      'feld: "wait_only"' not in _seite13)
+
+# --- Tastendruck-Erkennung fuer Fenster-Prozesse ---
+# Das Sequenz-Studio hat keine Konsole, in die man tippen koennte. Auf ENTER zu
+# warten heisst dort: GetAsyncKeyState pollen. Der erste Entwurf fragte nur
+# 0x8000 ("haelt gerade") ab und sah kurze Druecke nie - die Ecken-Aufnahme kam
+# nie zurueck. Geprueft wird die Regel, nicht die API: ein Test, der echte
+# Tastendruecke ins System schickt, tippt in das Fenster, das gerade vorn ist.
+import time as _t15
+from autoclicker.utils.io import taste_neu_gedrueckt as _tng15, warte_auf_taste as _wat15
+
+check("gehalten + vorher oben = neuer Druck", _tng15(0x8000, False) is True)
+check("gehalten + vorher schon unten = kein neuer Druck", _tng15(0x8000, True) is False)
+check("kurzer Druck (nur Bit 0) zaehlt trotzdem", _tng15(0x0001, False) is True)
+check("kurzer Druck zaehlt auch bei gehaltener Vortaste", _tng15(0x0001, True) is True)
+check("nichts gedrueckt = nichts", _tng15(0x0000, False) is False)
+check("losgelassen nach Halten meldet nichts", _tng15(0x0000, True) is False)
+
+# Die Zeitgrenze gilt auf beiden Plattformen: gestubbt liefert GetAsyncKeyState 0,
+# auf Windows drueckt waehrend des Tests niemand.
+_t0_15 = _t15.time()
+check("ohne Tastendruck kommt None zurueck", _wat15(("enter",), timeout=0.3) is None)
+check("und die Zeitgrenze wird eingehalten", _t15.time() - _t0_15 < 3.0)
+check("eine Taste, die es nicht gibt, wartet gar nicht erst",
+      _wat15(("gibtsnicht",), timeout=30.0) is None)
+
+# --- Screenshot-Bereich: Ecke fuer Ecke mit der Maus ---
+# Vier Zahlenfelder sind kein Weg, einen Bildschirmbereich zu bestimmen. Die
+# Ecken kommen jetzt von der Maus - eine pro Aufruf, damit die Oberflaeche
+# dazwischen sagen kann, welche schon steht. Der Windows-Teil (auf ENTER warten,
+# Cursor lesen) wird hier ersetzt; gemessen wird, was die Bruecke daraus macht.
+import autoclicker.utils.io as _io15
+import autoclicker.winapi as _wa15
+
+_b15 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
+    _SS(delay_before=0, screenshot_only=True, screenshot_region=(0, 0, 100, 100))])]),
+    Path("sequences/S.json"), "sequences")
+_b15.waehlen({"phase": 1, "zeile": 0})
+
+_echt15 = (_io15.warte_auf_taste, _wa15.get_cursor_pos)
+try:
+    # Beide Ecken in EINEM Aufruf: zwischendurch zum Fenster zurueckzufahren ist
+    # genau der Weg, den die Maus-Aufnahme ersparen soll. Hier kommt Ecke 1 unten
+    # rechts und Ecke 2 oben links - verkehrt herum, die Bruecke muss sortieren.
+    _ecken15 = iter([(900, 700), (300, 200)])
+    _io15.warte_auf_taste = lambda *a, **k: "enter"
+    _wa15.get_cursor_pos = lambda: next(_ecken15)
+    _z15 = _b15.bereich_aufnehmen()
+    check("zwei ENTER ergeben einen Bereich",
+          _z15["block"]["screenshot_region"] == [300, 200, 900, 700])
+    check("und die Meldung nennt die Groesse", "600×500" in _z15["status"]["text"])
+
+    # Ein Bereich, der keiner ist, wird gemeldet statt still gespeichert.
+    _vorher15 = _z15["block"]["screenshot_region"]
+    _ecken15 = iter([(300, 200), (301, 201)])
+    _z15 = _b15.bereich_aufnehmen()
+    check("ein zu kleiner Bereich meldet sich und aendert nichts",
+          _z15["status"]["art"] == "warn"
+          and _z15["block"]["screenshot_region"] == _vorher15)
+
+    # ESC bei der ZWEITEN Ecke: auch die erste darf dann nicht stehenbleiben.
+    _ecken15 = iter([(10, 10), (20, 20)])
+    _tasten15 = iter(["enter", "escape"])
+    _io15.warte_auf_taste = lambda *a, **k: next(_tasten15)
+    _z15 = _b15.bereich_aufnehmen()
+    check("ESC nach der ersten Ecke laesst den alten Bereich ganz stehen",
+          _z15["status"]["art"] == "warn"
+          and _z15["block"]["screenshot_region"] == _vorher15)
+
+    # Keine Taste innerhalb der Zeitgrenze: dasselbe, nur mit anderem Grund.
+    _io15.warte_auf_taste = lambda *a, **k: None
+    _z15 = _b15.bereich_aufnehmen()
+    check("ohne Tastendruck passiert ebenfalls nichts",
+          _z15["status"]["art"] == "warn"
+          and _z15["block"]["screenshot_region"] == _vorher15)
+finally:
+    _io15.warte_auf_taste, _wa15.get_cursor_pos = _echt15
+
+
+# --- Die Scan-Konfigurationen kommen zur Auswahl, statt getippt zu werden ---
+# Der Name IST die Referenz auf eine Datei in item_scans/ bzw. boss_scans/ bzw.
+# icon_scans/. Getippt werden musste er trotzdem, und ein Tippfehler ergab einen
+# Block, den der Executor stillschweigend nicht ausfuehrt - dieselbe Klasse
+# Fehler wie eine point_id, die ins Leere zeigt.
+_sc_tmp = tempfile.mkdtemp()
+_sc_cwd = _os.getcwd()
+_os.chdir(_sc_tmp)
+try:
+    for _ordner14, _dateien14 in (("item_scans", ["beutel", "amboss"]),
+                                  ("boss_scans", ["hoehle"]),
+                                  ("icon_scans", [])):
+        Path(_ordner14).mkdir()
+        for _d14 in _dateien14:
+            (Path(_ordner14) / f"{_d14}.json").write_text("{}", encoding="utf-8")
+    Path("sequences").mkdir()
+
+    _b14 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(delay_before=0, item_scan="")])]), Path("sequences/S.json"), "sequences")
+    _namen14 = _b14.snapshot()["scan_namen"]
+    check("die Momentaufnahme nennt die vorhandenen Item-Scans",
+          _namen14["item_scan"] == ["amboss", "beutel"])
+    check("ein leerer Ordner ergibt eine leere Liste, keinen Fehler",
+          _namen14["icon_scan"] == [])
+    check("der Boss-Watcher bekommt dieselben Konfigurationen wie der Boss-Scan",
+          _namen14["boss_watcher"] == _namen14["boss_scan"] == ["hoehle"])
+
+    # Neu angelegte Konfigurationen tauchen ohne Neustart auf: gelesen wird bei
+    # jeder Momentaufnahme. Zwischen Haupt- und Studio-Prozess ist die Datei der
+    # einzige gemeinsame Nenner - ein einmal gefuellter Cache waere hier falsch.
+    (Path("icon_scans") / "lupe.json").write_text("{}", encoding="utf-8")
+    check("eine neu angelegte Konfiguration erscheint sofort",
+          _b14.snapshot()["scan_namen"]["icon_scan"] == ["lupe"])
+finally:
+    _os.chdir(_sc_cwd)
+
+# --- Ein Scan ohne Konfiguration darf gespeichert werden ---
+# Frueher hielt er das Speichern auf, weil er beim Executor durch den
+# Truthiness-Dispatch bis zum Klick durchfaellt und zu einem Klick auf (0,0)
+# degradiert. Die Begruendung stimmte, die Stelle nicht: wer einen Block anlegt,
+# um seine Position im Ablauf festzuhalten, und die Konfiguration erst danach
+# baut (anderer Prozess, CTRL+ALT+N), muss das speichern koennen. Repariert wird
+# es dort, wo es kaputt ist - siehe den Executor-Abschnitt weiter unten.
+_sb12 = tempfile.mkdtemp()
+_cwd12 = _os.getcwd()
+_os.chdir(_sb12)
+try:
+    Path("sequences").mkdir()
+    _seq12 = _SEQ8(name="S", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+        _SS(delay_before=0, item_scan="")])])
+    _b12 = _SB8(_seq12, Path("sequences/S.json"), "sequences")
+    _zustand12 = _b12.speichern()
+    check("ein Scan ohne Konfiguration verhindert das Speichern NICHT",
+          (Path("sequences") / "S.json").exists())
+    check("gemeldet wird er trotzdem", _zustand12["status"]["art"] == "warn")
+    check("und die Meldung nennt die Scan-Art",
+          "ITEM-SCAN" in _zustand12["status"]["text"])
+    check("die Karte warnt weiterhin",
+          _zustand12["phasen"][1]["bloecke"][0]["warnung"] == "Name fehlt")
+
+    # Der leere Name muss die Datei ueberleben - sonst waere der Block beim
+    # naechsten Oeffnen ein Klick-Block und die Stelle im Ablauf falsch.
+    _roh12 = json.loads((Path("sequences") / "S.json").read_text(encoding="utf-8"))
+    check("der leere Scan-Name steht in der Datei",
+          _roh12["loop_phases"][0]["steps"][0].get("item_scan") == "")
+
+    # Der Sequenz-Name ist etwas anderes: er IST der Dateiname.
+    _b12.board.name = ""
+    _z12b = _b12.speichern()
+    check("ohne Sequenz-Namen wird weiterhin nicht gespeichert",
+          _z12b["status"]["art"] == "err")
+    check("und die Meldung sagt die Folge zuerst",
+          _z12b["status"]["text"].startswith("Nicht gespeichert"))
+finally:
+    _os.chdir(_cwd12)
+
+# --- ...und zur Laufzeit uebersprungen statt in die Ecke geklickt ---
+from autoclicker.runtime.steps import _scan_ohne_namen as _son12
+
+check("ein leerer Item-Scan wird als unfertig erkannt",
+      _son12(_SS(delay_before=0, item_scan="")) == "ITEM-SCAN")
+check("Leerzeichen zaehlen auch als leer",
+      _son12(_SS(delay_before=0, boss_scan="   ")) == "BOSS-SCAN")
+check("ein Icon-Scan MIT Namen ist fertig",
+      _son12(_SS(delay_before=0, icon_scan="lupe")) is None)
+check("ein gewoehnlicher Klick-Schritt ist nicht betroffen",
+      _son12(_SS(x=5, y=6, delay_before=0, point_id=1)) is None)
+check("und ein Boss-Watcher ohne Namen ebenfalls erkannt",
+      _son12(_SS(delay_before=0, boss_watcher="")) == "BOSS-WATCHER")
+
+# Jede Scan-Art, die der Dispatcher kennt, muss auch hier stehen - sonst faellt
+# genau die eine wieder bis zum Klick durch.
+from autoclicker.runtime.steps import _SCAN_FELDER as _sf12
+from autoclicker.editors.sequence_studio.bridge import SCAN_FELD as _sfeld12
+check("Executor und Studio kennen dieselben Scan-Felder",
+      sorted(f for f, _ in _sf12) == sorted(_sfeld12.values()))
+
+
+# --------------------------- Sequenz-Studio: Seite und Bruecke passen zusammen
+section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
+
+# Dieselbe Klasse Fehler wie bei den dpg-Signaturen weiter oben, nur eine Ebene
+# tiefer: die Seite ruft die Bruecke ueber EINEN Helfer (`ruf()`), und der reicht
+# immer genau ein Argument durch - `null`, wenn es nichts zu uebergeben gibt.
+# `snapshot()` nahm keins an, also scheiterte ausgerechnet der Aufruf, der die
+# Ansicht ueberhaupt erst fuellt: das Fenster ging auf und blieb leer, mit
+# "takes 1 positional argument but 2 were given" in der Statuszeile. Kein Test
+# sah das, weil jeder Test die Methoden direkt aufruft - so, wie die Seite es
+# gerade NICHT tut.
+import inspect as _inspect13, re as _re13
+
+_html13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
+           .read_text(encoding="utf-8"))
+_gerufen13 = sorted(set(_re13.findall(r'ruf\("([a-z_]+)"', _html13)))
+check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
+
+_fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
+check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
+if _fehlend13:
+    print("        fehlt in bridge.py: " + ", ".join(_fehlend13))
+
+# `ruf()` uebergibt IMMER ein Argument - auch bei `ruf("snapshot")`, dann `null`.
+_unpassend13 = []
+for _name13 in _gerufen13:
+    _f13 = getattr(_SB8, _name13, None)
+    if _f13 is None:
+        continue
+    try:
+        _inspect13.signature(_f13).bind(None, None)   # self + das eine Argument
+    except TypeError:
+        _unpassend13.append(_name13)
+check("und jede nimmt das eine Argument an, das die Seite schickt",
+      _unpassend13 == [])
+if _unpassend13:
+    print("        nimmt kein Argument an: " + ", ".join(_unpassend13))
+
+# Gegenprobe von der anderen Seite: die Momentaufnahme muss mit `null` gehen.
+# Der try-Zweig ist nicht Zierde - ohne ihn reisst genau dieser Aufruf die ganze
+# Suite mit einem TypeError ab, statt eine Zeile FAIL zu melden.
+try:
+    _gleich13 = _b12.snapshot(None)["name"] == _b12.snapshot()["name"]
+except TypeError:
+    _gleich13 = False
+check("snapshot(None) liefert denselben Zustand wie snapshot()", _gleich13)
+
+# --- Eine neue Sequenz landet nie auf einer vorhandenen Datei ---
+# Der Name IN der Datei ist nicht der Dateiname: 'all dayli' liegt in
+# all_dayli.json. Wer den Dateinamen uebergibt, traf keine Sequenz und bekam eine
+# LEERE mit genau diesem Dateipfad - ein Druck auf 'Speichern' und die 50
+# Schritte waren weg. Das ist der teuerste Fehler, den ein Editor machen kann.
+_st_tmp = tempfile.mkdtemp()
+_st_cwd = _os.getcwd()
+_os.chdir(_st_tmp)
+try:
+    from autoclicker.sequence_studio import _resolve_sequence as _rs14
+    Path("sequences").mkdir()
+    (Path("sequences") / "all_dayli.json").write_text(json.dumps({
+        "name": "all dayli", "schema_version": 4, "total_cycles": 1,
+        "init_steps": [], "end_steps": [],
+        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+            {"x": 1, "y": 2, "delay_before": 0, "name": "wichtig"}]}]}),
+        encoding="utf-8")
+
+    def _schritte14(seq):
+        """Schritte der ersten Loop-Phase - 0, wenn es gar keine gibt.
+
+        Ohne diesen Umweg reisst eine leer zurueckgegebene Sequenz die Suite mit
+        einem IndexError ab, statt eine Zeile FAIL zu melden.
+        """
+        return len(seq.loop_phases[0].steps) if seq.loop_phases else 0
+
+    _seq14, _pfad14 = _rs14("all dayli")            # ueber den Namen
+    check("der Name in der Datei findet die Sequenz", _schritte14(_seq14) == 1)
+
+    _seq14b, _pfad14b = _rs14("all_dayli")          # ueber den Dateinamen
+    check("der Dateiname findet sie auch",
+          _schritte14(_seq14b) == 1 and _pfad14b == _pfad14)
+
+    # --- Ohne Namen: die zuletzt bearbeitete Sequenz, kein leeres Fenster ---
+    # Das Studio startet ohne Namen, wenn im Hauptprozess keine Sequenz aktiv ist
+    # oder wenn man es direkt aufruft. Ein leeres Fenster ist da fast nie gemeint.
+    from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb14
+    (Path("sequences") / "aelter.json").write_text(json.dumps({
+        "name": "aelter", "schema_version": 4, "total_cycles": 1,
+        "init_steps": [], "end_steps": [], "loop_phases": []}), encoding="utf-8")
+    # Zeitstempel von Hand setzen - sonst haengt der Test an der Aufloesung der Uhr.
+    _os.utime(Path("sequences") / "aelter.json", (1000, 1000))
+    _os.utime(Path("sequences") / "all_dayli.json", (2000, 2000))
+    check("die zuletzt geaenderte Datei wird gefunden",
+          _zb14() == Path("sequences") / "all_dayli.json")
+
+    _seq14d, _pfad14d = _rs14("")
+    check("ohne Namen kommt genau die",
+          _pfad14d == Path("sequences") / "all_dayli.json"
+          and _schritte14(_seq14d) == 1)
+
+    _os.utime(Path("sequences") / "aelter.json", (3000, 3000))
+    _seq14e, _pfad14e = _rs14("")
+    check("und sie wechselt mit, wenn eine andere gespeichert wird",
+          _pfad14e == Path("sequences") / "aelter.json")
+
+    # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
+    (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
+    _os.utime(Path("sequences") / "kaputt.json", (500, 500))
+    _seq14c, _pfad14c = _rs14("kaputt")
+    check("eine unlesbare Datei wird nicht als Ziel uebernommen",
+          _pfad14c.name != "kaputt.json" and _seq14c.loop_phases == [])
+finally:
+    _os.chdir(_st_cwd)
 
 
 

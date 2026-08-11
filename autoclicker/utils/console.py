@@ -95,7 +95,7 @@ def _color_name(r: int, g: int, b: int) -> str:
             return "Dunkelgrau"
         if mx < 200:
             return "Grau"
-        return "Weiß"
+        return "Weiss"
     hue = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)[0] * 360
     dark = mx < 128
     if hue < 15 or hue >= 345:
@@ -273,7 +273,7 @@ def status_line(text: str) -> None:
     die alte Status-Zeile als eigene Zeile stehen, statt überschrieben zu werden.
     Zusammen geschrieben ist das `\\r` untrennbar vom Text, der es benutzt.
 
-    Fällt im Text ein `\\n` vor (Meldung, die die Status-Zeile bewusst abschließt),
+    Fällt im Text ein `\\n` vor (Meldung, die die Status-Zeile bewusst abschliesst),
     zählt für die nächste Breite nur der Teil DAHINTER — davor steht nichts mehr,
     was zu überschreiben wäre.
     """

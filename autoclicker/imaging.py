@@ -205,10 +205,10 @@ def _load_template(template_path: str):
 
 
 def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
-    """Gibt das Template in der gewünschten Größe zurück (skaliert + gemerkt).
+    """Gibt das Template in der gewünschten Grösse zurück (skaliert + gemerkt).
 
-    Die Größen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
-    geändert wurde. Sie ist pro Slot-Größe immer dieselbe Rechnung — also einmal.
+    Die Grössen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
+    geändert wurde. Sie ist pro Slot-Grösse immer dieselbe Rechnung — also einmal.
     """
     if bild.shape[1] == breite and bild.shape[0] == hoehe:
         return bild
@@ -255,15 +255,15 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         if template_cv is None:
             return (False, 0.0, None)
 
-        # Größenvergleich: Template muss zum Scan-Bild passen
+        # Grössenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
 
         if (tw != iw or th != ih) and tw > 0 and th > 0:
-            # Größen-Diskrepanz! Template an Scan-Bildgröße anpassen
+            # Grössen-Diskrepanz! Template an Scan-Bildgrösse anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
-            logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
+            logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_in_groesse(template_path, template_cv, iw, ih)
 
         # Debug: Scan-Bild und Template speichern zum Vergleich
@@ -288,7 +288,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
         else:
-            # Bei sehr niedrigen Werten: Größen-Mismatch als mögliche Ursache loggen
+            # Bei sehr niedrigen Werten: Grössen-Mismatch als mögliche Ursache loggen
             if max_val < 0.3 and (tw != iw or th != ih):
                 schluessel = (template_name, tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
@@ -301,8 +301,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:
-        # cv2.error explizit fangen (z.B. Größen-Mismatch nach Resize, leere Matrix) —
-        # sonst propagiert es in den Worker und reißt die Sequenz ab. cv2 ist hier
+        # cv2.error explizit fangen (z.B. Grössen-Mismatch nach Resize, leere Matrix) —
+        # sonst propagiert es in den Worker und reisst die Sequenz ab. cv2 ist hier
         # garantiert verfügbar, da die Funktion oben bei not OPENCV_AVAILABLE früh
         # zurückkehrt (OPENCV_AVAILABLE-Muster).
         logger.error(f"Template Matching Fehler: {e}")
@@ -322,7 +322,7 @@ def get_color_name(rgb: tuple) -> str:
         elif r < 200:
             return "Grau"
         else:
-            return "Weiß"
+            return "Weiss"
 
     # Dominante Farbe bestimmen
     if r > g and r > b:
@@ -381,7 +381,7 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
                 region[2] - x_offset,
                 region[3] - y_offset
             )
-            # Bounds-Check: Region muss positive Größe haben
+            # Bounds-Check: Region muss positive Grösse haben
             if adjusted_region[2] <= adjusted_region[0] or adjusted_region[3] <= adjusted_region[1]:
                 logger.error(f"Ungültige Region nach Offset-Anpassung: {adjusted_region}")
                 return None

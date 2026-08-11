@@ -22,7 +22,9 @@ from ..models import (
 )
 from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..session_log import log_event
-from ..utils import clear_line, status_line, wait_while_paused, col, err, info, dbg
+from ..utils import (
+    clear_line, status_line, wait_while_paused, col, err, hint, info, dbg, warn,
+)
 from ..winapi import check_failsafe
 from .actions import (
     safe_click, safe_key, safe_scroll, _step_status, _phase_color, is_verbose_debug,
@@ -667,6 +669,26 @@ def _execute_screenshot_step(state: AutoClickerState, step: SequenceStep,
 # TOP-LEVEL STEP-DISPATCHER
 # =============================================================================
 
+# Scan-Felder in derselben Reihenfolge, in der der Dispatcher sie abfragt, mit
+# der Beschriftung fuer die Meldung. Eine neue Scan-Art gehoert hier ebenfalls
+# hinein — sonst faellt sie ohne Konfiguration wieder bis zum Klick durch.
+_SCAN_FELDER = (
+    ("boss_watcher", "BOSS-WATCHER"),
+    ("boss_scan", "BOSS-SCAN"),
+    ("icon_scan", "ICON-SCAN"),
+    ("item_scan", "ITEM-SCAN"),
+)
+
+
+def _scan_ohne_namen(step: SequenceStep) -> "str | None":
+    """Beschriftung der Scan-Art, wenn deren Name gesetzt aber leer ist."""
+    for feld, beschriftung in _SCAN_FELDER:
+        wert = getattr(step, feld, None)
+        if wert is not None and not str(wert).strip():
+            return beschriftung
+    return None
+
+
 def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                  total_steps: int, phase: str) -> bool:
     """Führt einen einzelnen Schritt aus: Erst warten/prüfen, DANN klicken."""
@@ -693,6 +715,21 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.screenshot_only:
         return _execute_screenshot_step(state, step, step_num, total_steps, phase)
+
+    # Ein Scan-Feld, das gesetzt aber leer ist ("" statt None), meint einen Block,
+    # dessen Konfiguration noch fehlt — im Editor angelegt, um die Stelle im Ablauf
+    # zu markieren. Alle Scan-Zweige unten fragen per Truthiness ab, ein "" faellt
+    # also durch bis zum Klick: der Schritt wuerde auf seine Koordinate klicken, und
+    # die ist bei einem Scan-Block (0, 0) — die Bildschirmecke. Deshalb hier raus,
+    # mit Ansage. Dieselbe Haltung wie bei einer toten `point_id`: ein Schritt, der
+    # stehenbleibt, ist besser als einer, der irgendwohin klickt.
+    unfertig = _scan_ohne_namen(step)
+    if unfertig is not None:
+        print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
+                   f"{unfertig} ohne Konfiguration"))
+        print(hint("       Im Sequenz-Editor oder -Studio eine Konfiguration "
+                   "auswählen (angelegt mit CTRL+ALT+N)."))
+        return True
 
     if step.boss_watcher:
         return _execute_boss_watcher_step(state, step, step_num, total_steps, phase)

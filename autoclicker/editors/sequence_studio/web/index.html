@@ -6,7 +6,7 @@
 <!--
   Oberfläche des Sequenz-Studios.
 
-  Selbstgenügsam mit Absicht: kein Framework, keine Schrift, kein Bild von außen.
+  Selbstgenügsam mit Absicht: kein Framework, keine Schrift, kein Bild von aussen.
   Die Seite läuft in einem pywebview-Fenster ohne Netz, und alles, was sie
   nachladen wollte, wäre beim Start eine leere Fläche.
 
@@ -63,7 +63,10 @@ input:disabled,textarea:disabled{background:var(--sub);color:var(--dim)}
 input[type=number]{font-family:var(--mono)}
 textarea{resize:vertical;min-height:52px}
 label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
-label.an{flex-direction:row;align-items:center;gap:7px;color:var(--text);font-size:12.5px;cursor:pointer}
+/* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
+   Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
+label.an{display:flex;flex-direction:row;align-items:center;gap:7px;color:var(--text);
+  font-size:12.5px;cursor:pointer}
 label.an input{width:auto}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
@@ -77,8 +80,12 @@ label.an input{width:auto}
   display:flex;align-items:center;justify-content:center;color:#0C0F14}
 .titel{font-size:12px;letter-spacing:.14em;font-weight:600}
 .punkt-offen{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
-.status{font-size:12px;color:var(--muted);max-width:46ch;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
+/* Nimmt den freien Platz statt einer festen Zeichenzahl: der Deckel stand bei
+   46ch, und daneben lag ein Abstandhalter, der den ganzen Rest der Kopfzeile
+   aufbrauchte. Eine Meldung wie "Nicht gespeichert: ITEM-SCAN in 'Loop 1'
+   (Block 5) hat keinen Namen." war damit immer abgeschnitten. */
+.status{flex:1;min-width:0;text-align:right;font-size:12px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .status.ok{color:var(--ok)} .status.warn{color:var(--accent)} .status.err{color:var(--err)}
 
 /* -------------------------------------------------------------------- Rumpf */
@@ -172,6 +179,16 @@ label.an input{width:auto}
 .segment button:hover{color:var(--text)}
 .segment button.an{background:var(--accent);color:#0C0F14;font-weight:600}
 .hinweis{font-size:11px;color:var(--dim);line-height:1.5}
+/* Erklaerungen liegen im Tooltip, nicht im Fluss: in der Eigenschaften-Spalte
+   standen sie unter jedem zweiten Feld und schoben das Wesentliche nach unten.
+   Was den ZUSTAND meldet ("keine Konfiguration vorhanden"), bleibt sichtbar —
+   das muss man lesen, ohne es zu suchen. */
+.info{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
+  border:1px solid var(--dim);border-radius:50%;font-size:9px;font-style:italic;
+  font-weight:600;color:var(--dim);cursor:pointer;flex:none;user-select:none}
+.info:hover{border-color:var(--muted);color:var(--muted)}
+.info.an{border-color:var(--accent);color:var(--accent)}
+.mitinfo{display:flex;align-items:center;gap:5px}
 .leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
 /* ------------------------------------------------------------------- Dialog */
@@ -209,7 +226,6 @@ label.an input{width:auto}
       <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
       <span class="klein mono" id="datei"></span>
     </div>
-    <div class="wachse"></div>
     <span class="status" id="status"></span>
   </header>
 
@@ -302,17 +318,79 @@ function el(tag, attrs, ...kinder) {
  * Neuaufbau mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird.
  * Dieselbe Regel wie beim Dear-PyGui-Vorgänger — diskrete Bedienelemente (Klick,
  * fertig) dürfen sofort melden, Tipp-Felder erst am Ende. */
-function feld(beschriftung, wert, beim_setzen, extra) {
+/* Welche Erklaerungen gerade aufgeklappt sind — als Schluessel, nicht als
+ * DOM-Verweis. Der Inspektor wird bei JEDER Aenderung komplett neu gebaut
+ * (`replaceChildren`), ein gemerktes Element waere danach ein Element, das
+ * niemand mehr sieht. Aufgeklappt bleibt aufgeklappt, bis man es zuklappt —
+ * auch ueber einen Block-Wechsel hinweg. */
+const offeneHilfen = new Set();
+
+/** Das kleine ⓘ hinter einer Beschriftung. Klick klappt den Text auf, Klick zu.
+ *
+ * Es war erst der native Tooltip (`title`) — eine Zeile Code, aber er verschwindet
+ * bei jedem Tastendruck und nach ein paar Sekunden von selbst. Zum Nachlesen taugt
+ * er damit nicht, und abfotografieren laesst er sich auch nicht.
+ *
+ * Der aufgeklappte Text landet HINTER dem Bedienelement, also genau dort, wo er
+ * frueher dauerhaft stand. Deshalb braucht es keine Positionsrechnung und kein
+ * Overlay: die Seite bleibt so klein, wie sie sein soll.
+ *
+ * `schluessel` ist die Identitaet ueber Neuaufbauten hinweg. Der Text taugt dafuer
+ * nicht: die Beschriftung traegt die Punkt-Nummer, und der STELLE-Text haengt am
+ * Block-Typ — beides wechselt, die Stelle in der Oberflaeche aber nicht. */
+function info(text, schluessel) {
+  if (!text) return null;
+  const zeichen = el("span", {class: "info", "data-hilfe": schluessel || text}, "i");
+  zeichen._text = text;
+  zeichen.addEventListener("click", (e) => {
+    // Das ⓘ steckt in einem <label>; ohne das hier wuerde der Klick das Feld
+    // fokussieren bzw. den Schalter umlegen.
+    e.preventDefault();
+    e.stopPropagation();
+    const key = zeichen.getAttribute("data-hilfe");
+    if (offeneHilfen.has(key)) offeneHilfen.delete(key);
+    else offeneHilfen.add(key);
+    hilfeZeichnen(zeichen);
+  });
+  return zeichen;
+}
+
+/** Bringt EIN ⓘ auf den Stand von `offeneHilfen` — auf- oder zugeklappt. */
+function hilfeZeichnen(zeichen) {
+  const offen = offeneHilfen.has(zeichen.getAttribute("data-hilfe"));
+  const wirt = zeichen.closest("label") || zeichen.parentNode;
+  const nachbar = wirt.nextElementSibling;
+  const da = nachbar && nachbar.classList.contains("hilfe-text") ? nachbar : null;
+  zeichen.classList.toggle("an", offen);
+  if (offen && !da) {
+    wirt.parentNode.insertBefore(el("p", {class: "hinweis hilfe-text"}, zeichen._text),
+                                 wirt.nextSibling);
+  } else if (!offen && da) {
+    da.remove();
+  }
+}
+
+/** Nach dem Neuaufbau: alles wieder aufklappen, was aufgeklappt war. */
+function hilfenAnwenden(wurzel) {
+  for (const zeichen of wurzel.querySelectorAll(".info")) hilfeZeichnen(zeichen);
+}
+
+/** Beschriftung, ggf. mit ⓘ dahinter. */
+function beschriftet(text, hilfe, schluessel) {
+  return hilfe ? el("span", {class: "mitinfo"}, text, info(hilfe, schluessel)) : text;
+}
+
+function feld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
   const eingabe = el("input", Object.assign({value: wert === null || wert === undefined ? "" : wert,
                                              autocomplete: "off"}, extra || {}));
   eingabe.addEventListener("change", () => beim_setzen(eingabe.value));
   eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-  return el("label", {class: "feld"}, beschriftung, eingabe);
+  return el("label", {class: "feld"}, beschriftet(beschriftung, hilfe, schluessel), eingabe);
 }
 
-function zahlfeld(beschriftung, wert, beim_setzen, extra) {
+function zahlfeld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
   return feld(beschriftung, wert, (v) => beim_setzen(Number(v) || 0),
-              Object.assign({type: "number"}, extra || {}));
+              Object.assign({type: "number"}, extra || {}), hilfe, schluessel);
 }
 
 function schalter(beschriftung, an, beim_setzen) {
@@ -322,7 +400,7 @@ function schalter(beschriftung, an, beim_setzen) {
   return el("label", {class: "an"}, box, beschriftung);
 }
 
-function auswahl(beschriftung, werte, aktuell, beim_setzen) {
+function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
   const s = el("select");
   for (const w of werte) {
     const o = el("option", {value: String(w.wert)}, w.text);
@@ -330,7 +408,7 @@ function auswahl(beschriftung, werte, aktuell, beim_setzen) {
     s.appendChild(o);
   }
   s.addEventListener("change", () => beim_setzen(s.value));
-  return beschriftung ? el("label", {class: "feld"}, beschriftung, s) : s;
+  return beschriftung ? el("label", {class: "feld"}, beschriftet(beschriftung, hilfe, schluessel), s) : s;
 }
 
 function segment(werte, aktuell, beim_setzen) {
@@ -339,7 +417,9 @@ function segment(werte, aktuell, beim_setzen) {
        w.text)));
 }
 
-function ueberschrift(text) { return el("span", {class: "ueberschrift"}, text); }
+function ueberschrift(text, hilfe, schluessel) {
+  return el("span", {class: "ueberschrift mitinfo"}, text, info(hilfe, schluessel));
+}
 
 /* -------------------------------------------------------------------- Brücke */
 
@@ -631,9 +711,9 @@ function zeichneInspektor() {
       // points.json geholt. Statt eines toten Feldes bearbeitet dieses hier den
       // Punkt — sichtbar beschriftet, weil es alle Blöcke darauf mitzieht.
       ziel.appendChild(feld("Name (Punkt #" + b.point_id + ")", b.name,
-        (v) => ruf("punkt_setzen", {punkt: b.point_id, feld: "name", wert: v})));
-      ziel.appendChild(el("p", {class: "hinweis"},
-        "Der Name gehört dem Punkt — alle Blöcke, die ihn benutzen, heißen mit."));
+        (v) => ruf("punkt_setzen", {punkt: b.point_id, feld: "name", wert: v}), null,
+        "Der Name gehört dem Punkt, nicht diesem Block. Wer ihn hier ändert, " +
+        "ändert ihn überall, wo derselbe Punkt benutzt wird.", "name"));
     }
     ziel.appendChild(el("div", {class: "gitter2"},
       zahlfeld("Wartezeit (s)", b.delay_before,
@@ -654,10 +734,22 @@ function zeichneInspektor() {
 
   if (b.typ !== "screenshot") baueTrigger(ziel, b);
   baueElse(ziel, b);
+
+  // Zuletzt, wenn alles im Dokument haengt: was aufgeklappt war, bleibt es. Der
+  // Inspektor wird bei jeder Aenderung komplett neu gebaut — ohne diese Zeile
+  // verschwindet eine gerade gelesene Erklaerung beim naechsten Klick irgendwo.
+  hilfenAnwenden(ziel);
 }
 
 function baueStelle(ziel, b) {
-  ziel.appendChild(ueberschrift("STELLE"));
+  // Beides an der Ueberschrift: der Zusatz fuer WARTEN-Bloecke erklaert, warum
+  // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
+  ziel.appendChild(ueberschrift("STELLE",
+    "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
+    "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten." +
+    (b.typ === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
+     "beobachtet. Zum Klicken oben den Typ KLICK oder FARBE+KLICK wählen." : ""),
+    "stelle"));
   if (!S.punkte.length && b.point_id === null) {
     ziel.appendChild(el("p", {class: "hinweis"},
       "Keine Punkte vorhanden. Im Hauptprozess mit CTRL+ALT+A aufnehmen — " +
@@ -669,13 +761,13 @@ function baueStelle(ziel, b) {
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", b.x, (v) => setzeStelle(b, v, b.y), {step: "1"}),
     zahlfeld("Y", b.y, (v) => setzeStelle(b, b.x, v), {step: "1"})));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "X und Y verschieben den Punkt — alle Blöcke darauf ziehen mit. " +
-    "Die Sequenz selbst hält keine Koordinaten."));
-  if (b.typ !== "wait") {
-    ziel.appendChild(schalter("nur warten (kein Klick)", b.wait_only,
-      (an) => ruf("block_setzen", {feld: "wait_only", wert: an})));
-  }
+  // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
+  // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
+  // Bedienelemente. Das rächte sich, weil er sich bei "warten" selbst ausblendete
+  // und damit eine Falltuer war. Die Chips koennen alles, was er konnte:
+  // WARTEN hin, FARBE+KLICK verlustfrei zurueck (der Trigger bleibt), KLICK
+  // zurueck ohne Trigger — und das ist keine Nebenwirkung, sondern die Bedeutung
+  // von KLICK. Was seine Beschriftung erklaerte, steht am ⓘ der Ueberschrift.
   if (b.scroll) {
     ziel.appendChild(zahlfeld("Mausrad (Stufen, 0 = kein Rad)", b.scroll,
       (v) => ruf("block_setzen", {feld: "scroll", wert: v}), {step: "1"}));
@@ -698,11 +790,33 @@ function baueScan(ziel, b) {
   const eintrag = scans[b.typ];
   if (!eintrag) return;
   const [titel, feldname] = eintrag;
+  const vorhanden = (S.scan_namen && S.scan_namen[b.typ]) || [];
+  const wert = b[feldname];
   ziel.appendChild(ueberschrift(titel));
-  ziel.appendChild(feld("Name der Konfiguration", b[feldname],
-    (v) => ruf("block_setzen", {feld: feldname, wert: v})));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Name eines im Item-/Boss-/Icon-Editor angelegten Scans. Ohne ihn wird nicht gespeichert."));
+
+  if (!vorhanden.length && !wert) {
+    // Nichts zum Auswählen — dann ist ein leeres Feld die falsche Antwort. Es
+    // gäbe nur einen Namen her, der auf keine Datei zeigt, und der Block liefe
+    // still ins Leere. Also sagen, wo die Konfiguration herkommt.
+    // CTRL+ALT+N fuer alle drei: Boss- und Icon-Scans sind Untermenues des
+    // Item-Scan-Menues, eigene Hotkeys haben sie nicht.
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Keine Konfiguration vorhanden. Im Hauptprozess mit CTRL+ALT+N anlegen " +
+      "(Boss- und Icon-Scans liegen in demselben Menü), dann steht sie hier " +
+      "zur Auswahl."));
+    return;
+  }
+
+  // Der gespeicherte Name bleibt wählbar, auch wenn seine Datei fehlt: sonst
+  // würde ein Öffnen mit gelöschter Konfiguration den Namen stillschweigend auf
+  // den ersten Eintrag der Liste ändern.
+  const werte = [{wert: "", text: "(keine)"}].concat(vorhanden.map(
+    (n) => ({wert: n, text: n})));
+  if (wert && !vorhanden.includes(wert)) werte.push({wert: wert, text: wert + " — fehlt"});
+  ziel.appendChild(auswahl("Konfiguration", werte, wert,
+    (v) => ruf("block_setzen", {feld: feldname, wert: v}),
+    "Im Item-/Boss-/Icon-Editor angelegt (Hauptprozess, CTRL+ALT+N). " +
+    "Ohne Konfiguration wird nicht gespeichert.", "scan"));
   if (b.typ === "item_scan") {
     ziel.appendChild(auswahl("Modus", S.scan_modi.map((m) => ({wert: m, text: m})),
       b.item_scan_mode, (v) => ruf("block_setzen", {feld: "item_scan_mode", wert: v})));
@@ -717,9 +831,28 @@ function baueScreenshot(ziel, b) {
   if (!hatBereich) return;
   const r = b.screenshot_region.slice();
   const setze = (i) => (v) => { r[i] = v; ruf("block_bereich", {werte: r}); };
+
+  // Der eigentliche Weg: die Ecke anfahren statt sie auszurechnen. Vier Zahlen
+  // sagen niemandem, wo der Bereich liegt — sie bleiben trotzdem stehen, fuer
+  // den Fall, dass man eine Koordinate abschreibt.
+  ziel.appendChild(el("button", {class: "btn", onclick: (e) => {
+    // blur() ist Pflicht, nicht Kosmetik: ein Knopf behaelt nach dem Klick den
+    // Fokus, und das ENTER, mit dem die Ecke bestaetigt wird, wuerde ihn gleich
+    // nochmal ausloesen — also mitten in der Aufnahme eine zweite starten.
+    e.currentTarget.blur();
+    // Sofortige Rueckmeldung, bevor die Bruecke blockiert: von dort kommt bis
+    // zum zweiten Tastendruck nichts, und ein Fenster, das schweigt, sieht aus
+    // wie eines, das den Klick verschluckt hat.
+    setzeStatus({text: "Ecke 1 anfahren + ENTER, dann Ecke 2 + ENTER (ESC bricht ab)",
+                 art: "warn"});
+    ruf("bereich_aufnehmen");
+  }}, "Bereich mit der Maus aufnehmen ⌖"));
+
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X1", r[0], setze(0)), zahlfeld("Y1", r[1], setze(1)),
     zahlfeld("X2", r[2], setze(2)), zahlfeld("Y2", r[3], setze(3))));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Grösse: " + Math.abs(r[2] - r[0]) + " × " + Math.abs(r[3] - r[1]) + " Pixel"));
 }
 
 function baueTrigger(ziel, b) {
@@ -730,31 +863,31 @@ function baueTrigger(ziel, b) {
     (w) => ruf("block_trigger", {wahl: w})));
   if (b.trigger !== "kein") {
     ziel.appendChild(auswahl("Geprüfte Stelle", punktListe(b.trigger_punkt), b.trigger_punkt,
-      (v) => v && ruf("block_trigger", {wahl: b.trigger, punkt: Number(v)})));
+      (v) => v && ruf("block_trigger", {wahl: b.trigger, punkt: Number(v)}),
+      "Farbe und Stelle kommen aus dem Punkt. Soll an derselben Stelle auf eine " +
+      "andere Farbe geprüft werden, ist das ein eigener Punkt.", "trigger"));
     ziel.appendChild(schalter("nur prüfen, nicht warten", b.trigger_pruefen,
       (an) => ruf("block_trigger", {wahl: b.trigger, pruefen: an})));
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "Farbe und Stelle kommen aus dem Punkt. Soll an derselben Stelle auf eine " +
-      "andere Farbe geprüft werden, ist das ein eigener Punkt."));
   } else if (b.point_id === null || b.point_id === undefined) {
     ziel.appendChild(el("p", {class: "hinweis"},
       "Ohne Punkt gibt es nichts zu prüfen — erst oben eine Stelle wählen."));
   }
 
-  ziel.appendChild(ueberschrift("NACHPRÜFUNG (NACH DEM SCHRITT)"));
+  ziel.appendChild(ueberschrift("NACHPRÜFUNG (NACH DEM SCHRITT)",
+    "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
+    "wiederholt (verify_retries), danach greift ELSE.", "verify"));
   ziel.appendChild(segment(richtungen, b.verify,
     (w) => ruf("block_trigger", {welche: "verify", wahl: w})));
   if (b.verify !== "kein") {
     ziel.appendChild(auswahl("Geprüfte Stelle", punktListe(b.verify_punkt), b.verify_punkt,
       (v) => v && ruf("block_trigger", {welche: "verify", wahl: b.verify, punkt: Number(v)})));
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
-      "wiederholt (verify_retries), danach greift ELSE."));
   }
 }
 
 function baueElse(ziel, b) {
-  ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT"));
+  ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
+    "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
+    "eigene Aktion des Schritts.", "else"));
   const werte = [{wert: "", text: "(keine)"}].concat(
     S.else_aktionen.map((a) => ({wert: a, text: {
       skip: "Schritt überspringen", skip_cycle: "Zyklus abbrechen",
@@ -769,11 +902,6 @@ function baueElse(ziel, b) {
   if (b.else_aktion === "key") {
     ziel.appendChild(feld("ELSE-Taste", b.else_taste,
       (v) => ruf("block_else", {aktion: "key", taste: v})));
-  }
-  if (b.else_aktion) {
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-      "eigene Aktion des Schritts."));
   }
 }
 
