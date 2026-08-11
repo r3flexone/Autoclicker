@@ -1,0 +1,853 @@
+"""
+Brücke zwischen der Weboberfläche und der Sequenz — die einzige Verbindung.
+
+Die Oberfläche kennt keine `SequenceStep`s. Sie bekommt eine Momentaufnahme aus
+reinen JSON-Werten (`snapshot()`) und schickt Befehle zurück ("wähle Zeile 3",
+"setze delay_before auf 1.5"); jeder Befehl gibt die nächste Momentaufnahme
+zurück. Die Schritte selbst bleiben hier im Prozess liegen und werden nur
+umgruppiert, nie konvertiert — deshalb überlebt auch ein Feld den Round-Trip,
+das die Oberfläche gar nicht anzeigt (`scroll`, `verify_condition`).
+
+**Warum die Editor-Logik hier liegt und nicht im JavaScript.** Dieses Modul
+braucht kein Fenster und wird in `tools/test_logic.py` gemessen. Beim
+Dear-PyGui-Vorgänger stand dieselbe Rechnung in der Ansicht: prüfbar war sie
+nur, indem der Test die halbe Ansicht stilllegte (`rebuild_board`,
+`_update_title` — letzteres, weil ein `dpg`-Aufruf ohne Kontext die Suite mit
+einem Segfault mitriss). Was hier liegt, kostet keinen solchen Aufwand.
+
+Regel beim Erweitern: **jede Zustandsänderung geht durch eine Methode dieser
+Klasse.** Die Oberfläche hält keinen eigenen Sequenz-Zustand, sie rendert nur,
+was `snapshot()` sagt. Sonst gibt es wieder zwei Wahrheiten — und die eine wäre
+die, die gespeichert wird.
+"""
+
+import os
+import re
+import time
+from pathlib import Path
+from typing import Optional
+
+from ...models import (
+    ELSE_CLICK, ELSE_KEY, ELSE_RESTART, ELSE_SKIP, ELSE_SKIP_CYCLE,
+    SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
+    Sequence, SequenceStep, WaitCondition,
+)
+from ...persistence import (
+    list_available_sequences, load_sequence_file, save_sequence_file,
+)
+from ...utils import sanitize_filename
+from .model import (
+    BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_COLORS,
+    BLOCK_ICON_SCAN, BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_LABELS,
+    BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
+    LANE_LOOP, Lane, PalettePoint, SequenceBoard, block_type,
+    board_to_sequence, ensure_else, load_palette_points, save_palette_points,
+    sequence_to_board, set_block_type, step_from_point,
+)
+
+# Reihenfolge der Block-Typen in der Typ-Auswahl: erst die drei Klick-Formen,
+# dann Taste, dann die Scans, zuletzt der Screenshot.
+TYP_REIHENFOLGE = [
+    BLOCK_CLICK, BLOCK_WAIT_CLICK, BLOCK_WAIT, BLOCK_KEY,
+    BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
+    BLOCK_SCREENSHOT,
+]
+
+# Farb-Trigger: die drei Zustände, die ein Schritt haben kann. Werte statt
+# Beschriftungen — die Beschriftung steht in der Oberfläche, hier steht das
+# Protokoll. (Beim DPG-Vorgänger waren beide dasselbe, und der Test verglich
+# gegen deutsche Anzeigetexte.)
+TRIGGER_KEIN = "kein"
+TRIGGER_DA = "da"
+TRIGGER_WEG = "weg"
+
+SCAN_MODI = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
+ELSE_AKTIONEN = [ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY]
+
+# Welches Feld hält den Namen eines Scan-Blocks? Ein Scan-Block mit leerem Namen
+# fällt beim Executor durch den Truthiness-Dispatch und degradiert still zu einem
+# Klick auf (0,0) — deshalb steht die Zuordnung hier einmal und wird an zwei
+# Stellen benutzt (Warnung am Block, Sperre beim Speichern).
+SCAN_FELD = {
+    BLOCK_ITEM_SCAN: "item_scan",
+    BLOCK_ICON_SCAN: "icon_scan",
+    BLOCK_BOSS_SCAN: "boss_scan",
+    BLOCK_BOSS_WATCHER: "boss_watcher",
+}
+
+# Einfache Felder eines Schritts: Name -> Umwandlung des Werts aus der Oberfläche.
+# Alles, was eine Stelle betrifft (Punkt, Trigger, else), hat eine eigene Methode —
+# dort hängt mehr dran als eine Zuweisung.
+_FELDER = {
+    "name": lambda v: str(v or ""),
+    "delay_before": lambda v: max(0.0, float(v or 0)),
+    "delay_max": lambda v: (float(v) if float(v or 0) > 0 else None),
+    "key_press": lambda v: (str(v).strip() or None),
+    "item_scan": lambda v: str(v or ""),
+    "item_scan_mode": lambda v: (str(v) if v in SCAN_MODI else SCAN_MODE_ALL),
+    "icon_scan": lambda v: str(v or ""),
+    "boss_scan": lambda v: str(v or ""),
+    "boss_watcher": lambda v: str(v or ""),
+    "wait_only": lambda v: bool(v),
+    "scroll": lambda v: (int(v) if int(v or 0) != 0 else None),
+}
+
+
+def _hex(rgb) -> Optional[str]:
+    """(r,g,b) -> '#RRGGBB'. Unbrauchbare Werte ergeben None statt einer Falschfarbe."""
+    if not rgb:
+        return None
+    try:
+        r, g, b = (max(0, min(255, int(v))) for v in tuple(rgb)[:3])
+    except (TypeError, ValueError):
+        return None
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def trigger_name(cond: Optional[WaitCondition]) -> str:
+    """Zustand einer Farb-Bedingung als Protokollwert."""
+    if cond is None:
+        return TRIGGER_KEIN
+    return TRIGGER_WEG if cond.until_gone else TRIGGER_DA
+
+
+def _wartetext(step: SequenceStep) -> str:
+    if step.delay_max and step.delay_max > step.delay_before:
+        return f"{step.delay_before:g}–{step.delay_max:g}s zufällig"
+    if step.delay_before:
+        return f"+{step.delay_before:g}s"
+    return "sofort"
+
+
+def _stelle(step: SequenceStep) -> str:
+    ref = f"#{step.point_id} " if step.point_id is not None else ""
+    return f"{ref}({step.x},{step.y})"
+
+
+class StudioBridge:
+    """Hält Sequenz, Auswahl und Punkte-Palette. Jede Methode ist ein UI-Befehl.
+
+    Alle öffentlichen Methoden geben `snapshot()` zurück — die Oberfläche
+    rendert nach jedem Befehl neu und muss nichts selbst nachhalten. Compound-
+    Argumente kommen als **ein** dict: pywebview reicht je nach Version nur ein
+    Argument durch, und ein dict bleibt lesbar, wenn ein Feld dazukommt.
+    """
+
+    def __init__(self, seq: Sequence, filepath, sequences_dir: str):
+        self.board: SequenceBoard = sequence_to_board(seq)
+        self.filepath = Path(filepath)
+        self.sequences_dir = sequences_dir
+        self.points: list[PalettePoint] = load_palette_points(sequences_dir)
+        # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
+        # END hätte bei "eine Position hoch" keine Bedeutung, und die
+        # Sammelaktionen wären nicht mehr eindeutig.
+        self.sel_lane: Optional[Lane] = None
+        self.sel_rows: set[int] = set()
+        self._dirty = False
+        # Wurde in dieser Sitzung mindestens einmal geschrieben? Nur dafür da,
+        # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.
+        self._gespeichert = False
+        self._status = ("", "info")
+        self._frage: Optional[dict] = None
+
+    # ------------------------------------------------------------- Momentaufnahme
+
+    def snapshot(self) -> dict:
+        """Der komplette Zustand als JSON-Werte — alles, was die Ansicht braucht."""
+        text, art = self._status
+        frage, self._frage = self._frage, None
+        return {
+            "datei": str(self.filepath),
+            "name": self.board.name,
+            "beschreibung": self.board.description,
+            "zyklen": self.board.total_cycles,
+            "dirty": self._dirty,
+            "status": {"text": text, "art": art},
+            "frage": frage,
+            "sequenzen": sorted(name for name, _ in list_available_sequences()),
+            "typen": [{"key": t, "label": BLOCK_LABELS[t],
+                       "farbe": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
+            "scan_modi": SCAN_MODI,
+            "else_aktionen": ELSE_AKTIONEN,
+            "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
+            "punkte": [self._punkt_json(p) for p in self.points],
+            "auswahl": {"phase": self._sel_index(), "zeilen": sorted(self.sel_rows)},
+            "block": self._block_detail(),
+        }
+
+    def _sel_index(self) -> Optional[int]:
+        if self.sel_lane is None or self.sel_lane not in self.board.lanes:
+            return None
+        return self.board.lanes.index(self.sel_lane)
+
+    def _punkt_json(self, p: PalettePoint) -> dict:
+        return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
+                "farbe": _hex(p.color), "quelle": p.source}
+
+    def _phase_json(self, index: int, lane: Lane) -> dict:
+        return {
+            "index": index,
+            "art": lane.kind,
+            "name": lane.name,
+            "wiederholungen": lane.repeat,
+            "start": lane.scheduled_start or "",
+            "loeschbar": lane.kind == LANE_LOOP,
+            "bloecke": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
+        }
+
+    def _block_json(self, lane: Lane, row: int, step: SequenceStep) -> dict:
+        """Eine Karte im Board — knapp genug, dass 50 davon untereinander passen."""
+        typ = block_type(step)
+        wc = step.wait_condition
+        feld = SCAN_FELD.get(typ)
+        block = {
+            "zeile": row,
+            "typ": typ,
+            "label": BLOCK_LABELS[typ],
+            "farbe": _hex(BLOCK_COLORS[typ]),
+            # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
+            # zweimal dasselbe Wort auf einer Karte ist keine Information.
+            "titel": step.name or "",
+            "zeilen": self._zeilen(step, typ),
+            "prueft": step.verify_condition is not None,
+            "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
+            "farbfeld": _hex(wc.color) if wc else None,
+            "farbtext": self._trigger_text(wc) if wc else "",
+            "else_text": self._else_text(step),
+            # Ein Scan ohne Namen wird beim Speichern abgelehnt — die Karte sagt
+            # das schon vorher, sonst sucht man den Block hinterher in vier Phasen.
+            "warnung": ("Name fehlt" if feld and not (getattr(step, feld) or "").strip()
+                        else None),
+        }
+        return block
+
+    def _zeilen(self, step: SequenceStep, typ: str) -> list[str]:
+        """Ein bis drei knappe Zeilen im Kartenkörper.
+
+        Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
+        zweiten Block ist Rauschen, und in der Liste zählt, dass 50 Karten
+        untereinander lesbar bleiben.
+        """
+        if typ == BLOCK_SCREENSHOT:
+            r = step.screenshot_region
+            return [f"Bereich {r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild"]
+        if typ in SCAN_FELD:
+            name = (getattr(step, SCAN_FELD[typ]) or "").strip() or "(kein Name)"
+            modus = f" · {step.item_scan_mode}" if typ == BLOCK_ITEM_SCAN else ""
+            zeilen = [f"{name}{modus}"]
+        elif typ == BLOCK_KEY:
+            zeilen = [f"Taste „{step.key_press}“"]
+        elif typ == BLOCK_WAIT:
+            zeilen = []
+        else:
+            zeilen = [_stelle(step)]
+        if step.scroll:
+            # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
+            # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
+            zeilen.append(f"Rad {step.scroll:+d}")
+        if step.delay_before or step.delay_max or not zeilen:
+            zeilen.append(_wartetext(step))
+        return zeilen
+
+    def _trigger_text(self, wc: WaitCondition) -> str:
+        was = "prüft" if wc.check_only else "wartet bis"
+        wohin = "weg" if wc.until_gone else "da"
+        return f"{was} RGB{tuple(wc.color)} {wohin}"
+
+    def _else_text(self, step: SequenceStep) -> str:
+        ec = step.else_config
+        if ec is None:
+            return ""
+        if ec.action == ELSE_CLICK:
+            ziel = f"#{ec.point_id}" if ec.point_id is not None else "(kein Punkt)"
+            return f"sonst: klick {ziel}"
+        if ec.action == ELSE_KEY:
+            return f"sonst: Taste „{ec.key or '?'}“"
+        return {ELSE_SKIP: "sonst: Schritt überspringen",
+                ELSE_SKIP_CYCLE: "sonst: Zyklus abbrechen",
+                ELSE_RESTART: "sonst: Sequenz neu starten"}.get(ec.action, f"sonst: {ec.action}")
+
+    def _einzelner(self) -> tuple[Optional[Lane], int, Optional[SequenceStep]]:
+        """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind."""
+        if self.sel_lane is None or len(self.sel_rows) != 1:
+            return None, -1, None
+        row = next(iter(self.sel_rows))
+        if not (0 <= row < len(self.sel_lane.steps)):
+            return None, -1, None
+        return self.sel_lane, row, self.sel_lane.steps[row]
+
+    def _block_detail(self) -> Optional[dict]:
+        """Alle Felder des gewählten Schritts für die Eigenschaften-Spalte."""
+        lane, row, step = self._einzelner()
+        if step is None:
+            return None
+        typ = block_type(step)
+        wc, vc, ec = step.wait_condition, step.verify_condition, step.else_config
+        return {
+            "phase": self.board.lanes.index(lane),
+            "zeile": row,
+            "typ": typ,
+            "label": BLOCK_LABELS[typ],
+            "farbe": _hex(BLOCK_COLORS[typ]),
+            "name": step.name or "",
+            "point_id": step.point_id,
+            "x": step.x,
+            "y": step.y,
+            "aufgenommene_farbe": _hex(step.recorded_color),
+            "delay_before": step.delay_before,
+            "delay_max": step.delay_max or 0,
+            "key_press": step.key_press or "",
+            "item_scan": step.item_scan or "",
+            "item_scan_mode": step.item_scan_mode or SCAN_MODE_ALL,
+            "icon_scan": step.icon_scan or "",
+            "boss_scan": step.boss_scan or "",
+            "boss_watcher": step.boss_watcher or "",
+            "wait_only": step.wait_only,
+            "scroll": step.scroll or 0,
+            "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
+            "trigger": trigger_name(wc),
+            "trigger_punkt": wc.point_id if wc else None,
+            "trigger_pruefen": wc.check_only if wc else False,
+            "verify": trigger_name(vc),
+            "verify_punkt": vc.point_id if vc else None,
+            "else_aktion": ec.action if ec else "",
+            "else_punkt": ec.point_id if ec else None,
+            "else_taste": (ec.key or "") if ec else "",
+            "else_delay": ec.delay if ec else 0,
+        }
+
+    # --------------------------------------------------------------- Zustand
+
+    def _melde(self, text: str, art: str = "ok") -> dict:
+        self._status = (text, art)
+        return self.snapshot()
+
+    def _geaendert(self, text: str = "", art: str = "ok") -> dict:
+        self._dirty = True
+        return self._melde(text, art)
+
+    def _punkt(self, point_id) -> Optional[PalettePoint]:
+        if point_id is None:
+            return None
+        return next((p for p in self.points if p.id == int(point_id)), None)
+
+    def _punkte_anwenden(self) -> None:
+        """Zieht die abgeleiteten Werte aller Schritte aus der Palette nach.
+
+        Dasselbe, was `resolve_point_references()` vor jedem Lauf tut — nur hier
+        im Editor, damit ein verschobener Punkt sofort an JEDEM Schritt sichtbar
+        wird, der auf ihn zeigt. Der DPG-Vorgänger aktualisierte nur den gerade
+        bearbeiteten Schritt; die übrigen zeigten bis zum nächsten Öffnen die
+        alte Koordinate an, obwohl gespeichert längst die neue galt.
+        """
+        for lane in self.board.lanes:
+            for step in lane.steps:
+                p = self._punkt(step.point_id)
+                if p is not None:
+                    step.x, step.y = p.x, p.y
+                    step.name = p.name or step.name
+                    step.recorded_color = p.color
+                for cond in (step.wait_condition, step.verify_condition):
+                    q = self._punkt(cond.point_id) if cond is not None else None
+                    if q is not None:
+                        cond.pixel = (q.x, q.y)
+                        if q.color:
+                            cond.color = tuple(q.color)
+                ec = step.else_config
+                r = self._punkt(ec.point_id) if ec is not None else None
+                if r is not None:
+                    ec.x, ec.y, ec.name = r.x, r.y, r.name or ""
+
+    # ------------------------------------------------------------ Sequenz-Ebene
+
+    def laden(self, daten: dict) -> dict:
+        """Öffnet eine gespeicherte Sequenz. Fragt bei ungespeicherten Änderungen."""
+        name = (daten or {}).get("name") or ""
+        if not name:
+            return self._melde("Keine Sequenz gewählt.", "warn")
+        if self._dirty and not (daten or {}).get("verwerfen"):
+            self._frage = {"art": "laden", "ziel": name,
+                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen."}
+            return self.snapshot()
+        pfad = next((p for n, p in list_available_sequences() if n == name), None)
+        seq = load_sequence_file(pfad) if pfad else None
+        if seq is None:
+            return self._melde(f"'{name}' konnte nicht geladen werden.", "err")
+        self.board = sequence_to_board(seq)
+        self.filepath = Path(pfad)
+        # Punkte neu einlesen: zwischen zwei Sequenzen kann im Hauptprozess ein
+        # Punkt dazugekommen sein.
+        self.points = load_palette_points(self.sequences_dir)
+        self._auswahl_leeren()
+        self._dirty = False
+        return self._melde(f"Geladen: {name}")
+
+    def neu(self, daten: Optional[dict] = None) -> dict:
+        """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
+        if self._dirty and not (daten or {}).get("verwerfen"):
+            self._frage = {"art": "neu", "ziel": "",
+                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen."}
+            return self.snapshot()
+        basis = f"Sequenz_{int(time.time())}"
+        self.board = sequence_to_board(Sequence(name=basis))
+        self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(basis)}.json"
+        self._auswahl_leeren()
+        self._dirty = False
+        return self._melde("Neue Sequenz — noch nicht gespeichert.", "warn")
+
+    def sequenz_setzen(self, daten: dict) -> dict:
+        """Name, Zyklen oder Beschreibung der Sequenz ändern."""
+        feld, wert = (daten or {}).get("feld"), (daten or {}).get("wert")
+        if feld == "name":
+            self.board.name = str(wert or "")
+        elif feld == "zyklen":
+            self.board.total_cycles = max(0, int(wert or 0))
+        elif feld == "beschreibung":
+            self.board.description = str(wert or "")
+        else:
+            return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._geaendert()
+
+    def _scan_ohne_namen(self) -> Optional[str]:
+        """Erster Scan-Block mit leerem Namen, als lesbare Stelle."""
+        for lane in self.board.lanes:
+            for row, step in enumerate(lane.steps, start=1):
+                typ = block_type(step)
+                feld = SCAN_FELD.get(typ)
+                if feld is not None and not (getattr(step, feld) or "").strip():
+                    return f"{BLOCK_LABELS[typ]} in '{lane.name}' (Block {row})"
+        return None
+
+    def speichern(self, daten: Optional[dict] = None) -> dict:
+        """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen."""
+        if not (self.board.name or "").strip():
+            return self._melde("Sequenz-Name fehlt — nichts gespeichert.", "err")
+        leer = self._scan_ohne_namen()
+        if leer:
+            return self._melde(f"Scan ohne Namen: {leer} — nichts gespeichert.", "err")
+
+        alt = self.filepath
+        neu = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
+        umbenannt = neu != alt
+
+        # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlägt das fehl,
+        # zeigten frisch angelegte Referenzen ins Leere — dann lieber gar nicht
+        # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
+        if not save_palette_points(self.sequences_dir, self.points):
+            return self._melde("points.json nicht schreibbar — nichts gespeichert.", "err")
+        if not save_sequence_file(board_to_sequence(self.board), neu):
+            return self._melde("Speichern fehlgeschlagen!", "err")
+
+        self.filepath = neu
+        self._gespeichert = True
+        self._dirty = False
+        text = f"Gespeichert: {neu.name}"
+        if umbenannt and alt.exists():
+            try:
+                os.remove(alt)
+                text = f"Umbenannt → {neu.name} (alte Datei entfernt)"
+            except OSError:
+                text = f"Gespeichert: {neu.name} (alte Datei {alt.name} blieb)"
+        return self._melde(text)
+
+    def rettung_schreiben(self) -> Optional[Path]:
+        """Sichert ungespeicherte Änderungen beim Schließen des Fensters.
+
+        Gefragt wird nicht: das Fenster ist zu diesem Zeitpunkt schon auf dem Weg
+        nach draußen. Die Kopie landet unter `backups/`, nicht in `sequences/` —
+        dort listet `list_available_sequences()` jede `*.json` als Sequenz auf,
+        und eine halbfertige Rettungsdatei zwischen den echten wäre schlimmer als
+        der Verlust.
+        """
+        if not self._dirty:
+            return None
+        from ...persistence.sweep import sicherungspfad
+        # sicherungspfad() liefert "<name>.json.bak" — hier soll die Datei lesbar
+        # heißen und eine echte .json-Endung tragen, damit man sie direkt
+        # zurückkopieren kann.
+        ziel = sicherungspfad(self.filepath).with_name(
+            f"{self.filepath.stem}.ungespeichert.json")
+        try:
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            if save_sequence_file(board_to_sequence(self.board), ziel):
+                return ziel
+        except (IOError, OSError):
+            return None
+        return None
+
+    # ---------------------------------------------------------------- Phasen
+
+    def _lane(self, index) -> Optional[Lane]:
+        try:
+            i = int(index)
+        except (TypeError, ValueError):
+            return None
+        return self.board.lanes[i] if 0 <= i < len(self.board.lanes) else None
+
+    def phase_anhaengen(self, daten: Optional[dict] = None) -> dict:
+        lane = self.board.add_loop_lane()
+        return self._geaendert(f"Phase '{lane.name}' angelegt.")
+
+    def phase_loeschen(self, daten: dict) -> dict:
+        lane = self._lane((daten or {}).get("phase"))
+        if lane is None or lane.kind != LANE_LOOP:
+            return self._melde("INIT und END lassen sich nicht löschen.", "warn")
+        self.board.delete_loop_lane(lane)
+        self._auswahl_leeren()
+        return self._geaendert(f"Phase '{lane.name}' gelöscht.")
+
+    def phase_setzen(self, daten: dict) -> dict:
+        """Name, Wiederholungen oder Startzeit einer Phase ändern."""
+        daten = daten or {}
+        lane = self._lane(daten.get("phase"))
+        if lane is None:
+            return self._melde("Phase nicht gefunden.", "err")
+        feld, wert = daten.get("feld"), daten.get("wert")
+        if feld == "name":
+            # Nur Loop-Phasen tragen einen Namen: INIT und END heißen in der Datei
+            # gar nicht, `board_to_sequence()` wirft ihren Namen weg. Eine Umbenennung
+            # dort anzunehmen hieße, sie beim nächsten Öffnen still zu verlieren.
+            if lane.kind != LANE_LOOP:
+                return self._melde("INIT und END tragen keinen eigenen Namen.", "warn")
+            lane.name = str(wert or "").strip() or lane.name
+        elif feld == "wiederholungen":
+            lane.repeat = max(1, int(wert or 1))
+        elif feld == "start":
+            roh = str(wert or "").strip()
+            if not roh:
+                lane.scheduled_start = None
+            else:
+                m = re.fullmatch(r"(\d{1,2}):(\d{2})", roh)
+                if not m:
+                    return self._melde(f"Startzeit '{roh}' — erwartet HH:MM.", "warn")
+                hh, mm = int(m.group(1)), int(m.group(2))
+                if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                    return self._melde(f"Startzeit '{roh}' außerhalb 00:00–23:59.", "warn")
+                lane.scheduled_start = f"{hh:02d}:{mm:02d}"
+        else:
+            return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._geaendert()
+
+    # --------------------------------------------------------------- Auswahl
+
+    def _auswahl_leeren(self) -> None:
+        self.sel_lane, self.sel_rows = None, set()
+
+    def _auswahl_setzen(self, lane: Lane, row: int) -> None:
+        self.sel_lane, self.sel_rows = lane, {row}
+
+    def waehlen(self, daten: dict) -> dict:
+        """Klick auf eine Karte. `modus`: einzeln / dazu / bereich.
+
+        Die Auswahl fängt in einer anderen Phase immer neu an — siehe
+        Klassen-Docstring: Sammelaktionen brauchen genau eine Phase.
+        """
+        daten = daten or {}
+        lane = self._lane(daten.get("phase"))
+        if lane is None:
+            self._auswahl_leeren()
+            return self.snapshot()
+        row = int(daten.get("zeile", 0))
+        if not (0 <= row < len(lane.steps)):
+            self._auswahl_leeren()
+            return self.snapshot()
+        modus = daten.get("modus") or "einzeln"
+        if modus == "dazu" and self.sel_lane is lane:
+            self.sel_rows.symmetric_difference_update({row})
+            if not self.sel_rows:
+                self._auswahl_leeren()
+        elif modus == "bereich" and self.sel_lane is lane and self.sel_rows:
+            von, bis = min(self.sel_rows | {row}), max(self.sel_rows | {row})
+            self.sel_rows = set(range(von, bis + 1))
+        else:
+            self._auswahl_setzen(lane, row)
+        return self.snapshot()
+
+    def auswahl_leeren(self, daten: Optional[dict] = None) -> dict:
+        self._auswahl_leeren()
+        return self.snapshot()
+
+    # -------------------------------------------------------------- Struktur
+
+    def block_anhaengen(self, daten: dict) -> dict:
+        """Blanko-Block ans Ende einer Phase. Hat noch keine Stelle — deshalb (0,0)."""
+        lane = self._lane((daten or {}).get("phase"))
+        if lane is None:
+            return self._melde("Phase nicht gefunden.", "err")
+        self.board.add_step(lane, SequenceStep(x=0, y=0, delay_before=0.0))
+        self._auswahl_setzen(lane, len(lane.steps) - 1)
+        return self._geaendert()
+
+    def punkt_einfuegen(self, daten: dict) -> dict:
+        """Punkt aus der Palette als Klick-Block einsetzen (mit `point_id`)."""
+        daten = daten or {}
+        lane = self._lane(daten.get("phase"))
+        punkt = self._punkt(daten.get("punkt"))
+        if lane is None or punkt is None:
+            return self._melde("Punkt oder Phase nicht gefunden.", "err")
+        at = daten.get("zeile")
+        at = len(lane.steps) if at is None else max(0, min(int(at), len(lane.steps)))
+        self.board.add_step(lane, step_from_point(punkt), at=at)
+        self._auswahl_setzen(lane, at)
+        return self._geaendert()
+
+    def _verschiebe(self, quelle: Lane, rows: list[int], ziel: Lane, at: int) -> None:
+        """Trägt `rows` aus `quelle` in `ziel` ab Position `at` ein.
+
+        Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
+        zwischen Phasen. Letzteres gibt es im Konsolen-Editor gar nicht — eine
+        Aufnahme nachträglich in INIT/LOOP/END aufzuteilen hieß dort löschen und
+        neu anlegen.
+        """
+        schritte = [quelle.steps[i] for i in sorted(rows)]
+        if not schritte:
+            return
+        # Wie viele der entfernten Schritte lagen VOR der Zielposition? Um so viele
+        # rutscht sie nach vorne — aber nur, wenn aus derselben Phase entfernt wird.
+        if quelle is ziel:
+            at -= sum(1 for i in rows if i < at)
+        for i in sorted(rows, reverse=True):
+            self.board.delete_step(quelle, i)
+        at = max(0, min(at, len(ziel.steps)))
+        for versatz, schritt in enumerate(schritte):
+            self.board.add_step(ziel, schritt, at=at + versatz)
+        self.sel_lane = ziel
+        self.sel_rows = set(range(at, at + len(schritte)))
+        self._dirty = True
+
+    def ziehen(self, daten: dict) -> dict:
+        """Ziel eines Drag&Drop mit Karten."""
+        daten = daten or {}
+        quelle = self._lane(daten.get("von_phase"))
+        ziel = self._lane(daten.get("nach_phase"))
+        if quelle is None or ziel is None:
+            return self.snapshot()
+        von_zeile = int(daten.get("von_zeile", 0))
+        at = int(daten.get("nach_zeile", 0))
+        # Wird ein Schritt aus der aktuellen Auswahl gezogen, wandert die ganze
+        # Auswahl mit — sonst nur der angefasste.
+        rows = (sorted(self.sel_rows)
+                if (self.sel_lane is quelle and von_zeile in self.sel_rows)
+                else [von_zeile])
+        self._verschiebe(quelle, rows, ziel, at)
+        return self._melde("")
+
+    def auswahl_verschieben(self, daten: dict) -> dict:
+        """Verschiebt die Auswahl als Block um eine Position (−1 hoch, +1 runter)."""
+        delta = int((daten or {}).get("delta", 0))
+        lane = self.sel_lane
+        if lane is None or not self.sel_rows or delta == 0:
+            return self.snapshot()
+        rows = sorted(self.sel_rows)
+        if delta < 0 and rows[0] == 0:
+            return self.snapshot()
+        if delta > 0 and rows[-1] == len(lane.steps) - 1:
+            return self.snapshot()
+        # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von hinten —
+        # sonst überholen sich die Elemente gegenseitig.
+        folge = rows if delta < 0 else list(reversed(rows))
+        self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
+        return self._geaendert()
+
+    def auswahl_loeschen(self, daten: Optional[dict] = None) -> dict:
+        lane = self.sel_lane
+        if lane is None or not self.sel_rows:
+            return self.snapshot()
+        # Von hinten löschen, sonst verschieben sich die noch offenen Indizes.
+        for idx in sorted(self.sel_rows, reverse=True):
+            self.board.delete_step(lane, idx)
+        anzahl = len(self.sel_rows)
+        self._auswahl_leeren()
+        return self._geaendert(f"{anzahl} Block/Blöcke gelöscht.")
+
+    # ---------------------------------------------------------- Block-Felder
+
+    def block_typ(self, daten: dict) -> dict:
+        typ = (daten or {}).get("typ")
+        lane, row, step = self._einzelner()
+        if step is None or typ not in BLOCK_LABELS:
+            return self.snapshot()
+        set_block_type(step, typ)
+        return self._geaendert()
+
+    def block_setzen(self, daten: dict) -> dict:
+        """Ein einfaches Feld des gewählten Schritts setzen."""
+        daten = daten or {}
+        feld, wert = daten.get("feld"), daten.get("wert")
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        wandeln = _FELDER.get(feld)
+        if wandeln is None:
+            return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+        try:
+            setattr(step, feld, wandeln(wert))
+        except (TypeError, ValueError):
+            return self._melde(f"'{wert}' passt nicht zu {feld}.", "warn")
+        return self._geaendert()
+
+    def block_bereich(self, daten: dict) -> dict:
+        """Screenshot-Bereich setzen (`werte` = [x1,y1,x2,y2]) oder auf Vollbild zurück."""
+        daten = daten or {}
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        werte = daten.get("werte")
+        if not werte:
+            step.screenshot_region = None
+        else:
+            try:
+                step.screenshot_region = tuple(int(v) for v in werte[:4])
+            except (TypeError, ValueError):
+                return self._melde("Bereich braucht vier ganze Zahlen.", "warn")
+        return self._geaendert()
+
+    def block_punkt(self, daten: dict) -> dict:
+        """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
+
+        Prüft der Schritt seine eigene Stelle (Farb-Trigger auf demselben Punkt),
+        zieht der Trigger mit: sonst klickt der Schritt woanders hin, als er
+        vorher geprüft hat.
+        """
+        daten = daten or {}
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        punkt = self._punkt(daten.get("punkt"))
+        if punkt is None:
+            return self._melde("Punkt nicht gefunden.", "warn")
+        alt = step.point_id
+        step.point_id = punkt.id
+        for cond in (step.wait_condition, step.verify_condition):
+            if cond is not None and (cond.point_id == alt or cond.point_id is None):
+                cond.point_id = punkt.id
+        self._punkte_anwenden()
+        return self._geaendert()
+
+    def block_trigger(self, daten: dict) -> dict:
+        """Farb-Trigger des Schritts: kein / da / weg, plus 'nur prüfen'.
+
+        Der Punkt ist die Quelle für Stelle UND Farbe. Ohne `point_id` gibt es
+        nichts zu prüfen — dann passiert nichts, statt eine Bedingung auf (0,0)
+        anzulegen. Dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert".
+        """
+        daten = daten or {}
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        feld = "verify_condition" if daten.get("welche") == "verify" else "wait_condition"
+        return self._trigger_setzen(step, feld, daten)
+
+    def _trigger_setzen(self, step: SequenceStep, feld: str, daten: dict) -> dict:
+        wahl = daten.get("wahl")
+        cond: Optional[WaitCondition] = getattr(step, feld)
+        if wahl == TRIGGER_KEIN:
+            setattr(step, feld, None)
+            return self._geaendert()
+        if cond is None:
+            punkt_id = daten.get("punkt", step.point_id)
+            punkt = self._punkt(punkt_id)
+            if punkt is None:
+                return self._melde(
+                    "Ohne Punkt gibt es nichts zu prüfen — erst einen wählen.", "warn")
+            cond = WaitCondition(point_id=punkt.id, pixel=(punkt.x, punkt.y),
+                                 color=tuple(punkt.color) if punkt.color else (0, 0, 0))
+            setattr(step, feld, cond)
+        if wahl in (TRIGGER_DA, TRIGGER_WEG):
+            cond.until_gone = (wahl == TRIGGER_WEG)
+        if "pruefen" in daten:
+            cond.check_only = bool(daten["pruefen"])
+        if daten.get("punkt") is not None:
+            punkt = self._punkt(daten["punkt"])
+            if punkt is not None:
+                cond.point_id = punkt.id
+                self._punkte_anwenden()
+        return self._geaendert()
+
+    def block_else(self, daten: dict) -> dict:
+        """ELSE-Aktion setzen oder entfernen (leere Aktion = keine)."""
+        daten = daten or {}
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        aktion = daten.get("aktion") or ""
+        if not aktion:
+            step.else_config = None
+            return self._geaendert()
+        if aktion not in ELSE_AKTIONEN:
+            return self._melde(f"Unbekannte ELSE-Aktion '{aktion}'.", "err")
+        ec = ensure_else(step, aktion)
+        if "punkt" in daten and daten["punkt"] is not None:
+            punkt = self._punkt(daten["punkt"])
+            if punkt is None:
+                return self._melde("Punkt nicht gefunden.", "warn")
+            # Nur die Referenz zählt: `x`/`y`/`name` sind abgeleitet und stehen
+            # nicht in der Datei. Der DPG-Vorgänger ließ genau diese drei von Hand
+            # eintippen — beim nächsten Öffnen war die Eingabe weg.
+            ec.point_id = punkt.id
+            self._punkte_anwenden()
+        if "taste" in daten:
+            ec.key = str(daten["taste"] or "").strip() or None
+        if "delay" in daten:
+            ec.delay = max(0.0, float(daten["delay"] or 0))
+        return self._geaendert()
+
+    # ---------------------------------------------------------------- Punkte
+
+    def punkt_setzen(self, daten: dict) -> dict:
+        """Verschiebt oder benennt einen Punkt — alle Schritte darauf ziehen mit.
+
+        Die Zahlenfelder verschieben den PUNKT, nicht den Schritt: die Sequenz
+        hält keine Koordinaten mehr, eine hier eingetippte Stelle wäre sonst beim
+        Speichern verloren.
+        """
+        daten = daten or {}
+        punkt = self._punkt(daten.get("punkt"))
+        if punkt is None:
+            return self._melde("Punkt nicht gefunden.", "warn")
+        feld, wert = daten.get("feld"), daten.get("wert")
+        try:
+            if feld == "x":
+                punkt.x = int(wert)
+            elif feld == "y":
+                punkt.y = int(wert)
+            elif feld == "name":
+                punkt.name = str(wert or "")
+            else:
+                return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+        except (TypeError, ValueError):
+            return self._melde(f"'{wert}' ist keine Zahl.", "warn")
+        self._punkte_anwenden()
+        return self._geaendert()
+
+    def punkt_anlegen(self, daten: dict) -> dict:
+        """Legt einen Punkt an und hängt ihn an den gewählten Schritt.
+
+        Für den Blanko-Block: er hat noch keine Stelle, und ohne Punkt bliebe er
+        ein Klick auf (0,0). Aufgenommen wird sonst im Hauptprozess — hier geht es
+        nur darum, dass ein im Studio entstandener Block überhaupt eine Stelle
+        bekommen kann.
+        """
+        daten = daten or {}
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        try:
+            x, y = int(daten.get("x", 0)), int(daten.get("y", 0))
+        except (TypeError, ValueError):
+            return self._melde("Stelle braucht zwei ganze Zahlen.", "warn")
+        # Denselben Punkt wiederverwenden, wenn schon einer dort liegt: klickt eine
+        # Sequenz zweimal denselben Knopf, ist das EIN Punkt — sonst wandert beim
+        # Nachjustieren nur die Hälfte mit.
+        punkt = next((p for p in self.points if p.x == x and p.y == y), None)
+        if punkt is None:
+            punkt = PalettePoint(
+                id=max([p.id for p in self.points], default=0) + 1,
+                x=x, y=y,
+                name=str(daten.get("name") or step.name or "Sequenz-Studio"),
+                color=tuple(step.recorded_color) if step.recorded_color else None,
+                source="Sequenz-Studio")
+            self.points.append(punkt)
+        step.point_id = punkt.id
+        self._punkte_anwenden()
+        return self._geaendert(f"Punkt #{punkt.id} gesetzt.")

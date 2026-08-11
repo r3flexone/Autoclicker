@@ -21,6 +21,33 @@ aufmacht und weiß, wie das Feld heißt.
 - **Tradeoff:** 66 Werte sind zu viele für ein flaches Menü — es braucht die Sektionen, sonst wird es unübersichtlicher als die JSON. Und jeder neue Config-Wert muss im Menü landen, sonst entsteht wieder eine Zwei-Klassen-Config.
 - **Ansatz:** Das Gerüst liegt schon da: `_CONFIG_SECTIONS` in `config.py` gruppiert alle Felder nach Thema, die Kommentare an den Dataclass-Feldern sind brauchbare Erklärtexte. Das Menü daraus **generieren** statt handschreiben — dann kann kein Feld vergessen werden. Bool umschalten, Zahlen mit Bereichsangabe, feste Auswahl (`pixel_timeout_action`) als Liste; Validierung übernimmt `AppConfig.__post_init__`, gespeichert wird sofort über `save_config`.
 
+### Sequenz-Studio: die drei Ansichten aus dem Entwurf
+Der Entwurf der Weboberfläche hatte drei Bildschirme; gebaut ist das Board. Die beiden
+anderen und die Screenshot-Vorschau der Punkte-Palette stehen noch aus.
+
+- **Sequenzen-Übersicht** — Karten statt Auswahlliste: Name, Zyklen, Phasen, Schritte,
+  zuletzt geändert; öffnen, anlegen, umbenennen, löschen.
+  - *Nutzen:* Der Kopf des Fensters lädt heute über ein Klappmenü — man muss die Namen
+    kennen. Eine Übersicht zeigt, was da ist, bevor man sich entscheidet.
+  - *Tradeoff:* Umbenennen und Löschen fassen Dateien an, das Studio schrieb bisher nur
+    beim Speichern. Löschen braucht eine Rückfrage und darf `points.json` nicht anrühren.
+- **Live-Run** — was der Worker gerade tut: aktueller Schritt, Zyklus, Zähler, Log.
+  - *Nutzen:* Beim Debuggen einer Sequenz ist genau das die Frage, für die man sonst in
+    die Konsole schaut oder hinterher `tools/log_report.py` aufmacht.
+  - *Tradeoff:* Braucht eine Verbindung, die es nicht gibt. Das Studio ist ein eigener
+    Prozess, gemeinsamer Nenner ist die Datei — also müsste der Worker seinen Stand in
+    eine Statusdatei schreiben (oder das Session-Log wäre die Quelle) und das Studio
+    pollen. Ein Schreibvorgang pro Schritt im Worker ist nicht nichts, und ein zweiter
+    Weg für „was läuft gerade" neben der Status-Zeile will begründet sein.
+- **Screenshot-Vorschau in der Punkte-Palette** — die Punkte als Marker auf einem
+  Bildschirmfoto, statt nur als Koordinatenpaare.
+  - *Nutzen:* „Punkt #3" sagt einem nichts; auf dem Bild sieht man sofort, welcher Knopf
+    gemeint ist. Für das Sortieren einer aufgenommenen Sequenz ist das der Unterschied.
+  - *Tradeoff:* Der Subprozess müsste einen Screenshot aufnehmen (`imaging.take_screenshot`,
+    braucht Pillow/Windows) und als Data-URL in die Seite reichen — und das Bild ist der
+    Bildschirm von *jetzt*, nicht der vom Zeitpunkt der Aufnahme. Wenn das Spiel gerade
+    nicht läuft, zeigt die Vorschau den Desktop.
+
 ## Performance
 
 ### Ein Screenshot pro Scan statt einer pro Slot

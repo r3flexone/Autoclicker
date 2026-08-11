@@ -7,7 +7,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Punkte aufnehmen**: Mausposition speichern mit automatischer Benennung
 - **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
-- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen (`CTRL+ALT+B`, Dear PyGui)
+- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen (`CTRL+ALT+B`, eigenes Fenster)
 - **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
@@ -87,9 +87,12 @@ Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
 
 ### Optionale Extras (OCR, visuelle Editoren)
 
-`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `dearpygui`. Alle drei
-gehören zu Features, die per Default **abgeschaltet** sind — installiere sie nur, wenn du
-sie einschaltest. **`easyocr` zieht PyTorch nach: mehrere GB Download.**
+`requirements-optional.txt` enthält `easyocr`, `pytesseract`, `dearpygui` und
+`pywebview`. Alle vier gehören zu Features, die per Default **abgeschaltet** sind oder
+nur auf Zuruf starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht
+PyTorch nach: mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet nur ein
+Fenster mit der Webansicht des Sequenz-Studios (auf Windows über WebView2, bei
+Windows 10/11 in der Regel schon vorhanden).
 
 **Ohne GPU (CPU-only):**
 ```bash
@@ -168,7 +171,7 @@ Im Sequenz-Editor:
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
-| `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, Dear PyGui) |
+| `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, braucht `pywebview`) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
 | `CTRL+ALT+V` | Visuelles Scan-Studio (Slots/Items/Boss/Icon auf Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
@@ -1347,6 +1350,32 @@ python tools/slot_tester.py
 ```
 
 ## Changelog
+
+### Neueste Änderungen — Sequenz-Studio als Weboberfläche
+
+**Sequenz-Studio** (`CTRL+ALT+B`) hat eine neue Oberfläche: eine Webseite in einem
+eigenen Fenster (`pywebview`) statt Dear PyGui. Dieselben Dateien, dieselbe Logik —
+aber Karten statt Textzeilen, echtes Drag & Drop, und alles Wichtige eines Blocks
+steht auf einmal da.
+
+- **Board mit Karten**: pro Phase eine Spalte, pro Schritt eine Karte mit Typ-Marke,
+  Ziel, Wartezeit, Farb-Trigger und ELSE-Zeile. Ein Scan ohne Namen trägt eine Warnung,
+  bevor das Speichern ihn ablehnt
+- **Ziehen mit Einfüge-Marke**: zwischen Karten und über Phasengrenzen; ein Punkt aus
+  der Palette wird per Ziehen zum Klick-Block. Mehrfachauswahl mit STRG (Bereich mit
+  SHIFT), Tastatur: `Entf`, `ALT+↑/↓`, `STRG+S`
+- **Eigenschaften vollständig**: Typ, Name, Wartezeit/Zufallsbereich, Stelle, Farb-Trigger
+  (inkl. „nur prüfen"), **Nachprüfung**, ELSE, Scan-Name/-Modus, Screenshot-Bereich —
+  die Nachprüfung war in der alten Ansicht gar nicht erreichbar
+- **Stellen sind Punkte, keine Koordinaten**: der ELSE-Klick und der Prüf-Pixel zeigen
+  jetzt auf einen Punkt. Vorher ließen sie sich als Zahlen eintippen, und weil die
+  Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
+- **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
+  nicht erst nach dem nächsten Öffnen
+- **Rückfrage statt Zwei-Klick-Trick** beim Laden/Neuanlegen mit offenen Änderungen
+- **Die Editor-Logik liegt jetzt in `bridge.py`** und damit im Test: die Umsortier-Rechnung
+  lief bisher nur mit installiertem Dear PyGui und musste dafür die halbe Ansicht
+  stilllegen. Die Suite prüft das Studio jetzt auf jeder Plattform (47 Prüfungen mehr)
 
 ### Neueste Änderungen — Visuelle Editoren + Aufnahme + klarere Trigger-Keywords
 

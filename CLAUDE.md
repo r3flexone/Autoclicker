@@ -43,14 +43,23 @@ Regeln beim Erweitern:
   am Monitor-Setup.
 
 **Der GUI-Code lässt sich nicht ausführen, seine API-Verträglichkeit aber prüfen.**
-Die beiden Dear-PyGui-Werkzeuge brauchen ein Fenster und laufen in keinem Test — eine
-entfallene API fällt deshalb erst beim Start auf, mit einem Absturz. Genau so ist das
-Scan-Studio an `add_static_texture(..., format=...)` gestorben: das Argument gab es in
-DPG 1.x, in 2.x nur noch bei `add_raw_texture`. Ein Test hält jetzt jeden
-`dpg.<name>(..., kwarg=...)` gegen die Signatur der **installierten** Version
-(`dpg-Aufrufe passen zur installierten Dear-PyGui-Version`). Generische Funktionen mit
-`**kwargs` (`configure_item` & Co.) stehen begründet auf einer Ausnahmeliste. Ohne
-`dearpygui` im venv wird der Abschnitt übersprungen.
+Das Scan-Studio (Dear PyGui) braucht ein Fenster und läuft in keinem Test — eine
+entfallene API fällt deshalb erst beim Start auf, mit einem Absturz. Genau so ist es an
+`add_static_texture(..., format=...)` gestorben: das Argument gab es in DPG 1.x, in 2.x
+nur noch bei `add_raw_texture`. Ein Test hält jetzt jeden `dpg.<name>(..., kwarg=...)`
+gegen die Signatur der **installierten** Version (`dpg-Aufrufe passen zur installierten
+Dear-PyGui-Version`). Generische Funktionen mit `**kwargs` (`configure_item` & Co.)
+stehen begründet auf einer Ausnahmeliste. Ohne `dearpygui` im venv wird der Abschnitt
+übersprungen.
+
+**Beim Sequenz-Studio stellt sich die Frage nicht mehr so.** Seine Oberfläche ist eine
+Webseite, und die Logik dahinter liegt in `bridge.py` — ohne Fenster, ohne Fremdpaket,
+also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist (HTML/CSS/JS). Das ist die
+Richtung, in die GUI-Code hier gehört: **nicht die Ansicht testbar machen, sondern die
+Logik aus ihr heraus.** Die Umsortier-Rechnung stand vorher in der DPG-Ansicht, und der
+Test musste dafür `rebuild_board`, `refresh_properties`, `_set_status` **und**
+`_update_title` stilllegen — letzteres, weil `dpg.set_viewport_title()` ohne Kontext
+kein Python-Fehler ist, sondern ein Segfault, der die ganze Suite mitriss.
 
 Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet. Die Suite
 läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen Checks. Auf einer
@@ -482,15 +491,15 @@ wird.)
   Zahl), heißt aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
   will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
 
-**Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: der
-Dear-PyGui-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
+**Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: ein
+Fenster-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
 Thread. Gestartet werden sie vom Handler per `subprocess.Popen([sys.executable, "-m", ...])`,
-Dear PyGui ist optional und wird beim Start des Subprozesses geprüft.
+das jeweilige Fenster-Paket ist optional und wird beim Start des Subprozesses geprüft.
 
-| Einstiegspunkt | Canvas | arbeitet auf |
+| Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/scan_studio.py` (`handle_scan_studio`) | `editors/scan_canvas/` | `slots/slots.json` |
-| `autoclicker/sequence_studio.py` (`handle_sequence_studio`) | `editors/sequence_studio/` | `sequences/<name>.json` |
+| `autoclicker/scan_studio.py` (`handle_scan_studio`) | `editors/scan_canvas/` (Dear PyGui) | `slots/slots.json` |
+| `autoclicker/sequence_studio.py` (`handle_sequence_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>.json` |
 
 Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
 Der Subprozess liest die Datei beim Start und schreibt sie beim Speichern; der
@@ -512,33 +521,52 @@ verspricht deshalb nur, was sie einlösen kann — dafür kann sie es richtig: Z
 sortiert um, auch **über Phasengrenzen** (das kann der Konsolen-Editor bis heute
 nicht), Mehrfachauswahl mit STRG, Sammel-Aktionen auf der Auswahl.
 
+**Die Oberfläche ist seit dem zweiten Umbau eine Webseite** (`web/index.html` in einem
+pywebview-Fenster). Dear PyGui gab die Listen zwar her, aber jede Zeile war Text: was
+ein Block tut, stand in einer Zeichenkette, und alles Weitere lag in einer Seitenleiste
+oder in einer aufgeklappten Zeile darunter. Karten können zeigen, was Text beschreiben
+muss — Typ als Marke, Farb-Trigger als Farbfeld, ELSE als eigene Zeile. Das ist der
+ganze Grund für den Wechsel; die Datenschicht (`model.py`) ist dieselbe geblieben.
+
+**Die Oberfläche hält keinen Sequenz-Zustand.** Sie bekommt aus `bridge.py` eine
+Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befehl
+zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
+gespeicherte wäre nicht zwingend die angezeigte.
+
 Regeln beim Erweitern:
 
+- **Neue Bedienelemente kommen als Methode in `bridge.py`**, nicht als Logik im
+  JavaScript. Nur so bleibt es messbar; die Oberfläche ist der ungetestete Teil und
+  soll klein bleiben.
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.
-- **Die gewählte Zeile klappt auf** (`_build_row_inline`) und zeigt Punkt, Wartezeit,
-  Farb-Trigger und „nur warten" direkt darunter — aber **nur die eine**: 50 Zeilen mal
-  vier Widgets wären weder lesbar noch schnell. Alles Seltenere (else, Nachprüfung,
-  Scan-Namen, Screenshot-Bereich) bleibt im Eigenschaften-Feld links.
-- **Combo/Checkbox bauen neu, Zahlenfelder nicht.** Ein Neuaufbau mitten in einer
-  Texteingabe löscht das Feld, in das gerade getippt wird — der Fokus wäre nach jedem
-  Zeichen weg. Diskrete Bedienelemente (ein Klick, fertig) dürfen deshalb neu bauen,
-  damit die Zeilenbeschriftung sofort stimmt; Zahlenfelder melden nur die Änderung und
-  die Beschriftung zieht beim nächsten Neuaufbau nach.
+- **Die Karte zeigt wenig, der Inspektor alles.** Auf die Karte gehört, was man beim
+  Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);
+  alles Weitere steht rechts. Eine Wartezeit von 0 kommt gar nicht erst auf die Karte —
+  „sofort" unter jedem zweiten Block ist Rauschen.
+- **Diskrete Bedienelemente melden sofort, Tipp-Felder erst beim Verlassen** (`change`,
+  nicht `input`). Jede Meldung baut die Ansicht neu, und ein Neuaufbau mitten in der
+  Eingabe nimmt das Feld weg, in das gerade getippt wird. Dieselbe Regel galt schon in
+  der DPG-Fassung. Folge davon: `STRG+S` muss vorher `blur()` auslösen, sonst geht der
+  zuletzt getippte Wert verloren.
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
   dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`.
+- **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
+  Nachprüfung. Die DPG-Fassung ließ dort Zahlen eintippen — `_step_to_dict` schreibt
+  die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten
+  Öffnen weg.
 - **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
   Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
   und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.
-- **Nichts in der Ansicht darf ohne DPG-Kontext laufen.** `_update_title()` ruft
-  `dpg.set_viewport_title()`, und das ist ohne Kontext kein Python-Fehler, sondern
-  ein **Segfault**. Die Tests legen es deshalb still; wer eine neue Methode testet,
-  prüft vorher, ob sie über `_mark_dirty()` dort landet.
+- **Die Seite lädt nichts nach.** Kein Framework, keine Schrift, kein Bild von außen:
+  das Fenster läuft ohne Netz, und alles Nachgeladene wäre beim Start eine leere Fläche.
+  Es gibt auch keinen Build-Schritt — was in der Datei steht, ist was läuft.
 
-Die Umsortier-Rechnung ist getestet (`Sequenz-Studio sortiert per Ziehen um`) — sie
-braucht kein Fenster. Was ein Fenster braucht, bleibt ungetestet; dafür hält ein
-zweiter Test wenigstens die **dpg-API-Verträglichkeit** fest (s.u.).
+Getestet ist alles, was in der Brücke liegt: Umsortieren über Phasengrenzen,
+Mehrfachauswahl, jeder Block-Typ, die Feldsetzer und das Speicher-Veto bei einem Scan
+ohne Namen (`Sequenz-Studio sortiert per Ziehen um`, `was der Inspektor setzt, überlebt
+das Speichern`). Ungeprüft bleibt die Anzeige selbst.
 
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.

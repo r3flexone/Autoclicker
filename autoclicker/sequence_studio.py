@@ -6,9 +6,14 @@ Aufruf:
     python -m autoclicker.sequence_studio            # leere/neue Sequenz
 
 Wird vom Hotkey-Handler (handle_sequence_studio in handlers.py) per subprocess.Popen
-gestartet, damit der Dear-PyGui-Event-Loop nicht mit der Windows-Hotkey-Message-
-Pump des Hauptprozesses kollidiert. Liest/schreibt sequences/<name>.json direkt;
-nach dem Speichern lädt man im Hauptprozess mit CTRL+ALT+L neu.
+gestartet, damit der Fenster-Event-Loop nicht mit der Windows-Hotkey-Message-Pump
+des Hauptprozesses kollidiert. Liest/schreibt sequences/<name>.json direkt; nach dem
+Speichern lädt man im Hauptprozess mit CTRL+ALT+L neu.
+
+Die Oberfläche ist eine Webseite (`editors/sequence_studio/web/index.html`) in einem
+pywebview-Fenster, die Verbindung dorthin ist `StudioBridge` — mehr gibt es nicht.
+Auf Windows läuft das über WebView2, das bei Windows 10/11 in der Regel vorhanden
+ist; sonst installiert man einmalig Microsofts „Evergreen Runtime".
 """
 
 import sys
@@ -21,6 +26,9 @@ from .persistence import (
     ensure_sequences_dir, list_available_sequences, load_sequence_file,
 )
 from .utils import sanitize_filename, col
+
+WINDOW_TITLE = "Sequenz-Studio"
+INDEX = Path(__file__).parent / "editors" / "sequence_studio" / "web" / "index.html"
 
 
 def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
@@ -39,36 +47,79 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
     return seq, path
 
 
+def _beim_schliessen(bridge) -> None:
+    """Rettet ungespeicherte Änderungen, wenn das Fenster geschlossen wird.
+
+    Das X schließt sofort — gefragt wird hier nicht mehr, sondern **gesichert**.
+    Der Rückfrage-Dialog in der Oberfläche schützt Laden und Neu; das Schließen
+    ging bisher daran vorbei und warf die Arbeit still weg, obwohl der Stern im
+    Titel die ganze Zeit sagte, dass etwas offen ist.
+    """
+    ziel = bridge.rettung_schreiben()
+    if ziel is not None:
+        print(f"\nUngespeicherte Aenderungen gesichert: {ziel}")
+        print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
+
+
+def _haenge_schliesser_an(fenster, bridge) -> None:
+    """Hängt `_beim_schliessen` ans Fenster — über beide pywebview-Schreibweisen.
+
+    Bis pywebview 3.5 hießen die Ereignisse `fenster.closing`, danach
+    `fenster.events.closing`. Beides zu versuchen kostet drei Zeilen; ohne den
+    Haken geht die Rettungskopie verloren, und zwar genau dann, wenn man sie
+    braucht.
+    """
+    for besitzer in (getattr(fenster, "events", None), fenster):
+        ereignis = getattr(besitzer, "closing", None) if besitzer is not None else None
+        if ereignis is not None and hasattr(ereignis, "__iadd__"):
+            ereignis += lambda: _beim_schliessen(bridge)
+            return
+
+
 def main(argv: list[str]) -> int:
     seq_name = argv[1] if len(argv) > 1 else ""
 
     try:
-        import dearpygui.dearpygui  # noqa: F401
+        import webview
     except ImportError:
-        print("Dear PyGui ist nicht installiert. Installieren mit:")
-        print("    pip install dearpygui")
+        print("Das Sequenz-Studio braucht pywebview. Installieren mit:")
+        print("    pip install pywebview")
+        return 1
+
+    if not INDEX.exists():
+        print(f"Die Oberflaeche fehlt: {INDEX}")
         return 1
 
     seq, path = _resolve_sequence(seq_name)
 
-    # Erst hier importieren — zieht Dear PyGui nur wenn wirklich gebraucht.
-    from .editors.sequence_studio.view_dpg import SequenceStudioApp
-    app = SequenceStudioApp(seq, path, SEQUENCES_DIR)
+    from .editors.sequence_studio.bridge import StudioBridge
+    bridge = StudioBridge(seq, path, SEQUENCES_DIR)
+
+    fenster = webview.create_window(
+        f"{WINDOW_TITLE} – {seq.name}",
+        url=INDEX.as_uri(),
+        js_api=bridge,
+        width=1600,
+        height=1000,
+        background_color="#0C0F14",
+    )
+    _haenge_schliesser_an(fenster, bridge)
     try:
-        app.run()
+        # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).
+        webview.start()
     except KeyboardInterrupt:
         # Beendet man den Hauptprozess mit CTRL+C, bekommt dieser Subprozess das
-        # Signal mit (gleiche Konsolengruppe) — mitten im DPG-Renderframe. Ohne
-        # diesen Zweig landet ein Traceback aus `start_dearpygui()` in der Konsole,
-        # der wie ein Absturz aussieht, obwohl nur zugemacht wurde.
+        # Signal mit (gleiche Konsolengruppe). Ohne diesen Zweig landet ein
+        # Traceback in der Konsole, der wie ein Absturz aussieht, obwohl nur
+        # zugemacht wurde.
         print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Abgebrochen.")
         return 0
 
-    _schlussmeldung(app)
+    _schlussmeldung(bridge)
     return 0
 
 
-def _schlussmeldung(app) -> None:
+def _schlussmeldung(bridge) -> None:
     """Sagt beim Zumachen, was passiert ist — und was jetzt noch zu tun ist.
 
     Die Meldung landet in der Konsole des HAUPTPROZESSES (der Subprozess erbt sie),
@@ -81,8 +132,8 @@ def _schlussmeldung(app) -> None:
     Aufforderung, etwas nachzuladen, das sich gar nicht geändert hat.
     """
     tag = col("[SEQUENZ-STUDIO]", "cyan")
-    if getattr(app, "_gespeichert", False):
-        print(f"\n{tag} Geschlossen — '{app.board.name}' gespeichert.")
+    if getattr(bridge, "_gespeichert", False):
+        print(f"\n{tag} Geschlossen — '{bridge.board.name}' gespeichert.")
         print(f"     Im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     else:
         print(f"\n{tag} Geschlossen — nichts gespeichert.")

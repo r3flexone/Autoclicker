@@ -3733,215 +3733,305 @@ section("Sequenz-Studio sortiert per Ziehen um - auch ueber Phasengrenzen")
 # ^/v einzeln. Jetzt sind es Listen pro Phase mit Ziehen und Mehrfachauswahl.
 #
 # Die Rechnung dahinter (welcher Index landet wo) ist genau die Art Logik, die
-# still falsch wird - und sie braucht kein Fenster, also wird sie hier geprueft.
-try:
-    import dearpygui.dearpygui as _dpg8      # noqa: F401  (nur Verfuegbarkeit)
-except ImportError:
-    _dpg8 = None
-
-if _dpg8 is None:
-    print("  ----  uebersprungen (dearpygui nicht installiert)")
-else:
-    from autoclicker.editors.sequence_studio.view_dpg import SequenceStudioApp as _NEA
-    from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
-
-    def _app8():
-        """Editor mit INIT[A] / Loop[1..5] / END[Z] - ohne jedes dpg-Fenster."""
-        seq = _SEQ8(
-            name="T",
-            init_steps=[_SS(x=1, y=1, delay_before=0, name="A", point_id=1)],
-            loop_phases=[_LP8(name="Loop", repeat=1, steps=[
-                _SS(x=i, y=i, delay_before=0, name=str(i), point_id=i)
-                for i in range(1, 6)])],
-            end_steps=[_SS(x=9, y=9, delay_before=0, name="Z", point_id=9)])
-        with _cl2.redirect_stdout(_io2.StringIO()):
-            a = _NEA(seq, Path("sequences/T.json"), "sequences")
-        # Alles, was ein DPG-Fenster braucht, stilllegen. _update_title MUSS dabei
-        # sein: es ruft dpg.set_viewport_title(), und das ist ohne Kontext kein
-        # Python-Fehler, sondern ein Segfault - der Test riss die ganze Suite mit.
-        a.rebuild_board = lambda *x: None
-        a.refresh_properties = lambda *x: None
-        a._set_status = lambda *x, **k: None
-        a._update_title = lambda *x: None
-        return a, a.board.lanes[0], a.board.lanes[1], a.board.lanes[2]
-
-    def _namen(lane):
-        return [s.name for s in lane.steps]
-
-    # --- Ziehen innerhalb einer Phase ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0}
-    _a8._on_drop(None, (_l8, 0), (_l8, 3))       # "1" vor Position 3
-    check("Ziehen nach hinten setzt an die richtige Stelle",
-          _namen(_l8) == ["2", "3", "1", "4", "5"])
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {4}
-    _a8._on_drop(None, (_l8, 4), (_l8, 0))       # "5" ganz nach vorne
-    check("Ziehen nach vorne ebenso", _namen(_l8) == ["5", "1", "2", "3", "4"])
-    # Auf sich selbst gezogen darf nichts passieren
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {2}
-    _a8._on_drop(None, (_l8, 2), (_l8, 2))
-    check("auf die eigene Position gezogen aendert nichts",
-          _namen(_l8) == ["1", "2", "3", "4", "5"])
-
-    # --- Mehrere auf einmal: die Auswahl wandert als Block ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
-    _a8._on_drop(None, (_l8, 0), (_l8, 4))
-    check("eine mehrfache Auswahl wandert zusammenhaengend",
-          _namen(_l8) == ["3", "4", "1", "2", "5"])
-    check("und bleibt danach ausgewaehlt", sorted(_a8.sel_rows) == [2, 3])
-    # Ein Schritt AUSSERHALB der Auswahl zieht nur sich selbst
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
-    _a8._on_drop(None, (_l8, 4), (_l8, 0))
-    check("ein Schritt ausserhalb der Auswahl zieht nur sich selbst",
-          _namen(_l8) == ["5", "1", "2", "3", "4"])
-
-    # --- Ueber die Phasengrenze: das kann der Konsolen-Editor bis heute nicht ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
-    _a8._on_drop(None, (_l8, 0), (_i8, 1))
-    check("Schritte lassen sich in eine andere Phase ziehen",
-          _namen(_i8) == ["A", "1", "2"] and _namen(_l8) == ["3", "4", "5"])
-    check("die Auswahl folgt in die Zielphase",
-          _a8.sel_lane is _i8 and sorted(_a8.sel_rows) == [1, 2])
-    # Ans Ende einer Phase (die Ablage unter der Liste liefert at == len)
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {2}
-    _a8._on_drop(None, (_l8, 2), (_e8, len(_e8.steps)))
-    check("Ziehen ans Ende einer Phase haengt an", _namen(_e8) == ["Z", "3"])
-
-    # --- Sammel-Verschieben mit den Pfeilen ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {1, 2}
-    _a8._on_sel_move(None, None, (_l8, 1))
-    check("Pfeil runter schiebt die ganze Auswahl",
-          _namen(_l8) == ["1", "4", "2", "3", "5"] and sorted(_a8.sel_rows) == [2, 3])
-    _a8._on_sel_move(None, None, (_l8, -1))
-    check("Pfeil hoch bringt sie zurueck",
-          _namen(_l8) == ["1", "2", "3", "4", "5"] and sorted(_a8.sel_rows) == [1, 2])
-    # An den Raendern passiert nichts (und es wird nichts verschluckt)
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0, 1}
-    _a8._on_sel_move(None, None, (_l8, -1))
-    check("am oberen Rand bleibt die Reihenfolge stehen",
-          _namen(_l8) == ["1", "2", "3", "4", "5"])
-    _a8.sel_rows = {3, 4}
-    _a8._on_sel_move(None, None, (_l8, 1))
-    check("am unteren Rand ebenso", _namen(_l8) == ["1", "2", "3", "4", "5"])
-
-    # --- Sammel-Loeschen ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _a8.sel_lane, _a8.sel_rows = _l8, {0, 2, 4}
-    _a8._on_sel_delete(None, None, _l8)
-    check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
-          _namen(_l8) == ["2", "4"])
-    check("und leert die Auswahl", _a8.sel_lane is None and _a8.sel_rows == set())
-
-    # --- Kein Schritt geht je verloren ---
-    _a8, _i8, _l8, _e8 = _app8()
-    _vorher8 = sorted(_namen(_i8) + _namen(_l8) + _namen(_e8))
-    _a8.sel_lane, _a8.sel_rows = _l8, {1, 3}
-    _a8._on_drop(None, (_l8, 1), (_e8, 0))
-    _a8._on_drop(None, (_e8, 0), (_i8, 0))
-    check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
-          sorted(_namen(_i8) + _namen(_l8) + _namen(_e8)) == _vorher8)
+# still falsch wird. Sie lag frueher in der Dear-PyGui-Ansicht und war nur
+# pruefbar, indem der Test die halbe Ansicht stilllegte - inklusive
+# `_update_title`, weil ein dpg-Aufruf ohne Kontext kein Python-Fehler ist,
+# sondern ein Segfault, der die ganze Suite mitriss. Seit sie in der Bruecke
+# liegt, laeuft dieser Abschnitt ohne jede GUI und auf jeder Plattform.
+from autoclicker.editors.sequence_studio.bridge import (
+    StudioBridge as _SB8, TRIGGER_DA as _TDA8, TRIGGER_KEIN as _TKEIN8,
+    TRIGGER_WEG as _TWEG8, trigger_name as _tn8)
+from autoclicker.editors.sequence_studio.model import PalettePoint as _PP8
+from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
 
 
+def _bruecke8():
+    """Studio mit INIT[A] / Loop[1..5] / END[Z] - ohne Fenster, ohne Datei."""
+    seq = _SEQ8(
+        name="T",
+        init_steps=[_SS(x=1, y=1, delay_before=0, name="A", point_id=1)],
+        loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+            _SS(x=i, y=i, delay_before=0, name=str(i), point_id=i)
+            for i in range(1, 6)])],
+        end_steps=[_SS(x=9, y=9, delay_before=0, name="Z", point_id=9)])
+    return _SB8(seq, Path("sequences/T.json"), "sequences")
 
 
-# --------------------------- Inline-Einstellungen in der gewaehlten Zeile
-section("Die gewaehlte Zeile klappt ihre haeufigsten Einstellungen auf")
+def _namen8(b, phase):
+    return [s.name for s in b.board.lanes[phase].steps]
 
-# Wer den Trigger eines Schritts aendern wollte, musste den Blick in die
-# Seitenleiste verlegen. Jetzt sitzt das Noetigste direkt unter der Zeile.
-try:
-    import dearpygui.dearpygui as _dpg9      # noqa: F401
-except ImportError:
-    _dpg9 = None
 
-if _dpg9 is None:
-    print("  ----  uebersprungen (dearpygui nicht installiert)")
-else:
-    from autoclicker.editors.sequence_studio.view_dpg import (
-        SequenceStudioApp as _SSA9, _trigger_name as _tn9,
-        _TRIGGER_KEIN as _TK9, _TRIGGER_DA as _TDA9, _TRIGGER_WEG as _TWEG9)
-    from autoclicker.models import Sequence as _SEQ9, LoopPhase as _LP9
+def _waehle8(b, phase, *zeilen):
+    for i, zeile in enumerate(zeilen):
+        b.waehlen({"phase": phase, "zeile": zeile, "modus": "einzeln" if i == 0 else "dazu"})
 
-    def _app9():
-        seq = _SEQ9(name="I", loop_phases=[_LP9(name="Loop", repeat=1, steps=[
-            _SS(x=10, y=20, delay_before=0.5, name="Bank", point_id=1,
-                recorded_color=(1, 2, 3))])])
-        with _cl2.redirect_stdout(_io2.StringIO()):
-            a = _SSA9(seq, Path("sequences/I.json"), "sequences")
-        a.rebuild_board = lambda *x: None
-        a.refresh_properties = lambda *x: None
-        a._set_status = lambda *x, **k: None
-        a._update_title = lambda *x: None
-        return a, a.board.lanes[1].steps[0]
 
-    # --- Trigger setzen und wieder wegnehmen ---
-    _a9, _s9 = _app9()
-    check("ohne Bedingung meldet die Auswahl 'kein Trigger'", _tn9(_s9) == _TK9)
-    _a9._set_trigger(_s9, _TDA9)
-    check("'warte bis Farbe DA' legt die Bedingung an", _s9.wait_condition is not None)
-    check("und nimmt Stelle UND Farbe aus dem Punkt des Schritts",
-          _s9.wait_condition.point_id == 1
-          and _s9.wait_condition.pixel == (10, 20)
-          and _s9.wait_condition.color == (1, 2, 3))
-    check("die Auswahl zeigt danach denselben Zustand an", _tn9(_s9) == _TDA9)
-    _a9._set_trigger(_s9, _TWEG9)
-    check("Umschalten auf WEG dreht nur die Richtung",
-          _s9.wait_condition.until_gone is True and _s9.wait_condition.point_id == 1)
-    check("und die Anzeige folgt", _tn9(_s9) == _TWEG9)
-    _a9._set_trigger(_s9, _TK9)
-    check("'kein Trigger' entfernt die Bedingung wieder", _s9.wait_condition is None)
+def _zieh8(b, von_phase, von_zeile, nach_phase, nach_zeile):
+    b.ziehen({"von_phase": von_phase, "von_zeile": von_zeile,
+              "nach_phase": nach_phase, "nach_zeile": nach_zeile})
 
-    # --- Ohne Punkt gibt es nichts zu pruefen ---
-    # Sonst entstuende eine Bedingung auf (0,0) - genau die Sorte stiller Unsinn,
-    # gegen die es auch keinen Rueckfallwert bei point_id gibt.
-    _a9, _ = _app9()
-    _ohne9 = _SS(delay_before=0)
-    _a9._set_trigger(_ohne9, _TDA9)
-    check("ohne Punkt entsteht KEINE Bedingung auf (0,0)", _ohne9.wait_condition is None)
 
-    # --- Aufklappen baut fuer jeden Block-Typ durch ---
-    # Die Leiste zeigt je nach Typ anderes (Taste statt Punkt, kein Trigger beim
-    # Screenshot). Ein Typ, der dabei knallt, macht die Zeile unanklickbar.
-    _seq_typen = _SEQ9(name="T", loop_phases=[_LP9(name="Loop", repeat=1, steps=[
-        _SS(x=1, y=2, delay_before=0.5, name="K", point_id=1),      # Klick
-        _SS(delay_before=1.0, key_press="enter"),                   # Taste
-        _SS(delay_before=0, screenshot_only=True, name="S"),        # Screenshot
-        _SS(delay_before=0, wait_only=True, name="W"),              # nur warten
-        _SS(delay_before=0, item_scan="inv"),                       # Item-Scan
-        _SS(delay_before=0, boss_scan="b"),                         # Boss-Scan
-        _SS(delay_before=0, icon_scan="i"),                         # Icon-Scan
-    ])])
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _at9 = _SSA9(_seq_typen, Path("sequences/T.json"), "sequences")
-    _at9._update_title = lambda *x: None
-    _at9._set_status = lambda *x, **k: None
-    _lane9 = _at9.board.lanes[1]
-    _gebaut9, _fehler9 = 0, []
-    _dpg9.create_context()
+INIT8, LOOP8, END8 = 0, 1, 2
+
+# --- Ziehen innerhalb einer Phase ---
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0)
+_zieh8(_b8, LOOP8, 0, LOOP8, 3)              # "1" vor Position 3
+check("Ziehen nach hinten setzt an die richtige Stelle",
+      _namen8(_b8, LOOP8) == ["2", "3", "1", "4", "5"])
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 4)
+_zieh8(_b8, LOOP8, 4, LOOP8, 0)              # "5" ganz nach vorne
+check("Ziehen nach vorne ebenso", _namen8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
+# Auf sich selbst gezogen darf nichts passieren
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 2)
+_zieh8(_b8, LOOP8, 2, LOOP8, 2)
+check("auf die eigene Position gezogen aendert nichts",
+      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+
+# --- Mehrere auf einmal: die Auswahl wandert als Block ---
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 1)
+_zieh8(_b8, LOOP8, 0, LOOP8, 4)
+check("eine mehrfache Auswahl wandert zusammenhaengend",
+      _namen8(_b8, LOOP8) == ["3", "4", "1", "2", "5"])
+check("und bleibt danach ausgewaehlt", sorted(_b8.sel_rows) == [2, 3])
+# Ein Schritt AUSSERHALB der Auswahl zieht nur sich selbst
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 1)
+_zieh8(_b8, LOOP8, 4, LOOP8, 0)
+check("ein Schritt ausserhalb der Auswahl zieht nur sich selbst",
+      _namen8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
+
+# --- Ueber die Phasengrenze: das kann der Konsolen-Editor bis heute nicht ---
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 1)
+_zieh8(_b8, LOOP8, 0, INIT8, 1)
+check("Schritte lassen sich in eine andere Phase ziehen",
+      _namen8(_b8, INIT8) == ["A", "1", "2"] and _namen8(_b8, LOOP8) == ["3", "4", "5"])
+check("die Auswahl folgt in die Zielphase",
+      _b8.sel_lane is _b8.board.lanes[INIT8] and sorted(_b8.sel_rows) == [1, 2])
+# Ans Ende einer Phase (die Ablage unter der Liste liefert at == len)
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 2)
+_zieh8(_b8, LOOP8, 2, END8, len(_b8.board.lanes[END8].steps))
+check("Ziehen ans Ende einer Phase haengt an", _namen8(_b8, END8) == ["Z", "3"])
+
+# --- Sammel-Verschieben mit den Pfeilen ---
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 1, 2)
+_b8.auswahl_verschieben({"delta": 1})
+check("Pfeil runter schiebt die ganze Auswahl",
+      _namen8(_b8, LOOP8) == ["1", "4", "2", "3", "5"] and sorted(_b8.sel_rows) == [2, 3])
+_b8.auswahl_verschieben({"delta": -1})
+check("Pfeil hoch bringt sie zurueck",
+      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"] and sorted(_b8.sel_rows) == [1, 2])
+# An den Raendern passiert nichts (und es wird nichts verschluckt)
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 1)
+_b8.auswahl_verschieben({"delta": -1})
+check("am oberen Rand bleibt die Reihenfolge stehen",
+      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+_waehle8(_b8, LOOP8, 3, 4)
+_b8.auswahl_verschieben({"delta": 1})
+check("am unteren Rand ebenso", _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+
+# --- Sammel-Loeschen ---
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 2, 4)
+_b8.auswahl_loeschen()
+check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
+      _namen8(_b8, LOOP8) == ["2", "4"])
+check("und leert die Auswahl", _b8.sel_lane is None and _b8.sel_rows == set())
+
+# --- Kein Schritt geht je verloren ---
+_b8 = _bruecke8()
+_vorher8 = sorted(_namen8(_b8, INIT8) + _namen8(_b8, LOOP8) + _namen8(_b8, END8))
+_waehle8(_b8, LOOP8, 1, 3)
+_zieh8(_b8, LOOP8, 1, END8, 0)
+_zieh8(_b8, END8, 0, INIT8, 0)
+check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
+      sorted(_namen8(_b8, INIT8) + _namen8(_b8, LOOP8) + _namen8(_b8, END8)) == _vorher8)
+
+# --- Die Auswahl lebt in genau EINER Phase ---
+# Sonst haette "eine Position hoch" keine Bedeutung und die Sammelaktionen waeren
+# nicht mehr eindeutig - deshalb faengt ein Klick in einer anderen Spalte neu an.
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 1)
+_b8.waehlen({"phase": INIT8, "zeile": 0, "modus": "dazu"})
+check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
+      _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
+
+
+
+
+# --------------------------- Der Inspektor schreibt in Punkte, nicht in Koordinaten
+section("Sequenz-Studio: was der Inspektor setzt, ueberlebt das Speichern")
+
+# Der Dear-PyGui-Vorgaenger liess `else_x`, `else_y` und den Pruef-Pixel von Hand
+# eintippen. Beides sind abgeleitete Arbeitswerte: `_step_to_dict` schreibt sie
+# gar nicht, solange eine Referenz danebensteht - die Eingabe war beim naechsten
+# Oeffnen weg. Die Weboberflaeche bietet deshalb ueberall Punkte an, und dieser
+# Abschnitt misst, dass wirklich Referenzen entstehen.
+from autoclicker.persistence.serialization import _step_to_dict as _s2d9
+
+
+def _bruecke9():
+    """Ein Klick-Block mit Punkt #1, dazu drei Punkte in der Palette."""
+    seq = _SEQ8(name="I", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+        _SS(x=10, y=20, delay_before=0.5, name="Bank", point_id=1,
+            recorded_color=(1, 2, 3))])])
+    b = _SB8(seq, Path("sequences/I.json"), "sequences")
+    b.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3)),
+                _PP8(id=2, x=30, y=40, name="Tresen", color=(9, 9, 9)),
+                _PP8(id=3, x=50, y=60, name="Ausgang")]
+    b.waehlen({"phase": 1, "zeile": 0})
+    return b, b.board.lanes[1].steps[0]
+
+
+# --- Farb-Trigger setzen und wieder wegnehmen ---
+_b9, _s9 = _bruecke9()
+check("ohne Bedingung meldet die Auswahl 'kein Trigger'", _tn8(_s9.wait_condition) == _TKEIN8)
+_b9.block_trigger({"wahl": _TDA8})
+check("'warte bis Farbe DA' legt die Bedingung an", _s9.wait_condition is not None)
+check("und nimmt Stelle UND Farbe aus dem Punkt des Schritts",
+      _s9.wait_condition.point_id == 1
+      and _s9.wait_condition.pixel == (10, 20)
+      and _s9.wait_condition.color == (1, 2, 3))
+check("die Momentaufnahme zeigt denselben Zustand an",
+      _b9.snapshot()["block"]["trigger"] == _TDA8)
+_b9.block_trigger({"wahl": _TWEG8})
+check("Umschalten auf WEG dreht nur die Richtung",
+      _s9.wait_condition.until_gone is True and _s9.wait_condition.point_id == 1)
+_b9.block_trigger({"wahl": _TWEG8, "pruefen": True})
+check("'nur pruefen' ist eine eigene Eigenschaft, kein vierter Zustand",
+      _s9.wait_condition.check_only is True and _s9.wait_condition.until_gone is True)
+_b9.block_trigger({"wahl": _TKEIN8})
+check("'kein Trigger' entfernt die Bedingung wieder", _s9.wait_condition is None)
+
+# --- Ohne Punkt gibt es nichts zu pruefen ---
+# Sonst entstuende eine Bedingung auf (0,0) - genau die Sorte stiller Unsinn,
+# gegen die es auch keinen Rueckfallwert bei point_id gibt.
+_b9, _s9 = _bruecke9()
+_s9.point_id = None
+_zustand9 = _b9.block_trigger({"wahl": _TDA8})
+check("ohne Punkt entsteht KEINE Bedingung auf (0,0)", _s9.wait_condition is None)
+check("und die Ablehnung wird begruendet",
+      "Punkt" in _zustand9["status"]["text"] and _zustand9["status"]["art"] == "warn")
+
+# --- Die Nachpruefung ist dieselbe Bedingung, nur danach ---
+_b9, _s9 = _bruecke9()
+_b9.block_trigger({"welche": "verify", "wahl": _TDA8})
+check("die Nachpruefung laesst sich genauso setzen",
+      _s9.verify_condition is not None and _s9.verify_condition.point_id == 1)
+check("und laesst den Vor-Trigger in Ruhe", _s9.wait_condition is None)
+
+# --- ELSE-Klick: eine Referenz, keine Koordinaten ---
+_b9, _s9 = _bruecke9()
+_b9.block_else({"aktion": "click", "punkt": 2})
+check("der ELSE-Klick zeigt auf einen Punkt", _s9.else_config.point_id == 2)
+_d9 = _s2d9(_s9)
+check("gespeichert wird die Referenz", _d9.get("else_point_id") == 2)
+check("und NICHT die Koordinate daneben",
+      _d9.get("else_x", 0) == 0 and _d9.get("else_y", 0) == 0)
+_b9.block_else({"aktion": ""})
+check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
+
+# --- Ein verschobener Punkt zieht JEDEN Schritt mit, der auf ihn zeigt ---
+# Der DPG-Vorgaenger aktualisierte nur den gerade bearbeiteten Schritt; die
+# uebrigen zeigten bis zum naechsten Oeffnen die alte Stelle an, obwohl
+# gespeichert laengst die neue galt.
+_b9, _s9 = _bruecke9()
+_b9.board.add_step(_b9.board.lanes[1], _SS(x=10, y=20, delay_before=0, name="Bank",
+                                           point_id=1))
+_b9.punkt_setzen({"punkt": 1, "feld": "x", "wert": 777})
+check("beide Schritte auf demselben Punkt wandern mit",
+      all((s.x, s.y) == (777, 20) for s in _b9.board.lanes[1].steps))
+
+# --- Eine neue Stelle wird zum Punkt, nicht zu einer Koordinate im Schritt ---
+_b9, _s9 = _bruecke9()
+_s9.point_id = None
+_b9.punkt_anlegen({"x": 111, "y": 222})
+check("ein Blanko-Block bekommt einen echten Punkt",
+      _s9.point_id == 4 and len(_b9.points) == 4)
+check("und der Punkt traegt seine Herkunft",
+      _b9.points[-1].source == "Sequenz-Studio")
+_b9.punkt_anlegen({"x": 111, "y": 222})
+check("dieselbe Stelle ergibt KEINEN zweiten Punkt", len(_b9.points) == 4)
+
+# --- Jeder Block-Typ laesst sich anzeigen und umschalten ---
+# Die Karte und die Eigenschaften zeigen je nach Typ anderes (Taste statt Punkt,
+# kein Trigger beim Screenshot). Ein Typ, der dabei knallt, macht den Block
+# unanklickbar - frueher fiel das erst im laufenden Fenster auf.
+_seq10 = _SEQ8(name="T", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+    _SS(x=1, y=2, delay_before=0.5, name="K", point_id=1),      # Klick
+    _SS(delay_before=1.0, key_press="enter"),                   # Taste
+    _SS(delay_before=0, screenshot_only=True, name="S"),        # Screenshot
+    _SS(delay_before=0, wait_only=True, name="W"),              # nur warten
+    _SS(delay_before=0, item_scan="inv"),                       # Item-Scan
+    _SS(delay_before=0, boss_scan="b"),                         # Boss-Scan
+    _SS(delay_before=0, icon_scan="i"),                         # Icon-Scan
+    _SS(delay_before=0, boss_watcher="w"),                      # Boss-Watcher
+])])
+_b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
+_fehler10, _typen10 = [], []
+for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _at9._build_ui()
-        for _r9 in range(len(_lane9.steps)):
-            _at9.sel_lane, _at9.sel_rows = _lane9, {_r9}
-            try:
-                _at9.rebuild_board()
-                _gebaut9 += 1
-            except Exception as _e9:
-                _fehler9.append(f"Zeile {_r9}: {type(_e9).__name__} {_e9}")
-    finally:
-        _dpg9.destroy_context()
-    check("jeder Block-Typ laesst sich aufklappen", _fehler9 == [])
-    if _fehler9:
-        for _z9 in _fehler9:
-            print("        " + _z9)
-    check("und zwar alle sieben", _gebaut9 == 7)
+        _typen10.append(_b10.waehlen({"phase": 1, "zeile": _r10})["block"]["typ"])
+    except Exception as _e10:                                    # noqa: BLE001
+        _fehler10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
+check("jeder Block-Typ laesst sich anzeigen", _fehler10 == [])
+if _fehler10:
+    for _z10 in _fehler10:
+        print("        " + _z10)
+check("und wird als das erkannt, was er ist",
+      _typen10 == ["click", "key", "screenshot", "wait", "item_scan", "boss_scan",
+                   "icon_scan", "boss_watcher"])
+# Umschalten in jeden Typ und zurueck - set_block_type raeumt die Diskriminatoren
+_b10.waehlen({"phase": 1, "zeile": 0})
+_fehler10b = []
+for _t10 in [t["key"] for t in _b10.snapshot()["typen"]]:
+    _z10 = _b10.block_typ({"typ": _t10})
+    if _z10["block"]["typ"] != _t10:
+        _fehler10b.append(_t10)
+check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
+
+# --- Was die Oberflaeche nicht anzeigt, ueberlebt sie trotzdem ---
+# Die Bloecke SIND die originalen SequenceStep-Objekte: das Studio gruppiert um,
+# es konvertiert nicht. Sonst verloere jede Runde durchs Studio genau die Felder,
+# die nur der Konsolen-Editor oder die Aufnahme setzen.
+_schritt11 = _SS(x=5, y=6, delay_before=0, name="Rad", point_id=1, scroll=-3)
+_seq11 = _SEQ8(name="R", loop_phases=[_LP8(name="Loop", repeat=1, steps=[_schritt11])])
+_b11 = _SB8(_seq11, Path("sequences/R.json"), "sequences")
+_b11.waehlen({"phase": 1, "zeile": 0})
+_b11.block_setzen({"feld": "delay_before", "wert": 2.0})
+from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s11
+_raus11 = _b2s11(_b11.board).loop_phases[0].steps[0]
+check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
+      _raus11.scroll == -3 and _raus11 is _schritt11)
+check("die Karte verschweigt es trotzdem nicht",
+      any("Rad -3" in z for z in _b11.snapshot()["phasen"][1]["bloecke"][0]["zeilen"]))
+
+# --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
+_zustand11 = _b11.block_setzen({"feld": "gibtsnicht", "wert": 1})
+check("ein unbekanntes Feld meldet sich als Fehler",
+      _zustand11["status"]["art"] == "err")
+check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
+
+# --- Ein Scan ohne Namen wird nicht gespeichert ---
+# Er wuerde beim Executor durch den Truthiness-Dispatch fallen und still zu einem
+# Klick auf (0,0) degradieren.
+_seq12 = _SEQ8(name="S", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+    _SS(delay_before=0, item_scan="")])])
+_b12 = _SB8(_seq12, Path("sequences/S.json"), "sequences")
+_zustand12 = _b12.speichern()
+check("ein Scan ohne Namen verhindert das Speichern",
+      _zustand12["status"]["art"] == "err" and "Scan ohne Namen" in _zustand12["status"]["text"])
+check("und die Karte warnt schon vorher",
+      _zustand12["phasen"][1]["bloecke"][0]["warnung"] == "Name fehlt")
+_b12.board.name = ""
+check("ohne Sequenz-Namen ebenso", _b12.speichern()["status"]["art"] == "err")
 
 
 
@@ -3974,9 +4064,11 @@ for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
     _mod10 = ".".join(_rel10.parts)
     if _mod10.endswith(".__init__"):
         _mod10 = _mod10[: -len(".__init__")]
-    # Ohne Dear PyGui koennen die GUI-Module nicht laden - das ist kein Fehler,
-    # sie sind optional (die Suite laeuft auch auf Linux ohne).
-    if not _hat_dpg10 and ("canvas" in _mod10 or "studio" in _mod10):
+    # Uebersprungen wird nur, was Dear PyGui wirklich am Modulrumpf haengen hat -
+    # heute genau eine Datei. Frueher stand hier "canvas oder studio im Namen", und
+    # damit fielen auch die Module durch, die ihre GUI erst in main() importieren:
+    # ausgerechnet die, bei denen ein toter Import unbemerkt bliebe.
+    if not _hat_dpg10 and _mod10.endswith("scan_canvas.canvas_dpg"):
         _uebersprungen10 += 1
         continue
     try:

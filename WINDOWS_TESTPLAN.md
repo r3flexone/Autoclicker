@@ -8,7 +8,8 @@ Was hier abgehakt ist, wurde auf echtem Windows geprüft — mit Datum dahinter.
 ohne Datum ist ein Vorsatz, kein Nachweis.
 
 ## Voraussetzungen
-- Windows, Python-Umgebung mit `pillow`, `opencv-python`, `numpy`, `dearpygui` (für GUI),
+- Windows, Python-Umgebung mit `pillow`, `opencv-python`, `numpy`, `dearpygui`
+  (Scan-Studio), `pywebview` (Sequenz-Studio),
   optional Ollama/LM Studio (LLM) und ein OCR-Backend (easyocr/tesseract).
 - Spiel „Idle Clans" offen, damit echte Klicks/Screenshots etwas treffen.
 
@@ -179,8 +180,24 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Tabs „Scan bauen / Icon-Scan / Boss-Scan", „Autoscan"-Knopf, „Speichern".
 - [ ] Gespeicherte Slots erscheinen identisch im Konsolen-Slot-Editor (gleiche Datei).
 
-## 14. Node-/Visueller Editor GUI (CTRL+ALT+B)
-- [ ] Startet; Blöcke/Lanes anlegen, Punkte-Palette, Sequenz speichern.
+## 14. Sequenz-Studio (CTRL+ALT+B) 🆕 Weboberfläche statt Dear PyGui
+- [ ] Fenster öffnet sich (braucht `pywebview`; auf Windows WebView2). Ohne das Paket
+      erscheint stattdessen der Hinweis mit dem `pip install`-Befehl, kein Traceback.
+- [ ] Schriften und Farben stehen, nichts lädt nach — das Fenster darf auch ohne
+      Internet vollständig aussehen.
+- [ ] Karten lassen sich anklicken (STRG = dazu, SHIFT = Bereich), ziehen sortiert um,
+      die Einfüge-Marke zeigt vorher, wo der Block landet.
+- [ ] Ziehen über eine Phasengrenze funktioniert; ein Punkt aus der Palette wird per
+      Ziehen zum Klick-Block mit `#Nr` auf der Karte.
+- [ ] Tastatur: `Entf` löscht die Auswahl, `ALT+↑/↓` verschiebt sie, `STRG+S` speichert
+      (auch direkt nach einer Eingabe — der zuletzt getippte Wert muss mitgehen).
+- [ ] Eigenschaften: Typwechsel, Wartezeit, Punkt, Farb-Trigger, Nachprüfung, ELSE,
+      Scan-Name/-Modus, Screenshot-Bereich. Änderungen erscheinen sofort auf der Karte.
+- [ ] X/Y im Feld „Stelle" verschieben den **Punkt**: alle Blöcke darauf ziehen mit.
+- [ ] Laden/Neu mit ungespeicherten Änderungen fragt nach (Speichern / Verwerfen /
+      Abbrechen).
+- [ ] Fenster mit ungespeicherten Änderungen schließen → Konsole meldet eine
+      Rettungskopie unter `backups/<name>.ungespeichert.json`, und die Datei ist da.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
 
 ## 15. Robustheit / Backward-Compat
@@ -198,5 +215,7 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 ### Bekannte Nicht-Abdeckung (bewusst offen)
 - Scan-Studio-GUI-Autoscan nutzt (noch) **keine** LLM-Benennung am Ende — dort
   heißen Items generisch „Item N". (Konsolen-Autoscan tut es 🆕.)
-- GUI/DPG, echte Maus/Tastatur, LLM/OCR-Backends lassen sich nur auf Windows
-  mit Hardware/Backends real prüfen — daher dieser manuelle Plan.
+- GUI (Dear PyGui / WebView2), echte Maus/Tastatur, LLM/OCR-Backends lassen sich nur
+  auf Windows mit Hardware/Backends real prüfen — daher dieser manuelle Plan. Die
+  Weboberfläche des Sequenz-Studios ist immerhin in Chromium durchgeklickt worden;
+  ungeprüft bleibt das Fenster selbst (WebView2, Schließen-Ereignis, DPI).

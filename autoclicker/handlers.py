@@ -793,9 +793,10 @@ def handle_rec_phase(state: AutoClickerState) -> None:
 def handle_sequence_studio(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio als separaten Subprocess.
 
-    Das Studio läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
-    nicht mit der Hotkey-Message-Pump kollidiert. Es bearbeitet die aktive Sequenz
-    direkt auf Disk; nach dem Speichern mit CTRL+ALT+L neu laden.
+    Das Studio läuft in einem eigenen Prozess (eigenes Fenster mit eigener
+    Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beißt. Es
+    bearbeitet die aktive Sequenz direkt auf Disk; nach dem Speichern mit
+    CTRL+ALT+L neu laden.
     """
     import subprocess
 
@@ -815,7 +816,7 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
         return
 
     target = f"'{seq_name}'" if seq_name else "neue Sequenz"
-    print(f"\n{col('[NODE-EDITOR]', 'cyan')} Visueller Editor geöffnet ({target}).")
+    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet ({target}).")
     print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
