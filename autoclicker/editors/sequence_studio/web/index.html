@@ -63,6 +63,10 @@ input:disabled,textarea:disabled{background:var(--sub);color:var(--dim)}
 input[type=number]{font-family:var(--mono)}
 textarea{resize:vertical;min-height:52px}
 label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+/* Eine gerechnete Zahl, kein Eingabefeld: als graues <input disabled> sah sie aus
+   wie etwas, das man eigentlich ändern dürfte und gerade nicht darf. */
+.feld-still{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--muted)}
+.feld-still .mono{font-family:var(--mono);font-size:13px;color:var(--text)}
 /* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
    Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
 label.an{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
@@ -124,6 +128,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 }
 .punkt:hover{border-color:var(--dim)}
 .punkt .kugel{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
+.punkt .kugel.ohne{border:1px dashed var(--dim);background:none}
 .punkt .nr{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
 .punkt .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .punkt .xy{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
@@ -336,9 +341,9 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
           <label class="feld">Zyklen (0 = endlos)
             <input id="seq-zyklen" type="number" min="0" step="1">
           </label>
-          <label class="feld">Blöcke
-            <input id="seq-bloecke" disabled>
-          </label>
+          <div class="feld-still">Blöcke
+            <span class="mono" id="seq-bloecke">0</span>
+          </div>
         </div>
         <label class="feld">Notiz
           <textarea id="seq-info"></textarea>
@@ -633,7 +638,7 @@ function zeichneSequenz() {
   if (document.activeElement !== $("seq-name")) $("seq-name").value = S.name;
   if (document.activeElement !== $("seq-zyklen")) $("seq-zyklen").value = S.zyklen;
   if (document.activeElement !== $("seq-info")) $("seq-info").value = S.beschreibung;
-  $("seq-bloecke").value = S.phasen.reduce((n, p) => n + p.bloecke.length, 0);
+  $("seq-bloecke").textContent = S.phasen.reduce((n, p) => n + p.bloecke.length, 0);
 }
 
 function zeichnePunkte() {
@@ -655,7 +660,12 @@ function zeichnePunkte() {
                             e.dataTransfer.effectAllowed = "copy"; },
       ondragend: () => { ziehen = null; loescheAblage(); },
     },
-      el("span", {class: "kugel", style: "background:" + (p.farbe || "#2A3245")}),
+      // Ohne aufgenommene Farbe bleibt das Feld LEER (nur Rahmen). Vorher stand
+      // dort die Linienfarbe als Füllung — das behauptete eine Farbe, die nie
+      // gemessen wurde, und der Farb-Trigger hängt an derselben Quelle.
+      el("span", {class: "kugel" + (p.farbe ? "" : " ohne"),
+                  title: p.farbe ? "" : "keine Farbe aufgenommen",
+                  style: p.farbe ? "background:" + p.farbe : ""}),
       el("span", {class: "nr"}, "#" + p.id),
       el("span", {class: "name"}, p.name),
       el("span", {class: "xy"}, p.x + "," + p.y)));
@@ -682,8 +692,11 @@ function zeichnePhase(phase) {
     : el("span", {class: "phase-name wachse"}, phase.name);
   name.addEventListener("change", () => ruf("phase_setzen",
     {phase: phase.index, feld: "name", wert: name.value}));
+  // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
+  // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
+  // sich nicht ändern lässt. Die Klasse `.zaehler` bleibt trotzdem — in der
+  // Sequenzen-Übersicht gibt es kein Eingabefeld, dort trägt die Marke etwas.
   kopf.appendChild(el("div", {class: "reihe"}, name,
-    phase.art === "loop" ? el("span", {class: "zaehler"}, "×" + phase.wiederholungen) : null,
     el("span", {class: "klein mono"}, phase.bloecke.length + " Schritte")));
 
   if (phase.art === "loop") {
@@ -695,9 +708,17 @@ function zeichnePhase(phase) {
                                style: "width:74px", title: "Start erst ab dieser Uhrzeit"});
     start.addEventListener("change", () => ruf("phase_setzen",
       {phase: phase.index, feld: "start", wert: start.value}));
-    kopf.appendChild(el("div", {class: "phase-werkzeug"}, wdh, start,
+    // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
+    // sagen, was sie ist. Gedämpft, nicht in Akzentfarbe — es beschriftet nur.
+    //
+    // Und der Löschknopf ist deshalb KEIN „×" mehr: zwei gleiche Zeichen in einer
+    // Zeile, eines als Beschriftung und eines als „Phase weg", ist die Sorte
+    // Verwechslung, die man genau einmal macht.
+    kopf.appendChild(el("div", {class: "phase-werkzeug"},
+      el("span", {class: "klein mono"}, "×"), wdh, start,
       el("button", {class: "btn still gefahr", title: "Phase löschen",
-                    onclick: () => ruf("phase_loeschen", {phase: phase.index})}, "×")));
+                    onclick: () => ruf("phase_loeschen", {phase: phase.index})},
+         papierkorb())));
   }
 
   const spalte = el("div", {class: "phase"}, kopf);
@@ -714,6 +735,23 @@ function zeichnePhase(phase) {
     ondrop: (e) => abwerfen(e, phase.index, phase.bloecke.length),
   }, phase.bloecke.length ? "+ Block" : "leer — Block anlegen oder Punkt herziehen"));
   return spalte;
+}
+
+/** Papierkorb-Zeichen als Inline-SVG — nichts wird von aussen geladen. */
+function papierkorb() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", "13");
+  svg.setAttribute("height", "13");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  const pfad = document.createElementNS(ns, "path");
+  pfad.setAttribute("d", "M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14M10 11v5M14 11v5");
+  svg.appendChild(pfad);
+  return svg;
 }
 
 /** Einfügestelle zwischen zwei Karten: nur ein Strich, der aufleuchtet. */
@@ -1320,6 +1358,14 @@ const RICHTUNGEN = [{wert: "da", text: "bis Farbe DA"}, {wert: "weg", text: "bis
 function baueTrigger(ziel, b, mitTrigger) {
   // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
   const ohneAus = b.typ === "click" || b.typ === "wait_click" || b.typ === "wait";
+  // Ist der Trigger bei diesen Typen aus, hat der Abschnitt keinen Inhalt: das Ein
+  // und Aus macht der Schalter in AKTION, Stelle und „nur prüfen" hängen an einer
+  // Bedingung, die es nicht gibt. Eine Überschrift ohne alles darunter sieht aus
+  // wie ein Stück Oberfläche, das nicht geladen hat — also gar nichts zeigen.
+  // Ausnahme: fehlt dem Block der Punkt, bleibt der Hinweis unten stehen. Der
+  // erklärt, warum sich der Trigger nicht einschalten lässt.
+  if (ohneAus && b.trigger === "kein"
+      && b.point_id !== null && b.point_id !== undefined) return;
   ziel.appendChild(ueberschrift("FARB-TRIGGER (VOR DEM SCHRITT)",
     mitTrigger
       ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
