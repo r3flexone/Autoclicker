@@ -164,6 +164,11 @@ Im Sequenz-Editor:
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
 | `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
+| `CTRL+ALT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
+| `CTRL+ALT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
+| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
+| `CTRL+ALT+SHIFT+M` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
+| `CTRL+ALT+SHIFT+P` | Aufnahme: Phasengrenze (1× = LOOP, 2× = END) |
 | `CTRL+ALT+H` | Aufnahme pausieren/fortsetzen |
 
 ### Editoren
@@ -1113,6 +1118,14 @@ Wird beim ersten Start automatisch erstellt:
 | `humanize_break_duration_min` | Pause-Dauer Min in Minuten |
 | `humanize_break_duration_max` | Pause-Dauer Max in Minuten (Varianz) |
 
+### Nachprüfung („hat die Aktion gewirkt?")
+
+| Option | Beschreibung |
+|--------|--------------|
+| `verify_retries` | Wie oft die Aktion wiederholt wird, wenn die Nachprüfung nicht greift (Standard: 2) |
+| `verify_timeout` | Wie lange pro Versuch auf die erwartete Farbe gewartet wird (Sekunden) |
+| `verify_interval` | Prüf-Intervall innerhalb eines Versuchs (Sekunden) |
+
 ### Session-Log
 
 | Option | Beschreibung |
@@ -1125,6 +1138,14 @@ Wird beim ersten Start automatisch erstellt:
 | Option | Beschreibung |
 |--------|--------------|
 | `timing_pause_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
+
+### Aufnahme, Boss-Bibliothek, Marktwerte
+
+| Option | Beschreibung |
+|--------|--------------|
+| `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
+| `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
+| `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
 
 ### Debug-Einstellungen
 
@@ -1151,7 +1172,6 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
-│   ├── execution.py        # Backward-Compat-Shim → runtime/
 │   ├── utils/              # Hilfsfunktionen
 │   │   ├── console.py      # ANSI-Farben, Status-Tags
 │   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
@@ -1245,13 +1265,13 @@ main.py                      Einstiegspunkt, Event-Loop
 **Datenfluss:**
 ```
 [Hotkey] → handlers.py → editors/*.py → persistence.py (Speichern)
-                      ↘ execution.py → safe_click/safe_key → winapi.py
+                      ↘ runtime/actions.py → safe_click/safe_key → winapi.py
                                      ↘ imaging.py (Screenshots)
                                      ↘ llm_vision.py (HTTP zu Ollama/LM Studio)
                                      ↘ session_log.py (CSV-Append)
 ```
 
-**Wichtig**: Alle Klicks und Tastendrücke im Worker-Thread laufen über `safe_click(state, x, y, label)` / `safe_key(state, key, label)` (in `execution.py`). Diese Wrapper bündeln Window-Fokus-Check, Humanization (Jitter/Mikro-Delays/Breaks) und Session-Logging. Direkter Aufruf von `send_click` / `send_key` umgeht alle drei.
+**Wichtig**: Alle Klicks und Tastendrücke im Worker-Thread laufen über `safe_click(state, x, y, label)` / `safe_key(state, key, label)` (in `runtime/actions.py`). Diese Wrapper bündeln Window-Fokus-Check, Humanization (Jitter/Mikro-Delays/Breaks) und Session-Logging. Direkter Aufruf von `send_click` / `send_key` umgeht alle drei.
 
 ### Thread-Modell
 

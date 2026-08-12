@@ -4707,6 +4707,52 @@ finally:
     _os.chdir(_cwd16)
 
 
+# --------------------------- Doku gegen Code: Hotkeys und Config-Felder
+section("Was der Code kann, steht auch in der Doku")
+
+# Beide Seiten messen, nicht eine abschreiben: die Hilfe im Programm und die
+# README-Tabelle sind das, wonach jemand sucht, der einen Hotkey NICHT kennt.
+# Fehlt er dort, existiert er praktisch nicht - genau so waren fuenf
+# Aufnahme-Hotkeys und sechs Config-Felder monatelang unauffindbar.
+import re as _re15
+
+_wurzel15 = Path(__file__).resolve().parent.parent
+_winapi15 = (_wurzel15 / "autoclicker/winapi.py").read_text(encoding="utf-8")
+_tabelle15 = _re15.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _winapi15, _re15.S).group(1)
+_hotkeys15 = set(_re15.findall(r'"(CTRL\+ALT\+(?:SHIFT\+)?\w)\s', _tabelle15))
+_hilfe15 = set(_re15.findall(r"col\('(CTRL\+ALT\+(?:SHIFT\+)?\w)'",
+                             (_wurzel15 / "main.py").read_text(encoding="utf-8")))
+_readme15 = (_wurzel15 / "README.md").read_text(encoding="utf-8")
+_tab15 = set(_re15.findall(r"\| `(CTRL\+ALT\+(?:SHIFT\+)?\w)` \|", _readme15))
+
+check("der Test findet ueberhaupt Hotkeys", len(_hotkeys15) > 20)
+check("jeder registrierte Hotkey steht in print_help()",
+      sorted(_hotkeys15 - _hilfe15) == [])
+if _hotkeys15 - _hilfe15:
+    print("        fehlt in der Hilfe: " + ", ".join(sorted(_hotkeys15 - _hilfe15)))
+check("und in der Hotkey-Tabelle der README",
+      sorted(_hotkeys15 - _tab15) == [])
+if _hotkeys15 - _tab15:
+    print("        fehlt in der README: " + ", ".join(sorted(_hotkeys15 - _tab15)))
+check("und die Hilfe erfindet keine, die es nicht gibt",
+      sorted(_hilfe15 - _hotkeys15) == [])
+
+# Config: jedes Feld der Dataclass muss in der README vorkommen. Ein Wert, den man
+# nur durch Lesen von config.py findet, ist kein eingestellter, sondern ein
+# versteckter - und die Datei ist die einzige Stelle, an der man ihn aendern kann.
+# Die Felder kommen aus der Dataclass selbst, nicht aus einem Regex ueber den
+# Quelltext: der fing auch `try:` in den Methoden darunter ein.
+from autoclicker.config import AppConfig as _AC15
+_felder15 = {f.name for f in _dc5.fields(_AC15)}
+check("der Test findet ueberhaupt Config-Felder", len(_felder15) > 50)
+_undok15 = sorted(f for f in _felder15 if f"`{f}`" not in _readme15)
+check("jedes Config-Feld ist in der README beschrieben", _undok15 == [])
+if _undok15:
+    print("        undokumentiert: " + ", ".join(_undok15))
+
+
+
+
 # --------------------------- Jedes Modul laesst sich ueberhaupt importieren
 section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
 
