@@ -104,6 +104,7 @@ HOTKEY_REC_WATCH = 27
 
 # Window Messages
 WM_HOTKEY = 0x0312
+WM_SETICON = 0x0080
 WM_LBUTTONDOWN = 0x0201
 WM_MOUSEWHEEL = 0x020A
 WM_KEYDOWN = 0x0100
@@ -754,3 +755,67 @@ def unregister_hotkeys() -> None:
     """Deregistriert alle globalen Hotkeys."""
     for hotkey_id, _, _, _ in _HOTKEY_DEFINITIONS:
         user32.UnregisterHotKey(None, hotkey_id)
+
+
+# Farbe und Form des Fenster-Symbols. Gezeichnet wird es zur Laufzeit statt aus
+# einer .ico-Datei: eine Binärdatei im Repo für 32×32 Pixel wäre der teurere Weg,
+# und geändert würde sie ohnehin nur zusammen mit dem Logo in der Oberfläche.
+_SYMBOL_AMBER = (0x0B, 0x9E, 0xF5)      # BGR von #F59E0B
+_SYMBOL_DUNKEL = (0x14, 0x0F, 0x0C)     # BGR von #0C0F14
+# 16 Zeilen à 16 Spalten: 1 = dunkel (Zeiger + Punktkette), 0 = Amber. Dasselbe
+# Motiv wie das SVG im Kopf der Oberfläche, nur auf Pixelraster gebracht.
+_SYMBOL_MUSTER = (
+    "0000000000000000",
+    "0110000000000000",
+    "0111000000011000",
+    "0111100000011000",
+    "0111110000000000",
+    "0111111000001100",
+    "0111111100001100",
+    "0111111110000000",
+    "0111111000011000",
+    "0110011000011000",
+    "0100011100000000",
+    "0000001100000000",
+    "0000001110000000",
+    "0000000000000000",
+    "0000000000000000",
+    "0000000000000000",
+)
+
+
+def setze_fenster_symbol(titel_substring: str) -> bool:
+    """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
+
+    Ohne das trägt das Fenster das Symbol von `python.exe` — pywebview kann es
+    auf Windows nicht selbst setzen (der `icon`-Parameter gilt dort nicht, weil
+    das Symbol sonst aus der ausführenden Datei kommt). Ein Fenster in der
+    Taskleiste, das aussieht wie ein Python-Prozess, findet man zwischen anderen
+    Python-Prozessen nicht wieder.
+
+    Fehler werden geschluckt: ein fehlendes Symbol ist kein Grund, ein Fenster
+    nicht zu öffnen.
+    """
+    hwnd = _find_window_by_title(titel_substring)
+    if not hwnd:
+        return False
+    try:
+        breite = hoehe = 16
+        xor, und = bytearray(), bytearray()
+        for zeile in _SYMBOL_MUSTER:
+            for zeichen in zeile:
+                b, g, r = _SYMBOL_DUNKEL if zeichen == "1" else _SYMBOL_AMBER
+                xor += bytes((b, g, r))
+            # AND-Maske: 0 = Pixel zeigen. Voll deckend, das Symbol ist quadratisch.
+            und += b"\x00\x00"
+        symbol = user32.CreateIcon(None, breite, hoehe, 1, 24,
+                                   ctypes.c_char_p(bytes(und)),
+                                   ctypes.c_char_p(bytes(xor)))
+        if not symbol:
+            return False
+        # Beide Grössen setzen: 0 = klein (Titelleiste), 1 = gross (ALT+TAB).
+        user32.SendMessageW(hwnd, WM_SETICON, 0, symbol)
+        user32.SendMessageW(hwnd, WM_SETICON, 1, symbol)
+        return True
+    except (OSError, ValueError, AttributeError):
+        return False

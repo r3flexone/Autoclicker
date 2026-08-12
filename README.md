@@ -1399,6 +1399,13 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **Name und Farbe stehen beim Punkt**, nicht oben im Block: vorher gab es „Name
+  (Punkt #1)" und weiter unten nochmal die Punkt-Auswahl. Die Farbe eines Punkts
+  lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau
+  diesen Wert prüft
+- **ELSE als Kachel-Raster** statt Klappmenü (sechs feste Aktionen, mit einer Zeile
+  Erklärung darunter), **INIT und END in eigenen Farben** statt beide grau, und eine
+  **neue Sequenz bringt gleich eine Loop-Phase mit**
 - **Der Block-Typ ist ablesbar statt auswendig**: alle neun Kacheln tragen ihren
   Farbstreifen (Legende zu den Karten im Board), und KLICK/FARBE+KLICK/WARTEN gibt es
   zusätzlich als zwei Schalter — „klickt an der Stelle" und „wartet auf eine Farbe",

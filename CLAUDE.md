@@ -670,6 +670,21 @@ Regeln beim Erweitern:
 - **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
   Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
   und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.
+- **Was dem Punkt gehört, steht beim Punkt.** Name und Farbe eines Klick-Blocks
+  gehören nicht dem Schritt, sondern dem Punkt — sie stehen deshalb im Abschnitt
+  KLICK-POSITION, zusammen mit Auswahl und Koordinaten. Vorher stand oben „Name
+  (Punkt #1)" und weiter unten nochmal „Punkt": dieselbe Sache an zwei Stellen,
+  und man musste raten, welche die führende ist. Nur Blöcke **ohne** Punkt (Taste,
+  Scans) haben einen eigenen Namen im Abschnitt ALLGEMEIN.
+- **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
+  und ELSE-Aktion (sechs) sind Kacheln: die Menge ist im Code festgelegt und ändert
+  sich nicht, und ein Klappmenü versteckte fünf von sechs Möglichkeiten hinter
+  einem Klick. Punkte, Sequenzen und Scan-Namen bleiben Listen — die wachsen mit
+  den Daten, und fünfzig Kacheln sind kein Bedienelement mehr.
+- **Die Farbe eines Punkts ist einstellbar, aber keine Anzeige-Eigenschaft.** Ein
+  Farb-Trigger prüft genau diesen Wert; wer ihn ändert, ändert mit, worauf
+  gewartet wird. Das Feld sagt das dazu. Ohne gemessene Farbe bleibt es leer,
+  statt Schwarz zu behaupten.
 - **Die Seite lädt nichts nach.** Kein Framework, keine Schrift, kein Bild von aussen:
   das Fenster läuft ohne Netz, und alles Nachgeladene wäre beim Start eine leere Fläche.
   Es gibt auch keinen Build-Schritt — was in der Datei steht, ist was läuft.
@@ -982,7 +997,7 @@ Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/te
 
 | Modul | was |
 |---|---|
-| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks |
+| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks, Fenster-Symbol |
 | `imaging.py` | Screenshot über GDI BitBlt |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |

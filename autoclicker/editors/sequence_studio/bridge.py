@@ -30,7 +30,7 @@ from typing import Optional
 from ...models import (
     ELSE_CLICK, ELSE_KEY, ELSE_RESTART, ELSE_SKIP, ELSE_SKIP_CYCLE,
     SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
-    Sequence, SequenceStep, WaitCondition,
+    LoopPhase, Sequence, SequenceStep, WaitCondition,
 )
 from ...persistence import (
     list_available_boss_scans, list_available_icon_scans, list_available_item_scans,
@@ -103,6 +103,17 @@ def _hex(rgb) -> Optional[str]:
     except (TypeError, ValueError):
         return None
     return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def _rgb(hexwert) -> Optional[tuple]:
+    """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
+    roh = str(hexwert or "").strip().lstrip("#")
+    if len(roh) != 6:
+        return None
+    try:
+        return tuple(int(roh[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
 
 
 def trigger_name(cond: Optional[WaitCondition]) -> str:
@@ -596,7 +607,12 @@ class StudioBridge:
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen."}
             return self.snapshot()
         basis = f"Sequenz_{int(time.time())}"
-        self.board = sequence_to_board(Sequence(name=basis))
+        # Mit einer Loop-Phase, nicht nur INIT und END: fast jede Sequenz braucht
+        # sie, und wer sie nicht braucht, laesst sie leer — eine leere Phase kostet
+        # zur Laufzeit nichts (der Worker geht durch null Schritte). Ohne sie war
+        # der erste Griff nach dem Anlegen immer derselbe: „+ Loop-Phase".
+        self.board = sequence_to_board(Sequence(
+            name=basis, loop_phases=[LoopPhase(name="Loop", repeat=1, steps=[])]))
         self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(basis)}.json"
         self._auswahl_leeren()
         self._dirty = False
@@ -1104,6 +1120,11 @@ class StudioBridge:
                 punkt.y = int(wert)
             elif feld == "name":
                 punkt.name = str(wert or "")
+            elif feld == "farbe":
+                # Die Farbe ist das, was ein Farb-Trigger prueft — sie von Hand zu
+                # setzen ist deshalb eine echte Aenderung am Verhalten, nicht bloss
+                # Anzeige. Leer heisst „keine gemessene Farbe", nicht Schwarz.
+                punkt.color = _rgb(wert)
             else:
                 return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
         except (TypeError, ValueError):

@@ -199,6 +199,9 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine
       Rettungskopie unter `backups/<name>.ungespeichert.json`, und die Datei ist da.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
+- [ ] 🆕 Das Fenster trägt in Titelleiste und Taskleiste das Studio-Symbol
+      (amber Kachel mit Zeiger), nicht das Python-Symbol. Schlägt das fehl, ist es
+      kosmetisch — das Fenster muss trotzdem aufgehen.
 - [ ] **Starten aus dem Studio** (🆕): Knopf im Kopf → Hauptprozess meldet
       „[STUDIO] '<Name>' geladen und gestartet", die Sequenz läuft, und die Ansicht
       springt von selbst in den Live-Run.

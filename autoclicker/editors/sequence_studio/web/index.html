@@ -20,6 +20,9 @@
   --bg:#0C0F14; --panel:#141921; --sub:#1C2333; --line:#2A3245;
   --text:#E2E8F0; --muted:#94A3B8; --dim:#64748B;
   --accent:#F59E0B; --ok:#3ED07A; --err:#EF4444;
+  /* Jede Phasenart hat ihre Farbe — INIT und END waren beide dasselbe Grau und
+     damit im Board nicht auseinanderzuhalten. */
+  --init:#3ED07A; --end:#38BDF8;
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -54,8 +57,11 @@ button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 .btn:disabled{opacity:.4;cursor:default}
 .btn.gefahr:hover{border-color:var(--err);color:var(--err)}
 
+/* Eingaben tragen den Ton der Flaeche, auf der sie liegen, und trennen sich nur
+   durch den Rahmen. Mit --bg (dunkler als die Seitenleiste) sahen sie aus wie
+   Loecher im Panel — bei zwoelf Feldern untereinander ist das unruhig. */
 input,select,textarea{
-  font:inherit;background:var(--bg);color:var(--text);
+  font:inherit;background:var(--panel);color:var(--text);
   border:1px solid var(--line);border-radius:4px;padding:5px 7px;width:100%;
 }
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
@@ -124,7 +130,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* ------------------------------------------------------------------- Punkte */
 .punkt{
   display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;
-  background:var(--bg);border:1px solid var(--sub);cursor:grab;
+  background:none;border:1px solid var(--line);cursor:grab;
 }
 .punkt:hover{border-color:var(--dim)}
 .punkt .kugel{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
@@ -142,13 +148,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase{width:286px;flex:none;display:flex;flex-direction:column;gap:8px}
 .phase-kopf{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:9px 11px;display:flex;flex-direction:column;gap:7px}
-.phase-kopf.init{border-left:3px solid #64748B}
+.phase-kopf.init{border-left:3px solid var(--init)}
 .phase-kopf.loop{border-left:3px solid var(--accent)}
 /* END stand auf #38BDF8 — ein fuenftes Blau neben dem KLICK-Blau, das nichts
    bedeutete. Grau wie INIT sagt richtig, was beide sind: Rahmen, keine Schleife. */
-.phase-kopf.end{border-left:3px solid #64748B}
+.phase-kopf.end{border-left:3px solid var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
+.phase-kopf.init .phase-name{color:var(--init)}
+.phase-kopf.end .phase-name{color:var(--end)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
 .zaehler{font-family:var(--mono);font-size:10.5px;color:var(--accent);flex:none;
@@ -212,6 +220,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   background:var(--sub);border:1px solid var(--line);color:var(--muted);cursor:pointer;
 }
 .typ-chip:hover{border-color:var(--dim);color:var(--text)}
+/* ELSE hat keine Typ-Farbe — die gewählte Kachel trägt deshalb den Akzent. */
+.typ-chip.an{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
 .segment{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
 .segment button{flex:1;padding:5px 4px;font-size:11.5px;color:var(--muted);background:var(--bg)}
 .segment button:hover{color:var(--text)}
@@ -297,10 +307,17 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 <div class="app">
   <header class="kopf">
     <div class="reihe">
+      <!-- Zeigt, was das Programm tut: ein Mauszeiger, der klickt, und die Kette
+           aus Stellen, die er der Reihe nach abarbeitet. Das Play-Dreieck vorher
+           hiess „irgendetwas startet" — das steht auf jedem zweiten Knopf. -->
       <div class="marke">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 3l14 9-14 9z"/>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 3.5v10.5l2.8-2.6 2 4.4 2.2-1-1.9-4.2 3.6-.4z"/>
+          <circle cx="18.5" cy="5.5" r="1.6"/>
+          <circle cx="18.5" cy="13" r="1.6"/>
+          <circle cx="18.5" cy="20.5" r="1.6"/>
+          <path d="M18.5 7.1v4.3M18.5 14.6v4.3" stroke-width="1.6"/>
         </svg>
       </div>
       <span class="titel">SEQUENZ-STUDIO</span>
@@ -499,6 +516,17 @@ function feld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
 function zahlfeld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
   return feld(beschriftung, wert, (v) => beim_setzen(Number(v) || 0),
               Object.assign({type: "number"}, extra || {}), hilfe, schluessel);
+}
+
+/** Farbwähler mit Hex daneben. Ohne gemessene Farbe bleibt er leer statt eine
+ *  zu behaupten — dieselbe Regel wie beim Quadrat in der Punkte-Palette. */
+function farbfeld(beschriftung, hex, beim_setzen, hilfe, schluessel) {
+  const wahl = el("input", {type: "color", value: hex || "#000000",
+                            style: "width:44px;height:28px;padding:2px"});
+  const text = el("span", {class: "klein mono"}, hex || "keine Farbe aufgenommen");
+  wahl.addEventListener("change", () => beim_setzen(wahl.value.toUpperCase()));
+  return el("label", {class: "feld"}, beschriftet(beschriftung, hilfe, schluessel),
+    el("div", {class: "reihe"}, wahl, text));
 }
 
 function schalter(beschriftung, an, beim_setzen) {
@@ -1155,16 +1183,13 @@ function zeichneInspektor() {
 
   // --- Gemeinsames ---
   if (b.typ !== "screenshot") {
+    // Der Name steht nur hier, wenn er dem SCHRITT gehört. Hat der Block einen
+    // Punkt, gehört der Name dem Punkt — und dann steht er unten bei der Stelle,
+    // zusammen mit Auswahl, Farbe und Koordinaten. Vorher stand oben „Name
+    // (Punkt #1)" und weiter unten nochmal „Punkt": zweimal dieselbe Sache an
+    // zwei Stellen, und man musste raten, welche die führende ist.
     if (b.point_id === null || b.point_id === undefined) {
       ziel.appendChild(feld("Name", b.name, (v) => ruf("block_setzen", {feld: "name", wert: v})));
-    } else {
-      // Ein Schritt mit Punkt hat keinen eigenen Namen: er wird beim Laden aus
-      // points.json geholt. Statt eines toten Feldes bearbeitet dieses hier den
-      // Punkt — sichtbar beschriftet, weil es alle Blöcke darauf mitzieht.
-      ziel.appendChild(feld("Name (Punkt #" + b.point_id + ")", b.name,
-        (v) => ruf("punkt_setzen", {punkt: b.point_id, feld: "name", wert: v}), null,
-        "Der Name gehört dem Punkt, nicht diesem Block. Wer ihn hier ändert, " +
-        "ändert ihn überall, wo derselbe Punkt benutzt wird.", "name"));
     }
     ziel.appendChild(el("div", {class: "gitter2"},
       zahlfeld("Wartezeit (s)", b.delay_before,
@@ -1251,6 +1276,19 @@ function baueStelle(ziel, b) {
   } else {
     ziel.appendChild(auswahl("Punkt", punktListe(b.point_id), b.point_id === null ? "" : b.point_id,
       (v) => v && ruf("block_punkt", {punkt: Number(v)})));
+  }
+  // Alles, was dem Punkt gehört, steht beieinander: welcher, wie er heisst,
+  // welche Farbe er trägt, wo er liegt.
+  if (b.point_id !== null && b.point_id !== undefined) {
+    const p = S.punkte.find((q) => q.id === b.point_id);
+    ziel.appendChild(feld("Name des Punkts", b.name,
+      (v) => ruf("punkt_setzen", {punkt: b.point_id, feld: "name", wert: v}), null,
+      "Der Name gehört dem Punkt, nicht diesem Block: er ändert sich überall, " +
+      "wo derselbe Punkt benutzt wird.", "punktname"));
+    ziel.appendChild(farbfeld("Farbe des Punkts", p && p.farbe,
+      (hex) => ruf("punkt_setzen", {punkt: b.point_id, feld: "farbe", wert: hex}),
+      "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
+      "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
   }
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", b.x, (v) => setzeStelle(b, v, b.y), {step: "1"}),
@@ -1408,13 +1446,28 @@ function baueElse(ziel, b) {
   ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
     "eigene Aktion des Schritts.", "else"));
+  // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen plus
+  // „keine"), und im Inspektor ist der Platz da. Ein Klappmenü versteckt vier von
+  // fünf Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was
+  // es überhaupt gibt. Dieselbe Form wie das Typ-Raster darüber, damit beide als
+  // dasselbe Bedienelement zu erkennen sind.
   const werte = [{wert: "", text: "(keine)"}].concat(
-    S.else_aktionen.map((a) => ({wert: a, text: {
-      skip: "Schritt überspringen", skip_cycle: "Zyklus abbrechen",
-      restart: "Sequenz neu starten", click: "stattdessen klicken",
-      key: "stattdessen Taste"}[a] || a})));
-  ziel.appendChild(auswahl(null, werte, b.else_aktion,
-    (v) => ruf("block_else", {aktion: v})));
+    S.else_aktionen.map((a) => ({wert: a, text: a})));
+  ziel.appendChild(el("div", {class: "gitter3"}, werte.map((w) =>
+    el("button", {
+      // Eigene Klasse trotz gleicher Form: eine Typ-Kachel schaltet den Block-Typ,
+      // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
+      // will, soll nicht beide erwischen.
+      class: "typ-chip else-chip" + (w.wert === b.else_aktion ? " an" : ""),
+      onclick: () => ruf("block_else", {aktion: w.wert}),
+    }, w.text))));
+  ziel.appendChild(el("p", {class: "hinweis"}, {
+    "": "Ohne ELSE läuft der Schritt in seinen Timeout und die Sequenz macht weiter.",
+    skip: "Nur diesen Schritt überspringen.",
+    skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
+    restart: "Die Sequenz von vorn beginnen.",
+    click: "Stattdessen einen anderen Punkt klicken.",
+    key: "Stattdessen eine Taste drücken."}[b.else_aktion] || ""));
   if (b.else_aktion === "click") {
     ziel.appendChild(auswahl("ELSE-Punkt", punktListe(b.else_punkt), b.else_punkt,
       (v) => v && ruf("block_else", {aktion: "click", punkt: Number(v)})));

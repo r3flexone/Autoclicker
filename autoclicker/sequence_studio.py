@@ -155,9 +155,22 @@ def main(argv: list[str]) -> int:
         background_color="#0C0F14",
     )
     _haenge_schliesser_an(fenster, bridge)
+
+    def _nach_dem_start() -> None:
+        """Läuft, sobald das Fenster steht — dann erst gibt es ein Handle.
+
+        Das Symbol ist das Einzige, was pywebview auf Windows nicht selbst kann:
+        dort kommt es aus der ausführenden Datei, und das ist `python.exe`.
+        """
+        try:
+            from .winapi import setze_fenster_symbol
+            setze_fenster_symbol(WINDOW_TITLE)
+        except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
+            pass
+
     try:
         # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).
-        webview.start()
+        webview.start(_nach_dem_start)
     except KeyboardInterrupt:
         # Beendet man den Hauptprozess mit CTRL+C, bekommt dieser Subprozess das
         # Signal mit (gleiche Konsolengruppe). Ohne diesen Zweig landet ein
