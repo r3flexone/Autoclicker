@@ -825,11 +825,30 @@ class StudioBridge:
     # ---------------------------------------------------------- Block-Felder
 
     def block_typ(self, daten: dict) -> dict:
+        """Stellt den Block-Typ um.
+
+        FARBE+KLICK braucht einen Punkt. `set_block_type()` legt die Bedingung
+        sonst auf die rohen Koordinaten des Schritts an, und die landen als
+        `wait_pixel`/`wait_color` in der Datei — eine Kopie ausserhalb von
+        `points.json`, also genau das, was die Referenzen abgeschafft haben.
+        Dieselbe Haltung wie bei `block_trigger`: lieber gar keine Bedingung als
+        eine, die niemand mehr nachziehen kann.
+        """
         typ = (daten or {}).get("typ")
         lane, row, step = self._einzelner()
         if step is None or typ not in BLOCK_LABELS:
             return self.snapshot()
+        if (typ == BLOCK_WAIT_CLICK and step.wait_condition is None
+                and step.point_id is None):
+            return self._melde("FARBE+KLICK braucht einen Punkt — erst eine Stelle wählen.",
+                               "warn")
         set_block_type(step, typ)
+        # Eine frisch angelegte Bedingung haengt an den Punkt des Schritts: er ist
+        # die Quelle fuer Stelle UND Farbe.
+        wc = step.wait_condition
+        if wc is not None and wc.point_id is None and step.point_id is not None:
+            wc.point_id = step.point_id
+            self._punkte_anwenden()
         return self._geaendert()
 
     def block_setzen(self, daten: dict) -> dict:

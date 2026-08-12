@@ -3509,6 +3509,7 @@ _scan_loecher = []
 try:
     _os5.chdir(_sandkasten5)
     from autoclicker.persistence import init_directories as _init5
+    from autoclicker.utils import sanitize_filename as _san5
     from autoclicker.persistence.item_scans import (save_item_scan as _svi5,
                                                     load_item_scan_file as _ldi5)
     from autoclicker.persistence.boss_scans import (save_boss_scan as _svb5,
@@ -3534,7 +3535,11 @@ try:
                 _cfg5 = _kls5(name="Probe")
                 setattr(_cfg5, _f5.name, _w5)
                 _save5(_cfg5)
-                _zur5 = _load5(Path(_dir5) / "Probe.json")
+                # Der Dateiname folgt dem SANITISIERTEN Namen ("probe.json"), nicht
+                # dem eingetippten. Auf Windows faellt das nicht auf - dort ist das
+                # Dateisystem gross/klein-blind -, auf Linux war jede Pruefung hier
+                # "Datei nicht ladbar" und der Abschnitt dauerhaft rot.
+                _zur5 = _load5(Path(_dir5) / f"{_san5('Probe')}.json")
                 if _zur5 is None:
                     _scan_loecher.append(f"{_label5}.{_f5.name}: Datei nicht ladbar")
                 elif getattr(_zur5, _f5.name, "<fehlt>") != _w5:
@@ -4016,6 +4021,31 @@ for _t10 in [t["key"] for t in _b10.snapshot()["typen"]]:
         _fehler10b.append(_t10)
 check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 
+# --- FARBE+KLICK haengt am Punkt, nicht an einer Koordinaten-Kopie ---
+# `set_block_type()` legt die Bedingung notfalls auf step.x/y an - das landete als
+# wait_pixel/wait_color in der Datei, also als zweite Kopie einer Stelle, die es
+# ausserhalb von points.json nicht geben soll. Der Typwechsel bindet sie deshalb an
+# den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
+# block_trigger schon hatte.
+_b10.waehlen({"phase": 1, "zeile": 0})
+_b10.block_typ({"typ": "click"})
+_b10.block_typ({"typ": "wait_click"})
+_wc10 = _seq10.loop_phases[0].steps[0].wait_condition
+check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
+      _wc10 is not None and _wc10.point_id == 1)
+_d10b = _s2d9(_seq10.loop_phases[0].steps[0])
+check("gespeichert wird auch hier die Referenz, keine Farb-Kopie",
+      _d10b.get("wait_point_id") == 1 and _d10b.get("wait_pixel") is None
+      and _d10b.get("wait_color") is None)
+_b10.waehlen({"phase": 1, "zeile": 1})            # Taste, ohne Punkt
+_b10.block_typ({"typ": "click"})
+_zustand10 = _b10.block_typ({"typ": "wait_click"})
+check("ohne Punkt wird FARBE+KLICK abgelehnt",
+      _seq10.loop_phases[0].steps[1].wait_condition is None
+      and _zustand10["block"]["typ"] == "click")
+check("und auch das wird begruendet",
+      _zustand10["status"]["art"] == "warn" and "Punkt" in _zustand10["status"]["text"])
+
 # --- Was die Oberflaeche nicht anzeigt, ueberlebt sie trotzdem ---
 # Die Bloecke SIND die originalen SequenceStep-Objekte: das Studio gruppiert um,
 # es konvertiert nicht. Sonst verloere jede Runde durchs Studio genau die Felder,
@@ -4210,8 +4240,13 @@ try:
         _SS(delay_before=0, item_scan="")])])
     _b12 = _SB8(_seq12, Path("sequences/S.json"), "sequences")
     _zustand12 = _b12.speichern()
+    # Gegen den TATSAECHLICHEN Pfad pruefen, nicht gegen "S.json": die Datei folgt
+    # dem sanitisierten Namen (hier "s.json"). Auf Windows faellt der Unterschied
+    # nicht auf - dort ist das Dateisystem gross/klein-blind -, auf Linux riss der
+    # Vergleich die Suite mit einem FileNotFoundError ab und alles darunter lief
+    # gar nicht mehr.
     check("ein Scan ohne Konfiguration verhindert das Speichern NICHT",
-          (Path("sequences") / "S.json").exists())
+          _b12.filepath.exists())
     check("gemeldet wird er trotzdem", _zustand12["status"]["art"] == "warn")
     check("und die Meldung nennt die Scan-Art",
           "ITEM-SCAN" in _zustand12["status"]["text"])
@@ -4220,7 +4255,7 @@ try:
 
     # Der leere Name muss die Datei ueberleben - sonst waere der Block beim
     # naechsten Oeffnen ein Klick-Block und die Stelle im Ablauf falsch.
-    _roh12 = json.loads((Path("sequences") / "S.json").read_text(encoding="utf-8"))
+    _roh12 = json.loads(_b12.filepath.read_text(encoding="utf-8"))
     check("der leere Scan-Name steht in der Datei",
           _roh12["loop_phases"][0]["steps"][0].get("item_scan") == "")
 

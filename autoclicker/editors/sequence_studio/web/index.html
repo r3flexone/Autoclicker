@@ -65,9 +65,25 @@ textarea{resize:vertical;min-height:52px}
 label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
 /* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
    Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
-label.an{display:flex;flex-direction:row;align-items:center;gap:7px;color:var(--text);
+label.an{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
   font-size:12.5px;cursor:pointer}
 label.an input{width:auto}
+/* Kippschalter statt Kaestchen: er zeigt zwei Zustaende als Stellung, nicht als
+   Haken — bei den beiden Aktions-Schaltern ist genau das die Aussage. Es bleibt
+   ein echtes <input type=checkbox>, nur ohne Systemdarstellung; ein verstecktes
+   Element mit einer Attrappe daneben waere fuer Tastatur und Test schlechter. */
+label.an input[type=checkbox]{
+  appearance:none;-webkit-appearance:none;flex:none;position:relative;cursor:pointer;
+  width:32px;height:18px;border-radius:9px;background:var(--line);border:1px solid var(--line);
+  transition:background .12s,border-color .12s;
+}
+label.an input[type=checkbox]::after{
+  content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+  background:var(--dim);transition:transform .12s,background .12s;
+}
+label.an input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+label.an input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
+label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 
@@ -992,14 +1008,32 @@ function zeichneInspektor() {
                                 " · " + phase.name.toUpperCase();
 
   // --- Typ ---
-  ziel.appendChild(ueberschrift("BLOCK-TYP"));
+  // Jede Kachel traegt ihren Farbstreifen, nicht nur die gewaehlte: damit ist das
+  // Raster zugleich die Legende zu den Farben im Board — vorher musste man sie
+  // sich aus den Karten zusammensuchen —, und man sieht vor dem Klick, wie die
+  // Karte danach aussieht.
+  //
+  // `border-left` steht hier im style-Attribut und damit NACH dem `border` aus
+  // .typ-chip; nur deshalb ueberlebt der Streifen. Beides in einem Stil, und die
+  // Kurzform setzt alle vier Seiten und raeumt ihn wieder weg.
+  ziel.appendChild(ueberschrift("BLOCK-TYP",
+    "Die Farbe links wiederholt sich auf der Karte im Board — das Raster ist " +
+    "zugleich die Legende dazu.", "blocktyp"));
   ziel.appendChild(el("div", {class: "gitter3"}, S.typen.map((t) =>
     el("button", {
       class: "typ-chip",
-      style: t.key === b.typ ? "background:" + t.farbe + ";border-color:" + t.farbe +
-                               ";color:#0C0F14;font-weight:600" : "",
+      style: "border-left:3px solid " + t.farbe +
+             (t.key === b.typ
+               ? ";background:" + t.farbe + ";border-top-color:" + t.farbe +
+                 ";border-right-color:" + t.farbe + ";border-bottom-color:" + t.farbe +
+                 ";color:#0C0F14;font-weight:600"
+               : ""),
       onclick: () => ruf("block_typ", {typ: t.key}),
     }, t.label))));
+
+  // Die drei Klick-/Warte-Typen unterscheiden sich in genau zwei Eigenschaften.
+  // Als Schalter steht diese Tabelle auf dem Schirm, statt im Kopf zu sein.
+  if (b.typ === "click" || b.typ === "wait_click" || b.typ === "wait") baueAktion(ziel, b);
 
   // --- Gemeinsames ---
   if (b.typ !== "screenshot") {
@@ -1023,7 +1057,10 @@ function zeichneInspektor() {
                {step: "0.1", min: "0"})));
   }
 
-  if (b.typ === "click" || b.typ === "wait_click" || b.typ === "wait") baueStelle(ziel, b);
+  // Ein Warte-Block ohne Trigger beobachtet nichts — dann gibt es auch keine
+  // Stelle zu zeigen.
+  if (b.typ === "click" || b.typ === "wait_click" ||
+      (b.typ === "wait" && b.trigger !== "kein")) baueStelle(ziel, b);
   if (b.typ === "key") {
     ziel.appendChild(feld("Taste", b.key_press,
       (v) => ruf("block_setzen", {feld: "key_press", wert: v}), {placeholder: "enter, space, f1"}));
@@ -1031,7 +1068,20 @@ function zeichneInspektor() {
   baueScan(ziel, b);
   if (b.typ === "screenshot") baueScreenshot(ziel, b);
 
-  if (b.typ !== "screenshot") baueTrigger(ziel, b);
+  // Der Farb-Trigger fragt VOR dem Schritt. Sinn ergibt er nur, wo die Laufzeit
+  // ihn auch auswertet: bei Klick, Warten und Taste — `runtime/steps.py` wartet
+  // fuer diese drei an genau einer Stelle, und dass die Taste dazugehoert, war
+  // einmal ein Fehler und ist ausdruecklich repariert. Scans und Screenshot
+  // kehren vorher um; dort waere die Bedingung wirkungslos.
+  //
+  // Gezeigt wird der Abschnitt trotzdem, wenn schon eine Bedingung dranhaengt:
+  // sonst waere sie unerreichbar, und ein Zustand, den man sieht (Farbfeld auf
+  // der Karte) aber nicht mehr wegbekommt, ist genau die Falltuer, die der
+  // geloeschte "nur warten"-Schalter war.
+  const mitTrigger = b.typ === "click" || b.typ === "wait_click" ||
+                     b.typ === "wait" || b.typ === "key";
+  if (mitTrigger || b.trigger !== "kein") baueTrigger(ziel, b, mitTrigger);
+  baueNachpruefung(ziel, b);
   baueElse(ziel, b);
 
   // Zuletzt, wenn alles im Dokument haengt: was aufgeklappt war, bleibt es. Der
@@ -1040,10 +1090,37 @@ function zeichneInspektor() {
   hilfenAnwenden(ziel);
 }
 
+function baueAktion(ziel, b) {
+  const klickt = b.typ === "click" || b.typ === "wait_click";
+  const farbe = b.trigger !== "kein";
+  const ergibt = klickt ? (farbe ? "wait_click" : "click") : "wait";
+  const typ = S.typen.find((t) => t.key === ergibt);
+
+  // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
+  // wechselt hier ja gerade, und eine Erklaerung, die man aufklappt und die beim
+  // ersten Schalten verschwindet, ist keine.
+  ziel.appendChild(ueberschrift("AKTION",
+    "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
+    "warten. Die Kacheln oben setzen dieselben zwei Werte — was dabei " +
+    "herauskommt, steht darunter.", "aktion"));
+  ziel.appendChild(schalter("klickt an der Stelle", klickt, (an) =>
+    ruf("block_typ", {typ: an ? (farbe ? "wait_click" : "click") : "wait"})));
+  ziel.appendChild(schalter("wartet auf eine Farbe", farbe, (an) => {
+    // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
+    // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
+    // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
+    if (!klickt) ruf("block_trigger", {wahl: an ? "da" : "kein"});
+    else ruf("block_typ", {typ: an ? "wait_click" : "click"});
+  }));
+  ziel.appendChild(el("div", {class: "reihe", style: "padding-top:2px"},
+    el("span", {class: "klein"}, "ergibt"),
+    el("span", {class: "karte-typ", style: "background:" + typ.farbe}, typ.label)));
+}
+
 function baueStelle(ziel, b) {
   // Beides an der Ueberschrift: der Zusatz fuer WARTEN-Bloecke erklaert, warum
   // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
-  ziel.appendChild(ueberschrift("STELLE",
+  ziel.appendChild(ueberschrift(b.typ === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
     "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
     "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten." +
     (b.typ === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
@@ -1154,12 +1231,25 @@ function baueScreenshot(ziel, b) {
     "Grösse: " + Math.abs(r[2] - r[0]) + " × " + Math.abs(r[3] - r[1]) + " Pixel"));
 }
 
-function baueTrigger(ziel, b) {
-  const richtungen = [{wert: "kein", text: "kein"}, {wert: "da", text: "bis Farbe DA"},
-                      {wert: "weg", text: "bis Farbe WEG"}];
-  ziel.appendChild(ueberschrift("FARB-TRIGGER (VOR DEM SCHRITT)"));
-  ziel.appendChild(segment(richtungen, b.trigger,
-    (w) => ruf("block_trigger", {wahl: w})));
+// Richtungen einer Farb-Bedingung. Das Aus steht nur dort mit im Segment, wo es
+// kein eigenes Bedienelement dafuer gibt — bei den Klick-/Warte-Typen macht das
+// der Schalter im Abschnitt AKTION, und zwei Wege zum selben Aus waeren einer zu viel.
+const RICHTUNG_AUS = {wert: "kein", text: "kein"};
+const RICHTUNGEN = [{wert: "da", text: "bis Farbe DA"}, {wert: "weg", text: "bis Farbe WEG"}];
+
+function baueTrigger(ziel, b, mitTrigger) {
+  // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
+  const ohneAus = b.typ === "click" || b.typ === "wait_click" || b.typ === "wait";
+  ziel.appendChild(ueberschrift("FARB-TRIGGER (VOR DEM SCHRITT)",
+    mitTrigger
+      ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
+      : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
+        "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
+    "trigger-an"));
+  if (!(ohneAus && b.trigger === "kein")) {
+    ziel.appendChild(segment(ohneAus ? RICHTUNGEN : [RICHTUNG_AUS].concat(RICHTUNGEN),
+      b.trigger, (w) => ruf("block_trigger", {wahl: w})));
+  }
   if (b.trigger !== "kein") {
     ziel.appendChild(auswahl("Geprüfte Stelle", punktListe(b.trigger_punkt), b.trigger_punkt,
       (v) => v && ruf("block_trigger", {wahl: b.trigger, punkt: Number(v)}),
@@ -1169,9 +1259,14 @@ function baueTrigger(ziel, b) {
       (an) => ruf("block_trigger", {wahl: b.trigger, pruefen: an})));
   } else if (b.point_id === null || b.point_id === undefined) {
     ziel.appendChild(el("p", {class: "hinweis"},
-      "Ohne Punkt gibt es nichts zu prüfen — erst oben eine Stelle wählen."));
+      "Ohne Punkt gibt es nichts zu prüfen — erst eine Stelle wählen."));
   }
+}
 
+function baueNachpruefung(ziel, b) {
+  // Bleibt bei JEDEM Typ: „hat die Aktion gewirkt?" ergibt auch bei einer Taste
+  // und bei einem Scan Sinn — anders als der Trigger davor.
+  const richtungen = [RICHTUNG_AUS].concat(RICHTUNGEN);
   ziel.appendChild(ueberschrift("NACHPRÜFUNG (NACH DEM SCHRITT)",
     "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
     "wiederholt (verify_retries), danach greift ELSE.", "verify"));

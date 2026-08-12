@@ -611,7 +611,34 @@ Regeln beim Erweitern:
   der DPG-Fassung. Folge davon: `STRG+S` muss vorher `blur()` auslösen, sonst geht der
   zuletzt getippte Wert verloren.
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
-  dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`.
+  dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`. Das gilt
+  auch für den *Typwechsel*: `set_block_type()` legt die Bedingung sonst auf die rohen
+  Koordinaten des Schritts an, und die landen als `wait_pixel`/`wait_color` in der
+  Datei — eine Kopie ausserhalb von `points.json`. `block_typ()` bindet sie deshalb an
+  den Punkt des Schritts und lehnt FARBE+KLICK ohne Punkt ab.
+- **Der Typ ist das Ergebnis zweier Eigenschaften, nicht umgekehrt.** KLICK,
+  FARBE+KLICK und WARTEN unterscheiden sich in genau zwei Fragen: klickt der Schritt,
+  wartet er auf eine Farbe. Der Abschnitt AKTION zeigt beide als Schalter und schreibt
+  darunter, was dabei herauskommt; die Kacheln bleiben als Abkürzung für den, der die
+  Typen kennt. Zwei Bedienelemente für einen Zustand sind hier **bewusst** in Ordnung,
+  weil beide über dieselben Befehle schreiben (`block_typ`, `block_trigger`) — es gibt
+  keinen zweiten Zustand, der auseinanderlaufen könnte.
+
+  Der gelöschte Schalter „nur warten (kein Klick)" war der Gegenfall: **einer** statt
+  zweier, er setzte `wait_only` (also dasselbe wie die Kachel WARTEN), und er blendete
+  sich bei „warten" selbst aus. Wer ihn eingeschaltet hatte, fand nichts mehr, um ihn
+  auszuschalten. Genau diese Falltür darf es hier nicht geben — und deshalb bleibt auch
+  ein Farb-Trigger sichtbar, der an einem Typ hängt, der ihn gar nicht auswertet.
+- **Ein Bedienelement steht nur da, wo die Laufzeit es auswertet.** Den Farb-Trigger
+  gibt es bei Klick, Warten und **Taste**: `runtime/steps.py` wartet für die drei an
+  genau einer Stelle, und dass die Taste dazugehört, war einmal ein Fehler und ist
+  ausdrücklich repariert. Scans und Screenshot kehren vorher um — dort fehlt der
+  Abschnitt. Die **Nachprüfung** bleibt dagegen bei jedem Typ: „hat die Aktion
+  gewirkt?" ergibt auch bei einer Taste und einem Scan Sinn.
+- **Alle Typ-Kacheln tragen ihren Farbstreifen**, nicht nur die gewählte — damit ist
+  das Raster zugleich die Legende zu den Farben im Board. Der Streifen steht als
+  `border-left` im `style`-Attribut und damit *nach* dem `border` aus `.typ-chip`;
+  beides in einem Stil, und die Kurzform setzt alle vier Seiten und räumt ihn weg.
 - **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
   Nachprüfung. Die DPG-Fassung liess dort Zahlen eintippen — `_step_to_dict` schreibt
   die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten

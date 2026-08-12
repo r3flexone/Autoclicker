@@ -1373,6 +1373,13 @@ steht auf einmal da.
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
 - **Rückfrage statt Zwei-Klick-Trick** beim Laden/Neuanlegen mit offenen Änderungen
+- **Der Block-Typ ist ablesbar statt auswendig**: alle neun Kacheln tragen ihren
+  Farbstreifen (Legende zu den Karten im Board), und KLICK/FARBE+KLICK/WARTEN gibt es
+  zusätzlich als zwei Schalter — „klickt an der Stelle" und „wartet auf eine Farbe",
+  darunter steht, was dabei herauskommt
+- **Bedienelemente nur, wo sie wirken**: kein Farb-Trigger bei Scans und Screenshot
+  (die Laufzeit wertet ihn dort nicht aus), keine Stelle bei einem Warte-Block ohne
+  Trigger, und „BEOBACHTETE STELLE" statt „KLICK-POSITION", wo nicht geklickt wird
 - **Die Editor-Logik liegt jetzt in `bridge.py`** und damit im Test: die Umsortier-Rechnung
   lief bisher nur mit installiertem Dear PyGui und musste dafür die halbe Ansicht
   stilllegen. Die Suite prüft das Studio jetzt auf jeder Plattform (47 Prüfungen mehr)
