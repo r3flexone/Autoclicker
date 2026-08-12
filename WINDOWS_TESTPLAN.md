@@ -208,7 +208,10 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       dasselbe.
 - [ ] Während eines Laufs in den Editor wechseln → die Ansicht bleibt dort stehen.
 - [ ] Im Studio „Starten" drücken, während der Hauptprozess **nicht** läuft; danach
-      den Hauptprozess starten → es darf **nichts** losklicken.
+      den Hauptprozess starten → es darf **nichts** losklicken. Im Studio erscheint
+      nach ~2 s „Kein Hauptprozess erreichbar".
+- [ ] CTRL+ALT+B **während** ein Lauf läuft → das Fenster geht auf (die Sperre ist
+      absichtlich weg) und zeigt den Live-Run.
 
 ## 15. Robustheit / Backward-Compat
 - [ ] Alte `config.json` (mit `scan_learn_llm_names`) lädt ohne Fehler 🆕

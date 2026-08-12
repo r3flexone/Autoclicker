@@ -4151,6 +4151,15 @@ try:
     _zustand14c = _b14.lauf_befehl({"befehl": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
           _zustand14c["status"]["art"] == "err" and _bf13.hole() is None)
+
+    # Die einzige Rueckmeldung, die das Fenster ueber den Hauptprozess bekommt: er
+    # leert den Kasten. Liegt der Befehl noch, hoert niemand zu - dann darf im
+    # Studio nicht "gestartet" stehen bleiben.
+    check("ein geleerter Briefkasten heisst: angekommen", _b14.befehl_offen() is False)
+    _b14.lauf_befehl({"befehl": "pause"})
+    check("ein liegengebliebener Befehl ist erkennbar", _b14.befehl_offen() is True)
+    _bf13.hole()
+    check("und nach dem Abholen wieder nicht", _b14.befehl_offen() is False)
 finally:
     _os.chdir(_cwd14)
 

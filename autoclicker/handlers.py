@@ -540,6 +540,10 @@ def befehl_start(state: AutoClickerState, argumente: dict) -> None:
     if laeuft:
         print(f"\n{info('Läuft bereits — der Start aus dem Studio wird ignoriert.')}")
         return
+    # Vorher fragen, nicht hinterher: handle_toggle() lehnt während einer Aufnahme
+    # ab, und die Meldung unten stünde dann als Lüge in der Konsole.
+    if _block_if_recording(state):
+        return
 
     roh = str(argumente.get("datei") or "").strip()
     if not roh:
@@ -871,11 +875,17 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
     Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beisst. Es
     bearbeitet die aktive Sequenz direkt auf Disk; nach dem Speichern mit
     CTRL+ALT+L neu laden.
+
+    **Darf während eines Laufs geöffnet werden**, anders als die Konsolen-Editoren.
+    Hier stand `_block_if_running()`; der Grund dafür trifft auf dieses Fenster
+    nicht zu — es liest kein stdin und mutiert nichts im `AutoClickerState`,
+    sondern arbeitet auf Dateien. Seit es eine Live-Ansicht hat, war die Sperre
+    sogar verkehrt herum: sie verbot ausgerechnet die Ansicht, die es für einen
+    laufenden Durchgang gibt. Wer aus dem Studio startete und das Fenster zumachte,
+    sperrte sich bis zum nächsten Stopp aus.
     """
     import subprocess
 
-    if _block_if_running(state):
-        return
     with state.lock:
         seq_name = state.active_sequence.name if state.active_sequence else ""
 
@@ -891,7 +901,7 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
 
     target = f"'{seq_name}'" if seq_name else "neue Sequenz"
     print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet ({target}).")
-    print(f"     Starten geht dort auch — der Hauptprozess führt es aus.")
+    print("     Starten geht dort auch — der Hauptprozess führt es aus.")
     print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 

@@ -919,10 +919,19 @@ function laufFlanke(aktiv) {
   knopf.classList.toggle("gefahr", aktiv);
 }
 
-/** Einen Lauf-Befehl abschicken und danach nachfassen. */
+/** Einen Lauf-Befehl abschicken, nachfassen — und melden, wenn niemand zuhört. */
 async function laufSchicken(befehl) {
   await ruf("lauf_befehl", {befehl: befehl});
   laufNachfassen();
+  // Der Hauptprozess leert den Briefkasten beim Lesen. Liegt der Befehl nach
+  // zwei Sekunden immer noch da, ist keiner da — dann darf hier nicht
+  // „gestartet" stehen bleiben.
+  setTimeout(async () => {
+    if (await frage("befehl_offen")) {
+      setzeStatus({art: "warn", text: "Kein Hauptprozess erreichbar — der Befehl " +
+                                       "liegt noch und wird nicht nachgeholt."});
+    }
+  }, 2000);
 }
 
 /** Sofort nachsehen, statt auf den nächsten Puls zu warten.

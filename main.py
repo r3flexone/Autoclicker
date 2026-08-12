@@ -201,10 +201,11 @@ def _pruefe_befehle(state) -> None:
     if fn is None:
         print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
         return
+    # Kein flush_hotkey_messages() danach: das verwirft aufgestaute Hotkeys und ist
+    # für Handler gedacht, die minutenlang auf Konsolen-Eingaben warten. Ein Befehl
+    # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
+    # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     fn(state, auftrag["argumente"])
-    # Ein Befehl kann ebenso lange blockieren wie ein Handler (Countdown, Laden).
-    # Danach dieselbe Aufräumarbeit wie nach einem Hotkey.
-    flush_hotkey_messages()
 
 
 def main() -> int:

@@ -550,6 +550,23 @@ class StudioBridge:
                 "pause": "Pause umgeschaltet."}[befehl]
         return self._melde(text)
 
+    def befehl_offen(self, daten: Optional[dict] = None) -> bool:
+        """Liegt der letzte Befehl noch im Briefkasten?
+
+        Die einzige Rückmeldung, die dieses Fenster über den Hauptprozess bekommt:
+        er leert den Kasten beim Lesen. Liegt der Befehl Sekunden später immer
+        noch da, hört niemand zu — das Programm ist zu, oder es hängt. Ohne diese
+        Frage meldete der Knopf „gestartet" und es passierte nichts, was von
+        aussen wie ein kaputter Knopf aussieht.
+
+        Fragt nur, ändert nichts: gehört zu `frage()`, nicht zu `ruf()`.
+        """
+        from ...befehl import BEFEHL_DATEI
+        try:
+            return BEFEHL_DATEI.exists()
+        except OSError:
+            return False
+
     def laden(self, daten: dict) -> dict:
         """Öffnet eine gespeicherte Sequenz. Fragt bei ungespeicherten Änderungen."""
         name = (daten or {}).get("name") or ""
