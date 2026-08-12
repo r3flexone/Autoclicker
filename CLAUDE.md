@@ -483,6 +483,12 @@ wird.)
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 
+- `autoclicker/befehl.py` — der **Rückweg** zu `runtime/status.py`: dort schreibt der
+  Hauptprozess, was läuft, hier legt das Studio ab, was passieren soll. Ein Briefkasten,
+  kein Log — wer liest, leert ihn, und zu alte Befehle fliegen weg (siehe unten beim
+  Sequenz-Studio). Liegt bewusst **nicht** unter `runtime/`: dessen `__init__` zieht den
+  Worker samt `imaging` und `winapi` nach, und das Fenster braucht nichts davon.
+
   **`status.py` ist reine Anzeige und darf den Lauf nie stören** — jeder Schreibfehler
   wird geschluckt. Zwei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der
   Worker kennt Zyklus und Phase, `execute_step` den Block, keiner das Ganze.
@@ -586,12 +592,31 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Live-Run hat bewusst keine Steuerknöpfe.** Start/Pause/Stopp gehören in den
-Hauptprozess: dieser Subprozess hat keinen Zugriff auf `state.stop_event`, und ein
-Knopf, der nur so aussieht, als hielte er den Lauf an, ist schlimmer als kein Knopf.
-Die Ansicht nennt die Hotkeys, mehr nicht. Aus demselben Grund zeigt sie nur die
-*laufende* Phase und nicht alle: die Statusdatei kennt die übrigen nicht, und sie aus
-der geöffneten Sequenz zu holen wäre geraten — laufen kann eine ganz andere.
+**Start, Pause und Stopp gehen über einen Briefkasten** (`befehl.py`), nicht direkt:
+dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
+und der Hauptprozess holt sie **im Main-Thread, in derselben Schleife, in der auch
+seine Hotkeys ankommen** (`_pruefe_befehle` in `main.py`, alle 250 ms im Leerlauf).
+Damit ist ein Studio-Knopf exakt so viel wert wie ein Tastendruck: dieselbe
+Reihenfolge, dieselben Sperren, kein zweiter nebenläufiger Pfad. Ein Watcher-Thread
+hätte genau den gebracht — für eine Datei, die niemand eilig braucht.
+
+Die Regeln des Briefkastens stehen im Modul-Docstring; eine ist wichtiger als die
+anderen: **ein Befehl darf nie nachfeuern.** Wer im Studio auf „Starten" drückt,
+während gar kein Hauptprozess läuft, bekommt keine Wirkung — und darf sie auch nicht
+bekommen, sobald einer startet. Dafür sorgen `MAX_ALTER` und das Leeren beim Start.
+
+Zwei Dinge bleiben trotzdem beim Hauptprozess: die **Sequenz kommt von Platte**
+(`befehl_start` lädt die mitgeschickte Datei; das Studio speichert vorher, sonst liefe
+etwas anderes als das Angezeigte), und **`handle_toggle()` wird nicht für „stopp"
+benutzt** — es ist ein Umschalter und würde starten, wenn gerade nichts läuft.
+
+Die Ansicht zeigt weiterhin nur die *laufende* Phase und nicht alle: die Statusdatei
+kennt die übrigen nicht, und sie aus der geöffneten Sequenz zu holen wäre geraten —
+laufen kann eine ganz andere.
+
+**In die Live-Ansicht wird nur auf der Flanke gesprungen** (nichts → läuft). Solange
+etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eines
+Durchgangs nicht mehr in den Editor zurück.
 
 Regeln beim Erweitern:
 

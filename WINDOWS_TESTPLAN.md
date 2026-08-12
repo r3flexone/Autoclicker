@@ -199,6 +199,16 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine
       Rettungskopie unter `backups/<name>.ungespeichert.json`, und die Datei ist da.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
+- [ ] **Starten aus dem Studio** (🆕): Knopf im Kopf → Hauptprozess meldet
+      „[STUDIO] '<Name>' geladen und gestartet", die Sequenz läuft, und die Ansicht
+      springt von selbst in den Live-Run.
+- [ ] Vor dem Start eine Änderung machen und NICHT speichern → sie ist trotzdem im
+      Lauf (das Studio speichert vorher).
+- [ ] Pause und Stoppen aus der Live-Ansicht wirken; CTRL+ALT+S/G tun weiterhin
+      dasselbe.
+- [ ] Während eines Laufs in den Editor wechseln → die Ansicht bleibt dort stehen.
+- [ ] Im Studio „Starten" drücken, während der Hauptprozess **nicht** läuft; danach
+      den Hauptprozess starten → es darf **nichts** losklicken.
 
 ## 15. Robustheit / Backward-Compat
 - [ ] Alte `config.json` (mit `scan_learn_llm_names`) lädt ohne Fehler 🆕

@@ -50,8 +50,9 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_sequence_studio, handle_scan_studio
+    handle_sequence_studio, handle_scan_studio, BEFEHLE
 )
+from autoclicker.befehl import hole as hole_befehl, verwerfe as verwirf_befehle
 
 
 def print_banner() -> None:
@@ -170,6 +171,42 @@ def _erster_start(state) -> bool:
                 or state.item_scans or list_available_sequences())
 
 
+# Wie oft im Leerlauf nach einem Befehl aus dem Studio gesehen wird. Die Schleife
+# dreht alle 10 ms; jedes Mal eine Datei zu öffnen wäre hundertmal pro Sekunde für
+# etwas, das man von Hand auslöst.
+_BEFEHL_TAKT = 0.25
+_befehl_zuletzt = 0.0
+
+
+def _pruefe_befehle(state) -> None:
+    """Holt einen Befehl aus dem Briefkasten und führt ihn aus.
+
+    Läuft im **Main-Thread**, im Leerlauf derselben Schleife, die auch die
+    Hotkeys abholt. Damit ist ein Befehl aus dem Studio exakt dasselbe wie ein
+    Hotkey-Druck: dieselbe Reihenfolge, dieselben Sperren, kein zweiter
+    nebenläufiger Pfad im Programm. Ein Watcher-Thread hätte genau das gebracht,
+    und zwar nur, weil er eine Datei liest, die niemand eilig braucht.
+    """
+    global _befehl_zuletzt
+    jetzt = time.monotonic()
+    if jetzt - _befehl_zuletzt < _BEFEHL_TAKT:
+        return
+    _befehl_zuletzt = jetzt
+
+    auftrag = hole_befehl()
+    if auftrag is None:
+        return
+    name = auftrag["befehl"]
+    fn = BEFEHLE.get(name)
+    if fn is None:
+        print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
+        return
+    fn(state, auftrag["argumente"])
+    # Ein Befehl kann ebenso lange blockieren wie ein Handler (Countdown, Laden).
+    # Danach dieselbe Aufräumarbeit wie nach einem Hotkey.
+    flush_hotkey_messages()
+
+
 def main() -> int:
     """Hauptfunktion."""
     print_banner()
@@ -257,6 +294,13 @@ def main() -> int:
     print_status(state)
     print()
 
+    # Briefkasten leeren, bevor die Schleife anfängt zu lesen. Wer im Studio auf
+    # „Starten" drückt, während gar kein Hauptprozess läuft, bekommt keine
+    # Wirkung — und darf sie auch nicht bekommen, sobald einer startet. Die
+    # Altersregel in befehl.py fängt das meiste ab, aber nicht die letzten
+    # Sekunden davor.
+    verwirf_befehle()
+
     # Message-Struktur für Windows-Nachrichten
     msg = wintypes.MSG()
 
@@ -306,6 +350,7 @@ def main() -> int:
                         # WM_HOTKEY-Messages verwerfen (sonst feuern sie als Burst).
                         flush_hotkey_messages()
             else:
+                _pruefe_befehle(state)
                 time.sleep(0.01)
 
     except KeyboardInterrupt:

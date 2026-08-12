@@ -45,6 +45,11 @@ config.json
 # *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
 .lauf.json
 
+# Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
+# Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben
+# wie .lauf.json.
+.befehl.json
+
 # User data folders (auto-generated)
 # Reihenfolge wie das Persistenz-Layout in CLAUDE.md — wer dort einen Ordner ergaenzt,
 # ergaenzt ihn hier. Sonst landen fremde Boss-Profile und Session-Logs im naechsten PR.

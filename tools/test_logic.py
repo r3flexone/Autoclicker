@@ -4046,6 +4046,114 @@ check("ohne Punkt wird FARBE+KLICK abgelehnt",
 check("und auch das wird begruendet",
       _zustand10["status"]["art"] == "warn" and "Punkt" in _zustand10["status"]["text"])
 
+
+
+# --------------------------- Befehle aus dem Studio an den Hauptprozess
+section("Der Briefkasten zwischen Studio und Hauptprozess")
+
+# Die Gegenrichtung zu .lauf.json: dort schreibt der Hauptprozess, was laeuft,
+# hier legt das Studio ab, was passieren soll. Die Regeln, an denen alles haengt:
+# genau einmal ausfuehren, und niemals einen Befehl von frueher nachfeuern - ein
+# vergessenes "starte" wuerde sonst irgendwann spaeter unerwartet klicken.
+import autoclicker.befehl as _bf13
+
+_sand13 = _tf5.mkdtemp(prefix="befehl_")
+_cwd13 = _os.getcwd()
+_os.chdir(_sand13)
+try:
+    _bf13.BEFEHL_DATEI = Path(_bf13.BEFEHL_DATEI.name)   # relativ zum Sandkasten
+
+    check("ohne Briefkasten kommt nichts zurueck", _bf13.hole() is None)
+
+    _bf13.sende("start", datei="sequences/x.json", sequenz="X")
+    _auftrag13 = _bf13.hole()
+    check("ein gesendeter Befehl kommt an",
+          _auftrag13 is not None and _auftrag13["befehl"] == "start")
+    check("mit seinen Argumenten",
+          _auftrag13["argumente"] == {"datei": "sequences/x.json", "sequenz": "X"})
+    check("und der Briefkasten ist danach leer",
+          not _bf13.BEFEHL_DATEI.exists() and _bf13.hole() is None)
+
+    # Ein Befehl von frueher darf NICHT nachfeuern. Das ist die gefaehrlichste
+    # Stelle des ganzen Kanals: er loest Klicks aus.
+    _bf13.sende("start", datei="sequences/x.json")
+    _alt13 = json.loads(_bf13.BEFEHL_DATEI.read_text(encoding="utf-8"))
+    _alt13["stand"] = _alt13["stand"] - (_bf13.MAX_ALTER + 5)
+    _bf13.BEFEHL_DATEI.write_text(json.dumps(_alt13), encoding="utf-8")
+    check("ein zu alter Befehl wird verworfen", _bf13.hole() is None)
+    check("und liegt danach auch nicht mehr da", not _bf13.BEFEHL_DATEI.exists())
+
+    # Unlesbares fliegt genauso raus - sonst wird es bei JEDEM Schleifendurchlauf
+    # erneut gelesen und gemeldet.
+    _bf13.BEFEHL_DATEI.write_text("{kein json", encoding="utf-8")
+    check("eine kaputte Datei ergibt keinen Befehl", _bf13.hole() is None)
+    check("und wird trotzdem weggeraeumt", not _bf13.BEFEHL_DATEI.exists())
+
+    _bf13.BEFEHL_DATEI.write_text(json.dumps({"stand": __import__("time").time()}), encoding="utf-8")
+    check("ein Eintrag ohne Befehl zaehlt nicht", _bf13.hole() is None)
+
+    # Zweimal senden staut nichts an: wer zweimal stoppt, meint einmal stoppen.
+    _bf13.sende("stop")
+    _bf13.sende("stop")
+    check("der zweite Befehl ueberschreibt den ersten", _bf13.hole()["befehl"] == "stop")
+    check("und danach ist Ruhe", _bf13.hole() is None)
+finally:
+    _os.chdir(_cwd13)
+
+# --- Beide Seiten kennen dieselben Befehle ---
+# Der Test, um den es hier eigentlich geht: die Bruecke darf nur senden, was der
+# Hauptprozess auch ausfuehrt. Laufen die Listen auseinander, tut ein Knopf im
+# Studio einfach nichts - keine Meldung, kein Fehler, nur Stille.
+from autoclicker.handlers import BEFEHLE as _BEF13
+
+check("jeder Befehl der Bruecke hat einen Handler",
+      sorted(_SB8.LAUF_BEFEHLE) == sorted(_BEF13))
+
+# --- Die Bruecke speichert vor dem Start ---
+# Der Hauptprozess laedt die DATEI. Was nur im Speicher steht, liefe nicht mit -
+# ein Start-Knopf, der eine aeltere Fassung startet als die angezeigte, waere
+# schlimmer als keiner.
+_sand14 = _tf5.mkdtemp(prefix="studiostart_")
+_cwd14 = _os.getcwd()
+_os.chdir(_sand14)
+try:
+    Path("sequences").mkdir()
+    _bf13.BEFEHL_DATEI = Path(_bf13.BEFEHL_DATEI.name)
+    _seq14 = _SEQ8(name="Lauf", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
+        _SS(x=1, y=2, delay_before=0, name="K", point_id=1)])])
+    _b14 = _SB8(_seq14, Path("sequences/lauf.json"), "sequences")
+    _b14.board.total_cycles = 7          # ungespeicherte Aenderung
+    _b14._dirty = True
+    _zustand14 = _b14.lauf_befehl({"befehl": "start"})
+    check("der Start speichert die offene Sequenz zuerst",
+          _b14._dirty is False and Path("sequences/lauf.json").exists())
+    _auftrag14 = _bf13.hole()
+    check("und schickt genau diese Datei mit",
+          _auftrag14 is not None
+          and Path(_auftrag14["argumente"]["datei"]).name == "lauf.json")
+    check("die Aenderung steht in der Datei, nicht nur im Speicher",
+          json.loads(Path("sequences/lauf.json").read_text(encoding="utf-8"))
+          .get("total_cycles") == 7)
+    check("gemeldet wird der Start auch", "gestartet" in _zustand14["status"]["text"])
+
+    # Scheitert das Speichern, wird NICHT gestartet: sonst liefe die alte Fassung.
+    _b14.board.name = ""
+    _b14._dirty = True
+    _zustand14b = _b14.lauf_befehl({"befehl": "start"})
+    check("ohne Sequenz-Namen faellt der Start aus",
+          _zustand14b["status"]["art"] == "err" and _bf13.hole() is None)
+
+    # Stopp und Pause gehen ohne Speichern durch - sie betreffen den Lauf, nicht
+    # die Datei.
+    _b14.board.name = "Lauf"
+    _b14.lauf_befehl({"befehl": "stop"})
+    check("Stopp braucht kein Speichern", _bf13.hole()["befehl"] == "stop")
+    _zustand14c = _b14.lauf_befehl({"befehl": "tanzen"})
+    check("ein erfundener Befehl wird abgelehnt",
+          _zustand14c["status"]["art"] == "err" and _bf13.hole() is None)
+finally:
+    _os.chdir(_cwd14)
+
 # --- Was die Oberflaeche nicht anzeigt, ueberlebt sie trotzdem ---
 # Die Bloecke SIND die originalen SequenceStep-Objekte: das Studio gruppiert um,
 # es konvertiert nicht. Sonst verloere jede Runde durchs Studio genau die Felder,

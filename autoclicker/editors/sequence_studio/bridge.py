@@ -510,6 +510,46 @@ class StudioBridge:
             return {"aktiv": False, "verwaist": True}
         return zustand
 
+    # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`
+    # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
+    # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
+    LAUF_BEFEHLE = ("start", "stop", "pause")
+
+    def lauf_befehl(self, daten: dict) -> dict:
+        """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
+
+        Dieses Fenster kann die Sequenz nicht selbst ausführen: es ist ein eigener
+        Prozess und sieht weder `AutoClickerState` noch `stop_event`. Es legt
+        deshalb einen Befehl ab (`befehl.py`), den der Hauptprozess in derselben
+        Schleife abholt, in der auch seine Hotkeys ankommen — ein Studio-Knopf ist
+        damit genau so viel wert wie ein Tastendruck, nicht mehr und nicht weniger.
+
+        **Vor dem Start wird gespeichert.** Der Hauptprozess lädt die Datei; was
+        nur hier im Speicher steht, liefe nicht mit. Ein Start-Knopf, der eine
+        ältere Fassung startet als die angezeigte, wäre schlimmer als keiner.
+        """
+        from ...befehl import sende
+        befehl = (daten or {}).get("befehl") or ""
+        if befehl not in self.LAUF_BEFEHLE:
+            return self._melde(f"Unbekannter Lauf-Befehl '{befehl}'.", "err")
+
+        argumente: dict = {}
+        if befehl == "start":
+            if self._dirty:
+                zustand = self.speichern()
+                if zustand["status"]["art"] == "err":
+                    return zustand      # Meldung steht schon drin, Start faellt aus
+            if not self.filepath.exists():
+                return self._melde("Erst speichern — die Datei gibt es noch nicht.", "warn")
+            argumente = {"datei": str(self.filepath), "sequenz": self.board.name}
+
+        if not sende(befehl, **argumente):
+            return self._melde("Befehl konnte nicht abgelegt werden.", "err")
+        text = {"start": f"'{self.board.name}' gestartet.",
+                "stop": "Stopp geschickt.",
+                "pause": "Pause umgeschaltet."}[befehl]
+        return self._melde(text)
+
     def laden(self, daten: dict) -> dict:
         """Öffnet eine gespeicherte Sequenz. Fragt bei ungespeicherten Änderungen."""
         name = (daten or {}).get("name") or ""

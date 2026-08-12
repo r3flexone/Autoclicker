@@ -29,6 +29,11 @@ SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 # unter backups/ liegen statt neben dem Original.
 RUN_STATUS_FILE: str = ".lauf.json"
 
+# Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
+# denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
+# sondern ein Briefkasten, der beim Lesen geleert wird.
+COMMAND_FILE: str = ".befehl.json"
+
 
 @dataclass
 class AppConfig:

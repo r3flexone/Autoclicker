@@ -1373,6 +1373,12 @@ steht auf einmal da.
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
 - **Rückfrage statt Zwei-Klick-Trick** beim Laden/Neuanlegen mit offenen Änderungen
+- **Starten aus dem Studio**: Start, Pause und Stopp im Kopf und in der Live-Ansicht.
+  Das Fenster führt nichts selbst aus — es legt einen Befehl ab, den der Hauptprozess in
+  derselben Schleife abholt, in der auch seine Hotkeys ankommen. Der Start **speichert
+  vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
+- **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
+  während eines Laufs weiter im Editor arbeiten kann
 - **Der Block-Typ ist ablesbar statt auswendig**: alle neun Kacheln tragen ihren
   Farbstreifen (Legende zu den Karten im Board), und KLICK/FARBE+KLICK/WARTEN gibt es
   zusätzlich als zwei Schalter — „klickt an der Stelle" und „wartet auf eine Farbe",

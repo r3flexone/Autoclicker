@@ -520,6 +520,80 @@ def handle_toggle(state: AutoClickerState) -> None:
             worker.start()
 
 
+def befehl_start(state: AutoClickerState, argumente: dict) -> None:
+    """Startet die Sequenz aus `datei` — Befehl aus dem Sequenz-Studio.
+
+    Die Datei wird **frisch von Platte** geladen und aktiv gesetzt, nicht der
+    Stand im Speicher genommen: der Hauptprozess hat von den Änderungen im Studio
+    nichts mitbekommen, und ein Start, der etwas anderes ausführt als das, was
+    man vor sich sieht, ist der Stolperstein schlechthin zwischen den beiden
+    Prozessen. Das Studio speichert deshalb vor dem Senden, und hier wird genau
+    diese Datei geladen.
+
+    Verweigert wird nur, was auch ein Hotkey verweigern würde. Was hier NICHT
+    passieren darf, ist ein Konsolen-Menü: `handle_toggle()` öffnet ohne aktive
+    Sequenz den Lade-Dialog, und ein blockierender Prompt, den niemand angefordert
+    hat, hinge im Hauptfenster fest, während man ins Studio schaut.
+    """
+    with state.lock:
+        laeuft = state.is_running or state.countdown_active
+    if laeuft:
+        print(f"\n{info('Läuft bereits — der Start aus dem Studio wird ignoriert.')}")
+        return
+
+    roh = str(argumente.get("datei") or "").strip()
+    if not roh:
+        print(f"\n{err('Start aus dem Studio ohne Datei — ignoriert.')}")
+        return
+    pfad = Path(roh)
+    with state.lock:
+        punkte = list(state.points)
+    seq = load_sequence_file(pfad, punkte)
+    if seq is None:
+        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+              f"{hint('(im Studio gespeichert?)')}")
+        return
+
+    with state.lock:
+        state.active_sequence = seq
+    print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
+    handle_toggle(state)
+
+
+def befehl_stop(state: AutoClickerState, argumente: dict) -> None:
+    """Stoppt einen laufenden Durchgang — Befehl aus dem Sequenz-Studio.
+
+    Bewusst nicht `handle_toggle()`: das ist ein Umschalter und würde starten,
+    wenn gerade nichts läuft. Ein Stopp-Knopf, der etwas anfängt, wäre die
+    schlimmste Sorte Überraschung.
+    """
+    with state.lock:
+        laeuft = state.is_running or state.countdown_active
+        if laeuft:
+            state.stop_event.set()
+    if laeuft:
+        print(f"\n{col('[STUDIO]', 'cyan')} Stoppe Sequenz...")
+    else:
+        print(f"\n{info('Es läuft nichts — nichts zu stoppen.')}")
+
+
+def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
+    """Pausiert oder setzt fort — dieselbe Bedeutung wie CTRL+ALT+G."""
+    handle_pause(state)
+
+
+# Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
+# hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
+# beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
+# `StudioBridge.lauf_befehl()` ueberhaupt senden kann; laufen die beiden Seiten
+# auseinander, hat ein Knopf keine Wirkung mehr und niemand merkt es.
+BEFEHLE = {
+    "start": befehl_start,
+    "stop": befehl_stop,
+    "pause": befehl_pause,
+}
+
+
 def handle_pause(state: AutoClickerState) -> None:
     """Pausiert oder setzt die Sequenz fort."""
     with state.lock:
@@ -817,7 +891,8 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
 
     target = f"'{seq_name}'" if seq_name else "neue Sequenz"
     print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet ({target}).")
-    print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
+    print(f"     Starten geht dort auch — der Hauptprozess führt es aus.")
+    print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
 def handle_scan_studio(state: AutoClickerState) -> None:

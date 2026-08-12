@@ -317,6 +317,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
       <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
       <span class="klein mono" id="datei"></span>
     </div>
+    <div class="trenner"></div>
+    <!-- Starten aus dem Editor heraus: das ist der Weg, den man beim Bauen einer
+         Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst in
+         den Live-Run, deshalb braucht der Knopf dort keinen Zwilling. -->
+    <button class="btn" id="btn-lauf">▶ Starten</button>
     <span class="status" id="status"></span>
   </header>
 
@@ -881,17 +886,64 @@ function seqKarte(s) {
 /* --------------------------------------------------------- Ansicht: Live-Run */
 
 let laufTakt = null;
+let laufLief = false;
 
-/** Nur pollen, solange der Reiter offen ist.
+/** Der schnelle Takt läuft nur, solange der Reiter offen ist.
  *
  * Ein Fenster, das im Hintergrund alle 500 ms eine Datei liest, tut das die
  * ganze Nacht — und die Datei liegt auf derselben Platte, auf die der Worker
- * gerade schreibt. */
+ * gerade schreibt. Daneben gibt es den langsamen Puls (s.u.), der nur die eine
+ * Frage stellt: hat gerade ein Lauf angefangen? */
 function laufTaktSetzen(an) {
   if (laufTakt) { clearInterval(laufTakt); laufTakt = null; }
   if (!an) return;
   zeichneLauf();
   laufTakt = setInterval(zeichneLauf, 500);
+}
+
+/** Springt beim Start eines Laufs von selbst in die Live-Ansicht.
+ *
+ * **Nur auf der Flanke** (nichts → läuft), nicht solange etwas läuft: sonst
+ * käme man während eines Durchgangs nicht mehr in den Editor zurück, die
+ * Ansicht würde jedes Mal zurückspringen. Wer den Reiter wechselt, während es
+ * läuft, hat sich dafür entschieden.
+ *
+ * Der Puls ist bewusst der langsamste, der die Frage noch rechtzeitig
+ * beantwortet: ein Start ist nichts, was man in einer halben Sekunde verpasst.
+ */
+function laufFlanke(aktiv) {
+  if (aktiv && !laufLief && ansicht !== "lauf") setzeAnsicht("lauf");
+  laufLief = aktiv;
+  const knopf = $("btn-lauf");
+  knopf.textContent = aktiv ? "■ Stoppen" : "▶ Starten";
+  knopf.classList.toggle("gefahr", aktiv);
+}
+
+/** Einen Lauf-Befehl abschicken und danach nachfassen. */
+async function laufSchicken(befehl) {
+  await ruf("lauf_befehl", {befehl: befehl});
+  laufNachfassen();
+}
+
+/** Sofort nachsehen, statt auf den nächsten Puls zu warten.
+ *
+ * Der Hauptprozess holt seinen Briefkasten alle 250 ms; bis der Lauf steht und
+ * die Statusdatei liegt, vergeht knapp eine Sekunde. Ohne dieses Nachfassen
+ * bliebe die Ansicht nach einem Druck auf „Starten" bis zu zwei Sekunden
+ * unbeeindruckt stehen — und genau in dieser Lücke drückt man ein zweites Mal.
+ */
+function laufNachfassen() {
+  for (const ms of [400, 900, 1600]) {
+    setTimeout(async () => laufFlanke(!!((await frage("lauf_status")) || {}).aktiv), ms);
+  }
+}
+
+function flankenPuls() {
+  setInterval(async () => {
+    if (ansicht === "lauf") return;      // dort fragt schon der schnelle Takt
+    const z = await frage("lauf_status");
+    laufFlanke(!!(z && z.aktiv));
+  }, 2000);
 }
 
 /** Sekunden als „2:05“ bzw. „1:23:45“. */
@@ -910,6 +962,7 @@ function balken(ist, soll) {
 
 async function zeichneLauf() {
   const z = await frage("lauf_status");
+  laufFlanke(!!(z && z.aktiv));   // auch hier mitfuehren, sonst kippt die Flanke
   if (ansicht !== "lauf") return;
   const ziel = $("sicht-lauf");
   ziel.replaceChildren();
@@ -923,8 +976,9 @@ async function zeichneLauf() {
     ziel.appendChild(el("p", {class: "hinweis"}, z && z.verwaist
       ? "Der letzte Lauf hat sich nicht sauber beendet — der Hauptprozess wurde " +
         "vermutlich hart abgeschossen. Ein neuer Start räumt das auf."
-      : "Gestartet wird im Hauptprozess mit CTRL+ALT+S. Diese Ansicht zeigt " +
-        "dann mit, wo die Sequenz gerade steht."));
+      : "Startet die zuletzt gespeicherte Fassung der geöffneten Sequenz — " +
+        "danach zeigt diese Ansicht mit, wo sie gerade steht."));
+    ziel.appendChild(steuerung(false));
     return;
   }
 
@@ -965,12 +1019,29 @@ async function zeichneLauf() {
       el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
                     el("small", {}, text.toUpperCase())))));
 
-  // Keine Steuerknöpfe: Start/Pause/Stopp gehören in den Hauptprozess, dieser
-  // hier hat keinen Zugriff auf `state.stop_event`. Ein Knopf, der nur so
-  // aussieht, als hielte er den Lauf an, wäre schlimmer als kein Knopf.
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Steuern im Hauptprozess: CTRL+ALT+S startet und stoppt, CTRL+ALT+G pausiert, " +
-    "CTRL+ALT+F beendet sanft nach dem laufenden Zyklus."));
+  ziel.appendChild(steuerung(true));
+}
+
+/** Start/Pause/Stopp.
+ *
+ * Die Knöpfe führen nichts aus — dieses Fenster hat keinen Zugriff auf
+ * `state.stop_event`. Sie legen einen Befehl ab, den der Hauptprozess in
+ * derselben Schleife abholt wie seine Hotkeys (`befehl.py`). Deshalb steht das
+ * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
+ */
+function steuerung(laeuft) {
+  const knopf = (text, befehl, klasse) => el("button", {
+    class: "btn" + (klasse ? " " + klasse : ""),
+    onclick: () => laufSchicken(befehl),
+  }, text);
+  return el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
+    laeuft ? null : knopf("▶ Starten", "start", "haupt"),
+    laeuft ? knopf("⏸ Pause", "pause") : null,
+    laeuft ? knopf("■ Stoppen", "stop", "gefahr") : null,
+    el("span", {class: "klein"},
+       laeuft ? "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess"
+              : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
+                "werden vorher geschrieben"));
 }
 
 /* ----------------------------------------------------------------- Inspektor */
@@ -1334,6 +1405,9 @@ function verdrahte() {
     () => ruf("laden", {name: $("seq-auswahl").value}));
   $("btn-neu").addEventListener("click", () => ruf("neu"));
   $("btn-speichern").addEventListener("click", speichere);
+  // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
+  // niemand raten muss, was ein Druck jetzt tut.
+  $("btn-lauf").addEventListener("click", () => laufSchicken(laufLief ? "stop" : "start"));
   $("btn-block-weg").addEventListener("click", () => ruf("auswahl_loeschen"));
 
   $("seq-name").addEventListener("change", (e) =>
@@ -1388,6 +1462,7 @@ function tastatur(e) {
 
 warteAufBruecke().then(() => {
   verdrahte();
+  flankenPuls();
   ruf("snapshot");
 });
 </script>
