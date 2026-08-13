@@ -1721,6 +1721,16 @@ function ohneElseText() {
 }
 
 function baueElse(ziel, b) {
+  // Kein Auslöser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
+  // Screenshot, Boss-Watcher) kann ELSE nie feuern, und ein Bedienelement steht
+  // nur da, wo die Laufzeit es auswertet — dieselbe Regel wie beim Farb-Trigger,
+  // den es bei Scans und Screenshot auch nicht gibt.
+  //
+  // Ausnahme: ist trotzdem eine Aktion gesetzt (Trigger nachträglich entfernt,
+  // Typ umgestellt, Import), bleibt der Abschnitt stehen. Sonst stünde das ELSE
+  // unsichtbar in der Datei und wäre nicht mehr loszuwerden — dieselbe Falltür
+  // wie beim gelöschten Schalter „nur warten".
+  if (!b.else_greift && !b.else_aktion) return;
   // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
   // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
   // — die Abwesenheit von allen.

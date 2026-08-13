@@ -199,9 +199,10 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       und ist danach ausgewählt. Gegenprobe: an der Kopie etwas ändern → das
       Original bleibt, wie es war. Mehrfachauswahl duplizieren → die Kopien liegen
       als Block hinter der Auswahl.
-- [ ] 🆕 ELSE an einem reinen Klick-Block: der Inspektor warnt „kommt hier nie zum
-      Zug", die Karte zeigt „greift nie". An einem Block mit Farb-Trigger,
-      Nachprüfung oder Scan steht keine Warnung.
+- [ ] 🆕 ELSE an einem reinen Klick-Block: der Abschnitt fehlt ganz. Gegenprobe:
+      an einem Block mit Farb-Trigger ELSE setzen, dann den Typ auf KLICK stellen →
+      der Abschnitt bleibt, warnt „kommt hier nie zum Zug", die Karte zeigt
+      „greift nie"; ELSE entfernen → Abschnitt verschwindet.
 - [ ] 🆕 ELSE: ohne Aktion nennt der Hinweis den echten Timeout und die echte
       Folge aus der `config.json` (Voreinstellung: 300 s → Zyklus abbrechen).
       Gegenprobe: `pixel_timeout_action` auf `stop` stellen, Studio neu öffnen →

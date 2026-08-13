@@ -829,8 +829,15 @@ feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
 Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
 Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
 (max. Scans, Timeout) und macht danach weiter. `else_greift()` in `bridge.py` hält
-dieselbe Liste für die Anzeige — das Studio warnt, statt ein wirkungsloses ELSE als
-Zusage stehenzulassen.
+dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
+nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
+auch nicht gibt.
+
+Eine Ausnahme hat das: **ist trotzdem eine Aktion gesetzt, bleibt der Abschnitt
+stehen** (samt Warnung, und auf der Karte „greift nie"). Der Fall entsteht beim
+Umstellen des Typs, beim Entfernen des Triggers und beim Import — und ohne die
+Ausnahme stünde das ELSE unsichtbar in der Datei und wäre nicht mehr loszuwerden.
+Dieselbe Falltür wie beim gelöschten Schalter „nur warten".
 
 Damit das durchsetzbar ist, reicht ein bool nicht: er kann „Schritt erledigt, weiter zum
 nächsten" nicht von „Sequenz abbrechen" unterscheiden. Beides als `False` zu melden riss
