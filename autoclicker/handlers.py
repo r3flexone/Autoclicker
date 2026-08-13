@@ -19,6 +19,7 @@ from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
+    punkte_nachladen,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
@@ -550,8 +551,11 @@ def befehl_start(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{err('Start aus dem Studio ohne Datei — ignoriert.')}")
         return
     pfad = Path(roh)
-    with state.lock:
-        punkte = list(state.points)
+    # Punkte MIT von Platte holen: das Studio hat beim Speichern beide Dateien
+    # geschrieben, und ein frisch dort angelegter Punkt steht hier noch nicht im
+    # Speicher. Ohne das laeuft die neue Sequenz gegen die alten Punkte -
+    # "[Punkt #51 FEHLT]", Schritt uebersprungen.
+    punkte = punkte_nachladen(state)
     seq = load_sequence_file(pfad, punkte)
     if seq is None:
         print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
@@ -700,9 +704,10 @@ def handle_switch(state: AutoClickerState) -> None:
 
     _name, pfad = sequences[choice]
     # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
-    # Koordinaten mit dem Punkte-Pool (point_id).
-    with state.lock:
-        punkte = list(state.points)
+    # Koordinaten mit dem Punkte-Pool (point_id). Von Platte, nicht aus dem
+    # Speicher — die Datei kann aus dem Sequenz-Studio kommen, und dann sind ihre
+    # Punkte hier noch unbekannt.
+    punkte = punkte_nachladen(state)
     seq = load_sequence_file(pfad, punkte)
     if seq is None:
         print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "

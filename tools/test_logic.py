@@ -3561,6 +3561,202 @@ if _scan_loecher:
         print("        " + _z5)
 
 
+# ------------------------------------------------ Punkte aus dem zweiten Prozess
+section("Was das Sequenz-Studio schreibt, findet der Hauptprozess wieder")
+
+# Der Fall aus dem Alltag: das Studio legt einen Punkt an und speichert BEIDE
+# Dateien. Der Hauptprozess laedt die Sequenz danach frisch von Platte - die
+# Punkte nahm er aber aus seinem Speicher, und dort gibt es den neuen nicht.
+# Ergebnis war "[Punkt #51 FEHLT]" und ein uebersprungener Schritt: zwei
+# Haelften aus zwei Zeitpunkten.
+import shutil as _sh11
+from autoclicker.models import AutoClickerState as _ST11, ClickPoint as _CP11
+
+_alt_cwd11 = _os.getcwd()
+_sand11 = tempfile.mkdtemp(prefix="punkte_nach_")
+try:
+    _os.chdir(_sand11)
+    from autoclicker.persistence import (ensure_sequences_dir as _esd11,
+                                         punkte_nachladen as _nach11,
+                                         load_sequence_file as _lsf11)
+    from autoclicker.config import SEQUENCES_DIR as _SQD11
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _esd11()
+
+    # Stand im Speicher: ein Punkt. Auf Platte legt der andere Prozess einen
+    # zweiten dazu und verschiebt den ersten.
+    _st11 = _ST11()
+    _st11.points = [_CP11(10, 20, "Bank", 1, color=(1, 2, 3))]
+    # Nur im Speicher, nie gespeichert - so entstehen Punkte im Boss-/Icon-Editor.
+    _st11.points.append(_CP11(70, 80, "Boss-Klick", 9))
+    Path(_SQD11, "points.json").write_text(json.dumps([
+        {"id": 1, "x": 11, "y": 21, "name": "Bank", "color": [1, 2, 3]},
+        {"id": 51, "x": 300, "y": 400, "name": "Studio", "color": [9, 9, 9]},
+    ]), encoding="utf-8")
+    Path(_SQD11, "studio.json").write_text(json.dumps({
+        "name": "studio", "schema_version": _MG.SCHEMA_VERSION, "total_cycles": 1,
+        "init_steps": [{"point_id": 51, "delay_before": 0}],
+        "loop_phases": [], "end_steps": []}), encoding="utf-8")
+
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _punkte11 = _nach11(_st11)
+        _seq11 = _lsf11(Path(_SQD11) / "studio.json", _punkte11)
+
+    _schritt11 = _seq11.init_steps[0]
+    check("der im Studio angelegte Punkt loest sich auf",
+          not getattr(_schritt11, "unresolved", False)
+          and (_schritt11.x, _schritt11.y) == (300, 400))
+    check("Platte gewinnt bei gleicher ID",
+          [(p.x, p.y) for p in _punkte11 if p.id == 1] == [(11, 21)])
+    check("ein nur im Speicher stehender Punkt ueberlebt das Nachladen",
+          any(p.id == 9 for p in _punkte11))
+    check("nachgeladen wird in den State, nicht nur in die Rueckgabe",
+          {p.id for p in _st11.points} == {1, 9, 51})
+
+    # Und die Gegenprobe zur Robustheit: eine kaputte Datei darf den
+    # Speicherstand nicht leeren - raten ist hier schlimmer als altern.
+    Path(_SQD11, "points.json").write_text("{kein json", encoding="utf-8")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _kaputt11 = _nach11(_st11)
+    check("eine unlesbare points.json laesst den Speicherstand stehen",
+          {p.id for p in _kaputt11} == {1, 9, 51})
+finally:
+    _os.chdir(_alt_cwd11)
+    _sh11.rmtree(_sand11, ignore_errors=True)
+
+# Der Weg, den der Nutzer wirklich geht: CTRL+ALT+L bzw. der Studio-Startbefehl.
+# Beide muessen die Punkte mitziehen - stuende die Zeile nur in einem der beiden,
+# waere der andere Knopf weiterhin kaputt.
+import ast as _ast11
+
+_ohne_nachladen11 = []
+for _pfad11, _funktion11 in (
+        ("autoclicker/handlers.py", "befehl_start"),
+        ("autoclicker/handlers.py", "handle_switch"),
+        ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
+    _baum11 = _ast11.parse(Path(_pfad11).read_text(encoding="utf-8"))
+    for _k11 in _ast11.walk(_baum11):
+        if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _funktion11:
+            _namen11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
+                        if isinstance(_n11, _ast11.Call)
+                        and isinstance(_n11.func, _ast11.Name)}
+            if "load_sequence_file" in _namen11 and "punkte_nachladen" not in _namen11:
+                _ohne_nachladen11.append(f"{_pfad11}:{_funktion11}")
+check("jeder Weg, der eine Sequenz von Platte laedt, holt die Punkte mit",
+      _ohne_nachladen11 == [])
+if _ohne_nachladen11:
+    for _z11 in _ohne_nachladen11:
+        print("        " + _z11)
+
+
+# ------------------------------------------------ Fenster-Symbol
+section("Das Fenster-Symbol wartet auf sein Fenster")
+
+# `webview.start(func)` ruft func auf, BEVOR das Fenster steht - nachgemessen:
+# zum Zeitpunkt des Aufrufs findet EnumWindows nichts, zwei Sekunden spaeter
+# schon. Ohne Frist fiel setze_fenster_symbol() still auf False, und das Studio
+# behielt das Symbol von python.exe.
+import time as _t12
+from autoclicker.winapi import setze_fenster_symbol as _sfs12, _symbol_bits as _sb12
+
+_t0_12 = _t12.monotonic()
+_erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", warten=0.5)
+_dauer12 = _t12.monotonic() - _t0_12
+check("ohne passendes Fenster wird die Frist ausgeschoepft und dann aufgegeben",
+      _erg12 is False and _dauer12 >= 0.45)
+
+_t0_12 = _t12.monotonic()
+_sfs12("Fenster mit diesem Titel gibt es garantiert nicht")
+check("ohne Frist wird wie bisher genau einmal geschaut",
+      _t12.monotonic() - _t0_12 < 0.4)
+
+# Die Bilddaten sind reine Rechnung und deshalb auch ohne Windows pruefbar. Sie
+# waren der zweite Teil des Fehlers: mit geraeteabhaengigen 24-Bit-Bits kam am
+# Fenster ein schwarzes Quadrat an.
+import struct as _struct12
+
+
+def _symbolpixel12(bits, kante, x, y):
+    """(B, G, R, A) an (x, y) mit Ursprung OBEN links - die Datei steht kopf."""
+    versatz = 40 + ((kante - 1 - y) * kante + x) * 4
+    return tuple(bits[versatz:versatz + 4])
+
+
+_symbol_loecher12 = []
+for _kante12 in (16, 32):
+    _bits12 = _sb12(_kante12)
+    _felder12 = _struct12.unpack("<IiiHHIIiiII", _bits12[:40])
+    if not (_felder12[0] == 40 and _felder12[1] == _kante12
+            and _felder12[3] == 1 and _felder12[4] == 32):
+        _symbol_loecher12.append(f"{_kante12}: Kopf beschreibt etwas anderes")
+    # Die Hoehe im Kopf zaehlt doppelt: Farb- und Maskenbild untereinander.
+    if _felder12[2] != _kante12 * 2:
+        _symbol_loecher12.append(f"{_kante12}: Hoehe im Kopf zaehlt nicht doppelt")
+    # Maskenzeilen sind auf 4 Byte aufgefuellt - bei 16 px sind das 4, nicht 2.
+    if len(_bits12) != 40 + _kante12 * _kante12 * 4 + 4 * _kante12:
+        _symbol_loecher12.append(f"{_kante12}: Laenge passt nicht zum Kopf")
+    _ecken12 = [_symbolpixel12(_bits12, _kante12, x, y)[3]
+                for x in (0, _kante12 - 1) for y in (0, _kante12 - 1)]
+    if _ecken12 != [0, 0, 0, 0]:
+        _symbol_loecher12.append(f"{_kante12}: Ecken nicht durchsichtig ({_ecken12})")
+    if _symbolpixel12(_bits12, _kante12, _kante12 // 2, _kante12 // 2)[3] != 255:
+        _symbol_loecher12.append(f"{_kante12}: Mitte nicht deckend")
+
+# Die durchsichtigen Ecken sind dabei der Beleg fuer die Rundung: ein randvolles
+# Quadrat sieht aus wie ein Farbmuster, nicht wie ein Symbol.
+check("beide Groessen stimmen in Kopf, Laenge, Rundung und Deckung",
+      _symbol_loecher12 == [])
+if _symbol_loecher12:
+    for _z12 in _symbol_loecher12:
+        print("        " + _z12)
+
+# DIB-Zeilen stehen von unten nach oben - ohne die rueckwaerts laufende Schleife
+# steht der Zeiger auf dem Kopf. Messbar an der linken Kante des Zeigers: sie
+# laeuft von der Spitze bis zur Kerbe und liegt damit in der OBEREN Haelfte.
+_bits12 = _sb12(32)
+_dunkel12 = [(x, y) for y in range(32) for x in range(32)
+             if _symbolpixel12(_bits12, 32, x, y)[2] < 0x60
+             and _symbolpixel12(_bits12, 32, x, y)[3] > 200]
+_linke12 = min(x for x, _ in _dunkel12)
+_kante_ys12 = [y for x, y in _dunkel12 if x == _linke12]
+check("die Zeilen stehen von unten nach oben in der Datei",
+      sum(_kante_ys12) / len(_kante_ys12) < 16)
+
+# Titelleiste und Taskleiste sind zwei Mechanismen. Das Fenstersymbol reichte
+# fuer die eine; die andere sortierte das Fenster weiter unter python.exe ein und
+# zeigte dessen Symbol. Erst eine eigene AppUserModelID loest es aus der Gruppe.
+from autoclicker.winapi import setze_app_id as _said12, APP_ID as _AID12
+
+check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
+if sys.platform == "win32":
+    _puffer12 = ctypes.c_wchar_p()
+    _hr12 = ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(
+        ctypes.byref(_puffer12))
+    check("und Windows gibt danach genau sie zurueck",
+          _hr12 == 0 and _puffer12.value == _AID12)
+else:
+    # Ohne Windows bleibt nur die Form pruefbar - die Schnittstelle verlangt eine
+    # punktgetrennte Kennung ohne Leerzeichen.
+    check("die Kennung hat die Form, die die Schnittstelle verlangt",
+          "." in _AID12 and " " not in _AID12 and len(_AID12) <= 128)
+
+# Die eigentliche Regel ist die Reihenfolge: nach dem ersten Fenster hat Windows
+# die Zuordnung schon getroffen, ein spaeterer Aufruf aendert nichts mehr.
+_quelle12 = Path("autoclicker/sequence_studio.py").read_text(encoding="utf-8")
+_main12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle12))
+               if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "main")
+_zeile_id12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
+               if isinstance(_n12, _ast11.Call) and isinstance(_n12.func, _ast11.Name)
+               and _n12.func.id == "setze_app_id"]
+_zeile_fenster12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
+                    if isinstance(_n12, _ast11.Call)
+                    and isinstance(_n12.func, _ast11.Attribute)
+                    and _n12.func.attr == "create_window"]
+check("die Kennung wird gesetzt, BEVOR das erste Fenster entsteht",
+      len(_zeile_id12) == 1 and len(_zeile_fenster12) == 1
+      and _zeile_id12[0] < _zeile_fenster12[0])
+
+
 
 
 # --------------------------- Marktwert-Bruecke (market_analysis -> Item-Scan)

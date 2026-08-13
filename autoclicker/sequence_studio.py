@@ -146,6 +146,16 @@ def main(argv: list[str]) -> int:
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
 
+    # VOR dem ersten Fenster: sonst sortiert die Taskleiste es unter python.exe
+    # ein und zeigt dort dessen Symbol, egal was am Fenster haengt. Die
+    # Titelleiste bekommt ihr Symbol weiter unten — das sind zwei getrennte
+    # Mechanismen, und beide braucht es.
+    try:
+        from .winapi import setze_app_id
+        setze_app_id()
+    except Exception:          # noqa: BLE001 - eine Kennung ist kein Startgrund
+        pass
+
     # Titel ohne Sequenznamen: die Seite setzt ihn ohnehin auf denselben Wert
     # (der Name steht im Kopf der Oberflaeche, in der Titelleiste waere er
     # doppelt), und `setze_fenster_symbol()` findet das Fenster damit sofort.
@@ -160,14 +170,19 @@ def main(argv: list[str]) -> int:
     _haenge_schliesser_an(fenster, bridge)
 
     def _nach_dem_start() -> None:
-        """Läuft, sobald das Fenster steht — dann erst gibt es ein Handle.
+        """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
 
         Das Symbol ist das Einzige, was pywebview auf Windows nicht selbst kann:
         dort kommt es aus der ausführenden Datei, und das ist `python.exe`.
+
+        Die Frist ist kein Sicherheitszuschlag, sondern der Kern: zum Zeitpunkt
+        dieses Aufrufs existiert das Fenster noch nicht (nachgemessen), und ohne
+        Warten fand `setze_fenster_symbol()` nichts und gab still `False` zurück.
+        Genau deshalb trug das Fenster bis hierher das Python-Symbol.
         """
         try:
             from .winapi import setze_fenster_symbol
-            setze_fenster_symbol(WINDOW_TITLE)
+            setze_fenster_symbol(WINDOW_TITLE, warten=15.0)
         except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
             pass
 

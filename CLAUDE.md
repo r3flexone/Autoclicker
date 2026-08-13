@@ -688,6 +688,35 @@ Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
 Knopfbeschriftung jetzt aus der Brücke, weil sich die Fälle zu sehr
 unterscheiden (bei „ausserhalb geändert" gibt es nichts zu verwerfen).
 
+**Das eigene Symbol braucht zwei Dinge, nicht eins.** Titelleiste und ALT+TAB
+nehmen es aus `WM_SETICON` (`setze_fenster_symbol()`) — aber erst, wenn es das
+Fenster gibt: `webview.start(func)` ruft seinen Callback davor auf, deshalb die
+Frist (`warten=`). Die **Taskleiste** ignoriert das Fenstersymbol, solange sie
+das Fenster unter der ausführenden Datei einsortiert, und die heisst `python.exe`;
+dafür gibt es `setze_app_id()`, und die muss **vor dem ersten Fenster** laufen.
+Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
+Ergebnis an genau einer der beiden Stellen.
+
+Gezeichnet wird das Symbol **aus Geometrie, nicht aus einem getippten Raster**
+(`_symbol_bits(kante)`): gerundete Ecken über den Alpha-Kanal, Kantenglättung
+über `_SYMBOL_PROBEN`² Abtastungen je Pixel, und jede Grösse in ihrer Grösse
+(16 für die Titelleiste, 32 für ALT+TAB und Taskleiste). Das vorherige
+16×16-Raster aus Nullen und Einsen hatte alle Fehler, die ein handgesetztes
+Raster hat — Motiv bis an die Kante, scharfe Ecken, Treppen, und die Punktkette
+neben dem Zeiger war nur noch Krümel. Wer das Motiv ändert, ändert das Polygon
+`_SYMBOL_ZEIGER` (dasselbe 24er-Raster wie das SVG im Kopf der Oberfläche).
+
+**Wer eine Sequenz von Platte lädt, holt die Punkte mit** (`punkte_nachladen()`
+in `persistence/sequences.py`). Das Studio schreibt beim Speichern *beide*
+Dateien; der Hauptprozess nahm die Sequenz von Platte und die Punkte aus seinem
+Speicher — ein dort angelegter Punkt fehlte deshalb genau dann, wenn man ihn
+braucht („[Punkt #51 FEHLT]", Schritt übersprungen). Zwei Hälften aus zwei
+Zeitpunkten. Betroffen sind alle drei Wege: `befehl_start` (Studio-Knopf),
+`handle_switch` und `run_sequence_loader` (CTRL+ALT+L, der Weg, auf den die
+Schlussmeldung des Studios selbst verweist); ein Test hält sie zusammen.
+Zusammengeführt wird über die ID, **Platte gewinnt**, und gelöscht wird nichts —
+Boss- und Icon-Editor legen Punkte an, ohne sofort zu speichern.
+
 **Eine Stelle fährt man an, statt sie zu tippen** (`punkt_aufnehmen()`): Maus hin,
 ENTER — derselbe Weg wie `bereich_aufnehmen()` für Screenshot-Bereiche, nur mit
 einer Ecke. Die Farbe wird dabei gleich mitgemessen, denn der Bildschirm zeigt in
@@ -812,6 +841,12 @@ Regeln beim Erweitern:
   nebeneinander nicht auseinanderzuhalten — womit die Farbe ihren Zweck verlor.
   Verwandte Typen dürfen verwandt aussehen (die beiden Boss-Blöcke), müssen sich
   dann aber deutlich in der Helligkeit trennen.
+- **Der Akzent gehört dem Zustand, nicht der Art.** Amber heisst „gewählt"
+  (Karte), „läuft gerade" (Kachel im Live-Run) und „Hauptknopf" — deshalb tragen
+  die Loop-Phasen ihn nicht mehr, sondern `--loop` (Violett). Jeder Loop-Kopf sah
+  vorher aus wie der eine, der gerade dran ist; eine Markierung, die immer an ist,
+  markiert nichts. Die Phasenfarben (`--init`/`--loop`/`--end`) gelten überall
+  gleich: Board, Live-Run-Kacheln, Phasenbalken der Übersicht.
 - **Der Status steht unten, nicht im Kopf.** Oben nahm er den Platz weg, den die
   Bedienelemente brauchen; unten hat er die volle Breite und liegt da, wo sonst
   nichts passiert. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
@@ -1165,7 +1200,7 @@ Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/te
 
 | Modul | was |
 |---|---|
-| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks, Fenster-Symbol |
+| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks, Fenster-Symbol + App-Kennung |
 | `imaging.py` | Screenshot über GDI BitBlt |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |

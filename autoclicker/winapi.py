@@ -6,6 +6,7 @@ Kapselt alle ctypes-Definitionen für Maus, Tastatur und Hotkeys.
 import ctypes
 import ctypes.wintypes as wintypes
 import logging
+import struct
 import time
 from typing import TYPE_CHECKING
 
@@ -762,29 +763,127 @@ def unregister_hotkeys() -> None:
 # und geändert würde sie ohnehin nur zusammen mit dem Logo in der Oberfläche.
 _SYMBOL_AMBER = (0x0B, 0x9E, 0xF5)      # BGR von #F59E0B
 _SYMBOL_DUNKEL = (0x14, 0x0F, 0x0C)     # BGR von #0C0F14
-# 16 Zeilen à 16 Spalten: 1 = dunkel (Zeiger + Punktkette), 0 = Amber. Dasselbe
-# Motiv wie das SVG im Kopf der Oberfläche, nur auf Pixelraster gebracht.
-_SYMBOL_MUSTER = (
-    "0000000000000000",
-    "0110000000000000",
-    "0111000000011000",
-    "0111100000011000",
-    "0111110000000000",
-    "0111111000001100",
-    "0111111100001100",
-    "0111111110000000",
-    "0111111000011000",
-    "0110011000011000",
-    "0100011100000000",
-    "0000001100000000",
-    "0000001110000000",
-    "0000000000000000",
-    "0000000000000000",
-    "0000000000000000",
-)
+
+# Gerechnet statt getippt. Vorher stand hier ein 16×16-Raster aus Nullen und
+# Einsen, und es hatte alle Fehler, die ein handgesetztes Raster hat: der Zeiger
+# stiess an die Kanten (kein Rand), die Ecken waren scharf (ein randvolles
+# Quadrat sieht aus wie ein Farbmuster, nicht wie ein Symbol), die Kanten
+# trepp­ten, und die Punktkette daneben war bei 16 px nur noch Krümel. Aus einer
+# Geometrie lässt sich dagegen JEDE Grösse sauber ableiten — und das braucht es,
+# weil Titelleiste und Taskleiste verschiedene verlangen.
+#
+# Der Zeiger ist dasselbe Polygon wie im SVG im Kopf der Oberfläche (24er-Raster
+# des viewBox). Die Punktkette daneben entfällt hier bewusst: was im Kopf bei
+# 20 px trägt, ist im Symbol bei 16 px Rauschen.
+_SYMBOL_ZEIGER = ((4, 3.5), (4, 14), (6.8, 11.4), (8.8, 15.8), (11, 14.8),
+                  (9.1, 10.6), (12.7, 10.2))
+_SYMBOL_FUELLUNG = 0.60   # Anteil der Kantenlänge, den der Zeiger einnimmt
+_SYMBOL_RUNDUNG = 0.22    # Eckenradius als Anteil der Kantenlänge (wie `.marke`)
+_SYMBOL_PROBEN = 4        # Abtastungen je Pixel und Achse — das ist die Kantenglättung
 
 
-def setze_fenster_symbol(titel_substring: str) -> bool:
+def _zeiger_polygon() -> list:
+    """Der Zeiger, auf das Einheitsquadrat (0..1) zentriert und eingepasst."""
+    xs = [p[0] for p in _SYMBOL_ZEIGER]
+    ys = [p[1] for p in _SYMBOL_ZEIGER]
+    # Über die LÄNGERE Seite skalieren, sonst wird der Zeiger breitgezogen.
+    faktor = _SYMBOL_FUELLUNG / max(max(xs) - min(xs), max(ys) - min(ys))
+    mx, my = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    return [(0.5 + (x - mx) * faktor, 0.5 + (y - my) * faktor)
+            for x, y in _SYMBOL_ZEIGER]
+
+
+def _im_polygon(x: float, y: float, ecken: list) -> bool:
+    """Strahlenschnitt: liegt der Punkt innerhalb des Polygons?"""
+    drin = False
+    for i in range(len(ecken)):
+        x1, y1 = ecken[i]
+        x2, y2 = ecken[i - 1]
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) / (y2 - y1) * (x2 - x1):
+            drin = not drin
+    return drin
+
+
+def _im_runden_quadrat(x: float, y: float, radius: float) -> bool:
+    """Liegt der Punkt im Quadrat mit abgerundeten Ecken?"""
+    dx = abs(x - 0.5) - (0.5 - radius)
+    dy = abs(y - 0.5) - (0.5 - radius)
+    if dx <= 0 or dy <= 0:      # in einem der beiden Balken, nicht in der Ecke
+        return True
+    return dx * dx + dy * dy <= radius * radius
+
+
+# Die Kennung, unter der Windows die Fenster dieses Programms gruppiert. Punkt-
+# getrennt und ohne Leerzeichen, so will es die Schnittstelle.
+APP_ID = "Autoclicker.SequenzStudio"
+
+
+def setze_app_id(app_id: str = APP_ID) -> bool:
+    """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
+
+    Die Taskleiste nimmt **nicht** das Symbol aus `WM_SETICON`, solange sie das
+    Fenster unter der ausführenden Datei einsortiert — und die heisst hier
+    `python.exe`. Titelleiste und ALT+TAB zeigten das eigene Symbol deshalb
+    längst, die Taskleiste weiter die Schlange. Erst eine eigene AppUserModelID
+    löst das Fenster aus dieser Gruppe, und dann gilt dort das Fenstersymbol.
+
+    **Muss laufen, bevor das erste Fenster entsteht.** Danach hat Windows die
+    Zuordnung schon getroffen; ein späterer Aufruf ändert sie für dieses Fenster
+    nicht mehr.
+    """
+    try:
+        return ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            ctypes.c_wchar_p(app_id)) == 0
+    except (AttributeError, OSError):
+        return False
+
+
+def _symbol_bits(kante: int = 32) -> bytes:
+    """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
+
+    Warum der Umweg über ein DIB und nicht `CreateIcon()` mit rohen Farbbits:
+    das erzeugt eine **geräteabhängige** Bitmap, und die 24-Bit-Bytes werden auf
+    einem 32-Bit-Bildschirm anders gelesen, als sie gemeint sind. Das Symbol kam
+    dann zwar am Fenster an (beide `WM_GETICON` lieferten dasselbe Handle), war
+    aber ein schwarzes Quadrat — schlimmer als das Python-Symbol, denn es sieht
+    aus wie ein Fehler statt wie ein fremdes Programm. Ein DIB legt Breite,
+    Höhe, Bittiefe und Byte-Reihenfolge selbst fest und hängt an keinem Gerät.
+
+    Gezeichnet wird mit Mehrfachabtastung: je Pixel `_SYMBOL_PROBEN`² Punkte,
+    daraus Deckung (Alpha) und Mischung Amber↔Zeiger. Das kostet bei 32×32 rund
+    16 000 Punktproben — einmalig beim Öffnen eines Fensters — und ist der
+    Unterschied zwischen gerundeten Ecken und einer Treppe.
+
+    Zwei Eigenheiten des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und
+    Maskenbild untereinander), und DIB-Zeilen stehen **von unten nach oben** —
+    ohne die rückwärts laufende Zeilenschleife steht der Zeiger auf dem Kopf.
+    """
+    polygon = _zeiger_polygon()
+    proben = _SYMBOL_PROBEN * _SYMBOL_PROBEN
+    kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    farben = bytearray()
+    for zy in range(kante - 1, -1, -1):
+        for zx in range(kante):
+            innen = zeiger = 0
+            for py in range(_SYMBOL_PROBEN):
+                y = (zy + (py + 0.5) / _SYMBOL_PROBEN) / kante
+                for px in range(_SYMBOL_PROBEN):
+                    x = (zx + (px + 0.5) / _SYMBOL_PROBEN) / kante
+                    if _im_runden_quadrat(x, y, _SYMBOL_RUNDUNG):
+                        innen += 1
+                        if _im_polygon(x, y, polygon):
+                            zeiger += 1
+            anteil = zeiger / innen if innen else 0.0
+            farben += bytes(round(a + (d - a) * anteil)
+                            for a, d in zip(_SYMBOL_AMBER, _SYMBOL_DUNKEL))
+            farben.append(round(255 * innen / proben))
+    # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
+    # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
+    # aufgefüllt.
+    return kopf + bytes(farben) + bytes(((kante + 31) // 32 * 4) * kante)
+
+
+def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     Ohne das trägt das Fenster das Symbol von `python.exe` — pywebview kann es
@@ -793,40 +892,48 @@ def setze_fenster_symbol(titel_substring: str) -> bool:
     Taskleiste, das aussieht wie ein Python-Prozess, findet man zwischen anderen
     Python-Prozessen nicht wieder.
 
+    **`warten` ist der Grund, warum das Symbol bisher nie ankam.**
+    `webview.start(func)` ruft `func` auf, sobald die Schleife läuft — das
+    Fenster steht da noch nicht. Gemessen: zum Zeitpunkt des Aufrufs findet
+    `EnumWindows` gar kein passendes Fenster, zwei Sekunden später schon, und
+    dann greift das Setzen auch. Vorher fiel der Aufruf still auf `False`, und
+    das Fenster behielt das Symbol von `python.exe`. Wer aus einem
+    GUI-Startcallback aufruft, gibt deshalb eine Frist mit; ohne Angabe wird
+    einmal geschaut wie bisher.
+
     Fehler werden geschluckt: ein fehlendes Symbol ist kein Grund, ein Fenster
     nicht zu öffnen.
     """
+    frist = time.monotonic() + max(0.0, warten)
     hwnd = _find_window_by_title(titel_substring)
+    while not hwnd and time.monotonic() < frist:
+        time.sleep(0.1)
+        hwnd = _find_window_by_title(titel_substring)
     if not hwnd:
         return False
     try:
-        breite = hoehe = 16
-        xor, und = bytearray(), bytearray()
-        for zeile in _SYMBOL_MUSTER:
-            for zeichen in zeile:
-                b, g, r = _SYMBOL_DUNKEL if zeichen == "1" else _SYMBOL_AMBER
-                xor += bytes((b, g, r))
-            # AND-Maske: 0 = Pixel zeigen. Voll deckend, das Symbol ist quadratisch.
-            und += b"\x00\x00"
         # Signaturen setzen, sonst behandelt ctypes das zurueckgegebene HICON als
         # int und schneidet es auf 32 Bit ab — auf einem 64-Bit-Windows kommt
         # dann ein kaputtes Handle bei SendMessage an, und das Symbol bleibt das
         # von python.exe. Genau daran ist der erste Versuch gescheitert.
-        user32.CreateIcon.restype = ctypes.c_void_p
-        user32.CreateIcon.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
-                                      ctypes.c_byte, ctypes.c_byte,
-                                      ctypes.c_char_p, ctypes.c_char_p]
+        user32.CreateIconFromResourceEx.restype = ctypes.c_void_p
+        user32.CreateIconFromResourceEx.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32,
+            ctypes.c_int, ctypes.c_int, ctypes.c_uint32]
         user32.SendMessageW.restype = ctypes.c_void_p
         user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
                                         ctypes.c_void_p, ctypes.c_void_p]
-        symbol = user32.CreateIcon(None, breite, hoehe, 1, 24,
-                                   ctypes.c_char_p(bytes(und)),
-                                   ctypes.c_char_p(bytes(xor)))
-        if not symbol:
-            return False
-        # Beide Grössen setzen: 0 = klein (Titelleiste), 1 = gross (ALT+TAB).
-        user32.SendMessageW(hwnd, WM_SETICON, 0, symbol)
-        user32.SendMessageW(hwnd, WM_SETICON, 1, symbol)
+        # Jede Grösse wird in ihrer Grösse gezeichnet, nicht eine hochgerechnet:
+        # 0 = klein (Titelleiste, 16 px), 1 = gross (ALT+TAB und Taskleiste, die
+        # daraus ihre 24 px skaliert). Ein gedehntes 16er sah dort matschig aus.
+        for art, kante in ((0, 16), (1, 32)):
+            bits = _symbol_bits(kante)
+            # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
+            symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
+                                                     kante, kante, 0)
+            if not symbol:
+                return False
+            user32.SendMessageW(hwnd, WM_SETICON, art, symbol)
         return True
     except (OSError, ValueError, AttributeError):
         return False

@@ -245,6 +245,49 @@ def _punkte_aus_datei() -> list[ClickPoint]:
         return []
 
 
+def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
+    """Holt points.json von Platte nach und liefert die Punkte zum Aufloesen.
+
+    Wer eine Sequenz frisch von Platte laedt, muss auch die Punkte frisch holen.
+    Das Sequenz-Studio laeuft als eigener Prozess und schreibt beim Speichern
+    BEIDE Dateien; der Hauptprozess nahm die Sequenz von Platte und die Punkte
+    aus seinem Speicher. Ein dort angelegter Punkt fehlte deshalb genau dann,
+    wenn man ihn braucht: `aufloesen()` meldete "Punkt #51 FEHLT", `step_gate()`
+    uebersprang den Schritt. Zwei Haelften aus zwei Zeitpunkten - die eine Sorte
+    Fehler, die dieser Ordner sonst ueberall vermeidet.
+
+    Zusammengefuehrt wird ueber die ID, **Platte gewinnt**. Punkte, die nur im
+    Speicher stehen, bleiben: Boss- und Icon-Editor legen ueber
+    `punkt_fuer_stelle()` welche an, ohne sofort zu speichern - ein stumpfes
+    Ersetzen loeschte die. Geloescht wird hier ueberhaupt nichts; keiner der
+    beiden Prozesse entfernt Punkte, und ein Verweis ins Leere waere teurer als
+    ein Punkt zu viel.
+
+    Laesst sich die Datei nicht lesen, bleibt der Speicherstand unangetastet -
+    das ist der Fall, in dem Raten schlimmer ist als Altern.
+    """
+    von_platte = _punkte_aus_datei()
+    with state.lock:
+        nach_id = {p.id: p for p in state.points}
+        neu = [p for p in von_platte if p.id not in nach_id]
+        geaendert = [p for p in von_platte
+                     if p.id in nach_id and _point_to_dict(p) != _point_to_dict(nach_id[p.id])]
+        nach_id.update({p.id: p for p in von_platte})
+        state.points = [nach_id[pid] for pid in sorted(nach_id)]
+        ergebnis = list(state.points)
+
+    # Still, wenn nichts zu tun war - der Normalfall ist, dass die Datei genau
+    # das enthaelt, was ohnehin im Speicher steht.
+    if neu or geaendert:
+        teile = []
+        if neu:
+            teile.append(f"{len(neu)} neu")
+        if geaendert:
+            teile.append(f"{len(geaendert)} geaendert")
+        print(info(f"points.json nachgeladen ({', '.join(teile)})."))
+    return ergebnis
+
+
 def _sichere_neue_punkte(punkt_dicts: list, anzahl: int, seq_name: str) -> None:
     """Schreibt Punkte weg, die die Migration gerade angelegt hat.
 

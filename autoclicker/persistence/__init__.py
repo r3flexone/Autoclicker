@@ -59,7 +59,7 @@ from .sequences import (
     ensure_sequences_dir, save_sequence_file, load_sequence_file,
     list_available_sequences, save_data,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
-    punkt_fuer_stelle, aufloesen,
+    punkt_fuer_stelle, punkte_nachladen, aufloesen,
     resolve_point_references,
 )
 from .serialization import (
@@ -84,7 +84,7 @@ __all__ = [
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
     'list_available_sequences', 'save_data',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
-    'punkt_fuer_stelle', 'aufloesen',
+    'punkt_fuer_stelle', 'punkte_nachladen', 'aufloesen',
     'resolve_point_references',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',

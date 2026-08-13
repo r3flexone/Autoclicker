@@ -21,8 +21,14 @@
   --text:#E2E8F0; --muted:#94A3B8; --dim:#64748B;
   --accent:#F59E0B; --ok:#3ED07A; --err:#EF4444;
   /* Jede Phasenart hat ihre Farbe — INIT und END waren beide dasselbe Grau und
-     damit im Board nicht auseinanderzuhalten. */
-  --init:#3ED07A; --end:#38BDF8;
+     damit im Board nicht auseinanderzuhalten.
+
+     Die Loop-Phasen trugen dabei den Akzent, und der ist hier schon vergeben:
+     amber umrandet heisst „gewählt" (Karte) bzw. „läuft gerade" (Kachel im
+     Live-Run). Jeder Loop-Kopf sah damit dauerhaft aus wie der eine, der gerade
+     dran ist — eine Markierung, die immer an ist, markiert nichts. Violett ist
+     weit genug von Grün und Himmelblau weg, um daneben zu bestehen. */
+  --init:#3ED07A; --loop:#A78BFA; --end:#38BDF8;
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -165,17 +171,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Markierung nichts verschiebt. Dieselbe Regel wie bei der laufenden Kachel im
    Live-Run und bei der gewaehlten Karte. */
 .phase-kopf.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
-.phase-kopf.loop{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.phase-kopf.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
 .phase-kopf.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
 .phase-kopf.init .phase-name{color:var(--init)}
 .phase-kopf.end .phase-name{color:var(--end)}
-.phase-kopf.loop .phase-name{color:var(--accent)}
+.phase-kopf.loop .phase-name{color:var(--loop)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
-.zaehler{font-family:var(--mono);font-size:10.5px;color:var(--accent);flex:none;
-  background:#F59E0B1F;border:1px solid #F59E0B59;border-radius:4px;padding:2px 6px}
 .phase-werkzeug{display:flex;gap:6px;align-items:center}
 .phase-werkzeug input{padding:3px 5px;font-size:11.5px}
 
@@ -336,8 +340,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .phasen-kachel.laeuft .p-name{color:var(--accent)}
 .phasen-kachel[data-art="init"] .p-name{color:var(--init)}
+.phasen-kachel[data-art="loop"] .p-name{color:var(--loop)}
 .phasen-kachel[data-art="end"] .p-name{color:var(--end)}
+/* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
+   läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
+   kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. */
 .phasen-kachel.laeuft[data-art="init"] .p-name{color:var(--init)}
+.phasen-kachel.laeuft[data-art="loop"] .p-name{color:var(--loop)}
 .phasen-kachel.laeuft[data-art="end"] .p-name{color:var(--end)}
 .phasen-kachel .p-lage{font-size:11.5px;color:var(--dim)}
 
@@ -860,8 +869,8 @@ function zeichnePhase(phase) {
     {phase: phase.index, feld: "name", wert: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
   // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
-  // sich nicht ändern lässt. Die Klasse `.zaehler` bleibt trotzdem — in der
-  // Sequenzen-Übersicht gibt es kein Eingabefeld, dort trägt die Marke etwas.
+  // sich nicht ändern lässt. Die zugehörige Klasse `.zaehler` ist damit
+  // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.zahl`).
   kopf.appendChild(el("div", {class: "reihe"}, name,
     el("span", {class: "klein mono"}, phase.bloecke.length + " Schritte")));
 
@@ -1021,16 +1030,37 @@ function zeitpunkt(sekunden) {
          " " + zz(d.getHours()) + ":" + zz(d.getMinutes());
 }
 
+/** Eine Phasenfarbe aus dem Stylesheet (`--init` / `--loop` / `--end`).
+ *
+ * Der Balken setzt seine Segmente per Inline-Stil — die Breite ist gerechnet,
+ * eine Klasse trägt er nicht. Die Farbe deshalb trotzdem aus `:root` zu holen
+ * statt sie hier auszuschreiben, hält die Palette an einer Stelle: sonst wäre
+ * die Übersicht die eine Ansicht, in der ein Phasenton nach dem nächsten
+ * Umfärben nicht mehr stimmt. Gemerkt wird sie, weil `getComputedStyle` sonst
+ * bei zwanzig Sequenzkarten sechzigmal liefe. */
+const _phasenfarben = {};
+function phasenFarbe(art) {
+  if (!(art in _phasenfarben)) {
+    _phasenfarben[art] = getComputedStyle(document.documentElement)
+      .getPropertyValue("--" + art).trim() || "#64748B";
+  }
+  return _phasenfarben[art];
+}
+
 /** INIT / Loop-Phasen / END als Segmente, Breite nach Schrittzahl.
  *
  * Leere Phasen fallen raus statt als Strich stehenzubleiben: ein Segment der
- * Breite 0 sagt nichts, kostet aber eine Lücke. */
+ * Breite 0 sagt nichts, kostet aber eine Lücke.
+ *
+ * INIT und END standen hier auf demselben Grau: der Balken sagte damit zwar,
+ * WIE VIEL am Anfang und am Ende liegt, aber nicht, dass es Anfang und Ende
+ * sind — und es war die einzige Ansicht, die die Phasenfarben nicht sprach. */
 function phasenBalken(s) {
-  const teile = [{n: s.init, farbe: "#64748B", was: "INIT: " + s.init}]
-    .concat((s.phasen || []).map((p) => ({n: p.schritte, farbe: "#F59E0B",
+  const teile = [{n: s.init, farbe: phasenFarbe("init"), was: "INIT: " + s.init}]
+    .concat((s.phasen || []).map((p) => ({n: p.schritte, farbe: phasenFarbe("loop"),
       was: p.name + ": " + p.schritte + " Schritte ×" + p.wiederholungen +
            (p.start ? " ab " + p.start : "")})))
-    .concat([{n: s.end, farbe: "#64748B", was: "END: " + s.end}]);
+    .concat([{n: s.end, farbe: phasenFarbe("end"), was: "END: " + s.end}]);
   const summe = teile.reduce((a, t) => a + t.n, 0) || 1;
   return el("div", {class: "balken"}, teile.filter((t) => t.n).map((t) =>
     el("span", {style: "flex:" + t.n / summe + ";background:" + t.farbe, title: t.was})));
