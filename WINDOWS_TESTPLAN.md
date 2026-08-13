@@ -218,6 +218,9 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] 🆕 Der Live-Run zeigt **alle** Phasen: die laufende breit, davorliegende als
       „abgeschlossen", spätere als „ausstehend" bzw. „wartet auf <Uhrzeit>" bei
       einer zeitgesteuerten Phase. Beim Phasenwechsel wandert die Markierung mit.
+- [ ] 🆕 Sequenz mit vielen Loop-Phasen (≥ 6) laufen lassen → die Phasen-Leiste
+      bricht in mehrere Zeilen um, keine Kachel wird unlesbar schmal. Fenster
+      schmal ziehen → auch die Kopfleiste bricht um, nichts läuft seitlich raus.
 - [ ] 🆕 Der laufende Block im Live-Run trägt seine Typfarbe und Marke (grün
       FARBE+KLICK, rot BOSS-SCAN, …) — dieselbe wie seine Karte im Editor.
 - [ ] 🆕 Ein Block mit **Wartezeit** läuft: im Live-Run steht „noch X s von Y s",

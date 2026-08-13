@@ -626,6 +626,13 @@ reicht der Ansicht nicht, sie kennt nur diese eine Liste. Die Rechnung steht in
 `_phase_pos()` und nicht dreimal an den Schreibstellen — ein Versatz, der an einer
 davon fehlt, markiert die falsche Kachel als laufend.
 
+Die Leiste ist ein **Raster, keine Reihe**: acht Loop-Phasen sind zehn Kacheln, und
+nebeneinander wäre jede 140 px breit — Name abgeschnitten, Fortschritt unlesbar. Sie
+bricht deshalb um (`auto-fit`, damit sich wenige Kacheln trotzdem über die Breite
+dehnen), die laufende belegt drei Spalten. Aus demselben Grund bricht auch die
+Kopfleiste um: bei 900 px Fensterbreite stand „Speichern" halb ausserhalb, und ein
+Knopf, den man nicht erreicht, ist schlimmer als eine zweite Zeile.
+
 „Abgeschlossen" gilt dabei **innerhalb des Zyklus**: im nächsten Durchgang sind
 dieselben Loop-Phasen wieder ausstehend. Und eine zeitgesteuerte Phase sagt, worauf
 sie wartet („wartet auf 07:00") — sie wartet nicht auf ihren Vorgänger, sondern auf

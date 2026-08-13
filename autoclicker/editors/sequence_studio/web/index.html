@@ -98,8 +98,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 
 /* --------------------------------------------------------------------- Kopf */
+/* Der Kopf bricht um, statt aus dem Fenster zu laufen: bei 900 px Breite stand
+   „Speichern" halb ausserhalb, und ein Knopf, den man nicht erreicht, ist
+   schlimmer als eine zweite Zeile. Deshalb auch keine feste Hoehe mehr — die
+   waere bei zwei Zeilen eine Zusicherung, die nicht mehr stimmt. */
 .kopf{
-  height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;
+  min-height:56px;flex:none;display:flex;align-items:center;gap:14px;
+  padding:6px 14px;flex-wrap:wrap;
   background:var(--panel);border-bottom:1px solid var(--line);
 }
 .marke{width:30px;height:30px;border-radius:7px;background:var(--accent);
@@ -295,17 +300,27 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tafel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:16px;display:flex;flex-direction:column;gap:10px}
-.tafel.laufend{border-left:3px solid var(--accent)}
 .fortschritt{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
 .fortschritt span{display:block;height:100%;background:var(--accent);border-radius:3px}
-/* Die Phasen des Laufs nebeneinander. Die laufende bekommt den Platz (flex:4),
-   die uebrigen stehen als schmale Kacheln daneben — sonst muesste man sich
-   merken, was vorher lief und was noch kommt. INIT und END tragen ihre Farben
-   aus dem Board, damit die Leiste dieselbe Sprache spricht. */
-.phasen-leiste{display:flex;gap:10px;align-items:stretch}
-.phasen-kachel{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);
+/* Die Phasen des Laufs nebeneinander. Die laufende bekommt den Platz (drei
+   Spalten), die uebrigen stehen als schmale Kacheln daneben — sonst muesste man
+   sich merken, was vorher lief und was noch kommt. INIT und END tragen ihre
+   Farben aus dem Board, damit die Leiste dieselbe Sprache spricht. */
+/* Raster statt einer Reihe: eine Sequenz kann acht Loop-Phasen haben, und in
+   einer Reihe waeren zehn Kacheln je 140 px breit — der Name abgeschnitten, der
+   Fortschritt der laufenden Phase unlesbar. Das Raster bricht stattdessen um
+   (`auto-fit` laesst leere Spalten kollabieren, damit sich wenige Kacheln wie
+   vorher ueber die Breite dehnen), und die laufende belegt drei Spalten. Passen
+   die drei nicht mehr, klemmt CSS sie auf die vorhandenen. */
+.phasen-leiste{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:10px;align-items:stretch}
+.phasen-kachel{min-width:0;background:var(--panel);border:1px solid var(--line);
   border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
-.phasen-kachel.laeuft{flex:4;border-left:3px solid var(--accent)}
+/* Ringsum markiert, nicht nur an der Kante — und über `box-shadow` statt über
+   einen dickeren Rahmen: der wuerde die Kachel um einen Pixel wachsen lassen und
+   damit bei jedem Phasenwechsel das ganze Raster verschieben. */
+.phasen-kachel.laeuft{grid-column:span 3;border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent)}
 .phasen-kachel.fertig{opacity:.55}
 .phasen-kachel .p-name{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
