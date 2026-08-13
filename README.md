@@ -1399,6 +1399,9 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **„Stelle zeigen"** unter jedem Klick-Block: die Maus springt im Hauptprozess auf
+  den Punkt, und dort steht auch, ob die Farbe an der Stelle noch der gespeicherten
+  entspricht — die Frage, die man beim Bauen einer Sequenz am häufigsten hat
 - **Statusleiste unten** statt oben rechts (mit Datei und Punktzahl), größeres Logo,
   eigene Farben für alle neun Block-Typen (Taste/Item-Scan/Icon-Scan waren alle
   orange-gelb), und der Loop-Name trägt seine Phasenfarbe wie INIT und END

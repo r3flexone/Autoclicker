@@ -604,6 +604,13 @@ anderen: **ein Befehl darf nie nachfeuern.** Wer im Studio auf „Starten" drüc
 während gar kein Hauptprozess läuft, bekommt keine Wirkung — und darf sie auch nicht
 bekommen, sobald einer startet. Dafür sorgen `MAX_ALTER` und das Leeren beim Start.
 
+Über denselben Weg läuft **„Stelle zeigen"**: der Knopf unter einem Klick-Block
+setzt die Maus im Hauptprozess auf dessen Punkt. Das Fenster kann das nicht selbst
+— es sieht den Bildschirm nicht —, und genau deshalb steht auch die Auswertung
+dort: der Hauptprozess misst die Farbe an der Stelle und vergleicht sie mit der
+gespeicherten. Ein Studio, das „passt" behauptet, ohne gemessen zu haben, wäre
+schlimmer als der Blick ins andere Fenster.
+
 Zwei Dinge bleiben trotzdem beim Hauptprozess: die **Sequenz kommt von Platte**
 (`befehl_start` lädt die mitgeschickte Datei; das Studio speichert vorher, sonst liefe
 etwas anderes als das Angezeigte), und **`handle_toggle()` wird nicht für „stopp"

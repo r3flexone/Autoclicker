@@ -4107,7 +4107,7 @@ finally:
 from autoclicker.handlers import BEFEHLE as _BEF13
 
 check("jeder Befehl der Bruecke hat einen Handler",
-      sorted(_SB8.LAUF_BEFEHLE) == sorted(_BEF13))
+      sorted(_SB8.ALLE_BEFEHLE) == sorted(_BEF13))
 
 # --- Die Bruecke speichert vor dem Start ---
 # Der Hauptprozess laedt die DATEI. Was nur im Speicher steht, liefe nicht mit -
@@ -4148,6 +4148,24 @@ try:
     _b14.board.name = "Lauf"
     _b14.lauf_befehl({"befehl": "stop"})
     check("Stopp braucht kein Speichern", _bf13.hole()["befehl"] == "stop")
+    # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
+    _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
+    _b14.waehlen({"phase": 1, "zeile": 0})
+    _b14.punkt_zeigen()
+    _zeig14 = _bf13.hole()
+    check("die Probe schickt Stelle, Punkt und Farbe mit",
+          _zeig14 is not None and _zeig14["befehl"] == "zeigen"
+          and _zeig14["argumente"]["x"] == 10 and _zeig14["argumente"]["y"] == 20
+          and _zeig14["argumente"]["punkt"] == 1
+          and _zeig14["argumente"]["farbe"] == [1, 2, 3])
+    # Ein Block ohne Stelle hat nichts zu zeigen - und schickt deshalb nichts.
+    _b14.board.add_step(_b14.board.lanes[1], _SS(delay_before=0, key_press="a"))
+    _b14.waehlen({"phase": 1, "zeile": 1})
+    _zustand14d = _b14.punkt_zeigen()
+    check("ohne Stelle wird nichts geschickt",
+          _bf13.hole() is None and _zustand14d["status"]["art"] == "warn")
+    _b14.waehlen({"phase": 1, "zeile": 0})
+
     _zustand14c = _b14.lauf_befehl({"befehl": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
           _zustand14c["status"]["art"] == "err" and _bf13.hole() is None)

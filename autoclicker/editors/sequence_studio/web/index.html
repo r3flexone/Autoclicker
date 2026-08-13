@@ -234,6 +234,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .segment button:hover{color:var(--text)}
 .segment button.an{background:var(--accent);color:#0C0F14;font-weight:600}
 .hinweis{font-size:11px;color:var(--dim);line-height:1.5}
+/* Die Probe steht unten und abgesetzt: sie ändert nichts an der Sequenz, sondern
+   fragt den Bildschirm. */
+.insp-fuss{margin-top:6px;padding-top:10px;border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:6px}
+.btn.breit{width:100%;text-align:center}
 /* Erklaerungen liegen im Tooltip, nicht im Fluss: in der Eigenschaften-Spalte
    standen sie unter jedem zweiten Feld und schoben das Wesentliche nach unten.
    Was den ZUSTAND meldet ("keine Konfiguration vorhanden"), bleibt sichtbar —
@@ -1252,11 +1257,30 @@ function zeichneInspektor() {
   if (mitTrigger || b.trigger !== "kein") baueTrigger(ziel, b, mitTrigger);
   baueNachpruefung(ziel, b);
   baueElse(ziel, b);
+  baueProbe(ziel, b);
 
   // Zuletzt, wenn alles im Dokument haengt: was aufgeklappt war, bleibt es. Der
   // Inspektor wird bei jeder Aenderung komplett neu gebaut — ohne diese Zeile
   // verschwindet eine gerade gelesene Erklaerung beim naechsten Klick irgendwo.
   hilfenAnwenden(ziel);
+}
+
+/** „Sitzt der Punkt da, wo ich denke?" — die Maus fährt hin und sagt es.
+ *
+ * Nur bei Blöcken mit Stelle. Das Fenster bewegt die Maus nicht selbst (es sieht
+ * den Bildschirm nicht); der Hauptprozess tut es und misst dabei, ob die Farbe
+ * dort noch der gespeicherten entspricht. Diese Zeile steht in seiner Konsole —
+ * hier kann sie nicht stehen, und das zu behaupten wäre schlimmer als der Weg
+ * zum anderen Fenster.
+ */
+function baueProbe(ziel, b) {
+  if (b.point_id === null || b.point_id === undefined) return;
+  ziel.appendChild(el("div", {class: "insp-fuss"},
+    el("button", {class: "btn breit", onclick: () => ruf("punkt_zeigen")},
+       "◎ Stelle zeigen"),
+    el("p", {class: "hinweis"},
+       "Setzt die Maus auf #" + b.point_id + " (" + b.x + "," + b.y + "). " +
+       "Der Hauptprozess meldet dort, ob die Farbe noch passt.")));
 }
 
 function baueAktion(ziel, b) {

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
@@ -586,6 +586,51 @@ def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
     handle_pause(state)
 
 
+def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
+    """Setzt die Maus auf eine Stelle — „sitzt der Punkt noch da, wo er soll?".
+
+    Der Gegenstueck zum `show`-Befehl im Punkte-Menue, nur ausgeloest aus dem
+    Studio. Gemeldet wird hier, weil nur dieser Prozess messen kann: neben der
+    gespeicherten Farbe steht die, die JETZT an der Stelle liegt. Weichen sie ab,
+    ist entweder der Bildschirm anders angeordnet oder das Spiel zeigt gerade
+    etwas anderes — beides sieht man an dieser einen Zeile.
+
+    Waehrend eines Laufs passiert nichts: dort gehoert die Maus dem Worker, und
+    ein Sprung mittendrin verschoebe einen Klick.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{info('Die Sequenz laeuft — die Maus gehoert gerade dem Worker.')}")
+        return
+    try:
+        x, y = int(argumente.get("x")), int(argumente.get("y"))
+    except (TypeError, ValueError):
+        print(f"\n{err('Zeigen ohne Stelle — ignoriert.')}")
+        return
+
+    set_cursor_pos(x, y)
+    name = str(argumente.get("name") or "").strip()
+    nummer = argumente.get("punkt")
+    kopf = f"#{nummer} " if nummer else ""
+    print(f"\n{col('[STUDIO]', 'cyan')} {kopf}{name} {coord_context(x, y)}")
+    jetzt = get_screen_pixel(x, y)
+    if jetzt:
+        print(f"       Dort jetzt:  {describe_color(jetzt)}")
+    erwartet = argumente.get("farbe")
+    if erwartet and jetzt:
+        try:
+            from .imaging import color_distance
+            abstand = color_distance(tuple(erwartet), jetzt)
+        except (TypeError, ValueError):
+            abstand = None
+        if abstand is not None:
+            gleich = abstand <= state.config.pixel_wait_tolerance
+            marke = ok("passt") if gleich else warn("weicht ab")
+            print(f"       Gespeichert: {describe_color(tuple(erwartet))}  {marke}")
+    print(hint("       Maus steht jetzt auf der Stelle."))
+
+
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
 # hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
@@ -595,6 +640,7 @@ BEFEHLE = {
     "start": befehl_start,
     "stop": befehl_stop,
     "pause": befehl_pause,
+    "zeigen": befehl_zeigen,
 }
 
 

@@ -525,6 +525,9 @@ class StudioBridge:
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
     LAUF_BEFEHLE = ("start", "stop", "pause")
+    # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
+    # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen",)
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -560,6 +563,30 @@ class StudioBridge:
                 "stop": "Stopp geschickt.",
                 "pause": "Pause umgeschaltet."}[befehl]
         return self._melde(text)
+
+    def punkt_zeigen(self, daten: Optional[dict] = None) -> dict:
+        """Setzt die Maus im Hauptprozess auf die Stelle des gewählten Blocks.
+
+        Der kürzeste Weg zu der Frage, die man beim Bauen einer Sequenz am
+        häufigsten hat: **sitzt der Punkt da, wo ich denke?** Ein Blick auf
+        „(4402,561)" beantwortet sie nicht, ein Mauszeiger im Spiel schon.
+
+        Messen kann nur der Hauptprozess (dieses Fenster sieht den Bildschirm
+        nicht), deshalb steht die Auswertung — gespeicherte gegen aktuelle Farbe —
+        in dessen Konsole. Hier bleibt die Rückmeldung, dass der Auftrag raus ist.
+        """
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        punkt = self._punkt(step.point_id)
+        if punkt is None:
+            return self._melde("Dieser Block hat keine Stelle zum Zeigen.", "warn")
+
+        from ...befehl import sende
+        if not sende("zeigen", x=punkt.x, y=punkt.y, punkt=punkt.id,
+                     name=punkt.name or "", farbe=list(punkt.color) if punkt.color else None):
+            return self._melde("Befehl konnte nicht abgelegt werden.", "err")
+        return self._melde(f"Maus zu #{punkt.id} ({punkt.x},{punkt.y}) — im Spiel nachsehen.")
 
     def befehl_offen(self, daten: Optional[dict] = None) -> bool:
         """Liegt der letzte Befehl noch im Briefkasten?

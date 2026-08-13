@@ -210,6 +210,10 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Pause und Stoppen aus der Live-Ansicht wirken; CTRL+ALT+S/G tun weiterhin
       dasselbe.
 - [ ] Während eines Laufs in den Editor wechseln → die Ansicht bleibt dort stehen.
+- [ ] 🆕 „Stelle zeigen" unter einem Klick-Block: die Maus springt auf den Punkt,
+      und in der Konsole steht die gespeicherte neben der aktuellen Farbe (mit
+      „passt" bzw. „weicht ab"). Während eines Laufs passiert nichts — dort gehört
+      die Maus dem Worker.
 - [ ] Im Studio „Starten" drücken, während der Hauptprozess **nicht** läuft; danach
       den Hauptprozess starten → es darf **nichts** losklicken. Im Studio erscheint
       nach ~2 s „Kein Hauptprozess erreichbar".
