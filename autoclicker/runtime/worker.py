@@ -147,6 +147,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     # Laufstatus für das Sequenz-Studio (anderer Prozess, sieht diesen State nicht).
     status.schreibe(state, {"aktiv": True, "sequenz": sequence.name,
                             "zyklen": sequence.total_cycles,
+                            "phasen": _phasen_uebersicht(sequence),
                             "start": state.start_time}, sofort=True)
 
     # shutdown_event beendet den Schedule-Watcher IMMER am Worker-Ende (finally),
@@ -342,6 +343,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
             print(col("\n[INIT] Führe Initialisierung aus...", "green"))
             total_init = len(sequence.init_steps)
             status.schreibe(state, {"phase": "INIT", "phase_index": -1,
+                                    "phase_pos": _phase_pos(sequence, "init"),
                                     "durchlauf": 1, "wiederholungen": 1,
                                     "bloecke": total_init}, sofort=True)
             for i, step in enumerate(sequence.init_steps):
@@ -415,6 +417,49 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
     return cycle_count
 
 
+def _phasen_uebersicht(sequence) -> list[dict]:
+    """Alle Phasen des Laufs in der Reihenfolge, in der sie drankommen.
+
+    Steht einmal beim Start im Laufstatus, damit die Live-Ansicht nicht nur die
+    laufende Phase zeigen kann, sondern auch, was davor lag und was noch kommt.
+    Aus der geöffneten Sequenz liesse sich das nicht holen — laufen kann eine
+    ganz andere.
+
+    Leere Loop-Phasen bleiben drin: `_run_loop_phases` überspringt sie zwar,
+    aber die Positionen müssen zu `_phase_pos()` passen, und im Editor sind sie
+    ebenfalls sichtbar.
+    """
+    raus = []
+    if sequence.init_steps:
+        raus.append({"name": "INIT", "art": "init",
+                     "schritte": len(sequence.init_steps)})
+    for phase in sequence.loop_phases:
+        raus.append({"name": phase.name, "art": "loop",
+                     "schritte": len(phase.steps),
+                     "wiederholungen": phase.repeat,
+                     "start": phase.scheduled_start or ""})
+    if sequence.end_steps:
+        raus.append({"name": "END", "art": "end",
+                     "schritte": len(sequence.end_steps)})
+    return raus
+
+
+def _phase_pos(sequence, art: str, idx: int = 0) -> int:
+    """Position einer Phase in `_phasen_uebersicht()`.
+
+    Die Ansicht kennt nur diese eine Liste; `phase_index` (−1 für INIT/END)
+    reicht ihr nicht. Die Rechnung steht deshalb hier und nicht dreimal an den
+    Schreibstellen — ein Versatz, der an einer davon fehlt, markierte die
+    falsche Kachel als laufend.
+    """
+    versatz = 1 if sequence.init_steps else 0
+    if art == "init":
+        return 0
+    if art == "end":
+        return versatz + len(sequence.loop_phases)
+    return versatz + idx
+
+
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                      schedule_lock: threading.Lock, cycle_str: str, debug: bool) -> None:
     """Führt alle Loop-Phasen einmal aus."""
@@ -438,6 +483,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
 
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
         status.schreibe(state, {"phase": loop_phase.name, "phase_index": idx,
+                                "phase_pos": _phase_pos(sequence, "loop", idx),
                                 "wiederholungen": loop_phase.repeat,
                                 "bloecke": total_steps}, sofort=True)
 
@@ -475,6 +521,7 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
     print(col("\n[END] Führe End-Sequenz aus...", "cyan"))
     total_end = len(sequence.end_steps)
     status.schreibe(state, {"phase": "END", "phase_index": -1,
+                            "phase_pos": _phase_pos(sequence, "end"),
                             "durchlauf": 1, "wiederholungen": 1,
                             "bloecke": total_end}, sofort=True)
 

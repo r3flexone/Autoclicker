@@ -618,9 +618,18 @@ Zwei Dinge bleiben trotzdem beim Hauptprozess: die **Sequenz kommt von Platte**
 etwas anderes als das Angezeigte), und **`handle_toggle()` wird nicht für „stopp"
 benutzt** — es ist ein Umschalter und würde starten, wenn gerade nichts läuft.
 
-Die Ansicht zeigt weiterhin nur die *laufende* Phase und nicht alle: die Statusdatei
-kennt die übrigen nicht, und sie aus der geöffneten Sequenz zu holen wäre geraten —
-laufen kann eine ganz andere.
+**Die Phasen stehen alle nebeneinander**, die laufende breit (`_phasen_uebersicht()`
+im Worker, Feld `phasen`). Sie aus der geöffneten Sequenz zu holen wäre geraten —
+laufen kann eine ganz andere —, deshalb schreibt der Worker sie einmal beim Start
+mit. Dazu die Position der laufenden (`phase_pos`): `phase_index` (−1 für INIT/END)
+reicht der Ansicht nicht, sie kennt nur diese eine Liste. Die Rechnung steht in
+`_phase_pos()` und nicht dreimal an den Schreibstellen — ein Versatz, der an einer
+davon fehlt, markiert die falsche Kachel als laufend.
+
+„Abgeschlossen" gilt dabei **innerhalb des Zyklus**: im nächsten Durchgang sind
+dieselben Loop-Phasen wieder ausstehend. Und eine zeitgesteuerte Phase sagt, worauf
+sie wartet („wartet auf 07:00") — sie wartet nicht auf ihren Vorgänger, sondern auf
+die Uhr.
 
 **Der laufende Block trägt seine Typfarbe** — dieselbe, die seine Karte im Board
 hat. Die Farbe ist die Legende; stünde sie nur im Editor, müsste man beim Blick in

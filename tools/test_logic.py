@@ -1821,7 +1821,11 @@ class _FakeLP:
 
 
 class _FakeSeq:
-    def __init__(self, phasen): self.loop_phases = phasen
+    # `init_steps` gehoert dazu, seit _run_loop_phases die Phasen-Position in den
+    # Laufstatus schreibt: die haengt am Versatz "gibt es eine INIT-Phase?".
+    def __init__(self, phasen):
+        self.loop_phases = phasen
+        self.init_steps = []
 
 
 class _EinTick:
@@ -4703,6 +4707,45 @@ try:
     _verwaist16 = _b16.lauf_status()
     check("ein alter Stand gilt als verwaist",
           _verwaist16 == {"aktiv": False, "verwaist": True})
+
+    # --- Die Phasen-Uebersicht: alle Phasen, nicht nur die laufende ---
+    # Die Liste steht im Laufstatus, weil die Ansicht sie sonst aus der GEOEFFNETEN
+    # Sequenz holen muesste - laufen kann eine ganz andere.
+    from autoclicker.runtime.worker import (_phasen_uebersicht as _pu16,
+                                            _phase_pos as _pp16)
+    _seq16 = _SEQ8(name="P",
+                   init_steps=[_SS(x=1, y=1, delay_before=0)],
+                   loop_phases=[_LP8(name="Farmen", repeat=25, steps=[
+                                    _SS(x=1, y=1, delay_before=0)]),
+                                _LP8(name="Verkaufen", repeat=1, scheduled_start="07:00",
+                                     steps=[_SS(x=2, y=2, delay_before=0)])],
+                   end_steps=[_SS(x=9, y=9, delay_before=0)])
+    _liste16 = _pu16(_seq16)
+    check("die Uebersicht nennt jede Phase",
+          [p["name"] for p in _liste16] == ["INIT", "Farmen", "Verkaufen", "END"])
+    check("und ihre Art", [p["art"] for p in _liste16]
+          == ["init", "loop", "loop", "end"])
+    check("eine zeitgesteuerte Phase bringt ihre Uhrzeit mit",
+          _liste16[2]["start"] == "07:00" and _liste16[1]["start"] == "")
+
+    # Die Positionsrechnung MUSS zur Liste passen: ein fehlender Versatz markiert
+    # die falsche Kachel als laufend, und das faellt in der Ansicht niemandem auf.
+    check("die Position der INIT-Phase zeigt auf INIT",
+          _liste16[_pp16(_seq16, "init")]["name"] == "INIT")
+    check("die Positionen der Loop-Phasen zeigen auf sie selbst",
+          all(_liste16[_pp16(_seq16, "loop", i)]["name"] == lp.name
+              for i, lp in enumerate(_seq16.loop_phases)))
+    check("die Position der END-Phase zeigt auf END",
+          _liste16[_pp16(_seq16, "end")]["name"] == "END")
+
+    # Ohne INIT verschiebt sich alles um eins - genau der Versatz, den die
+    # Rechnung traegt.
+    _ohne16 = _SEQ8(name="O", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(x=1, y=1, delay_before=0)])], end_steps=[_SS(x=2, y=2, delay_before=0)])
+    _liste_o16 = _pu16(_ohne16)
+    check("ohne INIT faengt die Loop-Phase bei 0 an",
+          _liste_o16[_pp16(_ohne16, "loop", 0)]["name"] == "L"
+          and _liste_o16[_pp16(_ohne16, "end")]["name"] == "END")
 
     # --- Der laufende Block traegt dieselbe Farbe wie seine Karte im Board ---
     # Die Farbe IST die Legende: waere sie in der Live-Ansicht eine andere,

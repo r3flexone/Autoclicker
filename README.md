@@ -1404,6 +1404,9 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **Alle Phasen nebeneinander** im Live-Run: die laufende breit mit Durchlauf und
+  Fortschritt, die übrigen als schmale Kacheln mit „abgeschlossen" / „ausstehend" —
+  und eine zeitgesteuerte Phase sagt „wartet auf 07:00"
 - **Der laufende Block trägt seine Typfarbe** im Live-Run — grün für FARBE+KLICK,
   rot für Boss-Scan und so weiter, dieselbe Farbe wie seine Karte im Board
 - **Der Live-Run sagt, worauf der Block wartet**: Restzeit bzw. Timeout-Countdown,
