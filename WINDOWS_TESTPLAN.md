@@ -201,8 +201,8 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       als Block hinter der Auswahl.
 - [ ] 🆕 ELSE an einem reinen Klick-Block: der Abschnitt fehlt ganz. Gegenprobe:
       an einem Block mit Farb-Trigger ELSE setzen, dann den Typ auf KLICK stellen →
-      der Abschnitt bleibt, warnt „kommt hier nie zum Zug", die Karte zeigt
-      „greift nie"; ELSE entfernen → Abschnitt verschwindet.
+      ELSE wird automatisch entfernt, die Statuszeile sagt es, die Karte zeigt kein
+      „sonst:" mehr. Zurück auf FARBE+KLICK → Abschnitt wieder da, nichts markiert.
 - [ ] 🆕 ELSE: ohne Aktion nennt der Hinweis den echten Timeout und die echte
       Folge aus der `config.json` (Voreinstellung: 300 s → Zyklus abbrechen).
       Gegenprobe: `pixel_timeout_action` auf `stop` stellen, Studio neu öffnen →

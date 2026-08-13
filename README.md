@@ -1425,11 +1425,11 @@ steht auf einmal da.
   lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau
   diesen Wert prüft
 - **ELSE steht nur da, wo es greifen kann**: an einem Block ohne Bedingung (reiner
-  Klick, Taste, Warten, Screenshot, Boss-Watcher) fehlt der Abschnitt ganz. Ist dort
-  trotzdem eine Aktion gesetzt (Trigger nachträglich entfernt), bleibt er sichtbar,
-  warnt und zeigt auf der Karte „greift nie" — sonst wäre das ELSE unsichtbar und
-  nicht mehr loszuwerden. Ohne gesetzte Aktion nennt der Hinweis Timeout und Folge
-  aus der `config.json`
+  Klick, Taste, Warten, Screenshot, Boss-Watcher) fehlt der Abschnitt ganz. Nimmt man
+  einem Block den Trigger weg, wird ein gesetztes ELSE automatisch mit entfernt — beim
+  Zurückstellen ist der Abschnitt wieder da, leer zum frischen Auswählen. Nur was aus
+  einer Datei kommt, bleibt stehen (mit Warnung und „greift nie" auf der Karte). Ohne
+  gesetzte Aktion nennt der Hinweis Timeout und Folge aus der `config.json`
 - **ELSE als Kachel-Raster** statt Klappmenü (fünf feste Aktionen, mit einer Zeile
   Erklärung darunter), **INIT und END in eigenen Farben** statt beide grau, und eine
   **neue Sequenz bringt gleich eine Loop-Phase mit**

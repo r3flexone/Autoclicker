@@ -4985,6 +4985,43 @@ try:
         _quelle16.count("_gate_nach_else(state, step")
     check("der Test kennt alle Ausloeser-Stellen der Laufzeit", _ausloeser16 >= 8)
 
+    # --- Faellt der Ausloeser weg, faellt das ELSE mit ---
+    # Wer den Trigger wegnimmt, hat den einzigen Ausloeser entfernt. Das ELSE
+    # stehenzulassen hiesse, es unsichtbar in der Datei zu behalten - der
+    # Abschnitt faellt in der Oberflaeche ja mit dem Ausloeser weg.
+    _b17 = _SB8(_SEQ8(name="E", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        SequenceStep(x=1, y=2, delay_before=0, point_id=1,
+                     wait_condition=_WCx(point_id=1, pixel=(1, 2), color=(3, 4, 5)),
+                     else_config=_EC16(action="skip"))])]),
+        Path("sequences/E.json"), "sequences")
+    _b17.points = [_PP8(id=1, x=1, y=2, name="P", color=(3, 4, 5))]
+    # Die Lane mit dem Schritt suchen: sequence_to_board legt INIT und END mit an.
+    _lane17 = next(i for i, ln in enumerate(_b17.board.lanes) if ln.steps)
+    _b17.waehlen({"phase": _lane17, "zeile": 0})
+    _schritt17 = _b17.board.lanes[_lane17].steps[0]
+    _z17 = _b17.block_typ({"typ": "click"})
+    check("Typwechsel ohne Ausloeser raeumt das ELSE weg",
+          _schritt17.else_config is None)
+    check("und sagt es", "ELSE entfernt" in _z17["status"]["text"])
+    # Zurueck: der Abschnitt ist wieder da, aber leer - frisch auswaehlbar.
+    _b17.block_typ({"typ": "wait_click"})
+    check("zurueckgestellt ist der Ausloeser wieder da",
+          _schritt17.wait_condition is not None)
+    check("...aber ohne ELSE", _b17._block_detail()["else_aktion"] == "")
+
+    # Dasselbe ueber den Trigger-Schalter statt ueber den Typ.
+    _b17.block_else({"aktion": "skip"})
+    _b17.block_trigger({"wahl": _TKEIN8})
+    check("Trigger entfernen raeumt das ELSE ebenfalls weg",
+          _schritt17.else_config is None)
+
+    # Ein ELSE, das weiterhin ausgeloest werden kann, bleibt unangetastet -
+    # sonst raeumte der Aufraeumer genau das weg, wofuer er da ist.
+    _b17.block_trigger({"wahl": _TDA8})
+    _b17.block_else({"aktion": "restart"})
+    _b17.block_setzen({"feld": "name", "wert": "neu"})
+    check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
+
     _stat16.beende()
     check("am Ende ist die Datei weg", not Path(_rsf16).exists())
     # Vergessen gehoert dazu: der naechste Lauf ist eine andere Sequenz, und ein

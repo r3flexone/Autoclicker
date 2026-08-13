@@ -833,11 +833,19 @@ dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
 nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
 auch nicht gibt.
 
-Eine Ausnahme hat das: **ist trotzdem eine Aktion gesetzt, bleibt der Abschnitt
-stehen** (samt Warnung, und auf der Karte „greift nie"). Der Fall entsteht beim
-Umstellen des Typs, beim Entfernen des Triggers und beim Import — und ohne die
-Ausnahme stünde das ELSE unsichtbar in der Datei und wäre nicht mehr loszuwerden.
-Dieselbe Falltür wie beim gelöschten Schalter „nur warten".
+**Fällt der Auslöser weg, fällt das ELSE mit** (`_else_aufraeumen()`): wer den
+Trigger entfernt oder den Typ umstellt, hat den einzigen Auslöser genommen — die
+Ersatzaktion ist damit wirkungslos. Sie stehenzulassen hiesse, sie unsichtbar in
+der Datei zu behalten, denn der Abschnitt fällt ja mit dem Auslöser weg. Stellt man
+den Typ zurück, steht er wieder da — leer, zum frischen Auswählen. Die Statuszeile
+sagt, dass geräumt wurde.
+
+**Nur bei einer Änderung, nie beim Laden.** Bringt eine Datei ein wirkungsloses ELSE
+mit (von Hand geschrieben, importiert, aus einer älteren Fassung), wird sie nicht
+stillschweigend beschnitten: dort bleibt der Abschnitt samt Warnung stehen (auf der
+Karte „greift nie"), und der Nutzer entscheidet. Ein Aufräumer, der ungefragt an
+fremden Daten arbeitet, wäre der stille Datenverlust, den das Projekt an anderer
+Stelle mühsam abgeschafft hat.
 
 Damit das durchsetzbar ist, reicht ein bool nicht: er kann „Schritt erledigt, weiter zum
 nächsten" nicht von „Sequenz abbrechen" unterscheiden. Beides als `False` zu melden riss

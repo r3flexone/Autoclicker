@@ -199,6 +199,10 @@ class StudioBridge:
         self.filepath = Path(filepath)
         self.sequences_dir = sequences_dir
         self.points: list[PalettePoint] = load_palette_points(sequences_dir)
+        # Was ohne ELSE passiert, steht in der config.json — gemerkt am
+        # Zeitstempel, damit nicht jede Momentaufnahme die Datei liest.
+        self._cfg_stand: float = -1.0
+        self._cfg_info: dict = {}
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
         # END hätte bei "eine Position hoch" keine Bedeutung, und die
         # Sammelaktionen wären nicht mehr eindeutig.
@@ -255,20 +259,30 @@ class StudioBridge:
         Gegenteil („die Sequenz macht weiter"), und der Unterschied entscheidet,
         ob man ELSE braucht oder nicht.
 
-        Gelesen wird bei jeder Momentaufnahme: die Datei ist klein, und eine
-        zwischenzeitlich geänderte Config soll nicht bis zum nächsten
-        Fensterstart falsch angezeigt werden. Scheitert das Lesen, bleibt das
-        Feld leer — dann sagt die Oberfläche nichts, statt zu raten.
+        Gelesen wird **am Zeitstempel der Datei**, nicht bei jeder Momentaufnahme:
+        eine zwischenzeitlich geänderte Config soll zwar nicht bis zum nächsten
+        Fensterstart falsch angezeigt werden, aber `load_config()` schreibt bei
+        jedem Aufruf eine Zeile in die Konsole — pro Klick im Studio eine, das
+        ist Lärm. Scheitert das Lesen, bleibt das Feld leer; dann sagt die
+        Oberfläche nichts, statt zu raten.
         """
         try:
-            from ...config import load_config
-            cfg = load_config()
-            return {"sekunden": cfg.pixel_wait_timeout,
+            from ...config import CONFIG_FILE, load_config
+            stand = Path(CONFIG_FILE).stat().st_mtime
+        except OSError:
+            stand = 0.0
+        if stand != self._cfg_stand:
+            self._cfg_stand = stand
+            try:
+                cfg = load_config()
+                self._cfg_info = {
+                    "sekunden": cfg.pixel_wait_timeout,
                     "folge": TIMEOUT_TEXT.get(cfg.pixel_timeout_action,
                                               cfg.pixel_timeout_action),
                     "notbremse": cfg.pixel_max_consecutive_timeouts}
-        except Exception:
-            return {}
+            except Exception:
+                self._cfg_info = {}
+        return self._cfg_info
 
     def _scan_namen(self) -> dict:
         """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.
@@ -1020,6 +1034,28 @@ class StudioBridge:
 
     # ---------------------------------------------------------- Block-Felder
 
+    def _else_aufraeumen(self, step: SequenceStep) -> str:
+        """Entfernt ein ELSE, das nach dieser Änderung nichts mehr auslösen kann.
+
+        Wer den Trigger wegnimmt oder den Typ umstellt, hat den einzigen Auslöser
+        entfernt — die Ersatzaktion ist damit wirkungslos. Sie stehenzulassen
+        hiesse, sie unsichtbar in der Datei zu behalten (der Abschnitt fällt ja
+        mit dem Auslöser weg); sie automatisch abzuschalten macht den Block zu
+        dem, was er jetzt ist. Stellt man den Typ zurück, steht der Abschnitt
+        wieder da — leer, zum frischen Auswählen.
+
+        **Nur bei einer Änderung, nie beim Laden.** Eine Datei, die von Hand oder
+        durch einen Import ein wirkungsloses ELSE mitbringt, wird nicht
+        stillschweigend beschnitten: dort bleibt der Abschnitt samt Warnung
+        stehen, und der Nutzer entscheidet.
+
+        Gibt den Meldungstext zurück (leer, wenn nichts zu tun war).
+        """
+        if step.else_config is None or else_greift(step):
+            return ""
+        step.else_config = None
+        return "ELSE entfernt — dieser Block kann es nicht mehr auslösen."
+
     def block_typ(self, daten: dict) -> dict:
         """Stellt den Block-Typ um.
 
@@ -1045,7 +1081,8 @@ class StudioBridge:
         if wc is not None and wc.point_id is None and step.point_id is not None:
             wc.point_id = step.point_id
             self._punkte_anwenden()
-        return self._geaendert()
+        weg = self._else_aufraeumen(step)
+        return self._geaendert(weg, "warn" if weg else "ok")
 
     def block_setzen(self, daten: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
@@ -1173,7 +1210,8 @@ class StudioBridge:
         cond: Optional[WaitCondition] = getattr(step, feld)
         if wahl == TRIGGER_KEIN:
             setattr(step, feld, None)
-            return self._geaendert()
+            weg = self._else_aufraeumen(step)
+            return self._geaendert(weg, "warn" if weg else "ok")
         if cond is None:
             punkt_id = daten.get("punkt", step.point_id)
             punkt = self._punkt(punkt_id)
