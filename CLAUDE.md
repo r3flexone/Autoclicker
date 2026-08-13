@@ -723,6 +723,16 @@ Regeln beim Erweitern:
   ausdrücklich repariert. Scans und Screenshot kehren vorher um — dort fehlt der
   Abschnitt. Die **Nachprüfung** bleibt dagegen bei jedem Typ: „hat die Aktion
   gewirkt?" ergibt auch bei einer Taste und einem Scan Sinn.
+- **Was aktiv oder gewählt ist, wird ringsum markiert** — nie nur an einer Kante.
+  Ein Streifen links liest sich als Verzierung, ein Ring als Zustand; und im
+  Board, wo die Phasen nebeneinander stehen, scheint ein linker Streifen an der
+  falschen Spalte zu kleben. Umgesetzt über `box-shadow: 0 0 0 1px <farbe>` und
+  nicht über einen dickeren Rahmen: der liesse das Element um einen Pixel
+  wachsen und verschöbe bei jedem Wechsel das ganze Raster. Betrifft die
+  gewählte Karte, die Phasenköpfe im Board und die laufende Phase im Live-Run.
+  **Nicht** betroffen ist der Farbstreifen der Typ-Kacheln: der ist eine
+  Legende zur Blockfarbe, kein Zustand — und neun farbige Rahmen nebeneinander
+  wären nur noch Unruhe.
 - **Alle Typ-Kacheln tragen ihren Farbstreifen**, nicht nur die gewählte — damit ist
   das Raster zugleich die Legende zu den Farben im Board. Der Streifen steht als
   `border-left` im `style`-Attribut und damit *nach* dem `border` aus `.typ-chip`;

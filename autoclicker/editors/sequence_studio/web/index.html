@@ -158,11 +158,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase{width:286px;flex:none;display:flex;flex-direction:column;gap:8px}
 .phase-kopf{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:9px 11px;display:flex;flex-direction:column;gap:7px}
-.phase-kopf.init{border-left:3px solid var(--init)}
-.phase-kopf.loop{border-left:3px solid var(--accent)}
-/* END stand auf #38BDF8 — ein fuenftes Blau neben dem KLICK-Blau, das nichts
-   bedeutete. Grau wie INIT sagt richtig, was beide sind: Rahmen, keine Schleife. */
-.phase-kopf.end{border-left:3px solid var(--end)}
+/* Ringsum, nicht nur an der linken Kante: ein Streifen an einer Seite liest
+   sich als Verzierung, ein Ring als Zustand — und im Board stehen die Phasen
+   nebeneinander, wo ein linker Streifen an der falschen Spalte zu kleben
+   scheint. Ueber `box-shadow` statt ueber einen dickeren Rahmen, damit die
+   Markierung nichts verschiebt. Dieselbe Regel wie bei der laufenden Kachel im
+   Live-Run und bei der gewaehlten Karte. */
+.phase-kopf.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
+.phase-kopf.loop{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.phase-kopf.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
 .phase-kopf.init .phase-name{color:var(--init)}
@@ -184,7 +188,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Der Ring liegt AUSSEN. Ein `inset`-Schatten verschwand unter der farbigen
    Kopfzeile — auf gelbem ITEM-SCAN-Grund war die gewaehlte Karte von einer
    ungewaehlten nicht zu unterscheiden. */
-.karte.gewaehlt{border-color:var(--accent);box-shadow:0 0 0 3px #F59E0B1F}
+.karte.gewaehlt{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent),0 0 0 5px #F59E0B26}
 /* Die Kopfzeile traegt die Typfarbe ueber die volle Breite, nicht nur ein Chip
    darin: eine Phase liest sich dann als Streifenmuster, statt dass man jede
    Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
