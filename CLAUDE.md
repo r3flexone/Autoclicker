@@ -738,6 +738,16 @@ Regeln beim Erweitern:
   Regel wie oben), die gewählte zusätzlich ausgefüllt. `border-color` steht im
   `style`-Attribut und damit *nach* dem `border`-Kurzformat aus `.typ-chip`;
   andersherum räumte die Kurzform die Farbe wieder weg.
+- **Der Aus-Zustand bekommt keine eigene Kachel, sondern einen Rückweg.** Bei ELSE
+  stand „(keine)" als sechste Kachel im Raster und sah aus wie eine weitere
+  Aktion, obwohl sie deren Abwesenheit ist. Jetzt ist bei „kein ELSE" schlicht
+  keine Kachel markiert, und der Rückweg steht als „entfernen" rechts in der
+  Abschnitts-Überschrift — **nur dann, wenn es etwas zu entfernen gibt**. Ohne
+  diesen Knopf wäre es die Falltür des gelöschten Schalters „nur warten": wer die
+  Aktion einmal gesetzt hat, findet nichts mehr, um sie loszuwerden. Für ein
+  Segment mit drei Werten (Nachprüfung: kein / bis Farbe DA / bis Farbe WEG) gilt
+  das nicht — dort ist „kein" eine Zeile breit und liest sich als Zustand, nicht
+  als Aktion.
 - **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
   Nachprüfung. Die DPG-Fassung liess dort Zahlen eintippen — `_step_to_dict` schreibt
   die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten
@@ -752,8 +762,8 @@ Regeln beim Erweitern:
   und man musste raten, welche die führende ist. Nur Blöcke **ohne** Punkt (Taste,
   Scans) haben einen eigenen Namen im Abschnitt ALLGEMEIN.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
-  und ELSE-Aktion (sechs) sind Kacheln: die Menge ist im Code festgelegt und ändert
-  sich nicht, und ein Klappmenü versteckte fünf von sechs Möglichkeiten hinter
+  und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
+  sich nicht, und ein Klappmenü versteckte vier von fünf Möglichkeiten hinter
   einem Klick. Punkte, Sequenzen und Scan-Namen bleiben Listen — die wachsen mit
   den Daten, und fünfzig Kacheln sind kein Bedienelement mehr.
 - **Die Farbe eines Punkts ist einstellbar, aber keine Anzeige-Eigenschaft.** Ein

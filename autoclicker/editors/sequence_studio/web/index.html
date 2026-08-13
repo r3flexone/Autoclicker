@@ -259,6 +259,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .info:hover{border-color:var(--muted);color:var(--muted)}
 .info.an{border-color:var(--accent);color:var(--accent)}
 .mitinfo{display:flex;align-items:center;gap:5px}
+/* „entfernen" steht in der Abschnitts-Ueberschrift und nur dann, wenn es etwas
+   zu entfernen gibt — deshalb `margin-left:auto`, damit es rechts sitzt, ohne
+   dass die Ueberschrift ein Fuellelement braucht. */
+.weg-knopf{margin-left:auto;font-size:10.5px;letter-spacing:.04em;color:var(--dim);
+  border:1px solid transparent;border-radius:4px;padding:1px 6px}
+.weg-knopf:hover{color:var(--err);border-color:var(--err)}
 .leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
 /* ---------------------------------------------------------------- Ansichten */
@@ -654,8 +660,13 @@ function segment(werte, aktuell, beim_setzen) {
        w.text)));
 }
 
-function ueberschrift(text, hilfe, schluessel) {
-  return el("span", {class: "ueberschrift mitinfo"}, text, info(hilfe, schluessel));
+function ueberschrift(text, hilfe, schluessel, weg) {
+  // `weg` ist ein optionaler „entfernen"-Knopf rechts in der Überschrift. Er
+  // steht nur da, wenn es etwas zu entfernen gibt — der Rückweg ist damit
+  // sichtbar, ohne dass der Aus-Zustand eine eigene Kachel braucht.
+  return el("span", {class: "ueberschrift mitinfo"}, text, info(hilfe, schluessel),
+    weg ? el("button", {class: "weg-knopf", title: weg.titel || "", onclick: weg.tu},
+             "entfernen") : null);
 }
 
 /* -------------------------------------------------------------------- Brücke */
@@ -1695,24 +1706,29 @@ function baueNachpruefung(ziel, b) {
 }
 
 function baueElse(ziel, b) {
+  // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
+  // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
+  // — die Abwesenheit von allen. Der Rückweg darf trotzdem nicht fehlen (sonst
+  // dieselbe Falltür wie beim gelöschten Schalter „nur warten"): er steht als
+  // „entfernen" in der Überschrift, und zwar nur, wenn es etwas zu entfernen gibt.
   ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-    "eigene Aktion des Schritts.", "else"));
-  // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen plus
-  // „keine"), und im Inspektor ist der Platz da. Ein Klappmenü versteckt vier von
-  // fünf Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was
-  // es überhaupt gibt. Dieselbe Form wie das Typ-Raster darüber, damit beide als
+    "eigene Aktion des Schritts.", "else",
+    b.else_aktion ? {titel: "ELSE-Aktion entfernen",
+                    tu: () => ruf("block_else", {aktion: ""})} : null));
+  // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen), und
+  // im Inspektor ist der Platz da. Ein Klappmenü versteckt vier von fünf
+  // Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was es
+  // überhaupt gibt. Dieselbe Form wie das Typ-Raster darüber, damit beide als
   // dasselbe Bedienelement zu erkennen sind.
-  const werte = [{wert: "", text: "(keine)"}].concat(
-    S.else_aktionen.map((a) => ({wert: a, text: a})));
-  ziel.appendChild(el("div", {class: "gitter3"}, werte.map((w) =>
+  ziel.appendChild(el("div", {class: "gitter3"}, S.else_aktionen.map((a) =>
     el("button", {
       // Eigene Klasse trotz gleicher Form: eine Typ-Kachel schaltet den Block-Typ,
       // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
       // will, soll nicht beide erwischen.
-      class: "typ-chip else-chip" + (w.wert === b.else_aktion ? " an" : ""),
-      onclick: () => ruf("block_else", {aktion: w.wert}),
-    }, w.text))));
+      class: "typ-chip else-chip" + (a === b.else_aktion ? " an" : ""),
+      onclick: () => ruf("block_else", {aktion: a}),
+    }, a))));
   ziel.appendChild(el("p", {class: "hinweis"}, {
     "": "Ohne ELSE läuft der Schritt in seinen Timeout und die Sequenz macht weiter.",
     skip: "Nur diesen Schritt überspringen.",

@@ -199,6 +199,9 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       und ist danach ausgewählt. Gegenprobe: an der Kopie etwas ändern → das
       Original bleibt, wie es war. Mehrfachauswahl duplizieren → die Kopien liegen
       als Block hinter der Auswahl.
+- [ ] 🆕 ELSE: ohne gesetzte Aktion ist **keine** Kachel markiert und es gibt
+      keine Kachel „(keine)". Eine Aktion setzen → rechts in der Überschrift
+      erscheint „entfernen"; damit lässt sie sich wieder loswerden.
 - [ ] Laden/Neu mit ungespeicherten Änderungen fragt nach (Speichern / Verwerfen /
       Abbrechen).
 - [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine

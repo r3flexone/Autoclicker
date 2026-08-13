@@ -1424,7 +1424,7 @@ steht auf einmal da.
   (Punkt #1)" und weiter unten nochmal die Punkt-Auswahl. Die Farbe eines Punkts
   lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau
   diesen Wert prüft
-- **ELSE als Kachel-Raster** statt Klappmenü (sechs feste Aktionen, mit einer Zeile
+- **ELSE als Kachel-Raster** statt Klappmenü (fünf feste Aktionen, mit einer Zeile
   Erklärung darunter), **INIT und END in eigenen Farben** statt beide grau, und eine
   **neue Sequenz bringt gleich eine Loop-Phase mit**
 - **Der Block-Typ ist ablesbar statt auswendig**: alle neun Kacheln tragen ihren
