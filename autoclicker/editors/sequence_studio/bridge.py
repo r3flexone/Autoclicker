@@ -32,7 +32,7 @@ from ...models import (
     BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_ICON_SCAN,
     BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
     ELSE_CLICK, ELSE_KEY, ELSE_RESTART, ELSE_SKIP, ELSE_SKIP_CYCLE,
-    SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
+    SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY, TIMEOUT_TEXT,
     LoopPhase, Sequence, SequenceStep, WaitCondition, block_type,
 )
 from ...persistence import (
@@ -219,11 +219,37 @@ class StudioBridge:
                        "farbe": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
             "scan_modi": SCAN_MODI,
             "else_aktionen": ELSE_AKTIONEN,
+            "ohne_else": self._ohne_else(),
             "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "punkte": [self._punkt_json(p) for p in self.points],
             "auswahl": {"phase": self._sel_index(), "zeilen": sorted(self.sel_rows)},
             "block": self._block_detail(),
         }
+
+    def _ohne_else(self) -> dict:
+        """Was ohne ELSE nach dem Timeout passiert — laut `config.json`.
+
+        Die Antwort steht nicht im Studio, sondern in der Config des
+        Hauptprozesses (`pixel_wait_timeout`, `pixel_timeout_action`), und sie
+        ist keine Kleinigkeit: die Voreinstellung bricht den **ganzen Zyklus**
+        ab, nicht nur den Schritt. Der Hinweis im Inspektor behauptete das
+        Gegenteil („die Sequenz macht weiter"), und der Unterschied entscheidet,
+        ob man ELSE braucht oder nicht.
+
+        Gelesen wird bei jeder Momentaufnahme: die Datei ist klein, und eine
+        zwischenzeitlich geänderte Config soll nicht bis zum nächsten
+        Fensterstart falsch angezeigt werden. Scheitert das Lesen, bleibt das
+        Feld leer — dann sagt die Oberfläche nichts, statt zu raten.
+        """
+        try:
+            from ...config import load_config
+            cfg = load_config()
+            return {"sekunden": cfg.pixel_wait_timeout,
+                    "folge": TIMEOUT_TEXT.get(cfg.pixel_timeout_action,
+                                              cfg.pixel_timeout_action),
+                    "notbremse": cfg.pixel_max_consecutive_timeouts}
+        except Exception:
+            return {}
 
     def _scan_namen(self) -> dict:
         """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.

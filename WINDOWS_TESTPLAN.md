@@ -199,6 +199,10 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       und ist danach ausgewählt. Gegenprobe: an der Kopie etwas ändern → das
       Original bleibt, wie es war. Mehrfachauswahl duplizieren → die Kopien liegen
       als Block hinter der Auswahl.
+- [ ] 🆕 ELSE: ohne Aktion nennt der Hinweis den echten Timeout und die echte
+      Folge aus der `config.json` (Voreinstellung: 300 s → Zyklus abbrechen).
+      Gegenprobe: `pixel_timeout_action` auf `stop` stellen, Studio neu öffnen →
+      der Hinweis sagt „Sequenz stoppen".
 - [ ] 🆕 ELSE: ohne gesetzte Aktion ist **keine** Kachel markiert und es gibt
       keine Kachel „(keine)". Eine Aktion setzen, dann **dieselbe Kachel nochmal**
       klicken → ELSE ist wieder weg. Eine andere Kachel wechselt normal.

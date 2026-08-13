@@ -738,6 +738,16 @@ Regeln beim Erweitern:
   Regel wie oben), die gewählte zusätzlich ausgefüllt. `border-color` steht im
   `style`-Attribut und damit *nach* dem `border`-Kurzformat aus `.typ-chip`;
   andersherum räumte die Kurzform die Farbe wieder weg.
+- **Was ohne ELSE passiert, steht in der Config — also wird sie gelesen, nicht
+  behauptet.** Im Inspektor stand „Ohne ELSE läuft der Schritt in seinen Timeout
+  und die Sequenz macht weiter", und das war falsch: die Voreinstellung
+  `pixel_timeout_action: "skip_cycle"` bricht den **ganzen Zyklus** ab. Genau
+  dieser Unterschied entscheidet, ob man ELSE braucht. `_ohne_else()` liest
+  deshalb `pixel_wait_timeout`, `pixel_timeout_action` und die Notbremse aus
+  `config.json` und schreibt sie in die Momentaufnahme; scheitert das Lesen,
+  sagt die Oberfläche nichts, statt zu raten. Die Übersetzung Wert→Text steht in
+  `models.TIMEOUT_TEXT`, damit Editor und Laufzeit dieselbe Folge nennen — ein
+  Test hält beide gegeneinander.
 - **Der Aus-Zustand bekommt keine eigene Kachel, sondern einen Rückweg.** Bei ELSE
   stand „(keine)" als sechste Kachel im Raster und sah aus wie eine weitere
   Aktion, obwohl sie deren Abwesenheit ist. Jetzt ist bei „kein ELSE" schlicht

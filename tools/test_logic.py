@@ -4904,6 +4904,7 @@ try:
     # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
     # gestoppt wird. Dieselbe Kette wie _handle_color_wait_timeout.
     from autoclicker.models import ElseConfig as _EC16, ACTION_TEXT as _AT16
+    from autoclicker.models import TIMEOUT_TEXT as _TT16
     from autoclicker.models import VALID_ELSE_ACTIONS as _VEA16
 
     class _CfgFake16:
@@ -4918,7 +4919,7 @@ try:
           _stp16._timeout_folge(_st16, _schritt16) == "Sequenz stoppen")
     _st16.config.pixel_timeout_action = "skip_cycle"
     check("...und folgt ihr, wenn sie sich aendert",
-          _stp16._timeout_folge(_st16, _schritt16) == "Zyklus überspringen")
+          _stp16._timeout_folge(_st16, _schritt16) == "Zyklus abbrechen, nächster Zyklus")
     _schritt16.else_config = _EC16(action="skip")
     check("mit else gewinnt else", _stp16._timeout_folge(_st16, _schritt16)
           == "ELSE: Schritt überspringen")
@@ -4926,6 +4927,29 @@ try:
     # sich nicht kennen duerfen. Ein neuer Aktionstyp ohne Text stuende in beiden
     # als rohes "skip_cycle" da.
     check("jede else-Aktion hat einen Text", all(a in _AT16 for a in _VEA16))
+
+    # --- Und dasselbe im Editor: was passiert OHNE else? ---
+    # Der Hinweis im Inspektor behauptete "die Sequenz macht weiter". Die
+    # Voreinstellung bricht aber den ganzen Zyklus ab - der Unterschied
+    # entscheidet, ob man ELSE ueberhaupt braucht. Das Studio liest die Antwort
+    # deshalb aus der Config statt sie zu behaupten.
+    from autoclicker.config import load_config as _lc16
+    _cfg16 = _lc16()
+    _oe16 = _b16._ohne_else()
+    check("das Studio nennt den Timeout aus der Config",
+          _oe16.get("sekunden") == _cfg16.pixel_wait_timeout)
+
+    class _StCfg16:
+        config = _cfg16
+
+    # Der eigentliche Vertrag: Editor und Laufzeit muessen dieselbe Folge nennen.
+    # Zwei Uebersetzungen desselben Config-Werts waeren zwei Stellen, an denen
+    # eine neue Timeout-Aktion vergessen werden kann - und die eine davon sagte
+    # dem Nutzer dann etwas anderes, als die Sequenz spaeter tut.
+    check("Editor und Laufzeit nennen dieselbe Folge",
+          _oe16.get("folge") == _stp16._timeout_folge(_StCfg16(), SequenceStep(x=1, y=2)))
+    check("jede Timeout-Aktion hat einen Text",
+          all(a in _TT16 for a in ("skip_cycle", "restart", "stop")))
 
     _stat16.beende()
     check("am Ende ist die Datei weg", not Path(_rsf16).exists())

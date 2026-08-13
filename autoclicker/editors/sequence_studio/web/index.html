@@ -1694,6 +1694,24 @@ function baueNachpruefung(ziel, b) {
   }
 }
 
+/** Was ohne ELSE passiert — aus der Config des Hauptprozesses, nicht geraten.
+ *
+ * Hier stand „die Sequenz macht weiter", und das war schlicht falsch: die
+ * Voreinstellung `pixel_timeout_action: "skip_cycle"` bricht den ganzen Zyklus
+ * ab. Der Unterschied entscheidet, ob man ELSE ueberhaupt braucht — also gehoert
+ * die echte Einstellung hierher und nicht ein allgemeiner Satz.
+ */
+function ohneElseText() {
+  const o = S.ohne_else || {};
+  if (!o.folge) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
+                       "pixel_timeout_action in der config.json.";
+  const zeit = o.sekunden > 0 ? o.sekunden + " s" : "ohne Timeout";
+  return "Ohne ELSE wartet der Schritt bis zum Timeout (" + zeit + "), danach: " +
+         o.folge + " (config.json: pixel_timeout_action)." +
+         (o.notbremse > 0 ? " Nach " + o.notbremse + " Timeouts in Folge greift " +
+                            "die Notbremse." : "");
+}
+
 function baueElse(ziel, b) {
   // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
   // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
@@ -1728,7 +1746,7 @@ function baueElse(ziel, b) {
   // Ein Umschalten sieht man einem Bedienelement nicht an; ungesagt fände es nur,
   // wer es zufällig probiert.
   ziel.appendChild(el("p", {class: "hinweis"}, ({
-    "": "Ohne ELSE läuft der Schritt in seinen Timeout und die Sequenz macht weiter.",
+    "": ohneElseText(),
     skip: "Nur diesen Schritt überspringen.",
     skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
     restart: "Die Sequenz von vorn beginnen.",

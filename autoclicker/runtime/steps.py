@@ -15,8 +15,8 @@ from pathlib import Path
 from ..imaging import PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name
 from ..models import (
     AutoClickerState, SequenceStep,
-    ACTION_TEXT, SCAN_MODE_ALL, block_type,
-    TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART,
+    ACTION_TEXT, SCAN_MODE_ALL, TIMEOUT_TEXT, block_type,
+    TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
     CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
@@ -514,9 +514,8 @@ def _timeout_folge(state: AutoClickerState, step: SequenceStep) -> str:
     if step.else_config:
         was = ACTION_TEXT.get(step.else_config.action, step.else_config.action)
         return f"ELSE: {was}"
-    return {TIMEOUT_SKIP_CYCLE: "Zyklus überspringen",
-            TIMEOUT_RESTART: "Sequenz neu starten"}.get(
-        state.config.pixel_timeout_action, "Sequenz stoppen")
+    return TIMEOUT_TEXT.get(state.config.pixel_timeout_action,
+                            TIMEOUT_TEXT[TIMEOUT_STOP])
 
 
 def _gate_nach_else(state: AutoClickerState, step: SequenceStep, phase: str,

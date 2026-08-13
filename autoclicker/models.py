@@ -62,6 +62,15 @@ TIMEOUT_SKIP_CYCLE = "skip_cycle"
 TIMEOUT_RESTART = "restart"
 TIMEOUT_STOP = "stop"
 
+# Was die Timeout-Aktion tut, als Satzteil — aus demselben Grund hier wie
+# ACTION_TEXT: die Laufzeit schreibt sie in den Laufstatus, das Studio zeigt sie
+# im Inspektor an, und die beiden duerfen sich nicht kennen.
+TIMEOUT_TEXT = {
+    TIMEOUT_SKIP_CYCLE: "Zyklus abbrechen, nächster Zyklus",
+    TIMEOUT_RESTART: "Sequenz neu starten",
+    TIMEOUT_STOP: "Sequenz stoppen",
+}
+
 # consecutive_timeout_action (Config)
 CONSEC_STOP = "stop"
 CONSEC_QUIT = "quit"
