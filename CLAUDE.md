@@ -741,13 +741,18 @@ Regeln beim Erweitern:
 - **Der Aus-Zustand bekommt keine eigene Kachel, sondern einen Rückweg.** Bei ELSE
   stand „(keine)" als sechste Kachel im Raster und sah aus wie eine weitere
   Aktion, obwohl sie deren Abwesenheit ist. Jetzt ist bei „kein ELSE" schlicht
-  keine Kachel markiert, und der Rückweg steht als „entfernen" rechts in der
-  Abschnitts-Überschrift — **nur dann, wenn es etwas zu entfernen gibt**. Ohne
-  diesen Knopf wäre es die Falltür des gelöschten Schalters „nur warten": wer die
-  Aktion einmal gesetzt hat, findet nichts mehr, um sie loszuwerden. Für ein
-  Segment mit drei Werten (Nachprüfung: kein / bis Farbe DA / bis Farbe WEG) gilt
-  das nicht — dort ist „kein" eine Zeile breit und liest sich als Zustand, nicht
-  als Aktion.
+  keine Kachel markiert, und der Rückweg ist die markierte Kachel selbst: ein
+  zweiter Klick darauf hebt sie auf. Fehlen darf er nicht — das wäre die Falltür
+  des gelöschten Schalters „nur warten": wer die Aktion einmal gesetzt hat, findet
+  nichts mehr, um sie loszuwerden.
+
+  **Ein Umschalten sieht man einem Bedienelement nicht an**, deshalb steht es im
+  Tooltip der markierten Kachel *und* im Hinweis darunter („Nochmal auf die
+  markierte Kachel klicken = kein ELSE"). Ungesagt fände es nur, wer es zufällig
+  probiert — und dann wäre es dieselbe Falltür, nur mit einem Ausweg, den niemand
+  kennt. Für ein Segment mit drei Werten (Nachprüfung: kein / bis Farbe DA / bis
+  Farbe WEG) stellt sich die Frage nicht: dort ist „kein" eine Zeile breit und
+  liest sich als Zustand, nicht als Aktion.
 - **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
   Nachprüfung. Die DPG-Fassung liess dort Zahlen eintippen — `_step_to_dict` schreibt
   die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten

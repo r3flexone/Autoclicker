@@ -259,12 +259,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .info:hover{border-color:var(--muted);color:var(--muted)}
 .info.an{border-color:var(--accent);color:var(--accent)}
 .mitinfo{display:flex;align-items:center;gap:5px}
-/* „entfernen" steht in der Abschnitts-Ueberschrift und nur dann, wenn es etwas
-   zu entfernen gibt — deshalb `margin-left:auto`, damit es rechts sitzt, ohne
-   dass die Ueberschrift ein Fuellelement braucht. */
-.weg-knopf{margin-left:auto;font-size:10.5px;letter-spacing:.04em;color:var(--dim);
-  border:1px solid transparent;border-radius:4px;padding:1px 6px}
-.weg-knopf:hover{color:var(--err);border-color:var(--err)}
 .leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
 /* ---------------------------------------------------------------- Ansichten */
@@ -660,13 +654,8 @@ function segment(werte, aktuell, beim_setzen) {
        w.text)));
 }
 
-function ueberschrift(text, hilfe, schluessel, weg) {
-  // `weg` ist ein optionaler „entfernen"-Knopf rechts in der Überschrift. Er
-  // steht nur da, wenn es etwas zu entfernen gibt — der Rückweg ist damit
-  // sichtbar, ohne dass der Aus-Zustand eine eigene Kachel braucht.
-  return el("span", {class: "ueberschrift mitinfo"}, text, info(hilfe, schluessel),
-    weg ? el("button", {class: "weg-knopf", title: weg.titel || "", onclick: weg.tu},
-             "entfernen") : null);
+function ueberschrift(text, hilfe, schluessel) {
+  return el("span", {class: "ueberschrift mitinfo"}, text, info(hilfe, schluessel));
 }
 
 /* -------------------------------------------------------------------- Brücke */
@@ -1708,14 +1697,17 @@ function baueNachpruefung(ziel, b) {
 function baueElse(ziel, b) {
   // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
   // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
-  // — die Abwesenheit von allen. Der Rückweg darf trotzdem nicht fehlen (sonst
-  // dieselbe Falltür wie beim gelöschten Schalter „nur warten"): er steht als
-  // „entfernen" in der Überschrift, und zwar nur, wenn es etwas zu entfernen gibt.
+  // — die Abwesenheit von allen.
+  //
+  // Der Rückweg ist die markierte Kachel selbst: ein zweiter Klick darauf hebt
+  // sie auf. Fehlen darf er nicht (sonst dieselbe Falltür wie beim gelöschten
+  // Schalter „nur warten": gesetzt und nicht mehr loszuwerden), und weil man ein
+  // Umschalten nicht sieht, steht es im Hinweis darunter und im Tooltip der
+  // Kachel.
   ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-    "eigene Aktion des Schritts.", "else",
-    b.else_aktion ? {titel: "ELSE-Aktion entfernen",
-                    tu: () => ruf("block_else", {aktion: ""})} : null));
+    "eigene Aktion des Schritts. Ein zweiter Klick auf die markierte Kachel " +
+    "hebt sie wieder auf.", "else"));
   // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen), und
   // im Inspektor ist der Platz da. Ein Klappmenü versteckt vier von fünf
   // Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was es
@@ -1727,15 +1719,22 @@ function baueElse(ziel, b) {
       // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
       // will, soll nicht beide erwischen.
       class: "typ-chip else-chip" + (a === b.else_aktion ? " an" : ""),
-      onclick: () => ruf("block_else", {aktion: a}),
+      title: a === b.else_aktion ? "nochmal klicken = kein ELSE" : "",
+      // Dieselbe Kachel nochmal: das leere Kommando entfernt die Aktion. Eine
+      // andere Kachel wechselt sie wie gewohnt.
+      onclick: () => ruf("block_else", {aktion: a === b.else_aktion ? "" : a}),
     }, a))));
-  ziel.appendChild(el("p", {class: "hinweis"}, {
+  // Der Satz zur gewählten Aktion — und dahinter, wie man sie wieder los wird.
+  // Ein Umschalten sieht man einem Bedienelement nicht an; ungesagt fände es nur,
+  // wer es zufällig probiert.
+  ziel.appendChild(el("p", {class: "hinweis"}, ({
     "": "Ohne ELSE läuft der Schritt in seinen Timeout und die Sequenz macht weiter.",
     skip: "Nur diesen Schritt überspringen.",
     skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
     restart: "Die Sequenz von vorn beginnen.",
     click: "Stattdessen einen anderen Punkt klicken.",
-    key: "Stattdessen eine Taste drücken."}[b.else_aktion] || ""));
+    key: "Stattdessen eine Taste drücken."}[b.else_aktion] || "") +
+    (b.else_aktion ? " Nochmal auf die markierte Kachel klicken = kein ELSE." : "")));
   if (b.else_aktion === "click") {
     ziel.appendChild(auswahl("ELSE-Punkt", punktListe(b.else_punkt), b.else_punkt,
       (v) => v && ruf("block_else", {aktion: "click", punkt: Number(v)})));
