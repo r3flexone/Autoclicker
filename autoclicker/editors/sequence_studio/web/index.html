@@ -209,6 +209,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .karte-farbe .feldchen{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
 .karte-else{display:flex;align-items:center;gap:6px;padding-top:6px;
   border-top:1px dashed var(--line);color:var(--accent);font-size:11px}
+.karte-else.tot{color:var(--dim)}
 /* Die Marken sitzen jetzt auf der farbigen Kopfzeile, also dunkel auf hell. Die
    Warnmarke stand vorher auf Amber — auf einem ITEM-SCAN (ebenfalls Amber) waere
    das Amber auf Amber gewesen, also unlesbar genau dort, wo sie am haeufigsten
@@ -244,6 +245,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .segment button:hover{color:var(--text)}
 .segment button.an{background:var(--accent);color:#0C0F14;font-weight:600}
 .hinweis{font-size:11px;color:var(--dim);line-height:1.5}
+/* Ein Hinweis, der nicht erklaert, sondern warnt: hier steht etwas, das nicht
+   wirkt. Amber wie alles, was Aufmerksamkeit will — aber ohne Rahmen, damit es
+   nicht wie ein Fehler aussieht. Es ist keiner, es ist nur wirkungslos. */
+.hinweis.warnung{color:var(--accent)}
 /* Die Probe steht unten und abgesetzt: sie ändert nichts an der Sequenz, sondern
    fragt den Bildschirm. */
 .insp-fuss{margin-top:6px;padding-top:10px;border-top:1px solid var(--line);
@@ -939,7 +944,10 @@ function zeichneKarte(phase, block) {
       block.farbtext));
   }
   if (block.else_text) {
-    leib.appendChild(el("div", {class: "karte-else"}, block.else_text));
+    // Ein ELSE ohne Bedingung feuert nie — auf der Karte stuende es sonst als
+    // Zusage da („sonst: Schritt überspringen"), die nichts einloest.
+    leib.appendChild(el("div", {class: "karte-else" + (block.else_greift ? "" : " tot")},
+      block.else_text + (block.else_greift ? "" : " · greift nie")));
   }
 
   return el("div", {
@@ -1731,6 +1739,14 @@ function baueElse(ziel, b) {
   // Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was es
   // überhaupt gibt. Dieselbe Form wie das Typ-Raster darüber, damit beide als
   // dasselbe Bedienelement zu erkennen sind.
+  // Der Block kann gar nichts ausloesen: das gehoert VOR die Kacheln, sonst
+  // stellt man erst eine Aktion ein und liest danach, dass sie nie drankommt.
+  if (!b.else_greift) {
+    ziel.appendChild(el("p", {class: "hinweis warnung"},
+      "Dieser Block hat keine Bedingung — ELSE kommt hier nie zum Zug. " +
+      "Ausgelöst wird es von einem Farb-Trigger (Timeout oder „nur prüfen“), " +
+      "einer Nachprüfung ohne Wirkung oder einem Scan, der nichts findet."));
+  }
   ziel.appendChild(el("div", {class: "gitter3"}, S.else_aktionen.map((a) =>
     el("button", {
       // Eigene Klasse trotz gleicher Form: eine Typ-Kachel schaltet den Block-Typ,

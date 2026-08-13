@@ -137,6 +137,25 @@ def _stelle(step: SequenceStep) -> str:
     return f"{ref}({step.x},{step.y})"
 
 
+# Welche Blöcke ELSE überhaupt auslösen können. ELSE ist eine Antwort auf eine
+# **nicht erfüllte Bedingung** — hat ein Block keine, wird es nie ausgeführt:
+# ein reiner Klick klickt, eine Taste drückt, ein Warten wartet, und danach geht
+# es weiter. Ausgelöst wird es (siehe `runtime/steps.py`) von
+#   - der Farb-Bedingung: Timeout bzw. „nur prüfen" nicht erfüllt,
+#   - der Nachprüfung: keine Wirkung nach allen Versuchen,
+#   - Item-/Boss-/Icon-Scan: nichts gefunden.
+# Der Boss-**Watcher** steht bewusst nicht dabei: er läuft in seine eigenen
+# Grenzen (max. Scans, Timeout) und macht danach weiter, ohne ELSE zu fragen.
+_ELSE_SCANS = ("item_scan", "boss_scan", "icon_scan")
+
+
+def else_greift(step: SequenceStep) -> bool:
+    """Kann ELSE bei diesem Schritt überhaupt feuern?"""
+    if step.wait_condition is not None or step.verify_condition is not None:
+        return True
+    return any(getattr(step, feld, None) is not None for feld in _ELSE_SCANS)
+
+
 def _bloecke(anzahl: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
     return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"
@@ -321,6 +340,8 @@ class StudioBridge:
             "farbfeld": _hex(wc.color) if wc else None,
             "farbtext": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
+            # Ein ELSE, das nie feuern kann, steht sonst als Zusage auf der Karte.
+            "else_greift": else_greift(step),
             # Ein Scan ohne Namen wird beim Speichern abgelehnt — die Karte sagt
             # das schon vorher, sonst sucht man den Block hinterher in vier Phasen.
             "warnung": ("Name fehlt" if feld and not (getattr(step, feld) or "").strip()
@@ -418,6 +439,7 @@ class StudioBridge:
             "verify": trigger_name(vc),
             "verify_punkt": vc.point_id if vc else None,
             "else_aktion": ec.action if ec else "",
+            "else_greift": else_greift(step),
             "else_punkt": ec.point_id if ec else None,
             "else_taste": (ec.key or "") if ec else "",
             "else_delay": ec.delay if ec else 0,

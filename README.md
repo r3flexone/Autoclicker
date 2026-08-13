@@ -1424,6 +1424,10 @@ steht auf einmal da.
   (Punkt #1)" und weiter unten nochmal die Punkt-Auswahl. Die Farbe eines Punkts
   lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau
   diesen Wert prüft
+- **ELSE sagt, ob es überhaupt greifen kann**: an einem Block ohne Bedingung (reiner
+  Klick, Taste, Warten, Screenshot, Boss-Watcher) wird es nie ausgeführt — der
+  Inspektor warnt, und auf der Karte steht „greift nie". Ohne gesetzte Aktion nennt
+  der Hinweis Timeout und Folge aus der `config.json`
 - **ELSE als Kachel-Raster** statt Klappmenü (fünf feste Aktionen, mit einer Zeile
   Erklärung darunter), **INIT und END in eigenen Farben** statt beide grau, und eine
   **neue Sequenz bringt gleich eine Loop-Phase mit**

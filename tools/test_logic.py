@@ -4951,6 +4951,40 @@ try:
     check("jede Timeout-Aktion hat einen Text",
           all(a in _TT16 for a in ("skip_cycle", "restart", "stop")))
 
+    # --- Wo ELSE ueberhaupt feuern kann ---
+    # ELSE ist die Antwort auf eine NICHT ERFUELLTE Bedingung. Ein reiner Klick
+    # hat keine: er klickt, und danach geht es weiter. Ein ELSE daran ist eine
+    # Zusage, die nichts einloest - deshalb sagt es die Oberflaeche.
+    from autoclicker.editors.sequence_studio.bridge import else_greift as _eg16
+    _faelle16 = {
+        "Klick": (SequenceStep(x=1, y=2, delay_before=0), False),
+        "Taste": (SequenceStep(delay_before=0, key_press="a"), False),
+        "Warten": (SequenceStep(delay_before=5, wait_only=True), False),
+        "Screenshot": (SequenceStep(delay_before=0, screenshot_only=True), False),
+        # Der Watcher laeuft in seine eigenen Grenzen (max. Scans, Timeout) und
+        # macht danach weiter, ohne ELSE zu fragen - siehe _execute_boss_watcher_step.
+        "Boss-Watcher": (SequenceStep(delay_before=0, boss_watcher="w"), False),
+        "Farb-Trigger": (SequenceStep(x=1, y=2, delay_before=0,
+                                      wait_condition=_WCx(pixel=(1, 2), color=(3, 4, 5))), True),
+        "Nachpruefung": (SequenceStep(x=1, y=2, delay_before=0,
+                                      verify_condition=_WCx(pixel=(1, 2), color=(3, 4, 5))), True),
+        "Item-Scan": (SequenceStep(delay_before=0, item_scan="s"), True),
+        "Boss-Scan": (SequenceStep(delay_before=0, boss_scan="s"), True),
+        "Icon-Scan": (SequenceStep(delay_before=0, icon_scan="s"), True),
+    }
+    _falsch16 = [n for n, (s, soll) in _faelle16.items() if _eg16(s) is not soll]
+    check("die Oberflaeche weiss, wo ELSE feuern kann", _falsch16 == [])
+    if _falsch16:
+        print("        falsch beurteilt: " + ", ".join(_falsch16))
+
+    # Gegenprobe an der Laufzeit: JEDE Stelle, die else ausloest, muss zu einem
+    # Schritt gehoeren, den else_greift() als ausloesefaehig kennt. Geprueft am
+    # Quelltext - die Handler selbst laufen nur mit echtem Windows.
+    _quelle16 = _insp16.getsource(_stp16)
+    _ausloeser16 = _quelle16.count("execute_else_action(state, step") + \
+        _quelle16.count("_gate_nach_else(state, step")
+    check("der Test kennt alle Ausloeser-Stellen der Laufzeit", _ausloeser16 >= 8)
+
     _stat16.beende()
     check("am Ende ist die Datei weg", not Path(_rsf16).exists())
     # Vergessen gehoert dazu: der naechste Lauf ist eine andere Sequenz, und ein

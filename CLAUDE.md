@@ -815,6 +815,23 @@ Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `L
 eigene Aktion des Schritts — so steht es in der Editor-Hilfe (`else skip` = „nur DIESEN
 Schritt überspringen", `else <Punkt-Nr>` = „**stattdessen** diesen Punkt klicken").
 
+**`else` ist die Antwort auf eine nicht erfüllte Bedingung — hat ein Schritt keine,
+feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
+
+| Auslöser | wann |
+|---|---|
+| Farb-Bedingung | Timeout erreicht, „nur prüfen" nicht erfüllt, Pillow fehlt |
+| Nachprüfung | keine Wirkung nach allen `verify_retries` |
+| Item-Scan | kein Item gefunden |
+| Boss-Scan | kein Boss erkannt |
+| Icon-Scan | kein Icon erkannt |
+
+Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
+Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
+(max. Scans, Timeout) und macht danach weiter. `else_greift()` in `bridge.py` hält
+dieselbe Liste für die Anzeige — das Studio warnt, statt ein wirkungsloses ELSE als
+Zusage stehenzulassen.
+
 Damit das durchsetzbar ist, reicht ein bool nicht: er kann „Schritt erledigt, weiter zum
 nächsten" nicht von „Sequenz abbrechen" unterscheiden. Beides als `False` zu melden riss
 den Rest der Phase mit ab, beides als `True` liess den Schritt nach der else-Aktion noch
