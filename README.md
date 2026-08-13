@@ -1399,6 +1399,9 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **Statusleiste unten** statt oben rechts (mit Datei und Punktzahl), größeres Logo,
+  eigene Farben für alle neun Block-Typen (Taste/Item-Scan/Icon-Scan waren alle
+  orange-gelb), und der Loop-Name trägt seine Phasenfarbe wie INIT und END
 - **Name und Farbe stehen beim Punkt**, nicht oben im Block: vorher gab es „Name
   (Punkt #1)" und weiter unten nochmal die Punkt-Auswahl. Die Farbe eines Punkts
   lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau

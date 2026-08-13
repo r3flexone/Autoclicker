@@ -808,6 +808,17 @@ def setze_fenster_symbol(titel_substring: str) -> bool:
                 xor += bytes((b, g, r))
             # AND-Maske: 0 = Pixel zeigen. Voll deckend, das Symbol ist quadratisch.
             und += b"\x00\x00"
+        # Signaturen setzen, sonst behandelt ctypes das zurueckgegebene HICON als
+        # int und schneidet es auf 32 Bit ab — auf einem 64-Bit-Windows kommt
+        # dann ein kaputtes Handle bei SendMessage an, und das Symbol bleibt das
+        # von python.exe. Genau daran ist der erste Versuch gescheitert.
+        user32.CreateIcon.restype = ctypes.c_void_p
+        user32.CreateIcon.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                      ctypes.c_byte, ctypes.c_byte,
+                                      ctypes.c_char_p, ctypes.c_char_p]
+        user32.SendMessageW.restype = ctypes.c_void_p
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                        ctypes.c_void_p, ctypes.c_void_p]
         symbol = user32.CreateIcon(None, breite, hoehe, 1, 24,
                                    ctypes.c_char_p(bytes(und)),
                                    ctypes.c_char_p(bytes(xor)))

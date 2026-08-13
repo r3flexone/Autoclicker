@@ -685,6 +685,20 @@ Regeln beim Erweitern:
   Farb-Trigger prüft genau diesen Wert; wer ihn ändert, ändert mit, worauf
   gewartet wird. Das Feld sagt das dazu. Ohne gemessene Farbe bleibt es leer,
   statt Schwarz zu behaupten.
+- **Neun Typen, neun unterscheidbare Farben** (`BLOCK_COLORS` in `model.py`).
+  Taste, Item-Scan und Icon-Scan lagen alle im Bereich Orange/Gelb und waren
+  nebeneinander nicht auseinanderzuhalten — womit die Farbe ihren Zweck verlor.
+  Verwandte Typen dürfen verwandt aussehen (die beiden Boss-Blöcke), müssen sich
+  dann aber deutlich in der Helligkeit trennen.
+- **Der Status steht unten, nicht im Kopf.** Oben nahm er den Platz weg, den die
+  Bedienelemente brauchen; unten hat er die volle Breite und liegt da, wo sonst
+  nichts passiert. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
+  lange Meldung im Kopf war immer abgeschnitten.
+- **Zustandsklassen bekommen ein Präfix** (`art-ok`, `art-warn`, `art-info`).
+  Ohne das hiess die Statusklasse für „Hinweis" schlicht `info` — und `.info` ist
+  der runde ⓘ-Knopf. Der Status erbte dessen Gestalt: ein leerer 13-px-Kreis
+  neben dem Start-Knopf, den niemand zuordnen konnte. Eine Klasse ohne Präfix ist
+  in einer Datei mit einem einzigen Stylesheet ein Namensraum, den alle teilen.
 - **Die Seite lädt nichts nach.** Kein Framework, keine Schrift, kein Bild von aussen:
   das Fenster läuft ohne Netz, und alles Nachgeladene wäre beim Start eine leere Fläche.
   Es gibt auch keinen Build-Schritt — was in der Datei steht, ist was läuft.

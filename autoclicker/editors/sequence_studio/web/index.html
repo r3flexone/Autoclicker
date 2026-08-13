@@ -102,17 +102,22 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;
   background:var(--panel);border-bottom:1px solid var(--line);
 }
-.marke{width:22px;height:22px;border-radius:4px;background:var(--accent);
+.marke{width:30px;height:30px;border-radius:7px;background:var(--accent);
   display:flex;align-items:center;justify-content:center;color:#0C0F14}
-.titel{font-size:12px;letter-spacing:.14em;font-weight:600}
+.titel{font-size:13px;letter-spacing:.15em;font-weight:700}
 .punkt-offen{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
 /* Nimmt den freien Platz statt einer festen Zeichenzahl: der Deckel stand bei
    46ch, und daneben lag ein Abstandhalter, der den ganzen Rest der Kopfzeile
    aufbrauchte. Eine Meldung wie "Nicht gespeichert: ITEM-SCAN in 'Loop 1'
    (Block 5) hat keinen Namen." war damit immer abgeschnitten. */
-.status{flex:1;min-width:0;text-align:right;font-size:12px;color:var(--muted);
+.fusszeile{flex:none;display:flex;align-items:center;gap:10px;padding:5px 14px;
+  background:var(--panel);border-top:1px solid var(--line);font-size:11.5px}
+.lampe-klein{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.lampe-klein.offen{background:var(--accent)}
+.status{min-width:0;font-size:11.5px;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.status.ok{color:var(--ok)} .status.warn{color:var(--accent)} .status.err{color:var(--err)}
+.status.art-ok{color:var(--ok)} .status.art-warn{color:var(--accent)}
+.status.art-err{color:var(--err)}
 
 /* -------------------------------------------------------------------- Rumpf */
 .rumpf{flex:1;display:flex;min-height:0}
@@ -157,6 +162,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   padding:1px 4px;border-radius:3px}
 .phase-kopf.init .phase-name{color:var(--init)}
 .phase-kopf.end .phase-name{color:var(--end)}
+.phase-kopf.loop .phase-name{color:var(--accent)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
 .zaehler{font-family:var(--mono);font-size:10.5px;color:var(--accent);flex:none;
@@ -223,7 +229,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* ELSE hat keine Typ-Farbe — die gewählte Kachel trägt deshalb den Akzent. */
 .typ-chip.an{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
 .segment{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
-.segment button{flex:1;padding:5px 4px;font-size:11.5px;color:var(--muted);background:var(--bg)}
+.segment button{flex:1;padding:5px 4px;font-size:11.5px;color:var(--muted);
+  background:var(--panel)}
 .segment button:hover{color:var(--text)}
 .segment button.an{background:var(--accent);color:#0C0F14;font-weight:600}
 .hinweis{font-size:11px;color:var(--dim);line-height:1.5}
@@ -311,7 +318,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
            aus Stellen, die er der Reihe nach abarbeitet. Das Play-Dreieck vorher
            hiess „irgendetwas startet" — das steht auf jedem zweiten Knopf. -->
       <div class="marke">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 3.5v10.5l2.8-2.6 2 4.4 2.2-1-1.9-4.2 3.6-.4z"/>
           <circle cx="18.5" cy="5.5" r="1.6"/>
@@ -337,14 +344,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
     <div class="reihe">
       <button class="btn haupt" id="btn-speichern">Speichern</button>
       <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
-      <span class="klein mono" id="datei"></span>
     </div>
     <div class="trenner"></div>
     <!-- Starten aus dem Editor heraus: das ist der Weg, den man beim Bauen einer
          Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst in
          den Live-Run, deshalb braucht der Knopf dort keinen Zwilling. -->
     <button class="btn" id="btn-lauf">▶ Starten</button>
-    <span class="status" id="status"></span>
   </header>
 
   <div class="rumpf" id="rumpf">
@@ -398,6 +403,18 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
        man drueben nachsieht, was gerade laeuft. -->
   <div class="karten" id="sicht-sequenzen" hidden></div>
   <div class="lauf" id="sicht-lauf" hidden></div>
+
+  <!-- Die Statusleiste sitzt unten und nicht oben rechts: dort stand sie
+       zwischen den Bedienelementen und nahm dem Kopf den Platz, den er fuer
+       weitere braucht. Unten liest man sie nach einer Aktion genau dort, wo
+       sonst nichts passiert — und lange Meldungen haben die ganze Breite. -->
+  <footer class="fusszeile">
+    <span class="lampe-klein" id="fuss-lampe"></span>
+    <span class="status" id="status"></span>
+    <span class="wachse"></span>
+    <span class="klein mono" id="fuss-datei"></span>
+    <span class="klein" id="fuss-punkte"></span>
+  </footer>
 </div>
 
 <div class="schleier" id="schleier" hidden>
@@ -627,9 +644,15 @@ function setzeAnsicht(neu) {
 
 function zeichne() {
   if (!S) return;
-  $("datei").textContent = S.datei || "";
+  $("fuss-datei").textContent = S.datei || "";
+  $("fuss-punkte").textContent = S.punkte.length + " Punkte";
   $("punkt-offen").hidden = !S.dirty;
-  document.title = (S.dirty ? "* " : "") + "Sequenz-Studio – " + S.name;
+  $("fuss-lampe").classList.toggle("offen", !!S.dirty);
+  $("fuss-lampe").title = S.dirty ? "ungespeicherte Änderungen" : "gespeichert";
+  // Der Fenstertitel bleibt schlicht: in der Titelleiste steht sonst der
+  // Sequenzname doppelt (er steht schon im Kopf der Seite), und das Fenster
+  // findet sich in der Taskleiste besser über einen gleichbleibenden Namen.
+  document.title = "Sequenz-Studio";
   setzeStatus(S.status);
   zeichneKopf();
   zeichneSequenz();
@@ -641,7 +664,10 @@ function zeichne() {
 function setzeStatus(status) {
   const n = $("status");
   n.textContent = (status && status.text) || "";
-  n.className = "status " + ((status && status.art) || "");
+  // Mit Praefix: „info" allein ist die Klasse des ⓘ-Knopfes (13px, rund), und ein
+  // Status mit dieser Art bekam dessen Gestalt — ein leerer Kreis neben dem
+  // Start-Knopf, den niemand zuordnen konnte.
+  n.className = "status art-" + ((status && status.art) || "info");
 }
 
 function zeichneKopf() {

@@ -82,15 +82,20 @@ BLOCK_LABELS = {
 
 # RGB-Farbe je Block-Typ. Sie sitzt als kleines Quadrat vor der Listenzeile —
 # frueher faerbte sie die Titelzeile einer Node.
+# Neun Typen, neun unterscheidbare Farben. Taste, Item-Scan und Icon-Scan lagen
+# vorher alle im Bereich Orange/Gelb (220,130,50 / 210,180,60 / 210,140,60) — auf
+# einer Karte nebeneinander waren sie nicht auseinanderzuhalten, und genau das ist
+# der Zweck der Farbe. Die beiden Boss-Typen bleiben bewusst verwandt (sie tun
+# Verwandtes), unterscheiden sich aber jetzt deutlich in der Helligkeit.
 BLOCK_COLORS = {
     BLOCK_SCREENSHOT: (150, 90, 200),   # Lila
-    BLOCK_BOSS_WATCHER: (200, 60, 60),  # Rot
-    BLOCK_BOSS_SCAN: (200, 80, 80),     # Rot (heller)
-    BLOCK_ITEM_SCAN: (210, 180, 60),    # Gelb
-    BLOCK_ICON_SCAN: (210, 140, 60),    # Orange-Gelb
-    BLOCK_KEY: (220, 130, 50),          # Orange
+    BLOCK_BOSS_WATCHER: (140, 40, 45),  # Dunkelrot (dauerhaft beobachten)
+    BLOCK_BOSS_SCAN: (205, 60, 60),     # Rot (einmal schauen)
+    BLOCK_ITEM_SCAN: (215, 185, 60),    # Gelb
+    BLOCK_ICON_SCAN: (45, 165, 160),    # Türkis
+    BLOCK_KEY: (225, 115, 55),          # Orange
     BLOCK_WAIT: (120, 120, 120),        # Grau
-    BLOCK_WAIT_CLICK: (60, 170, 110),   # Grün-Cyan
+    BLOCK_WAIT_CLICK: (60, 170, 110),   # Grün
     BLOCK_CLICK: (60, 120, 200),        # Blau
 }
 

@@ -146,8 +146,11 @@ def main(argv: list[str]) -> int:
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
 
+    # Titel ohne Sequenznamen: die Seite setzt ihn ohnehin auf denselben Wert
+    # (der Name steht im Kopf der Oberflaeche, in der Titelleiste waere er
+    # doppelt), und `setze_fenster_symbol()` findet das Fenster damit sofort.
     fenster = webview.create_window(
-        f"{WINDOW_TITLE} – {seq.name}",
+        WINDOW_TITLE,
         url=INDEX.as_uri(),
         js_api=bridge,
         width=1600,
