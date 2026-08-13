@@ -21,6 +21,7 @@ was `snapshot()` sagt. Sonst gibt es wieder zwei Wahrheiten — und die eine wä
 die, die gespeichert wird.
 """
 
+import copy
 import os
 import re
 import time
@@ -134,6 +135,11 @@ def _wartetext(step: SequenceStep) -> str:
 def _stelle(step: SequenceStep) -> str:
     ref = f"#{step.point_id} " if step.point_id is not None else ""
     return f"{ref}({step.x},{step.y})"
+
+
+def _bloecke(anzahl: int) -> str:
+    """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
+    return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"
 
 
 def scan_warnungen(board: SequenceBoard) -> list[str]:
@@ -911,6 +917,40 @@ class StudioBridge:
         self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
         return self._geaendert()
 
+    def auswahl_duplizieren(self, daten: Optional[dict] = None) -> dict:
+        """Legt Kopien der gewählten Blöcke direkt hinter die Auswahl.
+
+        Der schnellste Weg zu einem Block, der einem vorhandenen fast gleicht —
+        und das ist beim Bauen einer Sequenz der Normalfall: dieselbe Wartezeit,
+        derselbe Trigger, dieselbe Nachprüfung, nur eine andere Stelle. Alles
+        von Hand nachzustellen ist ein Dutzend Klicks, von denen jeder vergessen
+        werden kann.
+
+        **Die Kopie zeigt auf denselben Punkt.** Ein Duplikat ist erst mal
+        derselbe Klick; wer eine andere Stelle will, wählt einen anderen Punkt.
+        Einen zweiten Punkt an derselben Stelle anzulegen wäre genau die
+        Doppelung, die `punkt_fuer_stelle()` überall sonst vermeidet — beim
+        Nachjustieren wanderte dann nur die Hälfte mit.
+
+        Kopiert wird tief: `else_config`, `wait_condition` und
+        `verify_condition` sind eigene Objekte, sonst änderte ein Griff an der
+        Kopie zugleich das Original.
+        """
+        lane = self.sel_lane
+        if lane is None or not self.sel_rows:
+            return self._melde("Nichts ausgewählt — erst einen Block anklicken.", "warn")
+        rows = sorted(self.sel_rows)
+        # Alle Kopien hinter den LETZTEN Gewählten, in der Reihenfolge der
+        # Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse eine
+        # Mehrfachauswahl in abwechselnd Original/Kopie.
+        ziel = rows[-1] + 1
+        for versatz, idx in enumerate(rows):
+            self.board.add_step(lane, copy.deepcopy(lane.steps[idx]), ziel + versatz)
+        # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
+        # umstellen, nicht erneut suchen.
+        self.sel_rows = {ziel + i for i in range(len(rows))}
+        return self._geaendert(f"{_bloecke(len(rows))} dupliziert.")
+
     def auswahl_loeschen(self, daten: Optional[dict] = None) -> dict:
         lane = self.sel_lane
         if lane is None or not self.sel_rows:
@@ -920,7 +960,7 @@ class StudioBridge:
             self.board.delete_step(lane, idx)
         anzahl = len(self.sel_rows)
         self._auswahl_leeren()
-        return self._geaendert(f"{anzahl} Block/Blöcke gelöscht.")
+        return self._geaendert(f"{_bloecke(anzahl)} gelöscht.")
 
     # ---------------------------------------------------------- Block-Felder
 

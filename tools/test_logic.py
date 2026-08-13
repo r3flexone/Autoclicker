@@ -3869,6 +3869,47 @@ check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
       _namen8(_b8, LOOP8) == ["2", "4"])
 check("und leert die Auswahl", _b8.sel_lane is None and _b8.sel_rows == set())
 
+# --- Duplizieren ---
+# Ein Block, der einem vorhandenen fast gleicht, ist beim Bauen der Normalfall.
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 1)
+_b8.auswahl_duplizieren()
+check("die Kopie liegt direkt hinter dem Original",
+      _namen8(_b8, LOOP8) == ["1", "2", "2", "3", "4", "5"])
+check("und ist die neue Auswahl", sorted(_b8.sel_rows) == [2])
+# Die Kopie zeigt auf DENSELBEN Punkt: ein Duplikat ist erst mal derselbe Klick,
+# und ein zweiter Punkt an derselben Stelle waere genau die Doppelung, die
+# punkt_fuer_stelle() ueberall sonst vermeidet.
+check("sie zeigt auf denselben Punkt",
+      _b8.board.lanes[LOOP8].steps[2].point_id
+      == _b8.board.lanes[LOOP8].steps[1].point_id)
+
+# Tief kopiert: sonst aendert ein Griff an der Kopie zugleich das Original -
+# der teuerste Fehler, den ein Duplizieren machen kann, weil er unsichtbar ist.
+_b8 = _bruecke8()
+_b8.board.lanes[LOOP8].steps[0].else_config = _ECx(action="skip")
+_waehle8(_b8, LOOP8, 0)
+_b8.auswahl_duplizieren()
+_b8.board.lanes[LOOP8].steps[1].else_config.action = "restart"
+check("die Kopie haengt nicht am Original",
+      _b8.board.lanes[LOOP8].steps[0].else_config.action == "skip")
+
+# Mehrfachauswahl: alle Kopien hinter den LETZTEN Gewaehlten, in der Reihenfolge
+# der Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse die Auswahl
+# in abwechselnd Original/Kopie.
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 2)
+_b8.auswahl_duplizieren()
+check("eine Mehrfachauswahl bleibt als Block beisammen",
+      _namen8(_b8, LOOP8) == ["1", "2", "3", "1", "3", "4", "5"])
+check("und die Kopien sind zusammenhaengend gewaehlt", sorted(_b8.sel_rows) == [3, 4])
+
+_b8 = _bruecke8()
+_z8 = _b8.auswahl_duplizieren()
+check("ohne Auswahl passiert nichts - mit Ansage",
+      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"]
+      and _z8["status"]["art"] == "warn")
+
 # --- Kein Schritt geht je verloren ---
 _b8 = _bruecke8()
 _vorher8 = sorted(_namen8(_b8, INIT8) + _namen8(_b8, LOOP8) + _namen8(_b8, END8))

@@ -653,6 +653,14 @@ Regeln beim Erweitern:
 - **Neue Bedienelemente kommen als Methode in `bridge.py`**, nicht als Logik im
   JavaScript. Nur so bleibt es messbar; die Oberfläche ist der ungetestete Teil und
   soll klein bleiben.
+- **Sammel-Aktionen arbeiten auf der Auswahl, nicht auf einem Block.**
+  Verschieben, Löschen und Duplizieren nehmen alle gewählten Zeilen; beim
+  Duplizieren landen die Kopien **hinter der letzten** Gewählten und werden zur
+  neuen Auswahl. Jede Kopie einzeln hinter ihr Original zu setzen zerrisse eine
+  Mehrfachauswahl in abwechselnd Original/Kopie. Kopiert wird tief
+  (`copy.deepcopy`) und **auf denselben Punkt** — ein Duplikat ist erst mal
+  derselbe Klick, und ein zweiter Punkt an derselben Stelle wäre die Doppelung,
+  die `punkt_fuer_stelle()` überall sonst vermeidet.
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.

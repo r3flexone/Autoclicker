@@ -194,6 +194,11 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Eigenschaften: Typwechsel, Wartezeit, Punkt, Farb-Trigger, Nachprüfung, ELSE,
       Scan-Name/-Modus, Screenshot-Bereich. Änderungen erscheinen sofort auf der Karte.
 - [ ] X/Y im Feld „Stelle" verschieben den **Punkt**: alle Blöcke darauf ziehen mit.
+- [ ] 🆕 **Duplizieren** (Knopf oder `STRG+D`): die Kopie steht direkt hinter dem
+      Original, trägt dessen Einstellungen (Wartezeit, Trigger, Nachprüfung, ELSE)
+      und ist danach ausgewählt. Gegenprobe: an der Kopie etwas ändern → das
+      Original bleibt, wie es war. Mehrfachauswahl duplizieren → die Kopien liegen
+      als Block hinter der Auswahl.
 - [ ] Laden/Neu mit ungespeicherten Änderungen fragt nach (Speichern / Verwerfen /
       Abbrechen).
 - [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine

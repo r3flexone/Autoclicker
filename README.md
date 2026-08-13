@@ -1383,7 +1383,12 @@ steht auf einmal da.
   bevor das Speichern ihn ablehnt
 - **Ziehen mit Einfüge-Marke**: zwischen Karten und über Phasengrenzen; ein Punkt aus
   der Palette wird per Ziehen zum Klick-Block. Mehrfachauswahl mit STRG (Bereich mit
-  SHIFT), Tastatur: `Entf`, `ALT+↑/↓`, `STRG+S`
+  SHIFT), Tastatur: `Entf`, `STRG+D` (duplizieren), `ALT+↑/↓`, `STRG+S`
+- **Duplizieren** (Knopf neben „löschen" oder `STRG+D`): legt Kopien der gewählten
+  Blöcke direkt dahinter — mit Wartezeit, Trigger, Nachprüfung und ELSE. Die Kopie
+  zeigt auf **denselben Punkt**: ein Duplikat ist erst mal derselbe Klick, und ein
+  zweiter Punkt an derselben Stelle wäre eine Doppelung, bei der später nur die
+  Hälfte mitwandert
 - **Eigenschaften vollständig**: Typ, Name, Wartezeit/Zufallsbereich, Stelle, Farb-Trigger
   (inkl. „nur prüfen"), **Nachprüfung**, ELSE, Scan-Name/-Modus, Screenshot-Bereich —
   die Nachprüfung war in der alten Ansicht gar nicht erreichbar

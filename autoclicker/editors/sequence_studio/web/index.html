@@ -420,6 +420,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
       <div class="insp-kopf">
         <span class="insp-punkt" id="insp-punkt"></span>
         <span class="ueberschrift wachse" id="insp-titel">KEIN BLOCK</span>
+        <!-- Duplizieren steht neben Löschen, weil beide dasselbe meinen: „mit
+             der Auswahl". Ein Block, der einem vorhandenen fast gleicht, ist
+             beim Bauen der Normalfall — Wartezeit, Trigger, Nachprüfung und
+             ELSE von Hand nachzustellen sind ein Dutzend Klicks. -->
+        <button class="btn still" id="btn-block-kopie"
+                title="Auswahl duplizieren (STRG+D)">duplizieren</button>
         <button class="btn still" id="btn-block-weg" title="Auswahl löschen (Entf)">löschen</button>
       </div>
       <div class="abschnitt wachsend" id="inspektor"></div>
@@ -1271,11 +1277,13 @@ function zeichneInspektor() {
   const gewaehlt = S.auswahl.zeilen.length;
 
   $("btn-block-weg").disabled = gewaehlt === 0;
+  $("btn-block-kopie").disabled = gewaehlt === 0;
   if (!b) {
     $("insp-punkt").style.background = "#2A3245";
     $("insp-titel").textContent = gewaehlt > 1 ? gewaehlt + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
     ziel.appendChild(el("div", {class: "leer"}, gewaehlt > 1
-      ? el("span", {}, "Mehrfachauswahl: verschieben mit ALT+↑/↓, löschen mit Entf.",
+      ? el("span", {}, "Mehrfachauswahl: verschieben mit ALT+↑/↓, duplizieren mit " +
+                       "STRG+D, löschen mit Entf.",
            el("br"), "Für die Einstellungen einen einzelnen Block wählen.")
       : el("span", {}, "Block anklicken, um ihn zu bearbeiten.", el("br"),
            "Ziehen sortiert um — auch über Phasengrenzen.")));
@@ -1670,6 +1678,7 @@ function verdrahte() {
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-lauf").addEventListener("click", () => laufSchicken(laufLief ? "stop" : "start"));
   $("btn-block-weg").addEventListener("click", () => ruf("auswahl_loeschen"));
+  $("btn-block-kopie").addEventListener("click", () => ruf("auswahl_duplizieren"));
 
   $("seq-name").addEventListener("change", (e) =>
     ruf("sequenz_setzen", {feld: "name", wert: e.target.value}));
@@ -1717,6 +1726,10 @@ function tastatur(e) {
   }
   if (imTextfeld() || offeneFrage) return;
   if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+    e.preventDefault();          // sonst legt der Browser ein Lesezeichen an
+    return ruf("auswahl_duplizieren");
+  }
   if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); return ruf("auswahl_verschieben", {delta: -1}); }
   if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); return ruf("auswahl_verschieben", {delta: 1}); }
 }
