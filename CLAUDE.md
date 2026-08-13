@@ -729,14 +729,15 @@ Regeln beim Erweitern:
   falschen Spalte zu kleben. Umgesetzt über `box-shadow: 0 0 0 1px <farbe>` und
   nicht über einen dickeren Rahmen: der liesse das Element um einen Pixel
   wachsen und verschöbe bei jedem Wechsel das ganze Raster. Betrifft die
-  gewählte Karte, die Phasenköpfe im Board und die laufende Phase im Live-Run.
-  **Nicht** betroffen ist der Farbstreifen der Typ-Kacheln: der ist eine
-  Legende zur Blockfarbe, kein Zustand — und neun farbige Rahmen nebeneinander
-  wären nur noch Unruhe.
-- **Alle Typ-Kacheln tragen ihren Farbstreifen**, nicht nur die gewählte — damit ist
-  das Raster zugleich die Legende zu den Farben im Board. Der Streifen steht als
-  `border-left` im `style`-Attribut und damit *nach* dem `border` aus `.typ-chip`;
-  beides in einem Stil, und die Kurzform setzt alle vier Seiten und räumt ihn weg.
+  gewählte Karte, die Phasenköpfe im Board, die laufende Phase im Live-Run und
+  die Typ-Kacheln im Inspektor. Bei den Kacheln ist die Farbe **Legende** statt
+  Zustand — sie tragen sie deshalb alle, und nur die gewählte ist zusätzlich
+  ausgefüllt.
+- **Alle Typ-Kacheln tragen ihre Farbe**, nicht nur die gewählte — damit ist das
+  Raster zugleich die Legende zu den Farben im Board. Ringsum als Rahmen (dieselbe
+  Regel wie oben), die gewählte zusätzlich ausgefüllt. `border-color` steht im
+  `style`-Attribut und damit *nach* dem `border`-Kurzformat aus `.typ-chip`;
+  andersherum räumte die Kurzform die Farbe wieder weg.
 - **Jede Stelle wird über einen Punkt gesetzt**, auch die des ELSE-Klicks und der
   Nachprüfung. Die DPG-Fassung liess dort Zahlen eintippen — `_step_to_dict` schreibt
   die aber nicht, solange eine Referenz danebensteht, und die Eingabe war beim nächsten

@@ -1387,25 +1387,25 @@ function zeichneInspektor() {
                                 " · " + phase.name.toUpperCase();
 
   // --- Typ ---
-  // Jede Kachel traegt ihren Farbstreifen, nicht nur die gewaehlte: damit ist das
-  // Raster zugleich die Legende zu den Farben im Board — vorher musste man sie
-  // sich aus den Karten zusammensuchen —, und man sieht vor dem Klick, wie die
-  // Karte danach aussieht.
+  // Jede Kachel traegt ihre Farbe, nicht nur die gewaehlte: damit ist das Raster
+  // zugleich die Legende zu den Farben im Board — vorher musste man sie sich aus
+  // den Karten zusammensuchen —, und man sieht vor dem Klick, wie die Karte
+  // danach aussieht.
   //
-  // `border-left` steht hier im style-Attribut und damit NACH dem `border` aus
-  // .typ-chip; nur deshalb ueberlebt der Streifen. Beides in einem Stil, und die
-  // Kurzform setzt alle vier Seiten und raeumt ihn wieder weg.
+  // Die Farbe liegt ringsum statt als Streifen links (dieselbe Regel wie bei
+  // Phasenkopf, Karte und laufender Phase), die GEWAEHLTE ist zusaetzlich
+  // ausgefuellt. `border-color` steht im style-Attribut und damit nach dem
+  // `border`-Kurzformat aus .typ-chip — andersherum raeumte die Kurzform die
+  // Farbe wieder weg.
   ziel.appendChild(ueberschrift("BLOCK-TYP",
-    "Die Farbe links wiederholt sich auf der Karte im Board — das Raster ist " +
-    "zugleich die Legende dazu.", "blocktyp"));
+    "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
+    "ist zugleich die Legende dazu.", "blocktyp"));
   ziel.appendChild(el("div", {class: "gitter3"}, S.typen.map((t) =>
     el("button", {
       class: "typ-chip",
-      style: "border-left:3px solid " + t.farbe +
+      style: "border-color:" + t.farbe +
              (t.key === b.typ
-               ? ";background:" + t.farbe + ";border-top-color:" + t.farbe +
-                 ";border-right-color:" + t.farbe + ";border-bottom-color:" + t.farbe +
-                 ";color:#0C0F14;font-weight:600"
+               ? ";background:" + t.farbe + ";color:#0C0F14;font-weight:600"
                : ""),
       onclick: () => ruf("block_typ", {typ: t.key}),
     }, t.label))));
