@@ -4972,6 +4972,14 @@ try:
         "Boss-Scan": (SequenceStep(delay_before=0, boss_scan="s"), True),
         "Icon-Scan": (SequenceStep(delay_before=0, icon_scan="s"), True),
     }
+    # Die Ausloeser-Liste und die Scan-Felder des Editors sind zwei Listen ueber
+    # dieselben Felder - laufen sie auseinander, warnt der Editor am falschen Block.
+    from autoclicker.editors.sequence_studio.bridge import _ELSE_SCANS as _es16
+    check("die ELSE-Ausloeser sind Scan-Felder, die der Editor kennt",
+          set(_es16) < set(_sfeld12.values()))
+    check("...und der Boss-Watcher ist bewusst NICHT dabei",
+          "boss_watcher" in _sfeld12.values() and "boss_watcher" not in _es16)
+
     _falsch16 = [n for n, (s, soll) in _faelle16.items() if _eg16(s) is not soll]
     check("die Oberflaeche weiss, wo ELSE feuern kann", _falsch16 == [])
     if _falsch16:
