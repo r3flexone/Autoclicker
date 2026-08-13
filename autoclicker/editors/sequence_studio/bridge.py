@@ -29,9 +29,11 @@ from pathlib import Path
 from typing import Optional
 
 from ...models import (
+    BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_ICON_SCAN,
+    BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
     ELSE_CLICK, ELSE_KEY, ELSE_RESTART, ELSE_SKIP, ELSE_SKIP_CYCLE,
     SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
-    LoopPhase, Sequence, SequenceStep, WaitCondition,
+    LoopPhase, Sequence, SequenceStep, WaitCondition, block_type,
 )
 from ...persistence import (
     list_available_boss_scans, list_available_icon_scans, list_available_item_scans,
@@ -39,10 +41,8 @@ from ...persistence import (
 )
 from ...utils import sanitize_filename
 from .model import (
-    BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_COLORS,
-    BLOCK_ICON_SCAN, BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_LABELS,
-    BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
-    LANE_LOOP, Lane, PalettePoint, SequenceBoard, block_type,
+    BLOCK_COLORS, BLOCK_LABELS,
+    LANE_LOOP, Lane, PalettePoint, SequenceBoard,
     board_to_sequence, ensure_else, load_palette_points, save_palette_points,
     sequence_to_board, set_block_type, step_from_point,
 )
@@ -525,6 +525,14 @@ class StudioBridge:
         # Farbe wartet, geht durch `execute_step`.
         if time.time() - float(zustand.get("stand") or 0) > 5:
             return {"aktiv": False, "verwaist": True}
+        # Typ → Farbe und Marke: die Laufzeit schreibt nur den Schlüssel, weil
+        # `runtime/` die Ansicht nicht kennen darf. Übersetzt wird hier, damit
+        # der laufende Block dieselbe Farbe trägt wie seine Karte im Board — die
+        # Farbe ist die Legende, und sie muss in beiden Ansichten dieselbe sein.
+        typ = zustand.get("block_typ")
+        if typ in BLOCK_COLORS:
+            zustand["block_farbe"] = _hex(BLOCK_COLORS[typ])
+            zustand["block_marke"] = BLOCK_LABELS[typ]
         return zustand
 
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`

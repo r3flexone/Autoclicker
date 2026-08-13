@@ -1404,6 +1404,8 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **Der laufende Block trägt seine Typfarbe** im Live-Run — grün für FARBE+KLICK,
+  rot für Boss-Scan und so weiter, dieselbe Farbe wie seine Karte im Board
 - **Der Live-Run sagt, worauf der Block wartet**: Restzeit bzw. Timeout-Countdown,
   und beim Farb-Trigger die gespeicherte neben der gerade gemessenen Farbe, deren
   Abstand samt Toleranz und was nach dem Timeout kommt (ELSE bzw. die globale

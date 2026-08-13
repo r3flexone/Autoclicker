@@ -622,6 +622,15 @@ Die Ansicht zeigt weiterhin nur die *laufende* Phase und nicht alle: die Statusd
 kennt die übrigen nicht, und sie aus der geöffneten Sequenz zu holen wäre geraten —
 laufen kann eine ganz andere.
 
+**Der laufende Block trägt seine Typfarbe** — dieselbe, die seine Karte im Board
+hat. Die Farbe ist die Legende; stünde sie nur im Editor, müsste man beim Blick in
+den Live-Run raten, welcher der neun Typen gerade läuft. Damit das geht, liegen die
+`BLOCK_*`-Schlüssel und `block_type()` in **`models.py`**: die Laufzeit schreibt den
+Schlüssel in den Laufstatus (`block_typ`), die Brücke übersetzt ihn in Farbe und
+Marke. `runtime/` darf die Ansicht nicht importieren, und zwei Kopien der
+Klassifikation wären zwei Stellen, an denen ein neuer Block-Typ vergessen wird —
+`BLOCK_LABELS`/`BLOCK_COLORS` bleiben bei der Ansicht, das ist Anzeige.
+
 **Beim aktuellen Block steht, worauf er wartet** (`status.wartet()`, Feld `warten`).
 „seit 12 s" allein beantwortet die Frage nicht: bei einer Wartezeit von 15 s sind
 zwölf Sekunden fast geschafft, bei einem Farb-Trigger mit 300 s Timeout haben sie

@@ -15,7 +15,7 @@ from pathlib import Path
 from ..imaging import PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name
 from ..models import (
     AutoClickerState, SequenceStep,
-    ACTION_TEXT, SCAN_MODE_ALL,
+    ACTION_TEXT, SCAN_MODE_ALL, block_type,
     TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART,
     CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
@@ -761,9 +761,12 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
     # `warten: None` gehört dazu: der neue Block wartet noch auf nichts, und der
     # Warte-Kasten des vorherigen darf nicht darüber stehenbleiben.
+    # `block_typ` ist der Schlüssel, nicht die Farbe: die Zuordnung Typ→Farbe ist
+    # Anzeige und gehört ins Studio (`BLOCK_COLORS`). Hier steht nur, WAS läuft.
     status.schreibe(state, {"block": step_num, "bloecke": total_steps,
                             "block_label": describe_step(step),
                             "block_titel": step.name or "",
+                            "block_typ": block_type(step),
                             "block_seit": time.time(), "warten": None})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,

@@ -215,6 +215,8 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Pause und Stoppen aus der Live-Ansicht wirken; CTRL+ALT+S/G tun weiterhin
       dasselbe.
 - [ ] Während eines Laufs in den Editor wechseln → die Ansicht bleibt dort stehen.
+- [ ] 🆕 Der laufende Block im Live-Run trägt seine Typfarbe und Marke (grün
+      FARBE+KLICK, rot BOSS-SCAN, …) — dieselbe wie seine Karte im Editor.
 - [ ] 🆕 Ein Block mit **Wartezeit** läuft: im Live-Run steht „noch X s von Y s",
       der Balken füllt sich, und nach Ablauf verschwindet der Kasten sofort —
       nicht erst beim nächsten Block.

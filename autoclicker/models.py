@@ -360,6 +360,52 @@ class SequenceStep:
         return self.delay_before
 
 
+# Block-Typ eines Schritts. Ein `SequenceStep` ist polymorph — welche Art er ist,
+# steht in den gesetzten Feldern. Die Klassifikation liegt hier und nicht in der
+# Studio-Ansicht, weil zwei Stellen sie brauchen, die sich nicht kennen dürfen:
+# das Sequenz-Studio (eigener Prozess) faerbt danach seine Karten, und die
+# Laufzeit schreibt sie in den Laufstatus, damit die Live-Ansicht den laufenden
+# Block genauso faerben kann. Beschriftung und Farbe bleiben Anzeige und stehen
+# weiterhin bei der Ansicht (`BLOCK_LABELS`, `BLOCK_COLORS`).
+BLOCK_SCREENSHOT = "screenshot"
+BLOCK_BOSS_WATCHER = "boss_watcher"
+BLOCK_BOSS_SCAN = "boss_scan"
+BLOCK_ITEM_SCAN = "item_scan"
+BLOCK_ICON_SCAN = "icon_scan"
+BLOCK_KEY = "key"
+BLOCK_WAIT = "wait"              # wait_only ohne Klick
+BLOCK_WAIT_CLICK = "wait_click"  # wait_condition + Klick
+BLOCK_CLICK = "click"            # einfacher Klick (evtl. mit Zeit-Delay)
+
+
+def block_type(step: "SequenceStep") -> str:
+    """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
+
+    Die String-Diskriminatoren werden mit `is not None` geprüft, nicht per
+    Truthiness: ein frisch im Editor gewählter Scan-/Tasten-Block hat zunächst
+    einen leeren Namen ("") und soll trotzdem als sein gewählter Typ angezeigt
+    werden, bis der User den Namen einträgt. Geladene Sequenzen haben hier nie
+    "" (nur None oder echte Namen), darum bleibt das Verhalten identisch.
+    """
+    if step.screenshot_only:
+        return BLOCK_SCREENSHOT
+    if step.boss_watcher is not None:
+        return BLOCK_BOSS_WATCHER
+    if step.boss_scan is not None:
+        return BLOCK_BOSS_SCAN
+    if step.icon_scan is not None:
+        return BLOCK_ICON_SCAN
+    if step.item_scan is not None:
+        return BLOCK_ITEM_SCAN
+    if step.key_press is not None:
+        return BLOCK_KEY
+    if step.wait_only:
+        return BLOCK_WAIT
+    if step.wait_condition is not None:
+        return BLOCK_WAIT_CLICK
+    return BLOCK_CLICK
+
+
 @dataclass
 class LoopPhase:
     """Eine Loop-Phase mit eigenen Schritten und Wiederholungen."""

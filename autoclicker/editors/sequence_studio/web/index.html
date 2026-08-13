@@ -298,6 +298,17 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .tafel.laufend{border-left:3px solid var(--accent)}
 .fortschritt{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
 .fortschritt span{display:block;height:100%;background:var(--accent);border-radius:3px}
+/* Der laufende Block traegt seine Typfarbe — dieselbe wie seine Karte im Board.
+   Die Farbe ist die Legende; stuende sie nur im Editor, muesste man beim Blick
+   in den Live-Run raten, welcher der neun Typen da gerade laeuft. Die Tafel
+   bekommt dafuer eine Kopfzeile ueber die volle Breite, also kein Innenabstand
+   oben. */
+.tafel.mit-kopf{padding:0;gap:0}
+.tafel.mit-kopf .karte-kopf{border-radius:6px 6px 0 0;padding:9px 14px}
+.tafel.mit-kopf .karte-kopf .karte-typ{font-size:11px}
+.tafel.mit-kopf .karte-kopf .karte-titel{font-size:13.5px}
+.tafel-leib{padding:14px;display:flex;flex-direction:column;gap:10px}
+
 /* Der Warte-Kasten in der Live-Ansicht. Abgesetzt vom Rest der Tafel, weil er
    das Einzige ist, was sich im Sekundentakt ändert — und weil er verschwindet,
    sobald der Block nicht mehr wartet. */
@@ -1214,17 +1225,23 @@ async function zeichneLauf() {
          "Durchlauf " + (z.durchlauf || 1) + " / " + (z.wiederholungen || 1))),
     balken(z.durchlauf || 0, z.wiederholungen || 1)));
 
-  ziel.appendChild(el("div", {class: "tafel"},
-    el("div", {class: "reihe"},
-      el("span", {class: "ueberschrift wachse"}, "AKTUELLER BLOCK"),
-      el("span", {class: "klein mono"},
+  // Kopfzeile in der Typfarbe des laufenden Blocks — dieselbe Gestalt wie seine
+  // Karte im Board, damit man ihn wiedererkennt statt ihn zu lesen. Ohne Typ
+  // (alte Statusdatei) bleibt sie neutral statt eine Farbe zu erfinden.
+  ziel.appendChild(el("div", {class: "tafel mit-kopf"},
+    el("div", {class: "karte-kopf",
+               style: "background:" + (z.block_farbe || "#2A3245") +
+                      (z.block_farbe ? "" : ";color:var(--text)")},
+      el("span", {class: "karte-typ"}, z.block_marke || "AKTUELLER BLOCK"),
+      el("span", {class: "karte-titel"}, z.block_titel || "(ohne Namen)"),
+      el("span", {class: "karte-nr"},
          "Block " + (z.block || 0) + " / " + (z.bloecke || 0))),
-    el("div", {style: "font-size:14px;font-weight:600"}, z.block_titel || "(ohne Namen)"),
-    el("div", {class: "karte-zeile"}, z.block_label || ""),
-    balken(z.block || 0, z.bloecke || 1),
-    el("span", {class: "klein mono"},
-       "seit " + dauer(jetzt - (z.block_seit || jetzt))),
-    warteKasten(z.warten, jetzt)));
+    el("div", {class: "tafel-leib"},
+      el("div", {class: "karte-zeile"}, z.block_label || ""),
+      balken(z.block || 0, z.bloecke || 1),
+      el("span", {class: "klein mono"},
+         "seit " + dauer(jetzt - (z.block_seit || jetzt))),
+      warteKasten(z.warten, jetzt))));
 
   const zaehler = z.zaehler || {};
   ziel.appendChild(el("div", {class: "kachel"},

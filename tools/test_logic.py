@@ -4704,6 +4704,43 @@ try:
     check("ein alter Stand gilt als verwaist",
           _verwaist16 == {"aktiv": False, "verwaist": True})
 
+    # --- Der laufende Block traegt dieselbe Farbe wie seine Karte im Board ---
+    # Die Farbe IST die Legende: waere sie in der Live-Ansicht eine andere,
+    # muesste man beim Blick dorthin raten, welcher der neun Typen laeuft. Die
+    # Laufzeit schreibt nur den Schluessel (sie darf die Ansicht nicht kennen),
+    # uebersetzt wird in der Bruecke - dieser Test haelt beide Seiten gegeneinander.
+    Path(_rsf16).write_text(json.dumps(
+        {"aktiv": True, "sequenz": "S", "stand": _time16.time(),
+         "block_typ": "boss_scan"}), encoding="utf-8")
+    _laufend16 = _b16.lauf_status()
+    _b16c = _SB8(_SEQ8(name="F", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(delay_before=0, boss_scan="drache")])]), Path("sequences/F.json"), "sequences")
+    _karte16 = [b for p in _b16c.snapshot()["phasen"] for b in p["bloecke"]][0]
+    check("die Live-Ansicht faerbt wie das Board",
+          _laufend16.get("block_farbe") == _karte16["farbe"] is not None)
+    check("und traegt dieselbe Marke",
+          _laufend16.get("block_marke") == _karte16["label"] == "BOSS-SCAN")
+
+    # Ohne Typ wird keine Farbe erfunden - eine Statusdatei aus einer aelteren
+    # Fassung hat das Feld nicht.
+    Path(_rsf16).write_text(json.dumps(
+        {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
+    check("ohne Typ bleibt die Kopfzeile neutral",
+          "block_farbe" not in _b16.lauf_status())
+
+    # Und die Klassifikation ist EINE: die Laufzeit schreibt genau den Schluessel,
+    # den das Studio faerbt. Zwei Kopien der Regel waeren zwei Stellen, an denen
+    # ein neuer Block-Typ vergessen werden kann.
+    from autoclicker.models import block_type as _bt16
+    from autoclicker.editors.sequence_studio.model import BLOCK_COLORS as _bc16
+    check("jeder Typ, den block_type liefert, hat eine Farbe",
+          all(_bt16(s) in _bc16 for s in [
+              _SS(delay_before=0, boss_scan="x"), _SS(delay_before=0, boss_watcher="x"),
+              _SS(delay_before=0, icon_scan="x"), _SS(delay_before=0, item_scan="x"),
+              _SS(delay_before=0, key_press="a"), _SS(delay_before=0, wait_only=True),
+              _SS(delay_before=0, screenshot_only=True), _SS(x=1, y=2, delay_before=0),
+              _SS(x=1, y=2, delay_before=0, wait_condition=_WCx(pixel=(1, 2), color=(3, 4, 5)))]))
+
     # --- Die Statusdatei darf NIE als Sequenz durchgehen ---
     # `Path.glob("*.json")` erfasst auch Dateien mit fuehrendem Punkt. Laege der
     # Laufstatus in sequences/, stuende er im Studio-Menue, im Konsolen-Menue und
