@@ -1414,9 +1414,18 @@ steht auf einmal da.
   Abstand samt Toleranz und was nach dem Timeout kommt (ELSE bzw. die globale
   Timeout-Aktion). Vorher stand dort nur „seit 12 s" — und das heisst bei 15 s
   Wartezeit etwas ganz anderes als bei 300 s Timeout
+- **Speichern fragt nach, wenn die Datei sich ausserhalb geändert hat** — der
+  Hauptprozess schreibt dieselben Dateien (eine Aufnahme legt Punkte an), und ohne
+  die Rückfrage gewann einfach der Zweite
+- **„Stelle mit der Maus setzen"** im Inspektor: Maus an die Stelle im Spiel, ENTER
+  — Koordinaten und Farbe werden übernommen. Die Zahlenfelder bleiben daneben
+- **Live-Ausschnitt beim Farb-Warten**: ein kleines Bild der geprüften Stelle im
+  Live-Run, mit Fadenkreuz auf dem gemessenen Pixel — die Zahl allein sagt nicht,
+  was dort gerade zu sehen ist
 - **„Stelle zeigen"** unter jedem Klick-Block: die Maus springt im Hauptprozess auf
   den Punkt, und dort steht auch, ob die Farbe an der Stelle noch der gespeicherten
-  entspricht — die Frage, die man beim Bauen einer Sequenz am häufigsten hat
+  entspricht — die Frage, die man beim Bauen einer Sequenz am häufigsten hat. Gibt
+  es mehrere Stellen (Prüf-Pixel, ELSE-Klick), steht für jede ein eigener Knopf da
 - **Statusleiste unten** statt oben rechts (mit Datei und Punktzahl), größeres Logo,
   eigene Farben für alle neun Block-Typen (Taste/Item-Scan/Icon-Scan waren alle
   orange-gelb), und der Loop-Name trägt seine Phasenfarbe wie INIT und END

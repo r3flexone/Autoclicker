@@ -433,6 +433,9 @@ def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: in
                    total_steps: int, phase: str, debug: bool, timeout: float,
                    start_time: float, expected_name: str, wait_verb: str) -> str:
     """Der Rumpf von `_execute_wait_for_color` — ausgelagert nur wegen des `finally`."""
+    # Das zuletzt aufgenommene Bild wird weitergereicht, statt jedes Mal neu
+    # aufgenommen zu werden: sonst hinge die Anzeige an der Schleifenfrequenz.
+    letztes_bild, bild = 0.0, None
     while not state.stop_event.is_set():
         if state.skip_event.is_set():
             state.skip_event.clear()
@@ -472,9 +475,13 @@ def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: in
 
         # Zugleich das Lebenszeichen — `wartet()` schreibt mit. Die gemessene Farbe
         # gehört dazu: „wartet seit 40 s" beantwortet nicht, ob überhaupt etwas
-        # Passendes in Sicht ist; Ist-Farbe und Abstand tun es.
+        # Passendes in Sicht ist; Ist-Farbe und Abstand tun es. Das Bild
+        # beantwortet die nächste Frage: was ist da statt dessen zu sehen?
+        jetzt = time.time()
+        if jetzt - letztes_bild >= _LIVE_ABSTAND:
+            letztes_bild, bild = jetzt, _pixel_ausschnitt(wc.pixel[0], wc.pixel[1])
         status.wartet(state, _farb_wartestatus(state, step, wc, current_color, dist,
-                                               start_time, timeout))
+                                               start_time, timeout, bild))
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -487,10 +494,46 @@ def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: in
     return GATE_STOP
 
 
+# Kantenlänge des Live-Ausschnitts in Pixeln (ungerade, damit die Stelle genau
+# in der Mitte liegt). 49×49 ist gross genug, um den Knopf drumherum zu erkennen,
+# und klein genug, dass das PNG in eine Statusdatei passt: rund 3 KB.
+_LIVE_RADIUS = 24
+# Höchstens einmal pro Sekunde ein neues Bild — die Warteschleife läuft
+# schneller (`pixel_check_interval`), und der Ausschnitt ist das Einzige daran,
+# das mehr als ein paar Byte kostet.
+_LIVE_ABSTAND = 1.0
+
+
+def _pixel_ausschnitt(x: int, y: int):
+    """Bildausschnitt um eine Stelle als Data-URL — oder `None`.
+
+    Die Zahl „RGB(30, 32, 34)" beantwortet nicht, WAS da gerade zu sehen ist.
+    Der Ausschnitt tut es: ein grauer Knopf, ein Ladebildschirm, ein Popup
+    davor. Genau die Frage, für die man sonst das Fenster wechselt.
+
+    Kostet einen zusätzlichen BitBlt über 49×49 Pixel plus PNG-Kodierung. Ohne
+    Pillow gibt `take_screenshot()` `None` zurück — dann eben kein Bild.
+    """
+    img = take_screenshot((x - _LIVE_RADIUS, y - _LIVE_RADIUS,
+                           x + _LIVE_RADIUS + 1, y + _LIVE_RADIUS + 1))
+    if img is None:
+        return None
+    try:
+        import base64
+        from io import BytesIO
+        puffer = BytesIO()
+        img.save(puffer, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(puffer.getvalue()).decode("ascii")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def _farb_wartestatus(state: AutoClickerState, step: SequenceStep, wc,
-                      current_color, dist, start_time: float, timeout: float) -> dict:
+                      current_color, dist, start_time: float, timeout: float,
+                      bild=None) -> dict:
     """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.wartet`)."""
     return {
+        "bild": bild,
         "art": "farbe",
         "seit": start_time,
         "bis": (start_time + timeout) if timeout > 0 else None,

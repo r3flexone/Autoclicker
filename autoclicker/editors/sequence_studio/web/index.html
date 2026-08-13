@@ -373,9 +373,32 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .farbpaar .feldchen{width:18px;height:18px;border-radius:4px;border:1px solid #0006;flex:none}
 .farbpaar .feldchen.leer{background:repeating-linear-gradient(45deg,
   var(--sub) 0 4px,var(--line) 4px 8px)}
+/* Der Live-Ausschnitt um den Prüf-Pixel. Die Zahl RGB(30,32,34) sagt nicht,
+   WAS da zu sehen ist — das Bild tut es: grauer Knopf, Ladebildschirm, Popup.
+   `pixelated`, weil 49×49 Pixel auf 104 vergrössert sonst zu Brei verlaufen. */
+.pixel-kasten{display:flex;gap:12px;align-items:flex-start}
+.live-pixel{width:104px;flex:none;display:flex;flex-direction:column;gap:4px}
+.live-pixel .rahmen{position:relative;width:104px;height:104px;border-radius:6px;
+  border:1px solid var(--line);overflow:hidden;background:var(--sub)}
+.live-pixel img{width:100%;height:100%;display:block;image-rendering:pixelated}
+/* Das Fadenkreuz markiert die gemessene Stelle — ohne es waere unklar, welcher
+   der 2401 Pixel im Bild gemeint ist. */
+.live-pixel .rahmen::after{content:"";position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px solid var(--accent);
+  border-radius:50%;box-shadow:0 0 0 1px #0008}
+.live-pixel .schild{font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
 .marke-treffer{padding:1px 7px;border-radius:9px;font-size:11px;
   background:#3ED07A22;color:var(--ok)}
 .marke-treffer.daneben{background:#94A3B822;color:var(--muted)}
+/* Block breit, Zähler schmal daneben: die Zähler ändern sich selten und
+   brauchen keine volle Breite, der Warte-Kasten schon. Unter 1000 px wird
+   daraus wieder ein Stapel — 200 px Spalte neben 300 px Rest wäre beides zu eng. */
+.lauf-mitte{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:12px;
+  align-items:start}
+@media (max-width:1000px){.lauf-mitte{grid-template-columns:1fr}}
+.lauf-mitte .kachel{grid-template-columns:1fr}
+@media (max-width:1000px){.lauf-mitte .kachel{
+  grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}}
 .kachel{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
 .kachel > div{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:12px;display:flex;flex-direction:column;gap:4px}
@@ -1199,14 +1222,24 @@ function warteKasten(w, jetzt) {
          (w.bis_weg ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
          " bei (" + w.punkt.join(",") + ")"),
       el("span", {class: "klein mono"}, "seit " + dauer(jetzt - w.seit))));
-    kasten.appendChild(el("div", {class: "farbpaar"},
-      farbstueck("soll", w.soll),
-      farbstueck("jetzt", w.ist),
-      w.distanz === null || w.distanz === undefined
-        ? el("span", {class: "klein"}, "nicht messbar")
-        : el("span", {class: "marke-treffer" + (erfuellt ? "" : " daneben")},
-             "Δ " + w.distanz + " · " +
-             (treffer ? "im Toleranzbereich" : "ausserhalb") + " (" + w.toleranz + ")")));
+    const angaben = el("div", {class: "wachse"},
+      el("div", {class: "farbpaar"},
+        farbstueck("soll", w.soll),
+        farbstueck("jetzt", w.ist),
+        w.distanz === null || w.distanz === undefined
+          ? el("span", {class: "klein"}, "nicht messbar")
+          : el("span", {class: "marke-treffer" + (erfuellt ? "" : " daneben")},
+               "Δ " + w.distanz + " · " +
+               (treffer ? "im Toleranzbereich" : "ausserhalb") + " (" + w.toleranz + ")")));
+    // Das Bild steht links neben den Zahlen: es beantwortet die Anschlussfrage
+    // („was ist da statt dessen zu sehen?"), nicht dieselbe.
+    kasten.appendChild(w.bild
+      ? el("div", {class: "pixel-kasten"},
+          el("div", {class: "live-pixel"},
+            el("div", {class: "rahmen"}, el("img", {src: w.bild, alt: ""})),
+            el("span", {class: "schild"}, "LIVE-PIXEL")),
+          angaben)
+      : angaben);
   } else {
     kasten.appendChild(el("div", {class: "kopf"},
       el("span", {class: "wachse"}, w.text || "wartet"),
@@ -1310,28 +1343,28 @@ async function zeichneLauf() {
   // Kopfzeile in der Typfarbe des laufenden Blocks — dieselbe Gestalt wie seine
   // Karte im Board, damit man ihn wiedererkennt statt ihn zu lesen. Ohne Typ
   // (alte Statusdatei) bleibt sie neutral statt eine Farbe zu erfinden.
-  ziel.appendChild(el("div", {class: "tafel mit-kopf"},
-    el("div", {class: "karte-kopf",
-               style: "background:" + (z.block_farbe || "#2A3245") +
-                      (z.block_farbe ? "" : ";color:var(--text)")},
-      el("span", {class: "karte-typ"}, z.block_marke || "AKTUELLER BLOCK"),
-      el("span", {class: "karte-titel"}, z.block_titel || "(ohne Namen)"),
-      el("span", {class: "karte-nr"},
-         "Block " + (z.block || 0) + " / " + (z.bloecke || 0))),
-    el("div", {class: "tafel-leib"},
-      el("div", {class: "karte-zeile"}, z.block_label || ""),
-      balken(z.block || 0, z.bloecke || 1),
-      el("span", {class: "klein mono"},
-         "seit " + dauer(jetzt - (z.block_seit || jetzt))),
-      warteKasten(z.warten, jetzt))));
-
   const zaehler = z.zaehler || {};
-  ziel.appendChild(el("div", {class: "kachel"},
-    [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
-     ["Timeouts", "timeouts"], ["Übersprungen", "uebersprungen"],
-     ["Neustarts", "neustarts"]].map(([text, schluessel]) =>
-      el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
-                    el("small", {}, text.toUpperCase())))));
+  ziel.appendChild(el("div", {class: "lauf-mitte"},
+    el("div", {class: "tafel mit-kopf"},
+      el("div", {class: "karte-kopf",
+                 style: "background:" + (z.block_farbe || "#2A3245") +
+                        (z.block_farbe ? "" : ";color:var(--text)")},
+        el("span", {class: "karte-typ"}, z.block_marke || "AKTUELLER BLOCK"),
+        el("span", {class: "karte-titel"}, z.block_titel || "(ohne Namen)"),
+        el("span", {class: "karte-nr"},
+           "Block " + (z.block || 0) + " / " + (z.bloecke || 0))),
+      el("div", {class: "tafel-leib"},
+        el("div", {class: "karte-zeile"}, z.block_label || ""),
+        balken(z.block || 0, z.bloecke || 1),
+        el("span", {class: "klein mono"},
+           "seit " + dauer(jetzt - (z.block_seit || jetzt))),
+        warteKasten(z.warten, jetzt))),
+    el("div", {class: "kachel"},
+      [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
+       ["Timeouts", "timeouts"], ["Übersprungen", "uebersprungen"],
+       ["Neustarts", "neustarts"]].map(([text, schluessel]) =>
+        el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
+                      el("small", {}, text.toUpperCase()))))));
 
   ziel.appendChild(steuerung(true));
 }
@@ -1484,13 +1517,31 @@ function zeichneInspektor() {
  * zum anderen Fenster.
  */
 function baueProbe(ziel, b) {
-  if (b.point_id === null || b.point_id === undefined) return;
-  ziel.appendChild(el("div", {class: "insp-fuss"},
-    el("button", {class: "btn breit", onclick: () => ruf("punkt_zeigen")},
-       "◎ Stelle zeigen"),
-    el("p", {class: "hinweis"},
-       "Setzt die Maus auf #" + b.point_id + " (" + b.x + "," + b.y + "). " +
-       "Der Hauptprozess meldet dort, ob die Farbe noch passt.")));
+  // Ein Block hat bis zu drei Stellen — Klick, Prüf-Pixel des Triggers und
+  // ELSE-Klick —, und „sitzt das noch?" fragt man bei jeder. Angeboten wird
+  // nur, was der Block wirklich hat.
+  const stellen = [];
+  if (b.point_id !== null && b.point_id !== undefined)
+    stellen.push(["klick", "Stelle", b.point_id]);
+  if (b.trigger !== "kein" && b.trigger_punkt !== null && b.trigger_punkt !== undefined)
+    stellen.push(["trigger", "Prüf-Pixel", b.trigger_punkt]);
+  if (b.verify !== "kein" && b.verify_punkt !== null && b.verify_punkt !== undefined)
+    stellen.push(["verify", "Nachprüf-Pixel", b.verify_punkt]);
+  if (b.else_aktion === "click" && b.else_punkt !== null && b.else_punkt !== undefined)
+    stellen.push(["else", "ELSE-Klick", b.else_punkt]);
+  if (!stellen.length) return;
+
+  const fuss = el("div", {class: "insp-fuss"});
+  for (const [welche, text, punkt] of stellen) {
+    fuss.appendChild(el("button", {
+      class: "btn breit",
+      onclick: () => ruf("punkt_zeigen", {welche: welche}),
+    }, "◎ " + text + " zeigen (#" + punkt + ")"));
+  }
+  fuss.appendChild(el("p", {class: "hinweis"},
+    "Setzt die Maus im Hauptprozess auf die Stelle. Dort steht dann auch, ob " +
+    "die gemessene Farbe noch zur gespeicherten passt."));
+  ziel.appendChild(fuss);
 }
 
 function baueAktion(ziel, b) {
@@ -1553,6 +1604,17 @@ function baueStelle(ziel, b) {
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", b.x, (v) => setzeStelle(b, v, b.y), {step: "1"}),
     zahlfeld("Y", b.y, (v) => setzeStelle(b, b.x, v), {step: "1"})));
+  // Die Stelle anfahren statt sie zu tippen — derselbe Weg wie beim
+  // Screenshot-Bereich. Die Zahlenfelder bleiben daneben stehen, für den Fall,
+  // dass man eine Koordinate abschreibt.
+  ziel.appendChild(el("button", {
+    class: "btn breit",
+    title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
+    onclick: () => ruf("punkt_aufnehmen"),
+  }, "✛ Stelle mit der Maus setzen"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Danach: Maus im Spiel an die Stelle, ENTER. Die Farbe wird dabei " +
+    "gleich mitgemessen — ESC bricht ab."));
   // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
   // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
   // Bedienelemente. Das rächte sich, weil er sich bei "warten" selbst ausblendete
@@ -1792,9 +1854,14 @@ function baueElse(ziel, b) {
 /* -------------------------------------------------------------------- Dialog */
 
 function zeigeFrage(frage) {
+  // Titel, Text und Knopfbeschriftungen kommen aus der Brücke: die Fälle
+  // unterscheiden sich zu sehr, um sie hier zusammenzusetzen (bei „ausserhalb
+  // geändert" gibt es nichts zu verwerfen und nichts vorher zu speichern).
   offeneFrage = frage;
-  $("dialog-text").textContent = frage.text +
-    " Vor dem " + (frage.art === "laden" ? "Laden" : "Anlegen") + " speichern?";
+  $("dialog-titel").textContent = frage.titel || "Rückfrage";
+  $("dialog-text").textContent = frage.text || "";
+  $("dialog-weg").textContent = frage.weiter || "Weiter";
+  $("dialog-speichern").hidden = !frage.speichern;
   $("schleier").hidden = false;
 }
 
@@ -1807,6 +1874,7 @@ async function fortfahren(verwerfen) {
   const frage = offeneFrage;
   schliesseFrage();
   if (!frage) return;
+  if (frage.art === "speichern") return ruf("speichern", {erzwingen: true});
   if (!verwerfen) await ruf("speichern");
   if (frage.art === "laden") await ruf("laden", {name: frage.ziel, verwerfen: true});
   else await ruf("neu", {verwerfen: true});

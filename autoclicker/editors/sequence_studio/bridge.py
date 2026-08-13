@@ -156,6 +156,19 @@ def else_greift(step: SequenceStep) -> bool:
     return any(getattr(step, feld, None) is not None for feld in _ELSE_SCANS)
 
 
+def _mtime(pfad) -> Optional[float]:
+    """Zeitstempel einer Datei — `None`, wenn es sie (noch) nicht gibt."""
+    try:
+        return Path(pfad).stat().st_mtime
+    except OSError:
+        return None
+
+
+def _punkte_pfad(sequences_dir) -> Path:
+    """Wo `save_palette_points()` schreibt. Für den Stand-Vergleich."""
+    return Path(sequences_dir) / "points.json"
+
+
 def _bloecke(anzahl: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
     return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"
@@ -203,6 +216,11 @@ class StudioBridge:
         # Zeitstempel, damit nicht jede Momentaufnahme die Datei liest.
         self._cfg_stand: float = -1.0
         self._cfg_info: dict = {}
+        # Stand der Dateien beim Laden. Der Hauptprozess schreibt dieselben
+        # Dateien (Aufnahme legt Punkte an, `save_data` schreibt die Sequenz) —
+        # ohne diesen Vergleich überschreibt das Studio das kommentarlos.
+        self._stand_datei: Optional[float] = _mtime(self.filepath)
+        self._stand_punkte: Optional[float] = _mtime(_punkte_pfad(sequences_dir))
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
         # END hätte bei "eine Position hoch" keine Bedeutung, und die
         # Sammelaktionen wären nicht mehr eindeutig.
@@ -654,9 +672,18 @@ class StudioBridge:
         lane, row, step = self._einzelner()
         if step is None:
             return self.snapshot()
-        punkt = self._punkt(step.point_id)
+        # Ein Block hat bis zu drei Stellen, und die Frage „sitzt das noch?"
+        # stellt sich bei allen dreien: der Klick, der Prüf-Pixel des Triggers
+        # und der ELSE-Klick. Welche gemeint ist, sagt der Aufrufer.
+        welche = (daten or {}).get("welche") or "klick"
+        quelle = {
+            "trigger": lambda: step.wait_condition,
+            "verify": lambda: step.verify_condition,
+            "else": lambda: step.else_config,
+        }.get(welche)
+        punkt = self._punkt(quelle().point_id if quelle and quelle() else step.point_id)
         if punkt is None:
-            return self._melde("Dieser Block hat keine Stelle zum Zeigen.", "warn")
+            return self._melde("Diese Stelle hat keinen Punkt zum Zeigen.", "warn")
 
         from ...befehl import sende
         if not sende("zeigen", x=punkt.x, y=punkt.y, punkt=punkt.id,
@@ -688,7 +715,10 @@ class StudioBridge:
             return self._melde("Keine Sequenz gewählt.", "warn")
         if self._dirty and not (daten or {}).get("verwerfen"):
             self._frage = {"art": "laden", "ziel": name,
-                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen."}
+                           "titel": "Ungespeicherte Änderungen",
+                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
+                                   "Vor dem Laden speichern?",
+                           "weiter": "Verwerfen", "speichern": True}
             return self.snapshot()
         pfad = next((p for n, p in list_available_sequences() if n == name), None)
         seq = load_sequence_file(pfad) if pfad else None
@@ -701,13 +731,17 @@ class StudioBridge:
         self.points = load_palette_points(self.sequences_dir)
         self._auswahl_leeren()
         self._dirty = False
+        self._stand_merken()
         return self._melde(f"Geladen: {name}")
 
     def neu(self, daten: Optional[dict] = None) -> dict:
         """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
         if self._dirty and not (daten or {}).get("verwerfen"):
             self._frage = {"art": "neu", "ziel": "",
-                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen."}
+                           "titel": "Ungespeicherte Änderungen",
+                           "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
+                                   "Vor dem Anlegen speichern?",
+                           "weiter": "Verwerfen", "speichern": True}
             return self.snapshot()
         basis = f"Sequenz_{int(time.time())}"
         # Mit einer Loop-Phase, nicht nur INIT und END: fast jede Sequenz braucht
@@ -719,6 +753,7 @@ class StudioBridge:
         self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(basis)}.json"
         self._auswahl_leeren()
         self._dirty = False
+        self._stand_merken()
         return self._melde("Neue Sequenz — noch nicht gespeichert.", "warn")
 
     def sequenz_setzen(self, daten: dict) -> dict:
@@ -763,6 +798,22 @@ class StudioBridge:
         neu = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
         umbenannt = neu != alt
 
+        # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
+        # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
+        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
+        # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
+        fremd = self._fremd_geaendert(neu if not umbenannt else None)
+        if fremd and not (daten or {}).get("erzwingen"):
+            self._frage = {
+                "art": "speichern",
+                "titel": "Ausserhalb geändert",
+                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
+                        "vermutlich vom Hauptprozess. Speichern überschreibt das.",
+                "weiter": "Trotzdem speichern",
+                "speichern": False,
+            }
+            return self.snapshot()
+
         # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlägt das fehl,
         # zeigten frisch angelegte Referenzen ins Leere — dann lieber gar nicht
         # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
@@ -774,6 +825,7 @@ class StudioBridge:
         self.filepath = neu
         self._gespeichert = True
         self._dirty = False
+        self._stand_merken()
         text = f"Gespeichert: {neu.name}"
         if umbenannt and alt.exists():
             try:
@@ -787,6 +839,27 @@ class StudioBridge:
             return self._melde(f"{text} — {leer} hat noch keine Konfiguration "
                                f"und wird übersprungen.", "warn")
         return self._melde(text)
+
+    def _fremd_geaendert(self, ziel) -> str:
+        """Welche Datei sich seit dem Laden von aussen geändert hat (leer = keine).
+
+        `ziel` ist die Sequenzdatei, die gleich geschrieben wird — beim Umbenennen
+        `None`, denn dann entsteht eine neue Datei und es gibt nichts zu
+        überschreiben. `points.json` wird immer geprüft: die schreibt das Studio
+        bei jedem Speichern mit, und der Hauptprozess legt dort während einer
+        Aufnahme neue Punkte an.
+        """
+        if ziel is not None and _mtime(ziel) not in (None, self._stand_datei):
+            return Path(ziel).name
+        punkte = _punkte_pfad(self.sequences_dir)
+        if _mtime(punkte) not in (None, self._stand_punkte):
+            return "points.json"
+        return ""
+
+    def _stand_merken(self) -> None:
+        """Nach dem Schreiben (oder Laden) den Stand der Dateien festhalten."""
+        self._stand_datei = _mtime(self.filepath)
+        self._stand_punkte = _mtime(_punkte_pfad(self.sequences_dir))
 
     def rettung_schreiben(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.
@@ -1168,6 +1241,52 @@ class StudioBridge:
         step.screenshot_region = (x1, y1, x2, y2)
         self._dirty = True
         return self._melde(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
+
+    def punkt_aufnehmen(self, daten: Optional[dict] = None) -> dict:
+        """Setzt die Stelle des Blocks auf die aktuelle Mausposition.
+
+        „(1204, 262)" sagt niemandem etwas — die Stelle fährt man an. Genau das
+        macht `bereich_aufnehmen()` schon für Screenshot-Bereiche; hier ist es
+        derselbe Weg mit einer Ecke statt zweier: Maus hin, ENTER.
+
+        Angelegt bzw. gesetzt wird über dieselben Methoden wie sonst, damit die
+        Regeln gelten, die überall gelten: ein vorhandener Punkt an derselben
+        Stelle wird wiederverwendet, und ein Trigger auf demselben Punkt zieht
+        mit.
+        """
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+
+        # Erst hier importiert — das Modul bleibt ohne Windows ladbar.
+        from ...utils.io import warte_auf_taste
+        from ...winapi import get_cursor_pos, get_screen_pixel
+
+        taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
+        if taste != "enter":
+            return self._melde(
+                "Abgebrochen — die Stelle bleibt, wie sie war." if taste == "escape"
+                else "Nichts gedrückt — die Stelle bleibt, wie sie war.", "warn")
+        x, y = get_cursor_pos()
+
+        if step.point_id is not None:
+            # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der
+            # Zahlen — der Punkt gehört nicht diesem Block allein.
+            self.punkt_setzen({"punkt": step.point_id, "feld": "x", "wert": x})
+            self.punkt_setzen({"punkt": step.point_id, "feld": "y", "wert": y})
+        else:
+            self.punkt_anlegen({"x": x, "y": y})
+
+        # Farbe gleich mitmessen: ein Punkt ohne Farbe taugt für keinen
+        # Farb-Trigger, und der Bildschirm zeigt gerade genau das Richtige —
+        # deshalb steht man ja mit der Maus dort.
+        punkt = self._punkt(step.point_id)
+        farbe = get_screen_pixel(x, y)
+        if punkt is not None and farbe is not None:
+            punkt.color = tuple(farbe)
+            self._punkte_anwenden()
+        gemessen = f" · Farbe {tuple(farbe)}" if farbe else ""
+        return self._geaendert(f"Stelle: ({x}, {y}){gemessen}")
 
     def block_punkt(self, daten: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.

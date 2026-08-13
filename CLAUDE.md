@@ -657,6 +657,12 @@ wie `_handle_color_wait_timeout`).
 
 Drei Eigenschaften, an denen das hängt:
 
+- **Der Live-Ausschnitt beantwortet die Anschlussfrage.** „RGB(30, 32, 34)" sagt
+  nicht, WAS an der Stelle zu sehen ist — ein 49×49-Ausschnitt tut es (grauer
+  Knopf, Ladebildschirm, Popup davor). Die Laufzeit nimmt ihn höchstens einmal pro
+  Sekunde auf (`_LIVE_ABSTAND`) und schreibt ihn als Data-URL mit; das sind rund
+  3 KB in einer Datei, die sonst 400 Byte hat. Ohne Pillow gibt es kein Bild und
+  entsprechend keinen leeren Rahmen.
 - **Zeiten stehen absolut in der Datei** (`seit`, `bis`), nicht als Restwerte. Der
   Worker tickt im Sekundentakt, die Ansicht fragt alle 500 ms — mit Restwerten
   ruckelte der Countdown im Raster des Workers. Beide Prozesse laufen auf derselben
@@ -672,6 +678,22 @@ Drei Eigenschaften, an denen das hängt:
 **In die Live-Ansicht wird nur auf der Flanke gesprungen** (nichts → läuft). Solange
 etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eines
 Durchgangs nicht mehr in den Editor zurück.
+
+**Zwei Prozesse, ein Ordner — und der Zweite gewinnt nicht mehr kommentarlos.**
+Das Studio merkt sich beim Laden den Zeitstempel von Sequenzdatei und
+`points.json` (`_stand_merken()`); hat sie sich beim Speichern geändert, fragt es
+nach, statt zu überschreiben. Der Fall ist Alltag: eine Aufnahme im Hauptprozess
+legt Punkte an, `save_data()` schreibt die Sequenz. Die Rückfrage ist derselbe
+Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
+Knopfbeschriftung jetzt aus der Brücke, weil sich die Fälle zu sehr
+unterscheiden (bei „ausserhalb geändert" gibt es nichts zu verwerfen).
+
+**Eine Stelle fährt man an, statt sie zu tippen** (`punkt_aufnehmen()`): Maus hin,
+ENTER — derselbe Weg wie `bereich_aufnehmen()` für Screenshot-Bereiche, nur mit
+einer Ecke. Die Farbe wird dabei gleich mitgemessen, denn der Bildschirm zeigt in
+diesem Moment genau das Richtige. Gesetzt wird über `punkt_setzen`/`punkt_anlegen`,
+damit die Regeln gelten, die überall gelten (vorhandener Punkt an derselben Stelle
+wird wiederverwendet).
 
 Regeln beim Erweitern:
 

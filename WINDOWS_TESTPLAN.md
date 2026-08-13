@@ -210,6 +210,16 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] 🆕 ELSE: ohne gesetzte Aktion ist **keine** Kachel markiert und es gibt
       keine Kachel „(keine)". Eine Aktion setzen, dann **dieselbe Kachel nochmal**
       klicken → ELSE ist wieder weg. Eine andere Kachel wechselt normal.
+- [ ] 🆕 **Stelle mit der Maus setzen**: Knopf im Inspektor, Maus ins Spiel an die
+      Stelle, ENTER → X/Y und Farbe des Punkts stimmen. ESC ändert nichts.
+- [ ] 🆕 **Fremde Änderung**: Studio offen lassen, im Hauptprozess dieselbe Sequenz
+      speichern (oder eine Aufnahme machen → points.json), dann im Studio speichern
+      → Rückfrage „Ausserhalb geändert". „Trotzdem speichern" überschreibt,
+      Abbrechen lässt die Datei in Ruhe.
+- [ ] 🆕 **Live-Ausschnitt**: bei einem Farb-Trigger zeigt der Live-Run ein Bild der
+      geprüften Stelle mit Fadenkreuz, das sich etwa im Sekundentakt erneuert.
+- [ ] 🆕 „Stelle zeigen" gibt es getrennt für Klick, Prüf-Pixel und ELSE-Klick —
+      jeder Knopf fährt die richtige Position an.
 - [ ] Laden/Neu mit ungespeicherten Änderungen fragt nach (Speichern / Verwerfen /
       Abbrechen).
 - [ ] Fenster mit ungespeicherten Änderungen schliessen → Konsole meldet eine

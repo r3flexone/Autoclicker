@@ -4747,6 +4747,104 @@ try:
           _liste_o16[_pp16(_ohne16, "loop", 0)]["name"] == "L"
           and _liste_o16[_pp16(_ohne16, "end")]["name"] == "END")
 
+    # --- "Stelle zeigen" gibt es fuer jede Stelle des Blocks ---
+    # Klick, Pruef-Pixel und ELSE-Klick sind drei verschiedene Orte; die Frage
+    # "sitzt das noch?" stellt sich bei allen.
+    from autoclicker import befehl as _bf19
+    _b20 = _SB8(_SEQ8(name="Z", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(x=1, y=1, delay_before=0, point_id=1,
+            wait_condition=_WCx(point_id=2, pixel=(2, 2), color=(1, 2, 3)),
+            else_config=_ECx(action="click", point_id=3))])]),
+        Path("sequences") / "z.json", "sequences")
+    _b20.points = [_PP8(id=1, x=11, y=11, name="A", color=None),
+                   _PP8(id=2, x=22, y=22, name="B", color=None),
+                   _PP8(id=3, x=33, y=33, name="C", color=None)]
+    _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
+    _b20.waehlen({"phase": _lane20, "zeile": 0})
+    for _welche20, _soll20 in (("klick", 11), ("trigger", 22), ("else", 33)):
+        _bf19.verwerfe()
+        _b20.punkt_zeigen({"welche": _welche20})
+        _auftrag20 = _bf19.hole()
+        check(f"'{_welche20}' zeigt auf die richtige Stelle",
+              (_auftrag20 or {}).get("argumente", {}).get("x") == _soll20)
+    _bf19.verwerfe()
+
+    # --- Stelle mit der Maus setzen ---
+    # Die Windows-Teile (warte_auf_taste, get_cursor_pos, get_screen_pixel) sind
+    # hier gestubbt; geprueft wird, was die Bruecke daraus macht.
+    import autoclicker.utils.io as _io18
+    import autoclicker.winapi as _wa18
+    _b19 = _SB8(_SEQ8(name="M", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(x=0, y=0, delay_before=0)])]), Path("sequences") / "m.json", "sequences")
+    _lane19 = next(i for i, ln in enumerate(_b19.board.lanes) if ln.steps)
+    _b19.waehlen({"phase": _lane19, "zeile": 0})
+    _schritt19 = _b19.board.lanes[_lane19].steps[0]
+    _alt19 = (_io18.warte_auf_taste, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
+    try:
+        _io18.warte_auf_taste = lambda tasten, timeout=0: "enter"
+        _wa18.get_cursor_pos = lambda: (640, 480)
+        _wa18.get_screen_pixel = lambda x, y: (10, 20, 30)
+        _z19 = _b19.punkt_aufnehmen()
+        check("ohne Punkt entsteht einer an der Mausposition",
+              _schritt19.point_id is not None and (_schritt19.x, _schritt19.y) == (640, 480))
+        check("die Farbe wird dabei gemessen",
+              _b19._punkt(_schritt19.point_id).color == (10, 20, 30))
+        check("und die Meldung nennt beides",
+              "640" in _z19["status"]["text"] and "10" in _z19["status"]["text"])
+
+        # Ein zweiter Aufruf VERSCHIEBT den vorhandenen Punkt, statt einen
+        # zweiten anzulegen - dieselbe Regel wie beim Tippen der Zahlen.
+        _wa18.get_cursor_pos = lambda: (700, 500)
+        _vorher19 = len(_b19.points)
+        _b19.punkt_aufnehmen()
+        check("ein zweiter Aufruf verschiebt statt anzulegen",
+              len(_b19.points) == _vorher19 and (_schritt19.x, _schritt19.y) == (700, 500))
+
+        # ESC laesst alles, wie es war.
+        _io18.warte_auf_taste = lambda tasten, timeout=0: "escape"
+        _z19 = _b19.punkt_aufnehmen()
+        check("ESC aendert nichts", (_schritt19.x, _schritt19.y) == (700, 500)
+              and _z19["status"]["art"] == "warn")
+    finally:
+        _io18.warte_auf_taste, _wa18.get_cursor_pos, _wa18.get_screen_pixel = _alt19
+
+    # --- Zwei Prozesse, eine Datei: der Zweite darf nicht kommentarlos gewinnen ---
+    # Studio und Hauptprozess teilen sich den Ordner. Eine Aufnahme legt Punkte
+    # an, `save_data()` schreibt die Sequenz - ohne diese Frage ist die Arbeit
+    # des Ersten weg, ohne ein Wort.
+    _b18 = _SB8(_SEQ8(name="W", loop_phases=[_LP8(name="L", repeat=1, steps=[
+        _SS(x=1, y=2, delay_before=0, point_id=1)])]),
+        Path("sequences") / "w.json", "sequences")
+    _b18.points = [_PP8(id=1, x=1, y=2, name="P", color=None)]
+    _z18 = _b18.speichern()
+    check("das erste Speichern geht ohne Rueckfrage",
+          _z18["frage"] is None and Path("sequences/w.json").exists())
+
+    # Jetzt schreibt "der Hauptprozess" dazwischen.
+    _time16.sleep(0.01)
+    Path("sequences/w.json").write_text('{"name": "fremd"}', encoding="utf-8")
+    _z18 = _b18.speichern()
+    check("eine fremde Aenderung fuehrt zur Rueckfrage",
+          (_z18["frage"] or {}).get("art") == "speichern")
+    check("und die Datei ist unangetastet",
+          "fremd" in Path("sequences/w.json").read_text(encoding="utf-8"))
+    check("die Frage nennt die Datei", "w.json" in (_z18["frage"] or {}).get("text", ""))
+
+    _z18 = _b18.speichern({"erzwingen": True})
+    check("mit Erzwingen wird geschrieben",
+          _z18["frage"] is None and "fremd" not in
+          Path("sequences/w.json").read_text(encoding="utf-8"))
+    _z18 = _b18.speichern()
+    check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
+          _z18["frage"] is None)
+
+    # points.json zaehlt genauso: dort legt eine laufende Aufnahme Punkte an.
+    _time16.sleep(0.01)
+    Path("sequences/points.json").write_text("[]", encoding="utf-8")
+    _z18 = _b18.speichern()
+    check("auch eine fremde points.json fuehrt zur Rueckfrage",
+          "points.json" in (_z18["frage"] or {}).get("text", ""))
+
     # --- Der laufende Block traegt dieselbe Farbe wie seine Karte im Board ---
     # Die Farbe IST die Legende: waere sie in der Live-Ansicht eine andere,
     # muesste man beim Blick dorthin raten, welcher der neun Typen laeuft. Die
