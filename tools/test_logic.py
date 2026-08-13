@@ -4480,6 +4480,36 @@ except TypeError:
     _gleich13 = False
 check("snapshot(None) liefert denselben Zustand wie snapshot()", _gleich13)
 
+# --- Und derselbe Vertrag eine Etage tiefer: der Warte-Kasten ---
+# Die Seite liest `w.<feld>` aus einem Dict, das die Laufzeit schreibt. Ein Feld
+# umbenannt und niemand merkt es: JavaScript wirft bei `undefined` nicht, es
+# zeigt einfach nichts an - "wartet auf die Farbe bei (undefined)" statt eines
+# Fehlers. Deshalb werden hier die Namen gegeneinander gehalten.
+from autoclicker.runtime.steps import _farb_wartestatus as _fws13
+
+class _CfgW13:
+    pixel_wait_tolerance = 30
+    pixel_timeout_action = "stop"
+
+class _StW13:
+    config = _CfgW13()
+
+_wc13 = _WCx(pixel=(4, 5), color=(1, 2, 3))
+_farbfelder13 = set(_fws13(_StW13(), _SS(delay_before=0), _wc13, (9, 9, 9), 4.0, 100.0, 30.0))
+# Der Zeit-Zweig hat keine eigene Funktion - er steht als Dict-Literal in der
+# Schleife, also wird er dort gelesen.
+import autoclicker.runtime.actions as _act13
+_zeitquelle13 = _inspect13.getsource(_act13._warte_schleife)
+_zeitfelder13 = set(_re13.findall(r'"(\w+)":', _zeitquelle13))
+_kasten13 = _html13[_html13.index("function warteKasten("):]
+_kasten13 = _kasten13[:_kasten13.index("\nfunction ")]
+_gelesen13 = set(_re13.findall(r"\bw\.([a-z_]+)", _kasten13))
+check("der Warte-Kasten liest ueberhaupt Felder", len(_gelesen13) >= 6)
+_unbekannt13 = sorted(_gelesen13 - _farbfelder13 - _zeitfelder13)
+check("und jedes davon schreibt die Laufzeit auch", _unbekannt13 == [])
+if _unbekannt13:
+    print("        liest, was niemand schreibt: " + ", ".join(_unbekannt13))
+
 # --- Eine neue Sequenz landet nie auf einer vorhandenen Datei ---
 # Der Name IN der Datei ist nicht der Dateiname: 'all dayli' liegt in
 # all_dayli.json. Wer den Dateinamen uebergibt, traf keine Sequenz und bekam eine
@@ -4700,19 +4730,81 @@ try:
     import autoclicker.runtime.actions as _act16
     import autoclicker.runtime.steps as _stp16
 
+    # Die Rueckgratliste sind die SCHLEIFENRUEMPFE, nicht ihre Huellen: zwei der
+    # drei liegen seit dem Warte-Kasten in einer eigenen Funktion, damit das
+    # Abmelden in ein `finally` passt. Gegen die Huelle geprueft waere der Test
+    # gruen geblieben, obwohl die Schleife selbst stumm ist.
     _schleifen16 = [
-        ("wait_with_pause_skip", _act16.wait_with_pause_skip),
-        ("_execute_wait_for_color", _stp16._execute_wait_for_color),
+        ("_warte_schleife", _act16._warte_schleife),
+        ("_farb_schleife", _stp16._farb_schleife),
         ("_execute_boss_watcher_step", _stp16._execute_boss_watcher_step),
     ]
     # Auf den AUFRUF pruefen, nicht auf das Wort: der Kommentar ueber jeder
     # Fundstelle nennt `status.lebenszeichen()` ebenfalls, und gegen das Wort
     # geprueft blieb der Test gruen, nachdem der Aufruf darunter entfernt war.
+    # `wartet()` zaehlt mit: es schreibt ueber dieselbe Funktion und schiebt
+    # `stand` genauso vor - wer es ruft, braucht daneben kein Lebenszeichen.
     _stumm16 = [n for n, f in _schleifen16
-                if "status.lebenszeichen(state)" not in _insp16.getsource(f)]
+                if "status.lebenszeichen(state)" not in _insp16.getsource(f)
+                and "status.wartet(state, " not in _insp16.getsource(f)]
     check("jede lange Warteschleife gibt ein Lebenszeichen", _stumm16 == [])
     if _stumm16:
         print("        ohne Lebenszeichen: " + ", ".join(_stumm16))
+
+    # --- Der Warte-Kasten: worauf der Block gerade wartet ---
+    # "seit 12 s" allein beantwortet die Frage nicht: bei 15 s Wartezeit sind
+    # zwoelf Sekunden fast geschafft, bei 300 s Timeout gerade erst angefangen.
+    _stat16.schreibe(_fs16, {"block": 5}, sofort=True)
+    _time16.sleep(0.25)     # Setzen ist gedrosselt wie jeder andere Schreibvorgang
+    _stat16.wartet(_fs16, {"art": "zeit", "text": "Vor Klick", "seit": 1.0,
+                           "bis": 7.0, "gesamt": 6.0})
+    check("der Warte-Teil kommt in die Datei",
+          _lauf16().get("warten", {}).get("art") == "zeit")
+    check("und laesst den Rest des Zustands stehen", _lauf16().get("block") == 5)
+    # Das Abmelden umgeht die Drossel: zwischen "Farbe erkannt" und dem naechsten
+    # Block liegt noch die eigene Aktion des Schritts - solange stuende in der
+    # Ansicht "wartet auf Farbe", obwohl laengst geklickt wurde.
+    _stat16.wartet(_fs16, None)
+    check("das Abmelden wird nicht gedrosselt", _lauf16().get("warten") is None)
+
+    # Jede Warteschleife meldet sich selbst wieder ab - auf JEDEM Ausgang, sonst
+    # laeuft die Restzeit in der Ansicht ins Negative. Deshalb `finally`.
+    _ohne_abmeldung16 = [n for n, f in [("wait_with_pause_skip", _act16.wait_with_pause_skip),
+                                        ("_execute_wait_for_color", _stp16._execute_wait_for_color)]
+                         if "finally:" not in _insp16.getsource(f)
+                         or "status.wartet(state, None)" not in _insp16.getsource(f)]
+    check("jede Warteschleife meldet sich wieder ab", _ohne_abmeldung16 == [])
+    # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
+    # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
+    check("der Blockwechsel raeumt den Warte-Kasten ab",
+          '"warten": None' in _insp16.getsource(_stp16.execute_step))
+
+    # Was nach dem Timeout kommt, gehoert neben den Countdown: dass in 8 s
+    # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
+    # gestoppt wird. Dieselbe Kette wie _handle_color_wait_timeout.
+    from autoclicker.models import ElseConfig as _EC16, ACTION_TEXT as _AT16
+    from autoclicker.models import VALID_ELSE_ACTIONS as _VEA16
+
+    class _CfgFake16:
+        pixel_timeout_action = "stop"
+
+    class _StFake16:
+        config = _CfgFake16()
+
+    _st16 = _StFake16()
+    _schritt16 = SequenceStep(x=1, y=2)
+    check("ohne else nennt der Status die globale Timeout-Aktion",
+          _stp16._timeout_folge(_st16, _schritt16) == "Sequenz stoppen")
+    _st16.config.pixel_timeout_action = "skip_cycle"
+    check("...und folgt ihr, wenn sie sich aendert",
+          _stp16._timeout_folge(_st16, _schritt16) == "Zyklus überspringen")
+    _schritt16.else_config = _EC16(action="skip")
+    check("mit else gewinnt else", _stp16._timeout_folge(_st16, _schritt16)
+          == "ELSE: Schritt überspringen")
+    # Die Texttabelle liegt in models.py, weil zwei Anzeigen sie brauchen, die
+    # sich nicht kennen duerfen. Ein neuer Aktionstyp ohne Text stuende in beiden
+    # als rohes "skip_cycle" da.
+    check("jede else-Aktion hat einen Text", all(a in _AT16 for a in _VEA16))
 
     _stat16.beende()
     check("am Ende ist die Datei weg", not Path(_rsf16).exists())

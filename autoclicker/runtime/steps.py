@@ -15,7 +15,7 @@ from pathlib import Path
 from ..imaging import PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name
 from ..models import (
     AutoClickerState, SequenceStep,
-    SCAN_MODE_ALL,
+    ACTION_TEXT, SCAN_MODE_ALL,
     TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART,
     CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
@@ -420,10 +420,20 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     # Verb je nach Trigger-Richtung: bis Farbe DA (auf) vs. bis Farbe WEG (bis ... weg ist)
     wait_verb = "bis weg:" if wc.until_gone else "auf"
 
-    while not state.stop_event.is_set():
-        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
-        status.lebenszeichen(state)
+    try:
+        return _farb_schleife(state, step, wc, step_num, total_steps, phase,
+                              debug, timeout, start_time, expected_name, wait_verb)
+    finally:
+        # Fertig gewartet — egal auf welchem Weg. Ohne das Abmelden stünde in der
+        # Live-Ansicht noch „wartet auf Farbe", während der Klick längst raus ist.
+        status.wartet(state, None)
 
+
+def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
+                   total_steps: int, phase: str, debug: bool, timeout: float,
+                   start_time: float, expected_name: str, wait_verb: str) -> str:
+    """Der Rumpf von `_execute_wait_for_color` — ausgelagert nur wegen des `finally`."""
+    while not state.stop_event.is_set():
         if state.skip_event.is_set():
             state.skip_event.clear()
             # SKIP überspringt das WARTEN, nicht den Schritt — der Klick folgt.
@@ -435,6 +445,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
 
         img = take_screenshot((wc.pixel[0], wc.pixel[1],
                                wc.pixel[0]+1, wc.pixel[1]+1))
+        current_color = None
+        dist = None
         if img:
             current_color = img.getpixel((0, 0))[:3]
             dist = color_distance(current_color, wc.color)
@@ -458,6 +470,12 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                          f"Warte {wait_verb} ({elapsed:.0f}s) | "
                          + color_comparison(wc.color, current_color, dist, pixel_tolerance))
 
+        # Zugleich das Lebenszeichen — `wartet()` schreibt mit. Die gemessene Farbe
+        # gehört dazu: „wartet seit 40 s" beantwortet nicht, ob überhaupt etwas
+        # Passendes in Sicht ist; Ist-Farbe und Abstand tun es.
+        status.wartet(state, _farb_wartestatus(state, step, wc, current_color, dist,
+                                               start_time, timeout))
+
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
             return _handle_color_wait_timeout(state, step, phase, step_num, total_steps, timeout)
@@ -467,6 +485,38 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
             return GATE_STOP
 
     return GATE_STOP
+
+
+def _farb_wartestatus(state: AutoClickerState, step: SequenceStep, wc,
+                      current_color, dist, start_time: float, timeout: float) -> dict:
+    """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.wartet`)."""
+    return {
+        "art": "farbe",
+        "seit": start_time,
+        "bis": (start_time + timeout) if timeout > 0 else None,
+        "punkt": [wc.pixel[0], wc.pixel[1]],
+        "soll": list(wc.color),
+        "ist": list(current_color) if current_color else None,
+        "distanz": round(dist, 1) if dist is not None else None,
+        "toleranz": state.config.pixel_wait_tolerance,
+        "bis_weg": bool(wc.until_gone),
+        "danach": _timeout_folge(state, step),
+    }
+
+
+def _timeout_folge(state: AutoClickerState, step: SequenceStep) -> str:
+    """Was nach dem Timeout passiert — dieselbe Kette wie `_handle_color_wait_timeout`.
+
+    Steht in der Live-Ansicht neben dem Countdown: dass in 8 s Schluss ist, hilft
+    nur zusammen mit der Antwort, ob dann der Schritt übersprungen oder die
+    Sequenz gestoppt wird.
+    """
+    if step.else_config:
+        was = ACTION_TEXT.get(step.else_config.action, step.else_config.action)
+        return f"ELSE: {was}"
+    return {TIMEOUT_SKIP_CYCLE: "Zyklus überspringen",
+            TIMEOUT_RESTART: "Sequenz neu starten"}.get(
+        state.config.pixel_timeout_action, "Sequenz stoppen")
 
 
 def _gate_nach_else(state: AutoClickerState, step: SequenceStep, phase: str,
@@ -709,10 +759,12 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # und Zykluswechsel im Worker schreiben immer, ein einzelner Block darf
     # ausgelassen werden. `describe_step` statt eines Typ-Kürzels, weil es hier
     # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
+    # `warten: None` gehört dazu: der neue Block wartet noch auf nichts, und der
+    # Warte-Kasten des vorherigen darf nicht darüber stehenbleiben.
     status.schreibe(state, {"block": step_num, "bloecke": total_steps,
                             "block_label": describe_step(step),
                             "block_titel": step.name or "",
-                            "block_seit": time.time()})
+                            "block_seit": time.time(), "warten": None})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
     # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.

@@ -70,6 +70,30 @@ def schreibe(state, teil: dict, sofort: bool = False) -> None:
         pass
 
 
+def wartet(state, teil) -> None:
+    """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
+
+    Der dritte Schreiber neben Worker und `execute_step`, und der einzige, der
+    sich selbst wieder abmeldet. Ohne ihn stand in der Ansicht nur „seit 12 s":
+    dass 12 s bei einem Block mit 15 s Wartezeit fast geschafft und bei einem
+    Farb-Trigger mit 300 s Timeout gerade erst angefangen sind, war daraus nicht
+    zu lesen.
+
+    Zeiten stehen als **absolute** Zeitstempel darin (`seit`, `bis`), nicht als
+    Restsekunden: der Beobachter fragt alle 500 ms, geschrieben wird höchstens
+    alle 200 ms, und die Schleifen ticken im Sekundentakt. Mit Restwerten
+    ruckelte der Countdown im Sekundenraster; mit Zeitstempeln zählt die Ansicht
+    selbst herunter. Beide Prozesse laufen auf derselben Maschine, also auf
+    derselben Uhr.
+
+    Das Abmelden schreibt **sofort**. Der Blockwechsel räumt das Feld zwar
+    ohnehin ab, aber zwischen „Farbe erkannt" und dem nächsten Block liegt noch
+    die eigene Aktion des Schritts — solange stünde in der Ansicht „wartet auf
+    Farbe", obwohl längst geklickt wurde.
+    """
+    schreibe(state, {"warten": teil}, sofort=teil is None)
+
+
 def lebenszeichen(state) -> None:
     """„Ich lebe noch" — schiebt `stand` vor, ohne etwas zu ändern.
 

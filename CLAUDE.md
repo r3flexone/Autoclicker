@@ -489,8 +489,9 @@ wird.)
   Worker samt `imaging` und `winapi` nach, und das Fenster braucht nichts davon.
 
   **`status.py` ist reine Anzeige und darf den Lauf nie stören** — jeder Schreibfehler
-  wird geschluckt. Zwei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der
-  Worker kennt Zyklus und Phase, `execute_step` den Block, keiner das Ganze.
+  wird geschluckt. Drei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der
+  Worker kennt Zyklus und Phase, `execute_step` den Block, die Warteschleifen
+  (`wartet()`) das, worauf gerade gewartet wird — keiner das Ganze.
   Geschrieben wird höchstens alle 200 ms; Phasen- und Zykluswechsel umgehen die
   Drossel (`sofort=True`), weil ein übersprungener Sprung nicht nachgeholt wird.
 
@@ -499,10 +500,11 @@ wird.)
   ein lebender Lauf ihn frisch hält. Geschrieben wird sonst pro Schritt — aber ein
   Schritt kann minutenlang dauern (Farb-Trigger bis `pixel_wait_timeout`,
   Boss-Watcher bis `llm_watcher_timeout`). Deshalb ruft **jede Schleife, die den
-  Worker länger aufhält**, `status.lebenszeichen(state)`: heute
-  `wait_with_pause_skip`, `_execute_wait_for_color` und der Boss-Watcher. Ein Test
-  hält das fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet,
-  und das ist der Fall, für den man die Ansicht aufmacht.
+  Worker länger aufhält**, `status.lebenszeichen(state)` — oder `status.wartet()`,
+  das über dieselbe Funktion schreibt und dabei noch sagt, worauf gewartet wird.
+  Heute: `_warte_schleife`, `_farb_schleife` und der Boss-Watcher. Ein Test hält das
+  fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist
+  der Fall, für den man die Ansicht aufmacht.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
@@ -619,6 +621,28 @@ benutzt** — es ist ein Umschalter und würde starten, wenn gerade nichts läuf
 Die Ansicht zeigt weiterhin nur die *laufende* Phase und nicht alle: die Statusdatei
 kennt die übrigen nicht, und sie aus der geöffneten Sequenz zu holen wäre geraten —
 laufen kann eine ganz andere.
+
+**Beim aktuellen Block steht, worauf er wartet** (`status.wartet()`, Feld `warten`).
+„seit 12 s" allein beantwortet die Frage nicht: bei einer Wartezeit von 15 s sind
+zwölf Sekunden fast geschafft, bei einem Farb-Trigger mit 300 s Timeout haben sie
+gerade erst angefangen. Der Kasten zeigt deshalb Restzeit bzw. Timeout-Countdown,
+und beim Farb-Trigger zusätzlich Soll gegen gemessenes Ist, den Abstand samt
+Toleranz und **was nach dem Timeout passiert** (`_timeout_folge()` — dieselbe Kette
+wie `_handle_color_wait_timeout`).
+
+Drei Eigenschaften, an denen das hängt:
+
+- **Zeiten stehen absolut in der Datei** (`seit`, `bis`), nicht als Restwerte. Der
+  Worker tickt im Sekundentakt, die Ansicht fragt alle 500 ms — mit Restwerten
+  ruckelte der Countdown im Raster des Workers. Beide Prozesse laufen auf derselben
+  Maschine, also auf derselben Uhr.
+- **Jede Warteschleife meldet sich selbst wieder ab**, in einem `finally` und
+  ungedrosselt. Deshalb liegen die Schleifenrümpfe in eigenen Funktionen
+  (`_warte_schleife`, `_farb_schleife`) — sonst stünde nach „Farbe erkannt" noch
+  „wartet auf Farbe" da, während der Klick längst raus ist. Der Blockwechsel räumt
+  zusätzlich ab (`"warten": None` in `execute_step`).
+- **`wartet()` ersetzt das Lebenszeichen**, es kommt nicht dazu: es schreibt über
+  dieselbe Funktion und schiebt `stand` genauso vor.
 
 **In die Live-Ansicht wird nur auf der Flanke gesprungen** (nichts → läuft). Solange
 etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eines

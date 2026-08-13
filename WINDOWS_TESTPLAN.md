@@ -210,6 +210,14 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] Pause und Stoppen aus der Live-Ansicht wirken; CTRL+ALT+S/G tun weiterhin
       dasselbe.
 - [ ] Während eines Laufs in den Editor wechseln → die Ansicht bleibt dort stehen.
+- [ ] 🆕 Ein Block mit **Wartezeit** läuft: im Live-Run steht „noch X s von Y s",
+      der Balken füllt sich, und nach Ablauf verschwindet der Kasten sofort —
+      nicht erst beim nächsten Block.
+- [ ] 🆕 Ein Block mit **Farb-Trigger** wartet: der Kasten nennt die Stelle, stellt
+      Soll gegen Ist, zeigt „Δ N · im Toleranzbereich/ausserhalb" und zählt den
+      Timeout herunter; darunter steht, was danach passiert (ELSE bzw. die globale
+      Timeout-Aktion). Gegenprobe: `pixel_wait_timeout: 0` → „ohne Timeout", kein
+      Countdown.
 - [ ] 🆕 „Stelle zeigen" unter einem Klick-Block: die Maus springt auf den Punkt,
       und in der Konsole steht die gespeicherte neben der aktuellen Farbe (mit
       „passt" bzw. „weicht ab"). Während eines Laufs passiert nichts — dort gehört

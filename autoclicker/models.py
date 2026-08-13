@@ -43,6 +43,20 @@ ELSE_CLICK = ACTION_CLICK
 ELSE_KEY = ACTION_KEY
 VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
+# Was eine Aktion tut, als Satzteil. Steht hier und nicht bei den Anzeigen, weil
+# es zwei davon gibt, die es brauchen und sich nicht kennen dürfen: die Karte im
+# Sequenz-Studio (eigener Prozess, sieht `runtime/` nicht) und der Laufstatus,
+# den die Laufzeit schreibt. Zwei Übersetzungstabellen für dieselben fünf Werte
+# wären zwei Stellen, an denen ein neuer Aktionstyp vergessen werden kann.
+ACTION_TEXT = {
+    ACTION_CLICK: "Punkt klicken",
+    ACTION_KEY: "Taste drücken",
+    ACTION_SKIP: "Schritt überspringen",
+    ACTION_SKIP_CYCLE: "Zyklus abbrechen",
+    ACTION_RESTART: "Sequenz neu starten",
+    ACTION_ITEM_SCAN: "Item-Scan ausführen",
+}
+
 # pixel_timeout_action (Config)
 TIMEOUT_SKIP_CYCLE = "skip_cycle"
 TIMEOUT_RESTART = "restart"

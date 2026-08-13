@@ -235,13 +235,29 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     remaining = seconds
     debug_active = is_verbose_debug(state)
     last_remaining = -1
+    try:
+        return _warte_schleife(state, seconds, remaining, debug_active, last_remaining,
+                               phase, step_num, total_steps, message)
+    finally:
+        # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
+        # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
+        status.wartet(state, None)
 
+
+def _warte_schleife(state: AutoClickerState, seconds: float, remaining: float,
+                    debug_active: bool, last_remaining: int, phase: str,
+                    step_num: int, total_steps: int, message: str) -> bool:
+    """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
     while remaining > 0:
         if state.stop_event.is_set():
             return False
 
         # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
-        status.lebenszeichen(state)
+        # Hier zugleich das Lebenszeichen: `wartet()` schreibt mit.
+        status.wartet(state, {"art": "zeit", "text": message,
+                              "seit": time.time() - (seconds - remaining),
+                              "bis": time.time() + remaining,
+                              "gesamt": round(seconds, 2)})
 
         if state.skip_event.is_set():
             state.skip_event.clear()

@@ -298,6 +298,30 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .tafel.laufend{border-left:3px solid var(--accent)}
 .fortschritt{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
 .fortschritt span{display:block;height:100%;background:var(--accent);border-radius:3px}
+/* Der Warte-Kasten in der Live-Ansicht. Abgesetzt vom Rest der Tafel, weil er
+   das Einzige ist, was sich im Sekundentakt ändert — und weil er verschwindet,
+   sobald der Block nicht mehr wartet. */
+.warten{background:var(--bg);border:1px solid var(--line);border-radius:6px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.warten .kopf{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.warten .rest{font-family:var(--mono);font-size:15px;font-weight:600}
+/* Beim Zeit-Warten laeuft der Balken voll, WEIL es so gedacht ist — gruen. Beim
+   Farb-Trigger zeigt derselbe Balken verbrauchte Frist bis zum Timeout, und die
+   ist kein Fortschritt: gedeckt, bis es knapp wird. */
+.warten .fortschritt span{background:var(--ok)}
+.warten.art-farbe .fortschritt span{background:var(--dim)}
+.warten.knapp .fortschritt span{background:var(--accent)}
+.warten.knapp .rest{color:var(--accent)}
+/* Soll gegen Ist: zwei gleich grosse Felder nebeneinander, damit der Blick den
+   Unterschied sieht, bevor er die Zahl liest. */
+.farbpaar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.farbpaar .stueck{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.farbpaar .feldchen{width:18px;height:18px;border-radius:4px;border:1px solid #0006;flex:none}
+.farbpaar .feldchen.leer{background:repeating-linear-gradient(45deg,
+  var(--sub) 0 4px,var(--line) 4px 8px)}
+.marke-treffer{padding:1px 7px;border-radius:9px;font-size:11px;
+  background:#3ED07A22;color:var(--ok)}
+.marke-treffer.daneben{background:#94A3B822;color:var(--muted)}
 .kachel{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
 .kachel > div{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:12px;display:flex;flex-direction:column;gap:4px}
@@ -1061,6 +1085,84 @@ function dauer(sekunden) {
          ":" + zz(s % 60);
 }
 
+/** Restzeit knapp: unter zehn Sekunden mit Zehntel, darüber ganze Sekunden. */
+function restzeit(sekunden) {
+  const s = Math.max(0, sekunden);
+  return (s < 10 ? s.toFixed(1) : String(Math.round(s))) + " s";
+}
+
+function hexfarbe(rgb) {
+  return "#" + rgb.map((n) => Math.max(0, Math.min(255, Math.round(n)))
+                              .toString(16).padStart(2, "0")).join("");
+}
+
+/** Ein Farbfeld mit Beschriftung — schraffiert, wenn nichts gemessen wurde. */
+function farbstueck(text, rgb) {
+  return el("div", {class: "stueck"},
+    el("span", {class: "feldchen" + (rgb ? "" : " leer"),
+                style: rgb ? "background:" + hexfarbe(rgb) : ""}),
+    el("span", {class: "mono"}, text + (rgb ? " " + rgb.join(",") : " —")));
+}
+
+/** Worauf der laufende Block gerade wartet.
+ *
+ * Der Kasten ist die Antwort auf „seit 12 s" allein: bei einer Wartezeit von
+ * 15 s sind zwölf Sekunden fast geschafft, bei einem Farb-Trigger mit 300 s
+ * Timeout haben sie gerade erst angefangen — und ob überhaupt etwas Passendes
+ * in Sicht ist, sagte die verstrichene Zeit gar nicht.
+ *
+ * Heruntergezählt wird **hier**, aus den absoluten Zeitstempeln der
+ * Statusdatei. Mit Restwerten aus dem Worker ruckelte die Anzeige in dessen
+ * Sekundentakt; beide Prozesse laufen auf derselben Maschine, also derselben Uhr.
+ */
+function warteKasten(w, jetzt) {
+  if (!w) return null;
+  const uebrig = w.bis ? Math.max(0, w.bis - jetzt) : null;
+  // „Knapp" meint knapp vor dem TIMEOUT — eine Warnung. Eine ablaufende
+  // Wartezeit ist keine: die soll ablaufen, und amber daneben hiesse Alarm, wo
+  // alles nach Plan läuft.
+  const knapp = w.art === "farbe" && uebrig !== null && uebrig <= 5;
+  const kasten = el("div", {class: "warten art-" + (w.art === "farbe" ? "farbe" : "zeit") +
+                                   (knapp ? " knapp" : "")});
+
+  if (w.art === "farbe") {
+    const treffer = w.distanz !== null && w.distanz !== undefined &&
+                    w.distanz <= w.toleranz;
+    // Das Ziel hängt an der Richtung: bei `bis_weg` ist ein Treffer genau das,
+    // worauf NICHT gewartet wird — dieselbe Zahl, umgekehrte Bedeutung.
+    const erfuellt = w.bis_weg ? !treffer : treffer;
+    kasten.appendChild(el("div", {class: "kopf"},
+      el("span", {class: "wachse"},
+         (w.bis_weg ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
+         " bei (" + w.punkt.join(",") + ")"),
+      el("span", {class: "klein mono"}, "seit " + dauer(jetzt - w.seit))));
+    kasten.appendChild(el("div", {class: "farbpaar"},
+      farbstueck("soll", w.soll),
+      farbstueck("jetzt", w.ist),
+      w.distanz === null || w.distanz === undefined
+        ? el("span", {class: "klein"}, "nicht messbar")
+        : el("span", {class: "marke-treffer" + (erfuellt ? "" : " daneben")},
+             "Δ " + w.distanz + " · " +
+             (treffer ? "im Toleranzbereich" : "ausserhalb") + " (" + w.toleranz + ")")));
+  } else {
+    kasten.appendChild(el("div", {class: "kopf"},
+      el("span", {class: "wachse"}, w.text || "wartet"),
+      el("span", {class: "rest"}, uebrig === null ? "" : "noch " + restzeit(uebrig))));
+  }
+
+  if (uebrig !== null) {
+    kasten.appendChild(balken(jetzt - w.seit, w.bis - w.seit));
+  }
+  if (w.art === "farbe") {
+    kasten.appendChild(el("span", {class: "klein"}, uebrig === null
+      ? "ohne Timeout — wartet, bis die Farbe stimmt"
+      : "Timeout in " + restzeit(uebrig) + " · danach " + (w.danach || "—")));
+  } else if (uebrig !== null) {
+    kasten.appendChild(el("span", {class: "klein"}, "von " + restzeit(w.gesamt || 0)));
+  }
+  return kasten;
+}
+
 function balken(ist, soll) {
   const anteil = soll > 0 ? Math.max(0, Math.min(1, ist / soll)) : 0;
   return el("div", {class: "fortschritt"}, el("span", {style: "width:" + anteil * 100 + "%"}));
@@ -1115,7 +1217,8 @@ async function zeichneLauf() {
     el("div", {class: "karte-zeile"}, z.block_label || ""),
     balken(z.block || 0, z.bloecke || 1),
     el("span", {class: "klein mono"},
-       "seit " + dauer(jetzt - (z.block_seit || jetzt)))));
+       "seit " + dauer(jetzt - (z.block_seit || jetzt))),
+    warteKasten(z.warten, jetzt)));
 
   const zaehler = z.zaehler || {};
   ziel.appendChild(el("div", {class: "kachel"},

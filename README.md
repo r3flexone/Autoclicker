@@ -1399,6 +1399,11 @@ steht auf einmal da.
   vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
 - **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
   während eines Laufs weiter im Editor arbeiten kann
+- **Der Live-Run sagt, worauf der Block wartet**: Restzeit bzw. Timeout-Countdown,
+  und beim Farb-Trigger die gespeicherte neben der gerade gemessenen Farbe, deren
+  Abstand samt Toleranz und was nach dem Timeout kommt (ELSE bzw. die globale
+  Timeout-Aktion). Vorher stand dort nur „seit 12 s" — und das heisst bei 15 s
+  Wartezeit etwas ganz anderes als bei 300 s Timeout
 - **„Stelle zeigen"** unter jedem Klick-Block: die Maus springt im Hauptprozess auf
   den Punkt, und dort steht auch, ob die Farbe an der Stelle noch der gespeicherten
   entspricht — die Frage, die man beim Bauen einer Sequenz am häufigsten hat
