@@ -689,7 +689,26 @@ Fünf Regeln, an denen der Reiter hängt:
 - **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scans.py`: wählen, neuer
   Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
-  seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander.
+  seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander —
+  **Zug um Zug, nicht als Menge**, denn die Reihenfolge ist die Rangfolge:
+  „Slots finden" steht direkt hinter „Auswählen", weil es das ist, was man
+  *zuerst* macht. Das Automatische ist der Normalfall, das Aufziehen von Hand
+  der Ausweichweg. Als vorletzte Kachel stand es da, wo man den Notnagel sucht —
+  und wer der Liste folgte, hatte 45 Slots einzeln aufgezogen, bevor er es fand.
+- **Jeder Modus hat einen Rückweg, und der ist die markierte Kachel selbst.**
+  Nochmal darauf klicken (bzw. den Buchstaben nochmal drücken) führt zurück ins
+  Auswählen und räumt eine halb gesetzte Ecke mit weg — dieselbe Regel wie bei
+  der ELSE-Kachel im Sequenz-Editor, und aus demselben Grund: ein Modus, in den
+  man nur hinein kommt, ist eine Falltür. ESC allein reicht nicht, denn ESC
+  sieht man einem Bild nicht an; das Umschalten steht deshalb im Tooltip der
+  markierten Kachel **und** im Hinweis unter dem Raster. `MODUS_WAHL` ist
+  ausgenommen — er *ist* der Rückweg.
+
+  **Der Modus bleibt dagegen stehen, solange man in ihm arbeitet**: wer zwanzig
+  Slots aufzieht, fasst die Kachel einmal an. Von selbst endet nur ein Modus,
+  der einen Durchgang hat statt einer Tätigkeit — `finden` schaltet nach der
+  Suche zurück, und zwar auch dann, wenn nichts Neues dabei war. Sonst liesse
+  derselbe Klick einen mal im Modus stehen und mal nicht, je nach Ergebnis.
 - **Die Erkennung fragt die Laufzeit, nicht sich selbst.** `scan_erkennen()`
   ruft `_check_profile_match()` aus `runtime/item_scan.py` — dieselbe Funktion,
   die im Lauf entscheidet, mit einem `state`-Stellvertreter, der nichts als die

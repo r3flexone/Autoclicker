@@ -5568,15 +5568,18 @@ try:
             check("und dem gemessenen Hintergrund", _s18["farbe"] == "#303644")
             check("die Ecke ist danach wieder frei", _z18["ecke"] is None)
 
-            # Verkehrt herum aufgezogen ist dasselbe Rechteck.
-            _b18.scan_modus_setzen({"modus": _MS18})
+            # Verkehrt herum aufgezogen ist dasselbe Rechteck. Der Modus bleibt
+            # dabei stehen - wer zwanzig Slots aufzieht, soll die Kachel nicht
+            # zwanzigmal anfassen muessen. (Nochmal darauf zu klicken hiesse
+            # jetzt "fertig, zurueck ins Auswaehlen".)
+            check("der Modus bleibt nach einem Slot stehen",
+                  _z18["modus"] == _MS18)
             _b18.scan_klick({"x": 260, "y": 260})
             _z18 = _b18.scan_klick({"x": 200, "y": 200})
             check("auch von rechts unten nach links oben",
                   _z18["slots"][1]["region"] == [200, 200, 260, 260])
 
             # --- Zu kleines Rechteck wird abgelehnt ---
-            _b18.scan_modus_setzen({"modus": _MS18})
             _b18.scan_klick({"x": 300, "y": 300})
             _z18 = _b18.scan_klick({"x": 301, "y": 301})
             check("ein Rechteck von einem Pixel wird abgelehnt",
@@ -5586,7 +5589,6 @@ try:
             # Zwei Klicks fast auf dieselbe Stelle ergaben einen Slot von 2x2 px
             # - und der war danach kaum wieder loszuwerden, weil man ihn im Bild
             # nicht mehr traf. Loeschen setzt Auswaehlen voraus.
-            _b18.scan_modus_setzen({"modus": _MS18})
             _b18.scan_klick({"x": 300, "y": 300})
             _z18 = _b18.scan_klick({"x": 304, "y": 304})
             check("ein Rechteck von vier Pixeln wird abgelehnt",
@@ -5781,6 +5783,27 @@ try:
             _z18 = _b18.scan_abbrechen()
             check("ESC verwirft den Suchbereich",
                   _z18["suchbereich"] is None and _z18["modus"] == _MW18)
+
+            # --- Der Rueckweg ist die markierte Kachel selbst ---
+            # Ein Modus, in den man nur hinein kommt, ist eine Falltuer: hinein
+            # mit einem Klick, heraus nur mit einer Taste, die man kennen muss.
+            # Dieselbe Regel wie bei der ELSE-Kachel im Sequenz-Editor.
+            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
+            check("eine Kachel schaltet ihren Modus ein", _z18["modus"] == _MB18)
+            check("und sagt, wie man wieder herauskommt",
+                  "zurück" in _z18["status"]["text"])
+            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
+            check("nochmal dieselbe Kachel fuehrt zurueck ins Auswaehlen",
+                  _z18["modus"] == _MW18)
+            # Auch eine halb gesetzte Ecke geht dabei weg - sie gehoert zu einer
+            # Absicht, die man gerade aufgegeben hat.
+            _b18.scan_modus_setzen({"modus": _MB18})
+            _b18.scan_klick({"x": 40, "y": 40})
+            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
+            check("und nimmt die halb gesetzte Ecke mit",
+                  _z18["ecke"] is None and _z18["modus"] == _MW18)
+            _z18 = _b18.scan_modus_setzen({"modus": _MW18})
+            check("Auswaehlen schaltet sich nicht selbst ab", _z18["modus"] == _MW18)
             # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
             # weiter auf "Slot 1" und dem gestellten Bild.
             _b18.slots.clear()
@@ -6060,6 +6083,14 @@ _block18 = _html18[_html18.index("const SCAN_MODI = ["):]
 _block18 = _block18[:_block18.index("];")]
 _kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
 check("jeder Modus der Bruecke hat eine Kachel", sorted(_kacheln18) == sorted(_MODI18))
+# Zug um Zug, nicht als Menge: **die Reihenfolge ist die Rangfolge.** „Slots
+# finden" steht direkt hinter „Auswaehlen", weil es das ist, was man ZUERST
+# macht - das Automatische ist der Normalfall, das Aufziehen von Hand der
+# Ausweichweg. Als vorletzte Kachel stand es da, wo man den Notnagel sucht.
+check("und die Kacheln stehen in der Reihenfolge von MODI",
+      _kacheln18 == list(_MODI18))
+check("Slots finden steht gleich hinter Auswaehlen",
+      _kacheln18[:2] == [_MW18, _MF18])
 _tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))

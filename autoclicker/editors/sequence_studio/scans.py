@@ -749,10 +749,25 @@ class ScanTeil:
     # ------------------------------------------------------ Auswahl und Modus
 
     def scan_modus_setzen(self, daten: dict) -> dict:
-        """Was ein Klick auf dem Bild bedeutet."""
+        """Was ein Klick auf dem Bild bedeutet.
+
+        **Der Rückweg ist die markierte Kachel selbst**: nochmal darauf klicken
+        (bzw. den Buchstaben nochmal drücken) führt zurück ins Auswählen —
+        dieselbe Regel wie bei der ELSE-Aktion im Sequenz-Editor. Ein Modus, in
+        den man nur hinein kommt, ist die Falltür, die es hier nicht geben darf;
+        ESC allein zu haben reicht nicht, denn ESC sieht man einem Bild nicht an.
+
+        `MODUS_WAHL` ist davon ausgenommen: er *ist* der Rückweg, ein Umschalten
+        auf sich selbst wäre bedeutungslos.
+        """
         modus = (daten or {}).get("modus") or MODUS_WAHL
         if modus not in MODI:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
+        if modus == self.scan_modus and modus != MODUS_WAHL:
+            self._ecke = None
+            self._suchbereich = None
+            self.scan_modus = MODUS_WAHL
+            return self._scan_melde("Zurück zum Auswählen.", "info")
         self.scan_modus = modus
         self._ecke = None
         # Jeder Wechsel fängt die Suche von vorn an: ein Suchbereich von vorhin
@@ -767,7 +782,8 @@ class ScanTeil:
             MODUS_FINDEN: "Slots finden: zwei Ecken um das Inventar, dann auf "
                           "einen leeren Slot-Hintergrund darin klicken.",
         }
-        return self._scan_melde(texte[modus], "info")
+        zurueck = "" if modus == MODUS_WAHL else "  ·  ESC oder nochmal die Kachel = zurück"
+        return self._scan_melde(texte[modus] + zurueck, "info")
 
     def scan_waehlen(self, daten: dict) -> dict:
         """Wählt einen Slot, ein Item oder einen Scan aus."""
@@ -911,10 +927,14 @@ class ScanTeil:
                 slot_color=farbe)
             self._dazu(ART_SLOT, name)
             neu += 1
+        # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
+        # endet er auch dann im Auswählen, wenn alles schon dastand. Nur bei
+        # Erfolg zurückzuschalten hiesse: derselbe Klick lässt einen mal im
+        # Modus stehen und mal nicht, je nach Ergebnis.
         self._suchbereich = None
+        self.scan_modus = MODUS_WAHL
         if not neu:
             return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da.", "info")
-        self.scan_modus = MODUS_WAHL
         teile = f"{neu} Slot(s) angelegt"
         if schon:
             teile += f", {schon} schon vorhanden"

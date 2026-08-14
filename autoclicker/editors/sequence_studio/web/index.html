@@ -743,7 +743,7 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
         <div class="reihe">
           <span class="klein wachse" id="scan-bereich">Vollbild</span>
           <button class="btn still" id="scan-vollbild"
-                  title="wieder den ganzen Bildschirm aufnehmen">Vollbild</button>
+                  title="zurück zum ganzen Bildschirm — dann oben aufnehmen">Vollbild</button>
         </div>
         <select id="scan-fenster" class="scan-fensterwahl"></select>
         <!-- Derselbe Befehl wie die Kachel „Bereich" weiter unten. Zwei Wege
@@ -762,6 +762,11 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
       <div class="abschnitt">
         <span class="ueberschrift">WAS EIN KLICK TUT</span>
         <div class="spalte" id="scan-modi" style="gap:4px"></div>
+        <!-- Der Rueckweg gehoert dazu, sonst ist jeder Modus eine Falltuer:
+             hinein kommt man mit einem Klick, heraus nur mit einer Taste, die
+             man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
+        <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
+          markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
       </div>
       <div class="abschnitt wachsend">
         <div class="tabs klein" id="scan-listen-tabs"></div>
@@ -2273,14 +2278,21 @@ let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
 let scanZeiger = null;            // letzte Mausposition im Bild (fuer die Vorschau)
 let scanKategorie = "";           // Kategorie-Filter der Item-Liste
 
+/* **Die Reihenfolge ist die Rangfolge**, und sie ist dieselbe wie in `MODI`
+ * (ein Test haelt beide Zug um Zug gegeneinander, nicht nur als Menge).
+ * „Slots finden" steht direkt hinter „Auswaehlen", weil es das ist, was man
+ * ZUERST macht: das Automatische ist der Normalfall, und erst wenn es nicht
+ * klappt, zieht man einen Slot von Hand auf. Als vorletzte Kachel stand es da,
+ * wo man den Notnagel sucht — und wer der Liste folgte, hatte 45 Slots einzeln
+ * aufgezogen, bevor er es fand. */
 const SCAN_MODI = [
   {key: "wahl", text: "Auswählen", taste: "V", hilfe: "Slot im Bild anklicken"},
-  {key: "slot", text: "Neuer Slot", taste: "S", hilfe: "zwei Ecken anklicken"},
+  {key: "finden", text: "Slots finden", taste: "G",
+   hilfe: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
+  {key: "slot", text: "Neuer Slot", taste: "S", hilfe: "zwei Ecken anklicken — wenn Finden nicht greift"},
   {key: "messen", text: "Hintergrundfarbe", taste: "F", hilfe: "Stelle im Slot anklicken"},
   {key: "klick", text: "Klickpunkt", taste: "K", hilfe: "wohin geklickt wird"},
   {key: "bereich", text: "Bereich", taste: "B", hilfe: "zwei Ecken um den Teil, der zählt"},
-  {key: "finden", text: "Slots finden", taste: "G",
-   hilfe: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
 ];
 
 async function zeichneScans(frisch) {
@@ -2402,14 +2414,21 @@ function scanWerkzeuge() {
   const ziel = $("scan-modi");
   ziel.replaceChildren();
   for (const m of SCAN_MODI) {
+    const an = SC.modus === m.key;
     ziel.appendChild(el("button", {
-      class: "scan-modus" + (SC.modus === m.key ? " an" : ""),
+      class: "scan-modus" + (an ? " an" : ""),
+      // Ein Umschalten sieht man einem Bedienelement nicht an — dieselbe Regel
+      // wie bei der ELSE-Kachel im Inspektor. Es steht deshalb im Tooltip der
+      // markierten Kachel UND im Hinweis unter dem Raster.
+      title: an && m.key !== "wahl"
+        ? "Nochmal klicken = zurück zum Auswählen" : "",
       onclick: () => rufScan("scan_modus_setzen", {modus: m.key}),
     },
       el("span", {}, m.text),
       el("span", {class: "taste"}, m.taste),
       el("span", {class: "klein"}, m.hilfe)));
   }
+  $("scan-modi-zurueck").hidden = SC.modus === "wahl";
   scanSchritte();
   $("scan-foto").disabled = !SC.pillow;
   $("scan-foto").textContent = SC.fenster_id ? "Fenster aufnehmen"
