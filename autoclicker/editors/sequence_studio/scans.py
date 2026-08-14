@@ -80,6 +80,7 @@ class ScanTeil:
         self.slots: dict = {}
         self.items: dict = {}
         self.scans: dict = {}
+        self._scan_stand: dict = {}            # Scan-Name -> mtime seiner Datei
         self._scan_geladen = False
         self._foto = None                      # PIL-Bild in Originalgrösse
         self._foto_bild: str = ""              # data:-URL, verkleinert
@@ -113,21 +114,38 @@ class ScanTeil:
         self.slots = load_slots(SLOTS_FILE)
         self.items = load_items(ITEMS_FILE)
         self.scans = self._scans_laden()
-        # Mit genau einem Scan gibt es nichts zu wählen — dann ist er offen.
-        # Bei mehreren wäre eine Vorauswahl geraten.
-        if len(self.scans) == 1:
-            self.scan_offen = next(iter(self.scans))
-            self._foto_laden(self.scan_offen)
+        # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
+        # Sequenzen (`zuletzt_bearbeitet()` in `sequence_studio.py`) und aus
+        # demselben Grund: ein echtes „zuletzt geöffnet" müsste jemand
+        # mitschreiben, und das Dateisystem weiss es schon.
+        #
+        # Vorher öffnete sich nur bei GENAU EINEM Scan etwas. Wer einen zweiten
+        # anlegte, sah beim nächsten Öffnen eine leere Mitte und musste erst
+        # merken, dass oben links eine Auswahl steht.
+        if self._scan_stand:
+            neuster = max(self._scan_stand, key=lambda n: self._scan_stand[n])
+            self.scan_offen = neuster
+            self._foto_laden(neuster)
 
-    @staticmethod
-    def _scans_laden() -> dict:
-        """Alle Item-Scan-Konfigurationen als Name -> Config."""
+    def _scans_laden(self) -> dict:
+        """Alle Item-Scan-Konfigurationen als Name -> Config.
+
+        Nebenbei wird der Änderungszeitpunkt jeder Datei gemerkt: daran hängt,
+        welcher Scan beim Öffnen vorne steht.
+        """
         from ...persistence import list_available_item_scans, load_item_scan_file
         gefunden = {}
+        self._scan_stand = {}
         for name, pfad in list_available_item_scans():
             cfg = load_item_scan_file(pfad)
-            if cfg is not None:
-                gefunden[cfg.name or name] = cfg
+            if cfg is None:
+                continue
+            schluessel = cfg.name or name
+            gefunden[schluessel] = cfg
+            try:
+                self._scan_stand[schluessel] = pfad.stat().st_mtime
+            except OSError:
+                self._scan_stand[schluessel] = 0.0
         return gefunden
 
     def _objekte_angleichen(self) -> None:
@@ -279,6 +297,45 @@ class ScanTeil:
         return crop_region(self._foto, tuple(region),
                            int(self._foto_info["links"]), int(self._foto_info["oben"]))
 
+    def _flaeche(self) -> Optional[dict]:
+        """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
+
+        **Ein Scan ohne Bild ist nicht dasselbe wie ein Scan ohne Inhalt.** Ein
+        älterer Scan bringt seine Slots mit, aber kein gemerktes Bild — das gibt
+        es erst, seit der Reiter es ablegt. Bis hierher stand die Mitte deshalb
+        leer, obwohl die Slots längst da waren: man sah nicht, was man hat, und
+        konnte nichts davon anfassen.
+
+        Ohne Bild wird die Fläche aus dem umschliessenden Rechteck der Slots
+        gerechnet (mit etwas Rand). Alle Umrechnungen laufen über `links`/`oben`
+        und `skala` — die stimmen dann genauso, nur ist der Hintergrund leer.
+        Ein späterer Screenshot legt sich dahinter, ohne dass sich etwas
+        verschiebt.
+
+        `bild` sagt, was von beidem es ist. Ohne das würde die Seite ein Bild
+        nachfordern, das es nicht gibt.
+        """
+        if self._foto_info:
+            return dict(self._foto_info, bild=True)
+        regionen = [s.scan_region for s in self._flaechen_slots() if s.scan_region]
+        if not regionen:
+            return None
+        rand = 40
+        links = min(r[0] for r in regionen) - rand
+        oben = min(r[1] for r in regionen) - rand
+        rechts = max(r[2] for r in regionen) + rand
+        unten = max(r[3] for r in regionen) + rand
+        return {"links": links, "oben": oben, "bild": False, "skala": 1.0,
+                "breite": max(1, rechts - links), "hoehe": max(1, unten - oben),
+                "stand": 0.0}
+
+    def _flaechen_slots(self) -> list:
+        """Die Slots, um die sich die Ersatzfläche legt: die des offenen Scans."""
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is None:
+            return list(self.slots.values())
+        return [self.slots[n] for n in cfg.slot_names if n in self.slots]
+
     # -------------------------------------------------------- Momentaufnahme
 
     def scan_daten(self, daten: Optional[dict] = None) -> dict:
@@ -291,7 +348,7 @@ class ScanTeil:
         return {
             "modus": self.scan_modus,
             "ecke": list(self._ecke) if self._ecke else None,
-            "foto": dict(self._foto_info) if self._foto_info else None,
+            "foto": self._flaeche(),
             "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
             "items": [self._item_json(i, i.name in dabei_items) for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
@@ -819,6 +876,14 @@ class ScanTeil:
         if name:
             self.scan_art, self.scan_name = ART_SCAN, name
             if not self._foto_laden(name):
+                # Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild.
+                # Dass seine Slots trotzdem dastehen, ist die halbe Antwort auf
+                # „warum ist die Mitte leer" — die andere Hälfte ist der Knopf.
+                if self._flaeche():
+                    return self._scan_melde(
+                        f"'{name}' geöffnet — kein Bild gemerkt, die Slots stehen "
+                        "trotzdem. „Screenshot aufnehmen“ legt das Spiel dahinter.",
+                        "info")
                 return self._scan_melde(
                     f"'{name}' geöffnet — noch kein Bild dazu. Screenshot aufnehmen.",
                     "info")

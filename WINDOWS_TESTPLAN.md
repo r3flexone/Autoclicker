@@ -217,6 +217,17 @@ Items aller Spiele in einer Liste.
 
 - [ ] 🆕 Beim Öffnen steht der Reiter **Scans** vorn, danach Slots, danach Items
       — die Reihenfolge ist die Rangfolge.
+- [ ] 🆕 Der **zuletzt bearbeitete** Scan ist beim Öffnen offen, auch wenn es
+      mehrere gibt (vorher nur bei genau einem — sonst blieb die Mitte leer).
+- [ ] 🆕 **Ein älterer Scan ohne gemerktes Bild**: seine Slots stehen trotzdem
+      an ihrer Stelle, auf einer gestrichelten Fläche mit „kein Bild gemerkt".
+      Anwählen, Umbenennen, Verschieben geht dort ganz normal; „Items erkennen"
+      und „Item lernen" sind aus, bis ein Screenshot da ist.
+- [ ] 🆕 „Screenshot aufnehmen" legt sich dahinter, **ohne dass ein Slot
+      springt** — Gegenprobe: Koordinaten vorher und nachher vergleichen.
+- [ ] 🆕 Die alten Bilder unter `slots/Screenshots/` werden bewusst **nicht**
+      benutzt: das sind Ausschnitte aus dem Konsolen-Editor ohne gespeicherten
+      Ursprung, als Fläche wäre jeder Slot verschoben.
 - [ ] 🆕 Oben links die Scan-Auswahl. Zwei Scans anlegen (z. B. „Idle Clans" und
       ein zweites Spiel), in jedem eigene Slots aufziehen und Items lernen.
 - [ ] 🆕 Beim Umschalten zeigen Slot- und Item-Liste **nur** die des offenen

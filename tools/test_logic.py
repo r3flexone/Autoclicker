@@ -5573,6 +5573,44 @@ try:
     from autoclicker.editors.sequence_studio.scan_model import load_slots as _ls18
     check("und die Slots kommen unveraendert zurueck",
           sorted(_ls18("slots/slots.json")) == sorted(_b18.slots))
+
+    # --- Ein aelterer Scan hat Slots, aber kein gemerktes Bild ---
+    # Die Mitte des Reiters stand dann leer, obwohl die Slots laengst da waren:
+    # das gemerkte Bild gibt es erst, seit der Reiter eines ablegt. Die Flaeche
+    # wird deshalb notfalls aus dem Rechteck um die Slots gerechnet.
+    _alt18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _z18 = _alt18.scan_daten()
+    check("ein Scan ohne Bild bekommt trotzdem eine Flaeche", _z18["foto"] is not None)
+    check("sie sagt von sich, dass sie kein Bild ist", _z18["foto"]["bild"] is False)
+    # Slot A1 liegt auf (0,0,9,9); die Flaeche legt 40 px Rand darum.
+    check("und sie liegt um die Slots herum",
+          (_z18["foto"]["links"], _z18["foto"]["oben"]) == (-40, -40)
+          and (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (89, 89))
+    # Gegenprobe: ein Scan ohne Slots hat auch nichts, worum eine Flaeche
+    # laege - dort bleibt die leere Mitte richtig.
+    check("ein Scan ohne Slots bekommt keine Flaeche",
+          _alt18.scan_neu({"name": "Leerer"})["foto"] is None)
+    check("die Auswahl davor hatte eine", _z18["foto"] is not None)
+
+    # --- Beim Oeffnen steht der zuletzt bearbeitete Scan vorn ---
+    # Vorher nur bei GENAU EINEM Scan: wer einen zweiten anlegte, sah beim
+    # naechsten Start eine leere Mitte und musste erst merken, dass oben links
+    # eine Auswahl steht.
+    _erste18 = list(Path("item_scans").glob("*.json"))[0]
+    _zweite18 = _erste18.parent / "Zweiter.json"
+    _zweite18.write_text(
+        _erste18.read_text(encoding="utf-8").replace('"Test"', '"Zweiter"'),
+        encoding="utf-8")
+    _os.utime(_erste18, (1_000_000, 1_000_000))
+    _os.utime(_zweite18, (2_000_000, 2_000_000))
+    check("der juengere Scan ist offen",
+          _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+          .scan_daten()["offen"] == "Zweiter")
+    _os.utime(_erste18, (3_000_000, 3_000_000))
+    check("und nach einer Aenderung am anderen dieser",
+          _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+          .scan_daten()["offen"] == "Test")
+    _zweite18.unlink()
 finally:
     _os.chdir(_cwd18)
 

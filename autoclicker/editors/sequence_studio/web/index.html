@@ -433,6 +433,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px}
 .scan-flaeche{position:relative;line-height:0}
 .scan-flaeche img{display:block;width:100%;height:auto;image-rendering:pixelated}
+/* Kein Bild, aber Slots: die Flaeche ist dann das Rechteck um sie herum. Sie
+   traegt ihre Hoehe selbst (das leere <img> hat keine) und sagt gestrichelt,
+   dass hier ein Hintergrund fehlt statt schwarz zu sein. */
+.scan-flaeche.ohne-bild{border:1px dashed var(--linie);background:#0F141F}
+/* Der Hinweis steht UNTEN: ueber jedem Slot haengt sein Name, und oben links
+   lagen beide uebereinander. Unterhalb der Slots zeichnet nichts. */
+.scan-flaeche.ohne-bild::before{content:"kein Bild gemerkt — die Slots stehen an ihrer Stelle";
+  position:absolute;bottom:6px;left:8px;font-size:11px;line-height:1.4;color:var(--dim);
+  letter-spacing:.04em;pointer-events:none;white-space:nowrap}
 #scan-overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 .scan-slot{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
 .scan-slot.gewaehlt{stroke:#fff;stroke-width:2.5}
@@ -2218,6 +2227,9 @@ async function rufScan(name, daten) {
   await zeichneScans();
 }
 
+/** Gibt es ein echtes Bild — oder nur die aus den Slots gerechnete Flaeche? */
+function fotoDa() { return !!(SC && SC.foto && SC.foto.bild); }
+
 /** Holt das Bild nur, wenn es ein neues gibt — es ist der grosse Brocken. */
 async function scanBildPflegen() {
   const bild = $("scan-bild");
@@ -2232,25 +2244,49 @@ async function scanBildPflegen() {
   }
   $("scan-flaeche").hidden = false;
   leer.hidden = true;
-  if (SC.foto.stand !== scanFotoStand) {
-    scanFotoStand = SC.foto.stand;
-    const url = await frage("scan_bild");
-    if (url) bild.src = url;
+  // Ohne Bild bleibt die Flaeche leer, aber sie hat die Groesse und die Lage
+  // der Slots — man sieht also, was der Scan hat, und kann es anfassen.
+  $("scan-flaeche").classList.toggle("ohne-bild", !fotoDa());
+  // Woran man merkt, dass eine ANDERE Flaeche dasteht: beim Bild der
+  // Zeitstempel, sonst ihre Groesse. Ohne diese Marke passte entweder gar
+  // nichts mehr ein (Zoom vom vorigen Scan) oder bei jedem Neuzeichnen wieder,
+  // was jedes Hineinzoomen sofort zuruecksetzte.
+  const marke = fotoDa() ? SC.foto.stand
+                         : -(SC.foto.breite * 100000 + SC.foto.hoehe);
+  if (marke !== scanFotoStand) {
+    scanFotoStand = marke;
+    if (fotoDa()) {
+      const url = await frage("scan_bild");
+      if (url) bild.src = url;
+    } else {
+      bild.removeAttribute("src");
+    }
     scanEinpassen();
   }
-  $("scan-groesse").textContent = SC.foto.breite + "×" + SC.foto.hoehe;
+  $("scan-groesse").textContent = fotoDa()
+    ? SC.foto.breite + "×" + SC.foto.hoehe
+    : "kein Bild";
 }
 
 function scanEinpassen() {
   if (!SC || !SC.foto) return;
   const platz = $("scan-buehne").clientWidth - 24;
-  scanZoom = Math.max(0.05, Math.min(1, platz / SC.foto.breite));
+  // Ein Bild wird nie vergroessert — jedes Pixel darueber waere erfunden, und
+  // gemessen wird ohnehin im Original. Die aus den Slots gerechnete Flaeche hat
+  // keine Pixel, die man faelschen koennte: sie darf die Buehne fuellen, sonst
+  // haengt ein Inventar von 300 px verloren in einer Ecke.
+  const grenze = fotoDa() ? 1 : 4;
+  scanZoom = Math.max(0.05, Math.min(grenze, platz / SC.foto.breite));
   scanZoomAnwenden();
 }
 
 function scanZoomAnwenden() {
   if (!SC || !SC.foto) return;
-  $("scan-flaeche").style.width = Math.round(SC.foto.breite * scanZoom) + "px";
+  const f = $("scan-flaeche");
+  f.style.width = Math.round(SC.foto.breite * scanZoom) + "px";
+  // Die Hoehe kommt sonst vom Bild. Ohne eines waere sie 0, und die Flaeche
+  // haette weder Platz fuer die Slots noch etwas zum Anklicken.
+  f.style.height = fotoDa() ? "" : Math.round(SC.foto.hoehe * scanZoom) + "px";
   $("scan-zoom").textContent = Math.round(scanZoom * 100) + " %";
   scanOverlay();
 }
@@ -2514,7 +2550,7 @@ function scanInspektor() {
       SC.dirty ? el("span", {class: "punkt-offen"}) : null),
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),
-    el("button", {class: "btn", disabled: !SC.foto || !SC.slots.length,
+    el("button", {class: "btn", disabled: !fotoDa() || !SC.slots.length,
                   title: "Jeden Slot gegen die Item-Profile halten",
                   onclick: () => rufScan("scan_erkennen")}, "Items erkennen"));
   ziel.appendChild(kopf);
@@ -2572,14 +2608,14 @@ function scanInspSlot(ziel) {
     "◎ im Bild messen"));
 
   ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
-    el("button", {class: "btn", disabled: !SC.foto,
+    el("button", {class: "btn", disabled: !fotoDa(),
                   onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
        "Item lernen"),
     el("button", {class: "btn", onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
     el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        "löschen")));
-  if (SC.foto) {
+  if (fotoDa()) {
     ziel.appendChild(el("button", {class: "btn still", style: "margin-top:6px",
       onclick: () => rufScan("scan_items_lernen")}, "aus ALLEN Slots lernen"));
   }

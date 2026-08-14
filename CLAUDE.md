@@ -632,6 +632,30 @@ und beim Öffnen steht der Scan-Reiter vorn. Eine Liste, die vor ihrer Klammer
 steht, liest sich wie das Hauptding; genau das war der Zustand, aus dem heraus
 „alle Items aller Spiele in einer Liste" überhaupt entstand.
 
+**Beim Öffnen ist der zuletzt bearbeitete Scan offen** — dieselbe Regel wie
+`zuletzt_bearbeitet()` bei den Sequenzen und aus demselben Grund: ein echtes
+„zuletzt geöffnet" müsste jemand mitschreiben, und das Dateisystem weiss es
+schon. Vorher öffnete sich nur bei *genau einem* Scan etwas; wer einen zweiten
+anlegte, sah eine leere Mitte und musste erst merken, dass oben links eine
+Auswahl steht.
+
+**Ein Scan ohne Bild ist nicht dasselbe wie ein Scan ohne Inhalt.** Ein älterer
+Scan bringt seine Slots mit, aber kein gemerktes Bild — das gibt es erst, seit
+der Reiter eines ablegt. `_flaeche()` rechnet die Arbeitsfläche deshalb notfalls
+aus dem umschliessenden Rechteck der Slots (mit Rand); alle Umrechnungen laufen
+über `links`/`oben`/`skala` und stimmen genauso, nur ist der Hintergrund leer.
+Ein späterer Screenshot legt sich dahinter, ohne dass sich etwas verschiebt.
+Das Feld `bild` sagt, was von beidem dasteht — ohne das forderte die Seite ein
+Bild nach, das es nicht gibt, und alles, was ein Bild *braucht* (Erkennen,
+Item lernen, Farbe messen), stünde offen. Die Ersatzfläche darf als einzige über
+100 % hinaus (bis 400 %): sie hat keine Pixel, die man fälschen könnte, und ein
+Inventar von 300 px hinge sonst verloren in einer Ecke.
+
+**Die alten Screenshots unter `slots/Screenshots/` sind kein Ersatz dafür.** Sie
+stammen aus dem Konsolen-Slot-Editor und sind **Ausschnitte** (`take_screenshot(region)`),
+deren Ursprung nirgends steht — als Arbeitsfläche benutzt, läge jeder Slot still
+falsch. Genau der Fehler, gegen den der Ursprung im PNG steht.
+
 **Jeder Scan merkt sich seinen Bildschirm.** `item_scans/bilder/<name>.png`, beim
 Öffnen sofort wieder da — vorher war die Mitte des Reiters leer, bis man einen
 neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
