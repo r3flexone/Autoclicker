@@ -31,7 +31,9 @@ from pathlib import Path
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
-from ...persistence.paths import ITEMS_FILE, SLOTS_FILE, TEMPLATES_DIR
+from ...persistence.paths import (
+    ITEMS_FILE, SCAN_SHOTS_DIR, SLOTS_FILE, TEMPLATES_DIR,
+)
 from ...utils import eindeutiger_name, sanitize_filename
 from .model import hexfarbe, rgbwert
 from .scan_model import (
@@ -86,6 +88,14 @@ class ScanTeil:
         self.scan_modus: str = MODUS_WAHL
         self.scan_art: str = ART_SLOT
         self.scan_name: str = ""
+        # Der offene Item-Scan ist der ZUSAMMENHANG, nicht die Auswahl: wer
+        # einen Slot anklickt, um ihn zu bearbeiten, arbeitet weiter an
+        # demselben Scan. Vorher hing beides an `scan_art`/`scan_name`, und ein
+        # Klick auf einen Slot verlor den Zusammenhang.
+        self.scan_offen: str = ""
+        # Zeigen die Listen nur, was zum offenen Scan gehört? Mit mehreren
+        # Spielen liegen sonst alle Items aller Spiele untereinander.
+        self.nur_dabei: bool = True
         self._treffer: dict = {}               # Slot-Name -> Erkennungsergebnis
         self._scan_dirty = False
         self._scan_status = ("", "info")
@@ -103,6 +113,11 @@ class ScanTeil:
         self.slots = load_slots(SLOTS_FILE)
         self.items = load_items(ITEMS_FILE)
         self.scans = self._scans_laden()
+        # Mit genau einem Scan gibt es nichts zu wählen — dann ist er offen.
+        # Bei mehreren wäre eine Vorauswahl geraten.
+        if len(self.scans) == 1:
+            self.scan_offen = next(iter(self.scans))
+            self._foto_laden(self.scan_offen)
 
     @staticmethod
     def _scans_laden() -> dict:
@@ -163,6 +178,67 @@ class ScanTeil:
 
         links, oben = get_virtual_origin()
         self._foto = bild
+        self._foto_merken(bild, links, oben)
+        self._anzeigebild(links, oben, time.time())
+        # Ein alter Treffer gehört zu einem alten Bild.
+        self._treffer = {}
+        return self._scan_melde(f"Screenshot: {bild.width}×{bild.height} px "
+                                f"ab ({links}, {oben}).")
+
+    @staticmethod
+    def _foto_pfad(scan: str) -> Path:
+        return Path(SCAN_SHOTS_DIR) / f"{sanitize_filename(scan)}.png"
+
+    def _foto_merken(self, bild, links: int, oben: int) -> None:
+        """Legt den Screenshot beim offenen Scan ab — für das nächste Öffnen.
+
+        **Der Ursprung des virtuellen Desktops steht IM PNG** (Text-Chunk), nicht
+        in einer Datei daneben. Zwei Dateien, die zusammengehören, laufen
+        irgendwann auseinander: eine gelöschte, eine überschriebene, und die
+        Koordinaten sind still um einen Monitor verschoben. Im Bild selbst kann
+        das nicht passieren.
+
+        Ohne offenen Scan wird nichts abgelegt: das Bild gehört zu einem Spiel,
+        und welches gemeint ist, sagt der Scan.
+        """
+        if not self.scan_offen:
+            return
+        try:
+            from PIL import PngImagePlugin
+            info = PngImagePlugin.PngInfo()
+            info.add_text("links", str(int(links)))
+            info.add_text("oben", str(int(oben)))
+            pfad = self._foto_pfad(self.scan_offen)
+            pfad.parent.mkdir(parents=True, exist_ok=True)
+            bild.save(pfad, "PNG", pnginfo=info)
+        except (ImportError, OSError, ValueError):
+            pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
+
+    def _foto_laden(self, scan: str) -> bool:
+        """Holt den zuletzt abgelegten Screenshot dieses Scans zurück."""
+        pfad = self._foto_pfad(scan)
+        try:
+            from PIL import Image
+            bild = Image.open(pfad)
+            bild.load()
+        except (ImportError, OSError, ValueError):
+            self._foto = None
+            self._foto_bild = ""
+            self._foto_info = None
+            return False
+        text = getattr(bild, "text", {}) or {}
+        try:
+            links, oben = int(text.get("links", 0)), int(text.get("oben", 0))
+        except (TypeError, ValueError):
+            links, oben = 0, 0
+        self._foto = bild.convert("RGB")
+        self._anzeigebild(links, oben, pfad.stat().st_mtime)
+        self._treffer = {}
+        return True
+
+    def _anzeigebild(self, links: int, oben: int, stand: float) -> None:
+        """Verkleinert das Original für die Übertragung und merkt die Geometrie."""
+        bild = self._foto
         skala = min(1.0, FOTO_MAX_BREITE / bild.width) if bild.width else 1.0
         anzeige = bild if skala >= 1.0 else bild.resize(
             (max(1, int(bild.width * skala)), max(1, int(bild.height * skala))))
@@ -171,12 +247,8 @@ class ScanTeil:
             "links": links, "oben": oben,
             "breite": anzeige.width, "hoehe": anzeige.height,
             "skala": round(anzeige.width / bild.width, 6) if bild.width else 1.0,
-            "stand": time.time(),
+            "stand": stand,
         }
-        # Ein alter Treffer gehört zu einem alten Bild.
-        self._treffer = {}
-        return self._scan_melde(f"Screenshot: {bild.width}×{bild.height} px "
-                                f"ab ({links}, {oben}).")
 
     def scan_bild(self, daten: Optional[dict] = None) -> str:
         """Das Bild als data:-URL — getrennt geholt, weil es gross ist.
@@ -213,14 +285,19 @@ class ScanTeil:
         """Alles, was der Reiter zum Zeichnen braucht — ohne das Bild selbst."""
         self._scan_laden()
         text, art = self._scan_status
+        cfg = self.scans.get(self.scan_offen)
+        dabei_slots = set(cfg.slot_names) if cfg else set()
+        dabei_items = set(cfg.item_names) if cfg else set()
         return {
             "modus": self.scan_modus,
             "ecke": list(self._ecke) if self._ecke else None,
             "foto": dict(self._foto_info) if self._foto_info else None,
-            "slots": [self._slot_json(s) for s in self.slots.values()],
-            "items": [self._item_json(i) for i in self.items.values()],
+            "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
+            "items": [self._item_json(i, i.name in dabei_items) for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
+            "offen": self.scan_offen,
+            "nur_dabei": self.nur_dabei,
             "wahl": {"art": self.scan_art, "name": self.scan_name},
             "dirty": self._scan_dirty,
             "status": {"text": text, "art": art},
@@ -248,9 +325,10 @@ class ScanTeil:
         except ImportError:
             return False
 
-    def _slot_json(self, slot: ItemSlot) -> dict:
+    def _slot_json(self, slot: ItemSlot, dabei: bool = False) -> dict:
         treffer = self._treffer.get(slot.name)
         return {
+            "dabei": dabei,
             "name": slot.name,
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
@@ -260,8 +338,9 @@ class ScanTeil:
             "treffer": treffer,
         }
 
-    def _item_json(self, item: ItemProfile) -> dict:
+    def _item_json(self, item: ItemProfile, dabei: bool = False) -> dict:
         return {
+            "dabei": dabei,
             "name": item.name,
             "kategorie": item.category,
             "prioritaet": item.priority,
@@ -706,7 +785,7 @@ class ScanTeil:
         beantwortet die Frage „findet DIESER Scan, was er finden soll?". Ohne
         Scan wird alles geprüft, sonst sähe man bei leerer Auswahl nichts.
         """
-        cfg = self.scans.get(self.scan_name) if self.scan_art == ART_SCAN else None
+        cfg = self.scans.get(self.scan_offen)
         if cfg is not None and cfg.item_names:
             gewaehlt = [self.items[n] for n in cfg.item_names if n in self.items]
             if gewaehlt:
@@ -714,19 +793,59 @@ class ScanTeil:
         return sorted(self.items.values(), key=lambda i: i.priority)
 
     def _toleranz(self) -> int:
-        cfg = self.scans.get(self.scan_name) if self.scan_art == ART_SCAN else None
+        cfg = self.scans.get(self.scan_offen)
         if cfg is not None:
             return cfg.color_tolerance
         return ItemScanConfig(name="").color_tolerance
 
     # -------------------------------------------------------- Scan-Konfigs
 
+    def scan_oeffnen(self, daten: Optional[dict] = None) -> dict:
+        """Wählt den Item-Scan, in dessen Zusammenhang gearbeitet wird.
+
+        Der Scan ist hier das Übergeordnete: mit mehreren Spielen liegen sonst
+        alle Slots und Items aller Spiele in einer Liste, und keine davon gehört
+        sichtbar irgendwohin. Ist einer offen, zeigen die Listen standardmässig
+        nur seine Mitglieder, und sein Bild kommt gleich mit.
+
+        Ein leerer Name macht ihn wieder zu — dann sieht man den ganzen Bestand.
+        """
+        name = str((daten or {}).get("name") or "")
+        self._scan_laden()
+        if name and name not in self.scans:
+            return self._scan_melde(f"Scan '{name}' gibt es nicht.", "err")
+        self.scan_offen = name
+        self._treffer = {}
+        if name:
+            self.scan_art, self.scan_name = ART_SCAN, name
+            if not self._foto_laden(name):
+                return self._scan_melde(
+                    f"'{name}' geöffnet — noch kein Bild dazu. Screenshot aufnehmen.",
+                    "info")
+            return self._scan_melde(f"'{name}' geöffnet, Bild von zuletzt.")
+        self._foto = None
+        self._foto_bild = ""
+        self._foto_info = None
+        return self._scan_melde("Kein Scan offen — der ganze Bestand steht da.", "info")
+
+    def scan_filter(self, daten: Optional[dict] = None) -> dict:
+        """Nur die Mitglieder des offenen Scans zeigen — oder alles.
+
+        „Alles" braucht man zum Hinzufügen, „nur Mitglieder" zum Arbeiten. Ein
+        Schalter statt zweier Listen, weil es dieselben Dinge sind.
+        """
+        self.nur_dabei = bool((daten or {}).get("wert"))
+        return self.scan_daten()
+
     def scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen."""
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
         self.scans[name] = ItemScanConfig(name=name)
         self.scan_art, self.scan_name = ART_SCAN, name
-        return self._scan_geaendert(f"Scan '{name}' angelegt.")
+        # Ein frisch angelegter Scan ist der, an dem man arbeitet — sonst müsste
+        # man ihn direkt danach noch einmal auswählen.
+        self.scan_offen = name
+        return self._scan_geaendert(f"Scan '{name}' angelegt und geöffnet.")
 
     def scan_setzen(self, daten: dict) -> dict:
         """Ein Feld einer Scan-Konfiguration."""
@@ -750,6 +869,13 @@ class ScanTeil:
             self.scans = {(neu if k == alt else k): v for k, v in self.scans.items()}
             cfg.name = neu
             self.scan_name = neu
+            if self.scan_offen == alt:
+                self.scan_offen = neu
+            # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
+            try:
+                self._foto_pfad(alt).replace(self._foto_pfad(neu))
+            except OSError:
+                pass
             return self._scan_geaendert(
                 f"'{alt}' heisst jetzt '{neu}' — die alte Datei bleibt liegen.", "warn")
         if feld == "toleranz":
@@ -766,7 +892,7 @@ class ScanTeil:
         Umschalten statt zweier Befehle: die Ansicht zeigt Häkchen, und ein
         Häkchen kennt nur einen Klick.
         """
-        cfg = self.scans.get(str((daten or {}).get("scan") or ""))
+        cfg = self.scans.get(str((daten or {}).get("scan") or self.scan_offen))
         if cfg is None:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         art = str((daten or {}).get("art") or "")
@@ -786,6 +912,12 @@ class ScanTeil:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         del self.scans[name]
         self.scan_name = ""
+        if self.scan_offen == name:
+            self.scan_offen = ""
+        try:
+            self._foto_pfad(name).unlink(missing_ok=True)
+        except OSError:
+            pass
         from ...persistence.paths import ITEM_SCANS_DIR
         pfad = Path(ITEM_SCANS_DIR) / f"{sanitize_filename(name)}.json"
         try:

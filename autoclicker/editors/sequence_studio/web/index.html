@@ -310,6 +310,17 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .lauf-kopf{display:flex;align-items:center;gap:12px}
 .lampe{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
 .lampe.an{background:var(--ok);box-shadow:0 0 0 4px #3ED07A26}
+/* Beendet ist nicht dasselbe wie "nichts da": die Lampe bleibt sichtbar, nur
+   ohne den Puls-Ring des laufenden Zustands. */
+.lampe.fertig{background:var(--muted)}
+.zahl.abschluss-ok{color:var(--ok);border-color:#3ED07A59;background:#3ED07A1F}
+.zahl.abschluss-warn{color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
+.zahl.abschluss-err{color:var(--err);border-color:#EF444459;background:#EF44441F}
+.hinweis.abschluss-ok{color:var(--ok)}
+.hinweis.abschluss-warn{color:var(--accent)}
+.hinweis.abschluss-err{color:var(--err)}
+/* Wo Schluss war — ein Ring, kein Fuellton: die Phase lief nicht zu Ende. */
+.phasen-kachel.schluss{box-shadow:0 0 0 1px var(--muted)}
 .lauf-name{font-size:18px;font-weight:600;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tafel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
@@ -645,6 +656,18 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
        dort aufgezogen, wo er im Spiel liegt — Koordinaten tippt hier niemand. -->
   <div class="scans" id="sicht-scans" hidden>
     <aside class="seite links">
+      <!-- Der Item-Scan ist hier das Uebergeordnete: er sagt, an welchem Spiel
+           gerade gearbeitet wird. Ohne ihn liegen bei mehreren Spielen alle
+           Slots und Items aller Spiele in einer Liste. -->
+      <div class="abschnitt">
+        <span class="ueberschrift">ITEM-SCAN</span>
+        <select id="scan-offen"></select>
+        <div class="reihe">
+          <button class="btn still" id="scan-neu">+ neuer Scan</button>
+          <span class="wachse"></span>
+          <span class="klein mono" id="scan-umfang"></span>
+        </div>
+      </div>
       <div class="abschnitt">
         <div class="reihe">
           <span class="ueberschrift wachse">BILD</span>
@@ -664,6 +687,7 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
       </div>
       <div class="abschnitt wachsend">
         <div class="tabs klein" id="scan-listen-tabs"></div>
+        <div class="reihe" id="scan-filterzeile" style="margin-top:8px"></div>
         <div class="spalte" id="scan-liste" style="gap:3px;margin-top:8px"></div>
       </div>
     </aside>
@@ -1485,7 +1509,7 @@ function balken(ist, soll) {
  * sind dieselben Loop-Phasen wieder ausstehend. Anders wäre es gelogen, sobald
  * eine Sequenz mehr als einen Zyklus hat.
  */
-function phasenLeiste(z) {
+function phasenLeiste(z, beendet) {
   const jetzige = z.phase_pos;
   const liste = Array.isArray(z.phasen) && z.phasen.length
     ? z.phasen
@@ -1494,9 +1518,13 @@ function phasenLeiste(z) {
     ? 0 : jetzige;
 
   return el("div", {class: "phasen-leiste"}, liste.map((p, i) => {
-    const laeuft = i === pos;
+    // In der Zusammenfassung laeuft nichts mehr: die Stelle, an der Schluss
+    // war, ist markiert, nicht "gerade dran". Sonst behauptete die Leiste einen
+    // Lauf, den es nicht mehr gibt.
+    const laeuft = i === pos && !beendet;
     const kachel = el("div", {
-      class: "phasen-kachel" + (laeuft ? " laeuft" : (i < pos ? " fertig" : "")),
+      class: "phasen-kachel" + (laeuft ? " laeuft" : (i < pos ? " fertig" : ""))
+             + (beendet && i === pos ? " schluss" : ""),
       "data-art": p.art || "loop",
     }, el("div", {class: "p-name"}, p.name || "—"));
 
@@ -1507,6 +1535,12 @@ function phasenLeiste(z) {
         el("span", {class: "klein mono"},
            "Block " + (z.block || 0) + " / " + (z.bloecke || 0))));
       kachel.appendChild(balken(z.durchlauf || 0, z.wiederholungen || 1));
+    } else if (beendet && i === pos) {
+      // Die Phase, in der Schluss war. „ausstehend" waere hier falsch (sie lief
+      // ja) und „abgeschlossen" auch (sie kam nicht durch) — ausser der Lauf
+      // ist regulaer bis zum Ende gekommen.
+      kachel.appendChild(el("div", {class: "p-lage"},
+        (z.grund || "").startsWith("alle Zyklen") ? "abgeschlossen" : "hier war Schluss"));
     } else if (i < pos) {
       kachel.appendChild(el("div", {class: "p-lage"}, "abgeschlossen"));
     } else {
@@ -1526,6 +1560,7 @@ async function zeichneLauf() {
   const ziel = $("sicht-lauf");
   ziel.replaceChildren();
   if (!z || !z.aktiv) {
+    if (z && z.ende) return zeichneAbschluss(ziel, z);
     // Leerzustand ehrlich beschriften statt mit Nullen füllen: eine Tafel voller
     // Nullen sieht aus wie ein Lauf, der nichts tut.
     ziel.appendChild(el("div", {class: "lauf-kopf"},
@@ -1578,6 +1613,48 @@ async function zeichneLauf() {
                       el("small", {}, text.toUpperCase()))))));
 
   ziel.appendChild(steuerung(true));
+}
+
+/** Der letzte Lauf, nachdem er fertig ist.
+ *
+ * Vorher verschwand hier alles in dem Moment, in dem die Sequenz durch war:
+ * die Datei wurde geloescht, die Ansicht zeigte „Es läuft gerade keine
+ * Sequenz". Ausgerechnet dann sieht man aber hin — die Frage ist ja, was
+ * herausgekommen ist. Jetzt bleibt der Stand stehen, bis der nächste Start ihn
+ * überschreibt.
+ *
+ * Dieselben Kacheln wie im Lauf, damit man nicht umlernen muss; die Zeitangaben
+ * sind fest statt mitlaufend, denn hier tickt nichts mehr.
+ */
+function zeichneAbschluss(ziel, z) {
+  const zaehler = z.zaehler || {};
+  // Warum es zu Ende ist, entscheidet die Farbe: durchgelaufen ist gruen,
+  // von Hand gestoppt neutral, Notbremse rot. Eine Zusammenfassung, die bei
+  // jedem Ausgang gleich aussieht, muss man lesen statt anzusehen.
+  const grund = z.grund || "";
+  const art = grund.startsWith("Notbremse") ? "err"
+            : grund.startsWith("alle Zyklen") ? "ok" : "warn";
+  ziel.appendChild(el("div", {class: "lauf-kopf"},
+    el("span", {class: "lampe fertig"}),
+    el("span", {class: "lauf-name"}, z.sequenz || "(ohne Namen)"),
+    el("span", {class: "zahl abschluss-" + art}, "beendet"),
+    el("span", {class: "zahl"}, zeitpunkt(z.ende)),
+    el("span", {class: "zahl"}, "lief " + dauer(z.dauer || 0))));
+
+  ziel.appendChild(el("p", {class: "hinweis abschluss-" + art},
+    grund + " · " + (z.gelaufen || 0) + " von " +
+    (z.zyklen ? z.zyklen : "∞") + " Zyklen"));
+
+  if (z.phasen && z.phasen.length) ziel.appendChild(phasenLeiste(z, true));
+
+  ziel.appendChild(el("div", {class: "kachel"},
+    [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
+     ["Timeouts", "timeouts"], ["Übersprungen", "uebersprungen"],
+     ["Neustarts", "neustarts"]].map(([text, schluessel]) =>
+      el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
+                    el("small", {}, text.toUpperCase())))));
+
+  ziel.appendChild(steuerung(false));
 }
 
 /** Start/Pause/Stopp.
@@ -2108,6 +2185,7 @@ let scanZoom = 1;
 let scanFotoStand = 0;
 let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
 let scanZeiger = null;            // letzte Mausposition im Bild (fuer die Vorschau)
+let scanKategorie = "";           // Kategorie-Filter der Item-Liste
 
 const SCAN_MODI = [
   {key: "wahl", text: "Auswählen", taste: "V", hilfe: "Slot im Bild anklicken"},
@@ -2188,6 +2266,20 @@ function scanZuSchirm(bx, by) {
 }
 
 function scanWerkzeuge() {
+  const wahl = $("scan-offen");
+  wahl.replaceChildren();
+  wahl.appendChild(el("option", {value: ""}, SC.scans.length
+    ? "— keiner (ganzer Bestand) —" : "— noch kein Item-Scan —"));
+  for (const c of SC.scans) {
+    const o = el("option", {value: c.name}, c.name);
+    if (c.name === SC.offen) o.selected = true;
+    wahl.appendChild(o);
+  }
+  const offen = SC.scans.find((c) => c.name === SC.offen);
+  $("scan-umfang").textContent = offen
+    ? offen.slots.length + " Slots · " + offen.items.length + " Items"
+    : SC.slots.length + " Slots · " + SC.items.length + " Items";
+
   const ziel = $("scan-modi");
   ziel.replaceChildren();
   for (const m of SCAN_MODI) {
@@ -2205,14 +2297,29 @@ function scanWerkzeuge() {
 function scanListeZeichnen() {
   const tabs = $("scan-listen-tabs");
   tabs.replaceChildren();
-  const gruppen = [["slots", "Slots", SC.slots.length],
-                   ["items", "Items", SC.items.length],
-                   ["scans", "Scans", SC.scans.length]];
-  for (const [key, text, anzahl] of gruppen) {
+  // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
+  // waehrend zwei in der Liste stehen, und man sucht den Rest.
+  const gruppen = [["slots", "Slots", scanSichtbar(SC.slots, false).length, SC.slots.length],
+                   ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length],
+                   ["scans", "Scans", SC.scans.length, SC.scans.length]];
+  for (const [key, text, sichtbar, gesamt] of gruppen) {
     tabs.appendChild(el("button", {
       class: "tab" + (scanListe === key ? " an" : ""),
+      title: sichtbar === gesamt ? "" : gesamt + " insgesamt",
       onclick: () => { scanListe = key; zeichneScans(); },
-    }, text + " " + anzahl));
+    }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
+  }
+
+  const filter = $("scan-filterzeile");
+  filter.replaceChildren();
+  if (SC.offen && scanListe !== "scans") {
+    filter.appendChild(schalter("nur aus „" + SC.offen + "\u201c",
+      SC.nur_dabei, (v) => rufScan("scan_filter", {wert: v})));
+  }
+  if (scanListe === "items" && SC.kategorien.length) {
+    filter.appendChild(auswahl("", [{wert: "", text: "alle Kategorien"}].concat(
+      SC.kategorien.map((k) => ({wert: k, text: k}))), scanKategorie,
+      (v) => { scanKategorie = v; zeichneScans(); }));
   }
 
   const ziel = $("scan-liste");
@@ -2222,13 +2329,24 @@ function scanListeZeichnen() {
   return scanListeScans(ziel);
 }
 
+/** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie. */
+function scanSichtbar(eintraege, mitKategorie) {
+  let liste = eintraege;
+  if (SC.offen && SC.nur_dabei) liste = liste.filter((e) => e.dabei);
+  if (mitKategorie && scanKategorie)
+    liste = liste.filter((e) => (e.kategorie || "") === scanKategorie);
+  return liste;
+}
+
 function scanListeSlots(ziel) {
-  if (!SC.slots.length) {
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "Noch keine Slots. Modus „Neuer Slot“, dann zwei Ecken im Bild anklicken."));
+  const liste = scanSichtbar(SC.slots, false);
+  if (!liste.length) {
+    ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
+      ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
+      : "Noch keine Slots. Modus „Neuer Slot“, dann zwei Ecken im Bild anklicken."));
     return;
   }
-  for (const s of SC.slots) {
+  for (const s of liste) {
     ziel.appendChild(el("button", {
       class: "scan-zeile" + (SC.wahl.art === "slot" && SC.wahl.name === s.name ? " an" : ""),
       onclick: () => rufScan("scan_waehlen", {art: "slot", name: s.name}),
@@ -2243,14 +2361,16 @@ function scanListeSlots(ziel) {
 }
 
 function scanListeItems(ziel) {
-  if (!SC.items.length) {
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "Noch keine Items. Einen Slot wählen und rechts „Item lernen“ — oder alle "
-      + "Slots auf einmal."));
+  const liste = scanSichtbar(SC.items, true);
+  if (!liste.length) {
+    ziel.appendChild(el("p", {class: "hinweis"}, SC.items.length
+      ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
+      : "Noch keine Items. Einen Slot wählen und rechts „Item lernen“ — oder alle "
+        + "Slots auf einmal."));
     return;
   }
-  scanVorschauenHolen(SC.items.map((i) => i.name));
-  for (const i of SC.items) {
+  scanVorschauenHolen(liste.map((i) => i.name));
+  for (const i of liste) {
     const bild = scanVorschauen.get(i.name);
     ziel.appendChild(el("button", {
       class: "scan-zeile" + (SC.wahl.art === "item" && SC.wahl.name === i.name ? " an" : ""),
@@ -2266,12 +2386,17 @@ function scanListeItems(ziel) {
 }
 
 function scanListeScans(ziel) {
-  ziel.appendChild(el("button", {class: "btn", style: "margin-bottom:6px",
-                                 onclick: () => rufScan("scan_neu")}, "+ Neuer Item-Scan"));
+  if (!SC.scans.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Item-Scan. Er ist die Klammer um Slots und Items — bei mehreren "
+      + "Spielen der einzige Weg, sie auseinanderzuhalten."));
+  }
   for (const c of SC.scans) {
+    // Ein Klick oeffnet ihn: waehlen und oeffnen sind hier dasselbe, denn ein
+    // Scan, den man ansieht, ist der, an dem man arbeitet.
     ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.wahl.art === "scan" && SC.wahl.name === c.name ? " an" : ""),
-      onclick: () => rufScan("scan_waehlen", {art: "scan", name: c.name}),
+      class: "scan-zeile" + (SC.offen === c.name ? " an" : ""),
+      onclick: () => rufScan("scan_oeffnen", {name: c.name}),
     },
       el("span", {class: "name"}, c.name),
       c.fehlend.length
@@ -2309,14 +2434,18 @@ function scanOverlay() {
   const px = 1 / Math.max(scanZoom, 0.001);
   // Bei offenem Item-Scan: seine Slots normal, alle anderen gestrichelt und
   // blass. Ohne das muss man Liste und Bild im Kopf zusammenbringen.
-  const offen = SC.wahl.art === "scan"
-    ? (SC.scans.find((c) => c.name === SC.wahl.name) || null) : null;
+  const offen = SC.scans.find((c) => c.name === SC.offen) || null;
 
   for (const s of SC.slots) {
+    const fremd = offen && !s.dabei ? " fremd" : "";
+    // Bei eingeschaltetem Filter bleiben fremde Slots ganz weg: sie gehoeren zu
+    // einem anderen Spiel und liegen womoeglich an genau derselben Stelle.
+    // Ausgeschaltet stehen sie gestrichelt da — dann sucht man ja gerade das,
+    // was man noch dazunehmen koennte.
+    if (fremd && SC.nur_dabei) continue;
     const [x1, y1] = scanZuBild(s.region[0], s.region[1]);
     const [x2, y2] = scanZuBild(s.region[2], s.region[3]);
     const gewaehlt = SC.wahl.art === "slot" && SC.wahl.name === s.name;
-    const fremd = offen && !offen.slots.includes(s.name) ? " fremd" : "";
     const zustand = (s.treffer ? (s.treffer.name ? " treffer" : " leer") : "") + fremd;
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
       class: "scan-fuellung" + (gewaehlt ? " gewaehlt" : "")}));
@@ -2499,6 +2628,10 @@ function scanInspScan(ziel) {
   if (!c) return;
   const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
   const um = (art, name) => rufScan("scan_mitglied", {scan: c.name, art: art, name: name});
+  if (SC.offen !== c.name) {
+    ziel.appendChild(el("button", {class: "btn haupt",
+      onclick: () => rufScan("scan_oeffnen", {name: c.name})}, "Diesen Scan öffnen"));
+  }
 
   ziel.appendChild(ueberschrift("ITEM-SCAN",
     "Welche Slots nach welchen Items durchsucht werden. Ein Block vom Typ " +
@@ -2897,6 +3030,9 @@ function verdrahte() {
     zeichneEinstellungen();
   });
 
+  $("scan-offen").addEventListener("change", (e) =>
+    rufScan("scan_oeffnen", {name: e.target.value}));
+  $("scan-neu").addEventListener("click", () => rufScan("scan_neu"));
   $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {

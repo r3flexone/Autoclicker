@@ -2,9 +2,11 @@
 Laufstatus für Beobachter ausserhalb des Prozesses (Sequenz-Studio).
 
 Eine kleine Datei, die sagt, was gerade läuft. **Kein Log** — sie beschreibt den
-Zustand JETZT und wird überschrieben, nicht angehängt. Beim Ende verschwindet
-sie; eine nach einem Absturz liegengebliebene erkennt der Leser am Alter ihres
-Zeitstempels (`stand`).
+Zustand JETZT und wird überschrieben, nicht angehängt. Am Ende bleibt genau
+**ein** Eintrag stehen: die Zusammenfassung des letzten Laufs (`beende()`), bis
+der nächste Start sie überschreibt. Eine nach einem Absturz liegengebliebene
+erkennt der Leser am Alter ihres Zeitstempels (`stand`) — aber nur, solange
+`aktiv` noch True ist.
 
 **Warum eine Datei und kein Socket.** Das Studio ist ein eigener Prozess
 (`subprocess.Popen`), es sieht `AutoClickerState` nicht. Der gemeinsame Nenner
@@ -114,17 +116,58 @@ def lebenszeichen(state) -> None:
     schreibe(state, {})
 
 
-def beende() -> None:
-    """Entfernt die Statusdatei am Ende eines Laufs und vergisst den Zustand.
+# Was beim Ende eines Laufs KEINEN Sinn mehr ergibt: alles, was einen Moment
+# beschreibt statt den Durchgang. Ein „wartet auf Farbe" in einer Zusammenfassung
+# wäre eine Behauptung über etwas, das längst vorbei ist.
+# `phase`/`phase_pos` bleiben bewusst drin: WO ein Lauf aufgehoert hat, ist die
+# zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
+# als Stelle, an der Schluss war.
+_MOMENT_FELDER = ("block", "bloecke", "block_titel", "block_label", "block_typ",
+                  "block_seit", "warten", "durchlauf")
 
-    Das Vergessen gehört dazu: der nächste Lauf ist eine andere Sequenz mit
-    anderen Phasen, und ein stehengebliebener Block aus dem letzten Lauf stünde
-    sonst in der ersten Momentaufnahme des nächsten.
+
+def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> None:
+    """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
+
+    Hier wurde die Datei früher gelöscht, und damit war die Live-Ansicht in dem
+    Moment leer, in dem man sie am ehesten ansieht: direkt nachdem etwas fertig
+    geworden ist. Die Konsole zeigt ihre Statistik, das Fenster zeigte nichts.
+
+    Jetzt bleibt der letzte Stand als **abgeschlossener** Lauf liegen
+    (`aktiv: False` plus `ende`), bis der nächste Start ihn überschreibt. Der
+    Leser unterscheidet die drei Fälle am Inhalt:
+
+    | Datei | bedeutet |
+    |---|---|
+    | `aktiv: True`, `stand` frisch | läuft |
+    | `aktiv: True`, `stand` älter als 5 s | abgestürzt (verwaist) |
+    | `aktiv: False` mit `ende` | fertig, hier ist die Zusammenfassung |
+
+    Die Altersregel gilt nur für den ersten Fall — eine Zusammenfassung darf so
+    alt sein, wie sie will.
+
+    Ohne `state` (Notausgang, z. B. wenn der Lauf gar nicht erst anlief) wird
+    weiterhin gelöscht: eine Zusammenfassung ohne Zahlen wäre keine.
     """
     global _zuletzt
+    letzter = dict(_zustand)
     _zustand.clear()
     _zuletzt = 0.0
     try:
-        STATUS_DATEI.unlink(missing_ok=True)
-    except OSError:
+        if state is None or not letzter.get("sequenz"):
+            STATUS_DATEI.unlink(missing_ok=True)
+            return
+        for feld in _MOMENT_FELDER:
+            letzter.pop(feld, None)
+        letzter.update({
+            "aktiv": False,
+            "ende": time.time(),
+            "grund": grund,
+            "gelaufen": zyklen,
+            "dauer": dauer,
+            "zaehler": _zaehler(state),
+            "stand": time.time(),
+        })
+        atomic_write(STATUS_DATEI, compact_json(letzter))
+    except (OSError, TypeError, ValueError, AttributeError):
         pass

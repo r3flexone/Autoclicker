@@ -620,6 +620,11 @@ class StudioBridge(ScanTeil):
             return {"aktiv": False}
         if not isinstance(zustand, dict):
             return {"aktiv": False}
+        # Ein abgeschlossener Lauf (`ende`) darf beliebig alt sein — er IST
+        # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
+        # laufend hält.
+        if not zustand.get("aktiv"):
+            return zustand if zustand.get("ende") else {"aktiv": False}
         # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
         # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine

@@ -163,9 +163,12 @@ def sequence_worker(state: AutoClickerState) -> None:
         _run_end_phase(state, sequence)
     finally:
         schedule_shutdown.set()
-        # Auch bei Abbruch: eine stehengebliebene Statusdatei behauptet einen
-        # Lauf, den es nicht gibt.
-        status.beende()
+        # Auch bei Abbruch: ein stehengebliebenes „aktiv" behauptet einen Lauf,
+        # den es nicht gibt. Statt zu loeschen bleibt die Zusammenfassung stehen
+        # — die Live-Ansicht war sonst genau in dem Moment leer, in dem man sie
+        # ansieht: direkt nachdem etwas fertig geworden ist.
+        status.beende(state, _ende_grund(state), cycle_count,
+                      time.time() - state.start_time if state.start_time else 0)
 
     # Laufenden Async-LLM-Boss-Thread abwarten, bevor Log/Statistik abgeschlossen
     # werden. Sonst kann der Daemon-Thread nach Sequenz-Ende noch Klicks/Tasten
@@ -194,6 +197,29 @@ def sequence_worker(state: AutoClickerState) -> None:
 
     _print_session_summary(state, cycle_count, duration)
     set_console_title("Autoclicker - bereit")
+
+
+def _ende_grund(state: AutoClickerState) -> str:
+    """Warum der Lauf zu Ende ist — in einem Satzteil.
+
+    Steht in der Zusammenfassung der Live-Ansicht. „Beendet" allein beantwortet
+    die Frage nicht, die man sich beim Hinsehen stellt: hat er die Zyklen
+    geschafft, oder hat ihn etwas abgebrochen?
+
+    Die Reihenfolge ist die der Dringlichkeit: die Notbremse schlaegt alles,
+    danach kommt, was der Nutzer selbst ausgeloest hat, und zuletzt der
+    Normalfall.
+    """
+    grenze = state.config.pixel_max_consecutive_timeouts
+    if grenze > 0 and state.consecutive_timeouts >= grenze:
+        return f"Notbremse nach {state.consecutive_timeouts} Timeouts in Folge"
+    if state.quit_event.is_set():
+        return "Programm wird beendet"
+    if state.finish_event.is_set():
+        return "sanft beendet (END-Phase gelaufen)"
+    if state.stop_event.is_set():
+        return "von Hand gestoppt"
+    return "alle Zyklen durchgelaufen"
 
 
 def _ascii_title(text: str) -> str:

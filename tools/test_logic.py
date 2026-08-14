@@ -5264,13 +5264,49 @@ try:
     _b17.block_setzen({"feld": "name", "wert": "neu"})
     check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
 
-    _stat16.beende()
-    check("am Ende ist die Datei weg", not Path(_rsf16).exists())
-    # Vergessen gehoert dazu: der naechste Lauf ist eine andere Sequenz, und ein
-    # stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
+    # --- Am Ende bleibt die Zusammenfassung stehen ---
+    # Hier wurde die Datei frueher geloescht, und die Live-Ansicht war genau in
+    # dem Moment leer, in dem man sie ansieht: direkt nachdem etwas fertig
+    # geworden ist.
+    _stat16.schreibe(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A",
+                             "phase_pos": 1, "block": 5, "warten": {"art": "zeit"}},
+                     sofort=True)
+    _stat16.beende(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
+    _ende16 = _lauf16()
+    check("am Ende steht die Zusammenfassung da", Path(_rsf16).exists())
+    check("sie ist nicht mehr aktiv", _ende16.get("aktiv") is False)
+    check("nennt den Grund", _ende16.get("grund") == "alle Zyklen durchgelaufen")
+    check("die gelaufenen Zyklen und die Dauer",
+          _ende16.get("gelaufen") == 12 and _ende16.get("dauer") == 90.5)
+    check("die Zaehler", _ende16.get("zaehler", {}).get("klicks") == 7)
+    check("und die Sequenz", _ende16.get("sequenz") == "S")
+    # Wo Schluss war, bleibt drin; was einen MOMENT beschreibt, nicht: ein
+    # "wartet auf Farbe" in einer Zusammenfassung waere eine Behauptung ueber
+    # etwas, das laengst vorbei ist.
+    check("die Stelle bleibt erhalten", _ende16.get("phase_pos") == 1)
+    check("der laufende Block nicht", "block" not in _ende16)
+    check("und das Warten auch nicht", "warten" not in _ende16)
+
+    # Der Leser darf sie NICHT als verwaist verwerfen - sie ist Vergangenheit,
+    # sie DARF alt sein. Nur ein Lauf, der sich fuer aktiv haelt, hat ein Alter.
+    _ende16["stand"] = _time16.time() - 600
+    Path(_rsf16).write_text(json.dumps(_ende16), encoding="utf-8")
+    _gelesen16 = _b16.lauf_status()
+    check("eine alte Zusammenfassung bleibt lesbar",
+          _gelesen16.get("ende") and _gelesen16.get("grund"))
+    Path(_rsf16).write_text(json.dumps({"aktiv": True, "sequenz": "S",
+                                        "stand": _time16.time() - 600}), encoding="utf-8")
+    check("ein alter AKTIVER Lauf gilt weiter als verwaist",
+          _b16.lauf_status().get("verwaist") is True)
+
+    # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
+    # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
     _stat16.schreibe(_fs16, {"aktiv": True}, sofort=True)
     check("und der naechste Lauf faengt bei null an", "block" not in _lauf16())
+
+    # Ohne State (der Lauf lief gar nicht erst an) gibt es nichts zusammenzufassen.
     _stat16.beende()
+    check("ein Lauf ohne Zahlen laesst nichts liegen", not Path(_rsf16).exists())
 finally:
     _os.chdir(_cwd16)
 
@@ -5457,7 +5493,57 @@ try:
     check("der Klickpunkt wandert mit", _neu18["klick"] == [192, 130])
     check("und die Hintergrundfarbe auch", _neu18["farbe"] == "#010203")
 
+    # --- Der Scan ist die Klammer, nicht die Auswahl ---
+    # Mit mehreren Spielen liegen sonst alle Slots und Items aller Spiele in
+    # einer Liste. Der offene Scan sagt, woran gerade gearbeitet wird - und ist
+    # bewusst NICHT dasselbe wie die Auswahl: wer einen Slot anklickt, um ihn zu
+    # bearbeiten, arbeitet weiter an demselben Scan.
+    _b18.slots.clear()
+    _b18.items.clear()
+    _b18.scans.clear()
+    for _n18 in ("A1", "A2", "B1"):
+        _b18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 9, 9), click_pos=(4, 4))
+        _b18.items[_n18] = _ITEM8(name=_n18)
+    _b18.scan_neu({"name": "Spiel A"})
+    check("ein neuer Scan ist gleich offen", _b18.scan_offen == "Spiel A")
+    for _n18 in ("A1", "A2"):
+        _b18.scan_mitglied({"art": "slot", "name": _n18})
+        _b18.scan_mitglied({"art": "item", "name": _n18})
+    _b18.scan_neu({"name": "Spiel B"})
+    _b18.scan_mitglied({"art": "slot", "name": "B1"})
+
+    _z18 = _b18.scan_oeffnen({"name": "Spiel A"})
+    check("der offene Scan steht in der Aufnahme", _z18["offen"] == "Spiel A")
+    check("und markiert seine Mitglieder",
+          sorted(s["name"] for s in _z18["slots"] if s["dabei"]) == ["A1", "A2"])
+    check("Items ebenso",
+          sorted(i["name"] for i in _z18["items"] if i["dabei"]) == ["A1", "A2"])
+    _z18 = _b18.scan_oeffnen({"name": "Spiel B"})
+    check("beim Wechsel wandert die Markierung mit",
+          [s["name"] for s in _z18["slots"] if s["dabei"]] == ["B1"])
+
+    # Ein Slot anklicken darf den Zusammenhang nicht verlieren - genau das war
+    # der Fehler, als "offen" noch an der Auswahl hing.
+    _b18.scan_waehlen({"art": "slot", "name": "A1"})
+    check("ein Klick auf einen Slot laesst den Scan offen",
+          _b18.scan_daten()["offen"] == "Spiel B")
+    _z18 = _b18.scan_oeffnen({"name": ""})
+    check("kein Scan offen heisst: nichts ist dabei",
+          _z18["offen"] == "" and not any(s["dabei"] for s in _z18["slots"]))
+    check("ein Scan, den es nicht gibt, wird gemeldet",
+          _b18.scan_oeffnen({"name": "Gibt es nicht"})["status"]["art"] == "err")
+
+    # Die Erkennung fragt den OFFENEN Scan, nicht die Auswahl.
+    _b18.scan_oeffnen({"name": "Spiel A"})
+    _b18.scan_waehlen({"art": "item", "name": "B1"})
+    check("geprueft werden die Items des offenen Scans",
+          sorted(i.name for i in _b18._kandidaten()) == ["A1", "A2"])
+
     # --- Fehlende Namen werden gemeldet, nicht verschwiegen ---
+    _b18.scans.clear()
+    _b18.scan_offen = ""
+    _b18.scan_neu({"name": "Test"})
+    _b18.scan_mitglied({"art": "slot", "name": "A1"})
     _b18.scans["Test"].slot_names.append("Gibt es nicht")
     check("ein toter Verweis steht in der Aufnahme",
           _b18.scan_daten()["scans"][0]["fehlend"] == ["Gibt es nicht"])

@@ -14,6 +14,13 @@ ITEM_SCANS_DIR: str = "item_scans"
 SLOTS_DIR: str = "slots"
 ITEMS_DIR: str = "items"
 SCREENSHOTS_DIR: str = os.path.join(SLOTS_DIR, "Screenshots")
+# Je Item-Scan ein eingefrorener Bildschirm, auf dem seine Slots liegen. Ein
+# Unterordner in item_scans/ und keine Datei daneben: `list_scan_files()` sieht
+# nur `*.json` im Ordner selbst, ein PNG dort wäre trotzdem Rauschen zwischen
+# den Konfigurationen. Der Ursprung des virtuellen Desktops steht IM PNG (siehe
+# editors/sequence_studio/scans.py) — sonst wäre es eine zweite Datei, die mit
+# der ersten synchron bleiben müsste.
+SCAN_SHOTS_DIR: str = os.path.join(ITEM_SCANS_DIR, "bilder")
 SEQUENCE_SCREENSHOTS_DIR: str = "screenshots"
 TEMPLATES_DIR: str = os.path.join(ITEMS_DIR, "templates")
 SLOTS_FILE: str = os.path.join(SLOTS_DIR, "slots.json")

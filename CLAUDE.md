@@ -310,8 +310,9 @@ logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 ```
 
 **`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
-beschreibt den Zustand JETZT, wird überschrieben statt angehängt und beim
-Sequenz-Ende gelöscht (`runtime/status.py`). Dass es **oben** liegt und nicht in
+beschreibt den Zustand JETZT und wird überschrieben statt angehängt
+(`runtime/status.py`). Am Sequenz-Ende bleibt genau **ein** Eintrag stehen — die
+Zusammenfassung des letzten Laufs —, bis der nächste Start sie überschreibt. Dass es **oben** liegt und nicht in
 `sequences/`, ist kein Zufall: `Path.glob("*.json")` erfasst auch Dateien mit
 führendem Punkt. Dort abgelegt stünde es als Sequenz im Studio-Menü, im
 Konsolen-Menü und im Start-Durchgang — und weil es sich sekündlich ändert,
@@ -617,6 +618,22 @@ liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
 der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden und
 ein eigener Speichern-Knopf rechts steht.
 
+**Der Item-Scan ist das Übergeordnete, nicht die Auswahl.** Wer mehrere Spiele
+betreibt, hat alle Slots und Items aller Spiele in einer Liste — und keiner davon
+gehört sichtbar irgendwohin. Deshalb gibt es `scan_offen` **neben**
+`scan_art`/`scan_name`: der offene Scan ist der Zusammenhang, die Auswahl ist das
+Ding, das man gerade bearbeitet. Beides an einer Variable hiesse, dass ein Klick
+auf einen Slot den Zusammenhang verliert (so war es zuerst gebaut). Am offenen
+Scan hängen: die Filter der Listen (`nur_dabei`), was im Bild gezeichnet wird,
+welche Items `scan_erkennen()` prüft und welche Toleranz dabei gilt.
+
+**Jeder Scan merkt sich seinen Bildschirm.** `item_scans/bilder/<name>.png`, beim
+Öffnen sofort wieder da — vorher war die Mitte des Reiters leer, bis man einen
+neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
+(Text-Chunk `links`/`oben`), nicht in einer Datei daneben: zwei Dateien, die
+zusammengehören, laufen irgendwann auseinander, und dann sind alle Koordinaten
+still um einen Monitor verschoben.
+
 Vier Regeln, an denen der Reiter hängt:
 
 - **Der Screenshot bleibt in Python.** Die Seite bekommt ihn einmal als
@@ -794,6 +811,25 @@ Drei Eigenschaften, an denen das hängt:
   zusätzlich ab (`"warten": None` in `execute_step`).
 - **`wartet()` ersetzt das Lebenszeichen**, es kommt nicht dazu: es schreibt über
   dieselbe Funktion und schiebt `stand` genauso vor.
+
+**Am Ende bleibt die Zusammenfassung stehen.** Hier wurde die Statusdatei
+früher gelöscht, und damit war die Live-Ansicht genau in dem Moment leer, in dem
+man sie ansieht: direkt nachdem etwas fertig geworden ist. `beende()` schreibt
+jetzt einen **abgeschlossenen** Lauf (`aktiv: False` plus `ende`, Grund, Dauer,
+gelaufene Zyklen, Zähler), bis der nächste Start ihn überschreibt. Drei Fälle
+unterscheidet der Leser am Inhalt, nicht am Vorhandensein der Datei:
+
+| Datei | bedeutet |
+|---|---|
+| `aktiv: True`, `stand` frisch | läuft |
+| `aktiv: True`, `stand` älter als 5 s | abgestürzt (verwaist) |
+| `aktiv: False` mit `ende` | fertig, Zusammenfassung |
+
+Die Altersregel gilt **nur für den ersten Fall** — eine Zusammenfassung ist
+Vergangenheit und darf alt sein. Was einen *Moment* beschreibt (Block, Warten),
+fällt dabei weg; wo Schluss war (`phase_pos`), bleibt: das ist die zweite Frage
+nach „warum". Ohne `state` — ein Lauf, der gar nicht erst anlief — wird
+weiterhin gelöscht, denn eine Zusammenfassung ohne Zahlen wäre keine.
 
 **In die Live-Ansicht wird nur auf der Flanke gesprungen** (nichts → läuft). Solange
 etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eines

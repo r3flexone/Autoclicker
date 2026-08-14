@@ -211,6 +211,49 @@ Das eigene Dear-PyGui-Fenster ist ersatzlos weg; dieselbe Arbeit macht der Reite
 - [ ] Gespeicherte Slots erscheinen identisch im Konsolen-Slot-Editor (gleiche Datei).
 - [ ] 🆕 Ohne Pillow: der Reiter sagt es und bietet keinen toten Screenshot-Knopf an.
 
+### 13b. Der Item-Scan als Klammer 🆕
+Der Punkt, um den es bei mehreren Spielen geht: ohne ihn liegen alle Slots und
+Items aller Spiele in einer Liste.
+
+- [ ] 🆕 Oben links die Scan-Auswahl. Zwei Scans anlegen (z. B. „Idle Clans" und
+      ein zweites Spiel), in jedem eigene Slots aufziehen und Items lernen.
+- [ ] 🆕 Beim Umschalten zeigen Slot- und Item-Liste **nur** die des offenen
+      Scans; die Zahl am Reiter steht als `2/7` da, wenn gefiltert wird.
+- [ ] 🆕 Der Schalter „nur aus …" blendet den ganzen Bestand ein — der Weg, um
+      etwas Vorhandenes dazuzunehmen. Ausgeschaltet stehen die fremden Slots
+      gestrichelt im Bild, eingeschaltet gar nicht.
+- [ ] 🆕 Kategorie-Filter in der Item-Liste (wenn Kategorien vergeben sind).
+- [ ] 🆕 **Jeder Scan merkt sich seinen Bildschirm**: Screenshot aufnehmen,
+      auf den anderen Scan wechseln und zurück → das Bild ist sofort wieder da,
+      mit den Slots darauf. Kein neuer Screenshot nötig.
+      Datei: `item_scans/bilder/<name>.png`.
+- [ ] 🆕 Nach einem Neustart des Studios ist das Bild des Scans weiterhin da,
+      und die Slots liegen an derselben Stelle wie im Spiel (Gegenprobe mit
+      „Items erkennen").
+- [ ] 🆕 Mit **zwei Monitoren**, das Spiel auf dem linken (negative
+      X-Koordinaten): Bild aufnehmen, Studio schliessen, neu öffnen — die Slots
+      sitzen immer noch richtig. (Der Ursprung des virtuellen Desktops steht im
+      PNG; das ist die Stelle, an der ein Fehler sich als „alles um einen
+      Monitor verschoben" zeigen würde.)
+- [ ] 🆕 Einen Scan umbenennen → das Bild wandert mit. Löschen → es verschwindet.
+- [ ] 🆕 „Items erkennen" prüft nur die Items des offenen Scans (die Statuszeile
+      nennt die Zahl).
+
+### 13c. Zusammenfassung nach dem Lauf 🆕
+- [ ] 🆕 Eine Sequenz durchlaufen lassen: die Live-Ansicht bleibt danach stehen
+      und zeigt Laufzeit, Zyklen, Zähler und „alle Zyklen durchgelaufen" (grün).
+- [ ] 🆕 Mit CTRL+ALT+S mittendrin stoppen → „von Hand gestoppt" (amber), und
+      die Phase, in der Schluss war, ist markiert („hier war Schluss").
+- [ ] 🆕 CTRL+ALT+F (sanft beenden) → „sanft beendet (END-Phase gelaufen)".
+- [ ] 🆕 Notbremse auslösen (`pixel_max_consecutive_timeouts` klein setzen, dann
+      einen Farb-Trigger ins Leere laufen lassen) → rot, mit der Anzahl.
+- [ ] 🆕 Die Zusammenfassung überlebt das Schliessen und Neuöffnen des Studios
+      und bleibt beliebig lange stehen (sie gilt **nicht** als verwaist).
+- [ ] 🆕 Der nächste Start ersetzt sie sofort durch den laufenden Lauf.
+- [ ] 🆕 Hauptprozess hart abschiessen, während etwas läuft → beim nächsten
+      Öffnen steht dort weiterhin „Nicht sauber beendet", nicht eine
+      Zusammenfassung.
+
 ## 14. Sequenz-Studio (CTRL+ALT+B) 🆕 Weboberfläche statt Dear PyGui
 - [ ] Fenster öffnet sich (braucht `pywebview`; auf Windows WebView2). Ohne das Paket
       erscheint stattdessen der Hinweis mit dem `pip install`-Befehl, kein Traceback.

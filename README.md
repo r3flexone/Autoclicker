@@ -1398,7 +1398,7 @@ steht auf einmal da.
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
-- **Reiter „Scans"**: das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
+- **Reiter „Scans"**: der Item-Scan ist die Klammer: oben wählt man ihn, und Listen, Bild und Erkennung zeigen nur noch, was zu ihm gehört (ein Schalter blendet den ganzen Bestand ein). Jeder Scan merkt sich seinen Bildschirm — beim Öffnen ist er sofort wieder da, statt einer leeren Fläche. Das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
   Item-Scans entstehen jetzt im selben Fenster wie die Sequenz, die sie benutzt.
   „Screenshot aufnehmen" friert den Bildschirm ein; ein Slot entsteht aus **zwei
   Klicks** (nicht aus einem Zug, der um Pixel verrutscht) und bringt Klickpunkt und
