@@ -19,7 +19,8 @@ from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
-    punkte_nachladen,
+    punkte_nachladen, load_global_slots, load_global_items,
+    load_all_item_scans, resolve_klick_referenzen,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
@@ -659,6 +660,34 @@ def befehl_config(state: AutoClickerState, argumente: dict) -> None:
     print(f"\n{col('[STUDIO]', 'cyan')} Einstellungen neu geladen.")
 
 
+def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
+    """Laedt Slots, Items und Scan-Konfigurationen neu — das Studio hat gespeichert.
+
+    Der Gegenpart zu `befehl_config` fuer die Scan-Daten. Ohne ihn stuende in
+    der Datei ein neuer Slot und im Speicher der alte, bis jemand CTRL+ALT+L
+    drueckt — und dieser Hinweis stand bisher als Satz in der Konsole, statt
+    einfach zu passieren.
+
+    **Waehrend eines Laufs passiert nichts.** Der Worker iteriert ueber genau
+    diese Dicts; sie unter ihm auszutauschen ist die Sorte Fehler, die einmal im
+    Monat auftritt und nie reproduzierbar ist.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{info('Die Sequenz laeuft — Scan-Daten werden nach dem Stopp geladen.')}")
+        return
+
+    load_global_slots(state)
+    load_global_items(state)
+    load_all_item_scans(state)
+    resolve_klick_referenzen(state)
+    with state.lock:
+        anzahl = (len(state.global_slots), len(state.global_items), len(state.item_scans))
+    print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
+          f"{anzahl[0]} Slot(s), {anzahl[1]} Item(s), {anzahl[2]} Item-Scan(s).")
+
+
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
 # hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
@@ -670,6 +699,7 @@ BEFEHLE = {
     "pause": befehl_pause,
     "zeigen": befehl_zeigen,
     "config": befehl_config,
+    "daten": befehl_daten,
 }
 
 
@@ -982,26 +1012,30 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
 
 
 def handle_scan_studio(state: AutoClickerState) -> None:
-    """Öffnet das visuelle Scan-Studio als separaten Subprocess.
+    """Öffnet das Sequenz-Studio auf dem Reiter „Scans".
 
-    Nimmt einen Screenshot auf und lässt Slots (perspektivisch auch Items/Scans)
-    direkt darauf anlegen. Bearbeitet slots/slots.json auf Disk — dieselbe Datei
-    wie der Konsolen-Slot-Editor; danach im Hauptprozess Item-Scan-Menü neu
-    aufrufen, um die geänderten Slots zu sehen.
+    Bis zum Umbau war das ein eigenes Fenster in Dear PyGui. Es ist ersatzlos
+    weg: dieselbe Arbeit — Slots auf einem Screenshot aufziehen, Items lernen,
+    Item-Scans zusammenstellen — macht jetzt ein Reiter im Studio, und zwar in
+    demselben Fenster, in dem die Sequenz steht, die die Scans benutzt. Zwei
+    Fenster mit zwei Bedienkonzepten für dieselben Dateien waren einer zu viel.
+
+    Der Hotkey bleibt, weil er der kürzeste Weg dorthin ist. Er startet
+    denselben Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter.
     """
     import subprocess
 
-    if _block_if_running(state):
-        return
-
+    args = [sys.executable, "-m", "autoclicker.sequence_studio", "", "--scans"]
     try:
-        subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])
+        subprocess.Popen(args)
     except OSError as e:
-        print(f"\n{err(f'Konnte Scan-Studio nicht starten: {e}')}")
+        print(f"\n{err(f'Konnte das Studio nicht starten: {e}')}")
         return
 
-    print(f"\n{col('[SCAN-STUDIO]', 'cyan')} Visuelles Scan-Studio geöffnet.")
-    print(f"     Slots werden in {col('slots/slots.json', 'yellow')} gespeichert.")
+    print(f"\n{col('[SCANS]', 'cyan')} Studio geöffnet — Reiter „Scans“.")
+    print(f"     Gespeichert wird in {col('slots/slots.json', 'yellow')} und "
+          f"{col('items/items.json', 'yellow')}.")
+    print(f"     Danach im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:

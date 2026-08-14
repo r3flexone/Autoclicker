@@ -43,9 +43,11 @@ from ...utils import sanitize_filename
 from .model import (
     BLOCK_COLORS, BLOCK_LABELS,
     LANE_LOOP, Lane, PalettePoint, SequenceBoard,
-    board_to_sequence, ensure_else, load_palette_points, save_palette_points,
-    sequence_to_board, set_block_type, step_from_point,
+    board_to_sequence, ensure_else, hexfarbe, load_palette_points,
+    rgbwert, save_palette_points, sequence_to_board, set_block_type,
+    step_from_point,
 )
+from .scans import ScanTeil
 
 # Reihenfolge der Block-Typen in der Typ-Auswahl: erst die drei Klick-Formen,
 # dann Taste, dann die Scans, zuletzt der Screenshot.
@@ -95,26 +97,10 @@ _FELDER = {
 }
 
 
-def _hex(rgb) -> Optional[str]:
-    """(r,g,b) -> '#RRGGBB'. Unbrauchbare Werte ergeben None statt einer Falschfarbe."""
-    if not rgb:
-        return None
-    try:
-        r, g, b = (max(0, min(255, int(v))) for v in tuple(rgb)[:3])
-    except (TypeError, ValueError):
-        return None
-    return f"#{r:02X}{g:02X}{b:02X}"
-
-
-def _rgb(hexwert) -> Optional[tuple]:
-    """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
-    roh = str(hexwert or "").strip().lstrip("#")
-    if len(roh) != 6:
-        return None
-    try:
-        return tuple(int(roh[i:i + 2], 16) for i in (0, 2, 4))
-    except ValueError:
-        return None
+# Die beiden Farbhelfer liegen in `model.py` — der Scans-Reiter braucht sie
+# genauso, und zwei Exemplare wären die Kopie, die irgendwann anders rundet.
+_hex = hexfarbe
+_rgb = rgbwert
 
 
 def trigger_name(cond: Optional[WaitCondition]) -> str:
@@ -212,8 +198,12 @@ def scan_warnungen(board: SequenceBoard) -> list[str]:
     return raus
 
 
-class StudioBridge:
+class StudioBridge(ScanTeil):
     """Hält Sequenz, Auswahl und Punkte-Palette. Jede Methode ist ein UI-Befehl.
+
+    Der Scans-Reiter hängt als Mixin dran (`scans.py`): pywebview legt **ein**
+    Objekt als `js_api` aus, also müssen alle Methoden hier zusammenlaufen —
+    getrennte Dateien bleiben sie trotzdem.
 
     Alle Methoden, die etwas ÄNDERN, geben `snapshot()` zurück — die Oberfläche
     rendert nach jedem Befehl neu und muss nichts selbst nachhalten. Compound-
@@ -257,6 +247,11 @@ class StudioBridge:
         self._gespeichert = False
         self._status = ("", "info")
         self._frage: Optional[dict] = None
+        # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber
+        # er kommt von aussen: CTRL+ALT+V startet denselben Prozess wie
+        # CTRL+ALT+B, nur mit "scans".
+        self.start_ansicht: str = "editor"
+        self._scan_init()
 
     # ------------------------------------------------------------- Momentaufnahme
 
@@ -273,6 +268,7 @@ class StudioBridge:
         frage, self._frage = self._frage, None
         return {
             "datei": str(self.filepath),
+            "start_ansicht": self.start_ansicht,
             "name": self.board.name,
             "beschreibung": self.board.description,
             "zyklen": self.board.total_cycles,
@@ -646,7 +642,7 @@ class StudioBridge:
     LAUF_BEFEHLE = ("start", "stop", "pause")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config")
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten")
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.

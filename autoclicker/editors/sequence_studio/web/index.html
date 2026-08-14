@@ -414,6 +414,61 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .kachel b{font-family:var(--mono);font-size:20px;font-weight:600}
 .kachel small{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
 
+/* -------------------------------------------------------------------- Scans */
+.scans{flex:1;display:flex;min-height:0}
+/* Die Buehne scrollt in beide Richtungen: ein virtueller Desktop ist breiter
+   als jedes Fenster, und beim Hineinzoomen soll man sich bewegen koennen. */
+.scan-buehne{flex:1;min-width:0;overflow:auto;background:var(--bg);position:relative;
+  background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px}
+.scan-flaeche{position:relative;line-height:0}
+.scan-flaeche img{display:block;width:100%;height:auto;image-rendering:pixelated}
+#scan-overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.scan-slot{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.scan-slot.gewaehlt{stroke:#fff;stroke-width:2.5}
+/* Ein erkanntes Item faerbt seinen Slot gruen, ein leerer bleibt grau — die
+   Antwort auf "was steckt wo drin" soll im Bild stehen, nicht in einer Liste
+   daneben. */
+.scan-slot.treffer{stroke:var(--ok)}
+.scan-slot.leer{stroke:var(--dim)}
+.scan-fuellung{fill:#F59E0B14;stroke:none}
+.scan-fuellung.gewaehlt{fill:#FFFFFF1F}
+/* Ist ein Item-Scan offen, zeigt das Bild, WELCHE Slots er ansieht — genau die
+   Frage, fuer die man sonst zwischen Liste und Bild hin und her sieht. */
+.scan-slot.fremd{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
+.scan-marke.fremd{opacity:.45}
+.scan-marke{font-family:var(--mono);fill:var(--text);paint-order:stroke;
+  stroke:#0C0F14;stroke-width:3px;stroke-linejoin:round}
+.scan-kreuz{stroke:#fff;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.scan-vorschau{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
+  vector-effect:non-scaling-stroke}
+.scan-eck{fill:var(--accent)}
+/* Die Listen links: eine Zeile pro Slot/Item/Scan, gewaehlt = Ring wie ueberall. */
+.scan-zeile{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;
+  background:none;border:1px solid var(--line);width:100%;text-align:left;
+  font-size:12px;color:var(--muted)}
+.scan-zeile:hover{border-color:var(--dim);color:var(--text)}
+.scan-zeile.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-zeile .kugel{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
+.scan-zeile .kugel.ohne{border:1px dashed var(--dim);background:none}
+.scan-zeile .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-zeile .mini{width:22px;height:22px;flex:none;border-radius:3px;
+  border:1px solid var(--line);image-rendering:pixelated;object-fit:contain;background:var(--bg)}
+.tabs.klein .tab{font-size:11px;padding:4px 8px}
+/* Zwei Zeilen, nicht drei Spalten: „Hintergrundfarbe" und sein Hinweis passten
+   nebeneinander nicht in 260 px und ueberschrieben sich gegenseitig. */
+.scan-modus{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;
+  border-radius:4px;background:none;border:1px solid var(--line);width:100%;
+  text-align:left;font-size:12px;color:var(--muted)}
+.scan-modus .klein{grid-column:1/-1}
+.scan-modus:hover{border-color:var(--dim);color:var(--text)}
+.scan-modus.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-modus .taste{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+.scan-haken{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.scan-marker{display:flex;flex-wrap:wrap;gap:4px}
+.scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
+.scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
+  image-rendering:pixelated;max-height:180px;object-fit:contain}
+
 /* ------------------------------------------------------------ Einstellungen */
 .cfg{flex:1;display:flex;min-height:0}
 .cfg-mitte{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}
@@ -503,6 +558,7 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
       <button class="tab an" data-ansicht="editor">Editor</button>
       <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
       <button class="tab" data-ansicht="lauf">Live-Run</button>
+      <button class="tab" data-ansicht="scans">Scans</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
     <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
@@ -583,6 +639,46 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
        man drueben nachsieht, was gerade laeuft. -->
   <div class="karten" id="sicht-sequenzen" hidden></div>
   <div class="lauf" id="sicht-lauf" hidden></div>
+
+  <!-- Scans: links die Werkzeuge und die Listen, in der Mitte der eingefrorene
+       Screenshot als Arbeitsflaeche, rechts die Eigenschaften. Ein Slot wird
+       dort aufgezogen, wo er im Spiel liegt — Koordinaten tippt hier niemand. -->
+  <div class="scans" id="sicht-scans" hidden>
+    <aside class="seite links">
+      <div class="abschnitt">
+        <div class="reihe">
+          <span class="ueberschrift wachse">BILD</span>
+          <span class="klein mono" id="scan-groesse"></span>
+        </div>
+        <button class="btn haupt" id="scan-foto">Screenshot aufnehmen</button>
+        <div class="reihe">
+          <button class="btn still" id="scan-fit" title="ins Fenster einpassen">einpassen</button>
+          <button class="btn still" id="scan-1zu1" title="Originalgrösse">1:1</button>
+          <span class="wachse"></span>
+          <span class="klein mono" id="scan-zoom"></span>
+        </div>
+      </div>
+      <div class="abschnitt">
+        <span class="ueberschrift">WAS EIN KLICK TUT</span>
+        <div class="spalte" id="scan-modi" style="gap:4px"></div>
+      </div>
+      <div class="abschnitt wachsend">
+        <div class="tabs klein" id="scan-listen-tabs"></div>
+        <div class="spalte" id="scan-liste" style="gap:3px;margin-top:8px"></div>
+      </div>
+    </aside>
+
+    <main class="scan-buehne" id="scan-buehne">
+      <div class="scan-flaeche" id="scan-flaeche">
+        <img id="scan-bild" alt="">
+        <svg id="scan-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <p class="leer" id="scan-leer">Noch kein Bild. „Screenshot aufnehmen" friert
+        den Bildschirm ein — darauf werden die Slots aufgezogen.</p>
+    </main>
+
+    <aside class="seite rechts" id="scan-insp"></aside>
+  </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,
        was gerade offen ist). Die Felder stehen einzeln untereinander statt in
@@ -833,9 +929,12 @@ function setzeAnsicht(neu) {
   $("sicht-sequenzen").hidden = neu !== "sequenzen";
   $("sicht-lauf").hidden = neu !== "lauf";
   $("sicht-config").hidden = neu !== "einstellungen";
-  // Die Sequenz-Bedienelemente im Kopf gehoeren nicht zu den Einstellungen.
+  $("sicht-scans").hidden = neu !== "scans";
+  // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Einstellungen
+  // und Scans bearbeiten andere Dateien und haben ihren eigenen Speichern-Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = neu === "einstellungen";
+    n.hidden = neu === "einstellungen" || neu === "scans";
+  if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
@@ -1992,6 +2091,445 @@ async function fortfahren(verwerfen) {
   else await ruf("neu", {verwerfen: true});
 }
 
+/* ------------------------------------------------------------ Ansicht: Scans */
+
+/* Slots, Items und Item-Scans auf einem eingefrorenen Screenshot. Eigener
+ * Zustand neben `S`, wie bei den Einstellungen: der Reiter bearbeitet andere
+ * Dateien (slots.json, items.json, item_scans/), und eine Sequenz-Momentaufnahme
+ * waere dafuer der falsche Gegenstand.
+ *
+ * Gezeichnet wird ein <img> mit einem <svg> darueber. Das SVG traegt ein
+ * viewBox in BILD-Pixeln — damit ist jede Rechnung im Overlay unabhaengig vom
+ * Zoom, und nur die Strichstaerken und Schriftgroessen muessen gegengerechnet
+ * werden. */
+let SC = null;
+let scanListe = "slots";      // welche Liste links offen ist
+let scanZoom = 1;
+let scanFotoStand = 0;
+let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
+let scanZeiger = null;            // letzte Mausposition im Bild (fuer die Vorschau)
+
+const SCAN_MODI = [
+  {key: "wahl", text: "Auswählen", taste: "V", hilfe: "Slot im Bild anklicken"},
+  {key: "slot", text: "Neuer Slot", taste: "S", hilfe: "zwei Ecken anklicken"},
+  {key: "messen", text: "Hintergrundfarbe", taste: "F", hilfe: "Stelle im Slot anklicken"},
+  {key: "klick", text: "Klickpunkt", taste: "K", hilfe: "wohin geklickt wird"},
+];
+
+async function zeichneScans(frisch) {
+  if (frisch || !SC) {
+    const antwort = await frage("scan_daten");
+    if (!antwort || ansicht !== "scans") return;
+    SC = antwort;
+  }
+  await scanBildPflegen();
+  scanWerkzeuge();
+  scanListeZeichnen();
+  scanOverlay();
+  scanInspektor();
+  setzeStatus(SC.status);
+}
+
+/** Ein Befehl an den Scan-Teil der Brücke. Antwort ist die neue Scan-Aufnahme. */
+async function rufScan(name, daten) {
+  const antwort = await frage(name, daten);
+  if (!antwort) return;
+  SC = antwort;
+  await zeichneScans();
+}
+
+/** Holt das Bild nur, wenn es ein neues gibt — es ist der grosse Brocken. */
+async function scanBildPflegen() {
+  const bild = $("scan-bild");
+  const leer = $("scan-leer");
+  if (!SC.foto) {
+    $("scan-flaeche").hidden = true;
+    leer.hidden = false;
+    leer.textContent = SC.pillow
+      ? "Noch kein Bild. „Screenshot aufnehmen“ friert den Bildschirm ein — darauf werden die Slots aufgezogen."
+      : "Ohne Pillow gibt es kein Bild (pip install pillow). Slots lassen sich dann nur über die Zahlenfelder rechts setzen.";
+    return;
+  }
+  $("scan-flaeche").hidden = false;
+  leer.hidden = true;
+  if (SC.foto.stand !== scanFotoStand) {
+    scanFotoStand = SC.foto.stand;
+    const url = await frage("scan_bild");
+    if (url) bild.src = url;
+    scanEinpassen();
+  }
+  $("scan-groesse").textContent = SC.foto.breite + "×" + SC.foto.hoehe;
+}
+
+function scanEinpassen() {
+  if (!SC || !SC.foto) return;
+  const platz = $("scan-buehne").clientWidth - 24;
+  scanZoom = Math.max(0.05, Math.min(1, platz / SC.foto.breite));
+  scanZoomAnwenden();
+}
+
+function scanZoomAnwenden() {
+  if (!SC || !SC.foto) return;
+  $("scan-flaeche").style.width = Math.round(SC.foto.breite * scanZoom) + "px";
+  $("scan-zoom").textContent = Math.round(scanZoom * 100) + " %";
+  scanOverlay();
+}
+
+/* ---- Umrechnung: Bildschirm <-> Bild. Die einzige Stelle, die das darf. ---- */
+
+function scanZuBild(x, y) {
+  const f = SC.foto;
+  return [(x - f.links) * f.skala, (y - f.oben) * f.skala];
+}
+
+function scanZuSchirm(bx, by) {
+  const f = SC.foto;
+  return [Math.round(f.links + bx / f.skala), Math.round(f.oben + by / f.skala)];
+}
+
+function scanWerkzeuge() {
+  const ziel = $("scan-modi");
+  ziel.replaceChildren();
+  for (const m of SCAN_MODI) {
+    ziel.appendChild(el("button", {
+      class: "scan-modus" + (SC.modus === m.key ? " an" : ""),
+      onclick: () => rufScan("scan_modus_setzen", {modus: m.key}),
+    },
+      el("span", {}, m.text),
+      el("span", {class: "taste"}, m.taste),
+      el("span", {class: "klein"}, m.hilfe)));
+  }
+  $("scan-foto").disabled = !SC.pillow;
+}
+
+function scanListeZeichnen() {
+  const tabs = $("scan-listen-tabs");
+  tabs.replaceChildren();
+  const gruppen = [["slots", "Slots", SC.slots.length],
+                   ["items", "Items", SC.items.length],
+                   ["scans", "Scans", SC.scans.length]];
+  for (const [key, text, anzahl] of gruppen) {
+    tabs.appendChild(el("button", {
+      class: "tab" + (scanListe === key ? " an" : ""),
+      onclick: () => { scanListe = key; zeichneScans(); },
+    }, text + " " + anzahl));
+  }
+
+  const ziel = $("scan-liste");
+  ziel.replaceChildren();
+  if (scanListe === "slots") return scanListeSlots(ziel);
+  if (scanListe === "items") return scanListeItems(ziel);
+  return scanListeScans(ziel);
+}
+
+function scanListeSlots(ziel) {
+  if (!SC.slots.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch keine Slots. Modus „Neuer Slot“, dann zwei Ecken im Bild anklicken."));
+    return;
+  }
+  for (const s of SC.slots) {
+    ziel.appendChild(el("button", {
+      class: "scan-zeile" + (SC.wahl.art === "slot" && SC.wahl.name === s.name ? " an" : ""),
+      onclick: () => rufScan("scan_waehlen", {art: "slot", name: s.name}),
+    },
+      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
+                  style: s.farbe ? "background:" + s.farbe : ""}),
+      el("span", {class: "name"}, s.name),
+      s.treffer && s.treffer.name
+        ? el("span", {class: "klein", style: "color:var(--ok)"}, s.treffer.name)
+        : el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe)));
+  }
+}
+
+function scanListeItems(ziel) {
+  if (!SC.items.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch keine Items. Einen Slot wählen und rechts „Item lernen“ — oder alle "
+      + "Slots auf einmal."));
+    return;
+  }
+  scanVorschauenHolen(SC.items.map((i) => i.name));
+  for (const i of SC.items) {
+    const bild = scanVorschauen.get(i.name);
+    ziel.appendChild(el("button", {
+      class: "scan-zeile" + (SC.wahl.art === "item" && SC.wahl.name === i.name ? " an" : ""),
+      onclick: () => rufScan("scan_waehlen", {art: "item", name: i.name}),
+    },
+      bild ? el("img", {class: "mini", src: bild})
+           : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
+                         style: i.marker.length ? "background:" + i.marker[0] : ""}),
+      el("span", {class: "name"}, i.name),
+      i.stumm ? el("span", {class: "klein", style: "color:var(--err)"}, "stumm")
+              : el("span", {class: "klein mono"}, i.kategorie || "")));
+  }
+}
+
+function scanListeScans(ziel) {
+  ziel.appendChild(el("button", {class: "btn", style: "margin-bottom:6px",
+                                 onclick: () => rufScan("scan_neu")}, "+ Neuer Item-Scan"));
+  for (const c of SC.scans) {
+    ziel.appendChild(el("button", {
+      class: "scan-zeile" + (SC.wahl.art === "scan" && SC.wahl.name === c.name ? " an" : ""),
+      onclick: () => rufScan("scan_waehlen", {art: "scan", name: c.name}),
+    },
+      el("span", {class: "name"}, c.name),
+      c.fehlend.length
+        ? el("span", {class: "klein", style: "color:var(--err)"}, c.fehlend.length + "× fehlt")
+        : el("span", {class: "klein mono"}, c.slots.length + "S/" + c.items.length + "I")));
+  }
+}
+
+/** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
+async function scanVorschauenHolen(namen) {
+  const fehlend = namen.filter((n) => !scanVorschauen.has(n));
+  if (!fehlend.length) return;
+  // Vormerken, damit ein zweiter Aufbau nicht nochmal fragt.
+  for (const n of fehlend) scanVorschauen.set(n, "");
+  const antwort = await frage("scan_vorschau", {namen: fehlend});
+  if (!antwort) return;
+  let neu = false;
+  for (const [name, url] of Object.entries(antwort)) {
+    if (url) { scanVorschauen.set(name, url); neu = true; }
+  }
+  if (neu && ansicht === "scans") { scanListeZeichnen(); scanInspektor(); }
+}
+
+/* ------------------------------------------------------------------ Overlay */
+
+function scanOverlay() {
+  const svg = $("scan-overlay");
+  if (!SC || !SC.foto) { svg.replaceChildren(); return; }
+  const f = SC.foto;
+  svg.setAttribute("viewBox", "0 0 " + f.breite + " " + f.hoehe);
+  svg.replaceChildren();
+  // Schrift und Punktgroessen werden gegen den Zoom gerechnet, damit sie in
+  // jeder Vergroesserung gleich gross auf dem Schirm stehen. Striche erledigt
+  // `vector-effect` im CSS.
+  const px = 1 / Math.max(scanZoom, 0.001);
+  // Bei offenem Item-Scan: seine Slots normal, alle anderen gestrichelt und
+  // blass. Ohne das muss man Liste und Bild im Kopf zusammenbringen.
+  const offen = SC.wahl.art === "scan"
+    ? (SC.scans.find((c) => c.name === SC.wahl.name) || null) : null;
+
+  for (const s of SC.slots) {
+    const [x1, y1] = scanZuBild(s.region[0], s.region[1]);
+    const [x2, y2] = scanZuBild(s.region[2], s.region[3]);
+    const gewaehlt = SC.wahl.art === "slot" && SC.wahl.name === s.name;
+    const fremd = offen && !offen.slots.includes(s.name) ? " fremd" : "";
+    const zustand = (s.treffer ? (s.treffer.name ? " treffer" : " leer") : "") + fremd;
+    svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+      class: "scan-fuellung" + (gewaehlt ? " gewaehlt" : "")}));
+    svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+      class: "scan-slot" + zustand + (gewaehlt ? " gewaehlt" : "")}));
+    // Der Name steht ueber dem Rechteck, das Erkennungsergebnis darunter — so
+    // ueberdeckt keins von beiden das Bild im Slot.
+    svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + fremd,
+      "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
+    if (s.treffer && s.treffer.name) {
+      svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-marke",
+        "font-size": 10 * px, "stroke-width": 3 * px, fill: "#3ED07A"}, s.treffer.name));
+    }
+    const [kx, ky] = scanZuBild(s.klick[0], s.klick[1]);
+    const arm = 4 * px;
+    svg.appendChild(svgEl("path", {class: "scan-kreuz",
+      d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
+  }
+
+  // Die erste Ecke und das entstehende Rechteck: ohne die sieht man beim
+  // Aufziehen nicht, was man gerade baut.
+  if (SC.ecke) {
+    const [ex, ey] = scanZuBild(SC.ecke[0], SC.ecke[1]);
+    svg.appendChild(svgEl("circle", {cx: ex, cy: ey, r: 3 * px, class: "scan-eck"}));
+    if (scanZeiger) {
+      const [zx, zy] = scanZuBild(scanZeiger[0], scanZeiger[1]);
+      svg.appendChild(svgEl("rect", {class: "scan-vorschau",
+        x: Math.min(ex, zx), y: Math.min(ey, zy),
+        width: Math.abs(zx - ex), height: Math.abs(zy - ey)}));
+    }
+  }
+}
+
+/** Wie el(), aber im SVG-Namensraum — sonst zeichnet der Browser nichts. */
+function svgEl(tag, attrs, text) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined) continue;
+    n.setAttribute(k, String(v));
+  }
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function scanStelleAusEvent(e) {
+  const rand = $("scan-overlay").getBoundingClientRect();
+  if (!rand.width || !rand.height || !SC || !SC.foto) return null;
+  const bx = (e.clientX - rand.left) / rand.width * SC.foto.breite;
+  const by = (e.clientY - rand.top) / rand.height * SC.foto.hoehe;
+  return scanZuSchirm(bx, by);
+}
+
+/* --------------------------------------------------------------- Inspektor */
+
+function scanInspektor() {
+  const ziel = $("scan-insp");
+  ziel.replaceChildren();
+  const kopf = el("div", {class: "abschnitt"},
+    el("div", {class: "reihe"},
+      el("span", {class: "ueberschrift wachse"},
+         SC.dirty ? "NICHT GESPEICHERT" : "SLOTS · ITEMS · SCANS"),
+      SC.dirty ? el("span", {class: "punkt-offen"}) : null),
+    el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
+       "Speichern"),
+    el("button", {class: "btn", disabled: !SC.foto || !SC.slots.length,
+                  title: "Jeden Slot gegen die Item-Profile halten",
+                  onclick: () => rufScan("scan_erkennen")}, "Items erkennen"));
+  ziel.appendChild(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  if (SC.wahl.art === "slot") scanInspSlot(rumpf);
+  else if (SC.wahl.art === "item") scanInspItem(rumpf);
+  else if (SC.wahl.art === "scan") scanInspScan(rumpf);
+  if (!rumpf.childNodes.length) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      "Nichts gewählt. Links eine Zeile anklicken — oder im Bild einen Slot."));
+  }
+  ziel.appendChild(rumpf);
+}
+
+function scanSlotAktuell() {
+  return SC.slots.find((s) => s.name === SC.wahl.name) || null;
+}
+
+function scanInspSlot(ziel) {
+  const s = scanSlotAktuell();
+  if (!s) return;
+  const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
+
+  ziel.appendChild(ueberschrift("SLOT",
+    "Ein Slot ist eine Fläche, die gescannt wird, plus die Stelle, auf die " +
+    "geklickt wird, wenn dort etwas Passendes liegt.", "slot"));
+  ziel.appendChild(feld("Name", s.name, (v) => setze("name", v)));
+
+  ziel.appendChild(ueberschrift("FLÄCHE",
+    "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
+    "im Bild anklicken.", "flaeche"));
+  ziel.appendChild(el("div", {class: "gitter2"},
+    zahlfeld("Links", s.region[0], (v) => setze("x1", v)),
+    zahlfeld("Oben", s.region[1], (v) => setze("y1", v)),
+    zahlfeld("Rechts", s.region[2], (v) => setze("x2", v)),
+    zahlfeld("Unten", s.region[3], (v) => setze("y2", v))));
+  ziel.appendChild(el("p", {class: "hinweis"}, s.breite + " × " + s.hoehe + " px"));
+
+  ziel.appendChild(ueberschrift("KLICKPUNKT",
+    "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
+  ziel.appendChild(el("div", {class: "gitter2"},
+    zahlfeld("X", s.klick[0], (v) => setze("kx", v)),
+    zahlfeld("Y", s.klick[1], (v) => setze("ky", v))));
+  ziel.appendChild(el("button", {class: "btn still",
+    onclick: () => rufScan("scan_modus_setzen", {modus: "klick"})},
+    "✛ im Bild setzen"));
+
+  ziel.appendChild(ueberschrift("HINTERGRUND",
+    "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
+    "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
+  ziel.appendChild(farbfeld("Farbe", s.farbe, (v) => setze("farbe", v)));
+  ziel.appendChild(el("button", {class: "btn still",
+    onclick: () => rufScan("scan_modus_setzen", {modus: "messen"})},
+    "◎ im Bild messen"));
+
+  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+    el("button", {class: "btn", disabled: !SC.foto,
+                  onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
+       "Item lernen"),
+    el("button", {class: "btn", onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
+    el("span", {class: "wachse"}),
+    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
+       "löschen")));
+  if (SC.foto) {
+    ziel.appendChild(el("button", {class: "btn still", style: "margin-top:6px",
+      onclick: () => rufScan("scan_items_lernen")}, "aus ALLEN Slots lernen"));
+  }
+  if (s.treffer) {
+    ziel.appendChild(el("p", {class: "hinweis", style: "margin-top:10px"},
+      s.treffer.name ? "Zuletzt erkannt: " + s.treffer.name
+                     : "Zuletzt: " + (s.treffer.grund || "nichts erkannt")));
+  }
+}
+
+function scanInspItem(ziel) {
+  const i = SC.items.find((x) => x.name === SC.wahl.name);
+  if (!i) return;
+  const setze = (feld, wert) => rufScan("scan_item_setzen", {name: i.name, feld: feld, wert: wert});
+
+  ziel.appendChild(ueberschrift("ITEM",
+    "Ein Item wird über sein Template (Bildvergleich) und/oder seine " +
+    "Marker-Farben erkannt. Ohne beides wird es nie gefunden.", "item"));
+  const bild = scanVorschauen.get(i.name);
+  if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
+  ziel.appendChild(feld("Name", i.name, (v) => setze("name", v)));
+  ziel.appendChild(feld("Kategorie", i.kategorie || "", (v) => setze("kategorie", v),
+    null, "Nur zum Sortieren — die Laufzeit benutzt sie nicht.", "kategorie"));
+  ziel.appendChild(el("div", {class: "gitter2"},
+    zahlfeld("Priorität", i.prioritaet, (v) => setze("prioritaet", v), {min: 1, step: 1},
+      "Kleiner heisst: zuerst klicken. Steht eine Marktwert-Tabelle in der " +
+      "Config, gewinnt die gegen diese Zahl.", "prio"),
+    zahlfeld("Konfidenz", i.konfidenz, (v) => setze("konfidenz", v),
+      {min: 0, max: 1, step: "any"},
+      "Wie gut das Template passen muss (0–1).", "konf")));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    i.template ? "Template: " + i.template : "Kein Template — nur Marker-Farben."));
+  if (i.marker.length) {
+    ziel.appendChild(ueberschrift("MARKER-FARBEN",
+      "Die häufigsten Farben im gelernten Ausschnitt, ohne den Slot-Hintergrund.",
+      "marker"));
+    ziel.appendChild(el("div", {class: "scan-marker"},
+      i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
+  }
+  if (i.stumm) {
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
+      "Weder Template noch Marker — dieses Item wird nie erkannt."));
+  }
+  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
+    onclick: () => rufScan("scan_item_loeschen")}, "Item löschen"));
+}
+
+function scanInspScan(ziel) {
+  const c = SC.scans.find((x) => x.name === SC.wahl.name);
+  if (!c) return;
+  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
+  const um = (art, name) => rufScan("scan_mitglied", {scan: c.name, art: art, name: name});
+
+  ziel.appendChild(ueberschrift("ITEM-SCAN",
+    "Welche Slots nach welchen Items durchsucht werden. Ein Block vom Typ " +
+    "ITEM-SCAN verweist per Name hierauf.", "itemscan"));
+  ziel.appendChild(feld("Name", c.name, (v) => setze("name", v)));
+  ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
+    {min: 0, step: 1},
+    "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
+    "toleranz"));
+  ziel.appendChild(schalter("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v)));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in " +
+    "diesen Scan, damit sie nicht ungeprüft geklickt werden."));
+
+  ziel.appendChild(ueberschrift("SLOTS", "Welche Flächen dieser Scan ansieht.", "scanslots"));
+  ziel.appendChild(el("div", {class: "scan-haken"}, SC.slots.map((s) =>
+    schalter(s.name, c.slots.includes(s.name), () => um("slot", s.name)))));
+
+  ziel.appendChild(ueberschrift("ITEMS", "Wonach gesucht wird.", "scanitems"));
+  ziel.appendChild(el("div", {class: "scan-haken"}, SC.items.map((i) =>
+    schalter(i.name, c.items.includes(i.name), () => um("item", i.name)))));
+
+  if (c.fehlend.length) {
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err);margin-top:10px"},
+      "Zeigt ins Leere: " + c.fehlend.join(", ") + ". Der Scan läuft mit dem Rest " +
+      "weiter — lieber ein Slot weniger als ein toter Scan."));
+  }
+  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
+    onclick: () => rufScan("scan_loeschen")}, "Scan löschen"));
+}
+
 /* ----------------------------------------------------- Ansicht: Einstellungen */
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor. Sein
@@ -2359,6 +2897,34 @@ function verdrahte() {
     zeichneEinstellungen();
   });
 
+  $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
+  $("scan-fit").addEventListener("click", scanEinpassen);
+  $("scan-1zu1").addEventListener("click", () => {
+    // 1:1 heisst: ein Bildschirm-Pixel ist ein Bildschirm-Pixel. Das Bild ist
+    // fuer die Uebertragung verkleinert, also muss der Zoom das ausgleichen.
+    scanZoom = SC && SC.foto ? 1 / SC.foto.skala : 1;
+    scanZoomAnwenden();
+  });
+  const flaeche = $("scan-overlay");
+  flaeche.addEventListener("click", (e) => {
+    const stelle = scanStelleAusEvent(e);
+    if (stelle) rufScan("scan_klick", {x: stelle[0], y: stelle[1]});
+  });
+  flaeche.addEventListener("mousemove", (e) => {
+    // Nur waehrend des Aufziehens gebraucht — sonst waere es ein Neuaufbau des
+    // Overlays bei jeder Mausbewegung.
+    if (!SC || !SC.ecke) return;
+    scanZeiger = scanStelleAusEvent(e);
+    scanOverlay();
+  });
+  // Mit STRG zoomen, wie in jedem Bildbetrachter; ohne STRG scrollt die Buehne.
+  $("scan-buehne").addEventListener("wheel", (e) => {
+    if (!e.ctrlKey || !SC || !SC.foto) return;
+    e.preventDefault();
+    scanZoom = Math.max(0.05, Math.min(4, scanZoom * (e.deltaY < 0 ? 1.15 : 0.87)));
+    scanZoomAnwenden();
+  }, {passive: false});
+
   $("dialog-ab").addEventListener("click", schliesseFrage);
   $("dialog-weg").addEventListener("click", () => fortfahren(true));
   $("dialog-speichern").addEventListener("click", () => fortfahren(false));
@@ -2389,16 +2955,29 @@ function tastatur(e) {
   if (e.key === "Escape") {
     if (offeneFrage) return schliesseFrage();
     if (imTextfeld()) return document.activeElement.blur();
+    if (ansicht === "scans") return rufScan("scan_abbrechen");
     if (ansicht === "einstellungen") return;
     return ruf("auswahl_leeren");
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
-    // Derselbe Griff, zwei Dateien: in den Einstellungen steht die Sequenz
-    // gar nicht zur Debatte.
-    return ansicht === "einstellungen" ? cfgSpeichern() : speichere();
+    // Derselbe Griff, drei Dateien: welche gemeint ist, sagt der offene Reiter.
+    if (ansicht === "einstellungen") return cfgSpeichern();
+    if (ansicht === "scans") return rufScan("scan_speichern");
+    return speichere();
   }
   if (imTextfeld() || offeneFrage) return;
+  if (ansicht === "scans") {
+    // Die Modi liegen auf ihren Anfangsbuchstaben — beim Aufziehen von zwanzig
+    // Slots ist der Griff zur Werkzeugleiste der laengste Teil der Arbeit.
+    const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
+    if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen", {modus: modus.key}); }
+    if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
+      e.preventDefault();
+      return rufScan("scan_slot_loeschen");
+    }
+    return;
+  }
   // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
   if (ansicht === "einstellungen") return;
   if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
@@ -2410,10 +2989,13 @@ function tastatur(e) {
   if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); return ruf("auswahl_verschieben", {delta: 1}); }
 }
 
-warteAufBruecke().then(() => {
+warteAufBruecke().then(async () => {
   verdrahte();
   flankenPuls();
-  ruf("snapshot");
+  await ruf("snapshot");
+  // CTRL+ALT+V startet denselben Prozess wie CTRL+ALT+B, nur mit vorgewaehltem
+  // Reiter. Erst NACH der ersten Momentaufnahme, weil sie den Wunsch mitbringt.
+  if (S && S.start_ansicht && S.start_ansicht !== "editor") setzeAnsicht(S.start_ansicht);
 });
 </script>
 </body>

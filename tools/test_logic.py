@@ -9,6 +9,14 @@ da ist es echt vorhanden), damit der Import der utils nicht scheitert.
 import sys, types, json, tempfile
 from pathlib import Path
 
+# MUSS vor dem msvcrt-Stub geladen werden: `subprocess` erkennt Windows daran,
+# dass sich msvcrt importieren laesst, und zieht dann `_winapi` nach - das es
+# auf Linux nicht gibt. Wer danach etwas importiert, das subprocess braucht
+# (z.B. PIL.ImageGrab), bekommt einen ModuleNotFoundError und haelt Pillow
+# faelschlich fuer nicht installiert. Genau daran lief der Bild-Teil der
+# Scan-Tests ins Leere.
+import subprocess  # noqa: F401
+
 try:
     import msvcrt  # noqa: F401  (echtes Modul auf Windows)
 except ImportError:
@@ -806,7 +814,7 @@ _MIGRATE_AUSNAHMEN = {
     # Die beiden GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken
     # Ladern (sie haben keinen AutoClickerState). Sie werden AUS dem Hauptprozess
     # gestartet, der beim Start bereits alles gehoben hat.
-    "autoclicker/editors/scan_canvas/model.py":
+    "autoclicker/editors/sequence_studio/scan_model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept",
     "autoclicker/editors/sequence_studio/model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept",
@@ -3879,74 +3887,6 @@ else:
 
 
 
-# --------------------------- GUI-Code gegen die installierte Dear-PyGui-Version
-section("dpg-Aufrufe passen zur installierten Dear-PyGui-Version")
-
-# Die beiden GUI-Werkzeuge laufen in KEINEM Test - sie brauchen ein Fenster. Eine
-# entfallene oder umbenannte API faellt deshalb erst beim Start auf, und zwar mit
-# einem Absturz: `add_static_texture(..., format=...)` gab es in Dear PyGui 1.x, in
-# 2.x nur noch bei `add_raw_texture`. Das Scan-Studio startete dadurch gar nicht mehr.
-#
-# Ausfuehren laesst sich der Code hier nicht, seine Aufrufe pruefen aber schon:
-# jeder `dpg.<name>(..., kwarg=...)` wird gegen die Signatur der INSTALLIERTEN
-# Version gehalten. Das ist der Teil der GUI, der ueberhaupt statisch pruefbar ist -
-# und genau der Teil, der bei einem Versionswechsel bricht.
-try:
-    import dearpygui.dearpygui as _dpg7
-    import dearpygui as _dpgpkg7
-except ImportError:
-    _dpg7 = None
-
-if _dpg7 is None:
-    print("  ----  uebersprungen (dearpygui nicht installiert)")
-else:
-    import ast as _ast7
-    import inspect as _insp7
-    # Generisch by design: nehmen beliebige Item-Eigenschaften als **kwargs entgegen.
-    # Sie gegen eine Signatur zu halten waere Unsinn - sie HABEN keine.
-    _DPG_GENERISCH = {"configure_item", "configure_app", "configure_viewport"}
-    _dpg_quelle7 = Path(_dpg7.__file__).read_text(encoding="utf-8")
-    _fehlt_func7, _fehlt_kw7, _n_aufrufe7 = [], [], 0
-    for _pf7 in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob("*.py")):
-        try:
-            _baum7 = _ast7.parse(_pf7.read_text(encoding="utf-8"))
-        except SyntaxError:
-            continue
-        for _k7 in _ast7.walk(_baum7):
-            if not (isinstance(_k7, _ast7.Call) and isinstance(_k7.func, _ast7.Attribute)
-                    and isinstance(_k7.func.value, _ast7.Name)
-                    and _k7.func.value.id == "dpg"):
-                continue
-            _n_aufrufe7 += 1
-            _name7 = _k7.func.attr
-            if getattr(_dpg7, _name7, None) is None:
-                _fehlt_func7.append(f"{_pf7.name}:{_k7.lineno} dpg.{_name7}")
-                continue
-            if _name7 in _DPG_GENERISCH or not _k7.keywords:
-                continue
-            # Gegen die ausgeschriebene Signatur im Quelltext pruefen: die
-            # DPG-Wrapper haben zwar alle **kwargs, benutzen die aber nur fuer
-            # veraltete Aliase - inspect allein wuerde jedes Argument durchwinken.
-            _i7 = _dpg_quelle7.find(f"\ndef {_name7}(")
-            if _i7 < 0:
-                continue
-            _kopf7 = _dpg_quelle7[_i7:_dpg_quelle7.find(") ->", _i7)]
-            for _kw7 in _k7.keywords:
-                if _kw7.arg and f"{_kw7.arg} :" not in _kopf7 and f"{_kw7.arg}:" not in _kopf7:
-                    _fehlt_kw7.append(
-                        f"{_pf7.name}:{_k7.lineno} dpg.{_name7}(..., {_kw7.arg}=)")
-    check("der Test findet ueberhaupt dpg-Aufrufe", _n_aufrufe7 > 50)
-    check("jede benutzte dpg-Funktion existiert in dieser Version", _fehlt_func7 == [])
-    if _fehlt_func7:
-        for _z7 in _fehlt_func7:
-            print("        " + _z7)
-    check("jedes benannte Argument steht in der Signatur dieser Version",
-          sorted(set(_fehlt_kw7)) == [])
-    if _fehlt_kw7:
-        for _z7 in sorted(set(_fehlt_kw7)):
-            print("        " + _z7)
-
-
 
 
 # --------------------------- Sequenz-Studio: Umsortieren und Phasenwechsel
@@ -5335,6 +5275,262 @@ finally:
     _os.chdir(_cwd16)
 
 
+# --------------------------- Scans im Studio: Slots, Items, Erkennung
+section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
+
+# Das Dear-PyGui-Scan-Studio ist weg; seine Arbeit macht ein Reiter im Studio.
+# Was dabei zaehlt, ist nicht die Ansicht (die laeuft in keinem Test), sondern
+# was die Bruecke daraus macht: aus zwei Klicks ein Rechteck, aus einem Klick
+# eine gemessene Farbe, aus einem Umbenennen eine nachgezogene Referenz.
+import ast as _ast10, re as _re13
+from autoclicker.editors.sequence_studio.scans import (
+    MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
+    MODUS_WAHL as _MW18, MODI as _MODI18,
+)
+from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
+
+_repo17 = Path(__file__).resolve().parent.parent
+
+_sand18 = tempfile.mkdtemp(prefix="studioscan_")
+_cwd18 = _os.getcwd()
+_os.chdir(_sand18)
+try:
+    Path("sequences").mkdir()
+    _b18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+
+    # --- Ohne Bild passiert nichts Dummes ---
+    # Der haeufigste Weg in den Reiter ist "aufmachen und draufklicken", und
+    # ohne Screenshot gibt es nichts zu messen. Eine Meldung ist die richtige
+    # Antwort, ein Slot mit Farbe None waere die falsche.
+    _z18 = _b18.scan_daten()
+    check("ohne Bild gibt es kein Foto in der Aufnahme", _z18["foto"] is None)
+    check("und keine Slots", _z18["slots"] == [])
+    check("der Modus faengt beim Auswaehlen an", _z18["modus"] == _MW18)
+
+    # --- Ein gestelltes Bild unterschieben ---
+    # Denselben Weg geht der Browser-Pruefstand: `take_screenshot` gibt es auf
+    # dieser Plattform nicht, alles dahinter schon.
+    _hat_pil18 = False
+    try:
+        from PIL import Image as _PILImage18
+        _hat_pil18 = True
+    except ImportError:
+        pass
+
+    if not _hat_pil18:
+        print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
+    else:
+        _bild18 = _PILImage18.new("RGB", (400, 300), (24, 28, 36))
+        for _px18 in range(100, 160):
+            for _py18 in range(100, 160):
+                _bild18.putpixel((_px18, _py18), (48, 54, 68))
+        for _px18 in range(112, 148):
+            for _py18 in range(112, 148):
+                _bild18.putpixel((_px18, _py18), (200, 60, 60))
+
+        import autoclicker.imaging as _img18
+        import autoclicker.winapi as _win18
+        _echt_shot18 = _img18.take_screenshot
+        _echt_org18 = _win18.get_virtual_origin
+        _img18.take_screenshot = lambda region=None: _bild18.copy()
+        _win18.get_virtual_origin = lambda: (0, 0)
+        try:
+            _z18 = _b18.scan_foto()
+            check("das Foto steht in der Aufnahme",
+                  _z18["foto"] and _z18["foto"]["breite"] == 400)
+            check("und das Bild selbst kommt getrennt",
+                  _b18.scan_bild().startswith("data:image/png;base64,"))
+            check("es steht NICHT in der Aufnahme", "bild" not in _z18)
+
+            # --- Zwei Ecken ergeben einen Slot ---
+            _b18.scan_modus_setzen({"modus": _MS18})
+            _z18 = _b18.scan_klick({"x": 100, "y": 100})
+            check("nach der ersten Ecke gibt es noch keinen Slot",
+                  _z18["slots"] == [] and _z18["ecke"] == [100, 100])
+            _z18 = _b18.scan_klick({"x": 160, "y": 160})
+            check("die zweite Ecke legt ihn an", len(_z18["slots"]) == 1)
+            _s18 = _z18["slots"][0]
+            check("mit der aufgezogenen Flaeche", _s18["region"] == [100, 100, 160, 160])
+            check("dem Klickpunkt in der Mitte", _s18["klick"] == [130, 130])
+            # Die Farbe wird an der INNEREN Ecke gemessen, nicht in der Mitte -
+            # dort liegt das Item, nicht der Hintergrund.
+            check("und dem gemessenen Hintergrund", _s18["farbe"] == "#303644")
+            check("die Ecke ist danach wieder frei", _z18["ecke"] is None)
+
+            # Verkehrt herum aufgezogen ist dasselbe Rechteck.
+            _b18.scan_modus_setzen({"modus": _MS18})
+            _b18.scan_klick({"x": 260, "y": 260})
+            _z18 = _b18.scan_klick({"x": 200, "y": 200})
+            check("auch von rechts unten nach links oben",
+                  _z18["slots"][1]["region"] == [200, 200, 260, 260])
+
+            # --- Zu kleines Rechteck wird abgelehnt ---
+            _b18.scan_modus_setzen({"modus": _MS18})
+            _b18.scan_klick({"x": 300, "y": 300})
+            _z18 = _b18.scan_klick({"x": 301, "y": 301})
+            check("ein Rechteck von einem Pixel wird abgelehnt",
+                  len(_z18["slots"]) == 2 and _z18["status"]["art"] == "warn")
+
+            # --- Farbe messen: im Item statt im Hintergrund ---
+            _b18.scan_waehlen({"art": "slot", "name": _s18["name"]})
+            _b18.scan_modus_setzen({"modus": _MM18})
+            _z18 = _b18.scan_klick({"x": 130, "y": 130})
+            check("die Pipette misst im Originalbild",
+                  _z18["slots"][0]["farbe"] == "#C83C3C")
+            # Gegenprobe: gemessen wird NICHT im verkleinerten Anzeigebild.
+            # Waere es das, ergaebe der Rand des Items eine Mischfarbe.
+            _z18 = _b18.scan_klick({"x": 100, "y": 100})
+            check("und trifft auch den Rand genau", _z18["slots"][0]["farbe"] == "#303644")
+
+            # --- Klickpunkt setzen ---
+            _b18.scan_modus_setzen({"modus": _MK18})
+            _z18 = _b18.scan_klick({"x": 111, "y": 122})
+            check("der Klickpunkt folgt dem Zeiger", _z18["slots"][0]["klick"] == [111, 122])
+
+            # --- Auswaehlen ueber das Bild ---
+            _b18.scan_modus_setzen({"modus": _MW18})
+            _z18 = _b18.scan_klick({"x": 210, "y": 210})
+            check("ein Klick waehlt den Slot darunter", _z18["wahl"]["name"] == "Slot 2")
+            _z18 = _b18.scan_klick({"x": 5, "y": 5})
+            check("und daneben waehlt nichts", _z18["wahl"]["name"] == "")
+
+            # --- Item lernen ---
+            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
+            _z18 = _b18.scan_item_lernen({"slot": "Slot 1"})
+            check("aus dem Slot wird ein Item", len(_z18["items"]) == 1)
+            _i18 = _z18["items"][0]
+            check("es hat Marker-Farben", len(_i18["marker"]) > 0)
+            check("und ein Template auf Platte",
+                  _i18["template"] and Path("items/templates", _i18["template"]).exists())
+            check("gelernt heisst nicht stumm", _i18["stumm"] is False)
+            check("die Vorschau kommt auf Nachfrage",
+                  _b18.scan_vorschau({"namen": [_i18["name"]]})[_i18["name"]]
+                  .startswith("data:image/png;base64,"))
+        finally:
+            _img18.take_screenshot = _echt_shot18
+            _win18.get_virtual_origin = _echt_org18
+
+    # --- Umbenennen zieht die Referenz nach ---
+    # Der Name IST die Referenz (slots/items werden per Name in Scans
+    # eingetragen). Ohne Nachziehen zeigte der Scan danach ins Leere - und zwar
+    # still: er liefe mit einem Slot weniger weiter.
+    _b18.slots.clear()
+    _b18.items.clear()
+    _b18.scans.clear()
+    _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))
+    _b18.items["Item 1"] = _ITEM8(name="Item 1")
+    _b18.scan_neu({"name": "Test"})
+    _b18.scan_mitglied({"scan": "Test", "art": "slot", "name": "Slot 1"})
+    _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
+    check("Haken setzen traegt in den Scan ein",
+          _z18["scans"][0]["slots"] == ["Slot 1"] and _z18["scans"][0]["items"] == ["Item 1"])
+    _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
+    check("nochmal klicken nimmt wieder raus", _z18["scans"][0]["items"] == [])
+
+    _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
+    _z18 = _b18.scan_slot_setzen({"name": "Slot 1", "feld": "name", "wert": "Beutel oben"})
+    check("der Slot heisst neu", [s["name"] for s in _z18["slots"]] == ["Beutel oben"])
+    check("und der Scan zeigt weiter auf ihn", _z18["scans"][0]["slots"] == ["Beutel oben"])
+    check("die Auswahl wandert mit", _z18["wahl"]["name"] == "Beutel oben")
+
+    _z18 = _b18.scan_slot_setzen({"name": "Beutel oben", "feld": "name", "wert": "Beutel oben"})
+    check("derselbe Name ist keine Aenderung", len(_z18["slots"]) == 1)
+
+    # --- Loeschen raeumt die Referenz weg ---
+    _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
+    _b18.scan_waehlen({"art": "item", "name": "Item 1"})
+    _z18 = _b18.scan_item_loeschen()
+    check("ein geloeschtes Item verschwindet auch aus dem Scan",
+          _z18["items"] == [] and _z18["scans"][0]["items"] == [])
+    _b18.scan_waehlen({"art": "slot", "name": "Beutel oben"})
+    _z18 = _b18.scan_slot_loeschen()
+    check("und ein geloeschter Slot ebenso",
+          _z18["slots"] == [] and _z18["scans"][0]["slots"] == [])
+
+    # --- Daneben doppeln: um die eigene Breite versetzt ---
+    _b18.slots["A"] = _SLOT8(name="A", scan_region=(100, 100, 160, 160),
+                             click_pos=(130, 130), slot_color=(1, 2, 3))
+    _b18.scan_waehlen({"art": "slot", "name": "A"})
+    _z18 = _b18.scan_slot_doppeln()
+    _neu18 = [s for s in _z18["slots"] if s["name"] != "A"][0]
+    check("das Duplikat steht daneben", _neu18["region"] == [162, 100, 222, 160])
+    check("der Klickpunkt wandert mit", _neu18["klick"] == [192, 130])
+    check("und die Hintergrundfarbe auch", _neu18["farbe"] == "#010203")
+
+    # --- Fehlende Namen werden gemeldet, nicht verschwiegen ---
+    _b18.scans["Test"].slot_names.append("Gibt es nicht")
+    check("ein toter Verweis steht in der Aufnahme",
+          _b18.scan_daten()["scans"][0]["fehlend"] == ["Gibt es nicht"])
+
+    # --- Speichern schreibt alle drei Dateiarten ---
+    _b18.scans["Test"].slot_names.remove("Gibt es nicht")
+    _z18 = _b18.scan_speichern()
+    check("gespeichert wird ohne Fehler", _z18["status"]["art"] == "ok")
+    check("slots.json ist da", Path("slots/slots.json").exists())
+    check("items.json auch", Path("items/items.json").exists())
+    check("und die Scan-Konfiguration als eigene Datei",
+          list(Path("item_scans").glob("*.json")) != [])
+    check("danach ist nichts mehr offen", _z18["dirty"] is False)
+
+    # Der Hauptprozess erfaehrt davon - sonst arbeitete er bis zum naechsten
+    # CTRL+ALT+L mit dem alten Stand.
+    import autoclicker.befehl as _bf18
+    _auftrag18 = _bf18.hole()
+    check("der Hauptprozess bekommt Bescheid",
+          _auftrag18 is not None and _auftrag18["befehl"] == "daten")
+
+    # --- Was auf Platte steht, liest der Loader wieder ---
+    from autoclicker.persistence import load_item_scan_file as _lif18
+    _wieder18 = _lif18(list(Path("item_scans").glob("*.json"))[0])
+    check("der Loader findet den Scan wieder", _wieder18 is not None)
+    check("mit denselben Namen darin", _wieder18.item_names == [])
+    from autoclicker.editors.sequence_studio.scan_model import load_slots as _ls18
+    check("und die Slots kommen unveraendert zurueck",
+          sorted(_ls18("slots/slots.json")) == sorted(_b18.slots))
+finally:
+    _os.chdir(_cwd18)
+
+# --- Jeder Modus hat eine Kachel in der Oberflaeche ---
+# Ein Modus ohne Knopf ist ein Modus, den niemand erreicht; ein Knopf ohne Modus
+# meldet "Unbekannter Modus". Beide Seiten messen, nicht eine abschreiben.
+_html18 = (Path("autoclicker/editors/sequence_studio/web/index.html")
+           .read_text(encoding="utf-8"))
+_block18 = _html18[_html18.index("const SCAN_MODI = ["):]
+_block18 = _block18[:_block18.index("];")]
+_kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
+check("jeder Modus der Bruecke hat eine Kachel", sorted(_kacheln18) == sorted(_MODI18))
+_tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
+check("und jede Kachel eine eigene Taste",
+      len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
+
+# --- Das Dear-PyGui-Fenster ist wirklich weg ---
+# Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,
+# was frueher unter `scan_canvas/` lag, ist die Begruendung fuer den heutigen
+# Aufbau und soll stehen bleiben (CLAUDE.md: "Eine Begruendung ist keine
+# Altlast"). Ein IMPORT auf ein Fremdpaket, das niemand mehr installiert,
+# waere dagegen ein Modul, das gar nicht erst startet.
+_reste18 = []
+for _pf18 in sorted((_repo17 / "autoclicker").rglob("*.py")):
+    if "__pycache__" in _pf18.parts:
+        continue
+    for _k18 in _ast10.walk(_ast10.parse(_pf18.read_text(encoding="utf-8"))):
+        _namen18 = []
+        if isinstance(_k18, _ast10.Import):
+            _namen18 = [a.name for a in _k18.names]
+        elif isinstance(_k18, _ast10.ImportFrom):
+            _namen18 = [_k18.module or ""]
+        for _n18 in _namen18:
+            if "dearpygui" in _n18 or "scan_canvas" in _n18:
+                _reste18.append(f"{_pf18.name}:{_k18.lineno} {_n18}")
+check("kein Modul importiert mehr Dear PyGui", _reste18 == [])
+if _reste18:
+    print("        " + ", ".join(_reste18))
+check("und das alte Scan-Studio-Modul ist geloescht",
+      not (_repo17 / "autoclicker/scan_studio.py").exists())
+check("der Ordner scan_canvas ebenso",
+      not (_repo17 / "autoclicker/editors/scan_canvas").exists())
+
+
 # --------------------------- Einstellungen im Studio: Schema, Bruecke, Datei
 section("Einstellungen: jedes Feld beschrieben, jeder Wert schreibbar")
 
@@ -5501,12 +5697,13 @@ check("uebernehmen() traegt alle Werte ueber",
 check("und laesst das Objekt in Ruhe", _ziel17 is not _quelle17)
 
 _zuweisungen17 = []
-_repo17 = Path(__file__).resolve().parent.parent
 for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.py"]:
     if "__pycache__" in _pf17.parts:
         continue
     for _nr17, _zeile17 in enumerate(_pf17.read_text(encoding="utf-8").splitlines(), 1):
-        if _re13.search(r"^\s*\w+\.config\s*=\s*", _zeile17):
+        # Nur der State: ein `self.config = ...` in einem Stellvertreter-Objekt
+        # (scans._NurConfig) ist kein Austausch der Programm-Config.
+        if _re13.search(r"^\s*(?:\w+\.)?state\.config\s*=\s*", _zeile17):
             _zuweisungen17.append(f"{_pf17.name}:{_nr17}: {_zeile17.strip()}")
 # Ohne Zeilennummer: die waere bei jeder Einfuegung in main.py falsch, und der
 # Test soll die Regel pinnen, nicht die Zeile.
@@ -5568,24 +5765,20 @@ if _undok15:
 # --------------------------- Jedes Modul laesst sich ueberhaupt importieren
 section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
 
-# Eine Massen-Umbenennung hat einmal `scan_canvas.canvas_dpg` zu
-# `scan_canvas.view_dpg` gemacht - eine Datei, die es dort nie gab. pyflakes sah
-# nichts (es loest keine Fremdmodule auf), die Suite auch nicht, und aufgefallen
-# waere es erst beim Druecken von CTRL+ALT+V.
+# Eine Massen-Umbenennung hat einmal einen Modulnamen auf eine Datei zeigen
+# lassen, die es nie gab. pyflakes sah nichts (es loest keine Fremdmodule auf),
+# die Suite auch nicht, und aufgefallen waere es erst beim Druecken des Hotkeys.
 #
 # Der Test importiert deshalb JEDES Modul einmal. Das ist der billigste Beweis,
 # dass die Importe wirklich aufgehen - und er kostet nichts, weil die Suite die
-# meisten davon ohnehin laedt.
+# meisten davon ohnehin laedt. Uebersprungen wird seit dem Wegfall des
+# Dear-PyGui-Fensters nichts mehr: kein Modul haengt noch an einem Fremdpaket,
+# das ein Fenster braucht.
 import importlib as _il10
 
 _wurzel10 = Path(__file__).resolve().parent.parent
-_hat_dpg10 = True
-try:
-    import dearpygui.dearpygui as _d10      # noqa: F401
-except ImportError:
-    _hat_dpg10 = False
 
-_kaputt10, _geprueft10, _uebersprungen10 = [], 0, 0
+_kaputt10, _geprueft10 = [], 0
 for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf10.parts:
         continue
@@ -5593,13 +5786,6 @@ for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
     _mod10 = ".".join(_rel10.parts)
     if _mod10.endswith(".__init__"):
         _mod10 = _mod10[: -len(".__init__")]
-    # Uebersprungen wird nur, was Dear PyGui wirklich am Modulrumpf haengen hat -
-    # heute genau eine Datei. Frueher stand hier "canvas oder studio im Namen", und
-    # damit fielen auch die Module durch, die ihre GUI erst in main() importieren:
-    # ausgerechnet die, bei denen ein toter Import unbemerkt bliebe.
-    if not _hat_dpg10 and _mod10.endswith("scan_canvas.canvas_dpg"):
-        _uebersprungen10 += 1
-        continue
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _il10.import_module(_mod10)

@@ -100,7 +100,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
     print(f"  {col('CTRL+ALT+B', 'yellow')}  Sequenz-Studio {hint('(Phasen + Schritte visuell – braucht pywebview)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
-    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Slots + Items auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
           f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, manuell, log/detail)')}")

@@ -4,6 +4,7 @@ Einstiegspunkt für das Sequenz-Studio (läuft als eigener Subprocess).
 Aufruf:
     python -m autoclicker.sequence_studio "<Sequenz-Name>"
     python -m autoclicker.sequence_studio            # zuletzt bearbeitete Sequenz
+    python -m autoclicker.sequence_studio "" --scans # Reiter „Scans" vorgewählt
 
 Wird vom Hotkey-Handler (handle_sequence_studio in handlers.py) per subprocess.Popen
 gestartet, damit der Fenster-Event-Loop nicht mit der Windows-Hotkey-Message-Pump
@@ -128,7 +129,12 @@ def _haenge_schliesser_an(fenster, bridge) -> None:
 
 
 def main(argv: list[str]) -> int:
-    seq_name = argv[1] if len(argv) > 1 else ""
+    # `--scans` waehlt den Reiter vor: CTRL+ALT+V startet denselben Prozess wie
+    # CTRL+ALT+B, nur mit einem anderen Einstieg. Ein leeres erstes Argument ist
+    # erlaubt (kein Sequenzname, trotzdem eine Option dahinter).
+    scans = "--scans" in argv[1:]
+    stellen = [a for a in argv[1:] if not a.startswith("--")]
+    seq_name = stellen[0] if stellen else ""
 
     try:
         import webview
@@ -145,6 +151,8 @@ def main(argv: list[str]) -> int:
 
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
+    if scans:
+        bridge.start_ansicht = "scans"
 
     # VOR dem ersten Fenster: sonst sortiert die Taskleiste es unter python.exe
     # ein und zeigt dort dessen Symbol, egal was am Fenster haengt. Die

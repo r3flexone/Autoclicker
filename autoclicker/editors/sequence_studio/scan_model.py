@@ -1,10 +1,15 @@
 """
-GUI-freier Modell-Layer fürs Scan-Studio.
+GUI-freier Modell-Layer für Slots, Items und Templates.
 
-Lädt/speichert Slots (und perspektivisch Items/Scans) direkt aus den JSON-Dateien
-ohne AutoClickerState — der Subprocess hat keinen geteilten State. Format und
-Serialisierung sind identisch zu den Konsolen-Editoren (slots/slots.json), damit
-beide Wege dieselben Dateien lesen/schreiben.
+Lädt/speichert direkt aus den JSON-Dateien ohne `AutoClickerState` — der
+Studio-Subprozess hat keinen geteilten State. Format und Serialisierung sind
+identisch zu den Konsolen-Editoren (`slots/slots.json`, `items/items.json`),
+damit beide Wege dieselben Dateien lesen und schreiben.
+
+Lag bis zum Umbau unter `editors/scan_canvas/` neben dem Dear-PyGui-Fenster.
+Das Fenster ist weg — der Modell-Layer nicht: er war von Anfang an ohne GUI
+geschrieben und wird jetzt vom Scans-Reiter des Sequenz-Studios benutzt
+(`scans.py`).
 """
 
 import json

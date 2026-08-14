@@ -67,6 +67,33 @@ BLOCK_COLORS = {
 }
 
 
+def hexfarbe(rgb) -> Optional[str]:
+    """(r,g,b) -> '#RRGGBB'. Unbrauchbare Werte ergeben None statt einer Falschfarbe.
+
+    Steht hier und nicht in `bridge.py`, weil der Scans-Reiter sie genauso
+    braucht (Slot-Hintergrund, Marker-Farben) — und ein zweites Exemplar wäre
+    genau die Kopie, die irgendwann anders rundet.
+    """
+    if not rgb:
+        return None
+    try:
+        r, g, b = (max(0, min(255, int(v))) for v in tuple(rgb)[:3])
+    except (TypeError, ValueError):
+        return None
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def rgbwert(hexwert) -> Optional[tuple]:
+    """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
+    roh = str(hexwert or "").strip().lstrip("#")
+    if len(roh) != 6:
+        return None
+    try:
+        return tuple(int(roh[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
 @dataclass
 class Lane:
     """Eine Spalte im Board: INIT, eine Loop-Phase oder END."""

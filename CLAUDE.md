@@ -42,17 +42,17 @@ Regeln beim Erweitern:
   Eigenschaft (Rechteck hat Fläche, Mitte liegt darin), nicht den konkreten Wert — der hängt
   am Monitor-Setup.
 
-**Der GUI-Code lässt sich nicht ausführen, seine API-Verträglichkeit aber prüfen.**
-Das Scan-Studio (Dear PyGui) braucht ein Fenster und läuft in keinem Test — eine
-entfallene API fällt deshalb erst beim Start auf, mit einem Absturz. Genau so ist es an
-`add_static_texture(..., format=...)` gestorben: das Argument gab es in DPG 1.x, in 2.x
-nur noch bei `add_raw_texture`. Ein Test hält jetzt jeden `dpg.<name>(..., kwarg=...)`
-gegen die Signatur der **installierten** Version (`dpg-Aufrufe passen zur installierten
-Dear-PyGui-Version`). Generische Funktionen mit `**kwargs` (`configure_item` & Co.)
-stehen begründet auf einer Ausnahmeliste. Ohne `dearpygui` im venv wird der Abschnitt
-übersprungen.
+**Es gibt nur noch EINEN ungetesteten Rest, und der ist klein.** Bis zum Umbau lag
+hier ein Absatz über einen Test, der jeden `dpg.<name>(..., kwarg=...)` gegen die
+installierte Dear-PyGui-Version hielt — nötig, weil das Scan-Studio ein Fenster
+brauchte und in keinem Test lief (es starb einmal an `add_static_texture(...,
+format=...)`, das es in DPG 2.x nur noch bei `add_raw_texture` gibt). Dieses Fenster
+gibt es nicht mehr, der Test ist ersatzlos gelöscht, und `dearpygui` steht in keiner
+Anforderungsdatei mehr. Die Geschichte steht hier, damit niemand denselben Weg noch
+einmal einschlägt: **eine Ansicht, die man nur über die Signaturen ihres Fremdpakets
+prüfen kann, ist die falsche Ansicht.**
 
-**Beim Sequenz-Studio stellt sich die Frage nicht mehr so.** Seine Oberfläche ist eine
+**Beim Studio stellt sich die Frage deshalb gar nicht.** Seine Oberfläche ist eine
 Webseite, und die Logik dahinter liegt in `bridge.py` — ohne Fenster, ohne Fremdpaket,
 also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist (HTML/CSS/JS). Das ist die
 Richtung, in die GUI-Code hier gehört: **nicht die Ansicht testbar machen, sondern die
@@ -506,6 +506,7 @@ wird.)
   Heute: `_warte_schleife`, `_farb_schleife` und der Boss-Watcher. Ein Test hält das
   fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist
   der Fall, für den man die Ansicht aufmacht.
+- `autoclicker/editors/sequence_studio/` — das Studio-Fenster: `bridge.py` (Sequenz-Editor), `scans.py` (Reiter Scans), `scan_model.py` (GUI-freies Laden/Speichern von Slots, Items, Templates), `model.py` (Board + Farbhelfer), `web/index.html` (die ganze Oberfläche).
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
@@ -526,22 +527,29 @@ wird.)
   Zahl), heisst aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
   will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
 
-**Die zwei GUI-Werkzeuge laufen als eigener Prozess**, nicht im Hauptprozess: ein
+**Das Studio läuft als eigener Prozess**, nicht im Hauptprozess: ein
 Fenster-Event-Loop und die Windows-Hotkey-Message-Pump vertragen sich nicht im selben
-Thread. Gestartet werden sie vom Handler per `subprocess.Popen([sys.executable, "-m", ...])`,
-das jeweilige Fenster-Paket ist optional und wird beim Start des Subprozesses geprüft.
+Thread. Gestartet wird es vom Handler per `subprocess.Popen([sys.executable, "-m", ...])`;
+`pywebview` ist optional und wird beim Start des Subprozesses geprüft.
+
+**Es ist EIN Fenster, nicht mehr zwei.** Daneben stand bis zum Umbau ein zweites in
+Dear PyGui (`autoclicker/scan_studio.py` + `editors/scan_canvas/`) für Slots, Items
+und Scans. Es ist ersatzlos gelöscht: zwei Fenster mit zwei Bedienkonzepten für
+dieselben Dateien waren eines zu viel, und die Scans gehören dorthin, wo die Sequenz
+steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
+`CTRL+ALT+B`, nur mit vorgewähltem Reiter (`--scans` → `bridge.start_ansicht`).
 
 | Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/scan_studio.py` (`handle_scan_studio`) | `editors/scan_canvas/` (Dear PyGui) | `slots/slots.json` |
-| `autoclicker/sequence_studio.py` (`handle_sequence_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>.json` |
+| `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>.json`, `config.json`, `slots/`+`items/`+`item_scans/` |
 
 Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
-Der Subprozess liest die Datei beim Start und schreibt sie beim Speichern; der
-Hauptprozess hält seinen eigenen Stand im Speicher und lädt mit `CTRL+ALT+L` nach. Wer im
-Hauptprozess speichert, während der Subprozess offen ist, verliert eine der beiden
-Fassungen. Beim Erweitern also nichts einbauen, das auf gemeinsamen State setzt — der
-gemeinsame Nenner ist die Datei.
+Der Subprozess liest die Dateien beim Start und schreibt sie beim Speichern; der
+Hauptprozess hält seinen eigenen Stand im Speicher. Für Config und Scan-Daten holt er
+sie inzwischen selbst nach (Briefkasten-Befehle `config` und `daten`), für Sequenzen
+weiterhin auf `CTRL+ALT+L`. Wer im Hauptprozess speichert, während der Subprozess offen
+ist, verliert eine der beiden Fassungen. Beim Erweitern also nichts einbauen, das auf
+gemeinsamen State setzt — der gemeinsame Nenner ist die Datei.
 
 **Das Sequenz-Studio zeigt Listen, keinen Node-Graph.** Es *war* ein
 `dpg.node_editor`, und daran hing seine Unbedienbarkeit: ein Node-Graph verspricht
@@ -568,7 +576,7 @@ Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befe
 zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
 gespeicherte wäre nicht zwingend die angezeigte.
 
-**Vier Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Fünf Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -579,6 +587,7 @@ Ausflug überleben.
 | Editor | Phasen und Blöcke bearbeiten | `snapshot()` + Befehle |
 | Sequenzen | Übersicht, Kennzahlen, Öffnen | `sequenz_liste()` |
 | Live-Run | was gerade läuft | `lauf_status()` |
+| Scans | Slots, Items, Item-Scans auf einem Screenshot | `scan_daten()` + `scan_*` |
 | Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
 **Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
@@ -600,6 +609,47 @@ durch statt `list_available_sequences()` zu fragen (die überspringt unlesbare D
 stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau dann sucht
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
+
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`scans.py`,
+Modell-Layer in `scan_model.py`). Slots werden dort aufgezogen, wo sie im Spiel
+liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
+`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien als
+der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden und
+ein eigener Speichern-Knopf rechts steht.
+
+Vier Regeln, an denen der Reiter hängt:
+
+- **Der Screenshot bleibt in Python.** Die Seite bekommt ihn einmal als
+  verkleinertes Bild (`scan_bild()`, getrennt von `scan_daten()`, weil er der
+  grosse Brocken ist); **gemessen wird nie darauf**, sondern immer im
+  Originalbild (`_foto_farbe`). Eine Farbe aus einem skalierten Bild wäre
+  interpoliert — und genau diese Farbe soll der Worker später wiederfinden.
+- **Ein Rechteck entsteht aus zwei Klicks, nicht aus einem Zug.** Beim Ziehen
+  verrutscht die Ecke um ein paar Pixel, und bei einem Slot von 60 px schneidet
+  das schon das Symbol an. Zwischen den beiden Klicks zeigt die Ansicht das
+  entstehende Rechteck.
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scans.py`: wählen, neuer
+  Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
+  muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
+  seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander.
+- **Die Erkennung fragt die Laufzeit, nicht sich selbst.** `scan_erkennen()`
+  ruft `_check_profile_match()` aus `runtime/item_scan.py` — dieselbe Funktion,
+  die im Lauf entscheidet, mit einem `state`-Stellvertreter, der nichts als die
+  Config trägt. Eine zweite Rechnung „nur für die Vorschau" wäre eine Vorschau,
+  die etwas anderes zeigt als das, was passiert.
+
+**Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
+stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
+Fundstelle mit und sagen in der Statuszeile, wie viele es waren. Löschen räumt
+sie ebenso weg. Und weil `ItemScanConfig.sync_names()` eine **leere** Namensliste
+aus den Objekten wieder auffüllt, muss nach jeder Änderung an den Namen
+`_objekte_angleichen()` laufen — sonst kommt ein gelöschtes Item beim nächsten
+Speichern zurück. Ein Test pinnt genau das fest.
+
+**Boss- und Icon-Scans sind hier noch nicht drin.** Das alte Fenster konnte sie,
+die Konsole (`CTRL+ALT+N`) kann sie weiterhin. Was sie brauchen — Region aus zwei
+Ecken, Farbe messen, Marker sammeln — liegt bereits als Modus-Mechanik da; es
+fehlt die Ansicht, nicht die Grundlage.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei

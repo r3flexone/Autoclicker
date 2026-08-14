@@ -8,7 +8,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
 - **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
-- **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
+- **Scans auf einem Screenshot**: Slots aufziehen, Hintergrundfarbe messen, Items lernen und sehen, was in welchem Slot erkannt wird — Reiter „Scans“ im Studio (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
   - **LOOP-Phasen**: Mehrere Loops möglich, jeweils mit eigenen Wiederholungen
@@ -87,12 +87,13 @@ Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
 
 ### Optionale Extras (OCR, visuelle Editoren)
 
-`requirements-optional.txt` enthält `easyocr`, `pytesseract`, `dearpygui` und
-`pywebview`. Alle vier gehören zu Features, die per Default **abgeschaltet** sind oder
-nur auf Zuruf starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht
-PyTorch nach: mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet nur ein
-Fenster mit der Webansicht des Sequenz-Studios (auf Windows über WebView2, bei
-Windows 10/11 in der Regel schon vorhanden).
+`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `pywebview`. Alle
+drei gehören zu Features, die per Default **abgeschaltet** sind oder nur auf Zuruf
+starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
+mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet das Studio-Fenster
+(Sequenzen, Scans, Einstellungen) über WebView2, das bei Windows 10/11 in der Regel
+schon vorhanden ist. `dearpygui` steht dort nicht mehr — das eigene Scan-Fenster
+gibt es nicht mehr, seine Arbeit macht der Reiter „Scans".
 
 **Ohne GPU (CPU-only):**
 ```bash
@@ -178,7 +179,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
 | `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, braucht `pywebview`) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
-| `CTRL+ALT+V` | Visuelles Scan-Studio (Slots/Items/Boss/Icon auf Screenshot) |
+| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Slots + Items auf einem Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
@@ -1397,6 +1398,18 @@ steht auf einmal da.
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
+- **Reiter „Scans"**: das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
+  Item-Scans entstehen jetzt im selben Fenster wie die Sequenz, die sie benutzt.
+  „Screenshot aufnehmen" friert den Bildschirm ein; ein Slot entsteht aus **zwei
+  Klicks** (nicht aus einem Zug, der um Pixel verrutscht) und bringt Klickpunkt und
+  gemessene Hintergrundfarbe gleich mit. „daneben" setzt den nächsten um genau eine
+  Breite versetzt — eine Inventarreihe ist damit vier Klicks. „Item lernen" nimmt
+  Template und Marker-Farben aus der Slot-Fläche, und **„Items erkennen"** schreibt
+  an jeden Slot, was dort gefunden wurde: gerechnet mit derselben Funktion wie im
+  Lauf, also keine Vorschau, die etwas anderes zeigt als die Wirklichkeit. Ist ein
+  Item-Scan offen, sind die Slots, die nicht dazugehören, im Bild blass. Umbenennen
+  zieht die Referenz in jedem Scan nach; nach dem Speichern lädt der Hauptprozess von
+  selbst nach. *(Boss- und Icon-Scans bleiben vorerst in der Konsole.)*
 - **Reiter „Einstellungen"**: alle 70 Werte der `config.json` im Fenster, statt die
   Datei von Hand aufzumachen. Jedes Feld trägt Beschriftung, seinen Schlüssel und
   einen Satz, wann man es anfasst; Abhängiges wird blass statt unsichtbar („Wirkt nur,

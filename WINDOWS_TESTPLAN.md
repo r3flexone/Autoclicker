@@ -8,9 +8,10 @@ Was hier abgehakt ist, wurde auf echtem Windows geprüft — mit Datum dahinter.
 ohne Datum ist ein Vorsatz, kein Nachweis.
 
 ## Voraussetzungen
-- Windows, Python-Umgebung mit `pillow`, `opencv-python`, `numpy`, `dearpygui`
-  (Scan-Studio), `pywebview` (Sequenz-Studio),
+- Windows, Python-Umgebung mit `pillow`, `opencv-python`, `numpy` und
+  `pywebview` (Studio — Sequenzen, Scans, Einstellungen in einem Fenster),
   optional Ollama/LM Studio (LLM) und ein OCR-Backend (easyocr/tesseract).
+  `dearpygui` wird **nicht mehr gebraucht**: das eigene Scan-Fenster ist weg.
 - Spiel „Idle Clans" offen, damit echte Klicks/Screenshots etwas treffen.
 
 ## 0. Automatisiert (schon grün auf Linux — auf Windows gegenprüfen)
@@ -169,16 +170,46 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
       (automatisch aus Fenstergrösse, sonst 2-Punkt) verschiebt Klicks korrekt.
 - [ ] Merge vs. Ersetzen verhält sich wie erwartet.
 
-## 13. Scan-Studio GUI (CTRL+ALT+V) 🆕 geführter Slot-Ablauf
-- [ ] Startet als eigenes Fenster (Screenshot sichtbar).
-- [ ] 🆕 **Geführter Slot-Ablauf**: Rechteck ziehen → Werkzeug springt automatisch
-      auf „Klickpunkt setzen" (Radio wechselt sichtbar) → Klick → springt auf
-      „Farbe picken" → Klick → zurück auf „Slot zeichnen". Status führt durch jeden Schritt.
-- [ ] 🆕 Unterbrechen: manueller Werkzeug-Wechsel (Radio) bricht den geführten
-      Ablauf ab; „Slot zeichnen" überspringt Klickpunkt/Farbe und lässt das
-      nächste Rechteck ziehen.
-- [ ] Tabs „Scan bauen / Icon-Scan / Boss-Scan", „Autoscan"-Knopf, „Speichern".
+## 13. Scans im Studio (CTRL+ALT+V) 🆕 Weboberfläche statt Dear PyGui
+Das eigene Dear-PyGui-Fenster ist ersatzlos weg; dieselbe Arbeit macht der Reiter
+„Scans" im Studio. **Boss- und Icon-Scans bleiben vorerst in der Konsole**
+(CTRL+ALT+N) — der Reiter kann heute Slots, Items und Item-Scans.
+
+- [ ] 🆕 `CTRL+ALT+V` öffnet dasselbe Fenster wie `CTRL+ALT+B`, aber mit dem
+      Reiter „Scans" vorgewählt. Kein zweites Fenster, kein `dearpygui` mehr nötig.
+- [ ] 🆕 „Screenshot aufnehmen" friert den ganzen virtuellen Desktop ein — auch
+      ein Spielfenster auf dem zweiten Monitor. Die Größe steht oben links.
+- [ ] 🆕 Modus „Neuer Slot" (Taste `S`): erster Klick setzt die Ecke (Punkt
+      sichtbar), die Maus zieht ein gestricheltes Rechteck mit, zweiter Klick legt
+      den Slot an. `ESC` bricht eine halb gesetzte Ecke ab.
+- [ ] 🆕 Der neue Slot bekommt Klickpunkt (Mitte) und Hintergrundfarbe (innere
+      Ecke) gleich mit — beides steht in der Statuszeile.
+- [ ] 🆕 „daneben" legt den nächsten Slot um genau eine Breite versetzt an; für
+      eine Inventarreihe reicht dann Klicken statt Aufziehen.
+- [ ] 🆕 Modus „Hintergrundfarbe" (`F`): Klick in den leeren Teil des Slots →
+      die Farbe rechts ändert sich. Gegenprobe mit dem Farbwähler daneben.
+- [ ] 🆕 Modus „Klickpunkt" (`K`): Klick setzt das Kreuz im Bild.
+- [ ] 🆕 Modus „Auswählen" (`V`): Klick auf ein Rechteck wählt den Slot; bei
+      Überlappung gewinnt der zuletzt angelegte.
+- [ ] 🆕 „Item lernen" aus einem Slot: Template + Marker-Farben entstehen, das
+      Item taucht in der Liste mit Vorschaubild auf. „aus ALLEN Slots lernen"
+      macht das für jeden Slot; Doppelte werden übersprungen (braucht OpenCV).
+- [ ] 🆕 **„Items erkennen"**: an jedem Slot steht, was dort erkannt wurde —
+      grün mit Namen, grau wenn nichts passt. Gerechnet wird mit derselben
+      Funktion wie im Lauf; ein Item, das hier nicht gefunden wird, wird es im
+      Lauf auch nicht.
+- [ ] 🆕 Item-Scan zusammenstellen: „+ Neuer Item-Scan", Slots und Items per
+      Häkchen dazu. Solange ein Scan offen ist, sind die Slots, die **nicht**
+      dazugehören, im Bild gestrichelt und blass.
+- [ ] 🆕 Einen Slot umbenennen, der in einem Scan steckt → der Scan zeigt weiter
+      auf ihn (Statuszeile: „in N Scan(s) nachgezogen"). Dasselbe mit einem Item.
+- [ ] 🆕 Löschen entfernt den Namen auch aus jedem Scan.
+- [ ] 🆕 „Speichern" schreibt `slots/slots.json`, `items/items.json` und jede
+      Scan-Konfiguration; im Hauptprozess erscheint „[STUDIO] Neu geladen: …".
+      Läuft gerade eine Sequenz, wird stattdessen gemeldet, dass später geladen wird.
+- [ ] 🆕 Zoom: „einpassen", „1:1", `STRG`+Mausrad. Ohne `STRG` scrollt die Bühne.
 - [ ] Gespeicherte Slots erscheinen identisch im Konsolen-Slot-Editor (gleiche Datei).
+- [ ] 🆕 Ohne Pillow: der Reiter sagt es und bietet keinen toten Screenshot-Knopf an.
 
 ## 14. Sequenz-Studio (CTRL+ALT+B) 🆕 Weboberfläche statt Dear PyGui
 - [ ] Fenster öffnet sich (braucht `pywebview`; auf Windows WebView2). Ohne das Paket
