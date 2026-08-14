@@ -2180,7 +2180,9 @@ async function fortfahren(verwerfen) {
  * Zoom, und nur die Strichstaerken und Schriftgroessen muessen gegengerechnet
  * werden. */
 let SC = null;
-let scanListe = "slots";      // welche Liste links offen ist
+// Welche Liste links offen ist. Der Scan steht voran, weil er die Klammer ist:
+// erst waehlt man ihn, dann sieht man seine Slots und seine Items.
+let scanListe = "scans";
 let scanZoom = 1;
 let scanFotoStand = 0;
 let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
@@ -2299,9 +2301,11 @@ function scanListeZeichnen() {
   tabs.replaceChildren();
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
-  const gruppen = [["slots", "Slots", scanSichtbar(SC.slots, false).length, SC.slots.length],
-                   ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length],
-                   ["scans", "Scans", SC.scans.length, SC.scans.length]];
+  // Reihenfolge = Rangfolge: der Scan ist das Uebergeordnete, Slots und Items
+  // haengen an ihm.
+  const gruppen = [["scans", "Scans", SC.scans.length, SC.scans.length],
+                   ["slots", "Slots", scanSichtbar(SC.slots, false).length, SC.slots.length],
+                   ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length]];
   for (const [key, text, sichtbar, gesamt] of gruppen) {
     tabs.appendChild(el("button", {
       class: "tab" + (scanListe === key ? " an" : ""),
@@ -2506,7 +2510,7 @@ function scanInspektor() {
   const kopf = el("div", {class: "abschnitt"},
     el("div", {class: "reihe"},
       el("span", {class: "ueberschrift wachse"},
-         SC.dirty ? "NICHT GESPEICHERT" : "SLOTS · ITEMS · SCANS"),
+         SC.dirty ? "NICHT GESPEICHERT" : "SCANS · SLOTS · ITEMS"),
       SC.dirty ? el("span", {class: "punkt-offen"}) : null),
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),

@@ -627,6 +627,11 @@ auf einen Slot den Zusammenhang verliert (so war es zuerst gebaut). Am offenen
 Scan hängen: die Filter der Listen (`nur_dabei`), was im Bild gezeichnet wird,
 welche Items `scan_erkennen()` prüft und welche Toleranz dabei gilt.
 
+**Die Reihenfolge der Reiter ist die Rangfolge**: Scans, dann Slots, dann Items —
+und beim Öffnen steht der Scan-Reiter vorn. Eine Liste, die vor ihrer Klammer
+steht, liest sich wie das Hauptding; genau das war der Zustand, aus dem heraus
+„alle Items aller Spiele in einer Liste" überhaupt entstand.
+
 **Jeder Scan merkt sich seinen Bildschirm.** `item_scans/bilder/<name>.png`, beim
 Öffnen sofort wieder da — vorher war die Mitte des Reiters leer, bis man einen
 neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**

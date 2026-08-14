@@ -215,6 +215,8 @@ Das eigene Dear-PyGui-Fenster ist ersatzlos weg; dieselbe Arbeit macht der Reite
 Der Punkt, um den es bei mehreren Spielen geht: ohne ihn liegen alle Slots und
 Items aller Spiele in einer Liste.
 
+- [ ] 🆕 Beim Öffnen steht der Reiter **Scans** vorn, danach Slots, danach Items
+      — die Reihenfolge ist die Rangfolge.
 - [ ] 🆕 Oben links die Scan-Auswahl. Zwei Scans anlegen (z. B. „Idle Clans" und
       ein zweites Spiel), in jedem eigene Slots aufziehen und Items lernen.
 - [ ] 🆕 Beim Umschalten zeigen Slot- und Item-Liste **nur** die des offenen
