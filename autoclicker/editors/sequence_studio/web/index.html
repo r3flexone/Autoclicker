@@ -132,7 +132,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 
 /* -------------------------------------------------------------------- Rumpf */
 .rumpf{flex:1;display:flex;min-height:0}
-.seite{width:290px;flex:none;background:var(--panel);display:flex;flex-direction:column;min-height:0}
+/* Die Spalte scrollt selbst, sobald sie laenger wird als das Fenster. Ohne das
+   rutschte der untere Abschnitt hinter die Fusszeile, sobald ein Abschnitt
+   dazukam — erreichbar war er dann nicht mehr. */
+.seite{width:290px;flex:none;background:var(--panel);display:flex;flex-direction:column;
+  min-height:0;overflow-y:auto}
 .seite.links{border-right:1px solid var(--line)}
 .seite.rechts{width:370px;border-left:1px solid var(--line)}
 .abschnitt{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
@@ -490,6 +494,20 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    gilt — also traegt er den Akzent, so wie alles andere Aktive auch. */
 #scan-bereich{color:var(--dim);font-family:var(--mono)}
 #scan-bereich.an{color:var(--accent)}
+.scan-schritt{display:grid;grid-template-columns:auto 1fr;gap:1px 8px;padding:6px 9px;
+  border-radius:4px;border:1px solid transparent;font-size:12px;color:var(--dim)}
+.scan-schritt .nr{grid-row:span 2;width:18px;height:18px;border-radius:50%;
+  display:grid;place-items:center;font-size:11px;font-family:var(--mono);
+  background:var(--sub);color:var(--dim)}
+.scan-schritt .was{font-size:11px;line-height:1.35}
+.scan-schritt button{grid-column:2;margin-top:6px;justify-self:start}
+.scan-schritt.fertig .nr{background:transparent;color:var(--ok)}
+.scan-schritt.fertig .titel{color:var(--muted)}
+/* Nur der aktuelle Schritt traegt den Akzent - eine Markierung, die auf allen
+   dreien liegt, markiert nichts. Ringsum, nicht als Streifen links. */
+.scan-schritt.aktuell{color:var(--text);border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent)}
+.scan-schritt.aktuell .nr{background:var(--accent);color:#0C0F14}
 .scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
   background:var(--sub);color:var(--text);border:1px solid var(--line)}
 .scan-haken{display:grid;grid-template-columns:1fr 1fr;gap:4px}
@@ -694,6 +712,14 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
           <span class="wachse"></span>
           <span class="klein mono" id="scan-umfang"></span>
         </div>
+      </div>
+      <!-- Der Weg zu einem neuen Scan steht als Weg da, nicht als Wand aus
+           Knoepfen: Bereich, Slots, Items. Der Stand kommt aus den Daten
+           (_schritte() in scans.py) - ein mitgeschriebener Fortschritt koennte
+           von ihnen abweichen. -->
+      <div class="abschnitt">
+        <span class="ueberschrift">SO ENTSTEHT EIN SCAN</span>
+        <div class="spalte" id="scan-schritte" style="gap:4px"></div>
       </div>
       <div class="abschnitt">
         <div class="reihe">
@@ -2234,6 +2260,7 @@ const SCAN_MODI = [
   {key: "messen", text: "Hintergrundfarbe", taste: "F", hilfe: "Stelle im Slot anklicken"},
   {key: "klick", text: "Klickpunkt", taste: "K", hilfe: "wohin geklickt wird"},
   {key: "bereich", text: "Bereich", taste: "B", hilfe: "zwei Ecken um den Teil, der zählt"},
+  {key: "finden", text: "Slots finden", taste: "G", hilfe: "leeren Slot-Hintergrund anklicken"},
 ];
 
 async function zeichneScans(frisch) {
@@ -2362,6 +2389,7 @@ function scanWerkzeuge() {
       el("span", {class: "taste"}, m.taste),
       el("span", {class: "klein"}, m.hilfe)));
   }
+  scanSchritte();
   $("scan-foto").disabled = !SC.pillow;
   $("scan-foto").textContent = SC.bereich ? "Bereich aufnehmen" : "Screenshot aufnehmen";
 
@@ -2375,6 +2403,28 @@ function scanWerkzeuge() {
   bz.classList.toggle("an", !!SC.bereich);
   $("scan-vollbild").disabled = !SC.bereich || !SC.pillow;
   scanFensterPflegen();
+}
+
+/** Die drei Schritte: erledigte blass mit Haken, der aktuelle mit Knopf. */
+function scanSchritte() {
+  const ziel = $("scan-schritte");
+  ziel.replaceChildren();
+  for (const s of SC.schritte) {
+    const zeile = el("div", {class: "scan-schritt"
+      + (s.fertig ? " fertig" : "") + (s.aktuell ? " aktuell" : "")},
+      el("span", {class: "nr"}, s.fertig ? "✓" : String(s.nr)),
+      el("span", {class: "titel"}, s.titel),
+      el("span", {class: "was"}, s.was));
+    // Der Knopf steht nur beim aktuellen Schritt. Drei Knoepfe untereinander
+    // waeren wieder die Wand, aus der der Weg herausfuehren soll.
+    if (s.aktuell) {
+      zeile.appendChild(el("button", {class: "btn still", disabled: !SC.pillow,
+        onclick: () => (s.befehl.startsWith("modus:")
+          ? rufScan("scan_modus_setzen", {modus: s.befehl.slice(6)})
+          : rufScan(s.befehl))}, s.knopf));
+    }
+    ziel.appendChild(zeile);
+  }
 }
 
 let scanFenster = [];

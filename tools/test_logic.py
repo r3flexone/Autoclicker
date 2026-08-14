@@ -5446,7 +5446,8 @@ section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
 import ast as _ast10, re as _re13
 from autoclicker.editors.sequence_studio.scans import (
     MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
-    MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODI as _MODI18,
+    MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODUS_FINDEN as _MF18,
+    MODI as _MODI18,
 )
 from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
 
@@ -5571,6 +5572,65 @@ try:
             check("die Vorschau kommt auf Nachfrage",
                   _b18.scan_vorschau({"namen": [_i18["name"]]})[_i18["name"]]
                   .startswith("data:image/png;base64,"))
+
+            # --- Die drei Schritte zu einem Scan ---
+            # Der Reiter zeigte alle Bedienelemente gleichzeitig; wer zum ersten
+            # Mal einen Scan anlegt, sah eine Wand statt eines Weges.
+            _b18.scan_neu({"name": "Weg"})
+            _sch18 = _b18.scan_daten()["schritte"]
+            check("es sind drei Schritte", [s["nr"] for s in _sch18] == [1, 2, 3])
+            check("mit Bild ist der erste erledigt", _sch18[0]["fertig"] is True)
+            check("und der zweite dran",
+                  _sch18[1]["aktuell"] is True and _sch18[1]["fertig"] is False)
+            # Der entscheidende Satz: zwischen Slots und Items liegt das Spiel.
+            # Wer auf dem alten Bild lernt, lernt leere Slots.
+            check("Schritt 3 sagt, dass neu aufgenommen werden muss",
+                  "NEU aufnehmen" in _sch18[2]["was"])
+            check("genau ein Schritt ist der aktuelle",
+                  sum(1 for s in _sch18 if s["aktuell"]) == 1)
+
+            # --- Slots finden: ein Klick statt zweier pro Slot ---
+            # 24 Slots von Hand sind 48 Klicks. Die Erkennung gibt es laengst -
+            # dieselbe Funktion, die auch `repair` im Slot-Editor benutzt.
+            _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
+            for _gy18 in range(2):
+                for _gx18 in range(3):
+                    for _px18 in range(60):
+                        for _py18 in range(60):
+                            _gitter18.putpixel((40 + _gx18 * 80 + _px18,
+                                                40 + _gy18 * 80 + _py18), (48, 54, 68))
+            _slots_vorher18 = dict(_b18.slots)
+            _b18.slots.clear()
+            _b18.scans["Weg"].slot_names.clear()
+            _b18._foto = _gitter18
+            _b18._anzeigebild(0, 0, 1.0)
+            _b18.scan_modus_setzen({"modus": _MF18})
+            _z18 = _b18.scan_klick({"x": 42, "y": 42})
+            if _b18._hat_opencv():
+                check("ein Klick legt alle Slots an", len(_z18["slots"]) == 6)
+                check("sie gehoeren gleich zum offenen Scan",
+                      all(s["dabei"] for s in _z18["slots"]))
+                check("danach ist wieder Auswaehlen aktiv", _z18["modus"] == _MW18)
+                _z18 = _b18.scan_modus_setzen({"modus": _MF18})
+                _z18 = _b18.scan_klick({"x": 42, "y": 42})
+                check("ein zweiter Durchgang verdoppelt nichts",
+                      len(_z18["slots"]) == 6 and "schon da" in _z18["status"]["text"])
+                # Der Panel-Hintergrund liegt bei dunklen Oberflaechen im
+                # Standardband mit drin - dann kaeme EIN Rechteck ueber alles
+                # heraus. Das enger werdende Band faengt genau das ab.
+                check("das Panel wird nicht als ein Riesen-Slot genommen",
+                      all(s["breite"] < 200 for s in _z18["slots"]))
+            else:
+                print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
+            # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
+            # weiter auf "Slot 1" und dem gestellten Bild.
+            _b18.slots.clear()
+            _b18.slots.update(_slots_vorher18)
+            _b18.scans.pop("Weg", None)
+            _b18.scan_offen = ""
+            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
+            _b18._foto = _bild18
+            _b18._anzeigebild(0, 0, 1.0)
 
             # --- Der Bereich: nicht immer Vollbild ---
             # Wer dasselbe Spiel dreimal offen hat, arbeitet sonst auf einem

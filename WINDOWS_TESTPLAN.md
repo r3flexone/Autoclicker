@@ -256,6 +256,29 @@ Items aller Spiele in einer Liste.
 - [ ] 🆕 „Items erkennen" prüft nur die Items des offenen Scans (die Statuszeile
       nennt die Zahl).
 
+### 13e. Der Weg zu einem neuen Scan 🆕
+Der Ablauf, um den es geht: Bereich, Slots auslesen, Items lernen — wobei das
+Inventar beim Aufnehmen der Slots noch leer sein darf.
+
+- [ ] 🆕 Neuer Scan → oben links stehen drei Schritte, der erste ist markiert und
+      trägt als einziger einen Knopf.
+- [ ] 🆕 Nach dem Screenshot ist Schritt 1 abgehakt (✓) und Schritt 2 dran.
+- [ ] 🆕 **Schritt 2 am LEEREN Inventar**: „Slots finden" (Taste `G`), dann EIN
+      Klick auf einen leeren Slot-Hintergrund → alle Slots entstehen auf einmal,
+      gehören gleich zum Scan, und der Modus springt zurück auf Auswählen.
+      Gegenprobe: nochmal klicken legt nichts doppelt an.
+- [ ] 🆕 Wenn nur **ein** riesiges Rechteck über dem ganzen Inventar entsteht,
+      ist die Bandbreiten-Suche gescheitert — dann bitte melden (Farbe des
+      Slot-Hintergrunds und des Panels notieren).
+- [ ] 🆕 Findet es zu wenige Slots: auf eine wirklich leere Stelle klicken (nicht
+      auf ein Item), notfalls einzelne mit „Neuer Slot" nachziehen.
+- [ ] 🆕 **Schritt 3**: Inventar im Spiel füllen, **neu** aufnehmen (der Bereich
+      bleibt), dann „aus allen Slots lernen". Danach sind alle drei Schritte
+      abgehakt und keiner trägt mehr einen Knopf.
+- [ ] 🆕 „Items erkennen" findet die gerade gelernten Items an ihren Slots wieder.
+- [ ] 🆕 Die linke Spalte scrollt, wenn das Fenster niedrig ist — kein Abschnitt
+      verschwindet hinter der Fusszeile.
+
 ### 13d. Nicht immer Vollbild 🆕
 Der Fall: dasselbe Spiel mehrmals offen, und der Scan soll nur eines davon sehen.
 

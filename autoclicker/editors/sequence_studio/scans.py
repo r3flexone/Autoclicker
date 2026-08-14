@@ -49,7 +49,9 @@ MODUS_SLOT = "slot"        # zwei Ecken -> neuer Slot
 MODUS_MESSEN = "messen"    # Farbe an der Stelle -> Slot-Hintergrund
 MODUS_KLICK = "klick"      # Klickpunkt des gewählten Slots
 MODUS_BEREICH = "bereich"  # zwei Ecken -> Bildbereich einschränken
-MODI = (MODUS_WAHL, MODUS_SLOT, MODUS_MESSEN, MODUS_KLICK, MODUS_BEREICH)
+MODUS_FINDEN = "finden"    # ein Klick auf den Hintergrund -> alle Slots
+MODI = (MODUS_WAHL, MODUS_FINDEN, MODUS_SLOT, MODUS_MESSEN, MODUS_KLICK,
+        MODUS_BEREICH)
 
 ART_SLOT = "slot"
 ART_ITEM = "item"
@@ -436,6 +438,43 @@ class ScanTeil:
         return crop_region(self._foto, tuple(region),
                            int(self._foto_info["links"]), int(self._foto_info["oben"]))
 
+    def _schritte(self) -> list:
+        """Die drei Schritte zu einem neuen Scan, mit ihrem Stand.
+
+        **Die Reihenfolge stand nirgends.** Der Reiter zeigte alle Bedienelemente
+        gleichzeitig, und wer zum ersten Mal einen Scan anlegt, sieht eine Wand
+        aus Knöpfen statt eines Weges. Die drei Schritte sind immer dieselben:
+        Bereich, Slots, Items.
+
+        **Zwischen Schritt 2 und 3 liegt das Spiel.** Slots nimmt man oft an
+        einem LEEREN Inventar auf — dann gibt es noch nichts zu lernen. Man füllt
+        es, nimmt neu auf und lernt erst dann. Genau das sagt Schritt 3, weil es
+        sonst niemand ahnt: ein „Items lernen" auf dem alten Bild lernt drei
+        leere Slots.
+
+        Der Stand wird **abgeleitet, nicht mitgeschrieben** — sonst gäbe es einen
+        Fortschritt, der nicht zu den Daten passt. Erledigt heisst schlicht: es
+        ist da.
+        """
+        cfg = self.scans.get(self.scan_offen)
+        hat_slots = bool(cfg.slot_names) if cfg else bool(self.slots)
+        hat_items = bool(cfg.item_names) if cfg else bool(self.items)
+        roh = [
+            (1, "Bereich", "Fenster wählen oder Ausschnitt aufziehen — dann "
+                "Screenshot.", self._foto is not None,
+             "scan_foto", "Screenshot aufnehmen"),
+            (2, "Slots", "Auf einen LEEREN Slot-Hintergrund klicken — das legt "
+                "alle auf einmal an.", hat_slots,
+             "modus:" + MODUS_FINDEN, "Slots finden"),
+            (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
+             hat_items, "scan_items_lernen", "aus allen Slots lernen"),
+        ]
+        offen = [nr for nr, _, _, fertig, _, _ in roh if not fertig]
+        aktuell = offen[0] if offen else 0
+        return [{"nr": nr, "titel": titel, "was": was, "fertig": fertig,
+                 "aktuell": nr == aktuell, "befehl": befehl, "knopf": knopf}
+                for nr, titel, was, fertig, befehl, knopf in roh]
+
     def _flaeche(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
 
@@ -493,6 +532,7 @@ class ScanTeil:
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
+            "schritte": self._schritte(),
             "offen": self.scan_offen,
             "nur_dabei": self.nur_dabei,
             "wahl": {"art": self.scan_art, "name": self.scan_name},
@@ -614,6 +654,7 @@ class ScanTeil:
             MODUS_MESSEN: "Farbe messen: auf den Slot-Hintergrund klicken.",
             MODUS_KLICK: "Klickpunkt: die Stelle im Slot anklicken.",
             MODUS_BEREICH: "Bereich: zwei Ecken um den Teil, der zählt.",
+            MODUS_FINDEN: "Slots finden: auf einen leeren Slot-Hintergrund klicken.",
         }
         return self._scan_melde(texte[modus], "info")
 
@@ -650,6 +691,8 @@ class ScanTeil:
             return self._klick_klickpunkt(x, y)
         if self.scan_modus == MODUS_BEREICH:
             return self._klick_bereich(x, y)
+        if self.scan_modus == MODUS_FINDEN:
+            return self._klick_finden(x, y)
         return self._klick_waehlen(x, y)
 
     def _klick_slot(self, x: int, y: int) -> dict:
@@ -683,6 +726,106 @@ class ScanTeil:
         gemessen = f" · Hintergrund {hexfarbe(farbe)}" if farbe else ""
         return self._scan_geaendert(
             f"{name}: {x2 - x1}×{y2 - y1} px{gemessen}")
+
+    def _klick_finden(self, x: int, y: int) -> dict:
+        """Ein Klick auf einen leeren Slot-Hintergrund legt ALLE Slots an.
+
+        Der Schritt, der im Studio fehlte: ein volles Inventar sind 45 Slots und
+        damit 90 Klicks, wenn man jeden einzeln aufzieht. Die Erkennung dafür
+        gibt es längst — `erkenne_slots_im_bild()` aus dem Konsolen-Slot-Editor,
+        dieselbe Funktion, die auch `repair` benutzt. Zwei Erkennungen wären
+        zwei Ergebnisse.
+
+        Gebraucht wird nur eine Farbe, und die zeigt man statt sie zu tippen.
+        Angelegt wird, was nicht schon einen Slot hat: ein zweiter Durchgang
+        ergänzt also, statt zu verdoppeln.
+        """
+        if self._foto is None or self._foto_info is None:
+            return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
+        farbe = self._foto_farbe(x, y)
+        if farbe is None:
+            return self._scan_melde("Dort liegt kein Bild — erst aufnehmen.", "warn")
+        if not self._hat_opencv():
+            return self._scan_melde(
+                "Das Finden braucht OpenCV: pip install opencv-python", "err")
+
+        try:
+            rechtecke = self._slots_suchen(farbe)
+        except Exception as fehler:                     # OpenCV/NumPy-Innenleben
+            return self._scan_melde(f"Erkennung fehlgeschlagen: {fehler}", "err")
+        if not rechtecke:
+            return self._scan_melde(
+                f"Nichts gefunden zu {hexfarbe(farbe)} — auf eine LEERE Stelle im "
+                "Slot klicken, nicht auf ein Item.", "warn")
+
+        links, oben = int(self._foto_info["links"]), int(self._foto_info["oben"])
+        neu, schon = 0, 0
+        for rx, ry, rb, rh in rechtecke:
+            region = (links + rx, oben + ry, links + rx + rb, oben + ry + rh)
+            if self._slot_an_stelle(region):
+                schon += 1
+                continue
+            name = next_slot_name(self.slots)
+            self.slots[name] = ItemSlot(
+                name=name, scan_region=region,
+                click_pos=((region[0] + region[2]) // 2, (region[1] + region[3]) // 2),
+                slot_color=farbe)
+            self._dazu(ART_SLOT, name)
+            neu += 1
+        if not neu:
+            return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da.", "info")
+        self.scan_modus = MODUS_WAHL
+        teile = f"{neu} Slot(s) angelegt"
+        if schon:
+            teile += f", {schon} schon vorhanden"
+        return self._scan_geaendert(f"{teile} · Hintergrund {hexfarbe(farbe)}")
+
+    # Enger werdende Bänder für Sättigung und Helligkeit. Der erste Wert ist der
+    # des Konsolen-Editors; die engeren braucht es bei dunklen Oberflächen, wo
+    # Slot und Panel sich nur um wenige Stufen unterscheiden.
+    _SV_STUFEN = (50, 35, 25, 18, 12, 8)
+
+    def _slots_suchen(self, farbe: tuple) -> list:
+        """Sucht die Slots mit mehreren Toleranzen und nimmt das beste Ergebnis.
+
+        **Eine feste Toleranz reicht nicht.** Gemessen an einem dunklen Inventar:
+        mit dem Standardband (±50 auf Sättigung und Helligkeit) verschmelzen
+        Slots und Panel zu EINER Fläche, und heraus kommt ein einziges Rechteck
+        über dem ganzen Inventar. Wie eng es sein muss, hängt am Kontrast der
+        jeweiligen Oberfläche — bei vier gestellten Panel-Farben lag der Umschlag
+        bei 35, 25, 18 und 8.
+
+        Statt den Nutzer einen Regler suchen zu lassen, wird gemessen: der
+        Durchgang mit den **meisten** Rechtecken gewinnt, und bei Gleichstand das
+        weiteste Band (das ist das nachsichtigste). Ein Ergebnis, in dem ein
+        Rechteck mehr als die halbe Fläche einnimmt, zählt nicht — das ist nie
+        ein Slot, sondern das Panel.
+        """
+        from ..slot_editor import erkenne_slots_im_bild
+        from ...config import CONFIG
+        flaeche = self._foto.width * self._foto.height
+        bestes: list = []
+        for sv in self._SV_STUFEN:
+            rechtecke, _ = erkenne_slots_im_bild(
+                self._foto, farbe, CONFIG.scan_slot_hsv_tolerance, sv_toleranz=sv)
+            rechtecke = [r for r in rechtecke if r[2] * r[3] * 2 <= flaeche]
+            if len(rechtecke) > len(bestes):
+                bestes = rechtecke
+        return bestes
+
+    def _slot_an_stelle(self, region: tuple) -> bool:
+        """Liegt an dieser Stelle schon ein Slot? Mitte im Rechteck zählt.
+
+        Nicht auf Gleichheit prüfen: die Erkennung normalisiert auf die
+        Median-Grösse, ein von Hand aufgezogener Slot liegt also fast nie exakt
+        gleich — und dann stünden zwei Slots übereinander.
+        """
+        mx, my = (region[0] + region[2]) // 2, (region[1] + region[3]) // 2
+        for s in self.slots.values():
+            r = s.scan_region
+            if r and r[0] <= mx <= r[2] and r[1] <= my <= r[3]:
+                return True
+        return False
 
     def _klick_messen(self, x: int, y: int) -> dict:
         slot = self._gewaehlter_slot()

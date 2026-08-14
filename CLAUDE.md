@@ -695,6 +695,32 @@ aus den Objekten wieder auffüllt, muss nach jeder Änderung an den Namen
 `_objekte_angleichen()` laufen — sonst kommt ein gelöschtes Item beim nächsten
 Speichern zurück. Ein Test pinnt genau das fest.
 
+**Der Weg steht als Weg da, nicht als Wand aus Knöpfen** (`_schritte()`).
+Bereich → Slots → Items, mit dem Stand aus den Daten abgeleitet; nur der aktuelle
+Schritt trägt einen Knopf. Ein mitgeschriebener Fortschritt könnte von den Daten
+abweichen, deshalb heisst „erledigt" schlicht: es ist da.
+
+**Zwischen Schritt 2 und 3 liegt das Spiel.** Slots nimmt man oft an einem
+*leeren* Inventar auf — dann gibt es noch nichts zu lernen. Man füllt es, nimmt
+**neu** auf und lernt erst dann. Das steht in Schritt 3, weil es sonst niemand
+ahnt: „Items lernen" auf dem alten Bild lernt leere Slots.
+
+**Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
+`erkenne_slots_im_bild()` aus `editors/slot_editor.py`, die auch `repair`
+benutzt. Ein Klick auf einen leeren Slot-Hintergrund (Modus `finden`) legt alle
+an; ein volles Inventar von Hand wären 90 Klicks. Zwei Erkennungen wären zwei
+Ergebnisse.
+
+Neu daran ist nur der Regler: `sv_toleranz` (Sättigung/Helligkeit) war fest auf
+±50 verdrahtet, und **bei dunklen Oberflächen liegt der Panel-Hintergrund darin**
+— dann verschmilzt alles zu einer Fläche und heraus kommt EIN Rechteck über dem
+ganzen Inventar. Der Konsolen-Weg umgeht das, indem der Nutzer vorher eine enge
+Region markiert; im Studio klickt man nur. `_slots_suchen()` probiert deshalb ein
+enger werdendes Band und nimmt das Ergebnis mit den **meisten** Rechtecken —
+gemessen an vier gestellten Panel-Farben lag der Umschlag bei 35, 25, 18 und 8,
+also nicht bei einem Wert, den man fest eintragen könnte. Ein Rechteck über mehr
+als der halben Fläche zählt nie mit: das ist das Panel, kein Slot.
+
 **Vollbild ist die Voreinstellung, nicht die einzige Möglichkeit.** Wer dasselbe
 Spiel mehrmals offen hat, arbeitet sonst auf einem Bild, in dem drei Viertel
 stören. Der Aufnahmebereich lässt sich auf drei Wegen setzen — Fensterliste
