@@ -12,9 +12,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
+from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, uebernehmen
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
@@ -212,9 +212,10 @@ def handle_reset(state: AutoClickerState) -> None:
         ensure_sequences_dir()
         init_directories()
 
-        # Config auf Standard zurücksetzen
+        # Config auf Standard zurücksetzen — hineinschreiben, nicht austauschen
+        # (s. config.uebernehmen: state.config IST das Modul-CONFIG).
         with state.lock:
-            state.config = AppConfig()
+            uebernehmen(state.config, AppConfig())
 
         print(f"\n{ok('Factory Reset abgeschlossen!')}")
         print(ok("Das Programm ist jetzt wie frisch von GitHub."))
@@ -635,6 +636,29 @@ def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
     print(hint("       Maus steht jetzt auf der Stelle."))
 
 
+def befehl_config(state: AutoClickerState, argumente: dict) -> None:
+    """Laedt config.json neu — das Studio hat sie gerade geschrieben.
+
+    Ohne diesen Befehl gaelte eine im Studio geaenderte Einstellung erst nach
+    einem Neustart des Hauptprozesses: die Datei waere neu, der Speicher alt.
+    Und weil `state.config` hier dasselbe Objekt ist wie das Modul-`CONFIG`
+    (s. `config.uebernehmen`), erreicht das Neuladen jeden Leser — auch die
+    Editoren und `imaging`, die `CONFIG` direkt importieren.
+
+    Ein laufender Lauf zieht sofort mit: der Worker liest `state.config` bei
+    jedem Schritt neu, nichts davon wird beim Start eingefroren.
+    """
+    from .config import load_config, uebernehmen as _uebernehmen
+
+    neu = load_config()
+    with state.lock:
+        _uebernehmen(state.config, neu)
+        log_an = state.config.debug_log or state.config.debug_detail
+    # Die Ausgabe-Stufen haengen am Logger, der nur beim Start gesetzt wurde.
+    init_logging(log_an)
+    print(f"\n{col('[STUDIO]', 'cyan')} Einstellungen neu geladen.")
+
+
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
 # hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
@@ -645,6 +669,7 @@ BEFEHLE = {
     "stop": befehl_stop,
     "pause": befehl_pause,
     "zeigen": befehl_zeigen,
+    "config": befehl_config,
 }
 
 

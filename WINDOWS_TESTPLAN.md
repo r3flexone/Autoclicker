@@ -262,6 +262,41 @@ Offen bleibt alles, was das laufende Spiel braucht — die Abschnitte unten.
 - [ ] CTRL+ALT+B **während** ein Lauf läuft → das Fenster geht auf (die Sperre ist
       absichtlich weg) und zeigt den Live-Run.
 
+### 14b. Einstellungen-Reiter 🆕
+- [ ] 🆕 Reiter „Einstellungen": links die 14 Abschnitte, in der Mitte die Felder,
+      rechts die offenen Änderungen. Die Sequenz-Bedienelemente im Kopf (Laden,
+      Neu, Speichern, Starten) sind **weg** — dort speichert nur die rechte Spalte.
+- [ ] 🆕 Ein Wert ändern → die Zeile ist ringsum orange markiert, rechts steht eine
+      Karte `alt → neu`, der Abschnitt links zählt mit, und unter dem Feld erscheint
+      „↺ Standard: …". Der Knopf setzt zurück.
+- [ ] 🆕 „In config.json schreiben" → die Datei trägt den Wert, Gruppierung und
+      Reihenfolge wie vorher; **im Hauptprozess** erscheint „[STUDIO] Einstellungen
+      neu geladen." Danach ist nichts mehr offen.
+- [ ] 🆕 Während eines **laufenden** Laufs `click_post_delay` ändern und speichern:
+      der Lauf arbeitet danach mit dem neuen Wert (am einfachsten mit einem grossen
+      Wert sichtbar zu machen).
+- [ ] 🆕 `humanize_micro_delay_max` unter das Minimum setzen und speichern → die
+      Datei trägt max = min, und rechts steht ein Kasten „korrigiert beim Speichern".
+- [ ] 🆕 `click_max_total` leeren → unter dem Feld steht „= unbegrenzt", die Datei
+      bekommt `null`. Gegenprobe: `humanize_click_jitter` auf 0 → „= exakt auf den
+      Punkt" (dort heisst leer eine 0, nicht `null`).
+- [ ] 🆕 `llm_enabled` ausschalten → die dreizehn Felder darunter werden blass und
+      sagen „Wirkt nur, wenn ‚LLM-Erkennung' an ist". Einschalten → sofort hell.
+- [ ] 🆕 `scan_park_mouse` einschalten → zwei Zahlenfelder plus „✛ mit der Maus
+      setzen": Maus im Spiel an die Stelle, ENTER → die Koordinaten stehen da.
+      Ausschalten → `false` in der Datei.
+- [ ] 🆕 Suchfeld „timeout" → Treffer aus **mehreren** Abschnitten untereinander,
+      mit Abschnittsüberschrift. Feld leeren → zurück zum gewählten Abschnitt.
+- [ ] 🆕 `ocr_backend` auf „automatisch" → `null` in der Datei, nicht `"auto"`.
+- [ ] 🆕 Datei von Hand ändern, während der Reiter offen ist, dann im Studio einen
+      **anderen** Wert speichern → die Handänderung überlebt (es werden nur die
+      angefassten Schlüssel geschrieben).
+- [ ] 🆕 `config.json` von Hand kaputt machen (`{kein json`) → der Reiter meldet es,
+      und ein Speichern überschreibt die Datei **nicht**.
+- [ ] 🆕 `STRG+S` im Einstellungen-Reiter speichert die Config, nicht die Sequenz.
+- [ ] 🆕 Studio aus einem anderen Arbeitsverzeichnis starten → unten rechts steht
+      der Pfad, der wirklich bearbeitet wird.
+
 ## 15. Robustheit / Backward-Compat
 - [ ] Alte `config.json` (mit `scan_learn_llm_names`) lädt ohne Fehler 🆕
       (Feld wird ignoriert).

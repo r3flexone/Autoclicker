@@ -797,9 +797,12 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     cfg_data.pop(k, None)
                 current = state.config.to_dict()
                 current.update(cfg_data)
-                from .config import AppConfig
+                from .config import AppConfig, uebernehmen
                 with state.lock:
-                    state.config = AppConfig.from_dict(current)
+                    # Hineinschreiben statt austauschen: state.config ist im
+                    # Hauptprozess dasselbe Objekt wie das Modul-CONFIG, und
+                    # ein Austausch liesse jeden Leser davon auf dem alten Stand.
+                    uebernehmen(state.config, AppConfig.from_dict(current))
                 from .config import save_config
                 save_config(state.config)
 

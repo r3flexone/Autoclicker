@@ -7,7 +7,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Punkte aufnehmen**: Mausposition speichern mit automatischer Benennung
 - **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
-- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen (`CTRL+ALT+B`, eigenes Fenster)
+- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
 - **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
@@ -1397,6 +1397,14 @@ steht auf einmal da.
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
+- **Reiter „Einstellungen"**: alle 70 Werte der `config.json` im Fenster, statt die
+  Datei von Hand aufzumachen. Jedes Feld trägt Beschriftung, seinen Schlüssel und
+  einen Satz, wann man es anfasst; Abhängiges wird blass statt unsichtbar („Wirkt nur,
+  wenn ‚LLM-Erkennung' an ist"). Gespeichert wird auf Knopfdruck — geschrieben werden
+  nur die angefassten Schlüssel, damit eine Handänderung an der Datei nicht verloren
+  geht, und was `AppConfig` beim Speichern korrigiert (Konfidenz über 1, max unter min),
+  steht danach als Hinweis da. Der Hauptprozess lädt die Datei automatisch neu, ein
+  laufender Lauf zieht sofort mit
 - **Rückfrage statt Zwei-Klick-Trick** beim Laden/Neuanlegen mit offenen Änderungen
 - **Starten aus dem Studio**: Start, Pause und Stopp im Kopf und in der Live-Ansicht.
   Das Fenster führt nichts selbst aus — es legt einen Befehl ab, den der Hauptprozess in

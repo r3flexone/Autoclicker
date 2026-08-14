@@ -5335,6 +5335,190 @@ finally:
     _os.chdir(_cwd16)
 
 
+# --------------------------- Einstellungen im Studio: Schema, Bruecke, Datei
+section("Einstellungen: jedes Feld beschrieben, jeder Wert schreibbar")
+
+from dataclasses import fields as _felder17
+from autoclicker.config import (
+    AppConfig as _AC17, config_abschnitte as _abs17, optionale_felder as _opt17,
+    save_config as _sc17, uebernehmen as _ueb17,
+)
+from autoclicker.config_meta import ARTEN as _ARTEN17, META as _META17
+
+_namen17 = [f.name for f in _felder17(_AC17)]
+
+# --- Das Schema deckt die Dataclass ab, in beide Richtungen ---
+# Ohne diesen Test ist die Tabelle in drei Wochen unvollstaendig: ein neues Feld
+# in AppConfig faellt nirgends auf, es waere im Fenster einfach nicht da - und
+# damit nur in der Datei einstellbar, also genau dort, wo es nicht mehr sein soll.
+check("jedes Config-Feld hat eine Beschreibung",
+      sorted(_META17) == sorted(_namen17))
+_zuviel17 = sorted(set(_META17) - set(_namen17))
+if _zuviel17:
+    print("        beschrieben, aber nicht vorhanden: " + ", ".join(_zuviel17))
+_fehlt17 = sorted(set(_namen17) - set(_META17))
+if _fehlt17:
+    print("        vorhanden, aber unbeschrieben: " + ", ".join(_fehlt17))
+
+check("jede Art gibt es auch als Bedienelement",
+      all(m.art in _ARTEN17 for m in _META17.values()))
+check("Kacheln nur bei enum - und enum nie ohne Kacheln",
+      all(bool(m.optionen) == (m.art == "enum") for m in _META17.values()))
+
+# --- Abhaengigkeiten zeigen auf Felder, die es gibt ---
+# Ein `dep` ins Leere macht das Feld dauerhaft blass: es waere sichtbar,
+# unbedienbar und ohne Erklaerung, warum.
+_bools17 = {f.name for f in _felder17(_AC17) if isinstance(f.default, bool)}
+_kaputt17 = []
+for _k17, _m17 in _META17.items():
+    for _feld17, _erwartet17 in ((_m17.dep, _bools17), (_m17.dep_nicht, _bools17),
+                                 (_m17.dep_min, set(_namen17) - _bools17)):
+        if _feld17 and _feld17 not in _erwartet17:
+            _kaputt17.append(f"{_k17} -> {_feld17}")
+check("jede Abhaengigkeit zeigt auf ein passendes Feld", _kaputt17 == [])
+if _kaputt17:
+    print("        " + ", ".join(_kaputt17))
+
+# --- Jede angebotene Auswahl ueberlebt die Validierung ---
+# Der eigentliche Test des Schemas: `__post_init__` wirft unbekannte Werte auf
+# den Standard zurueck. Stuende in den Kacheln ein Wert, den die Validierung
+# nicht kennt, koennte man ihn anklicken, speichern - und die Datei traege etwas
+# anderes. Beide Seiten messen, nicht eine abschreiben.
+_untauglich17 = []
+for _k17, _m17 in _META17.items():
+    for _wert17, _text17 in _m17.optionen:
+        if getattr(_AC17(**{_k17: _wert17}), _k17) != _wert17:
+            _untauglich17.append(f"{_k17}={_wert17!r}")
+check("jede angebotene Auswahl ueberlebt __post_init__", _untauglich17 == [])
+if _untauglich17:
+    print("        wird beim Speichern verworfen: " + ", ".join(_untauglich17))
+
+# --- Die Abschnitte decken alles ab ---
+# `config_abschnitte()` haengt Nichtzugeordnetes hinten an (damit nichts
+# unsichtbar wird). Genau das darf aber nie noetig sein - sonst steht ein Feld
+# in der Datei woanders als in seiner Gruppe.
+_gruppen17 = _abs17()
+check("die Abschnitte decken jedes Feld ab",
+      sorted(k for _, keys in _gruppen17 for k in keys) == sorted(_namen17))
+check("kein Feld faellt in den Nachzuegler-Abschnitt",
+      "SONSTIGE" not in [t for t, _ in _gruppen17])
+check("und keines steht doppelt",
+      len([k for _, keys in _gruppen17 for k in keys]) == len(_namen17))
+
+# --- Optional heisst: leeres Feld ist `null`, nicht 0 ---
+_defaults17 = {f.name: f.default for f in _felder17(_AC17)}
+check("optionale Felder sind genau die mit Standard None",
+      sorted(_opt17()) == sorted(k for k, v in _defaults17.items() if v is None))
+
+# --- Der Wertvergleich der Bruecke ---
+from autoclicker.editors.sequence_studio.bridge import _gleicher_wert as _gw17
+
+check("600 und 600.0 sind derselbe Wert", _gw17(600, 600.0))
+check("True ist nicht 1", not _gw17(True, 1))
+check("False ist nicht 0", not _gw17(False, 0))
+check("Listen werden elementweise verglichen", _gw17([960, 540], [960.0, 540.0]))
+check("und Ungleiches bleibt ungleich", not _gw17([960, 540], [960, 541]))
+check("None ist nicht 0", not _gw17(None, 0))
+
+# --- Bruecke gegen Datei ---
+_sand17 = tempfile.mkdtemp(prefix="studiocfg_")
+_cwd17 = _os.getcwd()
+_os.chdir(_sand17)
+try:
+    Path("sequences").mkdir()
+    _b17 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+
+    # Ohne Datei: Standardwerte, kein Fehler, und der Pfad ist absolut.
+    _gelesen17 = _b17.config_lesen()
+    check("ohne config.json kommen die Standardwerte",
+          _gelesen17["werte"]["click_per_point"] == 1 and not _gelesen17["fehler"])
+    check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["pfad"]))
+    check("die Beschreibungen kommen mit",
+          _gelesen17["meta"]["click_per_point"]["label"] == "Klicks pro Punkt")
+
+    # Eine Datei mit einem von Hand gesetzten Wert - der muss ein Speichern
+    # ueberleben, das ihn gar nicht anfasst. Das ist der Grund, warum nur die
+    # geaenderten Schluessel geschickt werden: der Hauptprozess schreibt
+    # dieselbe Datei, und ein Fenster, das seit einer Stunde offensteht, darf
+    # dessen Aenderungen nicht mit seinem alten Stand ueberbuegeln.
+    _sc17(_AC17(window_focus_title="Idle Clans X", scan_marker_count=9))
+    _antwort17 = _b17.config_schreiben({"werte": {"click_post_delay": 0.25}})
+    check("das Speichern meldet Erfolg", _antwort17["ok"])
+    _datei17 = json.loads(Path("config.json").read_text(encoding="utf-8"))
+    check("der geaenderte Wert steht in der Datei", _datei17["click_post_delay"] == 0.25)
+    check("und der fremde Wert ist unangetastet",
+          _datei17["window_focus_title"] == "Idle Clans X"
+          and _datei17["scan_marker_count"] == 9)
+    check("nichts wurde korrigiert", _antwort17["korrekturen"] == [])
+    check("die Reihenfolge in der Datei folgt den Abschnitten",
+          list(_datei17)[:2] == ["click_per_point", "click_max_total"])
+
+    # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
+    # einem Neustart, obwohl die Datei schon neu ist.
+    import autoclicker.befehl as _bf17
+    _auftrag17 = _bf17.hole()
+    check("der Hauptprozess bekommt Bescheid",
+          _auftrag17 is not None and _auftrag17["befehl"] == "config")
+
+    # Eine Korrektur wird gemeldet statt still hingenommen.
+    _antwort17 = _b17.config_schreiben({"werte": {"scan_min_confidence": 1.5}})
+    check("eine Korrektur wird zurueckgemeldet",
+          [k["key"] for k in _antwort17["korrekturen"]] == ["scan_min_confidence"]
+          and _antwort17["korrekturen"][0]["wurde"] == 0.8)
+    check("und die Datei traegt den korrigierten Wert",
+          json.loads(Path("config.json").read_text(encoding="utf-8"))["scan_min_confidence"] == 0.8)
+
+    # Ein `600` von Hand darf nicht als Korrektur gelten, nur weil der Loader
+    # eine 600.0 daraus macht.
+    _antwort17 = _b17.config_schreiben({"werte": {"pixel_show_delay": 1}})
+    check("eine ganze Zahl in einem Kommafeld ist keine Korrektur",
+          _antwort17["korrekturen"] == [])
+
+    # Nichts zu tun ist kein Fehler, aber auch kein Schreibvorgang.
+    check("ohne Werte wird nicht geschrieben", _b17.config_schreiben({"werte": {}})["ok"] is False)
+
+    # Kaputt ist nicht leer: draufschreiben wuerde den einzigen Rest wegwerfen,
+    # den man noch von Hand reparieren kann.
+    Path("config.json").write_text("{kein json", encoding="utf-8")
+    _antwort17 = _b17.config_schreiben({"werte": {"click_per_point": 3}})
+    check("eine unlesbare config.json wird nicht ueberschrieben",
+          not _antwort17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
+    check("und der Leser meldet sie statt Standardwerte zu behaupten",
+          bool(_b17.config_lesen()["fehler"]))
+finally:
+    _os.chdir(_cwd17)
+
+# --- Ein Config-Objekt pro Prozess ---
+# `state.config` IST das Modul-CONFIG. Wer es austauscht, laesst jeden zurueck,
+# der `from .config import CONFIG` geschrieben hat (imaging, die Item-Editoren) -
+# die saehen ab da dauerhaft die Werte vom Programmstart. Deshalb wird
+# hineingeschrieben, und deshalb prueft der Test die QUELLE: eine Zuweisung an
+# `.config` ist ausserhalb von main.py ein Fehler.
+_ziel17, _quelle17 = _AC17(), _AC17(click_per_point=7, llm_model="x")
+_ueb17(_ziel17, _quelle17)
+check("uebernehmen() traegt alle Werte ueber",
+      _ziel17.click_per_point == 7 and _ziel17.llm_model == "x")
+check("und laesst das Objekt in Ruhe", _ziel17 is not _quelle17)
+
+_zuweisungen17 = []
+_repo17 = Path(__file__).resolve().parent.parent
+for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.py"]:
+    if "__pycache__" in _pf17.parts:
+        continue
+    for _nr17, _zeile17 in enumerate(_pf17.read_text(encoding="utf-8").splitlines(), 1):
+        if _re13.search(r"^\s*\w+\.config\s*=\s*", _zeile17):
+            _zuweisungen17.append(f"{_pf17.name}:{_nr17}: {_zeile17.strip()}")
+# Ohne Zeilennummer: die waere bei jeder Einfuegung in main.py falsch, und der
+# Test soll die Regel pinnen, nicht die Zeile.
+_erlaubt17 = ["main.py: state.config = CONFIG"]
+_gefunden17 = [f"{z.split(':')[0]}: {z.split(': ', 1)[1]}" for z in _zuweisungen17]
+check("nur main.py setzt state.config - und zwar auf CONFIG selbst",
+      _gefunden17 == _erlaubt17)
+if _gefunden17 != _erlaubt17:
+    for _z17 in _zuweisungen17:
+        print("        " + _z17)
+
+
 # --------------------------- Doku gegen Code: Hotkeys und Config-Felder
 section("Was der Code kann, steht auch in der Doku")
 

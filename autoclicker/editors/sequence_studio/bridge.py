@@ -156,6 +156,25 @@ def else_greift(step: SequenceStep) -> bool:
     return any(getattr(step, feld, None) is not None for feld in _ELSE_SCANS)
 
 
+def _gleicher_wert(a, b) -> bool:
+    """Ist das derselbe Config-Wert? Zahlen ohne Typunterschied, `bool` mit.
+
+    JSON kennt nur eine Zahl: eine von Hand getippte `600` und die `600.0`, die
+    nach dem Laden dasteht, sind dieselbe Einstellung — als Korrektur gemeldet
+    wäre das eine Falschmeldung bei jedem zweiten Feld (dieselbe Rechnung wie
+    `_gleich()` im Start-Durchgang). `bool` bleibt ausgenommen: ein `True`, das
+    als `1` durchginge, versteckte ein umgekipptes Flag.
+    """
+    if isinstance(a, bool) != isinstance(b, bool):
+        return False
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_gleicher_wert(x, y) for x, y in zip(a, b))
+    if not isinstance(a, bool) and isinstance(a, (int, float)) \
+            and not isinstance(b, bool) and isinstance(b, (int, float)):
+        return float(a) == float(b)
+    return a == b
+
+
 def _mtime(pfad) -> Optional[float]:
     """Zeitstempel einer Datei — `None`, wenn es sie (noch) nicht gibt."""
     try:
@@ -201,10 +220,16 @@ class StudioBridge:
     Argumente kommen als **ein** dict: pywebview reicht je nach Version nur ein
     Argument durch, und ein dict bleibt lesbar, wenn ein Feld dazukommt.
 
-    Zwei Methoden fallen heraus und **fragen nur**: `sequenz_liste()` und
-    `lauf_status()`. Ihre Antwort ist keine Momentaufnahme, sondern ein eigener
-    Gegenstand — die Oberfläche holt sie über `frage()` statt über `ruf()`,
-    sonst überschriebe die Antwort den Editor-Zustand.
+    Einige Methoden fallen heraus und **fragen nur**: `sequenz_liste()`,
+    `lauf_status()`, `befehl_offen()` und die beiden Config-Methoden. Ihre
+    Antwort ist keine Momentaufnahme, sondern ein eigener Gegenstand — die
+    Oberfläche holt sie über `frage()` statt über `ruf()`, sonst überschriebe
+    die Antwort den Editor-Zustand.
+
+    `config_schreiben()` ist die eine, die etwas ändert und trotzdem hierher
+    gehört: sie ändert die **Config**, nicht die Sequenz. Ihre Antwort ist der
+    geschriebene Stand samt Korrekturen — eine Momentaufnahme wäre dafür der
+    falsche Gegenstand.
     """
 
     def __init__(self, seq: Sequence, filepath, sequences_dir: str):
@@ -621,7 +646,7 @@ class StudioBridge:
     LAUF_BEFEHLE = ("start", "stop", "pause")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen",)
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config")
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -690,6 +715,103 @@ class StudioBridge:
                      name=punkt.name or "", farbe=list(punkt.color) if punkt.color else None):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         return self._melde(f"Maus zu #{punkt.id} ({punkt.x},{punkt.y}) — im Spiel nachsehen.")
+
+    # ------------------------------------------------------------ Einstellungen
+
+    def _config_datei(self) -> tuple:
+        """`config.json` als reine Werte — und was beim Lesen schiefging.
+
+        Bewusst nicht `load_config()`: die **schreibt** die Datei, sobald ein
+        Feld fehlt, und gibt bei jedem Aufruf eine Zeile in der Konsole des
+        Hauptprozesses aus. Ein Leser tut weder das eine noch das andere.
+
+        Drei Ergebnisse, und der Unterschied zwischen den letzten beiden ist der
+        wichtige: `({}, "")` heisst „gibt es noch nicht" (dann legt das
+        Speichern sie an), `({}, "…")` heisst „da liegt etwas, das ich nicht
+        verstehe" — und darauf wird nicht geschrieben.
+        """
+        import json
+        from ...config import CONFIG_FILE
+        pfad = Path(CONFIG_FILE)
+        try:
+            roh = json.loads(pfad.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}, ""
+        except (OSError, ValueError) as fehler:
+            return {}, f"config.json ist nicht lesbar: {fehler}"
+        if not isinstance(roh, dict):
+            return {}, "config.json enthält kein Objekt."
+        return roh, ""
+
+    def config_lesen(self, daten: Optional[dict] = None) -> dict:
+        """Werte, Standardwerte, Abschnitte und Beschreibungen in einem Rutsch.
+
+        Der dritte `frage()`-Kanal: keine Momentaufnahme, sondern ein eigener
+        Gegenstand — über `ruf()` geholt zerschösse die Antwort den
+        Editor-Zustand.
+
+        Der Pfad steht absolut dabei, weil `config.json` relativ zum
+        Arbeitsverzeichnis liegt: wer die App aus einem anderen Ordner startet,
+        bearbeitet eine andere Datei, und das darf man nicht raten müssen.
+        """
+        from ...config import (
+            AppConfig, CONFIG_FILE, config_abschnitte, optionale_felder,
+        )
+        from ...config_meta import META
+        roh, fehler = self._config_datei()
+        return {
+            "pfad": str(Path(CONFIG_FILE).resolve()),
+            "werte": AppConfig.from_dict(roh).to_dict(),
+            "standard": AppConfig().to_dict(),
+            "abschnitte": [{"titel": t, "keys": list(k)} for t, k in config_abschnitte()],
+            "meta": {k: m.as_dict() for k, m in META.items()},
+            # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
+            "optional": optionale_felder(),
+            "fehler": fehler,
+        }
+
+    def config_schreiben(self, daten: Optional[dict] = None) -> dict:
+        """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.
+
+        **Nur die geänderten Schlüssel**, nicht die ganze Config: der
+        Hauptprozess schreibt dieselbe Datei (Debug-Stufen, Factory Reset,
+        Import), und ein Fenster, das seit einer Stunde offensteht, soll dessen
+        Änderungen nicht mit seinem alten Stand überbügeln. Gemischt wird
+        deshalb gegen die Datei, wie sie **jetzt** aussieht.
+
+        `AppConfig.__post_init__` korrigiert ungültige Werte still (Konfidenz
+        über 1, max unter min, unbekannte Aktion). Im Hauptprozess sieht man das
+        an einer Konsolenzeile — hier sähe sie niemand, deshalb wird der
+        korrigierte Stand gegen das Gesendete gehalten und die Abweichung
+        zurückgemeldet. Die Datei enthält dann etwas anderes als eingegeben, und
+        das darf nicht stillschweigend passieren.
+        """
+        from ...config import AppConfig, save_config
+        werte = (daten or {}).get("werte")
+        if not isinstance(werte, dict) or not werte:
+            return {"ok": False, "meldung": "Nichts zu speichern."}
+
+        roh, fehler = self._config_datei()
+        if fehler:
+            # Kaputt ist nicht leer: draufschreiben würde den einzigen Rest
+            # wegwerfen, den man noch von Hand reparieren kann.
+            return {"ok": False, "meldung": fehler + " — nicht überschrieben."}
+
+        neu = AppConfig.from_dict({**roh, **werte})
+        fertig = neu.to_dict()
+        korrekturen = [{"key": k, "gesendet": v, "wurde": fertig.get(k)}
+                       for k, v in werte.items()
+                       if k in fertig and not _gleicher_wert(v, fertig[k])]
+        save_config(neu)
+        # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
+        # der geschriebenen Datei nichts. Derselbe Briefkasten wie bei Start und
+        # Stopp — läuft gerade keiner, verfällt der Befehl (befehl.MAX_ALTER).
+        from ...befehl import sende
+        sende("config")
+        # Was ohne ELSE passiert, steht in derselben Datei — der gemerkte
+        # Zeitstempel ist damit veraltet.
+        self._cfg_stand = -1.0
+        return {"ok": True, "werte": fertig, "korrekturen": korrekturen}
 
     def befehl_offen(self, daten: Optional[dict] = None) -> bool:
         """Liegt der letzte Befehl noch im Briefkasten?
@@ -1242,6 +1364,36 @@ class StudioBridge:
         self._dirty = True
         return self._melde(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
 
+    def _stelle_abwarten(self) -> tuple:
+        """Wartet auf ENTER und gibt `(x, y, "")` zurück — bei Abbruch `(None, None, Grund)`.
+
+        Der gemeinsame Teil von „Stelle mit der Maus setzen" (Klick-Block) und
+        „Maus parken" (Einstellungen): das Fenster hat den Fokus, das Spiel
+        nicht — gefragt wird deshalb über eine globale Taste, nicht über einen
+        Knopf, den man nur mit der Maus erreicht.
+        """
+        # Erst hier importiert — das Modul bleibt ohne Windows ladbar.
+        from ...utils.io import warte_auf_taste
+        from ...winapi import get_cursor_pos
+
+        taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
+        if taste != "enter":
+            return None, None, ("Abgebrochen" if taste == "escape" else "Nichts gedrückt")
+        x, y = get_cursor_pos()
+        return x, y, ""
+
+    def maus_stelle(self, daten: Optional[dict] = None) -> dict:
+        """Die aktuelle Mausposition — für die Einstellungen, ohne Punkt anzulegen.
+
+        `punkt_aufnehmen()` ist der Weg für einen Block; `scan_park_mouse` ist
+        aber kein Punkt und gehört nicht in `points.json`. Übrig bleibt die
+        Geste: Maus hin, ENTER.
+        """
+        x, y, meldung = self._stelle_abwarten()
+        if x is None:
+            return {"ok": False, "meldung": meldung + " — nichts geändert."}
+        return {"ok": True, "x": x, "y": y}
+
     def punkt_aufnehmen(self, daten: Optional[dict] = None) -> dict:
         """Setzt die Stelle des Blocks auf die aktuelle Mausposition.
 
@@ -1258,16 +1410,10 @@ class StudioBridge:
         if step is None:
             return self.snapshot()
 
-        # Erst hier importiert — das Modul bleibt ohne Windows ladbar.
-        from ...utils.io import warte_auf_taste
-        from ...winapi import get_cursor_pos, get_screen_pixel
-
-        taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
-        if taste != "enter":
-            return self._melde(
-                "Abgebrochen — die Stelle bleibt, wie sie war." if taste == "escape"
-                else "Nichts gedrückt — die Stelle bleibt, wie sie war.", "warn")
-        x, y = get_cursor_pos()
+        x, y, meldung = self._stelle_abwarten()
+        if x is None:
+            return self._melde(meldung + " — die Stelle bleibt, wie sie war.", "warn")
+        from ...winapi import get_screen_pixel
 
         if step.point_id is not None:
             # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der

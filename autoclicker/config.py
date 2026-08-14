@@ -7,7 +7,7 @@ import json
 import logging
 from dataclasses import dataclass, fields, asdict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, get_args
 
 from .utils import col, ok, warn, err, atomic_write
 
@@ -303,6 +303,23 @@ class AppConfig:
 DEFAULT_CONFIG = AppConfig().to_dict()
 
 
+def uebernehmen(ziel: AppConfig, quelle: AppConfig) -> None:
+    """Schreibt alle Werte aus `quelle` in `ziel` — ohne das Objekt zu tauschen.
+
+    Im Prozess gibt es **ein** Config-Objekt: `state.config` IST das
+    Modul-`CONFIG` (gesetzt in `main.py`). Wer es gegen ein neues austauscht,
+    lässt jeden zurück, der noch die alte Referenz hält — und das sind alle
+    Module mit `from .config import CONFIG` (imaging, die Item-Editoren). Die
+    sähen ab dem Austausch dauerhaft die Werte vom Programmstart.
+
+    Deshalb wird hier hineingeschrieben statt ersetzt. Drei Stellen tun das:
+    Factory Reset, Bundle-Import und das Neuladen nach einem Speichern im
+    Sequenz-Studio.
+    """
+    for f in fields(AppConfig):
+        setattr(ziel, f.name, getattr(quelle, f.name))
+
+
 def load_config() -> AppConfig:
     """Lädt Konfiguration aus config.json oder erstellt Standard-Config."""
     config_path = Path(CONFIG_FILE)
@@ -411,24 +428,48 @@ _CONFIG_SECTIONS = [
 ]
 
 
+def config_abschnitte() -> list:
+    """Die Abschnitte in Datei-Reihenfolge, inklusive noch nicht zugeordneter Felder.
+
+    Genau die Einteilung, die `save_config()` in die Datei schreibt — und
+    deshalb steht sie hier und nicht im Studio: sonst stünden die Felder im
+    Fenster in einer anderen Ordnung als in der Datei, die man daneben aufmacht.
+
+    Der Nachzügler-Abschnitt ist kein Schmuck: ein Feld, das jemand der
+    Dataclass hinzufügt und in `_CONFIG_SECTIONS` vergisst, ist damit in beiden
+    Ansichten sichtbar statt unsichtbar. (Ein Test verlangt trotzdem, dass er
+    leer bleibt.)
+    """
+    zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
+    alle = [f.name for f in fields(AppConfig)]
+    abschnitte = [(titel, [k for k in keys if k in alle])
+                  for titel, keys in _CONFIG_SECTIONS]
+    rest = [k for k in alle if k not in zugeordnet]
+    if rest:
+        abschnitte.append(("SONSTIGE", rest))
+    return abschnitte
+
+
+def optionale_felder() -> list:
+    """Felder, die `None` erlauben — dort heisst ein leeres Eingabefeld `null`.
+
+    Bei allen anderen heisst leer `0` bzw. `""`, und der Unterschied ist nicht
+    kosmetisch: `click_max_total = 0` wäre „nach null Klicks stoppen", `None`
+    dagegen „unbegrenzt". Ein Eingabefeld kann das nicht wissen, also sagt es
+    ihm diese Liste.
+    """
+    return [f.name for f in fields(AppConfig) if type(None) in get_args(f.type)]
+
+
 def save_config(config: AppConfig) -> None:
     """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
     data = config.to_dict()
 
     entries = []
-    written_keys = set()
-
-    for section_name, keys in _CONFIG_SECTIONS:
+    for section_name, keys in config_abschnitte():
         for key in keys:
-            if key not in data:
-                continue
-            val = json.dumps(data[key], ensure_ascii=False)
-            written_keys.add(key)
-            entries.append((section_name, key, val))
-
-    remaining = [(k, v) for k, v in data.items() if k not in written_keys]
-    for k, v in remaining:
-        entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
+            if key in data:
+                entries.append((section_name, key, json.dumps(data[key], ensure_ascii=False)))
 
     lines = ["{\n"]
     last_section = None

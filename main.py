@@ -18,7 +18,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 # Modulare Imports
-from autoclicker.config import AppConfig, CONFIG, SEQUENCES_DIR, CONFIG_FILE
+from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
 from autoclicker.winapi import (
     user32, kernel32,
@@ -214,7 +214,11 @@ def main() -> int:
 
     # State initialisieren
     state = AutoClickerState()
-    state.config = AppConfig.from_dict(CONFIG.to_dict())
+    # Dasselbe Objekt, keine Kopie: `from .config import CONFIG` steht in
+    # imaging und in mehreren Item-Editoren, und mit einer Kopie lasen die
+    # dauerhaft den Stand vom Programmstart. Wer die Werte aendert, schreibt
+    # deshalb HINEIN (config.uebernehmen) statt state.config auszutauschen.
+    state.config = CONFIG
     # Logger-Meldungen sichtbar und im Stil des Programms. DEBUG nur, wenn eine der
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
     # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.

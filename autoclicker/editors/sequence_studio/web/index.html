@@ -414,6 +414,61 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .kachel b{font-family:var(--mono);font-size:20px;font-weight:600}
 .kachel small{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
 
+/* ------------------------------------------------------------ Einstellungen */
+.cfg{flex:1;display:flex;min-height:0}
+.cfg-mitte{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}
+.cfg-gruppe{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600;
+  padding:16px 12px 6px}
+/* Zwei Spalten: links steht, WAS der Wert bedeutet, rechts wird er gesetzt. Die
+   rechte Spalte hat eine feste Breite, damit die Bedienelemente aller Zeilen
+   auf einer Flucht stehen — sonst wandert jeder Schalter mit der Laenge des
+   Erklaerungstextes daneben. */
+/* Gedeckelt statt ueber die volle Breite: auf einem 1600er Fenster liefe die
+   Erklaerung sonst ueber 900 px, und eine Zeile, deren Anfang man beim Ende
+   vergessen hat, liest niemand. */
+.cfg-zeile,.cfg-gruppe{max-width:940px}
+.cfg-zeile{display:grid;grid-template-columns:1fr 264px;gap:20px;align-items:start;
+  padding:11px 12px;border:1px solid transparent;border-radius:6px}
+.cfg-zeile:hover{background:var(--panel)}
+/* Ringsum markiert, wie ueberall sonst — und ueber box-shadow, damit die
+   Markierung die Zeile nicht um einen Pixel wachsen laesst. */
+.cfg-zeile.geaendert{background:var(--panel);border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent)}
+/* Abhaengige Felder werden blass, nicht unsichtbar: dass es unter llm_enabled
+   dreizehn Felder gibt, ist die halbe Information. Ausgeblendete sucht man in
+   der Datei. */
+.cfg-zeile.blass{opacity:.45}
+.cfg-name{font-size:13px}
+.cfg-zeile.geaendert .cfg-name{color:var(--accent);font-weight:600}
+/* Der Schluessel steht mit, weil er in Logs, README und der Datei selbst
+   vorkommt — wer das Feld hier sieht, soll es dort wiedererkennen. */
+.cfg-key{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.cfg-rechte{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cfg-einheit{display:flex;align-items:center;gap:7px}
+.cfg-einheit .einheit{font-size:11px;color:var(--dim);flex:none;font-family:var(--mono)}
+.cfg-standard{font-size:10.5px;color:var(--dim);font-family:var(--mono);
+  text-align:left;align-self:flex-start;padding:2px 5px;border-radius:4px}
+button.cfg-standard{border:1px solid transparent;background:none}
+button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
+.cfg-nav{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;
+  background:none;border:1px solid transparent;text-align:left;font-size:12.5px;
+  color:var(--muted);width:100%}
+.cfg-nav:hover{background:var(--sub);color:var(--text)}
+.cfg-nav.an{background:var(--sub);color:var(--text);
+  border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.cfg-nav .zahl{flex:none;color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
+/* Fuellt die Breite unabhaengig von der Anzahl — die Enums haben zwei bis drei
+   Werte, und ein festes Drei-Spalten-Raster liesse bei zweien eine Luecke.
+   Nicht mono und etwas groesser als die Typ-Kacheln: hier stehen ganze Saetze
+   („warten, bis es vorn ist"), keine Schlagworte. */
+.cfg-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px}
+.cfg-chips .typ-chip{font-family:inherit;font-size:11px;padding:7px 6px}
+.cfg-karte{background:var(--bg);border:1px solid var(--line);border-radius:5px;
+  padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+.cfg-karte.warn{border-color:var(--accent)}
+.cfg-alt{text-decoration:line-through;color:var(--dim)}
+.cfg-neu{color:var(--accent)}
+
 /* ------------------------------------------------------------------- Dialog */
 .schleier{position:fixed;inset:0;background:#0C0F14CC;display:flex;align-items:center;
   justify-content:center;z-index:20}
@@ -448,23 +503,27 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
       <button class="tab an" data-ansicht="editor">Editor</button>
       <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
       <button class="tab" data-ansicht="lauf">Live-Run</button>
+      <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
-    <div class="trenner"></div>
-    <div class="reihe">
+    <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
+         es ausgeblendet: zwei Speichern-Knoepfe fuer zwei verschiedene Dateien
+         in einer Leiste sind eine Falle — dort speichert nur die rechte Spalte. -->
+    <div class="trenner" data-sequenz></div>
+    <div class="reihe" data-sequenz>
       <select id="seq-auswahl" style="width:200px"></select>
       <button class="btn" id="btn-laden">Laden</button>
       <button class="btn" id="btn-neu">Neu</button>
     </div>
-    <div class="trenner"></div>
-    <div class="reihe">
+    <div class="trenner" data-sequenz></div>
+    <div class="reihe" data-sequenz>
       <button class="btn haupt" id="btn-speichern">Speichern</button>
       <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
     </div>
-    <div class="trenner"></div>
+    <div class="trenner" data-sequenz></div>
     <!-- Starten aus dem Editor heraus: das ist der Weg, den man beim Bauen einer
          Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst in
          den Live-Run, deshalb braucht der Knopf dort keinen Zwilling. -->
-    <button class="btn" id="btn-lauf">▶ Starten</button>
+    <button class="btn" id="btn-lauf" data-sequenz>▶ Starten</button>
   </header>
 
   <div class="rumpf" id="rumpf">
@@ -524,6 +583,22 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
        man drueben nachsieht, was gerade laeuft. -->
   <div class="karten" id="sicht-sequenzen" hidden></div>
   <div class="lauf" id="sicht-lauf" hidden></div>
+
+  <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,
+       was gerade offen ist). Die Felder stehen einzeln untereinander statt in
+       einem Raster — jedes traegt einen Satz Erklaerung, und nebeneinander
+       waere davon nichts mehr lesbar. -->
+  <div class="cfg" id="sicht-config" hidden>
+    <aside class="seite links">
+      <div class="abschnitt">
+        <span class="ueberschrift">EINSTELLUNGEN</span>
+        <input id="cfg-suche" placeholder="filtern…" autocomplete="off">
+      </div>
+      <div class="abschnitt wachsend" id="cfg-liste" style="gap:2px"></div>
+    </aside>
+    <main class="cfg-mitte" id="cfg-felder"></main>
+    <aside class="seite rechts" id="cfg-rechts"></aside>
+  </div>
 
   <!-- Die Statusleiste sitzt unten und nicht oben rechts: dort stand sie
        zwischen den Bedienelementen und nahm dem Kopf den Platz, den er fuer
@@ -757,7 +832,14 @@ function setzeAnsicht(neu) {
   $("rumpf").hidden = neu !== "editor";
   $("sicht-sequenzen").hidden = neu !== "sequenzen";
   $("sicht-lauf").hidden = neu !== "lauf";
+  $("sicht-config").hidden = neu !== "einstellungen";
+  // Die Sequenz-Bedienelemente im Kopf gehoeren nicht zu den Einstellungen.
+  for (const n of document.querySelectorAll("[data-sequenz]"))
+    n.hidden = neu === "einstellungen";
   if (neu === "sequenzen") zeichneSequenzenliste();
+  // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
+  // Datei (Debug-Stufen, Import, Factory Reset).
+  if (neu === "einstellungen") zeichneEinstellungen(true);
   laufTaktSetzen(neu === "lauf");
 }
 
@@ -1910,6 +1992,341 @@ async function fortfahren(verwerfen) {
   else await ruf("neu", {verwerfen: true});
 }
 
+/* ----------------------------------------------------- Ansicht: Einstellungen */
+
+/* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor. Sein
+ * Zustand liegt deshalb neben `S` und nicht darin: `C` ist die Antwort von
+ * `config_lesen()` (Werte, Standardwerte, Abschnitte, Beschreibungen), und
+ * `cfgGeaendert` sammelt, was noch nicht geschrieben ist.
+ *
+ * Gespeichert wird auf Knopfdruck, nicht bei jedem Tastendruck: die Werte
+ * greifen in einen laufenden Lauf, und eine halb getippte Zahl darf nicht
+ * schon gelten. */
+let C = null;
+let cfgGeaendert = {};
+let cfgAbschnitt = 0;
+let cfgSuche = "";
+let cfgKorrekturen = [];
+
+async function zeichneEinstellungen(frisch) {
+  if (frisch || !C) {
+    const antwort = await frage("config_lesen");
+    // Zwischen Frage und Antwort kann umgeschaltet worden sein.
+    if (!antwort || ansicht !== "einstellungen") return;
+    C = antwort;
+    // Was inzwischen von aussen genauso gesetzt wurde, ist keine Aenderung mehr.
+    for (const k of Object.keys(cfgGeaendert))
+      if (cfgGleich(cfgGeaendert[k], C.werte[k])) delete cfgGeaendert[k];
+  }
+  zeichneCfgListe();
+  zeichneCfgFelder();
+  zeichneCfgRechts();
+}
+
+/** Gleicher Wert? Arrays über ihre Darstellung, alles andere strikt. */
+function cfgGleich(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b);
+  return a === b;
+}
+
+function cfgWert(key) {
+  return Object.prototype.hasOwnProperty.call(cfgGeaendert, key)
+    ? cfgGeaendert[key] : C.werte[key];
+}
+
+function cfgSetzen(key, wert) {
+  if (cfgGleich(wert, C.werte[key])) delete cfgGeaendert[key];
+  else cfgGeaendert[key] = wert;
+  // Eine neue Eingabe macht die Korrekturmeldung von vorhin gegenstandslos.
+  cfgKorrekturen = [];
+  zeichneEinstellungen();
+}
+
+/** Wirkt das Feld überhaupt — oder hängt es an einem Schalter, der aus ist? */
+function cfgAktiv(key) {
+  const m = C.meta[key] || {};
+  if (m.dep && !cfgWert(m.dep)) return false;
+  if (m.dep_nicht && cfgWert(m.dep_nicht)) return false;
+  if (m.dep_min && !(Number(cfgWert(m.dep_min)) > 0)) return false;
+  return true;
+}
+
+function cfgWarum(m) {
+  const anderes = m.dep || m.dep_nicht || m.dep_min;
+  const name = (C.meta[anderes] && C.meta[anderes].label) || anderes;
+  if (m.dep) return "Wirkt nur, wenn „" + name + "“ an ist.";
+  if (m.dep_nicht) return "Wirkt nur, wenn „" + name + "“ aus ist.";
+  return "Wirkt nur, wenn „" + name + "“ grösser als 0 ist.";
+}
+
+function cfgTrifft(key) {
+  if (!cfgSuche) return true;
+  const m = C.meta[key] || {};
+  return (key + " " + (m.label || "") + " " + (m.hilfe || ""))
+    .toLowerCase().includes(cfgSuche);
+}
+
+/** Ein Wert als Text — für „Standard: …" und die Änderungskarten. */
+function cfgText(wert, m) {
+  m = m || {};
+  if (wert === null || wert === undefined || wert === "")
+    return m.leer || (wert === "" ? "(leer)" : "keiner");
+  if (wert === true) return "an";
+  if (wert === false) return m.art === "xy" ? "aus" : "aus";
+  if (Array.isArray(wert)) return "(" + wert.join(", ") + ")";
+  if (m.optionen) {
+    const t = m.optionen.find((o) => cfgGleich(o.wert, wert));
+    if (t) return t.text;
+  }
+  if (wert === 0 && m.leer) return "0 — " + m.leer;
+  return String(wert) + (m.einheit ? " " + m.einheit : "");
+}
+
+function zeichneCfgListe() {
+  const ziel = $("cfg-liste");
+  ziel.replaceChildren();
+  C.abschnitte.forEach((a, i) => {
+    const offen = a.keys.filter((k) => k in cfgGeaendert).length;
+    const treffer = cfgSuche ? a.keys.filter(cfgTrifft).length : 0;
+    ziel.appendChild(el("button", {
+      class: "cfg-nav" + (!cfgSuche && i === cfgAbschnitt ? " an" : ""),
+      onclick: () => { cfgSuche = ""; $("cfg-suche").value = ""; cfgAbschnitt = i;
+                       zeichneEinstellungen(); },
+    },
+      el("span", {class: "wachse"}, a.titel),
+      cfgSuche ? el("span", {class: "klein mono"}, treffer ? treffer + "×" : "") : null,
+      offen ? el("span", {class: "zahl"}, offen) : null));
+  });
+}
+
+function zeichneCfgFelder() {
+  const ziel = $("cfg-felder");
+  ziel.replaceChildren();
+  if (C.fehler) {
+    ziel.appendChild(el("p", {class: "leer", style: "color:var(--err)"}, C.fehler));
+    return;
+  }
+  // Bei einer Suche werden ALLE Abschnitte mit Treffern gezeigt, nicht nur der
+  // gewaehlte: wer sucht, weiss ja gerade nicht, wo der Wert steht.
+  const gruppen = cfgSuche
+    ? C.abschnitte.filter((a) => a.keys.some(cfgTrifft))
+    : [C.abschnitte[cfgAbschnitt]].filter(Boolean);
+  if (!gruppen.length) {
+    ziel.appendChild(el("p", {class: "leer"}, "Kein Feld passt zu „" + cfgSuche + "“."));
+    return;
+  }
+  for (const a of gruppen) {
+    ziel.appendChild(el("div", {class: "cfg-gruppe"}, a.titel));
+    for (const key of a.keys) if (cfgTrifft(key)) ziel.appendChild(cfgZeile(key));
+  }
+}
+
+function cfgZeile(key) {
+  const m = C.meta[key] || {label: key, art: "text"};
+  const aktiv = cfgAktiv(key);
+  const links = el("div", {},
+    el("div", {class: "cfg-name"}, m.label),
+    el("div", {class: "cfg-key"}, key),
+    m.hilfe ? el("p", {class: "hinweis", style: "margin-top:5px"}, m.hilfe) : null,
+    aktiv ? null : el("p", {class: "hinweis", style: "margin-top:5px;color:var(--accent)"},
+                      cfgWarum(m)));
+  const rechts = el("div", {class: "cfg-rechte"},
+    cfgBedienelement(key, m), cfgLeer(key, m), cfgStandard(key, m));
+  return el("div", {class: "cfg-zeile" + (key in cfgGeaendert ? " geaendert" : "") +
+                           (aktiv ? "" : " blass")}, links, rechts);
+}
+
+function cfgBedienelement(key, m) {
+  const wert = cfgWert(key);
+  const setze = (v) => cfgSetzen(key, v);
+  if (m.art === "bool") return schalter(wert ? "an" : "aus", wert, setze);
+  if (m.art === "enum") return cfgKacheln(key, m, wert);
+  if (m.art === "xy") return cfgStelle(key, m, wert);
+  if (m.art === "area") {
+    const feld = el("textarea", {});
+    feld.value = wert === null || wert === undefined ? "" : String(wert);
+    feld.addEventListener("change", () => setze(feld.value.trim() || null));
+    return feld;
+  }
+  if (m.art === "text") {
+    const feld = el("input", {autocomplete: "off",
+                              value: wert === null || wert === undefined ? "" : String(wert)});
+    feld.addEventListener("change", () => {
+      const roh = feld.value.trim();
+      setze(roh === "" && (C.optional || []).includes(key) ? null : roh);
+    });
+    feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+    return feld;
+  }
+  return cfgZahl(key, m, wert);
+}
+
+function cfgZahl(key, m, wert) {
+  const optional = (C.optional || []).includes(key);
+  const feld = el("input", {type: "number", step: m.art === "int" ? "1" : "any",
+                            value: wert === null || wert === undefined ? "" : wert});
+  if (m.art === "ratio") { feld.setAttribute("min", "0"); feld.setAttribute("max", "1"); }
+  feld.addEventListener("change", () => {
+    const roh = feld.value.trim();
+    // Leer heisst `null`, wo die Dataclass das erlaubt, und sonst 0. Der
+    // Unterschied ist nicht kosmetisch: click_max_total = 0 waere „nach null
+    // Klicks stoppen", null dagegen „unbegrenzt".
+    if (roh === "") return cfgSetzen(key, optional ? null : 0);
+    let z = Number(roh);
+    // Fehleingabe wiederholen statt uebernehmen — dieselbe Regel wie in den
+    // Konsolen-Editoren. Der Neuaufbau stellt den alten Wert wieder her.
+    if (!isFinite(z)) return zeichneEinstellungen();
+    if (m.art === "int") z = Math.round(z);
+    if (m.art === "ratio") z = Math.max(0, Math.min(1, z));
+    cfgSetzen(key, z);
+  });
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+  // Ein Prozentwert liest sich als Prozent, nicht als 0.8 — die Datei traegt
+  // trotzdem die Zahl, mit der der Vergleich rechnet.
+  const zusatz = m.art === "ratio" ? "= " + Math.round((Number(wert) || 0) * 100) + " %"
+                                   : (m.einheit || "");
+  if (!zusatz) return feld;
+  return el("div", {class: "cfg-einheit"}, feld, el("span", {class: "einheit"}, zusatz));
+}
+
+/** Feste kurze Auswahl als Kacheln — dieselbe Regel wie beim Block-Typ. */
+function cfgKacheln(key, m, wert) {
+  return el("div", {class: "cfg-chips"}, (m.optionen || []).map((o) =>
+    el("button", {class: "typ-chip" + (cfgGleich(o.wert, wert) ? " an" : ""),
+                  onclick: () => cfgSetzen(key, o.wert)}, o.text)));
+}
+
+/** `scan_park_mouse`: aus (`false`) oder eine Stelle (`[x, y]`). */
+function cfgStelle(key, m, wert) {
+  const an = Array.isArray(wert);
+  const xy = an ? wert : [0, 0];
+  const setzeXY = (i, v) => {
+    const neu = [Number(xy[0]) || 0, Number(xy[1]) || 0];
+    neu[i] = Math.round(Number(v) || 0);
+    cfgSetzen(key, neu);
+  };
+  const zahl = (i) => {
+    const f = el("input", {type: "number", step: "1", value: xy[i], disabled: !an});
+    f.addEventListener("change", () => setzeXY(i, f.value));
+    return f;
+  };
+  return el("div", {class: "spalte", style: "gap:6px"},
+    schalter(an ? "parken" : "aus", an, (v) => cfgSetzen(key, v ? [xy[0], xy[1]] : false)),
+    an ? el("div", {class: "gitter2"}, zahl(0), zahl(1)) : null,
+    // Eine Stelle faehrt man an, statt sie zu tippen — derselbe Weg wie beim
+    // Klick-Block. Messen kann das nur ein Prozess auf demselben Rechner, und
+    // das ist dieser hier.
+    an ? el("button", {class: "btn still", onclick: () => cfgStelleAufnehmen(key)},
+            "✛ mit der Maus setzen") : null,
+    an ? el("p", {class: "hinweis"}, "Maus im Spiel an die Stelle, dann ENTER.") : null);
+}
+
+async function cfgStelleAufnehmen(key) {
+  setzeStatus({text: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab).",
+               art: "warn"});
+  const antwort = await frage("maus_stelle");
+  if (!antwort) return;
+  if (!antwort.ok) return setzeStatus({text: antwort.meldung || "Abgebrochen.", art: "warn"});
+  cfgSetzen(key, [antwort.x, antwort.y]);
+  setzeStatus({text: "Parkposition: (" + antwort.x + ", " + antwort.y + ")", art: "ok"});
+}
+
+/** Was ein leeres Feld bzw. eine 0 hier bedeutet — nur dann, wenn es so steht.
+ *
+ * Ohne diese Zeile liest sich eine 0 wie „aus", und bei `click_max_total` heisst
+ * sie das Gegenteil. Sie steht deshalb am Wert und nicht in der Erklaerung: dort
+ * las man sie erst, wenn man schon zweifelte. */
+function cfgLeer(key, m) {
+  const wert = cfgWert(key);
+  const leer = wert === null || wert === undefined || wert === "" || wert === 0;
+  if (!m.leer || !leer) return null;
+  return el("span", {class: "cfg-standard"}, "= " + m.leer);
+}
+
+function cfgStandard(key, m) {
+  const std = C.standard[key];
+  if (cfgGleich(cfgWert(key), std))
+    return el("span", {class: "cfg-standard"}, "Standard");
+  return el("button", {class: "btn still cfg-standard",
+                       title: "auf den Standardwert zurücksetzen",
+                       onclick: () => cfgSetzen(key, std)},
+            "↺ Standard: " + cfgText(std, m));
+}
+
+function zeichneCfgRechts() {
+  const ziel = $("cfg-rechts");
+  const keys = Object.keys(cfgGeaendert);
+  ziel.replaceChildren();
+
+  const kopf = el("div", {class: "abschnitt"},
+    el("div", {class: "reihe"},
+      el("span", {class: "ueberschrift wachse"}, "ÄNDERUNGEN"),
+      keys.length ? el("span", {class: "zahl"}, keys.length) : null),
+    el("button", {class: "btn haupt", disabled: !keys.length, onclick: cfgSpeichern},
+       "In config.json schreiben"),
+    keys.length ? el("button", {class: "btn", onclick: () => {
+      cfgGeaendert = {}; cfgKorrekturen = []; zeichneEinstellungen();
+    }}, "Änderungen verwerfen") : null);
+  ziel.appendChild(kopf);
+
+  const liste = el("div", {class: "abschnitt wachsend"});
+  if (!keys.length && !cfgKorrekturen.length) {
+    liste.appendChild(el("p", {class: "hinweis"},
+      "Nichts geändert. Ein Wert gilt erst, wenn er geschrieben ist."));
+  }
+  for (const key of keys) {
+    const m = C.meta[key] || {};
+    liste.appendChild(el("div", {class: "cfg-karte"},
+      el("div", {class: "reihe"},
+        el("span", {class: "wachse", style: "font-size:12px"}, m.label || key),
+        el("button", {class: "btn still", title: "diese Änderung zurücknehmen",
+                      onclick: () => cfgSetzen(key, C.werte[key])}, "zurück")),
+      el("div", {class: "cfg-key"}, key),
+      el("div", {class: "reihe klein"},
+        el("span", {class: "cfg-alt"}, cfgText(C.werte[key], m)), "→",
+        el("span", {class: "cfg-neu"}, cfgText(cfgGeaendert[key], m)))));
+  }
+  // Korrekturen stehen, bis der naechste Wert angefasst wird: die Datei enthaelt
+  // dann etwas anderes als eingegeben, und das darf nicht stillschweigend
+  // passieren.
+  for (const k of cfgKorrekturen) {
+    const m = C.meta[k.key] || {};
+    liste.appendChild(el("div", {class: "cfg-karte warn"},
+      el("div", {style: "font-size:12px;color:var(--accent)"}, "korrigiert beim Speichern"),
+      el("div", {class: "cfg-key"}, k.key),
+      el("div", {class: "reihe klein"},
+        el("span", {class: "cfg-alt"}, cfgText(k.gesendet, m)), "→",
+        el("span", {class: "cfg-neu"}, cfgText(k.wurde, m)))));
+  }
+  ziel.appendChild(liste);
+
+  ziel.appendChild(el("div", {class: "abschnitt"},
+    el("p", {class: "hinweis"},
+      "Ein laufender Lauf zieht sofort mit — der Hauptprozess lädt die Datei " +
+      "neu, sobald hier geschrieben wurde."),
+    el("p", {class: "cfg-key", style: "word-break:break-all"}, C.pfad || "")));
+}
+
+async function cfgSpeichern() {
+  // Ein Feld, in dem gerade getippt wird, meldet erst beim Verlassen.
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  const werte = Object.assign({}, cfgGeaendert);
+  const anzahl = Object.keys(werte).length;
+  if (!anzahl) return;
+  const antwort = await frage("config_schreiben", {werte: werte});
+  if (!antwort) return;
+  if (!antwort.ok)
+    return setzeStatus({text: antwort.meldung || "Nicht gespeichert.", art: "err"});
+  C.werte = antwort.werte;
+  cfgGeaendert = {};
+  cfgKorrekturen = antwort.korrekturen || [];
+  setzeStatus({
+    text: anzahl + (anzahl === 1 ? " Einstellung" : " Einstellungen") + " gespeichert." +
+          (cfgKorrekturen.length ? "  " + cfgKorrekturen.length + " davon korrigiert." : ""),
+    art: cfgKorrekturen.length ? "warn" : "ok"});
+  zeichneEinstellungen();
+}
+
 /* --------------------------------------------------------------- Verdrahtung */
 
 function verdrahte() {
@@ -1935,6 +2352,12 @@ function verdrahte() {
   $("seq-info").addEventListener("change", (e) =>
     ruf("sequenz_setzen", {feld: "beschreibung", wert: e.target.value}));
   $("punkt-filter").addEventListener("input", zeichnePunkte);
+  // Das Feld selbst wird beim Neuaufbau nicht ersetzt (es steht fest im
+  // Dokument), deshalb darf es bei jedem Tastendruck melden.
+  $("cfg-suche").addEventListener("input", (e) => {
+    cfgSuche = e.target.value.trim().toLowerCase();
+    zeichneEinstellungen();
+  });
 
   $("dialog-ab").addEventListener("click", schliesseFrage);
   $("dialog-weg").addEventListener("click", () => fortfahren(true));
@@ -1966,13 +2389,18 @@ function tastatur(e) {
   if (e.key === "Escape") {
     if (offeneFrage) return schliesseFrage();
     if (imTextfeld()) return document.activeElement.blur();
+    if (ansicht === "einstellungen") return;
     return ruf("auswahl_leeren");
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
-    return speichere();
+    // Derselbe Griff, zwei Dateien: in den Einstellungen steht die Sequenz
+    // gar nicht zur Debatte.
+    return ansicht === "einstellungen" ? cfgSpeichern() : speichere();
   }
   if (imTextfeld() || offeneFrage) return;
+  // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
+  if (ansicht === "einstellungen") return;
   if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an

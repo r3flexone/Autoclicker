@@ -9,19 +9,10 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 (`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
-`.lauf.json` und steuert über `befehl.py` zurück).
+`.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
+Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert).
 
 ## Bedienung
-
-### Einstellungs-Menü (Config im Programm statt im Texteditor)
-`AppConfig` hat 66 Werte. Im Programm umschaltbar sind drei: `debug_log`, `debug_detail`,
-`boss_learn_global`. Alles andere — Klick-Verzögerungen, Pixel-Toleranz, Timeout-Verhalten,
-Humanization, Fokus-Check, LLM, OCR — geht nur, indem man `config.json` im Texteditor
-aufmacht und weiss, wie das Feld heisst.
-
-- **Nutzen:** Nimmt dem Programm die letzte Stelle, an der man eine Datei von Hand editieren muss. Wer die Toleranz eines Farb-Triggers nachziehen will, muss dafür nicht wissen, dass das Feld `pixel_wait_tolerance` heisst.
-- **Tradeoff:** 66 Werte sind zu viele für ein flaches Menü — es braucht die Sektionen, sonst wird es unübersichtlicher als die JSON. Und jeder neue Config-Wert muss im Menü landen, sonst entsteht wieder eine Zwei-Klassen-Config.
-- **Ansatz:** Das Gerüst liegt schon da: `_CONFIG_SECTIONS` in `config.py` gruppiert alle Felder nach Thema, die Kommentare an den Dataclass-Feldern sind brauchbare Erklärtexte. Das Menü daraus **generieren** statt handschreiben — dann kann kein Feld vergessen werden. Bool umschalten, Zahlen mit Bereichsangabe, feste Auswahl (`pixel_timeout_action`) als Liste; Validierung übernimmt `AppConfig.__post_init__`, gespeichert wird sofort über `save_config`.
 
 ### Sequenz-Studio: Screenshot-Vorschau in der Punkte-Palette
 Die Punkte als Marker auf einem Bildschirmfoto, statt nur als Koordinatenpaare.

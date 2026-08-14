@@ -465,6 +465,7 @@ wird.)
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
 - `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
+- `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
 - `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_beim_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
@@ -567,7 +568,7 @@ Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befe
 zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
 gespeicherte wäre nicht zwingend die angezeigte.
 
-**Drei Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Vier Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -578,20 +579,89 @@ Ausflug überleben.
 | Editor | Phasen und Blöcke bearbeiten | `snapshot()` + Befehle |
 | Sequenzen | Übersicht, Kennzahlen, Öffnen | `sequenz_liste()` |
 | Live-Run | was gerade läuft | `lauf_status()` |
+| Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
 **Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
 befiehlt und **ersetzt** mit der Antwort die Momentaufnahme `S`; `frage()` fragt nur
-und lässt `S` in Ruhe. Die beiden neuen Methoden geben keine Momentaufnahme zurück,
-sondern einen eigenen Gegenstand — über `ruf()` geholt zerschösse ihre Antwort den
-Editor-Zustand, und ein Blick in die Übersicht wäre ein Datenverlust. Wer eine
-Methode ergänzt, entscheidet zuerst, welcher der beiden Kanäle gemeint ist. Der Test
-`jeder Aufruf der Seite passt zur Brücke` erfasst **beide** Schreibweisen.
+und lässt `S` in Ruhe. Übersicht, Laufstatus und die Einstellungen geben keine
+Momentaufnahme zurück, sondern einen eigenen Gegenstand — über `ruf()` geholt
+zerschösse ihre Antwort den Editor-Zustand, und ein Blick in die Übersicht wäre ein
+Datenverlust. Wer eine Methode ergänzt, entscheidet zuerst, welcher der beiden Kanäle
+gemeint ist. Der Test `jeder Aufruf der Seite passt zur Brücke` erfasst **beide**
+Schreibweisen.
+
+`config_schreiben()` ist der Sonderfall, der die Regel bestätigt: sie **ändert** etwas
+und gehört trotzdem zu `frage()`. Geändert wird die Config, nicht die Sequenz — eine
+Momentaufnahme wäre dafür der falsche Gegenstand. Der Kanal richtet sich also danach,
+was zurückkommt, nicht danach, ob etwas passiert.
 
 Zwei Eigenschaften der Übersicht, die man kennen muss: sie sieht den Ordner **selbst**
 durch statt `list_available_sequences()` zu fragen (die überspringt unlesbare Dateien
 stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau dann sucht
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
+
+**Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
+der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei
+Speichern-Knöpfe für zwei Dateien in einer Leiste sind eine Falle. Gespeichert wird
+auf Knopfdruck und nicht bei jedem Tastendruck — die Werte greifen in einen laufenden
+Lauf, und eine halb getippte Zahl darf nicht schon gelten.
+
+**Das Schema liegt in `config_meta.py`, nicht im HTML.** `AppConfig` kennt Name, Typ
+und Standardwert, `_CONFIG_SECTIONS` kennt Gruppe und Reihenfolge; was fehlt, ist
+Beschriftung, Erklärung, Art des Bedienelements und Abhängigkeit. Stünde das in der
+Ansicht, fiele ein neues Config-Feld erst auf, wenn jemand es sucht — so hält ein
+Test die Tabelle gegen die Dataclass (`jedes Config-Feld hat eine Beschreibung`),
+in **beide** Richtungen. Zwei weitere Tests messen, was man sonst erst beim Benutzen
+merkt: jede angebotene Enum-Kachel muss `__post_init__` überleben (sonst klickt man
+einen Wert an, der beim Speichern still verworfen wird), und jede `dep`-Angabe muss
+auf ein existierendes Feld zeigen (sonst ist ein Feld dauerhaft blass, ohne Grund).
+
+**Geschickt werden nur die geänderten Schlüssel**, gemischt gegen die Datei, wie sie
+JETZT aussieht. Der Hauptprozess schreibt dieselbe Datei (Debug-Stufen, Import,
+Factory Reset) — ein Fenster, das seit einer Stunde offensteht, darf dessen Änderungen
+nicht mit seinem alten Stand überbügeln. Eine **unlesbare** `config.json` wird nicht
+überschrieben, sondern gemeldet: kaputt ist nicht leer.
+
+**Korrekturen werden zurückgemeldet, nicht verschluckt.** `AppConfig.__post_init__`
+hebt ungültige Werte auf den Standard (Konfidenz über 1, max unter min, unbekannte
+Aktion) und schreibt dazu eine Konsolenzeile — die sieht im Studio niemand. Deshalb
+vergleicht `config_schreiben()` den geschriebenen Stand mit dem Gesendeten und gibt
+die Abweichungen zurück; sie stehen rechts, bis der nächste Wert angefasst wird. Der
+Vergleich zieht Zahlen normalisiert (`_gleicher_wert`: `600` und `600.0` sind dieselbe
+Einstellung), lässt `bool` aber ausgenommen — dieselbe Rechnung wie `_gleich()` im
+Start-Durchgang.
+
+**Es gibt EIN Config-Objekt pro Prozess.** `state.config` **ist** das Modul-`CONFIG`
+(gesetzt in `main.py`), und wer die Werte ändert, schreibt mit `config.uebernehmen()`
+hinein, statt das Objekt auszutauschen. Vorher war `state.config` eine Kopie — womit
+jedes Modul mit `from .config import CONFIG` (`imaging`, mehrere Item-Editoren)
+dauerhaft die Werte vom Programmstart las. Ein Test prüft die Quelle: eine Zuweisung
+an `.config` ausserhalb von `main.py` ist ein Fehler.
+
+Damit die Datei auch im Speicher ankommt, gibt es den Briefkasten-Befehl `config`:
+das Studio legt ihn nach dem Schreiben ab, `befehl_config()` lädt `config.json` neu
+und schreibt sie in dasselbe Objekt. Ein laufender Lauf zieht sofort mit — der Worker
+liest `state.config` bei jedem Schritt neu.
+
+Regeln für die Ansicht:
+
+- **Abhängige Felder werden blass, nicht unsichtbar.** Dass unter `llm_enabled`
+  dreizehn Felder hängen, ist die halbe Information; ausgeblendete sucht man in der
+  Datei. Sie sagen auch, woran sie hängen.
+- **Der Schlüssel steht mit** (`scan_slot_hsv_tolerance` unter der Beschriftung). Er
+  kommt in Logs, README und der Datei vor — wer das Feld hier sieht, soll es dort
+  wiedererkennen.
+- **Was leer bzw. 0 bedeutet, steht am Wert**, nicht in der Erklärung: eine 0 liest
+  sich wie „aus", und bei `click_max_total` heisst sie das Gegenteil. Leer heisst
+  `null`, wo die Dataclass das erlaubt (`optionale_felder()`), sonst 0.
+- **Enums als Kacheln, alles Wachsende als Liste** — dieselbe Regel wie beim
+  Block-Typ. Die Auswahl ist im Code festgelegt und kurz.
+- **Die Suche zeigt alle Abschnitte mit Treffern**, nicht nur den gewählten: wer
+  sucht, weiss ja gerade nicht, wo der Wert steht.
+- **Eine Stelle fährt man an** (`scan_park_mouse`): Maus hin, ENTER — derselbe Weg
+  wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht in
+  `points.json`.
 
 **Start, Pause und Stopp gehen über einen Briefkasten** (`befehl.py`), nicht direkt:
 dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
