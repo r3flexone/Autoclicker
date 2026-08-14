@@ -20,6 +20,8 @@ python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (-
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 python tools/log_report.py      # Wertet die Session-Logs aus (welcher Schritt haengt?)
                                 # --letzte = nur die neueste Session
+python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
+                                # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
 ```
 
 **`tools/test_logic.py` vor jedem Commit laufen lassen.** Es prüft Serialisierung,
@@ -465,6 +467,7 @@ wird.)
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
 - `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
+- `autoclicker/symbol.py` — das Programm-Symbol als Geometrie (s.u. beim Studio). Kennt weder Windows noch Pillow: es rechnet nur, wie viel Farbe auf einen Pixel fällt.
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
@@ -883,13 +886,39 @@ Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
 Ergebnis an genau einer der beiden Stellen.
 
 Gezeichnet wird das Symbol **aus Geometrie, nicht aus einem getippten Raster**
-(`_symbol_bits(kante)`): gerundete Ecken über den Alpha-Kanal, Kantenglättung
-über `_SYMBOL_PROBEN`² Abtastungen je Pixel, und jede Grösse in ihrer Grösse
-(16 für die Titelleiste, 32 für ALT+TAB und Taskleiste). Das vorherige
-16×16-Raster aus Nullen und Einsen hatte alle Fehler, die ein handgesetztes
-Raster hat — Motiv bis an die Kante, scharfe Ecken, Treppen, und die Punktkette
-neben dem Zeiger war nur noch Krümel. Wer das Motiv ändert, ändert das Polygon
-`_SYMBOL_ZEIGER` (dasselbe 24er-Raster wie das SVG im Kopf der Oberfläche).
+und nicht aus einer Binärdatei im Repo: `autoclicker/symbol.py` beschreibt das
+Motiv als Liste von Formen (`rr` / `kreis` / `strich` / `zug`, alle im 24er-Raster
+des SVG-viewBox) und rechnet daraus jede Grösse — gerundete Ecken über den
+Alpha-Kanal, Kantenglättung über `PROBEN`² Abtastungen je Pixel. Das vorherige
+16×16-Raster aus Nullen und Einsen hatte alle Fehler eines handgesetzten Rasters
+(Motiv bis an die Kante, scharfe Ecken, Treppen).
+
+**Eine Geometrie, drei Verwendungen** — und deshalb liegt sie nicht in
+`winapi.py`, sondern in einem Modul, das weder Windows noch Pillow kennt:
+
+| wer | wozu |
+|---|---|
+| `winapi._symbol_bits()` | ICO-Bits für `WM_SETICON` (16 und 32) |
+| `tools/symbol.py` | PNG-Dateien und eine `.ico` für Verknüpfungen |
+| `web/index.html` | das SVG im Kopf der Oberfläche |
+
+Das SVG ist die einzige der drei, die von Hand nachgezogen wird — ein Test hält
+es **Zahl für Zahl** gegen `MOTIV_KLEIN` (nicht „kommt vor": ein verschobener
+Balken fiele sonst nicht auf).
+
+**Zwei Fassungen, nicht eine skalierte.** `MOTIV` ist das volle Motiv,
+`MOTIV_KLEIN` hat weniger Teile, dickere Striche und eine *gefüllte* statt
+umrandete Fahne. Der Grund ist gemessen: die Fahne der grossen Fassung hat 0,6
+Einheiten Strichstärke — bei 16 px sind das vier Zehntel Pixel, also ein grauer
+Fleck, und die Punktkette ist Krümel. `KLEIN_BIS = 32` liegt genau dort, wo
+Windows aufhört zu fragen: Titelleiste (16) und ALT+TAB/Taskleiste (32) bekommen
+die kleine, die grosse fängt bei der Verknüpfungsgrösse an.
+
+**Die Bilddateien werden geschrieben, nicht eingecheckt.** `python tools/symbol.py`
+legt PNGs und eine `.ico` an (ohne Pillow — beide Formate sind von Hand
+zusammensetzbar, wenn man sich auf unkomprimierte Zeilen bzw. eingebettete PNGs
+beschränkt). Eine Binärdatei im Repo wäre eine Kopie des Motivs, die niemand
+mitzieht — dasselbe Argument wie bei „Referenzen statt Kopien".
 
 **Wer eine Sequenz von Platte lädt, holt die Punkte mit** (`punkte_nachladen()`
 in `persistence/sequences.py`). Das Studio schreibt beim Speichern *beide*

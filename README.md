@@ -1349,6 +1349,25 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 
 Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 
+### Symbol-Tool (`tools/symbol.py`)
+
+Schreibt das Programm-Symbol als PNG und als `.ico`.
+
+```bash
+python tools/symbol.py                      # legt symbol/ an: PNGs + autoclicker.ico
+python tools/symbol.py --ziel C:\Bilder     # woanders hin
+python tools/symbol.py --groessen 256,512   # nur diese Kantenlängen
+```
+
+**Für das Fenster brauchst du das nicht** — Titelleiste, ALT+TAB und Taskleiste
+setzt das Studio selbst. Die Dateien sind für alles, was Windows aus einer Datei
+nimmt: eine Verknüpfung auf dem Desktop (Rechtsklick → Eigenschaften → Anderes
+Symbol → `autoclicker.ico`), ein angehefteter Eintrag, ein Ordnerbild.
+
+Gezeichnet wird aus derselben Geometrie wie das Fenstersymbol
+(`autoclicker/symbol.py`) — deshalb liegt keine fertige Bilddatei im Repo, die
+beim nächsten Umzeichnen zurückbliebe. Pillow wird nicht gebraucht.
+
 ### OCR Test-Tool (`tools/test_ocr.py`)
 
 Testet OCR-Backend-Verfügbarkeit und Texterkennung ohne den Autoclicker:

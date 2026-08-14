@@ -313,8 +313,14 @@ Items aller Spiele in einer Liste.
       Rettungskopie unter `backups/<name>.ungespeichert.json`, und die Datei ist da.
 - [ ] Gespeicherte Sequenz lädt im Konsolen-Editor und läuft im Worker.
 - [ ] 🆕 Das Fenster trägt in Titelleiste und Taskleiste das Studio-Symbol
-      (amber Kachel mit Zeiger), nicht das Python-Symbol. Schlägt das fehl, ist es
-      kosmetisch — das Fenster muss trotzdem aufgehen.
+      (amber Kachel, Fahne über Listenzeilen — dasselbe Motiv wie oben links im
+      Fenster), nicht das Python-Symbol. Schlägt das fehl, ist es kosmetisch —
+      das Fenster muss trotzdem aufgehen.
+- [ ] 🆕 `python tools/symbol.py` legt `symbol/` mit PNGs und `autoclicker.ico`
+      an. Die `.ico` im Explorer ansehen: alle Grössen sind scharf, bei 16 und 32
+      steht die vereinfachte Fassung (gefüllte Fahne, keine Punktkette).
+- [ ] 🆕 Verknüpfung anlegen → Eigenschaften → Anderes Symbol → die `.ico`
+      wählen. Das Symbol steht danach auf dem Desktop und beim Anheften.
 - [ ] **Starten aus dem Studio** (🆕): Knopf im Kopf → Hauptprozess meldet
       „[STUDIO] '<Name>' geladen und gestartet", die Sequenz läuft, und die Ansicht
       springt von selbst in den Live-Run.

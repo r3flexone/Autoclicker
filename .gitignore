@@ -75,3 +75,7 @@ logs/
 
 # Markt-Analyse - generierte Ausgaben
 market_analysis/output/
+
+# Das Programm-Symbol wird erzeugt, nicht eingecheckt (tools/symbol.py) —
+# eine Binaerdatei im Repo waere eine Kopie des Motivs, die niemand mitzieht.
+symbol/

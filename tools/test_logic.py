@@ -3718,17 +3718,126 @@ if _symbol_loecher12:
     for _z12 in _symbol_loecher12:
         print("        " + _z12)
 
-# DIB-Zeilen stehen von unten nach oben - ohne die rueckwaerts laufende Schleife
-# steht der Zeiger auf dem Kopf. Messbar an der linken Kante des Zeigers: sie
-# laeuft von der Spitze bis zur Kerbe und liegt damit in der OBEREN Haelfte.
+# DIB-Zeilen stehen von unten nach oben - ohne das umgedrehte `reversed()`
+# steht die Fahne auf dem Kopf. Messbar am Motiv selbst: UEBER den Zeilen steht
+# die Fahne (ihre Spitze reicht weit nach rechts), UNTER ihnen nur der Fuss der
+# Stange (ein schmaler Kreis). Auf dem Kopf waere es umgekehrt.
 _bits12 = _sb12(32)
 _dunkel12 = [(x, y) for y in range(32) for x in range(32)
              if _symbolpixel12(_bits12, 32, x, y)[2] < 0x60
              and _symbolpixel12(_bits12, 32, x, y)[3] > 200]
-_linke12 = min(x for x, _ in _dunkel12)
-_kante_ys12 = [y for x, y in _dunkel12 if x == _linke12]
+_oben12 = [x for x, y in _dunkel12 if y < 7.6 * 32 / 24]      # ueber der 1. Zeile
+_unten12 = [x for x, y in _dunkel12 if y > 19.2 * 32 / 24]    # unter der letzten
 check("die Zeilen stehen von unten nach oben in der Datei",
-      sum(_kante_ys12) / len(_kante_ys12) < 16)
+      _oben12 and _unten12 and max(_oben12) > max(_unten12) + 3)
+
+# --- EINE Geometrie, drei Verwendungen ---
+# Das Motiv steht in symbol.py und sonst nirgends: winapi macht ICO-Bits daraus,
+# tools/symbol.py PNG- und ICO-Dateien, der Kopf der Oberflaeche ein SVG. Zwei
+# Beschreibungen desselben Motivs waeren zwei, von denen eine altert - genau die
+# Doppelung, die das Projekt sonst ueberall aufloest.
+import autoclicker.symbol as _sym12
+
+_formen12 = [f for f in _sym12.MOTIV + _sym12.MOTIV_KLEIN]
+_raus12 = []
+for _f12 in _formen12:
+    if _f12[0] == "rr":
+        _pkte12 = [(_f12[1], _f12[2]), (_f12[1] + _f12[3], _f12[2] + _f12[4])]
+    elif _f12[0] == "kreis":
+        _pkte12 = [(_f12[1] - _f12[3], _f12[2] - _f12[3]),
+                   (_f12[1] + _f12[3], _f12[2] + _f12[3])]
+    elif _f12[0] == "strich":
+        _pkte12 = [(_f12[1], _f12[2]), (_f12[3], _f12[4])]
+    else:
+        _pkte12 = list(_f12[1])
+    if any(not (0 <= _x12 <= _sym12.RASTER and 0 <= _y12 <= _sym12.RASTER)
+           for _x12, _y12 in _pkte12):
+        _raus12.append(str(_f12[:1]) + str(_pkte12))
+check("keine Form ragt aus dem Raster", _raus12 == [])
+if _raus12:
+    print("        " + ", ".join(_raus12))
+
+# Die kleine Fassung ist nicht die grosse in klein, sondern weniger Teile mit
+# dickeren Strichen: bei 16 px ist ein Umriss ein grauer Fleck. Ohne diese Regel
+# war das Symbol in der Titelleiste ein Klecks.
+check("die kleine Fassung hat weniger Teile als die grosse",
+      len(_sym12.MOTIV_KLEIN) < len(_sym12.MOTIV))
+check("und die Groessen, die Windows anfragt, bekommen sie",
+      _sym12.motiv_fuer(16) is _sym12.MOTIV_KLEIN
+      and _sym12.motiv_fuer(32) is _sym12.MOTIV_KLEIN
+      and _sym12.motiv_fuer(256) is _sym12.MOTIV)
+
+# Der Kopf der Oberflaeche zeichnet dasselbe Motiv als SVG. Gemessen wird jede
+# Zahl, nicht "kommt vor": ein verschobener Balken faellt sonst nicht auf.
+_kopf12 = (Path("autoclicker/editors/sequence_studio/web/index.html")
+           .read_text(encoding="utf-8"))
+_svg12 = _kopf12[_kopf12.index('<svg width="20"'):]
+_svg12 = _svg12[:_svg12.index("</svg>")]
+
+
+import re as _re12
+
+
+def _zahl12(quelle, name):
+    _m12 = _re12.search(rf'{name}="([-\d.]+)"', quelle)
+    return float(_m12.group(1)) if _m12 else None
+
+
+_aus_svg12 = []
+for _roh12 in _re12.findall(r"<(?:rect|circle|line|polygon)\b[^>]*>", _svg12):
+    if _roh12.startswith("<rect"):
+        _aus_svg12.append(("rr", _zahl12(_roh12, "x"), _zahl12(_roh12, "y"),
+                           _zahl12(_roh12, "width"), _zahl12(_roh12, "height"),
+                           _zahl12(_roh12, "rx")))
+    elif _roh12.startswith("<circle"):
+        _aus_svg12.append(("kreis", _zahl12(_roh12, "cx"), _zahl12(_roh12, "cy"),
+                           _zahl12(_roh12, "r")))
+    elif _roh12.startswith("<line"):
+        _aus_svg12.append(("strich", _zahl12(_roh12, "x1"), _zahl12(_roh12, "y1"),
+                           _zahl12(_roh12, "x2"), _zahl12(_roh12, "y2"),
+                           _zahl12(_roh12, "stroke-width")))
+    else:
+        _ecken12b = tuple(tuple(float(_w12) for _w12 in _paar12.split(","))
+                          for _paar12 in
+                          _re12.search(r'points="([^"]+)"', _roh12).group(1).split())
+        _aus_svg12.append(("zug", _ecken12b, 0.0, True))
+check("der Kopf der Oberflaeche zeichnet die kleine Fassung, Zahl fuer Zahl",
+      _aus_svg12 == list(_sym12.MOTIV_KLEIN))
+if _aus_svg12 != list(_sym12.MOTIV_KLEIN):
+    for _a12, _b12 in zip(_aus_svg12 + [None] * 9, list(_sym12.MOTIV_KLEIN) + [None] * 9):
+        if _a12 != _b12:
+            print(f"        SVG {_a12}  !=  MOTIV_KLEIN {_b12}")
+
+# --- Die Dateien fuer eine Verknuepfung ---
+# Das Fenstersymbol setzt die App selbst; eine Verknuepfung, ein angehefteter
+# Eintrag oder ein Ordnerbild nehmen es dagegen aus einer DATEI. PNG und ICO
+# werden deshalb geschrieben statt im Repo zu liegen - eine Binaerdatei waere
+# eine Kopie, die niemand mitzieht.
+import importlib.util as _ilu12
+_spec12 = _ilu12.spec_from_file_location(
+    "_werkzeug_symbol", Path("tools/symbol.py"))
+_werk12 = _ilu12.module_from_spec(_spec12)
+_spec12.loader.exec_module(_werk12)
+
+_png12 = _werk12.png_bytes(32)
+check("das PNG traegt die Signatur", _png12.startswith(b"\x89PNG\r\n\x1a\n"))
+check("und im Kopf die richtige Groesse und RGBA",
+      _struct12.unpack(">IIBBBBB", _png12[16:29]) == (32, 32, 8, 6, 0, 0, 0))
+check("die Stuecke stehen in der Reihenfolge, die das Format verlangt",
+      _png12.index(b"IHDR") < _png12.index(b"IDAT") < _png12.index(b"IEND"))
+
+_ico12 = _werk12.ico_bytes((16, 32, 256))
+_typ12, _art12, _anz12 = _struct12.unpack("<HHH", _ico12[:6])
+check("das ICO hat einen Verzeichniskopf", (_typ12, _art12, _anz12) == (0, 1, 3))
+_eintraege12 = [_struct12.unpack("<BBBBHHII", _ico12[6 + i * 16:22 + i * 16])
+                for i in range(_anz12)]
+# 256 steht als 0 im Verzeichnis: ein Byte fasst nur bis 255.
+check("256 steht als 0 im Verzeichnis, wie das Format es will",
+      [e[0] for e in _eintraege12] == [16, 32, 0])
+check("jeder Eintrag zeigt auf ein eingebettetes PNG",
+      all(_ico12[e[7]:e[7] + 8] == b"\x89PNG\r\n\x1a\n" for e in _eintraege12))
+check("und die Laengen decken die Datei genau ab",
+      _eintraege12[-1][7] + _eintraege12[-1][6] == len(_ico12))
 
 # Titelleiste und Taskleiste sind zwei Mechanismen. Das Fenstersymbol reichte
 # fuer die eine; die andere sortierte das Fenster weiter unter python.exe ein und

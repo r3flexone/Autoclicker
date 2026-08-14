@@ -15,6 +15,7 @@ logger = logging.getLogger("autoclicker")
 if TYPE_CHECKING:
     from .models import AutoClickerState
 
+from . import symbol
 from .config import CONFIG
 from .utils import err, warn
 
@@ -758,61 +759,10 @@ def unregister_hotkeys() -> None:
         user32.UnregisterHotKey(None, hotkey_id)
 
 
-# Farbe und Form des Fenster-Symbols. Gezeichnet wird es zur Laufzeit statt aus
-# einer .ico-Datei: eine Binärdatei im Repo für 32×32 Pixel wäre der teurere Weg,
-# und geändert würde sie ohnehin nur zusammen mit dem Logo in der Oberfläche.
-_SYMBOL_AMBER = (0x0B, 0x9E, 0xF5)      # BGR von #F59E0B
-_SYMBOL_DUNKEL = (0x14, 0x0F, 0x0C)     # BGR von #0C0F14
-
-# Gerechnet statt getippt. Vorher stand hier ein 16×16-Raster aus Nullen und
-# Einsen, und es hatte alle Fehler, die ein handgesetztes Raster hat: der Zeiger
-# stiess an die Kanten (kein Rand), die Ecken waren scharf (ein randvolles
-# Quadrat sieht aus wie ein Farbmuster, nicht wie ein Symbol), die Kanten
-# trepp­ten, und die Punktkette daneben war bei 16 px nur noch Krümel. Aus einer
-# Geometrie lässt sich dagegen JEDE Grösse sauber ableiten — und das braucht es,
-# weil Titelleiste und Taskleiste verschiedene verlangen.
-#
-# Der Zeiger ist dasselbe Polygon wie im SVG im Kopf der Oberfläche (24er-Raster
-# des viewBox). Die Punktkette daneben entfällt hier bewusst: was im Kopf bei
-# 20 px trägt, ist im Symbol bei 16 px Rauschen.
-_SYMBOL_ZEIGER = ((4, 3.5), (4, 14), (6.8, 11.4), (8.8, 15.8), (11, 14.8),
-                  (9.1, 10.6), (12.7, 10.2))
-_SYMBOL_FUELLUNG = 0.60   # Anteil der Kantenlänge, den der Zeiger einnimmt
-_SYMBOL_RUNDUNG = 0.22    # Eckenradius als Anteil der Kantenlänge (wie `.marke`)
-_SYMBOL_PROBEN = 4        # Abtastungen je Pixel und Achse — das ist die Kantenglättung
-
-
-def _zeiger_polygon() -> list:
-    """Der Zeiger, auf das Einheitsquadrat (0..1) zentriert und eingepasst."""
-    xs = [p[0] for p in _SYMBOL_ZEIGER]
-    ys = [p[1] for p in _SYMBOL_ZEIGER]
-    # Über die LÄNGERE Seite skalieren, sonst wird der Zeiger breitgezogen.
-    faktor = _SYMBOL_FUELLUNG / max(max(xs) - min(xs), max(ys) - min(ys))
-    mx, my = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
-    return [(0.5 + (x - mx) * faktor, 0.5 + (y - my) * faktor)
-            for x, y in _SYMBOL_ZEIGER]
-
-
-def _im_polygon(x: float, y: float, ecken: list) -> bool:
-    """Strahlenschnitt: liegt der Punkt innerhalb des Polygons?"""
-    drin = False
-    for i in range(len(ecken)):
-        x1, y1 = ecken[i]
-        x2, y2 = ecken[i - 1]
-        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) / (y2 - y1) * (x2 - x1):
-            drin = not drin
-    return drin
-
-
-def _im_runden_quadrat(x: float, y: float, radius: float) -> bool:
-    """Liegt der Punkt im Quadrat mit abgerundeten Ecken?"""
-    dx = abs(x - 0.5) - (0.5 - radius)
-    dy = abs(y - 0.5) - (0.5 - radius)
-    if dx <= 0 or dy <= 0:      # in einem der beiden Balken, nicht in der Ecke
-        return True
-    return dx * dx + dy * dy <= radius * radius
-
-
+# Wie das Symbol AUSSIEHT, steht in `symbol.py` — hier steht nur, wie Windows
+# es haben will. Die Trennung ist nicht kosmetisch: aus derselben Geometrie
+# macht `tools/symbol.py` PNG- und ICO-Dateien für eine Verknüpfung, und zwei
+# Beschreibungen desselben Motivs wären zwei, die auseinanderlaufen.
 # Die Kennung, unter der Windows die Fenster dieses Programms gruppiert. Punkt-
 # getrennt und ohne Leerzeichen, so will es die Schnittstelle.
 APP_ID = "Autoclicker.SequenzStudio"
@@ -849,34 +799,17 @@ def _symbol_bits(kante: int = 32) -> bytes:
     aus wie ein Fehler statt wie ein fremdes Programm. Ein DIB legt Breite,
     Höhe, Bittiefe und Byte-Reihenfolge selbst fest und hängt an keinem Gerät.
 
-    Gezeichnet wird mit Mehrfachabtastung: je Pixel `_SYMBOL_PROBEN`² Punkte,
-    daraus Deckung (Alpha) und Mischung Amber↔Zeiger. Das kostet bei 32×32 rund
-    16 000 Punktproben — einmalig beim Öffnen eines Fensters — und ist der
-    Unterschied zwischen gerundeten Ecken und einer Treppe.
-
-    Zwei Eigenheiten des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und
-    Maskenbild untereinander), und DIB-Zeilen stehen **von unten nach oben** —
-    ohne die rückwärts laufende Zeilenschleife steht der Zeiger auf dem Kopf.
+    Gezeichnet wird in `symbol.py`; hier wird nur umgepackt. Zwei Eigenheiten
+    des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und Maskenbild
+    untereinander), und DIB-Zeilen stehen **von unten nach oben**.
     """
-    polygon = _zeiger_polygon()
-    proben = _SYMBOL_PROBEN * _SYMBOL_PROBEN
     kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
-    for zy in range(kante - 1, -1, -1):
-        for zx in range(kante):
-            innen = zeiger = 0
-            for py in range(_SYMBOL_PROBEN):
-                y = (zy + (py + 0.5) / _SYMBOL_PROBEN) / kante
-                for px in range(_SYMBOL_PROBEN):
-                    x = (zx + (px + 0.5) / _SYMBOL_PROBEN) / kante
-                    if _im_runden_quadrat(x, y, _SYMBOL_RUNDUNG):
-                        innen += 1
-                        if _im_polygon(x, y, polygon):
-                            zeiger += 1
-            anteil = zeiger / innen if innen else 0.0
-            farben += bytes(round(a + (d - a) * anteil)
-                            for a, d in zip(_SYMBOL_AMBER, _SYMBOL_DUNKEL))
-            farben.append(round(255 * innen / proben))
+    # DIB-Zeilen stehen von UNTEN nach oben, `punkte()` liefert von oben —
+    # deshalb umgedreht. Ohne das steht die Fahne auf dem Kopf.
+    for zeile in reversed(list(symbol.punkte(kante))):
+        for r, g, b, a in zeile:
+            farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.

@@ -563,13 +563,22 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
            aus Stellen, die er der Reihe nach abarbeitet. Das Play-Dreieck vorher
            hiess „irgendetwas startet" — das steht auf jedem zweiten Knopf. -->
       <div class="marke">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 3.5v10.5l2.8-2.6 2 4.4 2.2-1-1.9-4.2 3.6-.4z"/>
-          <circle cx="18.5" cy="5.5" r="1.6"/>
-          <circle cx="18.5" cy="13" r="1.6"/>
-          <circle cx="18.5" cy="20.5" r="1.6"/>
-          <path d="M18.5 7.1v4.3M18.5 14.6v4.3" stroke-width="1.6"/>
+        <!-- Dasselbe Motiv wie das Fenstersymbol, und zwar dessen KLEINE Fassung
+             (MOTIV_KLEIN in autoclicker/symbol.py): bei 20 px ist ein Umriss ein
+             grauer Fleck, also ist die Fahne gefuellt. Ein Test haelt die Zahlen
+             hier gegen die Formenliste dort - zwei Motive, von denen eines
+             altert, waere genau die Doppelung, die das Projekt sonst vermeidet. -->
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
+             stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3.4" y="7.6" width="2.8" height="2.8" rx="0.7"/>
+          <rect x="7.4" y="7.6" width="12.6" height="2.8" rx="0.7"/>
+          <rect x="3.4" y="12.0" width="2.8" height="2.8" rx="0.7"/>
+          <rect x="7.4" y="12.0" width="9.6" height="2.8" rx="0.7"/>
+          <rect x="3.4" y="16.4" width="2.8" height="2.8" rx="0.7"/>
+          <rect x="7.4" y="16.4" width="12.6" height="2.8" rx="0.7"/>
+          <line x1="9.2" y1="2.6" x2="9.2" y2="20.4" stroke-width="1.3"/>
+          <circle cx="9.2" cy="20.8" r="1.7"/>
+          <polygon points="9.2,2.6 15.2,5.6 9.2,8.6"/>
         </svg>
       </div>
       <span class="titel">SEQUENZ-STUDIO</span>
