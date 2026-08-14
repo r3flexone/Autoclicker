@@ -5773,6 +5773,67 @@ try:
                 _z18 = _b18.scan_klick({"x": 42, "y": 42})
                 check("ein weiterer Suchbereich nimmt den Koeder mit",
                       len(_z18["slots"]) == 7)
+
+                # --- Nach dem Finden wird gleich geprueft ---
+                # Die Frage nach dem Finden ist nicht "habe ich Slots", sondern
+                # "was davon kenne ich schon". Ohne das stehen zwanzig gleich
+                # aussehende Rechtecke da, und "Items lernen" lernt stumpf alle.
+                _items_vorher18 = dict(_b18.items)
+                _b18.items.clear()
+                _b18.slots.clear()
+                _b18.scans["Weg"].slot_names.clear()
+                _b18.scans["Weg"].item_names.clear()
+                _b18.scan_modus_setzen({"modus": _MF18})
+                _b18.scan_klick({"x": 10, "y": 10})
+                _b18.scan_klick({"x": 395, "y": 295})
+                _z18 = _b18.scan_klick({"x": 42, "y": 42})
+                check("ohne Items im Bestand sagt die Probe nichts",
+                      "bekanntem Item" not in _z18["status"]["text"]
+                      and all(s["treffer"] is None for s in _z18["slots"]))
+
+                # Ein Item aus genau einem dieser Slots lernen, dann nochmal
+                # finden: der eine Slot muss gruen sein, die anderen nicht.
+                _erster18 = sorted(_b18.slots.values(),
+                                   key=lambda s: (s.scan_region[1], s.scan_region[0]))[0]
+                _b18.scan_item_lernen({"slot": _erster18.name})
+                _b18.slots.clear()
+                _b18.scans["Weg"].slot_names.clear()
+                # Ein Slot ausserhalb des Bildes kann nie einen Treffer haben -
+                # der zuverlaessigste Weg, im gestellten Gitter (in dem alle
+                # Zellen gleich aussehen) ueberhaupt einen unbekannten zu haben.
+                _b18.slots["Draussen"] = _SLOT8(name="Draussen",
+                                                scan_region=(2000, 2000, 2060, 2060),
+                                                click_pos=(2030, 2030))
+                _b18.scan_modus_setzen({"modus": _MF18})
+                _b18.scan_klick({"x": 10, "y": 10})
+                _b18.scan_klick({"x": 395, "y": 295})
+                _z18 = _b18.scan_klick({"x": 42, "y": 42})
+                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
+                check("das gelernte Item wird gleich im Slot erkannt",
+                      len(_gruen18) >= 1)
+                check("und die Meldung sagt, was noch unbekannt ist",
+                      "bekanntem Item" in _z18["status"]["text"]
+                      and "unbekannt" in _z18["status"]["text"])
+                # Der Treffer gehoert zum offenen Scan (das Lernen hat ihn
+                # eingetragen), ist also NICHT fremd.
+                check("ein Item des offenen Scans gilt nicht als fremd",
+                      _gruen18[0]["treffer"].get("fremd") is False)
+
+                # Und umgekehrt: aus dem Scan genommen ist derselbe Treffer
+                # fremd - erkannt, aber der Scan sieht ihn nicht an. Nachgezogen
+                # wird das OHNE neue Rechnung.
+                _name18 = _gruen18[0]["treffer"]["name"]
+                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
+                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
+                check("aus dem Scan genommen wird derselbe Treffer fremd",
+                      _gruen18[0]["treffer"]["fremd"] is True)
+                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
+                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
+                check("und wieder dazu genommen ist er es nicht mehr",
+                      _gruen18[0]["treffer"]["fremd"] is False)
+                _b18.slots.pop("Draussen", None)
+                _b18.items.clear()
+                _b18.items.update(_items_vorher18)
             else:
                 print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
             # ESC raeumt einen halb gesetzten Suchbereich weg - sonst haengt er

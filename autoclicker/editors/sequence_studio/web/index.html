@@ -459,6 +459,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Antwort auf "was steckt wo drin" soll im Bild stehen, nicht in einer Liste
    daneben. */
 .scan-slot.treffer{stroke:var(--ok)}
+/* Erkannt, aber noch kein Mitglied dieses Scans: ein anderer Zustand als
+   „passt" und deshalb eine andere Farbe. Gruen zu faerben hiesse behaupten,
+   der Scan finde es — er sieht dieses Item gar nicht an. */
+.scan-slot.fremditem{stroke:var(--accent)}
 .scan-slot.leer{stroke:var(--dim)}
 .scan-fuellung{fill:#F59E0B14;stroke:none}
 .scan-fuellung.gewaehlt{fill:#FFFFFF1F}
@@ -2573,7 +2577,11 @@ function scanListeSlots(ziel) {
                       title: "Zu klein zum Erkennen — hier auswählen und löschen"},
              s.breite + "×" + s.hoehe + " ⚠")
         : (s.treffer && s.treffer.name
-            ? el("span", {class: "klein", style: "color:var(--ok)"}, s.treffer.name)
+            ? el("span", {class: "klein",
+                          style: "color:" + (s.treffer.fremd ? "var(--accent)" : "var(--ok)"),
+                          title: s.treffer.fremd
+                            ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""},
+                 s.treffer.name)
             : el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe))));
   }
 }
@@ -2664,7 +2672,12 @@ function scanOverlay() {
     const [x1, y1] = scanZuBild(s.region[0], s.region[1]);
     const [x2, y2] = scanZuBild(s.region[2], s.region[3]);
     const gewaehlt = SC.wahl.art === "slot" && SC.wahl.name === s.name;
-    const zustand = (s.treffer ? (s.treffer.name ? " treffer" : " leer") : "") + fremd;
+    // Gruen = hier liegt ein Item, das der Scan kennt. Amber = erkannt, aber
+    // noch nicht Mitglied dieses Scans — anderer Zustand, andere Farbe, sonst
+    // sucht man spaeter, warum der Scan das Gruene nicht findet.
+    const zustand = (s.treffer
+      ? (s.treffer.name ? (s.treffer.fremd ? " fremditem" : " treffer") : " leer")
+      : "") + fremd;
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
       class: "scan-fuellung" + (gewaehlt ? " gewaehlt" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
@@ -2685,7 +2698,8 @@ function scanOverlay() {
     }
     if (s.treffer && s.treffer.name && (breit >= 34 || gewaehlt)) {
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-marke",
-        "font-size": 10 * px, "stroke-width": 3 * px, fill: "#3ED07A"}, s.treffer.name));
+        "font-size": 10 * px, "stroke-width": 3 * px,
+        fill: s.treffer.fremd ? "#F59E0B" : "#3ED07A"}, s.treffer.name));
     }
     const [kx, ky] = scanZuBild(s.klick[0], s.klick[1]);
     const arm = 4 * px;
@@ -2824,6 +2838,18 @@ function scanInspSlot(ziel) {
     ziel.appendChild(el("p", {class: "hinweis", style: "margin-top:10px"},
       s.treffer.name ? "Zuletzt erkannt: " + s.treffer.name
                      : "Zuletzt: " + (s.treffer.grund || "nichts erkannt")));
+    // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
+    // man aus demselben Slot ein zweites Item („Item lernen" oben); gehoert er
+    // nur noch nicht zum Scan, ist es ein Klick.
+    if (s.treffer.fremd) {
+      ziel.appendChild(el("button", {class: "btn still",
+        onclick: () => rufScan("scan_mitglied", {art: "item", name: s.treffer.name})},
+        "„" + s.treffer.name + "“ zu diesem Scan dazunehmen"));
+    }
+    if (s.treffer.name) {
+      ziel.appendChild(el("p", {class: "hinweis"},
+        "Stimmt nicht? „Item lernen“ legt aus diesem Slot ein weiteres Item an."));
+    }
   }
 }
 

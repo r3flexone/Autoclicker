@@ -934,12 +934,53 @@ class ScanTeil:
         self._suchbereich = None
         self.scan_modus = MODUS_WAHL
         if not neu:
-            return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da.", "info")
+            return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da."
+                                    f"{self._gleich_erkennen()}", "info")
         teile = f"{neu} Slot(s) angelegt"
         if schon:
             teile += f", {schon} schon vorhanden"
         return self._scan_geaendert(f"{teile} · Hintergrund {hexfarbe(farbe)}"
-                                    f"{self._einzug_hinweis()}")
+                                    f"{self._einzug_hinweis()}"
+                                    f"{self._gleich_erkennen()}")
+
+    def _gleich_erkennen(self) -> str:
+        """Prüft die frisch gefundenen Slots sofort gegen den Item-Bestand.
+
+        **Die Frage nach dem Finden ist nicht „habe ich Slots", sondern „was
+        davon kenne ich schon".** Ohne diesen Durchgang stehen zwanzig gleich
+        aussehende Rechtecke da, und der nächste Schritt — „Items lernen" —
+        lernt stumpf alle zwanzig, auch die neunzehn, die längst im Bestand
+        liegen. Grün markiert heisst: das hier ist erledigt, kümmere dich um den
+        Rest. Stimmt ein Treffer nicht, ändert man ihn rechts oder lernt aus dem
+        Slot ein zweites Item — die Markierung ist ein Vorschlag, keine
+        Festlegung.
+
+        Kostet an einem vollen Inventar rund 0,3 s (45 Slots gegen 45 Items,
+        gemessen) und damit weniger als das Finden selbst. Ohne Items im Bestand
+        ist es augenblicklich und sagt gar nichts — dann gibt es nichts zu
+        erkennen, und eine Meldung darüber wäre nur Rauschen.
+        """
+        # Die Slot-Liste ist gerade eine andere geworden — was vorher an einem
+        # Slot stand, gehört zu einem anderen Stand. Auch dann wegräumen, wenn
+        # gar nicht gerechnet wird: Namen werden wiederverwendet
+        # (`next_slot_name` füllt Lücken), ein alter Treffer klebte sonst am
+        # neuen Slot.
+        self._treffer = {}
+        if not self.items:
+            return ""
+        try:
+            gefunden, geprueft, _, fremd = self._erkennen_lauf()
+        except Exception:            # OpenCV/NumPy-Innenleben — nie den Fund verlieren
+            return ""
+        if not geprueft:
+            return ""
+        offen = len(self.slots) - gefunden
+        text = f" · davon {gefunden} mit bekanntem Item"
+        if offen:
+            text += f", {offen} noch unbekannt"
+        if fremd:
+            text += f" ({fremd} gehören noch nicht zu diesem Scan)"
+        return text
 
     def _such_ecke(self, x: int, y: int) -> dict:
         """Die zwei Ecken um das Inventar — der erste Teil von `finden`."""
@@ -1322,7 +1363,26 @@ class ScanTeil:
             return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
         if not self.slots:
             return self._scan_melde("Keine Slots vorhanden.", "warn")
+        gefunden, geprueft, toleranz, _ = self._erkennen_lauf()
+        return self._scan_melde(
+            f"{gefunden} von {len(self.slots)} Slot(s) erkannt "
+            f"(Toleranz {toleranz}, {geprueft} Item(s) geprüft).")
 
+    def _erkennen_lauf(self) -> tuple:
+        """Füllt `_treffer` und liefert `(gefunden, geprüft, Toleranz, fremd)`.
+
+        Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer
+        davon eine eigene Meldung schreibt: der Knopf sagt das Ergebnis, das
+        Finden hängt es an seine eigene Meldung an. Die **Rechnung** darf es
+        deshalb nur einmal geben — zwei Erkennungen wären zwei Ergebnisse, und
+        genau das vermeidet der Reiter an jeder anderen Stelle auch.
+
+        `fremd` zählt Treffer, die nicht zum offenen Scan gehören. Das kann nur
+        bei einem Scan **ohne** Items passieren (dann prüft `_kandidaten()` den
+        ganzen Bestand) — und dort ist es die nützlichste Auskunft überhaupt:
+        das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
+        Häkchen.
+        """
         # Erst hier importiert: `runtime/__init__` zieht den Worker samt
         # `winapi` nach, und den braucht der Rest des Fensters nicht.
         from ...runtime.item_scan import _check_profile_match
@@ -1331,8 +1391,10 @@ class ScanTeil:
         toleranz = self._toleranz()
         kandidaten = self._kandidaten()
         stellvertreter = _NurConfig(CONFIG)
+        cfg = self.scans.get(self.scan_offen)
+        dabei = set(cfg.item_names) if cfg else set()
         self._treffer = {}
-        gefunden = 0
+        gefunden, fremd = 0, 0
         for slot in self.slots.values():
             crop = self._foto_crop(slot.scan_region)
             if crop is None:
@@ -1347,13 +1409,14 @@ class ScanTeil:
                 self._treffer[slot.name] = {"name": None, "grund": "nichts erkannt"}
             else:
                 gefunden += 1
+                if cfg is not None and treffer.name not in dabei:
+                    fremd += 1
                 self._treffer[slot.name] = {
                     "name": treffer.name,
                     "farbe": hexfarbe(treffer.marker_colors[0]) if treffer.marker_colors else None,
+                    "fremd": cfg is not None and treffer.name not in dabei,
                 }
-        return self._scan_melde(
-            f"{gefunden} von {len(self.slots)} Slot(s) erkannt "
-            f"(Toleranz {toleranz}, {len(kandidaten)} Item(s) geprüft).")
+        return gefunden, len(kandidaten), toleranz, fremd
 
     def _kandidaten(self) -> list:
         """Welche Items geprüft werden — die des gewählten Scans, sonst alle.
@@ -1490,7 +1553,22 @@ class ScanTeil:
         else:
             liste.append(name)
         self._objekte_angleichen()
+        self._treffer_mitgliedschaft()
         return self._scan_geaendert()
+
+    def _treffer_mitgliedschaft(self) -> None:
+        """Zieht das `fremd`-Merkmal der Treffer an der Mitgliedschaft nach.
+
+        Ein Häkchen ändert nicht, WAS erkannt wurde — nur, ob der Scan es
+        ansieht. Dafür noch einmal zu rechnen wäre Verschwendung; es stehen zu
+        lassen wäre eine Anzeige, die nach dem eigenen Klick noch das Alte
+        behauptet.
+        """
+        cfg = self.scans.get(self.scan_offen)
+        dabei = set(cfg.item_names) if cfg else set()
+        for eintrag in self._treffer.values():
+            if eintrag.get("name"):
+                eintrag["fremd"] = cfg is not None and eintrag["name"] not in dabei
 
     def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""

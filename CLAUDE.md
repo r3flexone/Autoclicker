@@ -715,6 +715,32 @@ Fünf Regeln, an denen der Reiter hängt:
   Config trägt. Eine zweite Rechnung „nur für die Vorschau" wäre eine Vorschau,
   die etwas anderes zeigt als das, was passiert.
 
+  **Nach dem Finden läuft sie von selbst** (`_gleich_erkennen()`). Die Frage
+  nach dem Finden ist nicht „habe ich Slots", sondern **„was davon kenne ich
+  schon"**: sonst stehen zwanzig gleich aussehende Rechtecke da, und der
+  nächste Schritt lernt stumpf alle zwanzig — auch die neunzehn, die längst im
+  Bestand liegen. Grün heisst „erledigt, kümmere dich um den Rest"; der Treffer
+  ist dabei ein **Vorschlag, keine Festlegung** (stimmt er nicht, lernt man aus
+  demselben Slot ein weiteres Item).
+
+  Gemessen an einem vollen Inventar (45 Slots gegen 45 Items) kostet das
+  ~310 ms und damit weniger als das Finden davor; ohne Items im Bestand ist es
+  augenblicklich und sagt gar nichts. Dass es nicht teurer wird, wenn der
+  Bestand wächst, liegt an `_kandidaten()`: bei offenem Scan werden nur dessen
+  Items geprüft.
+
+  Die **Rechnung gibt es nur einmal** — `_erkennen_lauf()` füllt `_treffer`,
+  die Meldung baut jeder Anlass selbst (der Knopf sagt das Ergebnis, das Finden
+  hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
+- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, amber statt
+  grün). Der Fall entsteht bei einem Scan ohne Items, denn dann prüft
+  `_kandidaten()` den ganzen Bestand — und dort ist es die nützlichste Auskunft
+  überhaupt: das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
+  Häkchen (ein Knopf im Inspektor). Grün zu färben hiesse behaupten, der Scan
+  finde es; er sieht dieses Item gar nicht an. Ein Häkchen ändert nicht, WAS
+  erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
+  nach, statt neu zu rechnen.
+
 **Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
 stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
 Fundstelle mit und sagen in der Statuszeile, wie viele es waren. Löschen räumt
