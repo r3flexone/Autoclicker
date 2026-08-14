@@ -3731,6 +3731,22 @@ _unten12 = [x for x, y in _dunkel12 if y > 19.2 * 32 / 24]    # unter der letzte
 check("die Zeilen stehen von unten nach oben in der Datei",
       _oben12 and _unten12 and max(_oben12) > max(_unten12) + 3)
 
+# --- Das Studio laedt die Config nicht zweimal ---
+# Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
+# dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
+# _ohne_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
+_quelle_br12 = Path("autoclicker/editors/sequence_studio/bridge.py").read_text(
+    encoding="utf-8")
+_baum_br12 = _ast11.parse(_quelle_br12)
+_lader12 = [_k12.lineno for _k12 in _ast11.walk(_baum_br12)
+            if isinstance(_k12, _ast11.Call) and isinstance(_k12.func, _ast11.Name)
+            and _k12.func.id == "load_config"]
+check("die Bruecke ruft load_config() nirgends auf", _lader12 == [])
+if _lader12:
+    print("        Zeilen: " + ", ".join(str(z) for z in _lader12))
+check("sie liest die Datei stattdessen selbst",
+      "_config_datei" in _quelle_br12)
+
 # --- EINE Geometrie, drei Verwendungen ---
 # Das Motiv steht in symbol.py und sonst nirgends: winapi macht ICO-Bits daraus,
 # tools/symbol.py PNG- und ICO-Dateien, der Kopf der Oberflaeche ein SVG. Zwei
@@ -5430,7 +5446,7 @@ section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
 import ast as _ast10, re as _re13
 from autoclicker.editors.sequence_studio.scans import (
     MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
-    MODUS_WAHL as _MW18, MODI as _MODI18,
+    MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODI as _MODI18,
 )
 from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
 
@@ -5477,7 +5493,11 @@ try:
         import autoclicker.winapi as _win18
         _echt_shot18 = _img18.take_screenshot
         _echt_org18 = _win18.get_virtual_origin
-        _img18.take_screenshot = lambda region=None: _bild18.copy()
+        # Der Stub schneidet wie das Original: `take_screenshot(region)` liefert
+        # den Ausschnitt, nicht den ganzen Schirm. Ohne das koennte der Test die
+        # Bereichs-Aufnahme gar nicht messen - sie saehe aus wie Vollbild.
+        _img18.take_screenshot = lambda region=None: (
+            _bild18.copy() if not region else _bild18.crop(tuple(region)))
         _win18.get_virtual_origin = lambda: (0, 0)
         try:
             _z18 = _b18.scan_foto()
@@ -5551,6 +5571,55 @@ try:
             check("die Vorschau kommt auf Nachfrage",
                   _b18.scan_vorschau({"namen": [_i18["name"]]})[_i18["name"]]
                   .startswith("data:image/png;base64,"))
+
+            # --- Der Bereich: nicht immer Vollbild ---
+            # Wer dasselbe Spiel dreimal offen hat, arbeitet sonst auf einem
+            # Bild, in dem drei Viertel stoeren.
+            _z18 = _b18.scan_daten()
+            check("ohne Angabe ist es Vollbild", _z18["bereich"] is None)
+            _b18.scan_modus_setzen({"modus": _MB18})
+            _b18.scan_klick({"x": 80, "y": 80})
+            _z18 = _b18.scan_klick({"x": 280, "y": 240})
+            check("zwei Ecken schneiden das Bild zu",
+                  _z18["bereich"] == [80, 80, 280, 240])
+            check("und die Flaeche hat genau diese Groesse",
+                  (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 160))
+            check("ihr Ursprung ist die linke obere Ecke",
+                  (_z18["foto"]["links"], _z18["foto"]["oben"]) == (80, 80))
+            # Zugeschnitten, nicht neu geholt: gemessen wird weiter im Original,
+            # und die Farbe an einer Stelle muss dieselbe bleiben.
+            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
+            _b18.scan_modus_setzen({"modus": _MM18})
+            _z18 = _b18.scan_klick({"x": 130, "y": 130})
+            check("im Ausschnitt wird an derselben Stelle dasselbe gemessen",
+                  _z18["slots"][0]["farbe"] == "#C83C3C")
+
+            # Der Bereich gilt fuer die naechste Aufnahme - sonst waere er ein
+            # einmaliger Zuschnitt und man muesste ihn jedes Mal neu ziehen.
+            _z18 = _b18.scan_foto()
+            check("die naechste Aufnahme nimmt genau ihn",
+                  _z18["bereich"] == [80, 80, 280, 240]
+                  and _z18["foto"]["breite"] == 200)
+
+            # Ein Slot ausserhalb wird gemeldet, nicht verschwiegen: er steht
+            # weiter in der Liste, ist aber im Bild nicht zu sehen.
+            check("Slots ausserhalb des Bereichs werden gezaehlt",
+                  "ausserhalb" in _z18["status"]["text"])
+
+            _z18 = _b18.scan_bereich_setzen({"bereich": [100, 100, 300, 300]})
+            check("ein Bereich laesst sich auch direkt setzen",
+                  _z18["bereich"] == [100, 100, 300, 300])
+            _z18 = _b18.scan_bereich_setzen()
+            check("und ohne Angabe geht es zurueck auf Vollbild",
+                  _z18["bereich"] is None and _z18["foto"]["breite"] == 400)
+            _z18 = _b18.scan_bereich_setzen({"bereich": [10, 10, 12, 12]})
+            check("ein Bereich von zwei Pixeln gilt nicht als Bereich",
+                  _z18["bereich"] is None)
+
+            # Die Fensterliste ist der Weg fuer "dasselbe Programm dreimal
+            # offen": unterscheidbar sind sie nur an der Lage.
+            check("die Fensterliste ist eine Liste",
+                  isinstance(_b18.scan_fenster(), list))
         finally:
             _img18.take_screenshot = _echt_shot18
             _win18.get_virtual_origin = _echt_org18
@@ -5630,6 +5699,22 @@ try:
     _z18 = _b18.scan_oeffnen({"name": "Spiel B"})
     check("beim Wechsel wandert die Markierung mit",
           [s["name"] for s in _z18["slots"] if s["dabei"]] == ["B1"])
+
+    # Wer IN einem offenen Scan etwas anlegt, legt es FUER ihn an. Ohne das war
+    # ein frisch aufgezogener Slot sofort wieder weg: die Listen zeigen nur die
+    # Mitglieder, und er war keines.
+    _b18.slots["B2"] = _SLOT8(name="B2", scan_region=(0, 0, 9, 9), click_pos=(4, 4))
+    _b18.scan_waehlen({"art": "slot", "name": "B2"})
+    _b18._dazu("slot", "B2")
+    _z18 = _b18.scan_daten()
+    check("ein im offenen Scan angelegter Slot gehoert gleich dazu",
+          sorted(s["name"] for s in _z18["slots"] if s["dabei"]) == ["B1", "B2"])
+    _b18._dazu("slot", "B2")
+    check("und zweimal dazulegen legt ihn nicht doppelt an",
+          _b18.scans["Spiel B"].slot_names.count("B2") == 1)
+    _b18.scans["Spiel B"].slot_names.remove("B2")
+    del _b18.slots["B2"]
+    _b18._objekte_angleichen()
 
     # Ein Slot anklicken darf den Zusammenhang nicht verlieren - genau das war
     # der Fehler, als "offen" noch an der Auswahl hing.

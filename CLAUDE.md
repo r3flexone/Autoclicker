@@ -695,6 +695,39 @@ aus den Objekten wieder auffüllt, muss nach jeder Änderung an den Namen
 `_objekte_angleichen()` laufen — sonst kommt ein gelöschtes Item beim nächsten
 Speichern zurück. Ein Test pinnt genau das fest.
 
+**Vollbild ist die Voreinstellung, nicht die einzige Möglichkeit.** Wer dasselbe
+Spiel mehrmals offen hat, arbeitet sonst auf einem Bild, in dem drei Viertel
+stören. Der Aufnahmebereich lässt sich auf drei Wegen setzen — Fensterliste
+(`winapi.liste_fenster()`), zwei Ecken im Bild (Modus `bereich`) oder direkt
+(`scan_bereich_setzen`) — und der Rückweg ist ein Knopf.
+
+Drei Eigenschaften, an denen das hängt:
+
+- **Der Bereich steht IM gemerkten Bild**, nicht in der Scan-Datei: Ursprung und
+  Grösse des PNG *sind* der Bereich. Ein zweites Feld daneben wäre eine zweite
+  Wahrheit, und beim nächsten Öffnen fragte sich, welche gilt. Deckt das Bild
+  den ganzen virtuellen Desktop ab, ist es kein Bereich, sondern Vollbild —
+  sonst stünde „Bereich" für etwas, das keine Einschränkung ist.
+- **Zwei Ecken schneiden zu, sie nehmen nicht neu auf.** Zwischen den Klicks
+  vergeht Zeit; was man zugeschnitten hat, soll man auch bekommen. Gemerkt wird
+  der Bereich trotzdem — die *nächste* Aufnahme holt genau ihn.
+- **Slots ausserhalb werden gezählt und gesagt** (`_draussen_hinweis()`). Ein zu
+  eng gesetzter Bereich ist sonst still: die Slots stehen weiter in der Liste,
+  sind aber nicht zu sehen, und man sucht den Fehler bei der Erkennung.
+
+**Die Fensterliste liefert den Client-Bereich, sortiert nach Lage.** Für
+„dasselbe Programm dreimal offen" hilft `get_client_rect_by_title()` nicht: der
+Titel ist dreimal derselbe. Unterscheidbar sind sie nur an der Position — die
+steht deshalb in jeder Zeile, und die Liste ist danach sortiert (oben vor unten,
+links vor rechts), also in der Reihenfolge, in der man sie auf dem Bildschirm
+sucht.
+
+**Wer in einem offenen Scan etwas anlegt, legt es FÜR ihn an** (`_dazu()`). Ohne
+das war ein frisch aufgezogener Slot sofort wieder weg: die Listen zeigen
+standardmässig nur die Mitglieder, und er war keines — man musste den Filter
+ausschalten, ihn suchen und ein Häkchen setzen. Gilt für neue Slots, gedoppelte
+und gelernte Items.
+
 **Boss- und Icon-Scans sind hier noch nicht drin.** Das alte Fenster konnte sie,
 die Konsole (`CTRL+ALT+N`) kann sie weiterhin. Was sie brauchen — Region aus zwei
 Ecken, Farbe messen, Marker sammeln — liegt bereits als Modus-Mechanik da; es

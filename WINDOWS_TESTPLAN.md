@@ -252,6 +252,33 @@ Items aller Spiele in einer Liste.
 - [ ] 🆕 „Items erkennen" prüft nur die Items des offenen Scans (die Statuszeile
       nennt die Zahl).
 
+### 13d. Nicht immer Vollbild 🆕
+Der Fall: dasselbe Spiel mehrmals offen, und der Scan soll nur eines davon sehen.
+
+- [ ] 🆕 Frisch ist es Vollbild — der Knopf heisst „Screenshot aufnehmen", die
+      Zeile darunter „Vollbild".
+- [ ] 🆕 Die Liste „Bereich aus einem Fenster" zeigt alle offenen Fenster mit
+      Grösse und Lage. Bei drei Fassungen desselben Spiels stehen dreimal
+      derselbe Titel und **drei verschiedene Lagen** da; sortiert ist nach Lage.
+- [ ] 🆕 Eines wählen → das Bild ist danach genau dieses Fenster (Client-Bereich,
+      ohne Titelleiste), der Knopf heisst „Bereich aufnehmen".
+- [ ] 🆕 Slots darin aufziehen und „Items erkennen" — die Slots liegen in
+      **Bildschirm**-Koordinaten, treffen also nur diese eine Fassung des Spiels.
+      Gegenprobe: dieselbe Stelle in der zweiten Fassung wird nicht erkannt.
+- [ ] 🆕 Modus „Bereich" (`B`): zwei Ecken schneiden weiter zu. Die Slots dürfen
+      dabei **nicht** verrutschen.
+- [ ] 🆕 „Vollbild" nimmt die Einschränkung zurück; der Knopf ist danach aus.
+- [ ] 🆕 Der Bereich überlebt Schliessen und Neuöffnen des Studios (er steht im
+      gemerkten Bild).
+- [ ] 🆕 Bereich zu eng setzen → die Statuszeile sagt, wie viele Slots
+      ausserhalb liegen.
+- [ ] 🆕 Mit **negativen** Koordinaten (Spiel auf dem linken Monitor): ein aus
+      der Fensterliste gesetzter Bereich trifft, und die Slots sitzen nach dem
+      Neuöffnen noch.
+- [ ] 🆕 Einen Slot aufziehen, während ein Scan offen ist → er gehört sofort
+      dazu (Häkchen gesetzt, Zahl am Reiter steigt), ohne den Filter
+      auszuschalten. Ebenso ein gelerntes Item und „daneben".
+
 ### 13c. Zusammenfassung nach dem Lauf 🆕
 - [ ] 🆕 Eine Sequenz durchlaufen lassen: die Live-Ansicht bleibt danach stehen
       und zeigt Laufzeit, Zyklen, Zähler und „alle Zyklen durchgelaufen" (grün).

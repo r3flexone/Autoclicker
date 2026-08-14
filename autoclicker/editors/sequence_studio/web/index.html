@@ -483,6 +483,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-modus:hover{border-color:var(--dim);color:var(--text)}
 .scan-modus.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .scan-modus .taste{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+/* Der eingeschraenkte Bereich ist ein ZUSTAND, der fuer jede weitere Aufnahme
+   gilt — also traegt er den Akzent, so wie alles andere Aktive auch. */
+#scan-bereich{color:var(--dim);font-family:var(--mono)}
+#scan-bereich.an{color:var(--accent)}
+.scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
+  background:var(--sub);color:var(--text);border:1px solid var(--line)}
 .scan-haken{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
@@ -692,6 +698,16 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
           <span class="klein mono" id="scan-groesse"></span>
         </div>
         <button class="btn haupt" id="scan-foto">Screenshot aufnehmen</button>
+        <!-- Vollbild ist nur die Voreinstellung. Wer dasselbe Spiel mehrmals
+             offen hat, arbeitet sonst auf einem Bild, in dem drei Viertel
+             stoeren. Der gewaehlte Bereich steht hier und gilt fuer jede
+             weitere Aufnahme dieses Scans. -->
+        <div class="reihe">
+          <span class="klein wachse" id="scan-bereich">Vollbild</span>
+          <button class="btn still" id="scan-vollbild"
+                  title="wieder den ganzen Bildschirm aufnehmen">Vollbild</button>
+        </div>
+        <select id="scan-fenster" class="scan-fensterwahl"></select>
         <div class="reihe">
           <button class="btn still" id="scan-fit" title="ins Fenster einpassen">einpassen</button>
           <button class="btn still" id="scan-1zu1" title="Originalgrösse">1:1</button>
@@ -2212,6 +2228,7 @@ const SCAN_MODI = [
   {key: "slot", text: "Neuer Slot", taste: "S", hilfe: "zwei Ecken anklicken"},
   {key: "messen", text: "Hintergrundfarbe", taste: "F", hilfe: "Stelle im Slot anklicken"},
   {key: "klick", text: "Klickpunkt", taste: "K", hilfe: "wohin geklickt wird"},
+  {key: "bereich", text: "Bereich", taste: "B", hilfe: "zwei Ecken um den Teil, der zählt"},
 ];
 
 async function zeichneScans(frisch) {
@@ -2339,6 +2356,39 @@ function scanWerkzeuge() {
       el("span", {class: "klein"}, m.hilfe)));
   }
   $("scan-foto").disabled = !SC.pillow;
+  $("scan-foto").textContent = SC.bereich ? "Bereich aufnehmen" : "Screenshot aufnehmen";
+
+  // Der Bereich gilt fuer JEDE weitere Aufnahme dieses Scans — er muss also
+  // dastehen, nicht nur in der Statuszeile aufblitzen.
+  const bz = $("scan-bereich");
+  bz.textContent = SC.bereich
+    ? "Bereich " + (SC.bereich[2] - SC.bereich[0]) + "×" + (SC.bereich[3] - SC.bereich[1])
+      + " ab (" + SC.bereich[0] + ", " + SC.bereich[1] + ")"
+    : "Vollbild";
+  bz.classList.toggle("an", !!SC.bereich);
+  $("scan-vollbild").disabled = !SC.bereich || !SC.pillow;
+  scanFensterPflegen();
+}
+
+let scanFenster = [];
+
+/** Die offenen Fenster zur Auswahl — nur nachgeholt, wenn Pillow da ist. */
+async function scanFensterPflegen() {
+  const wahl = $("scan-fenster");
+  if (!SC.pillow) { wahl.hidden = true; return; }
+  scanFenster = (await frage("scan_fenster")) || [];
+  wahl.hidden = false;
+  wahl.replaceChildren();
+  wahl.appendChild(el("option", {value: ""}, scanFenster.length
+    ? "— Bereich aus einem Fenster —" : "— keine Fenster gefunden —"));
+  scanFenster.forEach((f, i) => {
+    // Die Lage steht dabei, weil sie das einzige Unterscheidungsmerkmal ist,
+    // wenn dasselbe Programm mehrmals offen ist.
+    const b = f.bereich;
+    wahl.appendChild(el("option", {value: String(i)},
+      f.titel + "  ·  " + (b[2] - b[0]) + "×" + (b[3] - b[1])
+      + " ab (" + b[0] + ", " + b[1] + ")"));
+  });
 }
 
 function scanListeZeichnen() {
@@ -3083,6 +3133,12 @@ function verdrahte() {
     rufScan("scan_oeffnen", {name: e.target.value}));
   $("scan-neu").addEventListener("click", () => rufScan("scan_neu"));
   $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
+  $("scan-vollbild").addEventListener("click", () => rufScan("scan_bereich_setzen"));
+  $("scan-fenster").addEventListener("change", (e) => {
+    const wahl = scanFenster[Number(e.target.value)];
+    e.target.value = "";
+    if (wahl) rufScan("scan_bereich_setzen", {bereich: wahl.bereich});
+  });
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {
     // 1:1 heisst: ein Bildschirm-Pixel ist ein Bildschirm-Pixel. Das Bild ist

@@ -653,6 +653,59 @@ def _find_window_by_title(title_substring: str):
     return found[0] if found else None
 
 
+def liste_fenster() -> list:
+    """Alle sichtbaren Fenster mit Titel als `(titel, (l, t, r, b))`.
+
+    Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: **dasselbe
+    Programm mehrmals offen.** Der Titel ist dann dreimal derselbe, und wer den
+    Scan auf die Fassung oben links legen will, braucht die Fenster einzeln —
+    unterscheidbar an ihrer Lage, nicht an ihrem Namen.
+
+    Geliefert wird der **Client-Bereich** (Inhalt ohne Titelleiste und Rahmen),
+    denn genau der ist das Spielfeld. Fenster ohne Titel, ohne Fläche oder
+    ausserhalb aller Monitore fallen weg: sie sind Werkzeugfenster des Systems
+    und in einer Auswahlliste nur Rauschen.
+
+    Sortiert nach Lage (oben vor unten, links vor rechts) — dieselbe Reihenfolge,
+    in der man sie auf dem Bildschirm sucht.
+    """
+    gefunden = []
+
+    def _cb(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        laenge = user32.GetWindowTextLengthW(hwnd)
+        if laenge <= 0:
+            return True
+        puffer = ctypes.create_unicode_buffer(laenge + 1)
+        user32.GetWindowTextW(hwnd, puffer, laenge + 1)
+        titel = (puffer.value or "").strip()
+        if not titel:
+            return True
+        rect = wintypes.RECT()
+        pt = wintypes.POINT(0, 0)
+        if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            return True
+        if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
+            return True
+        breite, hoehe = rect.right - rect.left, rect.bottom - rect.top
+        if breite < 80 or hoehe < 80:
+            return True
+        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe)))
+        return True
+
+    try:
+        user32.EnumWindows(_WNDENUMPROC(_cb), 0)
+    except (OSError, AttributeError):
+        return []
+    schirm = get_virtual_desktop()
+    if schirm:
+        gefunden = [(t, r) for t, r in gefunden
+                    if r[0] < schirm[2] and r[2] > schirm[0]
+                    and r[1] < schirm[3] and r[3] > schirm[1]]
+    return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
+
+
 def get_client_rect_by_title(title_substring: str):
     """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
     mit passendem Titel als absolute Bildschirm-Koordinaten.

@@ -299,28 +299,36 @@ class StudioBridge(ScanTeil):
         ob man ELSE braucht oder nicht.
 
         Gelesen wird **am Zeitstempel der Datei**, nicht bei jeder Momentaufnahme:
-        eine zwischenzeitlich geänderte Config soll zwar nicht bis zum nächsten
-        Fensterstart falsch angezeigt werden, aber `load_config()` schreibt bei
-        jedem Aufruf eine Zeile in die Konsole — pro Klick im Studio eine, das
-        ist Lärm. Scheitert das Lesen, bleibt das Feld leer; dann sagt die
-        Oberfläche nichts, statt zu raten.
+        eine zwischenzeitlich geänderte Config soll nicht bis zum nächsten
+        Fensterstart falsch angezeigt werden, aber jede Momentaufnahme neu zu
+        lesen wäre eine Dateioperation pro Klick. Scheitert das Lesen, bleibt
+        das Feld leer; dann sagt die Oberfläche nichts, statt zu raten.
+
+        Gelesen wird über `_config_datei()` und **nicht** über `load_config()`:
+        die schreibt die Datei, sobald ein Feld fehlt, und gibt dabei eine Zeile
+        in der Konsole aus. Weil dieser Subprozess seine Ausgabe mit dem
+        Hauptprozess teilt, stand dort beim Öffnen des Studios zweimal
+        „[CONFIG] Geladen" — einmal vom Import, einmal von hier. Ein Leser
+        schreibt weder Datei noch Konsole.
         """
         try:
-            from ...config import CONFIG_FILE, load_config
+            from ...config import CONFIG_FILE
             stand = Path(CONFIG_FILE).stat().st_mtime
         except OSError:
             stand = 0.0
         if stand != self._cfg_stand:
             self._cfg_stand = stand
-            try:
-                cfg = load_config()
-                self._cfg_info = {
-                    "sekunden": cfg.pixel_wait_timeout,
-                    "folge": TIMEOUT_TEXT.get(cfg.pixel_timeout_action,
-                                              cfg.pixel_timeout_action),
-                    "notbremse": cfg.pixel_max_consecutive_timeouts}
-            except Exception:
+            from ...config import CONFIG
+            roh, fehler = self._config_datei()
+            if fehler:
                 self._cfg_info = {}
+            else:
+                aktion = roh.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
+                self._cfg_info = {
+                    "sekunden": roh.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
+                    "folge": TIMEOUT_TEXT.get(aktion, aktion),
+                    "notbremse": roh.get("pixel_max_consecutive_timeouts",
+                                         CONFIG.pixel_max_consecutive_timeouts)}
         return self._cfg_info
 
     def _scan_namen(self) -> dict:
