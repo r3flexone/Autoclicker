@@ -436,12 +436,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Kein Bild, aber Slots: die Flaeche ist dann das Rechteck um sie herum. Sie
    traegt ihre Hoehe selbst (das leere <img> hat keine) und sagt gestrichelt,
    dass hier ein Hintergrund fehlt statt schwarz zu sein. */
-.scan-flaeche.ohne-bild{border:1px dashed var(--linie);background:#0F141F}
-/* Der Hinweis steht UNTEN: ueber jedem Slot haengt sein Name, und oben links
-   lagen beide uebereinander. Unterhalb der Slots zeichnet nichts. */
-.scan-flaeche.ohne-bild::before{content:"kein Bild gemerkt — die Slots stehen an ihrer Stelle";
-  position:absolute;bottom:6px;left:8px;font-size:11px;line-height:1.4;color:var(--dim);
-  letter-spacing:.04em;pointer-events:none;white-space:nowrap}
+/* `outline` und nicht `border`: bei `box-sizing:border-box` frisst ein Rahmen
+   zwei Pixel von der Breite, die das Overlay als Bezug nimmt — jede Koordinate
+   waere danach um einen Hauch verzogen. Ein Umriss liegt daneben statt drin. */
+.scan-flaeche.ohne-bild{outline:1px dashed var(--line);background:#0F141F}
+/* Der Hinweis steht UNTER der Flaeche, nicht darin. Drinnen lag er ueber den
+   Slots, sobald der Zoom klein war: sein Abstand zaehlt in Schirm-Pixeln, der
+   Rand der Flaeche in Bild-Pixeln mal Zoom — bei 45 Slots und 30 % Zoom sind
+   40 Bild-Pixel Rand noch 12 Schirm-Pixel, und der Text sass mitten drin. */
+#scan-ohne-bild{margin:8px 2px 0;font-size:11px;color:var(--dim);letter-spacing:.04em}
 #scan-overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 .scan-slot{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
 .scan-slot.gewaehlt{stroke:#fff;stroke-width:2.5}
@@ -731,6 +734,8 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
         <img id="scan-bild" alt="">
         <svg id="scan-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
+      <p id="scan-ohne-bild" hidden>kein Bild gemerkt — die Slots stehen an ihrer
+        Stelle. „Screenshot aufnehmen“ legt das Spiel dahinter.</p>
       <p class="leer" id="scan-leer">Noch kein Bild. „Screenshot aufnehmen" friert
         den Bildschirm ein — darauf werden die Slots aufgezogen.</p>
     </main>
@@ -2262,6 +2267,7 @@ async function scanBildPflegen() {
   const leer = $("scan-leer");
   if (!SC.foto) {
     $("scan-flaeche").hidden = true;
+    $("scan-ohne-bild").hidden = true;
     leer.hidden = false;
     leer.textContent = SC.pillow
       ? "Noch kein Bild. „Screenshot aufnehmen“ friert den Bildschirm ein — darauf werden die Slots aufgezogen."
@@ -2273,6 +2279,7 @@ async function scanBildPflegen() {
   // Ohne Bild bleibt die Flaeche leer, aber sie hat die Groesse und die Lage
   // der Slots — man sieht also, was der Scan hat, und kann es anfassen.
   $("scan-flaeche").classList.toggle("ohne-bild", !fotoDa());
+  $("scan-ohne-bild").hidden = fotoDa();
   // Woran man merkt, dass eine ANDERE Flaeche dasteht: beim Bild der
   // Zeitstempel, sonst ihre Groesse. Ohne diese Marke passte entweder gar
   // nichts mehr ein (Zoom vom vorigen Scan) oder bei jedem Neuzeichnen wieder,
@@ -2552,9 +2559,19 @@ function scanOverlay() {
       class: "scan-slot" + zustand + (gewaehlt ? " gewaehlt" : "")}));
     // Der Name steht ueber dem Rechteck, das Erkennungsergebnis darunter — so
     // ueberdeckt keins von beiden das Bild im Slot.
-    svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + fremd,
-      "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
-    if (s.treffer && s.treffer.name) {
+    //
+    // Aber nur, wenn er auch hineinpasst: die Schrift steht in SCHIRM-Pixeln
+    // (gegen den Zoom gerechnet), der Slot in Bild-Pixeln. Bei 45 Slots passt
+    // das Bild nur klein ins Fenster, und dann war jede Marke breiter als ihr
+    // Slot — 45 Namen uebereinander, aus denen keiner mehr lesbar war. Der
+    // gewaehlte behaelt seinen Namen: welcher es ist, ist die eine Frage, die
+    // auch bei 20 % beantwortet sein muss.
+    const breit = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
+    if (breit >= 34 || gewaehlt) {
+      svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + fremd,
+        "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
+    }
+    if (s.treffer && s.treffer.name && (breit >= 34 || gewaehlt)) {
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-marke",
         "font-size": 10 * px, "stroke-width": 3 * px, fill: "#3ED07A"}, s.treffer.name));
     }

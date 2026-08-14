@@ -728,6 +728,24 @@ standardmässig nur die Mitglieder, und er war keines — man musste den Filter
 ausschalten, ihn suchen und ein Häkchen setzen. Gilt für neue Slots, gedoppelte
 und gelernte Items.
 
+**Was in Schirm-Pixeln rechnet, muss den Zoom aushalten.** Marken und Hinweise
+werden gegen den Zoom gerechnet (`px = 1 / scanZoom`), damit sie in jeder
+Vergrösserung gleich gross dastehen — die Slots dagegen stehen in Bild-Pixeln.
+Bei einem vollen Inventar (45 Slots) passt das Bild nur klein ins Fenster, und
+dann läuft beides auseinander:
+
+- **Der Hinweis „kein Bild gemerkt" steht UNTER der Fläche**, nicht darin. Sein
+  Abstand zählte in Schirm-Pixeln, der Rand der Ersatzfläche in Bild-Pixeln mal
+  Zoom — bei 30 % sind 40 Bild-Pixel Rand noch zwölf Schirm-Pixel, und der Text
+  sass mitten in der untersten Slot-Reihe.
+- **Ein Name wird nur gezeichnet, wenn er in seinen Slot passt** (ab 34 px
+  Slot-Breite auf dem Schirm). Sonst standen 45 Marken übereinander, aus denen
+  keine mehr lesbar war. Der **gewählte** behält seinen immer: welcher es ist,
+  ist die eine Frage, die auch bei 20 % beantwortet sein muss.
+- Der gestrichelte Rand der Ersatzfläche ist ein `outline`, kein `border`: bei
+  `box-sizing: border-box` frässe ein Rahmen zwei Pixel von der Breite, die das
+  Overlay als Bezug nimmt.
+
 **Boss- und Icon-Scans sind hier noch nicht drin.** Das alte Fenster konnte sie,
 die Konsole (`CTRL+ALT+N`) kann sie weiterhin. Was sie brauchen — Region aus zwei
 Ecken, Farbe messen, Marker sammeln — liegt bereits als Modus-Mechanik da; es

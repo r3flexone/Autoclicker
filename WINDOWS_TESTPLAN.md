@@ -240,6 +240,10 @@ Items aller Spiele in einer Liste.
       auf den anderen Scan wechseln und zurück → das Bild ist sofort wieder da,
       mit den Slots darauf. Kein neuer Screenshot nötig.
       Datei: `item_scans/bilder/<name>.png`.
+- [ ] 🆕 **Volles Inventar ohne Bild** (45 Slots): die Ersatzfläche passt sich
+      ins Fenster ein, der Hinweis „kein Bild gemerkt" steht **unter** ihr, und
+      Slot-Namen stehen nur da, wo sie in ihren Slot passen. Herauszoomen lässt
+      sie verschwinden (ausser beim gewählten), hineinzoomen bringt sie zurück.
 - [ ] 🆕 Nach einem Neustart des Studios ist das Bild des Scans weiterhin da,
       und die Slots liegen an derselben Stelle wie im Spiel (Gegenprobe mit
       „Items erkennen").
