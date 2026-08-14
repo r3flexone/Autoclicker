@@ -472,6 +472,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-vorschau{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
   vector-effect:non-scaling-stroke}
 .scan-eck{fill:var(--accent)}
+/* Der Suchbereich der Slot-Erkennung. Andere Farbe als das Aufziehen eines
+   Slots: er schraenkt eine SUCHE ein und ist nach ihr wieder weg, waehrend ein
+   Slot-Rechteck bleibt. Gleich aussehende Rechtecke mit verschiedener Bedeutung
+   waeren dasselbe Problem wie ein Klick, dessen Wirkung man raten muss. */
+.scan-suchbereich{fill:#7C9CF51A;stroke:#7C9CF5;stroke-dasharray:6 4;stroke-width:1.5;
+  vector-effect:non-scaling-stroke}
 /* Die Listen links: eine Zeile pro Slot/Item/Scan, gewaehlt = Ring wie ueberall. */
 .scan-zeile{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;
   background:none;border:1px solid var(--line);width:100%;text-align:left;
@@ -2273,7 +2279,8 @@ const SCAN_MODI = [
   {key: "messen", text: "Hintergrundfarbe", taste: "F", hilfe: "Stelle im Slot anklicken"},
   {key: "klick", text: "Klickpunkt", taste: "K", hilfe: "wohin geklickt wird"},
   {key: "bereich", text: "Bereich", taste: "B", hilfe: "zwei Ecken um den Teil, der zählt"},
-  {key: "finden", text: "Slots finden", taste: "G", hilfe: "leeren Slot-Hintergrund anklicken"},
+  {key: "finden", text: "Slots finden", taste: "G",
+   hilfe: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
 ];
 
 async function zeichneScans(frisch) {
@@ -2461,14 +2468,19 @@ async function scanFensterPflegen() {
   wahl.hidden = false;
   wahl.replaceChildren();
   wahl.appendChild(el("option", {value: ""}, scanFenster.length
-    ? "— Bereich aus einem Fenster —" : "— keine Fenster gefunden —"));
+    ? "— kein Fenster (ganzer Bildschirm) —" : "— keine Fenster gefunden —"));
   scanFenster.forEach((f, i) => {
     // Die Lage steht dabei, weil sie das einzige Unterscheidungsmerkmal ist,
     // wenn dasselbe Programm mehrmals offen ist.
     const b = f.bereich;
-    wahl.appendChild(el("option", {value: String(i)},
+    const o = el("option", {value: String(i)},
       f.titel + "  ·  " + (b[2] - b[0]) + "×" + (b[3] - b[1])
-      + " ab (" + b[0] + ", " + b[1] + ")"));
+      + " ab (" + b[0] + ", " + b[1] + ")");
+    // **Die Wahl bleibt stehen.** Seit die Auswahl nicht mehr selbst aufnimmt,
+    // liegt zwischen "Fenster gewaehlt" und "Bild da" ein zweiter Klick — und
+    // in dieser Zeit muss ablesbar sein, WAS aufgenommen wird.
+    if (SC.fenster_id && f.id === SC.fenster_id) o.selected = true;
+    wahl.appendChild(o);
   });
 }
 
@@ -2534,9 +2546,16 @@ function scanListeSlots(ziel) {
       el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
                   style: s.farbe ? "background:" + s.farbe : ""}),
       el("span", {class: "name"}, s.name),
-      s.treffer && s.treffer.name
-        ? el("span", {class: "klein", style: "color:var(--ok)"}, s.treffer.name)
-        : el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe)));
+      // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
+      // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der
+      // Weg, ihn auszuwaehlen und zu loeschen.
+      s.winzig
+        ? el("span", {class: "klein", style: "color:var(--err)",
+                      title: "Zu klein zum Erkennen — hier auswählen und löschen"},
+             s.breite + "×" + s.hoehe + " ⚠")
+        : (s.treffer && s.treffer.name
+            ? el("span", {class: "klein", style: "color:var(--ok)"}, s.treffer.name)
+            : el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe))));
   }
 }
 
@@ -2653,6 +2672,19 @@ function scanOverlay() {
     const arm = 4 * px;
     svg.appendChild(svgEl("path", {class: "scan-kreuz",
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
+  }
+
+  // Der Suchbereich der Slot-Erkennung steht, bis die Farbe gezeigt ist. Ohne
+  // ihn klickt man den Hintergrund an, ohne zu sehen, worin gesucht wird — und
+  // ein zu eng gezogener Bereich saehe genauso aus wie ein zu weiter.
+  if (SC.suchbereich) {
+    const [ax, ay] = scanZuBild(SC.suchbereich[0], SC.suchbereich[1]);
+    const [bx, by] = scanZuBild(SC.suchbereich[2], SC.suchbereich[3]);
+    svg.appendChild(svgEl("rect", {class: "scan-suchbereich",
+      x: ax, y: ay, width: bx - ax, height: by - ay}));
+    svg.appendChild(svgEl("text", {x: ax, y: ay - 4 * px, class: "scan-marke",
+      "font-size": 11 * px, "stroke-width": 3 * px, fill: "#7C9CF5"},
+      "Suchbereich — jetzt leeren Slot-Hintergrund anklicken"));
   }
 
   // Die erste Ecke und das entstehende Rechteck: ohne die sieht man beim
@@ -3229,11 +3261,11 @@ function verdrahte() {
     () => rufScan("scan_modus_setzen", {modus: "bereich"}));
   $("scan-fenster").addEventListener("change", (e) => {
     const wahl = scanFenster[Number(e.target.value)];
-    e.target.value = "";
-    // Die Kennung geht mit: nur damit kann das Fenster DIREKT abgebildet
-    // werden, also auch dann, wenn etwas davor liegt.
-    if (wahl) rufScan("scan_bereich_setzen",
-                      {bereich: wahl.bereich, fenster: wahl.id});
+    // Waehlen nimmt NICHT auf — das tut der Knopf darueber. Vorher stand hier
+    // beides in einem Griff, und dann sah es aus, als handele die Liste von
+    // selbst und der Knopf gar nicht (er holte dasselbe Bild noch einmal).
+    if (wahl) rufScan("scan_bereich_setzen", {bereich: wahl.bereich, fenster: wahl.id});
+    else rufScan("scan_bereich_setzen");
   });
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {

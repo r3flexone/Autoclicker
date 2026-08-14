@@ -666,7 +666,7 @@ neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
 zusammengehören, laufen irgendwann auseinander, und dann sind alle Koordinaten
 still um einen Monitor verschoben.
 
-Vier Regeln, an denen der Reiter hängt:
+Fünf Regeln, an denen der Reiter hängt:
 
 - **Der Screenshot bleibt in Python.** Die Seite bekommt ihn einmal als
   verkleinertes Bild (`scan_bild()`, getrennt von `scan_daten()`, weil er der
@@ -677,6 +677,15 @@ Vier Regeln, an denen der Reiter hängt:
   verrutscht die Ecke um ein paar Pixel, und bei einem Slot von 60 px schneidet
   das schon das Symbol an. Zwischen den beiden Klicks zeigt die Ansicht das
   entstehende Rechteck.
+- **Was man nicht treffen kann, kann man nicht löschen.** Ein Slot von 2×2 px
+  entsteht aus zwei Klicks fast auf dieselbe Stelle — und war danach kaum wieder
+  loszuwerden, weil Löschen Auswählen voraussetzt. Drei Stellen zusammen lösen
+  das: `MIN_SLOT` (8) lässt ihn gar nicht erst entstehen, `TREFFER_MIN` (14)
+  weitet die *Trefferfläche* vorhandener Winzlinge auf (den Slot selbst nie —
+  gemessen wird, was dasteht), und `_klick_waehlen()` nimmt den **kleinsten**
+  Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
+  Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`winzig`): dort ist
+  er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
 - **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scans.py`: wählen, neuer
   Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
@@ -707,9 +716,26 @@ ahnt: „Items lernen" auf dem alten Bild lernt leere Slots.
 
 **Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
 `erkenne_slots_im_bild()` aus `editors/slot_editor.py`, die auch `repair`
-benutzt. Ein Klick auf einen leeren Slot-Hintergrund (Modus `finden`) legt alle
-an; ein volles Inventar von Hand wären 90 Klicks. Zwei Erkennungen wären zwei
-Ergebnisse.
+benutzt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
+leeren Slot-Hintergrund, und alle liegen da; ein volles Inventar von Hand wären
+90 Klicks. Zwei Erkennungen wären zwei Ergebnisse.
+
+**Gesucht wird in einem Bereich, nicht im ganzen Bild.** Eine Farbe ist kein Ort:
+liegt neben dem Inventar ein Menü in genau demselben Grau, wird es mitgefunden,
+und heraus kommen zwanzig Slots, von denen acht keine sind — was erst beim
+Erkennen auffällt, wenn man sie schon alle einzeln wegzuräumen hat. Der
+`_suchbereich` schränkt deshalb die **Suche** ein, nicht das Bild: anders als
+Modus `bereich` schneidet er nichts zu, gilt nur für diesen einen Durchgang und
+ist danach weg (jeder Moduswechsel, ESC und jede neue Aufnahme räumen ihn ab).
+Er wird gezeichnet, solange er steht — ein zu eng gezogener Bereich sähe sonst
+aus wie ein zu weiter.
+
+**Die Zelle wird um `scan_slot_inset` eingezogen** (`_mit_einzug()`) — dieselbe
+Rechnung, die `slot_auto_detect()` im Konsolen-Editor seit jeher macht und die
+hier fehlte: die Erkennung liefert die ganze Zelle samt Rahmen und Schatten, und
+ohne Einzug lernt jedes Item den Rahmen als Merkmal mit. Abgezogen wird nie mehr,
+als übrig bleiben darf. **Von Hand aufgezogene Slots bleiben unangetastet** —
+dort ist das Rechteck genau das, was gemeint war.
 
 Neu daran ist nur der Regler: `sv_toleranz` (Sättigung/Helligkeit) war fest auf
 ±50 verdrahtet, und **bei dunklen Oberflächen liegt der Panel-Hintergrund darin**
@@ -727,16 +753,29 @@ stören. Der Aufnahmebereich lässt sich auf drei Wegen setzen — Fensterliste
 (`winapi.liste_fenster()`), zwei Ecken im Bild (Modus `bereich`) oder direkt
 (`scan_bereich_setzen`) — und der Rückweg ist ein Knopf.
 
-Drei Eigenschaften, an denen das hängt:
+Vier Eigenschaften, an denen das hängt:
 
+- **Wählen und Aufnehmen sind zwei Dinge, also sind es zwei Klicks.**
+  `scan_bereich_setzen()` setzt nur das Ziel und sagt, was als Nächstes kommt;
+  das Bild holt der Knopf. Vorher nahm die Methode gleich mit auf, und das war
+  die verwirrendste Stelle des Reiters: wer ein Fenster aus der Liste wählte,
+  hatte plötzlich ein Bild, ohne etwas ausgelöst zu haben — und der Knopf
+  „Fenster aufnehmen" daneben schien danach nichts mehr zu tun, weil er dasselbe
+  Bild noch einmal holte. Ein Bedienelement, das von selbst handelt, und eines,
+  das scheinbar nicht handelt, sind derselbe Fehler von zwei Seiten. Aus
+  demselben Grund steht die **Uhrzeit** in der Aufnahme-Meldung: zwei Aufnahmen
+  desselben Spielstands sehen gleich aus, und eine Wort für Wort gleiche Meldung
+  lässt den Knopf kaputt wirken.
 - **Der Bereich steht IM gemerkten Bild**, nicht in der Scan-Datei: Ursprung und
   Grösse des PNG *sind* der Bereich. Ein zweites Feld daneben wäre eine zweite
   Wahrheit, und beim nächsten Öffnen fragte sich, welche gilt. Deckt das Bild
   den ganzen virtuellen Desktop ab, ist es kein Bereich, sondern Vollbild —
   sonst stünde „Bereich" für etwas, das keine Einschränkung ist.
-- **Zwei Ecken schneiden zu, sie nehmen nicht neu auf.** Zwischen den Klicks
-  vergeht Zeit; was man zugeschnitten hat, soll man auch bekommen. Gemerkt wird
-  der Bereich trotzdem — die *nächste* Aufnahme holt genau ihn.
+- **Zwei Ecken schneiden zu, sie nehmen nicht neu auf** — die Ausnahme zur ersten
+  Regel, denn hier ist der Zuschnitt das Ergebnis und nicht die Vorbereitung.
+  Zwischen den Klicks vergeht Zeit; was man zugeschnitten hat, soll man auch
+  bekommen. Gemerkt wird der Bereich trotzdem — die *nächste* Aufnahme holt
+  genau ihn.
 - **Slots ausserhalb werden gezählt und gesagt** (`_draussen_hinweis()`). Ein zu
   eng gesetzter Bereich ist sonst still: die Slots stehen weiter in der Liste,
   sind aber nicht zu sehen, und man sucht den Fehler bei der Erkennung.

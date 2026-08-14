@@ -5492,7 +5492,7 @@ import ast as _ast10, re as _re13
 from autoclicker.editors.sequence_studio.scans import (
     MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
     MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODUS_FINDEN as _MF18,
-    MODI as _MODI18,
+    MODI as _MODI18, MIN_SLOT as _MINSLOT18,
 )
 from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
 
@@ -5582,6 +5582,63 @@ try:
             check("ein Rechteck von einem Pixel wird abgelehnt",
                   len(_z18["slots"]) == 2 and _z18["status"]["art"] == "warn")
 
+            # --- Ein winziger Slot entsteht gar nicht erst ---
+            # Zwei Klicks fast auf dieselbe Stelle ergaben einen Slot von 2x2 px
+            # - und der war danach kaum wieder loszuwerden, weil man ihn im Bild
+            # nicht mehr traf. Loeschen setzt Auswaehlen voraus.
+            _b18.scan_modus_setzen({"modus": _MS18})
+            _b18.scan_klick({"x": 300, "y": 300})
+            _z18 = _b18.scan_klick({"x": 304, "y": 304})
+            check("ein Rechteck von vier Pixeln wird abgelehnt",
+                  len(_z18["slots"]) == 2 and _z18["status"]["art"] == "warn")
+            check("und die Meldung nennt das Mindestmass",
+                  str(_MINSLOT18) in _z18["status"]["text"])
+
+            # Vorhandene Winzlinge (aus einer alten Datei, aus getippten Zahlen)
+            # gibt es weiterhin - die muessen ANKLICKBAR sein, sonst bleiben sie
+            # fuer immer. Der Slot selbst wird dabei nicht angefasst.
+            _b18.slots["Winzling"] = _SLOT8(name="Winzling",
+                                            scan_region=(340, 40, 342, 42),
+                                            click_pos=(341, 41))
+            _b18.scan_modus_setzen({"modus": _MW18})
+            _z18 = _b18.scan_klick({"x": 344, "y": 44})
+            check("ein winziger Slot ist auch daneben noch zu treffen",
+                  _z18["wahl"]["name"] == "Winzling")
+            check("er bleibt dabei so klein, wie er ist",
+                  [s for s in _z18["slots"] if s["name"] == "Winzling"][0]["region"]
+                  == [340, 40, 342, 42])
+            check("und die Liste markiert ihn",
+                  [s for s in _z18["slots"] if s["name"] == "Winzling"][0]["winzig"] is True)
+            check("ein normaler Slot heisst nicht winzig",
+                  [s for s in _z18["slots"] if s["name"] == "Slot 1"][0]["winzig"] is False)
+
+            # Liegt er IN einem grossen, fing der grosse bisher jeden Klick ab.
+            # Der KLEINSTE gewinnt, nicht der zuletzt angelegte - deshalb kommt
+            # der Umschlag hier NACH dem Zwerg in die Liste: waere die Regel
+            # weiterhin "der letzte gewinnt", zeigte dieser Klick auf ihn.
+            _b18.slots["Zwerg"] = _SLOT8(name="Zwerg", scan_region=(128, 128, 134, 134),
+                                         click_pos=(131, 131))
+            _b18.slots["Umschlag"] = _SLOT8(name="Umschlag", scan_region=(120, 120, 200, 200),
+                                            click_pos=(160, 160))
+            _z18 = _b18.scan_klick({"x": 131, "y": 131})
+            check("ein kleiner Slot in einem grossen gewinnt den Klick",
+                  _z18["wahl"]["name"] == "Zwerg")
+            _z18 = _b18.scan_klick({"x": 190, "y": 190})
+            check("und der grosse bleibt ueberall sonst anklickbar",
+                  _z18["wahl"]["name"] == "Umschlag")
+            # Auch zwischen zwei grossen zaehlt die Flaeche, nicht die Reihenfolge.
+            _z18 = _b18.scan_klick({"x": 150, "y": 150})
+            check("zwischen zwei Slots gewinnt der kleinere",
+                  _z18["wahl"]["name"] == "Slot 1")
+            # Der Punkt der ganzen Uebung: anklickbar heisst loeschbar.
+            _b18.scan_klick({"x": 131, "y": 131})
+            _z18 = _b18.scan_slot_loeschen()
+            check("und damit ist er auch zu loeschen",
+                  all(s["name"] != "Zwerg" for s in _z18["slots"]))
+            _b18.scan_klick({"x": 344, "y": 44})
+            _b18.scan_slot_loeschen()
+            del _b18.slots["Umschlag"]
+
             # --- Farbe messen: im Item statt im Hintergrund ---
             _b18.scan_waehlen({"art": "slot", "name": _s18["name"]})
             _b18.scan_modus_setzen({"modus": _MM18})
@@ -5634,9 +5691,13 @@ try:
             check("genau ein Schritt ist der aktuelle",
                   sum(1 for s in _sch18 if s["aktuell"]) == 1)
 
-            # --- Slots finden: ein Klick statt zweier pro Slot ---
+            # --- Slots finden: Suchbereich, dann ein Klick auf den Hintergrund ---
             # 24 Slots von Hand sind 48 Klicks. Die Erkennung gibt es laengst -
             # dieselbe Funktion, die auch `repair` im Slot-Editor benutzt.
+            #
+            # Der Koeder unten rechts hat GENAU die Slot-Farbe und ist keiner:
+            # ein Menue neben dem Inventar. Ohne Suchbereich wird er mitgefunden,
+            # und das faellt erst beim Erkennen auf - dann hat man ihn schon.
             _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
             for _gy18 in range(2):
                 for _gx18 in range(3):
@@ -5644,19 +5705,54 @@ try:
                         for _py18 in range(60):
                             _gitter18.putpixel((40 + _gx18 * 80 + _px18,
                                                 40 + _gy18 * 80 + _py18), (48, 54, 68))
+            for _px18 in range(60):
+                for _py18 in range(60):
+                    _gitter18.putpixel((320 + _px18, 220 + _py18), (48, 54, 68))
             _slots_vorher18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18.scans["Weg"].slot_names.clear()
             _b18._foto = _gitter18
             _b18._anzeigebild(0, 0, 1.0)
+
+            # Der erste Klick ist keine Farbe mehr, sondern eine Ecke.
             _b18.scan_modus_setzen({"modus": _MF18})
+            _z18 = _b18.scan_klick({"x": 20, "y": 20})
+            check("der erste Klick beim Finden setzt eine Ecke",
+                  _z18["slots"] == [] and _z18["ecke"] == [20, 20])
+            _z18 = _b18.scan_klick({"x": 280, "y": 200})
+            check("die zweite Ecke ergibt den Suchbereich",
+                  _z18["suchbereich"] == [20, 20, 280, 200] and _z18["slots"] == [])
+            # Ein Klick daneben legt nichts an, sondern sagt es: sonst suchte man
+            # nach der Farbe, die man gerade danebengesetzt hat.
+            _z18 = _b18.scan_klick({"x": 350, "y": 250})
+            check("eine Farbe ausserhalb des Suchbereichs zaehlt nicht",
+                  _z18["slots"] == [] and _z18["status"]["art"] == "warn")
+
             _z18 = _b18.scan_klick({"x": 42, "y": 42})
             if _b18._hat_opencv():
-                check("ein Klick legt alle Slots an", len(_z18["slots"]) == 6)
+                check("der Klick auf den Hintergrund legt alle Slots an",
+                      len(_z18["slots"]) == 6)
+                check("der Koeder ausserhalb ist NICHT dabei",
+                      all(s["region"][0] < 300 for s in _z18["slots"]))
+                check("der Suchbereich ist danach wieder weg",
+                      _z18["suchbereich"] is None)
                 check("sie gehoeren gleich zum offenen Scan",
                       all(s["dabei"] for s in _z18["slots"]))
                 check("danach ist wieder Auswaehlen aktiv", _z18["modus"] == _MW18)
-                _z18 = _b18.scan_modus_setzen({"modus": _MF18})
+                # Der Einzug: die Erkennung liefert die ganze Zelle samt Rahmen,
+                # gescannt werden soll das Innere. Der Konsolen-Editor rechnet
+                # ihn seit jeher, das Studio tat es nicht - und lernte den Rahmen
+                # als Item-Merkmal mit.
+                import autoclicker.config as _cfg18
+                _ein18 = _cfg18.CONFIG.scan_slot_inset
+                check("die Zelle wird um scan_slot_inset eingezogen",
+                      all(s["breite"] == 60 - 2 * _ein18 for s in _z18["slots"]))
+                check("und es steht dabei, dass eingezogen wurde",
+                      "Einzug" in _z18["status"]["text"])
+
+                _b18.scan_modus_setzen({"modus": _MF18})
+                _b18.scan_klick({"x": 20, "y": 20})
+                _b18.scan_klick({"x": 280, "y": 200})
                 _z18 = _b18.scan_klick({"x": 42, "y": 42})
                 check("ein zweiter Durchgang verdoppelt nichts",
                       len(_z18["slots"]) == 6 and "schon da" in _z18["status"]["text"])
@@ -5665,8 +5761,26 @@ try:
                 # heraus. Das enger werdende Band faengt genau das ab.
                 check("das Panel wird nicht als ein Riesen-Slot genommen",
                       all(s["breite"] < 200 for s in _z18["slots"]))
+                # Gegenprobe zum Suchbereich: derselbe Klick, aber ein Bereich,
+                # der auch den Koeder umfasst - dann sind es sieben.
+                _b18.slots.clear()
+                _b18.scans["Weg"].slot_names.clear()
+                _b18.scan_modus_setzen({"modus": _MF18})
+                _b18.scan_klick({"x": 10, "y": 10})
+                _b18.scan_klick({"x": 395, "y": 295})
+                _z18 = _b18.scan_klick({"x": 42, "y": 42})
+                check("ein weiterer Suchbereich nimmt den Koeder mit",
+                      len(_z18["slots"]) == 7)
             else:
                 print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
+            # ESC raeumt einen halb gesetzten Suchbereich weg - sonst haengt er
+            # an einem Bild, das es gleich nicht mehr gibt.
+            _b18.scan_modus_setzen({"modus": _MF18})
+            _b18.scan_klick({"x": 20, "y": 20})
+            _b18.scan_klick({"x": 280, "y": 200})
+            _z18 = _b18.scan_abbrechen()
+            check("ESC verwirft den Suchbereich",
+                  _z18["suchbereich"] is None and _z18["modus"] == _MW18)
             # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
             # weiter auf "Slot 1" und dem gestellten Bild.
             _b18.slots.clear()
@@ -5711,12 +5825,36 @@ try:
             check("Slots ausserhalb des Bereichs werden gezaehlt",
                   "ausserhalb" in _z18["status"]["text"])
 
+            # **Waehlen nimmt nicht auf.** Das war die verwirrendste Stelle des
+            # Reiters: wer ein Fenster aus der Liste waehlte, hatte ploetzlich
+            # ein Bild, ohne etwas ausgeloest zu haben - und der Knopf daneben
+            # schien danach nichts mehr zu tun (er holte dasselbe Bild noch
+            # einmal, und zwei gleiche Bilder sehen gleich aus).
+            _alt18 = _b18.scan_daten()["foto"]["stand"]
             _z18 = _b18.scan_bereich_setzen({"bereich": [100, 100, 300, 300]})
             check("ein Bereich laesst sich auch direkt setzen",
                   _z18["bereich"] == [100, 100, 300, 300])
+            # Das alte Bild steht unveraendert da: 200x160 vom Zuschnitt vorhin,
+            # nicht 200x200 vom gerade gewaehlten Bereich.
+            check("aber die Wahl nimmt NICHT gleich auf",
+                  _z18["foto"]["stand"] == _alt18
+                  and (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 160))
+            check("sie sagt stattdessen, was als naechstes kommt",
+                  "aufnehmen" in _z18["status"]["text"])
+            _z18 = _b18.scan_foto()
+            check("erst der Knopf holt das Bild",
+                  (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 200))
+            # Und man SIEHT, dass aufgenommen wurde: zwei Aufnahmen desselben
+            # Spielstands sehen gleich aus, also muss die Meldung sich unter-
+            # scheiden. Sonst wirkt der Knopf kaputt.
+            check("die Aufnahme sagt, wann sie gemacht wurde",
+                  "aufgenommen um" in _z18["status"]["text"])
+
             _z18 = _b18.scan_bereich_setzen()
             check("und ohne Angabe geht es zurueck auf Vollbild",
-                  _z18["bereich"] is None and _z18["foto"]["breite"] == 400)
+                  _z18["bereich"] is None)
+            check("auch das erst nach dem Aufnehmen",
+                  _b18.scan_foto()["foto"]["breite"] == 400)
             _z18 = _b18.scan_bereich_setzen({"bereich": [10, 10, 12, 12]})
             check("ein Bereich von zwei Pixeln gilt nicht als Bereich",
                   _z18["bereich"] is None)

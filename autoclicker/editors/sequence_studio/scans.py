@@ -57,6 +57,16 @@ ART_SLOT = "slot"
 ART_ITEM = "item"
 ART_SCAN = "scan"
 
+# Kleiner als das ist kein Slot, sondern ein Verklicker: zwei Klicks fast auf
+# dieselbe Stelle. Angelegt wurde so ein Gebilde bisher trotzdem — und war dann
+# kaum wieder loszuwerden, weil man es im Bild nicht mehr traf.
+MIN_SLOT = 8
+# Wie gross ein Slot mindestens sein muss, um ihn ANKLICKEN zu können. Nicht
+# dasselbe wie `MIN_SLOT`: kleine Slots gibt es weiterhin (aus einer alten
+# Datei, aus getippten Zahlen), und gerade die will man auswählen können, um
+# sie zu löschen. Die Trefferfläche wächst, der Slot bleibt, wie er ist.
+TREFFER_MIN = 14
+
 # Breiter als das wird das Bild für die Anzeige nicht geschickt. Ein virtueller
 # Desktop aus drei Monitoren ist schnell 5760 px breit; als PNG sind das
 # mehrere MB, die durch die JS-Brücke müssten. Gemessen wird ohnehin im
@@ -89,6 +99,11 @@ class ScanTeil:
         self._foto_bild: str = ""              # data:-URL, verkleinert
         self._foto_info: Optional[dict] = None
         self._ecke: Optional[tuple] = None     # erste Ecke beim Aufziehen
+        # Worin die Slot-Erkennung sucht. Nur für den einen Durchgang, deshalb
+        # nicht neben `scan_bereich`: der schränkt das BILD ein und gilt für
+        # jede weitere Aufnahme, dieser hier schränkt eine SUCHE ein und ist
+        # danach wieder weg.
+        self._suchbereich: Optional[tuple] = None
         # Welcher Teil des Bildschirms aufgenommen wird. None = alles. Nicht in
         # der Scan-Datei, sondern IM gemerkten Bild: dessen Ursprung und Grösse
         # SIND der Bereich, und zwei Stellen für dieselbe Angabe liefen
@@ -246,11 +261,19 @@ class ScanTeil:
         self._foto = bild
         self._foto_merken(bild, links, oben)
         self._anzeigebild(links, oben, time.time())
-        # Ein alter Treffer gehört zu einem alten Bild.
+        # Ein alter Treffer gehört zu einem alten Bild, ein alter Suchbereich
+        # auch: er stand in Bildschirm-Koordinaten um ein Inventar, das jetzt
+        # woanders liegen kann.
         self._treffer = {}
+        self._suchbereich = None
         wo = "Fenster" if self.scan_fenster_id and not hinweis else (
             "Bereich" if bereich else "Vollbild")
-        return self._scan_melde(f"{wo}: {bild.width}×{bild.height} px "
+        # **Die Uhrzeit steht dabei, damit man SIEHT, dass aufgenommen wurde.**
+        # Zwei Aufnahmen desselben Spielstands sehen gleich aus, und wenn auch
+        # die Meldung Wort für Wort dieselbe ist, wirkt der Knopf kaputt — genau
+        # der Eindruck, wegen dem hier vorher „passiert nichts" gemeldet wurde.
+        return self._scan_melde(f"{wo} aufgenommen um {time.strftime('%H:%M:%S')}: "
+                                f"{bild.width}×{bild.height} px "
                                 f"ab ({links}, {oben}).{hinweis}"
                                 f"{self._draussen_hinweis()}",
                                 "warn" if hinweis else "ok")
@@ -318,10 +341,22 @@ class ScanTeil:
         return f" {len(draussen)} Slot(s) liegen ausserhalb." if draussen else ""
 
     def scan_bereich_setzen(self, daten: Optional[dict] = None) -> dict:
-        """Setzt den Aufnahmebereich und nimmt ihn gleich auf.
+        """Setzt, WAS aufgenommen wird — aufgenommen wird erst auf Knopfdruck.
 
         Ohne `bereich` heisst es Vollbild — der Rückweg, ohne den ein einmal
         eingeschränkter Scan nie wieder das Ganze sähe.
+
+        **Wählen und Aufnehmen sind zwei Dinge, also sind es zwei Klicks.**
+        Vorher nahm diese Methode gleich mit auf, und das war die verwirrendste
+        Stelle des Reiters: wer ein Fenster aus der Liste wählte, hatte plötzlich
+        ein Bild, ohne etwas ausgelöst zu haben — und der Knopf „Fenster
+        aufnehmen" daneben schien danach nichts mehr zu tun, weil er dasselbe
+        Bild noch einmal holte und zwei gleiche Bilder gleich aussehen. Ein
+        Bedienelement, das von selbst handelt, und eines, das scheinbar nicht
+        handelt, sind derselbe Fehler von zwei Seiten.
+
+        `_klick_bereich` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
+        sofort zu: dort ist der Zuschnitt das Ergebnis, nicht die Vorbereitung.
         """
         self._scan_laden()
         self.scan_bereich = self._bereich_aus(daten or {})
@@ -329,7 +364,14 @@ class ScanTeil:
             self.scan_fenster_id = int((daten or {}).get("fenster") or 0)
         except (TypeError, ValueError):
             self.scan_fenster_id = 0
-        return self.scan_foto()
+        if not self.scan_bereich:
+            return self._scan_melde("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
+                                    "info")
+        x1, y1, x2, y2 = self.scan_bereich
+        wo = "Fenster" if self.scan_fenster_id else "Bereich"
+        return self._scan_melde(
+            f"{wo} gewählt: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1}) — "
+            f"jetzt „{wo} aufnehmen“.", "info")
 
     def scan_fenster(self, daten: Optional[dict] = None) -> list:
         """Die offenen Fenster mit ihrer Lage — zur Auswahl des Bereichs.
@@ -513,11 +555,11 @@ class ScanTeil:
         hat_slots = bool(cfg.slot_names) if cfg else bool(self.slots)
         hat_items = bool(cfg.item_names) if cfg else bool(self.items)
         roh = [
-            (1, "Bereich", "Fenster wählen oder Ausschnitt aufziehen — dann "
-                "Screenshot.", self._foto is not None,
+            (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
+                "wählen.", self._foto is not None,
              "scan_foto", "Screenshot aufnehmen"),
-            (2, "Slots", "Auf einen LEEREN Slot-Hintergrund klicken — das legt "
-                "alle auf einmal an.", hat_slots,
+            (2, "Slots", "Bereich um das Inventar aufziehen, dann auf einen "
+                "LEEREN Slot-Hintergrund klicken.", hat_slots,
              "modus:" + MODUS_FINDEN, "Slots finden"),
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
              hat_items, "scan_items_lernen", "aus allen Slots lernen"),
@@ -579,6 +621,10 @@ class ScanTeil:
         return {
             "modus": self.scan_modus,
             "ecke": list(self._ecke) if self._ecke else None,
+            # Der Suchbereich muss zu SEHEN sein, solange man noch die Farbe
+            # zeigen soll — sonst klickt man den Hintergrund an und weiss nicht,
+            # worin gesucht wird.
+            "suchbereich": list(self._suchbereich) if self._suchbereich else None,
             "foto": self._flaeche(),
             "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
             "items": [self._item_json(i, i.name in dabei_items) for i in self.items.values()],
@@ -618,14 +664,21 @@ class ScanTeil:
 
     def _slot_json(self, slot: ItemSlot, dabei: bool = False) -> dict:
         treffer = self._treffer.get(slot.name)
+        breite = slot.scan_region[2] - slot.scan_region[0]
+        hoehe = slot.scan_region[3] - slot.scan_region[1]
         return {
             "dabei": dabei,
             "name": slot.name,
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
             "farbe": hexfarbe(slot.slot_color),
-            "breite": slot.scan_region[2] - slot.scan_region[0],
-            "hoehe": slot.scan_region[3] - slot.scan_region[1],
+            "breite": breite,
+            "hoehe": hoehe,
+            # Zu klein, um je etwas zu erkennen — und im Bild kaum zu treffen.
+            # Neu entstehen kann so einer nicht mehr; wer noch einen hat, soll
+            # ihn in der LISTE finden, denn dort ist er so gross wie jeder
+            # andere. Das ist der zweite Weg zum Löschen.
+            "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
             "treffer": treffer,
         }
 
@@ -702,13 +755,17 @@ class ScanTeil:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
         self.scan_modus = modus
         self._ecke = None
+        # Jeder Wechsel fängt die Suche von vorn an: ein Suchbereich von vorhin
+        # gehört zu einer Absicht von vorhin.
+        self._suchbereich = None
         texte = {
             MODUS_WAHL: "Auswählen: auf einen Slot klicken.",
             MODUS_SLOT: "Neuer Slot: zwei Ecken anklicken.",
             MODUS_MESSEN: "Farbe messen: auf den Slot-Hintergrund klicken.",
             MODUS_KLICK: "Klickpunkt: die Stelle im Slot anklicken.",
             MODUS_BEREICH: "Bereich: zwei Ecken um den Teil, der zählt.",
-            MODUS_FINDEN: "Slots finden: auf einen leeren Slot-Hintergrund klicken.",
+            MODUS_FINDEN: "Slots finden: zwei Ecken um das Inventar, dann auf "
+                          "einen leeren Slot-Hintergrund darin klicken.",
         }
         return self._scan_melde(texte[modus], "info")
 
@@ -762,8 +819,14 @@ class ScanTeil:
             return self._scan_melde("Erste Ecke gesetzt — jetzt die zweite.", "info")
         x1, y1, x2, y2 = normalize_region(self._ecke[0], self._ecke[1], x, y)
         self._ecke = None
-        if x2 - x1 < 2 or y2 - y1 < 2:
-            return self._scan_melde("Zu klein — nochmal aufziehen.", "warn")
+        # **Ein Slot von 2×2 px ist nie gewollt, sondern ein Doppelklick.** Er
+        # entstand trotzdem — und war danach kaum wieder loszuwerden, weil man
+        # ihn im Bild nicht mehr traf. Ihn gar nicht erst anzulegen ist die
+        # Reparatur, die keine Bedienoberfläche kostet.
+        if x2 - x1 < MIN_SLOT or y2 - y1 < MIN_SLOT:
+            return self._scan_melde(
+                f"Zu klein ({x2 - x1}×{y2 - y1} px, mindestens {MIN_SLOT}) — "
+                "nochmal aufziehen.", "warn")
 
         name = next_slot_name(self.slots)
         # Der Hintergrund wird an der INNEREN Ecke gemessen, nicht in der Mitte:
@@ -782,7 +845,7 @@ class ScanTeil:
             f"{name}: {x2 - x1}×{y2 - y1} px{gemessen}")
 
     def _klick_finden(self, x: int, y: int) -> dict:
-        """Ein Klick auf einen leeren Slot-Hintergrund legt ALLE Slots an.
+        """Erst den Suchbereich aufziehen, dann den Hintergrund zeigen.
 
         Der Schritt, der im Studio fehlte: ein volles Inventar sind 45 Slots und
         damit 90 Klicks, wenn man jeden einzeln aufzieht. Die Erkennung dafür
@@ -790,21 +853,43 @@ class ScanTeil:
         dieselbe Funktion, die auch `repair` benutzt. Zwei Erkennungen wären
         zwei Ergebnisse.
 
-        Gebraucht wird nur eine Farbe, und die zeigt man statt sie zu tippen.
+        **Gesucht wird in einem Bereich, nicht im ganzen Bild.** Eine Farbe ist
+        kein Ort: liegt neben dem Inventar ein Menü in genau demselben Grau,
+        wird es mitgefunden, und heraus kommen zwanzig Slots, von denen acht
+        keine sind. Das fiel erst beim Erkennen auf, und dann hat man sie schon
+        alle einzeln wegzuräumen. Der Bereich beantwortet dieselbe Frage vorher
+        und mit zwei Klicks.
+
+        Die beiden Ecken schränken deshalb nur die **Suche** ein — anders als
+        `MODUS_BEREICH`, der das Bild zuschneidet und für jede weitere Aufnahme
+        gilt. Das Bild bleibt, wie es ist; nur diese eine Erkennung sieht
+        weniger davon.
+
         Angelegt wird, was nicht schon einen Slot hat: ein zweiter Durchgang
         ergänzt also, statt zu verdoppeln.
         """
         if self._foto is None or self._foto_info is None:
             return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
+        if self._suchbereich is None:
+            return self._such_ecke(x, y)
+
+        sx1, sy1, sx2, sy2 = self._suchbereich
+        if not (sx1 <= x <= sx2 and sy1 <= y <= sy2):
+            return self._scan_melde(
+                "Die Stelle liegt neben dem Suchbereich — hinein klicken, oder "
+                "mit ESC von vorn.", "warn")
         farbe = self._foto_farbe(x, y)
         if farbe is None:
             return self._scan_melde("Dort liegt kein Bild — erst aufnehmen.", "warn")
         if not self._hat_opencv():
             return self._scan_melde(
                 "Das Finden braucht OpenCV: pip install opencv-python", "err")
+        ausschnitt = self._foto_crop(self._suchbereich)
+        if ausschnitt is None:
+            return self._scan_melde("Der Suchbereich liegt nicht im Bild.", "warn")
 
         try:
-            rechtecke = self._slots_suchen(farbe)
+            rechtecke = self._slots_suchen(ausschnitt, farbe)
         except Exception as fehler:                     # OpenCV/NumPy-Innenleben
             return self._scan_melde(f"Erkennung fehlgeschlagen: {fehler}", "err")
         if not rechtecke:
@@ -812,10 +897,10 @@ class ScanTeil:
                 f"Nichts gefunden zu {hexfarbe(farbe)} — auf eine LEERE Stelle im "
                 "Slot klicken, nicht auf ein Item.", "warn")
 
-        links, oben = int(self._foto_info["links"]), int(self._foto_info["oben"])
         neu, schon = 0, 0
         for rx, ry, rb, rh in rechtecke:
-            region = (links + rx, oben + ry, links + rx + rb, oben + ry + rh)
+            region = self._mit_einzug(
+                (sx1 + rx, sy1 + ry, sx1 + rx + rb, sy1 + ry + rh))
             if self._slot_an_stelle(region):
                 schon += 1
                 continue
@@ -826,20 +911,66 @@ class ScanTeil:
                 slot_color=farbe)
             self._dazu(ART_SLOT, name)
             neu += 1
+        self._suchbereich = None
         if not neu:
             return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da.", "info")
         self.scan_modus = MODUS_WAHL
         teile = f"{neu} Slot(s) angelegt"
         if schon:
             teile += f", {schon} schon vorhanden"
-        return self._scan_geaendert(f"{teile} · Hintergrund {hexfarbe(farbe)}")
+        return self._scan_geaendert(f"{teile} · Hintergrund {hexfarbe(farbe)}"
+                                    f"{self._einzug_hinweis()}")
+
+    def _such_ecke(self, x: int, y: int) -> dict:
+        """Die zwei Ecken um das Inventar — der erste Teil von `finden`."""
+        if self._ecke is None:
+            self._ecke = (x, y)
+            return self._scan_melde(
+                "Suchbereich: erste Ecke um das Inventar — jetzt die zweite.", "info")
+        x1, y1, x2, y2 = normalize_region(self._ecke[0], self._ecke[1], x, y)
+        self._ecke = None
+        if x2 - x1 < 8 or y2 - y1 < 8:
+            return self._scan_melde("Zu klein — nochmal aufziehen.", "warn")
+        self._suchbereich = (x1, y1, x2, y2)
+        return self._scan_melde(
+            f"Suchbereich {x2 - x1}×{y2 - y1} px — jetzt auf einen LEEREN "
+            "Slot-Hintergrund darin klicken.", "info")
+
+    def _mit_einzug(self, region: tuple) -> tuple:
+        """Zieht den Slot-Rand um `scan_slot_inset` ein.
+
+        **Dieselbe Rechnung wie im Konsolen-Editor** (`slot_auto_detect` in
+        `editors/slot_editor.py`), und sie fehlte hier: die Erkennung liefert
+        das Rechteck der ganzen Zelle samt Rahmen und Schatten. Ohne Einzug
+        lernt jedes Item den Rahmen als Merkmal mit, und beim Vergleich zählt
+        er wie ein Teil des Symbols.
+
+        Nie mehr abziehen, als übrig bleiben darf: bei einer 24-px-Zelle wären
+        zweimal 10 px fast nichts mehr. Von Hand aufgezogene Slots bleiben
+        unangetastet — dort ist das Rechteck genau das, was gemeint war.
+        """
+        from ...config import CONFIG
+        breite, hoehe = region[2] - region[0], region[3] - region[1]
+        einzug = min(max(0, int(CONFIG.scan_slot_inset)),
+                     (min(breite, hoehe) - MIN_SLOT) // 2)
+        if einzug <= 0:
+            return region
+        return (region[0] + einzug, region[1] + einzug,
+                region[2] - einzug, region[3] - einzug)
+
+    @staticmethod
+    def _einzug_hinweis() -> str:
+        """Sagt, dass eingezogen wurde — sonst wundert man sich über die Grösse."""
+        from ...config import CONFIG
+        einzug = max(0, int(CONFIG.scan_slot_inset))
+        return f" · Einzug {einzug} px (Einstellungen: scan_slot_inset)" if einzug else ""
 
     # Enger werdende Bänder für Sättigung und Helligkeit. Der erste Wert ist der
     # des Konsolen-Editors; die engeren braucht es bei dunklen Oberflächen, wo
     # Slot und Panel sich nur um wenige Stufen unterscheiden.
     _SV_STUFEN = (50, 35, 25, 18, 12, 8)
 
-    def _slots_suchen(self, farbe: tuple) -> list:
+    def _slots_suchen(self, bild, farbe: tuple) -> list:
         """Sucht die Slots mit mehreren Toleranzen und nimmt das beste Ergebnis.
 
         **Eine feste Toleranz reicht nicht.** Gemessen an einem dunklen Inventar:
@@ -857,11 +988,11 @@ class ScanTeil:
         """
         from ..slot_editor import erkenne_slots_im_bild
         from ...config import CONFIG
-        flaeche = self._foto.width * self._foto.height
+        flaeche = bild.width * bild.height
         bestes: list = []
         for sv in self._SV_STUFEN:
             rechtecke, _ = erkenne_slots_im_bild(
-                self._foto, farbe, CONFIG.scan_slot_hsv_tolerance, sv_toleranz=sv)
+                bild, farbe, CONFIG.scan_slot_hsv_tolerance, sv_toleranz=sv)
             rechtecke = [r for r in rechtecke if r[2] * r[3] * 2 <= flaeche]
             if len(rechtecke) > len(bestes):
                 bestes = rechtecke
@@ -899,22 +1030,47 @@ class ScanTeil:
         return self._scan_geaendert(f"{slot.name}: Klickpunkt ({x}, {y})")
 
     def _klick_waehlen(self, x: int, y: int) -> dict:
-        """Den obersten Slot unter der Stelle auswählen.
+        """Den kleinsten Slot unter der Stelle auswählen.
 
-        Rückwärts durch die Liste, damit bei überlappenden Slots der zuletzt
-        angelegte gewinnt — das ist der, den man gerade vor sich hat.
+        **Nicht den obersten, sondern den kleinsten** — und das ist der
+        Unterschied zwischen „auswählbar" und „für immer da". Ein winziger Slot,
+        der versehentlich in einem grossen liegt, war sonst nicht zu treffen: der
+        grosse fing jeden Klick ab, und gelöscht wird, was gewählt ist. Der
+        kleinste ist ohnehin immer der, den man meint; der grosse bleibt überall
+        sonst anklickbar.
+
+        Dazu eine Trefferfläche von mindestens `TREFFER_MIN` px: was zwei Pixel
+        gross ist, trifft man auch dann nicht, wenn nichts darüber liegt. Der
+        Slot selbst wird davon nicht angefasst — nur, wo man ihn packen kann.
+
+        Bei gleicher Grösse gewinnt weiterhin der zuletzt angelegte: das ist
+        der, den man gerade vor sich hat.
         """
-        for slot in reversed(list(self.slots.values())):
-            x1, y1, x2, y2 = slot.scan_region
-            if x1 <= x <= x2 and y1 <= y <= y2:
-                self.scan_art, self.scan_name = ART_SLOT, slot.name
-                return self.scan_daten()
-        self.scan_name = ""
+        gewaehlt, kleinste = None, None
+        for slot in self.slots.values():
+            x1, y1, x2, y2 = self._trefferflaeche(slot.scan_region)
+            if not (x1 <= x <= x2 and y1 <= y <= y2):
+                continue
+            flaeche = ((slot.scan_region[2] - slot.scan_region[0]) *
+                       (slot.scan_region[3] - slot.scan_region[1]))
+            if kleinste is None or flaeche <= kleinste:
+                gewaehlt, kleinste = slot.name, flaeche
+        self.scan_art = ART_SLOT if gewaehlt else self.scan_art
+        self.scan_name = gewaehlt or ""
         return self.scan_daten()
+
+    @staticmethod
+    def _trefferflaeche(region: tuple) -> tuple:
+        """Das Rechteck, mit dem ein Klick verglichen wird — nie unter TREFFER_MIN."""
+        x1, y1, x2, y2 = region
+        wx = max(0, (TREFFER_MIN - (x2 - x1)) // 2)
+        wy = max(0, (TREFFER_MIN - (y2 - y1)) // 2)
+        return (x1 - wx, y1 - wy, x2 + wx, y2 + wy)
 
     def scan_abbrechen(self, daten: Optional[dict] = None) -> dict:
         """ESC: eine halb gesetzte Ecke verwerfen, zurück ins Auswählen."""
         self._ecke = None
+        self._suchbereich = None
         self.scan_modus = MODUS_WAHL
         return self.scan_daten()
 
