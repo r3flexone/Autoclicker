@@ -56,6 +56,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
   border:1px solid var(--line);color:var(--text);white-space:nowrap;
 }
 .btn:hover{border-color:var(--dim)}
+/* Ein Knopf, der einen MODUS einschaltet, muss zeigen, dass er an ist — sonst
+   klickt man ihn ein zweites Mal und wundert sich. Ringsum wie ueberall. */
+.btn.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
 .btn.haupt{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
 .btn.haupt:hover{filter:brightness(1.08)}
 .btn.still{background:none;border-color:transparent;color:var(--muted);padding:4px 7px}
@@ -737,6 +740,12 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
                   title="wieder den ganzen Bildschirm aufnehmen">Vollbild</button>
         </div>
         <select id="scan-fenster" class="scan-fensterwahl"></select>
+        <!-- Derselbe Befehl wie die Kachel „Bereich" weiter unten. Zwei Wege
+             zu einer Sache sind hier richtig: gesucht wird er HIER, bei den
+             anderen Bereichs-Bedienelementen, und die Kacheln sind die Legende
+             dazu, was ein Klick gerade tut. -->
+        <button class="btn still" id="scan-aufziehen"
+                title="zwei Ecken im Bild anklicken">Bereich aufziehen</button>
         <div class="reihe">
           <button class="btn still" id="scan-fit" title="ins Fenster einpassen">einpassen</button>
           <button class="btn still" id="scan-1zu1" title="Originalgrösse">1:1</button>
@@ -2249,6 +2258,10 @@ let SC = null;
 // erst waehlt man ihn, dann sieht man seine Slots und seine Items.
 let scanListe = "scans";
 let scanZoom = 1;
+// Hat der Nutzer den Zoom selbst gesetzt (1:1 oder STRG+Rad)? Dann fasst ihn
+// die Fenstergroesse nicht mehr an — sonst raeumte ein Verschieben des Fensters
+// die gerade eingestellte Vergroesserung weg.
+let scanZoomHand = false;
 let scanFotoStand = 0;
 let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
 let scanZeiger = null;            // letzte Mausposition im Bild (fuer die Vorschau)
@@ -2337,6 +2350,7 @@ function scanEinpassen() {
   // haengt ein Inventar von 300 px verloren in einer Ecke.
   const grenze = fotoDa() ? 1 : 4;
   scanZoom = Math.max(0.05, Math.min(grenze, platz / SC.foto.breite));
+  scanZoomHand = false;
   scanZoomAnwenden();
 }
 
@@ -2402,6 +2416,10 @@ function scanWerkzeuge() {
     : "Vollbild";
   bz.classList.toggle("an", !!SC.bereich);
   $("scan-vollbild").disabled = !SC.bereich || !SC.pillow;
+  // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
+  const auf = $("scan-aufziehen");
+  auf.disabled = !fotoDa();
+  auf.classList.toggle("an", SC.modus === "bereich");
   scanFensterPflegen();
 }
 
@@ -3201,6 +3219,8 @@ function verdrahte() {
   $("scan-neu").addEventListener("click", () => rufScan("scan_neu"));
   $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
   $("scan-vollbild").addEventListener("click", () => rufScan("scan_bereich_setzen"));
+  $("scan-aufziehen").addEventListener("click",
+    () => rufScan("scan_modus_setzen", {modus: "bereich"}));
   $("scan-fenster").addEventListener("change", (e) => {
     const wahl = scanFenster[Number(e.target.value)];
     e.target.value = "";
@@ -3211,6 +3231,7 @@ function verdrahte() {
     // 1:1 heisst: ein Bildschirm-Pixel ist ein Bildschirm-Pixel. Das Bild ist
     // fuer die Uebertragung verkleinert, also muss der Zoom das ausgleichen.
     scanZoom = SC && SC.foto ? 1 / SC.foto.skala : 1;
+    scanZoomHand = true;
     scanZoomAnwenden();
   });
   const flaeche = $("scan-overlay");
@@ -3230,8 +3251,23 @@ function verdrahte() {
     if (!e.ctrlKey || !SC || !SC.foto) return;
     e.preventDefault();
     scanZoom = Math.max(0.05, Math.min(4, scanZoom * (e.deltaY < 0 ? 1.15 : 0.87)));
+    scanZoomHand = true;
     scanZoomAnwenden();
   }, {passive: false});
+
+  // **Die Buehne aendert ihre Groesse mit dem Fenster, das Bild tat es nicht.**
+  // Wer klein aufnimmt und dann gross zieht, sah sein Bild in einer Ecke kleben;
+  // wer gross aufnimmt und klein zieht, musste scrollen. Beides ist derselbe
+  // fehlende Handgriff. Ein von Hand gesetzter Zoom bleibt stehen — der ist eine
+  // Ansage, die Fenstergroesse nicht.
+  let scanRahmen = 0;
+  window.addEventListener("resize", () => {
+    if (ansicht !== "scans" || !SC || !SC.foto || scanZoomHand) return;
+    // Gebuendelt: waehrend des Ziehens am Fensterrand feuert das im Dutzend,
+    // und jeder Aufruf baut das Overlay neu.
+    clearTimeout(scanRahmen);
+    scanRahmen = setTimeout(scanEinpassen, 120);
+  });
 
   $("dialog-ab").addEventListener("click", schliesseFrage);
   $("dialog-weg").addEventListener("click", () => fortfahren(true));

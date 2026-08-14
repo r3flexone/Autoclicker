@@ -299,6 +299,13 @@ Der Fall: dasselbe Spiel mehrmals offen, und der Scan soll nur eines davon sehen
       gemerkten Bild).
 - [ ] 🆕 Bereich zu eng setzen → die Statuszeile sagt, wie viele Slots
       ausserhalb liegen.
+- [ ] 🆕 **Fenstergrösse ändern**: klein machen, Screenshot, wieder gross ziehen
+      → das Bild passt sich mit an, statt in der Ecke zu kleben. Umgekehrt
+      genauso. Ein von Hand gesetzter Zoom (1:1 oder STRG+Rad) bleibt dabei
+      stehen — den ändert nur „einpassen".
+- [ ] 🆕 „Bereich aufziehen" steht als Knopf bei den anderen
+      Bereichs-Bedienelementen (nicht nur als Kachel unten) und zeigt, dass er
+      an ist. Danach: zwei Klicks im Bild.
 - [ ] 🆕 Mit **negativen** Koordinaten (Spiel auf dem linken Monitor): ein aus
       der Fensterliste gesetzter Bereich trifft, und die Slots sitzen nach dem
       Neuöffnen noch.

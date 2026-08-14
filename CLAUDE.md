@@ -741,6 +741,20 @@ Drei Eigenschaften, an denen das hängt:
   eng gesetzter Bereich ist sonst still: die Slots stehen weiter in der Liste,
   sind aber nicht zu sehen, und man sucht den Fehler bei der Erkennung.
 
+**Das Bild passt sich der Fenstergrösse an — aber nur, wenn niemand gezoomt
+hat.** Die Bühne ändert ihre Grösse mit dem Fenster, das Bild tat es nicht: wer
+klein aufnahm und dann gross zog, sah es in einer Ecke kleben, und ein Bereich
+liess sich bei 31 % kaum noch treffen. `scanZoomHand` unterscheidet die beiden
+Fälle: 1:1 und STRG+Rad sind eine Ansage und bleiben stehen, die Fenstergrösse
+ist keine. Der Aufruf ist gebündelt (120 ms), sonst baut jedes Ziehen am
+Fensterrand das Overlay ein Dutzend Mal neu.
+
+**Den Bereich zieht man dort auf, wo er steht** — als Knopf in BILD, neben
+Fensterliste und „Vollbild". Die Modus-Kachel gibt es weiterhin; beide schicken
+denselben Befehl, es gibt also keinen zweiten Zustand. Als *nur* sechste Kachel
+in der Modus-Liste war er da, wo niemand ihn sucht: die Kacheln beantworten
+„was tut ein Klick gerade", nicht „wie schränke ich das Bild ein".
+
 **Die Fensterliste liefert den Client-Bereich, sortiert nach Lage.** Für
 „dasselbe Programm dreimal offen" hilft `get_client_rect_by_title()` nicht: der
 Titel ist dreimal derselbe. Unterscheidbar sind sie nur an der Position — die
