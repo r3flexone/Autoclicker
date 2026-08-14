@@ -44,8 +44,22 @@ _gdi32.DeleteObject.restype = wintypes.BOOL
 _gdi32.DeleteDC.argtypes = [wintypes.HDC]
 _gdi32.DeleteDC.restype = wintypes.BOOL
 
+_user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+_user32.PrintWindow.restype = wintypes.BOOL
+_user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+_user32.GetWindowRect.restype = wintypes.BOOL
+_user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+_user32.GetClientRect.restype = wintypes.BOOL
+_user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+_user32.ClientToScreen.restype = wintypes.BOOL
+
 # BitBlt-Rasteroperation: Quelle 1:1 kopieren (Windows GDI SRCCOPY).
 SRCCOPY = 0x00CC0020
+
+# PrintWindow: das ganze Fenster zeichnen lassen, samt GPU-beschleunigtem
+# Inhalt. Ohne dieses Flag (ab Windows 8.1) bleiben Browser und viele Spiele
+# leer — dann waere die ganze Funktion nutzlos für den Fall, für den es sie gibt.
+PW_RENDERFULLCONTENT = 0x00000002
 
 # BITMAPINFOHEADER für Screenshots (einmal definiert, wiederverwendbar)
 class BITMAPINFOHEADER(ctypes.Structure):
@@ -485,6 +499,123 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
                 _user32.ReleaseDC(hwnd, hwndDC)
         except OSError:
             pass
+
+
+def take_window_screenshot(hwnd: int) -> Optional[tuple]:
+    """Bildet EIN Fenster ab — auch wenn etwas davor liegt.
+
+    Gibt `(bild, (l, t, r, b))` zurück: den **Client-Bereich** (Inhalt ohne
+    Titelleiste und Rahmen) und dessen Lage in Bildschirm-Koordinaten, damit
+    alles Weitere rechnet wie bei einem Ausschnitt vom Desktop. `None`, wenn es
+    nicht geht.
+
+    **Warum nicht BitBlt vom Desktop:** das kopiert, was auf dem Schirm zu sehen
+    ist — also auch das Studio-Fenster, das davor liegt. Genau der Fall, den man
+    hier nicht will. `PrintWindow` fordert das Fenster stattdessen auf, sich
+    selbst zu zeichnen; ob es dabei sichtbar ist, spielt keine Rolle.
+
+    `PW_RENDERFULLCONTENT` (0x2, ab Windows 8.1) ist der Teil, auf den es
+    ankommt: ohne dieses Flag liefern Fenster mit GPU-beschleunigtem Inhalt
+    (Browser, viele Spiele) ein leeres Rechteck. Eine Garantie ist es trotzdem
+    nicht — manche Vollbild-Spiele geben weiterhin Schwarz zurück. Deshalb prüft
+    der Aufrufer das Ergebnis und fällt notfalls auf den Desktop zurück; ein
+    schwarzes Bild wäre schlimmer als ein verdecktes, weil es aussieht, als
+    hätte es geklappt.
+    """
+    if not PILLOW_AVAILABLE or not NUMPY_AVAILABLE or not hwnd:
+        return None
+
+    hwndDC = None
+    memDC = None
+    bmp = None
+    old_bmp = None
+    try:
+        fenster = wintypes.RECT()
+        client = wintypes.RECT()
+        if not _user32.GetWindowRect(hwnd, ctypes.byref(fenster)):
+            return None
+        if not _user32.GetClientRect(hwnd, ctypes.byref(client)):
+            return None
+        ecke = wintypes.POINT(0, 0)
+        if not _user32.ClientToScreen(hwnd, ctypes.byref(ecke)):
+            return None
+        breite = fenster.right - fenster.left
+        hoehe = fenster.bottom - fenster.top
+        cb = client.right - client.left
+        ch = client.bottom - client.top
+        if breite <= 0 or hoehe <= 0 or cb <= 0 or ch <= 0:
+            return None
+
+        hwndDC = _user32.GetWindowDC(hwnd)
+        memDC = _gdi32.CreateCompatibleDC(hwndDC)
+        bmp = _gdi32.CreateCompatibleBitmap(hwndDC, breite, hoehe)
+        old_bmp = _gdi32.SelectObject(memDC, bmp)
+
+        if not _user32.PrintWindow(hwnd, memDC, PW_RENDERFULLCONTENT):
+            logger.error("PrintWindow fehlgeschlagen")
+            return None
+
+        bi = BITMAPINFOHEADER()
+        bi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bi.biWidth = breite
+        bi.biHeight = -hoehe
+        bi.biPlanes = 1
+        bi.biBitCount = 32
+        bi.biCompression = 0
+        puffer = (ctypes.c_char * (breite * hoehe * 4))()
+        if _gdi32.GetDIBits(memDC, bmp, 0, hoehe, puffer, ctypes.byref(bi), 0) == 0:
+            logger.error("GetDIBits fehlgeschlagen (Fensterbild)")
+            return None
+
+        roh = np.frombuffer(puffer, dtype=np.uint8).reshape((hoehe, breite, 4))
+        bild = Image.fromarray(roh[:, :, [2, 1, 0]])
+        # Aus dem GANZEN Fenster den Client-Bereich schneiden: PrintWindow malt
+        # Rahmen und Titelleiste mit, und die gehören nicht zum Spielfeld.
+        dx = ecke.x - fenster.left
+        dy = ecke.y - fenster.top
+        bild = bild.crop((dx, dy, dx + cb, dy + ch))
+        return bild, (ecke.x, ecke.y, ecke.x + cb, ecke.y + ch)
+    except (OSError, ValueError, AttributeError) as e:
+        logger.error(f"Fenster-Screenshot fehlgeschlagen: {e}")
+        return None
+    finally:
+        try:
+            if old_bmp and memDC:
+                _gdi32.SelectObject(memDC, old_bmp)
+        except OSError:
+            pass
+        try:
+            if bmp:
+                _gdi32.DeleteObject(bmp)
+        except OSError:
+            pass
+        try:
+            if memDC:
+                _gdi32.DeleteDC(memDC)
+        except OSError:
+            pass
+        try:
+            if hwndDC:
+                _user32.ReleaseDC(hwnd, hwndDC)
+        except OSError:
+            pass
+
+
+def ist_leer(bild) -> bool:
+    """Ist das Bild einfarbig? Dann hat sich das Fenster nicht gezeichnet.
+
+    Der Prüfstein hinter `take_window_screenshot`: manche Fenster liefern trotz
+    `PW_RENDERFULLCONTENT` eine schwarze Fläche. Die sieht aus wie ein Ergebnis,
+    ist aber keines — und alles Weitere (Slots finden, Farbe messen) arbeitete
+    dann auf Nichts, ohne dass es jemand merkt.
+    """
+    if bild is None:
+        return True
+    try:
+        ecken = bild.convert("RGB").getcolors(maxcolors=4)
+    except (OSError, ValueError):
+        return False
+    return bool(ecken) and len(ecken) <= 1
 
 
 def analyze_screen_colors(region: tuple = None, pixel_step: int = 2) -> dict:

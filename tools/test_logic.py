@@ -3731,6 +3731,51 @@ _unten12 = [x for x, y in _dunkel12 if y > 19.2 * 32 / 24]    # unter der letzte
 check("die Zeilen stehen von unten nach oben in der Datei",
       _oben12 and _unten12 and max(_oben12) > max(_unten12) + 3)
 
+# --- Ein gewaehltes Fenster wird DIREKT abgebildet ---
+# Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu sehen ist - also auch
+# das Studio, das davor liegt. PrintWindow fragt das Fenster selbst.
+import autoclicker.imaging as _img12
+
+check("es gibt einen Weg, ein Fenster direkt abzubilden",
+      callable(getattr(_img12, "take_window_screenshot", None)))
+# PW_RENDERFULLCONTENT ist der Teil, auf den es ankommt: ohne dieses Flag
+# liefern Fenster mit GPU-beschleunigtem Inhalt ein leeres Rechteck.
+check("und zwar mit PW_RENDERFULLCONTENT",
+      getattr(_img12, "PW_RENDERFULLCONTENT", 0) == 0x2)
+check("ohne Fenster-Kennung passiert nichts",
+      _img12.take_window_screenshot(0) is None)
+
+# Der Pruefstein dahinter: manche Fenster geben trotz des Flags Schwarz zurueck.
+# Das sieht aus wie ein Ergebnis und ist keines - alles Weitere arbeitete dann
+# auf Nichts, ohne dass es jemand merkt.
+try:
+    from PIL import Image as _PIL12
+    _pillow_da2 = True
+except ImportError:
+    _pillow_da2 = False
+if _pillow_da2:
+    check("eine einfarbige Flaeche gilt als leer",
+          _img12.ist_leer(_PIL12.new("RGB", (8, 8), (0, 0, 0))) is True)
+    _bunt12 = _PIL12.new("RGB", (8, 8), (0, 0, 0))
+    _bunt12.putpixel((4, 4), (255, 0, 0))
+    check("ein Bild mit Inhalt nicht", _img12.ist_leer(_bunt12) is False)
+check("und None erst recht", _img12.ist_leer(None) is True)
+
+# Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
+# spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
+# Fassungen desselben Spiels ist er dreimal derselbe.
+_quelle_wf12 = Path("autoclicker/winapi.py").read_text(encoding="utf-8")
+_lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle_wf12))
+             if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "liste_fenster")
+_anhaenge12 = [_n12 for _n12 in _ast11.walk(_lf12)
+               if isinstance(_n12, _ast11.Call)
+               and isinstance(_n12.func, _ast11.Attribute)
+               and _n12.func.attr == "append"]
+check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
+      len(_anhaenge12) == 1
+      and isinstance(_anhaenge12[0].args[0], _ast11.Tuple)
+      and len(_anhaenge12[0].args[0].elts) == 3)
+
 # --- Das Studio laedt die Config nicht zweimal ---
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von

@@ -755,6 +755,30 @@ denselben Befehl, es gibt also keinen zweiten Zustand. Als *nur* sechste Kachel
 in der Modus-Liste war er da, wo niemand ihn sucht: die Kacheln beantworten
 „was tut ein Klick gerade", nicht „wie schränke ich das Bild ein".
 
+**Ein gewähltes Fenster wird DIREKT abgebildet — verdeckt oder nicht.**
+`imaging.take_window_screenshot(hwnd)` über `PrintWindow` mit
+`PW_RENDERFULLCONTENT`; ein Ausschnitt vom Desktop zeigt dagegen, was auf dem
+Schirm zu sehen ist, also auch das Studio-Fenster davor. Genau deshalb kommt die
+Fenster-**Kennung** aus `liste_fenster()` mit: über den Titel ginge es nicht, der
+ist bei drei Fassungen desselben Spiels dreimal derselbe.
+
+Vier Regeln dazu:
+
+- **Nur für die Sitzung.** Ein Fenster-Handle überlebt keinen Neustart; ein
+  gespeichertes zeigte beim nächsten Mal irgendwohin. Gemerkt wird im PNG
+  weiterhin nur der Bereich.
+- **Geliefert wird der Client-Bereich**, aus dem gerenderten Gesamtfenster
+  geschnitten — `PrintWindow` malt Rahmen und Titelleiste mit, und die gehören
+  nicht zum Spielfeld. Damit bleiben alle Koordinaten Bildschirm-Koordinaten,
+  und alles Weitere rechnet wie bei einem Ausschnitt.
+- **Ein schwarzes Bild ist kein Ergebnis.** Manche Vollbild-Spiele geben trotz
+  des Flags eine leere Fläche zurück. `ist_leer()` erkennt das, und dann wird
+  auf den Desktop-Ausschnitt zurückgefallen **und es gesagt** — sonst arbeiteten
+  Slot-Suche und Farbmessung auf Nichts, ohne dass es jemand merkt.
+- **Ein Zuschnitt von Hand löst die Bindung.** Wer im Fensterbild zwei Ecken
+  aufzieht, will diesen Ausschnitt; die nächste Aufnahme holte sonst wieder das
+  ganze Fenster.
+
 **Die Fensterliste liefert den Client-Bereich, sortiert nach Lage.** Für
 „dasselbe Programm dreimal offen" hilft `get_client_rect_by_title()` nicht: der
 Titel ist dreimal derselbe. Unterscheidbar sind sie nur an der Position — die

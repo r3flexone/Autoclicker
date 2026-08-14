@@ -654,7 +654,7 @@ def _find_window_by_title(title_substring: str):
 
 
 def liste_fenster() -> list:
-    """Alle sichtbaren Fenster mit Titel als `(titel, (l, t, r, b))`.
+    """Alle sichtbaren Fenster als `(titel, (l, t, r, b), hwnd)`.
 
     Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: **dasselbe
     Programm mehrmals offen.** Der Titel ist dann dreimal derselbe, und wer den
@@ -691,7 +691,12 @@ def liste_fenster() -> list:
         breite, hoehe = rect.right - rect.left, rect.bottom - rect.top
         if breite < 80 or hoehe < 80:
             return True
-        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe)))
+        # Das Handle kommt mit: nur damit laesst sich das Fenster spaeter
+        # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
+        # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
+        # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
+        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe),
+                         int(hwnd)))
         return True
 
     try:
@@ -700,9 +705,9 @@ def liste_fenster() -> list:
         return []
     schirm = get_virtual_desktop()
     if schirm:
-        gefunden = [(t, r) for t, r in gefunden
-                    if r[0] < schirm[2] and r[2] > schirm[0]
-                    and r[1] < schirm[3] and r[3] > schirm[1]]
+        gefunden = [e for e in gefunden
+                    if e[1][0] < schirm[2] and e[1][2] > schirm[0]
+                    and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
     return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
 
 

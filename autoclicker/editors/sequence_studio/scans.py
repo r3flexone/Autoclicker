@@ -94,6 +94,11 @@ class ScanTeil:
         # SIND der Bereich, und zwei Stellen für dieselbe Angabe liefen
         # auseinander.
         self.scan_bereich: Optional[tuple] = None
+        # Das gewaehlte Fenster. Damit wird es DIREKT abgebildet, also auch
+        # dann, wenn etwas davor liegt — allen voran dieses Studio. Nur fuer
+        # die Sitzung: ein Fenster-Handle ueberlebt keinen Neustart, und ein
+        # gespeichertes zeigte beim naechsten Mal irgendwohin.
+        self.scan_fenster_id: int = 0
         self.scan_modus: str = MODUS_WAHL
         self.scan_art: str = ART_SLOT
         self.scan_name: str = ""
@@ -226,7 +231,13 @@ class ScanTeil:
         if bereich is None:
             bereich = self.scan_bereich
 
-        bild = take_screenshot(bereich) if bereich else take_screenshot()
+        # Ein gewaehltes Fenster wird direkt abgebildet — verdeckt oder nicht.
+        bild, hinweis = None, ""
+        if self.scan_fenster_id:
+            bild, bereich, hinweis = self._fensterbild(bereich)
+
+        if bild is None:
+            bild = take_screenshot(bereich) if bereich else take_screenshot()
         if bild is None:
             return self._scan_melde("Screenshot fehlgeschlagen.", "err")
 
@@ -237,9 +248,43 @@ class ScanTeil:
         self._anzeigebild(links, oben, time.time())
         # Ein alter Treffer gehört zu einem alten Bild.
         self._treffer = {}
-        wo = "Bereich" if bereich else "Vollbild"
+        wo = "Fenster" if self.scan_fenster_id and not hinweis else (
+            "Bereich" if bereich else "Vollbild")
         return self._scan_melde(f"{wo}: {bild.width}×{bild.height} px "
-                                f"ab ({links}, {oben}).{self._draussen_hinweis()}")
+                                f"ab ({links}, {oben}).{hinweis}"
+                                f"{self._draussen_hinweis()}",
+                                "warn" if hinweis else "ok")
+
+    def _fensterbild(self, bereich):
+        """Bildet das gewählte Fenster ab. `(bild, bereich, hinweis)`.
+
+        **Das ist der Grund, warum man ein Fenster wählt und nicht nur einen
+        Ausschnitt.** Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu
+        sehen ist — also auch das Studio, das davor liegt. `PrintWindow` fragt
+        das Fenster selbst; ob es verdeckt ist, spielt keine Rolle.
+
+        Drei Dinge können schiefgehen, und jedes wird gesagt statt geschluckt:
+        das Fenster gibt es nicht mehr, es zeichnet sich nicht (schwarze Fläche
+        trotz `PW_RENDERFULLCONTENT` — kommt bei manchen Vollbild-Spielen vor),
+        oder es ist inzwischen umgezogen. In den ersten beiden Fällen wird auf
+        den Desktop-Ausschnitt zurückgefallen: ein verdecktes Bild ist immer
+        noch besser als ein schwarzes, das aussieht, als hätte es geklappt.
+        """
+        try:
+            from ...imaging import ist_leer, take_window_screenshot
+        except ImportError:
+            return None, bereich, ""
+        ergebnis = take_window_screenshot(self.scan_fenster_id)
+        if ergebnis is None:
+            self.scan_fenster_id = 0
+            return None, bereich, " Fenster nicht mehr da — Bildschirm genommen."
+        bild, rechteck = ergebnis
+        if ist_leer(bild):
+            return None, bereich, (" Das Fenster zeichnet sich nicht selbst — "
+                                   "Bildschirm genommen, es darf nichts davor liegen.")
+        umgezogen = bereich and tuple(bereich) != tuple(rechteck)
+        return bild, rechteck, (" Das Fenster ist umgezogen, die Slots stehen noch "
+                                "an der alten Stelle." if umgezogen else "")
 
     @staticmethod
     def _bereich_aus(daten: dict) -> Optional[tuple]:
@@ -280,6 +325,10 @@ class ScanTeil:
         """
         self._scan_laden()
         self.scan_bereich = self._bereich_aus(daten or {})
+        try:
+            self.scan_fenster_id = int((daten or {}).get("fenster") or 0)
+        except (TypeError, ValueError):
+            self.scan_fenster_id = 0
         return self.scan_foto()
 
     def scan_fenster(self, daten: Optional[dict] = None) -> list:
@@ -295,8 +344,8 @@ class ScanTeil:
             from ...winapi import liste_fenster
         except ImportError:
             return []
-        return [{"titel": titel, "bereich": list(rechteck)}
-                for titel, rechteck in liste_fenster()]
+        return [{"titel": titel, "bereich": list(rechteck), "id": kennung}
+                for titel, rechteck, kennung in liste_fenster()]
 
     def _klick_bereich(self, x: int, y: int) -> dict:
         """Zwei Ecken schränken das Bild ein — zugeschnitten, nicht neu geholt.
@@ -319,6 +368,10 @@ class ScanTeil:
                                  int(self._foto_info["links"]), int(self._foto_info["oben"]))
         if ausschnitt is None:
             return self._scan_melde("Der Bereich liegt nicht im Bild.", "warn")
+        # Ein von Hand gesetzter Ausschnitt ist kleiner als das Fenster — ab
+        # jetzt gilt er, nicht mehr das Fenster. Sonst holte die naechste
+        # Aufnahme wieder das ganze Fenster und der Zuschnitt waere weg.
+        self.scan_fenster_id = 0
         self.scan_bereich = (x1, y1, x2, y2)
         self._foto = ausschnitt
         self._foto_merken(ausschnitt, x1, y1)
@@ -532,6 +585,7 @@ class ScanTeil:
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
+            "fenster_id": self.scan_fenster_id,
             "schritte": self._schritte(),
             "offen": self.scan_offen,
             "nur_dabei": self.nur_dabei,
@@ -1182,6 +1236,7 @@ class ScanTeil:
         self._foto_bild = ""
         self._foto_info = None
         self.scan_bereich = None
+        self.scan_fenster_id = 0
         return self._scan_melde("Kein Scan offen — der ganze Bestand steht da.", "info")
 
     def scan_filter(self, daten: Optional[dict] = None) -> dict:

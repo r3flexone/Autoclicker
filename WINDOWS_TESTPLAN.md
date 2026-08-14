@@ -299,6 +299,19 @@ Der Fall: dasselbe Spiel mehrmals offen, und der Scan soll nur eines davon sehen
       gemerkten Bild).
 - [ ] 🆕 Bereich zu eng setzen → die Statuszeile sagt, wie viele Slots
       ausserhalb liegen.
+- [ ] 🆕 **Das gewählte Fenster darf verdeckt sein.** Spiel aus der Liste
+      wählen, dann das Studio-Fenster **darüber** schieben und „Fenster
+      aufnehmen" drücken → im Bild steht das Spiel, nicht das Studio. Das ist
+      der Punkt, an dem `PrintWindow` sich bewähren muss; klappt es bei Idle
+      Clans nicht, kommt die Meldung „Das Fenster zeichnet sich nicht selbst"
+      und es wird auf den Bildschirm zurückgefallen. Bitte melden, falls das
+      passiert — dann bleibt nur, das Studio zur Seite zu schieben.
+- [ ] 🆕 Nach der Fensterwahl heisst der Knopf „Fenster aufnehmen" und die Zeile
+      darunter „Fenster <Breite>×<Höhe> ab (x, y)".
+- [ ] 🆕 Spiel schliessen, dann „Fenster aufnehmen" → „Fenster nicht mehr da",
+      Bildschirm wird genommen, die Bindung ist gelöst.
+- [ ] 🆕 Spiel verschieben, dann aufnehmen → Hinweis „Das Fenster ist umgezogen,
+      die Slots stehen noch an der alten Stelle."
 - [ ] 🆕 **Fenstergrösse ändern**: klein machen, Screenshot, wieder gross ziehen
       → das Bild passt sich mit an, statt in der Ecke zu kleben. Umgekehrt
       genauso. Ein von Hand gesetzter Zoom (1:1 oder STRG+Rad) bleibt dabei

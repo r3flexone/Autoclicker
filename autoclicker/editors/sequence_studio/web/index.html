@@ -2405,15 +2405,21 @@ function scanWerkzeuge() {
   }
   scanSchritte();
   $("scan-foto").disabled = !SC.pillow;
-  $("scan-foto").textContent = SC.bereich ? "Bereich aufnehmen" : "Screenshot aufnehmen";
+  $("scan-foto").textContent = SC.fenster_id ? "Fenster aufnehmen"
+    : (SC.bereich ? "Bereich aufnehmen" : "Screenshot aufnehmen");
 
   // Der Bereich gilt fuer JEDE weitere Aufnahme dieses Scans — er muss also
   // dastehen, nicht nur in der Statuszeile aufblitzen.
   const bz = $("scan-bereich");
-  bz.textContent = SC.bereich
-    ? "Bereich " + (SC.bereich[2] - SC.bereich[0]) + "×" + (SC.bereich[3] - SC.bereich[1])
-      + " ab (" + SC.bereich[0] + ", " + SC.bereich[1] + ")"
-    : "Vollbild";
+  bz.textContent = !SC.bereich ? "Vollbild"
+    : (SC.fenster_id ? "Fenster " : "Bereich ")
+      + (SC.bereich[2] - SC.bereich[0]) + "×" + (SC.bereich[3] - SC.bereich[1])
+      + " ab (" + SC.bereich[0] + ", " + SC.bereich[1] + ")";
+  // Bei einem gewaehlten Fenster steht dabei, was das bedeutet: es wird direkt
+  // abgebildet, also darf das Studio davor liegen.
+  bz.title = SC.fenster_id
+    ? "Das Fenster wird direkt abgebildet — es darf verdeckt sein."
+    : (SC.bereich ? "Ausschnitt vom Bildschirm — hier darf nichts davor liegen." : "");
   bz.classList.toggle("an", !!SC.bereich);
   $("scan-vollbild").disabled = !SC.bereich || !SC.pillow;
   // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
@@ -3224,7 +3230,10 @@ function verdrahte() {
   $("scan-fenster").addEventListener("change", (e) => {
     const wahl = scanFenster[Number(e.target.value)];
     e.target.value = "";
-    if (wahl) rufScan("scan_bereich_setzen", {bereich: wahl.bereich});
+    // Die Kennung geht mit: nur damit kann das Fenster DIREKT abgebildet
+    // werden, also auch dann, wenn etwas davor liegt.
+    if (wahl) rufScan("scan_bereich_setzen",
+                      {bereich: wahl.bereich, fenster: wahl.id});
   });
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {

@@ -1417,6 +1417,7 @@ steht auf einmal da.
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
+- **Reiter „Scans"**: ein aus der Liste gewähltes **Fenster wird direkt abgebildet** — es darf also verdeckt sein, auch vom Studio selbst. Klappt das bei einem Spiel nicht (manche zeichnen sich nicht auf Zuruf), sagt es das und nimmt den Bildschirm.
 - **Reiter „Scans"**: **nicht immer Vollbild** — wer dasselbe Spiel mehrmals offen hat, wählt das Fenster aus einer Liste (Titel *und* Lage, denn nur die unterscheidet sie) oder zieht mit zwei Ecken einen Bereich auf. Der Bereich gilt für jede weitere Aufnahme dieses Scans und überlebt das Schliessen; ein Knopf holt Vollbild zurück. Liegen Slots ausserhalb, sagt es das.
 - **Reiter „Scans"**: der Item-Scan ist die Klammer: oben wählt man ihn, und Listen, Bild und Erkennung zeigen nur noch, was zu ihm gehört (ein Schalter blendet den ganzen Bestand ein). Offen ist beim Start der zuletzt bearbeitete. Jeder Scan merkt sich seinen Bildschirm — beim Öffnen ist er sofort wieder da, statt einer leeren Fläche; und ein älterer Scan **ohne** gemerktes Bild zeigt wenigstens seine Slots an ihrer Stelle, bis ein Screenshot sich dahinterlegt. Das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
   Item-Scans entstehen jetzt im selben Fenster wie die Sequenz, die sie benutzt.
