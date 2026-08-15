@@ -6318,6 +6318,25 @@ check("und SLOT_FARBE deckt genau die Zustaende ab",
       sorted(_re13.findall(r"(\w+):\s*s\.getPropertyValue", _html18))
       == sorted(_zustaende18))
 
+# --- Jeder Neuaufbau rettet den Fokus hinueber ---
+# Tipp-Felder melden beim VERLASSEN (`change`), also loest genau der TAB-Sprung
+# den Neuaufbau aus - und `replaceChildren()` wirft dabei das Feld weg, in dem
+# man inzwischen steht. Gemeldet wurde es am Item (Name tippen, TAB nach
+# Kategorie, Cursor weg); dieselbe Falle steckt in jedem Neuaufbau mit Feldern.
+def _js_rumpf18(name: str) -> str:
+    """Der Text einer JS-Funktion bis zur naechsten auf Spaltenebene 0."""
+    start = _html18.index(f"function {name}(")
+    rest = _html18[start + 10:]
+    ende = _re13.search(r"\n(?:async )?function ", rest)
+    return rest[:ende.start()] if ende else rest
+
+_neuaufbau18 = ("zeichne", "zeichneScans", "zeichneEinstellungen")
+_ohne_fokus18 = [n for n in _neuaufbau18
+                 if "fokusMerken()" not in _js_rumpf18(n)
+                 or "fokusHerstellen(" not in _js_rumpf18(n)]
+check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
+      not _ohne_fokus18)
+
 # --- Das Dear-PyGui-Fenster ist wirklich weg ---
 # Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,
 # was frueher unter `scan_canvas/` lag, ist die Begruendung fuer den heutigen

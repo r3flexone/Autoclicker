@@ -985,6 +985,45 @@ function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
   return beschriftung ? el("label", {class: "feld"}, beschriftet(beschriftung, hilfe, schluessel), s) : s;
 }
 
+/* ---------------------------------------------------- Fokus ueber den Neuaufbau
+ *
+ * **Jede Meldung baut die Ansicht neu — und nimmt dabei das Feld weg, in dem man
+ * gerade steht.** Tipp-Felder melden beim Verlassen (`change`), also loest genau
+ * der TAB-Sprung den Neuaufbau aus; bis die Bruecke geantwortet hat, liegt der
+ * Fokus schon im naechsten Feld, und `replaceChildren()` wirft es weg. Sichtbar
+ * wurde das beim Item: Namen tippen, TAB nach Kategorie — und der Cursor war weg.
+ *
+ * Gemerkt wird die POSITION unter den Eingabefeldern des naechsten Elements mit
+ * `id`, nicht das Element selbst (das gibt es danach nicht mehr) und auch kein
+ * eigener Schluessel an jedem Feld (den muesste jeder Bauer mitschleppen, und ein
+ * vergessener faellt nicht auf). Der Aufbau des Inspektors haengt am Typ des
+ * gewaehlten Dings, nicht an seinen Werten — die Position bleibt also stehen. */
+function fokusMerken() {
+  const a = document.activeElement;
+  if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
+  const kasten = a.closest("[id]");
+  if (!kasten) return null;
+  const felder = [...kasten.querySelectorAll("input, select, textarea")];
+  const i = felder.indexOf(a);
+  if (i < 0) return null;
+  // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
+  let start = null, ende = null;
+  try { start = a.selectionStart; ende = a.selectionEnd; } catch (e) { /* egal */ }
+  return {id: kasten.id, i: i, start: start, ende: ende};
+}
+
+function fokusHerstellen(merk) {
+  if (!merk) return;
+  const kasten = document.getElementById(merk.id);
+  if (!kasten) return;
+  const ziel = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
+  if (!ziel) return;
+  ziel.focus();
+  if (merk.start !== null) {
+    try { ziel.setSelectionRange(merk.start, merk.ende); } catch (e) { /* egal */ }
+  }
+}
+
 function segment(werte, aktuell, beim_setzen) {
   return el("div", {class: "segment"}, werte.map((w) =>
     el("button", {class: w.wert === aktuell ? "an" : "", onclick: () => beim_setzen(w.wert)},
@@ -1075,6 +1114,7 @@ function setzeAnsicht(neu) {
 
 function zeichne() {
   if (!S) return;
+  const merk = fokusMerken();
   $("fuss-datei").textContent = S.datei || "";
   $("fuss-punkte").textContent = S.punkte.length + " Punkte";
   $("punkt-offen").hidden = !S.dirty;
@@ -1090,6 +1130,7 @@ function zeichne() {
   zeichnePunkte();
   zeichnePhasen();
   zeichneInspektor();
+  fokusHerstellen(merk);
 }
 
 function setzeStatus(status) {
@@ -2332,12 +2373,14 @@ async function zeichneScans(frisch) {
     if (!antwort || ansicht !== "scans") return;
     SC = antwort;
   }
+  const merk = fokusMerken();
   await scanBildPflegen();
   scanWerkzeuge();
   scanListeZeichnen();
   scanOverlay();
   scanInspektor();
   setzeStatus(SC.status);
+  fokusHerstellen(merk);
 }
 
 /** Ein Befehl an den Scan-Teil der Brücke. Antwort ist die neue Scan-Aufnahme. */
@@ -3026,9 +3069,11 @@ async function zeichneEinstellungen(frisch) {
     for (const k of Object.keys(cfgGeaendert))
       if (cfgGleich(cfgGeaendert[k], C.werte[k])) delete cfgGeaendert[k];
   }
+  const merk = fokusMerken();
   zeichneCfgListe();
   zeichneCfgFelder();
   zeichneCfgRechts();
+  fokusHerstellen(merk);
 }
 
 /** Gleicher Wert? Arrays über ihre Darstellung, alles andere strikt. */

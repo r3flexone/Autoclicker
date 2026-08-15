@@ -1245,6 +1245,17 @@ Regeln beim Erweitern:
   Eingabe nimmt das Feld weg, in das gerade getippt wird. Dieselbe Regel galt schon in
   der DPG-Fassung. Folge davon: `STRG+S` muss vorher `blur()` auslösen, sonst geht der
   zuletzt getippte Wert verloren.
+
+  **Und jeder Neuaufbau rettet den Fokus hinüber** (`fokusMerken()` /
+  `fokusHerstellen()`). Weil Tipp-Felder beim *Verlassen* melden, ist es genau der
+  TAB-Sprung, der den Neuaufbau auslöst — bis die Brücke antwortet, steht der
+  Fokus schon im nächsten Feld, und `replaceChildren()` wirft es weg. Sichtbar
+  wurde das beim Item: Namen tippen, TAB nach Kategorie, Cursor weg, nochmal
+  klicken. Gemerkt wird die **Position** unter den Eingabefeldern des nächsten
+  Elements mit `id`, nicht das Element selbst (das gibt es danach nicht mehr) und
+  auch kein eigener Schlüssel je Feld — den müsste jeder Feld-Bauer mitschleppen,
+  und ein vergessener fiele nicht auf. Ein Test hält fest, dass **alle drei**
+  Neuaufbauten (`zeichne`, `zeichneScans`, `zeichneEinstellungen`) es tun.
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
   dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`. Das gilt
   auch für den *Typwechsel*: **`set_block_type()` legt die Bedingung selbst am Punkt an**
