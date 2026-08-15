@@ -1738,9 +1738,12 @@ class ScanTeil:
         Der Weg dorthin waren 56 Häkchen. Ein Scan umfasst fast immer *alles*,
         was zu seinem Spiel gehört; die Ausnahme klickt man danach einzeln weg.
         """
-        cfg = self.scans.get(self.scan_offen)
+        # Wie `scan_mitglied`: der Inspektor arbeitet am GEWÄHLTEN Scan, der nicht
+        # derselbe sein muss wie der offene. Ohne den Parameter träfe „alle" den
+        # falschen.
+        cfg = self.scans.get(str((daten or {}).get("scan") or self.scan_offen))
         if cfg is None:
-            return self._scan_melde("Kein Scan offen.", "warn")
+            return self._scan_melde("Kein Scan gewählt.", "warn")
         art = str((daten or {}).get("art") or "")
         if art not in (ART_SLOT, ART_ITEM):
             return self._scan_melde(f"Unbekannte Art '{art}'.", "err")

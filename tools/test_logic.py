@@ -6189,6 +6189,16 @@ try:
     check("und alle wieder raus", _z18["scans"][0]["slots"] == [])
     _z18 = _b18.scan_alle({"art": "item", "wert": True})
     check("Items genauso", _z18["scans"][0]["items"] == ["I1"])
+    # Der Inspektor arbeitet am GEWAEHLTEN Scan, der nicht der offene sein muss -
+    # ohne den Parameter traefe „alle" den falschen.
+    _b18.scan_neu({"name": "Zweiter"})
+    _z18 = _b18.scan_alle({"scan": "Alle", "art": "slot", "wert": True})
+    _nach_name18 = {c["name"]: c for c in _z18["scans"]}
+    check("„alle“ trifft den benannten Scan, nicht den offenen",
+          sorted(_nach_name18["Alle"]["slots"]) == ["S1", "S2", "S3"]
+          and _nach_name18["Zweiter"]["slots"] == [])
+    _b18.scans.pop("Zweiter", None)
+    _b18.scan_offen = "Alle"
     _b18.scan_offen = ""
     check("ohne offenen Scan passiert nichts",
           _b18.scan_alle({"art": "slot", "wert": True})["status"]["art"] == "warn")

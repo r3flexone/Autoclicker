@@ -2983,6 +2983,26 @@ function scanInspSlot(ziel) {
   }
 }
 
+/** Ueberschrift einer Haken-Liste, mit Stand und „alle"/„keine".
+ *
+ * **56 Schalter einzeln zu setzen ist keine Bedienung.** Ein Scan umfasst fast
+ * immer ALLES seines Spiels; die Ausnahme klickt man danach einzeln weg — nicht
+ * umgekehrt. Zwei Knoepfe und kein Umschalter: bei gemischtem Stand (23 von 56)
+ * waere ein Schalter nicht zu beschriften, und man muesste raten, was ein Klick
+ * tut. „alle" und „keine" sagen es.
+ *
+ * Der Stand steht daneben, weil er sonst nur durch Zaehlen zu haben ist. */
+function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
+  const alle = (wert) => rufScan("scan_alle", {scan: scan, art: art, wert: wert});
+  return el("div", {class: "reihe", style: "margin-top:6px"},
+    el("span", {class: "ueberschrift mitinfo wachse"}, titel, info(hilfe, schluessel)),
+    el("span", {class: "klein mono"}, drin + "/" + gesamt),
+    el("button", {class: "btn still", disabled: drin === gesamt,
+                  onclick: () => alle(true)}, "alle"),
+    el("button", {class: "btn still", disabled: drin === 0,
+                  onclick: () => alle(false)}, "keine"));
+}
+
 /** Mehrere Slots gewaehlt — nur, was auf alle wirkt. */
 function scanInspAuswahl(ziel) {
   ziel.appendChild(ueberschrift("AUSWAHL",
@@ -3069,11 +3089,13 @@ function scanInspScan(ziel) {
     "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier " +
     "und nicht in den Einstellungen."));
 
-  ziel.appendChild(ueberschrift("SLOTS", "Welche Flächen dieser Scan ansieht.", "scanslots"));
+  ziel.appendChild(hakenKopf("SLOTS", "Welche Flächen dieser Scan ansieht.",
+    "scanslots", c.name, "slot", SC.slots.length, c.slots.length));
   ziel.appendChild(el("div", {class: "scan-haken"}, SC.slots.map((s) =>
     schalter(s.name, c.slots.includes(s.name), () => um("slot", s.name)))));
 
-  ziel.appendChild(ueberschrift("ITEMS", "Wonach gesucht wird.", "scanitems"));
+  ziel.appendChild(hakenKopf("ITEMS", "Wonach gesucht wird.",
+    "scanitems", c.name, "item", SC.items.length, c.items.length));
   ziel.appendChild(el("div", {class: "scan-haken"}, SC.items.map((i) =>
     schalter(i.name, c.items.includes(i.name), () => um("item", i.name)))));
 
