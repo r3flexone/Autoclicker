@@ -977,7 +977,6 @@ Wird beim ersten Start automatisch erstellt:
   "pixel_max_consecutive_timeouts": 5,
   "pixel_consecutive_action": "stop",
   "pixel_show_delay": 0.3,
-  "scan_reverse": true,
   "scan_click_immediate": false,
   "scan_park_mouse": false,
   "scan_slot_delay": 0.1,
@@ -1059,7 +1058,6 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `scan_reverse` | Slots von hinten nach vorne scannen (Voreinstellung; jeder Item-Scan kann sie mit seinem Feld `reverse` überstimmen) |
 | `scan_click_immediate` | `true` = Scan→Klick pro Slot (sofort klicken), `false` = alle scannen, dann alle klicken (Standard) |
 | `scan_park_mouse` | `true` = Maus zur Bildschirmmitte parken, `[x, y]` = Maus zu bestimmter Position parken, `false` = Maus nicht bewegen (Standard) |
 | `scan_slot_delay` | Pause zwischen Slot-Scans in Sekunden (Standard: 0.1) |

@@ -101,7 +101,7 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         if config is None:
             return True
         slots = list(config.slots)
-        rueckwaerts = config.rueckwaerts(state.config.scan_reverse)
+        rueckwaerts = config.reverse
     if rueckwaerts:
         slots = list(reversed(slots))
 

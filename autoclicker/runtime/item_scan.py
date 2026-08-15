@@ -160,7 +160,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         learn_unknown = config.learn_unknown
         # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
         # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
-        rueckwaerts = config.rueckwaerts(state.config.scan_reverse)
+        rueckwaerts = config.reverse
 
     found_items = []
 

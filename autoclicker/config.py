@@ -66,7 +66,6 @@ class AppConfig:
     verify_interval: float = 0.2                    # Prüf-Intervall der Nachprüfung in Sekunden
 
     # === SCAN-EINSTELLUNGEN ===
-    scan_reverse: bool = True                       # True = Slots rückwärts scannen (4,3,2,1)
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
@@ -384,7 +383,7 @@ _CONFIG_SECTIONS = [
         "verify_timeout", "verify_retries", "verify_interval",
     ]),
     ("SCAN-EINSTELLUNGEN", [
-        "scan_reverse", "scan_click_immediate", "scan_park_mouse",
+        "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
         "scan_marker_min_pixels", "scan_market_value_file",

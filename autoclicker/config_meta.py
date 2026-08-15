@@ -161,11 +161,6 @@ META: dict = {
         "Wie oft während der Nachprüfung gemessen wird.", einheit="s"),
 
     # === SCAN ===
-    "scan_reverse": M(
-        "Slots rückwärts scannen", ART_BOOL,
-        "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den "
-        "Bestand nach vorn aufrückt: dann verschiebt ein Klick nicht die noch "
-        "nicht besuchten Slots."),
     "scan_click_immediate": M(
         "Sofort klicken", ART_BOOL,
         "Jeden Slot direkt nach seiner Erkennung klicken, statt erst alle zu "

@@ -421,23 +421,14 @@ def _schritt_auto_lernen(learn_unknown: bool) -> bool:
     return learn_unknown
 
 
-def _schritt_richtung(reverse: Optional[bool], global_default: bool) -> Optional[bool]:
-    """Schritt 5: In welcher Richtung die Slots abgearbeitet werden.
-
-    Drei Antworten, nicht zwei: „wie die Einstellung" ist der Normalfall und
-    muss erreichbar bleiben, sonst wäre eine geänderte globale Einstellung an
-    jedem Scan einzeln nachzuziehen.
-    """
+def _schritt_richtung(reverse: bool) -> bool:
+    """Schritt 5: In welcher Richtung die Slots abgearbeitet werden."""
     print(header("SCHRITT 5: REIHENFOLGE (optional)"))
-    global_text = "rückwärts" if global_default else "vorwärts"
-    print("\n  In welcher Richtung die Slots abgearbeitet werden.")
-    print(f"  Die Einstellung (scan_reverse) steht auf: {global_text}")
-    aktuell = {None: f"wie Einstellung ({global_text})",
-               True: "rückwärts", False: "vorwärts"}[reverse]
-    print(f"  Aktuell: {aktuell}")
-    print("\n    [1] wie Einstellung   [2] vorwärts   [3] rückwärts")
-    wahl = safe_input(f"  Auswahl (Enter = {aktuell}): ").strip()
-    return {"1": None, "2": False, "3": True}.get(wahl, reverse)
+    print("\n  Rückwärts heisst von hinten nach vorn (4, 3, 2, 1). Sinnvoll,")
+    print("  wenn das Spiel den Bestand nach vorn aufrückt: dann verschiebt ein")
+    print("  Klick nicht die noch nicht besuchten Slots.")
+    print(f"  Aktuell: {'rückwärts' if reverse else 'vorwärts'}")
+    return confirm("  Slots rückwärts abarbeiten?", default=reverse)
 
 
 def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
@@ -481,7 +472,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_item_names = []
         tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
-        reverse = None                  # heisst: wie config.scan_reverse
+        reverse = False
 
     # --- Schritt 1: Slots ---------------------------------------------------------
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
@@ -552,7 +543,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     # --- Schritt 3 + 4 ------------------------------------------------------------
     tolerance = _schritt_toleranz(tolerance)
     learn_unknown = _schritt_auto_lernen(learn_unknown)
-    reverse = _schritt_richtung(reverse, state.config.scan_reverse)
+    reverse = _schritt_richtung(reverse)
 
     # --- Speichern ----------------------------------------------------------------
     with state.lock:

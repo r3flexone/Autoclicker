@@ -236,34 +236,27 @@ Regeln beim Erweitern:
   (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
   nächsten Import oder die nächste Migration nicht.
 
-**Die Scan-Richtung gehört zum Scan, nicht zum Programm.** `config.scan_reverse`
-galt für *alle* Item-Scans, und die Richtung hängt am Inventar: wer ein Spiel von
-hinten leert und ein zweites von vorn, hatte die Wahl zwischen zwei falschen
-Läufen. `ItemScanConfig.reverse` hat deshalb **drei** Zustände — `None` heisst
-„wie die globale Einstellung" und ist der Normalfall, sonst gilt der Wert für
-diesen Scan. Zwei Zustände hätten bedeutet, die Einstellung bei jedem neuen Scan
-neu zu treffen und eine geänderte Einstellung an jedem einzeln nachzuziehen.
+**Die Scan-Richtung gehört zum Scan, nicht zum Programm.** Sie stand als
+`config.scan_reverse` in der Config und galt damit für *alle* Item-Scans — die
+Richtung hängt aber am Inventar: wer ein Spiel von hinten leert und ein zweites
+von vorn, hatte die Wahl zwischen zwei falschen Läufen. Heute ist es
+`ItemScanConfig.reverse` (Schalter im Scan-Inspektor, Schritt 5 im
+Konsolen-Editor), Voreinstellung **aus**; das Config-Feld ist **ersatzlos
+gelöscht**, samt seinem Eintrag in `config_meta.py` und der README-Tabelle. Ein
+Test prüft beide Richtungen: das Attribut existiert nicht mehr, und der Name
+kommt im Code nicht mehr vor.
 
-Aufgelöst wird an **einer** Stelle (`ItemScanConfig.rueckwaerts(global_default)`),
-weil zwei Seiten dieselbe Antwort geben müssen: der Worker ordnet danach um, das
-Studio schreibt sie hin („Läuft: rückwärts"). Eine Anzeige, die „vorwärts" sagt,
-während der Worker rückwärts läuft, ist schlimmer als gar keine. Umgeordnet wird
-an zwei Stellen (`runtime/item_scan.py` und der Immediate-Pfad in
-`runtime/steps.py`); ein Test hält fest, dass **jede** Erwähnung von
-`scan_reverse` unter `runtime/` durch `rueckwaerts()` geht — sonst liefe derselbe
-Scan je nach Modus anders herum.
+Umgeordnet wird an zwei Stellen — `runtime/item_scan.py` und der Immediate-Pfad
+in `runtime/steps.py`. Eine davon zu vergessen hiesse, dass derselbe Scan je nach
+Modus anders herum läuft; der Wert wird im selben Lock-Snapshot eingefroren wie
+die übrigen Flags.
 
-Zwei Fallen, die dabei aufgefallen sind und für jedes weitere Feld gelten:
-
-- **Der Konsolen-Editor baut die Config NEU auf**, statt die vorhandene zu
-  ändern. Ein Feld, das in `ItemScanConfig(...)` in `edit_item_scan()` fehlt, ist
-  nach dem Bearbeiten eines bestehenden Scans still weg. Ein Test hält die
-  übergebenen Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` —
-  die leitet `sync_names()` ab).
-- **Der Datei-Default muss `None` bleiben**, nicht `False`. Stünde `False` in
-  `_ITEM_SCAN_DEFAULTS`, schriebe der Serializer ein gesetztes `reverse: false`
-  nicht mehr — und ein Scan, der ausdrücklich vorwärts laufen soll, folgte
-  wieder der globalen Einstellung.
+Eine Falle, die dabei aufgefallen ist und für **jedes** weitere Feld gilt: **der
+Konsolen-Editor baut die Config NEU auf**, statt die vorhandene zu ändern. Ein
+Feld, das in `ItemScanConfig(...)` in `edit_item_scan()` fehlt, ist nach dem
+Bearbeiten eines bestehenden Scans still weg. Ein Test hält die übergebenen
+Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` — die leitet
+`sync_names()` ab).
 
 **Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
 (aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
@@ -349,6 +342,36 @@ führendem Punkt. Dort abgelegt stünde es als Sequenz im Studio-Menü, im
 Konsolen-Menü und im Start-Durchgang — und weil es sich sekündlich ändert,
 gewänne es jedes Mal `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die
 `.bak`-Sicherungen unter `backups/` liegen statt neben dem Original.
+
+**Neue Formatänderungen brauchen KEINEN Migrationsschritt mehr.** Das ist eine
+ausdrückliche Entscheidung des Nutzers und die wichtigste Regel dieses
+Abschnitts: **es darf alles aufs heutige Optimum gebaut werden.** Fällt ein Feld
+weg oder ändert sich seine Bedeutung, bekommt eine Bestandsdatei eben den
+Default — „dann ist es halt so, das gibt Altlasten, ohne dass viel kaputtgeht."
+
+Der Grund ist nicht Bequemlichkeit, sondern dass sich die Kosten verschoben
+haben: einen Scan oder eine Sequenz im Studio **neu zu bauen ist inzwischen
+billiger**, als einen Migrationsschritt zu schreiben, zu testen und später wieder
+zu löschen. Slots findet man mit zwei Ecken und einem Klick, Items lernt ein
+Knopf, und was schon bekannt ist, steht sofort grün da.
+
+Was das **nicht** heisst:
+
+- **Nicht: eine alte Datei darf abstürzen.** Der Loader liest weiter mit
+  `data.get(key, default)`, unbekannte Keys fliegen raus, `LOAD_EXCEPTIONS`
+  fängt Kaputtes ab. Eine Datei, die den Loader wirft, ist ein Fehler — eine
+  Datei, die ein Feld auf dem Standardwert bekommt, ist es nicht.
+- **Nicht: der Start-Durchgang entfällt.** `sweep.py` räumt weiterhin auf
+  (Round-Trip durch Loader + Serializer, `.bak` vor der ersten Änderung). Genau
+  darüber verschwindet ein gelöschtes Config-Feld von selbst aus der
+  `config.json`, ohne dass jemand etwas anfassen muss.
+- **Nicht: `_CHAINS` wird jetzt egal.** Die vorhandenen Schritte laufen weiter,
+  bis der Altbestand durch ist, und werden dann ersatzlos gelöscht. Das Modul
+  soll schrumpfen — es soll nur eben auch nicht mehr wachsen.
+
+Die bisherige Regel „Bestandsdateien werden über die Migration gehoben, nicht
+fallengelassen" gilt damit **nur noch für das, was schon eine Migration hat**.
+Für alles Neue ist die Antwort: Default in der Dataclass, fertig.
 
 **Backward Compatibility läuft über Migration, nicht über Sonderfälle im Loader**:
 `persistence/migration.py` hebt geladene Dicts aufs aktuelle Schema (`schema_version`),
@@ -1641,9 +1664,14 @@ Drei Sorten Altlast, die auffallen sollen:
 
 Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 
-- **Daten sind keine Altlast.** Bestandsdateien werden über die Migration gehoben,
-  nicht fallengelassen — dafür ist sie da. Weg darf der *Code*, sobald die *Daten*
-  durch sind.
+- **Daten dürfen einen Default bekommen, aber nicht den Loader werfen.** Früher
+  stand hier „Bestandsdateien werden über die Migration gehoben, nicht
+  fallengelassen". Das gilt nur noch für das, was schon eine Migration hat: für
+  Neues ist ein Migrationsschritt ausdrücklich **nicht** mehr nötig (s. o. bei
+  der Persistenz). Ein Feld, das eine alte Datei nicht kennt, bekommt seinen
+  Standardwert — einen Scan im Studio neu zu bauen ist billiger als ein
+  Migrationsschritt. Kaputtgehen darf trotzdem nichts: unlesbar ist ein Fehler,
+  auf dem Standardwert ist keiner.
 - **Eine Begründung ist keine Altlast.** Steht irgendwo, *warum* etwas nicht mehr so
   gebaut ist (z. B. „war mal ein `dpg.node_editor`, deshalb …"), bleibt das stehen.
   Genau diese Sätze verhindern, dass jemand den alten Weg noch einmal einschlägt.

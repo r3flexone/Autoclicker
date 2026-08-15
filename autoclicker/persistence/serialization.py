@@ -248,7 +248,7 @@ _ITEM_SCAN_DEFAULTS = {
     "learn_unknown": False,
     "slot_names": [],
     "item_names": [],
-    "reverse": None,
+    "reverse": False,
 }
 
 

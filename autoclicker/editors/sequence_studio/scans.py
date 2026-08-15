@@ -711,12 +711,7 @@ class ScanTeil:
             "items": list(cfg.item_names),
             "toleranz": cfg.color_tolerance,
             "lernen": bool(cfg.learn_unknown),
-            # Der gespeicherte Zustand (None/True/False) UND was daraus folgt.
-            # Ohne das Zweite müsste die Ansicht die Auflösung nachbauen — und
-            # eine Anzeige, die „vorwärts" sagt, während der Worker rückwärts
-            # läuft, ist schlimmer als gar keine.
-            "reverse": cfg.reverse,
-            "richtung": self._richtung_text(cfg),
+            "reverse": bool(cfg.reverse),
             # Namen, die es global nicht mehr gibt: der Scan läuft mit dem Rest
             # weiter, aber man soll es sehen, bevor er es meldet.
             "fehlend": ([n for n in cfg.slot_names if n not in self.slots] +
@@ -1624,20 +1619,11 @@ class ScanTeil:
             cfg.learn_unknown = bool(wert)
             return self._scan_geaendert()
         if feld == "reverse":
-            # Drei Zustände: "" = wie die globale Einstellung, sonst fest.
-            cfg.reverse = None if wert in (None, "", "global") else bool(wert)
+            cfg.reverse = bool(wert)
             return self._scan_geaendert(
-                f"'{cfg.name}': Reihenfolge {self._richtung_text(cfg)}")
+                f"'{cfg.name}': Slots laufen "
+                f"{'rückwärts' if cfg.reverse else 'vorwärts'}")
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
-
-    @staticmethod
-    def _richtung_text(cfg: ItemScanConfig) -> str:
-        """Was tatsächlich läuft — mit der Auflösung der Laufzeit, nicht geraten."""
-        from ...config import CONFIG
-        echt = "rückwärts" if cfg.rueckwaerts(CONFIG.scan_reverse) else "vorwärts"
-        if cfg.reverse is None:
-            return f"wie Einstellung ({echt})"
-        return echt
 
     def scan_mitglied(self, daten: dict) -> dict:
         """Einen Slot oder ein Item zum offenen Scan dazu oder weg.
