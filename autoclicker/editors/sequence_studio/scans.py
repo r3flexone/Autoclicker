@@ -134,12 +134,22 @@ class ScanTeil:
         self._scan_dirty = False
         self._scan_status = ("", "info")
         self._vorschau: dict = {}              # Template-Datei -> (mtime, data-URL)
+        # Wie die Dateien aussahen, als wir sie gelesen haben. Der Hauptprozess
+        # schreibt dieselben — daran erkennt der Reiter, dass er veraltet ist.
+        self._platte: dict = {}
 
     def _scan_laden(self) -> None:
         """Slots, Items und Scan-Konfigurationen von Platte — einmal je Sitzung.
 
         Nicht im Konstruktor: wer das Studio für eine Sequenz aufmacht, soll
         nicht auf das Lesen von Dateien warten, die er vielleicht nie ansieht.
+
+        **„Einmal je Sitzung" war zu wenig.** Der Hauptprozess schreibt dieselben
+        Dateien, während das Fenster offensteht: ein Lauf mit `learn_unknown`
+        legt neue Items an und speichert sie. Die Konsole meldete „gelernt", das
+        Studio zeigte sie nie — es hatte `items.json` beim Öffnen gelesen und
+        danach nie wieder. Deshalb merkt sich `_platte_stand()`, wie die Dateien
+        beim Laden aussahen, und `scan_daten()` sagt, wenn sich das geändert hat.
         """
         if self._scan_geladen:
             return
@@ -159,6 +169,65 @@ class ScanTeil:
             neuster = max(self._scan_stand, key=lambda n: self._scan_stand[n])
             self.scan_offen = neuster
             self._foto_laden(neuster)
+        self._platte = self._platte_stand()
+
+    @staticmethod
+    def _platte_stand() -> dict:
+        """Pfad -> Änderungszeit für alles, was der Reiter von Platte liest.
+
+        Der Ordner der Scans kommt als Ganzes mit: eine gelöschte oder neu
+        dazugekommene Datei ändert seinen eigenen Zeitstempel, und genau das
+        soll auffallen.
+        """
+        from ...persistence.paths import ITEM_SCANS_DIR
+        stand = {}
+        pfade = [Path(SLOTS_FILE), Path(ITEMS_FILE), Path(ITEM_SCANS_DIR)]
+        pfade += sorted(Path(ITEM_SCANS_DIR).glob("*.json")) \
+            if Path(ITEM_SCANS_DIR).is_dir() else []
+        for p in pfade:
+            try:
+                stand[str(p)] = p.stat().st_mtime
+            except OSError:
+                stand[str(p)] = 0.0
+        return stand
+
+    def _platte_fremd(self) -> bool:
+        """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
+
+        „Jemand anders" ist im Alltag der eigene Hauptprozess: Auto-Lernen im
+        Lauf schreibt `items.json`, der Konsolen-Editor schreibt Scans. Eigene
+        Speicherungen zählen nicht mit — `scan_speichern()` zieht den Stand nach.
+        """
+        return bool(self._scan_geladen) and self._platte_stand() != self._platte
+
+    def scan_neu_laden(self, daten: Optional[dict] = None) -> dict:
+        """Liest Slots, Items und Scans neu von Platte.
+
+        **Ungespeichertes wird nicht kommentarlos verworfen.** Der erste Druck
+        meldet nur, der zweite (mit `verwerfen`) lädt — dieselbe Zwei-Schritt-
+        Regel wie überall, wo hier etwas verloren gehen kann.
+        """
+        if self._scan_dirty and not (daten or {}).get("verwerfen"):
+            return self._scan_melde(
+                "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
+                "— „Speichern“ behält sie.", "warn")
+        offen = self.scan_offen
+        self._scan_geladen = False
+        self._ecke = self._suchbereich = None
+        self._auswahl, self._treffer = [], {}
+        self.scan_name, self.scan_offen = "", ""
+        self._vorschau = {}
+        self._scan_dirty = False
+        self._scan_laden()
+        # Der vorher offene Scan bleibt offen, wenn es ihn noch gibt — sonst
+        # steht man nach dem Nachladen woanders als vorher.
+        if offen and offen in self.scans:
+            self.scan_offen = offen
+            self.scan_art, self.scan_name = ART_SCAN, offen
+            self._foto_laden(offen)
+        return self._scan_melde(
+            f"Neu geladen: {len(self.slots)} Slot(s), {len(self.items)} Item(s), "
+            f"{len(self.scans)} Scan(s).")
 
     def _scans_laden(self) -> dict:
         """Alle Item-Scan-Konfigurationen als Name -> Config.
@@ -645,6 +714,10 @@ class ScanTeil:
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
             "auswahl": [n for n in self._auswahl if n in self.slots],
             "dirty": self._scan_dirty,
+            # Hat der Hauptprozess die Dateien angefasst? Ein Lauf mit
+            # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
+            # gelernten Items im Reiter vergeblich.
+            "fremd": self._platte_fremd(),
             "status": {"text": text, "art": art},
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
             # anzubieten, die nichts tun: ohne Pillow gibt es kein Bild, ohne
@@ -1659,6 +1732,32 @@ class ScanTeil:
             if eintrag.get("name"):
                 eintrag["fremd"] = cfg is not None and eintrag["name"] not in dabei
 
+    def scan_alle(self, daten: dict) -> dict:
+        """Nimmt alle Slots bzw. alle Items in den offenen Scan — oder raus.
+
+        Der Weg dorthin waren 56 Häkchen. Ein Scan umfasst fast immer *alles*,
+        was zu seinem Spiel gehört; die Ausnahme klickt man danach einzeln weg.
+        """
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is None:
+            return self._scan_melde("Kein Scan offen.", "warn")
+        art = str((daten or {}).get("art") or "")
+        if art not in (ART_SLOT, ART_ITEM):
+            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
+        dazu = bool((daten or {}).get("wert"))
+        bestand = self.slots if art == ART_SLOT else self.items
+        vorher = len(cfg.slot_names if art == ART_SLOT else cfg.item_names)
+        namen = list(bestand) if dazu else []
+        if art == ART_SLOT:
+            cfg.slot_names = namen
+        else:
+            cfg.item_names = namen
+        self._objekte_angleichen()
+        self._treffer_mitgliedschaft()
+        wort = "Slot" if art == ART_SLOT else "Item"
+        return self._scan_geaendert(
+            f"{len(namen)} {wort}(s) im Scan '{cfg.name}' (vorher {vorher}).")
+
     def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""
         name = self.scan_name if self.scan_art == ART_SCAN else ""
@@ -1707,6 +1806,9 @@ class ScanTeil:
             return self._scan_melde("Nicht geschrieben: " + ", ".join(fehler), "err")
 
         self._scan_dirty = False
+        # Der eigene Schreibvorgang darf sich nicht selbst als Fremdaenderung
+        # melden - sonst stuende der Hinweis nach jedem Speichern da.
+        self._platte = self._platte_stand()
         from ...befehl import sende
         sende("daten")
         return self._scan_melde(

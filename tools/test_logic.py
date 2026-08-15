@@ -6097,6 +6097,62 @@ try:
     _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
     check("nochmal klicken nimmt wieder raus", _z18["scans"][0]["items"] == [])
 
+    # --- Der Reiter merkt, wenn der Hauptprozess die Dateien anfasst ---
+    # Der Fall aus dem Alltag: ein Lauf mit `learn_unknown` legt Items an und
+    # speichert sie. Der Reiter hatte items.json beim Oeffnen gelesen und danach
+    # nie wieder - die Konsole meldete "gelernt", im Studio waren sie nicht da,
+    # und man sucht den Fehler beim Lernen.
+    check("frisch geladen gilt nichts als fremd geaendert",
+          _b18.scan_daten()["fremd"] is False)
+    import time as _t18
+    _t18.sleep(0.01)
+    Path("items/items.json").write_text(
+        '{"Von aussen": {"marker_colors": [[1, 2, 3]]}}', encoding="utf-8")
+    check("eine Aenderung von aussen faellt auf",
+          _b18.scan_daten()["fremd"] is True)
+    check("und sie wird nicht stillschweigend uebernommen",
+          "Von aussen" not in _b18.items)
+
+    # Ungespeichertes wird nicht kommentarlos verworfen.
+    _b18._scan_dirty = True
+    _z18 = _b18.scan_neu_laden()
+    check("mit offenen Aenderungen wird erst gewarnt",
+          _z18["status"]["art"] == "warn" and "Von aussen" not in _b18.items)
+    _z18 = _b18.scan_neu_laden({"verwerfen": True})
+    check("mit verwerfen wird geladen", "Von aussen" in _b18.items)
+    check("und danach gilt der Stand wieder als aktuell",
+          _z18["fremd"] is False and _z18["dirty"] is False)
+    # Das EIGENE Speichern darf sich nicht selbst als Fremdaenderung melden -
+    # sonst stuende der Hinweis nach jedem Klick auf "Speichern" da, und man
+    # gewoehnt sich an, ihn zu uebersehen.
+    _t18.sleep(0.01)
+    _z18 = _b18.scan_speichern()
+    check("das eigene Speichern gilt nicht als Fremdaenderung",
+          _z18["fremd"] is False)
+
+    # --- Alles rein, alles raus ---
+    # Der Weg in einen frischen Scan waren 56 Haekchen.
+    _b18.slots.clear(); _b18.items.clear(); _b18.scans.clear()
+    for _n18 in ("S1", "S2", "S3"):
+        _b18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 9, 9), click_pos=(4, 4))
+    _b18.items["I1"] = _ITEM8(name="I1")
+    _b18.scan_neu({"name": "Alle"})
+    _z18 = _b18.scan_alle({"art": "slot", "wert": True})
+    check("alle Slots auf einmal dazu",
+          sorted(_z18["scans"][0]["slots"]) == ["S1", "S2", "S3"])
+    _z18 = _b18.scan_alle({"art": "slot", "wert": False})
+    check("und alle wieder raus", _z18["scans"][0]["slots"] == [])
+    _z18 = _b18.scan_alle({"art": "item", "wert": True})
+    check("Items genauso", _z18["scans"][0]["items"] == ["I1"])
+    _b18.scan_offen = ""
+    check("ohne offenen Scan passiert nichts",
+          _b18.scan_alle({"art": "slot", "wert": True})["status"]["art"] == "warn")
+    _b18.slots.clear(); _b18.items.clear(); _b18.scans.clear()
+    _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))
+    _b18.items["Item 1"] = _ITEM8(name="Item 1")
+    _b18.scan_neu({"name": "Test"})
+    _b18.scan_mitglied({"scan": "Test", "art": "slot", "name": "Slot 1"})
+
     # --- Die Scan-Richtung im Studio ---
     _z18 = _b18.scan_daten()
     check("frisch angelegt laufen die Slots vorwaerts",

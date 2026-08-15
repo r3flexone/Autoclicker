@@ -599,6 +599,21 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 |---|---|---|
 | `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>.json`, `config.json`, `slots/`+`items/`+`item_scans/` |
 
+**Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
+`slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein
+Lauf mit `learn_unknown` legt in derselben Zeit neue Items an und **speichert**
+sie. Die Konsole meldete „gelernt", im Reiter waren sie nicht da, und man sucht
+den Fehler beim Lernen statt bei der Ansicht. `_platte_stand()` merkt sich die
+Änderungszeiten beim Laden, `_platte_fremd()` vergleicht sie bei jeder
+Momentaufnahme, und die Ansicht bietet „Neu laden" an. Zwei Regeln dazu:
+
+- **Das eigene Speichern zählt nicht mit** — `scan_speichern()` zieht den Stand
+  nach. Sonst stünde der Hinweis nach jedem Klick auf „Speichern" da, und man
+  gewöhnt sich an, ihn zu übersehen.
+- **Ungespeichertes wird nicht kommentarlos verworfen.** Bei offenen Änderungen
+  stehen zwei Knöpfe („Speichern & neu laden", „Verwerfen & neu laden") statt
+  einer Rückfrage: was passiert, steht dann *vor* dem Klick da.
+
 Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
 Der Subprozess liest die Dateien beim Start und schreibt sie beim Speichern; der
 Hauptprozess hält seinen eigenen Stand im Speicher. Für Config und Scan-Daten holt er
