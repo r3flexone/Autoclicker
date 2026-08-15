@@ -6468,6 +6468,13 @@ check("und der sieht anders aus als aus UND als an",
       ":indeterminate::after{" in _html18.replace(" ", ""))
 check("schalter() kann ihn setzen",
       "box.indeterminate = true" in _html18)
+# Und er steht im SELBEN Raster wie die Eintraege darunter, nicht rechts
+# angeklebt: sonst sitzt er ueber nichts. Die Trennlinie unterscheidet ihn
+# trotzdem, sonst liest er sich wie ein Slot namens „alle".
+check("der alle-Schieber liegt im Raster der Liste",
+      '"scan-haken haken-kopf"' in _html18)
+check("und ist durch eine Linie abgesetzt",
+      "border-bottom:1px solid var(--line)" in _css_regel18(".haken-kopf"))
 
 check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".seite"))
 check("und der wachsende Abschnitt darin nicht nochmal",

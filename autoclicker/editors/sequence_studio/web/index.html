@@ -564,6 +564,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
   background:var(--sub);color:var(--text);border:1px solid var(--line)}
 .scan-haken{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+/* Der „alle"-Schieber steht im selben Raster wie die Eintraege — also genau
+   ueber dem ersten. Die Trennlinie sagt trotzdem, dass er nicht dazugehoert:
+   sonst liest er sich wie ein Slot, der „alle" heisst. */
+.haken-kopf{padding-bottom:6px;border-bottom:1px solid var(--line)}
+.haken-alle{color:var(--muted)}
+.haken-stand{align-self:center;justify-self:end;color:var(--dim)}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
 .scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
@@ -3009,11 +3015,18 @@ function scanInspSlot(ziel) {
  * schaltet er alles aus. */
 function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
   const gemischt = drin > 0 && drin < gesamt;
-  return el("div", {class: "reihe", style: "margin-top:6px"},
-    el("span", {class: "ueberschrift mitinfo wachse"}, titel, info(hilfe, schluessel)),
-    el("span", {class: "klein mono"}, drin + "/" + gesamt),
-    schalter("alle", drin === gesamt && gesamt > 0,
-      (v) => rufScan("scan_alle", {scan: scan, art: art, wert: v}), gemischt));
+  const alle = schalter("alle", drin === gesamt && gesamt > 0,
+    (v) => rufScan("scan_alle", {scan: scan, art: art, wert: v}), gemischt);
+  alle.classList.add("haken-alle");
+  // **Dasselbe Raster wie die Liste darunter.** Rechts angeklebt stand der
+  // Schieber ueber nichts — die Eintraege stehen zweispaltig und linksbuendig,
+  // er sass allein am rechten Rand. In derselben Spalte steht er genau ueber
+  // dem ersten Eintrag, und die Zahl nimmt die zweite Spalte.
+  return el("div", {class: "spalte", style: "gap:6px"},
+    el("span", {class: "ueberschrift mitinfo"}, titel, info(hilfe, schluessel)),
+    el("div", {class: "scan-haken haken-kopf"},
+      alle,
+      el("span", {class: "klein mono haken-stand"}, drin + "/" + gesamt)));
 }
 
 /** Mehrere Slots gewaehlt — nur, was auf alle wirkt. */
