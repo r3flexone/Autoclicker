@@ -1233,10 +1233,17 @@ Regeln beim Erweitern:
   zuletzt getippte Wert verloren.
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
   dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`. Das gilt
-  auch für den *Typwechsel*: `set_block_type()` legt die Bedingung sonst auf die rohen
-  Koordinaten des Schritts an, und die landen als `wait_pixel`/`wait_color` in der
-  Datei — eine Kopie ausserhalb von `points.json`. `block_typ()` bindet sie deshalb an
-  den Punkt des Schritts und lehnt FARBE+KLICK ohne Punkt ab.
+  auch für den *Typwechsel*: **`set_block_type()` legt die Bedingung selbst am Punkt an**
+  (`WaitCondition(point_id=step.point_id)`) und ohne Punkt gar nicht; `block_typ()` lehnt
+  FARBE+KLICK ohne Punkt ab und begründet es.
+
+  Vorher entstand die Bedingung dort auf den rohen `step.x/y` samt
+  `recorded_color`, und die Brücke bog sie **hinterher** auf den Punkt um. Das war
+  eine Reparatur, keine Regel: wer `set_block_type()` direkt aufruft — oder die
+  Reparatur beim nächsten Umbau vergisst — bekam wieder `wait_pixel`/`wait_color`
+  in der Datei, also eine Koordinaten-Kopie ausserhalb von `points.json`, die
+  keine Kalibrierung je einholt. Ein Test misst deshalb die **Funktion**, nicht
+  nur den Weg über die Brücke.
 - **Der Typ ist das Ergebnis zweier Eigenschaften, nicht umgekehrt.** KLICK,
   FARBE+KLICK und WARTEN unterscheiden sich in genau zwei Fragen: klickt der Schritt,
   wartet er auf eine Farbe. Der Abschnitt AKTION zeigt beide als Schalter und schreibt

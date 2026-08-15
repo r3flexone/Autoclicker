@@ -18,7 +18,6 @@ können: dort steht, was der Wert technisch tut, hier steht, wann man ihn anfass
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 # Die Arten des Bedienelements. Mehr gibt es nicht — wer eine sechste braucht,
 # trägt sie hier UND in der Oberfläche ein (`cfgFeld()` in web/index.html); ein
@@ -396,12 +395,3 @@ META: dict = {
         "Ordner schnell."),
 }
 
-
-def meta_fuer(schluessel: str) -> Optional[M]:
-    """Der Eintrag zu einem Feld — oder None, wenn es keinen gibt.
-
-    Absichtlich ohne Ersatz-Eintrag für Unbekanntes: ein Feld ohne Beschreibung
-    soll im Test auffallen und nicht in der Oberfläche als „scan_slot_inset“ mit
-    leerem Hilfetext landen.
-    """
-    return META.get(schluessel)

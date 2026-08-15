@@ -310,9 +310,14 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     if new_type == BLOCK_CLICK:
         step.wait_condition = None
     elif new_type == BLOCK_WAIT_CLICK:
-        if step.wait_condition is None:
-            color = tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
-            step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=color)
+        # **Am Punkt, nicht an den rohen Koordinaten.** Eine Bedingung ohne
+        # `point_id` landet als `wait_pixel`/`wait_color` in der Datei — eine
+        # Koordinaten-Kopie ausserhalb von points.json, die keine Kalibrierung
+        # je wieder einholt. Stelle und Farbe holt `aufloesen()` aus dem Punkt;
+        # ohne Punkt entsteht gar keine Bedingung (der Aufrufer lehnt den
+        # Typwechsel dann ab).
+        if step.wait_condition is None and step.point_id is not None:
+            step.wait_condition = WaitCondition(point_id=step.point_id)
     elif new_type == BLOCK_WAIT:
         # wait_condition bleibt optional erhalten (Farb-Trigger-Feature).
         step.wait_only = True

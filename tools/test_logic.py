@@ -4438,6 +4438,28 @@ check("ohne Punkt wird FARBE+KLICK abgelehnt",
 check("und auch das wird begruendet",
       _zustand10["status"]["art"] == "warn" and "Punkt" in _zustand10["status"]["text"])
 
+# Und zwar in `set_block_type()` SELBST, nicht als Reparatur danach. Die Funktion
+# legte die Bedingung auf die rohen step.x/y an, und die Bruecke bog sie hinterher
+# auf den Punkt um - wer sie direkt aufruft (oder die Reparatur vergisst), bekam
+# wieder eine Koordinaten-Kopie ausserhalb von points.json.
+from autoclicker.editors.sequence_studio.model import set_block_type as _sbt10
+from autoclicker.models import SequenceStep as _SS10
+_mit_punkt10 = _SS10(x=100, y=200, point_id=7, recorded_color=(1, 2, 3))
+_sbt10(_mit_punkt10, "wait_click")
+check("set_block_type haengt die Bedingung selbst an den Punkt",
+      _mit_punkt10.wait_condition is not None
+      and _mit_punkt10.wait_condition.point_id == 7)
+# pixel/color sind ABGELEITET und stehen auf ihrem Default, bis `aufloesen()`
+# sie aus dem Punkt fuellt - vorher standen hier step.x/y und recorded_color,
+# also eine zweite Kopie der Stelle.
+check("und legt keine Koordinaten-Kopie an",
+      _mit_punkt10.wait_condition.pixel == (0, 0)
+      and _mit_punkt10.wait_condition.color == (0, 0, 0))
+_ohne_punkt10 = _SS10(x=100, y=200, recorded_color=(1, 2, 3))
+_sbt10(_ohne_punkt10, "wait_click")
+check("und ohne Punkt entsteht gar keine Bedingung",
+      _ohne_punkt10.wait_condition is None)
+
 
 
 # --------------------------- Befehle aus dem Studio an den Hauptprozess
