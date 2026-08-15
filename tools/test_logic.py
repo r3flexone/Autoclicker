@@ -6296,6 +6296,28 @@ _tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
 
+# --- Jeder Slot-Zustand hat Umriss UND Fuellung in derselben Farbfamilie ---
+# Die Rechtecke liegen auf einem SPIELBILD, nicht auf dem dunklen Panel: ein
+# duenner Strich in var(--dim) verschwindet zwischen bunten Item-Symbolen. Die
+# Flaeche traegt die Aussage - fehlt zu einem Zustand die Fuellungs-Regel, sieht
+# er aus wie der Normalfall und niemand merkt es.
+_zustaende18 = ("treffer", "fremditem", "leer")
+_fehlend18 = [f"{k}.{z}" for z in _zustaende18
+              for k in ("scan-slot", "scan-fuellung")
+              if f".{k}.{z}{{" not in _html18.replace(" ", "")]
+check(f"jeder Slot-Zustand hat Umriss und Fuellung ({_fehlend18 or 'vollstaendig'})",
+      not _fehlend18)
+# Und jede benutzte Farbvariable ist auch definiert - ein Tippfehler in einem
+# var(--slot-...) faellt sonst nur auf, wenn man genau hinsieht.
+_benutzt18 = set(_re13.findall(r"var\((--slot-[\w-]+)\)", _html18))
+_definiert18 = set(_re13.findall(r"(--slot-[\w-]+)\s*:", _html18))
+check(f"jede --slot-Farbe ist definiert ({sorted(_benutzt18 - _definiert18) or 'alle'})",
+      _benutzt18 and not (_benutzt18 - _definiert18))
+# Die JS-Seite liest dieselben Variablen aus, statt Hexwerte zu wiederholen.
+check("und SLOT_FARBE deckt genau die Zustaende ab",
+      sorted(_re13.findall(r"(\w+):\s*s\.getPropertyValue", _html18))
+      == sorted(_zustaende18))
+
 # --- Das Dear-PyGui-Fenster ist wirklich weg ---
 # Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,
 # was frueher unter `scan_canvas/` lag, ist die Begruendung fuer den heutigen

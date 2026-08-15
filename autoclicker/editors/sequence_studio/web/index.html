@@ -29,6 +29,12 @@
      dran ist — eine Markierung, die immer an ist, markiert nichts. Violett ist
      weit genug von Grün und Himmelblau weg, um daneben zu bestehen. */
   --init:#3ED07A; --loop:#A78BFA; --end:#38BDF8;
+  /* Die Slot-Zustaende im Scans-Reiter. Sie liegen auf einem SPIELBILD, nicht
+     auf dem Panel — deshalb greller als der Rest der Palette. Jeweils Strich
+     und Fuellung (Suffix -f), damit beides aus einer Quelle kommt. */
+  --slot-ok:#00FF9C;     --slot-ok-f:#00FF9C2B;      /* erkannt und im Scan */
+  --slot-fremd:#2DD4BF;  --slot-fremd-f:#2DD4BF26;   /* erkannt, nicht im Scan */
+  --slot-offen:#FF9500;  --slot-offen-f:#FF950024;   /* nichts erkannt: zu tun */
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -453,19 +459,29 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    40 Bild-Pixel Rand noch 12 Schirm-Pixel, und der Text sass mitten drin. */
 #scan-ohne-bild{margin:8px 2px 0;font-size:11px;color:var(--dim);letter-spacing:.04em}
 #scan-overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
-.scan-slot{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
-.scan-slot.gewaehlt{stroke:#fff;stroke-width:2.5}
-/* Ein erkanntes Item faerbt seinen Slot gruen, ein leerer bleibt grau — die
-   Antwort auf "was steckt wo drin" soll im Bild stehen, nicht in einer Liste
-   daneben. */
-.scan-slot.treffer{stroke:var(--ok)}
+/* **Die drei Zustaende muessen auf einem Spielbild lesbar sein**, nicht auf dem
+   dunklen Panel: darueber liegen bunte Item-Symbole, und ein 1,5-px-Strich in
+   var(--dim) verschwindet darin vollstaendig. Deshalb eigene, kraeftige Farben
+   plus eine Fuellung — die Flaeche traegt die Aussage, der Strich schaerft sie.
+   Eigene Variablen, damit Umriss, Fuellung, Marke und Liste nicht auseinander
+   laufen; ein Test haelt sie gegen die Klassenliste. */
+.scan-slot{fill:none;stroke:var(--slot-offen);stroke-width:2;vector-effect:non-scaling-stroke}
+.scan-slot.gewaehlt{stroke:#fff;stroke-width:3}
+/* Erkannt UND im Scan: erledigt, kuemmere dich um den Rest. */
+.scan-slot.treffer{stroke:var(--slot-ok)}
 /* Erkannt, aber noch kein Mitglied dieses Scans: ein anderer Zustand als
    „passt" und deshalb eine andere Farbe. Gruen zu faerben hiesse behaupten,
-   der Scan finde es — er sieht dieses Item gar nicht an. */
-.scan-slot.fremditem{stroke:var(--accent)}
-.scan-slot.leer{stroke:var(--dim)}
-.scan-fuellung{fill:#F59E0B14;stroke:none}
-.scan-fuellung.gewaehlt{fill:#FFFFFF1F}
+   der Scan finde es — er sieht dieses Item gar nicht an. Verwandt zum Gruen
+   (erkannt ist erkannt), aber klar unterscheidbar. */
+.scan-slot.fremditem{stroke:var(--slot-fremd)}
+/* Nichts erkannt = hier ist zu tun. Das ist der haeufigste Zustand vor dem
+   Lernen und muss deshalb der auffaelligste sein, nicht der blasseste. */
+.scan-slot.leer{stroke:var(--slot-offen)}
+.scan-fuellung{fill:var(--slot-offen-f);stroke:none}
+.scan-fuellung.treffer{fill:var(--slot-ok-f)}
+.scan-fuellung.fremditem{fill:var(--slot-fremd-f)}
+.scan-fuellung.leer{fill:var(--slot-offen-f)}
+.scan-fuellung.gewaehlt{fill:#FFFFFF2E}
 /* Ist ein Item-Scan offen, zeigt das Bild, WELCHE Slots er ansieht — genau die
    Frage, fuer die man sonst zwischen Liste und Bild hin und her sieht. */
 .scan-slot.fremd{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
@@ -2289,6 +2305,16 @@ let scanKategorie = "";           // Kategorie-Filter der Item-Liste
  * klappt, zieht man einen Slot von Hand auf. Als vorletzte Kachel stand es da,
  * wo man den Notnagel sucht — und wer der Liste folgte, hatte 45 Slots einzeln
  * aufgezogen, bevor er es fand. */
+/* Die Zustandsfarben aus dem Stylesheet, damit SVG-Text und Listen dieselbe
+ * Quelle benutzen wie Umriss und Fuellung. `fill` im SVG nimmt kein
+ * `var(--x)` aus einer fremden Regel entgegen, also einmal auslesen. */
+const SLOT_FARBE = (() => {
+  const s = getComputedStyle(document.documentElement);
+  return {treffer: s.getPropertyValue("--slot-ok").trim(),
+          fremditem: s.getPropertyValue("--slot-fremd").trim(),
+          leer: s.getPropertyValue("--slot-offen").trim()};
+})();
+
 const SCAN_MODI = [
   {key: "wahl", text: "Auswählen", taste: "V",
    hilfe: "Slot anklicken — daneben zieht ein Rechteck um mehrere"},
@@ -2580,11 +2606,16 @@ function scanListeSlots(ziel) {
              s.breite + "×" + s.hoehe + " ⚠")
         : (s.treffer && s.treffer.name
             ? el("span", {class: "klein",
-                          style: "color:" + (s.treffer.fremd ? "var(--accent)" : "var(--ok)"),
+                          style: "color:var(" + (s.treffer.fremd ? "--slot-fremd"
+                                                                 : "--slot-ok") + ")",
                           title: s.treffer.fremd
                             ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""},
                  s.treffer.name)
-            : el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe))));
+            // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
+            // Rechteck im Bild, damit Liste und Bild zusammengehen.
+            : el("span", {class: "klein mono",
+                          style: s.treffer ? "color:var(--slot-offen)" : ""},
+                 s.treffer ? "unbekannt" : s.breite + "×" + s.hoehe))));
   }
 }
 
@@ -2683,8 +2714,10 @@ function scanOverlay() {
     const zustand = (s.treffer
       ? (s.treffer.name ? (s.treffer.fremd ? " fremditem" : " treffer") : " leer")
       : "") + fremd;
+    // Die Fuellung traegt denselben Zustand wie der Umriss: auf einem bunten
+    // Spielbild ist die Flaeche das, was man sieht, der Strich schaerft nur.
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-      class: "scan-fuellung" + (gewaehlt ? " gewaehlt" : "")}));
+      class: "scan-fuellung" + zustand + (gewaehlt ? " gewaehlt" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
       class: "scan-slot" + zustand + (gewaehlt ? " gewaehlt" : "")}));
     // Der Name steht ueber dem Rechteck, das Erkennungsergebnis darunter — so
@@ -2702,9 +2735,11 @@ function scanOverlay() {
         "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
     }
     if (s.treffer && s.treffer.name && (breit >= 34 || gewaehlt)) {
+      // Dieselbe Quelle wie der Umriss — sonst laeuft die Marke von ihrem
+      // eigenen Rechteck farblich weg.
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-marke",
         "font-size": 10 * px, "stroke-width": 3 * px,
-        fill: s.treffer.fremd ? "#F59E0B" : "#3ED07A"}, s.treffer.name));
+        fill: SLOT_FARBE[s.treffer.fremd ? "fremditem" : "treffer"]}, s.treffer.name));
     }
     const [kx, ky] = scanZuBild(s.klick[0], s.klick[1]);
     const arm = 4 * px;

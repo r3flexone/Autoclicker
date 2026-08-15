@@ -801,7 +801,21 @@ Sechs Regeln, an denen der Reiter hängt:
   Die **Rechnung gibt es nur einmal** — `_erkennen_lauf()` füllt `_treffer`,
   die Meldung baut jeder Anlass selbst (der Knopf sagt das Ergebnis, das Finden
   hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
-- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, amber statt
+- **Die Slot-Zustände liegen auf einem SPIELBILD, nicht auf dem Panel.** Deshalb
+  haben sie eine eigene, grellere Farbfamilie (`--slot-ok` Neongrün =
+  erkannt und im Scan, `--slot-fremd` Türkis = erkannt, aber nicht im Scan,
+  `--slot-offen` Orange = nichts erkannt, hier ist zu tun) und **jeweils eine
+  Füllung** dazu (Suffix `-f`). Ein 1,5-px-Umriss in `var(--dim)` verschwindet
+  zwischen bunten Item-Symbolen restlos — genau das war „nichts erkannt" vorher,
+  also ausgerechnet der Zustand, den man sucht. Die Fläche trägt die Aussage,
+  der Strich schärft sie.
+
+  Marke im Bild und Zeile in der Liste lesen **dieselben** Variablen
+  (`SLOT_FARBE` liest sie einmal aus `getComputedStyle`), statt Hexwerte zu
+  wiederholen. Drei Tests halten das zusammen: jeder Zustand braucht Umriss
+  *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
+  `SLOT_FARBE` muss genau die Zustände abdecken.
+- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, türkis statt
   grün). Der Fall entsteht bei einem Scan ohne Items, denn dann prüft
   `_kandidaten()` den ganzen Bestand — und dort ist es die nützlichste Auskunft
   überhaupt: das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
