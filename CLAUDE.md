@@ -666,7 +666,7 @@ neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
 zusammengehören, laufen irgendwann auseinander, und dann sind alle Koordinaten
 still um einen Monitor verschoben.
 
-Fünf Regeln, an denen der Reiter hängt:
+Sechs Regeln, an denen der Reiter hängt:
 
 - **Der Screenshot bleibt in Python.** Die Seite bekommt ihn einmal als
   verkleinertes Bild (`scan_bild()`, getrennt von `scan_daten()`, weil er der
@@ -677,6 +677,23 @@ Fünf Regeln, an denen der Reiter hängt:
   verrutscht die Ecke um ein paar Pixel, und bei einem Slot von 60 px schneidet
   das schon das Symbol an. Zwischen den beiden Klicks zeigt die Ansicht das
   entstehende Rechteck.
+- **Daneben klicken zieht ein Auswahl-Rechteck auf**, und die Sammel-Aktion
+  arbeitet auf der Auswahl — dieselbe Regel wie im Sequenz-Editor. Ein einzelner
+  Slot ist ein Klick; dreissig wären sonst dreissig Klicks und dreissig
+  Löschungen. Gewählt ist, was **ganz** im Rechteck liegt: „alle, die darin
+  sind" heisst genau das, und ein angeschnittener Slot wäre eine Ermessensfrage
+  — bei einer Sammel-Löschung das Falsche. STRG-Klick nimmt einzelne dazu oder
+  heraus. `_auswahl` (die Menge) steht neben `scan_name` (der eine, den der
+  Inspektor bearbeitet): zwei Dinge, zwei Felder, sonst hätte „Farbe messen"
+  bei dreissig Gewählten keine Bedeutung.
+
+  **Das Rechteck wählt, es löscht nicht.** Direkt zu löschen wäre der kürzere
+  Weg und der falsche: es gibt in diesem Reiter kein Rückgängig, und ein um
+  fünfzig Pixel zu weit gezogenes Rechteck nähme wortlos dreissig Slots mit.
+  Gewählt sieht man erst, was man verliert; der zweite Griff (Entf oder
+  „N löschen") kostet einen Klick und ist der einzige Schutz, den es gibt.
+  Aus demselben Grund wählt ein einzelner Klick ins Leere **nicht** mehr ab —
+  er fängt das Rechteck an, und die Abwahl ist das leere Rechteck oder ESC.
 - **Was man nicht treffen kann, kann man nicht löschen.** Ein Slot von 2×2 px
   entsteht aus zwei Klicks fast auf dieselbe Stelle — und war danach kaum wieder
   loszuwerden, weil Löschen Auswählen voraussetzt. Drei Stellen zusammen lösen

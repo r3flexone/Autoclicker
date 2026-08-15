@@ -117,6 +117,11 @@ class ScanTeil:
         self.scan_modus: str = MODUS_WAHL
         self.scan_art: str = ART_SLOT
         self.scan_name: str = ""
+        # Die Slot-Auswahl. `scan_name` bleibt der EINE, an dem der Inspektor
+        # arbeitet (Farbe messen, Klickpunkt, lernen); `_auswahl` ist die Menge,
+        # auf der Sammel-Aktionen laufen. Dieselbe Trennung wie im
+        # Sequenz-Editor, wo `sel_rows` neben dem angezeigten Block steht.
+        self._auswahl: list = []
         # Der offene Item-Scan ist der ZUSAMMENHANG, nicht die Auswahl: wer
         # einen Slot anklickt, um ihn zu bearbeiten, arbeitet weiter an
         # demselben Scan. Vorher hing beides an `scan_art`/`scan_name`, und ein
@@ -636,6 +641,9 @@ class ScanTeil:
             "offen": self.scan_offen,
             "nur_dabei": self.nur_dabei,
             "wahl": {"art": self.scan_art, "name": self.scan_name},
+            # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
+            # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
+            "auswahl": [n for n in self._auswahl if n in self.slots],
             "dirty": self._scan_dirty,
             "status": {"text": text, "art": art},
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
@@ -774,7 +782,8 @@ class ScanTeil:
         # gehört zu einer Absicht von vorhin.
         self._suchbereich = None
         texte = {
-            MODUS_WAHL: "Auswählen: auf einen Slot klicken.",
+            MODUS_WAHL: "Auswählen: auf einen Slot klicken — daneben klicken "
+                        "zieht ein Rechteck um mehrere.",
             MODUS_SLOT: "Neuer Slot: zwei Ecken anklicken.",
             MODUS_MESSEN: "Farbe messen: auf den Slot-Hintergrund klicken.",
             MODUS_KLICK: "Klickpunkt: die Stelle im Slot anklicken.",
@@ -792,6 +801,11 @@ class ScanTeil:
         if art not in (ART_SLOT, ART_ITEM, ART_SCAN):
             return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
         self.scan_art, self.scan_name = art, name
+        # Eine Zeile in der Liste anzuklicken ist eine EINZEL-Auswahl. Sonst
+        # bliebe nach einem Rechteck die alte Menge stehen, und der nächste
+        # Druck auf „löschen" nähme dreissig Slots statt des einen, den man
+        # gerade angeklickt hat.
+        self._auswahl = [name] if art == ART_SLOT and name in self.slots else []
         return self.scan_daten()
 
     def _gewaehlter_slot(self) -> Optional[ItemSlot]:
@@ -820,7 +834,7 @@ class ScanTeil:
             return self._klick_bereich(x, y)
         if self.scan_modus == MODUS_FINDEN:
             return self._klick_finden(x, y)
-        return self._klick_waehlen(x, y)
+        return self._klick_waehlen(x, y, bool((daten or {}).get("zusatz")))
 
     def _klick_slot(self, x: int, y: int) -> dict:
         """Zwei Ecken ergeben einen Slot — der Weg, den der Nutzer verlangt hat.
@@ -855,6 +869,7 @@ class ScanTeil:
             click_pos=((x1 + x2) // 2, (y1 + y2) // 2),
             slot_color=farbe)
         self.scan_art, self.scan_name = ART_SLOT, name
+        self._auswahl = [name]
         self._dazu(ART_SLOT, name)
         gemessen = f" · Hintergrund {hexfarbe(farbe)}" if farbe else ""
         return self._scan_geaendert(
@@ -1090,7 +1105,7 @@ class ScanTeil:
         slot.click_pos = (x, y)
         return self._scan_geaendert(f"{slot.name}: Klickpunkt ({x}, {y})")
 
-    def _klick_waehlen(self, x: int, y: int) -> dict:
+    def _klick_waehlen(self, x: int, y: int, zusatz: bool = False) -> dict:
         """Den kleinsten Slot unter der Stelle auswählen.
 
         **Nicht den obersten, sondern den kleinsten** — und das ist der
@@ -1106,7 +1121,16 @@ class ScanTeil:
 
         Bei gleicher Grösse gewinnt weiterhin der zuletzt angelegte: das ist
         der, den man gerade vor sich hat.
+
+        **Daneben klicken zieht ein Auswahl-Rechteck auf.** Ein einzelner Slot
+        ist ein Klick; dreissig sind sonst dreissig Klicks und dreissig
+        Bestätigungen. Zwei Ecken, alle darin liegenden sind gewählt, und die
+        Sammel-Aktion arbeitet auf der Auswahl — dieselbe Regel wie im
+        Sequenz-Editor. Mit `zusatz` (STRG) kommt ein einzelner Slot dazu oder
+        fällt heraus.
         """
+        if self._ecke is not None:
+            return self._rahmen_auswahl(x, y)
         gewaehlt, kleinste = None, None
         for slot in self.slots.values():
             x1, y1, x2, y2 = self._trefferflaeche(slot.scan_region)
@@ -1116,8 +1140,51 @@ class ScanTeil:
                        (slot.scan_region[3] - slot.scan_region[1]))
             if kleinste is None or flaeche <= kleinste:
                 gewaehlt, kleinste = slot.name, flaeche
-        self.scan_art = ART_SLOT if gewaehlt else self.scan_art
-        self.scan_name = gewaehlt or ""
+        if gewaehlt is None:
+            # Nichts getroffen: das ist der Anfang eines Rechtecks, nicht
+            # „nichts". Aufgehoben wird die Auswahl mit ESC oder mit einem
+            # Rechteck, in dem nichts liegt.
+            self._ecke = (x, y)
+            return self._scan_melde(
+                "Auswahl-Rechteck: zweite Ecke — oder ESC.", "info")
+        if zusatz:
+            return self._auswahl_umschalten(gewaehlt)
+        self.scan_art = ART_SLOT
+        self.scan_name = gewaehlt
+        self._auswahl = [gewaehlt]
+        return self.scan_daten()
+
+    def _rahmen_auswahl(self, x: int, y: int) -> dict:
+        """Zweite Ecke: alles, was ganz darin liegt, ist gewählt.
+
+        **Ganz darin, nicht angeschnitten.** „Alle, die darin sind" heisst genau
+        das; ein Slot, der halb aus dem Rechteck ragt, ist eine Ermessensfrage,
+        und Ermessen ist bei einer Sammel-Löschung das Falsche. Wer mehr will,
+        zieht grösser — das sieht man beim Ziehen ja.
+        """
+        x1, y1, x2, y2 = normalize_region(self._ecke[0], self._ecke[1], x, y)
+        self._ecke = None
+        drin = [s.name for s in self.slots.values()
+                if s.scan_region and x1 <= s.scan_region[0] and s.scan_region[2] <= x2
+                and y1 <= s.scan_region[1] and s.scan_region[3] <= y2]
+        self._auswahl = drin
+        self.scan_art = ART_SLOT
+        self.scan_name = drin[0] if drin else ""
+        if not drin:
+            return self._scan_melde("Nichts im Rechteck — Auswahl aufgehoben.", "info")
+        return self._scan_melde(f"{len(drin)} Slot(s) gewählt — „löschen“ "
+                                "(oder Entf) nimmt alle.", "info")
+
+    def _auswahl_umschalten(self, name: str) -> dict:
+        """STRG-Klick: einen Slot zur Auswahl dazu oder heraus."""
+        if name in self._auswahl:
+            self._auswahl.remove(name)
+            if self.scan_name == name:
+                self.scan_name = self._auswahl[0] if self._auswahl else ""
+        else:
+            self._auswahl.append(name)
+            self.scan_name = name
+        self.scan_art = ART_SLOT
         return self.scan_daten()
 
     @staticmethod
@@ -1129,9 +1196,10 @@ class ScanTeil:
         return (x1 - wx, y1 - wy, x2 + wx, y2 + wy)
 
     def scan_abbrechen(self, daten: Optional[dict] = None) -> dict:
-        """ESC: eine halb gesetzte Ecke verwerfen, zurück ins Auswählen."""
+        """ESC: halb gesetzte Ecke und Auswahl verwerfen, zurück ins Auswählen."""
         self._ecke = None
         self._suchbereich = None
+        self._auswahl = []
         self.scan_modus = MODUS_WAHL
         return self.scan_daten()
 
@@ -1187,18 +1255,32 @@ class ScanTeil:
         return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'{zusatz}")
 
     def scan_slot_loeschen(self, daten: Optional[dict] = None) -> dict:
-        slot = self._gewaehlter_slot()
-        if slot is None:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        del self.slots[slot.name]
-        self._treffer.pop(slot.name, None)
-        benutzt = [c.name for c in self.scans.values() if slot.name in c.slot_names]
-        for cfg in self.scans.values():
-            cfg.slot_names = [n for n in cfg.slot_names if n != slot.name]
+        """Löscht die gewählten Slots — einen oder die ganze Auswahl.
+
+        **Die Sammel-Aktion arbeitet auf der Auswahl, nicht auf einem Slot** —
+        dieselbe Regel wie im Sequenz-Editor. Ein Rechteck um dreissig Slots und
+        ein Griff, statt dreissigmal auswählen und löschen.
+        """
+        namen = [n for n in self._auswahl if n in self.slots]
+        if not namen:
+            slot = self._gewaehlter_slot()
+            if slot is None:
+                return self._scan_melde("Kein Slot gewählt.", "warn")
+            namen = [slot.name]
+        betroffen = set()
+        for name in namen:
+            del self.slots[name]
+            self._treffer.pop(name, None)
+            for cfg in self.scans.values():
+                if name in cfg.slot_names:
+                    betroffen.add(cfg.name)
+                    cfg.slot_names = [n for n in cfg.slot_names if n != name]
         self._objekte_angleichen()
         self.scan_name = ""
-        hinweis = f" · aus {len(benutzt)} Scan(s) entfernt" if benutzt else ""
-        return self._scan_geaendert(f"'{slot.name}' gelöscht{hinweis}", "warn")
+        self._auswahl = []
+        hinweis = f" · aus {len(betroffen)} Scan(s) entfernt" if betroffen else ""
+        was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Slots"
+        return self._scan_geaendert(f"{was} gelöscht{hinweis}", "warn")
 
     def scan_slot_doppeln(self, daten: Optional[dict] = None) -> dict:
         """Ein Slot neben dem gewählten — der schnellste Weg zu einer Reihe.
@@ -1217,6 +1299,7 @@ class ScanTeil:
             click_pos=(slot.click_pos[0] + versatz, slot.click_pos[1]),
             slot_color=slot.slot_color)
         self.scan_name = name
+        self._auswahl = [name]
         self._dazu(ART_SLOT, name)
         return self._scan_geaendert(f"{name} neben '{slot.name}' angelegt.")
 

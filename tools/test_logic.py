@@ -5641,6 +5641,64 @@ try:
             _b18.scan_slot_loeschen()
             del _b18.slots["Umschlag"]
 
+            # --- Ein Rechteck neben den Slots waehlt mehrere ---
+            # Dreissig Slots einzeln anzuklicken und einzeln zu loeschen ist
+            # der Grund, warum es das gibt. Die Sammel-Aktion arbeitet auf der
+            # Auswahl, nicht auf einem Slot - dieselbe Regel wie im
+            # Sequenz-Editor.
+            _b18.scan_modus_setzen({"modus": _MW18})
+            _z18 = _b18.scan_klick({"x": 5, "y": 5})
+            check("ein Klick neben allen Slots faengt ein Rechteck an",
+                  _z18["ecke"] == [5, 5] and _z18["auswahl"] == [])
+            _z18 = _b18.scan_klick({"x": 290, "y": 290})
+            check("die zweite Ecke waehlt alles darin",
+                  sorted(_z18["auswahl"]) == ["Slot 1", "Slot 2"])
+            check("und die Ecke ist wieder frei", _z18["ecke"] is None)
+            check("einer davon ist der, den der Inspektor bearbeitet",
+                  _z18["wahl"]["name"] in _z18["auswahl"])
+
+            # Ganz darin, nicht angeschnitten: "alle die darin sind" heisst
+            # genau das, und Ermessen ist bei einer Sammel-Loeschung falsch.
+            _b18.scan_klick({"x": 5, "y": 5})
+            _z18 = _b18.scan_klick({"x": 130, "y": 130})
+            check("ein angeschnittener Slot zaehlt nicht dazu",
+                  _z18["auswahl"] == [])
+            check("ein leeres Rechteck hebt die Auswahl auf",
+                  _z18["wahl"]["name"] == "")
+
+            # STRG nimmt einzelne dazu und wieder heraus. Vorher einen normalen
+            # Klick, sonst waere "dazu" von "nur dieser" nicht zu unterscheiden.
+            _b18.scan_klick({"x": 210, "y": 210})
+            _z18 = _b18.scan_klick({"x": 130, "y": 130, "zusatz": True})
+            check("STRG-Klick nimmt einen Slot zur Auswahl DAZU",
+                  sorted(_z18["auswahl"]) == ["Slot 1", "Slot 2"])
+            _z18 = _b18.scan_klick({"x": 130, "y": 130, "zusatz": True})
+            check("nochmal darauf nimmt ihn wieder heraus",
+                  _z18["auswahl"] == ["Slot 2"])
+
+            # Ein Klick auf einen Slot ist wieder eine EINZEL-Auswahl - sonst
+            # naehme das naechste "loeschen" die alte Menge mit.
+            _z18 = _b18.scan_klick({"x": 130, "y": 130})
+            check("ein gewoehnlicher Klick waehlt nur diesen einen",
+                  _z18["auswahl"] == ["Slot 1"])
+            _z18 = _b18.scan_waehlen({"art": "slot", "name": "Slot 2"})
+            check("und eine Zeile in der Liste ebenso",
+                  _z18["auswahl"] == ["Slot 2"])
+
+            # Loeschen nimmt die ganze Auswahl.
+            _b18.scan_klick({"x": 5, "y": 5})
+            _b18.scan_klick({"x": 290, "y": 290})
+            _z18 = _b18.scan_slot_loeschen()
+            check("loeschen nimmt die ganze Auswahl",
+                  _z18["slots"] == [] and _z18["auswahl"] == [])
+            check("und sagt, wie viele es waren",
+                  "2 Slots gelöscht" in _z18["status"]["text"])
+            _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(100, 100, 160, 160),
+                                          click_pos=(111, 122), slot_color=(48, 54, 68))
+            _b18.slots["Slot 2"] = _SLOT8(name="Slot 2", scan_region=(200, 200, 260, 260),
+                                          click_pos=(230, 230), slot_color=(48, 54, 68))
+            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
+
             # --- Farbe messen: im Item statt im Hintergrund ---
             _b18.scan_waehlen({"art": "slot", "name": _s18["name"]})
             _b18.scan_modus_setzen({"modus": _MM18})
@@ -5661,8 +5719,16 @@ try:
             _b18.scan_modus_setzen({"modus": _MW18})
             _z18 = _b18.scan_klick({"x": 210, "y": 210})
             check("ein Klick waehlt den Slot darunter", _z18["wahl"]["name"] == "Slot 2")
+            # Daneben zu klicken waehlt nicht ab, sondern faengt ein
+            # Auswahl-Rechteck an: die Abwahl ist das leere Rechteck (oder ESC).
+            # Ein einzelner Klick ins Leere darf nichts wegnehmen, sonst kostet
+            # ein Verklicker die gerade aufgebaute Auswahl.
             _z18 = _b18.scan_klick({"x": 5, "y": 5})
-            check("und daneben waehlt nichts", _z18["wahl"]["name"] == "")
+            check("daneben faengt ein Auswahl-Rechteck an",
+                  _z18["ecke"] == [5, 5] and _z18["wahl"]["name"] == "Slot 2")
+            _z18 = _b18.scan_klick({"x": 8, "y": 8})
+            check("ein Rechteck ohne Slots waehlt nichts",
+                  _z18["wahl"]["name"] == "" and _z18["auswahl"] == [])
 
             # --- Item lernen ---
             _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})

@@ -2290,7 +2290,8 @@ let scanKategorie = "";           // Kategorie-Filter der Item-Liste
  * wo man den Notnagel sucht — und wer der Liste folgte, hatte 45 Slots einzeln
  * aufgezogen, bevor er es fand. */
 const SCAN_MODI = [
-  {key: "wahl", text: "Auswählen", taste: "V", hilfe: "Slot im Bild anklicken"},
+  {key: "wahl", text: "Auswählen", taste: "V",
+   hilfe: "Slot anklicken — daneben zieht ein Rechteck um mehrere"},
   {key: "finden", text: "Slots finden", taste: "G",
    hilfe: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
   {key: "slot", text: "Neuer Slot", taste: "S", hilfe: "zwei Ecken anklicken — wenn Finden nicht greift"},
@@ -2563,7 +2564,8 @@ function scanListeSlots(ziel) {
   }
   for (const s of liste) {
     ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.wahl.art === "slot" && SC.wahl.name === s.name ? " an" : ""),
+      class: "scan-zeile" + (SC.auswahl.includes(s.name)
+        || (SC.wahl.art === "slot" && SC.wahl.name === s.name) ? " an" : ""),
       onclick: () => rufScan("scan_waehlen", {art: "slot", name: s.name}),
     },
       el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
@@ -2671,7 +2673,10 @@ function scanOverlay() {
     if (fremd && SC.nur_dabei) continue;
     const [x1, y1] = scanZuBild(s.region[0], s.region[1]);
     const [x2, y2] = scanZuBild(s.region[2], s.region[3]);
-    const gewaehlt = SC.wahl.art === "slot" && SC.wahl.name === s.name;
+    // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
+    // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
+    const gewaehlt = SC.auswahl.includes(s.name)
+      || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
     // Gruen = hier liegt ein Item, das der Scan kennt. Amber = erkannt, aber
     // noch nicht Mitglied dieses Scans — anderer Zustand, andere Farbe, sonst
     // sucht man spaeter, warum der Scan das Gruene nicht findet.
@@ -2786,6 +2791,10 @@ function scanSlotAktuell() {
 }
 
 function scanInspSlot(ziel) {
+  // Mehrere Slots gewaehlt: dann gibt es keine Einzelfelder zu zeigen (welchen
+  // Namen truege das Feld?), sondern nur, was auf alle wirkt. Dieselbe Haltung
+  // wie im Sequenz-Editor bei einer Mehrfachauswahl.
+  if (SC.auswahl.length > 1) return scanInspAuswahl(ziel);
   const s = scanSlotAktuell();
   if (!s) return;
   const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
@@ -2851,6 +2860,25 @@ function scanInspSlot(ziel) {
         "Stimmt nicht? „Item lernen“ legt aus diesem Slot ein weiteres Item an."));
     }
   }
+}
+
+/** Mehrere Slots gewaehlt — nur, was auf alle wirkt. */
+function scanInspAuswahl(ziel) {
+  ziel.appendChild(ueberschrift("AUSWAHL",
+    "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
+    "klicken). STRG-Klick nimmt einzelne dazu oder heraus.", "auswahl"));
+  ziel.appendChild(el("p", {class: "hinweis"}, SC.auswahl.length + " Slots gewählt"));
+  // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
+  // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
+  ziel.appendChild(el("div", {class: "spalte", style: "gap:2px;max-height:220px;"
+    + "overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--muted)"},
+    ...SC.auswahl.map((n) => el("span", {}, n))));
+  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+    el("button", {class: "btn", onclick: () => rufScan("scan_abbrechen")},
+       "Auswahl aufheben"),
+    el("span", {class: "wachse"}),
+    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
+       SC.auswahl.length + " löschen")));
 }
 
 function scanInspItem(ziel) {
@@ -3323,7 +3351,10 @@ function verdrahte() {
   const flaeche = $("scan-overlay");
   flaeche.addEventListener("click", (e) => {
     const stelle = scanStelleAusEvent(e);
-    if (stelle) rufScan("scan_klick", {x: stelle[0], y: stelle[1]});
+    // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
+    // Geste wie im Sequenz-Editor.
+    if (stelle) rufScan("scan_klick",
+                        {x: stelle[0], y: stelle[1], zusatz: e.ctrlKey || e.metaKey});
   });
   flaeche.addEventListener("mousemove", (e) => {
     // Nur waehrend des Aufziehens gebraucht — sonst waere es ein Neuaufbau des
