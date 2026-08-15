@@ -108,6 +108,14 @@ label.an input[type=checkbox]::after{
 }
 label.an input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
 label.an input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
+/* **Der Mischzustand braucht eine eigene Stellung.** Ein „alle"-Schieber ueber
+   56 Schaltern steht meistens weder auf ein noch auf aus — 23 von 56. Zeigte er
+   dann „aus", saehe er falsch aus und man wuesste nicht, was ein Klick tut.
+   Der Knopf steht deshalb in der MITTE und bleibt gedaempft. `indeterminate`
+   ist dafuer das vorgesehene Mittel eines echten <input>; es ueberlebt damit
+   auch Tastatur und Test. */
+label.an input[type=checkbox]:indeterminate{background:var(--line);border-color:var(--accent)}
+label.an input[type=checkbox]:indeterminate::after{transform:translateX(7px);background:var(--accent)}
 label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
@@ -983,10 +991,15 @@ function farbfeld(beschriftung, hex, beim_setzen, hilfe, schluessel) {
     el("div", {class: "reihe"}, wahl, text));
 }
 
-function schalter(beschriftung, an, beim_setzen) {
+function schalter(beschriftung, an, beim_setzen, unbestimmt) {
   const box = el("input", {type: "checkbox"});
   box.checked = !!an;
-  box.addEventListener("change", () => beim_setzen(box.checked));
+  // `indeterminate` geht nur ueber die Eigenschaft, nicht ueber ein Attribut.
+  if (unbestimmt) box.indeterminate = true;
+  // Aus dem Mischzustand heraus heisst ein Klick „alle" — das ist der Griff,
+  // den man dort will. Ohne das entschiede der Browser (er setzt checked=true),
+  // was zufaellig dasselbe waere; ausgeschrieben haengt es nicht am Zufall.
+  box.addEventListener("change", () => beim_setzen(unbestimmt ? true : box.checked));
   return el("label", {class: "an"}, box, beschriftung);
 }
 
@@ -2983,24 +2996,24 @@ function scanInspSlot(ziel) {
   }
 }
 
-/** Ueberschrift einer Haken-Liste, mit Stand und „alle"/„keine".
+/** Ueberschrift einer Haken-Liste, mit Stand und einem „alle"-Schieber.
  *
  * **56 Schalter einzeln zu setzen ist keine Bedienung.** Ein Scan umfasst fast
  * immer ALLES seines Spiels; die Ausnahme klickt man danach einzeln weg — nicht
- * umgekehrt. Zwei Knoepfe und kein Umschalter: bei gemischtem Stand (23 von 56)
- * waere ein Schalter nicht zu beschriften, und man muesste raten, was ein Klick
- * tut. „alle" und „keine" sagen es.
+ * umgekehrt.
  *
- * Der Stand steht daneben, weil er sonst nur durch Zaehlen zu haben ist. */
+ * Derselbe Schieber wie die Eintraege darunter, damit man ihn nicht als etwas
+ * anderes lesen muss. Drei Stellungen statt zwei: bei 23 von 56 steht er in der
+ * MITTE (`indeterminate`) — „aus" waere dort schlicht gelogen, und man wuesste
+ * nicht, was ein Klick tut. Aus der Mitte heraus schaltet er ein; ganz an
+ * schaltet er alles aus. */
 function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
-  const alle = (wert) => rufScan("scan_alle", {scan: scan, art: art, wert: wert});
+  const gemischt = drin > 0 && drin < gesamt;
   return el("div", {class: "reihe", style: "margin-top:6px"},
     el("span", {class: "ueberschrift mitinfo wachse"}, titel, info(hilfe, schluessel)),
     el("span", {class: "klein mono"}, drin + "/" + gesamt),
-    el("button", {class: "btn still", disabled: drin === gesamt,
-                  onclick: () => alle(true)}, "alle"),
-    el("button", {class: "btn still", disabled: drin === 0,
-                  onclick: () => alle(false)}, "keine"));
+    schalter("alle", drin === gesamt && gesamt > 0,
+      (v) => rufScan("scan_alle", {scan: scan, art: art, wert: v}), gemischt));
 }
 
 /** Mehrere Slots gewaehlt — nur, was auf alle wirkt. */

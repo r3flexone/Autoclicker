@@ -6459,6 +6459,16 @@ def _css_regel18(wahl: str) -> str:
     stelle = _html18.index("\n" + wahl + "{")
     return _html18[stelle + len(wahl) + 2:_html18.index("}", stelle)]
 
+# --- Der „alle"-Schieber hat drei Stellungen, nicht zwei ---
+# Ueber 56 Schaltern steht er meistens weder auf ein noch auf aus. Zeigte er
+# dann „aus", waere das gelogen - und man wuesste nicht, was ein Klick tut.
+check("der Schieber kennt einen Mischzustand",
+      "input[type=checkbox]:indeterminate{" in _html18.replace(" ", ""))
+check("und der sieht anders aus als aus UND als an",
+      ":indeterminate::after{" in _html18.replace(" ", ""))
+check("schalter() kann ihn setzen",
+      "box.indeterminate = true" in _html18)
+
 check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".seite"))
 check("und der wachsende Abschnitt darin nicht nochmal",
       "overflow" not in _css_regel18(".abschnitt.wachsend"))
