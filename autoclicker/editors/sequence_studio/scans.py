@@ -1443,7 +1443,7 @@ class ScanTeil:
             marker_colors=[tuple(c) for c in marker],
             category=None,
             priority=len(self.items) + 1,
-            template=save_template(crop, name),
+            template=save_template(crop, name, slot.slot_color),
             min_confidence=CONFIG.scan_min_confidence,
         )
         return name

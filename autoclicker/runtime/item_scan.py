@@ -279,7 +279,8 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     template_path = Path(TEMPLATES_DIR) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
-        img.save(template_path)
+        from ..imaging import mit_hintergrund_maske
+        mit_hintergrund_maske(img, slot.slot_color).save(template_path)
         item.template = template_file
     except (OSError, ValueError) as e:
         with state.lock:

@@ -5874,16 +5874,27 @@ try:
             # Der Koeder unten rechts hat GENAU die Slot-Farbe und ist keiner:
             # ein Menue neben dem Inventar. Ohne Suchbereich wird er mitgefunden,
             # und das faellt erst beim Erkennen auf - dann hat man ihn schon.
+            # Jede Zelle bekommt in der Mitte ein eigenes Rauschmuster. Ohne das
+            # ist die Zelle einfarbig - und ein Vergleich, der den Hintergrund
+            # ausmaskiert, haette dann gar keine Pixel mehr zu vergleichen.
+            # (Ausserdem: eine gleichfoermige Flaeche hat keine Varianz, also
+            # auch keine Korrelation. Echte Item-Symbole haben beides.)
+            import random as _rnd18
             _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
+            def _zelle18(ox, oy, saat):
+                for _px18 in range(60):
+                    for _py18 in range(60):
+                        _gitter18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
+                r = _rnd18.Random(saat)
+                for _px18 in range(20, 40):
+                    for _py18 in range(20, 40):
+                        _gitter18.putpixel((ox + _px18, oy + _py18),
+                                           (r.randrange(120, 256), r.randrange(120, 256),
+                                            r.randrange(120, 256)))
             for _gy18 in range(2):
                 for _gx18 in range(3):
-                    for _px18 in range(60):
-                        for _py18 in range(60):
-                            _gitter18.putpixel((40 + _gx18 * 80 + _px18,
-                                                40 + _gy18 * 80 + _py18), (48, 54, 68))
-            for _px18 in range(60):
-                for _py18 in range(60):
-                    _gitter18.putpixel((320 + _px18, 220 + _py18), (48, 54, 68))
+                    _zelle18(40 + _gx18 * 80, 40 + _gy18 * 80, _gy18 * 3 + _gx18)
+            _zelle18(320, 220, 99)
             _slots_vorher18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18.scans["Weg"].slot_names.clear()
@@ -6406,6 +6417,82 @@ check("Slots finden steht gleich hinter Auswaehlen",
 _tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
+
+# --------------------------- Template-Maske: der Hintergrund zaehlt nicht mit
+section("Template-Vergleich blendet den Hintergrund aus")
+
+# Gemessen an einem echten Bestand: von 62x60 Pixeln eines Slots sind 10-40 % das
+# Item, der Rest ist die immer gleiche Slot-Flaeche. Ein Vergleich ueber das ganze
+# Rechteck stimmt damit hauptsaechlich darueber ab, dass beide denselben
+# Hintergrund haben.
+try:
+    from PIL import Image as _PILm
+    import autoclicker.imaging as _imgm
+    _hat_maske = _imgm.OPENCV_AVAILABLE and _imgm.NUMPY_AVAILABLE
+except ImportError:
+    _hat_maske = False
+
+if not _hat_maske:
+    print("  ----  uebersprungen (Pillow/OpenCV/NumPy fehlt)")
+else:
+    _HG_M = (30, 128, 108)
+
+    def _slotbild(hintergrund, saat):
+        """Ein Slot: Hintergrund + ein Symbol in der Mitte."""
+        import random
+        b = _PILm.new("RGB", (40, 40), hintergrund)
+        r = random.Random(saat)
+        for x in range(14, 26):
+            for y in range(14, 26):
+                b.putpixel((x, y), (r.randrange(120, 256), r.randrange(120, 256),
+                                    r.randrange(120, 256)))
+        return b
+
+    _m = _imgm.mit_hintergrund_maske(_slotbild(_HG_M, 1), _HG_M)
+    check("die Maske steckt im Bild, nicht daneben", _m.mode == "RGBA")
+    _alpha = list(_m.getchannel("A").getdata())
+    _deckend = sum(1 for a in _alpha if a > 127)
+    check(f"nur das Symbol ist deckend ({_deckend} von 1600 Pixeln)",
+          _deckend == 144)
+    check("und der Hintergrund durchsichtig",
+          _alpha[0] == 0 and _alpha[-1] == 0)
+
+    # **Die Kernfrage: dasselbe Item vor einem ANDEREN Hintergrund.**
+    # Die Maske merkt sich Stellen, nicht Farben - also darf das Menue dahinter
+    # eine voellig andere Farbe haben.
+    import tempfile as _tfm, os as _osm
+    _dirm = _tfm.mkdtemp(prefix="maske_")
+    _altm = _imgm.TEMPLATES_DIR
+    _imgm.TEMPLATES_DIR = _dirm
+    _imgm._template_cache.clear()
+    try:
+        _m.save(_osm.path.join(_dirm, "gelernt.png"))
+        _gleich = _imgm.match_template_in_image(_slotbild(_HG_M, 1), "gelernt.png", 0.8)
+        check("im eigenen Slot wird es erkannt", _gleich[0] and _gleich[1] > 0.99)
+
+        _anderes_menue = _slotbild((90, 40, 120), 1)      # violetter Hintergrund
+        _fremd = _imgm.match_template_in_image(_anderes_menue, "gelernt.png", 0.8)
+        check("und vor einem anders gefaerbten Menue genauso",
+              _fremd[0] and _fremd[1] > 0.99)
+
+        # Gegenprobe: ein ANDERES Symbol darf nicht passen, auch nicht auf
+        # demselben Hintergrund - sonst haette die Maske nur alles durchgelassen.
+        _anderes = _imgm.match_template_in_image(_slotbild(_HG_M, 2), "gelernt.png", 0.8)
+        check("ein anderes Symbol passt nicht", not _anderes[0])
+
+        # Ohne Maske (Template ohne Alpha) bleibt es beim alten Verhalten - und
+        # genau dann zieht der Hintergrund die Uebereinstimmung hoch.
+        _slotbild(_HG_M, 1).save(_osm.path.join(_dirm, "ohne.png"))
+        _imgm._template_cache.clear()
+        _ohne = _imgm.match_template_in_image(_slotbild((90, 40, 120), 1), "ohne.png", 0.8)
+        check("ohne Maske stoert der fremde Hintergrund sehr wohl",
+              _ohne[1] < _fremd[1])
+    finally:
+        _imgm.TEMPLATES_DIR = _altm
+        _imgm._template_cache.clear()
+        import shutil as _shm
+        _shm.rmtree(_dirm, ignore_errors=True)
+
 
 # --- Jeder Slot-Zustand hat Umriss UND Fuellung in derselben Farbfamilie ---
 # Die Rechtecke liegen auf einem SPIELBILD, nicht auf dem dunklen Panel: ein

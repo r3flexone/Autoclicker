@@ -547,6 +547,43 @@ wird.)
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
 - `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/symbol.py` — das Programm-Symbol als Geometrie (s.u. beim Studio). Kennt weder Windows noch Pillow: es rechnet nur, wie viel Farbe auf einen Pixel fällt.
+**Ein Template vergleicht nur das Item, nicht den Slot.** Gemessen an einem
+echten Bestand: von 62×60 Pixeln eines Slots sind **10–40 % das Item**, der Rest
+ist die immer gleiche Slot-Fläche. Ein Vergleich über das ganze Rechteck stimmt
+damit hauptsächlich darüber ab, dass beide denselben Hintergrund haben — und nur
+zu einem Zehntel darüber, ob es dasselbe Item ist. `mit_hintergrund_maske()`
+legt deshalb beim Lernen einen Alpha-Kanal an (Hintergrund durchsichtig), und
+`match_template_in_image()` rechnet nur über die deckenden Pixel.
+
+Vier Entscheidungen dahinter:
+
+- **Die Maske merkt sich Stellen, nicht Farben.** Deshalb trägt sie auch, wenn
+  dasselbe Item später vor einem anders gefärbten Menü steht: verglichen werden
+  die Pixel, an denen beim Lernen das Item sass. Welche Farbe der Hintergrund
+  dort *heute* hat, geht gar nicht mehr in die Rechnung ein — ein Test misst
+  genau das (dasselbe Symbol auf grünem und auf violettem Grund).
+- **Sie steckt IM Template-PNG**, nicht in einer Datei daneben. Zwei Dateien, die
+  zusammengehören, laufen irgendwann auseinander — dieselbe Entscheidung wie beim
+  Ursprung im Screenshot-PNG des Scans-Reiters.
+- **Gerechnet wird von Hand statt mit `cv2.matchTemplate(..., mask=)`.** Mit
+  Maske kann OpenCV nur `TM_SQDIFF` und `TM_CCORR_NORMED`, und deren Zahlen
+  bedeuten etwas anderes als `TM_CCOEFF_NORMED`. `min_confidence` steht an jedem
+  Item auf einem Wert, der für CCOEFF gedacht ist; ein Methodenwechsel würde jede
+  gespeicherte Schwelle still verschieben. Template und Ausschnitt sind ohnehin
+  immer gleich gross (`_template_in_groesse`), also ist es genau eine Korrelation
+  und keine Suche.
+- **Ohne Alpha bleibt alles beim Alten.** Ein Template aus der Zeit davor hat
+  keine Maske und wird wie bisher verglichen — es muss also nichts umgestellt
+  werden, nur neu Gelerntes ist besser. `_load_template` liest deshalb
+  `IMREAD_UNCHANGED` statt `IMREAD_COLOR`; mit `COLOR` fiele der Alpha-Kanal beim
+  Laden weg und niemand würde es merken.
+
+Eine Grenze, die man kennen muss: **eine völlig gleichförmige Fläche hat keine
+Varianz und damit keine Korrelation.** Ein Item, dessen sichtbarer Teil eine
+einzige Farbe ist, kommt maskiert auf 0 — vorher lieferte der Hintergrund die
+Varianz und es „funktionierte". Echte Symbole haben Struktur; für den Rest gibt
+es die Marker-Farben.
+
 - `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.

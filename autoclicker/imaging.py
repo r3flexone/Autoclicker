@@ -207,7 +207,11 @@ def _load_template(template_path: str):
     if eintrag is not None and eintrag["stand"] == stand:
         return eintrag["bild"]
 
-    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    # UNCHANGED statt COLOR: ein Template mit Alpha-Kanal traegt darin seine
+    # Maske. Ohne das faellt sie beim Laden weg und niemand merkt es.
+    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    if bild is not None and bild.ndim == 2:
+        bild = cv2.cvtColor(bild, cv2.COLOR_GRAY2BGR)
     if bild is None:
         logger.error(f"Konnte Template nicht laden: {template_path}")
         return None
@@ -216,6 +220,71 @@ def _load_template(template_path: str):
         _template_cache.clear()
     _template_cache[template_path] = {"stand": stand, "bild": bild, "skaliert": {}}
     return bild
+
+
+def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
+    """Legt einen Alpha-Kanal an: Hintergrund durchsichtig, Item deckend.
+
+    **Das Template besteht sonst zu neun Zehnteln aus Hintergrund.** Gemessen an
+    einem echten Bestand: von 62×60 Pixeln eines Slots sind 10–40 % das Item, der
+    Rest ist die immer gleiche Slot-Fläche. Ein Bildvergleich über das ganze
+    Rechteck stimmt damit hauptsächlich darüber ab, dass beide denselben
+    Hintergrund haben — und nur zu einem Zehntel darüber, ob es dasselbe Item ist.
+
+    **Die Maske merkt sich Stellen, nicht Farben.** Das ist der Grund, warum sie
+    auch dann trägt, wenn dasselbe Item später vor einem anders gefärbten Menü
+    steht: verglichen werden nur die Pixel, an denen beim Lernen das Item sass.
+    Welche Farbe der Hintergrund dort *heute* hat, geht in die Rechnung gar nicht
+    mehr ein.
+
+    Sie steckt IM Template-PNG (Alpha-Kanal), nicht in einer Datei daneben — zwei
+    Dateien, die zusammengehören, laufen irgendwann auseinander. Dieselbe
+    Entscheidung wie beim Ursprung im Screenshot-PNG.
+    """
+    if img is None or not hintergrund:
+        return img
+    grenze = CONFIG.scan_slot_color_distance
+    rgb = img.convert("RGB")
+    breite, hoehe = rgb.size
+    pixel = rgb.load()
+    maske = Image.new("L", (breite, hoehe))
+    mp = maske.load()
+    hr, hg, hb = hintergrund[:3]
+    for y in range(hoehe):
+        for x in range(breite):
+            r, g, b = pixel[x, y]
+            if ((r - hr) ** 2 + (g - hg) ** 2 + (b - hb) ** 2) ** 0.5 <= grenze:
+                mp[x, y] = 0
+            else:
+                mp[x, y] = 255
+    ergebnis = rgb.convert("RGBA")
+    ergebnis.putalpha(maske)
+    return ergebnis
+
+
+def _konfidenz_maskiert(bild, template, maske) -> float:
+    """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
+
+    **Warum von Hand und nicht `cv2.matchTemplate(..., mask=)`:** mit Maske kann
+    OpenCV nur `TM_SQDIFF` und `TM_CCORR_NORMED`, und deren Zahlen bedeuten etwas
+    anderes als die bisherige. `min_confidence` steht an jedem Item auf einem
+    Wert, der für CCOEFF gedacht ist — ein Methodenwechsel würde jede gespeicherte
+    Schwelle still verschieben, und niemand wüsste, warum plötzlich alles oder
+    nichts passt.
+
+    Template und Ausschnitt sind hier immer gleich gross (`_template_in_groesse`
+    sorgt dafür), also ist das Ganze genau eine Korrelation und keine Suche.
+    """
+    wahl = maske > 127
+    if int(wahl.sum()) < 16:
+        # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
+        return 0.0
+    a = template[wahl].astype(np.float64).ravel()
+    b = bild[wahl].astype(np.float64).ravel()
+    a -= a.mean()
+    b -= b.mean()
+    nenner = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
+    return float((a * b).sum() / nenner) if nenner > 0 else 0.0
 
 
 def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
@@ -291,11 +360,20 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             # Template/Maske (was cv2 zum Vergleich verwendet)
             cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
 
-        # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
-        result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+        # Traegt das Template eine Maske, wird nur ueber das Item verglichen -
+        # der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
+        maske = None
+        if template_cv.ndim == 3 and template_cv.shape[2] == 4:
+            maske = template_cv[:, :, 3]
+            template_cv = np.ascontiguousarray(template_cv[:, :, :3])
 
-        # Bestes Match finden
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        if maske is not None and template_cv.shape[:2] == img_cv.shape[:2]:
+            max_val = _konfidenz_maskiert(img_cv, template_cv, maske)
+            max_loc = (0, 0)
+        else:
+            # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
+            result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
         # max_val ist die Konfidenz (0.0 - 1.0)
         if max_val >= min_confidence:
