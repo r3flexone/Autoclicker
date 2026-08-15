@@ -6482,6 +6482,35 @@ else:
 
         # Ohne Maske (Template ohne Alpha) bleibt es beim alten Verhalten - und
         # genau dann zieht der Hintergrund die Uebereinstimmung hoch.
+        # --- Marker sehen dieselbe Flaeche wie das Template ---
+        # Der Hintergrund steckte als Marker in JEDEM Item: gemessen 19 von 19.
+        # Ursache war nicht das Verfahren, sondern die Schwelle - der dunklere
+        # Rand des Slots lag 44 entfernt, `scan_slot_color_distance` auf 25.
+        from autoclicker.editors.item_editor.markers import (
+            _collect_markers_silent as _cms_m)
+        _mit_rand = _PILm.new("RGB", (40, 40), _HG_M)
+        for _x in range(40):                      # dunklerer Rand des Slots
+            for _y in range(40):
+                if _x < 2 or _y < 2 or _x > 37 or _y > 37:
+                    _mit_rand.putpixel((_x, _y), (20, 95, 80))
+        for _x in range(16, 24):
+            for _y in range(16, 24):
+                _mit_rand.putpixel((_x, _y), (210, 15, 150))
+        # Die Schwelle explizit setzen: sonst misst der Test die config.json des
+        # Benutzers statt der Regel - und beim naechsten Wechsel des Wertes faellt
+        # er aus einem Grund um, der nichts mit dem Code zu tun hat.
+        import autoclicker.config as _cfgm
+        _alte_grenze = _cfgm.CONFIG.scan_slot_color_distance
+        _cfgm.CONFIG.scan_slot_color_distance = _ACrev().scan_slot_color_distance
+        _roh_marker = _cms_m(_mit_rand, _HG_M)
+        _mask_marker = _cms_m(_imgm.mit_hintergrund_maske(_mit_rand, _HG_M), _HG_M)
+        check("der Slot-Rand ist keine Marker-Farbe mehr",
+              (20, 95, 80) not in _mask_marker)
+        check("die Item-Farbe schon", (210, 15, 150) in _mask_marker)
+        check("und ueber die Maske kommt dasselbe heraus wie ueber die Farbregel",
+              set(_mask_marker) == set(_roh_marker))
+        _cfgm.CONFIG.scan_slot_color_distance = _alte_grenze
+
         _slotbild(_HG_M, 1).save(_osm.path.join(_dirm, "ohne.png"))
         _imgm._template_cache.clear()
         _ohne = _imgm.match_template_in_image(_slotbild((90, 40, 120), 1), "ohne.png", 0.8)

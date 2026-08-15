@@ -1437,13 +1437,17 @@ class ScanTeil:
                                             CONFIG.scan_min_confidence):
                 return ""
         name = next_item_name(self.items)
-        marker = _collect_markers_silent(crop, slot.slot_color)
+        # Einmal maskieren, beides daraus: Template UND Marker sehen damit
+        # genau dieselbe Flaeche als Item an.
+        from ...imaging import mit_hintergrund_maske
+        maskiert = mit_hintergrund_maske(crop, slot.slot_color)
+        marker = _collect_markers_silent(maskiert, slot.slot_color)
         self.items[name] = ItemProfile(
             name=name,
             marker_colors=[tuple(c) for c in marker],
             category=None,
             priority=len(self.items) + 1,
-            template=save_template(crop, name, slot.slot_color),
+            template=save_template(maskiert, name),
             min_confidence=CONFIG.scan_min_confidence,
         )
         return name

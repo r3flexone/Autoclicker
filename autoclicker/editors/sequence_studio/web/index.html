@@ -568,6 +568,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    ueber dem ersten. Die Trennlinie sagt trotzdem, dass er nicht dazugehoert:
    sonst liest er sich wie ein Slot, der „alle" heisst. */
 .haken-kopf{padding-bottom:6px;border-bottom:1px solid var(--line)}
+/* Schieber und Name sind zwei Bedienelemente, also auch zwei Trefferflaechen.
+   Der Name sieht aus wie Text und verhaelt sich wie ein Knopf — das sagt der
+   Zeiger und die Aufhellung beim Darueberfahren. */
+.haken-zeile{display:flex;align-items:center;gap:9px;min-width:0}
+.haken-nur-schalter{gap:0}
+.haken-name{flex:1;min-width:0;text-align:left;background:none;border:none;padding:2px 0;
+  font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;cursor:pointer}
+.haken-name:hover{color:var(--accent);text-decoration:underline}
 .haken-alle{color:var(--muted)}
 .haken-stand{align-self:center;justify-self:end;color:var(--dim)}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
@@ -3002,6 +3011,26 @@ function scanInspSlot(ziel) {
   }
 }
 
+/** Eine Zeile der Haken-Liste: Schieber = gehoert dazu, Name = bearbeiten.
+ *
+ * **Zwei verschiedene Fragen brauchen zwei Bedienelemente.** Vorher war die
+ * ganze Zeile ein Schalter, und um ein Item zu BEARBEITEN musste man es links in
+ * der Liste suchen — die zeigt aber standardmaessig nur Scan-Mitglieder. Wer ein
+ * gelerntes Item umbenennen wollte, das (richtigerweise) noch zu keinem Scan
+ * gehoert, musste es also erst aufnehmen. Man musste etwas AENDERN, um es
+ * ansehen zu koennen.
+ *
+ * Jetzt schaltet der Schieber die Zugehoerigkeit, und ein Klick auf den Namen
+ * waehlt den Eintrag aus — der Inspektor zeigt danach ihn. */
+function hakenZeile(name, an, umschalten, art) {
+  const s = schalter("", an, umschalten);
+  s.classList.add("haken-nur-schalter");
+  return el("div", {class: "haken-zeile"}, s,
+    el("button", {class: "haken-name", title: "bearbeiten",
+                  onclick: () => rufScan("scan_waehlen", {art: art, name: name})},
+       name));
+}
+
 /** Ueberschrift einer Haken-Liste, mit Stand und einem „alle"-Schieber.
  *
  * **56 Schalter einzeln zu setzen ist keine Bedienung.** Ein Scan umfasst fast
@@ -3118,12 +3147,12 @@ function scanInspScan(ziel) {
   ziel.appendChild(hakenKopf("SLOTS", "Welche Flächen dieser Scan ansieht.",
     "scanslots", c.name, "slot", SC.slots.length, c.slots.length));
   ziel.appendChild(el("div", {class: "scan-haken"}, SC.slots.map((s) =>
-    schalter(s.name, c.slots.includes(s.name), () => um("slot", s.name)))));
+    hakenZeile(s.name, c.slots.includes(s.name), () => um("slot", s.name), "slot"))));
 
   ziel.appendChild(hakenKopf("ITEMS", "Wonach gesucht wird.",
     "scanitems", c.name, "item", SC.items.length, c.items.length));
   ziel.appendChild(el("div", {class: "scan-haken"}, SC.items.map((i) =>
-    schalter(i.name, c.items.includes(i.name), () => um("item", i.name)))));
+    hakenZeile(i.name, c.items.includes(i.name), () => um("item", i.name), "item"))));
 
   if (c.fehlend.length) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err);margin-top:10px"},

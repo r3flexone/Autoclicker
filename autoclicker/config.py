@@ -83,7 +83,11 @@ class AppConfig:
     scan_market_value_file: str = ""
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
-    scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
+    # Gemessen an einem echten Bestand: der Slot-Hintergrund ist nicht EINE
+    # Farbe - sein dunklerer Rand lag 44 entfernt und blieb bei 25 als Marker
+    # in 19 von 19 Items stehen. Bei 45 verschwindet er, bei 55 aendert sich
+    # nichts mehr.
+    scan_slot_color_distance: int = 45              # Farbdistanz für Hintergrund-Ausschluss
     scan_min_confidence: float = 0.8                # Standard-Konfidenz für Template-Matching (80%)
     scan_confirm_delay: float = 0.5                 # Standard-Wartezeit vor Bestätigungs-Klick
 

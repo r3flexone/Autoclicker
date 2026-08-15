@@ -578,6 +578,19 @@ Vier Entscheidungen dahinter:
   `IMREAD_UNCHANGED` statt `IMREAD_COLOR`; mit `COLOR` fiele der Alpha-Kanal beim
   Laden weg und niemand würde es merken.
 
+**Die Marker-Farben sehen dieselbe Fläche.** `_collect_markers_silent()` liest
+den Alpha-Kanal, wenn das Bild einen hat — dann ist der Hintergrund schon
+entschieden, und es gibt nicht zwei Regeln nebeneinander. Der Unterschied ist
+nicht nur Kosmetik: die Farbregel vergleicht **gerundete** Farben (`//5`), die
+Maske die echten; an der Grenze kommen verschiedene Ergebnisse heraus.
+
+Der Wert dahinter ist gemessen, nicht geraten: `scan_slot_color_distance` stand
+auf 25, der dunklere **Rand** des Slots liegt aber 44 vom gemessenen
+Hintergrund entfernt — und blieb deshalb als Marker in **19 von 19** Items
+stehen. Eine Farbe, die jedes Item hat, unterscheidet nichts; mit
+`scan_require_all_markers` muss sie zusätzlich immer gefunden werden. Bei 45
+verschwindet sie, bei 55 ändert sich nichts mehr. Deshalb 45.
+
 Eine Grenze, die man kennen muss: **eine völlig gleichförmige Fläche hat keine
 Varianz und damit keine Korrelation.** Ein Item, dessen sichtbarer Teil eine
 einzige Farbe ist, kommt maskiert auf 0 — vorher lieferte der Hintergrund die

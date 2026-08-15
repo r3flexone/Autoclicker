@@ -239,7 +239,9 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     from ..persistence import save_global_items, TEMPLATES_DIR
 
     # Leer-Check: ohne Nicht-Hintergrund-Farben ist der Slot vermutlich leer
-    marker_colors = _collect_markers_silent(img, slot.slot_color)
+    from ..imaging import mit_hintergrund_maske
+    maskiert = mit_hintergrund_maske(img, slot.slot_color)
+    marker_colors = _collect_markers_silent(maskiert, slot.slot_color)
     if slot.slot_color and not marker_colors:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
@@ -279,8 +281,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     template_path = Path(TEMPLATES_DIR) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
-        from ..imaging import mit_hintergrund_maske
-        mit_hintergrund_maske(img, slot.slot_color).save(template_path)
+        maskiert.save(template_path)
         item.template = template_file
     except (OSError, ValueError) as e:
         with state.lock:
