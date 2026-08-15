@@ -352,6 +352,51 @@ def get_next_point_id(state: AutoClickerState) -> int:
     return max(p.id for p in state.points) + 1
 
 
+def punkt_an_stelle(punkte, x: int, y: int, color=None,
+                    radius: Optional[int] = None,
+                    farbtoleranz: Optional[int] = None):
+    """Der vorhandene Punkt an dieser Stelle — oder None. **Die eine Regel.**
+
+    Dieselbe Frage stellen zwei Stellen: der Editor (`punkt_fuer_stelle`) und die
+    Aufnahme (`punkte_fuer_events`). Beide verglichen die Koordinaten **exakt** —
+    und genau daran entstanden die Doppelten: man trifft denselben Knopf zweimal,
+    aber zwei Pixel versetzt, und bekommt zwei Punkte. In einer echten Aufnahme
+    lagen so vier Punkte auf einem einzigen grünen Knopf.
+
+    Deshalb ein Radius. Zwei Bedingungen, und die zweite ist die wichtigere:
+
+    1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten)
+    2. **Die Farbe muss passen.** Sobald sie abweicht, ist es ein anderer Ort —
+       auch wenn er einen Pixel daneben liegt. Genau dafür ist die Farbe da: an
+       einer Farbgrenze klickt man zwei verschiedene Dinge, und zwei Spiele
+       übereinander unterscheiden sich in nichts anderem.
+
+    Fehlt einer Seite die Farbe, lässt sich Regel 2 nicht prüfen — dann zählt nur
+    die exakte Stelle. Lieber ein Punkt zu viel als zwei zusammengelegt, die es
+    nicht sind.
+    """
+    from ..config import CONFIG
+    radius = CONFIG.punkt_radius if radius is None else radius
+    ftol = CONFIG.punkt_farbtoleranz if farbtoleranz is None else farbtoleranz
+    genau = None
+    for p in punkte:
+        if (p.x, p.y) == (x, y):
+            genau = p
+            break
+    if genau is not None or radius <= 0 or not color:
+        return genau
+    beste, bester_abstand = None, None
+    for p in punkte:
+        if not p.color:
+            continue
+        if max(abs(a - b) for a, b in zip(p.color, color)) > ftol:
+            continue
+        abstand = ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5
+        if abstand <= radius and (bester_abstand is None or abstand < bester_abstand):
+            beste, bester_abstand = p, abstand
+    return beste
+
+
 def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
                       color=None, name: str = "", source: str = "") -> int:
     """ID des Punktes an (x, y) - liegt dort keiner, wird einer angelegt.
@@ -363,16 +408,17 @@ def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
     Ein vorhandener Punkt an derselben Stelle wird wiederverwendet: klickt eine Sequenz
     zweimal denselben Knopf, soll das EIN Punkt sein. Sonst wandert beim Nachjustieren
     nur eine der beiden Stellen mit, und die Sequenz laeuft halb korrigiert weiter.
+    „Dieselbe Stelle" beantwortet `punkt_an_stelle()` — mit Radius UND Farbe.
 
     Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen - schreibt state.points.
     """
-    for p in state.points:
-        if (p.x, p.y) == (x, y):
-            # Farbe nachtragen, falls der vorhandene Punkt noch keine hatte: ein
-            # Farb-Trigger braucht sie, ein reiner Klickpunkt kam bisher ohne aus.
-            if color and not p.color:
-                p.color = tuple(color)
-            return p.id
+    p = punkt_an_stelle(state.points, x, y, color)
+    if p is not None:
+        # Farbe nachtragen, falls der vorhandene Punkt noch keine hatte: ein
+        # Farb-Trigger braucht sie, ein reiner Klickpunkt kam bisher ohne aus.
+        if color and not p.color:
+            p.color = tuple(color)
+        return p.id
 
     punkt = ClickPoint(x, y, name or f"Punkt {get_next_point_id(state)}",
                        get_next_point_id(state),

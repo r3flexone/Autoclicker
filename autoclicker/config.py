@@ -51,6 +51,10 @@ class AppConfig:
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
 
     # === PIXEL-ERKENNUNG ===
+    # Wann zwei Stellen derselbe Punkt sind. Radius 0 = nur exakt gleiche
+    # Koordinate (das Verhalten vor der Einfuehrung).
+    punkt_radius: int = 8                           # Abstand in px, bis zu dem wiederverwendet wird
+    punkt_farbtoleranz: int = 10                    # ...aber nur, wenn auch die Farbe passt
     pixel_wait_tolerance: int = 10                  # Toleranz für Pixel-Trigger
     pixel_wait_timeout: int = 300                   # Timeout für Pixel-Trigger in Sekunden (0 = unendlich)
     pixel_timeout_action: str = "skip_cycle"        # Aktion bei Timeout: "skip_cycle", "restart", "stop"
@@ -374,6 +378,7 @@ _CONFIG_SECTIONS = [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
     ]),
     ("PIXEL-ERKENNUNG", [
+        "punkt_radius", "punkt_farbtoleranz",
         "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",

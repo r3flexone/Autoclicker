@@ -108,6 +108,16 @@ META: dict = {
         "kleiner oder gleich diesem Wert ist.", einheit="px", dep="failsafe_enabled"),
 
     # === PIXEL-ERKENNUNG ===
+    "punkt_radius": M(
+        "Punkte zusammenfassen ab", ART_INT,
+        "Bis zu diesem Abstand gilt eine Stelle als derselbe Punkt und wird "
+        "wiederverwendet, statt einen zweiten anzulegen. Man trifft denselben "
+        "Knopf beim Aufnehmen nie zweimal pixelgenau — so entstanden vier Punkte "
+        "auf einem Knopf. 0 = nur exakt gleiche Koordinate.", einheit="px"),
+    "punkt_farbtoleranz": M(
+        "...aber nur bei gleicher Farbe", ART_INT,
+        "Weicht die Farbe stärker ab, entsteht IMMER ein eigener Punkt — auch einen Pixel daneben. An einer Farbgrenze klickt man zwei verschiedene Dinge, und zwei Spiele übereinander unterscheiden sich in nichts anderem.",
+        dep_min="punkt_radius"),
     "pixel_wait_tolerance": M(
         "Farb-Toleranz", ART_INT,
         "Wie weit die gemessene Farbe von der gespeicherten abweichen darf "

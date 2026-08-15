@@ -229,6 +229,33 @@ Regeln beim Erweitern:
   y, color, name)` gibt die ID zurück, nie ein Koordinatenpaar. Die Funktion verwendet
   einen vorhandenen Punkt an derselben Stelle wieder — klickt eine Sequenz zweimal
   denselben Knopf, ist das EIN Punkt, sonst wandert beim Nachjustieren nur die Hälfte mit.
+
+  **„Dieselbe Stelle" ist eine eigene Regel, und sie steht an einer Stelle**:
+  `punkt_an_stelle()` in `persistence/sequences.py`. Editor und Aufnahme
+  (`punkte_fuer_events`) stellten dieselbe Frage und verglichen beide die
+  Koordinaten **exakt** — daran entstanden die Doppelten: denselben Knopf trifft
+  man nie zweimal pixelgenau. In einer echten Aufnahme lagen so vier Punkte auf
+  einem einzigen grünen Knopf (`#2/#13/#24/#40`, 1,4–6,7 px auseinander, Farbe
+  identisch); über die ganze Datei waren es 51 Punkte, von denen 14 Dubletten
+  sind.
+
+  Zwei Bedingungen, und die zweite ist die wichtigere:
+
+  1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten)
+  2. **Die Farbe muss passen** (`punkt_farbtoleranz`). Weicht sie ab, entsteht
+     *immer* ein eigener Punkt — auch einen Pixel daneben. An einer Farbgrenze
+     klickt man zwei verschiedene Dinge, und zwei Spiele übereinander
+     unterscheiden sich in nichts anderem. Genau dafür ist die Farbe da.
+
+  Fehlt einer Seite die Farbe, lässt sich Regel 2 nicht prüfen — dann zählt nur
+  die exakte Stelle. Lieber ein Punkt zu viel als zwei zusammengelegte, die es
+  nicht sind.
+
+  **Beim Aufnehmen wird nichts verschoben.** Der erste Klick legt den Punkt an,
+  die folgenden finden ihn; er behält seine Position. Ihn auf die Mitte der
+  Gruppe nachzuziehen wäre genauer und wäre falsch: ein wiederverwendeter Punkt
+  gehört womöglich schon einer anderen Sequenz, und die zöge stillschweigend mit.
+  Auf die Mitte rücken darf nur ein ausdrücklicher Aufräum-Durchgang mit Vorschau.
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.

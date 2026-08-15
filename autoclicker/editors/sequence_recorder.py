@@ -323,25 +323,31 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
     points.json stehen — der Schritt referenziert sie über `wait_point_id`, wie jede
     andere Prüf-Stelle auch.
     """
-    nach_stelle: dict[tuple[int, int], int] = {}
+    from ..persistence.sequences import punkt_an_stelle
     punkt_id_fuer: dict[int, int] = {}
     neu = 0
     with state.lock:
-        for p in state.points:
-            nach_stelle.setdefault((p.x, p.y), p.id)
+        # **Nicht mehr auf die exakte Koordinate.** Denselben Knopf trifft man
+        # beim Aufnehmen nie zweimal pixelgenau, und mit exaktem Vergleich
+        # entstand pro Klick ein eigener Punkt - in einer echten Aufnahme lagen
+        # so vier Punkte auf einem einzigen gruenen Knopf. `punkt_an_stelle()`
+        # ist dieselbe Regel, die auch der Editor benutzt: Radius UND Farbe.
+        bekannt = list(state.points)
         for i, ev in enumerate(events):
             if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
                 continue
-            treffer = nach_stelle.get((ev.x, ev.y))
+            treffer = punkt_an_stelle(bekannt, ev.x, ev.y, ev.color)
             if treffer is not None:
-                punkt_id_fuer[i] = treffer
+                punkt_id_fuer[i] = treffer.id
                 continue
             pid = get_next_point_id(state)
             state.points.append(
                 ClickPoint(ev.x, ev.y, f"{seq_name} {i + 1}", pid, color=ev.color,
                            source=f"Aufnahme '{seq_name}'")
             )
-            nach_stelle[(ev.x, ev.y)] = pid
+            # Der frische Punkt zaehlt sofort mit: der naechste Klick auf
+            # denselben Knopf soll IHN finden, nicht einen dritten anlegen.
+            bekannt.append(state.points[-1])
             punkt_id_fuer[i] = pid
             neu += 1
     return punkt_id_fuer, neu

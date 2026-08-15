@@ -1046,6 +1046,8 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
+| `punkt_radius` | Bis zu diesem Abstand (px) gilt eine Stelle als derselbe Punkt und wird wiederverwendet, statt einen zweiten anzulegen (0 = nur exakt) |
+| `punkt_farbtoleranz` | ...aber nur, wenn auch die Farbe passt — sonst entsteht immer ein eigener Punkt |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |

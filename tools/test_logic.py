@@ -2648,6 +2648,51 @@ _map2, _neu2 = _pfe(_st_rec2, _events, "Aufnahme")
 check("bestehender Punkt wird referenziert statt verdoppelt", _neu2 == 1)
 check("und behaelt seine ID", _map2[0] == 42)
 
+# --- Fast dieselbe Stelle ist dieselbe Stelle - aber nur bei gleicher Farbe ---
+# Denselben Knopf trifft man beim Aufnehmen nie zweimal pixelgenau. Mit exaktem
+# Koordinatenvergleich entstand pro Klick ein eigener Punkt: in einer echten
+# Aufnahme lagen vier Punkte auf EINEM gruenen Knopf (#2/#13/#24/#40, 1.4-6.7 px
+# auseinander, Farbe identisch).
+from autoclicker.persistence.sequences import punkt_an_stelle as _pas
+import autoclicker.config as _cfg_pas
+_cfg_pas.CONFIG.punkt_radius = 8
+_cfg_pas.CONFIG.punkt_farbtoleranz = 10
+
+_st_rec3 = AutoClickerState()
+_ev_nah = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
+           _RE(_R_CLICK, 1.0, 103, 202, (32, 135, 111)),   # 3.6 px daneben
+           _RE(_R_CLICK, 2.0, 104, 205, (32, 135, 111))]   # 6.4 px daneben
+_map3, _neu3 = _pfe(_st_rec3, _ev_nah, "Nah")
+check("drei Klicks auf denselben Knopf ergeben EINEN Punkt", _neu3 == 1)
+check("und alle drei Schritte zeigen darauf",
+      _map3[0] == _map3[1] == _map3[2])
+
+# Deine Bedingung: sobald die Farbe abweicht, MUSS ein eigener Punkt entstehen -
+# auch einen Pixel daneben. An einer Farbgrenze klickt man zwei verschiedene
+# Dinge, und zwei Spiele uebereinander unterscheiden sich in nichts anderem.
+_st_rec4 = AutoClickerState()
+_ev_farbe = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
+             _RE(_R_CLICK, 1.0, 101, 200, (179, 57, 57))]
+_map4, _neu4 = _pfe(_st_rec4, _ev_farbe, "Farbe")
+check("abweichende Farbe erzwingt einen eigenen Punkt",
+      _neu4 == 2 and _map4[0] != _map4[1])
+
+# Ohne gemessene Farbe laesst sich die Regel nicht pruefen - dann zaehlt nur die
+# exakte Stelle. Lieber ein Punkt zu viel als zwei falsch zusammengelegte.
+_ohne_farbe = [_WCP(x=100, y=200, name="ohne Farbe", id=1)]
+check("ohne Farbe wird nur exakt getroffen",
+      _pas(_ohne_farbe, 103, 202, (1, 2, 3)) is None
+      and _pas(_ohne_farbe, 100, 200, (1, 2, 3)) is not None)
+
+# Radius 0 ist das alte Verhalten und muss erreichbar bleiben.
+_mit_farbe = [_WCP(x=100, y=200, name="p", id=1, color=(32, 135, 111))]
+check("Radius 0 vergleicht wieder exakt",
+      _pas(_mit_farbe, 103, 202, (32, 135, 111), radius=0) is None)
+check("und der naechste gewinnt, wenn mehrere passen",
+      _pas([_WCP(x=100, y=200, name="fern", id=1, color=(32, 135, 111)),
+            _WCP(x=104, y=204, name="nah", id=2, color=(32, 135, 111))],
+           105, 205, (32, 135, 111)).id == 2)
+
 # Die eigentliche Wirkung: Punkt verschieben -> Schritt zieht nach
 _seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
     _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)])
