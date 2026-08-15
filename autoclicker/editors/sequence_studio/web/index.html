@@ -153,7 +153,17 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Nichts in der Spalte darf schrumpfen: sonst quetscht der Flex-Container die
    Segment-Leisten auf halbe Höhe, sobald der Inhalt länger wird als das Fenster. */
 .abschnitt > *{flex:none}
-.abschnitt.wachsend{flex:1;min-height:0;overflow-y:auto;border-bottom:none}
+/* **Die Spalte scrollt als GANZES — also darf kein Abschnitt darin nochmal
+   scrollen.** Zwei ineinander liegende Scrollbereiche in einer Flex-Spalte
+   rechnen ihre Hoehe gegeneinander aus: `flex:1` loest gegen die SICHTBARE
+   Hoehe auf, und sobald die Abschnitte darueber zusammen hoeher sind als das
+   Fenster, bleibt fuer den letzten nichts uebrig. Er wurde dann auf wenige
+   Pixel gequetscht und war unerreichbar, obwohl die Spalte scrollte — im
+   Scans-Reiter traf es die Liste (Scans/Slots/Items), also den Teil, um den es
+   dort geht.
+   `1 0 auto` statt `1`: waechst in einem hohen Fenster in den freien Platz,
+   schrumpft aber NIE unter seinen Inhalt. */
+.abschnitt.wachsend{flex:1 0 auto;border-bottom:none}
 .ueberschrift{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600}
 
 /* ------------------------------------------------------------------- Punkte */

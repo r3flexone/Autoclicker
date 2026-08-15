@@ -6438,6 +6438,25 @@ _ohne_fokus18 = [n for n in _neuaufbau18
 check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
       not _ohne_fokus18)
 
+# --- In einer scrollenden Spalte darf kein Abschnitt nochmal scrollen ---
+# `.seite` scrollt als Ganzes. Setzt ein Abschnitt darin zusaetzlich
+# `overflow-y:auto` mit `flex:1`, rechnen beide ihre Hoehe gegeneinander aus:
+# `flex:1` loest gegen die SICHTBARE Hoehe auf, und sobald die Abschnitte
+# darueber zusammen hoeher sind als das Fenster, bleibt fuer den letzten nichts
+# uebrig. Im Scans-Reiter war das die Liste (Scans/Slots/Items) - auf wenige
+# Pixel gequetscht und unerreichbar, obwohl die Spalte scrollte.
+def _css_regel18(wahl: str) -> str:
+    stelle = _html18.index("\n" + wahl + "{")
+    return _html18[stelle + len(wahl) + 2:_html18.index("}", stelle)]
+
+check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".seite"))
+check("und der wachsende Abschnitt darin nicht nochmal",
+      "overflow" not in _css_regel18(".abschnitt.wachsend"))
+# `1 0 auto` und nicht `1`: waechst in den freien Platz, schrumpft aber nie
+# unter seinen Inhalt - genau das war der Fehler.
+check("er darf auch nicht unter seinen Inhalt schrumpfen",
+      "flex:1 0 auto" in _css_regel18(".abschnitt.wachsend"))
+
 # --- Das Dear-PyGui-Fenster ist wirklich weg ---
 # Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,
 # was frueher unter `scan_canvas/` lag, ist die Begruendung fuer den heutigen
