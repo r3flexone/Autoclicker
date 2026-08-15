@@ -101,7 +101,8 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         if config is None:
             return True
         slots = list(config.slots)
-    if state.config.scan_reverse:
+        rueckwaerts = config.rueckwaerts(state.config.scan_reverse)
+    if rueckwaerts:
         slots = list(reversed(slots))
 
     # state.clicked_categories wird bewusst NICHT gesondert verwaltet: _click_scan_result

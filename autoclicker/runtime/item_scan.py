@@ -158,6 +158,9 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         items_snapshot = list(config.items)
         color_tolerance = config.color_tolerance
         learn_unknown = config.learn_unknown
+        # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
+        # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
+        rueckwaerts = config.rueckwaerts(state.config.scan_reverse)
 
     found_items = []
 
@@ -165,7 +168,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         slots_to_scan = list(slots_override)
     else:
         slots_to_scan = slots_snapshot
-        if state.config.scan_reverse:
+        if rueckwaerts:
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay

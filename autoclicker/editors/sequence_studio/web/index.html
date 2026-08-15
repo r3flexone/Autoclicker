@@ -2941,6 +2941,24 @@ function scanInspScan(ziel) {
     "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in " +
     "diesen Scan, damit sie nicht ungeprüft geklickt werden."));
 
+  // Drei Werte, also ein Segment und keine Kacheln: „wie Einstellung" ist ein
+  // Zustand und keine Aktion, und als vierte Kachel neben zwei Richtungen
+  // laese es sich wie eine dritte Richtung.
+  ziel.appendChild(ueberschrift("REIHENFOLGE",
+    "In welcher Richtung die Slots abgearbeitet werden. Die Richtung gehört " +
+    "zum Inventar: wer ein Spiel von hinten leert und ein zweites von vorn, " +
+    "kann das global nicht beantworten. „Wie Einstellung“ folgt " +
+    "scan_reverse aus der Config.", "reihenfolge"));
+  ziel.appendChild(segment([
+    {wert: "global", text: "wie Einstellung"},
+    {wert: false, text: "vorwärts"},
+    {wert: true, text: "rückwärts"},
+  ], c.reverse === null || c.reverse === undefined ? "global" : c.reverse,
+     (v) => setze("reverse", v)));
+  // Was daraus FOLGT, rechnet die Bruecke mit der Auflösung der Laufzeit aus —
+  // die Ansicht baut sie nicht nach.
+  ziel.appendChild(el("p", {class: "hinweis"}, "Läuft: " + c.richtung));
+
   ziel.appendChild(ueberschrift("SLOTS", "Welche Flächen dieser Scan ansieht.", "scanslots"));
   ziel.appendChild(el("div", {class: "scan-haken"}, SC.slots.map((s) =>
     schalter(s.name, c.slots.includes(s.name), () => um("slot", s.name)))));

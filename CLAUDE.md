@@ -236,6 +236,35 @@ Regeln beim Erweitern:
   (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
   nächsten Import oder die nächste Migration nicht.
 
+**Die Scan-Richtung gehört zum Scan, nicht zum Programm.** `config.scan_reverse`
+galt für *alle* Item-Scans, und die Richtung hängt am Inventar: wer ein Spiel von
+hinten leert und ein zweites von vorn, hatte die Wahl zwischen zwei falschen
+Läufen. `ItemScanConfig.reverse` hat deshalb **drei** Zustände — `None` heisst
+„wie die globale Einstellung" und ist der Normalfall, sonst gilt der Wert für
+diesen Scan. Zwei Zustände hätten bedeutet, die Einstellung bei jedem neuen Scan
+neu zu treffen und eine geänderte Einstellung an jedem einzeln nachzuziehen.
+
+Aufgelöst wird an **einer** Stelle (`ItemScanConfig.rueckwaerts(global_default)`),
+weil zwei Seiten dieselbe Antwort geben müssen: der Worker ordnet danach um, das
+Studio schreibt sie hin („Läuft: rückwärts"). Eine Anzeige, die „vorwärts" sagt,
+während der Worker rückwärts läuft, ist schlimmer als gar keine. Umgeordnet wird
+an zwei Stellen (`runtime/item_scan.py` und der Immediate-Pfad in
+`runtime/steps.py`); ein Test hält fest, dass **jede** Erwähnung von
+`scan_reverse` unter `runtime/` durch `rueckwaerts()` geht — sonst liefe derselbe
+Scan je nach Modus anders herum.
+
+Zwei Fallen, die dabei aufgefallen sind und für jedes weitere Feld gelten:
+
+- **Der Konsolen-Editor baut die Config NEU auf**, statt die vorhandene zu
+  ändern. Ein Feld, das in `ItemScanConfig(...)` in `edit_item_scan()` fehlt, ist
+  nach dem Bearbeiten eines bestehenden Scans still weg. Ein Test hält die
+  übergebenen Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` —
+  die leitet `sync_names()` ab).
+- **Der Datei-Default muss `None` bleiben**, nicht `False`. Stünde `False` in
+  `_ITEM_SCAN_DEFAULTS`, schriebe der Serializer ein gesetztes `reverse: false`
+  nicht mehr — und ein Scan, der ausdrücklich vorwärts laufen soll, folgte
+  wieder der globalen Einstellung.
+
 **Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
 (aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
 Namenslisten aus den Objekten. Ohne das hinterlässt jede Seite eine halbe Config, und beide

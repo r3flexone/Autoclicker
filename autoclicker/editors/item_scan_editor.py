@@ -421,10 +421,29 @@ def _schritt_auto_lernen(learn_unknown: bool) -> bool:
     return learn_unknown
 
 
+def _schritt_richtung(reverse: Optional[bool], global_default: bool) -> Optional[bool]:
+    """Schritt 5: In welcher Richtung die Slots abgearbeitet werden.
+
+    Drei Antworten, nicht zwei: „wie die Einstellung" ist der Normalfall und
+    muss erreichbar bleiben, sonst wäre eine geänderte globale Einstellung an
+    jedem Scan einzeln nachzuziehen.
+    """
+    print(header("SCHRITT 5: REIHENFOLGE (optional)"))
+    global_text = "rückwärts" if global_default else "vorwärts"
+    print("\n  In welcher Richtung die Slots abgearbeitet werden.")
+    print(f"  Die Einstellung (scan_reverse) steht auf: {global_text}")
+    aktuell = {None: f"wie Einstellung ({global_text})",
+               True: "rückwärts", False: "vorwärts"}[reverse]
+    print(f"  Aktuell: {aktuell}")
+    print("\n    [1] wie Einstellung   [2] vorwärts   [3] rückwärts")
+    wahl = safe_input(f"  Auswahl (Enter = {aktuell}): ").strip()
+    return {"1": None, "2": False, "3": True}.get(wahl, reverse)
+
+
 def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
     """Bearbeitet eine Item-Scan-Konfiguration (verknüpft globale Slots + Items).
 
-    Ein Assistent in fünf Stufen. Jede Stufe steckt in einer eigenen Funktion und gibt
+    Ein Assistent in sechs Stufen. Jede Stufe steckt in einer eigenen Funktion und gibt
     ihr Ergebnis zurück oder signalisiert Abbruch — vorher waren es 450 Zeilen am Stück,
     und die Auswahl-Schleife stand zweimal darin.
     """
@@ -452,6 +471,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_item_names = list(existing.item_names)
         tolerance = existing.color_tolerance
         learn_unknown = existing.learn_unknown
+        reverse = existing.reverse
     else:
         print("\n--- Neuen Scan erstellen ---")
         scan_name = safe_input("Name des Scans: ").strip()
@@ -461,6 +481,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         selected_item_names = []
         tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
+        reverse = None                  # heisst: wie config.scan_reverse
 
     # --- Schritt 1: Slots ---------------------------------------------------------
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
@@ -531,15 +552,21 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     # --- Schritt 3 + 4 ------------------------------------------------------------
     tolerance = _schritt_toleranz(tolerance)
     learn_unknown = _schritt_auto_lernen(learn_unknown)
+    reverse = _schritt_richtung(reverse, state.config.scan_reverse)
 
     # --- Speichern ----------------------------------------------------------------
     with state.lock:
         slots = [state.global_slots[n] for n in selected_slot_names if n in state.global_slots]
         items = [state.global_items[n] for n in selected_item_names if n in state.global_items]
 
+    # **Jedes Feld muss hier stehen.** Der Editor baut die Config NEU auf,
+    # statt die vorhandene zu ändern — ein vergessenes Feld ist beim Bearbeiten
+    # eines bestehenden Scans still weg. Ein Test hält die Liste gegen die
+    # Dataclass.
     config = ItemScanConfig(
         name=scan_name, slots=slots, items=items,
         color_tolerance=tolerance, learn_unknown=learn_unknown,
+        reverse=reverse,
     )
     with state.lock:
         state.item_scans[scan_name] = config

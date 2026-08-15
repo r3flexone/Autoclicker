@@ -544,9 +544,29 @@ class ItemScanConfig:
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
     learn_unknown: bool = False
+    # In welcher Richtung die Slots abgearbeitet werden. `None` = wie
+    # `config.scan_reverse`, sonst gilt dieser Wert für DIESEN Scan.
+    #
+    # **Die Richtung gehört zum Inventar, nicht zum Programm.** Sie hing an
+    # einer globalen Einstellung, und die kann nur für alle richtig sein: wer
+    # ein Spiel von hinten leert und ein zweites von vorn, hatte die Wahl
+    # zwischen zwei falschen Läufen. Drei Zustände und nicht zwei, damit die
+    # globale Einstellung Voreinstellung bleibt — sonst müsste man sie beim
+    # Anlegen jedes Scans neu treffen.
+    reverse: Optional[bool] = None
 
     def __post_init__(self) -> None:
         self.sync_names()
+
+    def rueckwaerts(self, global_default: bool) -> bool:
+        """Wird dieser Scan rückwärts gelaufen? Die EINE Stelle, die das weiss.
+
+        Laufzeit und Ansicht müssen dieselbe Antwort geben — eine Anzeige, die
+        „vorwärts" sagt, während der Worker rückwärts läuft, ist schlimmer als
+        gar keine. Deshalb steht die Auflösung hier und nicht zweimal
+        ausgeschrieben; ein Test fragt beide Seiten.
+        """
+        return global_default if self.reverse is None else bool(self.reverse)
 
     def sync_names(self) -> None:
         """Leitet fehlende Namenslisten aus den Objekten ab.

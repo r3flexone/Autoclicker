@@ -47,7 +47,10 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
             slot_names=[str(n) for n in data.get("slot_names", [])],
             item_names=[str(n) for n in data.get("item_names", [])],
             color_tolerance=data.get("color_tolerance", 40),
-            learn_unknown=data.get("learn_unknown", False)
+            learn_unknown=data.get("learn_unknown", False),
+            # Fehlt das Feld, gilt weiterhin die globale Einstellung — deshalb
+            # None und nicht False. Ein Altbestand behält damit sein Verhalten.
+            reverse=data.get("reverse"),
         )
 
     except LOAD_EXCEPTIONS as e:

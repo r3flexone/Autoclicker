@@ -85,6 +85,56 @@ check("ItemScan speichert Slot-Namen", r.slot_names == ["Slot 1"])
 check("ItemScan speichert Item-Namen", r.item_names == ["Schwert"])
 check("ItemScan laedt keine Kopien mehr", r.slots == [] and r.items == [])
 
+# --- Die Scan-Richtung gehoert zum Scan, nicht zum Programm ---
+# `config.scan_reverse` galt fuer ALLE Scans, und die Richtung haengt am
+# Inventar: wer ein Spiel von hinten leert und ein zweites von vorn, hatte die
+# Wahl zwischen zwei falschen Laeufen. Drei Zustaende, damit die globale
+# Einstellung Voreinstellung bleibt.
+check("ohne Angabe gilt die globale Einstellung",
+      isc.reverse is None
+      and isc.rueckwaerts(True) is True and isc.rueckwaerts(False) is False)
+check("gesetzt gewinnt der Scan gegen die Einstellung",
+      ItemScanConfig(name="V", reverse=False).rueckwaerts(True) is False
+      and ItemScanConfig(name="R", reverse=True).rueckwaerts(False) is True)
+# „Nicht gesetzt" darf nicht in der Datei stehen - sonst waere beim naechsten
+# Aendern der Einstellung ein Altbestand still auf den alten Wert festgenagelt.
+check("nicht gesetzt wird nicht geschrieben",
+      "reverse" not in _item_scan_to_dict(ItemScanConfig(name="X")))
+check("gesetzt ueberlebt den Roundtrip",
+      roundtrip(_item_scan_to_dict, load_item_scan_file,
+                ItemScanConfig(name="X", reverse=False)).reverse is False
+      and roundtrip(_item_scan_to_dict, load_item_scan_file,
+                    ItemScanConfig(name="X", reverse=True)).reverse is True)
+
+# Und die Laufzeit fragt DIESE Funktion, statt die Aufloesung nachzubauen. Zwei
+# Stellen ordnen Slots um (`item_scan.py` und der Immediate-Pfad in `steps.py`);
+# eine davon zu vergessen hiesse, dass derselbe Scan je nach Modus anders laeuft.
+_rev_quellen = list((Path(__file__).resolve().parent.parent
+                     / "autoclicker" / "runtime").rglob("*.py"))
+_rev_roh = [(p.name, z.strip()) for p in _rev_quellen
+            for z in p.read_text(encoding="utf-8").splitlines()
+            if "scan_reverse" in z]
+check("die Laufzeit ordnet ueberhaupt irgendwo um", len(_rev_roh) >= 2)
+check("und jede Stelle geht ueber rueckwaerts()",
+      all("rueckwaerts(" in z for _n, z in _rev_roh))
+
+# `edit_item_scan` BAUT die Config neu auf, statt die vorhandene zu aendern -
+# ein vergessenes Feld ist beim Bearbeiten eines bestehenden Scans still weg.
+# Genau das waere `reverse` beinahe passiert. Abgeleitete Felder gehoeren nicht
+# in die Liste: `slot_names`/`item_names` fuellt `sync_names()` aus den Objekten.
+import ast as _ast_rev, dataclasses as _dc_rev
+_src_rev = _ast_rev.parse((Path(__file__).resolve().parent.parent / "autoclicker"
+                           / "editors" / "item_scan_editor.py").read_text(encoding="utf-8"))
+_fn_rev = next(n for n in _ast_rev.walk(_src_rev)
+               if isinstance(n, _ast_rev.FunctionDef) and n.name == "edit_item_scan")
+_bau_rev = [n for n in _ast_rev.walk(_fn_rev) if isinstance(n, _ast_rev.Call)
+            and getattr(n.func, "id", "") == "ItemScanConfig"]
+check("edit_item_scan baut genau eine Config", len(_bau_rev) == 1)
+_uebergeben = {k.arg for k in _bau_rev[0].keywords}
+_erwartet = {f.name for f in _dc_rev.fields(ItemScanConfig)} - {"slot_names", "item_names"}
+check(f"und uebergibt jedes Feld der Dataclass (fehlt: "
+      f"{sorted(_erwartet - _uebergeben) or 'nichts'})", _uebergeben == _erwartet)
+
 boss = BossProfile(name="Drache", marker_colors=[(10, 20, 30)], template="drache.png", min_confidence=0.9,
                    action="click", action_point_id=4, action_delay=1.5)
 bsc = BossScanConfig(name="BScan", scan_region=(1, 2, 3, 4), bosses=[boss], color_tolerance=33,
@@ -6033,6 +6083,28 @@ try:
           _z18["scans"][0]["slots"] == ["Slot 1"] and _z18["scans"][0]["items"] == ["Item 1"])
     _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
     check("nochmal klicken nimmt wieder raus", _z18["scans"][0]["items"] == [])
+
+    # --- Die Scan-Richtung im Studio ---
+    # Drei Zustaende, und die Ansicht baut die Aufloesung NICHT nach: sie
+    # bekommt sie ausgerechnet. Eine Anzeige, die "vorwaerts" sagt, waehrend
+    # der Worker rueckwaerts laeuft, ist schlimmer als gar keine.
+    import autoclicker.config as _cfgrev
+    _cfgrev.CONFIG.scan_reverse = True
+    _z18 = _b18.scan_daten()
+    check("frisch angelegt folgt der Scan der Einstellung",
+          _z18["scans"][0]["reverse"] is None
+          and "wie Einstellung" in _z18["scans"][0]["richtung"]
+          and "rückwärts" in _z18["scans"][0]["richtung"])
+    _z18 = _b18.scan_setzen({"name": "Test", "feld": "reverse", "wert": False})
+    check("auf vorwaerts gestellt gewinnt der Scan",
+          _z18["scans"][0]["reverse"] is False
+          and _z18["scans"][0]["richtung"] == "vorwärts")
+    check("und die Laufzeit-Regel sagt dasselbe",
+          _b18.scans["Test"].rueckwaerts(_cfgrev.CONFIG.scan_reverse) is False)
+    _z18 = _b18.scan_setzen({"name": "Test", "feld": "reverse", "wert": "global"})
+    check("zurueck auf die Einstellung geht auch",
+          _z18["scans"][0]["reverse"] is None)
+    _b18.scan_setzen({"name": "Test", "feld": "reverse", "wert": "global"})
 
     _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
     _z18 = _b18.scan_slot_setzen({"name": "Slot 1", "feld": "name", "wert": "Beutel oben"})

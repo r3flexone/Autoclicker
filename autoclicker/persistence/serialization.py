@@ -248,6 +248,7 @@ _ITEM_SCAN_DEFAULTS = {
     "learn_unknown": False,
     "slot_names": [],
     "item_names": [],
+    "reverse": None,
 }
 
 
@@ -266,6 +267,7 @@ def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
         "learn_unknown": config.learn_unknown,
         "slot_names": slot_names,
         "item_names": item_names,
+        "reverse": config.reverse,
     }, _ITEM_SCAN_DEFAULTS)
 
 
