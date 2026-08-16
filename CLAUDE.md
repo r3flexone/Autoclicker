@@ -37,6 +37,20 @@ ein roter Lauf ist ein Fehler, kein Hinweis. Geprüft wird auf **Python 3.10**, 
 unteren Grenze — auf der neuesten Version zu testen sagt nichts darüber, ob die
 älteste noch trägt.
 
+**Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
+Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
+durchnummerierten Variablennamen (`_b18`, `_sand18`) waren das Symptom: so
+benennt man, wenn der Namensraum voll ist. Neue Sektionen kommen deshalb als
+eigenes Modul unter **`tools/tests/`**, holen Stubs, Zähler und `check`/`section`
+aus `tools/tests/_harness.py` und werden am Ende von `test_logic.py` importiert
+(Import = ausführen, wie im Rest der Datei auch).
+
+Zwei Dinge hängen daran: **die Zähler leben im Harness**, nicht im Aufrufer —
+sonst zählte jedes Modul für sich und die Schlusszeile sähe nur den letzten
+Stand. Und **die Stubs müssen vor dem ersten `autoclicker`-Import stehen**;
+`_harness` setzt sie beim Import, also ist `from ._harness import check` die
+erste Zeile eines neuen Moduls, nicht die dritte.
+
 Regeln beim Erweitern:
 - **Jeder Bugfix bekommt einen Test**, der ohne den Fix umfällt. Gegenprobe: Fix
   entschärfen, Test muss rot werden. Ein Test, der auch ohne den Fix grün bleibt,
@@ -76,6 +90,20 @@ läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen 
 cp1252-Konsole bricht sie allerdings mit `UnicodeEncodeError` ab (die Ausgabe nutzt
 Box-Zeichen); unter Windows deshalb mit `PYTHONIOENCODING=utf-8` starten, falls die Konsole
 nicht ohnehin auf UTF-8 steht.
+
+**Die Konsolen-Editoren sind angefangen, nicht fertig.** Sie standen lange
+vollständig ausserhalb der Suite (rund 3.400 Zeilen). Der Einstieg lief über das,
+was **geteilt** ist: `editors/_detection_capture.py` gehört dem Boss- *und* dem
+Icon-Editor, ein Test deckt dort also zwei Editoren ab — Tastenabfrage,
+Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
+(**Fehleingabe wiederholen statt abbrechen**). Dazu `_apply_item_rename()`, weil
+am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
+
+Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
+`item_editor/` (Lernen, Autoscan, Befehle), `boss_scan_editor.py`,
+`icon_scan_editor.py`, `sequence_editor/loops.py`. Der Weg dorthin ist immer
+derselbe — erst in Stufen zerlegen, dann mit einer Tastenfolge füttern; die
+Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an.
 
 ## Architektur
 
@@ -616,6 +644,23 @@ es die Marker-Farben.
   trägt sie in `log_report.py` ein — der Bericht meldet sonst „nicht ausgewertete
   Ereignisarten" und weist selbst darauf hin.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
+
+  **Der Import läuft in Stufen, nicht am Stück.** `import_bundle()` war eine
+  Funktion mit 292 Zeilen und 69 Verzweigungen — und zugleich die Stelle, die am
+  meisten auf Platte schreibt (Templates, Slots, Items, drei Scan-Arten,
+  Sequenzen, Punkte, Config). Diese beiden Eigenschaften zusammen sind die
+  unangenehmste Kombination, die eine Codebasis haben kann: die Tests konnten
+  unmöglich alle Pfade treffen, und jeder ungetroffene Pfad schrieb Dateien.
+  Heute trägt `_Import` den Zustand eines Durchgangs (ZIP, State, Transform,
+  `stats`, `id_map`), und `_imp_templates` … `_imp_config` sind einzeln prüfbar;
+  `import_bundle()` ist nur noch der Ablauf.
+
+  **Die Reihenfolge ist die eigentliche Aussage** und nicht beliebig: Templates
+  zuerst (Items verweisen darauf), dann Punkte (Sequenzen verweisen darauf), dann
+  die Sequenzen; Slots und Items vor den Item-Scans, weil die per Namen auf sie
+  zeigen und am Ende aufgelöst werden. Was in der Abschlussmeldung steht, steht
+  als Tabelle (`_IMPORT_MELDUNG`) — ein Test hält sie gegen die Schlüssel in
+  `stats`, sonst importiert man etwas, das die Meldung verschweigt.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für

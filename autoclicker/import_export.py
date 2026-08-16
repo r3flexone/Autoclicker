@@ -542,6 +542,306 @@ def read_manifest(filepath: str) -> tuple[bool, dict | str]:
         return False, str(e)
 
 
+class _Import:
+    """Der Zustand EINES Import-Durchgangs — das, was alle Stufen teilen.
+
+    **Der Import war eine Funktion mit 292 Zeilen und 69 Verzweigungen** — und
+    zugleich die Stelle, die am meisten auf Platte schreibt (Templates, Slots,
+    Items, drei Scan-Arten, Sequenzen, Punkte und die Config). Diese beiden
+    Eigenschaften in einer Funktion sind die unangenehmste Kombination, die eine
+    Codebasis haben kann: die Tests konnten unmöglich alle Pfade treffen, und
+    jeder ungetroffene Pfad schrieb Dateien.
+
+    Dasselbe Rezept wie bei `edit_item_scan()` im Item-Scan-Editor: Stufen statt
+    eines Blocks. Jede Stufe ist eine eigene Funktion mit einem klaren Auftrag,
+    nimmt diesen Durchgang entgegen und zählt in `stats` mit. Damit lässt sich
+    jede einzeln prüfen — bis hierher ging das nur über das ZIP als Ganzes.
+    """
+
+    def __init__(self, zf, names: list, state, transform: dict, merge: bool):
+        self.zf = zf
+        self.names = names
+        self.state = state
+        self.transform = transform
+        self.merge = merge
+        self.stats: dict = {"points": 0, "sequences": 0, "slots": 0, "items": 0,
+                            "item_scans": 0, "boss_scans": 0, "icon_scans": 0,
+                            "templates": 0}
+        # Kollidiert eine importierte Punkt-ID mit einer lokalen, bekommt der Punkt
+        # eine neue — und diese Zuordnung merkt sich das, damit die Sequenz-Schritte
+        # ihre `point_id` nachziehen können.
+        self.id_map: dict[int, int] = {}
+
+    def lies(self, name: str) -> dict:
+        """Eine JSON-Datei aus dem Bundle."""
+        return json.loads(self.zf.read(name).decode("utf-8"))
+
+    def dateien(self, ordner: str, endung: str = ".json") -> list:
+        """Alle Bundle-Einträge eines Ordners."""
+        return [n for n in self.names
+                if n.startswith(ordner) and n.endswith(endung)]
+
+
+def _imp_templates(lauf: _Import) -> None:
+    """Bilddateien auspacken — zuerst, weil Items und Scans darauf verweisen."""
+    templates_dir = Path(TEMPLATES_DIR)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    resolved_tpl_dir = templates_dir.resolve()
+    for name in lauf.dateien("templates/", ".png"):
+        tpl_name = name[len("templates/"):]
+        tpl_path = templates_dir / tpl_name
+        # Ein Bundle ist eine Datei von aussen: ein Eintrag wie `templates/../../x.png`
+        # schriebe sonst irgendwohin. Nicht paranoid, sondern der Standardfehler beim
+        # Auspacken von Archiven.
+        if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
+            logger.warning(f"Template-Pfad ausserhalb des Zielordners übersprungen: {name}")
+            continue
+        # Template kann in einem Unterordner liegen (templates/sub/x.png)
+        # — Zielverzeichnis anlegen, sonst FileNotFoundError beim Schreiben.
+        tpl_path.parent.mkdir(parents=True, exist_ok=True)
+        tpl_path.write_bytes(lauf.zf.read(name))
+        lauf.stats["templates"] += 1
+
+
+def _imp_punkte(lauf: _Import, import_points: bool, import_sequences: bool) -> None:
+    """Punkte übernehmen und dabei ID-Kollisionen auflösen.
+
+    **Sequenzen ohne ihre Punkte gibt es nicht mehr**: seit die Koordinate nur noch
+    im Punkt steht, wäre eine Sequenz ohne Punkte eine Liste von Schritten, die
+    nirgendwohin zeigen. `import_points=False` heisst deshalb „keine Punkte, die
+    niemand braucht" — die referenzierten kommen trotzdem mit.
+    """
+    gebraucht: Optional[set] = None
+    if not import_points and import_sequences:
+        gebraucht = set()
+        for n in lauf.dateien("sequences/"):
+            gebraucht |= _referenzierte_punkte(lauf.lies(n))
+
+    if not (import_points or gebraucht) or "points.json" not in lauf.names:
+        return
+
+    points_data, _m = migrate(lauf.lies("points.json"), KIND_POINTS)
+    if gebraucht is not None:
+        points_data = [p for p in points_data if p.get("id") in gebraucht]
+    with lauf.state.lock:
+        if not lauf.merge:
+            lauf.state.points.clear()
+        existing_ids = {p.id for p in lauf.state.points}
+        next_id = max(existing_ids) + 1 if existing_ids else 1
+        for p in points_data:
+            x, y = remap_point(p["x"], p["y"], lauf.transform)
+            alt_id = p.get("id")
+            pid = alt_id if alt_id is not None else next_id
+            while pid in existing_ids:
+                pid = next_id
+                next_id += 1
+            color_raw = p.get("color")
+            color = tuple(int(v) for v in color_raw) if color_raw else None
+            lauf.state.points.append(ClickPoint(x, y, p.get("name", ""), pid,
+                                                color=color, source=p.get("source", "")))
+            existing_ids.add(pid)
+            next_id = max(next_id, pid + 1)
+            if alt_id is not None:
+                lauf.id_map[alt_id] = pid
+            lauf.stats["points"] += 1
+
+
+def _imp_sequenzen(lauf: _Import) -> None:
+    """Sequenzdateien schreiben und geladen in den State legen."""
+    for name in lauf.dateien("sequences/"):
+        seq_data = lauf.lies(name)
+        _remap_sequence_data(seq_data, lauf.transform)
+        _remap_point_ids(seq_data, lauf.id_map)
+        seq_name = seq_data.get("name", Path(name).stem)
+        seq_path = Path("sequences") / f"{sanitize_filename(seq_name)}.json"
+        seq_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(seq_path, compact_json(seq_data))
+        # Mit den frisch importierten Punkten aufloesen, nicht mit denen von
+        # Platte: points.json wird erst am Ende des Imports geschrieben.
+        seq = load_sequence_file(seq_path, list(lauf.state.points))
+        if seq:
+            with lauf.state.lock:
+                lauf.state.sequences[seq.name] = seq
+            lauf.stats["sequences"] += 1
+
+
+def _imp_slots(lauf: _Import) -> None:
+    if "slots.json" not in lauf.names:
+        return
+    slots_data, _m = migrate(lauf.lies("slots.json"), KIND_SLOTS)
+    with lauf.state.lock:
+        if not lauf.merge:
+            lauf.state.global_slots.clear()
+        for sname, s in slots_data.items():
+            slot = _slot_from_dict(sname, s)
+            slot.scan_region = remap_region(slot.scan_region, lauf.transform)
+            slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1],
+                                         lauf.transform)
+            lauf.state.global_slots[sname] = slot
+            lauf.stats["slots"] += 1
+    save_global_slots(lauf.state)
+
+
+def _imp_items(lauf: _Import) -> None:
+    if "items.json" not in lauf.names:
+        return
+    items_data, _m = migrate(lauf.lies("items.json"), KIND_ITEMS)
+    with lauf.state.lock:
+        if not lauf.merge:
+            lauf.state.global_items.clear()
+        for iname, i in items_data.items():
+            item = _item_from_dict(i, iname)
+            if item.confirm_point:
+                nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y,
+                                     lauf.transform)
+                item.confirm_point = ClickPoint(nx, ny)
+            lauf.state.global_items[iname] = item
+            lauf.stats["items"] += 1
+    save_global_items(lauf.state)
+
+
+def _imp_item_scans(lauf: _Import) -> None:
+    """Item-Scans — **nur Namen, keine Koordinaten.**
+
+    Die Koordinaten der Slots werden beim Import von `slots.json` umgerechnet und
+    nicht ein zweites Mal pro Scan. Genau diese Doppelpflege fiel mit der Referenz
+    weg.
+    """
+    for name in lauf.dateien("item_scans/"):
+        scan_data, _m = migrate(lauf.lies(name), KIND_ITEM_SCAN)
+        config = ItemScanConfig(
+            name=scan_data["name"],
+            slot_names=[str(n) for n in scan_data.get("slot_names", [])],
+            item_names=[str(n) for n in scan_data.get("item_names", [])],
+            color_tolerance=scan_data.get("color_tolerance", 40),
+            learn_unknown=scan_data.get("learn_unknown", False),
+        )
+        with lauf.state.lock:
+            lauf.state.item_scans[config.name] = config
+        save_item_scan(config)
+        lauf.stats["item_scans"] += 1
+    # Referenzen gegen die (gerade importierten) globalen Slots/Items auflösen -
+    # sonst laufen die Scans bis zum nächsten Start leer.
+    for meldung in resolve_scan_references(lauf.state):
+        print(warn(meldung))
+
+
+def _boss_mit_remap(lauf: _Import, roh: dict):
+    """Ein Boss-Profil aus dem Bundle, Klick-Koordinate umgerechnet.
+
+    Nur Klick-Bosse haben sinnvolle Koordinaten — für skip/key-Bosse sind
+    `action_x/y` bedeutungslos (Default 0) und dürfen nicht durch den
+    Affine-Transform verschoben werden, sonst wandern sie von (0,0) irgendwohin.
+    """
+    boss = _boss_profile_from_dict(roh)
+    if boss.action == BOSS_ACTION_CLICK:
+        boss.action_x, boss.action_y = remap_point(boss.action_x, boss.action_y,
+                                                   lauf.transform)
+    return boss
+
+
+def _imp_boss_scans(lauf: _Import) -> None:
+    for name in lauf.dateien("boss_scans/"):
+        bscan_data = lauf.lies(name)
+        config = BossScanConfig(
+            name=bscan_data["name"],
+            scan_region=remap_region(tuple(bscan_data["scan_region"]), lauf.transform),
+            color_tolerance=bscan_data.get("color_tolerance", 30),
+            default_action=bscan_data.get("default_action", BOSS_ACTION_SKIP),
+            default_scan=bscan_data.get("default_scan"),
+            bosses=[_boss_mit_remap(lauf, b) for b in bscan_data.get("bosses", [])],
+            use_llm=bscan_data.get("use_llm", False),
+            llm_fallback=bscan_data.get("llm_fallback", True),
+            use_ocr=bscan_data.get("use_ocr", False),
+            ocr_fallback=bscan_data.get("ocr_fallback", True),
+        )
+        with lauf.state.lock:
+            lauf.state.boss_scans[config.name] = config
+        save_boss_scan(config)
+        lauf.stats["boss_scans"] += 1
+
+    _imp_globale_bosse(lauf)
+
+
+def _imp_globale_bosse(lauf: _Import) -> None:
+    """Die Boss-Bibliothek — Merge nach Name, der Import gewinnt."""
+    if "global_bosses.json" not in lauf.names:
+        return
+    imported = [_boss_mit_remap(lauf, b) for b in lauf.lies("global_bosses.json")]
+    if not imported:
+        return
+    with lauf.state.lock:
+        imported_names = {b.name for b in imported}
+        lauf.state.global_bosses = [
+            b for b in lauf.state.global_bosses if b.name not in imported_names
+        ] + imported
+    save_global_bosses(lauf.state)
+    lauf.stats["global_bosses"] = len(imported)
+
+
+def _imp_icon_scans(lauf: _Import) -> None:
+    for name in lauf.dateien("icon_scans/"):
+        iscan_data = lauf.lies(name)
+        action = iscan_data.get("action", ICON_ACTION_CLICK)
+        ax, ay = iscan_data.get("action_x", 0), iscan_data.get("action_y", 0)
+        # Wie beim Boss: nur Klick-Aktionen haben eine Stelle, die umzurechnen wäre.
+        if action == ICON_ACTION_CLICK:
+            ax, ay = remap_point(ax, ay, lauf.transform)
+        config = IconScanConfig(
+            name=iscan_data["name"],
+            scan_region=remap_region(tuple(iscan_data["scan_region"]), lauf.transform),
+            template=iscan_data.get("template"),
+            min_confidence=iscan_data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
+            marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
+            color_tolerance=iscan_data.get("color_tolerance", 30),
+            action=action,
+            action_x=ax,
+            action_y=ay,
+            action_key=iscan_data.get("action_key"),
+            action_delay=iscan_data.get("action_delay", 0),
+        )
+        with lauf.state.lock:
+            lauf.state.icon_scans[config.name] = config
+        save_icon_scan(config)
+        lauf.stats["icon_scans"] += 1
+
+
+def _imp_config(lauf: _Import) -> None:
+    """Die Config — ohne die Felder, die zur MASCHINE gehören, nicht zum Setup."""
+    if "config.json" not in lauf.names:
+        return
+    cfg_data = lauf.lies("config.json")
+    for k in _SENSITIVE_CONFIG_KEYS:
+        cfg_data.pop(k, None)
+    current = lauf.state.config.to_dict()
+    current.update(cfg_data)
+    from .config import AppConfig, save_config, uebernehmen
+    with lauf.state.lock:
+        # Hineinschreiben statt austauschen: state.config ist im Hauptprozess
+        # dasselbe Objekt wie das Modul-CONFIG, und ein Austausch liesse jeden
+        # Leser davon auf dem alten Stand.
+        uebernehmen(lauf.state.config, AppConfig.from_dict(current))
+    save_config(lauf.state.config)
+
+
+# Was in der Abschlussmeldung steht, in dieser Reihenfolge. Als Tabelle statt als
+# neun `if`-Blöcke: eine neue Datenart ist damit eine Zeile, und niemand vergisst
+# die Meldung — genau das war bei `global_bosses` schon einmal passiert (der
+# Schlüssel fehlte im `stats`-Vorbelegung und wurde nur per `.get()` gerettet).
+_IMPORT_MELDUNG = (
+    ("points", "Punkt(e)"), ("sequences", "Sequenz(en)"),
+    ("slots", "Slot(s)"), ("items", "Item(s)"),
+    ("item_scans", "Item-Scan(s)"), ("boss_scans", "Boss-Scan(s)"),
+    ("global_bosses", "globale(r) Boss(e)"), ("icon_scans", "Icon-Scan(s)"),
+    ("templates", "Template(s)"),
+)
+
+
+def _import_meldung(stats: dict) -> str:
+    teile = [f"{stats[k]} {wort}" for k, wort in _IMPORT_MELDUNG if stats.get(k)]
+    return ", ".join(teile) if teile else "Nichts importiert"
+
+
 def import_bundle(state: 'AutoClickerState', filepath: str,
                   transform: dict = None,
                   import_points: bool = True, import_sequences: bool = True,
@@ -550,6 +850,12 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                   import_icon_scans: bool = True,
                   import_config: bool = True, merge: bool = True) -> tuple[bool, str]:
     """Importiert ein Setup aus einer ZIP-Datei.
+
+    Nur noch der Ablauf: **die Reihenfolge ist die eigentliche Aussage dieser
+    Funktion**, und sie ist nicht beliebig. Templates zuerst (Items verweisen
+    darauf), dann Punkte (Sequenzen verweisen darauf), dann die Sequenzen; Slots
+    und Items vor den Item-Scans, weil die per Namen auf sie zeigen und am Ende
+    aufgelöst werden. Zuletzt die Config und ein Speichern für Punkte + Sequenzen.
 
     Args:
         transform: Koordinaten-Transformation (None = keine Anpassung)
@@ -564,273 +870,34 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
     try:
         with zipfile.ZipFile(filepath, "r") as zf:
             names = zf.namelist()
-
             if MANIFEST_FILE not in names:
                 return False, "Keine gültige Export-Datei"
 
-            stats = {"points": 0, "sequences": 0, "slots": 0, "items": 0,
-                     "item_scans": 0, "boss_scans": 0, "icon_scans": 0, "templates": 0}
+            lauf = _Import(zf, names, state, transform, merge)
 
-            # Templates zuerst extrahieren
-            templates_dir = Path(TEMPLATES_DIR)
-            templates_dir.mkdir(parents=True, exist_ok=True)
-            resolved_tpl_dir = templates_dir.resolve()
-            for name in names:
-                if name.startswith("templates/") and name.endswith(".png"):
-                    tpl_name = name[len("templates/"):]
-                    tpl_path = templates_dir / tpl_name
-                    if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
-                        logger.warning(f"Template-Pfad ausserhalb des Zielordners übersprungen: {name}")
-                        continue
-                    # Template kann in einem Unterordner liegen (templates/sub/x.png)
-                    # — Zielverzeichnis anlegen, sonst FileNotFoundError beim Schreiben.
-                    tpl_path.parent.mkdir(parents=True, exist_ok=True)
-                    tpl_path.write_bytes(zf.read(name))
-                    stats["templates"] += 1
-
-            # Punkte. Kollidiert eine importierte ID mit einer lokalen, bekommt der Punkt
-            # eine neue - und id_map merkt sich das, damit die Sequenz-Schritte ihren
-            # point_id nachziehen koennen.
-            id_map: dict[int, int] = {}
-            # Sequenzen ohne ihre Punkte gibt es nicht mehr: seit die Koordinate nur noch
-            # im Punkt steht, waere eine Sequenz ohne Punkte eine Liste von Schritten, die
-            # nirgendwohin zeigen. `import_points=False` heisst deshalb "keine Punkte, die
-            # niemand braucht" - die referenzierten kommen trotzdem mit.
-            seq_namen = [n for n in names
-                         if n.startswith("sequences/") and n.endswith(".json")]
-            gebraucht: Optional[set] = None
-            if not import_points and import_sequences:
-                gebraucht = set()
-                for n in seq_namen:
-                    gebraucht |= _referenzierte_punkte(
-                        json.loads(zf.read(n).decode("utf-8")))
-
-            if (import_points or gebraucht) and "points.json" in names:
-                points_data = json.loads(zf.read("points.json").decode("utf-8"))
-                points_data, _m = migrate(points_data, KIND_POINTS)
-                if gebraucht is not None:
-                    points_data = [p for p in points_data if p.get("id") in gebraucht]
-                with state.lock:
-                    if not merge:
-                        state.points.clear()
-                    existing_ids = {p.id for p in state.points}
-                    next_id = max(existing_ids) + 1 if existing_ids else 1
-                    for p in points_data:
-                        x, y = remap_point(p["x"], p["y"], transform)
-                        alt_id = p.get("id")
-                        pid = alt_id if alt_id is not None else next_id
-                        while pid in existing_ids:
-                            pid = next_id
-                            next_id += 1
-                        color_raw = p.get("color")
-                        color = tuple(int(v) for v in color_raw) if color_raw else None
-                        state.points.append(ClickPoint(x, y, p.get("name", ""), pid,
-                                                       color=color, source=p.get("source", "")))
-                        existing_ids.add(pid)
-                        next_id = max(next_id, pid + 1)
-                        if alt_id is not None:
-                            id_map[alt_id] = pid
-                        stats["points"] += 1
-
-            # Sequenzen
+            _imp_templates(lauf)
+            _imp_punkte(lauf, import_points, import_sequences)
             if import_sequences:
-                for name in seq_namen:
-                    seq_data = json.loads(zf.read(name).decode("utf-8"))
-                    _remap_sequence_data(seq_data, transform)
-                    _remap_point_ids(seq_data, id_map)
-                    seq_name = seq_data.get("name", Path(name).stem)
-                    safe = sanitize_filename(seq_name)
-                    seq_path = Path("sequences") / f"{safe}.json"
-                    seq_path.parent.mkdir(parents=True, exist_ok=True)
-                    atomic_write(seq_path, compact_json(seq_data))
-                    # Mit den frisch importierten Punkten aufloesen, nicht mit denen von
-                    # Platte: points.json wird erst am Ende des Imports geschrieben.
-                    seq = load_sequence_file(seq_path, list(state.points))
-                    if seq:
-                        with state.lock:
-                            state.sequences[seq.name] = seq
-                        stats["sequences"] += 1
-
-            # Slots
-            if import_slots and "slots.json" in names:
-                slots_data = json.loads(zf.read("slots.json").decode("utf-8"))
-                slots_data, _m = migrate(slots_data, KIND_SLOTS)
-                with state.lock:
-                    if not merge:
-                        state.global_slots.clear()
-                    for sname, s in slots_data.items():
-                        slot = _slot_from_dict(sname, s)
-                        slot.scan_region = remap_region(slot.scan_region, transform)
-                        slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1],
-                                                     transform)
-                        state.global_slots[sname] = slot
-                        stats["slots"] += 1
-                save_global_slots(state)
-
-            # Items
-            if import_items and "items.json" in names:
-                items_data = json.loads(zf.read("items.json").decode("utf-8"))
-                items_data, _m = migrate(items_data, KIND_ITEMS)
-                with state.lock:
-                    if not merge:
-                        state.global_items.clear()
-                    for iname, i in items_data.items():
-                        item = _item_from_dict(i, iname)
-                        if item.confirm_point:
-                            nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y, transform)
-                            item.confirm_point = ClickPoint(nx, ny)
-                        state.global_items[iname] = item
-                        stats["items"] += 1
-                save_global_items(state)
-
-            # Item-Scans
+                _imp_sequenzen(lauf)
+            if import_slots:
+                _imp_slots(lauf)
+            if import_items:
+                _imp_items(lauf)
             if import_item_scans:
-                for name in names:
-                    if name.startswith("item_scans/") and name.endswith(".json"):
-                        scan_data = json.loads(zf.read(name).decode("utf-8"))
-                        scan_data, _m = migrate(scan_data, KIND_ITEM_SCAN)
-                        # Nur Namen - die Koordinaten der Slots werden beim Import von
-                        # slots.json umgerechnet, nicht ein zweites Mal pro Scan. Genau
-                        # diese Doppelpflege fiel mit der Referenz weg.
-                        config = ItemScanConfig(
-                            name=scan_data["name"],
-                            slot_names=[str(n) for n in scan_data.get("slot_names", [])],
-                            item_names=[str(n) for n in scan_data.get("item_names", [])],
-                            color_tolerance=scan_data.get("color_tolerance", 40),
-                            learn_unknown=scan_data.get("learn_unknown", False),
-                        )
-                        with state.lock:
-                            state.item_scans[config.name] = config
-                        save_item_scan(config)
-                        stats["item_scans"] += 1
-                # Referenzen gegen die (gerade importierten) globalen Slots/Items
-                # auflösen - sonst laufen die Scans bis zum nächsten Start leer.
-                for _meldung in resolve_scan_references(state):
-                    print(warn(_meldung))
-
-            # Boss-Scans
+                _imp_item_scans(lauf)
             if import_boss_scans:
-                for name in names:
-                    if name.startswith("boss_scans/") and name.endswith(".json"):
-                        bscan_data = json.loads(zf.read(name).decode("utf-8"))
-                        bosses = []
-                        for b in bscan_data.get("bosses", []):
-                            boss = _boss_profile_from_dict(b)
-                            # Nur Klick-Bosse haben sinnvolle Koordinaten — für
-                            # skip/key-Bosse sind action_x/y bedeutungslos (Default 0)
-                            # und dürfen nicht durch den Affine-Transform verschoben werden.
-                            if boss.action == BOSS_ACTION_CLICK:
-                                boss.action_x, boss.action_y = remap_point(
-                                    boss.action_x, boss.action_y, transform)
-                            bosses.append(boss)
-                        region = remap_region(tuple(bscan_data["scan_region"]), transform)
-                        config = BossScanConfig(
-                            name=bscan_data["name"],
-                            scan_region=region,
-                            color_tolerance=bscan_data.get("color_tolerance", 30),
-                            default_action=bscan_data.get("default_action", BOSS_ACTION_SKIP),
-                            default_scan=bscan_data.get("default_scan"),
-                            bosses=bosses,
-                            use_llm=bscan_data.get("use_llm", False),
-                            llm_fallback=bscan_data.get("llm_fallback", True),
-                            use_ocr=bscan_data.get("use_ocr", False),
-                            ocr_fallback=bscan_data.get("ocr_fallback", True),
-                        )
-                        with state.lock:
-                            state.boss_scans[config.name] = config
-                        save_boss_scan(config)
-                        stats["boss_scans"] += 1
-
-                # Globale Boss-Bibliothek (Merge nach Name, Import gewinnt)
-                if "global_bosses.json" in names:
-                    gboss_data = json.loads(zf.read("global_bosses.json").decode("utf-8"))
-                    imported = []
-                    for b in gboss_data:
-                        boss = _boss_profile_from_dict(b)
-                        if boss.action == BOSS_ACTION_CLICK:
-                            boss.action_x, boss.action_y = remap_point(
-                                boss.action_x, boss.action_y, transform)
-                        imported.append(boss)
-                    if imported:
-                        with state.lock:
-                            imported_names = {b.name for b in imported}
-                            state.global_bosses = [
-                                b for b in state.global_bosses if b.name not in imported_names
-                            ] + imported
-                        save_global_bosses(state)
-                        stats["global_bosses"] = len(imported)
-
-            # Icon-Scans
+                _imp_boss_scans(lauf)
             if import_icon_scans:
-                for name in names:
-                    if name.startswith("icon_scans/") and name.endswith(".json"):
-                        iscan_data = json.loads(zf.read(name).decode("utf-8"))
-                        action = iscan_data.get("action", ICON_ACTION_CLICK)
-                        ax, ay = iscan_data.get("action_x", 0), iscan_data.get("action_y", 0)
-                        # Nur Klick-Aktionen haben sinnvolle Koordinaten zum Remappen.
-                        if action == ICON_ACTION_CLICK:
-                            ax, ay = remap_point(ax, ay, transform)
-                        region = remap_region(tuple(iscan_data["scan_region"]), transform)
-                        config = IconScanConfig(
-                            name=iscan_data["name"],
-                            scan_region=region,
-                            template=iscan_data.get("template"),
-                            min_confidence=iscan_data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
-                            marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
-                            color_tolerance=iscan_data.get("color_tolerance", 30),
-                            action=action,
-                            action_x=ax,
-                            action_y=ay,
-                            action_key=iscan_data.get("action_key"),
-                            action_delay=iscan_data.get("action_delay", 0),
-                        )
-                        with state.lock:
-                            state.icon_scans[config.name] = config
-                        save_icon_scan(config)
-                        stats["icon_scans"] += 1
+                _imp_icon_scans(lauf)
+            if import_config:
+                _imp_config(lauf)
 
-            # Config
-            if import_config and "config.json" in names:
-                cfg_data = json.loads(zf.read("config.json").decode("utf-8"))
-                # Sicherheits-/maschinenspezifische Felder nie übernehmen
-                for k in _SENSITIVE_CONFIG_KEYS:
-                    cfg_data.pop(k, None)
-                current = state.config.to_dict()
-                current.update(cfg_data)
-                from .config import AppConfig, uebernehmen
-                with state.lock:
-                    # Hineinschreiben statt austauschen: state.config ist im
-                    # Hauptprozess dasselbe Objekt wie das Modul-CONFIG, und
-                    # ein Austausch liesse jeden Leser davon auf dem alten Stand.
-                    uebernehmen(state.config, AppConfig.from_dict(current))
-                from .config import save_config
-                save_config(state.config)
-
-            # Punkte + Sequenzen speichern
-            if stats["points"] > 0 or stats["sequences"] > 0:
+            # Punkte und Sequenzen leben im State; alles andere hat seine Datei
+            # schon in seiner Stufe geschrieben.
+            if lauf.stats["points"] or lauf.stats["sequences"]:
                 save_data(state)
 
-            parts = []
-            if stats["points"]:
-                parts.append(f"{stats['points']} Punkt(e)")
-            if stats["sequences"]:
-                parts.append(f"{stats['sequences']} Sequenz(en)")
-            if stats["slots"]:
-                parts.append(f"{stats['slots']} Slot(s)")
-            if stats["items"]:
-                parts.append(f"{stats['items']} Item(s)")
-            if stats["item_scans"]:
-                parts.append(f"{stats['item_scans']} Item-Scan(s)")
-            if stats["boss_scans"]:
-                parts.append(f"{stats['boss_scans']} Boss-Scan(s)")
-            if stats.get("global_bosses"):
-                parts.append(f"{stats['global_bosses']} globale(r) Boss(e)")
-            if stats["icon_scans"]:
-                parts.append(f"{stats['icon_scans']} Icon-Scan(s)")
-            if stats["templates"]:
-                parts.append(f"{stats['templates']} Template(s)")
-
-            return True, ", ".join(parts) if parts else "Nichts importiert"
+            return True, _import_meldung(lauf.stats)
 
     except (IOError, OSError, zipfile.BadZipFile, json.JSONDecodeError, KeyError) as e:
         logger.error(f"Import fehlgeschlagen: {e}")
