@@ -692,6 +692,7 @@ class ScanTeil:
         cfg = self.scans.get(self.scan_offen)
         dabei_slots = set(cfg.slot_names) if cfg else set()
         dabei_items = set(cfg.item_names) if cfg else set()
+        erkannt = self._erkannte_items()
         return {
             "modus": self.scan_modus,
             "ecke": list(self._ecke) if self._ecke else None,
@@ -701,7 +702,8 @@ class ScanTeil:
             "suchbereich": list(self._suchbereich) if self._suchbereich else None,
             "foto": self._flaeche(),
             "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
-            "items": [self._item_json(i, i.name in dabei_items) for i in self.items.values()],
+            "items": [self._item_json(i, i.name in dabei_items, i.name in erkannt)
+                      for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
@@ -763,9 +765,26 @@ class ScanTeil:
             "treffer": treffer,
         }
 
-    def _item_json(self, item: ItemProfile, dabei: bool = False) -> dict:
+    def _erkannte_items(self) -> set:
+        """Welche Items gerade in irgendeinem Slot erkannt werden.
+
+        **Das ist der Grund, warum die Item-Liste eines Scans nicht leer bleibt.**
+        Dasselbe Item kann in mehreren Spielen vorkommen; es ein zweites Mal zu
+        lernen ist genau das, was man vermeiden will. Wird es erkannt, steht es
+        im Scan-Inspektor — bevor jemand auf die Idee kommt, es neu zu lernen.
+        Ein Haken genügt dann.
+        """
+        return {e["name"] for e in self._treffer.values() if e.get("name")}
+
+    def _item_json(self, item: ItemProfile, dabei: bool = False,
+                   erkannt: bool = False) -> dict:
         return {
             "dabei": dabei,
+            # Gehört (noch) nicht dazu, wird aber gerade gesehen. Die Ansicht
+            # zeigt genau diese beiden Sorten, alles Weitere auf Knopfdruck: ein
+            # neuer Scan soll leer anfangen und nicht mit dem Bestand eines
+            # fremden Spiels.
+            "erkannt": erkannt,
             "name": item.name,
             "kategorie": item.category,
             "prioritaet": item.priority,

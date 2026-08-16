@@ -916,6 +916,25 @@ Sechs Regeln, an denen der Reiter hängt:
   erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
   nach, statt neu zu rechnen.
 
+**Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
+Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
+Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Knopf
+entfernt („N weitere im Bestand zeigen"), nicht weg.
+
+Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
+
+- **Slots sind Bildschirm-Koordinaten** und damit immer genau einem Spiel
+  zugeordnet. In einem fremden Scan angeboten zu werden ist reines Rauschen.
+- **Items können geteilt sein**, und dasselbe Item ein zweites Mal zu lernen ist
+  genau das, was man vermeiden will. Deshalb erscheint ein Item auch dann, wenn
+  es **gerade in einem Slot erkannt wird** (`_erkannte_items()`, Feld `erkannt`)
+  — es steht da, bevor jemand auf die Idee kommt, es neu zu lernen, und ein
+  Haken genügt. Gezeichnet wird es türkis, wie sein Rechteck im Bild.
+
+Die Regel „gehört dazu ODER wird gerade gesehen" steht in der **Brücke**, nicht
+im JavaScript: sonst wäre sie nicht messbar. Die Ansicht filtert nur noch auf
+`dabei || erkannt`.
+
 **Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
 stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
 Fundstelle mit und sagen in der Statuszeile, wie viele es waren. Löschen räumt

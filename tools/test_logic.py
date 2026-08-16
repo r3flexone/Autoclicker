@@ -6004,6 +6004,30 @@ try:
                 check("ein Item des offenen Scans gilt nicht als fremd",
                       _gruen18[0]["treffer"].get("fremd") is False)
 
+                # --- Ein neuer Scan faengt leer an, erkannte tauchen auf ---
+                # Vorher standen im Inspektor eines frischen Scans alle Slots
+                # und alle Items des GESAMTEN Bestands - die eines anderen
+                # Spiels also mit. Slots sind Bildschirm-Koordinaten und
+                # gehoeren immer genau einem Spiel; Items koennen geteilt sein,
+                # und ein Item ein zweites Mal zu lernen ist genau das, was man
+                # vermeiden will. Deshalb: dabei ODER gerade erkannt.
+                _erk18 = [i for i in _z18["items"] if i["erkannt"]]
+                check("ein erkanntes Item ist als solches markiert",
+                      len(_erk18) >= 1)
+                check("und es ist genau das, was in einem Slot steht",
+                      {i["name"] for i in _erk18}
+                      == {s["treffer"]["name"] for s in _z18["slots"]
+                          if s["treffer"] and s["treffer"]["name"]})
+                # Ein Item, das nirgends erkannt wird, traegt das Merkmal nicht -
+                # sonst waere die Liste wieder der ganze Bestand.
+                _b18.items["Nie gesehen"] = _ITEM8(name="Nie gesehen")
+                _z18 = _b18.scan_daten()
+                check("ein nirgends erkanntes Item traegt das Merkmal nicht",
+                      [i for i in _z18["items"]
+                       if i["name"] == "Nie gesehen"][0]["erkannt"] is False)
+                _b18.items.pop("Nie gesehen", None)
+                _z18 = _b18.scan_daten()
+
                 # Und umgekehrt: aus dem Scan genommen ist derselbe Treffer
                 # fremd - erkannt, aber der Scan sieht ihn nicht an. Nachgezogen
                 # wird das OHNE neue Rechnung.
