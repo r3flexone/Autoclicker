@@ -10,7 +10,7 @@ Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App 
 
 ```bash
 python tools/test_logic.py      # DIE Test-Suite — laeuft auch auf Linux/Mac, Exit 0 = gruen
-python3 -m pyflakes autoclicker/ main.py tools/    # Linter
+python -m flake8 --select=F autoclicker/ main.py tools/   # Linter (= pyflakes, aber mit noqa)
 
 python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
@@ -28,6 +28,14 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
 deshalb läuft die komplette Logik-Schicht auch hier.
+
+**Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**
+Push und Pull Request auf jedem Branch, nackter Ubuntu-Runner, keine Abhängigkeit —
+genau deshalb ist die Suite ja so gebaut. Dazu ein zweiter Job mit
+`flake8 --select=F` (tote Importe, Tippfehler in Namen). Beide Jobs müssen grün sein;
+ein roter Lauf ist ein Fehler, kein Hinweis. Geprüft wird auf **Python 3.10**, der
+unteren Grenze — auf der neuesten Version zu testen sagt nichts darüber, ob die
+älteste noch trägt.
 
 Regeln beim Erweitern:
 - **Jeder Bugfix bekommt einen Test**, der ohne den Fix umfällt. Gegenprobe: Fix
@@ -259,9 +267,9 @@ Regeln beim Erweitern:
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
-- **Eine vierte Stelle** trägt man in `_STELLEN` (Migration), `_REF_KEYS`
-  (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
-  nächsten Import oder die nächste Migration nicht.
+- **Eine vierte Stelle** trägt man in `_REF_KEYS` (`import_export.py`) und
+  `aufloesen()` ein. Fehlt eine der beiden, überlebt sie den nächsten Import nicht.
+  (Der dritte Eintrag war `_STELLEN` in der Migration — mit `_seq_v3_to_v4` entfallen.)
 
 **Die Scan-Richtung gehört zum Scan, nicht zum Programm.** Sie stand als
 `config.scan_reverse` in der Config und galt damit für *alle* Item-Scans — die
@@ -311,33 +319,30 @@ andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
 im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Screenshot) und
 der Blanko-Block `(0, 0)` des Sequenz-Studios, der noch gar keine Stelle hat.
 
-Darauf zu vertrauen, dass die Migration schon nachverknüpft, reicht **nicht**: sie läuft nur
-auf Dateien mit altem Schema. Frisch Gespeichertes trägt bereits die aktuelle Version und
-wird nie angefasst. Genau daran hing der Recorder — er legte Schritte und Punkte unabhängig
-voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft.
+Darauf zu vertrauen, dass eine Migration das nachträglich verknüpft, reicht **nicht** —
+und heute gibt es sie gar nicht mehr: die Sequenz-Kette ist leer (s.u.). Wer einen
+Klick-Schritt baut, baut ihn mit `point_id`, sonst hat er keine Stelle. Genau daran hing
+einmal der Recorder: er legte Schritte und Punkte unabhängig voneinander an, und jede
+aufgenommene Sequenz blieb dauerhaft unverknüpft.
 
-**Den Altbestand holt die Migration nach, nicht der Nutzer.** `_seq_v2_to_v3` verknüpft
-Aufnahmen von vor dem Fix beim nächsten Start automatisch — sie standen ja schon auf
-Schema 2 und wurden von der Kette nie angefasst.
+**Die Kette hat ihre Arbeit getan und ist gelöscht.** Vier Schritte hoben den Altbestand
+auf Schema 4 — zuletzt `_seq_v3_to_v4`, das jede Koordinate aus der Sequenz nach
+`points.json` zog und dafür notfalls einen Punkt anlegte. Seither gilt die Regel
+ausnahmslos, es gibt keinen Bestand mehr unterhalb von Schema 4, und damit sind die
+Schritte weg. Mit ihnen entfielen `_sichere_neue_punkte()` (sequences.py),
+`_punkte_schreibfertig()` (sweep.py) und `_als_dicts()`: sie schrieben die von der
+Migration angelegten Punkte zurück, und dieses Ereignis tritt nicht mehr ein.
 
-`_seq_v3_to_v4` geht einen Schritt weiter: es **legt notfalls einen Punkt an**. Bliebe auch
-nur ein Schritt unverknüpft, müsste seine Koordinate weiterhin in der Sequenz stehen — und
-die ganze Regel hätte wieder eine Ausnahme. Deshalb gilt hier auch nicht mehr „mehrdeutige
-Stellen bleiben unverknüpft": liegen zwei Punkte übereinander, gewinnt der erste. Dieselbe
-Stelle ist derselbe Ort; unverknüpft hiesse jetzt *Koordinate weg*.
+Was das für eine sehr alte Datei heisst, steht ausdrücklich im Modul-Kopf von
+`migration.py` und in einem Test: sie wird **auf 4 gestempelt, aber nicht umgerechnet**.
+Der Loader wirft deshalb nicht — er liest mit `data.get(key, default)` —, die Sequenz
+kommt aber leer an. Der Weg dorthin ist dann nicht die Wiederbelebung der Schritte,
+sondern `git show <commit>:autoclicker/persistence/migration.py` oder die Sequenz im
+Studio neu zu bauen.
 
-**Angelegte Punkte müssen auf Platte.** Die Migration hängt sie an die Liste in
-`context["points"]`, und der Aufrufer schreibt sie: `sweep.py` am Ende des Durchgangs
-(points.json zuletzt, erst dann steht die Zahl fest), `load_sequence_file()` über
-`_sichere_neue_punkte()` für alle anderen Wege. Die Liste wird deshalb **durchgereicht,
-nicht kopiert** (`_als_dicts`) — mit einer Kopie sähe die zweite Sequenz die Punkte der
-ersten nicht, vergäbe dieselben IDs erneut, und points.json hätte zwei Einträge mit
-derselben ID. Drei Tests pinnen das fest.
-
-Das ist der vorgesehene Weg für so etwas: **neue Daten entstehen korrekt, Altlasten gehen
-einmal durch die Schleuse.** `link` im Sequenz-Editor bleibt für die Fälle, die die
-Migration nicht eindeutig auflösen kann — nicht Teil des normalen Wegs. Sobald keine
-Altbestände mehr existieren, werden `_seq_v2_to_v3` und `_seq_v3_to_v4` ersatzlos gelöscht.
+Das ist der vorgesehene Lebenslauf: **neue Daten entstehen korrekt, Altlasten gehen
+einmal durch die Schleuse — und dann verschwindet die Schleuse.** `link` im
+Sequenz-Editor bleibt für Sonderfälle, nicht als Teil des normalen Wegs.
 
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
@@ -1928,7 +1933,10 @@ ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
 
 - Migration: „Das Modul soll schrumpfen, nicht wachsen." Ein Schritt wird
   **ersatzlos gelöscht**, sobald keine Altbestände mehr existieren — samt dem
-  Alt-Code, den er ersetzt hat.
+  Alt-Code, den er ersetzt hat. **Das ist einmal vollständig passiert:** die
+  Sequenz-Kette ist leer, und mit ihren vier Schritten fielen `_sichere_neue_punkte`,
+  `_punkte_schreibfertig`, `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` sowie rund
+  vierzig Tests weg. Die Regel ist also nicht nur aufgeschrieben, sondern eingelöst.
 - Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
 - `tools/sync_json.py` wurde gelöscht statt gepflegt; `_norm_items` steht als
   `_norm_noop` da, weil es ein totes Feld in ein anderes totes Format hob.
@@ -1939,7 +1947,7 @@ Drei Sorten Altlast, die auffallen sollen:
 |---|---|---|
 | **Weiterleitung ohne Inhalt** | `execution.py` — reiner Re-Export, Docstring sagte selbst „damit main.py und handlers.py ihre Imports unverändert lassen können" | eine Datei, deren einziger Zweck ist, zwei Zeilen nicht anzufassen |
 | **Name eines Paradigmas, das es nicht mehr gibt** | `node_editor`, `node_canvas`, `BlockGraph`, `rebuild_canvas` nach dem Umbau auf Listen | ein Name, der etwas Falsches verspricht, ist dieselbe Sorte Fehler wie eine Oberfläche, die es tut — er führt den nächsten Leser in die Irre |
-| **Totes Feld / toter Zweig** | `_STELLEN`-Eintrag für ein Feld, das nie eine Altform hatte | Pflegeaufwand für etwas, das nie eintritt |
+| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt | Pflegeaufwand für etwas, das nie passiert |
 
 Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 

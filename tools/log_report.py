@@ -25,6 +25,16 @@ LOGS_DIR = Path("logs")
 # Ereignisse, die kein Zaehlwerk brauchen (Rahmen der Session)
 _RAHMEN = {"session_start", "session_end"}
 
+# Ereignisarten, die dieser Bericht wirklich auswertet. Stand als Menge mitten in der
+# Ausgabefunktion; als Konstante ist die Kopplung zu `session_log.py` benennbar und
+# messbar - ein Test haelt beide Seiten gegeneinander. Wer eine neue Ereignisart
+# einfuehrt, traegt sie hier ein; bis dahin meldet der Bericht sie als "nicht
+# ausgewertet", statt sie stillschweigend zu verschlucken.
+AUSGEWERTET = {
+    "click", "key", "scroll", "timeout", "item_found", "detected",
+    "verify_ok", "verify_miss",
+}
+
 
 def _lies(pfad: Path) -> list[dict]:
     try:
@@ -136,9 +146,7 @@ def bericht(pfade: list[Path]) -> None:
         for k, v in sorted(stoerungen.items()):
             print(f"  {v:>5}x  {k}")
 
-    unbekannt = set(gesamt_events) - _RAHMEN - {
-        "click", "key", "scroll", "timeout", "item_found", "detected",
-        "verify_ok", "verify_miss"} - set(stoerungen)
+    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(stoerungen)
     if unbekannt:
         # Neue Ereignisarten sollen hier auffallen, nicht stillschweigend fehlen.
         print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(sorted(unbekannt))}")

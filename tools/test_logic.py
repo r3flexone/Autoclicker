@@ -664,45 +664,31 @@ check("Datei ohne Feld ist Version 0", file_version({"name": "x"}) == 0)
 check("needs_migration erkennt Altdatei", needs_migration({"name": "x"}) is True)
 check("gestempelte Datei braucht keine Migration", needs_migration(stamp({})) is False)
 
-# uraltes Format: nur "steps", dazu tote Felder
-_uralt = {"name": "U", "steps": [
-    {"x": 100, "y": 200, "name": "Markt", "delay_before": 1, "clicks": 2, "point_index": 0}]}
-_d, _m = migrate(_uralt, KIND_SEQUENCE, {"points": _pts})
-check("uraltes 'steps' wird zu loop_phases", len(_d["loop_phases"]) == 1)
-check("uralt: Schritt wird verknuepft", _d["loop_phases"][0]["steps"][0]["point_id"] == 3)
-check("uralt: tote Felder entfernt",
-      "clicks" not in _d["loop_phases"][0]["steps"][0]
-      and "point_index" not in _d["loop_phases"][0]["steps"][0])
-check("uralt: Versions-Stempel gesetzt", _d["schema_version"] == SCHEMA_VERSION)
+# --- Die Sequenz-Kette ist LEER, und das ist der Zielzustand ---
+# Hier standen vier Schritte (Schema 0 bis 4) und die Tests dazu. Sie sind mit den
+# Schritten geloescht: es gibt keinen Altbestand mehr, den sie heben koennten. Was
+# bleibt, ist die MECHANIK - Versionserkennung, Stempel, die Schleuse im Loader -,
+# denn die kostet nichts und ist die Stelle, an der eine kuenftige Umstellung landet.
+from autoclicker.persistence.migration import _CHAINS as _KETTEN
+check("die Sequenz-Kette ist leer", _KETTEN[KIND_SEQUENCE] == [])
+check("der Eintrag bleibt trotzdem stehen (die Schleuse sitzt)",
+      KIND_SEQUENCE in _KETTEN)
 
-# altes Format: start_steps + loop_steps + max_loops
-_alt = {"name": "A",
-        "start_steps": [{"x": 300, "y": 400, "name": "V", "delay_before": 0}],
-        "loop_steps": [{"x": 500, "y": 600, "name": "Mehrdeutig", "delay_before": 0},
-                       {"x": 0, "y": 0, "name": "T", "delay_before": 0, "key_press": "enter"}],
-        "max_loops": 5}
-_d2, _m2 = migrate(_alt, KIND_SEQUENCE, {"points": _pts})
-check("start_steps wird eigene erste Phase", _d2["loop_phases"][0]["name"] == "Start")
-check("loop_steps behaelt max_loops als repeat", _d2["loop_phases"][1]["repeat"] == 5)
-check("max_loops ist weg", "max_loops" not in _d2)
-check("start_steps ist weg", "start_steps" not in _d2)
-# Frueher blieben mehrdeutige Stellen (zwei Punkte uebereinander) bewusst unverknuepft -
-# "lieber keine Referenz als die falsche". Das geht seit Schema 4 nicht mehr: ohne
-# Referenz gaebe es die Koordinate nirgends, der Schritt waere verloren. Zwei Punkte auf
-# derselben Stelle sind ohnehin derselbe Ort, also gewinnt der erste.
-check("mehrdeutige Koordinate wird verknuepft (erster Punkt gewinnt)",
-      _d2["loop_phases"][1]["steps"][0].get("point_id") is not None)
-check("Tastendruck bekommt keine point_id",
-      _d2["loop_phases"][1]["steps"][1].get("point_id") is None)
-check("Migration laesst keine Koordinate im Schritt zurueck",
-      all(not any(k in s for k in ("x", "y", "wait_pixel", "else_x"))
-          for _p in _d2["loop_phases"] for s in _p["steps"]
-          if s.get("point_id") is not None))
+# **Eine Altdatei wird gestempelt, nicht umgerechnet.** Das ist die bewusst
+# akzeptierte Folge: ohne Schritte kann niemand `steps` in `loop_phases` heben. Der
+# Loader stuerzt deswegen NICHT ab - er liest mit `data.get(key, default)` und
+# bekommt eine leere Sequenz. Dieser Test haelt genau das fest, statt zu schweigen:
+# wer eine sehr alte Sicherung einspielt, soll das Ergebnis hier nachlesen koennen.
+_uralt = {"name": "U", "steps": [
+    {"x": 100, "y": 200, "name": "Markt", "delay_before": 1}]}
+_d, _m = migrate(_uralt, KIND_SEQUENCE)
+check("eine Altdatei bekommt den Versions-Stempel", _d["schema_version"] == SCHEMA_VERSION)
+check("und sie wird nicht mehr umgerechnet", _m == [] and "loop_phases" not in _d)
 
 # Idempotenz: zweiter Lauf aendert nichts mehr
 import copy as _copy
-_vorher = _copy.deepcopy(_d2)
-_d3, _m3 = migrate(_d2, KIND_SEQUENCE, {"points": _pts})
+_vorher = _copy.deepcopy(_d)
+_d3, _m3 = migrate(_d, KIND_SEQUENCE)
 check("zweiter Migrationslauf meldet nichts", _m3 == [])
 check("zweiter Migrationslauf aendert nichts", _d3 == _vorher)
 
@@ -712,24 +698,39 @@ _d4, _m4 = migrate(_neuer, KIND_SEQUENCE, {})
 check("neuere Version wird nicht angefasst", _d4["schema_version"] == SCHEMA_VERSION + 5)
 check("neuere Version wird gemeldet", any("kennt nur" in m for m in _m4))
 
-# Loader liest ein Altformat ueber die Migration
+# Der Loader ueberlebt eine Altdatei - er liefert eine leere Sequenz statt zu werfen.
+# Eine Datei, die den Loader wirft, waere ein Fehler; eine, die auf Standardwerten
+# landet, ist es nicht (siehe die Persistenz-Regeln in CLAUDE.md).
 _mp = tmp / "altformat.json"
 _mp.write_text(json.dumps({"name": "Alt", "steps": [
     {"x": 100, "y": 200, "name": "Markt", "delay_before": 0}]}), encoding="utf-8")
 _seq_alt = _load_seq(_mp, _pts)
-check("Loader laedt uraltes Format ueber die Migration", _seq_alt is not None)
-check("Loader: Schritt liegt in einer Loop-Phase",
-      _seq_alt is not None and len(_seq_alt.loop_phases) == 1
-      and len(_seq_alt.loop_phases[0].steps) == 1)
-check("Loader: point_id kam aus der Migration",
-      _seq_alt is not None and _seq_alt.loop_phases[0].steps[0].point_id == 3)
+check("der Loader wirft bei einer Altdatei nicht", _seq_alt is not None)
+check("sie kommt leer an, statt halb geraten", _seq_alt is not None
+      and _seq_alt.loop_phases == [] and _seq_alt.init_steps == [])
+
+# Gegenprobe: eine AKTUELLE Datei laedt vollstaendig - der Loader ist in Ordnung,
+# es fehlt der Altdatei nur der Weg hierher.
+_mp4 = tmp / "aktuell.json"
+_mp4.write_text(json.dumps({
+    "name": "Aktuell", "schema_version": SCHEMA_VERSION, "total_cycles": 1,
+    "init_steps": [], "end_steps": [],
+    "loop_phases": [{"name": "Loop", "repeat": 1,
+                     "steps": [{"point_id": 3, "delay_before": 0}]}]}), encoding="utf-8")
+_seq_neu = _load_seq(_mp4, _pts)
+check("eine aktuelle Datei laedt vollstaendig",
+      _seq_neu is not None and len(_seq_neu.loop_phases[0].steps) == 1)
+check("und ihre Koordinate kommt aus points.json",
+      _seq_neu is not None
+      and (_seq_neu.loop_phases[0].steps[0].x, _seq_neu.loop_phases[0].steps[0].y)
+      == (100, 200))
 
 
 # ------------------------------------------------ Migration: alle Dateitypen
 section("Migration: Normalisierer fuer Dateitypen ohne Versions-Feld")
 from autoclicker.persistence.migration import (
     KIND_ITEMS as _K_ITEMS, KIND_ITEM_SCAN as _K_ISCAN, KIND_POINTS as _K_PTS,
-    KIND_SEQUENCE as _K_SEQ, file_version as _fv, migrate as _mig,
+    file_version as _fv, migrate as _mig,
 )
 
 # file_version muss auch Listen und Muell vertragen - points.json IST eine Liste.
@@ -787,18 +788,10 @@ check("Loader liest die Punkt-Referenz",
 # Der Name kommt aus dem Schluessel, nicht mehr aus dem Eintrag
 check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
-# Verknuepfung darf nicht auf einen Punkt ohne ID zeigen (sonst point_id=null und der
-# naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz).
-# Seit Schema 4 bleibt der Schritt deswegen nicht unverknuepft, sondern bekommt einen
-# NEUEN Punkt mit ID - unverknuepft hiesse jetzt "Koordinate weg".
-_kontext = {"points": [{"x": 30, "y": 40, "name": "ohne ID"}]}
-_seq_roh = {"name": "s", "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-    {"x": 30, "y": 40, "name": "K", "delay_before": 0}]}]}
-_seq_roh, _ = _mig(_seq_roh, _K_SEQ, _kontext)
-_pid = _seq_roh["loop_phases"][0]["steps"][0].get("point_id")
-check("Punkt ohne ID wird nicht referenziert", isinstance(_pid, int))
-check("stattdessen entsteht ein Punkt MIT ID an derselben Stelle",
-      any(p.get("id") == _pid and (p["x"], p["y"]) == (30, 40) for p in _kontext["points"]))
+# Hier stand der Test, dass ein Schritt an einem Punkt OHNE ID einen neuen Punkt
+# bekommt - Verhalten von `_seq_v3_to_v4`, mit der Kette entfallen. Dass Punkte ohne
+# ID ueberhaupt eine bekommen, macht weiterhin `_norm_points`, und das prueft die
+# Sektion "Normalisierer fuer Dateitypen ohne Versions-Feld" weiter unten.
 
 # scheduled_start war nur da, um den Debug-Enter-Prompt zu ueberspringen - beides weg
 check("kein scheduled_start-Flag mehr am State",
@@ -856,10 +849,17 @@ _MIGRATE_AUSNAHMEN = {
     # Die beiden GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken
     # Ladern (sie haben keinen AutoClickerState). Sie werden AUS dem Hauptprozess
     # gestartet, der beim Start bereits alles gehoben hat.
+    #
+    # **Die Begruendung haengt an einem Schalter, und der steht hier dabei.** Der
+    # Start-Durchgang laesst sich mit `migrate_on_start: false` abstellen; dann liest
+    # das Studio ungehobene Dateien. Solange die Sequenz-Kette leer ist, ist das
+    # folgenlos - es gibt nichts zu heben. Wer sie je wieder fuellt, muss diese zwei
+    # Zeilen erneut lesen, statt sich auf eine Begruendung zu verlassen, die
+    # stillschweigend nicht mehr stimmt.
     "autoclicker/editors/sequence_studio/scan_model.py":
-        "Subprozess - Hauptprozess hat beim Start gesweept",
+        "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     "autoclicker/editors/sequence_studio/model.py":
-        "Subprozess - Hauptprozess hat beim Start gesweept",
+        "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     # list_scan_files() liest EIN Feld ("name") fuer die Auswahlliste und baut keine
     # Dataclass. Es gibt nichts zu heben - solange `name` das Feld bleibt, an dem ein
     # Scan haengt. Wuerde es je umbenannt, gehoert diese Zeile hier weg.
@@ -956,9 +956,16 @@ for _d in ("sequences", "items/presets", "slots/presets", "item_scans",
 (_sw / "sequences/points.json").write_text(json.dumps(
     [{"id": 1, "x": 100, "y": 200, "name": "A"},
      {"x": 300, "y": 400, "name": "B", "legacy_flag": True}]), encoding="utf-8")
+# Auf aktuellem Schema, aber mit einem toten Feld im Schritt: genau der Fall, den der
+# Durchgang OHNE Migrationsschritt loest - was der Loader nicht kennt, schreibt der
+# Serializer nicht zurueck. Deshalb wird hier auch kein Altschema mehr gestellt: die
+# Sequenz-Kette ist leer, das Aufraeumen macht der Round-Trip.
 (_sw / "sequences/alt.json").write_text(json.dumps(
-    {"name": "alt", "steps": [{"x": 300, "y": 400, "name": "E", "delay_before": 1,
-                               "clicks": 2, "point_index": 0}]}), encoding="utf-8")
+    {"name": "alt", "schema_version": 4, "total_cycles": 1,
+     "init_steps": [], "end_steps": [],
+     "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+         {"point_id": 2, "delay_before": 1, "clicks": 2, "point_index": 0}]}]}),
+    encoding="utf-8")
 (_sw / "items/items.json").write_text(json.dumps(
     {"K": {"name": "K", "marker_colors": [], "confirm_point": [5, 6], "uralt": 1}}),
     encoding="utf-8")
@@ -980,7 +987,7 @@ try:
     # den Blick auf die Daten und ein *.json-Glob koennte sie erwischen.
     check("Sicherung liegt unter backups/", (_sw / "backups/sequences/alt.json.bak").exists())
     check("und NICHT mehr neben dem Original", not (_sw / "sequences/alt.json.bak").exists())
-    check("Sicherung hat den Stand VOR dem Heben",
+    check("Sicherung hat den Stand VOR dem Aufraeumen",
           "point_index" in (_sw / "backups/sequences/alt.json.bak").read_text(encoding="utf-8"))
 
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
@@ -994,10 +1001,14 @@ try:
     _sq = json.loads((_sw / "sequences/alt.json").read_text(encoding="utf-8"))
     check("Start-Durchgang stempelt die Sequenz-Version",
           _sq.get("schema_version") == _mg.SCHEMA_VERSION)
-    check("Start-Durchgang verknuepft den Schritt mit seinem Punkt",
+    check("die Punkt-Referenz bleibt unangetastet",
           _sq["loop_phases"][0]["steps"][0]["point_id"] == 2)
-    check("Start-Durchgang entfernt tote Schritt-Felder",
-          "clicks" not in _sq["loop_phases"][0]["steps"][0])
+    # **Das ist der Beleg, dass es ohne Migrationsschritt geht.** `clicks` und
+    # `point_index` stehen in keiner Dataclass, der Loader liest sie nicht, der
+    # Serializer schreibt sie nicht zurueck - der Round-Trip allein raeumt sie weg.
+    check("Start-Durchgang entfernt tote Schritt-Felder ohne Migrationsschritt",
+          "clicks" not in _sq["loop_phases"][0]["steps"][0]
+          and "point_index" not in _sq["loop_phases"][0]["steps"][0])
     _it = json.loads((_sw / "items/items.json").read_text(encoding="utf-8"))["K"]
     # Der Round-Trip raeumt das alte confirm_point weg - der Loader liest es nicht mehr,
     # also schreibt der Serializer es auch nicht zurueck. Genau dafuer ist der
@@ -1137,15 +1148,10 @@ _abgedriftet = [k for k, v in _SD.items()
                 and _dc_defaults[k] != v]
 check("Default-Tabelle passt zur Dataclass", _abgedriftet == [])
 
-# delay_after: Altlast raus aus dem Loader, rein in die Migration
-_alt = {"schema_version": 1, "name": "s", "init_steps": [], "end_steps": [],
-        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-            {"x": 1, "y": 2, "name": "A", "delay_after": 3}]}]}
-_alt, _m = _mig(_alt, _K_SEQ)
-_step = _alt["loop_phases"][0]["steps"][0]
-check("delay_after wird zu delay_before", _step.get("delay_before") == 3)
-check("delay_after ist danach weg", "delay_after" not in _step)
-check("Umbenennung wird gemeldet", any("delay_after" in m for m in _m))
+# `delay_after` war die Altlast, die `_seq_v1_to_v2` in `delay_before` umbenannt hat.
+# Der Schritt ist mit der Kette entfallen; was BLEIBT, ist die Zusicherung, dass der
+# Loader das alte Feld nicht kennt - denn das ist der Grund, warum es die Migration
+# ueberhaupt gab. Ein Schritt mit `delay_after` bekommt heute schlicht den Default.
 check("Loader kennt delay_after nicht mehr",
       _p2s([{"x": 1, "y": 2, "delay_after": 9}])[0].delay_before == 0)
 
@@ -1637,7 +1643,7 @@ try:
           _besucht == ["S1", "S2", "S3"])
 
     # Tippfehler im Scan-Namen muss in BEIDEN Modi gemeldet werden, nicht nur im einen
-    import io as _io, contextlib as _cl
+    import contextlib as _cl   # _io steht schon oben
     def _stiller_lauf(immediate):
         _st_t = AutoClickerState(); _st_t.config = _AC2()
         _st_t.config.scan_click_immediate = immediate
@@ -1779,7 +1785,6 @@ section("'else' im Editor erlauben genau dort, wo die Runtime es auswertet")
 # Liste nur abzuschreiben: erlaubt der Editor else, muss die Aktion auch feuern.
 from autoclicker.editors.sequence_editor.helpers import (
     apply_else_to_step as _apply_else, _kann_else)
-import autoclicker.runtime.boss_detection as _BD
 import io as _io2, contextlib as _cl2
 
 _orig_c4, _orig_shot4 = _RS.safe_click, _RS.take_screenshot
@@ -2009,6 +2014,27 @@ check("Auto-Erkennung vergibt lesbare Namen",
 check("eindeutiger_name bleibt fuer vorgegebene Namen zustaendig",
       _en("Beutel oben", {"Beutel oben": 1}) == "Beutel oben 2")
 
+# --- Und niemand rechnet den Namen wieder selbst aus ---
+# Die Regel stand nur in CLAUDE.md, und drei Editoren hielten sich nicht daran:
+# `len(state.global_items) + 1` als Vorschlag schlug nach dem ersten Loeschen einen
+# Namen vor, den es schon gab - worauf der Editor nach dem Ueberschreiben fragte,
+# obwohl man nur "der naechste, bitte" gemeint hatte. Gesucht statt aufgezaehlt: eine
+# Liste von drei Stellen prueft nur das, woran ohnehin jemand gedacht hat.
+import re as _re_nf
+_repo_nf = Path(__file__).resolve().parent.parent
+_selbstgerechnet = []
+for _pf_nf in sorted((_repo_nf / "autoclicker").rglob("*.py")):
+    for _i_nf, _z_nf in enumerate(_pf_nf.read_text(encoding="utf-8").splitlines(), 1):
+        # Ein Zaehler, der aus der GROESSE eines Namens-Verzeichnisses kommt. Genau das
+        # ist der Fehler; `len(...) + 1` fuer eine Position oder Prioritaet nicht.
+        if _re_nf.search(r"len\(\s*[\w.]*(global_items|global_slots|self\.items|"
+                         r"self\.slots|loop_phases)\s*\)\s*\+\s*1", _z_nf):
+            _selbstgerechnet.append(f"{_pf_nf.relative_to(_repo_nf).as_posix()}:{_i_nf}")
+check("kein Editor rechnet einen Namensvorschlag aus der Bestandsgroesse",
+      _selbstgerechnet == [])
+if _selbstgerechnet:
+    print("        " + ", ".join(_selbstgerechnet))
+
 
 # ------------------------------------------------------------- Kalibrierung
 section("Kalibrierung rechnet den Bestand auf ein neues Bildschirm-Layout um")
@@ -2165,48 +2191,10 @@ try:
     check("else-Klick in der Datei", (_s1["else_x"], _s1["else_y"]) == (940, 925))
     check("Farben bleiben unangetastet", _s1["wait_color"] == [1, 2, 3])
 
-    # --- Altbestand ohne points.json: die Migration legt Punkte an, und die muessen
-    # AUF PLATTE landen. Gegenprobe zum Fehler, der genau hier sass: `_als_dicts`
-    # lieferte eine Kopie der Punkte-Liste, also liefen die Anhaenge der Migration ins
-    # Leere - die Sequenz zeigte danach auf IDs, die es nirgends gab, und jeder Schritt
-    # stand auf (0, 0). Faellt dieser Test, ist genau das zurueck.
-    from autoclicker.persistence import load_sequence_file as _lsf2
-    _pj = Path(_SQD) / "points.json"
-    if _pj.exists():
-        _pj.unlink()
-    _alt2 = Path(_SQD) / "ohne_punkte.json"
-    _alt2.write_text(json.dumps({
-        "name": "ohne_punkte", "schema_version": 2, "total_cycles": 1,
-        "init_steps": [], "end_steps": [],
-        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-            {"x": 111, "y": 222, "delay_before": 0, "name": "Erster",
-             "recorded_color": [10, 20, 30]},
-            {"x": 333, "y": 444, "delay_before": 0, "name": "Zweiter",
-             "wait_pixel": [555, 666], "wait_color": [1, 2, 3],
-             "else_action": "click", "else_x": 777, "else_y": 888},
-        ]}]}), encoding="utf-8")
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _gel = _lsf2(_alt2)
-    check("Altbestand ohne points.json: die Datei wird angelegt", _pj.exists())
-    _pdaten = json.loads(_pj.read_text(encoding="utf-8")) if _pj.exists() else []
-    check("Altbestand ohne points.json: alle vier Stellen sind Punkte geworden",
-          sorted((p["x"], p["y"]) for p in _pdaten)
-          == [(111, 222), (333, 444), (555, 666), (777, 888)])
-    _gs2 = _gel.loop_phases[0].steps if _gel else []
-    check("Altbestand ohne points.json: der Schritt klickt weiter dieselbe Stelle",
-          bool(_gs2) and (_gs2[0].x, _gs2[0].y) == (111, 222))
-    check("Altbestand ohne points.json: kein Schritt gilt als verwaist",
-          bool(_gs2) and not any(s.unresolved for s in _gs2))
-    check("Altbestand ohne points.json: Pruef-Pixel und Else haengen an eigenen Punkten",
-          bool(_gs2) and tuple(_gs2[1].wait_condition.pixel) == (555, 666)
-          and (_gs2[1].else_config.x, _gs2[1].else_config.y) == (777, 888))
-    check("Altbestand ohne points.json: die Farbe zieht in den Punkt um",
-          any(p.get("color") == [10, 20, 30] for p in _pdaten))
-    # Drei Stellen desselben Schritts bekommen unterscheidbare Namen - sonst stehen im
-    # Punkte-Menue drei Zeilen "Zweiter" und keiner weiss, welche welche ist.
-    check("Altbestand ohne points.json: die Namen sind unterscheidbar",
-          len({p.get("name") for p in _pdaten}) == len(_pdaten))
-
+    # Hier stand die Gegenprobe zu `_seq_v3_to_v4` + `_als_dicts`: eine Sequenz auf
+    # Schema 2 ohne points.json, deren Koordinaten die Migration in neu angelegte
+    # Punkte zog. Beides ist geloescht - ohne Kette legt keine Migration mehr Punkte
+    # an, also gibt es auch nichts mehr auf Platte zu schreiben.
 
     # Versatz von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     # Weiss man, dass eine Achse stimmt, ist eine eingetippte 0 genauer.
@@ -2255,56 +2243,11 @@ finally:
     _os.chdir(_kalib_cwd)
 
 
-# ------------------------------------------- Start-Durchgang ueber MEHRERE Altdateien
-section("Start-Durchgang: zwei Altdateien teilen sich ihre Punkte")
-
-# Hier zeigt sich, warum die Punkte-Liste durchgereicht und nicht kopiert werden darf:
-# sonst sieht die zweite Datei die Punkte der ersten nicht, vergibt dieselben IDs
-# erneut - und points.json haette zwei Eintraege mit derselben ID. Die ID IST die
-# Referenz; doppelte IDs heissen, dass Schritte auf den falschen Punkt zeigen.
-# Eigenes Verzeichnis, weil `sweep` alles migriert, was es findet.
-_sw_tmp = tempfile.mkdtemp()
-_sw_cwd = _os.getcwd()
-_os.chdir(_sw_tmp)
-try:
-    from autoclicker.persistence import sweep as _sweep2
-    _sdir = Path("sequences")
-    _sdir.mkdir()
-    for _nr in (1, 2):
-        (_sdir / f"doppelt{_nr}.json").write_text(json.dumps({
-            "name": f"doppelt{_nr}", "schema_version": 2, "total_cycles": 1,
-            "init_steps": [], "end_steps": [],
-            "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-                {"x": 400, "y": 500, "delay_before": 0, "name": "gleich"},
-                {"x": 10 * _nr, "y": 20 * _nr, "delay_before": 0, "name": "eigen"},
-            ]}]}), encoding="utf-8")
-
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _erg2 = _sweep2(write=True)
-    _pd2 = json.loads((_sdir / "points.json").read_text(encoding="utf-8"))
-    _ids = [p["id"] for p in _pd2]
-    check("zwei Altdateien: keine doppelt vergebene Punkt-ID",
-          len(_ids) == len(set(_ids)))
-    check("zwei Altdateien: die gemeinsame Stelle wird EIN Punkt",
-          sum(1 for p in _pd2 if (p["x"], p["y"]) == (400, 500)) == 1)
-    check("zwei Altdateien: drei Punkte insgesamt (eine geteilte + zwei eigene)",
-          len(_pd2) == 3)
-    _ref = [json.loads((_sdir / f"doppelt{_nr}.json").read_text(encoding="utf-8"))
-            ["loop_phases"][0]["steps"][0]["point_id"] for _nr in (1, 2)]
-    check("zwei Altdateien: beide Sequenzen zeigen auf denselben Punkt",
-          _ref[0] == _ref[1] and _ref[0] is not None)
-    check("zwei Altdateien: der Durchgang meldet die uebernommenen Punkte",
-          any("points.json" in p.name for p, _m in _erg2.geaendert))
-
-    # Zweiter Durchgang: nichts mehr zu tun, und vor allem keine neuen Punkte
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _erg3 = _sweep2(write=True)
-    check("zwei Altdateien: zweiter Durchgang aendert nichts",
-          _erg3.anzahl_geaendert == 0)
-    check("zwei Altdateien: zweiter Durchgang legt keine Punkte nach",
-          len(json.loads((_sdir / "points.json").read_text(encoding="utf-8"))) == 3)
-finally:
-    _os.chdir(_sw_cwd)
+# Hier stand die Sektion "Start-Durchgang: zwei Altdateien teilen sich ihre Punkte".
+# Sie mass, dass die Punkte-Liste durch die Sequenz-Migration DURCHGEREICHT und nicht
+# kopiert wurde - sonst haetten zwei Altdateien dieselben IDs erneut vergeben. Mit
+# `_seq_v3_to_v4` und `_als_dicts` ist der gemessene Mechanismus geloescht: keine
+# Migration legt mehr Punkte an, also kann es auch keine doppelten IDs von dort geben.
 
 
 # -------------------------------------------------------- Slot-Reparatur
@@ -3246,64 +3189,22 @@ check("und laesst den aufgenommenen Punkt in Ruhe",
       _marker.wait_condition.point_id == _map_alle[2])
 
 
-# Altbestand: Aufnahmen von VOR dem Fix stehen schon auf Schema 2 und wurden von der
-# Kette nie angefasst. Der Migrationsschritt v2->v3 holt sie einmal nach — von selbst
-# beim Start, nicht per Hand ueber 'link'.
-from autoclicker.persistence.migration import (migrate as _mig, KIND_SEQUENCE as _KSQ,
-                                               SCHEMA_VERSION as _SV)
-
-_alt_punkte = [{"id": 5, "x": 100, "y": 200, "name": "Bank"},
-               {"id": 6, "x": 300, "y": 400, "name": "Ofen"},
-               {"id": 7, "x": 50, "y": 50, "name": "A"},
-               {"id": 8, "x": 50, "y": 50, "name": "B"}]   # zwei auf derselben Stelle
-_alt_seq = {"name": "Aufnahme", "schema_version": 2, "total_cycles": 1,
-            "init_steps": [], "end_steps": [],
-            "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
-                {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"},
-                {"x": 300, "y": 400, "delay_before": 1.5, "name": "Klick 2"},
-                {"x": 50, "y": 50, "delay_before": 0.5, "name": "Klick 3"},
-                {"x": 0, "y": 0, "delay_before": 2, "name": "Taste", "key_press": "f"},
-            ]}]}
-
-_gehoben, _meld = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _alt_punkte})
-_gs = _gehoben["loop_phases"][0]["steps"]
-check("Altbestand: Schema wird auf die aktuelle Version gehoben",
-      _gehoben["schema_version"] == _SV)
-check("Altbestand: eindeutige Schritte werden verknuepft",
-      (_gs[0].get("point_id"), _gs[1].get("point_id")) == (5, 6))
-check("Altbestand: zwei Punkte auf derselben Stelle -> der erste gewinnt",
-      _gs[2].get("point_id") == 7)
-check("Altbestand: ein Tastendruck bekommt keinen Punkt",
-      _gs[3].get("point_id") is None)
-check("Altbestand: Wartezeiten bleiben unberuehrt",
-      [s["delay_before"] for s in _gs] == [0, 1.5, 0.5, 2])
-check("Altbestand: die Migration meldet, was sie getan hat",
-      any("verknüpft" in m for m in _meld))
-
-# Idempotent: der zweite Start darf nichts mehr finden
-_zweimal, _meld2 = _mig(json.loads(json.dumps(_gehoben)), _KSQ, {"points": _alt_punkte})
-check("Altbestand: zweiter Lauf aendert nichts", _zweimal == _gehoben and _meld2 == [])
-
-# Und ohne Punkte im Kontext darf nichts kaputtgehen. Frueher blieb dann alles
-# unverknuepft; heute legt die Migration die fehlenden Punkte selbst an - sonst waere
-# genau dieser Fall der eine, bei dem Koordinaten verloren gingen.
-_leerer_pool: list = []
-_ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
-_ohne_gs = _ohne_punkte["loop_phases"][0]["steps"]
-check("Altbestand: ohne Punkte werden welche angelegt statt zu scheitern",
-      [s.get("point_id") for s in _ohne_gs[:3]] == [1, 2, 3])
-check("Altbestand: die angelegten Punkte tragen die alten Koordinaten",
-      [(p["x"], p["y"]) for p in _leerer_pool] == [(100, 200), (300, 400), (50, 50)])
-check("Altbestand: der Tastendruck bekommt auch hier keinen Punkt",
-      _ohne_gs[3].get("point_id") is None and len(_leerer_pool) == 3)
-# Zweiter Lauf ueber DIESELBE Liste darf keine Dubletten erzeugen
-_mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
-check("Altbestand: erneutes Heben legt keine Punkte doppelt an", len(_leerer_pool) == 3)
-
+# Hier standen die Tests zu `_seq_v2_to_v3` (Aufnahmen des alten Recorders
+# nachtraeglich verknuepfen) und `_seq_v3_to_v4` (fehlende Punkte anlegen). Beide
+# Schritte sind geloescht, weil es keinen Altbestand mehr gibt, den sie heben
+# koennten - und mit ihnen diese Tests. Was BLEIBT, ist die Zusicherung darunter:
+# die Schleuse sitzt weiterhin in jedem Loader und laeuft nur, solange es etwas zu
+# tun gibt.
 # Und die Garantie, auf die es ankommt: die Kette laeuft, solange es etwas zu heben gibt,
 # danach NIE wieder. `migrate()` ruft zwar jeder Loader, aber die Schleife
 # `while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer — kein Schritt,
 # keine Aenderung, kein Schreibzugriff.
+#
+# **Gemessen wird mit einem GESTELLTEN Schritt.** Die echte Kette ist leer, seit es
+# keinen Altbestand mehr gibt - haenge man den Test an einen echten Schritt, waere er
+# beim naechsten Loeschen wieder faellig. Der gestellte Schritt prueft die Mechanik,
+# und genau die soll ueberleben: sie ist die Stelle, an der die naechste Umstellung
+# landet.
 import autoclicker.persistence.migration as _MG
 from autoclicker.persistence.sweep import sweep_beim_start as _sweep_start
 from autoclicker.persistence import (ensure_sequences_dir as _esd2,
@@ -3314,31 +3215,32 @@ _once_tmp = tempfile.mkdtemp()
 _once_cwd = _os.getcwd()
 _os.chdir(_once_tmp)
 _zaehler = {"n": 0}
-_orig_v3 = _MG._seq_v2_to_v3
 _orig_kette = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
 try:
     def _gezaehlt(data, context):
         _zaehler["n"] += 1
-        return _orig_v3(data, context)
-    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette[:-1] + [_gezaehlt]
+        data["von_der_migration"] = True
+        return ["gestellter Schritt gelaufen"]
+    # Auf Position 0: hebt von Version 0 auf 1. Die restlichen Stufen bis
+    # SCHEMA_VERSION haben keinen Eintrag und heben die Nummer nur an.
+    _MG._CHAINS[_MG.KIND_SEQUENCE] = [_gezaehlt]
 
     _esd2()
     Path(_SQD2, "points.json").write_text(
         json.dumps([{"id": 5, "x": 100, "y": 200, "name": "Bank"}]), encoding="utf-8")
     _adatei = Path(_SQD2) / "aufnahme.json"
     _adatei.write_text(json.dumps({
-        "name": "aufnahme", "schema_version": 2, "total_cycles": 1,
+        "name": "aufnahme", "total_cycles": 1,
         "init_steps": [], "end_steps": [],
         "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
-            {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"}]}]}), encoding="utf-8")
+            {"point_id": 5, "delay_before": 0}]}]}), encoding="utf-8")
 
     with _cl2.redirect_stdout(_io2.StringIO()):
         _sweep_start()
     _nach_erstem = _zaehler["n"]
     _dat = json.loads(_adatei.read_text(encoding="utf-8"))
-    check("erster Start hebt die Datei und verknuepft sie",
-          _dat["schema_version"] == _MG.SCHEMA_VERSION
-          and _dat["loop_phases"][0]["steps"][0].get("point_id") == 5)
+    check("erster Start hebt die Datei auf die aktuelle Version",
+          _dat["schema_version"] == _MG.SCHEMA_VERSION)
     check("erster Start ruft die Kette ueberhaupt auf", _nach_erstem > 0)
 
     _inhalt_vorher = _adatei.read_text(encoding="utf-8")
@@ -7357,6 +7259,230 @@ check("auch Importe INNERHALB von Funktionen zeigen auf existierende Module",
 if _tote10:
     for _z10 in _tote10:
         print("        " + _z10)
+
+
+# ============================================================================
+# Crash-sicheres Schreiben, Zeit-Eingaben, Presets, Session-Log
+# ============================================================================
+# Diese vier standen in KEINEM Test - und `atomic_write()` ist ausgerechnet die
+# Funktion, die einen Absturz mitten im Speichern ueberleben soll. Was das Projekt
+# an Daten haelt, haengt an ihr: jeder Saver geht durch sie.
+
+section("Crash-sicheres Schreiben (atomic_write)")
+
+from autoclicker.utils import atomic_write as _aw
+
+_aw_dir = Path(tempfile.mkdtemp())
+_ziel = _aw_dir / "daten.json"
+
+_aw(_ziel, '{"a": 1}')
+check("schreibt eine neue Datei", _ziel.read_text(encoding="utf-8") == '{"a": 1}')
+_aw(_ziel, '{"a": 2}')
+check("ueberschreibt eine vorhandene", _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+check("und laesst keine Temp-Datei liegen",
+      [p.name for p in _aw_dir.iterdir()] == ["daten.json"])
+
+# **Der eigentliche Zweck: geht das Schreiben schief, bleibt die ALTE Datei stehen.**
+# Gestellt wird der Absturz genau dort, wo er im Ernstfall passiert - in der Temp-Datei,
+# also nach dem Anlegen und vor dem `os.replace()`. Ohne die Temp-Datei-Technik stuende
+# hier jetzt eine halb geschriebene, unlesbare `daten.json`.
+import autoclicker.utils.parsing as _pmod
+_echtes_fsync, _echtes_replace = _pmod.os.fsync, _pmod.os.replace
+
+_pmod.os.fsync = lambda fd: (_ for _ in ()).throw(OSError("Platte voll"))
+try:
+    _aw(_ziel, '{"a": 3}')
+except OSError:
+    pass
+finally:
+    _pmod.os.fsync = _echtes_fsync
+check("bricht das Schreiben ab, steht die alte Datei unveraendert da",
+      _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+
+# Und wenn das Umbenennen selbst scheitert, ebenso.
+_pmod.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("gesperrt"))
+try:
+    _aw(_ziel, '{"a": 4}')
+except OSError:
+    pass
+finally:
+    _pmod.os.replace = _echtes_replace
+check("scheitert das Umbenennen, bleibt die alte Datei ebenfalls intakt",
+      _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+
+# Ein Verzeichnis, das es noch nicht gibt, wird angelegt - sonst muesste jeder
+# Aufrufer selbst daran denken.
+_tief = _aw_dir / "a" / "b" / "c.json"
+_aw(_tief, "x")
+check("legt fehlende Verzeichnisse an", _tief.read_text(encoding="utf-8") == "x")
+
+
+section("Zeit-Eingaben (parse_time_input)")
+
+from autoclicker.utils import parse_time_input as _pt
+
+# Relative Angaben: die Zahl ist das Ergebnis, nicht die Uhrzeit.
+check("30s sind 30 Sekunden", _pt("30s")[0] == 30)
+check("30m sind 1800 Sekunden", _pt("30m")[0] == 1800)
+check("30min ebenso", _pt("30min")[0] == 1800)
+check("2h sind 7200 Sekunden", _pt("2h")[0] == 7200)
+check("2std ebenso", _pt("2std")[0] == 7200)
+check("+2 ohne Einheit sind Minuten", _pt("+2")[0] == 120)
+check("+30m sind 1800 Sekunden", _pt("+30m")[0] == 1800)
+
+# Absolute Uhrzeiten: das Ergebnis liegt in der Zukunft, hoechstens 24 h entfernt.
+# Auf die Sekunde genau zu pruefen hiesse, die Uhr des Testlaufs festzuschreiben.
+for _form in ("14:30", "1430"):
+    _sek, _txt, _ziel_ts = _pt(_form)
+    check(f"'{_form}' liegt in der Zukunft und hoechstens 24 h entfernt",
+          0 <= _sek <= 24 * 3600)
+    check(f"'{_form}' nennt einen Zeitpunkt", _ziel_ts is not None)
+check("beide Schreibweisen meinen dieselbe Uhrzeit",
+      abs(_pt("14:30")[0] - _pt("1430")[0]) <= 1)
+
+# Unsinn wird abgelehnt statt geraten - eine falsch verstandene Wartezeit faellt
+# erst Stunden spaeter auf.
+for _mist in ("", "abc", "25:00", "2570", "-5", "12:99"):
+    _erg = _pt(_mist)
+    check(f"'{_mist}' wird nicht als Zeit akzeptiert", _erg[0] <= 0 or _erg[1] == "")
+
+
+section("Presets: speichern, laden, loeschen")
+
+from autoclicker.models import AutoClickerState as _ST_P, ItemSlot as _SL_P
+import autoclicker.persistence.presets as _pp
+
+_pre_tmp = Path(tempfile.mkdtemp())
+_pre_cwd = _os.getcwd()
+_os.chdir(_pre_tmp)
+try:
+    _stp = _ST_P()
+    _stp.global_slots = {"Slot 1": _SL_P(name="Slot 1", scan_region=(1, 2, 3, 4),
+                                         click_pos=(2, 3), slot_color=(9, 8, 7))}
+    check("Preset wird geschrieben", _pp.save_slot_preset(_stp, "Spiel A") is True)
+    # Der Dateiname wird entschaerft (`sanitize_filename`), und die Liste nennt den
+    # DATEINAMEN - nicht den eingegebenen. Das ist kein Schoenheitsfehler: wer das
+    # Preset spaeter laedt, tippt genau diesen Namen.
+    check("und taucht unter dem entschaerften Namen in der Liste auf",
+          [n for n, _p, _z in _pp.list_slot_presets()] == ["spiel_a"])
+    check("die Liste zaehlt die Eintraege mit",
+          [z for _n, _p, z in _pp.list_slot_presets()] == [1])
+
+    # Laden ersetzt den Bestand - und zwar mit denselben Werten, nicht mit Defaults.
+    _stp2 = _ST_P()
+    check("Preset laedt zurueck", _pp.load_slot_preset(_stp2, "Spiel A") is True)
+    check("und die Werte kommen unveraendert an",
+          _stp2.global_slots["Slot 1"].scan_region == (1, 2, 3, 4)
+          and _stp2.global_slots["Slot 1"].slot_color == (9, 8, 7))
+
+    check("ein Preset, das es nicht gibt, wird gemeldet",
+          _pp.load_slot_preset(_ST_P(), "gibt es nicht") is False)
+    check("Loeschen meldet Erfolg", _pp.delete_slot_preset("Spiel A") is True)
+    check("und danach ist die Liste leer", _pp.list_slot_presets() == [])
+    check("zweimal loeschen ist kein Erfolg", _pp.delete_slot_preset("Spiel A") is False)
+finally:
+    _os.chdir(_pre_cwd)
+
+
+section("Beide Schreibwege fuer slots.json und items.json stimmen ueberein")
+
+# **Zwei Codewege auf dieselben zwei Dateien.** Der Hauptprozess schreibt ueber
+# `persistence/globals.py`, das Studio (eigener Prozess, kein State) ueber
+# `sequence_studio/scan_model.py`. Beide benutzen zwar dieselben Serialisierer -
+# aber das war bisher eine Annahme, die niemand geprueft hat. Faellt dieser Test,
+# schreiben die beiden Fenster verschiedene Dateien und der zuletzt gespeicherte
+# Stand gewinnt mit anderen Werten.
+
+from autoclicker.models import ItemProfile as _IP_R
+import autoclicker.persistence.globals as _gl
+from autoclicker.editors.sequence_studio.scan_model import (
+    load_slots as _sm_ls, save_slots as _sm_ss,
+    load_items as _sm_li, save_items as _sm_si)
+from autoclicker.persistence.paths import SLOTS_FILE as _SF_R, ITEMS_FILE as _IF_R
+
+_rt_tmp = Path(tempfile.mkdtemp())
+_rt_cwd = _os.getcwd()
+_os.chdir(_rt_tmp)
+try:
+    _slots_soll = {"Beutel": _SL_P(name="Beutel", scan_region=(10, 20, 70, 80),
+                                   click_pos=(40, 50), slot_color=(1, 2, 3))}
+    _items_soll = {"Kohle": _IP_R(name="Kohle", marker_colors=[(4, 5, 6)],
+                                  category="Erz", priority=7, min_confidence=0.9)}
+
+    # Hauptprozess schreibt -> Studio liest
+    _st_r = _ST_P()
+    _st_r.global_slots = dict(_slots_soll)
+    _st_r.global_items = dict(_items_soll)
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _gl.save_global_slots(_st_r)
+        _gl.save_global_items(_st_r)
+    _studio_slots, _studio_items = _sm_ls(_SF_R), _sm_li(_IF_R)
+    check("das Studio liest, was der Hauptprozess geschrieben hat",
+          list(_studio_slots) == ["Beutel"] and list(_studio_items) == ["Kohle"])
+    check("und zwar mit denselben Werten",
+          _studio_slots["Beutel"].scan_region == (10, 20, 70, 80)
+          and _studio_slots["Beutel"].slot_color == (1, 2, 3)
+          and _studio_items["Kohle"].priority == 7
+          and _studio_items["Kohle"].min_confidence == 0.9
+          and _studio_items["Kohle"].marker_colors == [(4, 5, 6)])
+
+    # Studio schreibt -> Hauptprozess liest
+    _slots_datei_vorher = Path(_SF_R).read_text(encoding="utf-8")
+    _items_datei_vorher = Path(_IF_R).read_text(encoding="utf-8")
+    _sm_ss(_studio_slots, _SF_R)
+    _sm_si(_studio_items, _IF_R)
+    # **Byte fuer Byte dieselbe Datei.** Das ist die eigentliche Aussage: beide Wege
+    # gehen durch dieselben `_*_to_dict`, also darf ein Speichern im Studio die Datei
+    # des Hauptprozesses nicht einmal formal veraendern.
+    check("das Studio schreibt byteweise dieselbe slots.json",
+          Path(_SF_R).read_text(encoding="utf-8") == _slots_datei_vorher)
+    check("und dieselbe items.json",
+          Path(_IF_R).read_text(encoding="utf-8") == _items_datei_vorher)
+
+    _st_zurueck = _ST_P()
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _gl.load_global_slots(_st_zurueck)
+        _gl.load_global_items(_st_zurueck)
+    check("der Hauptprozess liest zurueck, was das Studio geschrieben hat",
+          _st_zurueck.global_slots["Beutel"].scan_region == (10, 20, 70, 80)
+          and _st_zurueck.global_items["Kohle"].category == "Erz")
+finally:
+    _os.chdir(_rt_cwd)
+
+
+section("Session-Log schreibt, was es behauptet")
+
+from autoclicker.session_log import start_session_log as _ssl, log_event as _le
+
+_log_tmp = Path(tempfile.mkdtemp())
+_log_cwd = _os.getcwd()
+_os.chdir(_log_tmp)
+try:
+    _st_l = _ST_P()
+    _st_l.config.session_log_enabled = False
+    check("abgeschaltet entsteht kein Log", _ssl(_st_l) is None)
+
+    _st_l.config.session_log_enabled = True
+    _st_l.config.session_log_dir = "logs"
+    _log = _ssl(_st_l)
+    check("eingeschaltet entsteht eines", _log is not None)
+    if _log is not None:
+        _st_l.session_log = _log
+        _le(_st_l, "click", "Bank", "ok")
+        _le(_st_l, "timeout", "Ofen")
+        _log.close()
+        _zeilen = Path(_log.path).read_text(encoding="utf-8").splitlines()
+        check("die Kopfzeile steht drin", _zeilen and "," in _zeilen[0])
+        check("beide Ereignisse sind geschrieben", len(_zeilen) == 3)
+        check("und das diagnostisch wichtigste ist dabei",
+              any("timeout" in z for z in _zeilen))
+        # `log_report.py` wertet genau diese Datei aus - ein Ereignis, das es nicht
+        # kennt, meldet es als "nicht ausgewertete Ereignisart".
+        from tools.log_report import AUSGEWERTET as _BE
+        check("die geschriebenen Ereignisarten kennt der Bericht",
+              {"click", "timeout"} <= set(_BE))
+finally:
+    _os.chdir(_log_cwd)
 
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")

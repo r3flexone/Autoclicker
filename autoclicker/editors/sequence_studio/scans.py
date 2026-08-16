@@ -1899,7 +1899,10 @@ class ScanTeil:
             name=name,
             marker_colors=[tuple(c) for c in marker],
             category=None,
-            priority=len(self.items) + 1,
+            # Hinter das bisher letzte, nicht `len + 1`: nach dem Löschen eines Items
+            # vergäbe das eine Priorität, die es schon gibt — und die Reihenfolge, in
+            # der der Scan klickt, wäre an dieser Stelle Zufall.
+            priority=max((i.priority for i in self.items.values()), default=0) + 1,
             template=save_template(maskiert, name),
             min_confidence=CONFIG.scan_min_confidence,
         )

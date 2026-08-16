@@ -1342,10 +1342,20 @@ python tools/migrate.py            # zeigt nur an, was passieren würde
 python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 ```
 
-- Alte Formate ins aktuelle heben (Sequenz-Phasen, `point_id`, `confirm_point`, Punkt-IDs)
-- Tote Felder entfernen, die es im Code nicht mehr gibt
+- Tote Felder entfernen, die es im Code nicht mehr gibt (das ist inzwischen die
+  Hauptarbeit: der Durchgang liest jede Datei mit dem Loader und schreibt sie mit dem
+  Serializer zurück — was der Loader nicht kennt, kommt nicht wieder)
+- Punkt-IDs nachnummerieren und eingebettete Slot-/Item-Kopien in Scans zu
+  Namens-Referenzen machen
 - Erfasst alle Dateien: config, Punkte, Sequenzen, Item-/Boss-/Icon-Scans,
   Boss-Bibliothek, Items, Slots und beide Preset-Ordner
+
+> **Sequenzen werden nicht mehr umgerechnet.** Die Schritte, die alte Sequenz-Formate
+> aufs heutige Schema hoben (`steps`/`loop_steps` → `loop_phases`, `delay_after`,
+> Koordinaten → `points.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
+> bräuchten. Eine sehr alte Sicherung wird deshalb zwar gelesen und gestempelt, kommt
+> aber **leer** an. In dem Fall die Sequenz im Studio neu bauen; das geht inzwischen
+> schneller, als es das Zurückholen der Migrationsschritte täte.
 
 Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 

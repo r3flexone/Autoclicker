@@ -1,0 +1,50 @@
+# Die Suite laeuft ohne Windows, ohne GUI und ohne Netz (msvcrt und ctypes.windll
+# werden am Dateianfang gestubbt) - deshalb reicht hier ein nackter Ubuntu-Runner
+# ohne jede Abhaengigkeit. Genau dafuer ist sie so gebaut.
+#
+# Warum das ueberhaupt hier steht: es gab 1.178 Pruefungen und nichts, was sie
+# ausfuehrt. Eine Suite, die nur laeuft, wenn jemand daran denkt, faengt Regressionen
+# genau dann nicht, wenn man in Eile ist.
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 3.10 ist die untere Grenze (PEP-604-Syntax `X | None` im Baum), und
+          # genau die gehoert geprueft: auf der neuesten Version zu testen sagt
+          # nichts darueber, ob die aelteste noch traegt.
+          python-version: "3.10"
+
+      # Die Box-Zeichen der Ausgabe brauchen UTF-8. Auf dem Runner ist das ohnehin
+      # gesetzt; explizit, weil dieselbe Zeile unter Windows noetig ist und man sie
+      # dann hier wiederfindet.
+      - name: Suite
+        run: python tools/test_logic.py
+        env:
+          PYTHONIOENCODING: utf-8
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install flake8
+      # Nur die F-Regeln (das ist genau pyflakes: tote Importe, Tippfehler in Namen,
+      # doppelte Definitionen) - kein Formatierer, ueber Stil entscheidet hier
+      # niemand ausser dem Autor. flake8 statt pyflakes direkt, weil nur flake8 die
+      # `# noqa: F401`-Kommentare kennt, mit denen die msvcrt-Stubs markiert sind;
+      # pyflakes meldet die sonst bei jedem Lauf.
+      - run: python -m flake8 --select=F autoclicker/ main.py tools/

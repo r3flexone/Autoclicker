@@ -228,15 +228,19 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
 
 def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
     """Erstellt einen neuen Slot interaktiv."""
+    # `len(...) + 1` stand hier und schlug nach dem ersten Loeschen einen Namen vor,
+    # den es schon gibt - dann fragte der Editor nach dem Ueberschreiben, obwohl man
+    # nur "der naechste, bitte" gemeint hat. `naechster_freier_name()` fuellt Luecken
+    # und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect` weiter unten).
     with state.lock:
-        slot_num = len(state.global_slots) + 1
+        vorschlag = naechster_freier_name("Slot", state.global_slots)
 
-    slot_name = safe_input(f"  Slot-Name (Enter = 'Slot {slot_num}', 'cancel'): ").strip()
+    slot_name = safe_input(f"  Slot-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
     if is_cancel(slot_name):
         print("  -> Slot-Erstellung abgebrochen")
         return None
     if not slot_name:
-        slot_name = f"Slot {slot_num}"
+        slot_name = vorschlag
 
     # Duplikat-Check (Slots sind per Name indexiert — sonst still überschrieben)
     with state.lock:

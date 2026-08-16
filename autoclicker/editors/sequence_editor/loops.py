@@ -10,7 +10,8 @@ from typing import Optional
 
 from ...models import LoopPhase, AutoClickerState
 from ...utils import (
-    cancel_hint, confirm, hint, is_cancel, safe_input, suggest_command,
+    cancel_hint, confirm, hint, is_cancel, naechster_freier_name, safe_input,
+    suggest_command,
 )
 from .helpers import parse_uhrzeit
 from .steps import edit_phase
@@ -68,11 +69,17 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                     print("  (Keine Loop-Phasen)")
                 continue
             elif user_input == "add":
-                # Neue Loop-Phase
-                loop_num = len(loop_phases) + 1
-                loop_name = safe_input(f"  Name der Loop-Phase (Enter = 'Loop {loop_num}'): ").strip()
+                # Neue Loop-Phase. Der Vorschlag nimmt die erste FREIE Nummer statt
+                # `len + 1`: nach dem Loeschen der mittleren Phase schlug das sonst
+                # einen Namen vor, den es schon gibt. Doppelte Phasennamen sind zwar
+                # erlaubt (der Zeitplan haengt an der Position, nicht am Namen) -
+                # aber zwei Zeilen "Loop 3" in der Liste sind trotzdem eine Zumutung.
+                vorschlag = naechster_freier_name(
+                    "Loop", {p.name: p for p in loop_phases})
+                loop_name = safe_input(
+                    f"  Name der Loop-Phase (Enter = '{vorschlag}'): ").strip()
                 if not loop_name:
-                    loop_name = f"Loop {loop_num}"
+                    loop_name = vorschlag
 
                 print(f"\n  Schritte für {loop_name} hinzufügen:")
                 steps = edit_phase(state, [], loop_name)
