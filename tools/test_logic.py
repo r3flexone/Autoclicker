@@ -4905,10 +4905,18 @@ _html13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
 # zwei neuesten Methoden ungeprueft - und der Fehler, den dieser Test faengt, ist
 # nicht "falsche Logik", sondern "Name existiert gar nicht": eine leere Ansicht
 # mit einer Zeile in der Statusleiste.
-_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|frage)\("([a-z_]+)"', _html13)))
+# **Und `rufScan()` ist der dritte Weg.** Er fehlte hier, und damit war
+# ausgerechnet der Reiter ungeprueft, der am meisten Bruecken-Methoden hat: der
+# ganze Scans-Teil ruft ueber ihn. Ein Tippfehler in einem Methodennamen waere
+# dort erst beim Klicken aufgefallen - genau der Fehler, gegen den dieser Test
+# steht.
+_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|rufScan|frage)\("([a-z_]+)"',
+                                      _html13)))
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
       "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
+check("und der Scans-Reiter ist mit erfasst (rufScan)",
+      "scan_daten" in _gerufen13 and "scan_klick" in _gerufen13)
 
 _fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
@@ -6186,6 +6194,9 @@ try:
           _b18.scan_daten()["fremd"] is False)
     import time as _t18
     _t18.sleep(0.01)
+    # Der Ordner entsteht sonst erst beim Speichern - hier wird aber von
+    # AUSSEN geschrieben, also gibt es noch keinen.
+    Path("items").mkdir(exist_ok=True)
     Path("items/items.json").write_text(
         '{"Von aussen": {"marker_colors": [[1, 2, 3]]}}', encoding="utf-8")
     check("eine Aenderung von aussen faellt auf",
@@ -6507,6 +6518,256 @@ try:
           _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
           .scan_daten()["offen"] == "Test")
     _zweite18.unlink()
+
+    # ------------------------------------------------------------------------
+    # Der Bezug ist der OFFENE SCAN, nicht der Bestand
+    # ------------------------------------------------------------------------
+    # Wer zwei Spiele betreibt, hat die Slots beider in einer Datei. Alles, was
+    # "alle Slots" sagte, meinte bis hierher wirklich alle - und das war an drei
+    # Stellen falsch. Zwei davon fielen nur als seltsame Zahl auf ("11 ohne
+    # Bild", "13 von 56 erkannt"), und man sucht den Fehler beim Screenshot.
+    _bz18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bz18.scan_daten()          # laedt von Platte - erst DANN stellen
+    _bz18.slots.clear(), _bz18.items.clear(), _bz18.scans.clear()
+    for _n18 in ("A1", "A2", "Fremd1"):
+        _bz18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 20, 20),
+                                   click_pos=(10, 10))
+    _bz18.scan_neu({"name": "Spiel A"})
+    _bz18.scan_mitglied({"art": "slot", "name": "A1"})
+    _bz18.scan_mitglied({"art": "slot", "name": "A2"})
+    check("die Slots des offenen Scans sind der Bezug",
+          sorted(s.name for s in _bz18._scan_slots()) == ["A1", "A2"])
+    _bz18.scan_offen = ""
+    check("ohne offenen Scan ist es der ganze Bestand",
+          len(_bz18._scan_slots()) == 3)
+    _bz18.scan_offen = "Spiel A"
+
+    # Gemessen an der Zaehlung: der Nenner muss der Scan sein. Ohne den Fix
+    # steht hier 3 - also auch der Slot des anderen Spiels, der gar nicht im
+    # Bild liegt und nie erkannt werden koennte.
+    _bz18._foto = object()
+    _bz18._foto_info = {"links": 0, "oben": 0, "skala": 1.0, "breite": 100,
+                        "hoehe": 100, "stand": 0.0}
+    _bz18._foto_crop = lambda bereich: None
+    _z18 = _bz18.scan_erkennen()
+    check("die Erkennung zaehlt die Slots des offenen Scans als Nenner",
+          "von 2 Slot(s)" in _z18["status"]["text"])
+    check("und sie prueft auch nur diese", sorted(_bz18._treffer) == ["A1", "A2"])
+
+    # Dasselbe beim Lernen: "aus allen Slots" hiess der ganze Bestand, also lief
+    # der Durchgang auch ueber das andere Spiel.
+    _gelernt18 = []
+    _bz18._lerne_aus_slot = lambda slot, dedup=False: (_gelernt18.append(slot.name)
+                                                       or "Neu " + slot.name)
+    _bz18.scan_items_lernen()
+    check("gelernt wird aus den Slots des offenen Scans",
+          sorted(_gelernt18) == ["A1", "A2"])
+    _bz18.__dict__.pop("_lerne_aus_slot", None)
+
+    # ------------------------------------------------------------------------
+    # Rueckgaengig
+    # ------------------------------------------------------------------------
+    # Die groesste Luecke des Reiters: ein Rechteck ueber dreissig Slots und ein
+    # Druck auf Entf waren endgueltig. Der einzige Ausweg hiess "Neu laden" -
+    # und der wirft ALLES seit dem letzten Speichern weg.
+    _bu18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bu18.scan_daten()          # laedt von Platte - erst DANN stellen
+    _bu18.slots.clear(), _bu18.items.clear(), _bu18.scans.clear()
+    for _n18 in ("S1", "S2", "S3"):
+        _bu18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 20, 20),
+                                   click_pos=(10, 10))
+    check("frisch gibt es nichts zurueckzunehmen",
+          _bu18.scan_daten()["undo"]["tiefe"] == 0)
+    check("und der Versuch sagt das, statt etwas zu tun",
+          _bu18.scan_rueckgaengig()["status"]["art"] == "info")
+
+    _bu18._auswahl = ["S1", "S2"]
+    _bu18.scan_art, _bu18.scan_name = "slot", "S1"
+    _z18 = _bu18.scan_slot_loeschen()
+    check("zwei Slots sind weg", sorted(_bu18.slots) == ["S3"])
+    check("der Stapel weiss, was es war",
+          _z18["undo"]["tiefe"] == 1 and "gelöscht" in _z18["undo"]["was"])
+    _z18 = _bu18.scan_rueckgaengig()
+    check("Rueckgaengig holt beide zurueck", sorted(_bu18.slots) == ["S1", "S2", "S3"])
+    check("und der Stapel ist wieder leer", _z18["undo"]["tiefe"] == 0)
+
+    # Ein geloeschter Slot verschwindet aus JEDEM Scan - genau deshalb wird der
+    # ganze Stand gemerkt und nicht ein Rueckwaerts-Schritt je Feld: eine
+    # vergessene Nebenwirkung waere ein Rueckgaengig, das halb zurueckdreht.
+    _bu18.scan_neu({"name": "Mit Slots"})
+    _bu18.scan_mitglied({"art": "slot", "name": "S1"})
+    _bu18.scan_mitglied({"art": "slot", "name": "S2"})
+    _bu18._auswahl = ["S1"]
+    _bu18.scan_art, _bu18.scan_name = "slot", "S1"
+    _bu18.scan_slot_loeschen()
+    check("der Scan verliert den geloeschten Slot mit",
+          _bu18.scans["Mit Slots"].slot_names == ["S2"])
+    _bu18.scan_rueckgaengig()
+    check("und bekommt ihn beim Rueckgaengig zurueck",
+          _bu18.scans["Mit Slots"].slot_names == ["S1", "S2"])
+    check("die abgeleiteten Objektlisten zeigen wieder auf den Bestand",
+          [s is _bu18.slots[s.name] for s in _bu18.scans["Mit Slots"].slots]
+          == [True, True])
+
+    # Ein abgelehnter oder wirkungsloser Griff darf NICHTS auf den Stapel legen:
+    # sonst taete STRG+Z einmal scheinbar gar nichts, und einem Rueckgaengig,
+    # dem man nicht trauen kann, traut man gar nicht.
+    _tiefe18 = _bu18.scan_daten()["undo"]["tiefe"]
+    _bu18.scan_slot_setzen({"name": "S1", "feld": "gibtsnicht", "wert": 1})
+    _bu18.scan_slot_setzen({"name": "S1", "feld": "name", "wert": "S1"})
+    _bu18.scan_slot_setzen({"name": "S1", "feld": "name", "wert": "S2"})
+    check("weder ein unbekanntes Feld noch ein Namens-Nichtwechsel zaehlen",
+          _bu18.scan_daten()["undo"]["tiefe"] == _tiefe18)
+    _bu18.scan_slot_setzen({"name": "S1", "feld": "x1", "wert": 5})
+    check("eine echte Aenderung dagegen schon",
+          _bu18.scan_daten()["undo"]["tiefe"] == _tiefe18 + 1)
+
+    # Tiefer als UNDO_TIEFE waechst der Stapel nicht - sonst haelt ein Fenster,
+    # das den Tag ueber offensteht, jeden Zwischenstand im Speicher.
+    from autoclicker.editors.sequence_studio.scans import UNDO_TIEFE as _UT18
+    for _i18 in range(_UT18 + 5):
+        _bu18.scan_slot_setzen({"name": "S1", "feld": "y1", "wert": _i18})
+    check("der Stapel bleibt bei UNDO_TIEFE stehen",
+          _bu18.scan_daten()["undo"]["tiefe"] == _UT18)
+
+    # Nach dem Neuladen beschreibt der Stapel Staende, die es nicht mehr gibt.
+    _bu18._scan_dirty = False
+    _bu18.scan_neu_laden()
+    check("Neu laden leert den Stapel",
+          _bu18.scan_daten()["undo"]["tiefe"] == 0)
+
+    # ------------------------------------------------------------------------
+    # Verschieben, Angleichen, Sammel-Aktionen
+    # ------------------------------------------------------------------------
+    # Ein Slot, der drei Pixel daneben liegt, war nur ueber vier Zahlenfelder zu
+    # retten - und dreissig gar nicht.
+    _bv18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bv18.scan_daten()          # laedt von Platte - erst DANN stellen
+    _bv18.slots.clear(), _bv18.items.clear(), _bv18.scans.clear()
+    _bv18.slots["V1"] = _SLOT8(name="V1", scan_region=(100, 100, 160, 160),
+                               click_pos=(110, 150))
+    _bv18.slots["V2"] = _SLOT8(name="V2", scan_region=(200, 100, 254, 154),
+                               click_pos=(227, 127))
+    _bv18._auswahl = ["V1", "V2"]
+    _bv18.scan_art, _bv18.scan_name = "slot", "V1"
+    _bv18.scan_verschieben({"dx": 3, "dy": -2})
+    check("beide Flaechen wandern", _bv18.slots["V1"].scan_region == (103, 98, 163, 158)
+          and _bv18.slots["V2"].scan_region == (203, 98, 257, 152))
+    # Der Klickpunkt geht MIT, statt neu aus der Mitte gerechnet zu werden: er
+    # ist womoeglich bewusst aus der Mitte gesetzt.
+    check("und der Klickpunkt behaelt seine Lage im Slot",
+          _bv18.slots["V1"].click_pos == (113, 148))
+    _bv18.scan_rueckgaengig()
+    check("Verschieben laesst sich zuruecknehmen",
+          _bv18.slots["V1"].scan_region == (100, 100, 160, 160))
+
+    # Eine GEHALTENE Pfeiltaste ist EIN Verschieben, nicht dreissig.
+    _tiefe18 = _bv18.scan_daten()["undo"]["tiefe"]
+    _bv18.scan_verschieben({"dx": 1, "dy": 0})
+    for _i18 in range(9):
+        _bv18.scan_verschieben({"dx": 1, "dy": 0, "zaehlt": False})
+    check("eine Serie legt nur einen Schritt auf den Stapel",
+          _bv18.scan_daten()["undo"]["tiefe"] == _tiefe18 + 1)
+    _bv18.scan_rueckgaengig()
+    check("und STRG+Z nimmt die ganze Serie zurueck",
+          _bv18.slots["V1"].scan_region == (100, 100, 160, 160))
+    check("ein Verschieben um nichts aendert nichts",
+          _bv18.scan_verschieben({"dx": 0, "dy": 0})["undo"]["tiefe"]
+          == _bv18.scan_daten()["undo"]["tiefe"])
+
+    # Angleichen: Median der Auswahl, Mitte bleibt stehen.
+    _bv18.scan_groesse_angleichen()
+    check("V2 wird auf die mittlere Groesse gezogen",
+          _bv18.slots["V2"].scan_region[2] - _bv18.slots["V2"].scan_region[0] == 60)
+    check("und seine Mitte bleibt, wo sie war",
+          (_bv18.slots["V2"].scan_region[0] + _bv18.slots["V2"].scan_region[2]) // 2
+          == 227)
+    _bv18.scan_waehlen({"art": "slot", "name": "V1"})     # Einzelauswahl
+    check("mit weniger als zwei Slots gibt es nichts anzugleichen",
+          _bv18.scan_groesse_angleichen()["status"]["art"] == "warn")
+
+    # Ohne Auswahl wirkt eine Sammel-Aktion auf den EINEN Gewaehlten - dieselbe
+    # Regel wie beim Loeschen, und sie steht jetzt an einer Stelle.
+    check("ohne Rechteck zaehlt der eine Gewaehlte",
+          [s.name for s in _bv18._auswahl_slots()] == ["V1"])
+    _bv18.scan_art, _bv18.scan_name = "item", ""
+    _bv18._auswahl = []
+    check("ohne alles ist die Menge leer", _bv18._auswahl_slots() == [])
+
+    # Die Auswahl in den offenen Scan - zwischen "einer" und "alle" lag nichts.
+    _bv18.scan_neu({"name": "Sammel"})
+    _bv18._auswahl = ["V1", "V2"]
+    _bv18.scan_art, _bv18.scan_name = "slot", "V1"
+    _bv18.scan_auswahl_mitglied({"wert": True})
+    check("die ganze Auswahl kommt in den Scan",
+          _bv18.scans["Sammel"].slot_names == ["V1", "V2"])
+    _bv18.scan_auswahl_mitglied({"wert": True})
+    check("und zweimal dazu legt sie nicht doppelt an",
+          _bv18.scans["Sammel"].slot_names == ["V1", "V2"])
+    _bv18.scan_auswahl_mitglied({"wert": False})
+    check("heraus nimmt sie wieder weg", _bv18.scans["Sammel"].slot_names == [])
+
+    # Aus der Auswahl lernen: der Fall nach dem Erkennen, wo fuenf Slots orange
+    # dastehen und genau die gelernt werden sollen.
+    _gelernt18 = []
+    _bv18._lerne_aus_slot = lambda slot, dedup=False: (_gelernt18.append(slot.name)
+                                                       or "Neu " + slot.name)
+    _bv18._auswahl = ["V2"]
+    _bv18.scan_art, _bv18.scan_name = "slot", "V2"
+    _bv18.scan_auswahl_lernen()
+    check("gelernt wird nur aus der Auswahl", _gelernt18 == ["V2"])
+    _bv18.__dict__.pop("_lerne_aus_slot", None)
+
+    # Hintergrund neu messen: jeder Slot an SICH SELBST, nicht eine Farbe fuer
+    # alle - Inventare sind selten gleichmaessig ausgeleuchtet.
+    _bv18._foto = object()
+    _bv18._foto_info = {"links": 0, "oben": 0, "skala": 1.0, "breite": 500,
+                        "hoehe": 500, "stand": 0.0}
+    _bv18._foto_farbe = lambda x, y: (x % 256, y % 256, 7)
+    _bv18._auswahl = ["V1", "V2"]
+    _bv18.scan_auswahl_farbe()
+    check("jeder Slot bekommt die Farbe seiner eigenen inneren Ecke",
+          _bv18.slots["V1"].slot_color != _bv18.slots["V2"].slot_color)
+    check("und zwar die an (x1+2, y1+2)",
+          _bv18.slots["V1"].slot_color
+          == (_bv18.slots["V1"].scan_region[0] + 2,
+              _bv18.slots["V1"].scan_region[1] + 2, 7))
+
+    # ------------------------------------------------------------------------
+    # Handgriffe ohne Moduswechsel
+    # ------------------------------------------------------------------------
+    # Fuer eine Korrektur zwischendurch erst eine Kachel anzuklicken ist ein
+    # Handgriff zu viel. Die Modi bleiben - sie beantworten "was tut ein Klick
+    # gerade" -, aber diese beiden gelten dem Slot unter dem Zeiger.
+    _bv18.scan_waehlen({"art": "item", "name": ""})
+    _z18 = _bv18.scan_direkt({"x": 130, "y": 130, "was": "messen"})
+    check("ALT-Klick waehlt den Slot unter dem Zeiger",
+          _z18["wahl"] == {"art": "slot", "name": "V1"})
+    check("und misst dort die Farbe", _bv18.slots["V1"].slot_color == (130, 130, 7))
+    check("der Modus bleibt dabei unangetastet", _bv18.scan_modus == _MW18)
+    _bv18.scan_direkt({"x": 141, "y": 133, "was": "klick"})
+    check("Doppelklick setzt den Klickpunkt", _bv18.slots["V1"].click_pos == (141, 133))
+    check("beides laesst sich zuruecknehmen",
+          _bv18.scan_rueckgaengig() and _bv18.slots["V1"].click_pos != (141, 133))
+    check("neben jedem Slot passiert nichts",
+          _bv18.scan_direkt({"x": 9000, "y": 9000, "was": "messen"})["status"]["art"]
+          == "info")
+    check("und ein unbekannter Handgriff wird gemeldet",
+          _bv18.scan_direkt({"x": 130, "y": 130, "was": "quatsch"})["status"]["art"]
+          == "err")
+
+    # Der kleinste Slot gewinnt - dieselbe Regel wie beim Auswaehlen, und sie
+    # steht jetzt an EINER Stelle (`_slot_unter`), weil es drei Anlaesse gibt,
+    # sie zu stellen.
+    # Der grosse Slot kommt NACH dem kleinen in die Liste: sonst gaebe auch ein
+    # "der zuletzt eingetragene gewinnt" die richtige Antwort, und der Test
+    # pruefte etwas anderes, als er behauptet.
+    _bv18.slots["Winzig"] = _SLOT8(name="Winzig", scan_region=(120, 120, 140, 140),
+                                   click_pos=(130, 130))
+    _bv18.slots["Gross"] = _SLOT8(name="Gross", scan_region=(60, 60, 300, 300),
+                                  click_pos=(130, 130))
+    check("unter dem Zeiger gewinnt der kleinste Slot, nicht der letzte",
+          _bv18._slot_unter(130, 130) == "Winzig")
 finally:
     _os.chdir(_cwd18)
 
@@ -6530,6 +6791,25 @@ check("Slots finden steht gleich hinter Auswaehlen",
 _tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
+
+# --- Die zusammenklappbaren Abschnitte haengen an drei Stellen zusammen ---
+# Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`klappZu`) muessen
+# denselben Schluessel tragen. Ein Tippfehler in einem davon ist kein Fehler,
+# den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
+# oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
+# Defekt, gegen die hier sonst auch gemessen wird.
+_klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
+check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 3)
+check("jeder Kopf sitzt in einem Abschnitt mit passender id",
+      all(f'id="ab-{_k18}"' in _html18 for _k18 in _klapp18))
+_zustand18 = _re13.search(r'let klappZu = \{([^}]*)\}', _html18)
+check("und jeder hat einen Zustand in klappZu",
+      _zustand18 is not None
+      and sorted(_re13.findall(r'(\w+):', _zustand18.group(1))) == _klapp18)
+# Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
+# Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
+check("jeder klappbare Abschnitt hat auch einen Rumpf",
+      _html18.count('class="abschnitt klappbar"') == _html18.count('class="klapp-rumpf'))
 
 # --------------------------- Template-Maske: der Hintergrund zaehlt nicht mit
 section("Template-Vergleich blendet den Hintergrund aus")

@@ -832,18 +832,45 @@ Sechs Regeln, an denen der Reiter hängt:
   bei dreissig Gewählten keine Bedeutung.
 
   **Das Rechteck wählt, es löscht nicht.** Direkt zu löschen wäre der kürzere
-  Weg und der falsche: es gibt in diesem Reiter kein Rückgängig, und ein um
-  fünfzig Pixel zu weit gezogenes Rechteck nähme wortlos dreissig Slots mit.
-  Gewählt sieht man erst, was man verliert; der zweite Griff (Entf oder
-  „N löschen") kostet einen Klick und ist der einzige Schutz, den es gibt.
+  Weg und der falsche: ein um fünfzig Pixel zu weit gezogenes Rechteck nähme
+  wortlos dreissig Slots mit. Gewählt sieht man erst, was man verliert; der
+  zweite Griff (Entf oder „N löschen") kostet einen Klick.
   Aus demselben Grund wählt ein einzelner Klick ins Leere **nicht** mehr ab —
   er fängt das Rechteck an, und die Abwahl ist das leere Rechteck oder ESC.
+- **Es gibt ein Rückgängig, und es merkt sich den ganzen Stand** (`_merke()` /
+  `scan_rueckgaengig()`, STRG+Z). Das war lange die grösste Lücke des Reiters:
+  ein Rechteck über dreissig Slots und ein Druck auf Entf waren endgültig, und
+  der einzige Ausweg hiess „Neu laden" — der wirft *alles* seit dem letzten
+  Speichern weg. Zwischen „ich habe mich um einen Slot vertan" und „ich werfe
+  den Nachmittag weg" lag nichts.
+
+  **Ein vollständiger Abzug statt einzelner Rückwärts-Schritte.** Eine Aktion
+  hier rührt fast immer an mehrere Stellen gleichzeitig: ein gelöschter Slot
+  verschwindet aus jedem Scan, ein umbenanntes Item wird überall nachgezogen.
+  Rückwärts-Schritte müssten jede dieser Nebenwirkungen einzeln kennen — und
+  ein vergessener wäre ein Rückgängig, das die Daten *halb* zurückdreht. Das ist
+  schlimmer als keins. Ein Abzug kostet bei einem echten Bestand rund 30 KB,
+  `UNDO_TIEFE` (30) deckelt den Speicher.
+
+  Drei Regeln beim Erweitern:
+  - **`_merke()` ruft die Methode, die ändert** — nicht die Oberfläche. Sonst
+    hinge das Rückgängig daran, dass jeder Knopf daran denkt.
+  - **Nur bei einer echten Änderung.** Ein abgelehntes Feld oder ein Name, der
+    derselbe bleibt, legt nichts auf den Stapel; deshalb steht `_merke()` in den
+    einzelnen Zweigen und nicht oben am Eingang. Ein STRG+Z, das einmal
+    scheinbar gar nichts tut, ist ein Rückgängig, dem man nicht mehr traut.
+  - **Was auf Platte passiert ist, kommt nicht zurück.** Ein gelöschter Scan
+    kehrt als Konfiguration wieder (und wird beim nächsten Speichern neu
+    geschrieben), sein gemerkter Screenshot ist weg. Das steht in der Meldung,
+    statt ein vollständiges Zurück zu versprechen, das es nicht gibt.
+    `scan_neu_laden()` leert den Stapel — er beschreibt Stände, die es nach dem
+    Neulesen nicht mehr gibt.
 - **Was man nicht treffen kann, kann man nicht löschen.** Ein Slot von 2×2 px
   entsteht aus zwei Klicks fast auf dieselbe Stelle — und war danach kaum wieder
   loszuwerden, weil Löschen Auswählen voraussetzt. Drei Stellen zusammen lösen
   das: `MIN_SLOT` (8) lässt ihn gar nicht erst entstehen, `TREFFER_MIN` (14)
   weitet die *Trefferfläche* vorhandener Winzlinge auf (den Slot selbst nie —
-  gemessen wird, was dasteht), und `_klick_waehlen()` nimmt den **kleinsten**
+  gemessen wird, was dasteht), und `_slot_unter()` nimmt den **kleinsten**
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`winzig`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
@@ -870,6 +897,47 @@ Sechs Regeln, an denen der Reiter hängt:
   der einen Durchgang hat statt einer Tätigkeit — `finden` schaltet nach der
   Suche zurück, und zwar auch dann, wenn nichts Neues dabei war. Sonst liesse
   derselbe Klick einen mal im Modus stehen und mal nicht, je nach Ergebnis.
+
+  **Was man ZWISCHENDURCH tut, braucht keinen Modus** (`scan_direkt()`).
+  ALT-Klick misst den Hintergrund des Slots unter dem Zeiger, Doppelklick setzt
+  seinen Klickpunkt — beides ohne den Umweg über die Kachel und beides wählt den
+  Slot gleich mit aus. Der Unterschied zu den Modi ist nicht Bequemlichkeit,
+  sondern die Frage, die dahintersteht: ein Modus beantwortet „was tut ein Klick
+  **jetzt**" und lohnt sich, solange man dasselbe zwanzigmal tut. Eine einzelne
+  Korrektur an einem Slot, den man vor sich sieht, ist das Gegenteil davon — dort
+  ist der Moduswechsel hin und zurück teurer als der Handgriff selbst.
+- **Ein Slot lässt sich verschieben, ohne vier Zahlen zu tippen.** Ziehen im
+  Bild oder Pfeiltasten (SHIFT = 10 px), beides über `scan_verschieben()` und
+  beides auf der ganzen Auswahl. Der Fall ist Alltag: das Spielfenster ist
+  umgezogen, die Erkennung sass eine Zeile zu hoch. Über die Zahlenfelder war
+  das bei einem Slot mühsam und bei dreissig ausgeschlossen.
+
+  Drei Regeln dazu:
+  - **Der Klickpunkt geht mit**, statt neu aus der Mitte gerechnet zu werden —
+    er ist womöglich bewusst aus der Mitte gesetzt.
+  - **Gepackt wird nur, was schon gewählt ist.** Damit braucht die Seite keine
+    eigene Trefferregel: welcher Slot unter dem Zeiger liegt, entscheidet
+    weiterhin `_slot_unter()` in Python. Zwei Trefferregeln wären zwei
+    Antworten auf dieselbe Frage.
+  - **Eine gehaltene Pfeiltaste ist EIN Verschieben.** Nur der erste Schritt
+    einer Serie kommt auf den Rückgängig-Stapel (`zaehlt`), sonst läge er nach
+    zwei Sekunden Halten voll mit Ein-Pixel-Schritten und der Schritt davor wäre
+    herausgefallen.
+- **Sammel-Aktionen arbeiten auf der Auswahl** — und zwar auf mehr als
+  „löschen". Bis hierher konnte eine Mehrfachauswahl genau das, womit das
+  Rechteck ein Werkzeug zum Wegräumen war und sonst nichts. Dabei betreffen
+  gerade die Handgriffe nach dem Finden fast immer viele Slots auf einmal:
+  Grösse angleichen, Hintergrund neu messen, aus der Auswahl lernen, die
+  Auswahl in den Scan aufnehmen. Worauf sie wirken, beantwortet
+  `_auswahl_slots()` an **einer** Stelle (Auswahl, sonst der eine Gewählte) —
+  sonst nähme „löschen" dreissig Slots und „angleichen" einen.
+
+  Zwei davon hätten eine naheliegende und falsche Fassung: „Hintergrund messen"
+  misst **jeden Slot an sich selbst** statt eine Farbe für alle zu setzen
+  (Inventare sind selten gleichmässig ausgeleuchtet, und eine gemeinsame Farbe
+  verschöbe die Lernmaske an jedem Slot ein bisschen), und „Grösse angleichen"
+  nimmt den **Median** statt des grössten oder kleinsten — ein einzelner
+  Verklicker soll nicht alle anderen verbiegen.
 - **Die Erkennung fragt die Laufzeit, nicht sich selbst.** `scan_erkennen()`
   ruft `_check_profile_match()` aus `runtime/item_scan.py` — dieselbe Funktion,
   die im Lauf entscheidet, mit einem `state`-Stellvertreter, der nichts als die
@@ -916,6 +984,21 @@ Sechs Regeln, an denen der Reiter hängt:
   erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
   nach, statt neu zu rechnen.
 
+**Der offene Scan ist der Bezug, nicht der Bestand** (`_scan_slots()`). Wer zwei
+Spiele betreibt, hat die Slots beider in einer Datei — und alles, was „alle
+Slots" sagte, meinte wirklich *alle*. An drei Stellen war das falsch, und zwei
+davon fielen nur als seltsame Zahl auf:
+
+| wo | was man sah |
+|---|---|
+| „aus allen Slots lernen" | lief über den ganzen Bestand; die Slots des anderen Spiels liegen ausserhalb des Bildes, gemeldet wurde „11 ohne Bild" — und man sucht den Fehler beim Screenshot |
+| „X von 56 erkannt" | nannte den Bestand als Nenner, obwohl der Scan 45 hat: elf konnten gar nicht erkannt werden |
+| Ersatzfläche ohne Bild | legte sich um beide Spiele und war doppelt so gross wie nötig |
+
+Ohne offenen Scan ist der Bestand die richtige Antwort — dann gibt es keine
+engere Menge. Regel beim Erweitern: **wer „alle Slots" meint, fragt
+`_scan_slots()`**, nie `self.slots` direkt.
+
 **Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
 Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
 Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Knopf
@@ -952,6 +1035,31 @@ abweichen, deshalb heisst „erledigt" schlicht: es ist da.
 *leeren* Inventar auf — dann gibt es noch nichts zu lernen. Man füllt es, nimmt
 **neu** auf und lernt erst dann. Das steht in Schritt 3, weil es sonst niemand
 ahnt: „Items lernen" auf dem alten Bild lernt leere Slots.
+
+**Und die Anleitung klappt sich weg, wenn sie erledigt ist.** Der Weg, das Bild
+und die Modus-Kacheln sind zusammenklappbare Abschnitte (`klapp-kopf` /
+`klapp-rumpf`); untereinander waren sie länger als die Spalte hoch ist, und die
+Listen ganz unten — also das, womit man dauernd arbeitet — erreichte man nur
+über die Bildlaufleiste. „So entsteht ein Scan" klappt sich von selbst zu,
+sobald alle drei Schritte erledigt sind: beim ersten Mal ist es das Wichtigste
+auf der Seite, beim zwanzigsten sind es drei Zeilen im Weg.
+
+Zwei Regeln, ohne die es ein Rückschritt wäre:
+
+- **Zugeklappt bleibt die Auskunft stehen**, nur die Bedienelemente gehen weg —
+  im Kopf steht dann der offene Schritt, die Bildgrösse bzw. der aktuelle Modus.
+  Platz sparen darf nichts kosten, was man beim Arbeiten braucht.
+- **Die Automatik überstimmt keine Entscheidung.** `klappZu[…] === null` heisst
+  „noch nichts entschieden" und lässt `klappVorgabe()` gelten; sobald jemand
+  einen Kopf anfasst, steht dort true/false und die Vorgabe schweigt. Ein
+  Bedienelement, das zurückspringt, ist keine Hilfe.
+
+**Die Bühne springt zum gewählten Slot** (`scanZeigeGewaehlten()`). Liste und
+Bild waren zwei getrennte Welten: einen Slot in der Liste anzuklicken markierte
+ihn im Bild — nur sah man das nicht, wenn er gerade ausserhalb lag, und bei 45
+Slots auf 1:1 ist das der Normalfall. Gescrollt wird **nur beim Wechsel der
+Auswahl und nur, wenn er wirklich draussen liegt**: eine Bühne, die bei jedem
+Neuzeichnen springt, nimmt einem die Stelle weg, die man gerade ansieht.
 
 **Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
 `erkenne_slots_im_bild()` aus `editors/slot_editor.py`, die auch `repair`

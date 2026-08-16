@@ -25,6 +25,7 @@ die etwas anderes zeigt als das, was passiert.
 """
 
 import base64
+import copy
 import io
 import time
 from pathlib import Path
@@ -66,6 +67,13 @@ MIN_SLOT = 8
 # Datei, aus getippten Zahlen), und gerade die will man auswählen können, um
 # sie zu löschen. Die Trefferfläche wächst, der Slot bleibt, wie er ist.
 TREFFER_MIN = 14
+
+# Wie viele Schritte sich der Reiter merkt. Ein Schritt ist ein vollständiger
+# Abzug von Slots, Items und Scans — bei einem echten Bestand (56 Slots, 24
+# Items) sind das rund 30 KB, also kosten dreissig davon unter einem Megabyte.
+# Weiter zurück braucht niemand: was älter ist, holt man sich über „Neu laden"
+# vom letzten Speicherstand.
+UNDO_TIEFE = 30
 
 # Breiter als das wird das Bild für die Anzeige nicht geschickt. Ein virtueller
 # Desktop aus drei Monitoren ist schnell 5760 px breit; als PNG sind das
@@ -131,6 +139,10 @@ class ScanTeil:
         # Spielen liegen sonst alle Items aller Spiele untereinander.
         self.nur_dabei: bool = True
         self._treffer: dict = {}               # Slot-Name -> Erkennungsergebnis
+        # Der Rückgängig-Stapel: `(Beschreibung, Abzug)` je Schritt, jüngster
+        # zuletzt. Siehe `_merke()` — hier gab es bis dahin gar nichts, und ein
+        # Rechteck über dreissig Slots plus Entf war endgültig.
+        self._undo: list = []
         self._scan_dirty = False
         self._scan_status = ("", "info")
         self._vorschau: dict = {}              # Template-Datei -> (mtime, data-URL)
@@ -217,6 +229,10 @@ class ScanTeil:
         self._auswahl, self._treffer = [], {}
         self.scan_name, self.scan_offen = "", ""
         self._vorschau = {}
+        # Der Stapel beschreibt Stände, die es nach dem Neulesen nicht mehr
+        # gibt. Ein Rückgängig darüber hinweg holte den Speicherstand von vorhin
+        # zurück und überschriebe damit genau das, was gerade von Platte kam.
+        self._undo = []
         self._scan_dirty = False
         self._scan_laden()
         # Der vorher offene Scan bleibt offen, wenn es ihn noch gibt — sonst
@@ -297,6 +313,78 @@ class ScanTeil:
     def _scan_geaendert(self, text: str = "", art: str = "ok") -> dict:
         self._scan_dirty = True
         return self._scan_melde(text, art) if text else self.scan_daten()
+
+    # ----------------------------------------------------------- Rückgängig
+
+    def _zustand(self) -> dict:
+        """Ein vollständiger Abzug dessen, was dieser Reiter bearbeitet."""
+        return {
+            "slots": copy.deepcopy(self.slots),
+            "items": copy.deepcopy(self.items),
+            "scans": copy.deepcopy(self.scans),
+            "art": self.scan_art,
+            "name": self.scan_name,
+            "auswahl": list(self._auswahl),
+            "offen": self.scan_offen,
+            "dirty": self._scan_dirty,
+        }
+
+    def _merke(self, was: str) -> None:
+        """Legt den Stand VOR einer Änderung auf den Rückgängig-Stapel.
+
+        **Es gab hier kein Rückgängig, und das war die grösste Lücke des
+        Reiters.** Ein Auswahl-Rechteck über dreissig Slots und ein Druck auf
+        Entf waren endgültig; der einzige Ausweg hiess „Neu laden" — und der
+        wirft *alles* seit dem letzten Speichern weg, also auch die halbe Stunde
+        Arbeit davor. Zwischen „ich habe mich um einen Slot vertan" und „ich
+        werfe den Nachmittag weg" lag nichts.
+
+        Der ganze Abzug statt einzelner Rückwärts-Schritte: eine Aktion hier
+        rührt fast immer an mehrere Stellen gleichzeitig (ein gelöschter Slot
+        verschwindet aus jedem Scan, ein umbenanntes Item wird in jedem Scan
+        nachgezogen). Rückwärts-Schritte müssten jede dieser Nebenwirkungen
+        einzeln kennen — und ein vergessener wäre ein Rückgängig, das die Daten
+        halb zurückdreht. Das ist schlimmer als keins. Ein Abzug kostet bei
+        einem echten Bestand rund 30 KB und ist damit billiger als der Fehler,
+        den er verhindert.
+
+        Aufgerufen wird es **vor** der Änderung und von der Methode, die sie
+        macht — nicht von der Oberfläche: sonst hinge das Rückgängig daran, dass
+        jeder Knopf daran denkt.
+        """
+        self._undo.append((was, self._zustand()))
+        del self._undo[:-UNDO_TIEFE]
+
+    def scan_rueckgaengig(self, daten: Optional[dict] = None) -> dict:
+        """Nimmt den letzten Schritt zurück (STRG+Z).
+
+        **Was auf Platte passiert ist, holt das nicht zurück.** Ein gelöschter
+        Scan kommt als Konfiguration wieder und wird beim nächsten Speichern neu
+        geschrieben — sein gemerkter Screenshot ist aber weg, und gelernte
+        Templates bleiben liegen (die gehören womöglich schon einem anderen
+        Item). Das steht in der Meldung, statt ein vollständiges Zurück zu
+        versprechen, das es nicht gibt.
+        """
+        if not self._undo:
+            return self._scan_melde("Nichts zum Rückgängigmachen.", "info")
+        was, stand = self._undo.pop()
+        self.slots = stand["slots"]
+        self.items = stand["items"]
+        self.scans = stand["scans"]
+        self.scan_art, self.scan_name = stand["art"], stand["name"]
+        self._auswahl = [n for n in stand["auswahl"] if n in self.slots]
+        self.scan_offen = stand["offen"]
+        self._scan_dirty = stand["dirty"]
+        # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
+        # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
+        self._objekte_angleichen()
+        # Ein Treffer gehört zu dem Slot-Stand, in dem er gemessen wurde. Was es
+        # nicht mehr gibt, fliegt raus — der Rest bleibt gültig, denn das Bild
+        # hat sich nicht geändert.
+        self._treffer = {n: t for n, t in self._treffer.items() if n in self.slots}
+        return self._scan_melde(
+            f"Rückgängig: {was}. ({len(self._undo)} weitere Schritte)"
+            if self._undo else f"Rückgängig: {was}.", "warn")
 
     # --------------------------------------------------------------- Das Bild
 
@@ -415,7 +503,7 @@ class ScanTeil:
         rand = (f["links"], f["oben"],
                 f["links"] + round(f["breite"] / f["skala"]),
                 f["oben"] + round(f["hoehe"] / f["skala"]))
-        draussen = [s for s in self._flaechen_slots() if s.scan_region
+        draussen = [s for s in self._scan_slots() if s.scan_region
                     and not (rand[0] <= s.scan_region[0] and s.scan_region[2] <= rand[2]
                              and rand[1] <= s.scan_region[1] and s.scan_region[3] <= rand[3])]
         return f" {len(draussen)} Slot(s) liegen ausserhalb." if draussen else ""
@@ -670,7 +758,7 @@ class ScanTeil:
         """
         if self._foto_info:
             return dict(self._foto_info, bild=True)
-        regionen = [s.scan_region for s in self._flaechen_slots() if s.scan_region]
+        regionen = [s.scan_region for s in self._scan_slots() if s.scan_region]
         if not regionen:
             return None
         rand = 40
@@ -682,8 +770,26 @@ class ScanTeil:
                 "breite": max(1, rechts - links), "hoehe": max(1, unten - oben),
                 "stand": 0.0}
 
-    def _flaechen_slots(self) -> list:
-        """Die Slots, um die sich die Ersatzfläche legt: die des offenen Scans."""
+    def _scan_slots(self) -> list:
+        """Die Slots, um die es geht: die des offenen Scans, sonst der Bestand.
+
+        **Der offene Scan ist der Bezug, nicht der Bestand.** Wer zwei Spiele
+        betreibt, hat die Slots beider in einer Datei — und alles, was „alle
+        Slots" sagt, meinte bis hierher wirklich alle. Das war an drei Stellen
+        falsch, und zwei davon fielen nur als seltsame Zahl auf:
+
+        - „aus ALLEN Slots lernen" lief über den ganzen Bestand. Die Slots des
+          anderen Spiels liegen ausserhalb des Bildes, also kam nichts dabei
+          heraus — gemeldet wurde es aber als „11 ohne Bild", und man sucht den
+          Fehler beim Screenshot.
+        - „X von 56 Slot(s) erkannt" nannte den Bestand als Nenner, obwohl der
+          Scan 45 hat. Elf davon konnten gar nicht erkannt werden.
+        - Die Ersatzfläche (kein Bild gemerkt) legte sich um beide Spiele und
+          war damit doppelt so gross wie nötig.
+
+        Ohne offenen Scan ist der Bestand die richtige Antwort: dann gibt es
+        keine engere Menge.
+        """
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
             return list(self.slots.values())
@@ -721,6 +827,11 @@ class ScanTeil:
             # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
             "auswahl": [n for n in self._auswahl if n in self.slots],
+            # Was STRG+Z zurücknehmen würde. Der Knopf nennt es beim Namen: ein
+            # „Rückgängig" ohne Angabe, WAS es rückgängig macht, drückt man
+            # entweder gar nicht oder einmal zu oft.
+            "undo": {"tiefe": len(self._undo),
+                     "was": self._undo[-1][0] if self._undo else ""},
             "dirty": self._scan_dirty,
             # Hat der Hauptprozess die Dateien angefasst? Ein Lauf mit
             # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
@@ -910,6 +1021,24 @@ class ScanTeil:
     def _gewaehlter_slot(self) -> Optional[ItemSlot]:
         return self.slots.get(self.scan_name) if self.scan_art == ART_SLOT else None
 
+    def _auswahl_slots(self) -> list:
+        """Worauf eine Sammel-Aktion wirkt: die Auswahl, sonst der eine Gewählte.
+
+        **Eine Stelle, weil sonst jede Sammel-Aktion ihre eigene Antwort gäbe.**
+        Die Regel stand ausgeschrieben in `scan_slot_loeschen` — und Löschen war
+        lange die einzige Sammel-Aktion, die es gab. Sobald es mehrere sind,
+        muss „was ist gewählt" überall dasselbe heissen; sonst nähme „löschen"
+        dreissig Slots und „Grösse angleichen" nur einen.
+
+        Die Reihenfolge des Rechtecks bleibt erhalten (`_auswahl`), damit
+        Meldungen und Listen in derselben Folge stehen wie die Auswahl selbst.
+        """
+        namen = [n for n in self._auswahl if n in self.slots]
+        if namen:
+            return [self.slots[n] for n in namen]
+        slot = self._gewaehlter_slot()
+        return [slot] if slot is not None else []
+
     def scan_klick(self, daten: dict) -> dict:
         """Ein Klick auf dem Bild — was er tut, hängt am Modus.
 
@@ -957,6 +1086,7 @@ class ScanTeil:
                 f"Zu klein ({x2 - x1}×{y2 - y1} px, mindestens {MIN_SLOT}) — "
                 "nochmal aufziehen.", "warn")
 
+        self._merke("Slot angelegt")
         name = next_slot_name(self.slots)
         # Der Hintergrund wird an der INNEREN Ecke gemessen, nicht in der Mitte:
         # dort liegt das Item. Trifft die Messung daneben (Rahmen, Schatten),
@@ -1027,6 +1157,7 @@ class ScanTeil:
                 f"Nichts gefunden zu {hexfarbe(farbe)} — auf eine LEERE Stelle im "
                 "Slot klicken, nicht auf ein Item.", "warn")
 
+        self._merke("Slots gesucht")
         ziel = self._bestehende_slot_groesse()
         neu, dazu, schon = 0, 0, 0
         for rx, ry, rb, rh in rechtecke:
@@ -1105,12 +1236,12 @@ class ScanTeil:
         if not self.items:
             return ""
         try:
-            gefunden, geprueft, _, fremd = self._erkennen_lauf()
+            gefunden, geprueft, _, fremd, gesamt = self._erkennen_lauf()
         except Exception:            # OpenCV/NumPy-Innenleben — nie den Fund verlieren
             return ""
         if not geprueft:
             return ""
-        offen = len(self.slots) - gefunden
+        offen = gesamt - gefunden
         text = f" · davon {gefunden} mit bekanntem Item"
         if offen:
             text += f", {offen} noch unbekannt"
@@ -1227,7 +1358,7 @@ class ScanTeil:
         Bestand, wird er ohnehin übernommen statt neu angelegt (`_klick_finden`),
         und eine wirklich neue Fläche hat keinen Vorgänger, dem sie folgen könnte.
         """
-        slots = self._flaechen_slots()
+        slots = self._scan_slots()
         groessen = [(s.scan_region[2] - s.scan_region[0], s.scan_region[3] - s.scan_region[1])
                     for s in slots if s.scan_region]
         if not groessen:
@@ -1268,6 +1399,7 @@ class ScanTeil:
         farbe = self._foto_farbe(x, y)
         if farbe is None:
             return self._scan_melde("Dort liegt kein Bild — erst aufnehmen.", "warn")
+        self._merke("Hintergrundfarbe gemessen")
         slot.slot_color = farbe
         return self._scan_geaendert(f"{slot.name}: Hintergrund {hexfarbe(farbe)}")
 
@@ -1275,6 +1407,7 @@ class ScanTeil:
         slot = self._gewaehlter_slot()
         if slot is None:
             return self._scan_melde("Erst einen Slot wählen.", "warn")
+        self._merke("Klickpunkt gesetzt")
         slot.click_pos = (x, y)
         return self._scan_geaendert(f"{slot.name}: Klickpunkt ({x}, {y})")
 
@@ -1304,15 +1437,7 @@ class ScanTeil:
         """
         if self._ecke is not None:
             return self._rahmen_auswahl(x, y)
-        gewaehlt, kleinste = None, None
-        for slot in self.slots.values():
-            x1, y1, x2, y2 = self._trefferflaeche(slot.scan_region)
-            if not (x1 <= x <= x2 and y1 <= y <= y2):
-                continue
-            flaeche = ((slot.scan_region[2] - slot.scan_region[0]) *
-                       (slot.scan_region[3] - slot.scan_region[1]))
-            if kleinste is None or flaeche <= kleinste:
-                gewaehlt, kleinste = slot.name, flaeche
+        gewaehlt = self._slot_unter(x, y)
         if gewaehlt is None:
             # Nichts getroffen: das ist der Anfang eines Rechtecks, nicht
             # „nichts". Aufgehoben wird die Auswahl mit ESC oder mit einem
@@ -1326,6 +1451,58 @@ class ScanTeil:
         self.scan_name = gewaehlt
         self._auswahl = [gewaehlt]
         return self.scan_daten()
+
+    def _slot_unter(self, x: int, y: int) -> Optional[str]:
+        """Der Name des Slots an dieser Stelle — der KLEINSTE, nicht der oberste.
+
+        Steht als eigene Funktion da, seit es mehr als einen Anlass gibt, sie zu
+        stellen: das Auswählen, der ALT-Klick (Farbe messen) und der Doppelklick
+        (Klickpunkt). Dreimal ausgeschrieben wären es drei Regeln, die
+        auseinanderlaufen — und dann träfe derselbe Zeiger je nach Handgriff
+        einen anderen Slot.
+        """
+        gewaehlt, kleinste = None, None
+        for slot in self.slots.values():
+            x1, y1, x2, y2 = self._trefferflaeche(slot.scan_region)
+            if not (x1 <= x <= x2 and y1 <= y <= y2):
+                continue
+            flaeche = ((slot.scan_region[2] - slot.scan_region[0]) *
+                       (slot.scan_region[3] - slot.scan_region[1]))
+            if kleinste is None or flaeche <= kleinste:
+                gewaehlt, kleinste = slot.name, flaeche
+        return gewaehlt
+
+    def scan_direkt(self, daten: dict) -> dict:
+        """Farbe messen bzw. Klickpunkt setzen, OHNE vorher den Modus zu wechseln.
+
+        **Für einen Handgriff erst eine Kachel anzuklicken ist ein Handgriff zu
+        viel.** Die Modi bleiben — sie beantworten „was tut ein Klick gerade",
+        und beim Aufziehen von zwanzig Slots ist genau das die richtige Frage.
+        Aber die beiden Korrekturen, die man *zwischendurch* macht, brauchen
+        keinen Modus: sie gelten dem Slot unter dem Zeiger, und den sieht man.
+
+        - `messen` (ALT-Klick): Hintergrundfarbe an genau dieser Stelle.
+        - `klick` (Doppelklick): Klickpunkt auf genau diese Stelle.
+
+        Beides wählt den Slot gleich mit aus: man hat ihn ja angefasst, und der
+        Inspektor soll danach ihn zeigen und nicht den von vorhin. Trifft der
+        Zeiger keinen Slot, passiert nichts — ohne Ziel gäbe es nichts zu setzen.
+        """
+        try:
+            x, y = int((daten or {})["x"]), int((daten or {})["y"])
+        except (KeyError, TypeError, ValueError):
+            return self._scan_melde("Klick ohne Stelle — ignoriert.", "err")
+        was = str((daten or {}).get("was") or "")
+        name = self._slot_unter(x, y)
+        if name is None:
+            return self._scan_melde("Dort liegt kein Slot.", "info")
+        self.scan_art, self.scan_name = ART_SLOT, name
+        self._auswahl = [name]
+        if was == "messen":
+            return self._klick_messen(x, y)
+        if was == "klick":
+            return self._klick_klickpunkt(x, y)
+        return self._scan_melde(f"Unbekannter Handgriff '{was}'.", "err")
 
     def _rahmen_auswahl(self, x: int, y: int) -> dict:
         """Zweite Ecke: alles, was ganz darin liegt, ist gewählt.
@@ -1387,17 +1564,25 @@ class ScanTeil:
         if slot is None:
             return self._scan_melde(f"Slot '{name}' gibt es nicht.", "err")
 
+        # **Gemerkt wird pro Zweig, nicht oben am Eingang.** Ein Feld, das
+        # abgelehnt wird oder denselben Wert noch einmal bekommt, legte sonst
+        # einen Schritt auf den Stapel, der nichts zurückzunehmen hat — und
+        # STRG+Z täte einmal scheinbar gar nichts. Ein Rückgängig, dem man nicht
+        # trauen kann, ist kaum besser als keins.
         if feld == "name":
             return self._slot_umbenennen(slot, str(wert or "").strip())
         if feld == "farbe":
+            self._merke(f"'{name}': Hintergrundfarbe")
             slot.slot_color = rgbwert(wert)
             return self._scan_geaendert(f"{slot.name}: Hintergrund {wert or 'entfernt'}")
         if feld in ("x1", "y1", "x2", "y2"):
+            self._merke(f"'{name}': Fläche")
             werte = list(slot.scan_region)
             werte[("x1", "y1", "x2", "y2").index(feld)] = int(wert or 0)
             slot.scan_region = normalize_region(*werte)
             return self._scan_geaendert()
         if feld in ("kx", "ky"):
+            self._merke(f"'{name}': Klickpunkt")
             kx, ky = slot.click_pos
             slot.click_pos = (int(wert or 0), ky) if feld == "kx" else (kx, int(wert or 0))
             return self._scan_geaendert()
@@ -1414,6 +1599,7 @@ class ScanTeil:
             return self.scan_daten()
         if neu in self.slots:
             return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
+        self._merke(f"'{slot.name}' umbenannt")
         alt = slot.name
         self.slots = {(neu if k == alt else k): v for k, v in self.slots.items()}
         slot.name = neu
@@ -1434,12 +1620,11 @@ class ScanTeil:
         dieselbe Regel wie im Sequenz-Editor. Ein Rechteck um dreissig Slots und
         ein Griff, statt dreissigmal auswählen und löschen.
         """
-        namen = [n for n in self._auswahl if n in self.slots]
+        namen = [s.name for s in self._auswahl_slots()]
         if not namen:
-            slot = self._gewaehlter_slot()
-            if slot is None:
-                return self._scan_melde("Kein Slot gewählt.", "warn")
-            namen = [slot.name]
+            return self._scan_melde("Kein Slot gewählt.", "warn")
+        self._merke(f"{len(namen)} Slot(s) gelöscht" if len(namen) > 1
+                    else f"'{namen[0]}' gelöscht")
         betroffen = set()
         for name in namen:
             del self.slots[name]
@@ -1455,6 +1640,165 @@ class ScanTeil:
         was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Slots"
         return self._scan_geaendert(f"{was} gelöscht{hinweis}", "warn")
 
+    def scan_verschieben(self, daten: dict) -> dict:
+        """Schiebt die gewählten Slots um `dx`/`dy` Pixel — Fläche und Klickpunkt.
+
+        **Ein Slot, der drei Pixel daneben liegt, war nur über vier Zahlenfelder
+        zu retten** — und bei dreissig Slots gar nicht. Dabei ist genau das der
+        Normalfall: das Spielfenster ist umgezogen, die Erkennung sass eine Zeile
+        zu hoch, der Rahmen wurde mitgelernt. Mit Pfeiltasten (SHIFT = zehn
+        Pixel) und Ziehen im Bild ist es ein Handgriff.
+
+        Der Klickpunkt geht **mit**, statt neu aus der Mitte gerechnet zu
+        werden: er ist womöglich bewusst aus der Mitte gesetzt (ein Knopf in der
+        Ecke des Slots), und ein Verschieben soll die Fläche verschieben, nicht
+        die Einstellung wegwerfen.
+
+        `zaehlt=False` unterdrückt den Rückgängig-Schritt — dafür gibt es genau
+        einen Grund: das Ziehen im Bild schickt beim Loslassen EINEN Aufruf mit
+        dem Gesamtversatz, aber die Pfeiltaste feuert bei gedrückt gehaltener
+        Taste im Dutzend. Ohne das läge nach zwei Sekunden Halten der ganze
+        Stapel voll mit Ein-Pixel-Schritten und der Schritt davor wäre draussen.
+        """
+        try:
+            dx, dy = int((daten or {}).get("dx") or 0), int((daten or {}).get("dy") or 0)
+        except (TypeError, ValueError):
+            return self._scan_melde("Verschieben ohne Weite — ignoriert.", "err")
+        if not dx and not dy:
+            return self.scan_daten()
+        slots = self._auswahl_slots()
+        if not slots:
+            return self._scan_melde("Kein Slot gewählt.", "warn")
+        # Nur der erste Schritt einer Serie kommt auf den Stapel: STRG+Z soll
+        # das ganze Verschieben zurücknehmen, nicht dessen letzten Pixel.
+        if (daten or {}).get("zaehlt", True):
+            self._merke(f"{len(slots)} Slot(s) verschoben" if len(slots) > 1
+                        else f"'{slots[0].name}' verschoben")
+        for slot in slots:
+            x1, y1, x2, y2 = slot.scan_region
+            slot.scan_region = (x1 + dx, y1 + dy, x2 + dx, y2 + dy)
+            slot.click_pos = (slot.click_pos[0] + dx, slot.click_pos[1] + dy)
+        # Die Treffer gehören zu den alten Stellen — an einer verschobenen
+        # Fläche liegt womöglich etwas anderes.
+        for slot in slots:
+            self._treffer.pop(slot.name, None)
+        was = f"{len(slots)} Slots" if len(slots) > 1 else f"'{slots[0].name}'"
+        return self._scan_geaendert(f"{was} um ({dx:+d}, {dy:+d}) verschoben.")
+
+    def scan_groesse_angleichen(self, daten: Optional[dict] = None) -> dict:
+        """Zieht die gewählten Slots auf dieselbe Grösse, um ihre Mitte herum.
+
+        Der Fall dafür ist der von Hand aufgezogene Slot: zwei Klicks treffen
+        nie zweimal dieselbe Kantenlänge, und ein Template, das aus einer um
+        drei Pixel abweichenden Fläche gelernt wurde, passt beim Vergleich
+        nicht mehr sauber. Die Mitte bleibt stehen — sie ist das, was der
+        Nutzer gemeint hat; die Kante ist die Ungenauigkeit.
+
+        Bezug ist der **Median** der Auswahl, nicht der grösste oder kleinste:
+        ein einzelner Verklicker soll nicht alle anderen verbiegen.
+        """
+        slots = self._auswahl_slots()
+        if len(slots) < 2:
+            return self._scan_melde(
+                "Dafür braucht es mehrere Slots — im Bild ein Rechteck aufziehen.", "warn")
+        breiten = sorted(s.scan_region[2] - s.scan_region[0] for s in slots)
+        hoehen = sorted(s.scan_region[3] - s.scan_region[1] for s in slots)
+        ziel = (breiten[len(breiten) // 2], hoehen[len(hoehen) // 2])
+        self._merke(f"{len(slots)} Slot(s) angeglichen")
+        geaendert = 0
+        for slot in slots:
+            alt = tuple(slot.scan_region)
+            neu = self._auf_groesse(alt, ziel)
+            if neu != alt:
+                slot.scan_region = neu
+                self._treffer.pop(slot.name, None)
+                geaendert += 1
+        return self._scan_geaendert(
+            f"{geaendert} von {len(slots)} Slot(s) auf {ziel[0]}×{ziel[1]} px gezogen.")
+
+    def scan_auswahl_farbe(self, daten: Optional[dict] = None) -> dict:
+        """Misst den Hintergrund jedes gewählten Slots neu — jeden an sich selbst.
+
+        **Nicht eine Farbe für alle.** Das wäre der naheliegende Griff und der
+        falsche: Inventare sind selten gleichmässig ausgeleuchtet, und eine
+        gemeinsame Farbe verschöbe die Maske beim Lernen an jedem Slot ein
+        bisschen. Gemessen wird an derselben inneren Ecke wie beim Aufziehen
+        (`_klick_slot`) — also dort, wo bei einem gefüllten Slot am ehesten
+        Hintergrund liegt und nicht das Symbol.
+        """
+        slots = self._auswahl_slots()
+        if not slots:
+            return self._scan_melde("Kein Slot gewählt.", "warn")
+        if self._foto is None:
+            return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
+        self._merke(f"Hintergrund von {len(slots)} Slot(s) gemessen")
+        gemessen, daneben = 0, 0
+        for slot in slots:
+            farbe = self._foto_farbe(slot.scan_region[0] + 2, slot.scan_region[1] + 2)
+            if farbe is None:
+                daneben += 1
+                continue
+            slot.slot_color = farbe
+            gemessen += 1
+        rest = f", {daneben} liegen ausserhalb des Bildes" if daneben else ""
+        return self._scan_geaendert(f"{gemessen} Hintergrundfarbe(n) gemessen{rest}.")
+
+    def scan_auswahl_lernen(self, daten: Optional[dict] = None) -> dict:
+        """Lernt aus jedem gewählten Slot ein Item — wie `scan_items_lernen`,
+        nur auf der Auswahl.
+
+        Der Fall, für den es das gibt: nach dem Erkennen stehen fünf Slots
+        orange da (nichts erkannt), der Rest grün. Genau die fünf will man
+        lernen — „aus ALLEN Slots lernen" liefe stattdessen über alle
+        fünfundvierzig und würde vierzig Doppelte prüfen.
+        """
+        slots = self._auswahl_slots()
+        if not slots:
+            return self._scan_melde("Kein Slot gewählt.", "warn")
+        self._merke(f"aus {len(slots)} Slot(s) gelernt")
+        neu, doppelt, leer = 0, 0, 0
+        for slot in slots:
+            ergebnis = self._lerne_aus_slot(slot, dedup=self._hat_opencv())
+            if ergebnis is None:
+                leer += 1
+            elif ergebnis == "":
+                doppelt += 1
+            else:
+                neu += 1
+                self._dazu(ART_ITEM, ergebnis)
+        teile = [f"{neu} neu"]
+        if doppelt:
+            teile.append(f"{doppelt} schon bekannt")
+        if leer:
+            teile.append(f"{leer} ohne Bild")
+        return self._scan_geaendert("Aus der Auswahl gelernt: " + ", ".join(teile))
+
+    def scan_auswahl_mitglied(self, daten: dict) -> dict:
+        """Nimmt die gewählten Slots in den offenen Scan — oder heraus.
+
+        Zwischen „einer" (Häkchen) und „alle" (Schieber im Kopf) lag nichts.
+        Genau dazwischen liegt aber der Alltag: die Ausrüstungsreihe gehört
+        dazu, die Taschenplätze darunter nicht.
+        """
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is None:
+            return self._scan_melde("Kein Scan offen.", "warn")
+        slots = self._auswahl_slots()
+        if not slots:
+            return self._scan_melde("Kein Slot gewählt.", "warn")
+        dazu = bool((daten or {}).get("wert"))
+        self._merke(f"{len(slots)} Slot(s) {'dazu' if dazu else 'raus'}")
+        namen = [s.name for s in slots]
+        if dazu:
+            cfg.slot_names += [n for n in namen if n not in cfg.slot_names]
+        else:
+            cfg.slot_names = [n for n in cfg.slot_names if n not in namen]
+        self._objekte_angleichen()
+        return self._scan_geaendert(
+            f"{len(namen)} Slot(s) {'in' if dazu else 'aus'} '{cfg.name}' "
+            f"{'aufgenommen' if dazu else 'entfernt'} "
+            f"— jetzt {len(cfg.slot_names)}.")
+
     def scan_slot_doppeln(self, daten: Optional[dict] = None) -> dict:
         """Ein Slot neben dem gewählten — der schnellste Weg zu einer Reihe.
 
@@ -1464,6 +1808,7 @@ class ScanTeil:
         slot = self._gewaehlter_slot()
         if slot is None:
             return self._scan_melde("Kein Slot gewählt.", "warn")
+        self._merke("Slot gedoppelt")
         x1, y1, x2, y2 = slot.scan_region
         versatz = (x2 - x1) + 2
         name = next_slot_name(self.slots)
@@ -1489,6 +1834,7 @@ class ScanTeil:
         slot = self.slots.get(name)
         if slot is None:
             return self._scan_melde("Kein Slot gewählt.", "warn")
+        self._merke("Item gelernt")
         gelernt = self._lerne_aus_slot(slot)
         if gelernt is None:
             return self._scan_melde("Kein Bild an dieser Stelle — erst aufnehmen.", "warn")
@@ -1502,11 +1848,19 @@ class ScanTeil:
         Der Weg für ein volles Inventar: einmal drücken statt zwanzigmal. Die
         Doppel-Erkennung braucht OpenCV; ohne sie entstünde aus zwei gleichen
         Slots zweimal dasselbe Item.
+
+        **„Alle" heisst die des offenen Scans** (`_scan_slots()`), nicht den
+        ganzen Bestand: bei zwei Spielen lief der Durchgang sonst auch über die
+        Slots des anderen. Die liegen ausserhalb des Bildes, es kam also nichts
+        dabei heraus — nur eine Meldung, die von „11 ohne Bild" sprach und den
+        Verdacht auf den Screenshot lenkte.
         """
-        if not self.slots:
+        slots = self._scan_slots()
+        if not slots:
             return self._scan_melde("Keine Slots vorhanden.", "warn")
+        self._merke("Items gelernt")
         neu, doppelt, leer = 0, 0, 0
-        for slot in list(self.slots.values()):
+        for slot in slots:
             ergebnis = self._lerne_aus_slot(slot, dedup=self._hat_opencv())
             if ergebnis is None:
                 leer += 1
@@ -1563,12 +1917,15 @@ class ScanTeil:
         if feld == "name":
             return self._item_umbenennen(item, str(wert or "").strip())
         if feld == "kategorie":
+            self._merke(f"'{name}': Kategorie")
             item.category = str(wert or "").strip() or None
             return self._scan_geaendert()
         if feld == "prioritaet":
+            self._merke(f"'{name}': Priorität")
             item.priority = max(1, int(wert or 1))
             return self._scan_geaendert()
         if feld == "konfidenz":
+            self._merke(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(wert or 0)))
             return self._scan_geaendert()
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
@@ -1579,6 +1936,7 @@ class ScanTeil:
             return self.scan_daten()
         if neu in self.items:
             return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
+        self._merke(f"'{item.name}' umbenannt")
         alt = item.name
         self.items = {(neu if k == alt else k): v for k, v in self.items.items()}
         item.name = neu
@@ -1597,6 +1955,7 @@ class ScanTeil:
         item = self.items.get(name)
         if item is None:
             return self._scan_melde("Kein Item gewählt.", "warn")
+        self._merke(f"'{name}' gelöscht")
         del self.items[name]
         for cfg in self.scans.values():
             cfg.item_names = [n for n in cfg.item_names if n != name]
@@ -1621,15 +1980,15 @@ class ScanTeil:
         self._scan_laden()
         if self._foto is None:
             return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
-        if not self.slots:
+        if not self._scan_slots():
             return self._scan_melde("Keine Slots vorhanden.", "warn")
-        gefunden, geprueft, toleranz, _ = self._erkennen_lauf()
+        gefunden, geprueft, toleranz, _, gesamt = self._erkennen_lauf()
         return self._scan_melde(
-            f"{gefunden} von {len(self.slots)} Slot(s) erkannt "
+            f"{gefunden} von {gesamt} Slot(s) erkannt "
             f"(Toleranz {toleranz}, {geprueft} Item(s) geprüft).")
 
     def _erkennen_lauf(self) -> tuple:
-        """Füllt `_treffer` und liefert `(gefunden, geprüft, Toleranz, fremd)`.
+        """Füllt `_treffer`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
 
         Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer
         davon eine eigene Meldung schreibt: der Knopf sagt das Ergebnis, das
@@ -1642,6 +2001,11 @@ class ScanTeil:
         ganzen Bestand) — und dort ist es die nützlichste Auskunft überhaupt:
         das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
         Häkchen.
+
+        `gesamt` ist die Zahl der geprüften **Slots** — die des offenen Scans,
+        nicht die des Bestands. Vorher stand als Nenner die Bestandsgrösse da
+        („13 von 56 erkannt"), obwohl elf davon zu einem anderen Spiel gehören
+        und gar nicht im Bild liegen.
         """
         # Erst hier importiert: `runtime/__init__` zieht den Worker samt
         # `winapi` nach, und den braucht der Rest des Fensters nicht.
@@ -1655,7 +2019,8 @@ class ScanTeil:
         dabei = set(cfg.item_names) if cfg else set()
         self._treffer = {}
         gefunden, fremd = 0, 0
-        for slot in self.slots.values():
+        slots = self._scan_slots()
+        for slot in slots:
             crop = self._foto_crop(slot.scan_region)
             if crop is None:
                 self._treffer[slot.name] = {"name": None, "grund": "ausserhalb des Bildes"}
@@ -1676,7 +2041,7 @@ class ScanTeil:
                     "farbe": hexfarbe(treffer.marker_colors[0]) if treffer.marker_colors else None,
                     "fremd": cfg is not None and treffer.name not in dabei,
                 }
-        return gefunden, len(kandidaten), toleranz, fremd
+        return gefunden, len(kandidaten), toleranz, fremd, len(slots)
 
     def _kandidaten(self) -> list:
         """Welche Items geprüft werden — die des gewählten Scans, sonst alle.
@@ -1750,6 +2115,7 @@ class ScanTeil:
     def scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen."""
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
+        self._merke("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
         self.scan_art, self.scan_name = ART_SCAN, name
         # Ein frisch angelegter Scan ist der, an dem man arbeitet — sonst müsste
@@ -1772,6 +2138,7 @@ class ScanTeil:
                 return self.scan_daten()
             if neu in self.scans:
                 return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
+            self._merke(f"Scan '{cfg.name}' umbenannt")
             # Die alte Datei bleibt liegen: umbenennen hiesse hier löschen, und
             # eine Sequenz, die noch auf den alten Namen zeigt, verlöre ihren
             # Scan. Wer aufräumen will, löscht die Datei bewusst.
@@ -1789,12 +2156,15 @@ class ScanTeil:
             return self._scan_geaendert(
                 f"'{alt}' heisst jetzt '{neu}' — die alte Datei bleibt liegen.", "warn")
         if feld == "toleranz":
+            self._merke(f"'{name}': Farb-Toleranz")
             cfg.color_tolerance = max(0, int(wert or 0))
             return self._scan_geaendert()
         if feld == "lernen":
+            self._merke(f"'{name}': Unbekanntes lernen")
             cfg.learn_unknown = bool(wert)
             return self._scan_geaendert()
         if feld == "reverse":
+            self._merke(f"'{name}': Laufrichtung")
             cfg.reverse = bool(wert)
             return self._scan_geaendert(
                 f"'{cfg.name}': Slots laufen "
@@ -1812,6 +2182,7 @@ class ScanTeil:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         art = str((daten or {}).get("art") or "")
         name = str((daten or {}).get("name") or "")
+        self._merke(f"'{name}' im Scan '{cfg.name}'")
         liste = cfg.slot_names if art == ART_SLOT else cfg.item_names
         if name in liste:
             liste.remove(name)
@@ -1851,6 +2222,8 @@ class ScanTeil:
         if art not in (ART_SLOT, ART_ITEM):
             return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
         dazu = bool((daten or {}).get("wert"))
+        self._merke(f"alle {'Slots' if art == ART_SLOT else 'Items'} "
+                    f"{'dazu' if dazu else 'raus'}")
         bestand = self.slots if art == ART_SLOT else self.items
         vorher = len(cfg.slot_names if art == ART_SLOT else cfg.item_names)
         namen = list(bestand) if dazu else []
@@ -1869,6 +2242,9 @@ class ScanTeil:
         name = self.scan_name if self.scan_art == ART_SCAN else ""
         if name not in self.scans:
             return self._scan_melde("Kein Scan gewählt.", "warn")
+        # STRG+Z holt die Konfiguration zurück, nicht die Dateien: die JSON
+        # schreibt das nächste Speichern neu, der gemerkte Screenshot ist weg.
+        self._merke(f"Scan '{name}' gelöscht (Bild bleibt weg)")
         del self.scans[name]
         self.scan_name = ""
         if self.scan_offen == name:

@@ -174,6 +174,21 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .abschnitt.wachsend{flex:1 0 auto;border-bottom:none}
 .ueberschrift{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600}
 
+/* Zusammenklappbarer Abschnitt. Der Kopf ist der Schalter — eine eigene kleine
+   Kachel daneben waere ein zweites Ziel fuer dieselbe Sache. Zugeklappt bleibt
+   rechts im Kopf die Kurzauskunft stehen (Modus, Bildgroesse, offener Schritt):
+   Platz sparen darf nichts kosten, was man beim Arbeiten braucht. */
+.klapp-kopf{display:flex;align-items:center;gap:8px;width:100%;padding:0;
+  background:none;border:none;color:inherit;cursor:pointer;text-align:left;font:inherit}
+.klapp-kopf:hover .ueberschrift{color:var(--muted)}
+.klapp-kopf .pfeil{width:9px;flex:none;color:var(--dim);font-size:9px;line-height:1}
+.klapp-kopf .pfeil::before{content:"\25BE"}
+.abschnitt.zu .klapp-kopf .pfeil::before{content:"\25B8"}
+.klapp-rumpf{display:flex;flex-direction:column;gap:8px}
+.klapp-rumpf > *{flex:none}
+.abschnitt.zu > .klapp-rumpf{display:none}
+.abschnitt.zu{gap:0}
+
 /* ------------------------------------------------------------------- Punkte */
 .punkt{
   display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;
@@ -787,48 +802,78 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
       <!-- Der Weg zu einem neuen Scan steht als Weg da, nicht als Wand aus
            Knoepfen: Bereich, Slots, Items. Der Stand kommt aus den Daten
            (_schritte() in scans.py) - ein mitgeschriebener Fortschritt koennte
-           von ihnen abweichen. -->
-      <div class="abschnitt">
-        <span class="ueberschrift">SO ENTSTEHT EIN SCAN</span>
-        <div class="spalte" id="scan-schritte" style="gap:4px"></div>
+           von ihnen abweichen.
+
+           Die drei folgenden Abschnitte lassen sich ZUKLAPPEN. Untereinander
+           waren sie laenger als die Spalte hoch ist, und die Listen ganz unten
+           erreichte man nur ueber die Bildlaufleiste — also ausgerechnet das,
+           womit man dauernd arbeitet. Zugeklappt bleibt der Kopf stehen und
+           sagt in einem Wort, was drinsteht: eine Anleitung, die man kennt,
+           soll Platz machen koennen, ohne ihre Auskunft mitzunehmen. -->
+      <div class="abschnitt klappbar" id="ab-weg">
+        <button class="klapp-kopf" data-klapp="weg">
+          <span class="pfeil"></span>
+          <span class="ueberschrift wachse">SO ENTSTEHT EIN SCAN</span>
+          <span class="klein mono" id="scan-weg-kurz"></span>
+        </button>
+        <div class="klapp-rumpf">
+          <div class="spalte" id="scan-schritte" style="gap:4px"></div>
+        </div>
       </div>
-      <div class="abschnitt">
-        <div class="reihe">
+      <div class="abschnitt klappbar" id="ab-bild">
+        <button class="klapp-kopf" data-klapp="bild">
+          <span class="pfeil"></span>
           <span class="ueberschrift wachse">BILD</span>
           <span class="klein mono" id="scan-groesse"></span>
-        </div>
-        <button class="btn haupt" id="scan-foto">Screenshot aufnehmen</button>
-        <!-- Vollbild ist nur die Voreinstellung. Wer dasselbe Spiel mehrmals
-             offen hat, arbeitet sonst auf einem Bild, in dem drei Viertel
-             stoeren. Der gewaehlte Bereich steht hier und gilt fuer jede
-             weitere Aufnahme dieses Scans. -->
-        <div class="reihe">
-          <span class="klein wachse" id="scan-bereich">Vollbild</span>
-          <button class="btn still" id="scan-vollbild"
-                  title="zurück zum ganzen Bildschirm — dann oben aufnehmen">Vollbild</button>
-        </div>
-        <select id="scan-fenster" class="scan-fensterwahl"></select>
-        <!-- Derselbe Befehl wie die Kachel „Bereich" weiter unten. Zwei Wege
-             zu einer Sache sind hier richtig: gesucht wird er HIER, bei den
-             anderen Bereichs-Bedienelementen, und die Kacheln sind die Legende
-             dazu, was ein Klick gerade tut. -->
-        <button class="btn still" id="scan-aufziehen"
-                title="zwei Ecken im Bild anklicken">Bereich aufziehen</button>
-        <div class="reihe">
-          <button class="btn still" id="scan-fit" title="ins Fenster einpassen">einpassen</button>
-          <button class="btn still" id="scan-1zu1" title="Originalgrösse">1:1</button>
-          <span class="wachse"></span>
-          <span class="klein mono" id="scan-zoom"></span>
+        </button>
+        <div class="klapp-rumpf spalte">
+          <button class="btn haupt" id="scan-foto">Screenshot aufnehmen</button>
+          <!-- Vollbild ist nur die Voreinstellung. Wer dasselbe Spiel mehrmals
+               offen hat, arbeitet sonst auf einem Bild, in dem drei Viertel
+               stoeren. Der gewaehlte Bereich steht hier und gilt fuer jede
+               weitere Aufnahme dieses Scans. -->
+          <div class="reihe">
+            <span class="klein wachse" id="scan-bereich">Vollbild</span>
+            <button class="btn still" id="scan-vollbild"
+                    title="zurück zum ganzen Bildschirm — dann oben aufnehmen">Vollbild</button>
+          </div>
+          <select id="scan-fenster" class="scan-fensterwahl"></select>
+          <!-- Derselbe Befehl wie die Kachel „Bereich" weiter unten. Zwei Wege
+               zu einer Sache sind hier richtig: gesucht wird er HIER, bei den
+               anderen Bereichs-Bedienelementen, und die Kacheln sind die Legende
+               dazu, was ein Klick gerade tut. -->
+          <button class="btn still" id="scan-aufziehen"
+                  title="zwei Ecken im Bild anklicken">Bereich aufziehen</button>
+          <div class="reihe">
+            <button class="btn still" id="scan-fit" title="ins Fenster einpassen">einpassen</button>
+            <button class="btn still" id="scan-1zu1" title="Originalgrösse">1:1</button>
+            <span class="wachse"></span>
+            <span class="klein mono" id="scan-zoom"></span>
+          </div>
         </div>
       </div>
-      <div class="abschnitt">
-        <span class="ueberschrift">WAS EIN KLICK TUT</span>
-        <div class="spalte" id="scan-modi" style="gap:4px"></div>
-        <!-- Der Rueckweg gehoert dazu, sonst ist jeder Modus eine Falltuer:
-             hinein kommt man mit einem Klick, heraus nur mit einer Taste, die
-             man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
-        <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
-          markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
+      <div class="abschnitt klappbar" id="ab-modi">
+        <button class="klapp-kopf" data-klapp="modi">
+          <span class="pfeil"></span>
+          <span class="ueberschrift wachse">WAS EIN KLICK TUT</span>
+          <span class="klein mono" id="scan-modus-kurz"></span>
+        </button>
+        <div class="klapp-rumpf spalte">
+          <div class="spalte" id="scan-modi" style="gap:4px"></div>
+          <!-- Der Rueckweg gehoert dazu, sonst ist jeder Modus eine Falltuer:
+               hinein kommt man mit einem Klick, heraus nur mit einer Taste, die
+               man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
+          <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
+            markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
+          <!-- Die beiden Handgriffe, die man ZWISCHENDURCH macht, brauchen
+               keinen Modus (scan_direkt in scans.py). Sie stehen hier, weil hier
+               steht, was ein Klick tut — und das ist genau die Frage, die sie
+               beantworten. -->
+          <p class="hinweis">Ohne Moduswechsel: <b>ALT+Klick</b> misst den
+            Hintergrund eines Slots, <b>Doppelklick</b> setzt seinen Klickpunkt.
+            Ein gewählter Slot lässt sich mit der <b>Maus ziehen</b> oder mit den
+            <b>Pfeiltasten</b> verschieben (SHIFT = 10 px).</p>
+        </div>
       </div>
       <div class="abschnitt wachsend">
         <div class="tabs klein" id="scan-listen-tabs"></div>
@@ -2386,6 +2431,33 @@ let scanVorschauen = new Map();   // Item-Name -> data:-URL des Templates
 let scanZeiger = null;            // letzte Mausposition im Bild (fuer die Vorschau)
 let scanKategorie = "";           // Kategorie-Filter der Item-Liste
 
+/* Welche Abschnitte der linken Spalte zugeklappt sind. `null` heisst „noch
+ * nichts entschieden" — dann gilt die abgeleitete Vorgabe aus `klappVorgabe()`.
+ * Sobald jemand einen Kopf anfasst, steht dort true/false und die Vorgabe
+ * schweigt: eine Automatik, die eine ausdrueckliche Entscheidung ueberstimmt,
+ * ist keine Hilfe mehr, sondern ein Bedienelement, das zurueckspringt.
+ *
+ * Reiner Oberflaechenzustand, deshalb hier und nicht in der Bruecke: er aendert
+ * nichts an den Daten. */
+let klappZu = {weg: null, bild: null, modi: null};
+
+/* Der zuletzt in die Sichtbarkeit geholte Slot. Ohne das scrollte die Buehne
+ * bei JEDEM Neuzeichnen zum gewaehlten Slot zurueck — auch dann, wenn man
+ * gerade woanders hinsieht. */
+let scanGezeigt = "";
+
+/* Ziehen eines gewaehlten Slots im Bild: Startpunkt und laufender Versatz.
+ * Der Versatz wird nur GEZEICHNET; geschrieben wird einmal beim Loslassen. Ein
+ * Aufruf je Mausbewegung waere ein Dutzend Brueckenaufrufe pro Sekunde und ein
+ * Rueckgaengig-Stapel voll mit Ein-Pixel-Schritten. */
+let scanZiehStart = null;
+let scanZiehVersatz = null;
+let scanZiehGemacht = false;
+/* Wann zuletzt mit den Pfeiltasten verschoben wurde. Eine gehaltene Taste ist
+ * EIN Verschieben, nicht dreissig — nur der erste Schritt kommt auf den
+ * Rueckgaengig-Stapel (`zaehlt`). */
+let scanSchubZeit = 0;
+
 /* **Die Reihenfolge ist die Rangfolge**, und sie ist dieselbe wie in `MODI`
  * (ein Test haelt beide Zug um Zug gegeneinander, nicht nur als Menge).
  * „Slots finden" steht direkt hinter „Auswaehlen", weil es das ist, was man
@@ -2425,6 +2497,7 @@ async function zeichneScans(frisch) {
   scanWerkzeuge();
   scanListeZeichnen();
   scanOverlay();
+  scanZeigeGewaehlten();
   scanInspektor();
   setzeStatus(SC.status);
   fokusHerstellen(merk);
@@ -2550,6 +2623,9 @@ function scanWerkzeuge() {
       el("span", {class: "klein"}, m.hilfe)));
   }
   $("scan-modi-zurueck").hidden = SC.modus === "wahl";
+  const modus = SCAN_MODI.find((m) => m.key === SC.modus);
+  $("scan-modus-kurz").textContent = modus ? modus.text : "";
+  klappPflegen();
   scanSchritte();
   $("scan-foto").disabled = !SC.pillow;
   $("scan-foto").textContent = SC.fenster_id ? "Fenster aufnehmen"
@@ -2574,6 +2650,35 @@ function scanWerkzeuge() {
   auf.disabled = !fotoDa();
   auf.classList.toggle("an", SC.modus === "bereich");
   scanFensterPflegen();
+}
+
+/** Was ein Abschnitt tut, solange ihn niemand angefasst hat.
+ *
+ * **Die Anleitung soll verschwinden, wenn man sie nicht mehr braucht.** „So
+ * entsteht ein Scan" ist beim ersten Mal das Wichtigste auf der Seite und beim
+ * zwanzigsten Mal drei Zeilen, die die Listen nach unten schieben. Sobald alle
+ * drei Schritte erledigt sind, klappt sie sich also von selbst zu — und der
+ * Kopf sagt weiterhin, dass sie es sind.
+ *
+ * Der Rest bleibt offen: „Bild" und „Was ein Klick tut" braucht man dauernd. */
+function klappVorgabe(schluessel) {
+  if (schluessel === "weg")
+    return !!(SC && SC.schritte && SC.schritte.every((s) => s.fertig));
+  return false;
+}
+
+function klappPflegen() {
+  for (const [schluessel, id] of [["weg", "ab-weg"], ["bild", "ab-bild"],
+                                  ["modi", "ab-modi"]]) {
+    const zu = klappZu[schluessel] === null ? klappVorgabe(schluessel)
+                                            : klappZu[schluessel];
+    $(id).classList.toggle("zu", zu);
+  }
+  // Zugeklappt muss der Kopf sagen, wie weit man ist — sonst nimmt das
+  // Platzsparen die Auskunft mit.
+  const offen = SC.schritte.filter((s) => !s.fertig);
+  $("scan-weg-kurz").textContent = offen.length
+    ? "Schritt " + offen[0].nr + ": " + offen[0].titel : "fertig";
 }
 
 /** Die drei Schritte: erledigte blass mit Haken, der aktuelle mit Knopf. */
@@ -2796,6 +2901,13 @@ function scanOverlay() {
   // blass. Ohne das muss man Liste und Bild im Kopf zusammenbringen.
   const offen = SC.scans.find((c) => c.name === SC.offen) || null;
 
+  // Was gerade gezogen wird, wird SCHON VERSCHOBEN gezeichnet — sonst zieht man
+  // blind und sieht das Ergebnis erst beim Loslassen. Nur eine Zeichnung: die
+  // Daten aendert erst der Aufruf beim Loslassen.
+  const zieh = scanZiehVersatz || [0, 0];
+  const gezogen = zieh[0] || zieh[1]
+    ? new Set(scanGewaehlteSlots().map((s) => s.name)) : null;
+
   for (const s of SC.slots) {
     const fremd = offen && !s.dabei ? " fremd" : "";
     // Bei eingeschaltetem Filter bleiben fremde Slots ganz weg: sie gehoeren zu
@@ -2803,8 +2915,9 @@ function scanOverlay() {
     // Ausgeschaltet stehen sie gestrichelt da — dann sucht man ja gerade das,
     // was man noch dazunehmen koennte.
     if (fremd && SC.nur_dabei) continue;
-    const [x1, y1] = scanZuBild(s.region[0], s.region[1]);
-    const [x2, y2] = scanZuBild(s.region[2], s.region[3]);
+    const v = gezogen && gezogen.has(s.name) ? zieh : [0, 0];
+    const [x1, y1] = scanZuBild(s.region[0] + v[0], s.region[1] + v[1]);
+    const [x2, y2] = scanZuBild(s.region[2] + v[0], s.region[3] + v[1]);
     // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
     // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
     const gewaehlt = SC.auswahl.includes(s.name)
@@ -2842,7 +2955,7 @@ function scanOverlay() {
         "font-size": 10 * px, "stroke-width": 3 * px,
         fill: SLOT_FARBE[s.treffer.fremd ? "fremditem" : "treffer"]}, s.treffer.name));
     }
-    const [kx, ky] = scanZuBild(s.klick[0], s.klick[1]);
+    const [kx, ky] = scanZuBild(s.klick[0] + v[0], s.klick[1] + v[1]);
     const arm = 4 * px;
     svg.appendChild(svgEl("path", {class: "scan-kreuz",
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
@@ -2886,6 +2999,55 @@ function svgEl(tag, attrs, text) {
   return n;
 }
 
+/** Die gewaehlten Slots — die Auswahl, sonst der eine im Inspektor.
+ *
+ * Dieselbe Frage wie `_auswahl_slots()` in der Bruecke, und sie muss dieselbe
+ * Antwort geben: was man ziehen kann, ist genau das, worauf „loeschen" und
+ * „Groesse angleichen" wirken. Die Seite beantwortet sie nur fuer die Geste
+ * (was liegt unter dem Zeiger), gerechnet wird weiterhin drueben. */
+function scanGewaehlteSlots() {
+  if (!SC) return [];
+  const namen = SC.auswahl.length ? SC.auswahl
+    : (SC.wahl.art === "slot" && SC.wahl.name ? [SC.wahl.name] : []);
+  return SC.slots.filter((s) => namen.includes(s.name));
+}
+
+function scanInSlot(slot, stelle) {
+  return stelle[0] >= slot.region[0] && stelle[0] <= slot.region[2]
+      && stelle[1] >= slot.region[1] && stelle[1] <= slot.region[3];
+}
+
+/** Holt den gewaehlten Slot in die Sichtbarkeit der Buehne.
+ *
+ * **Liste und Bild waren zwei getrennte Welten.** Einen Slot in der Liste
+ * anzuklicken markierte ihn im Bild — nur sah man das nicht, wenn er gerade
+ * ausserhalb lag. Bei 45 Slots auf 1:1 ist das der Normalfall, und man sucht
+ * die weisse Markierung, statt zu arbeiten.
+ *
+ * Gescrollt wird NUR, wenn er wirklich draussen liegt, und nur beim Wechsel der
+ * Auswahl (`scanGezeigt`): eine Buehne, die bei jedem Neuzeichnen springt,
+ * nimmt einem die Stelle weg, die man gerade ansieht. */
+function scanZeigeGewaehlten() {
+  if (!SC || !SC.foto || SC.wahl.art !== "slot") { scanGezeigt = ""; return; }
+  const name = SC.wahl.name;
+  if (!name || name === scanGezeigt) return;
+  scanGezeigt = name;
+  const slot = SC.slots.find((s) => s.name === name);
+  if (!slot) return;
+  const buehne = $("scan-buehne");
+  const [bx1, by1] = scanZuBild(slot.region[0], slot.region[1]);
+  const [bx2, by2] = scanZuBild(slot.region[2], slot.region[3]);
+  // Bild-Pixel -> Pixel auf der Buehne. Der Rand haelt den Slot von der Kante
+  // weg: dicht am Rand sieht man ihn zwar, aber nicht, was um ihn herum liegt.
+  const rand = 60;
+  const l = bx1 * scanZoom, o = by1 * scanZoom;
+  const r = bx2 * scanZoom, u = by2 * scanZoom;
+  if (l < buehne.scrollLeft + rand || r > buehne.scrollLeft + buehne.clientWidth - rand)
+    buehne.scrollLeft = Math.max(0, (l + r) / 2 - buehne.clientWidth / 2);
+  if (o < buehne.scrollTop + rand || u > buehne.scrollTop + buehne.clientHeight - rand)
+    buehne.scrollTop = Math.max(0, (o + u) / 2 - buehne.clientHeight / 2);
+}
+
 function scanStelleAusEvent(e) {
   const rand = $("scan-overlay").getBoundingClientRect();
   if (!rand.width || !rand.height || !SC || !SC.foto) return null;
@@ -2922,9 +3084,21 @@ function scanInspektor() {
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),
-    el("button", {class: "btn", disabled: !fotoDa() || !SC.slots.length,
-                  title: "Jeden Slot gegen die Item-Profile halten",
-                  onclick: () => rufScan("scan_erkennen")}, "Items erkennen"));
+    el("div", {class: "reihe"},
+      el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
+                    title: "Jeden Slot gegen die Item-Profile halten",
+                    onclick: () => rufScan("scan_erkennen")}, "Items erkennen"),
+      // **Der Knopf NENNT, was er zurücknimmt.** Ein „Rückgängig" ohne Angabe
+      // drückt man entweder gar nicht (weil man nicht weiss, was passiert) oder
+      // einmal zu oft. Die Beschreibung kommt aus der Brücke — dort weiss man,
+      // was der Schritt war.
+      el("button", {class: "btn", disabled: !SC.undo.tiefe,
+                    title: SC.undo.tiefe
+                      ? "STRG+Z — nimmt zurück: " + SC.undo.was
+                        + " (" + SC.undo.tiefe + " Schritte gemerkt)"
+                      : "Nichts zum Rückgängigmachen",
+                    onclick: () => rufScan("scan_rueckgaengig")},
+         SC.undo.tiefe ? "↶ " + SC.undo.was : "↶ Rückgängig")));
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
@@ -2992,8 +3166,14 @@ function scanInspSlot(ziel) {
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        "löschen")));
   if (fotoDa()) {
+    // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
+    // (`_scan_slots()` in scans.py). Das steht im Knopf, weil es vorher
+    // stillschweigend anders war — und die Meldung danach ratlos machte.
     ziel.appendChild(el("button", {class: "btn still", style: "margin-top:6px",
-      onclick: () => rufScan("scan_items_lernen")}, "aus ALLEN Slots lernen"));
+      title: SC.offen ? "Alle Slots aus „" + SC.offen + "“ — nicht der ganze Bestand"
+                      : "Alle Slots im Bestand (kein Scan offen)",
+      onclick: () => rufScan("scan_items_lernen")},
+      SC.offen ? "aus allen Slots dieses Scans lernen" : "aus ALLEN Slots lernen"));
   }
   if (s.treffer) {
     ziel.appendChild(el("p", {class: "hinweis", style: "margin-top:10px"},
@@ -3110,7 +3290,13 @@ function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
       el("span", {class: "klein mono haken-stand"}, drin + "/" + gesamt)));
 }
 
-/** Mehrere Slots gewaehlt — nur, was auf alle wirkt. */
+/** Mehrere Slots gewaehlt — nur, was auf alle wirkt.
+ *
+ * **Eine Mehrfachauswahl konnte bis hierher genau eines: geloescht werden.**
+ * Damit war das Rechteck ein Werkzeug zum Wegraeumen und sonst nichts —
+ * obwohl gerade die Handgriffe nach dem Finden fast immer viele Slots auf
+ * einmal betreffen (die Reihe sitzt drei Pixel zu hoch, die Haelfte gehoert
+ * nicht in diesen Scan, aus den fuenf orangen soll gelernt werden). */
 function scanInspAuswahl(ziel) {
   ziel.appendChild(ueberschrift("AUSWAHL",
     "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
@@ -3118,15 +3304,52 @@ function scanInspAuswahl(ziel) {
   ziel.appendChild(el("p", {class: "hinweis"}, SC.auswahl.length + " Slots gewählt"));
   // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
   // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
-  ziel.appendChild(el("div", {class: "spalte", style: "gap:2px;max-height:220px;"
+  ziel.appendChild(el("div", {class: "spalte", style: "gap:2px;max-height:160px;"
     + "overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--muted)"},
     ...SC.auswahl.map((n) => el("span", {}, n))));
+
+  ziel.appendChild(ueberschrift("LAGE UND GRÖSSE",
+    "Wirkt auf alle Gewählten zugleich. Verschieben nimmt den Klickpunkt mit; " +
+    "Angleichen zieht alle auf die mittlere Grösse, um ihre Mitte herum.",
+    "auswahl-lage"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Verschieben: im Bild ziehen, oder Pfeiltasten (SHIFT = 10 px)."));
+  ziel.appendChild(el("button", {class: "btn breit",
+    onclick: () => rufScan("scan_groesse_angleichen")}, "Grösse angleichen"));
+
+  ziel.appendChild(ueberschrift("HINTERGRUND UND ITEMS",
+    "Gemessen wird jeder Slot an sich selbst — eine gemeinsame Farbe für alle " +
+    "wäre an jedem einzelnen ein bisschen falsch.", "auswahl-lernen"));
+  ziel.appendChild(el("button", {class: "btn breit", disabled: !fotoDa(),
+    onclick: () => rufScan("scan_auswahl_farbe")}, "Hintergrund neu messen"));
+  ziel.appendChild(el("button", {class: "btn breit", disabled: !fotoDa(),
+    title: "Aus jedem gewählten Slot ein Item — Doppelte werden übersprungen",
+    onclick: () => rufScan("scan_auswahl_lernen")},
+    "aus " + SC.auswahl.length + " Slots lernen"));
+
+  // Zwischen „einer" (Haekchen) und „alle" (Schieber im Kopf) lag nichts —
+  // und genau dazwischen liegt der Alltag.
+  if (SC.offen) {
+    ziel.appendChild(ueberschrift("SCAN „" + SC.offen + "“",
+      "Nimmt die gewählten Slots in den offenen Scan oder heraus.", "auswahl-scan"));
+    ziel.appendChild(el("div", {class: "reihe"},
+      el("button", {class: "btn wachse",
+        onclick: () => rufScan("scan_auswahl_mitglied", {wert: true})}, "dazu"),
+      el("button", {class: "btn wachse",
+        onclick: () => rufScan("scan_auswahl_mitglied", {wert: false})}, "heraus")));
+  }
+
   ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
     el("button", {class: "btn", onclick: () => rufScan("scan_abbrechen")},
        "Auswahl aufheben"),
     el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        SC.auswahl.length + " löschen")));
+  // Loeschen ist hier die einzige Aktion, die etwas wegnimmt — und seit es ein
+  // Rueckgaengig gibt, ist sie es nicht mehr endgueltig. Das gehoert dazu:
+  // sonst traut man sich an die Sammel-Aktionen nicht heran.
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Alles hier lässt sich mit STRG+Z zurücknehmen."));
 }
 
 function scanInspItem(ziel) {
@@ -3606,20 +3829,78 @@ function verdrahte() {
     scanZoomHand = true;
     scanZoomAnwenden();
   });
+  for (const kopf of document.querySelectorAll(".klapp-kopf")) {
+    kopf.addEventListener("click", () => {
+      const s = kopf.dataset.klapp;
+      // Beim ersten Griff die Vorgabe uebernehmen und umdrehen — sonst taete der
+      // erste Klick auf einen automatisch zugeklappten Abschnitt nichts.
+      klappZu[s] = !(klappZu[s] === null ? klappVorgabe(s) : klappZu[s]);
+      klappPflegen();
+    });
+  }
+
   const flaeche = $("scan-overlay");
   flaeche.addEventListener("click", (e) => {
+    // Ein Klick, der ein Ziehen beendet hat, ist kein Klick. Ohne das waehlte
+    // das Loslassen den Slot gleich noch einmal neu aus.
+    if (scanZiehGemacht) { scanZiehGemacht = false; return; }
     const stelle = scanStelleAusEvent(e);
+    if (!stelle) return;
+    // ALT misst den Hintergrund des Slots unter dem Zeiger — ohne den Umweg
+    // ueber die Modus-Kachel. Der haeufigste Handgriff nach dem Finden.
+    if (e.altKey) return rufScan("scan_direkt", {x: stelle[0], y: stelle[1],
+                                                 was: "messen"});
     // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
     // Geste wie im Sequenz-Editor.
-    if (stelle) rufScan("scan_klick",
-                        {x: stelle[0], y: stelle[1], zusatz: e.ctrlKey || e.metaKey});
+    rufScan("scan_klick", {x: stelle[0], y: stelle[1],
+                           zusatz: e.ctrlKey || e.metaKey});
+  });
+  flaeche.addEventListener("dblclick", (e) => {
+    const stelle = scanStelleAusEvent(e);
+    if (stelle) rufScan("scan_direkt", {x: stelle[0], y: stelle[1], was: "klick"});
+  });
+
+  // **Einen gewaehlten Slot zieht man, statt vier Zahlen zu tippen.** Gepackt
+  // wird nur, was schon gewaehlt IST — damit braucht die Seite keine eigene
+  // Trefferregel (die liegt in `_slot_unter()` in Python und soll dort bleiben),
+  // und die Geste liest sich wie ueberall sonst: erst auswaehlen, dann ziehen.
+  flaeche.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || !SC || SC.modus !== "wahl" || SC.ecke) return;
+    const stelle = scanStelleAusEvent(e);
+    if (!stelle || !scanGewaehlteSlots().some((s) => scanInSlot(s, stelle))) return;
+    scanZiehStart = stelle;
+    scanZiehVersatz = [0, 0];
   });
   flaeche.addEventListener("mousemove", (e) => {
+    if (scanZiehStart) {
+      const stelle = scanStelleAusEvent(e);
+      if (!stelle) return;
+      const dx = stelle[0] - scanZiehStart[0], dy = stelle[1] - scanZiehStart[1];
+      // **Ein wackliger Klick ist kein Ziehen.** Unter der Schwelle bleibt es
+      // ein Klick (also eine Auswahl); ohne sie verschöbe jedes Anklicken eines
+      // gewählten Slots ihn um ein, zwei Pixel — und weil das aussieht wie
+      // nichts, fiele es erst beim Erkennen auf.
+      if (!scanZiehVersatz && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+      scanZiehVersatz = [dx, dy];
+      // Nur zeichnen: geschrieben wird einmal beim Loslassen.
+      scanOverlay();
+      return;
+    }
     // Nur waehrend des Aufziehens gebraucht — sonst waere es ein Neuaufbau des
     // Overlays bei jeder Mausbewegung.
     if (!SC || !SC.ecke) return;
     scanZeiger = scanStelleAusEvent(e);
     scanOverlay();
+  });
+  // Am Fenster, nicht an der Flaeche: wer ueber den Bildrand hinauszieht,
+  // liesse sonst einen Slot am Zeiger kleben.
+  window.addEventListener("mouseup", () => {
+    if (!scanZiehStart) return;
+    const [dx, dy] = scanZiehVersatz || [0, 0];
+    scanZiehStart = scanZiehVersatz = null;
+    if (!dx && !dy) return;
+    scanZiehGemacht = true;
+    rufScan("scan_verschieben", {dx: dx, dy: dy});
   });
   // Mit STRG zoomen, wie in jedem Bildbetrachter; ohne STRG scrollt die Buehne.
   $("scan-buehne").addEventListener("wheel", (e) => {
@@ -3687,6 +3968,28 @@ function tastatur(e) {
   }
   if (imTextfeld() || offeneFrage) return;
   if (ansicht === "scans") {
+    // STRG+Z steht NACH der Textfeld-Abfrage: in einem Eingabefeld gehoert das
+    // Rueckgaengig dem Feld, nicht dem Reiter.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      return rufScan("scan_rueckgaengig");
+    }
+    // **Pfeiltasten schieben die Auswahl.** Ein Slot, der drei Pixel daneben
+    // liegt, war vorher nur ueber vier Zahlenfelder zu retten — und dreissig
+    // gar nicht.
+    const schub = {ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+                   ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+    if (schub && SC && (SC.auswahl.length || SC.wahl.art === "slot")) {
+      e.preventDefault();
+      const weit = e.shiftKey ? 10 : 1;
+      // Eine GEHALTENE Taste ist ein Verschieben, nicht dreissig: nur der erste
+      // Schritt einer Serie kommt auf den Rueckgaengig-Stapel.
+      const jetzt = Date.now();
+      const serie = jetzt - scanSchubZeit < 900;
+      scanSchubZeit = jetzt;
+      return rufScan("scan_verschieben",
+                     {dx: schub[0] * weit, dy: schub[1] * weit, zaehlt: !serie});
+    }
     // Die Modi liegen auf ihren Anfangsbuchstaben — beim Aufziehen von zwanzig
     // Slots ist der Griff zur Werkzeugleiste der laengste Teil der Arbeit.
     const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
