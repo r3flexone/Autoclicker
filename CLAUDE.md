@@ -1638,6 +1638,16 @@ Regeln beim Erweitern:
   (Punkt #1)" und weiter unten nochmal „Punkt": dieselbe Sache an zwei Stellen,
   und man musste raten, welche die führende ist. Nur Blöcke **ohne** Punkt (Taste,
   Scans) haben einen eigenen Namen im Abschnitt ALLGEMEIN.
+
+  **Dieselbe Regel gilt im Scans-Reiter, und dort war sie länger verletzt.** Der
+  Item-Scan wird oben links gewählt (Klappliste), hiess aber im Inspektor ganz
+  rechts — man suchte den Scan in der einen Spalte und benannte ihn in der
+  anderen, drei Spalten weiter. Der Name ist **Identität**: er steht jetzt direkt
+  unter der Auswahl, und rechts bleibt nur, was man am Scan *einstellt*
+  (Toleranz, Auto-Lernen, Richtung, Mitgliedschaft). Die Überschrift dort nennt
+  den Scan weiterhin — sonst hängen Regler da, von denen man nicht weiss, woran
+  sie hängen. Ein Test misst beide Hälften: der Inspektor baut kein Namensfeld
+  mehr, und das Feld links meldet auf `SC.offen`.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
   und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
   sich nicht, und ein Klappmenü versteckte vier von fünf Möglichkeiten hinter

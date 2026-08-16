@@ -5776,6 +5776,24 @@ _ohne_fokus18 = [n for n in _neuaufbau18
 check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
       not _ohne_fokus18)
 
+# --- Der Scan-Name steht an EINER Stelle, und zwar dort, wo man den Scan waehlt ---
+# Er lag im Inspektor rechts, waehrend die Auswahl links steht: man waehlte den
+# Scan in der einen Spalte und benannte ihn in der anderen. Dieselbe Doppelung
+# gab es beim Klick-Block schon einmal ("Name (Punkt #1)" oben, "Punkt" unten) -
+# zwei Felder fuer denselben Wert, und man muss raten, welches fuehrt.
+check("der Scan-Inspektor baut kein eigenes Namensfeld mehr",
+      'feld("Name"' not in _js_rumpf18("scanInspScan"))
+check("dafuer gibt es das Feld in der linken Spalte",
+      'id="scan-name"' in _html18 and 'id="scan-name-zeile"' in _html18)
+# Es muss auch WIRKEN: ohne den Melder waere es ein Feld, in das man tippt und
+# nichts passiert - schlimmer als gar keines.
+check("und es meldet auf den offenen Scan",
+      '{name: SC.offen, feld: "name", wert: e.target.value}' in _html18)
+# Die Ueberschrift rechts nennt trotzdem den Scan - sonst haengen dort Regler,
+# von denen man nicht weiss, woran sie haengen.
+check("die Inspektor-Ueberschrift nennt weiterhin den Scan",
+      'ueberschrift("SCAN' in _js_rumpf18("scanInspScan"))
+
 # --- In einer scrollenden Spalte darf kein Abschnitt nochmal scrollen ---
 # `.seite` scrollt als Ganzes. Setzt ein Abschnitt darin zusaetzlich
 # `overflow-y:auto` mit `flex:1`, rechnen beide ihre Hoehe gegeneinander aus:

@@ -793,6 +793,15 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
       <div class="abschnitt">
         <span class="ueberschrift">ITEM-SCAN</span>
         <select id="scan-offen"></select>
+        <!-- **Der Name steht da, wo der Scan gewaehlt wird.** Er lag im Inspektor
+             rechts, also drei Spalten von der Auswahl entfernt - man waehlte den
+             Scan links und benannte ihn rechts. Dieselbe Regel wie beim
+             Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
+             steht beim Ding; rechts bleibt, was man daran EINSTELLT. -->
+        <label class="feld scan-name-feld" id="scan-name-zeile" hidden>
+          <span>Name</span>
+          <input id="scan-name" type="text" autocomplete="off">
+        </label>
         <div class="reihe">
           <button class="btn still" id="scan-neu">+ neuer Scan</button>
           <span class="wachse"></span>
@@ -2605,6 +2614,11 @@ function scanWerkzeuge() {
     ? offen.slots.length + " Slots · " + offen.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
 
+  // Der Name gehoert zum offenen Scan - ohne einen gibt es nichts zu benennen,
+  // dann ist das Feld weg statt leer und wirkungslos.
+  $("scan-name-zeile").hidden = !offen;
+  if (offen && $("scan-name") !== document.activeElement) $("scan-name").value = offen.name;
+
   const ziel = $("scan-modi");
   ziel.replaceChildren();
   for (const m of SCAN_MODI) {
@@ -3399,10 +3413,14 @@ function scanInspScan(ziel) {
       onclick: () => rufScan("scan_oeffnen", {name: c.name})}, "Diesen Scan öffnen"));
   }
 
-  ziel.appendChild(ueberschrift("ITEM-SCAN",
+  // **Der Name steht links, wo der Scan gewaehlt wird — hier nur noch, was man
+  // an ihm EINSTELLT.** Zwei Felder fuer denselben Wert waren dieselbe Sache an
+  // zwei Stellen, und man musste raten, welche die fuehrende ist; genau das wurde
+  // beim Klick-Block im Sequenz-Editor schon einmal aufgeloest. Die Ueberschrift
+  // nennt den Scan trotzdem: sonst weiss man nicht, woran diese Regler haengen.
+  ziel.appendChild(ueberschrift("SCAN „" + c.name + "“",
     "Welche Slots nach welchen Items durchsucht werden. Ein Block vom Typ " +
-    "ITEM-SCAN verweist per Name hierauf.", "itemscan"));
-  ziel.appendChild(feld("Name", c.name, (v) => setze("name", v)));
+    "ITEM-SCAN verweist per Name hierauf. Umbenennen: oben links.", "itemscan"));
   ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
     {min: 0, step: 1},
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
@@ -3809,6 +3827,14 @@ function verdrahte() {
   $("scan-offen").addEventListener("change", (e) =>
     rufScan("scan_oeffnen", {name: e.target.value}));
   $("scan-neu").addEventListener("click", () => rufScan("scan_neu"));
+  // Wie jedes Tipp-Feld: melden beim VERLASSEN, nicht bei jedem Tastendruck -
+  // sonst baut die Antwort die Ansicht neu, waehrend man noch tippt.
+  $("scan-name").addEventListener("change", (e) => {
+    if (SC && SC.offen) rufScan("scan_setzen",
+                                {name: SC.offen, feld: "name", wert: e.target.value});
+  });
+  $("scan-name").addEventListener("keydown",
+    (e) => { if (e.key === "Enter") e.target.blur(); });
   $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
   $("scan-vollbild").addEventListener("click", () => rufScan("scan_bereich_setzen"));
   $("scan-aufziehen").addEventListener("click",
