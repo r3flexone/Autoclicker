@@ -6617,6 +6617,42 @@ else:
         _ohne = _imgm.match_template_in_image(_slotbild((90, 40, 120), 1), "ohne.png", 0.8)
         check("ohne Maske stoert der fremde Hintergrund sehr wohl",
               _ohne[1] < _fremd[1])
+
+        # --- Der Groessen-Konflikt wird EINMAL gemeldet, nicht pro Item ---
+        # Wer zwei Inventare im Bestand hat, hat zwei Slot-Groessen; die
+        # Erkennung prueft die Items des einen auch gegen die Slots des anderen
+        # (genau dafuer ist "erkannt, aber nicht in diesem Scan" da). Pro Item
+        # gewarnt sind das zwei Dutzend gleichlautende Zeilen - und damit ist die
+        # Sperre so gut wie keine.
+        import logging as _logm
+        _gesehen_m = []
+
+        class _Fangm(_logm.Handler):
+            def emit(self, satz):
+                _gesehen_m.append(satz.getMessage())
+
+        _fangm = _Fangm()
+        _imgm.logger.addHandler(_fangm)
+        _imgm._gemeldete_groessen.clear()
+        try:
+            _andersm = _PILm.new("RGB", (40, 37), _HG_M)      # 3 px flacher
+            for _i_m in range(3):
+                _slotbild(_HG_M, 10 + _i_m).save(
+                    _osm.path.join(_dirm, f"fremd{_i_m}.png"))
+            _imgm._template_cache.clear()
+            for _i_m in range(3):
+                _imgm.match_template_in_image(_andersm, f"fremd{_i_m}.png", 0.8)
+        finally:
+            _imgm.logger.removeHandler(_fangm)
+        _konflikt_m = [t for t in _gesehen_m if "passt nicht zur Scan-Region" in t]
+        check(f"drei Templates derselben Groesse ergeben EINE Meldung "
+              f"({len(_konflikt_m)})", len(_konflikt_m) == 1)
+        # Und sie nennt beide Ursachen: ein Item aus einem anderen Inventar ist
+        # kein Grund, ein tadelloses Template neu aufzunehmen.
+        check("die Meldung nennt beide Ursachen",
+              _konflikt_m and "anderen Inventar" in _konflikt_m[0]
+              and "Slot-Region geändert" in _konflikt_m[0])
+        _imgm._gemeldete_groessen.clear()
     finally:
         _imgm.TEMPLATES_DIR = _altm
         _imgm._template_cache.clear()

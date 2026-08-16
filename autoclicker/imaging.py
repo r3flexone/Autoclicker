@@ -185,9 +185,11 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
 _template_cache: dict = {}
 _TEMPLATE_CACHE_MAX = 256
 
-# Schon gemeldete Groessen-Konflikte (Template != Slot). Einmal pro Template und
-# Groesse warnen, nicht bei jedem Scan - sonst ist die Konsole nach einer Minute voll
-# und man liest die Meldung nicht mehr.
+# Schon gemeldete Groessen-Konflikte. Der Schluessel ist die GROESSENPAARUNG
+# (Template gegen Slot), nicht das einzelne Template - sonst steht die Meldung
+# einmal pro Item da, und das sind bei zwei Inventaren im Bestand zwei Dutzend
+# Zeilen mit derselben Aussage. Genau der Fall, gegen den die Sperre gedacht war:
+# eine Konsole voll gleichlautender Warnungen liest niemand mehr.
 _gemeldete_groessen: set = set()
 
 
@@ -380,15 +382,23 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
         else:
-            # Bei sehr niedrigen Werten: Grössen-Mismatch als mögliche Ursache loggen
+            # Bei sehr niedrigen Werten: Grössen-Mismatch als mögliche Ursache loggen.
+            # **Zwei Ursachen, und nur eine ist ein Fehler.** Entweder gehört das
+            # Item zu einem anderen Inventar (dessen Slots eine andere Grösse haben)
+            # — dann ist der Fehlschlag genau richtig, und ein neu aufgenommenes
+            # Template würde nichts verbessern. Oder die Slot-Region hat sich
+            # wirklich verschoben. Die Meldung nannte nur die zweite und schickte
+            # den Leser damit auf die falsche Fährte.
             if max_val < 0.3 and (tw != iw or th != ih):
-                schluessel = (template_name, tw, th, iw, ih)
+                schluessel = (tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
                     _gemeldete_groessen.add(schluessel)
                     logger.warning(
                         f"Template '{template_name}' passt nicht zur Scan-Region: "
                         f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
-                        "Slot-Region geändert? Template neu aufnehmen."
+                        "Gehört das Item zu einem anderen Inventar, ist das in Ordnung; "
+                        "sonst hat sich die Slot-Region geändert (Template neu aufnehmen). "
+                        "Weitere Templates dieser Grössenpaarung werden nicht mehr gemeldet."
                     )
             return (False, max_val, None)
 
