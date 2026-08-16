@@ -84,7 +84,7 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
             state.global_items[new_name] = item
 
         # Auch in allen Scan-Konfigurationen aktualisieren
-        updated_scans, failed_scans = update_item_in_scans(old_name, new_name, item.template)
+        updated_scans, failed_scans = update_item_in_scans(old_name, new_name)
         if updated_scans > 0:
             print(f"  + {updated_scans} Scan-Konfiguration(en) aktualisiert")
         if failed_scans > 0:
@@ -127,14 +127,14 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) ->
         del state.global_items[old_name]
         state.global_items[new_name] = item
 
-    update_item_in_scans(old_name, new_name, item.template)
+    update_item_in_scans(old_name, new_name)
     return True
 
 
 def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> int:
     """Benennt die (name, template)-Items per LLM aus ihren gespeicherten Templates.
 
-    Blockierend (LLM-Antworten dauern) — daher NUR außerhalb eines laufenden
+    Blockierend (LLM-Antworten dauern) — daher NUR ausserhalb eines laufenden
     Scans aufrufen (Editor/Setup). Speichert NICHT selbst; der Aufrufer macht
     save_global_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
     umbenannter Items zurück.

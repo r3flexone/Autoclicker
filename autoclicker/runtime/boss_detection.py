@@ -23,6 +23,7 @@ from ..models import (
     BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
+from ..session_log import log_event
 from ..utils import col, err, dbg, warn, wait_while_paused
 from ..winapi import check_failsafe
 from .actions import safe_click, safe_key, _step_status, is_verbose_debug
@@ -374,6 +375,11 @@ def _execute_detection_action(state: AutoClickerState, *, subject: str, action: 
     "Icon 'Mission'"), `label` das Tag für safe_click/safe_key. Gibt False zurück
     wenn die Sequenz abgebrochen werden soll (skip_cycle/restart/Stop).
     """
+    # Eine Zeile pro Erkennung — die Klick-Eintraege darunter sagen nur, WO geklickt
+    # wurde, nicht WESHALB. Boss- und Icon-Scan laufen beide hier durch, also steht
+    # die Zeile genau einmal statt an jeder Fundstelle.
+    log_event(state, "detected", detail=subject, x=x, y=y,
+              extra=f"aktion={action}")
     if delay > 0:
         if debug:
             print(dbg(f"{subject}: Aktion-Delay {delay}s"))

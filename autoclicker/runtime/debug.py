@@ -29,7 +29,7 @@ Kopfzeile nicht schon gesagt hat.
                            erkannt wird.
 
 Zum manuellen Modus: der Tastendruck wird im WORKER-Thread gelesen. Ist gleichzeitig ein
-Editor offen, lesen zwei Threads von der Konsole - dann den Editor schließen. Die
+Editor offen, lesen zwei Threads von der Konsole - dann den Editor schliessen. Die
 Hotkey-Loop im Main-Thread stört nicht, die liest kein stdin.
 """
 

@@ -9,10 +9,14 @@ _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM und _COLORS_ENABLED.
 import ctypes
 import colorsys
 import os
+import re
 
 # =============================================================================
 # ANSI-FARBCODES
 # =============================================================================
+
+# Farb-/Formatsequenzen belegen keine Spalte — beim Messen der Zeilenbreite raus.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 # Optimistisch starten - wird nach _detect_ansi_support()/_is_pycharm() korrekt gesetzt
 _COLORS_ENABLED = True
@@ -91,7 +95,7 @@ def _color_name(r: int, g: int, b: int) -> str:
             return "Dunkelgrau"
         if mx < 200:
             return "Grau"
-        return "Weiß"
+        return "Weiss"
     hue = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)[0] * 360
     dark = mx < 128
     if hue < 15 or hue >= 345:
@@ -234,9 +238,48 @@ def coord_context(x: int, y: int) -> str:
     return f"({x}, {y}) {hint(f'= {pos_str} ({pct_x}%, {pct_y}%)')}"
 
 
+# Sichtbare Länge der zuletzt geschriebenen Status-Zeile. Feste 80 Leerzeichen
+# reichten nicht: eine längere Zeile (langer Punkt-Name + Koordinaten + Zähler) blieb
+# hinten stehen und mischte sich unter die nächste. Reiner int, von Worker- und
+# Main-Thread beschrieben — die Zuweisung ist atomar, und ein Wettlauf kostet
+# schlimmstenfalls ein paar Leerzeichen Breite, nie Korrektheit.
+_letzte_status_laenge = 0
+
+
+def _sichtbare_laenge(text: str) -> int:
+    """Länge ohne ANSI-Sequenzen — die belegen keine Spalte."""
+    return len(_ANSI_RE.sub("", text))
+
+
+def _leer_und(text: str) -> str:
+    """Baut 'Zeile löschen + text' als EINEN String."""
+    return "\r" + " " * max(_letzte_status_laenge, 80) + "\r" + text
+
+
 def clear_line() -> None:
     """Löscht die aktuelle Konsolenzeile."""
-    print("\r" + " " * 80 + "\r", end="", flush=True)
+    global _letzte_status_laenge
+    print(_leer_und(""), end="", flush=True)
+    _letzte_status_laenge = 0
+
+
+def status_line(text: str) -> None:
+    """Schreibt eine selbstüberschreibende Status-Zeile in EINEM Schreibvorgang.
+
+    `clear_line()` und der folgende `print()` waren zwei getrennte, je einzeln
+    geflushte Schreibvorgänge. Ein echtes Terminal fasst das zusammen; eine
+    IDE-Konsole (PyCharm-Run-Fenster, `_REAL_CONSOLE is False`) verarbeitet jeden
+    Flush als eigenen Block und kann die Zeile dazwischen festschreiben — dann bleibt
+    die alte Status-Zeile als eigene Zeile stehen, statt überschrieben zu werden.
+    Zusammen geschrieben ist das `\\r` untrennbar vom Text, der es benutzt.
+
+    Fällt im Text ein `\\n` vor (Meldung, die die Status-Zeile bewusst abschliesst),
+    zählt für die nächste Breite nur der Teil DAHINTER — davor steht nichts mehr,
+    was zu überschreiben wäre.
+    """
+    global _letzte_status_laenge
+    print(_leer_und(text), end="", flush=True)
+    _letzte_status_laenge = _sichtbare_laenge(text.rsplit("\n", 1)[-1])
 
 
 def set_console_title(text: str) -> None:

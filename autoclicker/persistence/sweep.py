@@ -21,7 +21,8 @@ schrumpfen.
 Zwei Regeln fuer den Start-Durchgang:
 1. **Still, wenn nichts zu tun ist.** Der Normalfall ist "alles aktuell" - dann kein Wort.
 2. **Nie Daten verlieren.** Vor der ersten Aenderung an einer Datei entsteht eine
-   .bak-Kopie, und laesst sich eine Datei nicht laden, bleibt sie unangetastet.
+   .bak-Kopie unter `backups/` (Struktur gespiegelt), und laesst sich eine Datei nicht
+   laden, bleibt sie unangetastet.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from .migration import (
 from ..utils import atomic_write, compact_json
 from . import serialization as ser
 from .paths import (
-    BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEMS_FILE, ITEM_PRESETS_DIR,
+    BACKUPS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEMS_FILE, ITEM_PRESETS_DIR,
     ITEM_SCANS_DIR, SLOTS_FILE, SLOT_PRESETS_DIR,
 )
 
@@ -223,11 +224,56 @@ def _punkte_kontext() -> list:
     return data if isinstance(data, list) else []
 
 
+def _zahlen_normalisieren(x):
+    """int und float derselben Zahl angleichen - JSON kennt nur EINEN Zahlentyp.
+
+    `600` und `600.0` sind dieselbe Zahl; dass Python daraus zwei Typen macht, ist ein
+    Artefakt und kein Unterschied im Dateiformat. Ohne das galt eine von Hand auf `600`
+    getippte Wartezeit als "aufzuraeumen", weil der Loader daraus `600.0` macht — der
+    Durchgang schrieb die Datei um, legte ein .bak an und meldete eine Migration, die
+    inhaltlich nichts tat.
+
+    bool bleibt bool: `True` darf nicht als `1.0` durchgehen, sonst waere ein
+    umgekipptes Flag unsichtbar.
+    """
+    if isinstance(x, bool):
+        return x
+    if isinstance(x, (int, float)):
+        return float(x)
+    if isinstance(x, dict):
+        return {k: _zahlen_normalisieren(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_zahlen_normalisieren(v) for v in x]
+    return x
+
+
 def _gleich(a, b) -> bool:
-    """Inhaltsgleich? Normalisierter JSON-Text, damit Schluesselreihenfolge und
-    Einrueckung nicht als Aenderung durchgehen."""
-    return (json.dumps(a, sort_keys=True, ensure_ascii=False)
-            == json.dumps(b, sort_keys=True, ensure_ascii=False))
+    """Inhaltsgleich? Normalisierter JSON-Text, damit Schluesselreihenfolge,
+    Einrueckung und der Python-Zahlentyp nicht als Aenderung durchgehen."""
+    return (json.dumps(_zahlen_normalisieren(a), sort_keys=True, ensure_ascii=False)
+            == json.dumps(_zahlen_normalisieren(b), sort_keys=True, ensure_ascii=False))
+
+
+def sicherungspfad(pfad: Path) -> Path:
+    """Wohin die .bak-Kopie von `pfad` gehoert: unter BACKUPS_DIR, Struktur gespiegelt.
+
+    `sequences/all_dayli.json` -> `backups/sequences/all_dayli.json.bak`
+
+    Die Unterordner werden mitgenommen, weil sonst `item_scans/foo.json` und
+    `boss_scans/foo.json` dieselbe Sicherung ueberschrieben - gleicher Dateiname, und
+    die zweite Datei haette keine mehr.
+
+    Absolute Pfade werden relativ zum Arbeitsverzeichnis gelegt (die Pfad-Konstanten sind
+    CWD-relativ). Liegt eine Datei ausserhalb, bleibt nur ihr Name uebrig - ohne das
+    entstuende unter backups/ eine Kopie des ganzen Laufwerkspfads.
+    """
+    p = Path(pfad)
+    if p.is_absolute():
+        try:
+            p = p.relative_to(Path.cwd())
+        except ValueError:
+            p = Path(p.name)
+    return Path(BACKUPS_DIR) / p.with_suffix(p.suffix + ".bak")
 
 
 def _schreibe(pfad: Path, data) -> None:
@@ -236,9 +282,15 @@ def _schreibe(pfad: Path, data) -> None:
     compact_json + atomic_write, damit die Datei nach dem Start-Durchgang genauso aussieht
     wie nach einem normalen Speichern. Sonst wechselte die Formatierung bei jedem Save
     hin und her.
+
+    Die Sicherung liegt unter `backups/` statt neben dem Original: dort stoert sie den
+    Blick auf die eigentlichen Daten nicht, und ein `*.json`-Glob ueber `sequences/`
+    kann sie gar nicht erst erwischen. Angelegt wird der Ordner erst hier - gab es nie
+    etwas zu sichern, entsteht er auch nicht.
     """
-    backup = pfad.with_suffix(pfad.suffix + ".bak")
+    backup = sicherungspfad(pfad)
     if not backup.exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_text(pfad.read_text(encoding="utf-8"), encoding="utf-8")
     atomic_write(pfad, compact_json(data))
 
@@ -341,7 +393,7 @@ def sweep_beim_start() -> SweepErgebnis:
             print(f"            {pfad.name}")
             for m in meldungen:
                 print(f"              - {m}")
-        print(f"            {hint('Sicherungen liegen als *.bak daneben.')}")
+        print(f"            {hint(f'Sicherungen liegen unter {BACKUPS_DIR}/.')}")
 
     for pfad in ergebnis.uebersprungen:
         print(warn(f"[MIGRATION] {pfad.name} nicht lesbar - bleibt unveraendert."))

@@ -5,7 +5,7 @@ Geändert oder gespeichert wird dabei nichts - siehe _report_point_mismatches.
 """
 
 from ...models import Sequence, AutoClickerState, ELSE_CLICK
-from ...persistence import list_available_sequences, load_sequence_file
+from ...persistence import list_available_sequences, load_sequence_file, punkte_nachladen
 from ...utils import col, hint, info, interactive_select, warn
 
 
@@ -20,10 +20,15 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
     with state.lock:
         active_name = state.active_sequence.name if state.active_sequence else None
+    # Genau hier landet, wer im Sequenz-Studio gespeichert hat — die Schlussmeldung
+    # dort schickt einen mit CTRL+ALT+L hierher. Dann liegen die neuen Punkte auf
+    # Platte und nicht im Speicher, und ohne diese Zeile laedt man die frische
+    # Sequenz gegen den alten Punkte-Stand.
+    punkte = punkte_nachladen(state)
     loaded_sequences = []  # (seq, filepath) Paare
     menu_options = []
     for name, path in sequences:
-        seq = load_sequence_file(path, list(state.points))
+        seq = load_sequence_file(path, punkte)
         if seq:
             loaded_sequences.append((seq, path))
             active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
@@ -57,7 +62,7 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
     1. Für "der Punkt ist die Wahrheit" gibt es die Referenz (`point_id`), die zur Laufzeit
        greift und nichts auf Platte anfasst. Zwei Mechanismen für dieselbe Aufgabe, einer
        davon still und schreibend - das war die Altlast.
-    2. Der Name taugt nicht als Schlüssel: aufgenommene Punkte heißen per Default `P<id>`.
+    2. Der Name taugt nicht als Schlüssel: aufgenommene Punkte heissen per Default `P<id>`.
        Eine Sequenz von einem anderen Rechner bringt also Schritte namens "P3" mit, und der
        lokale "P3" liegt garantiert woanders. Der Remap hat solche Schritte stillschweigend
        verschoben und gespeichert.

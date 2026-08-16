@@ -43,10 +43,33 @@ ELSE_CLICK = ACTION_CLICK
 ELSE_KEY = ACTION_KEY
 VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
+# Was eine Aktion tut, als Satzteil. Steht hier und nicht bei den Anzeigen, weil
+# es zwei davon gibt, die es brauchen und sich nicht kennen dürfen: die Karte im
+# Sequenz-Studio (eigener Prozess, sieht `runtime/` nicht) und der Laufstatus,
+# den die Laufzeit schreibt. Zwei Übersetzungstabellen für dieselben fünf Werte
+# wären zwei Stellen, an denen ein neuer Aktionstyp vergessen werden kann.
+ACTION_TEXT = {
+    ACTION_CLICK: "Punkt klicken",
+    ACTION_KEY: "Taste drücken",
+    ACTION_SKIP: "Schritt überspringen",
+    ACTION_SKIP_CYCLE: "Zyklus abbrechen",
+    ACTION_RESTART: "Sequenz neu starten",
+    ACTION_ITEM_SCAN: "Item-Scan ausführen",
+}
+
 # pixel_timeout_action (Config)
 TIMEOUT_SKIP_CYCLE = "skip_cycle"
 TIMEOUT_RESTART = "restart"
 TIMEOUT_STOP = "stop"
+
+# Was die Timeout-Aktion tut, als Satzteil — aus demselben Grund hier wie
+# ACTION_TEXT: die Laufzeit schreibt sie in den Laufstatus, das Studio zeigt sie
+# im Inspektor an, und die beiden duerfen sich nicht kennen.
+TIMEOUT_TEXT = {
+    TIMEOUT_SKIP_CYCLE: "Zyklus abbrechen, nächster Zyklus",
+    TIMEOUT_RESTART: "Sequenz neu starten",
+    TIMEOUT_STOP: "Sequenz stoppen",
+}
 
 # consecutive_timeout_action (Config)
 CONSEC_STOP = "stop"
@@ -177,10 +200,21 @@ class SequenceStep:
     # Ein Schritt, der irgendwohin zeigt, MUSS eine point_id haben — die Migration legt
     # notfalls einen Punkt an, damit das ausnahmslos gilt. `None` bleibt genau den
     # Schritten, die gar keine Stelle haben: Tastendruck, Wait-only, Scans, Screenshot
-    # und der Blanko-Block des Node-Editors.
+    # und der Blanko-Block des Sequenz-Studios.
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
+    # Optional: Nachprüfung NACH der Aktion — "hat der Klick gewirkt?".
+    #
+    # `wait_condition` fragt vor dem Schritt, ob er dran ist; hier wird danach gefragt,
+    # ob er etwas bewirkt hat. Bis dahin war jeder Klick ein Schuss ins Dunkle: geht er
+    # ins Leere (Lag, Fenster nicht vorn, Popup davor), lief die Sequenz munter weiter
+    # und alles Folgende traf daneben.
+    #
+    # Dieselbe WaitCondition wie oben — die kann bereits alles, was gebraucht wird
+    # (Punkt-Referenz, Farbe da/weg). `verify_retries` in der Config sagt, wie oft die
+    # Aktion wiederholt wird, bevor `else_config` greift.
+    verify_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
     item_scan: Optional[str] = None      # Name des Item-Scans
     item_scan_mode: str = "all"          # "all" = bestes pro Kategorie, "best" = nur 1 Item total
@@ -217,7 +251,7 @@ class SequenceStep:
     unresolved: bool = False
 
     def __str__(self) -> str:
-        else_str = self._else_str()
+        else_str = self._verify_str() + self._else_str()
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
@@ -292,6 +326,18 @@ class SequenceStep:
             return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
         return art
 
+    def _verify_str(self) -> str:
+        """Was NACH der Aktion geprüft wird — leer, wenn nichts geprüft wird.
+
+        Steht vor dem else-Teil: erst was nachgeprüft wird, dann was passiert, wenn
+        die Prüfung scheitert. In der Reihenfolge liest man es auch.
+        """
+        vc = self.verify_condition
+        if not vc:
+            return ""
+        zustand = "WEG" if vc.until_gone else "DA"
+        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {zustand}"
+
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""
         ec = self.else_config
@@ -323,6 +369,52 @@ class SequenceStep:
         return self.delay_before
 
 
+# Block-Typ eines Schritts. Ein `SequenceStep` ist polymorph — welche Art er ist,
+# steht in den gesetzten Feldern. Die Klassifikation liegt hier und nicht in der
+# Studio-Ansicht, weil zwei Stellen sie brauchen, die sich nicht kennen dürfen:
+# das Sequenz-Studio (eigener Prozess) faerbt danach seine Karten, und die
+# Laufzeit schreibt sie in den Laufstatus, damit die Live-Ansicht den laufenden
+# Block genauso faerben kann. Beschriftung und Farbe bleiben Anzeige und stehen
+# weiterhin bei der Ansicht (`BLOCK_LABELS`, `BLOCK_COLORS`).
+BLOCK_SCREENSHOT = "screenshot"
+BLOCK_BOSS_WATCHER = "boss_watcher"
+BLOCK_BOSS_SCAN = "boss_scan"
+BLOCK_ITEM_SCAN = "item_scan"
+BLOCK_ICON_SCAN = "icon_scan"
+BLOCK_KEY = "key"
+BLOCK_WAIT = "wait"              # wait_only ohne Klick
+BLOCK_WAIT_CLICK = "wait_click"  # wait_condition + Klick
+BLOCK_CLICK = "click"            # einfacher Klick (evtl. mit Zeit-Delay)
+
+
+def block_type(step: "SequenceStep") -> str:
+    """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
+
+    Die String-Diskriminatoren werden mit `is not None` geprüft, nicht per
+    Truthiness: ein frisch im Editor gewählter Scan-/Tasten-Block hat zunächst
+    einen leeren Namen ("") und soll trotzdem als sein gewählter Typ angezeigt
+    werden, bis der User den Namen einträgt. Geladene Sequenzen haben hier nie
+    "" (nur None oder echte Namen), darum bleibt das Verhalten identisch.
+    """
+    if step.screenshot_only:
+        return BLOCK_SCREENSHOT
+    if step.boss_watcher is not None:
+        return BLOCK_BOSS_WATCHER
+    if step.boss_scan is not None:
+        return BLOCK_BOSS_SCAN
+    if step.icon_scan is not None:
+        return BLOCK_ICON_SCAN
+    if step.item_scan is not None:
+        return BLOCK_ITEM_SCAN
+    if step.key_press is not None:
+        return BLOCK_KEY
+    if step.wait_only:
+        return BLOCK_WAIT
+    if step.wait_condition is not None:
+        return BLOCK_WAIT_CLICK
+    return BLOCK_CLICK
+
+
 @dataclass
 class LoopPhase:
     """Eine Loop-Phase mit eigenen Schritten und Wiederholungen."""
@@ -348,7 +440,7 @@ class Sequence:
     end_steps: list[SequenceStep] = field(default_factory=list)    # Einmalig nach allen Zyklen
     total_cycles: int = 1  # 0 = unendlich, >0 = wie oft alle Loops durchlaufen werden
     # Freitext-Beschreibung (was macht die Sequenz?) — wird beim Laden/Listen und
-    # beim Export angezeigt, damit man/Empfänger weiß worum es geht. Reines
+    # beim Export angezeigt, damit man/Empfänger weiss worum es geht. Reines
     # Hilfsdatum, beeinflusst die Ausführung NICHT.
     description: str = ""
 
@@ -389,7 +481,7 @@ class ItemProfile:
     # wird von `resolve_scan_references()` gefüllt.
     #
     # Der Editor fragt ohnehin nach einer Punkt-ID — die wurde bisher nur weggeworfen
-    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben ließ
+    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben liess
     # den Bestätigungsklick stehen, und die Kalibrierung brauchte einen Sonderfall.
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
@@ -452,6 +544,15 @@ class ItemScanConfig:
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
     learn_unknown: bool = False
+    # Slots von hinten nach vorn abarbeiten (4, 3, 2, 1). Sinnvoll, wenn das
+    # Spiel den Bestand nach vorn aufrückt: dann verschiebt ein Klick nicht die
+    # noch nicht besuchten Slots.
+    #
+    # **Die Richtung gehört zum Inventar, nicht zum Programm.** Sie stand als
+    # `config.scan_reverse` in der Config und galt damit für alle Scans — wer
+    # ein Spiel von hinten leert und ein zweites von vorn, hatte die Wahl
+    # zwischen zwei falschen Läufen.
+    reverse: bool = False
 
     def __post_init__(self) -> None:
         self.sync_names()
@@ -614,7 +715,29 @@ class IconScanConfig:
 REC_CLICK = "click"         # Linksklick an (x, y)
 REC_KEY = "key"             # Tastendruck (key)
 REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch)
-REC_WAIT_COLOR = "wait"     # Warte-Marker: warten bis die Farbe an (x, y) da ist
+# Warte-Marker: "ab hier warte ich". Hat BEWUSST keine eigene Stelle — beim Drücken
+# parkt die Maus irgendwo, und diese Stelle waere Zufall. Er haengt sich an den
+# naechsten Klick und laesst DEN auf seine eigene Farbe warten.
+REC_WAIT_COLOR = "wait"
+# Screenshot-Marker: "hier einen Screenshot machen". Anders als der Warte-Marker
+# braucht er KEINE Folge-Aktion — er wird selbst zu einem eigenstaendigen
+# Screenshot-Step an genau dieser Stelle der Zeitachse. `region` ist None
+# (Vollbild) oder das aus zwei Ecken zusammengesetzte Rechteck.
+REC_SCREENSHOT = "screenshot"
+# Bereichs-Ecke: zwei davon ergeben EIN Rechteck. Ein Rechteck aufzuziehen braucht
+# zwei Stellen, und mehr als einen Tastendruck gibt es waehrend der Aufnahme nicht —
+# also zweimal derselbe Druck an zwei Mauspositionen. `bereiche_zusammenfassen()`
+# faltet die Paare zu REC_SCREENSHOT-Ereignissen; danach existiert diese Art nicht mehr.
+REC_REGION = "region"
+# Beobachten ohne Klick: "warte, bis die Farbe UNTER der Maus da ist" — und dann NICHT
+# hinklicken. Anders als beim Warte-Marker ist die Mausposition hier bewusst gewaehlt
+# (man legt die Maus auf das Ding, das man beobachtet), deshalb bekommt er einen Punkt.
+# Entspricht `wait pixel` im Sequenz-Editor.
+REC_WATCH = "watch"
+# Phasengrenze: "ab hier beginnt die naechste Phase". Erster Marker trennt INIT von
+# LOOP, zweiter LOOP von END. Er wird selbst kein Schritt — er schneidet die fertige
+# Schrittliste. Ohne ihn landet alles wie bisher in einer einzigen Loop-Phase.
+REC_PHASE = "phase"
 
 
 @dataclass
@@ -632,6 +755,8 @@ class RecordEvent:
     color: Optional[tuple[int, int, int]] = None
     key: Optional[str] = None                   # nur REC_KEY
     scroll: int = 0                             # nur REC_SCROLL, Rasterstufen
+    # nur REC_SCREENSHOT: (x1, y1, x2, y2) oder None = Vollbild
+    region: Optional[tuple[int, int, int, int]] = None
 
     def __str__(self) -> str:
         if self.kind == REC_KEY:
@@ -640,7 +765,18 @@ class RecordEvent:
             richtung = "hoch" if self.scroll > 0 else "runter"
             return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
-            return f"Warte auf Farbe bei ({self.x}, {self.y})"
+            return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
+        if self.kind == REC_SCREENSHOT:
+            if self.region:
+                r = self.region
+                return f"Screenshot ({r[0]},{r[1]})→({r[2]},{r[3]})"
+            return "Screenshot (Vollbild)"
+        if self.kind == REC_REGION:
+            return f"Bereichs-Ecke ({self.x}, {self.y})"
+        if self.kind == REC_WATCH:
+            return f"Beobachte ({self.x}, {self.y}) ohne Klick"
+        if self.kind == REC_PHASE:
+            return "Phasengrenze (ab hier die nächste Phase)"
         return f"Klick ({self.x}, {self.y})"
 
 

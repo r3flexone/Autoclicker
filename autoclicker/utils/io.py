@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from .console import (
     _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM,
-    col, clear_line,
+    col, status_line,
 )
 
 if TYPE_CHECKING:
@@ -245,6 +245,67 @@ def read_key() -> str:
     return _read_key_polling()
 
 
+def taste_neu_gedrueckt(zustand: int, war_unten: bool) -> bool:
+    """Bedeutet dieser GetAsyncKeyState-Wert einen NEUEN Tastendruck?
+
+    Zwei Wege, denselben Druck zu bemerken, und beide werden gebraucht:
+
+    - `0x8000` ("haelt gerade") plus Flanke. Der offensichtliche Weg, aber er
+      trifft nur, wenn die Taste ausgerechnet waehrend einer Abfrage unten ist.
+      Ein Mensch haelt sie ~100 ms, das klappt bei 50 Hz.
+    - `0x0001` ("seit der letzten Abfrage gedrueckt"). Faengt auch, was zwischen
+      zwei Abfragen anfaengt und aufhoert — ein per `SendInput` erzeugter Druck
+      dauert Mikrosekunden und faellt sonst durch. Das Bit wird beim Lesen
+      geleert, deshalb darf der Wert nur EINMAL pro Runde geholt werden.
+
+    Eigene Funktion, damit die Regel pruefbar ist: ein Test, der echte
+    Tastendruecke ins System schickt, tippt in das Fenster, das gerade vorn ist.
+    """
+    return (bool(zustand & 0x8000) and not war_unten) or bool(zustand & 0x0001)
+
+
+def warte_auf_taste(tasten: tuple = ("enter", "escape"),
+                    timeout: float = 60.0) -> "str | None":
+    """Wartet global auf eine der Tasten — ohne Konsole, ohne Fenster-Fokus.
+
+    Fuer Fenster-Prozesse gedacht (Sequenz-Studio): dort gibt es keine Konsole,
+    in die man tippen koennte, und der Nutzer steht mit der Maus irgendwo auf dem
+    Bildschirm. `read_key()` taugt dafuer nicht — es liest entweder ueber msvcrt
+    aus der Konsole oder wartet ohne Zeitgrenze, und ein Fenster, das ewig auf
+    eine Taste wartet, sieht aus wie ein haengendes Fenster.
+
+    Returns:
+        Name der gedrueckten Taste, oder None bei Zeitablauf.
+    """
+    namen = {vk: name for vk, name in _VK_MAP.items() if name in tasten}
+    if not namen:
+        return None
+    user32 = ctypes.windll.user32
+    ende = time.time() + timeout
+
+    # Entprellen: erst warten, bis keine der Tasten mehr gehalten wird. Zwei
+    # Aufnahmen hintereinander (Ecke 1, Ecke 2) haengen sonst am selben ENTER —
+    # wer die Taste auch nur kurz haelt, hat beide Ecken an derselben Stelle,
+    # bevor er die Maus bewegen konnte.
+    while time.time() < ende and any(
+            user32.GetAsyncKeyState(vk) & 0x8000 for vk in namen):
+        time.sleep(0.02)
+
+    # Erster Durchgang: Ausgangsbild fuer die Flanke UND Bit 0 leeren, damit ein
+    # Tastendruck von vorhin nicht sofort als Antwort durchgeht.
+    vorher = {vk: bool(user32.GetAsyncKeyState(vk) & 0x8000) for vk in namen}
+    while time.time() < ende:
+        for vk, name in namen.items():
+            # Genau EIN Aufruf pro Taste und Runde: das Bit 0x0001 wird beim Lesen
+            # geleert, ein zweiter Aufruf saehe es nicht mehr.
+            zustand = user32.GetAsyncKeyState(vk)
+            war, vorher[vk] = vorher[vk], bool(zustand & 0x8000)
+            if taste_neu_gedrueckt(zustand, war):
+                return name
+        time.sleep(0.02)
+    return None
+
+
 # Buchstabentasten fuer Menue-Befehle (w/a/s/c/q ...). Bewusst NICHT in _VK_MAP:
 # das gilt fuer interactive_select, wo Buchstaben nichts zu suchen haben — dort
 # navigiert man mit Pfeilen und waehlt mit Ziffern.
@@ -310,7 +371,7 @@ def _navigate_select(num_options: int, allow_cancel: bool, default: int, redraw)
     """Gemeinsame Tasten-Navigationsschleife der Pfeiltasten-Menüs.
 
     Behandelt hoch/runter/enter/escape/Ziffern einheitlich; `redraw(selected)`
-    wird nach jeder Bewegung aufgerufen, damit jeder Modus selbst weiß, wie er
+    wird nach jeder Bewegung aufgerufen, damit jeder Modus selbst weiss, wie er
     neu zeichnet (mehrzeilig vs. \\r-Einzeiler). Gibt den gewählten Index
     zurück oder -1 bei Abbruch.
     """
@@ -448,7 +509,7 @@ def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
     """Wartet solange pausiert ist. Gibt False zurück wenn gestoppt wurde."""
     pause_interval = state.config.timing_pause_interval
     while state.pause_event.is_set() and not state.stop_event.is_set():
-        clear_line()
-        print(f"{col('[PAUSE]', 'yellow')} {message} | Fortsetzen: {col('CTRL+ALT+G', 'yellow')}", end="", flush=True)
+        status_line(f"{col('[PAUSE]', 'yellow')} {message} | "
+                    f"Fortsetzen: {col('CTRL+ALT+G', 'yellow')}")
         time.sleep(pause_interval)
     return not state.stop_event.is_set()

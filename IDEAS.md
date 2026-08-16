@@ -7,25 +7,28 @@ Ist ein Eintrag gebaut, fliegt er hier raus — ein Backlog, das Erledigtes mitf
 seinen Zweck. Zuletzt entfallen, weil umgesetzt: *Profile-Export/Import* (`import_export.py`,
 inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 (`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
-*Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2).
+*Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
+und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
+`.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
+Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert).
 
 ## Bedienung
 
-### Einstellungs-Menü (Config im Programm statt im Texteditor)
-`AppConfig` hat 66 Werte. Im Programm umschaltbar sind drei: `debug_log`, `debug_detail`,
-`boss_learn_global`. Alles andere — Klick-Verzögerungen, Pixel-Toleranz, Timeout-Verhalten,
-Humanization, Fokus-Check, LLM, OCR — geht nur, indem man `config.json` im Texteditor
-aufmacht und weiß, wie das Feld heißt.
+### Sequenz-Studio: Screenshot-Vorschau in der Punkte-Palette
+Die Punkte als Marker auf einem Bildschirmfoto, statt nur als Koordinatenpaare.
 
-- **Nutzen:** Nimmt dem Programm die letzte Stelle, an der man eine Datei von Hand editieren muss. Wer die Toleranz eines Farb-Triggers nachziehen will, muss dafür nicht wissen, dass das Feld `pixel_wait_tolerance` heißt.
-- **Tradeoff:** 66 Werte sind zu viele für ein flaches Menü — es braucht die Sektionen, sonst wird es unübersichtlicher als die JSON. Und jeder neue Config-Wert muss im Menü landen, sonst entsteht wieder eine Zwei-Klassen-Config.
-- **Ansatz:** Das Gerüst liegt schon da: `_CONFIG_SECTIONS` in `config.py` gruppiert alle Felder nach Thema, die Kommentare an den Dataclass-Feldern sind brauchbare Erklärtexte. Das Menü daraus **generieren** statt handschreiben — dann kann kein Feld vergessen werden. Bool umschalten, Zahlen mit Bereichsangabe, feste Auswahl (`pixel_timeout_action`) als Liste; Validierung übernimmt `AppConfig.__post_init__`, gespeichert wird sofort über `save_config`.
+- **Nutzen:** „Punkt #3" sagt einem nichts; auf dem Bild sieht man sofort, welcher Knopf
+  gemeint ist. Für das Sortieren einer aufgenommenen Sequenz ist das der Unterschied.
+- **Tradeoff:** Der Subprozess müsste einen Screenshot aufnehmen (`imaging.take_screenshot`,
+  braucht Pillow/Windows) und als Data-URL in die Seite reichen — und das Bild ist der
+  Bildschirm von *jetzt*, nicht der vom Zeitpunkt der Aufnahme. Wenn das Spiel gerade
+  nicht läuft, zeigt die Vorschau den Desktop.
 
 ## Performance
 
 ### Ein Screenshot pro Scan statt einer pro Slot
 `execute_item_scan()` macht für jeden Slot eine eigene Bildschirmaufnahme (BitBlt +
-GetDIBits). Bei 5 Slots sind das 5 Aufnahmen, wo eine über das umschließende Rechteck
+GetDIBits). Bei 5 Slots sind das 5 Aufnahmen, wo eine über das umschliessende Rechteck
 plus Zuschneiden reichen würde.
 
 - **Nutzen:** Weniger GDI-Aufrufe pro Scan-Schritt. Nebeneffekt: alle Slots stammen aus
@@ -34,11 +37,11 @@ plus Zuschneiden reichen würde.
   `scan_slot_delay` (Default 0.1 s) und jeder Slot sieht einen etwas späteren Spielstand —
   bei einem statischen Inventar egal, bei animierten Inhalten nicht. Zweitens hilft die
   Bündelung nur, wenn die Slots nah beieinander liegen: sind sie über den Bildschirm
-  verteilt, nimmt das umschließende Rechteck fast das ganze Bild auf und die Aufnahme wird
+  verteilt, nimmt das umschliessende Rechteck fast das ganze Bild auf und die Aufnahme wird
   teurer statt billiger. Es bräuchte also eine Schranke (Rechteckfläche vs. Summe der
   Slot-Flächen), und damit eine Heuristik, die man auf einem echten Windows-Setup messen
   muss — auf Linux ist das nicht prüfbar.
-- **Ansatz:** In `execute_item_scan()` einmal das umschließende Rechteck aller Slots
+- **Ansatz:** In `execute_item_scan()` einmal das umschliessende Rechteck aller Slots
   aufnehmen und pro Slot `img.crop()` statt `take_screenshot(slot.scan_region)`. Die
   Slot-Schleife mit ihren Stop-/Pause-/Skip-Prüfungen bleibt unverändert. Vorher auf
   Windows messen, ob sich der Aufwand überhaupt lohnt.
@@ -48,9 +51,16 @@ plus Zuschneiden reichen würde.
 ### Disconnect-Detection
 Pixel-Trigger oder Template-Match auf Login-Screen / Verbindungsfehler-Popup, dann Auto-Reconnect oder sauberer Stop.
 
+Ein Teil davon ist inzwischen gebaut: die **Nachprüfung** (`verify <Nr> <Punkt-Nr>` im
+Sequenz-Editor) merkt, dass ein Klick nicht gewirkt hat, wiederholt ihn und meldet es
+im Log. Ein Disconnect fällt damit als Häufung von `verify_miss` auf
+(`tools/log_report.py`), statt stundenlang unbemerkt zu bleiben. Offen bleibt das
+gezielte Erkennen *des Login-Screens* und die Reaktion darauf.
+
 - **Nutzen:** Verhindert dass der Bot stundenlang ins Leere klickt, wenn das Spiel abstürzt oder die Verbindung weg ist.
 - **Tradeoff:** Benötigt eine kalibrierte Pixel-Position/Template pro Benutzer. Auto-Reconnect ist riskant (Passwort-Eingabe o.ä.) – sicherer: nur Stop + Notify.
-- **Ansatz:** Neuer SequenceStep-Typ oder Background-Watcher (ähnlich Boss-Watcher), der periodisch prüft.
+- **Ansatz:** Ein Background-Watcher (ähnlich Boss-Watcher). Die Schwelle könnte aus
+  dem Log kommen: N `verify_miss` oder `timeout` in Folge = vermutlich Disconnect.
 
 ## Safety
 
@@ -72,7 +82,7 @@ Ping bei wichtigen Events: Boss erkannt (LLM), Inventory voll, unerwarteter Stop
 
 - **Nutzen:** Kein ständiger Blick aufs Fenster nötig. Besonders stark in Kombination mit LLM-Boss-Detection.
 - **Tradeoff:** Webhook-URL als Secret verwalten (nicht ins Repo). Netzwerk-Abhängigkeit.
-- **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in execution.py.
+- **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in `runtime/actions.py`.
 
 ## Idle-Clans-spezifisch
 

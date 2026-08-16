@@ -7,8 +7,8 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Punkte aufnehmen**: Mausposition speichern mit automatischer Benennung
 - **Sequenz-Aufnahme**: Klicks live per Maus-Hook aufnehmen (`CTRL+ALT+J`); aufgenommene Pixel-Farbe wird als Trigger-Standard übernommen
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
-- **Visueller Node-Editor**: Sequenzen als Blöcke + Verbindungen bearbeiten (`CTRL+ALT+B`, Dear PyGui)
-- **Visuelles Scan-Studio**: Slots, Items, Boss- und Icon-Scans direkt auf einem Screenshot zusammenstellen (`CTRL+ALT+V`)
+- **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
+- **Scans auf einem Screenshot**: Slots aufziehen, Hintergrundfarbe messen, Items lernen und sehen, was in welchem Slot erkannt wird — Reiter „Scans“ im Studio (`CTRL+ALT+V`)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
   - **LOOP-Phasen**: Mehrere Loops möglich, jeweils mit eigenen Wiederholungen
@@ -29,7 +29,7 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Window-Fokus-Check**: Klicks gehen nur ins Spielfenster - bei Tab-Out wird pausiert (oder gestoppt)
 - **Humanization**: Klick-Jitter, zufällige Mikro-Delays, periodische Pausen für menschlicheres Verhalten
 - **Session-Log (CSV)**: Vollständiges Log aller Klicks/Tasten/Events pro Sequenz für Auswertung
-- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Größe angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele außerhalb des Fensters liegen
+- **Import/Export**: Komplettes Setup als ZIP exportieren und auf anderen PCs importieren — Koordinaten werden automatisch an die Spielfenster-Grösse angepasst (Fallback: 2-Punkt-Remapping); nach dem Import wird gewarnt, wenn Klick-Ziele ausserhalb des Fensters liegen
 - **Preset-System**: Slots und Items als benannte Presets speichern
 - **Bedingte Logik**: ELSE-Aktionen wenn Scan/Pixel-Trigger fehlschlägt
 - **Zeitgesteuerte Loops**: Loop-Phasen nur zu bestimmter Uhrzeit ausführen (z.B. Loop 3 nur um 12:30)
@@ -87,9 +87,13 @@ Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
 
 ### Optionale Extras (OCR, visuelle Editoren)
 
-`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `dearpygui`. Alle drei
-gehören zu Features, die per Default **abgeschaltet** sind — installiere sie nur, wenn du
-sie einschaltest. **`easyocr` zieht PyTorch nach: mehrere GB Download.**
+`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `pywebview`. Alle
+drei gehören zu Features, die per Default **abgeschaltet** sind oder nur auf Zuruf
+starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
+mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet das Studio-Fenster
+(Sequenzen, Scans, Einstellungen) über WebView2, das bei Windows 10/11 in der Regel
+schon vorhanden ist. `dearpygui` steht dort nicht mehr — das eigene Scan-Fenster
+gibt es nicht mehr, seine Arbeit macht der Reiter „Scans".
 
 **Ohne GPU (CPU-only):**
 ```bash
@@ -161,6 +165,11 @@ Im Sequenz-Editor:
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
 | `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
+| `CTRL+ALT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
+| `CTRL+ALT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
+| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
+| `CTRL+ALT+SHIFT+M` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
+| `CTRL+ALT+SHIFT+P` | Aufnahme: Phasengrenze (1× = LOOP, 2× = END) |
 | `CTRL+ALT+H` | Aufnahme pausieren/fortsetzen |
 
 ### Editoren
@@ -168,9 +177,9 @@ Im Sequenz-Editor:
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
-| `CTRL+ALT+B` | Visueller Node-Editor (Sequenz als Blöcke, Dear PyGui) |
+| `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, braucht `pywebview`) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
-| `CTRL+ALT+V` | Visuelles Scan-Studio (Slots/Items/Boss/Icon auf Screenshot) |
+| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Slots + Items auf einem Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
@@ -181,7 +190,7 @@ Im Sequenz-Editor:
 | Hotkey | Funktion |
 |--------|----------|
 | `CTRL+ALT+S` | Start/Stop der aktiven Sequenz |
-| `CTRL+ALT+F` | Sanft beenden (Zyklus abschließen, dann END + Stop) |
+| `CTRL+ALT+F` | Sanft beenden (Zyklus abschliessen, dann END + Stop) |
 | `CTRL+ALT+G` | Pause/Resume |
 | `CTRL+ALT+K` | Skip (aktuelle Wartezeit überspringen) |
 | `CTRL+ALT+W` | Quick-Switch (schnell Sequenz wechseln) |
@@ -278,7 +287,7 @@ Der schnellste Weg, viele Items auf einmal anzulegen — perfekt für ein vollst
 2. `autoscan` im Item-Editor (oder Menü-Punkt 5 im Item-Scan-Menü)
 3. Einmalig konfigurieren: Kategorie, Prioritäts-Modus, Bestätigungs-Punkt, Konfidenz, Marker an/aus
 4. Programm scannt alle Slots, vergleicht gegen bestehende Items (Duplikate werden übersprungen) und legt für jeden neuen Slot ein Item mit Template + Marker-Farben an
-5. Anschließend nur noch via `rename <Nr>` umbenennen
+5. Anschliessend nur noch via `rename <Nr>` umbenennen
 
 **Modi:**
 - `autoscan` — Templates + Marker-Farben (Standard, robust)
@@ -448,7 +457,7 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `del <Nr>` | Schritt löschen |
 | `clear` | Alle Schritte löschen |
 | `show` | Aktuelle Schritte anzeigen |
-| `done` | Phase abschließen und speichern |
+| `done` | Phase abschliessen und speichern |
 | `cancel` | Editor abbrechen (ohne Speichern) |
 
 ### Verfügbare Tasten
@@ -705,13 +714,13 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
 2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Icon-Scans/Config) Ja/Nein
 3. **Referenz für die Koordinaten-Anpassung**:
-   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Größe automatisch** als Referenz genommen — kein manuelles Klicken nötig.
+   - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Grösse automatisch** als Referenz genommen — kein manuelles Klicken nötig.
    - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
 4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
 5. ZIP wird in `exports/` gespeichert
 6. Anleitung für den Empfänger wird angezeigt
 
-Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
 
 ### Import
 
@@ -720,8 +729,8 @@ Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Größe falls erkannt), al
 3. Datei aus der Liste auswählen
 4. Inhalt der ZIP wird angezeigt + Referenzpunkte des Exporters
 5. **Anpassungs-Modus wählen**:
-   - Enthält das Export-Manifest die Spielfenster-Größe **und** das Spielfenster läuft gerade:
-     - **[1] Automatisch aus Fenstergröße** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergröße berechnet, kein Klicken nötig
+   - Enthält das Export-Manifest die Spielfenster-Grösse **und** das Spielfenster läuft gerade:
+     - **[1] Automatisch aus Fenstergrösse** (empfohlen) → Skalierung wird aus Export- vs. aktueller Fenstergrösse berechnet, kein Klicken nötig
      - **[2] Manuell** (zwei Punkte klicken, gleiche Stellen wie der Exporter)
      - **[3] 1:1** (gleicher Bildschirm)
    - Sonst (kein Fenster-Rect / Fenster nicht gefunden): **[1] Remapping** (zwei Punkte manuell) oder **[2] 1:1**
@@ -754,7 +763,7 @@ So muss man Sequenzen nicht neu erstellen, sondern nur die Punkte einmal lokal a
 Während eine Sequenz läuft:
 
 - **CTRL+ALT+S** - Stoppt die Sequenz komplett
-- **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschließen, dann END-Phase + Stop)
+- **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschliessen, dann END-Phase + Stop)
 - **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten)
 - **CTRL+ALT+K** - Überspringt die aktuelle Wartezeit
 
@@ -968,7 +977,6 @@ Wird beim ersten Start automatisch erstellt:
   "pixel_max_consecutive_timeouts": 5,
   "pixel_consecutive_action": "stop",
   "pixel_show_delay": 0.3,
-  "scan_reverse": true,
   "scan_click_immediate": false,
   "scan_park_mouse": false,
   "scan_slot_delay": 0.1,
@@ -1038,6 +1046,8 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
+| `punkt_radius` | Bis zu diesem Abstand (px) gilt eine Stelle als derselbe Punkt und wird wiederverwendet, statt einen zweiten anzulegen (0 = nur exakt) |
+| `punkt_farbtoleranz` | ...aber nur, wenn auch die Farbe passt — sonst entsteht immer ein eigener Punkt |
 | `pixel_wait_tolerance` | Toleranz für Pixel-Trigger (niedriger = genauer) |
 | `pixel_wait_timeout` | Timeout in Sekunden für Farb-Trigger (Standard: 300, `0` = unendlich) |
 | `pixel_timeout_action` | **Nur Fallback** wenn kein `else` definiert: `skip_cycle` (Standard), `restart`, `stop` |
@@ -1050,7 +1060,6 @@ Wird beim ersten Start automatisch erstellt:
 
 | Option | Beschreibung |
 |--------|--------------|
-| `scan_reverse` | Slots von hinten nach vorne scannen |
 | `scan_click_immediate` | `true` = Scan→Klick pro Slot (sofort klicken), `false` = alle scannen, dann alle klicken (Standard) |
 | `scan_park_mouse` | `true` = Maus zur Bildschirmmitte parken, `[x, y]` = Maus zu bestimmter Position parken, `false` = Maus nicht bewegen (Standard) |
 | `scan_slot_delay` | Pause zwischen Slot-Scans in Sekunden (Standard: 0.1) |
@@ -1110,6 +1119,14 @@ Wird beim ersten Start automatisch erstellt:
 | `humanize_break_duration_min` | Pause-Dauer Min in Minuten |
 | `humanize_break_duration_max` | Pause-Dauer Max in Minuten (Varianz) |
 
+### Nachprüfung („hat die Aktion gewirkt?")
+
+| Option | Beschreibung |
+|--------|--------------|
+| `verify_retries` | Wie oft die Aktion wiederholt wird, wenn die Nachprüfung nicht greift (Standard: 2) |
+| `verify_timeout` | Wie lange pro Versuch auf die erwartete Farbe gewartet wird (Sekunden) |
+| `verify_interval` | Prüf-Intervall innerhalb eines Versuchs (Sekunden) |
+
 ### Session-Log
 
 | Option | Beschreibung |
@@ -1122,6 +1139,14 @@ Wird beim ersten Start automatisch erstellt:
 | Option | Beschreibung |
 |--------|--------------|
 | `timing_pause_interval` | Prüf-Intervall während Pause in Sekunden (Standard: 0.5) |
+
+### Aufnahme, Boss-Bibliothek, Marktwerte
+
+| Option | Beschreibung |
+|--------|--------------|
+| `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
+| `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
+| `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
 
 ### Debug-Einstellungen
 
@@ -1148,7 +1173,6 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
-│   ├── execution.py        # Backward-Compat-Shim → runtime/
 │   ├── utils/              # Hilfsfunktionen
 │   │   ├── console.py      # ANSI-Farben, Status-Tags
 │   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
@@ -1242,13 +1266,13 @@ main.py                      Einstiegspunkt, Event-Loop
 **Datenfluss:**
 ```
 [Hotkey] → handlers.py → editors/*.py → persistence.py (Speichern)
-                      ↘ execution.py → safe_click/safe_key → winapi.py
+                      ↘ runtime/actions.py → safe_click/safe_key → winapi.py
                                      ↘ imaging.py (Screenshots)
                                      ↘ llm_vision.py (HTTP zu Ollama/LM Studio)
                                      ↘ session_log.py (CSV-Append)
 ```
 
-**Wichtig**: Alle Klicks und Tastendrücke im Worker-Thread laufen über `safe_click(state, x, y, label)` / `safe_key(state, key, label)` (in `execution.py`). Diese Wrapper bündeln Window-Fokus-Check, Humanization (Jitter/Mikro-Delays/Breaks) und Session-Logging. Direkter Aufruf von `send_click` / `send_key` umgeht alle drei.
+**Wichtig**: Alle Klicks und Tastendrücke im Worker-Thread laufen über `safe_click(state, x, y, label)` / `safe_key(state, key, label)` (in `runtime/actions.py`). Diese Wrapper bündeln Window-Fokus-Check, Humanization (Jitter/Mikro-Delays/Breaks) und Session-Logging. Direkter Aufruf von `send_click` / `send_key` umgeht alle drei.
 
 ### Thread-Modell
 
@@ -1325,6 +1349,25 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 
 Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 
+### Symbol-Tool (`tools/symbol.py`)
+
+Schreibt das Programm-Symbol als PNG und als `.ico`.
+
+```bash
+python tools/symbol.py                      # legt symbol/ an: PNGs + autoclicker.ico
+python tools/symbol.py --ziel C:\Bilder     # woanders hin
+python tools/symbol.py --groessen 256,512   # nur diese Kantenlängen
+```
+
+**Für das Fenster brauchst du das nicht** — Titelleiste, ALT+TAB und Taskleiste
+setzt das Studio selbst. Die Dateien sind für alles, was Windows aus einer Datei
+nimmt: eine Verknüpfung auf dem Desktop (Rechtsklick → Eigenschaften → Anderes
+Symbol → `autoclicker.ico`), ein angehefteter Eintrag, ein Ordnerbild.
+
+Gezeichnet wird aus derselben Geometrie wie das Fenstersymbol
+(`autoclicker/symbol.py`) — deshalb liegt keine fertige Bilddatei im Repo, die
+beim nächsten Umzeichnen zurückbliebe. Pillow wird nicht gebraucht.
+
 ### OCR Test-Tool (`tools/test_ocr.py`)
 
 Testet OCR-Backend-Verfügbarkeit und Texterkennung ohne den Autoclicker:
@@ -1348,13 +1391,123 @@ python tools/slot_tester.py
 
 ## Changelog
 
+### Neueste Änderungen — Sequenz-Studio als Weboberfläche
+
+**Sequenz-Studio** (`CTRL+ALT+B`) hat eine neue Oberfläche: eine Webseite in einem
+eigenen Fenster (`pywebview`) statt Dear PyGui. Dieselben Dateien, dieselbe Logik —
+aber Karten statt Textzeilen, echtes Drag & Drop, und alles Wichtige eines Blocks
+steht auf einmal da.
+
+- **Board mit Karten**: pro Phase eine Spalte, pro Schritt eine Karte mit Typ-Marke,
+  Ziel, Wartezeit, Farb-Trigger und ELSE-Zeile. Ein Scan ohne Namen trägt eine Warnung,
+  bevor das Speichern ihn ablehnt
+- **Ziehen mit Einfüge-Marke**: zwischen Karten und über Phasengrenzen; ein Punkt aus
+  der Palette wird per Ziehen zum Klick-Block. Mehrfachauswahl mit STRG (Bereich mit
+  SHIFT), Tastatur: `Entf`, `STRG+D` (duplizieren), `ALT+↑/↓`, `STRG+S`
+- **Duplizieren** (Knopf neben „löschen" oder `STRG+D`): legt Kopien der gewählten
+  Blöcke direkt dahinter — mit Wartezeit, Trigger, Nachprüfung und ELSE. Die Kopie
+  zeigt auf **denselben Punkt**: ein Duplikat ist erst mal derselbe Klick, und ein
+  zweiter Punkt an derselben Stelle wäre eine Doppelung, bei der später nur die
+  Hälfte mitwandert
+- **Eigenschaften vollständig**: Typ, Name, Wartezeit/Zufallsbereich, Stelle, Farb-Trigger
+  (inkl. „nur prüfen"), **Nachprüfung**, ELSE, Scan-Name/-Modus, Screenshot-Bereich —
+  die Nachprüfung war in der alten Ansicht gar nicht erreichbar
+- **Stellen sind Punkte, keine Koordinaten**: der ELSE-Klick und der Prüf-Pixel zeigen
+  jetzt auf einen Punkt. Vorher liessen sie sich als Zahlen eintippen, und weil die
+  Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
+- **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
+  nicht erst nach dem nächsten Öffnen
+- **Reiter „Scans"**: ein aus der Liste gewähltes **Fenster wird direkt abgebildet** — es darf also verdeckt sein, auch vom Studio selbst. Klappt das bei einem Spiel nicht (manche zeichnen sich nicht auf Zuruf), sagt es das und nimmt den Bildschirm.
+- **Reiter „Scans"**: **nicht immer Vollbild** — wer dasselbe Spiel mehrmals offen hat, wählt das Fenster aus einer Liste (Titel *und* Lage, denn nur die unterscheidet sie) oder zieht mit zwei Ecken einen Bereich auf. Der Bereich gilt für jede weitere Aufnahme dieses Scans und überlebt das Schliessen; ein Knopf holt Vollbild zurück. Liegen Slots ausserhalb, sagt es das.
+- **Reiter „Scans"**: der Item-Scan ist die Klammer: oben wählt man ihn, und Listen, Bild und Erkennung zeigen nur noch, was zu ihm gehört (ein Schalter blendet den ganzen Bestand ein). Offen ist beim Start der zuletzt bearbeitete. Jeder Scan merkt sich seinen Bildschirm — beim Öffnen ist er sofort wieder da, statt einer leeren Fläche; und ein älterer Scan **ohne** gemerktes Bild zeigt wenigstens seine Slots an ihrer Stelle, bis ein Screenshot sich dahinterlegt. Das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
+  Item-Scans entstehen jetzt im selben Fenster wie die Sequenz, die sie benutzt.
+  „Screenshot aufnehmen" friert den Bildschirm ein; ein Slot entsteht aus **zwei
+  Klicks** (nicht aus einem Zug, der um Pixel verrutscht) und bringt Klickpunkt und
+  gemessene Hintergrundfarbe gleich mit. „daneben" setzt den nächsten um genau eine
+  Breite versetzt — eine Inventarreihe ist damit vier Klicks. „Item lernen" nimmt
+  Template und Marker-Farben aus der Slot-Fläche, und **„Items erkennen"** schreibt
+  an jeden Slot, was dort gefunden wurde: gerechnet mit derselben Funktion wie im
+  Lauf, also keine Vorschau, die etwas anderes zeigt als die Wirklichkeit. Ist ein
+  Item-Scan offen, sind die Slots, die nicht dazugehören, im Bild blass. Umbenennen
+  zieht die Referenz in jedem Scan nach; nach dem Speichern lädt der Hauptprozess von
+  selbst nach. *(Boss- und Icon-Scans bleiben vorerst in der Konsole.)*
+- **Reiter „Einstellungen"**: alle 70 Werte der `config.json` im Fenster, statt die
+  Datei von Hand aufzumachen. Jedes Feld trägt Beschriftung, seinen Schlüssel und
+  einen Satz, wann man es anfasst; Abhängiges wird blass statt unsichtbar („Wirkt nur,
+  wenn ‚LLM-Erkennung' an ist"). Gespeichert wird auf Knopfdruck — geschrieben werden
+  nur die angefassten Schlüssel, damit eine Handänderung an der Datei nicht verloren
+  geht, und was `AppConfig` beim Speichern korrigiert (Konfidenz über 1, max unter min),
+  steht danach als Hinweis da. Der Hauptprozess lädt die Datei automatisch neu, ein
+  laufender Lauf zieht sofort mit
+- **Rückfrage statt Zwei-Klick-Trick** beim Laden/Neuanlegen mit offenen Änderungen
+- **Starten aus dem Studio**: Start, Pause und Stopp im Kopf und in der Live-Ansicht.
+  Das Fenster führt nichts selbst aus — es legt einen Befehl ab, den der Hauptprozess in
+  derselben Schleife abholt, in der auch seine Hotkeys ankommen. Der Start **speichert
+  vorher** und schickt die Datei mit, damit wirklich das läuft, was man vor sich sieht
+- **Die Ansicht springt beim Start in den Live-Run** — nur auf der Flanke, damit man
+  während eines Laufs weiter im Editor arbeiten kann
+- **Alle Phasen nebeneinander** im Live-Run: die laufende breit mit Durchlauf und
+  Fortschritt, die übrigen als schmale Kacheln mit „abgeschlossen" / „ausstehend" —
+  und eine zeitgesteuerte Phase sagt „wartet auf 07:00"
+- **Der laufende Block trägt seine Typfarbe** im Live-Run — grün für FARBE+KLICK,
+  rot für Boss-Scan und so weiter, dieselbe Farbe wie seine Karte im Board
+- **Der Live-Run sagt, worauf der Block wartet**: Restzeit bzw. Timeout-Countdown,
+  und beim Farb-Trigger die gespeicherte neben der gerade gemessenen Farbe, deren
+  Abstand samt Toleranz und was nach dem Timeout kommt (ELSE bzw. die globale
+  Timeout-Aktion). Vorher stand dort nur „seit 12 s" — und das heisst bei 15 s
+  Wartezeit etwas ganz anderes als bei 300 s Timeout
+- **Speichern fragt nach, wenn die Datei sich ausserhalb geändert hat** — der
+  Hauptprozess schreibt dieselben Dateien (eine Aufnahme legt Punkte an), und ohne
+  die Rückfrage gewann einfach der Zweite
+- **„Stelle mit der Maus setzen"** im Inspektor: Maus an die Stelle im Spiel, ENTER
+  — Koordinaten und Farbe werden übernommen. Die Zahlenfelder bleiben daneben
+- **Live-Ausschnitt beim Farb-Warten**: ein kleines Bild der geprüften Stelle im
+  Live-Run, mit Fadenkreuz auf dem gemessenen Pixel — die Zahl allein sagt nicht,
+  was dort gerade zu sehen ist
+- **„Stelle zeigen"** unter jedem Klick-Block: die Maus springt im Hauptprozess auf
+  den Punkt, und dort steht auch, ob die Farbe an der Stelle noch der gespeicherten
+  entspricht — die Frage, die man beim Bauen einer Sequenz am häufigsten hat. Gibt
+  es mehrere Stellen (Prüf-Pixel, ELSE-Klick), steht für jede ein eigener Knopf da
+- **Statusleiste unten** statt oben rechts (mit Datei und Punktzahl), größeres Logo,
+  eigene Farben für alle neun Block-Typen (Taste/Item-Scan/Icon-Scan waren alle
+  orange-gelb), und der Loop-Name trägt seine Phasenfarbe wie INIT und END
+- **Name und Farbe stehen beim Punkt**, nicht oben im Block: vorher gab es „Name
+  (Punkt #1)" und weiter unten nochmal die Punkt-Auswahl. Die Farbe eines Punkts
+  lässt sich jetzt auch setzen — mit dem Hinweis, dass ein Farb-Trigger genau
+  diesen Wert prüft
+- **ELSE steht nur da, wo es greifen kann**: an einem Block ohne Bedingung (reiner
+  Klick, Taste, Warten, Screenshot, Boss-Watcher) fehlt der Abschnitt ganz. Nimmt man
+  einem Block den Trigger weg, wird ein gesetztes ELSE automatisch mit entfernt — beim
+  Zurückstellen ist der Abschnitt wieder da, leer zum frischen Auswählen. Nur was aus
+  einer Datei kommt, bleibt stehen (mit Warnung und „greift nie" auf der Karte). Ohne
+  gesetzte Aktion nennt der Hinweis Timeout und Folge aus der `config.json`
+- **ELSE als Kachel-Raster** statt Klappmenü (fünf feste Aktionen, mit einer Zeile
+  Erklärung darunter), **INIT und END in eigenen Farben** statt beide grau, und eine
+  **neue Sequenz bringt gleich eine Loop-Phase mit**
+- **Der Block-Typ ist ablesbar statt auswendig**: alle neun Kacheln tragen ihren
+  Farbstreifen (Legende zu den Karten im Board), und KLICK/FARBE+KLICK/WARTEN gibt es
+  zusätzlich als zwei Schalter — „klickt an der Stelle" und „wartet auf eine Farbe",
+  darunter steht, was dabei herauskommt
+- **Bedienelemente nur, wo sie wirken**: kein Farb-Trigger bei Scans und Screenshot
+  (die Laufzeit wertet ihn dort nicht aus), keine Stelle bei einem Warte-Block ohne
+  Trigger, und „BEOBACHTETE STELLE" statt „KLICK-POSITION", wo nicht geklickt wird
+- **Die Editor-Logik liegt jetzt in `bridge.py`** und damit im Test: die Umsortier-Rechnung
+  lief bisher nur mit installiertem Dear PyGui und musste dafür die halbe Ansicht
+  stilllegen. Die Suite prüft das Studio jetzt auf jeder Plattform (47 Prüfungen mehr)
+
 ### Neueste Änderungen — Visuelle Editoren + Aufnahme + klarere Trigger-Keywords
 
-**Visueller Node-Editor** (`CTRL+ALT+B`, Dear PyGui)
-- Sequenzen als Blöcke + Verbindungen bearbeiten statt rein über die Konsole
-- Punkte-Palette, Eigenschaften-Panels je Block-Typ, ELSE-Zweige als eigene Pfeile
-- Punkt-Picker setzt Position **und** Trigger-Farbe direkt aus dem aufgenommenen Punkt
+**Sequenz-Studio** (`CTRL+ALT+B`, Dear PyGui)
+- Phasen (INIT / Loop / END) als Spalten nebeneinander, jede eine Liste ihrer Schritte
+- **Ziehen sortiert um — auch über Phasengrenzen.** Das kann der Konsolen-Editor nicht:
+  dort heisst Aufteilen löschen und neu anlegen
+- Mehrfachauswahl mit STRG; Sammelaktionen (hoch/runter/löschen) auf der ganzen Auswahl
+- Punkte-Palette, Eigenschaften je Block-Typ, Punkt-Picker setzt Position **und** Trigger-Farbe
 - Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
+
+  *War früher ein Node-Graph. Der versprach mit jedem Pixel, dass man Verbindungen ziehen
+  darf — es gab aber keinen einzigen Link-Callback, und verschobene Blöcke sprangen zurück.
+  Eine Sequenz ist pro Phase eine lineare Liste; die Ansicht sagt das jetzt auch.*
 
 **Scan-Studio** (Dear PyGui)
 - Slots, Items, Boss- und Icon-Scans visuell auf einem Screenshot zusammenstellen
@@ -1427,7 +1580,7 @@ Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
 |---|---|
 | `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
 | `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
-| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schließen und normal starten |
+| `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schliessen und normal starten |
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.
@@ -1566,7 +1719,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - Race Condition bei `config.bosses.append` (Auto-Save neuer Bosse) → Append jetzt unter `state.lock`
 - LLM-Fallback-Logik invertiert: bei `llm_fallback=True` lief das LLM doppelt → strikte Entweder-Oder-Logik
 - BytesIO-Memory-Leak in `_image_to_base64` → Context Manager
-- Boss-Watcher hatte keinen Exit außer Sequenz-Stop → `max_scans` + `timeout` als Exit-Bedingungen
+- Boss-Watcher hatte keinen Exit ausser Sequenz-Stop → `max_scans` + `timeout` als Exit-Bedingungen
 - `save_data` / `save_global_slots` / `save_global_items` iterierten ohne Lock → Snapshot unter `state.lock`
 - `state.session_screenshots_dir`-Zuweisung war nicht thread-safe → unter `state.lock`
 - `socket.timeout` in LLM-Calls jetzt explizit gefangen
@@ -1613,7 +1766,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 ### Vorherige Änderungen
 
 - **INIT-Phase**: Einmalige Initialisierung vor allen Zyklen (ersetzt START-Phase)
-- **Sanfter Abbruch** (`CTRL+ALT+F`): Aktuellen Zyklus abschließen, dann END-Phase ausführen und stoppen
+- **Sanfter Abbruch** (`CTRL+ALT+F`): Aktuellen Zyklus abschliessen, dann END-Phase ausführen und stoppen
 - **Item-Sortierung**: Items werden nach Priorität (aufsteigend) innerhalb jeder Kategorie sortiert
 - **Save-on-Done**: Item-Editor speichert nur bei `done`, verwirft Änderungen bei `cancel`/Abbruch
 - **Separate Screenshot-Ordner**: Slot-Screenshots in `slots/Screenshots/`, Sequenz-Screenshots in `screenshots/<Session>/`
@@ -1627,7 +1780,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - **ESC-Abbruch**: ESC-Taste funktioniert als Abbruch in allen Editoren (auch in PyCharm)
 - **ANSI-Farben**: Farbige Tags in der Konsole ([FEHLER] rot, [INFO] cyan, [OK] grün)
 - **Einheitliche Delay-Validierung**: Wartezeiten werden in allen Editoren gleich geprüft
-- **Template Auto-Resize**: Templates werden bei Größenunterschied automatisch skaliert
+- **Template Auto-Resize**: Templates werden bei Grössenunterschied automatisch skaliert
 - **Bug-Fixes**: Buchstaben-Verdoppelung in PyCharm, Debug-Mode Inkonsistenzen, Wartezeit-Anzeige
 
 ### Vorherige Änderungen

@@ -7,13 +7,19 @@ _check_profile_match wird sowohl von Item- als auch Boss-Erkennung genutzt —
 deswegen lebt es hier (Item-Erkennung ist der Haupt-User).
 """
 
+import json
+import logging
+import os
 import time
 from pathlib import Path
+
+logger = logging.getLogger("autoclicker")
 
 from ..imaging import take_screenshot, find_color_in_image, match_template_in_image
 from ..models import (
     AutoClickerState, ItemProfile, SCAN_MODE_ALL, SCAN_MODE_EVERY,
 )
+from ..session_log import log_event
 from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
 from ..winapi import set_cursor_pos, get_screen_center
 from .actions import safe_click
@@ -152,6 +158,9 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         items_snapshot = list(config.items)
         color_tolerance = config.color_tolerance
         learn_unknown = config.learn_unknown
+        # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
+        # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
+        rueckwaerts = config.reverse
 
     found_items = []
 
@@ -159,7 +168,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         slots_to_scan = list(slots_override)
     else:
         slots_to_scan = slots_snapshot
-        if state.config.scan_reverse:
+        if rueckwaerts:
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay
@@ -230,7 +239,9 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     from ..persistence import save_global_items, TEMPLATES_DIR
 
     # Leer-Check: ohne Nicht-Hintergrund-Farben ist der Slot vermutlich leer
-    marker_colors = _collect_markers_silent(img, slot.slot_color)
+    from ..imaging import mit_hintergrund_maske
+    maskiert = mit_hintergrund_maske(img, slot.slot_color)
+    marker_colors = _collect_markers_silent(maskiert, slot.slot_color)
     if slot.slot_color and not marker_colors:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
@@ -270,7 +281,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     template_path = Path(TEMPLATES_DIR) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
-        img.save(template_path)
+        maskiert.save(template_path)
         item.template = template_file
     except (OSError, ValueError) as e:
         with state.lock:
@@ -296,8 +307,78 @@ def _park_mouse_for_scan(park_pos) -> None:
     time.sleep(_MOUSE_PARK_SETTLE)
 
 
+# Marktwerte aus market_analysis. Schluessel: (Pfad, mtime) - eine neu gerechnete
+# Analyse greift damit beim naechsten Scan, ohne Neustart. Wie beim Template-Cache
+# ohne Lock: Dict-Zugriffe sind unter dem GIL atomar, und zweimal dieselbe kleine
+# JSON zu lesen kostet nichts.
+_marktwert_cache: dict = {}
+
+
+def lade_marktwerte(pfad: str) -> dict:
+    """Item-Name -> Gold pro Stueck. Leeres Dict, wenn aus oder nicht lesbar.
+
+    Die Datei schreibt `market_analysis` (dort `export_market_values`). Sie ist die
+    EINZIGE Verbindung zwischen den beiden Teilprojekten, und zwar in genau eine
+    Richtung: die Analyse weiss nichts vom Autoclicker, der Autoclicker importiert
+    nichts aus der Analyse. Fehlt die Datei, laeuft alles wie vorher.
+    """
+    if not pfad:
+        return {}
+    try:
+        st = os.stat(pfad)
+    except OSError:
+        return {}
+    stand = (st.st_mtime, st.st_size)
+    eintrag = _marktwert_cache.get(pfad)
+    if eintrag is not None and eintrag["stand"] == stand:
+        return eintrag["werte"]
+    try:
+        with open(pfad, "r", encoding="utf-8") as f:
+            roh = json.load(f)
+    except (json.JSONDecodeError, IOError, OSError, UnicodeDecodeError) as e:
+        logger.error(f"Marktwert-Datei nicht lesbar ({pfad}): {e}")
+        return {}
+    if not isinstance(roh, dict):
+        logger.error(f"Marktwert-Datei ist kein Name->Wert-Objekt: {pfad}")
+        return {}
+    werte = {}
+    for name, wert in roh.items():
+        try:
+            werte[str(name)] = float(wert)
+        except (TypeError, ValueError):
+            continue
+    _marktwert_cache[pfad] = {"stand": stand, "werte": werte}
+    return werte
+
+
+def _effektive_prioritaet(item, gespeichert: int, werte: dict) -> float:
+    """Wonach sortiert wird - kleiner gewinnt, wie bei der gespeicherten Prioritaet.
+
+    Hat das Item einen Marktwert, zaehlt der (negiert, damit "wertvoller" = "kleiner").
+    Hat es keinen, bleibt seine gesetzte Prioritaet stehen.
+
+    Folge, die man kennen muss: **jedes Item mit Marktwert gewinnt gegen jedes ohne**,
+    weil negative Zahlen unter allen Prioritaeten liegen. Das ist gewollt - ein
+    gemessener Wert ist eine staerkere Aussage als eine von Hand getippte Zahl - aber
+    es heisst auch, dass ein Item ohne Eintrag in der Wertetabelle nach hinten rutscht.
+    Wer das nicht will, laesst `scan_market_value_file` leer.
+
+    Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: items.json
+    bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
+    """
+    wert = werte.get(item.name)
+    return -wert if wert is not None else float(gespeichert)
+
+
 def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, debug: bool) -> list:
     """Filtert Scan-Treffer nach Modus (every / all / best) und Kategorie-Konflikt."""
+    werte = lade_marktwerte(state.config.scan_market_value_file)
+    if werte:
+        # Prioritaet fuer diesen Lauf ersetzen - die Liste traegt sie als drittes Element.
+        found_items = [(slot, item, _effektive_prioritaet(item, prio, werte))
+                       for slot, item, prio in found_items]
+        if debug:
+            print(dbg(f"  → Sortierung nach Marktwert ({len(werte)} Items bekannt)"))
     if mode == SCAN_MODE_EVERY:
         print(col(f"[SCAN] {len(found_items)} Item(s) gefunden - klicke alle!", "cyan"))
         return [(slot.click_pos, item, priority) for slot, item, priority in found_items]
@@ -355,6 +436,13 @@ def _click_scan_result(state: AutoClickerState, pos, item, priority, debug: bool
         cat = item.category or item.name
         if cat not in state.clicked_categories or priority < state.clicked_categories[cat]:
             state.clicked_categories[cat] = priority
+
+    # WAS gefunden wurde, nicht nur DASS geklickt wurde: der Klick-Eintrag daneben
+    # nennt nur Koordinaten. Ohne diese Zeile kann kein Auswerter je sagen, welches
+    # Item wie oft kam — die Zahl steht dann nur als Summe in der Endstatistik.
+    log_event(state, "item_found", detail=item.name,
+              x=pos[0], y=pos[1],
+              extra=f"kategorie={item.category or ''},prio={priority}")
 
     if item.confirm_point is not None:
         if item.confirm_delay > 0:

@@ -6,6 +6,7 @@ Kapselt alle ctypes-Definitionen für Maus, Tastatur und Hotkeys.
 import ctypes
 import ctypes.wintypes as wintypes
 import logging
+import struct
 import time
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,7 @@ logger = logging.getLogger("autoclicker")
 if TYPE_CHECKING:
     from .models import AutoClickerState
 
+from . import symbol
 from .config import CONFIG
 from .utils import err, warn
 
@@ -34,7 +36,16 @@ except (AttributeError, OSError):
 # =============================================================================
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
 MOD_NOREPEAT = 0x4000
+
+# CTRL+ALT+<Buchstabe> ist voll: 24 der 26 Buchstaben sind vergeben, frei blieben nur
+# R (laut Erfahrung oft vom System belegt) und Y. Die Aufnahme-Marker bekommen deshalb
+# eine eigene Ebene mit SHIFT — das verdoppelt den Vorrat UND traegt eine Bedeutung:
+# was hier liegt, wirkt nur waehrend einer laufenden Aufnahme. Der Tastatur-Hook der
+# Aufnahme ignoriert alles bei gedruecktem CTRL/ALT, die Marker landen also nicht
+# versehentlich als Tastendruck in der Sequenz.
+MOD_REC = MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
 
 # Virtual Key Codes
 VK_A = 0x41  # Add Point
@@ -52,15 +63,16 @@ VK_G = 0x47  # Pause/Resume (G statt R wegen Konflikten)
 VK_K = 0x4B  # Skip current wait
 VK_W = 0x57  # Quick-Switch (Wechseln)
 VK_Z = 0x5A  # Schedule (Zeitplan)
-VK_F = 0x46  # Finish (Zyklus abschließen)
+VK_F = 0x46  # Finish (Zyklus abschliessen)
 VK_I = 0x49  # Import/Export
 VK_R = 0x52  # (frei – früher Record, CTRL+ALT+R ist oft vom System belegt)
 VK_J = 0x4A  # Sequenz aufnehmen (Record – J weil R/CTRL+ALT belegt)
 VK_H = 0x48  # Aufnahme pausieren (Halt)
-VK_B = 0x42  # Visueller Node-Editor (Blöcke)
+VK_B = 0x42  # Sequenz-Studio (Phasen + Schritte)
 VK_V = 0x56  # Visuelles Scan-Studio
 VK_O = 0x4F  # Hilfe anzeigen (Overview)
 VK_M = 0x4D  # Aufnahme: Farbe merken (auf Farbe warten)
+VK_D = 0x44  # Aufnahme: Screenshot-Marker
 
 # Hotkey IDs
 HOTKEY_RECORD = 1
@@ -82,13 +94,19 @@ HOTKEY_FINISH = 16
 HOTKEY_IMPORT_EXPORT = 17
 HOTKEY_RECORD_SEQ = 18
 HOTKEY_RECORD_PAUSE = 19
-HOTKEY_NODE_EDITOR = 20
+HOTKEY_SEQUENCE_STUDIO = 20
 HOTKEY_SCAN_STUDIO = 21
 HOTKEY_HELP = 22
 HOTKEY_RECORD_COLOR = 23
+HOTKEY_RECORD_SCREENSHOT = 24
+# Aufnahme-Ebene (CTRL+ALT+SHIFT+…)
+HOTKEY_REC_PHASE = 25
+HOTKEY_REC_REGION = 26
+HOTKEY_REC_WATCH = 27
 
 # Window Messages
 WM_HOTKEY = 0x0312
+WM_SETICON = 0x0080
 WM_LBUTTONDOWN = 0x0201
 WM_MOUSEWHEEL = 0x020A
 WM_KEYDOWN = 0x0100
@@ -635,6 +653,64 @@ def _find_window_by_title(title_substring: str):
     return found[0] if found else None
 
 
+def liste_fenster() -> list:
+    """Alle sichtbaren Fenster als `(titel, (l, t, r, b), hwnd)`.
+
+    Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: **dasselbe
+    Programm mehrmals offen.** Der Titel ist dann dreimal derselbe, und wer den
+    Scan auf die Fassung oben links legen will, braucht die Fenster einzeln —
+    unterscheidbar an ihrer Lage, nicht an ihrem Namen.
+
+    Geliefert wird der **Client-Bereich** (Inhalt ohne Titelleiste und Rahmen),
+    denn genau der ist das Spielfeld. Fenster ohne Titel, ohne Fläche oder
+    ausserhalb aller Monitore fallen weg: sie sind Werkzeugfenster des Systems
+    und in einer Auswahlliste nur Rauschen.
+
+    Sortiert nach Lage (oben vor unten, links vor rechts) — dieselbe Reihenfolge,
+    in der man sie auf dem Bildschirm sucht.
+    """
+    gefunden = []
+
+    def _cb(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        laenge = user32.GetWindowTextLengthW(hwnd)
+        if laenge <= 0:
+            return True
+        puffer = ctypes.create_unicode_buffer(laenge + 1)
+        user32.GetWindowTextW(hwnd, puffer, laenge + 1)
+        titel = (puffer.value or "").strip()
+        if not titel:
+            return True
+        rect = wintypes.RECT()
+        pt = wintypes.POINT(0, 0)
+        if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            return True
+        if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
+            return True
+        breite, hoehe = rect.right - rect.left, rect.bottom - rect.top
+        if breite < 80 or hoehe < 80:
+            return True
+        # Das Handle kommt mit: nur damit laesst sich das Fenster spaeter
+        # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
+        # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
+        # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
+        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe),
+                         int(hwnd)))
+        return True
+
+    try:
+        user32.EnumWindows(_WNDENUMPROC(_cb), 0)
+    except (OSError, AttributeError):
+        return []
+    schirm = get_virtual_desktop()
+    if schirm:
+        gefunden = [e for e in gefunden
+                    if e[1][0] < schirm[2] and e[1][2] > schirm[0]
+                    and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
+    return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
+
+
 def get_client_rect_by_title(title_substring: str):
     """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
     mit passendem Titel als absolute Bildschirm-Koordinaten.
@@ -695,10 +771,14 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
     (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_J, "CTRL+ALT+J (Sequenz aufnehmen)"),
     (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
-    (HOTKEY_NODE_EDITOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
+    (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
     (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),
+    (HOTKEY_RECORD_SCREENSHOT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_D, "CTRL+ALT+D (Aufnahme: Screenshot-Marker)"),
+    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: Phasengrenze)"),
+    (HOTKEY_REC_REGION, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Bereichs-Ecke)"),
+    (HOTKEY_REC_WATCH, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: beobachten ohne Klick)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
@@ -735,3 +815,116 @@ def unregister_hotkeys() -> None:
     """Deregistriert alle globalen Hotkeys."""
     for hotkey_id, _, _, _ in _HOTKEY_DEFINITIONS:
         user32.UnregisterHotKey(None, hotkey_id)
+
+
+# Wie das Symbol AUSSIEHT, steht in `symbol.py` — hier steht nur, wie Windows
+# es haben will. Die Trennung ist nicht kosmetisch: aus derselben Geometrie
+# macht `tools/symbol.py` PNG- und ICO-Dateien für eine Verknüpfung, und zwei
+# Beschreibungen desselben Motivs wären zwei, die auseinanderlaufen.
+# Die Kennung, unter der Windows die Fenster dieses Programms gruppiert. Punkt-
+# getrennt und ohne Leerzeichen, so will es die Schnittstelle.
+APP_ID = "Autoclicker.SequenzStudio"
+
+
+def setze_app_id(app_id: str = APP_ID) -> bool:
+    """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
+
+    Die Taskleiste nimmt **nicht** das Symbol aus `WM_SETICON`, solange sie das
+    Fenster unter der ausführenden Datei einsortiert — und die heisst hier
+    `python.exe`. Titelleiste und ALT+TAB zeigten das eigene Symbol deshalb
+    längst, die Taskleiste weiter die Schlange. Erst eine eigene AppUserModelID
+    löst das Fenster aus dieser Gruppe, und dann gilt dort das Fenstersymbol.
+
+    **Muss laufen, bevor das erste Fenster entsteht.** Danach hat Windows die
+    Zuordnung schon getroffen; ein späterer Aufruf ändert sie für dieses Fenster
+    nicht mehr.
+    """
+    try:
+        return ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            ctypes.c_wchar_p(app_id)) == 0
+    except (AttributeError, OSError):
+        return False
+
+
+def _symbol_bits(kante: int = 32) -> bytes:
+    """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
+
+    Warum der Umweg über ein DIB und nicht `CreateIcon()` mit rohen Farbbits:
+    das erzeugt eine **geräteabhängige** Bitmap, und die 24-Bit-Bytes werden auf
+    einem 32-Bit-Bildschirm anders gelesen, als sie gemeint sind. Das Symbol kam
+    dann zwar am Fenster an (beide `WM_GETICON` lieferten dasselbe Handle), war
+    aber ein schwarzes Quadrat — schlimmer als das Python-Symbol, denn es sieht
+    aus wie ein Fehler statt wie ein fremdes Programm. Ein DIB legt Breite,
+    Höhe, Bittiefe und Byte-Reihenfolge selbst fest und hängt an keinem Gerät.
+
+    Gezeichnet wird in `symbol.py`; hier wird nur umgepackt. Zwei Eigenheiten
+    des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und Maskenbild
+    untereinander), und DIB-Zeilen stehen **von unten nach oben**.
+    """
+    kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    farben = bytearray()
+    # DIB-Zeilen stehen von UNTEN nach oben, `punkte()` liefert von oben —
+    # deshalb umgedreht. Ohne das steht die Fahne auf dem Kopf.
+    for zeile in reversed(list(symbol.punkte(kante))):
+        for r, g, b, a in zeile:
+            farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
+    # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
+    # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
+    # aufgefüllt.
+    return kopf + bytes(farben) + bytes(((kante + 31) // 32 * 4) * kante)
+
+
+def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
+    """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
+
+    Ohne das trägt das Fenster das Symbol von `python.exe` — pywebview kann es
+    auf Windows nicht selbst setzen (der `icon`-Parameter gilt dort nicht, weil
+    das Symbol sonst aus der ausführenden Datei kommt). Ein Fenster in der
+    Taskleiste, das aussieht wie ein Python-Prozess, findet man zwischen anderen
+    Python-Prozessen nicht wieder.
+
+    **`warten` ist der Grund, warum das Symbol bisher nie ankam.**
+    `webview.start(func)` ruft `func` auf, sobald die Schleife läuft — das
+    Fenster steht da noch nicht. Gemessen: zum Zeitpunkt des Aufrufs findet
+    `EnumWindows` gar kein passendes Fenster, zwei Sekunden später schon, und
+    dann greift das Setzen auch. Vorher fiel der Aufruf still auf `False`, und
+    das Fenster behielt das Symbol von `python.exe`. Wer aus einem
+    GUI-Startcallback aufruft, gibt deshalb eine Frist mit; ohne Angabe wird
+    einmal geschaut wie bisher.
+
+    Fehler werden geschluckt: ein fehlendes Symbol ist kein Grund, ein Fenster
+    nicht zu öffnen.
+    """
+    frist = time.monotonic() + max(0.0, warten)
+    hwnd = _find_window_by_title(titel_substring)
+    while not hwnd and time.monotonic() < frist:
+        time.sleep(0.1)
+        hwnd = _find_window_by_title(titel_substring)
+    if not hwnd:
+        return False
+    try:
+        # Signaturen setzen, sonst behandelt ctypes das zurueckgegebene HICON als
+        # int und schneidet es auf 32 Bit ab — auf einem 64-Bit-Windows kommt
+        # dann ein kaputtes Handle bei SendMessage an, und das Symbol bleibt das
+        # von python.exe. Genau daran ist der erste Versuch gescheitert.
+        user32.CreateIconFromResourceEx.restype = ctypes.c_void_p
+        user32.CreateIconFromResourceEx.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32,
+            ctypes.c_int, ctypes.c_int, ctypes.c_uint32]
+        user32.SendMessageW.restype = ctypes.c_void_p
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                        ctypes.c_void_p, ctypes.c_void_p]
+        # Jede Grösse wird in ihrer Grösse gezeichnet, nicht eine hochgerechnet:
+        # 0 = klein (Titelleiste, 16 px), 1 = gross (ALT+TAB und Taskleiste, die
+        # daraus ihre 24 px skaliert). Ein gedehntes 16er sah dort matschig aus.
+        for art, kante in ((0, 16), (1, 32)):
+            bits = _symbol_bits(kante)
+            # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
+            symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
+                                                     kante, kante, 0)
+            if not symbol:
+                return False
+            user32.SendMessageW(hwnd, WM_SETICON, art, symbol)
+        return True
+    except (OSError, ValueError, AttributeError):
+        return False

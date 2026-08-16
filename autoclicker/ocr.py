@@ -230,7 +230,26 @@ def detect_boss_name(
 
 
 def _match_text_to_boss(text: str, boss_names: list[str]) -> Optional[str]:
-    """Matcht einen erkannten Text gegen Boss-Namen."""
+    """Matcht einen erkannten Text gegen Boss-Namen.
+
+    Muss dieselbe Antwort geben wie `llm_vision.match_boss_name()`: OCR und LLM
+    bekommen laut Vertrag dieselbe (gemergte) Boss-Liste und ersetzen einander je nach
+    Fallback-Einstellung. Zwei Erkenner, die denselben Text auf VERSCHIEDENE Bosse
+    abbilden, führen dieselbe Sequenz unterschiedlich aus — jedes BossProfile hat
+    seine eigene Aktion (skip/scan/restart/klicken).
+
+    Die beiden Regeln, auf die es dabei ankommt:
+
+    - **Enthält der Text mehrere Namen, gewinnt der längste.** In der Liste
+      ["Ork", "Orkhäuptling"] fand die Reihenfolge-Suche bei "Der Orkhäuptling
+      erscheint" den *Ork* — den unspezifischeren, nur weil er vorne stand.
+    - **Steckt der Text in mehreren Namen, gewinnt der kürzeste** — das ist der Name,
+      der am wenigsten über das hinaus behauptet, was tatsächlich gelesen wurde.
+
+    Die Regel steht hier absichtlich ein zweites Mal statt in einem gemeinsamen Modul:
+    `ocr.py` und `llm_vision.py` sind abhängigkeitsfreie Blätter. Ein Test füttert
+    beide mit denselben Eingaben und vergleicht — gemessen statt abgeschrieben.
+    """
     text_lower = text.lower().strip()
     if not text_lower:
         return None
@@ -240,15 +259,16 @@ def _match_text_to_boss(text: str, boss_names: list[str]) -> Optional[str]:
         if name.lower() == text_lower:
             return name
 
-    # Boss-Name im Text enthalten
-    for name in boss_names:
-        if name.lower() in text_lower:
-            return name
+    # Boss-Name im Text enthalten -> spezifischsten (laengsten) Treffer waehlen
+    enthalten = [name for name in boss_names if name.lower() in text_lower]
+    if enthalten:
+        return max(enthalten, key=len)
 
-    # Text im Boss-Namen enthalten (min 3 Zeichen damit nicht false-positives)
-    for name in boss_names:
-        if len(text_lower) >= 3 and text_lower in name.lower():
-            return name
+    # Text im Boss-Namen enthalten (min 3 Zeichen, sonst matcht ein Kuerzel alles)
+    if len(text_lower) >= 3:
+        teilweise = [name for name in boss_names if text_lower in name.lower()]
+        if teilweise:
+            return min(teilweise, key=len)
 
     return None
 

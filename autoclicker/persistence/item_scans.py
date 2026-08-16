@@ -47,7 +47,8 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
             slot_names=[str(n) for n in data.get("slot_names", [])],
             item_names=[str(n) for n in data.get("item_names", [])],
             color_tolerance=data.get("color_tolerance", 40),
-            learn_unknown=data.get("learn_unknown", False)
+            learn_unknown=data.get("learn_unknown", False),
+            reverse=data.get("reverse", False),
         )
 
     except LOAD_EXCEPTIONS as e:
@@ -172,14 +173,12 @@ def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
     return meldungen
 
 
-def update_item_in_scans(old_name: str, new_name: str,
-                          new_template: Optional[str] = None) -> tuple[int, int]:
+def update_item_in_scans(old_name: str, new_name: str) -> tuple[int, int]:
     """Zieht einen umbenannten Item-Namen in allen Scan-Dateien nach.
 
     Der Name IST die Referenz - beim Umbenennen zeigt sie sonst ins Leere. Alles andere
     (Marker, Template, Priorität) braucht kein Nachziehen mehr, seit der Scan nur noch
-    verweist statt zu kopieren; `new_template` bleibt nur der Signatur-Kompatibilität
-    wegen erhalten und wird nicht mehr gebraucht.
+    verweist statt zu kopieren.
 
     Returns:
         (updated_count, failed_count) - Anzahl aktualisierter und fehlgeschlagener Scans.

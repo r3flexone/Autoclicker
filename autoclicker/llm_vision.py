@@ -178,7 +178,7 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
     if boss_names:
         names_str = ", ".join(boss_names)
         base += (
-            f"\n\nBereits bekannte Bosse (mögliche Referenz, NICHT abschließend): {names_str}\n"
+            f"\n\nBereits bekannte Bosse (mögliche Referenz, NICHT abschliessend): {names_str}\n"
             "Wenn der abgelesene Name exakt einem davon entspricht, verwende genau diese Schreibweise. "
             "Wenn du einen anderen oder unsicheren Namen liest, gib ihn trotzdem wörtlich wieder — "
             "ordne ihn NICHT gewaltsam einem bekannten Boss zu."
@@ -297,7 +297,7 @@ def _strip_reasoning_tags(text: str) -> str:
         return text
     # Vollständige <think>...</think>-Blöcke entfernen
     cleaned = _THINK_TAG_PATTERN.sub("", text)
-    # Unvollständiger Block am Anfang (kein schließendes Tag, weil truncated): alles bis </think>
+    # Unvollständiger Block am Anfang (kein schliessendes Tag, weil truncated): alles bis </think>
     if "</think>" in cleaned:
         cleaned = cleaned.split("</think>", 1)[1]
     # Falls nur ein offenes <think> ohne Schluss übrig ist → alles davor behalten, danach verwerfen
@@ -430,7 +430,7 @@ def suggest_item_name(
         provider=provider,
         endpoint=endpoint,
         model=model,
-        prompt="Wie heißt dieser Gegenstand?",
+        prompt="Wie heisst dieser Gegenstand?",
         timeout=timeout,
         system_prompt=_ITEM_NAME_SYSTEM_PROMPT,
     )

@@ -1,10 +1,15 @@
 """
-GUI-freier Modell-Layer fürs Scan-Studio.
+GUI-freier Modell-Layer für Slots, Items und Templates.
 
-Lädt/speichert Slots (und perspektivisch Items/Scans) direkt aus den JSON-Dateien
-ohne AutoClickerState — der Subprocess hat keinen geteilten State. Format und
-Serialisierung sind identisch zu den Konsolen-Editoren (slots/slots.json), damit
-beide Wege dieselben Dateien lesen/schreiben.
+Lädt/speichert direkt aus den JSON-Dateien ohne `AutoClickerState` — der
+Studio-Subprozess hat keinen geteilten State. Format und Serialisierung sind
+identisch zu den Konsolen-Editoren (`slots/slots.json`, `items/items.json`),
+damit beide Wege dieselben Dateien lesen und schreiben.
+
+Lag bis zum Umbau unter `editors/scan_canvas/` neben dem Dear-PyGui-Fenster.
+Das Fenster ist weg — der Modell-Layer nicht: er war von Anfang an ohne GUI
+geschrieben und wird jetzt vom Scans-Reiter des Sequenz-Studios benutzt
+(`scans.py`).
 """
 
 import json
@@ -126,7 +131,7 @@ def crop_region(full_img, region: tuple[int, int, int, int],
     return full_img.crop((x1, y1, x2, y2))
 
 
-def save_template(img, name: str) -> str | None:
+def save_template(img, name: str, hintergrund=None) -> str | None:
     """Speichert ein Bild als Template-PNG in items/templates/. Gibt den Dateinamen zurück.
 
     Items und Bosse teilen sich den Ordner items/templates/. Existiert die
@@ -137,6 +142,14 @@ def save_template(img, name: str) -> str | None:
     """
     if img is None:
         return None
+    # Mit bekanntem Hintergrund traegt das Template seine Maske selbst: der
+    # Vergleich stimmt sonst zu neun Zehnteln ueber die Slot-Flaeche ab.
+    if hintergrund:
+        try:
+            from ...imaging import mit_hintergrund_maske
+            img = mit_hintergrund_maske(img, hintergrund)
+        except ImportError:
+            pass
     Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
     base = sanitize_filename(name)
     filename = f"{base}.png"

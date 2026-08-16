@@ -379,14 +379,22 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
 
 
 def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
-                          verbose: bool = False):
+                          verbose: bool = False, sv_toleranz: int = 50):
     """Findet die Slot-Rechtecke in einem Bild anhand der Hintergrundfarbe.
 
     Gibt `(rechtecke, img_bgr)` zurück; die Rechtecke sind `(x, y, w, h)` relativ
-    zum Bild, auf die Median-Größe normalisiert und zeilenweise sortiert.
+    zum Bild, auf die Median-Grösse normalisiert und zeilenweise sortiert.
+
+    `hsv_toleranz` gilt für den Farbton, `sv_toleranz` für Sättigung und
+    Helligkeit. Die zweite ist **der entscheidende Regler bei dunklen
+    Oberflächen**: Slot und Panel unterscheiden sich dort oft nur um 30 in der
+    Helligkeit, und mit den ursprünglich fest verdrahteten ±50 verschmolzen sie
+    zu einer Fläche — das Ergebnis war EIN Rechteck über dem ganzen Inventar
+    statt 24 Slots. Der Standard bleibt 50, damit `repair` und der
+    Konsolen-Editor sich nicht ändern; wer es enger braucht, sagt es.
 
     Die Normalisierung ist der Grund, warum die Erkennung für die Reparatur taugt:
-    sie liefert für jeden Slot dieselbe Größe und Kantenlage, unabhängig davon, wie
+    sie liefert für jeden Slot dieselbe Grösse und Kantenlage, unabhängig davon, wie
     grob der Bereich markiert wurde. Eine Maus-Position kann das nicht.
 
     Getrennt von `slot_auto_detect`, damit die Reparatur exakt dieselbe Erkennung
@@ -422,9 +430,9 @@ def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
     img_bgr = img_array[:, :, ::-1].copy()
 
     hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    tol = hsv_toleranz
-    lower = np.array([max(0, int(h) - tol), max(0, int(s) - 50), max(0, int(v) - 50)])
-    upper = np.array([min(180, int(h) + tol), min(255, int(s) + 50), min(255, int(v) + 50)])
+    tol, sv = hsv_toleranz, sv_toleranz
+    lower = np.array([max(0, int(h) - tol), max(0, int(s) - sv), max(0, int(v) - sv)])
+    upper = np.array([min(180, int(h) + tol), min(255, int(s) + sv), min(255, int(v) + sv)])
 
     mask = cv2.inRange(hsv_img, lower, upper)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

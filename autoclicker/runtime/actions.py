@@ -6,7 +6,7 @@ die bündeln Window-Fokus-Check, Humanization und Session-Logging. Niemals
 direkt send_click/send_key aus winapi.py aufrufen, sonst werden diese
 Querschnitts-Aspekte umgangen.
 
-Außerdem hier: das Status-Output-Helper, die Wait-Mit-Pause-Skip-Schleife
+Ausserdem hier: das Status-Output-Helper, die Wait-Mit-Pause-Skip-Schleife
 und die generische else_config-Aktion (Fallback bei Trigger-Miss).
 """
 
@@ -18,11 +18,12 @@ from ..models import (
     ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY,
 )
 from ..session_log import log_event
-from ..utils import clear_line, wait_while_paused, col, dbg
+from ..utils import status_line, wait_while_paused, col, dbg
 from ..winapi import (
     send_click, send_key, send_scroll,
     is_target_window_active, get_foreground_window_title,
 )
+from . import status
 
 
 # =============================================================================
@@ -208,9 +209,8 @@ def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,
     if debug:
         print(dbg(dbg_msg if dbg_msg is not None else msg))
     else:
-        clear_line()
-        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {msg}",
-                  _phase_color(phase)), end="", flush=True)
+        status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | {msg}",
+                        _phase_color(phase)))
 
 
 def _phase_color(phase: str) -> str:
@@ -235,10 +235,29 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     remaining = seconds
     debug_active = is_verbose_debug(state)
     last_remaining = -1
+    try:
+        return _warte_schleife(state, seconds, remaining, debug_active, last_remaining,
+                               phase, step_num, total_steps, message)
+    finally:
+        # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
+        # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
+        status.wartet(state, None)
 
+
+def _warte_schleife(state: AutoClickerState, seconds: float, remaining: float,
+                    debug_active: bool, last_remaining: int, phase: str,
+                    step_num: int, total_steps: int, message: str) -> bool:
+    """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
     while remaining > 0:
         if state.stop_event.is_set():
             return False
+
+        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
+        # Hier zugleich das Lebenszeichen: `wartet()` schreibt mit.
+        status.wartet(state, {"art": "zeit", "text": message,
+                              "seit": time.time() - (seconds - remaining),
+                              "bis": time.time() + remaining,
+                              "gesamt": round(seconds, 2)})
 
         if state.skip_event.is_set():
             state.skip_event.clear()
@@ -246,8 +265,7 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
             if debug_active:
                 print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c))
             else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c), end="", flush=True)
+                status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c))
             return True
 
         if not wait_while_paused(state, message):
@@ -259,8 +277,7 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
             if debug_active:
                 print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {message} ({round(remaining, 1):g}s)...", _c))
             else:
-                clear_line()
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {message} ({round(remaining, 1):g}s)...", _c), end="", flush=True)
+                status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | {message} ({round(remaining, 1):g}s)...", _c))
             last_remaining = current_remaining
 
         wait_time = min(1.0, remaining)

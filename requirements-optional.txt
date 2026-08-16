@@ -10,6 +10,11 @@ easyocr
 # https://github.com/UB-Mannheim/tesseract/wiki
 pytesseract
 
-# Visueller Node-Editor (CTRL+ALT+B) und Scan-Studio (CTRL+ALT+V).
-# Ohne dearpygui melden beide sauber, dass sie fehlen.
-dearpygui
+# Studio (CTRL+ALT+B fuer Sequenzen, CTRL+ALT+V fuer Scans - dasselbe Fenster).
+# Die Oberflaeche ist eine Webseite in einem eigenen Fenster; auf Windows laeuft
+# das ueber WebView2, das bei Windows 10/11 in der Regel schon da ist (sonst
+# einmalig Microsofts "Evergreen Runtime").
+#
+# `dearpygui` stand hier bis zum Umbau fuer das alte Scan-Studio. Das Fenster
+# gibt es nicht mehr - der Reiter "Scans" im Studio hat es ersetzt.
+pywebview

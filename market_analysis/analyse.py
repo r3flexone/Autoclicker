@@ -840,11 +840,23 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 
     fig, ax = plt.subplots(figsize=(12, 7))
     rot_x, rot_y = [], []
+    farben = PRICE_SENSITIVITY_SERIES_COLORS
+    stile = PRICE_SENSITIVITY_SERIES_STYLES
+    # Das Aussehen haengt am ITEM-NAMEN, nicht an der Rangposition. Gezeichnet (und in der
+    # Legende gelistet) wird weiter nach Gold/h, aber die Farbe kommt aus der alphabetisch
+    # sortierten Liste. Sonst waere oak heute blau und morgen aqua, sobald sich die
+    # Rangfolge durch Preisbewegungen dreht - und ein Vergleich zweier Laeufe waere wertlos.
+    # Der Index ist je Item eindeutig, also kann sich keine Kombination doppeln.
+    farb_index = {name: i for i, name in enumerate(sorted(str(n) for n in df_sens["Item"]))}
     for _, row in df_sens.iterrows():
         ys_raw = [row[f"{label}_Gold_h"] for label in PRICE_SENSITIVITY_LABELS_SHORT]
-        xs = [i for i, v in enumerate(ys_raw) if pd.notna(v)]
+        xs = [i2 for i2, v in enumerate(ys_raw) if pd.notna(v)]
         ys = [v for v in ys_raw if pd.notna(v)]
-        ax.plot(xs, ys, marker="o", markersize=5, label=str(row["Item"]))
+        idx = farb_index[str(row["Item"])]
+        ax.plot(xs, ys, marker="o", markersize=5, linewidth=2,
+                color=farben[idx % len(farben)],
+                linestyle=stile[(idx // len(farben)) % len(stile)],
+                label=str(row["Item"]))
 
         # Punkte einsammeln, an denen der Player Shop den NPC nicht mehr schlaegt
         npc = row.get("NPC_Gold_h")
@@ -855,7 +867,12 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
                     rot_y.append(y)
 
     if rot_x:
-        ax.scatter(rot_x, rot_y, color="red", s=70, zorder=5, edgecolors="darkred",
+        # Weisser Ring statt dunkelrotem: die Punkte liegen AUF den Linien, und der Ring
+        # in Hintergrundfarbe trennt sie davon ab. Keine Serienfarbe liegt naeher als
+        # Delta-E 16.8 an diesem Rot - die Punkte sind also auch als Farbe eindeutig,
+        # nicht nur durch ihre Form.
+        ax.scatter(rot_x, rot_y, color=NPC_MARKER_COLOR, s=70, zorder=5,
+                   edgecolors="white", linewidths=1.2,
                    label="NPC-Verkauf gleich gut oder besser")
 
     ax.set_xticks(range(10))
@@ -1394,6 +1411,42 @@ SKILL_LEVEL_COLUMNS = ["Skill", "Level", "Item", "Gold/h", "Gold/h_Worst", "Gold
                         "XP/h", "SoldToNPC", "NPCPreis", "ItemID"]
 
 
+def export_market_values(df: pd.DataFrame, path: str) -> int:
+    """Schreibt eine schlanke Item-Name -> Gold-pro-Stueck-Tabelle als JSON.
+
+    Zweck: der Autoclicker sortiert seine Item-Klicks bisher nach einer von Hand
+    getippten Prioritaetszahl. Diese Datei erlaubt ihm, stattdessen nach dem
+    tatsaechlichen Wert zu sortieren - ohne dass eine der beiden Seiten die andere
+    importiert. Die Analyse schreibt nur in ihren eigenen output/-Ordner und weiss
+    nichts davon, ob je jemand die Datei liest.
+
+    Absichtlich nur Name -> Zahl: alles Weitere (Skill, Level, Kosten) waere fuer die
+    Klick-Reihenfolge bedeutungslos, und eine schmale Datei kann nicht veralten wie
+    eine breite. Gibt die Anzahl geschriebener Eintraege zurueck.
+    """
+    if df is None or df.empty or "Item" not in df.columns:
+        return 0
+    spalte = "Gold pro Stück" if "Gold pro Stück" in df.columns else None
+    if spalte is None:
+        return 0
+    werte: dict[str, float] = {}
+    for _, zeile in df.iterrows():
+        name = str(zeile["Item"]).strip()
+        try:
+            wert = float(zeile[spalte])
+        except (TypeError, ValueError):
+            continue
+        if not name or wert != wert:          # NaN faellt hier raus
+            continue
+        # Mehrere Rezepte auf dasselbe Item: der beste Wert gewinnt.
+        if name not in werte or wert > werte[name]:
+            werte[name] = round(wert, 2)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(werte, f, ensure_ascii=False, indent=1, sort_keys=True)
+    return len(werte)
+
+
 def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
                  df_sensitivity: pd.DataFrame | None = None,
                  df_recommendation: pd.DataFrame | None = None,
@@ -1706,6 +1759,17 @@ def main():
     if not df_sensitivity.empty:
         sheets += ", Preis_Sensitivitaet"
     print(f"\nExcel gespeichert: {export_path} (Sheets: {sheets})")
+
+    # Schlanke Wertetabelle nebenher - schlaegt sie fehl, ist das kein Grund, den
+    # ganzen Lauf zu verlieren: die Excel-Datei ist das eigentliche Ergebnis.
+    try:
+        n_werte = export_market_values(df, MARKET_VALUE_PATH)
+        if n_werte:
+            print(f"Marktwerte gespeichert: {MARKET_VALUE_PATH} ({n_werte} Items)")
+            print("  Der Autoclicker kann danach sortieren - Pfad in seiner config.json "
+                  "unter 'scan_market_value_file' eintragen.")
+    except (IOError, OSError) as e:
+        print(f"⚠ Marktwerte konnten nicht geschrieben werden: {e}")
 
 
 if __name__ == "__main__":

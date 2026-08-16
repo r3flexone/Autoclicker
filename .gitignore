@@ -40,6 +40,16 @@ Thumbs.db
 # User config (auto-generated with defaults)
 config.json
 
+# Laufstatus des Workers (runtime/status.py) - existiert nur waehrend eine
+# Sequenz laeuft. Liegt hier oben und nicht in sequences/, weil ein
+# *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
+.lauf.json
+
+# Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
+# Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben
+# wie .lauf.json.
+.befehl.json
+
 # User data folders (auto-generated)
 # Reihenfolge wie das Persistenz-Layout in CLAUDE.md — wer dort einen Ordner ergaenzt,
 # ergaenzt ihn hier. Sonst landen fremde Boss-Profile und Session-Logs im naechsten PR.
@@ -50,6 +60,8 @@ item_scans/
 boss_scans/
 icon_scans/
 exports/
+# Sicherungen des Start-Durchgangs (persistence/sweep.py) - spiegelt die Ordner darueber
+backups/
 # Screenshots gibt es zweimal: SCREENSHOTS_DIR (slots/Screenshots) und
 # SEQUENCE_SCREENSHOTS_DIR (screenshots, klein). Beide ausschreiben — auf Linux ist
 # das Muster gross/klein-empfindlich, ein einzelnes `Screenshots/` deckt dort nur eins ab.
@@ -63,3 +75,7 @@ logs/
 
 # Markt-Analyse - generierte Ausgaben
 market_analysis/output/
+
+# Das Programm-Symbol wird erzeugt, nicht eingecheckt (tools/symbol.py) —
+# eine Binaerdatei im Repo waere eine Kopie des Motivs, die niemand mitzieht.
+symbol/

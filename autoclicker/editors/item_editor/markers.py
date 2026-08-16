@@ -45,7 +45,7 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
             rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 
-    # Slot-Hintergrundfarbe ausschließen (falls vorhanden)
+    # Slot-Hintergrundfarbe ausschliessen (falls vorhanden)
     if exclude_color:
         exclude_rounded = (exclude_color[0] // 5 * 5, exclude_color[1] // 5 * 5, exclude_color[2] // 5 * 5)
 
@@ -77,18 +77,29 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
 
 
 def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> list[tuple]:
-    """Sammelt Marker-Farben aus einem PIL-Bild ohne Benutzer-Interaktion."""
+    """Sammelt Marker-Farben aus einem PIL-Bild ohne Benutzer-Interaktion.
+
+    **Traegt das Bild eine Maske (RGBA), gilt sie.** Dann ist der Hintergrund
+    schon entschieden - dieselbe Entscheidung wie beim Template, und nicht eine
+    zweite daneben. Der Unterschied ist nicht nur Kosmetik: die Farbregel unten
+    vergleicht GERUNDETE Farben (//5), die Maske die echten. An der Grenze
+    kommen dabei verschiedene Ergebnisse heraus.
+    """
     color_counts = {}
+    maskiert = img.mode == "RGBA"
     pixels = img.load()
     width, height = img.size
 
     for x in range(width):
         for y in range(height):
-            pixel = pixels[x, y][:3]
+            roh = pixels[x, y]
+            if maskiert and len(roh) > 3 and roh[3] <= 127:
+                continue                      # Hintergrund, schon ausmaskiert
+            pixel = roh[:3]
             rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 
-    if slot_color:
+    if slot_color and not maskiert:
         exclude_rounded = (slot_color[0] // 5 * 5, slot_color[1] // 5 * 5, slot_color[2] // 5 * 5)
         slot_color_dist = CONFIG.scan_slot_color_distance
         colors_to_remove = [c for c in color_counts if color_distance(c, exclude_rounded) <= slot_color_dist]

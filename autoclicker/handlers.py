@@ -12,17 +12,19 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR
+from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, uebernehmen
 from .models import AutoClickerState, ClickPoint
-from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, info, header, hint, coord_context, dbg, describe_color
+from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
+    punkte_nachladen, load_global_slots, load_global_items,
+    load_all_item_scans, resolve_klick_referenzen,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
-from .execution import sequence_worker, print_status
+from .runtime import sequence_worker, print_status
 from .runtime.actions import is_verbose_debug
 from .imaging import run_color_analyzer
 
@@ -95,7 +97,7 @@ def handle_record(state: AutoClickerState) -> None:
 
     # Auto-speichern. Bewusst nur die Punkte: save_data() wuerde zusaetzlich alle
     # Sequenzen aus dem Speicher schreiben und damit Aenderungen ueberbuegeln, die
-    # inzwischen von aussen an der Datei passiert sind (z.B. Node-Editor-Subprozess).
+    # inzwischen von aussen an der Datei passiert sind (z.B. Sequenz-Studio-Subprozess).
     save_points(state)
 
     color_str = f"  {describe_color(color)}" if color else ""
@@ -211,9 +213,10 @@ def handle_reset(state: AutoClickerState) -> None:
         ensure_sequences_dir()
         init_directories()
 
-        # Config auf Standard zurücksetzen
+        # Config auf Standard zurücksetzen — hineinschreiben, nicht austauschen
+        # (s. config.uebernehmen: state.config IST das Modul-CONFIG).
         with state.lock:
-            state.config = AppConfig()
+            uebernehmen(state.config, AppConfig())
 
         print(f"\n{ok('Factory Reset abgeschlossen!')}")
         print(ok("Das Programm ist jetzt wie frisch von GitHub."))
@@ -273,7 +276,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
               f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
         if not laeuft:
             print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
-            print(f"           {hint('Menü hier schließen (Enter), dann die Sequenz starten.')}")
+            print(f"           {hint('Menü hier schliessen (Enter), dann die Sequenz starten.')}")
     else:
         print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
 
@@ -520,6 +523,186 @@ def handle_toggle(state: AutoClickerState) -> None:
             worker.start()
 
 
+def befehl_start(state: AutoClickerState, argumente: dict) -> None:
+    """Startet die Sequenz aus `datei` — Befehl aus dem Sequenz-Studio.
+
+    Die Datei wird **frisch von Platte** geladen und aktiv gesetzt, nicht der
+    Stand im Speicher genommen: der Hauptprozess hat von den Änderungen im Studio
+    nichts mitbekommen, und ein Start, der etwas anderes ausführt als das, was
+    man vor sich sieht, ist der Stolperstein schlechthin zwischen den beiden
+    Prozessen. Das Studio speichert deshalb vor dem Senden, und hier wird genau
+    diese Datei geladen.
+
+    Verweigert wird nur, was auch ein Hotkey verweigern würde. Was hier NICHT
+    passieren darf, ist ein Konsolen-Menü: `handle_toggle()` öffnet ohne aktive
+    Sequenz den Lade-Dialog, und ein blockierender Prompt, den niemand angefordert
+    hat, hinge im Hauptfenster fest, während man ins Studio schaut.
+    """
+    with state.lock:
+        laeuft = state.is_running or state.countdown_active
+    if laeuft:
+        print(f"\n{info('Läuft bereits — der Start aus dem Studio wird ignoriert.')}")
+        return
+    # Vorher fragen, nicht hinterher: handle_toggle() lehnt während einer Aufnahme
+    # ab, und die Meldung unten stünde dann als Lüge in der Konsole.
+    if _block_if_recording(state):
+        return
+
+    roh = str(argumente.get("datei") or "").strip()
+    if not roh:
+        print(f"\n{err('Start aus dem Studio ohne Datei — ignoriert.')}")
+        return
+    pfad = Path(roh)
+    # Punkte MIT von Platte holen: das Studio hat beim Speichern beide Dateien
+    # geschrieben, und ein frisch dort angelegter Punkt steht hier noch nicht im
+    # Speicher. Ohne das laeuft die neue Sequenz gegen die alten Punkte -
+    # "[Punkt #51 FEHLT]", Schritt uebersprungen.
+    punkte = punkte_nachladen(state)
+    seq = load_sequence_file(pfad, punkte)
+    if seq is None:
+        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+              f"{hint('(im Studio gespeichert?)')}")
+        return
+
+    with state.lock:
+        state.active_sequence = seq
+    print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
+    handle_toggle(state)
+
+
+def befehl_stop(state: AutoClickerState, argumente: dict) -> None:
+    """Stoppt einen laufenden Durchgang — Befehl aus dem Sequenz-Studio.
+
+    Bewusst nicht `handle_toggle()`: das ist ein Umschalter und würde starten,
+    wenn gerade nichts läuft. Ein Stopp-Knopf, der etwas anfängt, wäre die
+    schlimmste Sorte Überraschung.
+    """
+    with state.lock:
+        laeuft = state.is_running or state.countdown_active
+        if laeuft:
+            state.stop_event.set()
+    if laeuft:
+        print(f"\n{col('[STUDIO]', 'cyan')} Stoppe Sequenz...")
+    else:
+        print(f"\n{info('Es läuft nichts — nichts zu stoppen.')}")
+
+
+def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
+    """Pausiert oder setzt fort — dieselbe Bedeutung wie CTRL+ALT+G."""
+    handle_pause(state)
+
+
+def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
+    """Setzt die Maus auf eine Stelle — „sitzt der Punkt noch da, wo er soll?".
+
+    Der Gegenstueck zum `show`-Befehl im Punkte-Menue, nur ausgeloest aus dem
+    Studio. Gemeldet wird hier, weil nur dieser Prozess messen kann: neben der
+    gespeicherten Farbe steht die, die JETZT an der Stelle liegt. Weichen sie ab,
+    ist entweder der Bildschirm anders angeordnet oder das Spiel zeigt gerade
+    etwas anderes — beides sieht man an dieser einen Zeile.
+
+    Waehrend eines Laufs passiert nichts: dort gehoert die Maus dem Worker, und
+    ein Sprung mittendrin verschoebe einen Klick.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{info('Die Sequenz laeuft — die Maus gehoert gerade dem Worker.')}")
+        return
+    try:
+        x, y = int(argumente.get("x")), int(argumente.get("y"))
+    except (TypeError, ValueError):
+        print(f"\n{err('Zeigen ohne Stelle — ignoriert.')}")
+        return
+
+    set_cursor_pos(x, y)
+    name = str(argumente.get("name") or "").strip()
+    nummer = argumente.get("punkt")
+    kopf = f"#{nummer} " if nummer else ""
+    print(f"\n{col('[STUDIO]', 'cyan')} {kopf}{name} {coord_context(x, y)}")
+    jetzt = get_screen_pixel(x, y)
+    if jetzt:
+        print(f"       Dort jetzt:  {describe_color(jetzt)}")
+    erwartet = argumente.get("farbe")
+    if erwartet and jetzt:
+        try:
+            from .imaging import color_distance
+            abstand = color_distance(tuple(erwartet), jetzt)
+        except (TypeError, ValueError):
+            abstand = None
+        if abstand is not None:
+            gleich = abstand <= state.config.pixel_wait_tolerance
+            marke = ok("passt") if gleich else warn("weicht ab")
+            print(f"       Gespeichert: {describe_color(tuple(erwartet))}  {marke}")
+    print(hint("       Maus steht jetzt auf der Stelle."))
+
+
+def befehl_config(state: AutoClickerState, argumente: dict) -> None:
+    """Laedt config.json neu — das Studio hat sie gerade geschrieben.
+
+    Ohne diesen Befehl gaelte eine im Studio geaenderte Einstellung erst nach
+    einem Neustart des Hauptprozesses: die Datei waere neu, der Speicher alt.
+    Und weil `state.config` hier dasselbe Objekt ist wie das Modul-`CONFIG`
+    (s. `config.uebernehmen`), erreicht das Neuladen jeden Leser — auch die
+    Editoren und `imaging`, die `CONFIG` direkt importieren.
+
+    Ein laufender Lauf zieht sofort mit: der Worker liest `state.config` bei
+    jedem Schritt neu, nichts davon wird beim Start eingefroren.
+    """
+    from .config import load_config, uebernehmen as _uebernehmen
+
+    neu = load_config()
+    with state.lock:
+        _uebernehmen(state.config, neu)
+        log_an = state.config.debug_log or state.config.debug_detail
+    # Die Ausgabe-Stufen haengen am Logger, der nur beim Start gesetzt wurde.
+    init_logging(log_an)
+    print(f"\n{col('[STUDIO]', 'cyan')} Einstellungen neu geladen.")
+
+
+def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
+    """Laedt Slots, Items und Scan-Konfigurationen neu — das Studio hat gespeichert.
+
+    Der Gegenpart zu `befehl_config` fuer die Scan-Daten. Ohne ihn stuende in
+    der Datei ein neuer Slot und im Speicher der alte, bis jemand CTRL+ALT+L
+    drueckt — und dieser Hinweis stand bisher als Satz in der Konsole, statt
+    einfach zu passieren.
+
+    **Waehrend eines Laufs passiert nichts.** Der Worker iteriert ueber genau
+    diese Dicts; sie unter ihm auszutauschen ist die Sorte Fehler, die einmal im
+    Monat auftritt und nie reproduzierbar ist.
+    """
+    with state.lock:
+        laeuft = state.is_running
+    if laeuft:
+        print(f"\n{info('Die Sequenz laeuft — Scan-Daten werden nach dem Stopp geladen.')}")
+        return
+
+    load_global_slots(state)
+    load_global_items(state)
+    load_all_item_scans(state)
+    resolve_klick_referenzen(state)
+    with state.lock:
+        anzahl = (len(state.global_slots), len(state.global_items), len(state.item_scans))
+    print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
+          f"{anzahl[0]} Slot(s), {anzahl[1]} Item(s), {anzahl[2]} Item-Scan(s).")
+
+
+# Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
+# hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
+# beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
+# `StudioBridge.lauf_befehl()` ueberhaupt senden kann; laufen die beiden Seiten
+# auseinander, hat ein Knopf keine Wirkung mehr und niemand merkt es.
+BEFEHLE = {
+    "start": befehl_start,
+    "stop": befehl_stop,
+    "pause": befehl_pause,
+    "zeigen": befehl_zeigen,
+    "config": befehl_config,
+    "daten": befehl_daten,
+}
+
+
 def handle_pause(state: AutoClickerState) -> None:
     """Pausiert oder setzt die Sequenz fort."""
     with state.lock:
@@ -576,9 +759,10 @@ def handle_switch(state: AutoClickerState) -> None:
 
     _name, pfad = sequences[choice]
     # Punkte mitgeben: die Migration verknüpft damit Alt-Schritte über ihre
-    # Koordinaten mit dem Punkte-Pool (point_id).
-    with state.lock:
-        punkte = list(state.points)
+    # Koordinaten mit dem Punkte-Pool (point_id). Von Platte, nicht aus dem
+    # Speicher — die Datei kann aus dem Sequenz-Studio kommen, und dann sind ihre
+    # Punkte hier noch unbekannt.
+    punkte = punkte_nachladen(state)
     seq = load_sequence_file(pfad, punkte)
     if seq is None:
         print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
@@ -714,7 +898,7 @@ def handle_schedule(state: AutoClickerState) -> None:
                 with state.lock:
                     state.countdown_active = False
 
-            # Sequenz starten (außerhalb von finally, damit countdown_active schon False ist)
+            # Sequenz starten (ausserhalb von finally, damit countdown_active schon False ist)
             handle_toggle(state)
 
         print(f"\n{col('[COUNTDOWN]', 'cyan')} Warte auf Startzeit... (Abbrechen mit {col('CTRL+ALT+S', 'yellow')})")
@@ -766,56 +950,92 @@ def handle_record_color(state: AutoClickerState) -> None:
     merke_farbe(state)
 
 
-def handle_node_editor(state: AutoClickerState) -> None:
-    """Öffnet den visuellen Node-Editor als separaten Subprocess.
+def handle_record_screenshot(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme einen Screenshot-Marker an dieser Stelle im Ablauf."""
+    from .editors.sequence_recorder import merke_screenshot
+    merke_screenshot(state)
 
-    Der Editor läuft in einem eigenen Prozess (Dear PyGui), damit sein Event-Loop
-    nicht mit der Hotkey-Message-Pump kollidiert. Er bearbeitet die aktive Sequenz
-    direkt auf Disk; nach dem Speichern mit CTRL+ALT+L neu laden.
+
+def handle_rec_region(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme eine Bereichs-Ecke (zwei davon = ein Rechteck)."""
+    from .editors.sequence_recorder import merke_bereich
+    merke_bereich(state)
+
+
+def handle_rec_watch(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme einen Beobachtungs-Marker (warten ohne Klick)."""
+    from .editors.sequence_recorder import merke_beobachten
+    merke_beobachten(state)
+
+
+def handle_rec_phase(state: AutoClickerState) -> None:
+    """Setzt während der Aufnahme eine Phasengrenze (INIT | LOOP | END)."""
+    from .editors.sequence_recorder import merke_phase
+    merke_phase(state)
+
+
+def handle_sequence_studio(state: AutoClickerState) -> None:
+    """Öffnet das Sequenz-Studio als separaten Subprocess.
+
+    Das Studio läuft in einem eigenen Prozess (eigenes Fenster mit eigener
+    Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beisst. Es
+    bearbeitet die aktive Sequenz direkt auf Disk; nach dem Speichern mit
+    CTRL+ALT+L neu laden.
+
+    **Darf während eines Laufs geöffnet werden**, anders als die Konsolen-Editoren.
+    Hier stand `_block_if_running()`; der Grund dafür trifft auf dieses Fenster
+    nicht zu — es liest kein stdin und mutiert nichts im `AutoClickerState`,
+    sondern arbeitet auf Dateien. Seit es eine Live-Ansicht hat, war die Sperre
+    sogar verkehrt herum: sie verbot ausgerechnet die Ansicht, die es für einen
+    laufenden Durchgang gibt. Wer aus dem Studio startete und das Fenster zumachte,
+    sperrte sich bis zum nächsten Stopp aus.
     """
     import subprocess
 
-    if _block_if_running(state):
-        return
     with state.lock:
         seq_name = state.active_sequence.name if state.active_sequence else ""
 
-    args = [sys.executable, "-m", "autoclicker.node_editor"]
+    args = [sys.executable, "-m", "autoclicker.sequence_studio"]
     if seq_name:
         args.append(seq_name)
 
     try:
         subprocess.Popen(args)
     except OSError as e:
-        print(f"\n{err(f'Konnte Node-Editor nicht starten: {e}')}")
+        print(f"\n{err(f'Konnte Sequenz-Studio nicht starten: {e}')}")
         return
 
     target = f"'{seq_name}'" if seq_name else "neue Sequenz"
-    print(f"\n{col('[NODE-EDITOR]', 'cyan')} Visueller Editor geöffnet ({target}).")
-    print(f"     Nach dem Speichern mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
+    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet ({target}).")
+    print("     Starten geht dort auch — der Hauptprozess führt es aus.")
+    print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
 def handle_scan_studio(state: AutoClickerState) -> None:
-    """Öffnet das visuelle Scan-Studio als separaten Subprocess.
+    """Öffnet das Sequenz-Studio auf dem Reiter „Scans".
 
-    Nimmt einen Screenshot auf und lässt Slots (perspektivisch auch Items/Scans)
-    direkt darauf anlegen. Bearbeitet slots/slots.json auf Disk — dieselbe Datei
-    wie der Konsolen-Slot-Editor; danach im Hauptprozess Item-Scan-Menü neu
-    aufrufen, um die geänderten Slots zu sehen.
+    Bis zum Umbau war das ein eigenes Fenster in Dear PyGui. Es ist ersatzlos
+    weg: dieselbe Arbeit — Slots auf einem Screenshot aufziehen, Items lernen,
+    Item-Scans zusammenstellen — macht jetzt ein Reiter im Studio, und zwar in
+    demselben Fenster, in dem die Sequenz steht, die die Scans benutzt. Zwei
+    Fenster mit zwei Bedienkonzepten für dieselben Dateien waren einer zu viel.
+
+    Der Hotkey bleibt, weil er der kürzeste Weg dorthin ist. Er startet
+    denselben Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter.
     """
     import subprocess
 
-    if _block_if_running(state):
-        return
-
+    args = [sys.executable, "-m", "autoclicker.sequence_studio", "", "--scans"]
     try:
-        subprocess.Popen([sys.executable, "-m", "autoclicker.scan_studio"])
+        subprocess.Popen(args)
     except OSError as e:
-        print(f"\n{err(f'Konnte Scan-Studio nicht starten: {e}')}")
+        print(f"\n{err(f'Konnte das Studio nicht starten: {e}')}")
         return
 
-    print(f"\n{col('[SCAN-STUDIO]', 'cyan')} Visuelles Scan-Studio geöffnet.")
-    print(f"     Slots werden in {col('slots/slots.json', 'yellow')} gespeichert.")
+    print(f"\n{col('[SCANS]', 'cyan')} Studio geöffnet — Reiter „Scans“.")
+    print(f"     Gespeichert wird in {col('slots/slots.json', 'yellow')} und "
+          f"{col('items/items.json', 'yellow')}.")
+    print(f"     Danach im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
 def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:

@@ -7,7 +7,7 @@ import json
 import logging
 from dataclasses import dataclass, fields, asdict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, get_args
 
 from .utils import col, ok, warn, err, atomic_write
 
@@ -19,6 +19,20 @@ logger = logging.getLogger("autoclicker")
 # =============================================================================
 CONFIG_FILE = "config.json"
 SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
+
+# Laufstatus für Beobachter ausserhalb des Prozesses (runtime/status.py).
+# Bewusst im Wurzelverzeichnis neben config.json und NICHT in sequences/:
+# `Path.glob("*.json")` erfasst auch Dateien mit führendem Punkt, die Datei
+# stünde also als Sequenz im Studio-Menü, im Konsolen-Menü und in der
+# Start-Migration — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
+# `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
+# unter backups/ liegen statt neben dem Original.
+RUN_STATUS_FILE: str = ".lauf.json"
+
+# Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
+# denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
+# sondern ein Briefkasten, der beim Lesen geleert wird.
+COMMAND_FILE: str = ".befehl.json"
 
 
 @dataclass
@@ -37,6 +51,10 @@ class AppConfig:
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
 
     # === PIXEL-ERKENNUNG ===
+    # Wann zwei Stellen derselbe Punkt sind. Radius 0 = nur exakt gleiche
+    # Koordinate (das Verhalten vor der Einfuehrung).
+    punkt_radius: int = 8                           # Abstand in px, bis zu dem wiederverwendet wird
+    punkt_farbtoleranz: int = 10                    # ...aber nur, wenn auch die Farbe passt
     pixel_wait_tolerance: int = 10                  # Toleranz für Pixel-Trigger
     pixel_wait_timeout: int = 300                   # Timeout für Pixel-Trigger in Sekunden (0 = unendlich)
     pixel_timeout_action: str = "skip_cycle"        # Aktion bei Timeout: "skip_cycle", "restart", "stop"
@@ -45,8 +63,13 @@ class AppConfig:
     pixel_consecutive_action: str = "stop"          # Notbremse: "stop", "quit", "exit"
     pixel_show_delay: float = 0.3                   # Wie lange Pixel-Position angezeigt wird (Sekunden)
 
+    # === NACHPRUEFUNG ("hat der Klick gewirkt?") ===
+    # Greift nur bei Schritten mit gesetzter verify_condition — ohne die passiert nichts.
+    verify_timeout: float = 3.0                     # Sekunden auf die erwartete Wirkung warten
+    verify_retries: int = 1                         # Wiederholungen der Aktion, bevor else greift (0 = keine)
+    verify_interval: float = 0.2                    # Prüf-Intervall der Nachprüfung in Sekunden
+
     # === SCAN-EINSTELLUNGEN ===
-    scan_reverse: bool = True                       # True = Slots rückwärts scannen (4,3,2,1)
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
@@ -55,9 +78,16 @@ class AppConfig:
     scan_require_all_markers: bool = True            # True = ALLE Marker müssen gefunden werden
     scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
     scan_marker_min_pixels: int = 1                 # Min. passende (abgetastete) Pixel pro Marker-Farbe (>1 = robuster gegen Rausch-Pixel)
+    # Pfad zu einer Item-Name -> Gold-pro-Stueck-JSON (schreibt market_analysis).
+    # Leer = aus: dann entscheidet wie bisher die von Hand gesetzte Item-Prioritaet.
+    scan_market_value_file: str = ""
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
-    scan_slot_color_distance: int = 25              # Farbdistanz für Hintergrund-Ausschluss
+    # Gemessen an einem echten Bestand: der Slot-Hintergrund ist nicht EINE
+    # Farbe - sein dunklerer Rand lag 44 entfernt und blieb bei 25 als Marker
+    # in 19 von 19 Items stehen. Bei 45 verschwindet er, bei 55 aendert sich
+    # nichts mehr.
+    scan_slot_color_distance: int = 45              # Farbdistanz für Hintergrund-Ausschluss
     scan_min_confidence: float = 0.8                # Standard-Konfidenz für Template-Matching (80%)
     scan_confirm_delay: float = 0.5                 # Standard-Wartezeit vor Bestätigungs-Klick
 
@@ -97,6 +127,12 @@ class AppConfig:
     humanize_break_interval_min: float = 0          # Alle N Minuten Pause einlegen (0 = aus)
     humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
     humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
+
+    # === AUFNAHME ===
+    # False = das Mausrad wird beim Aufnehmen ignoriert. Gedacht für Spiele, in denen
+    # das Rad nur die Ansicht dreht: solche Drehungen gehören nicht in die Sequenz,
+    # blähen sie aber auf. Der Hook lässt das Rad dann schon in winapi liegen.
+    record_scroll: bool = True                      # Mausrad mit aufzeichnen
 
     # === SESSION-LOG ===
     session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
@@ -274,6 +310,23 @@ class AppConfig:
 DEFAULT_CONFIG = AppConfig().to_dict()
 
 
+def uebernehmen(ziel: AppConfig, quelle: AppConfig) -> None:
+    """Schreibt alle Werte aus `quelle` in `ziel` — ohne das Objekt zu tauschen.
+
+    Im Prozess gibt es **ein** Config-Objekt: `state.config` IST das
+    Modul-`CONFIG` (gesetzt in `main.py`). Wer es gegen ein neues austauscht,
+    lässt jeden zurück, der noch die alte Referenz hält — und das sind alle
+    Module mit `from .config import CONFIG` (imaging, die Item-Editoren). Die
+    sähen ab dem Austausch dauerhaft die Werte vom Programmstart.
+
+    Deshalb wird hier hineingeschrieben statt ersetzt. Drei Stellen tun das:
+    Factory Reset, Bundle-Import und das Neuladen nach einem Speichern im
+    Sequenz-Studio.
+    """
+    for f in fields(AppConfig):
+        setattr(ziel, f.name, getattr(quelle, f.name))
+
+
 def load_config() -> AppConfig:
     """Lädt Konfiguration aus config.json oder erstellt Standard-Config."""
     config_path = Path(CONFIG_FILE)
@@ -329,16 +382,20 @@ _CONFIG_SECTIONS = [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
     ]),
     ("PIXEL-ERKENNUNG", [
+        "punkt_radius", "punkt_farbtoleranz",
         "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
         "pixel_show_delay",
     ]),
+    ("NACHPRUEFUNG", [
+        "verify_timeout", "verify_retries", "verify_interval",
+    ]),
     ("SCAN-EINSTELLUNGEN", [
-        "scan_reverse", "scan_click_immediate", "scan_park_mouse",
+        "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
-        "scan_marker_min_pixels",
+        "scan_marker_min_pixels", "scan_market_value_file",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),
@@ -360,6 +417,9 @@ _CONFIG_SECTIONS = [
         "humanize_break_interval_min",
         "humanize_break_duration_min", "humanize_break_duration_max",
     ]),
+    ("AUFNAHME", [
+        "record_scroll",
+    ]),
     ("SESSION-LOG", [
         "session_log_enabled", "session_log_dir",
     ]),
@@ -376,24 +436,48 @@ _CONFIG_SECTIONS = [
 ]
 
 
+def config_abschnitte() -> list:
+    """Die Abschnitte in Datei-Reihenfolge, inklusive noch nicht zugeordneter Felder.
+
+    Genau die Einteilung, die `save_config()` in die Datei schreibt — und
+    deshalb steht sie hier und nicht im Studio: sonst stünden die Felder im
+    Fenster in einer anderen Ordnung als in der Datei, die man daneben aufmacht.
+
+    Der Nachzügler-Abschnitt ist kein Schmuck: ein Feld, das jemand der
+    Dataclass hinzufügt und in `_CONFIG_SECTIONS` vergisst, ist damit in beiden
+    Ansichten sichtbar statt unsichtbar. (Ein Test verlangt trotzdem, dass er
+    leer bleibt.)
+    """
+    zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
+    alle = [f.name for f in fields(AppConfig)]
+    abschnitte = [(titel, [k for k in keys if k in alle])
+                  for titel, keys in _CONFIG_SECTIONS]
+    rest = [k for k in alle if k not in zugeordnet]
+    if rest:
+        abschnitte.append(("SONSTIGE", rest))
+    return abschnitte
+
+
+def optionale_felder() -> list:
+    """Felder, die `None` erlauben — dort heisst ein leeres Eingabefeld `null`.
+
+    Bei allen anderen heisst leer `0` bzw. `""`, und der Unterschied ist nicht
+    kosmetisch: `click_max_total = 0` wäre „nach null Klicks stoppen", `None`
+    dagegen „unbegrenzt". Ein Eingabefeld kann das nicht wissen, also sagt es
+    ihm diese Liste.
+    """
+    return [f.name for f in fields(AppConfig) if type(None) in get_args(f.type)]
+
+
 def save_config(config: AppConfig) -> None:
     """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
     data = config.to_dict()
 
     entries = []
-    written_keys = set()
-
-    for section_name, keys in _CONFIG_SECTIONS:
+    for section_name, keys in config_abschnitte():
         for key in keys:
-            if key not in data:
-                continue
-            val = json.dumps(data[key], ensure_ascii=False)
-            written_keys.add(key)
-            entries.append((section_name, key, val))
-
-    remaining = [(k, v) for k, v in data.items() if k not in written_keys]
-    for k, v in remaining:
-        entries.append(("SONSTIGE", k, json.dumps(v, ensure_ascii=False)))
+            if key in data:
+                entries.append((section_name, key, json.dumps(data[key], ensure_ascii=False)))
 
     lines = ["{\n"]
     last_section = None

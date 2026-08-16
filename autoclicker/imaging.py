@@ -44,8 +44,22 @@ _gdi32.DeleteObject.restype = wintypes.BOOL
 _gdi32.DeleteDC.argtypes = [wintypes.HDC]
 _gdi32.DeleteDC.restype = wintypes.BOOL
 
+_user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+_user32.PrintWindow.restype = wintypes.BOOL
+_user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+_user32.GetWindowRect.restype = wintypes.BOOL
+_user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+_user32.GetClientRect.restype = wintypes.BOOL
+_user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+_user32.ClientToScreen.restype = wintypes.BOOL
+
 # BitBlt-Rasteroperation: Quelle 1:1 kopieren (Windows GDI SRCCOPY).
 SRCCOPY = 0x00CC0020
+
+# PrintWindow: das ganze Fenster zeichnen lassen, samt GPU-beschleunigtem
+# Inhalt. Ohne dieses Flag (ab Windows 8.1) bleiben Browser und viele Spiele
+# leer — dann waere die ganze Funktion nutzlos für den Fall, für den es sie gibt.
+PW_RENDERFULLCONTENT = 0x00000002
 
 # BITMAPINFOHEADER für Screenshots (einmal definiert, wiederverwendbar)
 class BITMAPINFOHEADER(ctypes.Structure):
@@ -171,9 +185,11 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
 _template_cache: dict = {}
 _TEMPLATE_CACHE_MAX = 256
 
-# Schon gemeldete Groessen-Konflikte (Template != Slot). Einmal pro Template und
-# Groesse warnen, nicht bei jedem Scan - sonst ist die Konsole nach einer Minute voll
-# und man liest die Meldung nicht mehr.
+# Schon gemeldete Groessen-Konflikte. Der Schluessel ist die GROESSENPAARUNG
+# (Template gegen Slot), nicht das einzelne Template - sonst steht die Meldung
+# einmal pro Item da, und das sind bei zwei Inventaren im Bestand zwei Dutzend
+# Zeilen mit derselben Aussage. Genau der Fall, gegen den die Sperre gedacht war:
+# eine Konsole voll gleichlautender Warnungen liest niemand mehr.
 _gemeldete_groessen: set = set()
 
 
@@ -193,7 +209,11 @@ def _load_template(template_path: str):
     if eintrag is not None and eintrag["stand"] == stand:
         return eintrag["bild"]
 
-    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    # UNCHANGED statt COLOR: ein Template mit Alpha-Kanal traegt darin seine
+    # Maske. Ohne das faellt sie beim Laden weg und niemand merkt es.
+    bild = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    if bild is not None and bild.ndim == 2:
+        bild = cv2.cvtColor(bild, cv2.COLOR_GRAY2BGR)
     if bild is None:
         logger.error(f"Konnte Template nicht laden: {template_path}")
         return None
@@ -204,11 +224,76 @@ def _load_template(template_path: str):
     return bild
 
 
-def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
-    """Gibt das Template in der gewünschten Größe zurück (skaliert + gemerkt).
+def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
+    """Legt einen Alpha-Kanal an: Hintergrund durchsichtig, Item deckend.
 
-    Die Größen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
-    geändert wurde. Sie ist pro Slot-Größe immer dieselbe Rechnung — also einmal.
+    **Das Template besteht sonst zu neun Zehnteln aus Hintergrund.** Gemessen an
+    einem echten Bestand: von 62×60 Pixeln eines Slots sind 10–40 % das Item, der
+    Rest ist die immer gleiche Slot-Fläche. Ein Bildvergleich über das ganze
+    Rechteck stimmt damit hauptsächlich darüber ab, dass beide denselben
+    Hintergrund haben — und nur zu einem Zehntel darüber, ob es dasselbe Item ist.
+
+    **Die Maske merkt sich Stellen, nicht Farben.** Das ist der Grund, warum sie
+    auch dann trägt, wenn dasselbe Item später vor einem anders gefärbten Menü
+    steht: verglichen werden nur die Pixel, an denen beim Lernen das Item sass.
+    Welche Farbe der Hintergrund dort *heute* hat, geht in die Rechnung gar nicht
+    mehr ein.
+
+    Sie steckt IM Template-PNG (Alpha-Kanal), nicht in einer Datei daneben — zwei
+    Dateien, die zusammengehören, laufen irgendwann auseinander. Dieselbe
+    Entscheidung wie beim Ursprung im Screenshot-PNG.
+    """
+    if img is None or not hintergrund:
+        return img
+    grenze = CONFIG.scan_slot_color_distance
+    rgb = img.convert("RGB")
+    breite, hoehe = rgb.size
+    pixel = rgb.load()
+    maske = Image.new("L", (breite, hoehe))
+    mp = maske.load()
+    hr, hg, hb = hintergrund[:3]
+    for y in range(hoehe):
+        for x in range(breite):
+            r, g, b = pixel[x, y]
+            if ((r - hr) ** 2 + (g - hg) ** 2 + (b - hb) ** 2) ** 0.5 <= grenze:
+                mp[x, y] = 0
+            else:
+                mp[x, y] = 255
+    ergebnis = rgb.convert("RGBA")
+    ergebnis.putalpha(maske)
+    return ergebnis
+
+
+def _konfidenz_maskiert(bild, template, maske) -> float:
+    """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
+
+    **Warum von Hand und nicht `cv2.matchTemplate(..., mask=)`:** mit Maske kann
+    OpenCV nur `TM_SQDIFF` und `TM_CCORR_NORMED`, und deren Zahlen bedeuten etwas
+    anderes als die bisherige. `min_confidence` steht an jedem Item auf einem
+    Wert, der für CCOEFF gedacht ist — ein Methodenwechsel würde jede gespeicherte
+    Schwelle still verschieben, und niemand wüsste, warum plötzlich alles oder
+    nichts passt.
+
+    Template und Ausschnitt sind hier immer gleich gross (`_template_in_groesse`
+    sorgt dafür), also ist das Ganze genau eine Korrelation und keine Suche.
+    """
+    wahl = maske > 127
+    if int(wahl.sum()) < 16:
+        # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
+        return 0.0
+    a = template[wahl].astype(np.float64).ravel()
+    b = bild[wahl].astype(np.float64).ravel()
+    a -= a.mean()
+    b -= b.mean()
+    nenner = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
+    return float((a * b).sum() / nenner) if nenner > 0 else 0.0
+
+
+def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
+    """Gibt das Template in der gewünschten Grösse zurück (skaliert + gemerkt).
+
+    Die Grössen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
+    geändert wurde. Sie ist pro Slot-Grösse immer dieselbe Rechnung — also einmal.
     """
     if bild.shape[1] == breite and bild.shape[0] == hoehe:
         return bild
@@ -255,15 +340,15 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         if template_cv is None:
             return (False, 0.0, None)
 
-        # Größenvergleich: Template muss zum Scan-Bild passen
+        # Grössenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
 
         if (tw != iw or th != ih) and tw > 0 and th > 0:
-            # Größen-Diskrepanz! Template an Scan-Bildgröße anpassen
+            # Grössen-Diskrepanz! Template an Scan-Bildgrösse anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
-            logger.debug(f"Template '{template_name}' Größe {tw}x{th} != Scan {iw}x{ih} - resize")
+            logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_in_groesse(template_path, template_cv, iw, ih)
 
         # Debug: Scan-Bild und Template speichern zum Vergleich
@@ -277,32 +362,49 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             # Template/Maske (was cv2 zum Vergleich verwendet)
             cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
 
-        # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
-        result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+        # Traegt das Template eine Maske, wird nur ueber das Item verglichen -
+        # der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
+        maske = None
+        if template_cv.ndim == 3 and template_cv.shape[2] == 4:
+            maske = template_cv[:, :, 3]
+            template_cv = np.ascontiguousarray(template_cv[:, :, :3])
 
-        # Bestes Match finden
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        if maske is not None and template_cv.shape[:2] == img_cv.shape[:2]:
+            max_val = _konfidenz_maskiert(img_cv, template_cv, maske)
+            max_loc = (0, 0)
+        else:
+            # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
+            result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
         # max_val ist die Konfidenz (0.0 - 1.0)
         if max_val >= min_confidence:
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
         else:
-            # Bei sehr niedrigen Werten: Größen-Mismatch als mögliche Ursache loggen
+            # Bei sehr niedrigen Werten: Grössen-Mismatch als mögliche Ursache loggen.
+            # **Zwei Ursachen, und nur eine ist ein Fehler.** Entweder gehört das
+            # Item zu einem anderen Inventar (dessen Slots eine andere Grösse haben)
+            # — dann ist der Fehlschlag genau richtig, und ein neu aufgenommenes
+            # Template würde nichts verbessern. Oder die Slot-Region hat sich
+            # wirklich verschoben. Die Meldung nannte nur die zweite und schickte
+            # den Leser damit auf die falsche Fährte.
             if max_val < 0.3 and (tw != iw or th != ih):
-                schluessel = (template_name, tw, th, iw, ih)
+                schluessel = (tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
                     _gemeldete_groessen.add(schluessel)
                     logger.warning(
                         f"Template '{template_name}' passt nicht zur Scan-Region: "
                         f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
-                        "Slot-Region geändert? Template neu aufnehmen."
+                        "Gehört das Item zu einem anderen Inventar, ist das in Ordnung; "
+                        "sonst hat sich die Slot-Region geändert (Template neu aufnehmen). "
+                        "Weitere Templates dieser Grössenpaarung werden nicht mehr gemeldet."
                     )
             return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:
-        # cv2.error explizit fangen (z.B. Größen-Mismatch nach Resize, leere Matrix) —
-        # sonst propagiert es in den Worker und reißt die Sequenz ab. cv2 ist hier
+        # cv2.error explizit fangen (z.B. Grössen-Mismatch nach Resize, leere Matrix) —
+        # sonst propagiert es in den Worker und reisst die Sequenz ab. cv2 ist hier
         # garantiert verfügbar, da die Funktion oben bei not OPENCV_AVAILABLE früh
         # zurückkehrt (OPENCV_AVAILABLE-Muster).
         logger.error(f"Template Matching Fehler: {e}")
@@ -322,7 +424,7 @@ def get_color_name(rgb: tuple) -> str:
         elif r < 200:
             return "Grau"
         else:
-            return "Weiß"
+            return "Weiss"
 
     # Dominante Farbe bestimmen
     if r > g and r > b:
@@ -381,7 +483,7 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
                 region[2] - x_offset,
                 region[3] - y_offset
             )
-            # Bounds-Check: Region muss positive Größe haben
+            # Bounds-Check: Region muss positive Grösse haben
             if adjusted_region[2] <= adjusted_region[0] or adjusted_region[3] <= adjusted_region[1]:
                 logger.error(f"Ungültige Region nach Offset-Anpassung: {adjusted_region}")
                 return None
@@ -485,6 +587,123 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
                 _user32.ReleaseDC(hwnd, hwndDC)
         except OSError:
             pass
+
+
+def take_window_screenshot(hwnd: int) -> Optional[tuple]:
+    """Bildet EIN Fenster ab — auch wenn etwas davor liegt.
+
+    Gibt `(bild, (l, t, r, b))` zurück: den **Client-Bereich** (Inhalt ohne
+    Titelleiste und Rahmen) und dessen Lage in Bildschirm-Koordinaten, damit
+    alles Weitere rechnet wie bei einem Ausschnitt vom Desktop. `None`, wenn es
+    nicht geht.
+
+    **Warum nicht BitBlt vom Desktop:** das kopiert, was auf dem Schirm zu sehen
+    ist — also auch das Studio-Fenster, das davor liegt. Genau der Fall, den man
+    hier nicht will. `PrintWindow` fordert das Fenster stattdessen auf, sich
+    selbst zu zeichnen; ob es dabei sichtbar ist, spielt keine Rolle.
+
+    `PW_RENDERFULLCONTENT` (0x2, ab Windows 8.1) ist der Teil, auf den es
+    ankommt: ohne dieses Flag liefern Fenster mit GPU-beschleunigtem Inhalt
+    (Browser, viele Spiele) ein leeres Rechteck. Eine Garantie ist es trotzdem
+    nicht — manche Vollbild-Spiele geben weiterhin Schwarz zurück. Deshalb prüft
+    der Aufrufer das Ergebnis und fällt notfalls auf den Desktop zurück; ein
+    schwarzes Bild wäre schlimmer als ein verdecktes, weil es aussieht, als
+    hätte es geklappt.
+    """
+    if not PILLOW_AVAILABLE or not NUMPY_AVAILABLE or not hwnd:
+        return None
+
+    hwndDC = None
+    memDC = None
+    bmp = None
+    old_bmp = None
+    try:
+        fenster = wintypes.RECT()
+        client = wintypes.RECT()
+        if not _user32.GetWindowRect(hwnd, ctypes.byref(fenster)):
+            return None
+        if not _user32.GetClientRect(hwnd, ctypes.byref(client)):
+            return None
+        ecke = wintypes.POINT(0, 0)
+        if not _user32.ClientToScreen(hwnd, ctypes.byref(ecke)):
+            return None
+        breite = fenster.right - fenster.left
+        hoehe = fenster.bottom - fenster.top
+        cb = client.right - client.left
+        ch = client.bottom - client.top
+        if breite <= 0 or hoehe <= 0 or cb <= 0 or ch <= 0:
+            return None
+
+        hwndDC = _user32.GetWindowDC(hwnd)
+        memDC = _gdi32.CreateCompatibleDC(hwndDC)
+        bmp = _gdi32.CreateCompatibleBitmap(hwndDC, breite, hoehe)
+        old_bmp = _gdi32.SelectObject(memDC, bmp)
+
+        if not _user32.PrintWindow(hwnd, memDC, PW_RENDERFULLCONTENT):
+            logger.error("PrintWindow fehlgeschlagen")
+            return None
+
+        bi = BITMAPINFOHEADER()
+        bi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bi.biWidth = breite
+        bi.biHeight = -hoehe
+        bi.biPlanes = 1
+        bi.biBitCount = 32
+        bi.biCompression = 0
+        puffer = (ctypes.c_char * (breite * hoehe * 4))()
+        if _gdi32.GetDIBits(memDC, bmp, 0, hoehe, puffer, ctypes.byref(bi), 0) == 0:
+            logger.error("GetDIBits fehlgeschlagen (Fensterbild)")
+            return None
+
+        roh = np.frombuffer(puffer, dtype=np.uint8).reshape((hoehe, breite, 4))
+        bild = Image.fromarray(roh[:, :, [2, 1, 0]])
+        # Aus dem GANZEN Fenster den Client-Bereich schneiden: PrintWindow malt
+        # Rahmen und Titelleiste mit, und die gehören nicht zum Spielfeld.
+        dx = ecke.x - fenster.left
+        dy = ecke.y - fenster.top
+        bild = bild.crop((dx, dy, dx + cb, dy + ch))
+        return bild, (ecke.x, ecke.y, ecke.x + cb, ecke.y + ch)
+    except (OSError, ValueError, AttributeError) as e:
+        logger.error(f"Fenster-Screenshot fehlgeschlagen: {e}")
+        return None
+    finally:
+        try:
+            if old_bmp and memDC:
+                _gdi32.SelectObject(memDC, old_bmp)
+        except OSError:
+            pass
+        try:
+            if bmp:
+                _gdi32.DeleteObject(bmp)
+        except OSError:
+            pass
+        try:
+            if memDC:
+                _gdi32.DeleteDC(memDC)
+        except OSError:
+            pass
+        try:
+            if hwndDC:
+                _user32.ReleaseDC(hwnd, hwndDC)
+        except OSError:
+            pass
+
+
+def ist_leer(bild) -> bool:
+    """Ist das Bild einfarbig? Dann hat sich das Fenster nicht gezeichnet.
+
+    Der Prüfstein hinter `take_window_screenshot`: manche Fenster liefern trotz
+    `PW_RENDERFULLCONTENT` eine schwarze Fläche. Die sieht aus wie ein Ergebnis,
+    ist aber keines — und alles Weitere (Slots finden, Farbe messen) arbeitete
+    dann auf Nichts, ohne dass es jemand merkt.
+    """
+    if bild is None:
+        return True
+    try:
+        ecken = bild.convert("RGB").getcolors(maxcolors=4)
+    except (OSError, ValueError):
+        return False
+    return bool(ecken) and len(ecken) <= 1
 
 
 def analyze_screen_colors(region: tuple = None, pixel_step: int = 2) -> dict:

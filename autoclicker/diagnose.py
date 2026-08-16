@@ -164,7 +164,7 @@ def _pruefe_llm_ocr(state: AutoClickerState, bericht: Pruefbericht) -> None:
 
 
 def _pruefe_koordinaten(state: AutoClickerState, bericht: Pruefbericht) -> None:
-    """Punkte außerhalb aller Monitore klicken ins Nichts."""
+    """Punkte ausserhalb aller Monitore klicken ins Nichts."""
     rect = get_virtual_desktop()
     if rect is None:
         return

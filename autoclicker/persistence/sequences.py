@@ -56,7 +56,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
     `points` sind die Punkte, aus denen die Koordinaten geholt werden. Ohne sie stünden
     im Ergebnis lauter Nullen — in der Datei stehen ja nur noch IDs. Deshalb lädt die
     Funktion sie selbst nach, wenn der Aufrufer keine übergibt: von den Aufrufern hat
-    die Hälfte gar keinen Punkte-Pool zur Hand (Node-Editor, Canvas, Export), und die
+    die Hälfte gar keinen Punkte-Pool zur Hand (Sequenz-Studio, Scan-Studio, Export), und die
     dürfen deswegen keine halbe Sequenz bekommen.
     """
     if points is None:
@@ -229,7 +229,7 @@ def _punkt_aus_dict(p: dict) -> ClickPoint:
 def _punkte_aus_datei() -> list[ClickPoint]:
     """points.json direkt lesen, ohne den globalen State anzufassen.
 
-    Fuer die Aufrufer von `load_sequence_file`, die keinen State haben (Node-Editor,
+    Fuer die Aufrufer von `load_sequence_file`, die keinen State haben (Sequenz-Studio,
     Canvas, Export). Fehlt oder bricht die Datei, gibt es eben keine Punkte - dann
     meldet `aufloesen()` die Schritte als verwaist, statt still Nullen zu liefern.
     """
@@ -245,12 +245,55 @@ def _punkte_aus_datei() -> list[ClickPoint]:
         return []
 
 
+def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
+    """Holt points.json von Platte nach und liefert die Punkte zum Aufloesen.
+
+    Wer eine Sequenz frisch von Platte laedt, muss auch die Punkte frisch holen.
+    Das Sequenz-Studio laeuft als eigener Prozess und schreibt beim Speichern
+    BEIDE Dateien; der Hauptprozess nahm die Sequenz von Platte und die Punkte
+    aus seinem Speicher. Ein dort angelegter Punkt fehlte deshalb genau dann,
+    wenn man ihn braucht: `aufloesen()` meldete "Punkt #51 FEHLT", `step_gate()`
+    uebersprang den Schritt. Zwei Haelften aus zwei Zeitpunkten - die eine Sorte
+    Fehler, die dieser Ordner sonst ueberall vermeidet.
+
+    Zusammengefuehrt wird ueber die ID, **Platte gewinnt**. Punkte, die nur im
+    Speicher stehen, bleiben: Boss- und Icon-Editor legen ueber
+    `punkt_fuer_stelle()` welche an, ohne sofort zu speichern - ein stumpfes
+    Ersetzen loeschte die. Geloescht wird hier ueberhaupt nichts; keiner der
+    beiden Prozesse entfernt Punkte, und ein Verweis ins Leere waere teurer als
+    ein Punkt zu viel.
+
+    Laesst sich die Datei nicht lesen, bleibt der Speicherstand unangetastet -
+    das ist der Fall, in dem Raten schlimmer ist als Altern.
+    """
+    von_platte = _punkte_aus_datei()
+    with state.lock:
+        nach_id = {p.id: p for p in state.points}
+        neu = [p for p in von_platte if p.id not in nach_id]
+        geaendert = [p for p in von_platte
+                     if p.id in nach_id and _point_to_dict(p) != _point_to_dict(nach_id[p.id])]
+        nach_id.update({p.id: p for p in von_platte})
+        state.points = [nach_id[pid] for pid in sorted(nach_id)]
+        ergebnis = list(state.points)
+
+    # Still, wenn nichts zu tun war - der Normalfall ist, dass die Datei genau
+    # das enthaelt, was ohnehin im Speicher steht.
+    if neu or geaendert:
+        teile = []
+        if neu:
+            teile.append(f"{len(neu)} neu")
+        if geaendert:
+            teile.append(f"{len(geaendert)} geaendert")
+        print(info(f"points.json nachgeladen ({', '.join(teile)})."))
+    return ergebnis
+
+
 def _sichere_neue_punkte(punkt_dicts: list, anzahl: int, seq_name: str) -> None:
     """Schreibt Punkte weg, die die Migration gerade angelegt hat.
 
     Der Normalweg fuer Altbestand ist der Start-Durchgang (`sweep`), und der schreibt
     points.json selbst. Diese Absicherung gilt allen anderen Aufrufern - Import,
-    Node-Editor, ein Ordner, der nachtraeglich hineinkopiert wurde: dort entstuenden
+    Sequenz-Studio, ein Ordner, der nachtraeglich hineinkopiert wurde: dort entstuenden
     IDs, die nach dem naechsten Neustart auf nichts mehr zeigen. Lieber einmal zu viel
     geschrieben als eine Sequenz, die ins Leere klickt.
     """
@@ -309,6 +352,51 @@ def get_next_point_id(state: AutoClickerState) -> int:
     return max(p.id for p in state.points) + 1
 
 
+def punkt_an_stelle(punkte, x: int, y: int, color=None,
+                    radius: Optional[int] = None,
+                    farbtoleranz: Optional[int] = None):
+    """Der vorhandene Punkt an dieser Stelle — oder None. **Die eine Regel.**
+
+    Dieselbe Frage stellen zwei Stellen: der Editor (`punkt_fuer_stelle`) und die
+    Aufnahme (`punkte_fuer_events`). Beide verglichen die Koordinaten **exakt** —
+    und genau daran entstanden die Doppelten: man trifft denselben Knopf zweimal,
+    aber zwei Pixel versetzt, und bekommt zwei Punkte. In einer echten Aufnahme
+    lagen so vier Punkte auf einem einzigen grünen Knopf.
+
+    Deshalb ein Radius. Zwei Bedingungen, und die zweite ist die wichtigere:
+
+    1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten)
+    2. **Die Farbe muss passen.** Sobald sie abweicht, ist es ein anderer Ort —
+       auch wenn er einen Pixel daneben liegt. Genau dafür ist die Farbe da: an
+       einer Farbgrenze klickt man zwei verschiedene Dinge, und zwei Spiele
+       übereinander unterscheiden sich in nichts anderem.
+
+    Fehlt einer Seite die Farbe, lässt sich Regel 2 nicht prüfen — dann zählt nur
+    die exakte Stelle. Lieber ein Punkt zu viel als zwei zusammengelegt, die es
+    nicht sind.
+    """
+    from ..config import CONFIG
+    radius = CONFIG.punkt_radius if radius is None else radius
+    ftol = CONFIG.punkt_farbtoleranz if farbtoleranz is None else farbtoleranz
+    genau = None
+    for p in punkte:
+        if (p.x, p.y) == (x, y):
+            genau = p
+            break
+    if genau is not None or radius <= 0 or not color:
+        return genau
+    beste, bester_abstand = None, None
+    for p in punkte:
+        if not p.color:
+            continue
+        if max(abs(a - b) for a, b in zip(p.color, color)) > ftol:
+            continue
+        abstand = ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5
+        if abstand <= radius and (bester_abstand is None or abstand < bester_abstand):
+            beste, bester_abstand = p, abstand
+    return beste
+
+
 def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
                       color=None, name: str = "", source: str = "") -> int:
     """ID des Punktes an (x, y) - liegt dort keiner, wird einer angelegt.
@@ -320,16 +408,17 @@ def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
     Ein vorhandener Punkt an derselben Stelle wird wiederverwendet: klickt eine Sequenz
     zweimal denselben Knopf, soll das EIN Punkt sein. Sonst wandert beim Nachjustieren
     nur eine der beiden Stellen mit, und die Sequenz laeuft halb korrigiert weiter.
+    „Dieselbe Stelle" beantwortet `punkt_an_stelle()` — mit Radius UND Farbe.
 
     Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen - schreibt state.points.
     """
-    for p in state.points:
-        if (p.x, p.y) == (x, y):
-            # Farbe nachtragen, falls der vorhandene Punkt noch keine hatte: ein
-            # Farb-Trigger braucht sie, ein reiner Klickpunkt kam bisher ohne aus.
-            if color and not p.color:
-                p.color = tuple(color)
-            return p.id
+    p = punkt_an_stelle(state.points, x, y, color)
+    if p is not None:
+        # Farbe nachtragen, falls der vorhandene Punkt noch keine hatte: ein
+        # Farb-Trigger braucht sie, ein reiner Klickpunkt kam bisher ohne aus.
+        if color and not p.color:
+            p.color = tuple(color)
+        return p.id
 
     punkt = ClickPoint(x, y, name or f"Punkt {get_next_point_id(state)}",
                        get_next_point_id(state),
@@ -359,13 +448,19 @@ def _phasen(sequence):
 def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `punkte` ist id -> ClickPoint.
 
-    Drei Referenzen pro Schritt, alle nach demselben Muster:
+    Vier Referenzen pro Schritt, alle nach demselben Muster:
 
-    | Referenz                | fuellt                          |
-    |-------------------------|---------------------------------|
-    | `step.point_id`         | x, y, name, recorded_color      |
-    | `wait_condition.point_id` | pixel, color                  |
-    | `else_config.point_id`  | x, y, name                      |
+    | Referenz                    | fuellt                      | fehlt der Punkt      |
+    |-----------------------------|-----------------------------|----------------------|
+    | `step.point_id`             | x, y, name, recorded_color  | Schritt uebersprungen|
+    | `wait_condition.point_id`   | pixel, color                | Schritt uebersprungen|
+    | `verify_condition.point_id` | pixel, color                | Pruefung entfaellt   |
+    | `else_config.point_id`      | x, y, name                  | else wird 'skip'     |
+
+    Die letzte Spalte ist der Unterschied: Klick und Vorbedingung sind der Schritt
+    selbst - ohne sie darf er nicht laufen. Nachpruefung und else sind Zusatz; faellt
+    ihr Punkt weg, laeuft der Schritt weiter, nur eben ungeprueft. Gemeldet wird
+    beides.
 
     Die Arbeitswerte sind das, was Worker und Editoren lesen; gespeichert wird nur die
     ID. Deshalb laeuft das hier direkt beim Laden - sonst saehe jeder Aufrufer, der die
@@ -417,6 +512,26 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
                         meldungen.append(
                             f"{ort} Pruef-Pixel folgt Punkt #{punkt.id}: "
                             f"{alt} -> {wc.pixel}")
+
+            vc = step.verify_condition
+            if vc is not None and vc.point_id is not None:
+                punkt = punkte.get(vc.point_id)
+                if punkt is None:
+                    # Anders als beim Pruef-Pixel wird der Schritt NICHT uebersprungen:
+                    # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
+                    # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
+                    meldungen.append(
+                        f"{ort} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
+                        f"den es nicht mehr gibt - wird nicht mehr geprueft")
+                    step.verify_condition = None
+                else:
+                    alt = tuple(vc.pixel)
+                    vc.pixel = (punkt.x, punkt.y)
+                    vc.color = punkt.color if punkt.color else vc.color
+                    if alt != (0, 0) and alt != vc.pixel and not still:
+                        meldungen.append(
+                            f"{ort} Nachpruefung folgt Punkt #{punkt.id}: "
+                            f"{alt} -> {vc.pixel}")
 
             ec = step.else_config
             if ec is not None and ec.point_id is not None:

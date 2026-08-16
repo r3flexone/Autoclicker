@@ -18,7 +18,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 # Modulare Imports
-from autoclicker.config import AppConfig, CONFIG, SEQUENCES_DIR, CONFIG_FILE
+from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
 from autoclicker.winapi import (
     user32, kernel32,
@@ -28,7 +28,8 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_NODE_EDITOR, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
+    HOTKEY_SEQUENCE_STUDIO, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
+    HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages
 )
 from autoclicker.persistence import (
@@ -39,7 +40,7 @@ from autoclicker.persistence import (
     resolve_klick_referenzen
 )
 from autoclicker.diagnose import check_beim_start
-from autoclicker.execution import print_status
+from autoclicker.runtime import print_status
 from autoclicker.utils import col, info, warn, hint, init_logging
 from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
@@ -47,9 +48,11 @@ from autoclicker.handlers import (
     handle_toggle, handle_pause, handle_skip, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
     handle_import_export, handle_record_sequence, handle_record_pause,
-    handle_record_color,
-    handle_node_editor, handle_scan_studio
+    handle_record_color, handle_record_screenshot,
+    handle_rec_phase, handle_rec_region, handle_rec_watch,
+    handle_sequence_studio, handle_scan_studio, BEFEHLE
 )
+from autoclicker.befehl import hole as hole_befehl, verwerfe as verwirf_befehle
 
 
 def print_banner() -> None:
@@ -85,15 +88,19 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
     print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klick/Taste/Mausrad → Sequenz erstellen)')}")
     print(f"  {col('CTRL+ALT+M', 'yellow')}  Aufnahme: auf Farbe warten {hint('(Maus über die Stelle, sobald sie da ist)')}")
+    print(f"  {col('CTRL+ALT+D', 'yellow')}  Aufnahme: Screenshot {hint('(Vollbild)')}")
+    print(f"  {col('CTRL+ALT+SHIFT+D', 'yellow')}  Aufnahme: Screenshot-Bereich {hint('(2× drücken = zwei Ecken)')}")
+    print(f"  {col('CTRL+ALT+SHIFT+M', 'yellow')}  Aufnahme: beobachten ohne Klick {hint('(Maus auf die Stelle)')}")
+    print(f"  {col('CTRL+ALT+SHIFT+P', 'yellow')}  Aufnahme: Phasengrenze {hint('(1× = LOOP, 2× = END)')}")
     print(f"  {col('CTRL+ALT+H', 'yellow')}  Aufnahme pausieren/fortsetzen {hint('(während einer Aufnahme)')}")
     print()
 
     # Editoren (blau)
     print(col("Editoren:", 'blue'))
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
-    print(f"  {col('CTRL+ALT+B', 'yellow')}  Visueller Editor {hint('(Blöcke verbinden – braucht dearpygui)')}")
+    print(f"  {col('CTRL+ALT+B', 'yellow')}  Sequenz-Studio {hint('(Phasen + Schritte visuell – braucht pywebview)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
-    print(f"  {col('CTRL+ALT+V', 'yellow')}  Scan-Studio {hint('(Slots/Items/Scans + Boss/Icon visuell)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Slots + Items auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
           f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, manuell, log/detail)')}")
@@ -104,7 +111,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     # Ausführung (magenta)
     print(col("Ausführung:", 'magenta'))
     print(f"  {col('CTRL+ALT+S', 'yellow')}  Start/Stop der aktiven Sequenz")
-    print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschließen, dann END + Stop)')}")
+    print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschliessen, dann END + Stop)')}")
     print(f"  {col('CTRL+ALT+G', 'yellow')}  Pause/Resume")
     print(f"  {col('CTRL+ALT+K', 'yellow')}  Skip {hint('(aktuelle Wartezeit überspringen)')}")
     print(f"  {col('CTRL+ALT+W', 'yellow')}  Quick-Switch {hint('(schnell Sequenz wechseln)')}")
@@ -164,13 +171,54 @@ def _erster_start(state) -> bool:
                 or state.item_scans or list_available_sequences())
 
 
+# Wie oft im Leerlauf nach einem Befehl aus dem Studio gesehen wird. Die Schleife
+# dreht alle 10 ms; jedes Mal eine Datei zu öffnen wäre hundertmal pro Sekunde für
+# etwas, das man von Hand auslöst.
+_BEFEHL_TAKT = 0.25
+_befehl_zuletzt = 0.0
+
+
+def _pruefe_befehle(state) -> None:
+    """Holt einen Befehl aus dem Briefkasten und führt ihn aus.
+
+    Läuft im **Main-Thread**, im Leerlauf derselben Schleife, die auch die
+    Hotkeys abholt. Damit ist ein Befehl aus dem Studio exakt dasselbe wie ein
+    Hotkey-Druck: dieselbe Reihenfolge, dieselben Sperren, kein zweiter
+    nebenläufiger Pfad im Programm. Ein Watcher-Thread hätte genau das gebracht,
+    und zwar nur, weil er eine Datei liest, die niemand eilig braucht.
+    """
+    global _befehl_zuletzt
+    jetzt = time.monotonic()
+    if jetzt - _befehl_zuletzt < _BEFEHL_TAKT:
+        return
+    _befehl_zuletzt = jetzt
+
+    auftrag = hole_befehl()
+    if auftrag is None:
+        return
+    name = auftrag["befehl"]
+    fn = BEFEHLE.get(name)
+    if fn is None:
+        print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
+        return
+    # Kein flush_hotkey_messages() danach: das verwirft aufgestaute Hotkeys und ist
+    # für Handler gedacht, die minutenlang auf Konsolen-Eingaben warten. Ein Befehl
+    # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
+    # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
+    fn(state, auftrag["argumente"])
+
+
 def main() -> int:
     """Hauptfunktion."""
     print_banner()
 
     # State initialisieren
     state = AutoClickerState()
-    state.config = AppConfig.from_dict(CONFIG.to_dict())
+    # Dasselbe Objekt, keine Kopie: `from .config import CONFIG` steht in
+    # imaging und in mehreren Item-Editoren, und mit einer Kopie lasen die
+    # dauerhaft den Stand vom Programmstart. Wer die Werte aendert, schreibt
+    # deshalb HINEIN (config.uebernehmen) statt state.config auszutauschen.
+    state.config = CONFIG
     # Logger-Meldungen sichtbar und im Stil des Programms. DEBUG nur, wenn eine der
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
     # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.
@@ -251,6 +299,13 @@ def main() -> int:
     print_status(state)
     print()
 
+    # Briefkasten leeren, bevor die Schleife anfängt zu lesen. Wer im Studio auf
+    # „Starten" drückt, während gar kein Hauptprozess läuft, bekommt keine
+    # Wirkung — und darf sie auch nicht bekommen, sobald einer startet. Die
+    # Altersregel in befehl.py fängt das meiste ab, aber nicht die letzten
+    # Sekunden davor.
+    verwirf_befehle()
+
     # Message-Struktur für Windows-Nachrichten
     msg = wintypes.MSG()
 
@@ -275,7 +330,11 @@ def main() -> int:
         HOTKEY_RECORD_SEQ: handle_record_sequence,
         HOTKEY_RECORD_PAUSE: handle_record_pause,
         HOTKEY_RECORD_COLOR: handle_record_color,
-        HOTKEY_NODE_EDITOR: handle_node_editor,
+        HOTKEY_RECORD_SCREENSHOT: handle_record_screenshot,
+        HOTKEY_REC_PHASE: handle_rec_phase,
+        HOTKEY_REC_REGION: handle_rec_region,
+        HOTKEY_REC_WATCH: handle_rec_watch,
+        HOTKEY_SEQUENCE_STUDIO: handle_sequence_studio,
         HOTKEY_SCAN_STUDIO: handle_scan_studio,
         HOTKEY_HELP: lambda _state: print_help(),
     }
@@ -296,6 +355,7 @@ def main() -> int:
                         # WM_HOTKEY-Messages verwerfen (sonst feuern sie als Burst).
                         flush_hotkey_messages()
             else:
+                _pruefe_befehle(state)
                 time.sleep(0.01)
 
     except KeyboardInterrupt:

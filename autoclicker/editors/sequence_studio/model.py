@@ -1,5 +1,5 @@
 """
-GUI-freier Modell-Layer für den visuellen Node-Editor.
+GUI-freier Modell-Layer für das Sequenz-Studio.
 
 Übersetzt eine Sequence in eine flache Lane-Struktur (INIT / Loop-Phasen / END)
 und zurück — verlustfrei. Die Blöcke SIND die originalen SequenceStep-Objekte
@@ -18,20 +18,15 @@ from pathlib import Path
 from typing import Optional
 
 from ...models import (
+    BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_ICON_SCAN,
+    BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
     ElseConfig, LoopPhase, Sequence, SequenceStep, WaitCondition,
 )
 
-# Block-Typ-Konstanten (für Farbkodierung + Labels im Canvas).
-# Reihenfolge der Erkennung in block_type() entspricht der Executor-Priorität.
-BLOCK_SCREENSHOT = "screenshot"
-BLOCK_BOSS_WATCHER = "boss_watcher"
-BLOCK_BOSS_SCAN = "boss_scan"
-BLOCK_ITEM_SCAN = "item_scan"
-BLOCK_ICON_SCAN = "icon_scan"
-BLOCK_KEY = "key"
-BLOCK_WAIT = "wait"          # wait_only ohne Klick
-BLOCK_WAIT_CLICK = "wait_click"  # wait_condition + Klick
-BLOCK_CLICK = "click"        # einfacher Klick (evtl. mit Zeit-Delay)
+# Die Block-Typen und `block_type()` selbst liegen in `models.py`: die Laufzeit
+# schreibt den Typ des laufenden Blocks in den Laufstatus, damit die Live-Ansicht
+# ihn genauso färben kann wie das Board — und `runtime/` darf die Ansicht nicht
+# importieren. Beschriftung und Farbe bleiben hier, das ist Anzeige.
 
 # Lane-Arten
 LANE_INIT = "init"
@@ -39,35 +34,7 @@ LANE_LOOP = "loop"
 LANE_END = "end"
 
 
-def block_type(step: SequenceStep) -> str:
-    """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
-
-    Die String-Diskriminatoren werden mit `is not None` geprüft, nicht per
-    Truthiness: ein frisch im Editor gewählter Scan-/Tasten-Block hat zunächst
-    einen leeren Namen ("") und soll trotzdem als sein gewählter Typ angezeigt
-    werden, bis der User den Namen einträgt. Geladene Sequenzen haben hier nie
-    "" (nur None oder echte Namen), darum bleibt das Verhalten identisch.
-    """
-    if step.screenshot_only:
-        return BLOCK_SCREENSHOT
-    if step.boss_watcher is not None:
-        return BLOCK_BOSS_WATCHER
-    if step.boss_scan is not None:
-        return BLOCK_BOSS_SCAN
-    if step.icon_scan is not None:
-        return BLOCK_ICON_SCAN
-    if step.item_scan is not None:
-        return BLOCK_ITEM_SCAN
-    if step.key_press is not None:
-        return BLOCK_KEY
-    if step.wait_only:
-        return BLOCK_WAIT
-    if step.wait_condition:
-        return BLOCK_WAIT_CLICK
-    return BLOCK_CLICK
-
-
-# Anzeige-Label je Block-Typ (kurz, für die Node-Titelzeile)
+# Anzeige-Label je Block-Typ (kurz, für die Listenzeile)
 BLOCK_LABELS = {
     BLOCK_SCREENSHOT: "SCREENSHOT",
     BLOCK_BOSS_WATCHER: "BOSS-WATCHER",
@@ -80,23 +47,56 @@ BLOCK_LABELS = {
     BLOCK_CLICK: "KLICK",
 }
 
-# RGB-Farbe je Block-Typ für die Node-Titelzeile (Dear PyGui Theme).
+# RGB-Farbe je Block-Typ. Sie sitzt als kleines Quadrat vor der Listenzeile —
+# frueher faerbte sie die Titelzeile einer Node.
+# Neun Typen, neun unterscheidbare Farben. Taste, Item-Scan und Icon-Scan lagen
+# vorher alle im Bereich Orange/Gelb (220,130,50 / 210,180,60 / 210,140,60) — auf
+# einer Karte nebeneinander waren sie nicht auseinanderzuhalten, und genau das ist
+# der Zweck der Farbe. Die beiden Boss-Typen bleiben bewusst verwandt (sie tun
+# Verwandtes), unterscheiden sich aber jetzt deutlich in der Helligkeit.
 BLOCK_COLORS = {
     BLOCK_SCREENSHOT: (150, 90, 200),   # Lila
-    BLOCK_BOSS_WATCHER: (200, 60, 60),  # Rot
-    BLOCK_BOSS_SCAN: (200, 80, 80),     # Rot (heller)
-    BLOCK_ITEM_SCAN: (210, 180, 60),    # Gelb
-    BLOCK_ICON_SCAN: (210, 140, 60),    # Orange-Gelb
-    BLOCK_KEY: (220, 130, 50),          # Orange
+    BLOCK_BOSS_WATCHER: (140, 40, 45),  # Dunkelrot (dauerhaft beobachten)
+    BLOCK_BOSS_SCAN: (205, 60, 60),     # Rot (einmal schauen)
+    BLOCK_ITEM_SCAN: (215, 185, 60),    # Gelb
+    BLOCK_ICON_SCAN: (45, 165, 160),    # Türkis
+    BLOCK_KEY: (225, 115, 55),          # Orange
     BLOCK_WAIT: (120, 120, 120),        # Grau
-    BLOCK_WAIT_CLICK: (60, 170, 110),   # Grün-Cyan
+    BLOCK_WAIT_CLICK: (60, 170, 110),   # Grün
     BLOCK_CLICK: (60, 120, 200),        # Blau
 }
 
 
+def hexfarbe(rgb) -> Optional[str]:
+    """(r,g,b) -> '#RRGGBB'. Unbrauchbare Werte ergeben None statt einer Falschfarbe.
+
+    Steht hier und nicht in `bridge.py`, weil der Scans-Reiter sie genauso
+    braucht (Slot-Hintergrund, Marker-Farben) — und ein zweites Exemplar wäre
+    genau die Kopie, die irgendwann anders rundet.
+    """
+    if not rgb:
+        return None
+    try:
+        r, g, b = (max(0, min(255, int(v))) for v in tuple(rgb)[:3])
+    except (TypeError, ValueError):
+        return None
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def rgbwert(hexwert) -> Optional[tuple]:
+    """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
+    roh = str(hexwert or "").strip().lstrip("#")
+    if len(roh) != 6:
+        return None
+    try:
+        return tuple(int(roh[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
 @dataclass
 class Lane:
-    """Eine Spalte im Canvas: INIT, eine Loop-Phase oder END."""
+    """Eine Spalte im Board: INIT, eine Loop-Phase oder END."""
     kind: str                              # LANE_INIT / LANE_LOOP / LANE_END
     name: str                              # Anzeigename ("INIT", "Loop 1", "END")
     steps: list[SequenceStep] = field(default_factory=list)
@@ -108,14 +108,14 @@ class Lane:
 
 
 @dataclass
-class BlockGraph:
+class SequenceBoard:
     """GUI-agnostische Darstellung einer Sequence als Lanes von Blöcken."""
     name: str
     total_cycles: int = 1
     description: str = ""
     lanes: list[Lane] = field(default_factory=list)
 
-    # --- Mutationen (vom Canvas aufgerufen) ---------------------------------
+    # --- Mutationen (von der Ansicht aufgerufen) ---------------------------------
 
     def loop_lanes(self) -> list[Lane]:
         return [ln for ln in self.lanes if ln.is_loop()]
@@ -167,7 +167,7 @@ class BlockGraph:
                         ln.name = f"Loop {n}"
 
 
-def sequence_to_graph(seq: Sequence) -> BlockGraph:
+def sequence_to_board(seq: Sequence) -> SequenceBoard:
     """Wandelt eine Sequence in eine Lane-Struktur (INIT, Loops…, END)."""
     lanes: list[Lane] = [Lane(kind=LANE_INIT, name="INIT", steps=list(seq.init_steps))]
     for lp in seq.loop_phases:
@@ -179,7 +179,7 @@ def sequence_to_graph(seq: Sequence) -> BlockGraph:
             scheduled_start=lp.scheduled_start,
         ))
     lanes.append(Lane(kind=LANE_END, name="END", steps=list(seq.end_steps)))
-    return BlockGraph(
+    return SequenceBoard(
         name=seq.name,
         total_cycles=seq.total_cycles,
         description=seq.description,
@@ -187,7 +187,7 @@ def sequence_to_graph(seq: Sequence) -> BlockGraph:
     )
 
 
-def graph_to_sequence(graph: BlockGraph) -> Sequence:
+def board_to_sequence(graph: SequenceBoard) -> Sequence:
     """Baut aus der Lane-Struktur wieder eine Sequence (verlustfrei)."""
     init_steps: list[SequenceStep] = []
     end_steps: list[SequenceStep] = []
@@ -232,7 +232,7 @@ class PalettePoint:
 def save_palette_points(sequences_dir: str, points: list) -> bool:
     """Schreibt die Palette zurueck nach sequences/points.json.
 
-    Frueher las der Node-Editor die Punkte nur. Das ging, solange die Sequenz ihre
+    Frueher las das Studio die Punkte nur. Das ging, solange die Sequenz ihre
     Koordinaten selbst trug — seit sie das nicht mehr tut, waere eine hier eingetippte
     Position beim Speichern verloren. Deshalb wandert die Palette mit.
 
@@ -310,9 +310,14 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     if new_type == BLOCK_CLICK:
         step.wait_condition = None
     elif new_type == BLOCK_WAIT_CLICK:
-        if step.wait_condition is None:
-            color = tuple(step.recorded_color) if step.recorded_color else (0, 0, 0)
-            step.wait_condition = WaitCondition(pixel=(step.x, step.y), color=color)
+        # **Am Punkt, nicht an den rohen Koordinaten.** Eine Bedingung ohne
+        # `point_id` landet als `wait_pixel`/`wait_color` in der Datei — eine
+        # Koordinaten-Kopie ausserhalb von points.json, die keine Kalibrierung
+        # je wieder einholt. Stelle und Farbe holt `aufloesen()` aus dem Punkt;
+        # ohne Punkt entsteht gar keine Bedingung (der Aufrufer lehnt den
+        # Typwechsel dann ab).
+        if step.wait_condition is None and step.point_id is not None:
+            step.wait_condition = WaitCondition(point_id=step.point_id)
     elif new_type == BLOCK_WAIT:
         # wait_condition bleibt optional erhalten (Farb-Trigger-Feature).
         step.wait_only = True
