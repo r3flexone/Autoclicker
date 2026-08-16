@@ -265,7 +265,7 @@ class ScanTeil:
             cfg.slots = [self.slots[n] for n in cfg.slot_names if n in self.slots]
             cfg.items = [self.items[n] for n in cfg.item_names if n in self.items]
 
-    def _dazu(self, art: str, name: str) -> None:
+    def _dazu(self, art: str, name: str) -> bool:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
         **Wer in einem offenen Scan etwas anlegt, legt es FÜR ihn an.** Ohne das
@@ -275,14 +275,20 @@ class ScanTeil:
         das man erkennbar gerade für diesen Scan gemacht hat.
 
         Ohne offenen Scan passiert nichts; dann arbeitet man am Bestand.
+
+        Gibt zurück, ob es eine Änderung war — „war schon dabei" ist etwas
+        anderes als „gerade aufgenommen", und der Suchdurchgang zählt beides
+        getrennt.
         """
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
-            return
+            return False
         namen = cfg.slot_names if art == ART_SLOT else cfg.item_names
-        if name not in namen:
-            namen.append(name)
-            self._objekte_angleichen()
+        if name in namen:
+            return False
+        namen.append(name)
+        self._objekte_angleichen()
+        return True
 
     def _scan_melde(self, text: str, art: str = "ok") -> dict:
         self._scan_status = (text, art)
@@ -1021,12 +1027,30 @@ class ScanTeil:
                 f"Nichts gefunden zu {hexfarbe(farbe)} — auf eine LEERE Stelle im "
                 "Slot klicken, nicht auf ein Item.", "warn")
 
-        neu, schon = 0, 0
+        ziel = self._bestehende_slot_groesse()
+        neu, dazu, schon = 0, 0, 0
         for rx, ry, rb, rh in rechtecke:
             region = self._mit_einzug(
                 (sx1 + rx, sy1 + ry, sx1 + rx + rb, sy1 + ry + rh))
-            if self._slot_an_stelle(region):
-                schon += 1
+            if ziel is not None:
+                zb, zh = ziel
+                breite, hoehe = region[2] - region[0], region[3] - region[1]
+                if abs(breite - zb) <= self._GROESSE_TOLERANZ \
+                        and abs(hoehe - zh) <= self._GROESSE_TOLERANZ:
+                    region = self._auf_groesse(region, ziel)
+            vorhanden = self._slot_an_stelle(region)
+            if vorhanden is not None:
+                # **Gefunden ist gefunden, auch wenn der Slot schon existiert.**
+                # Bei zwei Spielen liegen die Slots des einen längst im Bestand —
+                # ein zweiter Scan über demselben Inventar legte deshalb nichts
+                # an, nahm aber auch nichts auf, und weil die Listen nur
+                # Mitglieder zeigen, blieb er leer: „45 gefunden, alle schon da"
+                # und keine einzige Marke im Bild. Wer hier sucht, meint diesen
+                # Scan — also gehören die Treffer hinein, angelegt oder nicht.
+                if self._dazu(ART_SLOT, vorhanden):
+                    dazu += 1
+                else:
+                    schon += 1
                 continue
             name = next_slot_name(self.slots)
             self.slots[name] = ItemSlot(
@@ -1041,13 +1065,17 @@ class ScanTeil:
         # Modus stehen und mal nicht, je nach Ergebnis.
         self._suchbereich = None
         self.scan_modus = MODUS_WAHL
-        if not neu:
+        if not neu and not dazu:
             return self._scan_melde(f"{schon} Slot(s) gefunden — alle schon da."
                                     f"{self._gleich_erkennen()}", "info")
-        teile = f"{neu} Slot(s) angelegt"
+        teile = []
+        if neu:
+            teile.append(f"{neu} Slot(s) angelegt")
+        if dazu:
+            teile.append(f"{dazu} schon vorhandene in den Scan aufgenommen")
         if schon:
-            teile += f", {schon} schon vorhanden"
-        return self._scan_geaendert(f"{teile} · Hintergrund {hexfarbe(farbe)}"
+            teile.append(f"{schon} war(en) schon dabei")
+        return self._scan_geaendert(f"{', '.join(teile)} · Hintergrund {hexfarbe(farbe)}"
                                     f"{self._einzug_hinweis()}"
                                     f"{self._gleich_erkennen()}")
 
@@ -1139,6 +1167,13 @@ class ScanTeil:
     # Slot und Panel sich nur um wenige Stufen unterscheiden.
     _SV_STUFEN = (50, 35, 25, 18, 12, 8)
 
+    # Ab wie viel Pixel Abweichung ein neu gefundener Slot NICHT mehr an die
+    # Grösse bestehender Slots angeglichen wird (s. `_bestehende_slot_groesse`).
+    # Klein gehalten: das soll nur die paar Pixel Median-Drift zwischen zwei
+    # Suchdurchgängen auffangen, nicht einen Slot anderer Grösse verbiegen, der
+    # aus einem anderen Grund im Scan liegt (z.B. von Hand angelegt).
+    _GROESSE_TOLERANZ = 6
+
     def _slots_suchen(self, bild, farbe: tuple) -> list:
         """Sucht die Slots mit mehreren Toleranzen und nimmt das beste Ergebnis.
 
@@ -1167,19 +1202,56 @@ class ScanTeil:
                 bestes = rechtecke
         return bestes
 
-    def _slot_an_stelle(self, region: tuple) -> bool:
-        """Liegt an dieser Stelle schon ein Slot? Mitte im Rechteck zählt.
+    def _bestehende_slot_groesse(self) -> Optional[tuple]:
+        """Zielgrösse für neu gefundene Slots, wenn schon welche im Scan liegen.
+
+        `erkenne_slots_im_bild()` normalisiert nur INNERHALB eines Suchdurchgangs
+        auf den Median — ein zweiter `finden`-Lauf auf demselben Raster (z.B. weil
+        beim ersten Mal Items im Weg standen) bekommt seinen eigenen Median und
+        weicht dadurch ein paar Pixel vom ersten Durchgang ab, obwohl die Slots im
+        Spiel exakt gleich gross sind. Genau diese Differenz liess Templates aus dem
+        ersten Durchgang beim zweiten als „passt nicht zur Scan-Region" auffallen.
+        Neu gefundene Slots übernehmen deshalb die Grösse, die im Scan schon
+        feststeht, statt bei jedem Durchgang neu zu raten.
+
+        Gefragt wird zuerst der offene Scan — er ist der Zusammenhang, in dem
+        gearbeitet wird. Ist er noch leer (ein frisch angelegter über einem
+        Inventar, dessen Slots schon im Bestand liegen), zählt der Bestand:
+        genau dort liegen die Slots, zu denen die vorhandenen Templates passen.
+        """
+        slots = self._flaechen_slots() or list(self.slots.values())
+        groessen = [(s.scan_region[2] - s.scan_region[0], s.scan_region[3] - s.scan_region[1])
+                    for s in slots if s.scan_region]
+        if not groessen:
+            return None
+        breiten = sorted(g[0] for g in groessen)
+        hoehen = sorted(g[1] for g in groessen)
+        return breiten[len(breiten) // 2], hoehen[len(hoehen) // 2]
+
+    @staticmethod
+    def _auf_groesse(region: tuple, groesse: tuple) -> tuple:
+        """Zentriert `region` auf `groesse`, ohne die Mitte zu verschieben."""
+        zb, zh = groesse
+        cx, cy = (region[0] + region[2]) // 2, (region[1] + region[3]) // 2
+        return (cx - zb // 2, cy - zh // 2, cx - zb // 2 + zb, cy - zh // 2 + zh)
+
+    def _slot_an_stelle(self, region: tuple) -> Optional[str]:
+        """Der Name des Slots an dieser Stelle, sonst `None`. Mitte zählt.
 
         Nicht auf Gleichheit prüfen: die Erkennung normalisiert auf die
         Median-Grösse, ein von Hand aufgezogener Slot liegt also fast nie exakt
         gleich — und dann stünden zwei Slots übereinander.
+
+        Gibt den **Namen** zurück und nicht bloss ja/nein: der Suchdurchgang
+        nimmt einen schon vorhandenen Slot in den offenen Scan auf, und dafür
+        muss er wissen, welcher es ist.
         """
         mx, my = (region[0] + region[2]) // 2, (region[1] + region[3]) // 2
         for s in self.slots.values():
             r = s.scan_region
             if r and r[0] <= mx <= r[2] and r[1] <= my <= r[3]:
-                return True
-        return False
+                return s.name
+        return None
 
     def _klick_messen(self, x: int, y: int) -> dict:
         slot = self._gewaehlter_slot()

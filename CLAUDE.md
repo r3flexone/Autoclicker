@@ -1070,6 +1070,26 @@ standardmässig nur die Mitglieder, und er war keines — man musste den Filter
 ausschalten, ihn suchen und ein Häkchen setzen. Gilt für neue Slots, gedoppelte
 und gelernte Items.
 
+**Und gefunden ist gefunden, auch wenn der Slot schon existiert.** Bei zwei
+Spielen liegen die Slots des einen längst im Bestand; ein **neuer** Scan über
+demselben Inventar legte deshalb nichts an — nahm aber auch nichts auf, und weil
+die Listen nur Mitglieder zeigen, blieb er leer: „45 Slot(s) gefunden, alle schon
+da" und keine einzige Marke im Bild. Genau der Fall, in dem man den Fehler bei
+der Erkennung sucht, obwohl sie funktioniert hat. `_slot_an_stelle()` gibt
+deshalb den **Namen** zurück statt ja/nein, und der Durchgang zählt drei Sorten
+getrennt: angelegt, aufgenommen, war schon dabei.
+
+**Ein zweiter Suchlauf rät die Grösse nicht neu.** `erkenne_slots_im_bild()`
+normalisiert auf den Median **eines** Durchgangs — ein zweiter Lauf über
+demselben Raster bekommt seinen eigenen und weicht ein paar Pixel ab, obwohl die
+Slots im Spiel gleich gross sind. Damit passten gelernte Templates nicht mehr
+zur Slot-Region („Template 62×60, Slot 62×57"). Ein Fund innerhalb von
+`_GROESSE_TOLERANZ` (6 px) übernimmt deshalb die Grösse, die schon feststeht
+(`_bestehende_slot_groesse()`, zentriert über `_auf_groesse()`) — zuerst die des
+offenen Scans, sonst die des Bestands, denn dort liegen die Slots, zu denen die
+vorhandenen Templates passen. Was **deutlich** anders gross ist, bleibt, wie es
+gefunden wurde: das ist dann kein Median-Versatz, sondern ein anderer Slot.
+
 **Was in Schirm-Pixeln rechnet, muss den Zoom aushalten.** Marken und Hinweise
 werden gegen den Zoom gerechnet (`px = 1 / scanZoom`), damit sie in jeder
 Vergrösserung gleich gross dastehen — die Slots dagegen stehen in Bild-Pixeln.

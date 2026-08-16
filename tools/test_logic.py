@@ -6346,6 +6346,83 @@ try:
     check("geprueft werden die Items des offenen Scans",
           sorted(i.name for i in _b18._kandidaten()) == ["A1", "A2"])
 
+    # --- Der Suchdurchgang nimmt auch schon vorhandene Slots in den Scan ---
+    # Bei zwei Spielen liegen die Slots des einen laengst im Bestand. Ein NEUER
+    # Scan ueber demselben Inventar legte deshalb nichts an ("alle schon da") -
+    # nahm aber auch nichts auf, und weil die Listen nur Mitglieder zeigen,
+    # blieb er leer: kein Slot in der Liste, keine Marke im Bild.
+    _merk18 = (dict(_b18.slots), dict(_b18.scans), _b18.scan_offen)
+    _b18.slots.clear()
+    _b18.scans.clear()
+    _b18.scan_offen = ""
+    _b18.slots["Alt 1"] = _SLOT8(name="Alt 1", scan_region=(100, 100, 160, 160),
+                                 click_pos=(130, 130))
+    check("ein Slot an der Stelle wird beim NAMEN genannt",
+          _b18._slot_an_stelle((105, 105, 155, 155)) == "Alt 1"
+          and _b18._slot_an_stelle((300, 300, 340, 340)) is None)
+    _b18.scan_neu({"name": "Zweites Spiel"})
+    # Nur die Teile stellen, die einen Bildschirm braeuchten - gemessen wird die
+    # Schleife, die aus Rechtecken Slots und Mitglieder macht.
+    _b18._foto = object()
+    _b18._foto_info = {"links": 0, "oben": 0, "skala": 1.0, "breite": 500,
+                       "hoehe": 500, "stand": 0.0}
+    _b18._suchbereich = (90, 90, 400, 400)
+    _b18._hat_opencv = lambda: True
+    _b18._foto_farbe = lambda x, y: (10, 20, 30)
+    _b18._foto_crop = lambda bereich: object()
+    _b18._slots_suchen = lambda bild, farbe: [(10, 10, 60, 60), (80, 10, 60, 60)]
+    _z18 = _b18._klick_finden(100, 100)
+    check("ein schon vorhandener Slot gehoert danach zum offenen Scan",
+          "Alt 1" in _b18.scans["Zweites Spiel"].slot_names)
+    check("und der wirklich neue ebenfalls",
+          len(_b18.scans["Zweites Spiel"].slot_names) == 2
+          and len(_b18.slots) == 2)
+    check("beide stehen als dabei in der Aufnahme",
+          len([s for s in _z18["slots"] if s["dabei"]]) == 2)
+    check("und die Aufnahme gilt als Aenderung", _z18["dirty"] is True)
+    # Gegenprobe: was schon dabei WAR, wird nicht noch einmal angehaengt.
+    _b18._suchbereich = (90, 90, 400, 400)
+    _b18._klick_finden(100, 100)
+    check("ein zweiter Durchgang haengt nichts doppelt an",
+          _b18.scans["Zweites Spiel"].slot_names.count("Alt 1") == 1
+          and len(_b18.slots) == 2)
+
+    # --- Ein zweiter Suchlauf raet die Groesse nicht neu ---
+    # `erkenne_slots_im_bild()` normalisiert auf den Median EINES Durchgangs; ein
+    # zweiter Lauf ueber demselben Raster weicht deshalb ein paar Pixel ab,
+    # obwohl die Slots im Spiel gleich gross sind. Genau diese Differenz liess
+    # gelernte Templates als "passt nicht zur Scan-Region" auffallen.
+    _b18._suchbereich = (90, 90, 400, 400)
+    # Der Einzug kommt aus der Config - die Groesse wird deshalb so gestellt,
+    # dass NACH dem Einzug 57x57 uebrig bleibt: 3 px neben den 60x60, die schon
+    # dastehen, also innerhalb der Toleranz und damit angeglichen.
+    from autoclicker.config import CONFIG as _CFG18
+    _ein18 = max(0, int(_CFG18.scan_slot_inset))
+    _b18._slots_suchen = lambda bild, farbe: [(200, 200, 57 + 2 * _ein18,
+                                               57 + 2 * _ein18)]
+    _b18._klick_finden(100, 100)
+    _drift18 = [s for s in _b18.slots.values()
+                if s.scan_region and s.scan_region[0] >= 250][0].scan_region
+    check("ein knapp abweichender Fund bekommt die Groesse der vorhandenen",
+          (_drift18[2] - _drift18[0], _drift18[3] - _drift18[1]) == (60, 60))
+    # Gegenprobe: ein Slot, der WIRKLICH anders gross ist, wird nicht verbogen.
+    _b18._suchbereich = (90, 90, 400, 400)
+    _b18._slots_suchen = lambda bild, farbe: [(280, 200, 20 + 2 * _ein18,
+                                               20 + 2 * _ein18)]
+    _b18._klick_finden(100, 100)
+    _klein18 = [s for s in _b18.slots.values()
+                if s.scan_region and s.scan_region[0] >= 370][0].scan_region
+    check("ein deutlich kleinerer Fund behaelt seine Groesse",
+          (_klein18[2] - _klein18[0], _klein18[3] - _klein18[1]) == (20, 20))
+    _b18.slots.clear(), _b18.scans.clear()
+    _b18.slots.update(_merk18[0])
+    _b18.scans.update(_merk18[1])
+    _b18.scan_offen = _merk18[2]
+    for _feld18 in ("_hat_opencv", "_foto_farbe", "_foto_crop", "_slots_suchen"):
+        _b18.__dict__.pop(_feld18, None)
+    _b18._foto = _b18._foto_info = None
+    _b18._objekte_angleichen()
+
     # --- Fehlende Namen werden gemeldet, nicht verschwiegen ---
     _b18.scans.clear()
     _b18.scan_offen = ""
