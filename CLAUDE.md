@@ -1082,13 +1082,21 @@ getrennt: angelegt, aufgenommen, war schon dabei.
 **Ein zweiter Suchlauf rät die Grösse nicht neu.** `erkenne_slots_im_bild()`
 normalisiert auf den Median **eines** Durchgangs — ein zweiter Lauf über
 demselben Raster bekommt seinen eigenen und weicht ein paar Pixel ab, obwohl die
-Slots im Spiel gleich gross sind. Damit passten gelernte Templates nicht mehr
-zur Slot-Region („Template 62×60, Slot 62×57"). Ein Fund innerhalb von
-`_GROESSE_TOLERANZ` (6 px) übernimmt deshalb die Grösse, die schon feststeht
-(`_bestehende_slot_groesse()`, zentriert über `_auf_groesse()`) — zuerst die des
-offenen Scans, sonst die des Bestands, denn dort liegen die Slots, zu denen die
-vorhandenen Templates passen. Was **deutlich** anders gross ist, bleibt, wie es
-gefunden wurde: das ist dann kein Median-Versatz, sondern ein anderer Slot.
+Slots im Spiel gleich gross sind. Ein Fund innerhalb von `_GROESSE_TOLERANZ`
+(6 px) übernimmt deshalb die Grösse, die schon feststeht
+(`_bestehende_slot_groesse()`, zentriert über `_auf_groesse()`). Was
+**deutlich** anders gross ist, bleibt, wie es gefunden wurde: das ist dann kein
+Median-Versatz, sondern eine andere Fläche.
+
+**Bezug ist der offene Scan, nie der ganze Bestand.** Zwei Bedienflächen
+desselben Spiels sind nicht gleich gross — an einem echten Bestand gemessen hat
+das Inventar-Raster 64 Hintergrund-Zeilen, die Ausrüstungsreihe 61. Genau diese
+3 px fielen als „Template 62×60, Slot 62×57" auf, und sie sind **richtig**: die
+Erkennung misst den sichtbaren Hintergrund, und der ist dort tatsächlich
+flacher. Der Bestand als Bezug hätte die Reihe auf die Höhe des Rasters gezogen
+und ein Template erzeugt, das drei Pixel Fremdes mitlernt. Ein leerer Scan gibt
+deshalb gar keine Zielgrösse vor — und braucht auch keine: ein Slot, der schon
+im Bestand liegt, wird übernommen statt neu angelegt.
 
 **Was in Schirm-Pixeln rechnet, muss den Zoom aushalten.** Marken und Hinweise
 werden gegen den Zoom gerechnet (`px = 1 / scanZoom`), damit sie in jeder

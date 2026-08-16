@@ -1214,12 +1214,20 @@ class ScanTeil:
         Neu gefundene Slots übernehmen deshalb die Grösse, die im Scan schon
         feststeht, statt bei jedem Durchgang neu zu raten.
 
-        Gefragt wird zuerst der offene Scan — er ist der Zusammenhang, in dem
-        gearbeitet wird. Ist er noch leer (ein frisch angelegter über einem
-        Inventar, dessen Slots schon im Bestand liegen), zählt der Bestand:
-        genau dort liegen die Slots, zu denen die vorhandenen Templates passen.
+        **Gefragt wird nur der offene Scan, nie der ganze Bestand.** Zwei
+        Bedienflächen desselben Spiels sind nicht gleich gross: an einem echten
+        Bestand gemessen hat das Inventar-Raster 64 Hintergrund-Zeilen, die
+        Ausrüstungsreihe 61 — dieselben 3 px, die als „Template 62×60, Slot
+        62×57" auffielen, und sie sind **richtig**. Der Bestand als Bezug hätte
+        die Reihe auf die Höhe des Rasters gezogen und damit ein Template
+        erzeugt, das drei Pixel Fremdes mitlernt.
+
+        Ist der offene Scan noch leer, gibt es keinen Bezug — dann bleibt der
+        Fund, wie er gemessen wurde. Das kostet nichts: liegt der Slot schon im
+        Bestand, wird er ohnehin übernommen statt neu angelegt (`_klick_finden`),
+        und eine wirklich neue Fläche hat keinen Vorgänger, dem sie folgen könnte.
         """
-        slots = self._flaechen_slots() or list(self.slots.values())
+        slots = self._flaechen_slots()
         groessen = [(s.scan_region[2] - s.scan_region[0], s.scan_region[3] - s.scan_region[1])
                     for s in slots if s.scan_region]
         if not groessen:

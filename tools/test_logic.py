@@ -6414,6 +6414,18 @@ try:
                 if s.scan_region and s.scan_region[0] >= 370][0].scan_region
     check("ein deutlich kleinerer Fund behaelt seine Groesse",
           (_klein18[2] - _klein18[0], _klein18[3] - _klein18[1]) == (20, 20))
+    # Und der Bezug ist der offene Scan, NICHT der Bestand: zwei Bedienflaechen
+    # desselben Spiels sind nicht gleich gross (gemessen: Raster 64 Zeilen,
+    # Ausruestungsreihe 61). Ein leerer Scan hat keinen Bezug - dann bleibt der
+    # Fund, wie er gemessen wurde, statt der Groesse eines fremden Rasters zu
+    # folgen.
+    _b18.scan_neu({"name": "Andere Flaeche"})
+    check("ein leerer Scan gibt keine Zielgroesse vor",
+          _b18._bestehende_slot_groesse() is None)
+    _b18.scans.pop("Andere Flaeche", None)
+    _b18.scan_offen = "Zweites Spiel"
+    check("der offene Scan mit Slots schon",
+          _b18._bestehende_slot_groesse() == (60, 60))
     _b18.slots.clear(), _b18.scans.clear()
     _b18.slots.update(_merk18[0])
     _b18.scans.update(_merk18[1])
