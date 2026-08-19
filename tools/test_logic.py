@@ -4973,8 +4973,13 @@ try:
         "name": "aelter", "schema_version": 4, "total_cycles": 1,
         "init_steps": [], "end_steps": [], "loop_phases": []}), encoding="utf-8")
     # Zeitstempel von Hand setzen - sonst haengt der Test an der Aufloesung der Uhr.
-    _os.utime(Path("sequences") / "aelter.json", (1000, 1000))
-    _os.utime(Path("sequences") / "all_dayli.json", (2000, 2000))
+    # Moderne Werte statt Sekunden kurz nach 1970: NTFS und POSIX-Dateisysteme
+    # behandeln sehr alte Zeitstempel nicht identisch. Der grosse Abstand hält
+    # den Test weiterhin unabhängig von der Zeitauflösung des Dateisystems.
+    _zeit14 = 1_700_000_000
+    _os.utime(Path("sequences") / "aelter.json", (_zeit14, _zeit14))
+    _os.utime(Path("sequences") / "all_dayli.json",
+              (_zeit14 + 100, _zeit14 + 100))
     check("die zuletzt geaenderte Datei wird gefunden",
           _zb14() == Path("sequences") / "all_dayli.json")
 
@@ -4983,14 +4988,16 @@ try:
           _pfad14d == Path("sequences") / "all_dayli.json"
           and _schritte14(_seq14d) == 1)
 
-    _os.utime(Path("sequences") / "aelter.json", (3000, 3000))
+    _os.utime(Path("sequences") / "aelter.json",
+              (_zeit14 + 200, _zeit14 + 200))
     _seq14e, _pfad14e = _rs14("")
     check("und sie wechselt mit, wenn eine andere gespeichert wird",
           _pfad14e == Path("sequences") / "aelter.json")
 
     # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
     (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
-    _os.utime(Path("sequences") / "kaputt.json", (500, 500))
+    _os.utime(Path("sequences") / "kaputt.json",
+              (_zeit14 - 100, _zeit14 - 100))
     _seq14c, _pfad14c = _rs14("kaputt")
     check("eine unlesbare Datei wird nicht als Ziel uebernommen",
           _pfad14c.name != "kaputt.json" and _seq14c.loop_phases == [])
