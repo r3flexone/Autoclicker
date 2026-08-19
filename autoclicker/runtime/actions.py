@@ -145,7 +145,10 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
             return False
         _humanize_delay(state)
         jx, jy = _humanize_jitter(x, y, state)
-        send_click(jx, jy, state.config.click_move_delay, state.config.click_post_delay)
+        erfolgreich = send_click(
+            jx, jy, state.config.click_move_delay, state.config.click_post_delay)
+    if not erfolgreich:
+        return False
     log_event(state, "click", detail=label, x=jx, y=jy)
     return True
 
@@ -167,8 +170,11 @@ def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = No
         _humanize_delay(state)
         if x is not None and y is not None:
             x, y = _humanize_jitter(x, y, state)
-        send_scroll(clicks, x, y, state.config.click_move_delay,
-                    state.config.click_post_delay)
+        erfolgreich = send_scroll(
+            clicks, x, y, state.config.click_move_delay,
+            state.config.click_post_delay)
+    if not erfolgreich:
+        return False
     log_event(state, "scroll", detail=str(clicks), x=x, y=y, extra=label)
     return True
 
@@ -184,8 +190,10 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
             return False
         _humanize_delay(state)
         result = send_key(key)
+    if not result:
+        return False
     log_event(state, "key", detail=key, extra=label)
-    return result
+    return True
 
 
 # =============================================================================

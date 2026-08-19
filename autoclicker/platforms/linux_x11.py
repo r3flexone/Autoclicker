@@ -13,7 +13,9 @@ import queue
 import threading
 import time
 
-from .common import APP_ID, HOTKEY_BINDINGS, VK_CODES, WHEEL_DELTA
+from .common import (
+    APP_ID, HOTKEY_BINDINGS, KEY_NAMES, PlatformError, WHEEL_STEP,
+)
 from ..config import CONFIG
 from ..utils import err, warn
 
@@ -135,6 +137,11 @@ def capture_screen(region=None):
         return None
 
 
+def capture_window(_handle: int):
+    """Direkte Fensteraufnahme ist im X11-Backend noch nicht verfügbar."""
+    return None
+
+
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
     bild = capture_screen((int(x), int(y), int(x) + 1, int(y) + 1))
     return tuple(bild.getpixel((0, 0))[:3]) if bild is not None else None
@@ -145,8 +152,8 @@ def get_cursor_pos() -> tuple[int, int]:
         _, mouse = _pynput()
         x, y = mouse.Controller().position
         return int(x), int(y)
-    except (ImportError, OSError, RuntimeError):
-        return (0, 0)
+    except (ImportError, OSError, RuntimeError) as fehler:
+        raise PlatformError(f"Linux konnte die Mausposition nicht lesen: {fehler}") from fehler
 
 
 def set_cursor_pos(x: int, y: int) -> bool:
@@ -159,7 +166,7 @@ def set_cursor_pos(x: int, y: int) -> bool:
 
 
 def send_click(x: int, y: int, move_delay: float = 0.01,
-               post_delay: float = 0.05) -> None:
+               post_delay: float = 0.05) -> bool:
     try:
         _, mouse = _pynput()
         controller = mouse.Controller()
@@ -167,14 +174,16 @@ def send_click(x: int, y: int, move_delay: float = 0.01,
         time.sleep(max(0.0, move_delay))
         controller.click(mouse.Button.left)
         time.sleep(max(0.0, post_delay))
+        return True
     except (ImportError, OSError, RuntimeError) as fehler:
         logger.error("Linux-Klick fehlgeschlagen: %s", fehler)
+        return False
 
 
 def send_scroll(clicks: int, x: int = None, y: int = None,
-                move_delay: float = 0.01, post_delay: float = 0.05) -> None:
+                move_delay: float = 0.01, post_delay: float = 0.05) -> bool:
     if not clicks:
-        return
+        return True
     try:
         _, mouse = _pynput()
         controller = mouse.Controller()
@@ -183,8 +192,10 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
             time.sleep(max(0.0, move_delay))
         controller.scroll(0, int(clicks))
         time.sleep(max(0.0, post_delay))
+        return True
     except (ImportError, OSError, RuntimeError) as fehler:
         logger.error("Linux-Scrollen fehlgeschlagen: %s", fehler)
+        return False
 
 
 def _keyboard_key(keyboard, name: str):
@@ -232,7 +243,7 @@ def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
 
         def on_scroll(x, y, _dx, dy):
             if on_wheel is not None:
-                on_wheel(int(x), int(y), int(dy) * WHEEL_DELTA)
+                on_wheel(int(x), int(y), int(dy) * WHEEL_STEP)
 
         _mouse_listener = mouse.Listener(on_click=on_click, on_scroll=on_scroll)
         _mouse_listener.start()
@@ -282,7 +293,7 @@ def install_keyboard_hook(on_key_down) -> bool:
                 modifier.add(taste)
                 return
             name = _key_name(keyboard, taste)
-            if name in VK_CODES and not modifier:
+            if name in KEY_NAMES and not modifier:
                 on_key_down(name)
 
         def on_release(taste):
@@ -466,7 +477,11 @@ def check_failsafe(state=None) -> bool:
     cfg = state.config if state else CONFIG
     if not cfg.failsafe_enabled:
         return False
-    x, y = get_cursor_pos()
+    try:
+        x, y = get_cursor_pos()
+    except PlatformError:
+        # Ohne bekannte Mausposition ist Weiterklicken nicht sicher.
+        return True
     return x <= cfg.failsafe_x and y <= cfg.failsafe_y
 
 

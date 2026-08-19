@@ -11,11 +11,14 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from PIL import Image
+from test_support import install_platform_stubs
+
+install_platform_stubs()
 
 from autoclicker.platforms import load_backend
 from autoclicker.platforms.base import BACKEND_FUNCTIONS
-from autoclicker.platforms import linux_x11
+from autoclicker.platforms.common import PlatformError
+from autoclicker.platforms import linux_x11, windows
 
 
 class LinuxBackendTests(unittest.TestCase):
@@ -101,11 +104,47 @@ class LinuxBackendTests(unittest.TestCase):
 
     def test_linux_pixelmessung_nutzt_plattformaufnahme(self):
         from autoclicker import imaging
-        bild = Image.new("RGB", (1, 1), (12, 34, 56))
-        with patch.object(imaging, "_IS_WINDOWS", False), patch.object(
-                imaging, "capture_screen", return_value=bild) as aufnahme:
+        with patch.object(
+                imaging, "get_screen_pixel", return_value=(12, 34, 56)) as messung:
             self.assertEqual((12, 34, 56), imaging.get_pixel_color(7, 9))
-        aufnahme.assert_called_once_with((7, 9, 8, 10))
+        messung.assert_called_once_with(7, 9)
+
+    def test_linux_mausposition_meldet_backendfehler(self):
+        with patch.object(linux_x11, "_pynput",
+                          side_effect=RuntimeError("keine X11-Sitzung")):
+            with self.assertRaisesRegex(PlatformError, "Mausposition"):
+                linux_x11.get_cursor_pos()
+
+    def test_linux_eingabe_liefert_false_wenn_backend_fehlt(self):
+        with patch.object(linux_x11, "_pynput",
+                          side_effect=RuntimeError("keine X11-Sitzung")):
+            self.assertFalse(linux_x11.send_click(10, 20, 0, 0))
+            self.assertFalse(linux_x11.send_scroll(1, 10, 20, 0, 0))
+            self.assertFalse(linux_x11.send_key("a"))
+
+
+class WindowsBackendTests(unittest.TestCase):
+    def test_windows_backend_erfuellt_vertrag(self):
+        fehlend = [name for name in BACKEND_FUNCTIONS
+                   if not callable(getattr(windows, name, None))]
+        self.assertEqual([], fehlend)
+
+    def test_windows_klick_bricht_bei_mausfehler_ab(self):
+        with patch.object(windows, "set_cursor_pos", return_value=False), \
+                patch.object(windows.user32, "SendInput") as send_input:
+            self.assertFalse(windows.send_click(10, 20, 0, 0))
+        send_input.assert_not_called()
+
+    def test_windows_klick_meldet_unvollstaendige_events(self):
+        with patch.object(windows, "set_cursor_pos", return_value=True), \
+                patch.object(windows.user32, "SendInput", return_value=1), \
+                patch.object(windows.time, "sleep"):
+            self.assertFalse(windows.send_click(10, 20, 0, 0))
+
+    def test_windows_mausposition_meldet_api_fehler(self):
+        with patch.object(windows.user32, "GetCursorPos", return_value=False):
+            with self.assertRaisesRegex(PlatformError, "Mausposition"):
+                windows.get_cursor_pos()
 
 
 if __name__ == "__main__":

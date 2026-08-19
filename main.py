@@ -25,6 +25,7 @@ from autoclicker.winapi import (
     HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages,
     poll_hotkey, get_current_thread_id, platform_name, environment_warnings,
+    PlatformError,
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
@@ -199,7 +200,10 @@ def _pruefe_befehle(state) -> None:
     # für Handler gedacht, die minutenlang auf Konsolen-Eingaben warten. Ein Befehl
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
-    fn(state, auftrag["argumente"])
+    try:
+        fn(state, auftrag["argumente"])
+    except PlatformError as fehler:
+        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
 
 
 def _studio_beim_start_oeffnen(state) -> bool:
@@ -366,7 +370,10 @@ def main() -> int:
                     handle_quit(state, main_thread_id)
                     break
                 if hk_id in hotkey_handlers:
-                    hotkey_handlers[hk_id](state)
+                    try:
+                        hotkey_handlers[hk_id](state)
+                    except PlatformError as fehler:
+                        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
                     # Während ein blockierender Handler lief, aufgestaute
                     # Hotkeys verwerfen (sonst feuern sie als Burst).
                     flush_hotkey_messages()

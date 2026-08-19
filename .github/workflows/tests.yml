@@ -1,6 +1,6 @@
-# Die Suite laeuft ohne grafische Sitzung. Pillow und OpenCV werden installiert,
-# damit Bild- und HSV-Regressionen nicht still als optionale Tests uebersprungen
-# werden; die Linux-Adapter werden mit ihren echten Imports geprueft.
+# Die Suite läuft auf Linux und Windows ohne grafische Sitzung. Pillow und OpenCV
+# verhindern still übersprungene Bildtests; Linux bekommt zusätzlich seine X11-
+# Adapter. Die Matrix prüft beide Plattform-Backends mit demselben Testvertrag.
 #
 # Warum das ueberhaupt hier steht: es gab ueber 1.200 Pruefungen und nichts, was sie
 # ausfuehrt. Eine Suite, die nur laeuft, wenn jemand daran denkt, faengt Regressionen
@@ -15,7 +15,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +37,10 @@ jobs:
       - name: Test-Abhängigkeiten
         run: >-
           python -m pip install pillow numpy opencv-python-headless
-          mss pynput python-xlib
+
+      - name: Linux-Plattformabhängigkeiten
+        if: runner.os == 'Linux'
+        run: python -m pip install mss pynput python-xlib
 
       - name: Gesamte Suite
         # Nur die Testmodule im Projektstamm laden; dort liegt auch die grosse

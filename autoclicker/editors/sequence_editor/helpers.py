@@ -16,7 +16,7 @@ from ...imaging import PILLOW_AVAILABLE, get_pixel_color
 from ...models import ElseConfig, SequenceStep, AutoClickerState
 from ...persistence import get_point_by_id
 from ...utils import err, safe_input, warn
-from ...winapi import get_cursor_pos, VK_CODES
+from ...winapi import get_cursor_pos, KEY_NAMES
 
 
 def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerState) -> None:
@@ -131,7 +131,7 @@ def parse_else_condition(else_parts: list[str], state: AutoClickerState) -> dict
     # else key <Taste>
     if first == "key" and len(else_parts) >= 2:
         key_name = else_parts[1].lower()
-        if key_name in VK_CODES:
+        if key_name in KEY_NAMES:
             return {"else_action": "key", "else_key": key_name}
         print(f"  -> Unbekannte Taste: '{key_name}'")
         return {}

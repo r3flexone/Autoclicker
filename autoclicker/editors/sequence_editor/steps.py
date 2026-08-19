@@ -31,7 +31,7 @@ from ...utils import (
     is_cancel, ok, err, warn, safe_input, suggest_command,
     parse_non_negative_float, parse_non_negative_range,
 )
-from ...winapi import get_cursor_pos, VK_CODES
+from ...winapi import get_cursor_pos, KEY_NAMES
 from .helpers import apply_else_to_step, capture_pixel_color
 
 
@@ -585,9 +585,9 @@ class _PhaseEditor:
                 delay = delay_val
             key_name = parts[2].lower()
 
-        if key_name not in VK_CODES:
+        if key_name not in KEY_NAMES:
             print(f"  -> Unbekannte Taste: '{key_name}'")
-            print(f"     Verfügbar: {', '.join(sorted(VK_CODES.keys())[:20])}...")
+            print(f"     Verfügbar: {', '.join(sorted(KEY_NAMES)[:20])}...")
             return
 
         step = SequenceStep(

@@ -14,10 +14,41 @@ from autoclicker.models import (
     AutoClickerState, ItemProfile, ItemScanConfig, ItemSlot, SequenceStep,
     SCAN_MODE_EVERY,
 )
-from autoclicker.runtime import boss_detection, item_scan
+from autoclicker.runtime import actions, boss_detection, item_scan
 
 
 class RuntimeHardeningTest(unittest.TestCase):
+    def test_failed_input_is_not_logged_as_success(self):
+        state = AutoClickerState()
+        common = (
+            patch.object(actions, "_wait_for_target_window", return_value=True),
+            patch.object(actions, "_humanize_check_break"),
+            patch.object(actions, "_humanize_delay"),
+            patch.object(actions, "_humanize_jitter", side_effect=lambda x, y, _s: (x, y)),
+        )
+
+        with common[0], common[1], common[2], common[3], \
+                patch.object(actions, "send_click", return_value=False), \
+                patch.object(actions, "log_event") as log:
+            self.assertFalse(actions.safe_click(state, 10, 20, "test"))
+            log.assert_not_called()
+
+        with patch.object(actions, "_wait_for_target_window", return_value=True), \
+                patch.object(actions, "_humanize_check_break"), \
+                patch.object(actions, "_humanize_delay"), \
+                patch.object(actions, "send_scroll", return_value=False), \
+                patch.object(actions, "log_event") as log:
+            self.assertFalse(actions.safe_scroll(state, 1, label="test"))
+            log.assert_not_called()
+
+        with patch.object(actions, "_wait_for_target_window", return_value=True), \
+                patch.object(actions, "_humanize_check_break"), \
+                patch.object(actions, "_humanize_delay"), \
+                patch.object(actions, "send_key", return_value=False), \
+                patch.object(actions, "log_event") as log:
+            self.assertFalse(actions.safe_key(state, "a", "test"))
+            log.assert_not_called()
+
     def test_template_path_stays_below_template_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "templates"

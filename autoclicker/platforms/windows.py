@@ -18,10 +18,7 @@ from .common import (
     HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH, HOTKEY_RESET,
     HOTKEY_SCAN_STUDIO, HOTKEY_SCHEDULE, HOTKEY_SEQUENCE_STUDIO,
     HOTKEY_SHOW, HOTKEY_SKIP, HOTKEY_SWITCH, HOTKEY_TOGGLE, HOTKEY_UNDO,
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_REC, VK_A, VK_B, VK_C, VK_D,
-    VK_E, VK_F, VK_G, VK_H, VK_I, VK_J, VK_K, VK_L, VK_M, VK_N, VK_O,
-    VK_P, VK_Q, VK_S, VK_T, VK_U, VK_V, VK_W, VK_X, VK_Z, VK_CODES,
-    WHEEL_DELTA,
+    PlatformError, WHEEL_STEP,
 )
 
 logger = logging.getLogger("autoclicker")
@@ -32,6 +29,32 @@ if TYPE_CHECKING:
 from .. import symbol
 from ..config import CONFIG
 from ..utils import err, warn
+
+# Win32-spezifische Modifier und Virtual-Key-Codes bleiben im Windows-Backend.
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_NOREPEAT = 0x4000
+MOD_REC = MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
+
+VK_A, VK_B, VK_C, VK_D, VK_E, VK_F = (0x41, 0x42, 0x43, 0x44, 0x45, 0x46)
+VK_G, VK_H, VK_I, VK_J, VK_K, VK_L = (0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C)
+VK_M, VK_N, VK_O, VK_P, VK_Q, VK_R = (0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52)
+VK_S, VK_T, VK_U, VK_V, VK_W, VK_X = (0x53, 0x54, 0x55, 0x56, 0x57, 0x58)
+VK_Y, VK_Z = 0x59, 0x5A
+
+VK_CODES = {
+    "enter": 0x0D, "return": 0x0D, "tab": 0x09,
+    "space": 0x20, "leertaste": 0x20,
+    "escape": 0x1B, "esc": 0x1B, "backspace": 0x08,
+    "delete": 0x2E, "del": 0x2E,
+    "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
+    **{f"f{i}": 0x6F + i for i in range(1, 13)},
+    **{str(i): 0x30 + i for i in range(10)},
+    **{chr(97 + i): 0x41 + i for i in range(26)},
+}
+
+WHEEL_DELTA = WHEEL_STEP
 
 # =============================================================================
 # DPI-AWARENESS (muss früh gesetzt werden)
@@ -64,6 +87,8 @@ INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
 
 PM_REMOVE = 0x0001
+SRCCOPY = 0x00CC0020
+PW_RENDERFULLCONTENT = 0x00000002
 
 
 # =============================================================================
@@ -113,6 +138,19 @@ class INPUT(ctypes.Structure):
     ]
 
 
+class BITMAPINFOHEADER(ctypes.Structure):
+    """Minimaler 32-Bit-DIB-Header für Desktop- und Fensteraufnahmen."""
+
+    _fields_ = [
+        ("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
+        ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
+        ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32),
+        ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
+        ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32),
+        ("biClrImportant", ctypes.c_uint32),
+    ]
+
+
 # =============================================================================
 # WINDOWS API FUNKTIONEN (user32, kernel32)
 # =============================================================================
@@ -148,10 +186,38 @@ gdi32 = ctypes.windll.gdi32
 gdi32.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
 gdi32.GetPixel.restype = wintypes.COLORREF
 
+gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+gdi32.CreateCompatibleDC.restype = wintypes.HDC
+gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+gdi32.SelectObject.restype = wintypes.HGDIOBJ
+gdi32.BitBlt.argtypes = [
+    wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD,
+]
+gdi32.BitBlt.restype = wintypes.BOOL
+gdi32.GetDIBits.argtypes = [
+    wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+    ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
+]
+gdi32.GetDIBits.restype = ctypes.c_int
+gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+gdi32.DeleteObject.restype = wintypes.BOOL
+gdi32.DeleteDC.argtypes = [wintypes.HDC]
+gdi32.DeleteDC.restype = wintypes.BOOL
+
 user32.GetDC.argtypes = [wintypes.HWND]
 user32.GetDC.restype = wintypes.HDC
+user32.GetDesktopWindow.restype = wintypes.HWND
+user32.GetWindowDC.argtypes = [wintypes.HWND]
+user32.GetWindowDC.restype = wintypes.HDC
 user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
 user32.ReleaseDC.restype = ctypes.c_int
+user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+user32.PrintWindow.restype = wintypes.BOOL
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.restype = wintypes.BOOL
 
 # Low-Level Mouse Hook
 _LRESULT = ctypes.c_ssize_t
@@ -421,7 +487,8 @@ def get_screen_center() -> tuple[int, int]:
 def get_cursor_pos() -> tuple[int, int]:
     """Liest die aktuelle Mausposition."""
     point = wintypes.POINT()
-    user32.GetCursorPos(ctypes.byref(point))
+    if not user32.GetCursorPos(ctypes.byref(point)):
+        raise PlatformError("Windows konnte die Mausposition nicht lesen")
     return point.x, point.y
 
 
@@ -430,9 +497,12 @@ def set_cursor_pos(x: int, y: int) -> bool:
     return bool(user32.SetCursorPos(x, y))
 
 
-def send_click(x: int, y: int, move_delay: float = 0.01, post_delay: float = 0.05) -> None:
-    """Führt einen Linksklick an der angegebenen Position aus."""
-    set_cursor_pos(x, y)
+def send_click(x: int, y: int, move_delay: float = 0.01,
+               post_delay: float = 0.05) -> bool:
+    """Führt einen Linksklick aus. True nur bei vollständig gesendeten Events."""
+    if not set_cursor_pos(x, y):
+        logger.error("Mausposition konnte nicht gesetzt werden: (%s, %s)", x, y)
+        return False
     time.sleep(move_delay)
 
     inputs = (INPUT * 2)()
@@ -444,14 +514,16 @@ def send_click(x: int, y: int, move_delay: float = 0.01, post_delay: float = 0.0
     sent = user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
     if sent != 2:
         logger.warning(f"SendInput Klick: nur {sent}/2 Events gesendet @ ({x}, {y})")
+        return False
 
     # Warte nach dem Klick damit das Ziel-Programm den Klick verarbeiten kann
     if post_delay > 0:
         time.sleep(post_delay)
+    return True
 
 
 def send_scroll(clicks: int, x: int = None, y: int = None,
-                move_delay: float = 0.01, post_delay: float = 0.05) -> None:
+                move_delay: float = 0.01, post_delay: float = 0.05) -> bool:
     """Dreht das Mausrad um `clicks` Rasterstufen. Positiv = hoch, negativ = runter.
 
     Windows liefert das Scroll-Event an das Fenster UNTER dem Cursor, nicht an das
@@ -459,9 +531,11 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
     dort gescrollt, wo die Maus gerade steht.
     """
     if not clicks:
-        return
+        return True
     if x is not None and y is not None:
-        set_cursor_pos(x, y)
+        if not set_cursor_pos(x, y):
+            logger.error("Mausposition fürs Scrollen nicht gesetzt: (%s, %s)", x, y)
+            return False
         time.sleep(move_delay)
 
     inputs = (INPUT * 1)()
@@ -475,9 +549,11 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
     sent = user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
     if sent != 1:
         logger.warning(f"SendInput Scroll: {sent}/1 Events gesendet ({clicks} Stufen)")
+        return False
 
     if post_delay > 0:
         time.sleep(post_delay)
+    return True
 
 
 def send_key(key_name: str) -> bool:
@@ -701,7 +777,10 @@ def check_failsafe(state: 'AutoClickerState' = None) -> bool:
     cfg = state.config if state else CONFIG
     if not cfg.failsafe_enabled:
         return False
-    x, y = get_cursor_pos()
+    try:
+        x, y = get_cursor_pos()
+    except PlatformError:
+        return True
     return x <= cfg.failsafe_x and y <= cfg.failsafe_y
 
 
@@ -808,9 +887,166 @@ def environment_warnings() -> list[str]:
     return []
 
 
-def capture_screen(_region=None):
-    """Windows-Screenshots bleiben im optimierten GDI-Pfad von imaging.py."""
-    return None
+def _bitmap_to_image(mem_dc, bitmap, width: int, height: int):
+    """Liest eine GDI-Bitmap als PIL-RGB-Bild aus."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    info = BITMAPINFOHEADER()
+    info.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    info.biWidth = width
+    info.biHeight = -height  # Negativ = Zeilen bereits von oben nach unten.
+    info.biPlanes = 1
+    info.biBitCount = 32
+    info.biCompression = 0
+    buffer = (ctypes.c_char * (width * height * 4))()
+    copied = gdi32.GetDIBits(
+        mem_dc, bitmap, 0, height, buffer, ctypes.byref(info), 0)
+    if copied != height:
+        return None
+    return Image.frombytes("RGB", (width, height), bytes(buffer), "raw", "BGRX")
+
+
+def _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap) -> None:
+    """Gibt einen vollständigen GDI-Aufnahmekontext bestmöglich frei."""
+    for cleanup in (
+        lambda: gdi32.SelectObject(mem_dc, old_bitmap)
+        if old_bitmap and mem_dc else None,
+        lambda: gdi32.DeleteObject(bitmap) if bitmap else None,
+        lambda: gdi32.DeleteDC(mem_dc) if mem_dc else None,
+        lambda: user32.ReleaseDC(hwnd, window_dc) if window_dc else None,
+    ):
+        try:
+            cleanup()
+        except (OSError, AttributeError):
+            pass
+
+
+def _capture_screen_bitblt(region=None):
+    """Schneller GDI-Pfad; ``None`` signalisiert den ImageGrab-Fallback."""
+    if region is None:
+        rect = get_virtual_desktop()
+        if rect is None:
+            return None
+        left, top, right, bottom = rect
+    else:
+        try:
+            left, top, right, bottom = (int(value) for value in region)
+        except (TypeError, ValueError):
+            return None
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return None
+
+    hwnd = window_dc = mem_dc = bitmap = old_bitmap = None
+    try:
+        hwnd = user32.GetDesktopWindow()
+        window_dc = user32.GetWindowDC(hwnd)
+        if not window_dc:
+            return None
+        mem_dc = gdi32.CreateCompatibleDC(window_dc)
+        bitmap = gdi32.CreateCompatibleBitmap(window_dc, width, height)
+        if not mem_dc or not bitmap:
+            return None
+        old_bitmap = gdi32.SelectObject(mem_dc, bitmap)
+        if not gdi32.BitBlt(
+                mem_dc, 0, 0, width, height, window_dc, left, top, SRCCOPY):
+            logger.warning("BitBlt fehlgeschlagen; verwende ImageGrab-Fallback")
+            return None
+        image = _bitmap_to_image(mem_dc, bitmap, width, height)
+        if image is None:
+            logger.warning("GetDIBits fehlgeschlagen; verwende ImageGrab-Fallback")
+        return image
+    except (OSError, ValueError, AttributeError) as fehler:
+        logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", fehler)
+        return None
+    finally:
+        _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
+
+
+def capture_screen(region=None):
+    """Screenshot des virtuellen Desktops mit GDI und Pillow-Fallback."""
+    image = _capture_screen_bitblt(region)
+    if image is not None:
+        return image
+
+    try:
+        from PIL import ImageGrab
+        full_image = ImageGrab.grab(all_screens=True)
+        if region is None:
+            return full_image
+        left, top, right, bottom = (int(value) for value in region)
+        origin_x, origin_y = get_virtual_origin()
+        crop = (
+            left - origin_x, top - origin_y,
+            right - origin_x, bottom - origin_y,
+        )
+        if crop[2] <= crop[0] or crop[3] <= crop[1]:
+            return None
+        return full_image.crop(crop)
+    except (ImportError, OSError, TypeError, ValueError) as fehler:
+        logger.error("Windows-Screenshot fehlgeschlagen: %s", fehler)
+        return None
+
+
+def capture_window(hwnd: int):
+    """Bildet den Client-Bereich eines Fensters unabhängig von Überdeckung ab."""
+    if not hwnd:
+        return None
+
+    window_dc = mem_dc = bitmap = old_bitmap = None
+    try:
+        window_rect = wintypes.RECT()
+        client_rect = wintypes.RECT()
+        client_origin = wintypes.POINT(0, 0)
+        if not user32.GetWindowRect(hwnd, ctypes.byref(window_rect)):
+            return None
+        if not user32.GetClientRect(hwnd, ctypes.byref(client_rect)):
+            return None
+        if not user32.ClientToScreen(hwnd, ctypes.byref(client_origin)):
+            return None
+
+        width = window_rect.right - window_rect.left
+        height = window_rect.bottom - window_rect.top
+        client_width = client_rect.right - client_rect.left
+        client_height = client_rect.bottom - client_rect.top
+        if min(width, height, client_width, client_height) <= 0:
+            return None
+
+        window_dc = user32.GetWindowDC(hwnd)
+        if not window_dc:
+            return None
+        mem_dc = gdi32.CreateCompatibleDC(window_dc)
+        bitmap = gdi32.CreateCompatibleBitmap(window_dc, width, height)
+        if not mem_dc or not bitmap:
+            return None
+        old_bitmap = gdi32.SelectObject(mem_dc, bitmap)
+        if not user32.PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT):
+            logger.warning("PrintWindow fehlgeschlagen")
+            return None
+        image = _bitmap_to_image(mem_dc, bitmap, width, height)
+        if image is None:
+            logger.warning("GetDIBits für Fensteraufnahme fehlgeschlagen")
+            return None
+
+        offset_x = client_origin.x - window_rect.left
+        offset_y = client_origin.y - window_rect.top
+        image = image.crop((
+            offset_x, offset_y,
+            offset_x + client_width, offset_y + client_height,
+        ))
+        screen_rect = (
+            client_origin.x, client_origin.y,
+            client_origin.x + client_width, client_origin.y + client_height,
+        )
+        return image, screen_rect
+    except (OSError, TypeError, ValueError, AttributeError) as fehler:
+        logger.error("Fenster-Screenshot fehlgeschlagen: %s", fehler)
+        return None
+    finally:
+        _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
 
 
 def flush_hotkey_messages() -> None:

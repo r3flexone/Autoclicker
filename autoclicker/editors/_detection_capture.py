@@ -7,7 +7,7 @@ Bündelt interaktive Aufnahme-Abläufe, die sonst mehrfach kopiert würden.
 from typing import Optional
 
 from ..utils import safe_input, is_cancel, err, hint, interactive_select
-from ..winapi import get_cursor_pos, VK_CODES
+from ..winapi import get_cursor_pos, KEY_NAMES
 from ..imaging import get_pixel_color, select_region
 
 
@@ -18,7 +18,7 @@ def prompt_key(prompt: str = "  Taste (z.B. 'enter', 'space', '1'): ") -> Option
     Aktion abbricht (konsistent mit der Region-Eingabe).
 
     Returns:
-        Gültiger Tastenname (in VK_CODES) oder None bei Abbruch.
+        Gültiger Tastenname (in KEY_NAMES) oder None bei Abbruch.
     """
     while True:
         try:
@@ -30,9 +30,9 @@ def prompt_key(prompt: str = "  Taste (z.B. 'enter', 'space', '1'): ") -> Option
         if not key:
             print(f"  {err('Keine Taste angegeben!')}")
             continue
-        if key not in VK_CODES:
+        if key not in KEY_NAMES:
             print(f"  {err(f'Unbekannte Taste: {key!r}')}")
-            print(f"     {hint('Verfügbar u.a.: ' + ', '.join(sorted(VK_CODES.keys())[:20]) + ' ...')}")
+            print(f"     {hint('Verfügbar u.a.: ' + ', '.join(sorted(KEY_NAMES)[:20]) + ' ...')}")
             continue
         return key
 

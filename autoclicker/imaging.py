@@ -3,12 +3,9 @@ Bildverarbeitung und Farberkennung für den Autoclicker.
 Screenshots, Farbanalyse, Template-Matching.
 """
 
-import ctypes
-import ctypes.wintypes as wintypes
 import logging
 import os
 from pathlib import Path
-import sys
 # 'Image.Image' in den Annotationen ist ein String und wird nie ausgewertet - der Name
 # kommt aus dem optionalen Pillow-Import weiter unten. Ein zusaetzlicher TYPE_CHECKING-
 # Import waere nur eine zweite Definition desselben Namens.
@@ -18,75 +15,9 @@ from .config import CONFIG
 from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
 from .winapi import (
-    capture_screen,
-    get_client_rect_by_handle, get_cursor_pos, get_virtual_desktop,
-    get_virtual_origin,
+    capture_screen, capture_window, get_client_rect_by_handle, get_cursor_pos,
+    get_screen_pixel,
 )
-
-_IS_WINDOWS = sys.platform == "win32"
-
-# GDI wird nur im Windows-Backend initialisiert. Auf Linux übernimmt MSS die
-# sichtbare Desktop-Aufnahme; ein Import darf dort niemals ctypes.windll berühren.
-if _IS_WINDOWS:
-    _gdi32 = ctypes.windll.gdi32
-    _user32 = ctypes.windll.user32
-
-    _user32.GetDesktopWindow.restype = wintypes.HWND
-    _user32.GetWindowDC.argtypes = [wintypes.HWND]
-    _user32.GetWindowDC.restype = wintypes.HDC
-    _user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
-    _user32.ReleaseDC.restype = ctypes.c_int
-
-    _gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-    _gdi32.CreateCompatibleDC.restype = wintypes.HDC
-    _gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
-    _gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
-    _gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-    _gdi32.SelectObject.restype = wintypes.HGDIOBJ
-    _gdi32.BitBlt.argtypes = [
-        wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-        wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD,
-    ]
-    _gdi32.BitBlt.restype = wintypes.BOOL
-    _gdi32.GetDIBits.argtypes = [
-        wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
-        ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
-    ]
-    _gdi32.GetDIBits.restype = ctypes.c_int
-    _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-    _gdi32.DeleteObject.restype = wintypes.BOOL
-    _gdi32.DeleteDC.argtypes = [wintypes.HDC]
-    _gdi32.DeleteDC.restype = wintypes.BOOL
-
-    _user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
-    _user32.PrintWindow.restype = wintypes.BOOL
-    _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-    _user32.GetWindowRect.restype = wintypes.BOOL
-    _user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-    _user32.GetClientRect.restype = wintypes.BOOL
-    _user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
-    _user32.ClientToScreen.restype = wintypes.BOOL
-else:
-    _gdi32 = _user32 = None
-
-# BitBlt-Rasteroperation: Quelle 1:1 kopieren (Windows GDI SRCCOPY).
-SRCCOPY = 0x00CC0020
-
-# PrintWindow: das ganze Fenster zeichnen lassen, samt GPU-beschleunigtem
-# Inhalt. Ohne dieses Flag (ab Windows 8.1) bleiben Browser und viele Spiele
-# leer — dann waere die ganze Funktion nutzlos für den Fall, für den es sie gibt.
-PW_RENDERFULLCONTENT = 0x00000002
-
-# BITMAPINFOHEADER für Screenshots (einmal definiert, wiederverwendbar)
-class BITMAPINFOHEADER(ctypes.Structure):
-    _fields_ = [
-        ('biSize', ctypes.c_uint32), ('biWidth', ctypes.c_int32),
-        ('biHeight', ctypes.c_int32), ('biPlanes', ctypes.c_uint16),
-        ('biBitCount', ctypes.c_uint16), ('biCompression', ctypes.c_uint32),
-        ('biSizeImage', ctypes.c_uint32), ('biXPelsPerMeter', ctypes.c_int32),
-        ('biYPelsPerMeter', ctypes.c_int32), ('biClrUsed', ctypes.c_uint32),
-        ('biClrImportant', ctypes.c_uint32),
-    ]
 
 # Logger
 logger = logging.getLogger("autoclicker")
@@ -119,7 +50,7 @@ def _template_path(template_name: str) -> str | None:
 
 # Optionale Imports
 try:
-    from PIL import Image, ImageGrab
+    from PIL import Image
     PILLOW_AVAILABLE = True
 except ImportError:
     PILLOW_AVAILABLE = False
@@ -146,16 +77,7 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int] | None:
     """Liest die Farbe eines einzelnen Pixels an der angegebenen Position."""
     if not PILLOW_AVAILABLE:
         return None
-    if not _IS_WINDOWS:
-        img = capture_screen((int(x), int(y), int(x) + 1, int(y) + 1))
-        return tuple(img.getpixel((0, 0))[:3]) if img is not None else None
-    try:
-        img = ImageGrab.grab(bbox=(x, y, x + 1, y + 1), all_screens=True)
-        if img:
-            return img.getpixel((0, 0))[:3]
-    except (OSError, ValueError):
-        pass  # Screenshot fehlgeschlagen
-    return None
+    return get_screen_pixel(int(x), int(y))
 
 
 def color_distance(c1: tuple, c2: tuple) -> float:
@@ -240,6 +162,8 @@ def _load_template(template_path: str):
 
     Unicode-Pfade: cv2.imread scheitert an Umlauten, deshalb fromfile + imdecode.
     """
+    if not OPENCV_AVAILABLE or not NUMPY_AVAILABLE:
+        return None
     try:
         st = os.stat(template_path)
     except OSError:
@@ -526,137 +450,13 @@ def get_color_name(rgb: tuple) -> str:
 
 
 def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
-    """
-    Nimmt einen Screenshot auf. region=(x1, y1, x2, y2) oder None für Vollbild.
-    Verwendet BitBlt (schneller, besser für Spiele) mit ImageGrab-Fallback.
-    Unterstützt mehrere Monitore (auch negative Koordinaten für linke Monitore).
-    """
-    if not _IS_WINDOWS:
-        return capture_screen(region)
-
-    # Versuche BitBlt (schneller, besser für DirectX-Spiele)
-    img = take_screenshot_bitblt(region)
-    if img is not None:
-        return img
-
-    # Fallback auf ImageGrab (falls BitBlt fehlschlägt, z.B. kein NumPy)
-    if not PILLOW_AVAILABLE:
-        return None
-    try:
-        if region:
-            # Bei Region: Erst alle Screens erfassen, dann zuschneiden
-            full_screenshot = ImageGrab.grab(all_screens=True)
-            x_offset, y_offset = get_virtual_origin()
-            adjusted_region = (
-                region[0] - x_offset,
-                region[1] - y_offset,
-                region[2] - x_offset,
-                region[3] - y_offset
-            )
-            # Bounds-Check: Region muss positive Grösse haben
-            if adjusted_region[2] <= adjusted_region[0] or adjusted_region[3] <= adjusted_region[1]:
-                logger.error(f"Ungültige Region nach Offset-Anpassung: {adjusted_region}")
-                return None
-            return full_screenshot.crop(adjusted_region)
-        else:
-            return ImageGrab.grab(all_screens=True)
-    except (OSError, ValueError) as e:
-        logger.error(f"Screenshot fehlgeschlagen: {e}")
-        return None
+    """Nimmt über das aktive Plattform-Backend einen Screenshot auf."""
+    return capture_screen(region)
 
 
 def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
-    """
-    Screenshot mit BitBlt (Windows API) - funktioniert besser mit Spielen!
-    Unterstützt Multi-Monitor (auch negative Koordinaten für linke Monitore).
-    Returns: PIL Image oder None
-    """
-    if not _IS_WINDOWS or not PILLOW_AVAILABLE or not NUMPY_AVAILABLE:
-        return None
-
-    hwnd = None
-    hwndDC = None
-    memDC = None
-    bmp = None
-    old_bmp = None
-    try:
-        # Multi-Monitor: Ursprung des virtuellen Desktops (kann negativ sein)
-        virtual_left, virtual_top = get_virtual_origin()
-
-        if region:
-            left, top, right, bottom = region
-            width = right - left
-            height = bottom - top
-            if width <= 0 or height <= 0:
-                return None
-        else:
-            # Vollbild: gesamter virtueller Desktop (alle Monitore)
-            rect = get_virtual_desktop()
-            if rect is None:
-                return None
-            left, top = rect[0], rect[1]
-            width, height = rect[2] - rect[0], rect[3] - rect[1]
-
-        # Device Contexts - GetWindowDC(GetDesktopWindow()) liefert DC für gesamten virtuellen Desktop
-        hwnd = _user32.GetDesktopWindow()
-        hwndDC = _user32.GetWindowDC(hwnd)
-        memDC = _gdi32.CreateCompatibleDC(hwndDC)
-        bmp = _gdi32.CreateCompatibleBitmap(hwndDC, width, height)
-        old_bmp = _gdi32.SelectObject(memDC, bmp)
-
-        # BitBlt - Koordinaten funktionieren auch negativ (linker Monitor).
-        # Rückgabe prüfen: bei gesperrtem Desktop / Secure-Screen schlägt BitBlt fehl.
-        # Dann None zurückgeben, damit der ImageGrab-Fallback greift (statt einem
-        # schwarzen Bild, das die Erkennung still verfälscht).
-        if not _gdi32.BitBlt(memDC, 0, 0, width, height, hwndDC, left, top, SRCCOPY):
-            logger.error("BitBlt fehlgeschlagen (Desktop gesperrt?) - Fallback auf ImageGrab")
-            return None
-
-        # Bitmap-Daten auslesen
-        bi = BITMAPINFOHEADER()
-        bi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bi.biWidth = width
-        bi.biHeight = -height
-        bi.biPlanes = 1
-        bi.biBitCount = 32
-        bi.biCompression = 0
-
-        buffer = (ctypes.c_char * (width * height * 4))()
-        # GetDIBits gibt die Anzahl kopierter Scanlines zurück (0 = Fehler).
-        if _gdi32.GetDIBits(memDC, bmp, 0, height, buffer, ctypes.byref(bi), 0) == 0:
-            logger.error("GetDIBits fehlgeschlagen - Fallback auf ImageGrab")
-            return None
-
-        # In PIL Image konvertieren
-        img_array = np.frombuffer(buffer, dtype=np.uint8).reshape((height, width, 4))
-        # BGRA -> RGB
-        img_rgb = img_array[:, :, [2, 1, 0]]
-        return Image.fromarray(img_rgb)
-    except (OSError, ValueError, AttributeError) as e:
-        logger.error(f"BitBlt Screenshot fehlgeschlagen: {e}")
-        return None
-    finally:
-        # GDI-Resourcen IMMER freigeben (jeder Schritt einzeln abgesichert)
-        try:
-            if old_bmp and memDC:
-                _gdi32.SelectObject(memDC, old_bmp)
-        except OSError:
-            pass
-        try:
-            if bmp:
-                _gdi32.DeleteObject(bmp)
-        except OSError:
-            pass
-        try:
-            if memDC:
-                _gdi32.DeleteDC(memDC)
-        except OSError:
-            pass
-        try:
-            if hwndDC and hwnd:
-                _user32.ReleaseDC(hwnd, hwndDC)
-        except OSError:
-            pass
+    """Kompatibilitätsname; die Umsetzung gehört ins Plattform-Backend."""
+    return capture_screen(region)
 
 
 def take_window_screenshot(hwnd: int) -> Optional[tuple]:
@@ -680,83 +480,7 @@ def take_window_screenshot(hwnd: int) -> Optional[tuple]:
     schwarzes Bild wäre schlimmer als ein verdecktes, weil es aussieht, als
     hätte es geklappt.
     """
-    if not _IS_WINDOWS or not PILLOW_AVAILABLE or not NUMPY_AVAILABLE or not hwnd:
-        return None
-
-    hwndDC = None
-    memDC = None
-    bmp = None
-    old_bmp = None
-    try:
-        fenster = wintypes.RECT()
-        client = wintypes.RECT()
-        if not _user32.GetWindowRect(hwnd, ctypes.byref(fenster)):
-            return None
-        if not _user32.GetClientRect(hwnd, ctypes.byref(client)):
-            return None
-        ecke = wintypes.POINT(0, 0)
-        if not _user32.ClientToScreen(hwnd, ctypes.byref(ecke)):
-            return None
-        breite = fenster.right - fenster.left
-        hoehe = fenster.bottom - fenster.top
-        cb = client.right - client.left
-        ch = client.bottom - client.top
-        if breite <= 0 or hoehe <= 0 or cb <= 0 or ch <= 0:
-            return None
-
-        hwndDC = _user32.GetWindowDC(hwnd)
-        memDC = _gdi32.CreateCompatibleDC(hwndDC)
-        bmp = _gdi32.CreateCompatibleBitmap(hwndDC, breite, hoehe)
-        old_bmp = _gdi32.SelectObject(memDC, bmp)
-
-        if not _user32.PrintWindow(hwnd, memDC, PW_RENDERFULLCONTENT):
-            logger.error("PrintWindow fehlgeschlagen")
-            return None
-
-        bi = BITMAPINFOHEADER()
-        bi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bi.biWidth = breite
-        bi.biHeight = -hoehe
-        bi.biPlanes = 1
-        bi.biBitCount = 32
-        bi.biCompression = 0
-        puffer = (ctypes.c_char * (breite * hoehe * 4))()
-        if _gdi32.GetDIBits(memDC, bmp, 0, hoehe, puffer, ctypes.byref(bi), 0) == 0:
-            logger.error("GetDIBits fehlgeschlagen (Fensterbild)")
-            return None
-
-        roh = np.frombuffer(puffer, dtype=np.uint8).reshape((hoehe, breite, 4))
-        bild = Image.fromarray(roh[:, :, [2, 1, 0]])
-        # Aus dem GANZEN Fenster den Client-Bereich schneiden: PrintWindow malt
-        # Rahmen und Titelleiste mit, und die gehören nicht zum Spielfeld.
-        dx = ecke.x - fenster.left
-        dy = ecke.y - fenster.top
-        bild = bild.crop((dx, dy, dx + cb, dy + ch))
-        return bild, (ecke.x, ecke.y, ecke.x + cb, ecke.y + ch)
-    except (OSError, ValueError, AttributeError) as e:
-        logger.error(f"Fenster-Screenshot fehlgeschlagen: {e}")
-        return None
-    finally:
-        try:
-            if old_bmp and memDC:
-                _gdi32.SelectObject(memDC, old_bmp)
-        except OSError:
-            pass
-        try:
-            if bmp:
-                _gdi32.DeleteObject(bmp)
-        except OSError:
-            pass
-        try:
-            if memDC:
-                _gdi32.DeleteDC(memDC)
-        except OSError:
-            pass
-        try:
-            if hwndDC:
-                _user32.ReleaseDC(hwnd, hwndDC)
-        except OSError:
-            pass
+    return capture_window(hwnd)
 
 
 def ist_leer(bild) -> bool:
