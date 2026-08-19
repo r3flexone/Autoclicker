@@ -1,0 +1,4 @@
+pandas
+requests
+openpyxl
+# Optional, nur für den Preis-Sensitivitätschart: pip install matplotlib

@@ -1,0 +1,1 @@
+"""Eigenständige Idle-Clans-Marktanalyse."""
