@@ -45,6 +45,9 @@ jobs:
       - name: Gesamte Suite
         # Nur die Testmodule im Projektstamm laden; dort liegt auch die grosse
         # Vertragssuite, die ueber test_regression.py gestartet wird.
+        # Bash expandiert das Muster auf Linux und Windows gleich; PowerShell
+        # würde `test_*.py` dagegen als wörtlichen Modulnamen weiterreichen.
+        shell: bash
         run: python -m unittest -v test_*.py
         env:
           PYTHONIOENCODING: utf-8
