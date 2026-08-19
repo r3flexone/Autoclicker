@@ -12,6 +12,7 @@ Neu entdeckte Boss-Namen werden zur User-Bestätigung am Sequenz-Ende
 vorgemerkt (_handle_new_boss → _confirm_new_bosses).
 """
 
+import logging
 import threading
 import time
 from typing import Optional
@@ -33,6 +34,7 @@ from .item_scan import execute_item_scan, _click_scan_result, _check_profile_mat
 # Mindest-Konfidenz für OCR-Boss-Erkennung. Unterhalb davon wird nichts gespeichert —
 # sichert Zuverlässigkeit und verhindert dass Tippfehler/Garbled-Text als neuer Boss landen.
 _OCR_MIN_BOSS_CONFIDENCE = 0.8
+logger = logging.getLogger("autoclicker")
 
 
 # =============================================================================
@@ -541,8 +543,11 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
             state.llm_action_event.clear()
 
     except Exception as e:
-        if debug:
-            print(dbg(f"  → LLM-Async Fehler: {e}"))
+        detail = f"{type(e).__name__}: {e}"
+        logger.exception("Asynchrone Boss-Erkennung fehlgeschlagen")
+        log_event(state, "boss_async_error", detail=detail,
+                  extra=step.boss_scan or step.boss_watcher or "")
+        print(err(f"  -> Asynchrone Boss-Erkennung fehlgeschlagen: {detail}"))
     finally:
         state.llm_action_event.clear()
 

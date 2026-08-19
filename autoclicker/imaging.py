@@ -7,6 +7,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 import logging
 import os
+from pathlib import Path
 # 'Image.Image' in den Annotationen ist ein String und wird nie ausgewertet - der Name
 # kommt aus dem optionalen Pillow-Import weiter unten. Ein zusaetzlicher TYPE_CHECKING-
 # Import waere nur eine zweite Definition desselben Namens.
@@ -15,7 +16,10 @@ from typing import Optional
 from .config import CONFIG
 from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
-from .winapi import get_cursor_pos, get_virtual_desktop, get_virtual_origin
+from .winapi import (
+    get_client_rect_by_handle, get_cursor_pos, get_virtual_desktop,
+    get_virtual_origin,
+)
 
 # GDI32 Funktions-Deklarationen (restype nötig um Handle-Trunkierung auf 64-bit zu vermeiden)
 _gdi32 = ctypes.windll.gdi32
@@ -77,6 +81,29 @@ logger = logging.getLogger("autoclicker")
 
 # Verzeichnisse (importiert aus persistence um Duplizierung zu vermeiden)
 from .persistence import ITEMS_DIR, TEMPLATES_DIR
+
+
+def _template_path(template_name: str) -> str | None:
+    """Löst einen Template-Namen sicher innerhalb von ``TEMPLATES_DIR`` auf.
+
+    Scan-Dateien sind normale JSON-Dateien und können auch von Hand verändert
+    werden. Absolute Pfade und ``..`` dürfen den Template-Ordner deshalb niemals
+    verlassen.
+    """
+    if not isinstance(template_name, str) or not template_name.strip():
+        return None
+    relative = Path(template_name)
+    if relative.is_absolute():
+        return None
+    root = Path(TEMPLATES_DIR).resolve()
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if candidate == root:
+        return None
+    return str(candidate)
 
 # Optionale Imports
 try:
@@ -309,7 +336,21 @@ def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
     return skaliert
 
 
-def match_template_in_image(img: 'Image.Image', template_name: str, min_confidence: float = DEFAULT_MIN_CONFIDENCE) -> tuple:
+def template_size(template_name: str) -> tuple[int, int] | None:
+    """Pixelgroesse einer gespeicherten Vorlage, oder ``None`` wenn unlesbar."""
+    template_path = _template_path(template_name)
+    if template_path is None:
+        return None
+    template_cv = _load_template(template_path)
+    if template_cv is None:
+        return None
+    return (int(template_cv.shape[1]), int(template_cv.shape[0]))
+
+
+def match_template_in_image(img: 'Image.Image', template_name: str,
+                            min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+                            *, resize_template: bool = True,
+                            report_size_mismatch: bool = True) -> tuple:
     """
     Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
 
@@ -317,6 +358,10 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         img: PIL Image (Suchbereich)
         template_name: Dateiname des Templates (in items/templates/)
         min_confidence: Mindest-Konfidenz für Match (0.0-1.0)
+        resize_template: Vorlage an eine abweichende Bildgroesse anpassen. Item-
+            Scans setzen dies aus und verwenden stattdessen eine passende Variante.
+        report_size_mismatch: Diagnose fuer alte Aufrufer ausgeben. Bewusste
+            Varianten-/Duplikatpruefungen setzen dies aus.
 
     Returns:
         (match_found: bool, confidence: float, position: tuple or None)
@@ -330,7 +375,10 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         logger.warning("NumPy nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
-    template_path = os.path.join(TEMPLATES_DIR, template_name)
+    template_path = _template_path(template_name)
+    if template_path is None:
+        logger.error("Unsicherer Template-Pfad abgewiesen: %r", template_name)
+        return (False, 0.0, None)
 
     try:
         # PIL-Bild zu OpenCV-Format konvertieren (RGB -> BGR)
@@ -344,6 +392,9 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
 
+        if (tw != iw or th != ih) and not resize_template:
+            return (False, 0.0, None)
+
         if (tw != iw or th != ih) and tw > 0 and th > 0:
             # Grössen-Diskrepanz! Template an Scan-Bildgrösse anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
@@ -355,8 +406,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
         if CONFIG.debug_save_templates:
             debug_dir = os.path.join(ITEMS_DIR, "debug")
             os.makedirs(debug_dir, exist_ok=True)
-            # Basis-Name aus Template (ohne .png)
-            base_name = os.path.splitext(template_name)[0]
+            # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
+            base_name = Path(template_path).stem
             # Aktuelles Scan-Bild (was im Slot ist)
             img.save(os.path.join(debug_dir, f"{base_name}_scan.png"))
             # Template/Maske (was cv2 zum Vergleich verwendet)
@@ -389,7 +440,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str, min_confiden
             # Template würde nichts verbessern. Oder die Slot-Region hat sich
             # wirklich verschoben. Die Meldung nannte nur die zweite und schickte
             # den Leser damit auf die falsche Fährte.
-            if max_val < 0.3 and (tw != iw or th != ih):
+            if (report_size_mismatch and max_val < 0.3
+                    and (tw != iw or th != ih)):
                 schluessel = (tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
                     _gemeldete_groessen.add(schluessel)
@@ -704,6 +756,32 @@ def ist_leer(bild) -> bool:
     except (OSError, ValueError):
         return False
     return bool(ecken) and len(ecken) <= 1
+
+
+def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
+    """Gemeinsame Fensteraufnahme für Editor UND laufenden Item-Scan.
+
+    Ergebnis: ``(bild, client_rechteck, hinweis)``. Zuerst wird das Fenster
+    direkt über PrintWindow aufgenommen. Kann sich ein Spiel dort nicht
+    zeichnen, verwenden beide Aufrufer denselben sichtbaren Desktop-Ausschnitt.
+    Der Hinweis ist dann nicht leer, weil bei diesem Fallback nichts vor dem
+    Spielfenster liegen darf.
+    """
+    if not hwnd:
+        return None
+    direkt = take_window_screenshot(hwnd)
+    if direkt is not None and not ist_leer(direkt[0]):
+        return direkt[0], tuple(direkt[1]), ""
+
+    rechteck = get_client_rect_by_handle(hwnd)
+    if rechteck is None:
+        return None
+    bild = take_screenshot(rechteck)
+    if bild is None:
+        return None
+    return (bild, tuple(rechteck),
+            " Direkte Fensteraufnahme nicht verfügbar — sichtbaren "
+            "Fensterbereich verwendet; es darf nichts davor liegen.")
 
 
 def analyze_screen_colors(region: tuple = None, pixel_step: int = 2) -> dict:

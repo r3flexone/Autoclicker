@@ -77,6 +77,13 @@ class M:
 
 
 META: dict = {
+    # === PROGRAMMSTART ===
+    "studio_open_on_start": M(
+        "Studio beim Start öffnen", ART_BOOL,
+        "Öffnet beim Start von main.py automatisch das Sequenz-Studio mit der "
+        "zuletzt bearbeiteten Sequenz. Aus: main.py startet nur in der Konsole; "
+        "das Studio lässt sich weiterhin per Hotkey öffnen."),
+
     # === KLICK ===
     "click_per_point": M(
         "Klicks pro Punkt", ART_INT,

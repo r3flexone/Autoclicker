@@ -66,7 +66,8 @@ from .serialization import (
     _item_to_dict, _slot_to_dict, _item_from_dict, _slot_from_dict,
     _step_to_dict, _sequence_to_dict,
     _boss_profile_to_dict, _boss_profile_from_dict,
-    _point_to_dict, _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
+    _point_to_dict, _item_scan_from_dict, _item_scan_to_dict,
+    _boss_scan_to_dict, _icon_scan_to_dict,
 )
 
 __all__ = [
@@ -79,7 +80,8 @@ __all__ = [
     '_item_to_dict', '_slot_to_dict', '_item_from_dict', '_slot_from_dict',
     '_step_to_dict', '_sequence_to_dict',
     '_boss_profile_to_dict', '_boss_profile_from_dict',
-    '_point_to_dict', '_item_scan_to_dict', '_boss_scan_to_dict', '_icon_scan_to_dict',
+    '_point_to_dict', '_item_scan_from_dict', '_item_scan_to_dict',
+    '_boss_scan_to_dict', '_icon_scan_to_dict',
     # sequences
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
     'list_available_sequences', 'save_data',

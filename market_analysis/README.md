@@ -5,18 +5,20 @@ Gold/h unter Berücksichtigung der Account-Upgrades und exportiert das Ergebnis 
 Excel. Läuft eigenständig – kein Import aus `autoclicker/`, kein Windows nötig.
 
 ```bash
-pip install pandas requests openpyxl matplotlib
+pip install -r market_analysis/requirements.txt
 python market_analysis/analyse.py
 ```
 
 `matplotlib` ist optional (nur für den Chart). Alles Generierte landet in
 `market_analysis/output/` und ist gitignored.
 
-## Die drei Skripte
+## Die Module
 
 | Datei | Zweck |
 |---|---|
 | `analyse.py` | Hauptlauf: API → Rechnung → Excel + Chart |
+| `recipes.py` | Reine, separat getestete Rezept-Normalisierung |
+| `orderbook.py` | Reine Orderbuch-, Geduld- und Trendberechnungen |
 | `verify.py` | Einzelne Items nachrechnen: jeder Zwischenschritt, dazu eine Ingame-Checkliste |
 | `apicheck.py` | Prüft, ob die API noch die erwarteten Felder liefert |
 

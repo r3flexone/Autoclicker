@@ -9,6 +9,14 @@ da ist es echt vorhanden), damit der Import der utils nicht scheitert.
 import sys, types, json, tempfile
 from pathlib import Path
 
+# Der dokumentierte Direktaufruf muss auch unter Windows-Codepages wie cp1252
+# funktionieren: die Tests geben bewusst Unicode-Symbole aus.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 # MUSS vor dem msvcrt-Stub geladen werden: `subprocess` erkennt Windows daran,
 # dass sich msvcrt importieren laesst, und zieht dann `_winapi` nach - das es
 # auf Linux nicht gibt. Wer danach etwas importiert, das subprocess braucht
@@ -1672,8 +1680,10 @@ def _immediate_lauf(items, slots, treffer):
     # daher ueber den gerade gescannten Slot mitgefuehrt.
     zustand = {"slot": None}
     _orig_exec = _IS.execute_item_scan
-    def _prof(profile, img, tol, state, debug, label="gefunden"):
-        return treffer.get(zustand["slot"]) == profile.name
+    def _prof(profile, img, tol, state, debug, label="gefunden",
+              return_score=False):
+        passt = treffer.get(zustand["slot"]) == profile.name
+        return (passt, 1.0 if passt else 0.0) if return_score else passt
     _IS._check_profile_match = _prof
     def _exec(state, name, mode="all", slots_override=None):
         zustand["slot"] = slots_override[0].name if slots_override else None
@@ -3739,6 +3749,7 @@ section("Das Fenster-Symbol wartet auf sein Fenster")
 # behielt das Symbol von python.exe.
 import time as _t12
 from autoclicker.winapi import setze_fenster_symbol as _sfs12, _symbol_bits as _sb12
+import autoclicker.symbol as _sym12
 
 _t0_12 = _t12.monotonic()
 _erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", warten=0.5)
@@ -3778,10 +3789,16 @@ for _kante12 in (16, 32):
         _symbol_loecher12.append(f"{_kante12}: Laenge passt nicht zum Kopf")
     _ecken12 = [_symbolpixel12(_bits12, _kante12, x, y)[3]
                 for x in (0, _kante12 - 1) for y in (0, _kante12 - 1)]
-    if _ecken12 != [0, 0, 0, 0]:
-        _symbol_loecher12.append(f"{_kante12}: Ecken nicht durchsichtig ({_ecken12})")
-    if _symbolpixel12(_bits12, _kante12, _kante12 // 2, _kante12 // 2)[3] != 255:
-        _symbol_loecher12.append(f"{_kante12}: Mitte nicht deckend")
+    # Der gelieferte Radius ist bei 16 px nur gut einen Pixel gross. Der
+    # Eckpixel ist deshalb kantengeglaettet, nicht zwingend komplett leer.
+    if any(a >= 255 for a in _ecken12):
+        _symbol_loecher12.append(f"{_kante12}: Ecken nicht abgerundet ({_ecken12})")
+    _innen12 = [_symbolpixel12(_bits12, _kante12, x, y)[3]
+                for y in range(2, _kante12 - 2) for x in range(2, _kante12 - 2)]
+    # Das neue Motiv hat absichtlich auch in der Mitte transparente Aussparungen.
+    # Gesucht werden deshalb beide Zustaende statt eines alten festen Mittelpixels.
+    if not any(a == 255 for a in _innen12) or not any(a == 0 for a in _innen12):
+        _symbol_loecher12.append(f"{_kante12}: Grund/Aussparung im Innern fehlt")
 
 # Die durchsichtigen Ecken sind dabei der Beleg fuer die Rundung: ein randvolles
 # Quadrat sieht aus wie ein Farbmuster, nicht wie ein Symbol.
@@ -3791,18 +3808,15 @@ if _symbol_loecher12:
     for _z12 in _symbol_loecher12:
         print("        " + _z12)
 
-# DIB-Zeilen stehen von unten nach oben - ohne das umgedrehte `reversed()`
-# steht die Fahne auf dem Kopf. Messbar am Motiv selbst: UEBER den Zeilen steht
-# die Fahne (ihre Spitze reicht weit nach rechts), UNTER ihnen nur der Fuss der
-# Stange (ein schmaler Kreis). Auf dem Kopf waere es umgekehrt.
+# DIB-Zeilen stehen von unten nach oben. Statt eine Stelle des alten Motivs als
+# Orientierungshilfe festzuschreiben, wird jedes Pixel mit der kanonischen
+# SVG-Rasterung verglichen. Das deckt Umdrehen, Kanalreihenfolge und Alpha ab.
 _bits12 = _sb12(32)
-_dunkel12 = [(x, y) for y in range(32) for x in range(32)
-             if _symbolpixel12(_bits12, 32, x, y)[2] < 0x60
-             and _symbolpixel12(_bits12, 32, x, y)[3] > 200]
-_oben12 = [x for x, y in _dunkel12 if y < 7.6 * 32 / 24]      # ueber der 1. Zeile
-_unten12 = [x for x, y in _dunkel12 if y > 19.2 * 32 / 24]    # unter der letzten
+_soll12 = list(_sym12.punkte(32))
 check("die Zeilen stehen von unten nach oben in der Datei",
-      _oben12 and _unten12 and max(_oben12) > max(_unten12) + 3)
+      all(_symbolpixel12(_bits12, 32, x, y)
+          == (_soll12[y][x][2], _soll12[y][x][1], _soll12[y][x][0], _soll12[y][x][3])
+          for y in range(32) for x in range(32)))
 
 # --- Ein gewaehltes Fenster wird DIREKT abgebildet ---
 # Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu sehen ist - also auch
@@ -3865,82 +3879,35 @@ if _lader12:
 check("sie liest die Datei stattdessen selbst",
       "_config_datei" in _quelle_br12)
 
-# --- EINE Geometrie, drei Verwendungen ---
-# Das Motiv steht in symbol.py und sonst nirgends: winapi macht ICO-Bits daraus,
-# tools/symbol.py PNG- und ICO-Dateien, der Kopf der Oberflaeche ein SVG. Zwei
-# Beschreibungen desselben Motivs waeren zwei, von denen eine altert - genau die
-# Doppelung, die das Projekt sonst ueberall aufloest.
-import autoclicker.symbol as _sym12
+# --- EINE SVG-Datei, alle Verwendungen ---
+# Der Kopf und das Favicon laden die Datei direkt; symbol.py rastert genau diese
+# Datei fuer Windows und tools/symbol.py. Damit ist das neue Logo nicht nur im
+# grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+_kopf12 = _H.studio_web_source()
+_logo12 = _sym12.LOGO_PFAD.read_text(encoding="utf-8")
+check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
+      _sym12.LOGO_PFAD.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PFAD.exists())
+check("Kopf und Favicon benutzen beide diese Datei",
+      _kopf12.count('sequenz-studio-logo.svg') == 2)
+check("das neue Logo behaelt Rotation und transparente Maske",
+      'rotate(180 128 128)' in _logo12 and 'mask="url(#cutout)"' in _logo12)
+check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _kopf12)
 
-_formen12 = [f for f in _sym12.MOTIV + _sym12.MOTIV_KLEIN]
-_raus12 = []
-for _f12 in _formen12:
-    if _f12[0] == "rr":
-        _pkte12 = [(_f12[1], _f12[2]), (_f12[1] + _f12[3], _f12[2] + _f12[4])]
-    elif _f12[0] == "kreis":
-        _pkte12 = [(_f12[1] - _f12[3], _f12[2] - _f12[3]),
-                   (_f12[1] + _f12[3], _f12[2] + _f12[3])]
-    elif _f12[0] == "strich":
-        _pkte12 = [(_f12[1], _f12[2]), (_f12[3], _f12[4])]
-    else:
-        _pkte12 = list(_f12[1])
-    if any(not (0 <= _x12 <= _sym12.RASTER and 0 <= _y12 <= _sym12.RASTER)
-           for _x12, _y12 in _pkte12):
-        _raus12.append(str(_f12[:1]) + str(_pkte12))
-check("keine Form ragt aus dem Raster", _raus12 == [])
-if _raus12:
-    print("        " + ", ".join(_raus12))
-
-# Die kleine Fassung ist nicht die grosse in klein, sondern weniger Teile mit
-# dickeren Strichen: bei 16 px ist ein Umriss ein grauer Fleck. Ohne diese Regel
-# war das Symbol in der Titelleiste ein Klecks.
-check("die kleine Fassung hat weniger Teile als die grosse",
-      len(_sym12.MOTIV_KLEIN) < len(_sym12.MOTIV))
-check("und die Groessen, die Windows anfragt, bekommen sie",
-      _sym12.motiv_fuer(16) is _sym12.MOTIV_KLEIN
-      and _sym12.motiv_fuer(32) is _sym12.MOTIV_KLEIN
-      and _sym12.motiv_fuer(256) is _sym12.MOTIV)
-
-# Der Kopf der Oberflaeche zeichnet dasselbe Motiv als SVG. Gemessen wird jede
-# Zahl, nicht "kommt vor": ein verschobener Balken faellt sonst nicht auf.
-_kopf12 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
-_svg12 = _kopf12[_kopf12.index('<svg width="20"'):]
-_svg12 = _svg12[:_svg12.index("</svg>")]
-
-
-import re as _re12
-
-
-def _zahl12(quelle, name):
-    _m12 = _re12.search(rf'{name}="([-\d.]+)"', quelle)
-    return float(_m12.group(1)) if _m12 else None
-
-
-_aus_svg12 = []
-for _roh12 in _re12.findall(r"<(?:rect|circle|line|polygon)\b[^>]*>", _svg12):
-    if _roh12.startswith("<rect"):
-        _aus_svg12.append(("rr", _zahl12(_roh12, "x"), _zahl12(_roh12, "y"),
-                           _zahl12(_roh12, "width"), _zahl12(_roh12, "height"),
-                           _zahl12(_roh12, "rx")))
-    elif _roh12.startswith("<circle"):
-        _aus_svg12.append(("kreis", _zahl12(_roh12, "cx"), _zahl12(_roh12, "cy"),
-                           _zahl12(_roh12, "r")))
-    elif _roh12.startswith("<line"):
-        _aus_svg12.append(("strich", _zahl12(_roh12, "x1"), _zahl12(_roh12, "y1"),
-                           _zahl12(_roh12, "x2"), _zahl12(_roh12, "y2"),
-                           _zahl12(_roh12, "stroke-width")))
-    else:
-        _ecken12b = tuple(tuple(float(_w12) for _w12 in _paar12.split(","))
-                          for _paar12 in
-                          _re12.search(r'points="([^"]+)"', _roh12).group(1).split())
-        _aus_svg12.append(("zug", _ecken12b, 0.0, True))
-check("der Kopf der Oberflaeche zeichnet die kleine Fassung, Zahl fuer Zahl",
-      _aus_svg12 == list(_sym12.MOTIV_KLEIN))
-if _aus_svg12 != list(_sym12.MOTIV_KLEIN):
-    for _a12, _b12 in zip(_aus_svg12 + [None] * 9, list(_sym12.MOTIV_KLEIN) + [None] * 9):
-        if _a12 != _b12:
-            print(f"        SVG {_a12}  !=  MOTIV_KLEIN {_b12}")
+# Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
+# Ecken UND transparenten Aussparungen im Innern ergeben. Zwischenwerte im
+# Alpha-Kanal beweisen, dass die Kanten geglaettet statt hart gerastert werden.
+_pixel12 = list(_sym12.punkte(16))
+_flach12 = [p for z in _pixel12 for p in z]
+check("die Rasterung liefert genau 16 x 16 Pixel",
+      len(_pixel12) == 16 and all(len(z) == 16 for z in _pixel12))
+check("sie verwendet exakt die Farbe des gelieferten SVGs",
+      all(p[:3] == (0xF2, 0xA3, 0x00) for p in _flach12))
+check("Grund, transparente Aussparungen und Kantenglaettung bleiben erhalten",
+      any(p[3] == 255 for p in _flach12)
+      and any(p[3] == 0 for p in _flach12)
+      and any(0 < p[3] < 255 for p in _flach12))
+check("Transparenz liegt auch mitten im Motiv, nicht nur an den Aussenecken",
+      any(_pixel12[y][x][3] == 0 for y in range(2, 14) for x in range(2, 14)))
 
 # --- Die Dateien fuer eine Verknuepfung ---
 # Das Fenstersymbol setzt die App selbst; eine Verknuepfung, ein angehefteter
@@ -4098,7 +4065,8 @@ except ImportError:
 if _pd6 is not None:
     import importlib.util as _ilu6
     _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analyse.py")
-    # analyse.py macht `from config import *` - dafuer muss sein Ordner im Pfad sein
+    # Der direkte Skriptmodus lädt seine Nachbarmodule ohne Paketpräfix; dafür
+    # muss der Ordner wie beim echten Aufruf im Suchpfad stehen.
     sys.path.insert(0, str(_ma_dir))
     try:
         _ma6 = _ilu6.module_from_spec(_spec6)
@@ -4683,8 +4651,7 @@ check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is
 # ausmachte: ein zweites Bedienelement fuer denselben Zustand.
 import re as _re13b
 
-_seite13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-            .read_text(encoding="utf-8"))
+_seite13 = _H.studio_web_source()
 _schalter13 = _re13b.findall(r'schalter\(\s*"([^"]*)"', _seite13)
 check("die Ansicht hat ueberhaupt Schalter", len(_schalter13) >= 2)
 check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
@@ -4885,8 +4852,7 @@ section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 # gerade NICHT tut.
 import inspect as _inspect13, re as _re13
 
-_html13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
+_html13 = _H.studio_web_source()
 # BEIDE Kanaele: `ruf()` befiehlt (Antwort = neue Momentaufnahme), `frage()` fragt
 # nur (Sequenzliste, Laufstatus). Stuende hier nur `ruf`, waeren ausgerechnet die
 # zwei neuesten Methoden ungeprueft - und der Fehler, den dieser Test faengt, ist
@@ -5737,9 +5703,7 @@ else:
 # Die Seite selbst - frueher hing dieser Block an einer Variablen aus den
 # Scans-Sektionen, die jetzt in `tools/tests/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
-_html18 = (Path(__file__).resolve().parent.parent
-           / "autoclicker/editors/sequence_studio/web/index.html"
-           ).read_text(encoding="utf-8")
+_html18 = _H.studio_web_source()
 _zustaende18 = ("treffer", "fremditem", "leer")
 _fehlend18 = [f"{k}.{z}" for z in _zustaende18
               for k in ("scan-slot", "scan-fuellung")
@@ -5976,7 +5940,7 @@ try:
           and _datei17["scan_marker_count"] == 9)
     check("nichts wurde korrigiert", _antwort17["korrekturen"] == [])
     check("die Reihenfolge in der Datei folgt den Abschnitten",
-          list(_datei17)[:2] == ["click_per_point", "click_max_total"])
+          list(_datei17) == [k for _, keys in _gruppen17 for k in keys])
 
     # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
     # einem Neustart, obwohl die Datei schon neu ist.

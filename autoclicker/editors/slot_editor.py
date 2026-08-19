@@ -20,6 +20,7 @@ from ..persistence import (
     save_global_slots, list_slot_presets, save_slot_preset,
     load_slot_preset, delete_slot_preset, SCREENSHOTS_DIR
 )
+from .scan_services import detect_slots_in_image
 
 
 
@@ -384,89 +385,11 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
 
 def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
                           verbose: bool = False, sv_toleranz: int = 50):
-    """Findet die Slot-Rechtecke in einem Bild anhand der Hintergrundfarbe.
-
-    Gibt `(rechtecke, img_bgr)` zurück; die Rechtecke sind `(x, y, w, h)` relativ
-    zum Bild, auf die Median-Grösse normalisiert und zeilenweise sortiert.
-
-    `hsv_toleranz` gilt für den Farbton, `sv_toleranz` für Sättigung und
-    Helligkeit. Die zweite ist **der entscheidende Regler bei dunklen
-    Oberflächen**: Slot und Panel unterscheiden sich dort oft nur um 30 in der
-    Helligkeit, und mit den ursprünglich fest verdrahteten ±50 verschmolzen sie
-    zu einer Fläche — das Ergebnis war EIN Rechteck über dem ganzen Inventar
-    statt 24 Slots. Der Standard bleibt 50, damit `repair` und der
-    Konsolen-Editor sich nicht ändern; wer es enger braucht, sagt es.
-
-    Die Normalisierung ist der Grund, warum die Erkennung für die Reparatur taugt:
-    sie liefert für jeden Slot dieselbe Grösse und Kantenlage, unabhängig davon, wie
-    grob der Bereich markiert wurde. Eine Maus-Position kann das nicht.
-
-    Getrennt von `slot_auto_detect`, damit die Reparatur exakt dieselbe Erkennung
-    benutzt — zwei Kopien wären zwei Ergebnisse.
-    """
-    import numpy as np
-    import cv2
-
-    r, g, b = slot_color_rgb
-
-    # RGB zu HSV
-    r_n, g_n, b_n = r / 255, g / 255, b / 255
-    max_c, min_c = max(r_n, g_n, b_n), min(r_n, g_n, b_n)
-    diff = max_c - min_c
-
-    if diff == 0:
-        h = 0
-    elif max_c == r_n:
-        h = (60 * ((g_n - b_n) / diff) + 360) % 360
-    elif max_c == g_n:
-        h = (60 * ((b_n - r_n) / diff) + 120) % 360
-    else:
-        h = (60 * ((r_n - g_n) / diff) + 240) % 360
-
-    s = 0 if max_c == 0 else (diff / max_c) * 255
-    v = max_c * 255
-    h = h / 2  # OpenCV Hue: 0-180
-
-    if verbose:
-        print(f"  HSV: ({int(h)}, {int(s)}, {int(v)})")
-
-    img_array = np.array(img)
-    img_bgr = img_array[:, :, ::-1].copy()
-
-    hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    tol, sv = hsv_toleranz, sv_toleranz
-    lower = np.array([max(0, int(h) - tol), max(0, int(s) - sv), max(0, int(v) - sv)])
-    upper = np.array([min(180, int(h) + tol), min(255, int(s) + sv), min(255, int(v) + sv)])
-
-    mask = cv2.inRange(hsv_img, lower, upper)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    detected = []
-    for contour in contours:
-        x, y, w, h_box = cv2.boundingRect(contour)
-        if w >= 40 and h_box >= 40:
-            aspect = w / h_box
-            if 0.5 < aspect < 2.0:
-                detected.append((x, y, w, h_box))
-
-    detected.sort(key=lambda s: (s[1] // 50, s[0]))
-
-    # Groessen normalisieren
-    if len(detected) >= 2:
-        widths = [s[2] for s in detected]
-        heights = [s[3] for s in detected]
-        median_w = sorted(widths)[len(widths) // 2]
-        median_h = sorted(heights)[len(heights) // 2]
-
-        normalized = []
-        for x, y, w, h_box in detected:
-            if 0.7 * median_w <= w <= 1.3 * median_w:
-                new_x = x + (w - median_w) // 2
-                new_y = y + (h_box - median_h) // 2
-                normalized.append((new_x, new_y, median_w, median_h))
-        detected = normalized
-
-    return detected, img_bgr
+    """Kompatibilitätsname für den gemeinsamen Scan-Service."""
+    return detect_slots_in_image(
+        img, slot_color_rgb, hsv_toleranz, verbose=verbose,
+        sv_tolerance=sv_toleranz,
+    )
 
 
 def slot_auto_detect(state: AutoClickerState) -> bool:

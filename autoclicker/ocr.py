@@ -55,7 +55,7 @@ def is_available() -> bool:
 
 # ── EasyOCR Reader-Cache ───────────────────────────────────────────────────────
 
-_easyocr_reader = None
+_easyocr_readers: dict[tuple[str, ...], object] = {}
 
 
 def _cuda_available() -> bool:
@@ -73,10 +73,10 @@ def _cuda_available() -> bool:
 
 
 def _get_easyocr_reader(languages: list[str] = None):
-    """Cached EasyOCR Reader (Erstinitialisierung dauert ~2-5s)."""
-    global _easyocr_reader
-    if _easyocr_reader is None:
-        langs = languages or ["en"]
+    """EasyOCR-Reader je Sprachkombination cachen (Initialisierung ~2-5s)."""
+    langs = tuple(languages or ["en"])
+    reader = _easyocr_readers.get(langs)
+    if reader is None:
         use_gpu = _cuda_available()
         if not use_gpu:
             logger.info(
@@ -86,8 +86,9 @@ def _get_easyocr_reader(languages: list[str] = None):
             )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*pin_memory.*accelerator.*")
-            _easyocr_reader = _easyocr_mod.Reader(langs, gpu=use_gpu, verbose=False)
-    return _easyocr_reader
+            reader = _easyocr_mod.Reader(list(langs), gpu=use_gpu, verbose=False)
+        _easyocr_readers[langs] = reader
+    return reader
 
 
 # ── OCR-Funktionen ─────────────────────────────────────────────────────────────

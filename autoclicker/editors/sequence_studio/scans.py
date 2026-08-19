@@ -27,20 +27,21 @@ die etwas anderes zeigt als das, was passiert.
 import base64
 import copy
 import io
-import time
 from pathlib import Path
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
 from ...persistence.paths import (
-    ITEMS_FILE, SCAN_SHOTS_DIR, SLOTS_FILE, TEMPLATES_DIR,
+    ITEMS_FILE, SLOTS_FILE, TEMPLATES_DIR,
 )
 from ...utils import eindeutiger_name, sanitize_filename
 from .model import hexfarbe, rgbwert
+from .scan_capture import ScanCaptureMixin
 from .scan_model import (
-    crop_region, existing_categories, load_items, load_slots, next_item_name,
+    existing_categories, load_items, load_slots, next_item_name,
     next_slot_name, normalize_region, save_items, save_slots, save_template,
 )
+from ..scan_services import detect_slots_in_image
 
 # Die Modi des Zeigers auf dem Bild. Mehr als einer ist nötig, weil ein Klick
 # auf dieselbe Stelle Verschiedenes bedeuten kann — und ein Klick, dessen
@@ -75,14 +76,7 @@ TREFFER_MIN = 14
 # vom letzten Speicherstand.
 UNDO_TIEFE = 30
 
-# Breiter als das wird das Bild für die Anzeige nicht geschickt. Ein virtueller
-# Desktop aus drei Monitoren ist schnell 5760 px breit; als PNG sind das
-# mehrere MB, die durch die JS-Brücke müssten. Gemessen wird ohnehin im
-# Originalbild, die Verkleinerung kostet also keine Genauigkeit.
-FOTO_MAX_BREITE = 2400
-
-
-class ScanTeil:
+class ScanTeil(ScanCaptureMixin):
     """Slots, Items und Item-Scans — der Teil der Brücke, der am Bild hängt.
 
     Eine Mixin-Klasse und keine eigene Brücke: pywebview legt **ein** Objekt als
@@ -123,6 +117,9 @@ class ScanTeil:
         # gespeichertes zeigte beim naechsten Mal irgendwohin.
         self.scan_fenster_id: int = 0
         self.scan_modus: str = MODUS_WAHL
+        # Werkzeuge sind standardmaessig einmalig. Fuer Serien kann die Ansicht
+        # sie anheften; dann bleibt der Modus nach einer erfolgreichen Aktion an.
+        self.scan_werkzeug_fixiert: bool = False
         self.scan_art: str = ART_SLOT
         self.scan_name: str = ""
         # Die Slot-Auswahl. `scan_name` bleibt der EINE, an dem der Inspektor
@@ -139,6 +136,9 @@ class ScanTeil:
         # Spielen liegen sonst alle Items aller Spiele untereinander.
         self.nur_dabei: bool = True
         self._treffer: dict = {}               # Slot-Name -> Erkennungsergebnis
+        # Mehrfach-Lernen wird erst als Vorschau aufgebaut und danach bestaetigt.
+        # PIL-Crops bleiben im Python-Prozess; die Seite erhaelt nur data:-Bilder.
+        self._lern_review: list = []
         # Der Rückgängig-Stapel: `(Beschreibung, Abzug)` je Schritt, jüngster
         # zuletzt. Siehe `_merke()` — hier gab es bis dahin gar nichts, und ein
         # Rechteck über dreissig Slots plus Entf war endgültig.
@@ -314,6 +314,13 @@ class ScanTeil:
         self._scan_dirty = True
         return self._scan_melde(text, art) if text else self.scan_daten()
 
+    def _werkzeug_fertig(self) -> None:
+        """Einmal-Werkzeuge fallen nach erfolgreicher Aktion ins Auswaehlen zurueck."""
+        if not self.scan_werkzeug_fixiert:
+            self.scan_modus = MODUS_WAHL
+            self._ecke = None
+            self._suchbereich = None
+
     # ----------------------------------------------------------- Rückgängig
 
     def _zustand(self) -> dict:
@@ -327,6 +334,8 @@ class ScanTeil:
             "auswahl": list(self._auswahl),
             "offen": self.scan_offen,
             "dirty": self._scan_dirty,
+            "bereich": copy.deepcopy(self.scan_bereich),
+            "fenster_id": self.scan_fenster_id,
         }
 
     def _merke(self, was: str) -> None:
@@ -375,6 +384,8 @@ class ScanTeil:
         self._auswahl = [n for n in stand["auswahl"] if n in self.slots]
         self.scan_offen = stand["offen"]
         self._scan_dirty = stand["dirty"]
+        self.scan_bereich = stand.get("bereich")
+        self.scan_fenster_id = stand.get("fenster_id", 0)
         # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
         # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
         self._objekte_angleichen()
@@ -385,321 +396,6 @@ class ScanTeil:
         return self._scan_melde(
             f"Rückgängig: {was}. ({len(self._undo)} weitere Schritte)"
             if self._undo else f"Rückgängig: {was}.", "warn")
-
-    # --------------------------------------------------------------- Das Bild
-
-    def scan_foto(self, daten: Optional[dict] = None) -> dict:
-        """Nimmt einen Screenshot auf und legt ihn unter das Raster.
-
-        Der eingefrorene Bildschirm ist die Arbeitsfläche: Slots zieht man dort
-        auf, wo sie im Spiel liegen, statt Koordinaten zu tippen.
-
-        **Vollbild ist die Voreinstellung, nicht die einzige Möglichkeit.**
-        Aufgenommen wird der ganze virtuelle Desktop, damit auch ein Fenster auf
-        dem zweiten Monitor dazugehört — aber wer dasselbe Spiel dreimal offen
-        hat, arbeitet auf einem Bild, in dem drei Viertel stören. `bereich`
-        schränkt die Aufnahme ein; ohne Angabe gilt der zuletzt gesetzte Bereich
-        des Scans, und der überlebt das Schliessen (er steht im gemerkten Bild).
-        """
-        self._scan_laden()
-        try:
-            from ...imaging import PILLOW_AVAILABLE, take_screenshot
-            from ...winapi import get_virtual_origin
-        except ImportError:
-            return self._scan_melde("Bildmodule fehlen — kein Screenshot möglich.", "err")
-        if not PILLOW_AVAILABLE:
-            return self._scan_melde("Ohne Pillow gibt es kein Bild: pip install pillow", "err")
-
-        bereich = self._bereich_aus(daten) if daten else None
-        if bereich is None:
-            bereich = self.scan_bereich
-
-        # Ein gewaehltes Fenster wird direkt abgebildet — verdeckt oder nicht.
-        bild, hinweis = None, ""
-        if self.scan_fenster_id:
-            bild, bereich, hinweis = self._fensterbild(bereich)
-
-        if bild is None:
-            bild = take_screenshot(bereich) if bereich else take_screenshot()
-        if bild is None:
-            return self._scan_melde("Screenshot fehlgeschlagen.", "err")
-
-        links, oben = (bereich[0], bereich[1]) if bereich else get_virtual_origin()
-        self.scan_bereich = bereich
-        self._foto = bild
-        self._foto_merken(bild, links, oben)
-        self._anzeigebild(links, oben, time.time())
-        # Ein alter Treffer gehört zu einem alten Bild, ein alter Suchbereich
-        # auch: er stand in Bildschirm-Koordinaten um ein Inventar, das jetzt
-        # woanders liegen kann.
-        self._treffer = {}
-        self._suchbereich = None
-        wo = "Fenster" if self.scan_fenster_id and not hinweis else (
-            "Bereich" if bereich else "Vollbild")
-        # **Die Uhrzeit steht dabei, damit man SIEHT, dass aufgenommen wurde.**
-        # Zwei Aufnahmen desselben Spielstands sehen gleich aus, und wenn auch
-        # die Meldung Wort für Wort dieselbe ist, wirkt der Knopf kaputt — genau
-        # der Eindruck, wegen dem hier vorher „passiert nichts" gemeldet wurde.
-        return self._scan_melde(f"{wo} aufgenommen um {time.strftime('%H:%M:%S')}: "
-                                f"{bild.width}×{bild.height} px "
-                                f"ab ({links}, {oben}).{hinweis}"
-                                f"{self._draussen_hinweis()}",
-                                "warn" if hinweis else "ok")
-
-    def _fensterbild(self, bereich):
-        """Bildet das gewählte Fenster ab. `(bild, bereich, hinweis)`.
-
-        **Das ist der Grund, warum man ein Fenster wählt und nicht nur einen
-        Ausschnitt.** Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu
-        sehen ist — also auch das Studio, das davor liegt. `PrintWindow` fragt
-        das Fenster selbst; ob es verdeckt ist, spielt keine Rolle.
-
-        Drei Dinge können schiefgehen, und jedes wird gesagt statt geschluckt:
-        das Fenster gibt es nicht mehr, es zeichnet sich nicht (schwarze Fläche
-        trotz `PW_RENDERFULLCONTENT` — kommt bei manchen Vollbild-Spielen vor),
-        oder es ist inzwischen umgezogen. In den ersten beiden Fällen wird auf
-        den Desktop-Ausschnitt zurückgefallen: ein verdecktes Bild ist immer
-        noch besser als ein schwarzes, das aussieht, als hätte es geklappt.
-        """
-        try:
-            from ...imaging import ist_leer, take_window_screenshot
-        except ImportError:
-            return None, bereich, ""
-        ergebnis = take_window_screenshot(self.scan_fenster_id)
-        if ergebnis is None:
-            self.scan_fenster_id = 0
-            return None, bereich, " Fenster nicht mehr da — Bildschirm genommen."
-        bild, rechteck = ergebnis
-        if ist_leer(bild):
-            return None, bereich, (" Das Fenster zeichnet sich nicht selbst — "
-                                   "Bildschirm genommen, es darf nichts davor liegen.")
-        umgezogen = bereich and tuple(bereich) != tuple(rechteck)
-        return bild, rechteck, (" Das Fenster ist umgezogen, die Slots stehen noch "
-                                "an der alten Stelle." if umgezogen else "")
-
-    @staticmethod
-    def _bereich_aus(daten: dict) -> Optional[tuple]:
-        """Liest `bereich` aus einer Anfrage — vier Zahlen oder nichts."""
-        roh = (daten or {}).get("bereich")
-        if not roh or len(roh) != 4:
-            return None
-        try:
-            x1, y1, x2, y2 = (int(w) for w in roh)
-        except (TypeError, ValueError):
-            return None
-        x1, y1, x2, y2 = normalize_region(x1, y1, x2, y2)
-        return (x1, y1, x2, y2) if x2 - x1 >= 8 and y2 - y1 >= 8 else None
-
-    def _draussen_hinweis(self) -> str:
-        """Sagt, wie viele Slots des offenen Scans neben dem Bild liegen.
-
-        Ohne das ist ein zu eng gesetzter Bereich still: die Slots stehen weiter
-        in der Liste, sind aber im Bild nicht zu sehen, und man sucht den Fehler
-        bei der Erkennung statt beim Ausschnitt.
-        """
-        if self._foto_info is None:
-            return ""
-        f = self._foto_info
-        rand = (f["links"], f["oben"],
-                f["links"] + round(f["breite"] / f["skala"]),
-                f["oben"] + round(f["hoehe"] / f["skala"]))
-        draussen = [s for s in self._scan_slots() if s.scan_region
-                    and not (rand[0] <= s.scan_region[0] and s.scan_region[2] <= rand[2]
-                             and rand[1] <= s.scan_region[1] and s.scan_region[3] <= rand[3])]
-        return f" {len(draussen)} Slot(s) liegen ausserhalb." if draussen else ""
-
-    def scan_bereich_setzen(self, daten: Optional[dict] = None) -> dict:
-        """Setzt, WAS aufgenommen wird — aufgenommen wird erst auf Knopfdruck.
-
-        Ohne `bereich` heisst es Vollbild — der Rückweg, ohne den ein einmal
-        eingeschränkter Scan nie wieder das Ganze sähe.
-
-        **Wählen und Aufnehmen sind zwei Dinge, also sind es zwei Klicks.**
-        Vorher nahm diese Methode gleich mit auf, und das war die verwirrendste
-        Stelle des Reiters: wer ein Fenster aus der Liste wählte, hatte plötzlich
-        ein Bild, ohne etwas ausgelöst zu haben — und der Knopf „Fenster
-        aufnehmen" daneben schien danach nichts mehr zu tun, weil er dasselbe
-        Bild noch einmal holte und zwei gleiche Bilder gleich aussehen. Ein
-        Bedienelement, das von selbst handelt, und eines, das scheinbar nicht
-        handelt, sind derselbe Fehler von zwei Seiten.
-
-        `_klick_bereich` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
-        sofort zu: dort ist der Zuschnitt das Ergebnis, nicht die Vorbereitung.
-        """
-        self._scan_laden()
-        self.scan_bereich = self._bereich_aus(daten or {})
-        try:
-            self.scan_fenster_id = int((daten or {}).get("fenster") or 0)
-        except (TypeError, ValueError):
-            self.scan_fenster_id = 0
-        if not self.scan_bereich:
-            return self._scan_melde("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
-                                    "info")
-        x1, y1, x2, y2 = self.scan_bereich
-        wo = "Fenster" if self.scan_fenster_id else "Bereich"
-        return self._scan_melde(
-            f"{wo} gewählt: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1}) — "
-            f"jetzt „{wo} aufnehmen“.", "info")
-
-    def scan_fenster(self, daten: Optional[dict] = None) -> list:
-        """Die offenen Fenster mit ihrer Lage — zur Auswahl des Bereichs.
-
-        Der Fall, für den es das gibt: dasselbe Programm mehrmals offen. Der
-        Titel ist dann dreimal derselbe, unterscheidbar sind sie nur an der
-        Lage — die steht deshalb mit dabei und die Liste ist danach sortiert.
-
-        `frage()` und nicht `ruf()`: es ändert nichts, es beantwortet nur etwas.
-        """
-        try:
-            from ...winapi import liste_fenster
-        except ImportError:
-            return []
-        return [{"titel": titel, "bereich": list(rechteck), "id": kennung}
-                for titel, rechteck, kennung in liste_fenster()]
-
-    def _klick_bereich(self, x: int, y: int) -> dict:
-        """Zwei Ecken schränken das Bild ein — zugeschnitten, nicht neu geholt.
-
-        Neu aufzunehmen wäre das Naheliegende und wäre falsch: zwischen den
-        beiden Klicks vergeht Zeit, und was man zugeschnitten hat, soll man auch
-        bekommen. Der Bereich wird gemerkt, die nächste Aufnahme holt genau ihn.
-        """
-        if self._foto is None or self._foto_info is None:
-            return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
-        if self._ecke is None:
-            self._ecke = (x, y)
-            return self._scan_melde("Erste Ecke des Bereichs — jetzt die zweite.", "info")
-        x1, y1, x2, y2 = normalize_region(self._ecke[0], self._ecke[1], x, y)
-        self._ecke = None
-        if x2 - x1 < 8 or y2 - y1 < 8:
-            return self._scan_melde("Zu klein — nochmal aufziehen.", "warn")
-
-        ausschnitt = crop_region(self._foto, (x1, y1, x2, y2),
-                                 int(self._foto_info["links"]), int(self._foto_info["oben"]))
-        if ausschnitt is None:
-            return self._scan_melde("Der Bereich liegt nicht im Bild.", "warn")
-        # Ein von Hand gesetzter Ausschnitt ist kleiner als das Fenster — ab
-        # jetzt gilt er, nicht mehr das Fenster. Sonst holte die naechste
-        # Aufnahme wieder das ganze Fenster und der Zuschnitt waere weg.
-        self.scan_fenster_id = 0
-        self.scan_bereich = (x1, y1, x2, y2)
-        self._foto = ausschnitt
-        self._foto_merken(ausschnitt, x1, y1)
-        self._anzeigebild(x1, y1, time.time())
-        self._treffer = {}
-        return self._scan_melde(f"Bereich: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1})."
-                                f"{self._draussen_hinweis()}")
-
-    @staticmethod
-    def _foto_pfad(scan: str) -> Path:
-        return Path(SCAN_SHOTS_DIR) / f"{sanitize_filename(scan)}.png"
-
-    def _foto_merken(self, bild, links: int, oben: int) -> None:
-        """Legt den Screenshot beim offenen Scan ab — für das nächste Öffnen.
-
-        **Der Ursprung des virtuellen Desktops steht IM PNG** (Text-Chunk), nicht
-        in einer Datei daneben. Zwei Dateien, die zusammengehören, laufen
-        irgendwann auseinander: eine gelöschte, eine überschriebene, und die
-        Koordinaten sind still um einen Monitor verschoben. Im Bild selbst kann
-        das nicht passieren.
-
-        Ohne offenen Scan wird nichts abgelegt: das Bild gehört zu einem Spiel,
-        und welches gemeint ist, sagt der Scan.
-        """
-        if not self.scan_offen:
-            return
-        try:
-            from PIL import PngImagePlugin
-            info = PngImagePlugin.PngInfo()
-            info.add_text("links", str(int(links)))
-            info.add_text("oben", str(int(oben)))
-            pfad = self._foto_pfad(self.scan_offen)
-            pfad.parent.mkdir(parents=True, exist_ok=True)
-            bild.save(pfad, "PNG", pnginfo=info)
-        except (ImportError, OSError, ValueError):
-            pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
-
-    def _foto_laden(self, scan: str) -> bool:
-        """Holt den zuletzt abgelegten Screenshot dieses Scans zurück."""
-        pfad = self._foto_pfad(scan)
-        try:
-            from PIL import Image
-            bild = Image.open(pfad)
-            bild.load()
-        except (ImportError, OSError, ValueError):
-            self._foto = None
-            self._foto_bild = ""
-            self._foto_info = None
-            self.scan_bereich = None
-            return False
-        text = getattr(bild, "text", {}) or {}
-        try:
-            links, oben = int(text.get("links", 0)), int(text.get("oben", 0))
-        except (TypeError, ValueError):
-            links, oben = 0, 0
-        self._foto = bild.convert("RGB")
-        # Ursprung und Grösse des gemerkten Bildes SIND der Bereich — deshalb
-        # steht er nirgends sonst. Deckt er den ganzen Desktop ab, ist es kein
-        # Bereich, sondern Vollbild; sonst sagte die Anzeige „Bereich" für etwas,
-        # das keine Einschränkung ist.
-        self.scan_bereich = self._bereich_oder_vollbild(
-            (links, oben, links + bild.width, oben + bild.height))
-        self._anzeigebild(links, oben, pfad.stat().st_mtime)
-        self._treffer = {}
-        return True
-
-    @staticmethod
-    def _bereich_oder_vollbild(rechteck: tuple) -> Optional[tuple]:
-        """None, wenn das Rechteck der ganze virtuelle Desktop ist."""
-        try:
-            from ...winapi import get_virtual_desktop
-        except ImportError:
-            return rechteck
-        schirm = get_virtual_desktop()
-        return None if schirm and tuple(schirm) == tuple(rechteck) else rechteck
-
-    def _anzeigebild(self, links: int, oben: int, stand: float) -> None:
-        """Verkleinert das Original für die Übertragung und merkt die Geometrie."""
-        bild = self._foto
-        skala = min(1.0, FOTO_MAX_BREITE / bild.width) if bild.width else 1.0
-        anzeige = bild if skala >= 1.0 else bild.resize(
-            (max(1, int(bild.width * skala)), max(1, int(bild.height * skala))))
-        self._foto_bild = _als_datenurl(anzeige, "PNG")
-        self._foto_info = {
-            "links": links, "oben": oben,
-            "breite": anzeige.width, "hoehe": anzeige.height,
-            "skala": round(anzeige.width / bild.width, 6) if bild.width else 1.0,
-            "stand": stand,
-        }
-
-    def scan_bild(self, daten: Optional[dict] = None) -> str:
-        """Das Bild als data:-URL — getrennt geholt, weil es gross ist.
-
-        Stünde es in `scan_daten()`, ginge es bei jedem Klick erneut durch die
-        Brücke. Die Seite holt es einmal je Aufnahme (`foto.stand` ändert sich).
-        """
-        return self._foto_bild
-
-    def _foto_farbe(self, x: int, y: int) -> Optional[tuple]:
-        """Die Farbe an einer Bildschirmstelle — aus dem Originalbild."""
-        if self._foto is None or self._foto_info is None:
-            return None
-        px = int(x) - int(self._foto_info["links"])
-        py = int(y) - int(self._foto_info["oben"])
-        if not (0 <= px < self._foto.width and 0 <= py < self._foto.height):
-            return None
-        try:
-            wert = self._foto.convert("RGB").getpixel((px, py))
-        except (OSError, ValueError):
-            return None
-        return tuple(int(v) for v in wert[:3])
-
-    def _foto_crop(self, region):
-        """Der Ausschnitt einer Slot-Region aus dem Screenshot, oder None."""
-        if self._foto is None or self._foto_info is None or not region:
-            return None
-        return crop_region(self._foto, tuple(region),
-                           int(self._foto_info["links"]), int(self._foto_info["oben"]))
 
     def _schritte(self) -> list:
         """Die drei Schritte zu einem neuen Scan, mit ihrem Stand.
@@ -730,7 +426,7 @@ class ScanTeil:
                 "LEEREN Slot-Hintergrund klicken.", hat_slots,
              "modus:" + MODUS_FINDEN, "Slots finden"),
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
-             hat_items, "scan_items_lernen", "aus allen Slots lernen"),
+             hat_items, "scan_lernvorschau", "Items prüfen & lernen"),
         ]
         offen = [nr for nr, _, _, fertig, _, _ in roh if not fertig]
         aktuell = offen[0] if offen else 0
@@ -807,6 +503,7 @@ class ScanTeil:
         erkannt = self._erkannte_items()
         return {
             "modus": self.scan_modus,
+            "werkzeug_fixiert": self.scan_werkzeug_fixiert,
             "ecke": list(self._ecke) if self._ecke else None,
             # Der Suchbereich muss zu SEHEN sein, solange man noch die Farbe
             # zeigen soll — sonst klickt man den Hintergrund an und weiss nicht,
@@ -820,6 +517,13 @@ class ScanTeil:
             "kategorien": existing_categories(self.items),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
             "fenster_id": self.scan_fenster_id,
+            # Der Titel ist die dauerhafte Quelle, das HWND nur ihr aktueller
+            # Sitzungswert. So bleibt in der Oberfläche auch bei geschlossenem
+            # Spiel sichtbar, welches Fenster dieser Scan erwartet.
+            "fenster_titel": cfg.capture_window_title if cfg else None,
+            "fenster_verfuegbar": bool(self.scan_fenster_id),
+            "fenster_referenz": (list(cfg.capture_window_rect)
+                                  if cfg and cfg.capture_window_rect else None),
             "schritte": self._schritte(),
             "offen": self.scan_offen,
             "nur_dabei": self.nur_dabei,
@@ -838,12 +542,44 @@ class ScanTeil:
             # gelernten Items im Reiter vergeblich.
             "fremd": self._platte_fremd(),
             "status": {"text": text, "art": art},
+            "ergebnis": self._ergebnis_json(),
+            "review": self._review_json(),
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
             # anzubieten, die nichts tun: ohne Pillow gibt es kein Bild, ohne
             # OpenCV kein Template-Matching (also keine Erkennung und kein
             # Erkennen von Doppelten beim Lernen).
             "opencv": self._hat_opencv(),
             "pillow": self._hat_pillow(),
+        }
+
+    def _ergebnis_json(self) -> Optional[dict]:
+        """Kompakte Auswertung des letzten Testscans fuer die Ergebnisleiste."""
+        if not self._treffer:
+            return None
+        slots = self._scan_slots()
+        slot_namen = {s.name for s in slots}
+        treffer = {n: t for n, t in self._treffer.items() if n in slot_namen}
+        erkannt = [n for n, t in treffer.items() if t.get("name") and not t.get("fremd")]
+        fremd = [n for n, t in treffer.items() if t.get("name") and t.get("fremd")]
+        unbekannt = [n for n, t in treffer.items() if not t.get("name")]
+        return {
+            "gesamt": len(slots), "erkannt": len(erkannt), "fremd": len(fremd),
+            "unbekannt": len(unbekannt), "erkannt_slots": erkannt,
+            "fremd_slots": fremd, "unbekannt_slots": unbekannt,
+        }
+
+    def _review_json(self) -> Optional[dict]:
+        if not self._lern_review:
+            return None
+        return {
+            "zeilen": [
+                {k: v for k, v in zeile.items() if k != "crop"}
+                for zeile in self._lern_review
+            ],
+            # Name ist zugleich die Item-Identitaet. Die Vorschlaege machen es
+            # moeglich, eine weitere Slot-Groesse an ein bestehendes Item zu
+            # haengen, statt aus Versehen ein zweites Item anzulegen.
+            "itemnamen": sorted(self.items, key=str.casefold),
         }
 
     @staticmethod
@@ -895,6 +631,26 @@ class ScanTeil:
 
     def _item_json(self, item: ItemProfile, dabei: bool = False,
                    erkannt: bool = False) -> dict:
+        from ...imaging import template_size
+        vorlagen = item.template_names()
+        groessen = []
+        for name in vorlagen:
+            groesse = template_size(name)
+            if groesse and list(groesse) not in groessen:
+                groessen.append(list(groesse))
+        scan_groessen = []
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is not None:
+            for slot_name in cfg.slot_names:
+                slot = self.slots.get(slot_name)
+                if slot is None:
+                    continue
+                region = slot.scan_region
+                groesse = [region[2] - region[0], region[3] - region[1]]
+                if groesse not in scan_groessen:
+                    scan_groessen.append(groesse)
+        fehlende_groessen = ([g for g in scan_groessen if g not in groessen]
+                             if vorlagen else [])
         return {
             "dabei": dabei,
             # Gehört (noch) nicht dazu, wird aber gerade gesehen. Die Ansicht
@@ -906,11 +662,14 @@ class ScanTeil:
             "kategorie": item.category,
             "prioritaet": item.priority,
             "konfidenz": item.min_confidence,
-            "template": item.template,
+            "template": vorlagen[0] if vorlagen else None,
+            "vorlagen": vorlagen,
+            "vorlagengroessen": groessen,
+            "fehlende_scan_groessen": fehlende_groessen,
             "marker": [hexfarbe(c) for c in item.marker_colors],
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
-            "stumm": not item.template and not item.marker_colors,
+            "stumm": not vorlagen and not item.marker_colors,
         }
 
     def _scan_json(self, cfg: ItemScanConfig) -> dict:
@@ -921,6 +680,12 @@ class ScanTeil:
             "toleranz": cfg.color_tolerance,
             "lernen": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
+            "fenster": ({
+                "titel": cfg.capture_window_title,
+                "instanz": cfg.capture_window_index,
+                "referenz": (list(cfg.capture_window_rect)
+                              if cfg.capture_window_rect else None),
+            } if cfg.capture_window_title else None),
             # Namen, die es global nicht mehr gibt: der Scan läuft mit dem Rest
             # weiter, aber man soll es sehen, bevor er es meldet.
             "fehlend": ([n for n in cfg.slot_names if n not in self.slots] +
@@ -939,9 +704,9 @@ class ScanTeil:
         ergebnis = {}
         for name in namen:
             item = self.items.get(name)
-            if item is None or not item.template:
+            if item is None or not item.template_names():
                 continue
-            url = self._template_url(item.template)
+            url = self._template_url(item.template_names()[0])
             if url:
                 ergebnis[name] = url
         return ergebnis
@@ -981,7 +746,10 @@ class ScanTeil:
         modus = (daten or {}).get("modus") or MODUS_WAHL
         if modus not in MODI:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
-        if modus == self.scan_modus and modus != MODUS_WAHL:
+        if "fixiert" in (daten or {}):
+            self.scan_werkzeug_fixiert = bool((daten or {}).get("fixiert"))
+        if (modus == self.scan_modus and modus != MODUS_WAHL
+                and "fixiert" not in (daten or {})):
             self._ecke = None
             self._suchbereich = None
             self.scan_modus = MODUS_WAHL
@@ -1100,6 +868,7 @@ class ScanTeil:
         self.scan_art, self.scan_name = ART_SLOT, name
         self._auswahl = [name]
         self._dazu(ART_SLOT, name)
+        self._werkzeug_fertig()
         gemessen = f" · Hintergrund {hexfarbe(farbe)}" if farbe else ""
         return self._scan_geaendert(
             f"{name}: {x2 - x1}×{y2 - y1} px{gemessen}")
@@ -1321,13 +1090,12 @@ class ScanTeil:
         Rechteck mehr als die halbe Fläche einnimmt, zählt nicht — das ist nie
         ein Slot, sondern das Panel.
         """
-        from ..slot_editor import erkenne_slots_im_bild
         from ...config import CONFIG
         flaeche = bild.width * bild.height
         bestes: list = []
         for sv in self._SV_STUFEN:
-            rechtecke, _ = erkenne_slots_im_bild(
-                bild, farbe, CONFIG.scan_slot_hsv_tolerance, sv_toleranz=sv)
+            rechtecke, _ = detect_slots_in_image(
+                bild, farbe, CONFIG.scan_slot_hsv_tolerance, sv_tolerance=sv)
             rechtecke = [r for r in rechtecke if r[2] * r[3] * 2 <= flaeche]
             if len(rechtecke) > len(bestes):
                 bestes = rechtecke
@@ -1401,6 +1169,7 @@ class ScanTeil:
             return self._scan_melde("Dort liegt kein Bild — erst aufnehmen.", "warn")
         self._merke("Hintergrundfarbe gemessen")
         slot.slot_color = farbe
+        self._werkzeug_fertig()
         return self._scan_geaendert(f"{slot.name}: Hintergrund {hexfarbe(farbe)}")
 
     def _klick_klickpunkt(self, x: int, y: int) -> dict:
@@ -1409,6 +1178,7 @@ class ScanTeil:
             return self._scan_melde("Erst einen Slot wählen.", "warn")
         self._merke("Klickpunkt gesetzt")
         slot.click_pos = (x, y)
+        self._werkzeug_fertig()
         return self._scan_geaendert(f"{slot.name}: Klickpunkt ({x}, {y})")
 
     def _klick_waehlen(self, x: int, y: int, zusatz: bool = False) -> dict:
@@ -1550,6 +1320,7 @@ class ScanTeil:
         self._ecke = None
         self._suchbereich = None
         self._auswahl = []
+        self._lern_review = []
         self.scan_modus = MODUS_WAHL
         return self.scan_daten()
 
@@ -1908,6 +1679,280 @@ class ScanTeil:
         )
         return name
 
+    def scan_lernvorschau(self, daten: Optional[dict] = None) -> dict:
+        """Bereitet mehrere Items vor, ohne Bestand oder Templates zu veraendern."""
+        scope = str((daten or {}).get("scope") or "alle")
+        slots = self._auswahl_slots() if scope == "auswahl" else self._scan_slots()
+        if not slots:
+            return self._scan_melde("Keine Slots fuer die Lernvorschau.", "warn")
+        if self._foto is None:
+            return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
+
+        from ..item_editor.markers import (
+            _find_matching_existing_item, _item_has_compatible_template,
+        )
+        from ...config import CONFIG
+        from ...imaging import mit_hintergrund_maske
+
+        review = []
+        vergeben = set(self.items)
+        offener_scan = self.scans.get(self.scan_offen)
+        scan_items = set(offener_scan.item_names) if offener_scan else set()
+        for slot in slots:
+            crop = self._foto_crop(slot.scan_region)
+            if crop is None:
+                continue
+            treffer = (_find_matching_existing_item(
+                crop, list(self.items.items()), CONFIG.scan_min_confidence)
+                if self._hat_opencv() else None)
+            kompatibel = bool(
+                treffer and _item_has_compatible_template(self.items[treffer], crop))
+            variante = treffer if treffer and not kompatibel else ""
+            # Ein sicher erkannter Treffer IST das vorhandene Item. Zuvor stand
+            # bei einem kompatiblen Treffer oben „Bogen erkannt", im Namensfeld
+            # aber „Item 1". Der Platzhalter war nur fuer einen moeglichen
+            # manuellen Widerspruch gedacht und bereitete beim Ankreuzen sogar
+            # ein Duplikat vor. Der vorhandene Datensatz ist deshalb immer der
+            # sichtbare Standard; `neu_name` bleibt nur fuer die ausdrueckliche
+            # UI-Aktion „Als anderes Item lernen" erhalten.
+            neu_name = next_item_name({n: None for n in vergeben})
+            vergeben.add(neu_name)
+            if treffer:
+                item = self.items[treffer]
+                name = treffer
+                kategorie = item.category or ""
+                prioritaet = item.priority
+            else:
+                name = neu_name
+                kategorie = ""
+                prioritaet = 1
+            im_scan = bool(treffer and treffer in scan_items)
+            kann_hinzufuegen = bool(
+                kompatibel and offener_scan is not None and not im_scan)
+            maskiert = mit_hintergrund_maske(crop, slot.slot_color)
+            review.append({
+                "slot": slot.name, "name": name, "kategorie": kategorie,
+                "prioritaet": prioritaet,
+                "vorhanden": treffer or "", "neu_name": neu_name,
+                "duplikat": treffer if kompatibel else "",
+                "variante": variante,
+                "im_scan": im_scan, "kann_hinzufuegen": kann_hinzufuegen,
+                # Das Haekchen beschreibt die gewuenschte Scan-Mitgliedschaft:
+                # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
+                # bewusst abwaehlen und damit aus genau diesem Scan entfernen.
+                "ausgewaehlt": True,
+                "bild": self._bild_url(maskiert), "crop": maskiert,
+            })
+        self._lern_review = review
+        if not review:
+            return self._scan_melde("Keiner der Slots liegt im Screenshot.", "warn")
+        doppelt = sum(bool(z["duplikat"]) for z in review)
+        varianten = sum(bool(z["variante"]) for z in review)
+        teile = []
+        if doppelt:
+            teile.append(f"{doppelt} bereits gelernt")
+        if varianten:
+            teile.append(f"{varianten} neue Grössenvariante(n)")
+        zusatz = " - " + ", ".join(teile) if teile else ""
+        return self._scan_melde(
+            f"{len(review)} Vorschlaege vorbereitet{zusatz}.", "info")
+
+    @staticmethod
+    def _bild_url(img) -> str:
+        try:
+            with io.BytesIO() as stream:
+                img.save(stream, format="PNG")
+                return "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode("ascii")
+        except (OSError, ValueError):
+            return ""
+
+    def scan_lernvorschau_abbrechen(self, daten: Optional[dict] = None) -> dict:
+        self._lern_review = []
+        return self._scan_melde("Lernvorschau verworfen.", "info")
+
+    def _kategorie_normalisieren(self, wert) -> Optional[str]:
+        """Verwendet bei gleicher Schreibweise die bereits bekannte Kategorie."""
+        neu = str(wert or "").strip()
+        if not neu:
+            return None
+        schluessel = neu.casefold()
+        for vorhanden in existing_categories(self.items):
+            if vorhanden.casefold() == schluessel:
+                return vorhanden
+        return neu
+
+    def _prioritaet_einordnen(self, kategorie: Optional[str], wert,
+                              ausnehmen: Optional[ItemProfile] = None) -> tuple[int, int]:
+        """Wertet die TUI-Sonderzahl 0 aus; liefert (Prioritaet, verschoben)."""
+        try:
+            prioritaet = int(wert)
+        except (TypeError, ValueError):
+            prioritaet = 1
+        if prioritaet != 0:
+            return max(1, prioritaet), 0
+        if not kategorie:
+            return 1, 0
+
+        verschoben = 0
+        for item in self.items.values():
+            if item is not ausnehmen and item.category == kategorie:
+                item.priority = max(1, int(item.priority)) + 1
+                verschoben += 1
+        return 1, verschoben
+
+    def scan_lernvorschau_uebernehmen(self, daten: Optional[dict] = None) -> dict:
+        """Uebernimmt Items und die gewuenschte Mitgliedschaft im offenen Scan."""
+        eingaben = (daten or {}).get("zeilen") or []
+        by_slot = {str(z.get("slot") or ""): z for z in eingaben if isinstance(z, dict)}
+
+        def ist_ausgewaehlt(zeile: dict) -> bool:
+            eingabe = by_slot.get(zeile["slot"], {})
+            return bool(eingabe.get("ausgewaehlt", zeile["ausgewaehlt"]))
+
+        # Ein vorhandenes Item kann in mehreren Slots erkannt werden. Diese
+        # Zeilen meinen dieselbe Scan-Mitgliedschaft; sobald eine davon markiert
+        # ist, bleibt das Item enthalten. Die Oberfläche hält die Häkchen
+        # zusätzlich synchron, diese ODER-Regel schützt aber auch alte Clients.
+        mitgliedschaft = {}
+        for zeile in self._lern_review:
+            eingabe = by_slot.get(zeile["slot"], {})
+            vorhanden = str(zeile.get("vorhanden") or "")
+            if vorhanden and not bool(eingabe.get("als_anders", False)):
+                mitgliedschaft[vorhanden] = (
+                    mitgliedschaft.get(vorhanden, False) or ist_ausgewaehlt(zeile))
+
+        cfg = self.scans.get(self.scan_offen)
+        zu_entfernen = [
+            name for name, behalten in mitgliedschaft.items()
+            if not behalten and cfg is not None and name in cfg.item_names
+        ]
+        ausgewaehlt = [
+            zeile for zeile in self._lern_review if ist_ausgewaehlt(zeile)
+        ]
+        if not ausgewaehlt and not zu_entfernen:
+            self._lern_review = []
+            return self._scan_melde(
+                "Keine Items ausgewählt; am Scan wurde nichts geändert.", "info")
+
+        from ..item_editor.markers import _collect_markers_silent
+        from ...config import CONFIG
+        self._merke("Item-Auswahl der Lernvorschau uebernommen")
+        neu = []
+        varianten = []
+        unveraendert = set()
+        hinzugefuegt = []
+        entfernt = []
+        bearbeitet = []
+        metadaten_gesetzt = set()
+
+        # Zuerst wird der Zustand der erkannten Items angewendet. Abwählen
+        # löscht nicht das globale Item oder seine Vorlagen, sondern nur dessen
+        # Namen aus dem aktuell geöffneten Scan.
+        if cfg is not None:
+            for name, behalten in mitgliedschaft.items():
+                if behalten:
+                    if self._dazu(ART_ITEM, name):
+                        hinzugefuegt.append(name)
+                elif name in cfg.item_names:
+                    cfg.item_names = [n for n in cfg.item_names if n != name]
+                    entfernt.append(name)
+            if entfernt:
+                self._objekte_angleichen()
+
+        vergeben = set(self.items)
+        for zeile in ausgewaehlt:
+            eingabe = by_slot.get(zeile["slot"], {})
+            als_anders = bool(eingabe.get("als_anders", False))
+            erkannter_name = str(zeile.get("vorhanden") or "")
+            if erkannter_name and not als_anders:
+                # Der Name ist die Identität des erkannten Items. Geändert wird
+                # er nur über die ausdrückliche Aktion „Als anderes Item lernen“.
+                basis = erkannter_name
+            else:
+                basis = (str(eingabe.get("name") or zeile["name"]).strip()
+                         or zeile["name"])
+            slot = self.slots.get(zeile["slot"])
+            if slot is None:
+                continue
+            crop = zeile["crop"]
+            # Ein bereits vorhandener Name bedeutet bewusst: dieses Bild ist
+            # dasselbe Item in einem anderen Slot-Typ. Seine sichtbaren Daten
+            # können bearbeitet werden; bei Bedarf kommt eine Bildvariante hinzu.
+            vorhanden = self.items.get(basis)
+            if vorhanden is not None:
+                # Bei einem regulär erkannten Treffer stammen die sichtbaren
+                # Werte aus genau diesem Profil und dürfen direkt bearbeitet
+                # werden. Bei „anderes Item“ kann ein fremder vorhandener Name
+                # gewählt werden; dessen Metadaten werden nicht mit den leeren
+                # Standardfeldern überschrieben.
+                if erkannter_name and not als_anders and basis not in metadaten_gesetzt:
+                    vorher = (vorhanden.category, vorhanden.priority)
+                    kategorie = self._kategorie_normalisieren(
+                        eingabe.get("kategorie", zeile["kategorie"]))
+                    prioritaet, verschoben = self._prioritaet_einordnen(
+                        kategorie,
+                        eingabe.get("prioritaet", zeile["prioritaet"]),
+                        ausnehmen=vorhanden,
+                    )
+                    vorhanden.category = kategorie
+                    vorhanden.priority = prioritaet
+                    metadaten_gesetzt.add(basis)
+                    if vorher != (kategorie, prioritaet) or verschoben:
+                        bearbeitet.append(basis)
+
+                from ..item_editor.markers import _item_has_compatible_template
+                if _item_has_compatible_template(vorhanden, crop):
+                    if self._dazu(ART_ITEM, basis) and basis not in hinzugefuegt:
+                        hinzugefuegt.append(basis)
+                    elif basis not in hinzugefuegt and basis not in bearbeitet:
+                        unveraendert.add(basis)
+                    continue
+                datei = save_template(crop, basis)
+                if datei:
+                    if vorhanden.template:
+                        vorhanden.template_variants.append(datei)
+                    else:
+                        vorhanden.template = datei
+                    if basis not in varianten:
+                        varianten.append(basis)
+                    if self._dazu(ART_ITEM, basis) and basis not in hinzugefuegt:
+                        hinzugefuegt.append(basis)
+                continue
+
+            name = eindeutiger_name(basis, vergeben)
+            vergeben.add(name)
+            marker = _collect_markers_silent(crop, slot.slot_color)
+            kategorie = self._kategorie_normalisieren(eingabe.get("kategorie"))
+            prioritaet, _ = self._prioritaet_einordnen(
+                kategorie, eingabe.get("prioritaet", zeile["prioritaet"]))
+            self.items[name] = ItemProfile(
+                name=name, marker_colors=[tuple(c) for c in marker],
+                category=kategorie, priority=prioritaet,
+                template=save_template(crop, name),
+                min_confidence=CONFIG.scan_min_confidence,
+            )
+            self._dazu(ART_ITEM, name)
+            neu.append(name)
+        self._lern_review = []
+        gewaehlt = neu + varianten + hinzugefuegt
+        if gewaehlt:
+            self.scan_art, self.scan_name = ART_ITEM, gewaehlt[0]
+        teile = []
+        if neu:
+            teile.append(f"{len(neu)} neue Item(s)")
+        if varianten:
+            teile.append(f"{len(varianten)} Grössenvariante(n) ergänzt")
+        if hinzugefuegt:
+            teile.append(f"{len(hinzugefuegt)} bestehende Item(s) zum Scan hinzugefügt")
+        if entfernt:
+            teile.append(f"{len(entfernt)} Item(s) aus dem Scan entfernt")
+        if bearbeitet:
+            teile.append(f"{len(bearbeitet)} bestehende Item(s) bearbeitet")
+        if unveraendert:
+            teile.append(f"{len(unveraendert)} bereits vollständig eingerichtet")
+        text = ", ".join(teile) + "." if teile else "Keine Änderungen."
+        return self._scan_geaendert(text)
+
     def scan_item_setzen(self, daten: dict) -> dict:
         """Ein Feld eines Items — Name, Kategorie, Priorität, Konfidenz."""
         name = str((daten or {}).get("name") or "")
@@ -1921,12 +1966,23 @@ class ScanTeil:
             return self._item_umbenennen(item, str(wert or "").strip())
         if feld == "kategorie":
             self._merke(f"'{name}': Kategorie")
-            item.category = str(wert or "").strip() or None
+            item.category = self._kategorie_normalisieren(wert)
             return self._scan_geaendert()
         if feld == "prioritaet":
             self._merke(f"'{name}': Priorität")
-            item.priority = max(1, int(wert or 1))
-            return self._scan_geaendert()
+            item.priority, verschoben = self._prioritaet_einordnen(
+                item.category, wert, ausnehmen=item)
+            try:
+                nach_vorn = int(wert) == 0
+            except (TypeError, ValueError):
+                nach_vorn = False
+            if nach_vorn and not item.category:
+                return self._scan_geaendert(
+                    f"{name}: Priorität 1. Für 'ganz nach vorn' erst eine Kategorie wählen.",
+                    "warn")
+            zusatz = (f"; {verschoben} andere Item(s) in '{item.category}' nach hinten gerückt"
+                      if verschoben else "")
+            return self._scan_geaendert(f"{name}: Priorität {item.priority}{zusatz}.")
         if feld == "konfidenz":
             self._merke(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(wert or 0)))
@@ -1989,6 +2045,26 @@ class ScanTeil:
         return self._scan_melde(
             f"{gefunden} von {gesamt} Slot(s) erkannt "
             f"(Toleranz {toleranz}, {geprueft} Item(s) geprüft).")
+
+    def scan_treffer_uebernehmen(self, daten: Optional[dict] = None) -> dict:
+        """Nimmt alle erkannten, aber scan-fremden Items gesammelt auf."""
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is None:
+            return self._scan_melde("Erst einen Item-Scan oeffnen.", "warn")
+        namen = []
+        for treffer in self._treffer.values():
+            name = treffer.get("name")
+            if name and treffer.get("fremd") and name not in namen:
+                namen.append(name)
+        if not namen:
+            return self._scan_melde("Keine sicheren fremden Treffer vorhanden.", "info")
+        self._merke(f"{len(namen)} erkannte Items aufgenommen")
+        for name in namen:
+            self._dazu(ART_ITEM, name)
+        for treffer in self._treffer.values():
+            if treffer.get("name") in namen:
+                treffer["fremd"] = False
+        return self._scan_geaendert(f"{len(namen)} erkannte Item(s) hinzugefuegt.")
 
     def _erkennen_lauf(self) -> tuple:
         """Füllt `_treffer`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
@@ -2090,14 +2166,24 @@ class ScanTeil:
                 # Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild.
                 # Dass seine Slots trotzdem dastehen, ist die halbe Antwort auf
                 # „warum ist die Mitte leer" — die andere Hälfte ist der Knopf.
+                quelle = self.scans[name].capture_window_title
+                quelltext = (f" Fenster '{quelle}' ist momentan nicht offen."
+                             if quelle and not self.scan_fenster_id else "")
                 if self._flaeche():
                     return self._scan_melde(
                         f"'{name}' geöffnet — kein Bild gemerkt, die Slots stehen "
-                        "trotzdem. „Screenshot aufnehmen“ legt das Spiel dahinter.",
+                        "trotzdem. „Screenshot aufnehmen“ legt das Spiel dahinter."
+                        + quelltext,
                         "info")
                 return self._scan_melde(
-                    f"'{name}' geöffnet — noch kein Bild dazu. Screenshot aufnehmen.",
+                    f"'{name}' geöffnet — noch kein Bild dazu. Screenshot aufnehmen."
+                    + quelltext,
                     "info")
+            quelle = self.scans[name].capture_window_title
+            if quelle and not self.scan_fenster_id:
+                return self._scan_melde(
+                    f"'{name}' geöffnet, Bild von zuletzt. Fenster '{quelle}' ist "
+                    "momentan nicht offen.", "warn")
             return self._scan_melde(f"'{name}' geöffnet, Bild von zuletzt.")
         self._foto = None
         self._foto_bild = ""
@@ -2124,6 +2210,7 @@ class ScanTeil:
         # Ein frisch angelegter Scan ist der, an dem man arbeitet — sonst müsste
         # man ihn direkt danach noch einmal auswählen.
         self.scan_offen = name
+        self.scan_fenster_id = 0
         return self._scan_geaendert(f"Scan '{name}' angelegt und geöffnet.")
 
     def scan_setzen(self, daten: dict) -> dict:
@@ -2312,14 +2399,3 @@ class _NurConfig:
 
     def __init__(self, config):
         self.config = config
-
-
-def _als_datenurl(bild, format_: str = "PNG") -> str:
-    """PIL-Bild -> `data:`-URL. Leerer String, wenn es nicht geht."""
-    try:
-        puffer = io.BytesIO()
-        bild.save(puffer, format=format_)
-    except (OSError, ValueError):
-        return ""
-    art = "png" if format_.upper() == "PNG" else "jpeg"
-    return f"data:image/{art};base64," + base64.b64encode(puffer.getvalue()).decode("ascii")

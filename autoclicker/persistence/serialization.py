@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING
 from ..models import (
     DEFAULT_MIN_CONFIDENCE,
     ClickPoint, ElseConfig, WaitCondition, SequenceStep, Sequence,
-    ItemProfile, ItemSlot, BossProfile,
+    ItemProfile, ItemSlot, ItemScanConfig, BossProfile,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, ICON_ACTION_CLICK, SCAN_MODE_ALL,
 )
 
 if TYPE_CHECKING:  # nur fuer die Annotationen unten
-    from ..models import ItemScanConfig, BossScanConfig, IconScanConfig
+    from ..models import BossScanConfig, IconScanConfig
 
 
 # =============================================================================
@@ -108,6 +108,7 @@ _ITEM_DEFAULTS = {
     "confirm_delay": 0.5,
     "template": None,
     "min_confidence": DEFAULT_MIN_CONFIDENCE,
+    "template_variants": [],
 }
 
 _SLOT_DEFAULTS = {"slot_color": None}
@@ -171,6 +172,12 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
     if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
         _alt_gemeldet(f"Item '{name}'", "confirm_point",
                       "Bestätigungs-Punkt im Item-Editor neu setzen")
+    varianten = data.get("template_variants", [])
+    if not isinstance(varianten, list):
+        varianten = []
+    primaer = data.get("template")
+    varianten = [v for v in varianten
+                 if isinstance(v, str) and v and v != primaer]
     return ItemProfile(
         name=name,
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
@@ -179,7 +186,8 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
         confirm_point_id=data.get("confirm_point_id"),
         confirm_delay=data.get("confirm_delay", 0.5),
         template=data.get("template"),
-        min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE)
+        min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
+        template_variants=list(dict.fromkeys(varianten)),
     )
 
 
@@ -249,6 +257,9 @@ _ITEM_SCAN_DEFAULTS = {
     "slot_names": [],
     "item_names": [],
     "reverse": False,
+    "capture_window_title": None,
+    "capture_window_index": 0,
+    "capture_window_rect": None,
 }
 
 
@@ -268,7 +279,50 @@ def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
         "slot_names": slot_names,
         "item_names": item_names,
         "reverse": config.reverse,
+        "capture_window_title": config.capture_window_title,
+        "capture_window_index": config.capture_window_index,
+        "capture_window_rect": (list(config.capture_window_rect)
+                                if config.capture_window_rect else None),
     }, _ITEM_SCAN_DEFAULTS)
+
+
+def _item_scan_from_dict(data: dict) -> ItemScanConfig:
+    """Deserialisiert das zentrale Item-Scan-Format.
+
+    Loader und ZIP-Import müssen durch dieselbe Stelle laufen. Sonst verschwindet
+    ein neues Feld beim Import still, obwohl eine normal geladene Datei es kennt.
+    """
+    fenster_rechteck = data.get("capture_window_rect")
+    if not isinstance(fenster_rechteck, (list, tuple)) or len(fenster_rechteck) != 4:
+        fenster_rechteck = None
+    else:
+        try:
+            fenster_rechteck = tuple(int(wert) for wert in fenster_rechteck)
+            if (fenster_rechteck[2] <= fenster_rechteck[0]
+                    or fenster_rechteck[3] <= fenster_rechteck[1]):
+                fenster_rechteck = None
+        except (TypeError, ValueError):
+            fenster_rechteck = None
+    fenster_titel = data.get("capture_window_title")
+    if not isinstance(fenster_titel, str) or not fenster_titel.strip():
+        fenster_titel = None
+    else:
+        fenster_titel = fenster_titel.strip()
+    try:
+        fenster_index = max(0, int(data.get("capture_window_index", 0)))
+    except (TypeError, ValueError):
+        fenster_index = 0
+    return ItemScanConfig(
+        name=data["name"],
+        slot_names=[str(n) for n in data.get("slot_names", [])],
+        item_names=[str(n) for n in data.get("item_names", [])],
+        color_tolerance=data.get("color_tolerance", 40),
+        learn_unknown=data.get("learn_unknown", False),
+        reverse=data.get("reverse", False),
+        capture_window_title=fenster_titel,
+        capture_window_index=fenster_index,
+        capture_window_rect=fenster_rechteck,
+    )
 
 
 _BOSS_SCAN_DEFAULTS = {

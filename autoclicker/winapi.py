@@ -711,14 +711,8 @@ def liste_fenster() -> list:
     return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
 
 
-def get_client_rect_by_title(title_substring: str):
-    """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
-    mit passendem Titel als absolute Bildschirm-Koordinaten.
-
-    Returns:
-        (left, top, right, bottom) oder None wenn kein passendes/sinnvolles Fenster.
-    """
-    hwnd = _find_window_by_title(title_substring)
+def get_client_rect_by_handle(hwnd: int):
+    """Client-Bereich eines HWND als absolute Bildschirm-Koordinaten."""
     if not hwnd:
         return None
     try:
@@ -733,8 +727,54 @@ def get_client_rect_by_title(title_substring: str):
         if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
             return None
         return (pt.x, pt.y, pt.x + width, pt.y + height)
-    except (OSError, AttributeError):
+    except (OSError, AttributeError, TypeError, ValueError):
         return None
+
+
+def resolve_window(title: str, instance: int = 0, reference_rect=None):
+    """Findet eine gespeicherte Fensterquelle erneut.
+
+    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`liste_fenster`.
+    Exakte Titel gewinnen. Bei mehreren gleichnamigen Fenstern wählt die beim
+    Speichern gemerkte, nach Bildschirmposition sortierte Instanz. Ist dieser
+    Index nicht mehr vorhanden, gewinnt das geometrisch ähnlichste Fenster.
+    """
+    if not isinstance(title, str) or not title.strip():
+        return None
+    fenster = liste_fenster()
+    ziel = title.strip().casefold()
+    kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
+    if not kandidaten:
+        kandidaten = [e for e in fenster if ziel in e[0].casefold()]
+    if not kandidaten:
+        return None
+    try:
+        index = int(instance)
+    except (TypeError, ValueError):
+        index = 0
+    if 0 <= index < len(kandidaten):
+        return kandidaten[index]
+    if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
+        try:
+            ref = tuple(int(v) for v in reference_rect)
+            return min(kandidaten, key=lambda e: sum(
+                abs(int(e[1][i]) - ref[i]) for i in range(4)))
+        except (TypeError, ValueError):
+            pass
+    return kandidaten[0]
+
+
+def get_client_rect_by_title(title_substring: str):
+    """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
+    mit passendem Titel als absolute Bildschirm-Koordinaten.
+
+    Returns:
+        (left, top, right, bottom) oder None wenn kein passendes/sinnvolles Fenster.
+    """
+    hwnd = _find_window_by_title(title_substring)
+    if not hwnd:
+        return None
+    return get_client_rect_by_handle(hwnd)
 
 
 def check_failsafe(state: 'AutoClickerState' = None) -> bool:
@@ -817,10 +857,10 @@ def unregister_hotkeys() -> None:
         user32.UnregisterHotKey(None, hotkey_id)
 
 
-# Wie das Symbol AUSSIEHT, steht in `symbol.py` — hier steht nur, wie Windows
-# es haben will. Die Trennung ist nicht kosmetisch: aus derselben Geometrie
-# macht `tools/symbol.py` PNG- und ICO-Dateien für eine Verknüpfung, und zwei
-# Beschreibungen desselben Motivs wären zwei, die auseinanderlaufen.
+# Wie das Symbol AUSSIEHT, steht in der SVG-Datei der Weboberfläche —
+# `symbol.py` rastert sie hier nur in die Form, die Windows haben will. Auch
+# `tools/symbol.py` macht daraus PNG-/ICO-Dateien für eine Verknüpfung; es gibt
+# deshalb keine zweite Beschreibung des Motivs, die auseinanderlaufen könnte.
 # Die Kennung, unter der Windows die Fenster dieses Programms gruppiert. Punkt-
 # getrennt und ohne Leerzeichen, so will es die Schnittstelle.
 APP_ID = "Autoclicker.SequenzStudio"
@@ -857,14 +897,14 @@ def _symbol_bits(kante: int = 32) -> bytes:
     aus wie ein Fehler statt wie ein fremdes Programm. Ein DIB legt Breite,
     Höhe, Bittiefe und Byte-Reihenfolge selbst fest und hängt an keinem Gerät.
 
-    Gezeichnet wird in `symbol.py`; hier wird nur umgepackt. Zwei Eigenheiten
+    Gerastert wird in `symbol.py`; hier wird nur umgepackt. Zwei Eigenheiten
     des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und Maskenbild
     untereinander), und DIB-Zeilen stehen **von unten nach oben**.
     """
     kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `punkte()` liefert von oben —
-    # deshalb umgedreht. Ohne das steht die Fahne auf dem Kopf.
+    # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
     for zeile in reversed(list(symbol.punkte(kante))):
         for r, g, b, a in zeile:
             farben += bytes((b, g, r, a))       # BGRA, nicht RGBA

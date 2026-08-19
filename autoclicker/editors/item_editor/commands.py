@@ -250,7 +250,7 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
                     for i, t in enumerate(sorted(templates)):
                         print(f"    {i+1}. {t.name}")
 
-                current = item.template if item.template else "Keins"
+                current = ", ".join(item.template_names()) or "Keins"
                 print(f"\n  Item: {item.name}")
                 print(f"  Aktuelles Template: {current}")
                 print(f"  Aktuelle Konfidenz: {item.min_confidence:.0%}")
@@ -268,7 +268,8 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
 
                 if template_input.lower() == "remove":
                     item.template = None
-                    print("  + Template entfernt!")
+                    item.template_variants.clear()
+                    print("  + Alle Vorlagen entfernt!")
                 elif template_input.lower() == "capture":
                     _capture_template_for_item(state, item)
                 else:
@@ -314,12 +315,30 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         print("  -> Screenshot fehlgeschlagen!")
         return
 
+    from ...imaging import template_size
+    passende = [name for name in item.template_names()
+                if template_size(name) == tuple(img.size)]
     safe_name = sanitize_filename(item.name)
-    template_file = f"{safe_name}.png"
+    if passende:
+        # Dieselbe Slot-Groesse wird bewusst aktualisiert.
+        template_file = passende[0]
+    elif item.template_names():
+        breite, hoehe = img.size
+        basis = f"{safe_name}_{breite}x{hoehe}"
+        template_file = f"{basis}.png"
+        nummer = 2
+        while (Path(TEMPLATES_DIR) / template_file).exists():
+            template_file = f"{basis}_{nummer}.png"
+            nummer += 1
+    else:
+        template_file = f"{safe_name}.png"
     template_path = Path(TEMPLATES_DIR) / template_file
     template_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(template_path)
-    item.template = template_file
+    if not item.template:
+        item.template = template_file
+    elif template_file != item.template and template_file not in item.template_variants:
+        item.template_variants.append(template_file)
 
     conf_input = safe_input(f"  Min. Konfidenz (Enter={item.min_confidence:.0%}): ").strip()
     if conf_input:
@@ -329,7 +348,7 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         except ValueError:
             pass
 
-    print(f"  + Template gespeichert: {template_file}")
+    print(f"  + Vorlage für {img.size[0]}x{img.size[1]} gespeichert: {template_file}")
 
 
 def _assign_template_to_item(item, template_input: str, templates: list) -> None:

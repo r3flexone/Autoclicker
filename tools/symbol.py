@@ -9,10 +9,10 @@ Das Symbol im Fenster und in der Taskleiste setzt die App selbst
 sind für alles, was Windows aus einer Datei nimmt: eine Verknüpfung auf dem
 Desktop, ein angehefteter Eintrag, ein Ordnerbild.
 
-Gezeichnet wird aus derselben Geometrie wie das Fenstersymbol
-(`autoclicker/symbol.py`), damit es nicht zwei Motive gibt, von denen eines
-altert. Deshalb liegt hier auch keine fertige Binärdatei im Repo: sie wäre eine
-Kopie, die niemand mitzieht.
+Gerastert wird direkt aus derselben SVG-Datei, die auch die Weboberfläche zeigt
+(`autoclicker/symbol.py` übernimmt das ohne Zusatzbibliothek). Deshalb liegt
+hier keine fertige Binärdatei im Repo: sie wäre eine Kopie, die beim nächsten
+Logo-Entwurf wieder veralten könnte.
 
 Ohne Pillow läuft es trotzdem — PNG und ICO werden dann von Hand
 zusammengesetzt (beides sind einfache Formate, wenn man sich auf unkomprimiert

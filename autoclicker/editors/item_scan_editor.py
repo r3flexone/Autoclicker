@@ -463,6 +463,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         tolerance = existing.color_tolerance
         learn_unknown = existing.learn_unknown
         reverse = existing.reverse
+        capture_window_title = existing.capture_window_title
+        capture_window_index = existing.capture_window_index
+        capture_window_rect = existing.capture_window_rect
     else:
         print("\n--- Neuen Scan erstellen ---")
         scan_name = safe_input("Name des Scans: ").strip()
@@ -473,6 +476,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
         reverse = False
+        capture_window_title = None
+        capture_window_index = 0
+        capture_window_rect = None
 
     # --- Schritt 1: Slots ---------------------------------------------------------
     print(header("SCHRITT 1: SLOTS AUSWÄHLEN"))
@@ -558,6 +564,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         name=scan_name, slots=slots, items=items,
         color_tolerance=tolerance, learn_unknown=learn_unknown,
         reverse=reverse,
+        capture_window_title=capture_window_title,
+        capture_window_index=capture_window_index,
+        capture_window_rect=capture_window_rect,
     )
     with state.lock:
         state.item_scans[scan_name] = config

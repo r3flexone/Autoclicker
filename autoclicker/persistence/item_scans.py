@@ -14,7 +14,7 @@ from ..models import ClickPoint, ItemScanConfig, AutoClickerState
 from ..utils import compact_json, warn, atomic_write
 from .migration import KIND_ITEM_SCAN, migrate
 from .paths import ITEM_SCANS_DIR
-from .serialization import _item_scan_to_dict
+from .serialization import _item_scan_from_dict, _item_scan_to_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
@@ -42,14 +42,7 @@ def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_ITEM_SCAN)
 
-        return ItemScanConfig(
-            name=data["name"],
-            slot_names=[str(n) for n in data.get("slot_names", [])],
-            item_names=[str(n) for n in data.get("item_names", [])],
-            color_tolerance=data.get("color_tolerance", 40),
-            learn_unknown=data.get("learn_unknown", False),
-            reverse=data.get("reverse", False),
-        )
+        return _item_scan_from_dict(data)
 
     except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")

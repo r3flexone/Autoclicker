@@ -74,7 +74,9 @@ def _pruefe_templates(state: AutoClickerState, bericht: Pruefbericht) -> None:
     und die einzige Spur ist eine Logger-Zeile im Rauschen.
     """
     with state.lock:
-        quellen = [(f"Item '{n}'", i.template) for n, i in state.global_items.items()]
+        quellen = [(f"Item '{n}'", tpl)
+                   for n, i in state.global_items.items()
+                   for tpl in i.template_names()]
         for scan in state.boss_scans.values():
             quellen += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template)
                         for b in scan.bosses]
@@ -112,7 +114,7 @@ def _pruefe_erkennung(state: AutoClickerState, bericht: Pruefbericht) -> None:
                           "weder Template noch Farb-Marker — wird nie erkannt",
                           "Template aufnehmen oder Marker-Farben setzen")
     for wer, item in items:
-        if not item.template and not item.marker_colors:
+        if not item.template_names() and not item.marker_colors:
             bericht.melde(STUFE_HINWEIS, wer,
                           "weder Template noch Farb-Marker — wird in keinem Scan gefunden")
     bericht.geprueft.append(f"{len(kandidaten) + len(items)} Erkennungs-Profile")

@@ -208,6 +208,14 @@ def _pruefe_befehle(state) -> None:
     fn(state, auftrag["argumente"])
 
 
+def _studio_beim_start_oeffnen(state) -> bool:
+    """Öffnet auf Wunsch das Studio, nachdem der Hauptprozess empfangsbereit ist."""
+    if not state.config.studio_open_on_start:
+        return False
+    handle_sequence_studio(state)
+    return True
+
+
 def main() -> int:
     """Hauptfunktion."""
     print_banner()
@@ -305,6 +313,11 @@ def main() -> int:
     # Altersregel in befehl.py fängt das meiste ab, aber nicht die letzten
     # Sekunden davor.
     verwirf_befehle()
+
+    # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
+    # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
+    # wuerde `verwirf_befehle()` genau diesen ersten Auftrag wegwerfen.
+    _studio_beim_start_oeffnen(state)
 
     # Message-Struktur für Windows-Nachrichten
     msg = wintypes.MSG()

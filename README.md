@@ -18,9 +18,12 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 - **Tastatureingaben**: Automatische Tastendrücke (Enter, Space, F1-F12, etc.)
 - **Automatische Slot-Erkennung**: OpenCV-basierte Erkennung von Item-Slots
 - **Item-Scan System**: Items anhand von Marker-Farben oder Templates erkennen
+- **Fenstergebundene Item-Scans**: Editor und Laufzeit verwenden dieselbe
+  Aufnahmequelle; Slots folgen einem verschobenen Spielfenster automatisch
 - **Auto-Scan Items**: Alle Slots automatisch scannen und Items in einem Schritt erstellen (`autoscan`)
 - **Kategorie-System**: Items gruppieren (z.B. Hosen, Jacken) - nur bestes pro Kategorie klicken
-- **Template-Matching**: Items per Screenshot erkennen (OpenCV)
+- **Template-Matching**: Items per Screenshot erkennen; ein Item kann automatisch
+  passende Vorlagen für mehrere Slot-Grössen besitzen (OpenCV)
 - **Boss-Scan**: Bosse anhand von Templates oder Markern erkennen + Aktion auslösen (Klick, Taste, Item-Scan, Skip)
 - **Icon-Scan**: Ein Symbol/Icon (z.B. rotes „!" einer nicht machbaren Mission) per Template/Marker erkennen + Aktion (Klick/Taste/Skip)
 - **LLM Vision Boss-Detection**: Lokale LLMs (Ollama / LM Studio) erkennen Bosse per Screenshot, unbekannte Bosse werden auto-gespeichert
@@ -212,6 +215,15 @@ Das Item-Scan System bietet ein Menü mit folgenden Optionen:
 - **[3] Scans bearbeiten** - Slots und Items verknüpfen
 - **[4] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
 - **[5] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
+
+Im visuellen Scan-Reiter kann ein Spielfenster als dauerhafte Aufnahmequelle
+gewählt werden. Items werden aus dem eingefrorenen Editor-Screenshot gelernt.
+Beim Lauf wird dasselbe Fenster über denselben Aufnahmeweg frisch aufgenommen;
+die gelernten Templates bleiben unverändert, während Slot- und Klickpositionen
+relativ zum Fenster verschoben werden. Nach reinem Verschieben müssen Slots und
+Items nicht neu gelernt werden. Bei einer neuen Fenstergrösse werden die Slots
+proportional angepasst; für dadurch neue Slotgrössen wird einmal eine zusätzliche
+Item-Vorlage gelernt.
 - **[6] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
 - **[7] Import / Export** - Setup als ZIP teilen oder importieren
 
@@ -286,7 +298,9 @@ Der schnellste Weg, viele Items auf einmal anzulegen — perfekt für ein vollst
 1. Slots vorab definieren (am besten via `auto` im Slot-Editor)
 2. `autoscan` im Item-Editor (oder Menü-Punkt 5 im Item-Scan-Menü)
 3. Einmalig konfigurieren: Kategorie, Prioritäts-Modus, Bestätigungs-Punkt, Konfidenz, Marker an/aus
-4. Programm scannt alle Slots, vergleicht gegen bestehende Items (Duplikate werden übersprungen) und legt für jeden neuen Slot ein Item mit Template + Marker-Farben an
+4. Programm scannt alle Slots und vergleicht gegen bestehende Items. Bereits vollständig
+   gelernte Duplikate werden übersprungen; bei demselben Item in einer neuen Slot-Grösse
+   wird eine zusätzliche Vorlage ergänzt. Nur wirklich neue Inhalte werden neue Items.
 5. Anschliessend nur noch via `rename <Nr>` umbenennen
 
 **Modi:**
@@ -345,6 +359,7 @@ Rote Jacke     [Kategorie: Jacken]   Priorität 1  ← wird geklickt (andere Kat
     "name": "Pinkes Juwel",
     "priority": 1,
     "template": "pinkes_juwel.png",
+    "template_variants": ["pinkes_juwel_62x57.png"],
     "min_confidence": 0.8,
     "category": "Juwelen"
   }
@@ -359,6 +374,9 @@ Items können per **Template-Matching** (Screenshot-Vergleich) erkannt werden:
 2. Mit `template <Nr>` kann ein Template nachträglich gesetzt werden
 3. Templates werden in `items/templates/` gespeichert
 4. `min_confidence` (0.0-1.0) bestimmt wie genau das Match sein muss
+5. Pro Slot-Grösse wird eine passende Vorlage verwendet. Fehlt sie, zeigt das Studio
+   „für diesen Scan noch nicht gelernt“; beim Lernen kann derselbe Item-Name gewählt
+   werden, um die Grösse zu ergänzen.
 
 Template-Matching ist genauer als Marker-Farben, besonders bei ähnlichen Items.
 
@@ -963,6 +981,7 @@ Wird beim ersten Start automatisch erstellt:
 
 ```json
 {
+  "studio_open_on_start": true,
   "click_per_point": 1,
   "click_max_total": null,
   "click_move_delay": 0.01,
@@ -1024,6 +1043,10 @@ Wird beim ersten Start automatisch erstellt:
   "debug_save_templates": false
 }
 ```
+
+`studio_open_on_start` öffnet beim Start von `main.py` automatisch das
+Sequenz-Studio mit der zuletzt bearbeiteten Sequenz. Auf `false` startet das
+Programm wieder nur in der Konsole; das Studio bleibt über den Hotkey erreichbar.
 
 ### Klick-Einstellungen
 
@@ -1183,18 +1206,25 @@ Autoclicker-Idleclans/
 │   │   ├── sequences.py    # Sequenz- + Punkte-Persistenz
 │   │   ├── item_scans.py   # ItemScanConfig-Persistenz
 │   │   ├── boss_scans.py   # BossScanConfig-Persistenz
+│   │   ├── icon_scans.py   # IconScanConfig-Persistenz
 │   │   ├── globals.py      # Global-Slots, Global-Items, Kategorien
-│   │   └── presets.py      # Slot- und Item-Presets
+│   │   ├── presets.py      # Slot- und Item-Presets
+│   │   ├── migration.py    # Schema-Migrationen
+│   │   └── sweep.py        # Bestandsprüfung und Sicherungen
 │   ├── runtime/            # Sequenz-Ausführung (Worker-Thread)
 │   │   ├── actions.py      # safe_click/safe_key, Humanize, Fokus-Check, Else-Aktion
 │   │   ├── item_scan.py    # Item-Scan-Runtime + _check_profile_match
 │   │   ├── boss_detection.py  # Boss-Scan, OCR/LLM-Erkennung, Async-Pfad
 │   │   ├── steps.py        # Step-Dispatcher (_execute_*_step)
-│   │   └── worker.py       # sequence_worker + print_status
+│   │   ├── worker.py       # sequence_worker + print_status
+│   │   ├── debug.py        # Schritt- und Erkennungsdiagnose
+│   │   └── status.py       # Laufstatus für externe Prozesse
 │   └── editors/            # Interaktive Editoren
 │       ├── __init__.py
 │       ├── sequence_editor/  # Sequenz erstellen/bearbeiten
 │       ├── item_editor/      # Items definieren (inkl. autoscan-Befehl)
+│       ├── sequence_studio/  # pywebview-Brücke, Scans und lokale Web-Assets
+│       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
 │       ├── slot_editor.py
 │       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
@@ -1229,7 +1259,8 @@ Autoclicker-Idleclans/
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
-    └── test_ocr.py         # OCR-Backend-Test + Texterkennung
+    ├── test_ocr.py         # OCR-Backend-Test + Texterkennung
+    └── test_logic.py       # große plattformunabhängige Vertragssuite
 ```
 
 ## Technische Details
@@ -1265,7 +1296,7 @@ main.py                      Einstiegspunkt, Event-Loop
 
 **Datenfluss:**
 ```
-[Hotkey] → handlers.py → editors/*.py → persistence.py (Speichern)
+[Hotkey] → handlers.py → editors/*.py → persistence/ (Speichern)
                       ↘ runtime/actions.py → safe_click/safe_key → winapi.py
                                      ↘ imaging.py (Screenshots)
                                      ↘ llm_vision.py (HTTP zu Ollama/LM Studio)
@@ -1427,7 +1458,8 @@ steht auf einmal da.
   Sequenzdatei nur Referenzen speichert, war die Eingabe beim nächsten Öffnen weg
 - **Ein verschobener Punkt zieht alle Blöcke mit**, die auf ihm liegen — sichtbar sofort,
   nicht erst nach dem nächsten Öffnen
-- **Reiter „Scans"**: ein aus der Liste gewähltes **Fenster wird direkt abgebildet** — es darf also verdeckt sein, auch vom Studio selbst. Klappt das bei einem Spiel nicht (manche zeichnen sich nicht auf Zuruf), sagt es das und nimmt den Bildschirm.
+- **Reiter „Scans"**: ein aus der Liste gewähltes **Fenster wird direkt abgebildet** — es darf also verdeckt sein, auch vom Studio selbst. Klappt das bei einem Spiel nicht (manche zeichnen sich nicht auf Zuruf), sagt es das und nimmt den sichtbaren Fensterbereich. Editor und Live-Scan verwenden genau denselben Aufnahmeweg.
+- **Reiter „Scans"**: die Fensterquelle wird im Item-Scan gespeichert. Slots und ihre Klickpunkte folgen dem Fenster beim Verschieben automatisch; nach einer Grössenänderung werden sie proportional angepasst und die Oberfläche nennt fehlende Item-Vorlagengrössen.
 - **Reiter „Scans"**: **nicht immer Vollbild** — wer dasselbe Spiel mehrmals offen hat, wählt das Fenster aus einer Liste (Titel *und* Lage, denn nur die unterscheidet sie) oder zieht mit zwei Ecken einen Bereich auf. Der Bereich gilt für jede weitere Aufnahme dieses Scans und überlebt das Schliessen; ein Knopf holt Vollbild zurück. Liegen Slots ausserhalb, sagt es das.
 - **Reiter „Scans"**: der Item-Scan ist die Klammer: oben wählt man ihn, und Listen, Bild und Erkennung zeigen nur noch, was zu ihm gehört (ein Schalter blendet den ganzen Bestand ein). Offen ist beim Start der zuletzt bearbeitete. Jeder Scan merkt sich seinen Bildschirm — beim Öffnen ist er sofort wieder da, statt einer leeren Fläche; und ein älterer Scan **ohne** gemerktes Bild zeigt wenigstens seine Slots an ihrer Stelle, bis ein Screenshot sich dahinterlegt. Das eigene Dear-PyGui-Fenster ist weg — Slots, Items und
   Item-Scans entstehen jetzt im selben Fenster wie die Sequenz, die sie benutzt.

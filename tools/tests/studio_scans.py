@@ -14,7 +14,7 @@ import os as _os
 import tempfile
 from pathlib import Path
 
-from ._harness import check, section
+from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB8
 from autoclicker.models import Sequence as _SEQ8
 
@@ -105,16 +105,17 @@ try:
             check("und dem gemessenen Hintergrund", _s18["farbe"] == "#303644")
             check("die Ecke ist danach wieder frei", _z18["ecke"] is None)
 
-            # Verkehrt herum aufgezogen ist dasselbe Rechteck. Der Modus bleibt
-            # dabei stehen - wer zwanzig Slots aufzieht, soll die Kachel nicht
-            # zwanzigmal anfassen muessen. (Nochmal darauf zu klicken hiesse
-            # jetzt "fertig, zurueck ins Auswaehlen".)
-            check("der Modus bleibt nach einem Slot stehen",
-                  _z18["modus"] == _MS18)
+            # Ein Werkzeug ist standardmaessig einmalig: nach dem Slot ist wieder
+            # Auswaehlen aktiv. Fuer zwanzig Slots laesst es sich anheften.
+            check("ein einmaliges Werkzeug kehrt zum Auswaehlen zurueck",
+                  _z18["modus"] == _MW18)
+            _b18.scan_modus_setzen({"modus": _MS18, "fixiert": True})
             _b18.scan_klick({"x": 260, "y": 260})
             _z18 = _b18.scan_klick({"x": 200, "y": 200})
             check("auch von rechts unten nach links oben",
                   _z18["slots"][1]["region"] == [200, 200, 260, 260])
+            check("angeheftet bleibt das Werkzeug fuer Serien aktiv",
+                  _z18["modus"] == _MS18 and _z18["werkzeug_fixiert"] is True)
 
             # --- Zu kleines Rechteck wird abgelehnt ---
             _b18.scan_klick({"x": 300, "y": 300})
@@ -139,7 +140,7 @@ try:
             _b18.slots["Winzling"] = _SLOT8(name="Winzling",
                                             scan_region=(340, 40, 342, 42),
                                             click_pos=(341, 41))
-            _b18.scan_modus_setzen({"modus": _MW18})
+            _b18.scan_modus_setzen({"modus": _MW18, "fixiert": False})
             _z18 = _b18.scan_klick({"x": 344, "y": 44})
             check("ein winziger Slot ist auch daneben noch zu treffen",
                   _z18["wahl"]["name"] == "Winzling")
@@ -242,8 +243,11 @@ try:
             _z18 = _b18.scan_klick({"x": 130, "y": 130})
             check("die Pipette misst im Originalbild",
                   _z18["slots"][0]["farbe"] == "#C83C3C")
+            check("die Pipette ist danach wieder aus",
+                  _z18["modus"] == _MW18)
             # Gegenprobe: gemessen wird NICHT im verkleinerten Anzeigebild.
             # Waere es das, ergaebe der Rand des Items eine Mischfarbe.
+            _b18.scan_modus_setzen({"modus": _MM18})
             _z18 = _b18.scan_klick({"x": 100, "y": 100})
             check("und trifft auch den Rand genau", _z18["slots"][0]["farbe"] == "#303644")
 
@@ -1195,8 +1199,7 @@ finally:
 # --- Jeder Modus hat eine Kachel in der Oberflaeche ---
 # Ein Modus ohne Knopf ist ein Modus, den niemand erreicht; ein Knopf ohne Modus
 # meldet "Unbekannter Modus". Beide Seiten messen, nicht eine abschreiben.
-_html18 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
+_html18 = studio_web_source()
 _block18 = _html18[_html18.index("const SCAN_MODI = ["):]
 _block18 = _block18[:_block18.index("];")]
 _kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
@@ -1213,14 +1216,14 @@ _tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
 
-# --- Die zusammenklappbaren Abschnitte haengen an drei Stellen zusammen ---
+# --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
 # Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`klappZu`) muessen
 # denselben Schluessel tragen. Ein Tippfehler in einem davon ist kein Fehler,
 # den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
 # oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
 # Defekt, gegen die hier sonst auch gemessen wird.
 _klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
-check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 3)
+check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 1)
 check("jeder Kopf sitzt in einem Abschnitt mit passender id",
       all(f'id="ab-{_k18}"' in _html18 for _k18 in _klapp18))
 _zustand18 = _re13.search(r'let klappZu = \{([^}]*)\}', _html18)
@@ -1231,4 +1234,14 @@ check("und jeder hat einen Zustand in klappZu",
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
       _html18.count('class="abschnitt klappbar"') == _html18.count('class="klapp-rumpf'))
+
+# Die drei Hauptaufgaben sind kein zweiter Satz Klapp-Panels mehr. Sie bilden
+# einen eigenen Assistenten: genau drei feste Karten, von denen jede ueber ihren
+# Kopf erneut erreichbar bleibt. So verschwindet die Aufnahmequelle nicht,
+# sobald bereits ein Bild vorhanden ist.
+_assistent18 = sorted(set(_re13.findall(r'data-scan-schritt="(\d+)"', _html18)))
+check("der Scan-Assistent hat genau drei erreichbare Schritte",
+      _assistent18 == ["1", "2", "3"])
+check("jeder Assistent-Schritt hat einen Inhalt",
+      all(f'id="scan-schritt-{_n18}-inhalt"' in _html18 for _n18 in _assistent18))
 

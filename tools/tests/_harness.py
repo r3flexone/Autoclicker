@@ -94,3 +94,13 @@ def check(name: str, cond) -> None:
 
 def section(titel: str) -> None:
     print(f"\n=== {titel} ===")
+
+
+def studio_web_source() -> str:
+    """Kompletter Studio-Quellvertrag aus HTML, CSS und JavaScript."""
+    web = REPO / "autoclicker/editors/sequence_studio/web"
+    return "\n".join(
+        (web / name).read_text(encoding="utf-8")
+        for name in ("index.html", "styles.css", "app.js")
+        if (web / name).exists()
+    )

@@ -170,8 +170,9 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
     print(f"\n  Bearbeite Item: {item.name}")
     print(f"    Kategorie: {item.category or '(keine)'}")
     print(f"    Priorität: {item.priority}")
-    if item.template:
-        print(f"    Template: {item.template} ({item.min_confidence:.0%})")
+    if item.template_names():
+        print(f"    Vorlagen: {', '.join(item.template_names())} "
+              f"({item.min_confidence:.0%})")
     if item.confirm_point_id:
         print(f"    Bestätigung: Punkt #{item.confirm_point_id} nach {item.confirm_delay}s")
 
@@ -261,5 +262,6 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         confirm_point_id=new_confirm_id,
         confirm_delay=new_confirm_delay,
         template=new_template,
-        min_confidence=new_confidence
+        min_confidence=new_confidence,
+        template_variants=list(item.template_variants),
     )

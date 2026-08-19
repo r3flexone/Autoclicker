@@ -9,5 +9,9 @@ Konsolen-Editor — der Executor bemerkt keinen Unterschied.
 Modul-Aufteilung:
     model.py        GUI-freier Layer: Sequence ↔ Lanes/Blöcke (verlustfreier Round-Trip)
     bridge.py       Editor-Logik + die einzige Verbindung zur Oberfläche (testbar)
-    web/index.html  die Oberfläche selbst — ohne Framework, ohne Netz
+    scans.py        Slots, Items, Erkennung und Lernablauf
+    scan_capture.py Screenshot-, Fenster- und Aufnahmezustand
+    web/index.html  semantischer Aufbau — ohne Framework, ohne Netz
+    web/styles.css  Darstellung und responsive Layoutregeln
+    web/app.js       Interaktion und Brückenaufrufe
 """
