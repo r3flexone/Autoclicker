@@ -33,7 +33,10 @@ jobs:
         run: python -m pip install pillow numpy opencv-python-headless
 
       - name: Gesamte Suite
-        run: python -m unittest discover -v
+        # Nur die Testmodule im Projektstamm laden. `discover` importiert sonst
+        # unter Ubuntu das Windows-Paket `autoclicker` schon vor den Plattform-
+        # Stubs der Tests und scheitert an `msvcrt`.
+        run: python -m unittest -v test_*.py
         env:
           PYTHONIOENCODING: utf-8
 
