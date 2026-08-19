@@ -2246,8 +2246,13 @@ class ScanTeil(ScanCaptureMixin):
             return self._scan_geaendert(
                 f"'{alt}' heisst jetzt '{neu}' — die alte Datei bleibt liegen.", "warn")
         if feld == "toleranz":
+            try:
+                toleranz = int(wert)
+            except (TypeError, ValueError):
+                return self._scan_melde(
+                    "Die Farb-Toleranz muss eine ganze Zahl sein.", "err")
             self._merke(f"'{name}': Farb-Toleranz")
-            cfg.color_tolerance = max(0, int(wert or 0))
+            cfg.color_tolerance = max(0, toleranz)
             return self._scan_geaendert()
         if feld == "lernen":
             self._merke(f"'{name}': Unbekanntes lernen")
@@ -2271,7 +2276,14 @@ class ScanTeil(ScanCaptureMixin):
         if cfg is None:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         art = str((daten or {}).get("art") or "")
+        if art not in (ART_SLOT, ART_ITEM):
+            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
         name = str((daten or {}).get("name") or "")
+        bestand = self.slots if art == ART_SLOT else self.items
+        if name not in bestand:
+            return self._scan_melde(
+                f"{'Slot' if art == ART_SLOT else 'Item'} '{name}' gibt es nicht.",
+                "err")
         self._merke(f"'{name}' im Scan '{cfg.name}'")
         liste = cfg.slot_names if art == ART_SLOT else cfg.item_names
         if name in liste:
