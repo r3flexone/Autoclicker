@@ -879,7 +879,7 @@ _MIGRATE_AUSNAHMEN = {
     # runtime/status.py): eine transiente Zustandsdatei, die der Worker beim Ende
     # loescht - kein Bestand, also nichts zu heben. Sequenzen laedt sie ueber
     # load_sequence_file(), und das migriert.
-    "autoclicker/editors/sequence_studio/bridge.py":
+    "autoclicker/editors/sequence_studio/bridge_services.py":
         "liest nur den transienten Laufstatus; Sequenzen ueber load_sequence_file()",
 }
 _leser, _ohne_aufruf = [], []
@@ -3869,7 +3869,8 @@ check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
 # _ohne_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
-_quelle_br12 = Path("autoclicker/editors/sequence_studio/bridge.py").read_text(
+_quelle_br12 = Path(
+    "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
     encoding="utf-8")
 _baum_br12 = _ast11.parse(_quelle_br12)
 _lader12 = [_k12.lineno for _k12 in _ast11.walk(_baum_br12)
