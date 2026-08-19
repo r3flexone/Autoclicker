@@ -49,6 +49,38 @@ class ItemscanEditorUxTest(unittest.TestCase):
         os.chdir(self.old_cwd)
         self.temp.cleanup()
 
+    def test_invalid_membership_kind_does_not_change_items(self):
+        self.bridge.items["Bogen"] = ItemProfile(name="Bogen")
+
+        state = self.bridge.scan_mitglied({
+            "scan": "Inventar", "art": "tipfehler", "name": "Bogen",
+        })
+
+        self.assertEqual(self.bridge.scans["Inventar"].item_names, [])
+        self.assertEqual(state["status"]["art"], "err")
+        self.assertIn("Unbekannte Art", state["status"]["text"])
+
+    def test_unknown_member_cannot_be_added_to_scan(self):
+        state = self.bridge.scan_mitglied({
+            "scan": "Inventar", "art": "item", "name": "Fehlt",
+        })
+
+        self.assertEqual(self.bridge.scans["Inventar"].item_names, [])
+        self.assertEqual(state["status"]["art"], "err")
+        self.assertIn("gibt es nicht", state["status"]["text"])
+
+    def test_invalid_tolerance_is_reported_without_mutation(self):
+        cfg = self.bridge.scans["Inventar"]
+        vorher = cfg.color_tolerance
+
+        state = self.bridge.scan_setzen({
+            "name": "Inventar", "feld": "toleranz", "wert": "keine Zahl",
+        })
+
+        self.assertEqual(cfg.color_tolerance, vorher)
+        self.assertEqual(state["status"]["art"], "err")
+        self.assertIn("ganze Zahl", state["status"]["text"])
+
     def test_one_shot_tool_and_pin(self):
         self.bridge.scan_modus_setzen({"modus": MODUS_SLOT})
         self.bridge.scan_klick({"x": 65, "y": 10})
