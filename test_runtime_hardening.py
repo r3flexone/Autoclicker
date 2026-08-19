@@ -74,6 +74,8 @@ class RuntimeHardeningTest(unittest.TestCase):
         step = SequenceStep(boss_scan="Test")
         with patch.object(boss_detection, "execute_boss_scan",
                           side_effect=RuntimeError("kaputt")), \
+                patch.object(boss_detection, "check_failsafe", return_value=False), \
+                patch.object(boss_detection, "wait_while_paused", return_value=True), \
                 patch.object(boss_detection, "log_event") as log, \
                 patch.object(boss_detection.logger, "exception") as exception:
             boss_detection._boss_async_thread(state, step, 1, 1, "LOOP")
