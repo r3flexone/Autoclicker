@@ -1,7 +1,16 @@
 # Manueller Plattform-Testplan
 
+Stand: 2026-08-19, Branch `agent/studio-cleanup`.
+
 Die automatischen Tests laufen ohne grafische Sitzung. Dieser Plan deckt die
 Systemgrenzen ab, die nur auf echten Desktops sinnvoll prüfbar sind.
+
+## Automatisierter Stand
+
+- `python -m unittest -v test_*.py`: 64 Tests erfolgreich.
+- `python tools/test_logic.py`: 1275 Prüfungen, 0 Fehler.
+- Pyflakes-Lint erfolgreich.
+- GitHub Actions auf Ubuntu und Windows erfolgreich.
 
 ## Linux/X11
 

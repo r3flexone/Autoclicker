@@ -1247,7 +1247,15 @@ Autoclicker-Idleclans/
 │       ├── __init__.py
 │       ├── sequence_editor/  # Sequenz erstellen/bearbeiten
 │       ├── item_editor/      # Items definieren (inkl. autoscan-Befehl)
-│       ├── sequence_studio/  # pywebview-Brücke, Scans und lokale Web-Assets
+│       ├── sequence_studio/  # pywebview-Studio
+│       │   ├── bridge.py     # stabile StudioBridge-Fassade
+│       │   ├── bridge_contract.py, bridge_view.py
+│       │   ├── bridge_services.py, bridge_editing.py
+│       │   ├── scans.py      # stabile ScanTeil-Fassade
+│       │   ├── scan_contract.py, scan_state.py
+│       │   ├── scan_interaction.py, scan_learning.py
+│       │   ├── scan_library.py, scan_capture.py, scan_model.py
+│       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
 │       ├── slot_editor.py
@@ -1313,6 +1321,7 @@ main.py                      Einstiegspunkt, Event-Loop
         └── editors/
             ├── sequence_editor/          Sequenz erstellen/bearbeiten
             ├── item_editor/              Items definieren (inkl. autoscan-Befehl)
+            ├── sequence_studio/          pywebview-Studio; Bridge- und Scan-Mixins
             ├── item_scan_editor.py       Scans konfigurieren (inkl. Auto-Scan)
             ├── slot_editor.py            Slots definieren
             ├── boss_scan_editor.py       Boss-Scans + LLM-Vision-Aktivierung
@@ -1561,11 +1570,14 @@ steht auf einmal da.
 - **Bedienelemente nur, wo sie wirken**: kein Farb-Trigger bei Scans und Screenshot
   (die Laufzeit wertet ihn dort nicht aus), keine Stelle bei einem Warte-Block ohne
   Trigger, und „BEOBACHTETE STELLE" statt „KLICK-POSITION", wo nicht geklickt wird
-- **Die Editor-Logik liegt jetzt in `bridge.py`** und damit im Test: die Umsortier-Rechnung
-  lief bisher nur mit installiertem Dear PyGui und musste dafür die halbe Ansicht
-  stilllegen. Die Suite prüft das Studio jetzt auf jeder Plattform (47 Prüfungen mehr)
+- **Die Editor-Logik liegt hinter der stabilen `StudioBridge`-Fassade** und damit
+  im Test: Darstellung (`bridge_view.py`), Datei-/Laufdienste
+  (`bridge_services.py`) und Editor-Kommandos (`bridge_editing.py`) sind getrennt.
+  Die Umsortier-Rechnung lief früher nur mit installiertem Dear PyGui und musste
+  dafür die halbe Ansicht stilllegen. Die Suite prüft das Studio heute auf beiden
+  unterstützten Plattformen.
 
-### Neueste Änderungen — Visuelle Editoren + Aufnahme + klarere Trigger-Keywords
+### Historie — frühere Dear-PyGui-Zwischenstufe
 
 **Sequenz-Studio** (`CTRL+ALT+B`, Dear PyGui)
 - Phasen (INIT / Loop / END) als Spalten nebeneinander, jede eine Liste ihrer Schritte

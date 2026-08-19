@@ -4,15 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Was das ist
 
-Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor, OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection (Ollama / LM Studio). Code-Sprache und alle UI-Texte sind **Deutsch** — neue Strings ebenso.
+Autoclicker für Windows und Linux/X11 für das Spiel "Idle Clans".
+Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor,
+OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection
+(Ollama / LM Studio). Wayland wird nicht unterstützt. Code-Sprache und alle
+UI-Texte sind **Deutsch** — neue Strings ebenso.
 
 ## Run / Lint / Test
 
 ```bash
 python tools/test_logic.py      # DIE Test-Suite — laeuft auch auf Linux/Mac, Exit 0 = gruen
-python -m flake8 --select=F autoclicker/ main.py tools/   # Linter (= pyflakes, aber mit noqa)
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
+                                # Linter (= pyflakes, aber mit noqa)
 
-python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
+python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
@@ -30,12 +35,11 @@ GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang
 deshalb läuft die komplette Logik-Schicht auch hier.
 
 **Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**
-Push und Pull Request auf jedem Branch, nackter Ubuntu-Runner, keine Abhängigkeit —
-genau deshalb ist die Suite ja so gebaut. Dazu ein zweiter Job mit
-`flake8 --select=F` (tote Importe, Tippfehler in Namen). Beide Jobs müssen grün sein;
-ein roter Lauf ist ein Fehler, kein Hinweis. Geprüft wird auf **Python 3.10**, der
-unteren Grenze — auf der neuesten Version zu testen sagt nichts darüber, ob die
-älteste noch trägt.
+Push und Pull Request auf jedem Branch, als Matrix auf Ubuntu und Windows. Dazu
+kommt ein eigener Job mit `flake8 --select=F` (tote Importe, Tippfehler in Namen).
+Alle drei Jobs müssen grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
+Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
+zu testen sagt nichts darüber, ob die älteste noch trägt.
 
 **Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
 Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
@@ -77,19 +81,18 @@ einmal einschlägt: **eine Ansicht, die man nur über die Signaturen ihres Fremd
 prüfen kann, ist die falsche Ansicht.**
 
 **Beim Studio stellt sich die Frage deshalb gar nicht.** Seine Oberfläche ist eine
-Webseite, und die Logik dahinter liegt in `bridge.py` — ohne Fenster, ohne Fremdpaket,
-also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist (HTML/CSS/JS). Das ist die
-Richtung, in die GUI-Code hier gehört: **nicht die Ansicht testbar machen, sondern die
-Logik aus ihr heraus.** Die Umsortier-Rechnung stand vorher in der DPG-Ansicht, und der
-Test musste dafür `rebuild_board`, `refresh_properties`, `_set_status` **und**
-`_update_title` stilllegen — letzteres, weil `dpg.set_viewport_title()` ohne Kontext
-kein Python-Fehler ist, sondern ein Segfault, der die ganze Suite mitriss.
+Webseite. `bridge.py` und `scans.py` bleiben stabile Fassaden; die Logik liegt
+nach Verantwortung in `bridge_view.py`, `bridge_services.py`,
+`bridge_editing.py` sowie den `scan_*.py`-Modulen — ohne Fenster, ohne
+Fremdpaket, also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist
+(HTML/CSS/JS). Das ist die Richtung, in die GUI-Code hier gehört: **nicht die
+Ansicht testbar machen, sondern die Logik aus ihr heraus.**
 
-Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet. Die Suite
-läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen Checks. Auf einer
-cp1252-Konsole bricht sie allerdings mit `UnicodeEncodeError` ab (die Ausgabe nutzt
-Box-Zeichen); unter Windows deshalb mit `PYTHONIOENCODING=utf-8` starten, falls die Konsole
-nicht ohnehin auf UTF-8 steht.
+Automatisiert geprüft werden beide Plattformverträge. Manuell bleiben die echten
+Desktop-Grenzen: globale Hotkeys, Eingabesimulation, Fensterfokus und Screenshots
+in einer Windows- bzw. X11-Sitzung. Auf einer cp1252-Konsole kann die Ausgabe mit
+`UnicodeEncodeError` abbrechen (Box-Zeichen); unter Windows deshalb bei Bedarf
+mit `PYTHONIOENCODING=utf-8` starten.
 
 **Die Konsolen-Editoren sind angefangen, nicht fertig.** Sie standen lange
 vollständig ausserhalb der Suite (rund 3.400 Zeilen). Der Einstieg lief über das,
@@ -108,7 +111,8 @@ Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an
 ## Architektur
 
 ### Threading-Modell
-- **Main-Thread**: Pumpt die Windows-Hotkey-Message-Loop (`main.py`), dispatcht zu Handlern, blockiert beim Editor-Input.
+- **Main-Thread**: Pumpt die Hotkey-Ereignisse des gewählten Plattform-Backends
+  (`main.py`), dispatcht zu Handlern und blockiert beim Editor-Input.
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
@@ -689,7 +693,19 @@ es die Marker-Farben.
   Heute: `_warte_schleife`, `_farb_schleife` und der Boss-Watcher. Ein Test hält das
   fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist
   der Fall, für den man die Ansicht aufmacht.
-- `autoclicker/editors/sequence_studio/` — das Studio-Fenster: `bridge.py` (Sequenz-Editor), `scans.py` (Reiter Scans), `scan_model.py` (GUI-freies Laden/Speichern von Slots, Items, Templates), `model.py` (Board + Farbhelfer), `web/index.html` (die ganze Oberfläche).
+- `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
+  - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
+  - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
+  - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
+  - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
+  - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
+  - `scans.py`: stabile `ScanTeil`-Fassade.
+  - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
+    `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
+    Verantwortlichkeiten.
+  - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
+    GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
+  - `web/`: HTML, CSS, JavaScript und Logo.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
@@ -769,10 +785,11 @@ oder in einer aufgeklappten Zeile darunter. Karten können zeigen, was Text besc
 muss — Typ als Marke, Farb-Trigger als Farbfeld, ELSE als eigene Zeile. Das ist der
 ganze Grund für den Wechsel; die Datenschicht (`model.py`) ist dieselbe geblieben.
 
-**Die Oberfläche hält keinen Sequenz-Zustand.** Sie bekommt aus `bridge.py` eine
-Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befehl
-zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
-gespeicherte wäre nicht zwingend die angezeigte.
+**Die Oberfläche hält keinen Sequenz-Zustand.** Sie bekommt über
+`StudioBridge.snapshot()` (implementiert im `BridgeViewMixin`) eine
+Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der die
+nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
+wäre nicht zwingend die angezeigte.
 
 **Fünf Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
@@ -808,12 +825,13 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`scans.py`,
-Modell-Layer in `scan_model.py`). Slots werden dort aufgezogen, wo sie im Spiel
-liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
-`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien als
-der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden und
-ein eigener Speichern-Knopf rechts steht.
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanTeil`-
+Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
+in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
+Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
+`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien
+als der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden
+und ein eigener Speichern-Knopf rechts steht.
 
 **Der Item-Scan ist das Übergeordnete, nicht die Auswahl.** Wer mehrere Spiele
 betreibt, hat alle Slots und Items aller Spiele in einer Liste — und keiner davon
@@ -924,7 +942,8 @@ Sechs Regeln, an denen der Reiter hängt:
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`winzig`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
-- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scans.py`: wählen, neuer
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scan_contract.py`,
+  über `scans.py` weiterhin öffentlich importierbar: wählen, neuer
   Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
   seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander —
@@ -1519,9 +1538,11 @@ wird wiederverwendet).
 
 Regeln beim Erweitern:
 
-- **Neue Bedienelemente kommen als Methode in `bridge.py`**, nicht als Logik im
-  JavaScript. Nur so bleibt es messbar; die Oberfläche ist der ungetestete Teil und
-  soll klein bleiben.
+- **Neue Bedienelemente kommen als Methode in das zuständige Bridge-Mixin**, nicht
+  als Logik ins JavaScript: Darstellung in `bridge_view.py`, Datei/Lauf/Config in
+  `bridge_services.py`, Editor-Kommandos in `bridge_editing.py`. Die Methode
+  bleibt über `StudioBridge` öffentlich. Nur so bleibt sie messbar; die Oberfläche
+  ist der ungetestete Teil und soll klein bleiben.
 - **Sammel-Aktionen arbeiten auf der Auswahl, nicht auf einem Block.**
   Verschieben, Löschen und Duplizieren nehmen alle gewählten Zeilen; beim
   Duplizieren landen die Kopien **hinter der letzten** Gewählten und werden zur
@@ -1706,7 +1727,8 @@ feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
 
 Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
 Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
-(max. Scans, Timeout) und macht danach weiter. `else_greift()` in `bridge.py` hält
+(max. Scans, Timeout) und macht danach weiter. `else_greift()` in
+`bridge_contract.py` (über `bridge.py` weiterhin exportiert) hält
 dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
 nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
 auch nicht gibt.
@@ -2054,7 +2076,10 @@ hätte.
 
 ## Bekannte Stolperfallen
 
-- **Linux-Sandbox**: Voller Import scheitert an `msvcrt`/`ctypes.windll`. Für Korrektheits-Checks reicht `ast.parse`.
+- **Headless Linux**: Der vollständige Import und die automatischen
+  Plattformverträge laufen. Echte Hotkeys, Eingabe, Fenster und Screenshots
+  brauchen für den manuellen Test eine X11-Sitzung. Wayland wird bewusst
+  abgelehnt.
 - **DPI-Awareness**: `winapi.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
 - **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.

@@ -61,7 +61,14 @@ abgefangen und als Diagnose gemeldet.
 
 - `editors/sequence_editor/`: Konsoleneditor für Sequenzen.
 - `editors/item_editor/`: Items, Marker, Lernen und Autoscan.
-- `editors/sequence_studio/`: GUI-freie Brücke und Scanlogik für pywebview.
+- `editors/sequence_studio/bridge.py`: stabile `StudioBridge`-Fassade.
+- `editors/sequence_studio/bridge_contract.py`, `bridge_view.py`,
+  `bridge_services.py`, `bridge_editing.py`: Protokoll, Darstellung, Dienste
+  und Editor-Kommandos.
+- `editors/sequence_studio/scans.py`: stabile `ScanTeil`-Fassade.
+- `editors/sequence_studio/scan_contract.py`, `scan_state.py`,
+  `scan_interaction.py`, `scan_learning.py`, `scan_library.py`: getrennte
+  Scan-Verantwortlichkeiten.
 - `editors/sequence_studio/scan_capture.py`: Screenshot- und Fensteraufnahme
   getrennt von Itemlernen und Erkennung. Die dauerhafte Fensterquelle wird über
   Titel/Instanz wiedergefunden; Editor und Runtime verwenden denselben
@@ -81,12 +88,14 @@ Die Weboberfläche des Studios ist bewusst ohne Framework und ohne Netzwerk:
 
 ## Tests
 
-Die vollständige lokale und CI-Prüfung lautet:
+Die vollständige lokale Prüfung entspricht der CI-Matrix:
 
 ```bash
-python -m unittest discover -v
+python -m unittest -v test_*.py
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
 ```
 
 `test_regression.py` bindet dabei die große, plattformunabhängige Vertragssuite
 `tools/test_logic.py` ein. Weitere `test_*.py`-Dateien prüfen Sicherheitsgrenzen,
-Editor-UX, Marktberechnung und Laufzeit-Härtungen.
+Editor-UX, Marktberechnung und Laufzeit-Härtungen. GitHub Actions führt die
+Unit-Tests auf Ubuntu und Windows aus; der Lint läuft separat auf Ubuntu.

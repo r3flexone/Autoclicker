@@ -1,8 +1,8 @@
 # Windows-Testplan — Idle-Clans-Autoclicker
 
-Stand: 2026-08-02, Branch `claude/idle-clans-gold-farming-e16x20`. Dieser Plan deckt die
-**ganze App** ab (nicht nur die jüngsten Änderungen). 🆕 = in den letzten Sessions
-neu/geändert — dort besonders genau prüfen.
+Stand: 2026-08-19, Branch `agent/studio-cleanup`. Dieser Plan deckt die
+**ganze App** ab (nicht nur die jüngsten Änderungen). 🆕 = in den letzten
+Sessions neu/geändert — dort besonders genau prüfen.
 
 Was hier abgehakt ist, wurde auf echtem Windows geprüft — mit Datum dahinter. Ein Haken
 ohne Datum ist ein Vorsatz, kein Nachweis.
@@ -14,21 +14,16 @@ ohne Datum ist ein Vorsatz, kein Nachweis.
   `dearpygui` wird **nicht mehr gebraucht**: das eigene Scan-Fenster ist weg.
 - Spiel „Idle Clans" offen, damit echte Klicks/Screenshots etwas treffen.
 
-## 0. Automatisiert (schon grün auf Linux — auf Windows gegenprüfen)
-- [x] `python tools/test_logic.py` → erwartet `475 PASS / 0 FAIL`, Exit 0.
-      **2026-08-02 Windows: 475 PASS / 0 FAIL, Exit 0 ✓**
-      Unter Windows mit `PYTHONIOENCODING=utf-8` starten — auf einer cp1252-Konsole
-      bricht die Ausgabe sonst mit `UnicodeEncodeError` ab (Box-Zeichen).
-      Bis 2026-08-02 waren hier 4 Checks dauerhaft rot: die Geometrie-Helfer
-      (`get_virtual_desktop` & Co.) wurden nur gegen ihr gestubbtes Linux-Verhalten
-      geprüft. Jetzt prüft der Test beide Plattformen.
-      **2026-06-16 Windows: 83 PASS / 0 FAIL, Exit 0 ✓** (damaliger Stand)
-      Deckt ab: Scan-Serialisierung (Item/Boss/Icon) Round-Trip, `_point_to_dict`,
-      `LOAD_EXCEPTIONS` (kaputte Dateien → None), defensives Slot-Laden,
-      `compact_json`, `sanitize_filename`, `describe_color`, Koordinaten-Remapping,
-      Config-Backward-Compat (entferntes Feld), `export_bundle`-ZIP-Format,
-      LLM-Vision-Logik (is_no_boss/clean_boss_name/match_boss_name/Reasoning-Strip/
-      Antwort-Extraktion/Request-Builder — ohne Backend).
+## 0. Automatisierter Stand
+- [x] `python -m unittest -v test_*.py` → 64 Tests erfolgreich.
+- [x] `python tools/test_logic.py` → `1275 PASS / 0 FAIL`, Exit 0.
+- [x] `python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py`.
+- [x] GitHub Actions: Ubuntu, Windows und Lint erfolgreich.
+
+Unter Windows mit `PYTHONIOENCODING=utf-8` starten, falls die Konsole noch
+cp1252 verwendet; die Box-Zeichen der Ausgabe können sonst einen
+`UnicodeEncodeError` auslösen.
+
 - [ ] Erster Start hebt vorhandene JSON-Dateien (`[MIGRATION]`-Meldung), zweiter Start ist still.
 - [ ] `python tools/migrate.py` meldet danach „0 angepasst".
       **2026-06-16 Windows: durchgelaufen, alle Migrationen ohne Fehler ✓**
@@ -39,8 +34,9 @@ ohne Datum ist ein Vorsatz, kein Nachweis.
 Das lässt sich prüfen, ohne Idle Clans zu öffnen — reine API-Pfade gegen echtes Windows.
 Alle Punkte unten sind an diesem Datum grün gewesen.
 
-- [x] Voller Import aller Module (`winapi`, `imaging`, `handlers`, `runtime.worker`)
-      — das ist der Teil, der in der Linux-Sandbox an `msvcrt`/`ctypes.windll` scheitert.
+- [x] Voller Import aller Module (`winapi`, `imaging`, `handlers`,
+      `runtime.worker`). Die CI prüft denselben Importvertrag auch unter Linux;
+      dieser Punkt bestätigt zusätzlich die echten Windows-APIs.
 - [x] `take_screenshot` / `take_screenshot_bitblt`: Region, Vollbild, **und Monitore mit
       negativen Koordinaten** (links vom bzw. über dem primären), Regionen quer über
       Monitorgrenzen, ImageGrab-Fallback. BitBlt-Pixel deckt sich mit `get_pixel_color`.
