@@ -47,6 +47,44 @@ def crop_screen_region(source_img, region: tuple[int, int, int, int],
     return source_img.crop((x1, y1, x2, y2))
 
 
+def _hue_intervals(hue: int, tolerance: int) -> list[tuple[int, int]]:
+    """Liefert Hue-Bereiche im zyklischen OpenCV-Bereich 0..179."""
+    hue = int(hue) % 180
+    tolerance = max(0, min(179, int(tolerance)))
+    if tolerance >= 179:
+        return [(0, 179)]
+
+    lower, upper = hue - tolerance, hue + tolerance
+    if lower < 0:
+        return [(0, upper), (180 + lower, 179)]
+    if upper > 179:
+        return [(lower, 179), (0, upper - 180)]
+    return [(lower, upper)]
+
+
+def _hsv_mask(hsv_img, hue: int, saturation: int, value: int,
+              hue_tolerance: int, sv_tolerance: int):
+    """Erzeugt eine HSV-Maske und berücksichtigt den Hue-Überlauf bei Rot."""
+    import cv2
+    import numpy as np
+
+    sv_tolerance = max(0, int(sv_tolerance))
+    sat_min = max(0, int(saturation) - sv_tolerance)
+    sat_max = min(255, int(saturation) + sv_tolerance)
+    val_min = max(0, int(value) - sv_tolerance)
+    val_max = min(255, int(value) + sv_tolerance)
+
+    mask = None
+    for hue_min, hue_max in _hue_intervals(hue, hue_tolerance):
+        part = cv2.inRange(
+            hsv_img,
+            np.array([hue_min, sat_min, val_min], dtype=np.uint8),
+            np.array([hue_max, sat_max, val_max], dtype=np.uint8),
+        )
+        mask = part if mask is None else cv2.bitwise_or(mask, part)
+    return mask
+
+
 def detect_slots_in_image(img, slot_color_rgb: tuple, hsv_tolerance: int,
                           verbose: bool = False, sv_tolerance: int = 50):
     """Findet Slot-Rechtecke anhand ihrer Hintergrundfarbe.
@@ -81,19 +119,10 @@ def detect_slots_in_image(img, slot_color_rgb: tuple, hsv_tolerance: int,
     img_array = np.array(img)
     img_bgr = img_array[:, :, ::-1].copy()
     hsv_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    tol, sv = hsv_tolerance, sv_tolerance
-    lower = np.array([
-        max(0, int(hue) - tol),
-        max(0, int(saturation) - sv),
-        max(0, int(value) - sv),
-    ])
-    upper = np.array([
-        min(180, int(hue) + tol),
-        min(255, int(saturation) + sv),
-        min(255, int(value) + sv),
-    ])
-
-    mask = cv2.inRange(hsv_img, lower, upper)
+    mask = _hsv_mask(
+        hsv_img, int(hue), int(saturation), int(value),
+        hsv_tolerance, sv_tolerance,
+    )
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     detected = []
     for contour in contours:
