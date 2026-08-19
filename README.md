@@ -1,6 +1,7 @@
 # Autoclicker for Idle Clans
 
-Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung und Farb-Triggern.
+Ein Autoclicker für Windows und Linux/X11 mit Sequenz-Unterstützung,
+automatischer Item-Erkennung und Farb-Triggern.
 
 ## Features
 
@@ -48,14 +49,22 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 
 ## Voraussetzungen
 
-- Windows 10/11
+- Windows 10/11 **oder** Linux mit einer X11-Sitzung
 - Python 3.10+
+
+Wayland wird derzeit nicht unterstützt. Der Start erkennt Wayland, nennt die
+fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
+„Bereit“ zu melden. Unter Linux lässt sich der Sitzungstyp mit
+`echo $XDG_SESSION_TYPE` prüfen.
 
 | Paket | Funktion | Erforderlich |
 |-------|----------|:---:|
 | `pillow` | Screenshots, Farberkennung | Nein |
 | `numpy` | Optimierte Farberkennung | Nein |
 | `opencv-python` | Template-Matching, Slot-Erkennung | Nein |
+| `pynput` | Globale Eingabe und Hotkeys unter Linux/X11 | Linux |
+| `python-xlib` | Fensterliste und Fokusprüfung unter Linux/X11 | Linux |
+| `mss` | Multi-Monitor-Screenshots unter Linux/X11 | Linux |
 | `easyocr` | OCR Texterkennung für Boss-Namen | Nein |
 | `torch` | Abhängigkeit von EasyOCR | Nein |
 | `torchvision` | Abhängigkeit von EasyOCR | Nein |
@@ -63,13 +72,21 @@ Ein Windows-Autoclicker mit Sequenz-Unterstützung, automatischer Item-Erkennung
 
 ## Installation
 
+Auf Debian/Ubuntu benötigt `pynput` bei Python-Versionen ohne fertiges `evdev`-
+Wheel einmalig einen Compiler:
+
 ```bash
-git clone https://github.com/r3flexone/Autoclicker-Idleclans.git
-cd Autoclicker-Idleclans
+sudo apt install build-essential python3-dev
+```
+
+```bash
+git clone https://github.com/r3flexone/Autoclicker.git
+cd Autoclicker
+pip install -r requirements.txt
 python main.py
 ```
 
-### Minimale Installation (nur Grundfunktionen)
+### Minimale Installation unter Windows (nur Grundfunktionen)
 
 Klicken, Hotkeys, Sequenzen — keine Bilderkennung:
 
@@ -77,7 +94,9 @@ Klicken, Hotkeys, Sequenzen — keine Bilderkennung:
 python main.py
 ```
 
-Keine zusätzlichen Pakete nötig.
+Unter Windows sind dafür keine zusätzlichen Pakete nötig. Linux/X11 benötigt
+auch für die Grundfunktionen `pynput`, `python-xlib` und `mss`; sie werden über
+`requirements.txt` automatisch installiert.
 
 ### Empfohlen (Farberkennung + Template-Matching)
 
@@ -94,8 +113,10 @@ Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
 drei gehören zu Features, die per Default **abgeschaltet** sind oder nur auf Zuruf
 starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
 mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet das Studio-Fenster
-(Sequenzen, Scans, Einstellungen) über WebView2, das bei Windows 10/11 in der Regel
-schon vorhanden ist. `dearpygui` steht dort nicht mehr — das eigene Scan-Fenster
+(Sequenzen, Scans, Einstellungen) unter Windows über WebView2, das bei Windows
+10/11 in der Regel schon vorhanden ist. Unter Linux braucht `pywebview` ein GTK-
+oder Qt-Backend; für Debian/Ubuntu steht ein Beispiel in
+`requirements-optional.txt`. `dearpygui` steht dort nicht mehr — das eigene Scan-Fenster
 gibt es nicht mehr, seine Arbeit macht der Reiter „Scans".
 
 **Ohne GPU (CPU-only):**
@@ -972,8 +993,10 @@ Das Programm erkennt automatisch die Konsolen-Umgebung und passt sich an:
 | **PyCharm Run-Konsole** | Pfeiltasten via `GetAsyncKeyState` | Funktionieren | `input()` |
 | **Andere IDEs** | Nummern-Eingabe (Fallback) | Funktionieren | `input()` |
 
-Die Hotkeys (`CTRL+ALT+...`) funktionieren **immer**, da sie über `RegisterHotKey` (Windows Messages) laufen.
-Die Pfeiltasten-Navigation nutzt in PyCharm `GetAsyncKeyState` aus `user32.dll` - die gleiche Windows API.
+Unter Windows laufen globale Hotkeys über `RegisterHotKey`; Linux/X11 verwendet
+`pynput`. Eine Tastenkombination kann trotzdem bereits vom Betriebssystem oder
+Desktop belegt sein. Die Pfeiltasten-Navigation nutzt unter Windows in PyCharm
+`GetAsyncKeyState`, unter Linux denselben X11-Eingabeadapter wie die Hotkeys.
 
 ## Konfiguration (`config.json`)
 
@@ -1189,7 +1212,8 @@ Autoclicker-Idleclans/
 │   ├── __init__.py
 │   ├── config.py           # Konfiguration (Hotkeys, Defaults, AppConfig)
 │   ├── models.py           # Datenmodelle (ClickPoint, Sequence, BossScanConfig, etc.)
-│   ├── winapi.py           # Windows API (Maus/Tastatur, Window-Fokus)
+│   ├── winapi.py           # Stabile Fassade zur aktuellen Plattform
+│   ├── platforms/          # Windows- und Linux/X11-Backends
 │   ├── imaging.py          # Bildverarbeitung (Screenshots, OpenCV)
 │   ├── llm_vision.py       # LLM Vision (Ollama / LM Studio Boss-Erkennung)
 │   ├── ocr.py              # OCR Texterkennung (EasyOCR / Tesseract Boss-Erkennung)
@@ -1275,7 +1299,8 @@ main.py                      Einstiegspunkt, Event-Loop
     └── autoclicker/
         ├── config.py            Konstanten, Hotkey-IDs, AppConfig-Dataclass
         ├── models.py            Datenklassen (ClickPoint, Sequence, BossScanConfig, ...)
-        ├── winapi.py            Windows API (Maus, Tastatur, Hotkeys, Window-Fokus)
+        ├── winapi.py            Stabile Plattform-Fassade
+        ├── platforms/           Windows- und Linux/X11-Backends
         ├── imaging.py           Screenshots, Farberkennung, OpenCV
         ├── llm_vision.py        Ollama / LM Studio Integration (+ Reasoning)
         ├── ocr.py               EasyOCR / Tesseract für Boss-Texterkennung
@@ -1297,7 +1322,7 @@ main.py                      Einstiegspunkt, Event-Loop
 **Datenfluss:**
 ```
 [Hotkey] → handlers.py → editors/*.py → persistence/ (Speichern)
-                      ↘ runtime/actions.py → safe_click/safe_key → winapi.py
+                      ↘ runtime/actions.py → safe_click/safe_key → winapi.py → platforms/
                                      ↘ imaging.py (Screenshots)
                                      ↘ llm_vision.py (HTTP zu Ollama/LM Studio)
                                      ↘ session_log.py (CSV-Append)
@@ -1341,19 +1366,22 @@ main.py                      Einstiegspunkt, Event-Loop
 
 | Paket | Funktion | Erforderlich |
 |-------|----------|--------------|
-| ctypes (builtin) | Windows API, Hotkeys, Maus/Tastatur | Ja |
+| ctypes (builtin) | Windows API, Hotkeys, Maus/Tastatur | Windows |
+| pynput | Globale Eingabe und Hotkeys | Linux/X11 |
+| python-xlib | Fensterliste und Fokusprüfung | Linux/X11 |
+| mss | Bildschirmaufnahme | Linux/X11 |
 | Pillow | Screenshots, Farberkennung | Optional |
 | NumPy | Optimierte Farberkennung | Optional |
 | OpenCV | Template Matching, Slot-Erkennung | Optional |
 
 ### Technologien
 
-- Windows API via `ctypes` (keine externen Abhängigkeiten für Basis-Funktionen)
+- Windows API via `ctypes`; Linux/X11 über `pynput`, `python-xlib` und `mss`
 - Pillow für Screenshot und Farberkennung (optional)
 - OpenCV für automatische Slot-Erkennung und Template Matching (optional)
-- Globale Hotkeys über `RegisterHotKey`
-- Mausklicks und Tastatureingaben über `SendInput`
-- BitBlt für Game-Screenshots (funktioniert mit Hardware-Beschleunigung/DirectX)
+- Globale Hotkeys über `RegisterHotKey` (Windows) oder `pynput` (Linux/X11)
+- Eingabesimulation über `SendInput` (Windows) oder `pynput` (Linux/X11)
+- BitBlt für Windows-Screenshots, MSS für Linux/X11
 - Thread-basierte Ausführung mit Events für Synchronisation
 - JSON-Persistenz für alle Daten
 - Multi-Monitor Unterstützung (DPI-aware)

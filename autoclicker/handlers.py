@@ -15,7 +15,7 @@ from pathlib import Path
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, uebernehmen
 from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
-from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, user32
+from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
@@ -1055,5 +1055,4 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     state.stop_event.set()
     state.quit_event.set()
 
-    WM_QUIT = 0x0012
-    user32.PostThreadMessageW(main_thread_id, WM_QUIT, 0, 0)
+    post_quit(main_thread_id)

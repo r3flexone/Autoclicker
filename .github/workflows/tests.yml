@@ -1,6 +1,6 @@
-# Die Suite laeuft ohne Windows, ohne GUI und ohne Netz (msvcrt und ctypes.windll
-# werden am Dateianfang gestubbt). Pillow und OpenCV werden installiert, damit
-# Bild- und HSV-Regressionen nicht still als optionale Tests uebersprungen werden.
+# Die Suite laeuft ohne grafische Sitzung. Pillow und OpenCV werden installiert,
+# damit Bild- und HSV-Regressionen nicht still als optionale Tests uebersprungen
+# werden; die Linux-Adapter werden mit ihren echten Imports geprueft.
 #
 # Warum das ueberhaupt hier steht: es gab ueber 1.200 Pruefungen und nichts, was sie
 # ausfuehrt. Eine Suite, die nur laeuft, wenn jemand daran denkt, faengt Regressionen
@@ -30,12 +30,13 @@ jobs:
       # gesetzt; explizit, weil dieselbe Zeile unter Windows noetig ist und man sie
       # dann hier wiederfindet.
       - name: Test-Abhängigkeiten
-        run: python -m pip install pillow numpy opencv-python-headless
+        run: >-
+          python -m pip install pillow numpy opencv-python-headless
+          mss pynput python-xlib
 
       - name: Gesamte Suite
-        # Nur die Testmodule im Projektstamm laden. `discover` importiert sonst
-        # unter Ubuntu das Windows-Paket `autoclicker` schon vor den Plattform-
-        # Stubs der Tests und scheitert an `msvcrt`.
+        # Nur die Testmodule im Projektstamm laden; dort liegt auch die grosse
+        # Vertragssuite, die ueber test_regression.py gestartet wird.
         run: python -m unittest -v test_*.py
         env:
           PYTHONIOENCODING: utf-8

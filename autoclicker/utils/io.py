@@ -11,7 +11,6 @@ _ANSI_ENABLED, _PYCHARM-Flags von dort.
 """
 
 import ctypes
-import msvcrt
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -20,6 +19,11 @@ from .console import (
     _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM,
     col, status_line,
 )
+
+try:
+    import msvcrt
+except ImportError:  # Linux
+    msvcrt = None
 
 if TYPE_CHECKING:
     from ..models import AutoClickerState
@@ -58,7 +62,7 @@ def flush_input_buffer() -> None:
     Echte Windows-Konsole: msvcrt.kbhit/getch.
     PyCharm/IDE (Pipe-stdin): PeekNamedPipe + sys.stdin.read.
     """
-    if _REAL_CONSOLE:
+    if _REAL_CONSOLE and msvcrt is not None:
         try:
             while msvcrt.kbhit():
                 msvcrt.getwch()  # getwch statt getch — gleicher Buffer-Typ wie safe_input
@@ -86,7 +90,7 @@ def safe_input(prompt: str = "") -> str:
     """
     flush_input_buffer()
 
-    if _REAL_CONSOLE:
+    if _REAL_CONSOLE and msvcrt is not None:
         if prompt:
             print(prompt, end="", flush=True)
 
@@ -165,6 +169,8 @@ for _i in range(10):
 
 def _read_key_msvcrt() -> str:
     """Liest Tastendruck via msvcrt.getch() (echte Windows-Konsole)."""
+    if msvcrt is None:
+        return "unknown"
     byte = msvcrt.getch()
 
     # Pfeiltasten und andere erweiterte Tasten (0xE0 oder 0x00 Prefix)
@@ -207,10 +213,15 @@ def _read_key_polling(zusatz: dict | None = None) -> str:
     Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL
     zaehlt: beim naechsten Aufruf steht sie schon als gedrueckt im Ausgangsbild.
     """
-    user32 = ctypes.windll.user32
     tasten = dict(_VK_MAP)
     if zusatz:
         tasten.update(zusatz)
+
+    if sys.platform != "win32":
+        from ..winapi import wait_for_key
+        return wait_for_key(tuple(dict.fromkeys(tasten.values())), None) or "unknown"
+
+    user32 = ctypes.windll.user32
 
     # Vorherige Zustände initialisieren (Flanken-Erkennung)
     prev_states = {}
@@ -240,7 +251,7 @@ def read_key() -> str:
         'up', 'down', 'left', 'right', 'enter', 'escape',
         'backspace', oder das gedrückte Zeichen als String.
     """
-    if _REAL_CONSOLE:
+    if _REAL_CONSOLE and msvcrt is not None:
         return _read_key_msvcrt()
     return _read_key_polling()
 
@@ -277,33 +288,8 @@ def warte_auf_taste(tasten: tuple = ("enter", "escape"),
     Returns:
         Name der gedrueckten Taste, oder None bei Zeitablauf.
     """
-    namen = {vk: name for vk, name in _VK_MAP.items() if name in tasten}
-    if not namen:
-        return None
-    user32 = ctypes.windll.user32
-    ende = time.time() + timeout
-
-    # Entprellen: erst warten, bis keine der Tasten mehr gehalten wird. Zwei
-    # Aufnahmen hintereinander (Ecke 1, Ecke 2) haengen sonst am selben ENTER —
-    # wer die Taste auch nur kurz haelt, hat beide Ecken an derselben Stelle,
-    # bevor er die Maus bewegen konnte.
-    while time.time() < ende and any(
-            user32.GetAsyncKeyState(vk) & 0x8000 for vk in namen):
-        time.sleep(0.02)
-
-    # Erster Durchgang: Ausgangsbild fuer die Flanke UND Bit 0 leeren, damit ein
-    # Tastendruck von vorhin nicht sofort als Antwort durchgeht.
-    vorher = {vk: bool(user32.GetAsyncKeyState(vk) & 0x8000) for vk in namen}
-    while time.time() < ende:
-        for vk, name in namen.items():
-            # Genau EIN Aufruf pro Taste und Runde: das Bit 0x0001 wird beim Lesen
-            # geleert, ein zweiter Aufruf saehe es nicht mehr.
-            zustand = user32.GetAsyncKeyState(vk)
-            war, vorher[vk] = vorher[vk], bool(zustand & 0x8000)
-            if taste_neu_gedrueckt(zustand, war):
-                return name
-        time.sleep(0.02)
-    return None
+    from ..winapi import wait_for_key
+    return wait_for_key(tuple(tasten), timeout)
 
 
 # Buchstabentasten fuer Menue-Befehle (w/a/s/c/q ...). Bewusst NICHT in _VK_MAP:
@@ -325,7 +311,7 @@ def read_command() -> str:
     demselben Zweig. Im Punkte-Durchgang lief 'a' (zurueck) vorwaerts, im
     manuellen Modus waren 's', 'c' und 'q' gar nicht erreichbar.
     """
-    if _REAL_CONSOLE:
+    if _REAL_CONSOLE and msvcrt is not None:
         return (read_key() or "").lower()
     return _read_key_polling(zusatz=_VK_BUCHSTABEN)
 

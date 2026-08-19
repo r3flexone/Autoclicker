@@ -1,11 +1,16 @@
 # Basis — das braucht der Autoclicker fuer Bilderkennung (Farb-Trigger, Item-Scans,
 # Template-Matching). Zusammen rund 70 MB.
 #
-# Ganz ohne Pakete laeuft er auch: Klicken, Hotkeys und Sequenzen brauchen nichts
-# ausser Python. Der Code prueft PILLOW_AVAILABLE / OPENCV_AVAILABLE und degradiert
-# sauber.
+# Unter Windows kommen Eingabe und Hotkeys aus der WinAPI. Linux/X11 braucht
+# dafuer die drei kleinen Plattformpakete unten. Der Code meldet beim Start
+# konkret, welches davon fehlt.
 #
 # Die schweren Extras (OCR, visuelle Editoren) stehen in requirements-optional.txt.
 pillow
 opencv-python
 numpy
+
+# Linux/X11: globale Eingabe, Fensterliste und Multi-Monitor-Screenshots.
+pynput; sys_platform == "linux"
+python-xlib; sys_platform == "linux"
+mss; sys_platform == "linux"

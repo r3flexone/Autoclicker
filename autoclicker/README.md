@@ -46,7 +46,10 @@ Laden zentral aufgelöst.
 
 ## Bilderkennung und Plattform
 
-- `winapi.py`: Windows-Eingabe, Hooks, Fenster, DPI und Bildschirmgeometrie.
+- `winapi.py`: stabile Fassade, über die der übrige Code Systemfunktionen nutzt.
+- `platforms/windows.py`: WinAPI-Eingabe, Hooks, Fenster, DPI und Geometrie.
+- `platforms/linux_x11.py`: X11-Eingabe, Hotkeys, Fenster und MSS-Screenshots.
+- `platforms/common.py`, `base.py`: gemeinsame Konstanten und Backend-Vertrag.
 - `imaging.py`: Screenshots, Farben und abgesichertes Template-Matching.
 - `ocr.py`: EasyOCR/Tesseract; EasyOCR-Reader werden je Sprachkombination gecacht.
 - `llm_vision.py`: optionale lokale oder benutzerdefinierte Vision-Endpunkte.

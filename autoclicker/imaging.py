@@ -8,6 +8,7 @@ import ctypes.wintypes as wintypes
 import logging
 import os
 from pathlib import Path
+import sys
 # 'Image.Image' in den Annotationen ist ein String und wird nie ausgewertet - der Name
 # kommt aus dem optionalen Pillow-Import weiter unten. Ein zusaetzlicher TYPE_CHECKING-
 # Import waere nur eine zweite Definition desselben Namens.
@@ -17,45 +18,56 @@ from .config import CONFIG
 from .models import DEFAULT_MIN_CONFIDENCE
 from .utils import safe_input, interactive_select, err
 from .winapi import (
+    capture_screen,
     get_client_rect_by_handle, get_cursor_pos, get_virtual_desktop,
     get_virtual_origin,
 )
 
-# GDI32 Funktions-Deklarationen (restype nötig um Handle-Trunkierung auf 64-bit zu vermeiden)
-_gdi32 = ctypes.windll.gdi32
-_user32 = ctypes.windll.user32
+_IS_WINDOWS = sys.platform == "win32"
 
-_user32.GetDesktopWindow.restype = wintypes.HWND
-_user32.GetWindowDC.argtypes = [wintypes.HWND]
-_user32.GetWindowDC.restype = wintypes.HDC
-_user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
-_user32.ReleaseDC.restype = ctypes.c_int
+# GDI wird nur im Windows-Backend initialisiert. Auf Linux übernimmt MSS die
+# sichtbare Desktop-Aufnahme; ein Import darf dort niemals ctypes.windll berühren.
+if _IS_WINDOWS:
+    _gdi32 = ctypes.windll.gdi32
+    _user32 = ctypes.windll.user32
 
-_gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-_gdi32.CreateCompatibleDC.restype = wintypes.HDC
-_gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
-_gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
-_gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-_gdi32.SelectObject.restype = wintypes.HGDIOBJ
-_gdi32.BitBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                           wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
-_gdi32.BitBlt.restype = wintypes.BOOL
-_gdi32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
-                              ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
-_gdi32.GetDIBits.restype = ctypes.c_int
-_gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-_gdi32.DeleteObject.restype = wintypes.BOOL
-_gdi32.DeleteDC.argtypes = [wintypes.HDC]
-_gdi32.DeleteDC.restype = wintypes.BOOL
+    _user32.GetDesktopWindow.restype = wintypes.HWND
+    _user32.GetWindowDC.argtypes = [wintypes.HWND]
+    _user32.GetWindowDC.restype = wintypes.HDC
+    _user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    _user32.ReleaseDC.restype = ctypes.c_int
 
-_user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
-_user32.PrintWindow.restype = wintypes.BOOL
-_user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-_user32.GetWindowRect.restype = wintypes.BOOL
-_user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-_user32.GetClientRect.restype = wintypes.BOOL
-_user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
-_user32.ClientToScreen.restype = wintypes.BOOL
+    _gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    _gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    _gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    _gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+    _gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    _gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    _gdi32.BitBlt.argtypes = [
+        wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD,
+    ]
+    _gdi32.BitBlt.restype = wintypes.BOOL
+    _gdi32.GetDIBits.argtypes = [
+        wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+        ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
+    ]
+    _gdi32.GetDIBits.restype = ctypes.c_int
+    _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    _gdi32.DeleteObject.restype = wintypes.BOOL
+    _gdi32.DeleteDC.argtypes = [wintypes.HDC]
+    _gdi32.DeleteDC.restype = wintypes.BOOL
+
+    _user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+    _user32.PrintWindow.restype = wintypes.BOOL
+    _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    _user32.GetWindowRect.restype = wintypes.BOOL
+    _user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    _user32.GetClientRect.restype = wintypes.BOOL
+    _user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+    _user32.ClientToScreen.restype = wintypes.BOOL
+else:
+    _gdi32 = _user32 = None
 
 # BitBlt-Rasteroperation: Quelle 1:1 kopieren (Windows GDI SRCCOPY).
 SRCCOPY = 0x00CC0020
@@ -134,6 +146,9 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int] | None:
     """Liest die Farbe eines einzelnen Pixels an der angegebenen Position."""
     if not PILLOW_AVAILABLE:
         return None
+    if not _IS_WINDOWS:
+        img = capture_screen((int(x), int(y), int(x) + 1, int(y) + 1))
+        return tuple(img.getpixel((0, 0))[:3]) if img is not None else None
     try:
         img = ImageGrab.grab(bbox=(x, y, x + 1, y + 1), all_screens=True)
         if img:
@@ -516,6 +531,9 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
     Verwendet BitBlt (schneller, besser für Spiele) mit ImageGrab-Fallback.
     Unterstützt mehrere Monitore (auch negative Koordinaten für linke Monitore).
     """
+    if not _IS_WINDOWS:
+        return capture_screen(region)
+
     # Versuche BitBlt (schneller, besser für DirectX-Spiele)
     img = take_screenshot_bitblt(region)
     if img is not None:
@@ -553,7 +571,7 @@ def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
     Unterstützt Multi-Monitor (auch negative Koordinaten für linke Monitore).
     Returns: PIL Image oder None
     """
-    if not PILLOW_AVAILABLE or not NUMPY_AVAILABLE:
+    if not _IS_WINDOWS or not PILLOW_AVAILABLE or not NUMPY_AVAILABLE:
         return None
 
     hwnd = None
@@ -662,7 +680,7 @@ def take_window_screenshot(hwnd: int) -> Optional[tuple]:
     schwarzes Bild wäre schlimmer als ein verdecktes, weil es aussieht, als
     hätte es geklappt.
     """
-    if not PILLOW_AVAILABLE or not NUMPY_AVAILABLE or not hwnd:
+    if not _IS_WINDOWS or not PILLOW_AVAILABLE or not NUMPY_AVAILABLE or not hwnd:
         return None
 
     hwndDC = None

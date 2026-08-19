@@ -201,9 +201,12 @@ def coord_context(x: int, y: int) -> str:
     Beispiel: (1920, 1080) = rechts unten (100%, 100%)
     """
     try:
-        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
-        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
-    except (AttributeError, OSError):
+        from ..winapi import get_screen_size
+        groesse = get_screen_size()
+        if not groesse:
+            return f"({x}, {y})"
+        screen_w, screen_h = groesse
+    except (AttributeError, ImportError, OSError):
         return f"({x}, {y})"
 
     if screen_w <= 0 or screen_h <= 0:

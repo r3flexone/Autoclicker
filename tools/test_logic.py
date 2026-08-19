@@ -2585,7 +2585,7 @@ check("manuell: ESC bricht ab", _g == _GT and _st_e.stop_event.is_set())
 
 
 # --------------------------------------------------- Plattform-Grenze
-section("Windows-Abhaengigkeiten liegen nur in der Plattform-Schicht")
+section("Betriebssystem-Abhaengigkeiten liegen nur in der Plattform-Schicht")
 
 # Wer spaeter auf Linux portiert, muss genau diese Dateien anfassen — und sonst keine.
 # Ohne diesen Test wandert der naechste GetSystemMetrics-Aufruf wieder irgendwohin:
@@ -2594,7 +2594,7 @@ section("Windows-Abhaengigkeiten liegen nur in der Plattform-Schicht")
 import re as _re_p
 
 PLATTFORM_MODULE = {
-    "autoclicker/winapi.py",        # Maus, Tastatur, Fenster, Hotkeys, Bildschirm-Geometrie
+    "autoclicker/platforms/windows.py",  # WinAPI-Backend
     "autoclicker/imaging.py",       # Screenshot ueber GDI BitBlt
     "autoclicker/utils/io.py",      # Tastendruck-Erfassung (msvcrt / GetAsyncKeyState)
     "autoclicker/utils/console.py", # Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung
@@ -3748,7 +3748,9 @@ section("Das Fenster-Symbol wartet auf sein Fenster")
 # schon. Ohne Frist fiel setze_fenster_symbol() still auf False, und das Studio
 # behielt das Symbol von python.exe.
 import time as _t12
-from autoclicker.winapi import setze_fenster_symbol as _sfs12, _symbol_bits as _sb12
+from autoclicker.platforms.windows import (
+    setze_fenster_symbol as _sfs12, _symbol_bits as _sb12,
+)
 import autoclicker.symbol as _sym12
 
 _t0_12 = _t12.monotonic()
@@ -3851,7 +3853,7 @@ check("und None erst recht", _img12.ist_leer(None) is True)
 # Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
 # spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
 # Fassungen desselben Spiels ist er dreimal derselbe.
-_quelle_wf12 = Path("autoclicker/winapi.py").read_text(encoding="utf-8")
+_quelle_wf12 = Path("autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle_wf12))
              if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "liste_fenster")
 _anhaenge12 = [_n12 for _n12 in _ast11.walk(_lf12)
@@ -3943,7 +3945,7 @@ check("und die Laengen decken die Datei genau ab",
 # Titelleiste und Taskleiste sind zwei Mechanismen. Das Fenstersymbol reichte
 # fuer die eine; die andere sortierte das Fenster weiter unter python.exe ein und
 # zeigte dessen Symbol. Erst eine eigene AppUserModelID loest es aus der Gruppe.
-from autoclicker.winapi import setze_app_id as _said12, APP_ID as _AID12
+from autoclicker.platforms.windows import setze_app_id as _said12, APP_ID as _AID12
 
 check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
 if sys.platform == "win32":
@@ -6019,7 +6021,7 @@ section("Was der Code kann, steht auch in der Doku")
 import re as _re15
 
 _wurzel15 = Path(__file__).resolve().parent.parent
-_winapi15 = (_wurzel15 / "autoclicker/winapi.py").read_text(encoding="utf-8")
+_winapi15 = (_wurzel15 / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _tabelle15 = _re15.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _winapi15, _re15.S).group(1)
 _hotkeys15 = set(_re15.findall(r'"(CTRL\+ALT\+(?:SHIFT\+)?\w)\s', _tabelle15))
 _hilfe15 = set(_re15.findall(r"col\('(CTRL\+ALT\+(?:SHIFT\+)?\w)'",
