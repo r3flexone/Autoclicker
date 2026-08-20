@@ -6184,6 +6184,7 @@ if _tote10:
 # Geruest aus `_harness.py` (dort leben auch die Zaehler) und werden hier
 # importiert. Import = ausfuehren, wie im Rest dieser Datei auch.
 import tools.tests.studio_scans          # noqa: F401,E402
+import tools.tests.studio_erkennung     # noqa: F401,E402
 import tools.tests.konsolen_editoren     # noqa: F401,E402
 import tools.tests.persistenz_basis      # noqa: F401,E402
 

@@ -120,10 +120,35 @@
        dort aufgezogen, wo er im Spiel liegt — Koordinaten tippt hier niemand. -->
   <div class="scans" id="sicht-scans" hidden>
     <aside class="seite links">
+      <!-- **Drei Scan-Arten, ein Reiter.** Boss- und Icon-Scans waren nur ueber
+           die Konsolen-Editoren erreichbar: linear durch Schritt 1-6, und fuer
+           jede spaetere Aenderung derselbe Ablauf noch einmal. Die Sache, um die
+           es geht, ist aber ein Rechteck auf einem Bild — sie gehoert dorthin,
+           wo das Bild steht.
+
+           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanArt`) wie
+           `ansicht` und `scanListe`: er aendert nichts an den Daten. Die Buehne
+           (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
+           dasselbe Bild, nur eine andere Frage daran. -->
+      <div class="abschnitt" id="ab-scanart">
+        <span class="ueberschrift">SCAN-ART</span>
+        <div class="segment" id="scan-art">
+          <button data-scan-art="item">Items</button>
+          <button data-scan-art="boss">Bosse</button>
+          <button data-scan-art="icon">Icons</button>
+        </div>
+      </div>
+      <!-- Was die Erkennungs-Arten brauchen, baut `app.js`: Auswahl und Name
+           oben, darunter derselbe Assistent wie beim Item-Scan. Zwei feste
+           Geruestbloecke im Dokument statt eines im JavaScript gebauten
+           Abschnitts — dann bleibt die Reihenfolge der linken Spalte hier
+           ablesbar. -->
+      <div class="abschnitt" id="ab-erk-wahl" hidden></div>
+      <div class="abschnitt" id="ab-erk-weg" hidden></div>
       <!-- Der Item-Scan ist hier das Uebergeordnete: er sagt, an welchem Spiel
            gerade gearbeitet wird. Ohne ihn liegen bei mehreren Spielen alle
            Slots und Items aller Spiele in einer Liste. -->
-      <div class="abschnitt">
+      <div class="abschnitt" id="ab-itemwahl">
         <span class="ueberschrift">ITEM-SCAN</span>
         <select id="scan-offen"></select>
         <!-- **Der Name steht da, wo der Scan gewaehlt wird.** Er lag im Inspektor
@@ -229,6 +254,12 @@
     <main class="scan-buehne" id="scan-buehne">
       <div class="scan-canvas-bar" id="scan-canvas-bar">
         <button class="scan-tool" data-scan-tool="wahl">Auswählen</button>
+        <!-- Die beiden Werkzeuge der Erkennungs-Scans. Sie stehen in derselben
+             Leiste wie „Auswaehlen", weil sie dieselbe Frage beantworten: was
+             tut ein Klick jetzt. Sichtbar nur bei Bossen und Icons — bei Slots
+             gibt es keine Region und keinen Aktionspunkt. -->
+        <button class="scan-tool" data-erk-tool="region" hidden>Region aufziehen</button>
+        <button class="scan-tool" data-erk-tool="aktion" hidden>Klickpunkt</button>
         <span class="klein" id="scan-werkzeugstand"></span>
         <button class="scan-tool" id="scan-pin" title="Werkzeug für mehrere Aktionen anheften"><span class="scan-weit" id="scan-pin-lang">Anheften</span><span class="scan-kurz" id="scan-pin-kurz">Pin</span></button>
         <span class="trenner"></span>
@@ -247,6 +278,11 @@
         Stelle. „Screenshot aufnehmen“ legt das Spiel dahinter.</p>
       <p class="leer" id="scan-leer">Noch kein Bild. „Screenshot aufnehmen" friert
         den Bildschirm ein — darauf werden die Slots aufgezogen.</p>
+      <!-- Die Boss-Bibliothek ist kein Rechteck auf dem Bild, sondern eine
+           Sammlung: Bosse, die in JEDEM Boss-Scan zusaetzlich gelten. Deshalb
+           steht sie als Kartenraster an der Stelle der Buehne und nicht als
+           weitere Liste links. -->
+      <div class="scan-karten" id="scan-bibliothek" hidden></div>
     </main>
 
     <aside class="seite rechts" id="scan-insp"></aside>

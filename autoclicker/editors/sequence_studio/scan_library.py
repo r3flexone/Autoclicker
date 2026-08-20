@@ -237,14 +237,21 @@ class ScanLibraryMixin:
     def scan_speichern(self, daten: Optional[dict] = None) -> dict:
         """Schreibt Slots, Items und alle Scan-Konfigurationen.
 
-        Ein Knopf für drei Dateiarten, weil sie zusammen entstehen: wer einen
-        Slot anlegt, lernt daraus ein Item und hängt beides in einen Scan.
+        Ein Knopf für alle Dateiarten des Reiters, weil sie zusammen entstehen:
+        wer einen Slot anlegt, lernt daraus ein Item und hängt beides in einen
+        Scan; wer eine Boss-Region aufzieht, nimmt gleich die Vorlage auf.
         Getrennte Knöpfe hiessen, sich diese Reihenfolge merken zu müssen.
+
+        **Die Punkte gehen mit.** Ein Klickpunkt einer Boss- oder Icon-Aktion
+        ist ein Punkt in `points.json` — die Koordinate steht dort und sonst
+        nirgends. Bliebe er ungeschrieben, zeigte die gespeicherte Aktion beim
+        nächsten Start ins Leere.
 
         Danach erfährt der Hauptprozess davon (Briefkasten-Befehl `daten`) —
         sonst arbeitete er bis zum nächsten `CTRL+ALT+L` mit dem alten Stand.
         """
         from ...persistence import save_item_scan
+        from .model import save_palette_points
         fehler = []
         if not save_slots(self.slots, SLOTS_FILE):
             fehler.append("slots.json")
@@ -255,6 +262,9 @@ class ScanLibraryMixin:
                 save_item_scan(cfg)
             except OSError:
                 fehler.append(f"{cfg.name}.json")
+        fehler += self._erkennung_speichern()
+        if not save_palette_points(self.sequences_dir, self.points):
+            fehler.append("points.json")
         if fehler:
             return self._scan_melde("Nicht geschrieben: " + ", ".join(fehler), "err")
 
@@ -266,4 +276,5 @@ class ScanLibraryMixin:
         sende("daten")
         return self._scan_melde(
             f"{len(self.slots)} Slot(s), {len(self.items)} Item(s), "
-            f"{len(self.scans)} Scan(s) gespeichert.")
+            f"{len(self.scans)} Item-Scan(s), {len(self.boss_scans)} Boss-Scan(s), "
+            f"{len(self.icon_scans)} Icon-Scan(s) gespeichert.")

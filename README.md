@@ -10,6 +10,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
 - **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
 - **Scans auf einem Screenshot**: Slots aufziehen, Hintergrundfarbe messen, Items lernen und sehen, was in welchem Slot erkannt wird — Reiter „Scans“ im Studio (`CTRL+ALT+V`)
+- **Boss- und Icon-Scans im selben Reiter**: Region aufziehen statt Koordinaten tippen, Vorlage aufnehmen, Marker messen, folgenlos testen (der Test nennt die Aktion, führt sie aber nicht aus) — umgeschaltet über SCAN-ART (Items · Bosse · Icons)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
   - **LOOP-Phasen**: Mehrere Loops möglich, jeweils mit eigenen Wiederholungen
@@ -203,7 +204,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
 | `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, braucht `pywebview`) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
-| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Slots + Items auf einem Screenshot) |
+| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Item-, Boss- und Icon-Scans auf einem Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
@@ -553,7 +554,12 @@ Loop 1 läuft in jedem Zyklus. Loop 2 wird übersprungen bis 12:30 erreicht ist 
 
 ## Boss-Scan System
 
-Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine zugeordnete Aktion aus (Klick, Taste, Item-Scan, Skip, Restart). Erstellung über das Item-Scan-Menü → **[4] Boss-Scans bearbeiten**.
+Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine zugeordnete Aktion aus (Klick, Taste, Item-Scan, Skip, Restart).
+
+Zwei Wege dorthin:
+
+- **Studio** (`CTRL+ALT+V` → SCAN-ART „Bosse“) — Region mit zwei Klicks im Bild, Vorlage per Knopf, Test mit Ergebnis und Konfidenz. Für jede spätere Änderung der kürzere Weg: jedes Feld steht rechts und ist einzeln setzbar.
+- **Konsole** (Item-Scan-Menü → **[4] Boss-Scans bearbeiten**) — der lineare Assistent, unverändert. Beide schreiben dieselben Dateien.
 
 ### Boss-Profil
 

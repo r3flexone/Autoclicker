@@ -1670,9 +1670,13 @@ async function zeichneScans(frisch) {
   const merk = fokusMerken();
   await scanBildPflegen();
   scanWerkzeuge();
+  // Erst die Art, dann alles Weitere: sie entscheidet, welche Bloecke der
+  // linken Spalte ueberhaupt gelten und wo die Aufnahme-Karte gerade haengt.
+  scanArtPflegen();
   scanCanvasWerkzeuge();
   scanErgebnisZeichnen();
   scanListeZeichnen();
+  erkBibliothekZeichnen();
   scanOverlay();
   scanZeigeGewaehlten();
   scanInspektor();
@@ -1719,9 +1723,15 @@ function scanCanvasWerkzeuge() {
     knopf.disabled = !SC.pillow && knopf.dataset.scanTool !== "wahl";
   });
   const modus = SCAN_MODI.find((m) => m.key === SC.modus);
+  const erk = {region: "Region aufziehen", aktion: "Klickpunkt setzen"}[SC.modus];
   $("scan-werkzeugstand").textContent = SC.modus === "wahl"
-    ? "Slot anklicken zum Bearbeiten"
-    : "Aktiv: " + (modus ? modus.text : SC.modus);
+    ? (scanArt === "item" ? "Slot anklicken zum Bearbeiten"
+                          : "Werkzeug wählen oder rechts ein Feld ändern")
+    // Beim Aufziehen steht der STAND dabei, nicht nur der Name des Werkzeugs:
+    // ohne ihn sieht man dem Bild nicht an, ob schon eine Ecke gesetzt ist.
+    : "Aktiv: " + (erk || (modus ? modus.text : SC.modus))
+      + (SC.ecke ? " — erste Ecke gesetzt, zweite Ecke anklicken · ESC bricht ab" : "");
+  $("scan-werkzeugstand").classList.toggle("art-warn", !!SC.ecke);
   $("scan-pin").classList.toggle("an", !!SC.werkzeug_fixiert);
   $("scan-pin").hidden = SC.modus === "wahl";
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.werkzeug_fixiert));
@@ -1734,8 +1744,15 @@ function scanCanvasWerkzeuge() {
 
 function scanErgebnisZeichnen() {
   const ziel = $("scan-ergebnis");
-  const e = SC.ergebnis;
   ziel.replaceChildren();
+  // Boss und Icon haben ein anderes Ergebnis als ein Item-Scan: EIN Treffer
+  // statt 45. Dieselbe Leiste, weil es dieselbe Frage ist — „was hat der Test
+  // ergeben" —, aber ein anderer Inhalt.
+  if (scanArt !== "item") {
+    ziel.hidden = !erkTestleiste(ziel);
+    return;
+  }
+  const e = SC.ergebnis;
   ziel.hidden = !e;
   if (!e) return;
   ziel.append(
@@ -1985,6 +2002,26 @@ async function scanFensterPflegen() {
 function scanListeZeichnen() {
   const tabs = $("scan-listen-tabs");
   tabs.replaceChildren();
+  if (scanArt !== "item") {
+    $("scan-filterzeile").replaceChildren();
+    const ziel = $("scan-liste");
+    ziel.replaceChildren();
+    if (scanArt === "icon") {
+      tabs.appendChild(el("button", {class: "tab an"},
+        "Icon-Scans " + SC.icon_scans.length));
+      return erkListeIcons(ziel);
+    }
+    // Zwei Listen, weil es zwei Orte sind: die Bosse DIESES Scans und die,
+    // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
+    // verlieren, an dem alles haengt.
+    for (const [key, text, zahl] of [["bosse", "Bosse", erkBosse().length],
+                                     ["bibliothek", "Bibliothek",
+                                      SC.global_bosses.length]]) {
+      tabs.appendChild(el("button", {class: "tab" + (scanListe === key ? " an" : ""),
+        onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + zahl));
+    }
+    return scanListe === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
+  }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
   // Reihenfolge = Rangfolge: der Scan ist das Uebergeordnete, Slots und Items
@@ -2174,7 +2211,9 @@ function scanOverlay() {
   const gezogen = zieh[0] || zieh[1]
     ? new Set(scanGewaehlteSlots().map((s) => s.name)) : null;
 
-  for (const s of SC.slots) {
+  // Slots gehoeren dem Item-Scan. Auf einem Boss-Bild waeren 45 Rechtecke kein
+  // Ueberblick, sondern ein Gitter ueber der einen Region, um die es geht.
+  for (const s of (scanArt === "item" ? SC.slots : [])) {
     const fremd = offen && !s.dabei ? " fremd" : "";
     // Bei eingeschaltetem Filter bleiben fremde Slots ganz weg: sie gehoeren zu
     // einem anderen Spiel und liegen womoeglich an genau derselben Stelle.
@@ -2226,6 +2265,8 @@ function scanOverlay() {
     svg.appendChild(svgEl("path", {class: "scan-kreuz",
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
   }
+
+  if (scanArt !== "item") erkOverlay(svg, px);
 
   // Der Suchbereich der Slot-Erkennung steht, bis die Farbe gezeigt ist. Ohne
   // ihn klickt man den Hintergrund an, ohne zu sehen, worin gesucht wird — und
@@ -2352,14 +2393,23 @@ function scanInspektor() {
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),
     el("div", {class: "reihe"},
-      el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
-                    title: "Jeden Slot gegen die Item-Profile halten",
-                    onclick: () => rufScan("scan_erkennen")}, "Items erkennen"),
+      scanArt === "item"
+        ? el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
+                        title: "Jeden Slot gegen die Item-Profile halten",
+                        onclick: () => rufScan("scan_erkennen")}, "Items erkennen")
+        : el("button", {class: "btn wachse", disabled: !fotoDa() || !erkScan(),
+                        title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
+                        onclick: () => erkTesten()},
+             scanArt === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
       // **Der Knopf NENNT, was er zurücknimmt.** Ein „Rückgängig" ohne Angabe
       // drückt man entweder gar nicht (weil man nicht weiss, was passiert) oder
       // einmal zu oft. Die Beschreibung kommt aus der Brücke — dort weiss man,
       // was der Schritt war.
-      el("button", {class: "btn", disabled: !SC.undo.tiefe,
+      // **Der Knopf traegt den Namen des Schritts** — und der kann lang sein
+      // („'Mission nicht machbar': Klickpunkt"). Ohne Kuerzung schiebt er den
+      // Nachbarn aus der Zeile, und ein Knopf, den man nicht erreicht, ist
+      // schlimmer als eine abgeschnittene Beschriftung.
+      el("button", {class: "btn scan-undo", disabled: !SC.undo.tiefe,
                     title: SC.undo.tiefe
                       ? "STRG+Z — nimmt zurück: " + SC.undo.was
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
@@ -2369,7 +2419,8 @@ function scanInspektor() {
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
-  if (SC.wahl.art === "slot") scanInspSlot(rumpf);
+  if (scanArt !== "item") erkInspektor(rumpf);
+  else if (SC.wahl.art === "slot") scanInspSlot(rumpf);
   else if (SC.wahl.art === "item") scanInspItem(rumpf);
   else if (SC.wahl.art === "scan") scanInspScan(rumpf);
   if (!rumpf.childNodes.length) {
@@ -2895,6 +2946,855 @@ function scanInspScan(ziel) {
     onclick: () => rufScan("scan_loeschen")}, "Scan löschen"));
 }
 
+/* ------------------------------------------- Ansicht: Bosse und Icon-Scans */
+
+/* **Dieselbe Buehne, eine andere Frage.** Ein Boss-Scan ist ein Rechteck auf
+ * einem Bild und eine Aktion dahinter; ein Icon-Scan ist dasselbe, nur ohne
+ * Bosse-Liste. Beide lagen bisher in Konsolen-Editoren, die man fuer JEDE
+ * Aenderung von vorn durchklicken musste — auch fuer eine Konfidenz.
+ *
+ * Welche Art offen ist, ist reiner Oberflaechenzustand wie `ansicht` und
+ * `scanListe`: er steht nicht in der Momentaufnahme und nicht in der Bruecke,
+ * denn er aendert nichts an den Daten. Die Bruecke bekommt bei jedem Befehl
+ * gesagt, worauf er wirkt (`{art: "boss"}`) — eine vierte Wahrheit ueber
+ * "was ist gerade gemeint" waere eine zu viel. */
+let scanArt = "item";
+/* Welcher Assistent-Schritt der Erkennungs-Arten offen ist. Eigene Variable
+ * neben `scanAssistentSchritt`: die Arten haben verschieden viele Schritte, und
+ * ein gemeinsamer Zaehler stuende beim Umschalten auf einem, den es nicht gibt. */
+let scanErkSchritt = null;
+
+const SCAN_ARTEN = ["item", "boss", "icon"];
+
+/* **Welche Bruecken-Methode zu welcher Art gehoert — als Tabelle.**
+ *
+ * Boss und Icon beantworten dieselben Fragen mit anderen Methoden ("oeffne den
+ * Scan", "setze ein Feld", "teste"). Als Ternaeroperator an einem halben Dutzend
+ * Aufrufstellen verteilt waeren die Namen sechsmal da — und der Test „jeder
+ * Aufruf der Seite passt zur Bruecke" faende keinen davon: er sucht nach einem
+ * Methodennamen direkt hinter der oeffnenden Klammer eines Aufrufs, und ein
+ * Ternaeroperator steht genau dort. Hier stehen sie einmal und sind messbar
+ * (`tools/tests/studio_erkennung.py` liest diese Tabelle). */
+const ERK_BEFEHL = {
+  boss: {oeffnen: "boss_scan_oeffnen", neu: "boss_scan_neu",
+         scan_feld: "boss_scan_setzen", feld: "boss_setzen",
+         loeschen: "boss_scan_loeschen", testen: "boss_testen"},
+  icon: {oeffnen: "icon_scan_oeffnen", neu: "icon_scan_neu",
+         scan_feld: "icon_setzen", feld: "icon_setzen",
+         loeschen: "icon_scan_loeschen", testen: "icon_testen"},
+};
+
+/** Der Befehlsname fuer die offene Art. */
+function erkBefehl(schluessel) {
+  return (ERK_BEFEHL[scanArt] || ERK_BEFEHL.boss)[schluessel];
+}
+
+/** Der offene Boss- bzw. Icon-Scan — oder null. */
+function erkScan() {
+  if (!SC) return null;
+  if (scanArt === "boss") return SC.boss_scans.find((c) => c.name === SC.boss.offen) || null;
+  if (scanArt === "icon") return SC.icon_scans.find((c) => c.name === SC.icon.offen) || null;
+  return null;
+}
+
+/** Die Bosse, die dieser Scan sieht: seine eigenen plus die Bibliothek.
+ *
+ * Genau diese Liste sieht auch der Lauf (`execute_boss_scan` merged lokal +
+ * global, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
+ * hiesse, die Haelfte der Erkennung zu verschweigen — und man sucht dann, warum
+ * ein Boss erkannt wird, der gar nicht in der Liste steht. */
+function erkBosse() {
+  const c = erkScan();
+  const lokal = c ? c.bosse : [];
+  const namen = new Set(lokal.map((b) => b.name));
+  return lokal.concat(SC.global_bosses.filter((b) => !namen.has(b.name)));
+}
+
+/** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
+function erkBoss() {
+  if (!SC || scanArt !== "boss" || !SC.boss.wahl) return null;
+  const liste = SC.boss.wahl_global ? SC.global_bosses : ((erkScan() || {}).bosse || []);
+  return liste.find((b) => b.name === SC.boss.wahl) || null;
+}
+
+/** Steht die Bibliothek statt eines Scans im Vordergrund? */
+function erkBibliothek() { return scanArt === "boss" && scanListe === "bibliothek"; }
+
+function scanArtSetzen(art) {
+  if (!SCAN_ARTEN.includes(art) || art === scanArt) return;
+  scanArt = art;
+  scanErkSchritt = null;
+  scanListe = art === "item" ? "scans" : (art === "boss" ? "bosse" : "icons");
+  // Ein Werkzeug der alten Art wuerde in der neuen etwas anderes tun.
+  rufScan("scan_abbrechen");
+}
+
+/** Welche Bloecke der linken Spalte gelten — und wo die Aufnahme gerade haengt. */
+function scanArtPflegen() {
+  for (const k of document.querySelectorAll("[data-scan-art]"))
+    k.classList.toggle("an", k.dataset.scanArt === scanArt);
+  const item = scanArt === "item";
+  $("ab-itemwahl").hidden = !item;
+  $("ab-weg").hidden = !item;
+  $("ab-modi").hidden = !item;
+  $("ab-erk-wahl").hidden = item;
+  $("ab-erk-weg").hidden = item;
+  for (const knopf of document.querySelectorAll("[data-erk-tool]")) {
+    knopf.hidden = item;
+    knopf.disabled = !SC.pillow || !erkScan();
+    knopf.classList.toggle("an", SC.modus === knopf.dataset.erkTool);
+  }
+  // **Die Aufnahme-Karte wandert, also muss sie auch zurueck.** Sie gehoert
+  // allen drei Arten und existiert deshalb nur EINMAL im Dokument; blieb sie
+  // beim Umschalten im versteckten Erkennungs-Block liegen, fehlte dem
+  // Item-Assistenten sein erster Schritt — und mit ihm der einzige Weg zu
+  // einem Screenshot.
+  if (item) {
+    const heim = $("scan-schritte");
+    const karte = $("scan-assistent-1");
+    if (karte.parentElement !== heim) heim.insertBefore(karte, heim.firstChild);
+    return;
+  }
+  erkWahlZeichnen();
+  erkSchritteZeichnen();
+}
+
+/* ----------------------------------------------------- Auswahl und Name */
+
+/** Oben in der linken Spalte: welcher Scan, wie er heisst, ein neuer.
+ *
+ * **Der Name steht da, wo der Scan gewaehlt wird** — dieselbe Regel wie beim
+ * Item-Scan und beim Klick-Block: was dem Ding gehoert, steht beim Ding; rechts
+ * bleibt, was man daran einstellt. */
+function erkWahlZeichnen() {
+  const ziel = $("ab-erk-wahl");
+  const boss = scanArt === "boss";
+  const liste = boss ? SC.boss_scans : SC.icon_scans;
+  const offen = erkScan();
+  const kinder = [el("span", {class: "ueberschrift"}, boss ? "BOSS-SCAN" : "ICON-SCAN")];
+  kinder.push(auswahl("", [{wert: "", text: liste.length
+      ? "— keiner gewählt —" : (boss ? "— noch kein Boss-Scan —" : "— noch kein Icon-Scan —")}]
+    .concat(liste.map((c) => ({wert: c.name, text: c.name}))),
+    offen ? offen.name : "",
+    (v) => rufScan(erkBefehl("oeffnen"), {name: v})));
+  if (offen) {
+    kinder.push(feld("Name", offen.name,
+      (v) => rufScan(erkBefehl("scan_feld"),
+                     {name: offen.name, feld: "name", wert: v})));
+  }
+  kinder.push(el("div", {class: "reihe"},
+    el("button", {class: "btn still", onclick: () => {
+      scanErkSchritt = 2;
+      rufScan(erkBefehl("neu"));
+    }}, boss ? "+ neuer Boss-Scan" : "+ neuer Icon-Scan"),
+    el("span", {class: "wachse"}),
+    el("span", {class: "klein mono"}, offen
+      ? (boss ? erkBosse().length + " Bosse" : erkWieText(offen.erkennung))
+      : liste.length + (liste.length === 1 ? " Scan" : " Scans"))));
+  ziel.replaceChildren(...kinder);
+}
+
+/* ------------------------------------------------------------- Assistent */
+
+/** Woran ein Scan erkennt — als Wort, nicht als Schluessel. */
+function erkWieText(wie) {
+  return {template: "per Vorlage", marker: "per Farben",
+          keine: "ohne Erkennung"}[wie] || wie;
+}
+
+/** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
+function erkKarte(nr, titel, stand, fertig, inhalt) {
+  const offen = scanErkSchritt === nr;
+  return el("div", {class: "scan-assistent-schritt" + (offen ? " offen" : "")
+                           + (fertig ? " fertig" : "")},
+    el("button", {class: "scan-assistent-kopf", onclick: () => {
+      // Ein Schritt bleibt jederzeit wieder aufklappbar — er ist kein
+      // Fortschrittsbalken, sondern ein Weg, den man auch rueckwaerts geht.
+      scanErkSchritt = offen ? null : nr;
+      zeichneScans();
+    }},
+      el("span", {class: "nr"}, fertig && !offen ? "✓" : String(nr)),
+      el("span", {class: "wachse"}, el("b", {}, titel), el("small", {}, stand)),
+      el("span", {class: "pfeil"}, "›")),
+    el("div", {class: "scan-assistent-inhalt", hidden: !offen}, inhalt));
+}
+
+function erkSchritteZeichnen() {
+  const ziel = $("ab-erk-weg");
+  const boss = scanArt === "boss";
+  const c = erkScan();
+  // Erst alles bauen, dann umhaengen. **Die Aufnahme-Karte existiert genau
+  // einmal im Dokument** — sie gehoert allen drei Arten, und sie zweimal zu
+  // bauen waeren zwei Stellen, an denen eine Aenderung an der Aufnahme
+  // vergessen werden kann. Genau deshalb darf sie erst wandern, wenn nichts
+  // mehr schiefgehen kann: bricht der Aufbau vorher ab, haengt sie in einem
+  // Baum, den niemand mehr sieht — und mit ihr der einzige Weg zu einem Bild.
+  const weitere = [];
+  if (c) {
+    weitere.push(erkRegionSchritt(c));
+    if (boss) {
+      weitere.push(erkBosseSchritt(c), erkWegeSchritt(c), erkFallbackSchritt(c));
+    } else {
+      weitere.push(erkErkennungSchritt(c), erkAktionSchritt(c, "icon"));
+    }
+  }
+  const schritte = el("div", {class: "scan-assistent"});
+  const aufnahme = $("scan-assistent-1");
+  aufnahme.classList.toggle("offen", scanErkSchritt === 1);
+  aufnahme.classList.toggle("fertig", fotoDa());
+  $("scan-schritt-1-nr").textContent = fotoDa() && scanErkSchritt !== 1 ? "✓" : "1";
+  $("scan-schritt-1-inhalt").hidden = scanErkSchritt !== 1;
+  schritte.append(aufnahme, ...weitere);
+
+  if (!c) {
+    ziel.replaceChildren(
+      el("span", {class: "ueberschrift"}, boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN"),
+      schritte,
+      el("p", {class: "hinweis"}, "Oben einen Scan anlegen — danach stehen die "
+        + "weiteren Schritte hier."));
+    return;
+  }
+  const kinder = [el("span", {class: "ueberschrift"},
+                     boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN")];
+  // **Fehlende Voraussetzung blendet nichts aus, sondern erklaert sich.** Ohne
+  // OpenCV ist die Template-Erkennung aus — Farb-Marker, OCR und LLM gehen
+  // trotzdem. Amber, nicht rot: es ist ein Zustand, kein Defekt.
+  if (!SC.opencv) {
+    kinder.push(el("div", {class: "fremdhinweis"},
+      el("span", {}, "OpenCV nicht installiert — Template-Erkennung ist aus. "
+        + "Farb-Marker, OCR und LLM gehen trotzdem."),
+      el("span", {class: "mono klein"}, "pip install opencv-python")));
+  }
+  kinder.push(schritte);
+  ziel.replaceChildren(...kinder);
+}
+
+/** Schritt 2: die Region. Aufziehen ODER vier Zahlen — beides bleibt. */
+function erkRegionSchritt(c) {
+  const r = c.region;
+  const gesetzt = (r[2] - r[0]) > 0 && (r[3] - r[1]) > 0
+    && !(r[0] === 0 && r[1] === 0 && r[2] === 100 && r[3] === 100);
+  const setze = (i, v) => {
+    const neu = r.slice();
+    neu[i] = Number(v) || 0;
+    erkFeld("region", neu);
+  };
+  return erkKarte(2, "Region", gesetzt
+    ? "(" + r[0] + "," + r[1] + ") → (" + r[2] + "," + r[3] + ")  ·  "
+      + (r[2] - r[0]) + "×" + (r[3] - r[1])
+    : "Noch nicht gesetzt", gesetzt, [
+    el("p", {class: "hinweis"}, scanArt === "boss"
+      ? "Der Bereich, in dem der Boss-Name bzw. sein Bild erscheint. Eng genug, "
+        + "dass nichts Wechselndes mit hineinfällt."
+      : "Eng um das Symbol herum. Was mit im Rechteck liegt, wird mitgelernt."),
+    el("div", {class: "gitter2"},
+      zahlfeld("Links", r[0], (v) => setze(0, v), {step: 1}),
+      zahlfeld("Oben", r[1], (v) => setze(1, v), {step: 1}),
+      zahlfeld("Rechts", r[2], (v) => setze(2, v), {step: 1}),
+      zahlfeld("Unten", r[3], (v) => setze(3, v), {step: 1})),
+    el("button", {class: "btn haupt scan-assistent-haupt", disabled: !fotoDa(),
+      onclick: () => rufScan("region_modus", {art: scanArt, modus: "region"})},
+      "Region im Bild aufziehen"),
+  ]);
+}
+
+/** Schritt 3 (Boss): die Bosse dieses Scans. */
+function erkBosseSchritt(c) {
+  const lokal = c.bosse.length;
+  const global = SC.global_bosses.length;
+  return erkKarte(3, "Bosse", lokal || global
+    ? lokal + " lokal · " + global + " global"
+    : "Noch kein Boss · die Bibliothek ist leer", lokal > 0 || global > 0, [
+    el("p", {class: "hinweis"}, "Jeder Boss hat eine eigene Erkennung und eine "
+      + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
+    el("button", {class: "btn haupt scan-assistent-haupt",
+      onclick: () => rufScan("boss_neu")}, "+ Boss anlegen"),
+    el("button", {class: "btn still scan-assistent-haupt", disabled: !fotoDa()
+        || !erkBosse().length,
+      onclick: () => rufScan("boss_alle_testen")}, "Alle gegen dieses Bild halten"),
+  ]);
+}
+
+/** Schritt 4 (Boss): OCR und LLM. */
+function erkWegeSchritt(c) {
+  const b = SC.bereit;
+  const an = [c.use_ocr ? "OCR" : null, c.use_llm ? "LLM" : null].filter(Boolean);
+  const lampe = !b.llm_stand ? "" : (b.llm_stand.erreichbar ? " an" : " aus");
+  return erkKarte(4, "LLM & OCR", an.length ? an.join(" + ") + " aktiv" : "aus",
+    an.length > 0, [
+    el("span", {class: "ueberschrift"}, "OCR TEXTERKENNUNG"),
+    schalter("OCR benutzen", c.use_ocr, (v) => erkFeld("use_ocr", v)),
+    c.use_ocr ? segment([{wert: true, text: "als Fallback"}, {wert: false, text: "primär"}],
+      c.ocr_fallback, (v) => erkFeld("ocr_fallback", v)) : null,
+    // **Gefragt, nicht mitgeliefert.** `import easyocr` zieht Torch nach und
+    // dauert Sekunden; in einer Momentaufnahme, die nach jedem Klick neu
+    // entsteht, hat das nichts verloren. Dieselbe Lampe wie beim LLM.
+    el("div", {class: "reihe"},
+      el("span", {class: "scan-lampe" + (!b.ocr_stand ? ""
+        : (b.ocr_stand.da ? " an" : " aus"))}),
+      el("span", {class: "klein wachse"}, !b.ocr_stand
+        ? "noch nicht geprüft"
+        : (b.ocr_stand.da ? b.ocr_stand.backends.join(", ")
+                          : "kein Backend installiert")),
+      el("button", {class: "btn still", onclick: () => rufScan("ocr_pruefen")},
+         "prüfen")),
+    el("p", {class: "hinweis"}, !b.ocr_an
+      ? "OCR ist in den Einstellungen aus (ocr_enabled) — dieser Schalter "
+        + "greift erst danach."
+      : (b.ocr_stand && !b.ocr_stand.da
+          ? "pip install easyocr (oder pytesseract)"
+          : b.ocr_backend + " · " + (b.ocr_sprachen.join(",") || "en")
+            + " · min " + b.ocr_min.toFixed(2))),
+    el("span", {class: "ueberschrift"}, "LLM VISION"),
+    schalter("LLM benutzen", c.use_llm, (v) => erkFeld("use_llm", v)),
+    c.use_llm ? segment([{wert: true, text: "als Fallback"}, {wert: false, text: "primär"}],
+      c.llm_fallback, (v) => erkFeld("llm_fallback", v)) : null,
+    el("div", {class: "reihe"},
+      el("span", {class: "scan-lampe" + lampe}),
+      // Ohne Probe steht hier „noch nicht geprueft", nicht der Endpunkt: ein
+      // leeres Feld (die Voreinstellung ist leer) saehe aus wie ein Fehler.
+      // Der Endpunkt gehoert in den Tooltip — dort sucht man ihn, wenn die
+      // Lampe rot ist.
+      el("span", {class: "klein wachse", title: b.llm_endpunkt || ""},
+        !b.llm_stand ? "noch nicht geprüft"
+          : (b.llm_stand.erreichbar ? "erreichbar (" + b.llm_stand.dauer + " ms)"
+                                    : "nicht erreichbar")),
+      el("button", {class: "btn still", onclick: () => rufScan("llm_pruefen")}, "testen")),
+    el("p", {class: "hinweis"}, b.llm_an
+      ? erkReihenfolge(c)
+      : "LLM ist in den Einstellungen aus (llm_enabled) — dieser Schalter greift "
+        + "erst danach."),
+  ]);
+}
+
+/** In welcher Reihenfolge erkannt wird — als ein Satz.
+ *
+ * Bei gleicher Einstellung laeuft OCR VOR LLM: OCR ist lokal und schnell, das
+ * LLM kostet bis `llm_timeout`. Dieselbe Reihenfolge steht in
+ * `runtime/boss_detection.py`; hier wird sie nur vorgelesen. */
+function erkReihenfolge(c) {
+  const vorn = [], hinten = [];
+  for (const [name, an, fallback] of [["OCR", c.use_ocr, c.ocr_fallback],
+                                      ["LLM", c.use_llm, c.llm_fallback]])
+    if (an) (fallback ? hinten : vorn).push(name);
+  return "Reihenfolge: " + vorn.concat(["Template/Marker"], hinten).join(" → ");
+}
+
+/** Schritt 5 (Boss): was passiert, wenn KEIN Boss erkannt wird. */
+function erkFallbackSchritt(c) {
+  const text = (SC.aktionen.boss.find((a) => a.wert === c.default_action) || {}).text
+    || c.default_action;
+  return erkKarte(5, "Fallback", "wenn kein Boss erkannt: " + text, true, [
+    el("p", {class: "hinweis"}, "Greift, wenn keiner der Bosse passt — und auch "
+      + "dann, wenn OCR und LLM nichts finden."),
+    erkAktionsKacheln(SC.aktionen.boss, c.default_action,
+                      (v) => erkFeld("default_action", v)),
+    c.default_action === "item_scan"
+      ? auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+          SC.item_scan_namen.map((n) => ({wert: n, text: n}))), c.default_scan || "",
+          (v) => erkFeld("default_scan", v))
+      : null,
+  ]);
+}
+
+/** Schritt 3 (Icon): Template oder Farb-Marker. */
+function erkErkennungSchritt(c) {
+  return erkKarte(3, "Erkennung", c.erkennung === "template"
+    ? "Vorlage · min " + c.konfidenz.toFixed(2)
+    : (c.erkennung === "marker" ? c.marker.length + " Marker · Toleranz " + c.toleranz
+                                : "Noch nichts gesetzt"),
+    c.erkennung !== "keine", erkErkennungsFelder(c, "icon"));
+}
+
+/** Die Erkennungs-Felder — dieselben fuer Boss und Icon.
+ *
+ * Beide erkennen ueber Template ODER Farb-Marker; das sind dieselben Felder und
+ * dieselben Knoepfe. Zwei Fassungen davon waeren zwei Stellen, an denen ein
+ * Griff fehlt — und „Vorlage neu aufnehmen" ist genau der Griff, der heute den
+ * ganzen Konsolen-Ablauf kostet. */
+function erkErkennungsFelder(objekt, art, name) {
+  const ueber = ERK_BEFEHL[art].feld;
+  const setze = (feld, wert) => rufScan(ueber, Object.assign(
+    {feld: feld, wert: wert}, name ? {name: name} : {}));
+  const template = objekt.erkennung !== "marker";
+  return [
+    segment([{wert: "template", text: "Template"}, {wert: "marker", text: "Farb-Marker"}],
+      objekt.erkennung === "marker" ? "marker" : "template",
+      // Umschalten heisst hier: das andere loswerden. Beides stehen zu lassen
+      // waere `_check_profile_match`s UND — dann muessen BEIDE stimmen, und
+      // niemand rechnet damit.
+      (v) => setze(v === "marker" ? "template" : "marker", v === "marker" ? "" : [])),
+    template ? el("div", {class: "reihe", style: "align-items:flex-start"},
+      objekt.vorschau
+        ? el("img", {class: "scan-vorlage", src: objekt.vorschau, alt: ""})
+        : el("div", {class: "scan-vorlage leer"}, "keine Vorlage"),
+      el("div", {class: "spalte wachse"},
+        el("span", {class: "klein mono"}, objekt.template || "—"),
+        zahlfeld("Min. Konfidenz", objekt.konfidenz, (v) => setze("konfidenz", v),
+          {min: 0.05, max: 1, step: 0.01},
+          "Ab welcher Übereinstimmung ein Treffer zählt. Zu hoch heisst "
+          + "„findet nie“, zu tief „findet alles“.", "konfidenz"))) : null,
+    template ? el("button", {class: "btn scan-assistent-haupt",
+      disabled: !fotoDa() || !SC.opencv,
+      title: SC.opencv ? "Lernt die Region aus dem eingefrorenen Bild"
+                       : "Ohne OpenCV gibt es kein Template-Matching",
+      onclick: () => rufScan("vorlage_aufnehmen", Object.assign(
+        {art: art}, name ? {name: name} : {}))}, "Vorlage neu aufnehmen") : null,
+    !template ? el("div", {class: "scan-marker"},
+      objekt.marker.map((h) => el("span", {class: "scan-farbfeld", style: "background:" + h,
+                                           title: h})),
+      el("span", {class: "scan-farbfeld leer", title: "noch Platz"})) : null,
+    !template ? el("div", {class: "gitter2"},
+      zahlfeld("Toleranz", objekt.toleranz === undefined ? 30 : objekt.toleranz,
+        (v) => setze("toleranz", v), {min: 0, step: 1},
+        "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
+      el("div", {class: "feld-still"}, "gemessen",
+        el("span", {class: "mono"}, objekt.marker.length + " Farben"))) : null,
+    !template ? el("button", {class: "btn scan-assistent-haupt", disabled: !fotoDa(),
+      onclick: () => rufScan("marker_messen", Object.assign(
+        {art: art}, name ? {name: name} : {}))}, "Marker im Bild neu messen") : null,
+    !template ? el("p", {class: "hinweis"}, "min. Pixel über 1 halten — sonst löst "
+      + "ein einzelner Rausch-Pixel den Scan aus (Einstellung "
+      + "scan_marker_min_pixels, gerade " + SC.bereit.marker_min_pixel + ").") : null,
+  ];
+}
+
+/** Aktions-Kacheln: feste kurze Auswahl, also Kacheln statt Klappliste.
+ *
+ * Die Werte kommen aus `models.py` (ueber die Momentaufnahme) — die Ansicht
+ * erfindet keine Aktionsnamen. Ein getipptes "skipcycle" waere ein Wert, den
+ * `__post_init__` beim Speichern still auf den Standard hebt: der Klick saehe
+ * aus, als haette er gewirkt. */
+function erkAktionsKacheln(werte, aktuell, beim_setzen) {
+  // Dasselbe Raster wie beim Block-Typ im Sequenz-Editor — die Kacheln sollen
+  // sich gleich anfuehlen. Auf der Kachel steht das Schlagwort, im Tooltip der
+  // Satz: „Zyklus abbrechen" ist auf 9,5 px zweizeilig und unlesbar.
+  return el("div", {class: "gitter3"}, werte.map((a) =>
+    el("button", {class: "typ-chip" + (a.wert === aktuell ? " an" : ""),
+      title: a.text, onclick: () => beim_setzen(a.wert)}, a.kurz)));
+}
+
+/** Die Felder hinter einer Aktion — Punkt, Taste, Verzoegerung, Item-Scan. */
+function erkAktionsFelder(objekt, art, name) {
+  const ueber = ERK_BEFEHL[art].feld;
+  const setze = (feld, wert) => rufScan(ueber, Object.assign(
+    {feld: feld, wert: wert}, name ? {name: name} : {}));
+  const felder = [];
+  if (objekt.aktion === "item_scan") {
+    felder.push(auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+      SC.item_scan_namen.map((n) => ({wert: n, text: n}))), objekt.scan || "",
+      (v) => setze("scan", v)));
+    felder.push(auswahl("Modus", SC.aktionen.scan_modi.map(
+      (m) => ({wert: m.wert, text: m.text})), objekt.scan_modus,
+      (v) => setze("scan_modus", v)));
+  }
+  if (objekt.aktion === "click") {
+    felder.push(auswahl("Punkt", [{wert: "", text: "— keiner —"}].concat(
+      SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
+      objekt.punkt_id === null || objekt.punkt_id === undefined ? "" : objekt.punkt_id,
+      (v) => setze("punkt", v === "" ? null : Number(v))));
+    felder.push(el("button", {class: "btn still", disabled: !fotoDa(),
+      onclick: () => rufScan("region_modus", {art: art, modus: "aktion"})},
+      "Stelle im Bild anklicken"));
+  }
+  if (objekt.aktion === "key")
+    felder.push(feld("Taste", objekt.taste || "", (v) => setze("taste", v)));
+  felder.push(zahlfeld("Verzögerung vor Aktion (s)", objekt.verzoegerung,
+    (v) => setze("verzoegerung", v), {min: 0, step: 0.1}));
+  return felder;
+}
+
+/** Schritt 4 (Icon): die Aktion bei Fund. */
+function erkAktionSchritt(c, art) {
+  const text = (SC.aktionen.icon.find((a) => a.wert === c.aktion) || {}).text || c.aktion;
+  return erkKarte(4, "Aktion", text + (c.verzoegerung ? " · " + c.verzoegerung + " s" : ""),
+    true, [
+    erkAktionsKacheln(SC.aktionen.icon, c.aktion, (v) => erkFeld("aktion", v)),
+    // Ausgebreitet, nicht als Liste in der Liste: `el()` flacht genau EINE
+    // Ebene ab, und ein Array als Kind landet als solches in `appendChild` —
+    // was den ganzen Aufbau abbricht.
+    ...erkAktionsFelder(c, art),
+  ]);
+}
+
+/** Ein Feld des OFFENEN Scans setzen — Boss-Scan oder Icon-Scan. */
+function erkFeld(feld, wert) {
+  const c = erkScan();
+  if (!c) return;
+  rufScan(erkBefehl("scan_feld"), {name: c.name, feld: feld, wert: wert});
+}
+
+/* -------------------------------------------------------------- Testleiste */
+
+/** Was der letzte Test ergeben hat — und was die Aktion WAERE.
+ *
+ * **Der Test fuehrt die Aktion nicht aus.** Er erkennt, zeigt und benennt; das
+ * steht auch als Nachsatz in der Leiste. Ein Testknopf, der im Editor eines
+ * Autoclickers wirklich klickt, ist die schlechteste denkbare Ueberraschung. */
+function erkTestleiste(ziel) {
+  const t = scanArt === "boss" ? SC.boss.test : SC.icon.test;
+  if (!t) return false;
+  const farbe = t.ok ? "var(--ok)" : "var(--err)";
+  ziel.append(
+    el("b", {style: "color:" + farbe},
+      t.ok ? "Test: " + t.name + " erkannt" : "Test: " + t.name + " nicht erkannt"));
+  if (t.methode && t.konfidenz !== null && t.methode === "Template")
+    ziel.appendChild(el("span", {class: "kennzahl"}, "Template · " + t.konfidenz.toFixed(2)));
+  if (t.marker_gesamt)
+    ziel.appendChild(el("span", {class: "kennzahl"},
+      t.marker_gefunden + " von " + t.marker_gesamt + " Markern · nötig " + t.marker_noetig));
+  if (t.toleranz) ziel.appendChild(el("span", {class: "kennzahl"}, "Toleranz " + t.toleranz));
+  if (t.dauer) ziel.appendChild(el("span", {class: "kennzahl"}, t.dauer + " ms"));
+  ziel.appendChild(el("span", {class: "wachse"}));
+  ziel.appendChild(el("span", {class: "klein"},
+    t.ok ? "Aktion wäre: " + t.aktion + " (wird nicht ausgeführt)" : t.grund));
+  // **Der Vorschlag ist der Kern.** Ein Test, der nur „fehlgeschlagen" sagt,
+  // laesst einen genau dort stehen, wo man vorher war.
+  if (t.vorschlag)
+    ziel.appendChild(el("button", {class: "btn an",
+      onclick: () => erkFeld(t.vorschlag.feld, t.vorschlag.wert)}, t.vorschlag.text));
+  ziel.appendChild(el("button", {class: "btn still", onclick: () => erkTesten()},
+    "nochmal testen"));
+  return true;
+}
+
+function erkTesten() { return rufScan(erkBefehl("testen")); }
+
+/* ------------------------------------------------------------------ Listen */
+
+function erkListeBosse(ziel) {
+  const c = erkScan();
+  if (!c) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Boss-Scan. Oben einen anlegen — er ist die Klammer um Region, "
+      + "Bosse und Fallback."));
+    return;
+  }
+  const lokal = c.bosse;
+  if (!lokal.length && !SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
+      + "Aktion dahinter."));
+  }
+  for (const b of lokal) ziel.appendChild(erkBossZeile(b, false));
+  if (SC.global_bosses.length) {
+    ziel.appendChild(el("div", {class: "scan-kategorie-kopf"},
+      "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
+    const namen = new Set(lokal.map((x) => x.name));
+    for (const b of SC.global_bosses) {
+      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
+      // hier blass, statt so zu tun, als wuerde er benutzt.
+      ziel.appendChild(erkBossZeile(b, true, namen.has(b.name)));
+    }
+  }
+  ziel.appendChild(el("button", {class: "leerzone",
+    onclick: () => { scanListe = "bibliothek"; zeichneScans(); }},
+    "Boss-Bibliothek (global) · " + SC.global_bosses.length));
+}
+
+function erkBossZeile(b, global, verdeckt) {
+  const test = SC.boss.tests[b.name];
+  const gewaehlt = SC.boss.wahl === b.name && SC.boss.wahl_global === !!global;
+  return el("button", {
+    class: "scan-zeile" + (gewaehlt ? " an" : ""),
+    style: verdeckt ? "opacity:.5" : null,
+    title: verdeckt ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
+    onclick: () => rufScan("boss_waehlen", {name: b.name, global: !!global}),
+  },
+    b.vorschau ? el("img", {class: "mini", src: b.vorschau})
+               : el("span", {class: "kugel" + (b.marker.length ? "" : " ohne"),
+                             style: b.marker.length ? "background:" + b.marker[0] : ""}),
+    el("span", {class: "name"}, b.name),
+    b.erkennung === "keine"
+      ? el("span", {class: "klein", style: "color:var(--accent)",
+                    title: "Weder Vorlage noch Marker — nur OCR/LLM können ihn finden"},
+           "⚠ keine Vorlage")
+      : (test
+          ? el("span", {class: "klein", style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
+               test.ok ? "erkannt" : "nein")
+          : el("span", {class: "klein mono"},
+               (SC.aktionen.boss.find((a) => a.wert === b.aktion) || {}).text || b.aktion)));
+}
+
+function erkListeIcons(ziel) {
+  if (!SC.icon_scans.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Icon-Scan. Er erkennt EIN Symbol in einer Region und tut dann "
+      + "etwas — keine Slots, keine Kategorien, kein LLM."));
+  }
+  for (const c of SC.icon_scans) {
+    const test = SC.icon.test && SC.icon.test.name === c.name ? SC.icon.test : null;
+    ziel.appendChild(el("button", {
+      class: "scan-zeile" + (SC.icon.offen === c.name ? " an" : ""),
+      onclick: () => rufScan("icon_scan_oeffnen", {name: c.name}),
+    },
+      c.vorschau ? el("img", {class: "mini", src: c.vorschau})
+                 : el("span", {class: "kugel" + (c.marker.length ? "" : " ohne"),
+                               style: c.marker.length ? "background:" + c.marker[0] : ""}),
+      el("span", {class: "name"}, c.name),
+      c.erkennung === "keine"
+        ? el("span", {class: "klein", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
+        : (test ? el("span", {class: "klein",
+                              style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
+                     test.ok ? "erkannt" : "nein")
+                : el("span", {class: "klein mono"},
+                     (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])))));
+  }
+}
+
+/** Die Bibliothek in der Liste: dieselben Bosse, die in der Mitte als Karten
+ *  stehen. Die Knoepfe („+ Boss", „zurueck") stehen NICHT hier, sondern rechts
+ *  — sonst gaebe es sie zweimal, und man raet, welcher der fuehrende ist. */
+function erkListeBibliothek(ziel) {
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Diese Bosse gelten zusätzlich in JEDEM Boss-Scan. Ein lokaler Boss mit "
+    + "gleichem Namen hat Vorrang."));
+  if (!SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch leer. Rechts einen anlegen — oder einen Boss aus einem Scan "
+      + "hierher verschieben."));
+    return;
+  }
+  for (const b of SC.global_bosses) ziel.appendChild(erkBossZeile(b, true));
+}
+
+/* ---------------------------------------------- Bibliothek als Kartenraster */
+
+function erkBibliothekZeichnen() {
+  const ziel = $("scan-bibliothek");
+  const zeigen = erkBibliothek();
+  ziel.hidden = !zeigen;
+  $("scan-flaeche").hidden = zeigen || !SC.foto;
+  $("scan-leer").hidden = zeigen || !!SC.foto;
+  $("scan-ohne-bild").hidden = zeigen || fotoDa();
+  if (!zeigen) return;
+  ziel.replaceChildren();
+  if (!SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Die Bibliothek ist leer. Wer denselben Boss in mehreren Scans braucht, "
+      + "pflegt ihn sonst mehrfach — und ändert beim nächsten Mal nur die Hälfte."));
+    return;
+  }
+  for (const b of SC.global_bosses) ziel.appendChild(erkBibliothekKarte(b));
+}
+
+function erkBibliothekKarte(b) {
+  // Ein vom LLM entdeckter Boss wird als `skip` angelegt: er ist erkannt, aber
+  // es ist noch nicht entschieden, was mit ihm passieren soll. Das ist keine
+  // Warnung, sondern eine offene Aufgabe — deshalb Amber und ein Hauptknopf.
+  const offen = b.aktion === "skip" && b.erkennung === "keine";
+  const karte = el("div", {class: "seq-karte" + (offen ? " neu-vom-llm" : "")},
+    el("div", {class: "scan-karte-kopf"},
+      b.vorschau ? el("img", {class: "mini", src: b.vorschau})
+                 : el("span", {class: "kugel" + (b.marker.length ? "" : " ohne"),
+                               style: b.marker.length ? "background:" + b.marker[0] : ""}),
+      el("b", {class: "wachse"}, b.name),
+      el("span", {class: "zahl"}, offen ? "neu vom LLM" : b.erkennung)));
+  if (b.marker.length) {
+    karte.appendChild(el("div", {class: "scan-marker"},
+      b.marker.map((h) => el("span", {class: "scan-farbfeld", style: "background:" + h}))));
+  }
+  if (offen) {
+    karte.appendChild(el("p", {class: "hinweis"},
+      "Seine Aktion ist noch „Schritt überspringen“ — er wird erkannt, aber es "
+      + "passiert nichts."));
+  } else {
+    karte.appendChild(el("div", {class: "scan-karte-zahlen"},
+      el("span", {class: "zahl"}, "konf " + b.konfidenz.toFixed(2)),
+      el("span", {class: "zahl"}, (SC.aktionen.boss.find((a) => a.wert === b.aktion)
+        || {}).text || b.aktion),
+      b.scan ? el("span", {class: "zahl"}, "scan → " + b.scan) : null,
+      b.verzoegerung ? el("span", {class: "zahl"}, "delay " + b.verzoegerung + " s") : null));
+  }
+  karte.appendChild(el("div", {class: "reihe"},
+    el("button", {class: offen ? "btn haupt" : "btn still",
+      onclick: () => { scanListe = "bosse";
+                       rufScan("boss_waehlen", {name: b.name, global: true}); }},
+      offen ? "Aktion zuweisen" : "bearbeiten"),
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_loeschen", {name: b.name, global: true})}, "löschen")));
+  return karte;
+}
+
+/* ------------------------------------------------------- Rechte Spalte */
+
+function erkInspektor(ziel) {
+  if (erkBibliothek()) return erkInspBibliothek(ziel);
+  const c = erkScan();
+  if (!c) {
+    ziel.appendChild(el("p", {class: "hinweis"}, scanArt === "boss"
+      ? "Kein Boss-Scan gewählt. Links einen anlegen."
+      : "Kein Icon-Scan gewählt. Links einen anlegen."));
+    return;
+  }
+  if (scanArt === "icon") return erkInspIcon(ziel, c);
+  const b = erkBoss();
+  return b ? erkInspBoss(ziel, c, b) : erkInspBossScan(ziel, c);
+}
+
+/** Ohne gewaehlten Boss gehoert die Spalte dem Scan: Region, Toleranz, Fallback. */
+function erkInspBossScan(ziel, c) {
+  ziel.appendChild(ueberschrift("BOSS-SCAN „" + c.name + "“",
+    "Ein Block vom Typ BOSS-SCAN oder BOSS-WATCHER verweist per Name hierauf. "
+    + "Umbenennen: oben links.", "bossscan"));
+  ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz,
+    (v) => erkFeld("toleranz", v), {min: 0, step: 1},
+    "Gilt für die Marker-Farben aller Bosse dieses Scans.", "bosstoleranz"));
+  ziel.appendChild(ueberschrift("WENN KEIN BOSS ERKANNT",
+    "Greift auch dann, wenn OCR und LLM nichts finden.", "bossfallback"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.boss, c.default_action,
+    (v) => erkFeld("default_action", v)));
+  if (c.default_action === "item_scan") {
+    ziel.appendChild(auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+      SC.item_scan_namen.map((n) => ({wert: n, text: n}))), c.default_scan || "",
+      (v) => erkFeld("default_scan", v)));
+  }
+  if (Object.keys(SC.boss.tests).length) {
+    ziel.appendChild(ueberschrift("ALLE BOSSE GEGEN DIESES BILD",
+      "Was jeder einzelne ergeben hat — und woran es lag.", "bosstests"));
+    for (const [name, t] of Object.entries(SC.boss.tests)) {
+      ziel.appendChild(el("div", {class: "scan-erg-zeile" + (t.ok ? " ok" : "")},
+        el("span", {}, name),
+        el("span", {class: "mono klein",
+                    style: "color:var(" + (t.ok ? "--ok" : "--dim") + ")"},
+           t.ok ? "erkannt" : "nein"),
+        el("span", {class: "grund"}, t.grund)));
+    }
+  }
+  ziel.appendChild(el("p", {class: "hinweis"}, "Im Sequenz-Editor: ein Block "
+    + "BOSS-SCAN prüft einmal, BOSS-WATCHER wartet, bis ein Boss auftaucht."));
+  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
+    onclick: () => rufScan(erkBefehl("loeschen"))}, "Boss-Scan löschen"));
+}
+
+/** Der wichtigste Fall: einen bestehenden Boss aendern, ohne den Assistenten
+ *  noch einmal zu durchlaufen. Jedes Feld steht hier und ist einzeln setzbar. */
+function erkInspBoss(ziel, c, b) {
+  ziel.appendChild(el("div", {class: "reihe"},
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_waehlen", {name: ""})}, "‹ zurück zum Scan"),
+    el("span", {class: "wachse"}),
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_loeschen")}, "löschen")));
+  ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
+    onclick: () => rufScan("boss_testen")}, "Diesen Boss testen"));
+  ziel.appendChild(ueberschrift("BOSS", "Der Name ist zugleich das, was OCR und "
+    + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "bossname"));
+  ziel.appendChild(feld("Name", b.name, (v) => rufScan("boss_setzen",
+    {name: b.name, global: b.global, feld: "name", wert: v})));
+  if (b.global) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Aus der Bibliothek — Änderungen gelten in jedem Boss-Scan."));
+  }
+  ziel.appendChild(ueberschrift("ERKENNUNG", "Template ODER Farb-Marker. Beides "
+    + "gesetzt heisst: beides muss stimmen.", "bosserkennung"));
+  for (const teil of erkErkennungsFelder(b, "boss", b.name))
+    if (teil) ziel.appendChild(teil);
+  ziel.appendChild(ueberschrift("AKTION BEI TREFFER",
+    "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.boss, b.aktion,
+    (v) => rufScan("boss_setzen", {name: b.name, global: b.global,
+                                   feld: "aktion", wert: v})));
+  for (const teil of erkAktionsFelder(b, "boss", b.name))
+    if (teil) ziel.appendChild(teil);
+  ziel.appendChild(el("button", {class: "btn still", style: "margin-top:14px",
+    title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
+    onclick: () => rufScan("boss_global_verschieben", {name: b.name, global: b.global})},
+    b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
+}
+
+function erkInspIcon(ziel, c) {
+  ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
+    onclick: () => rufScan("icon_testen")}, "Icon-Scan testen"));
+  ziel.appendChild(ueberschrift("ICON-SCAN „" + c.name + "“",
+    "Erkennt EIN Symbol in einer Region und tut dann etwas. Ein Block vom Typ "
+    + "ICON-SCAN verweist per Name hierauf.", "iconscan"));
+  // **Der Ausschnitt zeigt, was der Scan sieht.** Vier Zahlen sagen nicht, ob
+  // die Region sitzt; ein Bild von 104 px sagt es in einer Sekunde.
+  ziel.appendChild(c.ausschnitt
+    ? el("img", {class: "scan-vorlage quadrat", src: c.ausschnitt, alt: ""})
+    : el("div", {class: "scan-vorlage quadrat leer"}, "kein Bild"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Der Ausschnitt zeigt, was der Scan sieht — "
+    + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])
+    + " ab (" + c.region[0] + ", " + c.region[1] + ")."));
+  ziel.appendChild(el("button", {class: "btn", disabled: !fotoDa(),
+    onclick: () => rufScan("region_modus", {art: "icon", modus: "region"})},
+    "Region neu aufziehen"));
+  ziel.appendChild(ueberschrift("AKTION BEI FUND",
+    "Was passiert, wenn das Symbol da ist.", "iconaktion"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.icon, c.aktion,
+    (v) => erkFeld("aktion", v)));
+  for (const teil of erkAktionsFelder(c, "icon"))
+    if (teil) ziel.appendChild(teil);
+  // **Das ELSE gehoert dem Block, nicht dem Scan.** `IconScanConfig` hat kein
+  // else-Feld, und eins hier einzufuehren hiesse, dieselbe Sache an zwei
+  // Stellen zu haben: der Sequenz-Editor setzt sie am Block, wo sie auch fuer
+  // Item- und Boss-Scans steht.
+  ziel.appendChild(ueberschrift("WENN NICHTS ERKANNT",
+    "Die Ersatzaktion gehört dem Block in der Sequenz, nicht dem Scan — dort "
+    + "steht sie für alle drei Scan-Arten an derselben Stelle.", "iconelse"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Im Sequenz-Editor am Block einstellen. Als Befehl im Konsolen-Editor: "
+    + "icon " + c.name + " else skip"));
+  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
+    onclick: () => rufScan(erkBefehl("loeschen"))}, "Icon-Scan löschen"));
+}
+
+function erkInspBibliothek(ziel) {
+  ziel.appendChild(ueberschrift("BOSS-BIBLIOTHEK",
+    "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
+    + "hat Vorrang.", "bossbib"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    SC.global_bosses.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
+    + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
+    + "Scan, der sie gefunden hat."));
+  ziel.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufScan("boss_neu", {global: true})}, "+ Boss anlegen"));
+  ziel.appendChild(el("button", {class: "btn still",
+    onclick: () => { scanListe = "bosse"; zeichneScans(); }}, "zurück zum Scan"));
+}
+
+/* ------------------------------------------------------------------ Overlay */
+
+/** Die Region des offenen Erkennungs-Scans und ihr Klickpunkt.
+ *
+ * Gezeichnet wird nur die des OFFENEN Scans, nicht jede vorhandene: zwanzig
+ * Rechtecke auf einem Bild sind kein Ueberblick, sondern ein Gitter. */
+function erkOverlay(svg, px) {
+  const c = erkScan();
+  if (!c) return;
+  const t = scanArt === "boss" ? SC.boss.test : SC.icon.test;
+  const zustand = !t ? "" : (t.ok ? " ok" : " fehl");
+  const [x1, y1] = scanZuBild(c.region[0], c.region[1]);
+  const [x2, y2] = scanZuBild(c.region[2], c.region[3]);
+  svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+    class: "scan-region-f" + zustand}));
+  svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+    class: "scan-region" + zustand}));
+  const marke = (t && t.ok && t.konfidenz !== null && t.methode === "Template")
+    ? t.name + " · " + t.konfidenz.toFixed(2)
+    : (t ? (t.ok ? t.name + " erkannt" : "nicht erkannt")
+         : "Region · " + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1]));
+  svg.appendChild(svgEl("text", {x: x1, y: y2 + 13 * px, class: "scan-marke",
+    "font-size": 11 * px, "stroke-width": 3 * px,
+    fill: !t ? null : (t.ok ? SLOT_FARBE.treffer : "#EF4444")}, marke));
+
+  // Der Klickpunkt der Aktion: gestrichelt und in Amber — er ist ein
+  // Handlungsort, keine Erkennung.
+  const objekt = scanArt === "boss" ? erkBoss() : c;
+  const punkt = objekt && objekt.punkt_id !== null && objekt.punkt_id !== undefined
+    ? SC.punkte.find((p) => p.id === objekt.punkt_id) : null;
+  if (!punkt || objekt.aktion !== "click") return;
+  const [ax, ay] = scanZuBild(punkt.x, punkt.y);
+  const arm = 9 * px;
+  svg.appendChild(svgEl("rect", {class: "scan-aktion", x: ax - arm, y: ay - arm,
+    width: arm * 2, height: arm * 2}));
+  svg.appendChild(svgEl("text", {x: ax - arm, y: ay - arm - 4 * px, class: "scan-marke",
+    "font-size": 10 * px, "stroke-width": 3 * px, fill: "#F59E0B"},
+    "Klickpunkt Aktion"));
+}
+
 /* ----------------------------------------------------- Ansicht: Einstellungen */
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor. Sein
@@ -3264,6 +4164,12 @@ function verdrahte() {
     zeichneEinstellungen();
   });
 
+  for (const knopf of document.querySelectorAll("[data-scan-art]"))
+    knopf.addEventListener("click", () => scanArtSetzen(knopf.dataset.scanArt));
+  for (const knopf of document.querySelectorAll("[data-erk-tool]"))
+    knopf.addEventListener("click", () => rufScan("region_modus",
+      {art: scanArt, modus: knopf.dataset.erkTool}));
+
   $("scan-offen").addEventListener("change", (e) => {
     scanAssistentSchritt = null;
     rufScan("scan_oeffnen", {name: e.target.value});
@@ -3482,13 +4388,34 @@ function tastatur(e) {
       return rufScan("scan_verschieben",
                      {dx: schub[0] * weit, dy: schub[1] * weit, zaehlt: !serie});
     }
-    // Die Modi liegen auf ihren Anfangsbuchstaben — beim Aufziehen von zwanzig
-    // Slots ist der Griff zur Werkzeugleiste der laengste Teil der Arbeit.
-    const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
-    if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen", {modus: modus.key}); }
-    if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
+    // **Die Modus-Buchstaben gehoeren der Item-Art.** Ein „S" in der Boss-Ansicht
+    // legte sonst einen Slot an — ein Werkzeug fuer etwas, das dort gar nicht
+    // vorkommt, und der naechste Klick im Bild haette eine andere Wirkung als
+    // die Leiste behauptet.
+    if (scanArt === "item") {
+      const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
+      if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen", {modus: modus.key}); }
+      if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
+        e.preventDefault();
+        return rufScan("scan_slot_loeschen");
+      }
+      return;
+    }
+    // Dieselbe Idee eine Ebene weiter: R und K sind die beiden Werkzeuge der
+    // Erkennungs-Scans, T testet. Testen liegt auf einer Taste, weil man beim
+    // Einstellen einer Toleranz zehnmal hintereinander testet.
+    const werkzeug = {r: "region", k: "aktion"}[e.key.toLowerCase()];
+    if (werkzeug) {
       e.preventDefault();
-      return rufScan("scan_slot_loeschen");
+      return rufScan("region_modus", {art: scanArt, modus: werkzeug});
+    }
+    if (e.key.toLowerCase() === "t" && SC && erkScan()) {
+      e.preventDefault();
+      return erkTesten();
+    }
+    if (e.key === "Delete" && scanArt === "boss" && SC && SC.boss.wahl) {
+      e.preventDefault();
+      return rufScan("boss_loeschen");
     }
     return;
   }

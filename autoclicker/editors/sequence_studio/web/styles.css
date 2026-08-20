@@ -14,9 +14,13 @@
   /* Die Slot-Zustaende im Scans-Reiter. Sie liegen auf einem SPIELBILD, nicht
      auf dem Panel — deshalb greller als der Rest der Palette. Jeweils Strich
      und Fuellung (Suffix -f), damit beides aus einer Quelle kommt. */
-  --slot-ok:#00FF9C;     --slot-ok-f:#00FF9C2B;      /* erkannt und im Scan */
-  --slot-fremd:#2DD4BF;  --slot-fremd-f:#2DD4BF26;   /* erkannt, nicht im Scan */
-  --slot-offen:#FF9500;  --slot-offen-f:#FF950024;   /* nichts erkannt: zu tun */
+  --slot-ok:#00E58A;     --slot-ok-f:#00E58A26;      /* erkannt und im Scan */
+  --slot-fremd:#22D3EE;  --slot-fremd-f:#22D3EE26;   /* erkannt, nicht im Scan */
+  /* „Nichts erkannt" war #FF9500 und damit fast der Akzent #F59E0B: „hier ist
+     zu tun" und „gewaehlt" sahen gleich aus, und Amber gehoert der Auswahl.
+     --slot-ok und --slot-fremd lagen als #00FF9C/#2DD4BF ausserdem zu dicht
+     beieinander, um sie im Bild auseinanderzuhalten. */
+  --slot-offen:#F43F5E;  --slot-offen-f:#F43F5E1F;   /* nichts erkannt: zu tun */
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -575,6 +579,21 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    waeren dasselbe Problem wie ein Klick, dessen Wirkung man raten muss. */
 .scan-suchbereich{fill:#7C9CF51A;stroke:#7C9CF5;stroke-dasharray:6 4;stroke-width:1.5;
   vector-effect:non-scaling-stroke}
+/* Die Region eines Boss- oder Icon-Scans. Sie traegt den Zustand ihres letzten
+   Tests: gruen erkannt, rot nicht erkannt, sonst neutral. Dieselbe Familie wie
+   die Slot-Zustaende und aus demselben Grund — sie liegt auf einem Spielbild,
+   nicht auf dem Panel. */
+.scan-region{fill:none;stroke:var(--muted);stroke-width:2;vector-effect:non-scaling-stroke}
+.scan-region.ok{stroke:var(--slot-ok)}
+.scan-region.fehl{stroke:var(--err)}
+.scan-region-f{fill:#94A3B814;stroke:none}
+.scan-region-f.ok{fill:var(--slot-ok-f)}
+.scan-region-f.fehl{fill:#EF444422}
+/* Der Klickpunkt der Aktion: gestrichelt und in Amber, weil er kein
+   Erkennungs-, sondern ein Handlungsort ist. Ein durchgezogenes Rechteck sähe
+   aus wie eine zweite Region. */
+.scan-aktion{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
+  vector-effect:non-scaling-stroke}
 /* Die Listen links: eine Zeile pro Slot/Item/Scan, gewaehlt = Ring wie ueberall. */
 .scan-zeile{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;
   background:none;border:1px solid var(--line);width:100%;text-align:left;
@@ -654,6 +673,48 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
 .scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
   image-rendering:pixelated;max-height:180px;object-fit:contain}
+/* Die Vorlage eines Bosses/Icons in fester Groesse neben ihren Angaben. Fest,
+   weil man zwei Vorlagen nebeneinander vergleichen koennen soll — eine, die
+   mit ihrem Inhalt waechst, macht daraus zwei verschiedene Fragen. */
+.scan-vorlage{width:104px;height:76px;flex:none;background:var(--bg);
+  border:1px solid var(--line);border-radius:5px;object-fit:contain;
+  image-rendering:pixelated}
+.scan-vorlage.quadrat{height:104px}
+.scan-vorlage.leer{display:grid;place-items:center;color:var(--dim);font-size:10.5px;
+  border-style:dashed;text-align:center;padding:4px}
+/* Ein gemessenes Farbfeld — 18 px, wie die Marker der Item-Ansicht. Das
+   gestrichelte Leerfeld dahinter sagt, dass noch Platz ist. */
+.scan-farbfeld{width:18px;height:18px;border-radius:3px;border:1px solid #0006;flex:none}
+.scan-farbfeld.leer{border:1px dashed var(--dim);background:none}
+/* Die Lampe am LLM-Status. 7 px, rund, drei Zustaende: unbekannt (dim),
+   erreichbar (ok), nicht erreichbar (err). */
+.scan-lampe{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.scan-lampe.an{background:var(--ok)}
+.scan-lampe.aus{background:var(--err)}
+/* Eine Ergebniszeile von „alle Bosse gegen dieses Bild halten": Name links,
+   Ergebnis rechts, der Grund darunter ueber beide Spalten. Der Grund ist der
+   eigentliche Wert — „nicht erkannt" allein sagt nicht, was zu tun ist. */
+.scan-erg-zeile{display:grid;grid-template-columns:1fr auto;gap:2px 8px;
+  padding:6px 8px;border:1px solid var(--line);border-radius:4px;font-size:11.5px}
+.scan-erg-zeile.ok{border-color:#3ED07A59}
+.scan-erg-zeile .grund{grid-column:1/-1;font-size:10.5px;color:var(--dim);
+  font-family:var(--mono)}
+.scan-erg-zeile.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+/* Die Boss-Bibliothek als Kartenraster an der Stelle der Buehne. */
+.scan-karten{padding:14px;display:grid;gap:14px;align-content:start;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.scan-karten[hidden]{display:none}
+.scan-karte-kopf{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.scan-karte-zahlen{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+.seq-karte.neu-vom-llm{border-color:var(--accent)}
+/* Der Weg oben in der linken Spalte, wenn die Erkennungs-Arten offen sind:
+   dieselbe Schrittleiste wie beim Item-Scan, nur mit anderen Schritten. */
+.scan-testleiste{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+/* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang
+   sein. Er darf dabei nur sich selbst kuerzen, nicht seinen Nachbarn
+   aus der Zeile schieben. */
+.scan-undo{min-width:0;max-width:50%;flex:0 1 auto;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 
 /* ------------------------------------------------------------ Einstellungen */
 .cfg{flex:1;display:flex;min-height:0}

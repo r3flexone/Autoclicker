@@ -85,6 +85,10 @@ class ScanStateMixin:
         # Wie die Dateien aussahen, als wir sie gelesen haben. Der Hauptprozess
         # schreibt dieselben — daran erkennt der Reiter, dass er veraltet ist.
         self._platte: dict = {}
+        # Boss- und Icon-Scans liegen im selben Reiter, auf derselben Aufnahme
+        # und mit demselben Rückgängig-Stapel. Ihr Zustand lebt in
+        # `scan_detect.py`; von hier aus wird er nur mitgeführt.
+        self._erkennung_init()
 
     def _scan_laden(self) -> None:
         """Slots, Items und Scan-Konfigurationen von Platte — einmal je Sitzung.
@@ -105,6 +109,7 @@ class ScanStateMixin:
         self.slots = load_slots(SLOTS_FILE)
         self.items = load_items(ITEMS_FILE)
         self.scans = self._scans_laden()
+        self._erkennung_laden()
         # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
         # Sequenzen (`zuletzt_bearbeitet()` in `sequence_studio.py`) und aus
         # demselben Grund: ein echtes „zuletzt geöffnet" müsste jemand
@@ -119,8 +124,7 @@ class ScanStateMixin:
             self._foto_laden(neuster)
         self._platte = self._platte_stand()
 
-    @staticmethod
-    def _platte_stand() -> dict:
+    def _platte_stand(self) -> dict:
         """Pfad -> Änderungszeit für alles, was der Reiter von Platte liest.
 
         Der Ordner der Scans kommt als Ganzes mit: eine gelöschte oder neu
@@ -132,6 +136,12 @@ class ScanStateMixin:
         pfade = [Path(SLOTS_FILE), Path(ITEMS_FILE), Path(ITEM_SCANS_DIR)]
         pfade += sorted(Path(ITEM_SCANS_DIR).glob("*.json")) \
             if Path(ITEM_SCANS_DIR).is_dir() else []
+        # Boss- und Icon-Scans gehören dazu, seit der Reiter sie bearbeitet:
+        # der Konsolen-Editor bleibt als zweiter Weg bestehen, und ein per LLM
+        # entdeckter Boss landet im Lauf in der Bibliothek. Ohne diese Pfade
+        # meldete „auf Platte hat sich etwas geändert" ausgerechnet das nicht,
+        # woran man gerade arbeitet.
+        pfade += self._erkennung_pfade()
         for p in pfade:
             try:
                 stand[str(p)] = p.stat().st_mtime
@@ -170,6 +180,9 @@ class ScanStateMixin:
         # zurück und überschriebe damit genau das, was gerade von Platte kam.
         self._undo = []
         self._scan_dirty = False
+        self._boss_test = self._icon_test = None
+        self._boss_tests = {}
+        self._region_ziel = None
         self._scan_laden()
         # Der vorher offene Scan bleibt offen, wenn es ihn noch gibt — sonst
         # steht man nach dem Nachladen woanders als vorher.
@@ -256,6 +269,10 @@ class ScanStateMixin:
             self.scan_modus = MODUS_WAHL
             self._ecke = None
             self._suchbereich = None
+            # Das Ziel gehoerte zu genau diesem Durchgang. Bliebe es stehen,
+            # wirkte der naechste Buchstabendruck auf einen Scan, den man
+            # inzwischen gar nicht mehr offen hat.
+            self._region_ziel = None
 
     # ----------------------------------------------------------- Rückgängig
 
@@ -272,6 +289,10 @@ class ScanStateMixin:
             "dirty": self._scan_dirty,
             "bereich": copy.deepcopy(self.scan_bereich),
             "fenster_id": self.scan_fenster_id,
+            # Der Abzug ist vollständig oder er ist keiner: ein Rückgängig, das
+            # die Slots zurückdreht und den Boss-Scan stehen lässt, wäre ein
+            # halbes Zurück — und das ist schlimmer als gar keins.
+            "erkennung": self._erkennung_zustand(),
         }
 
     def _merke(self, was: str) -> None:
@@ -322,6 +343,7 @@ class ScanStateMixin:
         self._scan_dirty = stand["dirty"]
         self.scan_bereich = stand.get("bereich")
         self.scan_fenster_id = stand.get("fenster_id", 0)
+        self._erkennung_zurueck(stand.get("erkennung") or {})
         # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
         # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
         self._objekte_angleichen()
@@ -486,6 +508,10 @@ class ScanStateMixin:
             # Erkennen von Doppelten beim Lernen).
             "opencv": self._hat_opencv(),
             "pillow": self._hat_pillow(),
+            # Boss- und Icon-Scans liegen in derselben Momentaufnahme: sie
+            # teilen sich Bühne, Zoom, Rückgängig und Speichern-Knopf. Zwei
+            # Aufnahmen hiessen zwei Wahrheiten über dasselbe Bild.
+            **self._erkennung_json(),
         }
 
     def _ergebnis_json(self) -> Optional[dict]:

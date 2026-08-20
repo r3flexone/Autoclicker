@@ -9,11 +9,13 @@ from .scan_contract import (
     ART_SCAN,
     ART_SLOT,
     MIN_SLOT,
-    MODI,
+    MODI_ALLE,
+    MODUS_AKTION,
     MODUS_BEREICH,
     MODUS_FINDEN,
     MODUS_KLICK,
     MODUS_MESSEN,
+    MODUS_REGION,
     MODUS_SLOT,
     MODUS_WAHL,
     TREFFER_MIN,
@@ -38,8 +40,14 @@ class ScanInteractionMixin:
         auf sich selbst wäre bedeutungslos.
         """
         modus = (daten or {}).get("modus") or MODUS_WAHL
-        if modus not in MODI:
+        if modus not in MODI_ALLE:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
+        # Region und Aktionspunkt gehören den Erkennungs-Scans und brauchen ein
+        # Ziel; das setzt `region_modus()`. Hier landen sie nur, wenn jemand den
+        # Buchstaben drückt, während gar kein Boss-/Icon-Scan offen ist.
+        if modus in (MODUS_REGION, MODUS_AKTION) and not self._region_ziel:
+            return self._scan_melde(
+                "Erst einen Boss- bzw. Icon-Scan öffnen.", "warn")
         if "fixiert" in (daten or {}):
             self.scan_werkzeug_fixiert = bool((daten or {}).get("fixiert"))
         if (modus == self.scan_modus and modus != MODUS_WAHL
@@ -53,6 +61,8 @@ class ScanInteractionMixin:
         # Jeder Wechsel fängt die Suche von vorn an: ein Suchbereich von vorhin
         # gehört zu einer Absicht von vorhin.
         self._suchbereich = None
+        if modus not in (MODUS_REGION, MODUS_AKTION):
+            self._region_ziel = None
         texte = {
             MODUS_WAHL: "Auswählen: auf einen Slot klicken — daneben klicken "
                         "zieht ein Rechteck um mehrere.",
@@ -62,6 +72,9 @@ class ScanInteractionMixin:
             MODUS_BEREICH: "Bereich: zwei Ecken um den Teil, der zählt.",
             MODUS_FINDEN: "Slots finden: zwei Ecken um das Inventar, dann auf "
                           "einen leeren Slot-Hintergrund darin klicken.",
+            MODUS_REGION: "Region: zwei Ecken um das, was erkannt werden soll.",
+            MODUS_AKTION: "Klickpunkt: die Stelle anklicken, die bei einem "
+                          "Treffer geklickt wird.",
         }
         zurueck = "" if modus == MODUS_WAHL else "  ·  ESC oder nochmal die Kachel = zurück"
         return self._scan_melde(texte[modus] + zurueck, "info")
@@ -124,6 +137,10 @@ class ScanInteractionMixin:
             return self._klick_bereich(x, y)
         if self.scan_modus == MODUS_FINDEN:
             return self._klick_finden(x, y)
+        if self.scan_modus == MODUS_REGION:
+            return self._klick_region(x, y)
+        if self.scan_modus == MODUS_AKTION:
+            return self._klick_aktion(x, y)
         return self._klick_waehlen(x, y, bool((daten or {}).get("zusatz")))
 
     def _klick_slot(self, x: int, y: int) -> dict:
@@ -615,6 +632,7 @@ class ScanInteractionMixin:
         self._suchbereich = None
         self._auswahl = []
         self._lern_review = []
+        self._region_ziel = None
         self.scan_modus = MODUS_WAHL
         return self.scan_daten()
 

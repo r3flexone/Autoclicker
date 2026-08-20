@@ -741,6 +741,10 @@ es die Marker-Farben.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
     Verantwortlichkeiten.
+  - `scan_detect.py`: Boss- und Icon-Scans (Region, Erkennung, Aktion, Test,
+    Boss-Bibliothek). Getrennt von den Item-Modulen, weil es eine andere Frage
+    ist: der Item-Scan sucht *viele* Dinge in *vielen* Flächen, ein
+    Erkennungs-Scan **ein** Ding in **einer**.
   - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
     GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
   - `web/`: HTML, CSS, JavaScript und Logo.
@@ -1069,10 +1073,18 @@ Sechs Regeln, an denen der Reiter hängt:
   die Meldung baut jeder Anlass selbst (der Knopf sagt das Ergebnis, das Finden
   hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
 - **Die Slot-Zustände liegen auf einem SPIELBILD, nicht auf dem Panel.** Deshalb
-  haben sie eine eigene, grellere Farbfamilie (`--slot-ok` Neongrün =
-  erkannt und im Scan, `--slot-fremd` Türkis = erkannt, aber nicht im Scan,
-  `--slot-offen` Orange = nichts erkannt, hier ist zu tun) und **jeweils eine
-  Füllung** dazu (Suffix `-f`). Ein 1,5-px-Umriss in `var(--dim)` verschwindet
+  haben sie eine eigene, grellere Farbfamilie (`--slot-ok` `#00E58A` =
+  erkannt und im Scan, `--slot-fremd` `#22D3EE` = erkannt, aber nicht in diesem
+  Scan, `--slot-offen` `#F43F5E` = nichts erkannt, hier ist zu tun) und
+  **jeweils eine Füllung** dazu (Suffix `-f`).
+
+  Die drei Werte sind gemessen, nicht geraten, und stehen in einem Test fest.
+  `--slot-offen` war `#FF9500` und damit fast der Akzent `#F59E0B`: „zu tun" und
+  „gewählt" sahen gleich aus — **Amber gehört der Auswahl**, sonst markiert die
+  Markierung nichts. `--slot-ok`/`--slot-fremd` lagen als `#00FF9C`/`#2DD4BF` zu
+  dicht beieinander, um sie im Bild zu trennen. Die Klassenlogik
+  (`.scan-slot.treffer` / `.fremditem` / `.leer`, `SLOT_FARBE` in `app.js`)
+  blieb dabei unverändert — nur die Variablen. Ein 1,5-px-Umriss in `var(--dim)` verschwindet
   zwischen bunten Item-Symbolen restlos — genau das war „nichts erkannt" vorher,
   also ausgerechnet der Zustand, den man sucht. Die Fläche trägt die Aussage,
   der Strich schärft sie.
@@ -1332,10 +1344,86 @@ dann läuft beides auseinander:
   `box-sizing: border-box` frässe ein Rahmen zwei Pixel von der Breite, die das
   Overlay als Bezug nimmt.
 
-**Boss- und Icon-Scans sind hier noch nicht drin.** Das alte Fenster konnte sie,
-die Konsole (`CTRL+ALT+N`) kann sie weiterhin. Was sie brauchen — Region aus zwei
-Ecken, Farbe messen, Marker sammeln — liegt bereits als Modus-Mechanik da; es
-fehlt die Ansicht, nicht die Grundlage.
+**Boss- und Icon-Scans liegen im selben Reiter** (`scan_detect.py`), umgeschaltet
+über SCAN-ART oben links (Items · Bosse · Icons). Sie waren vorher nur über die
+Konsolen-Editoren erreichbar: linear durch Schritt 1–6, und für **jede** spätere
+Änderung derselbe Ablauf noch einmal — auch für eine Konfidenz. Die Sache, um die
+es geht, ist aber ein Rechteck auf einem Bild.
+
+Der Aufbau ist derselbe wie beim Item-Scan, und das ist der Punkt: **der Assistent
+ist der Weg beim ersten Einrichten, die rechte Spalte der Weg für jede spätere
+Änderung.** Jedes Feld ist einzeln setzbar (`boss_setzen`, `icon_setzen`), keins
+nur über einen Durchlauf erreichbar.
+
+| | Item | Boss | Icon |
+|---|---|---|---|
+| Schritte | 3 (Bild, Slots, Items) | 5 (Bild, Region, Bosse, LLM/OCR, Fallback) | 4 (Bild, Region, Erkennung, Aktion) |
+| Werkzeuge | Slot, Finden, Farbe, Klickpunkt, Bereich | Region, Klickpunkt | Region, Klickpunkt |
+| gesucht wird | viele Dinge in vielen Flächen | ein Boss in **einer** Region | ein Symbol in **einer** Region |
+
+Acht Regeln, an denen der Teil hängt:
+
+- **Die Scan-Art ist Oberflächenzustand** (`scanArt` in `app.js`), wie `ansicht`
+  und `scanListe`: sie steht nicht in der Momentaufnahme und nicht in der Brücke.
+  Die Bühne (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
+  dasselbe Bild, nur eine andere Frage daran. Wo ein Befehl trotzdem wissen muss,
+  worauf er wirkt, **sagt der Aufruf es** (`{art: "boss"}`); nur solange ein
+  Werkzeug scharf ist, merkt sich die Brücke das Ziel (`_region_ziel`) — und
+  `_werkzeug_fertig()` räumt es mit weg.
+- **Die Aufnahme ist EIN Schritt und gehört allen drei Arten.** Die Karte
+  existiert genau einmal im Dokument und **wandert** in den Assistenten der
+  offenen Art (`scanArtPflegen()`). Zwei Fassungen davon wären zwei Stellen, an
+  denen eine Änderung an der Aufnahme vergessen werden kann — sie muss deshalb
+  auch wieder zurückwandern, sonst fehlt dem Item-Assistenten sein erster Schritt.
+- **Testen ist folgenlos.** `boss_testen`/`icon_testen` erkennen, zeigen und
+  *benennen* die Aktion — ausgeführt wird sie nie, und das steht in der
+  Testleiste dabei. Ein Testknopf, der im Editor eines Autoclickers wirklich
+  klickt, ist die schlechteste denkbare Überraschung. Ein Test misst es.
+- **Gerechnet wird mit `_check_profile_match()`** aus `runtime/item_scan.py` —
+  derselben Funktion, die im Lauf entscheidet, mit `_NurConfig` als
+  `state`-Stellvertreter. Eine zweite Rechnung „nur für die Vorschau" wäre eine
+  Vorschau, die etwas anderes zeigt als das, was passiert.
+- **Der Vorschlag ist der Kern des Fehlerfalls.** Findet ein Icon-Scan zu wenige
+  Marker, nennt die Testleiste die kleinste Toleranz, bei der es klappt
+  (`_toleranz_vorschlag()`) — ein Klick. Ein Test, der nur „fehlgeschlagen" sagt,
+  lässt einen genau dort stehen, wo man vorher war.
+- **Die Aktionswerte kommen aus `models.py`**, über die Momentaufnahme
+  (`aktionen.boss` / `aktionen.icon` / `aktionen.scan_modi`). Die Ansicht erfindet
+  keine Namen: ein getipptes `"skipcycle"` wäre ein Wert, den `__post_init__`
+  beim Speichern still auf den Standard hebt — der Klick sähe aus, als hätte er
+  gewirkt. Ein Test hält die Listen gegen `VALID_*_ACTIONS`.
+- **Die Bibliothek gilt zusätzlich in JEDEM Boss-Scan**, lokale Bosse gewinnen bei
+  Namensgleichheit (so merged auch `execute_boss_scan`). Deshalb testet
+  „alle testen" die **gemergte** Liste, deshalb kollidiert ein neuer Boss-Name
+  gegen beide Mengen, und deshalb steht ein verdeckter globaler Boss blass in der
+  Liste statt so zu tun, als würde er benutzt. Angezeigt wird sie als Kartenraster
+  an der Stelle der Bühne — sie ist kein Rechteck auf dem Bild, sondern eine
+  Sammlung.
+- **Das ELSE gehört dem Block, nicht dem Scan.** `IconScanConfig` hat kein
+  else-Feld, und eins einzuführen hiesse, dieselbe Sache an zwei Stellen zu haben:
+  der Sequenz-Editor setzt sie am Block, wo sie für alle drei Scan-Arten an
+  derselben Stelle steht. Die rechte Spalte sagt genau das und nennt den
+  Konsolen-Befehl (`icon <Name> else skip`).
+
+**Speichern und Rückgängig umfassen alle drei Arten.** Ein Knopf schreibt Slots,
+Items, Item-Scans, Boss-Scans, Icon-Scans, die Bibliothek **und `points.json`** —
+ein Klickpunkt einer Boss- oder Icon-Aktion ist ein Punkt, und die Koordinate steht
+dort und sonst nirgends. Der Rückgängig-Abzug (`_erkennung_zustand()`) nimmt sie
+ebenso mit: ein Zurück, das die Slots zurückdreht und den Boss-Scan stehen lässt,
+wäre ein halbes Zurück, und das ist schlimmer als gar keins.
+
+**Der Konsolen-Editor bleibt** (`CTRL+ALT+N`). Er schreibt dieselben Dateien —
+deshalb zählen `boss_scans/`, `icon_scans/` und `boss_scans/global/bosses.json`
+seit dem Umbau beim „auf Platte hat sich etwas geändert"-Vergleich mit
+(`_erkennung_pfade()`). Ohne sie meldete der Hinweis ausgerechnet das nicht, woran
+man gerade arbeitet: ein Lauf legt per LLM entdeckte Bosse in der Bibliothek ab.
+
+**Was fehlt:** der Boss-Watcher hat keine eigene Ansicht (er benutzt denselben
+Scan, nur ein anderer Block-Typ), und OCR/LLM lassen sich hier ein- und
+ausschalten, aber nicht *ausprobieren* — der Testknopf misst Template und Marker.
+Für das LLM gibt es nur die Erreichbarkeitslampe (`llm_pruefen`); ein echter
+Probelauf kostet bis `llm_timeout` und hat im Zeichnen einer Momentaufnahme
+nichts verloren.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei
