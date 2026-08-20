@@ -228,3 +228,63 @@ try:
               {"click", "timeout"} <= set(_BE))
 finally:
     _os.chdir(_log_cwd)
+
+
+section("Eine frisch geschriebene Sequenz ist sofort sichtbar")
+
+# `list_available_sequences()` parst jede Datei und cacht deshalb. Der Cache-
+# Schluessel war die mtime des **Ordners** — und die ist auf grober
+# Zeitaufloesung unbrauchbar: NTFS stempelt Verzeichnisse deutlich groeber als
+# ext4. Zwei Sequenzen im selben Tick geschrieben liessen die Ordner-Zeit gleich,
+# der Cache galt weiter, und die zweite Datei war UNSICHTBAR.
+#
+# Das ist kein reiner Menue-Schoenheitsfehler: `zuletzt_bearbeitet()` baut auf
+# derselben Liste auf und nennt dann die falsche Sequenz — das Studio oeffnet
+# beim Start nicht die, an der man gerade gearbeitet hat.
+#
+# Der Test friert die Ordner-Zeit ein und bildet damit genau die grobe
+# Aufloesung nach, unter der es unter Windows in der CI umfiel. Mit dem alten
+# mtime-Schluessel ist er rot, auf jeder Plattform.
+import json as _js_seq
+
+from autoclicker.persistence import sequences as _seqmod
+from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb_seq
+
+_seq_cwd = _os.getcwd()
+_seq_tmp = tempfile.mkdtemp()
+_os.chdir(_seq_tmp)
+try:
+    Path("sequences").mkdir()
+
+    def _schreibe_seq(datei, name):
+        Path("sequences", datei).write_text(_js_seq.dumps({
+            "name": name, "schema_version": 4, "total_cycles": 1,
+            "init_steps": [], "end_steps": [], "loop_phases": []}),
+            encoding="utf-8")
+
+    _ordnerzeit = 1_700_000_000
+
+    _schreibe_seq("erste.json", "erste")
+    _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
+    _namen = [p.name for _, p in _seqmod.list_available_sequences()]
+    check("die erste Sequenz steht in der Liste", _namen == ["erste.json"])
+
+    # Zweite Datei, Ordner-Zeit absichtlich unveraendert.
+    _schreibe_seq("zweite.json", "zweite")
+    _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
+    _namen = [p.name for _, p in _seqmod.list_available_sequences()]
+    check("die zweite auch, obwohl die Ordner-Zeit gleich blieb",
+          _namen == ["erste.json", "zweite.json"])
+
+    # Und die Folge, wegen der es weh tut: das Studio oeffnet die richtige.
+    _os.utime(Path("sequences") / "erste.json", (_ordnerzeit, _ordnerzeit))
+    _os.utime(Path("sequences") / "zweite.json",
+              (_ordnerzeit + 100, _ordnerzeit + 100))
+    check("und zuletzt_bearbeitet() findet die neuere",
+          _zb_seq() == Path("sequences") / "zweite.json")
+
+    # Der Cache soll trotzdem einer bleiben: gleiche Lage, gleiche Liste.
+    check("unveraendert liefert der Cache dasselbe Objekt",
+          _seqmod.list_available_sequences() is _seqmod.list_available_sequences())
+finally:
+    _os.chdir(_seq_cwd)

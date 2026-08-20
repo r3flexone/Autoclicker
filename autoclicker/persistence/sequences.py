@@ -8,6 +8,7 @@ stabilen IDs für Referenzierung aus Sequenz-Schritten.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -104,22 +105,49 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
 # Sequenz-Liste mit mtime-Cache — die Editor-Auswahl ruft list_available_sequences
 # mehrmals hintereinander auf, ohne Cache wäre das pro Aufruf ein voller Dir-Scan.
 _seq_cache: list[tuple[str, Path]] = []
-_seq_cache_mtime: float = 0
+_seq_cache_key: tuple = ()
+
+
+def _verzeichnis_kennung(seq_dir: Path) -> tuple:
+    """Was der Cache vergleicht: die Eintraege selbst, nicht die Ordner-Uhr.
+
+    Vorher stand hier die mtime des **Ordners**, und das ist auf grober
+    Zeitaufloesung unsicher: NTFS stempelt Verzeichnisse deutlich groeber als
+    ext4. Wurden zwei Sequenzen im selben Tick geschrieben, blieb die Ordner-Zeit
+    gleich — der Cache galt weiter und die zweite Datei war **unsichtbar**. Nicht
+    nur im Menue: `zuletzt_bearbeitet()` nennt dann die falsche Sequenz, und das
+    Studio oeffnet beim Start nicht die, an der man gerade gearbeitet hat.
+
+    Name, Groesse und mtime jedes Eintrags fangen das ab. Das Statten kostet
+    wenig — teuer ist das Oeffnen und Parsen jeder Datei, und genau das spart der
+    Cache weiterhin ein.
+    """
+    eintraege = []
+    with os.scandir(seq_dir) as it:
+        for e in it:
+            if not e.name.endswith(".json") or e.name == "points.json":
+                continue
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            eintraege.append((e.name, st.st_size, st.st_mtime_ns))
+    return tuple(sorted(eintraege))
 
 
 def list_available_sequences() -> list[tuple[str, Path]]:
-    """Listet alle verfügbaren Sequenz-Dateien auf (mit mtime-Cache)."""
-    global _seq_cache, _seq_cache_mtime
+    """Listet alle verfügbaren Sequenz-Dateien auf (mit Verzeichnis-Cache)."""
+    global _seq_cache, _seq_cache_key
     seq_dir = Path(SEQUENCES_DIR)
     if not seq_dir.exists():
         return []
 
     try:
-        current_mtime = seq_dir.stat().st_mtime
+        current_key = _verzeichnis_kennung(seq_dir)
     except OSError:
         return []
 
-    if _seq_cache and _seq_cache_mtime == current_mtime:
+    if _seq_cache and _seq_cache_key == current_key:
         return _seq_cache
 
     # sorted(): sonst haengt die Menue-Reihenfolge vom Dateisystem ab und der
@@ -135,7 +163,7 @@ def list_available_sequences() -> list[tuple[str, Path]]:
             except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
                 pass  # Ungültige/korrupte Datei überspringen
     _seq_cache = sequences
-    _seq_cache_mtime = current_mtime
+    _seq_cache_key = current_key
     return sequences
 
 
