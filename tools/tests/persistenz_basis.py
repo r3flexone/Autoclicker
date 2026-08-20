@@ -288,3 +288,64 @@ try:
           _seqmod.list_available_sequences() is _seqmod.list_available_sequences())
 finally:
     _os.chdir(_seq_cwd)
+
+
+section("Beide Backends belegen dieselben Hotkeys")
+
+# Es gibt ZWEI Tabellen fuer dieselbe Sache: `HOTKEY_BINDINGS` in
+# platforms/common.py (Linux, pynput-Schreibweise) und `_HOTKEY_DEFINITIONS` in
+# platforms/windows.py (Modifier + VK). Sie muessen uebereinstimmen, und bis
+# hierher mass das niemand — genau die Luecke, gegen die CLAUDE.md sonst
+# ueberall "beide Seiten messen" sagt.
+#
+# Was schiefgeht, wenn sie auseinanderlaufen: ein neuer Hotkey wirkt auf einer
+# Plattform und auf der anderen nicht. Das faellt nicht auf, weil kein Aufruf
+# fehlschlaegt — die Taste tut einfach nichts. Und die README-Tabelle, die ein
+# vorhandener Test gegen `_HOTKEY_DEFINITIONS` haelt, waere fuer Linux falsch.
+import re as _re_hk
+
+from pathlib import Path as _P_hk
+
+from autoclicker.platforms.common import HOTKEY_BINDINGS as _BIND
+
+_wurzel_hk = _P_hk(__file__).resolve().parent.parent.parent
+_win_hk = (_wurzel_hk / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
+_tab_hk = _re_hk.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _win_hk, _re_hk.S).group(1)
+
+# Eintrag: (HOTKEY_ID, Modifier, VK, "CTRL+ALT+X (BESCHREIBUNG)")
+_win_namen = dict(_re_hk.findall(
+    r"\(\s*(HOTKEY_\w+),[^,]+,[^,]+,\s*\"([^\"]+)\"", _tab_hk))
+check("der Test findet ueberhaupt Windows-Hotkeys", len(_win_namen) > 20)
+
+from autoclicker.platforms import common as _common_hk
+_id_name = {wert: name for name, wert in vars(_common_hk).items()
+            if name.startswith("HOTKEY_") and isinstance(wert, int)}
+
+_lin_ids = {_id_name[i] for i in _BIND if i in _id_name}
+check("beide Backends kennen dieselben Hotkey-IDs",
+      _lin_ids == set(_win_namen))
+if _lin_ids != set(_win_namen):
+    print("        nur Linux:   " + ", ".join(sorted(_lin_ids - set(_win_namen))))
+    print("        nur Windows: " + ", ".join(sorted(set(_win_namen) - _lin_ids)))
+
+
+def _kombi_linux(s):
+    """'<ctrl>+<alt>+a' -> 'CTRL+ALT+A'"""
+    return s.replace("<", "").replace(">", "").upper()
+
+
+def _kombi_windows(s):
+    """'CTRL+ALT+A (PUNKT SPEICHERN)' -> 'CTRL+ALT+A' — die Beschreibung faellt weg."""
+    return s.split(" (")[0].strip().upper()
+
+
+_ungleich = []
+for _id, _kombi in _BIND.items():
+    _name = _id_name.get(_id)
+    if _name in _win_namen:
+        _a, _b = _kombi_linux(_kombi), _kombi_windows(_win_namen[_name])
+        if _a != _b:
+            _ungleich.append(f"{_name}: Linux={_a} Windows={_b}")
+check("und dieselbe Tastenkombination je Hotkey", _ungleich == [])
+if _ungleich:
+    print("        " + "; ".join(_ungleich))

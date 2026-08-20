@@ -1131,8 +1131,9 @@ Auswahl und nur, wenn er wirklich draussen liegt**: eine Bühne, die bei jedem
 Neuzeichnen springt, nimmt einem die Stelle weg, die man gerade ansieht.
 
 **Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
-`erkenne_slots_im_bild()` aus `editors/slot_editor.py`, die auch `repair`
-benutzt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
+`detect_slots_in_image()` aus `editors/scan_services.py`. Der Konsolen-Editor
+ruft sie über seinen deutschen Namen `erkenne_slots_im_bild()`, den auch
+`repair` benutzt; das Studio nimmt den Dienst direkt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
 leeren Slot-Hintergrund, und alle liegen da; ein volles Inventar von Hand wären
 90 Klicks. Zwei Erkennungen wären zwei Ergebnisse.
 

@@ -454,11 +454,6 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
     return capture_screen(region)
 
 
-def take_screenshot_bitblt(region: tuple = None) -> Optional['Image.Image']:
-    """Kompatibilitätsname; die Umsetzung gehört ins Plattform-Backend."""
-    return capture_screen(region)
-
-
 def take_window_screenshot(hwnd: int) -> Optional[tuple]:
     """Bildet EIN Fenster ab — auch wenn etwas davor liegt.
 
