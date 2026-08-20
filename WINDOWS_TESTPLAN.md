@@ -1,6 +1,6 @@
 # Windows-Testplan — Idle-Clans-Autoclicker
 
-Stand: 2026-08-19, Branch `agent/studio-cleanup`. Dieser Plan deckt die
+Stand: 2026-08-19, zusammengeführt auf `main`. Dieser Plan deckt die
 **ganze App** ab (nicht nur die jüngsten Änderungen). 🆕 = in den letzten
 Sessions neu/geändert — dort besonders genau prüfen.
 

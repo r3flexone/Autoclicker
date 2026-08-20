@@ -1,6 +1,6 @@
 # Manueller Plattform-Testplan
 
-Stand: 2026-08-19, Branch `agent/studio-cleanup`.
+Stand: 2026-08-19, zusammengeführt auf `main`.
 
 Die automatischen Tests laufen ohne grafische Sitzung. Dieser Plan deckt die
 Systemgrenzen ab, die nur auf echten Desktops sinnvoll prüfbar sind.

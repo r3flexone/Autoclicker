@@ -173,7 +173,7 @@ daneben stehen.
 3. Handler dispatcht typischerweise zu einem Editor unter `autoclicker/editors/`.
 4. Editoren sind **synchron, blockierend** (Console-Input via `safe_input`). Während ein Editor läuft, ist der Main-Thread blockiert — der Worker kann parallel weiterlaufen.
 
-Neuen Hotkey hinzufügen: Konstante in `winapi.py` (`HOTKEY_*` + `VK_*`) → `register_hotkeys()`-Liste → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
+Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral), Tastencode im jeweiligen Backend (`VK_*` in `platforms/windows.py`) → `register_hotkeys()`-Liste **beider** Backends → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
 **`CTRL+ALT+<Buchstabe>` ist voll.** 24 der 26 Buchstaben sind vergeben, frei blieben
 nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
@@ -582,7 +582,7 @@ wird.)
 
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
-- `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
+- `autoclicker/winapi.py` — **Fassade** über das Plattform-Backend (Maus, Tastatur, Hotkeys, Fenster, Bildschirm-Geometrie); die Implementierungen liegen in `platforms/` (s.u.). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/symbol.py` — das Programm-Symbol als Geometrie (s.u. beim Studio). Kennt weder Windows noch Pillow: es rechnet nur, wie viel Farbe auf einen Pixel fällt.
 **Ein Template vergleicht nur das Item, nicht den Slot.** Gemessen an einem
 echten Bestand: von 62×60 Pixeln eines Slots sind **10–40 % das Item**, der Rest
@@ -634,7 +634,7 @@ einzige Farbe ist, kommt maskiert auf 0 — vorher lieferte der Hintergrund die
 Varianz und es „funktionierte". Echte Symbole haben Struktur; für den Rest gibt
 es die Marker-Farben.
 
-- `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
+- `autoclicker/imaging.py` — Screenshot über das Plattform-Backend, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
@@ -2043,22 +2043,40 @@ Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 Umbenennungen mit `git mv` machen — dann erkennt Git sie als Rename und die Historie
 der Datei bleibt lesbar.
 
-### Plattform-Schicht (Windows-Abhängigkeiten)
+### Plattform-Schicht (Windows und Linux/X11)
 
-Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/test_logic.py`
-(`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf `ctypes.windll`,
-`ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt die Datei.
+**Das Betriebssystem steht in einem Backend, nicht im Rest des Baums.**
+`platforms/load_backend()` wählt es einmal anhand von `sys.platform`; alles andere
+importiert weiterhin `autoclicker.winapi` und merkt nichts davon. Ein nicht
+unterstütztes System (Wayland, macOS) fliegt dort mit `RuntimeError` auf, statt
+sich später als stiller Fehlschlag zu zeigen.
 
 | Modul | was |
 |---|---|
-| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks, Fenster-Symbol + App-Kennung |
-| `imaging.py` | Screenshot über GDI BitBlt |
+| `winapi.py` | **stabile Fassade** — 24 Zeilen, reicht an das Backend durch. Kein Systemcode mehr. |
+| `platforms/base.py` | der Vertrag (`PlatformBackend`-Protocol): Eingabe, Fenster, Hotkeys, Bildschirm |
+| `platforms/common.py` | betriebssystemneutral: Tastennamen, `HOTKEY_*`-IDs, `PlatformError`, `APP_ID` |
+| `platforms/windows.py` | WinAPI-Backend (ctypes: Maus, Tastatur, Hotkeys, GDI, Hooks, Fenster-Symbol) |
+| `platforms/linux_x11.py` | X11-Backend (`python-xlib`, `pynput`, `mss`) |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |
 
-Der Test prüft **beide** Richtungen: kein Windows-Aufruf ausserhalb der Liste, und kein
-Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält — sonst wächst
-sie zur Fiktion.
+Windows-spezifischer Code darf nur noch in **drei** Dateien stehen —
+`platforms/windows.py`, `utils/io.py`, `utils/console.py`. Ein Test in
+`tools/test_logic.py` (`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf
+`ctypes.windll`, `ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt
+die Datei. Er prüft **beide** Richtungen — kein Windows-Aufruf ausserhalb der Liste, und
+kein Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält, sonst
+wächst sie zur Fiktion.
+
+**Wer einen Systemaufruf braucht, erweitert den Vertrag, nicht die Fassade.** Neue
+Funktion in `base.py` eintragen, in *beiden* Backends implementieren, über `winapi`
+exportieren. Nur eine Hälfte zu bauen ist der Fehler, den die Matrix in
+`.github/workflows/tests.yml` fängt: die Suite läuft auf Ubuntu **und** Windows gegen
+denselben Testvertrag (`test_platforms.py`).
+
+Das gilt auch für `imaging.py`: es ist seit dem Umbau plattformneutral und holt sich
+den Screenshot über das Backend, statt selbst BitBlt zu rufen.
 
 **Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
 lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnose`, `scan_studio`,
@@ -2080,7 +2098,7 @@ hätte.
   Plattformverträge laufen. Echte Hotkeys, Eingabe, Fenster und Screenshots
   brauchen für den manuellen Test eine X11-Sitzung. Wayland wird bewusst
   abgelehnt.
-- **DPI-Awareness**: `winapi.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
+- **DPI-Awareness**: `platforms/windows.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
 - **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.
 - **Der erste OCR-Aufruf lädt Modelle aus dem Netz.** EasyOCR holt beim allerersten `read_text()` Detection- und Recognition-Modell per Download — Sekunden bis Minuten, und es kann mit HTTP-Fehler scheitern; danach liegt ein Aufruf bei ~300 ms. Passiert das im Worker, steht die Sequenz so lange. Dieselbe Klasse Problem wie beim LLM, weshalb die LLM-Benennung bewusst nicht im Scan läuft (s.o.). Wer `ocr_enabled` neu einschaltet, sollte den ersten Aufruf nicht in einen laufenden Scan legen.
