@@ -95,10 +95,10 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
     print(f"  {col('CTRL+ALT+B', 'yellow')}  Sequenz-Studio {hint('(Phasen + Schritte visuell – braucht pywebview)')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
-    print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Slots + Items auf einem Screenshot)')}")
+    print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Item-, Boss- und Icon-Scans auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, manuell, log/detail)')}")
+          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, klick = nachklicken, manuell, log/detail)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()

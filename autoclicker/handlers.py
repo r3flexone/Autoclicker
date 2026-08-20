@@ -56,16 +56,22 @@ _toggle_lock = threading.Lock()
 
 
 def _block_if_recording(state: AutoClickerState) -> bool:
-    """Blockiert Handler mit Konsolen-Eingaben während einer laufenden Aufnahme.
+    """Blockiert Handler mit Konsolen-Eingaben, solange ein Maus-Hook läuft.
 
     Der Low-Level-Maus-Hook braucht die Message-Pump des Main-Threads — blockierende
     Editoren würden den Hook still entfernen und Klicks gingen verloren.
     Gibt True zurück, wenn der Handler abbrechen soll.
+
+    **Zwei Modi hängen daran, nicht mehr nur die Aufnahme.** Die Klick-Runde
+    (Punkte nachklicken) läuft aus demselben Hook und hat dasselbe Problem;
+    beide werden mit CTRL+ALT+J beendet.
     """
     with state.lock:
         recording = state.recording_active
-    if recording:
-        print(f"\n{err('Aufnahme läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
+        nachklick = state.nachklick_aktiv
+    if recording or nachklick:
+        was = "Aufnahme" if recording else "Klick-Runde"
+        print(f"\n{err(was + ' läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
         return True
     return False
 
@@ -114,6 +120,11 @@ def handle_undo(state: AutoClickerState) -> None:
     """
     with state.lock:
         recording = state.recording_active
+        nachklick = state.nachklick_aktiv
+    if nachklick:
+        from .editors.nachklick import nachklick_zurueck
+        nachklick_zurueck(state)
+        return
     if recording:
         from .editors.sequence_recorder import verwirf_letztes
         verwirf_letztes(state)
@@ -333,6 +344,8 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('walk / w', 'yellow')}    - alle Punkte durchgehen; dort 'n' = Punkt auf die "
           f"Mausposition neu setzen {hint('(repariert Sequenzen ohne sie anzufassen)')}")
+    print(f"  {col('klick / k', 'yellow')}   - Sequenz einmal von Hand NACHKLICKEN; jeder Klick "
+          f"setzt den nächsten Punkt {hint('(nur die Stellen, nicht die Zeiten)')}")
     print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
     print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
     print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
@@ -353,6 +366,16 @@ def handle_show(state: AutoClickerState) -> None:
             if user_input.lower() in ("walk", "w"):
                 from .runtime.debug import walk_points
                 walk_points(state)
+                continue
+
+            if user_input.lower() in ("klick", "k", "nachklicken"):
+                # **Der Editor schliesst sich dabei.** Die Runde laeuft aus dem
+                # Maus-Hook, und der braucht die Message-Pump des Main-Threads;
+                # ein blockierendes input() hier bekaeme keinen einzigen Klick zu
+                # sehen. Dieselbe Regel wie bei der Aufnahme.
+                from .editors.nachklick import start_nachklick
+                if start_nachklick(state):
+                    return
                 continue
 
             if user_input.lower() in ("manuell", "m"):
@@ -719,7 +742,17 @@ def handle_pause(state: AutoClickerState) -> None:
 
 
 def handle_skip(state: AutoClickerState) -> None:
-    """Überspringt die aktuelle Wartezeit."""
+    """Überspringt die aktuelle Wartezeit — in einer Klick-Runde den Punkt.
+
+    Derselbe Hotkey, dieselbe Bedeutung („das hier lasse ich aus"), nur der
+    Gegenstand hängt am Zustand — wie bei CTRL+ALT+U.
+    """
+    with state.lock:
+        nachklick = state.nachklick_aktiv
+    if nachklick:
+        from .editors.nachklick import nachklick_ueberspringen
+        nachklick_ueberspringen(state)
+        return
     with state.lock:
         if not state.is_running:
             print(f"\n{info('Keine Sequenz läuft.')}")
@@ -933,13 +966,30 @@ def handle_import_export(state: AutoClickerState) -> None:
 
 
 def handle_record_sequence(state: AutoClickerState) -> None:
-    """Startet oder stoppt die Sequenz-Aufnahme via Maus-Hook."""
+    """Startet oder stoppt die Sequenz-Aufnahme via Maus-Hook.
+
+    Läuft gerade eine Klick-Runde, beendet derselbe Griff sie: „diese
+    Klick-Aufzeichnung ist zu Ende" heisst hier wie dort dasselbe, und ein
+    zweiter Buchstabe dafür wäre einer der letzten freien.
+    """
+    with state.lock:
+        nachklick = state.nachklick_aktiv
+    if nachklick:
+        from .editors.nachklick import stop_nachklick
+        stop_nachklick(state, "von Hand beendet")
+        return
     from .editors.sequence_recorder import handle_record_sequence as _rec
     _rec(state)
 
 
 def handle_record_pause(state: AutoClickerState) -> None:
-    """Pausiert/Setzt die laufende Sequenz-Aufnahme fort."""
+    """Pausiert/Setzt die laufende Sequenz-Aufnahme oder Klick-Runde fort."""
+    with state.lock:
+        nachklick = state.nachklick_aktiv
+    if nachklick:
+        from .editors.nachklick import nachklick_pause
+        nachklick_pause(state)
+        return
     from .editors.sequence_recorder import handle_record_pause as _pause
     _pause(state)
 
@@ -1047,6 +1097,12 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     with state.lock:
         was_recording = state.recording_active
         state.recording_active = False
+        war_nachklick = state.nachklick_aktiv
+    if war_nachklick:
+        # Sie speichert dabei, was bis hierher gesetzt wurde — der Hook schreibt
+        # nichts auf Platte, also hinge sonst die halbe Runde in der Luft.
+        from .editors.nachklick import stop_nachklick
+        stop_nachklick(state, "beim Beenden abgebrochen")
     if was_recording:
         from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()

@@ -750,7 +750,7 @@ es die Marker-Farben.
   - `web/`: HTML, CSS, JavaScript und Logo.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
-- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
+- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `nachklick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
@@ -2122,6 +2122,59 @@ Betrag verschoben. Zwei Wege, und die Reihenfolge zählt:
 **Zuerst `repair`**, dann dessen gemessenen Versatz auf den Rest anwenden lassen: eine
 Maus-Position trifft den Pixel nie genau, und bei einer Scan-Region schneiden drei Pixel
 das Item-Icon an. `fix` bleibt für den Fall ohne Slots.
+
+**Hat sich nicht alles um denselben Betrag verschoben, hilft kein Versatz.** Ein
+Spiel-Update legt Knöpfe um, ein anderes Fenster hat eine andere Grösse — dann
+stimmt jede Stelle einzeln nicht mehr, und beide Wege oben rechnen etwas
+Falsches gleichmässig hoch. Dafür gibt es zwei Runden, die Punkt für Punkt
+gehen:
+
+| Runde | wo | wie |
+|---|---|---|
+| `walk` | Punkte-Menü | Zeiger springt hin, `n` setzt auf die Mausposition — **ohne Klick** |
+| `klick` | Punkte-Menü | die Sequenz einmal von Hand **nachklicken** (`editors/nachklick.py`) |
+
+**Der Unterschied ist der Klick, und er entscheidet.** `walk` fasst nichts an —
+also bleibt das Spiel stehen, wo es steht, und ein Punkt im dritten Untermenü
+ist gar nicht sichtbar: man sieht den Desktop und rät. Bei `klick` geht jeder
+Klick ans Spiel, die Oberfläche öffnet sich genau wie im Lauf, und **der nächste
+Punkt liegt dann vor einem**. Man spielt die Sequenz einmal von Hand durch, und
+hinter jedem Klick steht die neue Stelle im Punkt.
+
+Fünf Regeln, an denen die Klick-Runde hängt:
+
+- **Geändert wird nur die Stelle.** Wartezeiten, Farb-Bedingungen,
+  Nachprüfungen, ELSE, Scans und die Reihenfolge bleiben — die Runde fasst die
+  Sequenzdatei überhaupt nicht an, sie schreibt `x`, `y` und (nur wenn der Punkt
+  schon eine hatte) die Farbe in `points.json`.
+- **Jeder Punkt einmal, in der Reihenfolge des Laufs** (INIT → Loop-Phasen →
+  END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
+  zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
+- **Was sie nicht erreicht, sagt sie** (`klickpunkte()` gibt zwei Listen
+  zurück): beobachtete Pixel, ELSE-Klicks, Nachprüfungen und Rad-Schritte kommen
+  in einem normalen Durchlauf nicht vor. Dafür bleibt `walk`. Wer beides ist —
+  erst beobachtet, später geklickt — zählt als Klick; deshalb sammelt die
+  Funktion **erst alle Klicks und dann den Rest**, in einem Durchgang fiel so
+  ein Punkt aus der Runde heraus.
+- **Sie läuft aus dem Maus-Hook**, wie die Aufnahme. Deshalb schliesst der
+  Punkte-Editor beim Start (ein blockierendes `input()` hielte die Message-Pump
+  an, und der Hook sähe keinen Klick), deshalb sind alle weiteren Griffe globale
+  Hotkeys — und deshalb wird **im Hook nicht auf Platte geschrieben**: ein
+  Low-Level-Hook, der zu lange braucht, wird von Windows ausgehängt, und dann
+  fehlen Klicks mitten in der Runde. Gespeichert wird am Ende (`stop_nachklick`,
+  auch beim Beenden des Programms).
+- **Die vier Hotkeys sind geliehen, nicht neu**: `CTRL+ALT+J` beendet (dieselbe
+  Bedeutung wie bei der Aufnahme), `CTRL+ALT+H` pausiert (navigieren, ohne einen
+  Punkt zu verbrauchen), `CTRL+ALT+K` überspringt, `CTRL+ALT+U` geht zurück —
+  und **zurück heisst zurück**: der eben gesetzte Punkt bekommt seine alte
+  Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
+  Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
+  Bedeutung wie sonst, nur einen anderen Gegenstand.
+
+Der Zeiger springt dabei **nicht** nach einem echten Klick auf den nächsten
+Punkt, nur beim Start, beim Überspringen und beim Zurückgehen: die Maus direkt
+nach einem Klick wegzuziehen kann ein Ziehen abbrechen oder einen Tooltip
+verschlucken, und das Spiel verarbeitet den Klick womöglich noch.
 
 **Einzelne Punkte statt aller**: Punkte-Menü → `walk`, dann `n` (Maus an die richtige
 Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmässig

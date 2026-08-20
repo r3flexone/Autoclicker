@@ -6187,6 +6187,7 @@ import tools.tests.studio_scans          # noqa: F401,E402
 import tools.tests.studio_erkennung     # noqa: F401,E402
 import tools.tests.konsolen_editoren     # noqa: F401,E402
 import tools.tests.persistenz_basis      # noqa: F401,E402
+import tools.tests.nachklick            # noqa: F401,E402
 
 PASS, FAIL = _H.PASS, _H.FAIL
 

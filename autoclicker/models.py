@@ -906,3 +906,19 @@ class AutoClickerState:
     # Liste von RecordEvent. Zugriff unter state.lock - der Maus- und der
     # Tastatur-Hook schreiben aus der Message-Pump, die Hotkey-Handler lesen.
     recording_events: list = field(default_factory=list)
+
+    # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
+    # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie
+    # wird nie gespeichert. Was sie ERGIBT, steht danach in points.json.
+    nachklick_aktiv: bool = False
+    # Pausiert: Klicks gehen durch, ohne einen Punkt zu setzen. Dafür da, dass
+    # man zwischendurch im Spiel navigieren kann (Dialog wegklicken, scrollen),
+    # ohne dass die Runde einen Punkt verbraucht.
+    nachklick_pausiert: bool = False
+    # Die Punkt-IDs in der Reihenfolge, in der die Sequenz sie klickt.
+    nachklick_punkte: list = field(default_factory=list)
+    nachklick_index: int = 0
+    # Was die Runde geändert hat: (Punkt-ID, alt, neu) je gesetztem Punkt —
+    # für die Schlussmeldung und damit „nichts passiert" von „alles gleich
+    # geblieben" unterscheidbar bleibt.
+    nachklick_gesetzt: list = field(default_factory=list)

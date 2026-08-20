@@ -1668,7 +1668,22 @@ Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
 |---|---|
 | `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
 | `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
+| `klick` | die Sequenz einmal von Hand **nachklicken** — jeder Klick setzt den nächsten Punkt |
 | `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schliessen und normal starten |
+
+**`klick` ist der Weg, wenn sich Stellen einzeln verschoben haben** (Spiel-Update,
+anderes Fenster) — dann hilft kein gleichmässiger Versatz wie bei `fix`. Der
+Unterschied zu `walk` ist der Klick selbst: er geht ans Spiel, die Oberfläche
+öffnet sich genau wie im Lauf, und der nächste Punkt liegt dann vor dir. Bei
+`walk` steht das Spiel still, und ein Knopf im dritten Untermenü ist gar nicht
+sichtbar.
+
+Geändert wird **nur die Stelle** — Wartezeiten, Farb-Bedingungen, Nachprüfungen,
+ELSE und Scans bleiben unangetastet. Während der Runde: `CTRL+ALT+K`
+überspringen · `CTRL+ALT+U` einen Punkt zurück · `CTRL+ALT+H` pausieren
+(navigieren, ohne einen Punkt zu verbrauchen) · `CTRL+ALT+J` beenden.
+Beobachtete Pixel, ELSE-Klicks und Rad-Schritte erreicht eine Klick-Runde nicht
+— sie werden am Ende gezählt, dafür bleibt `walk`.
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.
