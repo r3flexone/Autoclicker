@@ -201,17 +201,10 @@ def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
     return dateien
 
 
-def _punkte_schreibfertig(punkte: list) -> list:
-    """Rohe Punkt-Dicts durch den Serializer, damit points.json einheitlich aussieht -
-    egal ob ein Eintrag aus der Datei kam oder gerade von der Migration angelegt wurde."""
-    from ..models import ClickPoint
-    raus = []
-    for p in punkte:
-        farbe = tuple(int(v) for v in p["color"]) if p.get("color") else None
-        raus.append(ser._point_to_dict(ClickPoint(
-            p["x"], p["y"], p.get("name", ""), p["id"],
-            color=farbe, source=p.get("source", ""))))
-    return raus
+# `_punkte_schreibfertig()` ist mit der Migrationskette entfallen. Es brachte Punkte,
+# die `_seq_v3_to_v4` gerade angelegt hatte, in dieselbe Form wie die aus der Datei -
+# gebraucht wurde es nur an der einen Stelle, die points.json nachschrieb. Die
+# regulaere Reinigung von points.json macht weiterhin der Round-Trip (`_rt_points`).
 
 
 def _punkte_kontext() -> list:
@@ -321,11 +314,11 @@ def sweep(write: bool = False, punkte: Optional[list] = None) -> SweepErgebnis:
     """
     ergebnis = SweepErgebnis()
     ergebnis.geschrieben = write
+    # Die Punkte gehen weiterhin als Kontext durch: die Round-Trip-Funktionen brauchen
+    # sie, um die Koordinaten einer Sequenz aufzuloesen (in der Datei stehen nur IDs).
+    # Was hier entfallen ist, ist das Nachschreiben: solange die Sequenz-Kette leer ist,
+    # legt keine Migration mehr Punkte an.
     punkte = _punkte_kontext() if punkte is None else punkte
-    # Die Sequenz-Migration darf Punkte ANLEGEN (Koordinaten, die vorher nur im Schritt
-    # standen). Sie landen in dieser Liste - gemerkt wird die Ausgangslaenge, damit am
-    # Ende feststeht, ob points.json nachgeschrieben werden muss.
-    punkte_vorher = len(punkte)
 
     for pfad, kind, rt in sammle_dateien():
         roh = _lade(pfad)
@@ -334,9 +327,6 @@ def sweep(write: bool = False, punkte: Optional[list] = None) -> SweepErgebnis:
             continue
 
         # Auf einer Kopie, damit die Meldungen nicht vom Round-Trip verfaelscht werden.
-        # Auch die Punkte-Liste wird kopiert: dieser Lauf dient nur der Meldung, und die
-        # Sequenz-Migration legt inzwischen Punkte an - sonst entstuenden sie zweimal
-        # bzw. auch fuer eine Datei, die der Round-Trip danach gar nicht laden kann.
         _, meldungen = migrate(json.loads(json.dumps(roh)), kind,
                                {"points": json.loads(json.dumps(punkte))})
 
@@ -358,18 +348,6 @@ def sweep(write: bool = False, punkte: Optional[list] = None) -> SweepErgebnis:
         ergebnis.geaendert.append((pfad, meldungen))
         if write:
             _schreibe(pfad, sauber)
-
-    # points.json zuletzt: erst jetzt steht fest, ob eine Sequenz-Migration Punkte
-    # angelegt hat. Wuerde man das oben in der Schleife erledigen, waere die Datei
-    # geschrieben, bevor die Sequenzen ueberhaupt gelesen sind - und die neuen Punkte
-    # existierten beim naechsten Start nicht mehr.
-    neu = len(punkte) - punkte_vorher
-    if neu > 0:
-        pfad = _points_file()
-        ergebnis.geaendert.append(
-            (pfad, [f"{neu} Punkt(e) aus Sequenz-Koordinaten uebernommen"]))
-        if write:
-            _schreibe(pfad, _punkte_schreibfertig(punkte))
 
     return ergebnis
 

@@ -15,13 +15,19 @@ from pathlib import Path
 
 logger = logging.getLogger("autoclicker")
 
-from ..imaging import take_screenshot, find_color_in_image, match_template_in_image
+from ..imaging import (
+    take_consistent_window_screenshot, take_screenshot, find_color_in_image,
+    match_template_in_image, template_size,
+)
 from ..models import (
-    AutoClickerState, ItemProfile, SCAN_MODE_ALL, SCAN_MODE_EVERY,
+    AutoClickerState, ItemProfile, ItemSlot, SCAN_MODE_ALL, SCAN_MODE_EVERY,
+)
+from ..editors.scan_services import (
+    crop_screen_region, map_point_between_rects, map_region_between_rects,
 )
 from ..session_log import log_event
 from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
-from ..winapi import set_cursor_pos, get_screen_center
+from ..winapi import set_cursor_pos, get_screen_center, resolve_window
 from .actions import safe_click
 from .debug import is_log_debug
 
@@ -33,6 +39,11 @@ from .debug import is_log_debug
 # sichtbarer Hover-Tooltip die Erkennung verfälscht.
 _MOUSE_PARK_SETTLE = 0.05
 
+# Manche Spiele unterstützen PrintWindow grundsätzlich nicht. Der notwendige
+# Desktop-Fallback ist wichtig, aber dieselbe Warnung in jedem Zyklus wäre nur
+# Rauschen. Pro Scan und Sitzung genügt einmal.
+_window_capture_warnings: set[tuple[str, str]] = set()
+
 
 # =============================================================================
 # PROFIL-MATCHING HELPER (gemeinsam für Item- und Boss-Erkennung)
@@ -40,23 +51,52 @@ _MOUSE_PARK_SETTLE = 0.05
 
 def _check_profile_match(profile, img, color_tolerance: int,
                           state: 'AutoClickerState', debug: bool,
-                          found_label: str = "gefunden") -> bool:
+                          found_label: str = "gefunden",
+                          return_score: bool = False):
     """Prüft ob ein Profil (Item oder Boss) per Template/Marker im Screenshot erkannt wird.
 
     Returns: True wenn Template UND Marker OK und mindestens eines definiert ist.
+             Mit ``return_score`` zusätzlich eine vergleichbare Trefferqualität.
     """
     template_ok = True
     template_info = ""
+    template_score = None
     marker_ok = True
     marker_info = ""
+    marker_score = None
 
-    if profile.template:
-        match, confidence, _pos = match_template_in_image(
-            img, profile.template, profile.min_confidence
-        )
-        template_ok = match
-        template_info = (f"Template {confidence:.1%}" if match
-                         else f"Template {confidence:.1%} (min: {profile.min_confidence:.0%})")
+    ist_item = isinstance(profile, ItemProfile)
+    vorlagen = (profile.template_names() if ist_item
+                 else ([profile.template] if profile.template else []))
+    if vorlagen:
+        if ist_item:
+            # Ein Item wird nur mit einer fuer diesen Slot gelernten Variante
+            # verglichen. Damit gibt es keine halbgültigen Resize-Ergebnisse.
+            kandidaten = [name for name in vorlagen
+                           if template_size(name) == tuple(img.size)]
+        else:
+            # Boss-/Icon-Profile behalten ihr bisheriges Resize-Verhalten.
+            kandidaten = vorlagen
+
+        if not kandidaten:
+            template_ok = False
+            template_score = 0.0
+            template_info = f"für Slot {img.size[0]}×{img.size[1]} nicht gelernt"
+        else:
+            ergebnisse = [
+                match_template_in_image(
+                    img, name, profile.min_confidence,
+                    resize_template=not ist_item,
+                    report_size_mismatch=not ist_item,
+                )
+                for name in kandidaten
+            ]
+            match, confidence, _pos = max(ergebnisse, key=lambda wert: wert[1])
+            template_ok = match
+            template_score = max(0.0, min(1.0, float(confidence)))
+            template_info = (f"Template {confidence:.1%}" if match
+                             else f"Template {confidence:.1%} "
+                                  f"(min: {profile.min_confidence:.0%})")
 
     if profile.marker_colors:
         markers_total = len(profile.marker_colors)
@@ -69,11 +109,12 @@ def _check_profile_match(profile, img, color_tolerance: int,
         min_required = state.config.scan_min_markers_required
 
         marker_ok = (markers_found == markers_total) if require_all else (markers_found >= min_required)
+        marker_score = markers_found / markers_total if markers_total else 0.0
         marker_info = f"Marker {markers_found}/{markers_total}"
 
     if debug:
         info_parts = []
-        if profile.template:
+        if vorlagen:
             info_parts.append(template_info)
         if profile.marker_colors:
             info_parts.append(marker_info)
@@ -85,7 +126,10 @@ def _check_profile_match(profile, img, color_tolerance: int,
         else:
             print(dbg(f"  → {profile.name}: {', '.join(info_parts)}"))
 
-    return template_ok and marker_ok and bool(profile.template or profile.marker_colors)
+    matched = template_ok and marker_ok and bool(vorlagen or profile.marker_colors)
+    scores = [score for score in (template_score, marker_score) if score is not None]
+    score = sum(scores) / len(scores) if scores else 0.0
+    return (matched, score) if return_score else matched
 
 
 # =============================================================================
@@ -161,6 +205,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
         # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
         rueckwaerts = config.reverse
+        fenster_titel = config.capture_window_title
+        fenster_index = config.capture_window_index
+        fenster_referenz = (tuple(config.capture_window_rect)
+                            if config.capture_window_rect else None)
 
     found_items = []
 
@@ -176,6 +224,52 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
     _park_mouse_for_scan(state.config.scan_park_mouse)
 
+    # Ein Fenster-Scan arbeitet auf EINEM eingefrorenen Bild — genau wie der
+    # Editor. Damit können sich Items nicht mitten im Durchgang verschieben, und
+    # beide Wege sehen wirklich dieselben Pixel aus derselben Aufnahmemethode.
+    fensterbild = None
+    fenster_rechteck = None
+    if fenster_titel:
+        fenster = resolve_window(fenster_titel, fenster_index, fenster_referenz)
+        if fenster is None:
+            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' nicht "
+                      "gefunden. Spiel öffnen oder die Aufnahmequelle im Studio "
+                      "neu wählen."))
+            return []
+        if debug:
+            screenshot_start = time.time()
+        aufnahme = take_consistent_window_screenshot(fenster[2])
+        if aufnahme is None:
+            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' konnte "
+                      "nicht aufgenommen werden."))
+            return []
+        fensterbild, fenster_rechteck, hinweis = aufnahme
+        if hinweis:
+            schluessel = (scan_name, hinweis)
+            if schluessel not in _window_capture_warnings:
+                _window_capture_warnings.add(schluessel)
+                print(warn(f"Item-Scan '{scan_name}':{hinweis}"))
+        if debug:
+            screenshot_ms = (time.time() - screenshot_start) * 1000
+            print(dbg(f"Fenster '{fenster_titel}' einmal aufgenommen: "
+                      f"{fensterbild.size[0]}x{fensterbild.size[1]}px "
+                      f"in {screenshot_ms:.0f}ms"))
+
+        referenz = fenster_referenz or fenster_rechteck
+        try:
+            slots_to_scan = [ItemSlot(
+                name=slot.name,
+                scan_region=map_region_between_rects(
+                    slot.scan_region, referenz, fenster_rechteck),
+                click_pos=map_point_between_rects(
+                    slot.click_pos, referenz, fenster_rechteck),
+                slot_color=slot.slot_color,
+            ) for slot in slots_to_scan]
+        except (TypeError, ValueError):
+            print(err(f"Item-Scan '{scan_name}': gespeicherte Fenstergeometrie ist "
+                      "ungültig. Aufnahmequelle im Studio neu wählen."))
+            return []
+
     for idx, slot in enumerate(slots_to_scan):
         if state.stop_event.is_set():
             break
@@ -188,13 +282,18 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
             break
 
-        if scan_delay > 0 and idx > 0:
+        if fensterbild is None and scan_delay > 0 and idx > 0:
             if state.stop_event.wait(scan_delay):
                 break
 
         if debug:
             screenshot_start = time.time()
-        img = take_screenshot(slot.scan_region)
+        if fensterbild is not None:
+            img = crop_screen_region(
+                fensterbild, slot.scan_region,
+                (fenster_rechteck[0], fenster_rechteck[1]))
+        else:
+            img = take_screenshot(slot.scan_region)
 
         if img is None:
             continue
@@ -204,12 +303,29 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             size_info = f"{img.size[0]}x{img.size[1]}"
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
-        matched = False
-        for item in items_snapshot:
-            if _check_profile_match(item, img, color_tolerance, state, debug, "gefunden!"):
-                found_items.append((slot, item, item.priority))
-                matched = True
-                break
+        kandidaten = []
+        for reihenfolge, item in enumerate(items_snapshot):
+            ergebnis = _check_profile_match(
+                item, img, color_tolerance, state, debug, "gefunden!",
+                return_score=True,
+            )
+            # Kompatibel mit Tests/Erweiterungen, die den internen Bool-Helfer
+            # ersetzen: ein einfaches True ist ein vollwertiger Treffer.
+            if isinstance(ergebnis, tuple):
+                passt, qualitaet = ergebnis
+            else:
+                passt, qualitaet = bool(ergebnis), 1.0 if ergebnis else 0.0
+            if passt:
+                kandidaten.append((qualitaet, -reihenfolge, item))
+
+        matched = bool(kandidaten)
+        if matched:
+            qualitaet, _neg_reihenfolge, item = max(
+                kandidaten, key=lambda kandidat: (kandidat[0], kandidat[1]))
+            found_items.append((slot, item, item.priority))
+            if debug and len(kandidaten) > 1:
+                print(dbg(f"  → {item.name}: bester von {len(kandidaten)} Treffern "
+                          f"({qualitaet:.1%})"))
 
         if not matched and learn_unknown:
             _learn_unknown_slot_item(state, slot, img, debug)
@@ -235,6 +351,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     # kein Import-Zyklus mit runtime/)
     from ..editors.item_editor.markers import (
         _collect_markers_silent, _find_matching_existing_item,
+        _item_has_compatible_template,
     )
     from ..persistence import save_global_items, TEMPLATES_DIR
 
@@ -249,10 +366,36 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
 
     # Dedup: schon als globales Item bekannt (z.B. in früherem Zyklus gelernt)?
     with state.lock:
-        existing = [(n, it) for n, it in state.global_items.items() if it.template]
+        existing = [(n, it) for n, it in state.global_items.items()
+                    if it.template_names()]
     min_confidence = state.config.scan_min_confidence
     known = _find_matching_existing_item(img, existing, min_confidence)
     if known:
+        with state.lock:
+            known_item = state.global_items.get(known)
+        if known_item is not None and not _item_has_compatible_template(known_item, img):
+            breite, hoehe = img.size
+            basis = f"{sanitize_filename(known)}_{breite}x{hoehe}"
+            template_file = f"{basis}.png"
+            nummer = 2
+            while (Path(TEMPLATES_DIR) / template_file).exists():
+                template_file = f"{basis}_{nummer}.png"
+                nummer += 1
+            template_path = Path(TEMPLATES_DIR) / template_file
+            try:
+                template_path.parent.mkdir(parents=True, exist_ok=True)
+                maskiert.save(template_path)
+            except (OSError, ValueError) as e:
+                print(warn(f"Auto-Lernen: Vorlage für '{known}' konnte nicht "
+                           f"gespeichert werden: {e}"))
+                return
+            with state.lock:
+                if template_file not in known_item.template_variants:
+                    known_item.template_variants.append(template_file)
+            save_global_items(state)
+            print(col(f"[AUTO-LERNEN] '{known}' kann jetzt auch in "
+                      f"{breite}×{hoehe}-Slots erkannt werden", "green"))
+            return
         if debug:
             print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
         return

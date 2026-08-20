@@ -24,7 +24,50 @@ import requests
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from config import *  # noqa: F401,F403  - Einstellungen, s. config.py
+try:
+    from .config import (
+        AUTO_COOK_CHANCE, AUTO_COOK_SOURCE_SKILL, COMPREHENSIVE_AVG_FIELDS,
+        COMPREHENSIVE_URL_TEMPLATE, COMPREHENSIVE_VOLUME_FIELD, EXPORT_PATH,
+        GAME_URL, LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
+        MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
+        MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
+        MIN_MARKET_VOLUME, MIN_PLAUSIBLE_ACTION_SEC, MIN_SELL_VOLUME,
+        NPC_MARKER_COLOR, NPC_SELL_BOOST_MULTIPLIER, OUTPUT_DIR,
+        PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
+        PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES, REASON_TOP_N,
+        RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
+        SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
+        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        net_player_price,
+    )
+    from .orderbook import (
+        buy_levels_from_depth, patience_analysis as geduld_analyse,
+        price_position as preis_position, walk_orderbook,
+    )
+    from .recipes import build_all_recipes
+except ImportError:  # direkter Skriptstart bleibt unterstützt
+    from config import (  # type: ignore
+        AUTO_COOK_CHANCE, AUTO_COOK_SOURCE_SKILL, COMPREHENSIVE_AVG_FIELDS,
+        COMPREHENSIVE_URL_TEMPLATE, COMPREHENSIVE_VOLUME_FIELD, EXPORT_PATH,
+        GAME_URL, LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
+        MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
+        MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
+        MIN_MARKET_VOLUME, MIN_PLAUSIBLE_ACTION_SEC, MIN_SELL_VOLUME,
+        NPC_MARKER_COLOR, NPC_SELL_BOOST_MULTIPLIER, OUTPUT_DIR,
+        PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
+        PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES, REASON_TOP_N,
+        RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
+        SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
+        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        net_player_price,
+    )
+    from orderbook import (  # type: ignore
+        buy_levels_from_depth, patience_analysis as geduld_analyse,
+        price_position as preis_position, walk_orderbook,
+    )
+    from recipes import build_all_recipes  # type: ignore
 
 
 # ---------------------------------------------------------------
@@ -185,116 +228,6 @@ def is_player_shop_tradeable(item_info: dict) -> bool:
     bestaetigten Item-Feld CanNotBeTraded (in build_item_info_map als can_trade
     gespeichert). Fehlt die Angabe, wird - wie frueher - Handelbarkeit angenommen."""
     return bool(item_info.get("can_trade", True))
-
-
-def is_raid_recipe(name: str) -> bool:
-    return "raids_" in str(name).lower()
-
-
-# ---------------------------------------------------------------
-# Rezept-Normalisierung
-# ---------------------------------------------------------------
-
-def _is_smelting_magic_recipe(skill_name: str, recipe_name: str) -> bool:
-    """Ore -> Bar Schmelzen, auf das Smelting Magic ueberhaupt wirkt. Welche einzelnen
-    ZUTATEN davon ausgenommen sind, entscheidet normalize_recipe pro Cost-Zeile
-    (s. SMELTING_MAGIC_EXCLUDED_ITEM_NAMES)."""
-    return skill_name == "Smithing" and recipe_name.endswith("_bar")
-
-
-def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
-                      excluded_cost_items: frozenset = frozenset()) -> dict | None:
-    if raw_recipe.get("Disabled", False):
-        return None  # z.B. Citadel-Raid-only-Content (bestaetigt per Live-Check: Disabled=True)
-
-    if is_raid_recipe(raw_recipe.get("Name", "")):
-        return None
-
-    base_time = raw_recipe.get("BaseTime", 0.0)
-    if base_time <= 0:
-        return None  # Kategorie-Platzhalter, keine echte Aktion
-
-    item_id = raw_recipe.get("ItemReward", -1)
-    item_amount = raw_recipe.get("ItemAmount", 0)
-    if item_id is None or item_id < 0 or item_amount <= 0:
-        return None  # kein direkter Item-Reward (z.B. Scrolls)
-
-    cfg = skill_cfg(skill_name)
-    clan_boost = CLAN_GATHERERS_SPEED_BOOST if cfg.is_gathering else 0.0
-    speed_factor = (1.0 - clan_boost) * (1.0 - cfg.equipment_speed_boost)
-    if speed_factor <= 0:
-        # Ein Speed-Boost von >=100% ist keine gueltige Konfiguration (Aktionszeit 0 oder
-        # negativ). Lieber laut und einmalig scheitern als stillschweigend Gold/h=inf.
-        raise ValueError(
-            f"Skill '{skill_name}': equipment_speed_boost={cfg.equipment_speed_boost} ergibt "
-            "Aktionszeit <= 0. Wert in SKILLS pruefen (0.61 = 61% schneller, nicht 61)."
-        )
-    yield_factor = cfg.yield_multiplier * (1.0 + GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
-
-    # Die doppelte Beute aus The fisherman/The lumberjack bringt normalerweise KEINE XP.
-    # "Better fisherman"/"Better lumberjack" geben davon EXTRA_YIELD_XP_SHARE zurueck.
-    # Bezugsgroesse ist nur der yield_multiplier, nicht der Handschuh-Anteil: der Perk
-    # haengt laut Wiki an The fisherman/The lumberjack, nicht an den Handschuhen.
-    xp_factor = 1.0
-    if cfg.extra_yield_xp and cfg.yield_multiplier > 1.0:
-        xp_factor = 1.0 + EXTRA_YIELD_XP_SHARE * (cfg.yield_multiplier - 1.0)
-
-    # Smelting Magic wirkt nur beim Ore->Bar-Schmelzen (Recipe-Name endet auf "_bar"),
-    # nicht generell auf alle Smithing-Rezepte (siehe Kommentar bei SMITHING_SMELTING_COST_MULTIPLIER).
-    # Reichweite innerhalb des Rezepts ist unklar (s. Kommentar oben) -> pro Cost-Zeile:
-    # Best-Case = Rabatt auf ALLE Zeilen, Worst-Case = nur auf die erste Zeile (Haupt-Erz).
-    is_bar_smelt = _is_smelting_magic_recipe(skill_name, raw_recipe.get("Name", ""))
-    costs = []
-    for i, c in enumerate(raw_recipe.get("Costs") or []):
-        if is_bar_smelt:
-            if c.get("Item") in excluded_cost_items:
-                line_mult = 1.0   # Astronomical ore: vom Perk ausgenommen, immer voller Preis
-            elif case == "best" or i == 0:
-                line_mult = SMITHING_SMELTING_COST_MULTIPLIER
-            else:
-                line_mult = 1.0
-        else:
-            line_mult = cfg.cost_multiplier
-        costs.append({"Item": c.get("Item"), "Amount": c.get("Amount", 0) * line_mult})
-
-    return {
-        "name": raw_recipe.get("Name", "unknown"),
-        "skill": skill_name,
-        "item_id": item_id,
-        "base_time_ms": base_time * speed_factor,
-        "item_amount": item_amount * yield_factor,
-        "xp": (raw_recipe.get("ExpReward", 0.0) * xp_factor
-               * (1.0 + XP_BOOST_TOTAL) * (1.0 + DAILY_XP_BOOST)),
-        "level": raw_recipe.get("LevelRequirement"),
-        "costs": costs,
-        "task_id": raw_recipe.get("TaskId"),
-        "cost_case_ambiguous": is_bar_smelt and len(costs) > 1,
-    }
-
-
-def build_all_recipes(tasks: dict, case: str = "best",
-                       excluded_cost_items: frozenset = frozenset()) -> list:
-    all_recipes = []
-    unknown_skills = []
-    for skill_name, blocks in tasks.items():
-        if skill_name not in SKILLS:
-            unknown_skills.append(skill_name)
-        if skill_cfg(skill_name).excluded:
-            continue
-        for block in blocks:
-            for raw_recipe in block.get("Items", []):
-                normalized = normalize_recipe(skill_name, raw_recipe, case=case,
-                                              excluded_cost_items=excluded_cost_items)
-                if normalized is not None:
-                    all_recipes.append(normalized)
-
-    # Ein Skill, den SKILLS nicht kennt, laeuft still auf DEFAULT_SKILL_CONFIG - also
-    # ohne JEDEN Boost. Genau so ist frueher "ItemCreation" (Script-Key hatte ein
-    # Leerzeichen) unbemerkt in die Auswertung gerutscht.
-    if unknown_skills and case == "best":
-        print(f"⚠ Skills aus der API ohne Eintrag in SKILLS: {sorted(unknown_skills)} - sie laufen "
-              "ohne Speed-/Yield-/Cost-Boosts mit. In SKILLS ergaenzen (oder excluded=True setzen).")
-    return all_recipes
 
 
 def check_action_time_plausibility(all_recipes: list):
@@ -1028,90 +961,6 @@ def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
 # Begruendung: warum lohnt sich ein Item - und warum nicht
 # ---------------------------------------------------------------
 
-def walk_orderbook(levels: list, qty: float) -> tuple[float, float, float]:
-    """Verkauft `qty` Stueck ins Buch, beste Gebote zuerst.
-
-    levels: [(preis, menge)], beliebige Reihenfolge. Gibt zurueck:
-    (Erloes, tatsaechlich verkaufte Menge, Preis der zuletzt getroffenen Stufe)."""
-    rest, erloes, letzter = qty, 0.0, 0.0
-    for preis, menge in sorted(levels, key=lambda x: x[0], reverse=True):
-        if rest <= 0:
-            break
-        nimm = min(rest, menge)
-        erloes += nimm * preis
-        letzter = preis
-        rest -= nimm
-    return erloes, qty - rest, letzter
-
-
-def buy_levels_from_depth(depth: dict) -> list:
-    """Kaufgebote als [(Preis, Menge)] - das ist die Seite, an die DU verkaufst."""
-    return [(e["key"], float(e["value"])) for e in depth.get("highestBuyPricesWithVolume", [])
-            if e.get("key") and e.get("value")]
-
-
-def sell_levels_from_depth(depth: dict) -> list:
-    """Verkaufsangebote als [(Preis, Menge)] - die Seite, gegen die DU konkurrierst,
-    wenn du ein eigenes Angebot einstellst statt ins Gebot zu verkaufen."""
-    return [(e["key"], float(e["value"])) for e in depth.get("lowestSellPricesWithVolume", [])
-            if e.get("key") and e.get("value")]
-
-
-def geduld_analyse(depth: dict | None, top_bid: float, stueck_h: float,
-                   kosten_je_stueck: float) -> dict:
-    """Was laesst sich verlangen, wenn man NICHT sofort verkaufen muss?
-
-    Der Rest der Analyse rechnet mit dem Sofortverkauf ins beste Gebot - richtig, wenn
-    das Gold jetzt gebraucht wird. Wer warten kann, stellt stattdessen ein eigenes
-    Angebot ein und bekommt die Spanne zwischen Gebot und Angebot.
-
-    Der ansetzbare Preis ist das tiefste fremde Angebot minus 1 (unterbieten = vorne in
-    der Schlange), aber nie unter dem besten Gebot - darunter wuerde man sofort ins
-    Gebot verkauft und waere wieder beim Sofortverkauf.
-
-    Die Wartezeit ist die ehrliche Kehrseite: eine Stunde Produktion braucht so lange,
-    wie der Markt braucht, um sie aufzunehmen. Produzierst du 1000/h und das Item
-    handelt 500 am Tag, liegt eine Stunde Arbeit 48 Stunden im Buch.
-    """
-    leer = {"preis": None, "erloes": None, "gold_h": None, "aufschlag": None,
-            "wartezeit_h": None, "angebot_im_buch": None}
-    if not depth or stueck_h <= 0:
-        return leer
-
-    angebote = sell_levels_from_depth(depth)
-    if angebote:
-        tiefstes = min(p for p, _ in angebote)
-        preis = max(tiefstes - 1, top_bid)
-    elif top_bid > 0:
-        # Kein fremdes Angebot: der Preis ist offen. Konservativ der 30-Tage-Schnitt,
-        # sonst wuerde eine leere Angebotsseite als beliebig hoher Preis durchgehen.
-        preis = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or top_bid
-    else:
-        return leer
-
-    if preis <= 0:
-        return leer
-
-    erloes = net_player_price(preis)
-    tagesvolumen = depth.get(COMPREHENSIVE_VOLUME_FIELD) or 0
-
-    # Wie lange der Markt braucht, um EINE Stunde Produktion aufzunehmen. Bewusst ohne
-    # Warteschlangen-Modell: wer unterbietet, liegt vorn — aber der naechste unterbietet
-    # zurueck. Was bleibt, ist die Frage, ob der Umsatz die Menge ueberhaupt hergibt.
-    wartezeit = (stueck_h / tagesvolumen * 24.0) if tagesvolumen > 0 else None
-
-    netto_bid = net_player_price(top_bid) if top_bid > 0 else 0.0
-    return {
-        "preis": preis,
-        "erloes": erloes,
-        "gold_h": stueck_h * (erloes - kosten_je_stueck),
-        "aufschlag": (erloes / netto_bid - 1.0) if netto_bid > 0 else None,
-        "wartezeit_h": wartezeit,
-        # Rohe Tatsache statt Modell: so viel wartet schon auf Kaeufer
-        "angebot_im_buch": sum(m for _, m in angebote),
-    }
-
-
 def _format_levels(levels: list, max_n: int = 5) -> str:
     top = sorted(levels, key=lambda x: x[0], reverse=True)[:max_n]
     return "  |  ".join(f"{p:,.0f}g x {m:,.0f}" for p, m in top)
@@ -1193,39 +1042,6 @@ REASON_COLUMNS = [
     "Preis vs 30-Tage-Schnitt", "Markt-Trend",
     "NPC-Preis", "NPC besser", "Kaufgebote (Stufen)", "Bewertung",
 ]
-
-
-def preis_position(referenz: float, depth: dict | None) -> tuple[float | None, str]:
-    """Wo steht der aktuelle Preis gegenueber seinem eigenen Verlauf?
-
-    Gibt (Abweichung zum 30-Tage-Schnitt als Anteil, Trend-Text) zurueck. Beides kommt
-    aus DERSELBEN comprehensive-Antwort wie das Orderbuch — kostet also keinen Request
-    extra.
-
-    Warum das zaehlt: Gold/h sagt nur, was der Markt HEUTE zahlt. Liegt der Kurs 20 %
-    unter seinem 30-Tage-Schnitt, verkauft man in eine Delle; liegt er darueber, ist der
-    ausgewiesene Wert eher die Ausnahme als der Normalfall. Das ist keine Prognose —
-    nur die Einordnung, ob die Momentaufnahme repraesentativ ist.
-    """
-    if not depth or referenz <= 0:
-        return None, ""
-    avg30 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or 0
-    avg7 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg7D"]) or 0
-    avg1 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg1D"]) or 0
-
-    position = (referenz / avg30 - 1.0) if avg30 > 0 else None
-
-    # Trend nur aussprechen, wenn beide Vergleiche in dieselbe Richtung zeigen -
-    # zwei Stuetzstellen sind wenig, ein Wackler soll nicht wie ein Trend aussehen.
-    trend = ""
-    if avg1 > 0 and avg7 > 0 and avg30 > 0:
-        if avg1 > avg7 > avg30:
-            trend = "steigend"
-        elif avg1 < avg7 < avg30:
-            trend = "fallend"
-        else:
-            trend = "seitwaerts"
-    return position, trend
 
 
 def _num(value) -> float:

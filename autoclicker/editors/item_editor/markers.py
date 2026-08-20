@@ -126,16 +126,37 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
     if not OPENCV_AVAILABLE or not existing_items:
         return None
 
-    from ...imaging import match_template_in_image
+    from ...imaging import match_template_in_image, template_size
 
-    for name, item in existing_items:
-        if not item.template:
-            continue
-
-        match, confidence, pos = match_template_in_image(
-            img, item.template, min_confidence
-        )
-        if match:
-            return name
+    # Eine echte Vorlage derselben Slot-Groesse ist aussagekraeftiger als eine
+    # hoch-/herunterskalierte. Erst wenn keine davon passt, darf die zweite Runde
+    # ein Item aus einem anderen Slot-Typ als moegliche Identitaet erkennen.
+    for gleiche_groesse in (True, False):
+        bester_name = None
+        beste_konfidenz = -1.0
+        for name, item in existing_items:
+            vorlagen = (item.template_names() if hasattr(item, "template_names")
+                         else ([item.template] if item.template else []))
+            for vorlage in vorlagen:
+                passt_groesse = template_size(vorlage) == tuple(img.size)
+                if passt_groesse != gleiche_groesse:
+                    continue
+                match, confidence, _pos = match_template_in_image(
+                    img, vorlage, min_confidence,
+                    resize_template=not gleiche_groesse,
+                    report_size_mismatch=False,
+                )
+                if match and confidence > beste_konfidenz:
+                    bester_name, beste_konfidenz = name, confidence
+        if bester_name is not None:
+            return bester_name
 
     return None
+
+
+def _item_has_compatible_template(item, img: 'Image.Image') -> bool:
+    """Hat das Item bereits eine Vorlage exakt fuer diese Slot-Groesse?"""
+    from ...imaging import template_size
+    vorlagen = (item.template_names() if hasattr(item, "template_names")
+                 else ([item.template] if item.template else []))
+    return any(template_size(vorlage) == tuple(img.size) for vorlage in vorlagen)

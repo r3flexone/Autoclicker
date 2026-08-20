@@ -17,8 +17,12 @@ from ...utils import (
     col, confirm, err, header, hint, parse_non_negative_float, safe_input,
     sanitize_filename,
 )
+from ..scan_services import crop_screen_region
 from .items import select_category
-from .markers import _collect_markers_silent, _find_matching_existing_item
+from .markers import (
+    _collect_markers_silent, _find_matching_existing_item,
+    _item_has_compatible_template,
+)
 
 
 def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
@@ -158,9 +162,7 @@ def item_autoscan_from_image(state: AutoClickerState, slot_list: list,
 
 def _crop_slot_template(slot, source_img, region_origin):
     """Schneidet die Slot-Region aus dem Quellbild (lokale Koordinaten)."""
-    ox, oy = region_origin
-    x1, y1, x2, y2 = slot.scan_region
-    return source_img.crop((x1 - ox, y1 - oy, x2 - ox, y2 - oy))
+    return crop_screen_region(source_img, slot.scan_region, region_origin)
 
 
 def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
@@ -184,7 +186,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     with state.lock:
         existing_templates = [
             (name, item) for name, item in state.global_items.items()
-            if item.template
+            if item.template_names()
         ]
 
     if existing_templates:
@@ -193,6 +195,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     created_count = 0
     skipped_count = 0
     duplicate_count = 0
+    variant_count = 0
     created_names: list[str] = []  # für optionale LLM-Benennung am Schluss
 
     for idx, slot in enumerate(slot_list):
@@ -216,8 +219,27 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         # Gegen bestehende Item-Templates vergleichen (Duplikat-Prüfung)
         matched_item = _find_matching_existing_item(template_img, existing_templates, min_confidence)
         if matched_item:
-            print(f"BEREITS VORHANDEN -> '{matched_item}' (übersprungen)")
-            duplicate_count += 1
+            with state.lock:
+                item = state.global_items.get(matched_item)
+            if item is not None and not _item_has_compatible_template(item, template_img):
+                breite, hoehe = template_img.size
+                safe_name = sanitize_filename(f"{matched_item}_{breite}x{hoehe}")
+                template_file = f"{safe_name}.png"
+                nummer = 2
+                while (Path(TEMPLATES_DIR) / template_file).exists():
+                    template_file = f"{safe_name}_{nummer}.png"
+                    nummer += 1
+                template_path = Path(TEMPLATES_DIR) / template_file
+                template_path.parent.mkdir(parents=True, exist_ok=True)
+                template_img.save(template_path)
+                with state.lock:
+                    item.template_variants.append(template_file)
+                variant_count += 1
+                print(f"VARIANTE -> '{matched_item}' kann jetzt auch "
+                      f"{breite}x{hoehe}-Slots")
+            else:
+                print(f"BEREITS VORHANDEN -> '{matched_item}' (übersprungen)")
+                duplicate_count += 1
             continue
 
         # Neuen Item-Namen vergeben (eindeutig)
@@ -262,12 +284,14 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
         print(f"NEU -> '{item_name}' (P{priority}){marker_str}")
 
-    if created_count > 0:
+    if created_count > 0 or variant_count > 0:
         save_global_items(state)
 
     print(f"\n  === FERTIG: {created_count} neu erstellt", end="")
     if duplicate_count > 0:
         print(f", {duplicate_count} Duplikat(e) übersprungen", end="")
+    if variant_count > 0:
+        print(f", {variant_count} Grössenvariante(n) ergänzt", end="")
     if skipped_count > 0:
         print(f", {skipped_count} fehlgeschlagen", end="")
     print(" ===")

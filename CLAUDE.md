@@ -4,15 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Was das ist
 
-Windows-Autoclicker für das Spiel "Idle Clans". Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor, OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection (Ollama / LM Studio). Code-Sprache und alle UI-Texte sind **Deutsch** — neue Strings ebenso.
+Autoclicker für Windows und Linux/X11 für das Spiel "Idle Clans".
+Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor,
+OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection
+(Ollama / LM Studio). Wayland wird nicht unterstützt. Code-Sprache und alle
+UI-Texte sind **Deutsch** — neue Strings ebenso.
 
 ## Run / Lint / Test
 
 ```bash
 python tools/test_logic.py      # DIE Test-Suite — laeuft auch auf Linux/Mac, Exit 0 = gruen
-python3 -m pyflakes autoclicker/ main.py tools/    # Linter
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
+                                # Linter (= pyflakes, aber mit noqa)
 
-python main.py                  # Startet die App (Windows only — braucht msvcrt, ctypes.windll)
+python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
@@ -28,6 +33,27 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
 deshalb läuft die komplette Logik-Schicht auch hier.
+
+**Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**
+Push und Pull Request auf jedem Branch, als Matrix auf Ubuntu und Windows. Dazu
+kommt ein eigener Job mit `flake8 --select=F` (tote Importe, Tippfehler in Namen).
+Alle drei Jobs müssen grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
+Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
+zu testen sagt nichts darüber, ob die älteste noch trägt.
+
+**Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
+Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
+durchnummerierten Variablennamen (`_b18`, `_sand18`) waren das Symptom: so
+benennt man, wenn der Namensraum voll ist. Neue Sektionen kommen deshalb als
+eigenes Modul unter **`tools/tests/`**, holen Stubs, Zähler und `check`/`section`
+aus `tools/tests/_harness.py` und werden am Ende von `test_logic.py` importiert
+(Import = ausführen, wie im Rest der Datei auch).
+
+Zwei Dinge hängen daran: **die Zähler leben im Harness**, nicht im Aufrufer —
+sonst zählte jedes Modul für sich und die Schlusszeile sähe nur den letzten
+Stand. Und **die Stubs müssen vor dem ersten `autoclicker`-Import stehen**;
+`_harness` setzt sie beim Import, also ist `from ._harness import check` die
+erste Zeile eines neuen Moduls, nicht die dritte.
 
 Regeln beim Erweitern:
 - **Jeder Bugfix bekommt einen Test**, der ohne den Fix umfällt. Gegenprobe: Fix
@@ -55,24 +81,38 @@ einmal einschlägt: **eine Ansicht, die man nur über die Signaturen ihres Fremd
 prüfen kann, ist die falsche Ansicht.**
 
 **Beim Studio stellt sich die Frage deshalb gar nicht.** Seine Oberfläche ist eine
-Webseite, und die Logik dahinter liegt in `bridge.py` — ohne Fenster, ohne Fremdpaket,
-also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist (HTML/CSS/JS). Das ist die
-Richtung, in die GUI-Code hier gehört: **nicht die Ansicht testbar machen, sondern die
-Logik aus ihr heraus.** Die Umsortier-Rechnung stand vorher in der DPG-Ansicht, und der
-Test musste dafür `rebuild_board`, `refresh_properties`, `_set_status` **und**
-`_update_title` stilllegen — letzteres, weil `dpg.set_viewport_title()` ohne Kontext
-kein Python-Fehler ist, sondern ein Segfault, der die ganze Suite mitriss.
+Webseite. `bridge.py` und `scans.py` bleiben stabile Fassaden; die Logik liegt
+nach Verantwortung in `bridge_view.py`, `bridge_services.py`,
+`bridge_editing.py` sowie den `scan_*.py`-Modulen — ohne Fenster, ohne
+Fremdpaket, also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist
+(HTML/CSS/JS). Das ist die Richtung, in die GUI-Code hier gehört: **nicht die
+Ansicht testbar machen, sondern die Logik aus ihr heraus.**
 
-Nur was echtes Windows braucht (Klicks, Screenshots, Hotkeys) bleibt ungetestet. Die Suite
-läuft auch dort — sie prüft dann die Windows-Seite der plattformabhängigen Checks. Auf einer
-cp1252-Konsole bricht sie allerdings mit `UnicodeEncodeError` ab (die Ausgabe nutzt
-Box-Zeichen); unter Windows deshalb mit `PYTHONIOENCODING=utf-8` starten, falls die Konsole
-nicht ohnehin auf UTF-8 steht.
+Automatisiert geprüft werden beide Plattformverträge. Manuell bleiben die echten
+Desktop-Grenzen: globale Hotkeys, Eingabesimulation, Fensterfokus und Screenshots
+in einer Windows- bzw. X11-Sitzung. Auf einer cp1252-Konsole kann die Ausgabe mit
+`UnicodeEncodeError` abbrechen (Box-Zeichen); unter Windows deshalb bei Bedarf
+mit `PYTHONIOENCODING=utf-8` starten.
+
+**Die Konsolen-Editoren sind angefangen, nicht fertig.** Sie standen lange
+vollständig ausserhalb der Suite (rund 3.400 Zeilen). Der Einstieg lief über das,
+was **geteilt** ist: `editors/_detection_capture.py` gehört dem Boss- *und* dem
+Icon-Editor, ein Test deckt dort also zwei Editoren ab — Tastenabfrage,
+Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
+(**Fehleingabe wiederholen statt abbrechen**). Dazu `_apply_item_rename()`, weil
+am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
+
+Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
+`item_editor/` (Lernen, Autoscan, Befehle), `boss_scan_editor.py`,
+`icon_scan_editor.py`, `sequence_editor/loops.py`. Der Weg dorthin ist immer
+derselbe — erst in Stufen zerlegen, dann mit einer Tastenfolge füttern; die
+Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an.
 
 ## Architektur
 
 ### Threading-Modell
-- **Main-Thread**: Pumpt die Windows-Hotkey-Message-Loop (`main.py`), dispatcht zu Handlern, blockiert beim Editor-Input.
+- **Main-Thread**: Pumpt die Hotkey-Ereignisse des gewählten Plattform-Backends
+  (`main.py`), dispatcht zu Handlern und blockiert beim Editor-Input.
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
@@ -133,7 +173,7 @@ daneben stehen.
 3. Handler dispatcht typischerweise zu einem Editor unter `autoclicker/editors/`.
 4. Editoren sind **synchron, blockierend** (Console-Input via `safe_input`). Während ein Editor läuft, ist der Main-Thread blockiert — der Worker kann parallel weiterlaufen.
 
-Neuen Hotkey hinzufügen: Konstante in `winapi.py` (`HOTKEY_*` + `VK_*`) → `register_hotkeys()`-Liste → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
+Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral), Tastencode im jeweiligen Backend (`VK_*` in `platforms/windows.py`) → `register_hotkeys()`-Liste **beider** Backends → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
 **`CTRL+ALT+<Buchstabe>` ist voll.** 24 der 26 Buchstaben sind vergeben, frei blieben
 nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
@@ -259,9 +299,9 @@ Regeln beim Erweitern:
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
-- **Eine vierte Stelle** trägt man in `_STELLEN` (Migration), `_REF_KEYS`
-  (`import_export.py`) und `aufloesen()` ein. Fehlt einer der drei, überlebt sie den
-  nächsten Import oder die nächste Migration nicht.
+- **Eine vierte Stelle** trägt man in `_REF_KEYS` (`import_export.py`) und
+  `aufloesen()` ein. Fehlt eine der beiden, überlebt sie den nächsten Import nicht.
+  (Der dritte Eintrag war `_STELLEN` in der Migration — mit `_seq_v3_to_v4` entfallen.)
 
 **Die Scan-Richtung gehört zum Scan, nicht zum Programm.** Sie stand als
 `config.scan_reverse` in der Config und galt damit für *alle* Item-Scans — die
@@ -311,33 +351,30 @@ andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
 im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Screenshot) und
 der Blanko-Block `(0, 0)` des Sequenz-Studios, der noch gar keine Stelle hat.
 
-Darauf zu vertrauen, dass die Migration schon nachverknüpft, reicht **nicht**: sie läuft nur
-auf Dateien mit altem Schema. Frisch Gespeichertes trägt bereits die aktuelle Version und
-wird nie angefasst. Genau daran hing der Recorder — er legte Schritte und Punkte unabhängig
-voneinander an, und jede aufgenommene Sequenz blieb dauerhaft unverknüpft.
+Darauf zu vertrauen, dass eine Migration das nachträglich verknüpft, reicht **nicht** —
+und heute gibt es sie gar nicht mehr: die Sequenz-Kette ist leer (s.u.). Wer einen
+Klick-Schritt baut, baut ihn mit `point_id`, sonst hat er keine Stelle. Genau daran hing
+einmal der Recorder: er legte Schritte und Punkte unabhängig voneinander an, und jede
+aufgenommene Sequenz blieb dauerhaft unverknüpft.
 
-**Den Altbestand holt die Migration nach, nicht der Nutzer.** `_seq_v2_to_v3` verknüpft
-Aufnahmen von vor dem Fix beim nächsten Start automatisch — sie standen ja schon auf
-Schema 2 und wurden von der Kette nie angefasst.
+**Die Kette hat ihre Arbeit getan und ist gelöscht.** Vier Schritte hoben den Altbestand
+auf Schema 4 — zuletzt `_seq_v3_to_v4`, das jede Koordinate aus der Sequenz nach
+`points.json` zog und dafür notfalls einen Punkt anlegte. Seither gilt die Regel
+ausnahmslos, es gibt keinen Bestand mehr unterhalb von Schema 4, und damit sind die
+Schritte weg. Mit ihnen entfielen `_sichere_neue_punkte()` (sequences.py),
+`_punkte_schreibfertig()` (sweep.py) und `_als_dicts()`: sie schrieben die von der
+Migration angelegten Punkte zurück, und dieses Ereignis tritt nicht mehr ein.
 
-`_seq_v3_to_v4` geht einen Schritt weiter: es **legt notfalls einen Punkt an**. Bliebe auch
-nur ein Schritt unverknüpft, müsste seine Koordinate weiterhin in der Sequenz stehen — und
-die ganze Regel hätte wieder eine Ausnahme. Deshalb gilt hier auch nicht mehr „mehrdeutige
-Stellen bleiben unverknüpft": liegen zwei Punkte übereinander, gewinnt der erste. Dieselbe
-Stelle ist derselbe Ort; unverknüpft hiesse jetzt *Koordinate weg*.
+Was das für eine sehr alte Datei heisst, steht ausdrücklich im Modul-Kopf von
+`migration.py` und in einem Test: sie wird **auf 4 gestempelt, aber nicht umgerechnet**.
+Der Loader wirft deshalb nicht — er liest mit `data.get(key, default)` —, die Sequenz
+kommt aber leer an. Der Weg dorthin ist dann nicht die Wiederbelebung der Schritte,
+sondern `git show <commit>:autoclicker/persistence/migration.py` oder die Sequenz im
+Studio neu zu bauen.
 
-**Angelegte Punkte müssen auf Platte.** Die Migration hängt sie an die Liste in
-`context["points"]`, und der Aufrufer schreibt sie: `sweep.py` am Ende des Durchgangs
-(points.json zuletzt, erst dann steht die Zahl fest), `load_sequence_file()` über
-`_sichere_neue_punkte()` für alle anderen Wege. Die Liste wird deshalb **durchgereicht,
-nicht kopiert** (`_als_dicts`) — mit einer Kopie sähe die zweite Sequenz die Punkte der
-ersten nicht, vergäbe dieselben IDs erneut, und points.json hätte zwei Einträge mit
-derselben ID. Drei Tests pinnen das fest.
-
-Das ist der vorgesehene Weg für so etwas: **neue Daten entstehen korrekt, Altlasten gehen
-einmal durch die Schleuse.** `link` im Sequenz-Editor bleibt für die Fälle, die die
-Migration nicht eindeutig auflösen kann — nicht Teil des normalen Wegs. Sobald keine
-Altbestände mehr existieren, werden `_seq_v2_to_v3` und `_seq_v3_to_v4` ersatzlos gelöscht.
+Das ist der vorgesehene Lebenslauf: **neue Daten entstehen korrekt, Altlasten gehen
+einmal durch die Schleuse — und dann verschwindet die Schleuse.** `link` im
+Sequenz-Editor bleibt für Sonderfälle, nicht als Teil des normalen Wegs.
 
 ### Persistenz-Layout
 Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
@@ -545,7 +582,7 @@ wird.)
 
 ### Module — wer macht was
 - `main.py` — Einstiegspunkt, Hotkey-Loop, Help-Text
-- `autoclicker/winapi.py` — ctypes-Bindings (Maus, Tastatur, Hotkeys, GDI). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
+- `autoclicker/winapi.py` — **Fassade** über das Plattform-Backend (Maus, Tastatur, Hotkeys, Fenster, Bildschirm-Geometrie); die Implementierungen liegen in `platforms/` (s.u.). `safe_click`/`safe_key` liegen in `runtime/actions.py`.
 - `autoclicker/symbol.py` — das Programm-Symbol als Geometrie (s.u. beim Studio). Kennt weder Windows noch Pillow: es rechnet nur, wie viel Farbe auf einen Pixel fällt.
 **Ein Template vergleicht nur das Item, nicht den Slot.** Gemessen an einem
 echten Bestand: von 62×60 Pixeln eines Slots sind **10–40 % das Item**, der Rest
@@ -597,7 +634,7 @@ einzige Farbe ist, kommt maskiert auf 0 — vorher lieferte der Hintergrund die
 Varianz und es „funktionierte". Echte Symbole haben Struktur; für den Rest gibt
 es die Marker-Farben.
 
-- `autoclicker/imaging.py` — Screenshot via GDI BitBlt, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
+- `autoclicker/imaging.py` — Screenshot über das Plattform-Backend, OpenCV-Template-Matching, Farb-Erkennung, Region-Selektion. Templates liegen im `_template_cache` (Schlüssel: mtime+Grösse der Datei), sonst würde jedes Template pro Item × Slot × Zyklus neu von Platte gelesen. Neu gelernte Templates greifen trotzdem sofort — der Schlüssel ändert sich mit.
 - `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
@@ -611,6 +648,23 @@ es die Marker-Farben.
   trägt sie in `log_report.py` ein — der Bericht meldet sonst „nicht ausgewertete
   Ereignisarten" und weist selbst darauf hin.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
+
+  **Der Import läuft in Stufen, nicht am Stück.** `import_bundle()` war eine
+  Funktion mit 292 Zeilen und 69 Verzweigungen — und zugleich die Stelle, die am
+  meisten auf Platte schreibt (Templates, Slots, Items, drei Scan-Arten,
+  Sequenzen, Punkte, Config). Diese beiden Eigenschaften zusammen sind die
+  unangenehmste Kombination, die eine Codebasis haben kann: die Tests konnten
+  unmöglich alle Pfade treffen, und jeder ungetroffene Pfad schrieb Dateien.
+  Heute trägt `_Import` den Zustand eines Durchgangs (ZIP, State, Transform,
+  `stats`, `id_map`), und `_imp_templates` … `_imp_config` sind einzeln prüfbar;
+  `import_bundle()` ist nur noch der Ablauf.
+
+  **Die Reihenfolge ist die eigentliche Aussage** und nicht beliebig: Templates
+  zuerst (Items verweisen darauf), dann Punkte (Sequenzen verweisen darauf), dann
+  die Sequenzen; Slots und Items vor den Item-Scans, weil die per Namen auf sie
+  zeigen und am Ende aufgelöst werden. Was in der Abschlussmeldung steht, steht
+  als Tabelle (`_IMPORT_MELDUNG`) — ein Test hält sie gegen die Schlüssel in
+  `stats`, sonst importiert man etwas, das die Meldung verschweigt.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
@@ -639,7 +693,19 @@ es die Marker-Farben.
   Heute: `_warte_schleife`, `_farb_schleife` und der Boss-Watcher. Ein Test hält das
   fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist
   der Fall, für den man die Ansicht aufmacht.
-- `autoclicker/editors/sequence_studio/` — das Studio-Fenster: `bridge.py` (Sequenz-Editor), `scans.py` (Reiter Scans), `scan_model.py` (GUI-freies Laden/Speichern von Slots, Items, Templates), `model.py` (Board + Farbhelfer), `web/index.html` (die ganze Oberfläche).
+- `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
+  - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
+  - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
+  - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
+  - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
+  - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
+  - `scans.py`: stabile `ScanTeil`-Fassade.
+  - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
+    `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
+    Verantwortlichkeiten.
+  - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
+    GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
+  - `web/`: HTML, CSS, JavaScript und Logo.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. `sequence_recorder.py` ist die Ausnahme: kein Editor, sondern die Aufnahme (s.o.) — sie läuft aus den Hook-Callbacks, nicht aus Konsolen-Eingaben.
@@ -719,10 +785,11 @@ oder in einer aufgeklappten Zeile darunter. Karten können zeigen, was Text besc
 muss — Typ als Marke, Farb-Trigger als Farbfeld, ELSE als eigene Zeile. Das ist der
 ganze Grund für den Wechsel; die Datenschicht (`model.py`) ist dieselbe geblieben.
 
-**Die Oberfläche hält keinen Sequenz-Zustand.** Sie bekommt aus `bridge.py` eine
-Momentaufnahme (`snapshot()`), zeichnet sie, und schickt jede Änderung als Befehl
-zurück, der die nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die
-gespeicherte wäre nicht zwingend die angezeigte.
+**Die Oberfläche hält keinen Sequenz-Zustand.** Sie bekommt über
+`StudioBridge.snapshot()` (implementiert im `BridgeViewMixin`) eine
+Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der die
+nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
+wäre nicht zwingend die angezeigte.
 
 **Fünf Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
@@ -758,12 +825,13 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `laden`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`scans.py`,
-Modell-Layer in `scan_model.py`). Slots werden dort aufgezogen, wo sie im Spiel
-liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
-`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien als
-der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden und
-ein eigener Speichern-Knopf rechts steht.
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanTeil`-
+Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
+in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
+Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
+`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien
+als der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden
+und ein eigener Speichern-Knopf rechts steht.
 
 **Der Item-Scan ist das Übergeordnete, nicht die Auswahl.** Wer mehrere Spiele
 betreibt, hat alle Slots und Items aller Spiele in einer Liste — und keiner davon
@@ -832,22 +900,50 @@ Sechs Regeln, an denen der Reiter hängt:
   bei dreissig Gewählten keine Bedeutung.
 
   **Das Rechteck wählt, es löscht nicht.** Direkt zu löschen wäre der kürzere
-  Weg und der falsche: es gibt in diesem Reiter kein Rückgängig, und ein um
-  fünfzig Pixel zu weit gezogenes Rechteck nähme wortlos dreissig Slots mit.
-  Gewählt sieht man erst, was man verliert; der zweite Griff (Entf oder
-  „N löschen") kostet einen Klick und ist der einzige Schutz, den es gibt.
+  Weg und der falsche: ein um fünfzig Pixel zu weit gezogenes Rechteck nähme
+  wortlos dreissig Slots mit. Gewählt sieht man erst, was man verliert; der
+  zweite Griff (Entf oder „N löschen") kostet einen Klick.
   Aus demselben Grund wählt ein einzelner Klick ins Leere **nicht** mehr ab —
   er fängt das Rechteck an, und die Abwahl ist das leere Rechteck oder ESC.
+- **Es gibt ein Rückgängig, und es merkt sich den ganzen Stand** (`_merke()` /
+  `scan_rueckgaengig()`, STRG+Z). Das war lange die grösste Lücke des Reiters:
+  ein Rechteck über dreissig Slots und ein Druck auf Entf waren endgültig, und
+  der einzige Ausweg hiess „Neu laden" — der wirft *alles* seit dem letzten
+  Speichern weg. Zwischen „ich habe mich um einen Slot vertan" und „ich werfe
+  den Nachmittag weg" lag nichts.
+
+  **Ein vollständiger Abzug statt einzelner Rückwärts-Schritte.** Eine Aktion
+  hier rührt fast immer an mehrere Stellen gleichzeitig: ein gelöschter Slot
+  verschwindet aus jedem Scan, ein umbenanntes Item wird überall nachgezogen.
+  Rückwärts-Schritte müssten jede dieser Nebenwirkungen einzeln kennen — und
+  ein vergessener wäre ein Rückgängig, das die Daten *halb* zurückdreht. Das ist
+  schlimmer als keins. Ein Abzug kostet bei einem echten Bestand rund 30 KB,
+  `UNDO_TIEFE` (30) deckelt den Speicher.
+
+  Drei Regeln beim Erweitern:
+  - **`_merke()` ruft die Methode, die ändert** — nicht die Oberfläche. Sonst
+    hinge das Rückgängig daran, dass jeder Knopf daran denkt.
+  - **Nur bei einer echten Änderung.** Ein abgelehntes Feld oder ein Name, der
+    derselbe bleibt, legt nichts auf den Stapel; deshalb steht `_merke()` in den
+    einzelnen Zweigen und nicht oben am Eingang. Ein STRG+Z, das einmal
+    scheinbar gar nichts tut, ist ein Rückgängig, dem man nicht mehr traut.
+  - **Was auf Platte passiert ist, kommt nicht zurück.** Ein gelöschter Scan
+    kehrt als Konfiguration wieder (und wird beim nächsten Speichern neu
+    geschrieben), sein gemerkter Screenshot ist weg. Das steht in der Meldung,
+    statt ein vollständiges Zurück zu versprechen, das es nicht gibt.
+    `scan_neu_laden()` leert den Stapel — er beschreibt Stände, die es nach dem
+    Neulesen nicht mehr gibt.
 - **Was man nicht treffen kann, kann man nicht löschen.** Ein Slot von 2×2 px
   entsteht aus zwei Klicks fast auf dieselbe Stelle — und war danach kaum wieder
   loszuwerden, weil Löschen Auswählen voraussetzt. Drei Stellen zusammen lösen
   das: `MIN_SLOT` (8) lässt ihn gar nicht erst entstehen, `TREFFER_MIN` (14)
   weitet die *Trefferfläche* vorhandener Winzlinge auf (den Slot selbst nie —
-  gemessen wird, was dasteht), und `_klick_waehlen()` nimmt den **kleinsten**
+  gemessen wird, was dasteht), und `_slot_unter()` nimmt den **kleinsten**
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`winzig`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
-- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scans.py`: wählen, neuer
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scan_contract.py`,
+  über `scans.py` weiterhin öffentlich importierbar: wählen, neuer
   Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
   seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander —
@@ -870,6 +966,47 @@ Sechs Regeln, an denen der Reiter hängt:
   der einen Durchgang hat statt einer Tätigkeit — `finden` schaltet nach der
   Suche zurück, und zwar auch dann, wenn nichts Neues dabei war. Sonst liesse
   derselbe Klick einen mal im Modus stehen und mal nicht, je nach Ergebnis.
+
+  **Was man ZWISCHENDURCH tut, braucht keinen Modus** (`scan_direkt()`).
+  ALT-Klick misst den Hintergrund des Slots unter dem Zeiger, Doppelklick setzt
+  seinen Klickpunkt — beides ohne den Umweg über die Kachel und beides wählt den
+  Slot gleich mit aus. Der Unterschied zu den Modi ist nicht Bequemlichkeit,
+  sondern die Frage, die dahintersteht: ein Modus beantwortet „was tut ein Klick
+  **jetzt**" und lohnt sich, solange man dasselbe zwanzigmal tut. Eine einzelne
+  Korrektur an einem Slot, den man vor sich sieht, ist das Gegenteil davon — dort
+  ist der Moduswechsel hin und zurück teurer als der Handgriff selbst.
+- **Ein Slot lässt sich verschieben, ohne vier Zahlen zu tippen.** Ziehen im
+  Bild oder Pfeiltasten (SHIFT = 10 px), beides über `scan_verschieben()` und
+  beides auf der ganzen Auswahl. Der Fall ist Alltag: das Spielfenster ist
+  umgezogen, die Erkennung sass eine Zeile zu hoch. Über die Zahlenfelder war
+  das bei einem Slot mühsam und bei dreissig ausgeschlossen.
+
+  Drei Regeln dazu:
+  - **Der Klickpunkt geht mit**, statt neu aus der Mitte gerechnet zu werden —
+    er ist womöglich bewusst aus der Mitte gesetzt.
+  - **Gepackt wird nur, was schon gewählt ist.** Damit braucht die Seite keine
+    eigene Trefferregel: welcher Slot unter dem Zeiger liegt, entscheidet
+    weiterhin `_slot_unter()` in Python. Zwei Trefferregeln wären zwei
+    Antworten auf dieselbe Frage.
+  - **Eine gehaltene Pfeiltaste ist EIN Verschieben.** Nur der erste Schritt
+    einer Serie kommt auf den Rückgängig-Stapel (`zaehlt`), sonst läge er nach
+    zwei Sekunden Halten voll mit Ein-Pixel-Schritten und der Schritt davor wäre
+    herausgefallen.
+- **Sammel-Aktionen arbeiten auf der Auswahl** — und zwar auf mehr als
+  „löschen". Bis hierher konnte eine Mehrfachauswahl genau das, womit das
+  Rechteck ein Werkzeug zum Wegräumen war und sonst nichts. Dabei betreffen
+  gerade die Handgriffe nach dem Finden fast immer viele Slots auf einmal:
+  Grösse angleichen, Hintergrund neu messen, aus der Auswahl lernen, die
+  Auswahl in den Scan aufnehmen. Worauf sie wirken, beantwortet
+  `_auswahl_slots()` an **einer** Stelle (Auswahl, sonst der eine Gewählte) —
+  sonst nähme „löschen" dreissig Slots und „angleichen" einen.
+
+  Zwei davon hätten eine naheliegende und falsche Fassung: „Hintergrund messen"
+  misst **jeden Slot an sich selbst** statt eine Farbe für alle zu setzen
+  (Inventare sind selten gleichmässig ausgeleuchtet, und eine gemeinsame Farbe
+  verschöbe die Lernmaske an jedem Slot ein bisschen), und „Grösse angleichen"
+  nimmt den **Median** statt des grössten oder kleinsten — ein einzelner
+  Verklicker soll nicht alle anderen verbiegen.
 - **Die Erkennung fragt die Laufzeit, nicht sich selbst.** `scan_erkennen()`
   ruft `_check_profile_match()` aus `runtime/item_scan.py` — dieselbe Funktion,
   die im Lauf entscheidet, mit einem `state`-Stellvertreter, der nichts als die
@@ -916,6 +1053,21 @@ Sechs Regeln, an denen der Reiter hängt:
   erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
   nach, statt neu zu rechnen.
 
+**Der offene Scan ist der Bezug, nicht der Bestand** (`_scan_slots()`). Wer zwei
+Spiele betreibt, hat die Slots beider in einer Datei — und alles, was „alle
+Slots" sagte, meinte wirklich *alle*. An drei Stellen war das falsch, und zwei
+davon fielen nur als seltsame Zahl auf:
+
+| wo | was man sah |
+|---|---|
+| „aus allen Slots lernen" | lief über den ganzen Bestand; die Slots des anderen Spiels liegen ausserhalb des Bildes, gemeldet wurde „11 ohne Bild" — und man sucht den Fehler beim Screenshot |
+| „X von 56 erkannt" | nannte den Bestand als Nenner, obwohl der Scan 45 hat: elf konnten gar nicht erkannt werden |
+| Ersatzfläche ohne Bild | legte sich um beide Spiele und war doppelt so gross wie nötig |
+
+Ohne offenen Scan ist der Bestand die richtige Antwort — dann gibt es keine
+engere Menge. Regel beim Erweitern: **wer „alle Slots" meint, fragt
+`_scan_slots()`**, nie `self.slots` direkt.
+
 **Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
 Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
 Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Knopf
@@ -953,9 +1105,35 @@ abweichen, deshalb heisst „erledigt" schlicht: es ist da.
 **neu** auf und lernt erst dann. Das steht in Schritt 3, weil es sonst niemand
 ahnt: „Items lernen" auf dem alten Bild lernt leere Slots.
 
+**Und die Anleitung klappt sich weg, wenn sie erledigt ist.** Der Weg, das Bild
+und die Modus-Kacheln sind zusammenklappbare Abschnitte (`klapp-kopf` /
+`klapp-rumpf`); untereinander waren sie länger als die Spalte hoch ist, und die
+Listen ganz unten — also das, womit man dauernd arbeitet — erreichte man nur
+über die Bildlaufleiste. „So entsteht ein Scan" klappt sich von selbst zu,
+sobald alle drei Schritte erledigt sind: beim ersten Mal ist es das Wichtigste
+auf der Seite, beim zwanzigsten sind es drei Zeilen im Weg.
+
+Zwei Regeln, ohne die es ein Rückschritt wäre:
+
+- **Zugeklappt bleibt die Auskunft stehen**, nur die Bedienelemente gehen weg —
+  im Kopf steht dann der offene Schritt, die Bildgrösse bzw. der aktuelle Modus.
+  Platz sparen darf nichts kosten, was man beim Arbeiten braucht.
+- **Die Automatik überstimmt keine Entscheidung.** `klappZu[…] === null` heisst
+  „noch nichts entschieden" und lässt `klappVorgabe()` gelten; sobald jemand
+  einen Kopf anfasst, steht dort true/false und die Vorgabe schweigt. Ein
+  Bedienelement, das zurückspringt, ist keine Hilfe.
+
+**Die Bühne springt zum gewählten Slot** (`scanZeigeGewaehlten()`). Liste und
+Bild waren zwei getrennte Welten: einen Slot in der Liste anzuklicken markierte
+ihn im Bild — nur sah man das nicht, wenn er gerade ausserhalb lag, und bei 45
+Slots auf 1:1 ist das der Normalfall. Gescrollt wird **nur beim Wechsel der
+Auswahl und nur, wenn er wirklich draussen liegt**: eine Bühne, die bei jedem
+Neuzeichnen springt, nimmt einem die Stelle weg, die man gerade ansieht.
+
 **Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
-`erkenne_slots_im_bild()` aus `editors/slot_editor.py`, die auch `repair`
-benutzt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
+`detect_slots_in_image()` aus `editors/scan_services.py`. Der Konsolen-Editor
+ruft sie über seinen deutschen Namen `erkenne_slots_im_bild()`, den auch
+`repair` benutzt; das Studio nimmt den Dienst direkt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
 leeren Slot-Hintergrund, und alle liegen da; ein volles Inventar von Hand wären
 90 Klicks. Zwei Erkennungen wären zwei Ergebnisse.
 
@@ -1361,9 +1539,11 @@ wird wiederverwendet).
 
 Regeln beim Erweitern:
 
-- **Neue Bedienelemente kommen als Methode in `bridge.py`**, nicht als Logik im
-  JavaScript. Nur so bleibt es messbar; die Oberfläche ist der ungetestete Teil und
-  soll klein bleiben.
+- **Neue Bedienelemente kommen als Methode in das zuständige Bridge-Mixin**, nicht
+  als Logik ins JavaScript: Darstellung in `bridge_view.py`, Datei/Lauf/Config in
+  `bridge_services.py`, Editor-Kommandos in `bridge_editing.py`. Die Methode
+  bleibt über `StudioBridge` öffentlich. Nur so bleibt sie messbar; die Oberfläche
+  ist der ungetestete Teil und soll klein bleiben.
 - **Sammel-Aktionen arbeiten auf der Auswahl, nicht auf einem Block.**
   Verschieben, Löschen und Duplizieren nehmen alle gewählten Zeilen; beim
   Duplizieren landen die Kopien **hinter der letzten** Gewählten und werden zur
@@ -1480,6 +1660,16 @@ Regeln beim Erweitern:
   (Punkt #1)" und weiter unten nochmal „Punkt": dieselbe Sache an zwei Stellen,
   und man musste raten, welche die führende ist. Nur Blöcke **ohne** Punkt (Taste,
   Scans) haben einen eigenen Namen im Abschnitt ALLGEMEIN.
+
+  **Dieselbe Regel gilt im Scans-Reiter, und dort war sie länger verletzt.** Der
+  Item-Scan wird oben links gewählt (Klappliste), hiess aber im Inspektor ganz
+  rechts — man suchte den Scan in der einen Spalte und benannte ihn in der
+  anderen, drei Spalten weiter. Der Name ist **Identität**: er steht jetzt direkt
+  unter der Auswahl, und rechts bleibt nur, was man am Scan *einstellt*
+  (Toleranz, Auto-Lernen, Richtung, Mitgliedschaft). Die Überschrift dort nennt
+  den Scan weiterhin — sonst hängen Regler da, von denen man nicht weiss, woran
+  sie hängen. Ein Test misst beide Hälften: der Inspektor baut kein Namensfeld
+  mehr, und das Feld links meldet auf `SC.offen`.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
   und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
   sich nicht, und ein Klappmenü versteckte vier von fünf Möglichkeiten hinter
@@ -1538,7 +1728,8 @@ feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
 
 Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
 Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
-(max. Scans, Timeout) und macht danach weiter. `else_greift()` in `bridge.py` hält
+(max. Scans, Timeout) und macht danach weiter. `else_greift()` in
+`bridge_contract.py` (über `bridge.py` weiterhin exportiert) hält
 dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
 nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
 auch nicht gibt.
@@ -1820,7 +2011,10 @@ ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
 
 - Migration: „Das Modul soll schrumpfen, nicht wachsen." Ein Schritt wird
   **ersatzlos gelöscht**, sobald keine Altbestände mehr existieren — samt dem
-  Alt-Code, den er ersetzt hat.
+  Alt-Code, den er ersetzt hat. **Das ist einmal vollständig passiert:** die
+  Sequenz-Kette ist leer, und mit ihren vier Schritten fielen `_sichere_neue_punkte`,
+  `_punkte_schreibfertig`, `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` sowie rund
+  vierzig Tests weg. Die Regel ist also nicht nur aufgeschrieben, sondern eingelöst.
 - Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
 - `tools/sync_json.py` wurde gelöscht statt gepflegt; `_norm_items` steht als
   `_norm_noop` da, weil es ein totes Feld in ein anderes totes Format hob.
@@ -1831,7 +2025,7 @@ Drei Sorten Altlast, die auffallen sollen:
 |---|---|---|
 | **Weiterleitung ohne Inhalt** | `execution.py` — reiner Re-Export, Docstring sagte selbst „damit main.py und handlers.py ihre Imports unverändert lassen können" | eine Datei, deren einziger Zweck ist, zwei Zeilen nicht anzufassen |
 | **Name eines Paradigmas, das es nicht mehr gibt** | `node_editor`, `node_canvas`, `BlockGraph`, `rebuild_canvas` nach dem Umbau auf Listen | ein Name, der etwas Falsches verspricht, ist dieselbe Sorte Fehler wie eine Oberfläche, die es tut — er führt den nächsten Leser in die Irre |
-| **Totes Feld / toter Zweig** | `_STELLEN`-Eintrag für ein Feld, das nie eine Altform hatte | Pflegeaufwand für etwas, das nie eintritt |
+| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt | Pflegeaufwand für etwas, das nie passiert |
 
 Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 
@@ -1850,22 +2044,40 @@ Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 Umbenennungen mit `git mv` machen — dann erkennt Git sie als Rename und die Historie
 der Datei bleibt lesbar.
 
-### Plattform-Schicht (Windows-Abhängigkeiten)
+### Plattform-Schicht (Windows und Linux/X11)
 
-Alles Windows-Spezifische liegt in **genau vier Modulen**. Ein Test in `tools/test_logic.py`
-(`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf `ctypes.windll`,
-`ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt die Datei.
+**Das Betriebssystem steht in einem Backend, nicht im Rest des Baums.**
+`platforms/load_backend()` wählt es einmal anhand von `sys.platform`; alles andere
+importiert weiterhin `autoclicker.winapi` und merkt nichts davon. Ein nicht
+unterstütztes System (Wayland, macOS) fliegt dort mit `RuntimeError` auf, statt
+sich später als stiller Fehlschlag zu zeigen.
 
 | Modul | was |
 |---|---|
-| `winapi.py` | Maus, Tastatur, Fenster, Hotkeys, **Bildschirm-Geometrie**, Maus-/Tastatur-Hooks, Fenster-Symbol + App-Kennung |
-| `imaging.py` | Screenshot über GDI BitBlt |
+| `winapi.py` | **stabile Fassade** — 24 Zeilen, reicht an das Backend durch. Kein Systemcode mehr. |
+| `platforms/base.py` | der Vertrag (`PlatformBackend`-Protocol): Eingabe, Fenster, Hotkeys, Bildschirm |
+| `platforms/common.py` | betriebssystemneutral: Tastennamen, `HOTKEY_*`-IDs, `PlatformError`, `APP_ID` |
+| `platforms/windows.py` | WinAPI-Backend (ctypes: Maus, Tastatur, Hotkeys, GDI, Hooks, Fenster-Symbol) |
+| `platforms/linux_x11.py` | X11-Backend (`python-xlib`, `pynput`, `mss`) |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
 | `utils/console.py` | Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung |
 
-Der Test prüft **beide** Richtungen: kein Windows-Aufruf ausserhalb der Liste, und kein
-Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält — sonst wächst
-sie zur Fiktion.
+Windows-spezifischer Code darf nur noch in **drei** Dateien stehen —
+`platforms/windows.py`, `utils/io.py`, `utils/console.py`. Ein Test in
+`tools/test_logic.py` (`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf
+`ctypes.windll`, `ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt
+die Datei. Er prüft **beide** Richtungen — kein Windows-Aufruf ausserhalb der Liste, und
+kein Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält, sonst
+wächst sie zur Fiktion.
+
+**Wer einen Systemaufruf braucht, erweitert den Vertrag, nicht die Fassade.** Neue
+Funktion in `base.py` eintragen, in *beiden* Backends implementieren, über `winapi`
+exportieren. Nur eine Hälfte zu bauen ist der Fehler, den die Matrix in
+`.github/workflows/tests.yml` fängt: die Suite läuft auf Ubuntu **und** Windows gegen
+denselben Testvertrag (`test_platforms.py`).
+
+Das gilt auch für `imaging.py`: es ist seit dem Umbau plattformneutral und holt sich
+den Screenshot über das Backend, statt selbst BitBlt zu rufen.
 
 **Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
 lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnose`, `scan_studio`,
@@ -1883,8 +2095,11 @@ hätte.
 
 ## Bekannte Stolperfallen
 
-- **Linux-Sandbox**: Voller Import scheitert an `msvcrt`/`ctypes.windll`. Für Korrektheits-Checks reicht `ast.parse`.
-- **DPI-Awareness**: `winapi.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
+- **Headless Linux**: Der vollständige Import und die automatischen
+  Plattformverträge laufen. Echte Hotkeys, Eingabe, Fenster und Screenshots
+  brauchen für den manuellen Test eine X11-Sitzung. Wayland wird bewusst
+  abgelehnt.
+- **DPI-Awareness**: `platforms/windows.py` setzt früh `SetProcessDpiAwareness(2)` — Skalierung ≠ 100% sollte korrekt funktionieren. **Multi-Monitor mit unterschiedlichen DPIs ist weiterhin nicht getestet.** Verifiziert ist dagegen der Fall, über den man zuerst stolpert: Monitore mit **negativen** Koordinaten (links vom bzw. über dem primären). BitBlt, der ImageGrab-Fallback, `get_pixel_color` und Regionen quer über Monitorgrenzen liefern dort korrekt — die Offset-Rechnung über `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` stimmt. Beim Debuggen beachten: `get_virtual_desktop()` gibt ein **Rechteck** (links, oben, rechts, unten) zurück, keine Breite/Höhe — die Breite ist `rechts - links`, und bei negativem Ursprung ist das nicht dasselbe.
 - **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.
 - **Der erste OCR-Aufruf lädt Modelle aus dem Netz.** EasyOCR holt beim allerersten `read_text()` Detection- und Recognition-Modell per Download — Sekunden bis Minuten, und es kann mit HTTP-Fehler scheitern; danach liegt ein Aufruf bei ~300 ms. Passiert das im Worker, steht die Sequenz so lange. Dieselbe Klasse Problem wie beim LLM, weshalb die LLM-Benennung bewusst nicht im Scan läuft (s.o.). Wer `ocr_enabled` neu einschaltet, sollte den ersten Aufruf nicht in einen laufenden Scan legen.

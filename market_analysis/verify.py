@@ -28,7 +28,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import analyse as ma  # noqa: E402
+try:
+    from . import analyse as ma  # noqa: E402
+    from .recipes import normalize_recipe  # noqa: E402
+except ImportError:
+    import analyse as ma  # type: ignore  # noqa: E402
+    from recipes import normalize_recipe  # type: ignore  # noqa: E402
 
 DEFAULT_ITEMS = ["oak", "titanium_bar", "tuna", "cooked_tuna"]
 
@@ -104,7 +109,8 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     # --- 3. Ergebnis pro Case ---------------------------------------------
     results = {}
     for case in ("best", "worst"):
-        r = ma.normalize_recipe(skill_name, raw, case=case, excluded_cost_items=excluded_cost_items)
+        r = normalize_recipe(skill_name, raw, case=case,
+                             excluded_cost_items=excluded_cost_items)
         if r is None:
             print("\n   !! Rezept wird vom Script AUSSORTIERT (Disabled / raids_ / keine Zeit / kein Reward)")
             return
@@ -216,8 +222,9 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
                  else "   (kein Clan-Boost -> beide Formeln gleich)"))
         print(f"       Ausbeute         erwartet {step_recipe['item_amount'] * 100:,.1f} Stueck / 100 Aktionen")
         if step_recipe["costs"]:
-            worst_recipe = ma.normalize_recipe(sskill, _raw_of(tasks, sskill, clean), case="worst",
-                                               excluded_cost_items=excluded_cost_items)
+            worst_recipe = normalize_recipe(
+                sskill, _raw_of(tasks, sskill, clean), case="worst",
+                excluded_cost_items=excluded_cost_items)
             print("       Verbrauch / 100 Aktionen:")
             for idx, cb in enumerate(step_recipe["costs"]):
                 iname = item_info_map.get(cb["Item"], {}).get("name", f"item_{cb['Item']}")

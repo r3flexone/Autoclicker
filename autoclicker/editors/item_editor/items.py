@@ -18,8 +18,8 @@ from ...persistence import (
     TEMPLATES_DIR,
 )
 from ...utils import (
-    confirm, info, is_cancel, parse_non_negative_float, safe_input,
-    sanitize_filename,
+    confirm, info, is_cancel, naechster_freier_name, parse_non_negative_float,
+    safe_input, sanitize_filename,
 )
 
 
@@ -54,15 +54,18 @@ def select_category(state: AutoClickerState, show_explanation: bool = True) -> O
 
 def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
     """Erstellt ein neues Item interaktiv."""
+    # Nicht `len(...) + 1`: nach dem ersten Loeschen schlaegt das einen Namen vor, den
+    # es schon gibt - und weil der Name die Referenz IST, folgt darauf die Rueckfrage
+    # nach dem Ueberschreiben. `naechster_freier_name()` fuellt Luecken.
     with state.lock:
-        item_num = len(state.global_items) + 1
+        vorschlag = naechster_freier_name("Item", state.global_items)
 
-    item_name = safe_input(f"  Item-Name (Enter = 'Item {item_num}', 'cancel'): ").strip()
+    item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
     if is_cancel(item_name):
         print("  -> Item-Erstellung abgebrochen")
         return None
     if not item_name:
-        item_name = f"Item {item_num}"
+        item_name = vorschlag
 
     # Prüfen ob Name schon existiert
     with state.lock:
@@ -167,8 +170,9 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
     print(f"\n  Bearbeite Item: {item.name}")
     print(f"    Kategorie: {item.category or '(keine)'}")
     print(f"    Priorität: {item.priority}")
-    if item.template:
-        print(f"    Template: {item.template} ({item.min_confidence:.0%})")
+    if item.template_names():
+        print(f"    Vorlagen: {', '.join(item.template_names())} "
+              f"({item.min_confidence:.0%})")
     if item.confirm_point_id:
         print(f"    Bestätigung: Punkt #{item.confirm_point_id} nach {item.confirm_delay}s")
 
@@ -258,5 +262,6 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         confirm_point_id=new_confirm_id,
         confirm_delay=new_confirm_delay,
         template=new_template,
-        min_confidence=new_confidence
+        min_confidence=new_confidence,
+        template_variants=list(item.template_variants),
     )

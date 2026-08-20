@@ -622,6 +622,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     print()
     print(f"  {ok('Kalibriert:')}")
     beschriftung = {"punkte": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+                    "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
                     "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
     for schluessel, anzahl in zahl.items():

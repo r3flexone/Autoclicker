@@ -9,6 +9,14 @@ da ist es echt vorhanden), damit der Import der utils nicht scheitert.
 import sys, types, json, tempfile
 from pathlib import Path
 
+# Der dokumentierte Direktaufruf muss auch unter Windows-Codepages wie cp1252
+# funktionieren: die Tests geben bewusst Unicode-Symbole aus.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 # MUSS vor dem msvcrt-Stub geladen werden: `subprocess` erkennt Windows daran,
 # dass sich msvcrt importieren laesst, und zieht dann `_winapi` nach - das es
 # auf Linux nicht gibt. Wer danach etwas importiert, das subprocess braucht
@@ -45,15 +53,12 @@ if not hasattr(ctypes, 'windll'):
     ctypes.WINFUNCTYPE = ctypes.CFUNCTYPE
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-PASS, FAIL = 0, 0
-def check(name, cond):
-    global PASS, FAIL
-    if cond:
-        PASS += 1; print(f"  PASS  {name}")
-    else:
-        FAIL += 1; print(f"  FAIL  {name}")
-
-def section(t): print(f"\n=== {t} ===")
+# **Zaehler und Ausgabe leben im Harness, nicht hier.** Sonst zaehlte jedes
+# ausgelagerte Modul fuer sich, und die Schlusszeile saehe nur den letzten Stand.
+# Die Stubs oben stehen trotzdem in dieser Datei: sie muessen VOR dem ersten
+# autoclicker-Import sitzen, und der kommt gleich.
+import tools.tests._harness as _H     # noqa: E402
+from tools.tests._harness import check, section     # noqa: E402
 
 # ---------------------------------------------------------------- Serializer
 section("Serializer-Round-Trip (Scan-Configs: save-dict -> load_file)")
@@ -664,45 +669,31 @@ check("Datei ohne Feld ist Version 0", file_version({"name": "x"}) == 0)
 check("needs_migration erkennt Altdatei", needs_migration({"name": "x"}) is True)
 check("gestempelte Datei braucht keine Migration", needs_migration(stamp({})) is False)
 
-# uraltes Format: nur "steps", dazu tote Felder
-_uralt = {"name": "U", "steps": [
-    {"x": 100, "y": 200, "name": "Markt", "delay_before": 1, "clicks": 2, "point_index": 0}]}
-_d, _m = migrate(_uralt, KIND_SEQUENCE, {"points": _pts})
-check("uraltes 'steps' wird zu loop_phases", len(_d["loop_phases"]) == 1)
-check("uralt: Schritt wird verknuepft", _d["loop_phases"][0]["steps"][0]["point_id"] == 3)
-check("uralt: tote Felder entfernt",
-      "clicks" not in _d["loop_phases"][0]["steps"][0]
-      and "point_index" not in _d["loop_phases"][0]["steps"][0])
-check("uralt: Versions-Stempel gesetzt", _d["schema_version"] == SCHEMA_VERSION)
+# --- Die Sequenz-Kette ist LEER, und das ist der Zielzustand ---
+# Hier standen vier Schritte (Schema 0 bis 4) und die Tests dazu. Sie sind mit den
+# Schritten geloescht: es gibt keinen Altbestand mehr, den sie heben koennten. Was
+# bleibt, ist die MECHANIK - Versionserkennung, Stempel, die Schleuse im Loader -,
+# denn die kostet nichts und ist die Stelle, an der eine kuenftige Umstellung landet.
+from autoclicker.persistence.migration import _CHAINS as _KETTEN
+check("die Sequenz-Kette ist leer", _KETTEN[KIND_SEQUENCE] == [])
+check("der Eintrag bleibt trotzdem stehen (die Schleuse sitzt)",
+      KIND_SEQUENCE in _KETTEN)
 
-# altes Format: start_steps + loop_steps + max_loops
-_alt = {"name": "A",
-        "start_steps": [{"x": 300, "y": 400, "name": "V", "delay_before": 0}],
-        "loop_steps": [{"x": 500, "y": 600, "name": "Mehrdeutig", "delay_before": 0},
-                       {"x": 0, "y": 0, "name": "T", "delay_before": 0, "key_press": "enter"}],
-        "max_loops": 5}
-_d2, _m2 = migrate(_alt, KIND_SEQUENCE, {"points": _pts})
-check("start_steps wird eigene erste Phase", _d2["loop_phases"][0]["name"] == "Start")
-check("loop_steps behaelt max_loops als repeat", _d2["loop_phases"][1]["repeat"] == 5)
-check("max_loops ist weg", "max_loops" not in _d2)
-check("start_steps ist weg", "start_steps" not in _d2)
-# Frueher blieben mehrdeutige Stellen (zwei Punkte uebereinander) bewusst unverknuepft -
-# "lieber keine Referenz als die falsche". Das geht seit Schema 4 nicht mehr: ohne
-# Referenz gaebe es die Koordinate nirgends, der Schritt waere verloren. Zwei Punkte auf
-# derselben Stelle sind ohnehin derselbe Ort, also gewinnt der erste.
-check("mehrdeutige Koordinate wird verknuepft (erster Punkt gewinnt)",
-      _d2["loop_phases"][1]["steps"][0].get("point_id") is not None)
-check("Tastendruck bekommt keine point_id",
-      _d2["loop_phases"][1]["steps"][1].get("point_id") is None)
-check("Migration laesst keine Koordinate im Schritt zurueck",
-      all(not any(k in s for k in ("x", "y", "wait_pixel", "else_x"))
-          for _p in _d2["loop_phases"] for s in _p["steps"]
-          if s.get("point_id") is not None))
+# **Eine Altdatei wird gestempelt, nicht umgerechnet.** Das ist die bewusst
+# akzeptierte Folge: ohne Schritte kann niemand `steps` in `loop_phases` heben. Der
+# Loader stuerzt deswegen NICHT ab - er liest mit `data.get(key, default)` und
+# bekommt eine leere Sequenz. Dieser Test haelt genau das fest, statt zu schweigen:
+# wer eine sehr alte Sicherung einspielt, soll das Ergebnis hier nachlesen koennen.
+_uralt = {"name": "U", "steps": [
+    {"x": 100, "y": 200, "name": "Markt", "delay_before": 1}]}
+_d, _m = migrate(_uralt, KIND_SEQUENCE)
+check("eine Altdatei bekommt den Versions-Stempel", _d["schema_version"] == SCHEMA_VERSION)
+check("und sie wird nicht mehr umgerechnet", _m == [] and "loop_phases" not in _d)
 
 # Idempotenz: zweiter Lauf aendert nichts mehr
 import copy as _copy
-_vorher = _copy.deepcopy(_d2)
-_d3, _m3 = migrate(_d2, KIND_SEQUENCE, {"points": _pts})
+_vorher = _copy.deepcopy(_d)
+_d3, _m3 = migrate(_d, KIND_SEQUENCE)
 check("zweiter Migrationslauf meldet nichts", _m3 == [])
 check("zweiter Migrationslauf aendert nichts", _d3 == _vorher)
 
@@ -712,24 +703,39 @@ _d4, _m4 = migrate(_neuer, KIND_SEQUENCE, {})
 check("neuere Version wird nicht angefasst", _d4["schema_version"] == SCHEMA_VERSION + 5)
 check("neuere Version wird gemeldet", any("kennt nur" in m for m in _m4))
 
-# Loader liest ein Altformat ueber die Migration
+# Der Loader ueberlebt eine Altdatei - er liefert eine leere Sequenz statt zu werfen.
+# Eine Datei, die den Loader wirft, waere ein Fehler; eine, die auf Standardwerten
+# landet, ist es nicht (siehe die Persistenz-Regeln in CLAUDE.md).
 _mp = tmp / "altformat.json"
 _mp.write_text(json.dumps({"name": "Alt", "steps": [
     {"x": 100, "y": 200, "name": "Markt", "delay_before": 0}]}), encoding="utf-8")
 _seq_alt = _load_seq(_mp, _pts)
-check("Loader laedt uraltes Format ueber die Migration", _seq_alt is not None)
-check("Loader: Schritt liegt in einer Loop-Phase",
-      _seq_alt is not None and len(_seq_alt.loop_phases) == 1
-      and len(_seq_alt.loop_phases[0].steps) == 1)
-check("Loader: point_id kam aus der Migration",
-      _seq_alt is not None and _seq_alt.loop_phases[0].steps[0].point_id == 3)
+check("der Loader wirft bei einer Altdatei nicht", _seq_alt is not None)
+check("sie kommt leer an, statt halb geraten", _seq_alt is not None
+      and _seq_alt.loop_phases == [] and _seq_alt.init_steps == [])
+
+# Gegenprobe: eine AKTUELLE Datei laedt vollstaendig - der Loader ist in Ordnung,
+# es fehlt der Altdatei nur der Weg hierher.
+_mp4 = tmp / "aktuell.json"
+_mp4.write_text(json.dumps({
+    "name": "Aktuell", "schema_version": SCHEMA_VERSION, "total_cycles": 1,
+    "init_steps": [], "end_steps": [],
+    "loop_phases": [{"name": "Loop", "repeat": 1,
+                     "steps": [{"point_id": 3, "delay_before": 0}]}]}), encoding="utf-8")
+_seq_neu = _load_seq(_mp4, _pts)
+check("eine aktuelle Datei laedt vollstaendig",
+      _seq_neu is not None and len(_seq_neu.loop_phases[0].steps) == 1)
+check("und ihre Koordinate kommt aus points.json",
+      _seq_neu is not None
+      and (_seq_neu.loop_phases[0].steps[0].x, _seq_neu.loop_phases[0].steps[0].y)
+      == (100, 200))
 
 
 # ------------------------------------------------ Migration: alle Dateitypen
 section("Migration: Normalisierer fuer Dateitypen ohne Versions-Feld")
 from autoclicker.persistence.migration import (
     KIND_ITEMS as _K_ITEMS, KIND_ITEM_SCAN as _K_ISCAN, KIND_POINTS as _K_PTS,
-    KIND_SEQUENCE as _K_SEQ, file_version as _fv, migrate as _mig,
+    file_version as _fv, migrate as _mig,
 )
 
 # file_version muss auch Listen und Muell vertragen - points.json IST eine Liste.
@@ -787,18 +793,10 @@ check("Loader liest die Punkt-Referenz",
 # Der Name kommt aus dem Schluessel, nicht mehr aus dem Eintrag
 check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
-# Verknuepfung darf nicht auf einen Punkt ohne ID zeigen (sonst point_id=null und der
-# naechste Lauf meldet denselben Treffer erneut - genau das brach die Idempotenz).
-# Seit Schema 4 bleibt der Schritt deswegen nicht unverknuepft, sondern bekommt einen
-# NEUEN Punkt mit ID - unverknuepft hiesse jetzt "Koordinate weg".
-_kontext = {"points": [{"x": 30, "y": 40, "name": "ohne ID"}]}
-_seq_roh = {"name": "s", "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-    {"x": 30, "y": 40, "name": "K", "delay_before": 0}]}]}
-_seq_roh, _ = _mig(_seq_roh, _K_SEQ, _kontext)
-_pid = _seq_roh["loop_phases"][0]["steps"][0].get("point_id")
-check("Punkt ohne ID wird nicht referenziert", isinstance(_pid, int))
-check("stattdessen entsteht ein Punkt MIT ID an derselben Stelle",
-      any(p.get("id") == _pid and (p["x"], p["y"]) == (30, 40) for p in _kontext["points"]))
+# Hier stand der Test, dass ein Schritt an einem Punkt OHNE ID einen neuen Punkt
+# bekommt - Verhalten von `_seq_v3_to_v4`, mit der Kette entfallen. Dass Punkte ohne
+# ID ueberhaupt eine bekommen, macht weiterhin `_norm_points`, und das prueft die
+# Sektion "Normalisierer fuer Dateitypen ohne Versions-Feld" weiter unten.
 
 # scheduled_start war nur da, um den Debug-Enter-Prompt zu ueberspringen - beides weg
 check("kein scheduled_start-Flag mehr am State",
@@ -856,10 +854,17 @@ _MIGRATE_AUSNAHMEN = {
     # Die beiden GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken
     # Ladern (sie haben keinen AutoClickerState). Sie werden AUS dem Hauptprozess
     # gestartet, der beim Start bereits alles gehoben hat.
+    #
+    # **Die Begruendung haengt an einem Schalter, und der steht hier dabei.** Der
+    # Start-Durchgang laesst sich mit `migrate_on_start: false` abstellen; dann liest
+    # das Studio ungehobene Dateien. Solange die Sequenz-Kette leer ist, ist das
+    # folgenlos - es gibt nichts zu heben. Wer sie je wieder fuellt, muss diese zwei
+    # Zeilen erneut lesen, statt sich auf eine Begruendung zu verlassen, die
+    # stillschweigend nicht mehr stimmt.
     "autoclicker/editors/sequence_studio/scan_model.py":
-        "Subprozess - Hauptprozess hat beim Start gesweept",
+        "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     "autoclicker/editors/sequence_studio/model.py":
-        "Subprozess - Hauptprozess hat beim Start gesweept",
+        "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     # list_scan_files() liest EIN Feld ("name") fuer die Auswahlliste und baut keine
     # Dataclass. Es gibt nichts zu heben - solange `name` das Feld bleibt, an dem ein
     # Scan haengt. Wuerde es je umbenannt, gehoert diese Zeile hier weg.
@@ -874,7 +879,7 @@ _MIGRATE_AUSNAHMEN = {
     # runtime/status.py): eine transiente Zustandsdatei, die der Worker beim Ende
     # loescht - kein Bestand, also nichts zu heben. Sequenzen laedt sie ueber
     # load_sequence_file(), und das migriert.
-    "autoclicker/editors/sequence_studio/bridge.py":
+    "autoclicker/editors/sequence_studio/bridge_services.py":
         "liest nur den transienten Laufstatus; Sequenzen ueber load_sequence_file()",
 }
 _leser, _ohne_aufruf = [], []
@@ -956,9 +961,16 @@ for _d in ("sequences", "items/presets", "slots/presets", "item_scans",
 (_sw / "sequences/points.json").write_text(json.dumps(
     [{"id": 1, "x": 100, "y": 200, "name": "A"},
      {"x": 300, "y": 400, "name": "B", "legacy_flag": True}]), encoding="utf-8")
+# Auf aktuellem Schema, aber mit einem toten Feld im Schritt: genau der Fall, den der
+# Durchgang OHNE Migrationsschritt loest - was der Loader nicht kennt, schreibt der
+# Serializer nicht zurueck. Deshalb wird hier auch kein Altschema mehr gestellt: die
+# Sequenz-Kette ist leer, das Aufraeumen macht der Round-Trip.
 (_sw / "sequences/alt.json").write_text(json.dumps(
-    {"name": "alt", "steps": [{"x": 300, "y": 400, "name": "E", "delay_before": 1,
-                               "clicks": 2, "point_index": 0}]}), encoding="utf-8")
+    {"name": "alt", "schema_version": 4, "total_cycles": 1,
+     "init_steps": [], "end_steps": [],
+     "loop_phases": [{"name": "L", "repeat": 1, "steps": [
+         {"point_id": 2, "delay_before": 1, "clicks": 2, "point_index": 0}]}]}),
+    encoding="utf-8")
 (_sw / "items/items.json").write_text(json.dumps(
     {"K": {"name": "K", "marker_colors": [], "confirm_point": [5, 6], "uralt": 1}}),
     encoding="utf-8")
@@ -980,7 +992,7 @@ try:
     # den Blick auf die Daten und ein *.json-Glob koennte sie erwischen.
     check("Sicherung liegt unter backups/", (_sw / "backups/sequences/alt.json.bak").exists())
     check("und NICHT mehr neben dem Original", not (_sw / "sequences/alt.json.bak").exists())
-    check("Sicherung hat den Stand VOR dem Heben",
+    check("Sicherung hat den Stand VOR dem Aufraeumen",
           "point_index" in (_sw / "backups/sequences/alt.json.bak").read_text(encoding="utf-8"))
 
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
@@ -994,10 +1006,14 @@ try:
     _sq = json.loads((_sw / "sequences/alt.json").read_text(encoding="utf-8"))
     check("Start-Durchgang stempelt die Sequenz-Version",
           _sq.get("schema_version") == _mg.SCHEMA_VERSION)
-    check("Start-Durchgang verknuepft den Schritt mit seinem Punkt",
+    check("die Punkt-Referenz bleibt unangetastet",
           _sq["loop_phases"][0]["steps"][0]["point_id"] == 2)
-    check("Start-Durchgang entfernt tote Schritt-Felder",
-          "clicks" not in _sq["loop_phases"][0]["steps"][0])
+    # **Das ist der Beleg, dass es ohne Migrationsschritt geht.** `clicks` und
+    # `point_index` stehen in keiner Dataclass, der Loader liest sie nicht, der
+    # Serializer schreibt sie nicht zurueck - der Round-Trip allein raeumt sie weg.
+    check("Start-Durchgang entfernt tote Schritt-Felder ohne Migrationsschritt",
+          "clicks" not in _sq["loop_phases"][0]["steps"][0]
+          and "point_index" not in _sq["loop_phases"][0]["steps"][0])
     _it = json.loads((_sw / "items/items.json").read_text(encoding="utf-8"))["K"]
     # Der Round-Trip raeumt das alte confirm_point weg - der Loader liest es nicht mehr,
     # also schreibt der Serializer es auch nicht zurueck. Genau dafuer ist der
@@ -1137,15 +1153,10 @@ _abgedriftet = [k for k, v in _SD.items()
                 and _dc_defaults[k] != v]
 check("Default-Tabelle passt zur Dataclass", _abgedriftet == [])
 
-# delay_after: Altlast raus aus dem Loader, rein in die Migration
-_alt = {"schema_version": 1, "name": "s", "init_steps": [], "end_steps": [],
-        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-            {"x": 1, "y": 2, "name": "A", "delay_after": 3}]}]}
-_alt, _m = _mig(_alt, _K_SEQ)
-_step = _alt["loop_phases"][0]["steps"][0]
-check("delay_after wird zu delay_before", _step.get("delay_before") == 3)
-check("delay_after ist danach weg", "delay_after" not in _step)
-check("Umbenennung wird gemeldet", any("delay_after" in m for m in _m))
+# `delay_after` war die Altlast, die `_seq_v1_to_v2` in `delay_before` umbenannt hat.
+# Der Schritt ist mit der Kette entfallen; was BLEIBT, ist die Zusicherung, dass der
+# Loader das alte Feld nicht kennt - denn das ist der Grund, warum es die Migration
+# ueberhaupt gab. Ein Schritt mit `delay_after` bekommt heute schlicht den Default.
 check("Loader kennt delay_after nicht mehr",
       _p2s([{"x": 1, "y": 2, "delay_after": 9}])[0].delay_before == 0)
 
@@ -1307,6 +1318,94 @@ try:
     check("und der Schritt landet auf den richtigen Koordinaten",
           (_s2.x, _s2.y) == (500, 500))
     check("Koordinaten bleiben erhalten", (_s2.x, _s2.y) == (500, 500))
+
+    # ------------------------------------------------------------------------
+    # Die EINZELNEN Stufen des Imports
+    # ------------------------------------------------------------------------
+    # `import_bundle()` war eine Funktion mit 292 Zeilen und 69 Verzweigungen -
+    # und zugleich die Stelle, die am meisten auf Platte schreibt. Die Tests
+    # konnten unmoeglich alle Pfade treffen; jeder ungetroffene Pfad schrieb
+    # Dateien. Zerlegt in Stufen ist jede einzeln pruefbar, und genau die drei
+    # Feinheiten unten waren vorher gar nicht erreichbar.
+    import io as _io_i, contextlib as _cl_i
+    from autoclicker.import_export import (
+        _Import as _IMP, _imp_templates as _imp_tpl, _imp_punkte as _imp_pkt,
+        _boss_mit_remap as _imp_boss, _import_meldung as _imp_meld,
+        _IMPORT_MELDUNG as _IMP_TAB, compute_transform as _ct2)
+
+    def _lauf_mit(eintraege: dict, st=None, transform=None, merge=True):
+        """Ein Import-Durchgang ueber ein gestelltes ZIP - ohne import_bundle()."""
+        pfad = Path(_imp_dir) / "stufe.zip"
+        with _zip.ZipFile(pfad, "w") as zf:
+            for name, inhalt in eintraege.items():
+                zf.writestr(name, inhalt if isinstance(inhalt, bytes)
+                            else json.dumps(inhalt))
+        zf2 = _zip.ZipFile(pfad, "r")
+        return _IMP(zf2, zf2.namelist(), st or _ACS(),
+                    transform or _ct2((0, 0), (10, 10), (0, 0), (10, 10)), merge)
+
+    # **Ein Bundle ist eine Datei von aussen.** Ein Eintrag mit `..` im Pfad
+    # schriebe sonst irgendwohin - der Standardfehler beim Auspacken von
+    # Archiven. Die Abwehr war da, aber ungeprueft.
+    _tpl_lauf = _lauf_mit({
+        "templates/gut.png": b"\x89PNG-echt",
+        "templates/../../boese.png": b"\x89PNG-boese",
+    })
+    with _cl_i.redirect_stdout(_io_i.StringIO()):
+        _imp_tpl(_tpl_lauf)
+    check("ein Template im Zielordner wird geschrieben",
+          (Path("items/templates/gut.png")).exists())
+    check("und eines mit .. im Pfad NICHT",
+          not (Path(_imp_dir) / "boese.png").exists()
+          and not (Path(_imp_dir) / "items" / "boese.png").exists())
+    check("gezaehlt wird nur das geschriebene", _tpl_lauf.stats["templates"] == 1)
+
+    # Punkte: eine kollidierende ID bekommt eine neue, und die Zuordnung merkt es
+    # sich - daran haengt, ob die Sequenz-Schritte danach richtig zeigen.
+    _st_k = _ACS()
+    _st_k.points = [_CP3(50, 50, "lokal", 1), _CP3(60, 60, "lokal2", 2)]
+    _pkt_lauf = _lauf_mit({"points.json": [{"id": 1, "x": 9, "y": 9, "name": "fremd"}]},
+                          st=_st_k)
+    _imp_pkt(_pkt_lauf, True, False)
+    check("eine kollidierende Punkt-ID wird neu vergeben",
+          _pkt_lauf.id_map.get(1) not in (None, 1))
+    check("und der neue Punkt kollidiert mit keinem lokalen",
+          len({p.id for p in _st_k.points}) == len(_st_k.points))
+
+    # Der Transform wirkt auf die Koordinate, nicht auf die ID.
+    _st_t = _ACS()
+    _pkt_lauf2 = _lauf_mit({"points.json": [{"id": 5, "x": 100, "y": 200, "name": "P"}]},
+                           st=_st_t, transform=_ct2((0, 0), (10, 10), (0, 0), (20, 20)))
+    _imp_pkt(_pkt_lauf2, True, False)
+    check("der Transform rechnet die Punkt-Koordinate um",
+          (_st_t.points[0].x, _st_t.points[0].y) == (200, 400))
+    check("die ID bleibt, wenn sie frei ist", _st_t.points[0].id == 5)
+
+    # **Nur Klick-Bosse haben eine Stelle.** Bei skip/key steht (0, 0) fuer
+    # "gibt es nicht" - durch den Transform gejagt wanderte das irgendwohin und
+    # sah danach aus wie eine echte Koordinate.
+    from autoclicker.models import (BOSS_ACTION_CLICK as _BAC, BOSS_ACTION_SKIP as _BAS)
+    _boss_lauf = _lauf_mit({}, transform=_ct2((0, 0), (10, 10), (100, 100), (120, 120)))
+    _klick_boss = _imp_boss(_boss_lauf, {"name": "K", "action": _BAC,
+                                         "action_x": 10, "action_y": 10})
+    _skip_boss = _imp_boss(_boss_lauf, {"name": "S", "action": _BAS})
+    check("ein Klick-Boss wird umgerechnet",
+          (_klick_boss.action_x, _klick_boss.action_y) != (10, 10))
+    check("ein Skip-Boss bleibt auf (0, 0)",
+          (_skip_boss.action_x, _skip_boss.action_y) == (0, 0))
+
+    # Die Abschlussmeldung: jede gezaehlte Datenart muss auch vorkommen. Sonst
+    # importiert man etwas und die Meldung verschweigt es - genau das war bei den
+    # globalen Bossen schon einmal fast passiert.
+    _leer_lauf = _lauf_mit({})
+    check("jede gezaehlte Datenart steht in der Meldungstabelle",
+          set(_leer_lauf.stats) <= {k for k, _w in _IMP_TAB})
+    check("nichts importiert wird als solches gemeldet",
+          _imp_meld(_leer_lauf.stats) == "Nichts importiert")
+    check("und sonst stehen Zahl und Wort da",
+          _imp_meld({"slots": 3, "items": 1}) == "3 Slot(s), 1 Item(s)")
+    check("in der Reihenfolge der Tabelle, nicht der des Dicts",
+          _imp_meld({"items": 1, "points": 2}) == "2 Punkt(e), 1 Item(s)")
 finally:
     _os.chdir(_alt_cwd)
 
@@ -1581,8 +1680,10 @@ def _immediate_lauf(items, slots, treffer):
     # daher ueber den gerade gescannten Slot mitgefuehrt.
     zustand = {"slot": None}
     _orig_exec = _IS.execute_item_scan
-    def _prof(profile, img, tol, state, debug, label="gefunden"):
-        return treffer.get(zustand["slot"]) == profile.name
+    def _prof(profile, img, tol, state, debug, label="gefunden",
+              return_score=False):
+        passt = treffer.get(zustand["slot"]) == profile.name
+        return (passt, 1.0 if passt else 0.0) if return_score else passt
     _IS._check_profile_match = _prof
     def _exec(state, name, mode="all", slots_override=None):
         zustand["slot"] = slots_override[0].name if slots_override else None
@@ -1637,7 +1738,7 @@ try:
           _besucht == ["S1", "S2", "S3"])
 
     # Tippfehler im Scan-Namen muss in BEIDEN Modi gemeldet werden, nicht nur im einen
-    import io as _io, contextlib as _cl
+    import contextlib as _cl   # _io steht schon oben
     def _stiller_lauf(immediate):
         _st_t = AutoClickerState(); _st_t.config = _AC2()
         _st_t.config.scan_click_immediate = immediate
@@ -1779,7 +1880,6 @@ section("'else' im Editor erlauben genau dort, wo die Runtime es auswertet")
 # Liste nur abzuschreiben: erlaubt der Editor else, muss die Aktion auch feuern.
 from autoclicker.editors.sequence_editor.helpers import (
     apply_else_to_step as _apply_else, _kann_else)
-import autoclicker.runtime.boss_detection as _BD
 import io as _io2, contextlib as _cl2
 
 _orig_c4, _orig_shot4 = _RS.safe_click, _RS.take_screenshot
@@ -2009,6 +2109,27 @@ check("Auto-Erkennung vergibt lesbare Namen",
 check("eindeutiger_name bleibt fuer vorgegebene Namen zustaendig",
       _en("Beutel oben", {"Beutel oben": 1}) == "Beutel oben 2")
 
+# --- Und niemand rechnet den Namen wieder selbst aus ---
+# Die Regel stand nur in CLAUDE.md, und drei Editoren hielten sich nicht daran:
+# `len(state.global_items) + 1` als Vorschlag schlug nach dem ersten Loeschen einen
+# Namen vor, den es schon gab - worauf der Editor nach dem Ueberschreiben fragte,
+# obwohl man nur "der naechste, bitte" gemeint hatte. Gesucht statt aufgezaehlt: eine
+# Liste von drei Stellen prueft nur das, woran ohnehin jemand gedacht hat.
+import re as _re_nf
+_repo_nf = Path(__file__).resolve().parent.parent
+_selbstgerechnet = []
+for _pf_nf in sorted((_repo_nf / "autoclicker").rglob("*.py")):
+    for _i_nf, _z_nf in enumerate(_pf_nf.read_text(encoding="utf-8").splitlines(), 1):
+        # Ein Zaehler, der aus der GROESSE eines Namens-Verzeichnisses kommt. Genau das
+        # ist der Fehler; `len(...) + 1` fuer eine Position oder Prioritaet nicht.
+        if _re_nf.search(r"len\(\s*[\w.]*(global_items|global_slots|self\.items|"
+                         r"self\.slots|loop_phases)\s*\)\s*\+\s*1", _z_nf):
+            _selbstgerechnet.append(f"{_pf_nf.relative_to(_repo_nf).as_posix()}:{_i_nf}")
+check("kein Editor rechnet einen Namensvorschlag aus der Bestandsgroesse",
+      _selbstgerechnet == [])
+if _selbstgerechnet:
+    print("        " + ", ".join(_selbstgerechnet))
+
 
 # ------------------------------------------------------------- Kalibrierung
 section("Kalibrierung rechnet den Bestand auf ein neues Bildschirm-Layout um")
@@ -2165,48 +2286,10 @@ try:
     check("else-Klick in der Datei", (_s1["else_x"], _s1["else_y"]) == (940, 925))
     check("Farben bleiben unangetastet", _s1["wait_color"] == [1, 2, 3])
 
-    # --- Altbestand ohne points.json: die Migration legt Punkte an, und die muessen
-    # AUF PLATTE landen. Gegenprobe zum Fehler, der genau hier sass: `_als_dicts`
-    # lieferte eine Kopie der Punkte-Liste, also liefen die Anhaenge der Migration ins
-    # Leere - die Sequenz zeigte danach auf IDs, die es nirgends gab, und jeder Schritt
-    # stand auf (0, 0). Faellt dieser Test, ist genau das zurueck.
-    from autoclicker.persistence import load_sequence_file as _lsf2
-    _pj = Path(_SQD) / "points.json"
-    if _pj.exists():
-        _pj.unlink()
-    _alt2 = Path(_SQD) / "ohne_punkte.json"
-    _alt2.write_text(json.dumps({
-        "name": "ohne_punkte", "schema_version": 2, "total_cycles": 1,
-        "init_steps": [], "end_steps": [],
-        "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-            {"x": 111, "y": 222, "delay_before": 0, "name": "Erster",
-             "recorded_color": [10, 20, 30]},
-            {"x": 333, "y": 444, "delay_before": 0, "name": "Zweiter",
-             "wait_pixel": [555, 666], "wait_color": [1, 2, 3],
-             "else_action": "click", "else_x": 777, "else_y": 888},
-        ]}]}), encoding="utf-8")
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _gel = _lsf2(_alt2)
-    check("Altbestand ohne points.json: die Datei wird angelegt", _pj.exists())
-    _pdaten = json.loads(_pj.read_text(encoding="utf-8")) if _pj.exists() else []
-    check("Altbestand ohne points.json: alle vier Stellen sind Punkte geworden",
-          sorted((p["x"], p["y"]) for p in _pdaten)
-          == [(111, 222), (333, 444), (555, 666), (777, 888)])
-    _gs2 = _gel.loop_phases[0].steps if _gel else []
-    check("Altbestand ohne points.json: der Schritt klickt weiter dieselbe Stelle",
-          bool(_gs2) and (_gs2[0].x, _gs2[0].y) == (111, 222))
-    check("Altbestand ohne points.json: kein Schritt gilt als verwaist",
-          bool(_gs2) and not any(s.unresolved for s in _gs2))
-    check("Altbestand ohne points.json: Pruef-Pixel und Else haengen an eigenen Punkten",
-          bool(_gs2) and tuple(_gs2[1].wait_condition.pixel) == (555, 666)
-          and (_gs2[1].else_config.x, _gs2[1].else_config.y) == (777, 888))
-    check("Altbestand ohne points.json: die Farbe zieht in den Punkt um",
-          any(p.get("color") == [10, 20, 30] for p in _pdaten))
-    # Drei Stellen desselben Schritts bekommen unterscheidbare Namen - sonst stehen im
-    # Punkte-Menue drei Zeilen "Zweiter" und keiner weiss, welche welche ist.
-    check("Altbestand ohne points.json: die Namen sind unterscheidbar",
-          len({p.get("name") for p in _pdaten}) == len(_pdaten))
-
+    # Hier stand die Gegenprobe zu `_seq_v3_to_v4` + `_als_dicts`: eine Sequenz auf
+    # Schema 2 ohne points.json, deren Koordinaten die Migration in neu angelegte
+    # Punkte zog. Beides ist geloescht - ohne Kette legt keine Migration mehr Punkte
+    # an, also gibt es auch nichts mehr auf Platte zu schreiben.
 
     # Versatz von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     # Weiss man, dass eine Achse stimmt, ist eine eingetippte 0 genauer.
@@ -2255,56 +2338,11 @@ finally:
     _os.chdir(_kalib_cwd)
 
 
-# ------------------------------------------- Start-Durchgang ueber MEHRERE Altdateien
-section("Start-Durchgang: zwei Altdateien teilen sich ihre Punkte")
-
-# Hier zeigt sich, warum die Punkte-Liste durchgereicht und nicht kopiert werden darf:
-# sonst sieht die zweite Datei die Punkte der ersten nicht, vergibt dieselben IDs
-# erneut - und points.json haette zwei Eintraege mit derselben ID. Die ID IST die
-# Referenz; doppelte IDs heissen, dass Schritte auf den falschen Punkt zeigen.
-# Eigenes Verzeichnis, weil `sweep` alles migriert, was es findet.
-_sw_tmp = tempfile.mkdtemp()
-_sw_cwd = _os.getcwd()
-_os.chdir(_sw_tmp)
-try:
-    from autoclicker.persistence import sweep as _sweep2
-    _sdir = Path("sequences")
-    _sdir.mkdir()
-    for _nr in (1, 2):
-        (_sdir / f"doppelt{_nr}.json").write_text(json.dumps({
-            "name": f"doppelt{_nr}", "schema_version": 2, "total_cycles": 1,
-            "init_steps": [], "end_steps": [],
-            "loop_phases": [{"name": "L", "repeat": 1, "steps": [
-                {"x": 400, "y": 500, "delay_before": 0, "name": "gleich"},
-                {"x": 10 * _nr, "y": 20 * _nr, "delay_before": 0, "name": "eigen"},
-            ]}]}), encoding="utf-8")
-
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _erg2 = _sweep2(write=True)
-    _pd2 = json.loads((_sdir / "points.json").read_text(encoding="utf-8"))
-    _ids = [p["id"] for p in _pd2]
-    check("zwei Altdateien: keine doppelt vergebene Punkt-ID",
-          len(_ids) == len(set(_ids)))
-    check("zwei Altdateien: die gemeinsame Stelle wird EIN Punkt",
-          sum(1 for p in _pd2 if (p["x"], p["y"]) == (400, 500)) == 1)
-    check("zwei Altdateien: drei Punkte insgesamt (eine geteilte + zwei eigene)",
-          len(_pd2) == 3)
-    _ref = [json.loads((_sdir / f"doppelt{_nr}.json").read_text(encoding="utf-8"))
-            ["loop_phases"][0]["steps"][0]["point_id"] for _nr in (1, 2)]
-    check("zwei Altdateien: beide Sequenzen zeigen auf denselben Punkt",
-          _ref[0] == _ref[1] and _ref[0] is not None)
-    check("zwei Altdateien: der Durchgang meldet die uebernommenen Punkte",
-          any("points.json" in p.name for p, _m in _erg2.geaendert))
-
-    # Zweiter Durchgang: nichts mehr zu tun, und vor allem keine neuen Punkte
-    with _cl2.redirect_stdout(_io2.StringIO()):
-        _erg3 = _sweep2(write=True)
-    check("zwei Altdateien: zweiter Durchgang aendert nichts",
-          _erg3.anzahl_geaendert == 0)
-    check("zwei Altdateien: zweiter Durchgang legt keine Punkte nach",
-          len(json.loads((_sdir / "points.json").read_text(encoding="utf-8"))) == 3)
-finally:
-    _os.chdir(_sw_cwd)
+# Hier stand die Sektion "Start-Durchgang: zwei Altdateien teilen sich ihre Punkte".
+# Sie mass, dass die Punkte-Liste durch die Sequenz-Migration DURCHGEREICHT und nicht
+# kopiert wurde - sonst haetten zwei Altdateien dieselben IDs erneut vergeben. Mit
+# `_seq_v3_to_v4` und `_als_dicts` ist der gemessene Mechanismus geloescht: keine
+# Migration legt mehr Punkte an, also kann es auch keine doppelten IDs von dort geben.
 
 
 # -------------------------------------------------------- Slot-Reparatur
@@ -2547,7 +2585,7 @@ check("manuell: ESC bricht ab", _g == _GT and _st_e.stop_event.is_set())
 
 
 # --------------------------------------------------- Plattform-Grenze
-section("Windows-Abhaengigkeiten liegen nur in der Plattform-Schicht")
+section("Betriebssystem-Abhaengigkeiten liegen nur in der Plattform-Schicht")
 
 # Wer spaeter auf Linux portiert, muss genau diese Dateien anfassen — und sonst keine.
 # Ohne diesen Test wandert der naechste GetSystemMetrics-Aufruf wieder irgendwohin:
@@ -2556,8 +2594,7 @@ section("Windows-Abhaengigkeiten liegen nur in der Plattform-Schicht")
 import re as _re_p
 
 PLATTFORM_MODULE = {
-    "autoclicker/winapi.py",        # Maus, Tastatur, Fenster, Hotkeys, Bildschirm-Geometrie
-    "autoclicker/imaging.py",       # Screenshot ueber GDI BitBlt
+    "autoclicker/platforms/windows.py",  # WinAPI-Backend
     "autoclicker/utils/io.py",      # Tastendruck-Erfassung (msvcrt / GetAsyncKeyState)
     "autoclicker/utils/console.py", # Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung
 }
@@ -3246,64 +3283,22 @@ check("und laesst den aufgenommenen Punkt in Ruhe",
       _marker.wait_condition.point_id == _map_alle[2])
 
 
-# Altbestand: Aufnahmen von VOR dem Fix stehen schon auf Schema 2 und wurden von der
-# Kette nie angefasst. Der Migrationsschritt v2->v3 holt sie einmal nach — von selbst
-# beim Start, nicht per Hand ueber 'link'.
-from autoclicker.persistence.migration import (migrate as _mig, KIND_SEQUENCE as _KSQ,
-                                               SCHEMA_VERSION as _SV)
-
-_alt_punkte = [{"id": 5, "x": 100, "y": 200, "name": "Bank"},
-               {"id": 6, "x": 300, "y": 400, "name": "Ofen"},
-               {"id": 7, "x": 50, "y": 50, "name": "A"},
-               {"id": 8, "x": 50, "y": 50, "name": "B"}]   # zwei auf derselben Stelle
-_alt_seq = {"name": "Aufnahme", "schema_version": 2, "total_cycles": 1,
-            "init_steps": [], "end_steps": [],
-            "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
-                {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"},
-                {"x": 300, "y": 400, "delay_before": 1.5, "name": "Klick 2"},
-                {"x": 50, "y": 50, "delay_before": 0.5, "name": "Klick 3"},
-                {"x": 0, "y": 0, "delay_before": 2, "name": "Taste", "key_press": "f"},
-            ]}]}
-
-_gehoben, _meld = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _alt_punkte})
-_gs = _gehoben["loop_phases"][0]["steps"]
-check("Altbestand: Schema wird auf die aktuelle Version gehoben",
-      _gehoben["schema_version"] == _SV)
-check("Altbestand: eindeutige Schritte werden verknuepft",
-      (_gs[0].get("point_id"), _gs[1].get("point_id")) == (5, 6))
-check("Altbestand: zwei Punkte auf derselben Stelle -> der erste gewinnt",
-      _gs[2].get("point_id") == 7)
-check("Altbestand: ein Tastendruck bekommt keinen Punkt",
-      _gs[3].get("point_id") is None)
-check("Altbestand: Wartezeiten bleiben unberuehrt",
-      [s["delay_before"] for s in _gs] == [0, 1.5, 0.5, 2])
-check("Altbestand: die Migration meldet, was sie getan hat",
-      any("verknüpft" in m for m in _meld))
-
-# Idempotent: der zweite Start darf nichts mehr finden
-_zweimal, _meld2 = _mig(json.loads(json.dumps(_gehoben)), _KSQ, {"points": _alt_punkte})
-check("Altbestand: zweiter Lauf aendert nichts", _zweimal == _gehoben and _meld2 == [])
-
-# Und ohne Punkte im Kontext darf nichts kaputtgehen. Frueher blieb dann alles
-# unverknuepft; heute legt die Migration die fehlenden Punkte selbst an - sonst waere
-# genau dieser Fall der eine, bei dem Koordinaten verloren gingen.
-_leerer_pool: list = []
-_ohne_punkte, _ = _mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
-_ohne_gs = _ohne_punkte["loop_phases"][0]["steps"]
-check("Altbestand: ohne Punkte werden welche angelegt statt zu scheitern",
-      [s.get("point_id") for s in _ohne_gs[:3]] == [1, 2, 3])
-check("Altbestand: die angelegten Punkte tragen die alten Koordinaten",
-      [(p["x"], p["y"]) for p in _leerer_pool] == [(100, 200), (300, 400), (50, 50)])
-check("Altbestand: der Tastendruck bekommt auch hier keinen Punkt",
-      _ohne_gs[3].get("point_id") is None and len(_leerer_pool) == 3)
-# Zweiter Lauf ueber DIESELBE Liste darf keine Dubletten erzeugen
-_mig(json.loads(json.dumps(_alt_seq)), _KSQ, {"points": _leerer_pool})
-check("Altbestand: erneutes Heben legt keine Punkte doppelt an", len(_leerer_pool) == 3)
-
+# Hier standen die Tests zu `_seq_v2_to_v3` (Aufnahmen des alten Recorders
+# nachtraeglich verknuepfen) und `_seq_v3_to_v4` (fehlende Punkte anlegen). Beide
+# Schritte sind geloescht, weil es keinen Altbestand mehr gibt, den sie heben
+# koennten - und mit ihnen diese Tests. Was BLEIBT, ist die Zusicherung darunter:
+# die Schleuse sitzt weiterhin in jedem Loader und laeuft nur, solange es etwas zu
+# tun gibt.
 # Und die Garantie, auf die es ankommt: die Kette laeuft, solange es etwas zu heben gibt,
 # danach NIE wieder. `migrate()` ruft zwar jeder Loader, aber die Schleife
 # `while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer — kein Schritt,
 # keine Aenderung, kein Schreibzugriff.
+#
+# **Gemessen wird mit einem GESTELLTEN Schritt.** Die echte Kette ist leer, seit es
+# keinen Altbestand mehr gibt - haenge man den Test an einen echten Schritt, waere er
+# beim naechsten Loeschen wieder faellig. Der gestellte Schritt prueft die Mechanik,
+# und genau die soll ueberleben: sie ist die Stelle, an der die naechste Umstellung
+# landet.
 import autoclicker.persistence.migration as _MG
 from autoclicker.persistence.sweep import sweep_beim_start as _sweep_start
 from autoclicker.persistence import (ensure_sequences_dir as _esd2,
@@ -3314,31 +3309,32 @@ _once_tmp = tempfile.mkdtemp()
 _once_cwd = _os.getcwd()
 _os.chdir(_once_tmp)
 _zaehler = {"n": 0}
-_orig_v3 = _MG._seq_v2_to_v3
 _orig_kette = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
 try:
     def _gezaehlt(data, context):
         _zaehler["n"] += 1
-        return _orig_v3(data, context)
-    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette[:-1] + [_gezaehlt]
+        data["von_der_migration"] = True
+        return ["gestellter Schritt gelaufen"]
+    # Auf Position 0: hebt von Version 0 auf 1. Die restlichen Stufen bis
+    # SCHEMA_VERSION haben keinen Eintrag und heben die Nummer nur an.
+    _MG._CHAINS[_MG.KIND_SEQUENCE] = [_gezaehlt]
 
     _esd2()
     Path(_SQD2, "points.json").write_text(
         json.dumps([{"id": 5, "x": 100, "y": 200, "name": "Bank"}]), encoding="utf-8")
     _adatei = Path(_SQD2) / "aufnahme.json"
     _adatei.write_text(json.dumps({
-        "name": "aufnahme", "schema_version": 2, "total_cycles": 1,
+        "name": "aufnahme", "total_cycles": 1,
         "init_steps": [], "end_steps": [],
         "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
-            {"x": 100, "y": 200, "delay_before": 0, "name": "Klick 1"}]}]}), encoding="utf-8")
+            {"point_id": 5, "delay_before": 0}]}]}), encoding="utf-8")
 
     with _cl2.redirect_stdout(_io2.StringIO()):
         _sweep_start()
     _nach_erstem = _zaehler["n"]
     _dat = json.loads(_adatei.read_text(encoding="utf-8"))
-    check("erster Start hebt die Datei und verknuepft sie",
-          _dat["schema_version"] == _MG.SCHEMA_VERSION
-          and _dat["loop_phases"][0]["steps"][0].get("point_id") == 5)
+    check("erster Start hebt die Datei auf die aktuelle Version",
+          _dat["schema_version"] == _MG.SCHEMA_VERSION)
     check("erster Start ruft die Kette ueberhaupt auf", _nach_erstem > 0)
 
     _inhalt_vorher = _adatei.read_text(encoding="utf-8")
@@ -3516,7 +3512,7 @@ def _lauf(wirkt_ab_klick, retries, else_cfg=None):
         zaehler["shots"] += 1
         return _FakeImg((0, 255, 0) if st.total_clicks >= wirkt_ab_klick else (255, 0, 0))
     alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
-    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: None), (lambda s: False)
+    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
     try:
         step = _SS(x=1, y=2, delay_before=0.0, name="T", point_id=1,
                    verify_condition=_WC4(point_id=2, pixel=(5, 6), color=(0, 255, 0)),
@@ -3551,7 +3547,7 @@ def _lauf_ohne():
         zaehler["shots"] += 1
         return _FakeImg((0, 255, 0))
     alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
-    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: None), (lambda s: False)
+    _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _RS.execute_step(st, _SS(x=1, y=2, delay_before=0.0, point_id=1), 1, 1, "Loop")
@@ -3751,7 +3747,10 @@ section("Das Fenster-Symbol wartet auf sein Fenster")
 # schon. Ohne Frist fiel setze_fenster_symbol() still auf False, und das Studio
 # behielt das Symbol von python.exe.
 import time as _t12
-from autoclicker.winapi import setze_fenster_symbol as _sfs12, _symbol_bits as _sb12
+from autoclicker.platforms.windows import (
+    setze_fenster_symbol as _sfs12, _symbol_bits as _sb12,
+)
+import autoclicker.symbol as _sym12
 
 _t0_12 = _t12.monotonic()
 _erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", warten=0.5)
@@ -3791,10 +3790,16 @@ for _kante12 in (16, 32):
         _symbol_loecher12.append(f"{_kante12}: Laenge passt nicht zum Kopf")
     _ecken12 = [_symbolpixel12(_bits12, _kante12, x, y)[3]
                 for x in (0, _kante12 - 1) for y in (0, _kante12 - 1)]
-    if _ecken12 != [0, 0, 0, 0]:
-        _symbol_loecher12.append(f"{_kante12}: Ecken nicht durchsichtig ({_ecken12})")
-    if _symbolpixel12(_bits12, _kante12, _kante12 // 2, _kante12 // 2)[3] != 255:
-        _symbol_loecher12.append(f"{_kante12}: Mitte nicht deckend")
+    # Der gelieferte Radius ist bei 16 px nur gut einen Pixel gross. Der
+    # Eckpixel ist deshalb kantengeglaettet, nicht zwingend komplett leer.
+    if any(a >= 255 for a in _ecken12):
+        _symbol_loecher12.append(f"{_kante12}: Ecken nicht abgerundet ({_ecken12})")
+    _innen12 = [_symbolpixel12(_bits12, _kante12, x, y)[3]
+                for y in range(2, _kante12 - 2) for x in range(2, _kante12 - 2)]
+    # Das neue Motiv hat absichtlich auch in der Mitte transparente Aussparungen.
+    # Gesucht werden deshalb beide Zustaende statt eines alten festen Mittelpixels.
+    if not any(a == 255 for a in _innen12) or not any(a == 0 for a in _innen12):
+        _symbol_loecher12.append(f"{_kante12}: Grund/Aussparung im Innern fehlt")
 
 # Die durchsichtigen Ecken sind dabei der Beleg fuer die Rundung: ein randvolles
 # Quadrat sieht aus wie ein Farbmuster, nicht wie ein Symbol.
@@ -3804,30 +3809,28 @@ if _symbol_loecher12:
     for _z12 in _symbol_loecher12:
         print("        " + _z12)
 
-# DIB-Zeilen stehen von unten nach oben - ohne das umgedrehte `reversed()`
-# steht die Fahne auf dem Kopf. Messbar am Motiv selbst: UEBER den Zeilen steht
-# die Fahne (ihre Spitze reicht weit nach rechts), UNTER ihnen nur der Fuss der
-# Stange (ein schmaler Kreis). Auf dem Kopf waere es umgekehrt.
+# DIB-Zeilen stehen von unten nach oben. Statt eine Stelle des alten Motivs als
+# Orientierungshilfe festzuschreiben, wird jedes Pixel mit der kanonischen
+# SVG-Rasterung verglichen. Das deckt Umdrehen, Kanalreihenfolge und Alpha ab.
 _bits12 = _sb12(32)
-_dunkel12 = [(x, y) for y in range(32) for x in range(32)
-             if _symbolpixel12(_bits12, 32, x, y)[2] < 0x60
-             and _symbolpixel12(_bits12, 32, x, y)[3] > 200]
-_oben12 = [x for x, y in _dunkel12 if y < 7.6 * 32 / 24]      # ueber der 1. Zeile
-_unten12 = [x for x, y in _dunkel12 if y > 19.2 * 32 / 24]    # unter der letzten
+_soll12 = list(_sym12.punkte(32))
 check("die Zeilen stehen von unten nach oben in der Datei",
-      _oben12 and _unten12 and max(_oben12) > max(_unten12) + 3)
+      all(_symbolpixel12(_bits12, 32, x, y)
+          == (_soll12[y][x][2], _soll12[y][x][1], _soll12[y][x][0], _soll12[y][x][3])
+          for y in range(32) for x in range(32)))
 
 # --- Ein gewaehltes Fenster wird DIREKT abgebildet ---
 # Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu sehen ist - also auch
 # das Studio, das davor liegt. PrintWindow fragt das Fenster selbst.
 import autoclicker.imaging as _img12
+import autoclicker.platforms.windows as _win12
 
 check("es gibt einen Weg, ein Fenster direkt abzubilden",
       callable(getattr(_img12, "take_window_screenshot", None)))
 # PW_RENDERFULLCONTENT ist der Teil, auf den es ankommt: ohne dieses Flag
 # liefern Fenster mit GPU-beschleunigtem Inhalt ein leeres Rechteck.
 check("und zwar mit PW_RENDERFULLCONTENT",
-      getattr(_img12, "PW_RENDERFULLCONTENT", 0) == 0x2)
+      getattr(_win12, "PW_RENDERFULLCONTENT", 0) == 0x2)
 check("ohne Fenster-Kennung passiert nichts",
       _img12.take_window_screenshot(0) is None)
 
@@ -3850,7 +3853,7 @@ check("und None erst recht", _img12.ist_leer(None) is True)
 # Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
 # spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
 # Fassungen desselben Spiels ist er dreimal derselbe.
-_quelle_wf12 = Path("autoclicker/winapi.py").read_text(encoding="utf-8")
+_quelle_wf12 = Path("autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle_wf12))
              if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "liste_fenster")
 _anhaenge12 = [_n12 for _n12 in _ast11.walk(_lf12)
@@ -3866,7 +3869,8 @@ check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
 # _ohne_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
-_quelle_br12 = Path("autoclicker/editors/sequence_studio/bridge.py").read_text(
+_quelle_br12 = Path(
+    "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
     encoding="utf-8")
 _baum_br12 = _ast11.parse(_quelle_br12)
 _lader12 = [_k12.lineno for _k12 in _ast11.walk(_baum_br12)
@@ -3878,82 +3882,35 @@ if _lader12:
 check("sie liest die Datei stattdessen selbst",
       "_config_datei" in _quelle_br12)
 
-# --- EINE Geometrie, drei Verwendungen ---
-# Das Motiv steht in symbol.py und sonst nirgends: winapi macht ICO-Bits daraus,
-# tools/symbol.py PNG- und ICO-Dateien, der Kopf der Oberflaeche ein SVG. Zwei
-# Beschreibungen desselben Motivs waeren zwei, von denen eine altert - genau die
-# Doppelung, die das Projekt sonst ueberall aufloest.
-import autoclicker.symbol as _sym12
+# --- EINE SVG-Datei, alle Verwendungen ---
+# Der Kopf und das Favicon laden die Datei direkt; symbol.py rastert genau diese
+# Datei fuer Windows und tools/symbol.py. Damit ist das neue Logo nicht nur im
+# grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+_kopf12 = _H.studio_web_source()
+_logo12 = _sym12.LOGO_PFAD.read_text(encoding="utf-8")
+check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
+      _sym12.LOGO_PFAD.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PFAD.exists())
+check("Kopf und Favicon benutzen beide diese Datei",
+      _kopf12.count('sequenz-studio-logo.svg') == 2)
+check("das neue Logo behaelt Rotation und transparente Maske",
+      'rotate(180 128 128)' in _logo12 and 'mask="url(#cutout)"' in _logo12)
+check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _kopf12)
 
-_formen12 = [f for f in _sym12.MOTIV + _sym12.MOTIV_KLEIN]
-_raus12 = []
-for _f12 in _formen12:
-    if _f12[0] == "rr":
-        _pkte12 = [(_f12[1], _f12[2]), (_f12[1] + _f12[3], _f12[2] + _f12[4])]
-    elif _f12[0] == "kreis":
-        _pkte12 = [(_f12[1] - _f12[3], _f12[2] - _f12[3]),
-                   (_f12[1] + _f12[3], _f12[2] + _f12[3])]
-    elif _f12[0] == "strich":
-        _pkte12 = [(_f12[1], _f12[2]), (_f12[3], _f12[4])]
-    else:
-        _pkte12 = list(_f12[1])
-    if any(not (0 <= _x12 <= _sym12.RASTER and 0 <= _y12 <= _sym12.RASTER)
-           for _x12, _y12 in _pkte12):
-        _raus12.append(str(_f12[:1]) + str(_pkte12))
-check("keine Form ragt aus dem Raster", _raus12 == [])
-if _raus12:
-    print("        " + ", ".join(_raus12))
-
-# Die kleine Fassung ist nicht die grosse in klein, sondern weniger Teile mit
-# dickeren Strichen: bei 16 px ist ein Umriss ein grauer Fleck. Ohne diese Regel
-# war das Symbol in der Titelleiste ein Klecks.
-check("die kleine Fassung hat weniger Teile als die grosse",
-      len(_sym12.MOTIV_KLEIN) < len(_sym12.MOTIV))
-check("und die Groessen, die Windows anfragt, bekommen sie",
-      _sym12.motiv_fuer(16) is _sym12.MOTIV_KLEIN
-      and _sym12.motiv_fuer(32) is _sym12.MOTIV_KLEIN
-      and _sym12.motiv_fuer(256) is _sym12.MOTIV)
-
-# Der Kopf der Oberflaeche zeichnet dasselbe Motiv als SVG. Gemessen wird jede
-# Zahl, nicht "kommt vor": ein verschobener Balken faellt sonst nicht auf.
-_kopf12 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
-_svg12 = _kopf12[_kopf12.index('<svg width="20"'):]
-_svg12 = _svg12[:_svg12.index("</svg>")]
-
-
-import re as _re12
-
-
-def _zahl12(quelle, name):
-    _m12 = _re12.search(rf'{name}="([-\d.]+)"', quelle)
-    return float(_m12.group(1)) if _m12 else None
-
-
-_aus_svg12 = []
-for _roh12 in _re12.findall(r"<(?:rect|circle|line|polygon)\b[^>]*>", _svg12):
-    if _roh12.startswith("<rect"):
-        _aus_svg12.append(("rr", _zahl12(_roh12, "x"), _zahl12(_roh12, "y"),
-                           _zahl12(_roh12, "width"), _zahl12(_roh12, "height"),
-                           _zahl12(_roh12, "rx")))
-    elif _roh12.startswith("<circle"):
-        _aus_svg12.append(("kreis", _zahl12(_roh12, "cx"), _zahl12(_roh12, "cy"),
-                           _zahl12(_roh12, "r")))
-    elif _roh12.startswith("<line"):
-        _aus_svg12.append(("strich", _zahl12(_roh12, "x1"), _zahl12(_roh12, "y1"),
-                           _zahl12(_roh12, "x2"), _zahl12(_roh12, "y2"),
-                           _zahl12(_roh12, "stroke-width")))
-    else:
-        _ecken12b = tuple(tuple(float(_w12) for _w12 in _paar12.split(","))
-                          for _paar12 in
-                          _re12.search(r'points="([^"]+)"', _roh12).group(1).split())
-        _aus_svg12.append(("zug", _ecken12b, 0.0, True))
-check("der Kopf der Oberflaeche zeichnet die kleine Fassung, Zahl fuer Zahl",
-      _aus_svg12 == list(_sym12.MOTIV_KLEIN))
-if _aus_svg12 != list(_sym12.MOTIV_KLEIN):
-    for _a12, _b12 in zip(_aus_svg12 + [None] * 9, list(_sym12.MOTIV_KLEIN) + [None] * 9):
-        if _a12 != _b12:
-            print(f"        SVG {_a12}  !=  MOTIV_KLEIN {_b12}")
+# Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
+# Ecken UND transparenten Aussparungen im Innern ergeben. Zwischenwerte im
+# Alpha-Kanal beweisen, dass die Kanten geglaettet statt hart gerastert werden.
+_pixel12 = list(_sym12.punkte(16))
+_flach12 = [p for z in _pixel12 for p in z]
+check("die Rasterung liefert genau 16 x 16 Pixel",
+      len(_pixel12) == 16 and all(len(z) == 16 for z in _pixel12))
+check("sie verwendet exakt die Farbe des gelieferten SVGs",
+      all(p[:3] == (0xF2, 0xA3, 0x00) for p in _flach12))
+check("Grund, transparente Aussparungen und Kantenglaettung bleiben erhalten",
+      any(p[3] == 255 for p in _flach12)
+      and any(p[3] == 0 for p in _flach12)
+      and any(0 < p[3] < 255 for p in _flach12))
+check("Transparenz liegt auch mitten im Motiv, nicht nur an den Aussenecken",
+      any(_pixel12[y][x][3] == 0 for y in range(2, 14) for x in range(2, 14)))
 
 # --- Die Dateien fuer eine Verknuepfung ---
 # Das Fenstersymbol setzt die App selbst; eine Verknuepfung, ein angehefteter
@@ -3989,7 +3946,7 @@ check("und die Laengen decken die Datei genau ab",
 # Titelleiste und Taskleiste sind zwei Mechanismen. Das Fenstersymbol reichte
 # fuer die eine; die andere sortierte das Fenster weiter unter python.exe ein und
 # zeigte dessen Symbol. Erst eine eigene AppUserModelID loest es aus der Gruppe.
-from autoclicker.winapi import setze_app_id as _said12, APP_ID as _AID12
+from autoclicker.platforms.windows import setze_app_id as _said12, APP_ID as _AID12
 
 check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
 if sys.platform == "win32":
@@ -4111,7 +4068,8 @@ except ImportError:
 if _pd6 is not None:
     import importlib.util as _ilu6
     _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analyse.py")
-    # analyse.py macht `from config import *` - dafuer muss sein Ordner im Pfad sein
+    # Der direkte Skriptmodus lädt seine Nachbarmodule ohne Paketpräfix; dafür
+    # muss der Ordner wie beim echten Aufruf im Suchpfad stehen.
     sys.path.insert(0, str(_ma_dir))
     try:
         _ma6 = _ilu6.module_from_spec(_spec6)
@@ -4696,8 +4654,7 @@ check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is
 # ausmachte: ein zweites Bedienelement fuer denselben Zustand.
 import re as _re13b
 
-_seite13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-            .read_text(encoding="utf-8"))
+_seite13 = _H.studio_web_source()
 _schalter13 = _re13b.findall(r'schalter\(\s*"([^"]*)"', _seite13)
 check("die Ansicht hat ueberhaupt Schalter", len(_schalter13) >= 2)
 check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
@@ -4898,17 +4855,24 @@ section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 # gerade NICHT tut.
 import inspect as _inspect13, re as _re13
 
-_html13 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
+_html13 = _H.studio_web_source()
 # BEIDE Kanaele: `ruf()` befiehlt (Antwort = neue Momentaufnahme), `frage()` fragt
 # nur (Sequenzliste, Laufstatus). Stuende hier nur `ruf`, waeren ausgerechnet die
 # zwei neuesten Methoden ungeprueft - und der Fehler, den dieser Test faengt, ist
 # nicht "falsche Logik", sondern "Name existiert gar nicht": eine leere Ansicht
 # mit einer Zeile in der Statusleiste.
-_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|frage)\("([a-z_]+)"', _html13)))
+# **Und `rufScan()` ist der dritte Weg.** Er fehlte hier, und damit war
+# ausgerechnet der Reiter ungeprueft, der am meisten Bruecken-Methoden hat: der
+# ganze Scans-Teil ruft ueber ihn. Ein Tippfehler in einem Methodennamen waere
+# dort erst beim Klicken aufgefallen - genau der Fehler, gegen den dieser Test
+# steht.
+_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|rufScan|frage)\("([a-z_]+)"',
+                                      _html13)))
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
       "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
+check("und der Scans-Reiter ist mit erfasst (rufScan)",
+      "scan_daten" in _gerufen13 and "scan_klick" in _gerufen13)
 
 _fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
@@ -5010,8 +4974,13 @@ try:
         "name": "aelter", "schema_version": 4, "total_cycles": 1,
         "init_steps": [], "end_steps": [], "loop_phases": []}), encoding="utf-8")
     # Zeitstempel von Hand setzen - sonst haengt der Test an der Aufloesung der Uhr.
-    _os.utime(Path("sequences") / "aelter.json", (1000, 1000))
-    _os.utime(Path("sequences") / "all_dayli.json", (2000, 2000))
+    # Moderne Werte statt Sekunden kurz nach 1970: NTFS und POSIX-Dateisysteme
+    # behandeln sehr alte Zeitstempel nicht identisch. Der grosse Abstand hält
+    # den Test weiterhin unabhängig von der Zeitauflösung des Dateisystems.
+    _zeit14 = 1_700_000_000
+    _os.utime(Path("sequences") / "aelter.json", (_zeit14, _zeit14))
+    _os.utime(Path("sequences") / "all_dayli.json",
+              (_zeit14 + 100, _zeit14 + 100))
     check("die zuletzt geaenderte Datei wird gefunden",
           _zb14() == Path("sequences") / "all_dayli.json")
 
@@ -5020,14 +4989,16 @@ try:
           _pfad14d == Path("sequences") / "all_dayli.json"
           and _schritte14(_seq14d) == 1)
 
-    _os.utime(Path("sequences") / "aelter.json", (3000, 3000))
+    _os.utime(Path("sequences") / "aelter.json",
+              (_zeit14 + 200, _zeit14 + 200))
     _seq14e, _pfad14e = _rs14("")
     check("und sie wechselt mit, wenn eine andere gespeichert wird",
           _pfad14e == Path("sequences") / "aelter.json")
 
     # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
     (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
-    _os.utime(Path("sequences") / "kaputt.json", (500, 500))
+    _os.utime(Path("sequences") / "kaputt.json",
+              (_zeit14 - 100, _zeit14 - 100))
     _seq14c, _pfad14c = _rs14("kaputt")
     check("eine unlesbare Datei wird nicht als Ziel uebernommen",
           _pfad14c.name != "kaputt.json" and _seq14c.loop_phases == [])
@@ -5589,947 +5560,9 @@ finally:
     _os.chdir(_cwd16)
 
 
-# --------------------------- Scans im Studio: Slots, Items, Erkennung
-section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
+# Die Scans-Sektionen des Studios stehen in `tools/tests/studio_scans.py` —
+# ueber 1.200 Zeilen und in sich geschlossen, also das erste eigene Modul.
 
-# Das Dear-PyGui-Scan-Studio ist weg; seine Arbeit macht ein Reiter im Studio.
-# Was dabei zaehlt, ist nicht die Ansicht (die laeuft in keinem Test), sondern
-# was die Bruecke daraus macht: aus zwei Klicks ein Rechteck, aus einem Klick
-# eine gemessene Farbe, aus einem Umbenennen eine nachgezogene Referenz.
-import ast as _ast10, re as _re13
-from autoclicker.editors.sequence_studio.scans import (
-    MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
-    MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODUS_FINDEN as _MF18,
-    MODI as _MODI18, MIN_SLOT as _MINSLOT18,
-)
-from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
-
-_repo17 = Path(__file__).resolve().parent.parent
-
-_sand18 = tempfile.mkdtemp(prefix="studioscan_")
-_cwd18 = _os.getcwd()
-_os.chdir(_sand18)
-try:
-    Path("sequences").mkdir()
-    _b18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
-
-    # --- Ohne Bild passiert nichts Dummes ---
-    # Der haeufigste Weg in den Reiter ist "aufmachen und draufklicken", und
-    # ohne Screenshot gibt es nichts zu messen. Eine Meldung ist die richtige
-    # Antwort, ein Slot mit Farbe None waere die falsche.
-    _z18 = _b18.scan_daten()
-    check("ohne Bild gibt es kein Foto in der Aufnahme", _z18["foto"] is None)
-    check("und keine Slots", _z18["slots"] == [])
-    check("der Modus faengt beim Auswaehlen an", _z18["modus"] == _MW18)
-
-    # --- Ein gestelltes Bild unterschieben ---
-    # Denselben Weg geht der Browser-Pruefstand: `take_screenshot` gibt es auf
-    # dieser Plattform nicht, alles dahinter schon.
-    _hat_pil18 = False
-    try:
-        from PIL import Image as _PILImage18
-        _hat_pil18 = True
-    except ImportError:
-        pass
-
-    if not _hat_pil18:
-        print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
-    else:
-        _bild18 = _PILImage18.new("RGB", (400, 300), (24, 28, 36))
-        for _px18 in range(100, 160):
-            for _py18 in range(100, 160):
-                _bild18.putpixel((_px18, _py18), (48, 54, 68))
-        for _px18 in range(112, 148):
-            for _py18 in range(112, 148):
-                _bild18.putpixel((_px18, _py18), (200, 60, 60))
-
-        import autoclicker.imaging as _img18
-        import autoclicker.winapi as _win18
-        _echt_shot18 = _img18.take_screenshot
-        _echt_org18 = _win18.get_virtual_origin
-        # Der Stub schneidet wie das Original: `take_screenshot(region)` liefert
-        # den Ausschnitt, nicht den ganzen Schirm. Ohne das koennte der Test die
-        # Bereichs-Aufnahme gar nicht messen - sie saehe aus wie Vollbild.
-        _img18.take_screenshot = lambda region=None: (
-            _bild18.copy() if not region else _bild18.crop(tuple(region)))
-        _win18.get_virtual_origin = lambda: (0, 0)
-        try:
-            _z18 = _b18.scan_foto()
-            check("das Foto steht in der Aufnahme",
-                  _z18["foto"] and _z18["foto"]["breite"] == 400)
-            check("und das Bild selbst kommt getrennt",
-                  _b18.scan_bild().startswith("data:image/png;base64,"))
-            check("es steht NICHT in der Aufnahme", "bild" not in _z18)
-
-            # --- Zwei Ecken ergeben einen Slot ---
-            _b18.scan_modus_setzen({"modus": _MS18})
-            _z18 = _b18.scan_klick({"x": 100, "y": 100})
-            check("nach der ersten Ecke gibt es noch keinen Slot",
-                  _z18["slots"] == [] and _z18["ecke"] == [100, 100])
-            _z18 = _b18.scan_klick({"x": 160, "y": 160})
-            check("die zweite Ecke legt ihn an", len(_z18["slots"]) == 1)
-            _s18 = _z18["slots"][0]
-            check("mit der aufgezogenen Flaeche", _s18["region"] == [100, 100, 160, 160])
-            check("dem Klickpunkt in der Mitte", _s18["klick"] == [130, 130])
-            # Die Farbe wird an der INNEREN Ecke gemessen, nicht in der Mitte -
-            # dort liegt das Item, nicht der Hintergrund.
-            check("und dem gemessenen Hintergrund", _s18["farbe"] == "#303644")
-            check("die Ecke ist danach wieder frei", _z18["ecke"] is None)
-
-            # Verkehrt herum aufgezogen ist dasselbe Rechteck. Der Modus bleibt
-            # dabei stehen - wer zwanzig Slots aufzieht, soll die Kachel nicht
-            # zwanzigmal anfassen muessen. (Nochmal darauf zu klicken hiesse
-            # jetzt "fertig, zurueck ins Auswaehlen".)
-            check("der Modus bleibt nach einem Slot stehen",
-                  _z18["modus"] == _MS18)
-            _b18.scan_klick({"x": 260, "y": 260})
-            _z18 = _b18.scan_klick({"x": 200, "y": 200})
-            check("auch von rechts unten nach links oben",
-                  _z18["slots"][1]["region"] == [200, 200, 260, 260])
-
-            # --- Zu kleines Rechteck wird abgelehnt ---
-            _b18.scan_klick({"x": 300, "y": 300})
-            _z18 = _b18.scan_klick({"x": 301, "y": 301})
-            check("ein Rechteck von einem Pixel wird abgelehnt",
-                  len(_z18["slots"]) == 2 and _z18["status"]["art"] == "warn")
-
-            # --- Ein winziger Slot entsteht gar nicht erst ---
-            # Zwei Klicks fast auf dieselbe Stelle ergaben einen Slot von 2x2 px
-            # - und der war danach kaum wieder loszuwerden, weil man ihn im Bild
-            # nicht mehr traf. Loeschen setzt Auswaehlen voraus.
-            _b18.scan_klick({"x": 300, "y": 300})
-            _z18 = _b18.scan_klick({"x": 304, "y": 304})
-            check("ein Rechteck von vier Pixeln wird abgelehnt",
-                  len(_z18["slots"]) == 2 and _z18["status"]["art"] == "warn")
-            check("und die Meldung nennt das Mindestmass",
-                  str(_MINSLOT18) in _z18["status"]["text"])
-
-            # Vorhandene Winzlinge (aus einer alten Datei, aus getippten Zahlen)
-            # gibt es weiterhin - die muessen ANKLICKBAR sein, sonst bleiben sie
-            # fuer immer. Der Slot selbst wird dabei nicht angefasst.
-            _b18.slots["Winzling"] = _SLOT8(name="Winzling",
-                                            scan_region=(340, 40, 342, 42),
-                                            click_pos=(341, 41))
-            _b18.scan_modus_setzen({"modus": _MW18})
-            _z18 = _b18.scan_klick({"x": 344, "y": 44})
-            check("ein winziger Slot ist auch daneben noch zu treffen",
-                  _z18["wahl"]["name"] == "Winzling")
-            check("er bleibt dabei so klein, wie er ist",
-                  [s for s in _z18["slots"] if s["name"] == "Winzling"][0]["region"]
-                  == [340, 40, 342, 42])
-            check("und die Liste markiert ihn",
-                  [s for s in _z18["slots"] if s["name"] == "Winzling"][0]["winzig"] is True)
-            check("ein normaler Slot heisst nicht winzig",
-                  [s for s in _z18["slots"] if s["name"] == "Slot 1"][0]["winzig"] is False)
-
-            # Liegt er IN einem grossen, fing der grosse bisher jeden Klick ab.
-            # Der KLEINSTE gewinnt, nicht der zuletzt angelegte - deshalb kommt
-            # der Umschlag hier NACH dem Zwerg in die Liste: waere die Regel
-            # weiterhin "der letzte gewinnt", zeigte dieser Klick auf ihn.
-            _b18.slots["Zwerg"] = _SLOT8(name="Zwerg", scan_region=(128, 128, 134, 134),
-                                         click_pos=(131, 131))
-            _b18.slots["Umschlag"] = _SLOT8(name="Umschlag", scan_region=(120, 120, 200, 200),
-                                            click_pos=(160, 160))
-            _z18 = _b18.scan_klick({"x": 131, "y": 131})
-            check("ein kleiner Slot in einem grossen gewinnt den Klick",
-                  _z18["wahl"]["name"] == "Zwerg")
-            _z18 = _b18.scan_klick({"x": 190, "y": 190})
-            check("und der grosse bleibt ueberall sonst anklickbar",
-                  _z18["wahl"]["name"] == "Umschlag")
-            # Auch zwischen zwei grossen zaehlt die Flaeche, nicht die Reihenfolge.
-            _z18 = _b18.scan_klick({"x": 150, "y": 150})
-            check("zwischen zwei Slots gewinnt der kleinere",
-                  _z18["wahl"]["name"] == "Slot 1")
-            # Der Punkt der ganzen Uebung: anklickbar heisst loeschbar.
-            _b18.scan_klick({"x": 131, "y": 131})
-            _z18 = _b18.scan_slot_loeschen()
-            check("und damit ist er auch zu loeschen",
-                  all(s["name"] != "Zwerg" for s in _z18["slots"]))
-            _b18.scan_klick({"x": 344, "y": 44})
-            _b18.scan_slot_loeschen()
-            del _b18.slots["Umschlag"]
-
-            # --- Ein Rechteck neben den Slots waehlt mehrere ---
-            # Dreissig Slots einzeln anzuklicken und einzeln zu loeschen ist
-            # der Grund, warum es das gibt. Die Sammel-Aktion arbeitet auf der
-            # Auswahl, nicht auf einem Slot - dieselbe Regel wie im
-            # Sequenz-Editor.
-            _b18.scan_modus_setzen({"modus": _MW18})
-            _z18 = _b18.scan_klick({"x": 5, "y": 5})
-            check("ein Klick neben allen Slots faengt ein Rechteck an",
-                  _z18["ecke"] == [5, 5] and _z18["auswahl"] == [])
-            _z18 = _b18.scan_klick({"x": 290, "y": 290})
-            check("die zweite Ecke waehlt alles darin",
-                  sorted(_z18["auswahl"]) == ["Slot 1", "Slot 2"])
-            check("und die Ecke ist wieder frei", _z18["ecke"] is None)
-            check("einer davon ist der, den der Inspektor bearbeitet",
-                  _z18["wahl"]["name"] in _z18["auswahl"])
-
-            # Ganz darin, nicht angeschnitten: "alle die darin sind" heisst
-            # genau das, und Ermessen ist bei einer Sammel-Loeschung falsch.
-            _b18.scan_klick({"x": 5, "y": 5})
-            _z18 = _b18.scan_klick({"x": 130, "y": 130})
-            check("ein angeschnittener Slot zaehlt nicht dazu",
-                  _z18["auswahl"] == [])
-            check("ein leeres Rechteck hebt die Auswahl auf",
-                  _z18["wahl"]["name"] == "")
-
-            # STRG nimmt einzelne dazu und wieder heraus. Vorher einen normalen
-            # Klick, sonst waere "dazu" von "nur dieser" nicht zu unterscheiden.
-            _b18.scan_klick({"x": 210, "y": 210})
-            _z18 = _b18.scan_klick({"x": 130, "y": 130, "zusatz": True})
-            check("STRG-Klick nimmt einen Slot zur Auswahl DAZU",
-                  sorted(_z18["auswahl"]) == ["Slot 1", "Slot 2"])
-            _z18 = _b18.scan_klick({"x": 130, "y": 130, "zusatz": True})
-            check("nochmal darauf nimmt ihn wieder heraus",
-                  _z18["auswahl"] == ["Slot 2"])
-
-            # Ein Klick auf einen Slot ist wieder eine EINZEL-Auswahl - sonst
-            # naehme das naechste "loeschen" die alte Menge mit.
-            _z18 = _b18.scan_klick({"x": 130, "y": 130})
-            check("ein gewoehnlicher Klick waehlt nur diesen einen",
-                  _z18["auswahl"] == ["Slot 1"])
-            _z18 = _b18.scan_waehlen({"art": "slot", "name": "Slot 2"})
-            check("und eine Zeile in der Liste ebenso",
-                  _z18["auswahl"] == ["Slot 2"])
-
-            # Loeschen nimmt die ganze Auswahl.
-            _b18.scan_klick({"x": 5, "y": 5})
-            _b18.scan_klick({"x": 290, "y": 290})
-            _z18 = _b18.scan_slot_loeschen()
-            check("loeschen nimmt die ganze Auswahl",
-                  _z18["slots"] == [] and _z18["auswahl"] == [])
-            check("und sagt, wie viele es waren",
-                  "2 Slots gelöscht" in _z18["status"]["text"])
-            _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(100, 100, 160, 160),
-                                          click_pos=(111, 122), slot_color=(48, 54, 68))
-            _b18.slots["Slot 2"] = _SLOT8(name="Slot 2", scan_region=(200, 200, 260, 260),
-                                          click_pos=(230, 230), slot_color=(48, 54, 68))
-            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
-
-            # --- Farbe messen: im Item statt im Hintergrund ---
-            _b18.scan_waehlen({"art": "slot", "name": _s18["name"]})
-            _b18.scan_modus_setzen({"modus": _MM18})
-            _z18 = _b18.scan_klick({"x": 130, "y": 130})
-            check("die Pipette misst im Originalbild",
-                  _z18["slots"][0]["farbe"] == "#C83C3C")
-            # Gegenprobe: gemessen wird NICHT im verkleinerten Anzeigebild.
-            # Waere es das, ergaebe der Rand des Items eine Mischfarbe.
-            _z18 = _b18.scan_klick({"x": 100, "y": 100})
-            check("und trifft auch den Rand genau", _z18["slots"][0]["farbe"] == "#303644")
-
-            # --- Klickpunkt setzen ---
-            _b18.scan_modus_setzen({"modus": _MK18})
-            _z18 = _b18.scan_klick({"x": 111, "y": 122})
-            check("der Klickpunkt folgt dem Zeiger", _z18["slots"][0]["klick"] == [111, 122])
-
-            # --- Auswaehlen ueber das Bild ---
-            _b18.scan_modus_setzen({"modus": _MW18})
-            _z18 = _b18.scan_klick({"x": 210, "y": 210})
-            check("ein Klick waehlt den Slot darunter", _z18["wahl"]["name"] == "Slot 2")
-            # Daneben zu klicken waehlt nicht ab, sondern faengt ein
-            # Auswahl-Rechteck an: die Abwahl ist das leere Rechteck (oder ESC).
-            # Ein einzelner Klick ins Leere darf nichts wegnehmen, sonst kostet
-            # ein Verklicker die gerade aufgebaute Auswahl.
-            _z18 = _b18.scan_klick({"x": 5, "y": 5})
-            check("daneben faengt ein Auswahl-Rechteck an",
-                  _z18["ecke"] == [5, 5] and _z18["wahl"]["name"] == "Slot 2")
-            _z18 = _b18.scan_klick({"x": 8, "y": 8})
-            check("ein Rechteck ohne Slots waehlt nichts",
-                  _z18["wahl"]["name"] == "" and _z18["auswahl"] == [])
-
-            # --- Item lernen ---
-            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
-            _z18 = _b18.scan_item_lernen({"slot": "Slot 1"})
-            check("aus dem Slot wird ein Item", len(_z18["items"]) == 1)
-            _i18 = _z18["items"][0]
-            check("es hat Marker-Farben", len(_i18["marker"]) > 0)
-            check("und ein Template auf Platte",
-                  _i18["template"] and Path("items/templates", _i18["template"]).exists())
-            check("gelernt heisst nicht stumm", _i18["stumm"] is False)
-            check("die Vorschau kommt auf Nachfrage",
-                  _b18.scan_vorschau({"namen": [_i18["name"]]})[_i18["name"]]
-                  .startswith("data:image/png;base64,"))
-
-            # --- Die drei Schritte zu einem Scan ---
-            # Der Reiter zeigte alle Bedienelemente gleichzeitig; wer zum ersten
-            # Mal einen Scan anlegt, sah eine Wand statt eines Weges.
-            _b18.scan_neu({"name": "Weg"})
-            _sch18 = _b18.scan_daten()["schritte"]
-            check("es sind drei Schritte", [s["nr"] for s in _sch18] == [1, 2, 3])
-            check("mit Bild ist der erste erledigt", _sch18[0]["fertig"] is True)
-            check("und der zweite dran",
-                  _sch18[1]["aktuell"] is True and _sch18[1]["fertig"] is False)
-            # Der entscheidende Satz: zwischen Slots und Items liegt das Spiel.
-            # Wer auf dem alten Bild lernt, lernt leere Slots.
-            check("Schritt 3 sagt, dass neu aufgenommen werden muss",
-                  "NEU aufnehmen" in _sch18[2]["was"])
-            check("genau ein Schritt ist der aktuelle",
-                  sum(1 for s in _sch18 if s["aktuell"]) == 1)
-
-            # --- Slots finden: Suchbereich, dann ein Klick auf den Hintergrund ---
-            # 24 Slots von Hand sind 48 Klicks. Die Erkennung gibt es laengst -
-            # dieselbe Funktion, die auch `repair` im Slot-Editor benutzt.
-            #
-            # Der Koeder unten rechts hat GENAU die Slot-Farbe und ist keiner:
-            # ein Menue neben dem Inventar. Ohne Suchbereich wird er mitgefunden,
-            # und das faellt erst beim Erkennen auf - dann hat man ihn schon.
-            # Jede Zelle bekommt in der Mitte ein eigenes Rauschmuster. Ohne das
-            # ist die Zelle einfarbig - und ein Vergleich, der den Hintergrund
-            # ausmaskiert, haette dann gar keine Pixel mehr zu vergleichen.
-            # (Ausserdem: eine gleichfoermige Flaeche hat keine Varianz, also
-            # auch keine Korrelation. Echte Item-Symbole haben beides.)
-            import random as _rnd18
-            _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
-            def _zelle18(ox, oy, saat):
-                for _px18 in range(60):
-                    for _py18 in range(60):
-                        _gitter18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
-                r = _rnd18.Random(saat)
-                for _px18 in range(20, 40):
-                    for _py18 in range(20, 40):
-                        _gitter18.putpixel((ox + _px18, oy + _py18),
-                                           (r.randrange(120, 256), r.randrange(120, 256),
-                                            r.randrange(120, 256)))
-            for _gy18 in range(2):
-                for _gx18 in range(3):
-                    _zelle18(40 + _gx18 * 80, 40 + _gy18 * 80, _gy18 * 3 + _gx18)
-            _zelle18(320, 220, 99)
-            _slots_vorher18 = dict(_b18.slots)
-            _b18.slots.clear()
-            _b18.scans["Weg"].slot_names.clear()
-            _b18._foto = _gitter18
-            _b18._anzeigebild(0, 0, 1.0)
-
-            # Der erste Klick ist keine Farbe mehr, sondern eine Ecke.
-            _b18.scan_modus_setzen({"modus": _MF18})
-            _z18 = _b18.scan_klick({"x": 20, "y": 20})
-            check("der erste Klick beim Finden setzt eine Ecke",
-                  _z18["slots"] == [] and _z18["ecke"] == [20, 20])
-            _z18 = _b18.scan_klick({"x": 280, "y": 200})
-            check("die zweite Ecke ergibt den Suchbereich",
-                  _z18["suchbereich"] == [20, 20, 280, 200] and _z18["slots"] == [])
-            # Ein Klick daneben legt nichts an, sondern sagt es: sonst suchte man
-            # nach der Farbe, die man gerade danebengesetzt hat.
-            _z18 = _b18.scan_klick({"x": 350, "y": 250})
-            check("eine Farbe ausserhalb des Suchbereichs zaehlt nicht",
-                  _z18["slots"] == [] and _z18["status"]["art"] == "warn")
-
-            _z18 = _b18.scan_klick({"x": 42, "y": 42})
-            if _b18._hat_opencv():
-                check("der Klick auf den Hintergrund legt alle Slots an",
-                      len(_z18["slots"]) == 6)
-                check("der Koeder ausserhalb ist NICHT dabei",
-                      all(s["region"][0] < 300 for s in _z18["slots"]))
-                check("der Suchbereich ist danach wieder weg",
-                      _z18["suchbereich"] is None)
-                check("sie gehoeren gleich zum offenen Scan",
-                      all(s["dabei"] for s in _z18["slots"]))
-                check("danach ist wieder Auswaehlen aktiv", _z18["modus"] == _MW18)
-                # Der Einzug: die Erkennung liefert die ganze Zelle samt Rahmen,
-                # gescannt werden soll das Innere. Der Konsolen-Editor rechnet
-                # ihn seit jeher, das Studio tat es nicht - und lernte den Rahmen
-                # als Item-Merkmal mit.
-                import autoclicker.config as _cfg18
-                _ein18 = _cfg18.CONFIG.scan_slot_inset
-                check("die Zelle wird um scan_slot_inset eingezogen",
-                      all(s["breite"] == 60 - 2 * _ein18 for s in _z18["slots"]))
-                check("und es steht dabei, dass eingezogen wurde",
-                      "Einzug" in _z18["status"]["text"])
-
-                _b18.scan_modus_setzen({"modus": _MF18})
-                _b18.scan_klick({"x": 20, "y": 20})
-                _b18.scan_klick({"x": 280, "y": 200})
-                _z18 = _b18.scan_klick({"x": 42, "y": 42})
-                check("ein zweiter Durchgang verdoppelt nichts",
-                      len(_z18["slots"]) == 6 and "schon da" in _z18["status"]["text"])
-                # Der Panel-Hintergrund liegt bei dunklen Oberflaechen im
-                # Standardband mit drin - dann kaeme EIN Rechteck ueber alles
-                # heraus. Das enger werdende Band faengt genau das ab.
-                check("das Panel wird nicht als ein Riesen-Slot genommen",
-                      all(s["breite"] < 200 for s in _z18["slots"]))
-                # Gegenprobe zum Suchbereich: derselbe Klick, aber ein Bereich,
-                # der auch den Koeder umfasst - dann sind es sieben.
-                _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
-                _b18.scan_modus_setzen({"modus": _MF18})
-                _b18.scan_klick({"x": 10, "y": 10})
-                _b18.scan_klick({"x": 395, "y": 295})
-                _z18 = _b18.scan_klick({"x": 42, "y": 42})
-                check("ein weiterer Suchbereich nimmt den Koeder mit",
-                      len(_z18["slots"]) == 7)
-
-                # --- Nach dem Finden wird gleich geprueft ---
-                # Die Frage nach dem Finden ist nicht "habe ich Slots", sondern
-                # "was davon kenne ich schon". Ohne das stehen zwanzig gleich
-                # aussehende Rechtecke da, und "Items lernen" lernt stumpf alle.
-                _items_vorher18 = dict(_b18.items)
-                _b18.items.clear()
-                _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
-                _b18.scans["Weg"].item_names.clear()
-                _b18.scan_modus_setzen({"modus": _MF18})
-                _b18.scan_klick({"x": 10, "y": 10})
-                _b18.scan_klick({"x": 395, "y": 295})
-                _z18 = _b18.scan_klick({"x": 42, "y": 42})
-                check("ohne Items im Bestand sagt die Probe nichts",
-                      "bekanntem Item" not in _z18["status"]["text"]
-                      and all(s["treffer"] is None for s in _z18["slots"]))
-
-                # Ein Item aus genau einem dieser Slots lernen, dann nochmal
-                # finden: der eine Slot muss gruen sein, die anderen nicht.
-                _erster18 = sorted(_b18.slots.values(),
-                                   key=lambda s: (s.scan_region[1], s.scan_region[0]))[0]
-                _b18.scan_item_lernen({"slot": _erster18.name})
-                _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
-                # Ein Slot ausserhalb des Bildes kann nie einen Treffer haben -
-                # der zuverlaessigste Weg, im gestellten Gitter (in dem alle
-                # Zellen gleich aussehen) ueberhaupt einen unbekannten zu haben.
-                _b18.slots["Draussen"] = _SLOT8(name="Draussen",
-                                                scan_region=(2000, 2000, 2060, 2060),
-                                                click_pos=(2030, 2030))
-                _b18.scan_modus_setzen({"modus": _MF18})
-                _b18.scan_klick({"x": 10, "y": 10})
-                _b18.scan_klick({"x": 395, "y": 295})
-                _z18 = _b18.scan_klick({"x": 42, "y": 42})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
-                check("das gelernte Item wird gleich im Slot erkannt",
-                      len(_gruen18) >= 1)
-                check("und die Meldung sagt, was noch unbekannt ist",
-                      "bekanntem Item" in _z18["status"]["text"]
-                      and "unbekannt" in _z18["status"]["text"])
-                # Der Treffer gehoert zum offenen Scan (das Lernen hat ihn
-                # eingetragen), ist also NICHT fremd.
-                check("ein Item des offenen Scans gilt nicht als fremd",
-                      _gruen18[0]["treffer"].get("fremd") is False)
-
-                # --- Ein neuer Scan faengt leer an, erkannte tauchen auf ---
-                # Vorher standen im Inspektor eines frischen Scans alle Slots
-                # und alle Items des GESAMTEN Bestands - die eines anderen
-                # Spiels also mit. Slots sind Bildschirm-Koordinaten und
-                # gehoeren immer genau einem Spiel; Items koennen geteilt sein,
-                # und ein Item ein zweites Mal zu lernen ist genau das, was man
-                # vermeiden will. Deshalb: dabei ODER gerade erkannt.
-                _erk18 = [i for i in _z18["items"] if i["erkannt"]]
-                check("ein erkanntes Item ist als solches markiert",
-                      len(_erk18) >= 1)
-                check("und es ist genau das, was in einem Slot steht",
-                      {i["name"] for i in _erk18}
-                      == {s["treffer"]["name"] for s in _z18["slots"]
-                          if s["treffer"] and s["treffer"]["name"]})
-                # Ein Item, das nirgends erkannt wird, traegt das Merkmal nicht -
-                # sonst waere die Liste wieder der ganze Bestand.
-                _b18.items["Nie gesehen"] = _ITEM8(name="Nie gesehen")
-                _z18 = _b18.scan_daten()
-                check("ein nirgends erkanntes Item traegt das Merkmal nicht",
-                      [i for i in _z18["items"]
-                       if i["name"] == "Nie gesehen"][0]["erkannt"] is False)
-                _b18.items.pop("Nie gesehen", None)
-                _z18 = _b18.scan_daten()
-
-                # Und umgekehrt: aus dem Scan genommen ist derselbe Treffer
-                # fremd - erkannt, aber der Scan sieht ihn nicht an. Nachgezogen
-                # wird das OHNE neue Rechnung.
-                _name18 = _gruen18[0]["treffer"]["name"]
-                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
-                check("aus dem Scan genommen wird derselbe Treffer fremd",
-                      _gruen18[0]["treffer"]["fremd"] is True)
-                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
-                check("und wieder dazu genommen ist er es nicht mehr",
-                      _gruen18[0]["treffer"]["fremd"] is False)
-                _b18.slots.pop("Draussen", None)
-                _b18.items.clear()
-                _b18.items.update(_items_vorher18)
-            else:
-                print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
-            # ESC raeumt einen halb gesetzten Suchbereich weg - sonst haengt er
-            # an einem Bild, das es gleich nicht mehr gibt.
-            _b18.scan_modus_setzen({"modus": _MF18})
-            _b18.scan_klick({"x": 20, "y": 20})
-            _b18.scan_klick({"x": 280, "y": 200})
-            _z18 = _b18.scan_abbrechen()
-            check("ESC verwirft den Suchbereich",
-                  _z18["suchbereich"] is None and _z18["modus"] == _MW18)
-
-            # --- Der Rueckweg ist die markierte Kachel selbst ---
-            # Ein Modus, in den man nur hinein kommt, ist eine Falltuer: hinein
-            # mit einem Klick, heraus nur mit einer Taste, die man kennen muss.
-            # Dieselbe Regel wie bei der ELSE-Kachel im Sequenz-Editor.
-            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
-            check("eine Kachel schaltet ihren Modus ein", _z18["modus"] == _MB18)
-            check("und sagt, wie man wieder herauskommt",
-                  "zurück" in _z18["status"]["text"])
-            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
-            check("nochmal dieselbe Kachel fuehrt zurueck ins Auswaehlen",
-                  _z18["modus"] == _MW18)
-            # Auch eine halb gesetzte Ecke geht dabei weg - sie gehoert zu einer
-            # Absicht, die man gerade aufgegeben hat.
-            _b18.scan_modus_setzen({"modus": _MB18})
-            _b18.scan_klick({"x": 40, "y": 40})
-            _z18 = _b18.scan_modus_setzen({"modus": _MB18})
-            check("und nimmt die halb gesetzte Ecke mit",
-                  _z18["ecke"] is None and _z18["modus"] == _MW18)
-            _z18 = _b18.scan_modus_setzen({"modus": _MW18})
-            check("Auswaehlen schaltet sich nicht selbst ab", _z18["modus"] == _MW18)
-            # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
-            # weiter auf "Slot 1" und dem gestellten Bild.
-            _b18.slots.clear()
-            _b18.slots.update(_slots_vorher18)
-            _b18.scans.pop("Weg", None)
-            _b18.scan_offen = ""
-            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
-            _b18._foto = _bild18
-            _b18._anzeigebild(0, 0, 1.0)
-
-            # --- Der Bereich: nicht immer Vollbild ---
-            # Wer dasselbe Spiel dreimal offen hat, arbeitet sonst auf einem
-            # Bild, in dem drei Viertel stoeren.
-            _z18 = _b18.scan_daten()
-            check("ohne Angabe ist es Vollbild", _z18["bereich"] is None)
-            _b18.scan_modus_setzen({"modus": _MB18})
-            _b18.scan_klick({"x": 80, "y": 80})
-            _z18 = _b18.scan_klick({"x": 280, "y": 240})
-            check("zwei Ecken schneiden das Bild zu",
-                  _z18["bereich"] == [80, 80, 280, 240])
-            check("und die Flaeche hat genau diese Groesse",
-                  (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 160))
-            check("ihr Ursprung ist die linke obere Ecke",
-                  (_z18["foto"]["links"], _z18["foto"]["oben"]) == (80, 80))
-            # Zugeschnitten, nicht neu geholt: gemessen wird weiter im Original,
-            # und die Farbe an einer Stelle muss dieselbe bleiben.
-            _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
-            _b18.scan_modus_setzen({"modus": _MM18})
-            _z18 = _b18.scan_klick({"x": 130, "y": 130})
-            check("im Ausschnitt wird an derselben Stelle dasselbe gemessen",
-                  _z18["slots"][0]["farbe"] == "#C83C3C")
-
-            # Der Bereich gilt fuer die naechste Aufnahme - sonst waere er ein
-            # einmaliger Zuschnitt und man muesste ihn jedes Mal neu ziehen.
-            _z18 = _b18.scan_foto()
-            check("die naechste Aufnahme nimmt genau ihn",
-                  _z18["bereich"] == [80, 80, 280, 240]
-                  and _z18["foto"]["breite"] == 200)
-
-            # Ein Slot ausserhalb wird gemeldet, nicht verschwiegen: er steht
-            # weiter in der Liste, ist aber im Bild nicht zu sehen.
-            check("Slots ausserhalb des Bereichs werden gezaehlt",
-                  "ausserhalb" in _z18["status"]["text"])
-
-            # **Waehlen nimmt nicht auf.** Das war die verwirrendste Stelle des
-            # Reiters: wer ein Fenster aus der Liste waehlte, hatte ploetzlich
-            # ein Bild, ohne etwas ausgeloest zu haben - und der Knopf daneben
-            # schien danach nichts mehr zu tun (er holte dasselbe Bild noch
-            # einmal, und zwei gleiche Bilder sehen gleich aus).
-            _alt18 = _b18.scan_daten()["foto"]["stand"]
-            _z18 = _b18.scan_bereich_setzen({"bereich": [100, 100, 300, 300]})
-            check("ein Bereich laesst sich auch direkt setzen",
-                  _z18["bereich"] == [100, 100, 300, 300])
-            # Das alte Bild steht unveraendert da: 200x160 vom Zuschnitt vorhin,
-            # nicht 200x200 vom gerade gewaehlten Bereich.
-            check("aber die Wahl nimmt NICHT gleich auf",
-                  _z18["foto"]["stand"] == _alt18
-                  and (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 160))
-            check("sie sagt stattdessen, was als naechstes kommt",
-                  "aufnehmen" in _z18["status"]["text"])
-            _z18 = _b18.scan_foto()
-            check("erst der Knopf holt das Bild",
-                  (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (200, 200))
-            # Und man SIEHT, dass aufgenommen wurde: zwei Aufnahmen desselben
-            # Spielstands sehen gleich aus, also muss die Meldung sich unter-
-            # scheiden. Sonst wirkt der Knopf kaputt.
-            check("die Aufnahme sagt, wann sie gemacht wurde",
-                  "aufgenommen um" in _z18["status"]["text"])
-
-            _z18 = _b18.scan_bereich_setzen()
-            check("und ohne Angabe geht es zurueck auf Vollbild",
-                  _z18["bereich"] is None)
-            check("auch das erst nach dem Aufnehmen",
-                  _b18.scan_foto()["foto"]["breite"] == 400)
-            _z18 = _b18.scan_bereich_setzen({"bereich": [10, 10, 12, 12]})
-            check("ein Bereich von zwei Pixeln gilt nicht als Bereich",
-                  _z18["bereich"] is None)
-
-            # Die Fensterliste ist der Weg fuer "dasselbe Programm dreimal
-            # offen": unterscheidbar sind sie nur an der Lage.
-            check("die Fensterliste ist eine Liste",
-                  isinstance(_b18.scan_fenster(), list))
-        finally:
-            _img18.take_screenshot = _echt_shot18
-            _win18.get_virtual_origin = _echt_org18
-
-    # --- Umbenennen zieht die Referenz nach ---
-    # Der Name IST die Referenz (slots/items werden per Name in Scans
-    # eingetragen). Ohne Nachziehen zeigte der Scan danach ins Leere - und zwar
-    # still: er liefe mit einem Slot weniger weiter.
-    _b18.slots.clear()
-    _b18.items.clear()
-    _b18.scans.clear()
-    _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))
-    _b18.items["Item 1"] = _ITEM8(name="Item 1")
-    _b18.scan_neu({"name": "Test"})
-    _b18.scan_mitglied({"scan": "Test", "art": "slot", "name": "Slot 1"})
-    _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
-    check("Haken setzen traegt in den Scan ein",
-          _z18["scans"][0]["slots"] == ["Slot 1"] and _z18["scans"][0]["items"] == ["Item 1"])
-    _z18 = _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
-    check("nochmal klicken nimmt wieder raus", _z18["scans"][0]["items"] == [])
-
-    # --- Der Reiter merkt, wenn der Hauptprozess die Dateien anfasst ---
-    # Der Fall aus dem Alltag: ein Lauf mit `learn_unknown` legt Items an und
-    # speichert sie. Der Reiter hatte items.json beim Oeffnen gelesen und danach
-    # nie wieder - die Konsole meldete "gelernt", im Studio waren sie nicht da,
-    # und man sucht den Fehler beim Lernen.
-    check("frisch geladen gilt nichts als fremd geaendert",
-          _b18.scan_daten()["fremd"] is False)
-    import time as _t18
-    _t18.sleep(0.01)
-    Path("items/items.json").write_text(
-        '{"Von aussen": {"marker_colors": [[1, 2, 3]]}}', encoding="utf-8")
-    check("eine Aenderung von aussen faellt auf",
-          _b18.scan_daten()["fremd"] is True)
-    check("und sie wird nicht stillschweigend uebernommen",
-          "Von aussen" not in _b18.items)
-
-    # Ungespeichertes wird nicht kommentarlos verworfen.
-    _b18._scan_dirty = True
-    _z18 = _b18.scan_neu_laden()
-    check("mit offenen Aenderungen wird erst gewarnt",
-          _z18["status"]["art"] == "warn" and "Von aussen" not in _b18.items)
-    _z18 = _b18.scan_neu_laden({"verwerfen": True})
-    check("mit verwerfen wird geladen", "Von aussen" in _b18.items)
-    check("und danach gilt der Stand wieder als aktuell",
-          _z18["fremd"] is False and _z18["dirty"] is False)
-    # Das EIGENE Speichern darf sich nicht selbst als Fremdaenderung melden -
-    # sonst stuende der Hinweis nach jedem Klick auf "Speichern" da, und man
-    # gewoehnt sich an, ihn zu uebersehen.
-    _t18.sleep(0.01)
-    _z18 = _b18.scan_speichern()
-    check("das eigene Speichern gilt nicht als Fremdaenderung",
-          _z18["fremd"] is False)
-
-    # --- Alles rein, alles raus ---
-    # Der Weg in einen frischen Scan waren 56 Haekchen.
-    _b18.slots.clear(); _b18.items.clear(); _b18.scans.clear()
-    for _n18 in ("S1", "S2", "S3"):
-        _b18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 9, 9), click_pos=(4, 4))
-    _b18.items["I1"] = _ITEM8(name="I1")
-    _b18.scan_neu({"name": "Alle"})
-    _z18 = _b18.scan_alle({"art": "slot", "wert": True})
-    check("alle Slots auf einmal dazu",
-          sorted(_z18["scans"][0]["slots"]) == ["S1", "S2", "S3"])
-    _z18 = _b18.scan_alle({"art": "slot", "wert": False})
-    check("und alle wieder raus", _z18["scans"][0]["slots"] == [])
-    _z18 = _b18.scan_alle({"art": "item", "wert": True})
-    check("Items genauso", _z18["scans"][0]["items"] == ["I1"])
-    # Der Inspektor arbeitet am GEWAEHLTEN Scan, der nicht der offene sein muss -
-    # ohne den Parameter traefe „alle" den falschen.
-    _b18.scan_neu({"name": "Zweiter"})
-    _z18 = _b18.scan_alle({"scan": "Alle", "art": "slot", "wert": True})
-    _nach_name18 = {c["name"]: c for c in _z18["scans"]}
-    check("„alle“ trifft den benannten Scan, nicht den offenen",
-          sorted(_nach_name18["Alle"]["slots"]) == ["S1", "S2", "S3"]
-          and _nach_name18["Zweiter"]["slots"] == [])
-    _b18.scans.pop("Zweiter", None)
-    _b18.scan_offen = "Alle"
-    _b18.scan_offen = ""
-    check("ohne offenen Scan passiert nichts",
-          _b18.scan_alle({"art": "slot", "wert": True})["status"]["art"] == "warn")
-    _b18.slots.clear(); _b18.items.clear(); _b18.scans.clear()
-    _b18.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))
-    _b18.items["Item 1"] = _ITEM8(name="Item 1")
-    _b18.scan_neu({"name": "Test"})
-    _b18.scan_mitglied({"scan": "Test", "art": "slot", "name": "Slot 1"})
-
-    # --- Die Scan-Richtung im Studio ---
-    _z18 = _b18.scan_daten()
-    check("frisch angelegt laufen die Slots vorwaerts",
-          _z18["scans"][0]["reverse"] is False)
-    _z18 = _b18.scan_setzen({"name": "Test", "feld": "reverse", "wert": True})
-    check("der Schalter stellt auf rueckwaerts",
-          _z18["scans"][0]["reverse"] is True
-          and _b18.scans["Test"].reverse is True)
-    _z18 = _b18.scan_setzen({"name": "Test", "feld": "reverse", "wert": False})
-    check("und wieder zurueck", _z18["scans"][0]["reverse"] is False)
-
-    _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
-    _z18 = _b18.scan_slot_setzen({"name": "Slot 1", "feld": "name", "wert": "Beutel oben"})
-    check("der Slot heisst neu", [s["name"] for s in _z18["slots"]] == ["Beutel oben"])
-    check("und der Scan zeigt weiter auf ihn", _z18["scans"][0]["slots"] == ["Beutel oben"])
-    check("die Auswahl wandert mit", _z18["wahl"]["name"] == "Beutel oben")
-
-    _z18 = _b18.scan_slot_setzen({"name": "Beutel oben", "feld": "name", "wert": "Beutel oben"})
-    check("derselbe Name ist keine Aenderung", len(_z18["slots"]) == 1)
-
-    # --- Loeschen raeumt die Referenz weg ---
-    _b18.scan_mitglied({"scan": "Test", "art": "item", "name": "Item 1"})
-    _b18.scan_waehlen({"art": "item", "name": "Item 1"})
-    _z18 = _b18.scan_item_loeschen()
-    check("ein geloeschtes Item verschwindet auch aus dem Scan",
-          _z18["items"] == [] and _z18["scans"][0]["items"] == [])
-    _b18.scan_waehlen({"art": "slot", "name": "Beutel oben"})
-    _z18 = _b18.scan_slot_loeschen()
-    check("und ein geloeschter Slot ebenso",
-          _z18["slots"] == [] and _z18["scans"][0]["slots"] == [])
-
-    # --- Daneben doppeln: um die eigene Breite versetzt ---
-    _b18.slots["A"] = _SLOT8(name="A", scan_region=(100, 100, 160, 160),
-                             click_pos=(130, 130), slot_color=(1, 2, 3))
-    _b18.scan_waehlen({"art": "slot", "name": "A"})
-    _z18 = _b18.scan_slot_doppeln()
-    _neu18 = [s for s in _z18["slots"] if s["name"] != "A"][0]
-    check("das Duplikat steht daneben", _neu18["region"] == [162, 100, 222, 160])
-    check("der Klickpunkt wandert mit", _neu18["klick"] == [192, 130])
-    check("und die Hintergrundfarbe auch", _neu18["farbe"] == "#010203")
-
-    # --- Der Scan ist die Klammer, nicht die Auswahl ---
-    # Mit mehreren Spielen liegen sonst alle Slots und Items aller Spiele in
-    # einer Liste. Der offene Scan sagt, woran gerade gearbeitet wird - und ist
-    # bewusst NICHT dasselbe wie die Auswahl: wer einen Slot anklickt, um ihn zu
-    # bearbeiten, arbeitet weiter an demselben Scan.
-    _b18.slots.clear()
-    _b18.items.clear()
-    _b18.scans.clear()
-    for _n18 in ("A1", "A2", "B1"):
-        _b18.slots[_n18] = _SLOT8(name=_n18, scan_region=(0, 0, 9, 9), click_pos=(4, 4))
-        _b18.items[_n18] = _ITEM8(name=_n18)
-    _b18.scan_neu({"name": "Spiel A"})
-    check("ein neuer Scan ist gleich offen", _b18.scan_offen == "Spiel A")
-    for _n18 in ("A1", "A2"):
-        _b18.scan_mitglied({"art": "slot", "name": _n18})
-        _b18.scan_mitglied({"art": "item", "name": _n18})
-    _b18.scan_neu({"name": "Spiel B"})
-    _b18.scan_mitglied({"art": "slot", "name": "B1"})
-
-    _z18 = _b18.scan_oeffnen({"name": "Spiel A"})
-    check("der offene Scan steht in der Aufnahme", _z18["offen"] == "Spiel A")
-    check("und markiert seine Mitglieder",
-          sorted(s["name"] for s in _z18["slots"] if s["dabei"]) == ["A1", "A2"])
-    check("Items ebenso",
-          sorted(i["name"] for i in _z18["items"] if i["dabei"]) == ["A1", "A2"])
-    _z18 = _b18.scan_oeffnen({"name": "Spiel B"})
-    check("beim Wechsel wandert die Markierung mit",
-          [s["name"] for s in _z18["slots"] if s["dabei"]] == ["B1"])
-
-    # Wer IN einem offenen Scan etwas anlegt, legt es FUER ihn an. Ohne das war
-    # ein frisch aufgezogener Slot sofort wieder weg: die Listen zeigen nur die
-    # Mitglieder, und er war keines.
-    _b18.slots["B2"] = _SLOT8(name="B2", scan_region=(0, 0, 9, 9), click_pos=(4, 4))
-    _b18.scan_waehlen({"art": "slot", "name": "B2"})
-    _b18._dazu("slot", "B2")
-    _z18 = _b18.scan_daten()
-    check("ein im offenen Scan angelegter Slot gehoert gleich dazu",
-          sorted(s["name"] for s in _z18["slots"] if s["dabei"]) == ["B1", "B2"])
-    _b18._dazu("slot", "B2")
-    check("und zweimal dazulegen legt ihn nicht doppelt an",
-          _b18.scans["Spiel B"].slot_names.count("B2") == 1)
-    _b18.scans["Spiel B"].slot_names.remove("B2")
-    del _b18.slots["B2"]
-    _b18._objekte_angleichen()
-
-    # Ein Slot anklicken darf den Zusammenhang nicht verlieren - genau das war
-    # der Fehler, als "offen" noch an der Auswahl hing.
-    _b18.scan_waehlen({"art": "slot", "name": "A1"})
-    check("ein Klick auf einen Slot laesst den Scan offen",
-          _b18.scan_daten()["offen"] == "Spiel B")
-    _z18 = _b18.scan_oeffnen({"name": ""})
-    check("kein Scan offen heisst: nichts ist dabei",
-          _z18["offen"] == "" and not any(s["dabei"] for s in _z18["slots"]))
-    check("ein Scan, den es nicht gibt, wird gemeldet",
-          _b18.scan_oeffnen({"name": "Gibt es nicht"})["status"]["art"] == "err")
-
-    # Die Erkennung fragt den OFFENEN Scan, nicht die Auswahl.
-    _b18.scan_oeffnen({"name": "Spiel A"})
-    _b18.scan_waehlen({"art": "item", "name": "B1"})
-    check("geprueft werden die Items des offenen Scans",
-          sorted(i.name for i in _b18._kandidaten()) == ["A1", "A2"])
-
-    # --- Der Suchdurchgang nimmt auch schon vorhandene Slots in den Scan ---
-    # Bei zwei Spielen liegen die Slots des einen laengst im Bestand. Ein NEUER
-    # Scan ueber demselben Inventar legte deshalb nichts an ("alle schon da") -
-    # nahm aber auch nichts auf, und weil die Listen nur Mitglieder zeigen,
-    # blieb er leer: kein Slot in der Liste, keine Marke im Bild.
-    _merk18 = (dict(_b18.slots), dict(_b18.scans), _b18.scan_offen)
-    _b18.slots.clear()
-    _b18.scans.clear()
-    _b18.scan_offen = ""
-    _b18.slots["Alt 1"] = _SLOT8(name="Alt 1", scan_region=(100, 100, 160, 160),
-                                 click_pos=(130, 130))
-    check("ein Slot an der Stelle wird beim NAMEN genannt",
-          _b18._slot_an_stelle((105, 105, 155, 155)) == "Alt 1"
-          and _b18._slot_an_stelle((300, 300, 340, 340)) is None)
-    _b18.scan_neu({"name": "Zweites Spiel"})
-    # Nur die Teile stellen, die einen Bildschirm braeuchten - gemessen wird die
-    # Schleife, die aus Rechtecken Slots und Mitglieder macht.
-    _b18._foto = object()
-    _b18._foto_info = {"links": 0, "oben": 0, "skala": 1.0, "breite": 500,
-                       "hoehe": 500, "stand": 0.0}
-    _b18._suchbereich = (90, 90, 400, 400)
-    _b18._hat_opencv = lambda: True
-    _b18._foto_farbe = lambda x, y: (10, 20, 30)
-    _b18._foto_crop = lambda bereich: object()
-    _b18._slots_suchen = lambda bild, farbe: [(10, 10, 60, 60), (80, 10, 60, 60)]
-    _z18 = _b18._klick_finden(100, 100)
-    check("ein schon vorhandener Slot gehoert danach zum offenen Scan",
-          "Alt 1" in _b18.scans["Zweites Spiel"].slot_names)
-    check("und der wirklich neue ebenfalls",
-          len(_b18.scans["Zweites Spiel"].slot_names) == 2
-          and len(_b18.slots) == 2)
-    check("beide stehen als dabei in der Aufnahme",
-          len([s for s in _z18["slots"] if s["dabei"]]) == 2)
-    check("und die Aufnahme gilt als Aenderung", _z18["dirty"] is True)
-    # Gegenprobe: was schon dabei WAR, wird nicht noch einmal angehaengt.
-    _b18._suchbereich = (90, 90, 400, 400)
-    _b18._klick_finden(100, 100)
-    check("ein zweiter Durchgang haengt nichts doppelt an",
-          _b18.scans["Zweites Spiel"].slot_names.count("Alt 1") == 1
-          and len(_b18.slots) == 2)
-
-    # --- Ein zweiter Suchlauf raet die Groesse nicht neu ---
-    # `erkenne_slots_im_bild()` normalisiert auf den Median EINES Durchgangs; ein
-    # zweiter Lauf ueber demselben Raster weicht deshalb ein paar Pixel ab,
-    # obwohl die Slots im Spiel gleich gross sind. Genau diese Differenz liess
-    # gelernte Templates als "passt nicht zur Scan-Region" auffallen.
-    _b18._suchbereich = (90, 90, 400, 400)
-    # Der Einzug kommt aus der Config - die Groesse wird deshalb so gestellt,
-    # dass NACH dem Einzug 57x57 uebrig bleibt: 3 px neben den 60x60, die schon
-    # dastehen, also innerhalb der Toleranz und damit angeglichen.
-    from autoclicker.config import CONFIG as _CFG18
-    _ein18 = max(0, int(_CFG18.scan_slot_inset))
-    _b18._slots_suchen = lambda bild, farbe: [(200, 200, 57 + 2 * _ein18,
-                                               57 + 2 * _ein18)]
-    _b18._klick_finden(100, 100)
-    _drift18 = [s for s in _b18.slots.values()
-                if s.scan_region and s.scan_region[0] >= 250][0].scan_region
-    check("ein knapp abweichender Fund bekommt die Groesse der vorhandenen",
-          (_drift18[2] - _drift18[0], _drift18[3] - _drift18[1]) == (60, 60))
-    # Gegenprobe: ein Slot, der WIRKLICH anders gross ist, wird nicht verbogen.
-    _b18._suchbereich = (90, 90, 400, 400)
-    _b18._slots_suchen = lambda bild, farbe: [(280, 200, 20 + 2 * _ein18,
-                                               20 + 2 * _ein18)]
-    _b18._klick_finden(100, 100)
-    _klein18 = [s for s in _b18.slots.values()
-                if s.scan_region and s.scan_region[0] >= 370][0].scan_region
-    check("ein deutlich kleinerer Fund behaelt seine Groesse",
-          (_klein18[2] - _klein18[0], _klein18[3] - _klein18[1]) == (20, 20))
-    # Und der Bezug ist der offene Scan, NICHT der Bestand: zwei Bedienflaechen
-    # desselben Spiels sind nicht gleich gross (gemessen: Raster 64 Zeilen,
-    # Ausruestungsreihe 61). Ein leerer Scan hat keinen Bezug - dann bleibt der
-    # Fund, wie er gemessen wurde, statt der Groesse eines fremden Rasters zu
-    # folgen.
-    _b18.scan_neu({"name": "Andere Flaeche"})
-    check("ein leerer Scan gibt keine Zielgroesse vor",
-          _b18._bestehende_slot_groesse() is None)
-    _b18.scans.pop("Andere Flaeche", None)
-    _b18.scan_offen = "Zweites Spiel"
-    check("der offene Scan mit Slots schon",
-          _b18._bestehende_slot_groesse() == (60, 60))
-    _b18.slots.clear(), _b18.scans.clear()
-    _b18.slots.update(_merk18[0])
-    _b18.scans.update(_merk18[1])
-    _b18.scan_offen = _merk18[2]
-    for _feld18 in ("_hat_opencv", "_foto_farbe", "_foto_crop", "_slots_suchen"):
-        _b18.__dict__.pop(_feld18, None)
-    _b18._foto = _b18._foto_info = None
-    _b18._objekte_angleichen()
-
-    # --- Fehlende Namen werden gemeldet, nicht verschwiegen ---
-    _b18.scans.clear()
-    _b18.scan_offen = ""
-    _b18.scan_neu({"name": "Test"})
-    _b18.scan_mitglied({"art": "slot", "name": "A1"})
-    _b18.scans["Test"].slot_names.append("Gibt es nicht")
-    check("ein toter Verweis steht in der Aufnahme",
-          _b18.scan_daten()["scans"][0]["fehlend"] == ["Gibt es nicht"])
-
-    # --- Speichern schreibt alle drei Dateiarten ---
-    _b18.scans["Test"].slot_names.remove("Gibt es nicht")
-    _z18 = _b18.scan_speichern()
-    check("gespeichert wird ohne Fehler", _z18["status"]["art"] == "ok")
-    check("slots.json ist da", Path("slots/slots.json").exists())
-    check("items.json auch", Path("items/items.json").exists())
-    check("und die Scan-Konfiguration als eigene Datei",
-          list(Path("item_scans").glob("*.json")) != [])
-    check("danach ist nichts mehr offen", _z18["dirty"] is False)
-
-    # Der Hauptprozess erfaehrt davon - sonst arbeitete er bis zum naechsten
-    # CTRL+ALT+L mit dem alten Stand.
-    import autoclicker.befehl as _bf18
-    _auftrag18 = _bf18.hole()
-    check("der Hauptprozess bekommt Bescheid",
-          _auftrag18 is not None and _auftrag18["befehl"] == "daten")
-
-    # --- Was auf Platte steht, liest der Loader wieder ---
-    from autoclicker.persistence import load_item_scan_file as _lif18
-    _wieder18 = _lif18(list(Path("item_scans").glob("*.json"))[0])
-    check("der Loader findet den Scan wieder", _wieder18 is not None)
-    check("mit denselben Namen darin", _wieder18.item_names == [])
-    from autoclicker.editors.sequence_studio.scan_model import load_slots as _ls18
-    check("und die Slots kommen unveraendert zurueck",
-          sorted(_ls18("slots/slots.json")) == sorted(_b18.slots))
-
-    # --- Ein aelterer Scan hat Slots, aber kein gemerktes Bild ---
-    # Die Mitte des Reiters stand dann leer, obwohl die Slots laengst da waren:
-    # das gemerkte Bild gibt es erst, seit der Reiter eines ablegt. Die Flaeche
-    # wird deshalb notfalls aus dem Rechteck um die Slots gerechnet.
-    _alt18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
-    _z18 = _alt18.scan_daten()
-    check("ein Scan ohne Bild bekommt trotzdem eine Flaeche", _z18["foto"] is not None)
-    check("sie sagt von sich, dass sie kein Bild ist", _z18["foto"]["bild"] is False)
-    # Slot A1 liegt auf (0,0,9,9); die Flaeche legt 40 px Rand darum.
-    check("und sie liegt um die Slots herum",
-          (_z18["foto"]["links"], _z18["foto"]["oben"]) == (-40, -40)
-          and (_z18["foto"]["breite"], _z18["foto"]["hoehe"]) == (89, 89))
-    # Gegenprobe: ein Scan ohne Slots hat auch nichts, worum eine Flaeche
-    # laege - dort bleibt die leere Mitte richtig.
-    check("ein Scan ohne Slots bekommt keine Flaeche",
-          _alt18.scan_neu({"name": "Leerer"})["foto"] is None)
-    check("die Auswahl davor hatte eine", _z18["foto"] is not None)
-
-    # --- Beim Oeffnen steht der zuletzt bearbeitete Scan vorn ---
-    # Vorher nur bei GENAU EINEM Scan: wer einen zweiten anlegte, sah beim
-    # naechsten Start eine leere Mitte und musste erst merken, dass oben links
-    # eine Auswahl steht.
-    _erste18 = list(Path("item_scans").glob("*.json"))[0]
-    _zweite18 = _erste18.parent / "Zweiter.json"
-    _zweite18.write_text(
-        _erste18.read_text(encoding="utf-8").replace('"Test"', '"Zweiter"'),
-        encoding="utf-8")
-    _os.utime(_erste18, (1_000_000, 1_000_000))
-    _os.utime(_zweite18, (2_000_000, 2_000_000))
-    check("der juengere Scan ist offen",
-          _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
-          .scan_daten()["offen"] == "Zweiter")
-    _os.utime(_erste18, (3_000_000, 3_000_000))
-    check("und nach einer Aenderung am anderen dieser",
-          _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
-          .scan_daten()["offen"] == "Test")
-    _zweite18.unlink()
-finally:
-    _os.chdir(_cwd18)
-
-# --- Jeder Modus hat eine Kachel in der Oberflaeche ---
-# Ein Modus ohne Knopf ist ein Modus, den niemand erreicht; ein Knopf ohne Modus
-# meldet "Unbekannter Modus". Beide Seiten messen, nicht eine abschreiben.
-_html18 = (Path("autoclicker/editors/sequence_studio/web/index.html")
-           .read_text(encoding="utf-8"))
-_block18 = _html18[_html18.index("const SCAN_MODI = ["):]
-_block18 = _block18[:_block18.index("];")]
-_kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
-check("jeder Modus der Bruecke hat eine Kachel", sorted(_kacheln18) == sorted(_MODI18))
-# Zug um Zug, nicht als Menge: **die Reihenfolge ist die Rangfolge.** „Slots
-# finden" steht direkt hinter „Auswaehlen", weil es das ist, was man ZUERST
-# macht - das Automatische ist der Normalfall, das Aufziehen von Hand der
-# Ausweichweg. Als vorletzte Kachel stand es da, wo man den Notnagel sucht.
-check("und die Kacheln stehen in der Reihenfolge von MODI",
-      _kacheln18 == list(_MODI18))
-check("Slots finden steht gleich hinter Auswaehlen",
-      _kacheln18[:2] == [_MW18, _MF18])
-_tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
-check("und jede Kachel eine eigene Taste",
-      len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
 
 # --------------------------- Template-Maske: der Hintergrund zaehlt nicht mit
 section("Template-Vergleich blendet den Hintergrund aus")
@@ -6677,6 +5710,10 @@ else:
 # duenner Strich in var(--dim) verschwindet zwischen bunten Item-Symbolen. Die
 # Flaeche traegt die Aussage - fehlt zu einem Zustand die Fuellungs-Regel, sieht
 # er aus wie der Normalfall und niemand merkt es.
+# Die Seite selbst - frueher hing dieser Block an einer Variablen aus den
+# Scans-Sektionen, die jetzt in `tools/tests/studio_scans.py` stehen. Was eine
+# Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
+_html18 = _H.studio_web_source()
 _zustaende18 = ("treffer", "fremditem", "leer")
 _fehlend18 = [f"{k}.{z}" for z in _zustaende18
               for k in ("scan-slot", "scan-fuellung")
@@ -6712,6 +5749,24 @@ _ohne_fokus18 = [n for n in _neuaufbau18
                  or "fokusHerstellen(" not in _js_rumpf18(n)]
 check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
       not _ohne_fokus18)
+
+# --- Der Scan-Name steht an EINER Stelle, und zwar dort, wo man den Scan waehlt ---
+# Er lag im Inspektor rechts, waehrend die Auswahl links steht: man waehlte den
+# Scan in der einen Spalte und benannte ihn in der anderen. Dieselbe Doppelung
+# gab es beim Klick-Block schon einmal ("Name (Punkt #1)" oben, "Punkt" unten) -
+# zwei Felder fuer denselben Wert, und man muss raten, welches fuehrt.
+check("der Scan-Inspektor baut kein eigenes Namensfeld mehr",
+      'feld("Name"' not in _js_rumpf18("scanInspScan"))
+check("dafuer gibt es das Feld in der linken Spalte",
+      'id="scan-name"' in _html18 and 'id="scan-name-zeile"' in _html18)
+# Es muss auch WIRKEN: ohne den Melder waere es ein Feld, in das man tippt und
+# nichts passiert - schlimmer als gar keines.
+check("und es meldet auf den offenen Scan",
+      '{name: SC.offen, feld: "name", wert: e.target.value}' in _html18)
+# Die Ueberschrift rechts nennt trotzdem den Scan - sonst haengen dort Regler,
+# von denen man nicht weiss, woran sie haengen.
+check("die Inspektor-Ueberschrift nennt weiterhin den Scan",
+      'ueberschrift("SCAN' in _js_rumpf18("scanInspScan"))
 
 # --- In einer scrollenden Spalte darf kein Abschnitt nochmal scrollen ---
 # `.seite` scrollt als Ganzes. Setzt ein Abschnitt darin zusaetzlich
@@ -6755,6 +5810,8 @@ check("er darf auch nicht unter seinen Inhalt schrumpfen",
 # Aufbau und soll stehen bleiben (CLAUDE.md: "Eine Begruendung ist keine
 # Altlast"). Ein IMPORT auf ein Fremdpaket, das niemand mehr installiert,
 # waere dagegen ein Modul, das gar nicht erst startet.
+import ast as _ast10
+_repo17 = Path(__file__).resolve().parent.parent
 _reste18 = []
 for _pf18 in sorted((_repo17 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf18.parts:
@@ -6893,7 +5950,7 @@ try:
           and _datei17["scan_marker_count"] == 9)
     check("nichts wurde korrigiert", _antwort17["korrekturen"] == [])
     check("die Reihenfolge in der Datei folgt den Abschnitten",
-          list(_datei17)[:2] == ["click_per_point", "click_max_total"])
+          list(_datei17) == [k for _, keys in _gruppen17 for k in keys])
 
     # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
     # einem Neustart, obwohl die Datei schon neu ist.
@@ -6972,7 +6029,7 @@ section("Was der Code kann, steht auch in der Doku")
 import re as _re15
 
 _wurzel15 = Path(__file__).resolve().parent.parent
-_winapi15 = (_wurzel15 / "autoclicker/winapi.py").read_text(encoding="utf-8")
+_winapi15 = (_wurzel15 / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _tabelle15 = _re15.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _winapi15, _re15.S).group(1)
 _hotkeys15 = set(_re15.findall(r'"(CTRL\+ALT\+(?:SHIFT\+)?\w)\s', _tabelle15))
 _hilfe15 = set(_re15.findall(r"col\('(CTRL\+ALT\+(?:SHIFT\+)?\w)'",
@@ -7078,6 +6135,30 @@ if _tote10:
     for _z10 in _tote10:
         print("        " + _z10)
 
+
+# ============================================================================
+# Crash-sicheres Schreiben, Zeit-Eingaben, Presets, Session-Log
+# ============================================================================
+# Diese vier standen in KEINEM Test - und `atomic_write()` ist ausgerechnet die
+# Funktion, die einen Absturz mitten im Speichern ueberleben soll. Was das Projekt
+# an Daten haelt, haengt an ihr: jeder Saver geht durch sie.
+
+# ============================================================================
+# Die ausgelagerten Themen-Module
+# ============================================================================
+# **Der Einstiegspunkt bleibt genau einer**, aber nicht alles muss in dieser Datei
+# stehen. Sie war mit ueber 7.000 Zeilen die groesste des Repos - mehr als jedes
+# Produktivmodul -, und die durchnummerierten Variablennamen (`_b18`, `_sand18`)
+# waren das Symptom: so benennt man, wenn der Namensraum voll ist.
+#
+# Neue Sektionen kommen deshalb als eigenes Modul unter `tools/tests/`, holen ihr
+# Geruest aus `_harness.py` (dort leben auch die Zaehler) und werden hier
+# importiert. Import = ausfuehren, wie im Rest dieser Datei auch.
+import tools.tests.studio_scans          # noqa: F401,E402
+import tools.tests.konsolen_editoren     # noqa: F401,E402
+import tools.tests.persistenz_basis      # noqa: F401,E402
+
+PASS, FAIL = _H.PASS, _H.FAIL
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")
 sys.exit(1 if FAIL else 0)

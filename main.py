@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
-"""
-Windows Autoclicker mit Sequenz-Unterstützung und Item-Erkennung.
-Neues modulares Hauptskript - ersetzt autoclicker.py
-"""
+"""Plattformübergreifender Autoclicker mit Sequenzen und Item-Erkennung."""
 
-import ctypes
-import ctypes.wintypes as wintypes
 import sys
 import time
 
@@ -21,8 +16,6 @@ for _stream in (sys.stdout, sys.stderr):
 from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE
 from autoclicker.models import AutoClickerState
 from autoclicker.winapi import (
-    user32, kernel32,
-    WM_HOTKEY, PM_REMOVE,
     HOTKEY_RECORD, HOTKEY_UNDO, HOTKEY_CLEAR, HOTKEY_RESET,
     HOTKEY_EDITOR, HOTKEY_ITEM_SCAN, HOTKEY_LOAD, HOTKEY_SHOW,
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
@@ -30,7 +23,9 @@ from autoclicker.winapi import (
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
     HOTKEY_SEQUENCE_STUDIO, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
     HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
-    register_hotkeys, unregister_hotkeys, flush_hotkey_messages
+    register_hotkeys, unregister_hotkeys, flush_hotkey_messages,
+    poll_hotkey, get_current_thread_id, platform_name, environment_warnings,
+    PlatformError,
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
@@ -41,7 +36,7 @@ from autoclicker.persistence import (
 )
 from autoclicker.diagnose import check_beim_start
 from autoclicker.runtime import print_status
-from autoclicker.utils import col, info, warn, hint, init_logging
+from autoclicker.utils import col, err, info, warn, hint, init_logging
 from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
@@ -65,7 +60,7 @@ def print_banner() -> None:
     """
     line = col("=" * 65, 'cyan')
     print(line)
-    print(f"  {col('WINDOWS AUTOCLICKER', 'bold')}")
+    print(f"  {col(platform_name().upper() + ' AUTOCLICKER', 'bold')}")
     print(f"  {col('CTRL+ALT+A', 'yellow')} Punkt aufnehmen   "
           f"{col('CTRL+ALT+E', 'yellow')} Sequenz-Editor   "
           f"{col('CTRL+ALT+S', 'yellow')} Start/Stop")
@@ -77,7 +72,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     """Zeigt die Hilfe mit farbigen Kategorien an."""
     line = col("=" * 65, 'cyan')
     print(line)
-    print(f"  {col('WINDOWS AUTOCLICKER MIT SEQUENZ-UNTERSTÜTZUNG', 'bold')}")
+    print(f"  {col(platform_name().upper() + ' AUTOCLICKER MIT SEQUENZ-UNTERSTÜTZUNG', 'bold')}")
     print(line)
     print()
 
@@ -205,7 +200,30 @@ def _pruefe_befehle(state) -> None:
     # für Handler gedacht, die minutenlang auf Konsolen-Eingaben warten. Ein Befehl
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
-    fn(state, auftrag["argumente"])
+    try:
+        fn(state, auftrag["argumente"])
+    except PlatformError as fehler:
+        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+
+
+def _studio_beim_start_oeffnen(state) -> bool:
+    """Öffnet auf Wunsch das Studio, nachdem der Hauptprozess empfangsbereit ist."""
+    if not state.config.studio_open_on_start:
+        return False
+    handle_sequence_studio(state)
+    return True
+
+
+def _plattform_bereit() -> bool:
+    """Meldet fehlende Systemvoraussetzungen, bevor Daten verändert werden."""
+    meldungen = environment_warnings()
+    for meldung in meldungen:
+        print(warn(meldung))
+    if meldungen:
+        print(err("Plattform nicht einsatzbereit; Start abgebrochen."))
+        print()
+        return False
+    return True
 
 
 def main() -> int:
@@ -223,7 +241,9 @@ def main() -> int:
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
     # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.
     init_logging(state.config.debug_log or state.config.debug_detail)
-    main_thread_id = kernel32.GetCurrentThreadId()
+    if not _plattform_bereit():
+        return 2
+    main_thread_id = get_current_thread_id()
 
     # Ordner erstellen
     ensure_sequences_dir()
@@ -306,8 +326,10 @@ def main() -> int:
     # Sekunden davor.
     verwirf_befehle()
 
-    # Message-Struktur für Windows-Nachrichten
-    msg = wintypes.MSG()
+    # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
+    # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
+    # wuerde `verwirf_befehle()` genau diesen ersten Auftrag wegwerfen.
+    _studio_beim_start_oeffnen(state)
 
     # Hotkey-Handler Zuordnung
     hotkey_handlers = {
@@ -342,18 +364,19 @@ def main() -> int:
     try:
         # Haupt-Event-Loop
         while not state.quit_event.is_set():
-            if user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
-                if msg.message == WM_HOTKEY:
-                    hk_id = msg.wParam
-
-                    if hk_id == HOTKEY_QUIT:
-                        handle_quit(state, main_thread_id)
-                        break
-                    elif hk_id in hotkey_handlers:
+            hk_id = poll_hotkey()
+            if hk_id is not None:
+                if hk_id == HOTKEY_QUIT:
+                    handle_quit(state, main_thread_id)
+                    break
+                if hk_id in hotkey_handlers:
+                    try:
                         hotkey_handlers[hk_id](state)
-                        # Während ein blockierender Handler lief, aufgestaute
-                        # WM_HOTKEY-Messages verwerfen (sonst feuern sie als Burst).
-                        flush_hotkey_messages()
+                    except PlatformError as fehler:
+                        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+                    # Während ein blockierender Handler lief, aufgestaute
+                    # Hotkeys verwerfen (sonst feuern sie als Burst).
+                    flush_hotkey_messages()
             else:
                 _pruefe_befehle(state)
                 time.sleep(0.01)

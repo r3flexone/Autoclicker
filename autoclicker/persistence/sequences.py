@@ -8,6 +8,7 @@ stabilen IDs für Referenzierung aus Sequenz-Schritten.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -48,10 +49,9 @@ def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
 def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optional[Sequence]:
     """Lädt eine einzelne Sequenz-Datei.
 
-    Die Altformate (start_steps / loop_steps+max_loops / steps) kennt dieser Loader
-    NICHT mehr - darum kümmert sich migration.migrate(), bevor hier gelesen wird. So
-    steht hier nur noch das aktuelle Schema, und neue Umstellungen kosten einen
-    Migrationsschritt statt einer weiteren Sonderfall-Verzweigung.
+    Der Loader kennt nur das aktuelle Schema - darum kümmert sich migration.migrate(),
+    bevor hier gelesen wird. Dass dessen Kette derzeit leer ist, ändert daran nichts:
+    der Aufruf bleibt die Stelle, an der eine künftige Umstellung landet.
 
     `points` sind die Punkte, aus denen die Koordinaten geholt werden. Ohne sie stünden
     im Ergebnis lauter Nullen — in der Datei stehen ja nur noch IDs. Deshalb lädt die
@@ -65,13 +65,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Die Migration rechnet mit rohen Dicts und darf die Liste erweitern: legt sie
-        # fuer einen unverknuepften Schritt einen Punkt an, landet er hier drin.
-        punkt_dicts = _als_dicts(points)
-        vorher = len(punkt_dicts)
-        data, meldungen = migrate(data, KIND_SEQUENCE, {"points": punkt_dicts})
-        if len(punkt_dicts) > vorher:
-            _sichere_neue_punkte(punkt_dicts, len(punkt_dicts) - vorher, filepath.stem)
+        data, meldungen = migrate(data, KIND_SEQUENCE)
         if meldungen:
             print(info(f"'{filepath.stem}' auf Schema {SCHEMA_VERSION} gehoben:"))
             for m in meldungen:
@@ -99,7 +93,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in aufloesen({p.id: p for p in _als_punkte(punkt_dicts)}, seq, still=True):
+        for m in aufloesen({p.id: p for p in _als_punkte(points)}, seq, still=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -111,22 +105,49 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
 # Sequenz-Liste mit mtime-Cache — die Editor-Auswahl ruft list_available_sequences
 # mehrmals hintereinander auf, ohne Cache wäre das pro Aufruf ein voller Dir-Scan.
 _seq_cache: list[tuple[str, Path]] = []
-_seq_cache_mtime: float = 0
+_seq_cache_key: tuple = ()
+
+
+def _verzeichnis_kennung(seq_dir: Path) -> tuple:
+    """Was der Cache vergleicht: die Eintraege selbst, nicht die Ordner-Uhr.
+
+    Vorher stand hier die mtime des **Ordners**, und das ist auf grober
+    Zeitaufloesung unsicher: NTFS stempelt Verzeichnisse deutlich groeber als
+    ext4. Wurden zwei Sequenzen im selben Tick geschrieben, blieb die Ordner-Zeit
+    gleich — der Cache galt weiter und die zweite Datei war **unsichtbar**. Nicht
+    nur im Menue: `zuletzt_bearbeitet()` nennt dann die falsche Sequenz, und das
+    Studio oeffnet beim Start nicht die, an der man gerade gearbeitet hat.
+
+    Name, Groesse und mtime jedes Eintrags fangen das ab. Das Statten kostet
+    wenig — teuer ist das Oeffnen und Parsen jeder Datei, und genau das spart der
+    Cache weiterhin ein.
+    """
+    eintraege = []
+    with os.scandir(seq_dir) as it:
+        for e in it:
+            if not e.name.endswith(".json") or e.name == "points.json":
+                continue
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            eintraege.append((e.name, st.st_size, st.st_mtime_ns))
+    return tuple(sorted(eintraege))
 
 
 def list_available_sequences() -> list[tuple[str, Path]]:
-    """Listet alle verfügbaren Sequenz-Dateien auf (mit mtime-Cache)."""
-    global _seq_cache, _seq_cache_mtime
+    """Listet alle verfügbaren Sequenz-Dateien auf (mit Verzeichnis-Cache)."""
+    global _seq_cache, _seq_cache_key
     seq_dir = Path(SEQUENCES_DIR)
     if not seq_dir.exists():
         return []
 
     try:
-        current_mtime = seq_dir.stat().st_mtime
+        current_key = _verzeichnis_kennung(seq_dir)
     except OSError:
         return []
 
-    if _seq_cache and _seq_cache_mtime == current_mtime:
+    if _seq_cache and _seq_cache_key == current_key:
         return _seq_cache
 
     # sorted(): sonst haengt die Menue-Reihenfolge vom Dateisystem ab und der
@@ -142,7 +163,7 @@ def list_available_sequences() -> list[tuple[str, Path]]:
             except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
                 pass  # Ungültige/korrupte Datei überspringen
     _seq_cache = sequences
-    _seq_cache_mtime = current_mtime
+    _seq_cache_key = current_key
     return sequences
 
 
@@ -288,26 +309,11 @@ def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
     return ergebnis
 
 
-def _sichere_neue_punkte(punkt_dicts: list, anzahl: int, seq_name: str) -> None:
-    """Schreibt Punkte weg, die die Migration gerade angelegt hat.
-
-    Der Normalweg fuer Altbestand ist der Start-Durchgang (`sweep`), und der schreibt
-    points.json selbst. Diese Absicherung gilt allen anderen Aufrufern - Import,
-    Sequenz-Studio, ein Ordner, der nachtraeglich hineinkopiert wurde: dort entstuenden
-    IDs, die nach dem naechsten Neustart auf nichts mehr zeigen. Lieber einmal zu viel
-    geschrieben als eine Sequenz, die ins Leere klickt.
-    """
-    try:
-        pfad = Path(SEQUENCES_DIR) / "points.json"
-        pfad.parent.mkdir(exist_ok=True)
-        atomic_write(pfad, compact_json([
-            _point_to_dict(_punkt_aus_dict(p)) for p in punkt_dicts]))
-    except (OSError, KeyError, TypeError, ValueError) as e:
-        print(warn(f"'{seq_name}': {anzahl} neue Punkt(e) konnten nicht gespeichert "
-                   f"werden ({e}) - die Sequenz zeigt bis dahin ins Leere."))
-        return
-    print(info(f"'{seq_name}': {anzahl} Koordinate(n) als Punkt uebernommen "
-               f"(points.json ergaenzt)."))
+# `_sichere_neue_punkte()` stand hier und ist mit der Migrationskette entfallen: es
+# schrieb Punkte weg, die `_seq_v3_to_v4` gerade angelegt hatte. Ohne Kette legt die
+# Migration keine Punkte mehr an, also gibt es auch nichts nachzuschreiben — und eine
+# Funktion, die auf ein Ereignis wartet, das nicht mehr eintritt, ist genau die Sorte
+# Altlast, die dieses Projekt nicht mitschleppt.
 
 
 def _als_punkte(points) -> list[ClickPoint]:
@@ -330,19 +336,10 @@ def _als_punkte(points) -> list[ClickPoint]:
     return raus
 
 
-def _als_dicts(points) -> list[dict]:
-    """Gegenrichtung zu `_als_punkte` - die Migration rechnet mit rohen Dicts.
-
-    Sind schon alle Eintraege Dicts, kommt DIESELBE Liste zurueck, keine Kopie: die
-    Migration haengt neu angelegte Punkte an, und der Aufrufer (sweep) schreibt sie
-    danach weg. Mit einer Kopie fielen genau diese Punkte still unter den Tisch -
-    die Sequenz zeigte dann auf IDs, die es nirgends gab.
-    """
-    if points is None:
-        return []
-    if all(isinstance(p, dict) for p in points):
-        return points
-    return [p if isinstance(p, dict) else _point_to_dict(p) for p in points]
+# `_als_dicts()` ist mit der Migrationskette entfallen. Es reichte die Punkte als rohe
+# Dicts in die Migration - und zwar bewusst als DIESELBE Liste statt als Kopie, damit
+# von `_seq_v3_to_v4` angelegte Punkte beim Aufrufer ankamen. Ohne Kette bekommt
+# `migrate()` fuer Sequenzen gar keinen Punkte-Kontext mehr.
 
 
 def get_next_point_id(state: AutoClickerState) -> int:

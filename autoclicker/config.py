@@ -39,6 +39,11 @@ COMMAND_FILE: str = ".befehl.json"
 class AppConfig:
     """Typisierte Konfiguration für den Autoclicker.
     Feld-Reihenfolge bestimmt die Reihenfolge in config.json."""
+    # === PROGRAMMSTART ===
+    # Das Studio ist die Hauptoberflaeche. False behaelt den bisherigen reinen
+    # Konsolenstart; die Hotkeys zum manuellen Oeffnen funktionieren weiterhin.
+    studio_open_on_start: bool = True                # Sequenz-Studio mit main.py öffnen
+
     # === KLICK-EINSTELLUNGEN ===
     click_per_point: int = 1                        # Anzahl Klicks pro Punkt
     click_max_total: Optional[int] = None           # None = unendlich
@@ -374,6 +379,9 @@ def load_config() -> AppConfig:
 
 
 _CONFIG_SECTIONS = [
+    ("PROGRAMMSTART", [
+        "studio_open_on_start",
+    ]),
     ("KLICK-EINSTELLUNGEN", [
         "click_per_point", "click_max_total",
         "click_move_delay", "click_post_delay",

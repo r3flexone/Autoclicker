@@ -17,8 +17,8 @@ from ...persistence import (
     get_point_by_id, shift_category_priorities, TEMPLATES_DIR,
 )
 from ...utils import (
-    confirm, eindeutiger_name, is_cancel, ok, parse_non_negative_float,
-    safe_input, sanitize_filename,
+    confirm, eindeutiger_name, is_cancel, naechster_freier_name, ok,
+    parse_non_negative_float, safe_input, sanitize_filename,
 )
 from .items import select_category
 from .markers import collect_marker_colors
@@ -192,14 +192,16 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
             except OSError:
                 pass
 
-    # Item-Name abfragen
-    item_num = len(state.global_items) + 1
-    item_name = safe_input(f"  Item-Name (Enter = 'Item {item_num}'): ").strip()
+    # Item-Name abfragen. Nicht `len(...) + 1` — das schlaegt nach dem ersten Loeschen
+    # einen bereits vergebenen Namen vor, und der Name ist hier die Referenz.
+    with state.lock:
+        vorschlag = naechster_freier_name("Item", state.global_items)
+    item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}'): ").strip()
     if is_cancel(item_name):
         _cleanup_cached_template()
         return True
     if not item_name:
-        item_name = f"Item {item_num}"
+        item_name = vorschlag
 
     with state.lock:
         name_exists = item_name in state.global_items

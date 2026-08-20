@@ -99,14 +99,26 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
     return Sequence(name=base), path
 
 
-def _beim_schliessen(bridge) -> None:
-    """Rettet ungespeicherte Änderungen, wenn das Fenster geschlossen wird.
+def _scans_beim_schliessen_speichern(bridge) -> bool:
+    """Speichert offene Scan-Änderungen synchron vor dem Fensterschliessen."""
+    if not getattr(bridge, "_scan_dirty", False):
+        return False
 
-    Das X schliesst sofort — gefragt wird hier nicht mehr, sondern **gesichert**.
-    Der Rückfrage-Dialog in der Oberfläche schützt Laden und Neu; das Schliessen
-    ging bisher daran vorbei und warf die Arbeit still weg, obwohl der Stern im
-    Titel die ganze Zeit sagte, dass etwas offen ist.
-    """
+    antwort = bridge.scan_speichern()
+    status = antwort.get("status", {}) if isinstance(antwort, dict) else {}
+    if status.get("art") == "err":
+        print(f"\nItem-Scans konnten nicht gespeichert werden: "
+              f"{status.get('text', 'unbekannter Fehler')}")
+        return False
+
+    print("\nUngespeicherte Item-Scan-Aenderungen gespeichert.")
+    return True
+
+
+def _beim_schliessen(bridge) -> None:
+    """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
+    _scans_beim_schliessen_speichern(bridge)
+
     ziel = bridge.rettung_schreiben()
     if ziel is not None:
         print(f"\nUngespeicherte Aenderungen gesichert: {ziel}")

@@ -21,6 +21,7 @@ from ...utils import (compact_json, atomic_write, sanitize_filename,
 from ...persistence.serialization import (
     _slot_to_dict, _item_to_dict, _item_from_dict, _slot_from_dict)
 from ...persistence.paths import TEMPLATES_DIR
+from ..scan_services import crop_screen_region
 
 
 def load_slots(slots_file: str) -> dict[str, ItemSlot]:
@@ -122,13 +123,7 @@ def existing_categories(items: dict[str, ItemProfile]) -> list[str]:
 def crop_region(full_img, region: tuple[int, int, int, int],
                 virtual_left: int, virtual_top: int):
     """Schneidet die Slot-Region (Bildschirm-Koordinaten) aus dem Vollbild-Screenshot."""
-    x1 = max(0, region[0] - virtual_left)
-    y1 = max(0, region[1] - virtual_top)
-    x2 = min(full_img.width, region[2] - virtual_left)
-    y2 = min(full_img.height, region[3] - virtual_top)
-    if x2 <= x1 or y2 <= y1:
-        return None
-    return full_img.crop((x1, y1, x2, y2))
+    return crop_screen_region(full_img, region, (virtual_left, virtual_top))
 
 
 def save_template(img, name: str, hintergrund=None) -> str | None:

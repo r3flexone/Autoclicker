@@ -489,10 +489,24 @@ class ItemProfile:
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
     template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
     min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
+    # Dasselbe Item kann in verschiedenen Inventar-Bereichen in unterschiedlich
+    # grossen Slots vorkommen. `template` bleibt fuer bestehende JSON-Dateien und
+    # Editoren die erste Vorlage; weitere, groessenpassende Aufnahmen stehen hier.
+    template_variants: list[str] = field(default_factory=list)
+
+    def template_names(self) -> list[str]:
+        """Alle Vorlagen ohne leere oder doppelte Dateinamen."""
+        ergebnis = []
+        for name in [self.template, *self.template_variants]:
+            if isinstance(name, str) and name and name not in ergebnis:
+                ergebnis.append(name)
+        return ergebnis
 
     def __str__(self) -> str:
-        if self.template:
-            template_str = f"Template: {self.template} (≥{self.min_confidence:.0%})"
+        vorlagen = self.template_names()
+        if vorlagen:
+            anzahl = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
+            template_str = f"Template: {vorlagen[0]}{anzahl} (≥{self.min_confidence:.0%})"
         else:
             colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:3]])
             if len(self.marker_colors) > 3:
@@ -553,6 +567,13 @@ class ItemScanConfig:
     # ein Spiel von hinten leert und ein zweites von vorn, hatte die Wahl
     # zwischen zwei falschen Läufen.
     reverse: bool = False
+    # Aufnahmequelle des Inventars. Ein HWND darf hier bewusst NICHT stehen: es
+    # gilt nur bis zum Schliessen des Fensters. Titel + Instanz finden dasselbe
+    # Fenster beim nächsten Start wieder; das Referenzrechteck macht die global
+    # gespeicherten Slot-Koordinaten relativ zu diesem Fenster verschiebbar.
+    capture_window_title: Optional[str] = None
+    capture_window_index: int = 0
+    capture_window_rect: Optional[tuple[int, int, int, int]] = None
 
     def __post_init__(self) -> None:
         self.sync_names()
