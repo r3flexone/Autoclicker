@@ -286,6 +286,45 @@ def template_size(template_name: str) -> tuple[int, int] | None:
     return (int(template_cv.shape[1]), int(template_cv.shape[0]))
 
 
+def _groessen_hinweis(template_name: str, tw: int, th: int,
+                      iw: int, ih: int, wert: float) -> str:
+    """Der Text für den Fall „Template und Slot sind verschieden gross".
+
+    **Die alte Fassung las sich wie ein Defekt und war meistens keiner.** Sie hiess
+    „passt nicht zur Scan-Region", nannte beide Ursachen gleichrangig und empfahl
+    „Template neu aufnehmen" — was im häufigen Fall genau das Falsche ist. Wer sie
+    las, suchte einen Fehler, den er nicht gemacht hat.
+
+    Der häufige Fall ist harmlos und hat einen konkreten Namen: **verschiedene
+    Flächen desselben Spiels haben verschiedene Slot-Höhen.** An einem echten
+    Bestand gemessen hat das Inventar-Raster 64 Hintergrund-Zeilen, die
+    Ausrüstungsreihe 61 — nach dem Einzug 60 und 57. Ein Item der einen Fläche
+    wird beim Scan auch gegen die Slots der anderen gehalten (dafür ist die
+    Erkennung da), und dort kann es nicht passen.
+
+    Deshalb steht hier **die Frage, die beide Fälle unterscheidet**, statt zweier
+    Ursachen nebeneinander: findet der Scan seine übrigen Items noch? Das kann der
+    Code nicht wissen — der Nutzer sieht es in derselben Sekunde.
+
+    Und **kein negativer Prozentwert**: `TM_CCOEFF_NORMED` läuft von -1 bis +1, ein
+    Wert unter 0 heisst „die beiden Bilder haben nichts gemeinsam". Als
+    „-51 % Übereinstimmung" gelesen wirkte das wie eine kaputte Zahl.
+    """
+    aehnlich = "keine Ähnlichkeit" if wert <= 0 else f"nur {wert:.0%} Ähnlichkeit"
+    return (
+        f"'{template_name}' wurde in einem Slot von {tw}x{th} gelernt, geprüft "
+        f"wurde gegen {iw}x{ih} — {aehnlich}.\n"
+        "         Meist ist das normal: verschiedene Flächen desselben Spiels haben "
+        "verschiedene Slot-Höhen (Ausrüstungsreihe vs. Inventar-Raster), und dieses "
+        "Item gehört dann schlicht zur anderen.\n"
+        "         Findet der Scan seine übrigen Items weiterhin? Dann ist alles in "
+        "Ordnung. Findet er gar nichts mehr, hat sich die Slot-Region verschoben — "
+        "dann Slots neu vermessen und die Templates neu lernen.\n"
+        f"         (Weitere Templates mit {tw}x{th} gegen {iw}x{ih} werden nicht "
+        "mehr gemeldet.)"
+    )
+
+
 def match_template_in_image(img: 'Image.Image', template_name: str,
                             min_confidence: float = DEFAULT_MIN_CONFIDENCE,
                             *, resize_template: bool = True,
@@ -384,13 +423,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
                 schluessel = (tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
                     _gemeldete_groessen.add(schluessel)
-                    logger.warning(
-                        f"Template '{template_name}' passt nicht zur Scan-Region: "
-                        f"Template {tw}x{th}, Slot {iw}x{ih} — nur {max_val:.0%} Übereinstimmung. "
-                        "Gehört das Item zu einem anderen Inventar, ist das in Ordnung; "
-                        "sonst hat sich die Slot-Region geändert (Template neu aufnehmen). "
-                        "Weitere Templates dieser Grössenpaarung werden nicht mehr gemeldet."
-                    )
+                    logger.warning(_groessen_hinweis(template_name, tw, th, iw, ih,
+                                                     max_val))
             return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:

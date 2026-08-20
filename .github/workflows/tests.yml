@@ -15,11 +15,26 @@ on:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Suite (${{ matrix.os }}, ${{ matrix.bilder }} Bildpakete)
     strategy:
       fail-fast: false
       matrix:
+        # ZWEI unabhaengige Achsen, deshalb vier Laeufe.
+        #
+        # `os`: beide Plattform-Backends gegen denselben Testvertrag. Nur eine
+        # Haelfte zu bauen ist der Fehler, den diese Achse faengt.
+        #
+        # `bilder`: OpenCV und Pillow sind optional, und der Code degradiert
+        # sauber ohne sie (`OPENCV_AVAILABLE`-Muster). Genau deshalb UEBERSPRINGT
+        # die Suite ohne sie ueber hundert Pruefungen - Template-Vergleich,
+        # Masken, Slot-Erkennung, die Groessen-Meldung. Ein Lauf nur MIT den
+        # Paketen sagt nichts darueber, ob der Degradationspfad noch traegt; ein
+        # Lauf nur OHNE sie ist gruen, waehrend der halbe Bilderkennungs-Teil
+        # ungeprueft bleibt. Genau daran ist hier schon einmal eine kaputte
+        # Meldung durchgerutscht. Dieselbe Regel wie bei den Plattform-Stubs:
+        # was der Ersatz anders macht als das Echte, wird auf BEIDEN Seiten geprueft.
         os: [ubuntu-latest, windows-latest]
+        bilder: [ohne, mit]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -31,13 +46,14 @@ jobs:
           # nichts darueber, ob die aelteste noch traegt.
           python-version: "3.10"
 
-      # Die Box-Zeichen der Ausgabe brauchen UTF-8. Auf dem Runner ist das ohnehin
-      # gesetzt; explizit, weil dieselbe Zeile unter Windows noetig ist und man sie
-      # dann hier wiederfindet.
-      - name: Test-Abhängigkeiten
-        run: >-
-          python -m pip install pillow numpy opencv-python-headless
+      # headless: der Runner hat keine Anzeige, und das volle opencv-python zieht
+      # GUI-Bibliotheken nach, die es dort nicht gibt.
+      - name: Bildpakete
+        if: matrix.bilder == 'mit'
+        run: python -m pip install pillow numpy opencv-python-headless
 
+      # Kein Bildpaket, sondern die Plattformgrenze - gehoert deshalb in BEIDE
+      # Bilder-Varianten.
       - name: Linux-Plattformabhängigkeiten
         if: runner.os == 'Linux'
         run: python -m pip install mss pynput python-xlib
@@ -47,8 +63,20 @@ jobs:
         # Vertragssuite, die ueber test_regression.py gestartet wird.
         # Bash expandiert das Muster auf Linux und Windows gleich; PowerShell
         # würde `test_*.py` dagegen als wörtlichen Modulnamen weiterreichen.
+        if: matrix.bilder == 'mit'
         shell: bash
         run: python -m unittest -v test_*.py
+        env:
+          PYTHONIOENCODING: utf-8
+
+      # Ohne Bildpakete laeuft die Vertragssuite allein: zwei Wurzelmodule
+      # (`test_itemscan_editor_ux`, `test_scan_services`) importieren PIL schon
+      # beim Laden und koennen ohne Pillow gar nicht erst starten. Sie sind in
+      # der `mit`-Variante auf beiden Plattformen abgedeckt; was hier geprueft
+      # werden soll, ist der Degradationspfad - und der steckt in test_logic.
+      - name: Vertragssuite ohne Bildpakete
+        if: matrix.bilder == 'ohne'
+        run: python tools/test_logic.py
         env:
           PYTHONIOENCODING: utf-8
 
