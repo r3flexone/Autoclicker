@@ -5689,14 +5689,43 @@ else:
                 _imgm.match_template_in_image(_andersm, f"fremd{_i_m}.png", 0.8)
         finally:
             _imgm.logger.removeHandler(_fangm)
-        _konflikt_m = [t for t in _gesehen_m if "passt nicht zur Scan-Region" in t]
+        _konflikt_m = [t for t in _gesehen_m if "gelernt, geprüft wurde gegen" in t]
         check(f"drei Templates derselben Groesse ergeben EINE Meldung "
               f"({len(_konflikt_m)})", len(_konflikt_m) == 1)
-        # Und sie nennt beide Ursachen: ein Item aus einem anderen Inventar ist
-        # kein Grund, ein tadelloses Template neu aufzunehmen.
-        check("die Meldung nennt beide Ursachen",
-              _konflikt_m and "anderen Inventar" in _konflikt_m[0]
-              and "Slot-Region geändert" in _konflikt_m[0])
+        _text_m = _konflikt_m[0] if _konflikt_m else ""
+
+        # **Die Meldung darf nicht wie ein Defekt klingen, denn meistens ist sie
+        # keiner.** Sie hiess "passt nicht zur Scan-Region" und empfahl "Template
+        # neu aufnehmen" - im haeufigen Fall genau das Falsche. Wer sie las,
+        # suchte einen Fehler, den er nicht gemacht hat.
+        check("sie nennt den haeufigen Fall zuerst und beim Namen",
+              "normal" in _text_m and "Slot-Höhen" in _text_m)
+        # Zwei Ursachen nebeneinander helfen niemandem - es braucht die FRAGE,
+        # die sie unterscheidet. Beantworten kann sie nur der Nutzer.
+        check("sie stellt die Frage, die beide Faelle trennt",
+              "übrigen Items" in _text_m and "gar nichts mehr" in _text_m)
+        check("und nennt die Reparatur nur fuer den zweiten Fall",
+              "verschoben" in _text_m and "neu vermessen" in _text_m)
+        # Die Sperre gehoert weiterhin dazu, sonst stehen zwei Dutzend gleiche
+        # Zeilen da und die Meldung ist so gut wie keine.
+        check("und sagt, dass sie sich abschaltet", "nicht mehr gemeldet" in _text_m)
+
+        # --- Kein negativer Prozentwert ---
+        # TM_CCOEFF_NORMED laeuft von -1 bis +1; unter 0 heisst "die beiden Bilder
+        # haben nichts gemeinsam". Als "-51 % Übereinstimmung" gelesen wirkte das
+        # wie eine kaputte Zahl, und der Leser sucht den Fehler in der Rechnung.
+        from autoclicker.imaging import _groessen_hinweis as _gh_m
+        check("ein Wert unter 0 wird als 'keine Ähnlichkeit' ausgegeben",
+              "keine Ähnlichkeit" in _gh_m("x.png", 62, 57, 62, 60, -0.51)
+              and "-51" not in _gh_m("x.png", 62, 57, 62, 60, -0.51))
+        check("ein Wert darueber steht als Prozent da",
+              "12 %" in _gh_m("x.png", 62, 57, 62, 60, 0.12).replace("\u202f", " ")
+              or "12%" in _gh_m("x.png", 62, 57, 62, 60, 0.12))
+        # Beide Groessen stehen drin - sonst weiss man nicht, welche Flaeche gemeint
+        # ist. Die Zahlen kommen aus dem gestellten Bild (Template 40x40 gegen einen
+        # 3 px flacheren Slot), nicht aus einem echten Bestand.
+        check("beide Groessen stehen in der Meldung",
+              "40x40" in _text_m and "40x37" in _text_m)
         _imgm._gemeldete_groessen.clear()
     finally:
         _imgm.TEMPLATES_DIR = _altm

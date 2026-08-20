@@ -41,6 +41,17 @@ Alle drei Jobs müssen grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
 Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
 zu testen sagt nichts darüber, ob die älteste noch trägt.
 
+**Der Test-Job läuft zweimal: `ohne` und `mit` Bildpaketen.** OpenCV und Pillow sind
+optional, und der Code degradiert sauber ohne sie — nur überspringt die Suite dann
+**über hundert Tests** (Template-Vergleich, Masken, Slot-Erkennung, die
+Grössen-Meldung): 1.154 statt 1.273. Ein Lauf nur ohne Fremdpakete ist also grün,
+während der halbe Bilderkennungs-Teil ungeprüft bleibt — und genau dort ist schon
+einmal eine kaputte Meldung durchgerutscht, weil die Zusicherung dazu lokal gar
+nicht lief. Dieselbe Regel wie bei den Plattform-Stubs: **was das Echte anders macht
+als der Ersatz, wird auf beiden Seiten geprüft.** Wer an `imaging.py` arbeitet,
+installiert sie deshalb auch lokal (`pip install opencv-python-headless pillow numpy`)
+— sonst sagt ein grüner Lauf hier nichts über die Stellen, um die es gerade geht.
+
 **Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
 Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
 durchnummerierten Variablennamen (`_b18`, `_sand18`) waren das Symptom: so
@@ -627,6 +638,33 @@ Hintergrund entfernt — und blieb deshalb als Marker in **19 von 19** Items
 stehen. Eine Farbe, die jedes Item hat, unterscheidet nichts; mit
 `scan_require_all_markers` muss sie zusätzlich immer gefunden werden. Bei 45
 verschwindet sie, bei 55 ändert sich nichts mehr. Deshalb 45.
+
+**Verschiedene Flächen desselben Spiels haben verschiedene Slot-Höhen — und die
+Meldung darüber darf nicht wie ein Defekt klingen.** Am echten Bestand: das
+Inventar-Raster hat 64 Hintergrund-Zeilen, die Ausrüstungsreihe 61, nach dem Einzug
+also 60 und 57. Der Scan hält jedes Item auch gegen die Slots der jeweils anderen
+Fläche (dafür ist „erkannt, aber nicht in diesem Scan" da), und dort kann es nicht
+passen. Das ist **richtig** und kein Fehler des Nutzers.
+
+`_groessen_hinweis()` in `imaging.py` schreibt den Text dazu. Drei Regeln, die er
+einlöst — die alte Fassung („passt nicht zur Scan-Region … Template neu aufnehmen")
+verletzte alle drei und schickte den Leser einen Fehler suchen, den er nicht gemacht
+hat:
+
+- **Der häufige Fall steht zuerst und beim Namen** (Ausrüstungsreihe vs.
+  Inventar-Raster), nicht als zweite von zwei gleichrangigen Ursachen.
+- **Statt zweier Ursachen die Frage, die sie trennt**: findet der Scan seine übrigen
+  Items noch? Das kann der Code nicht wissen — der Nutzer sieht es in derselben
+  Sekunde. Die Reparatur („neu vermessen, neu lernen") hängt an dieser Antwort und
+  steht deshalb erst dahinter.
+- **Kein negativer Prozentwert.** `TM_CCOEFF_NORMED` läuft von −1 bis +1; unter 0
+  heisst „die beiden Bilder haben nichts gemeinsam". Als „−51 % Übereinstimmung"
+  gelesen wirkt das wie eine kaputte Zahl, und man sucht den Fehler in der Rechnung.
+  Unter 0 steht deshalb „keine Ähnlichkeit".
+
+Die Sperre bleibt: gemeldet wird **einmal je Grössenpaarung** (`_gemeldete_groessen`),
+sonst stehen zwei Dutzend gleichlautende Zeilen da und die Meldung ist so gut wie
+keine.
 
 Eine Grenze, die man kennen muss: **eine völlig gleichförmige Fläche hat keine
 Varianz und damit keine Korrelation.** Ein Item, dessen sichtbarer Teil eine
