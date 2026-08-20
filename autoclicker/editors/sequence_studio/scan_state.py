@@ -149,6 +149,28 @@ class ScanStateMixin:
                 stand[str(p)] = 0.0
         return stand
 
+    def _platte_nachziehen(self, *pfade) -> None:
+        """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
+
+        **Das gemerkte Bild lag im beobachteten Ordner.** `item_scans/bilder/`
+        entsteht beim ersten Screenshot — und weil das Anlegen eines
+        Unterordners die Änderungszeit des Elternordners weiterdreht, meldete
+        der Reiter direkt nach der eigenen Aufnahme „auf Platte hat sich etwas
+        geändert". Ein Hinweis, der nach der eigenen Aktion kommt, ist genau
+        der, den man sich abgewöhnt zu lesen.
+
+        Ohne Argumente wird der ganze Stand nachgezogen (nach dem Speichern —
+        dann ist alles auf Platte unser eigenes Werk); mit Argumenten nur die
+        genannten Pfade, damit eine fremde Änderung anderswo sichtbar bleibt.
+        """
+        stand = self._platte_stand()
+        if not pfade:
+            self._platte = stand
+            return
+        for pfad in pfade:
+            if str(pfad) in stand:
+                self._platte[str(pfad)] = stand[str(pfad)]
+
     def _platte_fremd(self) -> bool:
         """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
 
@@ -469,7 +491,7 @@ class ScanStateMixin:
             "suchbereich": list(self._suchbereich) if self._suchbereich else None,
             "foto": self._flaeche(),
             "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
-            "items": [self._item_json(i, i.name in dabei_items, i.name in erkannt)
+            "items": [self._item_json(i, i.name in dabei_items, erkannt.get(i.name))
                       for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
@@ -580,19 +602,30 @@ class ScanStateMixin:
             "treffer": treffer,
         }
 
-    def _erkannte_items(self) -> set:
-        """Welche Items gerade in irgendeinem Slot erkannt werden.
+    def _erkannte_items(self) -> dict:
+        """Item-Name -> die Slots, in denen es gerade erkannt wird.
 
         **Das ist der Grund, warum die Item-Liste eines Scans nicht leer bleibt.**
         Dasselbe Item kann in mehreren Spielen vorkommen; es ein zweites Mal zu
         lernen ist genau das, was man vermeiden will. Wird es erkannt, steht es
         im Scan-Inspektor — bevor jemand auf die Idee kommt, es neu zu lernen.
         Ein Haken genügt dann.
+
+        **Der Slot-Name kommt mit, nicht nur ein Ja.** „Items erkennen" färbte
+        bis hierher nur die Rechtecke im Bild — wer in der Item-Liste stand (und
+        das ist die Liste, in der man arbeitet), sah nach dem Klick nichts und
+        hielt den Knopf für wirkungslos. Jetzt steht an jedem Item, wo es
+        gefunden wurde.
         """
-        return {e["name"] for e in self._treffer.values() if e.get("name")}
+        gefunden: dict = {}
+        for slot, eintrag in self._treffer.items():
+            name = eintrag.get("name")
+            if name:
+                gefunden.setdefault(name, []).append(slot)
+        return gefunden
 
     def _item_json(self, item: ItemProfile, dabei: bool = False,
-                   erkannt: bool = False) -> dict:
+                   erkannt_in=None) -> dict:
         from ...imaging import template_size
         vorlagen = item.template_names()
         groessen = []
@@ -619,7 +652,11 @@ class ScanStateMixin:
             # zeigt genau diese beiden Sorten, alles Weitere auf Knopfdruck: ein
             # neuer Scan soll leer anfangen und nicht mit dem Bestand eines
             # fremden Spiels.
-            "erkannt": erkannt,
+            "erkannt": bool(erkannt_in),
+            # In WELCHEN Slots — sonst ist „erkannt" eine Behauptung ohne Beleg,
+            # und bei einem Fehlgriff (zwei Items sehen sich ähnlich) fehlt
+            # genau die Angabe, an der man ihn bemerkt.
+            "erkannt_in": list(erkannt_in or []),
             "name": item.name,
             "kategorie": item.category,
             "prioritaet": item.priority,

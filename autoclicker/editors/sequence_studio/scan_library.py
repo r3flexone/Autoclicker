@@ -71,7 +71,15 @@ class ScanLibraryMixin:
         return self.scan_daten()
 
     def scan_neu(self, daten: Optional[dict] = None) -> dict:
-        """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen."""
+        """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen.
+
+        **Erst laden, dann anlegen.** `_scan_laden()` ersetzt `self.scans`
+        komplett durch das, was auf Platte steht — passiert es NACH dem Anlegen,
+        ist der frische Scan wieder weg. In der Oberfläche fällt das nicht auf
+        (der Reiter zeichnet beim Öffnen und lädt dabei), über die Brücke
+        aufgerufen aber sehr wohl.
+        """
+        self._scan_laden()
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
         self._merke("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
@@ -230,6 +238,9 @@ class ScanLibraryMixin:
             pfad.unlink(missing_ok=True)
         except OSError:
             return self._scan_melde(f"'{name}' entfernt, die Datei blieb liegen.", "warn")
+        # Auch Löschen ist ein eigener Schreibvorgang: es dreht die
+        # Änderungszeit des Ordners weiter.
+        self._platte_nachziehen(Path(ITEM_SCANS_DIR))
         return self._scan_melde(f"Scan '{name}' gelöscht.", "warn")
 
     # --------------------------------------------------------------- Sichern
@@ -271,7 +282,7 @@ class ScanLibraryMixin:
         self._scan_dirty = False
         # Der eigene Schreibvorgang darf sich nicht selbst als Fremdaenderung
         # melden - sonst stuende der Hinweis nach jedem Speichern da.
-        self._platte = self._platte_stand()
+        self._platte_nachziehen()
         from ...befehl import sende
         sende("daten")
         return self._scan_melde(

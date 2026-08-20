@@ -1245,3 +1245,131 @@ check("der Scan-Assistent hat genau drei erreichbare Schritte",
 check("jeder Assistent-Schritt hat einen Inhalt",
       all(f'id="scan-schritt-{_n18}-inhalt"' in _html18 for _n18 in _assistent18))
 
+
+
+# ============================================================================
+section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
+
+# **Ein Haken war zu wenig.** Die Liste konnte nur „gehoert dazu / gehoert nicht
+# dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in die Liste,
+# einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
+_maske18 = _html18[_html18.index("function scanItemMaske("):]
+_maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile")]
+for _feld18, _was18 in (('setze("name"', "Name"), ('setze("kategorie"', "Kategorie"),
+                        ('setze("prioritaet"', "Prioritaet"),
+                        ('"scan_mitglied"', "Haken (gehoert zum Scan)")):
+    check(f"die Maske setzt {_was18}", _feld18 in _maske18)
+
+# Und dieselbe Sache steht NICHT zweimal da: der Inspektor hat die drei Felder
+# abgegeben. Zwei Eingaben fuer einen Wert waeren zwei Wahrheiten, und man
+# muesste raten, welche fuehrt — dieselbe Aufloesung wie beim Namen des Scans.
+_insp18 = _html18[_html18.index("function scanInspItem("):]
+_insp18 = _insp18[:_insp18.index("\nfunction scanInspScan(")]
+check("der Inspektor baut kein zweites Namensfeld", 'feld("Name"' not in _insp18)
+check("und kein zweites Kategoriefeld", "kategoriefeld(" not in _insp18)
+check("und kein zweites Prioritaetsfeld", "prioritaetsfeld(" not in _insp18)
+check("er sagt stattdessen, wo sie stehen",
+      "links in der Item-Liste" in _insp18)
+
+# **Ein <datalist> haengt an seiner id.** Sechzig Masken mit sechzig gleichen
+# ids waeren neunundfuenfzig, die der Browser ignoriert - also eine
+# Kategorie-Vervollstaendigung, die je nach Position mal geht und mal nicht.
+_liste18 = _html18[_html18.index("function scanListeItems("):]
+_liste18 = _liste18[:_liste18.index("\n/** Ein Item als kleine Maske")]
+check("die Kategorienliste steht EINMAL fuer alle Masken",
+      _liste18.count("kategorienListe(") == 1)
+check("und die Maske bekommt ihre id gereicht", "listenId" in _maske18)
+
+# **Derselbe Befehl heisst ueberall gleich.** Er stand im Assistenten als
+# „Erkennung testen" und im Inspektor als „Items erkennen" — zwei Namen fuer
+# einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
+# Verschiedenes.
+_erkenn18 = _re13.findall(r'>(Items erkennen|Erkennung testen)<', _html18)
+_erkenn18 += _re13.findall(r'\}, "(Items erkennen|Erkennung testen)"\)', _html18)
+check("beide Knoepfe fuer scan_erkennen heissen gleich",
+      len(_erkenn18) >= 2 and set(_erkenn18) == {"Items erkennen"})
+
+# **Mit offenem Scan sind die Items die Arbeit, nicht sein Name.** Wer einen
+# Scan lud, landete auf der Scan-Liste und sah den Namen, den er gerade
+# angeklickt hatte, ein zweites Mal.
+check("die Listen-Vorgabe haengt am offenen Scan",
+      'return SC && SC.offen ? "items" : "scans";' in _html18)
+check("und eine eigene Entscheidung ueberstimmt sie",
+      "if (scanListe) return scanListe;" in _html18)
+check("das Oeffnen eines Scans setzt sie zurueck",
+      'if (name === "scan_oeffnen") scanListe = null;' in _html18)
+
+
+# ============================================================================
+section("Was der eigene Schreibvorgang NICHT ist: eine Fremdaenderung")
+
+_sand19 = tempfile.mkdtemp(prefix="studioeigen_")
+_cwd19 = _os.getcwd()
+_os.chdir(_sand19)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _b19 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+
+    # **Erst laden, dann anlegen.** `_scan_laden()` ersetzt `self.scans`
+    # komplett durch das, was auf Platte steht - passiert es NACH dem Anlegen,
+    # ist der frische Scan wieder weg.
+    _z19 = _b19.scan_neu({"name": "Inventar"})
+    check("ein neu angelegter Scan ueberlebt das Laden von Platte",
+          [c["name"] for c in _z19["scans"]] == ["Inventar"])
+    check("und ist offen", _z19["offen"] == "Inventar")
+
+    if not _hat_pil18:
+        print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
+    else:
+        _bild19 = _PILImage18.new("RGB", (200, 150), (20, 24, 30))
+        _echt19 = _img18.take_screenshot
+        _echtorg19 = _win18.get_virtual_origin
+        _img18.take_screenshot = lambda region=None: (
+            _bild19.copy() if not region else _bild19.crop(tuple(region)))
+        _win18.get_virtual_origin = lambda: (0, 0)
+        try:
+            check("frisch geladen ist nichts fremd", _b19.scan_daten()["fremd"] is False)
+            # Das gemerkte Bild liegt UNTER item_scans/ - das Anlegen des
+            # Unterordners dreht die Aenderungszeit des Elternordners weiter.
+            # Ohne Nachziehen meldete der Reiter direkt nach der EIGENEN
+            # Aufnahme "auf Platte hat sich etwas geaendert", und einen Hinweis,
+            # der nach der eigenen Aktion kommt, gewoehnt man sich ab zu lesen.
+            _z19 = _b19.scan_foto()
+            check("die eigene Aufnahme meldet keine Fremdaenderung",
+                  _z19["fremd"] is False)
+            check("das Bild ist trotzdem da", _z19["foto"]["bild"] is True)
+            # Gegenprobe: eine ECHTE Fremdaenderung faellt weiterhin auf.
+            import time as _time19
+            _time19.sleep(0.01)
+            Path("item_scans/fremd.json").write_text("{}", encoding="utf-8")
+            check("eine fremde Datei im selben Ordner faellt weiterhin auf",
+                  _b19.scan_daten()["fremd"] is True)
+
+            # --- Erkennen wird in der Item-Liste sichtbar ---
+            section("Was das Erkennen der Item-Liste sagt")
+            _b19.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(10, 10, 60, 60),
+                                          click_pos=(35, 35), slot_color=(20, 24, 30))
+            _b19.scans["Inventar"].slot_names = ["Slot 1"]
+            _b19.items["Sicheres"] = _ITEM8(name="Sicheres",
+                                            marker_colors=[(20, 24, 30)])
+            _b19.scans["Inventar"].item_names = ["Sicheres"]
+            _b19._objekte_angleichen()
+            _z19 = _b19.scan_erkennen()
+            _item19 = [i for i in _z19["items"] if i["name"] == "Sicheres"][0]
+            # **„erkannt" allein ist eine Behauptung ohne Beleg.** Der Knopf
+            # faerbte nur die Rechtecke im Bild; wer in der Item-Liste stand -
+            # und das ist die Liste, in der man arbeitet - sah nach dem Klick
+            # nichts und hielt ihn fuer wirkungslos.
+            check("das Item weiss, dass es erkannt wurde", _item19["erkannt"] is True)
+            check("und in WELCHEM Slot", _item19["erkannt_in"] == ["Slot 1"])
+            _b19._treffer = {}
+            _item19 = [i for i in _b19.scan_daten()["items"]
+                       if i["name"] == "Sicheres"][0]
+            check("ohne Erkennungslauf steht dort nichts",
+                  _item19["erkannt"] is False and _item19["erkannt_in"] == [])
+        finally:
+            _img18.take_screenshot = _echt19
+            _win18.get_virtual_origin = _echtorg19
+finally:
+    _os.chdir(_cwd19)

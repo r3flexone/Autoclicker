@@ -393,6 +393,12 @@ class ScanCaptureMixin:
             pfad = self._foto_pfad(self.scan_offen)
             pfad.parent.mkdir(parents=True, exist_ok=True)
             bild.save(pfad, "PNG", pnginfo=info)
+            # Das Bild liegt UNTER `item_scans/` — und der Unterordner entsteht
+            # gerade eben, was die Änderungszeit des Elternordners weiterdreht.
+            # Ohne dieses Nachziehen meldete der Reiter direkt nach der eigenen
+            # Aufnahme „auf Platte hat sich etwas geändert".
+            from ...persistence.paths import ITEM_SCANS_DIR
+            self._platte_nachziehen(Path(ITEM_SCANS_DIR))
         except (ImportError, OSError, ValueError):
             pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
 

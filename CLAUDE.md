@@ -792,9 +792,15 @@ den Fehler beim Lernen statt bei der Ansicht. `_platte_stand()` merkt sich die
 Änderungszeiten beim Laden, `_platte_fremd()` vergleicht sie bei jeder
 Momentaufnahme, und die Ansicht bietet „Neu laden" an. Zwei Regeln dazu:
 
-- **Das eigene Speichern zählt nicht mit** — `scan_speichern()` zieht den Stand
-  nach. Sonst stünde der Hinweis nach jedem Klick auf „Speichern" da, und man
-  gewöhnt sich an, ihn zu übersehen.
+- **Kein eigener Schreibvorgang zählt mit** (`_platte_nachziehen()`). Für das
+  Speichern war das von Anfang an klar; für zwei andere nicht, und dort log der
+  Hinweis: das gemerkte Bild liegt unter `item_scans/bilder/`, und das **Anlegen
+  des Unterordners** dreht die Änderungszeit von `item_scans/` weiter — der
+  Reiter meldete also direkt nach der eigenen ersten Aufnahme eine
+  Fremdänderung. Dasselbe beim Löschen einer Scan-Datei. Ein Hinweis, der nach
+  der eigenen Aktion kommt, ist genau der, den man sich abgewöhnt zu lesen.
+  Nachgezogen wird deshalb **gezielt** (nur die berührten Pfade); ein Rundum-
+  Nachziehen verschluckte eine fremde Änderung, die in derselben Sekunde kam.
 - **Ungespeichertes wird nicht kommentarlos verworfen.** Bei offenen Änderungen
   stehen zwei Knöpfe („Speichern & neu laden", „Verwerfen & neu laden") statt
   einer Rückfrage: was passiert, steht dann *vor* dem Klick da.
@@ -1102,6 +1108,46 @@ Sechs Regeln, an denen der Reiter hängt:
   finde es; er sieht dieses Item gar nicht an. Ein Häkchen ändert nicht, WAS
   erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
   nach, statt neu zu rechnen.
+
+- **Ein Item ist mehr als ein Haken** (`scanItemMaske()`). Die Item-Liste konnte
+  nur „gehört dazu / gehört nicht dazu"; Name, Kategorie und Priorität kosteten
+  je einen Klick in die Liste, einen Blick in die rechte Spalte und einen Weg
+  zurück — bei sechzig Items sechzig Mal. Genau diese vier Angaben ändert man,
+  und sie passen nebeneinander: Haken, Vorschau, Name, darunter Kategorie und
+  Priorität.
+
+  Sie stehen deshalb **nur** dort: der Inspektor hat die drei Felder abgegeben
+  und sagt, wo sie sind. Dieselbe Sache an zwei Stellen wären zwei Wahrheiten,
+  und man müsste raten, welche führt — dieselbe Auflösung wie beim Namen des
+  Scans und beim Klick-Block im Sequenz-Editor. Rechts bleibt, was Platz
+  braucht und selten angefasst wird: das grosse Bild, Vorlagen, Marker,
+  Konfidenz, Löschen.
+
+  Eine Falle steckt in der Kategorie-Vervollständigung: ein `<datalist>` hängt
+  an seiner `id`. Sechzig Masken mit sechzig gleichen ids wären
+  neunundfünfzig, die der Browser ignoriert — also eine Vervollständigung, die
+  je nach Position mal geht und mal nicht. Die Liste wird **einmal** gebaut und
+  an jede Maske gereicht.
+- **„Items erkennen" muss man in der Item-Liste sehen.** Der Knopf färbte die
+  Rechtecke im Bild und füllte die Ergebnisleiste — wer aber in der Item-Liste
+  stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick nichts
+  und hielt ihn für wirkungslos. `_erkannte_items()` liefert deshalb nicht mehr
+  eine Menge von Namen, sondern **Name → Slots**; an jeder Maske steht, wo das
+  Item gefunden wurde. „Erkannt" ohne Beleg wäre eine Behauptung, und bei einem
+  Fehlgriff (zwei Items sehen sich ähnlich) fehlte genau die Angabe, an der man
+  ihn bemerkt.
+- **Ein Befehl hat einen Namen.** `scan_erkennen` stand im Assistenten als
+  „Erkennung testen" und im Inspektor als „Items erkennen" — zwei Namen für
+  einen Knopf, und man probiert beide aus, weil man annimmt, sie täten
+  Verschiedenes. Beide heissen jetzt gleich und tragen denselben Tooltip.
+- **Mit offenem Scan sind die Items die Arbeit, nicht sein Name.** Die
+  Listen-Leiste stand immer auf „Scans": wer einen Scan lud, sah den Namen, den
+  er gerade angeklickt hatte, ein zweites Mal und musste erst unten links auf
+  „Items" klicken. `scanListe = null` heisst „noch nicht entschieden" — dann
+  gilt `scanListeAktiv()` (bei offenem Scan: Items). Sobald jemand einen Reiter
+  anfasst, steht dort seine Entscheidung; **das Öffnen eines Scans setzt sie
+  zurück**, denn das ist ein Wechsel des Zusammenhangs. Dieselbe Mechanik wie
+  `klappZu`.
 
 **Der offene Scan ist der Bezug, nicht der Bestand** (`_scan_slots()`). Wer zwei
 Spiele betreibt, hat die Slots beider in einer Datei — und alles, was „alle

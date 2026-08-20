@@ -764,6 +764,9 @@ class ScanDetectMixin:
             pfad.unlink(missing_ok=True)
         except OSError:
             return self._scan_melde(f"{wer} entfernt, die Datei blieb liegen.", "warn")
+        # Der eigene Schreibvorgang zählt nicht als Fremdänderung — Löschen
+        # dreht die Änderungszeit des Ordners genauso weiter wie Schreiben.
+        self._platte_nachziehen(pfad.parent)
         return self._scan_melde(f"{wer} gelöscht.", "warn")
 
     # ------------------------------------------------------------ Werkzeuge

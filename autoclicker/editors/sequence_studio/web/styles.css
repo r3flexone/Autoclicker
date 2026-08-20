@@ -605,6 +605,26 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-zeile .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scan-zeile .mini{width:22px;height:22px;flex:none;border-radius:3px;
   border:1px solid var(--line);image-rendering:pixelated;object-fit:contain;background:var(--bg)}
+/* **Ein Item ist mehr als ein Haken.** Die Liste konnte nur „gehoert dazu /
+   gehoert nicht dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in
+   die Liste, einen Blick nach rechts und einen Weg zurueck — bei sechzig Items
+   sechzig Mal. Die vier Angaben, die man wirklich aendert, passen nebeneinander.
+   Spalten: Haken, Vorschau, Felder. */
+.scan-maske{display:grid;grid-template-columns:auto 30px minmax(0,1fr);gap:6px 7px;
+  align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
+  background:var(--bg)}
+.scan-maske:hover{border-color:var(--dim)}
+/* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
+   liesse die Maske um einen Pixel wachsen und das Raster springen. */
+.scan-maske.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-maske > .mini,.scan-maske > .kugel{width:30px;height:30px;border-radius:4px;
+  flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
+.scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
+.scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}
+/* Kategorie nimmt den Platz, die Prioritaet ist eine Zahl mit zwei Stellen. */
+.scan-maske-unten{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:5px}
+.scan-maske input{font-size:11.5px;padding:4px 6px;width:100%;min-width:0}
+.scan-maske-stand{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)}
 .scan-kategorie-kopf{padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
   letter-spacing:.08em;text-transform:uppercase}
 .tabs.klein .tab{font-size:11px;padding:4px 8px}

@@ -1589,9 +1589,18 @@ async function fortfahren(verwerfen) {
  * Zoom, und nur die Strichstaerken und Schriftgroessen muessen gegengerechnet
  * werden. */
 let SC = null;
-// Welche Liste links offen ist. Der Scan steht voran, weil er die Klammer ist:
-// erst waehlt man ihn, dann sieht man seine Slots und seine Items.
-let scanListe = "scans";
+/* Welche Liste links offen ist — `null` heisst „noch nicht entschieden", dann
+ * gilt `scanListeAktiv()`.
+ *
+ * **Mit offenem Scan sind die Items die Arbeit.** Vorher stand die Liste immer
+ * auf „Scans": wer einen Scan lud, sah dessen Namen noch einmal und musste
+ * erst unten links auf „Items" klicken, um an das zu kommen, weswegen er den
+ * Scan geoeffnet hat. Der Scan ist die Klammer, nicht der Inhalt.
+ *
+ * Dieselbe Regel wie bei `klappZu`: die Vorgabe gilt, bis jemand einen Reiter
+ * anfasst — ab dann steht dort seine Entscheidung. Ein Bedienelement, das
+ * zurueckspringt, ist keine Hilfe. */
+let scanListe = null;
 let scanZoom = 1;
 // Hat der Nutzer den Zoom selbst gesetzt (1:1 oder STRG+Rad)? Dann fasst ihn
 // die Fenstergroesse nicht mehr an — sonst raeumte ein Verschieben des Fensters
@@ -1689,6 +1698,11 @@ async function rufScan(name, daten) {
   const antwort = await frage(name, daten);
   if (!antwort) return;
   SC = antwort;
+  // **Einen Scan zu oeffnen ist ein Wechsel des Zusammenhangs.** Danach gilt
+  // wieder die Vorgabe — und die sind bei offenem Scan seine Items, also das,
+  // weswegen man ihn geoeffnet hat. Vorher landete man auf der Scan-Liste und
+  // sah den Namen, den man gerade angeklickt hatte, ein zweites Mal.
+  if (name === "scan_oeffnen") scanListe = null;
   if (name === "scan_foto")
     scanAssistentSchritt = SC.schritte[1].fertig ? 3 : 2;
   else if (name === "scan_lernvorschau" || name === "scan_erkennen")
@@ -1999,8 +2013,17 @@ async function scanFensterPflegen() {
   }
 }
 
+/** Welche Liste gilt: die gewaehlte, sonst die zur Lage passende Vorgabe. */
+function scanListeAktiv() {
+  if (scanListe) return scanListe;
+  if (scanArt === "boss") return "bosse";
+  if (scanArt === "icon") return "icons";
+  return SC && SC.offen ? "items" : "scans";
+}
+
 function scanListeZeichnen() {
   const tabs = $("scan-listen-tabs");
+  const offen = scanListeAktiv();
   tabs.replaceChildren();
   if (scanArt !== "item") {
     $("scan-filterzeile").replaceChildren();
@@ -2017,10 +2040,10 @@ function scanListeZeichnen() {
     for (const [key, text, zahl] of [["bosse", "Bosse", erkBosse().length],
                                      ["bibliothek", "Bibliothek",
                                       SC.global_bosses.length]]) {
-      tabs.appendChild(el("button", {class: "tab" + (scanListe === key ? " an" : ""),
+      tabs.appendChild(el("button", {class: "tab" + (offen === key ? " an" : ""),
         onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + zahl));
     }
-    return scanListe === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
+    return offen === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
   }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
@@ -2031,7 +2054,7 @@ function scanListeZeichnen() {
                    ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length]];
   for (const [key, text, sichtbar, gesamt] of gruppen) {
     tabs.appendChild(el("button", {
-      class: "tab" + (scanListe === key ? " an" : ""),
+      class: "tab" + (offen === key ? " an" : ""),
       title: sichtbar === gesamt ? "" : gesamt + " insgesamt",
       onclick: () => { scanListe = key; zeichneScans(); },
     }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
@@ -2039,9 +2062,9 @@ function scanListeZeichnen() {
 
   const filter = $("scan-filterzeile");
   filter.replaceChildren();
-  if (SC.offen && scanListe !== "scans") {
-    const art = scanListe === "slots" ? "slot" : "item";
-    const gesamt = scanListe === "slots" ? SC.slots : SC.items;
+  if (SC.offen && offen !== "scans") {
+    const art = offen === "slots" ? "slot" : "item";
+    const gesamt = offen === "slots" ? SC.slots : SC.items;
     const drin = gesamt.filter((e) => e.dabei).length;
     filter.appendChild(schalter("nur aus „" + SC.offen + "\u201c",
       SC.nur_dabei, (v) => rufScan("scan_filter", {wert: v})));
@@ -2054,7 +2077,7 @@ function scanListeZeichnen() {
       onclick: () => rufScan("scan_alle", {art: art, wert: drin < gesamt.length})},
       drin < gesamt.length ? "alle dazu" : "alle raus"));
   }
-  if (scanListe === "items" && SC.kategorien.length) {
+  if (offen === "items" && SC.kategorien.length) {
     filter.appendChild(auswahl("", [{wert: "", text: "alle Kategorien"}].concat(
       SC.kategorien.map((k) => ({wert: k, text: k}))), scanKategorie,
       (v) => { scanKategorie = v; zeichneScans(); }));
@@ -2062,8 +2085,8 @@ function scanListeZeichnen() {
 
   const ziel = $("scan-liste");
   ziel.replaceChildren();
-  if (scanListe === "slots") return scanListeSlots(ziel);
-  if (scanListe === "items") return scanListeItems(ziel);
+  if (offen === "slots") return scanListeSlots(ziel);
+  if (offen === "items") return scanListeItems(ziel);
   return scanListeScans(ziel);
 }
 
@@ -2127,6 +2150,11 @@ function scanListeItems(ziel) {
     return;
   }
   scanVorschauenHolen(liste.map((i) => i.name));
+  // **Eine Kategorienliste fuer alle Masken, nicht eine pro Item.** Ein
+  // <datalist> haengt an seiner id; sechzig davon mit derselben id waeren
+  // neunundfuenfzig, die der Browser ignoriert.
+  const listenId = "item-kategorien";
+  ziel.appendChild(kategorienListe(listenId));
   let letzteKategorie = null;
   for (const i of liste) {
     const kategorie = i.kategorie || "Ohne Kategorie";
@@ -2134,23 +2162,104 @@ function scanListeItems(ziel) {
       ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
       letzteKategorie = kategorie;
     }
-    const bild = scanVorschauen.get(i.name);
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.wahl.art === "item" && SC.wahl.name === i.name ? " an" : ""),
-      onclick: () => rufScan("scan_waehlen", {art: "item", name: i.name}),
-    },
-      bild ? el("img", {class: "mini", src: bild})
-           : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
-                         style: i.marker.length ? "background:" + i.marker[0] : ""}),
-      el("span", {class: "name"}, i.name),
-      el("span", {class: "klein mono"}, "P" + i.prioritaet),
-      (i.fehlende_scan_groessen || []).length
-        ? el("span", {class: "klein", style: "color:var(--accent)",
-            title: "Für diese Slot-Größe noch keine Vorlage gelernt"},
-            "⚠ " + i.fehlende_scan_groessen.map((g) => g[0] + "×" + g[1]).join(", "))
-        : null,
-      i.stumm ? el("span", {class: "klein", style: "color:var(--err)"}, "stumm") : null));
+    ziel.appendChild(scanItemMaske(i, listenId));
   }
+}
+
+/** Ein Item als kleine Maske: Haken, Name, Kategorie, Priorität — direkt in der Liste.
+ *
+ * **Ein Ein-Aus-Knopf war zu wenig.** Die Liste konnte nur „gehört dazu / gehört
+ * nicht dazu"; alles andere kostete einen Klick in die Liste, einen Blick nach
+ * rechts und einen Weg zurueck — bei sechzig Items sechzig Mal. Die vier Dinge,
+ * die man dabei wirklich aendert, sind immer dieselben, und sie passen
+ * nebeneinander.
+ *
+ * Was NICHT hier steht: Vorlagen, Marker, Konfidenz, Loeschen. Das gehoert dem
+ * Inspektor — er hat den Platz fuer das grosse Bild, und man braucht es selten.
+ * Name, Kategorie und Prioritaet stehen dafuer NUR hier: dieselbe Sache an zwei
+ * Stellen waere zwei Wahrheiten, und man muesste raten, welche fuehrt. */
+function scanItemMaske(i, listenId) {
+  const setze = (feld, wert) => rufScan("scan_item_setzen",
+                                        {name: i.name, feld: feld, wert: wert});
+  const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
+  const bild = scanVorschauen.get(i.name);
+
+  const name = el("input", {value: i.name, autocomplete: "off",
+                            title: "Name — zugleich die Referenz in jedem Scan"});
+  name.addEventListener("change", () => setze("name", name.value));
+  name.addEventListener("keydown", (e) => { if (e.key === "Enter") name.blur(); });
+
+  const kat = el("input", {value: i.kategorie || "", list: listenId, autocomplete: "off",
+                           placeholder: "Kategorie",
+                           title: "Items derselben Kategorie konkurrieren; die "
+                                  + "kleinere Priorität gewinnt"});
+  kat.addEventListener("change", () => setze("kategorie", kat.value));
+  kat.addEventListener("keydown", (e) => { if (e.key === "Enter") kat.blur(); });
+
+  const prio = el("input", {type: "number", value: i.prioritaet, min: 0, step: 1,
+                            title: "Priorität — kleiner gewinnt"});
+  prio.addEventListener("change", () => {
+    if (prio.value.trim() !== "") setze("prioritaet", Number(prio.value));
+  });
+  prio.addEventListener("keydown", (e) => { if (e.key === "Enter") prio.blur(); });
+
+  const felder = el("div", {class: "scan-maske-felder"}, name,
+    el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i));
+
+  const maske = el("div", {class: "scan-maske" + (gewaehlt ? " an" : "")});
+  if (SC.offen) {
+    // Der Haken ist die vierte Angabe und steht deshalb IN der Maske statt in
+    // einer eigenen Liste: „gehoert zu diesem Scan" ist eine Eigenschaft des
+    // Items im Zusammenhang, keine getrennte Verwaltung.
+    const kasten = el("input", {type: "checkbox",
+      title: "gehört zum Scan „" + SC.offen + "“"});
+    kasten.checked = !!i.dabei;
+    kasten.addEventListener("change", () => rufScan("scan_mitglied",
+      {scan: SC.offen, art: "item", name: i.name}));
+    maske.appendChild(el("label", {class: "an"}, kasten));
+  } else {
+    maske.appendChild(el("span", {}));
+  }
+  maske.appendChild(bild
+    ? el("img", {class: "mini", src: bild, alt: ""})
+    : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
+                  style: i.marker.length ? "background:" + i.marker[0] : ""}));
+  maske.appendChild(felder);
+  // Ein Klick auf die Maske waehlt das Item — aber nicht, wenn er einem Feld
+  // galt. Sonst nimmt der Neuaufbau das Feld weg, in das gerade geklickt wurde.
+  maske.addEventListener("click", (e) => {
+    if (e.target.closest("input, label, button, select")) return;
+    if (!gewaehlt) rufScan("scan_waehlen", {art: "item", name: i.name});
+  });
+  return maske;
+}
+
+/** Die Zustandszeile einer Item-Maske: erkannt, stumm, fehlende Vorlage.
+ *
+ * **„Items erkennen" war in dieser Liste unsichtbar.** Der Knopf faerbte die
+ * Rechtecke im Bild und fuellte die Ergebnisleiste — wer aber in der Item-Liste
+ * stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick
+ * nichts und hielt ihn fuer wirkungslos. Hier steht jetzt, WO das Item gerade
+ * gefunden wurde. */
+function scanItemStand(i) {
+  const teile = [];
+  if ((i.erkannt_in || []).length) {
+    teile.push(el("span", {style: "color:var(--slot-" + (i.dabei ? "ok" : "fremd") + ")",
+      title: i.dabei ? "" : "erkannt, gehört aber noch nicht zu diesem Scan"},
+      "erkannt in " + i.erkannt_in.slice(0, 2).join(", ")
+      + (i.erkannt_in.length > 2 ? " +" + (i.erkannt_in.length - 2) : "")));
+  }
+  if (i.stumm) {
+    teile.push(el("span", {style: "color:var(--err)",
+      title: "Weder Vorlage noch Marker — dieses Item wird nie erkannt"}, "stumm"));
+  }
+  if ((i.fehlende_scan_groessen || []).length) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Für diese Slot-Größe noch keine Vorlage gelernt"},
+      "⚠ " + i.fehlende_scan_groessen.map((g) => g[0] + "×" + g[1]).join(", ")));
+  }
+  if (!teile.length) teile.push(el("span", {class: "mono"}, "P" + i.prioritaet));
+  return el("div", {class: "scan-maske-stand"}, teile);
 }
 
 function scanListeScans(ziel) {
@@ -2394,8 +2503,13 @@ function scanInspektor() {
        "Speichern"),
     el("div", {class: "reihe"},
       scanArt === "item"
+        // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
+        // erkennen" und im Assistenten als „Erkennung testen" — zwei Namen fuer
+        // einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
+        // Verschiedenes.
         ? el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
-                        title: "Jeden Slot gegen die Item-Profile halten",
+                        title: "Hält jeden Slot gegen die Item-Profile und schreibt "
+                               + "das Ergebnis an Bild und Item-Liste",
                         onclick: () => rufScan("scan_erkennen")}, "Items erkennen")
         : el("button", {class: "btn wachse", disabled: !fotoDa() || !erkScan(),
                         title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
@@ -2849,12 +2963,21 @@ function scanInspItem(ziel) {
     "Marker-Farben erkannt. Ohne beides wird es nie gefunden.", "item"));
   const bild = scanVorschauen.get(i.name);
   if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
-  ziel.appendChild(feld("Name", i.name, (v) => setze("name", v)));
-  ziel.appendChild(el("div", {class: "scan-item-sortierung"},
-    kategoriefeld("Kategorie", i.kategorie || "", (v) => setze("kategorie", v), null,
-      "Items derselben Kategorie konkurrieren miteinander; die kleinere Priorität gewinnt. " +
-      "Ohne Kategorie bildet jedes Item eine eigene Gruppe.", "kategorie"),
-    prioritaetsfeld(i.prioritaet, i.kategorie, (v) => setze("prioritaet", v))));
+  // **Name, Kategorie und Prioritaet stehen in der Maske links, nicht hier.**
+  // Dieselbe Sache an zwei Stellen waeren zwei Wahrheiten, und man muesste
+  // raten, welche fuehrt — dieselbe Aufloesung wie beim Namen des Scans und
+  // beim Klick-Block im Sequenz-Editor. Rechts bleibt, was Platz braucht und
+  // was man selten anfasst: das grosse Bild, die Vorlagen, die Marker.
+  ziel.appendChild(el("div", {class: "feld-still"}, i.name,
+    el("span", {class: "mono"}, (i.kategorie || "ohne Kategorie") + " · P" + i.prioritaet)));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Name, Kategorie und Priorität stehen links in der Item-Liste — dort lassen "
+    + "sie sich für sechzig Items der Reihe nach tippen, ohne jedes Mal "
+    + "herüberzuklicken."));
+  if ((i.erkannt_in || []).length) {
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--slot-ok)"},
+      "Gerade erkannt in: " + i.erkannt_in.join(", ")));
+  }
   ziel.appendChild(prioritaetsUebersicht(i.kategorie, i.name));
   const erweitert = el("details", {class: "scan-erweitert"},
     el("summary", {}, "Erweiterte Erkennungseinstellungen"));
@@ -3018,13 +3141,14 @@ function erkBoss() {
 }
 
 /** Steht die Bibliothek statt eines Scans im Vordergrund? */
-function erkBibliothek() { return scanArt === "boss" && scanListe === "bibliothek"; }
+function erkBibliothek() { return scanArt === "boss" && scanListeAktiv() === "bibliothek"; }
 
 function scanArtSetzen(art) {
   if (!SCAN_ARTEN.includes(art) || art === scanArt) return;
   scanArt = art;
   scanErkSchritt = null;
-  scanListe = art === "item" ? "scans" : (art === "boss" ? "bosse" : "icons");
+  // Eine andere Art ist ein anderer Zusammenhang: die Vorgabe gilt wieder.
+  scanListe = null;
   // Ein Werkzeug der alten Art wuerde in der neuen etwas anderes tun.
   rufScan("scan_abbrechen");
 }
