@@ -108,9 +108,17 @@ def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[in
 def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, int]]:
     """Sammelt die wichtigsten Klick-Koordinaten (Label, x, y) aus dem State.
 
-    Erfasst: Punkte, direkte Klick-Schritte in Sequenzen (inkl. else-Klick) sowie
+    Erfasst: Punkte, Klick-Schritte OHNE Punkt-Referenz (inkl. else-Klick) sowie
     Klick-Aktionen von Boss- und Icon-Scans. Scan-interne Positionen (Slots,
     confirm_points) bleiben aussen vor — es geht um die eigentlichen Klick-Ziele.
+
+    **Was an einem Punkt haengt, steht hier nur EINMAL — als Punkt.** Seit Schema 4
+    sind `step.x/y` abgeleitete Arbeitswerte, und `_remap_sequence_obj` laesst sie
+    deshalb in Ruhe. Beide zu listen hiesse, dieselbe Stelle doppelt zu zaehlen: in
+    der Kalibrier-Vorschau stand jede Aenderung zweimal da (einmal "Punkt #1",
+    einmal "Seq 'Farm'/A #1"), und die zweite Zeile versprach eine Umrechnung, die
+    gar nicht stattfindet. Uebrig bleiben die Schritte ohne Referenz — die gibt es
+    nur noch in von Hand geschriebenen Dateien, und genau die will man sehen.
     """
     positions: list[tuple[str, int, int]] = []
     with state.lock:
@@ -124,12 +132,14 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
                 groups.append((lp.name, lp.steps))
             for gname, steps in groups:
                 for i, s in enumerate(steps, 1):
-                    # Echter Klick-Schritt: nicht wait-only / kein Scan/Key/Screenshot
-                    if not (s.wait_only or s.item_scan or s.boss_scan or s.icon_scan
+                    # Echter Klick-Schritt ohne Punkt: nicht wait-only, kein
+                    # Scan/Key/Screenshot, und nicht schon ueber `point_id` erfasst.
+                    if s.point_id is None and not (
+                            s.wait_only or s.item_scan or s.boss_scan or s.icon_scan
                             or s.screenshot_only or s.key_press):
                         positions.append((f"Seq '{name}'/{gname} #{i}", s.x, s.y))
                     ec = s.else_config
-                    if ec and ec.action == ACTION_CLICK:
+                    if ec and ec.action == ACTION_CLICK and ec.point_id is None:
                         positions.append((f"Seq '{name}'/{gname} #{i} (else)", ec.x, ec.y))
 
         for cfg in state.boss_scans.values():

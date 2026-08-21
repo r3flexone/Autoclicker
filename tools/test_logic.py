@@ -4834,17 +4834,33 @@ section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 import inspect as _inspect13, re as _re13
 
 _html13 = _H.studio_web_source()
-# ALLE DREI Kanaele: `ruf()` befiehlt, `frage()` fragt nur, `rufScan()` bedient
-# den Scans-Reiter. Fehlt einer, ist der Fehler nicht "falsche Logik", sondern
-# "Name existiert gar nicht" - eine leere Ansicht mit einer Zeile in der
-# Statusleiste, und aufgefallen waere es erst beim Klicken.
-_gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|rufScan|frage)\("([a-z_]+)"',
-                                      _html13)))
+# JEDER Kanal: `ruf()` befiehlt, `frage()` fragt nur, `rufScan()`, `rufTeilen()`
+# und `rufWerkzeug()` bedienen ihre Reiter. Fehlt einer im Muster, ist der Fehler
+# nicht "falsche Logik", sondern "Name existiert gar nicht" - eine leere Ansicht
+# mit einer Zeile in der Statusleiste, und aufgefallen waere es erst beim Klicken.
+#
+# Das Muster endet deshalb auf `\(` und listet die Helfer einzeln: ein blosses
+# `\bruf\w*\(` faenge auch `rufMichNicht()`, und ein blosses `\bruf\(` liess
+# `rufWerkzeug("kalib_referenz")` durchrutschen - also ausgerechnet den neuesten
+# Reiter, der am ehesten einen Tippfehler enthaelt.
+_HELFER13 = ("ruf", "rufScan", "rufTeilen", "rufWerkzeug", "frage")
+_gerufen13 = sorted(set(_re13.findall(
+    r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13)))
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
       "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
 check("und der Scans-Reiter ist mit erfasst (rufScan)",
       "scan_daten" in _gerufen13 and "scan_klick" in _gerufen13)
+check("und der Werkzeuge-Reiter (rufWerkzeug)",
+      "werkzeug_pruefen" in _gerufen13 and "kalib_referenz" in _gerufen13)
+# Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
+# vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
+# `rufWerkzeug`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
+_helfer_da13 = sorted(set(_re13.findall(r'\basync function (ruf\w*)\(', _html13)))
+if not all(h in _HELFER13 for h in _helfer_da13):
+    print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _HELFER13]}")
+check("und kein Aufruf-Helfer bleibt ungeprueft",
+      all(h in _HELFER13 for h in _helfer_da13))
 
 _fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
@@ -6146,6 +6162,7 @@ if _tote10:
 # `_harness.py` und werden hier importiert - Import = ausfuehren.
 import tools.tests.studio_scans          # noqa: F401,E402
 import tools.tests.studio_erkennung     # noqa: F401,E402
+import tools.tests.studio_werkzeuge     # noqa: F401,E402
 import tools.tests.konsolen_editoren     # noqa: F401,E402
 import tools.tests.persistenz_basis      # noqa: F401,E402
 import tools.tests.nachklick            # noqa: F401,E402

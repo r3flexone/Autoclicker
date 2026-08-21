@@ -751,6 +751,7 @@ es die Marker-Farben.
   - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
   - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
   - `bridge_teilen.py`: Export/Import im Reiter „Teilen".
+  - `bridge_werkzeuge.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
   - `scans.py`: stabile `ScanTeil`-Fassade.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
@@ -853,7 +854,7 @@ Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der
 nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
 wäre nicht zwingend die angezeigte.
 
-**Sechs Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Sieben Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -866,6 +867,7 @@ Ausflug überleben.
 | Live-Run | was gerade läuft | `lauf_status()` |
 | Scans | Slots, Items, Item-Scans auf einem Screenshot | `scan_daten()` + `scan_*` |
 | Teilen | Bündel schreiben und einlesen | `teilen_daten()` + `export_/import_*` |
+| Werkzeuge | prüfen, kalibrieren, Klick-Runde | `werkzeug_daten()` + `werkzeug_/kalib_*` |
 | Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
 **Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
@@ -1558,6 +1560,49 @@ Vier Regeln:
 Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
 Briefkasten-Befehl `daten`, der Hauptprozess.
 
+**Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_werkzeuge.py`).
+Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`klick`) lagen im
+Punkte-Menü — also ausgerechnet die Handgriffe, die man nach einem Bildschirm-Umbau
+braucht, und die man dann in einem Fenster sucht, das schon offen ist.
+
+**Zwei davon laufen HIER, eines drüben — und die Grenze ist nicht der Bildschirm.**
+Der Studio-Prozess sieht `AutoClickerState` nicht, aber sehr wohl das
+Betriebssystem: der Scans-Reiter nimmt Screenshots auf, `punkt_aufnehmen()` liest
+die Mausposition über eine globale Taste. Genau diese zwei Griffe braucht eine
+Kalibrierung, also läuft sie im Fenster. Die Klick-Runde braucht dagegen einen
+**systemweiten Maus-Hook**, und der gehört dem Prozess, der auch die Hotkeys pumpt
+— sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Nur dafür gibt es den
+Briefkasten-Befehl `nachklick`.
+
+Vier Regeln, an denen der Reiter hängt:
+
+- **Gerechnet wird mit denselben Funktionen wie in der Konsole**
+  (`import_export.kalibriere_bestand`, `diagnose.pruefe_setup`), auf einem frischen
+  State von Platte (`_bestand()`). Eine zweite Rechnung „fürs Fenster" wäre eine,
+  die etwas anderes tut als der Weg, den die README beschreibt — und ein Bericht
+  über das, was die Reiter zufällig offen haben, meldete „sauber", weil er die
+  halben Daten gar nicht kennt.
+- **Die Vorschau ist der Grund, warum es im Fenster besser ist.** In der Konsole
+  scrollt die Liste weg, hier steht sie neben dem Knopf. Dafür musste
+  `collect_click_positions()` erst aufhören, doppelt zu zählen: Sequenz-Schritte
+  mit `point_id` haben keine eigene Stelle mehr (`_remap_sequence_obj` lässt sie
+  in Ruhe), standen aber neben ihrem Punkt in der Liste — jede Änderung erschien
+  zweimal, und die zweite Zeile versprach eine Umrechnung, die nicht stattfindet.
+- **Geschrieben wird erst beim Anwenden.** Referenzpunkte, Versatz und Vorschau
+  leben in `self._kalib` und sind nach `kalib_abbrechen()` spurlos weg. Davor
+  entsteht ein vollständiges Export-ZIP (`sichere_vor_kalibrierung`), und ein
+  laufender Lauf blockiert — er klickt sonst mitten im Umbau auf halb verschobene
+  Stellen.
+- **`mit_slots` ist AUS.** Eine aus einer Mausposition abgeleitete Verschiebung ist
+  für ein Klickziel gut genug, für eine Scan-Region nur eine Näherung. Dafür gibt
+  es `repair` im Konsolen-Slot-Editor, das die Slots **misst** — und nach einer
+  Reparatur dürfen sie kein zweites Mal wandern. Der Reiter sagt das dazu, statt
+  den Weg zu verschweigen.
+
+Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über den
+Briefkasten-Befehl `daten` — der zieht seit dieser Umstellung auch `points.json`
+nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
+
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei
 Speichern-Knöpfe für zwei Dateien in einer Leiste sind eine Falle. Gespeichert wird
@@ -2204,7 +2249,8 @@ Betrag verschoben. Zwei Wege, und die Reihenfolge zählt:
 | Weg | wo | Genauigkeit |
 |---|---|---|
 | `repair` | Slot-Editor | **misst** die Slots neu — pixelgenau |
-| `fix` | Punkte-Menü (`CTRL+ALT+P`) | Referenzpunkt mit der Maus — ein paar Pixel Streuung |
+| Kalibrieren | Studio → Werkzeuge | Referenzpunkt mit der Maus, **mit Vorschau** |
+| `fix` | Punkte-Menü (`CTRL+ALT+P`) | dasselbe in der Konsole |
 
 **Zuerst `repair`**, dann dessen gemessenen Versatz auf den Rest anwenden lassen: eine
 Maus-Position trifft den Pixel nie genau, und bei einer Scan-Region schneiden drei Pixel
@@ -2219,7 +2265,7 @@ gehen:
 | Runde | wo | wie |
 |---|---|---|
 | `walk` | Punkte-Menü | Zeiger springt hin, `n` setzt auf die Mausposition — **ohne Klick** |
-| `klick` | Punkte-Menü | die Sequenz einmal von Hand **nachklicken** (`editors/nachklick.py`) |
+| `klick` | Punkte-Menü **oder** Studio → Werkzeuge | die Sequenz einmal von Hand **nachklicken** (`editors/nachklick.py`) |
 
 **Der Unterschied ist der Klick, und er entscheidet.** `walk` fasst nichts an —
 also bleibt das Spiel stehen, wo es steht, und ein Punkt im dritten Untermenü

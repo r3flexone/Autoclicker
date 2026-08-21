@@ -20,7 +20,7 @@ from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
     punkte_nachladen, load_global_slots, load_global_items,
-    load_all_item_scans, resolve_klick_referenzen,
+    load_all_item_scans, resolve_klick_referenzen, resolve_point_references,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
@@ -675,14 +675,46 @@ def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{info('Die Sequenz laeuft — Scan-Daten werden nach dem Stopp geladen.')}")
         return
 
+    # Punkte gehoeren dazu, seit das Studio kalibrieren kann: dabei wandert JEDE
+    # gespeicherte Stelle, und der Hauptprozess klickt sonst bis zum naechsten
+    # Neustart auf die alten. Zusammengefuehrt wird ueber die ID, Platte gewinnt.
+    punkte = punkte_nachladen(state)
+    with state.lock:
+        if punkte:
+            state.points = punkte
+        for seq in state.sequences.values():
+            resolve_point_references(state, seq)
+        if state.active_sequence is not None:
+            resolve_point_references(state, state.active_sequence)
     load_global_slots(state)
     load_global_items(state)
     load_all_item_scans(state)
     resolve_klick_referenzen(state)
     with state.lock:
-        anzahl = (len(state.global_slots), len(state.global_items), len(state.item_scans))
+        anzahl = (len(state.global_slots), len(state.global_items),
+                  len(state.item_scans), len(state.points))
     print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
-          f"{anzahl[0]} Slot(s), {anzahl[1]} Item(s), {anzahl[2]} Item-Scan(s).")
+          f"{anzahl[0]} Slot(s), {anzahl[1]} Item(s), {anzahl[2]} Item-Scan(s), "
+          f"{anzahl[3]} Punkt(e).")
+
+
+def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
+    """Startet die Klick-Runde — der Studio-Knopf statt `klick` im Punkte-Menü.
+
+    Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
+    systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
+    pumpt. `start_nachklick()` installiert ihn und kehrt zurueck - der Befehl
+    blockiert also nicht, wie es die Briefkasten-Schleife verlangt.
+    """
+    from .editors.nachklick import start_nachklick
+    if _block_if_recording(state) or _block_if_running(state):
+        return
+    with state.lock:
+        seq = state.active_sequence
+    if seq is None:
+        print(f"\n{info('Keine aktive Sequenz — erst eine laden (CTRL+ALT+L).')}")
+        return
+    start_nachklick(state)
 
 
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
@@ -697,6 +729,7 @@ BEFEHLE = {
     "zeigen": befehl_zeigen,
     "config": befehl_config,
     "daten": befehl_daten,
+    "nachklick": befehl_nachklick,
 }
 
 

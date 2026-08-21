@@ -455,13 +455,17 @@ function setzeAnsicht(neu) {
   $("sicht-config").hidden = neu !== "einstellungen";
   $("sicht-scans").hidden = neu !== "scans";
   $("sicht-teilen").hidden = neu !== "teilen";
+  $("sicht-werkzeuge").hidden = neu !== "werkzeuge";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = ["einstellungen", "scans", "teilen"].includes(neu);
+    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge"].includes(neu);
   if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
   if (neu === "teilen") zeichneTeilen();
+  // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
+  // den es nach einem Speichern nicht mehr gibt.
+  if (neu === "werkzeuge") zeichneWerkzeuge(true);
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (neu === "einstellungen") zeichneEinstellungen(true);
@@ -4133,6 +4137,353 @@ function teilenImportZeichnen() {
 }
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */
+
+/* --------------------------------------------------------------- Werkzeuge
+ *
+ * Was bisher nur im Punkte-Menue der Konsole ging: pruefen (`check`),
+ * kalibrieren (`fix`) und die Klick-Runde (`klick`). Eigener Zustand neben `S`,
+ * wie bei Einstellungen und Teilen — der Reiter arbeitet auf `points.json` und
+ * dem ganzen Bestand, nicht auf der geoeffneten Sequenz.
+ *
+ * `wzOffen` ist reiner Oberflaechenzustand (welches Werkzeug in der Mitte
+ * steht), `W` die Antwort der Bruecke, `wzBericht` das Ergebnis der letzten
+ * Pruefung. Die Pruefung steht bewusst NICHT in `W`: sie kostet einen Durchlauf
+ * ueber den ganzen Bestand, und den will man auf Knopfdruck, nicht bei jedem
+ * Neuzeichnen. */
+let W = null;
+let wzOffen = "pruefen";
+let wzBericht = null;
+let wzUmfang = {};
+
+const WZ_WERKZEUGE = [
+  {key: "pruefen", name: "Prüfen",
+   kurz: "fehlende Templates, tote Verweise, Punkte ausserhalb aller Monitore"},
+  {key: "kalibrieren", name: "Kalibrieren",
+   kurz: "Bildschirm umgestellt? Einen Punkt neu setzen, Rest umrechnen"},
+  {key: "klicken", name: "Klick-Runde",
+   kurz: "Sequenz einmal von Hand nachklicken — jeder Klick setzt seinen Punkt"},
+];
+
+async function zeichneWerkzeuge(frisch) {
+  const antwort = await frage("werkzeug_daten");
+  if (!antwort || ansicht !== "werkzeuge") return;
+  W = antwort;
+  for (const u of W.umfang)
+    if (wzUmfang[u.schluessel] === undefined) wzUmfang[u.schluessel] = u.vorgabe;
+  if (frisch) wzBericht = null;
+  const merk = fokusMerken();
+  wzLinksZeichnen();
+  wzMitteZeichnen();
+  wzRechtsZeichnen();
+  fokusHerstellen(merk);
+}
+
+/** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
+ *  deshalb `frage()` und danach neu zeichnen, statt `S` zu ersetzen. */
+async function rufWerkzeug(name, daten) {
+  const antwort = await frage(name, daten);
+  if (!antwort) return null;
+  if (antwort.meldung)
+    setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "err"});
+  await zeichneWerkzeuge();
+  return antwort;
+}
+
+function wzLinksZeichnen() {
+  const ziel = $("wz-links");
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "WERKZEUGE"));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:6px"});
+  for (const w of WZ_WERKZEUGE) {
+    const knopf = el("button", {
+      class: "btn breit" + (wzOffen === w.key ? " an" : ""),
+      style: "text-align:left",
+      onclick: () => { wzOffen = w.key; wzMitteZeichnen(); wzRechtsZeichnen(); wzLinksZeichnen(); },
+    }, el("div", {}, w.name),
+       el("div", {class: "hint", style: "font-size:11px;white-space:normal"}, w.kurz));
+    liste.appendChild(knopf);
+  }
+  liste.appendChild(el("div", {class: "hint", style: "margin-top:10px;white-space:normal"},
+    "Slots pixelgenau neu vermessen geht weiterhin im Konsolen-Editor "
+    + "(CTRL+ALT+N → Slots → repair). Der misst sie, statt sie zu verschieben — "
+    + "bei einer Scan-Region schneiden drei Pixel das Item an."));
+  ziel.replaceChildren(kopf, liste);
+}
+
+function wzMitteZeichnen() {
+  const ziel = $("wz-mitte");
+  if (wzOffen === "pruefen") return ziel.replaceChildren(...wzPruefenBauen());
+  if (wzOffen === "kalibrieren") return ziel.replaceChildren(...wzKalibBauen());
+  return ziel.replaceChildren(...wzKlickenBauen());
+}
+
+/* ------------------------------------------------------------------ Prüfen */
+
+function wzPruefenBauen() {
+  const raus = [el("h2", {}, "Setup prüfen")];
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Dasselbe wie `check` im Punkte-Menü: fehlende Templates, Profile ohne "
+    + "Erkennungsmethode, tote Slot-/Item-/Scan-Verweise und Punkte ausserhalb "
+    + "aller Monitore. Gelesen wird vom gespeicherten Stand — was hier im "
+    + "Fenster offen und ungespeichert ist, sieht die Prüfung nicht."));
+  raus.push(el("button", {class: "btn haupt", onclick: wzPruefen}, "Jetzt prüfen"));
+
+  if (!wzBericht) return raus;
+  if (!wzBericht.ok) {
+    raus.push(el("p", {class: "art-err"}, wzBericht.meldung || "Prüfung fehlgeschlagen."));
+    return raus;
+  }
+  if (!wzBericht.befunde.length) {
+    raus.push(el("p", {class: "art-ok", style: "margin-top:14px"},
+      "Nichts zu beanstanden — " + wzBericht.geprueft.length + " Bereich(e) geprüft."));
+    return raus;
+  }
+  // Fehler zuerst: „laeuft so nicht" schlaegt „ist vermutlich nicht gewollt".
+  for (const stufe of ["fehler", "hinweis"]) {
+    const treffer = wzBericht.befunde.filter(b => b.stufe === stufe);
+    if (!treffer.length) continue;
+    raus.push(el("h3", {style: "margin-top:16px"},
+      stufe === "fehler" ? "Fehler (" + treffer.length + ")"
+                         : "Hinweise (" + treffer.length + ")"));
+    for (const b of treffer) raus.push(wzBefund(b, stufe));
+  }
+  return raus;
+}
+
+function wzBefund(b, stufe) {
+  const kasten = el("div", {class: "wz-befund " + stufe});
+  kasten.appendChild(el("div", {class: "wz-bereich"}, b.bereich));
+  kasten.appendChild(el("div", {}, b.text));
+  if (b.tipp) kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tipp));
+  return kasten;
+}
+
+function wzGeprueftBauen() {
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "GEPRÜFT"));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:4px"});
+  if (!wzBericht || !wzBericht.ok) {
+    liste.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+      "Noch nichts geprüft."));
+  } else {
+    for (const b of wzBericht.geprueft)
+      liste.appendChild(el("div", {class: "wz-vorschau"}, b));
+  }
+  return [kopf, liste];
+}
+
+async function wzPruefen() {
+  setzeStatus({text: "Prüfe…", art: "info"});
+  wzBericht = await frage("werkzeug_pruefen");
+  if (!wzBericht) return;
+  const n = wzBericht.fehler || 0, h = wzBericht.hinweise || 0;
+  setzeStatus({
+    text: !wzBericht.ok ? (wzBericht.meldung || "Prüfung fehlgeschlagen.")
+        : (n || h) ? n + " Fehler, " + h + " Hinweis(e)."
+        : "Alles in Ordnung.",
+    art: !wzBericht.ok || n ? "err" : h ? "warn" : "ok",
+  });
+  wzMitteZeichnen();
+}
+
+/* ------------------------------------------------------------- Kalibrieren */
+
+function wzKalibBauen() {
+  const K = (W && W.kalibrierung) || {};
+  const raus = [el("h2", {}, "Kalibrieren")];
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Hat Windows die Bildschirme neu angeordnet, sind ALLE gespeicherten "
+    + "Koordinaten um denselben Betrag verschoben. Du setzt einen Punkt neu, "
+    + "der Rest wird daraus umgerechnet."));
+
+  if (!W || !W.punkte.length) {
+    raus.push(el("p", {class: "art-err"}, "Keine Punkte vorhanden — es gibt nichts zu kalibrieren."));
+    return raus;
+  }
+
+  raus.push(wzRefZeile(1, K.ref1));
+  // Der zweite Punkt erst anbieten, wenn der erste steht: ohne Verschiebung
+  // gibt es keine Skalierung, und zwei leere Felder nebeneinander sehen aus,
+  // als muesste man beide ausfuellen.
+  if (K.ref1) {
+    raus.push(el("p", {class: "hint", style: "margin-top:14px;white-space:normal"},
+      "Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht — dann "
+      + "braucht es einen zweiten Punkt, möglichst weit vom ersten weg."));
+    raus.push(wzRefZeile(2, K.ref2));
+  }
+
+  if (K.ref1) {
+    raus.push(el("h3", {style: "margin-top:18px"}, "Ergebnis"));
+    const v = K.versatz || {x: 0, y: 0};
+    raus.push(el("div", {class: "wz-wert"},
+      "Verschiebung: " + wzVorz(v.x) + " X, " + wzVorz(v.y) + " Y"));
+    if (K.skalierung && (K.skalierung.x !== 1 || K.skalierung.y !== 1))
+      raus.push(el("div", {class: "wz-wert"},
+        "Skalierung: " + K.skalierung.x + " X, " + K.skalierung.y + " Y"));
+    raus.push(wzVersatzFelder(v));
+    if (K.identitaet)
+      raus.push(el("p", {class: "art-warn"},
+        "Der Transform ändert nichts — der Punkt sitzt schon richtig."));
+    raus.push(wzUmfangKasten());
+    const leiste = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
+    leiste.appendChild(el("button", {
+      class: "btn haupt", disabled: !!K.identitaet,
+      onclick: () => rufWerkzeug("kalib_anwenden", {...wzUmfang}),
+    }, "Umrechnen und speichern"));
+    leiste.appendChild(el("button", {
+      class: "btn", onclick: () => rufWerkzeug("kalib_abbrechen"),
+    }, "Verwerfen"));
+    raus.push(leiste);
+    raus.push(el("p", {class: "hint", style: "white-space:normal"},
+      "Vorher entsteht ein vollständiges Export-ZIP als Sicherung. Läuft eine "
+      + "Sequenz, wird nicht umgerechnet — sie klickt sonst mitten im Umbau."));
+  }
+  return raus;
+}
+
+function wzVorz(n) { return (n > 0 ? "+" : "") + n; }
+
+/** Der Punkt mit dem groessten Abstand zum ersten Referenzpunkt.
+ *
+ * Zwei nah beieinander liegende Punkte machen die Skalierung unbrauchbar: der
+ * Messfehler der Maus (ein paar Pixel) verteilt sich dann auf eine kurze
+ * Strecke und wird zum Faktor hochgerechnet. */
+function wzWeitesterPunkt(ref1) {
+  let beste = W.punkte[0], weit = -1;
+  for (const p of W.punkte) {
+    if (ref1 && p.id === ref1.punkt_id) continue;
+    const d = Math.hypot(p.x - (ref1 ? ref1.alt[0] : 0), p.y - (ref1 ? ref1.alt[1] : 0));
+    if (d > weit) { weit = d; beste = p; }
+  }
+  return beste.id;
+}
+
+/** Eine Referenzpunkt-Zeile: welchen Punkt, und der Knopf zum Anfahren. */
+function wzRefZeile(nummer, gesetzt) {
+  const kasten = el("div", {class: "wz-ref"});
+  kasten.appendChild(el("div", {class: "wz-bereich"},
+    nummer === 1 ? "1. Referenzpunkt (Verschiebung)"
+                 : "2. Referenzpunkt (Skalierung, optional)"));
+  const wahl = el("select");
+  for (const p of W.punkte)
+    wahl.appendChild(el("option", {value: String(p.id)},
+      "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"));
+  if (gesetzt) wahl.value = String(gesetzt.punkt_id);
+  // Der zweite Punkt soll WEIT weg vom ersten liegen — genau das steht als
+  // Hinweis darueber. Der erste Eintrag der Liste ist aber der erste Punkt
+  // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
+  // Fehlermeldung ergibt, ist schlimmer als gar keiner.
+  else if (nummer === 2) wahl.value = String(wzWeitesterPunkt(W.kalibrierung.ref1));
+  kasten.appendChild(wahl);
+  kasten.appendChild(el("button", {
+    class: "btn",
+    onclick: async () => {
+      setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
+      await rufWerkzeug("kalib_referenz", {nummer, punkt_id: Number(wahl.value)});
+    },
+  }, gesetzt ? "Neu anfahren" : "Stelle anfahren"));
+  if (gesetzt)
+    kasten.appendChild(el("div", {class: "hint"},
+      "(" + gesetzt.alt[0] + ", " + gesetzt.alt[1] + ") → ("
+      + gesetzt.neu[0] + ", " + gesetzt.neu[1] + ")"));
+  return kasten;
+}
+
+/** Versatz von Hand nachziehen — mit der Maus trifft man den Pixel nicht genau. */
+function wzVersatzFelder(v) {
+  const kasten = el("div", {class: "wz-ref"});
+  kasten.appendChild(el("div", {class: "wz-bereich"}, "Versatz von Hand"));
+  const felder = {};
+  for (const achse of ["x", "y"]) {
+    const feld = el("input", {type: "number", step: "1", value: String(v[achse]),
+                              style: "width:90px"});
+    felder[achse] = feld;
+    kasten.append(el("span", {}, achse.toUpperCase()), feld);
+  }
+  kasten.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("kalib_versatz",
+      {x: felder.x.value, y: felder.y.value}),
+  }, "Übernehmen"));
+  kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+    "Weisst du, dass eine Achse stimmt, ist eine getippte 0 genauer als jede Messung."));
+  return kasten;
+}
+
+function wzUmfangKasten() {
+  const kasten = el("div", {class: "wz-ref", style: "flex-direction:column;align-items:stretch"});
+  kasten.appendChild(el("div", {class: "wz-bereich"}, "Was mitgerechnet wird"));
+  kasten.appendChild(el("div", {class: "hint"}, "Punkte immer — daran hängt alles andere."));
+  for (const u of W.umfang) {
+    const zeile = el("label", {class: "teilen-zeile an"});
+    const box = el("input", {type: "checkbox"});
+    box.checked = !!wzUmfang[u.schluessel];
+    box.addEventListener("change", () => { wzUmfang[u.schluessel] = box.checked; });
+    zeile.append(box, el("span", {}, u.text));
+    kasten.appendChild(zeile);
+  }
+  kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+    "Slots stehen getrennt und sind aus: nach einem `repair` dürfen sie kein "
+    + "zweites Mal wandern."));
+  return kasten;
+}
+
+/* -------------------------------------------------------------- Klick-Runde */
+
+function wzKlickenBauen() {
+  const raus = [el("h2", {}, "Klick-Runde")];
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Du spielst die Sequenz einmal von Hand durch. Jeder Klick geht ans Spiel "
+    + "und setzt zugleich die Stelle des Punktes, der gerade dran ist — die "
+    + "Oberfläche öffnet sich dabei genau wie im Lauf, und der nächste Punkt "
+    + "liegt dann vor dir. Geändert wird nur die Stelle: Wartezeiten, "
+    + "Bedingungen, ELSE und Scans bleiben unangetastet."));
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Das ist das eine Werkzeug, das im Hauptprozess laufen muss — es braucht "
+    + "einen systemweiten Maus-Hook. Bedient wird danach im Spiel: "
+    + "CTRL+ALT+K überspringt, CTRL+ALT+U geht zurück, CTRL+ALT+H pausiert, "
+    + "CTRL+ALT+J beendet und speichert. Die Anleitung steht im Konsolenfenster."));
+  raus.push(el("button", {
+    class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
+  }, "Klick-Runde starten"));
+  return raus;
+}
+
+/* ------------------------------------------------------------------- rechts */
+
+function wzRechtsZeichnen() {
+  const ziel = $("wz-rechts");
+  // Beim Pruefen steht hier, WAS geprueft wurde. „Alles in Ordnung" ist ohne
+  // diese Liste eine Behauptung: man weiss nicht, ob der Bereich sauber war
+  // oder gar nicht angesehen wurde.
+  if (wzOffen === "pruefen") return ziel.replaceChildren(...wzGeprueftBauen());
+  if (wzOffen === "klicken")
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "ERREICHT DIE RUNDE NICHT"),
+      el("div", {class: "hint", style: "white-space:normal"},
+        "Beobachtete Pixel, Nachprüfungen, ELSE-Klicks und Rad-Schritte kommen "
+        + "in einem normalen Durchlauf gar nicht vor. Dafür bleibt `walk` im "
+        + "Punkte-Menü. Welche das sind, sagt die Runde beim Start in der Konsole.")));
+  if (!W || !W.kalibrierung.ref1)
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "VORSCHAU"),
+      el("div", {class: "hint", style: "white-space:normal"},
+        "Sobald der erste Referenzpunkt steht, steht hier, was sich ändern würde.")));
+
+  const zeilen = W.kalibrierung.vorschau || [];
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "VORSCHAU"),
+    el("div", {class: "hint"}, zeilen.length + " Stelle(n), Auszug"));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:4px"});
+  for (const z of zeilen) {
+    liste.appendChild(el("div", {class: "wz-vorschau"},
+      el("div", {}, z.was),
+      el("div", {class: "hint"},
+        "(" + z.vorher.join(", ") + ") → (" + z.nachher.join(", ") + ")")));
+  }
+  if (!zeilen.length)
+    liste.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
+  ziel.replaceChildren(kopf, liste);
+}
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
  * liegt sein Zustand neben `S`: `C` ist die Antwort von `config_lesen()`,

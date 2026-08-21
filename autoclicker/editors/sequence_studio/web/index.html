@@ -35,6 +35,7 @@
       <button class="tab" data-ansicht="lauf">Live-Run</button>
       <button class="tab" data-ansicht="scans">Scans</button>
       <button class="tab" data-ansicht="teilen">Teilen</button>
+      <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
     <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
@@ -306,6 +307,17 @@
     <aside class="seite links" id="teilen-export"></aside>
     <main class="cfg-mitte" id="teilen-mitte"></main>
     <aside class="seite rechts" id="teilen-import"></aside>
+  </div>
+
+  <!-- Werkzeuge: was bisher nur im Punkte-Menue der Konsole ging. Links die
+       Auswahl (pruefen / kalibrieren / Klick-Runde), in der Mitte das Werkzeug
+       selbst, rechts das Ergebnis. Dieselbe Dreiteilung wie ueberall - hier
+       traegt sie zusaetzlich, dass eine Kalibrierung eine VORSCHAU hat: in der
+       Konsole scrollt die Liste weg, hier steht sie neben dem Knopf. -->
+  <div class="cfg" id="sicht-werkzeuge" hidden>
+    <aside class="seite links" id="wz-links"></aside>
+    <main class="cfg-mitte" id="wz-mitte"></main>
+    <aside class="seite rechts" id="wz-rechts"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,

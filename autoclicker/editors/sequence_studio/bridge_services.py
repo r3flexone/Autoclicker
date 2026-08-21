@@ -116,7 +116,9 @@ class BridgeServicesMixin:
     LAUF_BEFEHLE = ("start", "stop", "pause")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten")
+    # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
+    # systemweiten Maus-Hook und muss deshalb drueben laufen.
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten", "nachklick")
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.

@@ -823,3 +823,20 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .dialog p{font-size:12.5px;color:var(--muted);line-height:1.6}
 .dialog .knoepfe{display:flex;gap:8px;justify-content:flex-end}
 [hidden]{display:none !important}
+
+/* --- Werkzeuge -----------------------------------------------------------
+ * Befunde tragen ihre Stufe als Fläche, nicht als Strich links: ein Streifen
+ * liest sich als Verzierung, ein Kasten als Zustand (dieselbe Regel wie bei
+ * Karte und Phasenkopf). Fehler und Hinweis sind zwei Dinge und sehen deshalb
+ * verschieden aus - „laeuft so nicht" gegen „ist vermutlich nicht gewollt". */
+.wz-befund{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+  margin-top:8px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.wz-befund.fehler{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
+.wz-befund.hinweis{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.wz-bereich{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wz-ref{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.wz-ref > .wz-bereich{flex-basis:100%}
+.wz-wert{font-size:13px;padding:2px 0}
+.wz-vorschau{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
+.wz-vorschau:last-child{border-bottom:none}
