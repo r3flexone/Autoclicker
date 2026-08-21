@@ -1271,7 +1271,39 @@ check("der Inspektor baut kein zweites Namensfeld", 'feld("Name"' not in _insp18
 check("und kein zweites Kategoriefeld", "list:" not in _insp18)
 check("und kein zweites Prioritaetsfeld", "prioritaetsfeld(" not in _insp18)
 check("er sagt stattdessen, wo sie stehen",
-      "links in der Item-Liste" in _insp18)
+      "Kategorie und Priorität stehen im Reiter" in _insp18)
+
+# **Die Item-Masken stehen rechts, und zwar nur dort.** Links sind 290 px und
+# darin fuenf Bloecke uebereinander — die Liste, mit der man arbeitet, faengt
+# ganz unten an; rechts sind 370 px, und die Spalte stand seit dem Umbau fast
+# leer, weil Name, Kategorie und Prioritaet in die Maske gewandert sind.
+check("es gibt eine Regel, wo die Masken stehen",
+      "function scanItemsRechts()" in _html18)
+check("und sie gilt nur fuer Items",
+      'scanArt === "item" && scanListeAktiv() === "items"' in _html18)
+# Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation, und
+# die Slots zieht man im BILD auf — ihre Liste ist der zweite Weg dorthin.
+check("Slots und Scans bleiben in der linken Spalte",
+      'if (offen === "slots") return scanListeSlots(ziel);' in _html18
+      and 'return scanListeScans(ziel);' in _html18)
+# Ein Reiter, der Inhalt woanders aufmacht, sagt das — sonst schrumpft links
+# etwas zusammen und rechts erscheint etwas, und ob das zusammengehoert, muss
+# man raten.
+check("der Reiter sagt, dass die Liste umgezogen ist",
+      "Die Item-Masken stehen rechts" in _html18)
+check("und der leere Abschnitt hoert auf zu wachsen",
+      'classList.toggle("nur-reiter", rechts)' in _html18
+      and ".abschnitt.wachsend.nur-reiter{flex:none" in _html18)
+
+# **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Zwei
+# Bauplaene dafuer waeren zwei Stellen, an denen ein Feld fehlen kann — es gibt
+# genau eine Funktion, und beide Wege rufen sie.
+check("Vorlage, Marker und Konfidenz baut EINE Funktion",
+      _html18.count("function scanItemDetails(") == 1)
+check("die Maske klappt sie beim Gewaehlten auf",
+      "scanItemDetails(detail, i)" in _html18)
+check("und der Rueckweg ohne Maske ruft dieselbe",
+      "scanItemDetails(ziel, i)" in _html18)
 
 # **Ein <datalist> haengt an seiner id.** Sechzig Masken mit sechzig gleichen
 # ids waeren neunundfuenfzig, die der Browser ignoriert - also eine

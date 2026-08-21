@@ -1132,9 +1132,28 @@ Sechs Regeln, an denen der Reiter hängt:
   Sie stehen deshalb **nur** dort: der Inspektor hat die drei Felder abgegeben
   und sagt, wo sie sind. Dieselbe Sache an zwei Stellen wären zwei Wahrheiten,
   und man müsste raten, welche führt — dieselbe Auflösung wie beim Namen des
-  Scans und beim Klick-Block im Sequenz-Editor. Rechts bleibt, was Platz
-  braucht und selten angefasst wird: das grosse Bild, Vorlagen, Marker,
-  Konfidenz, Löschen.
+  Scans und beim Klick-Block im Sequenz-Editor.
+- **Die Item-Masken stehen in der RECHTEN Spalte** (`scanItemsRechts()`). Die
+  breitere Spalte war die leerere: links sind 290 px und darin fünf Blöcke
+  übereinander — die Liste, mit der man arbeitet, fängt ganz unten an —, rechts
+  sind 370 px, und die standen seit dem Umbau fast leer, weil die drei Felder in
+  die Maske gewandert sind. Eine Maske braucht Breite: Name, Kategorie und
+  Priorität nebeneinander.
+
+  **Nur die Items.** Scans und Slots bleiben links: der Scan ist Navigation (man
+  wählt ihn und arbeitet dann woanders), und einen Slot zieht man im **Bild**
+  auf — seine Liste ist der zweite Weg dorthin, nicht die Arbeitsfläche. Der
+  Preis dafür ist, dass eine Reiterleiste Inhalt in zwei Spalten steuert; deshalb
+  **sagt der Reiter es** („Die Item-Masken stehen rechts …") und der leere
+  Abschnitt hört auf zu wachsen (`nur-reiter`), statt als leeres Feld dazustehen.
+- **Was man an einem Item selten ändert, klappt IN seiner Maske auf**
+  (`scanItemDetails()`): das grosse Bild, Vorlagen, Marker, Konfidenz, Löschen —
+  und zwar nur beim gewählten, denn sechzig aufgeklappte Blöcke wären keine
+  Liste mehr. Sie in eine eigene Spalte zu legen hiesse, beim Arbeiten an einem
+  Ding zwischen zwei Orten hin und her zu sehen; die Maske trägt seine Identität
+  ohnehin schon. **Eine** Funktion baut den Block — der Rückweg (ein Item ist
+  gewählt, während eine andere Liste offen steht) ruft dieselbe, sonst wären es
+  zwei Stellen, an denen ein Feld fehlen kann.
 
   Eine Falle steckt in der Kategorie-Vervollständigung: ein `<datalist>` hängt
   an seiner `id`. Sechzig Masken mit sechzig gleichen ids wären

@@ -248,7 +248,13 @@
             <b>Pfeiltasten</b> verschieben (SHIFT = 10 px).</p>
         </div>
       </div>
-      <div class="abschnitt wachsend">
+      <!-- Die Reiterleiste bleibt hier: sie schaltet zwischen Scans, Slots und
+           Items um, und zwei der drei Listen stehen darunter. Die ITEMS wandern
+           dagegen in die rechte Spalte — dort sind 370 statt 290 px, und eine
+           Item-Maske traegt Name, Kategorie und Prioritaet nebeneinander. Ist
+           das der Fall, schrumpft dieser Abschnitt auf die Reiter zusammen
+           (`nur-reiter`), statt als leeres Feld dazustehen. -->
+      <div class="abschnitt wachsend" id="ab-listen">
         <div class="tabs klein" id="scan-listen-tabs"></div>
         <div class="reihe" id="scan-filterzeile" style="margin-top:8px"></div>
         <div class="spalte" id="scan-liste" style="gap:3px;margin-top:8px"></div>

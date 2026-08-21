@@ -1999,6 +1999,21 @@ async function scanFensterPflegen() {
   }
 }
 
+/** Stehen die Item-Masken in der rechten Spalte?
+ *
+ * **Die breitere Spalte war die leerere.** Links sind 290 px und darin fuenf
+ * Bloecke uebereinander — die Liste, mit der man arbeitet, faengt ganz unten an;
+ * rechts sind 370 px und standen seit dem Umbau fast leer, weil Name, Kategorie
+ * und Prioritaet in die Maske gewandert sind. Also wandert die Liste dorthin,
+ * wo sie hinpasst.
+ *
+ * Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation (man
+ * waehlt ihn und arbeitet dann woanders), und die Slots zieht man im BILD auf —
+ * ihre Liste ist der zweite Weg dorthin, nicht die Arbeitsflaeche. */
+function scanItemsRechts() {
+  return scanArt === "item" && scanListeAktiv() === "items";
+}
+
 /** Welche Liste gilt: die gewaehlte, sonst die zur Lage passende Vorgabe. */
 function scanListeAktiv() {
   if (scanListe) return scanListe;
@@ -2046,8 +2061,31 @@ function scanListeZeichnen() {
     }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
   }
 
+  // Filter und Liste gehoeren zusammen — stehen die Masken rechts, ziehen beide
+  // um, und der Abschnitt hier schrumpft auf die Reiter.
+  const rechts = scanItemsRechts();
+  $("ab-listen").classList.toggle("nur-reiter", rechts);
   const filter = $("scan-filterzeile");
+  const ziel = $("scan-liste");
   filter.replaceChildren();
+  ziel.replaceChildren();
+  if (rechts) {
+    // **Ein Reiter, der Inhalt woanders aufmacht, sagt das.** Sonst schrumpft
+    // hier etwas zusammen und drueben erscheint etwas — und ob das
+    // zusammengehoert, muss man raten.
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Die Item-Masken stehen rechts — dort ist Platz für Name, Kategorie und "
+      + "Priorität nebeneinander."));
+    return;
+  }
+  scanFilterzeile(filter, offen);
+  if (offen === "slots") return scanListeSlots(ziel);
+  if (offen === "items") return scanListeItems(ziel);
+  return scanListeScans(ziel);
+}
+
+/** Was die Liste einschraenkt: Mitgliedschaft, „alle dazu/raus", Kategorie. */
+function scanFilterzeile(filter, offen) {
   if (SC.offen && offen !== "scans") {
     const art = offen === "slots" ? "slot" : "item";
     const gesamt = offen === "slots" ? SC.slots : SC.items;
@@ -2068,12 +2106,6 @@ function scanListeZeichnen() {
       SC.kategorien.map((k) => ({wert: k, text: k}))), scanKategorie,
       (v) => { scanKategorie = v; zeichneScans(); }));
   }
-
-  const ziel = $("scan-liste");
-  ziel.replaceChildren();
-  if (offen === "slots") return scanListeSlots(ziel);
-  if (offen === "items") return scanListeItems(ziel);
-  return scanListeScans(ziel);
 }
 
 /** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie. */
@@ -2211,10 +2243,20 @@ function scanItemMaske(i, listenId) {
     : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
                   style: i.marker.length ? "background:" + i.marker[0] : ""}));
   maske.appendChild(felder);
+  // **Das Gewaehlte klappt seine Einstellungen hier auf**, statt sie in eine
+  // andere Spalte zu legen: Vorlage, Marker, Konfidenz und Loeschen gehoeren
+  // diesem Item, und man sieht beim Arbeiten daran nicht zwischen zwei Orten
+  // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
+  // keine Liste mehr.
+  if (gewaehlt) {
+    const detail = el("div", {class: "scan-maske-detail"});
+    scanItemDetails(detail, i);
+    maske.appendChild(detail);
+  }
   // Ein Klick auf die Maske waehlt das Item — aber nicht, wenn er einem Feld
   // galt. Sonst nimmt der Neuaufbau das Feld weg, in das gerade geklickt wurde.
   maske.addEventListener("click", (e) => {
-    if (e.target.closest("input, label, button, select")) return;
+    if (e.target.closest("input, label, button, select, summary, details")) return;
     if (!gewaehlt) rufScan("scan_waehlen", {art: "item", name: i.name});
   });
   return maske;
@@ -2467,7 +2509,8 @@ function scanInspektor() {
   const kopf = el("div", {class: "abschnitt"},
     el("div", {class: "reihe"},
       el("span", {class: "ueberschrift wachse"},
-         SC.dirty ? "NICHT GESPEICHERT" : "SCANS · SLOTS · ITEMS"),
+         SC.dirty ? "NICHT GESPEICHERT"
+                  : (scanItemsRechts() ? "ITEMS" : "SCANS · SLOTS · ITEMS")),
       SC.dirty ? el("span", {class: "punkt-offen"}) : null),
     // **Der Hauptprozess schreibt dieselben Dateien.** Ein Lauf mit
     // Auto-Lernen legt Items an und speichert sie; ohne diesen Hinweis sucht
@@ -2519,7 +2562,18 @@ function scanInspektor() {
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
-  if (scanArt !== "item") erkInspektor(rumpf);
+  // **Die Items sind hier die Arbeit, nicht ein einzelnes Ding.** Sechzig
+  // Masken brauchen Breite, und die hat diese Spalte; der Inspektor hatte
+  // seit dem Umbau ohnehin fast nichts mehr zu zeigen. Was zum GEWAEHLTEN
+  // Item gehoert, steht in seiner Maske — nicht daneben.
+  if (scanItemsRechts()) {
+    const filter = el("div", {class: "reihe", style: "margin-bottom:8px"});
+    scanFilterzeile(filter, "items");
+    if (filter.childNodes.length) rumpf.appendChild(filter);
+    const liste = el("div", {class: "spalte", style: "gap:3px"});
+    scanListeItems(liste);
+    rumpf.appendChild(liste);
+  } else if (scanArt !== "item") erkInspektor(rumpf);
   else if (SC.wahl.art === "slot") scanInspSlot(rumpf);
   else if (SC.wahl.art === "item") scanInspItem(rumpf);
   else if (SC.wahl.art === "scan") scanInspScan(rumpf);
@@ -2942,24 +2996,30 @@ function scanInspAuswahl(ziel) {
 function scanInspItem(ziel) {
   const i = SC.items.find((x) => x.name === SC.wahl.name);
   if (!i) return;
-  const setze = (feld, wert) => rufScan("scan_item_setzen", {name: i.name, feld: feld, wert: wert});
-
+  // Der Weg hierher bleibt fuer den Fall, dass ein Item gewaehlt ist, waehrend
+  // eine andere Liste offen steht — dann gibt es keine Maske, in der die
+  // Einstellungen stehen koennten.
   ziel.appendChild(ueberschrift("ITEM",
     "Ein Item wird über sein Template (Bildvergleich) und/oder seine " +
     "Marker-Farben erkannt. Ohne beides wird es nie gefunden.", "item"));
-  const bild = scanVorschauen.get(i.name);
-  if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
-  // **Name, Kategorie und Prioritaet stehen in der Maske links, nicht hier.**
-  // Dieselbe Sache an zwei Stellen waeren zwei Wahrheiten, und man muesste
-  // raten, welche fuehrt — dieselbe Aufloesung wie beim Namen des Scans und
-  // beim Klick-Block im Sequenz-Editor. Rechts bleibt, was Platz braucht und
-  // was man selten anfasst: das grosse Bild, die Vorlagen, die Marker.
   ziel.appendChild(el("div", {class: "feld-still"}, i.name,
     el("span", {class: "mono"}, (i.kategorie || "ohne Kategorie") + " · P" + i.prioritaet)));
   ziel.appendChild(el("p", {class: "hinweis"},
-    "Name, Kategorie und Priorität stehen links in der Item-Liste — dort lassen "
-    + "sie sich für sechzig Items der Reihe nach tippen, ohne jedes Mal "
-    + "herüberzuklicken."));
+    "Name, Kategorie und Priorität stehen im Reiter „Items“ an der Maske des "
+    + "Items — dort lassen sie sich für sechzig Items der Reihe nach tippen."));
+  scanItemDetails(ziel, i);
+}
+
+/** Was man an einem Item selten ändert: Vorlagen, Marker, Konfidenz, Löschen.
+ *
+ * **Steht IN der Maske des gewählten Items**, nicht daneben: sonst sieht man
+ * beim Arbeiten an einem Ding zwischen zwei Orten hin und her, und die Maske
+ * trägt seine Identität ohnehin schon. Dieselbe Regel wie „was dem Punkt
+ * gehört, steht beim Punkt" im Sequenz-Editor. */
+function scanItemDetails(ziel, i) {
+  const setze = (feld, wert) => rufScan("scan_item_setzen", {name: i.name, feld: feld, wert: wert});
+  const bild = scanVorschauen.get(i.name);
+  if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
   if ((i.erkannt_in || []).length) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--slot-ok)"},
       "Gerade erkannt in: " + i.erkannt_in.join(", ")));
