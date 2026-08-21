@@ -4154,6 +4154,10 @@ let W = null;
 let wzOffen = "pruefen";
 let wzBericht = null;
 let wzUmfang = {};
+/* Eine offene Farb-Rueckfrage: die Stelle ist angefahren, aber die Farbe dort
+ * weicht von der gespeicherten ab. Bis das jemand bestaetigt, ist NICHTS gesetzt
+ * - der Zustand lebt nur hier, nicht in der Bruecke. */
+let wzFarbfrage = null;
 
 /* Jedes Werkzeug sagt, WORAUF es wirkt. Ein einzelner Sequenzname oben im Reiter
  * waere fuer zwei der drei schlicht falsch: Pruefen und Kalibrieren gehen ueber
@@ -4195,7 +4199,7 @@ async function zeichneWerkzeuge(frisch) {
   W = antwort;
   for (const u of W.umfang)
     if (wzUmfang[u.schluessel] === undefined) wzUmfang[u.schluessel] = u.vorgabe;
-  if (frisch) wzBericht = null;
+  if (frisch) { wzBericht = null; wzFarbfrage = null; }
   const merk = fokusMerken();
   wzLinksZeichnen();
   wzMitteZeichnen();
@@ -4378,6 +4382,48 @@ function wzKalibBauen() {
 
 function wzVorz(n) { return (n > 0 ? "+" : "") + n; }
 
+function wzFarbe(rgb) {
+  return el("span", {class: "wz-farbe",
+                     style: "background:rgb(" + rgb.join(",") + ")"});
+}
+
+/** Die Rueckfrage bei abweichender Farbe: beide Farben nebeneinander, dann
+ *  entscheiden. Gesperrt wird nichts — manchmal hat sich das Spiel geaendert und
+ *  die neue Farbe ist die richtige. Es soll nur nicht aus Versehen gehen. */
+function wzFarbfrageBauen() {
+  const f = wzFarbfrage;
+  const kasten = el("div", {class: "wz-farbfrage"});
+  kasten.appendChild(el("div", {class: "art-warn"}, f.meldung));
+  const reihe = el("div", {class: "wz-farbreihe"});
+  reihe.append(el("span", {class: "hint"}, "gespeichert"), wzFarbe(f.erwartet),
+               el("span", {class: "hint"}, "dort gemessen"), wzFarbe(f.gemessen),
+               el("span", {class: "hint"},
+                  "(" + f.stelle[0] + ", " + f.stelle[1] + ")"));
+  kasten.appendChild(reihe);
+  const leiste = el("div", {style: "display:flex;gap:8px"});
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: async () => {
+      const n = f.nummer, id = f.punkt_id;
+      wzFarbfrage = null;
+      await rufWerkzeug("kalib_referenz",
+        {nummer: n, punkt_id: id, bestaetigt: true});
+    },
+  }, "Trotzdem setzen"));
+  leiste.appendChild(el("button", {
+    class: "btn haupt", onclick: () => {
+      wzFarbfrage = null;
+      setzeStatus({text: "Verworfen — nichts gesetzt.", art: "info"});
+      zeichneWerkzeuge();
+    },
+  }, "Nochmal anfahren"));
+  kasten.appendChild(leiste);
+  kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+    "\u201eTrotzdem setzen\u201c ist richtig, wenn sich das Spiel geändert hat. Sonst "
+    + "erst nachsehen: ein danebenliegender Referenzpunkt verschiebt nicht sich "
+    + "selbst, sondern jede gespeicherte Stelle."));
+  return kasten;
+}
+
 /** Der Punkt mit dem groessten Abstand zum ersten Referenzpunkt.
  *
  * Zwei nah beieinander liegende Punkte machen die Skalierung unbrauchbar: der
@@ -4414,9 +4460,18 @@ function wzRefZeile(nummer, gesetzt) {
     class: "btn",
     onclick: async () => {
       setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
-      await rufWerkzeug("kalib_referenz", {nummer, punkt_id: Number(wahl.value)});
+      const antwort = await frage("kalib_referenz",
+        {nummer, punkt_id: Number(wahl.value)});
+      // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
+      // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
+      if (antwort && antwort.bestaetigen) { wzFarbfrage = {...antwort, nummer}; }
+      else if (antwort && antwort.meldung)
+        setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "err"});
+      await zeichneWerkzeuge();
     },
   }, gesetzt ? "Neu anfahren" : "Stelle anfahren"));
+  if (wzFarbfrage && wzFarbfrage.nummer === nummer)
+    kasten.appendChild(wzFarbfrageBauen());
   if (gesetzt)
     kasten.appendChild(el("div", {class: "hint"},
       "(" + gesetzt.alt[0] + ", " + gesetzt.alt[1] + ") → ("
@@ -4478,9 +4533,20 @@ function wzKlickenBauen() {
     + "einen systemweiten Maus-Hook. Bedient wird danach im Spiel: "
     + "CTRL+ALT+K überspringt, CTRL+ALT+U geht zurück, CTRL+ALT+H pausiert, "
     + "CTRL+ALT+J beendet und speichert. Die Anleitung steht im Konsolenfenster."));
-  raus.push(el("button", {
+  const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
+  leiste.appendChild(el("button", {
     class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
   }, "Klick-Runde starten"));
+  // Wer etwas anfangen kann, muss es auch beenden koennen. Ob gerade eine Runde
+  // laeuft, weiss dieses Fenster nicht (der Zustand liegt drueben) - der Knopf
+  // steht deshalb immer da, und der Hauptprozess sagt, was er vorgefunden hat.
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden"),
+  }, "Runde beenden"));
+  raus.push(leiste);
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Beenden geht auch mit CTRL+ALT+J — die Taste wirkt überall, auch wenn "
+    + "dieses Fenster vorn ist. Was bis dahin gesetzt wurde, ist gespeichert."));
   return raus;
 }
 

@@ -118,7 +118,8 @@ class BridgeServicesMixin:
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
     # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
     # systemweiten Maus-Hook und muss deshalb drueben laufen.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten", "nachklick")
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten",
+                                   "nachklick", "nachklick_stop")
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.

@@ -295,3 +295,88 @@ try:
         _nk.start_nachklick = _echt
 finally:
     _os.chdir(_cwd)
+
+
+# ------------------------------------------------------- Farbe gegenpruefen
+
+section("Studio-Werkzeuge: ein Referenzpunkt mit falscher Farbe fragt nach")
+try:
+    _sand, _b = _sandkasten()
+    # Punkt #1 bekommt eine gespeicherte Farbe; die Stelle, die angefahren wird,
+    # zeigt eine ganz andere.
+    _b.points[0].color = (10, 200, 30)
+    _b._farbe_an = staticmethod(lambda x, y: (200, 10, 30))
+
+    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    check("gesetzt wird erst mal nichts", _erg["ok"] is False)
+    check("stattdessen kommt eine Rueckfrage", _erg.get("bestaetigen") is True)
+    check("mit beiden Farben zum Vergleich",
+          _erg["erwartet"] == [10, 200, 30] and _erg["gemessen"] == [200, 10, 30])
+    check("und dem Abstand samt erlaubter Toleranz",
+          _erg["abstand"] == 190 and _erg["toleranz"] >= 0)
+    check("die Kalibrierung ist noch leer", _b.werkzeug_daten()["kalibrierung"] == {})
+
+    # Bestaetigt gilt der Punkt trotzdem - manchmal hat sich das Spiel geaendert.
+    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1, "bestaetigt": True})
+    check("bestaetigt wird er gesetzt", _erg["ok"])
+    check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["meldung"])
+    check("jetzt steht die Kalibrierung",
+          _b.werkzeug_daten()["kalibrierung"]["versatz"] == {"x": 40.0, "y": 30.0})
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: wann NICHT nach der Farbe gefragt wird")
+try:
+    _sand, _b = _sandkasten()
+    # Passende Farbe: keine Rueckfrage, direkt gesetzt.
+    _b.points[0].color = (10, 200, 30)
+    _b._farbe_an = staticmethod(lambda x, y: (12, 198, 33))
+    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    check("eine passende Farbe geht direkt durch", _erg["ok"])
+    check("und sagt es auch", "passt" in _erg["meldung"])
+
+    # Ein Punkt OHNE gespeicherte Farbe hat nichts, womit man vergleichen kann.
+    # Eine Rueckfrage ohne Grundlage gewoehnt man sich ab wegzuklicken.
+    _b.kalib_abbrechen()
+    _b.points[1].color = None
+    _b._farbe_an = staticmethod(lambda x, y: (200, 10, 30))
+    check("ein Punkt ohne Farbe fragt nicht",
+          _b.kalib_referenz({"nummer": 1, "punkt_id": 2})["ok"])
+
+    # Und wenn der Bildschirm sich nicht lesen laesst, ebenfalls nicht.
+    _b.kalib_abbrechen()
+    _b.points[0].color = (10, 200, 30)
+    _b._farbe_an = staticmethod(lambda x, y: None)
+    check("eine unlesbare Stelle fragt auch nicht",
+          _b.kalib_referenz({"nummer": 1, "punkt_id": 1})["ok"])
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: die Klick-Runde laesst sich beenden")
+try:
+    _sand, _b = _sandkasten()
+    _bf.BEFEHL_DATEI = _P("befehl.json")
+    check("beenden geht ueber den Briefkasten", _b.nachklick_beenden()["ok"])
+    _auftrag = _bf.hole()
+    check("und heisst 'nachklick_stop'",
+          _auftrag is not None and _auftrag["befehl"] == "nachklick_stop")
+
+    # Der Hauptprozess sagt, was er vorgefunden hat - hier wird nicht geraten.
+    from autoclicker.handlers import befehl_nachklick_stop as _bns
+    import autoclicker.editors.nachklick as _nk
+    _st3 = _ST()
+    _gestoppt = {}
+    _echt = _nk.stop_nachklick
+    _nk.stop_nachklick = lambda state, grund="beendet": _gestoppt.setdefault("grund", grund)
+    try:
+        _bns(_st3, {})
+        check("ohne laufende Runde passiert nichts", not _gestoppt)
+        _st3.nachklick_aktiv = True
+        _bns(_st3, {})
+        check("mit laufender Runde wird gestoppt", "grund" in _gestoppt)
+    finally:
+        _nk.stop_nachklick = _echt
+finally:
+    _os.chdir(_cwd)

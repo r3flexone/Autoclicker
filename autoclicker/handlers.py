@@ -737,6 +737,25 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
     start_nachklick(state)
 
 
+def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
+    """Beendet eine laufende Klick-Runde — dasselbe wie CTRL+ALT+J.
+
+    Gestartet wird sie aus dem Studio, beendet ging bisher nur ueber die Taste.
+    Ein Knopf, der etwas anfaengt, aber nicht aufhoeren kann, laesst einen mit
+    einem scharfen Maus-Hook sitzen und der Frage, wie man ihn wieder los wird.
+
+    `stop_nachklick()` meldet selbst, was gesetzt wurde; laeuft gar keine Runde,
+    kehrt es wortlos zurueck - deshalb sagt es hier jemand.
+    """
+    from .editors.nachklick import stop_nachklick
+    with state.lock:
+        laeuft = state.nachklick_aktiv
+    if not laeuft:
+        print(f"\n{info('Es laeuft keine Klick-Runde.')}")
+        return
+    stop_nachklick(state, "aus dem Studio beendet")
+
+
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
 # hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
@@ -750,6 +769,7 @@ BEFEHLE = {
     "config": befehl_config,
     "daten": befehl_daten,
     "nachklick": befehl_nachklick,
+    "nachklick_stop": befehl_nachklick_stop,
 }
 
 

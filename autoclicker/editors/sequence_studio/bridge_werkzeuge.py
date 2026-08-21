@@ -132,6 +132,15 @@ class BridgeWerkzeugeMixin:
 
         Der gewählte Punkt liefert die ALTE Stelle aus `points.json`, die Maus
         die neue. Beides zusammen ist der Transform, mehr steckt nicht dahinter.
+
+        **Die Farbe wird gegengeprüft, und zwar bevor etwas gilt.** Ein
+        Referenzpunkt, der danebenliegt, verschiebt nicht sich selbst, sondern
+        ALLES — das ist der eine Handgriff, bei dem ein Vergreifen den ganzen
+        Bestand kostet. Weicht die Farbe an der neuen Stelle von der
+        gespeicherten ab, kommt deshalb `bestaetigen` zurück statt eines
+        gesetzten Punktes. Mit `bestaetigt: true` gilt er trotzdem: manchmal hat
+        sich das Spiel geändert, und dann ist die abweichende Farbe richtig.
+        Verboten wird nichts, es geht nur nicht mehr aus Versehen.
         """
         daten = daten or {}
         nummer = 2 if int(daten.get("nummer") or 1) == 2 else 1
@@ -149,6 +158,10 @@ class BridgeWerkzeugeMixin:
         if x is None:
             return {"ok": False, "meldung": meldung + " — nichts geändert."}
 
+        pruefung = self._farbe_pruefen(punkt, x, y)
+        if pruefung is not None and not daten.get("bestaetigt"):
+            return pruefung
+
         self._kalib[f"ref{nummer}"] = {
             "punkt_id": punkt.id, "name": punkt.name or f"Punkt #{punkt.id}",
             "alt": [punkt.x, punkt.y], "neu": [x, y],
@@ -158,8 +171,57 @@ class BridgeWerkzeugeMixin:
             # gegen eine andere Verschiebung gemessen.
             self._kalib.pop("ref2", None)
         self._kalib_rechnen()
+        gemessen = self._farbe_an(x, y)
+        zusatz = ""
+        if pruefung is not None:
+            zusatz = " — Farbe weicht ab, trotzdem übernommen"
+        elif gemessen and punkt.color:
+            zusatz = " — Farbe passt"
         return {"ok": True, "meldung": f"{punkt.name or punkt.id}: "
-                                       f"({punkt.x}, {punkt.y}) → ({x}, {y})"}
+                                       f"({punkt.x}, {punkt.y}) → ({x}, {y}){zusatz}"}
+
+    @staticmethod
+    def _farbe_an(x: int, y: int):
+        """Die Bildschirmfarbe an einer Stelle — oder None, wenn nicht lesbar."""
+        try:
+            from ...imaging import get_pixel_color
+            return get_pixel_color(x, y)
+        except Exception:                                        # noqa: BLE001
+            return None
+
+    def _farbe_pruefen(self, punkt, x: int, y: int) -> Optional[dict]:
+        """`None`, wenn die Farbe passt — sonst die Rückfrage.
+
+        Verglichen wird mit `punkt_farbtoleranz`, derselben Schwelle, an der auch
+        `punkt_an_stelle()` entscheidet, ob zwei Stellen dieselbe sind. Zwei
+        Toleranzen für dieselbe Frage wären zwei Antworten.
+
+        Fehlt eine der beiden Farben, wird NICHT gefragt: ein Punkt ohne
+        gespeicherte Farbe (von Hand angelegt) hat nichts, womit man vergleichen
+        könnte, und eine Rückfrage ohne Grundlage gewöhnt man sich ab wegzuklicken.
+        """
+        from ...config import CONFIG
+        if not punkt.color:
+            return None
+        gemessen = self._farbe_an(x, y)
+        if not gemessen:
+            return None
+        abstand = max(abs(a - b) for a, b in zip(punkt.color, gemessen))
+        if abstand <= CONFIG.punkt_farbtoleranz:
+            return None
+        return {
+            "ok": False,
+            "bestaetigen": True,
+            "punkt_id": punkt.id,
+            "erwartet": list(punkt.color),
+            "gemessen": list(gemessen),
+            "abstand": abstand,
+            "toleranz": CONFIG.punkt_farbtoleranz,
+            "stelle": [x, y],
+            "meldung": (f"Andere Farbe als gespeichert (Abstand {abstand}, erlaubt "
+                        f"{CONFIG.punkt_farbtoleranz}). Triffst du wirklich "
+                        f"'{punkt.name or punkt.id}'?"),
+        }
 
     def kalib_versatz(self, daten: dict) -> dict:
         """Den gemessenen Versatz von Hand nachziehen.
@@ -318,3 +380,23 @@ class BridgeWerkzeugeMixin:
         return {"ok": True,
                 "meldung": f"Klick-Runde für '{self.board.name}' gestartet — die "
                            "Anleitung steht im Konsolenfenster, geklickt wird im Spiel."}
+
+    def nachklick_beenden(self, daten: Optional[dict] = None) -> dict:
+        """Eine laufende Klick-Runde beenden — dasselbe wie CTRL+ALT+J.
+
+        Ein Knopf, der etwas anfängt, muss es auch beenden können. Ohne das bleibt
+        man mit einem scharfen Maus-Hook sitzen und der Frage, wie man ihn wieder
+        los wird — die Antwort stand nur im Konsolenfenster.
+
+        Ob überhaupt eine Runde läuft, weiss dieser Prozess nicht (der Zustand
+        liegt im `AutoClickerState` drüben). Deshalb wird der Befehl immer
+        abgelegt, und der Hauptprozess sagt, was er vorgefunden hat — das ist
+        ehrlicher, als hier zu raten und den Knopf womöglich zu sperren, während
+        sehr wohl eine Runde läuft.
+        """
+        from ...befehl import sende
+        if not sende("nachklick_stop"):
+            return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
+        return {"ok": True,
+                "meldung": "Beenden geschickt — was gesetzt wurde, steht im "
+                           "Konsolenfenster."}
