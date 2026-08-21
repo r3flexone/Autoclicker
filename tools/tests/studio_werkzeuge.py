@@ -15,7 +15,8 @@ from autoclicker.models import (
     SequenceStep as _SS,
 )
 from autoclicker.persistence import (
-    save_data, save_global_items, save_global_slots, save_item_scan, save_points,
+    list_available_sequences, save_data, save_global_items, save_global_slots,
+    save_item_scan, save_points,
 )
 import autoclicker.befehl as _bf
 
@@ -40,7 +41,11 @@ def _sandkasten():
         _SS(point_id=1, delay_before=3.0), _SS(point_id=2)])])
     st.sequences["Farm"] = seq
     save_data(st)
-    bruecke = _SB(seq, _P("sequences/Farm.json"), "sequences")
+    # Den Pfad NICHT von Hand bauen: `save_data` bereinigt den Namen (klein, ohne
+    # Sonderzeichen), und die App holt ihn ueber `list_available_sequences()`. Ein
+    # getippter Pfad geht daran vorbei - und genau der Unterschied entscheidet,
+    # ob die Klick-Runde ihre Datei findet.
+    bruecke = _SB(seq, _P(dict(list_available_sequences())["Farm"]), "sequences")
     # Die Maus gibt es im Test nicht: die Stelle kommt aus dem Stub, alles
     # andere laeuft wie im Fenster.
     bruecke._stelle_abwarten = lambda: (140, 130, "")
@@ -56,6 +61,18 @@ try:
     _sand, _b = _sandkasten()
     _d = _b.werkzeug_daten()
     check("die Punkte stehen zur Auswahl", [p["id"] for p in _d["punkte"]] == [1, 2, 3])
+    # Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus.
+    # Ohne diese Angabe stuende nirgends, welche Sequenz die Klick-Runde meint.
+    # Der NAME behaelt seine Schreibweise, der Dateiname wird entschaerft. Beide
+    # stehen da, weil beide vorkommen: den Namen sucht man im Fenster, den
+    # Dateinamen im Ordner.
+    check("und der Reiter weiss, welche Sequenz offen ist", _d["sequenz"] == "Farm")
+    check("samt Dateinamen, wie er auf Platte heisst",
+          _d["datei"] == _b.filepath.name and _P("sequences", _d["datei"]).exists())
+    check("samt der Frage, ob sie ungespeichert ist", _d["offen"] is False)
+    _b._dirty = True
+    check("und die Antwort aendert sich mit", _b.werkzeug_daten()["offen"] is True)
+    _b._dirty = False
     check("und der Umfang kommt aus der Tabelle",
           [u["schluessel"] for u in _d["umfang"]] == [k for k, _, _ in KALIB_UMFANG])
     # Die Ansicht zeigt dieselben Schalter; laufen sie auseinander, schaltet ein
@@ -210,6 +227,15 @@ try:
     _auftrag = _bf.hole()
     check("und der Befehl heisst 'nachklick'",
           _auftrag is not None and _auftrag["befehl"] == "nachklick")
+    # DIE Sache, die hier schiefgehen kann: der Hauptprozess hat womoeglich eine
+    # ganz andere Sequenz geladen. Ohne die Datei klickt man eine Runde lang die
+    # Punkte einer fremden Sequenz nach - und merkt es nicht, weil jeder Klick
+    # ja im Spiel etwas tut.
+    check("die offene Sequenz kommt MIT",
+          _P(_auftrag["argumente"].get("datei", "")).exists())
+    check("und der Knopf sagt, welche er meint",
+          "Farm" in _b.nachklick_starten()["meldung"])
+    _bf.hole()
 
     # Ungespeichertes zuerst: die Runde klickt die Sequenz von PLATTE nach.
     _b._dirty = True
@@ -221,5 +247,51 @@ try:
     _b._dirty = False
     _b._laeuft = lambda: True
     check("waehrend eines Laufs auch nicht", _b.nachklick_starten()["ok"] is False)
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: die Klick-Runde nimmt die MITGESCHICKTE Sequenz")
+try:
+    _sand, _b = _sandkasten()
+    # Der Hauptprozess haelt eine andere Sequenz aktiv als die im Studio offene -
+    # genau der Fall, in dem die alte Fassung die falsche nachklicken liess.
+    _fremd = _SEQ(name="Fremd", loop_phases=[_LP(name="X", steps=[_SS(point_id=3)])])
+    _st2 = _ST()
+    _st2.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
+                   _CP(id=2, x=900, y=600, name="Bestaetigen"),
+                   _CP(id=3, x=400, y=300, name="Menue")]
+    _st2.sequences["Fremd"] = _fremd
+    _st2.active_sequence = _fremd
+    save_data(_st2)
+
+    from autoclicker.handlers import befehl_nachklick as _bn
+    import autoclicker.editors.nachklick as _nk
+    _gestartet = {}
+
+    def _fake_start(state):
+        _gestartet["name"] = state.active_sequence.name
+        return True
+
+    _echt = _nk.start_nachklick
+    _nk.start_nachklick = _fake_start
+    try:
+        _farm_pfad = str(dict(list_available_sequences())["Farm"])
+        _bn(_st2, {"datei": _farm_pfad})
+        check("geladen wird die mitgeschickte Datei", _gestartet.get("name") == "Farm")
+        check("und sie wird auch aktiv gesetzt",
+              _st2.active_sequence is not None and _st2.active_sequence.name == "Farm")
+
+        # Ohne Datei passiert NICHTS - lieber gar keine Runde als eine auf der
+        # falschen Sequenz.
+        _gestartet.clear()
+        _bn(_st2, {})
+        check("ohne Datei startet keine Runde", not _gestartet)
+
+        _gestartet.clear()
+        _bn(_st2, {"datei": "sequences/gibtsnicht.json"})
+        check("und eine unlesbare Datei startet auch keine", not _gestartet)
+    finally:
+        _nk.start_nachklick = _echt
 finally:
     _os.chdir(_cwd)

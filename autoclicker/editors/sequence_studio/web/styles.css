@@ -840,3 +840,15 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .wz-wert{font-size:13px;padding:2px 0}
 .wz-vorschau{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
 .wz-vorschau:last-child{border-bottom:none}
+
+/* Der Bezug steht als Zeile UEBER dem Werkzeug, nicht als Fussnote darunter:
+ * „worauf wirkt das" beantwortet man, bevor man den Knopf drueckt. Die Variante
+ * fuer genau eine Sequenz ist abgesetzt (Akzentkante) — dort ist die Angabe eine
+ * Entscheidung, bei „ganzer Bestand" nur eine Einordnung. */
+.wz-bezug{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
+  border:1px solid var(--line);border-left-width:3px;border-radius:6px;
+  padding:7px 10px;margin:10px 0 4px;color:var(--muted)}
+.wz-bezug.eine{border-left-color:var(--accent);color:var(--text)}
+.wz-bezug-marke{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);flex:none}
+.wz-offen{display:flex;align-items:center;gap:6px;font-size:12px}

@@ -705,15 +705,35 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
     pumpt. `start_nachklick()` installiert ihn und kehrt zurueck - der Befehl
     blockiert also nicht, wie es die Briefkasten-Schleife verlangt.
+
+    **Die Sequenz kommt MIT, wie beim Start.** Sie aus `state.active_sequence` zu
+    nehmen war falsch: der Hauptprozess hat womoeglich eine ganz andere geladen
+    als die, die im Studio offen steht - man klickt dann eine Runde lang die
+    Punkte einer fremden Sequenz nach und merkt es nicht. Der Knopf sagt, welche
+    er meint; hier wird genau die geladen.
     """
     from .editors.nachklick import start_nachklick
     if _block_if_recording(state) or _block_if_running(state):
         return
-    with state.lock:
-        seq = state.active_sequence
-    if seq is None:
-        print(f"\n{info('Keine aktive Sequenz — erst eine laden (CTRL+ALT+L).')}")
+
+    roh = str(argumente.get("datei") or "").strip()
+    if not roh:
+        print(f"\n{err('Klick-Runde aus dem Studio ohne Datei — ignoriert.')}")
         return
+    # Punkte mit von Platte, aus demselben Grund wie in `befehl_start`: das Studio
+    # schreibt beim Speichern beide Dateien.
+    punkte = punkte_nachladen(state)
+    seq = load_sequence_file(Path(roh), punkte)
+    if seq is None:
+        print(f"\n{err(f'{Path(roh).name} konnte nicht geladen werden')} "
+              f"{hint('(im Studio gespeichert?)')}")
+        return
+
+    with state.lock:
+        if punkte:
+            state.points = punkte
+        state.active_sequence = seq
+    print(f"\n{col('[STUDIO]', 'cyan')} Klick-Runde für '{seq.name}'.")
     start_nachklick(state)
 
 

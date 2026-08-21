@@ -1574,6 +1574,20 @@ Kalibrierung, also läuft sie im Fenster. Die Klick-Runde braucht dagegen einen
 — sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Nur dafür gibt es den
 Briefkasten-Befehl `nachklick`.
 
+**Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet ihre
+Sequenz-Bedienelemente hier aus (der Reiter bearbeitet andere Dateien) — damit war
+aber auch der Sequenzname weg, und bei der Klick-Runde ist das genau die Frage, die
+man sich stellt. Ein einzelner Name oben wäre trotzdem falsch gewesen: Prüfen und
+Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
+Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzBezug()`), und
+links steht die offene Sequenz als Einordnung.
+
+Daran hing ein echter Fehler: `befehl_nachklick` nahm `state.active_sequence` aus
+dem Hauptprozess — der hat womöglich eine ganz andere geladen als die im Studio
+offene. Man klickt dann eine Runde lang die Punkte einer fremden Sequenz nach und
+merkt es nicht, weil jeder Klick im Spiel ja etwas tut. Die Datei kommt jetzt mit,
+wie bei `befehl_start`; ohne sie passiert gar nichts.
+
 Vier Regeln, an denen der Reiter hängt:
 
 - **Gerechnet wird mit denselben Funktionen wie in der Konsole**

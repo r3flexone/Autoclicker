@@ -4155,14 +4155,39 @@ let wzOffen = "pruefen";
 let wzBericht = null;
 let wzUmfang = {};
 
+/* Jedes Werkzeug sagt, WORAUF es wirkt. Ein einzelner Sequenzname oben im Reiter
+ * waere fuer zwei der drei schlicht falsch: Pruefen und Kalibrieren gehen ueber
+ * den GANZEN Bestand (alle Sequenzen, Slots, Scans, Punkte), nur die Klick-Runde
+ * meint genau eine Sequenz — die hier offene. `bezug: "sequenz"` markiert das. */
 const WZ_WERKZEUGE = [
-  {key: "pruefen", name: "Prüfen",
+  {key: "pruefen", name: "Prüfen", bezug: "bestand",
    kurz: "fehlende Templates, tote Verweise, Punkte ausserhalb aller Monitore"},
-  {key: "kalibrieren", name: "Kalibrieren",
+  {key: "kalibrieren", name: "Kalibrieren", bezug: "bestand",
    kurz: "Bildschirm umgestellt? Einen Punkt neu setzen, Rest umrechnen"},
-  {key: "klicken", name: "Klick-Runde",
+  {key: "klicken", name: "Klick-Runde", bezug: "sequenz",
    kurz: "Sequenz einmal von Hand nachklicken — jeder Klick setzt seinen Punkt"},
 ];
+
+/** Die Zeile „worauf wirkt das hier" — als eigener Baustein, damit sie an jedem
+ *  Werkzeug gleich aussieht und keines sie vergessen kann. */
+function wzBezug(key) {
+  const w = WZ_WERKZEUGE.find(x => x.key === key);
+  const kasten = el("div", {class: "wz-bezug"});
+  if (!w || w.bezug !== "sequenz") {
+    kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+      el("span", {}, "der gesamte gespeicherte Bestand — alle Sequenzen, Punkte, "
+        + "Slots und Scans, nicht nur die offene Sequenz"));
+    return kasten;
+  }
+  kasten.classList.add("eine");
+  kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+    el("span", {}, "die offene Sequenz "),
+    el("b", {}, W ? W.sequenz : "—"),
+    el("span", {class: "hint"}, W ? " (" + W.datei + ")" : ""));
+  if (W && W.offen)
+    kasten.append(el("span", {class: "art-warn"}, " — ungespeichert"));
+  return kasten;
+}
 
 async function zeichneWerkzeuge(frisch) {
   const antwort = await frage("werkzeug_daten");
@@ -4191,8 +4216,16 @@ async function rufWerkzeug(name, daten) {
 
 function wzLinksZeichnen() {
   const ziel = $("wz-links");
+  // Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus (er
+  // bearbeitet andere Dateien). Damit war aber auch der NAME weg, und bei der
+  // Klick-Runde ist das genau die Frage, die man sich stellt.
   const kopf = el("div", {class: "abschnitt"},
-    el("span", {class: "ueberschrift"}, "WERKZEUGE"));
+    el("span", {class: "ueberschrift"}, "WERKZEUGE"),
+    el("div", {class: "wz-offen"},
+      el("span", {class: "hint"}, "offene Sequenz"),
+      el("b", {}, W ? W.sequenz : "—"),
+      W && W.offen ? el("span", {class: "punkt-offen", title: "ungespeicherte Änderungen"})
+                   : null));
   const liste = el("div", {class: "abschnitt wachsend", style: "gap:6px"});
   for (const w of WZ_WERKZEUGE) {
     const knopf = el("button", {
@@ -4221,6 +4254,7 @@ function wzMitteZeichnen() {
 
 function wzPruefenBauen() {
   const raus = [el("h2", {}, "Setup prüfen")];
+  raus.push(wzBezug("pruefen"));
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Dasselbe wie `check` im Punkte-Menü: fehlende Templates, Profile ohne "
     + "Erkennungsmethode, tote Slot-/Item-/Scan-Verweise und Punkte ausserhalb "
@@ -4291,6 +4325,7 @@ async function wzPruefen() {
 function wzKalibBauen() {
   const K = (W && W.kalibrierung) || {};
   const raus = [el("h2", {}, "Kalibrieren")];
+  raus.push(wzBezug("kalibrieren"));
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Hat Windows die Bildschirme neu angeordnet, sind ALLE gespeicherten "
     + "Koordinaten um denselben Betrag verschoben. Du setzt einen Punkt neu, "
@@ -4431,6 +4466,7 @@ function wzUmfangKasten() {
 
 function wzKlickenBauen() {
   const raus = [el("h2", {}, "Klick-Runde")];
+  raus.push(wzBezug("klicken"));
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Du spielst die Sequenz einmal von Hand durch. Jeder Klick geht ans Spiel "
     + "und setzt zugleich die Stelle des Punktes, der gerade dran ist — die "

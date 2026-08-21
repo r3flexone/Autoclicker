@@ -56,7 +56,13 @@ class BridgeWerkzeugeMixin:
             "kalibrierung": self._kalib_json(),
             "umfang": [{"schluessel": k, "text": t, "vorgabe": v}
                        for k, t, v in KALIB_UMFANG],
+            # Welche Sequenz offen ist, gehoert hierher: die Kopfleiste blendet
+            # ihre Bedienelemente in diesem Reiter aus (er bearbeitet andere
+            # Dateien), und ohne diese Angabe weiss man bei der Klick-Runde
+            # nicht, welche Sequenz man gleich nachklickt.
             "sequenz": self.board.name,
+            "datei": self.filepath.name,
+            "offen": bool(self._dirty),
             "laeuft": self._laeuft(),
         }
 
@@ -303,8 +309,12 @@ class BridgeWerkzeugeMixin:
             return {"ok": False,
                     "meldung": "Erst speichern: die Runde klickt die Sequenz von "
                                "Platte nach, nicht die im Fenster."}
-        if not sende("nachklick"):
+        # Die Datei MIT: der Hauptprozess hat womoeglich eine ganz andere Sequenz
+        # geladen als die hier offene. Ohne sie klickt man eine Runde lang die
+        # Punkte einer fremden Sequenz nach - dieselbe Falle, die `befehl_start`
+        # laengst vermeidet.
+        if not sende("nachklick", datei=str(self.filepath)):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         return {"ok": True,
-                "meldung": "Klick-Runde gestartet — die Anleitung steht im "
-                           "Konsolenfenster, geklickt wird im Spiel."}
+                "meldung": f"Klick-Runde für '{self.board.name}' gestartet — die "
+                           "Anleitung steht im Konsolenfenster, geklickt wird im Spiel."}
