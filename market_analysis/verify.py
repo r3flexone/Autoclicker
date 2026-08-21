@@ -19,12 +19,18 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Die Konfigurationswerte kommen aus `config`, nicht aus `analyse`: sie standen
+# hier lange als `ma.XP_BOOST_TOTAL` & Co. und existierten dort gar nicht -
+# `analyse` importiert sie einzeln und reicht sie nicht weiter. Das Skript brach
+# damit bei der ersten Ausgabe ab.
 try:
     from . import analyse as ma  # noqa: E402
-    from .recipes import normalize_recipe  # noqa: E402
+    from . import config as conf  # noqa: E402
+    from .recipes import normalize_recipe, skill_cfg  # noqa: E402
 except ImportError:
     import analyse as ma  # type: ignore  # noqa: E402
-    from recipes import normalize_recipe  # type: ignore  # noqa: E402
+    import config as conf  # type: ignore  # noqa: E402
+    from recipes import normalize_recipe, skill_cfg  # type: ignore  # noqa: E402
 
 DEFAULT_ITEMS = ["oak", "titanium_bar", "tuna", "cooked_tuna"]
 
@@ -45,9 +51,13 @@ def find_recipes(tasks: dict, names: list[str]) -> list[tuple[str, dict]]:
 
 def price_line(item_id: int, market_map: dict, item_info_map: dict) -> str:
     name = item_info_map.get(item_id, {}).get("name", f"item_{item_id}")
+    # Gold hat keinen Markteintrag und braucht auch keinen - "KEIN Markteintrag"
+    # las sich hier wie ein Datenfehler, obwohl die Zeile voll mitgerechnet wird.
+    if item_id == conf.GOLD_ITEM_ID:
+        return f"{name} (ID {item_id}): direktes Gold, {conf.GOLD_ITEM_PRICE:g} je Stueck"
     m = market_map.get(item_id)
     if m is None:
-        return f"{name} (ID {item_id}): KEIN Markteintrag"
+        return f"{name} (ID {item_id}): KEIN Markteintrag - Preis unbekannt, nicht 0"
     return (f"{name} (ID {item_id}): Bid {m['buy']:,} / Ask {m['sell']:,}  "
             f"(BuyVol {m['buyVol']:,}, SellVol {m['sellVol']:,}, Ø24h {m['avg']:,})")
 
@@ -55,7 +65,7 @@ def price_line(item_id: int, market_map: dict, item_info_map: dict) -> str:
 def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
              excluded_cost_items: frozenset, recipe_by_output: dict, fish_to_cooked: dict,
              tasks: dict):
-    cfg = ma.skill_cfg(skill_name)
+    cfg = skill_cfg(skill_name)
     name = raw.get("Name")
     item_id = raw.get("ItemReward")
 
@@ -74,15 +84,15 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
         print(f"     Zutat         {c.get('Amount')}x {price_line(c.get('Item'), market_map, item_info_map)}")
 
     # --- 2. Boosts ---------------------------------------------------------
-    clan = ma.CLAN_GATHERERS_SPEED_BOOST if cfg.is_gathering else 0.0
+    clan = conf.CLAN_GATHERERS_SPEED_BOOST if cfg.is_gathering else 0.0
     speed_mult = (1.0 - clan) * (1.0 - cfg.equipment_speed_boost)
     speed_add = max(0.0, 1.0 - clan - cfg.equipment_speed_boost)
-    yield_factor = cfg.yield_multiplier * (1.0 + ma.GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
+    yield_factor = cfg.yield_multiplier * (1.0 + conf.GLOVES_DOUBLE_CHANCE if cfg.gloves_owned else 1.0)
     # Muss dieselbe Formel sein wie in normalize_recipe — dieses Skript ist die
     # Gegenprobe zur Analyse, eine abweichende Rechnung waere hier schlimmer als keine.
-    extra_yield_xp = (1.0 + ma.EXTRA_YIELD_XP_SHARE * (cfg.yield_multiplier - 1.0)
+    extra_yield_xp = (1.0 + conf.EXTRA_YIELD_XP_SHARE * (cfg.yield_multiplier - 1.0)
                       if cfg.extra_yield_xp and cfg.yield_multiplier > 1.0 else 1.0)
-    xp_factor = extra_yield_xp * (1.0 + ma.XP_BOOST_TOTAL) * (1.0 + ma.DAILY_XP_BOOST)
+    xp_factor = extra_yield_xp * (1.0 + conf.XP_BOOST_TOTAL) * (1.0 + conf.DAILY_XP_BOOST)
 
     print("\n2) ANGEWENDETE BOOSTS (aus SKILLS)")
     print(f"     Equipment-Speed   {cfg.equipment_speed_boost:.0%}"
@@ -90,12 +100,13 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     print(f"     Zeit-Faktor       multiplikativ {speed_mult:.4f}   |   additiv {speed_add:.4f}")
     print(f"     Yield-Faktor      {yield_factor:.3f}"
           f"   (Upgrade {cfg.yield_multiplier:.2f}"
-          f"{f' x Handschuhe {1 + ma.GLOVES_DOUBLE_CHANCE:.2f}' if cfg.gloves_owned else ', keine Handschuhe'})")
+          f"{f' x Handschuhe {1 + conf.GLOVES_DOUBLE_CHANCE:.2f}' if cfg.gloves_owned else ', keine Handschuhe'})")
     print(f"     XP-Faktor         {xp_factor:.3f}"
           + (f"   (davon {extra_yield_xp:.3f} aus 'Better fisherman/lumberjack')"
              if extra_yield_xp != 1.0 else ""))
     if cfg.cost_multiplier != 1.0:
-        print(f"     Kosten-Faktor     {cfg.cost_multiplier:.2f} (Trickery/Magic-Ersparnis)")
+        print(f"     Kosten-Faktor     {cfg.cost_multiplier:.2f} "
+              "(Potion of Trickery / Seed Storage)")
 
     # --- 3. Ergebnis pro Case ---------------------------------------------
     results = {}
@@ -106,13 +117,17 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
             print("\n   !! Rezept wird vom Script AUSSORTIERT (Disabled / raids_ / keine Zeit / kein Reward)")
             return
         actions_per_hour = 3_600_000.0 / r["base_time_ms"]
-        cost_per_action = sum((market_map.get(c["Item"], {}).get("sell", 0)) * c["Amount"] for c in r["costs"])
-        sell_price, sold_to_npc = ma.effective_sell_price(r["item_id"], market_map, item_info_map)
         items_per_hour = actions_per_hour * r["item_amount"]
+        # Dieselbe Kostenrechnung wie im Lauf: Gold (Item 19) zaehlt mit, ein
+        # unbekannter Preis wird gemeldet statt als 0 durchgereicht.
+        kosten = ma.kosten_pro_aktion(r["costs"], market_map, actions_per_hour, item_info_map)
+        weg = ma.effective_sell_price(r["item_id"], market_map, item_info_map, items_per_hour)
         results[case] = {
-            "r": r, "actions_per_hour": actions_per_hour, "cost_per_action": cost_per_action,
-            "sell_price": sell_price, "sold_to_npc": sold_to_npc, "items_per_hour": items_per_hour,
-            "gold_per_hour": items_per_hour * sell_price - cost_per_action * actions_per_hour,
+            "r": r, "actions_per_hour": actions_per_hour, "cost_per_action": kosten.kosten,
+            "kosten": kosten,
+            "sell_price": weg.preis, "sold_to_npc": weg.an_npc, "items_per_hour": items_per_hour,
+            "gold_per_hour": (items_per_hour * weg.preis - kosten.kosten * actions_per_hour
+                              if kosten.vollstaendig else None),
         }
 
     b, w = results["best"], results["worst"]
@@ -125,8 +140,14 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     if b["cost_per_action"]:
         print(f"     Material/Aktion   {b['cost_per_action']:,.2f} Gold (best)"
               f"   |   {w['cost_per_action']:,.2f} Gold (worst)")
-    print(f"     -> Gold/h         {b['gold_per_hour']:,.0f}"
-          + (f"   |   worst {w['gold_per_hour']:,.0f}" if abs(b["gold_per_hour"] - w["gold_per_hour"]) > 1 else ""))
+    if b["gold_per_hour"] is None:
+        print("     -> Gold/h         unbekannt - Zutatenpreis fehlt: "
+              + ", ".join(b["kosten"].fehlende))
+    else:
+        print(f"     -> Gold/h         {b['gold_per_hour']:,.0f}"
+              + (f"   |   worst {w['gold_per_hour']:,.0f}"
+                 if w["gold_per_hour"] is not None
+                 and abs(b["gold_per_hour"] - w["gold_per_hour"]) > 1 else ""))
 
     # --- 4. Was ingame zu pruefen ist -------------------------------------
     print("\n4) INGAME GEGENPRUEFEN")
@@ -161,25 +182,37 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
             secs = 3600.0 / b["actions_per_hour"]
             beide = (per_action * ma.AUTO_COOK_CHANCE * cooked_bid
                      + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
-            print("        HINWEIS: die Ketten-Analyse wirft den rohen Rest weg. Wuerde man ihn")
-            print(f"        mitverkaufen, waeren es {beide:,.0f} Gold/h statt der ausgewiesenen Kette.")
+            if conf.AUTO_COOK_SELL_RAW_REST:
+                print(f"        Der rohe Rest wird MITVERKAUFT - zusammen rund {beide:,.0f} Gold/h.")
+            else:
+                print("        HINWEIS: AUTO_COOK_SELL_RAW_REST steht auf False, der rohe Rest")
+                print(f"        faellt unter den Tisch. Mitverkauft waeren es {beide:,.0f} Gold/h.")
 
     # --- 5. Kette ----------------------------------------------------------
     if item_id not in recipe_by_output:
         return
-    total_ms, cost, steps, ratio, self_suff = ma.resolve_chain(
-        item_id, market_map, recipe_by_output, fish_to_cooked
-    )
+    kette = ma.resolve_chain(item_id, market_map, recipe_by_output, fish_to_cooked,
+                             item_info_map)
+    total_ms, cost, steps = kette.zeit_ms, kette.kosten, kette.schritte
     if total_ms <= 0:
         return
 
     per_hour = 3_600_000.0 / total_ms
-    chain_gold = per_hour * b["sell_price"] - cost * per_hour
+    neben_h = per_hour * kette.nebenertrag
+    chain_gold = per_hour * b["sell_price"] + neben_h - cost * per_hour
     print("\n5) KETTE - DAS IST DIE ZAHL, WENN DU ES WIRKLICH SELBST FARMST")
     print(f"     Zeit pro Stueck   {total_ms / 1000:.3f} s   ->   {per_hour:,.2f} Stueck/h")
     print(f"     Zugekauft         {cost * per_hour:,.0f} Gold/h")
-    print(f"     Komplett selbst   {self_suff}")
-    print(f"     -> Gold/h         {chain_gold:,.0f}")
+    if neben_h:
+        print(f"     Nebenertrag       {neben_h:,.0f} Gold/h (roher Rest aus Auto-Cook)")
+    print(f"     Komplett selbst   {kette.autark}")
+    if kette.kosten_bekannt:
+        print(f"     -> Gold/h         {chain_gold:,.0f}")
+    else:
+        # Keine Zahl ausgeben, die auf einer kostenlosen Zutat beruht - die haette
+        # hier bei 9,1 Mio gestanden und wie ein Spitzenfund ausgesehen.
+        print(f"     -> Gold/h         unbekannt, Zutatenpreis fehlt: "
+              f"{', '.join(kette.fehlende)}")
     print("     Zeitanteile je Schritt:")
     for sname, sskill, qty, tms in steps:
         share = tms / total_ms if total_ms else 0
@@ -197,8 +230,8 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     for sname, sskill, qty, tms in steps:
         clean = sname.replace(" (mit Auto-Cook)", "")
         step_recipe = by_name.get(clean)
-        step_cfg = ma.skill_cfg(sskill)
-        step_clan = ma.CLAN_GATHERERS_SPEED_BOOST if step_cfg.is_gathering else 0.0
+        step_cfg = skill_cfg(sskill)
+        step_clan = conf.CLAN_GATHERERS_SPEED_BOOST if step_cfg.is_gathering else 0.0
         s_mult = (1.0 - step_clan) * (1.0 - step_cfg.equipment_speed_boost)
         s_add = max(0.0, 1.0 - step_clan - step_cfg.equipment_speed_boost)
         alt_total_ms += tms * (s_add / s_mult) if s_mult > 0 else tms
@@ -224,13 +257,14 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
                 print(f"          {iname:<22} best {cb['Amount'] * 100:>10,.1f}   "
                       f"worst {cw_amount * 100:>10,.1f}{marker}")
 
-    if abs(alt_total_ms - total_ms) > 1:
+    if abs(alt_total_ms - total_ms) > 1 and kette.kosten_bekannt and chain_gold:
         alt_hour = 3_600_000.0 / alt_total_ms
-        alt_gold = alt_hour * b["sell_price"] - cost * alt_hour
+        alt_gold = (alt_hour * b["sell_price"] + alt_hour * kette.nebenertrag
+                    - cost * alt_hour)
         print("\n     Waere die Speed-Formel additiv statt multiplikativ, ergaebe die Kette "
               f"{alt_gold:,.0f} Gold/h statt {chain_gold:,.0f} ({(alt_gold / chain_gold - 1):+.1%}).")
 
-    # Auto-Cook betrifft die Kette direkt: der rohe Rest faellt unter den Tisch
+    # Auto-Cook: beide Haelften des Fangs, gegen die Kettenzahl gehalten
     for raw_id, cooked_id in fish_to_cooked.items():
         if item_id not in (raw_id, cooked_id):
             continue
@@ -247,11 +281,14 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
                 + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
         rawname = item_info_map.get(raw_id, {}).get("name", raw_id)
         cookedname = item_info_map.get(cooked_id, {}).get("name", cooked_id)
-        print("\n     ACHTUNG Auto-Cook: eine Fangaktion liefert laut Annahme "
+        print("\n     Auto-Cook: eine Fangaktion liefert laut Annahme "
               f"{per_action * ma.AUTO_COOK_CHANCE:.2f}x {cookedname} UND "
               f"{per_action * (1 - ma.AUTO_COOK_CHANCE):.2f}x {rawname}.")
-        print("     Die Ketten-Zeile rechnet immer nur EINE der beiden Haelften. Verkaufst du")
-        print(f"     beide, sind es {both:,.0f} Gold/h - mehr als jede Einzelzeile im Excel.")
+        if conf.AUTO_COOK_SELL_RAW_REST:
+            print(f"     Beide Haelften werden verkauft - zusammen rund {both:,.0f} Gold/h.")
+        else:
+            print("     AUTO_COOK_SELL_RAW_REST steht auf False: die Kette rechnet nur EINE")
+            print(f"     Haelfte. Mit beiden waeren es {both:,.0f} Gold/h.")
         break
 
 

@@ -56,10 +56,12 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
     if price <= 0:
         return empty
 
-    revenue = net_player_price(price)
+    # Menge mitgeben: die Marktsteuer greift erst ab 100 Gold Gesamtwert, und
+    # angeboten wird eine Stunde Produktion, nicht ein Stueck.
+    revenue = net_player_price(price, units_per_hour)
     daily_volume = depth.get(COMPREHENSIVE_VOLUME_FIELD) or 0
     waiting = units_per_hour / daily_volume * 24.0 if daily_volume > 0 else None
-    net_bid = net_player_price(top_bid) if top_bid > 0 else 0.0
+    net_bid = net_player_price(top_bid, units_per_hour) if top_bid > 0 else 0.0
     return {
         "preis": price,
         "erloes": revenue,
@@ -71,7 +73,13 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
 
 
 def price_position(reference: float, depth: dict | None) -> tuple[float | None, str]:
-    """Position gegen 30-Tage-Schnitt und vorsichtiger 1/7/30-Tage-Trend."""
+    """Position gegen 30-Tage-Schnitt und vorsichtiger 1/7/30-Tage-Trend.
+
+    `reference` muss BRUTTO sein - die Durchschnitte aus der API kennen keine
+    Marktsteuer. Wer einen Nettoerlös hineingibt, bekommt bei jedem Item dieselbe
+    kuenstliche Abweichung von einem Prozent nach unten und haelt einen Messfehler
+    fuer eine Marktlage.
+    """
     if not depth or reference <= 0:
         return None, ""
     avg30 = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or 0

@@ -3,14 +3,14 @@
 try:  # Paketimport (`python -m market_analysis.analyse`)
     from .config import (
         CLAN_GATHERERS_SPEED_BOOST, DAILY_XP_BOOST, EXTRA_YIELD_XP_SHARE,
-        GLOVES_DOUBLE_CHANCE, SKILLS, SMITHING_SMELTING_COST_MULTIPLIER,
-        XP_BOOST_TOTAL, skill_cfg,
+        GLOVES_DOUBLE_CHANCE, ORE_STORAGE_COST_MULTIPLIER, SKILLS,
+        SMITHING_SMELTING_COST_MULTIPLIER, XP_BOOST_TOTAL, skill_cfg,
     )
 except ImportError:  # Direkter Skriptstart (`python market_analysis/analyse.py`)
     from config import (  # type: ignore
         CLAN_GATHERERS_SPEED_BOOST, DAILY_XP_BOOST, EXTRA_YIELD_XP_SHARE,
-        GLOVES_DOUBLE_CHANCE, SKILLS, SMITHING_SMELTING_COST_MULTIPLIER,
-        XP_BOOST_TOTAL, skill_cfg,
+        GLOVES_DOUBLE_CHANCE, ORE_STORAGE_COST_MULTIPLIER, SKILLS,
+        SMITHING_SMELTING_COST_MULTIPLIER, XP_BOOST_TOTAL, skill_cfg,
     )
 
 
@@ -20,6 +20,38 @@ def is_raid_recipe(name: str) -> bool:
 
 def _is_smelting_magic_recipe(skill_name: str, recipe_name: str) -> bool:
     return skill_name == "Smithing" and recipe_name.endswith("_bar")
+
+
+def kosten_faktor(cfg, is_bar_smelt: bool, index: int, item_id, case: str,
+                  excluded_cost_items: frozenset,
+                  schmelz_faktor: float | None = None,
+                  lager_faktor: float | None = None) -> float:
+    """Anteil einer Kostenzeile, der nach allen Ersparnissen uebrig bleibt.
+
+    Eigene Funktion, weil hier drei Upgrades aufeinandertreffen und die Reihenfolge
+    zaehlt. Beim Schmelzen greifen Smelting Magic (30%) und Ore Storage (10%) an
+    derselben Erz-Zeile und werden multiplikativ kombiniert - zusammen bleiben 63%,
+    nicht 60%. Faellt eine Zeile aus Smelting Magic heraus (astronomical_ore) oder
+    wirkt der Perk im Worst Case nur auf die erste Zeile, gilt dort trotzdem noch
+    das Lager: es ist ein eigenes Upgrade und hoert nicht auf zu wirken, nur weil
+    der Perk eine Zeile auslaesst.
+
+    Ausserhalb des Schmelzens zaehlt `cfg.cost_multiplier` (beim Farming: Potion of
+    Trickery + Seed Storage, s. FARMING_COST_MULTIPLIER).
+
+    Die beiden Faktoren sind uebergebbar, damit ein Test die Regel mit eingeschalteten
+    Upgrades messen kann. Ohne das prueft er nur, dass zwei ausgeschaltete Upgrades
+    beide 1.0 ergeben - und das haelt auch, wenn die Regel falsch ist.
+    """
+    if not is_bar_smelt:
+        return cfg.cost_multiplier
+    schmelzen = SMITHING_SMELTING_COST_MULTIPLIER if schmelz_faktor is None else schmelz_faktor
+    lager = ORE_STORAGE_COST_MULTIPLIER if lager_faktor is None else lager_faktor
+    if item_id in excluded_cost_items:
+        return lager
+    if case == "best" or index == 0:
+        return schmelzen
+    return lager
 
 
 def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
@@ -53,15 +85,8 @@ def normalize_recipe(skill_name: str, raw_recipe: dict, case: str = "best",
         skill_name, raw_recipe.get("Name", ""))
     costs = []
     for index, cost in enumerate(raw_recipe.get("Costs") or []):
-        if is_bar_smelt:
-            if cost.get("Item") in excluded_cost_items:
-                multiplier = 1.0
-            elif case == "best" or index == 0:
-                multiplier = SMITHING_SMELTING_COST_MULTIPLIER
-            else:
-                multiplier = 1.0
-        else:
-            multiplier = cfg.cost_multiplier
+        multiplier = kosten_faktor(cfg, is_bar_smelt, index, cost.get("Item"),
+                                   case, excluded_cost_items)
         costs.append({
             "Item": cost.get("Item"),
             "Amount": cost.get("Amount", 0) * multiplier,

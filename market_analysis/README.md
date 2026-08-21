@@ -17,13 +17,22 @@ python market_analysis/analyse.py
 | Datei | Zweck |
 |---|---|
 | `analyse.py` | Hauptlauf: API → Rechnung → Excel + Chart |
+| `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten – die rechnende Schicht |
 | `recipes.py` | Reine, separat getestete Rezept-Normalisierung |
 | `orderbook.py` | Reine Orderbuch-, Geduld- und Trendberechnungen |
+| `history.py` | Laufhistorie in SQLite: was das Überschreiben der Excel-Datei verliert |
 | `verify.py` | Einzelne Items nachrechnen: jeder Zwischenschritt, dazu eine Ingame-Checkliste |
 | `apicheck.py` | Prüft, ob die API noch die erwarteten Felder liefert |
 
 `config.py` enthält alles Einstellbare – Skills, Upgrades, Schwellenwerte. Die anderen
 Dateien musst du normalerweise nicht anfassen.
+
+**Warum `pricing.py` und `history.py` eigene Module sind:** dort stehen die
+Entscheidungen, an denen der ganze Lauf hängt – an wen wird verkauft, was kostet eine
+Zutat, was kostet eine Kette. Solange sie in `analyse.py` zwischen DataFrames und
+Excel-Formatierung lagen, waren sie nur prüfbar, wenn pandas installiert ist; die CI
+installiert es nicht, also lief genau der rechnende Teil in keinem Test. Beide Module
+kommen ohne pandas, Excel und Netz aus und stehen deshalb in `test_market_analysis.py`.
 
 ```bash
 python market_analysis/verify.py oak titanium_bar tuna   # beliebige Rezeptnamen
@@ -119,15 +128,28 @@ Umfang über `REASON_TOP_N` in `config.py`, abschalten mit `SHOW_REASON_ANALYSIS
 
 ### Steuer
 
-Der Player Shop zieht **1 % vom Verkaufserlös** ab (ab 100 Gold Gesamtwert), der
-NPC-Vendor nicht. Das ist überall eingerechnet: im Gold/h, in den Ø-Preis-Spalten, in der
-Preis-Sensitivität und beim Durchrechnen des Orderbuchs. Materialkosten bleiben
-unberührt – Kaufangebote sind steuerfrei.
+Der Player Shop zieht **1 % vom Verkaufserlös** ab, aber **erst ab 100 Gold
+Gesamtwert** eines Angebots; der NPC-Vendor nie. Beides ist überall eingerechnet: im
+Gold/h, in den Ø-Preis-Spalten, in der Preis-Sensitivität und beim Durchrechnen des
+Orderbuchs. Materialkosten bleiben unberührt – Kaufangebote sind steuerfrei.
 
-Spalten mit `(brutto)` zeigen den Preis wie im Spiel, alles andere ist der Nettoerlös.
-Der Vergleich Spieler gegen NPC läuft netto gegen netto, sonst wäre er systematisch
-zugunsten des Player Shops verzerrt. Bei knappen Fällen kippt das die Entscheidung
-Richtung NPC. Satz änderbar über `PLAYER_MARKET_TAX` in `config.py`.
+**Die Untergrenze hängt an der Menge, nicht am Stückpreis.** `net_player_price(preis,
+menge)` bekommt deshalb die Stückzahl mit – typisch eine Stunde Produktion, denn das
+ist die Menge, die man am Stück anbietet. Ein einzelner Eichenstamm zu 76 g ist
+steuerfrei, dieselben 76 g mal 500 Stück in einem Angebot nicht. Vorher wurde die
+Grenze schlicht ignoriert („ein Stundenertrag liegt immer darüber"), und damit verlor
+jedes billige Item bei jedem Vergleich 1 %, die es im Spiel nie zahlt.
+
+**Netto wird nur mit Netto verglichen und Brutto nur mit Brutto.** Spalten mit
+`(brutto)` zeigen den Preis wie im Spiel, alles andere ist der Nettoerlös. Der
+Vergleich Spieler gegen NPC läuft netto gegen netto, sonst wäre er zugunsten des Player
+Shops verzerrt. Umgekehrt sind die 1-/7-/30-Tage-Durchschnitte aus der API **Brutto**
+– `price_position()` bekommt deshalb den Bruttopreis. Mit dem Nettoerlös gefüttert
+meldete es bei jedem Item dieselben −1 %, also einen Messfehler, der wie eine Marktlage
+aussieht.
+
+Satz und Untergrenze änderbar über `PLAYER_MARKET_TAX` und
+`PLAYER_MARKET_TAX_MIN_TOTAL` in `config.py`.
 
 **Rohdaten vs. Ketten:** Rohdaten kauft Zutaten am Markt, Ketten farmt sie selbst. Für
 `titanium_bar` heisst das: Rohdaten zieht 3 Erz + 9 Kohle vom Umsatz ab, Ketten rechnet
@@ -181,13 +203,39 @@ Abgleich der Config gegen das offizielle Wiki – alles unten **stimmt mit dem C
 | NPC-Boost | `1.10 × 1.05 = 1.155` | „An offer they can't refuse" +10 %, Potion of negotiation +5 % |
 | Marktsteuer | `PLAYER_MARKET_TAX = 0.01`, nur beim Verkauf | 1 % ab 100 Gold, Kaufangebote steuerfrei |
 | Skilling-Handschuhe | `GLOVES_DOUBLE_CHANCE = 0.05`, multiplikativ zum `yield_multiplier` | 5 % doppelte Beute, **stapelt auf** Fisherman/Lumberjack; gibt **keine** XP |
-| Smelting Magic | `1.0 - 0.3` (höchster Tier) | 10–30 % je Tier, Tiers stapeln **nicht**, neuester überschreibt |
+| Smelting Magic | `SMELTING_MAGIC_SAVE = 0.30` (höchster Tier) | 10–30 % je Tier, Tiers stapeln **nicht**, neuester überschreibt |
 | Astronomical ore | `SMELTING_MAGIC_EXCLUDED_ITEM_NAMES` | vom Perk ausgenommen |
 | Fisherman/Lumberjack | XP wird **nicht** mit `yield_factor` multipliziert | „XP is only given for ONE fish/log" |
 
 **Nicht per Wiki belegbar** (Seiten liefern 403, Werte sind account-/tierabhängig): die
 Tier-Prozente von The fisherman / The lumberjack / Power forager (Config nimmt
-100 %/100 %/50 %), Farming trickery 50 %, sowie `AUTO_COOK_CHANCE`.
+100 %/100 %/50 %) sowie `AUTO_COOK_CHANCE`.
+
+### Material-Ersparnisse (Stand 18.08.2026)
+
+Drei Upgrades sparen Material, und **jedes ist ein eigener Schalter** – wer Trickery
+hat, hat deshalb noch lange kein Seed Storage. Ein gemeinsamer „Materialkosten"-Prozent
+wäre kürzer und liesse sich für den eigenen Account nicht mehr richtig einstellen.
+
+| Upgrade | Schalter | spart | wirkt auf |
+|---|---|---|---|
+| Potion of Trickery | `POTION_OF_TRICKERY_ACTIVE` | 25 % (vorher 50 %) | Saatgut beim Farming |
+| Seed Storage | `SEED_STORAGE_ACTIVE` | 10 % | Saatgut beim Farming |
+| Ore Storage | `ORE_STORAGE_ACTIVE` | 10 % | Erz-Zeile der `*_bar`-Rezepte |
+| Smelting Magic | `SMELTING_MAGIC_ACTIVE` | 30 % | Erz-Zeile der `*_bar`-Rezepte |
+
+**Kombiniert wird multiplikativ** (`spar_faktor`): zwei Upgrades, die je 10 % sparen,
+sparen zusammen 19 %, nicht 20 % – jedes greift auf das, was nach dem vorigen noch
+übrig ist. Dieselbe Regel wie bei Clan- und Equipment-Boost auf der Zeitseite, und dort
+per Stoppuhr bestätigt.
+
+- Trickery + Seed Storage → **0,675** der Samen (`FARMING_COST_MULTIPLIER`)
+- Smelting Magic + Ore Storage → **0,63** des Erzes (`SMITHING_SMELTING_COST_MULTIPLIER`)
+
+**Wo Smelting Magic nicht greift, greift das Lager trotzdem.** Astronomical ore ist vom
+Perk ausgenommen, und im Worst Case wirkt er womöglich nur auf die erste Kostenzeile –
+Ore Storage ist ein eigenes Upgrade und hört dort nicht auf zu wirken
+(`ORE_STORAGE_COST_MULTIPLIER`, siehe `kosten_faktor` in `recipes.py`).
 
 ### „Better fisherman" / „Better lumberjack"
 
@@ -269,6 +317,56 @@ Das ist **keine Prognose**, nur Kontext. Der Trend wird nur ausgesprochen, wenn 
 soll nicht wie ein Trend aussehen. Beides kommt aus derselben Antwort wie das Orderbuch
 und kostet keinen zusätzlichen Request.
 
+## Historie
+
+Excel und Chart werden bei **jedem Lauf überschrieben** – das bleibt so, sie beantworten
+„was farme ich jetzt", und dafür ist ein Stand genug. Was dabei verloren ging, ist die
+zweite Frage: **„war das gestern auch schon so?"** Ein Preissturz sieht in einer
+Momentaufnahme genauso aus wie ein dauerhaft schlechtes Item.
+
+Deshalb liegt neben den Dateien eine SQLite-Datenbank, `output/market_history.sqlite`.
+Datierte Excel-Kopien wären der naheliegende und der falsche Weg: hundert `.xlsx` im
+Ordner beantworten keine einzige Frage, ohne dass man sie alle öffnet.
+
+| Tabelle | Inhalt |
+|---|---|
+| `runs` | ein Eintrag je Lauf: Zeitpunkt, Codeversion, Config-Hash, Anzahl Items |
+| `items` | je Item und Lauf: Preise, Volumen, NPC-Preis, Kosten, Gold/h, gemessenes Gold/h, Verkaufsweg, Rang, Warnungen |
+| `orderbook` | Gebots- und Angebotsstufen – nur für die `HISTORY_ORDERBOOK_TOP_N` besten Kandidaten |
+| `daily` | verdichtete Tageswerte, wenn die Detailzeilen zu alt geworden sind |
+
+Drei Regeln tragen das:
+
+- **Nur erfolgreiche Läufe.** Geschrieben wird ganz am Ende, nach dem Excel-Export, in
+  **einer Transaktion**. Bricht der Lauf vorher ab, steht nichts in der Datenbank – ein
+  halber Lauf sähe in der Zeitreihe wie ein Markteinbruch aus. Keine Statusspalte, die
+  jemand auswerten müsste, sondern gar kein Eintrag.
+- **Jeder Lauf trägt Codeversion und Config-Hash.** Der Hash geht über die rechen­
+  relevanten Werte (`CONFIG_HASH_KEYS`), nicht über die ganze Datei – Pfade und Farben
+  ändern keine Zahl. Ohne die beiden vergleicht man Zahlen, die unter verschiedenen
+  Annahmen entstanden sind, und hält eine geänderte Ersparnis für eine Marktbewegung.
+- **Alte Details werden zu Tageswerten und verschwinden.** Erst zusammenfassen, dann
+  löschen – in der anderen Reihenfolge wären die Tageswerte für genau die Tage leer,
+  die man aufhebt, und aufgefallen wäre es nach 90 Tagen.
+
+| Was | Wie lange | Schalter |
+|---|---|---|
+| Detailzeilen je Item | 90 Tage, danach zu Tageswerten verdichtet | `HISTORY_DETAIL_DAYS` |
+| Orderbuchstufen | 30 Tage | `HISTORY_ORDERBOOK_DAYS` |
+| Tageswerte | 365 Tage | `HISTORY_DAILY_DAYS` |
+| Laufprotokolle | die jüngsten 100 | `HISTORY_RUN_LIMIT` |
+
+Das Orderbuch kostet **keinen zusätzlichen Request**: gespeichert wird, was das Sheet
+„Begründung" ohnehin schon abgerufen hat. Abschalten mit `HISTORY_ENABLED = False`;
+schlägt das Schreiben fehl, kostet das nur die Historie – die Excel-Datei steht da schon.
+
+```python
+from market_analysis import history
+conn = history.oeffne()
+history.verlauf(conn, "yew_log")      # Preise und Gold/h über die Zeit
+history.letzte_laeufe(conn, 5)        # wann, mit welchem Code, welcher Config
+```
+
 ## Offene Punkte
 
 **Reichweite von Smelting Magic.** Der Perk spart 30 % Erz beim Ore→Bar-Schmelzen. Unklar
@@ -289,8 +387,8 @@ Betrifft nur `XP/h` und `Gold per XP`, **nicht** Gold/h.
 **Daily Boost.** Das Wiki nennt +30 % XP für 2 h, gemessen wurden +4 %. Steht auf
 `DAILY_BOOST_ACTIVE = False` und betrifft ebenfalls nur die XP-Spalten.
 
-**Brewing-Werkzeug.** Unbekannt, ob es eins gibt → konservativ ohne (55 %). Falls doch:
-`has_tool=True` setzen.
+**Brewing-Werkzeug.** Erledigt (18.08.2026): Brewing hat ein eigenes Werkzeug,
+`has_tool=True`, also 61 % statt 55 %.
 
 ## Bekannte Vereinfachungen
 
@@ -308,20 +406,54 @@ als „kein Spielerverkauf".
 Die Flags einzelner Items prüfst du mit `python market_analysis/apicheck.py`
 (Abschnitt 2b, Liste in `ITEM_FLAG_CHECKS`).
 
-**`MIN_SELL_VOLUME` misst nur die Spitze des Orderbuchs.** Das API-Feld `buyVol` ist die
-Menge *am besten Gebot*, nicht die Tiefe. Beispiel Oak: bestes Gebot 76 g für 6.178 Stück
-– unter der Schwelle von 10.000 –, während direkt darunter 327.915 Stück zu 70 g liegen
-und das Tagesvolumen bei 174.303 steht. Das Item kippt dann auf den NPC-Preis und fällt
-von 258.462 auf 51.063 Gold/h, obwohl es bestens handelbar ist.
+**Ein dünnes Top-Gebot ist eine Warnung, kein Ausschluss** (war einmal umgekehrt).
+Das API-Feld `buyVol` ist die Menge *am besten Gebot*, nicht die Tiefe des Buchs.
+Beispiel Oak: bestes Gebot 76 g für 6.178 Stück, während direkt darunter 327.915 Stück
+zu 70 g liegen und das Tagesvolumen bei 174.303 steht.
 
-Der Lauf warnt inzwischen bei solchen Grenzfällen. Wer per Sell-Order statt Sofortverkauf
-handelt, sollte die Schwelle deutlich senken und sich stattdessen an den Ø-Preis-Spalten
-und `LiquidityWarning` orientieren.
+Früher verlangte `MIN_SELL_VOLUME = 10000` genau diese Spitze und warf alles darunter
+auf den NPC-Preis – Oak fiel damit von 258.462 auf 51.063 Gold/h, `yew_log` und
+`yew_plank` genauso, obwohl alle drei bestens handelbar sind. Die Grenze war ausserdem
+eine feste Stückzahl ohne Bezug zur Produktion: 10.000 Stück sind bei 200 Stk/h zwei
+Tage Vorrat und bei 40.000 Stk/h eine Viertelstunde.
 
-**Auto-Cook wirft den rohen Rest weg.** Ein Fischzug liefert je zur Hälfte gekochten und
-rohen Fisch; die Kette rechnet immer nur eine Hälfte. Bei tuna: 154.170 Gold/h
-ausgewiesen, mit beiden Hälften wären es ~198.800. Die Ketten sind hier also eher
-zu pessimistisch.
+Heute gilt: **verkauft wird ins Gebot, also zählt nur die Gebotsseite** – `buy` und
+`buyVol`, nie `sell`/`sellVol` (`valid_sell_market`). Es muss überhaupt ein Gebot geben
+(`MIN_SELL_BID_VOLUME`), mehr nicht. Deckt das Top-Gebot weniger als `THIN_BID_HOURS`
+Stunden Produktion, steht das als Warnung `Top-Gebot dünn` in Empfehlung und Rohdaten.
+Wie tief das Buch wirklich ist, weiss der Bulk-Endpoint gar nicht – das misst das Sheet
+**Begründung**, indem es eine Stunde Produktion durch die echten Gebotsstufen verkauft.
+
+Umgekehrt zählt beim **Einkauf** von Zutaten nur die Angebotsseite
+(`valid_buy_market`, `MIN_BUY_ASK_VOLUME`). Beides in einem Filter zu vermischen war
+der eigentliche Fehler.
+
+**Auto-Cook verkauft den rohen Rest mit** (war einmal umgekehrt). Ein Fischzug liefert
+je zur Hälfte gekochten und rohen Fisch. Die Kette rechnete lange nur eine Hälfte und
+war damit rund ein Drittel zu pessimistisch – bei tuna 154.170 statt ~198.800 Gold/h.
+
+Der rohe Rest geht jetzt als `Nebenertrag/h` in die Kette ein, über denselben
+Verkaufsweg wie jedes andere Item (Gebot oder NPC, je nachdem was mehr bringt). Auf
+`AUTO_COOK_SELL_RAW_REST = False` steht wieder die alte Rechnung da.
+
+**Gold ist ein Item, kein Sonderfall der Rechnung.** Die API führt Gold als
+`ItemId 19`, und Carpentry-Rezepte zahlen damit (Nägel, Leim). Ein Markteintrag
+existiert dafür natürlich nicht – die Zeile fiel deshalb unter „Preis unbekannt" und
+kostete **nichts**, womit die betroffenen Rezepte billiger aussahen, als sie sind. Ein
+Gold kostet ein Gold (`GOLD_ITEM_ID`, `GOLD_ITEM_PRICE`).
+
+Es zählt voll in die Kosten, lässt die Kette aber **autark**: Gold kauft man nicht am
+Markt und farmt es auch nicht als Zutat. Sonst trüge jedes Carpentry-Rezept die Warnung
+„Zutat muss gekauft werden" für seine Nägel – und eine Warnung, die immer ansteht,
+warnt nicht mehr.
+
+**Ein unbekannter Zutatenpreis ist keine kostenlose Zutat.** Findet sich für eine
+Kostenzeile kein Preis (kein Markteintrag, kein Angebot), bleibt `Gold/h` **leer** statt
+0, und die fehlende Zutat steht beim Namen in `FehlendeZutaten` und in
+`AusschlussGrund`. Vorher rutschte die Zeile stillschweigend mit 0 durch, und das
+Rezept stand mit vollem Gewinn in der Rangliste – genau dort, wo man am wenigsten
+nachrechnet. Solche Items können nicht ranken und fehlen deshalb in **Empfehlung** und
+**Begründung**; im Ketten- und Rohdaten-Sheet stehen sie mit Grund.
 
 **Rezeptauswahl rein nach Zeit.** Produzieren mehrere Skills dasselbe Item, nimmt die
 Kettenanalyse den schnellsten Weg – der kann teurer und in Summe schlechter sein. Im
@@ -353,5 +485,11 @@ Neues Werkzeug für einen Skill:
 ```
 
 Skill komplett ignorieren: `excluded=True`. Andere Smelting-Magic-Stufe:
-`SMITHING_SMELTING_COST_MULTIPLIER`. Langzeit-Durchschnitte in den Rohdaten:
-`SHOW_LONGTERM_AVERAGES = True` – kostet einen Request pro Item, also Minuten.
+`SMELTING_MAGIC_SAVE`. Material-Ersparnisse ein- und ausschalten:
+`POTION_OF_TRICKERY_ACTIVE`, `SEED_STORAGE_ACTIVE`, `ORE_STORAGE_ACTIVE`.
+Langzeit-Durchschnitte in den Rohdaten: `SHOW_LONGTERM_AVERAGES = True` – kostet einen
+Request pro Item, also Minuten.
+
+Die Ersparnis-Schalter sind der Teil, den man nach jedem Upgrade-Kauf anfasst; sie
+gehen in den Config-Hash der Historie ein, damit ein Sprung im Gold/h später als
+Config-Änderung erkennbar bleibt und nicht als Marktbewegung.
