@@ -249,14 +249,27 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(state["kategorien"], ["Helme", "Traenke"])
 
     def test_category_fields_offer_existing_and_free_text(self):
+        """Kategorie: vorhandene vorschlagen, neue trotzdem tippbar.
+
+        Geprüft wird die EIGENSCHAFT, nicht der Name einer Hilfsfunktion: ein
+        `<input>` mit `list=` schlägt vor, ohne die Eingabe einzuschränken —
+        ein `<select>` täte das Gegenteil. Vorher stand hier der Aufruf
+        `kategoriefeld("Kategorie"`; seit die Kategorie in der Item-Maske
+        steht, gibt es diese Funktion nicht mehr, und der Test fiel um, obwohl
+        die Eigenschaft unverändert galt.
+        """
         js = (Path(self.old_cwd) /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         self.assertIn('el("datalist"', js)
         self.assertIn("SC.kategorien.map", js)
-        self.assertIn('kategoriefeld("Kategorie"', js)
-        self.assertIn('list: kategorienId', js)
-        self.assertIn("Auswählen oder neu eingeben", js)
+        # Beide Stellen, an denen man eine Kategorie eingibt: die Maske in der
+        # Item-Liste und die Lern-Vorschau. Jede hängt an ihrer eigenen
+        # Listen-id — ein <datalist> gilt nur für die id, die es trägt.
+        self.assertIn("list: listenId", js)
+        self.assertIn("list: kategorienId", js)
+        self.assertIn('placeholder: "Kategorie"', js)
+        self.assertIn("Kategorie auswählen oder neu eingeben", js)
 
     def test_priority_zero_shifts_only_the_same_category(self):
         self.bridge.items = {

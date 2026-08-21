@@ -1266,7 +1266,9 @@ for _feld18, _was18 in (('setze("name"', "Name"), ('setze("kategorie"', "Kategor
 _insp18 = _html18[_html18.index("function scanInspItem("):]
 _insp18 = _insp18[:_insp18.index("\nfunction scanInspScan(")]
 check("der Inspektor baut kein zweites Namensfeld", 'feld("Name"' not in _insp18)
-check("und kein zweites Kategoriefeld", "kategoriefeld(" not in _insp18)
+# Eigenschaft statt Funktionsname: der Inspektor baut ueberhaupt kein
+# Eingabefeld mit Vorschlagsliste mehr — das ist die Kategorie.
+check("und kein zweites Kategoriefeld", "list:" not in _insp18)
 check("und kein zweites Prioritaetsfeld", "prioritaetsfeld(" not in _insp18)
 check("er sagt stattdessen, wo sie stehen",
       "links in der Item-Liste" in _insp18)

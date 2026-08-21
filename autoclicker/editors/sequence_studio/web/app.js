@@ -121,20 +121,6 @@ function kategorienListe(id, zusatz) {
     kategorienWerte(zusatz).map((k) => el("option", {value: k})));
 }
 
-function kategoriefeld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
-  const listenId = "item-kategorien";
-  const eingabe = el("input", Object.assign({
-    value: wert || "", list: listenId, autocomplete: "off",
-    placeholder: "Auswählen oder neu eingeben",
-    title: "Bestehende Kategorie auswählen oder eine neue eingeben",
-  }, extra || {}));
-  eingabe.addEventListener("change", () => beim_setzen(eingabe.value));
-  eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-  return el("label", {class: "feld kategoriefeld"},
-    beschriftet(beschriftung, hilfe, schluessel), eingabe, kategorienListe(listenId),
-    el("small", {class: "eingabe-hilfe"}, "Vorhandene auswählen oder neue Kategorie tippen"));
-}
-
 function itemsDerKategorie(kategorie) {
   return SC.items.filter((i) => (i.kategorie || "") === (kategorie || ""))
     .slice().sort((a, b) => a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de"));

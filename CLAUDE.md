@@ -13,7 +13,9 @@ UI-Texte sind **Deutsch** — neue Strings ebenso.
 ## Run / Lint / Test
 
 ```bash
-python tools/test_logic.py      # DIE Test-Suite — laeuft auch auf Linux/Mac, Exit 0 = gruen
+python tools/test_logic.py      # Die Vertragssuite — laeuft auch auf Linux/Mac, Exit 0 = gruen
+python -m unittest test_*.py    # Die unittest-Module im Projektstamm — ZWEITE Suite,
+                                # laeuft in CI nur in der Variante MIT Bildpaketen
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
                                 # Linter (= pyflakes, aber mit noqa)
 
@@ -29,7 +31,18 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
 ```
 
-**`tools/test_logic.py` vor jedem Commit laufen lassen.** Es prüft Serialisierung,
+**Es sind ZWEI Suiten, und vor einem Commit laufen beide.** `python tools/test_logic.py`
+**und** `python -m unittest test_*.py` — die zweite sind die `test_*.py` im
+Projektstamm (Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung).
+
+Das steht hier so deutlich, weil genau diese Lücke schon einmal einen roten CI-Lauf
+gekostet hat: `tools/test_logic.py` war grün, gemeldet wurde „alles grün", und die
+Wurzelmodule liefen nie. In `.github/workflows/tests.yml` hängen sie an der Achse
+`bilder: mit` — die `ohne`-Variante startet nur die Vertragssuite, weil zwei
+Wurzelmodule PIL schon beim Import brauchen. **Ein grüner Lauf ohne Bildpakete sagt
+also nichts über die zweite Suite.**
+
+**`tools/test_logic.py`** prüft Serialisierung,
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
 deshalb läuft die komplette Logik-Schicht auch hier.
