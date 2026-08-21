@@ -1230,15 +1230,12 @@ SKILL_LEVEL_COLUMNS = ["Skill", "Level", "Item", "Gold/h", "Gold/h_Worst", "Gold
 def export_market_values(df: pd.DataFrame, path: str) -> int:
     """Schreibt eine schlanke Item-Name -> Gold-pro-Stueck-Tabelle als JSON.
 
-    Zweck: der Autoclicker sortiert seine Item-Klicks bisher nach einer von Hand
-    getippten Prioritaetszahl. Diese Datei erlaubt ihm, stattdessen nach dem
-    tatsaechlichen Wert zu sortieren - ohne dass eine der beiden Seiten die andere
-    importiert. Die Analyse schreibt nur in ihren eigenen output/-Ordner und weiss
-    nichts davon, ob je jemand die Datei liest.
+    Der Autoclicker kann seine Item-Klicks danach sortieren statt nach einer von
+    Hand getippten Prioritaetszahl — ohne dass eine Seite die andere importiert.
 
-    Absichtlich nur Name -> Zahl: alles Weitere (Skill, Level, Kosten) waere fuer die
-    Klick-Reihenfolge bedeutungslos, und eine schmale Datei kann nicht veralten wie
-    eine breite. Gibt die Anzahl geschriebener Eintraege zurueck.
+    Absichtlich nur Name -> Zahl: alles Weitere waere fuer die Klick-Reihenfolge
+    bedeutungslos, und eine schmale Datei kann nicht veralten wie eine breite.
+    Gibt die Anzahl geschriebener Eintraege zurueck.
     """
     if df is None or df.empty or "Item" not in df.columns:
         return 0

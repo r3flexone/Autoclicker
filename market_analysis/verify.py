@@ -1,22 +1,13 @@
-"""
-Einzelitem-Nachrechnung fuer analyse.py
+"""Einzelitem-Nachrechnung fuer analyse.py
 
-Schluesselt fuer einzelne Rezepte den kompletten Rechenweg auf: Rohwerte aus der API ->
-jeder angewendete Boost -> Endergebnis. Dazu die konkreten Zahlen, die man ingame
-gegenpruefen kann, um die verbliebenen Annahmen (Speed-Formel, Smelting-Magic-Reichweite,
-Auto-Cook-Chance) zu bestaetigen oder zu widerlegen.
+Schluesselt fuer einzelne Rezepte den Rechenweg auf: Rohwerte aus der API ->
+jeder angewendete Boost -> Endergebnis, samt der Zahlen, die man ingame
+gegenpruefen kann. Fuer "warum steht bei Item X dieses Gold/h?".
 
-Gedacht fuer "warum steht bei Item X dieses Gold/h?" - der Excel-Export zeigt nur das
-Ergebnis, hier sieht man jeden Zwischenschritt.
+Schwerpunkt ist die KETTE (alles selbst gefarmt): Abschnitt 5 zeigt Zeitanteil
+und Gold/h, Abschnitt 6 die Ingame-Checkliste fuer jeden Schritt darin. Der
+Einzelschritt (3/4, Zutaten zum Ask-Preis) bleibt als Vergleich stehen.
 
-Der Schwerpunkt liegt auf der KETTE (alles selbst gefarmt, nichts zugekauft): Abschnitt 5
-zeigt Zeitanteil und Gold/h der Kette, Abschnitt 6 die Ingame-Checkliste fuer JEDEN
-Schritt darin. Der Einzelschritt (Abschnitte 3/4) bleibt als Vergleich stehen - dort
-werden Zutaten zum Ask-Preis eingekauft.
-
-Braucht dieselben Pakete wie analyse.py (wird importiert).
-
-Aufruf:
     python market_analysis/verify.py                  # Standard-Auswahl
     python market_analysis/verify.py oak titanium_bar # beliebige Rezeptnamen
 """

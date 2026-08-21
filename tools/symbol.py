@@ -1,23 +1,16 @@
 """Schreibt das Programm-Symbol als PNG und ICO — für Verknüpfungen unter Windows.
 
     python tools/symbol.py                 -> symbol/ mit PNGs und autoclicker.ico
-    python tools/symbol.py --ziel C:\\Bilder
+    python tools/symbol.py --ziel C:\Bilder
     python tools/symbol.py --groessen 256,512
 
-Das Symbol im Fenster und in der Taskleiste setzt die App selbst
-(`winapi.setze_fenster_symbol`) — dafür braucht es diese Dateien **nicht**. Sie
-sind für alles, was Windows aus einer Datei nimmt: eine Verknüpfung auf dem
-Desktop, ein angehefteter Eintrag, ein Ordnerbild.
+Fenster und Taskleiste setzt die App selbst; diese Dateien sind für alles, was
+Windows aus einer Datei nimmt (Verknüpfung, angehefteter Eintrag, Ordnerbild).
 
-Gerastert wird direkt aus derselben SVG-Datei, die auch die Weboberfläche zeigt
-(`autoclicker/symbol.py` übernimmt das ohne Zusatzbibliothek). Deshalb liegt
-hier keine fertige Binärdatei im Repo: sie wäre eine Kopie, die beim nächsten
-Logo-Entwurf wieder veralten könnte.
-
-Ohne Pillow läuft es trotzdem — PNG und ICO werden dann von Hand
-zusammengesetzt (beides sind einfache Formate, wenn man sich auf unkomprimiert
-bzw. eingebettete PNGs beschränkt). Das ist kein Selbstzweck: wer sich ein
-Symbol für eine Verknüpfung holt, soll dafür nichts installieren müssen.
+Gerastert wird aus derselben Geometrie wie die Weboberfläche
+(`autoclicker/symbol.py`) — deshalb liegt hier keine Binärdatei im Repo, die
+beim nächsten Logo-Entwurf veraltet. Ohne Pillow läuft es trotzdem: PNG und ICO
+werden dann von Hand zusammengesetzt.
 """
 
 import argparse

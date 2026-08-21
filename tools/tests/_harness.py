@@ -1,21 +1,13 @@
 """Das Gerüst, das alle Test-Module teilen: Stubs, Zähler, `check`, `section`.
 
-**Warum es das gibt.** `tools/test_logic.py` war mit über 7.000 Zeilen die grösste
-Datei des Repos — mehr als jedes Produktivmodul. Eine Datei war die richtige
-Entscheidung (ein Aufruf, kein Framework, keine Abhängigkeit), aber die
-Namenskonvention war bereits das Symptom: Variablen mit laufender Nummer
-(`_b18`, `_z18`, `_sand18`) sind das, was man tut, wenn der Namensraum voll ist.
-
 Der Einstiegspunkt bleibt genau einer — `python tools/test_logic.py`. Neue
-Sektionen kommen in ein eigenes Modul unter `tools/tests/`, das hier sein Gerüst
-holt und am Ende von `test_logic.py` importiert wird. Die Zähler leben in DIESEM
-Modul, nicht im Aufrufer: sonst zählte jedes Modul für sich und die Schlusszeile
-sähe nur den letzten Stand.
+Sektionen kommen in ein eigenes Modul unter `tools/tests/`, das hier sein
+Gerüst holt und am Ende von `test_logic.py` importiert wird. Die Zähler leben
+in DIESEM Modul: sonst zählte jedes Modul für sich.
 
-**Die Stubs müssen vor dem ersten `autoclicker`-Import stehen.** Deshalb macht
-dieses Modul sie beim Import — wer `from ._harness import check` schreibt, hat sie
-damit schon. Ein Test-Modul, das vorher etwas aus `autoclicker` importiert, bricht
-auf Linux mit `ModuleNotFoundError: msvcrt` ab.
+Die Stubs müssen vor dem ersten `autoclicker`-Import stehen, deshalb macht
+dieses Modul sie beim Import. Ein Test-Modul, das vorher etwas aus
+`autoclicker` importiert, bricht auf Linux mit `ModuleNotFoundError: msvcrt` ab.
 
 So sieht ein neues Modul aus:
 

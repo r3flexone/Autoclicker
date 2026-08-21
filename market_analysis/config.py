@@ -64,15 +64,10 @@ def equip(has_tool: bool = True) -> float:
 GLOVES_DOUBLE_CHANCE = 0.05          # alle Skilling-Handschuhe
 CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur is_gathering=True
 
-# "Better fisherman" / "Better lumberjack": geben 25% XP fuer die ZUSAETZLICHE Beute
-# zurueck, die The fisherman / The lumberjack einbringen. Ohne diese Perks gibt es fuer
-# das doppelte Stueck ueberhaupt keine XP ("XP is only given for ONE fish", Wiki).
-#
-# Wirkt nur auf den yield_multiplier, NICHT auf die Handschuh-Verdopplung: der Perk ist
-# laut Wiki an The fisherman/The lumberjack gekoppelt, nicht an die Handschuhe.
-#
-# Standardmaessig AUS, weil es ein eigener Kauf ist — nicht jeder mit Fisherman hat auch
-# Better fisherman. Besitzt du sie, hier extra_yield_xp=True beim jeweiligen Skill setzen.
+# "Better fisherman"/"Better lumberjack": 25% XP fuer die ZUSAETZLICHE Beute aus The
+# fisherman/The lumberjack (ohne die Perks gibt es dafuer gar keine XP). Wirkt nur auf
+# den yield_multiplier, nicht auf die Handschuh-Verdopplung. Standardmaessig AUS, weil
+# es ein eigener Kauf ist - besitzt du sie, extra_yield_xp=True beim Skill setzen.
 EXTRA_YIELD_XP_SHARE = 0.25
 
 XP_BOOST_TOTAL = 0.25 + 0.25         # Clan house + House
@@ -185,25 +180,15 @@ LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 SHOW_PRICE_SENSITIVITY_CHART = True   # PNG + Excel-Sheet, 1 Request je Top-N-Item
 PRICE_SENSITIVITY_TOP_N = 10
 
-# Farben der Item-Linien im Sensitivitaets-Chart. Feste Reihenfolge, NICHT zyklisch
-# ueber matplotlibs Standardzyklus - der vergibt an Position 4 ein Rot, und Rot ist hier
-# fuer die NPC-Markierung reserviert. Eine Linie in dieser Farbe war von der Markierung
-# nicht zu unterscheiden.
+# Farben der Item-Linien im Sensitivitaets-Chart. Feste Reihenfolge statt matplotlibs
+# Standardzyklus: der vergibt an Position 4 ein Rot, und Rot gehoert hier der
+# NPC-Markierung. Ausgeschlossen ist alles, was mit NPC_MARKER_COLOR verwechselbar ist
+# (Grenze Delta-E 10 bei Normalsicht) - die Markierung traegt ihre Form.
 #
-# Ausgeschlossen ist nicht "Rot" als Familie, sondern nur, was mit NPC_MARKER_COLOR
-# verwechselbar ist. Die Grenze liegt bei Delta-E 10 (Normalsicht): am naechsten kommt
-# orange mit 10.8, dann altrosa 12.8, dunkelorange 13.9, weinrot 15.5, der Rest darueber.
-# Dass Serienfarben naeher an einer Status-Farbe liegen duerfen als Serien untereinander,
-# ist so vorgesehen - die Markierung wird durch ihre FORM getragen (dicker Punkt mit
-# weissem Ring gegen duenne Linie) plus Legendeneintrag, nicht durch den Farbabstand.
-# Das Standard-Rot von matplotlib bleibt draussen: das war identisch mit der Markierung.
-#
-# Die REIHENFOLGE ist kein Geschmack, sondern der Sicherheitsmechanismus: geprueft werden
-# BENACHBARTE Paare, und aehnliche Toene (blau/hellblau, violett/lila, gelb/oliv,
-# magenta/altrosa, orange/dunkelorange) duerfen sich deshalb nicht beruehren. Diese
-# Anordnung legt zusaetzlich die kraeftigen Farben nach vorn - bei TOP_N=10 kommen genau
-# die ersten zehn zum Einsatz. Wer umsortiert oder ergaenzt, prueft neu.
-# Schlechtestes benachbartes Paar: Delta-E 9.1 farbfehlsichtig, 15.6 normalsichtig.
+# Die REIHENFOLGE ist der Sicherheitsmechanismus: geprueft werden BENACHBARTE Paare,
+# aehnliche Toene duerfen sich also nicht beruehren, und die kraeftigen Farben stehen
+# vorn (bei TOP_N=10 kommen genau die ersten zehn zum Einsatz). Wer umsortiert oder
+# ergaenzt, prueft neu. Schlechtestes Paar: Delta-E 9.1 farbfehlsichtig, 15.6 normal.
 PRICE_SENSITIVITY_SERIES_COLORS = [
     "#2a78d6",  # blau
     "#eb6834",  # orange

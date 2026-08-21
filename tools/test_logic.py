@@ -851,16 +851,10 @@ _MIGRATE_AUSNAHMEN = {
     # das unbekannte Keys wegfiltert - der Normalisierer waere hier wirkungslos.
     "autoclicker/config.py":
         "AppConfig.from_dict filtert unbekannte Keys selbst",
-    # Die beiden GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken
-    # Ladern (sie haben keinen AutoClickerState). Sie werden AUS dem Hauptprozess
-    # gestartet, der beim Start bereits alles gehoben hat.
-    #
-    # **Die Begruendung haengt an einem Schalter, und der steht hier dabei.** Der
-    # Start-Durchgang laesst sich mit `migrate_on_start: false` abstellen; dann liest
-    # das Studio ungehobene Dateien. Solange die Sequenz-Kette leer ist, ist das
-    # folgenlos - es gibt nichts zu heben. Wer sie je wieder fuellt, muss diese zwei
-    # Zeilen erneut lesen, statt sich auf eine Begruendung zu verlassen, die
-    # stillschweigend nicht mehr stimmt.
+    # Die GUI-Subprozesse lesen dieselben Dateien mit eigenen schlanken Ladern
+    # (kein AutoClickerState) und werden AUS dem Hauptprozess gestartet, der beim
+    # Start alles gehoben hat. Mit `migrate_on_start: false` gilt das nicht mehr -
+    # folgenlos, solange die Sequenz-Kette leer ist.
     "autoclicker/editors/sequence_studio/scan_model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     "autoclicker/editors/sequence_studio/model.py":
@@ -3283,22 +3277,12 @@ check("und laesst den aufgenommenen Punkt in Ruhe",
       _marker.wait_condition.point_id == _map_alle[2])
 
 
-# Hier standen die Tests zu `_seq_v2_to_v3` (Aufnahmen des alten Recorders
-# nachtraeglich verknuepfen) und `_seq_v3_to_v4` (fehlende Punkte anlegen). Beide
-# Schritte sind geloescht, weil es keinen Altbestand mehr gibt, den sie heben
-# koennten - und mit ihnen diese Tests. Was BLEIBT, ist die Zusicherung darunter:
-# die Schleuse sitzt weiterhin in jedem Loader und laeuft nur, solange es etwas zu
-# tun gibt.
-# Und die Garantie, auf die es ankommt: die Kette laeuft, solange es etwas zu heben gibt,
-# danach NIE wieder. `migrate()` ruft zwar jeder Loader, aber die Schleife
-# `while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer — kein Schritt,
-# keine Aenderung, kein Schreibzugriff.
+# Hier standen die Tests zu `_seq_v2_to_v3` und `_seq_v3_to_v4`; beide Schritte
+# sind geloescht, weil es keinen Altbestand mehr gibt.
 #
-# **Gemessen wird mit einem GESTELLTEN Schritt.** Die echte Kette ist leer, seit es
-# keinen Altbestand mehr gibt - haenge man den Test an einen echten Schritt, waere er
-# beim naechsten Loeschen wieder faellig. Der gestellte Schritt prueft die Mechanik,
-# und genau die soll ueberleben: sie ist die Stelle, an der die naechste Umstellung
-# landet.
+# Was bleibt, ist die Garantie darunter: die Kette laeuft, solange es etwas zu
+# heben gibt, danach nie wieder. Gemessen mit einem GESTELLTEN Schritt - an einen
+# echten gehaengt waere der Test beim naechsten Loeschen wieder faellig.
 import autoclicker.persistence.migration as _MG
 from autoclicker.persistence.sweep import sweep_beim_start as _sweep_start
 from autoclicker.persistence import (ensure_sequences_dir as _esd2,
@@ -4106,16 +4090,10 @@ else:
 # --------------------------- Sequenz-Studio: Umsortieren und Phasenwechsel
 section("Sequenz-Studio sortiert per Ziehen um - auch ueber Phasengrenzen")
 
-# Das Studio war ein Node-Graph fuer etwas, das kein Graph ist: kein einziger
-# Link-Callback, Positionen bei jedem Neuaufbau neu gerechnet, Umsortieren nur mit
-# ^/v einzeln. Jetzt sind es Listen pro Phase mit Ziehen und Mehrfachauswahl.
-#
-# Die Rechnung dahinter (welcher Index landet wo) ist genau die Art Logik, die
-# still falsch wird. Sie lag frueher in der Dear-PyGui-Ansicht und war nur
-# pruefbar, indem der Test die halbe Ansicht stilllegte - inklusive
-# `_update_title`, weil ein dpg-Aufruf ohne Kontext kein Python-Fehler ist,
-# sondern ein Segfault, der die ganze Suite mitriss. Seit sie in der Bruecke
-# liegt, laeuft dieser Abschnitt ohne jede GUI und auf jeder Plattform.
+# Welcher Index nach dem Ziehen wo landet, ist genau die Art Logik, die still
+# falsch wird. Sie lag frueher in der Ansicht und war nur pruefbar, indem der Test
+# die halbe GUI stilllegte; seit sie in der Bruecke liegt, laeuft dieser Abschnitt
+# ohne jede GUI und auf jeder Plattform.
 from autoclicker.editors.sequence_studio.bridge import (
     StudioBridge as _SB8, TRIGGER_DA as _TDA8, TRIGGER_KEIN as _TKEIN8,
     TRIGGER_WEG as _TWEG8, trigger_name as _tn8)
@@ -4856,16 +4834,10 @@ section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 import inspect as _inspect13, re as _re13
 
 _html13 = _H.studio_web_source()
-# BEIDE Kanaele: `ruf()` befiehlt (Antwort = neue Momentaufnahme), `frage()` fragt
-# nur (Sequenzliste, Laufstatus). Stuende hier nur `ruf`, waeren ausgerechnet die
-# zwei neuesten Methoden ungeprueft - und der Fehler, den dieser Test faengt, ist
-# nicht "falsche Logik", sondern "Name existiert gar nicht": eine leere Ansicht
-# mit einer Zeile in der Statusleiste.
-# **Und `rufScan()` ist der dritte Weg.** Er fehlte hier, und damit war
-# ausgerechnet der Reiter ungeprueft, der am meisten Bruecken-Methoden hat: der
-# ganze Scans-Teil ruft ueber ihn. Ein Tippfehler in einem Methodennamen waere
-# dort erst beim Klicken aufgefallen - genau der Fehler, gegen den dieser Test
-# steht.
+# ALLE DREI Kanaele: `ruf()` befiehlt, `frage()` fragt nur, `rufScan()` bedient
+# den Scans-Reiter. Fehlt einer, ist der Fehler nicht "falsche Logik", sondern
+# "Name existiert gar nicht" - eine leere Ansicht mit einer Zeile in der
+# Statusleiste, und aufgefallen waere es erst beim Klicken.
 _gerufen13 = sorted(set(_re13.findall(r'\b(?:ruf|rufScan|frage)\("([a-z_]+)"',
                                       _html13)))
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
@@ -6098,14 +6070,9 @@ if _undok15:
 section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
 
 # Eine Massen-Umbenennung hat einmal einen Modulnamen auf eine Datei zeigen
-# lassen, die es nie gab. pyflakes sah nichts (es loest keine Fremdmodule auf),
-# die Suite auch nicht, und aufgefallen waere es erst beim Druecken des Hotkeys.
-#
-# Der Test importiert deshalb JEDES Modul einmal. Das ist der billigste Beweis,
-# dass die Importe wirklich aufgehen - und er kostet nichts, weil die Suite die
-# meisten davon ohnehin laedt. Uebersprungen wird seit dem Wegfall des
-# Dear-PyGui-Fensters nichts mehr: kein Modul haengt noch an einem Fremdpaket,
-# das ein Fenster braucht.
+# lassen, die es nie gab: pyflakes loest keine Fremdmodule auf, und aufgefallen
+# waere es erst beim Druecken des Hotkeys. Der Test importiert deshalb JEDES Modul
+# einmal - der billigste Beweis, dass die Importe aufgehen.
 import importlib as _il10
 
 _wurzel10 = Path(__file__).resolve().parent.parent
@@ -6172,17 +6139,11 @@ if _tote10:
 # Funktion, die einen Absturz mitten im Speichern ueberleben soll. Was das Projekt
 # an Daten haelt, haengt an ihr: jeder Saver geht durch sie.
 
-# ============================================================================
 # Die ausgelagerten Themen-Module
-# ============================================================================
-# **Der Einstiegspunkt bleibt genau einer**, aber nicht alles muss in dieser Datei
-# stehen. Sie war mit ueber 7.000 Zeilen die groesste des Repos - mehr als jedes
-# Produktivmodul -, und die durchnummerierten Variablennamen (`_b18`, `_sand18`)
-# waren das Symptom: so benennt man, wenn der Namensraum voll ist.
-#
-# Neue Sektionen kommen deshalb als eigenes Modul unter `tools/tests/`, holen ihr
-# Geruest aus `_harness.py` (dort leben auch die Zaehler) und werden hier
-# importiert. Import = ausfuehren, wie im Rest dieser Datei auch.
+# Der Einstiegspunkt bleibt genau einer, aber nicht alles muss in dieser Datei
+# stehen (sie war mit ueber 7.000 Zeilen die groesste des Repos). Neue Sektionen
+# kommen als eigenes Modul unter `tools/tests/`, holen ihr Geruest aus
+# `_harness.py` und werden hier importiert - Import = ausfuehren.
 import tools.tests.studio_scans          # noqa: F401,E402
 import tools.tests.studio_erkennung     # noqa: F401,E402
 import tools.tests.konsolen_editoren     # noqa: F401,E402

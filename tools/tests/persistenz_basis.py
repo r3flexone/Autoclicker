@@ -1,12 +1,9 @@
 """Persistenz-Grundlagen: crash-sicheres Schreiben, Zeiten, Presets, Log.
 
-Diese vier standen in KEINEM Test — und `atomic_write()` ist ausgerechnet die
-Funktion, die einen Absturz mitten im Speichern ueberleben soll. Was das Projekt
-an Daten haelt, haengt an ihr: jeder Saver geht durch sie.
-
-Dazu der Abgleich der ZWEI Schreibwege auf `slots.json` und `items.json` — der
-Hauptprozess ueber `persistence/globals.py`, das Studio ueber `scan_model.py`.
-Dass beide dieselbe Datei schreiben, war bis hierher eine Annahme.
+`atomic_write()` soll einen Absturz mitten im Speichern ueberleben, und jeder
+Saver geht durch sie. Dazu der Abgleich der ZWEI Schreibwege auf `slots.json`
+und `items.json` (Hauptprozess ueber `persistence/globals.py`, Studio ueber
+`scan_model.py`).
 """
 import io as _io2, contextlib as _cl2, os as _os, tempfile
 from pathlib import Path
@@ -232,19 +229,11 @@ finally:
 
 section("Eine frisch geschriebene Sequenz ist sofort sichtbar")
 
-# `list_available_sequences()` parst jede Datei und cacht deshalb. Der Cache-
-# Schluessel war die mtime des **Ordners** — und die ist auf grober
-# Zeitaufloesung unbrauchbar: NTFS stempelt Verzeichnisse deutlich groeber als
-# ext4. Zwei Sequenzen im selben Tick geschrieben liessen die Ordner-Zeit gleich,
-# der Cache galt weiter, und die zweite Datei war UNSICHTBAR.
-#
-# Das ist kein reiner Menue-Schoenheitsfehler: `zuletzt_bearbeitet()` baut auf
-# derselben Liste auf und nennt dann die falsche Sequenz — das Studio oeffnet
-# beim Start nicht die, an der man gerade gearbeitet hat.
-#
-# Der Test friert die Ordner-Zeit ein und bildet damit genau die grobe
-# Aufloesung nach, unter der es unter Windows in der CI umfiel. Mit dem alten
-# mtime-Schluessel ist er rot, auf jeder Plattform.
+# `list_available_sequences()` cacht. War der Schluessel die mtime des ORDNERS,
+# liessen zwei im selben Tick geschriebene Sequenzen die zweite unsichtbar werden
+# (NTFS stempelt Verzeichnisse grob) - und `zuletzt_bearbeitet()` nannte die
+# falsche. Der Test friert die Ordner-Zeit ein und bildet die grobe Aufloesung
+# nach; mit dem alten Schluessel ist er auf jeder Plattform rot.
 import json as _js_seq
 
 from autoclicker.persistence import sequences as _seqmod
@@ -292,16 +281,10 @@ finally:
 
 section("Beide Backends belegen dieselben Hotkeys")
 
-# Es gibt ZWEI Tabellen fuer dieselbe Sache: `HOTKEY_BINDINGS` in
-# platforms/common.py (Linux, pynput-Schreibweise) und `_HOTKEY_DEFINITIONS` in
-# platforms/windows.py (Modifier + VK). Sie muessen uebereinstimmen, und bis
-# hierher mass das niemand — genau die Luecke, gegen die CLAUDE.md sonst
-# ueberall "beide Seiten messen" sagt.
-#
-# Was schiefgeht, wenn sie auseinanderlaufen: ein neuer Hotkey wirkt auf einer
-# Plattform und auf der anderen nicht. Das faellt nicht auf, weil kein Aufruf
-# fehlschlaegt — die Taste tut einfach nichts. Und die README-Tabelle, die ein
-# vorhandener Test gegen `_HOTKEY_DEFINITIONS` haelt, waere fuer Linux falsch.
+# ZWEI Tabellen fuer dieselbe Sache: `HOTKEY_BINDINGS` (common.py, pynput) und
+# `_HOTKEY_DEFINITIONS` (windows.py, Modifier + VK). Laufen sie auseinander,
+# wirkt ein Hotkey auf einer Plattform und auf der anderen nicht - ohne dass ein
+# Aufruf fehlschlaegt, die Taste tut einfach nichts.
 import re as _re_hk
 
 from pathlib import Path as _P_hk
