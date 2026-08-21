@@ -480,12 +480,14 @@ function setzeAnsicht(neu) {
   $("sicht-lauf").hidden = neu !== "lauf";
   $("sicht-config").hidden = neu !== "einstellungen";
   $("sicht-scans").hidden = neu !== "scans";
-  // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Einstellungen
-  // und Scans bearbeiten andere Dateien und haben ihren eigenen Speichern-Knopf.
+  $("sicht-teilen").hidden = neu !== "teilen";
+  // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
+  // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = neu === "einstellungen" || neu === "scans";
+    n.hidden = ["einstellungen", "scans", "teilen"].includes(neu);
   if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
+  if (neu === "teilen") zeichneTeilen();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (neu === "einstellungen") zeichneEinstellungen(true);
@@ -4094,6 +4096,162 @@ function erkOverlay(svg, px) {
   svg.appendChild(svgEl("text", {x: ax - arm, y: ay - arm - 4 * px, class: "scan-marke",
     "font-size": 10 * px, "stroke-width": 3 * px, fill: "#F59E0B"},
     "Klickpunkt Aktion"));
+}
+
+/* ------------------------------------------------------------ Ansicht: Teilen
+ *
+ * Ein Bündel schreiben und eines einlesen. Beide Seiten arbeiten auf dem
+ * GESPEICHERTEN Stand — was im Fenster offen ist, liegt nicht auf Platte. */
+let T = null;
+let teilenExport = {};    // welche Teile ins Bündel kommen
+let teilenImport = {};    // welche Teile eingelesen werden
+let teilenModus = "auto";
+let teilenMerge = true;
+
+async function zeichneTeilen(frisch) {
+  const antwort = await frage("teilen_daten");
+  if (!antwort || ansicht !== "teilen") return;
+  T = antwort;
+  for (const t of T.teile) {
+    if (teilenExport[t.key] === undefined) teilenExport[t.key] = true;
+    if (teilenImport[t.key] === undefined) teilenImport[t.key] = true;
+  }
+  const merk = fokusMerken();
+  teilenExportZeichnen();
+  teilenMitteZeichnen();
+  teilenImportZeichnen();
+  setzeStatus(T.status);
+  fokusHerstellen(merk);
+}
+
+/** Ein Befehl an den Teilen-Teil. Antwort ist die neue Teilen-Aufnahme. */
+async function rufTeilen(name, daten) {
+  const antwort = await frage(name, daten);
+  if (!antwort) return;
+  T = antwort;
+  await zeichneTeilen();
+}
+
+function teilenHaken(ziel, auswahl, zahlen) {
+  for (const t of T.teile) {
+    const zeile = el("label", {class: "teilen-zeile an"});
+    const box = el("input", {type: "checkbox"});
+    box.checked = !!auswahl[t.key];
+    box.addEventListener("change", () => { auswahl[t.key] = box.checked; zeichneTeilen(); });
+    zeile.append(box, el("span", {}, t.text),
+      el("span", {class: "zahl"}, String(zahlen[t.key] ?? 0)));
+    ziel.appendChild(zeile);
+  }
+}
+
+function teilenExportZeichnen() {
+  const ziel = $("teilen-export");
+  const kopf = el("div", {class: "abschnitt"},
+    ueberschrift("EXPORTIEREN",
+      "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
+  if (T.offen) {
+    kopf.appendChild(el("div", {class: "fremdhinweis"},
+      "Im Fenster gibt es ungespeicherte Änderungen — die kommen nicht mit. "
+      + "Erst speichern, dann exportieren."));
+  }
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  teilenHaken(rumpf, teilenExport, T.bestand);
+  rumpf.appendChild(feld("Dateiname (leer = mit Zeitstempel)", "",
+    () => {}, {id: "teilen-name"}));
+  // **Die Referenzpunkte kommen aus dem Spielfenster.** Ist es offen, rechnet
+  // der Empfänger die Koordinaten selbst um; sonst setzt er zwei Punkte von Hand.
+  rumpf.appendChild(el("p", {class: "hinweis"}, T.fenster && T.fenster.gefunden
+    ? "Spielfenster „" + T.fenster.titel + "“: " + T.fenster.breite + "×"
+      + T.fenster.hoehe + " px. Der Empfänger rechnet damit automatisch um."
+    : (T.fenster
+        ? "Spielfenster „" + T.fenster.titel + "“ ist nicht offen — der Empfänger "
+          + "setzt beim Import zwei Punkte von Hand."
+        : "Kein Fenstertitel eingestellt (window_focus_title) — der Empfänger "
+          + "setzt beim Import zwei Punkte von Hand.")));
+  rumpf.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufTeilen("export_starten",
+      {teile: teilenExport, name: ($("teilen-name") || {}).value || ""})},
+    "Bündel schreiben"));
+  ziel.appendChild(rumpf);
+}
+
+function teilenMitteZeichnen() {
+  const ziel = $("teilen-mitte");
+  ziel.replaceChildren();
+  const karte = el("div", {class: "teilen-karte"}, el("h3", {}, "Vorhandene Bündel"));
+  if (!T.exporte.length) {
+    karte.appendChild(el("p", {class: "hinweis"},
+      "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
+  }
+  const liste = el("div", {class: "teilen-liste"});
+  for (const e of T.exporte) {
+    liste.appendChild(el("div", {class: "teilen-zeile"},
+      el("span", {class: "mono"}, e.name),
+      el("span", {class: "zahl mono"}, e.kb + " KB"),
+      el("button", {class: "btn still",
+        onclick: () => rufTeilen("import_pruefen", {pfad: "exports/" + e.name})},
+        "einlesen")));
+  }
+  karte.appendChild(liste);
+  ziel.appendChild(karte);
+
+  ziel.appendChild(el("div", {class: "teilen-karte"},
+    el("h3", {}, "Weitergeben"),
+    el("p", {class: "hinweis"},
+      "Die ZIP-Datei verschicken. Der Empfänger legt sie in seinen "
+      + "Autoclicker-Ordner und liest sie hier oder mit CTRL+ALT+I ein. "
+      + "Koordinaten werden dabei auf sein Fenster umgerechnet.")));
+}
+
+function teilenImportZeichnen() {
+  const ziel = $("teilen-import");
+  const i = T.import;
+  const kopf = el("div", {class: "abschnitt"},
+    ueberschrift("IMPORTIEREN",
+      "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
+    el("div", {class: "reihe"},
+      el("button", {class: "btn wachse", onclick: () => rufTeilen("datei_waehlen")},
+        "Datei wählen …")),
+    feld("oder Pfad", i ? i.pfad : "",
+      (v) => rufTeilen("import_pruefen", {pfad: v})));
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  if (!i) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      "Noch keine Datei gewählt. Ein Bündel ist ein ZIP mit manifest.json."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  rumpf.appendChild(el("div", {class: "feld-still"}, i.datei,
+    el("span", {class: "mono"}, i.erstellt || "")));
+  teilenHaken(rumpf, teilenImport, i.inhalt);
+
+  rumpf.appendChild(ueberschrift("KOORDINATEN",
+    "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "importkoord"));
+  // Ohne beidseitig bekanntes Fenster gibt es nichts zu wählen — eine Kachel,
+  // die nichts tut, ist schlechter als keine.
+  const modi = (i.auto ? [{wert: "auto", text: "aus Fenstergrösse"}] : [])
+    .concat([{wert: "identity", text: "1:1 übernehmen"}]);
+  rumpf.appendChild(segment(modi, i.auto ? teilenModus : "identity",
+    (v) => { teilenModus = v; zeichneTeilen(); }));
+  rumpf.appendChild(el("p", {class: "hinweis"}, i.auto
+    ? "Beide Seiten kennen ihr Spielfenster — die Umrechnung geht automatisch."
+    : "Ohne beidseitig bekanntes Spielfenster geht nur 1:1. Für ein echtes "
+      + "Umrechnen zwei Punkte setzen: CTRL+ALT+I im Hauptprozess."));
+
+  rumpf.appendChild(schalter("Vorhandenes behalten und ergänzen", teilenMerge,
+    (v) => { teilenMerge = v; zeichneTeilen(); }));
+  rumpf.appendChild(el("p", {class: "hinweis"}, teilenMerge
+    ? "Gleiche Namen werden übersprungen."
+    : "Achtung: gleiche Namen werden überschrieben."));
+  rumpf.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufTeilen("import_starten",
+      {teile: teilenImport, modus: teilenModus, merge: teilenMerge})},
+    "Bündel einlesen"));
+  ziel.appendChild(rumpf);
 }
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */

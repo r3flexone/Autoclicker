@@ -34,6 +34,7 @@
       <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
       <button class="tab" data-ansicht="lauf">Live-Run</button>
       <button class="tab" data-ansicht="scans">Scans</button>
+      <button class="tab" data-ansicht="teilen">Teilen</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
     <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
@@ -296,6 +297,15 @@
     </main>
 
     <aside class="seite rechts" id="scan-insp"></aside>
+  </div>
+
+  <!-- Teilen: links was ins Bündel kommt, in der Mitte die vorhandenen Bündel,
+       rechts das Einlesen. Beide Seiten arbeiten auf dem GESPEICHERTEN Stand —
+       was im Fenster offen ist, liegt nicht auf Platte. -->
+  <div class="teilen" id="sicht-teilen" hidden>
+    <aside class="seite links" id="teilen-export"></aside>
+    <main class="cfg-mitte" id="teilen-mitte"></main>
+    <aside class="seite rechts" id="teilen-import"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,

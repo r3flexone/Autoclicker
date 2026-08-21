@@ -33,6 +33,7 @@ from .bridge_contract import (
 )
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
+from .bridge_teilen import BridgeTeilenMixin
 from .bridge_view import BridgeViewMixin
 from .model import Lane, PalettePoint, SequenceBoard, load_palette_points, sequence_to_board
 from .scans import ScanTeil
@@ -65,6 +66,7 @@ __all__ = [
 class StudioBridge(
     BridgeEditingMixin,
     BridgeServicesMixin,
+    BridgeTeilenMixin,
     BridgeViewMixin,
     ScanTeil,
 ):
@@ -100,3 +102,4 @@ class StudioBridge(
         # CTRL+ALT+B, nur mit "scans".
         self.start_ansicht: str = "editor"
         self._scan_init()
+        self._teilen_init()

@@ -750,6 +750,7 @@ es die Marker-Farben.
   - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
   - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
   - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
+  - `bridge_teilen.py`: Export/Import im Reiter „Teilen".
   - `scans.py`: stabile `ScanTeil`-Fassade.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
@@ -852,7 +853,7 @@ Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der
 nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
 wäre nicht zwingend die angezeigte.
 
-**Fünf Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Sechs Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -864,6 +865,7 @@ Ausflug überleben.
 | Sequenzen | Übersicht, Kennzahlen, Öffnen | `sequenz_liste()` |
 | Live-Run | was gerade läuft | `lauf_status()` |
 | Scans | Slots, Items, Item-Scans auf einem Screenshot | `scan_daten()` + `scan_*` |
+| Teilen | Bündel schreiben und einlesen | `teilen_daten()` + `export_/import_*` |
 | Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
 **Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
@@ -1535,6 +1537,26 @@ ausschalten, aber nicht *ausprobieren* — der Testknopf misst Template und Mark
 Für das LLM gibt es nur die Erreichbarkeitslampe (`llm_pruefen`); ein echter
 Probelauf kostet bis `llm_timeout` und hat im Zeichnen einer Momentaufnahme
 nichts verloren.
+
+**Der Reiter „Teilen" arbeitet auf dem GESPEICHERTEN Stand** (`bridge_teilen.py`).
+Export und Import bauen sich dafür einen frischen `AutoClickerState` aus den
+Dateien — der Studio-Prozess kennt sonst nur, was seine Reiter geöffnet haben.
+Vier Regeln:
+
+- **Gezählt wird, was auf Platte liegt.** Ungespeichertes im Fenster kommt nicht
+  ins Bündel, und der Reiter sagt das, statt es zu verschweigen.
+- **Die Referenzpunkte kommen aus dem Spielfenster** (`window_focus_title`). Ist
+  es offen, rechnet der Empfänger automatisch um; sonst stehen die Ecken des
+  virtuellen Desktops im Manifest und er setzt zwei Punkte von Hand
+  (`CTRL+ALT+I`). Das Fenster sieht den Bildschirm nicht — zwei Punkte
+  anzuklicken kann es nicht anbieten.
+- **Eine Kachel, die nichts tut, gibt es nicht.** Ohne beidseitig bekanntes
+  Fenster bietet der Import nur „1:1 übernehmen" an.
+- **Die Config wird hineingeschrieben, nicht getauscht** (`uebernehmen()`): auch
+  im Subprozess gibt es ein Config-Objekt.
+
+Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
+Briefkasten-Befehl `daten`, der Hauptprozess.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei

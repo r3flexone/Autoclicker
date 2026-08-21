@@ -10,6 +10,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
 - **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
 - **Scans auf einem Screenshot**: Slots aufziehen, Hintergrundfarbe messen, Items lernen und sehen, was in welchem Slot erkannt wird — Reiter „Scans“ im Studio (`CTRL+ALT+V`)
+- **Teilen im Studio**: Bündel schreiben und einlesen im Reiter „Teilen“ — Koordinaten werden aus der Spielfenster-Grösse umgerechnet
 - **Boss- und Icon-Scans im selben Reiter**: Region aufziehen statt Koordinaten tippen, Vorlage aufnehmen, Marker messen, folgenlos testen (der Test nennt die Aktion, führt sie aber nicht aus) — umgeschaltet über SCAN-ART (Items · Bosse · Icons)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
