@@ -1690,6 +1690,15 @@ werden abgelehnt, solange sie läuft. Der Grund: der Maus-Hook kann die Klicks d
 Klickers nicht von deinen unterscheiden, ein mitlaufender Durchgang verbrauchte
 also die Punkte selbst.
 
+**Gezählt wird nur, was im Spielfenster geklickt wird** (`window_focus_title`).
+Im Studio, in der Konsole oder sonstwo kannst du klicken, ohne einen Punkt zu
+verbrauchen — sonst landete das Schliessen-Kreuz eines Fensters als Klickziel im
+Punkt.
+
+**Geschrieben wird erst am Schluss und nur auf `CTRL+ALT+J`.** Bis dahin ist
+nichts geändert, auch nicht im Speicher: wer das Studio-Fenster zumacht oder das
+Programm beendet, verliert die Runde — und `points.json` bleibt, wie sie war.
+
 Geändert wird **nur die Stelle** — Wartezeiten, Farb-Bedingungen, Nachprüfungen,
 ELSE und Scans bleiben unangetastet. Während der Runde: `CTRL+ALT+K`
 überspringen · `CTRL+ALT+U` einen Punkt zurück · `CTRL+ALT+H` pausieren

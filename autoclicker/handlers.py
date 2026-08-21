@@ -720,11 +720,13 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
     pumpt. `start_nachklick()` installiert ihn und kehrt zurueck - der Befehl
     blockiert also nicht, wie es die Briefkasten-Schleife verlangt.
 
-    **Die Sequenz kommt MIT, wie beim Start.** Sie aus `state.active_sequence` zu
-    nehmen war falsch: der Hauptprozess hat womoeglich eine ganz andere geladen
-    als die, die im Studio offen steht - man klickt dann eine Runde lang die
-    Punkte einer fremden Sequenz nach und merkt es nicht. Der Knopf sagt, welche
-    er meint; hier wird genau die geladen.
+    **Die Sequenz kommt mit, wird aber nicht geladen.** Aus ihr kommt nur die
+    Reihenfolge der Punkte; welche Sequenz der Hauptprozess scharf hat, geht eine
+    Kalibrier-Runde nichts an - sie hier zu aktivieren hiesse, dass ein Druck auf
+    CTRL+ALT+S danach etwas anderes startet als vorher. Sie aus
+    `state.active_sequence` zu NEHMEN waere der umgekehrte Fehler: der
+    Hauptprozess hat womoeglich eine ganz andere geladen als die im Studio
+    offene, und man klickt eine Runde lang fremde Punkte nach.
     """
     from .editors.nachklick import start_nachklick
     if _block_if_recording(state) or _block_if_running(state):
@@ -735,7 +737,8 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{err('Klick-Runde aus dem Studio ohne Datei — ignoriert.')}")
         return
     # Punkte mit von Platte, aus demselben Grund wie in `befehl_start`: das Studio
-    # schreibt beim Speichern beide Dateien.
+    # schreibt beim Speichern beide Dateien, und die Runde arbeitet AUF den
+    # Punkten - ein dort angelegter fehlte sonst genau in seiner Runde.
     punkte = punkte_nachladen(state)
     seq = load_sequence_file(Path(roh), punkte)
     if seq is None:
@@ -746,28 +749,36 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
     with state.lock:
         if punkte:
             state.points = punkte
-        state.active_sequence = seq
-    print(f"\n{col('[STUDIO]', 'cyan')} Klick-Runde für '{seq.name}'.")
-    start_nachklick(state)
+    start_nachklick(state, seq)
 
 
 def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
-    """Beendet eine laufende Klick-Runde — dasselbe wie CTRL+ALT+J.
+    """Beendet eine laufende Klick-Runde — übernehmen oder verwerfen.
 
     Gestartet wird sie aus dem Studio, beendet ging bisher nur ueber die Taste.
     Ein Knopf, der etwas anfaengt, aber nicht aufhoeren kann, laesst einen mit
     einem scharfen Maus-Hook sitzen und der Frage, wie man ihn wieder los wird.
 
-    `stop_nachklick()` meldet selbst, was gesetzt wurde; laeuft gar keine Runde,
+    `verwerfen=1` ist der Weg des geschlossenen Fensters: die Runde gehoert dem
+    Studio, und wer es zumacht, hat sie nicht uebernommen. Geschrieben wird
+    ausschliesslich auf ausdrueckliches Uebernehmen.
+
+    `stop_nachklick()` meldet selbst, was passiert ist; laeuft gar keine Runde,
     kehrt es wortlos zurueck - deshalb sagt es hier jemand.
     """
     from .editors.nachklick import stop_nachklick
+    verwerfen = str(argumente.get("verwerfen") or "") in ("1", "true", "True")
     with state.lock:
         laeuft = state.nachklick_aktiv
     if not laeuft:
-        print(f"\n{info('Es laeuft keine Klick-Runde.')}")
+        if not verwerfen:
+            print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
-    stop_nachklick(state, "aus dem Studio beendet")
+    if verwerfen:
+        stop_nachklick(state, "Studio geschlossen — Runde verworfen",
+                       uebernehmen=False)
+    else:
+        stop_nachklick(state, "aus dem Studio übernommen")
 
 
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
@@ -1029,15 +1040,17 @@ def handle_import_export(state: AutoClickerState) -> None:
 def handle_record_sequence(state: AutoClickerState) -> None:
     """Startet oder stoppt die Sequenz-Aufnahme via Maus-Hook.
 
-    Läuft gerade eine Klick-Runde, beendet derselbe Griff sie: „diese
+    Läuft gerade eine Klick-Runde, ÜBERNIMMT derselbe Griff sie: „diese
     Klick-Aufzeichnung ist zu Ende" heisst hier wie dort dasselbe, und ein
-    zweiter Buchstabe dafür wäre einer der letzten freien.
+    zweiter Buchstabe dafür wäre einer der letzten freien. Es ist zugleich der
+    einzige Weg, auf dem die Runde je etwas schreibt — jeder andere Ausgang
+    (Fenster zu, Programm aus) verwirft.
     """
     with state.lock:
         nachklick = state.nachklick_aktiv
     if nachklick:
         from .editors.nachklick import stop_nachklick
-        stop_nachklick(state, "von Hand beendet")
+        stop_nachklick(state, "übernommen")
         return
     from .editors.sequence_recorder import handle_record_sequence as _rec
     _rec(state)
@@ -1149,10 +1162,12 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
         state.recording_active = False
         war_nachklick = state.nachklick_aktiv
     if war_nachklick:
-        # Sie speichert dabei, was bis hierher gesetzt wurde — der Hook schreibt
-        # nichts auf Platte, also hinge sonst die halbe Runde in der Luft.
+        # **Beenden ist kein Übernehmen.** Vorher schrieb dieser Pfad, was bis
+        # dahin gesetzt war — und damit landeten in einer echten Runde drei
+        # Klicks auf Fensterdekoration dauerhaft in points.json. Wer übernehmen
+        # will, drückt CTRL+ALT+J; alles andere lässt die Punkte in Ruhe.
         from .editors.nachklick import stop_nachklick
-        stop_nachklick(state, "beim Beenden abgebrochen")
+        stop_nachklick(state, "beim Beenden verworfen", uebernehmen=False)
     if was_recording:
         from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()

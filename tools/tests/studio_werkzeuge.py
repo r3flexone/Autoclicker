@@ -269,8 +269,8 @@ try:
     import autoclicker.editors.nachklick as _nk
     _gestartet = {}
 
-    def _fake_start(state):
-        _gestartet["name"] = state.active_sequence.name
+    def _fake_start(state, seq=None):
+        _gestartet["name"] = seq.name if seq is not None else None
         return True
 
     _echt = _nk.start_nachklick
@@ -278,9 +278,13 @@ try:
     try:
         _farm_pfad = str(dict(list_available_sequences())["Farm"])
         _bn(_st2, {"datei": _farm_pfad})
-        check("geladen wird die mitgeschickte Datei", _gestartet.get("name") == "Farm")
-        check("und sie wird auch aktiv gesetzt",
-              _st2.active_sequence is not None and _st2.active_sequence.name == "Farm")
+        check("die Reihenfolge kommt aus der mitgeschickten Datei",
+              _gestartet.get("name") == "Farm")
+        # **Die geladene Sequenz wechselt dabei NICHT.** Die Runde arbeitet auf
+        # Punkten; welche Sequenz der Hauptprozess scharf hat, geht sie nichts
+        # an - sonst startete CTRL+ALT+S danach etwas anderes als vorher.
+        check("die geladene Sequenz bleibt, wie sie war",
+              _st2.active_sequence is _fremd)
 
         # Ohne Datei passiert NICHTS - lieber gar keine Runde als eine auf der
         # falschen Sequenz.

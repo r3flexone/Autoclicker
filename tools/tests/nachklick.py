@@ -120,13 +120,15 @@ try:
     check("und kennt ihre drei Punkte", _s.nachklick_punkte == [1, 2, 3])
     check("sie fängt beim ersten an", _s.nachklick_index == 0)
 
-    # --- Ein Klick setzt den aktuellen Punkt ---
+    # --- Ein Klick merkt die neue Stelle, schreibt sie aber noch nicht ---
     _klick(_s, 150, 160, (44, 55, 66))
-    check("der Klick setzt die neue Stelle", (_s.points[0].x, _s.points[0].y) == (150, 160))
-    # Die Farbe gehört zur Position — aber nur, wenn der Punkt vorher eine hatte.
-    # Sonst schliche sich ein Farb-Trigger ein, den niemand gesetzt hat.
-    check("und zieht die Farbe mit, weil der Punkt eine hatte",
-          _s.points[0].color == (44, 55, 66))
+    check("der Klick merkt die neue Stelle",
+          _s.nachklick_gesetzt[0][:3] == (1, (100, 100), (150, 160)))
+    # **Der Punkt bleibt bis zum Schluss unangetastet.** Sonst waere ein Abbruch
+    # eine halb ueberschriebene points.json - und genau so sind in einer echten
+    # Runde drei Fehlklicks dauerhaft in den Punkten gelandet.
+    check("der Punkt selbst ist noch unverändert",
+          (_s.points[0].x, _s.points[0].y) == (100, 100))
     check("die Runde ist beim zweiten Punkt", _s.nachklick_index == 1)
 
     _klick(_s, 250, 260, (77, 88, 99))
@@ -143,8 +145,8 @@ try:
     # Nur den Zeiger zurückzusetzen liesse die eben geschriebene Koordinate
     # stehen; wer sich verklickt hat, merkte es erst beim nächsten Lauf.
     _zurueck(_s)
-    check("zurück stellt die alte Stelle wieder her",
-          (_s.points[1].x, _s.points[1].y) == (200, 200))
+    check("zurück wirft die eben erfasste Stelle weg",
+          [e[0] for e in _s.nachklick_gesetzt] == [1])
     check("und steht wieder auf diesem Punkt", _s.nachklick_index == 1)
 
     # --- Überspringen lässt den Punkt, wo er ist ---
@@ -162,8 +164,16 @@ try:
     _klick(_s, 350, 360, None)
     check("nach der Pause wieder", (_s.points[2].x, _s.points[2].y) == (350, 360))
 
-    # Der letzte Punkt beendet die Runde von selbst.
+    # Der letzte Punkt beendet die Runde von selbst — und JETZT wird geschrieben.
     check("die Runde endet mit dem letzten Punkt", _s.nachklick_aktiv is False)
+    check("erst dabei wandert die Stelle in den Punkt",
+          (_s.points[0].x, _s.points[0].y) == (150, 160))
+    # Die Farbe gehört zur Position — aber nur, wenn der Punkt vorher eine hatte.
+    # Sonst schliche sich ein Farb-Trigger ein, den niemand gesetzt hat.
+    check("und die Farbe mit, weil der Punkt eine hatte",
+          _s.points[0].color == (44, 55, 66))
+    check("ein Punkt ohne Farbe bekommt auch am Ende keine",
+          _s.points[1].color is None)
     check("und schreibt die Punkte auf Platte",
           Path("sequences/points.json").exists())
 
@@ -260,8 +270,8 @@ check("während eines Laufs setzt ein Klick keinen Punkt",
 check("und die Runde rückt nicht vor", _s3.nachklick_index == 0)
 _s3.is_running = False
 _klick(_s3, 999, 888, None)
-check("ohne Lauf setzt derselbe Klick wieder",
-      (_s3.points[0].x, _s3.points[0].y) == (999, 888))
+check("ohne Lauf zählt derselbe Klick wieder",
+      [e[2] for e in _s3.nachklick_gesetzt] == [(999, 888)])
 _stop(_s3, "Test")
 
 # Die zweite Tür ist die wichtigere: gar nicht erst starten lassen. Gemessen wird
@@ -298,3 +308,165 @@ _s5.active_sequence = _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1)])])
 _s5.countdown_active = True
 check("mit gestelltem Countdown startet keine Runde", _ruesten(_s5) is None)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: nur Klicks im Zielfenster zählen")
+
+# **Der Fehler, den das hier festhält.** Der Maus-Hook ist systemweit: ohne
+# Filter zählt jeder Klick — auch der auf das Studio-Fenster, die Konsole oder
+# ein Schliessen-Kreuz. In einer echten Runde sind so drei Punkte auf
+# Fensterdekoration gewandert (einer auf (3030, 16), also die Titelleiste), und
+# beim Beenden wurde es gespeichert.
+_vordergrund = ["Idle Clans"]
+_echt_aktiv = _nk.is_target_window_active
+_echt_titel = _nk.get_foreground_window_title
+_echt_rect = _nk.get_client_rect_by_title
+_nk.is_target_window_active = lambda t: t.lower() in _vordergrund[0].lower()
+_nk.get_foreground_window_title = lambda: _vordergrund[0]
+_nk.get_client_rect_by_title = lambda t: (0, 0, 800, 600)
+try:
+    _s6 = _ST()
+    _s6.config.window_focus_title = "Idle Clans"
+    _s6.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
+    _s6.active_sequence = _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])])
+    _ruesten(_s6)
+    check("das Zielfenster steht in der Runde", _s6.nachklick_ziel == "Idle Clans")
+
+    _vordergrund[0] = "Sequenz-Studio"
+    _klick(_s6, 3030, 16, None)
+    check("ein Klick in einem fremden Fenster setzt nichts",
+          (_s6.points[0].x, _s6.points[0].y) == (100, 100))
+    check("und verbraucht den Punkt nicht", _s6.nachklick_index == 0)
+
+    _vordergrund[0] = "Idle Clans"
+    _klick(_s6, 640, 480, None)
+    check("im Zielfenster zählt derselbe Klick",
+          [e[2] for e in _s6.nachklick_gesetzt] == [(640, 480)])
+    _stop(_s6, "Test")
+
+    # Ohne auffindbares Fenster wird NICHT gefiltert: ein Filter, der alles
+    # wegwirft, sieht aus wie ein kaputter Hook.
+    _nk.get_client_rect_by_title = lambda t: None
+    _s7 = _ST()
+    _s7.config.window_focus_title = "Gibt Es Nicht"
+    _s7.points = [_punkt(1, 100, 100)]
+    _s7.active_sequence = _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1)])])
+    _ruesten(_s7)
+    check("ohne auffindbares Fenster wird nicht gefiltert", _s7.nachklick_ziel == "")
+    _vordergrund[0] = "Irgendwas"
+    _klick(_s7, 55, 66, None)
+    # Der einzige Punkt beendet die Runde, also ist er danach schon geschrieben.
+    check("und jeder Klick zählt", (_s7.points[0].x, _s7.points[0].y) == (55, 66))
+finally:
+    _nk.is_target_window_active = _echt_aktiv
+    _nk.get_foreground_window_title = _echt_titel
+    _nk.get_client_rect_by_title = _echt_rect
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: ein Pixel Abweichung ist keine Korrektur")
+
+# Der Zeiger wird von uns auf die Stelle gesetzt — und trotzdem kommt der Klick
+# gelegentlich einen Pixel daneben zurück (DPI-Skalierung, ein Hauch Bewegung).
+# Ohne Toleranz schriebe jede Bestätigung den Punkt um einen Pixel um und zählte
+# als Änderung: Rauschen in genau der Liste, die sagen soll, was sich geändert hat.
+_s8 = _ST()
+_s8.points = [_punkt(1, 6233, 412, (33, 140, 116)), _punkt(2, 200, 200)]
+_s8.active_sequence = _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])])
+_ruesten(_s8)
+_klick(_s8, 6233, 411, (200, 10, 10))
+check("ein Pixel daneben zählt als bestätigt, nicht als Änderung",
+      _s8.nachklick_gesetzt == [])
+check("die Stelle bleibt exakt stehen",
+      (_s8.points[0].x, _s8.points[0].y) == (6233, 412))
+check("und die Farbe wird nicht überschrieben",
+      _s8.points[0].color == (33, 140, 116))
+check("die Toleranz ist winzig — eine gewollte Korrektur ist nie so klein",
+      _nk.PASST_TOLERANZ <= 2)
+# Gegenprobe: eine echte Korrektur geht durch.
+_klick(_s8, 900, 950, None)
+check("eine echte Korrektur wird erfasst und am Ende geschrieben",
+      (_s8.points[1].x, _s8.points[1].y) == (900, 950))
+_stop(_s8, "Test")
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: geschrieben wird erst am Schluss — und nur auf Übernehmen")
+
+# **Der Fehler, den das hier festhält.** Jeder Ausgang schrieb: das Beenden des
+# Programms, das geschlossene Studio-Fenster, alles. In einer echten Runde
+# landeten so drei Klicks auf Fensterdekoration dauerhaft in points.json — es
+# gab keinen Weg mehr zurück, weil der Punkt im Speicher schon umgeschrieben war.
+_sand2 = tempfile.mkdtemp(prefix="nachklick_verwerfen_")
+_os.chdir(_sand2)
+try:
+    Path("sequences").mkdir()
+    _s9 = _ST()
+    _s9.points = [_punkt(1, 100, 100, (1, 2, 3)), _punkt(2, 200, 200)]
+    _s9.active_sequence = _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])])
+    _ruesten(_s9)
+    _klick(_s9, 3030, 16, (99, 99, 99))       # Titelleiste erwischt
+    check("die Stelle ist erfasst", len(_s9.nachklick_gesetzt) == 1)
+    _stop(_s9, "Fenster zu", uebernehmen=False)
+    check("verworfen lässt den Punkt in Ruhe",
+          (_s9.points[0].x, _s9.points[0].y) == (100, 100))
+    check("und die Farbe auch", _s9.points[0].color == (1, 2, 3))
+    check("und schreibt nichts auf Platte",
+          not Path("sequences/points.json").exists())
+
+    # Gegenprobe: dieselbe Runde, uebernommen.
+    _ruesten(_s9)
+    _klick(_s9, 640, 480, (99, 99, 99))
+    _stop(_s9, "übernommen")
+    check("übernommen wandert die Stelle in den Punkt",
+          (_s9.points[0].x, _s9.points[0].y) == (640, 480))
+    check("und JETZT steht sie auf Platte",
+          Path("sequences/points.json").exists())
+finally:
+    _os.chdir(_cwd)
+
+# Das Beenden des Programms ist kein Übernehmen — sonst schriebe genau der
+# Ausgang, den man nimmt, wenn etwas schiefgelaufen ist.
+_s10 = _ST()
+_s10.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
+_s10.active_sequence = _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])])
+_ruesten(_s10)
+_klick(_s10, 4444, 55, None)          # etwas gesetzt, aber nicht übernommen
+_hd.handle_quit(_s10, 0)
+check("das Beenden des Programms verwirft die Runde", _s10.nachklick_aktiv is False)
+check("und lässt die Punkte stehen", (_s10.points[0].x, _s10.points[0].y) == (100, 100))
+
+# Und der Weg des geschlossenen Fensters: verwerfen=1 im Briefkasten-Befehl.
+from autoclicker.handlers import befehl_nachklick_stop as _bns
+
+_s11 = _ST()
+_s11.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
+_s11.active_sequence = _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])])
+_ruesten(_s11)
+_klick(_s11, 700, 700, None)
+_bns(_s11, {"verwerfen": "1"})
+check("der Studio-Abbruch verwirft", (_s11.points[0].x, _s11.points[0].y) == (100, 100))
+check("und beendet die Runde", _s11.nachklick_aktiv is False)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: Konsole und Studio nennen dieselben Tasten")
+
+# Zwei Listen derselben Griffe sind zwei Stellen, an denen eine Änderung
+# vergessen wird — und die Runde wird an beiden Orten nachgeschlagen.
+import re as _re_nk
+_appjs = (Path(_nk.__file__).resolve().parent
+          / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
+_js_block = _appjs[_appjs.index("const WZ_TASTEN"):_appjs.index("const WZ_SCHRITTE")]
+_js_tasten = _re_nk.findall(r'\["(CTRL\+ALT\+\w)",\s*"([^"]+)"', _js_block)
+check("das Studio nennt dieselben vier Tasten in derselben Reihenfolge",
+      _js_tasten == [(t_[0], t_[1]) for t_ in _nk.TASTEN])
+check("und CTRL+ALT+J ist das Übernehmen",
+      _nk.TASTEN[-1][0] == "CTRL+ALT+J" and "übernehm" in _nk.TASTEN[-1][1])

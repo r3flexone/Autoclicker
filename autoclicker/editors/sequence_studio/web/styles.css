@@ -861,3 +861,32 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .wz-farbreihe{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
 .wz-farbe{width:22px;height:22px;border-radius:4px;border:1px solid var(--line);
   flex:none}
+
+/* ------------------------------------------------- Punkte nachklicken (Reiter)
+ * Die Runde wird im SPIEL bedient, nicht hier: was hier steht, schlaegt man
+ * mitten im Klicken nach. Deshalb Tabelle statt Absatz - ein Fliesstext zwingt
+ * zum Lesen von vorn, und genau das tut dann niemand. */
+.wz-schritte{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;
+  align-items:start;margin:10px 0}
+.wz-nummer{width:20px;height:20px;border-radius:50%;background:var(--accent);
+  color:#1b1200;font-size:11px;font-weight:700;display:flex;align-items:center;
+  justify-content:center;flex:none}
+.wz-schritt-text{font-size:13px;line-height:1.45}
+
+.wz-tasten{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:12px}
+.wz-tasten td{padding:5px 6px;border-bottom:1px solid var(--line);
+  vertical-align:baseline}
+.wz-tasten tr:last-child td{border-bottom:none}
+.wz-taste{font-family:var(--mono);font-size:11px;
+  white-space:nowrap;background:var(--sub);border:1px solid var(--line);
+  border-radius:4px;padding:2px 6px;color:var(--text)}
+.wz-tasten .wz-was{white-space:nowrap;color:var(--text)}
+.wz-tasten .wz-warum{color:var(--muted)}
+
+/* Die eine Regel, an der alles haengt: nichts wird geschrieben, bis jemand
+ * uebernimmt. Als Kasten und nicht als Satz im Absatz - wer sie ueberliest,
+ * haelt eine abgebrochene Runde fuer gespeichert. */
+.wz-regel{display:flex;gap:8px;align-items:flex-start;font-size:12px;
+  border:1px solid var(--accent);border-radius:6px;padding:8px 10px;margin:10px 0;
+  background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.wz-regel b{color:var(--accent)}

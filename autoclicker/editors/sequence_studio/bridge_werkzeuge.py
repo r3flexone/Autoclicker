@@ -40,6 +40,10 @@ class BridgeWerkzeugeMixin:
         # gerechnete Transform. Reiner Sitzungszustand - gespeichert wird erst
         # beim Anwenden, und ein halb gesetzter Referenzpunkt darf nichts ändern.
         self._kalib: dict = {}
+        # Ob DIESES Fenster eine Klick-Runde gestartet hat. Nur dafür da, sie
+        # beim Schliessen zu verwerfen: die Runde gehört dem Fenster, und wer es
+        # zumacht, hat nicht übernommen.
+        self._nachklick_gestartet = False
 
     # ------------------------------------------------------------ Momentaufnahme
 
@@ -377,16 +381,22 @@ class BridgeWerkzeugeMixin:
         # laengst vermeidet.
         if not sende("nachklick", datei=str(self.filepath)):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
+        self._nachklick_gestartet = True
         return {"ok": True,
                 "meldung": f"Nachklicken für '{self.board.name}' gestartet — der "
                            "Zeiger steht auf dem ersten Punkt, geklickt wird im Spiel."}
 
     def nachklick_beenden(self, daten: Optional[dict] = None) -> dict:
-        """Eine laufende Klick-Runde beenden — dasselbe wie CTRL+ALT+J.
+        """Die Runde beenden — übernehmen oder verwerfen (`verwerfen: true`).
 
         Ein Knopf, der etwas anfängt, muss es auch beenden können. Ohne das bleibt
         man mit einem scharfen Maus-Hook sitzen und der Frage, wie man ihn wieder
         los wird — die Antwort stand nur im Konsolenfenster.
+
+        **Zwei Ausgänge, weil es zwei Absichten gibt.** Übernehmen ist der
+        einzige Weg, auf dem die Runde je etwas schreibt; verwerfen lässt
+        `points.json` unberührt. Ein einzelner „Beenden"-Knopf müsste sich für
+        eine der beiden entscheiden und läge in der Hälfte der Fälle falsch.
 
         Ob überhaupt eine Runde läuft, weiss dieser Prozess nicht (der Zustand
         liegt im `AutoClickerState` drüben). Deshalb wird der Befehl immer
@@ -395,8 +405,24 @@ class BridgeWerkzeugeMixin:
         sehr wohl eine Runde läuft.
         """
         from ...befehl import sende
-        if not sende("nachklick_stop"):
+        verwerfen = bool((daten or {}).get("verwerfen"))
+        if not sende("nachklick_stop", verwerfen="1" if verwerfen else "0"):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
+        self._nachklick_gestartet = False
         return {"ok": True,
-                "meldung": "Beenden geschickt — was gesetzt wurde, steht im "
-                           "Konsolenfenster."}
+                "meldung": ("Verworfen — points.json bleibt, wie sie war."
+                            if verwerfen else
+                            "Übernommen — was gesetzt wurde, steht im "
+                            "Konsolenfenster.")}
+
+    def nachklick_beim_schliessen(self) -> None:
+        """Beim Zumachen des Fensters: eine offene Runde verwerfen.
+
+        Sie gehört diesem Fenster — es hat sie gestartet, und seine Anleitung ist
+        der einzige Ort, an dem steht, wie man sie bedient. Ohne das bliebe ein
+        scharfer Maus-Hook im Hauptprozess zurück, der jeden Klick des Nutzers
+        gegen eine Punktliste rechnet, die er nirgends mehr sehen kann.
+        """
+        if not self._nachklick_gestartet:
+            return
+        self.nachklick_beenden({"verwerfen": True})

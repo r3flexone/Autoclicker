@@ -98,6 +98,15 @@ def _scans_beim_schliessen_speichern(bridge) -> bool:
 
 def _beim_schliessen(bridge) -> None:
     """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
+    # Zuerst die Klick-Runde: sie haengt im Hauptprozess an einem systemweiten
+    # Maus-Hook, und ihre Bedienung steht nur in diesem Fenster. Bleibt sie
+    # scharf, rechnet drueben jeder Klick des Nutzers gegen eine Punktliste, die
+    # er nirgends mehr sieht. Verworfen, nicht uebernommen: wer zumacht, hat
+    # nicht uebernommen.
+    try:
+        bridge.nachklick_beim_schliessen()
+    except Exception:
+        pass
     _scans_beim_schliessen_speichern(bridge)
 
     ziel = bridge.rettung_schreiben()

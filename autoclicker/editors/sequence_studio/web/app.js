@@ -4523,42 +4523,87 @@ function wzUmfangKasten() {
 
 /* --------------------------------------------------------- Punkte nachklicken */
 
+/* Die vier Griffe während der Runde — dieselbe Liste wie `TASTEN` in
+ * `editors/nachklick.py`. Sie steht hier als Tabelle und nicht als Absatz, weil
+ * man sie MITTEN im Klicken nachschlägt: Fliesstext zwingt zum Lesen von vorn,
+ * und dann liest ihn niemand. */
+const WZ_TASTEN = [
+  ["CTRL+ALT+K", "überspringen", "Punkt bleibt, wo er ist"],
+  ["CTRL+ALT+U", "zurück", "einen Punkt zurück, noch mal"],
+  ["CTRL+ALT+H", "pausieren", "navigieren, ohne einen Punkt zu verbrauchen"],
+  ["CTRL+ALT+J", "übernehmen", "fertig — JETZT werden die Punkte geschrieben"],
+];
+
+/* Was die Runde tut, in der Reihenfolge, in der es passiert. Drei Schritte statt
+ * dreier Absätze: der Ablauf IST die Erklärung. */
+const WZ_SCHRITTE = [
+  ["Starten", "Der Zeiger springt auf den ersten Punkt der Sequenz."],
+  ["Klicken", "Stimmt die Stelle noch? Dann einfach klicken. Sonst hinfahren und "
+            + "dort klicken — der Klick geht ans Spiel, die Oberfläche öffnet "
+            + "sich wie im Lauf, und der nächste Punkt liegt vor dir."],
+  ["Übernehmen", "Erst damit werden die Punkte geschrieben. Vorher ändert sich "
+               + "nichts — an keiner Datei und in keinem Speicher."],
+];
+
+function wzTastenTabelle() {
+  const rumpf = el("tbody");
+  for (const [taste, was, warum] of WZ_TASTEN)
+    rumpf.appendChild(el("tr", {},
+      el("td", {}, el("span", {class: "wz-taste"}, taste)),
+      el("td", {class: "wz-was"}, was),
+      el("td", {class: "wz-warum"}, warum)));
+  return el("table", {class: "wz-tasten"}, rumpf);
+}
+
 function wzKlickenBauen() {
   const raus = [el("h2", {}, "Punkte nachklicken")];
   raus.push(wzBezug("klicken"));
-  raus.push(el("p", {class: "hint", style: "white-space:normal"},
-    "Du spielst die Sequenz einmal von Hand durch. Jeder Klick geht ans Spiel "
-    + "und setzt zugleich die Stelle des Punktes, der gerade dran ist — die "
-    + "Oberfläche öffnet sich dabei genau wie im Lauf, und der nächste Punkt "
-    + "liegt dann vor dir. Geändert wird nur die Stelle: Wartezeiten, "
-    + "Bedingungen, ELSE und Scans bleiben unangetastet."));
-  raus.push(el("p", {class: "hint", style: "white-space:normal"},
-    "Der Zeiger steht dabei jedes Mal schon auf der gespeicherten Stelle: "
-    + "stimmt sie noch, ist der Punkt ein einziger Klick. Nur die verrutschten "
-    + "kosten eine Mausbewegung."));
-  raus.push(el("p", {class: "hint", style: "white-space:normal"},
-    "Es läuft nichts von selbst — kein Zeitablauf, keine Wartezeit, kein Scan. "
-    + "Die Runde geht genau so weit, wie du klickst. Ein Start (auch ein "
-    + "gestellter Countdown) wird abgelehnt, solange sie läuft."));
-  raus.push(el("p", {class: "hint", style: "white-space:normal"},
-    "Das ist das eine Werkzeug, das im Hauptprozess laufen muss — es braucht "
-    + "einen systemweiten Maus-Hook. Bedient wird danach im Spiel: "
-    + "CTRL+ALT+K überspringt, CTRL+ALT+U geht zurück, CTRL+ALT+H pausiert, "
-    + "CTRL+ALT+J beendet und speichert. Die Anleitung steht im Konsolenfenster."));
+
+  const schritte = el("div", {class: "wz-schritte"});
+  WZ_SCHRITTE.forEach(([titel, text], i) => {
+    schritte.append(el("div", {class: "wz-nummer"}, String(i + 1)),
+      el("div", {class: "wz-schritt-text"}, el("b", {}, titel + ": "), text));
+  });
+  raus.push(schritte);
+
+  // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
+  raus.push(el("div", {class: "wz-regel"},
+    el("span", {}, "⚠"),
+    el("span", {}, el("b", {}, "Nichts wird geschrieben, bis du übernimmst. "),
+      "Fenster zu, Programm aus oder „Verwerfen“ = die Runde ist weg und "
+      + "points.json bleibt, wie sie war. Geändert wird ohnehin nur die "
+      + "Stelle: Wartezeiten, Bedingungen, ELSE und Scans bleiben unangetastet.")));
+
   const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
   leiste.appendChild(el("button", {
     class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
-  }, "Nachklicken starten"));
-  // Wer etwas anfangen kann, muss es auch beenden koennen. Ob gerade eine Runde
-  // laeuft, weiss dieses Fenster nicht (der Zustand liegt drueben) - der Knopf
-  // steht deshalb immer da, und der Hauptprozess sagt, was er vorgefunden hat.
+    title: "Startet die Runde im Hauptprozess — geklickt wird danach im Spiel",
+  }, "Runde starten"));
+  // Zwei Ausgaenge, weil es zwei Absichten gibt. Ein einzelner „Beenden"-Knopf
+  // muesste sich fuer eine entscheiden und laege in der Haelfte der Faelle
+  // falsch. Ob gerade eine Runde laeuft, weiss dieses Fenster nicht (der Zustand
+  // liegt drueben) - die Knoepfe stehen deshalb immer da, und der Hauptprozess
+  // sagt, was er vorgefunden hat.
   leiste.appendChild(el("button", {
     class: "btn", onclick: () => rufWerkzeug("nachklick_beenden"),
-  }, "Nachklicken beenden"));
+    title: "Schreibt die gesetzten Stellen nach points.json (= CTRL+ALT+J)",
+  }, "Übernehmen"));
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden", {verwerfen: true}),
+    title: "Beendet die Runde, ohne etwas zu schreiben",
+  }, "Verwerfen"));
   raus.push(leiste);
+
+  raus.push(wzTastenTabelle());
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
-    "Beenden geht auch mit CTRL+ALT+J — die Taste wirkt überall, auch wenn "
-    + "dieses Fenster vorn ist. Was bis dahin gesetzt wurde, ist gespeichert."));
+    "Bedient wird im Spiel, nicht hier: die Runde läuft im Hauptprozess, weil "
+    + "sie einen systemweiten Maus-Hook braucht. Die Tasten wirken überall, "
+    + "auch wenn dieses Fenster vorn ist — der Fortschritt steht im "
+    + "Konsolenfenster."));
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Gezählt wird nur, was im Spielfenster geklickt wird (window_focus_title). "
+    + "In diesem Fenster, der Konsole oder sonstwo kannst du klicken, ohne "
+    + "einen Punkt zu verbrauchen."));
   return raus;
 }
 

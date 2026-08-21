@@ -853,7 +853,18 @@ class AutoClickerState:
     # Die Punkt-IDs in der Reihenfolge, in der die Sequenz sie klickt.
     nachklick_punkte: list = field(default_factory=list)
     nachklick_index: int = 0
-    # Was die Runde geändert hat: (Punkt-ID, alt, neu) je gesetztem Punkt —
-    # für die Schlussmeldung und damit „nichts passiert" von „alles gleich
-    # geblieben" unterscheidbar bleibt.
+    # Was die Runde ERGEBEN hat: (Punkt-ID, alt, neu, Farbe) je gesetztem Punkt.
+    # Das ist kein Protokoll, sondern das Ergebnis selbst — die Punkte werden
+    # erst beim Übernehmen daraus geschrieben. Bis dahin ist ein Abbruch
+    # folgenlos, und „nichts passiert" bleibt von „alles gleich geblieben"
+    # unterscheidbar.
     nachklick_gesetzt: list = field(default_factory=list)
+    # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus
+    # `window_focus_title`). **Ohne den frisst die Runde jeden Klick** — auch den
+    # auf das Studio-Fenster, die Konsole oder ein Schliessen-Kreuz, und schreibt
+    # dessen Stelle in den Punkt. Leer = kein Filter (Fenster nicht gefunden).
+    nachklick_ziel: str = ""
+    # Woher die Reihenfolge kam — nur für die Anzeige. Die Runde arbeitet auf
+    # Punkten; welche Sequenz sie sortiert hat, ändert daran nichts (und die
+    # geladene Sequenz wechselt dadurch ausdrücklich NICHT).
+    nachklick_name: str = ""

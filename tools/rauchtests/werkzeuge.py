@@ -94,11 +94,23 @@ def lauf():
         pruefe("Farm" in f.text("#wz-mitte"), "Sequenzname fehlt")
         knoepfe = [k.inner_text() for k in
                    f.seite.query_selector_all("#wz-mitte button")]
-        pruefe(len(knoepfe) == 2, f"starten + beenden erwartet, da: {knoepfe}")
-        f.klick_text("#wz-mitte button", "Nachklicken starten", warten=700)
+        pruefe(len(knoepfe) == 3,
+               f"starten + uebernehmen + verwerfen erwartet, da: {knoepfe}")
+        # Die vier Griffe stehen als TABELLE da, nicht als Absatz - man schlaegt
+        # sie mitten im Klicken nach.
+        tasten = [z.inner_text() for z in
+                  f.seite.query_selector_all("#wz-mitte .wz-tasten .wz-taste")]
+        pruefe(len(tasten) == 4, f"vier Hotkeys erwartet, da: {tasten}")
+        pruefe("CTRL+ALT+J" in tasten, f"Uebernehmen-Taste fehlt: {tasten}")
+        pruefe("übernimmst" in f.text("#wz-mitte .wz-regel"),
+               "die Regel 'nichts wird geschrieben' fehlt")
+        f.klick_text("#wz-mitte button", "Runde starten", warten=700)
         pruefe("Farm" in f.status(), f"Start nennt die Sequenz nicht: {f.status()!r}")
-        f.klick_text("#wz-mitte button", "Nachklicken beenden", warten=700)
-        pruefe("Beenden" in f.status(), f"Beenden: {f.status()!r}")
+        # Verwerfen ist der Ausgang, der NICHTS schreibt - und er muss es sagen.
+        f.klick_text("#wz-mitte button", "Verwerfen", warten=700)
+        pruefe("points.json" in f.status(), f"Verwerfen: {f.status()!r}")
+        f.klick_text("#wz-mitte button", "Übernehmen", warten=700)
+        pruefe("bernommen" in f.status(), f"Uebernehmen: {f.status()!r}")
         f.bild("wz_klick")
 
         fehler.extend(f.fehler)

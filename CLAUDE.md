@@ -2319,6 +2319,24 @@ Klick ans Spiel, die Oberfläche öffnet sich genau wie im Lauf, und **der näch
 Punkt liegt dann vor einem**. Man spielt die Sequenz einmal von Hand durch, und
 hinter jedem Klick steht die neue Stelle im Punkt.
 
+**Die Runde arbeitet auf PUNKTEN, nicht auf einer Sequenz.** Aus der Sequenz
+kommt genau eine Sache: die Reihenfolge, in der ihre Punkte geklickt werden.
+Danach ist sie uninteressant — die Datei wird nicht angefasst, und die im
+Hauptprozess **geladene** Sequenz wechselt ausdrücklich nicht (`ruesten(state,
+seq)` nimmt sie als Argument). Sie zu aktivieren hiesse, dass ein Druck auf
+`CTRL+ALT+S` nach der Runde etwas anderes startet als vorher.
+
+**Geschrieben wird erst am Schluss, und nur auf ausdrückliches Übernehmen**
+(`CTRL+ALT+J`, „Übernehmen" im Studio). Bis dahin stehen die neuen Stellen in
+`state.nachklick_gesetzt` und die Punkte sind unverändert — auch im Speicher.
+Damit ist ein Abbruch folgenlos: `stop_nachklick(..., uebernehmen=False)` wirft
+die Liste weg, es gibt nichts zurückzudrehen. Verworfen wird beim Schliessen des
+Studio-Fensters (`nachklick_beim_schliessen()` — die Runde gehört dem Fenster,
+das sie gestartet hat) und beim Beenden des Programms.
+
+Vorher schrieb **jeder** Ausgang. In einer echten Runde hat das drei Punkte auf
+Fensterdekoration gesetzt und beim Beenden gespeichert.
+
 Fünf Regeln, an denen die Klick-Runde hängt:
 
 - **Geändert wird nur die Stelle.** Wartezeiten, Farb-Bedingungen,
@@ -2334,6 +2352,18 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   erst beobachtet, später geklickt — zählt als Klick; deshalb sammelt die
   Funktion **erst alle Klicks und dann den Rest**, in einem Durchgang fiel so
   ein Punkt aus der Runde heraus.
+- **Nur Klicks im Zielfenster zählen** (`window_focus_title`, unabhängig von
+  `window_focus_check` — das Flag entscheidet über das Verhalten des *Workers*).
+  Der Hook ist systemweit: ohne den Filter zählte auch der Klick auf das
+  Studio-Fenster, die Konsole oder ein Schliessen-Kreuz, und dessen Stelle landete
+  im Punkt. Gemeldet wird einmal je fremdem Fenstertitel; gibt es das Zielfenster
+  gerade nicht, wird **nicht** gefiltert und gesagt, warum — ein Filter, der alles
+  wegwirft, sähe aus wie ein kaputter Hook.
+- **Ein Pixel Abweichung ist keine Korrektur** (`PASST_TOLERANZ`). Der Zeiger wird
+  von uns auf die Stelle gesetzt, und trotzdem kommt der Klick gelegentlich einen
+  Pixel daneben zurück (DPI-Skalierung). Ohne die Toleranz schriebe jede
+  Bestätigung den Punkt um einen Pixel um und zählte als Änderung — Rauschen in
+  genau der Liste, die sagen soll, was sich geändert hat.
 - **Sie läuft aus dem Maus-Hook**, wie die Aufnahme. Deshalb schliesst der
   Punkte-Editor beim Start (ein blockierendes `input()` hielte die Message-Pump
   an, und der Hook sähe keinen Klick), deshalb sind alle weiteren Griffe globale
@@ -2347,7 +2377,11 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   und **zurück heisst zurück**: der eben gesetzte Punkt bekommt seine alte
   Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
   Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
-  Bedeutung wie sonst, nur einen anderen Gegenstand.
+  Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
+  `TASTEN` in `editors/nachklick.py`; das Studio zeigt sie als **Tabelle**
+  (`WZ_TASTEN` in `app.js`), und ein Test hält beide gegeneinander. Was man
+  mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
+  Lesen von vorn, und dann liest ihn niemand.
 
 **Der Zeiger steht immer schon auf der gespeicherten Stelle** — vor jedem Punkt,
 auch nach einem echten Klick. Das ist der Griff, der die Runde billig macht:
