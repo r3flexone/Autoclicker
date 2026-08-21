@@ -504,6 +504,20 @@ def handle_toggle(state: AutoClickerState) -> None:
                 print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+J zum Stoppen)')}")
                 return
 
+        # **Und während einer Klick-Runde erst recht nicht.** Derselbe Grund,
+        # eine Stufe schlimmer: der Hook kann die Klicks des Workers nicht von
+        # Handgriffen unterscheiden, also verbraucht der Lauf die Punkte der
+        # Runde selbst und schreibt seine eigenen Ziele hinein. Von aussen sieht
+        # das aus, als sei die Sequenz „von allein weitergelaufen" — und beim
+        # nächsten Start stehen die Punkte woanders. Die Runde ist Handarbeit;
+        # ein Zeitablauf hat darin nichts verloren. Betrifft ausdrücklich auch
+        # den Countdown-Thread, der hier ebenfalls hereinkommt.
+        with state.lock:
+            if state.nachklick_aktiv:
+                print(f"\n{err('Punkte werden gerade nachgeklickt — kein Start')} "
+                      f"{hint('(CTRL+ALT+J beendet die Runde)')}")
+                return
+
         # Prüfe ob Countdown aktiv → nur abbrechen, nicht starten
         with state.lock:
             if state.countdown_active:

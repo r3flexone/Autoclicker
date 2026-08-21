@@ -4141,7 +4141,7 @@ function teilenImportZeichnen() {
 /* --------------------------------------------------------------- Werkzeuge
  *
  * Was bisher nur im Punkte-Menue der Konsole ging: pruefen (`check`),
- * kalibrieren (`fix`) und die Klick-Runde (`klick`). Eigener Zustand neben `S`,
+ * kalibrieren (`fix`) und Nachklicken (`klick`). Eigener Zustand neben `S`,
  * wie bei Einstellungen und Teilen — der Reiter arbeitet auf `points.json` und
  * dem ganzen Bestand, nicht auf der geoeffneten Sequenz.
  *
@@ -4161,15 +4161,15 @@ let wzFarbfrage = null;
 
 /* Jedes Werkzeug sagt, WORAUF es wirkt. Ein einzelner Sequenzname oben im Reiter
  * waere fuer zwei der drei schlicht falsch: Pruefen und Kalibrieren gehen ueber
- * den GANZEN Bestand (alle Sequenzen, Slots, Scans, Punkte), nur die Klick-Runde
+ * den GANZEN Bestand (alle Sequenzen, Slots, Scans, Punkte), nur das Nachklicken
  * meint genau eine Sequenz — die hier offene. `bezug: "sequenz"` markiert das. */
 const WZ_WERKZEUGE = [
-  {key: "pruefen", name: "Prüfen", bezug: "bestand",
+  {key: "pruefen", name: "Bestand prüfen", befehl: "check", bezug: "bestand",
    kurz: "fehlende Templates, tote Verweise, Punkte ausserhalb aller Monitore"},
-  {key: "kalibrieren", name: "Kalibrieren", bezug: "bestand",
+  {key: "kalibrieren", name: "Kalibrieren", befehl: "fix", bezug: "bestand",
    kurz: "Bildschirm umgestellt? Einen Punkt neu setzen, Rest umrechnen"},
-  {key: "klicken", name: "Klick-Runde", bezug: "sequenz",
-   kurz: "Sequenz einmal von Hand nachklicken — jeder Klick setzt seinen Punkt"},
+  {key: "klicken", name: "Punkte nachklicken", befehl: "klick", bezug: "sequenz",
+   kurz: "die Sequenz einmal von Hand durchklicken — jeder Klick setzt seinen Punkt"},
 ];
 
 /** Die Zeile „worauf wirkt das hier" — als eigener Baustein, damit sie an jedem
@@ -4222,7 +4222,7 @@ function wzLinksZeichnen() {
   const ziel = $("wz-links");
   // Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus (er
   // bearbeitet andere Dateien). Damit war aber auch der NAME weg, und bei der
-  // Klick-Runde ist das genau die Frage, die man sich stellt.
+  // Nachklicken ist das genau die Frage, die man sich stellt.
   const kopf = el("div", {class: "abschnitt"},
     el("span", {class: "ueberschrift"}, "WERKZEUGE"),
     el("div", {class: "wz-offen"},
@@ -4236,7 +4236,11 @@ function wzLinksZeichnen() {
       class: "btn breit" + (wzOffen === w.key ? " an" : ""),
       style: "text-align:left",
       onclick: () => { wzOffen = w.key; wzMitteZeichnen(); wzRechtsZeichnen(); wzLinksZeichnen(); },
-    }, el("div", {}, w.name),
+      // Der Konsolen-Befehl steht mit — dieselbe Regel wie bei den Config-
+      // Schluesseln: wer das Werkzeug hier kennenlernt, erkennt es im
+      // Punkte-Menue wieder, und wer es von dort kennt, findet es hier.
+    }, el("div", {}, w.name,
+          el("span", {class: "hint", style: "font-weight:400"}, "  " + w.befehl)),
        el("div", {class: "hint", style: "font-size:11px;white-space:normal"}, w.kurz));
     liste.appendChild(knopf);
   }
@@ -4517,10 +4521,10 @@ function wzUmfangKasten() {
   return kasten;
 }
 
-/* -------------------------------------------------------------- Klick-Runde */
+/* --------------------------------------------------------- Punkte nachklicken */
 
 function wzKlickenBauen() {
-  const raus = [el("h2", {}, "Klick-Runde")];
+  const raus = [el("h2", {}, "Punkte nachklicken")];
   raus.push(wzBezug("klicken"));
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Du spielst die Sequenz einmal von Hand durch. Jeder Klick geht ans Spiel "
@@ -4529,6 +4533,14 @@ function wzKlickenBauen() {
     + "liegt dann vor dir. Geändert wird nur die Stelle: Wartezeiten, "
     + "Bedingungen, ELSE und Scans bleiben unangetastet."));
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Der Zeiger steht dabei jedes Mal schon auf der gespeicherten Stelle: "
+    + "stimmt sie noch, ist der Punkt ein einziger Klick. Nur die verrutschten "
+    + "kosten eine Mausbewegung."));
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
+    "Es läuft nichts von selbst — kein Zeitablauf, keine Wartezeit, kein Scan. "
+    + "Die Runde geht genau so weit, wie du klickst. Ein Start (auch ein "
+    + "gestellter Countdown) wird abgelehnt, solange sie läuft."));
+  raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Das ist das eine Werkzeug, das im Hauptprozess laufen muss — es braucht "
     + "einen systemweiten Maus-Hook. Bedient wird danach im Spiel: "
     + "CTRL+ALT+K überspringt, CTRL+ALT+U geht zurück, CTRL+ALT+H pausiert, "
@@ -4536,13 +4548,13 @@ function wzKlickenBauen() {
   const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
   leiste.appendChild(el("button", {
     class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
-  }, "Klick-Runde starten"));
+  }, "Nachklicken starten"));
   // Wer etwas anfangen kann, muss es auch beenden koennen. Ob gerade eine Runde
   // laeuft, weiss dieses Fenster nicht (der Zustand liegt drueben) - der Knopf
   // steht deshalb immer da, und der Hauptprozess sagt, was er vorgefunden hat.
   leiste.appendChild(el("button", {
     class: "btn", onclick: () => rufWerkzeug("nachklick_beenden"),
-  }, "Runde beenden"));
+  }, "Nachklicken beenden"));
   raus.push(leiste);
   raus.push(el("p", {class: "hint", style: "white-space:normal"},
     "Beenden geht auch mit CTRL+ALT+J — die Taste wirkt überall, auch wenn "

@@ -365,7 +365,7 @@ class BridgeWerkzeugeMixin:
         from ...befehl import sende
         if self._laeuft():
             return {"ok": False,
-                    "meldung": "Eine Sequenz läuft — die Klick-Runde braucht die "
+                    "meldung": "Eine Sequenz läuft — Nachklicken braucht die "
                                "Maus für sich."}
         if self._dirty:
             return {"ok": False,
@@ -378,8 +378,8 @@ class BridgeWerkzeugeMixin:
         if not sende("nachklick", datei=str(self.filepath)):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         return {"ok": True,
-                "meldung": f"Klick-Runde für '{self.board.name}' gestartet — die "
-                           "Anleitung steht im Konsolenfenster, geklickt wird im Spiel."}
+                "meldung": f"Nachklicken für '{self.board.name}' gestartet — der "
+                           "Zeiger steht auf dem ersten Punkt, geklickt wird im Spiel."}
 
     def nachklick_beenden(self, daten: Optional[dict] = None) -> dict:
         """Eine laufende Klick-Runde beenden — dasselbe wie CTRL+ALT+J.

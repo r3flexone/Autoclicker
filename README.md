@@ -1679,12 +1679,27 @@ Unterschied zu `walk` ist der Klick selbst: er geht ans Spiel, die Oberfläche
 `walk` steht das Spiel still, und ein Knopf im dritten Untermenü ist gar nicht
 sichtbar.
 
+**Der Zeiger steht dabei jedes Mal schon auf der gespeicherten Stelle.** Stimmt
+sie noch, ist der Punkt ein einziger Klick — nur die verrutschten kosten eine
+Mausbewegung. (Er springt kurz nach dem Klick, nicht sofort: sonst zöge er die
+Maus zwischen Druck und Loslassen weg, und aus dem Klick würde ein Ziehen.)
+
+**Es läuft nichts von selbst** — kein Zeitablauf, keine Wartezeit, kein Scan. Die
+Runde geht genau so weit, wie du klickst; ein Start und ein gestellter Countdown
+werden abgelehnt, solange sie läuft. Der Grund: der Maus-Hook kann die Klicks des
+Klickers nicht von deinen unterscheiden, ein mitlaufender Durchgang verbrauchte
+also die Punkte selbst.
+
 Geändert wird **nur die Stelle** — Wartezeiten, Farb-Bedingungen, Nachprüfungen,
 ELSE und Scans bleiben unangetastet. Während der Runde: `CTRL+ALT+K`
 überspringen · `CTRL+ALT+U` einen Punkt zurück · `CTRL+ALT+H` pausieren
 (navigieren, ohne einen Punkt zu verbrauchen) · `CTRL+ALT+J` beenden.
-Beobachtete Pixel, ELSE-Klicks und Rad-Schritte erreicht eine Klick-Runde nicht
+Beobachtete Pixel, ELSE-Klicks und Rad-Schritte erreicht die Runde nicht
 — sie werden am Ende gezählt, dafür bleibt `walk`.
+
+Im Sequenz-Studio steht dasselbe unter **Werkzeuge → Punkte nachklicken**; die
+Runde läuft dann trotzdem im Hauptprozess (sie braucht den systemweiten
+Maus-Hook), bedient wird sie mit denselben Tasten.
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.

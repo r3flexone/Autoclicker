@@ -17,6 +17,8 @@ Sie läuft aus dem Maus-Hook, nicht aus der Konsole — deshalb schliesst der
 Punkte-Editor beim Start, und alles Weitere sind globale Hotkeys.
 """
 
+import threading
+
 from ..models import (
     AutoClickerState,
     BLOCK_CLICK,
@@ -31,6 +33,13 @@ from ..winapi import install_mouse_hook, remove_mouse_hook, set_cursor_pos
 # Klassifikation im Projekt — eine zweite Liste hier wäre die Stelle, an der ein
 # neuer Typ vergessen wird.
 KLICK_BLOECKE = (BLOCK_CLICK, BLOCK_WAIT_CLICK)
+
+# Wie lange nach einem Klick gewartet wird, bevor der Zeiger auf die nächste
+# Stelle springt. **Sofort springen geht nicht**: der Hook meldet den DRUCK, das
+# Loslassen kommt erst danach — dazwischen die Maus wegzuziehen macht aus dem
+# Klick ein Ziehen. Ein Viertelsekunde reicht dem Loslassen und ist kurz genug,
+# dass der Zeiger schon dasteht, wenn man den nächsten Punkt ansieht.
+SPRUNG_VERZOEGERUNG = 0.25
 
 
 def klickpunkte(seq: Sequence) -> tuple[list, list]:
@@ -87,6 +96,14 @@ def ruesten(state: AutoClickerState) -> tuple:
         if state.recording_active:
             print(f"\n{err('Aufnahme läuft')} {hint('(CTRL+ALT+J beendet sie)')}")
             return None
+        # Ein gestellter Countdown ist ein Start mit Verzögerung — mitten in der
+        # Runde wäre er genau der Zeitablauf, der hier nichts verloren hat. Er
+        # wird abgelehnt statt still abgeräumt: wer ihn gestellt hat, soll es
+        # entscheiden.
+        if state.countdown_active:
+            print(f"\n{err('Ein Countdown läuft — er würde mitten in die Runde starten')} "
+                  f"{hint('(CTRL+ALT+S bricht ihn ab)')}")
+            return None
         if state.nachklick_aktiv:
             return None
         seq = state.active_sequence
@@ -133,9 +150,11 @@ def start_nachklick(state: AutoClickerState) -> bool:
 
     print(f"\n{col('╔══ PUNKTE NACHKLICKEN ══╗', 'cyan')}")
     print(f"  Sequenz „{seq.name}“ — {len(ids)} Klick-Punkt(e) der Reihe nach.")
-    print("  Klicke im Spiel die Stelle an, die dieser Punkt treffen soll.")
+    print("  Der Zeiger steht jedes Mal schon auf der gespeicherten Stelle:")
+    print("  stimmt sie noch, genügt ein Klick. Sonst hinfahren und dort klicken.")
     print(hint("  Dein Klick geht ans Spiel: die Oberfläche geht dabei genau so"))
     print(hint("  auf wie im Lauf, und der nächste Punkt liegt dann vor dir."))
+    print(hint("  Es läuft NICHTS von selbst — kein Zeitablauf, keine Wartezeit."))
     print(hint("  Geändert wird nur die Stelle — Wartezeiten, Bedingungen und"))
     print(hint("  ELSE bleiben unangetastet."))
     print(f"  Überspringen:  {col('CTRL+ALT+K', 'yellow')} "
@@ -149,7 +168,7 @@ def start_nachklick(state: AutoClickerState) -> bool:
     if sonstige:
         print(f"  {info(f'{len(sonstige)} Stelle(n) erreicht eine Klick-Runde nicht')} "
               f"{hint('(beobachtete Pixel, ELSE, Rad) — dafür bleibt walk.')}")
-    _zeige_aktuellen(state, springen=True)
+    _zeige_aktuellen(state)
     return True
 
 
@@ -216,7 +235,7 @@ def nachklick_ueberspringen(state: AutoClickerState) -> None:
     if fertig:
         stop_nachklick(state, "alle Punkte durch")
     else:
-        _zeige_aktuellen(state, springen=True)
+        _zeige_aktuellen(state)
 
 
 def nachklick_zurueck(state: AutoClickerState) -> None:
@@ -245,7 +264,7 @@ def nachklick_zurueck(state: AutoClickerState) -> None:
     if zurueckgeholt:
         print(f"  {col('[ZURÜCK]', 'yellow')} #{punkt_id} steht wieder auf "
               f"({zurueckgeholt[0]}, {zurueckgeholt[1]}).")
-    _zeige_aktuellen(state, springen=True)
+    _zeige_aktuellen(state)
 
 
 def _on_click_factory(state: AutoClickerState):
@@ -259,6 +278,13 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
     """Ein Klick im Spiel: die neue Stelle des aktuellen Punktes."""
     with state.lock:
         if not state.nachklick_aktiv or state.nachklick_pausiert:
+            return
+        # **Nur echte Klicks zählen.** Läuft der Worker, sind seine eigenen
+        # Klicks für den Hook nicht von einem Handgriff zu unterscheiden — die
+        # Runde raste dann von selbst durch die Punkte und schriebe überall die
+        # Stellen hin, die der Lauf gerade anfährt. `handle_toggle()` lässt es
+        # gar nicht erst so weit kommen; das hier ist die zweite Tür.
+        if state.is_running:
             return
         if state.nachklick_index >= len(state.nachklick_punkte):
             return
@@ -286,25 +312,48 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
     if punkt is not None:
         farbe = f"  {describe_color(color)}" if punkt.color and color else ""
         if gleich:
-            print(f"  {col('[GLEICH]', 'gray')} #{punkt_id} {name} — "
-                  f"dieselbe Stelle wie vorher.{farbe}")
+            # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
+            # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
+            # als „nichts passiert".
+            print(f"  {col('[PASST]', 'green')} #{punkt_id} {name} — "
+                  f"bestätigt, bleibt wo er ist.{farbe}")
         else:
             print(f"  {col('[GESETZT]', 'green')} #{punkt_id} {name}  "
                   f"({alt[0]}, {alt[1]}) → ({x}, {y}){farbe}")
     if fertig:
         stop_nachklick(state, "alle Punkte durch")
     else:
-        _zeige_aktuellen(state)
+        _zeige_aktuellen(state, verzoegert=True)
 
 
-def _zeige_aktuellen(state: AutoClickerState, springen: bool = False) -> None:
-    """Sagt, welcher Punkt als Nächstes dran ist — und wo er bisher liegt.
+def _springe(x: int, y: int, verzoegert: bool = False) -> None:
+    """Setzt den Zeiger auf eine Stelle — nach einem Klick erst nach kurzer Frist.
 
-    **Der Zeiger springt nur, wenn gerade nicht geklickt wurde.** Nach einem
-    echten Klick die Maus wegzuziehen ist gefährlich: das Spiel verarbeitet den
-    Klick womöglich noch, und ein Ziehen oder ein Tooltip hängt daran. Beim
-    Start, beim Überspringen und beim Zurückgehen hat niemand geklickt — dort
-    hilft der Sprung, weil man die alte Stelle dann sieht statt sie zu lesen.
+    Die Frist ist der ganze Grund, warum das eine eigene Funktion ist: der
+    Maus-Hook meldet den DRUCK, das Loslassen kommt erst danach. Sofort zu
+    springen machte aus jedem Klick ein Ziehen.
+    """
+    if not verzoegert:
+        set_cursor_pos(x, y)
+        return
+    zeit = threading.Timer(SPRUNG_VERZOEGERUNG, set_cursor_pos, args=(x, y))
+    zeit.daemon = True
+    zeit.start()
+
+
+def _zeige_aktuellen(state: AutoClickerState, verzoegert: bool = False) -> None:
+    """Sagt, welcher Punkt als Nächstes dran ist — und fährt ihn an.
+
+    **Der Zeiger steht immer schon auf der gespeicherten Stelle.** Damit ist ein
+    Punkt, der noch stimmt, ein einziger Klick: hinsehen, klicken, weiter. Nur
+    die, die verrutscht sind, kosten eine Mausbewegung — und das sind nach einem
+    Bildschirm-Umbau die wenigsten.
+
+    Vorher sprang er nach einem echten Klick nicht (aus Sorge um Ziehen und
+    Tooltips), und dann stand die alte Stelle nur als Zahlenpaar in der Konsole:
+    man musste sie suchen, statt sie zu sehen. Die Sorge löst `SPRUNG_VERZOEGERUNG`
+    besser als das Nicht-Springen — `verzoegert=True` sagt „der Klick ist gerade
+    erst passiert".
     """
     with state.lock:
         if not state.nachklick_aktiv:
@@ -318,6 +367,8 @@ def _zeige_aktuellen(state: AutoClickerState, springen: bool = False) -> None:
         return
     farbe = f"  {describe_color(punkt.color)}" if punkt.color else ""
     print(f"  {col(f'→ {i + 1}/{gesamt}', 'cyan')}  #{punkt.id} "
-          f"{punkt.name or '(ohne Name)'}   bisher ({punkt.x}, {punkt.y}){farbe}")
-    if springen:
-        set_cursor_pos(punkt.x, punkt.y)
+          f"{punkt.name or '(ohne Name)'}   Zeiger steht auf "
+          f"({punkt.x}, {punkt.y}){farbe}")
+    print(hint("     Stimmt die Stelle? Dann einfach klicken. Sonst hinfahren "
+               "und dort klicken."))
+    _springe(punkt.x, punkt.y, verzoegert)

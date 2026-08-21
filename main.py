@@ -94,7 +94,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(col("Editoren:", 'blue'))
     print(f"  {col('CTRL+ALT+E', 'yellow')}  Sequenz-Editor {hint('(Punkte + Zeiten verknüpfen)')}")
     print(f"  {col('CTRL+ALT+B', 'yellow')}  Sequenz-Studio {hint('(Phasen + Schritte visuell – braucht pywebview)')}")
-    print(f"  {' ' * 12}{hint('dort auch: Reiter Werkzeuge = prüfen, kalibrieren, Klick-Runde')}")
+    print(f"  {' ' * 12}{hint('dort auch: Reiter Werkzeuge = prüfen, kalibrieren, nachklicken')}")
     print(f"  {col('CTRL+ALT+N', 'yellow')}  Item-Scan Editor {hint('(Items erkennen + vergleichen)')}")
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Item-, Boss- und Icon-Scans auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")

@@ -2349,10 +2349,30 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand.
 
-Der Zeiger springt dabei **nicht** nach einem echten Klick auf den nächsten
-Punkt, nur beim Start, beim Überspringen und beim Zurückgehen: die Maus direkt
-nach einem Klick wegzuziehen kann ein Ziehen abbrechen oder einen Tooltip
-verschlucken, und das Spiel verarbeitet den Klick womöglich noch.
+**Der Zeiger steht immer schon auf der gespeicherten Stelle** — vor jedem Punkt,
+auch nach einem echten Klick. Das ist der Griff, der die Runde billig macht:
+stimmt die Stelle noch, ist der Punkt ein einziger Klick, und nur die
+verrutschten kosten eine Mausbewegung. Nach einem Bildschirm-Umbau sind das die
+wenigsten.
+
+Hier stand einmal das Gegenteil („springt **nicht** nach einem echten Klick"),
+und der Grund war nicht falsch: der Hook meldet den **Druck**, das Loslassen
+kommt erst danach — dazwischen die Maus wegzuziehen macht aus dem Klick ein
+Ziehen. Nur war die Antwort darauf falsch. Statt gar nicht zu springen, springt
+er nach `SPRUNG_VERZOEGERUNG` (0,25 s, `_springe(..., verzoegert=True)`); die
+alte Fassung liess die Stelle als Zahlenpaar in der Konsole stehen, und man
+musste sie auf dem Schirm suchen, statt sie zu sehen.
+
+**Und es läuft nichts von selbst.** Ein Start während der Runde wird abgelehnt —
+`handle_toggle()` prüft `nachklick_aktiv` genau wie `recording_active`, und
+`ruesten()` lehnt umgekehrt ab, solange ein Countdown gestellt ist. Der Grund ist
+derselbe wie bei der Aufnahme, eine Stufe schlimmer: **der Maus-Hook kann die
+Klicks des Workers nicht von Handgriffen unterscheiden.** Lief eine Sequenz mit,
+verbrauchte sie die Punkte der Runde selbst und schrieb ihre eigenen Ziele
+hinein — von aussen sah das aus, als sei die Sequenz „von allein weitergelaufen",
+und beim nächsten Start standen die Punkte woanders. `_setze_punkt()` ignoriert
+zusätzlich jeden Klick, solange `is_running` steht; die zweite Tür kostet nichts
+und fängt das Rennen zwischen Worker-Ende und Hook.
 
 **Einzelne Punkte statt aller**: Punkte-Menü → `walk`, dann `n` (Maus an die richtige
 Stelle) bzw. `f` (nur Farbe neu lesen). Das ist der Weg, wenn nicht alles gleichmässig

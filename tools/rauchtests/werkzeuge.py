@@ -88,16 +88,16 @@ def lauf():
         pruefe([p.x for p in b.points] == [555, 1355, 855],
                f"Punkte nicht gewandert: {[(p.id, p.x) for p in b.points]}")
 
-        # --- Klick-Runde: starten UND beenden ---
-        f.klick_text("#wz-links button", "Klick-Runde", warten=500)
+        # --- Nachklicken: starten UND beenden ---
+        f.klick_text("#wz-links button", "Punkte nachklicken", warten=500)
         pruefe("die offene Sequenz" in f.text("#wz-mitte"), "Bezug fehlt")
         pruefe("Farm" in f.text("#wz-mitte"), "Sequenzname fehlt")
         knoepfe = [k.inner_text() for k in
                    f.seite.query_selector_all("#wz-mitte button")]
         pruefe(len(knoepfe) == 2, f"starten + beenden erwartet, da: {knoepfe}")
-        f.klick_text("#wz-mitte button", "Klick-Runde starten", warten=700)
+        f.klick_text("#wz-mitte button", "Nachklicken starten", warten=700)
         pruefe("Farm" in f.status(), f"Start nennt die Sequenz nicht: {f.status()!r}")
-        f.klick_text("#wz-mitte button", "Runde beenden", warten=700)
+        f.klick_text("#wz-mitte button", "Nachklicken beenden", warten=700)
         pruefe("Beenden" in f.status(), f"Beenden: {f.status()!r}")
         f.bild("wz_klick")
 
