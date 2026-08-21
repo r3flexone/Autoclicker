@@ -49,15 +49,10 @@ def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
 def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optional[Sequence]:
     """Lädt eine einzelne Sequenz-Datei.
 
-    Der Loader kennt nur das aktuelle Schema - darum kümmert sich migration.migrate(),
-    bevor hier gelesen wird. Dass dessen Kette derzeit leer ist, ändert daran nichts:
-    der Aufruf bleibt die Stelle, an der eine künftige Umstellung landet.
-
-    `points` sind die Punkte, aus denen die Koordinaten geholt werden. Ohne sie stünden
-    im Ergebnis lauter Nullen — in der Datei stehen ja nur noch IDs. Deshalb lädt die
-    Funktion sie selbst nach, wenn der Aufrufer keine übergibt: von den Aufrufern hat
-    die Hälfte gar keinen Punkte-Pool zur Hand (Sequenz-Studio, Scan-Studio, Export), und die
-    dürfen deswegen keine halbe Sequenz bekommen.
+    `points` sind die Punkte, aus denen die Koordinaten geholt werden — in der
+    Datei stehen nur IDs. Ohne Übergabe lädt die Funktion sie selbst nach: die
+    Hälfte der Aufrufer (Studio, Export) hat keinen Punkte-Pool zur Hand und
+    darf keine halbe Sequenz bekommen.
     """
     if points is None:
         points = _punkte_aus_datei()
@@ -111,16 +106,10 @@ _seq_cache_key: tuple = ()
 def _verzeichnis_kennung(seq_dir: Path) -> tuple:
     """Was der Cache vergleicht: die Eintraege selbst, nicht die Ordner-Uhr.
 
-    Vorher stand hier die mtime des **Ordners**, und das ist auf grober
-    Zeitaufloesung unsicher: NTFS stempelt Verzeichnisse deutlich groeber als
-    ext4. Wurden zwei Sequenzen im selben Tick geschrieben, blieb die Ordner-Zeit
-    gleich — der Cache galt weiter und die zweite Datei war **unsichtbar**. Nicht
-    nur im Menue: `zuletzt_bearbeitet()` nennt dann die falsche Sequenz, und das
-    Studio oeffnet beim Start nicht die, an der man gerade gearbeitet hat.
-
-    Name, Groesse und mtime jedes Eintrags fangen das ab. Das Statten kostet
-    wenig — teuer ist das Oeffnen und Parsen jeder Datei, und genau das spart der
-    Cache weiterhin ein.
+    Die mtime des Ordners ist auf grober Zeitaufloesung unsicher (NTFS) — zwei
+    im selben Tick geschriebene Sequenzen liessen die zweite unsichtbar werden.
+    Name, Groesse und mtime jedes Eintrags fangen das ab; teuer ist ohnehin
+    erst das Parsen, und das spart der Cache weiterhin.
     """
     eintraege = []
     with os.scandir(seq_dir) as it:
@@ -269,23 +258,13 @@ def _punkte_aus_datei() -> list[ClickPoint]:
 def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
     """Holt points.json von Platte nach und liefert die Punkte zum Aufloesen.
 
-    Wer eine Sequenz frisch von Platte laedt, muss auch die Punkte frisch holen.
-    Das Sequenz-Studio laeuft als eigener Prozess und schreibt beim Speichern
-    BEIDE Dateien; der Hauptprozess nahm die Sequenz von Platte und die Punkte
-    aus seinem Speicher. Ein dort angelegter Punkt fehlte deshalb genau dann,
-    wenn man ihn braucht: `aufloesen()` meldete "Punkt #51 FEHLT", `step_gate()`
-    uebersprang den Schritt. Zwei Haelften aus zwei Zeitpunkten - die eine Sorte
-    Fehler, die dieser Ordner sonst ueberall vermeidet.
+    Das Studio schreibt beim Speichern beide Dateien; nahm der Hauptprozess die
+    Sequenz von Platte und die Punkte aus dem Speicher, fehlte ein dort
+    angelegter Punkt genau dann, wenn man ihn braucht.
 
-    Zusammengefuehrt wird ueber die ID, **Platte gewinnt**. Punkte, die nur im
-    Speicher stehen, bleiben: Boss- und Icon-Editor legen ueber
-    `punkt_fuer_stelle()` welche an, ohne sofort zu speichern - ein stumpfes
-    Ersetzen loeschte die. Geloescht wird hier ueberhaupt nichts; keiner der
-    beiden Prozesse entfernt Punkte, und ein Verweis ins Leere waere teurer als
-    ein Punkt zu viel.
-
-    Laesst sich die Datei nicht lesen, bleibt der Speicherstand unangetastet -
-    das ist der Fall, in dem Raten schlimmer ist als Altern.
+    Zusammengefuehrt wird ueber die ID, Platte gewinnt. Geloescht wird nichts —
+    Boss- und Icon-Editor legen Punkte an, ohne sofort zu speichern. Ist die
+    Datei nicht lesbar, bleibt der Speicherstand unangetastet.
     """
     von_platte = _punkte_aus_datei()
     with state.lock:
@@ -319,10 +298,8 @@ def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
 def _als_punkte(points) -> list[ClickPoint]:
     """Punkte-Liste vereinheitlichen: ClickPoints ODER rohe Dicts rein, ClickPoints raus.
 
-    Noetig, weil die Aufrufer beides liefern - der Sweep rohe Dicts (er will den State
-    nicht anfassen), die Editoren `list(state.points)`. Vorher fiel das niemandem auf,
-    weil die Migration Dict-Zugriffe in einem `except TypeError: continue` hatte: mit
-    ClickPoints tat sie schlicht nichts.
+    Noetig, weil die Aufrufer beides liefern — der Sweep rohe Dicts (er will den
+    State nicht anfassen), die Editoren `list(state.points)`.
     """
     raus = []
     for p in points or []:
@@ -352,25 +329,18 @@ def get_next_point_id(state: AutoClickerState) -> int:
 def punkt_an_stelle(punkte, x: int, y: int, color=None,
                     radius: Optional[int] = None,
                     farbtoleranz: Optional[int] = None):
-    """Der vorhandene Punkt an dieser Stelle — oder None. **Die eine Regel.**
+    """Der vorhandene Punkt an dieser Stelle — oder None. Die eine Regel.
 
-    Dieselbe Frage stellen zwei Stellen: der Editor (`punkt_fuer_stelle`) und die
-    Aufnahme (`punkte_fuer_events`). Beide verglichen die Koordinaten **exakt** —
-    und genau daran entstanden die Doppelten: man trifft denselben Knopf zweimal,
-    aber zwei Pixel versetzt, und bekommt zwei Punkte. In einer echten Aufnahme
-    lagen so vier Punkte auf einem einzigen grünen Knopf.
-
-    Deshalb ein Radius. Zwei Bedingungen, und die zweite ist die wichtigere:
+    Editor und Aufnahme stellen dieselbe Frage; mit exaktem Vergleich entstand
+    pro Klick ein eigener Punkt. Zwei Bedingungen:
 
     1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten)
-    2. **Die Farbe muss passen.** Sobald sie abweicht, ist es ein anderer Ort —
-       auch wenn er einen Pixel daneben liegt. Genau dafür ist die Farbe da: an
-       einer Farbgrenze klickt man zwei verschiedene Dinge, und zwei Spiele
-       übereinander unterscheiden sich in nichts anderem.
+    2. Die Farbe muss passen — an einer Farbgrenze klickt man zwei
+       verschiedene Dinge, und zwei Spiele übereinander unterscheiden sich in
+       nichts anderem.
 
-    Fehlt einer Seite die Farbe, lässt sich Regel 2 nicht prüfen — dann zählt nur
-    die exakte Stelle. Lieber ein Punkt zu viel als zwei zusammengelegt, die es
-    nicht sind.
+    Fehlt einer Seite die Farbe, zählt nur die exakte Stelle: lieber ein Punkt
+    zu viel als zwei zusammengelegt, die es nicht sind.
     """
     from ..config import CONFIG
     radius = CONFIG.punkt_radius if radius is None else radius
@@ -398,16 +368,12 @@ def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
                       color=None, name: str = "", source: str = "") -> int:
     """ID des Punktes an (x, y) - liegt dort keiner, wird einer angelegt.
 
-    DER Weg, wie ein Editor an eine Stelle kommt. Wer stattdessen Koordinaten in den
-    Schritt schreibt, baut die Kopie wieder ein, die diese ganze Umstellung beseitigt
-    hat - deshalb gibt es hier eine ID zurueck und keinen Punkt.
+    DER Weg, wie ein Editor an eine Stelle kommt; deshalb gibt es eine ID
+    zurueck und keinen Punkt. Ein vorhandener an derselben Stelle wird
+    wiederverwendet (`punkt_an_stelle()`), sonst wandert beim Nachjustieren nur
+    eine von zwei Stellen mit.
 
-    Ein vorhandener Punkt an derselben Stelle wird wiederverwendet: klickt eine Sequenz
-    zweimal denselben Knopf, soll das EIN Punkt sein. Sonst wandert beim Nachjustieren
-    nur eine der beiden Stellen mit, und die Sequenz laeuft halb korrigiert weiter.
-    „Dieselbe Stelle" beantwortet `punkt_an_stelle()` — mit Radius UND Farbe.
-
-    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen - schreibt state.points.
+    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen — schreibt state.points.
     """
     p = punkt_an_stelle(state.points, x, y, color)
     if p is not None:
@@ -445,7 +411,7 @@ def _phasen(sequence):
 def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `punkte` ist id -> ClickPoint.
 
-    Vier Referenzen pro Schritt, alle nach demselben Muster:
+    Vier Referenzen pro Schritt:
 
     | Referenz                    | fuellt                      | fehlt der Punkt      |
     |-----------------------------|-----------------------------|----------------------|
@@ -454,17 +420,11 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
     | `verify_condition.point_id` | pixel, color                | Pruefung entfaellt   |
     | `else_config.point_id`      | x, y, name                  | else wird 'skip'     |
 
-    Die letzte Spalte ist der Unterschied: Klick und Vorbedingung sind der Schritt
-    selbst - ohne sie darf er nicht laufen. Nachpruefung und else sind Zusatz; faellt
-    ihr Punkt weg, laeuft der Schritt weiter, nur eben ungeprueft. Gemeldet wird
-    beides.
+    Klick und Vorbedingung sind der Schritt selbst, Nachpruefung und else nur
+    Zusatz. Gemeldet wird beides.
 
-    Die Arbeitswerte sind das, was Worker und Editoren lesen; gespeichert wird nur die
-    ID. Deshalb laeuft das hier direkt beim Laden - sonst saehe jeder Aufrufer, der die
-    Datei ohne Punkte oeffnet, lauter Nullen.
-
-    `still=True` unterdrueckt die "folgt Punkt"-Meldungen (beim Laden ist das keine
-    Nachricht, sondern der Normalfall). Verwaiste Referenzen werden IMMER gemeldet.
+    `still=True` unterdrueckt die "folgt Punkt"-Meldungen (beim Laden der
+    Normalfall); verwaiste Referenzen werden IMMER gemeldet.
     """
     meldungen = []
 
@@ -553,11 +513,7 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
 def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:
     """`aufloesen()` gegen den State-Punktpool - der Weg fuer Worker und Editoren.
 
-    Der Punkt ist die Wahrheit: verschiebt man ihn, ziehen alle Schritte mit, die auf ihn
-    zeigen. Genau das war vorher das Problem - eine verrutschte Aufnahme musste in jedem
-    Schritt einzeln nachgezogen werden, und man musste den falschen Schritt erst finden.
-
-    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen: die Funktion liest
+    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen: liest
     state.points und schreibt in die Sequenz-Schritte.
     """
     return aufloesen({p.id: p for p in state.points}, sequence)

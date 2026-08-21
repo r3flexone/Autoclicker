@@ -147,9 +147,7 @@ class BridgeEditingMixin:
         """Trägt `rows` aus `quelle` in `ziel` ab Position `at` ein.
 
         Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
-        zwischen Phasen. Letzteres gibt es im Konsolen-Editor gar nicht — eine
-        Aufnahme nachträglich in INIT/LOOP/END aufzuteilen hiess dort löschen und
-        neu anlegen.
+        zwischen Phasen — Letzteres gibt es im Konsolen-Editor gar nicht.
         """
         schritte = [quelle.steps[i] for i in sorted(rows)]
         if not schritte:
@@ -204,21 +202,12 @@ class BridgeEditingMixin:
     def auswahl_duplizieren(self, daten: Optional[dict] = None) -> dict:
         """Legt Kopien der gewählten Blöcke direkt hinter die Auswahl.
 
-        Der schnellste Weg zu einem Block, der einem vorhandenen fast gleicht —
-        und das ist beim Bauen einer Sequenz der Normalfall: dieselbe Wartezeit,
-        derselbe Trigger, dieselbe Nachprüfung, nur eine andere Stelle. Alles
-        von Hand nachzustellen ist ein Dutzend Klicks, von denen jeder vergessen
-        werden kann.
+        Die Kopie zeigt auf denselben Punkt: ein Duplikat ist erst mal derselbe
+        Klick, und ein zweiter Punkt an derselben Stelle wäre die Doppelung, die
+        `punkt_fuer_stelle()` überall sonst vermeidet.
 
-        **Die Kopie zeigt auf denselben Punkt.** Ein Duplikat ist erst mal
-        derselbe Klick; wer eine andere Stelle will, wählt einen anderen Punkt.
-        Einen zweiten Punkt an derselben Stelle anzulegen wäre genau die
-        Doppelung, die `punkt_fuer_stelle()` überall sonst vermeidet — beim
-        Nachjustieren wanderte dann nur die Hälfte mit.
-
-        Kopiert wird tief: `else_config`, `wait_condition` und
-        `verify_condition` sind eigene Objekte, sonst änderte ein Griff an der
-        Kopie zugleich das Original.
+        Kopiert wird tief — `else_config`, `wait_condition` und `verify_condition`
+        sind eigene Objekte, sonst änderte ein Griff an der Kopie das Original mit.
         """
         lane = self.sel_lane
         if lane is None or not self.sel_rows:
@@ -252,16 +241,11 @@ class BridgeEditingMixin:
         """Entfernt ein ELSE, das nach dieser Änderung nichts mehr auslösen kann.
 
         Wer den Trigger wegnimmt oder den Typ umstellt, hat den einzigen Auslöser
-        entfernt — die Ersatzaktion ist damit wirkungslos. Sie stehenzulassen
-        hiesse, sie unsichtbar in der Datei zu behalten (der Abschnitt fällt ja
-        mit dem Auslöser weg); sie automatisch abzuschalten macht den Block zu
-        dem, was er jetzt ist. Stellt man den Typ zurück, steht der Abschnitt
-        wieder da — leer, zum frischen Auswählen.
+        entfernt; stehenzulassen hiesse, die Ersatzaktion unsichtbar in der Datei zu
+        behalten, denn der Abschnitt fällt mit dem Auslöser weg.
 
-        **Nur bei einer Änderung, nie beim Laden.** Eine Datei, die von Hand oder
-        durch einen Import ein wirkungsloses ELSE mitbringt, wird nicht
-        stillschweigend beschnitten: dort bleibt der Abschnitt samt Warnung
-        stehen, und der Nutzer entscheidet.
+        Nur bei einer Änderung, nie beim Laden: eine Datei, die ein wirkungsloses
+        ELSE mitbringt, wird nicht stillschweigend beschnitten.
 
         Gibt den Meldungstext zurück (leer, wenn nichts zu tun war).
         """
@@ -273,10 +257,9 @@ class BridgeEditingMixin:
     def block_typ(self, daten: dict) -> dict:
         """Stellt den Block-Typ um.
 
-        FARBE+KLICK braucht einen Punkt: die Bedingung hängt an ihm, er ist die
-        Quelle für Stelle UND Farbe. Ohne Punkt wird der Typwechsel abgelehnt —
-        dieselbe Haltung wie bei `block_trigger`: lieber gar keine Bedingung als
-        eine, die niemand mehr nachziehen kann.
+        FARBE+KLICK braucht einen Punkt — er ist die Quelle für Stelle UND Farbe.
+        Ohne Punkt wird der Wechsel abgelehnt: lieber gar keine Bedingung als eine,
+        die niemand mehr nachziehen kann.
         """
         typ = (daten or {}).get("typ")
         lane, row, step = self._einzelner()
@@ -326,25 +309,12 @@ class BridgeEditingMixin:
     def bereich_aufnehmen(self, daten: Optional[dict] = None) -> dict:
         """Beide Ecken des Screenshot-Bereichs mit der Maus setzen — in einem Zug.
 
-        Vier Zahlenfelder sind kein Weg, einen Bildschirmbereich zu bestimmen —
-        niemand weiss auswendig, wo (1740, 300) liegt. Also dasselbe wie in den
-        Konsolen-Editoren: Maus hinbewegen, ENTER, zweite Ecke, ENTER. Nur ohne
-        Konsole, denn die hat dieses Fenster nicht.
+        Vier Zahlenfelder sind kein Weg, einen Bildschirmbereich zu bestimmen: Maus
+        hin, ENTER, zweite Ecke, ENTER. Beide Ecken in EINEM Aufruf, sonst müsste
+        die Hand mitten in der Aufnahme zum Fenster zurückfahren.
 
-        **Beide Ecken in EINEM Aufruf**, nicht zwei Knoepfe. Ein erster Entwurf
-        hatte je einen Knopf pro Ecke, damit dazwischen eine Momentaufnahme
-        zurueckkommt und sagen kann, welche Ecke schon steht. Der Preis dafuer ist
-        aber, dass die Hand mitten in der Aufnahme von der Ecke zum Fenster
-        zurueckfahren muss — genau der Weg, den die Maus-Aufnahme ersparen soll.
-        Die Rueckmeldung ist es nicht wert: was dabei herauskam, steht danach in
-        vier Feldern und in der Groessen-Zeile.
-
-        Abgebrochen wird bei ESC und bei Zeitablauf, und zwar **vollstaendig** —
-        auch nach der ersten Ecke bleibt der alte Bereich stehen. Ein halb
-        gesetzter Bereich waere ein Bereich, den niemand so wollte.
-
-        Der Zahlenweg bleibt daneben stehen — fuer den Fall, dass man eine
-        Koordinate abschreibt statt sie anzufahren.
+        Abgebrochen wird bei ESC und Zeitablauf vollständig — auch nach der ersten
+        Ecke bleibt der alte Bereich stehen. Der Zahlenweg bleibt daneben stehen.
         """
         lane, row, step = self._einzelner()
         if step is None:
@@ -379,10 +349,9 @@ class BridgeEditingMixin:
     def _stelle_abwarten(self) -> tuple:
         """Wartet auf ENTER und gibt `(x, y, "")` zurück — bei Abbruch `(None, None, Grund)`.
 
-        Der gemeinsame Teil von „Stelle mit der Maus setzen" (Klick-Block) und
-        „Maus parken" (Einstellungen): das Fenster hat den Fokus, das Spiel
-        nicht — gefragt wird deshalb über eine globale Taste, nicht über einen
-        Knopf, den man nur mit der Maus erreicht.
+        Der gemeinsame Teil von „Stelle mit der Maus setzen" und „Maus parken": das
+        Fenster hat den Fokus, das Spiel nicht — gefragt wird deshalb über eine
+        globale Taste.
         """
         # Erst hier importiert — das Modul bleibt ohne Windows ladbar.
         from ...utils.io import warte_auf_taste
@@ -409,14 +378,9 @@ class BridgeEditingMixin:
     def punkt_aufnehmen(self, daten: Optional[dict] = None) -> dict:
         """Setzt die Stelle des Blocks auf die aktuelle Mausposition.
 
-        „(1204, 262)" sagt niemandem etwas — die Stelle fährt man an. Genau das
-        macht `bereich_aufnehmen()` schon für Screenshot-Bereiche; hier ist es
-        derselbe Weg mit einer Ecke statt zweier: Maus hin, ENTER.
-
-        Angelegt bzw. gesetzt wird über dieselben Methoden wie sonst, damit die
-        Regeln gelten, die überall gelten: ein vorhandener Punkt an derselben
-        Stelle wird wiederverwendet, und ein Trigger auf demselben Punkt zieht
-        mit.
+        Derselbe Weg wie `bereich_aufnehmen()`, nur mit einer Ecke. Gesetzt wird über
+        dieselben Methoden wie sonst, damit die üblichen Regeln gelten: ein
+        vorhandener Punkt an derselben Stelle wird wiederverwendet.
         """
         lane, row, step = self._einzelner()
         if step is None:
@@ -573,10 +537,8 @@ class BridgeEditingMixin:
     def punkt_anlegen(self, daten: dict) -> dict:
         """Legt einen Punkt an und hängt ihn an den gewählten Schritt.
 
-        Für den Blanko-Block: er hat noch keine Stelle, und ohne Punkt bliebe er
-        ein Klick auf (0,0). Aufgenommen wird sonst im Hauptprozess — hier geht es
-        nur darum, dass ein im Studio entstandener Block überhaupt eine Stelle
-        bekommen kann.
+        Für den Blanko-Block: er hat noch keine Stelle und bliebe ohne Punkt ein
+        Klick auf (0,0).
         """
         daten = daten or {}
         lane, row, step = self._einzelner()

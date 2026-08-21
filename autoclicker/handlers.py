@@ -58,13 +58,9 @@ _toggle_lock = threading.Lock()
 def _block_if_recording(state: AutoClickerState) -> bool:
     """Blockiert Handler mit Konsolen-Eingaben, solange ein Maus-Hook läuft.
 
-    Der Low-Level-Maus-Hook braucht die Message-Pump des Main-Threads — blockierende
-    Editoren würden den Hook still entfernen und Klicks gingen verloren.
-    Gibt True zurück, wenn der Handler abbrechen soll.
-
-    **Zwei Modi hängen daran, nicht mehr nur die Aufnahme.** Die Klick-Runde
-    (Punkte nachklicken) läuft aus demselben Hook und hat dasselbe Problem;
-    beide werden mit CTRL+ALT+J beendet.
+    Der Low-Level-Maus-Hook braucht die Message-Pump des Main-Threads —
+    blockierende Editoren würden ihn still entfernen. Betrifft Aufnahme UND
+    Klick-Runde. Gibt True zurück, wenn der Handler abbrechen soll.
     """
     with state.lock:
         recording = state.recording_active
@@ -549,17 +545,11 @@ def handle_toggle(state: AutoClickerState) -> None:
 def befehl_start(state: AutoClickerState, argumente: dict) -> None:
     """Startet die Sequenz aus `datei` — Befehl aus dem Sequenz-Studio.
 
-    Die Datei wird **frisch von Platte** geladen und aktiv gesetzt, nicht der
-    Stand im Speicher genommen: der Hauptprozess hat von den Änderungen im Studio
-    nichts mitbekommen, und ein Start, der etwas anderes ausführt als das, was
-    man vor sich sieht, ist der Stolperstein schlechthin zwischen den beiden
-    Prozessen. Das Studio speichert deshalb vor dem Senden, und hier wird genau
-    diese Datei geladen.
-
-    Verweigert wird nur, was auch ein Hotkey verweigern würde. Was hier NICHT
-    passieren darf, ist ein Konsolen-Menü: `handle_toggle()` öffnet ohne aktive
-    Sequenz den Lade-Dialog, und ein blockierender Prompt, den niemand angefordert
-    hat, hinge im Hauptfenster fest, während man ins Studio schaut.
+    Frisch von Platte, nicht aus dem Speicher: der Hauptprozess hat von den
+    Änderungen im Studio nichts mitbekommen. Verweigert wird nur, was auch ein
+    Hotkey verweigern würde — was hier nicht passieren darf, ist ein
+    blockierendes Konsolen-Menü (`handle_toggle()` öffnet ohne aktive Sequenz
+    den Lade-Dialog).
     """
     with state.lock:
         laeuft = state.is_running or state.countdown_active
@@ -618,14 +608,9 @@ def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
 def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
     """Setzt die Maus auf eine Stelle — „sitzt der Punkt noch da, wo er soll?".
 
-    Der Gegenstueck zum `show`-Befehl im Punkte-Menue, nur ausgeloest aus dem
-    Studio. Gemeldet wird hier, weil nur dieser Prozess messen kann: neben der
-    gespeicherten Farbe steht die, die JETZT an der Stelle liegt. Weichen sie ab,
-    ist entweder der Bildschirm anders angeordnet oder das Spiel zeigt gerade
-    etwas anderes — beides sieht man an dieser einen Zeile.
-
-    Waehrend eines Laufs passiert nichts: dort gehoert die Maus dem Worker, und
-    ein Sprung mittendrin verschoebe einen Klick.
+    Gemessen wird hier, weil nur dieser Prozess messen kann: neben der
+    gespeicherten Farbe steht die, die JETZT an der Stelle liegt. Waehrend eines
+    Laufs passiert nichts — dort gehoert die Maus dem Worker.
     """
     with state.lock:
         laeuft = state.is_running
@@ -663,14 +648,9 @@ def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
 def befehl_config(state: AutoClickerState, argumente: dict) -> None:
     """Laedt config.json neu — das Studio hat sie gerade geschrieben.
 
-    Ohne diesen Befehl gaelte eine im Studio geaenderte Einstellung erst nach
-    einem Neustart des Hauptprozesses: die Datei waere neu, der Speicher alt.
-    Und weil `state.config` hier dasselbe Objekt ist wie das Modul-`CONFIG`
-    (s. `config.uebernehmen`), erreicht das Neuladen jeden Leser — auch die
-    Editoren und `imaging`, die `CONFIG` direkt importieren.
-
-    Ein laufender Lauf zieht sofort mit: der Worker liest `state.config` bei
-    jedem Schritt neu, nichts davon wird beim Start eingefroren.
+    Weil `state.config` dasselbe Objekt ist wie das Modul-`CONFIG`, erreicht das
+    Neuladen jeden Leser, auch die Editoren und `imaging`. Ein laufender Lauf
+    zieht sofort mit: der Worker liest `state.config` bei jedem Schritt neu.
     """
     from .config import load_config, uebernehmen as _uebernehmen
 
@@ -686,14 +666,8 @@ def befehl_config(state: AutoClickerState, argumente: dict) -> None:
 def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
     """Laedt Slots, Items und Scan-Konfigurationen neu — das Studio hat gespeichert.
 
-    Der Gegenpart zu `befehl_config` fuer die Scan-Daten. Ohne ihn stuende in
-    der Datei ein neuer Slot und im Speicher der alte, bis jemand CTRL+ALT+L
-    drueckt — und dieser Hinweis stand bisher als Satz in der Konsole, statt
-    einfach zu passieren.
-
-    **Waehrend eines Laufs passiert nichts.** Der Worker iteriert ueber genau
-    diese Dicts; sie unter ihm auszutauschen ist die Sorte Fehler, die einmal im
-    Monat auftritt und nie reproduzierbar ist.
+    Der Gegenpart zu `befehl_config` fuer die Scan-Daten. Waehrend eines Laufs
+    passiert nichts: der Worker iteriert ueber genau diese Dicts.
     """
     with state.lock:
         laeuft = state.is_running
@@ -1027,18 +1001,12 @@ def handle_rec_phase(state: AutoClickerState) -> None:
 def handle_sequence_studio(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio als separaten Subprocess.
 
-    Das Studio läuft in einem eigenen Prozess (eigenes Fenster mit eigener
-    Event-Loop), damit die sich nicht mit der Hotkey-Message-Pump beisst. Es
-    bearbeitet die aktive Sequenz direkt auf Disk; nach dem Speichern mit
-    CTRL+ALT+L neu laden.
+    Eigener Prozess, damit sich seine Event-Loop nicht mit der
+    Hotkey-Message-Pump beisst; es arbeitet auf Dateien, danach CTRL+ALT+L.
 
-    **Darf während eines Laufs geöffnet werden**, anders als die Konsolen-Editoren.
-    Hier stand `_block_if_running()`; der Grund dafür trifft auf dieses Fenster
-    nicht zu — es liest kein stdin und mutiert nichts im `AutoClickerState`,
-    sondern arbeitet auf Dateien. Seit es eine Live-Ansicht hat, war die Sperre
-    sogar verkehrt herum: sie verbot ausgerechnet die Ansicht, die es für einen
-    laufenden Durchgang gibt. Wer aus dem Studio startete und das Fenster zumachte,
-    sperrte sich bis zum nächsten Stopp aus.
+    Darf während eines Laufs geöffnet werden, anders als die Konsolen-Editoren:
+    es liest kein stdin und mutiert nichts im State — und seine Live-Ansicht
+    gibt es gerade für einen laufenden Durchgang.
     """
     import subprocess
 
@@ -1064,14 +1032,9 @@ def handle_sequence_studio(state: AutoClickerState) -> None:
 def handle_scan_studio(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio auf dem Reiter „Scans".
 
-    Bis zum Umbau war das ein eigenes Fenster in Dear PyGui. Es ist ersatzlos
-    weg: dieselbe Arbeit — Slots auf einem Screenshot aufziehen, Items lernen,
-    Item-Scans zusammenstellen — macht jetzt ein Reiter im Studio, und zwar in
-    demselben Fenster, in dem die Sequenz steht, die die Scans benutzt. Zwei
-    Fenster mit zwei Bedienkonzepten für dieselben Dateien waren einer zu viel.
-
-    Der Hotkey bleibt, weil er der kürzeste Weg dorthin ist. Er startet
-    denselben Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter.
+    Derselbe Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter. Bis zum
+    Umbau war das ein eigenes Dear-PyGui-Fenster — zwei Fenster mit zwei
+    Bedienkonzepten für dieselben Dateien waren eines zu viel.
     """
     import subprocess
 

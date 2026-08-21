@@ -1,30 +1,14 @@
-"""
-Laufstatus für Beobachter ausserhalb des Prozesses (Sequenz-Studio).
+"""Laufstatus für Beobachter ausserhalb des Prozesses (Sequenz-Studio).
 
-Eine kleine Datei, die sagt, was gerade läuft. **Kein Log** — sie beschreibt den
-Zustand JETZT und wird überschrieben, nicht angehängt. Am Ende bleibt genau
-**ein** Eintrag stehen: die Zusammenfassung des letzten Laufs (`beende()`), bis
-der nächste Start sie überschreibt. Eine nach einem Absturz liegengebliebene
-erkennt der Leser am Alter ihres Zeitstempels (`stand`) — aber nur, solange
-`aktiv` noch True ist.
+Kein Log: die Datei beschreibt den Zustand JETZT und wird überschrieben.
+Am Ende bleibt die Zusammenfassung des letzten Laufs stehen (`beende()`).
+Eine Datei statt eines Sockets, weil der gemeinsame Nenner der beiden
+Prozesse überall sonst schon die Datei ist.
 
-**Warum eine Datei und kein Socket.** Das Studio ist ein eigener Prozess
-(`subprocess.Popen`), es sieht `AutoClickerState` nicht. Der gemeinsame Nenner
-zwischen den beiden ist überall sonst schon die Datei; ein zweiter
-Kommunikationsweg brächte Ports, Firewall-Fragen und ein Aufräumproblem beim
-Absturz. Das Session-Log schied aus einem anderen Grund aus: es steht
-standardmäßig auf `session_log_enabled: False`, wäre also meist leer — und ein
-Log erzählt Vergangenheit, keinen Zustand.
-
-**Zwei Schreiber, ein Zustand.** Der Worker weiss, welcher Zyklus und welche
-Phase läuft; `execute_step` weiss, welcher Block dran ist. Keiner von beiden
-kennt das Ganze, deshalb führt `schreibe()` seinen Teil in `_zustand` ein,
-statt ihn zu ersetzen.
-
-Kostenrahmen: höchstens alle 200 ms ein Schreibvorgang von ~400 Byte. Ein
-Phasenwechsel schreibt immer (`sofort=True`), damit der Beobachter keinen
-Sprung verpasst. Ein Fehler beim Schreiben wird geschluckt — ein Beobachter
-darf den Lauf nie stören.
+Drei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der Worker
+kennt Zyklus und Phase, `execute_step` den Block, `wartet()` das Warten.
+Höchstens alle 200 ms ein Schreibvorgang (`sofort=True` umgeht die Drossel);
+Schreibfehler werden geschluckt — ein Beobachter darf den Lauf nie stören.
 """
 
 import time
@@ -52,11 +36,9 @@ def schreibe(state, teil: dict, sofort: bool = False) -> None:
     """Führt `teil` in den Laufzustand ein und schreibt ihn auf Platte.
 
     `sofort=True` umgeht die Drossel — für Ereignisse, die man nicht verpassen
-    darf (Start, Phasen- und Zykluswechsel).
-
-    Eingeführt wird **immer**, gedrosselt wird nur das Schreiben: sonst ginge
-    die Information eines verworfenen Aufrufs verloren, und der nächste
-    Schreibvorgang zeigte einen Block, der längst durch ist.
+    darf (Start, Phasen- und Zykluswechsel). Eingeführt wird immer, gedrosselt
+    nur das Schreiben: sonst ginge die Information eines verworfenen Aufrufs
+    verloren.
     """
     global _zuletzt
     _zustand.update(teil)
@@ -75,23 +57,12 @@ def schreibe(state, teil: dict, sofort: bool = False) -> None:
 def wartet(state, teil) -> None:
     """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
 
-    Der dritte Schreiber neben Worker und `execute_step`, und der einzige, der
-    sich selbst wieder abmeldet. Ohne ihn stand in der Ansicht nur „seit 12 s":
-    dass 12 s bei einem Block mit 15 s Wartezeit fast geschafft und bei einem
-    Farb-Trigger mit 300 s Timeout gerade erst angefangen sind, war daraus nicht
-    zu lesen.
+    Zeiten stehen als absolute Zeitstempel darin (`seit`, `bis`), nicht als
+    Restsekunden: mit Restwerten ruckelte der Countdown im Sekundenraster des
+    Workers. Beide Prozesse laufen auf derselben Uhr.
 
-    Zeiten stehen als **absolute** Zeitstempel darin (`seit`, `bis`), nicht als
-    Restsekunden: der Beobachter fragt alle 500 ms, geschrieben wird höchstens
-    alle 200 ms, und die Schleifen ticken im Sekundentakt. Mit Restwerten
-    ruckelte der Countdown im Sekundenraster; mit Zeitstempeln zählt die Ansicht
-    selbst herunter. Beide Prozesse laufen auf derselben Maschine, also auf
-    derselben Uhr.
-
-    Das Abmelden schreibt **sofort**. Der Blockwechsel räumt das Feld zwar
-    ohnehin ab, aber zwischen „Farbe erkannt" und dem nächsten Block liegt noch
-    die eigene Aktion des Schritts — solange stünde in der Ansicht „wartet auf
-    Farbe", obwohl längst geklickt wurde.
+    Das Abmelden schreibt sofort — zwischen „Farbe erkannt" und dem nächsten
+    Block liegt noch die eigene Aktion des Schritts.
     """
     schreibe(state, {"warten": teil}, sofort=teil is None)
 
@@ -99,19 +70,10 @@ def wartet(state, teil) -> None:
 def lebenszeichen(state) -> None:
     """„Ich lebe noch" — schiebt `stand` vor, ohne etwas zu ändern.
 
-    Der Leser erkennt einen abgestürzten Lauf am Alter des Zeitstempels, und
-    das geht nur, wenn ein LEBENDER Lauf ihn zuverlässig frisch hält. Geschrieben
-    wird sonst pro Schritt — aber ein Schritt kann minutenlang dauern: ein
-    Farb-Trigger wartet bis `pixel_wait_timeout`, ein Boss-Watcher bis
-    `llm_watcher_timeout`. Ohne Lebenszeichen sähe genau der Lauf tot aus, der
-    gerade auf etwas wartet, und das ist der Fall, für den man die Ansicht
-    aufmacht.
-
-    Gehört deshalb in jede Schleife, die den Worker länger als ein paar Sekunden
-    aufhält (heute: `wait_with_pause_skip`, `_execute_wait_for_color`,
-    Boss-Watcher). Kostet dort nichts — die Drossel in `schreibe()` lässt
-    höchstens fünf Schreibvorgänge pro Sekunde durch, die Schleifen laufen mit
-    etwa einem Durchgang pro Sekunde.
+    Der Leser erkennt einen abgestürzten Lauf am Alter des Zeitstempels; ohne
+    Lebenszeichen sähe genau der Lauf tot aus, der gerade wartet. Gehört
+    deshalb in jede Schleife, die den Worker länger aufhält. Kostet nichts —
+    die Drossel lässt höchstens fünf Schreibvorgänge pro Sekunde durch.
     """
     schreibe(state, {})
 
@@ -129,13 +91,10 @@ _MOMENT_FELDER = ("block", "bloecke", "block_titel", "block_label", "block_typ",
 def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> None:
     """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
 
-    Hier wurde die Datei früher gelöscht, und damit war die Live-Ansicht in dem
-    Moment leer, in dem man sie am ehesten ansieht: direkt nachdem etwas fertig
-    geworden ist. Die Konsole zeigt ihre Statistik, das Fenster zeigte nichts.
-
-    Jetzt bleibt der letzte Stand als **abgeschlossener** Lauf liegen
-    (`aktiv: False` plus `ende`), bis der nächste Start ihn überschreibt. Der
-    Leser unterscheidet die drei Fälle am Inhalt:
+    Der letzte Stand bleibt als abgeschlossener Lauf liegen (`aktiv: False`
+    plus `ende`), bis der nächste Start ihn überschreibt; sonst wäre die
+    Live-Ansicht genau dann leer, wenn man sie ansieht. Der Leser unterscheidet
+    drei Fälle am Inhalt:
 
     | Datei | bedeutet |
     |---|---|
@@ -143,11 +102,8 @@ def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> 
     | `aktiv: True`, `stand` älter als 5 s | abgestürzt (verwaist) |
     | `aktiv: False` mit `ende` | fertig, hier ist die Zusammenfassung |
 
-    Die Altersregel gilt nur für den ersten Fall — eine Zusammenfassung darf so
-    alt sein, wie sie will.
-
-    Ohne `state` (Notausgang, z. B. wenn der Lauf gar nicht erst anlief) wird
-    weiterhin gelöscht: eine Zusammenfassung ohne Zahlen wäre keine.
+    Die Altersregel gilt nur für den ersten Fall. Ohne `state` (der Lauf lief
+    gar nicht erst an) wird gelöscht — eine Zusammenfassung ohne Zahlen wäre keine.
     """
     global _zuletzt
     letzter = dict(_zustand)

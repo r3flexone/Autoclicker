@@ -1,28 +1,17 @@
 """Alle JSON-Dateien in einem Durchgang aufs aktuelle Format heben.
 
-Der Unterschied zu `migration.py`: das dort ist reine Datenlogik (dict rein, dict raus),
-hier kommt das Dateisystem dazu - welche Datei welchen Typ hat, laden, zurueckschreiben.
+Unterschied zu `migration.py`: das dort ist reine Datenlogik (dict rein, dict
+raus), hier kommt das Dateisystem dazu. Zwei Aufrufer: `main.py` beim Start
+(schreibt, meldet nur bei Aenderungen) und `tools/migrate.py` von Hand (zeigt
+per Default nur an).
 
-Zwei Aufrufer, eine Logik:
-- `main.py` beim Programmstart (schreibt, meldet nur wenn etwas passiert ist)
-- `tools/migrate.py` von Hand (zeigt per Default nur an)
+Beim START und nicht beim Speichern, weil Speichern ohnehin das aktuelle
+Format schreibt — das Problem sind Dateien, die man NICHT anfasst. Danach
+sind alle Dateien aktuell und der Migrationsschritt darf geloescht werden.
 
-Warum beim START und nicht beim Speichern
------------------------------------------
-Speichern schreibt sowieso schon das aktuelle Format - jeder Saver geht durch die
-Serializer. Das Problem sind Dateien, die man NICHT anfasst: eine alte Sequenz, die man
-nur laufen laesst, bliebe auf Platte ewig im Altformat, und der Migrationsschritt
-dafuer koennte nie geloescht werden.
-
-Ein Durchgang beim Start loest das: nach dem ersten Start mit einer neuen Version sind
-alle Dateien aktuell, der Schritt ist tot und darf raus. Genau so soll das Modul
-schrumpfen.
-
-Zwei Regeln fuer den Start-Durchgang:
-1. **Still, wenn nichts zu tun ist.** Der Normalfall ist "alles aktuell" - dann kein Wort.
-2. **Nie Daten verlieren.** Vor der ersten Aenderung an einer Datei entsteht eine
-   .bak-Kopie unter `backups/` (Struktur gespiegelt), und laesst sich eine Datei nicht
-   laden, bleibt sie unangetastet.
+Zwei Regeln: **still, wenn nichts zu tun ist**, und **nie Daten verlieren**
+(.bak unter `backups/` vor der ersten Aenderung, unladbare Dateien bleiben
+unangetastet).
 """
 
 from __future__ import annotations
@@ -220,14 +209,10 @@ def _punkte_kontext() -> list:
 def _zahlen_normalisieren(x):
     """int und float derselben Zahl angleichen - JSON kennt nur EINEN Zahlentyp.
 
-    `600` und `600.0` sind dieselbe Zahl; dass Python daraus zwei Typen macht, ist ein
-    Artefakt und kein Unterschied im Dateiformat. Ohne das galt eine von Hand auf `600`
-    getippte Wartezeit als "aufzuraeumen", weil der Loader daraus `600.0` macht — der
-    Durchgang schrieb die Datei um, legte ein .bak an und meldete eine Migration, die
-    inhaltlich nichts tat.
-
-    bool bleibt bool: `True` darf nicht als `1.0` durchgehen, sonst waere ein
-    umgekipptes Flag unsichtbar.
+    Ohne das galt eine von Hand auf `600` getippte Wartezeit als aufzuraeumen
+    (der Loader macht `600.0` daraus) und der Durchgang meldete eine Migration,
+    die inhaltlich nichts tat. bool bleibt bool — sonst waere ein umgekipptes
+    Flag unsichtbar.
     """
     if isinstance(x, bool):
         return x
@@ -250,15 +235,12 @@ def _gleich(a, b) -> bool:
 def sicherungspfad(pfad: Path) -> Path:
     """Wohin die .bak-Kopie von `pfad` gehoert: unter BACKUPS_DIR, Struktur gespiegelt.
 
-    `sequences/all_dayli.json` -> `backups/sequences/all_dayli.json.bak`
+    `sequences/all_dayli.json` -> `backups/sequences/all_dayli.json.bak`. Die
+    Unterordner sind noetig, sonst ueberschrieben `item_scans/foo.json` und
+    `boss_scans/foo.json` dieselbe Sicherung.
 
-    Die Unterordner werden mitgenommen, weil sonst `item_scans/foo.json` und
-    `boss_scans/foo.json` dieselbe Sicherung ueberschrieben - gleicher Dateiname, und
-    die zweite Datei haette keine mehr.
-
-    Absolute Pfade werden relativ zum Arbeitsverzeichnis gelegt (die Pfad-Konstanten sind
-    CWD-relativ). Liegt eine Datei ausserhalb, bleibt nur ihr Name uebrig - ohne das
-    entstuende unter backups/ eine Kopie des ganzen Laufwerkspfads.
+    Absolute Pfade werden relativ zum Arbeitsverzeichnis gelegt; liegt eine Datei
+    ausserhalb, bleibt nur ihr Name uebrig.
     """
     p = Path(pfad)
     if p.is_absolute():
@@ -272,14 +254,9 @@ def sicherungspfad(pfad: Path) -> Path:
 def _schreibe(pfad: Path, data) -> None:
     """Sicherung anlegen, dann schreiben - im selben Format wie die App selbst.
 
-    compact_json + atomic_write, damit die Datei nach dem Start-Durchgang genauso aussieht
-    wie nach einem normalen Speichern. Sonst wechselte die Formatierung bei jedem Save
-    hin und her.
-
-    Die Sicherung liegt unter `backups/` statt neben dem Original: dort stoert sie den
-    Blick auf die eigentlichen Daten nicht, und ein `*.json`-Glob ueber `sequences/`
-    kann sie gar nicht erst erwischen. Angelegt wird der Ordner erst hier - gab es nie
-    etwas zu sichern, entsteht er auch nicht.
+    compact_json + atomic_write, sonst wechselte die Formatierung bei jedem Save
+    hin und her. Die Sicherung liegt unter `backups/` statt neben dem Original,
+    damit ein `*.json`-Glob sie nicht erwischt; der Ordner entsteht erst hier.
     """
     backup = sicherungspfad(pfad)
     if not backup.exists():

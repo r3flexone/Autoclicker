@@ -11,14 +11,10 @@ from typing import Optional
 
 from .config import AppConfig
 
-# Der DATEI-Default für min_confidence: was gilt, wenn das Feld in der JSON fehlt.
-# Konstant, bewusst NICHT aus der Config abgeleitet — sonst würde ein Feld, das gerade
-# zufällig dem Config-Wert entspricht, beim Speichern weggelassen und beim nächsten Start
-# mit einem ANDEREN Wert zurückkommen, sobald man die Config anfasst.
-#
-# Davon zu unterscheiden: `AppConfig.scan_min_confidence` ist die Voreinstellung, die die
-# Editoren beim Anlegen NEUER Profile vorschlagen. Zwei verschiedene Dinge — sie hier
-# zusammenzulegen war die Ursache stillen Datenverlusts.
+# Der DATEI-Default fuer min_confidence: was gilt, wenn das Feld in der JSON fehlt.
+# Konstant und NICHT aus der Config abgeleitet - sonst kaeme ein weggelassenes Feld
+# mit einem anderen Wert zurueck, sobald jemand die Config anfasst.
+# `AppConfig.scan_min_confidence` ist etwas anderes: die Voreinstellung fuer NEUE Profile.
 DEFAULT_MIN_CONFIDENCE: float = 0.8
 
 
@@ -128,28 +124,14 @@ class ClickPoint:
         return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
-# =============================================================================
-# KOORDINATEN GEHÖREN IN points.json — NIRGENDWO SONST
-# =============================================================================
-# Jede Stelle, auf die eine Sequenz klickt oder schaut, ist ein Punkt aus dem
-# Punkte-Pool. Die Sequenz speichert nur die `point_id`; x/y/Farbe stehen in
-# `points.json` und werden beim Laden von dort geholt.
-#
-# Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an
-# einer der beiden Stellen falsch sein kann. Wer die Sequenzdatei liest, sieht
-# dann etwas anderes als das, was die App klickt — und beim Nachrechnen (Monitor
-# umgestellt, Import auf einen anderen Rechner) muss jede Kopie einzeln erwischt
-# werden. Genau daran hing die Kalibrierung.
-#
-# Es gibt deshalb bewusst KEINEN Rückfallwert: hat ein Schritt eine tote
-# `point_id`, wird er übersprungen und gemeldet. Ein Schritt, der "sicherheits-
-# halber" auf eine veraltete Kopie klickt, ist schlimmer als einer, der stehen
-# bleibt und sagt warum.
-#
-# `pixel`/`color` bzw. `x`/`y`/`name` unten bleiben trotzdem als Felder bestehen:
-# sie sind die AUFGELÖSTEN ARBEITSWERTE, die `resolve_point_references()` beim
-# Laden füllt — dasselbe Muster wie `ItemScanConfig.slots`/`items`. Worker und
-# Editoren lesen sie unverändert; gespeichert werden sie nicht.
+# KOORDINATEN GEHOEREN IN points.json - NIRGENDWO SONST.
+# Die Sequenz speichert nur die `point_id`; x/y/Farbe stehen in points.json.
+# Eine Koordinate an zwei Stellen ist eine, die an einer der beiden falsch sein
+# kann - und bei einer Kalibrierung muesste jede Kopie einzeln erwischt werden.
+# Es gibt bewusst KEINEN Rueckfallwert: eine tote `point_id` laesst den Schritt
+# uebersprungen und gemeldet werden.
+# `pixel`/`color` bzw. `x`/`y`/`name` unten sind die AUFGELOESTEN Arbeitswerte,
+# gefuellt von `resolve_point_references()` - gelesen, aber nie gespeichert.
 
 @dataclass
 class ElseConfig:
@@ -168,13 +150,9 @@ class ElseConfig:
 @dataclass
 class WaitCondition:
     """Farb-Bedingung an einer Pixel-Position: warten oder einmal prüfen."""
-    # Referenz auf den Punkt, dessen Position UND Farbe geprüft werden. DAS ist
-    # der gespeicherte Wert — pixel/color darunter werden daraus abgeleitet.
-    #
-    # Dass die erwartete Farbe aus dem Punkt kommt, ist Absicht: sie war vorher
-    # eine zweite Kopie von `ClickPoint.color`. Soll an derselben Stelle auf eine
-    # ANDERE Farbe geprüft werden, ist das ein eigener Punkt — im Punkte-Menü
-    # liest man dann auch, dass es zwei Prüfungen sind.
+    # Referenz auf den Punkt, dessen Position UND Farbe geprueft werden; pixel/color
+    # darunter sind daraus abgeleitet. Soll an derselben Stelle auf eine ANDERE Farbe
+    # geprueft werden, ist das ein eigener Punkt.
     point_id: Optional[int] = None
     pixel: tuple[int, int] = (0, 0)      # abgeleitet: (x, y) Position zum Prüfen
     color: tuple[int, int, int] = (0, 0, 0)  # abgeleitet: (r,g,b) die erscheinen soll
@@ -194,26 +172,15 @@ class SequenceStep:
     y: int = 0
     delay_before: float = 0.0   # Wartezeit in Sekunden VOR diesem Klick (0 = sofort)
     name: str = ""              # abgeleitet: Name des Punktes
-    # Referenz auf den Punkt im Punkte-Pool. DAS ist der gespeicherte Wert; x/y/name
-    # und recorded_color werden beim Laden daraus geholt.
-    #
-    # Ein Schritt, der irgendwohin zeigt, MUSS eine point_id haben — die Migration legt
-    # notfalls einen Punkt an, damit das ausnahmslos gilt. `None` bleibt genau den
-    # Schritten, die gar keine Stelle haben: Tastendruck, Wait-only, Scans, Screenshot
-    # und der Blanko-Block des Sequenz-Studios.
+    # Referenz auf den Punkt im Punkte-Pool - der gespeicherte Wert; x/y/name und
+    # recorded_color werden daraus geholt. Ein Schritt mit Stelle MUSS eine haben;
+    # `None` bleibt Tastendruck, Wait-only, Scans, Screenshot und dem Blanko-Block.
     point_id: Optional[int] = None
     # Optional: Warten auf Farbe statt Zeit (VOR dem Klick)
     wait_condition: Optional[WaitCondition] = None
-    # Optional: Nachprüfung NACH der Aktion — "hat der Klick gewirkt?".
-    #
-    # `wait_condition` fragt vor dem Schritt, ob er dran ist; hier wird danach gefragt,
-    # ob er etwas bewirkt hat. Bis dahin war jeder Klick ein Schuss ins Dunkle: geht er
-    # ins Leere (Lag, Fenster nicht vorn, Popup davor), lief die Sequenz munter weiter
-    # und alles Folgende traf daneben.
-    #
-    # Dieselbe WaitCondition wie oben — die kann bereits alles, was gebraucht wird
-    # (Punkt-Referenz, Farbe da/weg). `verify_retries` in der Config sagt, wie oft die
-    # Aktion wiederholt wird, bevor `else_config` greift.
+    # Optional: Nachpruefung NACH der Aktion - "hat der Klick gewirkt?". Dieselbe
+    # WaitCondition wie oben; `verify_retries` sagt, wie oft die Aktion wiederholt
+    # wird, bevor `else_config` greift.
     verify_condition: Optional[WaitCondition] = None
     # Optional: Item-Scan ausführen statt direktem Klick
     item_scan: Optional[str] = None      # Name des Item-Scans
@@ -369,13 +336,10 @@ class SequenceStep:
         return self.delay_before
 
 
-# Block-Typ eines Schritts. Ein `SequenceStep` ist polymorph — welche Art er ist,
-# steht in den gesetzten Feldern. Die Klassifikation liegt hier und nicht in der
-# Studio-Ansicht, weil zwei Stellen sie brauchen, die sich nicht kennen dürfen:
-# das Sequenz-Studio (eigener Prozess) faerbt danach seine Karten, und die
-# Laufzeit schreibt sie in den Laufstatus, damit die Live-Ansicht den laufenden
-# Block genauso faerben kann. Beschriftung und Farbe bleiben Anzeige und stehen
-# weiterhin bei der Ansicht (`BLOCK_LABELS`, `BLOCK_COLORS`).
+# Block-Typ eines Schritts: ein `SequenceStep` ist polymorph, welche Art er ist,
+# steht in den gesetzten Feldern. Die Klassifikation liegt hier, weil Studio und
+# Laufzeit sie brauchen und sich nicht kennen duerfen. Beschriftung und Farbe
+# bleiben Anzeige (`BLOCK_LABELS`, `BLOCK_COLORS`).
 BLOCK_SCREENSHOT = "screenshot"
 BLOCK_BOSS_WATCHER = "boss_watcher"
 BLOCK_BOSS_SCAN = "boss_scan"
@@ -391,10 +355,8 @@ def block_type(step: "SequenceStep") -> str:
     """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
 
     Die String-Diskriminatoren werden mit `is not None` geprüft, nicht per
-    Truthiness: ein frisch im Editor gewählter Scan-/Tasten-Block hat zunächst
-    einen leeren Namen ("") und soll trotzdem als sein gewählter Typ angezeigt
-    werden, bis der User den Namen einträgt. Geladene Sequenzen haben hier nie
-    "" (nur None oder echte Namen), darum bleibt das Verhalten identisch.
+    Truthiness: ein frisch gewählter Scan-/Tasten-Block hat zunächst einen leeren
+    Namen und soll trotzdem als sein Typ angezeigt werden.
     """
     if step.screenshot_only:
         return BLOCK_SCREENSHOT
@@ -476,13 +438,8 @@ class ItemProfile:
     # Kategorie für Prioritäts-Vergleich (z.B. "Hosen", "Jacken", "Juwelen")
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
-    # Referenz auf den Punkt, der nach dem Klick bestätigt (Popup o.ä.). DAS ist der
-    # gespeicherte Wert; `confirm_point` darunter ist der abgeleitete Arbeitswert und
-    # wird von `resolve_scan_references()` gefüllt.
-    #
-    # Der Editor fragt ohnehin nach einer Punkt-ID — die wurde bisher nur weggeworfen
-    # und durch eine Koordinaten-Kopie ersetzt. Folge: den Punkt zu verschieben liess
-    # den Bestätigungsklick stehen, und die Kalibrierung brauchte einen Sonderfall.
+    # Referenz auf den Punkt, der nach dem Klick bestaetigt (Popup o.ae.);
+    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_scan_references().
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
@@ -535,19 +492,13 @@ class ItemSlot:
 class ItemScanConfig:
     """Konfiguration für Item-Erkennung und -Vergleich.
 
-    WAS IN DER DATEI STEHT sind nur die Namen (`slot_names`, `item_names`). Slots und
-    Items selbst leben in slots/slots.json bzw. items/items.json - der Scan verweist
-    darauf, statt sie zu kopieren.
-
-    Vorher lag jedes Item zweimal auf Platte: global und vollständig eingebettet in jedem
-    Scan, der es benutzt. Änderte man die Marker-Farben des globalen Items, passierte im
-    Scan nichts. Dass das wehtat, sieht man daran, dass es `update_item_in_scans()` gab -
-    eine Funktion, die nach einem Umbenennen alle Scan-Dateien nachzieht. Genau dieselbe
-    Falle wie bei den Punkten in Sequenzen.
+    In der Datei stehen nur die Namen (`slot_names`, `item_names`); Slots und
+    Items selbst leben in slots/slots.json bzw. items/items.json — der Scan
+    verweist darauf, statt sie zu kopieren.
 
     `slots` und `items` sind die AUFGELÖSTEN Arbeitslisten, gefüllt von
-    `resolve_scan_references()`. Der Worker liest sie, die Editoren schreiben sie - beides
-    unverändert. Nur gespeichert werden sie nicht mehr.
+    `resolve_scan_references()`. Worker und Editoren lesen bzw. schreiben sie
+    unverändert; gespeichert werden sie nicht.
     """
     name: str
     slots: list[ItemSlot] = field(default_factory=list)      # aufgelöst, nicht gespeichert
@@ -558,19 +509,13 @@ class ItemScanConfig:
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
     learn_unknown: bool = False
-    # Slots von hinten nach vorn abarbeiten (4, 3, 2, 1). Sinnvoll, wenn das
-    # Spiel den Bestand nach vorn aufrückt: dann verschiebt ein Klick nicht die
-    # noch nicht besuchten Slots.
-    #
-    # **Die Richtung gehört zum Inventar, nicht zum Programm.** Sie stand als
-    # `config.scan_reverse` in der Config und galt damit für alle Scans — wer
-    # ein Spiel von hinten leert und ein zweites von vorn, hatte die Wahl
-    # zwischen zwei falschen Läufen.
+    # Slots von hinten nach vorn abarbeiten. Sinnvoll, wenn das Spiel den Bestand
+    # nach vorn aufrueckt. Gehoert zum Scan, nicht in die Config: sonst gaelte die
+    # Richtung fuer alle Spiele gleichzeitig.
     reverse: bool = False
-    # Aufnahmequelle des Inventars. Ein HWND darf hier bewusst NICHT stehen: es
-    # gilt nur bis zum Schliessen des Fensters. Titel + Instanz finden dasselbe
-    # Fenster beim nächsten Start wieder; das Referenzrechteck macht die global
-    # gespeicherten Slot-Koordinaten relativ zu diesem Fenster verschiebbar.
+    # Aufnahmequelle des Inventars. Kein HWND: der gilt nur bis zum Schliessen des
+    # Fensters. Titel + Instanz finden es beim naechsten Start wieder, das
+    # Referenzrechteck macht die Slot-Koordinaten dazu relativ.
     capture_window_title: Optional[str] = None
     capture_window_index: int = 0
     capture_window_rect: Optional[tuple[int, int, int, int]] = None
@@ -581,20 +526,12 @@ class ItemScanConfig:
     def sync_names(self) -> None:
         """Leitet fehlende Namenslisten aus den Objekten ab.
 
-        DER GRUND: Namen und Objekte sind zwei Darstellungen derselben Sache, und wer nur
-        eine davon setzt, hinterlässt eine halbe Config. Genau das ist passiert - Editoren
-        und Scan-Studio bauen die Config aus Objekten, der Loader aus Namen, und niemand
-        füllte die jeweils andere Seite:
+        Namen und Objekte sind zwei Darstellungen derselben Sache, und wer nur eine
+        setzt, hinterlässt eine halbe Config: Editoren bauen aus Objekten, der Loader
+        aus Namen. Ohne Namen leerte `resolve_scan_references()` beim nächsten Start
+        die Objekte; ohne Objekte zeigte das Menü „0 Slots, 0 Items".
 
-        * Beim Öffnen waren `slots`/`items` leer, also zeigte das Menü "0 Slots, 0 Items"
-          und beim Bearbeiten war nichts vorausgewählt.
-        * Beim Speichern waren `slot_names`/`item_names` leer - und
-          `resolve_scan_references()` (läuft vor JEDEM Sequenzstart) leerte daraufhin die
-          Objekte. Ein gerade bearbeiteter Scan lief bis zum Neustart ins Leere.
-
-        Die Namen sind die Wahrheit (sie stehen in der Datei), die Objekte werden
-        aufgelöst. Diese Methode stellt sicher, dass die Wahrheit nie fehlt - egal von
-        welcher Seite die Config gebaut wurde.
+        Die Namen sind die Wahrheit, die Objekte werden aufgelöst.
         """
         if not self.slot_names and self.slots:
             self.slot_names = [s.name for s in self.slots]
@@ -691,10 +628,8 @@ class BossScanConfig:
 class IconScanConfig:
     """Konfiguration für Icon-Erkennung in einer Region → Aktion.
 
-    Erkennt ein einzelnes Symbol/Icon (z.B. ein rotes "!" das eine nicht
-    machbare Mission markiert) per Template-Matching ODER Farb-Marker und führt
-    bei Fund eine Aktion aus (Klick / Taste / Zyklus überspringen / ...).
-    Kein Item-Sammeln, kein LLM — bewusst schlank gehalten.
+    Erkennt EIN Symbol per Template-Matching oder Farb-Marker und führt bei Fund
+    eine Aktion aus. Kein Item-Sammeln, kein LLM — bewusst schlank.
     """
     name: str
     scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird

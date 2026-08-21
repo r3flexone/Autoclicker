@@ -93,15 +93,9 @@ class ScanStateMixin:
     def _scan_laden(self) -> None:
         """Slots, Items und Scan-Konfigurationen von Platte — einmal je Sitzung.
 
-        Nicht im Konstruktor: wer das Studio für eine Sequenz aufmacht, soll
-        nicht auf das Lesen von Dateien warten, die er vielleicht nie ansieht.
-
-        **„Einmal je Sitzung" war zu wenig.** Der Hauptprozess schreibt dieselben
-        Dateien, während das Fenster offensteht: ein Lauf mit `learn_unknown`
-        legt neue Items an und speichert sie. Die Konsole meldete „gelernt", das
-        Studio zeigte sie nie — es hatte `items.json` beim Öffnen gelesen und
-        danach nie wieder. Deshalb merkt sich `_platte_stand()`, wie die Dateien
-        beim Laden aussahen, und `scan_daten()` sagt, wenn sich das geändert hat.
+        Nicht im Konstruktor: wer das Studio für eine Sequenz aufmacht, soll nicht
+        auf Dateien warten, die er vielleicht nie ansieht. `_platte_stand()` merkt
+        sich dabei, wie sie aussahen — der Hauptprozess schreibt dieselben.
         """
         if self._scan_geladen:
             return
@@ -152,16 +146,12 @@ class ScanStateMixin:
     def _platte_nachziehen(self, *pfade) -> None:
         """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
 
-        **Das gemerkte Bild lag im beobachteten Ordner.** `item_scans/bilder/`
-        entsteht beim ersten Screenshot — und weil das Anlegen eines
-        Unterordners die Änderungszeit des Elternordners weiterdreht, meldete
-        der Reiter direkt nach der eigenen Aufnahme „auf Platte hat sich etwas
-        geändert". Ein Hinweis, der nach der eigenen Aktion kommt, ist genau
-        der, den man sich abgewöhnt zu lesen.
+        Das gemerkte Bild liegt unter `item_scans/bilder/`, und das Anlegen des
+        Unterordners dreht die Änderungszeit des Elternordners weiter — sonst meldete
+        der Reiter direkt nach der eigenen Aufnahme eine Fremdänderung.
 
-        Ohne Argumente wird der ganze Stand nachgezogen (nach dem Speichern —
-        dann ist alles auf Platte unser eigenes Werk); mit Argumenten nur die
-        genannten Pfade, damit eine fremde Änderung anderswo sichtbar bleibt.
+        Ohne Argumente der ganze Stand (nach dem Speichern), mit Argumenten nur die
+        genannten Pfade — sonst verschluckt es eine fremde Änderung anderswo.
         """
         stand = self._platte_stand()
         if not pfade:
@@ -240,13 +230,8 @@ class ScanStateMixin:
     def _objekte_angleichen(self) -> None:
         """Zieht die abgeleiteten Objektlisten der Scans an ihren Namen nach.
 
-        **Ohne das kommt Gelöschtes zurück.** `ItemScanConfig.sync_names()` füllt
-        eine leere Namensliste aus den Objekten — genau dafür ist sie da (der
-        Editor baut die Config aus Objekten). Wer also nur `item_names` leert und
-        `items` stehen lässt, hat beim nächsten Speichern wieder alles drin.
-
-        Muss deshalb nach **jeder** Änderung an den Namen laufen: Häkchen,
-        Umbenennen, Löschen.
+        Ohne das kommt Gelöschtes zurück: `sync_names()` füllt eine leere Namensliste
+        aus den Objekten. Muss nach jeder Änderung an den Namen laufen.
         """
         for cfg in self.scans.values():
             cfg.slots = [self.slots[n] for n in cfg.slot_names if n in self.slots]
@@ -255,17 +240,9 @@ class ScanStateMixin:
     def _dazu(self, art: str, name: str) -> bool:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
-        **Wer in einem offenen Scan etwas anlegt, legt es FÜR ihn an.** Ohne das
-        war der neue Slot sofort wieder weg: die Listen zeigen standardmässig nur
-        die Mitglieder, und ein gerade aufgezogener Slot war keines. Man musste
-        den Filter ausschalten, ihn suchen und ein Häkchen setzen — für etwas,
-        das man erkennbar gerade für diesen Scan gemacht hat.
-
-        Ohne offenen Scan passiert nichts; dann arbeitet man am Bestand.
-
-        Gibt zurück, ob es eine Änderung war — „war schon dabei" ist etwas
-        anderes als „gerade aufgenommen", und der Suchdurchgang zählt beides
-        getrennt.
+        Wer in einem offenen Scan etwas anlegt, legt es für ihn an — sonst wäre es
+        sofort wieder weg (die Listen zeigen nur die Mitglieder). Ohne offenen Scan
+        passiert nichts. Gibt zurück, ob es eine Änderung war.
         """
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
@@ -320,25 +297,10 @@ class ScanStateMixin:
     def _merke(self, was: str) -> None:
         """Legt den Stand VOR einer Änderung auf den Rückgängig-Stapel.
 
-        **Es gab hier kein Rückgängig, und das war die grösste Lücke des
-        Reiters.** Ein Auswahl-Rechteck über dreissig Slots und ein Druck auf
-        Entf waren endgültig; der einzige Ausweg hiess „Neu laden" — und der
-        wirft *alles* seit dem letzten Speichern weg, also auch die halbe Stunde
-        Arbeit davor. Zwischen „ich habe mich um einen Slot vertan" und „ich
-        werfe den Nachmittag weg" lag nichts.
-
-        Der ganze Abzug statt einzelner Rückwärts-Schritte: eine Aktion hier
-        rührt fast immer an mehrere Stellen gleichzeitig (ein gelöschter Slot
-        verschwindet aus jedem Scan, ein umbenanntes Item wird in jedem Scan
-        nachgezogen). Rückwärts-Schritte müssten jede dieser Nebenwirkungen
-        einzeln kennen — und ein vergessener wäre ein Rückgängig, das die Daten
-        halb zurückdreht. Das ist schlimmer als keins. Ein Abzug kostet bei
-        einem echten Bestand rund 30 KB und ist damit billiger als der Fehler,
-        den er verhindert.
-
-        Aufgerufen wird es **vor** der Änderung und von der Methode, die sie
-        macht — nicht von der Oberfläche: sonst hinge das Rückgängig daran, dass
-        jeder Knopf daran denkt.
+        Ein vollständiger Abzug statt einzelner Rückwärts-Schritte: eine Aktion rührt
+        hier fast immer an mehrere Stellen (ein gelöschter Slot verschwindet aus
+        jedem Scan), und ein vergessener Rückwärts-Schritt drehte die Daten halb
+        zurück. Aufgerufen von der Methode, die ändert — nicht von der Oberfläche.
         """
         self._undo.append((was, self._zustand()))
         del self._undo[:-UNDO_TIEFE]
@@ -346,12 +308,9 @@ class ScanStateMixin:
     def scan_rueckgaengig(self, daten: Optional[dict] = None) -> dict:
         """Nimmt den letzten Schritt zurück (STRG+Z).
 
-        **Was auf Platte passiert ist, holt das nicht zurück.** Ein gelöschter
-        Scan kommt als Konfiguration wieder und wird beim nächsten Speichern neu
-        geschrieben — sein gemerkter Screenshot ist aber weg, und gelernte
-        Templates bleiben liegen (die gehören womöglich schon einem anderen
-        Item). Das steht in der Meldung, statt ein vollständiges Zurück zu
-        versprechen, das es nicht gibt.
+        Was auf Platte passiert ist, holt das nicht zurück: ein gelöschter Scan kommt
+        als Konfiguration wieder, sein gemerkter Screenshot ist weg. Das steht in der
+        Meldung, statt ein vollständiges Zurück zu versprechen.
         """
         if not self._undo:
             return self._scan_melde("Nichts zum Rückgängigmachen.", "info")
@@ -380,20 +339,10 @@ class ScanStateMixin:
     def _schritte(self) -> list:
         """Die drei Schritte zu einem neuen Scan, mit ihrem Stand.
 
-        **Die Reihenfolge stand nirgends.** Der Reiter zeigte alle Bedienelemente
-        gleichzeitig, und wer zum ersten Mal einen Scan anlegt, sieht eine Wand
-        aus Knöpfen statt eines Weges. Die drei Schritte sind immer dieselben:
-        Bereich, Slots, Items.
+        Zwischen Schritt 2 und 3 liegt das Spiel: Slots nimmt man oft am leeren
+        Inventar auf, „Items lernen" auf dem alten Bild lernt leere Slots.
 
-        **Zwischen Schritt 2 und 3 liegt das Spiel.** Slots nimmt man oft an
-        einem LEEREN Inventar auf — dann gibt es noch nichts zu lernen. Man füllt
-        es, nimmt neu auf und lernt erst dann. Genau das sagt Schritt 3, weil es
-        sonst niemand ahnt: ein „Items lernen" auf dem alten Bild lernt drei
-        leere Slots.
-
-        Der Stand wird **abgeleitet, nicht mitgeschrieben** — sonst gäbe es einen
-        Fortschritt, der nicht zu den Daten passt. Erledigt heisst schlicht: es
-        ist da.
+        Der Stand wird abgeleitet, nicht mitgeschrieben — erledigt heisst: es ist da.
         """
         cfg = self.scans.get(self.scan_offen)
         hat_slots = bool(cfg.slot_names) if cfg else bool(self.slots)
@@ -417,20 +366,10 @@ class ScanStateMixin:
     def _flaeche(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
 
-        **Ein Scan ohne Bild ist nicht dasselbe wie ein Scan ohne Inhalt.** Ein
-        älterer Scan bringt seine Slots mit, aber kein gemerktes Bild — das gibt
-        es erst, seit der Reiter es ablegt. Bis hierher stand die Mitte deshalb
-        leer, obwohl die Slots längst da waren: man sah nicht, was man hat, und
-        konnte nichts davon anfassen.
-
-        Ohne Bild wird die Fläche aus dem umschliessenden Rechteck der Slots
-        gerechnet (mit etwas Rand). Alle Umrechnungen laufen über `links`/`oben`
-        und `skala` — die stimmen dann genauso, nur ist der Hintergrund leer.
-        Ein späterer Screenshot legt sich dahinter, ohne dass sich etwas
-        verschiebt.
-
-        `bild` sagt, was von beidem es ist. Ohne das würde die Seite ein Bild
-        nachfordern, das es nicht gibt.
+        Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild; ohne die
+        Ersatzfläche stünde die Mitte leer, obwohl die Slots da sind. Alle
+        Umrechnungen laufen über `links`/`oben`/`skala` und stimmen genauso.
+        `bild` sagt, was von beidem dasteht.
         """
         if self._foto_info:
             return dict(self._foto_info, bild=True)
@@ -449,22 +388,9 @@ class ScanStateMixin:
     def _scan_slots(self) -> list:
         """Die Slots, um die es geht: die des offenen Scans, sonst der Bestand.
 
-        **Der offene Scan ist der Bezug, nicht der Bestand.** Wer zwei Spiele
-        betreibt, hat die Slots beider in einer Datei — und alles, was „alle
-        Slots" sagt, meinte bis hierher wirklich alle. Das war an drei Stellen
-        falsch, und zwei davon fielen nur als seltsame Zahl auf:
-
-        - „aus ALLEN Slots lernen" lief über den ganzen Bestand. Die Slots des
-          anderen Spiels liegen ausserhalb des Bildes, also kam nichts dabei
-          heraus — gemeldet wurde es aber als „11 ohne Bild", und man sucht den
-          Fehler beim Screenshot.
-        - „X von 56 Slot(s) erkannt" nannte den Bestand als Nenner, obwohl der
-          Scan 45 hat. Elf davon konnten gar nicht erkannt werden.
-        - Die Ersatzfläche (kein Bild gemerkt) legte sich um beide Spiele und
-          war damit doppelt so gross wie nötig.
-
-        Ohne offenen Scan ist der Bestand die richtige Antwort: dann gibt es
-        keine engere Menge.
+        Wer zwei Spiele betreibt, hat die Slots beider in einer Datei — „alle Slots"
+        meinte sonst wirklich alle, und daran hingen falsche Nenner („X von 56") und
+        eine doppelt so grosse Ersatzfläche.
         """
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
@@ -605,17 +531,9 @@ class ScanStateMixin:
     def _erkannte_items(self) -> dict:
         """Item-Name -> die Slots, in denen es gerade erkannt wird.
 
-        **Das ist der Grund, warum die Item-Liste eines Scans nicht leer bleibt.**
-        Dasselbe Item kann in mehreren Spielen vorkommen; es ein zweites Mal zu
-        lernen ist genau das, was man vermeiden will. Wird es erkannt, steht es
-        im Scan-Inspektor — bevor jemand auf die Idee kommt, es neu zu lernen.
-        Ein Haken genügt dann.
-
-        **Der Slot-Name kommt mit, nicht nur ein Ja.** „Items erkennen" färbte
-        bis hierher nur die Rechtecke im Bild — wer in der Item-Liste stand (und
-        das ist die Liste, in der man arbeitet), sah nach dem Klick nichts und
-        hielt den Knopf für wirkungslos. Jetzt steht an jedem Item, wo es
-        gefunden wurde.
+        Ein erkanntes Item steht deshalb im Scan-Inspektor, bevor jemand es ein
+        zweites Mal lernt. Der Slot-Name kommt mit: „erkannt" ohne Beleg ist eine
+        Behauptung, und in der Item-Liste sah man vom Erkennen sonst gar nichts.
         """
         gefunden: dict = {}
         for slot, eintrag in self._treffer.items():

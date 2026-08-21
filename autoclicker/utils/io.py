@@ -1,13 +1,8 @@
-"""
-Input-Handling: Tastatur, interaktive Auswahl, Pause-Warten.
+"""Input-Handling: Tastatur, interaktive Auswahl, Pause-Warten.
 
-Drei Konsolen-Modi werden unterstützt:
-  - echte Windows-Konsole (cmd/PowerShell): msvcrt + ANSI mit Cursor-Bewegung
-  - PyCharm/IntelliJ: GetAsyncKeyState-Polling + ANSI ohne Cursor
-  - sonstige IDE-Konsolen: Fallback auf Nummern-Eingabe
-
-Konsolen-Detection lebt in console.py — wir importieren die _REAL_CONSOLE,
-_ANSI_ENABLED, _PYCHARM-Flags von dort.
+Drei Konsolen-Modi: echte Windows-Konsole (msvcrt + ANSI mit Cursor),
+PyCharm/IntelliJ (GetAsyncKeyState-Polling, ANSI ohne Cursor), sonstige
+IDE-Konsolen (Nummern-Eingabe). Die Erkennung selbst lebt in console.py.
 """
 
 import ctypes
@@ -202,16 +197,11 @@ def _read_key_msvcrt() -> str:
 def _read_key_polling(zusatz: dict | None = None) -> str:
     """Liest Tastendruck via GetAsyncKeyState (funktioniert in PyCharm/IDE).
 
-    Nutzt die gleiche Windows API wie die Hotkeys - funktioniert überall,
-    auch ohne echtes Console-Handle.
-
     `zusatz` erweitert die Tastentabelle fuer diesen einen Aufruf — genutzt von
     `read_command()` fuer die Buchstaben. Die stehen absichtlich nicht dauerhaft
-    in `_VK_MAP`: in `interactive_select` navigiert man mit Pfeilen und Ziffern,
-    da wuerde ein Buchstabe nur eine Auswahl ausloesen, die niemand wollte.
+    in `_VK_MAP`: in `interactive_select` navigiert man mit Pfeilen und Ziffern.
 
-    Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL
-    zaehlt: beim naechsten Aufruf steht sie schon als gedrueckt im Ausgangsbild.
+    Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL zaehlt.
     """
     tasten = dict(_VK_MAP)
     if zusatz:
@@ -244,12 +234,8 @@ def _read_key_polling(zusatz: dict | None = None) -> str:
 def read_key() -> str:
     """Liest einen einzelnen Tastendruck (blockierend).
 
-    Nutzt msvcrt.getch() in echten Windows-Konsolen,
-    oder GetAsyncKeyState-Polling in PyCharm/IDE-Konsolen.
-
-    Returns:
-        'up', 'down', 'left', 'right', 'enter', 'escape',
-        'backspace', oder das gedrückte Zeichen als String.
+    Gibt 'up', 'down', 'left', 'right', 'enter', 'escape', 'backspace' oder das
+    gedrückte Zeichen zurück.
     """
     if _REAL_CONSOLE and msvcrt is not None:
         return _read_key_msvcrt()
@@ -259,18 +245,11 @@ def read_key() -> str:
 def taste_neu_gedrueckt(zustand: int, war_unten: bool) -> bool:
     """Bedeutet dieser GetAsyncKeyState-Wert einen NEUEN Tastendruck?
 
-    Zwei Wege, denselben Druck zu bemerken, und beide werden gebraucht:
-
-    - `0x8000` ("haelt gerade") plus Flanke. Der offensichtliche Weg, aber er
-      trifft nur, wenn die Taste ausgerechnet waehrend einer Abfrage unten ist.
-      Ein Mensch haelt sie ~100 ms, das klappt bei 50 Hz.
-    - `0x0001` ("seit der letzten Abfrage gedrueckt"). Faengt auch, was zwischen
-      zwei Abfragen anfaengt und aufhoert — ein per `SendInput` erzeugter Druck
-      dauert Mikrosekunden und faellt sonst durch. Das Bit wird beim Lesen
-      geleert, deshalb darf der Wert nur EINMAL pro Runde geholt werden.
-
-    Eigene Funktion, damit die Regel pruefbar ist: ein Test, der echte
-    Tastendruecke ins System schickt, tippt in das Fenster, das gerade vorn ist.
+    Zwei Wege, und beide werden gebraucht: `0x8000` ("haelt gerade") plus Flanke
+    trifft nur, wenn die Taste waehrend einer Abfrage unten ist; `0x0001` ("seit
+    der letzten Abfrage gedrueckt") faengt auch einen per `SendInput` erzeugten
+    Druck von Mikrosekunden. Das Bit wird beim Lesen geleert — der Wert darf
+    also nur EINMAL pro Runde geholt werden.
     """
     return (bool(zustand & 0x8000) and not war_unten) or bool(zustand & 0x0001)
 
@@ -279,14 +258,10 @@ def warte_auf_taste(tasten: tuple = ("enter", "escape"),
                     timeout: float = 60.0) -> "str | None":
     """Wartet global auf eine der Tasten — ohne Konsole, ohne Fenster-Fokus.
 
-    Fuer Fenster-Prozesse gedacht (Sequenz-Studio): dort gibt es keine Konsole,
-    in die man tippen koennte, und der Nutzer steht mit der Maus irgendwo auf dem
-    Bildschirm. `read_key()` taugt dafuer nicht — es liest entweder ueber msvcrt
-    aus der Konsole oder wartet ohne Zeitgrenze, und ein Fenster, das ewig auf
-    eine Taste wartet, sieht aus wie ein haengendes Fenster.
+    Fuer Fenster-Prozesse (Sequenz-Studio): dort gibt es keine Konsole, und ein
+    Fenster, das ohne Zeitgrenze wartet, sieht aus wie ein haengendes Fenster.
 
-    Returns:
-        Name der gedrueckten Taste, oder None bei Zeitablauf.
+    Gibt den Namen der gedrueckten Taste zurueck, oder None bei Zeitablauf.
     """
     from ..winapi import wait_for_key
     return wait_for_key(tuple(tasten), timeout)
@@ -301,15 +276,10 @@ _VK_BUCHSTABEN = {0x41 + _n: chr(ord('a') + _n) for _n in range(26)}
 def read_command() -> str:
     """Liest einen Menü-Befehl wie 'w', 'a', 's', 'c', 'q' — ohne Enter.
 
-    Ein einzelner Tastendruck, in jeder Konsole: echte Konsolen ueber msvcrt,
-    PyCharm/IDE-Konsolen ueber GetAsyncKeyState-Polling.
-
-    Warum es das ueberhaupt gibt: `_read_key_polling()` erkennt nur, was in
-    `_VK_MAP` steht, und da stehen ausschliesslich Pfeile, Enter, Escape und
-    Ziffern — keine Buchstaben. In IDE-Konsolen fiel ein getipptes 'a' deshalb
-    durch; angekommen ist nur das Enter danach, und damit landete JEDE Taste auf
-    demselben Zweig. Im Punkte-Durchgang lief 'a' (zurueck) vorwaerts, im
-    manuellen Modus waren 's', 'c' und 'q' gar nicht erreichbar.
+    `_read_key_polling()` kennt nur `_VK_MAP` (Pfeile, Enter, Escape, Ziffern);
+    in IDE-Konsolen fiel ein getipptes 'a' deshalb durch und JEDE Taste landete
+    auf demselben Zweig. Diese Funktion schaltet die Buchstaben fuer den einen
+    Aufruf dazu.
     """
     if _REAL_CONSOLE and msvcrt is not None:
         return (read_key() or "").lower()
@@ -324,22 +294,14 @@ def interactive_select(options: list[str], title: str = "",
                        allow_cancel: bool = True, default: int = 0) -> int:
     """Interaktive Menü-Auswahl mit Pfeiltasten.
 
-    Navigation:
-        Hoch/Runter  - Auswahl bewegen
-        Enter/Rechts - Bestätigen
-        Escape/Links - Abbrechen (gibt -1 zurück)
-        0-9          - Direkte Nummern-Eingabe
+    Hoch/Runter bewegt, Enter/Rechts bestätigt, Escape/Links bricht ab (-1),
+    0-9 wählt direkt. `default` ist der vorausgewählte Index (beim Bearbeiten
+    der aktuelle Wert), den Enter direkt bestätigt.
 
-    default: Index der vorausgewählten Option (z.B. der aktuelle Wert beim
-    Bearbeiten) — Enter bestätigt diesen direkt.
+    Drei Modi je nach Konsole: mehrzeiliges Menü mit Cursor-Bewegung,
+    Einzeilen-Navigation (\r überschreibt) oder klassische Nummern-Eingabe.
 
-    Drei Modi je nach Konsolen-Umgebung:
-        - cmd/PowerShell: Mehrzeiliges Menü mit Cursor-Bewegung
-        - PyCharm/IDE:    Einzeilen-Navigation (\\r überschreibt)
-        - Sonstige:       Klassische Nummern-Eingabe
-
-    Returns:
-        Index der gewählten Option (0-basiert), oder -1 bei Abbruch.
+    Gibt den gewählten Index (0-basiert) zurück, oder -1 bei Abbruch.
     """
     if not options:
         return -1
@@ -356,10 +318,8 @@ def interactive_select(options: list[str], title: str = "",
 def _navigate_select(num_options: int, allow_cancel: bool, default: int, redraw) -> int:
     """Gemeinsame Tasten-Navigationsschleife der Pfeiltasten-Menüs.
 
-    Behandelt hoch/runter/enter/escape/Ziffern einheitlich; `redraw(selected)`
-    wird nach jeder Bewegung aufgerufen, damit jeder Modus selbst weiss, wie er
-    neu zeichnet (mehrzeilig vs. \\r-Einzeiler). Gibt den gewählten Index
-    zurück oder -1 bei Abbruch.
+    `redraw(selected)` wird nach jeder Bewegung aufgerufen, damit jeder Modus
+    selbst weiss, wie er neu zeichnet. Gibt den Index zurück oder -1.
     """
     selected = default
     while True:

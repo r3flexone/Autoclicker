@@ -177,10 +177,9 @@ IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y":
 def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
     """Reine Verschiebung aus EINEM Referenzpunkt: wo er war, wo er hingehört.
 
-    Ein Punkt kann nur verschieben, nicht skalieren — dafür braucht es zwei
-    (`compute_transform`). Das reicht, solange die Auflösung dieselbe ist und sich
-    nur die Lage des Monitors im virtuellen Desktop geändert hat; genau das
-    passiert, wenn Windows die Bildschirme neu anordnet.
+    Ein Punkt kann nur verschieben, nicht skalieren (dafür `compute_transform`).
+    Reicht, solange nur die Lage des Monitors im virtuellen Desktop sich
+    geändert hat — genau das passiert beim Umordnen der Bildschirme.
     """
     return {"scale_x": 1.0, "scale_y": 1.0,
             "offset_x": neu[0] - alt[0], "offset_y": neu[1] - alt[1]}
@@ -192,14 +191,9 @@ def ist_identitaet(transform: dict) -> bool:
             and round(transform["offset_x"]) == 0 and round(transform["offset_y"]) == 0)
 
 
-# =============================================================================
-# KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
-# =============================================================================
-#
-# Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand statt auf ein
-# frisch entpacktes Bundle. Der Import kann das nicht ersetzen: er legt Daten an,
-# statt vorhandene zu korrigieren — importiert man sein eigenes Export-ZIP zurück,
-# steht am Ende alles doppelt da.
+# KALIBRIERUNG (Bildschirm-Layout hat sich geaendert)
+# Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand. Der Import
+# kann das nicht ersetzen: er legt Daten an, statt vorhandene zu korrigieren.
 
 def kalibrier_vorschau(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
     """Was der Transform ändern würde — (Bezeichnung, vorher, nachher), ohne Mutation."""
@@ -234,12 +228,8 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
 def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
     """Legt vor dem Umrechnen ein vollständiges Export-ZIP als Sicherung an.
 
-    Die Kalibrierung schreibt Punkte, Slots, Scans und Sequenzdateien in einem Rutsch
-    um — ohne Rückweg, wenn der Referenzpunkt danebenlag. Ein eigenes Backup-Format
-    dafür zu bauen wäre Doppelarbeit: der Export kann das längst, und der Import
-    spielt es wieder ein.
-
-    Gibt den Pfad zurück, oder None wenn die Sicherung fehlschlug.
+    Kein eigenes Backup-Format: der Export kann das längst, und der Import
+    spielt es wieder ein. Gibt den Pfad zurück, oder None bei Fehlschlag.
     """
     import time as _time
 
@@ -262,20 +252,13 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                        mit_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-Scans
-    mit; `mit_sequenzen` die Screenshot-Regionen in den Sequenz-DATEIEN.
+    Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-
+    Scans mit, `mit_sequenzen` die Screenshot-Regionen in den Sequenz-DATEIEN.
+    Die Klick-Stellen der Sequenzen stehen NICHT in der Liste — sie sind Punkte
+    und oben schon umgerechnet.
 
-    Die Klick-Stellen der Sequenzen stehen NICHT mehr in dieser Liste: sie sind
-    Punkte, und die sind oben schon umgerechnet. Das ist der eigentliche Gewinn der
-    Umstellung — vorher musste jede Kopie einzeln erwischt werden, und die eine, die
-    man vergass, fiel erst beim nächsten Lauf auf.
-
-    `mit_slots` steht bewusst getrennt, obwohl Slots zu den Scans gehören: eine
-    aus einer Maus-Position abgeleitete Verschiebung ist für ein Klick-Ziel gut
-    genug, für eine Scan-Region aber nur eine Näherung — ein paar Pixel daneben
-    schneiden das Item-Icon an. Dafür gibt es `slot_repair()`, das die Slots misst
-    statt sie zu verschieben. Deshalb muss sich beides einzeln schalten lassen:
-    nach einer Reparatur dürfen die Slots kein zweites Mal wandern.
+    `mit_slots` ist getrennt schaltbar, obwohl Slots zu den Scans gehören: nach
+    einer `slot_repair()`-Reparatur dürfen sie kein zweites Mal wandern.
 
     Gibt eine Zählung nach Bereich zurück.
     """
@@ -595,17 +578,10 @@ def read_manifest(filepath: str) -> tuple[bool, dict | str]:
 class _Import:
     """Der Zustand EINES Import-Durchgangs — das, was alle Stufen teilen.
 
-    **Der Import war eine Funktion mit 292 Zeilen und 69 Verzweigungen** — und
-    zugleich die Stelle, die am meisten auf Platte schreibt (Templates, Slots,
-    Items, drei Scan-Arten, Sequenzen, Punkte und die Config). Diese beiden
-    Eigenschaften in einer Funktion sind die unangenehmste Kombination, die eine
-    Codebasis haben kann: die Tests konnten unmöglich alle Pfade treffen, und
-    jeder ungetroffene Pfad schrieb Dateien.
-
-    Dasselbe Rezept wie bei `edit_item_scan()` im Item-Scan-Editor: Stufen statt
-    eines Blocks. Jede Stufe ist eine eigene Funktion mit einem klaren Auftrag,
-    nimmt diesen Durchgang entgegen und zählt in `stats` mit. Damit lässt sich
-    jede einzeln prüfen — bis hierher ging das nur über das ZIP als Ganzes.
+    Der Import war eine Funktion mit 292 Zeilen und zugleich die Stelle, die am
+    meisten auf Platte schreibt; jeder ungetroffene Pfad schrieb Dateien. Jede
+    Stufe ist jetzt eine eigene Funktion, nimmt diesen Durchgang entgegen und
+    zählt in `stats` mit — damit lässt sich jede einzeln prüfen.
     """
 
     def __init__(self, zf, names: list, state, transform: dict, merge: bool):
@@ -791,10 +767,9 @@ def _imp_templates(lauf: _Import) -> None:
 def _imp_punkte(lauf: _Import, import_points: bool, import_sequences: bool) -> None:
     """Punkte übernehmen und dabei ID-Kollisionen auflösen.
 
-    **Sequenzen ohne ihre Punkte gibt es nicht mehr**: seit die Koordinate nur noch
-    im Punkt steht, wäre eine Sequenz ohne Punkte eine Liste von Schritten, die
-    nirgendwohin zeigen. `import_points=False` heisst deshalb „keine Punkte, die
-    niemand braucht" — die referenzierten kommen trotzdem mit.
+    Seit die Koordinate nur noch im Punkt steht, wäre eine Sequenz ohne Punkte
+    eine Liste von Schritten, die nirgendwohin zeigen. `import_points=False`
+    heisst deshalb nur „keine Punkte, die niemand braucht".
     """
     gebraucht: Optional[set] = None
     if not import_points and import_sequences:
@@ -888,10 +863,10 @@ def _imp_items(lauf: _Import) -> None:
 def _imp_item_scans(lauf: _Import) -> None:
     """Item-Scans — Namen plus der optionale Fenster-Anker.
 
-    Die Koordinaten der Slots werden beim Import von `slots.json` umgerechnet und
-    nicht ein zweites Mal pro Scan. Ein gespeicherter Fenster-Anker muss aber mit
-    derselben Transformation folgen, sonst würde die Runtime die bereits
-    importierten Slots noch einmal von der alten Fensterlage aus verschieben.
+    Die Slot-Koordinaten werden beim Import von `slots.json` umgerechnet, nicht
+    ein zweites Mal pro Scan. Ein gespeicherter Fenster-Anker muss aber
+    mitfolgen, sonst verschiebt die Runtime die Slots noch einmal von der alten
+    Fensterlage aus.
     """
     for name in lauf.dateien("item_scans/"):
         scan_data, _m = migrate(lauf.lies(name), KIND_ITEM_SCAN)
@@ -1137,18 +1112,15 @@ def _referenzierte_punkte(seq_data: dict) -> set:
 
 
 def _remap_point_ids(seq_data: dict, id_map: dict[int, int]) -> None:
-    """Zieht die Punkt-Referenzen der Schritte auf die IDs nach, die die Punkte hier
-    bekommen haben.
+    """Zieht die Punkt-Referenzen der Schritte auf die hier vergebenen IDs nach.
 
-    Der Import vergibt einem Punkt eine neue ID, wenn seine alte lokal schon belegt ist.
-    Bleibt der Schritt dann auf der alten ID stehen, zeigt er auf einen FREMDEN lokalen
-    Punkt - und `resolve_point_references()` zieht den Schritt beim naechsten Lauf brav
-    dorthin und meldet das auch noch als Erfolg. Genau deshalb wird hier nachgezogen.
+    Der Import vergibt eine neue ID, wenn die alte lokal schon belegt ist; bleibt
+    der Schritt auf der alten stehen, zeigt er auf einen FREMDEN Punkt — und das
+    Auflösen meldet das auch noch als Erfolg.
 
-    Eine Referenz wird NICHT mehr fallengelassen, wenn die Zuordnung fehlt: seit die
-    Koordinate nur noch im Punkt steht, waere der Schritt danach ein Schritt ohne Ziel.
-    Er behaelt die Referenz und wird beim Laden als verwaist gemeldet - das ist ein
-    Problem, das man sieht und beheben kann.
+    Fehlt die Zuordnung, wird die Referenz NICHT fallengelassen: der Schritt
+    wäre danach einer ohne Ziel. Er behält sie und wird beim Laden als verwaist
+    gemeldet — ein Problem, das man sieht und beheben kann.
     """
     for s in _iter_import_steps(seq_data):
         for key in _REF_KEYS:

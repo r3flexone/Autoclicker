@@ -1,13 +1,9 @@
-"""
-Sequenz-Aufnahme: Zeichnet echtes Spielen auf und baut daraus eine Sequenz.
+"""Sequenz-Aufnahme: Zeichnet echtes Spielen auf und baut daraus eine Sequenz.
 
-Start/Stop über CTRL+ALT+J. Aufgezeichnet werden Linksklicks (mit Position,
-Zeitstempel und Pixelfarbe), Tastendrücke, das Mausrad und — per CTRL+ALT+M —
-Warte-Marker auf eine Farbe. Nach dem Stoppen wird eine Sequenz daraus erstellt
-und direkt geladen.
-
-Alles muss mit EINEM globalen Tastendruck gehen: während der Aufnahme steht der
-Nutzer im Spiel, nicht in der Konsole. Nachfragen sind erst beim Stoppen möglich.
+Start/Stop über CTRL+ALT+J. Aufgezeichnet werden Linksklicks (Position,
+Zeitstempel, Pixelfarbe), Tastendrücke, das Mausrad und die Marker (siehe
+CLAUDE.md). Alles muss mit EINEM globalen Tastendruck gehen — während der
+Aufnahme steht der Nutzer im Spiel, nicht in der Konsole.
 """
 
 import time
@@ -85,10 +81,8 @@ def _on_click_factory(state: AutoClickerState):
 def _on_wheel_factory(state: AutoClickerState):
     """Erstellt den Mausrad-Callback. `delta` ist die rohe Windows-Distanz.
 
-    Gibt `None` zurück, wenn `record_scroll` aus ist — `install_mouse_hook` ignoriert
-    das Rad dann bereits in der Hook-Prozedur. Absichtlich hier und nicht erst in
-    `_anhaengen`: ein Callback, der jedes Ereignis entgegennimmt, um es wegzuwerfen,
-    liefe bei jeder Radbewegung mit, auch wenn niemand aufnimmt.
+    `None` bei ausgeschaltetem `record_scroll` — dann ignoriert schon die
+    Hook-Prozedur das Rad, statt jedes Ereignis nur zum Wegwerfen anzunehmen.
     """
     if not state.config.record_scroll:
         return None
@@ -111,16 +105,10 @@ def _on_key_factory(state: AutoClickerState):
 def merke_farbe(state: AutoClickerState) -> None:
     """Setzt einen Warte-Marker (CTRL+ALT+M): "ab hier warte ich".
 
-    Der Marker hat **keine eigene Stelle**. Beim Drücken parkt die Maus irgendwo —
-    diese Position wäre reiner Zufall, und ein Punkt darauf wäre Müll in points.json.
-    Gewartet wird stattdessen auf die Farbe DES Klicks, der als nächstes kommt: genau
-    dort, wo das Erwartete auftaucht, klickt man ja hin.
-
-    Damit hält der Marker nur die Uhr an: die Zeit bis zu seinem Drücken bleibt echte
-    Wartezeit, die Zeit danach ersetzt die Farb-Bedingung.
-
-    Wer auf eine Stelle warten will, die er NICHT klickt, nimmt `merke_beobachten()`
-    (`CTRL+ALT+SHIFT+M`) — dort ist die Mausposition dann bewusst gewählt.
+    Er hat keine eigene Stelle — beim Drücken parkt die Maus zufällig irgendwo.
+    Gewartet wird auf die Farbe des Klicks, der als nächstes kommt; der Marker
+    hält also nur die Uhr an. Für eine Stelle, die man NICHT klickt:
+    `merke_beobachten()`.
     """
     if not _aufnahme_laeuft(state):
         return
@@ -128,14 +116,10 @@ def merke_farbe(state: AutoClickerState) -> None:
 
 
 def merke_screenshot(state: AutoClickerState) -> None:
-    """Setzt einen Screenshot-Marker (CTRL+ALT+D): "hier einen Screenshot machen".
+    """Setzt einen Screenshot-Marker (CTRL+ALT+D): Vollbild an dieser Stelle.
 
-    Anders als der Warte-Marker braucht der Screenshot-Marker keine Folge-Aktion und
-    keine eigene Stelle: er wird selbst zu einem eigenständigen Screenshot-Step an
-    genau dieser Stelle der Zeitachse (`schritte_aus_events`).
-
-    Vollbild. Wer einen **Bereich** will, nimmt `merke_bereich()`
-    (`CTRL+ALT+SHIFT+D`, zweimal drücken = zwei Ecken).
+    Wird ein eigener Schritt (anders als der Warte-Marker): keine Folge-Aktion,
+    an die er sich hängen könnte. Für einen Bereich: `merke_bereich()`.
     """
     if not _aufnahme_laeuft(state):
         return
@@ -162,12 +146,9 @@ def _aufnahme_laeuft(state: AutoClickerState) -> bool:
 def merke_bereich(state: AutoClickerState) -> None:
     """Setzt eine Bereichs-Ecke (CTRL+ALT+SHIFT+D). Zwei Ecken = ein Rechteck.
 
-    Ein Rechteck aufzuziehen braucht zwei Stellen — und während der Aufnahme gibt es
-    nichts als Tastendrücke. Also zweimal derselbe Druck an zwei Mauspositionen; das
-    Falten zum Screenshot-Schritt macht `bereiche_zusammenfassen()` beim Stoppen.
-
-    Die Mausposition ist hier — anders als beim Warte-Marker — **bewusst gewählt**:
-    man fährt die Ecke an und drückt. Deshalb darf sie verwendet werden.
+    Die Mausposition ist hier — anders als beim Warte-Marker — bewusst
+    angefahren und darf deshalb verwendet werden. Gefaltet wird beim Stoppen
+    in `bereiche_zusammenfassen()`.
     """
     if not _aufnahme_laeuft(state):
         return
@@ -178,11 +159,8 @@ def merke_bereich(state: AutoClickerState) -> None:
 def merke_beobachten(state: AutoClickerState) -> None:
     """Warten auf die Farbe UNTER der Maus, ohne dorthin zu klicken (CTRL+ALT+SHIFT+M).
 
-    Der Unterschied zum Warte-Marker (`CTRL+ALT+M`) ist der Vertrag über die
-    Mausposition: dort steht sie zufällig irgendwo und der Marker hängt sich an den
-    nächsten Klick; hier legt man die Maus absichtlich auf das, was man beobachtet, und
-    geklickt wird gar nicht. Entspricht `wait pixel` im Sequenz-Editor — was die
-    Aufnahme bisher nicht konnte.
+    Entspricht `wait pixel` im Editor. Unterschied zu CTRL+ALT+M: dort steht die
+    Maus zufällig, hier legt man sie absichtlich auf das Beobachtete.
     """
     if not _aufnahme_laeuft(state):
         return
@@ -197,14 +175,9 @@ def merke_beobachten(state: AutoClickerState) -> None:
 def merke_phase(state: AutoClickerState) -> None:
     """Setzt eine Phasengrenze (CTRL+ALT+SHIFT+P): ab hier die nächste Phase.
 
-    Erster Druck trennt INIT von LOOP, zweiter LOOP von END — in genau der Reihenfolge,
-    in der man beim Spielen darauf stösst. Ohne Marker bleibt alles in einer Loop-Phase
-    (das bisherige Verhalten).
-
-    Das ist der Marker, der sich am wenigsten nachholen lässt: der Sequenz-Editor
-    bearbeitet jede Phase für sich (`edit_phase`), einen Befehl zum Verschieben eines
-    Schritts in eine ANDERE Phase gibt es nicht. Nachträglich aufteilen hiesse löschen
-    und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus.
+    Erster Druck trennt INIT von LOOP, zweiter LOOP von END. Der Marker, der
+    sich am wenigsten nachholen lässt — der Editor kann keinen Schritt in eine
+    andere Phase verschieben.
     """
     if not _aufnahme_laeuft(state):
         return
@@ -298,40 +271,21 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
                        seq_name: str) -> tuple[dict, int]:
     """Sorgt dafür, dass jedes aufgenommene Ereignis mit Stelle einen Punkt hat.
 
-    Gibt `({event_index: point_id}, Anzahl neu angelegter)` zurück. Bestehende Punkte
-    gewinnen: liegt schon einer auf der Stelle, wird er referenziert statt ein
-    zweiter danebengelegt. Tastendrücke haben keine Stelle und bekommen keinen Punkt.
+    Gibt `({event_index: point_id}, Anzahl neu angelegter)` zurück; ein Punkt an
+    derselben Stelle wird wiederverwendet. Muss VOR dem Bauen der Schritte
+    laufen, damit die über `point_id` referenzieren statt eigene Koordinaten zu
+    halten.
 
-    Warum das VOR dem Bauen der Schritte laufen muss: die Schritte sollen den Punkt
-    über `point_id` referenzieren, statt ihre Koordinaten selbst zu halten. Vorher
-    entstanden beide unabhängig voneinander — die Punkte wurden erst hinterher
-    angelegt, und nichts verband sie. Die Migration verknüpft zwar nach Koordinaten,
-    läuft aber nur auf Dateien mit ALTEM Schema; eine frisch aufgenommene Sequenz ist
-    bereits auf dem aktuellen Stand gestempelt und wurde deshalb nie verknüpft.
-
-    Folge war: ein später verschobener Punkt zog die Aufnahme nicht mit, obwohl beide
-    auf derselben Stelle sassen — genau die Unstimmigkeit, die `point_id` verhindern soll.
-
-    Warte-Marker bekommen **keinen** Punkt: sie haben keine eigene Stelle. Sie warten
-    auf die Farbe des Klicks, der ihnen folgt, und benutzen dessen Punkt.
-
-    Screenshot-Marker und Phasengrenzen bekommen ebenfalls **keinen** Punkt: der eine
-    ist ein Vollbild-/Bereichs-Schritt ohne Ziel-Koordinate, die andere gar kein Schritt.
-
-    Der Beobachtungs-Marker (`REC_WATCH`) bekommt dagegen **sehr wohl** einen: seine
-    Stelle ist bewusst gewählt (Maus auf das beobachtete Ding), und sie muss in
-    points.json stehen — der Schritt referenziert sie über `wait_point_id`, wie jede
-    andere Prüf-Stelle auch.
+    Keinen Punkt bekommen: Tastendrücke, Warte-Marker (benutzen den Punkt des
+    folgenden Klicks), Screenshot-Marker und Phasengrenzen. Der
+    Beobachtungs-Marker bekommt einen — seine Stelle ist bewusst gewählt.
     """
     from ..persistence.sequences import punkt_an_stelle
     punkt_id_fuer: dict[int, int] = {}
     neu = 0
     with state.lock:
-        # **Nicht mehr auf die exakte Koordinate.** Denselben Knopf trifft man
-        # beim Aufnehmen nie zweimal pixelgenau, und mit exaktem Vergleich
-        # entstand pro Klick ein eigener Punkt - in einer echten Aufnahme lagen
-        # so vier Punkte auf einem einzigen gruenen Knopf. `punkt_an_stelle()`
-        # ist dieselbe Regel, die auch der Editor benutzt: Radius UND Farbe.
+        # `punkt_an_stelle()` statt exaktem Vergleich: denselben Knopf trifft
+        # man nie zweimal pixelgenau, sonst entstuende pro Klick ein Punkt.
         bekannt = list(state.points)
         for i, ev in enumerate(events):
             if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
@@ -356,26 +310,10 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
 def bereiche_zusammenfassen(events: list) -> tuple[list, int]:
     """Faltet je zwei Bereichs-Ecken zu EINEM Screenshot-Ereignis mit Rechteck.
 
-    Läuft als erster Schritt beim Stoppen — danach existiert `REC_REGION` nicht mehr,
-    und alles Weitere (Punkte, Schritte, Phasen) sieht nur noch ein gewöhnliches
-    `REC_SCREENSHOT`. Ohne diese Trennung müsste jede nachgelagerte Stelle wissen,
-    dass zwei Ereignisse manchmal einen Schritt ergeben.
-
-    Der Zeitstempel des Paares ist der der **ersten** Ecke: dort hat der Nutzer
-    entschieden „hier", und dort soll der Screenshot im Ablauf sitzen.
-
-    Die Sekunden fürs Mausbewegen zur zweiten Ecke bleiben damit in der Wartezeit des
-    **nächsten** Schritts stehen. Das ist Absicht: die Aufnahme erfindet keine Zeit und
-    wirft keine weg — sie gibt wieder, was verstrichen ist. Bedienzeit von Spielzeit zu
-    trennen kann sie ohnehin nicht (Nachdenken sieht genauso aus), und wer eine Pause
-    wirklich raushaben will, hat dafür `CTRL+ALT+H`.
-
-    Das Rechteck wird normalisiert (links/oben zuerst), damit es egal ist, in welcher
-    Reihenfolge die Ecken angefahren wurden.
-
-    Eine einzelne Ecke am Ende wird verworfen und gemeldet — ein halbes Rechteck ist
-    kein Bereich, und ein stillschweigend zu Vollbild degradierter Screenshot wäre
-    etwas anderes als das, was der Nutzer wollte.
+    Läuft als erster Schritt beim Stoppen; danach kennt niemand mehr
+    `REC_REGION`. Zeitstempel ist der der ersten Ecke, das Rechteck wird
+    normalisiert. Eine einzelne Ecke wird verworfen und gemeldet — still zu
+    Vollbild zu degradieren wäre etwas anderes als das Gewollte.
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener Einzel-Ecken)` zurück.
     """
@@ -401,16 +339,9 @@ def phasen_grenzen(events: list) -> tuple[list, list[int]]:
     """Zieht die Phasengrenzen aus dem Ereignisstrom heraus.
 
     Gibt `(Ereignisse OHNE Grenzen, Schnittstellen als Schritt-Indizes)` zurück.
-
-    Die Grenzen werden **entfernt**, nicht bloss übersprungen — genau wie die
-    Bereichs-Ecken. Sonst wäre eine Grenze das „vorherige Ereignis" des nächsten
-    Schritts, und dessen Wartezeit würde ab dem Tastendruck statt ab der letzten
-    echten Aktion gemessen: aus 6 Sekunden Warten würde 1 Sekunde, weil 5 davon vor
-    dem Drücken lagen. Ein Marker verbraucht keine Zeit, also darf er in der
-    Zeitrechnung auch nicht vorkommen.
-
-    Gezählt wird in Schritten, nicht in Ereignissen: Warte-Marker erzeugen keinen
-    eigenen Schritt (sie gehen im nächsten auf) und dürfen den Schnitt nicht verschieben.
+    Entfernt statt übersprungen: sonst wäre eine Grenze das „vorherige Ereignis"
+    des nächsten Schritts und dessen Wartezeit begänne am Tastendruck. Gezählt
+    wird in Schritten, denn Warte-Marker erzeugen keinen eigenen.
     """
     behalten, grenzen = [], []
     erzeugte = 0
@@ -440,12 +371,8 @@ def phasen_aufteilen(steps: list, grenzen: list[int]) -> tuple[list, list, list]
 def marker_pruefen(events: list) -> tuple[list, int]:
     """Wirft Warte-Marker weg, die sich an nichts hängen können.
 
-    Ein Marker braucht einen Klick (oder ein Scroll) nach sich — von dem holt er
-    Stelle und Farbe. Folgt ein Tastendruck oder gar nichts mehr, gibt es nichts zu
-    warten; der Marker wird verworfen statt stillschweigend zu verschwinden.
-
-    Zwei Marker hintereinander sind derselbe Wunsch, zweimal geäussert: der erste
-    fällt weg, der zweite hält die Uhr an.
+    Ein Marker braucht einen Klick oder ein Scroll nach sich — von dort holt er
+    Stelle und Farbe. Zwei hintereinander sind derselbe Wunsch, zweimal geäussert.
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener)` zurück.
     """
@@ -463,28 +390,15 @@ def marker_pruefen(events: list) -> tuple[list, int]:
 def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
     """Baut die SequenceSteps.
 
-    Ein **Warte-Marker wird kein eigener Schritt**. Er hängt sich an den Klick, der
-    ihm folgt, und macht daraus „warte auf die Farbe DIESER Stelle, dann klicke sie" —
-    genau das, was der Editor mit `color <Nr>` baut: ein Schritt, ein Punkt, zweimal
-    referenziert (einmal als Klickziel, einmal als Prüf-Pixel).
+    Ein Warte-Marker wird kein eigener Schritt: er hängt sich an den folgenden
+    Klick und macht daraus „warte auf die Farbe dieser Stelle, dann klicke sie"
+    (ein Punkt, zweimal referenziert). Die Zeit bis zum Marker bleibt Wartezeit,
+    die Zeit danach fällt weg — sie ist genau das, was die Bedingung ersetzt.
 
-    Die Farbe ist die beim Klick erfasste. Das ist die richtige: geklickt wird ja
-    erst, wenn das Erwartete zu sehen ist.
-
-    Bei den Wartezeiten hält der Marker nur die Uhr an:
-
-    - Die Zeit **bis** zum Marker bleibt am Schritt — bis dahin lief normal etwas ab.
-    - Die Zeit **vom** Marker bis zum Klick fällt weg. Genau sie ist das Warten, das
-      die Bedingung ersetzt; bliebe sie stehen, würde die Sequenz erst auf die Farbe
-      warten UND danach nochmal die volle Zeit schlafen.
-
-    Ein **Screenshot-Marker wird sein eigener Schritt** (anders als der Warte-Marker):
-    er hat keine Folge-Aktion, an die er sich hängen könnte, und keine eigene Stelle.
-    Dasselbe gilt für den Beobachtungs-Marker — der wird ein `wait_only`-Schritt.
+    Screenshot- und Beobachtungs-Marker werden dagegen eigene Schritte.
 
     Erwartet Ereignisse, die `bereiche_zusammenfassen()`, `phasen_grenzen()` und
-    `marker_pruefen()` bereits durchlaufen haben: Bereichs-Ecken sind zu Screenshots
-    gefaltet, Phasengrenzen entfernt, haltlose Warte-Marker verworfen.
+    `marker_pruefen()` schon durchlaufen haben.
     """
     steps = []
     for i, ev in enumerate(events):
@@ -548,11 +462,8 @@ def stop_recording(state: AutoClickerState) -> None:
         print(f"\n{col('[AUFNAHME]', 'yellow')} Gestoppt — nichts aufgezeichnet.")
         return
 
-    # Aufbereiten in fester Reihenfolge — jede Stufe entfernt eine Sonderform, damit
-    # die naechste sie nicht mehr kennen muss:
-    #   1. zwei Bereichs-Ecken  -> ein Screenshot-Ereignis mit Rechteck
-    #   2. Phasengrenzen        -> raus aus dem Strom, gemerkt als Schnittstellen
-    #   3. haltlose Warte-Marker-> verworfen
+    # Feste Reihenfolge - jede Stufe entfernt eine Sonderform: Bereichs-Ecken
+    # falten, Phasengrenzen herausziehen, haltlose Warte-Marker verwerfen.
     events, halbe_ecke = bereiche_zusammenfassen(events)
     if halbe_ecke:
         print(f"\n{warn('Einzelne Bereichs-Ecke verworfen — die zweite fehlt.')}")
@@ -667,10 +578,8 @@ def stop_recording(state: AutoClickerState) -> None:
 
     if save_sequence_file(seq, filepath):
         with state.lock:
-            # Die frisch gebauten Schritte tragen nur Referenzen; Prüf-Pixel und Farbe
-            # der Warte-Bedingung sind noch leer. Der Worker löst zwar vor jedem Lauf
-            # selbst auf — wer aber direkt nach der Aufnahme in den Editor geht, sähe
-            # sonst "(0,0)" statt der Stelle, auf die gewartet wird.
+            # Sofort aufloesen: sonst zeigt der Editor direkt nach der Aufnahme
+            # "(0,0)" statt der Stelle, auf die gewartet wird.
             resolve_point_references(state, seq)
             state.sequences[seq_name] = seq
             state.active_sequence = seq
