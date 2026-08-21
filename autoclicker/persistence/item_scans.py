@@ -64,12 +64,11 @@ def load_all_item_scans(state: AutoClickerState) -> None:
 def resolve_scan_references(state: AutoClickerState) -> list[str]:
     """Füllt `slots`/`items` jedes Item-Scans aus den globalen Slots/Items.
 
-    Der globale Eintrag ist die Wahrheit: ändert man Marker-Farben, Template oder
-    Priorität eines Items, wirkt das ab sofort in jedem Scan, der es benutzt. Vorher lag
-    im Scan eine Kopie, die nichts davon mitbekam.
+    Der globale Eintrag ist die Wahrheit: eine Änderung an Marker-Farben, Template
+    oder Priorität wirkt ab sofort in jedem Scan.
 
-    Gibt Klartext-Meldungen zu Namen zurück, die es global nicht (mehr) gibt. Der Scan
-    läuft dann mit dem Rest weiter - lieber ein Slot weniger als ein toter Scan.
+    Gibt Klartext-Meldungen zu Namen zurück, die es global nicht (mehr) gibt — der
+    Scan läuft mit dem Rest weiter.
     """
     meldungen = []
     with state.lock:
@@ -115,17 +114,14 @@ def resolve_scan_references(state: AutoClickerState) -> list[str]:
 def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
     """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
 
-    Drei Stellen ausserhalb der Sequenzen zeigen auf Punkte:
-
     | wer | Feld | fuellt |
     |---|---|---|
     | `ItemProfile` | `confirm_point_id` | `confirm_point` |
     | `BossProfile` | `action_point_id` | `action_x`, `action_y` |
     | `IconScanConfig` | `action_point_id` | `action_x`, `action_y` |
 
-    Gleiches Muster wie `aufloesen()` bei den Sequenz-Schritten: gespeichert ist die
-    ID, der Rest wird abgeleitet. Eine tote Referenz wird gemeldet und das Klick-Ziel
-    bleibt leer - die Aktion tut dann nichts, statt auf (0, 0) zu klicken.
+    Gleiches Muster wie `aufloesen()`. Eine tote Referenz wird gemeldet und das
+    Klick-Ziel bleibt leer — die Aktion tut dann nichts, statt auf (0, 0) zu klicken.
     """
     meldungen = []
     with state.lock:
@@ -169,12 +165,10 @@ def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
 def update_item_in_scans(old_name: str, new_name: str) -> tuple[int, int]:
     """Zieht einen umbenannten Item-Namen in allen Scan-Dateien nach.
 
-    Der Name IST die Referenz - beim Umbenennen zeigt sie sonst ins Leere. Alles andere
-    (Marker, Template, Priorität) braucht kein Nachziehen mehr, seit der Scan nur noch
-    verweist statt zu kopieren.
+    Der Name IST die Referenz. Alles andere (Marker, Template, Priorität) braucht
+    kein Nachziehen, seit der Scan nur noch verweist.
 
-    Returns:
-        (updated_count, failed_count) - Anzahl aktualisierter und fehlgeschlagener Scans.
+    Gibt `(updated_count, failed_count)` zurück.
     """
     updated_scans = 0
     failed_scans = 0

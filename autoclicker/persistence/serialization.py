@@ -1,12 +1,8 @@
-"""
-Serialisierungs-Helfer: konvertieren Dataclasses ↔ JSON-Dicts.
+"""Serialisierungs-Helfer: konvertieren Dataclasses ↔ JSON-Dicts.
 
-Werden sowohl intern von den anderen persistence-Modulen genutzt als auch
-extern von import_export.py (für die ZIP-Bundle-Erstellung).
-
-Die führenden Underscores in den Funktionsnamen sind historisch — sie waren
-ursprünglich modulprivat bevor import_export.py sie übernommen hat. Namen
-bleiben stabil, um nicht alle Callsites anfassen zu müssen.
+Genutzt von den anderen persistence-Modulen UND von import_export.py, damit
+beide dasselbe Format schreiben. Die führenden Underscores sind historisch —
+die Funktionen waren einmal modulprivat.
 """
 
 from dataclasses import asdict
@@ -23,16 +19,10 @@ if TYPE_CHECKING:  # nur fuer die Annotationen unten
     from ..models import BossScanConfig, IconScanConfig
 
 
-# =============================================================================
-# GESCHRIEBEN WIRD NUR, WAS GESETZT IST
-# =============================================================================
-# Jede Datei soll das enthalten, was du eingestellt hast - nicht zusätzlich jedes Feld,
-# das den Standardwert trägt. Der Loader setzt genau diesen Default, also ist das Feld
-# in der Datei überflüssig; und was überflüssig ist, macht die Datei unlesbar.
-#
-# Beim Lesen der Dateien ist der Standardwert die einzige Quelle der Wahrheit: steht ein
-# Feld nicht drin, gilt der Default aus der Dataclass. Deshalb müssen die Tabellen hier
-# und die Dataclasses zusammenpassen - ein Test prüft das.
+# GESCHRIEBEN WIRD NUR, WAS GESETZT IST. Der Loader setzt ohnehin genau den
+# Default, also ist ein Feld auf dem Standardwert in der Datei ueberfluessig -
+# und was ueberfluessig ist, macht die Datei unlesbar. Die Tabellen hier und die
+# Dataclasses muessen deshalb zusammenpassen; ein Test prueft das.
 
 # Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
 _KEIN_DEFAULT = object()
@@ -388,14 +378,12 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
 def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict.
 
-    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht — sie
-    stehen dann in `points.json`, und das ist die einzige Stelle, an der sie stehen
-    duerfen. Betrifft drei Paare: den Klick selbst (x/y + recorded_color), den
-    Pruef-Pixel (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
+    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht;
+    betrifft drei Paare — den Klick (x/y + recorded_color), den Pruef-Pixel
+    (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
 
-    `x`/`y` bleiben nur fuer die Schritte uebrig, die gar keinen Punkt haben koennen
-    (Tastendruck, Scans, Screenshot) — dort sind sie ohnehin 0 und fallen durch
-    `_ohne_defaults` weg.
+    `x`/`y` bleiben nur den Schritten, die gar keinen Punkt haben koennen (Taste,
+    Scans, Screenshot) — dort sind sie 0 und fallen durch `_ohne_defaults` weg.
     """
     wc = s.wait_condition
     ec = s.else_config
@@ -440,21 +428,10 @@ def _step_to_dict(s: SequenceStep) -> dict:
     return _ohne_defaults(voll, _STEP_DEFAULTS)
 
 
-# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist. Steht der Wert drin, ist das Feld
-# ueberfluessig und wird nicht geschrieben - der Loader setzt exakt diesen Default.
-#
-# Warum: ein normaler Klick-Schritt hat 27 Felder, davon 21 leer. Eine 67-Schritt-Sequenz
-# war zu vier Fuenfteln aus "wait_pixel": null und Konsorten. Das Problem ist nicht die
-# Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
-# Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
-#
-# delay_before steht NICHT hier: es ergibt sich als einziges nicht aus dem Punkt und
-# bleibt immer sichtbar - eine Wartezeit von 0 will man in der Datei sehen.
-#
-# x/y standen frueher aus demselben Grund nicht hier. Seit die Stelle im Punkt wohnt,
-# sind sie ein abgeleiteter Wert wie jeder andere: bei einem Schritt MIT point_id setzt
-# `_step_to_dict` sie auf 0, und damit raeumt diese Tabelle sie weg. Uebrig bleiben sie
-# nur bei Schritten ohne Stelle (Taste, Scan, Screenshot) - und dort sind sie 0.
+# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist; steht der Wert drin, wird das
+# Feld nicht geschrieben. Ein Klick-Schritt hat 27 Felder, davon 21 leer - und in
+# einer Datei voller "wait_pixel": null findet man nichts mehr.
+# `delay_before` steht NICHT hier: eine Wartezeit von 0 will man sehen.
 _STEP_DEFAULTS = {
     "name": "",
     "x": 0,

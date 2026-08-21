@@ -1,12 +1,9 @@
-"""
-Sequenz-Worker und Status-Ausgabe.
+"""Sequenz-Worker und Status-Ausgabe.
 
-sequence_worker ist die Hauptfunktion die als Worker-Thread läuft. Sie
-verarbeitet die aktive Sequenz (INIT → LOOPs → END), behandelt
-Restart/Skip-Cycle/Quit-Events und konsolidiert die Session-Statistik am Ende.
-
-_schedule_watcher ist ein Hilfs-Thread der prüft ob Loop-Phasen mit
-scheduled_start ihren Auslöse-Zeitpunkt erreicht haben.
+`sequence_worker` läuft als Worker-Thread: verarbeitet die aktive Sequenz
+(INIT → LOOPs → END), behandelt Restart/Skip-Cycle/Quit und konsolidiert die
+Session-Statistik. `_schedule_watcher` prüft nebenher, ob Loop-Phasen mit
+`scheduled_start` ihren Zeitpunkt erreicht haben.
 """
 
 import threading
@@ -35,22 +32,15 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
                       shutdown_event: 'threading.Event') -> None:
     """Background-Thread: Überwacht Uhrzeiten und setzt pending-Flags.
 
-    Prüft alle 10 Sekunden ob eine geplante Startzeit erreicht ist.
-    Setzt das pending-Flag thread-safe, damit die Phase an ihrer
-    natürlichen Position im Ablauf ausgeführt wird.
+    Prüft alle 10 Sekunden und setzt das Flag thread-safe, damit die Phase an
+    ihrer natürlichen Position im Ablauf läuft.
 
     Beide Dicts sind über die POSITION der Phase indiziert, nicht über ihren
-    Namen: Namen sind frei wählbar und doppelt vergebbar (Vorschlag ist
-    'Loop <len+1>', nach einem 'del' kollidiert das). Bei zwei gleichnamigen
-    Phasen lief sonst die falsche — das Flag der 20-Uhr-Phase wurde von der
-    08-Uhr-Phase abgeräumt, die daraufhin abends ein zweites Mal lief und die
-    eigentliche Abend-Phase nie. Die Position ist eindeutig und stabil: Watcher
-    und Ausführung laufen über dieselbe Liste, und während eines Laufs kann sie
-    kein Editor ändern.
+    Namen: Namen sind frei wählbar und doppelt vergebbar — bei zwei gleichnamigen
+    Phasen räumte sonst die eine das Flag der anderen ab.
 
-    Terminiert sowohl bei stop_event (Sequenz gestoppt) als auch bei
-    shutdown_event (Sequenz regulär beendet) — sonst liefe der Timer als
-    Geister-Thread ewig weiter und leakte bei jedem Neustart.
+    Terminiert bei stop_event UND shutdown_event, sonst liefe der Timer als
+    Geister-Thread weiter.
     """
     while not stop_event.is_set() and not shutdown_event.is_set():
         now = datetime.now()
@@ -202,13 +192,9 @@ def sequence_worker(state: AutoClickerState) -> None:
 def _ende_grund(state: AutoClickerState) -> str:
     """Warum der Lauf zu Ende ist — in einem Satzteil.
 
-    Steht in der Zusammenfassung der Live-Ansicht. „Beendet" allein beantwortet
-    die Frage nicht, die man sich beim Hinsehen stellt: hat er die Zyklen
-    geschafft, oder hat ihn etwas abgebrochen?
-
-    Die Reihenfolge ist die der Dringlichkeit: die Notbremse schlaegt alles,
-    danach kommt, was der Nutzer selbst ausgeloest hat, und zuletzt der
-    Normalfall.
+    Steht in der Zusammenfassung der Live-Ansicht: hat er die Zyklen geschafft
+    oder hat ihn etwas abgebrochen? Die Reihenfolge ist die der Dringlichkeit —
+    Notbremse, dann was der Nutzer ausgeloest hat, dann der Normalfall.
     """
     grenze = state.config.pixel_max_consecutive_timeouts
     if grenze > 0 and state.consecutive_timeouts >= grenze:
@@ -446,14 +432,9 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
 def _phasen_uebersicht(sequence) -> list[dict]:
     """Alle Phasen des Laufs in der Reihenfolge, in der sie drankommen.
 
-    Steht einmal beim Start im Laufstatus, damit die Live-Ansicht nicht nur die
-    laufende Phase zeigen kann, sondern auch, was davor lag und was noch kommt.
-    Aus der geöffneten Sequenz liesse sich das nicht holen — laufen kann eine
-    ganz andere.
-
-    Leere Loop-Phasen bleiben drin: `_run_loop_phases` überspringt sie zwar,
-    aber die Positionen müssen zu `_phase_pos()` passen, und im Editor sind sie
-    ebenfalls sichtbar.
+    Steht einmal beim Start im Laufstatus; aus der geöffneten Sequenz liesse sich
+    das nicht holen, denn laufen kann eine ganz andere. Leere Loop-Phasen bleiben
+    drin, damit die Positionen zu `_phase_pos()` passen.
     """
     raus = []
     if sequence.init_steps:

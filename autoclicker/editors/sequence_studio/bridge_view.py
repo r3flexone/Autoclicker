@@ -87,25 +87,13 @@ class BridgeViewMixin:
     def _ohne_else(self) -> dict:
         """Was ohne ELSE nach dem Timeout passiert — laut `config.json`.
 
-        Die Antwort steht nicht im Studio, sondern in der Config des
-        Hauptprozesses (`pixel_wait_timeout`, `pixel_timeout_action`), und sie
-        ist keine Kleinigkeit: die Voreinstellung bricht den **ganzen Zyklus**
-        ab, nicht nur den Schritt. Der Hinweis im Inspektor behauptete das
-        Gegenteil („die Sequenz macht weiter"), und der Unterschied entscheidet,
-        ob man ELSE braucht oder nicht.
+        Die Antwort steht in der Config des Hauptprozesses (`pixel_wait_timeout`,
+        `pixel_timeout_action`), und die Voreinstellung bricht den GANZEN Zyklus ab,
+        nicht nur den Schritt — genau der Unterschied entscheidet, ob man ELSE braucht.
 
-        Gelesen wird **am Zeitstempel der Datei**, nicht bei jeder Momentaufnahme:
-        eine zwischenzeitlich geänderte Config soll nicht bis zum nächsten
-        Fensterstart falsch angezeigt werden, aber jede Momentaufnahme neu zu
-        lesen wäre eine Dateioperation pro Klick. Scheitert das Lesen, bleibt
-        das Feld leer; dann sagt die Oberfläche nichts, statt zu raten.
-
-        Gelesen wird über `_config_datei()` und **nicht** über `load_config()`:
-        die schreibt die Datei, sobald ein Feld fehlt, und gibt dabei eine Zeile
-        in der Konsole aus. Weil dieser Subprozess seine Ausgabe mit dem
-        Hauptprozess teilt, stand dort beim Öffnen des Studios zweimal
-        „[CONFIG] Geladen" — einmal vom Import, einmal von hier. Ein Leser
-        schreibt weder Datei noch Konsole.
+        Gelesen wird am Zeitstempel der Datei, nicht bei jeder Momentaufnahme; und
+        über `_config_datei()` statt `load_config()`, denn die schreibt die Datei und
+        gibt eine Konsolenzeile aus. Scheitert das Lesen, bleibt das Feld leer.
         """
         try:
             from ...config import CONFIG_FILE
@@ -130,19 +118,13 @@ class BridgeViewMixin:
     def _scan_namen(self) -> dict:
         """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.
 
-        Ein Scan-Block verweist **per Name** auf eine Datei in `item_scans/`,
-        `boss_scans/` bzw. `icon_scans/`; der Name IST die Referenz. Getippt
-        werden musste er trotzdem, und ein Tippfehler ergab einen Block, den der
-        Executor stillschweigend nicht ausführt. Hier steht deshalb, was
+        Ein Scan-Block verweist per Name auf eine Datei; ein Tippfehler ergab einen
+        Block, den der Executor stillschweigend nicht ausführt. Hier steht, was
         tatsächlich auf Platte liegt — auswählen statt abschreiben.
 
-        Der Boss-Watcher zieht dieselben Konfigurationen wie der Boss-Scan
-        (`state.boss_scans`), deshalb dieselbe Liste.
-
-        Gelesen wird bei jeder Momentaufnahme, nicht einmal beim Start: legt man
-        im Hauptprozess eine Konfiguration an, während das Studio offen ist,
-        taucht sie beim nächsten Klick auf. Das ist der einzige Weg — geteilten
-        Zustand gibt es zwischen den beiden Prozessen nicht.
+        Der Boss-Watcher zieht dieselben Konfigurationen wie der Boss-Scan. Gelesen
+        wird bei jeder Momentaufnahme, damit eine im Hauptprozess angelegte
+        Konfiguration beim nächsten Klick auftaucht.
         """
         def namen(auflisten) -> list[str]:
             try:

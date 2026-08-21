@@ -37,14 +37,11 @@ class ScanLearningMixin:
         """Aus jedem Slot ein Item — Doppelte werden übersprungen.
 
         Der Weg für ein volles Inventar: einmal drücken statt zwanzigmal. Die
-        Doppel-Erkennung braucht OpenCV; ohne sie entstünde aus zwei gleichen
-        Slots zweimal dasselbe Item.
+        Doppel-Erkennung braucht OpenCV.
 
-        **„Alle" heisst die des offenen Scans** (`_scan_slots()`), nicht den
-        ganzen Bestand: bei zwei Spielen lief der Durchgang sonst auch über die
-        Slots des anderen. Die liegen ausserhalb des Bildes, es kam also nichts
-        dabei heraus — nur eine Meldung, die von „11 ohne Bild" sprach und den
-        Verdacht auf den Screenshot lenkte.
+        „Alle" heisst die Slots des offenen Scans (`_scan_slots()`), nicht den ganzen
+        Bestand — sonst liefe der Durchgang bei zwei Spielen auch über die Slots des
+        anderen, die ausserhalb des Bildes liegen.
         """
         slots = self._scan_slots()
         if not slots:
@@ -193,12 +190,10 @@ class ScanLearningMixin:
     def _kategorie_normalisieren(self, wert) -> Optional[str]:
         """Verwendet bei gleicher Schreibweise die bereits bekannte Kategorie.
 
-        **Leerraum zaehlt nicht mit.** „Helme", „ Helme" und „Helme  Gross"
-        gegen „Helme Gross" waeren sonst verschiedene Kategorien — und Items
-        derselben Kategorie konkurrieren miteinander, eine getrennte verliert
-        also still ihre Gruppe. Aehnlichkeit darueber hinaus wird NICHT geraten:
-        ein getipptes Wort stillschweigend in ein anderes zu aendern ist
-        schlimmer als der Tippfehler.
+        Leerraum zaehlt nicht mit; darueber hinaus wird NICHTS geraten. Ein getipptes
+        Wort stillschweigend in ein aehnliches zu aendern ist schlimmer als der
+        Tippfehler — Items derselben Kategorie konkurrieren miteinander, eine
+        getrennte verliert still ihre Gruppe.
         """
         neu = " ".join(str(wert or "").split())
         if not neu:
@@ -497,22 +492,12 @@ class ScanLearningMixin:
     def _erkennen_lauf(self) -> tuple:
         """Füllt `_treffer`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
 
-        Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer
-        davon eine eigene Meldung schreibt: der Knopf sagt das Ergebnis, das
-        Finden hängt es an seine eigene Meldung an. Die **Rechnung** darf es
-        deshalb nur einmal geben — zwei Erkennungen wären zwei Ergebnisse, und
-        genau das vermeidet der Reiter an jeder anderen Stelle auch.
+        Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer eine
+        eigene Meldung schreibt — die Rechnung darf es trotzdem nur einmal geben.
 
-        `fremd` zählt Treffer, die nicht zum offenen Scan gehören. Das kann nur
-        bei einem Scan **ohne** Items passieren (dann prüft `_kandidaten()` den
-        ganzen Bestand) — und dort ist es die nützlichste Auskunft überhaupt:
-        das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
-        Häkchen.
-
-        `gesamt` ist die Zahl der geprüften **Slots** — die des offenen Scans,
-        nicht die des Bestands. Vorher stand als Nenner die Bestandsgrösse da
-        („13 von 56 erkannt"), obwohl elf davon zu einem anderen Spiel gehören
-        und gar nicht im Bild liegen.
+        `fremd` zählt Treffer, die nicht zum offenen Scan gehören (möglich nur bei
+        einem Scan ohne Items, wo `_kandidaten()` den ganzen Bestand prüft).
+        `gesamt` ist die Zahl der Slots des offenen Scans, nicht die des Bestands.
         """
         # Erst hier importiert: `runtime/__init__` zieht den Worker samt
         # `winapi` nach, und den braucht der Rest des Fensters nicht.

@@ -379,14 +379,13 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> str:
     """Wartet auf eine Farbe an einer Pixel-Position.
 
-    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück:
-      GATE_RUN  = Bedingung erfüllt → der Schritt darf seinen Klick ausführen
-      GATE_SKIP = Schritt ist erledigt (else-Aktion lief / übersprungen) → nächster Schritt
-      GATE_STOP = Sequenz abbrechen (Stop, Notbremse, restart/skip_cycle)
+    Gibt GATE_RUN (Bedingung erfüllt, der Klick darf laufen), GATE_SKIP (Schritt
+    erledigt, else-Aktion lief oder übersprungen) oder GATE_STOP (Sequenz
+    abbrechen) zurück.
 
-    Die Unterscheidung SKIP vs. STOP ist der Kern: mit einem bool klickte der Schritt
-    nach 'else skip'/'else <Punkt>'/'else key' zusätzlich noch sein eigenes Ziel, und
-    ein nicht erfüllter checkcolor-Schritt riss den Rest der Phase mit ab.
+    SKIP vs. STOP ist der Kern: mit einem bool klickte der Schritt nach einem
+    `else` zusätzlich sein eigenes Ziel, und ein nicht erfüllter checkcolor-Schritt
+    riss den Rest der Phase mit ab.
     """
     debug = is_verbose_debug(state)
     wc = step.wait_condition
@@ -508,12 +507,8 @@ _LIVE_ABSTAND = 1.0
 def _pixel_ausschnitt(x: int, y: int):
     """Bildausschnitt um eine Stelle als Data-URL — oder `None`.
 
-    Die Zahl „RGB(30, 32, 34)" beantwortet nicht, WAS da gerade zu sehen ist.
-    Der Ausschnitt tut es: ein grauer Knopf, ein Ladebildschirm, ein Popup
-    davor. Genau die Frage, für die man sonst das Fenster wechselt.
-
-    Kostet einen zusätzlichen BitBlt über 49×49 Pixel plus PNG-Kodierung. Ohne
-    Pillow gibt `take_screenshot()` `None` zurück — dann eben kein Bild.
+    „RGB(30, 32, 34)" beantwortet nicht, WAS da zu sehen ist; der Ausschnitt tut
+    es. Kostet einen BitBlt über 49×49 Pixel plus PNG-Kodierung; ohne Pillow kein Bild.
     """
     img = take_screenshot((x - _LIVE_RADIUS, y - _LIVE_RADIUS,
                            x + _LIVE_RADIUS + 1, y + _LIVE_RADIUS + 1))
@@ -931,19 +926,12 @@ def _mit_nachpruefung(state: AutoClickerState, step: SequenceStep, step_num: int
                       total_steps: int, phase: str, aktion) -> bool:
     """Fuehrt `aktion` aus und prueft danach, ob sie gewirkt hat.
 
-    Ohne `verify_condition` passiert genau das, was vorher passierte: die Aktion laeuft,
-    fertig. Das ist der Normalfall und kostet keinen Screenshot.
+    Ohne `verify_condition` laeuft die Aktion und fertig — der Normalfall, ohne
+    Screenshot. Mit Bedingung wird sie bis zu `verify_retries` mal WIEDERHOLT: der
+    haeufigste Grund fuer einen wirkungslosen Klick ist voruebergehend.
 
-    Mit Bedingung wird die Aktion bis zu `verify_retries` mal WIEDERHOLT, bevor
-    `else_config` greift. Die Wiederholung ist der eigentliche Gewinn: der haeufigste
-    Grund fuer einen wirkungslosen Klick (Lag, Fenster kurz nicht vorn, Popup davor) ist
-    voruebergehend, und ein zweiter Klick loest ihn. Vorher lief die Sequenz einfach
-    weiter und alles Folgende traf daneben.
-
-    Bleibt die Wirkung auch nach allen Versuchen aus, entscheidet `else_config` —
-    dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung. Ohne else wird der
-    Schritt als erledigt behandelt (GATE_SKIP-Bedeutung: weiter, nicht abbrechen); eine
-    ausgebliebene Wirkung ist ein Hinweis, kein Grund die Sequenz zu reissen.
+    Bleibt die Wirkung aus, entscheidet `else_config`; ohne else gilt der Schritt
+    als erledigt — eine ausgebliebene Wirkung ist ein Hinweis, kein Abbruchgrund.
     """
     vc = step.verify_condition
     if vc is None:

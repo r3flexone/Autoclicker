@@ -1,33 +1,20 @@
 """Punkte kalibrieren, indem man die Sequenz einmal von Hand nachklickt.
 
-**Warum es das neben `walk_points` gibt.** Beide reparieren dasselbe: die
-Koordinaten in `points.json`, an denen jeder Schritt über `point_id` hängt.
-`walk` geht sie der Reihe nach durch, der Zeiger springt hin, und man setzt sie
-mit einer Taste neu — **ohne zu klicken**. Genau daran scheitert es, sobald ein
-Punkt erst nach einem anderen sichtbar wird: der Knopf im dritten Untermenü ist
-nicht da, solange die ersten beiden Klicks nicht passiert sind. Bei `walk` sieht
-man an dieser Stelle den Desktop und rät.
+Der Unterschied zu `walk_points`: dort springt der Zeiger hin, ohne zu
+klicken — und ein Punkt im dritten Untermenü ist gar nicht sichtbar, solange
+die ersten beiden Klicks fehlen. Hier geht jeder Klick ans Spiel und öffnet
+damit die Stelle, an der der nächste Punkt liegt.
 
-Hier klickt man wirklich — und das ist der ganze Trick: **jeder Klick geht ans
-Spiel und öffnet damit die Stelle, an der der nächste Punkt liegt.** Man spielt
-die Sequenz einmal von Hand durch, und die Runde schreibt hinter jedem Klick die
-neue Stelle in den Punkt.
+Geändert wird nur die Stelle: `x`, `y` und (wenn der Punkt eine hatte) die
+Farbe. Wartezeiten, Bedingungen, ELSE, Scans und die Reihenfolge bleiben —
+die Runde fasst die Sequenzdatei überhaupt nicht an.
 
-**Geändert wird nur die Stelle.** Wartezeiten, Farb-Bedingungen, Nachprüfungen,
-ELSE-Aktionen, Scans und die Reihenfolge bleiben, wie sie sind — die Runde fasst
-die Sequenzdatei überhaupt nicht an. Sie schreibt `x`, `y` und (wenn der Punkt
-eine hatte) die Farbe. Weil Schritte auf Punkte zeigen, repariert das jeden
-Schritt, der den Punkt benutzt.
+Was sie nicht erreicht, sagt sie am Ende: beobachtete Pixel, ELSE-Klicks und
+Rad-Schritte kommen in einem normalen Durchlauf nicht vor; dafür bleibt
+`walk`. Slots und Scan-Regionen repariert `repair` bzw. `fix`.
 
-Was sie **nicht** erreicht, sagt sie am Ende: beobachtete Pixel (`wait`/`verify`
-an einer anderen Stelle als der Klick), ELSE-Klicks und Rad-Schritte kommen in
-einem normalen Durchlauf gar nicht vor. Dafür bleibt `walk`. Slots und
-Scan-Regionen gehören ebenfalls nicht dazu — die repariert `repair` bzw. `fix`.
-
-**Sie läuft aus dem Maus-Hook, nicht aus der Konsole.** Deshalb schliesst der
-Punkte-Editor beim Start: ein blockierendes `input()` hielte die Message-Pump
-an, und der Hook bekäme keinen einzigen Klick. Dieselbe Regel wie bei der
-Aufnahme — und derselbe Grund, warum alles Weitere globale Hotkeys sind.
+Sie läuft aus dem Maus-Hook, nicht aus der Konsole — deshalb schliesst der
+Punkte-Editor beim Start, und alles Weitere sind globale Hotkeys.
 """
 
 from ..models import (
@@ -49,16 +36,11 @@ KLICK_BLOECKE = (BLOCK_CLICK, BLOCK_WAIT_CLICK)
 def klickpunkte(seq: Sequence) -> tuple[list, list]:
     """(Punkt-IDs zum Nachklicken, IDs die eine Runde nicht erreicht).
 
-    Die Reihenfolge ist die des Laufs: INIT, dann die Loop-Phasen, dann END —
-    denn genau in dieser Reihenfolge öffnet ein Klick die Stelle für den
-    nächsten. Jeder Punkt kommt **einmal** vor: klickt eine Sequenz zweimal
-    denselben Knopf, ist das ein Punkt, und ihn zweimal zu setzen hiesse, den
-    ersten Griff wieder zu verwerfen.
+    Reihenfolge des Laufs (INIT, Loop-Phasen, END), denn genau so öffnet ein
+    Klick die Stelle für den nächsten. Jeder Punkt kommt einmal vor.
 
     Der zweite Wert sind die Stellen, an denen in einem normalen Durchlauf
-    niemand klickt: beobachtete Pixel, Nachprüfungen, ELSE-Klicks und
-    Rad-Schritte. Sie zu verschweigen wäre die schlimmere Hälfte — man hielte
-    die Sequenz für repariert.
+    niemand klickt — sie zu verschweigen hiesse, die Sequenz für repariert zu halten.
     """
     schritte = list(seq.init_steps)
     for phase in seq.loop_phases:

@@ -24,30 +24,20 @@ function el(tag, attrs, ...kinder) {
 
 /** Zahlenfeld, das seinen Wert erst beim Verlassen meldet.
  *
- * Bewusst `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein
- * Neuaufbau mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird.
- * Dieselbe Regel wie beim Dear-PyGui-Vorgänger — diskrete Bedienelemente (Klick,
- * fertig) dürfen sofort melden, Tipp-Felder erst am Ende. */
-/* Welche Erklaerungen gerade aufgeklappt sind — als Schluessel, nicht als
- * DOM-Verweis. Der Inspektor wird bei JEDER Aenderung komplett neu gebaut
- * (`replaceChildren`), ein gemerktes Element waere danach ein Element, das
- * niemand mehr sieht. Aufgeklappt bleibt aufgeklappt, bis man es zuklappt —
- * auch ueber einen Block-Wechsel hinweg. */
+ * `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein Neuaufbau
+ * mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird. */
+/* Welche Erklaerungen aufgeklappt sind — als Schluessel, nicht als DOM-Verweis:
+ * der Inspektor wird bei jeder Aenderung neu gebaut. */
 const offeneHilfen = new Set();
 
 /** Das kleine ⓘ hinter einer Beschriftung. Klick klappt den Text auf, Klick zu.
  *
- * Es war erst der native Tooltip (`title`) — eine Zeile Code, aber er verschwindet
- * bei jedem Tastendruck und nach ein paar Sekunden von selbst. Zum Nachlesen taugt
- * er damit nicht, und abfotografieren laesst er sich auch nicht.
+ * Kein nativer Tooltip: der verschwindet nach Sekunden und taugt zum Nachlesen
+ * nicht. Der Text landet HINTER dem Bedienelement — keine Positionsrechnung,
+ * kein Overlay.
  *
- * Der aufgeklappte Text landet HINTER dem Bedienelement, also genau dort, wo er
- * frueher dauerhaft stand. Deshalb braucht es keine Positionsrechnung und kein
- * Overlay: die Seite bleibt so klein, wie sie sein soll.
- *
- * `schluessel` ist die Identitaet ueber Neuaufbauten hinweg. Der Text taugt dafuer
- * nicht: die Beschriftung traegt die Punkt-Nummer, und der STELLE-Text haengt am
- * Block-Typ — beides wechselt, die Stelle in der Oberflaeche aber nicht. */
+ * `schluessel` ist die Identitaet ueber Neuaufbauten hinweg; der Text taugt
+ * dafuer nicht, weil Beschriftungen die Punkt-Nummer bzw. den Block-Typ tragen. */
 function info(text, schluessel) {
   if (!text) return null;
   const zeichen = el("span", {class: "info", "data-hilfe": schluessel || text}, "i");
@@ -118,28 +108,17 @@ function kategorienWerte(zusatz) {
 
 /* ------------------------------------------------------------ Kategorie wählen
  *
- * **Vorhandene anklicken, neue tippen — und die neue ist beim naechsten Item
- * gleich anklickbar.** Ein freies Textfeld allein hat genau das Problem, das man
- * nicht sehen kann: „Helme", „helme" und „Helmr" sind drei Kategorien. Items
- * derselben Kategorie konkurrieren miteinander (das kleinere P gewinnt) — eine
- * vertippte trennt ein Item still von seiner Gruppe, und nichts wird rot.
- *
- * Ein <select> allein waere zu streng: neue Kategorien muessen ohne einen
- * zweiten Bedienweg entstehen koennen. Also beides in EINEM Bedienelement, mit
- * dem Auswaehlen als Normalfall — und getippt wird nur noch, wenn man es
- * ausdruecklich will. Vorher war Tippen der einzige Weg und die Vorschlagsliste
- * (`<datalist>`) ein Angebot, das man kennen musste. */
+ * Vorhandene anklicken, neue tippen — und die neue ist beim naechsten Item gleich
+ * anklickbar. Ein freies Textfeld allein macht aus „Helme", „helme" und „Helmr"
+ * drei Kategorien, und Items derselben Kategorie konkurrieren miteinander: eine
+ * vertippte trennt ein Item still von seiner Gruppe. Ein <select> allein waere zu
+ * streng — neue Kategorien muessen ohne zweiten Bedienweg entstehen koennen. */
 const KATEGORIE_NEU = "\u0000neu";   // als Kategoriename nicht eingebbar
 
 /* Welche Kategorie-Felder gerade im Tippen stehen — als Schluessel, nicht als
- * DOM-Verweis.
- *
- * **Der Modus muss den Neuaufbau ueberleben.** Die Ansicht wird nach jeder
- * Bruecken-Antwort neu gebaut, und der Entwurf speichert 900 ms nach der
- * letzten Aenderung von selbst: wer „+ neue Kategorie" waehlt und anfaengt zu
- * tippen, saehe sein Feld mitten im Wort wieder zur Auswahlliste werden.
- * Dieselbe Mechanik wie bei `offeneHilfen` und `klappZu` — und derselbe Grund,
- * aus dem `fokusMerken()` existiert. */
+ * DOM-Verweis. Der Modus muss den Neuaufbau ueberleben: der Entwurf speichert
+ * 900 ms nach der letzten Aenderung, und das Feld wuerde sonst mitten im Wort
+ * wieder zur Auswahlliste. Dieselbe Mechanik wie `offeneHilfen` und `klappZu`. */
 const kategorieFrei = new Set();
 
 /** Was in der Lern-Vorschau schon getippt, aber noch nicht uebernommen ist.
@@ -290,8 +269,7 @@ function allePrioritaeten() {
 /** Eine in einer Zeile entstandene Kategorie in allen anderen waehlbar machen.
  *
  * Ohne das tippt man dieselbe Kategorie in zwanzig Zeilen — und beim
- * einundzwanzigsten Mal anders. Fuellte frueher eine `<datalist>`; seit die
- * Kategorie ein eigenes Bedienelement ist, zieht es dessen Auswahllisten nach. */
+ * einundzwanzigsten Mal anders. */
 function scanReviewKategorienAktualisieren() {
   kategorieOptionenAktualisieren();
 }
@@ -369,17 +347,13 @@ function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
 
 /* ---------------------------------------------------- Fokus ueber den Neuaufbau
  *
- * **Jede Meldung baut die Ansicht neu — und nimmt dabei das Feld weg, in dem man
- * gerade steht.** Tipp-Felder melden beim Verlassen (`change`), also loest genau
- * der TAB-Sprung den Neuaufbau aus; bis die Bruecke geantwortet hat, liegt der
- * Fokus schon im naechsten Feld, und `replaceChildren()` wirft es weg. Sichtbar
- * wurde das beim Item: Namen tippen, TAB nach Kategorie — und der Cursor war weg.
+ * Tipp-Felder melden beim Verlassen, also loest genau der TAB-Sprung den
+ * Neuaufbau aus — bis die Bruecke antwortet, steht der Fokus im naechsten Feld,
+ * und `replaceChildren()` wirft es weg.
  *
  * Gemerkt wird die POSITION unter den Eingabefeldern des naechsten Elements mit
- * `id`, nicht das Element selbst (das gibt es danach nicht mehr) und auch kein
- * eigener Schluessel an jedem Feld (den muesste jeder Bauer mitschleppen, und ein
- * vergessener faellt nicht auf). Der Aufbau des Inspektors haengt am Typ des
- * gewaehlten Dings, nicht an seinen Werten — die Position bleibt also stehen. */
+ * `id`: das Element selbst gibt es danach nicht mehr, und einen eigenen
+ * Schluessel je Feld muesste jeder Bauer mitschleppen. */
 function fokusMerken() {
   const a = document.activeElement;
   if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
@@ -767,12 +741,9 @@ function zeitpunkt(sekunden) {
 
 /** Eine Phasenfarbe aus dem Stylesheet (`--init` / `--loop` / `--end`).
  *
- * Der Balken setzt seine Segmente per Inline-Stil — die Breite ist gerechnet,
- * eine Klasse trägt er nicht. Die Farbe deshalb trotzdem aus `:root` zu holen
- * statt sie hier auszuschreiben, hält die Palette an einer Stelle: sonst wäre
- * die Übersicht die eine Ansicht, in der ein Phasenton nach dem nächsten
- * Umfärben nicht mehr stimmt. Gemerkt wird sie, weil `getComputedStyle` sonst
- * bei zwanzig Sequenzkarten sechzigmal liefe. */
+ * Der Balken setzt seine Segmente per Inline-Stil (die Breite ist gerechnet).
+ * Die Farbe trotzdem aus `:root` zu holen haelt die Palette an einer Stelle;
+ * gemerkt, weil `getComputedStyle` sonst je Sequenzkarte dreimal liefe. */
 const _phasenfarben = {};
 function phasenFarbe(art) {
   if (!(art in _phasenfarben)) {
@@ -784,12 +755,8 @@ function phasenFarbe(art) {
 
 /** INIT / Loop-Phasen / END als Segmente, Breite nach Schrittzahl.
  *
- * Leere Phasen fallen raus statt als Strich stehenzubleiben: ein Segment der
- * Breite 0 sagt nichts, kostet aber eine Lücke.
- *
- * INIT und END standen hier auf demselben Grau: der Balken sagte damit zwar,
- * WIE VIEL am Anfang und am Ende liegt, aber nicht, dass es Anfang und Ende
- * sind — und es war die einzige Ansicht, die die Phasenfarben nicht sprach. */
+ * Leere Phasen fallen raus: ein Segment der Breite 0 sagt nichts, kostet aber
+ * eine Luecke. Die Phasenfarben sind dieselben wie ueberall sonst. */
 function phasenBalken(s) {
   const teile = [{n: s.init, farbe: phasenFarbe("init"), was: "INIT: " + s.init}]
     .concat((s.phasen || []).map((p) => ({n: p.schritte, farbe: phasenFarbe("loop"),
@@ -875,14 +842,8 @@ function laufTaktSetzen(an) {
 
 /** Springt beim Start eines Laufs von selbst in die Live-Ansicht.
  *
- * **Nur auf der Flanke** (nichts → läuft), nicht solange etwas läuft: sonst
- * käme man während eines Durchgangs nicht mehr in den Editor zurück, die
- * Ansicht würde jedes Mal zurückspringen. Wer den Reiter wechselt, während es
- * läuft, hat sich dafür entschieden.
- *
- * Der Puls ist bewusst der langsamste, der die Frage noch rechtzeitig
- * beantwortet: ein Start ist nichts, was man in einer halben Sekunde verpasst.
- */
+ * Nur auf der Flanke (nichts → laeuft), nicht solange etwas laeuft: sonst kaeme
+ * man waehrend eines Durchgangs nicht mehr in den Editor zurueck. */
 function laufFlanke(aktiv) {
   if (aktiv && !laufLief && ansicht !== "lauf") setzeAnsicht("lauf");
   laufLief = aktiv;
@@ -957,15 +918,11 @@ function farbstueck(text, rgb) {
 
 /** Worauf der laufende Block gerade wartet.
  *
- * Der Kasten ist die Antwort auf „seit 12 s" allein: bei einer Wartezeit von
- * 15 s sind zwölf Sekunden fast geschafft, bei einem Farb-Trigger mit 300 s
- * Timeout haben sie gerade erst angefangen — und ob überhaupt etwas Passendes
- * in Sicht ist, sagte die verstrichene Zeit gar nicht.
+ * „seit 12 s" allein beantwortet die Frage nicht: bei 15 s Wartezeit ist das
+ * fast geschafft, bei 300 s Timeout gerade erst angefangen.
  *
- * Heruntergezählt wird **hier**, aus den absoluten Zeitstempeln der
- * Statusdatei. Mit Restwerten aus dem Worker ruckelte die Anzeige in dessen
- * Sekundentakt; beide Prozesse laufen auf derselben Maschine, also derselben Uhr.
- */
+ * Heruntergezaehlt wird hier, aus den absoluten Zeitstempeln der Statusdatei —
+ * mit Restwerten aus dem Worker ruckelte die Anzeige in dessen Sekundentakt. */
 function warteKasten(w, jetzt) {
   if (!w) return null;
   const uebrig = w.bis ? Math.max(0, w.bis - jetzt) : null;
@@ -1031,14 +988,11 @@ function balken(ist, soll) {
 
 /** Alle Phasen des Laufs nebeneinander, die laufende breit.
  *
- * Die Liste kommt aus dem Laufstatus, nicht aus der geöffneten Sequenz: laufen
- * kann eine ganz andere. Fehlt sie (Statusdatei einer älteren Fassung), bleibt
- * es bei der einen laufenden Phase — geraten wird nichts.
+ * Die Liste kommt aus dem Laufstatus, nicht aus der geoeffneten Sequenz: laufen
+ * kann eine ganz andere. Fehlt sie, bleibt es bei der einen laufenden Phase.
  *
- * „Abgeschlossen" gilt innerhalb des laufenden Zyklus: im nächsten Durchgang
- * sind dieselben Loop-Phasen wieder ausstehend. Anders wäre es gelogen, sobald
- * eine Sequenz mehr als einen Zyklus hat.
- */
+ * „Abgeschlossen" gilt innerhalb des laufenden Zyklus — im naechsten Durchgang
+ * sind dieselben Loop-Phasen wieder ausstehend. */
 function phasenLeiste(z, beendet) {
   const jetzige = z.phase_pos;
   const liste = Array.isArray(z.phasen) && z.phasen.length
@@ -1147,15 +1101,9 @@ async function zeichneLauf() {
 
 /** Der letzte Lauf, nachdem er fertig ist.
  *
- * Vorher verschwand hier alles in dem Moment, in dem die Sequenz durch war:
- * die Datei wurde geloescht, die Ansicht zeigte „Es läuft gerade keine
- * Sequenz". Ausgerechnet dann sieht man aber hin — die Frage ist ja, was
- * herausgekommen ist. Jetzt bleibt der Stand stehen, bis der nächste Start ihn
- * überschreibt.
- *
- * Dieselben Kacheln wie im Lauf, damit man nicht umlernen muss; die Zeitangaben
- * sind fest statt mitlaufend, denn hier tickt nichts mehr.
- */
+ * Der Stand bleibt stehen, bis der naechste Start ihn ueberschreibt — sonst
+ * waere die Ansicht genau dann leer, wenn man hinsieht. Dieselben Kacheln wie
+ * im Lauf, nur mit festen statt mitlaufenden Zeitangaben. */
 function zeichneAbschluss(ziel, z) {
   const zaehler = z.zaehler || {};
   // Warum es zu Ende ist, entscheidet die Farbe: durchgelaufen ist gruen,
@@ -1247,15 +1195,10 @@ function zeichneInspektor() {
 
   // --- Typ ---
   // Jede Kachel traegt ihre Farbe, nicht nur die gewaehlte: damit ist das Raster
-  // zugleich die Legende zu den Farben im Board — vorher musste man sie sich aus
-  // den Karten zusammensuchen —, und man sieht vor dem Klick, wie die Karte
-  // danach aussieht.
-  //
-  // Die Farbe liegt ringsum statt als Streifen links (dieselbe Regel wie bei
-  // Phasenkopf, Karte und laufender Phase), die GEWAEHLTE ist zusaetzlich
-  // ausgefuellt. `border-color` steht im style-Attribut und damit nach dem
-  // `border`-Kurzformat aus .typ-chip — andersherum raeumte die Kurzform die
-  // Farbe wieder weg.
+  // zugleich die Legende zu den Farben im Board. Ringsum statt als Streifen
+  // links, die gewaehlte zusaetzlich ausgefuellt. `border-color` steht im
+  // style-Attribut und damit NACH dem `border`-Kurzformat aus .typ-chip —
+  // andersherum raeumte die Kurzform die Farbe wieder weg.
   ziel.appendChild(ueberschrift("BLOCK-TYP",
     "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
     "ist zugleich die Legende dazu.", "blocktyp"));
@@ -1303,16 +1246,11 @@ function zeichneInspektor() {
   baueScan(ziel, b);
   if (b.typ === "screenshot") baueScreenshot(ziel, b);
 
-  // Der Farb-Trigger fragt VOR dem Schritt. Sinn ergibt er nur, wo die Laufzeit
-  // ihn auch auswertet: bei Klick, Warten und Taste — `runtime/steps.py` wartet
-  // fuer diese drei an genau einer Stelle, und dass die Taste dazugehoert, war
-  // einmal ein Fehler und ist ausdruecklich repariert. Scans und Screenshot
-  // kehren vorher um; dort waere die Bedingung wirkungslos.
+  // Der Farb-Trigger fragt VOR dem Schritt und steht nur da, wo die Laufzeit ihn
+  // auswertet: Klick, Warten und Taste. Scans und Screenshot kehren vorher um.
   //
-  // Gezeigt wird der Abschnitt trotzdem, wenn schon eine Bedingung dranhaengt:
-  // sonst waere sie unerreichbar, und ein Zustand, den man sieht (Farbfeld auf
-  // der Karte) aber nicht mehr wegbekommt, ist genau die Falltuer, die der
-  // geloeschte "nur warten"-Schalter war.
+  // Haengt trotzdem schon eine Bedingung dran, bleibt der Abschnitt sichtbar —
+  // sonst waere sie unerreichbar.
   const mitTrigger = b.typ === "click" || b.typ === "wait_click" ||
                      b.typ === "wait" || b.typ === "key";
   if (mitTrigger || b.trigger !== "kein") baueTrigger(ziel, b, mitTrigger);
@@ -1326,14 +1264,11 @@ function zeichneInspektor() {
   hilfenAnwenden(ziel);
 }
 
-/** „Sitzt der Punkt da, wo ich denke?" — die Maus fährt hin und sagt es.
+/** „Sitzt der Punkt da, wo ich denke?" — die Maus faehrt hin und sagt es.
  *
- * Nur bei Blöcken mit Stelle. Das Fenster bewegt die Maus nicht selbst (es sieht
- * den Bildschirm nicht); der Hauptprozess tut es und misst dabei, ob die Farbe
- * dort noch der gespeicherten entspricht. Diese Zeile steht in seiner Konsole —
- * hier kann sie nicht stehen, und das zu behaupten wäre schlimmer als der Weg
- * zum anderen Fenster.
- */
+ * Nur bei Bloecken mit Stelle. Das Fenster sieht den Bildschirm nicht; der
+ * Hauptprozess bewegt die Maus, misst die Farbe und schreibt das Ergebnis in
+ * seine eigene Konsole. */
 function baueProbe(ziel, b) {
   // Ein Block hat bis zu drei Stellen — Klick, Prüf-Pixel des Triggers und
   // ELSE-Klick —, und „sitzt das noch?" fragt man bei jeder. Angeboten wird
@@ -1601,25 +1536,18 @@ function ohneElseText() {
 }
 
 function baueElse(ziel, b) {
-  // Kein Auslöser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
-  // Screenshot, Boss-Watcher) kann ELSE nie feuern, und ein Bedienelement steht
-  // nur da, wo die Laufzeit es auswertet — dieselbe Regel wie beim Farb-Trigger,
-  // den es bei Scans und Screenshot auch nicht gibt.
+  // Kein Ausloeser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
+  // Screenshot, Boss-Watcher) kann ELSE nie feuern.
   //
-  // Ausnahme: ist trotzdem eine Aktion gesetzt (Trigger nachträglich entfernt,
-  // Typ umgestellt, Import), bleibt der Abschnitt stehen. Sonst stünde das ELSE
-  // unsichtbar in der Datei und wäre nicht mehr loszuwerden — dieselbe Falltür
-  // wie beim gelöschten Schalter „nur warten".
+  // Ist trotzdem eine Aktion gesetzt (Trigger entfernt, Typ umgestellt, Import),
+  // bleibt der Abschnitt stehen — sonst stuende das ELSE unsichtbar in der Datei
+  // und waere nicht mehr loszuwerden.
   if (!b.else_greift && !b.else_aktion) return;
-  // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
-  // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
-  // — die Abwesenheit von allen.
+  // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" saehe aus wie
+  // eine sechste Aktion, obwohl sie die Abwesenheit von allen ist.
   //
-  // Der Rückweg ist die markierte Kachel selbst: ein zweiter Klick darauf hebt
-  // sie auf. Fehlen darf er nicht (sonst dieselbe Falltür wie beim gelöschten
-  // Schalter „nur warten": gesetzt und nicht mehr loszuwerden), und weil man ein
-  // Umschalten nicht sieht, steht es im Hinweis darunter und im Tooltip der
-  // Kachel.
+  // Der Rueckweg ist die markierte Kachel selbst — und weil man ein Umschalten
+  // nicht sieht, steht es im Hinweis darunter und im Tooltip der Kachel.
   ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
     "eigene Aktion des Schritts. Ein zweiter Klick auf die markierte Kachel " +
@@ -1701,26 +1629,19 @@ async function fortfahren(verwerfen) {
 /* ------------------------------------------------------------ Ansicht: Scans */
 
 /* Slots, Items und Item-Scans auf einem eingefrorenen Screenshot. Eigener
- * Zustand neben `S`, wie bei den Einstellungen: der Reiter bearbeitet andere
- * Dateien (slots.json, items.json, item_scans/), und eine Sequenz-Momentaufnahme
- * waere dafuer der falsche Gegenstand.
+ * Zustand neben `S`: der Reiter bearbeitet andere Dateien (slots.json,
+ * items.json, item_scans/).
  *
- * Gezeichnet wird ein <img> mit einem <svg> darueber. Das SVG traegt ein
- * viewBox in BILD-Pixeln — damit ist jede Rechnung im Overlay unabhaengig vom
- * Zoom, und nur die Strichstaerken und Schriftgroessen muessen gegengerechnet
- * werden. */
+ * Gezeichnet wird ein <img> mit einem <svg> darueber; dessen viewBox steht in
+ * BILD-Pixeln, also muessen nur Strichstaerken und Schriftgroessen gegen den
+ * Zoom gerechnet werden. */
 let SC = null;
 /* Welche Liste links offen ist — `null` heisst „noch nicht entschieden", dann
  * gilt `scanListeAktiv()`.
  *
- * **Mit offenem Scan sind die Items die Arbeit.** Vorher stand die Liste immer
- * auf „Scans": wer einen Scan lud, sah dessen Namen noch einmal und musste
- * erst unten links auf „Items" klicken, um an das zu kommen, weswegen er den
- * Scan geoeffnet hat. Der Scan ist die Klammer, nicht der Inhalt.
- *
- * Dieselbe Regel wie bei `klappZu`: die Vorgabe gilt, bis jemand einen Reiter
- * anfasst — ab dann steht dort seine Entscheidung. Ein Bedienelement, das
- * zurueckspringt, ist keine Hilfe. */
+ * Mit offenem Scan sind die Items die Arbeit: der Scan ist die Klammer, nicht
+ * der Inhalt. Dieselbe Regel wie bei `klappZu` — die Vorgabe gilt, bis jemand
+ * einen Reiter anfasst. */
 let scanListe = null;
 let scanZoom = 1;
 // Hat der Nutzer den Zoom selbst gesetzt (1:1 oder STRG+Rad)? Dann fasst ihn
@@ -1736,13 +1657,10 @@ let scanAutoSaveTimer = 0;
 let scanAssistentSchritt = null;
 
 /* Welche Abschnitte der linken Spalte zugeklappt sind. `null` heisst „noch
- * nichts entschieden" — dann gilt die abgeleitete Vorgabe aus `klappVorgabe()`.
- * Sobald jemand einen Kopf anfasst, steht dort true/false und die Vorgabe
- * schweigt: eine Automatik, die eine ausdrueckliche Entscheidung ueberstimmt,
- * ist keine Hilfe mehr, sondern ein Bedienelement, das zurueckspringt.
+ * nichts entschieden" — dann gilt `klappVorgabe()`; sobald jemand einen Kopf
+ * anfasst, steht dort seine Entscheidung und die Automatik schweigt.
  *
- * Reiner Oberflaechenzustand, deshalb hier und nicht in der Bruecke: er aendert
- * nichts an den Daten. */
+ * Reiner Oberflaechenzustand, deshalb hier und nicht in der Bruecke. */
 let klappZu = {modi: null};
 
 /* Der zuletzt in die Sichtbarkeit geholte Slot. Ohne das scrollte die Buehne
@@ -1762,13 +1680,10 @@ let scanZiehGemacht = false;
  * Rueckgaengig-Stapel (`zaehlt`). */
 let scanSchubZeit = 0;
 
-/* **Die Reihenfolge ist die Rangfolge**, und sie ist dieselbe wie in `MODI`
- * (ein Test haelt beide Zug um Zug gegeneinander, nicht nur als Menge).
- * „Slots finden" steht direkt hinter „Auswaehlen", weil es das ist, was man
- * ZUERST macht: das Automatische ist der Normalfall, und erst wenn es nicht
- * klappt, zieht man einen Slot von Hand auf. Als vorletzte Kachel stand es da,
- * wo man den Notnagel sucht — und wer der Liste folgte, hatte 45 Slots einzeln
- * aufgezogen, bevor er es fand. */
+/* Die Reihenfolge ist die Rangfolge und dieselbe wie in `MODI` (ein Test haelt
+ * beide Zug um Zug gegeneinander). „Slots finden" steht direkt hinter
+ * „Auswaehlen", weil das Automatische der Normalfall ist und das Aufziehen von
+ * Hand der Ausweichweg. */
 /* Die Zustandsfarben aus dem Stylesheet, damit SVG-Text und Listen dieselbe
  * Quelle benutzen wie Umriss und Fuellung. `fill` im SVG nimmt kein
  * `var(--x)` aus einer fremden Regel entgegen, also einmal auslesen. */
@@ -2136,15 +2051,11 @@ async function scanFensterPflegen() {
 
 /** Stehen die Item-Masken in der rechten Spalte?
  *
- * **Die breitere Spalte war die leerere.** Links sind 290 px und darin fuenf
- * Bloecke uebereinander — die Liste, mit der man arbeitet, faengt ganz unten an;
- * rechts sind 370 px und standen seit dem Umbau fast leer, weil Name, Kategorie
- * und Prioritaet in die Maske gewandert sind. Also wandert die Liste dorthin,
- * wo sie hinpasst.
+ * Die breitere Spalte war die leerere (290 px links mit fuenf Bloecken, 370 px
+ * rechts fast leer), und eine Maske braucht Breite.
  *
- * Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation (man
- * waehlt ihn und arbeitet dann woanders), und die Slots zieht man im BILD auf —
- * ihre Liste ist der zweite Weg dorthin, nicht die Arbeitsflaeche. */
+ * Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation, und
+ * einen Slot zieht man im BILD auf — seine Liste ist der zweite Weg dorthin. */
 function scanItemsRechts() {
   return scanArt === "item" && scanListeAktiv() === "items";
 }
@@ -2314,18 +2225,14 @@ function scanListeItems(ziel) {
   }
 }
 
-/** Ein Item als kleine Maske: Haken, Name, Kategorie, Priorität — direkt in der Liste.
+/** Ein Item als kleine Maske: Haken, Name, Kategorie, Prioritaet — in der Liste.
  *
- * **Ein Ein-Aus-Knopf war zu wenig.** Die Liste konnte nur „gehört dazu / gehört
- * nicht dazu"; alles andere kostete einen Klick in die Liste, einen Blick nach
- * rechts und einen Weg zurueck — bei sechzig Items sechzig Mal. Die vier Dinge,
- * die man dabei wirklich aendert, sind immer dieselben, und sie passen
- * nebeneinander.
+ * Ein Ein-Aus-Knopf war zu wenig: alles andere kostete einen Klick in die Liste,
+ * einen Blick nach rechts und einen Weg zurueck, bei sechzig Items sechzig Mal.
  *
- * Was NICHT hier steht: Vorlagen, Marker, Konfidenz, Loeschen. Das gehoert dem
- * Inspektor — er hat den Platz fuer das grosse Bild, und man braucht es selten.
- * Name, Kategorie und Prioritaet stehen dafuer NUR hier: dieselbe Sache an zwei
- * Stellen waere zwei Wahrheiten, und man muesste raten, welche fuehrt. */
+ * Was selten gebraucht wird (Vorlagen, Marker, Konfidenz, Loeschen), klappt
+ * darunter auf. Name, Kategorie und Prioritaet stehen NUR hier — dieselbe Sache
+ * an zwei Stellen waeren zwei Wahrheiten. */
 function scanItemMaske(i) {
   const setze = (feld, wert) => rufScan("scan_item_setzen",
                                         {name: i.name, feld: feld, wert: wert});
@@ -2506,15 +2413,12 @@ function scanOverlay() {
       class: "scan-fuellung" + zustand + (gewaehlt ? " gewaehlt" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
       class: "scan-slot" + zustand + (gewaehlt ? " gewaehlt" : "")}));
-    // Der Name steht ueber dem Rechteck, das Erkennungsergebnis darunter — so
-    // ueberdeckt keins von beiden das Bild im Slot.
+    // Name ueber dem Rechteck, Erkennungsergebnis darunter — so ueberdeckt
+    // keins von beiden das Bild im Slot.
     //
-    // Aber nur, wenn er auch hineinpasst: die Schrift steht in SCHIRM-Pixeln
-    // (gegen den Zoom gerechnet), der Slot in Bild-Pixeln. Bei 45 Slots passt
-    // das Bild nur klein ins Fenster, und dann war jede Marke breiter als ihr
-    // Slot — 45 Namen uebereinander, aus denen keiner mehr lesbar war. Der
-    // gewaehlte behaelt seinen Namen: welcher es ist, ist die eine Frage, die
-    // auch bei 20 % beantwortet sein muss.
+    // Nur, wenn er hineinpasst: die Schrift steht in SCHIRM-Pixeln (gegen den
+    // Zoom gerechnet), der Slot in Bild-Pixeln, und bei 45 Slots waeren es 45
+    // Namen uebereinander. Der gewaehlte behaelt seinen immer.
     const breit = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
     if (breit >= 34 || gewaehlt) {
       svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + fremd,
@@ -2593,14 +2497,12 @@ function scanInSlot(slot, stelle) {
 
 /** Holt den gewaehlten Slot in die Sichtbarkeit der Buehne.
  *
- * **Liste und Bild waren zwei getrennte Welten.** Einen Slot in der Liste
- * anzuklicken markierte ihn im Bild — nur sah man das nicht, wenn er gerade
- * ausserhalb lag. Bei 45 Slots auf 1:1 ist das der Normalfall, und man sucht
- * die weisse Markierung, statt zu arbeiten.
+ * Einen Slot in der Liste anzuklicken markiert ihn im Bild — bei 45 Slots auf
+ * 1:1 liegt er dabei aber meist ausserhalb.
  *
  * Gescrollt wird NUR, wenn er wirklich draussen liegt, und nur beim Wechsel der
- * Auswahl (`scanGezeigt`): eine Buehne, die bei jedem Neuzeichnen springt,
- * nimmt einem die Stelle weg, die man gerade ansieht. */
+ * Auswahl: eine Buehne, die bei jedem Neuzeichnen springt, nimmt einem die
+ * Stelle weg, die man gerade ansieht. */
 function scanZeigeGewaehlten() {
   if (!SC || !SC.foto || SC.wahl.art !== "slot") { scanGezeigt = ""; return; }
   const name = SC.wahl.name;
@@ -2674,14 +2576,10 @@ function scanInspektor() {
                         title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
                         onclick: () => erkTesten()},
              scanArt === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
-      // **Der Knopf NENNT, was er zurücknimmt.** Ein „Rückgängig" ohne Angabe
-      // drückt man entweder gar nicht (weil man nicht weiss, was passiert) oder
-      // einmal zu oft. Die Beschreibung kommt aus der Brücke — dort weiss man,
-      // was der Schritt war.
-      // **Der Knopf traegt den Namen des Schritts** — und der kann lang sein
-      // („'Mission nicht machbar': Klickpunkt"). Ohne Kuerzung schiebt er den
-      // Nachbarn aus der Zeile, und ein Knopf, den man nicht erreicht, ist
-      // schlimmer als eine abgeschnittene Beschriftung.
+      // Der Knopf NENNT, was er zuruecknimmt (Beschreibung aus der Bruecke):
+      // ein „Rueckgaengig" ohne Angabe drueckt man gar nicht oder einmal zu oft.
+      // Gekuerzt, weil ein langer Name („'Mission nicht machbar': Klickpunkt")
+      // sonst den Nachbarn aus der Zeile schiebt.
       el("button", {class: "btn scan-undo", disabled: !SC.undo.tiefe,
                     title: SC.undo.tiefe
                       ? "STRG+Z — nimmt zurück: " + SC.undo.was
@@ -2975,16 +2873,12 @@ let hakenAlleZeigen = {slot: false, item: false};
 
 /** Eine Haken-Liste: standardmaessig nur, was zu diesem Scan gehoert.
  *
- * **Ein neuer Scan faengt leer an.** Vorher standen dort alle 56 Slots und alle
- * 24 Items des gesamten Bestands — die eines anderen Spiels also mit. Slots sind
- * Bildschirm-Koordinaten und damit ohnehin nur fuer ihr eigenes Spiel zu
- * gebrauchen; sie in einem fremden Scan anzubieten ist reines Rauschen.
+ * Ein neuer Scan faengt leer an — Slots sind Bildschirm-Koordinaten und in einem
+ * fremden Scan reines Rauschen.
  *
- * **Items sind der Sonderfall, und zwar der wichtige.** Dasselbe Item kann in
- * mehreren Spielen vorkommen, und es zweimal zu lernen ist genau das, was man
- * vermeiden will. Deshalb erscheint ein Item auch dann, wenn es GERADE IN EINEM
- * SLOT ERKANNT wird — dann steht es da, bevor man auf die Idee kommt, es neu zu
- * lernen. Ein Haken genuegt.
+ * Items sind der Sonderfall: dasselbe Item kann in mehreren Spielen vorkommen,
+ * und es zweimal zu lernen ist genau das, was man vermeiden will. Deshalb
+ * erscheint es auch, wenn es GERADE IN EINEM SLOT ERKANNT wird.
  *
  * Der Rest des Bestands ist einen Klick entfernt, nicht weg. */
 function hakenListe(ziel, titel, hilfe, schluessel, c, art, bestand, drin, leerText) {
@@ -3015,15 +2909,9 @@ function hakenListe(ziel, titel, hilfe, schluessel, c, art, bestand, drin, leerT
 
 /** Eine Zeile der Haken-Liste: Schieber = gehoert dazu, Name = bearbeiten.
  *
- * **Zwei verschiedene Fragen brauchen zwei Bedienelemente.** Vorher war die
- * ganze Zeile ein Schalter, und um ein Item zu BEARBEITEN musste man es links in
- * der Liste suchen — die zeigt aber standardmaessig nur Scan-Mitglieder. Wer ein
- * gelerntes Item umbenennen wollte, das (richtigerweise) noch zu keinem Scan
- * gehoert, musste es also erst aufnehmen. Man musste etwas AENDERN, um es
- * ansehen zu koennen.
- *
- * Jetzt schaltet der Schieber die Zugehoerigkeit, und ein Klick auf den Namen
- * waehlt den Eintrag aus — der Inspektor zeigt danach ihn. */
+ * Zwei Fragen, zwei Bedienelemente. War die ganze Zeile ein Schalter, musste man
+ * ein noch zu keinem Scan gehoerendes Item erst aufnehmen, um es ansehen zu
+ * koennen — also etwas AENDERN, um es zu betrachten. */
 function hakenZeile(name, an, umschalten, art, erkannt) {
   const s = schalter("", an, umschalten);
   s.classList.add("haken-nur-schalter");
@@ -3039,15 +2927,12 @@ function hakenZeile(name, an, umschalten, art, erkannt) {
 
 /** Ueberschrift einer Haken-Liste, mit Stand und einem „alle"-Schieber.
  *
- * **56 Schalter einzeln zu setzen ist keine Bedienung.** Ein Scan umfasst fast
- * immer ALLES seines Spiels; die Ausnahme klickt man danach einzeln weg — nicht
- * umgekehrt.
+ * Ein Scan umfasst fast immer ALLES seines Spiels; die Ausnahme klickt man
+ * danach einzeln weg, nicht umgekehrt.
  *
- * Derselbe Schieber wie die Eintraege darunter, damit man ihn nicht als etwas
- * anderes lesen muss. Drei Stellungen statt zwei: bei 23 von 56 steht er in der
- * MITTE (`indeterminate`) — „aus" waere dort schlicht gelogen, und man wuesste
- * nicht, was ein Klick tut. Aus der Mitte heraus schaltet er ein; ganz an
- * schaltet er alles aus. */
+ * Derselbe Schieber wie die Eintraege darunter, aber mit drei Stellungen: bei
+ * 23 von 56 steht er in der MITTE (`indeterminate`), denn „aus" waere dort
+ * gelogen. Aus der Mitte heraus schaltet er ein, ganz an schaltet alles aus. */
 function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
   const gemischt = drin > 0 && drin < gesamt;
   const alle = schalter("alle", drin === gesamt && gesamt > 0,
@@ -3250,16 +3135,12 @@ function scanInspScan(ziel) {
 
 /* ------------------------------------------- Ansicht: Bosse und Icon-Scans */
 
-/* **Dieselbe Buehne, eine andere Frage.** Ein Boss-Scan ist ein Rechteck auf
- * einem Bild und eine Aktion dahinter; ein Icon-Scan ist dasselbe, nur ohne
- * Bosse-Liste. Beide lagen bisher in Konsolen-Editoren, die man fuer JEDE
- * Aenderung von vorn durchklicken musste — auch fuer eine Konfidenz.
+/* Dieselbe Buehne, eine andere Frage: ein Boss-Scan ist ein Rechteck auf einem
+ * Bild und eine Aktion dahinter, ein Icon-Scan dasselbe ohne Bosse-Liste.
  *
  * Welche Art offen ist, ist reiner Oberflaechenzustand wie `ansicht` und
- * `scanListe`: er steht nicht in der Momentaufnahme und nicht in der Bruecke,
- * denn er aendert nichts an den Daten. Die Bruecke bekommt bei jedem Befehl
- * gesagt, worauf er wirkt (`{art: "boss"}`) — eine vierte Wahrheit ueber
- * "was ist gerade gemeint" waere eine zu viel. */
+ * `scanListe` — die Bruecke bekommt bei jedem Befehl gesagt, worauf er wirkt
+ * (`{art: "boss"}`). */
 let scanArt = "item";
 /* Welcher Assistent-Schritt der Erkennungs-Arten offen ist. Eigene Variable
  * neben `scanAssistentSchritt`: die Arten haben verschieden viele Schritte, und
@@ -3268,15 +3149,12 @@ let scanErkSchritt = null;
 
 const SCAN_ARTEN = ["item", "boss", "icon"];
 
-/* **Welche Bruecken-Methode zu welcher Art gehoert — als Tabelle.**
+/* Welche Bruecken-Methode zu welcher Art gehoert — als Tabelle.
  *
- * Boss und Icon beantworten dieselben Fragen mit anderen Methoden ("oeffne den
- * Scan", "setze ein Feld", "teste"). Als Ternaeroperator an einem halben Dutzend
- * Aufrufstellen verteilt waeren die Namen sechsmal da — und der Test „jeder
- * Aufruf der Seite passt zur Bruecke" faende keinen davon: er sucht nach einem
- * Methodennamen direkt hinter der oeffnenden Klammer eines Aufrufs, und ein
- * Ternaeroperator steht genau dort. Hier stehen sie einmal und sind messbar
- * (`tools/tests/studio_erkennung.py` liest diese Tabelle). */
+ * Als Ternaeroperator an jeder Aufrufstelle waeren die Namen sechsmal da, und
+ * der Test „jeder Aufruf der Seite passt zur Bruecke" faende keinen davon: er
+ * sucht den Methodennamen direkt hinter der oeffnenden Klammer. Hier stehen sie
+ * einmal und sind messbar (`tools/tests/studio_erkennung.py`). */
 const ERK_BEFEHL = {
   boss: {oeffnen: "boss_scan_oeffnen", neu: "boss_scan_neu",
          scan_feld: "boss_scan_setzen", feld: "boss_setzen",
@@ -4256,14 +4134,12 @@ function teilenImportZeichnen() {
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */
 
-/* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor. Sein
- * Zustand liegt deshalb neben `S` und nicht darin: `C` ist die Antwort von
- * `config_lesen()` (Werte, Standardwerte, Abschnitte, Beschreibungen), und
+/* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
+ * liegt sein Zustand neben `S`: `C` ist die Antwort von `config_lesen()`,
  * `cfgGeaendert` sammelt, was noch nicht geschrieben ist.
  *
- * Gespeichert wird auf Knopfdruck, nicht bei jedem Tastendruck: die Werte
- * greifen in einen laufenden Lauf, und eine halb getippte Zahl darf nicht
- * schon gelten. */
+ * Gespeichert wird auf Knopfdruck: die Werte greifen in einen laufenden Lauf,
+ * und eine halb getippte Zahl darf nicht schon gelten. */
 let C = null;
 let cfgGeaendert = {};
 let cfgAbschnitt = 0;

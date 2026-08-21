@@ -153,15 +153,10 @@ class AppConfig:
     migrate_on_start: bool = True
 
     # === DEBUG-EINSTELLUNGEN ===
-    # Zwei getrennt schaltbare Ausgabe-Stufen, jede Kombination erlaubt (s. runtime/debug.py).
-    # Keine der beiden verändert den Ablauf - nur wie viel du zu sehen bekommst.
-    #   debug_log    = alles ausgeben, nichts überschreiben
-    #   debug_detail = zusätzlich Zeiger auf den Zielpunkt + ausschreiben, was dort
-    #                  passieren soll (mit Farbquadrat bei Farb-Bedingungen)
-    # debug_detail gibt mehrzeilig aus und zieht die persistente Ausgabe damit zwangsläufig
-    # mit - eine Status-Zeile, die sich selbst überschreibt, wäre sonst überklebt.
-    # Der MANUELLE Modus (Schritt für Schritt auf Bestätigung) ist bewusst KEINE Config,
-    # sondern Laufzeit-Zustand: Punkte-Menü (CTRL+ALT+P) -> 'manuell'.
+    # Zwei getrennt schaltbare Ausgabe-Stufen (s. runtime/debug.py); keine veraendert
+    # den Ablauf. `debug_detail` gibt mehrzeilig aus und zieht die persistente Ausgabe
+    # damit zwangslaeufig mit. Der MANUELLE Modus ist bewusst KEINE Config, sondern
+    # Laufzeit-Zustand: Punkte-Menue (CTRL+ALT+P) -> 'manuell'.
     debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe
     debug_detail: bool = False                      # Stufe 2: Zeiger + Detailausgabe
     debug_show_pixel_position: bool = False         # Zeiger kurz zum Prüf-Pixel beim Farbwarten
@@ -318,15 +313,12 @@ DEFAULT_CONFIG = AppConfig().to_dict()
 def uebernehmen(ziel: AppConfig, quelle: AppConfig) -> None:
     """Schreibt alle Werte aus `quelle` in `ziel` — ohne das Objekt zu tauschen.
 
-    Im Prozess gibt es **ein** Config-Objekt: `state.config` IST das
-    Modul-`CONFIG` (gesetzt in `main.py`). Wer es gegen ein neues austauscht,
-    lässt jeden zurück, der noch die alte Referenz hält — und das sind alle
-    Module mit `from .config import CONFIG` (imaging, die Item-Editoren). Die
-    sähen ab dem Austausch dauerhaft die Werte vom Programmstart.
+    Im Prozess gibt es EIN Config-Objekt: `state.config` IST das Modul-`CONFIG`.
+    Wer es austauscht, lässt jeden mit `from .config import CONFIG` (imaging, die
+    Item-Editoren) dauerhaft auf den Werten vom Programmstart sitzen.
 
-    Deshalb wird hier hineingeschrieben statt ersetzt. Drei Stellen tun das:
-    Factory Reset, Bundle-Import und das Neuladen nach einem Speichern im
-    Sequenz-Studio.
+    Drei Stellen schreiben hinein: Factory Reset, Bundle-Import und das Neuladen
+    nach einem Speichern im Studio.
     """
     for f in fields(AppConfig):
         setattr(ziel, f.name, getattr(quelle, f.name))
@@ -447,14 +439,11 @@ _CONFIG_SECTIONS = [
 def config_abschnitte() -> list:
     """Die Abschnitte in Datei-Reihenfolge, inklusive noch nicht zugeordneter Felder.
 
-    Genau die Einteilung, die `save_config()` in die Datei schreibt — und
-    deshalb steht sie hier und nicht im Studio: sonst stünden die Felder im
-    Fenster in einer anderen Ordnung als in der Datei, die man daneben aufmacht.
+    Dieselbe Einteilung, die `save_config()` schreibt — deshalb hier und nicht im
+    Studio, sonst stünden die Felder im Fenster anders als in der Datei daneben.
 
-    Der Nachzügler-Abschnitt ist kein Schmuck: ein Feld, das jemand der
-    Dataclass hinzufügt und in `_CONFIG_SECTIONS` vergisst, ist damit in beiden
-    Ansichten sichtbar statt unsichtbar. (Ein Test verlangt trotzdem, dass er
-    leer bleibt.)
+    Der Nachzügler-Abschnitt macht ein in `_CONFIG_SECTIONS` vergessenes Feld
+    sichtbar statt unsichtbar (ein Test verlangt trotzdem, dass er leer bleibt).
     """
     zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
     alle = [f.name for f in fields(AppConfig)]

@@ -1,24 +1,17 @@
 """Boss- und Icon-Scans im Scans-Reiter: Region, Erkennung, Aktion, Test.
 
-**Warum das hier liegt und nicht in der Konsole.** Boss- und Icon-Scans waren
-nur über `boss_scan_editor.py` / `icon_scan_editor.py` erreichbar: man klickte
-sich linear durch Schritt 1–6, und für jede spätere Änderung — eine Konfidenz,
-eine andere Aktion — lief derselbe Ablauf noch einmal von vorn. Die Sache, um
-die es geht, ist aber ein Rechteck auf einem Bild; sie gehört dorthin, wo das
-Bild steht.
+Die Konsolen-Editoren führen linear durch Schritt 1–6, und jede spätere
+Änderung lief denselben Ablauf noch einmal. Die Sache, um die es geht, ist
+aber ein Rechteck auf einem Bild.
 
 Zwei Regeln tragen das Modul:
 
-- **Der Assistent ist der Weg beim ersten Einrichten, die Eigenschaften-Spalte
-  der Weg für jede spätere Änderung.** Jedes Feld ist einzeln setzbar
-  (`boss_setzen`, `icon_setzen`), keins nur über einen Durchlauf erreichbar.
-- **Testen ist folgenlos.** `boss_testen`/`icon_testen` erkennen, zeigen und
-  *benennen* die Aktion — ausgeführt wird sie nie. Ein Testknopf, der klickt,
-  ist im Editor eines Autoclickers die schlechteste denkbare Überraschung.
+- Der Assistent ist der Weg beim ersten Einrichten, die Eigenschaften-Spalte
+  der für jede spätere Änderung: jedes Feld ist einzeln setzbar.
+- Testen ist folgenlos — `boss_testen`/`icon_testen` benennen die Aktion nur.
 
-Gerechnet wird mit `_check_profile_match()` aus `runtime/item_scan.py` — genau
-der Funktion, die im Lauf entscheidet. Eine zweite Rechnung „nur für die
-Vorschau" wäre eine Vorschau, die etwas anderes zeigt als das, was passiert.
+Gerechnet wird mit `_check_profile_match()` aus `runtime/item_scan.py`, also
+der Funktion, die im Lauf entscheidet.
 """
 
 import threading
@@ -305,17 +298,12 @@ class ScanDetectMixin:
     def _bereit(self) -> dict:
         """Welche Erkennungswege überhaupt zur Verfügung stehen.
 
-        **Fehlende Voraussetzungen blenden nichts aus, sie erklären sich.** Ohne
-        OpenCV ist Template-Erkennung aus — Farb-Marker, OCR und LLM gehen
-        trotzdem. Der Reiter setzt die betroffene Wahl auf inaktiv und nennt den
-        pip-Befehl; ein verstecktes Bedienelement liesse den Nutzer suchen.
+        Fehlende Voraussetzungen blenden nichts aus, sie erklären sich: ohne OpenCV
+        wird die Template-Wahl inaktiv und nennt den pip-Befehl.
 
-        **Was etwas kostet, wird gefragt und nicht mitgeliefert.** OCR und LLM
-        stehen deshalb als `None`, bis jemand `ocr_pruefen()` bzw.
-        `llm_pruefen()` drückt: `import easyocr` zieht Torch nach und dauert
-        Sekunden — in einer Momentaufnahme, die nach jedem Klick neu entsteht,
-        hat das nichts verloren. Dieselbe Entscheidung wie beim LLM, nur dass
-        dort das Netz wartet statt der Import.
+        OCR und LLM stehen als `None`, bis jemand `ocr_pruefen()` bzw. `llm_pruefen()`
+        drückt — `import easyocr` zieht Torch nach und dauert Sekunden, das hat in
+        einer Momentaufnahme nichts verloren.
         """
         from ...config import CONFIG
         return {
@@ -774,13 +762,10 @@ class ScanDetectMixin:
     def region_modus(self, daten: Optional[dict] = None) -> dict:
         """Schaltet das Region- bzw. Aktionspunkt-Werkzeug scharf.
 
-        **Der Modus allein reicht nicht.** Dieselbe Geste setzt je nach Scan-Art
-        eine andere Region, und die Art ist Oberflächenzustand — sie steht
-        bewusst nicht in der Brücke. Deshalb sagt der Befehl, worauf er wirkt;
-        gemerkt wird es nur, solange das Werkzeug an ist.
-
-        Der Rückweg ist wie überall die markierte Kachel selbst: nochmal
-        derselbe Modus schaltet zurück ins Auswählen.
+        Dieselbe Geste setzt je nach Scan-Art eine andere Region, und die Art ist
+        Oberflächenzustand — deshalb sagt der Befehl, worauf er wirkt, und gemerkt
+        wird es nur, solange das Werkzeug an ist. Rückweg ist wie überall die
+        markierte Kachel selbst.
         """
         self._scan_laden()
         daten = daten or {}
