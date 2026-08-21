@@ -116,9 +116,140 @@ function kategorienWerte(zusatz) {
   return werte;
 }
 
-function kategorienListe(id, zusatz) {
-  return el("datalist", {id: id},
-    kategorienWerte(zusatz).map((k) => el("option", {value: k})));
+/* ------------------------------------------------------------ Kategorie wählen
+ *
+ * **Vorhandene anklicken, neue tippen — und die neue ist beim naechsten Item
+ * gleich anklickbar.** Ein freies Textfeld allein hat genau das Problem, das man
+ * nicht sehen kann: „Helme", „helme" und „Helmr" sind drei Kategorien. Items
+ * derselben Kategorie konkurrieren miteinander (das kleinere P gewinnt) — eine
+ * vertippte trennt ein Item still von seiner Gruppe, und nichts wird rot.
+ *
+ * Ein <select> allein waere zu streng: neue Kategorien muessen ohne einen
+ * zweiten Bedienweg entstehen koennen. Also beides in EINEM Bedienelement, mit
+ * dem Auswaehlen als Normalfall — und getippt wird nur noch, wenn man es
+ * ausdruecklich will. Vorher war Tippen der einzige Weg und die Vorschlagsliste
+ * (`<datalist>`) ein Angebot, das man kennen musste. */
+const KATEGORIE_NEU = "\u0000neu";   // als Kategoriename nicht eingebbar
+
+/* Welche Kategorie-Felder gerade im Tippen stehen — als Schluessel, nicht als
+ * DOM-Verweis.
+ *
+ * **Der Modus muss den Neuaufbau ueberleben.** Die Ansicht wird nach jeder
+ * Bruecken-Antwort neu gebaut, und der Entwurf speichert 900 ms nach der
+ * letzten Aenderung von selbst: wer „+ neue Kategorie" waehlt und anfaengt zu
+ * tippen, saehe sein Feld mitten im Wort wieder zur Auswahlliste werden.
+ * Dieselbe Mechanik wie bei `offeneHilfen` und `klappZu` — und derselbe Grund,
+ * aus dem `fokusMerken()` existiert. */
+const kategorieFrei = new Set();
+
+/** Was in der Lern-Vorschau schon getippt, aber noch nicht uebernommen ist.
+ *
+ * Eine Kategorie, die in Zeile 1 entsteht, muss in Zeile 2 waehlbar sein —
+ * sonst tippt man sie zwanzigmal und beim einundzwanzigsten Mal anders. */
+function kategorieZusatz() {
+  return [...document.querySelectorAll(".kategorie-wahl")]
+    .map((n) => (n.wert ? n.wert() : "")).filter(Boolean);
+}
+
+/** Zieht die Auswahllisten aller Kategorie-Bedienelemente nach. */
+function kategorieOptionenAktualisieren() {
+  for (const n of document.querySelectorAll(".kategorie-wahl")) {
+    if (n.optionenNeu) n.optionenNeu();
+  }
+}
+
+function kategorieWahl(wert, beim_setzen, opts) {
+  opts = opts || {};
+  const huelle = el("span", {class: "kategorie-wahl"
+    + (opts.klasse ? " " + opts.klasse : "")});
+  // Woran der Tipp-Modus haengt. Ohne Schluessel gibt es ihn nicht — dann
+  // entscheidet allein, ob es etwas zu waehlen gibt.
+  const schluessel = opts.schluessel || "";
+  let aktuell = String(wert || "");
+  let gesperrt = false;
+
+  const werte = () => kategorienWerte(kategorieZusatz().concat(aktuell));
+  const melde = (v) => {
+    aktuell = v;
+    // Ein uebernommener Name steht beim naechsten Aufbau in der Liste — also
+    // ist das Tippen hier zu Ende. Bleibt das Feld leer, bleibt es offen:
+    // sonst waere ein Vertipper („Enter" auf nichts) ein Rueckwurf in die
+    // Auswahl, und man faengt von vorn an.
+    if (schluessel && v) kategorieFrei.delete(schluessel);
+    beim_setzen(v);
+  };
+
+  const auswahlfeld = () => {
+    const s = el("select", {title: opts.titel
+      || "Vorhandene Kategorie wählen — oder unten eine neue anlegen"});
+    s.optionen = () => {
+      const alt = aktuell;
+      s.replaceChildren(
+        el("option", {value: ""}, opts.leer || "— ohne Kategorie —"),
+        ...werte().map((k) => el("option", {value: k}, k)),
+        el("option", {value: KATEGORIE_NEU}, "＋ neue Kategorie …"));
+      s.value = alt;
+    };
+    s.optionen();
+    s.addEventListener("change", () => {
+      if (s.value === KATEGORIE_NEU) return tausche(true, "");
+      melde(s.value);
+    });
+    return s;
+  };
+
+  const textfeld = (vorgabe) => {
+    const e = el("input", {value: vorgabe, autocomplete: "off",
+      placeholder: opts.platzhalter || "Neue Kategorie",
+      title: "Neuen Namen tippen — beim nächsten Item steht er in der Liste"});
+    e.addEventListener("change", () => melde(e.value.trim()));
+    e.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") e.blur();
+      // ESC fuehrt zurueck in die Liste, sonst waere das Tippen eine Falltuer:
+      // hinein kommt man mit einem Klick, heraus nur ueber einen Umweg.
+      if (ev.key === "Escape" && werte().length) { ev.stopPropagation(); tausche(false); }
+    });
+    return e;
+  };
+
+  function tausche(frei, vorgabe, merken) {
+    if (schluessel && merken !== false) {
+      if (frei) kategorieFrei.add(schluessel);
+      else kategorieFrei.delete(schluessel);
+    }
+    const neu = frei ? textfeld(vorgabe === undefined ? aktuell : vorgabe)
+                     : auswahlfeld();
+    neu.disabled = gesperrt;
+    huelle.replaceChildren(neu);
+    huelle.wert = () => (frei ? neu.value.trim() : neu.value);
+    huelle.optionenNeu = frei ? null : neu.optionen;
+    if (frei && merken !== false) neu.focus();
+  }
+
+  // **Getippt wird nur, wenn es nichts zu waehlen gibt** — oder wenn der
+  // aktuelle Wert (ein Vorschlag der Lern-Vorschau) noch in keiner Liste steht,
+  // oder wenn hier vor dem Neuaufbau schon getippt wurde.
+  const vorhandene = kategorienWerte(kategorieZusatz());
+  tausche(!vorhandene.length
+          || (schluessel && kategorieFrei.has(schluessel))
+          || (!!aktuell && !vorhandene.some((k) => k === aktuell)),
+          undefined, false);
+  huelle.sperren = (an) => {
+    gesperrt = an;
+    for (const n of huelle.children) n.disabled = an;
+  };
+  huelle.gesperrt = () => gesperrt;
+  // Von aussen setzen (Sammel-Aktion der Lern-Vorschau). Steht der Wert nicht
+  // in der Liste, muss das Feld dafuer ins Tippen wechseln — sonst schluckt
+  // ein <select> ihn stillschweigend.
+  huelle.setzen = (v) => {
+    aktuell = String(v || "");
+    const da = kategorienWerte(kategorieZusatz());
+    tausche(!!aktuell && !da.some((k) => k === aktuell), aktuell);
+    if (huelle.optionenNeu) huelle.optionenNeu();
+    beim_setzen(aktuell);
+  };
+  return huelle;
 }
 
 function itemsDerKategorie(kategorie) {
@@ -156,23 +287,25 @@ function allePrioritaeten() {
 /** Noch nicht uebernommene Kategorien gehoeren bereits zur aktuellen Eingabe.
  *  Die Vorschau darf nicht erst nach „Ausgewaehlte uebernehmen" von ihnen
  *  erfahren, sonst muss derselbe freie Text in jeder Zeile neu getippt werden. */
+/** Eine in einer Zeile entstandene Kategorie in allen anderen waehlbar machen.
+ *
+ * Ohne das tippt man dieselbe Kategorie in zwanzig Zeilen — und beim
+ * einundzwanzigsten Mal anders. Fuellte frueher eine `<datalist>`; seit die
+ * Kategorie ein eigenes Bedienelement ist, zieht es dessen Auswahllisten nach. */
 function scanReviewKategorienAktualisieren() {
-  const liste = $("review-kategorien");
-  if (!liste) return;
-  const neu = [...document.querySelectorAll('input[list="review-kategorien"]')]
-    .map((n) => n.value);
-  liste.replaceChildren(...kategorienWerte(neu).map((k) => el("option", {value: k})));
+  kategorieOptionenAktualisieren();
 }
 
 function scanReviewKategorieAufAuswahl(eingabe) {
-  const wert = eingabe.value.trim();
+  const wert = eingabe.wert();
   if (!wert) return;
   for (const zeile of document.querySelectorAll(".scan-review-zeile")) {
-    const haken = zeile.querySelector('input[type="checkbox"]');
+    const haken = zeile.querySelector(".scan-review-haken");
     const kategorie = zeile.querySelector(".scan-review-kategorie");
-    if (haken && haken.checked && kategorie && !kategorie.disabled) kategorie.value = wert;
+    if (haken && haken.checked && kategorie && !kategorie.gesperrt()) {
+      kategorie.setzen(wert);
+    }
   }
-  scanReviewKategorienAktualisieren();
 }
 
 function prioritaetsfeld(wert, kategorie, beim_setzen) {
@@ -2168,11 +2301,6 @@ function scanListeItems(ziel) {
     return;
   }
   scanVorschauenHolen(liste.map((i) => i.name));
-  // **Eine Kategorienliste fuer alle Masken, nicht eine pro Item.** Ein
-  // <datalist> haengt an seiner id; sechzig davon mit derselben id waeren
-  // neunundfuenfzig, die der Browser ignoriert.
-  const listenId = "item-kategorien";
-  ziel.appendChild(kategorienListe(listenId));
   let letzteKategorie = null;
   for (const i of liste) {
     const kategorie = i.kategorie || "Ohne Kategorie";
@@ -2180,7 +2308,7 @@ function scanListeItems(ziel) {
       ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
       letzteKategorie = kategorie;
     }
-    ziel.appendChild(scanItemMaske(i, listenId));
+    ziel.appendChild(scanItemMaske(i));
   }
 }
 
@@ -2196,7 +2324,7 @@ function scanListeItems(ziel) {
  * Inspektor — er hat den Platz fuer das grosse Bild, und man braucht es selten.
  * Name, Kategorie und Prioritaet stehen dafuer NUR hier: dieselbe Sache an zwei
  * Stellen waere zwei Wahrheiten, und man muesste raten, welche fuehrt. */
-function scanItemMaske(i, listenId) {
+function scanItemMaske(i) {
   const setze = (feld, wert) => rufScan("scan_item_setzen",
                                         {name: i.name, feld: feld, wert: wert});
   const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
@@ -2207,12 +2335,12 @@ function scanItemMaske(i, listenId) {
   name.addEventListener("change", () => setze("name", name.value));
   name.addEventListener("keydown", (e) => { if (e.key === "Enter") name.blur(); });
 
-  const kat = el("input", {value: i.kategorie || "", list: listenId, autocomplete: "off",
-                           placeholder: "Kategorie",
-                           title: "Items derselben Kategorie konkurrieren; die "
-                                  + "kleinere Priorität gewinnt"});
-  kat.addEventListener("change", () => setze("kategorie", kat.value));
-  kat.addEventListener("keydown", (e) => { if (e.key === "Enter") kat.blur(); });
+  // Vorhandene anklicken, neue tippen — dasselbe Bedienelement wie in der
+  // Lern-Vorschau. Ein freies Textfeld allein macht aus „Helme" und „helme"
+  // zwei Kategorien, und Items derselben Kategorie konkurrieren miteinander.
+  const kat = kategorieWahl(i.kategorie || "", (v) => setze("kategorie", v),
+    {titel: "Items derselben Kategorie konkurrieren; die kleinere Priorität gewinnt",
+     leer: "— ohne —", schluessel: "item:" + i.name});
 
   const prio = el("input", {type: "number", value: i.prioritaet, min: 0, step: 1,
                             title: "Priorität — kleiner gewinnt"});
@@ -2585,7 +2713,6 @@ function scanInspektor() {
 }
 
 function scanReview(ziel) {
-  const kategorienId = "review-kategorien";
   const itemsId = "review-items";
   const bekannteNamen = new Set((SC.review.itemnamen || []).map(String));
   const kopf = el("div", {class: "abschnitt"},
@@ -2596,12 +2723,11 @@ function scanReview(ziel) {
       "entfernt; das Item und seine Bilder bleiben gelernt."));
   const vorhanden = allePrioritaeten();
   if (vorhanden) kopf.appendChild(vorhanden);
-  const sammelKategorie = el("input", {
-    list: kategorienId, autocomplete: "off",
-    placeholder: "Kategorie für alle ausgewählten Items",
-    title: "Bestehende Kategorie auswählen oder eine neue eingeben",
+  const sammelKategorie = kategorieWahl("", scanReviewKategorienAktualisieren, {
+    leer: "— Kategorie für alle ausgewählten —",
+    platzhalter: "Kategorie für alle ausgewählten Items",
+    schluessel: "review-sammel",
   });
-  sammelKategorie.addEventListener("change", scanReviewKategorienAktualisieren);
   kopf.appendChild(el("div", {class: "scan-review-sammel"}, sammelKategorie,
     el("button", {class: "btn still", type: "button",
       onclick: () => scanReviewKategorieAufAuswahl(sammelKategorie)},
@@ -2609,23 +2735,23 @@ function scanReview(ziel) {
   ziel.appendChild(kopf);
   const liste = el("div", {class: "abschnitt wachsend scan-review"});
   for (const z of SC.review.zeilen) {
-    const haken = el("input", {type: "checkbox"});
+    const haken = el("input", {type: "checkbox", class: "scan-review-haken"});
     const standardAuswahl = !!z.ausgewaehlt;
     const vorhandenerName = String(z.vorhanden || "");
     let alsAnderes = false;
     let vorherigeAuswahl = standardAuswahl;
     haken.checked = standardAuswahl;
     haken.title = "Angehakt: im aktuellen Scan verwenden · abgehakt: auslassen oder entfernen";
-    const name = el("input", {value: z.name, list: itemsId, autocomplete: "off",
+    const name = el("input", {class: "scan-review-name",
+      value: z.name, list: itemsId, autocomplete: "off",
       placeholder: "Item-Name", title: "Vorhandenes Item auswählen oder neuen Namen eingeben"});
-    const kat = el("input", {
-      class: "scan-review-kategorie",
-      value: z.kategorie || "", list: kategorienId, autocomplete: "off",
-      placeholder: "Kategorie auswählen oder neu eingeben",
-      title: "Bestehende Kategorie auswählen oder eine neue eingeben",
-    });
-    kat.addEventListener("change", scanReviewKategorienAktualisieren);
+    // Dasselbe Bedienelement wie in der Item-Maske: waehlen ist der Normalfall,
+    // tippen die Ausnahme. Gerade hier entstehen die Kategorien, und gerade
+    // hier tippt man sie sonst zwanzigmal — beim einundzwanzigsten Mal anders.
+    const kat = kategorieWahl(z.kategorie || "", scanReviewKategorienAktualisieren,
+      {klasse: "scan-review-kategorie", schluessel: "review:" + z.slot});
     const prio = el("input", {
+      class: "scan-review-prio",
       type: "number", value: z.prioritaet ?? 1, min: 0, step: 1,
       title: "Kleinere Zahl gewinnt; 0 setzt das Item in seiner Kategorie nach vorn",
     });
@@ -2642,7 +2768,7 @@ function scanReview(ziel) {
       // Kategorie und Priorität des erkannten Profils sind direkt änderbar.
       // Wird ein anderer vorhandener Name gewählt, schützen wir dagegen dessen
       // Werte vor den leeren Standards der Aktion „Als anderes Item lernen“.
-      kat.disabled = bestehend && !normalerTreffer;
+      kat.sperren(bestehend && !normalerTreffer);
       prio.disabled = bestehend && !normalerTreffer;
       zeile.dataset.alsAnderes = alsAnderes ? "true" : "false";
       zeile.classList.toggle("entfernen", !haken.checked && normalerTreffer && !!z.im_scan);
@@ -2726,7 +2852,6 @@ function scanReview(ziel) {
     synchronisiere();
     liste.appendChild(zeile);
   }
-  liste.appendChild(kategorienListe(kategorienId));
   liste.appendChild(el("datalist", {id: itemsId},
     [...bekannteNamen].map((name) => el("option", {value: name}))));
   liste.appendChild(el("div", {class: "reihe", style: "margin-top:8px"},
@@ -2737,14 +2862,20 @@ function scanReview(ziel) {
 }
 
 function scanReviewUebernehmen() {
-  const zeilen = [...document.querySelectorAll(".scan-review-zeile")].map((n) => {
-    const inputs = n.querySelectorAll("input");
-    return {slot: n.dataset.slot, ausgewaehlt: inputs[0].checked,
-            vorhanden: n.dataset.vorhanden || "",
-            als_anders: n.dataset.alsAnderes === "true",
-            name: inputs[1].value.trim(), kategorie: inputs[2].value.trim(),
-            prioritaet: Number(inputs[3].value)};
-  });
+  // **Gelesen wird ueber Klassen, nicht ueber Positionen.** Vorher wurden die
+  // Felder einer Zeile durchnummeriert aus `querySelectorAll` gegriffen — wer
+  // eines dazwischen einbaut (oder ein Textfeld durch eine Auswahlliste
+  // ersetzt, wie es die Kategorie jetzt ist), verschiebt still alle folgenden.
+  // Ein Import, der die Prioritaet als Kategorie liest, faellt niemandem auf.
+  const zeilen = [...document.querySelectorAll(".scan-review-zeile")].map((n) => ({
+    slot: n.dataset.slot,
+    ausgewaehlt: n.querySelector(".scan-review-haken").checked,
+    vorhanden: n.dataset.vorhanden || "",
+    als_anders: n.dataset.alsAnderes === "true",
+    name: n.querySelector(".scan-review-name").value.trim(),
+    kategorie: n.querySelector(".scan-review-kategorie").wert(),
+    prioritaet: Number(n.querySelector(".scan-review-prio").value),
+  }));
   rufScan("scan_lernvorschau_uebernehmen", {zeilen: zeilen});
 }
 

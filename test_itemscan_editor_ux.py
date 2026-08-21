@@ -173,7 +173,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("wird zum Scan hinzugefügt", js)
         self.assertIn("wird aus diesem Scan entfernt", js)
         self.assertIn("als_anders: n.dataset.alsAnderes", js)
-        self.assertIn("kat.disabled = bestehend && !normalerTreffer", js)
+        self.assertIn("kat.sperren(bestehend && !normalerTreffer)", js)
         self.assertIn('name.value = z.neu_name || "Item"', js)
 
     def test_repeated_recognized_item_has_one_shared_scan_membership(self):
@@ -248,6 +248,25 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(self.bridge.items["Ruestung"].category, "Traenke")
         self.assertEqual(state["kategorien"], ["Helme", "Traenke"])
 
+        # Leerraum zählt nicht mit: „ Helme " und „Helme  Gross" gegen
+        # „Helme Gross" wären sonst eigene Kategorien — und Items derselben
+        # Kategorie konkurrieren miteinander, eine getrennte verliert still
+        # ihre Gruppe.
+        self.bridge.scan_item_setzen({
+            "name": "Ruestung", "feld": "kategorie", "wert": "  helme  ",
+        })
+        self.assertEqual(self.bridge.items["Ruestung"].category, "Helme")
+        self.bridge.scan_item_setzen({
+            "name": "Ruestung", "feld": "kategorie", "wert": "Schwere   Helme",
+        })
+        self.assertEqual(self.bridge.items["Ruestung"].category, "Schwere Helme")
+        # Weiter wird NICHT geraten: ein getipptes Wort stillschweigend in ein
+        # anderes zu ändern ist schlimmer als der Tippfehler selbst.
+        self.bridge.scan_item_setzen({
+            "name": "Ruestung", "feld": "kategorie", "wert": "Helmr",
+        })
+        self.assertEqual(self.bridge.items["Ruestung"].category, "Helmr")
+
     def test_category_fields_offer_existing_and_free_text(self):
         """Kategorie: vorhandene vorschlagen, neue trotzdem tippbar.
 
@@ -261,15 +280,23 @@ class ItemscanEditorUxTest(unittest.TestCase):
         js = (Path(self.old_cwd) /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
-        self.assertIn('el("datalist"', js)
-        self.assertIn("SC.kategorien.map", js)
-        # Beide Stellen, an denen man eine Kategorie eingibt: die Maske in der
-        # Item-Liste und die Lern-Vorschau. Jede hängt an ihrer eigenen
-        # Listen-id — ein <datalist> gilt nur für die id, die es trägt.
-        self.assertIn("list: listenId", js)
-        self.assertIn("list: kategorienId", js)
-        self.assertIn('placeholder: "Kategorie"', js)
-        self.assertIn("Kategorie auswählen oder neu eingeben", js)
+        # EIN Bedienelement für beide Stellen, an denen eine Kategorie entsteht:
+        # die Maske in der Item-Liste und die Lern-Vorschau. Vorher war es
+        # zweimal ein freies Textfeld mit einer `<datalist>` daneben — ein
+        # Angebot, das man kennen musste, und tippen war der einzige Weg.
+        self.assertIn("function kategorieWahl(", js)
+        self.assertEqual(js.count("kategorieWahl("), 4)   # Definition + 3 Aufrufe
+        # Vorhandene stehen zur Wahl …
+        self.assertIn("kategorienWerte(", js)
+        self.assertIn('el("option", {value: k}, k)', js)
+        # … eine neue lässt sich trotzdem anlegen …
+        self.assertIn("＋ neue Kategorie", js)
+        self.assertIn("KATEGORIE_NEU", js)
+        # … und ist danach überall wählbar, ohne sie ein zweites Mal zu tippen.
+        self.assertIn("function kategorieOptionenAktualisieren", js)
+        # Getippt wird nur, wenn es nichts zu wählen gibt — sonst wäre das
+        # Auswählen wieder das Angebot, das man kennen muss.
+        self.assertIn("tausche(!vorhandene.length", js)
 
     def test_priority_zero_shifts_only_the_same_category(self):
         self.bridge.items = {
@@ -396,7 +423,14 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("Bereits gesetzte Prioritäten", js)
         self.assertIn("Ganz nach vorn", js)
         self.assertIn('"P" + i.prioritaet', js)
-        self.assertIn("prioritaet: Number(inputs[3].value)", js)
+        # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
+        # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem
+        # <select> wurde. Ein Import, der die Priorität als Kategorie liest,
+        # fällt niemandem auf.
+        self.assertIn('n.querySelector(".scan-review-prio").value', js)
+        self.assertIn('n.querySelector(".scan-review-name").value', js)
+        self.assertIn('n.querySelector(".scan-review-kategorie").wert()', js)
+        self.assertNotIn("inputs[3].value", js)
         self.assertIn("function scanReviewKategorienAktualisieren", js)
         self.assertIn("Auf ausgewählte anwenden", js)
         self.assertIn("neue Vorlage für", js)

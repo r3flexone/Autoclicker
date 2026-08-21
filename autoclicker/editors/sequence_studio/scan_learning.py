@@ -191,8 +191,16 @@ class ScanLearningMixin:
         return self._scan_melde("Lernvorschau verworfen.", "info")
 
     def _kategorie_normalisieren(self, wert) -> Optional[str]:
-        """Verwendet bei gleicher Schreibweise die bereits bekannte Kategorie."""
-        neu = str(wert or "").strip()
+        """Verwendet bei gleicher Schreibweise die bereits bekannte Kategorie.
+
+        **Leerraum zaehlt nicht mit.** „Helme", „ Helme" und „Helme  Gross"
+        gegen „Helme Gross" waeren sonst verschiedene Kategorien — und Items
+        derselben Kategorie konkurrieren miteinander, eine getrennte verliert
+        also still ihre Gruppe. Aehnlichkeit darueber hinaus wird NICHT geraten:
+        ein getipptes Wort stillschweigend in ein anderes zu aendern ist
+        schlimmer als der Tippfehler.
+        """
+        neu = " ".join(str(wert or "").split())
         if not neu:
             return None
         schluessel = neu.casefold()

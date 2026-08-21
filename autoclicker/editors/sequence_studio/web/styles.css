@@ -627,7 +627,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}
 /* Kategorie nimmt den Platz, die Prioritaet ist eine Zahl mit zwei Stellen. */
 .scan-maske-unten{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:5px}
-.scan-maske input{font-size:11.5px;padding:4px 6px;width:100%;min-width:0}
+.scan-maske input,.scan-maske select{font-size:11.5px;padding:4px 6px;width:100%;
+  min-width:0}
+/* Die Kategorie ist EIN Bedienelement mit zwei Gestalten (Liste oder Textfeld).
+   Die Huelle traegt die Breite, damit das Raster beim Wechsel nicht springt. */
+.kategorie-wahl{display:block;min-width:0}
+.kategorie-wahl > *{width:100%;min-width:0}
 .scan-maske-stand{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an

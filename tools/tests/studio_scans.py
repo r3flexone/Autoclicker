@@ -1305,14 +1305,31 @@ check("die Maske klappt sie beim Gewaehlten auf",
 check("und der Rueckweg ohne Maske ruft dieselbe",
       "scanItemDetails(ziel, i)" in _html18)
 
-# **Ein <datalist> haengt an seiner id.** Sechzig Masken mit sechzig gleichen
-# ids waeren neunundfuenfzig, die der Browser ignoriert - also eine
-# Kategorie-Vervollstaendigung, die je nach Position mal geht und mal nicht.
-_liste18 = _html18[_html18.index("function scanListeItems("):]
-_liste18 = _liste18[:_liste18.index("\n/** Ein Item als kleine Maske")]
-check("die Kategorienliste steht EINMAL fuer alle Masken",
-      _liste18.count("kategorienListe(") == 1)
-check("und die Maske bekommt ihre id gereicht", "listenId" in _maske18)
+# **Waehlen ist der Normalfall, tippen die Ausnahme.** Ein freies Textfeld
+# allein macht aus „Helme" und „helme" zwei Kategorien - und Items derselben
+# Kategorie konkurrieren miteinander, eine vertippte trennt ein Item still von
+# seiner Gruppe. Eine `<datalist>` daneben war ein Angebot, das man kennen
+# musste; sechzig Masken haetten sich ausserdem eine id teilen muessen.
+check("die Maske waehlt die Kategorie ueber das gemeinsame Bedienelement",
+      "kategorieWahl(i.kategorie" in _maske18)
+check("und baut kein eigenes Textfeld mehr dafuer",
+      "list: listenId" not in _html18 and "kategorienListe(" not in _html18)
+
+# **Der Tipp-Modus muss den Neuaufbau ueberleben.** Die Ansicht wird nach jeder
+# Bruecken-Antwort neu gebaut, und der Entwurf speichert 900 ms nach der letzten
+# Aenderung von selbst: wer „+ neue Kategorie" waehlt und anfaengt zu tippen,
+# saehe sein Feld sonst mitten im Wort wieder zur Auswahlliste werden. Dieselbe
+# Mechanik wie bei `offeneHilfen` und `klappZu`.
+check("es gibt einen Merker fuer offene Tipp-Felder",
+      "const kategorieFrei = new Set()" in _html18)
+check("und jede Stelle bringt ihren Schluessel mit",
+      _html18.count("schluessel:") >= 3)
+check("ein uebernommener Name beendet das Tippen",
+      "if (schluessel && v) kategorieFrei.delete(schluessel);" in _html18)
+
+# Dieselbe Rueckweg-Regel wie ueberall: hinein mit einem Klick, heraus auch.
+check("ESC fuehrt aus dem Tippen zurueck in die Liste",
+      'ev.key === "Escape" && werte().length' in _html18)
 
 # **Derselbe Befehl heisst ueberall gleich.** Er stand im Assistenten als
 # „Erkennung testen" und im Inspektor als „Items erkennen" — zwei Namen fuer

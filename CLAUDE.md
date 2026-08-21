@@ -1155,11 +1155,44 @@ Sechs Regeln, an denen der Reiter hängt:
   gewählt, während eine andere Liste offen steht) ruft dieselbe, sonst wären es
   zwei Stellen, an denen ein Feld fehlen kann.
 
-  Eine Falle steckt in der Kategorie-Vervollständigung: ein `<datalist>` hängt
-  an seiner `id`. Sechzig Masken mit sechzig gleichen ids wären
-  neunundfünfzig, die der Browser ignoriert — also eine Vervollständigung, die
-  je nach Position mal geht und mal nicht. Die Liste wird **einmal** gebaut und
-  an jede Maske gereicht.
+- **Die Kategorie wird gewählt, nicht getippt** (`kategorieWahl()`). Ein freies
+  Textfeld allein hat das Problem, das man nicht sehen kann: „Helme", „helme"
+  und „Helmr" sind drei Kategorien — und Items derselben Kategorie konkurrieren
+  miteinander (das kleinere P gewinnt), eine vertippte trennt ein Item still von
+  seiner Gruppe. Ein `<select>` allein wäre zu streng: neue Kategorien müssen
+  ohne einen zweiten Bedienweg entstehen können. Also **beides in einem
+  Bedienelement**, mit dem Auswählen als Normalfall und `＋ neue Kategorie …`
+  als Ausweg; was dort übernommen wird, steht beim nächsten Item in der Liste.
+
+  Vorher war Tippen der einzige Weg und die `<datalist>` daneben ein Angebot,
+  das man kennen musste. Sie ist ersatzlos weg — mit ihr `kategorienListe()`,
+  denn sie hing an einer `id`, und sechzig Masken mit derselben `id` wären
+  neunundfünfzig gewesen, die der Browser ignoriert.
+
+  Drei Regeln dazu:
+  - **Der Tipp-Modus überlebt den Neuaufbau** (`kategorieFrei`, Schlüssel je
+    Stelle). Die Ansicht wird nach jeder Brücken-Antwort neu gebaut, und der
+    Entwurf speichert 900 ms nach der letzten Änderung von selbst: sonst würde
+    das Feld mitten im Wort wieder zur Auswahlliste. Dieselbe Mechanik wie
+    `offeneHilfen` und `klappZu`, derselbe Grund wie bei `fokusMerken()`.
+  - **Der Rückweg ist ESC**, solange es etwas zu wählen gibt — hinein mit einem
+    Klick, heraus auch. Ein Modus, in den man nur hinein kommt, ist eine
+    Falltür; dieselbe Regel wie bei den Modus-Kacheln und der ELSE-Kachel.
+  - **Geraten wird nicht.** `_kategorie_normalisieren()` zieht Leerraum zusammen
+    und übernimmt eine bekannte Schreibweise bei gleicher Klein-/Grossschreibung
+    — mehr nicht. Ein getipptes Wort stillschweigend in ein ähnliches zu ändern
+    ist schlimmer als der Tippfehler.
+
+  Dasselbe Bedienelement steht in der Lern-Vorschau: dort entstehen die
+  Kategorien, und dort tippte man sie zwanzigmal. Damit eine in Zeile 1
+  angelegte in Zeile 2 wählbar ist, zieht `kategorieOptionenAktualisieren()`
+  die Listen aller offenen Felder nach.
+
+  Und weil die Kategorie dort jetzt eine Auswahlliste sein kann, liest
+  `scanReviewUebernehmen()` die Zeilen **über Klassen statt über Positionen**.
+  Vorher wurden die Felder durchnummeriert gegriffen; wer eines dazwischen
+  einbaut, verschiebt still alle folgenden — ein Import, der die Priorität als
+  Kategorie liest, fällt niemandem auf.
 - **„Items erkennen" muss man in der Item-Liste sehen.** Der Knopf färbte die
   Rechtecke im Bild und füllte die Ergebnisleiste — wer aber in der Item-Liste
   stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick nichts
