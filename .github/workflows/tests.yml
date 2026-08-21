@@ -58,25 +58,36 @@ jobs:
         if: runner.os == 'Linux'
         run: python -m pip install mss pynput python-xlib
 
-      - name: Gesamte Suite
-        # Nur die Testmodule im Projektstamm laden; dort liegt auch die grosse
-        # Vertragssuite, die ueber test_regression.py gestartet wird.
-        # Bash expandiert das Muster auf Linux und Windows gleich; PowerShell
-        # würde `test_*.py` dagegen als wörtlichen Modulnamen weiterreichen.
-        if: matrix.bilder == 'mit'
-        shell: bash
-        run: python -m unittest -v test_*.py
+      # EIN Aufruf fuer alles - dieselbe Zeile, die man vor einem Commit tippt.
+      # Vorher standen hier zwei Schritte mit einer `if`-Bedingung, weil zwei
+      # Wurzelmodule ohne Pillow schon beim IMPORT starben. Das ist repariert
+      # (sie ueberspringen jetzt sauber), und damit faellt der Sonderfall weg.
+      #
+      # Die Rauchtests brauchen einen Browser und ueberspringen sich hier selbst;
+      # sie laufen im eigenen Job unten, wo einer installiert ist.
+      - name: Alle Tests
+        run: python tools/alle_tests.py --nur vertrag --nur wurzel
         env:
           PYTHONIOENCODING: utf-8
 
-      # Ohne Bildpakete laeuft die Vertragssuite allein: zwei Wurzelmodule
-      # (`test_itemscan_editor_ux`, `test_scan_services`) importieren PIL schon
-      # beim Laden und koennen ohne Pillow gar nicht erst starten. Sie sind in
-      # der `mit`-Variante auf beiden Plattformen abgedeckt; was hier geprueft
-      # werden soll, ist der Degradationspfad - und der steckt in test_logic.
-      - name: Vertragssuite ohne Bildpakete
-        if: matrix.bilder == 'ohne'
-        run: python tools/test_logic.py
+  # Die dritte Schicht: die echte Seite in einem echten Browser vor der echten
+  # Bruecke. Sie faengt, was die Vertragssuite nicht sehen KANN - die ruft die
+  # Bruecken-Methoden direkt auf, also genau so, wie die Seite es nicht tut.
+  # Ein Tippfehler in einem Methodennamen faellt dort nicht auf und im Fenster
+  # sofort: der Reiter bleibt leer.
+  #
+  # Nur auf Linux und nur einmal: es geht um die Seite, nicht um die Plattform.
+  rauchtests:
+    name: Rauchtests (Browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: python -m pip install pillow numpy opencv-python-headless playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python tools/alle_tests.py --nur rauch
         env:
           PYTHONIOENCODING: utf-8
 

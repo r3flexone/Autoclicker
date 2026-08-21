@@ -13,11 +13,16 @@ UI-Texte sind **Deutsch** — neue Strings ebenso.
 ## Run / Lint / Test
 
 ```bash
-python tools/test_logic.py      # Die Vertragssuite — laeuft auch auf Linux/Mac, Exit 0 = gruen
-python -m unittest test_*.py    # Die unittest-Module im Projektstamm — ZWEITE Suite,
-                                # laeuft in CI nur in der Variante MIT Bildpaketen
+python tools/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
+python tools/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
+python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
                                 # Linter (= pyflakes, aber mit noqa)
+
+# Die Schichten einzeln, falls man sie direkt braucht:
+python tools/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
+python -m unittest test_*.py    # Wurzelmodule (enthaelt die Vertragssuite als Wrapper)
+python -m tools.rauchtests.werkzeuge   # ein Rauchtest im Browser
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
@@ -31,16 +36,41 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
 ```
 
-**Es sind ZWEI Suiten, und vor einem Commit laufen beide.** `python tools/test_logic.py`
-**und** `python -m unittest test_*.py` — die zweite sind die `test_*.py` im
-Projektstamm (Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung).
+**Ein Kommando, drei Schichten: `python tools/alle_tests.py`.**
 
-Das steht hier so deutlich, weil genau diese Lücke schon einmal einen roten CI-Lauf
-gekostet hat: `tools/test_logic.py` war grün, gemeldet wurde „alles grün", und die
-Wurzelmodule liefen nie. In `.github/workflows/tests.yml` hängen sie an der Achse
-`bilder: mit` — die `ohne`-Variante startet nur die Vertragssuite, weil zwei
-Wurzelmodule PIL schon beim Import brauchen. **Ein grüner Lauf ohne Bildpakete sagt
-also nichts über die zweite Suite.**
+| Schicht | was sie prüft | braucht |
+|---|---|---|
+| Vertragssuite (`tools/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
+| Wurzelmodule (`test_*.py`) | Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow (sonst übersprungen) |
+| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+
+**Hier standen einmal ZWEI Kommandos, und das hat einen roten CI-Lauf gekostet:**
+`tools/test_logic.py` war grün, gemeldet wurde „alles grün", und die Wurzelmodule
+liefen nie. Die Warnung dazu stand an dieser Stelle — eine Regel, an die man sich
+erinnern muss, ist keine.
+
+Der Grund für die Trennung ist weg: `test_itemscan_editor_ux` und
+`test_scan_services` importierten `PIL` auf Modulebene und starben ohne Pillow
+schon beim LADEN, womit `unittest` gar nicht erst sammelte. Beide überspringen
+jetzt sauber (`@braucht_pillow`), und damit läuft ein Aufruf überall — 106 Tests
+mit Pillow, dieselben 106 mit 23 übersprungenen ohne.
+
+**Was fehlt, wird übersprungen und gesagt, nicht als Fehler gemeldet.** Ein roter
+Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen —
+dieselbe Regel wie bei OpenCV und Pillow im Produktivcode.
+
+**Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen KANN.** Sie
+ruft die Brücken-Methoden direkt auf, also genau so, wie die Seite es *nicht* tut:
+ein Tippfehler in einem Methodennamen, ein `appendChild` mit einer Liste, ein
+Zustand, der einen Neuaufbau nicht überlebt — nichts davon fällt dort auf, und im
+Fenster sofort (der Reiter bleibt leer). Deshalb steht dort ein Chromium mit der
+echten `index.html` davor und der echten `StudioBridge` dahinter; `window.pywebview.api`
+ist ein Proxy, der jeden Aufruf nach Python weiterreicht. Kein Nachbau — dieselben
+zwei Seiten wie im Fenster, nur ohne pywebview dazwischen (`rauchtests/_bruecke.py`).
+
+Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Fenster`, `sandkasten`,
+`stelle_bildschirm`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
+Job, weil dort erst ein Browser installiert werden muss.
 
 **`tools/test_logic.py`** prüft Serialisierung,
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
@@ -49,12 +79,13 @@ deshalb läuft die komplette Logik-Schicht auch hier.
 
 **Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**
 Push und Pull Request auf jedem Branch, als Matrix auf Ubuntu und Windows. Dazu
-kommt ein eigener Job mit `flake8 --select=F` (tote Importe, Tippfehler in Namen).
-Alle drei Jobs müssen grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
+zwei eigene Jobs: die Rauchtests (Browser, nur Linux — es geht um die Seite, nicht
+um die Plattform) und `flake8 --select=F` (tote Importe, Tippfehler in Namen).
+Jeder Job muss grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
 Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
 zu testen sagt nichts darüber, ob die älteste noch trägt.
 
-**Der Test-Job läuft zweimal: `ohne` und `mit` Bildpaketen.** OpenCV und Pillow sind
+**Der Test-Job läuft weiterhin zweimal: `ohne` und `mit` Bildpaketen.** OpenCV und Pillow sind
 optional, und der Code degradiert sauber ohne sie — nur überspringt die Suite dann
 **über hundert Tests** (Template-Vergleich, Masken, Slot-Erkennung, die
 Grössen-Meldung): 1.154 statt 1.273. Ein Lauf nur ohne Fremdpakete ist also grün,

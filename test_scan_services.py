@@ -2,7 +2,18 @@
 
 import unittest
 
-from PIL import Image
+# Pillow ist optional, wie ueberall im Baum. Der Import stand hier oben und ohne
+# Pillow starb das Modul beim LADEN - womit `python -m unittest test_*.py` gar
+# nicht erst sammelte und es zwei Testkommandos brauchte. Uebersprungen wird
+# jetzt, was Bilder braucht; der Rest laeuft.
+try:
+    from PIL import Image
+    PILLOW = True
+except ImportError:                                              # pragma: no cover
+    Image = None
+    PILLOW = False
+
+braucht_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.scan_services import (
     _hue_intervals,
@@ -24,6 +35,7 @@ class HueIntervalsTest(unittest.TestCase):
         self.assertEqual(_hue_intervals(20, 999), [(0, 179)])
 
 
+@braucht_pillow
 class SlotDetectionTest(unittest.TestCase):
     def test_red_hue_wrap_detects_slot(self):
         try:

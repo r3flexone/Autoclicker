@@ -10,7 +10,16 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
-from PIL import Image
+# Pillow ist optional (s. test_scan_services.py): der Import stand hier oben und
+# ohne Pillow starb das Modul beim LADEN.
+try:
+    from PIL import Image
+    PILLOW = True
+except ImportError:                                              # pragma: no cover
+    Image = None
+    PILLOW = False
+
+braucht_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
 from autoclicker.editors.sequence_studio.scans import MODUS_SLOT, MODUS_WAHL
@@ -19,6 +28,7 @@ from autoclicker.models import (
 )
 
 
+@braucht_pillow
 class ItemscanEditorUxTest(unittest.TestCase):
     def setUp(self):
         self.old_cwd = os.getcwd()
