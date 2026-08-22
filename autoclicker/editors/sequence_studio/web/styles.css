@@ -667,12 +667,14 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .kategorie-wahl{display:block;min-width:0}
 .kategorie-wahl > *{width:100%;min-width:0}
 .scan-maske-stand{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)}
-/* Die Stelle im Scan steht VOR dem Namen und in fester Breite, damit die
-   Namensfelder darunter auf einer Kante stehen — eine Spalte, die mit der Zahl
-   waechst, saegt die Liste zurecht. */
-.scan-maske-zeile{display:grid;grid-template-columns:34px minmax(0,1fr);
-  gap:6px;align-items:center}
-.scan-nummer{font:10.5px var(--mono);color:var(--dim);text-align:right}
+/* **Die Stelle im Scan steht UNTER dem Schalter, als eigene Kachel.** Vor dem
+   Namensfeld nahm sie ihm die Breite, liess die Namen ohne Nummer an einer
+   anderen Kante beginnen — und beim Bearbeiten schob sich das Feld darüber. In
+   der ersten Spalte steht sie ausserhalb von allem, was sich beim Tippen
+   aendert. */
+.scan-marke{display:flex;flex-direction:column;align-items:center;gap:5px}
+.scan-nummer{font:10px var(--mono);color:var(--dim);background:var(--bg);
+  border:1px solid var(--line);border-radius:4px;padding:1px 5px}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */

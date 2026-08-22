@@ -1286,6 +1286,12 @@ Sechs Regeln, an denen der Reiter hängt:
   letzte. Die Kachel zeigt `nummer`, der Tooltip nennt `lauf`. Wer nicht zum
   Scan gehört, bekommt keine Nummer statt einer erfundenen.
 
+  **Sie steht unter dem Schalter, in der ersten Spalte** (`.scan-marke`), nicht
+  vor dem Namensfeld: dort nahm sie ihm die Breite, liess die Namen ohne Nummer
+  an einer anderen Kante beginnen — und beim Bearbeiten schob sich das Feld
+  darüber. In der ersten Spalte steht sie ausserhalb von allem, was sich beim
+  Tippen ändert.
+
   Sortiert wird frisch in genau dieser Reihenfolge, der Rest **natürlich nach
   Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich stellt
   „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig

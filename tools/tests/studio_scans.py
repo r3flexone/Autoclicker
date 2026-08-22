@@ -1316,7 +1316,7 @@ check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
 check("keine dritte Liste fuer die Mitgliedschaft",
       "hakenListe(" not in _html18 and "hakenZeile(" not in _html18)
 check("der Haken steht in jeder Maske, an EINER Stelle gebaut",
-      "function maskeHaken(art, name, dabei)" in _html18)
+      "function maskeHaken(art, name, dabei, marke)" in _html18)
 # Die Regel „gehoert dazu ODER wird gerade gesehen" stand in `hakenListe` — sie
 # muss den Umzug ueberlebt haben, sonst verschwindet genau die Auskunft, fuer
 # die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
@@ -1515,8 +1515,20 @@ finally:
     _os.chdir(_cwdN)
     shutil.rmtree(_sandN, ignore_errors=True)
 
-check("die Ansicht zeigt sie vor dem Namen",
-      '"#" + s.nummer' in _html18 and '"scan-nummer"' in _html18)
+# **Sie steht UNTER dem Schalter, als eigene Kachel.** Vor dem Namensfeld nahm
+# sie ihm die Breite, liess die Namen ohne Nummer an einer anderen Kante
+# beginnen — und beim Bearbeiten schob sich das Feld darueber.
+check("die Ansicht zeigt sie als Kachel",
+      '"#" + s.nummer' in _html18
+      and ".scan-nummer{" in _html18 and "border:1px solid var(--line)" in
+      _html18[_html18.index(".scan-nummer{"):_html18.index(".scan-nummer{") + 160])
+check("und zwar in der ersten Spalte, unter dem Haken",
+      'maskeHaken("slot", s.name, s.dabei, nummer)' in _html18
+      and 'el("div", {class: "scan-marke"}, schalter, marke)' in _html18)
+# Das Namensfeld nimmt damit wieder die volle Breite — es gibt keine zweite
+# Spalte mehr davor.
+check("das Namensfeld teilt seine Zeile nicht mehr",
+      "scan-maske-zeile" not in _html18)
 # **„Slot 10" gehoert hinter „Slot 2", nicht dazwischen.** Ein reiner
 # Zeichenvergleich macht aus 45 durchnummerierten Slots eine Liste, die zwar
 # sortiert ist und die man trotzdem nicht lesen kann.

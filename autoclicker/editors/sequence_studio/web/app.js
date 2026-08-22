@@ -2448,9 +2448,15 @@ function scanSichtbar(eintraege, mitKategorie, art) {
   return liste;
 }
 
-/** Der Haken „gehoert zu diesem Scan" — dieselbe Stelle in jeder Maske. */
-function maskeHaken(art, name, dabei) {
-  if (!SC.offen) return el("span", {});
+/** Der Haken „gehoert zu diesem Scan" — dieselbe Stelle in jeder Maske.
+ *
+ * `marke` haengt darunter (die Stelle im Scan, s. `scanSlotMaske`). Sie stand
+ * einmal VOR dem Namensfeld: das kostete dem Feld seine Breite, liess die
+ * Namen ohne Nummer an einer anderen Kante beginnen — und beim Bearbeiten
+ * schob sich das Feld darüber. In der ersten Spalte, unter dem Schalter, steht
+ * sie ausserhalb von allem, was sich beim Tippen ändert. */
+function maskeHaken(art, name, dabei, marke) {
+  if (!SC.offen) return marke || el("span", {});
   const kasten = el("input", {type: "checkbox",
     title: dabei ? "gehört zum Scan „" + SC.offen + "“ — abhaken nimmt es heraus"
                  : "gehört NICHT zum Scan „" + SC.offen + "“"});
@@ -2461,7 +2467,8 @@ function maskeHaken(art, name, dabei) {
     scanAbwahlMerken(art, name, dabei);
     rufScan("scan_mitglied", {scan: SC.offen, art: art, name: name});
   });
-  return el("label", {class: "an"}, kasten);
+  const schalter = el("label", {class: "an"}, kasten);
+  return marke ? el("div", {class: "scan-marke"}, schalter, marke) : schalter;
 }
 
 /** Ein Namensfeld in einer Maske — mit dem Fokus-Anker fuer das Umbenennen. */
@@ -2560,11 +2567,9 @@ function scanSlotMaske(s) {
                          + (s.lauf !== s.nummer ? " (rückwärts)" : "")},
          "#" + s.nummer)
     : null;
-  const felder = el("div", {class: "scan-maske-felder"},
-    nummer ? el("div", {class: "scan-maske-zeile"}, nummer, name) : name,
-    scanSlotStand(s));
+  const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
   return maskeDabei(s.dabei, maskeBauen("slot", s.name, gewaehlt,
-    [maskeHaken("slot", s.name, s.dabei),
+    [maskeHaken("slot", s.name, s.dabei, nummer),
      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
                  title: s.farbe ? "Hintergrund " + s.farbe : "Hintergrund nicht gemessen",
                  style: s.farbe ? "background:" + s.farbe : ""}),
