@@ -1463,6 +1463,72 @@ finally:
 
 
 # ============================================================================
+section("Die Nummer eines Slots ist seine Stelle im Scan")
+
+# **`ItemSlot` hat keine ID — der Name IST der Schlüssel** (`slots.json` ist
+# Name->Eintrag). Eine zu erfinden kostet Eindeutigkeit und sagt nichts; die
+# Stelle im Scan dagegen ist die Zahl, die man an einer Nummer sucht: genau in
+# dieser Reihenfolge sieht `execute_item_scan()` die Slots an.
+import dataclasses as _dcN
+check("ein Slot traegt keine eigene ID",
+      "id" not in {f.name for f in _dcN.fields(_SLOT8)})
+
+_sandN = tempfile.mkdtemp(prefix="studionummer_")
+_cwdN = _os.getcwd()
+_os.chdir(_sandN)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bN = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bN.scan_daten()
+    for _i in range(1, 4):
+        _bN.slots[f"Slot {_i}"] = _SLOT8(
+            name=f"Slot {_i}", scan_region=(_i * 70, 100, _i * 70 + 60, 160),
+            click_pos=(_i * 70 + 30, 130))
+    _bN.scan_neu({"name": "Inv"})
+    for _i in range(1, 4):
+        _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": f"Slot {_i}"})
+    _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+    check("jeder Slot des Scans kennt seine Stelle",
+          [_slotsN[f"Slot {_i}"]["nummer"] for _i in (1, 2, 3)] == [1, 2, 3])
+    check("und wieviele es insgesamt sind",
+          _slotsN["Slot 2"]["gesamt"] == 3)
+
+    # **Die Stelle im Scan und die Stelle im LAUF gehen auseinander**, sobald
+    # „Slots rückwärts" an ist — und die Anzeige darf dann nicht das eine sagen
+    # und das andere meinen.
+    check("vorwaerts sind beide gleich", _slotsN["Slot 1"]["lauf"] == 1)
+    _bN.scan_setzen({"name": "Inv", "feld": "reverse", "wert": True})
+    _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+    check("rueckwaerts dreht sich die Lauf-Stelle um",
+          [_slotsN[f"Slot {_i}"]["lauf"] for _i in (1, 2, 3)] == [3, 2, 1])
+    check("die Stelle im Scan bleibt dieselbe",
+          [_slotsN[f"Slot {_i}"]["nummer"] for _i in (1, 2, 3)] == [1, 2, 3])
+
+    # Wer nicht dazugehoert, hat keine Stelle — und bekommt keine erfundene.
+    _bN.slots["Draussen"] = _SLOT8(name="Draussen", scan_region=(0, 0, 10, 10),
+                                   click_pos=(5, 5))
+    _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+    check("ein Slot ausserhalb des Scans traegt keine Nummer",
+          _slotsN["Draussen"]["nummer"] is None)
+finally:
+    _os.chdir(_cwdN)
+    shutil.rmtree(_sandN, ignore_errors=True)
+
+check("die Ansicht zeigt sie vor dem Namen",
+      '"#" + s.nummer' in _html18 and '"scan-nummer"' in _html18)
+# **„Slot 10" gehoert hinter „Slot 2", nicht dazwischen.** Ein reiner
+# Zeichenvergleich macht aus 45 durchnummerierten Slots eine Liste, die zwar
+# sortiert ist und die man trotzdem nicht lesen kann.
+check("und sortiert Namen so, wie man sie liest",
+      'function nachNamen(a, b)' in _html18
+      and '{numeric: true}' in _html18)
+check("frisch sortiert stehen die Slots in Scan-Reihenfolge",
+      "(a.nummer || 0) - (b.nummer || 0)" in _html18
+      and "|| nachNamen(a.name, b.name)" in _html18)
+
+
+# ============================================================================
 section("Der Fokus ueberlebt ein Umbenennen")
 
 # **Ein Umbenennen aendert die Identitaet — und damit die id, an der der Fokus

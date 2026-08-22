@@ -1273,6 +1273,24 @@ Sechs Regeln, an denen der Reiter hängt:
   Ton bleibt zurückhaltend (kein Hintergrund, gedämpfte Schrift), die **Fläche**
   ist da.
 
+- **Die Nummer eines Slots ist seine Stelle im Scan, keine erfundene ID.**
+  `ItemSlot` hat kein `id`-Feld — der Name *ist* der Schlüssel (`slots.json` ist
+  Name→Eintrag), und eine ID einzuführen hiesse, sie eindeutig zu halten und
+  durch `slot_names`, Presets, Import/Export und die Kalibrierung zu reichen.
+  Dafür kaufte man eine Zahl, die nichts sagt. Die Stelle im Scan sagt dagegen
+  genau das, was man an einer Nummer wissen will: **wann dieser Slot dran ist**
+  — `execute_item_scan()` läuft `slot_names` in dieser Reihenfolge ab.
+
+  Zwei Zahlen, weil sie auseinandergehen: `nummer` ist die Stelle im Scan,
+  `lauf` die im Durchlauf — mit „Slots rückwärts" ist der erste Slot der
+  letzte. Die Kachel zeigt `nummer`, der Tooltip nennt `lauf`. Wer nicht zum
+  Scan gehört, bekommt keine Nummer statt einer erfundenen.
+
+  Sortiert wird frisch in genau dieser Reihenfolge, der Rest **natürlich nach
+  Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich stellt
+  „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
+  durchnummerierten Slots ist die Liste damit sortiert und trotzdem unlesbar.
+
 - **Welche Priorität frei ist, steht da** (`prioritaetsBelegung()`). Die
   Übersicht zeigte nur die vergebenen Ränge; ob P2 belegt ist oder fehlt, sah
   man erst, wenn man P1, P3, P4 las und selbst nachzählte. Sie spannt deshalb

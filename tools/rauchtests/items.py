@@ -204,6 +204,13 @@ def lauf():
                    f"die linke Spalte aendert bei „{reiter}“ ihre Hoehe: "
                    f"{links_vorher} -> {links}")
             f.bild("items_reiter_" + reiter.lower())
+            if art == "slot":
+                # Die Nummer ist die Stelle im Scan — sie muss lueckenlos von 1
+                # an dastehen, sonst zeigt sie etwas anderes an, als der Scan tut.
+                nummern = f.seite.eval_on_selector_all(
+                    "#scan-insp .scan-nummer", "ns => ns.map(n => n.textContent)")
+                pruefe(nummern == ["#" + str(i + 1) for i in range(masken)],
+                       f"Slot-Nummern nicht in Scan-Reihenfolge: {nummern}")
 
         # **Ein Scan war nicht mehr zu loeschen**: der Klick auf ihn oeffnete
         # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand

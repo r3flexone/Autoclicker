@@ -2223,6 +2223,15 @@ function scanListeAktiv() {
   return SC && SC.offen ? "items" : "scans";
 }
 
+/** Namen so vergleichen, wie man sie liest: „Slot 2" vor „Slot 10".
+ *
+ * Ein reiner Zeichenvergleich sortiert „Slot 10" zwischen „Slot 1" und
+ * „Slot 2" — bei fünfundvierzig durchnummerierten Slots ist die Liste damit
+ * unbrauchbar, obwohl sie sortiert ist. */
+function nachNamen(a, b) {
+  return String(a).localeCompare(String(b), "de", {numeric: true});
+}
+
 /** Der Anker, an dem der Fokus einen Neuaufbau ueberlebt — eine id je Maske.
  *
  * Ohne sie zaehlt `fokusMerken()` die Position ueber die ganze Spalte, und die
@@ -2506,10 +2515,17 @@ function maskeDabei(dabei, maske) {
 }
 
 function scanListeSlots(ziel) {
+  // **Frisch sortiert heisst: in der Reihenfolge, in der der Scan sie ansieht.**
+  // Vorher stand die Liste in der Reihenfolge, in der die Slots in der Datei
+  // liegen — bei einem Suchlauf also in Fundreihenfolge, sonst zufällig. Wer
+  // dazugehört, kommt zuerst und in seiner Scan-Position; der Rest natürlich
+  // nach Namen, damit „Slot 2" vor „Slot 10" steht und nicht dahinter.
   const rang = scanOrdnungRang("slot");
   const liste = scanSichtbar(SC.slots, false, "slot").slice().sort((a, b) =>
-    (rang ? rang(a.name) - rang(b.name) : 0)
-    || (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0));
+    rang ? (rang(a.name) - rang(b.name))
+         : ((SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0)
+            || (a.nummer || 0) - (b.nummer || 0)
+            || nachNamen(a.name, b.name)));
   if (!rang) scanOrdnung.slot = liste.map((s) => ({name: s.name, gruppe: ""}));
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
@@ -2534,7 +2550,19 @@ function scanSlotMaske(s) {
                 || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
   const name = maskeName("slot", s.name,
     "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
-  const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
+  // **Die Nummer ist die Stelle im Scan, keine erfundene ID.** Genau in dieser
+  // Reihenfolge sieht `execute_item_scan()` die Slots an — „#7" beantwortet
+  // also die Frage, die man an eine Nummer hat: wann ist dieser hier dran.
+  const nummer = s.nummer
+    ? el("span", {class: "scan-nummer",
+                  title: "Stelle im Scan „" + SC.offen + "“ — wird als "
+                         + s.lauf + ". von " + s.gesamt + " angesehen"
+                         + (s.lauf !== s.nummer ? " (rückwärts)" : "")},
+         "#" + s.nummer)
+    : null;
+  const felder = el("div", {class: "scan-maske-felder"},
+    nummer ? el("div", {class: "scan-maske-zeile"}, nummer, name) : name,
+    scanSlotStand(s));
   return maskeDabei(s.dabei, maskeBauen("slot", s.name, gewaehlt,
     [maskeHaken("slot", s.name, s.dabei),
      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),

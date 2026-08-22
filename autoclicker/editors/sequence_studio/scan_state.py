@@ -409,6 +409,12 @@ class ScanStateMixin:
         # Einmal gerechnet: die Arbeitsfläche steht in der Aufnahme UND
         # entscheidet, welche fremden Slots gerade zu sehen sind.
         flaeche = self._flaeche()
+        # **Die Nummer eines Slots ist seine Stelle im Scan**, nicht eine
+        # erfundene ID: `ItemSlot` hat keine, der Name IST der Schlüssel — und
+        # genau diese Reihenfolge läuft `execute_item_scan()` ab. „#7" heisst
+        # also „wird als siebter angesehen", und das ist die Frage, die man an
+        # eine Nummer hat.
+        nummern = {n: i + 1 for i, n in enumerate(cfg.slot_names)} if cfg else {}
         erkannt = self._erkannte_items()
         return {
             "modus": self.scan_modus,
@@ -419,7 +425,9 @@ class ScanStateMixin:
             # worin gesucht wird.
             "suchbereich": list(self._suchbereich) if self._suchbereich else None,
             "foto": flaeche,
-            "slots": [self._slot_json(s, s.name in dabei_slots, flaeche)
+            "slots": [self._slot_json(s, s.name in dabei_slots, flaeche,
+                                      nummern.get(s.name), len(nummern),
+                                      bool(cfg.reverse) if cfg else False)
                       for s in self.slots.values()],
             "items": [self._item_json(i, i.name in dabei_items, erkannt.get(i.name))
                       for i in self.items.values()],
@@ -513,7 +521,9 @@ class ScanStateMixin:
             return False
 
     def _slot_json(self, slot: ItemSlot, dabei: bool = False,
-                   flaeche: Optional[dict] = None) -> dict:
+                   flaeche: Optional[dict] = None,
+                   nummer: Optional[int] = None, gesamt: int = 0,
+                   rueckwaerts: bool = False) -> dict:
         treffer = self._treffer.get(slot.name)
         breite = slot.scan_region[2] - slot.scan_region[0]
         hoehe = slot.scan_region[3] - slot.scan_region[1]
@@ -540,6 +550,11 @@ class ScanStateMixin:
             # andere. Das ist der zweite Weg zum Löschen.
             "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
             "treffer": treffer,
+            # Die Stelle im offenen Scan (1-basiert) und die Stelle im LAUF —
+            # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
+            "nummer": nummer,
+            "lauf": (gesamt - nummer + 1) if (nummer and rueckwaerts) else nummer,
+            "gesamt": gesamt,
         }
 
     @staticmethod
