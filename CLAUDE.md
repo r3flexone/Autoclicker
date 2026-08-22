@@ -1292,6 +1292,13 @@ Sechs Regeln, an denen der Reiter hängt:
   darüber. In der ersten Spalte steht sie ausserhalb von allem, was sich beim
   Tippen ändert.
 
+  Gezeichnet wird sie als `.zahl` — dieselbe Kachel wie überall sonst, keine
+  eigene daneben —, und die **Grösse** in der Zustandszeile ebenso: sie ist ein
+  gemessener Wert, kein Satz. Was daneben steht („Item 1", „unbekannt",
+  „→ Helme"), ist eine Aussage und bleibt Text. Beide Kacheln stehen auf einer
+  Höhe, weil die erste Spalte `align-self: stretch` trägt und ihren Inhalt
+  auseinanderzieht; ein Rauchtest misst die Unterkanten.
+
   Sortiert wird frisch in genau dieser Reihenfolge, der Rest **natürlich nach
   Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich stellt
   „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig

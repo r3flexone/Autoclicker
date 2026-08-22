@@ -208,9 +208,22 @@ def lauf():
                 # Die Nummer ist die Stelle im Scan — sie muss lueckenlos von 1
                 # an dastehen, sonst zeigt sie etwas anderes an, als der Scan tut.
                 nummern = f.seite.eval_on_selector_all(
-                    "#scan-insp .scan-nummer", "ns => ns.map(n => n.textContent)")
+                    "#scan-insp .scan-marke .zahl",
+                    "ns => ns.map(n => n.textContent)")
                 pruefe(nummern == ["#" + str(i + 1) for i in range(masken)],
                        f"Slot-Nummern nicht in Scan-Reihenfolge: {nummern}")
+                # Nummer und Groesse stehen auf EINER Hoehe — die eine unten in
+                # der ersten Spalte, die andere in der Zustandszeile der
+                # dritten. Ohne `align-self:stretch` laegen sie auseinander.
+                kanten = f.seite.evaluate("""() => {
+                  const m = document.querySelector("#scan-insp .scan-maske");
+                  const n = m.querySelector(".scan-marke .zahl");
+                  const g = m.querySelector(".scan-maske-stand .zahl");
+                  return [Math.round(n.getBoundingClientRect().bottom),
+                          Math.round(g.getBoundingClientRect().bottom)];
+                }""")
+                pruefe(abs(kanten[0] - kanten[1]) <= 1,
+                       f"Nummer und Größe stehen nicht auf einer Höhe: {kanten}")
 
         # **Ein Scan war nicht mehr zu loeschen**: der Klick auf ihn oeffnete
         # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand

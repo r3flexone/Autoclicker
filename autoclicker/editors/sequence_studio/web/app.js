@@ -2561,7 +2561,7 @@ function scanSlotMaske(s) {
   // Reihenfolge sieht `execute_item_scan()` die Slots an — „#7" beantwortet
   // also die Frage, die man an eine Nummer hat: wann ist dieser hier dran.
   const nummer = s.nummer
-    ? el("span", {class: "scan-nummer",
+    ? el("span", {class: "zahl",
                   title: "Stelle im Scan „" + SC.offen + "“ — wird als "
                          + s.lauf + ". von " + s.gesamt + " angesehen"
                          + (s.lauf !== s.nummer ? " (rückwärts)" : "")},
@@ -2580,7 +2580,10 @@ function scanSlotMaske(s) {
 
 /** Die Zustandszeile eines Slots: Groesse, Warnung, letzter Treffer. */
 function scanSlotStand(s) {
-  const teile = [el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe)];
+  // Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel wie
+  // die Nummer daneben. Was daneben steht („Item 1", „unbekannt", „→ Helme"),
+  // ist eine Aussage und bleibt Text.
+  const teile = [el("span", {class: "zahl"}, s.breite + "×" + s.hoehe)];
   // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
   // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der Weg,
   // ihn auszuwaehlen und zu loeschen.

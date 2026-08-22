@@ -672,9 +672,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    anderen Kante beginnen — und beim Bearbeiten schob sich das Feld darüber. In
    der ersten Spalte steht sie ausserhalb von allem, was sich beim Tippen
    aendert. */
-.scan-marke{display:flex;flex-direction:column;align-items:center;gap:5px}
-.scan-nummer{font:10px var(--mono);color:var(--dim);background:var(--bg);
-  border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* Der Schalter oben, die Nummer UNTEN — dadurch steht sie auf derselben Hoehe
+   wie die Zustandszeile in der dritten Spalte, und die Groesse daneben ist
+   dieselbe Kachel (`zahl`). Ohne `stretch` waere die Spalte nur so hoch wie
+   ihr Inhalt, und die beiden lägen ein paar Pixel auseinander. */
+.scan-marke{display:flex;flex-direction:column;align-items:center;gap:5px;
+  align-self:stretch;justify-content:space-between}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */

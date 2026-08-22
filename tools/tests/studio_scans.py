@@ -1518,10 +1518,17 @@ finally:
 # **Sie steht UNTER dem Schalter, als eigene Kachel.** Vor dem Namensfeld nahm
 # sie ihm die Breite, liess die Namen ohne Nummer an einer anderen Kante
 # beginnen — und beim Bearbeiten schob sich das Feld darueber.
+# Und zwar in DERSELBEN Kachel-Klasse wie ueberall sonst (`zahl`) — eine
+# eigene daneben waere ein zweiter Bauplan fuer dasselbe Aussehen.
 check("die Ansicht zeigt sie als Kachel",
-      '"#" + s.nummer' in _html18
-      and ".scan-nummer{" in _html18 and "border:1px solid var(--line)" in
-      _html18[_html18.index(".scan-nummer{"):_html18.index(".scan-nummer{") + 160])
+      '"#" + s.nummer' in _html18 and 'el("span", {class: "zahl",' in _html18)
+# Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel.
+check("und die Groesse daneben ebenso",
+      'el("span", {class: "zahl"}, s.breite + "×" + s.hoehe)' in _html18)
+# Beide auf einer Hoehe: der Schalter oben, die Nummer unten, und die Spalte
+# so hoch wie die Zeile. Ohne `stretch` waere sie nur so hoch wie ihr Inhalt.
+check("und beide auf einer Hoehe",
+      "align-self:stretch;justify-content:space-between}" in _html18)
 check("und zwar in der ersten Spalte, unter dem Haken",
       'maskeHaken("slot", s.name, s.dabei, nummer)' in _html18
       and 'el("div", {class: "scan-marke"}, schalter, marke)' in _html18)
