@@ -684,7 +684,22 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Abschnitt daran. Der Hintergrund muss gesetzt sein, sonst scrollen die Masken
    sichtbar dahinter durch. */
 .scan-kopf{position:sticky;top:0;z-index:3;background:var(--panel)}
-.scan-filter{flex-wrap:wrap;align-items:center;gap:6px}
+/* **Der Kopf ist eine Spalte, kein Fliesstext.** Jedes Bedienelement nimmt die
+   volle Breite — sonst steht „alle dazu" als kurzer Stummel neben dem Schalter,
+   „Sortieren" als noch kuerzerer darunter, und die Klappliste dazwischen zieht
+   sich ueber alles. Drei verschiedene Breiten untereinander lesen sich wie drei
+   verschiedene Ranguebergaenge, obwohl es dreimal dasselbe ist. */
+.scan-filter{display:grid;grid-template-columns:1fr;gap:6px;align-items:center}
+.scan-filter > *{min-width:0;width:100%}
+/* Ein Schalter ist Text mit Kaestchen davor, keine Flaeche — er dehnt sich
+   nicht, sondern behaelt seinen Zeilenfluss. */
+.scan-filter > label.an{width:auto;justify-self:start}
+/* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
+   nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
+   seine Textbreite — bei einem langen Rueckgaengig-Namen kippte das Verhaeltnis
+   von Zeile zu Zeile. Gleiche Spalten stehen still. */
+.knopfpaar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.knopfpaar > .btn{width:100%}
 /* Zwei Zeilen, nicht drei Spalten: „Hintergrundfarbe" und sein Hinweis passten
    nebeneinander nicht in 260 px und ueberschrieben sich gegenseitig. */
 .scan-modus{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;
@@ -768,11 +783,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Der Weg oben in der linken Spalte, wenn die Erkennungs-Arten offen sind:
    dieselbe Schrittleiste wie beim Item-Scan, nur mit anderen Schritten. */
 .scan-testleiste{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
-/* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang
-   sein. Er darf dabei nur sich selbst kuerzen, nicht seinen Nachbarn
-   aus der Zeile schieben. */
-.scan-undo{min-width:0;max-width:50%;flex:0 1 auto;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
+/* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang sein.
+   Im `knopfpaar` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
+   `max-width` braucht es dafuer nicht mehr, die Spalte deckelt ihn. */
+.scan-undo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ------------------------------------------------------------------- Teilen */
 .teilen{flex:1;display:flex;min-height:0}

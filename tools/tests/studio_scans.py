@@ -1544,6 +1544,25 @@ check("mit eigenem Hintergrund", "background:var(--panel)}" in
       _html18[_html18.index(".scan-kopf{"):_html18.index(".scan-kopf{") + 120])
 check("die Reiterleiste nimmt die ganze Breite",
       ".tabs.breit .tab{flex:1 1 0" in _html18 and '"tabs klein breit"' in _html18)
+# **Der Kopf ist eine Spalte, kein Fliesstext.** „alle dazu" stand als kurzer
+# Stummel neben dem Schalter, „Sortieren" als noch kuerzerer darunter, und die
+# Klappliste dazwischen zog sich ueber alles — drei Breiten untereinander lesen
+# sich wie drei Ranguebergaenge, obwohl es dreimal dasselbe ist.
+check("die Filterzeile ist ein Raster mit voller Breite",
+      ".scan-filter{display:grid;grid-template-columns:1fr" in _html18
+      and ".scan-filter > *{min-width:0;width:100%}" in _html18)
+# Ein Schalter ist Text mit Kaestchen davor, keine Flaeche.
+check("nur der Schalter dehnt sich nicht",
+      ".scan-filter > label.an{width:auto" in _html18)
+# Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen: vorher nahm
+# „Items erkennen" den Rest und „Rueckgaengig" seine Textbreite — bei einem
+# langen Rueckgaengig-Namen kippte das Verhaeltnis von Zeile zu Zeile.
+check("zwei Knoepfe teilen sich die Zeile gleichmaessig",
+      ".knopfpaar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr"
+      in _html18 and '"knopfpaar"' in _html18)
+check("und keiner davon dehnt sich mehr auf Kosten des anderen",
+      "wachse" not in _html18[_html18.index('el("div", {class: "knopfpaar"}'):
+                              _html18.index('el("div", {class: "knopfpaar"}') + 1200])
 
 
 # ============================================================================

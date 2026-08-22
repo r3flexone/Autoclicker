@@ -1226,6 +1226,17 @@ Sechs Regeln, an denen der Reiter hängt:
   verhindern, dass die Zahlen dahinter („Slots 72/85") die Aufteilung bei jedem
   Filterwechsel verschieben.
 
+  **Der Kopf ist eine Spalte, kein Fliesstext.** Jedes Bedienelement nimmt die
+  volle Breite (`.scan-filter` als einspaltiges Raster); nur der Schalter dehnt
+  sich nicht, denn er ist Text mit Kästchen davor. Vorher stand „alle dazu" als
+  kurzer Stummel neben dem Schalter, „Sortieren" als noch kürzerer darunter und
+  die Klappliste dazwischen über die ganze Breite — drei verschiedene Breiten
+  untereinander lesen sich wie drei Rangstufen, obwohl es dreimal dasselbe ist.
+  Wo zwei Knöpfe eine Zeile teilen (`.knopfpaar`), bekommen sie **gleiche**
+  Spalten: „Items erkennen" nahm sonst den Rest der Zeile und „Rückgängig" nur
+  seine Textbreite, und weil dessen Beschriftung den letzten Schritt nennt,
+  kippte das Verhältnis bei jeder Änderung.
+
 - **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
   dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der

@@ -2899,17 +2899,17 @@ function scanInspektor() {
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),
-    el("div", {class: "reihe"},
+    el("div", {class: "knopfpaar"},
       scanArt === "item"
         // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
         // erkennen" und im Assistenten als „Erkennung testen" — zwei Namen fuer
         // einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
         // Verschiedenes.
-        ? el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
+        ? el("button", {class: "btn", disabled: !fotoDa() || !SC.slots.length,
                         title: "Hält jeden Slot gegen die Item-Profile und schreibt "
                                + "das Ergebnis an Bild und Item-Liste",
                         onclick: () => rufScan("scan_erkennen")}, "Items erkennen")
-        : el("button", {class: "btn wachse", disabled: !fotoDa() || !erkScan(),
+        : el("button", {class: "btn", disabled: !fotoDa() || !erkScan(),
                         title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
                         onclick: () => erkTesten()},
              scanArt === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
@@ -2929,7 +2929,7 @@ function scanInspektor() {
   // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
   // zurueck in eine andere Liste.
   const tabs = el("div", {class: "tabs klein breit"});
-  const filter = el("div", {class: "reihe scan-filter"});
+  const filter = el("div", {class: "scan-filter"});
   scanListenBlock(tabs, filter, null);
   kopf.appendChild(tabs);
   if (scanMaskenRechts()) {
