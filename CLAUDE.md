@@ -1157,38 +1157,76 @@ Sechs Regeln, an denen der Reiter hängt:
   erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
   nach, statt neu zu rechnen.
 
-- **Ein Item ist mehr als ein Haken** (`scanItemMaske()`). Die Item-Liste konnte
-  nur „gehört dazu / gehört nicht dazu"; Name, Kategorie und Priorität kosteten
-  je einen Klick in die Liste, einen Blick in die rechte Spalte und einen Weg
-  zurück — bei sechzig Items sechzig Mal. Genau diese vier Angaben ändert man,
-  und sie passen nebeneinander: Haken, Vorschau, Name, darunter Kategorie und
-  Priorität.
+- **Scan, Slot und Item sind Masken — dieselbe Bauform** (`maskeBauen()`, dazu
+  `scanScanMaske` / `scanSlotMaske` / `scanItemMaske`). Sie unterscheiden sich
+  in dem, was drinsteht, nicht darin, wie man sie anfasst: Haken (gehört zu
+  diesem Scan), Vorschau bzw. Farbe, Name, darunter die zweite Zeile — beim
+  Item Kategorie und Priorität, bei Slot und Scan der Stand.
 
-  Sie stehen deshalb **nur** dort: der Inspektor hat die drei Felder abgegeben
-  und sagt, wo sie sind. Dieselbe Sache an zwei Stellen wären zwei Wahrheiten,
-  und man müsste raten, welche führt — dieselbe Auflösung wie beim Namen des
-  Scans und beim Klick-Block im Sequenz-Editor.
-- **Die Item-Masken stehen in der RECHTEN Spalte** (`scanItemsRechts()`). Die
-  breitere Spalte war die leerere: links sind 290 px und darin fünf Blöcke
-  übereinander — die Liste, mit der man arbeitet, fängt ganz unten an —, rechts
-  sind 370 px, und die standen seit dem Umbau fast leer, weil die drei Felder in
-  die Maske gewandert sind. Eine Maske braucht Breite: Name, Kategorie und
-  Priorität nebeneinander.
+  Vorher war ein Item eine Maske und ein Slot eine Knopfzeile mit vier
+  Zahlenfeldern in einer anderen Spalte: **dieselbe Frage („wie benenne ich das
+  um") hatte zwei Antworten.** Der Name steht seither in genau einer — dieselbe
+  Auflösung wie beim Klick-Block im Sequenz-Editor.
 
-  **Nur die Items.** Scans und Slots bleiben links: der Scan ist Navigation (man
-  wählt ihn und arbeitet dann woanders), und einen Slot zieht man im **Bild**
-  auf — seine Liste ist der zweite Weg dorthin, nicht die Arbeitsfläche. Der
-  Preis dafür ist, dass eine Reiterleiste Inhalt in zwei Spalten steuert; deshalb
-  **sagt der Reiter es** („Die Item-Masken stehen rechts …") und der leere
-  Abschnitt hört auf zu wachsen (`nur-reiter`), statt als leeres Feld dazustehen.
-- **Was man an einem Item selten ändert, klappt IN seiner Maske auf**
-  (`scanItemDetails()`): das grosse Bild, Vorlagen, Marker, Konfidenz, Löschen —
-  und zwar nur beim gewählten, denn sechzig aufgeklappte Blöcke wären keine
-  Liste mehr. Sie in eine eigene Spalte zu legen hiesse, beim Arbeiten an einem
-  Ding zwischen zwei Orten hin und her zu sehen; die Maske trägt seine Identität
-  ohnehin schon. **Eine** Funktion baut den Block — der Rückweg (ein Item ist
-  gewählt, während eine andere Liste offen steht) ruft dieselbe, sonst wären es
-  zwei Stellen, an denen ein Feld fehlen kann.
+- **Der ganze Listen-Block steht RECHTS: Reiter, Filter und Masken zusammen**
+  (`scanListenBlock()`, gerufen aus `scanInspektor()`). Der Schnitt geht nach
+  Verantwortung, nicht nach Scan-Art: **links, wie der Scan entsteht** (Auswahl,
+  Assistent, Modus-Kacheln), **rechts, was drin ist.**
+
+  Es gab einen Zwischenzustand, in dem nur die Item-Masken rechts standen und
+  Reiter und Filter links blieben. Der kostete zweierlei: beim Umschalten
+  schrumpfte links ein Abschnitt zusammen, während rechts etwas erschien — die
+  linke Spalte **änderte bei jedem Reiterwechsel ihre Grösse** —, und ein
+  Hinweistext musste erklären, wohin der Inhalt verschwunden ist. Beides ist mit
+  dem Umzug weg; `#ab-listen` und `nur-reiter` sind ersatzlos gelöscht.
+
+  Als **Masken** kommen dabei nur die Item-Listen (`scanMaskenRechts()`): dort
+  stehen Dutzende gleichartiger Dinge nebeneinander. Ein Boss- oder Icon-Scan
+  ist **eines** — Region, Erkennung, Aktion —, das trägt keine Maske; seine
+  Liste steht am selben Ort, und was zum Gewählten gehört, darunter (`.erk-insp`,
+  durch eine Linie abgesetzt).
+
+  Dazu gehört, dass **die Spalte den Platz für ihre Bildlaufleiste reserviert**
+  (`scrollbar-gutter: stable`). Ohne das ändert jede Liste, die eine Zeile länger
+  wird, die Innenbreite um rund 15 px — dasselbe Springen, nur feiner.
+
+- **Was man selten ändert, klappt IN der Maske auf** (`scanItemDetails()`,
+  `scanSlotDetails()`, `scanScanDetails()`) — und zwar nur beim gewählten, denn
+  sechzig aufgeklappte Blöcke wären keine Liste mehr. In eine eigene Spalte
+  gelegt hiesse es, beim Arbeiten an einem Ding zwischen zwei Orten hin und her
+  zu sehen; die Maske trägt seine Identität ohnehin schon. **Eine** Funktion je
+  Art baut den Block.
+
+  **Hier lag die Lücke, durch die ein Scan gar nicht mehr zu löschen war**: ein
+  Klick auf ihn öffnete ihn, das Öffnen schaltete auf die Item-Liste um, und
+  seine Einstellungen standen in einer Spalte, die man damit gerade verlassen
+  hatte. Deshalb bleibt der Reiter stehen, wenn man einen Scan **aus der
+  Scan-Liste heraus** öffnet (`scanReiterNachOeffnen`).
+
+- **Der Fokus hängt an der `id` der Maske** (`maskeId()`, gelesen von
+  `fokusMerken()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
+  und die gemerkte Position zählt über **alle** Masken hinweg — bei sechzig
+  Items rund zweihundert Felder. Genau die drei Angaben, die man dort tippt,
+  sortieren die Liste aber um (Kategorie, Priorität, Name): nach dem Neuaufbau
+  stand an derselben Position das Feld eines **fremden** Items, der Cursor
+  sprang weg, und wer weitertippte, änderte das falsche. Ein Umbenennen ändert
+  die id selbst — `fokusUmbenennung()` sagt sie vorher an, und die alte bleibt
+  als Rückfall, falls die Brücke den Namen ablehnt. Gemessen wird das im
+  **Rauchtest**: einen Fokus sieht die Vertragssuite nicht.
+
+- **Ein Item hat einen Klick DANACH** (`scanItemBestaetigung()`,
+  `ItemProfile.confirm_point_id`). Manche Spiele fragen nach („wirklich
+  verkaufen?"); ohne die Bestätigung bleibt das Popup stehen, und der Scan
+  erreicht den nächsten Slot gar nicht mehr. Das Feld gibt es im Modell und in
+  den Konsolen-Editoren seit jeher — im Studio war es die einzige
+  Item-Eigenschaft ohne Bedienelement, und wer es suchte, fand nichts.
+
+  Gesetzt wird es über einen **Punkt**, nie über zwei Zahlen. Zwei Wege dorthin,
+  und der zweite ist dasselbe Werkzeug, das Boss und Icon schon benutzen:
+  `_ziel_pruefen("item")` gibt das gewählte Item zurück, `_klick_aktion()` legt
+  den Punkt an und schreibt ihn nach `confirm_point_id` statt nach
+  `action_point_id`. Ein zweites Werkzeug daneben wäre dieselbe Frage mit einer
+  zweiten Antwort.
 
 - **Die Kategorie wird gewählt, nicht getippt** (`kategorieWahl()`). Ein freies
   Textfeld allein hat das Problem, das man nicht sehen kann: „Helme", „helme"
@@ -1242,12 +1280,25 @@ Sechs Regeln, an denen der Reiter hängt:
   Verschiedenes. Beide heissen jetzt gleich und tragen denselben Tooltip.
 - **Mit offenem Scan sind die Items die Arbeit, nicht sein Name.** Die
   Listen-Leiste stand immer auf „Scans": wer einen Scan lud, sah den Namen, den
-  er gerade angeklickt hatte, ein zweites Mal und musste erst unten links auf
-  „Items" klicken. `scanListe = null` heisst „noch nicht entschieden" — dann
-  gilt `scanListeAktiv()` (bei offenem Scan: Items). Sobald jemand einen Reiter
+  er gerade angeklickt hatte, ein zweites Mal und musste erst auf „Items"
+  klicken. `scanListe = null` heisst „noch nicht entschieden" — dann gilt
+  `scanListeAktiv()` (bei offenem Scan: Items). Sobald jemand einen Reiter
   anfasst, steht dort seine Entscheidung; **das Öffnen eines Scans setzt sie
   zurück**, denn das ist ein Wechsel des Zusammenhangs. Dieselbe Mechanik wie
   `klappZu`.
+
+  **Mit einer Ausnahme, und die ist der Grund für `scanReiterNachOeffnen`:** wer
+  einen Scan aus der Scan-Liste heraus öffnet, arbeitet gerade an Scans. Springt
+  der Reiter dann auf „Items", verschwindet genau die Maske, die sich soeben mit
+  seinen Einstellungen aufgeklappt hat — und damit war der Scan **nicht mehr zu
+  löschen**. Der Wunsch gilt genau einmal und wird danach gelöscht.
+
+- **Der Reiter folgt der Auswahl, aber nur beim Wechsel** (`scanReiterFolgen()`).
+  Ein Klick INS BILD wählt einen Slot, und der steht in der Slot-Liste; ist
+  gerade die Item-Liste offen, geschieht rechts sonst nichts und der Klick sieht
+  wirkungslos aus. Beim blossen Neuzeichnen darf dagegen nichts umschalten —
+  sonst wäre der Weg aus der Slot-Liste heraus versperrt, solange ein Slot
+  gewählt ist. Verglichen wird deshalb Art **und** Name der Auswahl.
 
 **Der offene Scan ist der Bezug, nicht der Bestand** (`_scan_slots()`). Wer zwei
 Spiele betreibt, hat die Slots beider in einer Datei — und alles, was „alle
@@ -1266,8 +1317,16 @@ engere Menge. Regel beim Erweitern: **wer „alle Slots" meint, fragt
 
 **Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
 Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
-Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Knopf
-entfernt („N weitere im Bestand zeigen"), nicht weg.
+Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Schalter
+entfernt („nur aus …"), nicht weg.
+
+**Und es gibt dafür genau EIN Bedienelement.** Bis zum Masken-Umbau gab es drei
+Wege zur selben Frage: den Haken in der Maske, „alle dazu/raus" in der
+Filterzeile und eine dritte Liste im Scan-Inspektor (`hakenListe()` mit einem
+„N weitere im Bestand zeigen"). Die dritte ist **ersatzlos gelöscht** — samt dem
+Mischzustand des `alle`-Schalters (`indeterminate`), der nur dort gebraucht
+wurde. Ein Schalter, der bei „23 von 56" nicht zu beschriften ist, war das
+Problem und nicht die Lösung; der Knopf **sagt**, was er tut.
 
 Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
 
@@ -1281,7 +1340,8 @@ Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
 
 Die Regel „gehört dazu ODER wird gerade gesehen" steht in der **Brücke**, nicht
 im JavaScript: sonst wäre sie nicht messbar. Die Ansicht filtert nur noch auf
-`dabei || erkannt`.
+`dabei || erkannt` — in `scanSichtbar()`, seit die Haken-Liste weg ist. Wer die
+Filterung anfasst, fasst genau diese eine Stelle an.
 
 **Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
 stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
@@ -2010,15 +2070,23 @@ Regeln beim Erweitern:
   und man musste raten, welche die führende ist. Nur Blöcke **ohne** Punkt (Taste,
   Scans) haben einen eigenen Namen im Abschnitt ALLGEMEIN.
 
-  **Dieselbe Regel gilt im Scans-Reiter, und dort war sie länger verletzt.** Der
-  Item-Scan wird oben links gewählt (Klappliste), hiess aber im Inspektor ganz
-  rechts — man suchte den Scan in der einen Spalte und benannte ihn in der
-  anderen, drei Spalten weiter. Der Name ist **Identität**: er steht jetzt direkt
-  unter der Auswahl, und rechts bleibt nur, was man am Scan *einstellt*
-  (Toleranz, Auto-Lernen, Richtung, Mitgliedschaft). Die Überschrift dort nennt
-  den Scan weiterhin — sonst hängen Regler da, von denen man nicht weiss, woran
-  sie hängen. Ein Test misst beide Hälften: der Inspektor baut kein Namensfeld
-  mehr, und das Feld links meldet auf `SC.offen`.
+  **Dieselbe Regel gilt im Scans-Reiter, und sie wurde dort zweimal korrigiert.**
+  Zuerst stand der Name des Item-Scans im Inspektor ganz rechts, während man den
+  Scan oben links wählte — man suchte ihn in der einen Spalte und benannte ihn
+  drei Spalten weiter. Er wanderte deshalb unter die Klappliste. Seit der Scan
+  eine **Maske** hat, ist das die zweite Wahrheit: der Name steht in der Maske,
+  wie bei Slot und Item auch, und das Feld links ist ersatzlos weg. Die
+  Klappliste bleibt — sie **wählt** nur, sie benennt nicht. Aus demselben Grund
+  nennt die Überschrift im Detailteil den Scan nicht noch einmal: sein Name steht
+  in derselben Maske eine Zeile darüber. Ein Test misst beide Hälften.
+- **Erklärungen stehen im ⓘ, Zustand und nächster Schritt im Text.** Ein
+  `hinweis`-Absatz sagt, was JETZT gilt („62×60 px", „Zeigt ins Leere: …") oder
+  was als Nächstes zu tun ist („Noch keine Slots. …"). Alles, was erklärt, WARUM
+  etwas so ist, gehört ins ⓘ — es gilt immer, ändert sich nie und steht deshalb
+  bei jedem Blick im Weg; `offeneHilfen` merkt sich, welche aufgeklappt sind.
+  `schalter()`, `zahlfeld()`, `farbfeld()`, `auswahl()` und `ueberschrift()`
+  nehmen dafür alle `hilfe, schluessel` entgegen — ein Erklärungsabsatz **unter**
+  einem dieser Bedienelemente ist deshalb fast immer ein Fehler.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
   und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
   sich nicht, und ein Klappmenü versteckte vier von fünf Möglichkeiten hinter

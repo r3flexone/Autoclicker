@@ -1516,7 +1516,22 @@ steht auf einmal da.
   Lauf, also keine Vorschau, die etwas anderes zeigt als die Wirklichkeit. Ist ein
   Item-Scan offen, sind die Slots, die nicht dazugehören, im Bild blass. Umbenennen
   zieht die Referenz in jedem Scan nach; nach dem Speichern lädt der Hauptprozess von
-  selbst nach. *(Boss- und Icon-Scans bleiben vorerst in der Konsole.)*
+  selbst nach.
+- **Reiter „Scans" — eine Liste, ein Ort, eine Bauform**: Scans, Slots und Items stehen
+  alle in der rechten Spalte, jeder Eintrag als **Maske** (Haken „gehört zu diesem
+  Scan", Vorschau bzw. Farbe, Name; beim Item darunter Kategorie und Priorität). Was
+  man selten ändert, klappt beim Gewählten **in** seiner Maske auf — beim Slot
+  Koordinaten, Hintergrund und Löschen, beim Scan Toleranz, Auto-Lernen, Richtung und
+  Löschen. Links steht nur noch, wie der Scan entsteht: Auswahl, Assistent,
+  Modus-Kacheln. Damit ändert die linke Spalte beim Umschalten der Liste ihre Grösse
+  nicht mehr, und ein Scan ist wieder löschbar (vorher schaltete das Öffnen auf die
+  Item-Liste um — und der Knopf stand in der Spalte, die man damit verliess).
+- **Reiter „Scans" — der Bestätigungsklick**: Fragt das Spiel nach dem Klick nach
+  („wirklich verkaufen?"), setzt man beim Item einen zweiten Klick samt Wartezeit
+  davor. Wie überall wird eine Stelle über einen **Punkt** gesetzt: entweder aus der
+  Liste der bekannten Punkte wählen oder „Stelle im Bild anklicken" — derselbe Weg,
+  den Boss- und Icon-Aktionen schon gehen. Ohne die Bestätigung bleibt das Popup
+  stehen, und der Scan erreicht den nächsten Slot gar nicht mehr.
 - **Reiter „Einstellungen"**: alle 70 Werte der `config.json` im Fenster, statt die
   Datei von Hand aufzumachen. Jedes Feld trägt Beschriftung, seinen Schlüssel und
   einen Satz, wann man es anfasst; Abhängiges wird blass statt unsichtbar („Wirkt nur,

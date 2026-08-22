@@ -451,9 +451,18 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 "autoclicker/editors/sequence_studio/web/index.html").read_text(
                     encoding="utf-8")
         self.assertNotIn(".scans.gefuehrt.hat-bild #ab-bild{display:none}", html)
-        self.assertIn("derselben Aufnahmemethode neu aufgenommen", html)
-        self.assertIn("folgen seiner Position automatisch", html)
         self.assertIn("SCAN EINRICHTEN", html)
+        # Die Erklaerung dazu steht weiterhin da, aber im ⓘ statt als Absatz:
+        # sie gilt immer und aendert sich nie, also stand sie bei jedem Blick
+        # auf den Schritt im Weg. Was im HTML bleibt, ist der STAND.
+        js = (Path(self.old_cwd) /
+              "autoclicker/editors/sequence_studio/web/app.js").read_text(
+                  encoding="utf-8")
+        self.assertIn("derselben Aufnahmemethode neu aufgenommen", js)
+        self.assertIn("folgen seiner Position automatisch", js)
+        self.assertIn('$("scan-foto-info")', js)
+        self.assertIn('id="scan-foto-info"', html)
+        self.assertIn('id="scan-groesse"', html)
         self.assertNotIn('id="scan-bar-foto"', html)
         self.assertNotIn('id="scan-bar-lernen"', html)
 

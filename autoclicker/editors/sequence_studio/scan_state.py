@@ -584,10 +584,34 @@ class ScanStateMixin:
             "vorlagengroessen": groessen,
             "fehlende_scan_groessen": fehlende_groessen,
             "marker": [hexfarbe(c) for c in item.marker_colors],
+            # **Der Klick danach.** Manche Spiele fragen nach („wirklich
+            # verkaufen?"), und ohne die Bestätigung bleibt das Popup stehen —
+            # der nächste Slot wird dann gar nicht mehr erreicht. Das Feld gab
+            # es im Modell und in den Konsolen-Editoren seit jeher; im Studio
+            # war es die einzige Item-Eigenschaft ohne Bedienelement.
+            "bestaetigung": self._bestaetigung_json(item),
+            "bestaetigung_verzoegerung": item.confirm_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
             "stumm": not vorlagen and not item.marker_colors,
         }
+
+    def _bestaetigung_json(self, item: ItemProfile) -> Optional[dict]:
+        """Der Bestätigungsklick eines Items — als Punkt, nie als Zahlenpaar.
+
+        Die Koordinate steht in `points.json`, sonst nirgends; `confirm_point`
+        ist der abgeleitete Arbeitswert. Zeigt die Referenz ins Leere, wird das
+        gesagt statt verschwiegen — ein Klick auf (0, 0) wäre schlimmer.
+        """
+        if item.confirm_point_id is None:
+            return None
+        punkt = next((p for p in self.points if p.id == item.confirm_point_id), None)
+        if punkt is None:
+            return {"punkt_id": item.confirm_point_id, "fehlt": True,
+                    "text": f"Punkt #{item.confirm_point_id} fehlt"}
+        return {"punkt_id": punkt.id, "fehlt": False,
+                "text": (punkt.name or f"Punkt {punkt.id}")
+                        + f" ({punkt.x}, {punkt.y})"}
 
     def _scan_json(self, cfg: ItemScanConfig) -> dict:
         return {

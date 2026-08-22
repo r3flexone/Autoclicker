@@ -153,16 +153,14 @@
       <div class="abschnitt" id="ab-itemwahl">
         <span class="ueberschrift">ITEM-SCAN</span>
         <select id="scan-offen"></select>
-        <!-- **Der Name steht da, wo der Scan gewaehlt wird.** Er lag im Inspektor
-             rechts, also drei Spalten von der Auswahl entfernt - man waehlte den
-             Scan links und benannte ihn rechts. Dieselbe Regel wie beim
-             Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
-             steht beim Ding; rechts bleibt, was man daran EINSTELLT. -->
-        <label class="feld scan-name-feld" id="scan-name-zeile" hidden>
-          <span>Name</span>
-          <input id="scan-name" type="text" autocomplete="off">
-        </label>
-        <div class="reihe">
+        <!-- **Der Name steht in der Maske des Scans**, im Reiter „Scans"
+             — wie bei Slot und Item auch. Hier stand einmal ein zweites
+             Namensfeld: solange die Scan-Einstellungen drei Spalten entfernt
+             lagen, war das die kuerzere Strecke; seit die Maske sie traegt,
+             waeren es zwei Eingaben fuer denselben Wert, und man muesste
+             raten, welche fuehrt. Diese Klappliste bleibt: sie sagt, an
+             welchem Spiel gerade gearbeitet wird. -->
+        <div class="reihe umbrechend">
           <button class="btn still" id="scan-neu">+ neuer Scan</button>
           <button class="btn still" id="scan-frei">Freier Modus</button>
           <span class="wachse"></span>
@@ -189,9 +187,10 @@
               <button class="btn still" id="scan-aufziehen"
                       title="Im vorhandenen Bild zwei Ecken anklicken">Eigenen Ausschnitt wählen</button>
               <button class="btn haupt scan-assistent-haupt" id="scan-foto">Screenshot aufnehmen</button>
-              <p class="hinweis">Items werden aus diesem eingefrorenen Bild gelernt. Beim Lauf
-                wird dasselbe Fenster mit derselben Aufnahmemethode neu aufgenommen; die Slots
-                folgen seiner Position automatisch.</p>
+              <!-- Erklaerung ins ⓘ: sie gilt immer und aendert sich nie, steht
+                   also bei jedem Blick auf den Schritt im Weg. Was hier bleibt,
+                   ist der STAND (Groesse der Aufnahme). -->
+              <span class="ueberschrift mitinfo" id="scan-foto-info"></span>
               <span class="klein mono" id="scan-groesse"></span>
             </div>
           </div>
@@ -240,27 +239,22 @@
                man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
           <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
-          <!-- Die beiden Handgriffe, die man ZWISCHENDURCH macht, brauchen
-               keinen Modus (scan_direkt in scans.py). Sie stehen hier, weil hier
-               steht, was ein Klick tut — und das ist genau die Frage, die sie
-               beantworten. -->
-          <p class="hinweis">Ohne Moduswechsel: <b>ALT+Klick</b> misst den
-            Hintergrund eines Slots, <b>Doppelklick</b> setzt seinen Klickpunkt.
-            Ein gewählter Slot lässt sich mit der <b>Maus ziehen</b> oder mit den
-            <b>Pfeiltasten</b> verschieben (SHIFT = 10 px).</p>
+          <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
+               Modus (scan_direkt in scans.py). Sie gehoeren hierher, weil hier
+               steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
+               ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
+               und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
+          <span class="ueberschrift mitinfo" id="scan-modi-direkt"></span>
         </div>
       </div>
-      <!-- Die Reiterleiste bleibt hier: sie schaltet zwischen Scans, Slots und
-           Items um, und zwei der drei Listen stehen darunter. Die ITEMS wandern
-           dagegen in die rechte Spalte — dort sind 370 statt 290 px, und eine
-           Item-Maske traegt Name, Kategorie und Prioritaet nebeneinander. Ist
-           das der Fall, schrumpft dieser Abschnitt auf die Reiter zusammen
-           (`nur-reiter`), statt als leeres Feld dazustehen. -->
-      <div class="abschnitt wachsend" id="ab-listen">
-        <div class="tabs klein" id="scan-listen-tabs"></div>
-        <div class="reihe" id="scan-filterzeile" style="margin-top:8px"></div>
-        <div class="spalte" id="scan-liste" style="gap:3px;margin-top:8px"></div>
-      </div>
+      <!-- Hier stand die Liste (Scans/Slots/Items bzw. Bosse/Icons). Sie ist
+           vollstaendig in die rechte Spalte gewandert — Reiter, Filter und
+           Eintraege zusammen. Vorher wanderten nur die Item-Masken dorthin,
+           und beim Umschalten schrumpfte hier ein Abschnitt zusammen, waehrend
+           drueben etwas erschien: die linke Spalte aenderte bei jedem
+           Reiterwechsel ihre Groesse, und ein Hinweistext musste erklaeren,
+           wohin der Inhalt verschwunden ist. Der Schnitt geht jetzt nach
+           Verantwortung — links, wie der Scan entsteht, rechts, was drin ist. -->
     </aside>
 
     <main class="scan-buehne" id="scan-buehne">

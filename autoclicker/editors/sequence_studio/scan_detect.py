@@ -40,6 +40,7 @@ from ...models import (
 from ...utils import eindeutiger_name, sanitize_filename
 from .model import hexfarbe, rgbwert
 from .scan_contract import (
+    ART_ITEM,
     MIN_REGION,
     MODUS_AKTION,
     MODUS_REGION,
@@ -779,7 +780,8 @@ class ScanDetectMixin:
         ziel = self._ziel_pruefen(art)
         if ziel is None:
             return self._scan_melde(
-                "Erst einen Boss- bzw. Icon-Scan anlegen oder öffnen.", "warn")
+                "Erst ein Item wählen bzw. einen Boss- oder Icon-Scan öffnen.",
+                "warn")
         if not self._flaeche():
             return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
         self.scan_modus, self._region_ziel, self._ecke = modus, ziel, None
@@ -787,6 +789,10 @@ class ScanDetectMixin:
             return self._scan_melde(
                 "Region: zwei Ecken anklicken — eng um das, was erkannt werden "
                 "soll.  ·  ESC oder nochmal die Kachel = zurück", "info")
+        if ziel[0] == "item":
+            return self._scan_melde(
+                f"Bestätigungsklick für '{ziel[1]}': die Stelle anklicken, die "
+                "nach dem Item-Klick bestätigt.  ·  ESC = zurück", "info")
         return self._scan_melde(
             "Klickpunkt: die Stelle anklicken, die bei einem Treffer geklickt "
             "wird.  ·  ESC oder nochmal die Kachel = zurück", "info")
@@ -796,6 +802,12 @@ class ScanDetectMixin:
             return ("boss", self.boss_offen)
         if art == "icon" and self.icon_offen in self.icon_scans:
             return ("icon", self.icon_offen)
+        # **Der Bestätigungsklick eines Items ist dieselbe Geste.** Eine Stelle
+        # zieht man im Bild, statt zwei Zahlen zu tippen — dafür gibt es das
+        # Werkzeug schon, es kannte nur Boss und Icon. Ein zweites daneben wäre
+        # dieselbe Frage mit einer zweiten Antwort.
+        if art == "item" and self.scan_art == ART_ITEM and self.scan_name in self.items:
+            return ("item", self.scan_name)
         return None
 
     def _region_objekt(self):
@@ -803,6 +815,8 @@ class ScanDetectMixin:
         if not self._region_ziel:
             return None
         art, name = self._region_ziel
+        if art == "item":
+            return self.items.get(name)
         return (self.boss_scans if art == "boss" else self.icon_scans).get(name)
 
     def _klick_region(self, x: int, y: int) -> dict:
@@ -848,6 +862,17 @@ class ScanDetectMixin:
                     "warn")
         farbe = self._foto_farbe(x, y)
         punkt = self._punkt_fuer_aktion(x, y, farbe, objekt.name)
+        # Beim Item heisst dasselbe Werkzeug etwas anderes: nicht „wohin geklickt
+        # wird, wenn erkannt", sondern „was danach bestätigt wird". Zwei Felder,
+        # zwei Wörter — sonst liest man im Item die Boss-Bedeutung mit.
+        if self._region_ziel[0] == "item":
+            self._merke(f"'{objekt.name}': Bestätigungsklick")
+            objekt.confirm_point_id = punkt.id
+            self._bestaetigung_anwenden(objekt)
+            self._scan_dirty = True
+            self._werkzeug_fertig()
+            return self._scan_melde(
+                f"Punkt #{punkt.id} bestätigt den Klick auf '{objekt.name}'.")
         self._merke(f"'{objekt.name}': Klickpunkt")
         objekt.action_point_id = punkt.id
         self._aktion_punkt_anwenden(objekt)

@@ -5772,18 +5772,23 @@ check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
 # Scan in der einen Spalte und benannte ihn in der anderen. Dieselbe Doppelung
 # gab es beim Klick-Block schon einmal ("Name (Punkt #1)" oben, "Punkt" unten) -
 # zwei Felder fuer denselben Wert, und man muss raten, welches fuehrt.
-check("der Scan-Inspektor baut kein eigenes Namensfeld mehr",
-      'feld("Name"' not in _js_rumpf18("scanInspScan"))
-check("dafuer gibt es das Feld in der linken Spalte",
-      'id="scan-name"' in _html18 and 'id="scan-name-zeile"' in _html18)
-# Es muss auch WIRKEN: ohne den Melder waere es ein Feld, in das man tippt und
-# nichts passiert - schlimmer als gar keines.
-check("und es meldet auf den offenen Scan",
-      '{name: SC.offen, feld: "name", wert: e.target.value}' in _html18)
-# Die Ueberschrift rechts nennt trotzdem den Scan - sonst haengen dort Regler,
-# von denen man nicht weiss, woran sie haengen.
-check("die Inspektor-Ueberschrift nennt weiterhin den Scan",
-      'ueberschrift("SCAN' in _js_rumpf18("scanInspScan"))
+check("der Detailteil des Scans baut kein eigenes Namensfeld mehr",
+      'feld("Name"' not in _js_rumpf18("scanScanDetails")
+      and "maskeName(" not in _js_rumpf18("scanScanDetails"))
+# Und zwar in seiner MASKE, wie bei Slot und Item auch. In der linken Spalte
+# stand einmal ein zweites Feld: solange die Einstellungen drei Spalten entfernt
+# lagen, war das die kuerzere Strecke - seit die Maske sie traegt, waeren es
+# zwei Eingaben fuer denselben Wert. Die Klappliste bleibt, sie waehlt nur.
+check("die Scan-Maske traegt den Namen",
+      'maskeName("scan"' in _js_rumpf18("scanScanMaske"))
+check("und die linke Spalte kein zweites Feld dafuer",
+      "scan-name" not in _html18)
+check("die Klappliste zum Waehlen bleibt",
+      'id="scan-offen"' in _html18)
+# Die Ueberschrift im Detailteil nennt den Scan NICHT noch einmal: sein Name
+# steht in derselben Maske eine Zeile darueber.
+check("und der Detailteil wiederholt ihn nicht",
+      'ueberschrift("SCAN' not in _js_rumpf18("scanScanDetails"))
 
 # --- In einer scrollenden Spalte darf kein Abschnitt nochmal scrollen ---
 # `.seite` scrollt als Ganzes. Setzt ein Abschnitt darin zusaetzlich
@@ -5797,21 +5802,15 @@ def _css_regel18(wahl: str) -> str:
     return _html18[stelle + len(wahl) + 2:_html18.index("}", stelle)]
 
 # --- Der „alle"-Schieber hat drei Stellungen, nicht zwei ---
-# Ueber 56 Schaltern steht er meistens weder auf ein noch auf aus. Zeigte er
-# dann „aus", waere das gelogen - und man wuesste nicht, was ein Klick tut.
-check("der Schieber kennt einen Mischzustand",
-      "input[type=checkbox]:indeterminate{" in _html18.replace(" ", ""))
-check("und der sieht anders aus als aus UND als an",
-      ":indeterminate::after{" in _html18.replace(" ", ""))
-check("schalter() kann ihn setzen",
-      "box.indeterminate = true" in _html18)
-# Und er steht im SELBEN Raster wie die Eintraege darunter, nicht rechts
-# angeklebt: sonst sitzt er ueber nichts. Die Trennlinie unterscheidet ihn
-# trotzdem, sonst liest er sich wie ein Slot namens „alle".
-check("der alle-Schieber liegt im Raster der Liste",
-      '"scan-haken haken-kopf"' in _html18)
-check("und ist durch eine Linie abgesetzt",
-      "border-bottom:1px solid var(--line)" in _css_regel18(".haken-kopf"))
+# Ueber 56 Schaltern stand er meistens weder auf ein noch auf aus - deshalb gab
+# es einmal einen Mischzustand (`indeterminate`). Der Weg ist heute ein anderer:
+# EIN Knopf, der SAGT, was er tut („alle dazu" / „alle raus"). Damit ist der
+# dritte Stand ersatzlos weg, samt seinem CSS - ein Schalter, der bei „23 von
+# 56" nicht zu beschriften ist, war das Problem und nicht die Loesung.
+check("die Mitgliedschaft schaltet ein Knopf, der sagt was er tut",
+      '"alle dazu" : "alle raus"' in _html18)
+check("und der Mischzustand ist ersatzlos weg",
+      "indeterminate" not in _html18 and "unbestimmt" not in _html18)
 
 check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".seite"))
 check("und der wachsende Abschnitt darin nicht nochmal",

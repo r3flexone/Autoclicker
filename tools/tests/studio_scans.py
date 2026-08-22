@@ -11,6 +11,7 @@ Mit ueber 1.200 Zeilen war das der groesste zusammenhaengende Block in
 verdient hat.
 """
 import os as _os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -1254,46 +1255,74 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 # dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in die Liste,
 # einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
 _maske18 = _html18[_html18.index("function scanItemMaske("):]
-_maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile")]
-for _feld18, _was18 in (('setze("name"', "Name"), ('setze("kategorie"', "Kategorie"),
+_maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
+for _feld18, _was18 in (('maskeName("item"', "Name"), ('setze("kategorie"', "Kategorie"),
                         ('setze("prioritaet"', "Prioritaet"),
-                        ('"scan_mitglied"', "Haken (gehoert zum Scan)")):
+                        ('maskeHaken("item"', "Haken (gehoert zum Scan)")):
     check(f"die Maske setzt {_was18}", _feld18 in _maske18)
 
-# Und dieselbe Sache steht NICHT zweimal da: der Inspektor hat die drei Felder
-# abgegeben. Zwei Eingaben fuer einen Wert waeren zwei Wahrheiten, und man
-# muesste raten, welche fuehrt — dieselbe Aufloesung wie beim Namen des Scans.
-_insp18 = _html18[_html18.index("function scanInspItem("):]
-_insp18 = _insp18[:_insp18.index("\nfunction scanInspScan(")]
-check("der Inspektor baut kein zweites Namensfeld", 'feld("Name"' not in _insp18)
-# Eigenschaft statt Funktionsname: der Inspektor baut ueberhaupt kein
-# Eingabefeld mit Vorschlagsliste mehr — das ist die Kategorie.
-check("und kein zweites Kategoriefeld", "list:" not in _insp18)
-check("und kein zweites Prioritaetsfeld", "prioritaetsfeld(" not in _insp18)
-check("er sagt stattdessen, wo sie stehen",
-      "Kategorie und Priorität stehen im Reiter" in _insp18)
+# Und dieselbe Sache steht NICHT zweimal da. Der Inspektor als eigener Ort ist
+# ganz entfallen: es gibt keine zweite Spalte mehr, in der ein Item stehen
+# koennte — die rechte Spalte IST die Liste.
+check("es gibt keinen zweiten Bauplan fuer ein Item",
+      "function scanInspItem(" not in _html18)
 
-# **Die Item-Masken stehen rechts, und zwar nur dort.** Links sind 290 px und
-# darin fuenf Bloecke uebereinander — die Liste, mit der man arbeitet, faengt
-# ganz unten an; rechts sind 370 px, und die Spalte stand seit dem Umbau fast
-# leer, weil Name, Kategorie und Prioritaet in die Maske gewandert sind.
+# **Alle drei Listen stehen rechts, als Masken — Reiter, Filter und Eintraege
+# zusammen.** Vorher standen Reiter und Filter links und nur die Item-Masken
+# rechts: beim Umschalten schrumpfte links ein Abschnitt zusammen, waehrend
+# rechts etwas erschien, und ein Hinweistext musste erklaeren, wohin der Inhalt
+# verschwunden ist. Jetzt wandert der Block als Ganzes, und die linke Spalte
+# steht still.
 check("es gibt eine Regel, wo die Masken stehen",
-      "function scanItemsRechts()" in _html18)
-check("und sie gilt nur fuer Items",
-      'scanArt === "item" && scanListeAktiv() === "items"' in _html18)
-# Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation, und
-# die Slots zieht man im BILD auf — ihre Liste ist der zweite Weg dorthin.
-check("Slots und Scans bleiben in der linken Spalte",
-      'if (offen === "slots") return scanListeSlots(ziel);' in _html18
-      and 'return scanListeScans(ziel);' in _html18)
-# Ein Reiter, der Inhalt woanders aufmacht, sagt das — sonst schrumpft links
-# etwas zusammen und rechts erscheint etwas, und ob das zusammengehoert, muss
-# man raten.
-check("der Reiter sagt, dass die Liste umgezogen ist",
-      "Die Item-Masken stehen rechts" in _html18)
-check("und der leere Abschnitt hoert auf zu wachsen",
-      'classList.toggle("nur-reiter", rechts)' in _html18
-      and ".abschnitt.wachsend.nur-reiter{flex:none" in _html18)
+      "function scanMaskenRechts()" in _html18)
+check("und sie gilt fuer alle Item-Listen",
+      'function scanMaskenRechts() {\n  return scanArt === "item";' in _html18)
+check("Reiter, Filter und Liste baut EINE Funktion",
+      "function scanListenBlock(tabs, filter, ziel)" in _html18)
+# Und der zweite Listen-Block in der linken Spalte ist ersatzlos weg — samt
+# der Funktion, die je Reiter entschied, welcher der beiden ihn fuellt.
+check("und links bleibt gar nichts mehr stehen",
+      'id="ab-listen"' not in _html18
+      and "scanListeZeichnen" not in _html18)
+check("der Hinweis, wohin der Inhalt umgezogen ist, entfaellt damit",
+      "Die Item-Masken stehen rechts" not in _html18
+      and "nur-reiter" not in _html18)
+
+# **Dieselbe Bauform fuer Scans, Slots und Items.** Sie unterscheiden sich in
+# dem, was drinsteht — nicht darin, wie man sie anfasst. Vorher war ein Slot
+# eine Knopfzeile mit vier Zahlenfeldern in einer anderen Spalte, ein Item eine
+# Maske; dieselbe Frage („wie benenne ich das um") hatte zwei Antworten.
+check("Slots werden als Maske gebaut", "function scanSlotMaske(" in _html18)
+check("Scans werden als Maske gebaut", "function scanScanMaske(" in _html18)
+_bauform18 = [_n18 for _n18 in ("scanItemMaske", "scanSlotMaske", "scanScanMaske")
+              if "maskeBauen(" not in _html18[_html18.index(f"function {_n18}("):
+                                              _html18.index(f"function {_n18}(") + 3000]]
+check(f"und alle drei ueber dieselbe Bauform ({_bauform18 or 'alle'})", not _bauform18)
+# Der Fokus-Anker haengt an der id; ohne sie zaehlt `fokusMerken()` die
+# Position ueber die ganze Spalte (s. u.).
+check("die Bauform vergibt die id", 'id: maskeId(art, name)' in _html18)
+
+# **Die alte Zeilen-Darstellung ist weg, nicht danebengestellt.** Zwei
+# Darstellungen fuer dieselbe Liste waeren zwei Stellen, an denen ein Feld
+# fehlen kann.
+check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
+      'class: "scan-zeile"' not in _html18[_html18.index("function scanListeSlots("):
+                                           _html18.index("function scanListeItems(")])
+
+# **Die Haken-Listen im Scan-Inspektor sind ersatzlos entfallen.** Sie waren der
+# DRITTE Weg zur selben Frage: der Haken in jeder Maske sagt „gehoert zu diesem
+# Scan", die Filterzeile kann „alle dazu/raus" — eine dritte Liste daneben ist
+# eine Stelle mehr, an der eine Korrektur vorbeigeht.
+check("keine dritte Liste fuer die Mitgliedschaft",
+      "hakenListe(" not in _html18 and "hakenZeile(" not in _html18)
+check("der Haken steht in jeder Maske, an EINER Stelle gebaut",
+      "function maskeHaken(art, name, dabei)" in _html18)
+# Die Regel „gehoert dazu ODER wird gerade gesehen" stand in `hakenListe` — sie
+# muss den Umzug ueberlebt haben, sonst verschwindet genau die Auskunft, fuer
+# die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
+# nicht ein zweites Mal.
+check("und erkannte Items stehen weiter in der gefilterten Liste",
+      "liste.filter((e) => e.dabei || e.erkannt)" in _html18)
 
 # **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Zwei
 # Bauplaene dafuer waeren zwei Stellen, an denen ein Feld fehlen kann — es gibt
@@ -1301,9 +1330,13 @@ check("und der leere Abschnitt hoert auf zu wachsen",
 check("Vorlage, Marker und Konfidenz baut EINE Funktion",
       _html18.count("function scanItemDetails(") == 1)
 check("die Maske klappt sie beim Gewaehlten auf",
-      "scanItemDetails(detail, i)" in _html18)
-check("und der Rueckweg ohne Maske ruft dieselbe",
-      "scanItemDetails(ziel, i)" in _html18)
+      "(kasten) => scanItemDetails(kasten, i)" in _html18)
+# Dasselbe fuer Slot und Scan: EIN Detailteil je Art, gerufen aus der Bauform.
+for _art18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
+    check(f"{_art18} gibt es genau einmal",
+          _html18.count(f"function {_art18}(") == 1)
+    check(f"und die Maske klappt {_art18} auf",
+          f"(kasten) => {_art18}(kasten, {_bau18})" in _html18)
 
 # **Waehlen ist der Normalfall, tippen die Ausnahme.** Ein freies Textfeld
 # allein macht aus „Helme" und „helme" zwei Kategorien - und Items derselben
@@ -1348,7 +1381,109 @@ check("die Listen-Vorgabe haengt am offenen Scan",
 check("und eine eigene Entscheidung ueberstimmt sie",
       "if (scanListe) return scanListe;" in _html18)
 check("das Oeffnen eines Scans setzt sie zurueck",
-      'if (name === "scan_oeffnen") scanListe = null;' in _html18)
+      "scanListe = scanReiterNachOeffnen;" in _html18)
+# **Mit einer Ausnahme, und die ist der Grund fuer die Variable.** Wer einen
+# Scan aus der Scan-Liste heraus oeffnet, arbeitet an Scans — springt der
+# Reiter dann auf „Items", verschwindet genau die Maske, die sich soeben mit
+# seinen Einstellungen aufgeklappt hat. Und damit war er nicht mehr zu
+# loeschen: der Knopf stand in einer Spalte, die man mit dem Klick verliess.
+check("aus der Scan-Liste heraus bleibt er stehen",
+      'scanReiterNachOeffnen = "scans";' in _html18)
+check("und der Wunsch gilt genau einmal",
+      "scanReiterNachOeffnen = null;" in _html18)
+check("der Loesch-Knopf liegt im Detailteil des Scans",
+      '"scan_loeschen"' in _html18[_html18.index("function scanScanDetails("):
+                                   _html18.index("function scanScanDetails(") + 3000])
+
+
+# ============================================================================
+section("Der Fokus ueberlebt ein Umbenennen")
+
+# **Ein Umbenennen aendert die Identitaet — und damit die id, an der der Fokus
+# haengt.** Ohne den Hinweis suchte `fokusHerstellen()` nach dem alten Namen und
+# fand nichts; genau beim Namen tippt man aber, und genau dort faellt es auf.
+check("wer umbenennt, sagt die neue id an",
+      "function fokusUmbenennung(von, nach)" in _html18)
+check("und maskeName() tut es fuer alle drei Arten",
+      "fokusUmbenennung(maskeId(art, name), maskeId(art, feld.value.trim()));" in _html18)
+check("fokusMerken loest den Hinweis genau einmal ein",
+      "const umbenannt = fokusUmbenannt;" in _html18
+      and "fokusUmbenannt = null;" in _html18)
+# Lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst die Maske
+# danach weiter wie vorher — und der Fokus soll trotzdem stehen bleiben.
+check("und die alte id bleibt als Rueckfall",
+      "alt: kasten.id" in _html18
+      and "document.getElementById(merk.id)\n              || document.getElementById(merk.alt)" in _html18)
+
+
+# ============================================================================
+section("Der Bestaetigungsklick eines Items")
+
+_sandB = tempfile.mkdtemp(prefix="studiobestaetigung_")
+_cwdB = _os.getcwd()
+_os.chdir(_sandB)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bB = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bB.scan_daten()          # erst laden, dann anlegen — sonst raeumt der
+    _bB.items["Trank"] = _ITEM8(name="Trank")   # Loader das Item wieder weg
+    from autoclicker.editors.sequence_studio.model import PalettePoint as _PPB
+    _bB.points.append(_PPB(id=7, x=400, y=300, name="OK-Knopf"))
+    _pidB = 7
+
+    # **Das Feld gab es im Modell und in den Konsolen-Editoren seit jeher** — im
+    # Studio war es die einzige Item-Eigenschaft ohne Bedienelement. Ohne die
+    # Bestaetigung bleibt das Popup stehen, und der Scan erreicht den naechsten
+    # Slot gar nicht mehr.
+    _zB = _bB.scan_daten()
+    _itemB = next(i for i in _zB["items"] if i["name"] == "Trank")
+    check("ohne Bestaetigung steht dort nichts", _itemB["bestaetigung"] is None)
+
+    _zB = _bB.scan_item_setzen({"name": "Trank", "feld": "bestaetigung", "wert": _pidB})
+    check("ein Punkt laesst sich setzen",
+          _bB.items["Trank"].confirm_point_id == _pidB)
+    _itemB = next(i for i in _bB.scan_daten()["items"] if i["name"] == "Trank")
+    check("und die Ansicht nennt ihn beim Namen",
+          _itemB["bestaetigung"]["punkt_id"] == _pidB
+          and "OK-Knopf" in _itemB["bestaetigung"]["text"])
+    # **Die Koordinate steht in points.json, sonst nirgends.** `confirm_point`
+    # ist der abgeleitete Arbeitswert — dieselbe Rolle wie `action_x/y`.
+    check("der abgeleitete Arbeitswert wird mitgezogen",
+          _bB.items["Trank"].confirm_point is not None
+          and (_bB.items["Trank"].confirm_point.x,
+               _bB.items["Trank"].confirm_point.y) == (400, 300))
+
+    # Ein Punkt, den es nicht gibt, wird ABGELEHNT statt still gesetzt: sonst
+    # klickte der Lauf auf (0, 0).
+    _zB = _bB.scan_item_setzen({"name": "Trank", "feld": "bestaetigung", "wert": 999})
+    check("ein unbekannter Punkt wird abgelehnt", _zB["status"]["art"] == "err")
+    check("und der alte bleibt stehen", _bB.items["Trank"].confirm_point_id == _pidB)
+
+    _bB.scan_item_setzen({"name": "Trank", "feld": "bestaetigung_verzoegerung",
+                          "wert": 1.25})
+    check("die Wartezeit davor ist einstellbar",
+          _bB.items["Trank"].confirm_delay == 1.25)
+    check("eine negative wird abgelehnt",
+          _bB.scan_item_setzen({"name": "Trank", "feld": "bestaetigung_verzoegerung",
+                                "wert": -1})["status"]["art"] == "err")
+
+    # Leer heisst „keine Bestaetigung" und ist etwas anderes als Punkt 0.
+    _bB.scan_item_setzen({"name": "Trank", "feld": "bestaetigung", "wert": ""})
+    check("und sie laesst sich wieder abschalten",
+          _bB.items["Trank"].confirm_point_id is None
+          and _bB.items["Trank"].confirm_point is None)
+
+    # **Die Stelle zieht man im Bild, statt zwei Zahlen zu tippen** — dasselbe
+    # Werkzeug, das Boss und Icon schon benutzen. Ein zweites daneben waere
+    # dieselbe Frage mit einer zweiten Antwort.
+    _bB.scan_waehlen({"art": "item", "name": "Trank"})
+    check("das Klickpunkt-Werkzeug kennt jetzt auch Items",
+          _bB._ziel_pruefen("item") == ("item", "Trank"))
+    check("und ohne gewaehltes Item nicht", _bB._ziel_pruefen("scan") is None)
+finally:
+    _os.chdir(_cwdB)
+    shutil.rmtree(_sandB, ignore_errors=True)
 
 
 # ============================================================================

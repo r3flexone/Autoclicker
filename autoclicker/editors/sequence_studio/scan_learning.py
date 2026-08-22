@@ -410,7 +410,49 @@ class ScanLearningMixin:
             self._merke(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(wert or 0)))
             return self._scan_geaendert()
+        if feld == "bestaetigung":
+            # Leer heisst „keine Bestätigung" — und das ist etwas anderes als
+            # Punkt 0. Ein Punkt, den es nicht gibt, wird abgelehnt statt still
+            # gesetzt: sonst klickte der Lauf auf (0, 0).
+            if wert in (None, "", "0", 0):
+                self._merke(f"'{name}': Bestätigungsklick")
+                item.confirm_point_id = None
+                item.confirm_point = None
+                return self._scan_geaendert(f"{name}: kein Bestätigungsklick mehr.")
+            try:
+                punkt_id = int(wert)
+            except (TypeError, ValueError):
+                return self._scan_melde("Der Bestätigungsklick braucht einen Punkt.",
+                                        "err")
+            if not any(p.id == punkt_id for p in self.points):
+                return self._scan_melde(f"Punkt #{punkt_id} gibt es nicht.", "err")
+            self._merke(f"'{name}': Bestätigungsklick")
+            item.confirm_point_id = punkt_id
+            self._bestaetigung_anwenden(item)
+            return self._scan_geaendert(f"{name}: bestätigt über Punkt #{punkt_id}.")
+        if feld == "bestaetigung_verzoegerung":
+            try:
+                zahl = float(wert)
+            except (TypeError, ValueError):
+                return self._scan_melde("Die Wartezeit muss eine Zahl sein.", "err")
+            if zahl < 0:
+                return self._scan_melde("Die Wartezeit kann nicht negativ sein.", "err")
+            self._merke(f"'{name}': Wartezeit vor der Bestätigung")
+            item.confirm_delay = zahl
+            return self._scan_geaendert()
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
+
+    def _bestaetigung_anwenden(self, item) -> None:
+        """Zieht `confirm_point` an der Referenz nach — abgeleiteter Arbeitswert.
+
+        Dieselbe Rolle wie `_aktion_punkt_anwenden()` bei Boss und Icon: die
+        Koordinate steht in `points.json`, der Serializer schreibt sie hier
+        nicht, und gefüllt wird sie nur, damit die Anzeige etwas zu zeigen hat.
+        """
+        from ...models import ClickPoint
+        punkt = next((p for p in self.points if p.id == item.confirm_point_id), None)
+        item.confirm_point = (ClickPoint(x=punkt.x, y=punkt.y, name=punkt.name or "")
+                              if punkt else None)
 
     def _item_umbenennen(self, item: ItemProfile, neu: str) -> dict:
         """Wie beim Slot: der Name ist die Referenz, also ziehen die Scans mit."""

@@ -83,6 +83,106 @@ def lauf():
         pruefe(typen_danach == typen,
                f"der Tipp-Modus ueberlebt den Neuaufbau nicht: {typen} -> {typen_danach}")
 
+        # ------------------------------------------------------------------
+        # **Der Fokus bleibt beim Bearbeiten in DERSELBEN Maske.**
+        #
+        # Genau die drei Angaben, die man hier tippt, sortieren die Liste um
+        # (Kategorie, Prioritaet, Name). `fokusMerken()` klettert bis zum
+        # naechsten Element mit `id` und zaehlt dort die Position unter den
+        # Eingabefeldern — ohne id an der Maske ist das die ganze Spalte, also
+        # rund zweihundert Felder bei sechzig Items. Nach dem Umsortieren steht
+        # an derselben Position das Feld eines FREMDEN Items: der Cursor
+        # springt weg, und wer weitertippt, aendert das falsche.
+        #
+        # Nur im Fenster messbar: die Vertragssuite sieht keinen Fokus.
+        f.klick_text("#scan-insp .tabs .tab", "Items")
+        vorher = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        pruefe(all(n.startswith("maske:item:") for n in vorher),
+               f"jede Item-Maske braucht ihre id: {vorher[:3]}")
+        # Die ERSTE Maske ohne Kategorie: sie wandert nach „Helme" und damit ans
+        # Ende, also ist die Position, an der sie stand, danach eine andere.
+        # (Die letzte liegt schon in „Helme" — dort waere nichts umzusortieren,
+        # und der Test maesse nichts.)
+        ziel_id = vorher[0]
+        if not ziel_id:
+            # Ohne id gibt es nichts zu messen — die Meldung darueber ist die
+            # eigentliche Auskunft, ein Absturz waere nur Rauschen davor.
+            ziel_id = "(ohne id)"
+        else:
+            f.seite.eval_on_selector(
+                f'[id="{ziel_id}"] .scan-maske-felder input', "e => e.focus()")
+        f.seite.eval_on_selector_all(".scan-maske .kategorie-wahl select", """(ns, id) => {
+          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
+          e.focus();
+          e.value = "Helme";
+          e.dispatchEvent(new Event('change', {bubbles: true}));
+        }""", ziel_id)
+        f.seite.wait_for_timeout(700)
+        wo = f.seite.evaluate("""() => {
+          const a = document.activeElement;
+          const m = a && a.closest ? a.closest('.scan-maske') : null;
+          return m ? m.id : (a ? a.tagName : "nichts");
+        }""")
+        pruefe(wo == ziel_id,
+               f"der Fokus verlaesst die Maske: erwartet {ziel_id}, da: {wo}")
+        nachher = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        # Gegenprobe zur Gegenprobe: waere die Liste GAR NICHT umsortiert
+        # worden, pruefte der Test oben nichts.
+        pruefe(nachher != vorher,
+               "die Kategorie hat die Liste nicht umsortiert — der Test misst nichts")
+
+        # ------------------------------------------------------------------
+        # **Alle drei Listen stehen rechts und sind Masken.** Das ist die
+        # Schicht, die die Vertragssuite nicht sehen kann: dass ein Reiter
+        # ueberhaupt etwas zeichnet, faellt nur im Fenster auf.
+        links_vorher = f.seite.eval_on_selector(
+            "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
+        for reiter, art in (("Slots", "slot"), ("Scans", "scan"), ("Items", "item")):
+            f.klick_text("#scan-insp .tabs .tab", reiter)
+            masken = f.anzahl("#scan-insp .scan-maske")
+            pruefe(masken > 0, f"Reiter „{reiter}“ zeichnet keine Maske")
+            eigene = f.anzahl(f'#scan-insp .scan-maske[id^="maske:{art}:"]')
+            pruefe(eigene == masken,
+                   f"„{reiter}“: {masken} Masken, davon {eigene} mit {art}-id")
+            pruefe(f.anzahl("#ab-listen .scan-maske") == 0,
+                   f"„{reiter}“: es steht noch eine Maske in der linken Spalte")
+            links = f.seite.eval_on_selector(
+                "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
+            pruefe(links == links_vorher,
+                   f"die linke Spalte aendert bei „{reiter}“ ihre Hoehe: "
+                   f"{links_vorher} -> {links}")
+            f.bild("items_reiter_" + reiter.lower())
+
+        # **Ein Scan war nicht mehr zu loeschen**: der Klick auf ihn oeffnete
+        # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand
+        # in der Spalte, die man damit gerade verlassen hatte.
+        f.klick_text("#scan-insp .tabs .tab", "Scans")
+        f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] input')
+        f.seite.wait_for_timeout(300)
+        f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] .scan-maske-stand')
+        reiter_danach = f.text("#scan-insp .tabs .tab.an")
+        pruefe(reiter_danach.startswith("Scans"),
+               f"nach dem Oeffnen steht der Reiter auf „{reiter_danach}“")
+        knoepfe = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske-detail button", "ns => ns.map(n => n.textContent)")
+        pruefe(any("löschen" in k for k in knoepfe),
+               f"kein Loesch-Knopf im Detailteil des Scans: {knoepfe}")
+        f.bild("items_scan_detail")
+
+        # **Der Bestaetigungsklick** war die einzige Item-Eigenschaft ohne
+        # Bedienelement — im Modell und in den Konsolen-Editoren gibt es sie
+        # seit jeher.
+        f.klick_text("#scan-insp .tabs .tab", "Items")
+        f.klick("#scan-insp .scan-maske .scan-maske-felder input")
+        f.seite.wait_for_timeout(300)
+        beschriftungen = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske-detail .ueberschrift",
+            "ns => ns.map(n => n.textContent)")
+        pruefe(any("BESTÄTIGUNGSKLICK" in b for b in beschriftungen),
+               f"kein Bestaetigungsklick in der Item-Maske: {beschriftungen}")
+
         fehler.extend(f.fehler)
     return fehler
 

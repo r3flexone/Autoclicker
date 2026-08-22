@@ -322,16 +322,17 @@ function farbfeld(beschriftung, hex, beim_setzen, hilfe, schluessel) {
     el("div", {class: "reihe"}, wahl, text));
 }
 
-function schalter(beschriftung, an, beim_setzen, unbestimmt) {
+/** Ein Schalter — mit ⓘ statt eines Erklaerungsabsatzes darunter.
+ *
+ * **Erklaerungen gehoeren ins ⓘ, nicht neben das Bedienelement.** Fuenf
+ * Absaetze untereinander sind eine Textwand, in der das Bedienelement
+ * untergeht; wer die Regel schon kennt, liest sie trotzdem jedes Mal mit. Das
+ * ⓘ zeigt sie auf Wunsch, und `offeneHilfen` merkt sich, welche offen sind. */
+function schalter(beschriftung, an, beim_setzen, hilfe, schluessel) {
   const box = el("input", {type: "checkbox"});
   box.checked = !!an;
-  // `indeterminate` geht nur ueber die Eigenschaft, nicht ueber ein Attribut.
-  if (unbestimmt) box.indeterminate = true;
-  // Aus dem Mischzustand heraus heisst ein Klick „alle" — das ist der Griff,
-  // den man dort will. Ohne das entschiede der Browser (er setzt checked=true),
-  // was zufaellig dasselbe waere; ausgeschrieben haengt es nicht am Zufall.
-  box.addEventListener("change", () => beim_setzen(unbestimmt ? true : box.checked));
-  return el("label", {class: "an"}, box, beschriftung);
+  box.addEventListener("change", () => beim_setzen(box.checked));
+  return el("label", {class: "an"}, box, beschriftet(beschriftung, hilfe, schluessel));
 }
 
 function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
@@ -353,8 +354,21 @@ function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
  *
  * Gemerkt wird die POSITION unter den Eingabefeldern des naechsten Elements mit
  * `id`: das Element selbst gibt es danach nicht mehr, und einen eigenen
- * Schluessel je Feld muesste jeder Bauer mitschleppen. */
+ * Schluessel je Feld muesste jeder Bauer mitschleppen.
+ *
+ * **Deshalb traegt jede Maske eine eigene `id`.** Ohne die klettert `closest`
+ * bis zur ganzen Spalte, und die Position zaehlt dann ueber ALLE Masken
+ * hinweg — bei sechzig Items rund zweihundert Felder. Genau die drei Angaben,
+ * die man dort tippt, sortieren die Liste aber um (Kategorie, Prioritaet,
+ * Name): nach dem Neuaufbau steht an derselben Position das Feld eines
+ * FREMDEN Items, und wer weitertippt, aendert das falsche. Mit der Maske als
+ * Anker zaehlt die Position nur noch in ihr, und dort verschiebt sich
+ * nichts. */
 function fokusMerken() {
+  // Ein Umbenennen aendert die Identitaet und damit die id. Wer umbenennt, sagt
+  // es vorher; hier wird es einmal eingeloest und danach vergessen.
+  const umbenannt = fokusUmbenannt;
+  fokusUmbenannt = null;
   const a = document.activeElement;
   if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
   const kasten = a.closest("[id]");
@@ -365,12 +379,22 @@ function fokusMerken() {
   // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
   let start = null, ende = null;
   try { start = a.selectionStart; ende = a.selectionEnd; } catch (e) { /* egal */ }
-  return {id: kasten.id, i: i, start: start, ende: ende};
+  const neu = umbenannt && umbenannt.von === kasten.id ? umbenannt.nach : kasten.id;
+  // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
+  // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
+  return {id: neu, alt: kasten.id, i: i, start: start, ende: ende};
 }
+
+/** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
+function fokusUmbenennung(von, nach) {
+  fokusUmbenannt = von && nach && von !== nach ? {von: von, nach: nach} : null;
+}
+let fokusUmbenannt = null;
 
 function fokusHerstellen(merk) {
   if (!merk) return;
-  const kasten = document.getElementById(merk.id);
+  const kasten = document.getElementById(merk.id)
+              || document.getElementById(merk.alt);
   if (!kasten) return;
   const ziel = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
   if (!ziel) return;
@@ -1647,6 +1671,17 @@ let SC = null;
  * der Inhalt. Dieselbe Regel wie bei `klappZu` — die Vorgabe gilt, bis jemand
  * einen Reiter anfasst. */
 let scanListe = null;
+/* Wohin der Reiter nach dem naechsten `scan_oeffnen` springt. `null` heisst
+ * „zurueck auf die Vorgabe" — bei offenem Scan sind das seine Items, also das,
+ * weswegen man ihn geoeffnet hat. Wer ihn aus der Scan-Liste heraus oeffnet,
+ * bleibt dort stehen: sonst verschwindet die Maske, die sich gerade
+ * aufgeklappt hat, samt ihren Einstellungen. */
+let scanReiterNachOeffnen = null;
+/* Was zuletzt gewaehlt war (Art + Name). Ein Klick INS BILD waehlt einen Slot,
+ * und der steht in der Slot-Liste — ohne das Nachziehen passiert nach dem
+ * Klick sichtbar nichts, weil gerade die Item-Liste offen ist. Nur beim
+ * WECHSEL, sonst kaeme man aus der Liste nicht mehr heraus. */
+let scanWahlZuletzt = null;
 let scanZoom = 1;
 // Hat der Nutzer den Zoom selbst gesetzt (1:1 oder STRG+Rad)? Dann fasst ihn
 // die Fenstergroesse nicht mehr an — sonst raeumte ein Verschieben des Fensters
@@ -1724,7 +1759,7 @@ async function zeichneScans(frisch) {
   scanArtPflegen();
   scanCanvasWerkzeuge();
   scanErgebnisZeichnen();
-  scanListeZeichnen();
+  scanReiterFolgen();
   erkBibliothekZeichnen();
   scanOverlay();
   scanZeigeGewaehlten();
@@ -1742,7 +1777,10 @@ async function rufScan(name, daten) {
   // wieder die Vorgabe — und die sind bei offenem Scan seine Items, also das,
   // weswegen man ihn geoeffnet hat. Vorher landete man auf der Scan-Liste und
   // sah den Namen, den man gerade angeklickt hatte, ein zweites Mal.
-  if (name === "scan_oeffnen") scanListe = null;
+  if (name === "scan_oeffnen") {
+    scanListe = scanReiterNachOeffnen;
+    scanReiterNachOeffnen = null;
+  }
   if (name === "scan_foto")
     scanAssistentSchritt = SC.schritte[1].fertig ? 3 : 2;
   else if (name === "scan_lernvorschau" || name === "scan_erkennen")
@@ -1777,7 +1815,9 @@ function scanCanvasWerkzeuge() {
     knopf.disabled = !SC.pillow && knopf.dataset.scanTool !== "wahl";
   });
   const modus = SCAN_MODI.find((m) => m.key === SC.modus);
-  const erk = {region: "Region aufziehen", aktion: "Klickpunkt setzen"}[SC.modus];
+  const erk = {region: "Region aufziehen",
+               aktion: scanArt === "item" ? "Bestätigungsklick setzen"
+                                          : "Klickpunkt setzen"}[SC.modus];
   $("scan-werkzeugstand").textContent = SC.modus === "wahl"
     ? (scanArt === "item" ? "Slot anklicken zum Bearbeiten"
                           : "Werkzeug wählen oder rechts ein Feld ändern")
@@ -1924,11 +1964,6 @@ function scanWerkzeuge() {
     ? offen.slots.length + " Slots · " + offen.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
 
-  // Der Name gehoert zum offenen Scan - ohne einen gibt es nichts zu benennen,
-  // dann ist das Feld weg statt leer und wirkungslos.
-  $("scan-name-zeile").hidden = !offen;
-  if (offen && $("scan-name") !== document.activeElement) $("scan-name").value = offen.name;
-
   const ziel = $("scan-modi");
   ziel.replaceChildren();
   for (const m of SCAN_MODI) {
@@ -1947,6 +1982,18 @@ function scanWerkzeuge() {
       el("span", {class: "klein"}, m.hilfe)));
   }
   $("scan-modi-zurueck").hidden = SC.modus === "wahl";
+  // **Was man ZWISCHENDURCH tut, braucht keinen Modus** — und die Erklaerung
+  // dazu keinen eigenen Absatz. Sie stand als vier Zeilen Text unter den
+  // Kacheln; das ⓘ zeigt sie auf Wunsch und merkt sich, ob es offen war.
+  $("scan-foto-info").replaceChildren("Woher das Bild kommt", info(
+    "Items werden aus diesem eingefrorenen Bild gelernt. Beim Lauf wird "
+    + "dasselbe Fenster mit derselben Aufnahmemethode neu aufgenommen; die "
+    + "Slots folgen seiner Position automatisch.", "aufnahme"));
+  $("scan-modi-direkt").replaceChildren("Ohne Moduswechsel", info(
+    "ALT+Klick misst den Hintergrund eines Slots, Doppelklick setzt seinen "
+    + "Klickpunkt — beides wählt ihn gleich mit aus. Ein gewählter Slot lässt "
+    + "sich mit der Maus ziehen oder mit den Pfeiltasten verschieben "
+    + "(SHIFT = 10 px).", "direkt"));
   const modus = SCAN_MODI.find((m) => m.key === SC.modus);
   $("scan-modus-kurz").textContent = modus ? modus.text : "";
   klappPflegen();
@@ -2053,16 +2100,38 @@ async function scanFensterPflegen() {
   }
 }
 
-/** Stehen die Item-Masken in der rechten Spalte?
+/** Stehen die Masken in der rechten Spalte?
  *
- * Die breitere Spalte war die leerere (290 px links mit fuenf Bloecken, 370 px
- * rechts fast leer), und eine Maske braucht Breite.
+ * **Der ganze Listen-Block wandert, nicht nur die Eintraege.** Reiter, Filter
+ * und Liste gehoeren zusammen; als der Reiter links stand und die Masken
+ * rechts erschienen, aenderte die linke Spalte bei jedem Umschalten ihre
+ * Hoehe, und ein Hinweis musste erklaeren, wohin der Inhalt verschwunden ist.
  *
- * Nur die Items: Scans und Slots bleiben links. Der Scan ist Navigation, und
- * einen Slot zieht man im BILD auf — seine Liste ist der zweite Weg dorthin. */
-function scanItemsRechts() {
-  return scanArt === "item" && scanListeAktiv() === "items";
+ * Die Aufteilung ist damit nach VERANTWORTUNG geschnitten: links, wie der Scan
+ * entsteht (Auswahl, Assistent, Modus-Kacheln), rechts, was drin ist.
+ *
+ * Boss- und Icon-Scans bleiben davon unberuehrt. Dort sind es nicht Dutzende
+ * gleichartiger Dinge, sondern EIN Scan mit Region, Erkennung und Aktion — eine
+ * Maske traegt das nicht, und die Liste ist drei Zeilen lang. */
+function scanMaskenRechts() {
+  return scanArt === "item";
 }
+
+/* **Die Liste steht rechts — die ganze, samt Reitern und Filter.**
+ *
+ * Der Schnitt geht nach VERANTWORTUNG, nicht nach Scan-Art: links, wie der
+ * Scan entsteht (Auswahl, Assistent, Werkzeuge), rechts, was drin ist.
+ *
+ * Hier stand bis zum Umbau ein zweiter Listen-Block in der LINKEN Spalte, und
+ * eine Funktion entschied je Reiter, welcher der beiden ihn fuellt. Das war
+ * die Naht, an der die linke Spalte bei jedem Umschalten ihre Groesse aenderte
+ * — und ein Hinweistext musste erklaeren, wohin der Inhalt verschwunden ist.
+ * Ein Ort, ein Bauplan (`scanListenBlock`).
+ *
+ * Als Masken kommen nur die Item-Listen (`scanMaskenRechts()`): dort stehen
+ * Dutzende gleichartiger Dinge nebeneinander. Ein Boss- oder Icon-Scan ist
+ * EINES — Region, Erkennung, Aktion —, das traegt keine Maske, und seine Liste
+ * ist drei Zeilen lang. */
 
 /** Welche Liste gilt: die gewaehlte, sonst die zur Lage passende Vorgabe. */
 function scanListeAktiv() {
@@ -2072,14 +2141,35 @@ function scanListeAktiv() {
   return SC && SC.offen ? "items" : "scans";
 }
 
-function scanListeZeichnen() {
-  const tabs = $("scan-listen-tabs");
+/** Der Anker, an dem der Fokus einen Neuaufbau ueberlebt — eine id je Maske.
+ *
+ * Ohne sie zaehlt `fokusMerken()` die Position ueber die ganze Spalte, und die
+ * drei Felder, die man dort tippt, sortieren die Liste gerade um. */
+function maskeId(art, name) { return "maske:" + art + ":" + name; }
+
+/** Der Reiter folgt der Auswahl — aber nur, wenn sie sich geaendert hat.
+ *
+ * Ein Klick im Bild waehlt einen Slot. Steht gerade die Item-Liste offen,
+ * geschieht rechts sonst nichts, und der Klick sieht wirkungslos aus. Beim
+ * blossen Neuzeichnen darf dagegen nichts umschalten: sonst waere der Weg aus
+ * der Slot-Liste heraus versperrt, solange ein Slot gewaehlt ist. */
+function scanReiterFolgen() {
+  if (!SC || scanArt !== "item") return;
+  const jetzt = SC.wahl.art + ":" + SC.wahl.name;
+  if (jetzt === scanWahlZuletzt) return;
+  const erster = scanWahlZuletzt === null;
+  scanWahlZuletzt = jetzt;
+  // Der Scan hat seinen eigenen Weg (`scanReiterNachOeffnen`); und beim
+  // allerersten Zeichnen gibt es keinen Wechsel, nur einen Anfangszustand.
+  if (erster) return;
+  const ziel = {slot: "slots", item: "items"}[SC.wahl.art];
+  if (ziel && scanListeAktiv() !== ziel) scanListe = ziel;
+}
+
+/** Reiter, Filter und Liste — ein Bauplan, ein Ort. */
+function scanListenBlock(tabs, filter, ziel) {
   const offen = scanListeAktiv();
-  tabs.replaceChildren();
   if (scanArt !== "item") {
-    $("scan-filterzeile").replaceChildren();
-    const ziel = $("scan-liste");
-    ziel.replaceChildren();
     if (scanArt === "icon") {
       tabs.appendChild(el("button", {class: "tab an"},
         "Icon-Scans " + SC.icon_scans.length));
@@ -2110,24 +2200,6 @@ function scanListeZeichnen() {
       onclick: () => { scanListe = key; zeichneScans(); },
     }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
   }
-
-  // Filter und Liste gehoeren zusammen — stehen die Masken rechts, ziehen beide
-  // um, und der Abschnitt hier schrumpft auf die Reiter.
-  const rechts = scanItemsRechts();
-  $("ab-listen").classList.toggle("nur-reiter", rechts);
-  const filter = $("scan-filterzeile");
-  const ziel = $("scan-liste");
-  filter.replaceChildren();
-  ziel.replaceChildren();
-  if (rechts) {
-    // **Ein Reiter, der Inhalt woanders aufmacht, sagt das.** Sonst schrumpft
-    // hier etwas zusammen und drueben erscheint etwas — und ob das
-    // zusammengehoert, muss man raten.
-    ziel.appendChild(el("p", {class: "hinweis"},
-      "Die Item-Masken stehen rechts — dort ist Platz für Name, Kategorie und "
-      + "Priorität nebeneinander."));
-    return;
-  }
   scanFilterzeile(filter, offen);
   if (offen === "slots") return scanListeSlots(ziel);
   if (offen === "items") return scanListeItems(ziel);
@@ -2140,7 +2212,7 @@ function scanFilterzeile(filter, offen) {
     const art = offen === "slots" ? "slot" : "item";
     const gesamt = offen === "slots" ? SC.slots : SC.items;
     const drin = gesamt.filter((e) => e.dabei).length;
-    filter.appendChild(schalter("nur aus „" + SC.offen + "\u201c",
+    filter.appendChild(schalter("nur aus „" + SC.offen + "“",
       SC.nur_dabei, (v) => rufScan("scan_filter", {wert: v})));
     // Ein Scan umfasst fast immer ALLES seines Spiels - 56 Haekchen einzeln
     // zu setzen war der Weg dorthin. Der Knopf SAGT, was er tut, statt zu
@@ -2158,13 +2230,64 @@ function scanFilterzeile(filter, offen) {
   }
 }
 
-/** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie. */
+/** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie.
+ *
+ * **„Gehoert dazu ODER wird gerade gesehen"** — die zweite Haelfte ist die
+ * nuetzlichere: ein Item, das ein anderes Spiel schon kennt, steht da, bevor
+ * jemand auf die Idee kommt, es neu zu lernen. Slots tragen das Merkmal nicht,
+ * sie sind Bildschirm-Koordinaten und gehoeren immer genau einem Spiel. */
 function scanSichtbar(eintraege, mitKategorie) {
   let liste = eintraege;
-  if (SC.offen && SC.nur_dabei) liste = liste.filter((e) => e.dabei);
+  if (SC.offen && SC.nur_dabei) liste = liste.filter((e) => e.dabei || e.erkannt);
   if (mitKategorie && scanKategorie)
     liste = liste.filter((e) => (e.kategorie || "") === scanKategorie);
   return liste;
+}
+
+/** Der Haken „gehoert zu diesem Scan" — dieselbe Stelle in jeder Maske. */
+function maskeHaken(art, name, dabei) {
+  if (!SC.offen) return el("span", {});
+  const kasten = el("input", {type: "checkbox",
+    title: "gehört zum Scan „" + SC.offen + "“"});
+  kasten.checked = !!dabei;
+  kasten.addEventListener("change", () => rufScan("scan_mitglied",
+    {scan: SC.offen, art: art, name: name}));
+  return el("label", {class: "an"}, kasten);
+}
+
+/** Ein Namensfeld in einer Maske — mit dem Fokus-Anker fuer das Umbenennen. */
+function maskeName(art, name, titel, setze) {
+  const feld = el("input", {value: name, autocomplete: "off", title: titel});
+  feld.addEventListener("change", () => {
+    fokusUmbenennung(maskeId(art, name), maskeId(art, feld.value.trim()));
+    setze(feld.value);
+  });
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+  return feld;
+}
+
+/** Das Gehaeuse einer Maske: id, Auswahl-Ring, Klick zum Waehlen, Detailteil.
+ *
+ * **Eine Bauform fuer Scans, Slots und Items.** Sie unterscheiden sich in dem,
+ * was drinsteht — nicht darin, wie man sie anfasst. Vorher waren es drei
+ * Formen an zwei Orten, und ein Slot liess sich nur ueber vier Zahlenfelder
+ * bearbeiten, waehrend ein Item eine Maske hatte. */
+function maskeBauen(art, name, gewaehlt, teile, detail, beimWaehlen) {
+  const maske = el("div", {class: "scan-maske" + (gewaehlt ? " an" : ""),
+                           id: maskeId(art, name)});
+  for (const teil of teile) maske.appendChild(teil);
+  if (gewaehlt && detail) {
+    const kasten = el("div", {class: "scan-maske-detail"});
+    detail(kasten);
+    maske.appendChild(kasten);
+  }
+  // Ein Klick auf die Maske waehlt sie — aber nicht, wenn er einem Feld galt.
+  // Sonst nimmt der Neuaufbau das Feld weg, in das gerade geklickt wurde.
+  maske.addEventListener("click", (e) => {
+    if (e.target.closest("input, label, button, select, summary, details")) return;
+    if (!gewaehlt) beimWaehlen();
+  });
+  return maske;
 }
 
 function scanListeSlots(ziel) {
@@ -2172,38 +2295,58 @@ function scanListeSlots(ziel) {
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
-      : "Noch keine Slots. Modus „Neuer Slot“, dann zwei Ecken im Bild anklicken."));
+      : "Noch keine Slots. Modus „Slots finden“ — oder „Neuer Slot“ und zwei "
+        + "Ecken im Bild anklicken."));
     return;
   }
-  for (const s of liste) {
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.auswahl.includes(s.name)
-        || (SC.wahl.art === "slot" && SC.wahl.name === s.name) ? " an" : ""),
-      onclick: () => rufScan("scan_waehlen", {art: "slot", name: s.name}),
-    },
-      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
-                  style: s.farbe ? "background:" + s.farbe : ""}),
-      el("span", {class: "name"}, s.name),
-      // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
-      // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der
-      // Weg, ihn auszuwaehlen und zu loeschen.
-      s.winzig
-        ? el("span", {class: "klein", style: "color:var(--err)",
-                      title: "Zu klein zum Erkennen — hier auswählen und löschen"},
-             s.breite + "×" + s.hoehe + " ⚠")
-        : (s.treffer && s.treffer.name
-            ? el("span", {class: "klein",
-                          style: "color:var(" + (s.treffer.fremd ? "--slot-fremd"
-                                                                 : "--slot-ok") + ")",
-                          title: s.treffer.fremd
-                            ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""},
-                 s.treffer.name)
-            // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
-            // Rechteck im Bild, damit Liste und Bild zusammengehen.
-            : el("span", {class: "klein mono",
-                          style: s.treffer ? "color:var(--slot-offen)" : ""},
-                 s.treffer ? "unbekannt" : s.breite + "×" + s.hoehe))));
+  for (const s of liste) ziel.appendChild(scanSlotMaske(s));
+}
+
+/** Ein Slot als Maske — dieselbe Bauform wie beim Item.
+ *
+ * **Was man an einem Slot tippt, ist sein Name; alles andere zieht man im
+ * Bild.** Deshalb traegt die zweite Zeile keinen Regler, sondern den Stand:
+ * Groesse, Klickpunkt und was zuletzt darin erkannt wurde. Die Zahlen dazu
+ * klappen im Detailteil auf, wie beim Item die Konfidenz. */
+function scanSlotMaske(s) {
+  const setze = (feld, wert) => rufScan("scan_slot_setzen",
+                                        {name: s.name, feld: feld, wert: wert});
+  const gewaehlt = SC.auswahl.includes(s.name)
+                || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
+  const name = maskeName("slot", s.name,
+    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
+  const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
+  return maskeBauen("slot", s.name, gewaehlt,
+    [maskeHaken("slot", s.name, s.dabei),
+     el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
+                 title: s.farbe ? "Hintergrund " + s.farbe : "Hintergrund nicht gemessen",
+                 style: s.farbe ? "background:" + s.farbe : ""}),
+     felder],
+    (kasten) => scanSlotDetails(kasten, s),
+    () => rufScan("scan_waehlen", {art: "slot", name: s.name}));
+}
+
+/** Die Zustandszeile eines Slots: Groesse, Warnung, letzter Treffer. */
+function scanSlotStand(s) {
+  const teile = [el("span", {class: "klein mono"}, s.breite + "×" + s.hoehe)];
+  // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
+  // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der Weg,
+  // ihn auszuwaehlen und zu loeschen.
+  if (s.winzig) {
+    teile.push(el("span", {class: "klein", style: "color:var(--err)",
+      title: "Zu klein zum Erkennen — hier auswählen und löschen"}, "⚠ zu klein"));
+  } else if (s.treffer && s.treffer.name) {
+    teile.push(el("span", {class: "klein",
+      style: "color:var(" + (s.treffer.fremd ? "--slot-fremd" : "--slot-ok") + ")",
+      title: s.treffer.fremd
+        ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.treffer.name));
+  } else if (s.treffer) {
+    // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
+    // Rechteck im Bild, damit Liste und Bild zusammengehen.
+    teile.push(el("span", {class: "klein", style: "color:var(--slot-offen)"},
+                  "unbekannt"));
   }
+  return el("div", {class: "scan-maske-stand"}, teile);
 }
 
 function scanListeItems(ziel) {
@@ -2213,7 +2356,7 @@ function scanListeItems(ziel) {
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
-      : "Noch keine Items. Einen Slot wählen und rechts „Item lernen“ — oder alle "
+      : "Noch keine Items. Einen Slot wählen und „Item lernen“ — oder alle "
         + "Slots auf einmal."));
     return;
   }
@@ -2243,10 +2386,8 @@ function scanItemMaske(i) {
   const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
   const bild = scanVorschauen.get(i.name);
 
-  const name = el("input", {value: i.name, autocomplete: "off",
-                            title: "Name — zugleich die Referenz in jedem Scan"});
-  name.addEventListener("change", () => setze("name", name.value));
-  name.addEventListener("keydown", (e) => { if (e.key === "Enter") name.blur(); });
+  const name = maskeName("item", i.name,
+    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
 
   // Vorhandene anklicken, neue tippen — dasselbe Bedienelement wie in der
   // Lern-Vorschau. Ein freies Textfeld allein macht aus „Helme" und „helme"
@@ -2265,42 +2406,19 @@ function scanItemMaske(i) {
   const felder = el("div", {class: "scan-maske-felder"}, name,
     el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i));
 
-  const maske = el("div", {class: "scan-maske" + (gewaehlt ? " an" : "")});
-  if (SC.offen) {
-    // Der Haken ist die vierte Angabe und steht deshalb IN der Maske statt in
-    // einer eigenen Liste: „gehoert zu diesem Scan" ist eine Eigenschaft des
-    // Items im Zusammenhang, keine getrennte Verwaltung.
-    const kasten = el("input", {type: "checkbox",
-      title: "gehört zum Scan „" + SC.offen + "“"});
-    kasten.checked = !!i.dabei;
-    kasten.addEventListener("change", () => rufScan("scan_mitglied",
-      {scan: SC.offen, art: "item", name: i.name}));
-    maske.appendChild(el("label", {class: "an"}, kasten));
-  } else {
-    maske.appendChild(el("span", {}));
-  }
-  maske.appendChild(bild
-    ? el("img", {class: "mini", src: bild, alt: ""})
-    : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
-                  style: i.marker.length ? "background:" + i.marker[0] : ""}));
-  maske.appendChild(felder);
-  // **Das Gewaehlte klappt seine Einstellungen hier auf**, statt sie in eine
-  // andere Spalte zu legen: Vorlage, Marker, Konfidenz und Loeschen gehoeren
-  // diesem Item, und man sieht beim Arbeiten daran nicht zwischen zwei Orten
-  // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
-  // keine Liste mehr.
-  if (gewaehlt) {
-    const detail = el("div", {class: "scan-maske-detail"});
-    scanItemDetails(detail, i);
-    maske.appendChild(detail);
-  }
-  // Ein Klick auf die Maske waehlt das Item — aber nicht, wenn er einem Feld
-  // galt. Sonst nimmt der Neuaufbau das Feld weg, in das gerade geklickt wurde.
-  maske.addEventListener("click", (e) => {
-    if (e.target.closest("input, label, button, select, summary, details")) return;
-    if (!gewaehlt) rufScan("scan_waehlen", {art: "item", name: i.name});
-  });
-  return maske;
+  return maskeBauen("item", i.name, gewaehlt,
+    [maskeHaken("item", i.name, i.dabei),
+     bild ? el("img", {class: "mini", src: bild, alt: ""})
+          : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
+                        style: i.marker.length ? "background:" + i.marker[0] : ""}),
+     felder],
+    // **Das Gewaehlte klappt seine Einstellungen hier auf**, statt sie in eine
+    // andere Spalte zu legen: Vorlage, Marker, Konfidenz und Loeschen gehoeren
+    // diesem Item, und man sieht beim Arbeiten daran nicht zwischen zwei Orten
+    // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
+    // keine Liste mehr.
+    (kasten) => scanItemDetails(kasten, i),
+    () => rufScan("scan_waehlen", {art: "item", name: i.name}));
 }
 
 /** Die Zustandszeile einer Item-Maske: erkannt, stumm, fehlende Vorlage.
@@ -2320,14 +2438,19 @@ function scanItemStand(i) {
   }
   if (i.stumm) {
     teile.push(el("span", {style: "color:var(--err)",
-      title: "Weder Vorlage noch Marker — dieses Item wird nie erkannt"}, "stumm"));
+      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "stumm"));
+  } else if (!(i.vorlagen || []).length) {
+    teile.push(el("span", {class: "mono"}, i.marker.length + " Marker"));
   }
   if ((i.fehlende_scan_groessen || []).length) {
     teile.push(el("span", {style: "color:var(--accent)",
-      title: "Für diese Slot-Größe noch keine Vorlage gelernt"},
-      "⚠ " + i.fehlende_scan_groessen.map((g) => g[0] + "×" + g[1]).join(", ")));
+      title: "Für die Slot-Größen dieses Scans gibt es noch keine Vorlage"},
+      "Vorlage fehlt"));
   }
-  if (!teile.length) teile.push(el("span", {class: "mono"}, "P" + i.prioritaet));
+  if (i.bestaetigung) {
+    teile.push(el("span", {class: "mono", title: "Nach dem Klick wird bestätigt: "
+      + i.bestaetigung.text}, "+ Bestätigung"));
+  }
   return el("div", {class: "scan-maske-stand"}, teile);
 }
 
@@ -2337,18 +2460,41 @@ function scanListeScans(ziel) {
       "Noch kein Item-Scan. Er ist die Klammer um Slots und Items — bei mehreren "
       + "Spielen der einzige Weg, sie auseinanderzuhalten."));
   }
-  for (const c of SC.scans) {
-    // Ein Klick oeffnet ihn: waehlen und oeffnen sind hier dasselbe, denn ein
-    // Scan, den man ansieht, ist der, an dem man arbeitet.
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.offen === c.name ? " an" : ""),
-      onclick: () => rufScan("scan_oeffnen", {name: c.name}),
-    },
-      el("span", {class: "name"}, c.name),
-      c.fehlend.length
-        ? el("span", {class: "klein", style: "color:var(--err)"}, c.fehlend.length + "× fehlt")
-        : el("span", {class: "klein mono"}, c.slots.length + "S/" + c.items.length + "I")));
-  }
+  for (const c of SC.scans) ziel.appendChild(scanScanMaske(c));
+}
+
+/** Ein Item-Scan als Maske: Name, Umfang — und seine Einstellungen darunter.
+ *
+ * **Hier lag die Luecke, durch die ein Scan gar nicht mehr zu loeschen war.**
+ * Ein Klick auf die Zeile oeffnete ihn, das Oeffnen schaltete auf die
+ * Item-Liste um, und die Scan-Einstellungen standen in einer Spalte, die man
+ * damit gerade verlassen hatte. Jetzt bleibt der Reiter stehen, und alles, was
+ * dem Scan gehoert, klappt in seiner Maske auf. */
+function scanScanMaske(c) {
+  const offen = SC.offen === c.name;
+  const name = maskeName("scan", c.name,
+    "Name — ein Block vom Typ ITEM-SCAN verweist per Name hierauf",
+    (v) => rufScan("scan_setzen", {name: c.name, feld: "name", wert: v}));
+  const stand = el("div", {class: "scan-maske-stand"},
+    el("span", {class: "klein mono"},
+       c.slots.length + " Slots · " + c.items.length + " Items"),
+    offen ? el("span", {class: "klein", style: "color:var(--slot-ok)"}, "offen") : null,
+    c.fehlend.length
+      ? el("span", {class: "klein", style: "color:var(--err)",
+                    title: "Zeigt ins Leere: " + c.fehlend.join(", ")},
+           c.fehlend.length + "× fehlt")
+      : null);
+  return maskeBauen("scan", c.name, offen,
+    [el("span", {}),
+     el("span", {class: "kugel" + (offen ? "" : " ohne"),
+                 style: offen ? "background:var(--slot-ok)" : ""}),
+     el("div", {class: "scan-maske-felder"}, name, stand)],
+    (kasten) => scanScanDetails(kasten, c),
+    // Waehlen und Oeffnen sind hier dasselbe: ein Scan, den man ansieht, ist
+    // der, an dem man arbeitet. Der Reiter bleibt dabei stehen — sonst
+    // verschwindet die Maske, die sich gerade aufgeklappt hat.
+    () => { scanReiterNachOeffnen = "scans";
+            rufScan("scan_oeffnen", {name: c.name}); });
 }
 
 /** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
@@ -2363,7 +2509,7 @@ async function scanVorschauenHolen(namen) {
   for (const [name, url] of Object.entries(antwort)) {
     if (url) { scanVorschauen.set(name, url); neu = true; }
   }
-  if (neu && ansicht === "scans") { scanListeZeichnen(); scanInspektor(); }
+  if (neu && ansicht === "scans") scanInspektor();
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -2545,8 +2691,7 @@ function scanInspektor() {
   const kopf = el("div", {class: "abschnitt"},
     el("div", {class: "reihe"},
       el("span", {class: "ueberschrift wachse"},
-         SC.dirty ? "NICHT GESPEICHERT"
-                  : (scanItemsRechts() ? "ITEMS" : "SCANS · SLOTS · ITEMS")),
+         SC.dirty ? "NICHT GESPEICHERT" : scanSpaltenTitel()),
       SC.dirty ? el("span", {class: "punkt-offen"}) : null),
     // **Der Hauptprozess schreibt dieselben Dateien.** Ein Lauf mit
     // Auto-Lernen legt Items an und speichert sie; ohne diesen Hinweis sucht
@@ -2594,26 +2739,49 @@ function scanInspektor() {
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
-  // **Die Items sind hier die Arbeit, nicht ein einzelnes Ding.** Sechzig
-  // Masken brauchen Breite, und die hat diese Spalte; der Inspektor hatte
-  // seit dem Umbau ohnehin fast nichts mehr zu zeigen. Was zum GEWAEHLTEN
-  // Item gehoert, steht in seiner Maske — nicht daneben.
-  if (scanItemsRechts()) {
-    const filter = el("div", {class: "reihe", style: "margin-bottom:8px"});
-    scanFilterzeile(filter, "items");
-    if (filter.childNodes.length) rumpf.appendChild(filter);
-    const liste = el("div", {class: "spalte", style: "gap:3px"});
-    scanListeItems(liste);
-    rumpf.appendChild(liste);
-  } else if (scanArt !== "item") erkInspektor(rumpf);
-  else if (SC.wahl.art === "slot") scanInspSlot(rumpf);
-  else if (SC.wahl.art === "item") scanInspItem(rumpf);
-  else if (SC.wahl.art === "scan") scanInspScan(rumpf);
+  // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Reiter, Filter
+  // und Masken gehoeren zusammen; was zum GEWAEHLTEN gehoert, klappt in seiner
+  // Maske auf statt daneben zu stehen.
+  // Eine Mehrfachauswahl meint etwas anderes als eine Maske: sie hat keinen
+  // Namen und keine Einzelfelder, nur das, was auf alle wirkt. Deshalb steht
+  // sie ueber der Liste und nicht in ihr.
+  if (scanMaskenRechts() && SC.auswahl.length > 1) {
+    const sammel = el("div", {class: "scan-sammel"});
+    scanInspAuswahl(sammel);
+    rumpf.appendChild(sammel);
+  }
+  const tabs = el("div", {class: "tabs klein"});
+  const filter = el("div", {class: "reihe", style: "margin:8px 0"});
+  const liste = el("div", {class: "spalte", style: "gap:3px"});
+  scanListenBlock(tabs, filter, liste);
+  rumpf.appendChild(tabs);
+  if (filter.childNodes.length) rumpf.appendChild(filter);
+  rumpf.appendChild(liste);
+  // Boss und Icon tragen keine Masken — was zum Gewaehlten gehoert, steht
+  // deshalb UNTER der Liste statt in ihr. Abgesetzt, damit man sieht, wo die
+  // Liste aufhoert und das eine Ding anfaengt.
+  if (!scanMaskenRechts()) {
+    const insp = el("div", {class: "spalte erk-insp"});
+    erkInspektor(insp);
+    if (insp.childNodes.length) rumpf.appendChild(insp);
+  }
   if (!rumpf.childNodes.length) {
     rumpf.appendChild(el("p", {class: "hinweis"},
       "Nichts gewählt. Links eine Zeile anklicken — oder im Bild einen Slot."));
   }
   ziel.appendChild(rumpf);
+}
+
+/** Was in der Kopfzeile der rechten Spalte steht: die offene Liste.
+ *
+ * Sie stand als feste Aufzaehlung da („SCANS · SLOTS · ITEMS"), auch wenn nur
+ * eine davon zu sehen war. Eine Ueberschrift, die drei Dinge nennt und eines
+ * zeigt, beschreibt das Fenster statt den Inhalt. */
+function scanSpaltenTitel() {
+  if (scanArt === "icon") return "ICON-SCANS";
+  if (scanArt === "boss") return erkBibliothek() ? "BOSS-BIBLIOTHEK" : "BOSS-SCANS";
+  return {scans: "ITEM-SCANS", slots: "SLOTS", items: "ITEMS"}[scanListeAktiv()]
+         || "SCANS";
 }
 
 function scanReview(ziel) {
@@ -2783,61 +2951,51 @@ function scanReviewUebernehmen() {
   rufScan("scan_lernvorschau_uebernehmen", {zeilen: zeilen});
 }
 
-function scanSlotAktuell() {
-  return SC.slots.find((s) => s.name === SC.wahl.name) || null;
-}
-
-function scanInspSlot(ziel) {
-  // Mehrere Slots gewaehlt: dann gibt es keine Einzelfelder zu zeigen (welchen
-  // Namen truege das Feld?), sondern nur, was auf alle wirkt. Dieselbe Haltung
-  // wie im Sequenz-Editor bei einer Mehrfachauswahl.
-  if (SC.auswahl.length > 1) return scanInspAuswahl(ziel);
-  const s = scanSlotAktuell();
-  if (!s) return;
+/** Was zum gewaehlten Slot gehoert — im Detailteil seiner Maske.
+ *
+ * **Der Name steht in der Maske, nicht hier.** Dieselbe Regel wie beim Item und
+ * beim Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
+ * steht beim Ding; hier bleibt, was man daran EINSTELLT. */
+function scanSlotDetails(ziel, s) {
   const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
 
-  ziel.appendChild(ueberschrift("SLOT",
-    "Ein Slot ist eine Fläche, die gescannt wird, plus die Stelle, auf die " +
-    "geklickt wird, wenn dort etwas Passendes liegt.", "slot"));
-  ziel.appendChild(feld("Name", s.name, (v) => setze("name", v)));
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:8px"},
+  ziel.appendChild(el("div", {class: "reihe"},
     el("button", {class: "btn still",
+      title: "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt",
       onclick: () => rufScan("scan_modus_setzen", {modus: "klick"})},
-      "Klickpunkt im Bild setzen"),
+      "Klickpunkt setzen"),
     el("button", {class: "btn still", disabled: !fotoDa(),
+      title: "Die Farbe des leeren Slots — sie wird beim Item-Lernen abgezogen, "
+             + "damit nicht der Rahmen als Merkmal gelernt wird",
       onclick: () => rufScan("scan_modus_setzen", {modus: "messen"})},
       "Hintergrund messen")));
 
   const erweitert = el("details", {class: "scan-erweitert"},
-    el("summary", {}, "Erweiterte Einstellungen · Koordinaten und Hintergrund"));
-
+    el("summary", {}, "Koordinaten und Hintergrund"));
   erweitert.appendChild(ueberschrift("FLÄCHE",
     "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
-    "im Bild anklicken.", "flaeche"));
+    "im Bild anklicken — oder den Slot im Bild ziehen.", "flaeche"));
   erweitert.appendChild(el("div", {class: "gitter2"},
     zahlfeld("Links", s.region[0], (v) => setze("x1", v)),
     zahlfeld("Oben", s.region[1], (v) => setze("y1", v)),
     zahlfeld("Rechts", s.region[2], (v) => setze("x2", v)),
     zahlfeld("Unten", s.region[3], (v) => setze("y2", v))));
-  erweitert.appendChild(el("p", {class: "hinweis"}, s.breite + " × " + s.hoehe + " px"));
-
   erweitert.appendChild(ueberschrift("KLICKPUNKT",
     "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
   erweitert.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", s.klick[0], (v) => setze("kx", v)),
     zahlfeld("Y", s.klick[1], (v) => setze("ky", v))));
-
-  erweitert.appendChild(ueberschrift("HINTERGRUND",
+  erweitert.appendChild(farbfeld("Hintergrund", s.farbe, (v) => setze("farbe", v),
     "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
     "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
-  erweitert.appendChild(farbfeld("Farbe", s.farbe, (v) => setze("farbe", v)));
   ziel.appendChild(erweitert);
 
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+  ziel.appendChild(el("div", {class: "reihe"},
     el("button", {class: "btn", disabled: !fotoDa(),
                   onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
        "Item lernen"),
-    el("button", {class: "btn", onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
+    el("button", {class: "btn", title: "Einen gleich grossen Slot daneben anlegen",
+                  onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
     el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        "löschen")));
@@ -2845,112 +3003,20 @@ function scanInspSlot(ziel) {
     // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
     // (`_scan_slots()` in scans.py). Das steht im Knopf, weil es vorher
     // stillschweigend anders war — und die Meldung danach ratlos machte.
-    ziel.appendChild(el("button", {class: "btn still", style: "margin-top:6px",
+    ziel.appendChild(el("button", {class: "btn still",
       title: SC.offen ? "Alle Slots aus „" + SC.offen + "“ — nicht der ganze Bestand"
                       : "Alle Slots im Bestand (kein Scan offen)",
       onclick: () => rufScan("scan_lernvorschau", {scope: "alle"})},
       SC.offen ? "Items dieses Scans prüfen & lernen" : "alle Items prüfen & lernen"));
   }
-  if (s.treffer) {
-    ziel.appendChild(el("p", {class: "hinweis", style: "margin-top:10px"},
-      s.treffer.name ? "Zuletzt erkannt: " + s.treffer.name
-                     : "Zuletzt: " + (s.treffer.grund || "nichts erkannt")));
-    // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
-    // man aus demselben Slot ein zweites Item („Item lernen" oben); gehoert er
-    // nur noch nicht zum Scan, ist es ein Klick.
-    if (s.treffer.fremd) {
-      ziel.appendChild(el("button", {class: "btn still",
-        onclick: () => rufScan("scan_mitglied", {art: "item", name: s.treffer.name})},
-        "„" + s.treffer.name + "“ zu diesem Scan dazunehmen"));
-    }
-    if (s.treffer.name) {
-      ziel.appendChild(el("p", {class: "hinweis"},
-        "Stimmt nicht? „Item lernen“ legt aus diesem Slot ein weiteres Item an."));
-    }
-  }
-}
-
-// Welche Haken-Listen gerade ihren ganzen Bestand zeigen. Reiner
-// Oberflaechenzustand: er aendert nichts am Scan, also gehoert er nicht in die
-// Momentaufnahme.
-let hakenAlleZeigen = {slot: false, item: false};
-
-/** Eine Haken-Liste: standardmaessig nur, was zu diesem Scan gehoert.
- *
- * Ein neuer Scan faengt leer an — Slots sind Bildschirm-Koordinaten und in einem
- * fremden Scan reines Rauschen.
- *
- * Items sind der Sonderfall: dasselbe Item kann in mehreren Spielen vorkommen,
- * und es zweimal zu lernen ist genau das, was man vermeiden will. Deshalb
- * erscheint es auch, wenn es GERADE IN EINEM SLOT ERKANNT wird.
- *
- * Der Rest des Bestands ist einen Klick entfernt, nicht weg. */
-function hakenListe(ziel, titel, hilfe, schluessel, c, art, bestand, drin, leerText) {
-  // `erkannt` kommt aus der Bruecke (`_erkannte_items()`), damit die Regel
-  // „gehoert dazu ODER wird gerade gesehen" an EINER Stelle steht und messbar
-  // ist. Slots tragen das Merkmal nicht — sie sind Bildschirm-Koordinaten und
-  // gehoeren immer genau einem Spiel.
-  const alles = hakenAlleZeigen[art];
-  const sichtbar = alles ? bestand
-    : bestand.filter((e) => drin.includes(e.name) || e.erkannt);
-  ziel.appendChild(hakenKopf(titel, hilfe, schluessel, c.name, art,
-                             bestand.length, drin.length));
-  if (sichtbar.length) {
-    ziel.appendChild(el("div", {class: "scan-haken"}, sichtbar.map((e) =>
-      hakenZeile(e.name, drin.includes(e.name),
-                 () => rufScan("scan_mitglied", {scan: c.name, art: art, name: e.name}),
-                 art, !drin.includes(e.name) && !!e.erkannt))));
-  } else if (!alles) {
-    ziel.appendChild(el("p", {class: "hinweis"}, leerText));
-  }
-  const rest = bestand.length - sichtbar.length;
-  if (rest > 0 || alles) {
+  // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
+  // man aus demselben Slot ein zweites Item („Item lernen" oben); gehoert er
+  // nur noch nicht zum Scan, ist es ein Klick.
+  if (s.treffer && s.treffer.fremd && s.treffer.name) {
     ziel.appendChild(el("button", {class: "btn still",
-      onclick: () => { hakenAlleZeigen[art] = !alles; zeichneScans(); }},
-      alles ? "nur die aus diesem Scan" : rest + " weitere im Bestand zeigen"));
+      onclick: () => rufScan("scan_mitglied", {art: "item", name: s.treffer.name})},
+      "„" + s.treffer.name + "“ zu diesem Scan dazunehmen"));
   }
-}
-
-/** Eine Zeile der Haken-Liste: Schieber = gehoert dazu, Name = bearbeiten.
- *
- * Zwei Fragen, zwei Bedienelemente. War die ganze Zeile ein Schalter, musste man
- * ein noch zu keinem Scan gehoerendes Item erst aufnehmen, um es ansehen zu
- * koennen — also etwas AENDERN, um es zu betrachten. */
-function hakenZeile(name, an, umschalten, art, erkannt) {
-  const s = schalter("", an, umschalten);
-  s.classList.add("haken-nur-schalter");
-  return el("div", {class: "haken-zeile"}, s,
-    el("button", {class: "haken-name" + (erkannt ? " erkannt" : ""),
-                  // Erkannt, aber noch nicht dabei: dieselbe Farbe wie im Bild
-                  // (tuerkis), damit man die beiden Stellen zusammenbringt.
-                  title: erkannt ? "wird gerade in einem Slot erkannt — Haken "
-                                   + "setzen statt neu lernen" : "bearbeiten",
-                  onclick: () => rufScan("scan_waehlen", {art: art, name: name})},
-       name));
-}
-
-/** Ueberschrift einer Haken-Liste, mit Stand und einem „alle"-Schieber.
- *
- * Ein Scan umfasst fast immer ALLES seines Spiels; die Ausnahme klickt man
- * danach einzeln weg, nicht umgekehrt.
- *
- * Derselbe Schieber wie die Eintraege darunter, aber mit drei Stellungen: bei
- * 23 von 56 steht er in der MITTE (`indeterminate`), denn „aus" waere dort
- * gelogen. Aus der Mitte heraus schaltet er ein, ganz an schaltet alles aus. */
-function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
-  const gemischt = drin > 0 && drin < gesamt;
-  const alle = schalter("alle", drin === gesamt && gesamt > 0,
-    (v) => rufScan("scan_alle", {scan: scan, art: art, wert: v}), gemischt);
-  alle.classList.add("haken-alle");
-  // **Dasselbe Raster wie die Liste darunter.** Rechts angeklebt stand der
-  // Schieber ueber nichts — die Eintraege stehen zweispaltig und linksbuendig,
-  // er sass allein am rechten Rand. In derselben Spalte steht er genau ueber
-  // dem ersten Eintrag, und die Zahl nimmt die zweite Spalte.
-  return el("div", {class: "spalte", style: "gap:6px"},
-    el("span", {class: "ueberschrift mitinfo"}, titel, info(hilfe, schluessel)),
-    el("div", {class: "scan-haken haken-kopf"},
-      alle,
-      el("span", {class: "klein mono haken-stand"}, drin + "/" + gesamt)));
 }
 
 /** Mehrere Slots gewaehlt — nur, was auf alle wirkt.
@@ -2963,7 +3029,8 @@ function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
 function scanInspAuswahl(ziel) {
   ziel.appendChild(ueberschrift("AUSWAHL",
     "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
-    "klicken). STRG-Klick nimmt einzelne dazu oder heraus.", "auswahl"));
+    "klicken). STRG-Klick nimmt einzelne dazu oder heraus. Alles hier lässt " +
+    "sich mit STRG+Z zurücknehmen.", "auswahl"));
   ziel.appendChild(el("p", {class: "hinweis"}, SC.auswahl.length + " Slots gewählt"));
   // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
   // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
@@ -2972,11 +3039,10 @@ function scanInspAuswahl(ziel) {
     ...SC.auswahl.map((n) => el("span", {}, n))));
 
   ziel.appendChild(ueberschrift("LAGE UND GRÖSSE",
-    "Wirkt auf alle Gewählten zugleich. Verschieben nimmt den Klickpunkt mit; " +
-    "Angleichen zieht alle auf die mittlere Grösse, um ihre Mitte herum.",
-    "auswahl-lage"));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Verschieben: im Bild ziehen, oder Pfeiltasten (SHIFT = 10 px)."));
+    "Verschieben: im Bild ziehen oder Pfeiltasten (SHIFT = 10 px) — der " +
+    "Klickpunkt geht mit. Angleichen zieht alle auf die MITTLERE Grösse, um " +
+    "ihre Mitte herum: ein einzelner Verklicker soll nicht alle anderen " +
+    "verbiegen.", "auswahl-lage"));
   ziel.appendChild(el("button", {class: "btn breit",
     onclick: () => rufScan("scan_groesse_angleichen")}, "Grösse angleichen"));
 
@@ -3008,28 +3074,6 @@ function scanInspAuswahl(ziel) {
     el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        SC.auswahl.length + " löschen")));
-  // Loeschen ist hier die einzige Aktion, die etwas wegnimmt — und seit es ein
-  // Rueckgaengig gibt, ist sie es nicht mehr endgueltig. Das gehoert dazu:
-  // sonst traut man sich an die Sammel-Aktionen nicht heran.
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Alles hier lässt sich mit STRG+Z zurücknehmen."));
-}
-
-function scanInspItem(ziel) {
-  const i = SC.items.find((x) => x.name === SC.wahl.name);
-  if (!i) return;
-  // Der Weg hierher bleibt fuer den Fall, dass ein Item gewaehlt ist, waehrend
-  // eine andere Liste offen steht — dann gibt es keine Maske, in der die
-  // Einstellungen stehen koennten.
-  ziel.appendChild(ueberschrift("ITEM",
-    "Ein Item wird über sein Template (Bildvergleich) und/oder seine " +
-    "Marker-Farben erkannt. Ohne beides wird es nie gefunden.", "item"));
-  ziel.appendChild(el("div", {class: "feld-still"}, i.name,
-    el("span", {class: "mono"}, (i.kategorie || "ohne Kategorie") + " · P" + i.prioritaet)));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Name, Kategorie und Priorität stehen im Reiter „Items“ an der Maske des "
-    + "Items — dort lassen sie sich für sechzig Items der Reihe nach tippen."));
-  scanItemDetails(ziel, i);
 }
 
 /** Was man an einem Item selten ändert: Vorlagen, Marker, Konfidenz, Löschen.
@@ -3074,6 +3118,7 @@ function scanItemDetails(ziel, i) {
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
   ziel.appendChild(erweitert);
+  ziel.appendChild(scanItemBestaetigung(i));
   if (i.stumm) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
       "Weder Template noch Marker — dieses Item wird nie erkannt."));
@@ -3082,59 +3127,86 @@ function scanItemDetails(ziel, i) {
     onclick: () => rufScan("scan_item_loeschen")}, "Item löschen"));
 }
 
-function scanInspScan(ziel) {
-  const c = SC.scans.find((x) => x.name === SC.wahl.name);
-  if (!c) return;
-  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
-  const um = (art, name) => rufScan("scan_mitglied", {scan: c.name, art: art, name: name});
-  if (SC.offen !== c.name) {
-    ziel.appendChild(el("button", {class: "btn haupt",
-      onclick: () => rufScan("scan_oeffnen", {name: c.name})}, "Diesen Scan öffnen"));
+/** Der Klick NACH dem Klick: „wirklich verkaufen?" wegdrücken.
+ *
+ * **Das Feld gab es im Modell und in den Konsolen-Editoren seit jeher** — im
+ * Studio war es die einzige Item-Eigenschaft ohne Bedienelement, und wer es
+ * suchte, fand nichts. Ohne die Bestätigung bleibt das Popup stehen, und der
+ * Scan erreicht den nächsten Slot gar nicht mehr.
+ *
+ * Gesetzt wird über einen PUNKT, nie über zwei Zahlen: die Koordinate steht in
+ * `points.json` und sonst nirgends. Zwei Wege dorthin, beide vorhanden — einen
+ * bekannten Punkt wählen, oder die Stelle im Bild anklicken (dasselbe Werkzeug,
+ * das Boss und Icon schon benutzen). */
+function scanItemBestaetigung(i) {
+  const setze = (feld, wert) => rufScan("scan_item_setzen",
+                                        {name: i.name, feld: feld, wert: wert});
+  const kasten = el("div", {class: "spalte", style: "gap:7px"});
+  kasten.appendChild(ueberschrift("BESTÄTIGUNGSKLICK",
+    "Manche Spiele fragen nach dem Klick nach („wirklich verkaufen?“). Ohne "
+    + "die Bestätigung bleibt das Popup stehen, und der Scan kommt nicht mehr "
+    + "zum nächsten Slot. Die Stelle steht als Punkt in points.json — dieselbe "
+    + "Kalibrierung erfasst sie mit.", "bestaetigung"));
+  const wahl = auswahl("Punkt", [{wert: "", text: "— keine Bestätigung —"}].concat(
+    SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
+    i.bestaetigung ? i.bestaetigung.punkt_id : "", (v) => setze("bestaetigung", v));
+  kasten.appendChild(wahl);
+  // Ein Punkt, den es nicht mehr gibt, wird GESAGT statt verschwiegen: der
+  // Lauf klickt sonst nichts, und man sucht den Fehler bei der Erkennung.
+  if (i.bestaetigung && i.bestaetigung.fehlt) {
+    kasten.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
+      i.bestaetigung.text + " — die Bestätigung greift nicht."));
   }
+  kasten.appendChild(el("button", {class: "btn still", disabled: !fotoDa(),
+    title: "Die Stelle im Bild anklicken — dabei entsteht ein Punkt, oder ein "
+           + "vorhandener an derselben Stelle wird wiederverwendet",
+    onclick: () => rufScan("region_modus", {art: "item", modus: "aktion"})},
+    "Stelle im Bild anklicken"));
+  if (i.bestaetigung) {
+    kasten.appendChild(zahlfeld("Wartezeit (s)", i.bestaetigung_verzoegerung,
+      (v) => setze("bestaetigung_verzoegerung", v), {min: 0, step: "any"},
+      "Zeit zwischen dem Item-Klick und der Bestätigung — das Popup braucht "
+      + "einen Moment, bis es da ist.", "bestaetigungszeit"));
+  }
+  return kasten;
+}
 
-  // **Der Name steht links, wo der Scan gewaehlt wird — hier nur noch, was man
-  // an ihm EINSTELLT.** Zwei Felder fuer denselben Wert waren dieselbe Sache an
-  // zwei Stellen, und man musste raten, welche die fuehrende ist; genau das wurde
-  // beim Klick-Block im Sequenz-Editor schon einmal aufgeloest. Die Ueberschrift
-  // nennt den Scan trotzdem: sonst weiss man nicht, woran diese Regler haengen.
-  ziel.appendChild(ueberschrift("SCAN „" + c.name + "“",
-    "Welche Slots nach welchen Items durchsucht werden. Ein Block vom Typ " +
-    "ITEM-SCAN verweist per Name hierauf. Umbenennen: oben links.", "itemscan"));
-  const erweitert = el("details", {class: "scan-erweitert"},
-    el("summary", {}, "Erweiterte Scan-Einstellungen"));
-  erweitert.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
+/** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske.
+ *
+ * **Der Name steht in der Maske**, die Mitgliedschaft im Haken jeder Slot- bzw.
+ * Item-Maske. Hier bleibt, was man am Scan EINSTELLT — und der Knopf, mit dem
+ * er verschwindet. */
+function scanScanDetails(ziel, c) {
+  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
+
+  ziel.appendChild(ueberschrift("EINSTELLUNGEN",
+    "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
+    + "daneben: der Haken vor jeder Maske heisst „gehört zu diesem Scan“. Hier "
+    + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
+    + "auf diesen Scan.", "itemscan"));
+
+  ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
     {min: 0, step: 1},
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
     "toleranz"));
-  erweitert.appendChild(schalter("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v)));
-  erweitert.appendChild(el("p", {class: "hinweis"},
-    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in " +
-    "diesen Scan, damit sie nicht ungeprüft geklickt werden."));
-
-  erweitert.appendChild(schalter("Slots rückwärts", c.reverse, (v) => setze("reverse", v)));
-  erweitert.appendChild(el("p", {class: "hinweis"},
-    "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand " +
-    "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht " +
-    "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier " +
-    "und nicht in den Einstellungen."));
-  ziel.appendChild(erweitert);
-
-  hakenListe(ziel, "SLOTS", "Welche Flächen dieser Scan ansieht.", "scanslots",
-    c, "slot", SC.slots, c.slots,
-    "Noch keine Slots in diesem Scan. Im Bild aufziehen oder finden.");
-  hakenListe(ziel, "ITEMS", "Wonach gesucht wird. Erkannte tauchen von selbst "
-    + "auf — damit du sie nicht ein zweites Mal lernst.", "scanitems",
-    c, "item", SC.items, c.items,
-    "Noch keine Items in diesem Scan. Aus einem Slot lernen — was schon im "
-    + "Bestand ist und erkannt wird, steht hier von selbst.");
+  ziel.appendChild(schalter("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v),
+    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in "
+    + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "lernen"));
+  ziel.appendChild(schalter("Slots rückwärts", c.reverse, (v) => setze("reverse", v),
+    "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand "
+    + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
+    + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
+    + "und nicht in den Einstellungen.", "reverse"));
 
   if (c.fehlend.length) {
-    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err);margin-top:10px"},
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
       "Zeigt ins Leere: " + c.fehlend.join(", ") + ". Der Scan läuft mit dem Rest " +
       "weiter — lieber ein Slot weniger als ein toter Scan."));
   }
-  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
-    onclick: () => rufScan("scan_loeschen")}, "Scan löschen"));
+  ziel.appendChild(el("button", {class: "btn gefahr",
+    title: "Entfernt die Konfiguration und ihre Datei. STRG+Z holt die "
+           + "Konfiguration zurück, den gemerkten Screenshot nicht.",
+    onclick: () => rufScan("scan_loeschen")}, "Diesen Scan löschen"));
 }
 
 /* ------------------------------------------- Ansicht: Bosse und Icon-Scans */
@@ -5044,14 +5116,6 @@ function verdrahte() {
       rufScan("scan_modus_setzen", {modus: knopf.dataset.scanTool})));
   $("scan-pin").addEventListener("click", () =>
     rufScan("scan_modus_setzen", {modus: SC.modus, fixiert: !SC.werkzeug_fixiert}));
-  // Wie jedes Tipp-Feld: melden beim VERLASSEN, nicht bei jedem Tastendruck -
-  // sonst baut die Antwort die Ansicht neu, waehrend man noch tippt.
-  $("scan-name").addEventListener("change", (e) => {
-    if (SC && SC.offen) rufScan("scan_setzen",
-                                {name: SC.offen, feld: "name", wert: e.target.value});
-  });
-  $("scan-name").addEventListener("keydown",
-    (e) => { if (e.key === "Enter") e.target.blur(); });
   $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
   $("scan-vollbild").addEventListener("click", () => rufScan("scan_bereich_setzen"));
   $("scan-aufziehen").addEventListener("click",

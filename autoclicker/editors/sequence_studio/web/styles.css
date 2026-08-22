@@ -114,14 +114,6 @@ label.an input[type=checkbox]::after{
 }
 label.an input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
 label.an input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
-/* **Der Mischzustand braucht eine eigene Stellung.** Ein „alle"-Schieber ueber
-   56 Schaltern steht meistens weder auf ein noch auf aus — 23 von 56. Zeigte er
-   dann „aus", saehe er falsch aus und man wuesste nicht, was ein Klick tut.
-   Der Knopf steht deshalb in der MITTE und bleibt gedaempft. `indeterminate`
-   ist dafuer das vorgesehene Mittel eines echten <input>; es ueberlebt damit
-   auch Tastatur und Test. */
-label.an input[type=checkbox]:indeterminate{background:var(--line);border-color:var(--accent)}
-label.an input[type=checkbox]:indeterminate::after{transform:translateX(7px);background:var(--accent)}
 label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
@@ -158,8 +150,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Die Spalte scrollt selbst, sobald sie laenger wird als das Fenster. Ohne das
    rutschte der untere Abschnitt hinter die Fusszeile, sobald ein Abschnitt
    dazukam — erreichbar war er dann nicht mehr. */
+/* **Der Platz fuer die Bildlaufleiste bleibt reserviert.** Ohne das aendert
+   jede Liste, die eine Zeile laenger oder kuerzer wird, die INNENBREITE der
+   Spalte: bei den Reitern Scans/Slots/Items sprang das Raster jedes Mal um
+   rund 15 px, obwohl die Spalte selbst 290 px breit ist. Eine Spalte, die
+   beim Umschalten ihre Groesse aendert, war genau die Beschwerde. */
 .seite{width:290px;flex:none;background:var(--panel);display:flex;flex-direction:column;
-  min-height:0;overflow-y:auto}
+  min-height:0;overflow-y:auto;scrollbar-gutter:stable}
 .seite.links{border-right:1px solid var(--line)}
 .seite.rechts{width:370px;border-left:1px solid var(--line)}
 .abschnitt{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
@@ -610,10 +607,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    die Liste, einen Blick nach rechts und einen Weg zurueck — bei sechzig Items
    sechzig Mal. Die vier Angaben, die man wirklich aendert, passen nebeneinander.
    Spalten: Haken, Vorschau, Felder. */
-/* Stehen die Masken rechts, hat die linke Spalte unter den Reitern nichts mehr
-   zu zeigen — dann soll der Abschnitt auch nicht mehr wachsen und ein leeres
-   Feld aufspannen. */
-.abschnitt.wachsend.nur-reiter{flex:none;overflow:visible}
 .scan-maske{display:grid;grid-template-columns:auto 30px minmax(0,1fr);gap:6px 7px;
   align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
   background:var(--bg)}
@@ -639,6 +632,20 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */
 .scan-maske-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:7px;
   margin-top:4px;padding-top:8px;border-top:1px solid var(--line)}
+/* Eine Mehrfachauswahl hat keinen Namen und keine Einzelfelder — nur das, was
+   auf alle wirkt. Sie steht deshalb UEBER der Liste und abgesetzt, statt als
+   weitere Maske in ihr: sonst suchte man, zu welchem Eintrag sie gehoert. */
+.scan-sammel{display:flex;flex-direction:column;gap:7px;padding:9px 10px;
+  margin-bottom:10px;border:1px solid var(--accent);border-radius:6px;
+  background:#F59E0B0F}
+/* Die Filterzeile traegt in 370 px drei Bedienelemente. Ohne Umbruch wird das
+   letzte abgeschnitten — und das war ausgerechnet der Kategorie-Filter. */
+.reihe.umbrechend{flex-wrap:wrap}
+#scan-insp .abschnitt > .reihe{flex-wrap:wrap}
+/* Boss und Icon tragen keine Masken: das Gewaehlte steht unter der Liste. Die
+   Trennlinie sagt, wo die Liste aufhoert — sonst liest sich der Editor wie ein
+   weiterer Listeneintrag. */
+.erk-insp{gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .scan-kategorie-kopf{padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
   letter-spacing:.08em;text-transform:uppercase}
 .tabs.klein .tab{font-size:11px;padding:4px 8px}
@@ -684,25 +691,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   background:#F59E0B14}
 .scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
   background:var(--sub);color:var(--text);border:1px solid var(--line)}
-.scan-haken{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-/* Der „alle"-Schieber steht im selben Raster wie die Eintraege — also genau
-   ueber dem ersten. Die Trennlinie sagt trotzdem, dass er nicht dazugehoert:
-   sonst liest er sich wie ein Slot, der „alle" heisst. */
-.haken-kopf{padding-bottom:6px;border-bottom:1px solid var(--line)}
-/* Schieber und Name sind zwei Bedienelemente, also auch zwei Trefferflaechen.
-   Der Name sieht aus wie Text und verhaelt sich wie ein Knopf — das sagt der
-   Zeiger und die Aufhellung beim Darueberfahren. */
-.haken-zeile{display:flex;align-items:center;gap:9px;min-width:0}
-.haken-nur-schalter{gap:0}
-.haken-name{flex:1;min-width:0;text-align:left;background:none;border:none;padding:2px 0;
-  font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;cursor:pointer}
-.haken-name:hover{color:var(--accent);text-decoration:underline}
-/* Erkannt, aber noch nicht im Scan — dieselbe Farbe wie sein Rechteck im Bild.
-   Es steht hier, damit man den Haken setzt statt es ein zweites Mal zu lernen. */
-.haken-name.erkannt{color:var(--slot-fremd)}
-.haken-alle{color:var(--muted)}
-.haken-stand{align-self:center;justify-self:end;color:var(--dim)}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
 .scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
