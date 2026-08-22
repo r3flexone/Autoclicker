@@ -719,7 +719,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-filter > *{min-width:0;width:100%}
 /* Ein Schalter ist Text mit Kaestchen davor, keine Flaeche — er dehnt sich
    nicht, sondern behaelt seinen Zeilenfluss. */
-.scan-filter > label.an{width:auto;justify-self:start}
+/* Ein Schalter ist Text mit Kaestchen davor. Als Kachel bekommt er dieselbe
+   Flaeche wie seine Nachbarn — sonst haengt er als loser Text zwischen
+   Reiterleiste und Knopfreihe und liest sich, als gehoere er nicht dazu. */
+.scan-filter > label.an.kachel{width:100%;justify-self:stretch;
+  border:1px solid var(--line);border-radius:5px;padding:6px 10px}
 /* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
    nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
    seine Textbreite — bei einem langen Rueckgaengig-Namen kippte das Verhaeltnis

@@ -1257,6 +1257,16 @@ Sechs Regeln, an denen der Reiter hängt:
   `auto-fit` bricht deshalb um, sobald eine Spalte unter 118 px fiele — ein
   abgeschnittenes Wort ist schlimmer als eine zweite Zeile.
 
+- **Ein Knopf sagt, was er TUT — nicht, worauf er sich bezieht.** Das
+  Rückgängig trug den letzten Schritt im Namen („↶ 'Bogen Zeus': Priorität"):
+  die genauere Auskunft und die schlechtere Beschriftung. Sie wurde zweizeilig,
+  wechselte bei jeder Änderung ihre Länge, und was der Knopf tut, musste man
+  aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
+  liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
+  Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Der Filter „nur aus
+  <Scan>" stand als loser Text zwischen lauter Kacheln — Reiterleiste darüber,
+  Knopfreihe darunter — und las sich, als gehöre er nicht dazu.
 - **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
   dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der
@@ -1428,7 +1438,14 @@ Problem und nicht die Lösung; der Knopf **sagt**, was er tut.
 Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
 
 - **Slots sind Bildschirm-Koordinaten** und damit immer genau einem Spiel
-  zugeordnet. In einem fremden Scan angeboten zu werden ist reines Rauschen.
+  zugeordnet. In einem fremden Scan angeboten zu werden ist reines Rauschen —
+  **es sei denn, sie liegen im gerade aufgenommenen Bild** (`_slot_im_bild()`,
+  Feld `erkannt`). Dann sieht man sie ja, und sie zu verstecken ist die
+  schlechtere Antwort: ein abgehakter Slot war sonst endgültig weg, sobald man
+  den Reiter wechselte, denn anders als ein Item hatte er keinen zweiten Grund
+  dazustehen — und anhaken kann man nur, was man sieht. Ohne Aufnahme gilt das
+  nicht: `_flaeche()` rechnet die Fläche dann aus den Slots DES SCANS, und die
+  Antwort wäre zirkulär.
 - **Items können geteilt sein**, und dasselbe Item ein zweites Mal zu lernen ist
   genau das, was man vermeiden will. Deshalb erscheint ein Item auch dann, wenn
   es **gerade in einem Slot erkannt wird** (`_erkannte_items()`, Feld `erkannt`)

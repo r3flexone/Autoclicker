@@ -1611,6 +1611,19 @@ check("und der Kopf klebt oben",
 # Ohne eigenen Hintergrund scrollen die Masken sichtbar dahinter durch.
 check("mit eigenem Hintergrund", "background:var(--panel)}" in
       _html18[_html18.index(".scan-kopf{"):_html18.index(".scan-kopf{") + 120])
+# **Der Rueckgaengig-Knopf heisst „Zurück", nicht „'Bogen Zeus': Prioritaet".**
+# Der letzte Schritt IM Namen ist die genauere Auskunft und die schlechtere
+# Beschriftung: sie wurde zweizeilig, wechselte bei jeder Aenderung ihre Laenge,
+# und was der Knopf TUT, musste man aus ihr heraussuchen.
+check("der Rueckgaengig-Knopf traegt einen festen Namen",
+      '"↶ Zurück")));' in _html18)
+check("und die Beschreibung steht im Tooltip",
+      '"STRG+Z — nimmt zurück: " + SC.undo.was' in _html18)
+# Der Schalter bekommt dieselbe Flaeche wie seine Nachbarn — sonst haengt er als
+# loser Text zwischen Reiterleiste und Knopfreihe.
+check("der Filterschalter ist eine Kachel",
+      'nurDabei.classList.add("kachel");' in _html18
+      and ".scan-filter > label.an.kachel{width:100%" in _html18)
 check("die Reiterleiste nimmt die ganze Breite",
       ".tabs.breit .tab{flex:1 1 0" in _html18 and '"tabs klein breit"' in _html18)
 # **Der Kopf ist eine Spalte, kein Fliesstext.** „alle dazu" stand als kurzer
@@ -1620,9 +1633,10 @@ check("die Reiterleiste nimmt die ganze Breite",
 check("die Filterzeile ist ein Raster mit voller Breite",
       ".scan-filter{display:grid;grid-template-columns:1fr" in _html18
       and ".scan-filter > *{min-width:0;width:100%}" in _html18)
-# Ein Schalter ist Text mit Kaestchen davor, keine Flaeche.
-check("nur der Schalter dehnt sich nicht",
-      ".scan-filter > label.an{width:auto" in _html18)
+# Ein Schalter ist Text mit Kaestchen davor — als Kachel bekommt er dieselbe
+# Flaeche wie seine Nachbarn, statt als loser Text dazwischen zu haengen.
+check("und der Schalter traegt seine eigene Kachel",
+      ".scan-filter > label.an.kachel{width:100%;justify-self:stretch;" in _html18)
 # Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen: vorher nahm
 # „Items erkennen" den Rest und „Rueckgaengig" seine Textbreite — bei einem
 # langen Rueckgaengig-Namen kippte das Verhaeltnis von Zeile zu Zeile.

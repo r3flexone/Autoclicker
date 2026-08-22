@@ -2301,12 +2301,17 @@ function scanFilterzeile(filter, offen) {
     const art = offen === "slots" ? "slot" : "item";
     const gesamt = offen === "slots" ? SC.slots : SC.items;
     const drin = gesamt.filter((e) => e.dabei).length;
-    filter.appendChild(schalter("nur aus „" + SC.offen + "“",
+    // **Auch der Schalter bekommt seine Fläche.** Er stand als loser Text
+    // zwischen lauter Kacheln — Reiterleiste darüber, Knöpfe darunter — und
+    // sah dadurch aus, als gehöre er nicht dazu.
+    const nurDabei = schalter("nur aus „" + SC.offen + "“",
       SC.nur_dabei, (v) => { scanAbwahlVergessen();
                              rufScan("scan_filter", {wert: v}); },
       "Zeigt nur, was zu diesem Scan gehört. Was du GERADE abhakst, bleibt "
       + "trotzdem stehen — sonst wäre ein Verklicker nicht zurückzunehmen.",
-      "nurdabei"));
+      "nurdabei");
+    nurDabei.classList.add("kachel");
+    filter.appendChild(nurDabei);
     // Ein Scan umfasst fast immer ALLES seines Spiels - 56 Haekchen einzeln
     // zu setzen war der Weg dorthin. Der Knopf SAGT, was er tut, statt zu
     // schalten: ein Schalter haette drei Staende (keins/manche/alle), und bei
@@ -2999,17 +3004,18 @@ function scanInspektorBauen() {
                         title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
                         onclick: () => erkTesten()},
              scanArt === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
-      // Der Knopf NENNT, was er zuruecknimmt (Beschreibung aus der Bruecke):
-      // ein „Rueckgaengig" ohne Angabe drueckt man gar nicht oder einmal zu oft.
-      // Gekuerzt, weil ein langer Name („'Mission nicht machbar': Klickpunkt")
-      // sonst den Nachbarn aus der Zeile schiebt.
+      // **Der Knopf heisst „Zurück", die Beschreibung steht im Tooltip.** Er
+      // trug den letzten Schritt im Namen („↶ 'Bogen Zeus': Priorität") — das
+      // ist die genauere Auskunft und die schlechtere Beschriftung: sie wurde
+      // zweizeilig, wechselte bei jeder Änderung ihre Länge, und was der Knopf
+      // TUT, musste man aus ihr heraussuchen. Was zurückgenommen wird, liest,
+      // wer nachfragt; dass es überhaupt etwas gibt, sagt der aktive Zustand.
       el("button", {class: "btn scan-undo", disabled: !SC.undo.tiefe,
                     title: SC.undo.tiefe
                       ? "STRG+Z — nimmt zurück: " + SC.undo.was
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
-                    onclick: () => rufScan("scan_rueckgaengig")},
-         SC.undo.tiefe ? "↶ " + SC.undo.was : "↶ Rückgängig")));
+                    onclick: () => rufScan("scan_rueckgaengig")}, "↶ Zurück")));
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
   // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
   // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
