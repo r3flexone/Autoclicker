@@ -1526,6 +1526,16 @@ steht auf einmal da.
   Modus-Kacheln. Damit ändert die linke Spalte beim Umschalten der Liste ihre Grösse
   nicht mehr, und ein Scan ist wieder löschbar (vorher schaltete das Öffnen auf die
   Item-Liste um — und der Knopf stand in der Spalte, die man damit verliess).
+- **Reiter „Scans" — beim Tippen springt nichts**: die Liste sortiert beim Laden
+  und auf Knopfdruck („↕ Sortieren"), nicht nach jeder Änderung — sonst rutscht
+  genau die Zeile weg, in der man gerade eine Priorität tippt. Welche Priorität
+  in einer Kategorie noch **frei** ist, steht als Rangfolge dabei (Lücken
+  gestrichelt); eine doppelt vergebene fällt schon in der Liste auf, denn dort
+  entscheidet die Scan-Reihenfolge, also der Zufall. Schiebt man ein Item in eine
+  Kategorie, rückt es auf den nächsten freien Rang. Ein Item, das man gerade
+  abhakt, bleibt stehen (blass, weiter unten) statt zu verschwinden — sonst wäre
+  ein Verklicker nicht zurückzunehmen. Kopfleiste, Reiter und Filter bleiben beim
+  Scrollen stehen.
 - **Reiter „Scans" — der Bestätigungsklick**: Fragt das Spiel nach dem Klick nach
   („wirklich verkaufen?"), setzt man beim Item einen zweiten Klick samt Wartezeit
   davor. Wie überall wird eine Stelle über einen **Punkt** gesetzt: entweder aus der

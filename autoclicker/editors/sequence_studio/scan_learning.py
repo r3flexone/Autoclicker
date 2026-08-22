@@ -390,7 +390,20 @@ class ScanLearningMixin:
         if feld == "kategorie":
             self._merke(f"'{name}': Kategorie")
             item.category = self._kategorie_normalisieren(wert)
-            return self._scan_geaendert()
+            # **Ein Rang, den es schon gibt, ist kein Rang.** Items derselben
+            # Kategorie konkurrieren miteinander; bei gleicher Zahl entscheidet
+            # die Scan-Reihenfolge, also der Zufall. Wer ein Item in eine
+            # Kategorie schiebt, hat über seine Priorität nichts gesagt — dann
+            # ist der nächste freie Platz die einzige Antwort, die nicht rät.
+            # Eine ausdrücklich getippte Zahl bleibt dagegen stehen (der Zweig
+            # 'prioritaet' unten fasst sie nicht an).
+            frei = self._freie_prioritaet(item)
+            if frei is None:
+                return self._scan_geaendert()
+            alt = item.priority
+            item.priority = frei
+            return self._scan_geaendert(
+                f"{name}: P{alt} war in '{item.category}' vergeben — jetzt P{frei}.")
         if feld == "prioritaet":
             self._merke(f"'{name}': Priorität")
             item.priority, verschoben = self._prioritaet_einordnen(
@@ -453,6 +466,23 @@ class ScanLearningMixin:
         punkt = next((p for p in self.points if p.id == item.confirm_point_id), None)
         item.confirm_point = (ClickPoint(x=punkt.x, y=punkt.y, name=punkt.name or "")
                               if punkt else None)
+
+    def _freie_prioritaet(self, item: ItemProfile) -> Optional[int]:
+        """Der nächste freie Rang der Kategorie — oder None, wenn keiner nötig.
+
+        Nur bei einer echten Kollision: sitzt das Item allein auf seiner Zahl,
+        wird nichts verschoben. Ohne Kategorie gibt es keine Konkurrenz.
+        """
+        if not item.category:
+            return None
+        vergeben = {int(i.priority) for i in self.items.values()
+                    if i is not item and i.category == item.category}
+        if int(item.priority) not in vergeben:
+            return None
+        rang = 1
+        while rang in vergeben:
+            rang += 1
+        return rang
 
     def _item_umbenennen(self, item: ItemProfile, neu: str) -> dict:
         """Wie beim Slot: der Name ist die Referenz, also ziehen die Scans mit."""

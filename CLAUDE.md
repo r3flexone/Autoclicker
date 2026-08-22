@@ -1203,6 +1203,64 @@ Sechs Regeln, an denen der Reiter hängt:
   hatte. Deshalb bleibt der Reiter stehen, wenn man einen Scan **aus der
   Scan-Liste heraus** öffnet (`scanReiterNachOeffnen`).
 
+- **Sortiert wird beim Laden und auf Knopfdruck, nicht beim Tippen**
+  (`scanOrdnung`, Knopf „↕ Sortieren"). Die Liste ordnet nach Kategorie,
+  Priorität und Name — sortierte sie sich nach *jeder* Änderung neu, springt
+  genau die Zeile weg, an der man gerade arbeitet: man tippt eine 2, die Zeile
+  rutscht drei Plätze, und das nächste Feld gehört einem anderen Item. Gemerkt
+  wird deshalb die Reihenfolge des letzten Sortierens; Neues und alles, was die
+  Kategorie gewechselt hat, hängt sich ans Ende seiner Gruppe.
+
+  **Die Kategorie bleibt trotzdem der erste Schlüssel.** Sie trägt die
+  Gruppenüberschrift, und ein Item ausserhalb seiner Gruppe sähe aus, als hätte
+  es die Kategorie verloren. Aufgefrischt wird beim Laden (`scan_neu_laden`,
+  Lernen, `scan_oeffnen`), beim Reiterwechsel und durch den Knopf.
+
+- **Der Kopf der rechten Spalte klebt oben** (`.scan-kopf`, `position: sticky`).
+  Dort stehen Speichern, Rückgängig, „Items erkennen", die Reiterleiste und die
+  Filterzeile — bei sechzig Masken war all das nach drei Umdrehungen weg, und
+  mit ihm der Weg in eine andere Liste. Er braucht einen eigenen Hintergrund,
+  sonst scrollen die Masken sichtbar dahinter durch. Die Reiterleiste nimmt die
+  **ganze** Breite (`.tabs.breit`, gleiche Spalten): drei Reiter links
+  zusammengedrängt liessen zwei Drittel der Leiste leer, und gleiche Spalten
+  verhindern, dass die Zahlen dahinter („Slots 72/85") die Aufteilung bei jedem
+  Filterwechsel verschieben.
+
+- **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
+  Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
+  dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der
+  Ton bleibt zurückhaltend (kein Hintergrund, gedämpfte Schrift), die **Fläche**
+  ist da.
+
+- **Welche Priorität frei ist, steht da** (`prioritaetsBelegung()`). Die
+  Übersicht zeigte nur die vergebenen Ränge; ob P2 belegt ist oder fehlt, sah
+  man erst, wenn man P1, P3, P4 las und selbst nachzählte. Sie spannt deshalb
+  jeden Rang von 1 bis zum höchsten belegten plus eins auf — der nächste freie
+  steht immer da —, und eine Lücke ist gestrichelt statt beschriftet. Eine
+  getippte P99 spannt das nicht auf hundert Kacheln auf (`PRIO_MAX_ZEIGEN`).
+
+  **Eine doppelte Priorität fällt schon in der Liste auf**, nicht erst im
+  aufgeklappten Detail: getippt wird in der Maske. Bei gleicher Zahl entscheidet
+  die Scan-Reihenfolge, also der Zufall — das ist kein Fehler, aber fast immer
+  ein Versehen.
+
+  **Wer ein Item in eine Kategorie schiebt, hat über seine Priorität nichts
+  gesagt** — dann rückt es auf den nächsten freien Rang (`_freie_prioritaet()`,
+  erste Lücke, nicht ans Ende) und es wird gesagt. Eine ausdrücklich getippte
+  Zahl fasst dagegen niemand an, auch keine doppelte: sie kann gewollt sein, und
+  ungefragt zu verschieben wäre schlimmer als die Doppelung.
+
+- **Was man gerade abhakt, bleibt stehen** (`scanZuletztAbgewaehlt`). Der Filter
+  „nur aus <Scan>" zeigt die Mitglieder — nimmt man dort einen Haken weg, fällt
+  der Eintrag aus seiner eigenen Bedingung und verschwindet im selben Moment.
+  Ein Verklicker war damit nicht zurückzunehmen: das Ding, das man wieder
+  anhaken will, ist weg. Gemerkt wird nur, was in **dieser** Ansicht angefasst
+  wurde; beim Wechsel des Zusammenhangs (anderer Scan, anderer Reiter, Filter
+  umgelegt) wird die Liste geleert, sonst wüchse sie zu genau dem Bestand an,
+  den der Filter fernhalten soll. Sichtbar heisst dabei nicht „sieht aus wie ein
+  Mitglied": was nicht dazugehört, ist blass (`.nicht-dabei`) und rutscht
+  innerhalb seiner Kategorie nach unten.
+
 - **Der Fokus hängt an der `id` der Maske** (`maskeId()`, gelesen von
   `fokusMerken()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
   und die gemerkte Position zählt über **alle** Masken hinweg — bei sechzig

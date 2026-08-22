@@ -236,6 +236,58 @@ function itemsDerKategorie(kategorie) {
     .slice().sort((a, b) => a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de"));
 }
 
+/** Wer belegt welchen Rang — Luecken eingeschlossen.
+ *
+ * **„Welche Prioritaet ist noch frei" war aus einer Zahl im Feld nicht zu
+ * beantworten.** Die Uebersicht zeigte nur die vergebenen; ob P2 belegt ist
+ * oder fehlt, sah man erst, wenn man P1, P3, P4 las und selbst nachzaehlte.
+ *
+ * Liefert `[{prio, namen}]` von 1 bis zum hoechsten belegten Rang plus eins —
+ * der naechste freie steht also immer da. Eine getippte P99 spannt das nicht
+ * auf hundert Kacheln auf: ueber `PRIO_MAX_ZEIGEN` bleiben nur die belegten. */
+const PRIO_MAX_ZEIGEN = 24;
+
+function prioritaetsBelegung(kategorie) {
+  const items = itemsDerKategorie(kategorie);
+  const belegt = new Map();
+  for (const i of items) {
+    if (!belegt.has(i.prioritaet)) belegt.set(i.prioritaet, []);
+    belegt.get(i.prioritaet).push(i.name);
+  }
+  const hoechste = items.length ? Math.max(...items.map((i) => i.prioritaet)) : 0;
+  if (hoechste + 1 > PRIO_MAX_ZEIGEN) {
+    const raenge = [...belegt.keys()].sort((a, b) => a - b);
+    // Der naechste freie gehoert dazu — sonst nennt die Uebersicht keinen,
+    // und genau den sucht man.
+    let frei = 1;
+    while (belegt.has(frei)) frei += 1;
+    if (!raenge.includes(frei)) raenge.push(frei);
+    raenge.sort((a, b) => a - b);
+    return raenge.map((p) => ({prio: p, namen: belegt.get(p) || []}));
+  }
+  const alle = [];
+  for (let p = 1; p <= hoechste + 1; p += 1) alle.push({prio: p, namen: belegt.get(p) || []});
+  return alle;
+}
+
+/** Die Prioritaet, die dieses Item bekaeme, wenn niemand etwas einstellt:
+ *  der erste freie Rang seiner Kategorie. */
+function naechsteFreiePrioritaet(kategorie, ausser) {
+  const vergeben = new Set(itemsDerKategorie(kategorie)
+    .filter((i) => i.name !== ausser).map((i) => i.prioritaet));
+  let p = 1;
+  while (vergeben.has(p)) p += 1;
+  return p;
+}
+
+/** Teilt sich dieses Item seinen Rang mit einem anderen seiner Kategorie? */
+function prioritaetDoppelt(item) {
+  if (!item.kategorie) return [];
+  return itemsDerKategorie(item.kategorie)
+    .filter((i) => i.name !== item.name && i.prioritaet === item.prioritaet)
+    .map((i) => i.name);
+}
+
 /** Sichtbare Rangfolge statt einer Zahl ohne Zusammenhang. Prioritaeten gelten
  *  innerhalb einer Kategorie; deshalb waere eine globale Liste irrefuehrend. */
 function prioritaetsUebersicht(kategorie, aktuellerName) {
@@ -243,15 +295,25 @@ function prioritaetsUebersicht(kategorie, aktuellerName) {
     return el("p", {class: "hinweis prioritaets-hinweis"},
       "Ohne Kategorie konkurriert dieses Item mit keinem anderen Item.");
   }
-  const items = itemsDerKategorie(kategorie);
+  const belegung = prioritaetsBelegung(kategorie);
   return el("div", {class: "prioritaets-uebersicht"},
     el("span", {class: "klein"}, "Rangfolge in „" + kategorie + "“"),
-    el("div", {class: "prioritaets-chips"}, items.map((i) => el("span", {
-      class: "prioritaets-chip" + (i.name === aktuellerName ? " aktuell" : ""),
-      title: i.name + " · Priorität " + i.prioritaet,
-    }, "P" + i.prioritaet + " · " + i.name))),
+    el("div", {class: "prioritaets-chips"}, belegung.map((r) => {
+      const dieses = r.namen.includes(aktuellerName);
+      const frei = !r.namen.length;
+      return el("span", {
+        // Ein freier Rang ist kein Eintrag, sondern eine Luecke — gestrichelt
+        // und ohne Namen. Sonst zaehlt man die vergebenen ab, um ihn zu finden.
+        class: "prioritaets-chip" + (dieses ? " aktuell" : "")
+               + (frei ? " frei" : "") + (r.namen.length > 1 ? " doppelt" : ""),
+        title: frei ? "Priorität " + r.prio + " ist frei"
+                    : r.namen.join(", ") + " · Priorität " + r.prio
+                      + (r.namen.length > 1 ? " — doppelt vergeben" : ""),
+      }, "P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", ")));
+    })),
     el("small", {class: "eingabe-hilfe"},
-      "Kleinere Zahl gewinnt; bei gleicher Zahl entscheidet die Scan-Reihenfolge."));
+      "Kleinere Zahl gewinnt. Zwei Items mit derselben Zahl entscheidet die "
+      + "Scan-Reihenfolge — also der Zufall."));
 }
 
 function allePrioritaeten() {
@@ -1773,6 +1835,10 @@ async function rufScan(name, daten) {
   const antwort = await frage(name, daten);
   if (!antwort) return;
   SC = antwort;
+  // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
+  // der jemand gerade tippt.
+  if (name === "scan_neu_laden" || name === "scan_lernvorschau_uebernehmen")
+    scanOrdnungVergessen();
   // **Einen Scan zu oeffnen ist ein Wechsel des Zusammenhangs.** Danach gilt
   // wieder die Vorgabe — und die sind bei offenem Scan seine Items, also das,
   // weswegen man ihn geoeffnet hat. Vorher landete man auf der Scan-Liste und
@@ -1780,6 +1846,8 @@ async function rufScan(name, daten) {
   if (name === "scan_oeffnen") {
     scanListe = scanReiterNachOeffnen;
     scanReiterNachOeffnen = null;
+    scanAbwahlVergessen();
+    scanOrdnungVergessen();
   }
   if (name === "scan_foto")
     scanAssistentSchritt = SC.schritte[1].fertig ? 3 : 2;
@@ -2169,11 +2237,15 @@ function scanReiterFolgen() {
 /** Reiter, Filter und Liste — ein Bauplan, ein Ort. */
 function scanListenBlock(tabs, filter, ziel) {
   const offen = scanListeAktiv();
+  // Kopf und Liste werden getrennt gebaut (der Kopf klebt oben, die Liste
+  // scrollt) — gerufen wird dieselbe Funktion zweimal, damit die Zuordnung
+  // Reiter -> Inhalt an EINER Stelle steht und nicht an zweien auseinanderlaeuft.
+  const an = (wohin, kind) => { if (wohin) wohin.appendChild(kind); };
   if (scanArt !== "item") {
     if (scanArt === "icon") {
-      tabs.appendChild(el("button", {class: "tab an"},
+      an(tabs, el("button", {class: "tab an"},
         "Icon-Scans " + SC.icon_scans.length));
-      return erkListeIcons(ziel);
+      return ziel ? erkListeIcons(ziel) : undefined;
     }
     // Zwei Listen, weil es zwei Orte sind: die Bosse DIESES Scans und die,
     // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
@@ -2181,9 +2253,10 @@ function scanListenBlock(tabs, filter, ziel) {
     for (const [key, text, zahl] of [["bosse", "Bosse", erkBosse().length],
                                      ["bibliothek", "Bibliothek",
                                       SC.global_bosses.length]]) {
-      tabs.appendChild(el("button", {class: "tab" + (offen === key ? " an" : ""),
+      an(tabs, el("button", {class: "tab" + (offen === key ? " an" : ""),
         onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + zahl));
     }
+    if (!ziel) return undefined;
     return offen === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
   }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
@@ -2191,16 +2264,18 @@ function scanListenBlock(tabs, filter, ziel) {
   // Reihenfolge = Rangfolge: der Scan ist das Uebergeordnete, Slots und Items
   // haengen an ihm.
   const gruppen = [["scans", "Scans", SC.scans.length, SC.scans.length],
-                   ["slots", "Slots", scanSichtbar(SC.slots, false).length, SC.slots.length],
-                   ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length]];
+                   ["slots", "Slots", scanSichtbar(SC.slots, false, "slot").length, SC.slots.length],
+                   ["items", "Items", scanSichtbar(SC.items, true, "item").length, SC.items.length]];
   for (const [key, text, sichtbar, gesamt] of gruppen) {
-    tabs.appendChild(el("button", {
+    an(tabs, el("button", {
       class: "tab" + (offen === key ? " an" : ""),
       title: sichtbar === gesamt ? "" : gesamt + " insgesamt",
-      onclick: () => { scanListe = key; zeichneScans(); },
+      onclick: () => { scanListe = key; scanAbwahlVergessen();
+                       scanOrdnungVergessen(); zeichneScans(); },
     }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
   }
-  scanFilterzeile(filter, offen);
+  if (filter) scanFilterzeile(filter, offen);
+  if (!ziel) return undefined;
   if (offen === "slots") return scanListeSlots(ziel);
   if (offen === "items") return scanListeItems(ziel);
   return scanListeScans(ziel);
@@ -2213,14 +2288,19 @@ function scanFilterzeile(filter, offen) {
     const gesamt = offen === "slots" ? SC.slots : SC.items;
     const drin = gesamt.filter((e) => e.dabei).length;
     filter.appendChild(schalter("nur aus „" + SC.offen + "“",
-      SC.nur_dabei, (v) => rufScan("scan_filter", {wert: v})));
+      SC.nur_dabei, (v) => { scanAbwahlVergessen();
+                             rufScan("scan_filter", {wert: v}); },
+      "Zeigt nur, was zu diesem Scan gehört. Was du GERADE abhakst, bleibt "
+      + "trotzdem stehen — sonst wäre ein Verklicker nicht zurückzunehmen.",
+      "nurdabei"));
     // Ein Scan umfasst fast immer ALLES seines Spiels - 56 Haekchen einzeln
     // zu setzen war der Weg dorthin. Der Knopf SAGT, was er tut, statt zu
     // schalten: ein Schalter haette drei Staende (keins/manche/alle), und bei
     // "manche" waere er nicht zu beschriften.
     filter.appendChild(el("button", {class: "btn still",
       title: drin + " von " + gesamt.length + " sind dabei",
-      onclick: () => rufScan("scan_alle", {art: art, wert: drin < gesamt.length})},
+      onclick: () => { scanAbwahlVergessen();
+                       rufScan("scan_alle", {art: art, wert: drin < gesamt.length}); }},
       drin < gesamt.length ? "alle dazu" : "alle raus"));
   }
   if (offen === "items" && SC.kategorien.length) {
@@ -2230,15 +2310,73 @@ function scanFilterzeile(filter, offen) {
   }
 }
 
+/* **Was man gerade abgehakt hat, bleibt stehen.**
+ *
+ * Der Filter „nur aus <Scan>" zeigt die Mitglieder — nimmt man in dieser Liste
+ * einen Haken weg, faellt der Eintrag also aus seiner eigenen Bedingung und
+ * verschwindet im selben Moment. Ein Verklicker war damit nicht
+ * zurueckzunehmen: das Ding, das man wieder anhaken will, ist weg.
+ *
+ * Gemerkt wird deshalb, was in DIESER Ansicht angefasst wurde. Reiner
+ * Oberflaechenzustand — er aendert nichts am Scan, also gehoert er nicht in die
+ * Momentaufnahme; und er wird geleert, sobald man den Zusammenhang wechselt
+ * (anderer Scan, anderer Reiter, Filter umgelegt). Sonst waechst die Liste ueber
+ * eine Sitzung hinweg zu genau dem Bestand an, den der Filter fernhalten soll. */
+let scanZuletztAbgewaehlt = new Set();
+
+/* **Sortiert wird beim Laden und auf Knopfdruck — nicht bei jedem Tastendruck.**
+ *
+ * Die Liste ordnet nach Kategorie, Prioritaet und Name. Sortierte sie sich nach
+ * JEDER Aenderung neu, springt genau das Item weg, an dem man gerade tippt: man
+ * tippt eine 2, die Zeile rutscht drei Plaetze hoch, das naechste Feld ist ein
+ * anderes. Gemerkt wird deshalb die Reihenfolge, in der zuletzt sortiert wurde;
+ * neu Dazugekommenes und alles, was seine Kategorie gewechselt hat, haengt sich
+ * ans Ende seiner Gruppe.
+ *
+ * Aufgefrischt wird sie beim Laden, beim Wechsel des Zusammenhangs (anderer
+ * Scan, anderer Reiter) und durch „Sortieren". Reiner Oberflaechenzustand — die
+ * Datei kennt keine Reihenfolge. */
+let scanOrdnung = {item: null, slot: null};
+
+function scanOrdnungVergessen() {
+  scanOrdnung = {item: null, slot: null};
+}
+
+/** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
+function scanOrdnungRang(art) {
+  const merk = scanOrdnung[art];
+  if (!merk) return null;
+  const rang = new Map();
+  merk.forEach((n, i) => rang.set(n, i));
+  return (name) => (rang.has(name) ? rang.get(name) : Number.MAX_SAFE_INTEGER);
+}
+
+function scanAbwahlMerken(art, name, dabei) {
+  // Nur das ABWAEHLEN muss gemerkt werden: was dazukommt, erfuellt den Filter
+  // von selbst.
+  if (dabei) scanZuletztAbgewaehlt.add(art + ":" + name);
+  else scanZuletztAbgewaehlt.delete(art + ":" + name);
+}
+
+function scanAbwahlVergessen() {
+  scanZuletztAbgewaehlt = new Set();
+}
+
 /** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie.
  *
  * **„Gehoert dazu ODER wird gerade gesehen"** — die zweite Haelfte ist die
  * nuetzlichere: ein Item, das ein anderes Spiel schon kennt, steht da, bevor
  * jemand auf die Idee kommt, es neu zu lernen. Slots tragen das Merkmal nicht,
- * sie sind Bildschirm-Koordinaten und gehoeren immer genau einem Spiel. */
-function scanSichtbar(eintraege, mitKategorie) {
+ * sie sind Bildschirm-Koordinaten und gehoeren immer genau einem Spiel.
+ *
+ * Dazu, was gerade abgewaehlt wurde (s. o.) — sonst nimmt der Filter einem den
+ * Rueckweg. */
+function scanSichtbar(eintraege, mitKategorie, art) {
   let liste = eintraege;
-  if (SC.offen && SC.nur_dabei) liste = liste.filter((e) => e.dabei || e.erkannt);
+  if (SC.offen && SC.nur_dabei) {
+    liste = liste.filter((e) => e.dabei || e.erkannt
+                                || scanZuletztAbgewaehlt.has(art + ":" + e.name));
+  }
   if (mitKategorie && scanKategorie)
     liste = liste.filter((e) => (e.kategorie || "") === scanKategorie);
   return liste;
@@ -2248,10 +2386,15 @@ function scanSichtbar(eintraege, mitKategorie) {
 function maskeHaken(art, name, dabei) {
   if (!SC.offen) return el("span", {});
   const kasten = el("input", {type: "checkbox",
-    title: "gehört zum Scan „" + SC.offen + "“"});
+    title: dabei ? "gehört zum Scan „" + SC.offen + "“ — abhaken nimmt es heraus"
+                 : "gehört NICHT zum Scan „" + SC.offen + "“"});
   kasten.checked = !!dabei;
-  kasten.addEventListener("change", () => rufScan("scan_mitglied",
-    {scan: SC.offen, art: art, name: name}));
+  kasten.addEventListener("change", () => {
+    // Vor dem Ruf: danach ist `dabei` schon der neue Stand, und die Merkliste
+    // haette nichts zu merken.
+    scanAbwahlMerken(art, name, dabei);
+    rufScan("scan_mitglied", {scan: SC.offen, art: art, name: name});
+  });
   return el("label", {class: "an"}, kasten);
 }
 
@@ -2290,8 +2433,23 @@ function maskeBauen(art, name, gewaehlt, teile, detail, beimWaehlen) {
   return maske;
 }
 
+/** Blass, wenn es nicht zum offenen Scan gehoert.
+ *
+ * Ohne die Markierung sieht ein gerade abgehaktes Item genauso aus wie ein
+ * enthaltenes — der Haken allein ist an einer 30-px-Maske zu wenig, um „ist
+ * raus" zu lesen. Ohne offenen Scan gibt es keine Mitgliedschaft, also auch
+ * nichts zu daempfen. */
+function maskeDabei(dabei, maske) {
+  if (SC.offen && !dabei) maske.classList.add("nicht-dabei");
+  return maske;
+}
+
 function scanListeSlots(ziel) {
-  const liste = scanSichtbar(SC.slots, false);
+  const rang = scanOrdnungRang("slot");
+  const liste = scanSichtbar(SC.slots, false, "slot").slice().sort((a, b) =>
+    (rang ? rang(a.name) - rang(b.name) : 0)
+    || (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0));
+  if (!rang) scanOrdnung.slot = liste.map((s) => s.name);
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
@@ -2316,14 +2474,14 @@ function scanSlotMaske(s) {
   const name = maskeName("slot", s.name,
     "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
   const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
-  return maskeBauen("slot", s.name, gewaehlt,
+  return maskeDabei(s.dabei, maskeBauen("slot", s.name, gewaehlt,
     [maskeHaken("slot", s.name, s.dabei),
      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
                  title: s.farbe ? "Hintergrund " + s.farbe : "Hintergrund nicht gemessen",
                  style: s.farbe ? "background:" + s.farbe : ""}),
      felder],
     (kasten) => scanSlotDetails(kasten, s),
-    () => rufScan("scan_waehlen", {art: "slot", name: s.name}));
+    () => rufScan("scan_waehlen", {art: "slot", name: s.name})));
 }
 
 /** Die Zustandszeile eines Slots: Groesse, Warnung, letzter Treffer. */
@@ -2350,9 +2508,19 @@ function scanSlotStand(s) {
 }
 
 function scanListeItems(ziel) {
-  const liste = scanSichtbar(SC.items, true).slice().sort((a, b) =>
+  // Die Kategorie bleibt IMMER der erste Schluessel: sie traegt die
+  // Gruppenueberschrift, und ein Item ausserhalb seiner Gruppe saehe aus, als
+  // haette es die Kategorie verloren. Innerhalb der Gruppe gilt die gemerkte
+  // Reihenfolge (s. `scanOrdnung`) — sonst springt die Zeile weg, in der man
+  // gerade tippt.
+  const rang = scanOrdnungRang("item");
+  const frisch = (a, b) =>
+    (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0) ||
+    a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de");
+  const liste = scanSichtbar(SC.items, true, "item").slice().sort((a, b) =>
     (a.kategorie || "").localeCompare(b.kategorie || "", "de") ||
-    a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de"));
+    (rang ? rang(a.name) - rang(b.name) : 0) || frisch(a, b));
+  if (!rang) scanOrdnung.item = liste.map((i) => i.name);
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
@@ -2396,8 +2564,21 @@ function scanItemMaske(i) {
     {titel: "Items derselben Kategorie konkurrieren; die kleinere Priorität gewinnt",
      leer: "— ohne —", schluessel: "item:" + i.name});
 
-  const prio = el("input", {type: "number", value: i.prioritaet, min: 0, step: 1,
-                            title: "Priorität — kleiner gewinnt"});
+  // **Die Zahl allein sagt nicht, ob sie frei ist.** Teilt sich das Item seinen
+  // Rang mit einem anderen derselben Kategorie, entscheidet die Scan-Reihenfolge
+  // — also der Zufall. Das steht am Feld, nicht erst im aufgeklappten Detail:
+  // getippt wird hier.
+  const kollision = prioritaetDoppelt(i);
+  const prio = el("input", {
+    type: "number", value: i.prioritaet, min: 0, step: 1,
+    class: kollision.length ? "doppelt" : "",
+    title: kollision.length
+      ? "P" + i.prioritaet + " hat auch: " + kollision.join(", ")
+        + " — bei gleicher Zahl entscheidet der Zufall"
+      : "Priorität — kleiner gewinnt" + (i.kategorie
+          ? " (frei in „" + i.kategorie + "“: P"
+            + naechsteFreiePrioritaet(i.kategorie, i.name) + ")"
+          : ", zählt nur innerhalb einer Kategorie")});
   prio.addEventListener("change", () => {
     if (prio.value.trim() !== "") setze("prioritaet", Number(prio.value));
   });
@@ -2406,7 +2587,7 @@ function scanItemMaske(i) {
   const felder = el("div", {class: "scan-maske-felder"}, name,
     el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i));
 
-  return maskeBauen("item", i.name, gewaehlt,
+  return maskeDabei(i.dabei, maskeBauen("item", i.name, gewaehlt,
     [maskeHaken("item", i.name, i.dabei),
      bild ? el("img", {class: "mini", src: bild, alt: ""})
           : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
@@ -2418,7 +2599,7 @@ function scanItemMaske(i) {
     // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
     // keine Liste mehr.
     (kasten) => scanItemDetails(kasten, i),
-    () => rufScan("scan_waehlen", {art: "item", name: i.name}));
+    () => rufScan("scan_waehlen", {art: "item", name: i.name})));
 }
 
 /** Die Zustandszeile einer Item-Maske: erkannt, stumm, fehlende Vorlage.
@@ -2446,6 +2627,13 @@ function scanItemStand(i) {
     teile.push(el("span", {style: "color:var(--accent)",
       title: "Für die Slot-Größen dieses Scans gibt es noch keine Vorlage"},
       "Vorlage fehlt"));
+  }
+  const kollision = prioritaetDoppelt(i);
+  if (kollision.length) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Gleiche Priorität wie " + kollision.join(", ")
+             + " — welches zuerst geklickt wird, entscheidet der Zufall"},
+      "P" + i.prioritaet + " doppelt"));
   }
   if (i.bestaetigung) {
     teile.push(el("span", {class: "mono", title: "Nach dem Klick wird bestätigt: "
@@ -2688,7 +2876,7 @@ function scanInspektor() {
   const ziel = $("scan-insp");
   ziel.replaceChildren();
   if (SC.review) return scanReview(ziel);
-  const kopf = el("div", {class: "abschnitt"},
+  const kopf = el("div", {class: "abschnitt scan-kopf"},
     el("div", {class: "reihe"},
       el("span", {class: "ueberschrift wachse"},
          SC.dirty ? "NICHT GESPEICHERT" : scanSpaltenTitel()),
@@ -2736,12 +2924,29 @@ function scanInspektor() {
                       : "Nichts zum Rückgängigmachen",
                     onclick: () => rufScan("scan_rueckgaengig")},
          SC.undo.tiefe ? "↶ " + SC.undo.was : "↶ Rückgängig")));
+  // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
+  // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
+  // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
+  // zurueck in eine andere Liste.
+  const tabs = el("div", {class: "tabs klein breit"});
+  const filter = el("div", {class: "reihe scan-filter"});
+  scanListenBlock(tabs, filter, null);
+  kopf.appendChild(tabs);
+  if (scanMaskenRechts()) {
+    // **Sortieren ist ein Knopf, kein Nebeneffekt des Tippens.** Sortierte sich
+    // die Liste nach jeder Aenderung neu, springt genau die Zeile weg, an der
+    // man gerade arbeitet.
+    filter.appendChild(el("button", {class: "btn still",
+      title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
+             + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
+      onclick: () => { scanOrdnungVergessen(); zeichneScans(); }}, "↕ Sortieren"));
+  }
+  if (filter.childNodes.length) kopf.appendChild(filter);
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
-  // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Reiter, Filter
-  // und Masken gehoeren zusammen; was zum GEWAEHLTEN gehoert, klappt in seiner
-  // Maske auf statt daneben zu stehen.
+  // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Was zum
+  // GEWAEHLTEN gehoert, klappt in seiner Maske auf statt daneben zu stehen.
   // Eine Mehrfachauswahl meint etwas anderes als eine Maske: sie hat keinen
   // Namen und keine Einzelfelder, nur das, was auf alle wirkt. Deshalb steht
   // sie ueber der Liste und nicht in ihr.
@@ -2750,12 +2955,8 @@ function scanInspektor() {
     scanInspAuswahl(sammel);
     rumpf.appendChild(sammel);
   }
-  const tabs = el("div", {class: "tabs klein"});
-  const filter = el("div", {class: "reihe", style: "margin:8px 0"});
   const liste = el("div", {class: "spalte", style: "gap:3px"});
-  scanListenBlock(tabs, filter, liste);
-  rumpf.appendChild(tabs);
-  if (filter.childNodes.length) rumpf.appendChild(filter);
+  scanListenBlock(null, null, liste);
   rumpf.appendChild(liste);
   // Boss und Icon tragen keine Masken — was zum Gewaehlten gehoert, steht
   // deshalb UNTER der Liste statt in ihr. Abgesetzt, damit man sieht, wo die

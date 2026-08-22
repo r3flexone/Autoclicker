@@ -1322,7 +1322,24 @@ check("der Haken steht in jeder Maske, an EINER Stelle gebaut",
 # die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
 # nicht ein zweites Mal.
 check("und erkannte Items stehen weiter in der gefilterten Liste",
-      "liste.filter((e) => e.dabei || e.erkannt)" in _html18)
+      "e.dabei || e.erkannt" in _html18)
+# **Was man GERADE abhakt, bleibt stehen.** Der Filter zeigt die Mitglieder —
+# nimmt man dort einen Haken weg, faellt der Eintrag aus seiner eigenen
+# Bedingung und verschwindet im selben Moment. Ein Verklicker war damit nicht
+# zurueckzunehmen: das Ding, das man wieder anhaken will, ist weg.
+check("und was man gerade abgehakt hat, ebenfalls",
+      "scanZuletztAbgewaehlt.has(art + \":\" + e.name)" in _html18)
+check("gemerkt wird es VOR dem Ruf",
+      "scanAbwahlMerken(art, name, dabei);" in _html18)
+# Und es wird wieder vergessen, sobald der Zusammenhang wechselt — sonst
+# waechst die Liste ueber eine Sitzung hinweg zu genau dem Bestand an, den der
+# Filter fernhalten soll.
+check("und beim Wechsel des Zusammenhangs vergessen",
+      _html18.count("scanAbwahlVergessen()") >= 4)
+# Sichtbar bleiben heisst nicht: aussehen wie ein Mitglied.
+check("wer nicht dazugehoert, ist blass",
+      "maske.classList.add(\"nicht-dabei\")" in _html18
+      and ".scan-maske.nicht-dabei{opacity:" in _html18)
 
 # **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Zwei
 # Bauplaene dafuer waeren zwei Stellen, an denen ein Feld fehlen kann — es gibt
@@ -1414,6 +1431,119 @@ check("fokusMerken loest den Hinweis genau einmal ein",
 check("und die alte id bleibt als Rueckfall",
       "alt: kasten.id" in _html18
       and "document.getElementById(merk.id)\n              || document.getElementById(merk.alt)" in _html18)
+
+
+# ============================================================================
+section("Prioritaeten: welche vergeben sind, und was ein neues Item bekommt")
+
+# **„Welche Prioritaet ist noch frei" war aus einer Zahl im Feld nicht zu
+# beantworten.** Die Uebersicht zeigte nur die vergebenen Raenge; ob P2 belegt
+# ist oder fehlt, sah man erst, wenn man P1, P3, P4 las und selbst nachzaehlte.
+check("die Uebersicht spannt jeden Rang auf, nicht nur die belegten",
+      "function prioritaetsBelegung(kategorie)" in _html18
+      and "for (let p = 1; p <= hoechste + 1; p += 1)" in _html18)
+check("ein freier Rang wird als Luecke gezeichnet",
+      '"P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", "))' in _html18
+      and ".prioritaets-chip.frei{border:1px dashed" in _html18)
+# Eine getippte P99 darf das nicht auf hundert Kacheln aufspannen.
+check("und eine Ausreisser-Zahl spannt sie nicht auf",
+      "PRIO_MAX_ZEIGEN" in _html18)
+# Zwei Items auf demselben Rang entscheidet die Scan-Reihenfolge — also der
+# Zufall. Das steht AM FELD, nicht erst im aufgeklappten Detail: getippt wird
+# in der Maske.
+check("eine doppelte Prioritaet faellt schon in der Liste auf",
+      "function prioritaetDoppelt(item)" in _html18
+      and '"P" + i.prioritaet + " doppelt"' in _html18)
+check("und das Feld selbst ist markiert",
+      'class: kollision.length ? "doppelt" : ""' in _html18
+      and ".scan-maske input.doppelt{" in _html18)
+
+_sandP = tempfile.mkdtemp(prefix="studioprio_")
+_cwdP = _os.getcwd()
+_os.chdir(_sandP)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bP = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bP.scan_daten()
+    for _n, _k, _p in (("Helm A", "Helme", 1), ("Helm B", "Helme", 2),
+                       ("Neu", None, 1)):
+        _bP.items[_n] = _ITEM8(name=_n, category=_k, priority=_p)
+
+    # **Ein Rang, den es schon gibt, ist kein Rang.** Wer ein Item in eine
+    # Kategorie schiebt, hat ueber seine Prioritaet nichts gesagt — dann ist der
+    # naechste freie Platz die einzige Antwort, die nicht raet.
+    _zP = _bP.scan_item_setzen({"name": "Neu", "feld": "kategorie", "wert": "Helme"})
+    check("ein Item in einer besetzten Kategorie ruecht auf den freien Rang",
+          _bP.items["Neu"].priority == 3)
+    check("und es wird gesagt, statt still zu passieren",
+          "P1 war in 'Helme' vergeben" in _zP["status"]["text"])
+
+    # Eine LUECKE wird gefuellt, nicht ans Ende gehaengt.
+    _bP.items["Helm B"].priority = 3
+    _bP.items["Neu"].category = None
+    _bP.items["Neu"].priority = 1
+    _zP = _bP.scan_item_setzen({"name": "Neu", "feld": "kategorie", "wert": "Helme"})
+    check("und zwar auf die erste Luecke", _bP.items["Neu"].priority == 2)
+
+    # Sitzt es allein auf seiner Zahl, wird nichts verschoben.
+    _bP.items["Frei"] = _ITEM8(name="Frei", category=None, priority=9)
+    _bP.scan_item_setzen({"name": "Frei", "feld": "kategorie", "wert": "Helme"})
+    check("eine freie Zahl bleibt, wie sie ist", _bP.items["Frei"].priority == 9)
+
+    # Eine ausdruecklich getippte Zahl fasst niemand an — auch keine doppelte:
+    # sie kann gewollt sein, und ungefragt zu verschieben waere schlimmer.
+    _bP.scan_item_setzen({"name": "Frei", "feld": "prioritaet", "wert": 1})
+    check("eine getippte Zahl gilt, auch wenn sie doppelt ist",
+          _bP.items["Frei"].priority == 1)
+
+    # Ohne Kategorie gibt es keine Konkurrenz und damit nichts einzuordnen.
+    _bP.items["Solo"] = _ITEM8(name="Solo", category=None, priority=1)
+    _bP.scan_item_setzen({"name": "Solo", "feld": "kategorie", "wert": ""})
+    check("ohne Kategorie bleibt alles, wie es ist",
+          _bP.items["Solo"].priority == 1)
+finally:
+    _os.chdir(_cwdP)
+    shutil.rmtree(_sandP, ignore_errors=True)
+
+
+# ============================================================================
+section("Die Liste sortiert sich beim Laden, nicht beim Tippen")
+
+# **Sortierte sich die Liste nach JEDER Aenderung neu, springt genau das Item
+# weg, an dem man gerade tippt**: man tippt eine 2, die Zeile rutscht drei
+# Plaetze hoch, und das naechste Feld ist ein anderes.
+check("die Reihenfolge wird gemerkt", "let scanOrdnung = {item: null, slot: null}"
+      in _html18)
+check("und beim Zeichnen angewandt statt neu gerechnet",
+      "const rang = scanOrdnungRang(\"item\");" in _html18
+      and "(rang ? rang(a.name) - rang(b.name) : 0) || frisch(a, b));" in _html18)
+# Die Kategorie bleibt der erste Schluessel — sie traegt die
+# Gruppenueberschrift, und ein Item ausserhalb seiner Gruppe saehe aus, als
+# haette es die Kategorie verloren.
+check("die Kategorie bleibt der erste Schluessel",
+      '(a.kategorie || "").localeCompare(b.kategorie || "", "de") ||\n'
+      '    (rang ? rang(a.name)' in _html18)
+check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
+_frisch18 = ["scan_neu_laden", "scan_lernvorschau_uebernehmen", "scan_oeffnen"]
+check("und beim Laden sortiert es von selbst",
+      all(n in _html18[_html18.index("async function rufScan("):
+                       _html18.index("async function rufScan(") + 1400]
+          for n in _frisch18))
+
+# **Der Kopf bleibt beim Scrollen stehen.** Bei sechzig Masken war die
+# Reiterleiste nach drei Umdrehungen weg — und mit ihr der Weg in eine andere
+# Liste, der Speichern-Knopf und das Rueckgaengig.
+check("Reiter und Filter stehen im Kopf, nicht in der Liste",
+      "kopf.appendChild(tabs);" in _html18)
+check("und der Kopf klebt oben",
+      ".scan-kopf{position:sticky;top:0" in _html18
+      and 'class: "abschnitt scan-kopf"' in _html18)
+# Ohne eigenen Hintergrund scrollen die Masken sichtbar dahinter durch.
+check("mit eigenem Hintergrund", "background:var(--panel)}" in
+      _html18[_html18.index(".scan-kopf{"):_html18.index(".scan-kopf{") + 120])
+check("die Reiterleiste nimmt die ganze Breite",
+      ".tabs.breit .tab{flex:1 1 0" in _html18 and '"tabs klein breit"' in _html18)
 
 
 # ============================================================================

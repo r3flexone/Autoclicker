@@ -134,6 +134,47 @@ def lauf():
                "die Kategorie hat die Liste nicht umsortiert — der Test misst nichts")
 
         # ------------------------------------------------------------------
+        # **Beim Tippen springt nichts, auf Knopfdruck schon.** Sortierte sich
+        # die Liste nach jeder Aenderung neu, rutscht genau die Zeile weg, an
+        # der man gerade arbeitet — man tippt eine 2 und tippt danach im
+        # naechsten Item weiter.
+        f.klick_text("#scan-insp .tabs .tab", "Items")
+        vor_prio = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        # Das ERSTE Item auf einen hohen Rang setzen: sortiert die Liste
+        # sofort, stuende es danach am Ende seiner Gruppe. Genau daran misst
+        # sich, ob die Reihenfolge stehen bleibt.
+        erste = vor_prio[0]
+        f.seite.eval_on_selector_all('.scan-maske input[type="number"]', """(ns, id) => {
+          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
+          e.focus();
+          e.value = "9";
+          e.dispatchEvent(new Event('change', {bubbles: true}));
+        }""", erste)
+        f.seite.wait_for_timeout(700)
+        nach_prio = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        pruefe(nach_prio == vor_prio,
+               f"die Liste sortiert beim Tippen um: {vor_prio} -> {nach_prio}")
+        # Gegenprobe zur Gegenprobe: der Knopf muss sie sehr wohl umsortieren,
+        # sonst misst der Test oben nur eine Liste, die sich ohnehin nicht regt.
+        f.klick_text("#scan-insp .scan-kopf button", "↕ Sortieren")
+        sortiert = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        pruefe(sortiert != vor_prio,
+               f"„Sortieren“ ordnet die Liste nicht um: {sortiert}")
+
+        knoepfe = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-kopf button", "ns => ns.map(n => n.textContent)")
+        pruefe(any("Sortieren" in k for k in knoepfe),
+               f"kein Sortier-Knopf im Kopf: {knoepfe}")
+        # Und der Kopf bleibt beim Scrollen stehen — sonst ist die Reiterleiste
+        # nach drei Umdrehungen weg.
+        klebt = f.seite.eval_on_selector(
+            "#scan-insp .scan-kopf", "e => getComputedStyle(e).position")
+        pruefe(klebt == "sticky", f"der Kopf klebt nicht: {klebt}")
+
+        # ------------------------------------------------------------------
         # **Alle drei Listen stehen rechts und sind Masken.** Das ist die
         # Schicht, die die Vertragssuite nicht sehen kann: dass ein Reiter
         # ueberhaupt etwas zeichnet, faellt nur im Fenster auf.

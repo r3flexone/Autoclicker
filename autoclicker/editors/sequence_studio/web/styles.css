@@ -53,8 +53,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 .btn.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
 .btn.haupt{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
 .btn.haupt:hover{filter:brightness(1.08)}
-.btn.still{background:none;border-color:transparent;color:var(--muted);padding:4px 7px}
-.btn.still:hover{background:var(--sub);color:var(--text)}
+/* **Ein Knopf sieht aus wie ein Knopf.** `still` hiess einmal „ohne Rahmen"
+   (`border-color:transparent`) — und damit war „+ neuer Scan" oder „alle dazu"
+   ein Stueck Text, dem man nicht ansieht, dass man es anklicken kann. Man
+   probiert es einmal aus oder eben nicht. Der Ton bleibt zurueckhaltend (kein
+   Hintergrund, gedaempfte Schrift), die FLAECHE ist da. */
+.btn.still{background:none;border-color:var(--line);color:var(--muted);padding:5px 9px}
+.btn.still:hover{background:var(--sub);border-color:var(--dim);color:var(--text)}
 .btn:disabled{opacity:.4;cursor:default}
 .btn.gefahr:hover{border-color:var(--err);color:var(--err)}
 
@@ -80,8 +85,24 @@ label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var
   padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
 .prioritaets-hinweis{margin:3px 0 0}
 .prioritaets-chips{display:flex;flex-wrap:wrap;gap:4px}
+/* Der Rahmen ist von Anfang an da (durchsichtig), damit die gestrichelte
+   Luecke daneben nicht zwei Pixel groesser ist als ihre belegten Nachbarn. */
 .prioritaets-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  padding:2px 6px;border-radius:9px;background:var(--sub);font:10.5px var(--mono);color:var(--muted)}
+  padding:2px 6px;border-radius:9px;border:1px solid transparent;background:var(--sub);
+  font:10.5px var(--mono);color:var(--muted)}
+/* Ein freier Rang ist eine LUECKE, kein Eintrag: gestrichelt und ohne Namen.
+   Vorher standen nur die vergebenen da, und ob P2 belegt ist oder fehlt, sah
+   man erst, wenn man P1, P3, P4 las und selbst nachzaehlte. */
+.prioritaets-chip.frei{border:1px dashed var(--dim);background:none;color:var(--dim)}
+/* Zwei Items auf demselben Rang entscheidet die Scan-Reihenfolge — also der
+   Zufall. Das ist kein Fehler, aber fast immer ein Versehen. */
+.prioritaets-chip.doppelt{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+.scan-maske input.doppelt{border-color:var(--accent);color:var(--accent)}
+/* Gehoert nicht zum offenen Scan. Der Haken allein ist an einer 30-px-Maske zu
+   wenig, um „ist raus" zu lesen — und genau danach sucht man, wenn man gerade
+   einen weggeklickt hat. */
+.scan-maske.nicht-dabei{opacity:.55}
+.scan-maske.nicht-dabei:hover,.scan-maske.nicht-dabei.an{opacity:1}
 .prioritaets-chip.aktuell{background:#7C9CF526;color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
 .prioritaeten-alle{margin-top:8px;max-height:130px;overflow:auto}
 .prioritaeten-kategorie{display:grid;grid-template-columns:minmax(70px,.35fr) 1fr;gap:7px;
@@ -649,6 +670,21 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-kategorie-kopf{padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
   letter-spacing:.08em;text-transform:uppercase}
 .tabs.klein .tab{font-size:11px;padding:4px 8px}
+/* **Die Leiste nimmt die ganze Breite.** Drei Reiter links zusammengedraengt
+   liessen zwei Drittel der Leiste leer stehen — und die Trefferflaeche war
+   schmaler, als die Zeile hergibt. Gleiche Spalten, damit die Zahlen dahinter
+   („Slots 72/85") die Aufteilung nicht bei jedem Filterwechsel verschieben. */
+.tabs.breit{width:100%}
+.tabs.breit .tab{flex:1 1 0;min-width:0;text-align:center;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+/* **Der Kopf der rechten Spalte bleibt beim Scrollen stehen.** Bei sechzig
+   Masken war die Reiterleiste nach drei Umdrehungen weg — und mit ihr der Weg
+   in eine andere Liste, der Speichern-Knopf und das Rueckgaengig. Die Spalte
+   selbst ist der Scroll-Bereich (`.seite{overflow-y:auto}`), also klebt der
+   Abschnitt daran. Der Hintergrund muss gesetzt sein, sonst scrollen die Masken
+   sichtbar dahinter durch. */
+.scan-kopf{position:sticky;top:0;z-index:3;background:var(--panel)}
+.scan-filter{flex-wrap:wrap;align-items:center;gap:6px}
 /* Zwei Zeilen, nicht drei Spalten: „Hintergrundfarbe" und sein Hinweis passten
    nebeneinander nicht in 260 px und ueberschrieben sich gegenseitig. */
 .scan-modus{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;
