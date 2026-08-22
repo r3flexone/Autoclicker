@@ -39,7 +39,7 @@ WURZEL = Path(__file__).resolve().parents[1]
 
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
-RAUCHTESTS = ("items", "erkennung", "teilen", "werkzeuge")
+RAUCHTESTS = ("items", "erkennung", "sequenzen", "teilen", "werkzeuge")
 
 SCHICHTEN = ("vertrag", "wurzel", "rauch")
 

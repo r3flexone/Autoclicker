@@ -354,8 +354,27 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .karten{flex:1;min-height:0;display:grid;align-content:start;
   grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;
   padding:24px 28px;overflow-y:auto}
+/* **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz, rutschte
+   alles darunter hoch: der Phasenbalken der einen lag auf Höhe der Kennzahlen
+   der anderen, und die Uebersicht war keine mehr. Mit `subgrid` teilen sich
+   alle Karten einer Reihe dieselben Zeilenhoehen — Kopf, Text, Balken, Zahlen,
+   Fuss. Kann der Browser kein `subgrid`, faellt die Regel weg und es bleibt
+   beim heutigen Verhalten; kaputt geht dabei nichts.
+
+   `align-content:start` in jeder Zelle waere falsch: die Fusszeile soll unten
+   stehen, und genau dafuer ist die vierte Zeile `1fr`. */
 .seq-karte{background:var(--panel);border:1px solid var(--line);border-radius:6px;
-  padding:16px;display:flex;flex-direction:column;gap:12px}
+  padding:16px;display:grid;gap:12px;grid-row:span 5;
+  grid-template-rows:subgrid}
+.karten{grid-auto-rows:auto}
+/* Ohne subgrid: dieselbe Aufteilung, nur ohne Abgleich zwischen den Karten. */
+@supports not (grid-template-rows: subgrid) {
+  .seq-karte{grid-template-rows:auto auto auto 1fr auto;grid-row:auto}
+}
+/* Leere Zeilen sollen keine Hoehe erfinden — sie sind nur der Platzhalter,
+   damit die Nachbarkarte ihre Zeile an derselben Stelle hat. */
+.seq-text:empty,.seq-balken:empty,.seq-zahlen:empty{min-height:0}
+.seq-text{display:flex;flex-direction:column;gap:8px}
 .seq-karte.offen{border-color:var(--accent)}
 .seq-karte.defekt{border-color:var(--err)}
 .seq-kopf{display:flex;align-items:baseline;gap:8px}
@@ -371,7 +390,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-zahlen{display:flex;flex-wrap:wrap;gap:6px}
 .zahl{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.seq-fuss{display:flex;align-items:center;gap:8px;margin-top:auto}
+.seq-fuss{display:flex;align-items:center;gap:8px;align-self:end}
 .seq-warn{font-size:11.5px;color:var(--accent);line-height:1.5}
 
 /* ---------------------------------------------------------------- Live-Run */
@@ -683,7 +702,14 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    selbst ist der Scroll-Bereich (`.seite{overflow-y:auto}`), also klebt der
    Abschnitt daran. Der Hintergrund muss gesetzt sein, sonst scrollen die Masken
    sichtbar dahinter durch. */
-.scan-kopf{position:sticky;top:0;z-index:3;background:var(--panel)}
+/* **Der oberste Abschnitt einer Spalte bleibt stehen.** Darunter liegt jeweils
+   eine Liste, die laenger wird als das Fenster (Punkte, Masken) — und mit ihr
+   scrollt sonst genau die Auskunft weg, an der man sich orientiert: welche
+   Sequenz bzw. welcher Scan hier offen ist, samt Speichern und Rueckgaengig.
+   Die Spalte selbst ist der Scroll-Bereich (`.seite{overflow-y:auto}`), also
+   klebt der Abschnitt daran; der Hintergrund muss gesetzt sein, sonst scrollt
+   der Inhalt sichtbar dahinter durch. */
+.klebt,.scan-kopf{position:sticky;top:0;z-index:3;background:var(--panel)}
 /* **Der Kopf ist eine Spalte, kein Fliesstext.** Jedes Bedienelement nimmt die
    volle Breite — sonst steht „alle dazu" als kurzer Stummel neben dem Schalter,
    „Sortieren" als noch kuerzerer darunter, und die Klappliste dazwischen zieht

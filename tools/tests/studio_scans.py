@@ -1414,6 +1414,55 @@ check("der Loesch-Knopf liegt im Detailteil des Scans",
 
 
 # ============================================================================
+section("Ein abgeschalteter Slot bleibt erreichbar")
+
+_sandS = tempfile.mkdtemp(prefix="studioslotaus_")
+_cwdS = _os.getcwd()
+_os.chdir(_sandS)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bS = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bS.scan_daten()
+    # Zwei Spiele: das eine Raster bei (100,100), das andere weit rechts.
+    _bS.slots["Hier"] = _SLOT8(name="Hier", scan_region=(100, 100, 160, 160),
+                                click_pos=(130, 130))
+    _bS.slots["Fremd"] = _SLOT8(name="Fremd", scan_region=(4000, 900, 4060, 960),
+                                 click_pos=(4030, 930))
+    _bS.scan_neu({"name": "Inv"})
+    _bS.scan_mitglied({"scan": "Inv", "art": "slot", "name": "Hier"})
+    # Ein aufgenommenes Bild statt eines echten Screenshots: „zu sehen" hat
+    # ohne Aufnahme keine Bedeutung, und die Aufnahme selbst braucht Pillow.
+    _bS._foto_info = {"links": 0, "oben": 0, "breite": 800, "hoehe": 600,
+                      "skala": 1.0, "stand": 0.0}
+    _zS = _bS.scan_daten()
+    _slotsS = {s["name"]: s for s in _zS["slots"]}
+
+    # **„Gehört dazu ODER ist gerade zu sehen"** — dieselbe Regel wie beim Item,
+    # nur heisst „zu sehen" hier: der Slot liegt im aufgenommenen Bild. Ohne das
+    # war ein abgehakter Slot endgültig weg, sobald man den Reiter wechselte:
+    # er erfüllt den Filter nicht mehr, und anders als ein Item hatte er keinen
+    # zweiten Grund, trotzdem dazustehen. Wieder anhaken kann man nur, was man
+    # sieht.
+    check("ein Slot im Bild gilt als sichtbar", _slotsS["Hier"]["erkannt"] is True)
+    check("und einer des anderen Spiels nicht", _slotsS["Fremd"]["erkannt"] is False)
+
+    # Abgehakt bleibt er sichtbar — genau darum geht es.
+    _bS.scan_mitglied({"scan": "Inv", "art": "slot", "name": "Hier"})
+    _slotsS = {s["name"]: s for s in _bS.scan_daten()["slots"]}
+    check("abgehakt gehoert er nicht mehr dazu", _slotsS["Hier"]["dabei"] is False)
+    check("bleibt aber sichtbar und damit anklickbar",
+          _slotsS["Hier"]["erkannt"] is True)
+
+    # Die Ansicht filtert auf genau diese beiden Merkmale — an EINER Stelle.
+    check("und die Ansicht filtert auf beide",
+          "e.dabei || e.erkannt" in _html18)
+finally:
+    _os.chdir(_cwdS)
+    shutil.rmtree(_sandS, ignore_errors=True)
+
+
+# ============================================================================
 section("Der Fokus ueberlebt ein Umbenennen")
 
 # **Ein Umbenennen aendert die Identitaet — und damit die id, an der der Fokus

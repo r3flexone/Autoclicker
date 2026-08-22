@@ -876,6 +876,14 @@ async function zeichneSequenzenliste() {
   for (const s of liste) ziel.appendChild(seqKarte(s));
 }
 
+/** Eine Sequenz als Karte — mit FESTEN Zeilen, damit die Karten sich einmessen.
+ *
+ * **Jede Karte legt dieselben fünf Zeilen an, auch leere.** Vorher liess eine
+ * fehlende Notiz alles darunter hochrutschen: bei drei Karten nebeneinander lag
+ * dann der Phasenbalken der einen auf Höhe der Kennzahlen der anderen, und die
+ * Übersicht war keine mehr. Mit `subgrid` teilen sich alle Karten einer Reihe
+ * die Zeilenhöhen (siehe `.seq-karte` im Stylesheet) — dafür muss jede Zeile
+ * aber DA sein, sonst rutscht der Rest wieder eine Stelle nach oben. */
 function seqKarte(s) {
   const karte = el("div", {class: "seq-karte" + (s.offen ? " offen" : "") +
                                   (s.defekt ? " defekt" : "")});
@@ -883,23 +891,29 @@ function seqKarte(s) {
     el("span", {class: "seq-name"}, s.name),
     s.offen ? el("span", {class: "zahl", style: "color:var(--accent)"}, "offen") : null));
 
+  // Zeile 2: Notiz bzw. Warnung. Eine defekte Datei hat weder Balken noch
+  // Kennzahlen — die Zeilen bleiben trotzdem stehen, damit die Nachbarkarten
+  // nicht verrutschen.
+  const text = el("div", {class: "seq-text"});
   if (s.defekt) {
-    karte.appendChild(el("p", {class: "seq-warn"},
+    text.appendChild(el("p", {class: "seq-warn"},
       "Nicht ladbar — die Datei ist beschädigt oder kein gültiges Sequenz-Format. " +
       "Sie bleibt unangetastet; nachsehen lohnt sich in " + s.datei + "."));
   } else {
-    if (s.beschreibung) karte.appendChild(el("p", {class: "seq-notiz"}, s.beschreibung));
-    karte.appendChild(phasenBalken(s));
-    karte.appendChild(el("div", {class: "seq-zahlen"},
-      el("span", {class: "zahl"}, s.schritte + " Schritte"),
-      el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
-      el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")));
+    if (s.beschreibung) text.appendChild(el("p", {class: "seq-notiz"}, s.beschreibung));
     if (s.warnungen && s.warnungen.length) {
-      karte.appendChild(el("p", {class: "seq-warn"},
+      text.appendChild(el("p", {class: "seq-warn"},
         s.warnungen.length + "× Scan ohne Konfiguration — " + s.warnungen[0] +
         (s.warnungen.length > 1 ? " u. a." : "")));
     }
   }
+  karte.appendChild(text);
+  karte.appendChild(el("div", {class: "seq-balken"},
+    s.defekt ? null : phasenBalken(s)));
+  karte.appendChild(el("div", {class: "seq-zahlen"}, s.defekt ? null : [
+    el("span", {class: "zahl"}, s.schritte + " Schritte"),
+    el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
+    el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")]));
 
   karte.appendChild(el("div", {class: "seq-fuss"},
     el("span", {class: "klein mono wachse"}, s.datei + " · " + zeitpunkt(s.geaendert)),

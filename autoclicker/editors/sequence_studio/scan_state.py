@@ -406,6 +406,9 @@ class ScanStateMixin:
         cfg = self.scans.get(self.scan_offen)
         dabei_slots = set(cfg.slot_names) if cfg else set()
         dabei_items = set(cfg.item_names) if cfg else set()
+        # Einmal gerechnet: die Arbeitsfläche steht in der Aufnahme UND
+        # entscheidet, welche fremden Slots gerade zu sehen sind.
+        flaeche = self._flaeche()
         erkannt = self._erkannte_items()
         return {
             "modus": self.scan_modus,
@@ -415,8 +418,9 @@ class ScanStateMixin:
             # zeigen soll — sonst klickt man den Hintergrund an und weiss nicht,
             # worin gesucht wird.
             "suchbereich": list(self._suchbereich) if self._suchbereich else None,
-            "foto": self._flaeche(),
-            "slots": [self._slot_json(s, s.name in dabei_slots) for s in self.slots.values()],
+            "foto": flaeche,
+            "slots": [self._slot_json(s, s.name in dabei_slots, flaeche)
+                      for s in self.slots.values()],
             "items": [self._item_json(i, i.name in dabei_items, erkannt.get(i.name))
                       for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
@@ -508,12 +512,22 @@ class ScanStateMixin:
         except ImportError:
             return False
 
-    def _slot_json(self, slot: ItemSlot, dabei: bool = False) -> dict:
+    def _slot_json(self, slot: ItemSlot, dabei: bool = False,
+                   flaeche: Optional[dict] = None) -> dict:
         treffer = self._treffer.get(slot.name)
         breite = slot.scan_region[2] - slot.scan_region[0]
         hoehe = slot.scan_region[3] - slot.scan_region[1]
         return {
             "dabei": dabei,
+            # **„Gehört dazu ODER ist gerade zu sehen"** — dieselbe Regel wie
+            # beim Item, nur heisst „zu sehen" hier etwas anderes: ein Item wird
+            # in einem Slot ERKANNT, ein Slot LIEGT im aufgenommenen Bild.
+            #
+            # Ohne das war ein abgehakter Slot endgültig weg, sobald man den
+            # Reiter wechselte: er erfüllt den Filter „nur aus <Scan>" nicht
+            # mehr, und anders als ein Item hatte er keinen zweiten Grund,
+            # trotzdem dazustehen. Wieder anhaken konnte man nur, was man sieht.
+            "erkannt": self._slot_im_bild(slot, flaeche),
             "name": slot.name,
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
@@ -527,6 +541,27 @@ class ScanStateMixin:
             "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
             "treffer": treffer,
         }
+
+    @staticmethod
+    def _slot_im_bild(slot: ItemSlot, flaeche: Optional[dict]) -> bool:
+        """Überschneidet sich der Slot mit dem aufgenommenen Bild?
+
+        Bei zwei Spielen liegen die Slots des anderen weit ausserhalb — die
+        gehören in dieser Liste nicht angeboten, das war der Grund für den
+        Filter. Was aber im Bild steht, sieht man gerade, und dann ist es
+        Rauschen, es zu verstecken.
+
+        **Nur mit echtem Bild.** Ohne Aufnahme rechnet `_flaeche()` die Fläche
+        aus den Slots DES SCANS — die Antwort wäre dann zirkulär: wer gerade
+        abgehakt wurde, zählt nicht mehr mit, also schrumpft die Fläche, also
+        ist er nicht mehr darin. „Zu sehen" hat ohne Bild keine Bedeutung.
+        """
+        if not flaeche or not flaeche.get("bild"):
+            return False
+        x1, y1, x2, y2 = slot.scan_region
+        links, oben = flaeche["links"], flaeche["oben"]
+        rechts, unten = links + flaeche["breite"], oben + flaeche["hoehe"]
+        return x1 < rechts and x2 > links and y1 < unten and y2 > oben
 
     def _erkannte_items(self) -> dict:
         """Item-Name -> die Slots, in denen es gerade erkannt wird.
