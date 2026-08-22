@@ -697,9 +697,23 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
    nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
    seine Textbreite — bei einem langen Rueckgaengig-Namen kippte das Verhaeltnis
-   von Zeile zu Zeile. Gleiche Spalten stehen still. */
-.knopfpaar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
-.knopfpaar > .btn{width:100%}
+   von Zeile zu Zeile. Gleiche Spalten stehen still.
+
+   **Zwei Klassen, ein Wortschatz**: `btn breit` ist EIN Knopf ueber die volle
+   Breite, `knopfpaar` sind mehrere zu gleichen Teilen. Damit gibt es fuer
+   „nebeneinander" nur noch eine Antwort — vorher stand an jeder Zeile eine
+   eigene Mischung aus `wachse`, Abstandhaltern und Textbreite. */
+/* **Gleiche Spalten duerfen nichts kosten, was man lesen muss.** Mit einer
+   festen Spaltenzahl schnitten drei Knoepfe in 290 px die Beschriftung ab
+   („Item ler…", „Hintergrund mes…") — ein abgeschnittenes Wort ist schlimmer
+   als eine zweite Zeile. `auto-fit` bricht deshalb um, sobald die Spalte unter
+   118 px fiele, und der letzte Knopf nimmt dann die Restbreite. */
+.knopfpaar{display:grid;gap:6px;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))}
+.knopfpaar > .btn{width:100%;min-width:0;white-space:normal}
+/* Der Umfang steht als eigene Zeile unter den Knoepfen: rechts angeklebt wurde
+   er abgeschnitten („6 Slot… · 6 Ite…"), sobald die Knoepfe die Zeile fuellen. */
+.scan-umfang{color:var(--dim)}
 /* Zwei Zeilen, nicht drei Spalten: „Hintergrundfarbe" und sein Hinweis passten
    nebeneinander nicht in 260 px und ueberschrieben sich gegenseitig. */
 .scan-modus{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;

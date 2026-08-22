@@ -84,54 +84,63 @@ def lauf():
                f"der Tipp-Modus ueberlebt den Neuaufbau nicht: {typen} -> {typen_danach}")
 
         # ------------------------------------------------------------------
-        # **Der Fokus bleibt beim Bearbeiten in DERSELBEN Maske.**
+        # **Kein Feld eines Items laesst die Zeile springen — und der Fokus
+        # bleibt in seiner Maske.**
         #
-        # Genau die drei Angaben, die man hier tippt, sortieren die Liste um
-        # (Kategorie, Prioritaet, Name). `fokusMerken()` klettert bis zum
-        # naechsten Element mit `id` und zaehlt dort die Position unter den
-        # Eingabefeldern — ohne id an der Maske ist das die ganze Spalte, also
-        # rund zweihundert Felder bei sechzig Items. Nach dem Umsortieren steht
-        # an derselben Position das Feld eines FREMDEN Items: der Cursor
-        # springt weg, und wer weitertippt, aendert das falsche.
-        #
-        # Nur im Fenster messbar: die Vertragssuite sieht keinen Fokus.
+        # Gemeldet wurde es beim TAB: man tippt einen Namen, springt weiter, und
+        # die Zeile ist woanders. Zwei Ursachen lagen dahinter, beide nur im
+        # Fenster messbar: die gemerkte Reihenfolge haengt am NAMEN (ein
+        # umbenanntes Item galt als neu und rutschte ans Ende), und
+        # `scanVorschauenHolen()` baut die rechte Spalte an `zeichneScans()`
+        # vorbei neu — beim Umbenennen fehlt die Vorschau unter dem neuen Namen,
+        # sie wird nachgeholt, und dieser Aufbau rettete den Fokus nicht.
         f.klick_text("#scan-insp .tabs .tab", "Items")
+        f.seite.wait_for_timeout(300)
         vorher = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
         pruefe(all(n.startswith("maske:item:") for n in vorher),
                f"jede Item-Maske braucht ihre id: {vorher[:3]}")
-        # Die ERSTE Maske ohne Kategorie: sie wandert nach „Helme" und damit ans
-        # Ende, also ist die Position, an der sie stand, danach eine andere.
-        # (Die letzte liegt schon in „Helme" — dort waere nichts umzusortieren,
-        # und der Test maesse nichts.)
-        ziel_id = vorher[0]
-        if not ziel_id:
-            # Ohne id gibt es nichts zu messen — die Meldung darueber ist die
-            # eigentliche Auskunft, ein Absturz waere nur Rauschen davor.
-            ziel_id = "(ohne id)"
-        else:
-            f.seite.eval_on_selector(
-                f'[id="{ziel_id}"] .scan-maske-felder input', "e => e.focus()")
-        f.seite.eval_on_selector_all(".scan-maske .kategorie-wahl select", """(ns, id) => {
-          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
-          e.focus();
-          e.value = "Helme";
-          e.dispatchEvent(new Event('change', {bubbles: true}));
-        }""", ziel_id)
-        f.seite.wait_for_timeout(700)
+        ziel_id = vorher[0] or "(ohne id)"
+
+        # 1. Umbenennen: echtes Tippen, echtes TAB.
+        namensfeld = f'[id="{ziel_id}"] .scan-maske-felder > input'
+        f.seite.click(namensfeld)
+        f.seite.fill(namensfeld, "Zeta")
+        f.seite.keyboard.press("Tab")
+        f.seite.wait_for_timeout(900)
+        nach = f.seite.eval_on_selector_all(
+            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+        pruefe(nach[0] == "maske:item:Zeta",
+               f"das Umbenennen verschiebt die Zeile: {nach}")
+        pruefe(len(nach) == len(vorher) and nach[1:] == vorher[1:],
+               f"die uebrigen Zeilen haben sich bewegt: {vorher} -> {nach}")
         wo = f.seite.evaluate("""() => {
           const a = document.activeElement;
           const m = a && a.closest ? a.closest('.scan-maske') : null;
           return m ? m.id : (a ? a.tagName : "nichts");
         }""")
-        pruefe(wo == ziel_id,
-               f"der Fokus verlaesst die Maske: erwartet {ziel_id}, da: {wo}")
-        nachher = f.seite.eval_on_selector_all(
+        pruefe(wo == "maske:item:Zeta",
+               f"der Fokus verlaesst die Maske: erwartet Zeta, da: {wo}")
+
+        # 2. Kategorie: sie war der erste Sortierschluessel und damit das letzte
+        #    Feld, das die Zeile noch wegspringen liess.
+        f.seite.eval_on_selector_all(".scan-maske .kategorie-wahl select", """(ns, id) => {
+          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
+          e.focus();
+          e.value = "Helme";
+          e.dispatchEvent(new Event('change', {bubbles: true}));
+        }""", "maske:item:Zeta")
+        f.seite.wait_for_timeout(900)
+        nach_kat = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
-        # Gegenprobe zur Gegenprobe: waere die Liste GAR NICHT umsortiert
-        # worden, pruefte der Test oben nichts.
-        pruefe(nachher != vorher,
-               "die Kategorie hat die Liste nicht umsortiert — der Test misst nichts")
+        pruefe(nach_kat == nach,
+               f"die Kategorie verschiebt die Zeile: {nach} -> {nach_kat}")
+        # Sie steht dann unter der ALTEN Ueberschrift — das muss dastehen,
+        # sonst liest sich die Liste falsch.
+        stand = f.seite.eval_on_selector(
+            '[id="maske:item:Zeta"] .scan-maske-stand', "e => e.textContent")
+        pruefe("→ Helme" in stand,
+               f"die gewechselte Kategorie wird nicht angesagt: {stand!r}")
 
         # ------------------------------------------------------------------
         # **Beim Tippen springt nichts, auf Knopfdruck schon.** Sortierte sich

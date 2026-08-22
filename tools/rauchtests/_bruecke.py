@@ -140,12 +140,28 @@ class Fenster:
         Ueber `nth-of-type` zu gehen bricht, sobald jemand einen Knopf davor
         einbaut, und der Test meldet dann etwas ueber die falsche Stelle.
         """
-        for k in self.seite.query_selector_all(wahl):
-            if text in (k.inner_text() or ""):
-                k.click()
-                self.seite.wait_for_timeout(warten)
-                return self
-        raise AssertionError(f"kein '{text}' in {wahl}")
+        # **Suchen und Klicken in einem Anlauf, notfalls nochmal.** Ein
+        # festgehaltener Element-Zeiger loest sich auf, sobald zwischen Suche
+        # und Klick ein Neuaufbau dazwischenkommt („Element is not attached to
+        # the DOM") — und das passiert hier staendig, weil jede Bruecken-Antwort
+        # neu zeichnet. Ueber den Text einen Selektor zu bauen geht nicht: die
+        # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
+        letzter = None
+        for _ in range(3):
+            treffer = [k for k in self.seite.query_selector_all(wahl)
+                       if text in (k.inner_text() or "")]
+            if not treffer:
+                self.seite.wait_for_timeout(150)
+                continue
+            try:
+                treffer[0].click()
+            except Exception as fehler:      # noqa: BLE001 - erneut versuchen
+                letzter = fehler
+                self.seite.wait_for_timeout(150)
+                continue
+            self.seite.wait_for_timeout(warten)
+            return self
+        raise AssertionError(f"kein '{text}' in {wahl}" + (f" ({letzter})" if letzter else ""))
 
     # ---------------------------------------------------------------- Ablesen
 

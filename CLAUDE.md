@@ -1204,17 +1204,26 @@ Sechs Regeln, an denen der Reiter hängt:
   Scan-Liste heraus** öffnet (`scanReiterNachOeffnen`).
 
 - **Sortiert wird beim Laden und auf Knopfdruck, nicht beim Tippen**
-  (`scanOrdnung`, Knopf „↕ Sortieren"). Die Liste ordnet nach Kategorie,
-  Priorität und Name — sortierte sie sich nach *jeder* Änderung neu, springt
-  genau die Zeile weg, an der man gerade arbeitet: man tippt eine 2, die Zeile
-  rutscht drei Plätze, und das nächste Feld gehört einem anderen Item. Gemerkt
-  wird deshalb die Reihenfolge des letzten Sortierens; Neues und alles, was die
-  Kategorie gewechselt hat, hängt sich ans Ende seiner Gruppe.
+  (`scanOrdnung`, Knopf „↕ Sortieren"). Sortierte sich die Liste nach *jeder*
+  Änderung neu, springt genau die Zeile weg, an der man gerade arbeitet: man
+  tippt eine 2, die Zeile rutscht drei Plätze, und der nächste TAB landet im
+  Feld eines anderen Items. Gemerkt wird deshalb die Reihenfolge des letzten
+  Sortierens; aufgefrischt beim Laden (`scan_neu_laden`, Lernen,
+  `scan_oeffnen`), beim Reiterwechsel und durch den Knopf.
 
-  **Die Kategorie bleibt trotzdem der erste Schlüssel.** Sie trägt die
-  Gruppenüberschrift, und ein Item ausserhalb seiner Gruppe sähe aus, als hätte
-  es die Kategorie verloren. Aufgefrischt wird beim Laden (`scan_neu_laden`,
-  Lernen, `scan_oeffnen`), beim Reiterwechsel und durch den Knopf.
+  **Kein Feld eines Items verschiebt seine Zeile** — auch die Kategorie nicht.
+  Sie war der erste Sortierschlüssel und damit das letzte Feld, das noch
+  sprang; eingefroren wird sie deshalb zusammen mit dem Rang
+  (`scanOrdnungGruppe()`), und die Gruppenüberschriften kommen aus dieser
+  Momentaufnahme statt aus dem aktuellen Wert. Sonst risse ein gerade
+  geändertes Item eine zweite Überschrift mitten in die Liste. Wohin es beim
+  nächsten Sortieren wandert, sagt seine Zustandszeile („→ Helme").
+
+  **Umbenennen ändert den Namen, nicht den Rang** (`scanOrdnungUmbenennen()`).
+  Der Merkposten hängt am Namen — ohne das Nachziehen galt ein gerade
+  umbenanntes Item als neu und rutschte ans Ende seiner Gruppe, und genau beim
+  Namen tippt man. Eingetragen werden beide Namen: lehnt die Brücke den neuen
+  ab, behält das Item trotzdem seinen Platz.
 
 - **Der Kopf der rechten Spalte klebt oben** (`.scan-kopf`, `position: sticky`).
   Dort stehen Speichern, Rückgängig, „Items erkennen", die Reiterleiste und die
@@ -1236,6 +1245,17 @@ Sechs Regeln, an denen der Reiter hängt:
   Spalten: „Items erkennen" nahm sonst den Rest der Zeile und „Rückgängig" nur
   seine Textbreite, und weil dessen Beschriftung den letzten Schritt nennt,
   kippte das Verhältnis bei jeder Änderung.
+
+  **Für „nebeneinander" gibt es genau zwei Klassen**, und sie gelten überall:
+  `btn breit` ist EIN Knopf über die volle Breite, `knopfpaar` sind mehrere zu
+  gleichen Teilen. Vorher stand an jeder Zeile eine eigene Mischung aus
+  `wachse`, Abstandhaltern und Textbreite — dieselbe Frage, ein Dutzend
+  Antworten. Ein Test hält fest, dass kein `btn wachse` mehr existiert.
+
+  Gleiche Spalten dürfen dabei nichts kosten, was man lesen muss: bei fester
+  Spaltenzahl schnitten drei Knöpfe in 290 px die Beschriftung ab („Item ler…").
+  `auto-fit` bricht deshalb um, sobald eine Spalte unter 118 px fiele — ein
+  abgeschnittenes Wort ist schlimmer als eine zweite Zeile.
 
 - **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
@@ -1282,6 +1302,14 @@ Sechs Regeln, an denen der Reiter hängt:
   die id selbst — `fokusUmbenennung()` sagt sie vorher an, und die alte bleibt
   als Rückfall, falls die Brücke den Namen ablehnt. Gemessen wird das im
   **Rauchtest**: einen Fokus sieht die Vertragssuite nicht.
+
+  **Der Schutz sitzt in `scanInspektor()`, nicht bei den Aufrufern.**
+  `zeichneScans()` hatte ihn, aber es gibt einen zweiten Weg: sobald ein
+  nachgeladenes Template ankommt, baut `scanVorschauenHolen()` die Spalte
+  direkt neu. Genau das passiert beim Umbenennen — unter dem neuen Namen gibt
+  es noch keine Vorschau —, und dort ging der Fokus verloren, während er beim
+  Tippen einer Priorität stehen blieb. Ein Schutz, an den jeder Aufrufer denken
+  muss, ist einer, den einer vergisst.
 
 - **Ein Item hat einen Klick DANACH** (`scanItemBestaetigung()`,
   `ItemProfile.confirm_point_id`). Manche Spiele fragen nach („wirklich

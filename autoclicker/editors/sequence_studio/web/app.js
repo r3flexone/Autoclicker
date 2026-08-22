@@ -2342,12 +2342,50 @@ function scanOrdnungVergessen() {
   scanOrdnung = {item: null, slot: null};
 }
 
+/** Die eingefrorene Gruppe eines Namens — oder `null`, wenn er neu ist.
+ *
+ * **Die Kategorie war der erste Sortierschluessel und damit das letzte Feld,
+ * das die Zeile noch wegspringen liess.** Sie beim Tippen auszuwerten heisst:
+ * ein Item, das gerade „Helme" bekommt, wandert im selben Moment in eine andere
+ * Gruppe — mitten in der Bearbeitung, und der naechste TAB landet woanders.
+ *
+ * Eingefroren wird sie deshalb zusammen mit dem Rang. Die Ueberschriften kommen
+ * aus dieser Momentaufnahme, nicht aus dem aktuellen Wert; damit bleibt die
+ * Gliederung genau die, die zuletzt sortiert wurde. Was die Kategorie
+ * inzwischen gewechselt hat, sagt seine Maske (`i.kategorie` steht im
+ * Bedienelement) und die Zustandszeile. */
+function scanOrdnungGruppe(art) {
+  const merk = scanOrdnung[art];
+  if (!merk) return null;
+  const gruppen = new Map();
+  for (const e of merk) gruppen.set(e.name, e.gruppe);
+  return (name) => (gruppen.has(name) ? gruppen.get(name) : null);
+}
+
+/** Umbenennen aendert den Namen, nicht den Rang.
+ *
+ * Die gemerkte Reihenfolge haengt am Namen — ohne das Nachziehen ist ein gerade
+ * umbenanntes Item „unbekannt" und rutscht ans Ende seiner Gruppe. Genau beim
+ * Namen tippt man aber, und beim TAB aus dem Feld sprang die Zeile weg: dieselbe
+ * Beschwerde wie beim Sortieren nach jedem Tastendruck, nur an einem Feld.
+ *
+ * Eingetragen werden BEIDE Namen (neu vor alt). Lehnt die Bruecke den neuen ab
+ * — schon vergeben —, heisst das Item weiter wie vorher und behaelt trotzdem
+ * seinen Platz; die Raenge verschieben sich dabei gleichmaessig, verglichen
+ * werden sie ohnehin nur gegeneinander. */
+function scanOrdnungUmbenennen(art, alt, neu) {
+  const merk = scanOrdnung[art];
+  if (!merk || !neu || alt === neu) return;
+  const i = merk.findIndex((e) => e.name === alt);
+  if (i >= 0) merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);
+}
+
 /** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
 function scanOrdnungRang(art) {
   const merk = scanOrdnung[art];
   if (!merk) return null;
   const rang = new Map();
-  merk.forEach((n, i) => rang.set(n, i));
+  merk.forEach((e, i) => rang.set(e.name, i));
   return (name) => (rang.has(name) ? rang.get(name) : Number.MAX_SAFE_INTEGER);
 }
 
@@ -2402,7 +2440,11 @@ function maskeHaken(art, name, dabei) {
 function maskeName(art, name, titel, setze) {
   const feld = el("input", {value: name, autocomplete: "off", title: titel});
   feld.addEventListener("change", () => {
-    fokusUmbenennung(maskeId(art, name), maskeId(art, feld.value.trim()));
+    const neu = feld.value.trim();
+    // Beides haengt am Namen: der Anker fuer den Fokus und der Rang in der
+    // Liste. Wer umbenennt, sagt beiden vorher Bescheid.
+    fokusUmbenennung(maskeId(art, name), maskeId(art, neu));
+    scanOrdnungUmbenennen(art, name, neu);
     setze(feld.value);
   });
   feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
@@ -2449,7 +2491,7 @@ function scanListeSlots(ziel) {
   const liste = scanSichtbar(SC.slots, false, "slot").slice().sort((a, b) =>
     (rang ? rang(a.name) - rang(b.name) : 0)
     || (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0));
-  if (!rang) scanOrdnung.slot = liste.map((s) => s.name);
+  if (!rang) scanOrdnung.slot = liste.map((s) => ({name: s.name, gruppe: ""}));
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
@@ -2508,19 +2550,22 @@ function scanSlotStand(s) {
 }
 
 function scanListeItems(ziel) {
-  // Die Kategorie bleibt IMMER der erste Schluessel: sie traegt die
-  // Gruppenueberschrift, und ein Item ausserhalb seiner Gruppe saehe aus, als
-  // haette es die Kategorie verloren. Innerhalb der Gruppe gilt die gemerkte
-  // Reihenfolge (s. `scanOrdnung`) — sonst springt die Zeile weg, in der man
-  // gerade tippt.
+  // **Gesortiert wird nur auf Ansage.** Steht eine gemerkte Reihenfolge, gilt
+  // ausschliesslich sie — auch fuer die Gruppen, denn die Kategorie war als
+  // erster Schluessel das letzte Feld, das die Zeile noch wegspringen liess.
+  // Ohne Merkposten (erster Aufbau, „Sortieren", Neu laden) wird frisch geordnet.
   const rang = scanOrdnungRang("item");
+  const gruppe = scanOrdnungGruppe("item");
   const frisch = (a, b) =>
     (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0) ||
     a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de");
   const liste = scanSichtbar(SC.items, true, "item").slice().sort((a, b) =>
-    (a.kategorie || "").localeCompare(b.kategorie || "", "de") ||
-    (rang ? rang(a.name) - rang(b.name) : 0) || frisch(a, b));
-  if (!rang) scanOrdnung.item = liste.map((i) => i.name);
+    rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)
+         : ((a.kategorie || "").localeCompare(b.kategorie || "", "de")
+            || frisch(a, b)));
+  if (!rang) {
+    scanOrdnung.item = liste.map((i) => ({name: i.name, gruppe: i.kategorie || ""}));
+  }
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
@@ -2531,12 +2576,17 @@ function scanListeItems(ziel) {
   scanVorschauenHolen(liste.map((i) => i.name));
   let letzteKategorie = null;
   for (const i of liste) {
-    const kategorie = i.kategorie || "Ohne Kategorie";
+    // Die Ueberschrift kommt aus der EINGEFRORENEN Gruppe, nicht aus dem
+    // aktuellen Wert: sonst reisst ein gerade geaendertes Item eine zweite
+    // Ueberschrift mitten in die Liste. Wo es hinwandert, sagt seine Maske.
+    const gefroren = gruppe ? gruppe(i.name) : null;
+    const kategorie = (gefroren === null ? (i.kategorie || "") : gefroren)
+                      || "Ohne Kategorie";
     if (kategorie !== letzteKategorie) {
       ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
       letzteKategorie = kategorie;
     }
-    ziel.appendChild(scanItemMaske(i));
+    ziel.appendChild(scanItemMaske(i, gefroren));
   }
 }
 
@@ -2548,7 +2598,7 @@ function scanListeItems(ziel) {
  * Was selten gebraucht wird (Vorlagen, Marker, Konfidenz, Loeschen), klappt
  * darunter auf. Name, Kategorie und Prioritaet stehen NUR hier — dieselbe Sache
  * an zwei Stellen waeren zwei Wahrheiten. */
-function scanItemMaske(i) {
+function scanItemMaske(i, gefroren) {
   const setze = (feld, wert) => rufScan("scan_item_setzen",
                                         {name: i.name, feld: feld, wert: wert});
   const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
@@ -2585,7 +2635,7 @@ function scanItemMaske(i) {
   prio.addEventListener("keydown", (e) => { if (e.key === "Enter") prio.blur(); });
 
   const felder = el("div", {class: "scan-maske-felder"}, name,
-    el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i));
+    el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i, gefroren));
 
   return maskeDabei(i.dabei, maskeBauen("item", i.name, gewaehlt,
     [maskeHaken("item", i.name, i.dabei),
@@ -2609,8 +2659,16 @@ function scanItemMaske(i) {
  * stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick
  * nichts und hielt ihn fuer wirkungslos. Hier steht jetzt, WO das Item gerade
  * gefunden wurde. */
-function scanItemStand(i) {
+function scanItemStand(i, gefroren) {
   const teile = [];
+  // Die Kategorie ist gewechselt, die Zeile steht aber noch unter der alten
+  // Ueberschrift — das muss dastehen, sonst liest sich die Liste falsch.
+  if (gefroren !== null && gefroren !== undefined
+      && (i.kategorie || "") !== gefroren) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Beim nächsten „Sortieren“ rutscht das Item in diese Gruppe"},
+      "→ " + (i.kategorie || "ohne Kategorie")));
+  }
   if ((i.erkannt_in || []).length) {
     teile.push(el("span", {style: "color:var(--slot-" + (i.dabei ? "ok" : "fremd") + ")",
       title: i.dabei ? "" : "erkannt, gehört aber noch nicht zu diesem Scan"},
@@ -2872,7 +2930,21 @@ function scanStelleAusEvent(e) {
 
 /* --------------------------------------------------------------- Inspektor */
 
+/** Die rechte Spalte neu bauen — und dabei den Fokus selbst hinüberretten.
+ *
+ * **Der Schutz sitzt HIER, nicht bei den Aufrufern.** `zeichneScans()` hatte
+ * ihn, aber es gibt einen zweiten Weg: `scanVorschauenHolen()` baut die Spalte
+ * direkt neu, sobald ein nachgeladenes Template ankommt. Genau das passiert beim
+ * UMBENENNEN — unter dem neuen Namen gibt es noch keine Vorschau —, und dort
+ * ging der Fokus verloren, während er beim Tippen einer Priorität stehen blieb.
+ * Ein Schutz, an den jeder Aufrufer denken muss, ist einer, den einer vergisst. */
 function scanInspektor() {
+  const merk = fokusMerken();
+  scanInspektorBauen();
+  fokusHerstellen(merk);
+}
+
+function scanInspektorBauen() {
   const ziel = $("scan-insp");
   ziel.replaceChildren();
   if (SC.review) return scanReview(ziel);
@@ -3127,9 +3199,8 @@ function scanReview(ziel) {
   }
   liste.appendChild(el("datalist", {id: itemsId},
     [...bekannteNamen].map((name) => el("option", {value: name}))));
-  liste.appendChild(el("div", {class: "reihe", style: "margin-top:8px"},
+  liste.appendChild(el("div", {class: "knopfpaar", style: "margin-top:8px"},
     el("button", {class: "btn", onclick: () => rufScan("scan_lernvorschau_abbrechen")}, "Abbrechen"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn haupt", onclick: scanReviewUebernehmen}, "Auswahl anwenden")));
   ziel.appendChild(liste);
 }
@@ -3160,7 +3231,7 @@ function scanReviewUebernehmen() {
 function scanSlotDetails(ziel, s) {
   const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
 
-  ziel.appendChild(el("div", {class: "reihe"},
+  ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn still",
       title: "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt",
       onclick: () => rufScan("scan_modus_setzen", {modus: "klick"})},
@@ -3191,13 +3262,12 @@ function scanSlotDetails(ziel, s) {
     "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
   ziel.appendChild(erweitert);
 
-  ziel.appendChild(el("div", {class: "reihe"},
+  ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn", disabled: !fotoDa(),
                   onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
        "Item lernen"),
     el("button", {class: "btn", title: "Einen gleich grossen Slot daneben anlegen",
                   onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        "löschen")));
   if (fotoDa()) {
@@ -3262,17 +3332,16 @@ function scanInspAuswahl(ziel) {
   if (SC.offen) {
     ziel.appendChild(ueberschrift("SCAN „" + SC.offen + "“",
       "Nimmt die gewählten Slots in den offenen Scan oder heraus.", "auswahl-scan"));
-    ziel.appendChild(el("div", {class: "reihe"},
-      el("button", {class: "btn wachse",
+    ziel.appendChild(el("div", {class: "knopfpaar"},
+      el("button", {class: "btn",
         onclick: () => rufScan("scan_auswahl_mitglied", {wert: true})}, "dazu"),
-      el("button", {class: "btn wachse",
+      el("button", {class: "btn",
         onclick: () => rufScan("scan_auswahl_mitglied", {wert: false})}, "heraus")));
   }
 
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+  ziel.appendChild(el("div", {class: "knopfpaar", style: "margin-top:14px"},
     el("button", {class: "btn", onclick: () => rufScan("scan_abbrechen")},
        "Auswahl aufheben"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        SC.auswahl.length + " löschen")));
 }
@@ -4064,7 +4133,7 @@ function erkBibliothekKarte(b) {
       b.scan ? el("span", {class: "zahl"}, "scan → " + b.scan) : null,
       b.verzoegerung ? el("span", {class: "zahl"}, "delay " + b.verzoegerung + " s") : null));
   }
-  karte.appendChild(el("div", {class: "reihe"},
+  karte.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: offen ? "btn haupt" : "btn still",
       onclick: () => { scanListe = "bosse";
                        rufScan("boss_waehlen", {name: b.name, global: true}); }},
@@ -4128,10 +4197,9 @@ function erkInspBossScan(ziel, c) {
 /** Der wichtigste Fall: einen bestehenden Boss aendern, ohne den Assistenten
  *  noch einmal zu durchlaufen. Jedes Feld steht hier und ist einzeln setzbar. */
 function erkInspBoss(ziel, c, b) {
-  ziel.appendChild(el("div", {class: "reihe"},
+  ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn still",
       onclick: () => rufScan("boss_waehlen", {name: ""})}, "‹ zurück zum Scan"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn still",
       onclick: () => rufScan("boss_loeschen")}, "löschen")));
   ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
@@ -4366,9 +4434,10 @@ function teilenImportZeichnen() {
   const kopf = el("div", {class: "abschnitt"},
     ueberschrift("IMPORTIEREN",
       "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
-    el("div", {class: "reihe"},
-      el("button", {class: "btn wachse", onclick: () => rufTeilen("datei_waehlen")},
-        "Datei wählen …")),
+    // EIN Knopf ueber die volle Breite heisst `btn breit` — `wachse` in einer
+    // `reihe` war dasselbe mit einer zweiten Schreibweise.
+    el("button", {class: "btn breit", onclick: () => rufTeilen("datei_waehlen")},
+      "Datei wählen …"),
     feld("oder Pfad", i ? i.pfad : "",
       (v) => rufTeilen("import_pruefen", {pfad: v})));
   ziel.replaceChildren(kopf);

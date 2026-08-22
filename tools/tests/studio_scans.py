@@ -1422,7 +1422,17 @@ section("Der Fokus ueberlebt ein Umbenennen")
 check("wer umbenennt, sagt die neue id an",
       "function fokusUmbenennung(von, nach)" in _html18)
 check("und maskeName() tut es fuer alle drei Arten",
-      "fokusUmbenennung(maskeId(art, name), maskeId(art, feld.value.trim()));" in _html18)
+      "fokusUmbenennung(maskeId(art, name), maskeId(art, neu));" in _html18)
+# **Umbenennen aendert den Namen, nicht den Rang.** Die gemerkte Reihenfolge
+# haengt am Namen — ohne das Nachziehen galt ein gerade umbenanntes Item als
+# neu und rutschte ans Ende seiner Gruppe. Genau beim Namen tippt man aber.
+check("und der Rang wird ebenfalls nachgezogen",
+      "scanOrdnungUmbenennen(art, name, neu);" in _html18
+      and "function scanOrdnungUmbenennen(art, alt, neu)" in _html18)
+# Lehnt die Bruecke den neuen Namen ab, heisst das Item weiter wie vorher —
+# und behaelt trotzdem seinen Platz.
+check("beide Namen stehen dafuer im Merkposten",
+      "merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);" in _html18)
 check("fokusMerken loest den Hinweis genau einmal ein",
       "const umbenannt = fokusUmbenannt;" in _html18
       and "fokusUmbenannt = null;" in _html18)
@@ -1517,13 +1527,23 @@ check("die Reihenfolge wird gemerkt", "let scanOrdnung = {item: null, slot: null
       in _html18)
 check("und beim Zeichnen angewandt statt neu gerechnet",
       "const rang = scanOrdnungRang(\"item\");" in _html18
-      and "(rang ? rang(a.name) - rang(b.name) : 0) || frisch(a, b));" in _html18)
-# Die Kategorie bleibt der erste Schluessel — sie traegt die
-# Gruppenueberschrift, und ein Item ausserhalb seiner Gruppe saehe aus, als
-# haette es die Kategorie verloren.
-check("die Kategorie bleibt der erste Schluessel",
-      '(a.kategorie || "").localeCompare(b.kategorie || "", "de") ||\n'
-      '    (rang ? rang(a.name)' in _html18)
+      and "rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)" in _html18)
+# **Die Kategorie war der erste Sortierschluessel und damit das letzte Feld,
+# das die Zeile noch wegspringen liess.** Steht eine gemerkte Reihenfolge, gilt
+# ausschliesslich sie — auch fuer die Gruppen.
+check("mit Merkposten entscheidet nur er",
+      "function scanOrdnungGruppe(art)" in _html18
+      and "const gruppe = scanOrdnungGruppe(\"item\");" in _html18)
+check("die Ueberschrift kommt aus der eingefrorenen Gruppe",
+      "const gefroren = gruppe ? gruppe(i.name) : null;" in _html18)
+# Sonst reisst ein gerade geaendertes Item eine zweite Ueberschrift mitten in
+# die Liste — wohin es wandert, sagt stattdessen seine Zustandszeile.
+check("und der Wechsel wird an der Maske angesagt",
+      '"→ " + (i.kategorie || "ohne Kategorie")' in _html18)
+# Ohne Merkposten (erster Aufbau, „Sortieren", Neu laden) wird frisch geordnet,
+# und dort ist die Kategorie wieder der erste Schluessel.
+check("frisch geordnet gruppiert wieder nach Kategorie",
+      ': ((a.kategorie || "").localeCompare(b.kategorie || "", "de")' in _html18)
 check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
 _frisch18 = ["scan_neu_laden", "scan_lernvorschau_uebernehmen", "scan_oeffnen"]
 check("und beim Laden sortiert es von selbst",
@@ -1558,8 +1578,22 @@ check("nur der Schalter dehnt sich nicht",
 # „Items erkennen" den Rest und „Rueckgaengig" seine Textbreite — bei einem
 # langen Rueckgaengig-Namen kippte das Verhaeltnis von Zeile zu Zeile.
 check("zwei Knoepfe teilen sich die Zeile gleichmaessig",
-      ".knopfpaar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr"
-      in _html18 and '"knopfpaar"' in _html18)
+      "grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))" in _html18
+      and '"knopfpaar"' in _html18)
+# **Gleiche Spalten duerfen nichts kosten, was man lesen muss.** Mit fester
+# Spaltenzahl schnitten drei Knoepfe in 290 px die Beschriftung ab
+# („Item ler…") — ein abgeschnittenes Wort ist schlimmer als eine zweite Zeile.
+check("und schneiden dabei keine Beschriftung ab",
+      "white-space:normal}" in _html18[_html18.index(".knopfpaar > .btn{"):
+                                       _html18.index(".knopfpaar > .btn{") + 90])
+# Der Wortschatz ist zu zweit vollstaendig: EIN Knopf ueber die volle Breite
+# ist `btn breit`, mehrere nebeneinander sind ein `knopfpaar`. Ein `wachse` in
+# einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
+_knopfzeilen18 = _html18.count('class: "knopfpaar"')
+check(f"und die Regel gilt ueberall ({_knopfzeilen18} Zeilen)",
+      _knopfzeilen18 >= 8)
+check("kein Knopf dehnt sich mehr auf Kosten seiner Nachbarn",
+      '"btn wachse"' not in _html18)
 check("und keiner davon dehnt sich mehr auf Kosten des anderen",
       "wachse" not in _html18[_html18.index('el("div", {class: "knopfpaar"}'):
                               _html18.index('el("div", {class: "knopfpaar"}') + 1200])
