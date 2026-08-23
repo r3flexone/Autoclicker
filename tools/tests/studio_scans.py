@@ -1609,6 +1609,85 @@ check("und die Spalte davor hat dafuer Spielraum",
 
 
 # ============================================================================
+section("Alle Slots / alle Items dieses Scans loeschen")
+
+# **Nicht dasselbe wie „alle raus".** Das nimmt nur aus der Mitgliedschaft
+# heraus - die Slots/Items bleiben im Bestand. `scan_alle_loeschen` loescht sie
+# wirklich; einzeln durchklicken war bei fuenfzig Stueck der Grund, warum man
+# diesen Knopf sucht.
+_sandL = tempfile.mkdtemp(prefix="studioallelöschen_")
+_cwdL = _os.getcwd()
+_os.chdir(_sandL)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bL = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bL.scan_daten()
+    _bL.scan_neu({"name": "Inv"})
+    for _i in range(1, 4):
+        _bL.slots[f"Slot {_i}"] = _SLOT8(
+            name=f"Slot {_i}", scan_region=(_i * 70, 0, _i * 70 + 60, 60),
+            click_pos=(_i * 70 + 30, 30), id=_i)
+        _bL._dazu("slot", f"Slot {_i}")
+        _bL.items[f"Item {_i}"] = _ITEM8(name=f"Item {_i}")
+        _bL._dazu("item", f"Item {_i}")
+    # Ein Slot eines ANDEREN Scans - darf beim Loeschen von "Inv" nicht
+    # verschwinden, sonst waere der Bezug nicht der Scan, sondern der Bestand.
+    _bL.slots["Fremd"] = _SLOT8(name="Fremd", scan_region=(0, 200, 60, 260),
+                                click_pos=(30, 230), id=99)
+    _bL.scan_neu({"name": "Anderes"})
+    _bL._dazu("slot", "Fremd")
+    _bL.scan_oeffnen({"name": "Inv"})
+
+    check("unbekannte Art wird abgelehnt",
+          _bL.scan_alle_loeschen({"art": "quatsch"})["status"]["art"] == "err")
+
+    _zL = _bL.scan_alle_loeschen({"art": "slot"})
+    check("alle drei Slots dieses Scans sind weg",
+          all(f"Slot {i}" not in _bL.slots for i in (1, 2, 3)))
+    check("der Slot des ANDEREN Scans bleibt", "Fremd" in _bL.slots)
+    check("und die Meldung nennt die Anzahl", "3 Slots gelöscht" in _zL["status"]["text"])
+
+    _zL = _bL.scan_alle_loeschen({"art": "item"})
+    check("alle drei Items dieses Scans sind weg",
+          all(f"Item {i}" not in _bL.items for i in (1, 2, 3)))
+
+    # **Ein Griff, ein Rueckgaengig** — dieselbe Regel wie beim einzelnen
+    # Loeschen: STRG+Z holt den ganzen Abzug zurueck, nicht nur einen Slot.
+    _bL.scan_rueckgaengig()
+    check("ein STRG+Z holt alle Items zurueck",
+          all(f"Item {i}" in _bL.items for i in (1, 2, 3)))
+    _bL.scan_rueckgaengig()
+    check("ein zweites STRG+Z holt alle Slots zurueck",
+          all(f"Slot {i}" in _bL.slots for i in (1, 2, 3)))
+
+    # Nichts zu loeschen wird gesagt, nicht stillschweigend hingenommen.
+    _bL.slots.clear()
+    _bL.items.clear()
+    check("ohne Slots wird das gesagt",
+          _bL.scan_alle_loeschen({"art": "slot"})["status"]["art"] == "warn")
+    check("ohne Items ebenso",
+          _bL.scan_alle_loeschen({"art": "item"})["status"]["art"] == "warn")
+finally:
+    _os.chdir(_cwdL)
+    shutil.rmtree(_sandL, ignore_errors=True)
+
+check("die Ansicht bietet den Knopf pro Art an",
+      'rufScan("scan_alle_loeschen", {art: art})' in _html18)
+check("und er ist deutlich als gefaehrlich markiert",
+      '"btn gefahr", disabled: !drin' in _html18)
+
+
+# ============================================================================
+section("Die Zahlen-Kachel hat eine feste Breite, egal wie viele Ziffern")
+
+# **„#3" schob sich sonst weniger als „#55" und „#123" nochmal anders** — die
+# Kachel soll bei jeder Ziffernzahl an derselben Stelle stehen.
+check("die Zahlen-Kachel in der Marke hat eine feste Mindestbreite",
+      ".scan-marke .zahl{min-width:34px;text-align:center}" in _html18)
+
+
+# ============================================================================
 section("„daneben“ springt am rechten Rand in die naechste Reihe")
 
 # **Der feste Versatz kennt die Breite des Rasters nicht.** „daneben" schob

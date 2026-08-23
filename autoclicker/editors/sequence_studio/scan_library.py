@@ -216,6 +216,44 @@ class ScanLibraryMixin:
         return self._scan_geaendert(
             f"{len(namen)} {wort}(s) im Scan '{cfg.name}' (vorher {vorher}).")
 
+    def scan_alle_loeschen(self, daten: dict) -> dict:
+        """Löscht alle Slots bzw. alle Items dieses Scans auf einen Schlag.
+
+        **Nicht dasselbe wie `scan_alle(wert=False)`.** „Alle raus" nimmt sie
+        nur aus der Mitgliedschaft — die Slots bzw. Items bleiben im Bestand.
+        Hier verschwinden sie wirklich; einzeln durchzuklicken war bei fünfzig
+        Stück der Grund, warum man diesen Knopf sucht.
+
+        Der Bezug ist derselbe wie überall: der offene Scan, sonst der ganze
+        Bestand (`_scan_slots()` / `_kandidaten()`) — dieselbe Regel wie bei
+        „N Items prüfen & lernen".
+
+        Kein Bestätigungsdialog, aus demselben Grund wie beim einzelnen
+        Löschen: STRG+Z holt den ganzen Stand zurück, auch diesen.
+        """
+        art = str((daten or {}).get("art") or "")
+        if art == ART_SLOT:
+            namen = [s.name for s in self._scan_slots()]
+            if not namen:
+                return self._scan_melde("Keine Slots zum Löschen.", "warn")
+            self._auswahl = namen
+            return self.scan_slot_loeschen()
+        if art == ART_ITEM:
+            namen = [i.name for i in self._kandidaten()]
+            if not namen:
+                return self._scan_melde("Keine Items zum Löschen.", "warn")
+            self._merke(f"{len(namen)} Item(s) gelöscht" if len(namen) > 1
+                        else f"'{namen[0]}' gelöscht")
+            for name in namen:
+                del self.items[name]
+            for cfg in self.scans.values():
+                cfg.item_names = [n for n in cfg.item_names if n not in namen]
+            self._objekte_angleichen()
+            self.scan_name = ""
+            was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Items"
+            return self._scan_geaendert(f"{was} gelöscht.", "warn")
+        return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
+
     def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""
         name = self.scan_name if self.scan_art == ART_SCAN else ""

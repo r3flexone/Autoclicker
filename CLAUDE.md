@@ -1316,6 +1316,14 @@ Sechs Regeln, an denen der Reiter hängt:
   Höhe, weil die erste Spalte `align-self: stretch` trägt und ihren Inhalt
   auseinanderzieht; ein Rauchtest misst die Unterkanten.
 
+  **Die ID-Kachel hat eine feste Mindestbreite** (`.scan-marke .zahl`). Ohne
+  sie schob sich „#3" weniger als „#55" und „#123" nochmal anders — jede
+  Ziffernzahl saugte sich auf ihre eigene Textbreite zusammen, und in einer
+  Liste mit gemischten ein-, zwei- und dreistelligen IDs sprang die Kachel bei
+  jeder Zeile ein Stück. `min-width: 34px` (Platz für „#999") und
+  `text-align: center` halten sie an derselben Stelle, unabhängig davon, wie
+  viele Ziffern eine ID gerade hat.
+
   **Die Vorschau daneben (Hintergrundfarbe bzw. Item-Thumbnail) ist ein
   Quadrat, das mit der Zeile wächst — kein Rechteck.** Feste 30 px Höhe liess
   sie neben einer zweizeiligen Spalte (Name + Zustandszeile) wie einen
@@ -1492,6 +1500,15 @@ Filterzeile und eine dritte Liste im Scan-Inspektor (`hakenListe()` mit einem
 Mischzustand des `alle`-Schalters (`indeterminate`), der nur dort gebraucht
 wurde. Ein Schalter, der bei „23 von 56" nicht zu beschriften ist, war das
 Problem und nicht die Lösung; der Knopf **sagt**, was er tut.
+
+**„Alle raus" ist nicht „alle löschen".** Der eine nimmt aus der Mitgliedschaft
+— Slot bzw. Item bleibt im Bestand —, der andere (`scan_alle_loeschen()`)
+nimmt ihn wirklich weg. Fünfzig Slots einzeln durchzuklicken war der Grund,
+warum man diesen Knopf sucht; er steht als `.btn.gefahr` direkt neben „alle
+raus", mit derselben Bezugsregel wie überall (`_scan_slots()`/`_kandidaten()`:
+der offene Scan, sonst der Bestand) — ein Slot eines *anderen* Scans bleibt
+unangetastet. Kein Bestätigungsdialog: STRG+Z holt den ganzen Abzug zurück,
+genau wie beim einzelnen Löschen.
 
 Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
 

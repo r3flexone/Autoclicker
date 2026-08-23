@@ -685,6 +685,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    ihr Inhalt, und die beiden lägen ein paar Pixel auseinander. */
 .scan-marke{display:flex;flex-direction:column;align-items:center;gap:5px;
   align-self:stretch;justify-content:space-between}
+/* Eine feste Breite, sonst schiebt „#3" weniger als „#55" und „#123" noch
+   einmal anders — die Kachel soll bei jeder Ziffernzahl an derselben Stelle
+   stehen, nicht mit dem Text mitschrumpfen. */
+.scan-marke .zahl{min-width:34px;text-align:center}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */

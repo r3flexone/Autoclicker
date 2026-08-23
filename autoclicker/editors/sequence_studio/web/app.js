@@ -2330,6 +2330,19 @@ function scanFilterzeile(filter, offen) {
       onclick: () => { scanAbwahlVergessen();
                        rufScan("scan_alle", {art: art, wert: drin < gesamt.length}); }},
       drin < gesamt.length ? "alle dazu" : "alle raus"));
+    // **Nicht dasselbe wie „alle raus".** Das nimmt nur aus der Mitgliedschaft
+    // — die Slots bzw. Items bleiben im Bestand. Hier verschwinden sie
+    // wirklich; einzeln durchklicken war bei fünfzig Stück der Grund, warum
+    // man diesen Knopf sucht. Kein Bestätigungsdialog: STRG+Z holt den ganzen
+    // Stand zurück, auch diesen — dieselbe Regel wie beim einzelnen Löschen.
+    filter.appendChild(el("button", {class: "btn gefahr", disabled: !drin,
+      title: drin
+        ? "Löscht alle " + drin + " " + (art === "slot" ? "Slots" : "Items")
+          + " aus „" + SC.offen + "“ — nicht nur aus der Mitgliedschaft. "
+          + "STRG+Z nimmt es zurück."
+        : "Nichts zu löschen.",
+      onclick: () => rufScan("scan_alle_loeschen", {art: art})},
+      drin + " " + (art === "slot" ? "Slots" : "Items") + " löschen"));
   }
   if (offen === "items" && SC.kategorien.length) {
     filter.appendChild(auswahl("", [{wert: "", text: "alle Kategorien"}].concat(
