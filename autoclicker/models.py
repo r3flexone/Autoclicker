@@ -481,6 +481,13 @@ class ItemSlot:
     scan_region: tuple[int, int, int, int]  # (x1, y1, x2, y2) Bereich zum Scannen
     click_pos: tuple[int, int]              # (x, y) Wo geklickt werden soll
     slot_color: Optional[tuple[int, int, int]] = None  # RGB-Farbe des leeren Slots
+    # Stabile Anzeige-ID — anders als bei ClickPoint KEINE Referenz (der Name
+    # bleibt der Schlüssel in slot_names/item_names), nur damit die Nummer im
+    # Studio beim Ab- und Wieder-Anschalten im Scan nicht auf einen anderen
+    # Slot springt: die Stelle im Scan ändert sich dabei (er wandert ans Ende),
+    # die Identität soll es nicht. 0 heißt „noch nicht vergeben" (Altbestand);
+    # vergeben wird beim ersten Laden im Studio.
+    id: int = 0
 
     def __str__(self) -> str:
         r = self.scan_region

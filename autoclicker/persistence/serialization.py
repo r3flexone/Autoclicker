@@ -101,7 +101,7 @@ _ITEM_DEFAULTS = {
     "template_variants": [],
 }
 
-_SLOT_DEFAULTS = {"slot_color": None}
+_SLOT_DEFAULTS = {"slot_color": None, "id": 0}
 
 
 def _item_to_dict(item: ItemProfile) -> dict:
@@ -120,6 +120,7 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
         "scan_region": list(slot.scan_region),
         "click_pos": list(slot.click_pos),
         "slot_color": list(slot.slot_color) if slot.slot_color else None,
+        "id": slot.id,
     }, _SLOT_DEFAULTS)
 
 
@@ -135,6 +136,7 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
         scan_region=tuple(data["scan_region"]),
         click_pos=tuple(data["click_pos"]),
         slot_color=tuple(farbe) if farbe else None,
+        id=int(data.get("id", 0) or 0),
     )
 
 

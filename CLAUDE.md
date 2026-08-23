@@ -1273,21 +1273,38 @@ Sechs Regeln, an denen der Reiter hängt:
   Ton bleibt zurückhaltend (kein Hintergrund, gedämpfte Schrift), die **Fläche**
   ist da.
 
-- **Die Nummer eines Slots ist seine Stelle im Scan, keine erfundene ID.**
-  `ItemSlot` hat kein `id`-Feld — der Name *ist* der Schlüssel (`slots.json` ist
-  Name→Eintrag), und eine ID einzuführen hiesse, sie eindeutig zu halten und
-  durch `slot_names`, Presets, Import/Export und die Kalibrierung zu reichen.
-  Dafür kaufte man eine Zahl, die nichts sagt. Die Stelle im Scan sagt dagegen
-  genau das, was man an einer Nummer wissen will: **wann dieser Slot dran ist**
-  — `execute_item_scan()` läuft `slot_names` in dieser Reihenfolge ab.
+- **Die Kachel zeigt eine stabile ID, keine Stelle im Scan.** Der erste Anlauf
+  zeigte dort `nummer` — die Stelle in `slot_names`, mit der Begründung „das
+  ist die Zahl, die man an einer Nummer sucht: wann ist dieser Slot dran".
+  Das stimmt, ist aber genau deshalb die falsche Zahl für EINE Kachel: die
+  Stelle ändert sich mit Absicht, sobald ein Slot ab- und wieder angeschaltet
+  wird (`scan_mitglied()` entfernt ihn aus `slot_names` und hängt ihn beim
+  Wiedereinschalten ans Ende an) — eine Kennung, die beim Ausschalten verloren
+  geht, ist für eine ID unbrauchbar. `ItemSlot` trägt deshalb ein eigenes,
+  stabiles `id`-Feld (`models.py`), vergeben von `_naechste_slot_id()` bei der
+  Entstehung — dieselbe Rechnung wie bei `ClickPoint`/`PalettePoint`
+  (`max(vorhandene) + 1`), aber **keine Referenz**: der Name bleibt der
+  Schlüssel in `slot_names`/`item_names`, die ID ist reine Anzeige.
 
-  Zwei Zahlen, weil sie auseinandergehen: `nummer` ist die Stelle im Scan,
-  `lauf` die im Durchlauf — mit „Slots rückwärts" ist der erste Slot der
-  letzte. Die Kachel zeigt `nummer`, der Tooltip nennt `lauf`. Wer nicht zum
-  Scan gehört, bekommt keine Nummer statt einer erfundenen.
+  **Zwei Zahlen bleiben nötig, weil sie zwei verschiedene Fragen beantworten.**
+  `nummer`/`lauf`/`gesamt` stehen weiterhin in der Momentaufnahme — sie
+  entscheiden die Vorsortierung („in welcher Reihenfolge lernt/scannt das hier")
+  und stehen im Tooltip der Kachel; angezeigt wird aber `id`. Wer nicht zum
+  offenen Scan gehört, hat keine `nummer` (dort gibt es keine Stelle), aber
+  jeder Slot hat eine `id` — unabhängig davon, ob er gerade irgendeinem Scan
+  angehört.
+
+  **Für Altbestand ohne das Feld gibt es keine Migration, sondern einen
+  Backfill beim ersten Laden** (`_slot_ids_vergeben()`, aufgerufen aus
+  `_scan_laden()`): jeder Slot mit `id == 0` bekommt eine frische, in stabiler
+  Reihenfolge (Name, nicht Dict-Zufall) — und der Scan gilt danach als
+  ungespeichert, denn ohne einen Schreibzugriff würde bei jedem Start neu
+  gewürfelt, und die gerade zugesicherte Stabilität wäre eine Lüge. Genau der
+  Fall, für den „Neue Formatänderungen brauchen keinen Migrationsschritt" da
+  ist: Default `0` in der Dataclass, `data.get("id", 0)` im Loader, fertig.
 
   **Sie steht unter dem Schalter, in der ersten Spalte** (`.scan-marke`), nicht
-  vor dem Namensfeld: dort nahm sie ihm die Breite, liess die Namen ohne Nummer
+  vor dem Namensfeld: dort nahm sie ihm die Breite, liess die Namen ohne ID
   an einer anderen Kante beginnen — und beim Bearbeiten schob sich das Feld
   darüber. In der ersten Spalte steht sie ausserhalb von allem, was sich beim
   Tippen ändert.
@@ -1299,9 +1316,14 @@ Sechs Regeln, an denen der Reiter hängt:
   Höhe, weil die erste Spalte `align-self: stretch` trägt und ihren Inhalt
   auseinanderzieht; ein Rauchtest misst die Unterkanten.
 
-  Sortiert wird frisch in genau dieser Reihenfolge, der Rest **natürlich nach
-  Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich stellt
-  „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
+  **Die Vorschau daneben (Hintergrundfarbe bzw. Item-Thumbnail) stretcht
+  ebenso.** Feste 30 px Höhe liess sie neben einer zweizeiligen Spalte (Name +
+  Zustandszeile) wie einen Briefmarken-Rest wirken; `align-self: stretch` zieht
+  sie auf dieselbe Höhe wie ihre Nachbarspalte, die Breite bleibt fest.
+
+  Sortiert wird frisch in Scan-Reihenfolge (`nummer`), der Rest **natürlich
+  nach Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich
+  stellt „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
   durchnummerierten Slots ist die Liste damit sortiert und trotzdem unlesbar.
 
 - **Welche Priorität frei ist, steht da** (`prioritaetsBelegung()`). Die

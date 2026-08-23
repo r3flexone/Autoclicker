@@ -1463,15 +1463,19 @@ finally:
 
 
 # ============================================================================
-section("Die Nummer eines Slots ist seine Stelle im Scan")
+section("Die Slot-ID ist stabil — die Stelle im Scan ist es nicht")
 
-# **`ItemSlot` hat keine ID — der Name IST der Schlüssel** (`slots.json` ist
-# Name->Eintrag). Eine zu erfinden kostet Eindeutigkeit und sagt nichts; die
-# Stelle im Scan dagegen ist die Zahl, die man an einer Nummer sucht: genau in
-# dieser Reihenfolge sieht `execute_item_scan()` die Slots an.
+# **Zwei verschiedene Zahlen, zwei verschiedene Fragen.** Die Stelle im Scan
+# beantwortet „wann ist dieser Slot dran" — und AENDERT sich mit Absicht, wenn
+# ein Slot ab- und wieder angeschaltet wird (er wandert ans Ende der
+# Mitgliederliste). Genau das machte sie als AUSGEWIESENE „ID" untauglich: eine
+# Kennung, die beim Ausschalten verlorengeht, ist keine. `ItemSlot` traegt
+# deshalb jetzt eine eigene, stabile `id` — anders als beim Namen keine
+# Referenz (der bleibt der Schluessel in slot_names), nur eine Kachel, die sich
+# nicht mit der Mitgliedschaft mitbewegt.
 import dataclasses as _dcN
-check("ein Slot traegt keine eigene ID",
-      "id" not in {f.name for f in _dcN.fields(_SLOT8)})
+check("ein Slot traegt jetzt eine eigene stabile ID",
+      "id" in {f.name for f in _dcN.fields(_SLOT8)})
 
 _sandN = tempfile.mkdtemp(prefix="studionummer_")
 _cwdN = _os.getcwd()
@@ -1481,70 +1485,123 @@ try:
     Path("item_scans").mkdir()
     _bN = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
     _bN.scan_daten()
-    for _i in range(1, 4):
-        _bN.slots[f"Slot {_i}"] = _SLOT8(
-            name=f"Slot {_i}", scan_region=(_i * 70, 100, _i * 70 + 60, 160),
-            click_pos=(_i * 70 + 30, 130))
     _bN.scan_neu({"name": "Inv"})
-    for _i in range(1, 4):
-        _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": f"Slot {_i}"})
+    # Ueber den echten Weg anlegen (zwei Klicks), damit jeder Slot seine ID aus
+    # `_naechste_slot_id()` bekommt — genau wie im Studio.
+    for _i in range(3):
+        _bN.scan_modus_setzen({"modus": "slot"})
+        _bN.scan_klick({"x": _i * 100, "y": 0})
+        _bN.scan_klick({"x": _i * 100 + 60, "y": 60})
+    _namenN = [s.name for s in _bN.slots.values()]
     _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+
     check("jeder Slot des Scans kennt seine Stelle",
-          [_slotsN[f"Slot {_i}"]["nummer"] for _i in (1, 2, 3)] == [1, 2, 3])
-    check("und wieviele es insgesamt sind",
-          _slotsN["Slot 2"]["gesamt"] == 3)
+          [_slotsN[n]["nummer"] for n in _namenN] == [1, 2, 3])
+    check("und wieviele es insgesamt sind", _slotsN[_namenN[1]]["gesamt"] == 3)
+    check("und je eine eigene ID, keine doppelt",
+          len({_slotsN[n]["id"] for n in _namenN}) == 3)
 
     # **Die Stelle im Scan und die Stelle im LAUF gehen auseinander**, sobald
-    # „Slots rückwärts" an ist — und die Anzeige darf dann nicht das eine sagen
-    # und das andere meinen.
-    check("vorwaerts sind beide gleich", _slotsN["Slot 1"]["lauf"] == 1)
+    # „Slots rückwärts" an ist.
+    check("vorwaerts sind beide gleich", _slotsN[_namenN[0]]["lauf"] == 1)
     _bN.scan_setzen({"name": "Inv", "feld": "reverse", "wert": True})
     _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
     check("rueckwaerts dreht sich die Lauf-Stelle um",
-          [_slotsN[f"Slot {_i}"]["lauf"] for _i in (1, 2, 3)] == [3, 2, 1])
+          [_slotsN[n]["lauf"] for n in _namenN] == [3, 2, 1])
     check("die Stelle im Scan bleibt dieselbe",
-          [_slotsN[f"Slot {_i}"]["nummer"] for _i in (1, 2, 3)] == [1, 2, 3])
+          [_slotsN[n]["nummer"] for n in _namenN] == [1, 2, 3])
 
-    # Wer nicht dazugehoert, hat keine Stelle — und bekommt keine erfundene.
-    _bN.slots["Draussen"] = _SLOT8(name="Draussen", scan_region=(0, 0, 10, 10),
-                                   click_pos=(5, 5))
+    # **Der eigentliche Punkt: die ID uebersteht Ab- und Wieder-Anschalten.**
+    # Die Stelle im Scan aendert sich dabei absichtlich (der Slot wandert ans
+    # Ende) — die ID darf das nicht.
+    _idN = _slotsN[_namenN[1]]["id"]
+    _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": _namenN[1]})
+    _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": _namenN[1]})
     _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
-    check("ein Slot ausserhalb des Scans traegt keine Nummer",
+    check("die ID bleibt beim Ab-/Wieder-Anschalten gleich",
+          _slotsN[_namenN[1]]["id"] == _idN)
+    check("die Stelle im Scan ist jetzt eine andere (ans Ende gewandert)",
+          _slotsN[_namenN[1]]["nummer"] == 3)
+
+    # Wer nicht zum Scan gehoert, hat trotzdem eine ID — nur keine Stelle.
+    _bN.slots["Draussen"] = _SLOT8(name="Draussen", scan_region=(0, 0, 10, 10),
+                                   click_pos=(5, 5), id=_bN._naechste_slot_id())
+    _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+    check("ein Slot ausserhalb des Scans traegt keine Stelle",
           _slotsN["Draussen"]["nummer"] is None)
+    check("aber sehr wohl eine ID", _slotsN["Draussen"]["id"] > 0)
 finally:
     _os.chdir(_cwdN)
     shutil.rmtree(_sandN, ignore_errors=True)
+
+
+# ============================================================================
+section("Altbestand ohne ID wird einmalig nachgezogen")
+
+# **Kein Migrationsschritt — Backfill beim ersten Laden im Studio.** Eine alte
+# `slots.json` kennt das Feld nicht; `_slot_from_dict` liest dann `id=0`. Damit
+# die Anzeige nicht dauerhaft „#0" fuer den halben Bestand zeigt, vergibt
+# `_slot_ids_vergeben()` beim ersten Laden frische IDs — in stabiler Reihenfolge
+# (Name), sonst hinge die Zuteilung von der Dict-Reihenfolge der JSON-Datei ab.
+_sandA = tempfile.mkdtemp(prefix="studioaltid_")
+_cwdA = _os.getcwd()
+_os.chdir(_sandA)
+try:
+    Path("slots").mkdir()
+    Path("sequences").mkdir()
+    import json as _jsonA
+    Path("slots/slots.json").write_text(_jsonA.dumps({
+        "Slot B": {"scan_region": [0, 0, 60, 60], "click_pos": [30, 30]},
+        "Slot A": {"scan_region": [100, 0, 160, 60], "click_pos": [130, 30]},
+    }), encoding="utf-8")
+    _bA = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _zA = _bA.scan_daten()
+    _idsA = {s["name"]: s["id"] for s in _zA["slots"]}
+    check("beide bekommen eine ID", all(_idsA.values()))
+    check("keine doppelt", len(set(_idsA.values())) == 2)
+    check("vergeben in Namens-Reihenfolge — nicht nach Dict-Zufall",
+          _idsA["Slot A"] < _idsA["Slot B"])
+    # Das ist ein Schreibzugriff wert: ohne ihn wuerde bei jedem Start neu
+    # gewuerfelt, und die gerade zugesicherte Stabilitaet waere eine Luege.
+    check("und der Stand gilt als ungespeichert, bis es geschrieben ist",
+          _zA["dirty"] is True)
+
+    # Zweiter Lauf auf derselben (jetzt im Speicher befindlichen) Bruecke:
+    # kein erneutes Wuerfeln, dieselben IDs.
+    _zA2 = _bA.scan_daten()
+    check("ein zweiter Aufruf vergibt nichts neu",
+          {s["name"]: s["id"] for s in _zA2["slots"]} == _idsA)
+finally:
+    _os.chdir(_cwdA)
+    shutil.rmtree(_sandA, ignore_errors=True)
+
+
+# ============================================================================
+section("Die Slot-Kachel zeigt die ID, nicht die (bewegliche) Stelle")
 
 # **Sie steht UNTER dem Schalter, als eigene Kachel.** Vor dem Namensfeld nahm
 # sie ihm die Breite, liess die Namen ohne Nummer an einer anderen Kante
 # beginnen — und beim Bearbeiten schob sich das Feld darueber.
 # Und zwar in DERSELBEN Kachel-Klasse wie ueberall sonst (`zahl`) — eine
 # eigene daneben waere ein zweiter Bauplan fuer dasselbe Aussehen.
-check("die Ansicht zeigt sie als Kachel",
-      '"#" + s.nummer' in _html18 and 'el("span", {class: "zahl",' in _html18)
+check("die Ansicht zeigt die ID als Kachel",
+      '"#" + s.id' in _html18 and 'el("span", {class: "zahl",' in _html18)
+# Die Stelle im Scan steht nur noch im TOOLTIP — sie ist die Zusatzauskunft,
+# nicht mehr die angezeigte Zahl selbst.
+check("die Stelle im Scan steht nur noch im Tooltip",
+      '". von " + s.gesamt' in _html18 and '"#" + s.nummer' not in _html18)
 # Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel.
 check("und die Groesse daneben ebenso",
       'el("span", {class: "zahl"}, s.breite + "×" + s.hoehe)' in _html18)
-# Beide auf einer Hoehe: der Schalter oben, die Nummer unten, und die Spalte
+# Beide auf einer Hoehe: der Schalter oben, die ID unten, und die Spalte
 # so hoch wie die Zeile. Ohne `stretch` waere sie nur so hoch wie ihr Inhalt.
 check("und beide auf einer Hoehe",
       "align-self:stretch;justify-content:space-between}" in _html18)
-check("und zwar in der ersten Spalte, unter dem Haken",
-      'maskeHaken("slot", s.name, s.dabei, nummer)' in _html18
-      and 'el("div", {class: "scan-marke"}, schalter, marke)' in _html18)
-# Das Namensfeld nimmt damit wieder die volle Breite — es gibt keine zweite
-# Spalte mehr davor.
-check("das Namensfeld teilt seine Zeile nicht mehr",
-      "scan-maske-zeile" not in _html18)
-# **„Slot 10" gehoert hinter „Slot 2", nicht dazwischen.** Ein reiner
-# Zeichenvergleich macht aus 45 durchnummerierten Slots eine Liste, die zwar
-# sortiert ist und die man trotzdem nicht lesen kann.
-check("und sortiert Namen so, wie man sie liest",
-      'function nachNamen(a, b)' in _html18
-      and '{numeric: true}' in _html18)
-check("frisch sortiert stehen die Slots in Scan-Reihenfolge",
-      "(a.nummer || 0) - (b.nummer || 0)" in _html18
-      and "|| nachNamen(a.name, b.name)" in _html18)
+# Und die Vorschau daneben stretcht auf dieselbe Hoehe wie Name+Groesse, statt
+# als 30px-Briefmarke neben einer zweizeiligen Spalte zu stehen.
+check("die Vorschau stretcht auf die Zeilenhoehe",
+      ".scan-maske > .mini,.scan-maske > .kugel{width:30px;align-self:stretch"
+      in _html18)
 
 
 # ============================================================================

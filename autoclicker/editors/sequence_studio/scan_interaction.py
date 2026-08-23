@@ -163,7 +163,7 @@ class ScanInteractionMixin:
         self.slots[name] = ItemSlot(
             name=name, scan_region=(x1, y1, x2, y2),
             click_pos=((x1 + x2) // 2, (y1 + y2) // 2),
-            slot_color=farbe)
+            slot_color=farbe, id=self._naechste_slot_id())
         self.scan_art, self.scan_name = ART_SLOT, name
         self._auswahl = [name]
         self._dazu(ART_SLOT, name)
@@ -239,7 +239,7 @@ class ScanInteractionMixin:
             self.slots[name] = ItemSlot(
                 name=name, scan_region=region,
                 click_pos=((region[0] + region[2]) // 2, (region[1] + region[3]) // 2),
-                slot_color=farbe)
+                slot_color=farbe, id=self._naechste_slot_id())
             self._dazu(ART_SLOT, name)
             neu += 1
         # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
@@ -780,7 +780,7 @@ class ScanInteractionMixin:
         self.slots[name] = ItemSlot(
             name=name, scan_region=(x1 + versatz, y1, x2 + versatz, y2),
             click_pos=(slot.click_pos[0] + versatz, slot.click_pos[1]),
-            slot_color=slot.slot_color)
+            slot_color=slot.slot_color, id=self._naechste_slot_id())
         self.scan_name = name
         self._auswahl = [name]
         self._dazu(ART_SLOT, name)

@@ -2557,19 +2557,21 @@ function scanSlotMaske(s) {
                 || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
   const name = maskeName("slot", s.name,
     "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
-  // **Die Nummer ist die Stelle im Scan, keine erfundene ID.** Genau in dieser
-  // Reihenfolge sieht `execute_item_scan()` die Slots an — „#7" beantwortet
-  // also die Frage, die man an eine Nummer hat: wann ist dieser hier dran.
-  const nummer = s.nummer
-    ? el("span", {class: "zahl",
-                  title: "Stelle im Scan „" + SC.offen + "“ — wird als "
-                         + s.lauf + ". von " + s.gesamt + " angesehen"
-                         + (s.lauf !== s.nummer ? " (rückwärts)" : "")},
-         "#" + s.nummer)
-    : null;
+  // **Die ID ist eine reine Anzeige-Kachel, kein Knopf.** Sie bleibt gleich,
+  // auch wenn der Slot im offenen Scan ab- und wieder angeschaltet wird — DAS
+  // ändert nur seine STELLE (er wandert ans Ende der Mitgliederliste), nicht
+  // seine Identität. Die Stelle steht deshalb nur noch im Tooltip, nicht mehr
+  // in der Zahl selbst.
+  const id = el("span", {class: "zahl",
+    title: s.nummer
+      ? "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten. "
+        + "Läuft in „" + SC.offen + "“ als " + s.lauf + ". von " + s.gesamt + "."
+        + (s.lauf !== s.nummer ? " (rückwärts)" : "")
+      : "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten."},
+    "#" + s.id);
   const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
   return maskeDabei(s.dabei, maskeBauen("slot", s.name, gewaehlt,
-    [maskeHaken("slot", s.name, s.dabei, nummer),
+    [maskeHaken("slot", s.name, s.dabei, id),
      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
                  title: s.farbe ? "Hintergrund " + s.farbe : "Hintergrund nicht gemessen",
                  style: s.farbe ? "background:" + s.farbe : ""}),

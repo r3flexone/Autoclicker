@@ -101,6 +101,7 @@ class ScanStateMixin:
             return
         self._scan_geladen = True
         self.slots = load_slots(SLOTS_FILE)
+        self._slot_ids_vergeben()
         self.items = load_items(ITEMS_FILE)
         self.scans = self._scans_laden()
         self._erkennung_laden()
@@ -205,6 +206,29 @@ class ScanStateMixin:
         return self._scan_melde(
             f"Neu geladen: {len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Scan(s).")
+
+    def _naechste_slot_id(self) -> int:
+        """Die nächste freie Slot-ID — dieselbe Rechnung wie bei Punkten."""
+        return max((s.id for s in self.slots.values()), default=0) + 1
+
+    def _slot_ids_vergeben(self) -> None:
+        """Backfill für Altbestand ohne Slot-ID.
+
+        Neue Slots bekommen ihre ID bei der Entstehung (`scan_interaction.py`);
+        ältere Dateien kennen das Feld noch nicht und laden mit `id=0`. Vergeben
+        wird in stabiler Reihenfolge (Name), sonst hinge die Zuteilung von der
+        zufälligen Dict-Reihenfolge ab. Das ist ein Schreibzugriff wert — die ID
+        soll ab jetzt feststehen, nicht bei jedem Start neu gewürfelt werden.
+        """
+        ohne = sorted((s for s in self.slots.values() if not s.id),
+                      key=lambda s: s.name)
+        if not ohne:
+            return
+        naechste = self._naechste_slot_id()
+        for slot in ohne:
+            slot.id = naechste
+            naechste += 1
+        self._scan_dirty = True
 
     def _scans_laden(self) -> dict:
         """Alle Item-Scan-Konfigurationen als Name -> Config.
@@ -550,8 +574,13 @@ class ScanStateMixin:
             # andere. Das ist der zweite Weg zum Löschen.
             "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
             "treffer": treffer,
+            # **Stabile Identität, unabhängig vom Scan.** Bleibt beim Ab- und
+            # Wieder-Anschalten gleich — anders als die Stelle im Scan, die sich
+            # dabei ändert (der Slot wandert ans Ende der Mitgliederliste).
+            "id": slot.id,
             # Die Stelle im offenen Scan (1-basiert) und die Stelle im LAUF —
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
+            # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
             "nummer": nummer,
             "lauf": (gesamt - nummer + 1) if (nummer and rueckwaerts) else nummer,
             "gesamt": gesamt,

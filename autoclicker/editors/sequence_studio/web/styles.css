@@ -654,7 +654,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
    liesse die Maske um einen Pixel wachsen und das Raster springen. */
 .scan-maske.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.scan-maske > .mini,.scan-maske > .kugel{width:30px;height:30px;border-radius:4px;
+/* **Gleich gross wie Name plus Slotgroesse.** Feste 30px Hoehe liess die
+   Vorschau neben einer zweizeiligen `felder`-Spalte (Name + Zustandszeile) wie
+   einen Briefmarken-Rest wirken. `align-self:stretch` zieht sie auf dieselbe
+   Hoehe wie die Nachbarspalte — die Breite bleibt fest, nur die Hoehe passt
+   sich der Zeile an. */
+.scan-maske > .mini,.scan-maske > .kugel{width:30px;align-self:stretch;
+  min-height:30px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}

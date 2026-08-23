@@ -205,13 +205,15 @@ def lauf():
                    f"{links_vorher} -> {links}")
             f.bild("items_reiter_" + reiter.lower())
             if art == "slot":
-                # Die Nummer ist die Stelle im Scan — sie muss lueckenlos von 1
-                # an dastehen, sonst zeigt sie etwas anderes an, als der Scan tut.
-                nummern = f.seite.eval_on_selector_all(
+                # Die Kachel zeigt die stabile ID, nicht die Stelle im Scan —
+                # in dieser Sitzung fallen beide zusammen (Anlegen == Reihenfolge
+                # im Scan), aber die ID darf sich nicht aendern, wenn ein Slot
+                # ab- und wieder angeschaltet wird (siehe Vertragssuite dafuer).
+                ids = f.seite.eval_on_selector_all(
                     "#scan-insp .scan-marke .zahl",
                     "ns => ns.map(n => n.textContent)")
-                pruefe(nummern == ["#" + str(i + 1) for i in range(masken)],
-                       f"Slot-Nummern nicht in Scan-Reihenfolge: {nummern}")
+                pruefe(ids == ["#" + str(i + 1) for i in range(masken)],
+                       f"Slot-IDs nicht wie erwartet: {ids}")
                 # Nummer und Groesse stehen auf EINER Hoehe — die eine unten in
                 # der ersten Spalte, die andere in der Zustandszeile der
                 # dritten. Ohne `align-self:stretch` laegen sie auseinander.
