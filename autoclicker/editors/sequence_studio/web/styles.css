@@ -647,20 +647,21 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    die Liste, einen Blick nach rechts und einen Weg zurueck — bei sechzig Items
    sechzig Mal. Die vier Angaben, die man wirklich aendert, passen nebeneinander.
    Spalten: Haken, Vorschau, Felder. */
-.scan-maske{display:grid;grid-template-columns:auto 30px minmax(0,1fr);gap:6px 7px;
+.scan-maske{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:6px 7px;
   align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
   background:var(--bg)}
 .scan-maske:hover{border-color:var(--dim)}
 /* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
    liesse die Maske um einen Pixel wachsen und das Raster springen. */
 .scan-maske.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-/* **Gleich gross wie Name plus Slotgroesse.** Feste 30px Hoehe liess die
-   Vorschau neben einer zweizeiligen `felder`-Spalte (Name + Zustandszeile) wie
-   einen Briefmarken-Rest wirken. `align-self:stretch` zieht sie auf dieselbe
-   Hoehe wie die Nachbarspalte — die Breite bleibt fest, nur die Hoehe passt
-   sich der Zeile an. */
-.scan-maske > .mini,.scan-maske > .kugel{width:30px;align-self:stretch;
-  min-height:30px;border-radius:4px;
+/* **Ein QUADRAT, das mit der Zeile waechst — kein Rechteck.** Erst stretchte
+   die Vorschau nur in der Hoehe, bei fester 30px Breite: neben einer
+   zweizeiligen `felder`-Spalte wurde daraus ein schmaler Turm statt eines
+   Quadrats. `aspect-ratio:1` haelt die Breite an die (gestretchte) Hoehe
+   gebunden; die Spalte selbst steht dafuer auf `auto` statt einer festen
+   Breite, sonst haette sie gar keinen Spielraum zum Mitwachsen. */
+.scan-maske > .mini,.scan-maske > .kugel{aspect-ratio:1;align-self:stretch;
+  min-width:30px;min-height:30px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}

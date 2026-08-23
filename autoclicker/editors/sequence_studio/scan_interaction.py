@@ -769,17 +769,31 @@ class ScanInteractionMixin:
 
         Versetzt um seine eigene Breite plus zwei Pixel: Inventare stehen im
         Raster, und die zweite Zelle liegt fast immer genau dort.
+
+        **Am rechten Rand fängt die nächste Reihe an.** Ohne die Prüfung legte
+        „daneben" hinter der letzten Spalte einen Slot mitten ins Leere — er
+        passte zu keiner Zelle im Bild, denn der Versatz kennt die Breite des
+        Rasters nicht. Reicht die neue Stelle nicht mehr in die Arbeitsfläche
+        hinein, springt sie stattdessen an den linken Rand DIESES Scans (die
+        kleinste `x1` seiner Slots) und eine Zeile tiefer.
         """
         slot = self._gewaehlter_slot()
         if slot is None:
             return self._scan_melde("Kein Slot gewählt.", "warn")
         self._merke("Slot gedoppelt")
         x1, y1, x2, y2 = slot.scan_region
-        versatz = (x2 - x1) + 2
+        breite, hoehe = x2 - x1, y2 - y1
+        versatz = breite + 2
+        neu_x1, neu_y1 = x1 + versatz, y1
+        flaeche = self._flaeche()
+        if flaeche and neu_x1 + breite > flaeche["links"] + flaeche["breite"]:
+            neu_x1 = min((s.scan_region[0] for s in self._scan_slots()), default=x1)
+            neu_y1 = y1 + hoehe + 2
+        versatz_x, versatz_y = neu_x1 - x1, neu_y1 - y1
         name = next_slot_name(self.slots)
         self.slots[name] = ItemSlot(
-            name=name, scan_region=(x1 + versatz, y1, x2 + versatz, y2),
-            click_pos=(slot.click_pos[0] + versatz, slot.click_pos[1]),
+            name=name, scan_region=(neu_x1, neu_y1, neu_x1 + breite, neu_y1 + hoehe),
+            click_pos=(slot.click_pos[0] + versatz_x, slot.click_pos[1] + versatz_y),
             slot_color=slot.slot_color, id=self._naechste_slot_id())
         self.scan_name = name
         self._auswahl = [name]

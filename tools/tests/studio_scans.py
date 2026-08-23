@@ -1597,11 +1597,62 @@ check("und die Groesse daneben ebenso",
 # so hoch wie die Zeile. Ohne `stretch` waere sie nur so hoch wie ihr Inhalt.
 check("und beide auf einer Hoehe",
       "align-self:stretch;justify-content:space-between}" in _html18)
-# Und die Vorschau daneben stretcht auf dieselbe Hoehe wie Name+Groesse, statt
-# als 30px-Briefmarke neben einer zweizeiligen Spalte zu stehen.
-check("die Vorschau stretcht auf die Zeilenhoehe",
-      ".scan-maske > .mini,.scan-maske > .kugel{width:30px;align-self:stretch"
+# Und die Vorschau daneben ist ein QUADRAT, das mit der Zeile waechst — nicht
+# ein Rechteck, das nur in der Hoehe stretcht. `aspect-ratio:1` haelt die
+# Breite an die (gestretchte) Hoehe gebunden; die Spalte braucht dafuer `auto`
+# statt einer festen Breite, sonst gaebe es keinen Spielraum zum Mitwachsen.
+check("die Vorschau ist ein Quadrat, kein Rechteck",
+      ".scan-maske > .mini,.scan-maske > .kugel{aspect-ratio:1;align-self:stretch"
       in _html18)
+check("und die Spalte davor hat dafuer Spielraum",
+      "grid-template-columns:auto auto minmax(0,1fr)" in _html18)
+
+
+# ============================================================================
+section("„daneben“ springt am rechten Rand in die naechste Reihe")
+
+# **Der feste Versatz kennt die Breite des Rasters nicht.** „daneben" schob
+# bisher immer nur nach RECHTS, egal ob dort noch eine Spalte kommt — hinter
+# der letzten legte das einen Slot mitten ins Leere, der zu keiner Zelle im
+# Bild passte. Jetzt prueft es gegen die Arbeitsflaeche und springt zurueck an
+# den linken Rand DIESES Scans, eine Zeile tiefer.
+from autoclicker.editors.sequence_studio.scan_contract import ART_SLOT as _ARTSLOT18
+
+_sandD = tempfile.mkdtemp(prefix="studiodaneben_")
+_cwdD = _os.getcwd()
+_os.chdir(_sandD)
+try:
+    Path("sequences").mkdir()
+    Path("item_scans").mkdir()
+    _bD = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bD.scan_daten()
+    _bD.scan_neu({"name": "Inv"})
+    # Ein 140px breites Bild: Platz fuer genau zwei 60px-Slots (60, 62-122),
+    # eine dritte Spalte (124-184) passt nicht mehr hinein.
+    _bD._foto_info = {"links": 0, "oben": 0, "breite": 140, "hoehe": 400,
+                      "skala": 1.0, "stand": 0.0}
+    _bD.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 60, 60),
+                                 click_pos=(30, 30), id=1)
+    _bD.scan_art, _bD.scan_name = _ARTSLOT18, "Slot 1"
+    _bD._dazu("slot", "Slot 1")
+
+    _bD.scan_slot_doppeln()
+    _regionenD = [tuple(s["region"]) for s in _bD.scan_daten()["slots"]]
+    check("die erste Kopie passt noch in dieselbe Reihe",
+          _regionenD[-1] == (62, 0, 122, 60))
+
+    _bD.scan_slot_doppeln()
+    _regionenD = [tuple(s["region"]) for s in _bD.scan_daten()["slots"]]
+    check("die zweite springt zurueck an den linken Rand und eine Reihe tiefer",
+          _regionenD[-1] == (0, 62, 60, 122))
+    # Der Klickpunkt wandert mit demselben Versatz — sonst klickte der neue
+    # Slot an der Stelle des alten.
+    _klickD = next(s["klick"] for s in _bD.scan_daten()["slots"]
+                   if tuple(s["region"]) == (0, 62, 60, 122))
+    check("der Klickpunkt zieht in beiden Achsen mit", tuple(_klickD) == (30, 92))
+finally:
+    _os.chdir(_cwdD)
+    shutil.rmtree(_sandD, ignore_errors=True)
 
 
 # ============================================================================

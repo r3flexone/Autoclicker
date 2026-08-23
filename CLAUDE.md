@@ -1316,10 +1316,15 @@ Sechs Regeln, an denen der Reiter hängt:
   Höhe, weil die erste Spalte `align-self: stretch` trägt und ihren Inhalt
   auseinanderzieht; ein Rauchtest misst die Unterkanten.
 
-  **Die Vorschau daneben (Hintergrundfarbe bzw. Item-Thumbnail) stretcht
-  ebenso.** Feste 30 px Höhe liess sie neben einer zweizeiligen Spalte (Name +
-  Zustandszeile) wie einen Briefmarken-Rest wirken; `align-self: stretch` zieht
-  sie auf dieselbe Höhe wie ihre Nachbarspalte, die Breite bleibt fest.
+  **Die Vorschau daneben (Hintergrundfarbe bzw. Item-Thumbnail) ist ein
+  Quadrat, das mit der Zeile wächst — kein Rechteck.** Feste 30 px Höhe liess
+  sie neben einer zweizeiligen Spalte (Name + Zustandszeile) wie einen
+  Briefmarken-Rest wirken; nur die Höhe zu stretchen machte daraus einen
+  schmalen Turm statt eines Quadrats. `aspect-ratio: 1` hält die Breite an die
+  (gestretchte) Höhe gebunden, und die Spalte selbst steht dafür auf `auto`
+  statt einer festen Breite — sonst hätte sie keinen Spielraum zum Mitwachsen.
+  Chromium löst das beim Grid-Tracksizing tatsächlich auf: gemessen liefert
+  `getBoundingClientRect()` für Breite und Höhe exakt denselben Wert.
 
   Sortiert wird frisch in Scan-Reihenfolge (`nummer`), der Rest **natürlich
   nach Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich
