@@ -1,7 +1,7 @@
 """Schreibt das Programm-Symbol als PNG und ICO — für Verknüpfungen unter Windows.
 
     python tools/symbol.py                 -> symbol/ mit PNGs und autoclicker.ico
-    python tools/symbol.py --ziel C:\Bilder
+    python tools/symbol.py --ziel C:\\Bilder
     python tools/symbol.py --groessen 256,512
 
 Fenster und Taskleiste setzt die App selbst; diese Dateien sind für alles, was

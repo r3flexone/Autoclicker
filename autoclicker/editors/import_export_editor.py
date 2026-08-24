@@ -109,22 +109,11 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     print(header("EXPORT"))
 
     # Auswahl was exportiert wird
-    include = {
-        "points": True, "sequences": True, "slots": True,
-        "items": True, "item_scans": True, "boss_scans": True,
-        "icon_scans": True,
-        "config": True,
-    }
+    include = {"sequences": True, "config": True}
 
     if select_parts:
         labels = {
-            "points": "Punkte",
-            "sequences": "Sequenzen",
-            "slots": "Slots",
-            "items": "Items + Templates",
-            "item_scans": "Item-Scans",
-            "boss_scans": "Boss-Scans",
-            "icon_scans": "Icon-Scans",
+            "sequences": "Sequenzordner (inkl. Punkte, Scans und Vorlagen)",
             "config": "Config-Einstellungen",
         }
         print("\n  Was soll exportiert werden?")
@@ -134,16 +123,8 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         print()
 
     # Zusammenfassung
-    with state.lock:
-        counts = {
-            "points": len(state.points),
-            "sequences": len(state.sequences),
-            "slots": len(state.global_slots),
-            "items": len(state.global_items),
-            "item_scans": len(state.item_scans),
-            "boss_scans": len(state.boss_scans),
-            "icon_scans": len(state.icon_scans),
-        }
+    from ..persistence import list_available_sequences
+    counts = {"sequences": len(list_available_sequences())}
 
     active = {k: v for k, v in include.items() if v and k != "config"}
     if not any(active.values()) and not include["config"]:
@@ -151,10 +132,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
         return
 
     print(f"  {col('Wird exportiert:', 'bold')}")
-    for key, label in [("points", "Punkte"), ("sequences", "Sequenzen"),
-                       ("slots", "Slots"), ("items", "Items"),
-                       ("item_scans", "Item-Scans"), ("boss_scans", "Boss-Scans"),
-                       ("icon_scans", "Icon-Scans")]:
+    for key, label in [("sequences", "Sequenzordner")]:
         if include[key]:
             print(f"    {col('✓', 'green')} {label}: {counts.get(key, 0)}")
     if include["config"]:
@@ -222,13 +200,13 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     from ..import_export import export_bundle
     success, result = export_bundle(
         state, str(filepath), ref1, ref2,
-        include_points=include["points"],
+        include_points=include["sequences"],
         include_sequences=include["sequences"],
-        include_slots=include["slots"],
-        include_items=include["items"],
-        include_item_scans=include["item_scans"],
-        include_boss_scans=include["boss_scans"],
-        include_icon_scans=include["icon_scans"],
+        include_slots=include["sequences"],
+        include_items=include["sequences"],
+        include_item_scans=include["sequences"],
+        include_boss_scans=include["sequences"],
+        include_icon_scans=include["sequences"],
         include_config=include["config"],
         source_window=source_window,
     )
@@ -425,14 +403,22 @@ def _run_import(state: AutoClickerState) -> None:
     # Was importieren?
     import_flags = {}
     print(f"  {col('Was importieren?', 'bold')}")
-    parts = [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
-             ("items", "Items"), ("item_scans", "Item-Scans"),
-             ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
-             ("config", "Config")]
+    neues_layout = manifest.get("layout") == "sequence-folders"
+    parts = ([('sequences', 'Sequenzordner inkl. Punkte, Scans und Vorlagen'),
+              ('config', 'Config')]
+             if neues_layout else
+             [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
+              ("items", "Items"), ("item_scans", "Item-Scans"),
+              ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
+              ("config", "Config")])
     for key, label in parts:
         if key in contents:
             choice = safe_input(f"    {label}? (j/n, Enter = ja): ").strip().lower()
             import_flags[f"import_{key}"] = choice != "n"
+    if neues_layout:
+        ganz = import_flags.get("import_sequences", False)
+        for key in ("points", "slots", "items", "item_scans", "boss_scans", "icon_scans"):
+            import_flags[f"import_{key}"] = ganz
 
     # Merge oder ersetzen?
     print("\n  Bestehende Daten:")

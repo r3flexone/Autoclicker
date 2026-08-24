@@ -147,9 +147,9 @@ def _mtime(pfad) -> Optional[float]:
         return None
 
 
-def _punkte_pfad(sequences_dir) -> Path:
-    """Wo `save_palette_points()` schreibt. Für den Stand-Vergleich."""
-    return Path(sequences_dir) / "points.json"
+def _punkte_pfad(sequence_file) -> Path:
+    """Die Sequenzdatei enthält zugleich ihren eigenen Punkte-Pool."""
+    return Path(sequence_file)
 
 
 def _bloecke(anzahl: int) -> str:

@@ -80,6 +80,27 @@ class BridgeEditingMixin:
             return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
         return self._geaendert()
 
+    def phase_skalieren(self, daten: dict) -> dict:
+        """Multipliziert alle Wartezeiten einer Phase mit demselben Faktor."""
+        lane = self._lane((daten or {}).get("phase"))
+        if lane is None:
+            return self._melde("Phase nicht gefunden.", "err")
+        try:
+            faktor = float(str((daten or {}).get("faktor") or "").replace(",", "."))
+        except ValueError:
+            return self._melde("Der Faktor muss eine Zahl sein.", "warn")
+        if faktor <= 0:
+            return self._melde("Der Faktor muss grösser als 0 sein.", "warn")
+        geaendert = 0
+        for step in lane.steps:
+            if step.delay_before > 0:
+                step.delay_before = round(step.delay_before * faktor, 2)
+                geaendert += 1
+            if step.delay_max:
+                step.delay_max = round(step.delay_max * faktor, 2)
+        return self._geaendert(
+            f"{geaendert} Wartezeit(en) in '{lane.name}' × {faktor:g} skaliert.")
+
     # --------------------------------------------------------------- Auswahl
 
     def _auswahl_leeren(self) -> None:
@@ -367,7 +388,7 @@ class BridgeEditingMixin:
         """Die aktuelle Mausposition — für die Einstellungen, ohne Punkt anzulegen.
 
         `punkt_aufnehmen()` ist der Weg für einen Block; `scan_park_mouse` ist
-        aber kein Punkt und gehört nicht in `points.json`. Übrig bleibt die
+        aber kein Punkt und gehört nicht in die Punktliste der `sequence.json`. Übrig bleibt die
         Geste: Maus hin, ENTER.
         """
         x, y, meldung = self._stelle_abwarten()

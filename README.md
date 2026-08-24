@@ -395,7 +395,7 @@ Items können per **Template-Matching** (Screenshot-Vergleich) erkannt werden:
 
 1. Bei `learn` wird automatisch ein Template erstellt
 2. Mit `template <Nr>` kann ein Template nachträglich gesetzt werden
-3. Templates werden in `items/templates/` gespeichert
+3. Templates werden im `templates/`-Ordner der jeweiligen Sequenz gespeichert
 4. `min_confidence` (0.0-1.0) bestimmt wie genau das Match sein muss
 5. Pro Slot-Grösse wird eine passende Vorlage verwendet. Fehlt sie, zeigt das Studio
    „für diesen Scan noch nicht gelernt“; beim Lernen kann derselbe Item-Name gewählt
@@ -1074,9 +1074,12 @@ Wird beim ersten Start automatisch erstellt:
 }
 ```
 
-`studio_open_on_start` öffnet beim Start von `main.py` automatisch das
-Sequenz-Studio mit der zuletzt bearbeiteten Sequenz. Auf `false` startet das
-Programm wieder nur in der Konsole; das Studio bleibt über den Hotkey erreichbar.
+`studio_open_on_start` wählt die Startoberfläche. Ist die Option an, startet das
+Sequenz-Studio ohne zusätzlichen TUI-Banner, Anleitung und Bereitschaftsblock; die
+Konsole bleibt nur technisches Log und Rückfallweg für noch vorhandene
+Konsolenwerkzeuge. Ist die Option aus, startet das Programm mit der TUI. Das Studio
+bleibt dort über den Hotkey erreichbar. Beide Oberflächen verwenden denselben
+Hauptprozess, dieselben Funktionen und dieselben Dateien.
 
 ### Klick-Einstellungen
 
@@ -1272,22 +1275,16 @@ Autoclicker-Idleclans/
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
-├── sequences/              # Gespeicherte Sequenzen
-│   ├── points.json         # Aufgenommene Punkte (mit ID und Name)
-│   └── *.json              # Sequenz-Dateien
-├── slots/                  # Slot-Konfigurationen
-│   ├── slots.json          # Aktive Slots
-│   ├── Screenshots/        # Screenshots und Vorschau-Bilder
-│   └── presets/            # Slot-Presets
-├── items/                  # Item-Konfigurationen
-│   ├── items.json          # Aktive Items
-│   ├── templates/          # Template-Bilder für Matching
-│   ├── debug/              # Debug-Bilder (wenn debug_save_templates=true)
-│   └── presets/            # Item-Presets
-├── item_scans/             # Item-Scan Konfigurationen
-│   └── *.json              # Scan-Konfigurationen (verknüpft Slots + Items)
-├── boss_scans/             # Boss-Scan Konfigurationen (mit optionaler LLM-Aktivierung)
-│   └── *.json
+├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
+│   └── <name>/
+│       ├── sequence.json   # Ablauf und sequenzlokale Punkte
+│       ├── item_scans/     # Item-Scans mit vollständig eingebetteten Slots/Items
+│       │   ├── *.json
+│       │   └── bilder/     # Eingefrorene Scan-Bilder
+│       ├── boss_scans/     # Boss-Scans und ihre lokale Bibliothek
+│       ├── icon_scans/     # Icon-Scans
+│       └── templates/      # Lokale Template-Bilder aller Scans
+├── presets/                # Wiederverwendbare Slot-/Item-Presets
 ├── exports/                # Importier-/Exportier-Bundles (ZIP)
 │   └── *.zip
 ├── logs/                   # Session-Logs als CSV (wenn session_log_enabled=true)
@@ -1427,7 +1424,7 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 
 > **Sequenzen werden nicht mehr umgerechnet.** Die Schritte, die alte Sequenz-Formate
 > aufs heutige Schema hoben (`steps`/`loop_steps` → `loop_phases`, `delay_after`,
-> Koordinaten → `points.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
+> Koordinaten → Punktliste in `sequence.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
 > bräuchten. Eine sehr alte Sicherung wird deshalb zwar gelesen und gestempelt, kommt
 > aber **leer** an. In dem Fall die Sequenz im Studio neu bauen; das geht inzwischen
 > schneller, als es das Zurückholen der Migrationsschritte täte.
@@ -1655,7 +1652,7 @@ Der Prüf-Pixel einer Farb-Bedingung zieht **nur** mit, wenn er vorher genau auf
 Klickpunkt lag. Ein bewusst anderswo gesetzter Pixel bleibt, wo er ist.
 
 In jeder Debug-Ausgabe steht die Referenz dabei — damit findest du den Schritt in der
-Sequenzdatei (`"point_id": 3`) und den Punkt in `points.json` (`"id": 3`):
+`sequence.json`: beim Schritt über `"point_id": 3` und in der Punktliste über `"id": 3`:
 
 ```
 ■ MANUELL [LOOP] Schritt 1/3: Marktbutton  [Punkt #3]
@@ -1722,7 +1719,7 @@ Punkt.
 
 **Geschrieben wird erst am Schluss und nur auf `CTRL+ALT+J`.** Bis dahin ist
 nichts geändert, auch nicht im Speicher: wer das Studio-Fenster zumacht oder das
-Programm beendet, verliert die Runde — und `points.json` bleibt, wie sie war.
+Programm beendet, verliert die Runde — und `sequence.json` bleibt, wie sie war.
 
 Geändert wird **nur die Stelle** — Wartezeiten, Farb-Bedingungen, Nachprüfungen,
 ELSE und Scans bleiben unangetastet. Während der Runde: `CTRL+ALT+K`
@@ -1863,7 +1860,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - Neuer Hotkey **CTRL+ALT+I**
 - Komplettes Setup als ZIP exportieren (alles oder mit Auswahl)
 - Empfänger importiert die ZIP — **2-Punkt-Koordinaten-Remapping** passt alle Klick-Punkte, Scan-Regionen, Boss-Regionen, Wait-Pixel, Confirm-Points, Screenshot-Regionen automatisch an den neuen Bildschirm an
-- Templates (PNG) sind im ZIP enthalten und werden bei Import nach `items/templates/` extrahiert
+- Sequenzen werden als vollständige Ordner exportiert; ihre Templates (PNG) bleiben im jeweiligen `templates/`-Unterordner
 - Merge- oder Ersetzen-Modus
 - Anleitung für den Empfänger wird nach Export angezeigt
 - Auch über das Item-Scan-Menü als Punkt 6 erreichbar

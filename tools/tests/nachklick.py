@@ -38,6 +38,14 @@ def _punkt(pid, x, y, farbe=None, name=""):
     return _CP(id=pid, x=x, y=y, name=name or f"P{pid}", color=farbe)
 
 
+def _aktiv(state, seq, punkte, zielfenster=""):
+    """Bindet den sequenz-eigenen Pool zugleich als Laufzeit-Arbeitsansicht."""
+    seq.points = punkte
+    state.active_sequence = seq
+    state.points = seq.points
+    state.config.window_focus_title = zielfenster
+
+
 # ---------------------------------------------------------------------------
 section("Nachklicken: welche Punkte, in welcher Reihenfolge")
 
@@ -106,15 +114,15 @@ _os.chdir(_sand)
 try:
     Path("sequences").mkdir()
     _s = _ST()
-    _s.points = [_punkt(1, 100, 100, (10, 20, 30)), _punkt(2, 200, 200),
+    _punkte_s = [_punkt(1, 100, 100, (10, 20, 30)), _punkt(2, 200, 200),
                  _punkt(3, 300, 300)]
     _schritt = _STEP(point_id=2, delay_before=7.5,
                      wait_condition=_WAIT(point_id=2, color=(1, 2, 3)),
                      else_config=_ELSE(action="skip"))
-    _s.active_sequence = _SEQ(name="Klein",
-                              init_steps=[_STEP(point_id=1)],
-                              loop_phases=[_PHASE(name="A", steps=[_schritt,
-                                                                   _STEP(point_id=3)])])
+    _aktiv(_s, _SEQ(name="Klein", init_steps=[_STEP(point_id=1)],
+                    loop_phases=[_PHASE(name="A", steps=[_schritt,
+                                                         _STEP(point_id=3)])]),
+           _punkte_s)
     _erg = _ruesten(_s)
     check("die Runde lässt sich rüsten", _erg is not None)
     check("und kennt ihre drei Punkte", _s.nachklick_punkte == [1, 2, 3])
@@ -175,7 +183,7 @@ try:
     check("ein Punkt ohne Farbe bekommt auch am Ende keine",
           _s.points[1].color is None)
     check("und schreibt die Punkte auf Platte",
-          Path("sequences/points.json").exists())
+          Path("sequences/klein/sequence.json").exists())
 
     # --- Ein zweiter Lauf: derselbe Klick zweimal ist keine Änderung ---
     _s.nachklick_gesetzt = []
@@ -204,9 +212,9 @@ _echt_springe = _nk._springe
 _nk._springe = lambda x, y, verzoegert=False: _gesprungen.append((x, y, verzoegert))
 try:
     _s2 = _ST()
-    _s2.points = [_punkt(1, 100, 100), _punkt(2, 222, 333), _punkt(3, 300, 300)]
-    _s2.active_sequence = _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])])
+    _aktiv(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
+           [_punkt(1, 100, 100), _punkt(2, 222, 333), _punkt(3, 300, 300)])
     _ruesten(_s2)
 
     _gesprungen.clear()
@@ -259,9 +267,9 @@ section("Nachklicken: es läuft nichts von selbst")
 # sie die Punkte der Runde selbst und schrieb ihre eigenen Ziele hinein — von
 # aussen sah es aus, als sei die Sequenz „von allein weitergelaufen".
 _s3 = _ST()
-_s3.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
-_s3.active_sequence = _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1), _STEP(point_id=2)])])
+_aktiv(_s3, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])]),
+       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
 _ruesten(_s3)
 _s3.is_running = True
 _klick(_s3, 999, 888, None)
@@ -284,9 +292,8 @@ _echt_worker = _hd.sequence_worker
 _hd.sequence_worker = lambda *a, **k: _gestartet.append(a)
 try:
     _s4 = _ST()
-    _s4.points = [_punkt(1, 10, 10)]
-    _s4.active_sequence = _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1)])])
+    _aktiv(_s4, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1)])]), [_punkt(1, 10, 10)])
     _ruesten(_s4)
     _hd.handle_toggle(_s4)
     check("ein Start während der Runde startet keinen Worker", _gestartet == [])
@@ -303,9 +310,8 @@ finally:
 # Umgekehrt: ein gestellter Countdown ist ein Start mit Verzoegerung und wuerde
 # mitten in die Runde feuern. Deshalb faengt sie gar nicht erst an.
 _s5 = _ST()
-_s5.points = [_punkt(1, 10, 10)]
-_s5.active_sequence = _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1)])])
+_aktiv(_s5, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1)])]), [_punkt(1, 10, 10)])
 _s5.countdown_active = True
 check("mit gestelltem Countdown startet keine Runde", _ruesten(_s5) is None)
 
@@ -327,10 +333,9 @@ _nk.get_foreground_window_title = lambda: _vordergrund[0]
 _nk.get_client_rect_by_title = lambda t: (0, 0, 800, 600)
 try:
     _s6 = _ST()
-    _s6.config.window_focus_title = "Idle Clans"
-    _s6.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
-    _s6.active_sequence = _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1), _STEP(point_id=2)])])
+    _aktiv(_s6, _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])]),
+           [_punkt(1, 100, 100), _punkt(2, 200, 200)], "Idle Clans")
     _ruesten(_s6)
     check("das Zielfenster steht in der Runde", _s6.nachklick_ziel == "Idle Clans")
 
@@ -350,10 +355,8 @@ try:
     # wegwirft, sieht aus wie ein kaputter Hook.
     _nk.get_client_rect_by_title = lambda t: None
     _s7 = _ST()
-    _s7.config.window_focus_title = "Gibt Es Nicht"
-    _s7.points = [_punkt(1, 100, 100)]
-    _s7.active_sequence = _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1)])])
+    _aktiv(_s7, _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1)])]), [_punkt(1, 100, 100)], "Gibt Es Nicht")
     _ruesten(_s7)
     check("ohne auffindbares Fenster wird nicht gefiltert", _s7.nachklick_ziel == "")
     _vordergrund[0] = "Irgendwas"
@@ -374,9 +377,9 @@ section("Nachklicken: ein Pixel Abweichung ist keine Korrektur")
 # Ohne Toleranz schriebe jede Bestätigung den Punkt um einen Pixel um und zählte
 # als Änderung: Rauschen in genau der Liste, die sagen soll, was sich geändert hat.
 _s8 = _ST()
-_s8.points = [_punkt(1, 6233, 412, (33, 140, 116)), _punkt(2, 200, 200)]
-_s8.active_sequence = _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1), _STEP(point_id=2)])])
+_aktiv(_s8, _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])]),
+       [_punkt(1, 6233, 412, (33, 140, 116)), _punkt(2, 200, 200)])
 _ruesten(_s8)
 _klick(_s8, 6233, 411, (200, 10, 10))
 check("ein Pixel daneben zählt als bestätigt, nicht als Änderung",
@@ -406,9 +409,9 @@ _os.chdir(_sand2)
 try:
     Path("sequences").mkdir()
     _s9 = _ST()
-    _s9.points = [_punkt(1, 100, 100, (1, 2, 3)), _punkt(2, 200, 200)]
-    _s9.active_sequence = _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1), _STEP(point_id=2)])])
+    _aktiv(_s9, _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])]),
+           [_punkt(1, 100, 100, (1, 2, 3)), _punkt(2, 200, 200)])
     _ruesten(_s9)
     _klick(_s9, 3030, 16, (99, 99, 99))       # Titelleiste erwischt
     check("die Stelle ist erfasst", len(_s9.nachklick_gesetzt) == 1)
@@ -417,7 +420,7 @@ try:
           (_s9.points[0].x, _s9.points[0].y) == (100, 100))
     check("und die Farbe auch", _s9.points[0].color == (1, 2, 3))
     check("und schreibt nichts auf Platte",
-          not Path("sequences/points.json").exists())
+          not Path("sequences/weg/sequence.json").exists())
 
     # Gegenprobe: dieselbe Runde, uebernommen.
     _ruesten(_s9)
@@ -426,16 +429,16 @@ try:
     check("übernommen wandert die Stelle in den Punkt",
           (_s9.points[0].x, _s9.points[0].y) == (640, 480))
     check("und JETZT steht sie auf Platte",
-          Path("sequences/points.json").exists())
+          Path("sequences/weg/sequence.json").exists())
 finally:
     _os.chdir(_cwd)
 
 # Das Beenden des Programms ist kein Übernehmen — sonst schriebe genau der
 # Ausgang, den man nimmt, wenn etwas schiefgelaufen ist.
 _s10 = _ST()
-_s10.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
-_s10.active_sequence = _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1), _STEP(point_id=2)])])
+_aktiv(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])]),
+       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
 _ruesten(_s10)
 _klick(_s10, 4444, 55, None)          # etwas gesetzt, aber nicht übernommen
 _hd.handle_quit(_s10, 0)
@@ -446,9 +449,9 @@ check("und lässt die Punkte stehen", (_s10.points[0].x, _s10.points[0].y) == (1
 from autoclicker.handlers import befehl_nachklick_stop as _bns
 
 _s11 = _ST()
-_s11.points = [_punkt(1, 100, 100), _punkt(2, 200, 200)]
-_s11.active_sequence = _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1), _STEP(point_id=2)])])
+_aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
+    _STEP(point_id=1), _STEP(point_id=2)])]),
+       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
 _ruesten(_s11)
 _klick(_s11, 700, 700, None)
 _bns(_s11, {"verwerfen": "1"})

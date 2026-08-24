@@ -9,33 +9,30 @@ def aufbau():
     """Ein kleiner Bestand plus die Brücke darauf — wie im Vertragstest."""
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
     from autoclicker.models import (
-        AutoClickerState, ClickPoint, ItemProfile, ItemScanConfig, ItemSlot,
+        AutoClickerState, ClickPoint, ItemProfile, ItemScanConfig,
         LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_global_items, save_global_slots,
-        save_item_scan, save_points,
+        list_available_sequences, save_data, save_item_scan,
     )
 
     sandkasten("rauch_wz_")
     st = AutoClickerState()
-    st.points = [ClickPoint(id=1, x=100, y=100, name="Sammeln", color=(10, 200, 30)),
-                 ClickPoint(id=2, x=900, y=600, name="Bestaetigen"),
-                 ClickPoint(id=3, x=400, y=300, name="Menue")]
-    save_points(st)
-    st.global_slots = {"Slot 1": ItemSlot(name="Slot 1", scan_region=(10, 20, 70, 80),
-                                          click_pos=(40, 50))}
-    save_global_slots(st)
-    # Absichtlich kaputt, damit die Pruefung etwas zu melden hat: ohne Befunde
-    # saehe man ihre Darstellung nie.
-    st.global_items = {"Geist": ItemProfile(name="Geist")}
-    save_global_items(st)
-    save_item_scan(ItemScanConfig(name="Inventar", slot_names=["Gibt es nicht"],
-                                  item_names=["Geist", "Auch weg"]))
     seq = Sequence(name="Farm", loop_phases=[LoopPhase(name="A", steps=[
-        SequenceStep(point_id=1, delay_before=3.0), SequenceStep(point_id=2)])])
+        SequenceStep(point_id=1, delay_before=3.0), SequenceStep(point_id=2)])],
+        points=[ClickPoint(id=1, x=100, y=100, name="Sammeln",
+                           color=(10, 200, 30)),
+                ClickPoint(id=2, x=900, y=600, name="Bestaetigen"),
+                ClickPoint(id=3, x=400, y=300, name="Menue")])
     st.sequences["Farm"] = seq
+    st.active_sequence = seq
+    st.points = seq.points
     save_data(st)
+    # Absichtlich unvollständig, damit die Prüfung etwas darstellt.
+    save_item_scan(ItemScanConfig(
+        name="Inventar", owner_sequence="Farm",
+        items=[ItemProfile(name="Geist")],
+    ))
 
     b = StudioBridge(seq, Path(dict(list_available_sequences())["Farm"]), "sequences")
     # Maus und Bildschirm gibt es hier nicht: beide werden gestellt, alles andere
@@ -55,12 +52,27 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("werkzeuge")
-        pruefe(f.anzahl("#wz-links button") == 3, "drei Werkzeuge erwartet")
+        pruefe(f.anzahl("#wz-links button") == 4, "vier Werkzeuge erwartet")
         pruefe("Farm" in f.text("#wz-links"), "die offene Sequenz fehlt links")
 
+        # --- Aufnahme: der normale Weg ist vollständig im Studio sichtbar ---
+        f.klick_text("#wz-links button", "Sequenz aufnehmen", warten=300)
+        pruefe(f.anzahl(".wz-aufnahme-form input") == 2,
+               "Name und Zyklen der Aufnahme fehlen")
+        pruefe(f.anzahl(".wz-aufnahme-form textarea") == 1,
+               "Notiz der Aufnahme fehlt")
+        pruefe(f.anzahl(".wz-aufnahme-ausgabe") == 1,
+               "rollende Live-Ausgabe der Aufnahme fehlt")
+        tasten = [z.inner_text() for z in
+                  f.seite.query_selector_all("#wz-mitte .wz-tasten .wz-taste")]
+        pruefe(len(tasten) == 8, f"acht Aufnahme-Hotkeys erwartet, da: {tasten}")
+        pruefe("Aufnahme starten" in f.text("#wz-mitte"), "sichtbarer Start fehlt")
+        f.bild("wz_aufnahme")
+
         # --- Pruefen ---
+        f.klick_text("#wz-links button", "Bestand prüfen", warten=300)
         f.klick_text("#wz-mitte button", "Jetzt prüfen", warten=900)
-        pruefe(f.anzahl(".wz-befund") == 3, "drei Befunde erwartet")
+        pruefe(f.anzahl(".wz-befund") == 2, "zwei Befunde erwartet")
         pruefe("Fehler" in f.status(), f"Status nach Pruefen: {f.status()!r}")
         pruefe(bool(f.text("#wz-rechts").strip()), "rechts steht nicht, was geprueft wurde")
         f.bild("wz_pruefen")
@@ -108,7 +120,7 @@ def lauf():
         pruefe("Farm" in f.status(), f"Start nennt die Sequenz nicht: {f.status()!r}")
         # Verwerfen ist der Ausgang, der NICHTS schreibt - und er muss es sagen.
         f.klick_text("#wz-mitte button", "Verwerfen", warten=700)
-        pruefe("points.json" in f.status(), f"Verwerfen: {f.status()!r}")
+        pruefe("sequence.json" in f.status(), f"Verwerfen: {f.status()!r}")
         f.klick_text("#wz-mitte button", "Übernehmen", warten=700)
         pruefe("bernommen" in f.status(), f"Uebernehmen: {f.status()!r}")
         f.bild("wz_klick")

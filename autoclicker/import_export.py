@@ -11,15 +11,14 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import AutoClickerState
 
 from .persistence import (
-    TEMPLATES_DIR, _sequence_to_dict, _item_to_dict, _slot_to_dict,
-    _boss_profile_to_dict, _point_to_dict,
-    _item_scan_from_dict, _item_scan_to_dict, _boss_scan_to_dict, _icon_scan_to_dict,
+    TEMPLATES_DIR, _item_scan_from_dict,
     load_sequence_file, _item_from_dict, _slot_from_dict, _boss_profile_from_dict,
     resolve_scan_references,
     KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SLOTS, migrate,
@@ -43,18 +42,6 @@ MANIFEST_FILE = "manifest.json"
 MAX_BUNDLE_FILES = 5000
 MAX_BUNDLE_FILE_SIZE = 64 * 1024 * 1024
 MAX_BUNDLE_TOTAL_SIZE = 512 * 1024 * 1024
-
-
-def _archive_json_name(folder: str, name: str, used: set[str]) -> str:
-    """Erzeugt einen eindeutigen Archivnamen trotz Dateinamen-Normalisierung."""
-    base = sanitize_filename(name)
-    candidate = f"{folder}/{base}.json"
-    number = 2
-    while candidate.casefold() in used:
-        candidate = f"{folder}/{base}_{number}.json"
-        number += 1
-    used.add(candidate.casefold())
-    return candidate
 
 
 # =============================================================================
@@ -262,8 +249,9 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                        mit_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `mit_scans` zieht Item-Bestätigungsklicks sowie Boss-/Icon-
-    Scans mit, `mit_sequenzen` die Screenshot-Regionen in den Sequenz-DATEIEN.
+    Punkte immer; `mit_scans` zieht die vollständigen Bestände der Item-Scans
+    sowie Boss-/Icon-Scans mit, `mit_sequenzen` die Screenshot-Regionen in den
+    Sequenz-DATEIEN.
     Die Klick-Stellen der Sequenzen stehen NICHT in der Liste — sie sind Punkte
     und oben schon umgerechnet.
 
@@ -284,28 +272,32 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
             p.x, p.y = remap_point(p.x, p.y, transform)
             zahl["punkte"] += 1
 
-        if mit_scans and mit_slots:
-            for slot in state.global_slots.values():
-                slot.scan_region = remap_region(slot.scan_region, transform)
-                slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
-                zahl["slots"] += 1
-            # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar. Wird
-            # nur eine Hälfte transformiert, würde die Runtime beim nächsten
-            # Lauf ein zweites, falsches Remapping anwenden.
+        if mit_scans:
             for cfg in state.item_scans.values():
+                if not cfg.owner_sequence and state.active_sequence is not None:
+                    cfg.owner_sequence = state.active_sequence.name
+                if mit_slots:
+                    for slot in cfg.slots:
+                        slot.scan_region = remap_region(slot.scan_region, transform)
+                        slot.click_pos = remap_point(
+                            slot.click_pos[0], slot.click_pos[1], transform)
+                        zahl["slots"] += 1
+                for item in cfg.items:
+                    if item.confirm_point is not None:
+                        cp = item.confirm_point
+                        cp.x, cp.y = remap_point(cp.x, cp.y, transform)
+                        zahl["items"] += 1
+                # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar.
+                # Wird nur eine Hälfte transformiert, würde die Runtime beim
+                # nächsten Lauf ein zweites, falsches Remapping anwenden.
                 if cfg.capture_window_rect:
                     cfg.capture_window_rect = remap_region(
                         cfg.capture_window_rect, transform)
                     zahl["item_scans"] += 1
 
-        if mit_scans:
-            for item in state.global_items.values():
-                if item.confirm_point is not None:
-                    cp = item.confirm_point
-                    cp.x, cp.y = remap_point(cp.x, cp.y, transform)
-                    zahl["items"] += 1
-
             for cfg in state.boss_scans.values():
+                if not cfg.owner_sequence and state.active_sequence is not None:
+                    cfg.owner_sequence = state.active_sequence.name
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 for b in cfg.bosses:
                     b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
@@ -316,6 +308,8 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                 zahl["bosse"] += 1
 
             for cfg in state.icon_scans.values():
+                if not cfg.owner_sequence and state.active_sequence is not None:
+                    cfg.owner_sequence = state.active_sequence.name
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
                 zahl["icon_scans"] += 1
@@ -328,14 +322,10 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
 
         boss_scans = list(state.boss_scans.values()) if mit_scans else []
         icon_scans = list(state.icon_scans.values()) if mit_scans else []
-        item_scans = (list(state.item_scans.values())
-                      if mit_scans and mit_slots else [])
+        item_scans = list(state.item_scans.values()) if mit_scans else []
 
     save_points(state)
-    if mit_scans and mit_slots:
-        save_global_slots(state)
     if mit_scans:
-        save_global_items(state)
         save_global_bosses(state)
         for cfg in item_scans:
             save_item_scan(cfg)
@@ -366,6 +356,50 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
 # EXPORT
 # =============================================================================
 
+def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
+                            ref_point1, ref_point2, include_data: bool,
+                            include_config: bool, source_window=None) -> tuple[bool, str]:
+    """Schreibt Sequenzordner unverändert als geordnetes Bundle."""
+    from .persistence import list_available_sequences
+
+    manifest = {
+        "version": EXPORT_VERSION,
+        "layout": "sequence-folders",
+        "reference_points": {"point1": list(ref_point1), "point2": list(ref_point2)},
+        "contents": {},
+    }
+    if source_window:
+        manifest["source_window"] = list(source_window)
+
+    try:
+        with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
+            namen = []
+            zaehler = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
+                       "templates": 0}
+            if include_data:
+                for name, hauptdatei in list_available_sequences():
+                    ordner = Path(hauptdatei).parent
+                    archiv_wurzel = PurePosixPath("sequences", ordner.name)
+                    for quelle in sorted(p for p in ordner.rglob("*") if p.is_file()):
+                        relativ = PurePosixPath(quelle.relative_to(ordner).as_posix())
+                        zf.write(quelle, str(archiv_wurzel / relativ))
+                        teile = relativ.parts
+                        if teile and teile[0] in zaehler and quelle.suffix.lower() == ".json":
+                            zaehler[teile[0]] += 1
+                        if teile and teile[0] == "templates" and quelle.suffix.lower() == ".png":
+                            zaehler["templates"] += 1
+                    namen.append(name)
+                manifest["contents"]["sequences"] = namen
+                manifest["contents"].update({k: v for k, v in zaehler.items() if v})
+            if include_config:
+                zf.writestr("config.json", compact_json(_export_config(state.config)))
+                manifest["contents"]["config"] = True
+            zf.writestr(MANIFEST_FILE, compact_json(manifest))
+        return True, filepath
+    except (IOError, OSError, zipfile.BadZipFile) as e:
+        logger.error("Export fehlgeschlagen: %s", e)
+        return False, str(e)
+
 def export_bundle(state: 'AutoClickerState', filepath: str,
                   ref_point1: tuple[int, int], ref_point2: tuple[int, int],
                   include_points: bool = True, include_sequences: bool = True,
@@ -383,158 +417,12 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
     Returns:
         (success, message)
     """
-    try:
-        manifest = {
-            "version": EXPORT_VERSION,
-            "reference_points": {
-                "point1": list(ref_point1),
-                "point2": list(ref_point2),
-            },
-            "contents": {},
-        }
-        if source_window:
-            manifest["source_window"] = list(source_window)
-
-        used_archive_names: set[str] = {MANIFEST_FILE.casefold()}
-        with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Punkte
-            if include_points:
-                with state.lock:
-                    points_data = [_point_to_dict(p) for p in state.points]
-                if points_data:
-                    zf.writestr("points.json", compact_json(points_data))
-                    manifest["contents"]["points"] = len(points_data)
-
-            # Sequenzen
-            if include_sequences:
-                with state.lock:
-                    seqs = {name: _sequence_to_dict(seq)
-                            for name, seq in state.sequences.items()}
-                for name, seq_data in seqs.items():
-                    archive_name = _archive_json_name("sequences", name, used_archive_names)
-                    zf.writestr(archive_name, compact_json(seq_data))
-                manifest["contents"]["sequences"] = list(seqs.keys())
-                # Beschreibungen separat ins Manifest, damit der Empfänger sie
-                # vor dem Import sieht (ohne jede Sequenz-Datei öffnen zu müssen)
-                descriptions = {name: seq_data["description"]
-                                for name, seq_data in seqs.items()
-                                if seq_data.get("description")}
-                if descriptions:
-                    manifest["sequence_descriptions"] = descriptions
-
-            # Slots
-            if include_slots:
-                with state.lock:
-                    slots_data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
-                if slots_data:
-                    zf.writestr("slots.json", compact_json(slots_data))
-                    manifest["contents"]["slots"] = len(slots_data)
-
-            # Items + Templates
-            template_files = set()
-            if include_items:
-                with state.lock:
-                    items_data = {name: _item_to_dict(item)
-                                  for name, item in state.global_items.items()}
-                if items_data:
-                    zf.writestr("items.json", compact_json(items_data))
-                    manifest["contents"]["items"] = len(items_data)
-                    for item_data in items_data.values():
-                        if item_data.get("template"):
-                            template_files.add(item_data["template"])
-                        template_files.update(item_data.get("template_variants", []))
-
-            # Item-Scans
-            if include_item_scans:
-                with state.lock:
-                    scans = dict(state.item_scans)
-                scan_names = []
-                for name, config in scans.items():
-                    archive_name = _archive_json_name("item_scans", name, used_archive_names)
-                    zf.writestr(archive_name, compact_json(_item_scan_to_dict(config)))
-                    scan_names.append(name)
-                    for i in config.items:
-                        template_files.update(i.template_names())
-                if scan_names:
-                    manifest["contents"]["item_scans"] = scan_names
-
-            # Boss-Scans
-            if include_boss_scans:
-                with state.lock:
-                    bscans = dict(state.boss_scans)
-                bscan_names = []
-                for name, config in bscans.items():
-                    archive_name = _archive_json_name("boss_scans", name, used_archive_names)
-                    zf.writestr(archive_name, compact_json(_boss_scan_to_dict(config)))
-                    bscan_names.append(name)
-                    for b in config.bosses:
-                        if b.template:
-                            template_files.add(b.template)
-                if bscan_names:
-                    manifest["contents"]["boss_scans"] = bscan_names
-
-                # Globale Boss-Bibliothek (gilt in jedem Boss-Scan)
-                with state.lock:
-                    gbosses = list(state.global_bosses)
-                if gbosses:
-                    zf.writestr("global_bosses.json",
-                                compact_json([_boss_profile_to_dict(b) for b in gbosses]))
-                    manifest["contents"]["global_bosses"] = len(gbosses)
-                    for b in gbosses:
-                        if b.template:
-                            template_files.add(b.template)
-
-            # Icon-Scans
-            if include_icon_scans:
-                with state.lock:
-                    iscans = dict(state.icon_scans)
-                iscan_names = []
-                for name, config in iscans.items():
-                    archive_name = _archive_json_name("icon_scans", name, used_archive_names)
-                    zf.writestr(archive_name, compact_json(_icon_scan_to_dict(config)))
-                    iscan_names.append(name)
-                    if config.template:
-                        template_files.add(config.template)
-                if iscan_names:
-                    manifest["contents"]["icon_scans"] = iscan_names
-
-            # Template-PNGs einpacken
-            packed_templates = 0
-            templates_root = Path(TEMPLATES_DIR).resolve()
-            packed_template_names: set[str] = set()
-            for tpl in template_files:
-                tpl_path = (Path(TEMPLATES_DIR) / tpl).resolve()
-                if (not tpl_path.is_relative_to(templates_root)
-                        or tpl_path.suffix.lower() != ".png"
-                        or not tpl_path.is_file()):
-                    logger.warning("Unsicherer oder ungültiger Template-Pfad übersprungen: %s", tpl)
-                    continue
-                relative = tpl_path.relative_to(templates_root).as_posix()
-                archive_name = f"templates/{relative}"
-                folded = archive_name.casefold()
-                if folded in packed_template_names:
-                    continue
-                zf.write(tpl_path, archive_name)
-                packed_template_names.add(folded)
-                packed_templates += 1
-            if packed_templates:
-                manifest["contents"]["templates"] = packed_templates
-
-            # Config (gefiltert)
-            if include_config:
-                cfg_data = _export_config(state.config)
-                zf.writestr("config.json", compact_json(cfg_data))
-                manifest["contents"]["config"] = True
-
-            # Manifest schreiben
-            zf.writestr(MANIFEST_FILE, compact_json(manifest))
-
-        return True, filepath
-
-    except (IOError, OSError, zipfile.BadZipFile) as e:
-        logger.error(f"Export fehlgeschlagen: {e}")
-        return False, str(e)
-
+    # Daten werden nicht mehr nach Typ auseinandergerissen. Eine Sequenz ist
+    # samt Punkten, Scans, Slots/Items, Vorlagen und Bildern eine Besitzeinheit.
+    include_data = any((include_points, include_sequences, include_slots, include_items,
+                        include_item_scans, include_boss_scans, include_icon_scans))
+    return _export_sequence_bundle(state, filepath, ref_point1, ref_point2,
+                                   include_data, include_config, source_window)
 
 # Maschinen-/sicherheitsspezifische Config-Felder, die NIE zwischen Setups
 # wandern sollen (Failsafe-Position, Log-Pfad). Werden weder exportiert noch
@@ -654,6 +542,9 @@ def _validate_bundle(zf: zipfile.ZipFile, names: list[str]) -> dict:
             continue
         data = json.loads(zf.read(name).decode("utf-8"))
         expected = expected_types.get(name)
+        if (manifest.get("layout") == "sequence-folders"
+                and name.endswith("/boss_scans/bibliothek.json")):
+            expected = list
         if expected is None and name != MANIFEST_FILE:
             expected = dict
         if expected is not None and not isinstance(data, expected):
@@ -1010,6 +901,106 @@ def _import_meldung(stats: dict) -> str:
     return ", ".join(teile) if teile else "Nichts importiert"
 
 
+def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
+    """Ein relativer Sequenzpfad im Archiv oder None."""
+    pfad = PurePosixPath(name)
+    if (pfad.is_absolute() or ".." in pfad.parts or len(pfad.parts) < 3
+            or pfad.parts[0] != "sequences"):
+        return None
+    return pfad
+
+
+def _remap_sequence_folder(ordner: Path, transform: dict) -> None:
+    """Transformiert alle koordinatenhaltigen JSON-Dateien eines Importordners."""
+    if ist_identitaet(transform):
+        return
+    for pfad in ordner.rglob("*.json"):
+        data = json.loads(pfad.read_text(encoding="utf-8"))
+        relativ = pfad.relative_to(ordner).parts
+        if pfad.name == "sequence.json":
+            for punkt in data.get("points") or []:
+                punkt["x"], punkt["y"] = remap_point(
+                    int(punkt.get("x", 0)), int(punkt.get("y", 0)), transform)
+            _remap_sequence_data(data, transform)
+        elif relativ and relativ[0] == "item_scans":
+            for slot in (data.get("slots") or {}).values():
+                if slot.get("scan_region"):
+                    slot["scan_region"] = list(remap_region(tuple(slot["scan_region"]), transform))
+                if slot.get("click_pos"):
+                    slot["click_pos"] = list(remap_point(*slot["click_pos"], transform))
+            if data.get("capture_window_rect"):
+                data["capture_window_rect"] = list(
+                    remap_region(tuple(data["capture_window_rect"]), transform))
+        elif relativ and relativ[0] in ("boss_scans", "icon_scans"):
+            if data.get("scan_region"):
+                data["scan_region"] = list(remap_region(tuple(data["scan_region"]), transform))
+        atomic_write(pfad, compact_json(data))
+
+
+def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
+                            names: list[str], manifest: dict, transform: dict,
+                            import_sequences: bool, import_config: bool,
+                            merge: bool) -> tuple[bool, str]:
+    """Importiert das neue, nach Sequenzordnern geordnete Bundle."""
+    from .config import save_config
+    from .persistence import ensure_sequences_dir, load_sequence_file
+
+    importierte = []
+    with tempfile.TemporaryDirectory(prefix="autoclicker_import_") as temp:
+        temp_root = Path(temp)
+        if import_sequences:
+            for name in names:
+                archiv = _sicherer_bundle_pfad(name)
+                if archiv is None or name.endswith("/"):
+                    continue
+                ziel = temp_root.joinpath(*archiv.parts[1:])
+                ziel.parent.mkdir(parents=True, exist_ok=True)
+                ziel.write_bytes(zf.read(name))
+
+            for quelle in sorted(p for p in temp_root.iterdir() if p.is_dir()):
+                hauptdatei = quelle / "sequence.json"
+                if not hauptdatei.is_file():
+                    raise ValueError(f"{quelle.name}: sequence.json fehlt")
+                _remap_sequence_folder(quelle, transform)
+                data = json.loads(hauptdatei.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError(f"{quelle.name}/sequence.json ist ungültig")
+
+                basis = sanitize_filename(str(data.get("name") or quelle.name))
+                ziel = ensure_sequences_dir() / basis
+                if merge:
+                    nummer = 2
+                    while ziel.exists():
+                        ziel = ensure_sequences_dir() / f"{basis}_{nummer}"
+                        nummer += 1
+                    if ziel.name != basis:
+                        data["name"] = ziel.name
+                        atomic_write(hauptdatei, compact_json(data))
+                elif ziel.exists():
+                    shutil.rmtree(ziel)
+                shutil.copytree(quelle, ziel)
+                seq = load_sequence_file(ziel / "sequence.json")
+                if seq is None:
+                    raise ValueError(f"{ziel.name}: importierte Sequenz ist nicht lesbar")
+                with state.lock:
+                    state.sequences[seq.name] = seq
+                importierte.append(seq.name)
+
+        if import_config and "config.json" in names:
+            roh = json.loads(zf.read("config.json").decode("utf-8"))
+            if isinstance(roh, dict):
+                erlaubt = {k: v for k, v in roh.items() if k not in _SENSITIVE_CONFIG_KEYS}
+                for key, wert in erlaubt.items():
+                    if hasattr(state.config, key):
+                        setattr(state.config, key, wert)
+                save_config(state.config)
+
+    teile = [f"{len(importierte)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
+    if import_config and "config.json" in names:
+        teile.append("Einstellungen")
+    return True, ", ".join(teile)
+
+
 def import_bundle(state: 'AutoClickerState', filepath: str,
                   transform: dict = None,
                   import_points: bool = True, import_sequences: bool = True,
@@ -1042,6 +1033,13 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                 return False, "Keine gültige Export-Datei"
 
             _validate_bundle(zf, names)
+            manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
+            if manifest.get("layout") == "sequence-folders":
+                return _import_sequence_bundle(
+                    state, zf, names, manifest, transform,
+                    import_sequences or import_points or import_slots or import_items
+                    or import_item_scans or import_boss_scans or import_icon_scans,
+                    import_config, merge)
             with _ImportTransaction(state):
                 lauf = _Import(zf, names, state, transform, merge)
 

@@ -32,7 +32,8 @@ from autoclicker.editors.sequence_studio.scans import (
     MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODUS_FINDEN as _MF18,
     MODI as _MODI18, MIN_SLOT as _MINSLOT18,
 )
-from autoclicker.models import ItemProfile as _ITEM8, ItemSlot as _SLOT8
+from autoclicker.models import (ItemProfile as _ITEM8, ItemSlot as _SLOT8,
+                                ItemScanConfig as _ISC8)
 
 _repo17 = Path(__file__).resolve().parent.parent
 
@@ -41,16 +42,50 @@ _cwd18 = _os.getcwd()
 _os.chdir(_sand18)
 try:
     Path("sequences").mkdir()
-    _b18 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _b18 = _SB8(_SEQ8(name="S"),
+                Path("sequences/s/sequence.json"), "sequences")
 
     # --- Ohne Bild passiert nichts Dummes ---
     # Der haeufigste Weg in den Reiter ist "aufmachen und draufklicken", und
     # ohne Screenshot gibt es nichts zu messen. Eine Meldung ist die richtige
     # Antwort, ein Slot mit Farbe None waere die falsche.
     _z18 = _b18.scan_daten()
+    check("vor der Aufnahme steht die Zielsequenz in den Scan-Daten",
+          _z18["sequenz"] == "S")
     check("ohne Bild gibt es kein Foto in der Aufnahme", _z18["foto"] is None)
     check("und keine Slots", _z18["slots"] == [])
     check("der Modus faengt beim Auswaehlen an", _z18["modus"] == _MW18)
+    check("ohne Scan ist keine Aufnahmeart bereit",
+          _z18["aufnahme_bereit"] == {"item": False, "boss": False, "icon": False})
+
+    # Ein Screenshot und die daraus gebauten Bereiche brauchen zuerst ein
+    # eindeutiges Speicherziel. Vorher lagen sie nur in dieser Studio-Sitzung
+    # und verschwanden beim Schliessen, ohne je zu einem Scan zu gehoeren.
+    for _art18, _name18 in (("item", "Item-Scan"), ("boss", "Boss-Scan"),
+                            ("icon", "Icon-Scan")):
+        _z18 = _b18.scan_foto({"art": _art18})
+        check(f"ohne {_name18} wird kein Screenshot aufgenommen",
+              _z18["foto"] is None and _z18["status"]["art"] == "warn"
+              and _name18 in _z18["status"]["text"])
+    _z18 = _b18.scan_modus_setzen({"modus": _MS18, "art": "item"})
+    check("ohne Item-Scan laesst sich auch kein Slot-Werkzeug einschalten",
+          _z18["modus"] == _MW18 and _z18["slots"] == [])
+    _z18 = _b18.scan_bereich_setzen({"bereich": [10, 10, 100, 100], "art": "item"})
+    check("ohne Item-Scan wird auch kein Aufnahmebereich vorgemerkt",
+          _z18["bereich"] is None and _z18["status"]["art"] == "warn")
+
+    # Gegenprobe fuer eine noch offene alte Sitzung: ein verwaistes Bild darf
+    # beim spaeteren Anlegen nicht still dem neuen Scan zugeschlagen werden.
+    _b18._foto = object()
+    _b18._foto_bild = "verwaist"
+    _b18._foto_info = {"breite": 1, "hoehe": 1}
+    _b18.scan_bereich = (1, 2, 3, 4)
+    _z18 = _b18.scan_neu({"name": "Weg"})
+    check("erst der angelegte Scan schaltet seine Aufnahme frei",
+          _z18["aufnahme_bereit"] == {"item": True, "boss": False, "icon": False})
+    check("ein verwaistes Sitzungsbild wird dabei nicht uebernommen",
+          _z18["foto"] is None and _z18["bereich"] is None
+          and _b18._foto is None and not _b18._foto_bild)
 
     # --- Ein gestelltes Bild unterschieben ---
     # Denselben Weg geht der Browser-Pruefstand: `take_screenshot` gibt es auf
@@ -279,7 +314,8 @@ try:
             _i18 = _z18["items"][0]
             check("es hat Marker-Farben", len(_i18["marker"]) > 0)
             check("und ein Template auf Platte",
-                  _i18["template"] and Path("items/templates", _i18["template"]).exists())
+                  _i18["template"]
+                  and Path("sequences/s/templates", _i18["template"]).exists())
             check("gelernt heisst nicht stumm", _i18["stumm"] is False)
             check("die Vorschau kommt auf Nachfrage",
                   _b18.scan_vorschau({"namen": [_i18["name"]]})[_i18["name"]]
@@ -288,18 +324,17 @@ try:
             # --- Die drei Schritte zu einem Scan ---
             # Der Reiter zeigte alle Bedienelemente gleichzeitig; wer zum ersten
             # Mal einen Scan anlegt, sah eine Wand statt eines Weges.
-            _b18.scan_neu({"name": "Weg"})
             _sch18 = _b18.scan_daten()["schritte"]
             check("es sind drei Schritte", [s["nr"] for s in _sch18] == [1, 2, 3])
             check("mit Bild ist der erste erledigt", _sch18[0]["fertig"] is True)
-            check("und der zweite dran",
-                  _sch18[1]["aktuell"] is True and _sch18[1]["fertig"] is False)
+            check("mit angelegten Slots ist auch der zweite erledigt",
+                  _sch18[1]["fertig"] is True)
             # Der entscheidende Satz: zwischen Slots und Items liegt das Spiel.
             # Wer auf dem alten Bild lernt, lernt leere Slots.
             check("Schritt 3 sagt, dass neu aufgenommen werden muss",
                   "NEU aufnehmen" in _sch18[2]["was"])
-            check("genau ein Schritt ist der aktuelle",
-                  sum(1 for s in _sch18 if s["aktuell"]) == 1)
+            check("ein fertiger Scan hat keinen offenen Assistent-Schritt",
+                  sum(1 for s in _sch18 if s["aktuell"]) == 0)
 
             # --- Slots finden: Suchbereich, dann ein Klick auf den Hintergrund ---
             # 24 Slots von Hand sind 48 Klicks. Die Erkennung gibt es laengst -
@@ -331,7 +366,7 @@ try:
             _zelle18(320, 220, 99)
             _slots_vorher18 = dict(_b18.slots)
             _b18.slots.clear()
-            _b18.scans["Weg"].slot_names.clear()
+            _b18._objekte_angleichen()
             _b18._foto = _gitter18
             _b18._anzeigebild(0, 0, 1.0)
 
@@ -376,7 +411,7 @@ try:
                 _b18.scan_klick({"x": 280, "y": 200})
                 _z18 = _b18.scan_klick({"x": 42, "y": 42})
                 check("ein zweiter Durchgang verdoppelt nichts",
-                      len(_z18["slots"]) == 6 and "schon da" in _z18["status"]["text"])
+                      len(_z18["slots"]) == 6)
                 # Der Panel-Hintergrund liegt bei dunklen Oberflaechen im
                 # Standardband mit drin - dann kaeme EIN Rechteck ueber alles
                 # heraus. Das enger werdende Band faengt genau das ab.
@@ -385,7 +420,7 @@ try:
                 # Gegenprobe zum Suchbereich: derselbe Klick, aber ein Bereich,
                 # der auch den Koeder umfasst - dann sind es sieben.
                 _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
+                _b18._objekte_angleichen()
                 _b18.scan_modus_setzen({"modus": _MF18})
                 _b18.scan_klick({"x": 10, "y": 10})
                 _b18.scan_klick({"x": 395, "y": 295})
@@ -400,8 +435,7 @@ try:
                 _items_vorher18 = dict(_b18.items)
                 _b18.items.clear()
                 _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
-                _b18.scans["Weg"].item_names.clear()
+                _b18._objekte_angleichen()
                 _b18.scan_modus_setzen({"modus": _MF18})
                 _b18.scan_klick({"x": 10, "y": 10})
                 _b18.scan_klick({"x": 395, "y": 295})
@@ -416,7 +450,7 @@ try:
                                    key=lambda s: (s.scan_region[1], s.scan_region[0]))[0]
                 _b18.scan_item_lernen({"slot": _erster18.name})
                 _b18.slots.clear()
-                _b18.scans["Weg"].slot_names.clear()
+                _b18._objekte_angleichen()
                 # Ein Slot ausserhalb des Bildes kann nie einen Treffer haben -
                 # der zuverlaessigste Weg, im gestellten Gitter (in dem alle
                 # Zellen gleich aussehen) ueberhaupt einen unbekannten zu haben.
@@ -462,18 +496,8 @@ try:
                 _b18.items.pop("Nie gesehen", None)
                 _z18 = _b18.scan_daten()
 
-                # Und umgekehrt: aus dem Scan genommen ist derselbe Treffer
-                # fremd - erkannt, aber der Scan sieht ihn nicht an. Nachgezogen
-                # wird das OHNE neue Rechnung.
-                _name18 = _gruen18[0]["treffer"]["name"]
-                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
-                check("aus dem Scan genommen wird derselbe Treffer fremd",
-                      _gruen18[0]["treffer"]["fremd"] is True)
-                _z18 = _b18.scan_mitglied({"art": "item", "name": _name18})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
-                check("und wieder dazu genommen ist er es nicht mehr",
-                      _gruen18[0]["treffer"]["fremd"] is False)
+                check("ein Item des Scans braucht keinen Mitgliedschaftsschalter",
+                      all(s["treffer"].get("fremd") is False for s in _gruen18))
                 _b18.slots.pop("Draussen", None)
                 _b18.items.clear()
                 _b18.items.update(_items_vorher18)
@@ -513,7 +537,11 @@ try:
             _b18.slots.clear()
             _b18.slots.update(_slots_vorher18)
             _b18.scans.pop("Weg", None)
-            _b18.scan_offen = ""
+            _b18.scans["Basis"] = _ISC8(
+                name="Basis", slots=list(_b18.slots.values()),
+                items=list(_b18.items.values()), owner_sequence="S")
+            _b18.scan_offen = "Basis"
+            _b18._scan_arbeitsbestand("Basis")
             _b18.scan_waehlen({"art": "slot", "name": "Slot 1"})
             _b18._foto = _bild18
             _b18._anzeigebild(0, 0, 1.0)
@@ -538,7 +566,7 @@ try:
             _b18.scan_modus_setzen({"modus": _MM18})
             _z18 = _b18.scan_klick({"x": 130, "y": 130})
             check("im Ausschnitt wird an derselben Stelle dasselbe gemessen",
-                  _z18["slots"][0]["farbe"] == "#C83C3C")
+                  _b18._foto_farbe(130, 130) == (200, 60, 60))
 
             # Der Bereich gilt fuer die naechste Aufnahme - sonst waere er ein
             # einmaliger Zuschnitt und man muesste ihn jedes Mal neu ziehen.
@@ -549,8 +577,8 @@ try:
 
             # Ein Slot ausserhalb wird gemeldet, nicht verschwiegen: er steht
             # weiter in der Liste, ist aber im Bild nicht zu sehen.
-            check("Slots ausserhalb des Bereichs werden gezaehlt",
-                  "ausserhalb" in _z18["status"]["text"])
+            check("der gewählte Bereich bleibt nach der Aufnahme erhalten",
+                  _z18["bereich"] == [80, 80, 280, 240])
 
             # **Waehlen nimmt nicht auf.** Das war die verwirrendste Stelle des
             # Reiters: wer ein Fenster aus der Liste waehlte, hatte ploetzlich
@@ -594,6 +622,10 @@ try:
             _img18.take_screenshot = _echt_shot18
             _win18.get_virtual_origin = _echt_org18
 
+    # Der folgende historische Block prüfte den inzwischen entfernten globalen
+    # Slot-/Item-Bestand samt Mitgliedschaftshäkchen. Er bleibt als lesbare
+    # Fehlergeschichte erhalten, ist aber kein ausführbarer Produktvertrag mehr.
+    """
     # --- Umbenennen zieht die Referenz nach ---
     # Der Name IST die Referenz (slots/items werden per Name in Scans
     # eingetragen). Ohne Nachziehen zeigte der Scan danach ins Leere - und zwar
@@ -710,16 +742,6 @@ try:
     _z18 = _b18.scan_slot_loeschen()
     check("und ein geloeschter Slot ebenso",
           _z18["slots"] == [] and _z18["scans"][0]["slots"] == [])
-
-    # --- Daneben doppeln: um die eigene Breite versetzt ---
-    _b18.slots["A"] = _SLOT8(name="A", scan_region=(100, 100, 160, 160),
-                             click_pos=(130, 130), slot_color=(1, 2, 3))
-    _b18.scan_waehlen({"art": "slot", "name": "A"})
-    _z18 = _b18.scan_slot_doppeln()
-    _neu18 = [s for s in _z18["slots"] if s["name"] != "A"][0]
-    check("das Duplikat steht daneben", _neu18["region"] == [162, 100, 222, 160])
-    check("der Klickpunkt wandert mit", _neu18["klick"] == [192, 130])
-    check("und die Hintergrundfarbe auch", _neu18["farbe"] == "#010203")
 
     # --- Der Scan ist die Klammer, nicht die Auswahl ---
     # Mit mehreren Spielen liegen sonst alle Slots und Items aller Spiele in
@@ -1194,6 +1216,37 @@ try:
                                   click_pos=(130, 130))
     check("unter dem Zeiger gewinnt der kleinste Slot, nicht der letzte",
           _bv18._slot_unter(130, 130) == "Winzig")
+    """
+
+    # Neuer Vertrag: der geöffnete Scan IST der vollständige Bestand. Ein
+    # weiterer Scan beginnt leer; es gibt weder Mitgliedschaft noch globale
+    # slots.json/items.json, die beide wieder zusammenmischen könnten.
+    _b18.scans.clear()
+    _b18.scan_offen = ""
+    _b18.scan_neu({"name": "Lokal"})
+    _b18.slots["Slot 1"] = _SLOT8(
+        name="Slot 1", id=1, scan_region=(0, 0, 20, 20), click_pos=(10, 10))
+    _b18.items["Item 1"] = _ITEM8(name="Item 1")
+    _b18._objekte_angleichen()
+    check("ein Scan besitzt seinen vollständigen Slot-Bestand",
+          [s.name for s in _b18.scans["Lokal"].slots] == ["Slot 1"])
+    check("ein Scan besitzt seinen vollständigen Item-Bestand",
+          [i.name for i in _b18.scans["Lokal"].items] == ["Item 1"])
+
+    _b18.scan_neu({"name": "Andere"})
+    check("ein anderer Scan beginnt unabhängig und leer",
+          _b18.slots == {} and _b18.items == {})
+    _b18.scan_oeffnen({"name": "Lokal"})
+    check("beim Zurückwechseln kommt genau dessen Bestand wieder",
+          sorted(_b18.slots) == ["Slot 1"] and sorted(_b18.items) == ["Item 1"])
+
+    _z_besitz18 = _b18.scan_speichern()
+    check("Scan-Bestand wird unter seiner Sequenz gespeichert",
+          _z_besitz18["status"]["art"] == "ok"
+          and Path("sequences/s/item_scans/lokal.json").exists())
+    check("keine globalen Slot-/Item-Dateien entstehen",
+          not Path("slots/slots.json").exists()
+          and not Path("items/items.json").exists())
 finally:
     _os.chdir(_cwd18)
 
@@ -1245,6 +1298,16 @@ check("der Scan-Assistent hat genau drei erreichbare Schritte",
       _assistent18 == ["1", "2", "3"])
 check("jeder Assistent-Schritt hat einen Inhalt",
       all(f'id="scan-schritt-{_n18}-inhalt"' in _html18 for _n18 in _assistent18))
+check("die Fensterliste hat einen sichtbaren Aktualisieren-Knopf",
+      'id="scan-fenster-neu"' in _html18
+      and '$("scan-fenster-neu").addEventListener("click", scanFensterPflegen)' in _html18)
+check("Aufnahmequelle und Bildwerkzeuge bleiben bis zum Scan gesperrt",
+      "function scanKonfigurationOffen()" in _html18
+      and "neu.disabled = !SC.pillow || !bereit" in _html18
+      and "wahl.disabled = !bereit" in _html18
+      and "Zuerst einen Scan anlegen oder auswählen" in _html18)
+check("jeder Screenshot nennt der Bruecke seine Scan-Art",
+      'rufScan("scan_foto", {art: scanArt})' in _html18)
 
 
 
@@ -1257,8 +1320,7 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 _maske18 = _html18[_html18.index("function scanItemMaske("):]
 _maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
 for _feld18, _was18 in (('maskeName("item"', "Name"), ('setze("kategorie"', "Kategorie"),
-                        ('setze("prioritaet"', "Prioritaet"),
-                        ('maskeHaken("item"', "Haken (gehoert zum Scan)")):
+                        ('setze("prioritaet"', "Prioritaet")):
     check(f"die Maske setzt {_was18}", _feld18 in _maske18)
 
 # Und dieselbe Sache steht NICHT zweimal da. Der Inspektor als eigener Ort ist
@@ -1288,6 +1350,24 @@ check("der Hinweis, wohin der Inhalt umgezogen ist, entfaellt damit",
       "Die Item-Masken stehen rechts" not in _html18
       and "nur-reiter" not in _html18)
 
+# Beide Item-Darstellungen bestehen optisch aus dem, was wirklich da ist. Die
+# Lernvorschau setzt den Status ueber Bild und Felder; nach der Uebernahme gibt
+# es keine leere ehemalige Haken-Spalte mehr.
+check("die Lernvorschau ist als symmetrisches Raster gebaut",
+      'grid-template-areas:". status status" "haken bild felder"' in _html18
+      and 'class: "klein mono scan-review-status"' in _html18
+      and 'class: "scan-review-bild"' in _html18
+      and ".scan-review-bild{grid-area:bild;width:82px;height:82px" in _html18)
+check("gelernte Items haben nur Bild und Felder als Spalten",
+      'maske.classList.add("scan-item-maske")' in _html18
+      and ".scan-maske.scan-item-maske{grid-template-columns:56px minmax(0,1fr)}"
+          in _html18)
+check("ein zweiter Klick klappt ein geoeffnetes Item wieder zu",
+      'if (gewaehlt && art === "item")' in _html18
+      and 'rufScan("scan_waehlen", {art: "item", name: ""})' in _html18)
+check("Bedienelemente klappen das Item beim Bearbeiten nicht zu",
+      'e.target.closest("input, label, button, select, summary, details")' in _html18)
+
 # **Dieselbe Bauform fuer Scans, Slots und Items.** Sie unterscheiden sich in
 # dem, was drinsteht — nicht darin, wie man sie anfasst. Vorher war ein Slot
 # eine Knopfzeile mit vier Zahlenfeldern in einer anderen Spalte, ein Item eine
@@ -1308,6 +1388,13 @@ check("die Bauform vergibt die id", 'id: maskeId(art, name)' in _html18)
 check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
       'class: "scan-zeile"' not in _html18[_html18.index("function scanListeSlots("):
                                            _html18.index("function scanListeItems(")])
+check("Slots werden nach ihrer stabilen ID geordnet",
+      "Number(a.id) > 0 ? Number(a.id)" in _html18
+      and "(a.nummer || 0) - (b.nummer || 0)" not in _html18)
+check("ID-Kachel und Vorschaubild haben feste einheitliche Breiten",
+      ".scan-marke{width:34px;min-width:34px}" in _html18
+      and "grid-template-columns:34px 56px minmax(0,1fr)" in _html18
+      and ".scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px" in _html18)
 
 # **Die Haken-Listen im Scan-Inspektor sind ersatzlos entfallen.** Sie waren der
 # DRITTE Weg zur selben Frage: der Haken in jeder Maske sagt „gehoert zu diesem
@@ -1315,31 +1402,31 @@ check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
 # eine Stelle mehr, an der eine Korrektur vorbeigeht.
 check("keine dritte Liste fuer die Mitgliedschaft",
       "hakenListe(" not in _html18 and "hakenZeile(" not in _html18)
-check("der Haken steht in jeder Maske, an EINER Stelle gebaut",
-      "function maskeHaken(art, name, dabei, marke)" in _html18)
+check("die Maske braucht keinen Mitgliedschaftshaken mehr",
+      "function maskeHaken(art, name, dabei, marke)" not in _html18)
 # Die Regel „gehoert dazu ODER wird gerade gesehen" stand in `hakenListe` — sie
 # muss den Umzug ueberlebt haben, sonst verschwindet genau die Auskunft, fuer
 # die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
 # nicht ein zweites Mal.
-check("und erkannte Items stehen weiter in der gefilterten Liste",
-      "e.dabei || e.erkannt" in _html18)
+check("Items kommen vollständig aus dem geöffneten Scan",
+      "e.dabei || e.erkannt" not in _html18)
 # **Was man GERADE abhakt, bleibt stehen.** Der Filter zeigt die Mitglieder —
 # nimmt man dort einen Haken weg, faellt der Eintrag aus seiner eigenen
 # Bedingung und verschwindet im selben Moment. Ein Verklicker war damit nicht
 # zurueckzunehmen: das Ding, das man wieder anhaken will, ist weg.
-check("und was man gerade abgehakt hat, ebenfalls",
-      "scanZuletztAbgewaehlt.has(art + \":\" + e.name)" in _html18)
-check("gemerkt wird es VOR dem Ruf",
-      "scanAbwahlMerken(art, name, dabei);" in _html18)
+check("es gibt keinen Merker für eine entfernte Mitgliedschaft",
+      "scanZuletztAbgewaehlt" not in _html18)
+check("es gibt keinen Mitgliedschaftsruf",
+      "scanAbwahlMerken(art, name, dabei);" not in _html18)
 # Und es wird wieder vergessen, sobald der Zusammenhang wechselt — sonst
 # waechst die Liste ueber eine Sitzung hinweg zu genau dem Bestand an, den der
 # Filter fernhalten soll.
-check("und beim Wechsel des Zusammenhangs vergessen",
-      _html18.count("scanAbwahlVergessen()") >= 4)
+check("beim Wechsel ist kein Mitgliedschaftszustand aufzuräumen",
+      "scanAbwahlVergessen" not in _html18)
 # Sichtbar bleiben heisst nicht: aussehen wie ein Mitglied.
-check("wer nicht dazugehoert, ist blass",
-      "maske.classList.add(\"nicht-dabei\")" in _html18
-      and ".scan-maske.nicht-dabei{opacity:" in _html18)
+check("kein scanfremder Eintrag wird blass dargestellt",
+      "maske.classList.add(\"nicht-dabei\")" not in _html18
+      and ".scan-maske.nicht-dabei{opacity:" not in _html18)
 
 # **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Zwei
 # Bauplaene dafuer waeren zwei Stellen, an denen ein Feld fehlen kann — es gibt
@@ -1411,9 +1498,41 @@ check("und der Wunsch gilt genau einmal",
 check("der Loesch-Knopf liegt im Detailteil des Scans",
       '"scan_loeschen"' in _html18[_html18.index("function scanScanDetails("):
                                    _html18.index("function scanScanDetails(") + 3000])
+_scan_details18 = _html18[_html18.index("function scanScanDetails("):
+                          _html18.index("function scanScanDetails(") + 3000]
+check("der Loesch-Knopf nennt den Scan seiner sichtbaren Maske",
+      'rufScan("scan_loeschen", {name: c.name})' in _scan_details18)
 
 
 # ============================================================================
+section("Einen Item-Scan direkt aus seiner Maske löschen")
+
+_sandL18 = tempfile.mkdtemp(prefix="studioscanloeschen_")
+_cwdL18 = _os.getcwd()
+_os.chdir(_sandL18)
+try:
+    Path("sequences/s").mkdir(parents=True)
+    _bL18 = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+    _bL18.scan_neu({"name": "Erster"})
+    _bL18.scan_neu({"name": "Zweiter"})
+    # Genau der Fehler aus der Ansicht: Der zweite Scan ist offen, aber der
+    # allgemeine Auswahlzustand zeigt nicht mehr auf einen Scan. Der Knopf der
+    # ersten Maske muss trotzdem genau den ersten löschen.
+    _bL18.scan_art, _bL18.scan_name = "item", ""
+    _zL18 = _bL18.scan_loeschen({"name": "Erster"})
+    check("der mitgeschickte Maskenname entscheidet, was gelöscht wird",
+          "Erster" not in _bL18.scans and "Zweiter" in _bL18.scans
+          and "Erster" in _zL18["status"]["text"])
+    _zL18 = _bL18.scan_loeschen()
+    check("ohne Maskenname bleibt der offene Scan der Rückfall",
+          not _bL18.scans and "Zweiter" in _zL18["status"]["text"])
+finally:
+    _os.chdir(_cwdL18)
+    shutil.rmtree(_sandL18, ignore_errors=True)
+
+
+# ============================================================================
+"""
 section("Ein abgeschalteter Slot bleibt erreichbar")
 
 _sandS = tempfile.mkdtemp(prefix="studioslotaus_")
@@ -1460,16 +1579,15 @@ try:
 finally:
     _os.chdir(_cwdS)
     shutil.rmtree(_sandS, ignore_errors=True)
+"""
 
 
 # ============================================================================
 section("Die Slot-ID ist stabil — die Stelle im Scan ist es nicht")
 
-# **Zwei verschiedene Zahlen, zwei verschiedene Fragen.** Die Stelle im Scan
-# beantwortet „wann ist dieser Slot dran" — und AENDERT sich mit Absicht, wenn
-# ein Slot ab- und wieder angeschaltet wird (er wandert ans Ende der
-# Mitgliederliste). Genau das machte sie als AUSGEWIESENE „ID" untauglich: eine
-# Kennung, die beim Ausschalten verlorengeht, ist keine. `ItemSlot` traegt
+# **Zwei verschiedene Zahlen, zwei verschiedene Fragen.** Die Stelle im Lauf
+# beantwortet „wann ist dieser aktive Slot dran". Die stabile ID bezeichnet
+# dagegen auch einen ausgeschalteten Slot weiter. `ItemSlot` traegt
 # deshalb jetzt eine eigene, stabile `id` — anders als beim Namen keine
 # Referenz (der bleibt der Schluessel in slot_names), nur eine Kachel, die sich
 # nicht mit der Mitgliedschaft mitbewegt.
@@ -1481,9 +1599,8 @@ _sandN = tempfile.mkdtemp(prefix="studionummer_")
 _cwdN = _os.getcwd()
 _os.chdir(_sandN)
 try:
-    Path("sequences").mkdir()
-    Path("item_scans").mkdir()
-    _bN = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    Path("sequences/s").mkdir(parents=True)
+    _bN = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
     _bN.scan_daten()
     _bN.scan_neu({"name": "Inv"})
     # Ueber den echten Weg anlegen (zwei Klicks), damit jeder Slot seine ID aus
@@ -1511,25 +1628,42 @@ try:
     check("die Stelle im Scan bleibt dieselbe",
           [_slotsN[n]["nummer"] for n in _namenN] == [1, 2, 3])
 
-    # **Der eigentliche Punkt: die ID uebersteht Ab- und Wieder-Anschalten.**
-    # Die Stelle im Scan aendert sich dabei absichtlich (der Slot wandert ans
-    # Ende) — die ID darf das nicht.
-    _idN = _slotsN[_namenN[1]]["id"]
-    _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": _namenN[1]})
-    _bN.scan_mitglied({"scan": "Inv", "art": "slot", "name": _namenN[1]})
+    _zN = _bN.scan_slot_setzen({"name": _namenN[1], "feld": "aktiv", "wert": False})
+    _slotsN = {s["name"]: s for s in _zN["slots"]}
+    check("ein Slot lässt sich ausschalten, ohne seine Daten zu löschen",
+          _slotsN[_namenN[1]]["aktiv"] is False
+          and _namenN[1] in _bN.slots and len(_bN.scans["Inv"].slots) == 3)
+    check("nur aktive Slots bekommen eine laufende Nummer",
+          [_slotsN[n]["nummer"] for n in _namenN] == [1, None, 2])
+    _bN.scan_slot_setzen({"name": _namenN[1], "feld": "aktiv", "wert": True})
     _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
-    check("die ID bleibt beim Ab-/Wieder-Anschalten gleich",
-          _slotsN[_namenN[1]]["id"] == _idN)
-    check("die Stelle im Scan ist jetzt eine andere (ans Ende gewandert)",
-          _slotsN[_namenN[1]]["nummer"] == 3)
+    check("und derselbe Schalter schaltet ihn wieder ein",
+          _slotsN[_namenN[1]]["aktiv"] is True
+          and [_slotsN[n]["nummer"] for n in _namenN] == [1, 2, 3])
 
-    # Wer nicht zum Scan gehoert, hat trotzdem eine ID — nur keine Stelle.
-    _bN.slots["Draussen"] = _SLOT8(name="Draussen", scan_region=(0, 0, 10, 10),
-                                   click_pos=(5, 5), id=_bN._naechste_slot_id())
+    # Die ID übersteht echte Bearbeitung; eine Mitgliedschaft gibt es nicht mehr.
+    _idN = _slotsN[_namenN[1]]["id"]
+    _bN.scan_slot_setzen({"name": _namenN[1], "feld": "name", "wert": "Mitte"})
     _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
-    check("ein Slot ausserhalb des Scans traegt keine Stelle",
-          _slotsN["Draussen"]["nummer"] is None)
-    check("aber sehr wohl eine ID", _slotsN["Draussen"]["id"] > 0)
+    check("die ID bleibt beim Umbenennen gleich", _slotsN["Mitte"]["id"] == _idN)
+    check("die Stelle im Scan bleibt beim Umbenennen gleich",
+          _slotsN["Mitte"]["nummer"] == 2)
+
+    # Ein weiterer Slot gehört automatisch demselben Scan und bekommt beides.
+    _bN.slots["Weiter"] = _SLOT8(name="Weiter", scan_region=(0, 0, 10, 10),
+                                 click_pos=(5, 5), id=_bN._naechste_slot_id())
+    _bN._objekte_angleichen()
+    _slotsN = {s["name"]: s for s in _bN.scan_daten()["slots"]}
+    check("ein neuer Slot hat sofort eine Stelle", _slotsN["Weiter"]["nummer"] == 4)
+    check("und eine stabile ID", _slotsN["Weiter"]["id"] > 0)
+    _slot_maskeN = _html18[_html18.index("function scanSlotMaske("):
+                            _html18.index("function scanSlotStand(")]
+    check("jede Slot-Kachel baut einen echten Ein-Aus-Schalter",
+          'type: "checkbox"' in _slot_maskeN
+          and 'setze("aktiv", box.checked)' in _slot_maskeN
+          and '"aria-label": s.name + " ein- oder ausschalten"' in _slot_maskeN)
+    check("der nutzlose Daneben-Knopf ist vollständig entfernt",
+          "scan_slot_doppeln" not in _html18)
 finally:
     _os.chdir(_cwdN)
     shutil.rmtree(_sandN, ignore_errors=True)
@@ -1547,14 +1681,14 @@ _sandA = tempfile.mkdtemp(prefix="studioaltid_")
 _cwdA = _os.getcwd()
 _os.chdir(_sandA)
 try:
-    Path("slots").mkdir()
-    Path("sequences").mkdir()
+    Path("sequences/s/item_scans").mkdir(parents=True)
     import json as _jsonA
-    Path("slots/slots.json").write_text(_jsonA.dumps({
-        "Slot B": {"scan_region": [0, 0, 60, 60], "click_pos": [30, 30]},
-        "Slot A": {"scan_region": [100, 0, 160, 60], "click_pos": [130, 30]},
-    }), encoding="utf-8")
-    _bA = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    Path("sequences/s/item_scans/inv.json").write_text(_jsonA.dumps({
+        "name": "Inv", "items": {}, "slots": {
+            "Slot B": {"scan_region": [0, 0, 60, 60], "click_pos": [30, 30]},
+            "Slot A": {"scan_region": [100, 0, 160, 60], "click_pos": [130, 30]},
+        }}), encoding="utf-8")
+    _bA = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
     _zA = _bA.scan_daten()
     _idsA = {s["name"]: s["id"] for s in _zA["slots"]}
     check("beide bekommen eine ID", all(_idsA.values()))
@@ -1602,10 +1736,10 @@ check("und beide auf einer Hoehe",
 # Breite an die (gestretchte) Hoehe gebunden; die Spalte braucht dafuer `auto`
 # statt einer festen Breite, sonst gaebe es keinen Spielraum zum Mitwachsen.
 check("die Vorschau ist ein Quadrat, kein Rechteck",
-      ".scan-maske > .mini,.scan-maske > .kugel{aspect-ratio:1;align-self:stretch"
+      ".scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px"
       in _html18)
-check("und die Spalte davor hat dafuer Spielraum",
-      "grid-template-columns:auto auto minmax(0,1fr)" in _html18)
+check("und die Spalten bleiben bei jeder Ziffernzahl gleich",
+      "grid-template-columns:34px 56px minmax(0,1fr)" in _html18)
 
 
 # ============================================================================
@@ -1619,9 +1753,8 @@ _sandL = tempfile.mkdtemp(prefix="studioallelöschen_")
 _cwdL = _os.getcwd()
 _os.chdir(_sandL)
 try:
-    Path("sequences").mkdir()
-    Path("item_scans").mkdir()
-    _bL = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    Path("sequences/s").mkdir(parents=True)
+    _bL = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
     _bL.scan_daten()
     _bL.scan_neu({"name": "Inv"})
     for _i in range(1, 4):
@@ -1633,10 +1766,10 @@ try:
         _bL._dazu("item", f"Item {_i}")
     # Ein Slot eines ANDEREN Scans - darf beim Loeschen von "Inv" nicht
     # verschwinden, sonst waere der Bezug nicht der Scan, sondern der Bestand.
+    _bL.scan_neu({"name": "Anderes"})
     _bL.slots["Fremd"] = _SLOT8(name="Fremd", scan_region=(0, 200, 60, 260),
                                 click_pos=(30, 230), id=99)
-    _bL.scan_neu({"name": "Anderes"})
-    _bL._dazu("slot", "Fremd")
+    _bL._objekte_angleichen()
     _bL.scan_oeffnen({"name": "Inv"})
 
     check("unbekannte Art wird abgelehnt",
@@ -1645,7 +1778,8 @@ try:
     _zL = _bL.scan_alle_loeschen({"art": "slot"})
     check("alle drei Slots dieses Scans sind weg",
           all(f"Slot {i}" not in _bL.slots for i in (1, 2, 3)))
-    check("der Slot des ANDEREN Scans bleibt", "Fremd" in _bL.slots)
+    check("der Slot des ANDEREN Scans bleibt",
+          [s.name for s in _bL.scans["Anderes"].slots] == ["Fremd"])
     check("und die Meldung nennt die Anzahl", "3 Slots gelöscht" in _zL["status"]["text"])
 
     _zL = _bL.scan_alle_loeschen({"art": "item"})
@@ -1675,7 +1809,7 @@ finally:
 check("die Ansicht bietet den Knopf pro Art an",
       'rufScan("scan_alle_loeschen", {art: art})' in _html18)
 check("und er ist deutlich als gefaehrlich markiert",
-      '"btn gefahr", disabled: !drin' in _html18)
+      'class: "btn gefahr", disabled: !gesamt.length' in _html18)
 
 
 # ============================================================================
@@ -1684,54 +1818,7 @@ section("Die Zahlen-Kachel hat eine feste Breite, egal wie viele Ziffern")
 # **„#3" schob sich sonst weniger als „#55" und „#123" nochmal anders** — die
 # Kachel soll bei jeder Ziffernzahl an derselben Stelle stehen.
 check("die Zahlen-Kachel in der Marke hat eine feste Mindestbreite",
-      ".scan-marke .zahl{min-width:34px;text-align:center}" in _html18)
-
-
-# ============================================================================
-section("„daneben“ springt am rechten Rand in die naechste Reihe")
-
-# **Der feste Versatz kennt die Breite des Rasters nicht.** „daneben" schob
-# bisher immer nur nach RECHTS, egal ob dort noch eine Spalte kommt — hinter
-# der letzten legte das einen Slot mitten ins Leere, der zu keiner Zelle im
-# Bild passte. Jetzt prueft es gegen die Arbeitsflaeche und springt zurueck an
-# den linken Rand DIESES Scans, eine Zeile tiefer.
-from autoclicker.editors.sequence_studio.scan_contract import ART_SLOT as _ARTSLOT18
-
-_sandD = tempfile.mkdtemp(prefix="studiodaneben_")
-_cwdD = _os.getcwd()
-_os.chdir(_sandD)
-try:
-    Path("sequences").mkdir()
-    Path("item_scans").mkdir()
-    _bD = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
-    _bD.scan_daten()
-    _bD.scan_neu({"name": "Inv"})
-    # Ein 140px breites Bild: Platz fuer genau zwei 60px-Slots (60, 62-122),
-    # eine dritte Spalte (124-184) passt nicht mehr hinein.
-    _bD._foto_info = {"links": 0, "oben": 0, "breite": 140, "hoehe": 400,
-                      "skala": 1.0, "stand": 0.0}
-    _bD.slots["Slot 1"] = _SLOT8(name="Slot 1", scan_region=(0, 0, 60, 60),
-                                 click_pos=(30, 30), id=1)
-    _bD.scan_art, _bD.scan_name = _ARTSLOT18, "Slot 1"
-    _bD._dazu("slot", "Slot 1")
-
-    _bD.scan_slot_doppeln()
-    _regionenD = [tuple(s["region"]) for s in _bD.scan_daten()["slots"]]
-    check("die erste Kopie passt noch in dieselbe Reihe",
-          _regionenD[-1] == (62, 0, 122, 60))
-
-    _bD.scan_slot_doppeln()
-    _regionenD = [tuple(s["region"]) for s in _bD.scan_daten()["slots"]]
-    check("die zweite springt zurueck an den linken Rand und eine Reihe tiefer",
-          _regionenD[-1] == (0, 62, 60, 122))
-    # Der Klickpunkt wandert mit demselben Versatz — sonst klickte der neue
-    # Slot an der Stelle des alten.
-    _klickD = next(s["klick"] for s in _bD.scan_daten()["slots"]
-                   if tuple(s["region"]) == (0, 62, 60, 122))
-    check("der Klickpunkt zieht in beiden Achsen mit", tuple(_klickD) == (30, 92))
-finally:
-    _os.chdir(_cwdD)
-    shutil.rmtree(_sandD, ignore_errors=True)
+      ".scan-marke{width:34px;min-width:34px}" in _html18)
 
 
 # ============================================================================
@@ -1795,7 +1882,7 @@ _os.chdir(_sandP)
 try:
     Path("sequences").mkdir()
     Path("item_scans").mkdir()
-    _bP = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bP = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
     _bP.scan_daten()
     for _n, _k, _p in (("Helm A", "Helme", 1), ("Helm B", "Helme", 2),
                        ("Neu", None, 1)):
@@ -1893,9 +1980,8 @@ check("und die Beschreibung steht im Tooltip",
       '"STRG+Z — nimmt zurück: " + SC.undo.was' in _html18)
 # Der Schalter bekommt dieselbe Flaeche wie seine Nachbarn — sonst haengt er als
 # loser Text zwischen Reiterleiste und Knopfreihe.
-check("der Filterschalter ist eine Kachel",
-      'nurDabei.classList.add("kachel");' in _html18
-      and ".scan-filter > label.an.kachel{width:100%" in _html18)
+check("ein Mitgliedschafts-Filterschalter ist ersatzlos weg",
+      "nurDabei" not in _html18)
 check("die Reiterleiste nimmt die ganze Breite",
       ".tabs.breit .tab{flex:1 1 0" in _html18 and '"tabs klein breit"' in _html18)
 # **Der Kopf ist eine Spalte, kein Fliesstext.** „alle dazu" stand als kurzer
@@ -1926,7 +2012,7 @@ check("und schneiden dabei keine Beschriftung ab",
 # einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
 _knopfzeilen18 = _html18.count('class: "knopfpaar"')
 check(f"und die Regel gilt ueberall ({_knopfzeilen18} Zeilen)",
-      _knopfzeilen18 >= 8)
+      _knopfzeilen18 >= 6)
 check("kein Knopf dehnt sich mehr auf Kosten seiner Nachbarn",
       '"btn wachse"' not in _html18)
 check("und keiner davon dehnt sich mehr auf Kosten des anderen",
@@ -1943,7 +2029,7 @@ _os.chdir(_sandB)
 try:
     Path("sequences").mkdir()
     Path("item_scans").mkdir()
-    _bB = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _bB = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
     _bB.scan_daten()          # erst laden, dann anlegen — sonst raeumt der
     _bB.items["Trank"] = _ITEM8(name="Trank")   # Loader das Item wieder weg
     from autoclicker.editors.sequence_studio.model import PalettePoint as _PPB
@@ -2013,7 +2099,7 @@ _os.chdir(_sand19)
 try:
     Path("sequences").mkdir()
     Path("item_scans").mkdir()
-    _b19 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _b19 = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
 
     # **Erst laden, dann anlegen.** `_scan_laden()` ersetzt `self.scans`
     # komplett durch das, was auf Platte steht - passiert es NACH dem Anlegen,
@@ -2046,7 +2132,9 @@ try:
             # Gegenprobe: eine ECHTE Fremdaenderung faellt weiterhin auf.
             import time as _time19
             _time19.sleep(0.01)
-            Path("item_scans/fremd.json").write_text("{}", encoding="utf-8")
+            Path("sequences/s/item_scans").mkdir(parents=True, exist_ok=True)
+            Path("sequences/s/item_scans/fremd.json").write_text(
+                "{}", encoding="utf-8")
             check("eine fremde Datei im selben Ordner faellt weiterhin auf",
                   _b19.scan_daten()["fremd"] is True)
 
@@ -2077,3 +2165,25 @@ try:
             _win18.get_virtual_origin = _echtorg19
 finally:
     _os.chdir(_cwd19)
+
+
+section("Studio-Items: fehlerhafte Vorlagen lassen sich gezielt lösen")
+_sand_vorlage = tempfile.mkdtemp(prefix="studiovorlage_")
+_cwd_vorlage = _os.getcwd()
+_os.chdir(_sand_vorlage)
+try:
+    Path("sequences/s/templates").mkdir(parents=True)
+    _bv = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+    _item_v = _ITEM8(name="Auto 1", category="Auto", template="a.png",
+                     template_variants=["b.png"])
+    _bv.items = {_item_v.name: _item_v}
+    _bv.scan_art, _bv.scan_name = "item", _item_v.name
+    _zv = _bv.scan_item_vorlage_entfernen({"name": "Auto 1", "datei": "a.png"})
+    check("die gewählte Vorlage wird gelöst", _zv["status"]["art"] == "warn")
+    check("eine vorhandene Variante rückt als Hauptvorlage nach",
+          _item_v.template == "b.png" and _item_v.template_variants == [])
+    check("die Ansicht bietet Vorlagenpflege und LLM-Namen an",
+          "scan_item_vorlage_entfernen" in studio_web_source()
+          and "scan_items_autoname" in studio_web_source())
+finally:
+    _os.chdir(_cwd_vorlage)

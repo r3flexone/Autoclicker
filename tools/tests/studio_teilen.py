@@ -13,7 +13,8 @@ from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 from autoclicker.editors.sequence_studio.bridge_teilen import TEILE as _TEILE
 from autoclicker.models import (
-    AutoClickerState as _ST, ClickPoint as _CP, LoopPhase as _PHASE,
+    AutoClickerState as _ST, ClickPoint as _CP, ItemProfile as _ITEM,
+    ItemScanConfig as _ISC, ItemSlot as _SLOT, LoopPhase as _PHASE,
     Sequence as _SEQ, SequenceStep as _STEP,
 )
 
@@ -43,24 +44,35 @@ _sand = tempfile.mkdtemp(prefix="teilen_")
 _cwd = _os.getcwd()
 _os.chdir(_sand)
 try:
-    for _d in ("sequences", "item_scans", "boss_scans", "icon_scans", "slots"):
-        Path(_d).mkdir()
-    Path("items/templates").mkdir(parents=True)
-    from autoclicker.persistence import save_data, save_points
+    Path("sequences").mkdir()
+    from autoclicker.persistence import (
+        list_available_sequences, save_data, save_item_scan,
+    )
     _st = _ST()
-    _st.points = [_CP(id=1, x=100, y=100, name="A"), _CP(id=2, x=200, y=200, name="B")]
-    save_points(_st)
     _seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1, delay_before=3.0), _STEP(point_id=2)])])
+        _STEP(point_id=1, delay_before=3.0), _STEP(point_id=2)])],
+        points=[_CP(id=1, x=100, y=100, name="A"),
+                _CP(id=2, x=200, y=200, name="B")])
     _st.sequences["Farm"] = _seq
     _st.active_sequence = _seq
+    _st.points = _seq.points
     save_data(_st)
+    save_item_scan(_ISC(
+        name="Inventar", owner_sequence="Farm",
+        slots=[_SLOT(name="Slot 1", scan_region=(10, 10, 60, 60),
+                     click_pos=(35, 35))],
+        items=[_ITEM(name="Erz", marker_colors=[(10, 20, 30)])],
+    ))
 
-    _b = _SB(_seq, Path("sequences/Farm.json"), "sequences")
+    _farm_pfad = dict(list_available_sequences())["Farm"]
+    _b = _SB(_seq, _farm_pfad, "sequences")
+    # Der Test misst ausdrücklich den Pfad ohne bekanntes Spielfenster; eine
+    # zufällig laufende echte Instanz darf das Ergebnis nicht umdrehen.
+    _b._fensterlage = lambda: None
     _z = _b.teilen_daten()
     # **Gezaehlt wird, was auf Platte liegt** — exportiert wird derselbe Stand.
     check("der Bestand kommt von Platte",
-          _z["bestand"]["points"] == 2 and _z["bestand"]["sequences"] == 1)
+          _z["bestand"]["sequences"] == 1)
     check("noch kein Buendel da", _z["exporte"] == [])
     check("und nichts gewaehlt", _z["import"] is None)
 
@@ -75,7 +87,7 @@ try:
     check("und nichts bleibt gewaehlt", _z["import"] is None)
 
     _z = _b.import_pruefen({"pfad": "exports/probe.zip"})
-    check("das Manifest sagt, was drin ist", _z["import"]["inhalt"]["points"] == 2)
+    check("das Manifest sagt, was drin ist", _z["import"]["inhalt"]["sequences"] == 1)
     # Ohne beidseitig bekanntes Spielfenster gibt es nichts umzurechnen.
     check("ohne Fenster keine automatische Umrechnung", _z["import"]["auto"] is False)
 
@@ -85,7 +97,7 @@ try:
     check("und das Fenster liest danach neu", len(_b.points) >= 2)
 
     # **Der Import schreibt auf Platte, nicht nur in den Speicher.**
-    _b2 = _SB(_seq, Path("sequences/Farm.json"), "sequences")
+    _b2 = _SB(_seq, _farm_pfad, "sequences")
     check("ein frisches Studio sieht dasselbe",
           _b2.teilen_daten()["bestand"]["sequences"] >= 1)
 finally:

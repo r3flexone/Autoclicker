@@ -5,13 +5,12 @@ einmal abgefragt — alles andere passiert automatisch. Namen können danach
 mit dem rename-Befehl angepasst werden.
 """
 
-from pathlib import Path
 
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
-    get_point_by_id, save_global_items, TEMPLATES_DIR,
+    get_point_by_id, save_global_items, active_templates_dir,
 )
 from ...utils import (
     col, confirm, err, header, hint, parse_non_negative_float, safe_input,
@@ -226,10 +225,10 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                 safe_name = sanitize_filename(f"{matched_item}_{breite}x{hoehe}")
                 template_file = f"{safe_name}.png"
                 nummer = 2
-                while (Path(TEMPLATES_DIR) / template_file).exists():
+                while (active_templates_dir(state) / template_file).exists():
                     template_file = f"{safe_name}_{nummer}.png"
                     nummer += 1
-                template_path = Path(TEMPLATES_DIR) / template_file
+                template_path = active_templates_dir(state) / template_file
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 template_img.save(template_path)
                 with state.lock:
@@ -254,7 +253,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         # Template speichern
         safe_name = sanitize_filename(item_name)
         template_file = f"{safe_name}.png"
-        template_path = Path(TEMPLATES_DIR) / template_file
+        template_path = active_templates_dir(state) / template_file
         template_path.parent.mkdir(parents=True, exist_ok=True)
         template_img.save(template_path)
 

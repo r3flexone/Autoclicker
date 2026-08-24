@@ -36,7 +36,7 @@ from .bridge_services import BridgeServicesMixin
 from .bridge_teilen import BridgeTeilenMixin
 from .bridge_view import BridgeViewMixin
 from .bridge_werkzeuge import BridgeWerkzeugeMixin
-from .model import Lane, PalettePoint, SequenceBoard, load_palette_points, sequence_to_board
+from .model import Lane, PalettePoint, SequenceBoard, palette_from_sequence, sequence_to_board
 from .scans import ScanTeil
 
 __all__ = [
@@ -78,7 +78,7 @@ class StudioBridge(
         self.board: SequenceBoard = sequence_to_board(seq)
         self.filepath = Path(filepath)
         self.sequences_dir = sequences_dir
-        self.points: list[PalettePoint] = load_palette_points(sequences_dir)
+        self.points: list[PalettePoint] = palette_from_sequence(seq)
         # Was ohne ELSE passiert, steht in der config.json — gemerkt am
         # Zeitstempel, damit nicht jede Momentaufnahme die Datei liest.
         self._cfg_stand: float = -1.0
@@ -87,7 +87,7 @@ class StudioBridge(
         # Dateien (Aufnahme legt Punkte an, `save_data` schreibt die Sequenz) —
         # ohne diesen Vergleich überschreibt das Studio das kommentarlos.
         self._stand_datei: Optional[float] = _mtime(self.filepath)
-        self._stand_punkte: Optional[float] = _mtime(_punkte_pfad(sequences_dir))
+        self._stand_punkte: Optional[float] = self._stand_datei
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
         # END hätte bei "eine Position hoch" keine Bedeutung, und die
         # Sammelaktionen wären nicht mehr eindeutig.

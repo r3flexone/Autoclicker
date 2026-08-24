@@ -16,7 +16,7 @@
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
   Umsortieren, Feldregeln) liegt in bridge.py und wird dort gemessen.
 -->
-<link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260824-14">
 </head>
 <body>
 <div class="app">
@@ -76,12 +76,18 @@
             <input id="seq-zyklen" type="number" min="0" step="1">
           </label>
           <div class="feld-still">Blöcke
-            <span class="mono" id="seq-bloecke">0</span>
+            <output class="mono" id="seq-bloecke">0</output>
           </div>
         </div>
         <label class="feld">Notiz
           <textarea id="seq-info"></textarea>
         </label>
+        <!-- Nur ein Verweis auf das Aufnahme-Werkzeug. Er steht bei den
+             Sequenzangaben, weil dort Name, Zyklen und Notiz festgelegt werden,
+             und bleibt zusammen mit ihnen ueber der langen Punkteliste sichtbar. -->
+        <div class="aufnahme-zeile">
+          <button class="btn breit" id="btn-aufnahme">● Neue Sequenz aufnehmen</button>
+        </div>
       </div>
       <div class="abschnitt wachsend">
         <div class="reihe">
@@ -90,8 +96,6 @@
         </div>
         <input id="punkt-filter" placeholder="filtern…" autocomplete="off">
         <div class="spalte" id="punkte" style="gap:4px"></div>
-        <p class="hinweis">Punkt in eine Phase ziehen — das wird ein Klick-Block,
-          der dem Punkt folgt. Aufgenommen wird im Hauptprozess.</p>
       </div>
     </aside>
 
@@ -144,6 +148,13 @@
           <button data-scan-art="boss">Bosse</button>
           <button data-scan-art="icon">Icons</button>
         </div>
+        <!-- Kein Info-i: Das Speicherziel ist vor jeder Aufnahme notwendiger
+             Kontext und muss deshalb ohne weiteren Klick sichtbar sein. -->
+        <div class="scan-sequenzbezug">
+          <span>Zielsequenz</span>
+          <strong id="scan-sequenz">—</strong>
+          <small>Neue und geänderte Scans werden in dieser Sequenz gespeichert.</small>
+        </div>
       </div>
       <!-- Was die Erkennungs-Arten brauchen, baut `app.js`: Auswahl und Name
            oben, darunter derselbe Assistent wie beim Item-Scan. Zwei feste
@@ -186,7 +197,11 @@
             </button>
             <div class="scan-assistent-inhalt" id="scan-schritt-1-inhalt">
               <label class="feld"><span>Was soll aufgenommen werden?</span>
-                <select id="scan-fenster" class="scan-fensterwahl"></select>
+                <span class="scan-fensterzeile">
+                  <select id="scan-fenster" class="scan-fensterwahl"></select>
+                  <button class="btn still" id="scan-fenster-neu" type="button"
+                          title="Offene Fenster neu einlesen">↻ Aktualisieren</button>
+                </span>
               </label>
               <div class="scan-quellenstand">
                 <span class="klein wachse" id="scan-bereich">Ganzer Bildschirm</span>
@@ -363,6 +378,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+  <script src="app.js?v=20260824-14"></script>
 </body>
 </html>

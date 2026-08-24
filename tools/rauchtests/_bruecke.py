@@ -64,9 +64,7 @@ def sandkasten(praefix: str) -> str:
     """
     sand = tempfile.mkdtemp(prefix=praefix)
     os.chdir(sand)
-    for d in ("sequences", "item_scans", "boss_scans", "icon_scans", "slots"):
-        Path(d).mkdir()
-    Path("items/templates").mkdir(parents=True)
+    Path("sequences").mkdir()
     return sand
 
 

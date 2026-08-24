@@ -137,17 +137,17 @@ class ScanDetectMixin:
             load_icon_scan_file,
         )
         self.boss_scans = {}
-        for name, pfad in list_available_boss_scans():
-            cfg = load_boss_scan_file(pfad)
+        for name, pfad in list_available_boss_scans(self.board.name):
+            cfg = load_boss_scan_file(pfad, self.board.name)
             if cfg is not None:
                 self.boss_scans[cfg.name or name] = cfg
         self.icon_scans = {}
-        for name, pfad in list_available_icon_scans():
-            cfg = load_icon_scan_file(pfad)
+        for name, pfad in list_available_icon_scans(self.board.name):
+            cfg = load_icon_scan_file(pfad, self.board.name)
             if cfg is not None:
                 self.icon_scans[cfg.name or name] = cfg
         stellvertreter = _BibliothekState()
-        load_global_bosses(stellvertreter)
+        load_global_bosses(stellvertreter, self.board.name)
         self.global_bosses = stellvertreter.global_bosses
         if self.boss_offen not in self.boss_scans:
             self.boss_offen = next(iter(self.boss_scans), "")
@@ -155,8 +155,7 @@ class ScanDetectMixin:
             self.icon_offen = next(iter(self.icon_scans), "")
         self.boss_wahl, self.boss_wahl_global = "", False
 
-    @staticmethod
-    def _erkennung_pfade() -> list:
+    def _erkennung_pfade(self) -> list:
         """Was der Reiter an Boss-/Icon-Dateien liest — für den Fremd-Vergleich.
 
         Der Hauptprozess schreibt dieselben Dateien: der Konsolen-Editor bleibt
@@ -165,12 +164,12 @@ class ScanDetectMixin:
         Platte hat sich etwas geändert" nur für Items — also ausgerechnet nicht
         für das, was hier gerade bearbeitet wird.
         """
-        from ...persistence.paths import BOSS_SCANS_DIR, ICON_SCANS_DIR
-        pfade = [Path(BOSS_SCANS_DIR), Path(ICON_SCANS_DIR),
-                 Path(BOSS_SCANS_DIR) / "global" / "bosses.json"]
-        for ordner in (BOSS_SCANS_DIR, ICON_SCANS_DIR):
-            if Path(ordner).is_dir():
-                pfade += sorted(Path(ordner).glob("*.json"))
+        wurzel = self.filepath.parent
+        ordner_liste = (wurzel / "boss_scans", wurzel / "icon_scans")
+        pfade = [*ordner_liste, wurzel / "boss_scans" / "bibliothek.json"]
+        for ordner in ordner_liste:
+            if ordner.is_dir():
+                pfade += sorted(ordner.glob("*.json"))
         return pfade
 
     def _erkennung_zustand(self) -> dict:
@@ -333,7 +332,7 @@ class ScanDetectMixin:
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Boss-Scan"),
                                 self.boss_scans)
         self._merke("Boss-Scan angelegt")
-        self.boss_scans[name] = BossScanConfig(name=name)
+        self.boss_scans[name] = BossScanConfig(name=name, owner_sequence=self.board.name)
         self.boss_offen, self.boss_wahl = name, ""
         return self._scan_geaendert(
             f"Boss-Scan '{name}' angelegt. Region aufziehen, dann Bosse anlegen.")
@@ -415,8 +414,8 @@ class ScanDetectMixin:
         del self.boss_scans[name]
         self.boss_offen = next(iter(self.boss_scans), "")
         self.boss_wahl = ""
-        from ...persistence.paths import BOSS_SCANS_DIR
-        return self._datei_weg(Path(BOSS_SCANS_DIR) / f"{sanitize_filename(name)}.json",
+        return self._datei_weg(self.filepath.parent / "boss_scans"
+                               / f"{sanitize_filename(name)}.json",
                                f"Boss-Scan '{name}'")
 
     # ----------------------------------------------------------- Einzelbosse
@@ -534,7 +533,7 @@ class ScanDetectMixin:
         if self.boss_wahl == name:
             self.boss_wahl = ""
         self._boss_tests.pop(name, None)
-        # Das Template bleibt liegen: `items/templates/` teilen sich Items,
+        # Das Template bleibt liegen: den lokalen Template-Ordner teilen sich Items,
         # Bosse und Icons, und eine Datei zu löschen, die einem anderen gehört,
         # ist der stille Datenverlust, den es hier nicht gibt.
         return self._scan_geaendert(f"Boss '{name}' entfernt (Vorlage bleibt liegen).", "warn")
@@ -577,7 +576,7 @@ class ScanDetectMixin:
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Icon-Scan"),
                                 self.icon_scans)
         self._merke("Icon-Scan angelegt")
-        self.icon_scans[name] = IconScanConfig(name=name)
+        self.icon_scans[name] = IconScanConfig(name=name, owner_sequence=self.board.name)
         self.icon_offen = name
         return self._scan_geaendert(
             f"Icon-Scan '{name}' angelegt. Region eng um das Symbol aufziehen.")
@@ -622,8 +621,8 @@ class ScanDetectMixin:
         self._merke(f"Icon-Scan '{name}' gelöscht")
         del self.icon_scans[name]
         self.icon_offen = next(iter(self.icon_scans), "")
-        from ...persistence.paths import ICON_SCANS_DIR
-        return self._datei_weg(Path(ICON_SCANS_DIR) / f"{sanitize_filename(name)}.json",
+        return self._datei_weg(self.filepath.parent / "icon_scans"
+                               / f"{sanitize_filename(name)}.json",
                                f"Icon-Scan '{name}'")
 
     # ------------------------------------------------- Geteilte Feld-Setzer
@@ -680,7 +679,7 @@ class ScanDetectMixin:
     def _aktion_punkt_anwenden(self, objekt) -> None:
         """Zieht `action_x/y` an der Referenz nach.
 
-        Die Koordinate steht in `points.json`, sonst nirgends — `action_x/y`
+        Die Koordinate steht in der Punktliste der `sequence.json`, sonst nirgends — `action_x/y`
         sind abgeleitete Arbeitswerte, genau wie `step.x/y`. Der Serializer
         schreibt sie nicht; gefüllt werden sie, damit die Anzeige etwas zu
         zeigen hat.
@@ -777,6 +776,9 @@ class ScanDetectMixin:
         if modus == MODUS_WAHL or (modus == self.scan_modus and self._region_ziel):
             self.scan_modus, self._region_ziel, self._ecke = MODUS_WAHL, None, None
             return self._scan_melde("Zurück zum Auswählen.", "info")
+        gesperrt = self._scan_voraussetzung({"art": art})
+        if gesperrt is not None:
+            return gesperrt
         ziel = self._ziel_pruefen(art)
         if ziel is None:
             return self._scan_melde(
@@ -847,7 +849,7 @@ class ScanDetectMixin:
         **Wer im Editor eine Stelle erzeugt, legt einen Punkt an.** Ein
         vorhandener an derselben Stelle wird wiederverwendet
         (`punkt_an_stelle()` — die eine Regel dafür); sonst wäre derselbe Knopf
-        zweimal in `points.json` und beim Nachjustieren wanderte die Hälfte.
+        zweimal in der Punktliste und beim Nachjustieren wanderte die Hälfte.
         """
         cfg = self._region_objekt()
         if cfg is None:
@@ -912,7 +914,8 @@ class ScanDetectMixin:
             return self._scan_melde(
                 "Die Region liegt ausserhalb des Bildes — erst neu aufnehmen.", "warn")
         from .scan_model import save_template
-        dateiname = save_template(crop, objekt.name)
+        dateiname = save_template(crop, objekt.name,
+                                  template_dir=self.filepath.parent / "templates")
         if not dateiname:
             return self._scan_melde("Vorlage konnte nicht geschrieben werden.", "err")
         self._merke(f"'{objekt.name}': Vorlage aufgenommen")
@@ -1056,7 +1059,8 @@ class ScanDetectMixin:
         from .scan_learning import _NurConfig
         beginn = time.perf_counter()
         ok, wert = _check_profile_match(profil, crop, toleranz, _NurConfig(CONFIG),
-                                        False, return_score=True)
+                                        False, return_score=True,
+                                        template_root=self.filepath.parent / "templates")
         dauer = (time.perf_counter() - beginn) * 1000
         gefunden, gesamt, noetig = self._marker_zaehlen(profil, crop, toleranz)
         if profil.template:
@@ -1192,16 +1196,18 @@ class ScanDetectMixin:
         fehler = []
         for cfg in self.boss_scans.values():
             try:
+                cfg.owner_sequence = self.board.name
                 save_boss_scan(cfg)
-            except OSError:
+            except (OSError, ValueError):
                 fehler.append(f"boss_scans/{cfg.name}.json")
         for cfg in self.icon_scans.values():
             try:
+                cfg.owner_sequence = self.board.name
                 save_icon_scan(cfg)
-            except OSError:
+            except (OSError, ValueError):
                 fehler.append(f"icon_scans/{cfg.name}.json")
         try:
-            save_global_bosses(_BibliothekState(self.global_bosses))
+            save_global_bosses(_BibliothekState(self.global_bosses), self.board.name)
         except OSError:
-            fehler.append("boss_scans/global/bosses.json")
+            fehler.append("boss_scans/bibliothek.json")
         return fehler

@@ -5,8 +5,6 @@ Scrollposition. Ein `subgrid`, das der Browser nicht kann, und ein `sticky`, das
 an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 """
 
-from pathlib import Path
-
 from ._bruecke import Fenster, main, sandkasten
 
 
@@ -35,11 +33,13 @@ def aufbau():
                                           ("Gamma", "Auch mit Notiz", 1, 1)):
         zustand.sequences[name] = _sequenz(name, notiz, phasen, schritte)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
-    zustand.points = [ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i)
-                      for i in range(1, 41)]
+    zustand.sequences["Alpha"].points = [
+        ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
+    ]
     save_data(zustand)
+    from autoclicker.persistence import list_available_sequences
     return StudioBridge(zustand.sequences["Alpha"],
-                        Path("sequences/Alpha.json"), "sequences")
+                        dict(list_available_sequences())["Alpha"], "sequences")
 
 
 def lauf():
@@ -68,8 +68,22 @@ def lauf():
 
         # ------------------------------------------------------------- Editor
         f.reiter("editor", 700)
+        pruefe(f.anzahl("#btn-aufnahme") == 1,
+               "Verweis auf das Aufnahme-Werkzeug fehlt")
         kopf = ".seite.links .abschnitt.klebt"
         pruefe(f.anzahl(kopf) == 1, "kein klebender Abschnitt in der linken Spalte")
+        pruefe(f.anzahl(kopf + " #btn-aufnahme") == 1,
+               "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
+        pruefe(f.anzahl("#aufnahme-info, .aufnahme-zeile .info") == 0,
+               "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
+        feldhoehen = f.seite.eval_on_selector_all(
+            "#seq-zyklen, #seq-bloecke",
+            "ns => ns.map(n => Math.round(n.getBoundingClientRect().height))")
+        pruefe(len(feldhoehen) == 2 and feldhoehen[0] == feldhoehen[1],
+               f"Zyklen und Bloecke haben verschiedene Kachelhoehen: {feldhoehen}")
+        pruefe(f.seite.eval_on_selector(
+            "#seq-bloecke", "e => getComputedStyle(e).borderTopStyle") == "solid",
+            "der berechneten Blockanzahl fehlt die sichtbare Kachel")
         klebt = f.seite.eval_on_selector(kopf, "e => getComputedStyle(e).position")
         pruefe(klebt == "sticky", f"der oberste Block klebt nicht: {klebt}")
         # Und er klebt an der SPALTE: hinge er an einem nicht scrollenden

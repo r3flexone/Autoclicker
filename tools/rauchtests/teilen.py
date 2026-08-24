@@ -11,18 +11,18 @@ def aufbau():
         AutoClickerState, ClickPoint, LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_points,
+        list_available_sequences, save_data,
     )
 
     sandkasten("rauch_teilen_")
     st = AutoClickerState()
-    st.points = [ClickPoint(id=1, x=100, y=100, name="A"),
-                 ClickPoint(id=2, x=200, y=200, name="B")]
-    save_points(st)
     seq = Sequence(name="Farm", loop_phases=[LoopPhase(name="A", steps=[
-        SequenceStep(point_id=1, delay_before=3.0), SequenceStep(point_id=2)])])
+        SequenceStep(point_id=1, delay_before=3.0), SequenceStep(point_id=2)])],
+        points=[ClickPoint(id=1, x=100, y=100, name="A"),
+                ClickPoint(id=2, x=200, y=200, name="B")])
     st.sequences["Farm"] = seq
     st.active_sequence = seq
+    st.points = seq.points
     save_data(st)
     return StudioBridge(seq, Path(dict(list_available_sequences())["Farm"]),
                         "sequences")

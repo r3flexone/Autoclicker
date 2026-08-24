@@ -2,13 +2,12 @@
 
 import base64
 import copy
-from pathlib import Path
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
-from ...persistence.paths import ITEMS_FILE, SLOTS_FILE, TEMPLATES_DIR
 from .model import hexfarbe
 from .scan_contract import (
+    ARTEN,
     ART_SCAN,
     ART_SLOT,
     MIN_SLOT,
@@ -16,11 +15,7 @@ from .scan_contract import (
     MODUS_WAHL,
     UNDO_TIEFE,
 )
-from .scan_model import (
-    existing_categories,
-    load_items,
-    load_slots,
-)
+from .scan_model import existing_categories
 
 
 class ScanStateMixin:
@@ -68,6 +63,10 @@ class ScanStateMixin:
         # demselben Scan. Vorher hing beides an `scan_art`/`scan_name`, und ein
         # Klick auf einen Slot verlor den Zusammenhang.
         self.scan_offen: str = ""
+        # Welche der drei Ansichten den gemeinsamen Aufnahmebereich gerade
+        # benutzt. Die Weboberfläche schickt die Art bei jedem Handgriff mit;
+        # der Wert ist der Rückhalt für den anschliessenden Klick ins Bild.
+        self.scan_aufnahme_art: str = "item"
         # Zeigen die Listen nur, was zum offenen Scan gehört? Mit mehreren
         # Spielen liegen sonst alle Items aller Spiele untereinander.
         self.nur_dabei: bool = True
@@ -100,9 +99,6 @@ class ScanStateMixin:
         if self._scan_geladen:
             return
         self._scan_geladen = True
-        self.slots = load_slots(SLOTS_FILE)
-        self._slot_ids_vergeben()
-        self.items = load_items(ITEMS_FILE)
         self.scans = self._scans_laden()
         self._erkennung_laden()
         # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
@@ -116,8 +112,37 @@ class ScanStateMixin:
         if self._scan_stand:
             neuster = max(self._scan_stand, key=lambda n: self._scan_stand[n])
             self.scan_offen = neuster
+            self._scan_arbeitsbestand(neuster)
             self._foto_laden(neuster)
         self._platte = self._platte_stand()
+
+    def _scan_hat_konfiguration(self, art: str) -> bool:
+        """Ist für die gewünschte Aufnahmeart wirklich ein Scan geöffnet?"""
+        if art == "boss":
+            return self.boss_offen in self.boss_scans
+        if art == "icon":
+            return self.icon_offen in self.icon_scans
+        return self.scan_offen in self.scans
+
+    def _scan_voraussetzung(self, daten: Optional[dict] = None) -> Optional[dict]:
+        """Sperrt Aufnahme und Bildwerkzeuge ohne eindeutiges Speicherziel.
+
+        Ein Bild oder Slot ohne Scan lebte vorher nur im Arbeitsspeicher. Beim
+        Speichern gab es keine Konfiguration, der man ihn hätte zuordnen können;
+        nach dem Schliessen war er weg. Darum gilt die Reihenfolge zentral in der
+        Brücke und nicht nur als deaktivierter Knopf in der Seite.
+        """
+        self._scan_laden()
+        art = str((daten or {}).get("art") or self.scan_aufnahme_art or "item")
+        if art not in ARTEN:
+            art = "item"
+        self.scan_aufnahme_art = art
+        if self._scan_hat_konfiguration(art):
+            return None
+        name = {"item": "Item-Scan", "boss": "Boss-Scan", "icon": "Icon-Scan"}[art]
+        return self._scan_melde(
+            f"Zuerst einen {name} anlegen oder öffnen — erst danach können Bild "
+            "und Bereiche dazu erfasst werden.", "warn")
 
     def _platte_stand(self) -> dict:
         """Pfad -> Änderungszeit für alles, was der Reiter von Platte liest.
@@ -126,11 +151,10 @@ class ScanStateMixin:
         dazugekommene Datei ändert seinen eigenen Zeitstempel, und genau das
         soll auffallen.
         """
-        from ...persistence.paths import ITEM_SCANS_DIR
         stand = {}
-        pfade = [Path(SLOTS_FILE), Path(ITEMS_FILE), Path(ITEM_SCANS_DIR)]
-        pfade += sorted(Path(ITEM_SCANS_DIR).glob("*.json")) \
-            if Path(ITEM_SCANS_DIR).is_dir() else []
+        scan_ordner = self.filepath.parent / "item_scans"
+        pfade = [scan_ordner]
+        pfade += sorted(scan_ordner.glob("*.json")) if scan_ordner.is_dir() else []
         # Boss- und Icon-Scans gehören dazu, seit der Reiter sie bearbeitet:
         # der Konsolen-Editor bleibt als zweiter Weg bestehen, und ein per LLM
         # entdeckter Boss landet im Lauf in der Bibliothek. Ohne diese Pfade
@@ -236,14 +260,15 @@ class ScanStateMixin:
         Nebenbei wird der Änderungszeitpunkt jeder Datei gemerkt: daran hängt,
         welcher Scan beim Öffnen vorne steht.
         """
-        from ...persistence import list_available_item_scans, load_item_scan_file
+        from ...persistence import load_item_scan_file
         gefunden = {}
         self._scan_stand = {}
-        for name, pfad in list_available_item_scans():
-            cfg = load_item_scan_file(pfad)
+        ordner = self.filepath.parent / "item_scans"
+        for pfad in sorted(ordner.glob("*.json")) if ordner.is_dir() else []:
+            cfg = load_item_scan_file(pfad, self.board.name)
             if cfg is None:
                 continue
-            schluessel = cfg.name or name
+            schluessel = cfg.name or pfad.stem
             gefunden[schluessel] = cfg
             try:
                 self._scan_stand[schluessel] = pfad.stat().st_mtime
@@ -251,15 +276,19 @@ class ScanStateMixin:
                 self._scan_stand[schluessel] = 0.0
         return gefunden
 
-    def _objekte_angleichen(self) -> None:
-        """Zieht die abgeleiteten Objektlisten der Scans an ihren Namen nach.
+    def _scan_arbeitsbestand(self, name: str) -> None:
+        """Bindet Listen und Werkzeuge an den Besitz des geöffneten Scans."""
+        cfg = self.scans.get(name)
+        self.slots = {slot.name: slot for slot in cfg.slots} if cfg else {}
+        self.items = {item.name: item for item in cfg.items} if cfg else {}
+        self._slot_ids_vergeben()
 
-        Ohne das kommt Gelöschtes zurück: `sync_names()` füllt eine leere Namensliste
-        aus den Objekten. Muss nach jeder Änderung an den Namen laufen.
-        """
-        for cfg in self.scans.values():
-            cfg.slots = [self.slots[n] for n in cfg.slot_names if n in self.slots]
-            cfg.items = [self.items[n] for n in cfg.item_names if n in self.items]
+    def _objekte_angleichen(self) -> None:
+        """Schreibt den Arbeitsbestand in den geöffneten Scan zurück."""
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is not None:
+            cfg.slots = list(self.slots.values())
+            cfg.items = list(self.items.values())
 
     def _dazu(self, art: str, name: str) -> bool:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
@@ -271,10 +300,9 @@ class ScanStateMixin:
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
             return False
-        namen = cfg.slot_names if art == ART_SLOT else cfg.item_names
-        if name in namen:
+        bestand = self.slots if art == ART_SLOT else self.items
+        if name not in bestand:
             return False
-        namen.append(name)
         self._objekte_angleichen()
         return True
 
@@ -369,7 +397,8 @@ class ScanStateMixin:
         Der Stand wird abgeleitet, nicht mitgeschrieben — erledigt heisst: es ist da.
         """
         cfg = self.scans.get(self.scan_offen)
-        hat_slots = bool(cfg.slot_names) if cfg else bool(self.slots)
+        hat_slots = (any(s.enabled for s in cfg.slots) if cfg
+                     else any(s.enabled for s in self.slots.values()))
         hat_items = bool(cfg.item_names) if cfg else bool(self.items)
         roh = [
             (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
@@ -410,16 +439,13 @@ class ScanStateMixin:
                 "stand": 0.0}
 
     def _scan_slots(self) -> list:
-        """Die Slots, um die es geht: die des offenen Scans, sonst der Bestand.
+        """Die Slots des offenen Scans.
 
-        Wer zwei Spiele betreibt, hat die Slots beider in einer Datei — „alle Slots"
-        meinte sonst wirklich alle, und daran hingen falsche Nenner („X von 56") und
-        eine doppelt so grosse Ersatzfläche.
+        `self.slots` ist bereits die gebundene Arbeitsansicht genau dieses
+        Scans. Eine zweite Mitgliedsliste würde denselben Besitz nochmals und
+        potenziell widersprüchlich ausdrücken.
         """
-        cfg = self.scans.get(self.scan_offen)
-        if cfg is None:
-            return list(self.slots.values())
-        return [self.slots[n] for n in cfg.slot_names if n in self.slots]
+        return list(self.slots.values())
 
     # -------------------------------------------------------- Momentaufnahme
 
@@ -438,9 +464,18 @@ class ScanStateMixin:
         # genau diese Reihenfolge läuft `execute_item_scan()` ab. „#7" heisst
         # also „wird als siebter angesehen", und das ist die Frage, die man an
         # eine Nummer hat.
-        nummern = {n: i + 1 for i, n in enumerate(cfg.slot_names)} if cfg else {}
+        aktive_slots = [s for s in cfg.slots if s.enabled] if cfg else []
+        nummern = {s.name: i + 1 for i, s in enumerate(aktive_slots)}
         erkannt = self._erkannte_items()
         return {
+            # Scan, Slots, Items und Vorlagen liegen im Ordner dieser Sequenz.
+            # Der Bezug muss in der Ansicht vor der Aufnahme sichtbar sein;
+            # nur aus dem aktuell offenen Editor darauf zu schliessen ist bei
+            # mehreren Sequenzen zu fehleranfaellig.
+            "sequenz": self.board.name,
+            "aufnahme_bereit": {
+                art: self._scan_hat_konfiguration(art) for art in ARTEN
+            },
             "modus": self.scan_modus,
             "werkzeug_fixiert": self.scan_werkzeug_fixiert,
             "ecke": list(self._ecke) if self._ecke else None,
@@ -450,7 +485,7 @@ class ScanStateMixin:
             "suchbereich": list(self._suchbereich) if self._suchbereich else None,
             "foto": flaeche,
             "slots": [self._slot_json(s, s.name in dabei_slots, flaeche,
-                                      nummern.get(s.name), len(nummern),
+                                      nummern.get(s.name), len(aktive_slots),
                                       bool(cfg.reverse) if cfg else False)
                       for s in self.slots.values()],
             "items": [self._item_json(i, i.name in dabei_items, erkannt.get(i.name))
@@ -553,6 +588,7 @@ class ScanStateMixin:
         hoehe = slot.scan_region[3] - slot.scan_region[1]
         return {
             "dabei": dabei,
+            "aktiv": bool(slot.enabled),
             # **„Gehört dazu ODER ist gerade zu sehen"** — dieselbe Regel wie
             # beim Item, nur heisst „zu sehen" hier etwas anderes: ein Item wird
             # in einem Slot ERKANNT, ein Slot LIEGT im aufgenommenen Bild.
@@ -574,9 +610,8 @@ class ScanStateMixin:
             # andere. Das ist der zweite Weg zum Löschen.
             "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
             "treffer": treffer,
-            # **Stabile Identität, unabhängig vom Scan.** Bleibt beim Ab- und
-            # Wieder-Anschalten gleich — anders als die Stelle im Scan, die sich
-            # dabei ändert (der Slot wandert ans Ende der Mitgliederliste).
+            # **Stabile Identität.** Bleibt beim Aus- und Wiedereinschalten
+            # gleich; die laufende Nummer gehört dagegen nur aktiven Slots.
             "id": slot.id,
             # Die Stelle im offenen Scan (1-basiert) und die Stelle im LAUF —
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
@@ -627,7 +662,7 @@ class ScanStateMixin:
         vorlagen = item.template_names()
         groessen = []
         for name in vorlagen:
-            groesse = template_size(name)
+            groesse = template_size(name, self.filepath.parent / "templates")
             if groesse and list(groesse) not in groessen:
                 groessen.append(list(groesse))
         scan_groessen = []
@@ -678,7 +713,7 @@ class ScanStateMixin:
     def _bestaetigung_json(self, item: ItemProfile) -> Optional[dict]:
         """Der Bestätigungsklick eines Items — als Punkt, nie als Zahlenpaar.
 
-        Die Koordinate steht in `points.json`, sonst nirgends; `confirm_point`
+        Die Koordinate steht in der Punktliste der `sequence.json`, sonst nirgends; `confirm_point`
         ist der abgeleitete Arbeitswert. Zeigt die Referenz ins Leere, wird das
         gesagt statt verschwiegen — ein Klick auf (0, 0) wäre schlimmer.
         """
@@ -733,7 +768,7 @@ class ScanStateMixin:
 
     def _template_url(self, dateiname: str) -> str:
         """Ein Template als data:-URL, gemerkt an mtime + Name."""
-        pfad = Path(TEMPLATES_DIR) / dateiname
+        pfad = self.filepath.parent / "templates" / dateiname
         try:
             stand = pfad.stat().st_mtime
         except OSError:

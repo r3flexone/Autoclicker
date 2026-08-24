@@ -1,9 +1,8 @@
 """Persistenz-Grundlagen: crash-sicheres Schreiben, Zeiten, Presets, Log.
 
 `atomic_write()` soll einen Absturz mitten im Speichern ueberleben, und jeder
-Saver geht durch sie. Dazu der Abgleich der ZWEI Schreibwege auf `slots.json`
-und `items.json` (Hauptprozess ueber `persistence/globals.py`, Studio ueber
-`scan_model.py`).
+Saver geht durch sie. Dazu der Abgleich von TUI-Arbeitsansicht und dem
+vollständigen scan-lokalen Persistenzformat.
 """
 import io as _io2, contextlib as _cl2, os as _os, tempfile
 from pathlib import Path
@@ -126,40 +125,42 @@ finally:
     _os.chdir(_pre_cwd)
 
 
-section("Beide Schreibwege fuer slots.json und items.json stimmen ueberein")
+section("TUI und Studio lesen denselben vollständigen Item-Scan")
 
-# **Zwei Codewege auf dieselben zwei Dateien.** Der Hauptprozess schreibt ueber
-# `persistence/globals.py`, das Studio (eigener Prozess, kein State) ueber
-# `sequence_studio/scan_model.py`. Beide benutzen zwar dieselben Serialisierer -
-# aber das war bisher eine Annahme, die niemand geprueft hat. Faellt dieser Test,
-# schreiben die beiden Fenster verschiedene Dateien und der zuletzt gespeicherte
-# Stand gewinnt mit anderen Werten.
-
-from autoclicker.models import ItemProfile as _IP_R
+from autoclicker.models import (
+    ItemProfile as _IP_R, ItemScanConfig as _ISC_R, Sequence as _SEQ_R,
+)
 import autoclicker.persistence.globals as _gl
-from autoclicker.editors.sequence_studio.scan_model import (
-    load_slots as _sm_ls, save_slots as _sm_ss,
-    load_items as _sm_li, save_items as _sm_si)
-from autoclicker.persistence.paths import SLOTS_FILE as _SF_R, ITEMS_FILE as _IF_R
+from autoclicker.persistence import (
+    bind_item_scan_context as _bind_r, load_all_item_scans as _load_scans_r,
+    load_item_scan_file as _load_scan_r, save_item_scan as _save_scan_r,
+)
 
 _rt_tmp = Path(tempfile.mkdtemp())
 _rt_cwd = _os.getcwd()
 _os.chdir(_rt_tmp)
 try:
-    _slots_soll = {"Beutel": _SL_P(name="Beutel", scan_region=(10, 20, 70, 80),
-                                   click_pos=(40, 50), slot_color=(1, 2, 3))}
-    _items_soll = {"Kohle": _IP_R(name="Kohle", marker_colors=[(4, 5, 6)],
-                                  category="Erz", priority=7, min_confidence=0.9)}
-
-    # Hauptprozess schreibt -> Studio liest
     _st_r = _ST_P()
-    _st_r.global_slots = dict(_slots_soll)
-    _st_r.global_items = dict(_items_soll)
+    _seq_r = _SEQ_R(name="Farm")
+    _st_r.active_sequence = _seq_r
+    _st_r.sequences["Farm"] = _seq_r
+    _scan_r = _ISC_R(name="Inventar", owner_sequence="Farm")
+    _st_r.item_scans["Inventar"] = _scan_r
+    _bind_r(_st_r, "Inventar")
+    _st_r.global_slots["Beutel"] = _SL_P(
+        name="Beutel", scan_region=(10, 20, 70, 80), click_pos=(40, 50),
+        slot_color=(1, 2, 3))
+    _st_r.global_items["Kohle"] = _IP_R(
+        name="Kohle", marker_colors=[(4, 5, 6)], category="Erz", priority=7,
+        min_confidence=0.9)
     with _cl2.redirect_stdout(_io2.StringIO()):
         _gl.save_global_slots(_st_r)
         _gl.save_global_items(_st_r)
-    _studio_slots, _studio_items = _sm_ls(_SF_R), _sm_li(_IF_R)
-    check("das Studio liest, was der Hauptprozess geschrieben hat",
+    _pfad_r = Path("sequences/farm/item_scans/inventar.json")
+    _studio_scan = _load_scan_r(_pfad_r, "Farm")
+    _studio_slots = {s.name: s for s in _studio_scan.slots}
+    _studio_items = {i.name: i for i in _studio_scan.items}
+    check("das Studio liest, was die TUI-Arbeitsansicht geschrieben hat",
           list(_studio_slots) == ["Beutel"] and list(_studio_items) == ["Kohle"])
     check("und zwar mit denselben Werten",
           _studio_slots["Beutel"].scan_region == (10, 20, 70, 80)
@@ -168,26 +169,20 @@ try:
           and _studio_items["Kohle"].min_confidence == 0.9
           and _studio_items["Kohle"].marker_colors == [(4, 5, 6)])
 
-    # Studio schreibt -> Hauptprozess liest
-    _slots_datei_vorher = Path(_SF_R).read_text(encoding="utf-8")
-    _items_datei_vorher = Path(_IF_R).read_text(encoding="utf-8")
-    _sm_ss(_studio_slots, _SF_R)
-    _sm_si(_studio_items, _IF_R)
-    # **Byte fuer Byte dieselbe Datei.** Das ist die eigentliche Aussage: beide Wege
-    # gehen durch dieselben `_*_to_dict`, also darf ein Speichern im Studio die Datei
-    # des Hauptprozesses nicht einmal formal veraendern.
-    check("das Studio schreibt byteweise dieselbe slots.json",
-          Path(_SF_R).read_text(encoding="utf-8") == _slots_datei_vorher)
-    check("und dieselbe items.json",
-          Path(_IF_R).read_text(encoding="utf-8") == _items_datei_vorher)
-
+    # Studio schreibt -> Hauptprozess lädt und bindet denselben Scan.
+    _studio_items["Kohle"].priority = 3
+    _studio_scan.items = list(_studio_items.values())
+    _save_scan_r(_studio_scan)
     _st_zurueck = _ST_P()
+    _st_zurueck.active_sequence = _SEQ_R(name="Farm")
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _gl.load_global_slots(_st_zurueck)
-        _gl.load_global_items(_st_zurueck)
+        _load_scans_r(_st_zurueck)
     check("der Hauptprozess liest zurueck, was das Studio geschrieben hat",
           _st_zurueck.global_slots["Beutel"].scan_region == (10, 20, 70, 80)
-          and _st_zurueck.global_items["Kohle"].category == "Erz")
+          and _st_zurueck.global_items["Kohle"].category == "Erz"
+          and _st_zurueck.global_items["Kohle"].priority == 3)
+    check("globale slots.json/items.json entstehen dabei nicht",
+          not Path("slots/slots.json").exists() and not Path("items/items.json").exists())
 finally:
     _os.chdir(_rt_cwd)
 
@@ -245,32 +240,34 @@ _os.chdir(_seq_tmp)
 try:
     Path("sequences").mkdir()
 
-    def _schreibe_seq(datei, name):
-        Path("sequences", datei).write_text(_js_seq.dumps({
+    def _schreibe_seq(ordner, name):
+        pfad = Path("sequences", ordner, "sequence.json")
+        pfad.parent.mkdir()
+        pfad.write_text(_js_seq.dumps({
             "name": name, "schema_version": 4, "total_cycles": 1,
-            "init_steps": [], "end_steps": [], "loop_phases": []}),
+            "points": [], "init_steps": [], "end_steps": [], "loop_phases": []}),
             encoding="utf-8")
 
     _ordnerzeit = 1_700_000_000
 
-    _schreibe_seq("erste.json", "erste")
+    _schreibe_seq("erste", "erste")
     _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
-    _namen = [p.name for _, p in _seqmod.list_available_sequences()]
-    check("die erste Sequenz steht in der Liste", _namen == ["erste.json"])
+    _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
+    check("die erste Sequenz steht in der Liste", _namen == ["erste"])
 
     # Zweite Datei, Ordner-Zeit absichtlich unveraendert.
-    _schreibe_seq("zweite.json", "zweite")
+    _schreibe_seq("zweite", "zweite")
     _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
-    _namen = [p.name for _, p in _seqmod.list_available_sequences()]
+    _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
     check("die zweite auch, obwohl die Ordner-Zeit gleich blieb",
-          _namen == ["erste.json", "zweite.json"])
+          _namen == ["erste", "zweite"])
 
     # Und die Folge, wegen der es weh tut: das Studio oeffnet die richtige.
-    _os.utime(Path("sequences") / "erste.json", (_ordnerzeit, _ordnerzeit))
-    _os.utime(Path("sequences") / "zweite.json",
+    _os.utime(Path("sequences/erste/sequence.json"), (_ordnerzeit, _ordnerzeit))
+    _os.utime(Path("sequences/zweite/sequence.json"),
               (_ordnerzeit + 100, _ordnerzeit + 100))
     check("und zuletzt_bearbeitet() findet die neuere",
-          _zb_seq() == Path("sequences") / "zweite.json")
+          _zb_seq() == Path("sequences/zweite/sequence.json"))
 
     # Der Cache soll trotzdem einer bleiben: gleiche Lage, gleiche Liste.
     check("unveraendert liefert der Cache dasselbe Objekt",

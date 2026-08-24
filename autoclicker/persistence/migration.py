@@ -86,28 +86,8 @@ def file_version(data) -> int:
 
 
 def _norm_item_scan(data, context: dict) -> list[str]:
-    """item_scans/*.json - Kopien von Slots/Items werden zu Namens-Referenzen.
-
-    Der Name war schon immer die Identitaet, aufgeloest wird gegen slots.json /
-    items.json — damit wirken Aenderungen am globalen Eintrag sofort in jedem
-    Scan. Global fehlende Namen meldet resolve_scan_references() beim Laden.
-    """
-    if not isinstance(data, dict):
-        return []
-    meldungen = []
-    for feld, namensfeld, label in (("slots", "slot_names", "Slot"),
-                                    ("items", "item_names", "Item")):
-        eingebettet = data.pop(feld, None)
-        if eingebettet is None:
-            continue
-        namen = [e["name"] for e in eingebettet
-                 if isinstance(e, dict) and e.get("name")]
-        # Schon vorhandene Namensliste gewinnt - sie ist das aktuelle Feld.
-        if not data.get(namensfeld):
-            data[namensfeld] = namen
-        meldungen.append(f"{len(namen)} {label}(s) als Referenz statt Kopie "
-                         f"({feld} -> {namensfeld})")
-    return meldungen
+    """Kein Altformat-Umbau: ein Scan enthält heute seine Slots und Items."""
+    return []
 
 
 # Felder, die ein Punkt haben darf. Alles andere ist Altbestand und fliegt raus -

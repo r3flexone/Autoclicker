@@ -161,6 +161,7 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     with state.lock:
         state.sequences[seq_name] = new_sequence
         state.active_sequence = new_sequence
+        state.points = new_sequence.points
 
     save_data(state)
 

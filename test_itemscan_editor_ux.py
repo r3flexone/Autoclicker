@@ -36,7 +36,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         os.chdir(self.temp.name)
         Path("sequences").mkdir()
         self.bridge = StudioBridge(
-            Sequence(name="Test"), Path("sequences/Test.json"), "sequences")
+            Sequence(name="Test"), Path("sequences/test/sequence.json"), "sequences")
         self.bridge._scan_geladen = True
         self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
         for x in range(20, 50):
@@ -50,8 +50,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
             name="Slot 1", scan_region=(10, 10, 60, 60),
             click_pos=(35, 35), slot_color=(40, 44, 52))
         self.bridge.slots = {slot.name: slot}
-        scan = ItemScanConfig(name="Inventar", slot_names=[slot.name])
-        scan.slots = [slot]
+        scan = ItemScanConfig(
+            name="Inventar", slots=[slot], owner_sequence="Test")
         self.bridge.scans = {scan.name: scan}
         self.bridge.scan_offen = scan.name
 
@@ -59,25 +59,10 @@ class ItemscanEditorUxTest(unittest.TestCase):
         os.chdir(self.old_cwd)
         self.temp.cleanup()
 
-    def test_invalid_membership_kind_does_not_change_items(self):
-        self.bridge.items["Bogen"] = ItemProfile(name="Bogen")
-
-        state = self.bridge.scan_mitglied({
-            "scan": "Inventar", "art": "tipfehler", "name": "Bogen",
-        })
-
-        self.assertEqual(self.bridge.scans["Inventar"].item_names, [])
-        self.assertEqual(state["status"]["art"], "err")
-        self.assertIn("Unbekannte Art", state["status"]["text"])
-
-    def test_unknown_member_cannot_be_added_to_scan(self):
-        state = self.bridge.scan_mitglied({
-            "scan": "Inventar", "art": "item", "name": "Fehlt",
-        })
-
-        self.assertEqual(self.bridge.scans["Inventar"].item_names, [])
-        self.assertEqual(state["status"]["art"], "err")
-        self.assertIn("gibt es nicht", state["status"]["text"])
+    def test_membership_api_is_removed(self):
+        self.assertFalse(hasattr(self.bridge, "scan_mitglied"))
+        self.assertFalse(hasattr(self.bridge, "scan_alle"))
+        self.assertFalse(hasattr(self.bridge, "scan_auswahl_mitglied"))
 
     def test_invalid_tolerance_is_reported_without_mutation(self):
         cfg = self.bridge.scans["Inventar"]
@@ -107,7 +92,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         state = self.bridge.scan_lernvorschau({"scope": "alle"})
         self.assertEqual(self.bridge.items, {})
         self.assertIsNotNone(state["review"])
-        self.assertFalse(Path("items/templates").exists())
+        self.assertFalse(Path("sequences/test/templates").exists())
 
         row = state["review"]["zeilen"][0]
         state = self.bridge.scan_lernvorschau_uebernehmen({"zeilen": [{
@@ -118,7 +103,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(self.bridge.items["Roter Helm"].category, "Helme")
         self.assertIn("Roter Helm", self.bridge.scans["Inventar"].item_names)
         self.assertIsNone(state["review"])
-        self.assertTrue(Path("items/templates/roter_helm.png").exists())
+        self.assertTrue(Path("sequences/test/templates/roter_helm.png").exists())
 
     def test_recognized_item_shows_its_data_and_is_added_without_duplicate(self):
         self.bridge.items["Bogen"] = ItemProfile(
@@ -138,9 +123,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 ("Bogen", "Waffen", 4))
             self.assertEqual(row["vorhanden"], "Bogen")
             self.assertEqual(row["neu_name"], "Item 1")
-            self.assertTrue(row["kann_hinzufuegen"])
+            self.assertFalse(row["kann_hinzufuegen"])
             self.assertTrue(row["ausgewaehlt"])
-            self.assertFalse(row["im_scan"])
+            self.assertTrue(row["im_scan"])
 
             state = self.bridge.scan_lernvorschau_uebernehmen({"zeilen": [{
                 "slot": row["slot"], "ausgewaehlt": True,
@@ -153,7 +138,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(self.bridge.items["Bogen"].category, "Fernkampf")
         self.assertEqual(self.bridge.items["Bogen"].priority, 2)
         self.assertEqual(state["wahl"], {"art": "item", "name": "Bogen"})
-        self.assertIn("zum Scan hinzugefügt", state["status"]["text"])
+        self.assertIn("bearbeitet", state["status"]["text"])
 
         with matcher, compatible:
             state = self.bridge.scan_lernvorschau({"scope": "alle"})
@@ -171,17 +156,17 @@ class ItemscanEditorUxTest(unittest.TestCase):
             }]})
 
         self.assertIn("Bogen", self.bridge.items)
-        self.assertEqual(self.bridge.scans["Inventar"].item_names, [])
-        self.assertIn("aus dem Scan entfernt", state["status"]["text"])
+        self.assertEqual(self.bridge.scans["Inventar"].item_names, ["Bogen"])
+        self.assertIn("nichts gelernt", state["status"]["text"])
 
     def test_review_offers_an_explicit_override_for_a_wrong_match(self):
         js = (Path(self.old_cwd) /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         self.assertIn("Als anderes Item lernen", js)
-        self.assertIn("bleibt im Scan", js)
-        self.assertIn("wird zum Scan hinzugefügt", js)
-        self.assertIn("wird aus diesem Scan entfernt", js)
+        self.assertIn("bereits in diesem Scan eingerichtet", js)
+        self.assertIn("wird nicht gelernt oder geändert", js)
+        self.assertNotIn("wird aus diesem Scan entfernt", js)
         self.assertIn("als_anders: n.dataset.alsAnderes", js)
         self.assertIn("kat.sperren(bestehend && !normalerTreffer)", js)
         self.assertIn('name.value = z.neu_name || "Item"', js)
@@ -192,10 +177,13 @@ class ItemscanEditorUxTest(unittest.TestCase):
             click_pos=(85, 35), slot_color=(40, 44, 52))
         self.bridge.slots[slot.name] = slot
         cfg = self.bridge.scans["Inventar"]
-        cfg.slot_names.append(slot.name)
+        cfg.slots.append(slot)
+        for x in range(70, 100):
+            for y in range(20, 50):
+                self.bridge._foto.putpixel((x, y), (50, 120, 210))
         self.bridge.items["Bogen"] = ItemProfile(
             name="Bogen", category="Waffen", priority=1)
-        cfg.item_names.append("Bogen")
+        cfg.items.append(self.bridge.items["Bogen"])
         self.bridge._objekte_angleichen()
 
         matcher = patch(
@@ -210,8 +198,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertTrue(all(row["ausgewaehlt"] for row in rows))
 
-            # Ein abweichendes altes Frontend-Paket darf das gemeinsame Item
-            # nicht entfernen, solange ein zweites Vorkommen markiert bleibt.
+            # Eine abgewählte Zeile bedeutet nur „nicht lernen“, nicht löschen.
             self.bridge.scan_lernvorschau_uebernehmen({"zeilen": [
                 {"slot": rows[0]["slot"], "ausgewaehlt": False},
                 {"slot": rows[1]["slot"], "ausgewaehlt": True},
@@ -224,22 +211,19 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 {"slot": row["slot"], "ausgewaehlt": False} for row in rows
             ]})
 
-        self.assertNotIn("Bogen", cfg.item_names)
-        self.assertIn("aus dem Scan entfernt", state["status"]["text"])
+        self.assertIn("Bogen", cfg.item_names)
+        self.assertIn("nichts gelernt", state["status"]["text"])
 
-    def test_result_summary_and_bulk_accept(self):
+    def test_result_summary_has_no_foreign_membership(self):
         self.bridge.items["Bekannt"] = ItemProfile(name="Bekannt")
+        self.bridge._objekte_angleichen()
         self.bridge._treffer = {
-            "Slot 1": {"name": "Bekannt", "fremd": True},
+            "Slot 1": {"name": "Bekannt", "fremd": False},
         }
         result = self.bridge.scan_daten()["ergebnis"]
-        self.assertEqual(result["fremd"], 1)
+        self.assertEqual(result["fremd"], 0)
         self.assertEqual(result["gesamt"], 1)
-
-        state = self.bridge.scan_treffer_uebernehmen()
         self.assertIn("Bekannt", self.bridge.scans["Inventar"].item_names)
-        self.assertEqual(state["ergebnis"]["fremd"], 0)
-        self.assertEqual(state["ergebnis"]["erkannt"], 1)
 
     def test_category_reuses_existing_spelling_and_allows_new_names(self):
         self.bridge.items = {
@@ -343,7 +327,10 @@ class ItemscanEditorUxTest(unittest.TestCase):
             name="Slot 2", scan_region=(60, 10, 110, 60),
             click_pos=(85, 35), slot_color=(40, 44, 52))
         self.bridge.slots[slot.name] = slot
-        self.bridge.scans["Inventar"].slot_names.append(slot.name)
+        self.bridge.scans["Inventar"].slots.append(slot)
+        for x in range(70, 100):
+            for y in range(20, 50):
+                self.bridge._foto.putpixel((x, y), (50, 120, 210))
 
         state = self.bridge.scan_lernvorschau({"scope": "alle"})
 
@@ -351,8 +338,23 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(
             [row["prioritaet"] for row in state["review"]["zeilen"]], [1, 1])
 
+    def test_completely_empty_slot_is_not_offered_or_learned(self):
+        self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
+
+        state = self.bridge.scan_lernvorschau({"scope": "alle"})
+
+        self.assertIsNone(state["review"])
+        self.assertEqual(self.bridge.items, {})
+        self.assertIn("leere", state["status"]["text"])
+
+        state = self.bridge.scan_item_lernen({"slot": "Slot 1"})
+
+        self.assertEqual(self.bridge.items, {})
+        self.assertIn("Kein Item", state["status"]["text"])
+        self.assertFalse(Path("sequences/test/templates").exists())
+
     def test_existing_item_name_adds_a_slot_size_variant(self):
-        templates = Path("items/templates")
+        templates = Path("sequences/test/templates")
         templates.mkdir(parents=True)
         primary = Image.new("RGB", (62, 57), (20, 80, 160))
         for x in range(0, 62, 4):
@@ -393,7 +395,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             self.skipTest("OpenCV nicht installiert")
         from autoclicker.runtime.item_scan import _check_profile_match
 
-        templates = Path("items/templates")
+        templates = Path("sequences/test/templates")
         templates.mkdir(parents=True, exist_ok=True)
 
         def pattern(size, offset):
@@ -411,10 +413,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
             template_variants=["robe_50x50.png"], min_confidence=0.8)
         state = AutoClickerState()
 
-        self.assertTrue(_check_profile_match(item, passend, 40, state, False))
+        self.assertTrue(_check_profile_match(
+            item, passend, 40, state, False, template_root=templates))
         with self.assertNoLogs("autoclicker", level="WARNING"):
             self.assertFalse(_check_profile_match(
-                item, pattern((51, 50), 1), 40, state, False))
+                item, pattern((51, 50), 1), 40, state, False,
+                template_root=templates))
 
         data = self.bridge._item_json(item)
         self.assertEqual(data["vorlagengroessen"], [[62, 57], [50, 50]])
@@ -576,6 +580,33 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # Die global gespeicherten Slots bleiben unangetastet; die Anpassung gilt
         # in der Runtime nur für diesen Lauf.
         self.assertEqual(slot.click_pos, (120, 130))
+
+    def test_disabled_slot_is_kept_but_not_scanned(self):
+        import autoclicker.runtime.item_scan as runtime
+
+        active = ItemSlot(
+            name="Aktiv", scan_region=(0, 0, 20, 20), click_pos=(10, 10))
+        parked = ItemSlot(
+            name="Geparkt", scan_region=(20, 0, 40, 20), click_pos=(30, 10),
+            enabled=False)
+        item = ItemProfile(name="Treffer", marker_colors=[(200, 50, 60)])
+        state = AutoClickerState()
+        state.config.scan_slot_delay = 0
+        state.item_scans = {
+            "Inventar": ItemScanConfig(
+                name="Inventar", slots=[active, parked], items=[item])}
+        bild = Image.new("RGB", (20, 20), (200, 50, 60))
+
+        with patch.object(runtime, "take_screenshot", return_value=bild) as capture, \
+                patch.object(runtime, "_check_profile_match", return_value=(True, 1.0)), \
+                patch.object(runtime, "_park_mouse_for_scan"):
+            result = runtime.execute_item_scan(state, "Inventar")
+
+        self.assertEqual([slot.name for slot in state.item_scans["Inventar"].slots],
+                         ["Aktiv", "Geparkt"])
+        self.assertEqual(capture.call_count, 1)
+        self.assertEqual([treffer[0] for treffer in result], [(10, 10)])
+        self.assertEqual([treffer[1].name for treffer in result], ["Treffer"])
 
 
 if __name__ == "__main__":

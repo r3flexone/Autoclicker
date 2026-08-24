@@ -15,8 +15,7 @@ from autoclicker.models import (
     SequenceStep as _SS,
 )
 from autoclicker.persistence import (
-    list_available_sequences, save_data, save_global_items, save_global_slots,
-    save_item_scan, save_points,
+    list_available_item_scans, list_available_sequences, save_data, save_item_scan,
 )
 import autoclicker.befehl as _bf
 
@@ -25,22 +24,24 @@ def _sandkasten():
     """Ein vollständiger kleiner Bestand auf Platte, plus die Brücke darauf."""
     sand = _tf.mkdtemp(prefix="wz_")
     _os.chdir(sand)
-    for d in ("sequences", "item_scans", "boss_scans", "icon_scans", "slots"):
-        _P(d).mkdir()
-    _P("items/templates").mkdir(parents=True)
+    _P("sequences").mkdir()
 
     st = _ST()
-    st.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
-                 _CP(id=2, x=900, y=600, name="Bestaetigen"),
-                 _CP(id=3, x=400, y=300, name="Menue")]
-    save_points(st)
-    st.global_slots = {"Slot 1": _IS(name="Slot 1", scan_region=(10, 20, 70, 80),
-                                     click_pos=(40, 50))}
-    save_global_slots(st)
+    punkte = [_CP(id=1, x=100, y=100, name="Sammeln"),
+              _CP(id=2, x=900, y=600, name="Bestaetigen"),
+              _CP(id=3, x=400, y=300, name="Menue")]
     seq = _SEQ(name="Farm", loop_phases=[_LP(name="A", steps=[
-        _SS(point_id=1, delay_before=3.0), _SS(point_id=2)])])
+        _SS(point_id=1, delay_before=3.0), _SS(point_id=2)])], points=punkte)
     st.sequences["Farm"] = seq
+    st.active_sequence = seq
+    st.points = seq.points
     save_data(st)
+    save_item_scan(_ISC(
+        name="Inventar", owner_sequence="Farm",
+        slots=[_IS(name="Slot 1", scan_region=(10, 20, 70, 80),
+                   click_pos=(40, 50))],
+        items=[_IP(name="Bekannt", marker_colors=[(20, 40, 60)])],
+    ))
     # Den Pfad NICHT von Hand bauen: `save_data` bereinigt den Namen (klein, ohne
     # Sonderzeichen), und die App holt ihn ueber `list_available_sequences()`. Ein
     # getippter Pfad geht daran vorbei - und genau der Unterschied entscheidet,
@@ -53,6 +54,34 @@ def _sandkasten():
 
 
 _cwd = _os.getcwd()
+
+# Die Werkzeuge sind keine drei Textblöcke mehr. Diese Prüfung misst beide
+# Seiten des Vertrags: JavaScript baut die visuellen Bausteine, CSS gibt ihnen
+# eine eigene Gestalt. Fehlt eine Seite, bleibt der Reiter technisch bedienbar,
+# sieht aber wieder wie unformatierter Hilfetext aus.
+section("Studio-Werkzeuge: visuelle Hierarchie")
+_web = _P(__file__).resolve().parents[2] / "autoclicker/editors/sequence_studio/web"
+_app = (_web / "app.js").read_text(encoding="utf-8")
+_css = (_web / "styles.css").read_text(encoding="utf-8")
+check("jedes Werkzeug hat ein eigenes Linien-Icon",
+      all(f'{k}:' in _app for k in ("pruefen", "kalibrieren", "klicken"))
+      and "function wzIcon(" in _app)
+check("Werkzeugkarten statt einfacher Textknöpfe",
+      'class: "wz-nav "' in _app and ".wz-nav{" in _css)
+check("der Inhalt beginnt mit einem gestalteten Werkzeugkopf",
+      "function wzKopf(" in _app and ".wz-hero{" in _css)
+check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
+      "function wzKennzahl(" in _app and ".wz-kennzahlen{" in _css
+      and ".wz-erfolg{" in _css)
+check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
+      'function wzInfo(' in _app and 'info(text, "werkzeug-" + titel)' in _app
+      and ".wz-info-kompakt{" in _css and ".wz-info{" not in _css)
+check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
+      'class: "info-glyphe"' in _app
+      and '"data-hilfe": schluessel || text}, "i")' not in _app
+      and 'r: "6.5"' in _app and ".info-glyphe{" in _css
+      and 'styles.css?v=' in (_web / "index.html").read_text(encoding="utf-8")
+      and 'app.js?v=' in (_web / "index.html").read_text(encoding="utf-8"))
 
 # --------------------------------------------------------------------- Prüfen
 
@@ -67,8 +96,9 @@ try:
     # stehen da, weil beide vorkommen: den Namen sucht man im Fenster, den
     # Dateinamen im Ordner.
     check("und der Reiter weiss, welche Sequenz offen ist", _d["sequenz"] == "Farm")
-    check("samt Dateinamen, wie er auf Platte heisst",
-          _d["datei"] == _b.filepath.name and _P("sequences", _d["datei"]).exists())
+    check("samt Ordnernamen, wie er auf Platte heisst",
+          _d["datei"] == _b.filepath.parent.name
+          and _P("sequences", _d["datei"], "sequence.json").exists())
     check("samt der Frage, ob sie ungespeichert ist", _d["offen"] is False)
     _b._dirty = True
     check("und die Antwort aendert sich mit", _b.werkzeug_daten()["offen"] is True)
@@ -84,16 +114,14 @@ try:
     check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["befunde"])
     check("und sagt trotzdem, was geprueft wurde", len(_sauber["geprueft"]) > 0)
 
-    # Jetzt absichtlich kaputt: ein Scan, der auf nicht vorhandene Namen zeigt.
-    save_global_items(_ST(global_items={"Geist": _IP(name="Geist")}))
-    save_item_scan(_ISC(name="Inventar", slot_names=["Gibt es nicht"],
-                        item_names=["Geist", "Auch weg"]))
+    # Jetzt absichtlich kaputt: ein lokaler Scan ohne Slot und Erkennung.
+    save_item_scan(_ISC(name="Inventar", owner_sequence="Farm"))
     _kaputt = _b.werkzeug_pruefen()
     _texte = " | ".join(f"{x['bereich']} {x['text']}" for x in _kaputt["befunde"])
-    check("ein toter Slot-Verweis wird gemeldet", "Gibt es nicht" in _texte)
-    check("ein totes Item ebenso", "Auch weg" in _texte)
+    check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texte)
+    check("ein Scan ohne Erkennung ebenso", "keine Items" in _texte)
     check("Fehler und Hinweise werden getrennt gezaehlt",
-          _kaputt["fehler"] >= 2 and _kaputt["hinweise"] >= 1)
+          _kaputt["fehler"] >= 1 and _kaputt["hinweise"] >= 1)
     # Gelesen wird von PLATTE, nicht aus dem, was die Reiter offen haben - sonst
     # meldete die Pruefung "sauber", weil sie die halben Daten gar nicht kennt.
     check("gelesen wird vom gespeicherten Stand", _kaputt["ok"])
@@ -143,7 +171,8 @@ try:
     check("und der Reiter zeigt den neuen Stand",
           [(p.id, p.x) for p in _b.points] == [(1, 150), (2, 950), (3, 450)])
 
-    _slot = _js.loads(_P("slots/slots.json").read_text(encoding="utf-8"))["Slot 1"]
+    _scan_pfad = dict(list_available_item_scans("Farm"))["Inventar"]
+    _slot = _js.loads(_scan_pfad.read_text(encoding="utf-8"))["slots"]["Slot 1"]
     check("die Slots bleiben stehen, wenn ihr Haken aus ist",
           tuple(_slot["scan_region"]) == (10, 20, 70, 80))
     check("nach dem Anwenden laeuft keine Kalibrierung mehr",
@@ -165,12 +194,13 @@ try:
           _b.werkzeug_daten()["kalibrierung"]["identitaet"] is True)
 
     # Abbrechen darf nichts geschrieben haben - bis dahin steht alles nur im Kopf.
-    _vorher = _P("sequences/points.json").read_text(encoding="utf-8")
+    _sequenzdatei = _P("sequences/farm/sequence.json")
+    _vorher = _sequenzdatei.read_text(encoding="utf-8")
     _b._stelle_abwarten = lambda: (500, 500, "")
     _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
     check("abbrechen raeumt die Kalibrierung weg", _b.kalib_abbrechen()["ok"])
     check("und hat nichts geschrieben",
-          _P("sequences/points.json").read_text(encoding="utf-8") == _vorher)
+          _sequenzdatei.read_text(encoding="utf-8") == _vorher)
     check("danach ist der Stand leer", _b.werkzeug_daten()["kalibrierung"] == {})
 
     # Ein unbekannter Punkt ist kein Grund, irgendetwas zu rechnen.
@@ -206,8 +236,8 @@ try:
     # wohl in die Liste - sonst raeumte der Fix zu viel weg.
     from autoclicker.import_export import collect_click_positions
     _st = _ST()
-    _st.points = [_CP(id=1, x=10, y=10, name="A")]
-    _st.sequences["S"] = _SEQ(name="S", loop_phases=[_LP(name="L", steps=[
+    _st.sequences["S"] = _SEQ(name="S", points=[_CP(id=1, x=10, y=10, name="A")],
+                              loop_phases=[_LP(name="L", steps=[
         _SS(x=70, y=80, point_id=None), _SS(x=10, y=10, point_id=1)])])
     _labels = [lb for lb, _, _ in collect_click_positions(_st)]
     check("ein Schritt ohne point_id bleibt sichtbar",
@@ -218,6 +248,201 @@ finally:
 
 
 # ---------------------------------------------------------------- Klick-Runde
+
+section("Studio: Sequenz-Aufnahme geht an den Hauptprozess")
+try:
+    _sand, _b = _sandkasten()
+    _bf.BEFEHL_DATEI = _P("befehl.json")
+    check("der Studio-Knopf kann eine Aufnahme starten",
+          _b.aufnahme_starten({"name": "Aufnahme UI", "zyklen": 3,
+                               "beschreibung": "sichtbar"})["ok"])
+    _auftrag = _bf.hole()
+    check("und schickt genau den begrenzten Aufnahme-Befehl",
+          _auftrag is not None and _auftrag["befehl"] == "aufnahme")
+    check("alle Angaben stehen vor dem Spielen fest",
+          _auftrag["argumente"] == {"name": "aufnahme_ui", "zyklen": 3,
+                                     "beschreibung": "sichtbar"})
+    check("auch Stoppen geht sichtbar im Studio", _b.aufnahme_stoppen()["ok"])
+    _stopp = _bf.hole()
+    check("und sendet den eigenen Stopp-Befehl",
+          _stopp is not None and _stopp["befehl"] == "aufnahme_stop")
+    _html = (_web / "index.html").read_text(encoding="utf-8")
+    check("der sichtbare Knopf steht unter Notiz und ueber den Punkten",
+          _html.index('id="seq-info"') < _html.index('id="btn-aufnahme"') <
+          _html.index('id="punkte-zahl"'))
+    check("der reine Werkzeug-Verweis braucht kein Info-i",
+          "aufnahme-info" not in _html)
+    check("die Blockanzahl bleibt eine berechnete Ausgabe",
+          '<output class="mono" id="seq-bloecke">' in _html)
+    _js = (_web / "app.js").read_text(encoding="utf-8")
+    check("auch JavaScript baut dort kein Info-i mehr",
+          "aufnahme-info" not in _js)
+    check("der Editor-Knopf verweist auf das Werkzeug",
+          'wzOeffnen("aufnahme")' in _js)
+    check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
+          all(wort in _js for wort in ("wzAufnahmeStarten", "wzAufnahmeStoppen",
+                                       "wzAufnahmeBeobachten")))
+    from autoclicker.editors.sequence_recorder import AUFNAHME_HOTKEYS
+    check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
+          _b.werkzeug_daten()["aufnahme_tasten"] ==
+          [list(zeile) for zeile in AUFNAHME_HOTKEYS])
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: Punkte sind vollständig verwaltbar")
+try:
+    _sand, _b = _sandkasten()
+    _daten = _b.werkzeug_daten()
+    _p1 = next(p for p in _daten["punkte"] if p["id"] == 1)
+    check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["verwendungen"]))
+    _erg = _b.werkzeug_punkt_loeschen({"punkt_id": 1})
+    check("ein verwendeter Punkt wird nicht gelöscht",
+          not _erg["ok"] and _b._punkt_mit_id(1) is not None)
+    check("der Löschschutz nennt die Verwendungen", bool(_erg.get("verwendungen")))
+
+    _b._stelle_abwarten = lambda: (333, 444, "")
+    _b._farbe_an = staticmethod(lambda x, y: (12, 34, 56))
+    _erg = _b.werkzeug_punkt_aufnehmen({"name": "Neu"})
+    _neu = _b._punkt_mit_id(_erg.get("punkt_id"))
+    check("ein freier Punkt lässt sich im Studio aufnehmen",
+          _erg["ok"] and (_neu.x, _neu.y) == (333, 444))
+    check("die Farbe wird dabei mitgemessen", _neu.color == (12, 34, 56))
+    check("und die Sequenz ist danach ungespeichert", _b._dirty)
+
+    _erg = _b.werkzeug_farben({"art": "punkt"})
+    check("der Farbanalysator liefert RGB und Hex",
+          _erg["ok"] and _erg["farben"][0]["rgb"] == [12, 34, 56]
+          and _erg["farben"][0]["hex"] == "#0C2238")
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio: Phasen-Zeiten skalieren und Block testen")
+try:
+    _sand, _b = _sandkasten()
+    _loop_index = next(i for i, lane in enumerate(_b.board.lanes) if lane.kind == "loop")
+    _b.phase_skalieren({"phase": _loop_index, "faktor": "0,5"})
+    check("die Wartezeit wird mit deutschem Komma skaliert",
+          _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
+    _bf.BEFEHL_DATEI = _P("befehl.json")
+    _b.waehlen({"phase": _loop_index, "zeile": 0})
+    _erg = _b.block_testen()
+    _auftrag = _bf.hole()
+    check("der Block-Test wird ausdrücklich angekündigt", "echter" in _erg["status"]["text"])
+    check("getestet wird nur die gespeicherte Blockposition",
+          _auftrag and _auftrag["befehl"] == "block_test"
+          and _auftrag["argumente"]["phase"] == "loop"
+          and _auftrag["argumente"]["block"] == 0)
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Live-Run: alle Laufentscheidungen sind verdrahtet")
+from autoclicker.handlers import BEFEHLE as _BEFEHLE_NEU
+check("Studio und Hauptprozess kennen dieselben Befehle",
+      sorted(_SB.ALLE_BEFEHLE) == sorted(_BEFEHLE_NEU))
+check("Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
+      {"skip", "finish", "start_manuell", "manuell_aktion", "zeitplan"}
+      <= set(_SB.LAUF_BEFEHLE))
+check("alle Laufentscheidungen haben sichtbare Knöpfe",
+      all(text in _app for text in ("Warten überspringen", "Zyklus abschliessen",
+                                    "Schrittweise", "Start planen", "Ausführen")))
+check("der eindeutige Block-Test startet ohne zusätzlichen Browser-Dialog",
+      'window.confirm("Diesen Block' not in _app)
+check("unter den eindeutigen Aktionsknöpfen steht kein doppelter Erklärungstext",
+      "Zeigen setzt nur die Maus" not in _app)
+check("die Phasen-Skalierung ist am Knopf eindeutig benannt",
+      "Wartezeiten ×" in _app and '"Zeit ×"' not in _app)
+_stelle_ui = _app[_app.index("function baueStelle"):
+                  _app.index("function setzeStelle")]
+check("die Anleitung zum Maus-Setzen steht nur im Info-Text",
+      "Mit ‚Stelle mit der Maus setzen‘" in _stelle_ui
+      and 'el("p", {class: "hinweis"},\n    "Danach:' not in _stelle_ui)
+_inspektor_ui = _app[_app.index("function zeichneInspektor"):
+                     _app.index("/* -------------------------------------------------------------------- Dialog")]
+# Offene Texte im Inspektor sind nur ZUSTAND, keine Bedienungsanleitung:
+# fehlender Punkt, fehlende Scan-Datei, Screenshot-Mass, fehlender Prüfpunkt
+# und ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann.
+check("alle Block-Typen haben nur noch fünf begründete offene Zustandsmeldungen",
+      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hinweis') == 5)
+check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
+      all(text in _inspektor_ui for text in (
+          "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",
+          "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung")))
+check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
+      "const auswirkung = b.else_aktion" in _inspektor_ui
+      and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspektor_ui)
+
+section("Studio-Aufnahme: kein unsichtbarer Prompt und kein UI-Klick im Block")
+try:
+    _sand, _b = _sandkasten()
+    import time as _time
+    import autoclicker.editors.sequence_recorder as _rec
+    from autoclicker.models import AutoClickerState as _State, RecordEvent as _RE, REC_CLICK as _RC
+
+    _st = _State()
+    _st.recording_active = True
+    _st.recording_events = [_RE(_RC, _time.monotonic(), 321, 456, (11, 22, 33))]
+    _st.recording_ui_name = "aufnahme_ui"
+    _st.recording_ui_cycles = 2
+    _st.recording_ui_description = "ohne Konsole"
+    _alt_input = _rec.safe_input
+    _alt_maus_weg = _rec.remove_mouse_hook
+    _alt_tasten_weg = _rec.remove_keyboard_hook
+    _rec.safe_input = lambda *_a, **_k: (_ for _ in ()).throw(
+        AssertionError("UI-Aufnahme darf nichts in der Konsole fragen"))
+    _rec.remove_mouse_hook = lambda: None
+    _rec.remove_keyboard_hook = lambda: None
+    try:
+        _gespeichert = _rec.stop_recording(_st)
+    finally:
+        _rec.safe_input = _alt_input
+        _rec.remove_mouse_hook = _alt_maus_weg
+        _rec.remove_keyboard_hook = _alt_tasten_weg
+    check("die UI-Vorgaben speichern ohne safe_input", _gespeichert == "aufnahme_ui")
+    from autoclicker.persistence import load_sequence_file as _load_sequence_file
+    _geladen = _load_sequence_file(_rec.aufnahme_datei("aufnahme_ui"))
+    check("die Aufnahme wird wirklich zur Sequenz", _geladen is not None)
+    check("Zyklen und Notiz kommen aus dem UI",
+          _geladen.total_cycles == 2 and _geladen.description == "ohne Konsole")
+    check("und aus dem Ereignis entsteht ein Block", _geladen.total_steps() == 1)
+
+    _klick_state = _State(recording_active=True)
+    _alt_titel = _rec.get_foreground_window_title
+    try:
+        _rec.get_foreground_window_title = lambda: "Sequenz-Studio"
+        _rec._on_click_factory(_klick_state)(10, 20, (1, 2, 3))
+        check("der Stopp-Klick im Studio wird nicht aufgenommen",
+              not _klick_state.recording_events)
+        _rec.get_foreground_window_title = lambda: "Idle Clans"
+        _rec._on_click_factory(_klick_state)(10, 20, (1, 2, 3))
+        check("derselbe Klick im Spiel wird aufgenommen",
+              len(_klick_state.recording_events) == 1)
+    finally:
+        _rec.get_foreground_window_title = _alt_titel
+
+    _live_events = [
+        _RE(_RC, 1.00, 10, 20, (1, 2, 3)),
+        _RE(_RC, 2.00, 11, 21, (20, 30, 40)),
+        _RE(_RC, 4.61, 12, 22, (123, 51, 65)),
+        _RE(_RC, 7.22, 1378, 756, (123, 51, 65)),
+    ]
+    _live = _rec._status_ereignisse(_live_events)
+    check("die Live-Ausgabe behaelt genau die letzten drei", len(_live) == 3)
+    check("ihre laufenden Nummern bleiben erhalten",
+          [z["nummer"] for z in _live] == [2, 3, 4])
+    check("Zeit, Klick und Farbname stehen getrennt zur Darstellung bereit",
+          _live[-1]["zeit"] == "+2.61s" and
+          _live[-1]["text"] == "Klick (1378, 756)" and
+          "Dunkelrot (123,51,65)" in _live[-1]["farbtext"])
+    _live_state = _State(recording_active=True, recording_events=_live_events)
+    _rec._status_schreiben(_live_state)
+    _gelesen = _b.aufnahme_status()
+    check("die Bruecke liefert denselben ueberschriebenen Live-Stand",
+          _gelesen["anzahl"] == 4 and len(_gelesen["ereignisse"]) == 3)
+finally:
+    _os.chdir(_cwd)
 
 section("Studio-Werkzeuge: die Klick-Runde geht an den Hauptprozess")
 try:
@@ -258,9 +483,9 @@ try:
     # genau der Fall, in dem die alte Fassung die falsche nachklicken liess.
     _fremd = _SEQ(name="Fremd", loop_phases=[_LP(name="X", steps=[_SS(point_id=3)])])
     _st2 = _ST()
-    _st2.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
-                   _CP(id=2, x=900, y=600, name="Bestaetigen"),
-                   _CP(id=3, x=400, y=300, name="Menue")]
+    _fremd.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
+                     _CP(id=2, x=900, y=600, name="Bestaetigen"),
+                     _CP(id=3, x=400, y=300, name="Menue")]
     _st2.sequences["Fremd"] = _fremd
     _st2.active_sequence = _fremd
     save_data(_st2)
@@ -293,7 +518,7 @@ try:
         check("ohne Datei startet keine Runde", not _gestartet)
 
         _gestartet.clear()
-        _bn(_st2, {"datei": "sequences/gibtsnicht.json"})
+        _bn(_st2, {"datei": "sequences/gibtsnicht/sequence.json"})
         check("und eine unlesbare Datei startet auch keine", not _gestartet)
     finally:
         _nk.start_nachklick = _echt

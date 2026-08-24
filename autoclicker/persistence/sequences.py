@@ -1,9 +1,8 @@
 """
-Sequenz- und Punkt-Persistenz.
+Sequenz-Persistenz.
 
-Sequenzen liegen als einzelne JSON-Dateien unter sequences/<name>.json.
-Punkte (ClickPoints) liegen gemeinsam in sequences/points.json mit
-stabilen IDs für Referenzierung aus Sequenz-Schritten.
+Jede Sequenz liegt vollständig unter ``sequences/<name>/``. Ihr Punkt-Pool
+steht in ``sequence.json``; Punkt-IDs gelten nur innerhalb dieser Sequenz.
 """
 
 import json
@@ -14,9 +13,9 @@ from typing import Optional
 
 from ..config import SEQUENCES_DIR
 from ..models import ClickPoint, ELSE_SKIP, LoopPhase, Sequence, AutoClickerState
-from .migration import KIND_POINTS, KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
-from ..utils import compact_json, sanitize_filename, save_tag, load_tag, err, info, warn, hint, atomic_write, describe_color
-from .serialization import _parse_steps, _sequence_to_dict, _point_to_dict
+from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
+from ..utils import compact_json, sanitize_filename, save_tag, err, info, warn, hint, atomic_write, describe_color
+from .serialization import _parse_steps, _sequence_to_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -32,12 +31,44 @@ def ensure_sequences_dir() -> Path:
     return path
 
 
+def sequence_dir(name: str) -> Path:
+    """Besitzordner einer Sequenz."""
+    return ensure_sequences_dir() / sanitize_filename(name)
+
+
+def sequence_file(name: str) -> Path:
+    """Hauptdatei einer Sequenz in ihrem Besitzordner."""
+    return sequence_dir(name) / "sequence.json"
+
+
+def sequence_templates_dir(name: str) -> Path:
+    """Template-Ordner einer Sequenz."""
+    return sequence_dir(name) / "templates"
+
+
+def active_sequence_dir(state: AutoClickerState) -> Path:
+    """Besitzordner der aktiven Sequenz; ohne Auswahl ist das ein Fehler."""
+    with state.lock:
+        seq = state.active_sequence
+    if seq is None:
+        raise ValueError("Keine Sequenz ausgewählt.")
+    return sequence_dir(seq.name)
+
+
+def active_templates_dir(state: AutoClickerState) -> Path:
+    """Template-Ordner der aktiven Sequenz."""
+    return active_sequence_dir(state) / "templates"
+
+
 # =============================================================================
 # SEQUENZ-DATEI I/O
 # =============================================================================
 
 def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
     """Speichert eine einzelne Sequenz direkt in die angegebene Datei."""
+    filepath = Path(filepath)
+    if filepath.name != "sequence.json":
+        filepath = filepath.parent / sanitize_filename(seq.name) / "sequence.json"
     try:
         atomic_write(filepath, compact_json(stamp(_sequence_to_dict(seq))))
         return True
@@ -49,13 +80,12 @@ def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
 def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optional[Sequence]:
     """Lädt eine einzelne Sequenz-Datei.
 
-    `points` sind die Punkte, aus denen die Koordinaten geholt werden — in der
-    Datei stehen nur IDs. Ohne Übergabe lädt die Funktion sie selbst nach: die
-    Hälfte der Aufrufer (Studio, Export) hat keinen Punkte-Pool zur Hand und
-    darf keine halbe Sequenz bekommen.
+    `points` bleibt nur vorübergehend aufrufkompatibel; die Datenquelle ist
+    ausschließlich das Feld `points` derselben Sequenzdatei.
     """
-    if points is None:
-        points = _punkte_aus_datei()
+    filepath = Path(filepath)
+    if filepath.is_dir():
+        filepath = filepath / "sequence.json"
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -76,6 +106,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
             )
             for lp in data.get("loop_phases", [])
         ]
+        seq_points = _als_punkte(data.get("points", []))
         seq = Sequence(
             data["name"],
             _parse_steps(data.get("init_steps", [])),
@@ -83,12 +114,13 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
             _parse_steps(data.get("end_steps", [])),
             data.get("total_cycles", 1),
             data.get("description", ""),
+            seq_points,
         )
 
         # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in aufloesen({p.id: p for p in _als_punkte(points)}, seq, still=True):
+        for m in aufloesen({p.id: p for p in seq.points}, seq, still=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -114,10 +146,11 @@ def _verzeichnis_kennung(seq_dir: Path) -> tuple:
     eintraege = []
     with os.scandir(seq_dir) as it:
         for e in it:
-            if not e.name.endswith(".json") or e.name == "points.json":
+            if not e.is_dir():
                 continue
             try:
-                st = e.stat()
+                datei = Path(e.path) / "sequence.json"
+                st = datei.stat()
             except OSError:
                 continue
             eintraege.append((e.name, st.st_size, st.st_mtime_ns))
@@ -142,15 +175,16 @@ def list_available_sequences() -> list[tuple[str, Path]]:
     # sorted(): sonst haengt die Menue-Reihenfolge vom Dateisystem ab und der
     # dritte Eintrag ist mal seq02, mal seq13.
     sequences = []
-    for f in sorted(seq_dir.glob("*.json")):
-        if f.name != "points.json":
-            try:
-                with open(f, "r", encoding="utf-8") as file:
-                    data = json.load(file)
-                    name = data.get("name", f.stem)
-                    sequences.append((name, f))
-            except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
-                pass  # Ungültige/korrupte Datei überspringen
+    for ordner in sorted(p for p in seq_dir.iterdir() if p.is_dir()):
+        f = ordner / "sequence.json"
+        try:
+            with open(f, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                name = data.get("name", ordner.name)
+                sequences.append((name, f))
+        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError,
+                ValueError, UnicodeDecodeError):
+            pass
     _seq_cache = sequences
     _seq_cache_key = current_key
     return sequences
@@ -161,24 +195,16 @@ def list_available_sequences() -> list[tuple[str, Path]]:
 # =============================================================================
 
 def save_data(state: AutoClickerState) -> None:
-    """Speichert Punkte und Sequenzen in JSON-Dateien."""
+    """Speichert alle Sequenzen einschließlich ihrer Punkte."""
     ensure_sequences_dir()
 
     # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
     with state.lock:
-        points_data = [_point_to_dict(p) for p in state.points]
         sequences_snapshot = list(state.sequences.items())
-
-    # Punkte speichern (mit stabiler ID)
-    try:
-        atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
-    except (IOError, OSError) as e:
-        print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
 
     # Sequenzen speichern
     for name, seq in sequences_snapshot:
-        filename = f"{sanitize_filename(name)}.json"
-        save_sequence_file(seq, Path(SEQUENCES_DIR) / filename)
+        save_sequence_file(seq, sequence_file(name))
 
     print(save_tag(f"Daten gespeichert in '{SEQUENCES_DIR}/'"))
 
@@ -188,44 +214,20 @@ def save_data(state: AutoClickerState) -> None:
 # =============================================================================
 
 def save_points(state: AutoClickerState) -> None:
-    """Speichert nur die globalen Punkte (points.json), crash-sicher."""
-    ensure_sequences_dir()
+    """Speichert die aktive Sequenz einschließlich ihres Punkt-Pools."""
     with state.lock:
-        points_data = [_point_to_dict(p) for p in state.points]
-    try:
-        atomic_write(Path(SEQUENCES_DIR) / "points.json", compact_json(points_data))
-    except (IOError, OSError) as e:
-        print(err(f"Punkte konnten nicht gespeichert werden: {e}"))
+        seq = state.active_sequence
+        if seq is None:
+            return
+        seq.points = state.points
+        name = seq.name
+    save_sequence_file(seq, sequence_file(name))
 
 
 def load_points(state: AutoClickerState) -> None:
-    """Lädt gespeicherte Punkte."""
-    points_file = Path(SEQUENCES_DIR) / "points.json"
-    if points_file.exists():
-        try:
-            with open(points_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            # Altlasten (fehlende IDs, tote Felder) raeumt die Migration weg - hier wird
-            # nur noch das aktuelle Format gelesen.
-            data, meldungen = migrate(data, KIND_POINTS)
-            if meldungen:
-                print(info("points.json aufgeraeumt:"))
-                for m in meldungen:
-                    print(f"         - {m}")
-                print(hint("         Beim nächsten Speichern wird das dauerhaft."))
-            state.points = []
-            for p in data:
-                color_raw = p.get("color")
-                color = tuple(int(v) for v in color_raw) if color_raw else None
-                state.points.append(ClickPoint(p["x"], p["y"], p.get("name", ""), p["id"],
-                                               color=color, source=p.get("source", "")))
-            print(load_tag(f"{len(state.points)} Punkt(e) geladen"))
-        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
-            print(warn(f"points.json konnte nicht geladen werden: {e}"))
-            print(info("Starte mit leerer Punktliste."))
-            state.points = []
-    else:
-        print(info("Keine gespeicherten Punkte gefunden."))
+    """Setzt die Arbeitsansicht auf die Punkte der aktiven Sequenz."""
+    with state.lock:
+        state.points = state.active_sequence.points if state.active_sequence else []
 
 
 def _punkt_aus_dict(p: dict) -> ClickPoint:
@@ -237,55 +239,24 @@ def _punkt_aus_dict(p: dict) -> ClickPoint:
 
 
 def _punkte_aus_datei() -> list[ClickPoint]:
-    """points.json direkt lesen, ohne den globalen State anzufassen.
-
-    Fuer die Aufrufer von `load_sequence_file`, die keinen State haben (Sequenz-Studio,
-    Canvas, Export). Fehlt oder bricht die Datei, gibt es eben keine Punkte - dann
-    meldet `aufloesen()` die Schritte als verwaist, statt still Nullen zu liefern.
-    """
-    pfad = Path(SEQUENCES_DIR) / "points.json"
-    if not pfad.exists():
-        return []
-    try:
-        with open(pfad, "r", encoding="utf-8") as f:
-            data, _ = migrate(json.load(f), KIND_POINTS)
-        return [_punkt_aus_dict(p) for p in data]
-    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError,
-            ValueError, UnicodeDecodeError):
-        return []
+    """Entfallen: Punkte werden nicht außerhalb einer Sequenz geladen."""
+    return []
 
 
 def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
-    """Holt points.json von Platte nach und liefert die Punkte zum Aufloesen.
-
-    Das Studio schreibt beim Speichern beide Dateien; nahm der Hauptprozess die
-    Sequenz von Platte und die Punkte aus dem Speicher, fehlte ein dort
-    angelegter Punkt genau dann, wenn man ihn braucht.
-
-    Zusammengefuehrt wird ueber die ID, Platte gewinnt. Geloescht wird nichts —
-    Boss- und Icon-Editor legen Punkte an, ohne sofort zu speichern. Ist die
-    Datei nicht lesbar, bleibt der Speicherstand unangetastet.
-    """
-    von_platte = _punkte_aus_datei()
+    """Lädt den Punkt-Pool der aktiven Sequenz frisch von Platte."""
     with state.lock:
-        nach_id = {p.id: p for p in state.points}
-        neu = [p for p in von_platte if p.id not in nach_id]
-        geaendert = [p for p in von_platte
-                     if p.id in nach_id and _point_to_dict(p) != _point_to_dict(nach_id[p.id])]
-        nach_id.update({p.id: p for p in von_platte})
-        state.points = [nach_id[pid] for pid in sorted(nach_id)]
-        ergebnis = list(state.points)
-
-    # Still, wenn nichts zu tun war - der Normalfall ist, dass die Datei genau
-    # das enthaelt, was ohnehin im Speicher steht.
-    if neu or geaendert:
-        teile = []
-        if neu:
-            teile.append(f"{len(neu)} neu")
-        if geaendert:
-            teile.append(f"{len(geaendert)} geaendert")
-        print(info(f"points.json nachgeladen ({', '.join(teile)})."))
-    return ergebnis
+        seq = state.active_sequence
+    if seq is None:
+        return []
+    pfad = sequence_file(seq.name)
+    geladen = load_sequence_file(pfad)
+    if geladen is None:
+        return list(seq.points)
+    with state.lock:
+        seq.points = geladen.points
+        state.points = seq.points
+        return list(seq.points)
 
 
 # `_sichere_neue_punkte()` stand hier und ist mit der Migrationskette entfallen: es
@@ -511,12 +482,8 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
 
 
 def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:
-    """`aufloesen()` gegen den State-Punktpool - der Weg fuer Worker und Editoren.
-
-    Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen: liest
-    state.points und schreibt in die Sequenz-Schritte.
-    """
-    return aufloesen({p.id: p for p in state.points}, sequence)
+    """Löst Schritt-Referenzen gegen den Punkt-Pool ihrer Sequenz auf."""
+    return aufloesen({p.id: p for p in sequence.points}, sequence)
 
 
 def print_points(state: AutoClickerState) -> None:

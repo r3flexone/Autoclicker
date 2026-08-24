@@ -14,7 +14,8 @@ def aufbau():
     bild, region = flaeche_mit_marke()
     stelle_bildschirm(bild)
 
-    b = StudioBridge(Sequence(name="Rauch"), Path("sequences/Rauch.json"), "sequences")
+    b = StudioBridge(Sequence(name="Rauch"),
+                     Path("sequences/rauch/sequence.json"), "sequences")
     b.scan_foto()
     b.boss_scan_neu({"name": "Bossfarm"})
     b.boss_scan_setzen({"feld": "region", "wert": list(region)})

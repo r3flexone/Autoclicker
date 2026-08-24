@@ -17,13 +17,7 @@ from ...utils import sanitize_filename
 # Was ein Bündel enthalten kann. Reihenfolge = Anzeige; die Schlüssel sind die
 # Argumentnamen von `export_bundle`/`import_bundle` ohne Präfix.
 TEILE = (
-    ("points", "Punkte"),
-    ("sequences", "Sequenzen"),
-    ("slots", "Slots"),
-    ("items", "Items"),
-    ("item_scans", "Item-Scans"),
-    ("boss_scans", "Boss-Scans"),
-    ("icon_scans", "Icon-Scans"),
+    ("sequences", "Sequenzordner (inkl. Punkte, Scans und Vorlagen)"),
     ("config", "Einstellungen"),
 )
 
@@ -67,20 +61,9 @@ class BridgeTeilenMixin:
 
     def _bestand_zaehlen(self) -> dict:
         """Was auf Platte liegt — gezählt, nicht geladen."""
-        from ...persistence import (
-            list_available_boss_scans, list_available_icon_scans,
-            list_available_item_scans, list_available_sequences,
-        )
-        from ...persistence.paths import ITEMS_FILE, SLOTS_FILE
-        from ...config import SEQUENCES_DIR
+        from ...persistence import list_available_sequences
         return {
-            "points": self._zaehle_json(Path(SEQUENCES_DIR) / "points.json", list),
             "sequences": len(list_available_sequences()),
-            "slots": self._zaehle_json(SLOTS_FILE, dict),
-            "items": self._zaehle_json(ITEMS_FILE, dict),
-            "item_scans": len(list_available_item_scans()),
-            "boss_scans": len(list_available_boss_scans()),
-            "icon_scans": len(list_available_icon_scans()),
             "config": 1,
         }
 
@@ -120,8 +103,7 @@ class BridgeTeilenMixin:
 
     # ------------------------------------------------------------- Bestand
 
-    @staticmethod
-    def _bestand() -> AutoClickerState:
+    def _bestand(self) -> AutoClickerState:
         """Alles von Platte in einen frischen State — Export/Import brauchen das Ganze.
 
         Der Studio-Prozess kennt sonst nur, was seine Reiter geöffnet haben. Die
@@ -129,26 +111,26 @@ class BridgeTeilenMixin:
         pro Prozess.
         """
         from ...config import CONFIG, uebernehmen
-        from ...persistence import (
-            list_available_sequences, load_all_boss_scans, load_all_icon_scans,
-            load_all_item_scans, load_global_bosses, load_global_items,
-            load_global_slots, load_points, load_sequence_file,
-            resolve_klick_referenzen,
-        )
+        from ...persistence import list_available_sequences, load_sequence_file
         state = AutoClickerState()
         uebernehmen(state.config, CONFIG)
-        load_points(state)
-        load_global_slots(state)
-        load_global_items(state)
-        load_all_item_scans(state)
-        load_all_boss_scans(state)
-        load_global_bosses(state)
-        load_all_icon_scans(state)
-        resolve_klick_referenzen(state)
         for name, pfad in list_available_sequences():
             seq = load_sequence_file(pfad)
             if seq is not None:
                 state.sequences[seq.name or name] = seq
+        seq = state.sequences.get(self.board.name)
+        if seq is not None:
+            state.active_sequence = seq
+            state.points = seq.points
+            from ...persistence import (
+                load_all_boss_scans, load_all_icon_scans, load_all_item_scans,
+                load_global_bosses, resolve_klick_referenzen,
+            )
+            load_all_item_scans(state)
+            load_all_boss_scans(state)
+            load_all_icon_scans(state)
+            load_global_bosses(state, seq.name)
+            resolve_klick_referenzen(state, seq)
         return state
 
     @staticmethod
@@ -189,11 +171,11 @@ class BridgeTeilenMixin:
         from ...import_export import export_bundle
         erfolg, ergebnis = export_bundle(
             self._bestand(), str(pfad), ref1, ref2,
-            include_points=teile["points"], include_sequences=teile["sequences"],
-            include_slots=teile["slots"], include_items=teile["items"],
-            include_item_scans=teile["item_scans"],
-            include_boss_scans=teile["boss_scans"],
-            include_icon_scans=teile["icon_scans"],
+            include_points=teile["sequences"], include_sequences=teile["sequences"],
+            include_slots=teile["sequences"], include_items=teile["sequences"],
+            include_item_scans=teile["sequences"],
+            include_boss_scans=teile["sequences"],
+            include_icon_scans=teile["sequences"],
             include_config=teile["config"], source_window=fenster)
         if not erfolg:
             return self._teilen_melde(f"Export fehlgeschlagen: {ergebnis}", "err")
@@ -288,11 +270,11 @@ class BridgeTeilenMixin:
         state = self._bestand()
         erfolg, ergebnis = import_bundle(
             state, self._teilen_import["pfad"], transform=transform,
-            import_points=teile["points"], import_sequences=teile["sequences"],
-            import_slots=teile["slots"], import_items=teile["items"],
-            import_item_scans=teile["item_scans"],
-            import_boss_scans=teile["boss_scans"],
-            import_icon_scans=teile["icon_scans"],
+            import_points=teile["sequences"], import_sequences=teile["sequences"],
+            import_slots=teile["sequences"], import_items=teile["sequences"],
+            import_item_scans=teile["sequences"],
+            import_boss_scans=teile["sequences"],
+            import_icon_scans=teile["sequences"],
             import_config=teile["config"], merge=bool(daten.get("merge", True)))
         if not erfolg:
             return self._teilen_melde(f"Import fehlgeschlagen: {ergebnis}", "err")
@@ -315,5 +297,7 @@ class BridgeTeilenMixin:
             pass
 
     def _punkte_neu(self) -> list:
-        from .model import load_palette_points
-        return load_palette_points(self.sequences_dir)
+        from ...persistence import load_sequence_file
+        from .model import palette_from_sequence
+        seq = load_sequence_file(self.filepath) if self.filepath.exists() else None
+        return palette_from_sequence(seq) if seq is not None else list(self.points)

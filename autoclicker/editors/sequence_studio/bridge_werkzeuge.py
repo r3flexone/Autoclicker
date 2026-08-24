@@ -53,22 +53,198 @@ class BridgeWerkzeugeMixin:
         Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
+        from ..sequence_recorder import AUFNAHME_HOTKEYS
+        self._scan_laden()
         return {
             "punkte": [{"id": p.id, "name": p.name or f"Punkt #{p.id}",
-                        "x": p.x, "y": p.y}
+                        "x": p.x, "y": p.y,
+                        "farbe": list(p.color) if p.color else None,
+                        "verwendungen": self._punkt_verwendungen(p.id)}
                        for p in self.points],
             "kalibrierung": self._kalib_json(),
             "umfang": [{"schluessel": k, "text": t, "vorgabe": v}
                        for k, t, v in KALIB_UMFANG],
+            "aufnahme_tasten": [list(zeile) for zeile in AUFNAHME_HOTKEYS],
             # Welche Sequenz offen ist, gehoert hierher: die Kopfleiste blendet
             # ihre Bedienelemente in diesem Reiter aus (er bearbeitet andere
             # Dateien), und ohne diese Angabe weiss man bei der Klick-Runde
             # nicht, welche Sequenz man gleich nachklickt.
             "sequenz": self.board.name,
-            "datei": self.filepath.name,
+            # Jede Datei heisst nun `sequence.json`; unterscheidbar ist der
+            # bereinigte Besitzer-Ordner.
+            "datei": self.filepath.parent.name,
             "offen": bool(self._dirty),
             "laeuft": self._laeuft(),
         }
+
+    def _punkt_verwendungen(self, punkt_id: int) -> list[str]:
+        """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI."""
+        raus = []
+        for lane in self.board.lanes:
+            for nr, step in enumerate(lane.steps, 1):
+                basis = f"{lane.name} · Block {nr}"
+                if step.point_id == punkt_id:
+                    raus.append(basis + " · Stelle")
+                if step.wait_condition and step.wait_condition.point_id == punkt_id:
+                    raus.append(basis + " · Prüf-Pixel")
+                if step.verify_condition and step.verify_condition.point_id == punkt_id:
+                    raus.append(basis + " · Nachprüfung")
+                if step.else_config and step.else_config.point_id == punkt_id:
+                    raus.append(basis + " · ELSE")
+        for item in self.items.values():
+            if item.confirm_point_id == punkt_id:
+                raus.append(f"Item '{item.name}' · Bestätigung")
+        for name, cfg in self.boss_scans.items():
+            for boss in cfg.bosses:
+                if boss.action_point_id == punkt_id:
+                    raus.append(f"Boss '{boss.name}' in '{name}' · Aktion")
+        for boss in self.global_bosses:
+            if boss.action_point_id == punkt_id:
+                raus.append(f"Boss '{boss.name}' aus Bibliothek · Aktion")
+        for name, cfg in self.icon_scans.items():
+            if cfg.action_point_id == punkt_id:
+                raus.append(f"Icon-Scan '{name}' · Aktion")
+        return raus
+
+    # --------------------------------------------------------- Punkte verwalten
+
+    def werkzeug_punkt_aufnehmen(self, daten: Optional[dict] = None) -> dict:
+        """Legt einen freien Punkt an oder misst einen vorhandenen neu."""
+        if self._laeuft():
+            return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
+        daten = daten or {}
+        punkt = self._punkt_mit_id(daten.get("punkt_id"))
+        x, y, meldung = self._stelle_abwarten()
+        if x is None:
+            return {"ok": False, "meldung": meldung + " — nichts geändert."}
+        farbe = self._farbe_an(x, y)
+        if punkt is None:
+            from .model import PalettePoint
+            punkt = PalettePoint(
+                id=max((p.id for p in self.points), default=0) + 1,
+                x=x, y=y,
+                name=str(daten.get("name") or "Neuer Punkt").strip() or "Neuer Punkt",
+                color=tuple(farbe) if farbe else None,
+                source="Sequenz-Studio",
+            )
+            self.points.append(punkt)
+            aktion = "angelegt"
+        else:
+            punkt.x, punkt.y = x, y
+            if farbe:
+                punkt.color = tuple(farbe)
+            aktion = "neu gemessen"
+        self._punkte_anwenden()
+        self._dirty = True
+        return {"ok": True, "punkt_id": punkt.id,
+                "meldung": f"Punkt #{punkt.id} {aktion}: ({x}, {y})."}
+
+    def werkzeug_punkt_setzen(self, daten: Optional[dict] = None) -> dict:
+        """Ändert Name, Koordinate oder Farbe eines Punktes aus der Werkzeugliste."""
+        daten = daten or {}
+        punkt = self._punkt_mit_id(daten.get("punkt_id"))
+        if punkt is None:
+            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+        feld, wert = str(daten.get("feld") or ""), daten.get("wert")
+        try:
+            if feld in ("x", "y"):
+                setattr(punkt, feld, int(wert))
+            elif feld == "name":
+                punkt.name = str(wert or "").strip()
+            elif feld == "farbe":
+                from .model import rgbwert
+                punkt.color = rgbwert(wert)
+            else:
+                return {"ok": False, "meldung": f"Unbekanntes Feld '{feld}'."}
+        except (TypeError, ValueError):
+            return {"ok": False, "meldung": f"'{wert}' ist kein gültiger Wert."}
+        self._punkte_anwenden()
+        self._dirty = True
+        return {"ok": True, "meldung": f"Punkt #{punkt.id} geändert."}
+
+    def werkzeug_punkt_zeigen(self, daten: Optional[dict] = None) -> dict:
+        """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
+        if self._laeuft():
+            return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
+        punkt = self._punkt_mit_id((daten or {}).get("punkt_id"))
+        if punkt is None:
+            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+        from ...winapi import set_cursor_pos
+        set_cursor_pos(punkt.x, punkt.y)
+        aktuell = self._farbe_an(punkt.x, punkt.y)
+        return {"ok": True, "punkt_id": punkt.id,
+                "gespeichert": list(punkt.color) if punkt.color else None,
+                "aktuell": list(aktuell) if aktuell else None,
+                "meldung": f"Maus steht auf Punkt #{punkt.id} ({punkt.x}, {punkt.y})."}
+
+    def werkzeug_punkt_loeschen(self, daten: Optional[dict] = None) -> dict:
+        """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
+        punkt = self._punkt_mit_id((daten or {}).get("punkt_id"))
+        if punkt is None:
+            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+        verwendet = self._punkt_verwendungen(punkt.id)
+        if verwendet:
+            return {"ok": False, "verwendungen": verwendet,
+                    "meldung": f"Punkt #{punkt.id} wird noch {len(verwendet)}× verwendet."}
+        self.points.remove(punkt)
+        self._dirty = True
+        return {"ok": True, "meldung": f"Punkt #{punkt.id} gelöscht."}
+
+    # ---------------------------------------------------------- Farbanalysator
+
+    def werkzeug_farben(self, daten: Optional[dict] = None) -> dict:
+        """Farbe unter der Maus oder häufigste Farben einer Region/Vollbild."""
+        if self._laeuft():
+            return {"ok": False, "meldung": "Eine Sequenz läuft — Analyse ist gesperrt."}
+        art = str((daten or {}).get("art") or "punkt")
+        if art == "punkt":
+            x, y, meldung = self._stelle_abwarten()
+            if x is None:
+                return {"ok": False, "meldung": meldung + " — nichts analysiert."}
+            farbe = self._farbe_an(x, y)
+            if not farbe:
+                return {"ok": False, "meldung": "Farbe konnte nicht gelesen werden."}
+            from ...imaging import get_color_name
+            return {"ok": True, "art": "punkt", "stelle": [x, y],
+                    "farben": [self._farbe_json(tuple(farbe), 1, 1, get_color_name)],
+                    "meldung": f"Farbe bei ({x}, {y}) gelesen."}
+
+        region = None
+        if art == "region":
+            x1, y1, meldung = self._stelle_abwarten()
+            if x1 is None:
+                return {"ok": False, "meldung": meldung + " — keine erste Ecke."}
+            x2, y2, meldung = self._stelle_abwarten()
+            if x2 is None:
+                return {"ok": False, "meldung": meldung + " — keine zweite Ecke."}
+            region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+            if region[2] - region[0] < 2 or region[3] - region[1] < 2:
+                return {"ok": False, "meldung": "Der gewählte Bereich ist zu klein."}
+        elif art == "vollbild":
+            # ENTER ist die Übergabe: Das Studio kann in den Hintergrund, bevor
+            # der Screenshot entsteht.
+            _, _, meldung = self._stelle_abwarten()
+            if meldung:
+                return {"ok": False, "meldung": meldung + " — nichts analysiert."}
+        else:
+            return {"ok": False, "meldung": "Unbekannte Analyseart."}
+
+        from ...imaging import analyze_screen_colors, get_color_name
+        zaehler = analyze_screen_colors(region)
+        if not zaehler:
+            return {"ok": False, "meldung": "Keine Farben gefunden (Pillow installiert?)."}
+        gesamt = sum(zaehler.values())
+        top = sorted(zaehler.items(), key=lambda e: e[1], reverse=True)[:20]
+        return {"ok": True, "art": art, "region": list(region) if region else None,
+                "farben": [self._farbe_json(f, n, gesamt, get_color_name) for f, n in top],
+                "meldung": f"{gesamt} Stichproben analysiert."}
+
+    @staticmethod
+    def _farbe_json(farbe, anzahl: int, gesamt: int, namensfunktion) -> dict:
+        r, g, b = (int(v) for v in farbe[:3])
+        return {"rgb": [r, g, b], "hex": f"#{r:02X}{g:02X}{b:02X}",
+                "name": namensfunktion((r, g, b)), "anzahl": int(anzahl),
+                "anteil": round(100.0 * anzahl / max(1, gesamt), 1)}
 
     def _laeuft(self) -> bool:
         """Läuft gerade eine Sequenz? Aus der Statusdatei, wie im Live-Run."""
@@ -134,7 +310,7 @@ class BridgeWerkzeugeMixin:
         zusätzlich die Skalierung — den braucht man nur, wenn sich auch die
         Auflösung geändert hat.
 
-        Der gewählte Punkt liefert die ALTE Stelle aus `points.json`, die Maus
+        Der gewählte Punkt liefert die ALTE Stelle aus `sequence.json`, die Maus
         die neue. Beides zusammen ist der Transform, mehr steckt nicht dahinter.
 
         **Die Farbe wird gegengeprüft, und zwar bevor etwas gilt.** Ein
@@ -300,7 +476,7 @@ class BridgeWerkzeugeMixin:
         """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
         from .model import load_palette_points
         from ...befehl import sende
-        self.points = load_palette_points(self.sequences_dir)
+        self.points = load_palette_points(self.filepath)
         self._stand_punkte = self._punkte_stand()
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
@@ -309,7 +485,7 @@ class BridgeWerkzeugeMixin:
 
     def _punkte_stand(self):
         from .bridge_contract import _mtime, _punkte_pfad
-        return _mtime(_punkte_pfad(self.sequences_dir))
+        return _mtime(_punkte_pfad(self.filepath))
 
     def _punkt_mit_id(self, punkt_id):
         try:
@@ -395,7 +571,7 @@ class BridgeWerkzeugeMixin:
 
         **Zwei Ausgänge, weil es zwei Absichten gibt.** Übernehmen ist der
         einzige Weg, auf dem die Runde je etwas schreibt; verwerfen lässt
-        `points.json` unberührt. Ein einzelner „Beenden"-Knopf müsste sich für
+        den Punkt-Pool in `sequence.json` unberührt. Ein einzelner „Beenden"-Knopf müsste sich für
         eine der beiden entscheiden und läge in der Hälfte der Fälle falsch.
 
         Ob überhaupt eine Runde läuft, weiss dieser Prozess nicht (der Zustand
@@ -410,7 +586,7 @@ class BridgeWerkzeugeMixin:
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
         return {"ok": True,
-                "meldung": ("Verworfen — points.json bleibt, wie sie war."
+                "meldung": ("Verworfen — sequence.json bleibt, wie sie war."
                             if verwerfen else
                             "Übernommen — was gesetzt wurde, steht im "
                             "Konsolenfenster.")}

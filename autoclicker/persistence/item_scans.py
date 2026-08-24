@@ -11,107 +11,103 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ClickPoint, ItemScanConfig, AutoClickerState
-from ..utils import compact_json, warn, atomic_write
 from .migration import KIND_ITEM_SCAN, migrate
-from .paths import ITEM_SCANS_DIR
+from .sequences import sequence_dir
 from .serialization import _item_scan_from_dict, _item_scan_to_dict
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
 
-def ensure_item_scans_dir() -> Path:
+def _item_scans_dir(owner: str) -> Path:
+    return sequence_dir(owner) / "item_scans"
+
+
+def ensure_item_scans_dir(owner: str = "") -> Path:
     """Stellt sicher, dass der Item-Scans-Ordner existiert."""
-    return ensure_dir(ITEM_SCANS_DIR)
+    if not owner:
+        return Path("sequences")
+    return ensure_dir(_item_scans_dir(owner))
 
 
 def save_item_scan(config: ItemScanConfig) -> None:
     """Speichert eine Item-Scan Konfiguration."""
-    write_scan(ITEM_SCANS_DIR, config.name, _item_scan_to_dict(config), "Item-Scan")
+    if not config.owner_sequence:
+        raise ValueError("Item-Scan hat keine Besitzer-Sequenz")
+    write_scan(str(_item_scans_dir(config.owner_sequence)), config.name,
+               _item_scan_to_dict(config), "Item-Scan")
 
 
-def load_item_scan_file(filepath: Path) -> Optional[ItemScanConfig]:
+def load_item_scan_file(filepath: Path, owner: str = "") -> Optional[ItemScanConfig]:
     """Lädt eine Item-Scan Konfiguration.
 
-    Slots und Items bleiben hier LEER - in der Datei stehen nur Namen. Gefüllt werden sie
-    von `resolve_scan_references(state)`, weil dafür die globalen Slots/Items gebraucht
-    werden und die hängen am State.
+    Slots und Items werden vollständig aus derselben Scan-Datei geladen; der Scan
+    ist damit unabhängig von allen anderen Scans.
     """
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_ITEM_SCAN)
 
-        return _item_scan_from_dict(data)
+        config = _item_scan_from_dict(data)
+        config.owner_sequence = owner or filepath.parent.parent.name
+        return config
 
     except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 
 
-def list_available_item_scans() -> list[tuple[str, Path]]:
+def list_available_item_scans(owner: str = "") -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Item-Scan Konfigurationen auf."""
-    return list_scan_files(ITEM_SCANS_DIR)
+    if not owner:
+        return []
+    return list_scan_files(str(_item_scans_dir(owner)))
 
 
 def load_all_item_scans(state: AutoClickerState) -> None:
-    """Lädt alle Item-Scan Konfigurationen und löst ihre Referenzen auf."""
-    load_all_scans(ITEM_SCANS_DIR, load_item_scan_file, state.item_scans, "Item-Scan")
-    for meldung in resolve_scan_references(state):
-        print(warn(meldung))
-
-
-def resolve_scan_references(state: AutoClickerState) -> list[str]:
-    """Füllt `slots`/`items` jedes Item-Scans aus den globalen Slots/Items.
-
-    Der globale Eintrag ist die Wahrheit: eine Änderung an Marker-Farben, Template
-    oder Priorität wirkt ab sofort in jedem Scan.
-
-    Gibt Klartext-Meldungen zu Namen zurück, die es global nicht (mehr) gibt — der
-    Scan läuft mit dem Rest weiter.
-    """
-    meldungen = []
+    """Lädt alle eigenständigen Item-Scan-Konfigurationen."""
     with state.lock:
-        globale_slots = dict(state.global_slots)
-        globale_items = dict(state.global_items)
-        scans = list(state.item_scans.values())
-
-    for config in scans:
-        # Absicherung gegen eine Config, der jemand nur die Objekte gesetzt hat: ohne
-        # Namen wuerde die Schleife unten die Objekte leeren statt sie aufzuloesen.
-        # __post_init__ deckt den Normalfall ab, das hier auch nachtraegliche Zuweisungen.
-        config.sync_names()
-
-        slots, fehlende_slots = [], []
-        for name in config.slot_names:
-            if name in globale_slots:
-                slots.append(globale_slots[name])
-            else:
-                fehlende_slots.append(name)
-
-        items, fehlende_items = [], []
-        for name in config.item_names:
-            if name in globale_items:
-                items.append(globale_items[name])
-            else:
-                fehlende_items.append(name)
-
-        with state.lock:
-            config.slots = slots
-            config.items = items
-
-        if fehlende_slots:
-            meldungen.append(f"Scan '{config.name}': Slot(s) fehlen in slots.json - "
-                             f"{', '.join(fehlende_slots)}")
-        if fehlende_items:
-            meldungen.append(f"Scan '{config.name}': Item(s) fehlen in items.json - "
-                             f"{', '.join(fehlende_items)}")
-
-    meldungen += resolve_klick_referenzen(state)
-    return meldungen
+        owner = state.active_sequence.name if state.active_sequence else ""
+    if not owner:
+        state.item_scans.clear()
+        return
+    ordner = str(_item_scans_dir(owner))
+    load_all_scans(ordner, lambda pfad: load_item_scan_file(pfad, owner),
+                   state.item_scans, "Item-Scan")
+    with state.lock:
+        if state.active_item_scan not in state.item_scans:
+            state.active_item_scan = next(iter(state.item_scans), "")
+    bind_item_scan_context(state, state.active_item_scan)
 
 
-def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
+def bind_item_scan_context(state: AutoClickerState, name: str) -> bool:
+    """Bindet die TUI-Arbeitsdicts an genau einen eigenständigen Scan."""
+    with state.lock:
+        cfg = state.item_scans.get(name)
+        state.active_item_scan = name if cfg else ""
+        state.global_slots = ({slot.name: slot for slot in cfg.slots} if cfg else {})
+        state.global_items = ({item.name: item for item in cfg.items} if cfg else {})
+    return cfg is not None
+
+
+def flush_item_scan_context(state: AutoClickerState) -> Optional[ItemScanConfig]:
+    """Schreibt die TUI-Arbeitsdicts in ihren Besitzer zurück."""
+    with state.lock:
+        cfg = state.item_scans.get(state.active_item_scan)
+        if cfg is None:
+            return None
+        cfg.slots = list(state.global_slots.values())
+        cfg.items = list(state.global_items.values())
+        return cfg
+
+
+def resolve_scan_references(state: AutoClickerState, sequence=None) -> list[str]:
+    """Löst nur Punkt-IDs der Scans gegen die verwendende Sequenz auf."""
+    return resolve_klick_referenzen(state, sequence)
+
+
+def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str]:
     """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
 
     | wer | Feld | fuellt |
@@ -125,8 +121,9 @@ def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
     """
     meldungen = []
     with state.lock:
-        punkte = {p.id: p for p in state.points}
-        items = list(state.global_items.values())
+        seq = sequence or state.active_sequence
+        punkte = {p.id: p for p in (seq.points if seq else [])}
+        items = [item for cfg in state.item_scans.values() for item in cfg.items]
         bosse = list(state.global_bosses)
         for cfg in state.boss_scans.values():
             bosse += list(cfg.bosses)
@@ -158,46 +155,14 @@ def resolve_klick_referenzen(state: AutoClickerState) -> list[str]:
             else:
                 # Kein Rueckfall auf (0, 0): die Aktion wird uebersprungen.
                 traeger.action_x = traeger.action_y = 0
-                traeger.action_point_id = None
     return meldungen
 
 
 def update_item_in_scans(old_name: str, new_name: str) -> tuple[int, int]:
-    """Zieht einen umbenannten Item-Namen in allen Scan-Dateien nach.
+    """Kompatibilitäts-Helfer ohne globale Wirkung.
 
-    Der Name IST die Referenz. Alles andere (Marker, Template, Priorität) braucht
-    kein Nachziehen, seit der Scan nur noch verweist.
-
-    Gibt `(updated_count, failed_count)` zurück.
+    Ein Item gehört genau einem Scan. Dessen Objekt wird vom Editor direkt
+    umbenannt und anschliessend als kompletter Scan gespeichert; gleichnamige
+    Items anderer Scans dürfen ausdrücklich nicht mitgezogen werden.
     """
-    updated_scans = 0
-    failed_scans = 0
-    scan_dir = Path(ITEM_SCANS_DIR)
-
-    if not scan_dir.exists():
-        return 0, 0
-
-    for scan_file in scan_dir.glob("*.json"):
-        try:
-            with open(scan_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # Auch dieser Weg schreibt die Datei - also durch die gleiche Schleuse wie
-            # der Loader. Sonst waere Umbenennen der einzige Save, der Altformat
-            # unveraendert zurueckschreibt.
-            data, meldungen = migrate(data, KIND_ITEM_SCAN)
-            modified = bool(meldungen)
-            namen = data.get("item_names") or []
-            if old_name in namen:
-                data["item_names"] = [new_name if n == old_name else n for n in namen]
-                modified = True
-
-            if modified:
-                atomic_write(scan_file, compact_json(data))
-                updated_scans += 1
-
-        except (json.JSONDecodeError, IOError, KeyError, TypeError) as e:
-            failed_scans += 1
-            print(f"  {warn(f'Konnte {scan_file.name} nicht aktualisieren: {e}')}")
-
-    return updated_scans, failed_scans
+    return 0, 0

@@ -1,13 +1,10 @@
 """Öffnen, Pflegen und Speichern von Item-Scan-Konfigurationen."""
 
-from pathlib import Path
 from typing import Optional
 
 from ...models import ItemScanConfig
-from ...persistence.paths import ITEMS_FILE, SLOTS_FILE
 from ...utils import eindeutiger_name, sanitize_filename
 from .scan_contract import ART_ITEM, ART_SCAN, ART_SLOT
-from .scan_model import save_items, save_slots
 
 
 class ScanLibraryMixin:
@@ -28,6 +25,7 @@ class ScanLibraryMixin:
         if name and name not in self.scans:
             return self._scan_melde(f"Scan '{name}' gibt es nicht.", "err")
         self.scan_offen = name
+        self._scan_arbeitsbestand(name)
         self._treffer = {}
         if name:
             self.scan_art, self.scan_name = ART_SCAN, name
@@ -83,10 +81,19 @@ class ScanLibraryMixin:
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
         self._merke("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
+        self.scans[name].owner_sequence = self.board.name
         self.scan_art, self.scan_name = ART_SCAN, name
         # Ein frisch angelegter Scan ist der, an dem man arbeitet — sonst müsste
         # man ihn direkt danach noch einmal auswählen.
         self.scan_offen = name
+        self._scan_arbeitsbestand(name)
+        # Eine Aufnahme ohne Scan hatte früher kein Speicherziel. Falls aus
+        # einer bereits offenen Sitzung noch so ein verwaistes Bild da ist,
+        # darf ein anschliessend angelegter Scan es nicht still übernehmen.
+        self._foto = None
+        self._foto_bild = ""
+        self._foto_info = None
+        self.scan_bereich = None
         self.scan_fenster_id = 0
         return self._scan_geaendert(f"Scan '{name}' angelegt und geöffnet.")
 
@@ -106,22 +113,29 @@ class ScanLibraryMixin:
             if neu in self.scans:
                 return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
             self._merke(f"Scan '{cfg.name}' umbenannt")
-            # Die alte Datei bleibt liegen: umbenennen hiesse hier löschen, und
-            # eine Sequenz, die noch auf den alten Namen zeigt, verlöre ihren
-            # Scan. Wer aufräumen will, löscht die Datei bewusst.
             alt = cfg.name
             self.scans = {(neu if k == alt else k): v for k, v in self.scans.items()}
             cfg.name = neu
             self.scan_name = neu
             if self.scan_offen == alt:
                 self.scan_offen = neu
+            for lane in self.board.lanes:
+                for step in lane.steps:
+                    if step.item_scan == alt:
+                        step.item_scan = neu
             # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
             try:
                 self._foto_pfad(alt).replace(self._foto_pfad(neu))
             except OSError:
                 pass
+            alt_pfad = self.filepath.parent / "item_scans" / f"{sanitize_filename(alt)}.json"
+            try:
+                alt_pfad.unlink(missing_ok=True)
+            except OSError:
+                return self._scan_melde(
+                    f"'{alt}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
             return self._scan_geaendert(
-                f"'{alt}' heisst jetzt '{neu}' — die alte Datei bleibt liegen.", "warn")
+                f"'{alt}' heisst jetzt '{neu}'.")
         if feld == "toleranz":
             try:
                 toleranz = int(wert)
@@ -143,86 +157,11 @@ class ScanLibraryMixin:
                 f"{'rückwärts' if cfg.reverse else 'vorwärts'}")
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
 
-    def scan_mitglied(self, daten: dict) -> dict:
-        """Einen Slot oder ein Item zum offenen Scan dazu oder weg.
-
-        Umschalten statt zweier Befehle: die Ansicht zeigt Häkchen, und ein
-        Häkchen kennt nur einen Klick.
-        """
-        cfg = self.scans.get(str((daten or {}).get("scan") or self.scan_offen))
-        if cfg is None:
-            return self._scan_melde("Kein Scan gewählt.", "warn")
-        art = str((daten or {}).get("art") or "")
-        if art not in (ART_SLOT, ART_ITEM):
-            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
-        name = str((daten or {}).get("name") or "")
-        bestand = self.slots if art == ART_SLOT else self.items
-        if name not in bestand:
-            return self._scan_melde(
-                f"{'Slot' if art == ART_SLOT else 'Item'} '{name}' gibt es nicht.",
-                "err")
-        self._merke(f"'{name}' im Scan '{cfg.name}'")
-        liste = cfg.slot_names if art == ART_SLOT else cfg.item_names
-        if name in liste:
-            liste.remove(name)
-        else:
-            liste.append(name)
-        self._objekte_angleichen()
-        self._treffer_mitgliedschaft()
-        return self._scan_geaendert()
-
-    def _treffer_mitgliedschaft(self) -> None:
-        """Zieht das `fremd`-Merkmal der Treffer an der Mitgliedschaft nach.
-
-        Ein Häkchen ändert nicht, WAS erkannt wurde — nur, ob der Scan es
-        ansieht. Dafür noch einmal zu rechnen wäre Verschwendung; es stehen zu
-        lassen wäre eine Anzeige, die nach dem eigenen Klick noch das Alte
-        behauptet.
-        """
-        cfg = self.scans.get(self.scan_offen)
-        dabei = set(cfg.item_names) if cfg else set()
-        for eintrag in self._treffer.values():
-            if eintrag.get("name"):
-                eintrag["fremd"] = cfg is not None and eintrag["name"] not in dabei
-
-    def scan_alle(self, daten: dict) -> dict:
-        """Nimmt alle Slots bzw. alle Items in den offenen Scan — oder raus.
-
-        Der Weg dorthin waren 56 Häkchen. Ein Scan umfasst fast immer *alles*,
-        was zu seinem Spiel gehört; die Ausnahme klickt man danach einzeln weg.
-        """
-        # Wie `scan_mitglied`: der Inspektor arbeitet am GEWÄHLTEN Scan, der nicht
-        # derselbe sein muss wie der offene. Ohne den Parameter träfe „alle" den
-        # falschen.
-        cfg = self.scans.get(str((daten or {}).get("scan") or self.scan_offen))
-        if cfg is None:
-            return self._scan_melde("Kein Scan gewählt.", "warn")
-        art = str((daten or {}).get("art") or "")
-        if art not in (ART_SLOT, ART_ITEM):
-            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
-        dazu = bool((daten or {}).get("wert"))
-        self._merke(f"alle {'Slots' if art == ART_SLOT else 'Items'} "
-                    f"{'dazu' if dazu else 'raus'}")
-        bestand = self.slots if art == ART_SLOT else self.items
-        vorher = len(cfg.slot_names if art == ART_SLOT else cfg.item_names)
-        namen = list(bestand) if dazu else []
-        if art == ART_SLOT:
-            cfg.slot_names = namen
-        else:
-            cfg.item_names = namen
-        self._objekte_angleichen()
-        self._treffer_mitgliedschaft()
-        wort = "Slot" if art == ART_SLOT else "Item"
-        return self._scan_geaendert(
-            f"{len(namen)} {wort}(s) im Scan '{cfg.name}' (vorher {vorher}).")
-
     def scan_alle_loeschen(self, daten: dict) -> dict:
         """Löscht alle Slots bzw. alle Items dieses Scans auf einen Schlag.
 
-        **Nicht dasselbe wie `scan_alle(wert=False)`.** „Alle raus" nimmt sie
-        nur aus der Mitgliedschaft — die Slots bzw. Items bleiben im Bestand.
-        Hier verschwinden sie wirklich; einzeln durchzuklicken war bei fünfzig
-        Stück der Grund, warum man diesen Knopf sucht.
+        Einzeln durchzuklicken war bei fünfzig Stück der Grund, warum man diesen
+        Knopf sucht.
 
         Der Bezug ist derselbe wie überall: der offene Scan, sonst der ganze
         Bestand (`_scan_slots()` / `_kandidaten()`) — dieselbe Regel wie bei
@@ -246,8 +185,6 @@ class ScanLibraryMixin:
                         else f"'{namen[0]}' gelöscht")
             for name in namen:
                 del self.items[name]
-            for cfg in self.scans.values():
-                cfg.item_names = [n for n in cfg.item_names if n not in namen]
             self._objekte_angleichen()
             self.scan_name = ""
             was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Items"
@@ -256,7 +193,12 @@ class ScanLibraryMixin:
 
     def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""
-        name = self.scan_name if self.scan_art == ART_SCAN else ""
+        # Die Scan-Maske kennt ihren Namen selbst und schickt ihn mit. Der
+        # globale Auswahlzustand kann inzwischen schon wieder auf einem Slot
+        # oder Item stehen; davon darf der Löschknopf seiner sichtbaren Maske
+        # nicht abhängen. Ohne Namen bleibt der offene Scan der sinnvolle
+        # Rückfall für ältere Aufrufer.
+        name = str((daten or {}).get("name") or self.scan_offen)
         if name not in self.scans:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         # STRG+Z holt die Konfiguration zurück, nicht die Dateien: die JSON
@@ -270,15 +212,14 @@ class ScanLibraryMixin:
             self._foto_pfad(name).unlink(missing_ok=True)
         except OSError:
             pass
-        from ...persistence.paths import ITEM_SCANS_DIR
-        pfad = Path(ITEM_SCANS_DIR) / f"{sanitize_filename(name)}.json"
+        pfad = self.filepath.parent / "item_scans" / f"{sanitize_filename(name)}.json"
         try:
             pfad.unlink(missing_ok=True)
         except OSError:
             return self._scan_melde(f"'{name}' entfernt, die Datei blieb liegen.", "warn")
         # Auch Löschen ist ein eigener Schreibvorgang: es dreht die
         # Änderungszeit des Ordners weiter.
-        self._platte_nachziehen(Path(ITEM_SCANS_DIR))
+        self._platte_nachziehen(self.filepath.parent / "item_scans")
         return self._scan_melde(f"Scan '{name}' gelöscht.", "warn")
 
     # --------------------------------------------------------------- Sichern
@@ -292,7 +233,7 @@ class ScanLibraryMixin:
         Getrennte Knöpfe hiessen, sich diese Reihenfolge merken zu müssen.
 
         **Die Punkte gehen mit.** Ein Klickpunkt einer Boss- oder Icon-Aktion
-        ist ein Punkt in `points.json` — die Koordinate steht dort und sonst
+        ist ein Punkt in `sequence.json` — die Koordinate steht dort und sonst
         nirgends. Bliebe er ungeschrieben, zeigte die gespeicherte Aktion beim
         nächsten Start ins Leere.
 
@@ -300,20 +241,38 @@ class ScanLibraryMixin:
         sonst arbeitete er bis zum nächsten `CTRL+ALT+L` mit dem alten Stand.
         """
         from ...persistence import save_item_scan
-        from .model import save_palette_points
+
+        # Scan-Aktionen können neue Sequenzpunkte anlegen, ohne einen Ablaufblock
+        # zu verändern. Darum muss derselbe Knopf zuerst auch `sequence.json`
+        # schreiben. Beim Umbenennen lädt `speichern()` den verschobenen Ordner
+        # neu; die noch ungespeicherten Scan-Objekte halten wir über diesen
+        # kurzen Schritt fest und schreiben sie danach in den neuen Ordner.
+        arbeitsbestand = (
+            self.slots, self.items, self.scans, self.boss_scans,
+            self.icon_scans, self.global_bosses, self.scan_offen,
+        )
+        sequenz_antwort = self.speichern(daten)
+        if sequenz_antwort.get("frage"):
+            return self._scan_melde(
+                "Sequenz wurde ausserhalb geändert — zuerst im Sequenz-Reiter entscheiden.",
+                "warn")
+        sequenz_status = sequenz_antwort.get("status") or {}
+        if sequenz_status.get("art") == "err":
+            return self._scan_melde(
+                sequenz_status.get("text") or "Sequenz konnte nicht gespeichert werden.",
+                "err")
+        (self.slots, self.items, self.scans, self.boss_scans,
+         self.icon_scans, self.global_bosses, self.scan_offen) = arbeitsbestand
+
         fehler = []
-        if not save_slots(self.slots, SLOTS_FILE):
-            fehler.append("slots.json")
-        if not save_items(self.items, ITEMS_FILE):
-            fehler.append("items.json")
+        self._objekte_angleichen()
         for cfg in self.scans.values():
             try:
+                cfg.owner_sequence = self.board.name
                 save_item_scan(cfg)
-            except OSError:
+            except (OSError, ValueError):
                 fehler.append(f"{cfg.name}.json")
         fehler += self._erkennung_speichern()
-        if not save_palette_points(self.sequences_dir, self.points):
-            fehler.append("points.json")
         if fehler:
             return self._scan_melde("Nicht geschrieben: " + ", ".join(fehler), "err")
 

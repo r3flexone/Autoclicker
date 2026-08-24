@@ -75,12 +75,8 @@ _sand = tempfile.mkdtemp(prefix="studioerk_")
 _cwd = _os.getcwd()
 _os.chdir(_sand)
 try:
-    Path("sequences").mkdir()
-    Path("boss_scans").mkdir()
-    Path("icon_scans").mkdir()
-    Path("item_scans").mkdir()
-    Path("items/templates").mkdir(parents=True)
-    _b = _SB(_SEQ(name="S"), Path("sequences/S.json"), "sequences")
+    Path("sequences/s/templates").mkdir(parents=True)
+    _b = _SB(_SEQ(name="S"), Path("sequences/s/sequence.json"), "sequences")
 
     _z = _b.scan_daten()
     check("ohne Bestand ist die Boss-Liste leer", _z["boss_scans"] == [])
@@ -294,7 +290,7 @@ try:
             _ic = _b.icon_scans["Mission nicht machbar"]
             check("die Vorlage wird als Datei angelegt", bool(_ic.template))
             check("und liegt bei den Templates",
-                  (Path("items/templates") / _ic.template).exists())
+                  (Path("sequences/s/templates") / _ic.template).exists())
 
             # --- Klickpunkt ueber einen Punkt, nie ueber Zahlen ---
             _b.icon_setzen({"feld": "aktion", "wert": "click"})
@@ -345,21 +341,25 @@ try:
             check("das Speichern meldet alle drei Arten",
                   "Boss-Scan" in _z["status"]["text"]
                   and "Icon-Scan" in _z["status"]["text"])
-            check("die Boss-Scan-Datei steht da", Path("boss_scans/bossfarm.json").exists())
+            check("die Boss-Scan-Datei steht da",
+                  Path("sequences/s/boss_scans/bossfarm.json").exists())
             check("die Icon-Scan-Datei auch",
-                  Path("icon_scans/mission_nicht_machbar.json").exists())
+                  Path("sequences/s/icon_scans/mission_nicht_machbar.json").exists())
             check("und die Bibliothek",
-                  Path("boss_scans/global/bosses.json").exists())
+                  Path("sequences/s/boss_scans/bibliothek.json").exists())
             # **Die Punkte gehen mit.** Ein Klickpunkt ist ein Punkt in
             # points.json — bliebe er ungeschrieben, zeigte die gespeicherte
             # Aktion beim naechsten Start ins Leere.
             check("und die Punkte, an denen die Aktionen haengen",
-                  Path("sequences/points.json").exists())
-            _gespeichert = json.loads(Path("boss_scans/bossfarm.json").read_text("utf-8"))
+                  Path("sequences/s/sequence.json").exists()
+                  and "points" in json.loads(
+                      Path("sequences/s/sequence.json").read_text("utf-8")))
+            _gespeichert = json.loads(
+                Path("sequences/s/boss_scans/bossfarm.json").read_text("utf-8"))
             check("die Region steht in der Datei",
                   list(_gespeichert["scan_region"]) == [300, 200, 340, 240])
 
-            _b2 = _SB(_SEQ(name="S"), Path("sequences/S.json"), "sequences")
+            _b2 = _SB(_SEQ(name="S"), Path("sequences/s/sequence.json"), "sequences")
             _z2 = _b2.scan_daten()
             check("ein frisches Studio liest alles zurueck",
                   {c["name"] for c in _z2["boss_scans"]} == {"Bossfarm", "Bossfarm 2"})
@@ -377,7 +377,7 @@ try:
             check("frisch geladen ist nichts fremd", _z2["fremd"] is False)
             import time as _time
             _time.sleep(0.01)
-            _p = Path("icon_scans/mission_nicht_machbar.json")
+            _p = Path("sequences/s/icon_scans/mission_nicht_machbar.json")
             _p.write_text(_p.read_text("utf-8"), encoding="utf-8")
             _os.utime(_p, (_p.stat().st_atime + 5, _p.stat().st_mtime + 5))
             check("eine fremde Aenderung an einem Icon-Scan faellt auf",

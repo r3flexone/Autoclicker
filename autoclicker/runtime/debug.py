@@ -94,14 +94,14 @@ def step_label(step: SequenceStep) -> str:
 
     Das war der eigentliche Schmerz: ohne ID musste man den falschen Schritt in der
     Sequenzdatei erst suchen und dann noch den passenden Punkt dazu. Mit "#3" steht die
-    Referenz direkt da - suchbar in points.json UND in der Sequenzdatei ("point_id": 3).
+    Referenz direkt da - in sequence.json bei Punkt und Schritt suchbar ("point_id": 3).
     """
     name = step.name or "unbenannt"
     if step.point_id is None:
         return f"{name}  [ohne Stelle]"
     if step.unresolved:
         # Deutlich sagen, was los ist: der Schritt tut nichts, und der Grund liegt in
-        # points.json, nicht in der Sequenz.
+        # der Punktliste derselben sequence.json.
         return f"{name}  [Punkt #{step.point_id} FEHLT]"
     return f"{name}  [Punkt #{step.point_id}]"
 
@@ -202,7 +202,7 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     if step.unresolved:
         print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
                    f"{step_label(step)}"))
-        print(hint("       Punkt fehlt in points.json — im Punkte-Menü neu setzen "
+        print(hint("       Punkt fehlt in sequence.json — im Punkte-Menü neu setzen "
                    "oder den Schritt löschen."))
         return GATE_SKIP
 
@@ -229,6 +229,52 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
 
     print(col("   [w /→] ausführen   [s /↓] überspringen   [c] normal weiterlaufen   "
               "[q /ESC] abbrechen", "yellow"))
+
+    # Das Studio läuft in einem eigenen Prozess. Es kann nicht auf `stdin`
+    # antworten und der Worker darf dann auch nicht dort blockieren: der
+    # aktuelle Schritt steht im Laufstatus, die Antwort kommt als begrenzter
+    # Briefkasten-Befehl und weckt dieses Event. Der TUI-Weg darunter bleibt
+    # exakt wie bisher.
+    with state.lock:
+        studio = bool(state.step_via_studio)
+        state.step_command = ""
+        state.step_command_event.clear()
+    if studio:
+        from . import status
+        status.schreibe(state, {"manuell": {
+            "aktiv": True,
+            "phase": phase,
+            "block": step_num,
+            "bloecke": total_steps,
+            "titel": step_label(step),
+            "aktion": describe_step(step),
+        }}, sofort=True)
+        while not state.stop_event.is_set():
+            if not state.step_command_event.wait(0.2):
+                status.lebenszeichen(state)
+                continue
+            with state.lock:
+                befehl = state.step_command
+                state.step_command = ""
+                state.step_command_event.clear()
+            if befehl == "run":
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_RUN
+            if befehl == "skip":
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_SKIP
+            if befehl == "continue":
+                with state.lock:
+                    state.step_mode = False
+                    state.step_via_studio = False
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_RUN
+            if befehl == "stop":
+                state.stop_event.set()
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_STOP
+        status.schreibe(state, {"manuell": None}, sofort=True)
+        return GATE_STOP
 
     while not state.stop_event.is_set():
         taste = read_command()

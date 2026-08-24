@@ -101,8 +101,6 @@ label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var
 /* Gehoert nicht zum offenen Scan. Der Haken allein ist an einer 30-px-Maske zu
    wenig, um „ist raus" zu lesen — und genau danach sucht man, wenn man gerade
    einen weggeklickt hat. */
-.scan-maske.nicht-dabei{opacity:.55}
-.scan-maske.nicht-dabei:hover,.scan-maske.nicht-dabei.an{opacity:1}
 .prioritaets-chip.aktuell{background:#7C9CF526;color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
 .prioritaeten-alle{margin-top:8px;max-height:130px;overflow:auto}
 .prioritaeten-kategorie{display:grid;grid-template-columns:minmax(70px,.35fr) 1fr;gap:7px;
@@ -111,10 +109,13 @@ label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var
 .scan-review-sammel{display:flex;gap:6px;margin-top:8px}
 .scan-review-sammel input{min-width:0}
 .scan-review-sammel .btn{width:auto;white-space:nowrap}
-/* Eine gerechnete Zahl, kein Eingabefeld: als graues <input disabled> sah sie aus
-   wie etwas, das man eigentlich ändern dürfte und gerade nicht darf. */
-.feld-still{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--muted)}
-.feld-still .mono{font-family:var(--mono);font-size:13px;color:var(--text)}
+/* Eine gerechnete Zahl, kein Eingabefeld: `output` sagt das semantisch, bekommt
+   aber dieselbe Kachel wie die Eingabe daneben. So haben beide Spalten exakt
+   dieselbe Hoehe, ohne einen deaktivierten oder editierbaren Zustand zu zeigen. */
+.feld-still{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.feld-still output{display:flex;align-items:center;width:100%;font:inherit;
+  font-family:var(--mono);line-height:1.45;color:var(--text);background:var(--panel);
+  border:1px solid var(--line);border-radius:4px;padding:5px 7px}
 /* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
    Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
 label.an{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
@@ -138,6 +139,18 @@ label.an input[type=checkbox]:checked::after{transform:translateX(14px);backgrou
 label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+
+/* Das Ziel einer Scan-Aufnahme ist Arbeitskontext, kein Hilfetext. Die
+   Akzentkante bindet die Kachel an die eine Sequenz, deren Ordner die Scans,
+   Slots, Items und Vorlagen besitzt. Lange Namen duerfen nichts verbreitern. */
+.scan-sequenzbezug{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;
+  padding:7px 9px;border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:5px;background:linear-gradient(90deg,#F59E0B0A,transparent)}
+.scan-sequenzbezug > span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);align-self:baseline}
+.scan-sequenzbezug > strong{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--text);font-size:12px}
+.scan-sequenzbezug > small{grid-column:1/-1;color:var(--dim);font-size:10.5px}
 
 /* --------------------------------------------------------------------- Kopf */
 /* Der Kopf bricht um, statt aus dem Fenster zu laufen: bei 900 px Breite stand
@@ -333,10 +346,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Was den ZUSTAND meldet ("keine Konfiguration vorhanden"), bleibt sichtbar —
    das muss man lesen, ohne es zu suchen. */
 .info{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
-  border:1px solid var(--dim);border-radius:50%;font-size:9px;font-style:italic;
-  font-weight:600;color:var(--dim);cursor:pointer;flex:none;user-select:none}
-.info:hover{border-color:var(--muted);color:var(--muted)}
-.info.an{border-color:var(--accent);color:var(--accent)}
+  color:var(--dim);cursor:pointer;flex:none;user-select:none}
+.info-glyphe{display:block;width:100%;height:100%;overflow:visible}
+.info:hover{color:var(--muted)}
+.info.an{color:var(--accent)}
 .mitinfo{display:flex;align-items:center;gap:5px}
 .leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
@@ -545,10 +558,20 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-ergebnis .kennzahl{font-family:var(--mono);font-size:11px;padding:3px 7px;
   border-radius:10px;background:var(--bg)}
 .scan-review{display:flex;flex-direction:column;gap:8px}
-.scan-review-zeile{display:grid;grid-template-columns:24px 52px 1fr;gap:7px;align-items:center;
-  padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
-.scan-review-zeile img{width:50px;height:50px;object-fit:contain;border-radius:4px;background:#080A0E}
-.scan-review-zeile .felder{display:flex;flex-direction:column;gap:5px;min-width:0}
+.scan-review-zeile{display:grid;grid-template-columns:24px 82px minmax(0,1fr);
+  grid-template-areas:". status status" "haken bild felder";gap:5px 7px;
+  align-items:start;padding:7px;border:1px solid var(--line);border-radius:6px;
+  background:var(--bg)}
+/* Der Stand gehoert zur ganzen Lernzeile, nicht nur zu den Eingaben. Darunter
+   sind Vorschau und die beiden Feldzeilen gleich hoch: kein kleines Bild mehr,
+   das in einer fast doppelt so hohen Karte zu schweben scheint. */
+.scan-review-haken{grid-area:haken;align-self:center;justify-self:center}
+.scan-review-status{grid-area:status;min-width:0}
+.scan-review-bild{grid-area:bild;width:82px;height:82px;object-fit:contain;
+  border:1px solid var(--line);border-radius:4px;background:#080A0E}
+.scan-review-bild.leer{border-style:dashed;background:none}
+.scan-review-zeile .felder{grid-area:felder;display:flex;flex-direction:column;
+  gap:5px;min-width:0}
 .scan-review-zeile input{width:100%}
 .scan-review-sortierung{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}
 .scan-review-prio{display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--dim)}
@@ -600,6 +623,9 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-fuellung.fremditem{fill:var(--slot-fremd-f)}
 .scan-fuellung.leer{fill:var(--slot-offen-f)}
 .scan-fuellung.gewaehlt{fill:#FFFFFF2E}
+.scan-slot.aus{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
+.scan-fuellung.aus{fill:#64748B12}
+.scan-marke.aus,.scan-kreuz.aus{opacity:.45}
 /* Ist ein Item-Scan offen, zeigt das Bild, WELCHE Slots er ansieht — genau die
    Frage, fuer die man sonst zwischen Liste und Bild hin und her sieht. */
 .scan-slot.fremd{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
@@ -647,21 +673,24 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    die Liste, einen Blick nach rechts und einen Weg zurueck — bei sechzig Items
    sechzig Mal. Die vier Angaben, die man wirklich aendert, passen nebeneinander.
    Spalten: Haken, Vorschau, Felder. */
-.scan-maske{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:6px 7px;
+.scan-maske{display:grid;grid-template-columns:34px 56px minmax(0,1fr);gap:6px 7px;
   align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
   background:var(--bg)}
+/* Gelernte Items haben weder Slot-Schalter noch ID. Eine leere erste Spalte
+   liess Vorschau und Felder nach rechts versetzt schweben; hier sind es genau
+   die zwei sichtbaren Teile der Karte. */
+.scan-maske.scan-item-maske{grid-template-columns:56px minmax(0,1fr)}
 .scan-maske:hover{border-color:var(--dim)}
 /* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
    liesse die Maske um einen Pixel wachsen und das Raster springen. */
 .scan-maske.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-/* **Ein QUADRAT, das mit der Zeile waechst — kein Rechteck.** Erst stretchte
-   die Vorschau nur in der Hoehe, bei fester 30px Breite: neben einer
-   zweizeiligen `felder`-Spalte wurde daraus ein schmaler Turm statt eines
-   Quadrats. `aspect-ratio:1` haelt die Breite an die (gestretchte) Hoehe
-   gebunden; die Spalte selbst steht dafuer auf `auto` statt einer festen
-   Breite, sonst haette sie gar keinen Spielraum zum Mitwachsen. */
-.scan-maske > .mini,.scan-maske > .kugel{aspect-ratio:1;align-self:stretch;
-  min-width:30px;min-height:30px;border-radius:4px;
+.scan-maske.aus > .kugel,.scan-maske.aus > .scan-maske-felder{opacity:.48}
+/* **Ein festes QUADRAT, so hoch wie die zwei Eingabezeilen.** Ein intrinsisch
+   grosses Template darf weder seine eigene Vorschau noch die gemeinsame
+   Rasterspalte aufziehen. Slot-Farbe, Item-Bild und Leerzustand haben deshalb
+   dieselben 56 x 56 px — unabhaengig von Bildmass und Inhalt der Nachbarfelder. */
+.scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px;
+  min-width:56px;min-height:56px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -688,7 +717,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Eine feste Breite, sonst schiebt „#3" weniger als „#55" und „#123" noch
    einmal anders — die Kachel soll bei jeder Ziffernzahl an derselben Stelle
    stehen, nicht mit dem Text mitschrumpfen. */
-.scan-marke .zahl{min-width:34px;text-align:center}
+.scan-marke{width:34px;min-width:34px}
+.scan-marke .zahl{width:34px;min-width:34px;text-align:center}
+.scan-slot-schalter{height:18px;gap:0}
+.slot-aus{color:var(--muted);font-weight:600}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */
@@ -808,6 +840,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   background:#F59E0B14}
 .scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
   background:var(--sub);color:var(--text);border:1px solid var(--line)}
+.scan-fensterzeile{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
 .scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
@@ -933,17 +966,106 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
  * liest sich als Verzierung, ein Kasten als Zustand (dieselbe Regel wie bei
  * Karte und Phasenkopf). Fehler und Hinweis sind zwei Dinge und sehen deshalb
  * verschieden aus - „laeuft so nicht" gegen „ist vermutlich nicht gewollt". */
+.wz-symbol{width:20px;height:20px;display:block;flex:none}
+
+/* Linke Navigation: echte Werkzeugkarten statt zweizeiliger Textknöpfe. Das
+ * Icon gibt jeder Funktion eine Silhouette; Befehl und Beschreibung bleiben
+ * Zusatzinformation und kämpfen nicht mehr mit dem Namen um dieselbe Zeile. */
+.wz-nav{position:relative;width:100%;display:grid;grid-template-columns:38px 1fr 14px;
+  gap:10px;align-items:center;text-align:left;padding:11px 10px;border-radius:8px;
+  border:1px solid transparent;color:var(--muted);transition:.14s ease}
+.wz-nav:hover{background:var(--sub);border-color:var(--line);color:var(--text);
+  transform:translateX(2px)}
+.wz-nav.an{background:linear-gradient(110deg,#F59E0B1C,transparent 75%);
+  border-color:#F59E0B70;color:var(--text);box-shadow:0 0 0 1px #F59E0B18}
+.wz-nav-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;background:var(--sub);color:var(--muted);border:1px solid var(--line)}
+.wz-nav.pruefen .wz-nav-icon{color:var(--ok);background:#3ED07A12}
+.wz-nav.aufnahme .wz-nav-icon{color:#FB7185;background:#FB718512}
+.wz-nav.kalibrieren .wz-nav-icon{color:var(--end);background:#38BDF812}
+.wz-nav.klicken .wz-nav-icon{color:var(--loop);background:#A78BFA12}
+.wz-nav.an .wz-nav-icon{border-color:currentColor}
+.wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
+.wz-nav-titel{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
+.wz-nav-kurz{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
+.wz-befehl{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
+  border-radius:9px;padding:1px 5px}
+.wz-nav-pfeil{font-size:20px;color:var(--dim);transition:transform .14s}
+.wz-nav:hover .wz-nav-pfeil,.wz-nav.an .wz-nav-pfeil{color:var(--accent);transform:translateX(2px)}
+/* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows
+ * bleiben in der eigenen Karte und konkurrieren nicht mit Statusfarben. */
+.wz-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
+  max-width:880px;padding:20px 22px;margin-bottom:12px;border:1px solid var(--line);
+  border-radius:12px;background:linear-gradient(125deg,var(--panel),var(--sub))}
+.wz-hero::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;
+  right:-70px;top:-85px;background:currentColor;opacity:.065;filter:blur(2px)}
+.wz-hero.pruefen{color:var(--ok)}
+.wz-hero.aufnahme{color:#FB7185}
+.wz-hero.kalibrieren{color:var(--end)}
+.wz-hero.klicken{color:var(--loop)}
+.wz-hero-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;
+  justify-content:center;flex:none;color:currentColor;background:currentColor;
+  box-shadow:inset 0 0 0 1px currentColor}
+.wz-hero-icon .wz-symbol{width:28px;height:28px;color:var(--bg);filter:brightness(2)}
+.wz-hero-copy{position:relative;z-index:1;min-width:0}
+.wz-kicker,.wz-zwischenkopf{font-size:9.5px;letter-spacing:.15em;font-weight:700;
+  color:currentColor;margin-bottom:3px}
+.wz-hero h2{font-size:18px;line-height:1.2;color:var(--text);margin:0 0 5px}
+.wz-hero p{font-size:12px;line-height:1.5;color:var(--muted);max-width:660px}
+
+/* Erklaerungen sind dieselben aufklappbaren i wie im Editor. Der kleine Wirt
+ * reserviert nur die Icon-Breite; der Text erscheint erst nach einem Klick und
+ * kann deshalb keine Werkzeugzeile mehr zusammendruecken. */
+.wz-info-kompakt{max-width:880px;display:flex;align-items:center;min-height:18px;
+  margin:6px 0;color:var(--dim)}
+.wz-info-kompakt .info{width:16px;height:16px;font-size:10px}
+.wz-info-kompakt + .hilfe-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
+.wz-aktion{display:flex;margin:13px 0}
+.wz-hauptaktion{display:flex;align-items:center;gap:8px;padding:8px 15px}
+.wz-hauptaktion .wz-symbol{width:16px;height:16px}
+
+.wz-kennzahlen{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));
+  gap:8px;max-width:880px;margin:12px 0}
+.wz-kennzahl{min-height:68px;display:flex;flex-direction:column;justify-content:center;
+  padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.wz-kennzahl strong{font:700 20px/1.1 var(--mono);color:var(--text)}
+.wz-kennzahl span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.wz-kennzahl.fehler{border-color:#EF444466;background:#EF44440B}
+.wz-kennzahl.fehler strong{color:var(--err)}
+.wz-kennzahl.hinweis{border-color:#F59E0B66;background:#F59E0B0B}
+.wz-kennzahl.hinweis strong{color:var(--accent)}
+.wz-erfolg{max-width:880px;display:flex;align-items:center;gap:12px;padding:15px 16px;
+  margin-top:14px;border:1px solid #3ED07A77;border-radius:9px;background:#3ED07A0D;color:var(--ok)}
+.wz-erfolg .wz-symbol{width:26px;height:26px}
+.wz-erfolg div{display:flex;flex-direction:column}
+.wz-erfolg b{color:var(--text)}
+.wz-erfolg span{font-size:11px;color:var(--muted)}
+.wz-zwischenkopf{max-width:880px;color:var(--dim);margin-top:18px}
+
 .wz-befund{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
-  margin-top:8px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+  margin-top:8px;font-size:12px;display:grid;grid-template-columns:28px 1fr;gap:9px}
 .wz-befund.fehler{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
 .wz-befund.hinweis{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.wz-befund-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;
+  justify-content:center;background:#0002}
+.wz-befund-icon .wz-symbol{width:15px;height:15px}
+.wz-befund.fehler .wz-befund-icon{color:var(--err)}
+.wz-befund.hinweis .wz-befund-icon{color:var(--accent)}
+.wz-befund-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
 .wz-bereich{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .wz-ref{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
 .wz-ref > .wz-bereich{flex-basis:100%}
+.wz-ref select{flex:1 1 260px;min-width:0;width:auto}
+.wz-ref > .btn{flex:none}
 .wz-wert{font-size:13px;padding:2px 0}
 .wz-vorschau{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
 .wz-vorschau:last-child{border-bottom:none}
+.wz-geprueft{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
+  font-size:11.5px;color:var(--muted)}
+.wz-geprueft:last-child{border-bottom:none}
+.wz-geprueft .wz-symbol{width:14px;height:14px;color:var(--ok)}
 
 /* Der Bezug steht als Zeile UEBER dem Werkzeug, nicht als Fussnote darunter:
  * „worauf wirkt das" beantwortet man, bevor man den Knopf drueckt. Die Variante
@@ -951,7 +1073,8 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
  * Entscheidung, bei „ganzer Bestand" nur eine Einordnung. */
 .wz-bezug{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
   border:1px solid var(--line);border-left-width:3px;border-radius:6px;
-  padding:7px 10px;margin:10px 0 4px;color:var(--muted)}
+  padding:8px 11px;margin:10px 0 4px;color:var(--muted);max-width:880px;
+  background:linear-gradient(90deg,#F59E0B0A,transparent)}
 .wz-bezug.eine{border-left-color:var(--accent);color:var(--text)}
 .wz-bezug-marke{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);flex:none}
@@ -994,3 +1117,79 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   border:1px solid var(--accent);border-radius:6px;padding:8px 10px;margin:10px 0;
   background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .wz-regel b{color:var(--accent)}
+
+/* Aufnahme: dieselben Feldgrössen wie im Editor, aber als ruhiges Formular.
+ * Der laufende Zustand ist nicht nur Text — Punkt, Rahmen und Stop-Knopf zeigen
+ * auch beim schnellen Blick, dass der globale Hook gerade aktiv ist. */
+.wz-aufnahme-form{max-width:880px;display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);
+  gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.wz-aufnahme-form .feld{margin:0}
+.wz-aufnahme-form .wz-aufnahme-notiz{grid-column:1/-1}
+.wz-aufnahme-form textarea{width:100%;resize:vertical;min-height:66px}
+.wz-aufnahme-stand{max-width:880px;display:flex;align-items:center;gap:11px;margin-top:12px;
+  padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.wz-aufnahme-stand > div{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
+.wz-aufnahme-stand b{color:var(--text)}
+.wz-aufnahme-stand span{font-size:11px;color:var(--muted);white-space:normal}
+.wz-rec-punkt{flex:none;width:11px;height:11px;border-radius:50%;background:var(--dim)}
+.wz-aufnahme-stand.laeuft{border-color:#FB718577;background:#FB71850B}
+.wz-aufnahme-stand.laeuft .wz-rec-punkt{background:#FB7185;box-shadow:0 0 0 5px #FB718522;
+  animation:wz-rec-puls 1.35s ease-in-out infinite}
+.wz-aufnahme-knopf{flex:none}
+.wz-aufnahme-ausgabe{max-width:880px;margin-top:10px;border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;background:#080B10}
+.wz-ausgabe-kopf{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
+  border-bottom:1px solid var(--line);font:700 9.5px var(--mono);letter-spacing:.11em;
+  color:var(--dim);background:#111722}
+.wz-ausgabe-zaehler{letter-spacing:0;color:var(--muted);font-weight:500}
+.wz-ausgabe-zeilen{min-height:96px;padding:6px 0;display:flex;flex-direction:column;
+  justify-content:flex-end}
+.wz-ausgabe-zeile{display:grid;grid-template-columns:34px minmax(180px,1fr) 72px minmax(160px,.7fr);
+  align-items:center;gap:8px;min-height:28px;padding:3px 10px;font:11px var(--mono);
+  color:var(--muted);border-left:2px solid transparent}
+.wz-ausgabe-zeile.neu{color:var(--text);background:#FB718509;border-left-color:#FB7185}
+.wz-ausgabe-nr{text-align:right;color:var(--dim)}
+.wz-ausgabe-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wz-ausgabe-zeit{text-align:right;color:var(--end)}
+.wz-ausgabe-farbtext{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.wz-ausgabe-farbe{font-size:15px;line-height:1;text-shadow:0 0 8px currentColor}
+.wz-ausgabe-leer{padding:0 12px 7px;font:11px var(--mono);color:var(--dim)}
+.wz-aufnahme-ablauf{display:grid;grid-template-columns:auto 1fr;gap:10px 9px;font-size:11px;
+  line-height:1.45;color:var(--muted)}
+.wz-aufnahme-ablauf b{color:var(--text);white-space:nowrap}
+@keyframes wz-rec-puls{50%{box-shadow:0 0 0 8px #FB71850A}}
+@media(max-width:720px){
+  .wz-aufnahme-form{grid-template-columns:1fr}
+  .wz-aufnahme-form .wz-aufnahme-notiz{grid-column:auto}
+  .wz-aufnahme-stand{align-items:flex-start;flex-wrap:wrap}
+  .wz-aufnahme-knopf{width:100%}
+  .wz-ausgabe-zeile{grid-template-columns:28px minmax(120px,1fr) 60px}
+  .wz-ausgabe-farbtext{grid-column:2/-1;padding-bottom:3px}
+}
+
+.aufnahme-zeile{margin-top:4px}
+.manuell-tafel {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wz-farbliste { display: flex; flex-direction: column; gap: 6px; }
+.wz-farbzeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.wz-farbprobe {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 0 0 1px rgba(0,0,0,.35);
+}
