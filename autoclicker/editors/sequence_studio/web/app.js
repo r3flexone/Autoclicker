@@ -2469,7 +2469,18 @@ function scanSichtbar(eintraege, mitKategorie, art) {
  * schob sich das Feld darüber. In der ersten Spalte, unter dem Schalter, steht
  * sie ausserhalb von allem, was sich beim Tippen ändert. */
 function maskeHaken(art, name, dabei, marke) {
-  if (!SC.offen) return marke || el("span", {});
+  // **Ohne offenen Scan gibt es keine Mitgliedschaft — und das muss man
+  // SEHEN.** Vorher stand dort nichts, und „ich kann den Slot nicht mehr
+  // ausschalten" war die Folge: ein fehlendes Bedienelement sieht aus wie ein
+  // Fehler, nicht wie eine Bedingung. Jetzt steht ein abgeschalteter Schalter
+  // da, der im Tooltip sagt, was fehlt.
+  if (!SC.offen) {
+    const leer = el("input", {type: "checkbox", disabled: true,
+      title: "Kein Scan offen — oben links einen wählen, dann lässt sich hier "
+             + "die Zugehörigkeit setzen."});
+    const aus = el("label", {class: "an"}, leer);
+    return marke ? el("div", {class: "scan-marke"}, aus, marke) : aus;
+  }
   const kasten = el("input", {type: "checkbox",
     title: dabei ? "gehört zum Scan „" + SC.offen + "“ — abhaken nimmt es heraus"
                  : "gehört NICHT zum Scan „" + SC.offen + "“"});
@@ -2535,16 +2546,16 @@ function maskeDabei(dabei, maske) {
 }
 
 function scanListeSlots(ziel) {
-  // **Frisch sortiert heisst: in der Reihenfolge, in der der Scan sie ansieht.**
-  // Vorher stand die Liste in der Reihenfolge, in der die Slots in der Datei
-  // liegen — bei einem Suchlauf also in Fundreihenfolge, sonst zufällig. Wer
-  // dazugehört, kommt zuerst und in seiner Scan-Position; der Rest natürlich
-  // nach Namen, damit „Slot 2" vor „Slot 10" steht und nicht dahinter.
+  // **Frisch sortiert heisst: nach der ID, die auch dasteht.** Vorher war es
+  // die Stelle im Scan — eine Zahl, die die Liste gar nicht zeigt, also sah
+  // die Reihenfolge willkürlich aus. Wer dazugehört, kommt zuerst (sonst
+  // stünde ein abgehakter Slot mitten zwischen den Mitgliedern), danach
+  // entscheidet die ID; ohne ID der Name, natürlich sortiert.
   const rang = scanOrdnungRang("slot");
   const liste = scanSichtbar(SC.slots, false, "slot").slice().sort((a, b) =>
     rang ? (rang(a.name) - rang(b.name))
          : ((SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0)
-            || (a.nummer || 0) - (b.nummer || 0)
+            || (a.id || 0) - (b.id || 0)
             || nachNamen(a.name, b.name)));
   if (!rang) scanOrdnung.slot = liste.map((s) => ({name: s.name, gruppe: ""}));
   if (!liste.length) {

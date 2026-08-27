@@ -659,9 +659,14 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    zweizeiligen `felder`-Spalte wurde daraus ein schmaler Turm statt eines
    Quadrats. `aspect-ratio:1` haelt die Breite an die (gestretchte) Hoehe
    gebunden; die Spalte selbst steht dafuer auf `auto` statt einer festen
-   Breite, sonst haette sie gar keinen Spielraum zum Mitwachsen. */
+   Breite, sonst haette sie gar keinen Spielraum zum Mitwachsen.
+
+   **`max-height` deckelt es.** Eine Item-Maske hat DREI Zeilen (Name,
+   Kategorie+Prioritaet, Zustand) statt zwei — ungedeckelt wurde daraus ein
+   76px-Quadrat, das die halbe Maskenbreite frass und neben dem 52px-Quadrat
+   der Slots wie ein Fehler aussah. Gedeckelt sind beide gleich gross. */
 .scan-maske > .mini,.scan-maske > .kugel{aspect-ratio:1;align-self:stretch;
-  min-width:30px;min-height:30px;border-radius:4px;
+  min-width:30px;min-height:30px;max-height:52px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}

@@ -2,6 +2,7 @@
 
 import base64
 import copy
+import re as _re
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,12 @@ from .scan_model import (
     load_items,
     load_slots,
 )
+
+
+def _natuerlich(name: str) -> list:
+    """Sortierschlüssel, der Zahlen als Zahlen liest: "Slot 2" vor "Slot 10"."""
+    return [int(teil) if teil.isdigit() else teil.casefold()
+            for teil in _re.split(r"(\d+)", name or "")]
 
 
 class ScanStateMixin:
@@ -216,12 +223,18 @@ class ScanStateMixin:
 
         Neue Slots bekommen ihre ID bei der Entstehung (`scan_interaction.py`);
         ältere Dateien kennen das Feld noch nicht und laden mit `id=0`. Vergeben
-        wird in stabiler Reihenfolge (Name), sonst hinge die Zuteilung von der
+        wird in stabiler Reihenfolge, sonst hinge die Zuteilung von der
         zufälligen Dict-Reihenfolge ab. Das ist ein Schreibzugriff wert — die ID
         soll ab jetzt feststehen, nicht bei jedem Start neu gewürfelt werden.
+
+        **Stabil heisst hier natürlich sortiert, nicht Zeichen für Zeichen.**
+        Ein reiner String-Vergleich stellt "Slot 10" zwischen "Slot 1" und
+        "Slot 2"; bei sechzig durchnummerierten Slots bekam "Slot 2" damit die
+        ID 12 und "Slot 3" die 23. Die IDs waren stabil und trotzdem
+        unbrauchbar, weil sie in Sprüngen dastanden.
         """
         ohne = sorted((s for s in self.slots.values() if not s.id),
-                      key=lambda s: s.name)
+                      key=lambda s: _natuerlich(s.name))
         if not ohne:
             return
         naechste = self._naechste_slot_id()

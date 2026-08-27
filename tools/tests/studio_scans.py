@@ -1317,6 +1317,18 @@ check("keine dritte Liste fuer die Mitgliedschaft",
       "hakenListe(" not in _html18 and "hakenZeile(" not in _html18)
 check("der Haken steht in jeder Maske, an EINER Stelle gebaut",
       "function maskeHaken(art, name, dabei, marke)" in _html18)
+# **Ohne offenen Scan gibt es keine Mitgliedschaft — und das muss man SEHEN.**
+# Vorher stand dort schlicht nichts, und das las sich als Defekt: „ich kann die
+# Slots nicht mehr ausschalten". Ein fehlendes Bedienelement sieht aus wie ein
+# Fehler, ein abgeschalteter sagt, was ihm fehlt. Dieselbe Regel wie bei den
+# abhaengigen Feldern der Einstellungen: blass statt unsichtbar.
+_haken18 = _html18[_html18.index("function maskeHaken(art, name, dabei, marke)"):]
+_haken18 = _haken18[:_haken18.index("\nfunction ", 10)]
+check("ohne offenen Scan steht ein ABGESCHALTETER Schalter da, kein Loch",
+      "if (!SC.offen)" in _haken18 and "disabled: true" in _haken18)
+check("und er sagt im Tooltip, was fehlt",
+      "Kein Scan offen" in _haken18 and "title:" in _haken18)
+
 # Die Regel „gehoert dazu ODER wird gerade gesehen" stand in `hakenListe` — sie
 # muss den Umzug ueberlebt haben, sonst verschwindet genau die Auskunft, fuer
 # die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
@@ -1575,6 +1587,33 @@ finally:
     _os.chdir(_cwdA)
     shutil.rmtree(_sandA, ignore_errors=True)
 
+# **Und zwar NATUERLICH sortiert, nicht Zeichen fuer Zeichen.** Ein reiner
+# String-Vergleich stellt „Slot 10" zwischen „Slot 1" und „Slot 2" — bei
+# sechzig durchnummerierten Slots bekam „Slot 2" dann die ID 12 und „Slot 3"
+# die 23. Die IDs waren stabil und trotzdem unbrauchbar, weil sie in Spruengen
+# dastanden.
+_sandA2 = tempfile.mkdtemp(prefix="studioaltid2_")
+_cwdA2 = _os.getcwd()
+_os.chdir(_sandA2)
+try:
+    Path("slots").mkdir()
+    Path("sequences").mkdir()
+    import json as _jsonA2
+    _jsonA2_daten = {f"Slot {_i}": {"scan_region": [0, _i * 3, 60, _i * 3 + 60],
+                                    "click_pos": [30, _i * 3 + 30]}
+                     for _i in range(1, 21)}
+    Path("slots/slots.json").write_text(_jsonA2.dumps(_jsonA2_daten), encoding="utf-8")
+    _bA2 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
+    _idsA2 = {s["name"]: s["id"] for s in _bA2.scan_daten()["slots"]}
+    check("'Slot 2' bekommt die 2, nicht die 12",
+          _idsA2["Slot 2"] == 2 and _idsA2["Slot 3"] == 3)
+    check("und 'Slot 20' die 20", _idsA2["Slot 20"] == 20)
+    check("lueckenlos von 1 bis 20",
+          sorted(_idsA2.values()) == list(range(1, 21)))
+finally:
+    _os.chdir(_cwdA2)
+    shutil.rmtree(_sandA2, ignore_errors=True)
+
 
 # ============================================================================
 section("Die Slot-Kachel zeigt die ID, nicht die (bewegliche) Stelle")
@@ -1606,6 +1645,26 @@ check("die Vorschau ist ein Quadrat, kein Rechteck",
       in _html18)
 check("und die Spalte davor hat dafuer Spielraum",
       "grid-template-columns:auto auto minmax(0,1fr)" in _html18)
+# **Und gedeckelt.** Eine Item-Maske hat DREI Zeilen (Name, Kategorie +
+# Prioritaet, Zustand), eine Slot-Maske zwei — ungedeckelt wuchs die
+# Item-Vorschau auf 76 px, waehrend die Slot-Kugel bei 52 blieb: zwei
+# verschiedene Groessen fuer dieselbe Sache, und die groessere frass die halbe
+# Maskenbreite. Der Deckel macht beide gleich gross.
+check("und gedeckelt, damit Item und Slot dieselbe Groesse haben",
+      "min-width:30px;min-height:30px;max-height:52px" in _html18)
+
+# **Sortiert wird nach der ID — also nach der Zahl, die auch dasteht.** Vorher
+# war es die Stelle im Scan: eine Zahl, die die Liste gar nicht zeigt, womit
+# die Reihenfolge willkuerlich aussah. Wer dazugehoert, kommt zuerst (sonst
+# stuende ein abgehakter Slot mitten zwischen den Mitgliedern), danach
+# entscheidet die ID, und ohne ID der Name.
+_sort18 = _html18[_html18.index("function scanListeSlots("):]
+_sort18 = _sort18[:_sort18.index("\nfunction ", 10)]
+check("die Slot-Liste sortiert nach der angezeigten ID",
+      "(a.id || 0) - (b.id || 0)" in _sort18)
+check("Mitglieder zuerst, dann die ID, dann der Name",
+      _sort18.index("b.dabei") < _sort18.index("(a.id || 0)")
+      < _sort18.index("nachNamen(a.name, b.name)"))
 
 
 # ============================================================================
