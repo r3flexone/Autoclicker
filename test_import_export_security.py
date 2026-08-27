@@ -13,8 +13,10 @@ install_platform_stubs()
 
 from autoclicker.import_export import export_bundle, import_bundle, kalibriere_bestand
 from autoclicker.models import (
-    AutoClickerState, ClickPoint, ItemProfile, ItemScanConfig, ItemSlot, Sequence,
+    AutoClickerState, ClickPoint, ItemScanConfig, ItemSlot, Sequence,
 )
+from autoclicker.persistence import load_item_scan_file
+from autoclicker.persistence.sequences import sequence_dir
 
 
 def _manifest(version=1):
@@ -23,6 +25,21 @@ def _manifest(version=1):
         "reference_points": {"point1": [0, 0], "point2": [10, 10]},
         "contents": {},
     }
+
+
+def _sequence_data(name):
+    return {
+        "name": name, "schema_version": 4, "points": [],
+        "init_steps": [], "loop_phases": [], "end_steps": [],
+    }
+
+
+def _write_sequence(name):
+    root = Path("sequences") / name
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "sequence.json").write_text(
+        json.dumps(_sequence_data(name)), encoding="utf-8")
+    return root
 
 
 class ImportExportSecurityTest(unittest.TestCase):
@@ -36,10 +53,14 @@ class ImportExportSecurityTest(unittest.TestCase):
         self._temp.cleanup()
 
     def test_export_does_not_read_template_outside_template_directory(self):
-        Path("items/templates").mkdir(parents=True)
+        root = _write_sequence("Sicher")
+        (root / "item_scans").mkdir()
+        (root / "item_scans/scan.json").write_text(json.dumps({
+            "name": "Scan", "slots": {},
+            "items": {"X": {"name": "X", "template": "../../secret.png"}},
+        }), encoding="utf-8")
         Path("secret.png").write_bytes(b"private")
         state = AutoClickerState()
-        state.global_items["X"] = ItemProfile(name="X", template="../../secret.png")
 
         ok, _ = export_bundle(
             state, "bundle.zip", (0, 0), (10, 10),
@@ -50,11 +71,12 @@ class ImportExportSecurityTest(unittest.TestCase):
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:
-            self.assertFalse(any(name.startswith("templates/") for name in zf.namelist()))
+            self.assertFalse(any(name.endswith("secret.png") for name in zf.namelist()))
 
-    def test_sanitized_name_collisions_get_unique_archive_entries(self):
+    def test_distinct_sequence_folders_stay_distinct_in_archive(self):
+        _write_sequence("Alpha")
+        _write_sequence("Beta")
         state = AutoClickerState()
-        state.sequences = {"Test?": Sequence(name="Test?"), "Test*": Sequence(name="Test*")}
         ok, _ = export_bundle(
             state, "bundle.zip", (0, 0), (10, 10), include_points=False,
             include_slots=False, include_items=False, include_item_scans=False,
@@ -63,18 +85,24 @@ class ImportExportSecurityTest(unittest.TestCase):
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:
-            entries = [name for name in zf.namelist() if name.startswith("sequences/")]
+            entries = [name for name in zf.namelist() if name.endswith("/sequence.json")]
         self.assertEqual(len(entries), 2)
         self.assertEqual(len(set(entries)), 2)
 
     def test_export_includes_all_item_template_sizes(self):
-        Path("items/templates").mkdir(parents=True)
-        Path("items/templates/robe.png").write_bytes(b"primary")
-        Path("items/templates/robe_62x57.png").write_bytes(b"variant")
+        root = _write_sequence("Farm")
+        (root / "templates").mkdir()
+        (root / "templates/robe.png").write_bytes(b"primary")
+        (root / "templates/robe_62x57.png").write_bytes(b"variant")
+        (root / "item_scans").mkdir()
+        (root / "item_scans/inventar.json").write_text(json.dumps({
+            "name": "Inventar", "slots": {},
+            "items": {"Robe": {
+                "name": "Robe", "template": "robe.png",
+                "template_variants": ["robe_62x57.png"],
+            }},
+        }), encoding="utf-8")
         state = AutoClickerState()
-        state.global_items["Robe"] = ItemProfile(
-            name="Robe", template="robe.png",
-            template_variants=["robe_62x57.png"])
 
         ok, _ = export_bundle(
             state, "bundle.zip", (0, 0), (10, 10),
@@ -85,10 +113,11 @@ class ImportExportSecurityTest(unittest.TestCase):
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:
-            self.assertIn("templates/robe.png", zf.namelist())
-            self.assertIn("templates/robe_62x57.png", zf.namelist())
-            items = json.loads(zf.read("items.json"))
-        self.assertEqual(items["Robe"]["template_variants"], ["robe_62x57.png"])
+            self.assertIn("sequences/Farm/templates/robe.png", zf.namelist())
+            self.assertIn("sequences/Farm/templates/robe_62x57.png", zf.namelist())
+            scan = json.loads(zf.read("sequences/Farm/item_scans/inventar.json"))
+        self.assertEqual(
+            scan["items"]["Robe"]["template_variants"], ["robe_62x57.png"])
 
     def test_import_rejects_wrong_manifest_version_before_writing(self):
         with zipfile.ZipFile("bundle.zip", "w") as zf:
@@ -125,20 +154,22 @@ class ImportExportSecurityTest(unittest.TestCase):
 
     def test_import_keeps_window_scan_anchor_aligned_with_remapped_slots(self):
         manifest = _manifest()
+        manifest["layout"] = "sequence-folders"
+        manifest["contents"]["sequences"] = ["Farm"]
         slot = {
             "scan_region": [110, 120, 130, 140],
             "click_pos": [120, 130],
         }
         scan = {
-            "name": "Live", "slot_names": ["Slot 1"], "item_names": [],
+            "name": "Live", "slots": {"Slot 1": slot}, "items": {},
             "reverse": True, "capture_window_title": "Mein Spiel",
             "capture_window_index": 2,
             "capture_window_rect": [100, 100, 300, 300],
         }
         with zipfile.ZipFile("bundle.zip", "w") as zf:
             zf.writestr("manifest.json", json.dumps(manifest))
-            zf.writestr("slots.json", json.dumps({"Slot 1": slot}))
-            zf.writestr("item_scans/live.json", json.dumps(scan))
+            zf.writestr("sequences/Farm/sequence.json", json.dumps(_sequence_data("Farm")))
+            zf.writestr("sequences/Farm/item_scans/live.json", json.dumps(scan))
 
         transform = {"scale_x": 2.0, "scale_y": 2.0,
                      "offset_x": 5, "offset_y": 7}
@@ -151,8 +182,12 @@ class ImportExportSecurityTest(unittest.TestCase):
         )
 
         self.assertTrue(ok)
-        imported_slot = state.global_slots["Slot 1"]
-        imported_scan = state.item_scans["Live"]
+        # Der Besitzordner heisst, was `sanitize_filename()` daraus macht
+        # (klein geschrieben) — nicht, wie der Pfad im Buendel lautete.
+        imported_scan = load_item_scan_file(
+            sequence_dir("Farm") / "item_scans" / "live.json", "Farm")
+        self.assertIsNotNone(imported_scan)
+        imported_slot = imported_scan.slots[0]
         self.assertEqual(imported_slot.scan_region, (225, 247, 265, 287))
         self.assertEqual(imported_scan.capture_window_rect, (205, 207, 605, 607))
         self.assertEqual(imported_scan.capture_window_title, "Mein Spiel")
@@ -161,11 +196,14 @@ class ImportExportSecurityTest(unittest.TestCase):
 
     def test_calibration_moves_slot_and_its_window_anchor_together(self):
         state = AutoClickerState()
+        sequence = Sequence(name="Farm")
+        state.sequences[sequence.name] = sequence
+        state.active_sequence = sequence
         slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
         state.global_slots[slot.name] = slot
         state.item_scans["Live"] = ItemScanConfig(
             name="Live", slots=[slot], capture_window_title="Mein Spiel",
-            capture_window_rect=(0, 0, 100, 100),
+            capture_window_rect=(0, 0, 100, 100), owner_sequence="Farm",
         )
         transform = {"scale_x": 1.0, "scale_y": 1.0,
                      "offset_x": 50, "offset_y": -10}

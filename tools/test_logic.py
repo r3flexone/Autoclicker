@@ -78,17 +78,25 @@ def roundtrip(to_dict, load_file, cfg):
     p.write_text(compact_json(to_dict(cfg)), encoding="utf-8")
     return load_file(p)
 
-slot = ItemSlot(name="Slot 1", scan_region=(10, 20, 110, 120), click_pos=(60, 70), slot_color=(30, 40, 50))
+slot = ItemSlot(name="Slot 1", scan_region=(10, 20, 110, 120), click_pos=(60, 70),
+                slot_color=(30, 40, 50), enabled=False)
 item = ItemProfile(name="Schwert", marker_colors=[(200, 30, 30)], category="Waffe", priority=2,
                    confirm_point=ClickPoint(5, 6), confirm_delay=0.7, template="schwert.png", min_confidence=0.85)
 isc = ItemScanConfig(name="MyScan", slots=[slot], items=[item], color_tolerance=42, learn_unknown=True)
 r = roundtrip(_item_scan_to_dict, load_item_scan_file, isc)
 check("ItemScan name/tol/learn_unknown", r.name == "MyScan" and r.color_tolerance == 42 and r.learn_unknown is True)
-# Ein Item-Scan speichert nur NAMEN - Slots/Items selbst liegen global.
-# Aufgeloest wird von resolve_scan_references(state), s. eigener Abschnitt weiter unten.
-check("ItemScan speichert Slot-Namen", r.slot_names == ["Slot 1"])
-check("ItemScan speichert Item-Namen", r.item_names == ["Schwert"])
-check("ItemScan laedt keine Kopien mehr", r.slots == [] and r.items == [])
+# Ein Item-Scan ist eigenständig: gleichnamige Einträge anderer Scans sind
+# andere Objekte und dürfen ihn nicht verändern.
+check("ItemScan speichert vollständige Slots", r.slot_names == ["Slot 1"]
+      and r.slots[0].scan_region == (10, 20, 110, 120))
+check("ein ausgeschalteter Slot überlebt den Datei-Zyklus",
+      r.slots[0].enabled is False)
+check("aktiv ist der alte Standard und wird nicht extra geschrieben",
+      "enabled" not in _item_scan_to_dict(ItemScanConfig(
+          name="Standard", slots=[ItemSlot("S", (0, 0, 10, 10), (5, 5))]))["slots"]["S"])
+check("ItemScan speichert vollständige Items", r.item_names == ["Schwert"]
+      and r.items[0].template == "schwert.png")
+check("ItemScan lädt eigene Objekte", r.slots and r.items)
 
 # --- Die Scan-Richtung gehoert zum Scan, nicht zum Programm ---
 # Sie stand als `config.scan_reverse` in der Config und galt damit fuer ALLE
@@ -168,16 +176,14 @@ empty = tmp / "empty.json"; empty.write_text("{}", encoding="utf-8")  # name feh
 check("ItemScan ohne 'name' -> None", load_item_scan_file(empty) is None)
 
 # ------------------------------------------------- Altformat-Scan (eingebettete Kopien)
-section("item_scans: eingebettete Slot-/Item-Kopien werden zu Namens-Referenzen")
+section("item_scans: altes Listenformat wird sicher abgelehnt")
 mixed = {"name": "S", "slots": [
     {"name": "ok", "scan_region": [0, 0, 5, 5], "click_pos": [2, 2]},
     {"name": "kaputt"}],  # unvollstaendig - der Name genuegt jetzt trotzdem
     "items": [{"name": "Schwert", "marker_colors": []}]}
 pm = tmp / "mixed.json"; pm.write_text(json.dumps(mixed), encoding="utf-8")
 rm = load_item_scan_file(pm)
-check("Altformat-Scan lädt", rm is not None)
-check("Slot-Kopien wurden zu Namen", rm is not None and rm.slot_names == ["ok", "kaputt"])
-check("Item-Kopien wurden zu Namen", rm is not None and rm.item_names == ["Schwert"])
+check("Altformat-Scan crasht nicht", rm is None)
 
 # ---------------------------------------------------------------- compact_json
 section("compact_json (Arrays kompakt, Strings NICHT korrumpiert)")
@@ -235,35 +241,41 @@ check("entfernter Key nicht als Attribut", not hasattr(cfg, "scan_learn_llm_name
 check("scan_min_confidence Default vorhanden", hasattr(cfg, "scan_min_confidence"))
 
 # ---------------------------------------------------------------- export_bundle (Zip-Inhalt)
-section("export_bundle: erzeugt ZIP, Scan-JSON == Serializer-Format")
+section("export_bundle: Sequenzordner bleibt als Besitzeinheit zusammen")
 import zipfile
 from autoclicker.models import AutoClickerState
 st = AutoClickerState()
-st.points = [ClickPoint(1, 2, "P1", 1, color=(3, 4, 5), source="Aufnahme 'A'")]
-st.item_scans = {"MyScan": isc}
-st.boss_scans = {"BScan": bsc}
-st.icon_scans = {"IScan": icn}
 from autoclicker.import_export import export_bundle, read_manifest
+import os as _os_bundle
+_bundle_alt = Path.cwd()
+_bundle_root = tmp / "neues_layout"
+(_bundle_root / "sequences" / "Test" / "item_scans").mkdir(parents=True)
+_seq_json = {"name": "Test", "points": [_point_to_dict(
+    ClickPoint(1, 2, "P1", 1, color=(3, 4, 5), source="Aufnahme 'A'"))],
+    "init_steps": [], "loop_phases": [], "end_steps": []}
+(_bundle_root / "sequences" / "Test" / "sequence.json").write_text(
+    compact_json(_seq_json), encoding="utf-8")
+(_bundle_root / "sequences" / "Test" / "item_scans" / "MyScan.json").write_text(
+    compact_json(_item_scan_to_dict(isc)), encoding="utf-8")
 zpath = str(tmp / "bundle.zip")
-ok_exp, msg = export_bundle(st, zpath, (0, 0), (100, 100),
-                            include_config=False)  # config separat getestet
+_os_bundle.chdir(_bundle_root)
+try:
+    ok_exp, msg = export_bundle(st, zpath, (0, 0), (100, 100),
+                                include_config=False)
+finally:
+    _os_bundle.chdir(_bundle_alt)
 check("export_bundle Erfolg", ok_exp is True)
 with zipfile.ZipFile(zpath) as zf:
     names = zf.namelist()
-    from autoclicker.utils import sanitize_filename as _sf
-    iname = f"item_scans/{_sf('MyScan')}.json"
-    bname = f"boss_scans/{_sf('BScan')}.json"
-    check("points.json im Bundle", "points.json" in names)
-    check("item_scans/<scan>.json im Bundle", iname in names)
+    iname = "sequences/Test/item_scans/MyScan.json"
+    check("Punkte liegen in sequence.json", "sequences/Test/sequence.json" in names)
+    check("Item-Scan liegt unter seiner Sequenz", iname in names)
     iscan_json = json.loads(zf.read(iname))
-    # über compact_json normalisieren (Tupel->Array auf beiden Seiten)
     check("Export-Item-Scan == save-Format", iscan_json == json.loads(compact_json(_item_scan_to_dict(isc))))
-    bscan_json = json.loads(zf.read(bname))
-    check("Export-Boss-Scan == _boss_scan_to_dict", bscan_json == _boss_scan_to_dict(bsc))
-    pts = json.loads(zf.read("points.json"))
-    check("Export-Punkt == _point_to_dict", pts[0] == _point_to_dict(st.points[0]))
+    seq_export = json.loads(zf.read("sequences/Test/sequence.json"))
+    check("Export-Punkt bleibt in seiner Sequenz", seq_export["points"][0] == _seq_json["points"][0])
 ok_man, man = read_manifest(zpath)
-check("read_manifest OK", ok_man and man.get("version") == 1)
+check("read_manifest OK", ok_man and man.get("layout") == "sequence-folders")
 
 # ---------------------------------------------------------------- LLM-Vision-Logik
 # Reine Logik aus llm_vision.py — kein Netzwerk, kein Backend. Deckt die
@@ -453,6 +465,31 @@ check("Gate: 's' ueberspringt", _ergebnisse["s"] == _dbg.GATE_SKIP)
 check("Gate: 'q' bricht ab", _ergebnisse["q"] == _dbg.GATE_STOP)
 check("Gate: 'c' laeuft weiter UND schaltet den Modus aus",
       _ergebnisse["c"] == _dbg.GATE_RUN and _st.step_mode is False)
+
+# Studio-Entscheidung: der Worker liest dann ausdrücklich NICHT aus stdin.
+import threading as _threading_step
+import time as _time_step
+import autoclicker.runtime.status as _status_step
+_st.step_mode = True
+_st.step_via_studio = True
+_st.stop_event.clear()
+_studio_ergebnis = {}
+_studio_thread = _threading_step.Thread(
+    target=lambda: _studio_ergebnis.setdefault(
+        "wert", _dbg.step_gate(_st, _step, "LOOP", 2, 3)))
+_studio_thread.start()
+_frist = _time_step.time() + 1.0
+while not (_status_step._zustand.get("manuell")) and _time_step.time() < _frist:
+    _time_step.sleep(0.01)
+with _st.lock:
+    _st.step_command = "skip"
+    _st.step_command_event.set()
+_studio_thread.join(1.0)
+check("Studio-Gate wartet auf den sichtbaren Befehl",
+      _studio_ergebnis.get("wert") == _dbg.GATE_SKIP)
+check("und räumt die sichtbare Rückfrage danach weg",
+      _status_step._zustand.get("manuell") is None)
+_st.step_via_studio = False
 _st.step_mode = False
 check("Gate ohne manuellen Modus: sofort run",
       _dbg.step_gate(_st, _step, "LOOP", 1, 3) == _dbg.GATE_RUN)
@@ -512,7 +549,8 @@ _seq = _Seq(name="Verkauf", loop_phases=[_LP(name="LOOP", steps=[
     SequenceStep(delay_before=0, point_id=7, wait_condition=_WC(point_id=11)),
     SequenceStep(delay_before=0, key_press="enter"),         # ohne Stelle
     SequenceStep(delay_before=0, point_id=42),               # verwaist
-])])
+])], points=_st2.points)
+_st2.active_sequence = _seq
 
 # Fenster war beim Aufnehmen um (+8,+5) verschoben -> Punkte korrigiert
 for _p in _st2.points:
@@ -604,9 +642,14 @@ _st5 = AutoClickerState()
 _st5.points = [_CP(x=10, y=20, name="Popup-OK", id=1),
                _CP(x=30, y=40, name="Boss-Angriff", id=2),
                _CP(x=50, y=60, name="Icon-Weg", id=3)]
-_st5.global_items = {"Kohle": _IP(name="Kohle", confirm_point_id=1),
-                     "Erz": _IP(name="Erz"),
-                     "Tot": _IP(name="Tot", confirm_point_id=99)}
+_seq5 = _Seq(name="Scanfolge", points=_st5.points)
+_st5.active_sequence = _seq5
+_items5 = {"Kohle": _IP(name="Kohle", confirm_point_id=1),
+           "Erz": _IP(name="Erz"),
+           "Tot": _IP(name="Tot", confirm_point_id=99)}
+_st5.global_items = _items5
+_st5.item_scans = {"Inventar": ItemScanConfig(
+    name="Inventar", items=list(_items5.values()), owner_sequence="Scanfolge")}
 _st5.global_bosses = [BossProfile(name="Drache", action="click", action_point_id=2)]
 _ic5 = _ISC2(name="I", action="click", action_point_id=3)
 _st5.icon_scans = {"I": _ic5}
@@ -719,13 +762,14 @@ check("sie kommt leer an, statt halb geraten", _seq_alt is not None
 _mp4 = tmp / "aktuell.json"
 _mp4.write_text(json.dumps({
     "name": "Aktuell", "schema_version": SCHEMA_VERSION, "total_cycles": 1,
+    "points": [{"id": 3, "x": 100, "y": 200, "name": "Markt"}],
     "init_steps": [], "end_steps": [],
     "loop_phases": [{"name": "Loop", "repeat": 1,
                      "steps": [{"point_id": 3, "delay_before": 0}]}]}), encoding="utf-8")
 _seq_neu = _load_seq(_mp4, _pts)
 check("eine aktuelle Datei laedt vollstaendig",
       _seq_neu is not None and len(_seq_neu.loop_phases[0].steps) == 1)
-check("und ihre Koordinate kommt aus points.json",
+check("und ihre Koordinate kommt aus ihrer Punktliste",
       _seq_neu is not None
       and (_seq_neu.loop_phases[0].steps[0].x, _seq_neu.loop_phases[0].steps[0].y)
       == (100, 200))
@@ -765,21 +809,16 @@ _items, _m = _mig(_items, _K_ITEMS)
 check("Items: kein Normalisierer mehr, nichts wird angefasst",
       _items == _items_vorher and _m == [])
 
-# Item-Scans trugen ihre Slots/Items als Kopie - jetzt nur noch Namen
-_scan = {"name": "inv",
-         "slots": [{"name": "S1", "scan_region": [0, 0, 1, 1], "click_pos": [0, 0]}],
-         "items": [{"name": "Kohle", "confirm_point": [7, 8]}]}
+# Item-Scans werden nicht mehr auf einen globalen Namensbestand migriert.
+_scan = {"name": "inv", "slots": {"S1": {"scan_region": [0, 0, 1, 1],
+                                                   "click_pos": [0, 0]}},
+         "items": {"Kohle": {"confirm_point_id": 7}}}
+_scan_vorher = json.loads(json.dumps(_scan))
 _scan, _m = _mig(_scan, _K_ISCAN)
-check("Item-Scan: Kopien werden zu Namen",
-      _scan["slot_names"] == ["S1"] and _scan["item_names"] == ["Kohle"])
-check("Item-Scan: eingebettete Kopien sind weg",
-      "slots" not in _scan and "items" not in _scan)
-check("Item-Scan: beide Umstellungen gemeldet", len(_m) == 2)
+check("Item-Scan: eigenstaendiger Bestand bleibt unangetastet",
+      _scan == _scan_vorher)
+check("Item-Scan: kein Altlast-Umbau", _m == [])
 check("Item-Scan: zweiter Lauf meldet nichts", _mig(_scan, _K_ISCAN)[1] == [])
-# Vorhandene Namensliste gewinnt gegen eine Alt-Kopie
-_beides = {"name": "x", "item_names": ["Neu"], "items": [{"name": "Alt"}]}
-_beides, _ = _mig(_beides, _K_ISCAN)
-check("Item-Scan: vorhandene Namensliste gewinnt", _beides["item_names"] == ["Neu"])
 
 # Der Loader kennt die alte Liste NICHT mehr - dafuer ist die Migration da
 from autoclicker.persistence.serialization import _item_from_dict as _ifd
@@ -855,8 +894,6 @@ _MIGRATE_AUSNAHMEN = {
     # (kein AutoClickerState) und werden AUS dem Hauptprozess gestartet, der beim
     # Start alles gehoben hat. Mit `migrate_on_start: false` gilt das nicht mehr -
     # folgenlos, solange die Sequenz-Kette leer ist.
-    "autoclicker/editors/sequence_studio/scan_model.py":
-        "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     "autoclicker/editors/sequence_studio/model.py":
         "Subprozess - Hauptprozess hat beim Start gesweept (sofern migrate_on_start an ist)",
     # list_scan_files() liest EIN Feld ("name") fuer die Auswahlliste und baut keine
@@ -924,23 +961,10 @@ for _kind, _daten in _aktuell.items():
         print(f"        -> {_kind} wurde angefasst: {_meld}")
 check("aktuelle Daten werden bei keinem Typ veraendert", _unberuehrt)
 
-# 5. Umbenennen ist ein Save-Pfad - der muss genauso reinigen wie der Loader.
+# 5. Umbenennen wirkt nur im gewählten Scan, nie dateiübergreifend.
 from autoclicker.persistence.item_scans import update_item_in_scans as _uiis
-import autoclicker.persistence.item_scans as _ismod
-_scandir = Path(tempfile.mkdtemp())
-(_scandir / "alt.json").write_text(json.dumps({
-    "name": "alt", "slots": [],
-    "items": [{"name": "Kohle", "marker_colors": [], "confirm_point": [3, 4]}]}),
-    encoding="utf-8")  # Altformat: Kopie statt Referenz
-_orig_dir = _ismod.ITEM_SCANS_DIR
-_ismod.ITEM_SCANS_DIR = str(_scandir)
-_uiis("Kohle", "Steinkohle")
-_ismod.ITEM_SCANS_DIR = _orig_dir
-_nach_rename = json.loads((_scandir / "alt.json").read_text(encoding="utf-8"))
-check("Umbenennen zieht die Namens-Referenz nach",
-      _nach_rename["item_names"] == ["Steinkohle"])
-check("Umbenennen hebt dabei auch das Altformat (Kopie -> Referenz)",
-      "items" not in _nach_rename)
+check("Umbenennen hat keinen globalen Scan-Durchlauf",
+      _uiis("Kohle", "Steinkohle") == (0, 0))
 
 
 # ------------------------------------------- Start-Durchgang (persistence/sweep)
@@ -1155,51 +1179,34 @@ check("Loader kennt delay_after nicht mehr",
       _p2s([{"x": 1, "y": 2, "delay_after": 9}])[0].delay_before == 0)
 
 
-# ------------------------------- Items/Slots referenzieren statt kopieren
-section("Item-Scans verweisen auf globale Slots/Items (keine Kopien mehr)")
+# ------------------------------- Items/Slots gehören genau einem Scan
+section("Item-Scans besitzen ihre Slots/Items")
 from autoclicker.persistence.item_scans import resolve_scan_references as _resolve_scans
 from autoclicker.models import ItemScanConfig as _ISC
 
 _st4 = AutoClickerState()
-_st4.global_slots = {"S1": ItemSlot(name="S1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))}
-_st4.global_items = {"Kohle": ItemProfile(name="Kohle", marker_colors=[(1, 2, 3)],
-                                         category="Erz", priority=1)}
-_st4.item_scans = {"inv": _ISC(name="inv", slot_names=["S1"], item_names=["Kohle"])}
+_slot4 = ItemSlot(name="S1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))
+_item4 = ItemProfile(name="Kohle", marker_colors=[(1, 2, 3)], category="Erz", priority=1)
+_st4.item_scans = {"inv": _ISC(name="inv", slots=[_slot4], items=[_item4])}
 
 _meld = _resolve_scans(_st4)
 _cfg = _st4.item_scans["inv"]
-check("Referenz wird zum globalen Slot aufgeloest",
-      len(_cfg.slots) == 1 and _cfg.slots[0] is _st4.global_slots["S1"])
-check("Referenz wird zum globalen Item aufgeloest",
-      len(_cfg.items) == 1 and _cfg.items[0] is _st4.global_items["Kohle"])
+check("Scan behält seinen eigenen Slot", _cfg.slots == [_slot4])
+check("Scan behält sein eigenes Item", _cfg.items == [_item4])
 check("nichts zu meckern wenn alles da ist", _meld == [])
 
-# Der Kern der Sache: Aenderung am globalen Item wirkt im Scan
-_st4.global_items["Kohle"].marker_colors = [(9, 9, 9)]
-_resolve_scans(_st4)
-check("Aenderung am globalen Item wirkt im Scan",
-      _st4.item_scans["inv"].items[0].marker_colors == [(9, 9, 9)])
-
-# Fehlende Namen: melden und weiterlaufen, nicht den Scan sprengen
-_st4.item_scans["inv"].item_names = ["Kohle", "Gibtsnicht"]
-_st4.item_scans["inv"].slot_names = ["S1", "AuchNicht"]
-_meld = _resolve_scans(_st4)
-check("fehlender Slot wird gemeldet", any("AuchNicht" in m for m in _meld))
-check("fehlendes Item wird gemeldet", any("Gibtsnicht" in m for m in _meld))
-check("der Rest bleibt nutzbar",
-      len(_st4.item_scans["inv"].items) == 1 and len(_st4.item_scans["inv"].slots) == 1)
-
-# Speichern leitet die Namen aus den aufgeloesten Objekten ab, wenn Editoren
-# direkt slots/items setzen - so muss kein Editor umgebaut werden
 from autoclicker.persistence.serialization import _item_scan_to_dict as _isc2d
-_vom_editor = _ISC(name="neu",
-                   slots=[_st4.global_slots["S1"]],
-                   items=[_st4.global_items["Kohle"]])
+_vom_editor = _ISC(name="neu", slots=[_slot4], items=[_item4])
 _gespeichert = _isc2d(_vom_editor)
-check("Editor-Config wird als Namen gespeichert",
-      _gespeichert["slot_names"] == ["S1"] and _gespeichert["item_names"] == ["Kohle"])
-check("keine Kopien in der Datei",
-      "slots" not in _gespeichert and "items" not in _gespeichert)
+check("vollständiger Slot wird eingebettet", "S1" in _gespeichert["slots"])
+check("vollständiges Item wird eingebettet", "Kohle" in _gespeichert["items"])
+
+# Zwei gleichnamige Items in zwei Scans bleiben getrennt.
+_zweites = ItemProfile(name="Kohle", marker_colors=[(9, 9, 9)])
+_st4.item_scans["zweites"] = _ISC(name="zweites", items=[_zweites])
+_item4.marker_colors = [(4, 4, 4)]
+check("gleichnamige Items anderer Scans bleiben unabhängig",
+      _zweites.marker_colors == [(9, 9, 9)])
 
 
 # ----------------------- Default-Tabellen duerfen nicht von den Dataclasses abdriften
@@ -1235,7 +1242,8 @@ _tabellen = [
 for _tab_name, _tabelle, _cls in _tabellen:
     _dcd = _dataclass_defaults(_cls)
     _drift = [k for k, v in _tabelle.items()
-              if k in _dcd and not (_dcd[k] == v and type(_dcd[k]) is type(v))]
+              if not (_tab_name == "Item-Scan" and k in ("slots", "items"))
+              and k in _dcd and not (_dcd[k] == v and type(_dcd[k]) is type(v))]
     check(f"{_tab_name}-Defaults ohne Abweichung", _drift == [])
 
 # Der Datei-Default darf NICHT aus der Config kommen. Frueher war
@@ -1422,7 +1430,7 @@ check("keine Referenz wird stillschweigend gesetzt", _fremd.point_id is None)
 
 # Mit Referenz ist die Aufloesung zustaendig - dort wird der Schritt auch gemeldet
 _verknuepft = _SS3(x=900, y=900, delay_before=0, name="P3", point_id=3)
-_seq4 = _Seq3("mit_ref", [], [_LP3("Loop", [_verknuepft])], [])
+_seq4 = _Seq3("mit_ref", [], [_LP3("Loop", [_verknuepft])], [], points=_st3.points)
 _report_point_mismatches(_st3, _seq4)
 check("Schritt mit point_id bleibt dem Loader egal", (_verknuepft.x, _verknuepft.y) == (900, 900))
 from autoclicker.persistence import resolve_point_references as _rpr2
@@ -1444,27 +1452,17 @@ _cfg_editor = _ISC3(name="inv", slots=[_slot_a, _slot_b], items=[_item_a])
 check("Editor-Config bekommt die Namen automatisch",
       _cfg_editor.slot_names == ["S1", "S2"] and _cfg_editor.item_names == ["Kohle"])
 
-# So baut der LOADER: nur Namen. __str__ muss trotzdem die richtige Zahl zeigen -
-# vorher stand im Menue bei jedem gespeicherten Scan "0 Slots, 0 Items".
-_cfg_datei = _ISC3(name="inv", slot_names=["S1", "S2"], item_names=["Kohle"])
+# Der Loader baut dieselben vollständigen Objekte. __str__ zeigt ihre Anzahl.
+_cfg_datei = _ISC3(name="inv", slots=[_slot_a, _slot_b], items=[_item_a])
 check("frisch geladen zeigt das Menue die richtige Anzahl",
       "2 Slots" in str(_cfg_datei) and "1 Items" in str(_cfg_datei))
-check("Vorauswahl beim Bearbeiten kommt aus den Namen",
-      list(_cfg_datei.slot_names) == ["S1", "S2"])
 
-# Der Fall, der den Scan bis zum Neustart totlegte: bearbeiten, dann Sequenz starten.
-# resolve_scan_references laeuft vor JEDEM Lauf und ging ueber die (leeren) Namen.
+# Vor einem Lauf werden nur Punkt-IDs aufgelöst; der eigene Bestand bleibt.
 _st5 = _ACS()
-_st5.global_slots = {"S1": _slot_a, "S2": _slot_b}
-_st5.global_items = {"Kohle": _item_a}
 _st5.item_scans["inv"] = _cfg_editor
 _rsr(_st5)
 check("frisch bearbeiteter Scan ueberlebt den Sequenzstart",
       len(_cfg_editor.slots) == 2 and len(_cfg_editor.items) == 1)
-
-# Und andersherum: aus Namen werden Objekte
-_st5.item_scans["inv2"] = _cfg_datei
-_rsr(_st5)
 check("Namen werden zu Objekten aufgeloest",
       [s.name for s in _cfg_datei.slots] == ["S1", "S2"])
 
@@ -1475,11 +1473,11 @@ _cfg_spaet.sync_names()
 check("nachtraeglich gesetzte Objekte tragen ihre Namen nach",
       _cfg_spaet.slot_names == ["S1"])
 
-# Gespeichert werden weiterhin nur Namen
+# Gespeichert werden vollständige, scanlokale Objekte.
 _gespeichert = _item_scan_to_dict(_cfg_editor)
-check("Datei enthaelt nur Namen, keine Kopien",
-      _gespeichert.get("slot_names") == ["S1", "S2"]
-      and "slots" not in _gespeichert and "items" not in _gespeichert)
+check("Datei enthaelt den vollständigen Scan-Bestand",
+      set(_gespeichert.get("slots", {})) == {"S1", "S2"}
+      and set(_gespeichert.get("items", {})) == {"Kohle"})
 
 
 # ------------------------------------------------------- Setup-Pruefung
@@ -1489,14 +1487,17 @@ from autoclicker.models import (BossProfile as _BP2, BossScanConfig as _BSC2,
                                 IconScanConfig as _ISC4)
 
 _st6 = _ACS()
-_st6.global_slots = {"S1": _IS3("S1", (0, 0, 10, 10), (5, 5))}
-_st6.global_items = {
+_diag_items = {
     "MitTemplate": _IP3("MitTemplate", template="gibtsnicht.png"),
     "OhneAlles": _IP3("OhneAlles"),
 }
 _st6.item_scans = {
-    "inv": _ISC3(name="inv", slot_names=["S1", "FEHLT"], item_names=["MitTemplate"]),
+    "inv": _ISC3(name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
+                  items=list(_diag_items.values())),
     "leer": _ISC3(name="leer"),
+    "aus": _ISC3(name="aus", slots=[
+        _IS3("S aus", (0, 0, 10, 10), (5, 5), enabled=False)
+    ]),
 }
 _st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True)}
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
@@ -1513,18 +1514,19 @@ check("fehlendes Template wird gefunden", _hat("gibtsnicht.png"))
 check("Boss ohne Template UND ohne Marker wird gefunden",
       _hat("Hydra") and _hat("wird nie erkannt"))
 check("Icon-Scan ohne Erkennung wird gefunden", _hat("Icon-Scan 'ico'"))
-check("fehlender Slot im Scan wird gefunden", _hat("FEHLT"))
 check("Scan ganz ohne Slot wird gefunden", _hat("kein einziger Slot"))
+check("Scan nur mit ausgeschaltetem Slot wird gefunden",
+      _hat("kein Slot ist eingeschaltet"))
 check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
 check("Fehler und Hinweise sind getrennt",
-      len(_ber.fehler) >= 4 and len(_ber.hinweise) >= 2
+      len(_ber.fehler) >= 3 and len(_ber.hinweise) >= 2
       and all(b.stufe in (STUFE_FEHLER, STUFE_HINWEIS) for b in _ber.befunde))
 
 # Ein sauberes Setup darf NICHTS melden - sonst gewoehnt man sich das Ignorieren an
 _st7 = _ACS()
-_st7.global_slots = {"S1": _IS3("S1", (0, 0, 10, 10), (5, 5))}
-_st7.global_items = {"Kohle": _IP3("Kohle", marker_colors=[(1, 2, 3)])}
-_st7.item_scans = {"inv": _ISC3(name="inv", slot_names=["S1"], item_names=["Kohle"])}
+_st7.item_scans = {"inv": _ISC3(
+    name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
+    items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
 _sauber = pruefe_setup(_st7, mit_sequenzen=False)
 check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
 check("trotzdem steht da, was geprueft wurde", len(_sauber.geprueft) >= 3)
@@ -1713,6 +1715,11 @@ try:
     _r = _immediate_lauf(_items, _slots, {"S1": "Fisch", "S2": "Kohle"})
     check("Immediate: verschiedene Kategorien werden beide geklickt",
           _r == ["item:Fisch", "item:Kohle"])
+
+    _slots[1].enabled = False
+    _r = _immediate_lauf(_items, _slots, {"S2": "Fisch"})
+    check("Immediate: ein ausgeschalteter Slot wird nicht besucht", _r == [])
+    _slots[1].enabled = True
 
     # Reiner Lern-Scan (keine Items, learn_unknown=True) darf nicht vorzeitig aussteigen
     _st_lern = AutoClickerState(); _st_lern.config = _AC2()
@@ -2152,14 +2159,22 @@ check("zwei Punkte skalieren zusaetzlich",
 def _kalib_state():
     """Ein Bestand mit je einem Vertreter jeder Koordinaten-Art."""
     s = AutoClickerState()
-    s.points = [_KCP(x=100, y=200, name="Bank", id=1), _KCP(x=500, y=800, name="Ofen", id=2)]
-    s.global_slots = {"Slot 1": _KIS(name="Slot 1", scan_region=(10, 20, 60, 70),
-                                     click_pos=(35, 45))}
-    s.global_items = {"Erz": _KIP(name="Erz", confirm_point=_KCP(x=300, y=400, name=""))}
+    _punkte = [_KCP(x=100, y=200, name="Bank", id=1),
+               _KCP(x=500, y=800, name="Ofen", id=2)]
+    _slots = {"Slot 1": _KIS(name="Slot 1", scan_region=(10, 20, 60, 70),
+                              click_pos=(35, 45))}
+    _items = {"Erz": _KIP(name="Erz", confirm_point=_KCP(x=300, y=400, name=""))}
+    _scan = _ISC(name="Inventar", slots=list(_slots.values()),
+                 items=list(_items.values()),
+                 owner_sequence="Seq")
+    s.item_scans = {"Inventar": _scan}
+    s.global_slots = _slots
+    s.global_items = _items
     s.boss_scans = {"B": _KBSC(name="B", scan_region=(0, 0, 100, 100),
                                bosses=[_KBP(name="Drache", action="click",
-                                            action_x=700, action_y=750)])}
-    _icon = _KISC(name="I", scan_region=(5, 5, 55, 55))
+                                            action_x=700, action_y=750)],
+                               owner_sequence="Seq")}
+    _icon = _KISC(name="I", scan_region=(5, 5, 55, 55), owner_sequence="Seq")
     _icon.action_x, _icon.action_y = 60, 65
     s.icon_scans = {"I": _icon}
     s.global_bosses = [_KBP(name="Global", action="click", action_x=11, action_y=22)]
@@ -2169,8 +2184,12 @@ def _kalib_state():
                  else_config=_KEC(action="click", x=900, y=950))
     _shot = _KSS(x=0, y=0, delay_before=0, name="shot", screenshot_only=True,
                  screenshot_region=(1, 2, 3, 4))
-    s.sequences = {"Seq": _KSEQ(name="Seq", init_steps=[_schritt],
-                                loop_phases=[_KLP("L", [_trig, _shot], 1)], end_steps=[])}
+    _seq = _KSEQ(name="Seq", init_steps=[_schritt],
+                 loop_phases=[_KLP("L", [_trig, _shot], 1)], end_steps=[],
+                 points=_punkte)
+    s.sequences = {"Seq": _seq}
+    s.active_sequence = _seq
+    s.points = _seq.points
     return s, _schritt, _trig, _shot
 
 
@@ -2260,7 +2279,8 @@ try:
     from autoclicker.persistence import ensure_sequences_dir as _esd
     from autoclicker.config import SEQUENCES_DIR as _SQD
     _esd()
-    _sq = Path(_SQD) / "nicht_geladen.json"
+    _sq = Path(_SQD) / "nicht_geladen" / "sequence.json"
+    _sq.parent.mkdir(parents=True, exist_ok=True)
     _sq.write_text(json.dumps({
         "name": "nicht_geladen", "schema_version": 2, "total_cycles": 1,
         "init_steps": [{"x": 100, "y": 200, "delay_before": 0, "name": "a"}],
@@ -2657,6 +2677,7 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 # Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
 # Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
 from autoclicker.editors.sequence_recorder import punkte_fuer_events as _pfe
+from autoclicker.editors.sequence_recorder import aufnahme_datei as _aufnahme_datei
 from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
                                 REC_KEY as _R_KEY, REC_SCROLL as _R_SCROLL,
                                 REC_WAIT_COLOR as _R_WAIT)
@@ -2666,18 +2687,25 @@ _events = [_RE(_R_CLICK, 0.0, 100, 200, (1, 2, 3)),
            _RE(_R_CLICK, 1.0, 300, 400, None),
            _RE(_R_CLICK, 2.0, 100, 200, (1, 2, 3))]
 _map, _neu = _pfe(_st_rec, _events, "Aufnahme")
-check("Recorder legt fuer jede Position einen Punkt an", _neu == 2)
-check("gleiche Position zweimal geklickt -> nur ein Punkt", len(_st_rec.points) == 2)
+check("Recorder legt fuer jede Position einen Punkt an", len(_neu) == 2)
+check("gleiche Position zweimal geklickt -> nur ein Punkt", len(_neu) == 2)
 check("jedes Ereignis mit Stelle hat eine ID", set(_map) == {0, 1, 2})
 check("beide Klicks auf dieselbe Stelle teilen sich die ID",
-      _map[0] == _map[2] == _st_rec.points[0].id)
+      _map[0] == _map[2] == _neu[0].id)
 
-# Bestehende Punkte gewinnen, statt Dubletten anzulegen
+# Der Punkt-Pool einer anderen aktiven Sequenz darf nicht in die neue Aufnahme
+# geraten. Gleiche IDs sind erlaubt, weil IDs nur innerhalb einer Sequenz gelten.
 _st_rec2 = AutoClickerState()
 _st_rec2.points = [_WCP(x=100, y=200, name="schon da", id=42)]
-_map2, _neu2 = _pfe(_st_rec2, _events, "Aufnahme")
-check("bestehender Punkt wird referenziert statt verdoppelt", _neu2 == 1)
-check("und behaelt seine ID", _map2[0] == 42)
+_map2, _punkte2 = _pfe(_st_rec2, _events, "Aufnahme")
+check("Recorder baut einen eigenen Punkt-Pool", len(_punkte2) == 2)
+check("Punkte der anderen Sequenz werden nicht referenziert", _map2[0] != 42)
+check("fremder Punkt-Pool bleibt unangetastet", _st_rec2.points[0].id == 42)
+_aufnahme_ziel = _aufnahme_datei("Neue Aufnahme")
+check("Recorder speichert im Besitzordner der Sequenz",
+      _aufnahme_ziel.parts[-3:] == ("sequences", "neue_aufnahme", "sequence.json"))
+check("Recorder legt keine direkte JSON-Datei mehr unter sequences/ an",
+      _aufnahme_ziel.parent.name != "sequences")
 
 # --- Fast dieselbe Stelle ist dieselbe Stelle - aber nur bei gleicher Farbe ---
 # Denselben Knopf trifft man beim Aufnehmen nie zweimal pixelgenau. Mit exaktem
@@ -2694,7 +2722,7 @@ _ev_nah = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
            _RE(_R_CLICK, 1.0, 103, 202, (32, 135, 111)),   # 3.6 px daneben
            _RE(_R_CLICK, 2.0, 104, 205, (32, 135, 111))]   # 6.4 px daneben
 _map3, _neu3 = _pfe(_st_rec3, _ev_nah, "Nah")
-check("drei Klicks auf denselben Knopf ergeben EINEN Punkt", _neu3 == 1)
+check("drei Klicks auf denselben Knopf ergeben EINEN Punkt", len(_neu3) == 1)
 check("und alle drei Schritte zeigen darauf",
       _map3[0] == _map3[1] == _map3[2])
 
@@ -2706,7 +2734,7 @@ _ev_farbe = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
              _RE(_R_CLICK, 1.0, 101, 200, (179, 57, 57))]
 _map4, _neu4 = _pfe(_st_rec4, _ev_farbe, "Farbe")
 check("abweichende Farbe erzwingt einen eigenen Punkt",
-      _neu4 == 2 and _map4[0] != _map4[1])
+      len(_neu4) == 2 and _map4[0] != _map4[1])
 
 # Ohne gemessene Farbe laesst sich die Regel nicht pruefen - dann zaehlt nur die
 # exakte Stelle. Lieber ein Punkt zu viel als zwei falsch zusammengelegte.
@@ -2726,8 +2754,11 @@ check("und der naechste gewinnt, wenn mehrere passen",
 
 # Die eigentliche Wirkung: Punkt verschieben -> Schritt zieht nach
 _seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
-    _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)])
+    _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)],
+    points=_punkte2)
 _st_rec2.sequences = {"R": _seq_rec}
+_st_rec2.active_sequence = _seq_rec
+_st_rec2.points = _seq_rec.points
 _st_rec2.points[0].x, _st_rec2.points[0].y = 777, 888
 from autoclicker.persistence import resolve_point_references as _rpr
 with _cl2.redirect_stdout(_io2.StringIO()):
@@ -2797,7 +2828,7 @@ check("Tastendruck bekommt keinen Punkt", 3 not in _map_alle)
 check("Warte-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_alle)
 check("nur Klick und Scroll bekommen einen", set(_map_alle) == {0, 2, 4})
 check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_alle[2] == _map_alle[4])
-check("kein Punkt ohne echte Stelle", len(_st_alle.points) == 2)
+check("kein Punkt ohne echte Stelle", len(_neu_alle) == 2)
 
 check("Tastendruck wird ein key_press-Schritt",
       _steps_alle[2].key_press == "enter" and _steps_alle[2].point_id is None)
@@ -2816,7 +2847,7 @@ check("spaetere Schritte messen wieder normal",
       _steps_alle[2].delay_before == 0.6 and _steps_alle[3].delay_before == 0.5)
 
 # Die Wartefarbe ist die des Klicks — richtig, weil man erst klickt, wenn es da ist
-_pkt_klick = [p for p in _st_alle.points if p.id == _map_alle[2]][0]
+_pkt_klick = [p for p in _neu_alle if p.id == _map_alle[2]][0]
 check("gewartet wird auf die Farbe, die der Klick vorfand", _pkt_klick.color == (7, 7, 7))
 
 # In der Datei stehen nur zwei Referenzen auf denselben Punkt, keine Koordinate
@@ -2830,13 +2861,13 @@ _ev_echt = [_RE(_R_CLICK, 0.0, 4464, 1357, (32, 135, 111)),
             _RE(_R_WAIT, 1.0),
             _RE(_R_CLICK, 435.34, 4764, 29, (179, 57, 57))]
 _st_echt = AutoClickerState()
-_map_echt, _ = _pfe(_st_echt, _ev_echt, "Echt")
+_map_echt, _punkte_echt = _pfe(_st_echt, _ev_echt, "Echt")
 _steps_echt = _sae(_ev_echt, _map_echt)
 check("echte Aufnahme: 434s Warten werden zur Bedingung, nicht zur Schlafzeit",
       _steps_echt[1].delay_before == 1.0)
 check("echte Aufnahme: geprueft wird die Klick-Stelle",
       _steps_echt[1].wait_condition.point_id == _steps_echt[1].point_id)
-check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_st_echt.points) == 2)
+check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_punkte_echt) == 2)
 
 # Frisch gebaute Schritte tragen NUR Referenzen — Pruef-Pixel und Farbe sind leer, bis
 # aufgeloest wird. Der Worker macht das vor jedem Lauf; wer direkt nach der Aufnahme in
@@ -2845,8 +2876,11 @@ from autoclicker.models import Sequence as _SEQ3, LoopPhase as _LP3
 from autoclicker.persistence import resolve_point_references as _rpr3
 check("vor dem Aufloesen ist der Pruef-Pixel noch leer",
       _steps_echt[1].wait_condition.pixel == (0, 0))
-_seq_frisch = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_echt, repeat=1)])
+_seq_frisch = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_echt, repeat=1)],
+                    points=_punkte_echt)
 _st_echt.sequences = {"F": _seq_frisch}
+_st_echt.active_sequence = _seq_frisch
+_st_echt.points = _seq_frisch.points
 _rpr3(_st_echt, _seq_frisch)
 _sf = _seq_frisch.loop_phases[0].steps[1]
 check("nach dem Aufloesen zeigt die Bedingung auf die Klick-Stelle",
@@ -2881,7 +2915,7 @@ _map_shot, _neu_shot = _pfe(_st_shot, _ev_shot, "Shot")
 _steps_shot = _sae(_ev_shot, _map_shot)
 
 check("Screenshot-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_shot)
-check("und legt damit auch keinen an", len(_st_shot.points) == 2)
+check("und legt damit auch keinen an", len(_neu_shot) == 2)
 check("er wird aber SEIN EIGENER Schritt (anders als der Warte-Marker)",
       len(_steps_shot) == 3 and _steps_shot[1].screenshot_only is True)
 check("als Vollbild — der Bereich kommt spaeter im Editor",
@@ -2986,13 +3020,13 @@ _ev_watch = [_RE(_R_CLICK, 0.0, 10, 10, (1, 1, 1)),
              _RE(_R_WATCH, 2.0, 500, 600, (9, 9, 9)),
              _RE(_R_CLICK, 3.0, 20, 20, (2, 2, 2))]
 _st_watch = AutoClickerState()
-_map_watch, _ = _pfe(_st_watch, _ev_watch, "W")
+_map_watch, _punkte_watch = _pfe(_st_watch, _ev_watch, "W")
 _steps_watch = _sae(_ev_watch, _map_watch)
 # Anders als der Warte-Marker: die Stelle ist BEWUSST gewaehlt, also bekommt sie
 # einen Punkt — points.json ist die einzige Quelle fuer Koordinaten.
 check("der Beobachtungs-Marker bekommt einen eigenen Punkt", 1 in _map_watch)
 check("und der liegt auf der beobachteten Stelle",
-      any((p.x, p.y) == (500, 600) for p in _st_watch.points))
+      any((p.x, p.y) == (500, 600) for p in _punkte_watch))
 _ws2 = _steps_watch[1]
 check("er wird ein Schritt, der NICHT klickt", _ws2.wait_only is True)
 check("ohne Klickziel, aber mit Pruef-Pixel-Referenz",
@@ -3004,8 +3038,11 @@ check("in der Datei steht nur die Pruef-Referenz",
       _d_watch.get("wait_point_id") == _map_watch[1]
       and not {"x", "y", "pixel", "color", "point_id"} & set(_d_watch))
 # Aufloesen fuellt Stelle und Farbe nach
-_seq_w = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=_steps_watch, repeat=1)])
+_seq_w = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=_steps_watch, repeat=1)],
+               points=_punkte_watch)
 _st_watch.sequences = {"W": _seq_w}
+_st_watch.active_sequence = _seq_w
+_st_watch.points = _seq_w.points
 _rpr3(_st_watch, _seq_w)
 _wa = _seq_w.loop_phases[0].steps[1]
 check("nach dem Aufloesen zeigt er auf die beobachtete Stelle",
@@ -3452,8 +3489,9 @@ _st_res = AutoClickerState()
 _st_res.points = [_WCP(x=111, y=222, name="Wirkung", id=7, color=(0, 255, 0))]
 _seq_v = _SEQ3(name="V", loop_phases=[_LP3(name="L", steps=[
     _SS(x=1, y=2, delay_before=0, point_id=None,
-        verify_condition=_WC4(point_id=7))], repeat=1)])
+        verify_condition=_WC4(point_id=7))], repeat=1)], points=_st_res.points)
 _st_res.sequences = {"V": _seq_v}
+_st_res.active_sequence = _seq_v
 with _cl2.redirect_stdout(_io2.StringIO()):
     _rpr3(_st_res, _seq_v)
 _sv = _seq_v.loop_phases[0].steps[0]
@@ -3560,10 +3598,13 @@ from autoclicker.models import (ItemScanConfig as _ISC5, BossScanConfig as _BSC5
 
 # Abgeleitete Felder - stehen bewusst nicht in der Datei (siehe CLAUDE.md)
 _SCAN_FLUECHTIG = {
-    "ItemScanConfig": {"slots", "items"},        # aus slot_names/item_names aufgeloest
+    "ItemScanConfig": {"slots", "items", "owner_sequence"},
     "BossScanConfig": {"bosses"},                # eigene Liste, eigener Serialisierer
     "IconScanConfig": {"action_x", "action_y"},  # aus action_point_id
 }
+# Besitzer wird aus dem Ordner abgeleitet und steht bewusst in keiner Scan-Datei.
+_SCAN_FLUECHTIG["BossScanConfig"].add("owner_sequence")
+_SCAN_FLUECHTIG["IconScanConfig"].add("owner_sequence")
 
 
 def _probe_wert(feld):
@@ -3594,15 +3635,14 @@ try:
                                                     load_boss_scan_file as _ldb5)
     from autoclicker.persistence.icon_scans import (save_icon_scan as _svc5,
                                                     load_icon_scan_file as _ldc5)
-    from autoclicker.persistence.paths import (ITEM_SCANS_DIR as _ID5,
-                                               BOSS_SCANS_DIR as _BD5,
-                                               ICON_SCANS_DIR as _CD5)
+    from autoclicker.persistence.sequences import sequence_dir as _seqdir5
+    _besitzer5 = "ProbeSeq"
     with _cl2.redirect_stdout(_io2.StringIO()):
         _init5()
         for _label5, _kls5, _save5, _load5, _dir5 in (
-                ("ItemScanConfig", _ISC5, _svi5, _ldi5, _ID5),
-                ("BossScanConfig", _BSC5, _svb5, _ldb5, _BD5),
-                ("IconScanConfig", _ICS5, _svc5, _ldc5, _CD5)):
+                ("ItemScanConfig", _ISC5, _svi5, _ldi5, "item_scans"),
+                ("BossScanConfig", _BSC5, _svb5, _ldb5, "boss_scans"),
+                ("IconScanConfig", _ICS5, _svc5, _ldc5, "icon_scans")):
             _fl5 = _SCAN_FLUECHTIG.get(_label5, set())
             for _f5 in _dc5.fields(_kls5):
                 if _f5.name in _fl5 or _f5.name == "name":
@@ -3610,14 +3650,15 @@ try:
                 _w5 = _probe_wert(_f5)
                 if _w5 is None:
                     continue
-                _cfg5 = _kls5(name="Probe")
+                _cfg5 = _kls5(name="Probe", owner_sequence=_besitzer5)
                 setattr(_cfg5, _f5.name, _w5)
                 _save5(_cfg5)
                 # Der Dateiname folgt dem SANITISIERTEN Namen ("probe.json"), nicht
                 # dem eingetippten. Auf Windows faellt das nicht auf - dort ist das
                 # Dateisystem gross/klein-blind -, auf Linux war jede Pruefung hier
                 # "Datei nicht ladbar" und der Abschnitt dauerhaft rot.
-                _zur5 = _load5(Path(_dir5) / f"{_san5('Probe')}.json")
+                _zur5 = _load5(_seqdir5(_besitzer5) / _dir5
+                               / f"{_san5('Probe')}.json", _besitzer5)
                 if _zur5 is None:
                     _scan_loecher.append(f"{_label5}.{_f5.name}: Datei nicht ladbar")
                 elif getattr(_zur5, _f5.name, "<fehlt>") != _w5:
@@ -3638,72 +3679,73 @@ if _scan_loecher:
 # ------------------------------------------------ Punkte aus dem zweiten Prozess
 section("Was das Sequenz-Studio schreibt, findet der Hauptprozess wieder")
 
-# Der Fall aus dem Alltag: das Studio legt einen Punkt an und speichert BEIDE
-# Dateien. Der Hauptprozess laedt die Sequenz danach frisch von Platte - die
-# Punkte nahm er aber aus seinem Speicher, und dort gibt es den neuen nicht.
-# Ergebnis war "[Punkt #51 FEHLT]" und ein uebersprungener Schritt: zwei
-# Haelften aus zwei Zeitpunkten.
+# Der Fall aus dem Alltag: das Studio legt einen Punkt an und speichert die
+# Sequenz. Punkt und Schritt müssen aus derselben `sequence.json` kommen; eine
+# zweite Datei oder ein Speicher-Merge würde wieder zwei Zeitstände mischen.
 import shutil as _sh11
-from autoclicker.models import AutoClickerState as _ST11, ClickPoint as _CP11
+from autoclicker.models import AutoClickerState as _ST11
 
 _alt_cwd11 = _os.getcwd()
 _sand11 = tempfile.mkdtemp(prefix="punkte_nach_")
 try:
     _os.chdir(_sand11)
     from autoclicker.persistence import (ensure_sequences_dir as _esd11,
-                                         punkte_nachladen as _nach11,
-                                         load_sequence_file as _lsf11)
-    from autoclicker.config import SEQUENCES_DIR as _SQD11
+                                         load_sequence_file as _lsf11,
+                                         sequence_file as _sf11)
     with _cl2.redirect_stdout(_io2.StringIO()):
         _esd11()
 
-    # Stand im Speicher: ein Punkt. Auf Platte legt der andere Prozess einen
-    # zweiten dazu und verschiebt den ersten.
     _st11 = _ST11()
-    _st11.points = [_CP11(10, 20, "Bank", 1, color=(1, 2, 3))]
-    # Nur im Speicher, nie gespeichert - so entstehen Punkte im Boss-/Icon-Editor.
-    _st11.points.append(_CP11(70, 80, "Boss-Klick", 9))
-    Path(_SQD11, "points.json").write_text(json.dumps([
-        {"id": 1, "x": 11, "y": 21, "name": "Bank", "color": [1, 2, 3]},
-        {"id": 51, "x": 300, "y": 400, "name": "Studio", "color": [9, 9, 9]},
-    ]), encoding="utf-8")
-    Path(_SQD11, "studio.json").write_text(json.dumps({
+    _studio11 = _sf11("studio")
+    _studio11.parent.mkdir(parents=True, exist_ok=True)
+    _studio11.write_text(json.dumps({
         "name": "studio", "schema_version": _MG.SCHEMA_VERSION, "total_cycles": 1,
+        "points": [
+            {"id": 1, "x": 11, "y": 21, "name": "Bank", "color": [1, 2, 3]},
+            {"id": 51, "x": 300, "y": 400, "name": "Studio", "color": [9, 9, 9]},
+        ],
         "init_steps": [{"point_id": 51, "delay_before": 0}],
         "loop_phases": [], "end_steps": []}), encoding="utf-8")
 
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _punkte11 = _nach11(_st11)
-        _seq11 = _lsf11(Path(_SQD11) / "studio.json", _punkte11)
+        _seq11 = _lsf11(_studio11)
 
     _schritt11 = _seq11.init_steps[0]
     check("der im Studio angelegte Punkt loest sich auf",
           not getattr(_schritt11, "unresolved", False)
           and (_schritt11.x, _schritt11.y) == (300, 400))
-    check("Platte gewinnt bei gleicher ID",
-          [(p.x, p.y) for p in _punkte11 if p.id == 1] == [(11, 21)])
-    check("ein nur im Speicher stehender Punkt ueberlebt das Nachladen",
-          any(p.id == 9 for p in _punkte11))
-    check("nachgeladen wird in den State, nicht nur in die Rueckgabe",
-          {p.id for p in _st11.points} == {1, 9, 51})
+    check("der Punkt-Pool kommt vollständig aus derselben Datei",
+          {p.id for p in _seq11.points} == {1, 51})
 
-    # Und die Gegenprobe zur Robustheit: eine kaputte Datei darf den
-    # Speicherstand nicht leeren - raten ist hier schlimmer als altern.
-    Path(_SQD11, "points.json").write_text("{kein json", encoding="utf-8")
+    # IDs gelten nur innerhalb einer Sequenz: dieselbe #51 darf woanders auf
+    # eine andere Stelle zeigen, ohne beim Laden zusammengemischt zu werden.
+    _andere11 = _sf11("andere")
+    _andere11.parent.mkdir(parents=True, exist_ok=True)
+    _andere11.write_text(json.dumps({
+        "name": "andere", "schema_version": _MG.SCHEMA_VERSION,
+        "points": [{"id": 51, "x": 7, "y": 8, "name": "Eigen"}],
+        "init_steps": [{"point_id": 51, "delay_before": 0}],
+        "loop_phases": [], "end_steps": []}), encoding="utf-8")
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _kaputt11 = _nach11(_st11)
-    check("eine unlesbare points.json laesst den Speicherstand stehen",
-          {p.id for p in _kaputt11} == {1, 9, 51})
+        _seq_andere11 = _lsf11(_andere11)
+    check("gleiche Punkt-ID in anderer Sequenz bleibt unabhängig",
+          (_seq_andere11.init_steps[0].x, _seq_andere11.init_steps[0].y) == (7, 8)
+          and (_schritt11.x, _schritt11.y) == (300, 400))
+
+    _andere11.write_text("{kein json", encoding="utf-8")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _kaputt11 = _lsf11(_andere11)
+    check("eine unlesbare sequence.json wird sicher abgelehnt", _kaputt11 is None)
 finally:
     _os.chdir(_alt_cwd11)
     _sh11.rmtree(_sand11, ignore_errors=True)
 
 # Der Weg, den der Nutzer wirklich geht: CTRL+ALT+L bzw. der Studio-Startbefehl.
-# Beide muessen die Punkte mitziehen - stuende die Zeile nur in einem der beiden,
-# waere der andere Knopf weiterhin kaputt.
+# Beide müssen die vollständige Sequenzdatei laden; ein separates Nachladen von
+# Punkten wäre gerade wieder der alte, verteilte Vertrag.
 import ast as _ast11
 
-_ohne_nachladen11 = []
+_falsches_nachladen11 = []
 for _pfad11, _funktion11 in (
         ("autoclicker/handlers.py", "befehl_start"),
         ("autoclicker/handlers.py", "handle_switch"),
@@ -3714,12 +3756,12 @@ for _pfad11, _funktion11 in (
             _namen11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
                         if isinstance(_n11, _ast11.Call)
                         and isinstance(_n11.func, _ast11.Name)}
-            if "load_sequence_file" in _namen11 and "punkte_nachladen" not in _namen11:
-                _ohne_nachladen11.append(f"{_pfad11}:{_funktion11}")
-check("jeder Weg, der eine Sequenz von Platte laedt, holt die Punkte mit",
-      _ohne_nachladen11 == [])
-if _ohne_nachladen11:
-    for _z11 in _ohne_nachladen11:
+            if "load_sequence_file" in _namen11 and "punkte_nachladen" in _namen11:
+                _falsches_nachladen11.append(f"{_pfad11}:{_funktion11}")
+check("kein Ladeweg mischt einen separaten Punkte-Pool hinein",
+      _falsches_nachladen11 == [])
+if _falsches_nachladen11:
+    for _z11 in _falsches_nachladen11:
         print("        " + _z11)
 
 
@@ -4516,18 +4558,18 @@ try:
     _bf13.BEFEHL_DATEI = Path(_bf13.BEFEHL_DATEI.name)
     _seq14 = _SEQ8(name="Lauf", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
         _SS(x=1, y=2, delay_before=0, name="K", point_id=1)])])
-    _b14 = _SB8(_seq14, Path("sequences/lauf.json"), "sequences")
+    _b14 = _SB8(_seq14, Path("sequences/lauf/sequence.json"), "sequences")
     _b14.board.total_cycles = 7          # ungespeicherte Aenderung
     _b14._dirty = True
     _zustand14 = _b14.lauf_befehl({"befehl": "start"})
     check("der Start speichert die offene Sequenz zuerst",
-          _b14._dirty is False and Path("sequences/lauf.json").exists())
+          _b14._dirty is False and Path("sequences/lauf/sequence.json").exists())
     _auftrag14 = _bf13.hole()
     check("und schickt genau diese Datei mit",
           _auftrag14 is not None
-          and Path(_auftrag14["argumente"]["datei"]).name == "lauf.json")
+          and Path(_auftrag14["argumente"]["datei"]) == Path("sequences/lauf/sequence.json"))
     check("die Aenderung steht in der Datei, nicht nur im Speicher",
-          json.loads(Path("sequences/lauf.json").read_text(encoding="utf-8"))
+          json.loads(Path("sequences/lauf/sequence.json").read_text(encoding="utf-8"))
           .get("total_cycles") == 7)
     check("gemeldet wird der Start auch", "gestartet" in _zustand14["status"]["text"])
 
@@ -4639,6 +4681,10 @@ check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
       not any("nur warten" in s for s in _schalter13))
 check("und keinen anderen, der wait_only setzt",
       'feld: "wait_only"' not in _seite13)
+_aktion13 = _seite13[_seite13.index("function baueAktion"):
+                     _seite13.index("function baueStelle")]
+check("die automatisch wechselnde Typ-Kachel wird nicht nochmals als 'ergibt' gezeigt",
+      '"ergibt"' not in _aktion13 and "karte-typ" not in _aktion13)
 
 # --- Tastendruck-Erkennung fuer Fenster-Prozesse ---
 # Das Sequenz-Studio hat keine Konsole, in die man tippen koennte. Auf ENTER zu
@@ -4726,16 +4772,18 @@ _sc_tmp = tempfile.mkdtemp()
 _sc_cwd = _os.getcwd()
 _os.chdir(_sc_tmp)
 try:
+    _besitz14 = Path("sequences") / "s"
     for _ordner14, _dateien14 in (("item_scans", ["beutel", "amboss"]),
                                   ("boss_scans", ["hoehle"]),
                                   ("icon_scans", [])):
-        Path(_ordner14).mkdir()
+        (_besitz14 / _ordner14).mkdir(parents=True, exist_ok=True)
         for _d14 in _dateien14:
-            (Path(_ordner14) / f"{_d14}.json").write_text("{}", encoding="utf-8")
-    Path("sequences").mkdir()
+            (_besitz14 / _ordner14 / f"{_d14}.json").write_text(
+                "{}", encoding="utf-8")
 
     _b14 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
-        _SS(delay_before=0, item_scan="")])]), Path("sequences/S.json"), "sequences")
+        _SS(delay_before=0, item_scan="")])]),
+        Path("sequences/s/sequence.json"), "sequences")
     _namen14 = _b14.snapshot()["scan_namen"]
     check("die Momentaufnahme nennt die vorhandenen Item-Scans",
           _namen14["item_scan"] == ["amboss", "beutel"])
@@ -4747,7 +4795,7 @@ try:
     # Neu angelegte Konfigurationen tauchen ohne Neustart auf: gelesen wird bei
     # jeder Momentaufnahme. Zwischen Haupt- und Studio-Prozess ist die Datei der
     # einzige gemeinsame Nenner - ein einmal gefuellter Cache waere hier falsch.
-    (Path("icon_scans") / "lupe.json").write_text("{}", encoding="utf-8")
+    (_besitz14 / "icon_scans" / "lupe.json").write_text("{}", encoding="utf-8")
     check("eine neu angelegte Konfiguration erscheint sofort",
           _b14.snapshot()["scan_namen"]["icon_scan"] == ["lupe"])
 finally:
@@ -4932,7 +4980,9 @@ _os.chdir(_st_tmp)
 try:
     from autoclicker.sequence_studio import _resolve_sequence as _rs14
     Path("sequences").mkdir()
-    (Path("sequences") / "all_dayli.json").write_text(json.dumps({
+    _all14 = Path("sequences") / "all_dayli" / "sequence.json"
+    _all14.parent.mkdir(parents=True)
+    _all14.write_text(json.dumps({
         "name": "all dayli", "schema_version": 4, "total_cycles": 1,
         "init_steps": [], "end_steps": [],
         "loop_phases": [{"name": "L", "repeat": 1, "steps": [
@@ -4958,7 +5008,9 @@ try:
     # Das Studio startet ohne Namen, wenn im Hauptprozess keine Sequenz aktiv ist
     # oder wenn man es direkt aufruft. Ein leeres Fenster ist da fast nie gemeint.
     from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb14
-    (Path("sequences") / "aelter.json").write_text(json.dumps({
+    _alt14 = Path("sequences") / "aelter" / "sequence.json"
+    _alt14.parent.mkdir(parents=True)
+    _alt14.write_text(json.dumps({
         "name": "aelter", "schema_version": 4, "total_cycles": 1,
         "init_steps": [], "end_steps": [], "loop_phases": []}), encoding="utf-8")
     # Zeitstempel von Hand setzen - sonst haengt der Test an der Aufloesung der Uhr.
@@ -4966,30 +5018,29 @@ try:
     # behandeln sehr alte Zeitstempel nicht identisch. Der grosse Abstand hält
     # den Test weiterhin unabhängig von der Zeitauflösung des Dateisystems.
     _zeit14 = 1_700_000_000
-    _os.utime(Path("sequences") / "aelter.json", (_zeit14, _zeit14))
-    _os.utime(Path("sequences") / "all_dayli.json",
-              (_zeit14 + 100, _zeit14 + 100))
+    _os.utime(_alt14, (_zeit14, _zeit14))
+    _os.utime(_all14, (_zeit14 + 100, _zeit14 + 100))
     check("die zuletzt geaenderte Datei wird gefunden",
-          _zb14() == Path("sequences") / "all_dayli.json")
+          _zb14() == _all14)
 
     _seq14d, _pfad14d = _rs14("")
     check("ohne Namen kommt genau die",
-          _pfad14d == Path("sequences") / "all_dayli.json"
+          _pfad14d == _all14
           and _schritte14(_seq14d) == 1)
 
-    _os.utime(Path("sequences") / "aelter.json",
-              (_zeit14 + 200, _zeit14 + 200))
+    _os.utime(_alt14, (_zeit14 + 200, _zeit14 + 200))
     _seq14e, _pfad14e = _rs14("")
     check("und sie wechselt mit, wenn eine andere gespeichert wird",
-          _pfad14e == Path("sequences") / "aelter.json")
+          _pfad14e == _alt14)
 
     # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
-    (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
-    _os.utime(Path("sequences") / "kaputt.json",
-              (_zeit14 - 100, _zeit14 - 100))
+    _kaputt14 = Path("sequences") / "kaputt" / "sequence.json"
+    _kaputt14.parent.mkdir(parents=True)
+    _kaputt14.write_text("{kein json", encoding="utf-8")
+    _os.utime(_kaputt14, (_zeit14 - 100, _zeit14 - 100))
     _seq14c, _pfad14c = _rs14("kaputt")
     check("eine unlesbare Datei wird nicht als Ziel uebernommen",
-          _pfad14c.name != "kaputt.json" and _seq14c.loop_phases == [])
+          _pfad14c != _kaputt14 and _seq14c.loop_phases == [])
 finally:
     _os.chdir(_st_cwd)
 
@@ -5012,7 +5063,9 @@ try:
     Path("sequences").mkdir()
 
     def _schreib16(datei, daten):
-        (Path("sequences") / datei).write_text(json.dumps(daten), encoding="utf-8")
+        ziel = Path("sequences") / Path(datei).stem / "sequence.json"
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text(json.dumps(daten), encoding="utf-8")
 
     _schreib16("gross.json", {
         "name": "gross", "schema_version": 4, "total_cycles": 3,
@@ -5025,9 +5078,12 @@ try:
     _schreib16("klein.json", {
         "name": "klein", "schema_version": 4, "total_cycles": 0,
         "init_steps": [], "end_steps": [], "loop_phases": []})
-    (Path("sequences") / "kaputt.json").write_text("{kein json", encoding="utf-8")
+    _kaputt16 = Path("sequences") / "kaputt" / "sequence.json"
+    _kaputt16.parent.mkdir(parents=True)
+    _kaputt16.write_text("{kein json", encoding="utf-8")
 
-    _b16 = _SB8(_SEQ8(name="gross"), Path("sequences") / "gross.json", "sequences")
+    _b16 = _SB8(_SEQ8(name="gross"),
+                Path("sequences") / "gross" / "sequence.json", "sequences")
     _liste16 = _b16.sequenz_liste()
     _nach16 = {e["name"]: e for e in _liste16}
 
@@ -5049,12 +5105,13 @@ try:
           and "ITEM-SCAN" in _nach16["gross"]["warnungen"][0])
     check("und eine saubere Sequenz meldet nichts", _nach16["klein"]["warnungen"] == [])
     check("eine kaputte Datei bringt die Uebersicht nicht um",
-          _nach16["kaputt"]["datei"] == "kaputt.json")
+          Path(_nach16["kaputt"]["datei"]) == _kaputt16)
 
     # Gegenprobe zur Wiederverwendung: Speichern und Uebersicht duerfen nicht zwei
     # getrennte Regeln haben. Beide fragen scan_warnungen() - der Test misst das,
     # indem er beide Seiten befragt und vergleicht.
-    _b16b = _SB8(_SEQ8(name="gross"), Path("sequences") / "gross.json", "sequences")
+    _b16b = _SB8(_SEQ8(name="gross"),
+                 Path("sequences") / "gross" / "sequence.json", "sequences")
     _b16b.laden({"name": "gross"})
     check("Speichern und Uebersicht benutzen dieselbe Regel",
           _b16b._scan_ohne_namen() == _nach16["gross"]["warnungen"][0])
@@ -5187,36 +5244,34 @@ try:
     # des Ersten weg, ohne ein Wort.
     _b18 = _SB8(_SEQ8(name="W", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(x=1, y=2, delay_before=0, point_id=1)])]),
-        Path("sequences") / "w.json", "sequences")
+        Path("sequences") / "w" / "sequence.json", "sequences")
     _b18.points = [_PP8(id=1, x=1, y=2, name="P", color=None)]
     _z18 = _b18.speichern()
     check("das erste Speichern geht ohne Rueckfrage",
-          _z18["frage"] is None and Path("sequences/w.json").exists())
+          _z18["frage"] is None and Path("sequences/w/sequence.json").exists())
 
     # Jetzt schreibt "der Hauptprozess" dazwischen.
     _time16.sleep(0.01)
-    Path("sequences/w.json").write_text('{"name": "fremd"}', encoding="utf-8")
+    Path("sequences/w/sequence.json").write_text(
+        '{"name": "fremd"}', encoding="utf-8")
     _z18 = _b18.speichern()
     check("eine fremde Aenderung fuehrt zur Rueckfrage",
           (_z18["frage"] or {}).get("art") == "speichern")
     check("und die Datei ist unangetastet",
-          "fremd" in Path("sequences/w.json").read_text(encoding="utf-8"))
-    check("die Frage nennt die Datei", "w.json" in (_z18["frage"] or {}).get("text", ""))
+          "fremd" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
+    check("die Frage nennt die Datei",
+          "sequence.json" in (_z18["frage"] or {}).get("text", ""))
 
     _z18 = _b18.speichern({"erzwingen": True})
     check("mit Erzwingen wird geschrieben",
           _z18["frage"] is None and "fremd" not in
-          Path("sequences/w.json").read_text(encoding="utf-8"))
+          Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     _z18 = _b18.speichern()
     check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
           _z18["frage"] is None)
 
-    # points.json zaehlt genauso: dort legt eine laufende Aufnahme Punkte an.
-    _time16.sleep(0.01)
-    Path("sequences/points.json").write_text("[]", encoding="utf-8")
-    _z18 = _b18.speichern()
-    check("auch eine fremde points.json fuehrt zur Rueckfrage",
-          "points.json" in (_z18["frage"] or {}).get("text", ""))
+    check("es gibt keine zweite Punkt-Datei mit eigenem Konfliktstand",
+          not Path("sequences/points.json").exists())
 
     # --- Der laufende Block traegt dieselbe Farbe wie seine Karte im Board ---
     # Die Farbe IST die Legende: waere sie in der Live-Ansicht eine andere,
@@ -5264,8 +5319,8 @@ try:
     check("der Laufstatus liegt nicht im Sequenz-Ordner",
           Path(_rsf16).parent != Path("sequences"))
     (Path("sequences") / ".probe.json").write_text("{}", encoding="utf-8")
-    check("...und das ist noetig: ein Punkt-Dateiname WIRD als Sequenz gelistet",
-          any(p.name == ".probe.json" for _, p in _las16()))
+    check("einzelne JSON-Dateien im Wurzelordner werden nicht als Sequenz gelistet",
+          not any(p.name == ".probe.json" for _, p in _las16()))
     (Path("sequences") / ".probe.json").unlink()
 
     # --- Der Schreiber: zwei Quellen, ein Zustand ---
@@ -5807,8 +5862,9 @@ def _css_regel18(wahl: str) -> str:
 # EIN Knopf, der SAGT, was er tut („alle dazu" / „alle raus"). Damit ist der
 # dritte Stand ersatzlos weg, samt seinem CSS - ein Schalter, der bei „23 von
 # 56" nicht zu beschriften ist, war das Problem und nicht die Loesung.
-check("die Mitgliedschaft schaltet ein Knopf, der sagt was er tut",
-      '"alle dazu" : "alle raus"' in _html18)
+check("es gibt keine globale Mitgliedschaft mehr zu schalten",
+      '"alle dazu" : "alle raus"' not in _html18
+      and "scan-mitglied" not in _html18)
 check("und der Mischzustand ist ersatzlos weg",
       "indeterminate" not in _html18 and "unbestimmt" not in _html18)
 

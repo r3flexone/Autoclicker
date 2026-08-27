@@ -25,8 +25,8 @@ from .learn import item_learn_command
 
 
 def run_global_item_editor(state: AutoClickerState) -> None:
-    """Interaktiver Editor für globale Item-Definitionen."""
-    print(header("ITEM-EDITOR (Globale Item-Definitionen)"))
+    """Interaktiver Editor für die Items des gewählten Item-Scans."""
+    print(header("ITEM-EDITOR (gewählter Item-Scan)"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Items')}")
 
     if not PILLOW_AVAILABLE:
@@ -197,7 +197,7 @@ def _dispatch_command(state: AutoClickerState, cmd: str, user_input: str) -> boo
         return True
 
     if cmd == "templates":
-        handle_templates_command()
+        handle_templates_command(state)
         return True
 
     if cmd.startswith("template "):

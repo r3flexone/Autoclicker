@@ -281,7 +281,7 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
     # globales Item geändert haben, und der Scan soll dem folgen. Ausserhalb des Locks,
     # weil resolve_scan_references selbst lockt.
     from ..persistence import resolve_scan_references
-    scan_meldungen = resolve_scan_references(state)
+    scan_meldungen = resolve_scan_references(state, sequence)
 
     # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
     # klickt als in der Sequenzdatei steht.

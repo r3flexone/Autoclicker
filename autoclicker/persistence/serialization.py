@@ -58,7 +58,7 @@ def _alt_gemeldet(wo: str, feld: str, was_tun: str) -> None:
         return
     _ALT_GEMELDET.add(schluessel)
     print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
-               f"in points.json."))
+               f"in sequence.json."))
     print(hint(f"       {was_tun}."))
 
 
@@ -101,7 +101,7 @@ _ITEM_DEFAULTS = {
     "template_variants": [],
 }
 
-_SLOT_DEFAULTS = {"slot_color": None, "id": 0}
+_SLOT_DEFAULTS = {"slot_color": None, "enabled": True, "id": 0}
 
 
 def _item_to_dict(item: ItemProfile) -> dict:
@@ -120,6 +120,7 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
         "scan_region": list(slot.scan_region),
         "click_pos": list(slot.click_pos),
         "slot_color": list(slot.slot_color) if slot.slot_color else None,
+        "enabled": slot.enabled,
         "id": slot.id,
     }, _SLOT_DEFAULTS)
 
@@ -136,15 +137,18 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
         scan_region=tuple(data["scan_region"]),
         click_pos=tuple(data["click_pos"]),
         slot_color=tuple(farbe) if farbe else None,
+        # Nur ein echtes JSON-`false` schaltet aus. Kaputte oder alte Werte
+        # fallen auf den sicheren bisherigen Standard „an" zurück.
+        enabled=data.get("enabled", True) is not False,
         id=int(data.get("id", 0) or 0),
     )
 
 
 def _point_to_dict(p: 'ClickPoint') -> dict:
-    """Serialisiert einen ClickPoint zu einem Dict (points.json / Export).
+    """Serialisiert einen ClickPoint für die Punktliste in sequence.json.
 
     color/source nur wenn gesetzt — hält alte Dateien schlank und vermeidet
-    leere Felder. Zentral, damit points.json-Writer und Export identisch sind.
+    leere Felder. Zentral, damit Speichern und Export identisch sind.
     """
     return {
         "id": p.id, "x": p.x, "y": p.y,
@@ -246,8 +250,8 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 _ITEM_SCAN_DEFAULTS = {
     "color_tolerance": 40,
     "learn_unknown": False,
-    "slot_names": [],
-    "item_names": [],
+    "slots": {},
+    "items": {},
     "reverse": False,
     "capture_window_title": None,
     "capture_window_index": 0,
@@ -256,20 +260,13 @@ _ITEM_SCAN_DEFAULTS = {
 
 
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
-    """Serialisiert eine ItemScanConfig zu einem Dict.
-
-    Geschrieben werden nur Namen. Sind die Namenslisten leer (Editoren setzen direkt
-    `slots`/`items`), werden sie aus den aufgelösten Objekten abgeleitet - so muss kein
-    Editor umgebaut werden.
-    """
-    slot_names = list(config.slot_names) or [s.name for s in config.slots]
-    item_names = list(config.item_names) or [i.name for i in config.items]
+    """Serialisiert einen vollständigen, eigenständigen Item-Scan."""
     return _ohne_defaults({
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "learn_unknown": config.learn_unknown,
-        "slot_names": slot_names,
-        "item_names": item_names,
+        "slots": {s.name: _slot_to_dict(s) for s in config.slots},
+        "items": {i.name: _item_to_dict(i) for i in config.items},
         "reverse": config.reverse,
         "capture_window_title": config.capture_window_title,
         "capture_window_index": config.capture_window_index,
@@ -284,6 +281,10 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     Loader und ZIP-Import müssen durch dieselbe Stelle laufen. Sonst verschwindet
     ein neues Feld beim Import still, obwohl eine normal geladene Datei es kennt.
     """
+    slots_data = data.get("slots") or {}
+    items_data = data.get("items") or {}
+    if not isinstance(slots_data, dict) or not isinstance(items_data, dict):
+        raise TypeError("slots/items müssen Objekte sein")
     fenster_rechteck = data.get("capture_window_rect")
     if not isinstance(fenster_rechteck, (list, tuple)) or len(fenster_rechteck) != 4:
         fenster_rechteck = None
@@ -306,8 +307,10 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         fenster_index = 0
     return ItemScanConfig(
         name=data["name"],
-        slot_names=[str(n) for n in data.get("slot_names", [])],
-        item_names=[str(n) for n in data.get("item_names", [])],
+        slots=[_slot_from_dict(str(name), wert)
+               for name, wert in slots_data.items()],
+        items=[_item_from_dict(wert, str(name))
+               for name, wert in items_data.items()],
         color_tolerance=data.get("color_tolerance", 40),
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
@@ -479,6 +482,7 @@ def _sequence_to_dict(seq: Sequence) -> dict:
         "name": seq.name,
         **({"total_cycles": seq.total_cycles} if seq.total_cycles != 1 else {}),
         **({"description": seq.description} if seq.description else {}),
+        "points": [_point_to_dict(p) for p in seq.points],
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
             {

@@ -6,11 +6,10 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 - template: Setzt/entfernt/captured ein Template für ein Item
 """
 
-from pathlib import Path
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import update_item_in_scans, save_global_items, TEMPLATES_DIR
+from ...persistence import update_item_in_scans, save_global_items, active_templates_dir
 from ...utils import confirm, is_cancel, safe_input, sanitize_filename, warn, ok, err, info, hint
 
 
@@ -52,10 +51,10 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
         # Template umbenennen (File-I/O, kein Lock nötig)
         new_template = None
         if old_template:
-            old_template_path = Path(TEMPLATES_DIR) / old_template
+            old_template_path = active_templates_dir(state) / old_template
             safe_name = sanitize_filename(new_name)
             new_template = f"{safe_name}.png"
-            new_template_path = Path(TEMPLATES_DIR) / new_template
+            new_template_path = active_templates_dir(state) / new_template
 
             if old_template_path.exists():
                 try:
@@ -109,11 +108,11 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) ->
 
     new_template = None
     if old_template:
-        old_path = Path(TEMPLATES_DIR) / old_template
+        old_path = active_templates_dir(state) / old_template
         new_template = f"{sanitize_filename(new_name)}.png"
         if old_path.exists():
             try:
-                old_path.rename(Path(TEMPLATES_DIR) / new_template)
+                old_path.rename(active_templates_dir(state) / new_template)
             except (OSError, IOError):
                 pass  # Pfad trotzdem aktualisieren, Datei bleibt unter altem Namen
 
@@ -152,7 +151,7 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
 
     renamed = 0
     for old_name, template in targets:
-        tpl_path = Path(TEMPLATES_DIR) / template
+        tpl_path = active_templates_dir(state) / template
         if not tpl_path.exists():
             print(f"    {old_name}: Template fehlt — übersprungen.")
             continue
@@ -219,15 +218,16 @@ def handle_autoname_command(state: AutoClickerState) -> None:
     print(f"  {ok(f'{renamed} Item(s) benannt.')}")
 
 
-def handle_templates_command() -> None:
+def handle_templates_command(state: AutoClickerState) -> None:
     """Zeigt verfügbare Templates an."""
-    if not Path(TEMPLATES_DIR).exists():
+    templates_dir = active_templates_dir(state)
+    if not templates_dir.exists():
         print("  -> Keine Templates vorhanden")
         return
-    templates = list(Path(TEMPLATES_DIR).glob("*.png"))
+    templates = list(templates_dir.glob("*.png"))
     if not templates:
         print("  -> Keine Templates vorhanden")
-        print(f"    (Ordner: {TEMPLATES_DIR})")
+        print(f"    (Ordner: {templates_dir})")
     else:
         print(f"\n  Verfügbare Templates ({len(templates)}):")
         for t in sorted(templates):
@@ -236,6 +236,7 @@ def handle_templates_command() -> None:
 
 def handle_template_command(state: AutoClickerState, cmd: str) -> None:
     """Verarbeitet den template-Befehl im Item-Editor (setzen/entfernen/capturen)."""
+    templates_dir = active_templates_dir(state)
     try:
         item_num = int(cmd[9:])
         with state.lock:
@@ -244,7 +245,7 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
                 name = item_names[item_num - 1]
                 item = state.global_items[name]
 
-                templates = list(Path(TEMPLATES_DIR).glob("*.png")) if Path(TEMPLATES_DIR).exists() else []
+                templates = list(templates_dir.glob("*.png")) if templates_dir.exists() else []
                 if templates:
                     print("\n  Verfügbare Templates:")
                     for i, t in enumerate(sorted(templates)):
@@ -317,7 +318,7 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
 
     from ...imaging import template_size
     passende = [name for name in item.template_names()
-                if template_size(name) == tuple(img.size)]
+                if template_size(name, active_templates_dir(state)) == tuple(img.size)]
     safe_name = sanitize_filename(item.name)
     if passende:
         # Dieselbe Slot-Groesse wird bewusst aktualisiert.
@@ -327,12 +328,12 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         basis = f"{safe_name}_{breite}x{hoehe}"
         template_file = f"{basis}.png"
         nummer = 2
-        while (Path(TEMPLATES_DIR) / template_file).exists():
+        while (active_templates_dir(state) / template_file).exists():
             template_file = f"{basis}_{nummer}.png"
             nummer += 1
     else:
         template_file = f"{safe_name}.png"
-    template_path = Path(TEMPLATES_DIR) / template_file
+    template_path = active_templates_dir(state) / template_file
     template_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(template_path)
     if not item.template:

@@ -44,16 +44,20 @@ config.json
 # Sequenz laeuft. Liegt hier oben und nicht in sequences/, weil ein
 # *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
 .lauf.json
+.aufnahme.json
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben
 # wie .lauf.json.
 .befehl.json
 
-# User data folders (auto-generated)
-# Reihenfolge wie das Persistenz-Layout in CLAUDE.md — wer dort einen Ordner ergaenzt,
-# ergaenzt ihn hier. Sonst landen fremde Boss-Profile und Session-Logs im naechsten PR.
+# Aktueller Bestand: vollständige Sequenzordner und wiederverwendbare Presets.
 sequences/
+presets/
+
+# Alte, typweise getrennte Bestände bleiben ignoriert, damit vorhandene
+# Nutzerdateien niemals versehentlich in Git landen. Neu geschrieben werden sie
+# nicht mehr; sie können nach manueller Kontrolle archiviert oder gelöscht werden.
 slots/
 items/
 item_scans/

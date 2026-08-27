@@ -1,6 +1,5 @@
 """Datei-, Lauf- und Konfigurationsdienste der Studio-Brücke."""
 
-import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -16,15 +15,12 @@ from .bridge_contract import (
     _gleicher_wert,
     _hex,
     _mtime,
-    _punkte_pfad,
     scan_warnungen,
 )
 from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
-    load_palette_points,
-    save_palette_points,
     sequence_to_board,
 )
 
@@ -40,24 +36,26 @@ class BridgeServicesMixin:
         Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
         raus: list[dict] = []
-        ordner = Path(self.sequences_dir)
-        try:
-            dateien = sorted(p for p in ordner.glob("*.json") if p.name != "points.json")
-        except OSError:
-            return []
+        wurzel = Path(self.sequences_dir)
+        dateien = sorted(
+            (ordner / "sequence.json" for ordner in wurzel.iterdir()
+             if ordner.is_dir() and (ordner / "sequence.json").exists()),
+            key=lambda pfad: pfad.parent.name,
+        ) if wurzel.exists() else []
         for pfad in dateien:
+            gespeicherter_name = pfad.parent.name
             try:
                 geaendert = pfad.stat().st_mtime
             except OSError:
                 geaendert = 0.0
             seq = load_sequence_file(pfad)
             if seq is None:
-                raus.append({"name": pfad.stem, "datei": pfad.name, "defekt": True,
+                raus.append({"name": gespeicherter_name, "datei": str(pfad), "defekt": True,
                              "geaendert": geaendert, "offen": pfad == self.filepath})
                 continue
             raus.append({
                 "name": seq.name,
-                "datei": pfad.name,
+                "datei": str(pfad),
                 "defekt": False,
                 "beschreibung": seq.description,
                 "zyklen": seq.total_cycles,
@@ -93,7 +91,7 @@ class BridgeServicesMixin:
         # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
         # laufend hält.
         if not zustand.get("aktiv"):
-            return zustand if zustand.get("ende") else {"aktiv": False}
+            return zustand if (zustand.get("ende") or zustand.get("countdown")) else {"aktiv": False}
         # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
         # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
@@ -113,13 +111,70 @@ class BridgeServicesMixin:
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
-    LAUF_BEFEHLE = ("start", "stop", "pause")
+    LAUF_BEFEHLE = ("start", "start_manuell", "stop", "pause", "skip", "finish",
+                    "manuell", "manuell_aktion", "zeitplan")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
     # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
     # systemweiten Maus-Hook und muss deshalb drueben laufen.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten",
-                                   "nachklick", "nachklick_stop")
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten", "aufnahme",
+                                   "aufnahme_stop",
+                                   "programm_beenden",
+                                   "nachklick", "nachklick_stop", "block_test")
+
+    def aufnahme_starten(self, daten: Optional[dict] = None) -> dict:
+        """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
+
+        Das Studio kann den systemweiten Maus- und Tastatur-Hook nicht selbst
+        installieren. Wie Start/Pause und die Klick-Runde legt es deshalb einen
+        begrenzten Befehl in den gemeinsamen Briefkasten. Alle Angaben gehen mit,
+        damit der Abschluss nicht unsichtbar in der Konsole auf Eingaben wartet.
+        """
+        from ...befehl import sende
+        daten = daten or {}
+        name = str(daten.get("name") or "").strip()
+        if not name:
+            return {"ok": False, "meldung": "Bitte zuerst einen Namen eingeben."}
+        sicher = sanitize_filename(name)
+        ziel = Path(self.sequences_dir) / sicher / "sequence.json"
+        if ziel.exists():
+            return {"ok": False, "meldung": f"'{sicher}' gibt es bereits."}
+        try:
+            zyklen = max(0, int(daten.get("zyklen") or 0))
+        except (TypeError, ValueError):
+            return {"ok": False, "meldung": "Zyklen müssen eine ganze Zahl sein."}
+        # Die drei Zeilen der vorigen Aufnahme sollen beim neuen Start nicht
+        # noch für einen Augenblick als neue Ereignisse aufblitzen.
+        from ...config import RECORD_STATUS_FILE
+        try:
+            Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
+        except OSError:
+            pass
+        if not sende("aufnahme", name=sicher, zyklen=zyklen,
+                     beschreibung=str(daten.get("beschreibung") or "").strip()):
+            return {"ok": False, "meldung": "Aufnahme konnte nicht gestartet werden."}
+        return {"ok": True, "name": sicher,
+                "meldung": "Aufnahme startet — jetzt ins Spiel wechseln."}
+
+    def aufnahme_stoppen(self, daten: Optional[dict] = None) -> dict:
+        """Beendet die Aufnahme; der Hauptprozess baut und speichert die Blöcke."""
+        from ...befehl import sende
+        if not sende("aufnahme_stop"):
+            return {"ok": False, "meldung": "Stopp konnte nicht gesendet werden."}
+        return {"ok": True, "meldung": "Aufnahme wird beendet und gespeichert."}
+
+    def aufnahme_status(self, daten: Optional[dict] = None) -> dict:
+        """Die rollende Live-Ausgabe der Aufnahme — höchstens drei Zeilen."""
+        import json
+        from ...config import RECORD_STATUS_FILE
+        try:
+            with open(RECORD_STATUS_FILE, "r", encoding="utf-8") as f:
+                status = json.load(f)
+        except (OSError, ValueError):
+            return {"aktiv": False, "pausiert": False, "anzahl": 0,
+                    "ereignisse": []}
+        return status if isinstance(status, dict) else {
+            "aktiv": False, "pausiert": False, "anzahl": 0, "ereignisse": []}
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -137,7 +192,7 @@ class BridgeServicesMixin:
             return self._melde(f"Unbekannter Lauf-Befehl '{befehl}'.", "err")
 
         argumente: dict = {}
-        if befehl == "start":
+        if befehl in ("start", "start_manuell", "zeitplan"):
             if self._dirty:
                 zustand = self.speichern()
                 if zustand["status"]["art"] == "err":
@@ -145,12 +200,28 @@ class BridgeServicesMixin:
             if not self.filepath.exists():
                 return self._melde("Erst speichern — die Datei gibt es noch nicht.", "warn")
             argumente = {"datei": str(self.filepath), "sequenz": self.board.name}
+        if befehl == "zeitplan":
+            zeit = str((daten or {}).get("zeit") or "").strip()
+            if not zeit:
+                return self._melde("Bitte eine Startzeit eingeben.", "warn")
+            argumente["zeit"] = zeit
+        if befehl == "manuell_aktion":
+            aktion = str((daten or {}).get("aktion") or "")
+            if aktion not in ("run", "skip", "continue", "stop"):
+                return self._melde("Unbekannte manuelle Aktion.", "err")
+            argumente["aktion"] = aktion
 
         if not sende(befehl, **argumente):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         text = {"start": f"'{self.board.name}' gestartet.",
+                "start_manuell": f"'{self.board.name}' im Schrittmodus gestartet.",
                 "stop": "Stopp geschickt.",
-                "pause": "Pause umgeschaltet."}[befehl]
+                "pause": "Pause umgeschaltet.",
+                "skip": "Aktuelle Wartezeit wird übersprungen.",
+                "finish": "Zyklus wird sauber abgeschlossen.",
+                "manuell": "Manueller Modus umgeschaltet.",
+                "manuell_aktion": "Entscheidung geschickt.",
+                "zeitplan": f"Start für '{self.board.name}' geplant."}[befehl]
         return self._melde(text)
 
     def punkt_zeigen(self, daten: Optional[dict] = None) -> dict:
@@ -181,6 +252,28 @@ class BridgeServicesMixin:
                      name=punkt.name or "", farbe=list(punkt.color) if punkt.color else None):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         return self._melde(f"Maus zu #{punkt.id} ({punkt.x},{punkt.y}) — im Spiel nachsehen.")
+
+    def block_testen(self, daten: Optional[dict] = None) -> dict:
+        """Führt den gewählten Block einmal im Hauptprozess aus.
+
+        Gesendet werden nur Datei und Position, nicht ein frei konstruierter
+        Schritt. Der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
+        die auch ein echter Lauf verwenden würde.
+        """
+        lane, row, step = self._einzelner()
+        if step is None or lane is None or row is None:
+            return self._melde("Bitte genau einen Block wählen.", "warn")
+        if self._dirty:
+            zustand = self.speichern()
+            if zustand["status"]["art"] == "err":
+                return zustand
+        loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
+                      if lane.kind == "loop" else -1)
+        from ...befehl import sende
+        if not sende("block_test", datei=str(self.filepath), phase=lane.kind,
+                     phase_index=loop_index, block=int(row)):
+            return self._melde("Block-Test konnte nicht gesendet werden.", "err")
+        return self._melde("Block-Test geschickt — echter Klick/Tastendruck möglich.", "warn")
 
     # ------------------------------------------------------------ Einstellungen
 
@@ -296,7 +389,10 @@ class BridgeServicesMixin:
         self.filepath = Path(pfad)
         # Punkte neu einlesen: zwischen zwei Sequenzen kann im Hauptprozess ein
         # Punkt dazugekommen sein.
-        self.points = load_palette_points(self.sequences_dir)
+        from .model import palette_from_sequence
+        self.points = palette_from_sequence(seq)
+        self._scan_init()
+        self._scan_laden()
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
@@ -318,7 +414,8 @@ class BridgeServicesMixin:
         # der erste Griff nach dem Anlegen immer derselbe: „+ Loop-Phase".
         self.board = sequence_to_board(Sequence(
             name=basis, loop_phases=[LoopPhase(name="Loop", repeat=1, steps=[])]))
-        self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(basis)}.json"
+        self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
+        self._scan_init()
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
@@ -356,8 +453,26 @@ class BridgeServicesMixin:
             return self._melde("Nicht gespeichert: Sequenz-Name fehlt.", "err")
 
         alt = self.filepath
-        neu = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
+        neu = (Path(self.sequences_dir) / sanitize_filename(self.board.name)
+               / "sequence.json")
         umbenannt = neu != alt
+
+        # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
+        # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
+        alt_ordner = alt.parent
+        neu_ordner = neu.parent
+        verschoben = False
+        if umbenannt and alt.exists():
+            if neu_ordner.exists():
+                return self._melde(
+                    f"Nicht gespeichert: Ordner '{neu_ordner.name}' existiert bereits.",
+                    "err")
+            try:
+                alt_ordner.rename(neu_ordner)
+                verschoben = True
+            except OSError as fehler:
+                return self._melde(f"Sequenzordner konnte nicht umbenannt werden: {fehler}",
+                                   "err")
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
@@ -375,25 +490,27 @@ class BridgeServicesMixin:
             }
             return self.snapshot()
 
-        # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlägt das fehl,
-        # zeigten frisch angelegte Referenzen ins Leere — dann lieber gar nicht
-        # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
-        if not save_palette_points(self.sequences_dir, self.points):
-            return self._melde("points.json nicht schreibbar — nichts gespeichert.", "err")
-        if not save_sequence_file(board_to_sequence(self.board), neu):
+        from .model import palette_to_points
+        sequence = board_to_sequence(self.board)
+        sequence.points = palette_to_points(self.points)
+        if not save_sequence_file(sequence, neu):
+            if verschoben:
+                try:
+                    neu_ordner.rename(alt_ordner)
+                except OSError:
+                    pass
             return self._melde("Speichern fehlgeschlagen!", "err")
 
         self.filepath = neu
+        if verschoben:
+            self._scan_init()
+            self._scan_laden()
         self._gespeichert = True
         self._dirty = False
         self._stand_merken()
         text = f"Gespeichert: {neu.name}"
-        if umbenannt and alt.exists():
-            try:
-                os.remove(alt)
-                text = f"Umbenannt → {neu.name} (alte Datei entfernt)"
-            except OSError:
-                text = f"Gespeichert: {neu.name} (alte Datei {alt.name} blieb)"
+        if verschoben:
+            text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
 
         leer = self._scan_ohne_namen()
         if leer:
@@ -406,21 +523,18 @@ class BridgeServicesMixin:
 
         `ziel` ist die Sequenzdatei, die gleich geschrieben wird — beim Umbenennen
         `None`, denn dann entsteht eine neue Datei und es gibt nichts zu
-        überschreiben. `points.json` wird immer geprüft: die schreibt das Studio
+        überschreiben. `sequence.json` wird immer geprüft: die schreibt das Studio
         bei jedem Speichern mit, und der Hauptprozess legt dort während einer
         Aufnahme neue Punkte an.
         """
         if ziel is not None and _mtime(ziel) not in (None, self._stand_datei):
             return Path(ziel).name
-        punkte = _punkte_pfad(self.sequences_dir)
-        if _mtime(punkte) not in (None, self._stand_punkte):
-            return "points.json"
         return ""
 
     def _stand_merken(self) -> None:
         """Nach dem Schreiben (oder Laden) den Stand der Dateien festhalten."""
         self._stand_datei = _mtime(self.filepath)
-        self._stand_punkte = _mtime(_punkte_pfad(self.sequences_dir))
+        self._stand_punkte = self._stand_datei
 
     def rettung_schreiben(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

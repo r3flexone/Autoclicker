@@ -36,6 +36,10 @@ class ScanInteractionMixin:
         modus = (daten or {}).get("modus") or MODUS_WAHL
         if modus not in MODI_ALLE:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
+        if modus != MODUS_WAHL:
+            gesperrt = self._scan_voraussetzung(daten)
+            if gesperrt is not None:
+                return gesperrt
         # Region und Aktionspunkt gehören den Erkennungs-Scans und brauchen ein
         # Ziel; das setzt `region_modus()`. Hier landen sie nur, wenn jemand den
         # Buchstaben drückt, während gar kein Boss-/Icon-Scan offen ist.
@@ -110,6 +114,10 @@ class ScanInteractionMixin:
         gerade dargestellt wird.
         """
         self._scan_laden()
+        if self.scan_modus != MODUS_WAHL:
+            gesperrt = self._scan_voraussetzung(daten)
+            if gesperrt is not None:
+                return gesperrt
         try:
             x, y = int((daten or {})["x"]), int((daten or {})["y"])
         except (KeyError, TypeError, ValueError):
@@ -472,6 +480,9 @@ class ScanInteractionMixin:
         Korrektur am Slot unter dem Zeiger ist das Gegenteil davon.
         `messen` = ALT-Klick, `klick` = Doppelklick. Beides wählt den Slot mit aus.
         """
+        gesperrt = self._scan_voraussetzung({"art": "item"})
+        if gesperrt is not None:
+            return gesperrt
         try:
             x, y = int((daten or {})["x"]), int((daten or {})["y"])
         except (KeyError, TypeError, ValueError):
@@ -542,7 +553,7 @@ class ScanInteractionMixin:
     # ----------------------------------------------------------------- Slots
 
     def scan_slot_setzen(self, daten: dict) -> dict:
-        """Ein Feld eines Slots setzen — Name, Region, Klickpunkt, Farbe."""
+        """Ein Feld eines Slots setzen — Aktiv, Name, Region, Klickpunkt, Farbe."""
         name = str((daten or {}).get("name") or "")
         feld = str((daten or {}).get("feld") or "")
         wert = (daten or {}).get("wert")
@@ -557,6 +568,14 @@ class ScanInteractionMixin:
         # trauen kann, ist kaum besser als keins.
         if feld == "name":
             return self._slot_umbenennen(slot, str(wert or "").strip())
+        if feld == "aktiv":
+            neu = bool(wert)
+            if slot.enabled == neu:
+                return self.scan_daten()
+            self._merke(f"'{name}': {'ein' if neu else 'aus'}")
+            slot.enabled = neu
+            return self._scan_geaendert(
+                f"{slot.name} ist {'eingeschaltet' if neu else 'ausgeschaltet'}.")
         if feld == "farbe":
             self._merke(f"'{name}': Hintergrundfarbe")
             slot.slot_color = rgbwert(wert)
@@ -589,15 +608,9 @@ class ScanInteractionMixin:
         alt = slot.name
         self.slots = {(neu if k == alt else k): v for k, v in self.slots.items()}
         slot.name = neu
-        betroffen = 0
-        for cfg in self.scans.values():
-            if alt in cfg.slot_names:
-                cfg.slot_names = [neu if n == alt else n for n in cfg.slot_names]
-                betroffen += 1
         self._objekte_angleichen()
         self.scan_name = neu
-        zusatz = f" · in {betroffen} Scan(s) nachgezogen" if betroffen else ""
-        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'{zusatz}")
+        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'")
 
     def scan_slot_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die gewählten Slots — einen oder die ganze Auswahl.
@@ -611,20 +624,14 @@ class ScanInteractionMixin:
             return self._scan_melde("Kein Slot gewählt.", "warn")
         self._merke(f"{len(namen)} Slot(s) gelöscht" if len(namen) > 1
                     else f"'{namen[0]}' gelöscht")
-        betroffen = set()
         for name in namen:
             del self.slots[name]
             self._treffer.pop(name, None)
-            for cfg in self.scans.values():
-                if name in cfg.slot_names:
-                    betroffen.add(cfg.name)
-                    cfg.slot_names = [n for n in cfg.slot_names if n != name]
         self._objekte_angleichen()
         self.scan_name = ""
         self._auswahl = []
-        hinweis = f" · aus {len(betroffen)} Scan(s) entfernt" if betroffen else ""
         was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Slots"
-        return self._scan_geaendert(f"{was} gelöscht{hinweis}", "warn")
+        return self._scan_geaendert(f"{was} gelöscht", "warn")
 
     def scan_verschieben(self, daten: dict) -> dict:
         """Schiebt die gewählten Slots um `dx`/`dy` Pixel — Fläche und Klickpunkt.
@@ -735,67 +742,5 @@ class ScanInteractionMixin:
         if doppelt:
             teile.append(f"{doppelt} schon bekannt")
         if leer:
-            teile.append(f"{leer} ohne Bild")
+            teile.append(f"{leer} leer oder ohne Bild")
         return self._scan_geaendert("Aus der Auswahl gelernt: " + ", ".join(teile))
-
-    def scan_auswahl_mitglied(self, daten: dict) -> dict:
-        """Nimmt die gewählten Slots in den offenen Scan — oder heraus.
-
-        Zwischen „einer" (Häkchen) und „alle" (Schieber im Kopf) lag nichts.
-        Genau dazwischen liegt aber der Alltag: die Ausrüstungsreihe gehört
-        dazu, die Taschenplätze darunter nicht.
-        """
-        cfg = self.scans.get(self.scan_offen)
-        if cfg is None:
-            return self._scan_melde("Kein Scan offen.", "warn")
-        slots = self._auswahl_slots()
-        if not slots:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        dazu = bool((daten or {}).get("wert"))
-        self._merke(f"{len(slots)} Slot(s) {'dazu' if dazu else 'raus'}")
-        namen = [s.name for s in slots]
-        if dazu:
-            cfg.slot_names += [n for n in namen if n not in cfg.slot_names]
-        else:
-            cfg.slot_names = [n for n in cfg.slot_names if n not in namen]
-        self._objekte_angleichen()
-        return self._scan_geaendert(
-            f"{len(namen)} Slot(s) {'in' if dazu else 'aus'} '{cfg.name}' "
-            f"{'aufgenommen' if dazu else 'entfernt'} "
-            f"— jetzt {len(cfg.slot_names)}.")
-
-    def scan_slot_doppeln(self, daten: Optional[dict] = None) -> dict:
-        """Ein Slot neben dem gewählten — der schnellste Weg zu einer Reihe.
-
-        Versetzt um seine eigene Breite plus zwei Pixel: Inventare stehen im
-        Raster, und die zweite Zelle liegt fast immer genau dort.
-
-        **Am rechten Rand fängt die nächste Reihe an.** Ohne die Prüfung legte
-        „daneben" hinter der letzten Spalte einen Slot mitten ins Leere — er
-        passte zu keiner Zelle im Bild, denn der Versatz kennt die Breite des
-        Rasters nicht. Reicht die neue Stelle nicht mehr in die Arbeitsfläche
-        hinein, springt sie stattdessen an den linken Rand DIESES Scans (die
-        kleinste `x1` seiner Slots) und eine Zeile tiefer.
-        """
-        slot = self._gewaehlter_slot()
-        if slot is None:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        self._merke("Slot gedoppelt")
-        x1, y1, x2, y2 = slot.scan_region
-        breite, hoehe = x2 - x1, y2 - y1
-        versatz = breite + 2
-        neu_x1, neu_y1 = x1 + versatz, y1
-        flaeche = self._flaeche()
-        if flaeche and neu_x1 + breite > flaeche["links"] + flaeche["breite"]:
-            neu_x1 = min((s.scan_region[0] for s in self._scan_slots()), default=x1)
-            neu_y1 = y1 + hoehe + 2
-        versatz_x, versatz_y = neu_x1 - x1, neu_y1 - y1
-        name = next_slot_name(self.slots)
-        self.slots[name] = ItemSlot(
-            name=name, scan_region=(neu_x1, neu_y1, neu_x1 + breite, neu_y1 + hoehe),
-            click_pos=(slot.click_pos[0] + versatz_x, slot.click_pos[1] + versatz_y),
-            slot_color=slot.slot_color, id=self._naechste_slot_id())
-        self.scan_name = name
-        self._auswahl = [name]
-        self._dazu(ART_SLOT, name)
-        return self._scan_geaendert(f"{name} neben '{slot.name}' angelegt.")

@@ -26,7 +26,7 @@ logger = logging.getLogger("autoclicker")
 from .persistence import ITEMS_DIR, TEMPLATES_DIR
 
 
-def _template_path(template_name: str) -> str | None:
+def _template_path(template_name: str, template_root=None) -> str | None:
     """Löst einen Template-Namen sicher innerhalb von ``TEMPLATES_DIR`` auf.
 
     Scan-Dateien sind normale JSON-Dateien und können auch von Hand verändert
@@ -38,7 +38,7 @@ def _template_path(template_name: str) -> str | None:
     relative = Path(template_name)
     if relative.is_absolute():
         return None
-    root = Path(TEMPLATES_DIR).resolve()
+    root = Path(template_root or TEMPLATES_DIR).resolve()
     candidate = (root / relative).resolve()
     try:
         candidate.relative_to(root)
@@ -242,9 +242,9 @@ def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
     return skaliert
 
 
-def template_size(template_name: str) -> tuple[int, int] | None:
+def template_size(template_name: str, template_root=None) -> tuple[int, int] | None:
     """Pixelgroesse einer gespeicherten Vorlage, oder ``None`` wenn unlesbar."""
-    template_path = _template_path(template_name)
+    template_path = _template_path(template_name, template_root)
     if template_path is None:
         return None
     template_cv = _load_template(template_path)
@@ -281,7 +281,8 @@ def _groessen_hinweis(template_name: str, tw: int, th: int,
 def match_template_in_image(img: 'Image.Image', template_name: str,
                             min_confidence: float = DEFAULT_MIN_CONFIDENCE,
                             *, resize_template: bool = True,
-                            report_size_mismatch: bool = True) -> tuple:
+                            report_size_mismatch: bool = True,
+                            template_root=None) -> tuple:
     """Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
 
     `resize_template` passt die Vorlage an eine abweichende Bildgrösse an;
@@ -299,7 +300,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         logger.warning("NumPy nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
-    template_path = _template_path(template_name)
+    template_path = _template_path(template_name, template_root)
     if template_path is None:
         logger.error("Unsicherer Template-Pfad abgewiesen: %r", template_name)
         return (False, 0.0, None)

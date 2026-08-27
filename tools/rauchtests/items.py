@@ -14,7 +14,8 @@ def aufbau():
     bild, ecken = inventar()
     stelle_bildschirm(bild)
 
-    b = StudioBridge(Sequence(name="Rauch"), Path("sequences/Rauch.json"), "sequences")
+    b = StudioBridge(Sequence(name="Rauch"),
+                     Path("sequences/rauch/sequence.json"), "sequences")
     b.scan_neu({"name": "Inventar"})
     b.scan_foto()
     for sx, sy in ecken:
@@ -39,6 +40,8 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("scans")
+        pruefe(f.text("#scan-sequenz").strip() == "Rauch",
+               "Zielsequenz der Scan-Aufnahme ist nicht sichtbar")
         masken = f.anzahl("#scan-insp .scan-maske")
         pruefe(masken == anzahl, f"{anzahl} Item-Masken erwartet, da: {masken}")
         pruefe(f.anzahl("#scan-insp .kategorie-wahl") == anzahl,

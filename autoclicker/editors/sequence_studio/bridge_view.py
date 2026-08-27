@@ -128,7 +128,7 @@ class BridgeViewMixin:
         """
         def namen(auflisten) -> list[str]:
             try:
-                return sorted(name for name, _ in auflisten())
+                return sorted(name for name, _ in auflisten(self.board.name))
             except OSError:
                 return []
 

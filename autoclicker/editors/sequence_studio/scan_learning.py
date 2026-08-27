@@ -28,7 +28,8 @@ class ScanLearningMixin:
         self._merke("Item gelernt")
         gelernt = self._lerne_aus_slot(slot)
         if gelernt is None:
-            return self._scan_melde("Kein Bild an dieser Stelle — erst aufnehmen.", "warn")
+            return self._scan_melde(
+                "Kein Item in diesem Slot — leer oder ohne Bild.", "info")
         self.scan_art, self.scan_name = ART_ITEM, gelernt
         self._dazu(ART_ITEM, gelernt)
         return self._scan_geaendert(f"'{gelernt}' aus '{slot.name}' gelernt.")
@@ -61,7 +62,7 @@ class ScanLearningMixin:
         if doppelt:
             teile.append(f"{doppelt} schon bekannt")
         if leer:
-            teile.append(f"{leer} ohne Bild")
+            teile.append(f"{leer} leer oder ohne Bild")
         return self._scan_geaendert("Gelernt: " + ", ".join(teile))
 
     def _lerne_aus_slot(self, slot: ItemSlot, dedup: bool = False) -> Optional[str]:
@@ -70,19 +71,19 @@ class ScanLearningMixin:
         if crop is None:
             return None
         from ..item_editor.markers import (
-            _collect_markers_silent, _find_matching_existing_item,
+            _find_matching_existing_item, _prepare_learning_image,
         )
         from ...config import CONFIG
+        maskiert, marker, ist_leer = _prepare_learning_image(crop, slot.slot_color)
+        if ist_leer:
+            return None
         if dedup and self.items:
             if _find_matching_existing_item(crop, list(self.items.items()),
-                                            CONFIG.scan_min_confidence):
+                                            CONFIG.scan_min_confidence,
+                                            self.filepath.parent / "templates"):
                 return ""
         name = next_item_name(self.items)
-        # Einmal maskieren, beides daraus: Template UND Marker sehen damit
-        # genau dieselbe Flaeche als Item an.
-        from ...imaging import mit_hintergrund_maske
-        maskiert = mit_hintergrund_maske(crop, slot.slot_color)
-        marker = _collect_markers_silent(maskiert, slot.slot_color)
+        # Template UND Marker sehen dieselbe maskierte Flaeche als Item an.
         self.items[name] = ItemProfile(
             name=name,
             marker_colors=[tuple(c) for c in marker],
@@ -91,7 +92,8 @@ class ScanLearningMixin:
             # vergäbe das eine Priorität, die es schon gibt — und die Reihenfolge, in
             # der der Scan klickt, wäre an dieser Stelle Zufall.
             priority=max((i.priority for i in self.items.values()), default=0) + 1,
-            template=save_template(maskiert, name),
+            template=save_template(maskiert, name,
+                                   template_dir=self.filepath.parent / "templates"),
             min_confidence=CONFIG.scan_min_confidence,
         )
         return name
@@ -107,23 +109,29 @@ class ScanLearningMixin:
 
         from ..item_editor.markers import (
             _find_matching_existing_item, _item_has_compatible_template,
+            _prepare_learning_image,
         )
         from ...config import CONFIG
-        from ...imaging import mit_hintergrund_maske
 
         review = []
+        leere_slots = 0
         vergeben = set(self.items)
-        offener_scan = self.scans.get(self.scan_offen)
-        scan_items = set(offener_scan.item_names) if offener_scan else set()
         for slot in slots:
             crop = self._foto_crop(slot.scan_region)
             if crop is None:
                 continue
+            maskiert, _marker, ist_leer = _prepare_learning_image(
+                crop, slot.slot_color)
+            if ist_leer:
+                leere_slots += 1
+                continue
             treffer = (_find_matching_existing_item(
-                crop, list(self.items.items()), CONFIG.scan_min_confidence)
+                crop, list(self.items.items()), CONFIG.scan_min_confidence,
+                self.filepath.parent / "templates")
                 if self._hat_opencv() else None)
             kompatibel = bool(
-                treffer and _item_has_compatible_template(self.items[treffer], crop))
+                treffer and _item_has_compatible_template(
+                    self.items[treffer], crop, self.filepath.parent / "templates"))
             variante = treffer if treffer and not kompatibel else ""
             # Ein sicher erkannter Treffer IST das vorhandene Item. Zuvor stand
             # bei einem kompatiblen Treffer oben „Bogen erkannt", im Namensfeld
@@ -143,10 +151,10 @@ class ScanLearningMixin:
                 name = neu_name
                 kategorie = ""
                 prioritaet = 1
-            im_scan = bool(treffer and treffer in scan_items)
-            kann_hinzufuegen = bool(
-                kompatibel and offener_scan is not None and not im_scan)
-            maskiert = mit_hintergrund_maske(crop, slot.slot_color)
+            # Der Arbeitsbestand gehört bereits vollständig zum offenen Scan.
+            # Es gibt keine zweite Mitgliedschaft mehr.
+            im_scan = bool(treffer)
+            kann_hinzufuegen = False
             review.append({
                 "slot": slot.name, "name": name, "kategorie": kategorie,
                 "prioritaet": prioritaet,
@@ -162,6 +170,10 @@ class ScanLearningMixin:
             })
         self._lern_review = review
         if not review:
+            if leere_slots:
+                return self._scan_melde(
+                    f"{leere_slots} leere Slot(s) übersprungen — nichts zu lernen.",
+                    "info")
             return self._scan_melde("Keiner der Slots liegt im Screenshot.", "warn")
         doppelt = sum(bool(z["duplikat"]) for z in review)
         varianten = sum(bool(z["variante"]) for z in review)
@@ -170,6 +182,8 @@ class ScanLearningMixin:
             teile.append(f"{doppelt} bereits gelernt")
         if varianten:
             teile.append(f"{varianten} neue Grössenvariante(n)")
+        if leere_slots:
+            teile.append(f"{leere_slots} leere übersprungen")
         zusatz = " - " + ", ".join(teile) if teile else ""
         return self._scan_melde(
             f"{len(review)} Vorschlaege vorbereitet{zusatz}.", "info")
@@ -232,30 +246,13 @@ class ScanLearningMixin:
             eingabe = by_slot.get(zeile["slot"], {})
             return bool(eingabe.get("ausgewaehlt", zeile["ausgewaehlt"]))
 
-        # Ein vorhandenes Item kann in mehreren Slots erkannt werden. Diese
-        # Zeilen meinen dieselbe Scan-Mitgliedschaft; sobald eine davon markiert
-        # ist, bleibt das Item enthalten. Die Oberfläche hält die Häkchen
-        # zusätzlich synchron, diese ODER-Regel schützt aber auch alte Clients.
-        mitgliedschaft = {}
-        for zeile in self._lern_review:
-            eingabe = by_slot.get(zeile["slot"], {})
-            vorhanden = str(zeile.get("vorhanden") or "")
-            if vorhanden and not bool(eingabe.get("als_anders", False)):
-                mitgliedschaft[vorhanden] = (
-                    mitgliedschaft.get(vorhanden, False) or ist_ausgewaehlt(zeile))
-
-        cfg = self.scans.get(self.scan_offen)
-        zu_entfernen = [
-            name for name, behalten in mitgliedschaft.items()
-            if not behalten and cfg is not None and name in cfg.item_names
-        ]
         ausgewaehlt = [
             zeile for zeile in self._lern_review if ist_ausgewaehlt(zeile)
         ]
-        if not ausgewaehlt and not zu_entfernen:
+        if not ausgewaehlt:
             self._lern_review = []
             return self._scan_melde(
-                "Keine Items ausgewählt; am Scan wurde nichts geändert.", "info")
+                "Keine Items ausgewählt; nichts gelernt oder geändert.", "info")
 
         from ..item_editor.markers import _collect_markers_silent
         from ...config import CONFIG
@@ -263,24 +260,8 @@ class ScanLearningMixin:
         neu = []
         varianten = []
         unveraendert = set()
-        hinzugefuegt = []
-        entfernt = []
         bearbeitet = []
         metadaten_gesetzt = set()
-
-        # Zuerst wird der Zustand der erkannten Items angewendet. Abwählen
-        # löscht nicht das globale Item oder seine Vorlagen, sondern nur dessen
-        # Namen aus dem aktuell geöffneten Scan.
-        if cfg is not None:
-            for name, behalten in mitgliedschaft.items():
-                if behalten:
-                    if self._dazu(ART_ITEM, name):
-                        hinzugefuegt.append(name)
-                elif name in cfg.item_names:
-                    cfg.item_names = [n for n in cfg.item_names if n != name]
-                    entfernt.append(name)
-            if entfernt:
-                self._objekte_angleichen()
 
         vergeben = set(self.items)
         for zeile in ausgewaehlt:
@@ -324,13 +305,14 @@ class ScanLearningMixin:
                         bearbeitet.append(basis)
 
                 from ..item_editor.markers import _item_has_compatible_template
-                if _item_has_compatible_template(vorhanden, crop):
-                    if self._dazu(ART_ITEM, basis) and basis not in hinzugefuegt:
-                        hinzugefuegt.append(basis)
-                    elif basis not in hinzugefuegt and basis not in bearbeitet:
+                if _item_has_compatible_template(
+                        vorhanden, crop, self.filepath.parent / "templates"):
+                    self._objekte_angleichen()
+                    if basis not in bearbeitet:
                         unveraendert.add(basis)
                     continue
-                datei = save_template(crop, basis)
+                datei = save_template(crop, basis,
+                                      template_dir=self.filepath.parent / "templates")
                 if datei:
                     if vorhanden.template:
                         vorhanden.template_variants.append(datei)
@@ -338,8 +320,7 @@ class ScanLearningMixin:
                         vorhanden.template = datei
                     if basis not in varianten:
                         varianten.append(basis)
-                    if self._dazu(ART_ITEM, basis) and basis not in hinzugefuegt:
-                        hinzugefuegt.append(basis)
+                    self._objekte_angleichen()
                 continue
 
             name = eindeutiger_name(basis, vergeben)
@@ -351,13 +332,14 @@ class ScanLearningMixin:
             self.items[name] = ItemProfile(
                 name=name, marker_colors=[tuple(c) for c in marker],
                 category=kategorie, priority=prioritaet,
-                template=save_template(crop, name),
+                template=save_template(crop, name,
+                                       template_dir=self.filepath.parent / "templates"),
                 min_confidence=CONFIG.scan_min_confidence,
             )
             self._dazu(ART_ITEM, name)
             neu.append(name)
         self._lern_review = []
-        gewaehlt = neu + varianten + hinzugefuegt
+        gewaehlt = neu + varianten + bearbeitet
         if gewaehlt:
             self.scan_art, self.scan_name = ART_ITEM, gewaehlt[0]
         teile = []
@@ -365,10 +347,6 @@ class ScanLearningMixin:
             teile.append(f"{len(neu)} neue Item(s)")
         if varianten:
             teile.append(f"{len(varianten)} Grössenvariante(n) ergänzt")
-        if hinzugefuegt:
-            teile.append(f"{len(hinzugefuegt)} bestehende Item(s) zum Scan hinzugefügt")
-        if entfernt:
-            teile.append(f"{len(entfernt)} Item(s) aus dem Scan entfernt")
         if bearbeitet:
             teile.append(f"{len(bearbeitet)} bestehende Item(s) bearbeitet")
         if unveraendert:
@@ -459,7 +437,7 @@ class ScanLearningMixin:
         """Zieht `confirm_point` an der Referenz nach — abgeleiteter Arbeitswert.
 
         Dieselbe Rolle wie `_aktion_punkt_anwenden()` bei Boss und Icon: die
-        Koordinate steht in `points.json`, der Serializer schreibt sie hier
+        Koordinate steht in der Punktliste der `sequence.json`, der Serializer schreibt sie hier
         nicht, und gefüllt wird sie nur, damit die Anzeige etwas zu zeigen hat.
         """
         from ...models import ClickPoint
@@ -494,15 +472,9 @@ class ScanLearningMixin:
         alt = item.name
         self.items = {(neu if k == alt else k): v for k, v in self.items.items()}
         item.name = neu
-        betroffen = 0
-        for cfg in self.scans.values():
-            if alt in cfg.item_names:
-                cfg.item_names = [neu if n == alt else n for n in cfg.item_names]
-                betroffen += 1
         self._objekte_angleichen()
         self.scan_name = neu
-        zusatz = f" · in {betroffen} Scan(s) nachgezogen" if betroffen else ""
-        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'{zusatz}")
+        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'")
 
     def scan_item_loeschen(self, daten: Optional[dict] = None) -> dict:
         name = self.scan_name if self.scan_art == ART_ITEM else ""
@@ -511,14 +483,73 @@ class ScanLearningMixin:
             return self._scan_melde("Kein Item gewählt.", "warn")
         self._merke(f"'{name}' gelöscht")
         del self.items[name]
-        for cfg in self.scans.values():
-            cfg.item_names = [n for n in cfg.item_names if n != name]
         self._objekte_angleichen()
         self.scan_name = ""
         # Das Template bleibt liegen: es kann zu einem Boss gehören (beide
-        # teilen sich items/templates/), und eine Datei zu löschen, die einem
+        # teilen sich den lokalen Template-Ordner), und eine Datei zu löschen, die einem
         # anderen gehört, ist der stille Datenverlust, den es hier nicht gibt.
         return self._scan_geaendert(f"'{name}' gelöscht.", "warn")
+
+    def scan_item_vorlage_entfernen(self, daten: Optional[dict] = None) -> dict:
+        """Löst eine fehlerhafte Vorlage vom Item, ohne fremde Dateien zu löschen."""
+        daten = daten or {}
+        name = str(daten.get("name") or self.scan_name)
+        datei = str(daten.get("datei") or "")
+        item = self.items.get(name)
+        if item is None or datei not in item.template_names():
+            return self._scan_melde("Vorlage nicht gefunden.", "err")
+        self._merke(f"'{name}': Vorlage entfernt")
+        if item.template == datei:
+            varianten = [v for v in item.template_variants if v != datei]
+            item.template = varianten.pop(0) if varianten else None
+            item.template_variants = varianten
+        else:
+            item.template_variants = [v for v in item.template_variants if v != datei]
+        self._vorschau.pop(datei, None)
+        return self._scan_geaendert(
+            f"Vorlage '{datei}' von '{name}' entfernt. Die Bilddatei bleibt als Sicherung bestehen.",
+            "warn")
+
+    def scan_items_autoname(self, daten: Optional[dict] = None) -> dict:
+        """Benennt ausgewählte Auto-Items per konfigurierter LLM-Vision."""
+        from ...config import load_config
+        config = load_config()
+        if not config.llm_enabled:
+            return self._scan_melde("LLM-Vision ist in den Einstellungen nicht aktiviert.", "err")
+        namen = [str(n) for n in ((daten or {}).get("namen") or [])]
+        kandidaten = [i for i in self.items.values()
+                      if (not namen or i.name in namen)
+                      and i.category == "Auto" and i.template_names()]
+        if not kandidaten:
+            return self._scan_melde("Keine passenden Auto-Items mit Vorlage gefunden.", "warn")
+        try:
+            from PIL import Image
+            from ...llm_vision import suggest_item_name
+            from ...utils import sanitize_filename
+        except ImportError:
+            return self._scan_melde("Pillow oder LLM-Vision ist nicht verfügbar.", "err")
+        umbenannt = 0
+        for item in list(kandidaten):
+            pfad = self.filepath.parent / "templates" / item.template_names()[0]
+            try:
+                with Image.open(pfad) as bild:
+                    vorschlag = suggest_item_name(
+                        bild.copy(), provider=config.llm_provider,
+                        endpoint=config.llm_endpoint, model=config.llm_model,
+                        timeout=config.llm_timeout)
+            except (OSError, ValueError):
+                continue
+            basis = sanitize_filename(vorschlag).strip() if vorschlag else ""
+            if not basis:
+                continue
+            neu, nr = basis, 1
+            while neu in self.items and neu != item.name:
+                nr += 1
+                neu = f"{basis} {nr}"
+            if neu != item.name:
+                self._item_umbenennen(item, neu)
+                umbenannt += 1
+        return self._scan_geaendert(f"{umbenannt} Auto-Item(s) per LLM benannt.")
 
     # ------------------------------------------------------------- Erkennung
 
@@ -534,32 +565,12 @@ class ScanLearningMixin:
         self._scan_laden()
         if self._foto is None:
             return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
-        if not self._scan_slots():
-            return self._scan_melde("Keine Slots vorhanden.", "warn")
+        if not any(slot.enabled for slot in self._scan_slots()):
+            return self._scan_melde("Keine aktiven Slots vorhanden.", "warn")
         gefunden, geprueft, toleranz, _, gesamt = self._erkennen_lauf()
         return self._scan_melde(
             f"{gefunden} von {gesamt} Slot(s) erkannt "
             f"(Toleranz {toleranz}, {geprueft} Item(s) geprüft).")
-
-    def scan_treffer_uebernehmen(self, daten: Optional[dict] = None) -> dict:
-        """Nimmt alle erkannten, aber scan-fremden Items gesammelt auf."""
-        cfg = self.scans.get(self.scan_offen)
-        if cfg is None:
-            return self._scan_melde("Erst einen Item-Scan oeffnen.", "warn")
-        namen = []
-        for treffer in self._treffer.values():
-            name = treffer.get("name")
-            if name and treffer.get("fremd") and name not in namen:
-                namen.append(name)
-        if not namen:
-            return self._scan_melde("Keine sicheren fremden Treffer vorhanden.", "info")
-        self._merke(f"{len(namen)} erkannte Items aufgenommen")
-        for name in namen:
-            self._dazu(ART_ITEM, name)
-        for treffer in self._treffer.values():
-            if treffer.get("name") in namen:
-                treffer["fremd"] = False
-        return self._scan_geaendert(f"{len(namen)} erkannte Item(s) hinzugefuegt.")
 
     def _erkennen_lauf(self) -> tuple:
         """Füllt `_treffer`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
@@ -567,8 +578,6 @@ class ScanLearningMixin:
         Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer eine
         eigene Meldung schreibt — die Rechnung darf es trotzdem nur einmal geben.
 
-        `fremd` zählt Treffer, die nicht zum offenen Scan gehören (möglich nur bei
-        einem Scan ohne Items, wo `_kandidaten()` den ganzen Bestand prüft).
         `gesamt` ist die Zahl der Slots des offenen Scans, nicht die des Bestands.
         """
         # Erst hier importiert: `runtime/__init__` zieht den Worker samt
@@ -579,11 +588,9 @@ class ScanLearningMixin:
         toleranz = self._toleranz()
         kandidaten = self._kandidaten()
         stellvertreter = _NurConfig(CONFIG)
-        cfg = self.scans.get(self.scan_offen)
-        dabei = set(cfg.item_names) if cfg else set()
         self._treffer = {}
-        gefunden, fremd = 0, 0
-        slots = self._scan_slots()
+        gefunden = 0
+        slots = [slot for slot in self._scan_slots() if slot.enabled]
         for slot in slots:
             crop = self._foto_crop(slot.scan_region)
             if crop is None:
@@ -591,21 +598,21 @@ class ScanLearningMixin:
                 continue
             treffer = None
             for item in kandidaten:
-                if _check_profile_match(item, crop, toleranz, stellvertreter, False):
+                if _check_profile_match(
+                        item, crop, toleranz, stellvertreter, False,
+                        template_root=self.filepath.parent / "templates"):
                     treffer = item
                     break
             if treffer is None:
                 self._treffer[slot.name] = {"name": None, "grund": "nichts erkannt"}
             else:
                 gefunden += 1
-                if cfg is not None and treffer.name not in dabei:
-                    fremd += 1
                 self._treffer[slot.name] = {
                     "name": treffer.name,
                     "farbe": hexfarbe(treffer.marker_colors[0]) if treffer.marker_colors else None,
-                    "fremd": cfg is not None and treffer.name not in dabei,
+                    "fremd": False,
                 }
-        return gefunden, len(kandidaten), toleranz, fremd, len(slots)
+        return gefunden, len(kandidaten), toleranz, 0, len(slots)
 
     def _kandidaten(self) -> list:
         """Welche Items geprüft werden — die des gewählten Scans, sonst alle.

@@ -6,7 +6,7 @@ Aufruf:
     python -m autoclicker.sequence_studio "" --scans # Reiter „Scans" vorgewählt
 
 Eigener Prozess, damit der Fenster-Event-Loop nicht mit der Hotkey-Message-
-Pump kollidiert. Liest/schreibt sequences/<name>.json direkt; danach im
+Pump kollidiert. Liest/schreibt sequences/<name>/sequence.json direkt; danach im
 Hauptprozess CTRL+ALT+L. Die Oberfläche ist eine Webseite
 (`editors/sequence_studio/web/index.html`), die Verbindung `StudioBridge`.
 """
@@ -19,6 +19,7 @@ from .config import SEQUENCES_DIR
 from .models import Sequence
 from .persistence import (
     ensure_sequences_dir, list_available_sequences, load_sequence_file,
+    sequence_file,
 )
 from .utils import sanitize_filename, col
 
@@ -56,7 +57,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
     ensure_sequences_dir()
     if name:
         for seq_name, path in list_available_sequences():
-            if seq_name == name:
+            if seq_name == name or path.parent.name == sanitize_filename(name):
                 seq = load_sequence_file(path)
                 if seq:
                     return seq, path
@@ -68,7 +69,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
                 return seq, letzte
 
     base = name or f"Sequenz_{int(time.time())}"
-    path = Path(SEQUENCES_DIR) / f"{sanitize_filename(base)}.json"
+    path = sequence_file(base)
     if path.exists():
         seq = load_sequence_file(path)
         if seq:
@@ -76,7 +77,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
         # Datei da, aber nicht ladbar: kaputt ist nicht leer. Draufschreiben
         # hiesse, den einzigen Rest wegzuwerfen, den man noch reparieren kann.
         base = f"{base}_{int(time.time())}"
-        path = Path(SEQUENCES_DIR) / f"{sanitize_filename(base)}.json"
+        path = sequence_file(base)
     return Sequence(name=base), path
 
 
@@ -96,7 +97,7 @@ def _scans_beim_schliessen_speichern(bridge) -> bool:
     return True
 
 
-def _beim_schliessen(bridge) -> None:
+def _beim_schliessen(bridge, beenden_mit_fenster: bool = False) -> None:
     """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
     # Zuerst die Klick-Runde: sie haengt im Hauptprozess an einem systemweiten
     # Maus-Hook, und ihre Bedienung steht nur in diesem Fenster. Bleibt sie
@@ -113,9 +114,17 @@ def _beim_schliessen(bridge) -> None:
     if ziel is not None:
         print(f"\nUngespeicherte Aenderungen gesichert: {ziel}")
         print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
+    if beenden_mit_fenster and not getattr(bridge, "_beenden_gesendet", False):
+        # Nur das automatisch gestartete Hauptfenster besitzt den Hauptprozess.
+        # Ein per Hotkey zusätzlich geöffnetes Studio darf ihn beim Schliessen
+        # nicht überraschend mitnehmen.
+        from .befehl import sende
+        bridge._beenden_gesendet = True
+        sende("programm_beenden")
 
 
-def _haenge_schliesser_an(fenster, bridge) -> None:
+def _haenge_schliesser_an(fenster, bridge,
+                          beenden_mit_fenster: bool = False) -> None:
     """Hängt `_beim_schliessen` ans Fenster — über beide pywebview-Schreibweisen.
 
     Bis pywebview 3.5 hiess das Ereignis `fenster.closing`, danach
@@ -124,13 +133,14 @@ def _haenge_schliesser_an(fenster, bridge) -> None:
     for besitzer in (getattr(fenster, "events", None), fenster):
         ereignis = getattr(besitzer, "closing", None) if besitzer is not None else None
         if ereignis is not None and hasattr(ereignis, "__iadd__"):
-            ereignis += lambda: _beim_schliessen(bridge)
+            ereignis += lambda: _beim_schliessen(bridge, beenden_mit_fenster)
             return
 
 
 def main(argv: list[str]) -> int:
     # `--scans` waehlt nur den Reiter vor; ein leeres erstes Argument ist erlaubt.
     scans = "--scans" in argv[1:]
+    beenden_mit_fenster = "--beenden-mit-fenster" in argv[1:]
     stellen = [a for a in argv[1:] if not a.startswith("--")]
     seq_name = stellen[0] if stellen else ""
 
@@ -170,7 +180,7 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _haenge_schliesser_an(fenster, bridge)
+    _haenge_schliesser_an(fenster, bridge, beenden_mit_fenster)
 
     def _nach_dem_start() -> None:
         """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.

@@ -111,8 +111,25 @@ def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> lis
     return [color for color, count in sorted_colors]
 
 
+def _prepare_learning_image(img: 'Image.Image', slot_color: tuple = None):
+    """Maskiertes Lernbild, Marker und die gemeinsame Leer-Entscheidung.
+
+    Studio und Laufzeit duerfen einen leeren Slot nicht unterschiedlich
+    beurteilen: Sonst bietet die Vorschau ein Item an, das Auto-Lernen spaeter
+    ueberspringt. Ohne gemessene Slot-Farbe ist keine sichere Leer-Erkennung
+    moeglich; dann bleibt das Bild bewusst lernbar.
+    """
+    from ...imaging import mit_hintergrund_maske
+
+    maskiert = mit_hintergrund_maske(img, slot_color)
+    marker = _collect_markers_silent(maskiert, slot_color)
+    leer = bool(slot_color) and not marker
+    return maskiert, marker, leer
+
+
 def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
-                                  min_confidence: float) -> str | None:
+                                  min_confidence: float,
+                                  template_root=None) -> str | None:
     """Vergleicht ein Slot-Bild gegen alle bestehenden Item-Templates.
 
     Args:
@@ -138,13 +155,14 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
             vorlagen = (item.template_names() if hasattr(item, "template_names")
                          else ([item.template] if item.template else []))
             for vorlage in vorlagen:
-                passt_groesse = template_size(vorlage) == tuple(img.size)
+                passt_groesse = template_size(vorlage, template_root) == tuple(img.size)
                 if passt_groesse != gleiche_groesse:
                     continue
                 match, confidence, _pos = match_template_in_image(
                     img, vorlage, min_confidence,
                     resize_template=not gleiche_groesse,
                     report_size_mismatch=False,
+                    template_root=template_root,
                 )
                 if match and confidence > beste_konfidenz:
                     bester_name, beste_konfidenz = name, confidence
@@ -154,9 +172,10 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
     return None
 
 
-def _item_has_compatible_template(item, img: 'Image.Image') -> bool:
+def _item_has_compatible_template(item, img: 'Image.Image', template_root=None) -> bool:
     """Hat das Item bereits eine Vorlage exakt fuer diese Slot-Groesse?"""
     from ...imaging import template_size
     vorlagen = (item.template_names() if hasattr(item, "template_names")
                  else ([item.template] if item.template else []))
-    return any(template_size(vorlage) == tuple(img.size) for vorlage in vorlagen)
+    return any(template_size(vorlage, template_root) == tuple(img.size)
+               for vorlage in vorlagen)

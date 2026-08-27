@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Was das ist
 
@@ -2746,7 +2746,7 @@ Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_captur
 - **Keine neuen Dateien anlegen ohne Grund**, bestehende erweitern bevorzugt.
 - **Keine neuen Markdown-Dateien**, ausser explizit gefragt. `IDEAS.md` ist das Backlog für noch nicht gebaute Features mit Nutzen+Tradeoff.
 - **Commit-Messages auf Deutsch**, knapper Imperativ-Stil, mehrzeilig erlaubt für Begründung.
-- **Branch-Konvention**: Feature-Branches `claude/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
+- **Branch-Konvention**: Feature-Branches `Codex/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
 
 ### Altlasten werden entfernt, nicht mitgeschleppt
 

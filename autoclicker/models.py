@@ -124,8 +124,10 @@ class ClickPoint:
         return f"#{self.id} ({self.x}, {self.y}){src}"
 
 
-# KOORDINATEN GEHOEREN IN points.json - NIRGENDWO SONST.
-# Die Sequenz speichert nur die `point_id`; x/y/Farbe stehen in points.json.
+# KOORDINATEN GEHOEREN IN DIE PUNKTLISTE IHRER SEQUENZ - NIRGENDWO SONST.
+# Ein Schritt speichert nur die `point_id`; x/y/Farbe stehen einmalig unter
+# `points` in derselben Sequenzdatei. Dadurch darf dieselbe ID in zwei
+# Sequenzen bewusst zwei verschiedene Stellen bezeichnen.
 # Eine Koordinate an zwei Stellen ist eine, die an einer der beiden falsch sein
 # kann - und bei einer Kalibrierung muesste jede Kopie einzeln erwischt werden.
 # Es gibt bewusst KEINEN Rueckfallwert: eine tote `point_id` laesst den Schritt
@@ -405,6 +407,9 @@ class Sequence:
     # beim Export angezeigt, damit man/Empfänger weiss worum es geht. Reines
     # Hilfsdatum, beeinflusst die Ausführung NICHT.
     description: str = ""
+    # Eigener Punkt-Pool dieser Sequenz. Scans, die aus der Sequenz laufen,
+    # loesen ihre Punkt-IDs ebenfalls gegen genau diesen Pool auf.
+    points: list[ClickPoint] = field(default_factory=list)
 
     def __str__(self) -> str:
         init_count = len(self.init_steps)
@@ -444,7 +449,7 @@ class ItemProfile:
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
     # Template Matching (optional - überschreibt marker_colors wenn gesetzt)
-    template: Optional[str] = None  # Dateiname des Template-Bildes (in items/templates/)
+    template: Optional[str] = None  # Dateiname im Template-Ordner der Sequenz
     min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Mindest-Konfidenz für Template-Match
     # Dasselbe Item kann in verschiedenen Inventar-Bereichen in unterschiedlich
     # grossen Slots vorkommen. `template` bleibt fuer bestehende JSON-Dateien und
@@ -483,11 +488,15 @@ class ItemSlot:
     slot_color: Optional[tuple[int, int, int]] = None  # RGB-Farbe des leeren Slots
     # Stabile Anzeige-ID — anders als bei ClickPoint KEINE Referenz (der Name
     # bleibt der Schlüssel in slot_names/item_names), nur damit die Nummer im
-    # Studio beim Ab- und Wieder-Anschalten im Scan nicht auf einen anderen
-    # Slot springt: die Stelle im Scan ändert sich dabei (er wandert ans Ende),
-    # die Identität soll es nicht. 0 heißt „noch nicht vergeben" (Altbestand);
+    # Studio beim Aus- und Wieder-Einschalten nicht auf einen anderen Slot
+    # springt. 0 heißt „noch nicht vergeben" (Altbestand);
     # vergeben wird beim ersten Laden im Studio.
     id: int = 0
+    # Der Slot bleibt mit Fläche, Klickpunkt und ID im Scan erhalten, kann für
+    # den Lauf aber gezielt geparkt werden. Das ist kein zweiter Besitzbegriff:
+    # er gehört weiterhin genau diesem Scan, nur `enabled=False` überspringt ihn.
+    # Hinter `id`, damit bestehende positionale Aufrufe kompatibel bleiben.
+    enabled: bool = True
 
     def __str__(self) -> str:
         r = self.scan_region
@@ -499,19 +508,12 @@ class ItemSlot:
 class ItemScanConfig:
     """Konfiguration für Item-Erkennung und -Vergleich.
 
-    In der Datei stehen nur die Namen (`slot_names`, `item_names`); Slots und
-    Items selbst leben in slots/slots.json bzw. items/items.json — der Scan
-    verweist darauf, statt sie zu kopieren.
-
-    `slots` und `items` sind die AUFGELÖSTEN Arbeitslisten, gefüllt von
-    `resolve_scan_references()`. Worker und Editoren lesen bzw. schreiben sie
-    unverändert; gespeichert werden sie nicht.
+    Slots und Items gehören diesem Scan und werden vollständig in seiner Datei
+    gespeichert. Gleichnamige Einträge anderer Scans sind andere Objekte.
     """
     name: str
-    slots: list[ItemSlot] = field(default_factory=list)      # aufgelöst, nicht gespeichert
-    items: list[ItemProfile] = field(default_factory=list)   # aufgelöst, nicht gespeichert
-    slot_names: list[str] = field(default_factory=list)      # das steht in der Datei
-    item_names: list[str] = field(default_factory=list)      # das steht in der Datei
+    slots: list[ItemSlot] = field(default_factory=list)
+    items: list[ItemProfile] = field(default_factory=list)
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
     # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
     # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
@@ -526,31 +528,35 @@ class ItemScanConfig:
     capture_window_title: Optional[str] = None
     capture_window_index: int = 0
     capture_window_rect: Optional[tuple[int, int, int, int]] = None
+    owner_sequence: str = field(default="", repr=False, compare=False)
 
-    def __post_init__(self) -> None:
-        self.sync_names()
+    @property
+    def slot_names(self) -> list[str]:
+        """Abgeleitete Namen; die Objekte selbst sind die einzige Wahrheit."""
+        return [slot.name for slot in self.slots]
+
+    @slot_names.setter
+    def slot_names(self, names) -> None:
+        wanted = set(names or [])
+        self.slots = [slot for slot in self.slots if slot.name in wanted]
+
+    @property
+    def item_names(self) -> list[str]:
+        """Abgeleitete Namen; die Objekte selbst sind die einzige Wahrheit."""
+        return [item.name for item in self.items]
+
+    @item_names.setter
+    def item_names(self, names) -> None:
+        wanted = set(names or [])
+        self.items = [item for item in self.items if item.name in wanted]
 
     def sync_names(self) -> None:
-        """Leitet fehlende Namenslisten aus den Objekten ab.
-
-        Namen und Objekte sind zwei Darstellungen derselben Sache, und wer nur eine
-        setzt, hinterlässt eine halbe Config: Editoren bauen aus Objekten, der Loader
-        aus Namen. Ohne Namen leerte `resolve_scan_references()` beim nächsten Start
-        die Objekte; ohne Objekte zeigte das Menü „0 Slots, 0 Items".
-
-        Die Namen sind die Wahrheit, die Objekte werden aufgelöst.
-        """
-        if not self.slot_names and self.slots:
-            self.slot_names = [s.name for s in self.slots]
-        if not self.item_names and self.items:
-            self.item_names = [i.name for i in self.items]
+        """Kompatibler No-op: es gibt keine zweite Namens-Wahrheit mehr."""
 
     def __str__(self) -> str:
         learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
-        # Über die Namen zählen: frisch geladen sind die Objekte noch nicht aufgelöst,
-        # und "0 Slots" wäre dann schlicht falsch.
-        return (f"{self.name} ({len(self.slot_names)} Slots, "
-                f"{len(self.item_names)} Items){learn_str}")
+        return (f"{self.name} ({len(self.slots)} Slots, "
+                f"{len(self.items)} Items){learn_str}")
 
 
 # =============================================================================
@@ -561,7 +567,7 @@ class BossProfile:
     """Ein Boss-Typ mit Erkennungsmethode und zugeordneter Aktion."""
     name: str
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Farb-Marker
-    template: Optional[str] = None              # Template-Bild (in items/templates/)
+    template: Optional[str] = None              # Template-Bild der Sequenz
     min_confidence: float = DEFAULT_MIN_CONFIDENCE  # Für Template-Matching
     # Aktion wenn dieser Boss erkannt wird:
     action: str = BOSS_ACTION_SCAN              # "item_scan", "click", "key", "skip", "skip_cycle", "restart"
@@ -619,6 +625,7 @@ class BossScanConfig:
     # OCR-Texterkennung (optional, schnelle Alternative zu LLM)
     use_ocr: bool = False                                         # OCR für Boss-Name-Erkennung
     ocr_fallback: bool = True                                     # OCR nur als Fallback
+    owner_sequence: str = field(default="", repr=False, compare=False)
 
     def __str__(self) -> str:
         r = self.scan_region
@@ -640,7 +647,7 @@ class IconScanConfig:
     """
     name: str
     scan_region: tuple[int, int, int, int] = (0, 0, 100, 100)  # Region in der gesucht wird
-    template: Optional[str] = None                              # Template-Bild (in items/templates/)
+    template: Optional[str] = None                              # Template-Bild der Sequenz
     min_confidence: float = DEFAULT_MIN_CONFIDENCE              # Mindest-Konfidenz für Template-Match
     marker_colors: list[tuple[int, int, int]] = field(default_factory=list)  # Alternativ: Farb-Marker
     color_tolerance: int = 30                                   # Farbtoleranz für Marker
@@ -651,6 +658,7 @@ class IconScanConfig:
     action_y: int = 0                                          # abgeleitet: Klick-Y
     action_key: Optional[str] = None                           # Taste (wenn action="key")
     action_delay: float = 0                                    # Verzögerung vor der Aktion
+    owner_sequence: str = field(default="", repr=False, compare=False)
 
     def __str__(self) -> str:
         r = self.scan_region
@@ -749,13 +757,20 @@ class RecordEvent:
 @dataclass
 class AutoClickerState:
     """Zustand des Autoclickers."""
-    # Punkte-Pool (wiederverwendbar)
+    # Arbeitsansicht auf `active_sequence.points`; kein eigener Datenbestand.
     points: list[ClickPoint] = field(default_factory=list)
 
     # Manueller Modus: Sequenz Schritt für Schritt auf Bestätigung, Wartezeiten
     # übersprungen. Bewusst Laufzeit-Zustand statt Config - im Punkte-Menü
     # (CTRL+ALT+P -> 'manuell') umschaltbar. Mutation unter state.lock.
     step_mode: bool = False
+    # Wurde der manuelle Modus im Studio eingeschaltet, kommen die vier
+    # Entscheidungen über den Befehls-Briefkasten statt von stdin. Das Event
+    # weckt den Worker; der String wird immer unter `state.lock` gelesen und
+    # geschrieben. Der TUI-Modus bleibt davon unberührt.
+    step_via_studio: bool = False
+    step_command: str = ""
+    step_command_event: threading.Event = field(default_factory=threading.Event)
 
     # Gespeicherte Sequenzen
     sequences: dict[str, Sequence] = field(default_factory=dict)
@@ -766,6 +781,8 @@ class AutoClickerState:
 
     # Item-Scan Konfigurationen (verknüpft Slots + Items)
     item_scans: dict[str, ItemScanConfig] = field(default_factory=dict)
+    # TUI-Arbeitskontext. `global_slots/items` sind nur Ansichten auf diesen Scan.
+    active_item_scan: str = ""
 
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
@@ -848,10 +865,15 @@ class AutoClickerState:
     # Liste von RecordEvent. Zugriff unter state.lock - der Maus- und der
     # Tastatur-Hook schreiben aus der Message-Pump, die Hotkey-Handler lesen.
     recording_events: list = field(default_factory=list)
+    # Vorgaben einer im Studio gestarteten Aufnahme. Leer bedeutet: klassischer
+    # TUI-Weg mit den bisherigen Konsolenfragen beim Stoppen.
+    recording_ui_name: str = ""
+    recording_ui_cycles: int = 0
+    recording_ui_description: str = ""
 
     # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
     # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie
-    # wird nie gespeichert. Was sie ERGIBT, steht danach in points.json.
+    # wird nie gespeichert. Was sie ERGIBT, steht danach in sequence.json.
     nachklick_aktiv: bool = False
     # Pausiert: Klicks gehen durch, ohne einen Punkt zu setzen. Dafür da, dass
     # man zwischendurch im Spiel navigieren kann (Dialog wegklicken, scrollen),
@@ -875,3 +897,6 @@ class AutoClickerState:
     # Punkten; welche Sequenz sie sortiert hat, ändert daran nichts (und die
     # geladene Sequenz wechselt dadurch ausdrücklich NICHT).
     nachklick_name: str = ""
+    # Die Runde darf aus dem Studio eine andere als die aktive Sequenz erhalten.
+    # Ihr eigener Punkt-Pool bleibt deshalb als expliziter Laufzeitkontext hier.
+    nachklick_sequence: Optional[Sequence] = None

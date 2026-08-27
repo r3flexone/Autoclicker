@@ -28,6 +28,9 @@ SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 # `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
 # unter backups/ liegen statt neben dem Original.
 RUN_STATUS_FILE: str = ".lauf.json"
+# Rollende Live-Ausgabe der Sequenz-Aufnahme für das Studio. Kein Bestand und
+# kein Log: die Datei wird bei jedem Ereignis überschrieben.
+RECORD_STATUS_FILE: str = ".aufnahme.json"
 
 # Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
@@ -40,8 +43,9 @@ class AppConfig:
     """Typisierte Konfiguration für den Autoclicker.
     Feld-Reihenfolge bestimmt die Reihenfolge in config.json."""
     # === PROGRAMMSTART ===
-    # Das Studio ist die Hauptoberflaeche. False behaelt den bisherigen reinen
-    # Konsolenstart; die Hotkeys zum manuellen Oeffnen funktionieren weiterhin.
+    # Waehlt die Startoberflaeche: Studio oder TUI. Fachlogik, Hotkeys und Worker
+    # bleiben derselbe Hauptprozess; im Studio-Modus ist die Konsole nur Log und
+    # Rueckfallweg fuer noch vorhandene Konsolenwerkzeuge.
     studio_open_on_start: bool = True                # Sequenz-Studio mit main.py öffnen
 
     # === KLICK-EINSTELLUNGEN ===

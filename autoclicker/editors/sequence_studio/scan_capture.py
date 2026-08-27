@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ...persistence.paths import SCAN_SHOTS_DIR
 from ...utils import sanitize_filename
 from .scan_model import crop_region, normalize_region
 
@@ -35,7 +34,9 @@ class ScanCaptureMixin:
         Desktop); `bereich` schränkt ein, und ohne Angabe gilt der zuletzt gesetzte
         Bereich des Scans — der steht im gemerkten Bild und überlebt das Schliessen.
         """
-        self._scan_laden()
+        gesperrt = self._scan_voraussetzung(daten)
+        if gesperrt is not None:
+            return gesperrt
         try:
             from ...imaging import PILLOW_AVAILABLE, take_screenshot
             from ...winapi import get_virtual_origin, resolve_window
@@ -236,7 +237,9 @@ class ScanCaptureMixin:
         `_klick_bereich` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
         sofort zu: dort ist der Zuschnitt das Ergebnis, nicht die Vorbereitung.
         """
-        self._scan_laden()
+        gesperrt = self._scan_voraussetzung(daten)
+        if gesperrt is not None:
+            return gesperrt
         neuer_bereich = self._bereich_aus(daten or {})
         try:
             fenster_id = int((daten or {}).get("fenster") or 0)
@@ -353,9 +356,9 @@ class ScanCaptureMixin:
         return self._scan_melde(f"Bereich: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1})."
                                 f"{self._draussen_hinweis()}")
 
-    @staticmethod
-    def _foto_pfad(scan: str) -> Path:
-        return Path(SCAN_SHOTS_DIR) / f"{sanitize_filename(scan)}.png"
+    def _foto_pfad(self, scan: str) -> Path:
+        return (self.filepath.parent / "bilder"
+                / f"{sanitize_filename(scan)}.png")
 
     def _foto_merken(self, bild, links: int, oben: int) -> None:
         """Legt den Screenshot beim offenen Scan ab — für das nächste Öffnen.
@@ -380,8 +383,7 @@ class ScanCaptureMixin:
             # gerade eben, was die Änderungszeit des Elternordners weiterdreht.
             # Ohne dieses Nachziehen meldete der Reiter direkt nach der eigenen
             # Aufnahme „auf Platte hat sich etwas geändert".
-            from ...persistence.paths import ITEM_SCANS_DIR
-            self._platte_nachziehen(Path(ITEM_SCANS_DIR))
+            self._platte_nachziehen(self.filepath.parent)
         except (ImportError, OSError, ValueError):
             pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
 

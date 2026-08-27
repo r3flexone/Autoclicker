@@ -78,6 +78,40 @@ def lebenszeichen(state) -> None:
     schreibe(state, {})
 
 
+def plane(sequenz: str, zielzeit: float) -> None:
+    """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
+
+    Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
+    deshalb in derselben Momentaufnahme mit `aktiv: False` und eigenem Feld.
+    Vorheriger Laufzustand wird geleert: die nächste Worker-Meldung baut ihn
+    ohnehin vollständig neu auf.
+    """
+    global _zuletzt
+    _zustand.clear()
+    _zuletzt = 0.0
+    try:
+        atomic_write(STATUS_DATEI, compact_json({
+            "aktiv": False,
+            "countdown": True,
+            "sequenz": sequenz,
+            "zielzeit": float(zielzeit),
+            "stand": time.time(),
+        }))
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def plan_beenden() -> None:
+    """Entfernt nur eine Countdown-Anzeige, nie die Laufzusammenfassung."""
+    try:
+        import json
+        daten = json.loads(STATUS_DATEI.read_text(encoding="utf-8"))
+        if isinstance(daten, dict) and daten.get("countdown"):
+            STATUS_DATEI.unlink(missing_ok=True)
+    except (OSError, ValueError):
+        pass
+
+
 # Was beim Ende eines Laufs KEINEN Sinn mehr ergibt: alles, was einen Moment
 # beschreibt statt den Durchgang. Ein „wartet auf Farbe" in einer Zusammenfassung
 # wäre eine Behauptung über etwas, das längst vorbei ist.
@@ -85,7 +119,7 @@ def lebenszeichen(state) -> None:
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
 _MOMENT_FELDER = ("block", "bloecke", "block_titel", "block_label", "block_typ",
-                  "block_seit", "warten", "durchlauf")
+                  "block_seit", "warten", "durchlauf", "manuell")
 
 
 def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> None:

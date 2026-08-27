@@ -100,7 +100,7 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         config = lauffaehige_scan_config(state, step.item_scan)
         if config is None:
             return True
-        slots = list(config.slots)
+        slots = [slot for slot in config.slots if slot.enabled]
         rueckwaerts = config.reverse
     if rueckwaerts:
         slots = list(reversed(slots))

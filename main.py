@@ -28,11 +28,8 @@ from autoclicker.winapi import (
     PlatformError,
 )
 from autoclicker.persistence import (
-    ensure_sequences_dir, ensure_item_scans_dir, init_directories, sweep_beim_start,
+    ensure_sequences_dir, init_directories,
     list_available_sequences,
-    load_points, load_global_slots, load_global_items, load_all_item_scans,
-    load_all_boss_scans, load_all_icon_scans, load_global_bosses,
-    resolve_klick_referenzen
 )
 from autoclicker.diagnose import check_beim_start
 from autoclicker.runtime import print_status
@@ -163,8 +160,7 @@ def print_anleitung() -> None:
 
 def _erster_start(state) -> bool:
     """Nichts aufgenommen, nichts gespeichert — dann ist die Anleitung das Wichtigste."""
-    return not (state.points or state.global_slots or state.global_items
-                or state.item_scans or list_available_sequences())
+    return not list_available_sequences()
 
 
 # Wie oft im Leerlauf nach einem Befehl aus dem Studio gesehen wird. Die Schleife
@@ -211,8 +207,26 @@ def _studio_beim_start_oeffnen(state) -> bool:
     """Öffnet auf Wunsch das Studio, nachdem der Hauptprozess empfangsbereit ist."""
     if not state.config.studio_open_on_start:
         return False
-    handle_sequence_studio(state)
-    return True
+    return handle_sequence_studio(state, beenden_mit_fenster=True)
+
+
+def _tui_ist_startoberflaeche(state) -> bool:
+    """Die Option wählt eine Startoberfläche, nicht einen zweiten Fachkern.
+
+    Im Studio-Modus bleibt derselbe Hauptprozess für Hotkeys und Laufzeit aktiv;
+    Banner, Anleitung und Bereitschaftsmenü sind aber keine zweite Oberfläche im
+    Hintergrund. Konsolenwerkzeuge bleiben als ausdrücklicher Rückfallweg nutzbar.
+    """
+    return not state.config.studio_open_on_start
+
+
+def _tui_bereit_anzeigen(state) -> None:
+    """Der Abschluss des sichtbaren TUI-Starts, auch als Studio-Rückfall."""
+    print(col("Bereit!", 'green') +
+          f" Starte mit {col('CTRL+ALT+A', 'yellow')} um Punkte aufzunehmen.")
+    print(f"        oder mit {col('CTRL+ALT+S', 'yellow')} eine Sequenz starten.")
+    print_status(state)
+    print()
 
 
 def _plattform_bereit() -> bool:
@@ -229,8 +243,6 @@ def _plattform_bereit() -> bool:
 
 def main() -> int:
     """Hauptfunktion."""
-    print_banner()
-
     # State initialisieren
     state = AutoClickerState()
     # Dasselbe Objekt, keine Kopie: `from .config import CONFIG` steht in
@@ -242,38 +254,24 @@ def main() -> int:
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
     # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.
     init_logging(state.config.debug_log or state.config.debug_detail)
+    tui_start = _tui_ist_startoberflaeche(state)
+    if tui_start:
+        print_banner()
     if not _plattform_bereit():
         return 2
     main_thread_id = get_current_thread_id()
 
     # Ordner erstellen
     ensure_sequences_dir()
-    ensure_item_scans_dir()
     init_directories()
 
-    # Alle JSON-Dateien aufs aktuelle Format heben - VOR dem Laden, damit der Rest des
-    # Starts schon die aufgeraeumten Dateien liest. Meldet nur, wenn es etwas zu tun gab.
-    if state.config.migrate_on_start:
-        sweep_beim_start()
-
-    # Gespeicherte Daten laden
-    load_points(state)
-    load_global_slots(state)
-    load_global_items(state)
-    load_all_item_scans(state)
-    load_all_boss_scans(state)
-    load_global_bosses(state)
-    load_all_icon_scans(state)
-
-    # Klick-Ziele aufloesen, NACHDEM alles geladen ist. `load_all_item_scans` loest zwar
-    # schon auf, sieht die Boss- und Icon-Scans an dieser Stelle aber noch gar nicht -
-    # deren Klick-Punkte staenden bis zum ersten Sequenzlauf auf (0, 0).
-    for meldung in resolve_klick_referenzen(state):
-        print(warn(meldung))
+    # Sequenz, Punkte und Scans werden gemeinsam geladen, sobald der Nutzer eine
+    # Sequenz auswählt. Ohne Besitzer gibt es bewusst keinen globalen Scan-Bestand.
 
     # Beim allerersten Start die volle Anleitung zeigen - da ist sie das Wichtigste
     # im Fenster. Danach reicht der Banner oben, alles Weitere liegt auf CTRL+ALT+O.
-    if _erster_start(state):
+    erster_start = _erster_start(state)
+    if tui_start and erster_start:
         print()
         print_help()
 
@@ -315,10 +313,8 @@ def main() -> int:
             pass
         print()
 
-    print(col("Bereit!", 'green') + f" Starte mit {col('CTRL+ALT+A', 'yellow')} um Punkte aufzunehmen.")
-    print(f"        oder mit {col('CTRL+ALT+S', 'yellow')} eine Sequenz starten.")
-    print_status(state)
-    print()
+    if tui_start:
+        _tui_bereit_anzeigen(state)
 
     # Briefkasten leeren, bevor die Schleife anfängt zu lesen. Wer im Studio auf
     # „Starten" drückt, während gar kein Hauptprozess läuft, bekommt keine
@@ -330,7 +326,17 @@ def main() -> int:
     # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
     # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
     # wuerde `verwirf_befehle()` genau diesen ersten Auftrag wegwerfen.
-    _studio_beim_start_oeffnen(state)
+    studio_offen = _studio_beim_start_oeffnen(state)
+    if not tui_start and not studio_offen:
+        # Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten
+        # Hauptprozess hinterlassen. In diesem Sonderfall wird die TUI sichtbar
+        # zur Startoberflaeche und nennt auch beim ersten Start die Anleitung.
+        print(warn("Studio konnte nicht geöffnet werden — starte in der Konsole."))
+        print_banner()
+        if erster_start:
+            print()
+            print_help()
+        _tui_bereit_anzeigen(state)
 
     # Hotkey-Handler Zuordnung
     hotkey_handlers = {

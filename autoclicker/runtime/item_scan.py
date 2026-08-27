@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 
 logger = logging.getLogger("autoclicker")
 
@@ -52,7 +51,8 @@ _window_capture_warnings: set[tuple[str, str]] = set()
 def _check_profile_match(profile, img, color_tolerance: int,
                           state: 'AutoClickerState', debug: bool,
                           found_label: str = "gefunden",
-                          return_score: bool = False):
+                          return_score: bool = False,
+                          template_root=None):
     """Prüft ob ein Profil (Item oder Boss) per Template/Marker im Screenshot erkannt wird.
 
     Returns: True wenn Template UND Marker OK und mindestens eines definiert ist.
@@ -66,6 +66,9 @@ def _check_profile_match(profile, img, color_tolerance: int,
     marker_score = None
 
     ist_item = isinstance(profile, ItemProfile)
+    if template_root is None and state is not None and getattr(state, "active_sequence", None) is not None:
+        from ..persistence.sequences import sequence_dir
+        template_root = sequence_dir(state.active_sequence.name) / "templates"
     vorlagen = (profile.template_names() if ist_item
                  else ([profile.template] if profile.template else []))
     if vorlagen:
@@ -73,7 +76,7 @@ def _check_profile_match(profile, img, color_tolerance: int,
             # Ein Item wird nur mit einer fuer diesen Slot gelernten Variante
             # verglichen. Damit gibt es keine halbgültigen Resize-Ergebnisse.
             kandidaten = [name for name in vorlagen
-                           if template_size(name) == tuple(img.size)]
+                           if template_size(name, template_root) == tuple(img.size)]
         else:
             # Boss-/Icon-Profile behalten ihr bisheriges Resize-Verhalten.
             kandidaten = vorlagen
@@ -88,6 +91,7 @@ def _check_profile_match(profile, img, color_tolerance: int,
                     img, name, profile.min_confidence,
                     resize_template=not ist_item,
                     report_size_mismatch=not ist_item,
+                    template_root=template_root,
                 )
                 for name in kandidaten
             ]
@@ -175,8 +179,8 @@ def lauffaehige_scan_config(state: AutoClickerState, scan_name: str):
     if config is None:
         print(err(f"Item-Scan '{scan_name}' nicht gefunden!"))
         return None
-    if not config.slots:
-        print(err(f"Item-Scan '{scan_name}' hat keine Slots!"))
+    if not any(slot.enabled for slot in config.slots):
+        print(err(f"Item-Scan '{scan_name}' hat keine aktiven Slots!"))
         return None
     # Ohne Items ist ein Scan nur sinnvoll, wenn er unbekannte Inhalte lernen soll.
     if not config.items and not config.learn_unknown:
@@ -198,7 +202,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         config = lauffaehige_scan_config(state, scan_name)
         if config is None:
             return []
-        slots_snapshot = list(config.slots)
+        slots_snapshot = [slot for slot in config.slots if slot.enabled]
         items_snapshot = list(config.items)
         color_tolerance = config.color_tolerance
         learn_unknown = config.learn_unknown
@@ -213,7 +217,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     found_items = []
 
     if slots_override is not None:
-        slots_to_scan = list(slots_override)
+        slots_to_scan = [slot for slot in slots_override if slot.enabled]
     else:
         slots_to_scan = slots_snapshot
         if rueckwaerts:
@@ -264,6 +268,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
                 click_pos=map_point_between_rects(
                     slot.click_pos, referenz, fenster_rechteck),
                 slot_color=slot.slot_color,
+                enabled=slot.enabled,
+                id=slot.id,
             ) for slot in slots_to_scan]
         except (TypeError, ValueError):
             print(err(f"Item-Scan '{scan_name}': gespeicherte Fenstergeometrie ist "
@@ -350,16 +356,14 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
     # kein Import-Zyklus mit runtime/)
     from ..editors.item_editor.markers import (
-        _collect_markers_silent, _find_matching_existing_item,
-        _item_has_compatible_template,
+        _find_matching_existing_item, _item_has_compatible_template,
+        _prepare_learning_image,
     )
-    from ..persistence import save_global_items, TEMPLATES_DIR
+    from ..persistence import save_global_items, active_templates_dir
 
-    # Leer-Check: ohne Nicht-Hintergrund-Farben ist der Slot vermutlich leer
-    from ..imaging import mit_hintergrund_maske
-    maskiert = mit_hintergrund_maske(img, slot.slot_color)
-    marker_colors = _collect_markers_silent(maskiert, slot.slot_color)
-    if slot.slot_color and not marker_colors:
+    # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
+    maskiert, marker_colors, ist_leer = _prepare_learning_image(img, slot.slot_color)
+    if ist_leer:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
         return
@@ -378,10 +382,10 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             basis = f"{sanitize_filename(known)}_{breite}x{hoehe}"
             template_file = f"{basis}.png"
             nummer = 2
-            while (Path(TEMPLATES_DIR) / template_file).exists():
+            while (active_templates_dir(state) / template_file).exists():
                 template_file = f"{basis}_{nummer}.png"
                 nummer += 1
-            template_path = Path(TEMPLATES_DIR) / template_file
+            template_path = active_templates_dir(state) / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 maskiert.save(template_path)
@@ -421,7 +425,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
         state.global_items[name] = item
 
     template_file = f"{sanitize_filename(name)}.png"
-    template_path = Path(TEMPLATES_DIR) / template_file
+    template_path = active_templates_dir(state) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
         maskiert.save(template_path)

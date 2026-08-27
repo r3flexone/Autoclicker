@@ -29,7 +29,9 @@ LOAD_EXCEPTIONS = (
 def ensure_dir(directory: str) -> Path:
     """Stellt sicher, dass der Scan-Ordner existiert."""
     path = Path(directory)
-    path.mkdir(exist_ok=True)
+    # Ein Scan darf als erster Inhalt einer neuen Sequenz gespeichert werden.
+    # Dann existiert weder der Besitzerordner noch sein Scan-Unterordner.
+    path.mkdir(parents=True, exist_ok=True)
     return path
 
 
@@ -55,6 +57,8 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
+                if not isinstance(data, dict):
+                    continue
                 scans.append((data.get("name", f.stem), f))
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
             pass  # Ungültige/korrupte Datei überspringen

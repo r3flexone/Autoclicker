@@ -11,12 +11,12 @@ denn in ihr öffnet ein Klick die Stelle für den nächsten. Danach ist sie
 uninteressant: die Sequenzdatei wird nicht angefasst, nicht geladen, nicht
 aktiviert. Wartezeiten, Bedingungen, ELSE, Scans und die Reihenfolge bleiben,
 wie sie sind; geschrieben wird `x`, `y` und (wenn der Punkt eine hatte) die
-Farbe, und zwar in `points.json`.
+Farbe im Punkt-Pool der jeweiligen `sequence.json`.
 
 **Geschrieben wird erst am Schluss, und nur auf ausdrückliches Übernehmen.**
 Bis dahin liegen die neuen Stellen in `state.nachklick_gesetzt` und die Punkte
 sind unverändert — auch im Speicher. Das ist der Unterschied zwischen einer
-abgebrochenen Runde und einer halb überschriebenen `points.json`: wer das
+abgebrochenen Runde und einer halb überschriebenen `sequence.json`: wer das
 Fenster zumacht, das Programm beendet oder verwirft, verliert die Runde und
 nichts sonst.
 
@@ -143,7 +143,7 @@ def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
             return None
         if seq is None:
             seq = state.active_sequence
-        punkte = {p.id: p for p in state.points}
+        punkte = {p.id: p for p in seq.points} if seq is not None else {}
 
     if seq is None:
         print(f"\n{err('Keine Sequenz geladen.')} "
@@ -167,6 +167,7 @@ def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
         state.nachklick_gesetzt = []
         state.nachklick_ziel = ziel
         state.nachklick_name = seq.name
+        state.nachklick_sequence = seq
     _gemeldete_fenster.clear()
     return ids, sonstige
 
@@ -272,7 +273,7 @@ def _banner(name: str, anzahl: int, ziel: str, sonstige: list) -> None:
           f"({col('CTRL+ALT+J', 'yellow')}).")
     print("  Studio-Fenster zu, Programm aus oder „Verwerfen“ im Studio = die "
           "Runde ist")
-    print("  weg und points.json bleibt, wie sie war.")
+    print("  weg und sequence.json bleibt, wie sie war.")
     print(hint("  Es läuft nichts von selbst: kein Zeitablauf, keine Wartezeit, "
                "kein Scan."))
     if sonstige:
@@ -290,7 +291,7 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     fertig — es gibt nichts zurückzudrehen.
 
     Das ist der Unterschied zwischen einer abgebrochenen Runde und einer halb
-    überschriebenen `points.json`. Vorher schrieb jeder Ausgang, auch das
+    überschriebenen `sequence.json`. Vorher schrieb jeder Ausgang, auch das
     Beenden des Programms: in einer echten Runde landeten so drei Klicks auf
     Fensterdekoration dauerhaft in den Punkten.
     """
@@ -301,7 +302,9 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
         state.nachklick_pausiert = False
         gesetzt = list(state.nachklick_gesetzt)
         offen = len(state.nachklick_punkte) - state.nachklick_index
-        punkte = {p.id: p for p in state.points}
+        ziel_sequence = state.nachklick_sequence
+        punkte = {p.id: p for p in (
+            ziel_sequence.points if ziel_sequence is not None else state.points)}
         if uebernehmen:
             for punkt_id, _alt, neu, neue_farbe in gesetzt:
                 punkt = punkte.get(punkt_id)
@@ -318,6 +321,7 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
         state.nachklick_gesetzt = []
         state.nachklick_ziel = ""
         state.nachklick_name = ""
+        state.nachklick_sequence = None
     remove_mouse_hook()
     _gemeldete_fenster.clear()
 
@@ -326,8 +330,9 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     # Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
     # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
     if gesetzt and uebernehmen:
-        from ..persistence import save_points
-        save_points(state)
+        from ..persistence import save_sequence_file, sequence_file
+        if ziel_sequence is not None:
+            save_sequence_file(ziel_sequence, sequence_file(ziel_sequence.name))
 
     print(f"\n{col('[NACHKLICK]', 'cyan')} {grund}.")
     if not gesetzt:
@@ -343,7 +348,7 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
         print(hint("  Wartezeiten und Bedingungen sind unverändert."))
     else:
         print(f"  {warn(f'{len(gesetzt)} gesetzte Stelle(n) verworfen')} "
-              f"{hint('— points.json ist unverändert.')}")
+              f"{hint('— sequence.json ist unverändert.')}")
     if offen > 0 and uebernehmen:
         print(hint(f"  {offen} Punkt(e) standen noch aus — sie blieben, wo sie waren."))
 
@@ -432,7 +437,9 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
             return
         ziel = state.nachklick_ziel
         punkt_id = state.nachklick_punkte[state.nachklick_index]
-        punkt = next((p for p in state.points if p.id == punkt_id), None)
+        seq = state.nachklick_sequence
+        pool = seq.points if seq is not None else state.points
+        punkt = next((p for p in pool if p.id == punkt_id), None)
 
     # **Ein Klick ausserhalb des Spiels ist kein Punkt.** Ausserhalb des Locks,
     # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
@@ -527,7 +534,9 @@ def _zeige_aktuellen(state: AutoClickerState, verzoegert: bool = False) -> None:
         if i >= gesamt:
             return
         punkt_id = state.nachklick_punkte[i]
-        punkt = next((p for p in state.points if p.id == punkt_id), None)
+        seq = state.nachklick_sequence
+        pool = seq.points if seq is not None else state.points
+        punkt = next((p for p in pool if p.id == punkt_id), None)
     if punkt is None:
         return
     farbe = f"  {describe_color(punkt.color)}" if punkt.color else ""

@@ -30,8 +30,9 @@ from datetime import datetime
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 DEBUG_DIR = SCRIPT_DIR / "debug"
-SLOTS_FILE = PROJECT_DIR / "slots" / "slots.json"
-TEMPLATES_DIR = PROJECT_DIR / "items" / "templates"
+SEQUENCES_DIR = PROJECT_DIR / "sequences"
+SCAN_FILE = None
+TEMPLATES_DIR = None
 
 # Debug-Ordner erstellen
 DEBUG_DIR.mkdir(exist_ok=True)
@@ -185,15 +186,40 @@ def get_color_name(rgb: tuple) -> str:
     return "Gemischt"
 
 
+def select_item_scan() -> Path | None:
+    """Waehlt einen sequenzlokalen Item-Scan aus."""
+    scans = sorted(SEQUENCES_DIR.glob("*/item_scans/*.json"))
+    if not scans:
+        print(f"[FEHLER] Keine Item-Scans unter {SEQUENCES_DIR} gefunden!")
+        return None
+    print("\nVerfuegbare Item-Scans:")
+    for nummer, pfad in enumerate(scans, 1):
+        print(f"  {nummer}. {pfad.parent.parent.name} / {pfad.stem}")
+    while True:
+        try:
+            auswahl = int(input("\nScan-Nummer: ").strip()) - 1
+        except ValueError:
+            print("Bitte eine Nummer eingeben.")
+            continue
+        if 0 <= auswahl < len(scans):
+            return scans[auswahl]
+        print("Ungueltige Nummer!")
+
+
 def load_slots() -> dict:
-    """Laedt Slots aus slots.json."""
-    if not SLOTS_FILE.exists():
-        print(f"[FEHLER] {SLOTS_FILE} nicht gefunden!")
+    """Laedt die vollstaendigen Slots aus dem gewaehlten Item-Scan."""
+    if SCAN_FILE is None or not SCAN_FILE.exists():
+        print("[FEHLER] Kein Item-Scan gewaehlt!")
         return {}
 
     try:
-        with open(SLOTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(SCAN_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        slots = data.get("slots", {})
+        if not isinstance(slots, dict):
+            print(f"[FEHLER] {SCAN_FILE} enthaelt keine gueltigen Slots!")
+            return {}
+        return slots
     except Exception as e:
         print(f"[FEHLER] Slots laden: {e}")
         return {}
@@ -414,12 +440,18 @@ def test_template_matching():
 
 
 def main():
+    global SCAN_FILE, TEMPLATES_DIR
     print("\n" + "=" * 60)
     print("  SLOT-TESTER - Debug-Tool")
     print("=" * 60)
     print(f"\n  Projekt: {PROJECT_DIR}")
     print(f"  Debug-Ordner: {DEBUG_DIR}")
-    print(f"  Slots-Datei: {SLOTS_FILE}")
+    SCAN_FILE = select_item_scan()
+    if SCAN_FILE is None:
+        return
+    TEMPLATES_DIR = SCAN_FILE.parent.parent / "templates"
+    print(f"  Item-Scan: {SCAN_FILE}")
+    print(f"  Templates: {TEMPLATES_DIR}")
 
     slots = load_slots()
     print(f"  Geladene Slots: {len(slots)}")
