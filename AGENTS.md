@@ -2427,8 +2427,9 @@ irrtümlich noch feuern könnte.
 
 ### Sequenz-Aufnahme (`editors/sequence_recorder.py`)
 Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck, Mausrad**,
-per `CTRL+ALT+M` ein **Warte-Marker auf eine Farbe** und per `CTRL+ALT+D` ein
-**Screenshot-Marker**. Jedes Ereignis ist ein `RecordEvent` (`models.py`, `REC_*`) —
+per `CTRL+ALT+SHIFT+M` ein **Warte-Marker auf eine Farbe** und per
+`CTRL+ALT+SHIFT+D` ein **Screenshot-Marker**. Jedes Ereignis ist ein
+`RecordEvent` (`models.py`, `REC_*`) —
 rein transient, wird nie gespeichert; `stop_recording()` baut daraus Schritte und
 wirft die Liste weg.
 
@@ -2465,11 +2466,11 @@ Fragen, und daran hängt der jeweilige Bau:
 
 | Marker | Taste | eigener Schritt? | eigener Punkt? | Mausposition |
 |---|---|---|---|---|
-| Warte auf Farbe | `CTRL+ALT+M` | nein — geht in den nächsten Klick ein | nein | **zufällig**, wird ignoriert |
-| Screenshot Vollbild | `CTRL+ALT+D` | ja | nein | irrelevant |
-| Screenshot Bereich | `CTRL+ALT+SHIFT+D` | ja (aus **zwei** Drücken) | nein | **bewusst** — die Ecken |
-| Beobachten ohne Klick | `CTRL+ALT+SHIFT+M` | ja (`wait_only`) | **ja** | **bewusst** — das Beobachtete |
-| Phasengrenze | `CTRL+ALT+SHIFT+P` | nein — schneidet nur | nein | irrelevant |
+| Warte auf Farbe | `CTRL+ALT+SHIFT+M` | nein — geht in den nächsten Klick ein | nein | **zufällig**, wird ignoriert |
+| Screenshot Vollbild | `CTRL+ALT+SHIFT+D` | ja | nein | irrelevant |
+| Screenshot Bereich | `CTRL+ALT+SHIFT+R` | ja (aus **zwei** Drücken) | nein | **bewusst** — die Ecken |
+| Beobachten ohne Klick | `CTRL+ALT+SHIFT+B` | ja (`wait_only`) | **ja** | **bewusst** — das Beobachtete |
+| Neue Phase | `CTRL+ALT+SHIFT+P` | nein — schneidet nur | nein | irrelevant |
 
 **Die Mausposition ist die entscheidende Unterscheidung.** Beim Warte-Marker parkt die
 Maus irgendwo, deshalb wird sie verworfen (ein früher Entwurf legte dort einen Punkt an
@@ -2505,6 +2506,21 @@ Sequenz-Editor bearbeitet jede Phase für sich (`edit_phase`); einen Befehl, ein
 Schritt in eine *andere* Phase zu verschieben, gibt es nicht. Nachträglich aufteilen
 hiesse löschen und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus. Ohne
 Marker bleibt alles in einer Loop-Phase, also im bisherigen Verhalten.
+
+**Jeder Druck macht eine neue Loop-Phase auf, ohne Obergrenze** (`phasen_bauen()`).
+Vorher trennte der erste Druck INIT von LOOP und der zweite LOOP von END; beim
+dritten stand da „mehr Phasen kann die Aufnahme nicht", und wer vier Abschnitte
+gespielt hatte, zog sie hinterher im Studio von Hand auseinander — also genau die
+Arbeit, die der Marker sparen soll. Leere Abschnitte fallen weg (zweimal
+hintereinander gedrückt ist derselbe Wunsch, zweimal geäussert); bleibt gar nichts
+übrig, kommt trotzdem eine leere Phase zurück, denn eine Sequenz ohne jede
+Loop-Phase hat keine Stelle, an der man danach etwas einfügen könnte.
+
+**INIT und END befüllt die Aufnahme nicht mehr.** Sie kann nicht sehen, welcher
+Abschnitt nur einmal laufen soll — das ist eine Aussage über die Absicht, und die
+steht im Studio an der Phase. Vorher war die erste Grenze stillschweigend „ab hier
+der Zyklus", was bei einer Aufnahme ohne INIT-Absicht einen Abschnitt aus der
+Wiederholung nahm, ohne dass es jemand gesagt hätte.
 
 #### Was NICHT in die Aufnahme gehört
 

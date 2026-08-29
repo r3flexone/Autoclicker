@@ -191,11 +191,11 @@ Im Sequenz-Editor:
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
 | `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
-| `CTRL+ALT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
-| `CTRL+ALT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
-| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
-| `CTRL+ALT+SHIFT+M` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
-| `CTRL+ALT+SHIFT+P` | Aufnahme: Phasengrenze (1× = LOOP, 2× = END) |
+| `CTRL+ALT+SHIFT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
+| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
+| `CTRL+ALT+SHIFT+R` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
+| `CTRL+ALT+SHIFT+B` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
+| `CTRL+ALT+SHIFT+P` | Aufnahme: neue Phase (beliebig oft — jede Grenze eine Loop-Phase) |
 | `CTRL+ALT+H` | Aufnahme pausieren/fortsetzen |
 
 ### Editoren

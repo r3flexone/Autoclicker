@@ -792,11 +792,11 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
-    (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),
-    (HOTKEY_RECORD_SCREENSHOT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_D, "CTRL+ALT+D (Aufnahme: Screenshot-Marker)"),
-    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: Phasengrenze)"),
-    (HOTKEY_REC_REGION, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Bereichs-Ecke)"),
-    (HOTKEY_REC_WATCH, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: beobachten ohne Klick)"),
+    (HOTKEY_RECORD_COLOR, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: auf Farbe warten)"),
+    (HOTKEY_RECORD_SCREENSHOT, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Screenshot-Marker)"),
+    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: neue Phase)"),
+    (HOTKEY_REC_REGION, MOD_REC, VK_R, "CTRL+ALT+SHIFT+R (Aufnahme: Bereichs-Ecke)"),
+    (HOTKEY_REC_WATCH, MOD_REC, VK_B, "CTRL+ALT+SHIFT+B (Aufnahme: beobachten ohne Klick)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)

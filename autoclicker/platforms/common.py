@@ -71,9 +71,14 @@ HOTKEY_BINDINGS = {
     HOTKEY_SEQUENCE_STUDIO: "<ctrl>+<alt>+b",
     HOTKEY_SCAN_STUDIO: "<ctrl>+<alt>+v",
     HOTKEY_HELP: "<ctrl>+<alt>+o",
-    HOTKEY_RECORD_COLOR: "<ctrl>+<alt>+m",
-    HOTKEY_RECORD_SCREENSHOT: "<ctrl>+<alt>+d",
+    # Alle Aufnahme-Marker liegen auf CTRL+ALT+SHIFT, weil diese Ebene genau
+    # das bedeutet: wirkt nur waehrend einer laufenden Aufnahme. merke_farbe()
+    # und merke_screenshot() pruefen als Erstes _aufnahme_laeuft() und lagen
+    # trotzdem auf der Basis-Ebene - eine halbe Ebene fuer eine ganze Sache.
+    # Damit werden dort M und D frei; die Basis hatte nur noch R und Y.
+    HOTKEY_RECORD_COLOR: "<ctrl>+<alt>+<shift>+m",
+    HOTKEY_RECORD_SCREENSHOT: "<ctrl>+<alt>+<shift>+d",
     HOTKEY_REC_PHASE: "<ctrl>+<alt>+<shift>+p",
-    HOTKEY_REC_REGION: "<ctrl>+<alt>+<shift>+d",
-    HOTKEY_REC_WATCH: "<ctrl>+<alt>+<shift>+m",
+    HOTKEY_REC_REGION: "<ctrl>+<alt>+<shift>+r",
+    HOTKEY_REC_WATCH: "<ctrl>+<alt>+<shift>+b",
 }

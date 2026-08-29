@@ -329,3 +329,46 @@ for _id, _kombi in _BIND.items():
 check("und dieselbe Tastenkombination je Hotkey", _ungleich == [])
 if _ungleich:
     print("        " + "; ".join(_ungleich))
+
+
+section("Alle Aufnahme-Marker liegen auf derselben Ebene")
+
+# CTRL+ALT+SHIFT (MOD_REC) bedeutet im Projekt: wirkt nur waehrend einer
+# laufenden Aufnahme. `merke_farbe()` und `merke_screenshot()` pruefen als
+# Erstes `_aufnahme_laeuft()` und lagen trotzdem auf der Basis-Ebene — man
+# musste sich merken, welcher Marker SHIFT braucht und welcher nicht.
+#
+# Start/Stopp, Pause und Zuruecknehmen bleiben ausdruecklich auf der Basis:
+# sie gelten auch ausserhalb der Aufnahme (Punkte, Klick-Runde), tragen dort
+# dieselbe Bedeutung und nur einen anderen Gegenstand.
+_marker_ids = ["HOTKEY_RECORD_COLOR", "HOTKEY_RECORD_SCREENSHOT",
+               "HOTKEY_REC_PHASE", "HOTKEY_REC_REGION", "HOTKEY_REC_WATCH"]
+_name_id = {name: wert for name, wert in vars(_common_hk).items()
+            if name.startswith("HOTKEY_")}
+
+_ohne_shift = [n for n in _marker_ids
+               if "<shift>" not in _BIND[_name_id[n]]]
+check("jeder Aufnahme-Marker liegt auf CTRL+ALT+SHIFT", _ohne_shift == [])
+if _ohne_shift:
+    print("        ohne SHIFT: " + ", ".join(_ohne_shift))
+
+# Auf EINER Ebene braucht jeder Marker einen eigenen Buchstaben. Vorher ging
+# das noch mit Paaren (M/SHIFT+M beide "warte auf Farbe"); jetzt waeren zwei
+# gleiche Buchstaben zwei Hotkeys, von denen einer stumm bleibt.
+_tasten = [_BIND[_name_id[n]].rsplit("+", 1)[-1] for n in _marker_ids]
+check("und jeder auf einem eigenen Buchstaben",
+      len(set(_tasten)) == len(_tasten))
+if len(set(_tasten)) != len(_tasten):
+    print("        doppelt: " + ", ".join(sorted(t for t in _tasten
+                                                 if _tasten.count(t) > 1)))
+
+# Die Gegenprobe: die Steuertasten der Aufnahme duerfen NICHT mitwandern.
+_steuer = ["HOTKEY_RECORD_SEQ", "HOTKEY_RECORD_PAUSE", "HOTKEY_UNDO"]
+check("Start/Stopp, Pause und Zuruecknehmen bleiben auf der Basis-Ebene",
+      all("<shift>" not in _BIND[_name_id[n]] for n in _steuer))
+
+# M und D waren an die Aufnahme vergeben und sind damit wieder frei. Die
+# Basis-Ebene hatte nur noch R und Y uebrig — das ist der eigentliche Gewinn.
+_basis = {_BIND[i].rsplit("+", 1)[-1] for i in _BIND if "<shift>" not in _BIND[i]}
+check("dadurch sind M und D in der Basis-Ebene wieder frei",
+      "m" not in _basis and "d" not in _basis)

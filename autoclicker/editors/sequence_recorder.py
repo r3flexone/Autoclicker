@@ -53,15 +53,15 @@ AUFNAHME_HOTKEYS = (
     ("CTRL+ALT+H", "pausieren / fortsetzen",
      "im Spiel navigieren, ohne etwas aufzuzeichnen"),
     ("CTRL+ALT+U", "zurücknehmen", "das letzte Ereignis verwerfen"),
-    ("CTRL+ALT+M", "auf Farbe warten",
+    ("CTRL+ALT+SHIFT+M", "auf Farbe warten",
      "der nächste Klick wartet auf die dort aufgenommene Farbe"),
-    ("CTRL+ALT+D", "Screenshot", "Vollbild an dieser Stelle im Ablauf"),
-    ("CTRL+ALT+SHIFT+D", "Screenshot-Bereich",
+    ("CTRL+ALT+SHIFT+D", "Screenshot", "Vollbild an dieser Stelle im Ablauf"),
+    ("CTRL+ALT+SHIFT+R", "Screenshot-Bereich",
      "zweimal drücken: erste und zweite Ecke"),
-    ("CTRL+ALT+SHIFT+M", "Pixel beobachten",
+    ("CTRL+ALT+SHIFT+B", "Pixel beobachten",
      "auf die Farbe unter der Maus warten, ohne dort zu klicken"),
-    ("CTRL+ALT+SHIFT+P", "Phasengrenze",
-     "erstes Mal LOOP, zweites Mal END"),
+    ("CTRL+ALT+SHIFT+P", "Neue Phase",
+     "ab hier die nächste Loop-Phase — beliebig oft"),
 )
 
 
@@ -261,20 +261,23 @@ def merke_beobachten(state: AutoClickerState) -> None:
 def merke_phase(state: AutoClickerState) -> None:
     """Setzt eine Phasengrenze (CTRL+ALT+SHIFT+P): ab hier die nächste Phase.
 
-    Erster Druck trennt INIT von LOOP, zweiter LOOP von END. Der Marker, der
-    sich am wenigsten nachholen lässt — der Editor kann keinen Schritt in eine
-    andere Phase verschieben.
+    Jeder Druck macht eine neue Loop-Phase auf, ohne Obergrenze. Vorher trennte
+    der erste Druck INIT von LOOP und der zweite LOOP von END; beim dritten
+    stand da "mehr Phasen kann die Aufnahme nicht", und wer vier Abschnitte
+    gespielt hatte, musste sie hinterher im Studio von Hand auseinanderziehen.
+    Genau der Marker, der sich am wenigsten nachholen lässt — der
+    Konsolen-Editor kann keinen Schritt in eine andere Phase verschieben.
+
+    INIT und END befüllt die Aufnahme nicht mehr. Beide waren an dieser Stelle
+    eine Vermutung darüber, was gemeint ist; welche Phase einmalig laufen soll,
+    sagt man im Studio an der Phase selbst.
     """
     if not _aufnahme_laeuft(state):
         return
     with state.lock:
-        gesetzt = sum(1 for e in state.recording_events if e.kind == REC_PHASE)
-    if gesetzt >= 2:
-        print(f"\n{hint('Beide Grenzen stehen schon (INIT|LOOP|END) — mehr Phasen kann die Aufnahme nicht.')}")
-        print(hint("       Weitere Loop-Phasen legt der Sequenz-Editor an."))
-        return
+        gesetzt = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
     _anhaengen(state, RecordEvent(REC_PHASE, time.monotonic()))
-    print(f"       {hint('ab hier: ' + ('LOOP' if gesetzt == 0 else 'END'))}")
+    print(f"       {hint(f'ab hier: Phase {gesetzt + 2}')}")
 
 
 def verwirf_letztes(state: AutoClickerState) -> None:
@@ -432,17 +435,30 @@ def phasen_grenzen(events: list) -> tuple[list, list[int]]:
     return behalten, grenzen
 
 
-def phasen_aufteilen(steps: list, grenzen: list[int]) -> tuple[list, list, list]:
-    """Schneidet die fertige Schrittliste in (INIT, LOOP, END).
+def phasen_bauen(steps: list, grenzen: list[int]) -> list:
+    """Schneidet die fertige Schrittliste an den Grenzen in Loop-Phasen.
 
-    Ohne Grenze bleibt alles in LOOP — exakt das bisherige Verhalten. Eine Grenze
-    trennt INIT von LOOP, zwei zusätzlich LOOP von END.
+    Ohne Grenze bleibt alles in EINER Phase — exakt das bisherige Verhalten.
+    Jede Grenze macht eine weitere auf; eine Obergrenze gibt es nicht.
+
+    Leere Abschnitte fallen weg: zweimal hintereinander gedrückt ist derselbe
+    Wunsch, zweimal geäussert — dieselbe Regel wie bei zwei Warte-Markern
+    hintereinander. Bleibt gar nichts übrig, kommt trotzdem eine leere Phase
+    zurück; eine Sequenz ohne jede Loop-Phase hat keine Stelle, an der man
+    danach etwas einfügen könnte.
     """
-    if not grenzen:
-        return [], list(steps), []
-    a = min(grenzen[0], len(steps))
-    b = min(grenzen[1], len(steps)) if len(grenzen) > 1 else len(steps)
-    return list(steps[:a]), list(steps[a:b]), list(steps[b:])
+    schnitte = [0] + [min(g, len(steps)) for g in grenzen] + [len(steps)]
+    phasen = []
+    for anfang, ende_ in zip(schnitte, schnitte[1:]):
+        teil = list(steps[anfang:ende_])
+        if not teil:
+            continue
+        nummer = len(phasen) + 1
+        name = "Loop" if nummer == 1 else f"Loop {nummer}"
+        phasen.append(LoopPhase(name=name, steps=teil, repeat=1))
+    if not phasen:
+        phasen.append(LoopPhase(name="Loop", steps=[], repeat=1))
+    return phasen
 
 
 def marker_pruefen(events: list) -> tuple[list, int]:
@@ -570,11 +586,15 @@ def stop_recording(state: AutoClickerState) -> str | None:
     # Aufgezeichnetes zeigen. Die Phasengrenzen stehen nicht mehr im Strom (sie wurden
     # oben herausgezogen), muessen hier aber sichtbar sein — sonst sieht der Nutzer die
     # Aufteilung erst im Editor und kann sie beim Benennen nicht mehr einordnen.
-    _phasen_namen = ["INIT", "LOOP", "END"]
-    _schnitt = {g: _phasen_namen[k + 1] for k, g in enumerate(grenzen[:2])}
+    # Namen wie in phasen_bauen(), damit hier dasselbe steht wie danach in der
+    # Datei. Der Schnitt liegt VOR dem Schritt mit diesem Index.
+    def _phasenname(nummer):
+        return "Loop" if nummer == 1 else f"Loop {nummer}"
+
+    _schnitt = {g: _phasenname(nr + 2) for nr, g in enumerate(grenzen)}
     if grenzen:
         print(f"\n{col('Aufgezeichnet:', 'bold')} {hint('(Phasen sind markiert)')}")
-        print(f"  {col('┌─ ' + (_phasen_namen[0] if grenzen else 'LOOP'), 'magenta')}")
+        print(f"  {col('┌─ ' + _phasenname(1), 'magenta')}")
     else:
         print(f"\n{col('Aufgezeichnet:', 'bold')}")
     fast_clicks = 0
@@ -649,12 +669,11 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
     steps = schritte_aus_events(events, punkt_id_fuer)
-    init_steps, loop_steps, end_steps = phasen_aufteilen(steps, grenzen)
-
-    loop_phase = LoopPhase(name="Loop", steps=loop_steps, repeat=1)
-    seq = Sequence(name=seq_name, loop_phases=[loop_phase], total_cycles=total_cycles,
-                   description=description, init_steps=init_steps, end_steps=end_steps,
-                   points=punkte)
+    # INIT und END bleiben leer: eine Aufnahme sieht nicht, welcher Abschnitt
+    # nur einmal laufen soll. Das steht im Studio an der Phase.
+    loop_phases = phasen_bauen(steps, grenzen)
+    seq = Sequence(name=seq_name, loop_phases=loop_phases, total_cycles=total_cycles,
+                   description=description, points=punkte)
 
     # Speichern
     ensure_sequences_dir()
@@ -676,9 +695,9 @@ def stop_recording(state: AutoClickerState) -> str | None:
         cycles_str = "unendlich" if total_cycles == 0 else str(total_cycles)
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')
         print(f"\n{saved_msg}")
-        if grenzen:
-            print(f"  {len(init_steps)} INIT  |  {len(loop_steps)} LOOP  |  "
-                  f"{len(end_steps)} END  |  Zyklen: {cycles_str}")
+        if len(loop_phases) > 1:
+            aufteilung = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
+            print(f"  {aufteilung}  |  Zyklen: {cycles_str}")
         else:
             print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
         if punkte:

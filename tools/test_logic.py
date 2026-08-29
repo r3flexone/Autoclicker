@@ -2973,7 +2973,7 @@ from autoclicker.models import (REC_REGION as _R_REG, REC_WATCH as _R_WATCH,
                                 REC_PHASE as _R_PHASE)
 from autoclicker.editors.sequence_recorder import (
     bereiche_zusammenfassen as _bz, phasen_grenzen as _pg,
-    phasen_aufteilen as _pa, merke_bereich as _mber, merke_phase as _mph)
+    phasen_bauen as _pb, merke_bereich as _mber, merke_phase as _mph)
 
 # --- Bereich: zwei Ecken werden EIN Screenshot mit Rechteck ---
 _ev_ber = [_RE(_R_CLICK, 0.0, 1, 1),
@@ -3064,43 +3064,64 @@ check("die Grenzen verschwinden aus dem Ereignisstrom",
 check("und werden als Schritt-Indizes gemerkt", _gr == [1, 3])
 _steps_ph = _sae(_ohne, _pfe(AutoClickerState(), _ohne, "P")[0])
 check("die Grenze frisst keine Wartezeit weg", _steps_ph[1].delay_before == 6.0)
-_i, _l, _e = _pa(_steps_ph, _gr)
-check("INIT bekommt die Schritte davor", len(_i) == 1)
-check("LOOP die dazwischen", len(_l) == 2)
-check("END die danach", len(_e) == 1)
-check("und keiner geht verloren", len(_i) + len(_l) + len(_e) == len(_steps_ph))
+_ph = _pb(_steps_ph, _gr)
+check("zwei Grenzen ergeben drei Phasen", len(_ph) == 3)
+check("die erste bekommt die Schritte davor", len(_ph[0].steps) == 1)
+check("die zweite die dazwischen", len(_ph[1].steps) == 2)
+check("die dritte die danach", len(_ph[2].steps) == 1)
+check("und keiner geht verloren",
+      sum(len(x.steps) for x in _ph) == len(_steps_ph))
+# Die Namen sind dieselben, die der Nutzer beim Stoppen angezeigt bekommt.
+check("die Phasen heissen Loop, Loop 2, Loop 3",
+      [x.name for x in _ph] == ["Loop", "Loop 2", "Loop 3"])
+check("und jede laeuft einmal pro Zyklus", all(x.repeat == 1 for x in _ph))
 
-# Ohne Grenze bleibt alles im Loop — das bisherige Verhalten
-_i0, _l0, _e0 = _pa(_steps_ph, [])
-check("ohne Grenze bleibt alles in LOOP",
-      _i0 == [] and _e0 == [] and len(_l0) == len(_steps_ph))
-# Eine Grenze: nur INIT/LOOP, kein END
-_i1, _l1, _e1 = _pa(_steps_ph, [2])
-check("eine Grenze trennt nur INIT von LOOP",
-      len(_i1) == 2 and len(_l1) == 2 and _e1 == [])
-# Grenze ganz am Anfang = kein INIT (und kein leerer Schritt)
-_i2, _l2, _e2 = _pa(_steps_ph, [0])
-check("Grenze als erstes gedrueckt heisst: kein INIT", _i2 == [])
+# Ohne Grenze bleibt alles in EINER Phase — das bisherige Verhalten
+_ph0 = _pb(_steps_ph, [])
+check("ohne Grenze bleibt alles in einer Phase",
+      len(_ph0) == 1 and len(_ph0[0].steps) == len(_steps_ph))
+check("und die heisst schlicht Loop", _ph0[0].name == "Loop")
+
+# Leere Abschnitte fallen weg: Grenze ganz am Anfang, zwei hintereinander
+check("Grenze als erstes gedrueckt macht keine leere Phase",
+      len(_pb(_steps_ph, [0])) == 1)
+check("zwei Grenzen an derselben Stelle auch nicht",
+      len(_pb(_steps_ph, [2, 2])) == 2)
+# Ohne einen einzigen Schritt bleibt trotzdem eine Phase stehen — sonst haette
+# die Sequenz keine Stelle, an der man danach etwas einfuegen koennte.
+check("ganz ohne Schritte kommt eine leere Phase zurueck",
+      len(_pb([], [])) == 1 and _pb([], [])[0].steps == [])
 
 # Warte-Marker erzeugen keinen eigenen Schritt und duerfen den Schnitt nicht verschieben
 _ev_mix = [_RE(_R_CLICK, 0.0, 1, 1), _RE(_R_WAIT, 1.0), _RE(_R_CLICK, 2.0, 2, 2),
            _RE(_R_PHASE, 3.0), _RE(_R_CLICK, 4.0, 3, 3)]
 _ohne_mix, _gr_mix = _pg(_ev_mix)
 check("ein Warte-Marker verschiebt den Schnitt nicht", _gr_mix == [2])
-_steps_mix = _sae(*(lambda e: (e, _pfe(AutoClickerState(), e, "M")[0]))(_ohne_mix))
-_im, _lm, _em = _pa(_steps_mix, _gr_mix)
+_steps_mix = _sae(*(lambda ev: (ev, _pfe(AutoClickerState(), ev, "M")[0]))(_ohne_mix))
+_ph_mix = _pb(_steps_mix, _gr_mix)
 check("und der Schnitt trifft die richtige Stelle",
-      len(_im) == 2 and len(_lm) == 1)
+      len(_ph_mix[0].steps) == 2 and len(_ph_mix[1].steps) == 1)
 
-# Mehr als zwei Grenzen nimmt der Marker gar nicht erst an
+# Die Obergrenze von zwei Grenzen ist WEG: wer vier Abschnitte spielt, bekommt
+# vier Phasen. Vorher stand beim dritten Druck "mehr Phasen kann die Aufnahme
+# nicht", und man zog sie hinterher im Studio von Hand auseinander.
 _st_ph = AutoClickerState()
 _st_ph.recording_active = True
 with _cl2.redirect_stdout(_io2.StringIO()):
-    _mph(_st_ph); _mph(_st_ph); _mph(_st_ph)
-check("hoechstens zwei Phasengrenzen — die dritte wird abgelehnt",
-      sum(1 for e in _st_ph.recording_events if e.kind == _R_PHASE) == 2)
+    for _ in range(4):
+        _mph(_st_ph)
+check("die vierte Phasengrenze wird angenommen",
+      sum(1 for x in _st_ph.recording_events if x.kind == _R_PHASE) == 4)
+import inspect as _insp_ph
+from autoclicker.editors import sequence_recorder as _recmod_ph
+_rec_quelle_ph = _insp_ph.getsource(_recmod_ph.stop_recording)
 
-# Alle drei Marker haengen am Aufnahme-Zustand
+# Die Aufnahme befuellt INIT und END nicht mehr: sie kann nicht sehen, welcher
+# Abschnitt nur einmal laufen soll. Das steht im Studio an der Phase.
+check("und die Aufnahme legt weder INIT noch END an",
+      "init_steps" not in _rec_quelle_ph and "end_steps" not in _rec_quelle_ph)
+
+# Alle Marker haengen am Aufnahme-Zustand
 _st_off = AutoClickerState()
 with _cl2.redirect_stdout(_io2.StringIO()):
     _mber(_st_off)
