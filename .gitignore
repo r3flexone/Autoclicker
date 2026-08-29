@@ -45,6 +45,7 @@ config.json
 # *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
 .lauf.json
 .aufnahme.json
+.studio-sequenz.json
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben

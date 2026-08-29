@@ -183,8 +183,8 @@ def lauffaehige_scan_config(state: AutoClickerState, scan_name: str):
         print(err(f"Item-Scan '{scan_name}' hat keine aktiven Slots!"))
         return None
     # Ohne Items ist ein Scan nur sinnvoll, wenn er unbekannte Inhalte lernen soll.
-    if not config.items and not config.learn_unknown:
-        print(err(f"Item-Scan '{scan_name}' hat keine Items "
+    if not any(item.enabled for item in config.items) and not config.learn_unknown:
+        print(err(f"Item-Scan '{scan_name}' hat keine aktiven Items "
                   f"(und Auto-Lernen ist aus)!"))
         return None
     return config
@@ -203,7 +203,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         if config is None:
             return []
         slots_snapshot = [slot for slot in config.slots if slot.enabled]
-        items_snapshot = list(config.items)
+        items_snapshot = [item for item in config.items if item.enabled]
         color_tolerance = config.color_tolerance
         learn_unknown = config.learn_unknown
         # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
@@ -283,6 +283,9 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             # Skip konsumieren — sonst überspringt ein Skip zwei Dinge
             # (diesen Scan und den nächsten skip-fähigen Schritt).
             state.skip_event.clear()
+            break
+        if state.skip_step_event.is_set():
+            state.skip_step_event.clear()
             break
 
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
@@ -422,14 +425,17 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             counter += 1
             name = f"{base} {counter}"
         item.name = name
+        # Das Objekt wird ab hier für Editor und Worker sichtbar. Deshalb muss
+        # es schon vollständig initialisiert sein; insbesondere darf
+        # ``template`` nicht erst ausserhalb des Locks gesetzt werden.
+        template_file = f"{sanitize_filename(name)}.png"
+        item.template = template_file
         state.global_items[name] = item
 
-    template_file = f"{sanitize_filename(name)}.png"
     template_path = active_templates_dir(state) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
         maskiert.save(template_path)
-        item.template = template_file
     except (OSError, ValueError) as e:
         with state.lock:
             state.global_items.pop(name, None)

@@ -399,7 +399,8 @@ class ScanStateMixin:
         cfg = self.scans.get(self.scan_offen)
         hat_slots = (any(s.enabled for s in cfg.slots) if cfg
                      else any(s.enabled for s in self.slots.values()))
-        hat_items = bool(cfg.item_names) if cfg else bool(self.items)
+        hat_items = (any(i.enabled for i in cfg.items) if cfg
+                     else any(i.enabled for i in self.items.values()))
         roh = [
             (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
                 "wählen.", self._foto is not None,
@@ -680,6 +681,7 @@ class ScanStateMixin:
                              if vorlagen else [])
         return {
             "dabei": dabei,
+            "aktiv": bool(item.enabled),
             # Gehört (noch) nicht dazu, wird aber gerade gesehen. Die Ansicht
             # zeigt genau diese beiden Sorten, alles Weitere auf Knopfdruck: ein
             # neuer Scan soll leer anfangen und nicht mit dem Bestand eines

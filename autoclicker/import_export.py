@@ -599,7 +599,13 @@ class _ImportTransaction:
         for raw in cls._JSON_DIRS:
             root = Path(raw)
             if root.exists():
-                files.update(path for path in root.glob("*.json") if path.is_file())
+                files.update(path for path in root.rglob("*.json") if path.is_file())
+        # Ein Ordner-Bundle ersetzt ganze Sequenzordner, einschließlich ihrer
+        # lokalen Templates. Für ein echtes Rollback müssen deshalb sämtliche
+        # Dateien darunter gesichert werden, nicht nur die JSON-Struktur.
+        sequences = Path("sequences")
+        if sequences.exists():
+            files.update(path for path in sequences.rglob("*") if path.is_file())
         templates = Path(TEMPLATES_DIR)
         if templates.exists():
             files.update(path for path in templates.rglob("*.png") if path.is_file())
@@ -1035,11 +1041,12 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             _validate_bundle(zf, names)
             manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
             if manifest.get("layout") == "sequence-folders":
-                return _import_sequence_bundle(
-                    state, zf, names, manifest, transform,
-                    import_sequences or import_points or import_slots or import_items
-                    or import_item_scans or import_boss_scans or import_icon_scans,
-                    import_config, merge)
+                with _ImportTransaction(state):
+                    return _import_sequence_bundle(
+                        state, zf, names, manifest, transform,
+                        import_sequences or import_points or import_slots or import_items
+                        or import_item_scans or import_boss_scans or import_icon_scans,
+                        import_config, merge)
             with _ImportTransaction(state):
                 lauf = _Import(zf, names, state, transform, merge)
 

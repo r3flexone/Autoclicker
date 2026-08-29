@@ -454,7 +454,9 @@ def _fallback_select(options: list[str], title: str,
 def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
     """Wartet solange pausiert ist. Gibt False zurück wenn gestoppt wurde."""
     pause_interval = state.config.timing_pause_interval
-    while state.pause_event.is_set() and not state.stop_event.is_set():
+    skip_step = getattr(state, "skip_step_event", None)
+    while (state.pause_event.is_set() and not state.stop_event.is_set()
+           and not (skip_step and skip_step.is_set())):
         status_line(f"{col('[PAUSE]', 'yellow')} {message} | "
                     f"Fortsetzen: {col('CTRL+ALT+G', 'yellow')}")
         time.sleep(pause_interval)

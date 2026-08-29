@@ -89,36 +89,55 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
                         pixel_step: int = 2, min_pixels: int = 1) -> bool:
     """Prüft ob eine Farbe im Bild vorhanden ist (mit NumPy wenn verfügbar).
 
-    `pixel_step` ist die Schrittweite beim Abtasten, `min_pixels` die Anzahl
-    passender Pixel im abgetasteten Raster, ab der es als gefunden gilt (> 1
-    macht die Erkennung robuster gegen einzelne Rausch-Pixel).
+    `pixel_step` ist die Schrittweite des schnellen ersten Abtastens,
+    `min_pixels` die nötige Anzahl passender Pixel (> 1 macht die Erkennung
+    robuster gegen einzelne Rausch-Pixel). Verfehlt das Raster eine seltene
+    Farbe, wird vollständig geprüft: die Beschleunigung darf nicht davon
+    abhängen, ob ein Marker zufällig auf geraden Pixelkoordinaten liegt.
     """
     min_pixels = max(1, min_pixels)
+    pixel_step = max(1, int(pixel_step))
     if NUMPY_AVAILABLE:
         # Schnelle NumPy-Version (ca. 100x schneller)
         # asarray vermeidet Kopie wenn PIL-Daten bereits im richtigen Format
         img_array = np.asarray(img)
         if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
-            # Nur RGB-Kanäle verwenden, mit pixel_step für Performance
-            rgb = img_array[::pixel_step, ::pixel_step, :3].astype(np.float32)
             target = np.array(target_color, dtype=np.float32)
-            # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
-            sq_distances = np.sum((rgb - target) ** 2, axis=2)
-            matches = int(np.count_nonzero(sq_distances <= tolerance * tolerance))
-            return matches >= min_pixels
+
+            def genug(rgb) -> bool:
+                # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
+                werte = rgb.astype(np.float32)
+                abstaende = np.sum((werte - target) ** 2, axis=2)
+                return int(np.count_nonzero(
+                    abstaende <= tolerance * tolerance)) >= min_pixels
+
+            # In fast allen Fällen trifft schon das kleine Raster. Nur beim
+            # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
+            # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
+            if genug(img_array[::pixel_step, ::pixel_step, :3]):
+                return True
+            return pixel_step > 1 and genug(img_array[:, :, :3])
         return False
     else:
         # Fallback: Langsame PIL-Version
         pixels = img.load()
         width, height = img.size
-        matches = 0
-        for x in range(0, width, pixel_step):
-            for y in range(0, height, pixel_step):
-                pixel = pixels[x, y][:3]
-                if color_distance(pixel, target_color) <= tolerance:
-                    matches += 1
-                    if matches >= min_pixels:
-                        return True
+
+        def genug(schritt: int) -> bool:
+            matches = 0
+            for x in range(0, width, schritt):
+                for y in range(0, height, schritt):
+                    pixel = pixels[x, y][:3]
+                    if color_distance(pixel, target_color) <= tolerance:
+                        matches += 1
+                        if matches >= min_pixels:
+                            return True
+            return False
+
+        if genug(pixel_step):
+            return True
+        if pixel_step > 1:
+            return genug(1)
         return False
 
 

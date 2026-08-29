@@ -1220,6 +1220,7 @@ class _PhaseEditor:
         # Events sauber halten, damit der Test-Lauf nicht durch Altzustände abbricht
         self.state.stop_event.clear()
         self.state.skip_event.clear()
+        self.state.skip_step_event.clear()
         ok_run = False
         try:
             ok_run = execute_step(self.state, test_step, num, len(self.steps), "TEST")
@@ -1230,6 +1231,7 @@ class _PhaseEditor:
             # Ein Test darf keine Events (Stop/Skip/Restart) in einen echten Lauf tragen
             self.state.stop_event.clear()
             self.state.skip_event.clear()
+            self.state.skip_step_event.clear()
             self.state.skip_cycle_event.clear()
             self.state.restart_event.clear()
         print(f"\n  {ok('Test fertig.') if ok_run else col('Test abgebrochen.', 'yellow')}")

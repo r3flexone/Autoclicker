@@ -493,6 +493,8 @@ let S = null;             // letzte Momentaufnahme
 let ziehen = null;        // was gerade gezogen wird
 let aktiveAblage = null;  // hervorgehobene Einfügestelle
 let offeneFrage = null;
+let gewaehltePhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
+const offeneSonderphasen = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 function warteAufBruecke() {
   return new Promise((fertig) => {
@@ -505,6 +507,10 @@ function warteAufBruecke() {
 async function ruf(name, daten) {
   try {
     const antwort = await window.pywebview.api[name](daten === undefined ? null : daten);
+    if (name === "laden" || name === "neu") {
+      gewaehltePhase = null;
+      offeneSonderphasen.clear();
+    }
     uebernimm(antwort);
   } catch (e) {
     setzeStatus({text: String(e && e.message ? e.message : e), art: "err"});
@@ -662,19 +668,45 @@ function zeichnePunkte() {
 function zeichnePhasen() {
   const ziel = $("phasen");
   ziel.replaceChildren();
-  for (const phase of S.phasen) ziel.appendChild(zeichnePhase(phase));
-  ziel.appendChild(el("div", {class: "phase"},
-    el("button", {class: "leerzone", onclick: () => ruf("phase_anhaengen")},
-       "+ Loop-Phase")));
+  if (!S.phasen.some((p) => p.index === gewaehltePhase && p.art === "loop")) {
+    gewaehltePhase = null;
+  }
+  const sichtbar = S.phasen.filter((phase) => phase.art === "loop" ||
+    phase.bloecke.length || offeneSonderphasen.has(phase.art));
+  for (const phase of sichtbar) ziel.appendChild(zeichnePhase(phase));
+
+  const verborgen = S.phasen.filter((phase) => phase.art !== "loop" &&
+    !phase.bloecke.length && !offeneSonderphasen.has(phase.art));
+  const werkzeuge = el("div", {class: "phase phasen-anlegen"},
+    el("button", {class: "leerzone", onclick: () => ruf("phase_anhaengen")}, "+ Phase"));
+  for (const phase of verborgen) {
+    const titel = phase.art === "init" ? "+ Startphase (einmal davor)"
+                                       : "+ Abschlussphase (einmal danach)";
+    werkzeuge.appendChild(el("button", {class: "leerzone", onclick: () => {
+      offeneSonderphasen.add(phase.art);
+      zeichnePhasen();
+    }}, titel));
+  }
+  ziel.appendChild(werkzeuge);
 }
 
 function zeichnePhase(phase) {
-  const kopf = el("div", {class: "phase-kopf " + phase.art});
+  const phaseGewaehlt = phase.art === "loop" && phase.index === gewaehltePhase;
+  const kopf = el("div", {
+    class: "phase-kopf " + phase.art + (phaseGewaehlt ? " gewaehlt" : ""),
+    title: phase.art === "loop" ? "Phase auswählen — Entf löscht sie" : "",
+    onclick: (e) => {
+      if (phase.art !== "loop" || e.target.closest("input, button")) return;
+      gewaehltePhase = phase.index;
+      ruf("auswahl_leeren");
+    }});
   // INIT und END tragen keinen frei wählbaren Namen — sie bekommen deshalb auch
   // kein Eingabefeld, das nichts annimmt.
+  const sondername = phase.art === "init" ? "START · einmal davor"
+                   : phase.art === "end" ? "ABSCHLUSS · einmal danach" : phase.name;
   const name = phase.art === "loop"
     ? el("input", {class: "phase-name wachse", value: phase.name})
-    : el("span", {class: "phase-name wachse"}, phase.name);
+    : el("span", {class: "phase-name wachse"}, sondername);
   name.addEventListener("change", () => ruf("phase_setzen",
     {phase: phase.index, feld: "name", wert: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
@@ -705,10 +737,14 @@ function zeichnePhase(phase) {
         onclick: () => {
           const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
           if (faktor !== null) ruf("phase_skalieren", {phase: phase.index, faktor: faktor});
-        }}, "Wartezeiten ×"),
-      el("button", {class: "btn still gefahr", title: "Phase löschen",
-                    onclick: () => ruf("phase_loeschen", {phase: phase.index})},
-         papierkorb())));
+        }}, "Wartezeiten ×")));
+  }
+  if (phase.bloecke.length) {
+    const alle = S.auswahl.phase === phase.index &&
+                 S.auswahl.zeilen.length === phase.bloecke.length;
+    kopf.appendChild(el("button", {class: "btn still phase-alle",
+      onclick: () => ruf("phase_auswahl", {phase: phase.index})},
+      alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
   }
 
   const spalte = el("div", {class: "phase"}, kopf);
@@ -725,23 +761,6 @@ function zeichnePhase(phase) {
     ondrop: (e) => abwerfen(e, phase.index, phase.bloecke.length),
   }, phase.bloecke.length ? "+ Block" : "leer — Block anlegen oder Punkt herziehen"));
   return spalte;
-}
-
-/** Papierkorb-Zeichen als Inline-SVG — nichts wird von aussen geladen. */
-function papierkorb() {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("width", "13");
-  svg.setAttribute("height", "13");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  const pfad = document.createElementNS(ns, "path");
-  pfad.setAttribute("d", "M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14M10 11v5M14 11v5");
-  svg.appendChild(pfad);
-  return svg;
 }
 
 /** Einfügestelle zwischen zwei Karten: nur ein Strich, der aufleuchtet. */
@@ -797,12 +816,26 @@ function zeichneKarte(phase, block) {
       block.else_text + (block.else_greift ? "" : " · greift nie")));
   }
 
+  const auswahl = el("input", {
+    type: "checkbox", class: "karte-auswahl", checked: block.gewaehlt,
+    title: block.gewaehlt ? "Aus Auswahl entfernen" : "Zur Auswahl hinzufügen",
+    onclick: (e) => {
+      e.stopPropagation();
+      gewaehltePhase = null;
+      ruf("waehlen", {phase: phase.index, zeile: block.zeile, modus: "dazu"});
+    },
+    onmousedown: (e) => e.stopPropagation(),
+  });
+
   return el("div", {
     class: "karte" + (block.gewaehlt ? " gewaehlt" : ""),
     draggable: "true",
-    onclick: (e) => ruf("waehlen", {
-      phase: phase.index, zeile: block.zeile,
-      modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "bereich" : "einzeln")}),
+    onclick: (e) => {
+      gewaehltePhase = null;
+      return ruf("waehlen", {
+        phase: phase.index, zeile: block.zeile,
+        modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "bereich" : "einzeln")});
+    },
     ondragstart: (e) => { ziehen = {art: "block", phase: phase.index, zeile: block.zeile};
                           e.dataTransfer.effectAllowed = "move"; },
     ondragend: () => { ziehen = null; loescheAblage(); },
@@ -821,6 +854,7 @@ function zeichneKarte(phase, block) {
     },
   },
     el("div", {class: "karte-kopf", style: "background:" + block.farbe},
+      auswahl,
       el("span", {class: "karte-typ"}, block.label),
       block.titel ? el("span", {class: "karte-titel"}, block.titel) : null,
       block.prueft ? el("span", {class: "marke-klein", title: "prüft nach der Aktion nach"},
@@ -932,7 +966,8 @@ function seqKarte(s) {
     el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")]));
 
   karte.appendChild(el("div", {class: "seq-fuss"},
-    el("span", {class: "klein mono wachse"}, s.datei + " · " + zeitpunkt(s.geaendert)),
+    el("span", {class: "klein mono wachse", title: s.datei},
+       s.datei + " · " + zeitpunkt(s.geaendert)),
     // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
     // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
     s.defekt ? null : el("button", {
@@ -1303,6 +1338,7 @@ function steuerung(laeuft, stand) {
     !laeuft && !(stand && stand.countdown) ? knopf("▶ Schrittweise", "start_manuell") : null,
     laeuft ? knopf("⏸ Pause", "pause") : null,
     laeuft ? knopf("↷ Warten überspringen", "skip") : null,
+    laeuft ? knopf("⏭ Block überspringen", "skip_step") : null,
     laeuft ? knopf("✓ Zyklus abschliessen", "finish") : null,
     laeuft ? knopf("■ Stoppen", "stop", "gefahr") : null,
     !laeuft && stand && stand.countdown ? knopf("■ Zeitplan abbrechen", "stop", "gefahr") : null,
@@ -1347,10 +1383,8 @@ function zeichneInspektor() {
   if (!b) {
     $("insp-punkt").style.background = "#2A3245";
     $("insp-titel").textContent = gewaehlt > 1 ? gewaehlt + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
-    ziel.appendChild(el("div", {class: "leer"}, gewaehlt > 1
-      ? el("span", {}, "Mehrfachauswahl: verschieben mit ALT+↑/↓, duplizieren mit " +
-                       "STRG+D, löschen mit Entf.",
-           el("br"), "Für die Einstellungen einen einzelnen Block wählen.")
+    ziel.appendChild(el("div", {class: gewaehlt > 1 ? "sammel-editor" : "leer"}, gewaehlt > 1
+      ? zeichneSammelEditor(gewaehlt)
       : el("span", {}, "Block anklicken, um ihn zu bearbeiten.", el("br"),
            "Ziehen sortiert um — auch über Phasengrenzen.")));
     return;
@@ -1463,6 +1497,37 @@ function baueProbe(ziel, b) {
     }, "◎ " + text + " zeigen (#" + punkt + ")"));
   }
   ziel.appendChild(fuss);
+}
+
+function zeichneSammelEditor(anzahl) {
+  const zeitfeld = (beschriftung, feldname, wert, gemischt) => {
+    const eingabe = el("input", {
+      type: "number", min: "0", step: "0.1",
+      value: gemischt ? "" : (wert === null || wert === undefined ? 0 : wert),
+      placeholder: gemischt ? "verschieden" : "",
+    });
+    eingabe.addEventListener("change", () => {
+      if (eingabe.value.trim() !== "") {
+        ruf("auswahl_setzen", {feld: feldname, wert: Number(eingabe.value)});
+      }
+    });
+    eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
+    return el("label", {class: "feld"}, beschriftung, eingabe);
+  };
+  return el("div", {},
+    el("p", {class: "hinweis"},
+      anzahl + " Blöcke gemeinsam bearbeiten. Verschieben: ALT+↑/↓, löschen: Entf."),
+    el("span", {class: "ueberschrift"}, "WARTEZEIT FÜR AUSWAHL"),
+    el("div", {class: "reihe sammel-schnell"}, [0, 0.5, 1].map((sekunden) =>
+      el("button", {class: "btn still", onclick: () => ruf("auswahl_setzen",
+        {feld: "delay_before", wert: sekunden})}, String(sekunden).replace(".", ",") + " s"))),
+    el("div", {class: "gitter2"},
+      zeitfeld("Wartezeit (s)", "delay_before", S.auswahl.delay_before,
+               S.auswahl.delay_before_gemischt),
+      zeitfeld("bis (0 = fest)", "delay_max", S.auswahl.delay_max,
+               S.auswahl.delay_max_gemischt)),
+    el("p", {class: "hinweis"},
+      "Nur diese Wartefelder werden gemeinsam geändert; Typ, Ziel und Bedingungen bleiben erhalten."));
 }
 
 function baueAktion(ziel, b) {
@@ -2113,6 +2178,10 @@ function scanWerkzeuge() {
   }
   const offen = SC.scans.find((c) => c.name === SC.offen);
   const bereit = scanKonfigurationOffen();
+  $("scan-buehne").classList.toggle("such-aktiv", SC.modus === "finden");
+  const namensfeld = $("scan-name");
+  namensfeld.value = offen ? offen.name : "";
+  namensfeld.disabled = !offen;
   $("scan-umfang").textContent = offen
     ? offen.slots.length + " Slots · " + offen.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
@@ -2159,22 +2228,32 @@ function scanWerkzeuge() {
 
   // Der Bereich gilt fuer JEDE weitere Aufnahme dieses Scans — er muss also
   // dastehen, nicht nur in der Statuszeile aufblitzen.
+  const quelleninfo = $("scan-quelleninfo");
+  const quellenname = $("scan-quellenname");
   const bz = $("scan-bereich");
   const groesse = SC.bereich
     ? (SC.bereich[2] - SC.bereich[0]) + "×" + (SC.bereich[3] - SC.bereich[1])
-      + " ab (" + SC.bereich[0] + ", " + SC.bereich[1] + ")"
     : "";
-  bz.textContent = fensterquelle
-    ? "Fenster „" + (SC.fenster_titel || "gewählt") + "“ · relative Slots"
-      + (groesse ? " · " + groesse : "")
-      + (!SC.fenster_verfuegbar && SC.fenster_titel ? " · nicht geöffnet" : "")
-    : (!SC.bereich ? "Vollbild" : "Bereich " + groesse);
+  quellenname.textContent = fensterquelle
+    ? "Fenster „" + (SC.fenster_titel || "gewählt") + "“"
+    : (SC.bereich ? "Eigener Bildschirmausschnitt" : "Ganzer Bildschirm");
+  const quellendetails = [];
+  if (fensterquelle) quellendetails.push("Slots relativ");
+  if (groesse) quellendetails.push(groesse);
+  if (!fensterquelle && SC.bereich) {
+    quellendetails.push("Position " + SC.bereich[0] + ", " + SC.bereich[1]);
+  }
+  if (!SC.fenster_verfuegbar && SC.fenster_titel) {
+    quellendetails.push("Fenster nicht geöffnet");
+  }
+  bz.textContent = quellendetails.join(" · ");
+  bz.hidden = !quellendetails.length;
   // Bei einem gewaehlten Fenster steht dabei, was das bedeutet: es wird direkt
   // abgebildet, also darf das Studio davor liegen.
-  bz.title = fensterquelle
+  quelleninfo.title = fensterquelle
     ? "Editor und Live-Scan verwenden dieselbe Aufnahmequelle. Verschieben wird automatisch ausgeglichen; beim Desktop-Fallback muss das Fenster sichtbar sein."
     : (SC.bereich ? "Ausschnitt vom Bildschirm — hier darf nichts davor liegen." : "");
-  bz.classList.toggle("an", !!SC.bereich || fensterquelle);
+  quelleninfo.classList.toggle("an", !!SC.bereich || fensterquelle);
   $("scan-vollbild").disabled = !bereit || (!SC.bereich && !fensterquelle) || !SC.pillow;
   // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
   const auf = $("scan-aufziehen");
@@ -2676,6 +2755,13 @@ function scanItemMaske(i, gefroren) {
   const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
   const bild = scanVorschauen.get(i.name);
 
+  const box = el("input", {type: "checkbox",
+    "aria-label": i.name + " ein- oder ausschalten"});
+  box.checked = !!i.aktiv;
+  box.addEventListener("change", () => setze("aktiv", box.checked));
+  const anaus = el("label", {class: "an scan-slot-schalter",
+    title: i.aktiv ? "Item ist aktiv — ausschalten" : "Item ist aus — einschalten"}, box);
+
   const name = maskeName("item", i.name,
     "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
 
@@ -2710,7 +2796,8 @@ function scanItemMaske(i, gefroren) {
     el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i, gefroren));
 
   const maske = maskeBauen("item", i.name, gewaehlt,
-    [bild ? el("img", {class: "mini", src: bild, alt: ""})
+    [el("div", {class: "scan-marke"}, anaus),
+     bild ? el("img", {class: "mini", src: bild, alt: ""})
           : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
                         style: i.marker.length ? "background:" + i.marker[0] : ""}),
      felder],
@@ -2722,6 +2809,7 @@ function scanItemMaske(i, gefroren) {
     (kasten) => scanItemDetails(kasten, i),
     () => rufScan("scan_waehlen", {art: "item", name: i.name}));
   maske.classList.add("scan-item-maske");
+  maske.classList.toggle("aus", !i.aktiv);
   return maske;
 }
 
@@ -2790,9 +2878,8 @@ function scanListeScans(ziel) {
  * dem Scan gehoert, klappt in seiner Maske auf. */
 function scanScanMaske(c) {
   const offen = SC.offen === c.name;
-  const name = maskeName("scan", c.name,
-    "Name — ein Block vom Typ ITEM-SCAN verweist per Name hierauf",
-    (v) => rufScan("scan_setzen", {name: c.name, feld: "name", wert: v}));
+  const name = el("span", {class: "scan-maske-name",
+    title: "Ein Block vom Typ ITEM-SCAN verweist per Name hierauf"}, c.name);
   const stand = el("div", {class: "scan-maske-stand"},
     el("span", {class: "klein mono"},
        c.slots.length + " Slots · " + c.items.length + " Items"),
@@ -2985,12 +3072,27 @@ function scanZeigeGewaehlten() {
     buehne.scrollTop = Math.max(0, (o + u) / 2 - buehne.clientHeight / 2);
 }
 
-function scanStelleAusEvent(e) {
+function scanStelleAusEvent(e, amBildrand = false) {
   const rand = $("scan-overlay").getBoundingClientRect();
   if (!rand.width || !rand.height || !SC || !SC.foto) return null;
-  const bx = (e.clientX - rand.left) / rand.width * SC.foto.breite;
-  const by = (e.clientY - rand.top) / rand.height * SC.foto.hoehe;
+  let bx = (e.clientX - rand.left) / rand.width * SC.foto.breite;
+  let by = (e.clientY - rand.top) / rand.height * SC.foto.hoehe;
+  if (amBildrand) {
+    bx = Math.max(0, Math.min(SC.foto.breite, bx));
+    by = Math.max(0, Math.min(SC.foto.hoehe, by));
+  }
   return scanZuSchirm(bx, by);
+}
+
+/** Eine Ecke ausserhalb des Screenshots gehoert beim automatischen Finden
+ * trotzdem zur mittleren Arbeitsflaeche. Sie wird auf den naechsten Bildrand
+ * geklemmt: dort enden die Pixel, in denen OpenCV suchen kann. Seitenleisten,
+ * Werkzeugleiste und Ergebnisboxen sind keine Zeichenflaeche. */
+function scanSuchStelleAusBuehne(e) {
+  const flaeche = $("scan-flaeche");
+  if (!SC || SC.modus !== "finden" || flaeche.contains(e.target)) return null;
+  if (e.target.closest("#scan-canvas-bar, #scan-ergebnis, #scan-bibliothek")) return null;
+  return scanStelleAusEvent(e, true);
 }
 
 /* --------------------------------------------------------------- Inspektor */
@@ -3078,6 +3180,15 @@ function scanInspektorBauen() {
       title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
              + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
       onclick: () => { scanOrdnungVergessen(); zeichneScans(); }}, "↕ Sortieren"));
+    const art = scanListe === "slots" ? "slot" : "item";
+    const eintraege = scanListe === "slots" ? SC.slots : SC.items;
+    const irgendAn = eintraege.some((e) => !!e.aktiv);
+    filter.appendChild(el("button", {class: "btn still", disabled: !eintraege.length,
+      title: "Schaltet alle " + (art === "slot" ? "Slots" : "Items")
+             + (irgendAn ? " aus." : " ein."),
+      onclick: () => rufScan("scan_alle_schalten",
+                             {art: art, aktiv: !irgendAn})},
+      irgendAn ? "Alle aus" : "Alle ein"));
   }
   if (filter.childNodes.length) kopf.appendChild(filter);
   ziel.appendChild(kopf);
@@ -3486,19 +3597,15 @@ function scanItemBestaetigung(i) {
   return kasten;
 }
 
-/** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske.
- *
- * **Der Name steht in der Maske**, die Mitgliedschaft im Haken jeder Slot- bzw.
- * Item-Maske. Hier bleibt, was man am Scan EINSTELLT — und der Knopf, mit dem
- * er verschwindet. */
+/** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske. */
 function scanScanDetails(ziel, c) {
   const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
 
   ziel.appendChild(ueberschrift("EINSTELLUNGEN",
     "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
     + "daneben: der Haken vor jeder Maske heisst „gehört zu diesem Scan“. Hier "
-    + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
-    + "auf diesen Scan.", "itemscan"));
+      + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
+      + "auf diesen Scan.", "itemscan"));
 
   ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
     {min: 0, step: 1},
@@ -5762,6 +5869,13 @@ function verdrahte() {
     scanAssistentSchritt = null;
     rufScan("scan_oeffnen", {name: e.target.value});
   });
+  $("scan-name").addEventListener("change", (e) => {
+    if (!SC || !SC.offen) return;
+    rufScan("scan_setzen", {name: SC.offen, feld: "name", wert: e.target.value});
+  });
+  $("scan-name").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") e.target.blur();
+  });
   $("scan-neu").addEventListener("click", () => {
     scanAssistentSchritt = 1;
     rufScan("scan_neu");
@@ -5822,6 +5936,7 @@ function verdrahte() {
   }
 
   const flaeche = $("scan-overlay");
+  const buehne = $("scan-buehne");
   flaeche.addEventListener("click", (e) => {
     // Ein Klick, der ein Ziehen beendet hat, ist kein Klick. Ohne das waehlte
     // das Loslassen den Slot gleich noch einmal neu aus.
@@ -5836,6 +5951,13 @@ function verdrahte() {
     // Geste wie im Sequenz-Editor.
     rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt,
                            zusatz: e.ctrlKey || e.metaKey});
+  });
+  // Beim automatischen Finden darf eine Ecke auch im freien Teil der MITTLEREN
+  // Buehne liegen. Der Helfer klemmt sie an den Bildrand; die Seitenleisten
+  // liegen ausserhalb dieses Elements und koennen die Geste nie ausloesen.
+  buehne.addEventListener("click", (e) => {
+    const stelle = scanSuchStelleAusBuehne(e);
+    if (stelle) rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt});
   });
   flaeche.addEventListener("dblclick", (e) => {
     const stelle = scanStelleAusEvent(e);
@@ -5873,6 +5995,13 @@ function verdrahte() {
     // Overlays bei jeder Mausbewegung.
     if (!SC || !SC.ecke) return;
     scanZeiger = scanStelleAusEvent(e);
+    scanOverlay();
+  });
+  buehne.addEventListener("mousemove", (e) => {
+    if (!SC || !SC.ecke || SC.modus !== "finden") return;
+    const stelle = scanSuchStelleAusBuehne(e);
+    if (!stelle) return;
+    scanZeiger = stelle;
     scanOverlay();
   });
   // Am Fenster, nicht an der Flaeche: wer ueber den Bildrand hinauszieht,
@@ -5940,6 +6069,10 @@ function tastatur(e) {
     if (imTextfeld()) return document.activeElement.blur();
     if (ansicht === "scans") return rufScan("scan_abbrechen");
     if (ansicht === "einstellungen") return;
+    if (gewaehltePhase !== null) {
+      gewaehltePhase = null;
+      return zeichnePhasen();
+    }
     return ruf("auswahl_leeren");
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -6007,6 +6140,12 @@ function tastatur(e) {
   }
   // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
   if (ansicht === "einstellungen") return;
+  if (e.key === "Delete" && gewaehltePhase !== null) {
+    e.preventDefault();
+    const phase = gewaehltePhase;
+    gewaehltePhase = null;
+    return ruf("phase_loeschen", {phase: phase});
+  }
   if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an

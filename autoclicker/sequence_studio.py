@@ -2,7 +2,7 @@
 
 Aufruf:
     python -m autoclicker.sequence_studio "<Sequenz-Name>"
-    python -m autoclicker.sequence_studio            # zuletzt bearbeitete
+    python -m autoclicker.sequence_studio            # zuletzt geöffnete/gespeicherte
     python -m autoclicker.sequence_studio "" --scans # Reiter „Scans" vorgewählt
 
 Eigener Prozess, damit der Fenster-Event-Loop nicht mit der Hotkey-Message-
@@ -11,48 +11,74 @@ Hauptprozess CTRL+ALT+L. Die Oberfläche ist eine Webseite
 (`editors/sequence_studio/web/index.html`), die Verbindung `StudioBridge`.
 """
 
+import json
 import sys
 import time
 from pathlib import Path
 
-from .config import SEQUENCES_DIR
+from .config import SEQUENCES_DIR, STUDIO_LAST_SEQUENCE_FILE
 from .models import Sequence
 from .persistence import (
     ensure_sequences_dir, list_available_sequences, load_sequence_file,
     sequence_file,
 )
-from .utils import sanitize_filename, col
+from .utils import sanitize_filename, atomic_write, compact_json, col
 
 WINDOW_TITLE = "Sequenz-Studio"
 INDEX = Path(__file__).parent / "editors" / "sequence_studio" / "web" / "index.html"
 
 
 def zuletzt_bearbeitet() -> "Path | None":
-    """Die zuletzt geänderte Sequenzdatei, oder None wenn es keine gibt.
+    """Die zuletzt geöffnete oder gespeicherte Sequenz, oder None.
 
-    Ersatz für ein „zuletzt geöffnet"-Gedächtnis: das müsste jemand
-    mitschreiben, und das Dateisystem weiss es schon. Eine nur angesehene
-    Sequenz zählt damit nicht — wer nichts geändert hat, hat aber auch nichts,
-    wo er weitermachen müsste.
+    Der Studio-Merker trägt den Zeitpunkt des letzten Öffnens/Speicherns. Eine
+    danach von einem anderen Programmteil gespeicherte sequence.json gewinnt
+    trotzdem — entscheidend ist das jüngere der beiden Ereignisse.
     """
-    neueste, zeit = None, -1.0
-    for _, pfad in list_available_sequences():
+    verfuegbar = list_available_sequences()
+    neueste, zeit = None, -1
+    for _, pfad in verfuegbar:
         try:
-            m = pfad.stat().st_mtime
+            m = pfad.stat().st_mtime_ns
         except OSError:
             continue
         if m > zeit:
             neueste, zeit = pfad, m
+
+    marker = Path(STUDIO_LAST_SEQUENCE_FILE)
+    try:
+        daten = json.loads(marker.read_text(encoding="utf-8"))
+        ordner = str(daten.get("ordner") or "") if isinstance(daten, dict) else ""
+        gemerkt = next((pfad for _, pfad in verfuegbar
+                        if pfad.parent.name == ordner), None)
+        if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
+            return gemerkt
+    except (OSError, ValueError, TypeError):
+        pass
     return neueste
 
 
+def merke_zuletzt_verwendet(pfad) -> bool:
+    """Merkt eine vorhandene Sequenz als zuletzt geöffnet/gespeichert."""
+    pfad = Path(pfad)
+    if not pfad.is_file():
+        return False
+    try:
+        atomic_write(Path(STUDIO_LAST_SEQUENCE_FILE), compact_json({
+            "ordner": pfad.parent.name,
+        }))
+        return True
+    except OSError:
+        return False
+
+
 def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
-    """Lädt die Sequenz mit gegebenem Namen, sonst die zuletzt bearbeitete.
+    """Lädt die Sequenz mit gegebenem Namen, sonst die zuletzt verwendete.
 
     Eine neue Sequenz landet NIE auf einer vorhandenen Datei: der Name IN der
     Datei muss nicht der Dateiname sein, und ohne diese Regel lag eine leere
-    Sequenz auf der vollen Datei. Ohne Namen kommt die zuletzt bearbeitete — ein
-    leeres Fenster ist fast nie das, was man wollte.
+    Sequenz auf der vollen Datei. Ohne Namen kommt die zuletzt geöffnete oder
+    gespeicherte — ein leeres Fenster ist fast nie das, was man wollte.
     """
     ensure_sequences_dir()
     if name:
@@ -156,6 +182,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     seq, path = _resolve_sequence(seq_name)
+    merke_zuletzt_verwendet(path)
 
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)

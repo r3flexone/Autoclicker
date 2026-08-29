@@ -451,6 +451,7 @@ backups/<pfad>.bak             Sicherungen des Start-Durchgangs (Struktur gespie
 logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
 .lauf.json                     Laufstatus fuer das Sequenz-Studio (transient)
 .aufnahme.json                 letzte 3 Ereignisse der Aufnahme (transient)
+.studio-sequenz.json           zuletzt geoeffnete/gespeicherte Sequenz (transient)
 ```
 
 **`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es

@@ -191,6 +191,30 @@ class ScanLibraryMixin:
             return self._scan_geaendert(f"{was} gelöscht.", "warn")
         return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
 
+    def scan_alle_schalten(self, daten: dict) -> dict:
+        """Schaltet alle Slots oder Items des offenen Scans gemeinsam ein/aus."""
+        art = str((daten or {}).get("art") or "")
+        aktiv = bool((daten or {}).get("aktiv"))
+        if art == ART_SLOT:
+            eintraege = self._scan_slots()
+            bezeichnung = "Slots"
+        elif art == ART_ITEM:
+            eintraege = list(self.items.values())
+            bezeichnung = "Items"
+        else:
+            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
+        if not eintraege:
+            return self._scan_melde(f"Keine {bezeichnung} zum Schalten.", "warn")
+        geaendert = [e for e in eintraege if e.enabled != aktiv]
+        if not geaendert:
+            return self.scan_daten()
+        self._merke(f"{len(eintraege)} {bezeichnung}: {'ein' if aktiv else 'aus'}")
+        for eintrag in eintraege:
+            eintrag.enabled = aktiv
+        return self._scan_geaendert(
+            f"Alle {len(eintraege)} {bezeichnung} sind "
+            f"{'eingeschaltet' if aktiv else 'ausgeschaltet'}.")
+
     def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""
         # Die Scan-Maske kennt ihren Namen selbst und schickt ihn mit. Der

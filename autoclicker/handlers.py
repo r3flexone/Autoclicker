@@ -598,6 +598,7 @@ def handle_toggle(state: AutoClickerState) -> None:
             state.stop_event.clear()
             state.pause_event.clear()
             state.skip_event.clear()
+            state.skip_step_event.clear()
 
             worker = threading.Thread(target=sequence_worker, args=(state,), daemon=True)
             worker.start()
@@ -687,6 +688,11 @@ def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
 def befehl_skip(state: AutoClickerState, argumente: dict) -> None:
     """Überspringt die aktuelle Wartezeit — derselbe Weg wie der Hotkey."""
     handle_skip(state)
+
+
+def befehl_skip_step(state: AutoClickerState, argumente: dict) -> None:
+    """Verwirft den aktuellen Block vollständig — einschliesslich Aktion."""
+    handle_skip_step(state)
 
 
 def befehl_finish(state: AutoClickerState, argumente: dict) -> None:
@@ -1018,6 +1024,7 @@ def befehl_block_test(state: AutoClickerState, argumente: dict) -> None:
     from .runtime.steps import execute_step
     state.stop_event.clear()
     state.skip_event.clear()
+    state.skip_step_event.clear()
     try:
         print(f"\n{col('[TEST]', 'cyan')} {step.name or 'Block'} — echter Systembefehl")
         execute_step(state, probe, block + 1, len(schritte), "TEST")
@@ -1026,6 +1033,7 @@ def befehl_block_test(state: AutoClickerState, argumente: dict) -> None:
     finally:
         state.stop_event.clear()
         state.skip_event.clear()
+        state.skip_step_event.clear()
         state.skip_cycle_event.clear()
         state.restart_event.clear()
 
@@ -1041,6 +1049,7 @@ BEFEHLE = {
     "stop": befehl_stop,
     "pause": befehl_pause,
     "skip": befehl_skip,
+    "skip_step": befehl_skip_step,
     "finish": befehl_finish,
     "manuell": befehl_manuell,
     "manuell_aktion": befehl_manuell_aktion,
@@ -1091,6 +1100,16 @@ def handle_skip(state: AutoClickerState) -> None:
 
         state.skip_event.set()
         print(f"\n{col('[SKIP]', 'cyan')} Wartezeit übersprungen!")
+
+
+def handle_skip_step(state: AutoClickerState) -> None:
+    """Überspringt den laufenden Block, ohne dessen Aktion auszuführen."""
+    with state.lock:
+        if not state.is_running:
+            print(f"\n{info('Keine Sequenz läuft.')}")
+            return
+        state.skip_step_event.set()
+        print(f"\n{col('[SKIP]', 'cyan')} Aktueller Block wird übersprungen!")
 
 
 def handle_switch(state: AutoClickerState) -> None:
@@ -1322,12 +1341,7 @@ def handle_sequence_studio(state: AutoClickerState,
     """
     import subprocess
 
-    with state.lock:
-        seq_name = state.active_sequence.name if state.active_sequence else ""
-
     args = [sys.executable, "-m", "autoclicker.sequence_studio"]
-    if seq_name:
-        args.append(seq_name)
     if beenden_mit_fenster:
         args.append("--beenden-mit-fenster")
 
@@ -1337,8 +1351,8 @@ def handle_sequence_studio(state: AutoClickerState,
         print(f"\n{err(f'Konnte Sequenz-Studio nicht starten: {e}')}")
         return False
 
-    target = f"'{seq_name}'" if seq_name else "neue Sequenz"
-    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet ({target}).")
+    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet "
+          "(zuletzt geöffnet/gespeichert).")
     print("     Starten geht dort auch — der Hauptprozess führt es aus.")
     print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     return True

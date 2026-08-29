@@ -255,6 +255,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Live-Run und bei der gewaehlten Karte. */
 .phase-kopf.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
 .phase-kopf.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
+.phase-kopf.loop.gewaehlt{box-shadow:0 0 0 1px var(--loop),0 0 0 5px #F59E0B26}
 .phase-kopf.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
@@ -265,6 +266,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-name:disabled{color:var(--text)}
 .phase-werkzeug{display:flex;gap:6px;align-items:center}
 .phase-werkzeug input{padding:3px 5px;font-size:11.5px}
+.phase-alle{align-self:flex-start;font-size:11px;padding:4px 7px}
+.phasen-anlegen{gap:8px}
 
 /* ------------------------------------------------------------------- Karten */
 .karte{
@@ -282,6 +285,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
    (#0C0F14) — die Grundfarben sind hell. */
 .karte-kopf{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
+.karte-auswahl{appearance:none;width:15px;height:15px;flex:none;margin:0;cursor:pointer;
+  border:1.5px solid #0C0F1499;border-radius:3px;background:#FFFFFF55;position:relative}
+.karte-auswahl:checked{background:#0C0F14;border-color:#0C0F14}
+.karte-auswahl:checked::after{content:"";position:absolute;left:3px;top:0;width:5px;height:9px;
+  border:solid white;border-width:0 2px 2px 0;transform:rotate(45deg)}
 .karte-typ{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
   color:#0C0F14;padding:0;background:none;flex:none;opacity:.75}
 .karte-titel{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;
@@ -318,6 +326,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* ---------------------------------------------------------------- Inspektor */
 .insp-kopf{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
   align-items:center;gap:8px}
+.sammel-editor{padding:14px;display:flex;flex-direction:column;gap:12px}
+.sammel-schnell{gap:6px;flex-wrap:wrap}
 .insp-punkt{width:9px;height:9px;border-radius:2px;flex:none}
 .typ-chip{
   font-family:var(--mono);font-size:9.5px;text-align:center;padding:7px 3px;border-radius:4px;
@@ -403,7 +413,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-zahlen{display:flex;flex-wrap:wrap;gap:6px}
 .zahl{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.seq-fuss{display:flex;align-items:center;gap:8px;align-self:end}
+.seq-fuss{display:flex;align-items:center;gap:8px;align-self:end;min-width:0}
+/* Ein langer Sequenzpfad darf weder den Öffnen-Knopf aus der Karte drücken noch
+   sichtbar über ihn und die Nachbarkarte malen. `min-width:0` allein lässt das
+   Flex-Element nur schrumpfen — seinen Text zeichnet es ohne overflow trotzdem
+   weiter. Der vollständige Pfad bleibt im Footer-Titel der Seite verfügbar. */
+.seq-fuss .wachse{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seq-fuss .btn{flex:none}
 .seq-warn{font-size:11.5px;color:var(--accent);line-height:1.5}
 
 /* ---------------------------------------------------------------- Live-Run */
@@ -533,6 +549,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    als jedes Fenster, und beim Hineinzoomen soll man sich bewegen koennen. */
 .scan-buehne{flex:1;min-width:0;overflow:auto;background:var(--bg);position:relative;container-type:inline-size;
   background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px}
+.scan-buehne.such-aktiv{cursor:crosshair}
 .scan-canvas-bar{position:sticky;top:0;z-index:12;display:flex;align-items:center;
   gap:6px;height:42px;padding:5px 10px;background:color-mix(in srgb,var(--panel) 94%,transparent);
   border-bottom:1px solid var(--line);backdrop-filter:blur(8px);overflow-x:auto;overflow-y:hidden}
@@ -676,10 +693,9 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-maske{display:grid;grid-template-columns:34px 56px minmax(0,1fr);gap:6px 7px;
   align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
   background:var(--bg)}
-/* Gelernte Items haben weder Slot-Schalter noch ID. Eine leere erste Spalte
-   liess Vorschau und Felder nach rechts versetzt schweben; hier sind es genau
-   die zwei sichtbaren Teile der Karte. */
-.scan-maske.scan-item-maske{grid-template-columns:56px minmax(0,1fr)}
+/* Items nutzen dieselbe erste Spalte zum Parken wie Slots; nur die ID-Kachel
+   fehlt dort. */
+.scan-maske.scan-item-maske{grid-template-columns:34px 56px minmax(0,1fr)}
 .scan-maske:hover{border-color:var(--dim)}
 /* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
    liesse die Maske um einen Pixel wachsen und das Raster springen. */
@@ -694,6 +710,8 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
 .scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}
+.scan-maske-name{font-size:11.5px;padding:4px 6px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
 /* Kategorie nimmt den Platz, die Prioritaet ist eine Zahl mit zwei Stellen. */
 .scan-maske-unten{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:5px}
 .scan-maske input,.scan-maske select{font-size:11.5px;padding:4px 6px;width:100%;
@@ -807,10 +825,19 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-modus:hover{border-color:var(--dim);color:var(--text)}
 .scan-modus.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .scan-modus .taste{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+/* Quelle und Rueckweg bekommen jeweils die ganze Breite. Nebeneinander blieb
+   dem Fensternamen neben „Zurueck auf Vollbild" nur Platz fuer einzelne
+   Woerter; in der schmalen Assistentenkarte zerfiel der Stand in sechs Zeilen. */
+.scan-quellenstand{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0}
+.scan-quelleninfo{display:flex;flex-direction:column;gap:2px;min-width:0;padding:6px 8px;
+  border:1px solid var(--line);border-radius:4px;background:var(--sub)}
+.scan-quelle-titel{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
 /* Der eingeschraenkte Bereich ist ein ZUSTAND, der fuer jede weitere Aufnahme
-   gilt — also traegt er den Akzent, so wie alles andere Aktive auch. */
-#scan-bereich{color:var(--dim);font-family:var(--mono)}
-#scan-bereich.an{color:var(--accent)}
+   gilt — also traegt sein kurzer technischer Stand den Akzent. */
+#scan-bereich{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scan-quelleninfo.an{border-color:#F59E0B66}
+.scan-quelleninfo.an #scan-bereich{color:var(--accent)}
 .scan-assistent{display:flex;flex-direction:column;gap:6px;margin-top:9px}
 .scan-assistent-schritt{border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
 .scan-assistent-schritt.offen{border-color:var(--accent);box-shadow:0 0 0 1px #F59E0B33}
@@ -831,7 +858,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-assistent-inhalt[hidden]{display:none}
 .scan-assistent-inhalt .feld{margin-top:8px}
 .scan-assistent-haupt{width:100%}
-.scan-quellenstand{display:flex;align-items:center;gap:6px;min-width:0}
 /* Der Hinweis, dass der Hauptprozess die Dateien angefasst hat. Er traegt den
    Akzent, weil man ihn sonst uebersieht — und uebersehen heisst hier: man sucht
    gelernte Items, die es laengst gibt. */

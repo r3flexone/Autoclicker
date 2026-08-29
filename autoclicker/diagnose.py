@@ -135,9 +135,9 @@ def _pruefe_scan_referenzen(state: AutoClickerState, bericht: Pruefbericht) -> N
         elif not any(slot.enabled for slot in cfg.slots):
             bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
                           "kein Slot ist eingeschaltet — der Scan kann nichts absuchen")
-        if not cfg.items and not cfg.learn_unknown:
+        if not any(item.enabled for item in cfg.items) and not cfg.learn_unknown:
             bericht.melde(STUFE_HINWEIS, f"Item-Scan '{cfg.name}'",
-                          "keine Items und kein Auto-Lernen — findet nie etwas")
+                          "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
     bericht.geprueft.append(f"{len(scans)} Item-Scan(s)")
 
 

@@ -40,6 +40,47 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("scans")
+        namensfeld = f.seite.locator("#scan-name")
+        pruefe(namensfeld.is_visible(),
+               "das Namensfeld des offenen Scans ist nicht sichtbar")
+        pruefe(namensfeld.is_enabled(),
+               "das Namensfeld des offenen Scans ist nicht bearbeitbar")
+        pruefe(namensfeld.input_value() == "Inventar",
+               "das Namensfeld zeigt nicht den Namen des offenen Scans")
+        quellenlayout = f.seite.eval_on_selector(".scan-quellenstand", """e => {
+          const info = e.querySelector('.scan-quelleninfo').getBoundingClientRect();
+          const knopf = e.querySelector('#scan-vollbild').getBoundingClientRect();
+          const breite = e.getBoundingClientRect().width;
+          return {info: info.width, knopf: knopf.width, breite};
+        }""")
+        pruefe(quellenlayout["info"] >= quellenlayout["breite"] - 1,
+               f"der Quellenstand nutzt nicht die volle Breite: {quellenlayout}")
+        pruefe(quellenlayout["knopf"] >= quellenlayout["breite"] - 1,
+               f"der Vollbild-Knopf quetscht den Quellenstand ein: {quellenlayout}")
+
+        # Die Suchregion darf mit der zweiten Ecke aus dem Bild heraus in die
+        # mittlere Buehne gezogen werden. Gespeichert wird der Bildrand, denn
+        # nur innerhalb davon gibt es Pixel fuer die Erkennung.
+        f.klick('[data-scan-schritt="2"]')
+        f.klick("#scan-slots-finden")
+        bildrand = f.seite.locator("#scan-overlay").bounding_box()
+        buehnenrand = f.seite.locator("#scan-buehne").bounding_box()
+        x_draussen = bildrand["x"] + bildrand["width"] + 5
+        pruefe(x_draussen < buehnenrand["x"] + buehnenrand["width"],
+               "der Rauchtest braucht freien Platz rechts neben dem Bild")
+        f.seite.mouse.click(bildrand["x"] + bildrand["width"] * .2,
+                            bildrand["y"] + bildrand["height"] * .2)
+        f.seite.wait_for_timeout(400)
+        f.seite.mouse.click(x_draussen,
+                            bildrand["y"] + bildrand["height"] * .8)
+        f.seite.wait_for_timeout(700)
+        rechter_bildrand = (b._foto_info["links"]
+                            + round(b._foto_info["breite"] / b._foto_info["skala"]))
+        pruefe(b._suchbereich is not None
+               and b._suchbereich[2] == rechter_bildrand,
+               f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._suchbereich}")
+        f.seite.keyboard.press("Escape")
+        f.seite.wait_for_timeout(400)
         pruefe(f.text("#scan-sequenz").strip() == "Rauch",
                "Zielsequenz der Scan-Aufnahme ist nicht sichtbar")
         masken = f.anzahl("#scan-insp .scan-maske")

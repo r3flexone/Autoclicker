@@ -30,7 +30,8 @@ def aufbau():
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
     for name, notiz, phasen, schritte in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
-                                          ("Gamma", "Auch mit Notiz", 1, 1)):
+                                          ("testaufnahme_mit_sehr_langem_namen_v2",
+                                           "Auch mit Notiz", 1, 1)):
         zustand.sequences[name] = _sequenz(name, notiz, phasen, schritte)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
     zustand.sequences["Alpha"].points = [
@@ -64,6 +65,20 @@ def lauf():
                 "ns => ns.map(n => Math.round(n.getBoundingClientRect().top))")
             pruefe(len(set(kanten)) == 1,
                    f".{teil} liegt nicht auf einer Linie: {kanten}")
+        # Der Pfad der langen dritten Sequenz darf nicht über den Öffnen-Knopf
+        # und in die Nachbarkarte malen. `min-width:0` allein reicht dafür nicht:
+        # der Text schrumpft rechnerisch, bleibt bei overflow:visible aber sichtbar.
+        pfad_overflow = f.seite.eval_on_selector_all(
+            ".seq-fuss .wachse",
+            "ns => ns.map(n => getComputedStyle(n).overflowX)")
+        pruefe(pfad_overflow and all(wert != "visible" for wert in pfad_overflow),
+               f"Sequenzpfade laufen aus ihren Karten: {pfad_overflow}")
+        knopf_in_karte = f.seite.eval_on_selector_all(
+            ".seq-karte",
+            "ns => ns.every(k => { const b=k.querySelector('.seq-fuss .btn'); "
+            "if (!b) return true; const kr=k.getBoundingClientRect(); "
+            "const br=b.getBoundingClientRect(); return br.right <= kr.right + 1; })")
+        pruefe(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
         f.bild("sequenzen_karten")
 
         # ------------------------------------------------------------- Editor

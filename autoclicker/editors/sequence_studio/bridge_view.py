@@ -80,7 +80,7 @@ class BridgeViewMixin:
             "ohne_else": self._ohne_else(),
             "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "punkte": [self._punkt_json(p) for p in self.points],
-            "auswahl": {"phase": self._sel_index(), "zeilen": sorted(self.sel_rows)},
+            "auswahl": self._auswahl_json(),
             "block": self._block_detail(),
         }
 
@@ -158,6 +158,30 @@ class BridgeViewMixin:
             "start": lane.scheduled_start or "",
             "loeschbar": lane.kind == LANE_LOOP,
             "bloecke": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
+        }
+
+    def _auswahl_json(self) -> dict:
+        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor."""
+        rows = sorted(self.sel_rows)
+        steps = [] if self.sel_lane is None else [
+            self.sel_lane.steps[row] for row in rows
+            if 0 <= row < len(self.sel_lane.steps)
+        ]
+
+        def gemeinsam(feld: str):
+            werte = [getattr(step, feld) for step in steps]
+            gemischt = bool(werte) and any(wert != werte[0] for wert in werte[1:])
+            return (None if gemischt or not werte else werte[0]), gemischt
+
+        delay_before, before_gemischt = gemeinsam("delay_before")
+        delay_max, max_gemischt = gemeinsam("delay_max")
+        return {
+            "phase": self._sel_index(),
+            "zeilen": rows,
+            "delay_before": delay_before,
+            "delay_before_gemischt": before_gemischt,
+            "delay_max": delay_max,
+            "delay_max_gemischt": max_gemischt,
         }
 
     def _block_json(self, lane: Lane, row: int, step: SequenceStep) -> dict:

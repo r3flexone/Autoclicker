@@ -99,6 +99,7 @@ _ITEM_DEFAULTS = {
     "template": None,
     "min_confidence": DEFAULT_MIN_CONFIDENCE,
     "template_variants": [],
+    "enabled": True,
 }
 
 _SLOT_DEFAULTS = {"slot_color": None, "enabled": True, "id": 0}
@@ -184,6 +185,7 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
         template=data.get("template"),
         min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
         template_variants=list(dict.fromkeys(varianten)),
+        enabled=data.get("enabled", True),
     )
 
 

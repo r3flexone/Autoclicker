@@ -4302,6 +4302,32 @@ _b8.waehlen({"phase": INIT8, "zeile": 0, "modus": "dazu"})
 check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
       _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
 
+# --- Auswahl muss sich ebenso leicht wieder abwählen lassen ---
+_b8 = _bruecke8()
+_b8.waehlen({"phase": LOOP8, "zeile": 1, "modus": "einzeln"})
+_b8.waehlen({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+check("Umschalt-Klick waehlt den Bereich ab dem festen Anker",
+      _b8.sel_rows == {1, 2, 3})
+_b8.waehlen({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+check("derselbe Umschalt-Klick waehlt den Bereich wieder ab",
+      _b8.sel_lane is None and _b8.sel_rows == set())
+
+_b8 = _bruecke8()
+_b8.phase_auswahl({"phase": LOOP8})
+check("Alle-Blöcke wählt die ganze Phase", _b8.sel_rows == set(range(5)))
+_b8.phase_auswahl({"phase": LOOP8})
+check("derselbe Phasenknopf hebt die Auswahl wieder auf", _b8.sel_lane is None)
+
+_b8 = _bruecke8()
+_waehle8(_b8, LOOP8, 0, 2, 4)
+_b8.auswahl_setzen({"feld": "delay_before", "wert": "0.5"})
+check("eine Wartezeit lässt sich für die Auswahl gemeinsam setzen",
+      [s.delay_before for s in _b8.board.lanes[LOOP8].steps]
+      == [0.5, 0, 0.5, 0, 0.5])
+check("der Snapshot liefert den gemeinsamen Wert für den Sammel-Inspektor",
+      _b8.snapshot()["auswahl"]["delay_before"] == 0.5
+      and not _b8.snapshot()["auswahl"]["delay_before_gemischt"])
+
 
 
 
@@ -4824,6 +4850,9 @@ try:
     # gar nicht mehr.
     check("ein Scan ohne Konfiguration verhindert das Speichern NICHT",
           _b12.filepath.exists())
+    check("Speichern merkt die zuletzt verwendete Sequenz",
+          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
+          == _b12.filepath.parent.name)
     check("gemeldet wird er trotzdem", _zustand12["status"]["art"] == "warn")
     check("und die Meldung nennt die Scan-Art",
           "ITEM-SCAN" in _zustand12["status"]["text"])
@@ -5007,7 +5036,10 @@ try:
     # --- Ohne Namen: die zuletzt bearbeitete Sequenz, kein leeres Fenster ---
     # Das Studio startet ohne Namen, wenn im Hauptprozess keine Sequenz aktiv ist
     # oder wenn man es direkt aufruft. Ein leeres Fenster ist da fast nie gemeint.
-    from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb14
+    from autoclicker.sequence_studio import (
+        merke_zuletzt_verwendet as _mz14,
+        zuletzt_bearbeitet as _zb14,
+    )
     _alt14 = Path("sequences") / "aelter" / "sequence.json"
     _alt14.parent.mkdir(parents=True)
     _alt14.write_text(json.dumps({
@@ -5028,10 +5060,19 @@ try:
           _pfad14d == _all14
           and _schritte14(_seq14d) == 1)
 
-    _os.utime(_alt14, (_zeit14 + 200, _zeit14 + 200))
+    check("eine geöffnete Sequenz wird gemerkt", _mz14(_alt14))
+    _seq14offen, _pfad14offen = _rs14("")
+    check("zuletzt geöffnet schlägt die ältere Dateizeit",
+          _pfad14offen == _alt14)
+
+    # Speichert danach ein anderer Programmteil eine Sequenz, ist dieses Ereignis
+    # neuer als das Öffnen und muss wieder gewinnen.
+    _marker14 = Path(".studio-sequenz.json")
+    _nach_marker14 = _marker14.stat().st_mtime_ns + 1_000_000_000
+    _os.utime(_all14, ns=(_nach_marker14, _nach_marker14))
     _seq14e, _pfad14e = _rs14("")
-    check("und sie wechselt mit, wenn eine andere gespeichert wird",
-          _pfad14e == _alt14)
+    check("eine danach gespeicherte Sequenz gewinnt wieder",
+          _pfad14e == _all14)
 
     # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
     _kaputt14 = Path("sequences") / "kaputt" / "sequence.json"
@@ -5113,6 +5154,9 @@ try:
     _b16b = _SB8(_SEQ8(name="gross"),
                  Path("sequences") / "gross" / "sequence.json", "sequences")
     _b16b.laden({"name": "gross"})
+    check("Laden merkt die zuletzt verwendete Sequenz",
+          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
+          == "gross")
     check("Speichern und Uebersicht benutzen dieselbe Regel",
           _b16b._scan_ohne_namen() == _nach16["gross"]["warnungen"][0])
     check("und ohne leeren Scan sagen beide nichts",
@@ -5830,14 +5874,15 @@ check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
 check("der Detailteil des Scans baut kein eigenes Namensfeld mehr",
       'feld("Name"' not in _js_rumpf18("scanScanDetails")
       and "maskeName(" not in _js_rumpf18("scanScanDetails"))
-# Und zwar in seiner MASKE, wie bei Slot und Item auch. In der linken Spalte
-# stand einmal ein zweites Feld: solange die Einstellungen drei Spalten entfernt
-# lagen, war das die kuerzere Strecke - seit die Maske sie traegt, waeren es
-# zwei Eingaben fuer denselben Wert. Die Klappliste bleibt, sie waehlt nur.
-check("die Scan-Maske traegt den Namen",
-      'maskeName("scan"' in _js_rumpf18("scanScanMaske"))
-check("und die linke Spalte kein zweites Feld dafuer",
-      "scan-name" not in _html18)
+# Der gefuehrte Arbeitsweg zeigt die Scan-Maske rechts nicht. Deshalb muss die
+# Bearbeitungsflaeche direkt bei der Auswahl links stehen. Die Maske zeigt den
+# Namen weiterhin, baut aber kein zweites Eingabefeld fuer denselben Wert.
+check("die Scan-Maske zeigt den Namen nur als Beschriftung",
+      'class: "scan-maske-name"' in _js_rumpf18("scanScanMaske")
+      and 'maskeName("scan"' not in _js_rumpf18("scanScanMaske"))
+check("und die linke Spalte traegt das bearbeitbare Namensfeld",
+      'id="scan-name"' in _html18
+      and 'feld: "name", wert: e.target.value' in _html18)
 check("die Klappliste zum Waehlen bleibt",
       'id="scan-offen"' in _html18)
 # Die Ueberschrift im Detailteil nennt den Scan NICHT noch einmal: sein Name

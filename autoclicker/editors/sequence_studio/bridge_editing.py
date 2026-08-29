@@ -105,9 +105,11 @@ class BridgeEditingMixin:
 
     def _auswahl_leeren(self) -> None:
         self.sel_lane, self.sel_rows = None, set()
+        self.sel_anchor = None
 
     def _auswahl_setzen(self, lane: Lane, row: int) -> None:
         self.sel_lane, self.sel_rows = lane, {row}
+        self.sel_anchor = row
 
     def waehlen(self, daten: dict) -> dict:
         """Klick auf eine Karte. `modus`: einzeln / dazu / bereich.
@@ -129,9 +131,20 @@ class BridgeEditingMixin:
             self.sel_rows.symmetric_difference_update({row})
             if not self.sel_rows:
                 self._auswahl_leeren()
+            else:
+                self.sel_anchor = row
         elif modus == "bereich" and self.sel_lane is lane and self.sel_rows:
-            von, bis = min(self.sel_rows | {row}), max(self.sel_rows | {row})
-            self.sel_rows = set(range(von, bis + 1))
+            anker = self.sel_anchor if self.sel_anchor is not None else row
+            von, bis = sorted((anker, row))
+            bereich = set(range(von, bis + 1))
+            # Derselbe Umschalt-Klick ist ein echter Schalter: ist der ganze
+            # Bereich schon gewählt, wird er entfernt; sonst kommt er dazu.
+            if bereich <= self.sel_rows:
+                self.sel_rows.difference_update(bereich)
+            else:
+                self.sel_rows.update(bereich)
+            if not self.sel_rows:
+                self._auswahl_leeren()
         else:
             self._auswahl_setzen(lane, row)
         return self.snapshot()
@@ -139,6 +152,40 @@ class BridgeEditingMixin:
     def auswahl_leeren(self, daten: Optional[dict] = None) -> dict:
         self._auswahl_leeren()
         return self.snapshot()
+
+    def phase_auswahl(self, daten: dict) -> dict:
+        """Wählt alle Blöcke einer Phase oder hebt deren Auswahl auf."""
+        lane = self._lane((daten or {}).get("phase"))
+        if lane is None or not lane.steps:
+            self._auswahl_leeren()
+            return self.snapshot()
+        alle_gewaehlt = self.sel_lane is lane and self.sel_rows == set(range(len(lane.steps)))
+        if alle_gewaehlt:
+            self._auswahl_leeren()
+        else:
+            self.sel_lane = lane
+            self.sel_rows = set(range(len(lane.steps)))
+            self.sel_anchor = 0
+        return self.snapshot()
+
+    def auswahl_setzen(self, daten: dict) -> dict:
+        """Setzt ein gemeinsames Feld auf allen gewählten Blöcken."""
+        daten = daten or {}
+        lane = self.sel_lane
+        feld = daten.get("feld")
+        if lane is None or not self.sel_rows:
+            return self._melde("Keine Blöcke ausgewählt.", "warn")
+        if feld not in ("delay_before", "delay_max"):
+            return self._melde(f"'{feld}' lässt sich nicht gesammelt setzen.", "warn")
+        try:
+            wert = _FELDER[feld](daten.get("wert"))
+        except (TypeError, ValueError):
+            return self._melde("Die Wartezeit muss eine Zahl sein.", "warn")
+        rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
+        for row in rows:
+            setattr(lane.steps[row], feld, wert)
+        return self._geaendert(
+            f"Wartezeit für {_bloecke(len(rows))} gemeinsam gesetzt.")
 
     # -------------------------------------------------------------- Struktur
 
@@ -184,6 +231,7 @@ class BridgeEditingMixin:
             self.board.add_step(ziel, schritt, at=at + versatz)
         self.sel_lane = ziel
         self.sel_rows = set(range(at, at + len(schritte)))
+        self.sel_anchor = at
         self._dirty = True
 
     def ziehen(self, daten: dict) -> dict:
@@ -218,6 +266,7 @@ class BridgeEditingMixin:
         # sonst überholen sich die Elemente gegenseitig.
         folge = rows if delta < 0 else list(reversed(rows))
         self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
+        self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
         return self._geaendert()
 
     def auswahl_duplizieren(self, daten: Optional[dict] = None) -> dict:
@@ -243,6 +292,7 @@ class BridgeEditingMixin:
         # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
         # umstellen, nicht erneut suchen.
         self.sel_rows = {ziel + i for i in range(len(rows))}
+        self.sel_anchor = ziel
         return self._geaendert(f"{_bloecke(len(rows))} dupliziert.")
 
     def auswahl_loeschen(self, daten: Optional[dict] = None) -> dict:

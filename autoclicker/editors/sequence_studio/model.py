@@ -147,7 +147,7 @@ class SequenceBoard:
     def add_loop_lane(self) -> Lane:
         """Hängt eine neue Loop-Phase an (vor der END-Lane, falls vorhanden)."""
         loop_count = len(self.loop_lanes())
-        new_lane = Lane(kind=LANE_LOOP, name=f"Loop {loop_count + 1}", steps=[], repeat=1)
+        new_lane = Lane(kind=LANE_LOOP, name=f"Phase {loop_count + 1}", steps=[], repeat=1)
         # vor END einfügen
         end_idx = next((i for i, ln in enumerate(self.lanes) if ln.kind == LANE_END), len(self.lanes))
         self.lanes.insert(end_idx, new_lane)
@@ -157,14 +157,14 @@ class SequenceBoard:
         """Entfernt eine Loop-Lane (INIT/END bleiben immer erhalten)."""
         if lane.kind == LANE_LOOP and lane in self.lanes:
             self.lanes.remove(lane)
-            # Nur automatisch vergebene Default-Namen ("Loop N") neu
+            # Nur automatisch vergebene Default-Namen ("Loop N"/"Phase N") neu
             # durchnummerieren — benutzerdefinierte Namen ("Farmen") bleiben.
             n = 0
             for ln in self.lanes:
                 if ln.is_loop():
                     n += 1
-                    if re.fullmatch(r"Loop \d+", ln.name):
-                        ln.name = f"Loop {n}"
+                    if re.fullmatch(r"(?:Loop|Phase) \d+", ln.name):
+                        ln.name = f"Phase {n}"
 
 
 def sequence_to_board(seq: Sequence) -> SequenceBoard:

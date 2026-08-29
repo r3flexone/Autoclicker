@@ -119,7 +119,7 @@ try:
     _kaputt = _b.werkzeug_pruefen()
     _texte = " | ".join(f"{x['bereich']} {x['text']}" for x in _kaputt["befunde"])
     check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texte)
-    check("ein Scan ohne Erkennung ebenso", "keine Items" in _texte)
+    check("ein Scan ohne Erkennung ebenso", "keine aktiven Items" in _texte)
     check("Fehler und Hinweise werden getrennt gezaehlt",
           _kaputt["fehler"] >= 1 and _kaputt["hinweise"] >= 1)
     # Gelesen wird von PLATTE, nicht aus dem, was die Reiter offen haben - sonst
@@ -334,6 +334,11 @@ try:
           _auftrag and _auftrag["befehl"] == "block_test"
           and _auftrag["argumente"]["phase"] == "loop"
           and _auftrag["argumente"]["block"] == 0)
+    _erg = _b.lauf_befehl({"befehl": "skip_step"})
+    _auftrag = _bf.hole()
+    check("der echte Block-Skip wird ohne KeyError abgelegt und bestätigt",
+          _auftrag and _auftrag["befehl"] == "skip_step"
+          and "vollständig" in _erg["status"]["text"])
 finally:
     _os.chdir(_cwd)
 
@@ -342,12 +347,20 @@ section("Studio-Live-Run: alle Laufentscheidungen sind verdrahtet")
 from autoclicker.handlers import BEFEHLE as _BEFEHLE_NEU
 check("Studio und Hauptprozess kennen dieselben Befehle",
       sorted(_SB.ALLE_BEFEHLE) == sorted(_BEFEHLE_NEU))
-check("Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
-      {"skip", "finish", "start_manuell", "manuell_aktion", "zeitplan"}
+check("Warte- und Block-Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
+      {"skip", "skip_step", "finish", "start_manuell", "manuell_aktion", "zeitplan"}
       <= set(_SB.LAUF_BEFEHLE))
 check("alle Laufentscheidungen haben sichtbare Knöpfe",
-      all(text in _app for text in ("Warten überspringen", "Zyklus abschliessen",
+      all(text in _app for text in ("Warten überspringen", "Block überspringen",
+                                    "Zyklus abschliessen",
                                     "Schrittweise", "Start planen", "Ausführen")))
+check("Blockkarten zeigen eine sichtbare Mehrfachauswahl",
+      'class: "karte-auswahl"' in _app and '"phase_auswahl"' in _app)
+check("Mehrfachauswahl hat gemeinsame Wartezeiten und den 0,5-s-Knopf",
+      'function zeichneSammelEditor' in _app and '[0, 0.5, 1]' in _app)
+check("leere Start- und Abschlussphasen werden nur bei Bedarf eingeblendet",
+      'offeneSonderphasen' in _app and "+ Startphase" in _app
+      and "+ Abschlussphase" in _app)
 check("der eindeutige Block-Test startet ohne zusätzlichen Browser-Dialog",
       'window.confirm("Diesen Block' not in _app)
 check("unter den eindeutigen Aktionsknöpfen steht kein doppelter Erklärungstext",

@@ -355,7 +355,7 @@ class ScanLearningMixin:
         return self._scan_geaendert(text)
 
     def scan_item_setzen(self, daten: dict) -> dict:
-        """Ein Feld eines Items — Name, Kategorie, Priorität, Konfidenz."""
+        """Ein Feld eines Items — Aktiv, Name, Kategorie, Priorität, Konfidenz."""
         name = str((daten or {}).get("name") or "")
         feld = str((daten or {}).get("feld") or "")
         wert = (daten or {}).get("wert")
@@ -365,6 +365,14 @@ class ScanLearningMixin:
 
         if feld == "name":
             return self._item_umbenennen(item, str(wert or "").strip())
+        if feld == "aktiv":
+            neu = bool(wert)
+            if item.enabled == neu:
+                return self.scan_daten()
+            self._merke(f"'{name}': {'ein' if neu else 'aus'}")
+            item.enabled = neu
+            return self._scan_geaendert(
+                f"{item.name} ist {'eingeschaltet' if neu else 'ausgeschaltet'}.")
         if feld == "kategorie":
             self._merke(f"'{name}': Kategorie")
             item.category = self._kategorie_normalisieren(wert)
@@ -622,11 +630,12 @@ class ScanLearningMixin:
         Scan wird alles geprüft, sonst sähe man bei leerer Auswahl nichts.
         """
         cfg = self.scans.get(self.scan_offen)
-        if cfg is not None and cfg.item_names:
-            gewaehlt = [self.items[n] for n in cfg.item_names if n in self.items]
-            if gewaehlt:
-                return sorted(gewaehlt, key=lambda i: i.priority)
-        return sorted(self.items.values(), key=lambda i: i.priority)
+        if cfg is not None:
+            gewaehlt = [self.items[n] for n in cfg.item_names
+                        if n in self.items and self.items[n].enabled]
+            return sorted(gewaehlt, key=lambda i: i.priority)
+        return sorted((i for i in self.items.values() if i.enabled),
+                      key=lambda i: i.priority)
 
     def _toleranz(self) -> int:
         cfg = self.scans.get(self.scan_offen)

@@ -93,6 +93,10 @@ class StudioBridge(
         # Sammelaktionen wären nicht mehr eindeutig.
         self.sel_lane: Optional[Lane] = None
         self.sel_rows: set[int] = set()
+        # Fester Ausgangspunkt für Umschalt+Klick. Ohne eigenen Anker wurde der
+        # Bereich aus min/max der ganzen Auswahl berechnet und liess sich mit
+        # demselben Umschalt-Klick nicht wieder abwählen.
+        self.sel_anchor: Optional[int] = None
         self._dirty = False
         # Wurde in dieser Sitzung mindestens einmal geschrieben? Nur dafür da,
         # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.

@@ -269,6 +269,7 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         # Stale Events aus der Vorsession löschen — sonst Phantom-Skip/Restart
         state.restart_event.clear()
         state.skip_cycle_event.clear()
+        state.skip_step_event.clear()
         state.pending_new_bosses.clear()
 
         # Punkt-Referenzen aufloesen: Schritte mit point_id folgen dem Punkte-Pool.

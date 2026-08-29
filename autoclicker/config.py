@@ -31,6 +31,9 @@ RUN_STATUS_FILE: str = ".lauf.json"
 # Rollende Live-Ausgabe der Sequenz-Aufnahme für das Studio. Kein Bestand und
 # kein Log: die Datei wird bei jedem Ereignis überschrieben.
 RECORD_STATUS_FILE: str = ".aufnahme.json"
+# Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
+# wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
+STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequenz.json"
 
 # Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,

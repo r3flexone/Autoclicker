@@ -151,6 +151,38 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(Path("sequences").exists())
         self.assertFalse(Path("slots").exists())
 
+    def test_failed_folder_import_rolls_back_nested_sequences(self):
+        original = _write_sequence("Bestand")
+        marker = original / "item_scans" / "scan.json"
+        marker.parent.mkdir()
+        marker.write_text('{"name": "Alt"}', encoding="utf-8")
+        template = original / "templates" / "item.png"
+        template.parent.mkdir()
+        template.write_bytes(b"altes bild")
+        manifest = _manifest()
+        manifest["layout"] = "sequence-folders"
+        manifest["contents"]["sequences"] = ["ABestand", "ZDefekt"]
+        with zipfile.ZipFile("bundle.zip", "w") as zf:
+            zf.writestr("manifest.json", json.dumps(manifest))
+            zf.writestr(
+                "sequences/ABestand/sequence.json",
+                json.dumps(_sequence_data("Bestand")))
+            zf.writestr("sequences/ABestand/templates/item.png", b"neues bild")
+            # Ein gültiger Eintrag erzeugt den zweiten Ordner, aber ohne dessen
+            # Pflichtdatei sequence.json. Der Fehler tritt dadurch erst auf,
+            # nachdem "Bestand" bereits ersetzt wurde.
+            zf.writestr("sequences/ZDefekt/templates/item.png", b"beliebig")
+        state = AutoClickerState()
+        bestand = Sequence(name="Bestand")
+        state.sequences[bestand.name] = bestand
+
+        ok, _ = import_bundle(state, "bundle.zip", import_config=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(list(state.sequences), ["Bestand"])
+        self.assertEqual(marker.read_text(encoding="utf-8"), '{"name": "Alt"}')
+        self.assertEqual(template.read_bytes(), b"altes bild")
+
     def test_import_keeps_window_scan_anchor_aligned_with_remapped_slots(self):
         manifest = _manifest()
         manifest["layout"] = "sequence-folders"

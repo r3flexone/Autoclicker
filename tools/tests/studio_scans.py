@@ -1301,6 +1301,17 @@ check("jeder Assistent-Schritt hat einen Inhalt",
 check("die Fensterliste hat einen sichtbaren Aktualisieren-Knopf",
       'id="scan-fenster-neu"' in _html18
       and '$("scan-fenster-neu").addEventListener("click", scanFensterPflegen)' in _html18)
+check("der Quellenstand wird nicht neben dem Vollbild-Knopf eingequetscht",
+      'class="scan-quelleninfo"' in _html18
+      and '.scan-quellenstand{display:flex;flex-direction:column' in _html18
+      and 'id="scan-quellenname"' in _html18)
+check("die Slot-Suche nimmt Ecken in der mittleren Buehne an",
+      'function scanSuchStelleAusBuehne(e)' in _html18
+      and 'SC.modus !== "finden"' in _html18
+      and 'buehne.addEventListener("click"' in _html18)
+check("und begrenzt sie auf die vorhandenen Bildpixel",
+      'bx = Math.max(0, Math.min(SC.foto.breite, bx));' in _html18
+      and 'by = Math.max(0, Math.min(SC.foto.hoehe, by));' in _html18)
 check("Aufnahmequelle und Bildwerkzeuge bleiben bis zum Scan gesperrt",
       "function scanKonfigurationOffen()" in _html18
       and "neu.disabled = !SC.pillow || !bereit" in _html18
@@ -1360,7 +1371,7 @@ check("die Lernvorschau ist als symmetrisches Raster gebaut",
       and ".scan-review-bild{grid-area:bild;width:82px;height:82px" in _html18)
 check("gelernte Items haben nur Bild und Felder als Spalten",
       'maske.classList.add("scan-item-maske")' in _html18
-      and ".scan-maske.scan-item-maske{grid-template-columns:56px minmax(0,1fr)}"
+      and ".scan-maske.scan-item-maske{grid-template-columns:34px 56px minmax(0,1fr)}"
           in _html18)
 check("ein zweiter Klick klappt ein geoeffnetes Item wieder zu",
       'if (gewaehlt && art === "item")' in _html18
@@ -1374,6 +1385,10 @@ check("Bedienelemente klappen das Item beim Bearbeiten nicht zu",
 # Maske; dieselbe Frage („wie benenne ich das um") hatte zwei Antworten.
 check("Slots werden als Maske gebaut", "function scanSlotMaske(" in _html18)
 check("Scans werden als Maske gebaut", "function scanScanMaske(" in _html18)
+check("der gefuehrte Bereich hat ein klar beschriftetes Scan-Namensfeld",
+      'id="scan-name"' in _html18
+      and 'rufScan("scan_setzen", {name: SC.offen, feld: "name"' in _html18
+      and 'namensfeld.disabled = !offen;' in _html18)
 _bauform18 = [_n18 for _n18 in ("scanItemMaske", "scanSlotMaske", "scanScanMaske")
               if "maskeBauen(" not in _html18[_html18.index(f"function {_n18}("):
                                               _html18.index(f"function {_n18}(") + 3000]]
@@ -1664,6 +1679,45 @@ try:
           and '"aria-label": s.name + " ein- oder ausschalten"' in _slot_maskeN)
     check("der nutzlose Daneben-Knopf ist vollständig entfernt",
           "scan_slot_doppeln" not in _html18)
+
+    _itemN = _ITEM8(name="Parkbar", marker_colors=[(1, 2, 3)])
+    _bN.items[_itemN.name] = _itemN
+    _bN._objekte_angleichen()
+    _zN = _bN.scan_item_setzen({"name": "Parkbar", "feld": "aktiv", "wert": False})
+    _itemsN = {i["name"]: i for i in _zN["items"]}
+    check("ein Item lässt sich ausschalten, ohne seine Daten zu löschen",
+          _itemsN["Parkbar"]["aktiv"] is False
+          and "Parkbar" in _bN.items and len(_bN.scans["Inv"].items) == 1)
+    _bN.scan_item_setzen({"name": "Parkbar", "feld": "aktiv", "wert": True})
+    check("und dasselbe Item lässt sich wieder einschalten",
+          _bN.items["Parkbar"].enabled is True)
+    _item_maskeN = _html18[_html18.index("function scanItemMaske("):
+                            _html18.index("function scanItemStand(")]
+    check("jede Item-Kachel baut einen echten Ein-Aus-Schalter",
+          'type: "checkbox"' in _item_maskeN
+          and 'setze("aktiv", box.checked)' in _item_maskeN
+          and '"aria-label": i.name + " ein- oder ausschalten"' in _item_maskeN)
+    _bN.scan_alle_schalten({"art": "slot", "aktiv": False})
+    check("Alle aus schaltet wirklich jeden Slot aus",
+          not any(s.enabled for s in _bN.slots.values()))
+    _bN.scan_alle_schalten({"art": "slot", "aktiv": True})
+    check("Alle ein schaltet wirklich jeden Slot ein",
+          all(s.enabled for s in _bN.slots.values()))
+    _bN.scan_alle_schalten({"art": "item", "aktiv": False})
+    check("Alle aus schaltet wirklich jedes Item aus",
+          not any(i.enabled for i in _bN.items.values()))
+    check("ausgeschaltete Items sind auch im Studio-Test keine Kandidaten",
+          _bN._kandidaten() == [])
+    check("und der Assistent nennt Items dann wieder als offenen Schritt",
+          not next(s for s in _bN._schritte() if s["nr"] == 3)["fertig"])
+    _bN.scan_alle_schalten({"art": "item", "aktiv": True})
+    check("Alle ein schaltet wirklich jedes Item ein",
+          all(i.enabled for i in _bN.items.values()))
+    check("der wechselnde Sammelknopf steht direkt bei der Sortierung",
+          '"↕ Sortieren"' in _html18
+          and 'irgendAn ? "Alle aus" : "Alle ein"' in _html18
+          and 'const irgendAn = eintraege.some((e) => !!e.aktiv)' in _html18
+          and '{art: art, aktiv: !irgendAn}' in _html18)
 finally:
     _os.chdir(_cwdN)
     shutil.rmtree(_sandN, ignore_errors=True)
@@ -1953,6 +2007,19 @@ check("und der Wechsel wird an der Maske angesagt",
 check("frisch geordnet gruppiert wieder nach Kategorie",
       ': ((a.kategorie || "").localeCompare(b.kategorie || "", "de")' in _html18)
 check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
+# Der Phasen-Papierkorb stand früher in einer zu breiten Werkzeugzeile und lief
+# optisch unter END. Loop-Phasen werden wie Blöcke ausgewählt und mit Entf
+# gelöscht; ein zweiter Löschweg in der Kachel wäre nur wieder uneindeutig.
+_phase_funktion18 = _html18[_html18.index("function zeichnePhase("):
+                            _html18.index("function ablage(")]
+check("Loop-Phasen lassen sich im Kopf auswählen",
+      "gewaehltePhase = phase.index" in _phase_funktion18
+      and '" gewaehlt"' in _phase_funktion18)
+check("der Phasen-Papierkorb ist vollständig entfernt",
+      "papierkorb()" not in _html18 and "phase-loeschen" not in _html18)
+check("Entf löscht die ausgewählte Loop-Phase",
+      'e.key === "Delete" && gewaehltePhase !== null' in _html18
+      and 'ruf("phase_loeschen", {phase: phase})' in _html18)
 _frisch18 = ["scan_neu_laden", "scan_lernvorschau_uebernehmen", "scan_oeffnen"]
 check("und beim Laden sortiert es von selbst",
       all(n in _html18[_html18.index("async function rufScan("):

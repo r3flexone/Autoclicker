@@ -300,6 +300,12 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
                          "Boss-Watcher: übersprungen", "Boss-Watcher: SKIP!")
             return True
 
+        if state.skip_step_event.is_set():
+            state.skip_step_event.clear()
+            _step_status(debug, phase, step_num, total_steps,
+                         "Block übersprungen", "Boss-Watcher: BLOCK ÜBERSPRUNGEN")
+            return True
+
         scan_count += 1
         found, boss = execute_boss_scan(state, watcher_name)
 
@@ -437,6 +443,10 @@ def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: in
     # aufgenommen zu werden: sonst hinge die Anzeige an der Schleifenfrequenz.
     letztes_bild, bild = 0.0, None
     while not state.stop_event.is_set():
+        if state.skip_step_event.is_set():
+            state.skip_step_event.clear()
+            _step_status(debug, phase, step_num, total_steps, "Block übersprungen")
+            return GATE_SKIP
         if state.skip_event.is_set():
             state.skip_event.clear()
             # SKIP überspringt das WARTEN, nicht den Schritt — der Klick folgt.
@@ -785,9 +795,22 @@ def _scan_ohne_namen(step: SequenceStep) -> "str | None":
     return None
 
 
+def _block_skip(state: AutoClickerState, phase: str, step_num: int,
+                total_steps: int) -> bool:
+    """Konsumiert den echten Block-Skip und meldet ihn eindeutig."""
+    if not state.skip_step_event.is_set():
+        return False
+    state.skip_step_event.clear()
+    _step_status(is_verbose_debug(state), phase, step_num, total_steps,
+                 "Block übersprungen", "BLOCK ÜBERSPRUNGEN")
+    return True
+
+
 def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                  total_steps: int, phase: str) -> bool:
     """Führt einen einzelnen Schritt aus: Erst warten/prüfen, DANN klicken."""
+    if _block_skip(state, phase, step_num, total_steps):
+        return True
     if check_failsafe(state):
         print(col("\n[FAILSAFE] Maus in Ecke erkannt! Stoppe...", "red"))
         state.stop_event.set()
@@ -874,6 +897,8 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if state.stop_event.is_set():
         return False
+    if _block_skip(state, phase, step_num, total_steps):
+        return True
 
     if step.wait_only:
         # Reines Warten hat keine Wirkung, die man nachpruefen koennte.
@@ -906,6 +931,8 @@ def _wirkung_eingetreten(state: AutoClickerState, vc, timeout: float) -> tuple[b
     ende = time.time() + max(0.0, timeout)
     letzter = "kein Screenshot"
     while True:
+        if state.skip_step_event.is_set():
+            return False, letzter
         img = take_screenshot((vc.pixel[0], vc.pixel[1], vc.pixel[0] + 1, vc.pixel[1] + 1))
         if img is not None:
             aktuell = img.getpixel((0, 0))[:3]
@@ -942,12 +969,16 @@ def _mit_nachpruefung(state: AutoClickerState, step: SequenceStep, step_num: int
     timeout = state.config.verify_timeout
 
     for versuch in range(1, versuche + 1):
+        if _block_skip(state, phase, step_num, total_steps):
+            return True
         if not aktion(state, step, step_num, total_steps, phase):
             return False
         if state.stop_event.is_set():
             return False
 
         erfuellt, vergleich = _wirkung_eingetreten(state, vc, timeout)
+        if _block_skip(state, phase, step_num, total_steps):
+            return True
         if erfuellt:
             _step_status(debug, phase, step_num, total_steps, "Wirkung bestaetigt",
                          f"Nachpruefung erfuellt | {vergleich}")

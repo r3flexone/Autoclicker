@@ -276,6 +276,11 @@ def _warte_schleife(state: AutoClickerState, seconds: float, remaining: float,
                 status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c))
             return True
 
+        # Der eigene Block-Skip bleibt gesetzt. Der Dispatcher konsumiert ihn
+        # direkt nach dieser Schleife und beendet den Block VOR Klick/Taste.
+        if state.skip_step_event.is_set():
+            return True
+
         if not wait_while_paused(state, message):
             return False
 

@@ -263,4 +263,5 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         template=new_template,
         min_confidence=new_confidence,
         template_variants=list(item.template_variants),
+        enabled=item.enabled,
     )

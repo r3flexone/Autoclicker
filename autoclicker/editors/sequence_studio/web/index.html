@@ -16,7 +16,7 @@
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
   Umsortieren, Feldregeln) liegt in bridge.py und wird dort gemessen.
 -->
-  <link rel="stylesheet" href="styles.css?v=20260824-14">
+  <link rel="stylesheet" href="styles.css?v=20260825-2">
 </head>
 <body>
 <div class="app">
@@ -169,13 +169,12 @@
       <div class="abschnitt" id="ab-itemwahl">
         <span class="ueberschrift">ITEM-SCAN</span>
         <select id="scan-offen"></select>
-        <!-- **Der Name steht in der Maske des Scans**, im Reiter „Scans"
-             — wie bei Slot und Item auch. Hier stand einmal ein zweites
-             Namensfeld: solange die Scan-Einstellungen drei Spalten entfernt
-             lagen, war das die kuerzere Strecke; seit die Maske sie traegt,
-             waeren es zwei Eingaben fuer denselben Wert, und man muesste
-             raten, welche fuehrt. Diese Klappliste bleibt: sie sagt, an
-             welchem Spiel gerade gearbeitet wird. -->
+        <!-- Die Auswahl sagt, WORAN gearbeitet wird; das Feld darunter ändert
+             dessen Namen. Die Scan-Maske rechts ist im geführten Arbeitsweg
+             nicht sichtbar und deshalb kein Ersatz für diese Bearbeitungsfläche. -->
+        <label class="feld"><span>Scan-Name</span>
+          <input id="scan-name" autocomplete="off" placeholder="Name des Item-Scans">
+        </label>
         <!-- Zwei Knoepfe, gleiche Haelften — dieselbe Regel wie im Kopf der
              rechten Spalte. Vorher waren sie verschieden breit (Textbreite) und
              die Zahl dahinter wurde abgeschnitten oder brach um; drei Breiten
@@ -204,7 +203,10 @@
                 </span>
               </label>
               <div class="scan-quellenstand">
-                <span class="klein wachse" id="scan-bereich">Ganzer Bildschirm</span>
+                <span class="scan-quelleninfo" id="scan-quelleninfo">
+                  <span class="scan-quelle-titel" id="scan-quellenname">Ganzer Bildschirm</span>
+                  <span class="klein mono" id="scan-bereich" hidden></span>
+                </span>
                 <button class="btn still" id="scan-vollbild">Zurück auf Vollbild</button>
               </div>
               <button class="btn still" id="scan-aufziehen"
@@ -225,7 +227,8 @@
             </button>
             <div class="scan-assistent-inhalt" id="scan-schritt-2-inhalt" hidden>
               <p class="hinweis">Am einfachsten mit einem leeren Inventar: Bereich markieren und
-                danach auf den Hintergrund eines leeren Slots klicken.</p>
+                danach auf den Hintergrund eines leeren Slots klicken. Die Ecken dürfen in der
+                mittleren Arbeitsfläche über das Bild hinausgehen; sie rasten am Bildrand ein.</p>
               <button class="btn haupt scan-assistent-haupt" id="scan-slots-finden">Slots automatisch finden</button>
               <button class="btn still scan-assistent-haupt" id="scan-slot-neu">Einzelnen Slot zeichnen</button>
             </div>
@@ -378,6 +381,6 @@
   </div>
 </div>
 
-  <script src="app.js?v=20260824-14"></script>
+  <script src="app.js?v=20260825-2"></script>
 </body>
 </html>

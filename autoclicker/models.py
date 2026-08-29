@@ -455,6 +455,10 @@ class ItemProfile:
     # grossen Slots vorkommen. `template` bleibt fuer bestehende JSON-Dateien und
     # Editoren die erste Vorlage; weitere, groessenpassende Aufnahmen stehen hier.
     template_variants: list[str] = field(default_factory=list)
+    # Das Profil bleibt vollständig im Scan gespeichert, kann für den Lauf aber
+    # vorübergehend geparkt werden. Hinter allen bisherigen Feldern, damit alte
+    # positionale Konstruktionen ihre Bedeutung behalten.
+    enabled: bool = True
 
     def template_names(self) -> list[str]:
         """Alle Vorlagen ohne leere oder doppelte Dateinamen."""
@@ -819,6 +823,9 @@ class AutoClickerState:
     quit_event: threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
     skip_event: threading.Event = field(default_factory=threading.Event)
+    # Anders als skip_event (nur die laufende Wartezeit) verwirft dieses Event
+    # den kompletten aktuellen Block samt Klick/Taste/Scan.
+    skip_step_event: threading.Event = field(default_factory=threading.Event)
     restart_event: threading.Event = field(default_factory=threading.Event)
     skip_cycle_event: threading.Event = field(default_factory=threading.Event)
     finish_event: threading.Event = field(default_factory=threading.Event)

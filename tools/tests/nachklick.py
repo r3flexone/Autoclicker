@@ -199,6 +199,13 @@ finally:
 
 
 # ---------------------------------------------------------------------------
+# Die folgenden Abschnitte übernehmen Punkte und speichern dabei absichtlich.
+# Sie dürfen deshalb nie im echten Datenordner des Benutzers laufen.
+_sand_mittel = tempfile.mkdtemp(prefix="nachklick_laufzeit_")
+_cwd_mittel = _os.getcwd()
+_os.chdir(_sand_mittel)
+Path("sequences").mkdir()
+
 section("Nachklicken: der Zeiger steht auf der Stelle, bevor man klickt")
 
 # **Warum das der Kern der Runde ist**: steht der Zeiger schon dort, wo der Punkt
@@ -395,6 +402,8 @@ _klick(_s8, 900, 950, None)
 check("eine echte Korrektur wird erfasst und am Ende geschrieben",
       (_s8.points[1].x, _s8.points[1].y) == (900, 950))
 _stop(_s8, "Test")
+
+_os.chdir(_cwd_mittel)
 
 
 # ---------------------------------------------------------------------------

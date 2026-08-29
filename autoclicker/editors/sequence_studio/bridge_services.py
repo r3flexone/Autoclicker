@@ -111,7 +111,7 @@ class BridgeServicesMixin:
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
-    LAUF_BEFEHLE = ("start", "start_manuell", "stop", "pause", "skip", "finish",
+    LAUF_BEFEHLE = ("start", "start_manuell", "stop", "pause", "skip", "skip_step", "finish",
                     "manuell", "manuell_aktion", "zeitplan")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
@@ -218,6 +218,7 @@ class BridgeServicesMixin:
                 "stop": "Stopp geschickt.",
                 "pause": "Pause umgeschaltet.",
                 "skip": "Aktuelle Wartezeit wird übersprungen.",
+                "skip_step": "Aktueller Block wird vollständig übersprungen.",
                 "finish": "Zyklus wird sauber abgeschlossen.",
                 "manuell": "Manueller Modus umgeschaltet.",
                 "manuell_aktion": "Entscheidung geschickt.",
@@ -396,6 +397,8 @@ class BridgeServicesMixin:
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
+        from ...sequence_studio import merke_zuletzt_verwendet
+        merke_zuletzt_verwendet(self.filepath)
         return self._melde(f"Geladen: {name}")
 
     def neu(self, daten: Optional[dict] = None) -> dict:
@@ -413,7 +416,7 @@ class BridgeServicesMixin:
         # zur Laufzeit nichts (der Worker geht durch null Schritte). Ohne sie war
         # der erste Griff nach dem Anlegen immer derselbe: „+ Loop-Phase".
         self.board = sequence_to_board(Sequence(
-            name=basis, loop_phases=[LoopPhase(name="Loop", repeat=1, steps=[])]))
+            name=basis, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
         self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
         self._scan_init()
         self._auswahl_leeren()
@@ -508,6 +511,8 @@ class BridgeServicesMixin:
         self._gespeichert = True
         self._dirty = False
         self._stand_merken()
+        from ...sequence_studio import merke_zuletzt_verwendet
+        merke_zuletzt_verwendet(self.filepath)
         text = f"Gespeichert: {neu.name}"
         if verschoben:
             text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
