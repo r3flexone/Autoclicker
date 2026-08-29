@@ -46,6 +46,7 @@ config.json
 .lauf.json
 .aufnahme.json
 .studio-sequenz.json
+.nachklick.json
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben

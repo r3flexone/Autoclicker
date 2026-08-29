@@ -10,6 +10,7 @@ Reihenfolge, was eine Runde NICHT erreicht — und vor allem, dass sie die
 Sequenz nicht anfasst.
 """
 import os as _os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -482,3 +483,104 @@ check("das Studio nennt dieselben vier Tasten in derselben Reihenfolge",
       _js_tasten == [(t_[0], t_[1]) for t_ in _nk.TASTEN])
 check("und CTRL+ALT+J ist das Übernehmen",
       _nk.TASTEN[-1][0] == "CTRL+ALT+J" and "übernehm" in _nk.TASTEN[-1][1])
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: das Studio sieht, was die Runde gerade macht")
+
+# Die Runde laeuft im HAUPTPROZESS (dort haengt der Maus-Hook), bedient wird sie
+# oft aus dem Studio. Ohne den Rueckkanal stand dort nur "gestartet", waehrend
+# die Konsole jeden Schritt einzeln meldete — und genau waehrend des Klickens
+# will man wissen, welcher Punkt dran ist.
+import json as _json_nk
+
+_sand_st = tempfile.mkdtemp(prefix="nachklick_status_")
+_cwd_st = _os.getcwd()
+_os.chdir(_sand_st)
+try:
+    Path("sequences").mkdir()
+    _s12 = _ST()
+    _aktiv(_s12, _SEQ(name="Sicht", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
+           [_punkt(1, 100, 100, (10, 20, 30)), _punkt(2, 200, 200),
+            _punkt(3, 300, 300)])
+    _ruesten(_s12)
+
+    def _stand():
+        with open(_nk.NACHKLICK_STATUS_FILE if hasattr(_nk, "NACHKLICK_STATUS_FILE")
+                  else ".nachklick.json", "r", encoding="utf-8") as f:
+            return _json_nk.load(f)
+
+    _st0 = _stand()
+    check("das Ruesten schreibt sofort einen Stand", _st0["aktiv"] is True)
+    check("mit Gesamtzahl und Startindex",
+          _st0["gesamt"] == 3 and _st0["index"] == 0)
+    check("und dem Punkt, der als Naechstes dran ist",
+          _st0["punkt"]["id"] == 1 and _st0["punkt"]["x"] == 100)
+    check("die Farbe kommt mit, wenn der Punkt eine hat",
+          _st0["punkt"]["farbe"] == [10, 20, 30])
+
+    # --- Ein Klick weit daneben ist "gesetzt", einer daneben-daneben "passt" ---
+    _klick(_s12, 150, 160, (44, 55, 66))
+    _st1 = _stand()
+    check("nach dem Klick steht der naechste Punkt da", _st1["punkt"]["id"] == 2)
+    check("und der erledigte im Verlauf",
+          [v["art"] for v in _st1["verlauf"]] == ["gesetzt"])
+    check("mit alter und neuer Stelle",
+          _st1["verlauf"][0]["alt"] == [100, 100]
+          and _st1["verlauf"][0]["neu"] == [150, 160])
+
+    # **Das ist der Grund fuer `nachklick_verlauf`**: ein bestaetigter Punkt
+    # (innerhalb PASST_TOLERANZ) landet bewusst NICHT in `nachklick_gesetzt`.
+    # Ableiten liesse sich "passt" also nicht — im Fenster saehe er genauso aus
+    # wie ein uebersprungener, und das ist die eine Auskunft, die zaehlt.
+    _klick(_s12, 200, 200, None)
+    _st2 = _stand()
+    check("ein bestaetigter Punkt heisst 'passt', nicht 'uebersprungen'",
+          [v["art"] for v in _st2["verlauf"]] == ["gesetzt", "passt"])
+    check("und zaehlt trotzdem nicht als Aenderung", _st2["geaendert"] == 1)
+
+    _skip(_s12)
+    _st3 = _stand()
+    check("ein uebersprungener steht als solcher im Verlauf",
+          [v["art"] for v in _st3["verlauf"]]
+          == ["gesetzt", "passt", "uebersprungen"])
+
+    # Der dritte Punkt WAR der letzte — die Runde endet damit von selbst, und
+    # der Abschluss traegt den vollstaendigen Verlauf. Wuerde er erst nach dem
+    # Leeren geschrieben, staende hier eine leere Runde: ausgerechnet in dem
+    # Moment, in dem man nachsieht, was sie ergeben hat.
+    check("die abgeschlossene Runde bleibt lesbar", _st3["aktiv"] is False)
+    check("und sagt, wie viele Stellen sich geaendert haben",
+          _st3["geaendert"] == 1)
+    check("und warum sie zu Ende ist", "alle Punkte durch" in _st3.get("grund", ""))
+    check("der Verlauf ueberlebt das Ende vollstaendig", len(_st3["verlauf"]) == 3)
+    check("waehrend der State selbst geraeumt ist",
+          _s12.nachklick_verlauf == [] and _s12.nachklick_aktiv is False)
+finally:
+    _os.chdir(_cwd_st)
+    shutil.rmtree(_sand_st, ignore_errors=True)
+
+
+# Zurueck heisst zurueck — auch in der Anzeige. Bliebe der Verlaufseintrag
+# stehen, zeigte das Fenster einen Punkt als erledigt, den die Runde gleich
+# noch einmal abfragt.
+_sand_zk = tempfile.mkdtemp(prefix="nachklick_zurueck_")
+_cwd_zk = _os.getcwd()
+_os.chdir(_sand_zk)
+try:
+    Path("sequences").mkdir()
+    _s13 = _ST()
+    _aktiv(_s13, _SEQ(name="Zurueck", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])]),
+           [_punkt(1, 100, 100), _punkt(2, 200, 200)])
+    _ruesten(_s13)
+    _klick(_s13, 400, 400, None)
+    check("ein Eintrag steht im Verlauf", len(_s13.nachklick_verlauf) == 1)
+    _zurueck(_s13)
+    check("zurueck nimmt ihn wieder heraus", _s13.nachklick_verlauf == [])
+    check("und die Runde steht wieder auf dem ersten Punkt",
+          _s13.nachklick_index == 0)
+finally:
+    _os.chdir(_cwd_zk)
+    shutil.rmtree(_sand_zk, ignore_errors=True)

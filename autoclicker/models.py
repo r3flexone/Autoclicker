@@ -895,6 +895,18 @@ class AutoClickerState:
     # folgenlos, und „nichts passiert" bleibt von „alles gleich geblieben"
     # unterscheidbar.
     nachklick_gesetzt: list = field(default_factory=list)
+    # Was die Runde GETAN hat: (Punkt-ID, Art) je erledigtem Punkt, in der
+    # Reihenfolge des Durchgangs. Art ist "passt", "gesetzt", "uebersprungen"
+    # oder "fehlt". Ableiten liesse sich das NICHT: ein bestaetigter Punkt
+    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `nachklick_gesetzt`,
+    # und ohne diese Liste saehe er im Fenster genauso aus wie ein
+    # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
+    # `nachklick_gesetzt`.
+    nachklick_verlauf: list = field(default_factory=list)
+    # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE,
+    # Rad). Steht im Banner und im Studio — eine Runde, die schweigt, was sie
+    # auslaesst, sieht vollstaendiger aus als sie ist.
+    nachklick_sonstige: int = 0
     # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus
     # `window_focus_title`). **Ohne den frisst die Runde jeden Klick** — auch den
     # auf das Studio-Fenster, die Konsole oder ein Schliessen-Kreuz, und schreibt

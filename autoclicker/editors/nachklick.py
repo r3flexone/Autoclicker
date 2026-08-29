@@ -29,6 +29,8 @@ Punkte-Editor beim Start, und alles Weitere sind globale Hotkeys.
 """
 
 import threading
+import time
+from pathlib import Path
 
 from ..models import (
     AutoClickerState,
@@ -37,7 +39,9 @@ from ..models import (
     Sequence,
     block_type,
 )
-from ..utils import col, err, hint, info, ok, describe_color, warn
+from ..config import NACHKLICK_STATUS_FILE
+from ..utils import (col, err, hint, info, ok, describe_color, warn,
+                     atomic_write, compact_json)
 from ..winapi import (
     get_client_rect_by_title,
     get_foreground_window_title,
@@ -70,6 +74,68 @@ PASST_TOLERANZ = 2
 # Welche fremden Fenster schon gemeldet wurden — einmal je Titel. Ohne die Sperre
 # stünde bei jedem Klick in einem Menü dieselbe Zeile.
 _gemeldete_fenster: set = set()
+
+# Der Rückkanal zum Studio-Fenster: dieselbe Bauart wie `.aufnahme.json` bei der
+# Aufnahme und `.lauf.json` beim Lauf. Kein Log — die Datei beschreibt den Stand
+# JETZT und wird überschrieben.
+_STATUS_DATEI = Path(NACHKLICK_STATUS_FILE)
+
+
+def _punkt_json(punkt) -> dict:
+    """Ein Punkt so, wie ihn die Anzeige braucht."""
+    if punkt is None:
+        return {}
+    return {"id": punkt.id, "name": punkt.name or f"Punkt {punkt.id}",
+            "x": punkt.x, "y": punkt.y,
+            "farbe": list(punkt.color) if punkt.color else None}
+
+
+def _status_daten(state: AutoClickerState) -> dict:
+    """Der Stand der Runde als reine Daten — unter Lock gelesen, wie überall."""
+    with state.lock:
+        aktiv = state.nachklick_aktiv
+        ids = list(state.nachklick_punkte)
+        i = state.nachklick_index
+        verlauf = list(state.nachklick_verlauf)
+        gesetzt = {eintrag[0]: eintrag for eintrag in state.nachklick_gesetzt}
+        seq = state.nachklick_sequence
+        pool = list(seq.points if seq is not None else state.points)
+        daten = {"aktiv": aktiv, "pausiert": state.nachklick_pausiert and aktiv,
+                 "name": state.nachklick_name, "ziel": state.nachklick_ziel,
+                 "sonstige": state.nachklick_sonstige}
+    punkte = {p.id: p for p in pool}
+    daten["index"] = i
+    daten["gesamt"] = len(ids)
+    daten["punkt"] = _punkt_json(punkte.get(ids[i])) if i < len(ids) else {}
+    # Der Verlauf ist das, was die Konsole Zeile für Zeile ausgibt — im Fenster
+    # steht er als Liste, damit man ihn beim Klicken überfliegen kann.
+    daten["verlauf"] = [
+        {"id": pid, "art": art,
+         "name": (punkte[pid].name or f"Punkt {pid}") if pid in punkte else f"Punkt {pid}",
+         "alt": list(gesetzt[pid][1]) if pid in gesetzt else None,
+         "neu": list(gesetzt[pid][2]) if pid in gesetzt else None}
+        for pid, art in verlauf]
+    daten["geaendert"] = len(gesetzt)
+    daten["stand"] = time.time()
+    return daten
+
+
+def _status_schreiben(state: AutoClickerState) -> None:
+    """Überschreibt den Live-Stand; Fehler dürfen die Runde nie stören.
+
+    **Das ist bewusst ein Schreibvorgang aus dem Hook heraus**, und der Satz in
+    CLAUDE.md („im Hook nicht auf Platte schreiben") meint etwas anderes: das
+    vollständige Speichern am Ende (Sequenz plus Punkte serialisieren, mehrere
+    Dateien). Hier geht eine knappe JSON-Zeile über `atomic_write` raus —
+    dieselbe Grössenordnung, die die Aufnahme bei JEDEM aufgezeichneten Klick
+    schreibt (`_status_schreiben` in `sequence_recorder.py`). Ohne den Schreiber
+    sähe das Fenster von der Runde nichts als „läuft".
+    """
+    try:
+        atomic_write(_STATUS_DATEI, compact_json(_status_daten(state)))
+    except (OSError, TypeError, ValueError, AttributeError):
+        pass
+
 
 
 def klickpunkte(seq: Sequence) -> tuple[list, list]:
@@ -165,10 +231,13 @@ def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
         state.nachklick_punkte = ids
         state.nachklick_index = 0
         state.nachklick_gesetzt = []
+        state.nachklick_verlauf = []
+        state.nachklick_sonstige = len(sonstige)
         state.nachklick_ziel = ziel
         state.nachklick_name = seq.name
         state.nachklick_sequence = seq
     _gemeldete_fenster.clear()
+    _status_schreiben(state)
     return ids, sonstige
 
 
@@ -295,6 +364,11 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     Beenden des Programms: in einer echten Runde landeten so drei Klicks auf
     Fensterdekoration dauerhaft in den Punkten.
     """
+    # **Der Abschluss wird eingesammelt, bevor die Listen geleert werden.**
+    # Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde —
+    # ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
+    # Dieselbe Regel wie `status.beende()`: die Zusammenfassung bleibt stehen.
+    abschluss = _status_daten(state) if nachklick_laeuft(state) else None
     with state.lock:
         if not state.nachklick_aktiv:
             return
@@ -319,11 +393,24 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
         state.nachklick_punkte = []
         state.nachklick_index = 0
         state.nachklick_gesetzt = []
+        state.nachklick_verlauf = []
+        state.nachklick_sonstige = 0
         state.nachklick_ziel = ""
         state.nachklick_name = ""
         state.nachklick_sequence = None
     remove_mouse_hook()
     _gemeldete_fenster.clear()
+    # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
+    # dieselbe Regel wie bei `status.beende()`: sonst ist das Fenster genau
+    # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
+    if abschluss is not None:
+        abschluss.update({"aktiv": False, "pausiert": False, "punkt": {},
+                          "grund": grund, "uebernommen": bool(uebernehmen),
+                          "stand": time.time()})
+        try:
+            atomic_write(_STATUS_DATEI, compact_json(abschluss))
+        except (OSError, TypeError, ValueError):
+            pass
 
     # **Geschrieben wird hier, nicht im Hook.** Ein Low-Level-Maus-Hook muss
     # schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
@@ -360,6 +447,7 @@ def nachklick_pause(state: AutoClickerState) -> None:
             return
         state.nachklick_pausiert = not state.nachklick_pausiert
         pausiert = state.nachklick_pausiert
+    _status_schreiben(state)
     if pausiert:
         print(f"\n{col('[PAUSE]', 'yellow')} Klicks setzen KEINEN Punkt — "
               "navigiere, wie du willst.")
@@ -377,6 +465,7 @@ def nachklick_ueberspringen(state: AutoClickerState) -> None:
         if state.nachklick_index >= len(state.nachklick_punkte):
             return
         punkt_id = state.nachklick_punkte[state.nachklick_index]
+        state.nachklick_verlauf.append((punkt_id, "uebersprungen"))
         state.nachklick_index += 1
         fertig = state.nachklick_index >= len(state.nachklick_punkte)
     print(f"  {col('[ÜBERSPRUNGEN]', 'yellow')} #{punkt_id} bleibt, wo er ist.")
@@ -402,6 +491,11 @@ def nachklick_zurueck(state: AutoClickerState) -> None:
             print(f"  {hint('Schon beim ersten Punkt.')}")
             return
         state.nachklick_index -= 1
+        # Zurueck heisst zurueck — auch in der Anzeige. Bliebe der
+        # Eintrag stehen, zeigte das Fenster einen Punkt als erledigt,
+        # den die Runde gleich noch einmal abfragt.
+        if state.nachklick_verlauf:
+            state.nachklick_verlauf.pop()
         punkt_id = state.nachklick_punkte[state.nachklick_index]
         verworfen = None
         for i, eintrag in enumerate(state.nachklick_gesetzt):
@@ -462,6 +556,7 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
                 or state.nachklick_punkte[state.nachklick_index] != punkt_id):
             return
         if punkt is None:
+            state.nachklick_verlauf.append((punkt_id, "fehlt"))
             state.nachklick_index += 1
             fertig = state.nachklick_index >= len(state.nachklick_punkte)
             name, alt, gleich = "", None, False
@@ -478,6 +573,8 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
                 state.nachklick_gesetzt = [
                     e for e in state.nachklick_gesetzt if e[0] != punkt_id]
                 state.nachklick_gesetzt.append((punkt_id, alt, (x, y), color))
+            state.nachklick_verlauf.append(
+                (punkt_id, "passt" if gleich else "gesetzt"))
             state.nachklick_index += 1
             fertig = state.nachklick_index >= len(state.nachklick_punkte)
 
@@ -527,6 +624,9 @@ def _zeige_aktuellen(state: AutoClickerState, verzoegert: bool = False) -> None:
     besser als das Nicht-Springen — `verzoegert=True` sagt „der Klick ist gerade
     erst passiert".
     """
+    # Jede Bewegung der Runde geht hier durch — also steht hier auch der
+    # eine Schreibvorgang fuer das Studio-Fenster.
+    _status_schreiben(state)
     with state.lock:
         if not state.nachklick_aktiv:
             return

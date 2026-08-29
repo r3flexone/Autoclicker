@@ -906,12 +906,17 @@ _MIGRATE_AUSNAHMEN = {
     # gelesen wie eine Fremddatei - fehlerhafte Eintraege fliegen einzeln raus.
     "autoclicker/runtime/item_scan.py":
         "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
-    # Der einzige json.load() in der Bruecke ist der Laufstatus (.lauf.json aus
-    # runtime/status.py): eine transiente Zustandsdatei, die der Worker beim Ende
-    # loescht - kein Bestand, also nichts zu heben. Sequenzen laedt sie ueber
-    # load_sequence_file(), und das migriert.
+    # Die Bruecke laedt aus zwei transienten Zustandsdateien (.lauf.json aus
+    # runtime/status.py, .aufnahme.json aus dem Recorder): kein Bestand, also
+    # nichts zu heben. Sequenzen laedt sie ueber load_sequence_file(), und das
+    # migriert.
     "autoclicker/editors/sequence_studio/bridge_services.py":
-        "liest nur den transienten Laufstatus; Sequenzen ueber load_sequence_file()",
+        "liest nur transiente Zustandsdateien; Sequenzen ueber load_sequence_file()",
+    # Dasselbe im Werkzeuge-Reiter: .nachklick.json ist der Live-Stand der
+    # Klick-Runde aus dem Hauptprozess. Er wird bei jeder Bewegung ueberschrieben
+    # und beschreibt den Moment, nicht einen Bestand.
+    "autoclicker/editors/sequence_studio/bridge_werkzeuge.py":
+        "liest nur den transienten Stand der Klick-Runde",
 }
 _leser, _ohne_aufruf = [], []
 for _pf in sorted((_repo / "autoclicker").rglob("*.py")):

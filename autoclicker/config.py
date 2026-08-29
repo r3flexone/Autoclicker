@@ -31,6 +31,11 @@ RUN_STATUS_FILE: str = ".lauf.json"
 # Rollende Live-Ausgabe der Sequenz-Aufnahme für das Studio. Kein Bestand und
 # kein Log: die Datei wird bei jedem Ereignis überschrieben.
 RECORD_STATUS_FILE: str = ".aufnahme.json"
+# Dasselbe fuer die Klick-Runde: welcher Punkt gerade dran ist und was mit den
+# vorherigen passiert ist. Sie laeuft im Hauptprozess (systemweiter Maus-Hook),
+# bedient wird sie aber oft aus dem Studio — ohne diese Datei stuende dort nur
+# "laeuft", waehrend die Konsole jeden Schritt einzeln meldet.
+NACHKLICK_STATUS_FILE: str = ".nachklick.json"
 # Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
 STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequenz.json"

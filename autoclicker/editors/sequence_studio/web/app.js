@@ -4657,6 +4657,12 @@ let wzAufnahmeBeschreibung = "";
 let wzAufnahmePoll = 0;
 let wzAufnahmeLivePoll = 0;
 let wzAufnahmeLive = {aktiv: false, pausiert: false, anzahl: 0, ereignisse: []};
+/* Der Live-Stand der Klick-Runde. Sie laeuft im HAUPTPROZESS (dort haengt der
+ * Maus-Hook), also weiss dieses Fenster von sich aus nichts ueber sie — der
+ * Stand kommt ueber `.nachklick.json`. Ohne ihn stand hier nur „gestartet",
+ * waehrend die Konsole jeden Schritt einzeln meldete. */
+let wzNachklickPoll = 0;
+let wzNachklickLive = {aktiv: false, index: 0, gesamt: 0, verlauf: [], punkt: {}};
 /* Eine offene Farb-Rueckfrage: die Stelle ist angefahren, aber die Farbe dort
  * weicht von der gespeicherten ab. Bis das jemand bestaetigt, ist NICHTS gesetzt
  * - der Zustand lebt nur hier, nicht in der Bruecke. */
@@ -5384,6 +5390,124 @@ function wzTastenTabelle(tasten = WZ_TASTEN) {
   return el("table", {class: "wz-tasten"}, rumpf);
 }
 
+/* Was ein erledigter Punkt geworden ist. Vier Ausgaenge, weil die Runde vier
+ * kennt — und „bestaetigt" von „uebersprungen" zu unterscheiden ist der ganze
+ * Grund fuer `nachklick_verlauf`: beide aendern nichts, aber nur einer heisst
+ * „ich habe hingesehen". */
+const WZ_NK_ART = {
+  passt: ["✓", "nk-passt", "bestätigt — bleibt, wo er ist"],
+  gesetzt: ["→", "nk-gesetzt", "neu gesetzt"],
+  uebersprungen: ["↷", "nk-skip", "übersprungen"],
+  fehlt: ["✕", "nk-fehlt", "Punkt gibt es nicht mehr"],
+};
+
+/** Der Live-Stand der Runde: wo sie steht, was dran ist, was war. */
+function wzNachklickAusgabeFuellen(ziel) {
+  if (!ziel) return;
+  const d = wzNachklickLive || {};
+  const gesamt = d.gesamt || 0;
+  const fertig = Math.min(d.index || 0, gesamt);
+  const laeuft = !!d.aktiv && !d.verwaist;
+
+  // Der Kopf beantwortet die erste Frage („laeuft das ueberhaupt noch?"), und
+  // ein verwaister Stand sagt es, statt eine tote Runde als lebend zu zeigen.
+  const kopftext = d.verwaist ? "KEIN HAUPTPROZESS"
+    : d.pausiert ? "PAUSIERT" : laeuft ? "LÄUFT" : gesamt ? "BEENDET" : "NICHT GESTARTET";
+  ziel.replaceChildren(el("div", {class: "wz-ausgabe-kopf"},
+    el("span", {}, kopftext),
+    el("span", {class: "wz-ausgabe-zaehler"},
+      gesamt ? fertig + " von " + gesamt + " Punkt(en)" : "—")));
+
+  if (!gesamt) {
+    ziel.appendChild(el("div", {class: "wz-ausgabe-zeilen"},
+      el("div", {class: "wz-ausgabe-leer"},
+        "Noch keine Runde gelaufen. „Runde starten“ setzt den Zeiger auf den "
+        + "ersten Punkt.")));
+    return;
+  }
+
+  // Ein Balken statt einer zweiten Zahl: wie weit die Runde ist, sieht man
+  // beim Klicken aus dem Augenwinkel — eine Zahl muss man lesen.
+  ziel.appendChild(el("div", {class: "nk-balken"},
+    el("div", {class: "nk-balken-fuell",
+               style: "width:" + Math.round(fertig / gesamt * 100) + "%"})));
+
+  // Der aktuelle Punkt ist die Antwort auf „was macht das Programm gerade".
+  const p = d.punkt || {};
+  if (laeuft && p.id !== undefined) {
+    ziel.appendChild(el("div", {class: "nk-jetzt"},
+      el("span", {class: "nk-jetzt-marke"}, "jetzt"),
+      el("span", {class: "zahl"}, "#" + p.id),
+      el("span", {class: "nk-jetzt-name"}, p.name || ""),
+      el("span", {class: "nk-jetzt-pos"}, "(" + p.x + ", " + p.y + ")"),
+      p.farbe ? el("span", {class: "wz-ausgabe-farbe",
+                            style: "color:rgb(" + p.farbe.join(",") + ")"}, "█") : null));
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"}, d.pausiert
+      ? "Pausiert — Klicks setzen keinen Punkt. CTRL+ALT+H macht weiter."
+      : "Der Zeiger steht schon dort. Stimmt die Stelle — klicken. Sonst "
+        + "hinfahren und dort klicken."));
+  } else if (!laeuft && gesamt) {
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"},
+      (d.geaendert || 0) + " Stelle(n) geändert. Was davon geschrieben wurde, "
+      + "hängt daran, ob übernommen oder verworfen wurde."));
+  }
+
+  // Der Verlauf laeuft rueckwaerts: das Letzte ist das, was man sucht.
+  const verlauf = Array.isArray(d.verlauf) ? d.verlauf.slice(-6).reverse() : [];
+  const zeilen = el("div", {class: "wz-ausgabe-zeilen"});
+  if (!verlauf.length) {
+    zeilen.appendChild(el("div", {class: "wz-ausgabe-leer"},
+      "Noch kein Punkt erledigt."));
+  } else {
+    for (const v of verlauf) {
+      const [zeichen, klasse, was] = WZ_NK_ART[v.art] || ["·", "", v.art];
+      zeilen.appendChild(el("div", {class: "nk-zeile"},
+        el("span", {class: "nk-art " + klasse, title: was}, zeichen),
+        el("span", {class: "zahl"}, "#" + v.id),
+        el("span", {class: "nk-name"}, v.name || ""),
+        el("span", {class: "nk-wohin"}, v.alt && v.neu
+          ? "(" + v.alt[0] + ", " + v.alt[1] + ") → (" + v.neu[0] + ", " + v.neu[1] + ")"
+          : was)));
+    }
+  }
+  ziel.appendChild(zeilen);
+  if (d.sonstige)
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"},
+      d.sonstige + " Stelle(n) erreicht die Runde nicht (beobachtete Pixel, "
+      + "ELSE, Rad) — dafür bleibt walk im Punkte-Menü."));
+}
+
+/* Gepollt wird, solange der Reiter offen ist — nicht nur nach dem eigenen
+ * Startknopf. Die Runde kann aus dem Punkte-Menue gestartet worden sein, und
+ * dann ist dieses Fenster trotzdem der bequemere Platz, um ihr zuzusehen.
+ * Nach dem Ende laeuft der Poll aus (`ruhig`), damit ein offener Reiter nicht
+ * dauerhaft alle 400 ms eine Datei liest. */
+function wzNachklickLiveStarten() {
+  const nummer = ++wzNachklickPoll;
+  let ruhig = 0;
+  const lesen = async () => {
+    if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
+    const stand = await frage("nachklick_status");
+    if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
+    if (stand) {
+      const lief = wzNachklickLive.aktiv;
+      wzNachklickLive = stand;
+      wzNachklickAusgabeFuellen($("wz-nachklick-ausgabe"));
+      // Endet die Runde, sagt es die Statuszeile — sonst merkt man es nur,
+      // wenn man gerade hinsieht.
+      if (lief && !stand.aktiv)
+        setzeStatus({text: "Klick-Runde beendet — " + (stand.geaendert || 0)
+                     + " Stelle(n) geändert.", art: "ok"});
+      ruhig = stand.aktiv ? 0 : ruhig + 1;
+    } else {
+      ruhig += 1;
+    }
+    if (ruhig > 12) return;
+    setTimeout(lesen, wzNachklickLive.aktiv ? 400 : 1000);
+  };
+  setTimeout(lesen, 100);
+}
+
 function wzKlickenBauen() {
   const raus = [wzKopf("klicken", "Punkte nachklicken",
     "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
@@ -5424,11 +5548,19 @@ function wzKlickenBauen() {
   }, "Verwerfen"));
   raus.push(leiste);
 
+  // Der Live-Stand steht ZWISCHEN Knoepfen und Tastentabelle: was das
+  // Programm gerade macht, sucht man dort, wo man es gerade gestartet hat.
+  const ausgabe = el("div", {class: "wz-ausgabe", id: "wz-nachklick-ausgabe"});
+  raus.push(ausgabe);
+  wzNachklickAusgabeFuellen(ausgabe);
+
+  wzNachklickLiveStarten();
   raus.push(wzTastenTabelle());
   raus.push(wzInfo("Bedienung im Spiel",
     "Die Runde läuft wegen des systemweiten Maus-Hooks im Hauptprozess. Die "
-    + "Tasten wirken überall; der Fortschritt steht im Konsolenfenster. Gezählt "
-    + "wird nur, was im Spielfenster geklickt wird (window_focus_title)."));
+    + "Tasten wirken überall — auch mit dem Spiel im Vordergrund. Gezählt "
+    + "wird nur, was im Spielfenster geklickt wird (window_focus_title); ein "
+    + "Klick woanders verbraucht keinen Punkt."));
   return raus;
 }
 

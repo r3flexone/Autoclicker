@@ -1226,3 +1226,34 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   border-radius: 5px;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 0 0 1px rgba(0,0,0,.35);
 }
+
+/* --- Klick-Runde: der Live-Stand aus dem Hauptprozess ------------------- */
+/* Ein Balken statt einer zweiten Zahl: wie weit die Runde ist, sieht man beim
+   Klicken aus dem Augenwinkel — eine Zahl muss man lesen. */
+.nk-balken{height:4px;background:var(--line);border-radius:2px;overflow:hidden;
+  margin:8px 10px 0}
+.nk-balken-fuell{height:100%;background:var(--accent);border-radius:2px;
+  transition:width .18s ease}
+/* Der aktuelle Punkt ist die Antwort auf „was macht das Programm gerade" und
+   traegt deshalb den Akzent — dieselbe Bedeutung wie ueberall: das hier. */
+.nk-jetzt{display:flex;align-items:center;gap:8px;padding:8px 10px 4px;
+  font-size:12px}
+.nk-jetzt-marke{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);font-weight:600}
+.nk-jetzt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--text)}
+.nk-jetzt-pos{color:var(--muted);font-variant-numeric:tabular-nums}
+.nk-hinweis{padding:0 10px 8px;display:block}
+/* Eine Zeile je erledigtem Punkt. Feste Spalten, damit die Stellen
+   untereinander stehen — sonst springt bei jeder Ziffernzahl alles. */
+.nk-zeile{display:grid;grid-template-columns:18px 42px minmax(120px,1fr) minmax(150px,.8fr);
+  gap:8px;align-items:center;padding:3px 10px;font-size:11.5px;color:var(--muted)}
+.nk-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nk-wohin{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.nk-art{text-align:center;font-weight:700}
+/* Vier Ausgaenge, vier Farben — „bestaetigt" und „uebersprungen" aendern beide
+   nichts, aber nur einer heisst „ich habe hingesehen". */
+.nk-art.nk-passt{color:var(--slot-ok)}
+.nk-art.nk-gesetzt{color:var(--accent)}
+.nk-art.nk-skip{color:var(--dim)}
+.nk-art.nk-fehlt{color:var(--slot-offen)}

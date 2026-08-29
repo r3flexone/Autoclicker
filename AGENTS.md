@@ -1890,6 +1890,36 @@ Kalibrierung, also läuft sie im Fenster. Die Klick-Runde braucht dagegen einen
 — sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Nur dafür gibt es den
 Briefkasten-Befehl `nachklick`.
 
+**Und weil sie drüben läuft, gibt es einen Rückkanal** (`.nachklick.json`,
+`NACHKLICK_STATUS_FILE`). Ohne ihn stand im Fenster nur „gestartet", während die
+Konsole jeden Schritt einzeln meldete — und *welcher Punkt gerade dran ist* ist
+genau die Frage, die man beim Klicken hat. Dieselbe Bauart wie `.lauf.json` und
+`.aufnahme.json`: kein Log, sondern der Stand JETZT, überschrieben bei jeder
+Bewegung der Runde. Gelesen wird er über `nachklick_status()` im `frage()`-Kanal.
+
+Drei Regeln dazu:
+
+- **Der Verlauf ist ein eigenes Feld, kein abgeleiteter Wert**
+  (`state.nachklick_verlauf`, Einträge `(Punkt-ID, Art)`). Naheliegend wäre,
+  ihn aus `nachklick_gesetzt` zu rechnen — das geht nicht: ein **bestätigter**
+  Punkt (innerhalb `PASST_TOLERANZ`) landet dort bewusst nicht, und im Fenster
+  sähe er damit genauso aus wie ein übersprungener. Beide ändern nichts, aber
+  nur einer heisst „ich habe hingesehen".
+- **Die Zusammenfassung wird eingesammelt, BEVOR `stop_nachklick()` die Listen
+  leert.** Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde
+  — ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
+  Dieselbe Regel und derselbe Grund wie bei `status.beende()`.
+- **Geschrieben wird aus dem Hook heraus**, und das widerspricht dem Satz oben
+  nur scheinbar: gemeint ist dort das vollständige Speichern am Ende (Sequenz
+  plus Punkte serialisieren, mehrere Dateien). Hier geht eine knappe JSON-Zeile
+  über `atomic_write` raus — dieselbe Grössenordnung, die die Aufnahme bei
+  **jedem** aufgezeichneten Klick schreibt.
+
+Ein Stand, der `aktiv` behauptet und älter als 5 s ist, gilt als **verwaist** —
+dieselbe Rechnung wie beim Laufstatus, und aus demselben Grund: ein abgestürzter
+Hauptprozess hinterlässt sonst eine Runde, der niemand mehr zusieht.
+
+
 **Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet ihre
 Sequenz-Bedienelemente hier aus (der Reiter bearbeitet andere Dateien) — damit war
 aber auch der Sequenzname weg, und bei der Klick-Runde ist das genau die Frage, die

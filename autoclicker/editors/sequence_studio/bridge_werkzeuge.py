@@ -591,6 +591,42 @@ class BridgeWerkzeugeMixin:
                             "Übernommen — was gesetzt wurde, steht im "
                             "Konsolenfenster.")}
 
+    # Aelter als das gilt ein Stand als verwaist — dieselbe Rechnung wie beim
+    # Laufstatus. Die Runde schreibt bei jeder Bewegung; bleibt sie laenger
+    # stumm, ist der Hauptprozess weg und nicht etwa besonders langsam.
+    NACHKLICK_ALTER = 5.0
+
+    def nachklick_status(self, daten: Optional[dict] = None) -> dict:
+        """Was die Runde GERADE macht — gelesen aus `.nachklick.json`.
+
+        Der Zustand liegt im Hauptprozess (dort haengt der Maus-Hook), und ohne
+        diesen Rueckkanal stand im Fenster nur „gestartet": welcher Punkt dran
+        ist, wie weit die Runde ist und was mit den vorherigen passierte, meldete
+        allein die Konsole. Genau das braucht man aber waehrend des Klickens, und
+        zwar dort, wo die Knoepfe sind.
+
+        Reine Auskunft, also `frage()`-Kanal: eine Momentaufnahme kommt hier nicht
+        zurueck, und ueber `ruf()` geholt zerschoesse die Antwort den Editor.
+        """
+        import json
+        import time
+        from ...config import NACHKLICK_STATUS_FILE
+        leer = {"aktiv": False, "index": 0, "gesamt": 0, "verlauf": [],
+                "punkt": {}, "verwaist": False}
+        try:
+            with open(NACHKLICK_STATUS_FILE, "r", encoding="utf-8") as f:
+                stand = json.load(f)
+        except (OSError, ValueError):
+            return leer
+        if not isinstance(stand, dict):
+            return leer
+        # Ein abgestuerzter Hauptprozess hinterlaesst ein „aktiv" ohne jemanden
+        # dahinter. Am Alter erkennbar, und nur solange es aktiv behauptet: eine
+        # abgeschlossene Runde ist Vergangenheit und darf alt sein.
+        alt = time.time() - float(stand.get("stand") or 0)
+        stand["verwaist"] = bool(stand.get("aktiv") and alt > self.NACHKLICK_ALTER)
+        return stand
+
     def nachklick_beim_schliessen(self) -> None:
         """Beim Zumachen des Fensters: eine offene Runde verwerfen.
 
