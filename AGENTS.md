@@ -1920,6 +1920,39 @@ dieselbe Rechnung wie beim Laufstatus, und aus demselben Grund: ein abgestürzte
 Hauptprozess hinterlässt sonst eine Runde, der niemand mehr zusieht.
 
 
+**Ein Griff mit der Maus sagt, dass er wartet** (`WARTE_GRIFFE` in `app.js`,
+`WARTE_TIMEOUT` in `bridge_contract.py`). Acht Aufrufe der Seite warten über
+`_stelle_abwarten()` bzw. `bereich_aufnehmen()` **global auf ENTER** — und der
+Brücken-Aufruf blockiert dabei bis zu einer Minute. Die Seite bekommt in dieser
+Zeit keine Antwort, kann also nichts anzeigen, was von drüben käme; ohne einen
+Hinweis **vor** dem Aufruf sah es aus, als tue das Fenster nichts. Betroffen sind
+Stelle und Bereich im Editor, „Punkt aufnehmen" und „Neu messen", das Messen im
+Farben-Werkzeug, der Referenzpunkt der Kalibrierung und die Parkposition in den
+Einstellungen.
+
+`mitWarten(art, name, daten)` legt den Kasten davor und ruft darunter den Kanal,
+den der Aufruf ohnehin hätte (`ruf` / `frage` / `rufWerkzeug`). Drei Regeln:
+
+- **Die Zeitgrenze steht an EINER Stelle** und wird mitgeliefert
+  (`warte_timeout` in Momentaufnahme und Werkzeug-Daten). Ein Countdown, der
+  neben dem echten Zeitablauf der Brücke läuft, ist schlechter als keiner.
+- **Der Fortschritt wird nicht erfunden.** `bereich_aufnehmen()` will zwei
+  Tastendrücke, aber beide Ecken sind EIN Aufruf (die Hand soll zwischendurch
+  nicht zum Fenster zurück) — die Seite erfährt vom ersten ENTER nichts. Sie
+  sagt deshalb vorher, wie viele kommen, statt eine Ecke 1/2 zu behaupten, die
+  sie nicht sehen kann.
+- **Ein Test hält beide Seiten gegeneinander**: welche Methoden warten, steht in
+  der Brücke; dass die Seite sie über `mitWarten` ruft, in `app.js`. Er prüft
+  beide Richtungen — eine wartende Methode ohne Eintrag ist genau die, bei der
+  das Fenster wieder stumm ist, und ein Eintrag für etwas, das gar nicht wartet,
+  verspricht einen Kasten, den niemand je sieht.
+
+Dabei ist aufgefallen: **`kalib_referenz` wartet auch bei „Trotzdem setzen"**
+erneut auf ENTER, misst die Stelle also neu. Das ist so gewollt (bestätigt wird
+die abweichende Farbe, nicht eine schon erfasste Stelle) — ohne den Kasten sah
+der Knopf aber aus, als täte er nichts.
+
+
 **Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet ihre
 Sequenz-Bedienelemente hier aus (der Reiter bearbeitet andere Dateien) — damit war
 aber auch der Sequenzname weg, und bei der Klick-Runde ist das genau die Frage, die

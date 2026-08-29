@@ -1257,3 +1257,24 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .nk-art.nk-gesetzt{color:var(--accent)}
 .nk-art.nk-skip{color:var(--dim)}
 .nk-art.nk-fehlt{color:var(--slot-offen)}
+
+/* --- „Worauf warte ich gerade?" ---------------------------------------- */
+/* Diese Griffe blockieren die Bruecke bis zu einer Minute (globales Warten auf
+   ENTER). Ohne den Kasten sah es aus, als tue das Fenster nichts. Er legt sich
+   ueber ALLES: waehrenddessen ist ohnehin nichts anderes zu holen, und ein
+   Hinweis am Rand wird in genau dem Moment uebersehen, in dem man auf den
+   Bildschirm im Spiel sieht. */
+.warte-huelle{position:fixed;inset:0;z-index:60;display:flex;
+  align-items:center;justify-content:center;background:#05070Bcc;
+  backdrop-filter:blur(1.5px)}
+.warte-kasten{min-width:320px;max-width:min(460px,86vw);padding:18px 20px;
+  border:1px solid var(--accent);border-radius:8px;background:var(--bg);
+  box-shadow:0 18px 48px #0009}
+.warte-titel{font-size:13px;font-weight:600;color:var(--accent);
+  letter-spacing:.02em;margin-bottom:8px}
+.warte-text{font-size:12.5px;color:var(--text);line-height:1.55}
+.warte-fuss{display:flex;align-items:center;justify-content:space-between;
+  margin-top:14px;padding-top:10px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--muted)}
+/* Tabellenziffern, damit die Zahl beim Runterzaehlen nicht zappelt. */
+.warte-rest{font-variant-numeric:tabular-nums;color:var(--text)}

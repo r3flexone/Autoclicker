@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .bridge_contract import WARTE_TIMEOUT
+
 
 # Was die Kalibrierung anfasst. Steht als Tabelle da, weil die Ansicht dieselben
 # Schalter zeigt und der Test beide Seiten gegeneinander hält.
@@ -62,6 +64,10 @@ class BridgeWerkzeugeMixin:
                         "verwendungen": self._punkt_verwendungen(p.id)}
                        for p in self.points],
             "kalibrierung": self._kalib_json(),
+            # Dieselbe Zahl wie in der Momentaufnahme: mehrere Werkzeuge
+            # hier warten mit der Maus auf ENTER und blockieren dabei die
+            # Bruecke. Der Reiter braucht sie, ohne den Editor zu fragen.
+            "warte_timeout": WARTE_TIMEOUT,
             "umfang": [{"schluessel": k, "text": t, "vorgabe": v}
                        for k, t, v in KALIB_UMFANG],
             "aufnahme_tasten": [list(zeile) for zeile in AUFNAHME_HOTKEYS],

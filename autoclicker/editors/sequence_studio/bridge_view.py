@@ -33,6 +33,7 @@ from .bridge_contract import (
     SCAN_FELD,
     SCAN_MODI,
     TYP_REIHENFOLGE,
+    WARTE_TIMEOUT,
     _hex,
     _stelle,
     _wartetext,
@@ -69,6 +70,10 @@ class BridgeViewMixin:
             "beschreibung": self.board.description,
             "zyklen": self.board.total_cycles,
             "dirty": self._dirty,
+            # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
+            # Die Zahl kommt von hier, damit er nicht neben dem echten
+            # Zeitablauf der Bruecke laeuft.
+            "warte_timeout": WARTE_TIMEOUT,
             "status": {"text": text, "art": art},
             "frage": frage,
             "sequenzen": sorted(name for name, _ in list_available_sequences()),

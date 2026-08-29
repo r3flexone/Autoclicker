@@ -1592,7 +1592,7 @@ function baueStelle(ziel, b) {
   ziel.appendChild(el("button", {
     class: "btn breit",
     title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
-    onclick: () => ruf("punkt_aufnehmen"),
+    onclick: () => mitWarten("ruf", "punkt_aufnehmen"),
   }, "✛ Stelle mit der Maus setzen"));
   // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
   // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
@@ -1678,7 +1678,7 @@ function baueScreenshot(ziel, b) {
     // wie eines, das den Klick verschluckt hat.
     setzeStatus({text: "Ecke 1 anfahren + ENTER, dann Ecke 2 + ENTER (ESC bricht ab)",
                  art: "warn"});
-    ruf("bereich_aufnehmen");
+    mitWarten("ruf", "bereich_aufnehmen");
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
   ziel.appendChild(el("div", {class: "gitter2"},
@@ -4675,6 +4675,84 @@ let wzFarbAnalyse = null;
  * den GANZEN Bestand (alle Sequenzen, Slots, Scans, Punkte), nur das Nachklicken
  * meint genau eine Sequenz — die hier offene. Die Aufnahme erzeugt dagegen wie
  * im TUI eine NEUE Sequenz. */
+/* ------------------------------------------------- Griffe mit der Maus warten */
+
+/* **Jeder Aufruf, der die Bruecke blockiert, steht hier.** Diese Methoden warten
+ * per `_stelle_abwarten()` bzw. `bereich_aufnehmen()` global auf ENTER — bis zu
+ * `warte_timeout` Sekunden. Solange kommt keine Antwort zurueck; die Seite kann
+ * also nichts anzeigen, was aus der Bruecke kaeme, und muss VOR dem Aufruf
+ * sagen, worauf gewartet wird. Ohne das sah es aus, als tue das Fenster nichts —
+ * und zwar eine Minute lang.
+ *
+ * Der zweite Wert ist die Zahl der Tastendruecke. Ihn mitzuzaehlen geht NICHT:
+ * beide Ecken sind EIN Aufruf (die Hand soll zwischendurch nicht zum Fenster
+ * zurueck), und die Seite erfaehrt vom ersten ENTER nichts. Sie sagt deshalb
+ * vorher, wie viele kommen, statt einen Fortschritt zu erfinden.
+ *
+ * Ein Test haelt die Tabelle gegen die Bruecke: eine wartende Methode, die hier
+ * fehlt, ist genau die, bei der das Fenster wieder stumm ist. */
+const WARTE_GRIFFE = {
+  punkt_aufnehmen: ["Stelle aufnehmen", 1],
+  bereich_aufnehmen: ["Screenshot-Bereich aufziehen", 2],
+  maus_stelle: ["Parkposition setzen", 1],
+  werkzeug_punkt_aufnehmen: ["Punkt aufnehmen", 1],
+  werkzeug_farben: ["Farbe messen", 1],
+  kalib_referenz: ["Referenzpunkt setzen", 1],
+};
+
+let warteZaehler = null;
+
+/** Blendet ein, worauf gerade gewartet wird — mit Countdown bis zum Zeitablauf. */
+function warteZeigen(name) {
+  const [was, drucke] = WARTE_GRIFFE[name] || ["Stelle setzen", 1];
+  const grenze = (S && S.warte_timeout) || (W && W.warte_timeout) || 60;
+  let rest = Math.round(grenze);
+  const zahl = el("span", {class: "warte-rest"}, rest + " s");
+  const kasten = el("div", {class: "warte-kasten"},
+    el("div", {class: "warte-titel"}, was),
+    el("div", {class: "warte-text"},
+      "Fahre mit der Maus an die Stelle im Spiel und drücke ",
+      el("b", {}, "ENTER"),
+      drucke > 1 ? " — " + drucke + "× nacheinander, eine Ecke je Druck." : "."),
+    el("div", {class: "warte-fuss"},
+      el("span", {}, "ESC bricht ab"), zahl));
+  warteWeg();
+  document.body.appendChild(
+    el("div", {class: "warte-huelle", id: "warte-huelle"}, kasten));
+  // Der Countdown ist die zweite Haelfte der Auskunft: DASS gewartet wird, sagt
+  // der Kasten — wie lange noch, nur die Zahl. Laeuft sie ab, endet der Aufruf
+  // von selbst, und die Bruecke meldet „Nichts gedrueckt".
+  warteZaehler = setInterval(() => {
+    rest -= 1;
+    zahl.textContent = Math.max(0, rest) + " s";
+    if (rest <= 0) clearInterval(warteZaehler);
+  }, 1000);
+}
+
+function warteWeg() {
+  clearInterval(warteZaehler);
+  warteZaehler = null;
+  const alt = $("warte-huelle");
+  if (alt) alt.remove();
+}
+
+/** Ruft eine blockierende Methode und zeigt so lange, worauf gewartet wird.
+ *
+ * `art` waehlt den Kanal, den der Aufruf ohnehin haette: `ruf` ersetzt die
+ * Momentaufnahme, `werkzeug` zeichnet den Reiter neu, `frage` fragt nur. Das
+ * Overlay aendert daran nichts — es legt sich nur davor.
+ */
+async function mitWarten(art, name, daten) {
+  warteZeigen(name);
+  try {
+    return art === "ruf" ? await ruf(name, daten)
+         : art === "werkzeug" ? await rufWerkzeug(name, daten)
+         : await frage(name, daten);
+  } finally {
+    warteWeg();
+  }
+}
+
 const WZ_WERKZEUGE = [
   {key: "aufnahme", name: "Sequenz aufnehmen", befehl: "rec", bezug: "neu",
    kurz: "Echtes Spielen als neue Sequenz aufzeichnen"},
@@ -4900,7 +4978,8 @@ function wzPunkteBauen() {
   raus.push(el("div", {class: "wz-aktion gitter2"}, neuName,
     el("button", {class: "btn haupt", onclick: async () => {
       setzeStatus({art: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
-      const a = await rufWerkzeug("werkzeug_punkt_aufnehmen", {name: neuName.value});
+      const a = await mitWarten("werkzeug", "werkzeug_punkt_aufnehmen",
+                                {name: neuName.value});
       if (a && a.ok) wzPunktId = a.punkt_id;
     }}, "＋ Neuen Punkt aufnehmen")));
   if (!punkt) {
@@ -4921,8 +5000,8 @@ function wzPunkteBauen() {
   raus.push(el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
     el("button", {class: "btn", onclick: () => rufWerkzeug("werkzeug_punkt_zeigen",
       {punkt_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
-    el("button", {class: "btn", onclick: () => rufWerkzeug("werkzeug_punkt_aufnehmen",
-      {punkt_id: punkt.id})}, "✛ Neu messen"),
+    el("button", {class: "btn", onclick: () => mitWarten("werkzeug",
+      "werkzeug_punkt_aufnehmen", {punkt_id: punkt.id})}, "✛ Neu messen"),
     el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length,
       title: punkt.verwendungen.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
       onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {punkt_id: punkt.id})},
@@ -4942,7 +5021,7 @@ function wzFarbenBauen() {
     "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
   const starten = async (art) => {
     setzeStatus({art: "info", text: "Ins Spiel wechseln und mit ENTER bestätigen …"});
-    wzFarbAnalyse = await rufWerkzeug("werkzeug_farben", {art: art});
+    wzFarbAnalyse = await mitWarten("werkzeug", "werkzeug_farben", {art: art});
     wzMitteZeichnen(); wzRechtsZeichnen();
   };
   raus.push(el("div", {class: "gitter3 wz-aktion"},
@@ -5243,8 +5322,11 @@ function wzFarbfrageBauen() {
     class: "btn", onclick: async () => {
       const n = f.nummer, id = f.punkt_id;
       wzFarbfrage = null;
-      await rufWerkzeug("kalib_referenz",
-        {nummer: n, punkt_id: id, bestaetigt: true});
+      // Auch „Trotzdem setzen" misst die Stelle NEU — kalib_referenz wartet
+      // in jedem Fall auf ENTER. Ohne den Hinweis sieht der Knopf aus, als
+      // habe er nichts getan.
+      await mitWarten("werkzeug", "kalib_referenz",
+                      {nummer: n, punkt_id: id, bestaetigt: true});
     },
   }, "Trotzdem setzen"));
   leiste.appendChild(el("button", {
@@ -5298,7 +5380,7 @@ function wzRefZeile(nummer, gesetzt) {
     class: "btn",
     onclick: async () => {
       setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
-      const antwort = await frage("kalib_referenz",
+      const antwort = await mitWarten("frage", "kalib_referenz",
         {nummer, punkt_id: Number(wahl.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
@@ -5855,7 +5937,7 @@ function cfgStelle(key, m, wert) {
 async function cfgStelleAufnehmen(key) {
   setzeStatus({text: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab).",
                art: "warn"});
-  const antwort = await frage("maus_stelle");
+  const antwort = await mitWarten("frage", "maus_stelle");
   if (!antwort) return;
   if (!antwort.ok) return setzeStatus({text: antwort.meldung || "Abgebrochen.", art: "warn"});
   cfgSetzen(key, [antwort.x, antwort.y]);

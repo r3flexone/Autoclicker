@@ -4947,8 +4947,16 @@ _html13 = _H.studio_web_source()
 # `rufWerkzeug("kalib_referenz")` durchrutschen - also ausgerechnet den neuesten
 # Reiter, der am ehesten einen Tippfehler enthaelt.
 _HELFER13 = ("ruf", "rufScan", "rufTeilen", "rufWerkzeug", "frage")
-_gerufen13 = sorted(set(_re13.findall(
-    r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13)))
+_gerufen13 = set(_re13.findall(
+    r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13))
+# `mitWarten()` ist der sechste Kanal und der einzige, bei dem der Methodenname
+# NICHT das erste Argument ist: davor steht, welcher Helfer darunter laeuft
+# ("ruf" / "frage" / "werkzeug"). Ohne diese Zeile faellt jede blockierende
+# Methode aus der Pruefung — also ausgerechnet die, die eine Minute lang
+# wartet und bei einem Tippfehler gar nichts tut.
+_gerufen13 |= set(_re13.findall(
+    r'\bmitWarten\("(?:ruf|frage|werkzeug)",\s*"([a-z_]+)"', _html13))
+_gerufen13 = sorted(_gerufen13)
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
       "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
@@ -4959,11 +4967,18 @@ check("und der Werkzeuge-Reiter (rufWerkzeug)",
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
 # `rufWerkzeug`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
-_helfer_da13 = sorted(set(_re13.findall(r'\basync function (ruf\w*)\(', _html13)))
-if not all(h in _HELFER13 for h in _helfer_da13):
-    print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _HELFER13]}")
+_BEKANNT13 = _HELFER13 + ("mitWarten",)
+# Gefunden wird JEDE async-Funktion, die einen Bruecken-Namen weiterreicht —
+# nicht nur die mit `ruf` im Namen. `mitWarten` heisst nicht so und waere unter
+# dem alten Muster still durchgerutscht.
+_helfer_da13 = sorted(set(_re13.findall(
+    r'\basync function (\w+)\(', _html13)))
+_helfer_da13 = [h for h in _helfer_da13
+               if h.startswith("ruf") or h == "mitWarten"]
+if not all(h in _BEKANNT13 for h in _helfer_da13):
+    print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _BEKANNT13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
-      all(h in _HELFER13 for h in _helfer_da13))
+      all(h in _BEKANNT13 for h in _helfer_da13))
 
 _fehlend13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])

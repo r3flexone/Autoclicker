@@ -622,3 +622,72 @@ try:
         _nk.stop_nachklick = _echt
 finally:
     _os.chdir(_cwd)
+
+
+# ============================================================================
+section("Jeder Griff mit der Maus sagt, dass er wartet")
+
+# `_stelle_abwarten()` und `bereich_aufnehmen()` warten GLOBAL auf ENTER — bis zu
+# WARTE_TIMEOUT Sekunden, und der Bruecken-Aufruf blockiert dabei. Die Seite
+# bekommt in dieser Zeit keine Antwort, kann also nichts anzeigen, was von drueben
+# kaeme: sie muss VOR dem Aufruf sagen, worauf gewartet wird. Ohne das sah es aus,
+# als tue das Fenster nichts — eine Minute lang.
+#
+# Der Test misst beide Seiten gegeneinander, statt eine abzuschreiben: welche
+# Methoden warten, steht in der Bruecke; dass die Seite sie mit Hinweis ruft,
+# steht in app.js.
+import re as _re_wt
+from pathlib import Path as _P_wt
+
+_studio_wt = _P_wt(__file__).resolve().parent.parent.parent / "autoclicker" / "editors" / "sequence_studio"
+_quellen_wt = {n: (_studio_wt / f"{n}.py").read_text(encoding="utf-8")
+               for n in ("bridge_editing", "bridge_werkzeuge")}
+_appjs_wt = (_studio_wt / "web" / "app.js").read_text(encoding="utf-8")
+
+# Welche oeffentlichen Methoden warten? Eine Methode wartet, wenn ihr Rumpf
+# `_stelle_abwarten()` oder `warte_auf_taste(` enthaelt.
+_wartend = set()
+for _text in _quellen_wt.values():
+    _teile = _re_wt.split(r"\n    def ", _text)
+    for _teil in _teile[1:]:
+        _name = _teil.split("(", 1)[0]
+        if _name.startswith("_"):
+            continue
+        if "_stelle_abwarten()" in _teil or "warte_auf_taste(" in _teil:
+            _wartend.add(_name)
+
+check("der Test findet ueberhaupt wartende Methoden", len(_wartend) >= 5)
+
+_tabelle_wt = _appjs_wt[_appjs_wt.index("const WARTE_GRIFFE = {"):]
+_tabelle_wt = _tabelle_wt[:_tabelle_wt.index("};")]
+_genannt = set(_re_wt.findall(r"^\s*(\w+):\s*\[", _tabelle_wt, _re_wt.M))
+
+_fehlt = sorted(_wartend - _genannt)
+check("jede wartende Bruecken-Methode steht in WARTE_GRIFFE", _fehlt == [])
+if _fehlt:
+    print("        ohne Hinweis: " + ", ".join(_fehlt))
+
+# Gegenrichtung: ein Eintrag fuer etwas, das gar nicht mehr wartet, verspricht
+# einen Kasten, den niemand je sieht.
+_zuviel = sorted(_genannt - _wartend)
+check("und kein Eintrag fuer etwas, das nicht wartet", _zuviel == [])
+if _zuviel:
+    print("        wartet gar nicht: " + ", ".join(_zuviel))
+
+# Und die Seite muss sie auch WIRKLICH ueber mitWarten() rufen — ein Eintrag in
+# der Tabelle allein zeigt noch keinen Kasten.
+for _m in sorted(_wartend):
+    _direkt = _re_wt.findall(r'(?:ruf|frage|rufWerkzeug)\("' + _m + r'"', _appjs_wt)
+    check(f"'{_m}' wird nur ueber mitWarten gerufen", not _direkt)
+
+# Die Zeitgrenze steht an EINER Stelle und wird mitgeliefert: ohne das liefe der
+# Countdown der Seite neben dem echten Zeitablauf der Bruecke.
+from autoclicker.editors.sequence_studio.bridge_contract import WARTE_TIMEOUT as _WT
+check("die Zeitgrenze ist eine Konstante, kein Literal im Aufruf",
+      all("timeout=60" not in t for t in _quellen_wt.values()))
+check("und sie steht in der Momentaufnahme",
+      '"warte_timeout": WARTE_TIMEOUT' in
+      (_studio_wt / "bridge_view.py").read_text(encoding="utf-8"))
+check("wie auch in den Werkzeug-Daten",
+      '"warte_timeout": WARTE_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
+check("der Wert ist eine sinnvolle Zeitgrenze", 10 <= _WT <= 300)

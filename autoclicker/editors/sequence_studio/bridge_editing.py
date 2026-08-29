@@ -10,6 +10,7 @@ from .bridge_contract import (
     TRIGGER_DA,
     TRIGGER_KEIN,
     TRIGGER_WEG,
+    WARTE_TIMEOUT,
     _FELDER,
     _bloecke,
     _rgb,
@@ -398,7 +399,8 @@ class BridgeEditingMixin:
 
         ecken = []
         for _ in (1, 2):
-            taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
+            taste = warte_auf_taste(("enter", "escape"),
+                                    timeout=WARTE_TIMEOUT)
             if taste != "enter":
                 return self._melde(
                     "Abgebrochen — der Bereich bleibt, wie er war."
@@ -428,7 +430,7 @@ class BridgeEditingMixin:
         from ...utils.io import warte_auf_taste
         from ...winapi import get_cursor_pos
 
-        taste = warte_auf_taste(("enter", "escape"), timeout=60.0)
+        taste = warte_auf_taste(("enter", "escape"), timeout=WARTE_TIMEOUT)
         if taste != "enter":
             return None, None, ("Abgebrochen" if taste == "escape" else "Nichts gedrückt")
         x, y = get_cursor_pos()

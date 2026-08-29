@@ -39,6 +39,13 @@ TYP_REIHENFOLGE = [
 # Beschriftungen — die Beschriftung steht in der Oberfläche, hier steht das
 # Protokoll. (Beim DPG-Vorgänger waren beide dasselbe, und der Test verglich
 # gegen deutsche Anzeigetexte.)
+# Wie lange ein Griff mit der Maus auf ENTER wartet. **Der Aufruf blockiert die
+# Bruecke so lange** — die Seite kann in dieser Zeit keine Antwort bekommen und
+# muss deshalb selbst sagen, worauf gewartet wird. Damit ihr Countdown nicht
+# neben der Wirklichkeit laeuft, steht die Zahl hier und wird mitgeliefert,
+# statt in app.js ein zweites Mal zu stehen.
+WARTE_TIMEOUT = 60.0
+
 TRIGGER_KEIN = "kein"
 TRIGGER_DA = "da"
 TRIGGER_WEG = "weg"
