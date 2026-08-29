@@ -1305,6 +1305,16 @@ Sechs Regeln, an denen der Reiter hängt:
   Fall, für den „Neue Formatänderungen brauchen keinen Migrationsschritt" da
   ist: Default `0` in der Dataclass, `data.get("id", 0)` im Loader, fertig.
 
+  **Stabil heisst dabei natürlich sortiert, nicht Zeichen für Zeichen**
+  (`_natuerlich()` in `scan_state.py`). Ein reiner String-Vergleich stellt
+  „Slot 10" zwischen „Slot 1" und „Slot 2" — bei sechzig durchnummerierten
+  Slots bekam „Slot 2" damit die ID 12 und „Slot 3" die 23. Die IDs waren
+  stabil und trotzdem unbrauchbar: eine Kennung, die in Sprüngen dasteht,
+  liest niemand als Kennung, sondern als Fehler. Dieselbe Regel wie bei
+  `nachNamen()` in der Ansicht, nur eine Ebene tiefer — und sie muss an beiden
+  Stellen stehen, denn die Vergabe entscheidet die Zahl, die Sortierung nur
+  die Zeile.
+
   **Sie steht unter dem Schalter, in der ersten Spalte** (`.scan-marke`), nicht
   vor dem Namensfeld: dort nahm sie ihm die Breite, liess die Namen ohne ID
   an einer anderen Kante beginnen — und beim Bearbeiten schob sich das Feld
@@ -1327,19 +1337,34 @@ Sechs Regeln, an denen der Reiter hängt:
   viele Ziffern eine ID gerade hat.
 
   **Die Vorschau daneben (Hintergrundfarbe bzw. Item-Thumbnail) ist ein
-  Quadrat, das mit der Zeile wächst — kein Rechteck.** Feste 30 px Höhe liess
-  sie neben einer zweizeiligen Spalte (Name + Zustandszeile) wie einen
-  Briefmarken-Rest wirken; nur die Höhe zu stretchen machte daraus einen
-  schmalen Turm statt eines Quadrats. `aspect-ratio: 1` hält die Breite an die
-  (gestretchte) Höhe gebunden, und die Spalte selbst steht dafür auf `auto`
-  statt einer festen Breite — sonst hätte sie keinen Spielraum zum Mitwachsen.
-  Chromium löst das beim Grid-Tracksizing tatsächlich auf: gemessen liefert
-  `getBoundingClientRect()` für Breite und Höhe exakt denselben Wert.
+  Quadrat mit FESTER Kantenlänge** (56 × 56 px) — kein Rechteck und nichts,
+  was mitwächst. Feste 30 px Höhe liess sie neben einer zweizeiligen Spalte
+  (Name + Zustandszeile) wie einen Briefmarken-Rest wirken; nur die Höhe zu
+  stretchen machte daraus einen schmalen Turm.
 
-  Sortiert wird frisch in Scan-Reihenfolge (`nummer`), der Rest **natürlich
-  nach Namen** (`nachNamen()`, `numeric: true`): ein reiner Zeichenvergleich
-  stellt „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
+  Mitwachsen zu lassen war der zweite Anlauf und ebenfalls falsch: eine
+  Item-Maske hat DREI Zeilen (Name, Kategorie + Priorität, Zustand), eine
+  Slot-Maske zwei — dieselbe Vorschau wurde damit beim Item 76 px gross und
+  beim Slot 52. Zwei Grössen für dieselbe Sache, und die grössere frass die
+  halbe Maskenbreite. Ein festes Mass ist die Antwort auf beides: weder das
+  Bildmass des Templates noch der Inhalt der Nachbarfelder darf die Vorschau
+  oder die gemeinsame Rasterspalte aufziehen.
+
+  **Sortiert wird nach der ID — also nach der Zahl, die auch dasteht.** Vorher
+  war es die Scan-Stelle (`nummer`): eine Zahl, die die Liste gar nicht zeigt,
+  womit die Reihenfolge willkürlich aussah. Die ID gilt dabei **über die
+  Grenze „gehört zum offenen Scan" hinweg** — sie bezeichnet den Slot
+  dauerhaft, und eine Ordnung, die bei jedem Häkchen umspringt, wäre wieder
+  die bewegliche Zahl von vorher. Slots ohne ID (Altbestand, den der Backfill
+  noch nicht gesehen hat) landen am **Ende** und werden dort nach Namen
+  geordnet: vorn stünde der ungepflegte Rest über allem anderen, und die
+  Ansicht erfindet keine Reparatur für Bestandsdaten.
+
+  Bei gleicher Lage entscheidet der Name **natürlich sortiert**
+  (`nachNamen()`, `numeric: true`) — ein reiner Zeichenvergleich stellt
+  „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
   durchnummerierten Slots ist die Liste damit sortiert und trotzdem unlesbar.
+  Die Items bleiben bei Kategorie und Rang: sie haben keine ID.
 
 - **Welche Priorität frei ist, steht da** (`prioritaetsBelegung()`). Die
   Übersicht zeigte nur die vergebenen Ränge; ob P2 belegt ist oder fehlt, sah
@@ -1502,6 +1527,15 @@ Filterzeile und eine dritte Liste im Scan-Inspektor (`hakenListe()` mit einem
 Mischzustand des `alle`-Schalters (`indeterminate`), der nur dort gebraucht
 wurde. Ein Schalter, der bei „23 von 56" nicht zu beschriften ist, war das
 Problem und nicht die Lösung; der Knopf **sagt**, was er tut.
+
+**Und „ausschalten" ist etwas anderes als „nicht dazugehören."** Die
+Slot-Maske trägt einen eigenen Ein-Aus-Schalter (`scan_slot_setzen`, Feld
+`aktiv`), keinen Mitgliedschaftshaken: ein ausgeschalteter Slot behält seine
+Daten und bekommt nur keine laufende Nummer mehr. Das ist der Unterschied, an
+dem die alte Fassung scheiterte — ohne offenen Scan gab es keine
+Mitgliedschaft, also stand dort gar kein Bedienelement, und „ich kann die
+Slots nicht mehr ausschalten" war die Folge. Ein Schalter, der eine Eigenschaft
+des Slots setzt, braucht keinen Scan als Bezug und ist deshalb immer da.
 
 **„Alle raus" ist nicht „alle löschen".** Der eine nimmt aus der Mitgliedschaft
 — Slot bzw. Item bleibt im Bestand —, der andere (`scan_alle_loeschen()`)

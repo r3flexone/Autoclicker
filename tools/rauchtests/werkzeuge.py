@@ -1,8 +1,19 @@
 """Rauchtest Werkzeuge-Reiter: prüfen, kalibrieren, Farbfrage, Klick-Runde."""
 
+import re
 from pathlib import Path
 
 from ._bruecke import Fenster, main, sandkasten
+
+
+def quelle_wz() -> str:
+    """Der `WZ_WERKZEUGE`-Block aus `app.js` — die Liste, die die Seite zeichnet."""
+    # Absolut, denn `sandkasten()` wechselt vorher das Arbeitsverzeichnis.
+    datei = (Path(__file__).resolve().parents[2]
+             / "autoclicker/editors/sequence_studio/web/app.js")
+    quelle = datei.read_text(encoding="utf-8")
+    ab = quelle.index("const WZ_WERKZEUGE = [")
+    return quelle[ab:quelle.index("];", ab)]
 
 
 def aufbau():
@@ -52,7 +63,14 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("werkzeuge")
-        pruefe(f.anzahl("#wz-links button") == 4, "vier Werkzeuge erwartet")
+        # **Gegen die Tabelle in der Seite gemessen, nicht gegen eine getippte
+        # Zahl.** Hier stand `== 4`, als es vier Werkzeuge gab; mit dem fuenften
+        # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
+        # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_WERKZEUGE` fuehrt.
+        soll = len(re.findall(r'\{key: "', quelle_wz()))
+        pruefe(f.anzahl("#wz-links button") == soll,
+               f"{soll} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
+               f"da: {f.anzahl('#wz-links button')}")
         pruefe("Farm" in f.text("#wz-links"), "die offene Sequenz fehlt links")
 
         # --- Aufnahme: der normale Weg ist vollständig im Studio sichtbar ---
@@ -89,8 +107,13 @@ def lauf():
         f.bild("wz_farbfrage")
 
         f.klick_text(".wz-farbfrage button", "Trotzdem setzen", warten=900)
-        pruefe("Verschiebung: +455 X, +344 Y" in f.text("#wz-mitte"),
-               f"Versatz falsch: {f.text('#wz-mitte')[:200]!r}")
+        # Der Versatz steht als zwei Kennzahlen unter „BERECHNETER TRANSFORM",
+        # nicht mehr als ein Satz „Verschiebung: …". Gemessen wird deshalb der
+        # Kennzahlen-Block — der Satz war eine Formulierung, die Zahlen sind
+        # die Aussage.
+        kennzahlen = f.text("#wz-mitte .wz-kennzahlen")
+        pruefe("+455" in kennzahlen and "+344" in kennzahlen,
+               f"Versatz falsch: {kennzahlen!r}")
         pruefe(f.anzahl("#wz-mitte input[type=checkbox]") == 3, "drei Umfang-Haken")
         pruefe("Stelle(n)" in f.text("#wz-rechts"), "keine Vorschau rechts")
         f.bild("wz_kalib")

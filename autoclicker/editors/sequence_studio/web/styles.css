@@ -709,7 +709,14 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   min-width:56px;min-height:56px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
 .scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
-.scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0}
+/* **Die Feldspalte stretcht mit, damit die Zustandszeile unten steht.** Die
+   Zeilenhoehe gibt seit dem festen Quadrat die Vorschau vor (56 px); ohne
+   `stretch` blieb die Feldspalte auf ihren 52 px, und die Groessen-Kachel in
+   der Zustandszeile stand vier Pixel ueber der ID-Kachel daneben. Zwei
+   Kacheln derselben Bauform auf zwei Hoehen — ein Rauchtest misst die
+   Unterkanten. */
+.scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0;
+  align-self:stretch;justify-content:space-between}
 .scan-maske-name{font-size:11.5px;padding:4px 6px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 /* Kategorie nimmt den Platz, die Prioritaet ist eine Zahl mit zwei Stellen. */

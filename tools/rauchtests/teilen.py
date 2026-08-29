@@ -43,8 +43,15 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("teilen")
-        pruefe(f.anzahl("#teilen-export input[type=checkbox]") >= 6,
-               "zu wenige Haken im Export")
+        # **Gegen die Tabelle gemessen, nicht gegen eine getippte Zahl.** Hier
+        # stand einmal `>= 6` — aus der Zeit, als Punkte, Slots, Items und die
+        # drei Scan-Arten je eine eigene Kachel hatten. Seit sie im
+        # Sequenzordner liegen, sind es zwei, und die Zahl war nur noch ein
+        # Pin auf einen Stand, den es nicht mehr gibt.
+        from autoclicker.editors.sequence_studio.bridge_teilen import TEILE
+        haken = f.anzahl("#teilen-export input[type=checkbox]")
+        pruefe(haken == len(TEILE),
+               f"{len(TEILE)} Haken erwartet (je einer pro TEILE), da: {haken}")
         pruefe("probe.zip" in f.text("#teilen-mitte"), "das Buendel fehlt in der Liste")
         f.bild("teilen")
         f.klick("#teilen-mitte button", warten=800)

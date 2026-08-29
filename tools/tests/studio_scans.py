@@ -1763,6 +1763,34 @@ finally:
     _os.chdir(_cwdA)
     shutil.rmtree(_sandA, ignore_errors=True)
 
+# **Und zwar NATUERLICH sortiert, nicht Zeichen fuer Zeichen.** Ein reiner
+# String-Vergleich stellt „Slot 10" zwischen „Slot 1" und „Slot 2" — bei
+# sechzig durchnummerierten Slots bekam „Slot 2" dann die ID 12 und „Slot 3"
+# die 23. Die IDs waren stabil und trotzdem unbrauchbar, weil sie in Spruengen
+# dastanden.
+_sandA2 = tempfile.mkdtemp(prefix="studioaltid2_")
+_cwdA2 = _os.getcwd()
+_os.chdir(_sandA2)
+try:
+    Path("sequences/s/item_scans").mkdir(parents=True)
+    import json as _jsonA2
+    _jsonA2_slots = {f"Slot {_i}": {"scan_region": [0, _i * 3, 60, _i * 3 + 60],
+                                    "click_pos": [30, _i * 3 + 30]}
+                     for _i in range(1, 21)}
+    Path("sequences/s/item_scans/inv.json").write_text(
+        _jsonA2.dumps({"name": "Inv", "items": {}, "slots": _jsonA2_slots}),
+        encoding="utf-8")
+    _bA2 = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+    _idsA2 = {s["name"]: s["id"] for s in _bA2.scan_daten()["slots"]}
+    check("'Slot 2' bekommt die 2, nicht die 12",
+          _idsA2["Slot 2"] == 2 and _idsA2["Slot 3"] == 3)
+    check("und 'Slot 20' die 20", _idsA2["Slot 20"] == 20)
+    check("lueckenlos von 1 bis 20",
+          sorted(_idsA2.values()) == list(range(1, 21)))
+finally:
+    _os.chdir(_cwdA2)
+    shutil.rmtree(_sandA2, ignore_errors=True)
+
 
 # ============================================================================
 section("Die Slot-Kachel zeigt die ID, nicht die (bewegliche) Stelle")
@@ -1794,6 +1822,16 @@ check("die Vorschau ist ein Quadrat, kein Rechteck",
       in _html18)
 check("und die Spalten bleiben bei jeder Ziffernzahl gleich",
       "grid-template-columns:34px 56px minmax(0,1fr)" in _html18)
+
+# Zwei Eigenschaften, die der Pin weiter oben nicht nennt: wohin der Altbestand
+# faellt, und was bei gleicher Lage entscheidet. Slots ohne ID landen am ENDE —
+# vorn stuende der ungepflegte Rest ueber allem anderen.
+_sort18 = _html18[_html18.index("function scanListeSlots("):]
+_sort18 = _sort18[:_sort18.index("\nfunction ", 10)]
+check("Slots ohne ID stehen hinten, nicht vorn",
+      "Number.MAX_SAFE_INTEGER" in _sort18)
+check("und bei gleicher Lage entscheidet der Name natuerlich sortiert",
+      "nachNamen(a.name, b.name)" in _sort18)
 
 
 # ============================================================================

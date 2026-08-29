@@ -16,6 +16,7 @@ from autoclicker.models import (
     AutoClickerState, ClickPoint, ItemScanConfig, ItemSlot, Sequence,
 )
 from autoclicker.persistence import load_item_scan_file
+from autoclicker.persistence.sequences import sequence_dir
 
 
 def _manifest(version=1):
@@ -213,8 +214,10 @@ class ImportExportSecurityTest(unittest.TestCase):
         )
 
         self.assertTrue(ok)
+        # Der Besitzordner heisst, was `sanitize_filename()` daraus macht
+        # (klein geschrieben) — nicht, wie der Pfad im Buendel lautete.
         imported_scan = load_item_scan_file(
-            Path("sequences/Farm/item_scans/live.json"), "Farm")
+            sequence_dir("Farm") / "item_scans" / "live.json", "Farm")
         self.assertIsNotNone(imported_scan)
         imported_slot = imported_scan.slots[0]
         self.assertEqual(imported_slot.scan_region, (225, 247, 265, 287))
