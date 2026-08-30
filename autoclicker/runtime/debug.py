@@ -1,36 +1,20 @@
 """Debug-Hilfen für die Sequenz-Ausführung.
 
-Hier stecken DREI Dinge, die vorher alle in einem Flag hingen und deshalb nicht
-getrennt schaltbar waren:
+Drei Dinge, die auseinandergehalten werden müssen:
 
-1. debug_log (Config)      Alles ausgeben, nichts überschreiben. Jeder Schritt kommt als
-                           eigene Zeile ins Log statt die Status-Zeile zu ersetzen.
+1. `debug_log` (Config) — jeder Schritt als eigene Zeile statt als
+   überschreibbare Status-Zeile.
+2. `debug_detail` (Config) — zusätzlich Zeiger auf das Ziel und ausschreiben,
+   was kommt (Farbquadrat bei Farb-Bedingungen).
+3. Manueller Modus (`state.step_mode`, Laufzeit, KEINE Config) — Wartezeiten
+   werden übersprungen, jeder Schritt wartet auf Bestätigung.
 
-2. debug_detail (Config)   Mehr Detail: der Zeiger springt auf den Zielpunkt (ohne Klick)
-                           und es wird ausgeschrieben, WAS dort passieren soll - inklusive
-                           Farbquadrat bei Farb-Bedingungen. Läuft weiter durch.
+Beide Stufen ändern nur die Ausgabe, nie den Ablauf, und nichts wird doppelt
+ausgegeben. Stufe 2 zieht die persistente Ausgabe technisch mit: sie gibt
+mehrzeilig aus, und eine Status-Zeile ohne Zeilenumbruch würde überklebt.
 
-Beide sind getrennt schaltbar, jede Kombination ist erlaubt. Eine Abhängigkeit gibt es
-technisch: Stufe 2 gibt mehrzeilig aus, damit ist die überschreibbare Status-Zeile aus
-Stufe 1 nicht mehr möglich - sie würde von der nächsten Zeile überklebt. Stufe 2 zieht
-die persistente Ausgabe deshalb mit, umgekehrt gilt das nicht.
-
-Beide betreffen NUR die Ausgabe, nie den Ablauf - eine Sequenz läuft mit beiden Flags
-genauso wie ohne. Und keine Information wird zweimal ausgegeben: ist Stufe 2 an, entfällt
-die Ankündigungszeile von Stufe 1 und die Ergebnis-Zeile schrumpft auf das, was die
-Kopfzeile nicht schon gesagt hat.
-
-3. Manueller Modus (Laufzeit, KEINE Config)
-                           state.step_mode - im Punkte-Menü umschaltbar ('manuell').
-                           Wartezeiten werden übersprungen, vor jedem Schritt springt der
-                           Zeiger auf das Ziel und es wird gewartet, bis du bestätigst.
-                           Erst dann wird tatsächlich geklickt. Damit gehst du die Sequenz
-                           von Hand durch und siehst, wo falsch geklickt oder falsch
-                           erkannt wird.
-
-Zum manuellen Modus: der Tastendruck wird im WORKER-Thread gelesen. Ist gleichzeitig ein
-Editor offen, lesen zwei Threads von der Konsole - dann den Editor schliessen. Die
-Hotkey-Loop im Main-Thread stört nicht, die liest kein stdin.
+Der Tastendruck des manuellen Modus wird im WORKER-Thread gelesen — ist
+gleichzeitig ein Editor offen, lesen zwei Threads von der Konsole.
 """
 
 from __future__ import annotations
@@ -64,11 +48,9 @@ _KEYS_ZURUECK = ("a", "left", "up")
 def is_log_debug(state: AutoClickerState) -> bool:
     """Stufe 1: persistente Ausgabe statt überschreibbarer Status-Zeile.
 
-    Detail-Stufe und manueller Modus erzwingen das zusätzlich. Das ist KEINE Kopplung der
-    Schalter, sondern eine Frage der Darstellung: eine Status-Zeile ohne Zeilenumbruch
-    (`end=""`) wird von der nächsten Ausgabe überschrieben bzw. die nächste Zeile klebt
-    hinten dran ("... Gesamt: 14── [Loop] Schritt 15"). Sobald oberhalb mehrzeilig
-    ausgegeben wird, muss die Status-Zeile eine echte Zeile sein.
+    Detail-Stufe und manueller Modus erzwingen das zusätzlich — keine Kopplung
+    der Schalter, sondern Darstellung: sobald oberhalb mehrzeilig ausgegeben
+    wird, muss die Status-Zeile eine echte Zeile sein.
     """
     return state.config.debug_log or is_detail_debug(state) or is_step_mode(state)
 
@@ -112,14 +94,14 @@ def step_label(step: SequenceStep) -> str:
 
     Das war der eigentliche Schmerz: ohne ID musste man den falschen Schritt in der
     Sequenzdatei erst suchen und dann noch den passenden Punkt dazu. Mit "#3" steht die
-    Referenz direkt da - suchbar in points.json UND in der Sequenzdatei ("point_id": 3).
+    Referenz direkt da - in sequence.json bei Punkt und Schritt suchbar ("point_id": 3).
     """
     name = step.name or "unbenannt"
     if step.point_id is None:
         return f"{name}  [ohne Stelle]"
     if step.unresolved:
         # Deutlich sagen, was los ist: der Schritt tut nichts, und der Grund liegt in
-        # points.json, nicht in der Sequenz.
+        # der Punktliste derselben sequence.json.
         return f"{name}  [Punkt #{step.point_id} FEHLT]"
     return f"{name}  [Punkt #{step.point_id}]"
 
@@ -213,17 +195,14 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
               step_num: int, total_steps: int) -> str:
     """Hält vor dem Schritt an, zeigt das Ziel und wartet auf Bestätigung.
 
-    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück. Ist der manuelle Modus aus, kommt
-    immer sofort GATE_RUN - der Aufruf ist dann praktisch kostenlos.
-
-    Ausnahme: ein Schritt mit toter Punkt-Referenz läuft NIE. Er hat keine Koordinate
-    mehr, auf die er ausweichen könnte (das ist der Sinn der Sache), und (0, 0) wäre
-    ein Klick in die Bildschirmecke — irgendwohin, nur nicht dorthin, wo er sollte.
+    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück; ohne manuellen Modus immer
+    sofort GATE_RUN. Ausnahme: ein Schritt mit toter Punkt-Referenz läuft NIE —
+    (0, 0) wäre ein Klick in die Bildschirmecke.
     """
     if step.unresolved:
         print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
                    f"{step_label(step)}"))
-        print(hint("       Punkt fehlt in points.json — im Punkte-Menü neu setzen "
+        print(hint("       Punkt fehlt in sequence.json — im Punkte-Menü neu setzen "
                    "oder den Schritt löschen."))
         return GATE_SKIP
 
@@ -251,6 +230,52 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     print(col("   [w /→] ausführen   [s /↓] überspringen   [c] normal weiterlaufen   "
               "[q /ESC] abbrechen", "yellow"))
 
+    # Das Studio läuft in einem eigenen Prozess. Es kann nicht auf `stdin`
+    # antworten und der Worker darf dann auch nicht dort blockieren: der
+    # aktuelle Schritt steht im Laufstatus, die Antwort kommt als begrenzter
+    # Briefkasten-Befehl und weckt dieses Event. Der TUI-Weg darunter bleibt
+    # exakt wie bisher.
+    with state.lock:
+        studio = bool(state.step_via_studio)
+        state.step_command = ""
+        state.step_command_event.clear()
+    if studio:
+        from . import status
+        status.schreibe(state, {"manuell": {
+            "aktiv": True,
+            "phase": phase,
+            "block": step_num,
+            "bloecke": total_steps,
+            "titel": step_label(step),
+            "aktion": describe_step(step),
+        }}, sofort=True)
+        while not state.stop_event.is_set():
+            if not state.step_command_event.wait(0.2):
+                status.lebenszeichen(state)
+                continue
+            with state.lock:
+                befehl = state.step_command
+                state.step_command = ""
+                state.step_command_event.clear()
+            if befehl == "run":
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_RUN
+            if befehl == "skip":
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_SKIP
+            if befehl == "continue":
+                with state.lock:
+                    state.step_mode = False
+                    state.step_via_studio = False
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_RUN
+            if befehl == "stop":
+                state.stop_event.set()
+                status.schreibe(state, {"manuell": None}, sofort=True)
+                return GATE_STOP
+        status.schreibe(state, {"manuell": None}, sofort=True)
+        return GATE_STOP
+
     while not state.stop_event.is_set():
         taste = read_command()
         if taste in _KEYS_RUN:
@@ -273,18 +298,14 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
 def walk_points(state: AutoClickerState) -> None:
     """Punkte einzeln durchgehen — ansehen und bei Bedarf neu setzen.
 
-    Der Zeiger springt auf jeden Punkt, du siehst wo er landet und blätterst weiter.
-    Sitzt er falsch: Maus an die richtige Stelle, `n` drücken. Nichts wird geklickt.
+    Der Zeiger springt auf jeden Punkt; sitzt er falsch: Maus an die richtige
+    Stelle, `n` drücken. Nichts wird geklickt.
 
-    Warum das hier steht und nicht im Sequenz-Editor: Schritte zeigen über `point_id`
-    auf Punkte und holen sich die Koordinaten vor jedem Lauf von dort
-    (`resolve_point_references`). Einen Punkt neu zu setzen repariert also JEDEN
-    Schritt, der ihn benutzt — Wartezeiten, else-Aktionen und Scans bleiben unberührt.
-    Schritte ohne `point_id` erreicht das nicht; die verknüpft man vorher im
-    Sequenz-Editor mit `link`.
+    Weil Schritte über `point_id` zeigen, repariert ein neu gesetzter Punkt jeden
+    Schritt, der ihn benutzt. Schritte ohne `point_id` erreicht das nicht — die
+    verknüpft man vorher mit `link`.
 
-    Läuft im Main-Thread (Hotkey-Handler), nicht im Worker - blockiert also nur die
-    Hotkey-Loop, keine laufende Sequenz.
+    Läuft im Main-Thread, blockiert also nur die Hotkey-Loop.
     """
     from ..imaging import get_pixel_color
     from ..persistence import save_points

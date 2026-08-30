@@ -24,33 +24,34 @@ function el(tag, attrs, ...kinder) {
 
 /** Zahlenfeld, das seinen Wert erst beim Verlassen meldet.
  *
- * Bewusst `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein
- * Neuaufbau mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird.
- * Dieselbe Regel wie beim Dear-PyGui-Vorgänger — diskrete Bedienelemente (Klick,
- * fertig) dürfen sofort melden, Tipp-Felder erst am Ende. */
-/* Welche Erklaerungen gerade aufgeklappt sind — als Schluessel, nicht als
- * DOM-Verweis. Der Inspektor wird bei JEDER Aenderung komplett neu gebaut
- * (`replaceChildren`), ein gemerktes Element waere danach ein Element, das
- * niemand mehr sieht. Aufgeklappt bleibt aufgeklappt, bis man es zuklappt —
- * auch ueber einen Block-Wechsel hinweg. */
+ * `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein Neuaufbau
+ * mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird. */
+/* Welche Erklaerungen aufgeklappt sind — als Schluessel, nicht als DOM-Verweis:
+ * der Inspektor wird bei jeder Aenderung neu gebaut. */
 const offeneHilfen = new Set();
 
 /** Das kleine ⓘ hinter einer Beschriftung. Klick klappt den Text auf, Klick zu.
  *
- * Es war erst der native Tooltip (`title`) — eine Zeile Code, aber er verschwindet
- * bei jedem Tastendruck und nach ein paar Sekunden von selbst. Zum Nachlesen taugt
- * er damit nicht, und abfotografieren laesst er sich auch nicht.
+ * Kein nativer Tooltip: der verschwindet nach Sekunden und taugt zum Nachlesen
+ * nicht. Der Text landet HINTER dem Bedienelement — keine Positionsrechnung,
+ * kein Overlay.
  *
- * Der aufgeklappte Text landet HINTER dem Bedienelement, also genau dort, wo er
- * frueher dauerhaft stand. Deshalb braucht es keine Positionsrechnung und kein
- * Overlay: die Seite bleibt so klein, wie sie sein soll.
- *
- * `schluessel` ist die Identitaet ueber Neuaufbauten hinweg. Der Text taugt dafuer
- * nicht: die Beschriftung traegt die Punkt-Nummer, und der STELLE-Text haengt am
- * Block-Typ — beides wechselt, die Stelle in der Oberflaeche aber nicht. */
+ * `schluessel` ist die Identitaet ueber Neuaufbauten hinweg; der Text taugt
+ * dafuer nicht, weil Beschriftungen die Punkt-Nummer bzw. den Block-Typ tragen. */
 function info(text, schluessel) {
   if (!text) return null;
-  const zeichen = el("span", {class: "info", "data-hilfe": schluessel || text}, "i");
+  // Kein Schriftzeichen und kein CSS-Kreis: WebView2 kann beides auf zwei
+  // verschiedenen Pixelrastern rendern, wodurch zwei versetzte Konturen
+  // entstehen. Kreis, Punkt und Strich kommen gemeinsam aus EINEM SVG.
+  const bild = svgEl("svg", {class: "info-glyphe", viewBox: "0 0 16 16",
+    "aria-hidden": "true"});
+  bild.append(
+    svgEl("circle", {cx: "8", cy: "8", r: "6.5", fill: "none",
+      stroke: "currentColor", "stroke-width": "1"}),
+    svgEl("circle", {cx: "8", cy: "5", r: ".8", fill: "currentColor"}),
+    svgEl("path", {d: "M8 7.5v4", fill: "none", stroke: "currentColor",
+      "stroke-width": "1.3", "stroke-linecap": "round"}));
+  const zeichen = el("span", {class: "info", "data-hilfe": schluessel || text}, bild);
   zeichen._text = text;
   zeichen.addEventListener("click", (e) => {
     // Das ⓘ steckt in einem <label>; ohne das hier wuerde der Klick das Feld
@@ -116,28 +117,186 @@ function kategorienWerte(zusatz) {
   return werte;
 }
 
-function kategorienListe(id, zusatz) {
-  return el("datalist", {id: id},
-    kategorienWerte(zusatz).map((k) => el("option", {value: k})));
+/* ------------------------------------------------------------ Kategorie wählen
+ *
+ * Vorhandene anklicken, neue tippen — und die neue ist beim naechsten Item gleich
+ * anklickbar. Ein freies Textfeld allein macht aus „Helme", „helme" und „Helmr"
+ * drei Kategorien, und Items derselben Kategorie konkurrieren miteinander: eine
+ * vertippte trennt ein Item still von seiner Gruppe. Ein <select> allein waere zu
+ * streng — neue Kategorien muessen ohne zweiten Bedienweg entstehen koennen. */
+const KATEGORIE_NEU = "\u0000neu";   // als Kategoriename nicht eingebbar
+
+/* Welche Kategorie-Felder gerade im Tippen stehen — als Schluessel, nicht als
+ * DOM-Verweis. Der Modus muss den Neuaufbau ueberleben: der Entwurf speichert
+ * 900 ms nach der letzten Aenderung, und das Feld wuerde sonst mitten im Wort
+ * wieder zur Auswahlliste. Dieselbe Mechanik wie `offeneHilfen` und `klappZu`. */
+const kategorieFrei = new Set();
+
+/** Was in der Lern-Vorschau schon getippt, aber noch nicht uebernommen ist.
+ *
+ * Eine Kategorie, die in Zeile 1 entsteht, muss in Zeile 2 waehlbar sein —
+ * sonst tippt man sie zwanzigmal und beim einundzwanzigsten Mal anders. */
+function kategorieZusatz() {
+  return [...document.querySelectorAll(".kategorie-wahl")]
+    .map((n) => (n.wert ? n.wert() : "")).filter(Boolean);
 }
 
-function kategoriefeld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
-  const listenId = "item-kategorien";
-  const eingabe = el("input", Object.assign({
-    value: wert || "", list: listenId, autocomplete: "off",
-    placeholder: "Auswählen oder neu eingeben",
-    title: "Bestehende Kategorie auswählen oder eine neue eingeben",
-  }, extra || {}));
-  eingabe.addEventListener("change", () => beim_setzen(eingabe.value));
-  eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-  return el("label", {class: "feld kategoriefeld"},
-    beschriftet(beschriftung, hilfe, schluessel), eingabe, kategorienListe(listenId),
-    el("small", {class: "eingabe-hilfe"}, "Vorhandene auswählen oder neue Kategorie tippen"));
+/** Zieht die Auswahllisten aller Kategorie-Bedienelemente nach. */
+function kategorieOptionenAktualisieren() {
+  for (const n of document.querySelectorAll(".kategorie-wahl")) {
+    if (n.optionenNeu) n.optionenNeu();
+  }
+}
+
+function kategorieWahl(wert, beim_setzen, opts) {
+  opts = opts || {};
+  const huelle = el("span", {class: "kategorie-wahl"
+    + (opts.klasse ? " " + opts.klasse : "")});
+  // Woran der Tipp-Modus haengt. Ohne Schluessel gibt es ihn nicht — dann
+  // entscheidet allein, ob es etwas zu waehlen gibt.
+  const schluessel = opts.schluessel || "";
+  let aktuell = String(wert || "");
+  let gesperrt = false;
+
+  const werte = () => kategorienWerte(kategorieZusatz().concat(aktuell));
+  const melde = (v) => {
+    aktuell = v;
+    // Ein uebernommener Name steht beim naechsten Aufbau in der Liste — also
+    // ist das Tippen hier zu Ende. Bleibt das Feld leer, bleibt es offen:
+    // sonst waere ein Vertipper („Enter" auf nichts) ein Rueckwurf in die
+    // Auswahl, und man faengt von vorn an.
+    if (schluessel && v) kategorieFrei.delete(schluessel);
+    beim_setzen(v);
+  };
+
+  const auswahlfeld = () => {
+    const s = el("select", {title: opts.titel
+      || "Vorhandene Kategorie wählen — oder unten eine neue anlegen"});
+    s.optionen = () => {
+      const alt = aktuell;
+      s.replaceChildren(
+        el("option", {value: ""}, opts.leer || "— ohne Kategorie —"),
+        ...werte().map((k) => el("option", {value: k}, k)),
+        el("option", {value: KATEGORIE_NEU}, "＋ neue Kategorie …"));
+      s.value = alt;
+    };
+    s.optionen();
+    s.addEventListener("change", () => {
+      if (s.value === KATEGORIE_NEU) return tausche(true, "");
+      melde(s.value);
+    });
+    return s;
+  };
+
+  const textfeld = (vorgabe) => {
+    const e = el("input", {value: vorgabe, autocomplete: "off",
+      placeholder: opts.platzhalter || "Neue Kategorie",
+      title: "Neuen Namen tippen — beim nächsten Item steht er in der Liste"});
+    e.addEventListener("change", () => melde(e.value.trim()));
+    e.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") e.blur();
+      // ESC fuehrt zurueck in die Liste, sonst waere das Tippen eine Falltuer:
+      // hinein kommt man mit einem Klick, heraus nur ueber einen Umweg.
+      if (ev.key === "Escape" && werte().length) { ev.stopPropagation(); tausche(false); }
+    });
+    return e;
+  };
+
+  function tausche(frei, vorgabe, merken) {
+    if (schluessel && merken !== false) {
+      if (frei) kategorieFrei.add(schluessel);
+      else kategorieFrei.delete(schluessel);
+    }
+    const neu = frei ? textfeld(vorgabe === undefined ? aktuell : vorgabe)
+                     : auswahlfeld();
+    neu.disabled = gesperrt;
+    huelle.replaceChildren(neu);
+    huelle.wert = () => (frei ? neu.value.trim() : neu.value);
+    huelle.optionenNeu = frei ? null : neu.optionen;
+    if (frei && merken !== false) neu.focus();
+  }
+
+  // **Getippt wird nur, wenn es nichts zu waehlen gibt** — oder wenn der
+  // aktuelle Wert (ein Vorschlag der Lern-Vorschau) noch in keiner Liste steht,
+  // oder wenn hier vor dem Neuaufbau schon getippt wurde.
+  const vorhandene = kategorienWerte(kategorieZusatz());
+  tausche(!vorhandene.length
+          || (schluessel && kategorieFrei.has(schluessel))
+          || (!!aktuell && !vorhandene.some((k) => k === aktuell)),
+          undefined, false);
+  huelle.sperren = (an) => {
+    gesperrt = an;
+    for (const n of huelle.children) n.disabled = an;
+  };
+  huelle.gesperrt = () => gesperrt;
+  // Von aussen setzen (Sammel-Aktion der Lern-Vorschau). Steht der Wert nicht
+  // in der Liste, muss das Feld dafuer ins Tippen wechseln — sonst schluckt
+  // ein <select> ihn stillschweigend.
+  huelle.setzen = (v) => {
+    aktuell = String(v || "");
+    const da = kategorienWerte(kategorieZusatz());
+    tausche(!!aktuell && !da.some((k) => k === aktuell), aktuell);
+    if (huelle.optionenNeu) huelle.optionenNeu();
+    beim_setzen(aktuell);
+  };
+  return huelle;
 }
 
 function itemsDerKategorie(kategorie) {
   return SC.items.filter((i) => (i.kategorie || "") === (kategorie || ""))
     .slice().sort((a, b) => a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de"));
+}
+
+/** Wer belegt welchen Rang — Luecken eingeschlossen.
+ *
+ * **„Welche Prioritaet ist noch frei" war aus einer Zahl im Feld nicht zu
+ * beantworten.** Die Uebersicht zeigte nur die vergebenen; ob P2 belegt ist
+ * oder fehlt, sah man erst, wenn man P1, P3, P4 las und selbst nachzaehlte.
+ *
+ * Liefert `[{prio, namen}]` von 1 bis zum hoechsten belegten Rang plus eins —
+ * der naechste freie steht also immer da. Eine getippte P99 spannt das nicht
+ * auf hundert Kacheln auf: ueber `PRIO_MAX_ZEIGEN` bleiben nur die belegten. */
+const PRIO_MAX_ZEIGEN = 24;
+
+function prioritaetsBelegung(kategorie) {
+  const items = itemsDerKategorie(kategorie);
+  const belegt = new Map();
+  for (const i of items) {
+    if (!belegt.has(i.prioritaet)) belegt.set(i.prioritaet, []);
+    belegt.get(i.prioritaet).push(i.name);
+  }
+  const hoechste = items.length ? Math.max(...items.map((i) => i.prioritaet)) : 0;
+  if (hoechste + 1 > PRIO_MAX_ZEIGEN) {
+    const raenge = [...belegt.keys()].sort((a, b) => a - b);
+    // Der naechste freie gehoert dazu — sonst nennt die Uebersicht keinen,
+    // und genau den sucht man.
+    let frei = 1;
+    while (belegt.has(frei)) frei += 1;
+    if (!raenge.includes(frei)) raenge.push(frei);
+    raenge.sort((a, b) => a - b);
+    return raenge.map((p) => ({prio: p, namen: belegt.get(p) || []}));
+  }
+  const alle = [];
+  for (let p = 1; p <= hoechste + 1; p += 1) alle.push({prio: p, namen: belegt.get(p) || []});
+  return alle;
+}
+
+/** Die Prioritaet, die dieses Item bekaeme, wenn niemand etwas einstellt:
+ *  der erste freie Rang seiner Kategorie. */
+function naechsteFreiePrioritaet(kategorie, ausser) {
+  const vergeben = new Set(itemsDerKategorie(kategorie)
+    .filter((i) => i.name !== ausser).map((i) => i.prioritaet));
+  let p = 1;
+  while (vergeben.has(p)) p += 1;
+  return p;
+}
+
+/** Teilt sich dieses Item seinen Rang mit einem anderen seiner Kategorie? */
+function prioritaetDoppelt(item) {
+  if (!item.kategorie) return [];
+  return itemsDerKategorie(item.kategorie)
+    .filter((i) => i.name !== item.name && i.prioritaet === item.prioritaet)
+    .map((i) => i.name);
 }
 
 /** Sichtbare Rangfolge statt einer Zahl ohne Zusammenhang. Prioritaeten gelten
@@ -147,15 +306,25 @@ function prioritaetsUebersicht(kategorie, aktuellerName) {
     return el("p", {class: "hinweis prioritaets-hinweis"},
       "Ohne Kategorie konkurriert dieses Item mit keinem anderen Item.");
   }
-  const items = itemsDerKategorie(kategorie);
+  const belegung = prioritaetsBelegung(kategorie);
   return el("div", {class: "prioritaets-uebersicht"},
     el("span", {class: "klein"}, "Rangfolge in „" + kategorie + "“"),
-    el("div", {class: "prioritaets-chips"}, items.map((i) => el("span", {
-      class: "prioritaets-chip" + (i.name === aktuellerName ? " aktuell" : ""),
-      title: i.name + " · Priorität " + i.prioritaet,
-    }, "P" + i.prioritaet + " · " + i.name))),
+    el("div", {class: "prioritaets-chips"}, belegung.map((r) => {
+      const dieses = r.namen.includes(aktuellerName);
+      const frei = !r.namen.length;
+      return el("span", {
+        // Ein freier Rang ist kein Eintrag, sondern eine Luecke — gestrichelt
+        // und ohne Namen. Sonst zaehlt man die vergebenen ab, um ihn zu finden.
+        class: "prioritaets-chip" + (dieses ? " aktuell" : "")
+               + (frei ? " frei" : "") + (r.namen.length > 1 ? " doppelt" : ""),
+        title: frei ? "Priorität " + r.prio + " ist frei"
+                    : r.namen.join(", ") + " · Priorität " + r.prio
+                      + (r.namen.length > 1 ? " — doppelt vergeben" : ""),
+      }, "P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", ")));
+    })),
     el("small", {class: "eingabe-hilfe"},
-      "Kleinere Zahl gewinnt; bei gleicher Zahl entscheidet die Scan-Reihenfolge."));
+      "Kleinere Zahl gewinnt. Zwei Items mit derselben Zahl entscheidet die "
+      + "Scan-Reihenfolge — also der Zufall."));
 }
 
 function allePrioritaeten() {
@@ -170,23 +339,24 @@ function allePrioritaeten() {
 /** Noch nicht uebernommene Kategorien gehoeren bereits zur aktuellen Eingabe.
  *  Die Vorschau darf nicht erst nach „Ausgewaehlte uebernehmen" von ihnen
  *  erfahren, sonst muss derselbe freie Text in jeder Zeile neu getippt werden. */
+/** Eine in einer Zeile entstandene Kategorie in allen anderen waehlbar machen.
+ *
+ * Ohne das tippt man dieselbe Kategorie in zwanzig Zeilen — und beim
+ * einundzwanzigsten Mal anders. */
 function scanReviewKategorienAktualisieren() {
-  const liste = $("review-kategorien");
-  if (!liste) return;
-  const neu = [...document.querySelectorAll('input[list="review-kategorien"]')]
-    .map((n) => n.value);
-  liste.replaceChildren(...kategorienWerte(neu).map((k) => el("option", {value: k})));
+  kategorieOptionenAktualisieren();
 }
 
 function scanReviewKategorieAufAuswahl(eingabe) {
-  const wert = eingabe.value.trim();
+  const wert = eingabe.wert();
   if (!wert) return;
   for (const zeile of document.querySelectorAll(".scan-review-zeile")) {
-    const haken = zeile.querySelector('input[type="checkbox"]');
+    const haken = zeile.querySelector(".scan-review-haken");
     const kategorie = zeile.querySelector(".scan-review-kategorie");
-    if (haken && haken.checked && kategorie && !kategorie.disabled) kategorie.value = wert;
+    if (haken && haken.checked && kategorie && !kategorie.gesperrt()) {
+      kategorie.setzen(wert);
+    }
   }
-  scanReviewKategorienAktualisieren();
 }
 
 function prioritaetsfeld(wert, kategorie, beim_setzen) {
@@ -225,16 +395,17 @@ function farbfeld(beschriftung, hex, beim_setzen, hilfe, schluessel) {
     el("div", {class: "reihe"}, wahl, text));
 }
 
-function schalter(beschriftung, an, beim_setzen, unbestimmt) {
+/** Ein Schalter — mit ⓘ statt eines Erklaerungsabsatzes darunter.
+ *
+ * **Erklaerungen gehoeren ins ⓘ, nicht neben das Bedienelement.** Fuenf
+ * Absaetze untereinander sind eine Textwand, in der das Bedienelement
+ * untergeht; wer die Regel schon kennt, liest sie trotzdem jedes Mal mit. Das
+ * ⓘ zeigt sie auf Wunsch, und `offeneHilfen` merkt sich, welche offen sind. */
+function schalter(beschriftung, an, beim_setzen, hilfe, schluessel) {
   const box = el("input", {type: "checkbox"});
   box.checked = !!an;
-  // `indeterminate` geht nur ueber die Eigenschaft, nicht ueber ein Attribut.
-  if (unbestimmt) box.indeterminate = true;
-  // Aus dem Mischzustand heraus heisst ein Klick „alle" — das ist der Griff,
-  // den man dort will. Ohne das entschiede der Browser (er setzt checked=true),
-  // was zufaellig dasselbe waere; ausgeschrieben haengt es nicht am Zufall.
-  box.addEventListener("change", () => beim_setzen(unbestimmt ? true : box.checked));
-  return el("label", {class: "an"}, box, beschriftung);
+  box.addEventListener("change", () => beim_setzen(box.checked));
+  return el("label", {class: "an"}, box, beschriftet(beschriftung, hilfe, schluessel));
 }
 
 function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
@@ -250,18 +421,27 @@ function auswahl(beschriftung, werte, aktuell, beim_setzen, hilfe, schluessel) {
 
 /* ---------------------------------------------------- Fokus ueber den Neuaufbau
  *
- * **Jede Meldung baut die Ansicht neu — und nimmt dabei das Feld weg, in dem man
- * gerade steht.** Tipp-Felder melden beim Verlassen (`change`), also loest genau
- * der TAB-Sprung den Neuaufbau aus; bis die Bruecke geantwortet hat, liegt der
- * Fokus schon im naechsten Feld, und `replaceChildren()` wirft es weg. Sichtbar
- * wurde das beim Item: Namen tippen, TAB nach Kategorie — und der Cursor war weg.
+ * Tipp-Felder melden beim Verlassen, also loest genau der TAB-Sprung den
+ * Neuaufbau aus — bis die Bruecke antwortet, steht der Fokus im naechsten Feld,
+ * und `replaceChildren()` wirft es weg.
  *
  * Gemerkt wird die POSITION unter den Eingabefeldern des naechsten Elements mit
- * `id`, nicht das Element selbst (das gibt es danach nicht mehr) und auch kein
- * eigener Schluessel an jedem Feld (den muesste jeder Bauer mitschleppen, und ein
- * vergessener faellt nicht auf). Der Aufbau des Inspektors haengt am Typ des
- * gewaehlten Dings, nicht an seinen Werten — die Position bleibt also stehen. */
+ * `id`: das Element selbst gibt es danach nicht mehr, und einen eigenen
+ * Schluessel je Feld muesste jeder Bauer mitschleppen.
+ *
+ * **Deshalb traegt jede Maske eine eigene `id`.** Ohne die klettert `closest`
+ * bis zur ganzen Spalte, und die Position zaehlt dann ueber ALLE Masken
+ * hinweg — bei sechzig Items rund zweihundert Felder. Genau die drei Angaben,
+ * die man dort tippt, sortieren die Liste aber um (Kategorie, Prioritaet,
+ * Name): nach dem Neuaufbau steht an derselben Position das Feld eines
+ * FREMDEN Items, und wer weitertippt, aendert das falsche. Mit der Maske als
+ * Anker zaehlt die Position nur noch in ihr, und dort verschiebt sich
+ * nichts. */
 function fokusMerken() {
+  // Ein Umbenennen aendert die Identitaet und damit die id. Wer umbenennt, sagt
+  // es vorher; hier wird es einmal eingeloest und danach vergessen.
+  const umbenannt = fokusUmbenannt;
+  fokusUmbenannt = null;
   const a = document.activeElement;
   if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
   const kasten = a.closest("[id]");
@@ -272,12 +452,22 @@ function fokusMerken() {
   // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
   let start = null, ende = null;
   try { start = a.selectionStart; ende = a.selectionEnd; } catch (e) { /* egal */ }
-  return {id: kasten.id, i: i, start: start, ende: ende};
+  const neu = umbenannt && umbenannt.von === kasten.id ? umbenannt.nach : kasten.id;
+  // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
+  // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
+  return {id: neu, alt: kasten.id, i: i, start: start, ende: ende};
 }
+
+/** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
+function fokusUmbenennung(von, nach) {
+  fokusUmbenannt = von && nach && von !== nach ? {von: von, nach: nach} : null;
+}
+let fokusUmbenannt = null;
 
 function fokusHerstellen(merk) {
   if (!merk) return;
-  const kasten = document.getElementById(merk.id);
+  const kasten = document.getElementById(merk.id)
+              || document.getElementById(merk.alt);
   if (!kasten) return;
   const ziel = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
   if (!ziel) return;
@@ -303,6 +493,8 @@ let S = null;             // letzte Momentaufnahme
 let ziehen = null;        // was gerade gezogen wird
 let aktiveAblage = null;  // hervorgehobene Einfügestelle
 let offeneFrage = null;
+let gewaehltePhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
+const offeneSonderphasen = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 function warteAufBruecke() {
   return new Promise((fertig) => {
@@ -315,6 +507,10 @@ function warteAufBruecke() {
 async function ruf(name, daten) {
   try {
     const antwort = await window.pywebview.api[name](daten === undefined ? null : daten);
+    if (name === "laden" || name === "neu") {
+      gewaehltePhase = null;
+      offeneSonderphasen.clear();
+    }
     uebernimm(antwort);
   } catch (e) {
     setzeStatus({text: String(e && e.message ? e.message : e), art: "err"});
@@ -361,12 +557,18 @@ function setzeAnsicht(neu) {
   $("sicht-lauf").hidden = neu !== "lauf";
   $("sicht-config").hidden = neu !== "einstellungen";
   $("sicht-scans").hidden = neu !== "scans";
-  // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Einstellungen
-  // und Scans bearbeiten andere Dateien und haben ihren eigenen Speichern-Knopf.
+  $("sicht-teilen").hidden = neu !== "teilen";
+  $("sicht-werkzeuge").hidden = neu !== "werkzeuge";
+  // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
+  // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = neu === "einstellungen" || neu === "scans";
+    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge"].includes(neu);
   if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
+  if (neu === "teilen") zeichneTeilen();
+  // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
+  // den es nach einem Speichern nicht mehr gibt.
+  if (neu === "werkzeuge") zeichneWerkzeuge(true);
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (neu === "einstellungen") zeichneEinstellungen(true);
@@ -466,19 +668,45 @@ function zeichnePunkte() {
 function zeichnePhasen() {
   const ziel = $("phasen");
   ziel.replaceChildren();
-  for (const phase of S.phasen) ziel.appendChild(zeichnePhase(phase));
-  ziel.appendChild(el("div", {class: "phase"},
-    el("button", {class: "leerzone", onclick: () => ruf("phase_anhaengen")},
-       "+ Loop-Phase")));
+  if (!S.phasen.some((p) => p.index === gewaehltePhase && p.art === "loop")) {
+    gewaehltePhase = null;
+  }
+  const sichtbar = S.phasen.filter((phase) => phase.art === "loop" ||
+    phase.bloecke.length || offeneSonderphasen.has(phase.art));
+  for (const phase of sichtbar) ziel.appendChild(zeichnePhase(phase));
+
+  const verborgen = S.phasen.filter((phase) => phase.art !== "loop" &&
+    !phase.bloecke.length && !offeneSonderphasen.has(phase.art));
+  const werkzeuge = el("div", {class: "phase phasen-anlegen"},
+    el("button", {class: "leerzone", onclick: () => ruf("phase_anhaengen")}, "+ Phase"));
+  for (const phase of verborgen) {
+    const titel = phase.art === "init" ? "+ Startphase (einmal davor)"
+                                       : "+ Abschlussphase (einmal danach)";
+    werkzeuge.appendChild(el("button", {class: "leerzone", onclick: () => {
+      offeneSonderphasen.add(phase.art);
+      zeichnePhasen();
+    }}, titel));
+  }
+  ziel.appendChild(werkzeuge);
 }
 
 function zeichnePhase(phase) {
-  const kopf = el("div", {class: "phase-kopf " + phase.art});
+  const phaseGewaehlt = phase.art === "loop" && phase.index === gewaehltePhase;
+  const kopf = el("div", {
+    class: "phase-kopf " + phase.art + (phaseGewaehlt ? " gewaehlt" : ""),
+    title: phase.art === "loop" ? "Phase auswählen — Entf löscht sie" : "",
+    onclick: (e) => {
+      if (phase.art !== "loop" || e.target.closest("input, button")) return;
+      gewaehltePhase = phase.index;
+      ruf("auswahl_leeren");
+    }});
   // INIT und END tragen keinen frei wählbaren Namen — sie bekommen deshalb auch
   // kein Eingabefeld, das nichts annimmt.
+  const sondername = phase.art === "init" ? "START · einmal davor"
+                   : phase.art === "end" ? "ABSCHLUSS · einmal danach" : phase.name;
   const name = phase.art === "loop"
     ? el("input", {class: "phase-name wachse", value: phase.name})
-    : el("span", {class: "phase-name wachse"}, phase.name);
+    : el("span", {class: "phase-name wachse"}, sondername);
   name.addEventListener("change", () => ruf("phase_setzen",
     {phase: phase.index, feld: "name", wert: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
@@ -505,9 +733,18 @@ function zeichnePhase(phase) {
     // Verwechslung, die man genau einmal macht.
     kopf.appendChild(el("div", {class: "phase-werkzeug"},
       el("span", {class: "klein mono"}, "×"), wdh, start,
-      el("button", {class: "btn still gefahr", title: "Phase löschen",
-                    onclick: () => ruf("phase_loeschen", {phase: phase.index})},
-         papierkorb())));
+      el("button", {class: "btn still", title: "Alle Wartezeiten dieser Phase skalieren",
+        onclick: () => {
+          const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+          if (faktor !== null) ruf("phase_skalieren", {phase: phase.index, faktor: faktor});
+        }}, "Wartezeiten ×")));
+  }
+  if (phase.bloecke.length) {
+    const alle = S.auswahl.phase === phase.index &&
+                 S.auswahl.zeilen.length === phase.bloecke.length;
+    kopf.appendChild(el("button", {class: "btn still phase-alle",
+      onclick: () => ruf("phase_auswahl", {phase: phase.index})},
+      alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
   }
 
   const spalte = el("div", {class: "phase"}, kopf);
@@ -524,23 +761,6 @@ function zeichnePhase(phase) {
     ondrop: (e) => abwerfen(e, phase.index, phase.bloecke.length),
   }, phase.bloecke.length ? "+ Block" : "leer — Block anlegen oder Punkt herziehen"));
   return spalte;
-}
-
-/** Papierkorb-Zeichen als Inline-SVG — nichts wird von aussen geladen. */
-function papierkorb() {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("width", "13");
-  svg.setAttribute("height", "13");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  const pfad = document.createElementNS(ns, "path");
-  pfad.setAttribute("d", "M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14M10 11v5M14 11v5");
-  svg.appendChild(pfad);
-  return svg;
 }
 
 /** Einfügestelle zwischen zwei Karten: nur ein Strich, der aufleuchtet. */
@@ -596,12 +816,26 @@ function zeichneKarte(phase, block) {
       block.else_text + (block.else_greift ? "" : " · greift nie")));
   }
 
+  const auswahl = el("input", {
+    type: "checkbox", class: "karte-auswahl", checked: block.gewaehlt,
+    title: block.gewaehlt ? "Aus Auswahl entfernen" : "Zur Auswahl hinzufügen",
+    onclick: (e) => {
+      e.stopPropagation();
+      gewaehltePhase = null;
+      ruf("waehlen", {phase: phase.index, zeile: block.zeile, modus: "dazu"});
+    },
+    onmousedown: (e) => e.stopPropagation(),
+  });
+
   return el("div", {
     class: "karte" + (block.gewaehlt ? " gewaehlt" : ""),
     draggable: "true",
-    onclick: (e) => ruf("waehlen", {
-      phase: phase.index, zeile: block.zeile,
-      modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "bereich" : "einzeln")}),
+    onclick: (e) => {
+      gewaehltePhase = null;
+      return ruf("waehlen", {
+        phase: phase.index, zeile: block.zeile,
+        modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "bereich" : "einzeln")});
+    },
     ondragstart: (e) => { ziehen = {art: "block", phase: phase.index, zeile: block.zeile};
                           e.dataTransfer.effectAllowed = "move"; },
     ondragend: () => { ziehen = null; loescheAblage(); },
@@ -620,6 +854,7 @@ function zeichneKarte(phase, block) {
     },
   },
     el("div", {class: "karte-kopf", style: "background:" + block.farbe},
+      auswahl,
       el("span", {class: "karte-typ"}, block.label),
       block.titel ? el("span", {class: "karte-titel"}, block.titel) : null,
       block.prueft ? el("span", {class: "marke-klein", title: "prüft nach der Aktion nach"},
@@ -646,12 +881,9 @@ function zeitpunkt(sekunden) {
 
 /** Eine Phasenfarbe aus dem Stylesheet (`--init` / `--loop` / `--end`).
  *
- * Der Balken setzt seine Segmente per Inline-Stil — die Breite ist gerechnet,
- * eine Klasse trägt er nicht. Die Farbe deshalb trotzdem aus `:root` zu holen
- * statt sie hier auszuschreiben, hält die Palette an einer Stelle: sonst wäre
- * die Übersicht die eine Ansicht, in der ein Phasenton nach dem nächsten
- * Umfärben nicht mehr stimmt. Gemerkt wird sie, weil `getComputedStyle` sonst
- * bei zwanzig Sequenzkarten sechzigmal liefe. */
+ * Der Balken setzt seine Segmente per Inline-Stil (die Breite ist gerechnet).
+ * Die Farbe trotzdem aus `:root` zu holen haelt die Palette an einer Stelle;
+ * gemerkt, weil `getComputedStyle` sonst je Sequenzkarte dreimal liefe. */
 const _phasenfarben = {};
 function phasenFarbe(art) {
   if (!(art in _phasenfarben)) {
@@ -663,12 +895,8 @@ function phasenFarbe(art) {
 
 /** INIT / Loop-Phasen / END als Segmente, Breite nach Schrittzahl.
  *
- * Leere Phasen fallen raus statt als Strich stehenzubleiben: ein Segment der
- * Breite 0 sagt nichts, kostet aber eine Lücke.
- *
- * INIT und END standen hier auf demselben Grau: der Balken sagte damit zwar,
- * WIE VIEL am Anfang und am Ende liegt, aber nicht, dass es Anfang und Ende
- * sind — und es war die einzige Ansicht, die die Phasenfarben nicht sprach. */
+ * Leere Phasen fallen raus: ein Segment der Breite 0 sagt nichts, kostet aber
+ * eine Luecke. Die Phasenfarben sind dieselben wie ueberall sonst. */
 function phasenBalken(s) {
   const teile = [{n: s.init, farbe: phasenFarbe("init"), was: "INIT: " + s.init}]
     .concat((s.phasen || []).map((p) => ({n: p.schritte, farbe: phasenFarbe("loop"),
@@ -698,6 +926,14 @@ async function zeichneSequenzenliste() {
   for (const s of liste) ziel.appendChild(seqKarte(s));
 }
 
+/** Eine Sequenz als Karte — mit FESTEN Zeilen, damit die Karten sich einmessen.
+ *
+ * **Jede Karte legt dieselben fünf Zeilen an, auch leere.** Vorher liess eine
+ * fehlende Notiz alles darunter hochrutschen: bei drei Karten nebeneinander lag
+ * dann der Phasenbalken der einen auf Höhe der Kennzahlen der anderen, und die
+ * Übersicht war keine mehr. Mit `subgrid` teilen sich alle Karten einer Reihe
+ * die Zeilenhöhen (siehe `.seq-karte` im Stylesheet) — dafür muss jede Zeile
+ * aber DA sein, sonst rutscht der Rest wieder eine Stelle nach oben. */
 function seqKarte(s) {
   const karte = el("div", {class: "seq-karte" + (s.offen ? " offen" : "") +
                                   (s.defekt ? " defekt" : "")});
@@ -705,26 +941,33 @@ function seqKarte(s) {
     el("span", {class: "seq-name"}, s.name),
     s.offen ? el("span", {class: "zahl", style: "color:var(--accent)"}, "offen") : null));
 
+  // Zeile 2: Notiz bzw. Warnung. Eine defekte Datei hat weder Balken noch
+  // Kennzahlen — die Zeilen bleiben trotzdem stehen, damit die Nachbarkarten
+  // nicht verrutschen.
+  const text = el("div", {class: "seq-text"});
   if (s.defekt) {
-    karte.appendChild(el("p", {class: "seq-warn"},
+    text.appendChild(el("p", {class: "seq-warn"},
       "Nicht ladbar — die Datei ist beschädigt oder kein gültiges Sequenz-Format. " +
       "Sie bleibt unangetastet; nachsehen lohnt sich in " + s.datei + "."));
   } else {
-    if (s.beschreibung) karte.appendChild(el("p", {class: "seq-notiz"}, s.beschreibung));
-    karte.appendChild(phasenBalken(s));
-    karte.appendChild(el("div", {class: "seq-zahlen"},
-      el("span", {class: "zahl"}, s.schritte + " Schritte"),
-      el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
-      el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")));
+    if (s.beschreibung) text.appendChild(el("p", {class: "seq-notiz"}, s.beschreibung));
     if (s.warnungen && s.warnungen.length) {
-      karte.appendChild(el("p", {class: "seq-warn"},
+      text.appendChild(el("p", {class: "seq-warn"},
         s.warnungen.length + "× Scan ohne Konfiguration — " + s.warnungen[0] +
         (s.warnungen.length > 1 ? " u. a." : "")));
     }
   }
+  karte.appendChild(text);
+  karte.appendChild(el("div", {class: "seq-balken"},
+    s.defekt ? null : phasenBalken(s)));
+  karte.appendChild(el("div", {class: "seq-zahlen"}, s.defekt ? null : [
+    el("span", {class: "zahl"}, s.schritte + " Schritte"),
+    el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
+    el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")]));
 
   karte.appendChild(el("div", {class: "seq-fuss"},
-    el("span", {class: "klein mono wachse"}, s.datei + " · " + zeitpunkt(s.geaendert)),
+    el("span", {class: "klein mono wachse", title: s.datei},
+       s.datei + " · " + zeitpunkt(s.geaendert)),
     // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
     // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
     s.defekt ? null : el("button", {
@@ -754,14 +997,8 @@ function laufTaktSetzen(an) {
 
 /** Springt beim Start eines Laufs von selbst in die Live-Ansicht.
  *
- * **Nur auf der Flanke** (nichts → läuft), nicht solange etwas läuft: sonst
- * käme man während eines Durchgangs nicht mehr in den Editor zurück, die
- * Ansicht würde jedes Mal zurückspringen. Wer den Reiter wechselt, während es
- * läuft, hat sich dafür entschieden.
- *
- * Der Puls ist bewusst der langsamste, der die Frage noch rechtzeitig
- * beantwortet: ein Start ist nichts, was man in einer halben Sekunde verpasst.
- */
+ * Nur auf der Flanke (nichts → laeuft), nicht solange etwas laeuft: sonst kaeme
+ * man waehrend eines Durchgangs nicht mehr in den Editor zurueck. */
 function laufFlanke(aktiv) {
   if (aktiv && !laufLief && ansicht !== "lauf") setzeAnsicht("lauf");
   laufLief = aktiv;
@@ -771,8 +1008,8 @@ function laufFlanke(aktiv) {
 }
 
 /** Einen Lauf-Befehl abschicken, nachfassen — und melden, wenn niemand zuhört. */
-async function laufSchicken(befehl) {
-  await ruf("lauf_befehl", {befehl: befehl});
+async function laufSchicken(befehl, extra) {
+  await ruf("lauf_befehl", Object.assign({befehl: befehl}, extra || {}));
   laufNachfassen();
   // Der Hauptprozess leert den Briefkasten beim Lesen. Liegt der Befehl nach
   // zwei Sekunden immer noch da, ist keiner da — dann darf hier nicht
@@ -836,15 +1073,11 @@ function farbstueck(text, rgb) {
 
 /** Worauf der laufende Block gerade wartet.
  *
- * Der Kasten ist die Antwort auf „seit 12 s" allein: bei einer Wartezeit von
- * 15 s sind zwölf Sekunden fast geschafft, bei einem Farb-Trigger mit 300 s
- * Timeout haben sie gerade erst angefangen — und ob überhaupt etwas Passendes
- * in Sicht ist, sagte die verstrichene Zeit gar nicht.
+ * „seit 12 s" allein beantwortet die Frage nicht: bei 15 s Wartezeit ist das
+ * fast geschafft, bei 300 s Timeout gerade erst angefangen.
  *
- * Heruntergezählt wird **hier**, aus den absoluten Zeitstempeln der
- * Statusdatei. Mit Restwerten aus dem Worker ruckelte die Anzeige in dessen
- * Sekundentakt; beide Prozesse laufen auf derselben Maschine, also derselben Uhr.
- */
+ * Heruntergezaehlt wird hier, aus den absoluten Zeitstempeln der Statusdatei —
+ * mit Restwerten aus dem Worker ruckelte die Anzeige in dessen Sekundentakt. */
 function warteKasten(w, jetzt) {
   if (!w) return null;
   const uebrig = w.bis ? Math.max(0, w.bis - jetzt) : null;
@@ -910,14 +1143,11 @@ function balken(ist, soll) {
 
 /** Alle Phasen des Laufs nebeneinander, die laufende breit.
  *
- * Die Liste kommt aus dem Laufstatus, nicht aus der geöffneten Sequenz: laufen
- * kann eine ganz andere. Fehlt sie (Statusdatei einer älteren Fassung), bleibt
- * es bei der einen laufenden Phase — geraten wird nichts.
+ * Die Liste kommt aus dem Laufstatus, nicht aus der geoeffneten Sequenz: laufen
+ * kann eine ganz andere. Fehlt sie, bleibt es bei der einen laufenden Phase.
  *
- * „Abgeschlossen" gilt innerhalb des laufenden Zyklus: im nächsten Durchgang
- * sind dieselben Loop-Phasen wieder ausstehend. Anders wäre es gelogen, sobald
- * eine Sequenz mehr als einen Zyklus hat.
- */
+ * „Abgeschlossen" gilt innerhalb des laufenden Zyklus — im naechsten Durchgang
+ * sind dieselben Loop-Phasen wieder ausstehend. */
 function phasenLeiste(z, beendet) {
   const jetzige = z.phase_pos;
   const liste = Array.isArray(z.phasen) && z.phasen.length
@@ -969,6 +1199,19 @@ async function zeichneLauf() {
   const ziel = $("sicht-lauf");
   ziel.replaceChildren();
   if (!z || !z.aktiv) {
+    if (z && z.countdown) {
+      const jetzt = Date.now() / 1000;
+      ziel.appendChild(el("div", {class: "lauf-kopf"},
+        el("span", {class: "lampe an"}),
+        el("span", {class: "lauf-name"}, z.sequenz || "(ohne Namen)"),
+        el("span", {class: "zahl"}, "startet in " +
+          restzeit((z.zielzeit || jetzt) - jetzt))));
+      ziel.appendChild(el("p", {class: "hinweis"},
+        "Geplant für " + new Date((z.zielzeit || jetzt) * 1000).toLocaleString("de-CH") +
+        ". Der Countdown kann hier oder mit dem Stop-Hotkey abgebrochen werden."));
+      ziel.appendChild(steuerung(false, z));
+      return;
+    }
     if (z && z.ende) return zeichneAbschluss(ziel, z);
     // Leerzustand ehrlich beschriften statt mit Nullen füllen: eine Tafel voller
     // Nullen sieht aus wie ein Lauf, der nichts tut.
@@ -981,7 +1224,7 @@ async function zeichneLauf() {
         "vermutlich hart abgeschossen. Ein neuer Start räumt das auf."
       : "Startet die zuletzt gespeicherte Fassung der geöffneten Sequenz — " +
         "danach zeigt diese Ansicht mit, wo sie gerade steht."));
-    ziel.appendChild(steuerung(false));
+    ziel.appendChild(steuerung(false, z));
     return;
   }
 
@@ -1021,20 +1264,15 @@ async function zeichneLauf() {
         el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
                       el("small", {}, text.toUpperCase()))))));
 
-  ziel.appendChild(steuerung(true));
+  if (z.manuell) ziel.appendChild(manuelleSteuerung(z.manuell));
+  ziel.appendChild(steuerung(true, z));
 }
 
 /** Der letzte Lauf, nachdem er fertig ist.
  *
- * Vorher verschwand hier alles in dem Moment, in dem die Sequenz durch war:
- * die Datei wurde geloescht, die Ansicht zeigte „Es läuft gerade keine
- * Sequenz". Ausgerechnet dann sieht man aber hin — die Frage ist ja, was
- * herausgekommen ist. Jetzt bleibt der Stand stehen, bis der nächste Start ihn
- * überschreibt.
- *
- * Dieselben Kacheln wie im Lauf, damit man nicht umlernen muss; die Zeitangaben
- * sind fest statt mitlaufend, denn hier tickt nichts mehr.
- */
+ * Der Stand bleibt stehen, bis der naechste Start ihn ueberschreibt — sonst
+ * waere die Ansicht genau dann leer, wenn man hinsieht. Dieselben Kacheln wie
+ * im Lauf, nur mit festen statt mitlaufenden Zeitangaben. */
 function zeichneAbschluss(ziel, z) {
   const zaehler = z.zaehler || {};
   // Warum es zu Ende ist, entscheidet die Farbe: durchgelaufen ist gruen,
@@ -1063,7 +1301,24 @@ function zeichneAbschluss(ziel, z) {
       el("div", {}, el("b", {}, String(zaehler[schluessel] || 0)),
                     el("small", {}, text.toUpperCase())))));
 
-  ziel.appendChild(steuerung(false));
+  ziel.appendChild(steuerung(false, z));
+}
+
+/** Der Worker wartet wirklich auf diese vier Antworten; keine Konsolentaste. */
+function manuelleSteuerung(m) {
+  const knopf = (text, aktion, klasse) => el("button", {
+    class: "btn" + (klasse ? " " + klasse : ""),
+    onclick: () => laufSchicken("manuell_aktion", {aktion: aktion}),
+  }, text);
+  return el("section", {class: "tafel manuell-tafel"},
+    el("span", {class: "ueberschrift"}, "MANUELLER SCHRITTMODUS"),
+    el("b", {}, m.titel || "Aktueller Block"),
+    el("p", {class: "hinweis"}, m.aktion || ""),
+    el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
+      knopf("▶ Ausführen", "run", "haupt"),
+      knopf("↷ Überspringen", "skip"),
+      knopf("Normal weiter", "continue"),
+      knopf("■ Stoppen", "stop", "gefahr")));
 }
 
 /** Start/Pause/Stopp.
@@ -1073,19 +1328,37 @@ function zeichneAbschluss(ziel, z) {
  * derselben Schleife abholt wie seine Hotkeys (`befehl.py`). Deshalb steht das
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
-function steuerung(laeuft) {
+function steuerung(laeuft, stand) {
   const knopf = (text, befehl, klasse) => el("button", {
     class: "btn" + (klasse ? " " + klasse : ""),
     onclick: () => laufSchicken(befehl),
   }, text);
-  return el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
-    laeuft ? null : knopf("▶ Starten", "start", "haupt"),
+  const zeile = el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
+    !laeuft && !(stand && stand.countdown) ? knopf("▶ Starten", "start", "haupt") : null,
+    !laeuft && !(stand && stand.countdown) ? knopf("▶ Schrittweise", "start_manuell") : null,
     laeuft ? knopf("⏸ Pause", "pause") : null,
+    laeuft ? knopf("↷ Warten überspringen", "skip") : null,
+    laeuft ? knopf("⏭ Block überspringen", "skip_step") : null,
+    laeuft ? knopf("✓ Zyklus abschliessen", "finish") : null,
     laeuft ? knopf("■ Stoppen", "stop", "gefahr") : null,
+    !laeuft && stand && stand.countdown ? knopf("■ Zeitplan abbrechen", "stop", "gefahr") : null,
     el("span", {class: "klein"},
        laeuft ? "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess"
-              : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
-                "werden vorher geschrieben"));
+               : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
+                 "werden vorher geschrieben"));
+  if (!laeuft && !(stand && stand.countdown)) {
+    const zeit = el("input", {placeholder: "14:30 oder +30m", autocomplete: "off",
+      style: "width:150px"});
+    const plan = el("button", {class: "btn", onclick: () => {
+      if (!zeit.value.trim()) {
+        setzeStatus({art: "warn", text: "Bitte eine Startzeit eingeben."});
+        return;
+      }
+      laufSchicken("zeitplan", {zeit: zeit.value.trim()});
+    }}, "◷ Start planen");
+    zeile.append(el("span", {class: "trenner"}), zeit, plan);
+  }
+  return zeile;
 }
 
 /* ----------------------------------------------------------------- Inspektor */
@@ -1110,10 +1383,8 @@ function zeichneInspektor() {
   if (!b) {
     $("insp-punkt").style.background = "#2A3245";
     $("insp-titel").textContent = gewaehlt > 1 ? gewaehlt + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
-    ziel.appendChild(el("div", {class: "leer"}, gewaehlt > 1
-      ? el("span", {}, "Mehrfachauswahl: verschieben mit ALT+↑/↓, duplizieren mit " +
-                       "STRG+D, löschen mit Entf.",
-           el("br"), "Für die Einstellungen einen einzelnen Block wählen.")
+    ziel.appendChild(el("div", {class: gewaehlt > 1 ? "sammel-editor" : "leer"}, gewaehlt > 1
+      ? zeichneSammelEditor(gewaehlt)
       : el("span", {}, "Block anklicken, um ihn zu bearbeiten.", el("br"),
            "Ziehen sortiert um — auch über Phasengrenzen.")));
     return;
@@ -1126,15 +1397,10 @@ function zeichneInspektor() {
 
   // --- Typ ---
   // Jede Kachel traegt ihre Farbe, nicht nur die gewaehlte: damit ist das Raster
-  // zugleich die Legende zu den Farben im Board — vorher musste man sie sich aus
-  // den Karten zusammensuchen —, und man sieht vor dem Klick, wie die Karte
-  // danach aussieht.
-  //
-  // Die Farbe liegt ringsum statt als Streifen links (dieselbe Regel wie bei
-  // Phasenkopf, Karte und laufender Phase), die GEWAEHLTE ist zusaetzlich
-  // ausgefuellt. `border-color` steht im style-Attribut und damit nach dem
-  // `border`-Kurzformat aus .typ-chip — andersherum raeumte die Kurzform die
-  // Farbe wieder weg.
+  // zugleich die Legende zu den Farben im Board. Ringsum statt als Streifen
+  // links, die gewaehlte zusaetzlich ausgefuellt. `border-color` steht im
+  // style-Attribut und damit NACH dem `border`-Kurzformat aus .typ-chip —
+  // andersherum raeumte die Kurzform die Farbe wieder weg.
   ziel.appendChild(ueberschrift("BLOCK-TYP",
     "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
     "ist zugleich die Legende dazu.", "blocktyp"));
@@ -1182,16 +1448,11 @@ function zeichneInspektor() {
   baueScan(ziel, b);
   if (b.typ === "screenshot") baueScreenshot(ziel, b);
 
-  // Der Farb-Trigger fragt VOR dem Schritt. Sinn ergibt er nur, wo die Laufzeit
-  // ihn auch auswertet: bei Klick, Warten und Taste — `runtime/steps.py` wartet
-  // fuer diese drei an genau einer Stelle, und dass die Taste dazugehoert, war
-  // einmal ein Fehler und ist ausdruecklich repariert. Scans und Screenshot
-  // kehren vorher um; dort waere die Bedingung wirkungslos.
+  // Der Farb-Trigger fragt VOR dem Schritt und steht nur da, wo die Laufzeit ihn
+  // auswertet: Klick, Warten und Taste. Scans und Screenshot kehren vorher um.
   //
-  // Gezeigt wird der Abschnitt trotzdem, wenn schon eine Bedingung dranhaengt:
-  // sonst waere sie unerreichbar, und ein Zustand, den man sieht (Farbfeld auf
-  // der Karte) aber nicht mehr wegbekommt, ist genau die Falltuer, die der
-  // geloeschte "nur warten"-Schalter war.
+  // Haengt trotzdem schon eine Bedingung dran, bleibt der Abschnitt sichtbar —
+  // sonst waere sie unerreichbar.
   const mitTrigger = b.typ === "click" || b.typ === "wait_click" ||
                      b.typ === "wait" || b.typ === "key";
   if (mitTrigger || b.trigger !== "kein") baueTrigger(ziel, b, mitTrigger);
@@ -1205,14 +1466,11 @@ function zeichneInspektor() {
   hilfenAnwenden(ziel);
 }
 
-/** „Sitzt der Punkt da, wo ich denke?" — die Maus fährt hin und sagt es.
+/** „Sitzt der Punkt da, wo ich denke?" — die Maus faehrt hin und sagt es.
  *
- * Nur bei Blöcken mit Stelle. Das Fenster bewegt die Maus nicht selbst (es sieht
- * den Bildschirm nicht); der Hauptprozess tut es und misst dabei, ob die Farbe
- * dort noch der gespeicherten entspricht. Diese Zeile steht in seiner Konsole —
- * hier kann sie nicht stehen, und das zu behaupten wäre schlimmer als der Weg
- * zum anderen Fenster.
- */
+ * Nur bei Bloecken mit Stelle. Das Fenster sieht den Bildschirm nicht; der
+ * Hauptprozess bewegt die Maus, misst die Farbe und schreibt das Ergebnis in
+ * seine eigene Konsole. */
 function baueProbe(ziel, b) {
   // Ein Block hat bis zu drei Stellen — Klick, Prüf-Pixel des Triggers und
   // ELSE-Klick —, und „sitzt das noch?" fragt man bei jeder. Angeboten wird
@@ -1226,34 +1484,62 @@ function baueProbe(ziel, b) {
     stellen.push(["verify", "Nachprüf-Pixel", b.verify_punkt]);
   if (b.else_aktion === "click" && b.else_punkt !== null && b.else_punkt !== undefined)
     stellen.push(["else", "ELSE-Klick", b.else_punkt]);
-  if (!stellen.length) return;
-
   const fuss = el("div", {class: "insp-fuss"});
+  fuss.appendChild(el("button", {
+    class: "btn breit",
+    title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
+    onclick: () => ruf("block_testen"),
+  }, "▶ Block einmal testen"));
   for (const [welche, text, punkt] of stellen) {
     fuss.appendChild(el("button", {
       class: "btn breit",
       onclick: () => ruf("punkt_zeigen", {welche: welche}),
     }, "◎ " + text + " zeigen (#" + punkt + ")"));
   }
-  fuss.appendChild(el("p", {class: "hinweis"},
-    "Setzt die Maus im Hauptprozess auf die Stelle. Dort steht dann auch, ob " +
-    "die gemessene Farbe noch zur gespeicherten passt."));
   ziel.appendChild(fuss);
+}
+
+function zeichneSammelEditor(anzahl) {
+  const zeitfeld = (beschriftung, feldname, wert, gemischt) => {
+    const eingabe = el("input", {
+      type: "number", min: "0", step: "0.1",
+      value: gemischt ? "" : (wert === null || wert === undefined ? 0 : wert),
+      placeholder: gemischt ? "verschieden" : "",
+    });
+    eingabe.addEventListener("change", () => {
+      if (eingabe.value.trim() !== "") {
+        ruf("auswahl_setzen", {feld: feldname, wert: Number(eingabe.value)});
+      }
+    });
+    eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
+    return el("label", {class: "feld"}, beschriftung, eingabe);
+  };
+  return el("div", {},
+    el("p", {class: "hinweis"},
+      anzahl + " Blöcke gemeinsam bearbeiten. Verschieben: ALT+↑/↓, löschen: Entf."),
+    el("span", {class: "ueberschrift"}, "WARTEZEIT FÜR AUSWAHL"),
+    el("div", {class: "reihe sammel-schnell"}, [0, 0.5, 1].map((sekunden) =>
+      el("button", {class: "btn still", onclick: () => ruf("auswahl_setzen",
+        {feld: "delay_before", wert: sekunden})}, String(sekunden).replace(".", ",") + " s"))),
+    el("div", {class: "gitter2"},
+      zeitfeld("Wartezeit (s)", "delay_before", S.auswahl.delay_before,
+               S.auswahl.delay_before_gemischt),
+      zeitfeld("bis (0 = fest)", "delay_max", S.auswahl.delay_max,
+               S.auswahl.delay_max_gemischt)),
+    el("p", {class: "hinweis"},
+      "Nur diese Wartefelder werden gemeinsam geändert; Typ, Ziel und Bedingungen bleiben erhalten."));
 }
 
 function baueAktion(ziel, b) {
   const klickt = b.typ === "click" || b.typ === "wait_click";
   const farbe = b.trigger !== "kein";
-  const ergibt = klickt ? (farbe ? "wait_click" : "click") : "wait";
-  const typ = S.typen.find((t) => t.key === ergibt);
 
   // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
   // wechselt hier ja gerade, und eine Erklaerung, die man aufklappt und die beim
   // ersten Schalten verschwindet, ist keine.
   ziel.appendChild(ueberschrift("AKTION",
     "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
-    "warten. Die Kacheln oben setzen dieselben zwei Werte — was dabei " +
-    "herauskommt, steht darunter.", "aktion"));
+    "warten. Die Kacheln oben zeigen das Ergebnis automatisch an.", "aktion"));
   ziel.appendChild(schalter("klickt an der Stelle", klickt, (an) =>
     ruf("block_typ", {typ: an ? (farbe ? "wait_click" : "click") : "wait"})));
   ziel.appendChild(schalter("wartet auf eine Farbe", farbe, (an) => {
@@ -1263,9 +1549,6 @@ function baueAktion(ziel, b) {
     if (!klickt) ruf("block_trigger", {wahl: an ? "da" : "kein"});
     else ruf("block_typ", {typ: an ? "wait_click" : "click"});
   }));
-  ziel.appendChild(el("div", {class: "reihe", style: "padding-top:2px"},
-    el("span", {class: "klein"}, "ergibt"),
-    el("span", {class: "karte-typ", style: "background:" + typ.farbe}, typ.label)));
 }
 
 function baueStelle(ziel, b) {
@@ -1273,7 +1556,9 @@ function baueStelle(ziel, b) {
   // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
   ziel.appendChild(ueberschrift(b.typ === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
     "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
-    "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten." +
+    "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten. " +
+    "Mit ‚Stelle mit der Maus setzen‘ wechselst du danach ins Spiel, bewegst die " +
+    "Maus an die Stelle und drückst ENTER. Die Farbe wird mitgemessen; ESC bricht ab." +
     (b.typ === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
      "beobachtet. Zum Klicken oben den Typ KLICK oder FARBE+KLICK wählen." : ""),
     "stelle"));
@@ -1307,11 +1592,8 @@ function baueStelle(ziel, b) {
   ziel.appendChild(el("button", {
     class: "btn breit",
     title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
-    onclick: () => ruf("punkt_aufnehmen"),
+    onclick: () => mitWarten("ruf", "punkt_aufnehmen"),
   }, "✛ Stelle mit der Maus setzen"));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Danach: Maus im Spiel an die Stelle, ENTER. Die Farbe wird dabei " +
-    "gleich mitgemessen — ESC bricht ab."));
   // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
   // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
   // Bedienelemente. Das rächte sich, weil er sich bei "warten" selbst ausblendete
@@ -1396,7 +1678,7 @@ function baueScreenshot(ziel, b) {
     // wie eines, das den Klick verschluckt hat.
     setzeStatus({text: "Ecke 1 anfahren + ENTER, dann Ecke 2 + ENTER (ESC bricht ab)",
                  art: "warn"});
-    ruf("bereich_aufnehmen");
+    mitWarten("ruf", "bereich_aufnehmen");
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
   ziel.appendChild(el("div", {class: "gitter2"},
@@ -1479,30 +1761,35 @@ function ohneElseText() {
                             "die Notbremse." : "");
 }
 
+const ELSE_BESCHREIBUNGEN = {
+  skip: "Nur diesen Schritt überspringen.",
+  skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
+  restart: "Die Sequenz von vorn beginnen.",
+  click: "Stattdessen einen anderen Punkt klicken.",
+  key: "Stattdessen eine Taste drücken.",
+};
+
 function baueElse(ziel, b) {
-  // Kein Auslöser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
-  // Screenshot, Boss-Watcher) kann ELSE nie feuern, und ein Bedienelement steht
-  // nur da, wo die Laufzeit es auswertet — dieselbe Regel wie beim Farb-Trigger,
-  // den es bei Scans und Screenshot auch nicht gibt.
+  // Kein Ausloeser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
+  // Screenshot, Boss-Watcher) kann ELSE nie feuern.
   //
-  // Ausnahme: ist trotzdem eine Aktion gesetzt (Trigger nachträglich entfernt,
-  // Typ umgestellt, Import), bleibt der Abschnitt stehen. Sonst stünde das ELSE
-  // unsichtbar in der Datei und wäre nicht mehr loszuwerden — dieselbe Falltür
-  // wie beim gelöschten Schalter „nur warten".
+  // Ist trotzdem eine Aktion gesetzt (Trigger entfernt, Typ umgestellt, Import),
+  // bleibt der Abschnitt stehen — sonst stuende das ELSE unsichtbar in der Datei
+  // und waere nicht mehr loszuwerden.
   if (!b.else_greift && !b.else_aktion) return;
-  // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" stand vorher
-  // im Raster und sah aus wie eine sechste Aktion, obwohl sie das Gegenteil ist
-  // — die Abwesenheit von allen.
+  // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" saehe aus wie
+  // eine sechste Aktion, obwohl sie die Abwesenheit von allen ist.
   //
-  // Der Rückweg ist die markierte Kachel selbst: ein zweiter Klick darauf hebt
-  // sie auf. Fehlen darf er nicht (sonst dieselbe Falltür wie beim gelöschten
-  // Schalter „nur warten": gesetzt und nicht mehr loszuwerden), und weil man ein
-  // Umschalten nicht sieht, steht es im Hinweis darunter und im Tooltip der
-  // Kachel.
+  // Der Rueckweg ist die markierte Kachel selbst — und weil man ein Umschalten
+  // nicht sieht, steht es im Hinweis darunter und im Tooltip der Kachel.
+  const auswirkung = b.else_aktion
+    ? ELSE_BESCHREIBUNGEN[b.else_aktion]
+    : ohneElseText();
   ziel.appendChild(ueberschrift("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-    "eigene Aktion des Schritts. Ein zweiter Klick auf die markierte Kachel " +
-    "hebt sie wieder auf.", "else"));
+    "eigene Aktion des Schritts. " + auswirkung +
+    (b.else_aktion ? " Ein zweiter Klick auf die markierte Kachel hebt ELSE wieder auf." : ""),
+    "else"));
   // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen), und
   // im Inspektor ist der Platz da. Ein Klappmenü versteckt vier von fünf
   // Möglichkeiten hinter einem Klick — hier sieht man auf einen Blick, was es
@@ -1522,22 +1809,12 @@ function baueElse(ziel, b) {
       // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
       // will, soll nicht beide erwischen.
       class: "typ-chip else-chip" + (a === b.else_aktion ? " an" : ""),
-      title: a === b.else_aktion ? "nochmal klicken = kein ELSE" : "",
+      title: ELSE_BESCHREIBUNGEN[a] +
+             (a === b.else_aktion ? " Nochmal klicken = kein ELSE." : ""),
       // Dieselbe Kachel nochmal: das leere Kommando entfernt die Aktion. Eine
       // andere Kachel wechselt sie wie gewohnt.
       onclick: () => ruf("block_else", {aktion: a === b.else_aktion ? "" : a}),
     }, a))));
-  // Der Satz zur gewählten Aktion — und dahinter, wie man sie wieder los wird.
-  // Ein Umschalten sieht man einem Bedienelement nicht an; ungesagt fände es nur,
-  // wer es zufällig probiert.
-  ziel.appendChild(el("p", {class: "hinweis"}, ({
-    "": ohneElseText(),
-    skip: "Nur diesen Schritt überspringen.",
-    skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
-    restart: "Die Sequenz von vorn beginnen.",
-    click: "Stattdessen einen anderen Punkt klicken.",
-    key: "Stattdessen eine Taste drücken."}[b.else_aktion] || "") +
-    (b.else_aktion ? " Nochmal auf die markierte Kachel klicken = kein ELSE." : "")));
   if (b.else_aktion === "click") {
     ziel.appendChild(auswahl("ELSE-Punkt", punktListe(b.else_punkt), b.else_punkt,
       (v) => v && ruf("block_else", {aktion: "click", punkt: Number(v)})));
@@ -1580,18 +1857,31 @@ async function fortfahren(verwerfen) {
 /* ------------------------------------------------------------ Ansicht: Scans */
 
 /* Slots, Items und Item-Scans auf einem eingefrorenen Screenshot. Eigener
- * Zustand neben `S`, wie bei den Einstellungen: der Reiter bearbeitet andere
- * Dateien (slots.json, items.json, item_scans/), und eine Sequenz-Momentaufnahme
- * waere dafuer der falsche Gegenstand.
+ * Zustand neben `S`: der Reiter bearbeitet andere Dateien (slots.json,
+ * items.json, item_scans/).
  *
- * Gezeichnet wird ein <img> mit einem <svg> darueber. Das SVG traegt ein
- * viewBox in BILD-Pixeln — damit ist jede Rechnung im Overlay unabhaengig vom
- * Zoom, und nur die Strichstaerken und Schriftgroessen muessen gegengerechnet
- * werden. */
+ * Gezeichnet wird ein <img> mit einem <svg> darueber; dessen viewBox steht in
+ * BILD-Pixeln, also muessen nur Strichstaerken und Schriftgroessen gegen den
+ * Zoom gerechnet werden. */
 let SC = null;
-// Welche Liste links offen ist. Der Scan steht voran, weil er die Klammer ist:
-// erst waehlt man ihn, dann sieht man seine Slots und seine Items.
-let scanListe = "scans";
+/* Welche Liste links offen ist — `null` heisst „noch nicht entschieden", dann
+ * gilt `scanListeAktiv()`.
+ *
+ * Mit offenem Scan sind die Items die Arbeit: der Scan ist die Klammer, nicht
+ * der Inhalt. Dieselbe Regel wie bei `klappZu` — die Vorgabe gilt, bis jemand
+ * einen Reiter anfasst. */
+let scanListe = null;
+/* Wohin der Reiter nach dem naechsten `scan_oeffnen` springt. `null` heisst
+ * „zurueck auf die Vorgabe" — bei offenem Scan sind das seine Items, also das,
+ * weswegen man ihn geoeffnet hat. Wer ihn aus der Scan-Liste heraus oeffnet,
+ * bleibt dort stehen: sonst verschwindet die Maske, die sich gerade
+ * aufgeklappt hat, samt ihren Einstellungen. */
+let scanReiterNachOeffnen = null;
+/* Was zuletzt gewaehlt war (Art + Name). Ein Klick INS BILD waehlt einen Slot,
+ * und der steht in der Slot-Liste — ohne das Nachziehen passiert nach dem
+ * Klick sichtbar nichts, weil gerade die Item-Liste offen ist. Nur beim
+ * WECHSEL, sonst kaeme man aus der Liste nicht mehr heraus. */
+let scanWahlZuletzt = null;
 let scanZoom = 1;
 // Hat der Nutzer den Zoom selbst gesetzt (1:1 oder STRG+Rad)? Dann fasst ihn
 // die Fenstergroesse nicht mehr an — sonst raeumte ein Verschieben des Fensters
@@ -1606,13 +1896,10 @@ let scanAutoSaveTimer = 0;
 let scanAssistentSchritt = null;
 
 /* Welche Abschnitte der linken Spalte zugeklappt sind. `null` heisst „noch
- * nichts entschieden" — dann gilt die abgeleitete Vorgabe aus `klappVorgabe()`.
- * Sobald jemand einen Kopf anfasst, steht dort true/false und die Vorgabe
- * schweigt: eine Automatik, die eine ausdrueckliche Entscheidung ueberstimmt,
- * ist keine Hilfe mehr, sondern ein Bedienelement, das zurueckspringt.
+ * nichts entschieden" — dann gilt `klappVorgabe()`; sobald jemand einen Kopf
+ * anfasst, steht dort seine Entscheidung und die Automatik schweigt.
  *
- * Reiner Oberflaechenzustand, deshalb hier und nicht in der Bruecke: er aendert
- * nichts an den Daten. */
+ * Reiner Oberflaechenzustand, deshalb hier und nicht in der Bruecke. */
 let klappZu = {modi: null};
 
 /* Der zuletzt in die Sichtbarkeit geholte Slot. Ohne das scrollte die Buehne
@@ -1632,13 +1919,10 @@ let scanZiehGemacht = false;
  * Rueckgaengig-Stapel (`zaehlt`). */
 let scanSchubZeit = 0;
 
-/* **Die Reihenfolge ist die Rangfolge**, und sie ist dieselbe wie in `MODI`
- * (ein Test haelt beide Zug um Zug gegeneinander, nicht nur als Menge).
- * „Slots finden" steht direkt hinter „Auswaehlen", weil es das ist, was man
- * ZUERST macht: das Automatische ist der Normalfall, und erst wenn es nicht
- * klappt, zieht man einen Slot von Hand auf. Als vorletzte Kachel stand es da,
- * wo man den Notnagel sucht — und wer der Liste folgte, hatte 45 Slots einzeln
- * aufgezogen, bevor er es fand. */
+/* Die Reihenfolge ist die Rangfolge und dieselbe wie in `MODI` (ein Test haelt
+ * beide Zug um Zug gegeneinander). „Slots finden" steht direkt hinter
+ * „Auswaehlen", weil das Automatische der Normalfall ist und das Aufziehen von
+ * Hand der Ausweichweg. */
 /* Die Zustandsfarben aus dem Stylesheet, damit SVG-Text und Listen dieselbe
  * Quelle benutzen wie Umriss und Fuellung. `fill` im SVG nimmt kein
  * `var(--x)` aus einer fremden Regel entgegen, also einmal auslesen. */
@@ -1662,6 +1946,10 @@ const SCAN_MODI = [
 ];
 
 async function zeichneScans(frisch) {
+  // Nach Laden oder Umbenennen einer Sequenz darf die Scan-Aufnahme der zuvor
+  // offenen Sequenz nicht weiter im Reiter stehen. Der Name ist ein billiger,
+  // eindeutiger Besitzerwechsel und erzwingt dann eine frische Aufnahme.
+  if (SC && S && SC.sequenz !== S.name) frisch = true;
   if (frisch || !SC) {
     const antwort = await frage("scan_daten");
     if (!antwort || ansicht !== "scans") return;
@@ -1670,9 +1958,13 @@ async function zeichneScans(frisch) {
   const merk = fokusMerken();
   await scanBildPflegen();
   scanWerkzeuge();
+  // Erst die Art, dann alles Weitere: sie entscheidet, welche Bloecke der
+  // linken Spalte ueberhaupt gelten und wo die Aufnahme-Karte gerade haengt.
+  scanArtPflegen();
   scanCanvasWerkzeuge();
   scanErgebnisZeichnen();
-  scanListeZeichnen();
+  scanReiterFolgen();
+  erkBibliothekZeichnen();
   scanOverlay();
   scanZeigeGewaehlten();
   scanInspektor();
@@ -1685,6 +1977,19 @@ async function rufScan(name, daten) {
   const antwort = await frage(name, daten);
   if (!antwort) return;
   SC = antwort;
+  // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
+  // der jemand gerade tippt.
+  if (name === "scan_neu_laden" || name === "scan_lernvorschau_uebernehmen")
+    scanOrdnungVergessen();
+  // **Einen Scan zu oeffnen ist ein Wechsel des Zusammenhangs.** Danach gilt
+  // wieder die Vorgabe — und die sind bei offenem Scan seine Items, also das,
+  // weswegen man ihn geoeffnet hat. Vorher landete man auf der Scan-Liste und
+  // sah den Namen, den man gerade angeklickt hatte, ein zweites Mal.
+  if (name === "scan_oeffnen") {
+    scanListe = scanReiterNachOeffnen;
+    scanReiterNachOeffnen = null;
+    scanOrdnungVergessen();
+  }
   if (name === "scan_foto")
     scanAssistentSchritt = SC.schritte[1].fertig ? 3 : 2;
   else if (name === "scan_lernvorschau" || name === "scan_erkennen")
@@ -1710,18 +2015,29 @@ function scanAutoSpeichernPlanen(ursache) {
 }
 
 function scanCanvasWerkzeuge() {
+  const bereit = scanKonfigurationOffen();
   const sicht = $("sicht-scans");
   sicht.classList.toggle("gefuehrt", scanGefuehrt);
   sicht.classList.toggle("hat-bild", fotoDa());
   $("scan-frei").textContent = scanGefuehrt ? "Alle Werkzeuge" : "Nur Assistent";
   document.querySelectorAll("[data-scan-tool]").forEach((knopf) => {
     knopf.classList.toggle("an", SC.modus === knopf.dataset.scanTool);
-    knopf.disabled = !SC.pillow && knopf.dataset.scanTool !== "wahl";
+    knopf.disabled = (!bereit || !SC.pillow) && knopf.dataset.scanTool !== "wahl";
   });
   const modus = SCAN_MODI.find((m) => m.key === SC.modus);
-  $("scan-werkzeugstand").textContent = SC.modus === "wahl"
-    ? "Slot anklicken zum Bearbeiten"
-    : "Aktiv: " + (modus ? modus.text : SC.modus);
+  const erk = {region: "Region aufziehen",
+               aktion: scanArt === "item" ? "Bestätigungsklick setzen"
+                                          : "Klickpunkt setzen"}[SC.modus];
+  $("scan-werkzeugstand").textContent = !bereit
+    ? "Zuerst einen Scan anlegen oder auswählen"
+    : SC.modus === "wahl"
+    ? (scanArt === "item" ? "Slot anklicken zum Bearbeiten"
+                          : "Werkzeug wählen oder rechts ein Feld ändern")
+    // Beim Aufziehen steht der STAND dabei, nicht nur der Name des Werkzeugs:
+    // ohne ihn sieht man dem Bild nicht an, ob schon eine Ecke gesetzt ist.
+    : "Aktiv: " + (erk || (modus ? modus.text : SC.modus))
+      + (SC.ecke ? " — erste Ecke gesetzt, zweite Ecke anklicken · ESC bricht ab" : "");
+  $("scan-werkzeugstand").classList.toggle("art-warn", !!SC.ecke);
   $("scan-pin").classList.toggle("an", !!SC.werkzeug_fixiert);
   $("scan-pin").hidden = SC.modus === "wahl";
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.werkzeug_fixiert));
@@ -1734,21 +2050,25 @@ function scanCanvasWerkzeuge() {
 
 function scanErgebnisZeichnen() {
   const ziel = $("scan-ergebnis");
-  const e = SC.ergebnis;
   ziel.replaceChildren();
+  // Boss und Icon haben ein anderes Ergebnis als ein Item-Scan: EIN Treffer
+  // statt 45. Dieselbe Leiste, weil es dieselbe Frage ist — „was hat der Test
+  // ergeben" —, aber ein anderer Inhalt.
+  if (scanArt !== "item") {
+    ziel.hidden = !erkTestleiste(ziel);
+    return;
+  }
+  const e = SC.ergebnis;
   ziel.hidden = !e;
   if (!e) return;
   ziel.append(
     el("b", {}, "Testergebnis"),
     el("span", {class: "kennzahl", style: "color:var(--ok)"}, e.erkannt + " erkannt"),
     el("span", {class: "kennzahl", style: "color:var(--accent)"}, e.unbekannt + " unbekannt"),
-    el("span", {class: "kennzahl", style: "color:var(--slot-fremd)"}, e.fremd + " noch nicht im Scan"),
     el("span", {class: "wachse"})
   );
   if (e.unbekannt) ziel.appendChild(el("button", {class: "btn still",
     onclick: () => scanErgebnisNaechster("unbekannt_slots")}, "Nächsten unbekannten zeigen"));
-  if (e.fremd) ziel.appendChild(el("button", {class: "btn haupt",
-    onclick: () => rufScan("scan_treffer_uebernehmen")}, "Sichere Treffer übernehmen"));
 }
 
 function scanErgebnisNaechster(feld) {
@@ -1762,6 +2082,11 @@ function scanErgebnisNaechster(feld) {
 /** Gibt es ein echtes Bild — oder nur die aus den Slots gerechnete Flaeche? */
 function fotoDa() { return !!(SC && SC.foto && SC.foto.bild); }
 
+/** Hat die aktuelle Art ein eindeutiges Ziel für Bild, Slots und Regionen? */
+function scanKonfigurationOffen() {
+  return !!(SC && SC.aufnahme_bereit && SC.aufnahme_bereit[scanArt]);
+}
+
 /** Holt das Bild nur, wenn es ein neues gibt — es ist der grosse Brocken. */
 async function scanBildPflegen() {
   const bild = $("scan-bild");
@@ -1770,7 +2095,9 @@ async function scanBildPflegen() {
     $("scan-flaeche").hidden = true;
     $("scan-ohne-bild").hidden = true;
     leer.hidden = false;
-    leer.textContent = SC.pillow
+    leer.textContent = !scanKonfigurationOffen()
+      ? "Zuerst oben einen Scan anlegen oder auswählen. Danach kann ein Screenshot aufgenommen werden."
+      : SC.pillow
       ? "Noch kein Bild. „Screenshot aufnehmen“ friert den Bildschirm ein — darauf werden die Slots aufgezogen."
       : "Ohne Pillow gibt es kein Bild (pip install pillow). Slots lassen sich dann nur über die Zahlenfelder rechts setzen.";
     return;
@@ -1839,6 +2166,7 @@ function scanZuSchirm(bx, by) {
 }
 
 function scanWerkzeuge() {
+  $("scan-sequenz").textContent = SC.sequenz || "— keine Sequenz —";
   const wahl = $("scan-offen");
   wahl.replaceChildren();
   wahl.appendChild(el("option", {value: ""}, SC.scans.length
@@ -1849,14 +2177,14 @@ function scanWerkzeuge() {
     wahl.appendChild(o);
   }
   const offen = SC.scans.find((c) => c.name === SC.offen);
+  const bereit = scanKonfigurationOffen();
+  $("scan-buehne").classList.toggle("such-aktiv", SC.modus === "finden");
+  const namensfeld = $("scan-name");
+  namensfeld.value = offen ? offen.name : "";
+  namensfeld.disabled = !offen;
   $("scan-umfang").textContent = offen
     ? offen.slots.length + " Slots · " + offen.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
-
-  // Der Name gehoert zum offenen Scan - ohne einen gibt es nichts zu benennen,
-  // dann ist das Feld weg statt leer und wirkungslos.
-  $("scan-name-zeile").hidden = !offen;
-  if (offen && $("scan-name") !== document.activeElement) $("scan-name").value = offen.name;
 
   const ziel = $("scan-modi");
   ziel.replaceChildren();
@@ -1864,49 +2192,72 @@ function scanWerkzeuge() {
     const an = SC.modus === m.key;
     ziel.appendChild(el("button", {
       class: "scan-modus" + (an ? " an" : ""),
+      disabled: !bereit,
       // Ein Umschalten sieht man einem Bedienelement nicht an — dieselbe Regel
       // wie bei der ELSE-Kachel im Inspektor. Es steht deshalb im Tooltip der
       // markierten Kachel UND im Hinweis unter dem Raster.
       title: an && m.key !== "wahl"
         ? "Nochmal klicken = zurück zum Auswählen" : "",
-      onclick: () => rufScan("scan_modus_setzen", {modus: m.key}),
+      onclick: () => rufScan("scan_modus_setzen", {modus: m.key, art: scanArt}),
     },
       el("span", {}, m.text),
       el("span", {class: "taste"}, m.taste),
       el("span", {class: "klein"}, m.hilfe)));
   }
   $("scan-modi-zurueck").hidden = SC.modus === "wahl";
+  // **Was man ZWISCHENDURCH tut, braucht keinen Modus** — und die Erklaerung
+  // dazu keinen eigenen Absatz. Sie stand als vier Zeilen Text unter den
+  // Kacheln; das ⓘ zeigt sie auf Wunsch und merkt sich, ob es offen war.
+  $("scan-foto-info").replaceChildren("Woher das Bild kommt", info(
+    "Items werden aus diesem eingefrorenen Bild gelernt. Beim Lauf wird "
+    + "dasselbe Fenster mit derselben Aufnahmemethode neu aufgenommen; die "
+    + "Slots folgen seiner Position automatisch.", "aufnahme"));
+  $("scan-modi-direkt").replaceChildren("Ohne Moduswechsel", info(
+    "ALT+Klick misst den Hintergrund eines Slots, Doppelklick setzt seinen "
+    + "Klickpunkt — beides wählt ihn gleich mit aus. Ein gewählter Slot lässt "
+    + "sich mit der Maus ziehen oder mit den Pfeiltasten verschieben "
+    + "(SHIFT = 10 px).", "direkt"));
   const modus = SCAN_MODI.find((m) => m.key === SC.modus);
   $("scan-modus-kurz").textContent = modus ? modus.text : "";
   klappPflegen();
   scanSchritte();
-  $("scan-foto").disabled = !SC.pillow;
+  $("scan-foto").disabled = !SC.pillow || !bereit;
   const fensterquelle = !!(SC.fenster_titel || SC.fenster_id);
   $("scan-foto").textContent = fensterquelle ? "Fenster aufnehmen"
     : (SC.bereich ? "Bereich aufnehmen" : "Screenshot aufnehmen");
 
   // Der Bereich gilt fuer JEDE weitere Aufnahme dieses Scans — er muss also
   // dastehen, nicht nur in der Statuszeile aufblitzen.
+  const quelleninfo = $("scan-quelleninfo");
+  const quellenname = $("scan-quellenname");
   const bz = $("scan-bereich");
   const groesse = SC.bereich
     ? (SC.bereich[2] - SC.bereich[0]) + "×" + (SC.bereich[3] - SC.bereich[1])
-      + " ab (" + SC.bereich[0] + ", " + SC.bereich[1] + ")"
     : "";
-  bz.textContent = fensterquelle
-    ? "Fenster „" + (SC.fenster_titel || "gewählt") + "“ · relative Slots"
-      + (groesse ? " · " + groesse : "")
-      + (!SC.fenster_verfuegbar && SC.fenster_titel ? " · nicht geöffnet" : "")
-    : (!SC.bereich ? "Vollbild" : "Bereich " + groesse);
+  quellenname.textContent = fensterquelle
+    ? "Fenster „" + (SC.fenster_titel || "gewählt") + "“"
+    : (SC.bereich ? "Eigener Bildschirmausschnitt" : "Ganzer Bildschirm");
+  const quellendetails = [];
+  if (fensterquelle) quellendetails.push("Slots relativ");
+  if (groesse) quellendetails.push(groesse);
+  if (!fensterquelle && SC.bereich) {
+    quellendetails.push("Position " + SC.bereich[0] + ", " + SC.bereich[1]);
+  }
+  if (!SC.fenster_verfuegbar && SC.fenster_titel) {
+    quellendetails.push("Fenster nicht geöffnet");
+  }
+  bz.textContent = quellendetails.join(" · ");
+  bz.hidden = !quellendetails.length;
   // Bei einem gewaehlten Fenster steht dabei, was das bedeutet: es wird direkt
   // abgebildet, also darf das Studio davor liegen.
-  bz.title = fensterquelle
+  quelleninfo.title = fensterquelle
     ? "Editor und Live-Scan verwenden dieselbe Aufnahmequelle. Verschieben wird automatisch ausgeglichen; beim Desktop-Fallback muss das Fenster sichtbar sein."
     : (SC.bereich ? "Ausschnitt vom Bildschirm — hier darf nichts davor liegen." : "");
-  bz.classList.toggle("an", !!SC.bereich || fensterquelle);
-  $("scan-vollbild").disabled = (!SC.bereich && !fensterquelle) || !SC.pillow;
+  quelleninfo.classList.toggle("an", !!SC.bereich || fensterquelle);
+  $("scan-vollbild").disabled = !bereit || (!SC.bereich && !fensterquelle) || !SC.pillow;
   // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
   const auf = $("scan-aufziehen");
-  auf.disabled = !fotoDa();
+  auf.disabled = !bereit || !fotoDa();
   auf.classList.toggle("an", SC.modus === "bereich");
   scanFensterPflegen();
 }
@@ -1945,10 +2296,11 @@ function scanSchritte() {
     ? slots + (slots === 1 ? " Slot" : " Slots") : "Noch keine Slots";
   $("scan-schritt-3-status").textContent = items
     ? items + (items === 1 ? " Item" : " Items") : "Noch keine Items";
-  $("scan-slots-finden").disabled = !fotoDa() || !SC.pillow;
-  $("scan-slot-neu").disabled = !fotoDa() || !SC.pillow;
-  $("scan-test").disabled = !fotoDa() || !slots;
-  $("scan-lernen").disabled = !fotoDa() || !slots;
+  const bereit = !!(SC.aufnahme_bereit && SC.aufnahme_bereit.item);
+  $("scan-slots-finden").disabled = !bereit || !fotoDa() || !SC.pillow;
+  $("scan-slot-neu").disabled = !bereit || !fotoDa() || !SC.pillow;
+  $("scan-test").disabled = !bereit || !fotoDa() || !slots;
+  $("scan-lernen").disabled = !bereit || !fotoDa() || !slots;
 }
 
 let scanFenster = [];
@@ -1956,7 +2308,11 @@ let scanFenster = [];
 /** Die offenen Fenster zur Auswahl — nur nachgeholt, wenn Pillow da ist. */
 async function scanFensterPflegen() {
   const wahl = $("scan-fenster");
+  const neu = $("scan-fenster-neu");
+  const bereit = scanKonfigurationOffen();
+  neu.disabled = !SC.pillow || !bereit;
   if (!SC.pillow) { wahl.hidden = true; return; }
+  wahl.disabled = !bereit;
   scanFenster = (await frage("scan_fenster")) || [];
   wahl.hidden = false;
   wahl.replaceChildren();
@@ -1982,138 +2338,549 @@ async function scanFensterPflegen() {
   }
 }
 
-function scanListeZeichnen() {
-  const tabs = $("scan-listen-tabs");
-  tabs.replaceChildren();
+/** Stehen die Masken in der rechten Spalte?
+ *
+ * **Der ganze Listen-Block wandert, nicht nur die Eintraege.** Reiter, Filter
+ * und Liste gehoeren zusammen; als der Reiter links stand und die Masken
+ * rechts erschienen, aenderte die linke Spalte bei jedem Umschalten ihre
+ * Hoehe, und ein Hinweis musste erklaeren, wohin der Inhalt verschwunden ist.
+ *
+ * Die Aufteilung ist damit nach VERANTWORTUNG geschnitten: links, wie der Scan
+ * entsteht (Auswahl, Assistent, Modus-Kacheln), rechts, was drin ist.
+ *
+ * Boss- und Icon-Scans bleiben davon unberuehrt. Dort sind es nicht Dutzende
+ * gleichartiger Dinge, sondern EIN Scan mit Region, Erkennung und Aktion — eine
+ * Maske traegt das nicht, und die Liste ist drei Zeilen lang. */
+function scanMaskenRechts() {
+  return scanArt === "item";
+}
+
+/* **Die Liste steht rechts — die ganze, samt Reitern und Filter.**
+ *
+ * Der Schnitt geht nach VERANTWORTUNG, nicht nach Scan-Art: links, wie der
+ * Scan entsteht (Auswahl, Assistent, Werkzeuge), rechts, was drin ist.
+ *
+ * Hier stand bis zum Umbau ein zweiter Listen-Block in der LINKEN Spalte, und
+ * eine Funktion entschied je Reiter, welcher der beiden ihn fuellt. Das war
+ * die Naht, an der die linke Spalte bei jedem Umschalten ihre Groesse aenderte
+ * — und ein Hinweistext musste erklaeren, wohin der Inhalt verschwunden ist.
+ * Ein Ort, ein Bauplan (`scanListenBlock`).
+ *
+ * Als Masken kommen nur die Item-Listen (`scanMaskenRechts()`): dort stehen
+ * Dutzende gleichartiger Dinge nebeneinander. Ein Boss- oder Icon-Scan ist
+ * EINES — Region, Erkennung, Aktion —, das traegt keine Maske, und seine Liste
+ * ist drei Zeilen lang. */
+
+/** Welche Liste gilt: die gewaehlte, sonst die zur Lage passende Vorgabe. */
+function scanListeAktiv() {
+  if (scanListe) return scanListe;
+  if (scanArt === "boss") return "bosse";
+  if (scanArt === "icon") return "icons";
+  return SC && SC.offen ? "items" : "scans";
+}
+
+/** Namen so vergleichen, wie man sie liest: „Slot 2" vor „Slot 10".
+ *
+ * Ein reiner Zeichenvergleich sortiert „Slot 10" zwischen „Slot 1" und
+ * „Slot 2" — bei fünfundvierzig durchnummerierten Slots ist die Liste damit
+ * unbrauchbar, obwohl sie sortiert ist. */
+function nachNamen(a, b) {
+  return String(a).localeCompare(String(b), "de", {numeric: true});
+}
+
+/** Der Anker, an dem der Fokus einen Neuaufbau ueberlebt — eine id je Maske.
+ *
+ * Ohne sie zaehlt `fokusMerken()` die Position ueber die ganze Spalte, und die
+ * drei Felder, die man dort tippt, sortieren die Liste gerade um. */
+function maskeId(art, name) { return "maske:" + art + ":" + name; }
+
+/** Der Reiter folgt der Auswahl — aber nur, wenn sie sich geaendert hat.
+ *
+ * Ein Klick im Bild waehlt einen Slot. Steht gerade die Item-Liste offen,
+ * geschieht rechts sonst nichts, und der Klick sieht wirkungslos aus. Beim
+ * blossen Neuzeichnen darf dagegen nichts umschalten: sonst waere der Weg aus
+ * der Slot-Liste heraus versperrt, solange ein Slot gewaehlt ist. */
+function scanReiterFolgen() {
+  if (!SC || scanArt !== "item") return;
+  const jetzt = SC.wahl.art + ":" + SC.wahl.name;
+  if (jetzt === scanWahlZuletzt) return;
+  const erster = scanWahlZuletzt === null;
+  scanWahlZuletzt = jetzt;
+  // Der Scan hat seinen eigenen Weg (`scanReiterNachOeffnen`); und beim
+  // allerersten Zeichnen gibt es keinen Wechsel, nur einen Anfangszustand.
+  if (erster) return;
+  const ziel = {slot: "slots", item: "items"}[SC.wahl.art];
+  if (ziel && scanListeAktiv() !== ziel) scanListe = ziel;
+}
+
+/** Reiter, Filter und Liste — ein Bauplan, ein Ort. */
+function scanListenBlock(tabs, filter, ziel) {
+  const offen = scanListeAktiv();
+  // Kopf und Liste werden getrennt gebaut (der Kopf klebt oben, die Liste
+  // scrollt) — gerufen wird dieselbe Funktion zweimal, damit die Zuordnung
+  // Reiter -> Inhalt an EINER Stelle steht und nicht an zweien auseinanderlaeuft.
+  const an = (wohin, kind) => { if (wohin) wohin.appendChild(kind); };
+  if (scanArt !== "item") {
+    if (scanArt === "icon") {
+      an(tabs, el("button", {class: "tab an"},
+        "Icon-Scans " + SC.icon_scans.length));
+      return ziel ? erkListeIcons(ziel) : undefined;
+    }
+    // Zwei Listen, weil es zwei Orte sind: die Bosse DIESES Scans und die,
+    // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
+    // verlieren, an dem alles haengt.
+    for (const [key, text, zahl] of [["bosse", "Bosse", erkBosse().length],
+                                     ["bibliothek", "Bibliothek",
+                                      SC.global_bosses.length]]) {
+      an(tabs, el("button", {class: "tab" + (offen === key ? " an" : ""),
+        onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + zahl));
+    }
+    if (!ziel) return undefined;
+    return offen === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
+  }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
   // Reihenfolge = Rangfolge: der Scan ist das Uebergeordnete, Slots und Items
   // haengen an ihm.
   const gruppen = [["scans", "Scans", SC.scans.length, SC.scans.length],
-                   ["slots", "Slots", scanSichtbar(SC.slots, false).length, SC.slots.length],
-                   ["items", "Items", scanSichtbar(SC.items, true).length, SC.items.length]];
+                   ["slots", "Slots", scanSichtbar(SC.slots, false, "slot").length, SC.slots.length],
+                   ["items", "Items", scanSichtbar(SC.items, true, "item").length, SC.items.length]];
   for (const [key, text, sichtbar, gesamt] of gruppen) {
-    tabs.appendChild(el("button", {
-      class: "tab" + (scanListe === key ? " an" : ""),
+    an(tabs, el("button", {
+      class: "tab" + (offen === key ? " an" : ""),
       title: sichtbar === gesamt ? "" : gesamt + " insgesamt",
-      onclick: () => { scanListe = key; zeichneScans(); },
+      onclick: () => { scanListe = key;
+                       scanOrdnungVergessen(); zeichneScans(); },
     }, text + " " + sichtbar + (sichtbar === gesamt ? "" : "/" + gesamt)));
   }
+  if (filter) scanFilterzeile(filter, offen);
+  if (!ziel) return undefined;
+  if (offen === "slots") return scanListeSlots(ziel);
+  if (offen === "items") return scanListeItems(ziel);
+  return scanListeScans(ziel);
+}
 
-  const filter = $("scan-filterzeile");
-  filter.replaceChildren();
-  if (SC.offen && scanListe !== "scans") {
-    const art = scanListe === "slots" ? "slot" : "item";
-    const gesamt = scanListe === "slots" ? SC.slots : SC.items;
-    const drin = gesamt.filter((e) => e.dabei).length;
-    filter.appendChild(schalter("nur aus „" + SC.offen + "\u201c",
-      SC.nur_dabei, (v) => rufScan("scan_filter", {wert: v})));
-    // Ein Scan umfasst fast immer ALLES seines Spiels - 56 Haekchen einzeln
-    // zu setzen war der Weg dorthin. Der Knopf SAGT, was er tut, statt zu
-    // schalten: ein Schalter haette drei Staende (keins/manche/alle), und bei
-    // "manche" waere er nicht zu beschriften.
-    filter.appendChild(el("button", {class: "btn still",
-      title: drin + " von " + gesamt.length + " sind dabei",
-      onclick: () => rufScan("scan_alle", {art: art, wert: drin < gesamt.length})},
-      drin < gesamt.length ? "alle dazu" : "alle raus"));
+/** Was die Liste einschraenkt: Kategorie; Bestand gehoert immer zum Scan. */
+function scanFilterzeile(filter, offen) {
+  if (SC.offen && offen !== "scans") {
+    const art = offen === "slots" ? "slot" : "item";
+    const gesamt = offen === "slots" ? SC.slots : SC.items;
+    filter.appendChild(el("button", {class: "btn gefahr", disabled: !gesamt.length,
+      title: gesamt.length
+        ? "Löscht alle " + gesamt.length + " " + (art === "slot" ? "Slots" : "Items")
+          + " aus „" + SC.offen + "“ — nicht nur aus der Mitgliedschaft. "
+          + "STRG+Z nimmt es zurück."
+        : "Nichts zu löschen.",
+      onclick: () => rufScan("scan_alle_loeschen", {art: art})},
+      gesamt.length + " " + (art === "slot" ? "Slots" : "Items") + " löschen"));
   }
-  if (scanListe === "items" && SC.kategorien.length) {
+  if (offen === "items" && SC.kategorien.length) {
     filter.appendChild(auswahl("", [{wert: "", text: "alle Kategorien"}].concat(
       SC.kategorien.map((k) => ({wert: k, text: k}))), scanKategorie,
       (v) => { scanKategorie = v; zeichneScans(); }));
   }
-
-  const ziel = $("scan-liste");
-  ziel.replaceChildren();
-  if (scanListe === "slots") return scanListeSlots(ziel);
-  if (scanListe === "items") return scanListeItems(ziel);
-  return scanListeScans(ziel);
 }
 
-/** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie. */
-function scanSichtbar(eintraege, mitKategorie) {
+/* **Sortiert wird beim Laden und auf Knopfdruck — nicht bei jedem Tastendruck.**
+ *
+ * Die Liste ordnet nach Kategorie, Prioritaet und Name. Sortierte sie sich nach
+ * JEDER Aenderung neu, springt genau das Item weg, an dem man gerade tippt: man
+ * tippt eine 2, die Zeile rutscht drei Plaetze hoch, das naechste Feld ist ein
+ * anderes. Gemerkt wird deshalb die Reihenfolge, in der zuletzt sortiert wurde;
+ * neu Dazugekommenes und alles, was seine Kategorie gewechselt hat, haengt sich
+ * ans Ende seiner Gruppe.
+ *
+ * Aufgefrischt wird sie beim Laden, beim Wechsel des Zusammenhangs (anderer
+ * Scan, anderer Reiter) und durch „Sortieren". Reiner Oberflaechenzustand — die
+ * Datei kennt keine Reihenfolge. */
+let scanOrdnung = {item: null, slot: null};
+
+function scanOrdnungVergessen() {
+  scanOrdnung = {item: null, slot: null};
+}
+
+/** Die eingefrorene Gruppe eines Namens — oder `null`, wenn er neu ist.
+ *
+ * **Die Kategorie war der erste Sortierschluessel und damit das letzte Feld,
+ * das die Zeile noch wegspringen liess.** Sie beim Tippen auszuwerten heisst:
+ * ein Item, das gerade „Helme" bekommt, wandert im selben Moment in eine andere
+ * Gruppe — mitten in der Bearbeitung, und der naechste TAB landet woanders.
+ *
+ * Eingefroren wird sie deshalb zusammen mit dem Rang. Die Ueberschriften kommen
+ * aus dieser Momentaufnahme, nicht aus dem aktuellen Wert; damit bleibt die
+ * Gliederung genau die, die zuletzt sortiert wurde. Was die Kategorie
+ * inzwischen gewechselt hat, sagt seine Maske (`i.kategorie` steht im
+ * Bedienelement) und die Zustandszeile. */
+function scanOrdnungGruppe(art) {
+  const merk = scanOrdnung[art];
+  if (!merk) return null;
+  const gruppen = new Map();
+  for (const e of merk) gruppen.set(e.name, e.gruppe);
+  return (name) => (gruppen.has(name) ? gruppen.get(name) : null);
+}
+
+/** Umbenennen aendert den Namen, nicht den Rang.
+ *
+ * Die gemerkte Reihenfolge haengt am Namen — ohne das Nachziehen ist ein gerade
+ * umbenanntes Item „unbekannt" und rutscht ans Ende seiner Gruppe. Genau beim
+ * Namen tippt man aber, und beim TAB aus dem Feld sprang die Zeile weg: dieselbe
+ * Beschwerde wie beim Sortieren nach jedem Tastendruck, nur an einem Feld.
+ *
+ * Eingetragen werden BEIDE Namen (neu vor alt). Lehnt die Bruecke den neuen ab
+ * — schon vergeben —, heisst das Item weiter wie vorher und behaelt trotzdem
+ * seinen Platz; die Raenge verschieben sich dabei gleichmaessig, verglichen
+ * werden sie ohnehin nur gegeneinander. */
+function scanOrdnungUmbenennen(art, alt, neu) {
+  const merk = scanOrdnung[art];
+  if (!merk || !neu || alt === neu) return;
+  const i = merk.findIndex((e) => e.name === alt);
+  if (i >= 0) merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);
+}
+
+/** Die gemerkte Vorschau auf den neuen Namen mitnehmen.
+ *
+ * Der Zwischenspeicher haengt am ITEM-Namen, das Bild aber an der
+ * Template-DATEI — und die heisst nach dem Umbenennen genauso wie vorher. Ohne
+ * das Mitnehmen galt die Vorschau als fehlend: die Maske wurde einmal ohne Bild
+ * gezeichnet, `scanVorschauenHolen()` holte dieselben Bytes noch einmal aus
+ * Python und baute die Spalte danach ein zweites Mal auf. Sichtbar war das als
+ * kurzes Flackern beim Umbenennen — dasselbe Bild, zwei Neuaufbauten.
+ *
+ * Der alte Eintrag bleibt stehen, aus demselben Grund wie bei
+ * `scanOrdnungUmbenennen()`: lehnt die Bruecke den neuen Namen ab (Dublette,
+ * leer), zeigt die Maske weiter unter dem alten Namen — und braucht dort ihr
+ * Bild.
+ */
+function scanVorschauUmbenennen(art, alt, neu) {
+  if (art !== "item" || !neu || alt === neu) return;
+  const bild = scanVorschauen.get(alt);
+  if (bild) scanVorschauen.set(neu, bild);
+}
+
+/** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
+function scanOrdnungRang(art) {
+  const merk = scanOrdnung[art];
+  if (!merk) return null;
+  const rang = new Map();
+  merk.forEach((e, i) => rang.set(e.name, i));
+  return (name) => (rang.has(name) ? rang.get(name) : Number.MAX_SAFE_INTEGER);
+}
+
+/** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie.
+ *
+ * **„Gehoert dazu ODER wird gerade gesehen"** — die zweite Haelfte ist die
+ * nuetzlichere: ein Item, das ein anderes Spiel schon kennt, steht da, bevor
+ * jemand auf die Idee kommt, es neu zu lernen. Slots tragen das Merkmal nicht,
+ * sie sind Bildschirm-Koordinaten und gehoeren immer genau einem Spiel.
+ *
+ * Dazu, was gerade abgewaehlt wurde (s. o.) — sonst nimmt der Filter einem den
+ * Rueckweg. */
+function scanSichtbar(eintraege, mitKategorie, art) {
   let liste = eintraege;
-  if (SC.offen && SC.nur_dabei) liste = liste.filter((e) => e.dabei);
   if (mitKategorie && scanKategorie)
     liste = liste.filter((e) => (e.kategorie || "") === scanKategorie);
   return liste;
 }
 
+/** Ein Namensfeld in einer Maske — mit dem Fokus-Anker fuer das Umbenennen. */
+function maskeName(art, name, titel, setze) {
+  const feld = el("input", {value: name, autocomplete: "off", title: titel});
+  feld.addEventListener("change", () => {
+    const neu = feld.value.trim();
+    // DREI Dinge haengen am Namen: der Anker fuer den Fokus, der Rang in der
+    // Liste und die gemerkte Vorschau. Wer umbenennt, sagt allen dreien vorher
+    // Bescheid — wer eines vergisst, sieht es sofort: der Fokus springt weg,
+    // die Zeile wandert, oder das Bild blinkt.
+    fokusUmbenennung(maskeId(art, name), maskeId(art, neu));
+    scanOrdnungUmbenennen(art, name, neu);
+    scanVorschauUmbenennen(art, name, neu);
+    setze(feld.value);
+  });
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+  return feld;
+}
+
+/** Das Gehaeuse einer Maske: id, Auswahl-Ring, Klick zum Waehlen, Detailteil.
+ *
+ * **Eine Bauform fuer Scans, Slots und Items.** Sie unterscheiden sich in dem,
+ * was drinsteht — nicht darin, wie man sie anfasst. Vorher waren es drei
+ * Formen an zwei Orten, und ein Slot liess sich nur ueber vier Zahlenfelder
+ * bearbeiten, waehrend ein Item eine Maske hatte. */
+function maskeBauen(art, name, gewaehlt, teile, detail, beimWaehlen) {
+  const maske = el("div", {class: "scan-maske" + (gewaehlt ? " an" : ""),
+                           id: maskeId(art, name)});
+  for (const teil of teile) maske.appendChild(teil);
+  if (gewaehlt && detail) {
+    const kasten = el("div", {class: "scan-maske-detail"});
+    detail(kasten);
+    maske.appendChild(kasten);
+  }
+  // Ein Klick auf die Maske waehlt sie; ein zweiter klappt ein offenes Item
+  // wieder zu. Felder und Knoepfe sind davon ausgenommen, sonst wuerde schon
+  // das Bearbeiten den Detailteil unter der Hand schliessen.
+  maske.addEventListener("click", (e) => {
+    if (e.target.closest("input, label, button, select, summary, details")) return;
+    if (gewaehlt && art === "item") {
+      rufScan("scan_waehlen", {art: "item", name: ""});
+    } else if (!gewaehlt) {
+      beimWaehlen();
+    }
+  });
+  return maske;
+}
+
 function scanListeSlots(ziel) {
-  const liste = scanSichtbar(SC.slots, false);
+  // **Die stabile ID ist die Reihenfolge.** Scan-Position, Name und Reihenfolge
+  // in der Datei koennen sich aendern; die ID bezeichnet den Slot dauerhaft.
+  // Deshalb gilt sie auch ueber die Grenze „gehoert zum offenen Scan" hinweg.
+  // Alte oder ungueltige IDs landen am Ende und werden dort nach Namen stabil
+  // geordnet — die Ansicht erfindet keine Reparatur fuer Bestandsdaten.
+  const rang = scanOrdnungRang("slot");
+  const liste = scanSichtbar(SC.slots, false, "slot").slice().sort((a, b) =>
+    rang ? (rang(a.name) - rang(b.name))
+         : (((Number(a.id) > 0 ? Number(a.id) : Number.MAX_SAFE_INTEGER)
+              - (Number(b.id) > 0 ? Number(b.id) : Number.MAX_SAFE_INTEGER))
+             || nachNamen(a.name, b.name)));
+  if (!rang) scanOrdnung.slot = liste.map((s) => ({name: s.name, gruppe: ""}));
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
-      : "Noch keine Slots. Modus „Neuer Slot“, dann zwei Ecken im Bild anklicken."));
+      : "Noch keine Slots. Modus „Slots finden“ — oder „Neuer Slot“ und zwei "
+        + "Ecken im Bild anklicken."));
     return;
   }
-  for (const s of liste) {
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.auswahl.includes(s.name)
-        || (SC.wahl.art === "slot" && SC.wahl.name === s.name) ? " an" : ""),
-      onclick: () => rufScan("scan_waehlen", {art: "slot", name: s.name}),
-    },
-      el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
+  for (const s of liste) ziel.appendChild(scanSlotMaske(s));
+}
+
+/** Ein Slot als Maske — dieselbe Bauform wie beim Item.
+ *
+ * **Was man an einem Slot tippt, ist sein Name; alles andere zieht man im
+ * Bild.** Deshalb traegt die zweite Zeile keinen Regler, sondern den Stand:
+ * Groesse, Klickpunkt und was zuletzt darin erkannt wurde. Die Zahlen dazu
+ * klappen im Detailteil auf, wie beim Item die Konfidenz. */
+function scanSlotMaske(s) {
+  const setze = (feld, wert) => rufScan("scan_slot_setzen",
+                                        {name: s.name, feld: feld, wert: wert});
+  const gewaehlt = SC.auswahl.includes(s.name)
+                || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
+  const name = maskeName("slot", s.name,
+    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
+  // **Die ID ist eine reine Anzeige-Kachel, kein Knopf.** Sie bleibt gleich,
+  // auch wenn der Slot im offenen Scan ab- und wieder angeschaltet wird — DAS
+  // ändert nur seine STELLE (er wandert ans Ende der Mitgliederliste), nicht
+  // seine Identität. Die Stelle steht deshalb nur noch im Tooltip, nicht mehr
+  // in der Zahl selbst.
+  const id = el("span", {class: "zahl",
+    title: s.nummer
+      ? "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten. "
+        + "Läuft in „" + SC.offen + "“ als " + s.lauf + ". von " + s.gesamt + "."
+        + (s.lauf !== s.nummer ? " (rückwärts)" : "")
+      : "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten."},
+    "#" + s.id);
+  const box = el("input", {type: "checkbox",
+    "aria-label": s.name + " ein- oder ausschalten"});
+  box.checked = !!s.aktiv;
+  box.addEventListener("change", () => setze("aktiv", box.checked));
+  const anaus = el("label", {class: "an scan-slot-schalter",
+    title: s.aktiv ? "Slot ist aktiv — ausschalten" : "Slot ist aus — einschalten"}, box);
+  const felder = el("div", {class: "scan-maske-felder"}, name, scanSlotStand(s));
+  const maske = maskeBauen("slot", s.name, gewaehlt,
+    [el("div", {class: "scan-marke"}, anaus, id),
+     el("span", {class: "kugel" + (s.farbe ? "" : " ohne"),
+                  title: s.farbe ? "Hintergrund " + s.farbe : "Hintergrund nicht gemessen",
                   style: s.farbe ? "background:" + s.farbe : ""}),
-      el("span", {class: "name"}, s.name),
-      // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
-      // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der
-      // Weg, ihn auszuwaehlen und zu loeschen.
-      s.winzig
-        ? el("span", {class: "klein", style: "color:var(--err)",
-                      title: "Zu klein zum Erkennen — hier auswählen und löschen"},
-             s.breite + "×" + s.hoehe + " ⚠")
-        : (s.treffer && s.treffer.name
-            ? el("span", {class: "klein",
-                          style: "color:var(" + (s.treffer.fremd ? "--slot-fremd"
-                                                                 : "--slot-ok") + ")",
-                          title: s.treffer.fremd
-                            ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""},
-                 s.treffer.name)
-            // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
-            // Rechteck im Bild, damit Liste und Bild zusammengehen.
-            : el("span", {class: "klein mono",
-                          style: s.treffer ? "color:var(--slot-offen)" : ""},
-                 s.treffer ? "unbekannt" : s.breite + "×" + s.hoehe))));
+     felder],
+    (kasten) => scanSlotDetails(kasten, s),
+    () => rufScan("scan_waehlen", {art: "slot", name: s.name}));
+  maske.classList.toggle("aus", !s.aktiv);
+  return maske;
+}
+
+/** Die Zustandszeile eines Slots: Groesse, Warnung, letzter Treffer. */
+function scanSlotStand(s) {
+  // Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel wie
+  // die Nummer daneben. Was daneben steht („Item 1", „unbekannt", „→ Helme"),
+  // ist eine Aussage und bleibt Text.
+  const teile = [el("span", {class: "zahl"}, s.breite + "×" + s.hoehe)];
+  if (!s.aktiv) teile.push(el("span", {class: "klein slot-aus"}, "aus"));
+  // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
+  // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der Weg,
+  // ihn auszuwaehlen und zu loeschen.
+  if (s.winzig) {
+    teile.push(el("span", {class: "klein", style: "color:var(--err)",
+      title: "Zu klein zum Erkennen — hier auswählen und löschen"}, "⚠ zu klein"));
+  } else if (s.treffer && s.treffer.name) {
+    teile.push(el("span", {class: "klein",
+      style: "color:var(" + (s.treffer.fremd ? "--slot-fremd" : "--slot-ok") + ")",
+      title: s.treffer.fremd
+        ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.treffer.name));
+  } else if (s.treffer) {
+    // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
+    // Rechteck im Bild, damit Liste und Bild zusammengehen.
+    teile.push(el("span", {class: "klein", style: "color:var(--slot-offen)"},
+                  "unbekannt"));
   }
+  return el("div", {class: "scan-maske-stand"}, teile);
 }
 
 function scanListeItems(ziel) {
-  const liste = scanSichtbar(SC.items, true).slice().sort((a, b) =>
-    (a.kategorie || "").localeCompare(b.kategorie || "", "de") ||
-    a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de"));
+  // **Gesortiert wird nur auf Ansage.** Steht eine gemerkte Reihenfolge, gilt
+  // ausschliesslich sie — auch fuer die Gruppen, denn die Kategorie war als
+  // erster Schluessel das letzte Feld, das die Zeile noch wegspringen liess.
+  // Ohne Merkposten (erster Aufbau, „Sortieren", Neu laden) wird frisch geordnet.
+  const rang = scanOrdnungRang("item");
+  const gruppe = scanOrdnungGruppe("item");
+  const frisch = (a, b) =>
+    (SC.offen ? Number(!!b.dabei) - Number(!!a.dabei) : 0) ||
+    a.prioritaet - b.prioritaet || a.name.localeCompare(b.name, "de");
+  const liste = scanSichtbar(SC.items, true, "item").slice().sort((a, b) =>
+    rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)
+         : ((a.kategorie || "").localeCompare(b.kategorie || "", "de")
+            || frisch(a, b)));
+  if (!rang) {
+    scanOrdnung.item = liste.map((i) => ({name: i.name, gruppe: i.kategorie || ""}));
+  }
   if (!liste.length) {
     ziel.appendChild(el("p", {class: "hinweis"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
-      : "Noch keine Items. Einen Slot wählen und rechts „Item lernen“ — oder alle "
+      : "Noch keine Items. Einen Slot wählen und „Item lernen“ — oder alle "
         + "Slots auf einmal."));
     return;
   }
   scanVorschauenHolen(liste.map((i) => i.name));
   let letzteKategorie = null;
   for (const i of liste) {
-    const kategorie = i.kategorie || "Ohne Kategorie";
+    // Die Ueberschrift kommt aus der EINGEFRORENEN Gruppe, nicht aus dem
+    // aktuellen Wert: sonst reisst ein gerade geaendertes Item eine zweite
+    // Ueberschrift mitten in die Liste. Wo es hinwandert, sagt seine Maske.
+    const gefroren = gruppe ? gruppe(i.name) : null;
+    const kategorie = (gefroren === null ? (i.kategorie || "") : gefroren)
+                      || "Ohne Kategorie";
     if (kategorie !== letzteKategorie) {
       ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
       letzteKategorie = kategorie;
     }
-    const bild = scanVorschauen.get(i.name);
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.wahl.art === "item" && SC.wahl.name === i.name ? " an" : ""),
-      onclick: () => rufScan("scan_waehlen", {art: "item", name: i.name}),
-    },
-      bild ? el("img", {class: "mini", src: bild})
-           : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
-                         style: i.marker.length ? "background:" + i.marker[0] : ""}),
-      el("span", {class: "name"}, i.name),
-      el("span", {class: "klein mono"}, "P" + i.prioritaet),
-      (i.fehlende_scan_groessen || []).length
-        ? el("span", {class: "klein", style: "color:var(--accent)",
-            title: "Für diese Slot-Größe noch keine Vorlage gelernt"},
-            "⚠ " + i.fehlende_scan_groessen.map((g) => g[0] + "×" + g[1]).join(", "))
-        : null,
-      i.stumm ? el("span", {class: "klein", style: "color:var(--err)"}, "stumm") : null));
+    ziel.appendChild(scanItemMaske(i, gefroren));
   }
+}
+
+/** Ein Item als kleine Maske: Haken, Name, Kategorie, Prioritaet — in der Liste.
+ *
+ * Ein Ein-Aus-Knopf war zu wenig: alles andere kostete einen Klick in die Liste,
+ * einen Blick nach rechts und einen Weg zurueck, bei sechzig Items sechzig Mal.
+ *
+ * Was selten gebraucht wird (Vorlagen, Marker, Konfidenz, Loeschen), klappt
+ * darunter auf. Name, Kategorie und Prioritaet stehen NUR hier — dieselbe Sache
+ * an zwei Stellen waeren zwei Wahrheiten. */
+function scanItemMaske(i, gefroren) {
+  const setze = (feld, wert) => rufScan("scan_item_setzen",
+                                        {name: i.name, feld: feld, wert: wert});
+  const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
+  const bild = scanVorschauen.get(i.name);
+
+  const box = el("input", {type: "checkbox",
+    "aria-label": i.name + " ein- oder ausschalten"});
+  box.checked = !!i.aktiv;
+  box.addEventListener("change", () => setze("aktiv", box.checked));
+  const anaus = el("label", {class: "an scan-slot-schalter",
+    title: i.aktiv ? "Item ist aktiv — ausschalten" : "Item ist aus — einschalten"}, box);
+
+  const name = maskeName("item", i.name,
+    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
+
+  // Vorhandene anklicken, neue tippen — dasselbe Bedienelement wie in der
+  // Lern-Vorschau. Ein freies Textfeld allein macht aus „Helme" und „helme"
+  // zwei Kategorien, und Items derselben Kategorie konkurrieren miteinander.
+  const kat = kategorieWahl(i.kategorie || "", (v) => setze("kategorie", v),
+    {titel: "Items derselben Kategorie konkurrieren; die kleinere Priorität gewinnt",
+     leer: "— ohne —", schluessel: "item:" + i.name});
+
+  // **Die Zahl allein sagt nicht, ob sie frei ist.** Teilt sich das Item seinen
+  // Rang mit einem anderen derselben Kategorie, entscheidet die Scan-Reihenfolge
+  // — also der Zufall. Das steht am Feld, nicht erst im aufgeklappten Detail:
+  // getippt wird hier.
+  const kollision = prioritaetDoppelt(i);
+  const prio = el("input", {
+    type: "number", value: i.prioritaet, min: 0, step: 1,
+    class: kollision.length ? "doppelt" : "",
+    title: kollision.length
+      ? "P" + i.prioritaet + " hat auch: " + kollision.join(", ")
+        + " — bei gleicher Zahl entscheidet der Zufall"
+      : "Priorität — kleiner gewinnt" + (i.kategorie
+          ? " (frei in „" + i.kategorie + "“: P"
+            + naechsteFreiePrioritaet(i.kategorie, i.name) + ")"
+          : ", zählt nur innerhalb einer Kategorie")});
+  prio.addEventListener("change", () => {
+    if (prio.value.trim() !== "") setze("prioritaet", Number(prio.value));
+  });
+  prio.addEventListener("keydown", (e) => { if (e.key === "Enter") prio.blur(); });
+
+  const felder = el("div", {class: "scan-maske-felder"}, name,
+    el("div", {class: "scan-maske-unten"}, kat, prio), scanItemStand(i, gefroren));
+
+  const maske = maskeBauen("item", i.name, gewaehlt,
+    [el("div", {class: "scan-marke"}, anaus),
+     bild ? el("img", {class: "mini", src: bild, alt: ""})
+          : el("span", {class: "kugel" + (i.marker.length ? "" : " ohne"),
+                        style: i.marker.length ? "background:" + i.marker[0] : ""}),
+     felder],
+    // **Das Gewaehlte klappt seine Einstellungen hier auf**, statt sie in eine
+    // andere Spalte zu legen: Vorlage, Marker, Konfidenz und Loeschen gehoeren
+    // diesem Item, und man sieht beim Arbeiten daran nicht zwischen zwei Orten
+    // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
+    // keine Liste mehr.
+    (kasten) => scanItemDetails(kasten, i),
+    () => rufScan("scan_waehlen", {art: "item", name: i.name}));
+  maske.classList.add("scan-item-maske");
+  maske.classList.toggle("aus", !i.aktiv);
+  return maske;
+}
+
+/** Die Zustandszeile einer Item-Maske: erkannt, stumm, fehlende Vorlage.
+ *
+ * **„Items erkennen" war in dieser Liste unsichtbar.** Der Knopf faerbte die
+ * Rechtecke im Bild und fuellte die Ergebnisleiste — wer aber in der Item-Liste
+ * stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick
+ * nichts und hielt ihn fuer wirkungslos. Hier steht jetzt, WO das Item gerade
+ * gefunden wurde. */
+function scanItemStand(i, gefroren) {
+  const teile = [];
+  // Die Kategorie ist gewechselt, die Zeile steht aber noch unter der alten
+  // Ueberschrift — das muss dastehen, sonst liest sich die Liste falsch.
+  if (gefroren !== null && gefroren !== undefined
+      && (i.kategorie || "") !== gefroren) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Beim nächsten „Sortieren“ rutscht das Item in diese Gruppe"},
+      "→ " + (i.kategorie || "ohne Kategorie")));
+  }
+  if ((i.erkannt_in || []).length) {
+    teile.push(el("span", {style: "color:var(--slot-ok)"},
+      "erkannt in " + i.erkannt_in.slice(0, 2).join(", ")
+      + (i.erkannt_in.length > 2 ? " +" + (i.erkannt_in.length - 2) : "")));
+  }
+  if (i.stumm) {
+    teile.push(el("span", {style: "color:var(--err)",
+      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "stumm"));
+  } else if (!(i.vorlagen || []).length) {
+    teile.push(el("span", {class: "mono"}, i.marker.length + " Marker"));
+  }
+  if ((i.fehlende_scan_groessen || []).length) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Für die Slot-Größen dieses Scans gibt es noch keine Vorlage"},
+      "Vorlage fehlt"));
+  }
+  const kollision = prioritaetDoppelt(i);
+  if (kollision.length) {
+    teile.push(el("span", {style: "color:var(--accent)",
+      title: "Gleiche Priorität wie " + kollision.join(", ")
+             + " — welches zuerst geklickt wird, entscheidet der Zufall"},
+      "P" + i.prioritaet + " doppelt"));
+  }
+  if (i.bestaetigung) {
+    teile.push(el("span", {class: "mono", title: "Nach dem Klick wird bestätigt: "
+      + i.bestaetigung.text}, "+ Bestätigung"));
+  }
+  return el("div", {class: "scan-maske-stand"}, teile);
 }
 
 function scanListeScans(ziel) {
@@ -2122,18 +2889,40 @@ function scanListeScans(ziel) {
       "Noch kein Item-Scan. Er ist die Klammer um Slots und Items — bei mehreren "
       + "Spielen der einzige Weg, sie auseinanderzuhalten."));
   }
-  for (const c of SC.scans) {
-    // Ein Klick oeffnet ihn: waehlen und oeffnen sind hier dasselbe, denn ein
-    // Scan, den man ansieht, ist der, an dem man arbeitet.
-    ziel.appendChild(el("button", {
-      class: "scan-zeile" + (SC.offen === c.name ? " an" : ""),
-      onclick: () => rufScan("scan_oeffnen", {name: c.name}),
-    },
-      el("span", {class: "name"}, c.name),
-      c.fehlend.length
-        ? el("span", {class: "klein", style: "color:var(--err)"}, c.fehlend.length + "× fehlt")
-        : el("span", {class: "klein mono"}, c.slots.length + "S/" + c.items.length + "I")));
-  }
+  for (const c of SC.scans) ziel.appendChild(scanScanMaske(c));
+}
+
+/** Ein Item-Scan als Maske: Name, Umfang — und seine Einstellungen darunter.
+ *
+ * **Hier lag die Luecke, durch die ein Scan gar nicht mehr zu loeschen war.**
+ * Ein Klick auf die Zeile oeffnete ihn, das Oeffnen schaltete auf die
+ * Item-Liste um, und die Scan-Einstellungen standen in einer Spalte, die man
+ * damit gerade verlassen hatte. Jetzt bleibt der Reiter stehen, und alles, was
+ * dem Scan gehoert, klappt in seiner Maske auf. */
+function scanScanMaske(c) {
+  const offen = SC.offen === c.name;
+  const name = el("span", {class: "scan-maske-name",
+    title: "Ein Block vom Typ ITEM-SCAN verweist per Name hierauf"}, c.name);
+  const stand = el("div", {class: "scan-maske-stand"},
+    el("span", {class: "klein mono"},
+       c.slots.length + " Slots · " + c.items.length + " Items"),
+    offen ? el("span", {class: "klein", style: "color:var(--slot-ok)"}, "offen") : null,
+    c.fehlend.length
+      ? el("span", {class: "klein", style: "color:var(--err)",
+                    title: "Zeigt ins Leere: " + c.fehlend.join(", ")},
+           c.fehlend.length + "× fehlt")
+      : null);
+  return maskeBauen("scan", c.name, offen,
+    [el("span", {}),
+     el("span", {class: "kugel" + (offen ? "" : " ohne"),
+                 style: offen ? "background:var(--slot-ok)" : ""}),
+     el("div", {class: "scan-maske-felder"}, name, stand)],
+    (kasten) => scanScanDetails(kasten, c),
+    // Waehlen und Oeffnen sind hier dasselbe: ein Scan, den man ansieht, ist
+    // der, an dem man arbeitet. Der Reiter bleibt dabei stehen — sonst
+    // verschwindet die Maske, die sich gerade aufgeklappt hat.
+    () => { scanReiterNachOeffnen = "scans";
+            rufScan("scan_oeffnen", {name: c.name}); });
 }
 
 /** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
@@ -2148,7 +2937,7 @@ async function scanVorschauenHolen(namen) {
   for (const [name, url] of Object.entries(antwort)) {
     if (url) { scanVorschauen.set(name, url); neu = true; }
   }
-  if (neu && ansicht === "scans") { scanListeZeichnen(); scanInspektor(); }
+  if (neu && ansicht === "scans") scanInspektor();
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -2165,8 +2954,6 @@ function scanOverlay() {
   const px = 1 / Math.max(scanZoom, 0.001);
   // Bei offenem Item-Scan: seine Slots normal, alle anderen gestrichelt und
   // blass. Ohne das muss man Liste und Bild im Kopf zusammenbringen.
-  const offen = SC.scans.find((c) => c.name === SC.offen) || null;
-
   // Was gerade gezogen wird, wird SCHON VERSCHOBEN gezeichnet — sonst zieht man
   // blind und sieht das Ergebnis erst beim Loslassen. Nur eine Zeichnung: die
   // Daten aendert erst der Aufruf beim Loslassen.
@@ -2174,13 +2961,9 @@ function scanOverlay() {
   const gezogen = zieh[0] || zieh[1]
     ? new Set(scanGewaehlteSlots().map((s) => s.name)) : null;
 
-  for (const s of SC.slots) {
-    const fremd = offen && !s.dabei ? " fremd" : "";
-    // Bei eingeschaltetem Filter bleiben fremde Slots ganz weg: sie gehoeren zu
-    // einem anderen Spiel und liegen womoeglich an genau derselben Stelle.
-    // Ausgeschaltet stehen sie gestrichelt da — dann sucht man ja gerade das,
-    // was man noch dazunehmen koennte.
-    if (fremd && SC.nur_dabei) continue;
+  // Slots gehoeren dem Item-Scan. Auf einem Boss-Bild waeren 45 Rechtecke kein
+  // Ueberblick, sondern ein Gitter ueber der einen Region, um die es geht.
+  for (const s of (scanArt === "item" ? SC.slots : [])) {
     const v = gezogen && gezogen.has(s.name) ? zieh : [0, 0];
     const [x1, y1] = scanZuBild(s.region[0] + v[0], s.region[1] + v[1]);
     const [x2, y2] = scanZuBild(s.region[2] + v[0], s.region[3] + v[1]);
@@ -2193,25 +2976,23 @@ function scanOverlay() {
     // sucht man spaeter, warum der Scan das Gruene nicht findet.
     const zustand = (s.treffer
       ? (s.treffer.name ? (s.treffer.fremd ? " fremditem" : " treffer") : " leer")
-      : "") + fremd;
+      : "");
+    const aus = s.aktiv ? "" : " aus";
     // Die Fuellung traegt denselben Zustand wie der Umriss: auf einem bunten
     // Spielbild ist die Flaeche das, was man sieht, der Strich schaerft nur.
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-      class: "scan-fuellung" + zustand + (gewaehlt ? " gewaehlt" : "")}));
+      class: "scan-fuellung" + zustand + aus + (gewaehlt ? " gewaehlt" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-      class: "scan-slot" + zustand + (gewaehlt ? " gewaehlt" : "")}));
-    // Der Name steht ueber dem Rechteck, das Erkennungsergebnis darunter — so
-    // ueberdeckt keins von beiden das Bild im Slot.
+      class: "scan-slot" + zustand + aus + (gewaehlt ? " gewaehlt" : "")}));
+    // Name ueber dem Rechteck, Erkennungsergebnis darunter — so ueberdeckt
+    // keins von beiden das Bild im Slot.
     //
-    // Aber nur, wenn er auch hineinpasst: die Schrift steht in SCHIRM-Pixeln
-    // (gegen den Zoom gerechnet), der Slot in Bild-Pixeln. Bei 45 Slots passt
-    // das Bild nur klein ins Fenster, und dann war jede Marke breiter als ihr
-    // Slot — 45 Namen uebereinander, aus denen keiner mehr lesbar war. Der
-    // gewaehlte behaelt seinen Namen: welcher es ist, ist die eine Frage, die
-    // auch bei 20 % beantwortet sein muss.
+    // Nur, wenn er hineinpasst: die Schrift steht in SCHIRM-Pixeln (gegen den
+    // Zoom gerechnet), der Slot in Bild-Pixeln, und bei 45 Slots waeren es 45
+    // Namen uebereinander. Der gewaehlte behaelt seinen immer.
     const breit = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
     if (breit >= 34 || gewaehlt) {
-      svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + fremd,
+      svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-marke" + aus,
         "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
     }
     if (s.treffer && s.treffer.name && (breit >= 34 || gewaehlt)) {
@@ -2223,9 +3004,11 @@ function scanOverlay() {
     }
     const [kx, ky] = scanZuBild(s.klick[0] + v[0], s.klick[1] + v[1]);
     const arm = 4 * px;
-    svg.appendChild(svgEl("path", {class: "scan-kreuz",
+    svg.appendChild(svgEl("path", {class: "scan-kreuz" + aus,
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
   }
+
+  if (scanArt !== "item") erkOverlay(svg, px);
 
   // Der Suchbereich der Slot-Erkennung steht, bis die Farbe gezeigt ist. Ohne
   // ihn klickt man den Hintergrund an, ohne zu sehen, worin gesucht wird — und
@@ -2285,14 +3068,12 @@ function scanInSlot(slot, stelle) {
 
 /** Holt den gewaehlten Slot in die Sichtbarkeit der Buehne.
  *
- * **Liste und Bild waren zwei getrennte Welten.** Einen Slot in der Liste
- * anzuklicken markierte ihn im Bild — nur sah man das nicht, wenn er gerade
- * ausserhalb lag. Bei 45 Slots auf 1:1 ist das der Normalfall, und man sucht
- * die weisse Markierung, statt zu arbeiten.
+ * Einen Slot in der Liste anzuklicken markiert ihn im Bild — bei 45 Slots auf
+ * 1:1 liegt er dabei aber meist ausserhalb.
  *
  * Gescrollt wird NUR, wenn er wirklich draussen liegt, und nur beim Wechsel der
- * Auswahl (`scanGezeigt`): eine Buehne, die bei jedem Neuzeichnen springt,
- * nimmt einem die Stelle weg, die man gerade ansieht. */
+ * Auswahl: eine Buehne, die bei jedem Neuzeichnen springt, nimmt einem die
+ * Stelle weg, die man gerade ansieht. */
 function scanZeigeGewaehlten() {
   if (!SC || !SC.foto || SC.wahl.art !== "slot") { scanGezeigt = ""; return; }
   const name = SC.wahl.name;
@@ -2314,24 +3095,53 @@ function scanZeigeGewaehlten() {
     buehne.scrollTop = Math.max(0, (o + u) / 2 - buehne.clientHeight / 2);
 }
 
-function scanStelleAusEvent(e) {
+function scanStelleAusEvent(e, amBildrand = false) {
   const rand = $("scan-overlay").getBoundingClientRect();
   if (!rand.width || !rand.height || !SC || !SC.foto) return null;
-  const bx = (e.clientX - rand.left) / rand.width * SC.foto.breite;
-  const by = (e.clientY - rand.top) / rand.height * SC.foto.hoehe;
+  let bx = (e.clientX - rand.left) / rand.width * SC.foto.breite;
+  let by = (e.clientY - rand.top) / rand.height * SC.foto.hoehe;
+  if (amBildrand) {
+    bx = Math.max(0, Math.min(SC.foto.breite, bx));
+    by = Math.max(0, Math.min(SC.foto.hoehe, by));
+  }
   return scanZuSchirm(bx, by);
+}
+
+/** Eine Ecke ausserhalb des Screenshots gehoert beim automatischen Finden
+ * trotzdem zur mittleren Arbeitsflaeche. Sie wird auf den naechsten Bildrand
+ * geklemmt: dort enden die Pixel, in denen OpenCV suchen kann. Seitenleisten,
+ * Werkzeugleiste und Ergebnisboxen sind keine Zeichenflaeche. */
+function scanSuchStelleAusBuehne(e) {
+  const flaeche = $("scan-flaeche");
+  if (!SC || SC.modus !== "finden" || flaeche.contains(e.target)) return null;
+  if (e.target.closest("#scan-canvas-bar, #scan-ergebnis, #scan-bibliothek")) return null;
+  return scanStelleAusEvent(e, true);
 }
 
 /* --------------------------------------------------------------- Inspektor */
 
+/** Die rechte Spalte neu bauen — und dabei den Fokus selbst hinüberretten.
+ *
+ * **Der Schutz sitzt HIER, nicht bei den Aufrufern.** `zeichneScans()` hatte
+ * ihn, aber es gibt einen zweiten Weg: `scanVorschauenHolen()` baut die Spalte
+ * direkt neu, sobald ein nachgeladenes Template ankommt. Genau das passiert beim
+ * UMBENENNEN — unter dem neuen Namen gibt es noch keine Vorschau —, und dort
+ * ging der Fokus verloren, während er beim Tippen einer Priorität stehen blieb.
+ * Ein Schutz, an den jeder Aufrufer denken muss, ist einer, den einer vergisst. */
 function scanInspektor() {
+  const merk = fokusMerken();
+  scanInspektorBauen();
+  fokusHerstellen(merk);
+}
+
+function scanInspektorBauen() {
   const ziel = $("scan-insp");
   ziel.replaceChildren();
   if (SC.review) return scanReview(ziel);
-  const kopf = el("div", {class: "abschnitt"},
+  const kopf = el("div", {class: "abschnitt scan-kopf"},
     el("div", {class: "reihe"},
       el("span", {class: "ueberschrift wachse"},
-         SC.dirty ? "NICHT GESPEICHERT" : "SCANS · SLOTS · ITEMS"),
+         SC.dirty ? "NICHT GESPEICHERT" : scanSpaltenTitel()),
       SC.dirty ? el("span", {class: "punkt-offen"}) : null),
     // **Der Hauptprozess schreibt dieselben Dateien.** Ein Lauf mit
     // Auto-Lernen legt Items an und speichert sie; ohne diesen Hinweis sucht
@@ -2351,27 +3161,83 @@ function scanInspektor() {
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
     el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
        "Speichern"),
-    el("div", {class: "reihe"},
-      el("button", {class: "btn wachse", disabled: !fotoDa() || !SC.slots.length,
-                    title: "Jeden Slot gegen die Item-Profile halten",
-                    onclick: () => rufScan("scan_erkennen")}, "Items erkennen"),
-      // **Der Knopf NENNT, was er zurücknimmt.** Ein „Rückgängig" ohne Angabe
-      // drückt man entweder gar nicht (weil man nicht weiss, was passiert) oder
-      // einmal zu oft. Die Beschreibung kommt aus der Brücke — dort weiss man,
-      // was der Schritt war.
-      el("button", {class: "btn", disabled: !SC.undo.tiefe,
+    el("div", {class: "knopfpaar"},
+      scanArt === "item"
+        // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
+        // erkennen" und im Assistenten als „Erkennung testen" — zwei Namen fuer
+        // einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
+        // Verschiedenes.
+        ? el("button", {class: "btn", disabled: !fotoDa() || !SC.slots.length,
+                        title: "Hält jeden Slot gegen die Item-Profile und schreibt "
+                               + "das Ergebnis an Bild und Item-Liste",
+                        onclick: () => rufScan("scan_erkennen")}, "Items erkennen")
+        : el("button", {class: "btn", disabled: !fotoDa() || !erkScan(),
+                        title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
+                        onclick: () => erkTesten()},
+             scanArt === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
+      // **Der Knopf heisst „Zurück", die Beschreibung steht im Tooltip.** Er
+      // trug den letzten Schritt im Namen („↶ 'Bogen Zeus': Priorität") — das
+      // ist die genauere Auskunft und die schlechtere Beschriftung: sie wurde
+      // zweizeilig, wechselte bei jeder Änderung ihre Länge, und was der Knopf
+      // TUT, musste man aus ihr heraussuchen. Was zurückgenommen wird, liest,
+      // wer nachfragt; dass es überhaupt etwas gibt, sagt der aktive Zustand.
+      el("button", {class: "btn scan-undo", disabled: !SC.undo.tiefe,
                     title: SC.undo.tiefe
                       ? "STRG+Z — nimmt zurück: " + SC.undo.was
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
-                    onclick: () => rufScan("scan_rueckgaengig")},
-         SC.undo.tiefe ? "↶ " + SC.undo.was : "↶ Rückgängig")));
+                    onclick: () => rufScan("scan_rueckgaengig")}, "↶ Zurück")));
+  // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
+  // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
+  // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
+  // zurueck in eine andere Liste.
+  const tabs = el("div", {class: "tabs klein breit"});
+  const filter = el("div", {class: "scan-filter"});
+  scanListenBlock(tabs, filter, null);
+  kopf.appendChild(tabs);
+  if (scanMaskenRechts()) {
+    // **Sortieren ist ein Knopf, kein Nebeneffekt des Tippens.** Sortierte sich
+    // die Liste nach jeder Aenderung neu, springt genau die Zeile weg, an der
+    // man gerade arbeitet.
+    filter.appendChild(el("button", {class: "btn still",
+      title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
+             + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
+      onclick: () => { scanOrdnungVergessen(); zeichneScans(); }}, "↕ Sortieren"));
+    const art = scanListe === "slots" ? "slot" : "item";
+    const eintraege = scanListe === "slots" ? SC.slots : SC.items;
+    const irgendAn = eintraege.some((e) => !!e.aktiv);
+    filter.appendChild(el("button", {class: "btn still", disabled: !eintraege.length,
+      title: "Schaltet alle " + (art === "slot" ? "Slots" : "Items")
+             + (irgendAn ? " aus." : " ein."),
+      onclick: () => rufScan("scan_alle_schalten",
+                             {art: art, aktiv: !irgendAn})},
+      irgendAn ? "Alle aus" : "Alle ein"));
+  }
+  if (filter.childNodes.length) kopf.appendChild(filter);
   ziel.appendChild(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
-  if (SC.wahl.art === "slot") scanInspSlot(rumpf);
-  else if (SC.wahl.art === "item") scanInspItem(rumpf);
-  else if (SC.wahl.art === "scan") scanInspScan(rumpf);
+  // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Was zum
+  // GEWAEHLTEN gehoert, klappt in seiner Maske auf statt daneben zu stehen.
+  // Eine Mehrfachauswahl meint etwas anderes als eine Maske: sie hat keinen
+  // Namen und keine Einzelfelder, nur das, was auf alle wirkt. Deshalb steht
+  // sie ueber der Liste und nicht in ihr.
+  if (scanMaskenRechts() && SC.auswahl.length > 1) {
+    const sammel = el("div", {class: "scan-sammel"});
+    scanInspAuswahl(sammel);
+    rumpf.appendChild(sammel);
+  }
+  const liste = el("div", {class: "spalte", style: "gap:3px"});
+  scanListenBlock(null, null, liste);
+  rumpf.appendChild(liste);
+  // Boss und Icon tragen keine Masken — was zum Gewaehlten gehoert, steht
+  // deshalb UNTER der Liste statt in ihr. Abgesetzt, damit man sieht, wo die
+  // Liste aufhoert und das eine Ding anfaengt.
+  if (!scanMaskenRechts()) {
+    const insp = el("div", {class: "spalte erk-insp"});
+    erkInspektor(insp);
+    if (insp.childNodes.length) rumpf.appendChild(insp);
+  }
   if (!rumpf.childNodes.length) {
     rumpf.appendChild(el("p", {class: "hinweis"},
       "Nichts gewählt. Links eine Zeile anklicken — oder im Bild einen Slot."));
@@ -2379,8 +3245,19 @@ function scanInspektor() {
   ziel.appendChild(rumpf);
 }
 
+/** Was in der Kopfzeile der rechten Spalte steht: die offene Liste.
+ *
+ * Sie stand als feste Aufzaehlung da („SCANS · SLOTS · ITEMS"), auch wenn nur
+ * eine davon zu sehen war. Eine Ueberschrift, die drei Dinge nennt und eines
+ * zeigt, beschreibt das Fenster statt den Inhalt. */
+function scanSpaltenTitel() {
+  if (scanArt === "icon") return "ICON-SCANS";
+  if (scanArt === "boss") return erkBibliothek() ? "BOSS-BIBLIOTHEK" : "BOSS-SCANS";
+  return {scans: "ITEM-SCANS", slots: "SLOTS", items: "ITEMS"}[scanListeAktiv()]
+         || "SCANS";
+}
+
 function scanReview(ziel) {
-  const kategorienId = "review-kategorien";
   const itemsId = "review-items";
   const bekannteNamen = new Set((SC.review.itemnamen || []).map(String));
   const kopf = el("div", {class: "abschnitt"},
@@ -2391,12 +3268,11 @@ function scanReview(ziel) {
       "entfernt; das Item und seine Bilder bleiben gelernt."));
   const vorhanden = allePrioritaeten();
   if (vorhanden) kopf.appendChild(vorhanden);
-  const sammelKategorie = el("input", {
-    list: kategorienId, autocomplete: "off",
-    placeholder: "Kategorie für alle ausgewählten Items",
-    title: "Bestehende Kategorie auswählen oder eine neue eingeben",
+  const sammelKategorie = kategorieWahl("", scanReviewKategorienAktualisieren, {
+    leer: "— Kategorie für alle ausgewählten —",
+    platzhalter: "Kategorie für alle ausgewählten Items",
+    schluessel: "review-sammel",
   });
-  sammelKategorie.addEventListener("change", scanReviewKategorienAktualisieren);
   kopf.appendChild(el("div", {class: "scan-review-sammel"}, sammelKategorie,
     el("button", {class: "btn still", type: "button",
       onclick: () => scanReviewKategorieAufAuswahl(sammelKategorie)},
@@ -2404,27 +3280,27 @@ function scanReview(ziel) {
   ziel.appendChild(kopf);
   const liste = el("div", {class: "abschnitt wachsend scan-review"});
   for (const z of SC.review.zeilen) {
-    const haken = el("input", {type: "checkbox"});
+    const haken = el("input", {type: "checkbox", class: "scan-review-haken"});
     const standardAuswahl = !!z.ausgewaehlt;
     const vorhandenerName = String(z.vorhanden || "");
     let alsAnderes = false;
     let vorherigeAuswahl = standardAuswahl;
     haken.checked = standardAuswahl;
     haken.title = "Angehakt: im aktuellen Scan verwenden · abgehakt: auslassen oder entfernen";
-    const name = el("input", {value: z.name, list: itemsId, autocomplete: "off",
+    const name = el("input", {class: "scan-review-name",
+      value: z.name, list: itemsId, autocomplete: "off",
       placeholder: "Item-Name", title: "Vorhandenes Item auswählen oder neuen Namen eingeben"});
-    const kat = el("input", {
-      class: "scan-review-kategorie",
-      value: z.kategorie || "", list: kategorienId, autocomplete: "off",
-      placeholder: "Kategorie auswählen oder neu eingeben",
-      title: "Bestehende Kategorie auswählen oder eine neue eingeben",
-    });
-    kat.addEventListener("change", scanReviewKategorienAktualisieren);
+    // Dasselbe Bedienelement wie in der Item-Maske: waehlen ist der Normalfall,
+    // tippen die Ausnahme. Gerade hier entstehen die Kategorien, und gerade
+    // hier tippt man sie sonst zwanzigmal — beim einundzwanzigsten Mal anders.
+    const kat = kategorieWahl(z.kategorie || "", scanReviewKategorienAktualisieren,
+      {klasse: "scan-review-kategorie", schluessel: "review:" + z.slot});
     const prio = el("input", {
+      class: "scan-review-prio",
       type: "number", value: z.prioritaet ?? 1, min: 0, step: 1,
       title: "Kleinere Zahl gewinnt; 0 setzt das Item in seiner Kategorie nach vorn",
     });
-    const status = el("span", {class: "klein mono"});
+    const status = el("span", {class: "klein mono scan-review-status"});
     const wechsel = vorhandenerName ? el("button", {
       class: "btn still scan-review-aktion", type: "button",
       title: "Nur verwenden, wenn die automatische Erkennung falsch war",
@@ -2437,32 +3313,22 @@ function scanReview(ziel) {
       // Kategorie und Priorität des erkannten Profils sind direkt änderbar.
       // Wird ein anderer vorhandener Name gewählt, schützen wir dagegen dessen
       // Werte vor den leeren Standards der Aktion „Als anderes Item lernen“.
-      kat.disabled = bestehend && !normalerTreffer;
+      kat.sperren(bestehend && !normalerTreffer);
       prio.disabled = bestehend && !normalerTreffer;
       zeile.dataset.alsAnderes = alsAnderes ? "true" : "false";
-      zeile.classList.toggle("entfernen", !haken.checked && normalerTreffer && !!z.im_scan);
-      zeile.classList.toggle("ueberspringen", !haken.checked &&
-        (!normalerTreffer || !z.im_scan));
+      zeile.classList.toggle("ueberspringen", !haken.checked);
       if (!haken.checked) {
-        status.textContent = z.slot + (normalerTreffer && z.im_scan
-          ? " · „" + vorhandenerName + "“ · wird aus diesem Scan entfernt"
-          : " · wird nicht übernommen");
+        status.textContent = z.slot + " · wird nicht gelernt oder geändert";
       } else if (alsAnderes) {
         status.textContent = z.slot + (bestehend
           ? " · vorhandenes „" + name.value.trim() + "“ gewählt · Vorlage ergänzen"
           : " · wird als neues Item gelernt");
       } else if (z.variante) {
         status.textContent = z.slot + " · „" + vorhandenerName +
-          "“ erkannt · neue Vorlage für diese Slot-Größe · " +
-          (z.im_scan ? "bleibt im Scan" : "wird zum Scan hinzugefügt");
-      } else if (z.duplikat && z.im_scan) {
-        status.textContent = z.slot + " · „" + vorhandenerName +
-          "“ erkannt · bleibt im Scan";
-      } else if (z.duplikat && z.kann_hinzufuegen) {
-        status.textContent = z.slot + " · „" + vorhandenerName +
-          "“ erkannt · wird zum Scan hinzugefügt";
+          "“ erkannt · neue Vorlage für diese Slot-Größe";
       } else if (z.duplikat) {
-        status.textContent = z.slot + " · „" + vorhandenerName + "“ · bereits gelernt";
+        status.textContent = z.slot + " · „" + vorhandenerName +
+          "“ erkannt · bereits in diesem Scan eingerichtet";
       } else {
         status.textContent = z.slot + (bestehend
           ? " · neue Vorlage für „" + name.value.trim() + "“" : " · neues Item");
@@ -2470,13 +3336,12 @@ function scanReview(ziel) {
     };
     name.addEventListener("input", synchronisiere);
     zeile = el("div", {class: "scan-review-zeile" +
-        (z.variante ? " variante" : z.duplikat && z.kann_hinzufuegen
-          ? " duplikat zuordnen" : z.duplikat ? " duplikat fertig" : ""),
+        (z.variante ? " variante" : z.duplikat ? " duplikat fertig" : ""),
       "data-slot": z.slot, "data-vorhanden": vorhandenerName,
-      "data-als-anderes": "false"}, haken,
-      z.bild ? el("img", {src: z.bild}) : el("span", {}),
+      "data-als-anderes": "false"}, haken, status,
+      z.bild ? el("img", {class: "scan-review-bild", src: z.bild, alt: ""})
+             : el("span", {class: "scan-review-bild leer"}),
       el("div", {class: "felder"},
-        status,
         name, el("div", {class: "scan-review-sortierung"}, kat,
           el("label", {class: "scan-review-prio"}, el("span", {}, "Priorität"), prio)),
         wechsel));
@@ -2521,209 +3386,90 @@ function scanReview(ziel) {
     synchronisiere();
     liste.appendChild(zeile);
   }
-  liste.appendChild(kategorienListe(kategorienId));
   liste.appendChild(el("datalist", {id: itemsId},
     [...bekannteNamen].map((name) => el("option", {value: name}))));
-  liste.appendChild(el("div", {class: "reihe", style: "margin-top:8px"},
+  liste.appendChild(el("div", {class: "knopfpaar", style: "margin-top:8px"},
     el("button", {class: "btn", onclick: () => rufScan("scan_lernvorschau_abbrechen")}, "Abbrechen"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn haupt", onclick: scanReviewUebernehmen}, "Auswahl anwenden")));
   ziel.appendChild(liste);
 }
 
 function scanReviewUebernehmen() {
-  const zeilen = [...document.querySelectorAll(".scan-review-zeile")].map((n) => {
-    const inputs = n.querySelectorAll("input");
-    return {slot: n.dataset.slot, ausgewaehlt: inputs[0].checked,
-            vorhanden: n.dataset.vorhanden || "",
-            als_anders: n.dataset.alsAnderes === "true",
-            name: inputs[1].value.trim(), kategorie: inputs[2].value.trim(),
-            prioritaet: Number(inputs[3].value)};
-  });
+  // **Gelesen wird ueber Klassen, nicht ueber Positionen.** Vorher wurden die
+  // Felder einer Zeile durchnummeriert aus `querySelectorAll` gegriffen — wer
+  // eines dazwischen einbaut (oder ein Textfeld durch eine Auswahlliste
+  // ersetzt, wie es die Kategorie jetzt ist), verschiebt still alle folgenden.
+  // Ein Import, der die Prioritaet als Kategorie liest, faellt niemandem auf.
+  const zeilen = [...document.querySelectorAll(".scan-review-zeile")].map((n) => ({
+    slot: n.dataset.slot,
+    ausgewaehlt: n.querySelector(".scan-review-haken").checked,
+    vorhanden: n.dataset.vorhanden || "",
+    als_anders: n.dataset.alsAnderes === "true",
+    name: n.querySelector(".scan-review-name").value.trim(),
+    kategorie: n.querySelector(".scan-review-kategorie").wert(),
+    prioritaet: Number(n.querySelector(".scan-review-prio").value),
+  }));
   rufScan("scan_lernvorschau_uebernehmen", {zeilen: zeilen});
 }
 
-function scanSlotAktuell() {
-  return SC.slots.find((s) => s.name === SC.wahl.name) || null;
-}
-
-function scanInspSlot(ziel) {
-  // Mehrere Slots gewaehlt: dann gibt es keine Einzelfelder zu zeigen (welchen
-  // Namen truege das Feld?), sondern nur, was auf alle wirkt. Dieselbe Haltung
-  // wie im Sequenz-Editor bei einer Mehrfachauswahl.
-  if (SC.auswahl.length > 1) return scanInspAuswahl(ziel);
-  const s = scanSlotAktuell();
-  if (!s) return;
+/** Was zum gewaehlten Slot gehoert — im Detailteil seiner Maske.
+ *
+ * **Der Name steht in der Maske, nicht hier.** Dieselbe Regel wie beim Item und
+ * beim Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
+ * steht beim Ding; hier bleibt, was man daran EINSTELLT. */
+function scanSlotDetails(ziel, s) {
   const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
 
-  ziel.appendChild(ueberschrift("SLOT",
-    "Ein Slot ist eine Fläche, die gescannt wird, plus die Stelle, auf die " +
-    "geklickt wird, wenn dort etwas Passendes liegt.", "slot"));
-  ziel.appendChild(feld("Name", s.name, (v) => setze("name", v)));
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:8px"},
+  ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn still",
+      title: "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt",
       onclick: () => rufScan("scan_modus_setzen", {modus: "klick"})},
-      "Klickpunkt im Bild setzen"),
+      "Klickpunkt setzen"),
     el("button", {class: "btn still", disabled: !fotoDa(),
+      title: "Die Farbe des leeren Slots — sie wird beim Item-Lernen abgezogen, "
+             + "damit nicht der Rahmen als Merkmal gelernt wird",
       onclick: () => rufScan("scan_modus_setzen", {modus: "messen"})},
       "Hintergrund messen")));
 
   const erweitert = el("details", {class: "scan-erweitert"},
-    el("summary", {}, "Erweiterte Einstellungen · Koordinaten und Hintergrund"));
-
+    el("summary", {}, "Koordinaten und Hintergrund"));
   erweitert.appendChild(ueberschrift("FLÄCHE",
     "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
-    "im Bild anklicken.", "flaeche"));
+    "im Bild anklicken — oder den Slot im Bild ziehen.", "flaeche"));
   erweitert.appendChild(el("div", {class: "gitter2"},
     zahlfeld("Links", s.region[0], (v) => setze("x1", v)),
     zahlfeld("Oben", s.region[1], (v) => setze("y1", v)),
     zahlfeld("Rechts", s.region[2], (v) => setze("x2", v)),
     zahlfeld("Unten", s.region[3], (v) => setze("y2", v))));
-  erweitert.appendChild(el("p", {class: "hinweis"}, s.breite + " × " + s.hoehe + " px"));
-
   erweitert.appendChild(ueberschrift("KLICKPUNKT",
     "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
   erweitert.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", s.klick[0], (v) => setze("kx", v)),
     zahlfeld("Y", s.klick[1], (v) => setze("ky", v))));
-
-  erweitert.appendChild(ueberschrift("HINTERGRUND",
+  erweitert.appendChild(farbfeld("Hintergrund", s.farbe, (v) => setze("farbe", v),
     "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
     "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
-  erweitert.appendChild(farbfeld("Farbe", s.farbe, (v) => setze("farbe", v)));
   ziel.appendChild(erweitert);
 
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+  ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn", disabled: !fotoDa(),
                   onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
        "Item lernen"),
-    el("button", {class: "btn", onclick: () => rufScan("scan_slot_doppeln")}, "daneben"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        "löschen")));
   if (fotoDa()) {
     // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
     // (`_scan_slots()` in scans.py). Das steht im Knopf, weil es vorher
     // stillschweigend anders war — und die Meldung danach ratlos machte.
-    ziel.appendChild(el("button", {class: "btn still", style: "margin-top:6px",
+    ziel.appendChild(el("button", {class: "btn still",
       title: SC.offen ? "Alle Slots aus „" + SC.offen + "“ — nicht der ganze Bestand"
                       : "Alle Slots im Bestand (kein Scan offen)",
       onclick: () => rufScan("scan_lernvorschau", {scope: "alle"})},
       SC.offen ? "Items dieses Scans prüfen & lernen" : "alle Items prüfen & lernen"));
   }
-  if (s.treffer) {
-    ziel.appendChild(el("p", {class: "hinweis", style: "margin-top:10px"},
-      s.treffer.name ? "Zuletzt erkannt: " + s.treffer.name
-                     : "Zuletzt: " + (s.treffer.grund || "nichts erkannt")));
-    // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
-    // man aus demselben Slot ein zweites Item („Item lernen" oben); gehoert er
-    // nur noch nicht zum Scan, ist es ein Klick.
-    if (s.treffer.fremd) {
-      ziel.appendChild(el("button", {class: "btn still",
-        onclick: () => rufScan("scan_mitglied", {art: "item", name: s.treffer.name})},
-        "„" + s.treffer.name + "“ zu diesem Scan dazunehmen"));
-    }
-    if (s.treffer.name) {
-      ziel.appendChild(el("p", {class: "hinweis"},
-        "Stimmt nicht? „Item lernen“ legt aus diesem Slot ein weiteres Item an."));
-    }
-  }
-}
-
-// Welche Haken-Listen gerade ihren ganzen Bestand zeigen. Reiner
-// Oberflaechenzustand: er aendert nichts am Scan, also gehoert er nicht in die
-// Momentaufnahme.
-let hakenAlleZeigen = {slot: false, item: false};
-
-/** Eine Haken-Liste: standardmaessig nur, was zu diesem Scan gehoert.
- *
- * **Ein neuer Scan faengt leer an.** Vorher standen dort alle 56 Slots und alle
- * 24 Items des gesamten Bestands — die eines anderen Spiels also mit. Slots sind
- * Bildschirm-Koordinaten und damit ohnehin nur fuer ihr eigenes Spiel zu
- * gebrauchen; sie in einem fremden Scan anzubieten ist reines Rauschen.
- *
- * **Items sind der Sonderfall, und zwar der wichtige.** Dasselbe Item kann in
- * mehreren Spielen vorkommen, und es zweimal zu lernen ist genau das, was man
- * vermeiden will. Deshalb erscheint ein Item auch dann, wenn es GERADE IN EINEM
- * SLOT ERKANNT wird — dann steht es da, bevor man auf die Idee kommt, es neu zu
- * lernen. Ein Haken genuegt.
- *
- * Der Rest des Bestands ist einen Klick entfernt, nicht weg. */
-function hakenListe(ziel, titel, hilfe, schluessel, c, art, bestand, drin, leerText) {
-  // `erkannt` kommt aus der Bruecke (`_erkannte_items()`), damit die Regel
-  // „gehoert dazu ODER wird gerade gesehen" an EINER Stelle steht und messbar
-  // ist. Slots tragen das Merkmal nicht — sie sind Bildschirm-Koordinaten und
-  // gehoeren immer genau einem Spiel.
-  const alles = hakenAlleZeigen[art];
-  const sichtbar = alles ? bestand
-    : bestand.filter((e) => drin.includes(e.name) || e.erkannt);
-  ziel.appendChild(hakenKopf(titel, hilfe, schluessel, c.name, art,
-                             bestand.length, drin.length));
-  if (sichtbar.length) {
-    ziel.appendChild(el("div", {class: "scan-haken"}, sichtbar.map((e) =>
-      hakenZeile(e.name, drin.includes(e.name),
-                 () => rufScan("scan_mitglied", {scan: c.name, art: art, name: e.name}),
-                 art, !drin.includes(e.name) && !!e.erkannt))));
-  } else if (!alles) {
-    ziel.appendChild(el("p", {class: "hinweis"}, leerText));
-  }
-  const rest = bestand.length - sichtbar.length;
-  if (rest > 0 || alles) {
-    ziel.appendChild(el("button", {class: "btn still",
-      onclick: () => { hakenAlleZeigen[art] = !alles; zeichneScans(); }},
-      alles ? "nur die aus diesem Scan" : rest + " weitere im Bestand zeigen"));
-  }
-}
-
-/** Eine Zeile der Haken-Liste: Schieber = gehoert dazu, Name = bearbeiten.
- *
- * **Zwei verschiedene Fragen brauchen zwei Bedienelemente.** Vorher war die
- * ganze Zeile ein Schalter, und um ein Item zu BEARBEITEN musste man es links in
- * der Liste suchen — die zeigt aber standardmaessig nur Scan-Mitglieder. Wer ein
- * gelerntes Item umbenennen wollte, das (richtigerweise) noch zu keinem Scan
- * gehoert, musste es also erst aufnehmen. Man musste etwas AENDERN, um es
- * ansehen zu koennen.
- *
- * Jetzt schaltet der Schieber die Zugehoerigkeit, und ein Klick auf den Namen
- * waehlt den Eintrag aus — der Inspektor zeigt danach ihn. */
-function hakenZeile(name, an, umschalten, art, erkannt) {
-  const s = schalter("", an, umschalten);
-  s.classList.add("haken-nur-schalter");
-  return el("div", {class: "haken-zeile"}, s,
-    el("button", {class: "haken-name" + (erkannt ? " erkannt" : ""),
-                  // Erkannt, aber noch nicht dabei: dieselbe Farbe wie im Bild
-                  // (tuerkis), damit man die beiden Stellen zusammenbringt.
-                  title: erkannt ? "wird gerade in einem Slot erkannt — Haken "
-                                   + "setzen statt neu lernen" : "bearbeiten",
-                  onclick: () => rufScan("scan_waehlen", {art: art, name: name})},
-       name));
-}
-
-/** Ueberschrift einer Haken-Liste, mit Stand und einem „alle"-Schieber.
- *
- * **56 Schalter einzeln zu setzen ist keine Bedienung.** Ein Scan umfasst fast
- * immer ALLES seines Spiels; die Ausnahme klickt man danach einzeln weg — nicht
- * umgekehrt.
- *
- * Derselbe Schieber wie die Eintraege darunter, damit man ihn nicht als etwas
- * anderes lesen muss. Drei Stellungen statt zwei: bei 23 von 56 steht er in der
- * MITTE (`indeterminate`) — „aus" waere dort schlicht gelogen, und man wuesste
- * nicht, was ein Klick tut. Aus der Mitte heraus schaltet er ein; ganz an
- * schaltet er alles aus. */
-function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
-  const gemischt = drin > 0 && drin < gesamt;
-  const alle = schalter("alle", drin === gesamt && gesamt > 0,
-    (v) => rufScan("scan_alle", {scan: scan, art: art, wert: v}), gemischt);
-  alle.classList.add("haken-alle");
-  // **Dasselbe Raster wie die Liste darunter.** Rechts angeklebt stand der
-  // Schieber ueber nichts — die Eintraege stehen zweispaltig und linksbuendig,
-  // er sass allein am rechten Rand. In derselben Spalte steht er genau ueber
-  // dem ersten Eintrag, und die Zahl nimmt die zweite Spalte.
-  return el("div", {class: "spalte", style: "gap:6px"},
-    el("span", {class: "ueberschrift mitinfo"}, titel, info(hilfe, schluessel)),
-    el("div", {class: "scan-haken haken-kopf"},
-      alle,
-      el("span", {class: "klein mono haken-stand"}, drin + "/" + gesamt)));
+  // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
+  // man aus demselben Slot ein zweites Item („Item lernen" oben); gehoert er
+  // nur noch nicht zum Scan, ist es ein Klick.
 }
 
 /** Mehrere Slots gewaehlt — nur, was auf alle wirkt.
@@ -2736,7 +3482,8 @@ function hakenKopf(titel, hilfe, schluessel, scan, art, gesamt, drin) {
 function scanInspAuswahl(ziel) {
   ziel.appendChild(ueberschrift("AUSWAHL",
     "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
-    "klicken). STRG-Klick nimmt einzelne dazu oder heraus.", "auswahl"));
+    "klicken). STRG-Klick nimmt einzelne dazu oder heraus. Alles hier lässt " +
+    "sich mit STRG+Z zurücknehmen.", "auswahl"));
   ziel.appendChild(el("p", {class: "hinweis"}, SC.auswahl.length + " Slots gewählt"));
   // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
   // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
@@ -2745,11 +3492,10 @@ function scanInspAuswahl(ziel) {
     ...SC.auswahl.map((n) => el("span", {}, n))));
 
   ziel.appendChild(ueberschrift("LAGE UND GRÖSSE",
-    "Wirkt auf alle Gewählten zugleich. Verschieben nimmt den Klickpunkt mit; " +
-    "Angleichen zieht alle auf die mittlere Grösse, um ihre Mitte herum.",
-    "auswahl-lage"));
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Verschieben: im Bild ziehen, oder Pfeiltasten (SHIFT = 10 px)."));
+    "Verschieben: im Bild ziehen oder Pfeiltasten (SHIFT = 10 px) — der " +
+    "Klickpunkt geht mit. Angleichen zieht alle auf die MITTLERE Grösse, um " +
+    "ihre Mitte herum: ein einzelner Verklicker soll nicht alle anderen " +
+    "verbiegen.", "auswahl-lage"));
   ziel.appendChild(el("button", {class: "btn breit",
     onclick: () => rufScan("scan_groesse_angleichen")}, "Grösse angleichen"));
 
@@ -2763,47 +3509,27 @@ function scanInspAuswahl(ziel) {
     onclick: () => rufScan("scan_lernvorschau", {scope: "auswahl"})},
     SC.auswahl.length + " Items prüfen & lernen"));
 
-  // Zwischen „einer" (Haekchen) und „alle" (Schieber im Kopf) lag nichts —
-  // und genau dazwischen liegt der Alltag.
-  if (SC.offen) {
-    ziel.appendChild(ueberschrift("SCAN „" + SC.offen + "“",
-      "Nimmt die gewählten Slots in den offenen Scan oder heraus.", "auswahl-scan"));
-    ziel.appendChild(el("div", {class: "reihe"},
-      el("button", {class: "btn wachse",
-        onclick: () => rufScan("scan_auswahl_mitglied", {wert: true})}, "dazu"),
-      el("button", {class: "btn wachse",
-        onclick: () => rufScan("scan_auswahl_mitglied", {wert: false})}, "heraus")));
-  }
-
-  ziel.appendChild(el("div", {class: "reihe", style: "margin-top:14px"},
+  ziel.appendChild(el("div", {class: "knopfpaar", style: "margin-top:14px"},
     el("button", {class: "btn", onclick: () => rufScan("scan_abbrechen")},
        "Auswahl aufheben"),
-    el("span", {class: "wachse"}),
     el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
        SC.auswahl.length + " löschen")));
-  // Loeschen ist hier die einzige Aktion, die etwas wegnimmt — und seit es ein
-  // Rueckgaengig gibt, ist sie es nicht mehr endgueltig. Das gehoert dazu:
-  // sonst traut man sich an die Sammel-Aktionen nicht heran.
-  ziel.appendChild(el("p", {class: "hinweis"},
-    "Alles hier lässt sich mit STRG+Z zurücknehmen."));
 }
 
-function scanInspItem(ziel) {
-  const i = SC.items.find((x) => x.name === SC.wahl.name);
-  if (!i) return;
+/** Was man an einem Item selten ändert: Vorlagen, Marker, Konfidenz, Löschen.
+ *
+ * **Steht IN der Maske des gewählten Items**, nicht daneben: sonst sieht man
+ * beim Arbeiten an einem Ding zwischen zwei Orten hin und her, und die Maske
+ * trägt seine Identität ohnehin schon. Dieselbe Regel wie „was dem Punkt
+ * gehört, steht beim Punkt" im Sequenz-Editor. */
+function scanItemDetails(ziel, i) {
   const setze = (feld, wert) => rufScan("scan_item_setzen", {name: i.name, feld: feld, wert: wert});
-
-  ziel.appendChild(ueberschrift("ITEM",
-    "Ein Item wird über sein Template (Bildvergleich) und/oder seine " +
-    "Marker-Farben erkannt. Ohne beides wird es nie gefunden.", "item"));
   const bild = scanVorschauen.get(i.name);
   if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
-  ziel.appendChild(feld("Name", i.name, (v) => setze("name", v)));
-  ziel.appendChild(el("div", {class: "scan-item-sortierung"},
-    kategoriefeld("Kategorie", i.kategorie || "", (v) => setze("kategorie", v), null,
-      "Items derselben Kategorie konkurrieren miteinander; die kleinere Priorität gewinnt. " +
-      "Ohne Kategorie bildet jedes Item eine eigene Gruppe.", "kategorie"),
-    prioritaetsfeld(i.prioritaet, i.kategorie, (v) => setze("prioritaet", v))));
+  if ((i.erkannt_in || []).length) {
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--slot-ok)"},
+      "Gerade erkannt in: " + i.erkannt_in.join(", ")));
+  }
   ziel.appendChild(prioritaetsUebersicht(i.kategorie, i.name));
   const erweitert = el("details", {class: "scan-erweitert"},
     el("summary", {}, "Erweiterte Erkennungseinstellungen"));
@@ -2815,8 +3541,12 @@ function scanInspItem(ziel) {
       ? "Gelernte Slot-Größen: " + i.vorlagengroessen.map((g) => g[0] + "×" + g[1]).join(", ")
       : "Keine Bildvorlage — nur Marker-Farben."));
   if ((i.vorlagen || []).length) {
-    erweitert.appendChild(el("p", {class: "hinweis mono"},
-      "Vorlagen: " + i.vorlagen.join(", ")));
+    erweitert.appendChild(el("div", {class: "spalte", style: "gap:5px"},
+      (i.vorlagen || []).map((v) => el("div", {class: "reihe"},
+        el("span", {class: "hinweis mono wachse"}, v),
+        el("button", {class: "btn still", title: "Nur vom Item lösen; Datei bleibt erhalten",
+          onclick: () => rufScan("scan_item_vorlage_entfernen", {name: i.name, datei: v})},
+          "Vorlage entfernen")))));
   }
   if ((i.fehlende_scan_groessen || []).length) {
     erweitert.appendChild(el("p", {class: "hinweis", style: "color:var(--accent)"},
@@ -2832,6 +3562,12 @@ function scanInspItem(ziel) {
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
   ziel.appendChild(erweitert);
+  if (i.kategorie === "Auto" && (i.vorlagen || []).length) {
+    ziel.appendChild(el("button", {class: "btn breit", style: "margin-top:10px",
+      onclick: () => rufScan("scan_items_autoname", {namen: [i.name]})},
+      "✦ Mit LLM benennen"));
+  }
+  ziel.appendChild(scanItemBestaetigung(i));
   if (i.stumm) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
       "Weder Template noch Marker — dieses Item wird nie erkannt."));
@@ -2840,71 +3576,2166 @@ function scanInspItem(ziel) {
     onclick: () => rufScan("scan_item_loeschen")}, "Item löschen"));
 }
 
-function scanInspScan(ziel) {
-  const c = SC.scans.find((x) => x.name === SC.wahl.name);
-  if (!c) return;
-  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
-  const um = (art, name) => rufScan("scan_mitglied", {scan: c.name, art: art, name: name});
-  if (SC.offen !== c.name) {
-    ziel.appendChild(el("button", {class: "btn haupt",
-      onclick: () => rufScan("scan_oeffnen", {name: c.name})}, "Diesen Scan öffnen"));
+/** Der Klick NACH dem Klick: „wirklich verkaufen?" wegdrücken.
+ *
+ * **Das Feld gab es im Modell und in den Konsolen-Editoren seit jeher** — im
+ * Studio war es die einzige Item-Eigenschaft ohne Bedienelement, und wer es
+ * suchte, fand nichts. Ohne die Bestätigung bleibt das Popup stehen, und der
+ * Scan erreicht den nächsten Slot gar nicht mehr.
+ *
+ * Gesetzt wird über einen PUNKT, nie über zwei Zahlen: die Koordinate steht in
+ * der Punktliste in `sequence.json` und sonst nirgends. Zwei Wege dorthin, beide vorhanden — einen
+ * bekannten Punkt wählen, oder die Stelle im Bild anklicken (dasselbe Werkzeug,
+ * das Boss und Icon schon benutzen). */
+function scanItemBestaetigung(i) {
+  const setze = (feld, wert) => rufScan("scan_item_setzen",
+                                        {name: i.name, feld: feld, wert: wert});
+  const kasten = el("div", {class: "spalte", style: "gap:7px"});
+  kasten.appendChild(ueberschrift("BESTÄTIGUNGSKLICK",
+    "Manche Spiele fragen nach dem Klick nach („wirklich verkaufen?“). Ohne "
+    + "die Bestätigung bleibt das Popup stehen, und der Scan kommt nicht mehr "
+    + "zum nächsten Slot. Die Stelle steht als Punkt in sequence.json — dieselbe "
+    + "Kalibrierung erfasst sie mit.", "bestaetigung"));
+  const wahl = auswahl("Punkt", [{wert: "", text: "— keine Bestätigung —"}].concat(
+    SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
+    i.bestaetigung ? i.bestaetigung.punkt_id : "", (v) => setze("bestaetigung", v));
+  kasten.appendChild(wahl);
+  // Ein Punkt, den es nicht mehr gibt, wird GESAGT statt verschwiegen: der
+  // Lauf klickt sonst nichts, und man sucht den Fehler bei der Erkennung.
+  if (i.bestaetigung && i.bestaetigung.fehlt) {
+    kasten.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
+      i.bestaetigung.text + " — die Bestätigung greift nicht."));
   }
+  kasten.appendChild(el("button", {class: "btn still", disabled: !fotoDa(),
+    title: "Die Stelle im Bild anklicken — dabei entsteht ein Punkt, oder ein "
+           + "vorhandener an derselben Stelle wird wiederverwendet",
+    onclick: () => rufScan("region_modus", {art: "item", modus: "aktion"})},
+    "Stelle im Bild anklicken"));
+  if (i.bestaetigung) {
+    kasten.appendChild(zahlfeld("Wartezeit (s)", i.bestaetigung_verzoegerung,
+      (v) => setze("bestaetigung_verzoegerung", v), {min: 0, step: "any"},
+      "Zeit zwischen dem Item-Klick und der Bestätigung — das Popup braucht "
+      + "einen Moment, bis es da ist.", "bestaetigungszeit"));
+  }
+  return kasten;
+}
 
-  // **Der Name steht links, wo der Scan gewaehlt wird — hier nur noch, was man
-  // an ihm EINSTELLT.** Zwei Felder fuer denselben Wert waren dieselbe Sache an
-  // zwei Stellen, und man musste raten, welche die fuehrende ist; genau das wurde
-  // beim Klick-Block im Sequenz-Editor schon einmal aufgeloest. Die Ueberschrift
-  // nennt den Scan trotzdem: sonst weiss man nicht, woran diese Regler haengen.
-  ziel.appendChild(ueberschrift("SCAN „" + c.name + "“",
-    "Welche Slots nach welchen Items durchsucht werden. Ein Block vom Typ " +
-    "ITEM-SCAN verweist per Name hierauf. Umbenennen: oben links.", "itemscan"));
-  const erweitert = el("details", {class: "scan-erweitert"},
-    el("summary", {}, "Erweiterte Scan-Einstellungen"));
-  erweitert.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
+/** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske. */
+function scanScanDetails(ziel, c) {
+  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
+
+  ziel.appendChild(ueberschrift("EINSTELLUNGEN",
+    "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
+    + "daneben: der Haken vor jeder Maske heisst „gehört zu diesem Scan“. Hier "
+      + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
+      + "auf diesen Scan.", "itemscan"));
+
+  ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz, (v) => setze("toleranz", v),
     {min: 0, step: 1},
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
     "toleranz"));
-  erweitert.appendChild(schalter("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v)));
-  erweitert.appendChild(el("p", {class: "hinweis"},
-    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in " +
-    "diesen Scan, damit sie nicht ungeprüft geklickt werden."));
-
-  erweitert.appendChild(schalter("Slots rückwärts", c.reverse, (v) => setze("reverse", v)));
-  erweitert.appendChild(el("p", {class: "hinweis"},
-    "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand " +
-    "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht " +
-    "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier " +
-    "und nicht in den Einstellungen."));
-  ziel.appendChild(erweitert);
-
-  hakenListe(ziel, "SLOTS", "Welche Flächen dieser Scan ansieht.", "scanslots",
-    c, "slot", SC.slots, c.slots,
-    "Noch keine Slots in diesem Scan. Im Bild aufziehen oder finden.");
-  hakenListe(ziel, "ITEMS", "Wonach gesucht wird. Erkannte tauchen von selbst "
-    + "auf — damit du sie nicht ein zweites Mal lernst.", "scanitems",
-    c, "item", SC.items, c.items,
-    "Noch keine Items in diesem Scan. Aus einem Slot lernen — was schon im "
-    + "Bestand ist und erkannt wird, steht hier von selbst.");
+  ziel.appendChild(schalter("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v),
+    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in "
+    + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "lernen"));
+  ziel.appendChild(schalter("Slots rückwärts", c.reverse, (v) => setze("reverse", v),
+    "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand "
+    + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
+    + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
+    + "und nicht in den Einstellungen.", "reverse"));
 
   if (c.fehlend.length) {
-    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err);margin-top:10px"},
+    ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
       "Zeigt ins Leere: " + c.fehlend.join(", ") + ". Der Scan läuft mit dem Rest " +
       "weiter — lieber ein Slot weniger als ein toter Scan."));
   }
+  ziel.appendChild(el("button", {class: "btn gefahr",
+    title: "Entfernt die Konfiguration und ihre Datei. STRG+Z holt die "
+           + "Konfiguration zurück, den gemerkten Screenshot nicht.",
+    onclick: () => rufScan("scan_loeschen", {name: c.name})}, "Diesen Scan löschen"));
+}
+
+/* ------------------------------------------- Ansicht: Bosse und Icon-Scans */
+
+/* Dieselbe Buehne, eine andere Frage: ein Boss-Scan ist ein Rechteck auf einem
+ * Bild und eine Aktion dahinter, ein Icon-Scan dasselbe ohne Bosse-Liste.
+ *
+ * Welche Art offen ist, ist reiner Oberflaechenzustand wie `ansicht` und
+ * `scanListe` — die Bruecke bekommt bei jedem Befehl gesagt, worauf er wirkt
+ * (`{art: "boss"}`). */
+let scanArt = "item";
+/* Welcher Assistent-Schritt der Erkennungs-Arten offen ist. Eigene Variable
+ * neben `scanAssistentSchritt`: die Arten haben verschieden viele Schritte, und
+ * ein gemeinsamer Zaehler stuende beim Umschalten auf einem, den es nicht gibt. */
+let scanErkSchritt = null;
+
+const SCAN_ARTEN = ["item", "boss", "icon"];
+
+/* Welche Bruecken-Methode zu welcher Art gehoert — als Tabelle.
+ *
+ * Als Ternaeroperator an jeder Aufrufstelle waeren die Namen sechsmal da, und
+ * der Test „jeder Aufruf der Seite passt zur Bruecke" faende keinen davon: er
+ * sucht den Methodennamen direkt hinter der oeffnenden Klammer. Hier stehen sie
+ * einmal und sind messbar (`tools/tests/studio_erkennung.py`). */
+const ERK_BEFEHL = {
+  boss: {oeffnen: "boss_scan_oeffnen", neu: "boss_scan_neu",
+         scan_feld: "boss_scan_setzen", feld: "boss_setzen",
+         loeschen: "boss_scan_loeschen", testen: "boss_testen"},
+  icon: {oeffnen: "icon_scan_oeffnen", neu: "icon_scan_neu",
+         scan_feld: "icon_setzen", feld: "icon_setzen",
+         loeschen: "icon_scan_loeschen", testen: "icon_testen"},
+};
+
+/** Der Befehlsname fuer die offene Art. */
+function erkBefehl(schluessel) {
+  return (ERK_BEFEHL[scanArt] || ERK_BEFEHL.boss)[schluessel];
+}
+
+/** Der offene Boss- bzw. Icon-Scan — oder null. */
+function erkScan() {
+  if (!SC) return null;
+  if (scanArt === "boss") return SC.boss_scans.find((c) => c.name === SC.boss.offen) || null;
+  if (scanArt === "icon") return SC.icon_scans.find((c) => c.name === SC.icon.offen) || null;
+  return null;
+}
+
+/** Die Bosse, die dieser Scan sieht: seine eigenen plus die Bibliothek.
+ *
+ * Genau diese Liste sieht auch der Lauf (`execute_boss_scan` merged lokal +
+ * global, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
+ * hiesse, die Haelfte der Erkennung zu verschweigen — und man sucht dann, warum
+ * ein Boss erkannt wird, der gar nicht in der Liste steht. */
+function erkBosse() {
+  const c = erkScan();
+  const lokal = c ? c.bosse : [];
+  const namen = new Set(lokal.map((b) => b.name));
+  return lokal.concat(SC.global_bosses.filter((b) => !namen.has(b.name)));
+}
+
+/** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
+function erkBoss() {
+  if (!SC || scanArt !== "boss" || !SC.boss.wahl) return null;
+  const liste = SC.boss.wahl_global ? SC.global_bosses : ((erkScan() || {}).bosse || []);
+  return liste.find((b) => b.name === SC.boss.wahl) || null;
+}
+
+/** Steht die Bibliothek statt eines Scans im Vordergrund? */
+function erkBibliothek() { return scanArt === "boss" && scanListeAktiv() === "bibliothek"; }
+
+function scanArtSetzen(art) {
+  if (!SCAN_ARTEN.includes(art) || art === scanArt) return;
+  scanArt = art;
+  scanErkSchritt = null;
+  // Eine andere Art ist ein anderer Zusammenhang: die Vorgabe gilt wieder.
+  scanListe = null;
+  // Ein Werkzeug der alten Art wuerde in der neuen etwas anderes tun.
+  rufScan("scan_abbrechen");
+}
+
+/** Welche Bloecke der linken Spalte gelten — und wo die Aufnahme gerade haengt. */
+function scanArtPflegen() {
+  for (const k of document.querySelectorAll("[data-scan-art]"))
+    k.classList.toggle("an", k.dataset.scanArt === scanArt);
+  const item = scanArt === "item";
+  $("ab-itemwahl").hidden = !item;
+  $("ab-weg").hidden = !item;
+  $("ab-modi").hidden = !item;
+  $("ab-erk-wahl").hidden = item;
+  $("ab-erk-weg").hidden = item;
+  for (const knopf of document.querySelectorAll("[data-erk-tool]")) {
+    knopf.hidden = item;
+    knopf.disabled = !SC.pillow || !erkScan();
+    knopf.classList.toggle("an", SC.modus === knopf.dataset.erkTool);
+  }
+  // **Die Aufnahme-Karte wandert, also muss sie auch zurueck.** Sie gehoert
+  // allen drei Arten und existiert deshalb nur EINMAL im Dokument; blieb sie
+  // beim Umschalten im versteckten Erkennungs-Block liegen, fehlte dem
+  // Item-Assistenten sein erster Schritt — und mit ihm der einzige Weg zu
+  // einem Screenshot.
+  if (item) {
+    const heim = $("scan-schritte");
+    const karte = $("scan-assistent-1");
+    if (karte.parentElement !== heim) heim.insertBefore(karte, heim.firstChild);
+    return;
+  }
+  erkWahlZeichnen();
+  erkSchritteZeichnen();
+}
+
+/* ----------------------------------------------------- Auswahl und Name */
+
+/** Oben in der linken Spalte: welcher Scan, wie er heisst, ein neuer.
+ *
+ * **Der Name steht da, wo der Scan gewaehlt wird** — dieselbe Regel wie beim
+ * Item-Scan und beim Klick-Block: was dem Ding gehoert, steht beim Ding; rechts
+ * bleibt, was man daran einstellt. */
+function erkWahlZeichnen() {
+  const ziel = $("ab-erk-wahl");
+  const boss = scanArt === "boss";
+  const liste = boss ? SC.boss_scans : SC.icon_scans;
+  const offen = erkScan();
+  const kinder = [el("span", {class: "ueberschrift"}, boss ? "BOSS-SCAN" : "ICON-SCAN")];
+  kinder.push(auswahl("", [{wert: "", text: liste.length
+      ? "— keiner gewählt —" : (boss ? "— noch kein Boss-Scan —" : "— noch kein Icon-Scan —")}]
+    .concat(liste.map((c) => ({wert: c.name, text: c.name}))),
+    offen ? offen.name : "",
+    (v) => rufScan(erkBefehl("oeffnen"), {name: v})));
+  if (offen) {
+    kinder.push(feld("Name", offen.name,
+      (v) => rufScan(erkBefehl("scan_feld"),
+                     {name: offen.name, feld: "name", wert: v})));
+  }
+  kinder.push(el("div", {class: "reihe"},
+    el("button", {class: "btn still", onclick: () => {
+      scanErkSchritt = 2;
+      rufScan(erkBefehl("neu"));
+    }}, boss ? "+ neuer Boss-Scan" : "+ neuer Icon-Scan"),
+    el("span", {class: "wachse"}),
+    el("span", {class: "klein mono"}, offen
+      ? (boss ? erkBosse().length + " Bosse" : erkWieText(offen.erkennung))
+      : liste.length + (liste.length === 1 ? " Scan" : " Scans"))));
+  ziel.replaceChildren(...kinder);
+}
+
+/* ------------------------------------------------------------- Assistent */
+
+/** Woran ein Scan erkennt — als Wort, nicht als Schluessel. */
+function erkWieText(wie) {
+  return {template: "per Vorlage", marker: "per Farben",
+          keine: "ohne Erkennung"}[wie] || wie;
+}
+
+/** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
+function erkKarte(nr, titel, stand, fertig, inhalt) {
+  const offen = scanErkSchritt === nr;
+  return el("div", {class: "scan-assistent-schritt" + (offen ? " offen" : "")
+                           + (fertig ? " fertig" : "")},
+    el("button", {class: "scan-assistent-kopf", onclick: () => {
+      // Ein Schritt bleibt jederzeit wieder aufklappbar — er ist kein
+      // Fortschrittsbalken, sondern ein Weg, den man auch rueckwaerts geht.
+      scanErkSchritt = offen ? null : nr;
+      zeichneScans();
+    }},
+      el("span", {class: "nr"}, fertig && !offen ? "✓" : String(nr)),
+      el("span", {class: "wachse"}, el("b", {}, titel), el("small", {}, stand)),
+      el("span", {class: "pfeil"}, "›")),
+    el("div", {class: "scan-assistent-inhalt", hidden: !offen}, inhalt));
+}
+
+function erkSchritteZeichnen() {
+  const ziel = $("ab-erk-weg");
+  const boss = scanArt === "boss";
+  const c = erkScan();
+  // Erst alles bauen, dann umhaengen. **Die Aufnahme-Karte existiert genau
+  // einmal im Dokument** — sie gehoert allen drei Arten, und sie zweimal zu
+  // bauen waeren zwei Stellen, an denen eine Aenderung an der Aufnahme
+  // vergessen werden kann. Genau deshalb darf sie erst wandern, wenn nichts
+  // mehr schiefgehen kann: bricht der Aufbau vorher ab, haengt sie in einem
+  // Baum, den niemand mehr sieht — und mit ihr der einzige Weg zu einem Bild.
+  const weitere = [];
+  if (c) {
+    weitere.push(erkRegionSchritt(c));
+    if (boss) {
+      weitere.push(erkBosseSchritt(c), erkWegeSchritt(c), erkFallbackSchritt(c));
+    } else {
+      weitere.push(erkErkennungSchritt(c), erkAktionSchritt(c, "icon"));
+    }
+  }
+  const schritte = el("div", {class: "scan-assistent"});
+  const aufnahme = $("scan-assistent-1");
+  aufnahme.classList.toggle("offen", scanErkSchritt === 1);
+  aufnahme.classList.toggle("fertig", fotoDa());
+  $("scan-schritt-1-nr").textContent = fotoDa() && scanErkSchritt !== 1 ? "✓" : "1";
+  $("scan-schritt-1-inhalt").hidden = scanErkSchritt !== 1;
+  schritte.append(aufnahme, ...weitere);
+
+  if (!c) {
+    ziel.replaceChildren(
+      el("span", {class: "ueberschrift"}, boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN"),
+      schritte,
+      el("p", {class: "hinweis"}, "Oben einen Scan anlegen — danach stehen die "
+        + "weiteren Schritte hier."));
+    return;
+  }
+  const kinder = [el("span", {class: "ueberschrift"},
+                     boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN")];
+  // **Fehlende Voraussetzung blendet nichts aus, sondern erklaert sich.** Ohne
+  // OpenCV ist die Template-Erkennung aus — Farb-Marker, OCR und LLM gehen
+  // trotzdem. Amber, nicht rot: es ist ein Zustand, kein Defekt.
+  if (!SC.opencv) {
+    kinder.push(el("div", {class: "fremdhinweis"},
+      el("span", {}, "OpenCV nicht installiert — Template-Erkennung ist aus. "
+        + "Farb-Marker, OCR und LLM gehen trotzdem."),
+      el("span", {class: "mono klein"}, "pip install opencv-python")));
+  }
+  kinder.push(schritte);
+  ziel.replaceChildren(...kinder);
+}
+
+/** Schritt 2: die Region. Aufziehen ODER vier Zahlen — beides bleibt. */
+function erkRegionSchritt(c) {
+  const r = c.region;
+  const gesetzt = (r[2] - r[0]) > 0 && (r[3] - r[1]) > 0
+    && !(r[0] === 0 && r[1] === 0 && r[2] === 100 && r[3] === 100);
+  const setze = (i, v) => {
+    const neu = r.slice();
+    neu[i] = Number(v) || 0;
+    erkFeld("region", neu);
+  };
+  return erkKarte(2, "Region", gesetzt
+    ? "(" + r[0] + "," + r[1] + ") → (" + r[2] + "," + r[3] + ")  ·  "
+      + (r[2] - r[0]) + "×" + (r[3] - r[1])
+    : "Noch nicht gesetzt", gesetzt, [
+    el("p", {class: "hinweis"}, scanArt === "boss"
+      ? "Der Bereich, in dem der Boss-Name bzw. sein Bild erscheint. Eng genug, "
+        + "dass nichts Wechselndes mit hineinfällt."
+      : "Eng um das Symbol herum. Was mit im Rechteck liegt, wird mitgelernt."),
+    el("div", {class: "gitter2"},
+      zahlfeld("Links", r[0], (v) => setze(0, v), {step: 1}),
+      zahlfeld("Oben", r[1], (v) => setze(1, v), {step: 1}),
+      zahlfeld("Rechts", r[2], (v) => setze(2, v), {step: 1}),
+      zahlfeld("Unten", r[3], (v) => setze(3, v), {step: 1})),
+    el("button", {class: "btn haupt scan-assistent-haupt", disabled: !fotoDa(),
+      onclick: () => rufScan("region_modus", {art: scanArt, modus: "region"})},
+      "Region im Bild aufziehen"),
+  ]);
+}
+
+/** Schritt 3 (Boss): die Bosse dieses Scans. */
+function erkBosseSchritt(c) {
+  const lokal = c.bosse.length;
+  const global = SC.global_bosses.length;
+  return erkKarte(3, "Bosse", lokal || global
+    ? lokal + " lokal · " + global + " global"
+    : "Noch kein Boss · die Bibliothek ist leer", lokal > 0 || global > 0, [
+    el("p", {class: "hinweis"}, "Jeder Boss hat eine eigene Erkennung und eine "
+      + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
+    el("button", {class: "btn haupt scan-assistent-haupt",
+      onclick: () => rufScan("boss_neu")}, "+ Boss anlegen"),
+    el("button", {class: "btn still scan-assistent-haupt", disabled: !fotoDa()
+        || !erkBosse().length,
+      onclick: () => rufScan("boss_alle_testen")}, "Alle gegen dieses Bild halten"),
+  ]);
+}
+
+/** Schritt 4 (Boss): OCR und LLM. */
+function erkWegeSchritt(c) {
+  const b = SC.bereit;
+  const an = [c.use_ocr ? "OCR" : null, c.use_llm ? "LLM" : null].filter(Boolean);
+  const lampe = !b.llm_stand ? "" : (b.llm_stand.erreichbar ? " an" : " aus");
+  return erkKarte(4, "LLM & OCR", an.length ? an.join(" + ") + " aktiv" : "aus",
+    an.length > 0, [
+    el("span", {class: "ueberschrift"}, "OCR TEXTERKENNUNG"),
+    schalter("OCR benutzen", c.use_ocr, (v) => erkFeld("use_ocr", v)),
+    c.use_ocr ? segment([{wert: true, text: "als Fallback"}, {wert: false, text: "primär"}],
+      c.ocr_fallback, (v) => erkFeld("ocr_fallback", v)) : null,
+    // **Gefragt, nicht mitgeliefert.** `import easyocr` zieht Torch nach und
+    // dauert Sekunden; in einer Momentaufnahme, die nach jedem Klick neu
+    // entsteht, hat das nichts verloren. Dieselbe Lampe wie beim LLM.
+    el("div", {class: "reihe"},
+      el("span", {class: "scan-lampe" + (!b.ocr_stand ? ""
+        : (b.ocr_stand.da ? " an" : " aus"))}),
+      el("span", {class: "klein wachse"}, !b.ocr_stand
+        ? "noch nicht geprüft"
+        : (b.ocr_stand.da ? b.ocr_stand.backends.join(", ")
+                          : "kein Backend installiert")),
+      el("button", {class: "btn still", onclick: () => rufScan("ocr_pruefen")},
+         "prüfen")),
+    el("p", {class: "hinweis"}, !b.ocr_an
+      ? "OCR ist in den Einstellungen aus (ocr_enabled) — dieser Schalter "
+        + "greift erst danach."
+      : (b.ocr_stand && !b.ocr_stand.da
+          ? "pip install easyocr (oder pytesseract)"
+          : b.ocr_backend + " · " + (b.ocr_sprachen.join(",") || "en")
+            + " · min " + b.ocr_min.toFixed(2))),
+    el("span", {class: "ueberschrift"}, "LLM VISION"),
+    schalter("LLM benutzen", c.use_llm, (v) => erkFeld("use_llm", v)),
+    c.use_llm ? segment([{wert: true, text: "als Fallback"}, {wert: false, text: "primär"}],
+      c.llm_fallback, (v) => erkFeld("llm_fallback", v)) : null,
+    el("div", {class: "reihe"},
+      el("span", {class: "scan-lampe" + lampe}),
+      // Ohne Probe steht hier „noch nicht geprueft", nicht der Endpunkt: ein
+      // leeres Feld (die Voreinstellung ist leer) saehe aus wie ein Fehler.
+      // Der Endpunkt gehoert in den Tooltip — dort sucht man ihn, wenn die
+      // Lampe rot ist.
+      el("span", {class: "klein wachse", title: b.llm_endpunkt || ""},
+        !b.llm_stand ? "noch nicht geprüft"
+          : (b.llm_stand.erreichbar ? "erreichbar (" + b.llm_stand.dauer + " ms)"
+                                    : "nicht erreichbar")),
+      el("button", {class: "btn still", onclick: () => rufScan("llm_pruefen")}, "testen")),
+    el("p", {class: "hinweis"}, b.llm_an
+      ? erkReihenfolge(c)
+      : "LLM ist in den Einstellungen aus (llm_enabled) — dieser Schalter greift "
+        + "erst danach."),
+  ]);
+}
+
+/** In welcher Reihenfolge erkannt wird — als ein Satz.
+ *
+ * Bei gleicher Einstellung laeuft OCR VOR LLM: OCR ist lokal und schnell, das
+ * LLM kostet bis `llm_timeout`. Dieselbe Reihenfolge steht in
+ * `runtime/boss_detection.py`; hier wird sie nur vorgelesen. */
+function erkReihenfolge(c) {
+  const vorn = [], hinten = [];
+  for (const [name, an, fallback] of [["OCR", c.use_ocr, c.ocr_fallback],
+                                      ["LLM", c.use_llm, c.llm_fallback]])
+    if (an) (fallback ? hinten : vorn).push(name);
+  return "Reihenfolge: " + vorn.concat(["Template/Marker"], hinten).join(" → ");
+}
+
+/** Schritt 5 (Boss): was passiert, wenn KEIN Boss erkannt wird. */
+function erkFallbackSchritt(c) {
+  const text = (SC.aktionen.boss.find((a) => a.wert === c.default_action) || {}).text
+    || c.default_action;
+  return erkKarte(5, "Fallback", "wenn kein Boss erkannt: " + text, true, [
+    el("p", {class: "hinweis"}, "Greift, wenn keiner der Bosse passt — und auch "
+      + "dann, wenn OCR und LLM nichts finden."),
+    erkAktionsKacheln(SC.aktionen.boss, c.default_action,
+                      (v) => erkFeld("default_action", v)),
+    c.default_action === "item_scan"
+      ? auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+          SC.item_scan_namen.map((n) => ({wert: n, text: n}))), c.default_scan || "",
+          (v) => erkFeld("default_scan", v))
+      : null,
+  ]);
+}
+
+/** Schritt 3 (Icon): Template oder Farb-Marker. */
+function erkErkennungSchritt(c) {
+  return erkKarte(3, "Erkennung", c.erkennung === "template"
+    ? "Vorlage · min " + c.konfidenz.toFixed(2)
+    : (c.erkennung === "marker" ? c.marker.length + " Marker · Toleranz " + c.toleranz
+                                : "Noch nichts gesetzt"),
+    c.erkennung !== "keine", erkErkennungsFelder(c, "icon"));
+}
+
+/** Die Erkennungs-Felder — dieselben fuer Boss und Icon.
+ *
+ * Beide erkennen ueber Template ODER Farb-Marker; das sind dieselben Felder und
+ * dieselben Knoepfe. Zwei Fassungen davon waeren zwei Stellen, an denen ein
+ * Griff fehlt — und „Vorlage neu aufnehmen" ist genau der Griff, der heute den
+ * ganzen Konsolen-Ablauf kostet. */
+function erkErkennungsFelder(objekt, art, name) {
+  const ueber = ERK_BEFEHL[art].feld;
+  const setze = (feld, wert) => rufScan(ueber, Object.assign(
+    {feld: feld, wert: wert}, name ? {name: name} : {}));
+  const template = objekt.erkennung !== "marker";
+  return [
+    segment([{wert: "template", text: "Template"}, {wert: "marker", text: "Farb-Marker"}],
+      objekt.erkennung === "marker" ? "marker" : "template",
+      // Umschalten heisst hier: das andere loswerden. Beides stehen zu lassen
+      // waere `_check_profile_match`s UND — dann muessen BEIDE stimmen, und
+      // niemand rechnet damit.
+      (v) => setze(v === "marker" ? "template" : "marker", v === "marker" ? "" : [])),
+    template ? el("div", {class: "reihe", style: "align-items:flex-start"},
+      objekt.vorschau
+        ? el("img", {class: "scan-vorlage", src: objekt.vorschau, alt: ""})
+        : el("div", {class: "scan-vorlage leer"}, "keine Vorlage"),
+      el("div", {class: "spalte wachse"},
+        el("span", {class: "klein mono"}, objekt.template || "—"),
+        zahlfeld("Min. Konfidenz", objekt.konfidenz, (v) => setze("konfidenz", v),
+          {min: 0.05, max: 1, step: 0.01},
+          "Ab welcher Übereinstimmung ein Treffer zählt. Zu hoch heisst "
+          + "„findet nie“, zu tief „findet alles“.", "konfidenz"))) : null,
+    template ? el("button", {class: "btn scan-assistent-haupt",
+      disabled: !fotoDa() || !SC.opencv,
+      title: SC.opencv ? "Lernt die Region aus dem eingefrorenen Bild"
+                       : "Ohne OpenCV gibt es kein Template-Matching",
+      onclick: () => rufScan("vorlage_aufnehmen", Object.assign(
+        {art: art}, name ? {name: name} : {}))}, "Vorlage neu aufnehmen") : null,
+    !template ? el("div", {class: "scan-marker"},
+      objekt.marker.map((h) => el("span", {class: "scan-farbfeld", style: "background:" + h,
+                                           title: h})),
+      el("span", {class: "scan-farbfeld leer", title: "noch Platz"})) : null,
+    !template ? el("div", {class: "gitter2"},
+      zahlfeld("Toleranz", objekt.toleranz === undefined ? 30 : objekt.toleranz,
+        (v) => setze("toleranz", v), {min: 0, step: 1},
+        "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
+      el("div", {class: "feld-still"}, "gemessen",
+        el("span", {class: "mono"}, objekt.marker.length + " Farben"))) : null,
+    !template ? el("button", {class: "btn scan-assistent-haupt", disabled: !fotoDa(),
+      onclick: () => rufScan("marker_messen", Object.assign(
+        {art: art}, name ? {name: name} : {}))}, "Marker im Bild neu messen") : null,
+    !template ? el("p", {class: "hinweis"}, "min. Pixel über 1 halten — sonst löst "
+      + "ein einzelner Rausch-Pixel den Scan aus (Einstellung "
+      + "scan_marker_min_pixels, gerade " + SC.bereit.marker_min_pixel + ").") : null,
+  ];
+}
+
+/** Aktions-Kacheln: feste kurze Auswahl, also Kacheln statt Klappliste.
+ *
+ * Die Werte kommen aus `models.py` (ueber die Momentaufnahme) — die Ansicht
+ * erfindet keine Aktionsnamen. Ein getipptes "skipcycle" waere ein Wert, den
+ * `__post_init__` beim Speichern still auf den Standard hebt: der Klick saehe
+ * aus, als haette er gewirkt. */
+function erkAktionsKacheln(werte, aktuell, beim_setzen) {
+  // Dasselbe Raster wie beim Block-Typ im Sequenz-Editor — die Kacheln sollen
+  // sich gleich anfuehlen. Auf der Kachel steht das Schlagwort, im Tooltip der
+  // Satz: „Zyklus abbrechen" ist auf 9,5 px zweizeilig und unlesbar.
+  return el("div", {class: "gitter3"}, werte.map((a) =>
+    el("button", {class: "typ-chip" + (a.wert === aktuell ? " an" : ""),
+      title: a.text, onclick: () => beim_setzen(a.wert)}, a.kurz)));
+}
+
+/** Die Felder hinter einer Aktion — Punkt, Taste, Verzoegerung, Item-Scan. */
+function erkAktionsFelder(objekt, art, name) {
+  const ueber = ERK_BEFEHL[art].feld;
+  const setze = (feld, wert) => rufScan(ueber, Object.assign(
+    {feld: feld, wert: wert}, name ? {name: name} : {}));
+  const felder = [];
+  if (objekt.aktion === "item_scan") {
+    felder.push(auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+      SC.item_scan_namen.map((n) => ({wert: n, text: n}))), objekt.scan || "",
+      (v) => setze("scan", v)));
+    felder.push(auswahl("Modus", SC.aktionen.scan_modi.map(
+      (m) => ({wert: m.wert, text: m.text})), objekt.scan_modus,
+      (v) => setze("scan_modus", v)));
+  }
+  if (objekt.aktion === "click") {
+    felder.push(auswahl("Punkt", [{wert: "", text: "— keiner —"}].concat(
+      SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
+      objekt.punkt_id === null || objekt.punkt_id === undefined ? "" : objekt.punkt_id,
+      (v) => setze("punkt", v === "" ? null : Number(v))));
+    felder.push(el("button", {class: "btn still", disabled: !fotoDa(),
+      onclick: () => rufScan("region_modus", {art: art, modus: "aktion"})},
+      "Stelle im Bild anklicken"));
+  }
+  if (objekt.aktion === "key")
+    felder.push(feld("Taste", objekt.taste || "", (v) => setze("taste", v)));
+  felder.push(zahlfeld("Verzögerung vor Aktion (s)", objekt.verzoegerung,
+    (v) => setze("verzoegerung", v), {min: 0, step: 0.1}));
+  return felder;
+}
+
+/** Schritt 4 (Icon): die Aktion bei Fund. */
+function erkAktionSchritt(c, art) {
+  const text = (SC.aktionen.icon.find((a) => a.wert === c.aktion) || {}).text || c.aktion;
+  return erkKarte(4, "Aktion", text + (c.verzoegerung ? " · " + c.verzoegerung + " s" : ""),
+    true, [
+    erkAktionsKacheln(SC.aktionen.icon, c.aktion, (v) => erkFeld("aktion", v)),
+    // Ausgebreitet, nicht als Liste in der Liste: `el()` flacht genau EINE
+    // Ebene ab, und ein Array als Kind landet als solches in `appendChild` —
+    // was den ganzen Aufbau abbricht.
+    ...erkAktionsFelder(c, art),
+  ]);
+}
+
+/** Ein Feld des OFFENEN Scans setzen — Boss-Scan oder Icon-Scan. */
+function erkFeld(feld, wert) {
+  const c = erkScan();
+  if (!c) return;
+  rufScan(erkBefehl("scan_feld"), {name: c.name, feld: feld, wert: wert});
+}
+
+/* -------------------------------------------------------------- Testleiste */
+
+/** Was der letzte Test ergeben hat — und was die Aktion WAERE.
+ *
+ * **Der Test fuehrt die Aktion nicht aus.** Er erkennt, zeigt und benennt; das
+ * steht auch als Nachsatz in der Leiste. Ein Testknopf, der im Editor eines
+ * Autoclickers wirklich klickt, ist die schlechteste denkbare Ueberraschung. */
+function erkTestleiste(ziel) {
+  const t = scanArt === "boss" ? SC.boss.test : SC.icon.test;
+  if (!t) return false;
+  const farbe = t.ok ? "var(--ok)" : "var(--err)";
+  ziel.append(
+    el("b", {style: "color:" + farbe},
+      t.ok ? "Test: " + t.name + " erkannt" : "Test: " + t.name + " nicht erkannt"));
+  if (t.methode && t.konfidenz !== null && t.methode === "Template")
+    ziel.appendChild(el("span", {class: "kennzahl"}, "Template · " + t.konfidenz.toFixed(2)));
+  if (t.marker_gesamt)
+    ziel.appendChild(el("span", {class: "kennzahl"},
+      t.marker_gefunden + " von " + t.marker_gesamt + " Markern · nötig " + t.marker_noetig));
+  if (t.toleranz) ziel.appendChild(el("span", {class: "kennzahl"}, "Toleranz " + t.toleranz));
+  if (t.dauer) ziel.appendChild(el("span", {class: "kennzahl"}, t.dauer + " ms"));
+  ziel.appendChild(el("span", {class: "wachse"}));
+  ziel.appendChild(el("span", {class: "klein"},
+    t.ok ? "Aktion wäre: " + t.aktion + " (wird nicht ausgeführt)" : t.grund));
+  // **Der Vorschlag ist der Kern.** Ein Test, der nur „fehlgeschlagen" sagt,
+  // laesst einen genau dort stehen, wo man vorher war.
+  if (t.vorschlag)
+    ziel.appendChild(el("button", {class: "btn an",
+      onclick: () => erkFeld(t.vorschlag.feld, t.vorschlag.wert)}, t.vorschlag.text));
+  ziel.appendChild(el("button", {class: "btn still", onclick: () => erkTesten()},
+    "nochmal testen"));
+  return true;
+}
+
+function erkTesten() { return rufScan(erkBefehl("testen")); }
+
+/* ------------------------------------------------------------------ Listen */
+
+function erkListeBosse(ziel) {
+  const c = erkScan();
+  if (!c) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Boss-Scan. Oben einen anlegen — er ist die Klammer um Region, "
+      + "Bosse und Fallback."));
+    return;
+  }
+  const lokal = c.bosse;
+  if (!lokal.length && !SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
+      + "Aktion dahinter."));
+  }
+  for (const b of lokal) ziel.appendChild(erkBossZeile(b, false));
+  if (SC.global_bosses.length) {
+    ziel.appendChild(el("div", {class: "scan-kategorie-kopf"},
+      "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
+    const namen = new Set(lokal.map((x) => x.name));
+    for (const b of SC.global_bosses) {
+      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
+      // hier blass, statt so zu tun, als wuerde er benutzt.
+      ziel.appendChild(erkBossZeile(b, true, namen.has(b.name)));
+    }
+  }
+  ziel.appendChild(el("button", {class: "leerzone",
+    onclick: () => { scanListe = "bibliothek"; zeichneScans(); }},
+    "Boss-Bibliothek (global) · " + SC.global_bosses.length));
+}
+
+function erkBossZeile(b, global, verdeckt) {
+  const test = SC.boss.tests[b.name];
+  const gewaehlt = SC.boss.wahl === b.name && SC.boss.wahl_global === !!global;
+  return el("button", {
+    class: "scan-zeile" + (gewaehlt ? " an" : ""),
+    style: verdeckt ? "opacity:.5" : null,
+    title: verdeckt ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
+    onclick: () => rufScan("boss_waehlen", {name: b.name, global: !!global}),
+  },
+    b.vorschau ? el("img", {class: "mini", src: b.vorschau})
+               : el("span", {class: "kugel" + (b.marker.length ? "" : " ohne"),
+                             style: b.marker.length ? "background:" + b.marker[0] : ""}),
+    el("span", {class: "name"}, b.name),
+    b.erkennung === "keine"
+      ? el("span", {class: "klein", style: "color:var(--accent)",
+                    title: "Weder Vorlage noch Marker — nur OCR/LLM können ihn finden"},
+           "⚠ keine Vorlage")
+      : (test
+          ? el("span", {class: "klein", style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
+               test.ok ? "erkannt" : "nein")
+          : el("span", {class: "klein mono"},
+               (SC.aktionen.boss.find((a) => a.wert === b.aktion) || {}).text || b.aktion)));
+}
+
+function erkListeIcons(ziel) {
+  if (!SC.icon_scans.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch kein Icon-Scan. Er erkennt EIN Symbol in einer Region und tut dann "
+      + "etwas — keine Slots, keine Kategorien, kein LLM."));
+  }
+  for (const c of SC.icon_scans) {
+    const test = SC.icon.test && SC.icon.test.name === c.name ? SC.icon.test : null;
+    ziel.appendChild(el("button", {
+      class: "scan-zeile" + (SC.icon.offen === c.name ? " an" : ""),
+      onclick: () => rufScan("icon_scan_oeffnen", {name: c.name}),
+    },
+      c.vorschau ? el("img", {class: "mini", src: c.vorschau})
+                 : el("span", {class: "kugel" + (c.marker.length ? "" : " ohne"),
+                               style: c.marker.length ? "background:" + c.marker[0] : ""}),
+      el("span", {class: "name"}, c.name),
+      c.erkennung === "keine"
+        ? el("span", {class: "klein", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
+        : (test ? el("span", {class: "klein",
+                              style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
+                     test.ok ? "erkannt" : "nein")
+                : el("span", {class: "klein mono"},
+                     (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])))));
+  }
+}
+
+/** Die Bibliothek in der Liste: dieselben Bosse, die in der Mitte als Karten
+ *  stehen. Die Knoepfe („+ Boss", „zurueck") stehen NICHT hier, sondern rechts
+ *  — sonst gaebe es sie zweimal, und man raet, welcher der fuehrende ist. */
+function erkListeBibliothek(ziel) {
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Diese Bosse gelten zusätzlich in JEDEM Boss-Scan. Ein lokaler Boss mit "
+    + "gleichem Namen hat Vorrang."));
+  if (!SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Noch leer. Rechts einen anlegen — oder einen Boss aus einem Scan "
+      + "hierher verschieben."));
+    return;
+  }
+  for (const b of SC.global_bosses) ziel.appendChild(erkBossZeile(b, true));
+}
+
+/* ---------------------------------------------- Bibliothek als Kartenraster */
+
+function erkBibliothekZeichnen() {
+  const ziel = $("scan-bibliothek");
+  const zeigen = erkBibliothek();
+  ziel.hidden = !zeigen;
+  $("scan-flaeche").hidden = zeigen || !SC.foto;
+  $("scan-leer").hidden = zeigen || !!SC.foto;
+  $("scan-ohne-bild").hidden = zeigen || fotoDa();
+  if (!zeigen) return;
+  ziel.replaceChildren();
+  if (!SC.global_bosses.length) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Die Bibliothek ist leer. Wer denselben Boss in mehreren Scans braucht, "
+      + "pflegt ihn sonst mehrfach — und ändert beim nächsten Mal nur die Hälfte."));
+    return;
+  }
+  for (const b of SC.global_bosses) ziel.appendChild(erkBibliothekKarte(b));
+}
+
+function erkBibliothekKarte(b) {
+  // Ein vom LLM entdeckter Boss wird als `skip` angelegt: er ist erkannt, aber
+  // es ist noch nicht entschieden, was mit ihm passieren soll. Das ist keine
+  // Warnung, sondern eine offene Aufgabe — deshalb Amber und ein Hauptknopf.
+  const offen = b.aktion === "skip" && b.erkennung === "keine";
+  const karte = el("div", {class: "seq-karte" + (offen ? " neu-vom-llm" : "")},
+    el("div", {class: "scan-karte-kopf"},
+      b.vorschau ? el("img", {class: "mini", src: b.vorschau})
+                 : el("span", {class: "kugel" + (b.marker.length ? "" : " ohne"),
+                               style: b.marker.length ? "background:" + b.marker[0] : ""}),
+      el("b", {class: "wachse"}, b.name),
+      el("span", {class: "zahl"}, offen ? "neu vom LLM" : b.erkennung)));
+  if (b.marker.length) {
+    karte.appendChild(el("div", {class: "scan-marker"},
+      b.marker.map((h) => el("span", {class: "scan-farbfeld", style: "background:" + h}))));
+  }
+  if (offen) {
+    karte.appendChild(el("p", {class: "hinweis"},
+      "Seine Aktion ist noch „Schritt überspringen“ — er wird erkannt, aber es "
+      + "passiert nichts."));
+  } else {
+    karte.appendChild(el("div", {class: "scan-karte-zahlen"},
+      el("span", {class: "zahl"}, "konf " + b.konfidenz.toFixed(2)),
+      el("span", {class: "zahl"}, (SC.aktionen.boss.find((a) => a.wert === b.aktion)
+        || {}).text || b.aktion),
+      b.scan ? el("span", {class: "zahl"}, "scan → " + b.scan) : null,
+      b.verzoegerung ? el("span", {class: "zahl"}, "delay " + b.verzoegerung + " s") : null));
+  }
+  karte.appendChild(el("div", {class: "knopfpaar"},
+    el("button", {class: offen ? "btn haupt" : "btn still",
+      onclick: () => { scanListe = "bosse";
+                       rufScan("boss_waehlen", {name: b.name, global: true}); }},
+      offen ? "Aktion zuweisen" : "bearbeiten"),
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_loeschen", {name: b.name, global: true})}, "löschen")));
+  return karte;
+}
+
+/* ------------------------------------------------------- Rechte Spalte */
+
+function erkInspektor(ziel) {
+  if (erkBibliothek()) return erkInspBibliothek(ziel);
+  const c = erkScan();
+  if (!c) {
+    ziel.appendChild(el("p", {class: "hinweis"}, scanArt === "boss"
+      ? "Kein Boss-Scan gewählt. Links einen anlegen."
+      : "Kein Icon-Scan gewählt. Links einen anlegen."));
+    return;
+  }
+  if (scanArt === "icon") return erkInspIcon(ziel, c);
+  const b = erkBoss();
+  return b ? erkInspBoss(ziel, c, b) : erkInspBossScan(ziel, c);
+}
+
+/** Ohne gewaehlten Boss gehoert die Spalte dem Scan: Region, Toleranz, Fallback. */
+function erkInspBossScan(ziel, c) {
+  ziel.appendChild(ueberschrift("BOSS-SCAN „" + c.name + "“",
+    "Ein Block vom Typ BOSS-SCAN oder BOSS-WATCHER verweist per Name hierauf. "
+    + "Umbenennen: oben links.", "bossscan"));
+  ziel.appendChild(zahlfeld("Farb-Toleranz", c.toleranz,
+    (v) => erkFeld("toleranz", v), {min: 0, step: 1},
+    "Gilt für die Marker-Farben aller Bosse dieses Scans.", "bosstoleranz"));
+  ziel.appendChild(ueberschrift("WENN KEIN BOSS ERKANNT",
+    "Greift auch dann, wenn OCR und LLM nichts finden.", "bossfallback"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.boss, c.default_action,
+    (v) => erkFeld("default_action", v)));
+  if (c.default_action === "item_scan") {
+    ziel.appendChild(auswahl("Item-Scan", [{wert: "", text: "— keiner —"}].concat(
+      SC.item_scan_namen.map((n) => ({wert: n, text: n}))), c.default_scan || "",
+      (v) => erkFeld("default_scan", v)));
+  }
+  if (Object.keys(SC.boss.tests).length) {
+    ziel.appendChild(ueberschrift("ALLE BOSSE GEGEN DIESES BILD",
+      "Was jeder einzelne ergeben hat — und woran es lag.", "bosstests"));
+    for (const [name, t] of Object.entries(SC.boss.tests)) {
+      ziel.appendChild(el("div", {class: "scan-erg-zeile" + (t.ok ? " ok" : "")},
+        el("span", {}, name),
+        el("span", {class: "mono klein",
+                    style: "color:var(" + (t.ok ? "--ok" : "--dim") + ")"},
+           t.ok ? "erkannt" : "nein"),
+        el("span", {class: "grund"}, t.grund)));
+    }
+  }
+  ziel.appendChild(el("p", {class: "hinweis"}, "Im Sequenz-Editor: ein Block "
+    + "BOSS-SCAN prüft einmal, BOSS-WATCHER wartet, bis ein Boss auftaucht."));
   ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
-    onclick: () => rufScan("scan_loeschen")}, "Scan löschen"));
+    onclick: () => rufScan(erkBefehl("loeschen"))}, "Boss-Scan löschen"));
+}
+
+/** Der wichtigste Fall: einen bestehenden Boss aendern, ohne den Assistenten
+ *  noch einmal zu durchlaufen. Jedes Feld steht hier und ist einzeln setzbar. */
+function erkInspBoss(ziel, c, b) {
+  ziel.appendChild(el("div", {class: "knopfpaar"},
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_waehlen", {name: ""})}, "‹ zurück zum Scan"),
+    el("button", {class: "btn still",
+      onclick: () => rufScan("boss_loeschen")}, "löschen")));
+  ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
+    onclick: () => rufScan("boss_testen")}, "Diesen Boss testen"));
+  ziel.appendChild(ueberschrift("BOSS", "Der Name ist zugleich das, was OCR und "
+    + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "bossname"));
+  ziel.appendChild(feld("Name", b.name, (v) => rufScan("boss_setzen",
+    {name: b.name, global: b.global, feld: "name", wert: v})));
+  if (b.global) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Aus der Bibliothek — Änderungen gelten in jedem Boss-Scan."));
+  }
+  ziel.appendChild(ueberschrift("ERKENNUNG", "Template ODER Farb-Marker. Beides "
+    + "gesetzt heisst: beides muss stimmen.", "bosserkennung"));
+  for (const teil of erkErkennungsFelder(b, "boss", b.name))
+    if (teil) ziel.appendChild(teil);
+  ziel.appendChild(ueberschrift("AKTION BEI TREFFER",
+    "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.boss, b.aktion,
+    (v) => rufScan("boss_setzen", {name: b.name, global: b.global,
+                                   feld: "aktion", wert: v})));
+  for (const teil of erkAktionsFelder(b, "boss", b.name))
+    if (teil) ziel.appendChild(teil);
+  ziel.appendChild(el("button", {class: "btn still", style: "margin-top:14px",
+    title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
+    onclick: () => rufScan("boss_global_verschieben", {name: b.name, global: b.global})},
+    b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
+}
+
+function erkInspIcon(ziel, c) {
+  ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
+    onclick: () => rufScan("icon_testen")}, "Icon-Scan testen"));
+  ziel.appendChild(ueberschrift("ICON-SCAN „" + c.name + "“",
+    "Erkennt EIN Symbol in einer Region und tut dann etwas. Ein Block vom Typ "
+    + "ICON-SCAN verweist per Name hierauf.", "iconscan"));
+  // **Der Ausschnitt zeigt, was der Scan sieht.** Vier Zahlen sagen nicht, ob
+  // die Region sitzt; ein Bild von 104 px sagt es in einer Sekunde.
+  ziel.appendChild(c.ausschnitt
+    ? el("img", {class: "scan-vorlage quadrat", src: c.ausschnitt, alt: ""})
+    : el("div", {class: "scan-vorlage quadrat leer"}, "kein Bild"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Der Ausschnitt zeigt, was der Scan sieht — "
+    + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])
+    + " ab (" + c.region[0] + ", " + c.region[1] + ")."));
+  ziel.appendChild(el("button", {class: "btn", disabled: !fotoDa(),
+    onclick: () => rufScan("region_modus", {art: "icon", modus: "region"})},
+    "Region neu aufziehen"));
+  ziel.appendChild(ueberschrift("AKTION BEI FUND",
+    "Was passiert, wenn das Symbol da ist.", "iconaktion"));
+  ziel.appendChild(erkAktionsKacheln(SC.aktionen.icon, c.aktion,
+    (v) => erkFeld("aktion", v)));
+  for (const teil of erkAktionsFelder(c, "icon"))
+    if (teil) ziel.appendChild(teil);
+  // **Das ELSE gehoert dem Block, nicht dem Scan.** `IconScanConfig` hat kein
+  // else-Feld, und eins hier einzufuehren hiesse, dieselbe Sache an zwei
+  // Stellen zu haben: der Sequenz-Editor setzt sie am Block, wo sie auch fuer
+  // Item- und Boss-Scans steht.
+  ziel.appendChild(ueberschrift("WENN NICHTS ERKANNT",
+    "Die Ersatzaktion gehört dem Block in der Sequenz, nicht dem Scan — dort "
+    + "steht sie für alle drei Scan-Arten an derselben Stelle.", "iconelse"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    "Im Sequenz-Editor am Block einstellen. Als Befehl im Konsolen-Editor: "
+    + "icon " + c.name + " else skip"));
+  ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
+    onclick: () => rufScan(erkBefehl("loeschen"))}, "Icon-Scan löschen"));
+}
+
+function erkInspBibliothek(ziel) {
+  ziel.appendChild(ueberschrift("BOSS-BIBLIOTHEK",
+    "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
+    + "hat Vorrang.", "bossbib"));
+  ziel.appendChild(el("p", {class: "hinweis"},
+    SC.global_bosses.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
+    + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
+    + "Scan, der sie gefunden hat."));
+  ziel.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufScan("boss_neu", {global: true})}, "+ Boss anlegen"));
+  ziel.appendChild(el("button", {class: "btn still",
+    onclick: () => { scanListe = "bosse"; zeichneScans(); }}, "zurück zum Scan"));
+}
+
+/* ------------------------------------------------------------------ Overlay */
+
+/** Die Region des offenen Erkennungs-Scans und ihr Klickpunkt.
+ *
+ * Gezeichnet wird nur die des OFFENEN Scans, nicht jede vorhandene: zwanzig
+ * Rechtecke auf einem Bild sind kein Ueberblick, sondern ein Gitter. */
+function erkOverlay(svg, px) {
+  const c = erkScan();
+  if (!c) return;
+  const t = scanArt === "boss" ? SC.boss.test : SC.icon.test;
+  const zustand = !t ? "" : (t.ok ? " ok" : " fehl");
+  const [x1, y1] = scanZuBild(c.region[0], c.region[1]);
+  const [x2, y2] = scanZuBild(c.region[2], c.region[3]);
+  svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+    class: "scan-region-f" + zustand}));
+  svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+    class: "scan-region" + zustand}));
+  const marke = (t && t.ok && t.konfidenz !== null && t.methode === "Template")
+    ? t.name + " · " + t.konfidenz.toFixed(2)
+    : (t ? (t.ok ? t.name + " erkannt" : "nicht erkannt")
+         : "Region · " + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1]));
+  svg.appendChild(svgEl("text", {x: x1, y: y2 + 13 * px, class: "scan-marke",
+    "font-size": 11 * px, "stroke-width": 3 * px,
+    fill: !t ? null : (t.ok ? SLOT_FARBE.treffer : "#EF4444")}, marke));
+
+  // Der Klickpunkt der Aktion: gestrichelt und in Amber — er ist ein
+  // Handlungsort, keine Erkennung.
+  const objekt = scanArt === "boss" ? erkBoss() : c;
+  const punkt = objekt && objekt.punkt_id !== null && objekt.punkt_id !== undefined
+    ? SC.punkte.find((p) => p.id === objekt.punkt_id) : null;
+  if (!punkt || objekt.aktion !== "click") return;
+  const [ax, ay] = scanZuBild(punkt.x, punkt.y);
+  const arm = 9 * px;
+  svg.appendChild(svgEl("rect", {class: "scan-aktion", x: ax - arm, y: ay - arm,
+    width: arm * 2, height: arm * 2}));
+  svg.appendChild(svgEl("text", {x: ax - arm, y: ay - arm - 4 * px, class: "scan-marke",
+    "font-size": 10 * px, "stroke-width": 3 * px, fill: "#F59E0B"},
+    "Klickpunkt Aktion"));
+}
+
+/* ------------------------------------------------------------ Ansicht: Teilen
+ *
+ * Ein Bündel schreiben und eines einlesen. Beide Seiten arbeiten auf dem
+ * GESPEICHERTEN Stand — was im Fenster offen ist, liegt nicht auf Platte. */
+let T = null;
+let teilenExport = {};    // welche Teile ins Bündel kommen
+let teilenImport = {};    // welche Teile eingelesen werden
+let teilenModus = "auto";
+let teilenMerge = true;
+
+async function zeichneTeilen(frisch) {
+  const antwort = await frage("teilen_daten");
+  if (!antwort || ansicht !== "teilen") return;
+  T = antwort;
+  for (const t of T.teile) {
+    if (teilenExport[t.key] === undefined) teilenExport[t.key] = true;
+    if (teilenImport[t.key] === undefined) teilenImport[t.key] = true;
+  }
+  const merk = fokusMerken();
+  teilenExportZeichnen();
+  teilenMitteZeichnen();
+  teilenImportZeichnen();
+  setzeStatus(T.status);
+  fokusHerstellen(merk);
+}
+
+/** Ein Befehl an den Teilen-Teil. Antwort ist die neue Teilen-Aufnahme. */
+async function rufTeilen(name, daten) {
+  const antwort = await frage(name, daten);
+  if (!antwort) return;
+  T = antwort;
+  await zeichneTeilen();
+}
+
+function teilenHaken(ziel, auswahl, zahlen) {
+  for (const t of T.teile) {
+    const zeile = el("label", {class: "teilen-zeile an"});
+    const box = el("input", {type: "checkbox"});
+    box.checked = !!auswahl[t.key];
+    box.addEventListener("change", () => { auswahl[t.key] = box.checked; zeichneTeilen(); });
+    zeile.append(box, el("span", {}, t.text),
+      el("span", {class: "zahl"}, String(zahlen[t.key] ?? 0)));
+    ziel.appendChild(zeile);
+  }
+}
+
+function teilenExportZeichnen() {
+  const ziel = $("teilen-export");
+  const kopf = el("div", {class: "abschnitt"},
+    ueberschrift("EXPORTIEREN",
+      "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
+  if (T.offen) {
+    kopf.appendChild(el("div", {class: "fremdhinweis"},
+      "Im Fenster gibt es ungespeicherte Änderungen — die kommen nicht mit. "
+      + "Erst speichern, dann exportieren."));
+  }
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  teilenHaken(rumpf, teilenExport, T.bestand);
+  rumpf.appendChild(feld("Dateiname (leer = mit Zeitstempel)", "",
+    () => {}, {id: "teilen-name"}));
+  // **Die Referenzpunkte kommen aus dem Spielfenster.** Ist es offen, rechnet
+  // der Empfänger die Koordinaten selbst um; sonst setzt er zwei Punkte von Hand.
+  rumpf.appendChild(el("p", {class: "hinweis"}, T.fenster && T.fenster.gefunden
+    ? "Spielfenster „" + T.fenster.titel + "“: " + T.fenster.breite + "×"
+      + T.fenster.hoehe + " px. Der Empfänger rechnet damit automatisch um."
+    : (T.fenster
+        ? "Spielfenster „" + T.fenster.titel + "“ ist nicht offen — der Empfänger "
+          + "setzt beim Import zwei Punkte von Hand."
+        : "Kein Fenstertitel eingestellt (window_focus_title) — der Empfänger "
+          + "setzt beim Import zwei Punkte von Hand.")));
+  rumpf.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufTeilen("export_starten",
+      {teile: teilenExport, name: ($("teilen-name") || {}).value || ""})},
+    "Bündel schreiben"));
+  ziel.appendChild(rumpf);
+}
+
+function teilenMitteZeichnen() {
+  const ziel = $("teilen-mitte");
+  ziel.replaceChildren();
+  const karte = el("div", {class: "teilen-karte"}, el("h3", {}, "Vorhandene Bündel"));
+  if (!T.exporte.length) {
+    karte.appendChild(el("p", {class: "hinweis"},
+      "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
+  }
+  const liste = el("div", {class: "teilen-liste"});
+  for (const e of T.exporte) {
+    liste.appendChild(el("div", {class: "teilen-zeile"},
+      el("span", {class: "mono"}, e.name),
+      el("span", {class: "zahl mono"}, e.kb + " KB"),
+      el("button", {class: "btn still",
+        onclick: () => rufTeilen("import_pruefen", {pfad: "exports/" + e.name})},
+        "einlesen")));
+  }
+  karte.appendChild(liste);
+  ziel.appendChild(karte);
+
+  ziel.appendChild(el("div", {class: "teilen-karte"},
+    el("h3", {}, "Weitergeben"),
+    el("p", {class: "hinweis"},
+      "Die ZIP-Datei verschicken. Der Empfänger legt sie in seinen "
+      + "Autoclicker-Ordner und liest sie hier oder mit CTRL+ALT+I ein. "
+      + "Koordinaten werden dabei auf sein Fenster umgerechnet.")));
+}
+
+function teilenImportZeichnen() {
+  const ziel = $("teilen-import");
+  const i = T.import;
+  const kopf = el("div", {class: "abschnitt"},
+    ueberschrift("IMPORTIEREN",
+      "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
+    // EIN Knopf ueber die volle Breite heisst `btn breit` — `wachse` in einer
+    // `reihe` war dasselbe mit einer zweiten Schreibweise.
+    el("button", {class: "btn breit", onclick: () => rufTeilen("datei_waehlen")},
+      "Datei wählen …"),
+    feld("oder Pfad", i ? i.pfad : "",
+      (v) => rufTeilen("import_pruefen", {pfad: v})));
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  if (!i) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      "Noch keine Datei gewählt. Ein Bündel ist ein ZIP mit manifest.json."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  rumpf.appendChild(el("div", {class: "feld-still"}, i.datei,
+    el("span", {class: "mono"}, i.erstellt || "")));
+  teilenHaken(rumpf, teilenImport, i.inhalt);
+
+  rumpf.appendChild(ueberschrift("KOORDINATEN",
+    "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "importkoord"));
+  // Ohne beidseitig bekanntes Fenster gibt es nichts zu wählen — eine Kachel,
+  // die nichts tut, ist schlechter als keine.
+  const modi = (i.auto ? [{wert: "auto", text: "aus Fenstergrösse"}] : [])
+    .concat([{wert: "identity", text: "1:1 übernehmen"}]);
+  rumpf.appendChild(segment(modi, i.auto ? teilenModus : "identity",
+    (v) => { teilenModus = v; zeichneTeilen(); }));
+  rumpf.appendChild(el("p", {class: "hinweis"}, i.auto
+    ? "Beide Seiten kennen ihr Spielfenster — die Umrechnung geht automatisch."
+    : "Ohne beidseitig bekanntes Spielfenster geht nur 1:1. Für ein echtes "
+      + "Umrechnen zwei Punkte setzen: CTRL+ALT+I im Hauptprozess."));
+
+  rumpf.appendChild(schalter("Vorhandenes behalten und ergänzen", teilenMerge,
+    (v) => { teilenMerge = v; zeichneTeilen(); }));
+  rumpf.appendChild(el("p", {class: "hinweis"}, teilenMerge
+    ? "Gleiche Namen werden übersprungen."
+    : "Achtung: gleiche Namen werden überschrieben."));
+  rumpf.appendChild(el("button", {class: "btn haupt",
+    onclick: () => rufTeilen("import_starten",
+      {teile: teilenImport, modus: teilenModus, merge: teilenMerge})},
+    "Bündel einlesen"));
+  ziel.appendChild(rumpf);
 }
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */
 
-/* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor. Sein
- * Zustand liegt deshalb neben `S` und nicht darin: `C` ist die Antwort von
- * `config_lesen()` (Werte, Standardwerte, Abschnitte, Beschreibungen), und
+/* --------------------------------------------------------------- Werkzeuge
+ *
+ * Was bisher nur im Punkte-Menue der Konsole ging: pruefen (`check`),
+ * kalibrieren (`fix`) und Nachklicken (`klick`). Eigener Zustand neben `S`,
+ * wie bei Einstellungen und Teilen — der Reiter arbeitet auf `sequence.json` und
+ * dem ganzen Bestand, nicht auf der geoeffneten Sequenz.
+ *
+ * `wzOffen` ist reiner Oberflaechenzustand (welches Werkzeug in der Mitte
+ * steht), `W` die Antwort der Bruecke, `wzBericht` das Ergebnis der letzten
+ * Pruefung. Die Pruefung steht bewusst NICHT in `W`: sie kostet einen Durchlauf
+ * ueber den ganzen Bestand, und den will man auf Knopfdruck, nicht bei jedem
+ * Neuzeichnen. */
+let W = null;
+let wzOffen = "pruefen";
+let wzBericht = null;
+let wzUmfang = {};
+// Der Hauptprozess besitzt die Aufnahme. Dieser Merker sagt nicht mehr als das,
+// was das Studio sicher weiss: der Startauftrag wurde erfolgreich abgelegt.
+let wzAufnahmeGestartet = false;
+let wzAufnahmeName = "";
+let wzAufnahmeZyklen = 0;
+let wzAufnahmeBeschreibung = "";
+let wzAufnahmePoll = 0;
+let wzAufnahmeLivePoll = 0;
+let wzAufnahmeLive = {aktiv: false, pausiert: false, anzahl: 0, ereignisse: []};
+/* Der Live-Stand der Klick-Runde. Sie laeuft im HAUPTPROZESS (dort haengt der
+ * Maus-Hook), also weiss dieses Fenster von sich aus nichts ueber sie — der
+ * Stand kommt ueber `.nachklick.json`. Ohne ihn stand hier nur „gestartet",
+ * waehrend die Konsole jeden Schritt einzeln meldete. */
+let wzNachklickPoll = 0;
+let wzNachklickLive = {aktiv: false, index: 0, gesamt: 0, verlauf: [], punkt: {}};
+/* Eine offene Farb-Rueckfrage: die Stelle ist angefahren, aber die Farbe dort
+ * weicht von der gespeicherten ab. Bis das jemand bestaetigt, ist NICHTS gesetzt
+ * - der Zustand lebt nur hier, nicht in der Bruecke. */
+let wzFarbfrage = null;
+let wzPunktId = null;
+let wzFarbAnalyse = null;
+
+/* Jedes Werkzeug sagt, WORAUF es wirkt. Ein einzelner Sequenzname oben im Reiter
+ * waere fuer zwei davon schlicht falsch: Pruefen und Kalibrieren gehen ueber
+ * den GANZEN Bestand (alle Sequenzen, Slots, Scans, Punkte), nur das Nachklicken
+ * meint genau eine Sequenz — die hier offene. Die Aufnahme erzeugt dagegen wie
+ * im TUI eine NEUE Sequenz. */
+/* ------------------------------------------------- Griffe mit der Maus warten */
+
+/* **Jeder Aufruf, der die Bruecke blockiert, steht hier.** Diese Methoden warten
+ * per `_stelle_abwarten()` bzw. `bereich_aufnehmen()` global auf ENTER — bis zu
+ * `warte_timeout` Sekunden. Solange kommt keine Antwort zurueck; die Seite kann
+ * also nichts anzeigen, was aus der Bruecke kaeme, und muss VOR dem Aufruf
+ * sagen, worauf gewartet wird. Ohne das sah es aus, als tue das Fenster nichts —
+ * und zwar eine Minute lang.
+ *
+ * Der zweite Wert ist die Zahl der Tastendruecke. Ihn mitzuzaehlen geht NICHT:
+ * beide Ecken sind EIN Aufruf (die Hand soll zwischendurch nicht zum Fenster
+ * zurueck), und die Seite erfaehrt vom ersten ENTER nichts. Sie sagt deshalb
+ * vorher, wie viele kommen, statt einen Fortschritt zu erfinden.
+ *
+ * Ein Test haelt die Tabelle gegen die Bruecke: eine wartende Methode, die hier
+ * fehlt, ist genau die, bei der das Fenster wieder stumm ist. */
+const WARTE_GRIFFE = {
+  punkt_aufnehmen: ["Stelle aufnehmen", 1],
+  bereich_aufnehmen: ["Screenshot-Bereich aufziehen", 2],
+  maus_stelle: ["Parkposition setzen", 1],
+  werkzeug_punkt_aufnehmen: ["Punkt aufnehmen", 1],
+  werkzeug_farben: ["Farbe messen", 1],
+  kalib_referenz: ["Referenzpunkt setzen", 1],
+};
+
+let warteZaehler = null;
+
+/** Blendet ein, worauf gerade gewartet wird — mit Countdown bis zum Zeitablauf. */
+function warteZeigen(name) {
+  const [was, drucke] = WARTE_GRIFFE[name] || ["Stelle setzen", 1];
+  const grenze = (S && S.warte_timeout) || (W && W.warte_timeout) || 60;
+  let rest = Math.round(grenze);
+  const zahl = el("span", {class: "warte-rest"}, rest + " s");
+  const kasten = el("div", {class: "warte-kasten"},
+    el("div", {class: "warte-titel"}, was),
+    el("div", {class: "warte-text"},
+      "Fahre mit der Maus an die Stelle im Spiel und drücke ",
+      el("b", {}, "ENTER"),
+      drucke > 1 ? " — " + drucke + "× nacheinander, eine Ecke je Druck." : "."),
+    el("div", {class: "warte-fuss"},
+      el("span", {}, "ESC bricht ab"), zahl));
+  warteWeg();
+  document.body.appendChild(
+    el("div", {class: "warte-huelle", id: "warte-huelle"}, kasten));
+  // Der Countdown ist die zweite Haelfte der Auskunft: DASS gewartet wird, sagt
+  // der Kasten — wie lange noch, nur die Zahl. Laeuft sie ab, endet der Aufruf
+  // von selbst, und die Bruecke meldet „Nichts gedrueckt".
+  warteZaehler = setInterval(() => {
+    rest -= 1;
+    zahl.textContent = Math.max(0, rest) + " s";
+    if (rest <= 0) clearInterval(warteZaehler);
+  }, 1000);
+}
+
+function warteWeg() {
+  clearInterval(warteZaehler);
+  warteZaehler = null;
+  const alt = $("warte-huelle");
+  if (alt) alt.remove();
+}
+
+/** Ruft eine blockierende Methode und zeigt so lange, worauf gewartet wird.
+ *
+ * `art` waehlt den Kanal, den der Aufruf ohnehin haette: `ruf` ersetzt die
+ * Momentaufnahme, `werkzeug` zeichnet den Reiter neu, `frage` fragt nur. Das
+ * Overlay aendert daran nichts — es legt sich nur davor.
+ */
+async function mitWarten(art, name, daten) {
+  warteZeigen(name);
+  try {
+    return art === "ruf" ? await ruf(name, daten)
+         : art === "werkzeug" ? await rufWerkzeug(name, daten)
+         : await frage(name, daten);
+  } finally {
+    warteWeg();
+  }
+}
+
+const WZ_WERKZEUGE = [
+  {key: "aufnahme", name: "Sequenz aufnehmen", befehl: "rec", bezug: "neu",
+   kurz: "Echtes Spielen als neue Sequenz aufzeichnen"},
+  {key: "pruefen", name: "Bestand prüfen", befehl: "check", bezug: "bestand",
+   kurz: "Fehler und unvollständige Verknüpfungen finden"},
+  {key: "punkte", name: "Punkte verwalten", befehl: "points", bezug: "sequenz",
+   kurz: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
+  {key: "farben", name: "Farben analysieren", befehl: "color", bezug: "bestand",
+   kurz: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
+  {key: "kalibrieren", name: "Kalibrieren", befehl: "fix", bezug: "bestand",
+   kurz: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
+  {key: "klicken", name: "Punkte nachklicken", befehl: "klick", bezug: "sequenz",
+   kurz: "Alle Klickstellen geführt im Spiel kontrollieren"},
+];
+
+/** Kleine, lokale Linien-Icons. Keine Schriftzeichen und keine externe Datei:
+ *  dadurch bleiben Strichstärke und Ausrichtung in jedem System identisch. */
+function wzIcon(art) {
+  const pfade = {
+    aufnahme: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
+    pruefen: ["M9 11l2 2 4-5", "M12 3a9 9 0 1 0 9 9", "M16 4l5-1-1 5"],
+    kalibrieren: ["M12 2v4M12 18v4M2 12h4M18 12h4", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
+    klicken: ["M5 3l12 9-6 1 3 6-3 2-3-6-4 4z"],
+    punkte: ["M12 2v5M12 17v5M2 12h5M17 12h5", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
+    farben: ["M12 3c-4 4-7 7-7 11a7 7 0 0 0 14 0c0-4-3-7-7-11z", "M9 15h6"],
+    info: ["M12 11v6M12 7h.01", "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20"],
+    ok: ["M4 12l5 5L20 6"],
+    fehler: ["M6 6l12 12M18 6L6 18"],
+    hinweis: ["M12 3L2 21h20z", "M12 9v5M12 18h.01"],
+    ordner: ["M3 6h7l2 2h9v11H3z"],
+  };
+  const svg = svgEl("svg", {class: "wz-symbol", viewBox: "0 0 24 24",
+    fill: "none", stroke: "currentColor", "stroke-width": "1.8",
+    "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true"});
+  for (const d of pfade[art] || pfade.info) svg.appendChild(svgEl("path", {d}));
+  return svg;
+}
+
+function wzKopf(key, titel, text) {
+  return el("section", {class: "wz-hero " + key},
+    el("div", {class: "wz-hero-icon"}, wzIcon(key)),
+    el("div", {class: "wz-hero-copy"},
+      el("div", {class: "wz-kicker"}, "WERKZEUG"),
+      el("h2", {}, titel),
+      el("p", {}, text)));
+}
+
+function wzInfo(titel, text, art = "info") {
+  // Erklaerungen bleiben aus dem Arbeitsfluss, bis jemand sie braucht. Das
+  // Studio verwendet dafuer bereits ueberall dasselbe kleine i; ein eigener
+  // Infokasten im Werkzeuge-Reiter war nicht nur unruhig, sondern drueckte bei
+  // schmaler Mitte auch die eigentlichen Bedienelemente zusammen.
+  const zeichen = info(text, "werkzeug-" + titel);
+  zeichen.setAttribute("title", titel);
+  zeichen.setAttribute("aria-label", titel);
+  return el("div", {class: "wz-info-kompakt " + art}, zeichen);
+}
+
+/** Die Zeile „worauf wirkt das hier" — als eigener Baustein, damit sie an jedem
+ *  Werkzeug gleich aussieht und keines sie vergessen kann. */
+function wzBezug(key) {
+  const w = WZ_WERKZEUGE.find(x => x.key === key);
+  const kasten = el("div", {class: "wz-bezug"});
+  if (w && w.bezug === "neu") {
+    kasten.classList.add("eine");
+    kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+      el("span", {}, "eine neue Sequenz — die offene Sequenz "),
+      el("b", {}, W ? W.sequenz : "—"),
+      el("span", {}, " bleibt unverändert"));
+    return kasten;
+  }
+  if (!w || w.bezug === "bestand") {
+    kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+      el("span", {}, "der gesamte gespeicherte Bestand — alle Sequenzen, Punkte, "
+        + "Slots und Scans, nicht nur die offene Sequenz"));
+    return kasten;
+  }
+  kasten.classList.add("eine");
+  kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+    el("span", {}, "die offene Sequenz "),
+    el("b", {}, W ? W.sequenz : "—"),
+    el("span", {class: "hint"}, W ? " (" + W.datei + ")" : ""));
+  if (W && W.offen)
+    kasten.append(el("span", {class: "art-warn"}, " — ungespeichert"));
+  return kasten;
+}
+
+async function zeichneWerkzeuge(frisch) {
+  const antwort = await frage("werkzeug_daten");
+  if (!antwort || ansicht !== "werkzeuge") return;
+  W = antwort;
+  for (const u of W.umfang)
+    if (wzUmfang[u.schluessel] === undefined) wzUmfang[u.schluessel] = u.vorgabe;
+  if (frisch) { wzBericht = null; wzFarbfrage = null; }
+  const merk = fokusMerken();
+  wzLinksZeichnen();
+  wzMitteZeichnen();
+  wzRechtsZeichnen();
+  fokusHerstellen(merk);
+}
+
+/** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
+ *  deshalb `frage()` und danach neu zeichnen, statt `S` zu ersetzen. */
+async function rufWerkzeug(name, daten) {
+  const antwort = await frage(name, daten);
+  if (!antwort) return null;
+  if (antwort.meldung)
+    setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "err"});
+  await zeichneWerkzeuge();
+  return antwort;
+}
+
+function wzLinksZeichnen() {
+  const ziel = $("wz-links");
+  // Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus (er
+  // bearbeitet andere Dateien). Damit war aber auch der NAME weg, und bei der
+  // Nachklicken ist das genau die Frage, die man sich stellt.
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "WERKZEUGE"),
+    el("div", {class: "wz-offen"},
+      el("span", {class: "hint"}, "offene Sequenz"),
+      el("b", {}, W ? W.sequenz : "—"),
+      W && W.offen ? el("span", {class: "punkt-offen", title: "ungespeicherte Änderungen"})
+                   : null));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:6px"});
+  for (const w of WZ_WERKZEUGE) {
+    const knopf = el("button", {
+      class: "wz-nav " + w.key + (wzOffen === w.key ? " an" : ""),
+      onclick: () => wzOeffnen(w.key),
+      // Der Konsolen-Befehl steht mit — dieselbe Regel wie bei den Config-
+      // Schluesseln: wer das Werkzeug hier kennenlernt, erkennt es im
+      // Punkte-Menue wieder, und wer es von dort kennt, findet es hier.
+    }, el("span", {class: "wz-nav-icon"}, wzIcon(w.key)),
+       el("span", {class: "wz-nav-copy"},
+         el("span", {class: "wz-nav-titel"}, w.name,
+           el("span", {class: "wz-befehl"}, w.befehl)),
+         el("span", {class: "wz-nav-kurz"}, w.kurz)),
+       el("span", {class: "wz-nav-pfeil"}, "›"));
+    liste.appendChild(knopf);
+  }
+  liste.appendChild(wzInfo("Slots exakt reparieren",
+    "CTRL+ALT+N → Slots → repair misst die Flächen pixelgenau neu."));
+  ziel.replaceChildren(kopf, liste);
+  hilfenAnwenden(ziel);
+}
+
+/** Ein Werkzeug öffnen — auch als Sprungziel aus dem Editor heraus. */
+function wzOeffnen(key) {
+  if (!WZ_WERKZEUGE.some(w => w.key === key)) return;
+  wzOffen = key;
+  if (ansicht !== "werkzeuge") {
+    setzeAnsicht("werkzeuge");
+    return;
+  }
+  wzMitteZeichnen();
+  wzRechtsZeichnen();
+  wzLinksZeichnen();
+}
+
+function wzMitteZeichnen() {
+  const ziel = $("wz-mitte");
+  const inhalt = wzOffen === "aufnahme" ? wzAufnahmeBauen()
+    : wzOffen === "pruefen" ? wzPruefenBauen()
+    : wzOffen === "punkte" ? wzPunkteBauen()
+    : wzOffen === "farben" ? wzFarbenBauen()
+    : wzOffen === "kalibrieren" ? wzKalibBauen() : wzKlickenBauen();
+  ziel.replaceChildren(...inhalt);
+  // Offene i-Texte ueberleben den Neuaufbau nach einer Werkzeug-Aktion.
+  hilfenAnwenden(ziel);
+}
+
+/* ------------------------------------------------------------------ Prüfen */
+
+function wzPruefenBauen() {
+  const raus = [wzKopf("pruefen", "Setup prüfen",
+    "Ein vollständiger Gesundheitscheck für die gespeicherten Sequenzen und Scans.")];
+  raus.push(wzBezug("pruefen"));
+  raus.push(wzInfo("Was wird geprüft?",
+    "Templates, Erkennungsmethoden, Punkt- und Scan-Verweise sowie Stellen "
+    + "ausserhalb der angeschlossenen Monitore. Es zählt der zuletzt gespeicherte Stand."));
+  raus.push(el("div", {class: "wz-aktion"},
+    el("button", {class: "btn haupt wz-hauptaktion", onclick: wzPruefen},
+      wzIcon("pruefen"), el("span", {}, "Jetzt prüfen"))));
+
+  if (!wzBericht) return raus;
+  if (!wzBericht.ok) {
+    raus.push(el("p", {class: "art-err"}, wzBericht.meldung || "Prüfung fehlgeschlagen."));
+    return raus;
+  }
+  if (!wzBericht.befunde.length) {
+    raus.push(el("div", {class: "wz-erfolg"}, wzIcon("ok"),
+      el("div", {}, el("b", {}, "Alles in Ordnung"),
+        el("span", {}, wzBericht.geprueft.length + " Bereiche ohne Befund geprüft."))));
+    return raus;
+  }
+  raus.push(el("div", {class: "wz-kennzahlen"},
+    wzKennzahl(String(wzBericht.fehler || 0), "Fehler", "fehler"),
+    wzKennzahl(String(wzBericht.hinweise || 0), "Hinweise", "hinweis"),
+    wzKennzahl(String(wzBericht.geprueft.length), "Bereiche", "neutral")));
+  // Fehler zuerst: „laeuft so nicht" schlaegt „ist vermutlich nicht gewollt".
+  for (const stufe of ["fehler", "hinweis"]) {
+    const treffer = wzBericht.befunde.filter(b => b.stufe === stufe);
+    if (!treffer.length) continue;
+    raus.push(el("h3", {style: "margin-top:16px"},
+      stufe === "fehler" ? "Fehler (" + treffer.length + ")"
+                         : "Hinweise (" + treffer.length + ")"));
+    for (const b of treffer) raus.push(wzBefund(b, stufe));
+  }
+  return raus;
+}
+
+/* ------------------------------------------------------ Punkte verwalten */
+
+function wzPunkteBauen() {
+  const raus = [wzKopf("punkte", "Punkte verwalten",
+    "Klickstellen sind eigenständige Objekte — jede Änderung zieht alle verwendenden Blöcke mit.")];
+  raus.push(wzBezug("punkte"));
+  const punkte = (W && W.punkte) || [];
+  if (!punkte.some(p => p.id === wzPunktId)) wzPunktId = punkte.length ? punkte[0].id : null;
+  const punkt = punkte.find(p => p.id === wzPunktId);
+  const neuName = el("input", {placeholder: "Name des neuen Punkts", value: "Neuer Punkt",
+    autocomplete: "off"});
+  raus.push(el("div", {class: "wz-aktion gitter2"}, neuName,
+    el("button", {class: "btn haupt", onclick: async () => {
+      setzeStatus({art: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
+      const a = await mitWarten("werkzeug", "werkzeug_punkt_aufnehmen",
+                                {name: neuName.value});
+      if (a && a.ok) wzPunktId = a.punkt_id;
+    }}, "＋ Neuen Punkt aufnehmen")));
+  if (!punkt) {
+    raus.push(el("p", {class: "leer"}, "Noch keine Punkte in dieser Sequenz."));
+    return raus;
+  }
+  raus.push(auswahl("Punkt", punkte.map(p => ({wert: p.id,
+    text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), punkt.id,
+    (v) => { wzPunktId = Number(v); wzMitteZeichnen(); wzRechtsZeichnen(); }));
+  const setze = (feld, wert) => rufWerkzeug("werkzeug_punkt_setzen",
+    {punkt_id: punkt.id, feld: feld, wert: wert});
+  raus.push(feld("Name", punkt.name, (v) => setze("name", v)));
+  raus.push(el("div", {class: "gitter2"},
+    zahlfeld("X", punkt.x, (v) => setze("x", v), {step: "1"}),
+    zahlfeld("Y", punkt.y, (v) => setze("y", v), {step: "1"})));
+  raus.push(farbfeld("Gespeicherte Farbe", punkt.farbe ? hexfarbe(punkt.farbe) : "",
+    (v) => setze("farbe", v)));
+  raus.push(el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
+    el("button", {class: "btn", onclick: () => rufWerkzeug("werkzeug_punkt_zeigen",
+      {punkt_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
+    el("button", {class: "btn", onclick: () => mitWarten("werkzeug",
+      "werkzeug_punkt_aufnehmen", {punkt_id: punkt.id})}, "✛ Neu messen"),
+    el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length,
+      title: punkt.verwendungen.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
+      onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {punkt_id: punkt.id})},
+      "Löschen")));
+  if (punkt.verwendungen.length) raus.push(el("p", {class: "hinweis"},
+    "Löschen ist gesperrt: Dieser Punkt wird noch " + punkt.verwendungen.length + "× verwendet."));
+  return raus;
+}
+
+/* ------------------------------------------------------ Farben analysieren */
+
+function wzFarbenBauen() {
+  const raus = [wzKopf("farben", "Farben analysieren",
+    "Liest einen Pixel oder gruppiert die häufigsten Farben eines Bildschirmbereichs.")];
+  raus.push(wzInfo("Aufnahme ohne Studio im Bild",
+    "Nach dem Klick ins Spiel wechseln. Punkt und Vollbild starten mit ENTER; bei einer Region " +
+    "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
+  const starten = async (art) => {
+    setzeStatus({art: "info", text: "Ins Spiel wechseln und mit ENTER bestätigen …"});
+    wzFarbAnalyse = await mitWarten("werkzeug", "werkzeug_farben", {art: art});
+    wzMitteZeichnen(); wzRechtsZeichnen();
+  };
+  raus.push(el("div", {class: "gitter3 wz-aktion"},
+    el("button", {class: "btn haupt", onclick: () => starten("punkt")}, "Pixel unter Maus"),
+    el("button", {class: "btn", onclick: () => starten("region")}, "Bereich analysieren"),
+    el("button", {class: "btn", onclick: () => starten("vollbild")}, "Vollbild analysieren")));
+  if (wzFarbAnalyse && !wzFarbAnalyse.ok)
+    raus.push(el("p", {class: "art-err"}, wzFarbAnalyse.meldung || "Analyse fehlgeschlagen."));
+  if (wzFarbAnalyse && wzFarbAnalyse.ok) {
+    const liste = el("div", {class: "wz-farbliste"});
+    for (const f of wzFarbAnalyse.farben || []) liste.appendChild(el("div", {class: "wz-farbzeile"},
+      el("span", {class: "wz-farbprobe", style: "background:" + f.hex}),
+      el("b", {class: "mono"}, f.hex),
+      el("span", {}, "RGB " + f.rgb.join(", ")),
+      el("span", {class: "wachse hint"}, f.name || ""),
+      el("span", {class: "mono"}, f.anteil + "%")));
+    raus.push(liste);
+  }
+  return raus;
+}
+
+/* --------------------------------------------------------------- Aufnehmen */
+
+function wzNeuerAufnahmeName() {
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  return "aufnahme_" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+}
+
+function wzAufnahmeBauen() {
+  if (!wzAufnahmeName) wzAufnahmeName = wzNeuerAufnahmeName();
+  const raus = [wzKopf("aufnahme", "Sequenz aufnehmen",
+    "Spiele den Ablauf einmal vor — jeder Klick, Tastendruck und Marker wird direkt zu Blöcken.")];
+  raus.push(wzBezug("aufnahme"));
+
+  const formular = el("div", {class: "wz-aufnahme-form"});
+  const name = el("input", {value: wzAufnahmeName, autocomplete: "off",
+    disabled: wzAufnahmeGestartet});
+  name.addEventListener("input", () => { wzAufnahmeName = name.value; });
+  const zyklen = el("input", {type: "number", min: "0", step: "1",
+    value: String(wzAufnahmeZyklen), disabled: wzAufnahmeGestartet});
+  zyklen.addEventListener("input", () => { wzAufnahmeZyklen = Math.max(0, Number(zyklen.value) || 0); });
+  const notiz = el("textarea", {rows: "3", disabled: wzAufnahmeGestartet,
+    placeholder: "optional — wofür ist diese Sequenz?"}, wzAufnahmeBeschreibung);
+  notiz.addEventListener("input", () => { wzAufnahmeBeschreibung = notiz.value; });
+  formular.append(
+    el("label", {class: "feld"}, "Name", name),
+    el("label", {class: "feld"}, "Zyklen · 0 = endlos", zyklen),
+    el("label", {class: "feld wz-aufnahme-notiz"}, "Notiz", notiz));
+  raus.push(formular);
+
+  const stand = el("div", {class: "wz-aufnahme-stand" +
+    (wzAufnahmeGestartet ? " laeuft" : "")},
+    el("span", {class: "wz-rec-punkt"}),
+    el("div", {}, el("b", {}, wzAufnahmeGestartet ? "Aufnahme läuft" : "Bereit zur Aufnahme"),
+      el("span", {}, wzAufnahmeGestartet
+        ? "Ins Spiel wechseln. Der Stopp-Knopf und CTRL+ALT+J bauen danach die Blöcke."
+        : "Starten, ins Spiel wechseln und den gewünschten Ablauf einmal ausführen.")));
+  const aktion = el("button", {
+    class: "btn " + (wzAufnahmeGestartet ? "gefahr" : "haupt") + " wz-aufnahme-knopf",
+    onclick: wzAufnahmeGestartet ? wzAufnahmeStoppen : wzAufnahmeStarten,
+  }, wzAufnahmeGestartet ? "■ Aufnahme stoppen" : "● Aufnahme starten");
+  stand.appendChild(aktion);
+  raus.push(stand);
+
+  const ausgabe = el("div", {class: "wz-aufnahme-ausgabe", id: "wz-aufnahme-ausgabe"});
+  raus.push(ausgabe);
+  wzAufnahmeAusgabeFuellen(ausgabe);
+
+  raus.push(el("div", {class: "wz-zwischenkopf"}, "HOTKEYS WÄHREND DER AUFNAHME"));
+  raus.push(wzTastenTabelle((W && W.aufnahme_tasten) || []));
+  raus.push(wzInfo("TUI bleibt verfügbar",
+    "CTRL+ALT+J kann die Aufnahme weiterhin ganz ohne Studio starten. Dann werden "
+    + "Name, Zyklen und Notiz wie bisher beim Beenden in der Konsole abgefragt."));
+  return raus;
+}
+
+async function wzAufnahmeStarten() {
+  const name = wzAufnahmeName.trim();
+  if (!name) {
+    setzeStatus({text: "Bitte zuerst einen Namen eingeben.", art: "err"});
+    return;
+  }
+  const antwort = await frage("aufnahme_starten", {
+    name: name, zyklen: wzAufnahmeZyklen, beschreibung: wzAufnahmeBeschreibung});
+  if (!antwort) return;
+  setzeStatus({text: antwort.meldung || "", art: antwort.ok ? "ok" : "err"});
+  if (!antwort.ok) return;
+  wzAufnahmeName = antwort.name || name;
+  wzAufnahmeGestartet = true;
+  wzAufnahmeLive = {aktiv: true, pausiert: false, anzahl: 0, ereignisse: []};
+  wzAufnahmeBeobachten();
+  wzMitteZeichnen();
+  wzRechtsZeichnen();
+  wzAufnahmeLiveStarten();
+}
+
+/** Drei feste Zeilen statt eines wachsenden Logs: neuestes Ereignis unten. */
+function wzAufnahmeAusgabeFuellen(ziel) {
+  if (!ziel) return;
+  const daten = wzAufnahmeLive || {};
+  const ereignisse = Array.isArray(daten.ereignisse) ? daten.ereignisse.slice(-3) : [];
+  const kopftext = daten.pausiert ? "PAUSIERT" : wzAufnahmeGestartet ? "LIVE" : "LETZTE EREIGNISSE";
+  ziel.replaceChildren(el("div", {class: "wz-ausgabe-kopf"},
+    el("span", {}, kopftext),
+    el("span", {class: "wz-ausgabe-zaehler"}, String(daten.anzahl || 0) + " Ereignisse")));
+  const zeilen = el("div", {class: "wz-ausgabe-zeilen"});
+  if (!ereignisse.length) {
+    zeilen.appendChild(el("div", {class: "wz-ausgabe-leer"},
+      wzAufnahmeGestartet ? "Warte auf das erste Ereignis …" : "Noch nichts aufgenommen."));
+  } else {
+    ereignisse.forEach((e, i) => {
+      const farbe = e.farbe
+        ? el("span", {class: "wz-ausgabe-farbe",
+            style: "color:rgb(" + e.farbe.join(",") + ")"}, "█") : null;
+      zeilen.appendChild(el("div", {class: "wz-ausgabe-zeile" +
+          (i === ereignisse.length - 1 ? " neu" : "")},
+        el("span", {class: "wz-ausgabe-nr"}, String(e.nummer || "")),
+        el("span", {class: "wz-ausgabe-text"}, e.text || "—"),
+        el("span", {class: "wz-ausgabe-zeit"}, e.zeit || ""),
+        el("span", {class: "wz-ausgabe-farbtext"}, farbe, e.farbtext || "")));
+    });
+  }
+  ziel.appendChild(zeilen);
+}
+
+function wzAufnahmeLiveStarten() {
+  const nummer = ++wzAufnahmeLivePoll;
+  const lesen = async () => {
+    if (nummer !== wzAufnahmeLivePoll || !wzAufnahmeGestartet) return;
+    const status = await frage("aufnahme_status");
+    if (status) {
+      wzAufnahmeLive = status;
+      wzAufnahmeAusgabeFuellen($("wz-aufnahme-ausgabe"));
+    }
+    setTimeout(lesen, 300);
+  };
+  setTimeout(lesen, 150);
+}
+
+async function wzAufnahmeStoppen() {
+  const antwort = await frage("aufnahme_stoppen");
+  if (!antwort) return;
+  setzeStatus({text: antwort.meldung || "", art: antwort.ok ? "ok" : "err"});
+  if (antwort.ok) wzAufnahmeBeobachten(true);
+}
+
+/** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke. */
+function wzAufnahmeBeobachten(schnell = false) {
+  const nummer = ++wzAufnahmePoll;
+  let versuche = 0;
+  const pruefen = async () => {
+    if (nummer !== wzAufnahmePoll || !wzAufnahmeGestartet) return;
+    const liste = (await frage("sequenz_liste")) || [];
+    if (liste.some(s => s.name === wzAufnahmeName)) {
+      wzAufnahmeGestartet = false;
+      ++wzAufnahmeLivePoll;
+      await ruf("laden", {name: wzAufnahmeName});
+      setzeAnsicht("editor");
+      setzeStatus({text: "Aufnahme gespeichert — die erzeugten Blöcke sind geöffnet.", art: "ok"});
+      return;
+    }
+    versuche += 1;
+    if (schnell && versuche >= 12) {
+      wzAufnahmeGestartet = false;
+      ++wzAufnahmeLivePoll;
+      wzMitteZeichnen();
+      setzeStatus({text: "Keine gespeicherte Aufnahme gefunden — wurde etwas aufgezeichnet?", art: "warn"});
+      return;
+    }
+    setTimeout(pruefen, schnell ? 350 : 1000);
+  };
+  setTimeout(pruefen, schnell ? 350 : 1000);
+}
+
+function wzKennzahl(wert, label, art) {
+  return el("div", {class: "wz-kennzahl " + art},
+    el("strong", {}, wert), el("span", {}, label));
+}
+
+function wzBefund(b, stufe) {
+  const kasten = el("div", {class: "wz-befund " + stufe});
+  kasten.appendChild(el("div", {class: "wz-befund-icon"}, wzIcon(stufe)));
+  const copy = el("div", {class: "wz-befund-copy"},
+    el("div", {class: "wz-bereich"}, b.bereich), el("div", {}, b.text));
+  if (b.tipp) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tipp));
+  kasten.appendChild(copy);
+  return kasten;
+}
+
+function wzGeprueftBauen() {
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "GEPRÜFT"));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:4px"});
+  if (!wzBericht || !wzBericht.ok) {
+    liste.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+      "Noch nichts geprüft."));
+  } else {
+    for (const b of wzBericht.geprueft)
+      liste.appendChild(el("div", {class: "wz-geprueft"}, wzIcon("ok"), el("span", {}, b)));
+  }
+  return [kopf, liste];
+}
+
+async function wzPruefen() {
+  setzeStatus({text: "Prüfe…", art: "info"});
+  wzBericht = await frage("werkzeug_pruefen");
+  if (!wzBericht) return;
+  const n = wzBericht.fehler || 0, h = wzBericht.hinweise || 0;
+  setzeStatus({
+    text: !wzBericht.ok ? (wzBericht.meldung || "Prüfung fehlgeschlagen.")
+        : (n || h) ? n + " Fehler, " + h + " Hinweis(e)."
+        : "Alles in Ordnung.",
+    art: !wzBericht.ok || n ? "err" : h ? "warn" : "ok",
+  });
+  wzMitteZeichnen();
+}
+
+/* ------------------------------------------------------------- Kalibrieren */
+
+function wzKalibBauen() {
+  const K = (W && W.kalibrierung) || {};
+  const raus = [wzKopf("kalibrieren", "Koordinaten kalibrieren",
+    "Einen bekannten Punkt neu messen und alle gespeicherten Stellen präzise mitziehen.")];
+  raus.push(wzBezug("kalibrieren"));
+  raus.push(wzInfo("Wann brauche ich das?",
+    "Wenn Windows Monitore verschoben oder die Auflösung geändert hat. Der erste "
+    + "Referenzpunkt bestimmt die Verschiebung, ein zweiter optional die Skalierung."));
+
+  if (!W || !W.punkte.length) {
+    raus.push(el("p", {class: "art-err"}, "Keine Punkte vorhanden — es gibt nichts zu kalibrieren."));
+    return raus;
+  }
+
+  raus.push(wzRefZeile(1, K.ref1));
+  // Der zweite Punkt erst anbieten, wenn der erste steht: ohne Verschiebung
+  // gibt es keine Skalierung, und zwei leere Felder nebeneinander sehen aus,
+  // als muesste man beide ausfuellen.
+  if (K.ref1) {
+    raus.push(wzInfo("Zweiter Referenzpunkt",
+      "Nur wenn sich auch die Auflösung geändert hat: Dann einen zweiten Punkt "
+      + "möglichst weit vom ersten entfernt anfahren."));
+    raus.push(wzRefZeile(2, K.ref2));
+  }
+
+  if (K.ref1) {
+    raus.push(el("div", {class: "wz-zwischenkopf"}, "BERECHNETER TRANSFORM"));
+    const v = K.versatz || {x: 0, y: 0};
+    const werte = el("div", {class: "wz-kennzahlen"},
+      wzKennzahl(wzVorz(v.x), "X-Versatz", "neutral"),
+      wzKennzahl(wzVorz(v.y), "Y-Versatz", "neutral"));
+    if (K.skalierung && (K.skalierung.x !== 1 || K.skalierung.y !== 1))
+      werte.appendChild(wzKennzahl(K.skalierung.x + "×" + K.skalierung.y,
+        "Skalierung X/Y", "hinweis"));
+    raus.push(werte);
+    raus.push(wzVersatzFelder(v));
+    if (K.identitaet)
+      raus.push(el("p", {class: "art-warn"},
+        "Der Transform ändert nichts — der Punkt sitzt schon richtig."));
+    raus.push(wzUmfangKasten());
+    const leiste = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
+    leiste.appendChild(el("button", {
+      class: "btn haupt", disabled: !!K.identitaet,
+      onclick: () => rufWerkzeug("kalib_anwenden", {...wzUmfang}),
+    }, "Umrechnen und speichern"));
+    leiste.appendChild(el("button", {
+      class: "btn", onclick: () => rufWerkzeug("kalib_abbrechen"),
+    }, "Verwerfen"));
+    raus.push(leiste);
+    raus.push(wzInfo("Sicherung und laufende Sequenz",
+      "Vorher entsteht ein vollständiges Export-ZIP als Sicherung. Läuft eine "
+      + "Sequenz, wird nicht umgerechnet — sie klickt sonst mitten im Umbau."));
+  }
+  return raus;
+}
+
+function wzVorz(n) { return (n > 0 ? "+" : "") + n; }
+
+function wzFarbe(rgb) {
+  return el("span", {class: "wz-farbe",
+                     style: "background:rgb(" + rgb.join(",") + ")"});
+}
+
+/** Die Rueckfrage bei abweichender Farbe: beide Farben nebeneinander, dann
+ *  entscheiden. Gesperrt wird nichts — manchmal hat sich das Spiel geaendert und
+ *  die neue Farbe ist die richtige. Es soll nur nicht aus Versehen gehen. */
+function wzFarbfrageBauen() {
+  const f = wzFarbfrage;
+  const kasten = el("div", {class: "wz-farbfrage"});
+  kasten.appendChild(el("div", {class: "art-warn"}, f.meldung));
+  const reihe = el("div", {class: "wz-farbreihe"});
+  reihe.append(el("span", {class: "hint"}, "gespeichert"), wzFarbe(f.erwartet),
+               el("span", {class: "hint"}, "dort gemessen"), wzFarbe(f.gemessen),
+               el("span", {class: "hint"},
+                  "(" + f.stelle[0] + ", " + f.stelle[1] + ")"));
+  kasten.appendChild(reihe);
+  const leiste = el("div", {style: "display:flex;gap:8px"});
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: async () => {
+      const n = f.nummer, id = f.punkt_id;
+      wzFarbfrage = null;
+      // Auch „Trotzdem setzen" misst die Stelle NEU — kalib_referenz wartet
+      // in jedem Fall auf ENTER. Ohne den Hinweis sieht der Knopf aus, als
+      // habe er nichts getan.
+      await mitWarten("werkzeug", "kalib_referenz",
+                      {nummer: n, punkt_id: id, bestaetigt: true});
+    },
+  }, "Trotzdem setzen"));
+  leiste.appendChild(el("button", {
+    class: "btn haupt", onclick: () => {
+      wzFarbfrage = null;
+      setzeStatus({text: "Verworfen — nichts gesetzt.", art: "info"});
+      zeichneWerkzeuge();
+    },
+  }, "Nochmal anfahren"));
+  kasten.appendChild(leiste);
+  kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+    "\u201eTrotzdem setzen\u201c ist richtig, wenn sich das Spiel geändert hat. Sonst "
+    + "erst nachsehen: ein danebenliegender Referenzpunkt verschiebt nicht sich "
+    + "selbst, sondern jede gespeicherte Stelle."));
+  return kasten;
+}
+
+/** Der Punkt mit dem groessten Abstand zum ersten Referenzpunkt.
+ *
+ * Zwei nah beieinander liegende Punkte machen die Skalierung unbrauchbar: der
+ * Messfehler der Maus (ein paar Pixel) verteilt sich dann auf eine kurze
+ * Strecke und wird zum Faktor hochgerechnet. */
+function wzWeitesterPunkt(ref1) {
+  let beste = W.punkte[0], weit = -1;
+  for (const p of W.punkte) {
+    if (ref1 && p.id === ref1.punkt_id) continue;
+    const d = Math.hypot(p.x - (ref1 ? ref1.alt[0] : 0), p.y - (ref1 ? ref1.alt[1] : 0));
+    if (d > weit) { weit = d; beste = p; }
+  }
+  return beste.id;
+}
+
+/** Eine Referenzpunkt-Zeile: welchen Punkt, und der Knopf zum Anfahren. */
+function wzRefZeile(nummer, gesetzt) {
+  const kasten = el("div", {class: "wz-ref"});
+  kasten.appendChild(el("div", {class: "wz-bereich"},
+    nummer === 1 ? "1. Referenzpunkt (Verschiebung)"
+                 : "2. Referenzpunkt (Skalierung, optional)"));
+  const wahl = el("select");
+  for (const p of W.punkte)
+    wahl.appendChild(el("option", {value: String(p.id)},
+      "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"));
+  if (gesetzt) wahl.value = String(gesetzt.punkt_id);
+  // Der zweite Punkt soll WEIT weg vom ersten liegen — genau das steht als
+  // Hinweis darueber. Der erste Eintrag der Liste ist aber der erste Punkt
+  // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
+  // Fehlermeldung ergibt, ist schlimmer als gar keiner.
+  else if (nummer === 2) wahl.value = String(wzWeitesterPunkt(W.kalibrierung.ref1));
+  kasten.appendChild(wahl);
+  kasten.appendChild(el("button", {
+    class: "btn",
+    onclick: async () => {
+      setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
+      const antwort = await mitWarten("frage", "kalib_referenz",
+        {nummer, punkt_id: Number(wahl.value)});
+      // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
+      // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
+      if (antwort && antwort.bestaetigen) { wzFarbfrage = {...antwort, nummer}; }
+      else if (antwort && antwort.meldung)
+        setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "err"});
+      await zeichneWerkzeuge();
+    },
+  }, gesetzt ? "Neu anfahren" : "Stelle anfahren"));
+  if (wzFarbfrage && wzFarbfrage.nummer === nummer)
+    kasten.appendChild(wzFarbfrageBauen());
+  if (gesetzt)
+    kasten.appendChild(el("div", {class: "hint"},
+      "(" + gesetzt.alt[0] + ", " + gesetzt.alt[1] + ") → ("
+      + gesetzt.neu[0] + ", " + gesetzt.neu[1] + ")"));
+  return kasten;
+}
+
+/** Versatz von Hand nachziehen — mit der Maus trifft man den Pixel nicht genau. */
+function wzVersatzFelder(v) {
+  const kasten = el("div", {class: "wz-ref"});
+  kasten.appendChild(el("div", {class: "wz-bereich"}, "Versatz von Hand"));
+  const felder = {};
+  for (const achse of ["x", "y"]) {
+    const feld = el("input", {type: "number", step: "1", value: String(v[achse]),
+                              style: "width:90px"});
+    felder[achse] = feld;
+    kasten.append(el("span", {}, achse.toUpperCase()), feld);
+  }
+  kasten.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("kalib_versatz",
+      {x: felder.x.value, y: felder.y.value}),
+  }, "Übernehmen"));
+  kasten.appendChild(wzInfo("Versatz von Hand",
+    "Weisst du, dass eine Achse stimmt, ist eine getippte 0 genauer als jede Messung."));
+  return kasten;
+}
+
+function wzUmfangKasten() {
+  const kasten = el("div", {class: "wz-ref", style: "flex-direction:column;align-items:stretch"});
+  kasten.appendChild(el("div", {class: "wz-bereich"}, "Was mitgerechnet wird"));
+  kasten.appendChild(wzInfo("Punkte",
+    "Punkte werden immer mitgerechnet — daran hängt alles andere."));
+  for (const u of W.umfang) {
+    const zeile = el("label", {class: "teilen-zeile an"});
+    const box = el("input", {type: "checkbox"});
+    box.checked = !!wzUmfang[u.schluessel];
+    box.addEventListener("change", () => { wzUmfang[u.schluessel] = box.checked; });
+    zeile.append(box, el("span", {}, u.text));
+    kasten.appendChild(zeile);
+  }
+  kasten.appendChild(wzInfo("Warum Slots standardmässig aus sind",
+    "Slots stehen getrennt und sind aus: nach einem repair dürfen sie kein "
+    + "zweites Mal wandern."));
+  return kasten;
+}
+
+/* --------------------------------------------------------- Punkte nachklicken */
+
+/* Die vier Griffe während der Runde — dieselbe Liste wie `TASTEN` in
+ * `editors/nachklick.py`. Sie steht hier als Tabelle und nicht als Absatz, weil
+ * man sie MITTEN im Klicken nachschlägt: Fliesstext zwingt zum Lesen von vorn,
+ * und dann liest ihn niemand. */
+const WZ_TASTEN = [
+  ["CTRL+ALT+K", "überspringen", "Punkt bleibt, wo er ist"],
+  ["CTRL+ALT+U", "zurück", "einen Punkt zurück, noch mal"],
+  ["CTRL+ALT+H", "pausieren", "navigieren, ohne einen Punkt zu verbrauchen"],
+  ["CTRL+ALT+J", "übernehmen", "fertig — JETZT werden die Punkte geschrieben"],
+];
+
+/* Was die Runde tut, in der Reihenfolge, in der es passiert. Drei Schritte statt
+ * dreier Absätze: der Ablauf IST die Erklärung. */
+const WZ_SCHRITTE = [
+  ["Starten", "Der Zeiger springt auf den ersten Punkt der Sequenz."],
+  ["Klicken", "Stimmt die Stelle noch? Dann einfach klicken. Sonst hinfahren und "
+            + "dort klicken — der Klick geht ans Spiel, die Oberfläche öffnet "
+            + "sich wie im Lauf, und der nächste Punkt liegt vor dir."],
+  ["Übernehmen", "Erst damit werden die Punkte geschrieben. Vorher ändert sich "
+               + "nichts — an keiner Datei und in keinem Speicher."],
+];
+
+function wzTastenTabelle(tasten = WZ_TASTEN) {
+  const rumpf = el("tbody");
+  for (const [taste, was, warum] of tasten)
+    rumpf.appendChild(el("tr", {},
+      el("td", {}, el("span", {class: "wz-taste"}, taste)),
+      el("td", {class: "wz-was"}, was),
+      el("td", {class: "wz-warum"}, warum)));
+  return el("table", {class: "wz-tasten"}, rumpf);
+}
+
+/* Was ein erledigter Punkt geworden ist. Vier Ausgaenge, weil die Runde vier
+ * kennt — und „bestaetigt" von „uebersprungen" zu unterscheiden ist der ganze
+ * Grund fuer `nachklick_verlauf`: beide aendern nichts, aber nur einer heisst
+ * „ich habe hingesehen". */
+const WZ_NK_ART = {
+  passt: ["✓", "nk-passt", "bestätigt — bleibt, wo er ist"],
+  gesetzt: ["→", "nk-gesetzt", "neu gesetzt"],
+  uebersprungen: ["↷", "nk-skip", "übersprungen"],
+  fehlt: ["✕", "nk-fehlt", "Punkt gibt es nicht mehr"],
+};
+
+/** Der Live-Stand der Runde: wo sie steht, was dran ist, was war. */
+function wzNachklickAusgabeFuellen(ziel) {
+  if (!ziel) return;
+  const d = wzNachklickLive || {};
+  const gesamt = d.gesamt || 0;
+  const fertig = Math.min(d.index || 0, gesamt);
+  const laeuft = !!d.aktiv && !d.verwaist;
+
+  // Der Kopf beantwortet die erste Frage („laeuft das ueberhaupt noch?"), und
+  // ein verwaister Stand sagt es, statt eine tote Runde als lebend zu zeigen.
+  const kopftext = d.verwaist ? "KEIN HAUPTPROZESS"
+    : d.pausiert ? "PAUSIERT" : laeuft ? "LÄUFT" : gesamt ? "BEENDET" : "NICHT GESTARTET";
+  ziel.replaceChildren(el("div", {class: "wz-ausgabe-kopf"},
+    el("span", {}, kopftext),
+    el("span", {class: "wz-ausgabe-zaehler"},
+      gesamt ? fertig + " von " + gesamt + " Punkt(en)" : "—")));
+
+  if (!gesamt) {
+    ziel.appendChild(el("div", {class: "wz-ausgabe-zeilen"},
+      el("div", {class: "wz-ausgabe-leer"},
+        "Noch keine Runde gelaufen. „Runde starten“ setzt den Zeiger auf den "
+        + "ersten Punkt.")));
+    return;
+  }
+
+  // Ein Balken statt einer zweiten Zahl: wie weit die Runde ist, sieht man
+  // beim Klicken aus dem Augenwinkel — eine Zahl muss man lesen.
+  ziel.appendChild(el("div", {class: "nk-balken"},
+    el("div", {class: "nk-balken-fuell",
+               style: "width:" + Math.round(fertig / gesamt * 100) + "%"})));
+
+  // Der aktuelle Punkt ist die Antwort auf „was macht das Programm gerade".
+  const p = d.punkt || {};
+  if (laeuft && p.id !== undefined) {
+    ziel.appendChild(el("div", {class: "nk-jetzt"},
+      el("span", {class: "nk-jetzt-marke"}, "jetzt"),
+      el("span", {class: "zahl"}, "#" + p.id),
+      el("span", {class: "nk-jetzt-name"}, p.name || ""),
+      el("span", {class: "nk-jetzt-pos"}, "(" + p.x + ", " + p.y + ")"),
+      p.farbe ? el("span", {class: "wz-ausgabe-farbe",
+                            style: "color:rgb(" + p.farbe.join(",") + ")"}, "█") : null));
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"}, d.pausiert
+      ? "Pausiert — Klicks setzen keinen Punkt. CTRL+ALT+H macht weiter."
+      : "Der Zeiger steht schon dort. Stimmt die Stelle — klicken. Sonst "
+        + "hinfahren und dort klicken."));
+  } else if (!laeuft && gesamt) {
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"},
+      (d.geaendert || 0) + " Stelle(n) geändert. Was davon geschrieben wurde, "
+      + "hängt daran, ob übernommen oder verworfen wurde."));
+  }
+
+  // Der Verlauf laeuft rueckwaerts: das Letzte ist das, was man sucht.
+  const verlauf = Array.isArray(d.verlauf) ? d.verlauf.slice(-6).reverse() : [];
+  const zeilen = el("div", {class: "wz-ausgabe-zeilen"});
+  if (!verlauf.length) {
+    zeilen.appendChild(el("div", {class: "wz-ausgabe-leer"},
+      "Noch kein Punkt erledigt."));
+  } else {
+    for (const v of verlauf) {
+      const [zeichen, klasse, was] = WZ_NK_ART[v.art] || ["·", "", v.art];
+      zeilen.appendChild(el("div", {class: "nk-zeile"},
+        el("span", {class: "nk-art " + klasse, title: was}, zeichen),
+        el("span", {class: "zahl"}, "#" + v.id),
+        el("span", {class: "nk-name"}, v.name || ""),
+        el("span", {class: "nk-wohin"}, v.alt && v.neu
+          ? "(" + v.alt[0] + ", " + v.alt[1] + ") → (" + v.neu[0] + ", " + v.neu[1] + ")"
+          : was)));
+    }
+  }
+  ziel.appendChild(zeilen);
+  if (d.sonstige)
+    ziel.appendChild(el("div", {class: "hint nk-hinweis"},
+      d.sonstige + " Stelle(n) erreicht die Runde nicht (beobachtete Pixel, "
+      + "ELSE, Rad) — dafür bleibt walk im Punkte-Menü."));
+}
+
+/* Gepollt wird, solange der Reiter offen ist — nicht nur nach dem eigenen
+ * Startknopf. Die Runde kann aus dem Punkte-Menue gestartet worden sein, und
+ * dann ist dieses Fenster trotzdem der bequemere Platz, um ihr zuzusehen.
+ * Nach dem Ende laeuft der Poll aus (`ruhig`), damit ein offener Reiter nicht
+ * dauerhaft alle 400 ms eine Datei liest. */
+function wzNachklickLiveStarten() {
+  const nummer = ++wzNachklickPoll;
+  let ruhig = 0;
+  const lesen = async () => {
+    if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
+    const stand = await frage("nachklick_status");
+    if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
+    if (stand) {
+      const lief = wzNachklickLive.aktiv;
+      wzNachklickLive = stand;
+      wzNachklickAusgabeFuellen($("wz-nachklick-ausgabe"));
+      // Endet die Runde, sagt es die Statuszeile — sonst merkt man es nur,
+      // wenn man gerade hinsieht.
+      if (lief && !stand.aktiv)
+        setzeStatus({text: "Klick-Runde beendet — " + (stand.geaendert || 0)
+                     + " Stelle(n) geändert.", art: "ok"});
+      ruhig = stand.aktiv ? 0 : ruhig + 1;
+    } else {
+      ruhig += 1;
+    }
+    if (ruhig > 12) return;
+    setTimeout(lesen, wzNachklickLive.aktiv ? 400 : 1000);
+  };
+  setTimeout(lesen, 100);
+}
+
+function wzKlickenBauen() {
+  const raus = [wzKopf("klicken", "Punkte nachklicken",
+    "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
+  raus.push(wzBezug("klicken"));
+
+  const schritte = el("div", {class: "wz-schritte"});
+  WZ_SCHRITTE.forEach(([titel, text], i) => {
+    schritte.append(el("div", {class: "wz-nummer"}, String(i + 1)),
+      el("div", {class: "wz-schritt-text"}, el("b", {}, titel + ": "), text));
+  });
+  raus.push(schritte);
+
+  // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
+  raus.push(el("div", {class: "wz-regel"},
+    el("span", {}, "⚠"),
+    el("span", {}, el("b", {}, "Nichts wird geschrieben, bis du übernimmst. "),
+      "Fenster zu, Programm aus oder „Verwerfen“ = die Runde ist weg und "
+      + "sequence.json bleibt, wie sie war. Geändert wird ohnehin nur die "
+      + "Stelle: Wartezeiten, Bedingungen, ELSE und Scans bleiben unangetastet.")));
+
+  const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
+  leiste.appendChild(el("button", {
+    class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
+    title: "Startet die Runde im Hauptprozess — geklickt wird danach im Spiel",
+  }, "Runde starten"));
+  // Zwei Ausgaenge, weil es zwei Absichten gibt. Ein einzelner „Beenden"-Knopf
+  // muesste sich fuer eine entscheiden und laege in der Haelfte der Faelle
+  // falsch. Ob gerade eine Runde laeuft, weiss dieses Fenster nicht (der Zustand
+  // liegt drueben) - die Knoepfe stehen deshalb immer da, und der Hauptprozess
+  // sagt, was er vorgefunden hat.
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden"),
+    title: "Schreibt die gesetzten Stellen nach sequence.json (= CTRL+ALT+J)",
+  }, "Übernehmen"));
+  leiste.appendChild(el("button", {
+    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden", {verwerfen: true}),
+    title: "Beendet die Runde, ohne etwas zu schreiben",
+  }, "Verwerfen"));
+  raus.push(leiste);
+
+  // Der Live-Stand steht ZWISCHEN Knoepfen und Tastentabelle: was das
+  // Programm gerade macht, sucht man dort, wo man es gerade gestartet hat.
+  const ausgabe = el("div", {class: "wz-ausgabe", id: "wz-nachklick-ausgabe"});
+  raus.push(ausgabe);
+  wzNachklickAusgabeFuellen(ausgabe);
+
+  wzNachklickLiveStarten();
+  raus.push(wzTastenTabelle());
+  raus.push(wzInfo("Bedienung im Spiel",
+    "Die Runde läuft wegen des systemweiten Maus-Hooks im Hauptprozess. Die "
+    + "Tasten wirken überall — auch mit dem Spiel im Vordergrund. Gezählt "
+    + "wird nur, was im Spielfenster geklickt wird (window_focus_title); ein "
+    + "Klick woanders verbraucht keinen Punkt."));
+  return raus;
+}
+
+/* ------------------------------------------------------------------- rechts */
+
+function wzRechtsZeichnen() {
+  const ziel = $("wz-rechts");
+  // Beim Pruefen steht hier, WAS geprueft wurde. „Alles in Ordnung" ist ohne
+  // diese Liste eine Behauptung: man weiss nicht, ob der Bereich sauber war
+  // oder gar nicht angesehen wurde.
+  if (wzOffen === "pruefen") return ziel.replaceChildren(...wzGeprueftBauen());
+  if (wzOffen === "aufnahme")
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "SO ENTSTEHEN DIE BLÖCKE"),
+      el("div", {class: "wz-aufnahme-ablauf"},
+        el("b", {}, "1 · Starten"), el("span", {}, "Das Studio schickt Name und Einstellungen mit."),
+        el("b", {}, "2 · Spielen"), el("span", {}, "Klicks, Tasten, Rad und Marker werden gesammelt."),
+        el("b", {}, "3 · Stoppen"), el("span", {}, "Die Sequenz wird gespeichert und automatisch im Editor geöffnet."))));
+  if (wzOffen === "punkte") {
+    const punkt = W && W.punkte.find(p => p.id === wzPunktId);
+    const kopf = el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "VERWENDUNGEN"),
+      el("span", {class: "hint"}, punkt ? "Punkt #" + punkt.id : "kein Punkt gewählt"));
+    const liste = el("div", {class: "abschnitt wachsend", style: "gap:5px"});
+    if (!punkt || !punkt.verwendungen.length)
+      liste.appendChild(el("p", {class: "hinweis"}, "Dieser Punkt wird nirgends verwendet und kann sicher gelöscht werden."));
+    else for (const v of punkt.verwendungen)
+      liste.appendChild(el("div", {class: "wz-geprueft"}, wzIcon("punkte"), el("span", {}, v)));
+    return ziel.replaceChildren(kopf, liste);
+  }
+  if (wzOffen === "farben")
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "MESSUNG"),
+      el("p", {class: "hinweis"}, wzFarbAnalyse && wzFarbAnalyse.ok
+        ? (wzFarbAnalyse.meldung || "Analyse abgeschlossen.")
+        : "Noch keine Analyse. Die Farbfelder erscheinen nach der Aufnahme in der Mitte.")));
+  if (wzOffen === "klicken")
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      wzInfo("Was die Runde nicht erreicht",
+        "Beobachtete Pixel, Nachprüfungen, ELSE-Klicks und Rad-Schritte kommen "
+        + "in einem normalen Durchlauf gar nicht vor. Dafür bleibt walk im "
+        + "Punkte-Menü. Welche das sind, sagt die Runde beim Start in der Konsole.")));
+  if (!W || !W.kalibrierung.ref1)
+    return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "VORSCHAU"),
+      el("div", {class: "hint", style: "white-space:normal"},
+        "Sobald der erste Referenzpunkt steht, steht hier, was sich ändern würde.")));
+
+  const zeilen = W.kalibrierung.vorschau || [];
+  const kopf = el("div", {class: "abschnitt"},
+    el("span", {class: "ueberschrift"}, "VORSCHAU"),
+    el("div", {class: "hint"}, zeilen.length + " Stelle(n), Auszug"));
+  const liste = el("div", {class: "abschnitt wachsend", style: "gap:4px"});
+  for (const z of zeilen) {
+    liste.appendChild(el("div", {class: "wz-vorschau"},
+      el("div", {}, z.was),
+      el("div", {class: "hint"},
+        "(" + z.vorher.join(", ") + ") → (" + z.nachher.join(", ") + ")")));
+  }
+  if (!zeilen.length)
+    liste.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
+  ziel.replaceChildren(kopf, liste);
+}
+
+/* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
+ * liegt sein Zustand neben `S`: `C` ist die Antwort von `config_lesen()`,
  * `cfgGeaendert` sammelt, was noch nicht geschrieben ist.
  *
- * Gespeichert wird auf Knopfdruck, nicht bei jedem Tastendruck: die Werte
- * greifen in einen laufenden Lauf, und eine halb getippte Zahl darf nicht
- * schon gelten. */
+ * Gespeichert wird auf Knopfdruck: die Werte greifen in einen laufenden Lauf,
+ * und eine halb getippte Zahl darf nicht schon gelten. */
 let C = null;
 let cfgGeaendert = {};
 let cfgAbschnitt = 0;
@@ -3129,7 +5960,7 @@ function cfgStelle(key, m, wert) {
 async function cfgStelleAufnehmen(key) {
   setzeStatus({text: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab).",
                art: "warn"});
-  const antwort = await frage("maus_stelle");
+  const antwort = await mitWarten("frage", "maus_stelle");
   if (!antwort) return;
   if (!antwort.ok) return setzeStatus({text: antwort.meldung || "Abgebrochen.", art: "warn"});
   cfgSetzen(key, [antwort.x, antwort.y]);
@@ -3244,6 +6075,7 @@ function verdrahte() {
     () => ruf("laden", {name: $("seq-auswahl").value}));
   $("btn-neu").addEventListener("click", () => ruf("neu"));
   $("btn-speichern").addEventListener("click", speichere);
+  $("btn-aufnahme").addEventListener("click", () => wzOeffnen("aufnahme"));
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-lauf").addEventListener("click", () => laufSchicken(laufLief ? "stop" : "start"));
@@ -3264,9 +6096,22 @@ function verdrahte() {
     zeichneEinstellungen();
   });
 
+  for (const knopf of document.querySelectorAll("[data-scan-art]"))
+    knopf.addEventListener("click", () => scanArtSetzen(knopf.dataset.scanArt));
+  for (const knopf of document.querySelectorAll("[data-erk-tool]"))
+    knopf.addEventListener("click", () => rufScan("region_modus",
+      {art: scanArt, modus: knopf.dataset.erkTool}));
+
   $("scan-offen").addEventListener("change", (e) => {
     scanAssistentSchritt = null;
     rufScan("scan_oeffnen", {name: e.target.value});
+  });
+  $("scan-name").addEventListener("change", (e) => {
+    if (!SC || !SC.offen) return;
+    rufScan("scan_setzen", {name: SC.offen, feld: "name", wert: e.target.value});
+  });
+  $("scan-name").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") e.target.blur();
   });
   $("scan-neu").addEventListener("click", () => {
     scanAssistentSchritt = 1;
@@ -3282,36 +6127,32 @@ function verdrahte() {
       scanSchritte();
     }));
   $("scan-slots-finden").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: "finden"}));
+    rufScan("scan_modus_setzen", {modus: "finden", art: scanArt}));
   $("scan-slot-neu").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: "slot"}));
+    rufScan("scan_modus_setzen", {modus: "slot", art: scanArt}));
   $("scan-test").addEventListener("click", () => rufScan("scan_erkennen"));
   $("scan-lernen").addEventListener("click", () =>
     rufScan("scan_lernvorschau", {scope: "alle"}));
   document.querySelectorAll("[data-scan-tool]").forEach((knopf) =>
     knopf.addEventListener("click", () =>
-      rufScan("scan_modus_setzen", {modus: knopf.dataset.scanTool})));
+      rufScan("scan_modus_setzen", {modus: knopf.dataset.scanTool, art: scanArt})));
   $("scan-pin").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: SC.modus, fixiert: !SC.werkzeug_fixiert}));
-  // Wie jedes Tipp-Feld: melden beim VERLASSEN, nicht bei jedem Tastendruck -
-  // sonst baut die Antwort die Ansicht neu, waehrend man noch tippt.
-  $("scan-name").addEventListener("change", (e) => {
-    if (SC && SC.offen) rufScan("scan_setzen",
-                                {name: SC.offen, feld: "name", wert: e.target.value});
-  });
-  $("scan-name").addEventListener("keydown",
-    (e) => { if (e.key === "Enter") e.target.blur(); });
-  $("scan-foto").addEventListener("click", () => rufScan("scan_foto"));
-  $("scan-vollbild").addEventListener("click", () => rufScan("scan_bereich_setzen"));
+    rufScan("scan_modus_setzen", {modus: SC.modus, art: scanArt,
+                                   fixiert: !SC.werkzeug_fixiert}));
+  $("scan-foto").addEventListener("click", () => rufScan("scan_foto", {art: scanArt}));
+  $("scan-vollbild").addEventListener("click", () =>
+    rufScan("scan_bereich_setzen", {art: scanArt}));
   $("scan-aufziehen").addEventListener("click",
-    () => rufScan("scan_modus_setzen", {modus: "bereich"}));
+    () => rufScan("scan_modus_setzen", {modus: "bereich", art: scanArt}));
+  $("scan-fenster-neu").addEventListener("click", scanFensterPflegen);
   $("scan-fenster").addEventListener("change", (e) => {
     const wahl = scanFenster[Number(e.target.value)];
     // Waehlen nimmt NICHT auf — das tut der Knopf darueber. Vorher stand hier
     // beides in einem Griff, und dann sah es aus, als handele die Liste von
     // selbst und der Knopf gar nicht (er holte dasselbe Bild noch einmal).
-    if (wahl) rufScan("scan_bereich_setzen", {bereich: wahl.bereich, fenster: wahl.id});
-    else rufScan("scan_bereich_setzen");
+    if (wahl) rufScan("scan_bereich_setzen",
+      {art: scanArt, bereich: wahl.bereich, fenster: wahl.id});
+    else rufScan("scan_bereich_setzen", {art: scanArt});
   });
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {
@@ -3332,6 +6173,7 @@ function verdrahte() {
   }
 
   const flaeche = $("scan-overlay");
+  const buehne = $("scan-buehne");
   flaeche.addEventListener("click", (e) => {
     // Ein Klick, der ein Ziehen beendet hat, ist kein Klick. Ohne das waehlte
     // das Loslassen den Slot gleich noch einmal neu aus.
@@ -3341,15 +6183,23 @@ function verdrahte() {
     // ALT misst den Hintergrund des Slots unter dem Zeiger — ohne den Umweg
     // ueber die Modus-Kachel. Der haeufigste Handgriff nach dem Finden.
     if (e.altKey) return rufScan("scan_direkt", {x: stelle[0], y: stelle[1],
-                                                 was: "messen"});
+                                                 was: "messen", art: scanArt});
     // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
     // Geste wie im Sequenz-Editor.
-    rufScan("scan_klick", {x: stelle[0], y: stelle[1],
+    rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt,
                            zusatz: e.ctrlKey || e.metaKey});
+  });
+  // Beim automatischen Finden darf eine Ecke auch im freien Teil der MITTLEREN
+  // Buehne liegen. Der Helfer klemmt sie an den Bildrand; die Seitenleisten
+  // liegen ausserhalb dieses Elements und koennen die Geste nie ausloesen.
+  buehne.addEventListener("click", (e) => {
+    const stelle = scanSuchStelleAusBuehne(e);
+    if (stelle) rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt});
   });
   flaeche.addEventListener("dblclick", (e) => {
     const stelle = scanStelleAusEvent(e);
-    if (stelle) rufScan("scan_direkt", {x: stelle[0], y: stelle[1], was: "klick"});
+    if (stelle) rufScan("scan_direkt",
+      {x: stelle[0], y: stelle[1], was: "klick", art: scanArt});
   });
 
   // **Einen gewaehlten Slot zieht man, statt vier Zahlen zu tippen.** Gepackt
@@ -3382,6 +6232,13 @@ function verdrahte() {
     // Overlays bei jeder Mausbewegung.
     if (!SC || !SC.ecke) return;
     scanZeiger = scanStelleAusEvent(e);
+    scanOverlay();
+  });
+  buehne.addEventListener("mousemove", (e) => {
+    if (!SC || !SC.ecke || SC.modus !== "finden") return;
+    const stelle = scanSuchStelleAusBuehne(e);
+    if (!stelle) return;
+    scanZeiger = stelle;
     scanOverlay();
   });
   // Am Fenster, nicht an der Flaeche: wer ueber den Bildrand hinauszieht,
@@ -3449,6 +6306,10 @@ function tastatur(e) {
     if (imTextfeld()) return document.activeElement.blur();
     if (ansicht === "scans") return rufScan("scan_abbrechen");
     if (ansicht === "einstellungen") return;
+    if (gewaehltePhase !== null) {
+      gewaehltePhase = null;
+      return zeichnePhasen();
+    }
     return ruf("auswahl_leeren");
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -3482,18 +6343,46 @@ function tastatur(e) {
       return rufScan("scan_verschieben",
                      {dx: schub[0] * weit, dy: schub[1] * weit, zaehlt: !serie});
     }
-    // Die Modi liegen auf ihren Anfangsbuchstaben — beim Aufziehen von zwanzig
-    // Slots ist der Griff zur Werkzeugleiste der laengste Teil der Arbeit.
-    const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
-    if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen", {modus: modus.key}); }
-    if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
+    // **Die Modus-Buchstaben gehoeren der Item-Art.** Ein „S" in der Boss-Ansicht
+    // legte sonst einen Slot an — ein Werkzeug fuer etwas, das dort gar nicht
+    // vorkommt, und der naechste Klick im Bild haette eine andere Wirkung als
+    // die Leiste behauptet.
+    if (scanArt === "item") {
+      const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
+      if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen",
+        {modus: modus.key, art: scanArt}); }
+      if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
+        e.preventDefault();
+        return rufScan("scan_slot_loeschen");
+      }
+      return;
+    }
+    // Dieselbe Idee eine Ebene weiter: R und K sind die beiden Werkzeuge der
+    // Erkennungs-Scans, T testet. Testen liegt auf einer Taste, weil man beim
+    // Einstellen einer Toleranz zehnmal hintereinander testet.
+    const werkzeug = {r: "region", k: "aktion"}[e.key.toLowerCase()];
+    if (werkzeug) {
       e.preventDefault();
-      return rufScan("scan_slot_loeschen");
+      return rufScan("region_modus", {art: scanArt, modus: werkzeug});
+    }
+    if (e.key.toLowerCase() === "t" && SC && erkScan()) {
+      e.preventDefault();
+      return erkTesten();
+    }
+    if (e.key === "Delete" && scanArt === "boss" && SC && SC.boss.wahl) {
+      e.preventDefault();
+      return rufScan("boss_loeschen");
     }
     return;
   }
   // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
   if (ansicht === "einstellungen") return;
+  if (e.key === "Delete" && gewaehltePhase !== null) {
+    e.preventDefault();
+    const phase = gewaehltePhase;
+    gewaehltePhase = null;
+    return ruf("phase_loeschen", {phase: phase});
+  }
   if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an

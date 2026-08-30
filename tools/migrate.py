@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""
-Hebt ALLE JSON-Dateien auf den aktuellen Stand und schreibt sie sauber zurueck.
+"""Hebt ALLE JSON-Dateien auf den aktuellen Stand und schreibt sie sauber zurueck.
 
-Normalerweise braucht man das NICHT von Hand: der Autoclicker macht denselben Durchgang
-bei jedem Start (config `migrate_on_start`, Default an). Dieses Skript ist fuer die
-Faelle, in denen man es getrennt haben will:
+Normalerweise nicht noetig: der Autoclicker macht denselben Durchgang bei jedem
+Start (`migrate_on_start`, Default an).
 
     python tools/migrate.py            # zeigt nur an, was passieren wuerde
     python tools/migrate.py --write    # schreibt (mit Backup)
 
-Die Logik selbst steckt in autoclicker/persistence/sweep.py - hier ist nur die CLI
-drumherum. Zwei Aufraeum-Arten laufen pro Datei:
+Die Logik steckt in `persistence/sweep.py`; hier ist nur die CLI drumherum.
+Pro Datei laufen zwei Aufraeum-Arten: die MIGRATION hebt Altformate (wird im
+Klartext gemeldet), der ROUND-TRIP schickt die Datei durch Loader + Serializer
+und raeumt damit auch Dateitypen ohne Migrationsschritt auf.
 
-1. MIGRATION  - Altformate werden ins aktuelle Format gehoben (Sequenz-Phasen,
-                point_id, confirm_point, Punkt-IDs). Wird im Klartext gemeldet.
-2. ROUND-TRIP - die Datei geht durch Loader + Serializer. Der Loader kennt nur aktuelle
-                Felder, der Serializer schreibt nur aktuelle Felder - alles, was
-                dazwischen wegfaellt, war Altbestand. Das raeumt auch Dateitypen auf,
-                die gar keinen Migrationsschritt haben.
-
-Backups landen unter backups/<ordner>/<datei>.bak, die Struktur wird gespiegelt. Ein
-zweiter Lauf findet nichts mehr zu tun - genau daran erkennt man, dass alles sauber ist.
+Backups landen unter backups/<ordner>/<datei>.bak. Ein zweiter Lauf findet
+nichts mehr zu tun — genau daran erkennt man, dass alles sauber ist.
 """
 
 from __future__ import annotations

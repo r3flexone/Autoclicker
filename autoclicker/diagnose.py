@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import AutoClickerState
-from .persistence import TEMPLATES_DIR
+from .persistence import sequence_templates_dir
 from .utils import col, err, hint, info, ok, warn
 from .winapi import get_virtual_desktop
 
@@ -74,8 +74,9 @@ def _pruefe_templates(state: AutoClickerState, bericht: Pruefbericht) -> None:
     und die einzige Spur ist eine Logger-Zeile im Rauschen.
     """
     with state.lock:
-        quellen = [(f"Item '{n}'", tpl)
-                   for n, i in state.global_items.items()
+        owner = state.active_sequence.name if state.active_sequence else ""
+        quellen = [(f"Item '{i.name}' (Scan '{scan.name}')", tpl)
+                   for scan in state.item_scans.values() for i in scan.items
                    for tpl in i.template_names()]
         for scan in state.boss_scans.values():
             quellen += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template)
@@ -85,12 +86,13 @@ def _pruefe_templates(state: AutoClickerState, bericht: Pruefbericht) -> None:
         quellen += [(f"Icon-Scan '{c.name}'", c.template)
                     for c in state.icon_scans.values()]
 
+    template_ordner = sequence_templates_dir(owner) if owner else Path("sequences")
     fehlend = [(wer, tpl) for wer, tpl in quellen
-               if tpl and not (Path(TEMPLATES_DIR) / tpl).exists()]
+               if tpl and not (template_ordner / tpl).exists()]
     bericht.geprueft.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
     for wer, tpl in fehlend:
         bericht.melde(STUFE_FEHLER, wer,
-                      f"Template '{tpl}' fehlt in {TEMPLATES_DIR}/",
+                      f"Template '{tpl}' fehlt in {template_ordner}/",
                       "Template neu aufnehmen oder den Verweis entfernen")
 
 
@@ -106,7 +108,8 @@ def _pruefe_erkennung(state: AutoClickerState, bericht: Pruefbericht) -> None:
             kandidaten += [(f"Boss '{b.name}' (Scan '{scan.name}')", b) for b in scan.bosses]
         kandidaten += [(f"Boss '{b.name}' (Bibliothek)", b) for b in state.global_bosses]
         kandidaten += [(f"Icon-Scan '{c.name}'", c) for c in state.icon_scans.values()]
-        items = [(f"Item '{n}'", i) for n, i in state.global_items.items()]
+        items = [(f"Item '{i.name}' (Scan '{scan.name}')", i)
+                 for scan in state.item_scans.values() for i in scan.items]
 
     for wer, profil in kandidaten:
         if not profil.template and not profil.marker_colors:
@@ -121,29 +124,20 @@ def _pruefe_erkennung(state: AutoClickerState, bericht: Pruefbericht) -> None:
 
 
 def _pruefe_scan_referenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
-    """Slots und Items eines Scans müssen global existieren."""
+    """Ein eigenständiger Scan braucht mindestens Slots und Erkennung."""
     with state.lock:
         scans = list(state.item_scans.values())
-        slot_namen = set(state.global_slots)
-        item_namen = set(state.global_items)
 
     for cfg in scans:
-        fehlende_slots = [n for n in cfg.slot_names if n not in slot_namen]
-        fehlende_items = [n for n in cfg.item_names if n not in item_namen]
-        if fehlende_slots:
-            bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
-                          f"Slot(s) fehlen in slots.json: {', '.join(fehlende_slots)}",
-                          "Slot anlegen oder aus dem Scan nehmen")
-        if fehlende_items:
-            bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
-                          f"Item(s) fehlen in items.json: {', '.join(fehlende_items)}",
-                          "Item anlegen oder aus dem Scan nehmen")
-        if not cfg.slot_names:
+        if not cfg.slots:
             bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
                           "kein einziger Slot — der Scan kann nichts absuchen")
-        if not cfg.item_names and not cfg.learn_unknown:
+        elif not any(slot.enabled for slot in cfg.slots):
+            bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
+                          "kein Slot ist eingeschaltet — der Scan kann nichts absuchen")
+        if not any(item.enabled for item in cfg.items) and not cfg.learn_unknown:
             bericht.melde(STUFE_HINWEIS, f"Item-Scan '{cfg.name}'",
-                          "keine Items und kein Auto-Lernen — findet nie etwas")
+                          "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
     bericht.geprueft.append(f"{len(scans)} Item-Scan(s)")
 
 
@@ -191,26 +185,25 @@ def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
     """
     from .persistence import list_available_sequences, load_sequence_file
 
-    with state.lock:
-        punkt_ids = {p.id for p in state.points}
-        bekannt = {
-            "item_scan": set(state.item_scans),
-            "boss_scan": set(state.boss_scans),
-            "boss_watcher": set(state.boss_scans),
-            "icon_scan": set(state.icon_scans),
-        }
-        punkte = list(state.points)
-
     dateien = list_available_sequences()
     bericht.geprueft.append(f"{len(dateien)} Sequenz(en)")
 
     for name, pfad in dateien:
-        seq = load_sequence_file(pfad, punkte)
+        seq = load_sequence_file(pfad)
         if seq is None:
             bericht.melde(STUFE_FEHLER, f"Sequenz '{name}'",
                           f"{pfad.name} ist nicht ladbar", "Datei prüfen oder neu anlegen")
             continue
 
+        from .persistence import (list_available_item_scans, list_available_boss_scans,
+                                  list_available_icon_scans)
+        punkt_ids = {p.id for p in seq.points}
+        bekannt = {
+            "item_scan": {n for n, _ in list_available_item_scans(seq.name)},
+            "boss_scan": {n for n, _ in list_available_boss_scans(seq.name)},
+            "boss_watcher": {n for n, _ in list_available_boss_scans(seq.name)},
+            "icon_scan": {n for n, _ in list_available_icon_scans(seq.name)},
+        }
         phasen = [("INIT", seq.init_steps)]
         phasen += [(lp.name, lp.steps) for lp in seq.loop_phases]
         phasen.append(("END", seq.end_steps))
@@ -228,7 +221,7 @@ def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
         for eintrag in _gekuerzt(tote_refs):
             bericht.melde(STUFE_HINWEIS, f"Sequenz '{seq.name}'",
                           f"{eintrag} gibt es nicht mehr",
-                          "Schritt klickt weiter auf seine eigenen Koordinaten")
+                          "Punkt im Punkte-Editor dieser Sequenz neu setzen")
         for eintrag in _gekuerzt(tote_scans):
             bericht.melde(STUFE_FEHLER, f"Sequenz '{seq.name}'",
                           f"{eintrag} existiert nicht")

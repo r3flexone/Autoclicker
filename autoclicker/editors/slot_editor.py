@@ -5,7 +5,6 @@ Ermöglicht das Erstellen und Bearbeiten von Slot-Definitionen für Item-Scans.
 
 import copy
 import time
-from pathlib import Path
 from typing import Optional
 
 from ..models import ItemSlot, AutoClickerState
@@ -18,15 +17,15 @@ from ..imaging import (
 )
 from ..persistence import (
     save_global_slots, list_slot_presets, save_slot_preset,
-    load_slot_preset, delete_slot_preset, SCREENSHOTS_DIR
+    load_slot_preset, delete_slot_preset, active_sequence_dir
 )
 from .scan_services import detect_slots_in_image
 
 
 
 def run_global_slot_editor(state: AutoClickerState) -> None:
-    """Interaktiver Editor für globale Slot-Definitionen."""
-    print(header("SLOT-EDITOR (Globale Slot-Definitionen)"))
+    """Interaktiver Editor für die Slots des gewählten Item-Scans."""
+    print(header("SLOT-EDITOR (gewählter Item-Scan)"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Slots')}")
 
     if not PILLOW_AVAILABLE:
@@ -314,7 +313,7 @@ def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
     # Optional: Screenshot speichern
     if img:
         try:
-            screenshots_dir = Path(SCREENSHOTS_DIR)
+            screenshots_dir = active_sequence_dir(state) / "bilder"
             screenshots_dir.mkdir(parents=True, exist_ok=True)
             safe_name = sanitize_filename(slot_name)
             screenshot_path = screenshots_dir / f"{safe_name}.png"
@@ -336,6 +335,7 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     print(f"\n  Bearbeite Slot: {slot.name}")
     print(f"    Region: {slot.scan_region}")
     print(f"    Klickpos: {slot.click_pos}")
+    print(f"    Aktiv: {'ja' if slot.enabled else 'nein'}")
     if slot.slot_color:
         print(f"    Hintergrund: RGB{slot.slot_color}")
 
@@ -343,12 +343,14 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     new_region = slot.scan_region
     new_click = slot.click_pos
     new_color = slot.slot_color
+    new_enabled = slot.enabled
 
     while True:
-        edit_options = ["Name", "Scan-Region", "Klickposition", "Hintergrundfarbe", "Fertig"]
+        edit_options = ["Name", "Scan-Region", "Klickposition", "Hintergrundfarbe",
+                        "Ein-/ausschalten", "Fertig"]
         choice = interactive_select(edit_options, title="\n  Was ändern?", allow_cancel=False)
 
-        if choice == 4:  # Fertig
+        if choice == 5:  # Fertig
             break
         elif choice == 0:  # Name
             name_input = safe_input(f"  Neuer Name (Enter = '{new_name}'): ").strip()
@@ -374,12 +376,17 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
             if color:
                 new_color = color
                 print(f"  -> Hintergrundfarbe geändert zu RGB{new_color}")
+        elif choice == 4:  # Ein-/ausschalten
+            new_enabled = not new_enabled
+            print(f"  -> Slot {'eingeschaltet' if new_enabled else 'ausgeschaltet'}")
 
     return ItemSlot(
         name=new_name,
         scan_region=new_region,
         click_pos=new_click,
-        slot_color=new_color
+        slot_color=new_color,
+        enabled=new_enabled,
+        id=slot.id,
     )
 
 
@@ -493,7 +500,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     # Screenshots speichern
     try:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        screenshots_dir = Path(SCREENSHOTS_DIR)
+        screenshots_dir = active_sequence_dir(state) / "bilder"
         screenshots_dir.mkdir(parents=True, exist_ok=True)
 
         screenshot_path = screenshots_dir / f"screenshot_{timestamp}.png"

@@ -6,7 +6,6 @@ je nach Boss eine andere Aktion aus (Item-Scan, Klick, Taste, etc.).
 """
 
 import time
-from pathlib import Path
 from typing import Optional
 
 from ..models import (
@@ -27,7 +26,8 @@ from ..imaging import (
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, punkt_fuer_stelle, TEMPLATES_DIR, save_global_bosses,
+    list_available_item_scans, punkt_fuer_stelle, active_templates_dir,
+    save_global_bosses,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
@@ -44,7 +44,8 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
 
     # Menü-Loop: nach jeder Aktion zurück ins Menü, ESC/cancel beendet
     while True:
-        available_scans = list_available_boss_scans()
+        owner = state.active_sequence.name if state.active_sequence else ""
+        available_scans = list_available_boss_scans(owner)
         loaded_scans = []
         with state.lock:
             num_global = len(state.global_bosses)
@@ -56,7 +57,7 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         ]
         num_fixed = len(menu_options)
         for name, path in available_scans:
-            config = load_boss_scan_file(path)
+            config = load_boss_scan_file(path, owner)
             if config:
                 loaded_scans.append(config)
                 menu_options.append(str(config))
@@ -127,7 +128,8 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
 
     if action == BOSS_ACTION_SCAN:
         # Item-Scan auswählen
-        available = list_available_item_scans()
+        owner = state.active_sequence.name if state.active_sequence else ""
+        available = list_available_item_scans(owner)
         if not available:
             print(f"\n{err('Keine Item-Scans vorhanden!')}")
             print("         Erstelle zuerst einen Item-Scan.")
@@ -249,7 +251,7 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
 
             safe_name = sanitize_filename(f"boss_{name}")
             template_file = f"{safe_name}.png"
-            template_path = Path(TEMPLATES_DIR) / template_file
+            template_path = active_templates_dir(state) / template_file
             template_path.parent.mkdir(parents=True, exist_ok=True)
             img.save(template_path)
             template = template_file
@@ -447,7 +449,8 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         default_action = default_map[default_choice]
 
         if default_action == BOSS_ACTION_SCAN:
-            available = list_available_item_scans()
+            owner = state.active_sequence.name if state.active_sequence else ""
+            available = list_available_item_scans(owner)
             if available:
                 scan_options = [name for name, _ in available]
                 scan_choice = interactive_select(scan_options, title="Welchen Default-Scan?")
@@ -555,6 +558,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         llm_fallback=llm_fallback,
         use_ocr=use_ocr,
         ocr_fallback=ocr_fallback,
+        owner_sequence=state.active_sequence.name if state.active_sequence else "",
     )
 
     with state.lock:

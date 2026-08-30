@@ -277,11 +277,9 @@ del _name, _vk
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
     """Liest die Pixelfarbe an einer Bildschirmposition.
 
-    Schneller GDI-Pfad (GetDC/GetPixel) zuerst — ideal in Aufnahme-Callbacks.
-    GetDC(None) ist aber am primären Monitor verankert; auf Mehrmonitor-Setups
-    mit Fenstern bei negativen/grossen Koordinaten liefert GetPixel dort
-    CLR_INVALID. In dem Fall Fallback auf den Pillow-Pfad (all_screens=True),
-    der den gesamten virtuellen Desktop abdeckt.
+    Schneller GDI-Pfad zuerst (ideal in Aufnahme-Callbacks). GetDC(None) ist
+    aber am primären Monitor verankert und liefert bei negativen/grossen
+    Koordinaten CLR_INVALID — dann Fallback auf Pillow mit all_screens=True.
     """
     try:
         hdc = user32.GetDC(None)
@@ -302,17 +300,12 @@ def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
 def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
     """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks und Mausrad.
 
-    on_lbutton_down(x, y, color) wird bei jedem Linksklick aufgerufen.
-    color ist ein (r,g,b)-Tupel oder None.
-    on_wheel(x, y, delta) wird bei jeder Mausrad-Bewegung aufgerufen; `delta` ist die
-    ROHE Windows-Distanz (positiv = hoch), eine Rasterstufe = WHEEL_DELTA. Bewusst
-    nicht hier schon in Stufen umgerechnet: hochaufloesende Raeder senden Bruchteile,
-    und einzeln abgerundet ergaeben die null. Der Aufrufer summiert erst und teilt dann.
-    None = Mausrad wird ignoriert.
+    `on_lbutton_down(x, y, color)` bei jedem Linksklick (color ist (r,g,b) oder
+    None). `on_wheel(x, y, delta)` bekommt die ROHE Windows-Distanz — hochauf-
+    loesende Raeder senden Bruchteile, die einzeln abgerundet null ergaeben, also
+    summiert der Aufrufer erst und teilt dann. `None` ignoriert das Rad.
 
-    Rechtsklicks fehlen bewusst: der Autoclicker kann gar keine ausfuehren
-    (`send_click` ist auf LEFTDOWN/LEFTUP festgelegt). Sie aufzuzeichnen hiesse,
-    etwas mitzuschneiden, das beim Abspielen zum Linksklick wuerde.
+    Rechtsklicks fehlen bewusst: `send_click` kann gar keine ausfuehren.
     """
     global _mouse_hook_handle, _mouse_hook_proc
 
@@ -370,14 +363,10 @@ _VK_CONTROL, _VK_MENU, _VK_SHIFT = 0x11, 0x12, 0x10
 def install_keyboard_hook(on_key_down) -> bool:
     """Installiert einen systemweiten Low-Level-Tastatur-Hook für die Aufnahme.
 
-    on_key_down(name) wird beim Herunterdruecken einer Taste aufgerufen; `name` ist
-    ein Schluessel aus VK_CODES, also genau das, was `send_key()` wieder abspielen kann.
-
-    Drei Dinge werden bewusst NICHT gemeldet:
-    - Tasten mit gedruecktem CTRL oder ALT (das sind die Hotkeys der App)
-    - Tasten, die `send_key()` gar nicht kennt (waeren beim Abspielen still weg)
-    - die Wiederholungen einer festgehaltenen Taste (Windows feuert dann laufend
-      WM_KEYDOWN nach; ohne Filter entstuenden daraus dutzende Schritte)
+    `on_key_down(name)` bekommt einen Schluessel aus VK_CODES — also genau das,
+    was `send_key()` wieder abspielen kann. Nicht gemeldet werden: Tasten mit
+    gedruecktem CTRL/ALT (die Hotkeys der App), Tasten die `send_key()` nicht
+    kennt, und die Wiederholungen einer festgehaltenen Taste.
     """
     global _keyboard_hook_handle, _keyboard_hook_proc
 
@@ -651,18 +640,10 @@ def _find_window_by_title(title_substring: str):
 def liste_fenster() -> list:
     """Alle sichtbaren Fenster als `(titel, (l, t, r, b), hwnd)`.
 
-    Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: **dasselbe
-    Programm mehrmals offen.** Der Titel ist dann dreimal derselbe, und wer den
-    Scan auf die Fassung oben links legen will, braucht die Fenster einzeln —
-    unterscheidbar an ihrer Lage, nicht an ihrem Namen.
-
-    Geliefert wird der **Client-Bereich** (Inhalt ohne Titelleiste und Rahmen),
-    denn genau der ist das Spielfeld. Fenster ohne Titel, ohne Fläche oder
-    ausserhalb aller Monitore fallen weg: sie sind Werkzeugfenster des Systems
-    und in einer Auswahlliste nur Rauschen.
-
-    Sortiert nach Lage (oben vor unten, links vor rechts) — dieselbe Reihenfolge,
-    in der man sie auf dem Bildschirm sucht.
+    Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: dasselbe
+    Programm mehrmals offen — unterscheidbar nur an der Lage. Geliefert wird der
+    Client-Bereich; Fenster ohne Titel, ohne Fläche oder ausserhalb aller
+    Monitore fallen weg. Sortiert nach Lage (oben vor unten, links vor rechts).
     """
     gefunden = []
 
@@ -730,9 +711,8 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     """Findet eine gespeicherte Fensterquelle erneut.
 
     Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`liste_fenster`.
-    Exakte Titel gewinnen. Bei mehreren gleichnamigen Fenstern wählt die beim
-    Speichern gemerkte, nach Bildschirmposition sortierte Instanz. Ist dieser
-    Index nicht mehr vorhanden, gewinnt das geometrisch ähnlichste Fenster.
+    Exakte Titel gewinnen; bei mehreren gleichnamigen die gemerkte Instanz, und
+    ist deren Index weg, das geometrisch ähnlichste Fenster.
     """
     if not isinstance(title, str) or not title.strip():
         return None
@@ -812,11 +792,11 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
     (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
-    (HOTKEY_RECORD_COLOR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M, "CTRL+ALT+M (Aufnahme: auf Farbe warten)"),
-    (HOTKEY_RECORD_SCREENSHOT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_D, "CTRL+ALT+D (Aufnahme: Screenshot-Marker)"),
-    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: Phasengrenze)"),
-    (HOTKEY_REC_REGION, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Bereichs-Ecke)"),
-    (HOTKEY_REC_WATCH, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: beobachten ohne Klick)"),
+    (HOTKEY_RECORD_COLOR, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: auf Farbe warten)"),
+    (HOTKEY_RECORD_SCREENSHOT, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Screenshot-Marker)"),
+    (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: neue Phase)"),
+    (HOTKEY_REC_REGION, MOD_REC, VK_R, "CTRL+ALT+SHIFT+R (Aufnahme: Bereichs-Ecke)"),
+    (HOTKEY_REC_WATCH, MOD_REC, VK_B, "CTRL+ALT+SHIFT+B (Aufnahme: beobachten ohne Klick)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)
@@ -1074,15 +1054,10 @@ def unregister_hotkeys() -> None:
 def setze_app_id(app_id: str = APP_ID) -> bool:
     """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
 
-    Die Taskleiste nimmt **nicht** das Symbol aus `WM_SETICON`, solange sie das
-    Fenster unter der ausführenden Datei einsortiert — und die heisst hier
-    `python.exe`. Titelleiste und ALT+TAB zeigten das eigene Symbol deshalb
-    längst, die Taskleiste weiter die Schlange. Erst eine eigene AppUserModelID
-    löst das Fenster aus dieser Gruppe, und dann gilt dort das Fenstersymbol.
-
-    **Muss laufen, bevor das erste Fenster entsteht.** Danach hat Windows die
-    Zuordnung schon getroffen; ein späterer Aufruf ändert sie für dieses Fenster
-    nicht mehr.
+    Die Taskleiste nimmt nicht das Symbol aus `WM_SETICON`, solange sie das
+    Fenster unter `python.exe` einsortiert; erst eine eigene AppUserModelID löst
+    es aus dieser Gruppe. Muss laufen, BEVOR das erste Fenster entsteht —
+    danach hat Windows die Zuordnung schon getroffen.
     """
     try:
         return ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
@@ -1094,17 +1069,13 @@ def setze_app_id(app_id: str = APP_ID) -> bool:
 def _symbol_bits(kante: int = 32) -> bytes:
     """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
 
-    Warum der Umweg über ein DIB und nicht `CreateIcon()` mit rohen Farbbits:
-    das erzeugt eine **geräteabhängige** Bitmap, und die 24-Bit-Bytes werden auf
-    einem 32-Bit-Bildschirm anders gelesen, als sie gemeint sind. Das Symbol kam
-    dann zwar am Fenster an (beide `WM_GETICON` lieferten dasselbe Handle), war
-    aber ein schwarzes Quadrat — schlimmer als das Python-Symbol, denn es sieht
-    aus wie ein Fehler statt wie ein fremdes Programm. Ein DIB legt Breite,
-    Höhe, Bittiefe und Byte-Reihenfolge selbst fest und hängt an keinem Gerät.
+    Ein DIB statt `CreateIcon()` mit rohen Farbbits: das erzeugt eine
+    geraeteabhaengige Bitmap, deren 24-Bit-Bytes auf einem 32-Bit-Bildschirm
+    anders gelesen werden — heraus kam ein schwarzes Quadrat.
 
-    Gerastert wird in `symbol.py`; hier wird nur umgepackt. Zwei Eigenheiten
-    des Formats: die Höhe im Kopf zählt **doppelt** (Farb- und Maskenbild
-    untereinander), und DIB-Zeilen stehen **von unten nach oben**.
+    Gerastert wird in `symbol.py`, hier wird nur umgepackt. Zwei Eigenheiten des
+    Formats: die Höhe im Kopf zählt doppelt, und DIB-Zeilen stehen von unten
+    nach oben.
     """
     kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
@@ -1122,23 +1093,13 @@ def _symbol_bits(kante: int = 32) -> bytes:
 def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
-    Ohne das trägt das Fenster das Symbol von `python.exe` — pywebview kann es
-    auf Windows nicht selbst setzen (der `icon`-Parameter gilt dort nicht, weil
-    das Symbol sonst aus der ausführenden Datei kommt). Ein Fenster in der
-    Taskleiste, das aussieht wie ein Python-Prozess, findet man zwischen anderen
-    Python-Prozessen nicht wieder.
+    pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
+    Symbol von `python.exe`.
 
-    **`warten` ist der Grund, warum das Symbol bisher nie ankam.**
-    `webview.start(func)` ruft `func` auf, sobald die Schleife läuft — das
-    Fenster steht da noch nicht. Gemessen: zum Zeitpunkt des Aufrufs findet
-    `EnumWindows` gar kein passendes Fenster, zwei Sekunden später schon, und
-    dann greift das Setzen auch. Vorher fiel der Aufruf still auf `False`, und
-    das Fenster behielt das Symbol von `python.exe`. Wer aus einem
-    GUI-Startcallback aufruft, gibt deshalb eine Frist mit; ohne Angabe wird
-    einmal geschaut wie bisher.
-
-    Fehler werden geschluckt: ein fehlendes Symbol ist kein Grund, ein Fenster
-    nicht zu öffnen.
+    `warten` ist wesentlich: `webview.start(func)` ruft `func` auf, sobald die
+    Schleife läuft — das Fenster steht da noch nicht, und ohne Frist fiel der
+    Aufruf still auf `False`. Fehler werden geschluckt: ein fehlendes Symbol ist
+    kein Grund, ein Fenster nicht zu öffnen.
     """
     frist = time.monotonic() + max(0.0, warten)
     hwnd = _find_window_by_title(titel_substring)

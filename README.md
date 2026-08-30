@@ -10,6 +10,8 @@ automatischer Item-Erkennung und Farb-Triggern.
 - **Sequenzen erstellen**: Punkte mit Wartezeiten oder Farb-Triggern verknüpfen
 - **Sequenz-Studio**: Phasen als Spalten, Schritte per Ziehen umsortieren — auch über Phasengrenzen; dazu Live-Run und ein Reiter für alle Einstellungen (`CTRL+ALT+B`, eigenes Fenster)
 - **Scans auf einem Screenshot**: Slots aufziehen, Hintergrundfarbe messen, Items lernen und sehen, was in welchem Slot erkannt wird — Reiter „Scans“ im Studio (`CTRL+ALT+V`)
+- **Teilen im Studio**: Bündel schreiben und einlesen im Reiter „Teilen“ — Koordinaten werden aus der Spielfenster-Grösse umgerechnet
+- **Boss- und Icon-Scans im selben Reiter**: Region aufziehen statt Koordinaten tippen, Vorlage aufnehmen, Marker messen, folgenlos testen (der Test nennt die Aktion, führt sie aber nicht aus) — umgeschaltet über SCAN-ART (Items · Bosse · Icons)
 - **Dreiphasen-System**:
   - **INIT**: Einmalig vor allen Zyklen (Initialisierung)
   - **LOOP-Phasen**: Mehrere Loops möglich, jeweils mit eigenen Wiederholungen
@@ -189,11 +191,11 @@ Im Sequenz-Editor:
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
 | `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
-| `CTRL+ALT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
-| `CTRL+ALT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
-| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
-| `CTRL+ALT+SHIFT+M` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
-| `CTRL+ALT+SHIFT+P` | Aufnahme: Phasengrenze (1× = LOOP, 2× = END) |
+| `CTRL+ALT+SHIFT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
+| `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
+| `CTRL+ALT+SHIFT+R` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
+| `CTRL+ALT+SHIFT+B` | Aufnahme: beobachten ohne Klick (Maus auf die Stelle) |
+| `CTRL+ALT+SHIFT+P` | Aufnahme: neue Phase (beliebig oft — jede Grenze eine Loop-Phase) |
 | `CTRL+ALT+H` | Aufnahme pausieren/fortsetzen |
 
 ### Editoren
@@ -203,7 +205,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+E` | Sequenz-Editor (Punkte + Zeiten verknüpfen) |
 | `CTRL+ALT+B` | Sequenz-Studio (Phasen + Schritte visuell, braucht `pywebview`) |
 | `CTRL+ALT+N` | Item-Scan Editor (Items erkennen + vergleichen) |
-| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Slots + Items auf einem Screenshot) |
+| `CTRL+ALT+V` | Studio mit vorgewähltem Reiter „Scans“ (Item-, Boss- und Icon-Scans auf einem Screenshot) |
 | `CTRL+ALT+L` | Gespeicherte Sequenz laden |
 | `CTRL+ALT+P` | Punkte testen/anzeigen/umbenennen |
 | `CTRL+ALT+T` | Farb-Analysator (für Bilderkennung) |
@@ -393,7 +395,7 @@ Items können per **Template-Matching** (Screenshot-Vergleich) erkannt werden:
 
 1. Bei `learn` wird automatisch ein Template erstellt
 2. Mit `template <Nr>` kann ein Template nachträglich gesetzt werden
-3. Templates werden in `items/templates/` gespeichert
+3. Templates werden im `templates/`-Ordner der jeweiligen Sequenz gespeichert
 4. `min_confidence` (0.0-1.0) bestimmt wie genau das Match sein muss
 5. Pro Slot-Grösse wird eine passende Vorlage verwendet. Fehlt sie, zeigt das Studio
    „für diesen Scan noch nicht gelernt“; beim Lernen kann derselbe Item-Name gewählt
@@ -553,7 +555,12 @@ Loop 1 läuft in jedem Zyklus. Loop 2 wird übersprungen bis 12:30 erreicht ist 
 
 ## Boss-Scan System
 
-Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine zugeordnete Aktion aus (Klick, Taste, Item-Scan, Skip, Restart). Erstellung über das Item-Scan-Menü → **[4] Boss-Scans bearbeiten**.
+Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine zugeordnete Aktion aus (Klick, Taste, Item-Scan, Skip, Restart).
+
+Zwei Wege dorthin:
+
+- **Studio** (`CTRL+ALT+V` → SCAN-ART „Bosse“) — Region mit zwei Klicks im Bild, Vorlage per Knopf, Test mit Ergebnis und Konfidenz. Für jede spätere Änderung der kürzere Weg: jedes Feld steht rechts und ist einzeln setzbar.
+- **Konsole** (Item-Scan-Menü → **[4] Boss-Scans bearbeiten**) — der lineare Assistent, unverändert. Beide schreiben dieselben Dateien.
 
 ### Boss-Profil
 
@@ -786,16 +793,34 @@ Diese Transformation wird auf **alle** Koordinaten angewendet: Klick-Punkte, Sca
 
 **Tipp**: Nutze als Referenzpunkte feste UI-Elemente die auf jedem Bildschirm leicht zu finden sind — z.B. die Ecken des Spielfensters oder feste Buttons.
 
-## Sequenzen zwischen PCs teilen (Legacy)
+## Sequenzen zwischen PCs teilen
 
-> **Hinweis**: Für komplette Setups bevorzugt das oben beschriebene Import/Export-System (`CTRL+ALT+I`) verwenden. Der hier beschriebene Weg funktioniert weiter, deckt aber nur Sequenzen ab.
+Eine Sequenz ist eine **vollständige Besitzeinheit**: `sequences/<name>/` enthält
+den Ablauf, die sequenzlokalen Punkte, alle Scans, die Vorlagen und die
+gemerkten Bilder. Den Ordner zu kopieren reicht deshalb — es gibt nichts
+daneben, das mitmüsste.
 
-Sequenzen können auf einen anderen PC kopiert werden (`sequences/`-Ordner). Beim Laden werden die Koordinaten automatisch anhand der **Punkt-Namen** abgeglichen:
+Was dabei **nicht** passiert: die Koordinaten werden beim Laden nicht angepasst.
+Früher glich der Loader Schritte über ihren **Namen** mit lokalen Punkten ab,
+schrieb sie um und speicherte die Datei sofort. Das ist ersatzlos entfallen, und
+zwar aus einem handfesten Grund: aufgenommene Punkte heissen per Default `P<id>`
+— eine fremde Sequenz bringt also einen Schritt namens „P3" mit, und der lokale
+„P3" liegt garantiert woanders. Der Abgleich hat solche Schritte stillschweigend
+verschoben.
 
-- Stimmt ein Name mit einem lokalen Punkt überein → Koordinaten werden aktualisiert
-- Fehlt ein Name lokal → Warnung mit Hinweis, den Punkt erst aufzunehmen (CTRL+ALT+A)
+Geblieben ist die **Diagnose**: passt die Koordinate eines Schritts nicht zum
+gleichnamigen lokalen Punkt, wird das gemeldet — geändert wird nichts.
 
-So muss man Sequenzen nicht neu erstellen, sondern nur die Punkte einmal lokal aufnehmen.
+Für einen anderen Bildschirm gibt es die zwei Wege, die wirklich rechnen:
+
+| Weg | wofür |
+|---|---|
+| Import mit Fenster-Remapping (`CTRL+ALT+I`) | anderer Bildschirm, anderes Fenster — rechnet alle Koordinaten um |
+| Studio → Werkzeuge → Kalibrieren | derselbe Bestand, verschobene Anordnung — mit Vorschau vor dem Anwenden |
+
+Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
+hilft kein Versatz: dann die **Klick-Runde** nehmen (Studio → Werkzeuge oder
+Punkte-Menü → `klick`) und die Sequenz einmal von Hand nachklicken.
 
 ## Laufzeit-Steuerung
 
@@ -1067,9 +1092,12 @@ Wird beim ersten Start automatisch erstellt:
 }
 ```
 
-`studio_open_on_start` öffnet beim Start von `main.py` automatisch das
-Sequenz-Studio mit der zuletzt bearbeiteten Sequenz. Auf `false` startet das
-Programm wieder nur in der Konsole; das Studio bleibt über den Hotkey erreichbar.
+`studio_open_on_start` wählt die Startoberfläche. Ist die Option an, startet das
+Sequenz-Studio ohne zusätzlichen TUI-Banner, Anleitung und Bereitschaftsblock; die
+Konsole bleibt nur technisches Log und Rückfallweg für noch vorhandene
+Konsolenwerkzeuge. Ist die Option aus, startet das Programm mit der TUI. Das Studio
+bleibt dort über den Hotkey erreichbar. Beide Oberflächen verwenden denselben
+Hauptprozess, dieselben Funktionen und dieselben Dateien.
 
 ### Klick-Einstellungen
 
@@ -1220,6 +1248,11 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
+│   ├── befehl.py           # Briefkasten Studio -> Hauptprozess
+│   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
+│   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
+│   ├── symbol.py           # Programm-Symbol als Geometrie
+│   ├── sequence_studio.py  # Einstiegspunkt des Studio-Subprozesses
 │   ├── utils/              # Hilfsfunktionen
 │   │   ├── console.py      # ANSI-Farben, Status-Tags
 │   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
@@ -1255,6 +1288,8 @@ Autoclicker-Idleclans/
 │       │   ├── scan_contract.py, scan_state.py
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
+│       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
+│       │   ├── bridge_teilen.py, bridge_werkzeuge.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
@@ -1263,24 +1298,18 @@ Autoclicker-Idleclans/
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
+├── AGENTS.md               # dasselbe für Codex (inhaltsgleich zu CLAUDE.md)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
-├── sequences/              # Gespeicherte Sequenzen
-│   ├── points.json         # Aufgenommene Punkte (mit ID und Name)
-│   └── *.json              # Sequenz-Dateien
-├── slots/                  # Slot-Konfigurationen
-│   ├── slots.json          # Aktive Slots
-│   ├── Screenshots/        # Screenshots und Vorschau-Bilder
-│   └── presets/            # Slot-Presets
-├── items/                  # Item-Konfigurationen
-│   ├── items.json          # Aktive Items
-│   ├── templates/          # Template-Bilder für Matching
-│   ├── debug/              # Debug-Bilder (wenn debug_save_templates=true)
-│   └── presets/            # Item-Presets
-├── item_scans/             # Item-Scan Konfigurationen
-│   └── *.json              # Scan-Konfigurationen (verknüpft Slots + Items)
-├── boss_scans/             # Boss-Scan Konfigurationen (mit optionaler LLM-Aktivierung)
-│   └── *.json
+├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
+│   └── <name>/
+│       ├── sequence.json   # Ablauf und sequenzlokale Punkte
+│       ├── item_scans/     # Item-Scans mit vollständig eingebetteten Slots/Items
+│       ├── boss_scans/     # Boss-Scans + bibliothek.json (gilt in jedem Boss-Scan)
+│       ├── icon_scans/     # Icon-Scans
+│       ├── templates/      # Lokale Template-Bilder aller Scans
+│       └── bilder/         # Je Item-Scan ein eingefrorener Bildschirm
+├── presets/                # Wiederverwendbare Slot-/Item-Presets
 ├── exports/                # Importier-/Exportier-Bundles (ZIP)
 │   └── *.zip
 ├── logs/                   # Session-Logs als CSV (wenn session_log_enabled=true)
@@ -1288,11 +1317,16 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
+    ├── alle_tests.py       # ALLE Tests, ein Aufruf — das vor einem Commit
+    ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
+    ├── tests/              # weitere Sektionen der Vertragssuite
+    ├── rauchtests/         # die echte Seite im Browser vor der echten Brücke
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
+    ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
+    ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
-    ├── test_ocr.py         # OCR-Backend-Test + Texterkennung
-    └── test_logic.py       # große plattformunabhängige Vertragssuite
+    └── test_ocr.py         # OCR-Backend-Test + Texterkennung
 ```
 
 ## Technische Details
@@ -1399,6 +1433,37 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
+### Tests (`tools/alle_tests.py`)
+
+**Ein Kommando, drei Schichten** — das vor einem Commit:
+
+```bash
+python tools/alle_tests.py                      # alles
+python tools/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
+python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
+```
+
+| Schicht | was sie prüft | braucht |
+|---|---|---|
+| Vertragssuite (`tools/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
+| Wurzelmodule (`test_*.py`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
+| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+
+Was fehlt, wird **übersprungen und gesagt**, nicht als Fehler gemeldet. Für die
+volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
+überspringt die Suite über hundert Tests rund um Bilderkennung:
+
+```bash
+pip install opencv-python-headless pillow numpy
+pip install playwright && python -m playwright install chromium
+```
+
+Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie
+ruft die Brücken-Methoden direkt auf, also genau so, wie die Seite es *nicht*
+tut. Ein Tippfehler in einem Methodennamen oder ein Zustand, der einen Neuaufbau
+nicht überlebt, fällt erst im Browser auf.
+
 ### Migrations-Tool (`tools/migrate.py`)
 
 Hebt alle JSON-Dateien aufs aktuelle Format. **Normalerweise brauchst du das nicht** —
@@ -1413,14 +1478,13 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 - Tote Felder entfernen, die es im Code nicht mehr gibt (das ist inzwischen die
   Hauptarbeit: der Durchgang liest jede Datei mit dem Loader und schreibt sie mit dem
   Serializer zurück — was der Loader nicht kennt, kommt nicht wieder)
-- Punkt-IDs nachnummerieren und eingebettete Slot-/Item-Kopien in Scans zu
-  Namens-Referenzen machen
-- Erfasst alle Dateien: config, Punkte, Sequenzen, Item-/Boss-/Icon-Scans,
-  Boss-Bibliothek, Items, Slots und beide Preset-Ordner
+- Erfasst alle Dateien, und zwar über die **Besitzeinheiten**: `config.json`,
+  dann je Sequenzordner die `sequence.json` (mit ihren Punkten), ihre item-,
+  boss- und icon-Scans und ihre Boss-Bibliothek, zuletzt beide Preset-Ordner
 
 > **Sequenzen werden nicht mehr umgerechnet.** Die Schritte, die alte Sequenz-Formate
 > aufs heutige Schema hoben (`steps`/`loop_steps` → `loop_phases`, `delay_after`,
-> Koordinaten → `points.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
+> Koordinaten → Punktliste in `sequence.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
 > bräuchten. Eine sehr alte Sicherung wird deshalb zwar gelesen und gestempelt, kommt
 > aber **leer** an. In dem Fall die Sequenz im Studio neu bauen; das geht inzwischen
 > schneller, als es das Zurückholen der Migrationsschritte täte.
@@ -1509,7 +1573,32 @@ steht auf einmal da.
   Lauf, also keine Vorschau, die etwas anderes zeigt als die Wirklichkeit. Ist ein
   Item-Scan offen, sind die Slots, die nicht dazugehören, im Bild blass. Umbenennen
   zieht die Referenz in jedem Scan nach; nach dem Speichern lädt der Hauptprozess von
-  selbst nach. *(Boss- und Icon-Scans bleiben vorerst in der Konsole.)*
+  selbst nach.
+- **Reiter „Scans" — eine Liste, ein Ort, eine Bauform**: Scans, Slots und Items stehen
+  alle in der rechten Spalte, jeder Eintrag als **Maske** (Haken „gehört zu diesem
+  Scan", Vorschau bzw. Farbe, Name; beim Item darunter Kategorie und Priorität). Was
+  man selten ändert, klappt beim Gewählten **in** seiner Maske auf — beim Slot
+  Koordinaten, Hintergrund und Löschen, beim Scan Toleranz, Auto-Lernen, Richtung und
+  Löschen. Links steht nur noch, wie der Scan entsteht: Auswahl, Assistent,
+  Modus-Kacheln. Damit ändert die linke Spalte beim Umschalten der Liste ihre Grösse
+  nicht mehr, und ein Scan ist wieder löschbar (vorher schaltete das Öffnen auf die
+  Item-Liste um — und der Knopf stand in der Spalte, die man damit verliess).
+- **Reiter „Scans" — beim Tippen springt nichts**: die Liste sortiert beim Laden
+  und auf Knopfdruck („↕ Sortieren"), nicht nach jeder Änderung — sonst rutscht
+  genau die Zeile weg, in der man gerade eine Priorität tippt. Welche Priorität
+  in einer Kategorie noch **frei** ist, steht als Rangfolge dabei (Lücken
+  gestrichelt); eine doppelt vergebene fällt schon in der Liste auf, denn dort
+  entscheidet die Scan-Reihenfolge, also der Zufall. Schiebt man ein Item in eine
+  Kategorie, rückt es auf den nächsten freien Rang. Ein Item, das man gerade
+  abhakt, bleibt stehen (blass, weiter unten) statt zu verschwinden — sonst wäre
+  ein Verklicker nicht zurückzunehmen. Kopfleiste, Reiter und Filter bleiben beim
+  Scrollen stehen.
+- **Reiter „Scans" — der Bestätigungsklick**: Fragt das Spiel nach dem Klick nach
+  („wirklich verkaufen?"), setzt man beim Item einen zweiten Klick samt Wartezeit
+  davor. Wie überall wird eine Stelle über einen **Punkt** gesetzt: entweder aus der
+  Liste der bekannten Punkte wählen oder „Stelle im Bild anklicken" — derselbe Weg,
+  den Boss- und Icon-Aktionen schon gehen. Ohne die Bestätigung bleibt das Popup
+  stehen, und der Scan erreicht den nächsten Slot gar nicht mehr.
 - **Reiter „Einstellungen"**: alle 70 Werte der `config.json` im Fenster, statt die
   Datei von Hand aufzumachen. Jedes Feld trägt Beschriftung, seinen Schlüssel und
   einen Satz, wann man es anfasst; Abhängiges wird blass statt unsichtbar („Wirkt nur,
@@ -1585,7 +1674,7 @@ steht auf einmal da.
   dort heisst Aufteilen löschen und neu anlegen
 - Mehrfachauswahl mit STRG; Sammelaktionen (hoch/runter/löschen) auf der ganzen Auswahl
 - Punkte-Palette, Eigenschaften je Block-Typ, Punkt-Picker setzt Position **und** Trigger-Farbe
-- Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
+- Läuft als Subprozess, lädt/speichert denselben `sequences/<name>/`-Ordner — Konsolen-Editor bleibt voll nutzbar
 
   *War früher ein Node-Graph. Der versprach mit jedem Pixel, dass man Verbindungen ziehen
   darf — es gab aber keinen einzigen Link-Callback, und verschobene Blöcke sprangen zurück.
@@ -1623,7 +1712,7 @@ Der Prüf-Pixel einer Farb-Bedingung zieht **nur** mit, wenn er vorher genau auf
 Klickpunkt lag. Ein bewusst anderswo gesetzter Pixel bleibt, wo er ist.
 
 In jeder Debug-Ausgabe steht die Referenz dabei — damit findest du den Schritt in der
-Sequenzdatei (`"point_id": 3`) und den Punkt in `points.json` (`"id": 3`):
+`sequence.json`: beim Schritt über `"point_id": 3` und in der Punktliste über `"id": 3`:
 
 ```
 ■ MANUELL [LOOP] Schritt 1/3: Marktbutton  [Punkt #3]
@@ -1662,7 +1751,46 @@ Das Punkte-Menü (`CTRL+ALT+P`) ist damit die Debug-Ecke:
 |---|---|
 | `show <Nr>` | einen Punkt zeigen (Maus hin, Details) |
 | `walk` | alle Punkte durchgehen — `w` weiter, `a` zurück, `q` Ende, kein Klick |
+| `klick` | die Sequenz einmal von Hand **nachklicken** — jeder Klick setzt den nächsten Punkt |
 | `manuell` | manuellen Sequenz-Modus an/aus, danach Menü schliessen und normal starten |
+
+**`klick` ist der Weg, wenn sich Stellen einzeln verschoben haben** (Spiel-Update,
+anderes Fenster) — dann hilft kein gleichmässiger Versatz wie bei `fix`. Der
+Unterschied zu `walk` ist der Klick selbst: er geht ans Spiel, die Oberfläche
+öffnet sich genau wie im Lauf, und der nächste Punkt liegt dann vor dir. Bei
+`walk` steht das Spiel still, und ein Knopf im dritten Untermenü ist gar nicht
+sichtbar.
+
+**Der Zeiger steht dabei jedes Mal schon auf der gespeicherten Stelle.** Stimmt
+sie noch, ist der Punkt ein einziger Klick — nur die verrutschten kosten eine
+Mausbewegung. (Er springt kurz nach dem Klick, nicht sofort: sonst zöge er die
+Maus zwischen Druck und Loslassen weg, und aus dem Klick würde ein Ziehen.)
+
+**Es läuft nichts von selbst** — kein Zeitablauf, keine Wartezeit, kein Scan. Die
+Runde geht genau so weit, wie du klickst; ein Start und ein gestellter Countdown
+werden abgelehnt, solange sie läuft. Der Grund: der Maus-Hook kann die Klicks des
+Klickers nicht von deinen unterscheiden, ein mitlaufender Durchgang verbrauchte
+also die Punkte selbst.
+
+**Gezählt wird nur, was im Spielfenster geklickt wird** (`window_focus_title`).
+Im Studio, in der Konsole oder sonstwo kannst du klicken, ohne einen Punkt zu
+verbrauchen — sonst landete das Schliessen-Kreuz eines Fensters als Klickziel im
+Punkt.
+
+**Geschrieben wird erst am Schluss und nur auf `CTRL+ALT+J`.** Bis dahin ist
+nichts geändert, auch nicht im Speicher: wer das Studio-Fenster zumacht oder das
+Programm beendet, verliert die Runde — und `sequence.json` bleibt, wie sie war.
+
+Geändert wird **nur die Stelle** — Wartezeiten, Farb-Bedingungen, Nachprüfungen,
+ELSE und Scans bleiben unangetastet. Während der Runde: `CTRL+ALT+K`
+überspringen · `CTRL+ALT+U` einen Punkt zurück · `CTRL+ALT+H` pausieren
+(navigieren, ohne einen Punkt zu verbrauchen) · `CTRL+ALT+J` beenden.
+Beobachtete Pixel, ELSE-Klicks und Rad-Schritte erreicht die Runde nicht
+— sie werden am Ende gezählt, dafür bleibt `walk`.
+
+Im Sequenz-Studio steht dasselbe unter **Werkzeuge → Punkte nachklicken**; die
+Runde läuft dann trotzdem im Hauptprozess (sie braucht den systemweiten
+Maus-Hook), bedient wird sie mit denselben Tasten.
 
 Die alten Namen `debug_detection` / `debug_mode` / `debug_step` werden beim Laden
 automatisch migriert — bestehende `config.json` bleibt gültig.
@@ -1792,7 +1920,7 @@ Sammel-Eintrag für die Arbeit auf Branch `claude/auto-scan-items-nCblH`. Reihen
 - Neuer Hotkey **CTRL+ALT+I**
 - Komplettes Setup als ZIP exportieren (alles oder mit Auswahl)
 - Empfänger importiert die ZIP — **2-Punkt-Koordinaten-Remapping** passt alle Klick-Punkte, Scan-Regionen, Boss-Regionen, Wait-Pixel, Confirm-Points, Screenshot-Regionen automatisch an den neuen Bildschirm an
-- Templates (PNG) sind im ZIP enthalten und werden bei Import nach `items/templates/` extrahiert
+- Sequenzen werden als vollständige Ordner exportiert; ihre Templates (PNG) bleiben im jeweiligen `templates/`-Unterordner
 - Merge- oder Ersetzen-Modus
 - Anleitung für den Empfänger wird nach Export angezeigt
 - Auch über das Item-Scan-Menü als Punkt 6 erreichbar

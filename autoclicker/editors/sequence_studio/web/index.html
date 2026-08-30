@@ -16,7 +16,7 @@
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
   Umsortieren, Feldregeln) liegt in bridge.py und wird dort gemessen.
 -->
-<link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260825-2">
 </head>
 <body>
 <div class="app">
@@ -34,6 +34,8 @@
       <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
       <button class="tab" data-ansicht="lauf">Live-Run</button>
       <button class="tab" data-ansicht="scans">Scans</button>
+      <button class="tab" data-ansicht="teilen">Teilen</button>
+      <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
     <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
@@ -59,7 +61,12 @@
 
   <div class="rumpf" id="rumpf">
     <aside class="seite links">
-      <div class="abschnitt">
+      <!-- Bleibt beim Scrollen stehen — dieselbe Regel wie im Kopf der rechten
+           Spalte des Scans-Reiters: darunter liegt eine Liste, die laenger wird
+           als das Fenster (die Punkte), und dann ist Name, Zyklenzahl und Notiz
+           weg. Das ist aber genau die Auskunft, an der man sich beim Arbeiten
+           orientiert: WELCHE Sequenz habe ich hier offen. -->
+      <div class="abschnitt klebt">
         <span class="ueberschrift">SEQUENZ</span>
         <label class="feld">Name
           <input id="seq-name" autocomplete="off">
@@ -69,12 +76,18 @@
             <input id="seq-zyklen" type="number" min="0" step="1">
           </label>
           <div class="feld-still">Blöcke
-            <span class="mono" id="seq-bloecke">0</span>
+            <output class="mono" id="seq-bloecke">0</output>
           </div>
         </div>
         <label class="feld">Notiz
           <textarea id="seq-info"></textarea>
         </label>
+        <!-- Nur ein Verweis auf das Aufnahme-Werkzeug. Er steht bei den
+             Sequenzangaben, weil dort Name, Zyklen und Notiz festgelegt werden,
+             und bleibt zusammen mit ihnen ueber der langen Punkteliste sichtbar. -->
+        <div class="aufnahme-zeile">
+          <button class="btn breit" id="btn-aufnahme">● Neue Sequenz aufnehmen</button>
+        </div>
       </div>
       <div class="abschnitt wachsend">
         <div class="reihe">
@@ -83,8 +96,6 @@
         </div>
         <input id="punkt-filter" placeholder="filtern…" autocomplete="off">
         <div class="spalte" id="punkte" style="gap:4px"></div>
-        <p class="hinweis">Punkt in eine Phase ziehen — das wird ein Klick-Block,
-          der dem Punkt folgt. Aufgenommen wird im Hauptprozess.</p>
       </div>
     </aside>
 
@@ -120,27 +131,59 @@
        dort aufgezogen, wo er im Spiel liegt — Koordinaten tippt hier niemand. -->
   <div class="scans" id="sicht-scans" hidden>
     <aside class="seite links">
+      <!-- **Drei Scan-Arten, ein Reiter.** Boss- und Icon-Scans waren nur ueber
+           die Konsolen-Editoren erreichbar: linear durch Schritt 1-6, und fuer
+           jede spaetere Aenderung derselbe Ablauf noch einmal. Die Sache, um die
+           es geht, ist aber ein Rechteck auf einem Bild — sie gehoert dorthin,
+           wo das Bild steht.
+
+           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanArt`) wie
+           `ansicht` und `scanListe`: er aendert nichts an den Daten. Die Buehne
+           (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
+           dasselbe Bild, nur eine andere Frage daran. -->
+      <div class="abschnitt" id="ab-scanart">
+        <span class="ueberschrift">SCAN-ART</span>
+        <div class="segment" id="scan-art">
+          <button data-scan-art="item">Items</button>
+          <button data-scan-art="boss">Bosse</button>
+          <button data-scan-art="icon">Icons</button>
+        </div>
+        <!-- Kein Info-i: Das Speicherziel ist vor jeder Aufnahme notwendiger
+             Kontext und muss deshalb ohne weiteren Klick sichtbar sein. -->
+        <div class="scan-sequenzbezug">
+          <span>Zielsequenz</span>
+          <strong id="scan-sequenz">—</strong>
+          <small>Neue und geänderte Scans werden in dieser Sequenz gespeichert.</small>
+        </div>
+      </div>
+      <!-- Was die Erkennungs-Arten brauchen, baut `app.js`: Auswahl und Name
+           oben, darunter derselbe Assistent wie beim Item-Scan. Zwei feste
+           Geruestbloecke im Dokument statt eines im JavaScript gebauten
+           Abschnitts — dann bleibt die Reihenfolge der linken Spalte hier
+           ablesbar. -->
+      <div class="abschnitt" id="ab-erk-wahl" hidden></div>
+      <div class="abschnitt" id="ab-erk-weg" hidden></div>
       <!-- Der Item-Scan ist hier das Uebergeordnete: er sagt, an welchem Spiel
            gerade gearbeitet wird. Ohne ihn liegen bei mehreren Spielen alle
            Slots und Items aller Spiele in einer Liste. -->
-      <div class="abschnitt">
+      <div class="abschnitt" id="ab-itemwahl">
         <span class="ueberschrift">ITEM-SCAN</span>
         <select id="scan-offen"></select>
-        <!-- **Der Name steht da, wo der Scan gewaehlt wird.** Er lag im Inspektor
-             rechts, also drei Spalten von der Auswahl entfernt - man waehlte den
-             Scan links und benannte ihn rechts. Dieselbe Regel wie beim
-             Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
-             steht beim Ding; rechts bleibt, was man daran EINSTELLT. -->
-        <label class="feld scan-name-feld" id="scan-name-zeile" hidden>
-          <span>Name</span>
-          <input id="scan-name" type="text" autocomplete="off">
+        <!-- Die Auswahl sagt, WORAN gearbeitet wird; das Feld darunter ändert
+             dessen Namen. Die Scan-Maske rechts ist im geführten Arbeitsweg
+             nicht sichtbar und deshalb kein Ersatz für diese Bearbeitungsfläche. -->
+        <label class="feld"><span>Scan-Name</span>
+          <input id="scan-name" autocomplete="off" placeholder="Name des Item-Scans">
         </label>
-        <div class="reihe">
+        <!-- Zwei Knoepfe, gleiche Haelften — dieselbe Regel wie im Kopf der
+             rechten Spalte. Vorher waren sie verschieden breit (Textbreite) und
+             die Zahl dahinter wurde abgeschnitten oder brach um; drei Breiten
+             untereinander lesen sich wie drei Rangstufen. -->
+        <div class="knopfpaar">
           <button class="btn still" id="scan-neu">+ neuer Scan</button>
           <button class="btn still" id="scan-frei">Freier Modus</button>
-          <span class="wachse"></span>
-          <span class="klein mono" id="scan-umfang"></span>
         </div>
+        <span class="klein mono scan-umfang" id="scan-umfang"></span>
       </div>
       <div class="abschnitt" id="ab-weg">
         <span class="ueberschrift">SCAN EINRICHTEN</span>
@@ -153,18 +196,26 @@
             </button>
             <div class="scan-assistent-inhalt" id="scan-schritt-1-inhalt">
               <label class="feld"><span>Was soll aufgenommen werden?</span>
-                <select id="scan-fenster" class="scan-fensterwahl"></select>
+                <span class="scan-fensterzeile">
+                  <select id="scan-fenster" class="scan-fensterwahl"></select>
+                  <button class="btn still" id="scan-fenster-neu" type="button"
+                          title="Offene Fenster neu einlesen">↻ Aktualisieren</button>
+                </span>
               </label>
               <div class="scan-quellenstand">
-                <span class="klein wachse" id="scan-bereich">Ganzer Bildschirm</span>
+                <span class="scan-quelleninfo" id="scan-quelleninfo">
+                  <span class="scan-quelle-titel" id="scan-quellenname">Ganzer Bildschirm</span>
+                  <span class="klein mono" id="scan-bereich" hidden></span>
+                </span>
                 <button class="btn still" id="scan-vollbild">Zurück auf Vollbild</button>
               </div>
               <button class="btn still" id="scan-aufziehen"
                       title="Im vorhandenen Bild zwei Ecken anklicken">Eigenen Ausschnitt wählen</button>
               <button class="btn haupt scan-assistent-haupt" id="scan-foto">Screenshot aufnehmen</button>
-              <p class="hinweis">Items werden aus diesem eingefrorenen Bild gelernt. Beim Lauf
-                wird dasselbe Fenster mit derselben Aufnahmemethode neu aufgenommen; die Slots
-                folgen seiner Position automatisch.</p>
+              <!-- Erklaerung ins ⓘ: sie gilt immer und aendert sich nie, steht
+                   also bei jedem Blick auf den Schritt im Weg. Was hier bleibt,
+                   ist der STAND (Groesse der Aufnahme). -->
+              <span class="ueberschrift mitinfo" id="scan-foto-info"></span>
               <span class="klein mono" id="scan-groesse"></span>
             </div>
           </div>
@@ -176,7 +227,8 @@
             </button>
             <div class="scan-assistent-inhalt" id="scan-schritt-2-inhalt" hidden>
               <p class="hinweis">Am einfachsten mit einem leeren Inventar: Bereich markieren und
-                danach auf den Hintergrund eines leeren Slots klicken.</p>
+                danach auf den Hintergrund eines leeren Slots klicken. Die Ecken dürfen in der
+                mittleren Arbeitsfläche über das Bild hinausgehen; sie rasten am Bildrand ein.</p>
               <button class="btn haupt scan-assistent-haupt" id="scan-slots-finden">Slots automatisch finden</button>
               <button class="btn still scan-assistent-haupt" id="scan-slot-neu">Einzelnen Slot zeichnen</button>
             </div>
@@ -190,7 +242,11 @@
             <div class="scan-assistent-inhalt" id="scan-schritt-3-inhalt" hidden>
               <p class="hinweis">Inventar füllen, Schritt 1 öffnen und einen neuen Screenshot
                 aufnehmen. Gelernt wird anschließend genau aus diesem Bild.</p>
-              <button class="btn" id="scan-test">Erkennung testen</button>
+              <!-- Derselbe Befehl wie der Knopf rechts oben, also derselbe Name.
+                   Er hiess hier „Erkennung testen" und dort „Items erkennen" —
+                   zwei Namen fuer einen Knopf, und man probiert beide aus. -->
+              <button class="btn" id="scan-test"
+                      title="Hält jeden Slot gegen die Item-Profile und schreibt das Ergebnis an Bild und Item-Liste">Items erkennen</button>
               <button class="btn haupt scan-assistent-haupt" id="scan-lernen">Items prüfen &amp; lernen</button>
             </div>
           </div>
@@ -209,26 +265,33 @@
                man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
           <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
-          <!-- Die beiden Handgriffe, die man ZWISCHENDURCH macht, brauchen
-               keinen Modus (scan_direkt in scans.py). Sie stehen hier, weil hier
-               steht, was ein Klick tut — und das ist genau die Frage, die sie
-               beantworten. -->
-          <p class="hinweis">Ohne Moduswechsel: <b>ALT+Klick</b> misst den
-            Hintergrund eines Slots, <b>Doppelklick</b> setzt seinen Klickpunkt.
-            Ein gewählter Slot lässt sich mit der <b>Maus ziehen</b> oder mit den
-            <b>Pfeiltasten</b> verschieben (SHIFT = 10 px).</p>
+          <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
+               Modus (scan_direkt in scans.py). Sie gehoeren hierher, weil hier
+               steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
+               ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
+               und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
+          <span class="ueberschrift mitinfo" id="scan-modi-direkt"></span>
         </div>
       </div>
-      <div class="abschnitt wachsend">
-        <div class="tabs klein" id="scan-listen-tabs"></div>
-        <div class="reihe" id="scan-filterzeile" style="margin-top:8px"></div>
-        <div class="spalte" id="scan-liste" style="gap:3px;margin-top:8px"></div>
-      </div>
+      <!-- Hier stand die Liste (Scans/Slots/Items bzw. Bosse/Icons). Sie ist
+           vollstaendig in die rechte Spalte gewandert — Reiter, Filter und
+           Eintraege zusammen. Vorher wanderten nur die Item-Masken dorthin,
+           und beim Umschalten schrumpfte hier ein Abschnitt zusammen, waehrend
+           drueben etwas erschien: die linke Spalte aenderte bei jedem
+           Reiterwechsel ihre Groesse, und ein Hinweistext musste erklaeren,
+           wohin der Inhalt verschwunden ist. Der Schnitt geht jetzt nach
+           Verantwortung — links, wie der Scan entsteht, rechts, was drin ist. -->
     </aside>
 
     <main class="scan-buehne" id="scan-buehne">
       <div class="scan-canvas-bar" id="scan-canvas-bar">
         <button class="scan-tool" data-scan-tool="wahl">Auswählen</button>
+        <!-- Die beiden Werkzeuge der Erkennungs-Scans. Sie stehen in derselben
+             Leiste wie „Auswaehlen", weil sie dieselbe Frage beantworten: was
+             tut ein Klick jetzt. Sichtbar nur bei Bossen und Icons — bei Slots
+             gibt es keine Region und keinen Aktionspunkt. -->
+        <button class="scan-tool" data-erk-tool="region" hidden>Region aufziehen</button>
+        <button class="scan-tool" data-erk-tool="aktion" hidden>Klickpunkt</button>
         <span class="klein" id="scan-werkzeugstand"></span>
         <button class="scan-tool" id="scan-pin" title="Werkzeug für mehrere Aktionen anheften"><span class="scan-weit" id="scan-pin-lang">Anheften</span><span class="scan-kurz" id="scan-pin-kurz">Pin</span></button>
         <span class="trenner"></span>
@@ -247,9 +310,34 @@
         Stelle. „Screenshot aufnehmen“ legt das Spiel dahinter.</p>
       <p class="leer" id="scan-leer">Noch kein Bild. „Screenshot aufnehmen" friert
         den Bildschirm ein — darauf werden die Slots aufgezogen.</p>
+      <!-- Die Boss-Bibliothek ist kein Rechteck auf dem Bild, sondern eine
+           Sammlung: Bosse, die in JEDEM Boss-Scan zusaetzlich gelten. Deshalb
+           steht sie als Kartenraster an der Stelle der Buehne und nicht als
+           weitere Liste links. -->
+      <div class="scan-karten" id="scan-bibliothek" hidden></div>
     </main>
 
     <aside class="seite rechts" id="scan-insp"></aside>
+  </div>
+
+  <!-- Teilen: links was ins Bündel kommt, in der Mitte die vorhandenen Bündel,
+       rechts das Einlesen. Beide Seiten arbeiten auf dem GESPEICHERTEN Stand —
+       was im Fenster offen ist, liegt nicht auf Platte. -->
+  <div class="teilen" id="sicht-teilen" hidden>
+    <aside class="seite links" id="teilen-export"></aside>
+    <main class="cfg-mitte" id="teilen-mitte"></main>
+    <aside class="seite rechts" id="teilen-import"></aside>
+  </div>
+
+  <!-- Werkzeuge: was bisher nur im Punkte-Menue der Konsole ging. Links die
+       Auswahl (pruefen / kalibrieren / nachklicken), in der Mitte das Werkzeug
+       selbst, rechts das Ergebnis. Dieselbe Dreiteilung wie ueberall - hier
+       traegt sie zusaetzlich, dass eine Kalibrierung eine VORSCHAU hat: in der
+       Konsole scrollt die Liste weg, hier steht sie neben dem Knopf. -->
+  <div class="cfg" id="sicht-werkzeuge" hidden>
+    <aside class="seite links" id="wz-links"></aside>
+    <main class="cfg-mitte" id="wz-mitte"></main>
+    <aside class="seite rechts" id="wz-rechts"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,
@@ -293,6 +381,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+  <script src="app.js?v=20260825-2"></script>
 </body>
 </html>

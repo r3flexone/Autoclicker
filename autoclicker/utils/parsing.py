@@ -23,19 +23,12 @@ from datetime import datetime, timedelta
 def parse_time_input(time_str: str) -> tuple[float, str, float | None]:
     """Parst Zeit-Eingaben in verschiedenen Formaten.
 
-    Unterstützte Formate:
-        14:30       → Sekunden bis 14:30 Uhr (heute oder morgen)
-        1430        → Sekunden bis 14:30 Uhr (4-stellig, 0000-2359)
-        30s         → 30 Sekunden
-        30m, 30min  → 30 Minuten
-        2h, 2std    → 2 Stunden
-        +30m        → In 30 Minuten (relativ)
-        +2          → In 2 Minuten (+ ohne Einheit = Minuten)
+        14:30 / 1430  → Sekunden bis 14:30 Uhr (heute oder morgen)
+        30s / 30m / 2h → absolute Dauer (auch 30min, 2std)
+        +30m / +2      → relativ (+ ohne Einheit = Minuten)
 
-    Returns:
-        (sekunden: float, beschreibung: str, zielzeit_timestamp: float | None)
-        - zielzeit_timestamp: Absolute Zielzeit bei Uhrzeiten (HH:MM, HHMM), sonst None
-        Bei Fehler: (-1, fehlermeldung, None)
+    Gibt `(sekunden, beschreibung, zielzeit_timestamp | None)` zurück; der
+    Zeitstempel nur bei Uhrzeiten. Bei Fehler `(-1, fehlermeldung, None)`.
     """
     time_str = time_str.strip().lower()
 
@@ -217,12 +210,8 @@ def sanitize_filename(name: str) -> str:
 def naechster_freier_name(praefix: str, vergeben) -> str:
     """Erste freie Nummer einer Serie: 'Slot 1', 'Slot 2', ...
 
-    Fuer durchnummerierte Serien die bessere Wahl als `eindeutiger_name`: die fuellt
-    Luecken wieder auf und liefert saubere Namen, waehrend ein angehaengter Zaehler
-    'Slot 3 2' ergaebe. Genau deshalb machen es Scan-Studio und Slot-Erkennung gleich.
-
-    Fuer einen VORGEGEBENEN Namen, der zufaellig kollidiert, bleibt `eindeutiger_name`
-    zustaendig — dort gibt es keine Serie, an die man anschliessen koennte.
+    Fuer durchnummerierte Serien die bessere Wahl als `eindeutiger_name`: sie
+    fuellt Luecken auf, waehrend ein angehaengter Zaehler 'Slot 3 2' ergaebe.
     """
     n = 1
     while f"{praefix} {n}" in vergeben:
@@ -234,12 +223,9 @@ def eindeutiger_name(basis: str, vergeben) -> str:
     """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
 
     Items, Slots und Presets liegen in Name→Eintrag-Dicts: ein doppelter Name
-    überschreibt den alten Eintrag still, und weil Scans ihre Slots/Items per
-    Name referenzieren, zeigt der Scan danach auf die neue Region statt ins
-    Leere — er läuft weiter und tut etwas anderes. Genau deshalb reicht es
-    nicht, sich auf 'Slot <len+1>' zu verlassen: sobald einer gelöscht oder
-    umbenannt wurde, ist die Nummerierung lückenhaft und die nächste Vergabe
-    trifft einen bestehenden Namen.
+    überschreibt den alten still, und weil Scans per Name referenzieren, läuft
+    der Scan danach weiter und tut etwas anderes. 'Slot <len+1>' trägt das nicht,
+    sobald einmal gelöscht oder umbenannt wurde.
 
     `vergeben` ist alles, was `in` beantwortet (Dict, Set, Liste).
     """
@@ -267,15 +253,6 @@ def compact_json(data, indent: int = 2) -> str:
     """Formatiert JSON mit kompakten Arrays (Koordinaten/Farben auf einer Zeile).
 
     `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
-
-    Wandelt:
-        [
-            55,
-            15,
-            50
-        ]
-    zu:
-        [55, 15, 50]
     """
     json_str = json.dumps(data, indent=indent, ensure_ascii=False)
     for muster, ersatz in _KOMPAKT:
@@ -286,12 +263,10 @@ def compact_json(data, indent: int = 2) -> str:
 def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
     """Schreibt `text` crash-sicher in `path`.
 
-    Schreibt zuerst in eine temporäre Datei im selben Verzeichnis, flusht +
-    fsynct sie und benennt sie dann per os.replace() atomar um. So bleibt bei
-    Absturz/Stromausfall mitten im Schreiben die alte Datei intakt statt eine
-    halb geschriebene, korrupte Datei zu hinterlassen. os.replace ist atomar,
-    solange Temp- und Zieldatei auf demselben Dateisystem liegen (hier: gleiches
-    Verzeichnis).
+    Erst in eine temporäre Datei im selben Verzeichnis, flush + fsync, dann per
+    os.replace() atomar umbenennen: bei einem Absturz mitten im Schreiben bleibt
+    die alte Datei intakt statt halb geschrieben. os.replace ist atomar, solange
+    beide Dateien auf demselben Dateisystem liegen.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

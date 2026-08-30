@@ -5,7 +5,7 @@ Geändert oder gespeichert wird dabei nichts - siehe _report_point_mismatches.
 """
 
 from ...models import Sequence, AutoClickerState, ELSE_CLICK
-from ...persistence import list_available_sequences, load_sequence_file, punkte_nachladen
+from ...persistence import list_available_sequences, load_sequence_file
 from ...utils import col, hint, info, interactive_select, warn
 
 
@@ -20,15 +20,10 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
     with state.lock:
         active_name = state.active_sequence.name if state.active_sequence else None
-    # Genau hier landet, wer im Sequenz-Studio gespeichert hat — die Schlussmeldung
-    # dort schickt einen mit CTRL+ALT+L hierher. Dann liegen die neuen Punkte auf
-    # Platte und nicht im Speicher, und ohne diese Zeile laedt man die frische
-    # Sequenz gegen den alten Punkte-Stand.
-    punkte = punkte_nachladen(state)
     loaded_sequences = []  # (seq, filepath) Paare
     menu_options = []
     for name, path in sequences:
-        seq = load_sequence_file(path, punkte)
+        seq = load_sequence_file(path)
         if seq:
             loaded_sequences.append((seq, path))
             active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
@@ -41,10 +36,9 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
     seq, _seq_path = loaded_sequences[choice]
 
-    _report_point_mismatches(state, seq)
-
     with state.lock:
         state.active_sequence = seq
+        state.points = seq.points
     print(f"\n{col('[ERFOLG]', 'green')} Sequenz '{seq.name}' geladen!\n")
 
 

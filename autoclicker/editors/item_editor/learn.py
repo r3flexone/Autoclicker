@@ -9,12 +9,11 @@ die User-Eingaben — so kann das Item-Inventar sich zwischenzeitlich ändern
 ohne die Daten zu verlieren.
 """
 
-from pathlib import Path
 
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
-    get_point_by_id, shift_category_priorities, TEMPLATES_DIR,
+    get_point_by_id, shift_category_priorities, active_templates_dir,
 )
 from ...utils import (
     confirm, eindeutiger_name, is_cancel, naechster_freier_name, ok,
@@ -109,7 +108,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 if template_img:
                     safe_name = sanitize_filename(item_name)
                     template_file = f"{safe_name}.png"
-                    template_path = Path(TEMPLATES_DIR) / template_file
+                    template_path = active_templates_dir(state) / template_file
                     template_path.parent.mkdir(parents=True, exist_ok=True)
                     template_img.save(template_path)
                     item.template = template_file
@@ -177,7 +176,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         if template_img:
             # Temporär unter generischem Namen speichern, wird später umbenannt
             temp_name = f"_learn_temp_{slot_num}.png"
-            cached_template_path = Path(TEMPLATES_DIR) / temp_name
+            cached_template_path = active_templates_dir(state) / temp_name
             cached_template_path.parent.mkdir(parents=True, exist_ok=True)
             template_img.save(cached_template_path)
             print(ok("Screenshot + Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
@@ -271,7 +270,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     if cached_template_path and cached_template_path.exists():
         safe_name = sanitize_filename(item_name)
         template_file = f"{safe_name}.png"
-        final_path = Path(TEMPLATES_DIR) / template_file
+        final_path = active_templates_dir(state) / template_file
         try:
             cached_template_path.rename(final_path)
             item.template = template_file

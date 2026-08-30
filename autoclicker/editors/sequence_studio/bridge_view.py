@@ -33,6 +33,7 @@ from .bridge_contract import (
     SCAN_FELD,
     SCAN_MODI,
     TYP_REIHENFOLGE,
+    WARTE_TIMEOUT,
     _hex,
     _stelle,
     _wartetext,
@@ -69,6 +70,10 @@ class BridgeViewMixin:
             "beschreibung": self.board.description,
             "zyklen": self.board.total_cycles,
             "dirty": self._dirty,
+            # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
+            # Die Zahl kommt von hier, damit er nicht neben dem echten
+            # Zeitablauf der Bruecke laeuft.
+            "warte_timeout": WARTE_TIMEOUT,
             "status": {"text": text, "art": art},
             "frage": frage,
             "sequenzen": sorted(name for name, _ in list_available_sequences()),
@@ -80,32 +85,20 @@ class BridgeViewMixin:
             "ohne_else": self._ohne_else(),
             "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "punkte": [self._punkt_json(p) for p in self.points],
-            "auswahl": {"phase": self._sel_index(), "zeilen": sorted(self.sel_rows)},
+            "auswahl": self._auswahl_json(),
             "block": self._block_detail(),
         }
 
     def _ohne_else(self) -> dict:
         """Was ohne ELSE nach dem Timeout passiert — laut `config.json`.
 
-        Die Antwort steht nicht im Studio, sondern in der Config des
-        Hauptprozesses (`pixel_wait_timeout`, `pixel_timeout_action`), und sie
-        ist keine Kleinigkeit: die Voreinstellung bricht den **ganzen Zyklus**
-        ab, nicht nur den Schritt. Der Hinweis im Inspektor behauptete das
-        Gegenteil („die Sequenz macht weiter"), und der Unterschied entscheidet,
-        ob man ELSE braucht oder nicht.
+        Die Antwort steht in der Config des Hauptprozesses (`pixel_wait_timeout`,
+        `pixel_timeout_action`), und die Voreinstellung bricht den GANZEN Zyklus ab,
+        nicht nur den Schritt — genau der Unterschied entscheidet, ob man ELSE braucht.
 
-        Gelesen wird **am Zeitstempel der Datei**, nicht bei jeder Momentaufnahme:
-        eine zwischenzeitlich geänderte Config soll nicht bis zum nächsten
-        Fensterstart falsch angezeigt werden, aber jede Momentaufnahme neu zu
-        lesen wäre eine Dateioperation pro Klick. Scheitert das Lesen, bleibt
-        das Feld leer; dann sagt die Oberfläche nichts, statt zu raten.
-
-        Gelesen wird über `_config_datei()` und **nicht** über `load_config()`:
-        die schreibt die Datei, sobald ein Feld fehlt, und gibt dabei eine Zeile
-        in der Konsole aus. Weil dieser Subprozess seine Ausgabe mit dem
-        Hauptprozess teilt, stand dort beim Öffnen des Studios zweimal
-        „[CONFIG] Geladen" — einmal vom Import, einmal von hier. Ein Leser
-        schreibt weder Datei noch Konsole.
+        Gelesen wird am Zeitstempel der Datei, nicht bei jeder Momentaufnahme; und
+        über `_config_datei()` statt `load_config()`, denn die schreibt die Datei und
+        gibt eine Konsolenzeile aus. Scheitert das Lesen, bleibt das Feld leer.
         """
         try:
             from ...config import CONFIG_FILE
@@ -130,23 +123,17 @@ class BridgeViewMixin:
     def _scan_namen(self) -> dict:
         """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.
 
-        Ein Scan-Block verweist **per Name** auf eine Datei in `item_scans/`,
-        `boss_scans/` bzw. `icon_scans/`; der Name IST die Referenz. Getippt
-        werden musste er trotzdem, und ein Tippfehler ergab einen Block, den der
-        Executor stillschweigend nicht ausführt. Hier steht deshalb, was
+        Ein Scan-Block verweist per Name auf eine Datei; ein Tippfehler ergab einen
+        Block, den der Executor stillschweigend nicht ausführt. Hier steht, was
         tatsächlich auf Platte liegt — auswählen statt abschreiben.
 
-        Der Boss-Watcher zieht dieselben Konfigurationen wie der Boss-Scan
-        (`state.boss_scans`), deshalb dieselbe Liste.
-
-        Gelesen wird bei jeder Momentaufnahme, nicht einmal beim Start: legt man
-        im Hauptprozess eine Konfiguration an, während das Studio offen ist,
-        taucht sie beim nächsten Klick auf. Das ist der einzige Weg — geteilten
-        Zustand gibt es zwischen den beiden Prozessen nicht.
+        Der Boss-Watcher zieht dieselben Konfigurationen wie der Boss-Scan. Gelesen
+        wird bei jeder Momentaufnahme, damit eine im Hauptprozess angelegte
+        Konfiguration beim nächsten Klick auftaucht.
         """
         def namen(auflisten) -> list[str]:
             try:
-                return sorted(name for name, _ in auflisten())
+                return sorted(name for name, _ in auflisten(self.board.name))
             except OSError:
                 return []
 
@@ -176,6 +163,30 @@ class BridgeViewMixin:
             "start": lane.scheduled_start or "",
             "loeschbar": lane.kind == LANE_LOOP,
             "bloecke": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
+        }
+
+    def _auswahl_json(self) -> dict:
+        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor."""
+        rows = sorted(self.sel_rows)
+        steps = [] if self.sel_lane is None else [
+            self.sel_lane.steps[row] for row in rows
+            if 0 <= row < len(self.sel_lane.steps)
+        ]
+
+        def gemeinsam(feld: str):
+            werte = [getattr(step, feld) for step in steps]
+            gemischt = bool(werte) and any(wert != werte[0] for wert in werte[1:])
+            return (None if gemischt or not werte else werte[0]), gemischt
+
+        delay_before, before_gemischt = gemeinsam("delay_before")
+        delay_max, max_gemischt = gemeinsam("delay_max")
+        return {
+            "phase": self._sel_index(),
+            "zeilen": rows,
+            "delay_before": delay_before,
+            "delay_before_gemischt": before_gemischt,
+            "delay_max": delay_max,
+            "delay_max_gemischt": max_gemischt,
         }
 
     def _block_json(self, lane: Lane, row: int, step: SequenceStep) -> dict:

@@ -80,14 +80,16 @@ try:
     check("beim Bearbeiten ist 'beibehalten' vorausgewaehlt", _behalten == (5, 6, 7, 8))
     _DC.interactive_select = lambda opts, default=0: -1
     with _cl2.redirect_stdout(_io2.StringIO()):
-        check("ESC im Menue bricht ab", _DC.select_scan_region((5, 6, 7, 8)) is None)
+        _abbruch = _DC.select_scan_region((5, 6, 7, 8))
+    check("ESC im Menue bricht ab", _abbruch is None)
     # Ohne bestehende Region gibt es den dritten Eintrag gar nicht - dann darf
     # "beibehalten" auch nicht versehentlich erreichbar sein.
     _DC.interactive_select = lambda opts, default=0: len(opts) - 1
     _DC.safe_input = lambda _p="": "1,2,3,4"
     with _cl2.redirect_stdout(_io2.StringIO()):
-        check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
-              _DC.select_scan_region(None) == (1, 2, 3, 4))
+        _eingabe = _DC.select_scan_region(None)
+    check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
+          _eingabe == (1, 2, 3, 4))
 finally:
     _DC.interactive_select = _alt_sel
 
@@ -127,18 +129,26 @@ section("Item umbenennen: Template, Bestand und Scans ziehen mit")
 # zurueck, zeigt der Scan ins Leere oder das Template gehoert zum falschen Item.
 
 from autoclicker.editors.item_editor.commands import _apply_item_rename as _air
-from autoclicker.models import (AutoClickerState as _ACS_R, ItemProfile as _IPR)
+from autoclicker.models import (
+    AutoClickerState as _ACS_R, ItemProfile as _IPR, ItemScanConfig as _ISCR,
+    Sequence as _SEQR,
+)
 import autoclicker.persistence.item_scans as _ismod2
 
 _ren_tmp = Path(tempfile.mkdtemp())
 _ren_cwd = _os.getcwd()
 _os.chdir(_ren_tmp)
 try:
-    Path("items/templates").mkdir(parents=True)
-    Path("items/templates/alt.png").write_bytes(b"PNG")
     _st_r2 = _ACS_R()
+    _seq_r2 = _SEQR(name="S")
+    _st_r2.active_sequence = _seq_r2
+    _st_r2.sequences["S"] = _seq_r2
+    Path("sequences/s/templates").mkdir(parents=True)
+    Path("sequences/s/templates/alt.png").write_bytes(b"PNG")
     _st_r2.global_items = {"Alt": _IPR(name="Alt", template="alt.png",
-                                       marker_colors=[(1, 2, 3)])}
+                                        marker_colors=[(1, 2, 3)])}
+    _st_r2.item_scans["Inventar"] = _ISCR(
+        name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
     _gerufen = []
     _alt_uiis = _ismod2.update_item_in_scans
     _ismod2.update_item_in_scans = lambda a, n: _gerufen.append((a, n))
@@ -159,8 +169,8 @@ try:
           _st_r2.global_items["Neu"].name == "Neu")
     # Die DATEI wandert mit - sonst zeigt das Profil auf einen Namen, den es nicht gibt.
     check("die Template-Datei wandert mit",
-          Path("items/templates/neu.png").exists()
-          and not Path("items/templates/alt.png").exists())
+          Path("sequences/s/templates/neu.png").exists()
+          and not Path("sequences/s/templates/alt.png").exists())
     check("und das Profil zeigt auf den neuen Dateinamen",
           _st_r2.global_items["Neu"].template == "neu.png")
     check("die Scans werden nachgezogen", _gerufen == [("Alt", "Neu")])

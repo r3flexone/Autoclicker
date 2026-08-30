@@ -103,8 +103,15 @@ class LinuxBackendTests(unittest.TestCase):
             self.assertEqual(2, linux_x11.resolve_window("Idle Clans")[2])
 
     def test_linux_pixelmessung_nutzt_plattformaufnahme(self):
+        """Die Pixelmessung geht durchs Backend — nicht an ihm vorbei.
+
+        `PILLOW_AVAILABLE` wird mitgesetzt: geprueft wird die WEITERGABE, und die
+        haengt nicht daran, ob Pillow installiert ist. Ohne den Patch faellt der
+        Test in der `ohne`-Variante um, obwohl an der Weitergabe nichts fehlt -
+        ein roter Test, der nur die Testumgebung meldet, verdeckt echte.
+        """
         from autoclicker import imaging
-        with patch.object(
+        with patch.object(imaging, "PILLOW_AVAILABLE", True), patch.object(
                 imaging, "get_screen_pixel", return_value=(12, 34, 56)) as messung:
             self.assertEqual((12, 34, 56), imaging.get_pixel_color(7, 9))
         messung.assert_called_once_with(7, 9)

@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ...persistence.paths import SCAN_SHOTS_DIR
 from ...utils import sanitize_filename
 from .scan_model import crop_region, normalize_region
 
@@ -30,17 +29,14 @@ class ScanCaptureMixin:
     def scan_foto(self, daten: Optional[dict] = None) -> dict:
         """Nimmt einen Screenshot auf und legt ihn unter das Raster.
 
-        Der eingefrorene Bildschirm ist die Arbeitsfläche: Slots zieht man dort
-        auf, wo sie im Spiel liegen, statt Koordinaten zu tippen.
-
-        **Vollbild ist die Voreinstellung, nicht die einzige Möglichkeit.**
-        Aufgenommen wird der ganze virtuelle Desktop, damit auch ein Fenster auf
-        dem zweiten Monitor dazugehört — aber wer dasselbe Spiel dreimal offen
-        hat, arbeitet auf einem Bild, in dem drei Viertel stören. `bereich`
-        schränkt die Aufnahme ein; ohne Angabe gilt der zuletzt gesetzte Bereich
-        des Scans, und der überlebt das Schliessen (er steht im gemerkten Bild).
+        Der eingefrorene Bildschirm ist die Arbeitsfläche: Slots zieht man dort auf,
+        wo sie im Spiel liegen. Vollbild ist die Voreinstellung (der ganze virtuelle
+        Desktop); `bereich` schränkt ein, und ohne Angabe gilt der zuletzt gesetzte
+        Bereich des Scans — der steht im gemerkten Bild und überlebt das Schliessen.
         """
-        self._scan_laden()
+        gesperrt = self._scan_voraussetzung(daten)
+        if gesperrt is not None:
+            return gesperrt
         try:
             from ...imaging import PILLOW_AVAILABLE, take_screenshot
             from ...winapi import get_virtual_origin, resolve_window
@@ -113,14 +109,10 @@ class ScanCaptureMixin:
     def _fensterbild(self):
         """Bildet das gewählte Fenster ab. `(bild, bereich, hinweis)`.
 
-        **Das ist der Grund, warum man ein Fenster wählt und nicht nur einen
-        Ausschnitt.** Ein Ausschnitt vom Desktop zeigt, was auf dem Schirm zu
-        sehen ist — also auch das Studio, das davor liegt. `PrintWindow` fragt
-        das Fenster selbst; ob es verdeckt ist, spielt keine Rolle.
-
-        Kann sich ein Spiel über PrintWindow nicht zeichnen, fällt der gemeinsame
-        Helfer auf seinen sichtbaren Desktop-Ausschnitt zurück. Genau denselben
-        Weg verwendet der Live-Scan.
+        Der Grund, ein Fenster zu wählen statt nur einen Ausschnitt: ein
+        Desktop-Ausschnitt zeigt auch das Studio, das davor liegt. Kann sich ein Spiel
+        über PrintWindow nicht zeichnen, fällt der gemeinsame Helfer auf den
+        sichtbaren Ausschnitt zurück — denselben Weg nimmt der Live-Scan.
         """
         try:
             from ...imaging import take_consistent_window_screenshot
@@ -235,22 +227,19 @@ class ScanCaptureMixin:
     def scan_bereich_setzen(self, daten: Optional[dict] = None) -> dict:
         """Setzt, WAS aufgenommen wird — aufgenommen wird erst auf Knopfdruck.
 
-        Ohne `bereich` heisst es Vollbild — der Rückweg, ohne den ein einmal
-        eingeschränkter Scan nie wieder das Ganze sähe.
+        Ohne `bereich` heisst es Vollbild: der Rückweg, ohne den ein eingeschränkter
+        Scan nie wieder das Ganze sähe.
 
-        **Wählen und Aufnehmen sind zwei Dinge, also sind es zwei Klicks.**
-        Vorher nahm diese Methode gleich mit auf, und das war die verwirrendste
-        Stelle des Reiters: wer ein Fenster aus der Liste wählte, hatte plötzlich
-        ein Bild, ohne etwas ausgelöst zu haben — und der Knopf „Fenster
-        aufnehmen" daneben schien danach nichts mehr zu tun, weil er dasselbe
-        Bild noch einmal holte und zwei gleiche Bilder gleich aussehen. Ein
-        Bedienelement, das von selbst handelt, und eines, das scheinbar nicht
-        handelt, sind derselbe Fehler von zwei Seiten.
+        Wählen und Aufnehmen sind zwei Dinge, also zwei Klicks. Vorher nahm die
+        Methode gleich mit auf — dann hatte man plötzlich ein Bild, ohne etwas
+        ausgelöst zu haben, und der Knopf daneben schien nichts mehr zu tun.
 
         `_klick_bereich` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
         sofort zu: dort ist der Zuschnitt das Ergebnis, nicht die Vorbereitung.
         """
-        self._scan_laden()
+        gesperrt = self._scan_voraussetzung(daten)
+        if gesperrt is not None:
+            return gesperrt
         neuer_bereich = self._bereich_aus(daten or {})
         try:
             fenster_id = int((daten or {}).get("fenster") or 0)
@@ -367,21 +356,18 @@ class ScanCaptureMixin:
         return self._scan_melde(f"Bereich: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1})."
                                 f"{self._draussen_hinweis()}")
 
-    @staticmethod
-    def _foto_pfad(scan: str) -> Path:
-        return Path(SCAN_SHOTS_DIR) / f"{sanitize_filename(scan)}.png"
+    def _foto_pfad(self, scan: str) -> Path:
+        return (self.filepath.parent / "bilder"
+                / f"{sanitize_filename(scan)}.png")
 
     def _foto_merken(self, bild, links: int, oben: int) -> None:
         """Legt den Screenshot beim offenen Scan ab — für das nächste Öffnen.
 
-        **Der Ursprung des virtuellen Desktops steht IM PNG** (Text-Chunk), nicht
-        in einer Datei daneben. Zwei Dateien, die zusammengehören, laufen
-        irgendwann auseinander: eine gelöschte, eine überschriebene, und die
-        Koordinaten sind still um einen Monitor verschoben. Im Bild selbst kann
-        das nicht passieren.
+        Der Ursprung des virtuellen Desktops steht IM PNG (Text-Chunk), nicht in
+        einer Datei daneben: zwei Dateien, die zusammengehören, laufen irgendwann
+        auseinander, und dann sind alle Koordinaten um einen Monitor verschoben.
 
-        Ohne offenen Scan wird nichts abgelegt: das Bild gehört zu einem Spiel,
-        und welches gemeint ist, sagt der Scan.
+        Ohne offenen Scan wird nichts abgelegt — welches Spiel gemeint ist, sagt der Scan.
         """
         if not self.scan_offen:
             return
@@ -393,6 +379,11 @@ class ScanCaptureMixin:
             pfad = self._foto_pfad(self.scan_offen)
             pfad.parent.mkdir(parents=True, exist_ok=True)
             bild.save(pfad, "PNG", pnginfo=info)
+            # Das Bild liegt UNTER `item_scans/` — und der Unterordner entsteht
+            # gerade eben, was die Änderungszeit des Elternordners weiterdreht.
+            # Ohne dieses Nachziehen meldete der Reiter direkt nach der eigenen
+            # Aufnahme „auf Platte hat sich etwas geändert".
+            self._platte_nachziehen(self.filepath.parent)
         except (ImportError, OSError, ValueError):
             pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
 

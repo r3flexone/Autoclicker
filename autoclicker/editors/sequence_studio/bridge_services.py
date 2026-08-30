@@ -1,6 +1,5 @@
 """Datei-, Lauf- und Konfigurationsdienste der Studio-Brücke."""
 
-import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -16,15 +15,12 @@ from .bridge_contract import (
     _gleicher_wert,
     _hex,
     _mtime,
-    _punkte_pfad,
     scan_warnungen,
 )
 from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
-    load_palette_points,
-    save_palette_points,
     sequence_to_board,
 )
 
@@ -35,46 +31,31 @@ class BridgeServicesMixin:
     def sequenz_liste(self, daten: Optional[dict] = None) -> list[dict]:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
 
-        **Die eine Methode, die keine Momentaufnahme zurückgibt** (mit
-        `lauf_status()`). Deshalb ruft die Oberfläche sie über `frage()` statt
-        über `ruf()`: `ruf()` ersetzt `S` mit der Antwort, und eine Liste an
-        dieser Stelle hiesse Editor-Zustand weg, sobald man die Übersicht
-        aufmacht. Wer hier etwas ergänzt, prüft zuerst, welcher der beiden
-        Kanäle gemeint ist.
-
-        Bewusst über `load_sequence_file()` und nicht über einen eigenen
-        JSON-Leser: so laufen Migration und Punkt-Auflösung mit, und die Zahlen
-        hier sind dieselben, die der Editor beim Öffnen zeigt.
-
-        Nur Kennzahlen, keine Schritte — die Liste soll auch bei 40 Sequenzen
-        sofort stehen, und gelesen wird sie bei jedem Öffnen des Reiters neu
-        (im Hauptprozess kann zwischendurch eine dazugekommen sein).
-
-        **Der Ordner wird selbst durchgesehen, nicht `list_available_sequences()`
-        gefragt.** Die überspringt unlesbare Dateien stillschweigend — richtig für
-        ein Menü (laden liesse sie sich ohnehin nicht), falsch für eine Übersicht:
-        genau dann sucht man die Datei im Explorer, weil sie nirgends auftaucht.
-        Hier steht sie mit dem Vermerk, dass sie kaputt ist.
+        Keine Momentaufnahme — deshalb über `frage()` zu holen, sonst zerschösse die
+        Antwort den Editor-Zustand. Über `load_sequence_file()`, damit Migration und
+        Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
         raus: list[dict] = []
-        ordner = Path(self.sequences_dir)
-        try:
-            dateien = sorted(p for p in ordner.glob("*.json") if p.name != "points.json")
-        except OSError:
-            return []
+        wurzel = Path(self.sequences_dir)
+        dateien = sorted(
+            (ordner / "sequence.json" for ordner in wurzel.iterdir()
+             if ordner.is_dir() and (ordner / "sequence.json").exists()),
+            key=lambda pfad: pfad.parent.name,
+        ) if wurzel.exists() else []
         for pfad in dateien:
+            gespeicherter_name = pfad.parent.name
             try:
                 geaendert = pfad.stat().st_mtime
             except OSError:
                 geaendert = 0.0
             seq = load_sequence_file(pfad)
             if seq is None:
-                raus.append({"name": pfad.stem, "datei": pfad.name, "defekt": True,
+                raus.append({"name": gespeicherter_name, "datei": str(pfad), "defekt": True,
                              "geaendert": geaendert, "offen": pfad == self.filepath})
                 continue
             raus.append({
                 "name": seq.name,
-                "datei": pfad.name,
+                "datei": str(pfad),
                 "defekt": False,
                 "beschreibung": seq.description,
                 "zyklen": seq.total_cycles,
@@ -94,12 +75,8 @@ class BridgeServicesMixin:
     def lauf_status(self, daten: Optional[dict] = None) -> dict:
         """Was gerade läuft — gelesen aus der Statusdatei des Hauptprozesses.
 
-        Der zweite Kanal neben `sequenz_liste()`: keine Momentaufnahme, deshalb
-        über `frage()` abzuholen. Und **nie ein Fehler** — dass nichts läuft ist
-        der Normalfall, nicht der Ausnahmefall.
-
-        Der Hauptprozess und dieses Fenster teilen keinen Speicher; die Datei
-        ist der gemeinsame Nenner, so wie überall sonst zwischen den beiden.
+        Der zweite `frage()`-Kanal, und nie ein Fehler: dass nichts läuft, ist der
+        Normalfall. Die Datei ist der gemeinsame Nenner zwischen beiden Prozessen.
         """
         import json
         from ...config import RUN_STATUS_FILE
@@ -114,7 +91,7 @@ class BridgeServicesMixin:
         # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
         # laufend hält.
         if not zustand.get("aktiv"):
-            return zustand if zustand.get("ende") else {"aktiv": False}
+            return zustand if (zustand.get("ende") or zustand.get("countdown")) else {"aktiv": False}
         # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
         # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
@@ -134,23 +111,80 @@ class BridgeServicesMixin:
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
-    LAUF_BEFEHLE = ("start", "stop", "pause")
+    LAUF_BEFEHLE = ("start", "start_manuell", "stop", "pause", "skip", "skip_step", "finish",
+                    "manuell", "manuell_aktion", "zeitplan")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
-    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten")
+    # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
+    # systemweiten Maus-Hook und muss deshalb drueben laufen.
+    ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten", "aufnahme",
+                                   "aufnahme_stop",
+                                   "programm_beenden",
+                                   "nachklick", "nachklick_stop", "block_test")
+
+    def aufnahme_starten(self, daten: Optional[dict] = None) -> dict:
+        """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
+
+        Das Studio kann den systemweiten Maus- und Tastatur-Hook nicht selbst
+        installieren. Wie Start/Pause und die Klick-Runde legt es deshalb einen
+        begrenzten Befehl in den gemeinsamen Briefkasten. Alle Angaben gehen mit,
+        damit der Abschluss nicht unsichtbar in der Konsole auf Eingaben wartet.
+        """
+        from ...befehl import sende
+        daten = daten or {}
+        name = str(daten.get("name") or "").strip()
+        if not name:
+            return {"ok": False, "meldung": "Bitte zuerst einen Namen eingeben."}
+        sicher = sanitize_filename(name)
+        ziel = Path(self.sequences_dir) / sicher / "sequence.json"
+        if ziel.exists():
+            return {"ok": False, "meldung": f"'{sicher}' gibt es bereits."}
+        try:
+            zyklen = max(0, int(daten.get("zyklen") or 0))
+        except (TypeError, ValueError):
+            return {"ok": False, "meldung": "Zyklen müssen eine ganze Zahl sein."}
+        # Die drei Zeilen der vorigen Aufnahme sollen beim neuen Start nicht
+        # noch für einen Augenblick als neue Ereignisse aufblitzen.
+        from ...config import RECORD_STATUS_FILE
+        try:
+            Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
+        except OSError:
+            pass
+        if not sende("aufnahme", name=sicher, zyklen=zyklen,
+                     beschreibung=str(daten.get("beschreibung") or "").strip()):
+            return {"ok": False, "meldung": "Aufnahme konnte nicht gestartet werden."}
+        return {"ok": True, "name": sicher,
+                "meldung": "Aufnahme startet — jetzt ins Spiel wechseln."}
+
+    def aufnahme_stoppen(self, daten: Optional[dict] = None) -> dict:
+        """Beendet die Aufnahme; der Hauptprozess baut und speichert die Blöcke."""
+        from ...befehl import sende
+        if not sende("aufnahme_stop"):
+            return {"ok": False, "meldung": "Stopp konnte nicht gesendet werden."}
+        return {"ok": True, "meldung": "Aufnahme wird beendet und gespeichert."}
+
+    def aufnahme_status(self, daten: Optional[dict] = None) -> dict:
+        """Die rollende Live-Ausgabe der Aufnahme — höchstens drei Zeilen."""
+        import json
+        from ...config import RECORD_STATUS_FILE
+        try:
+            with open(RECORD_STATUS_FILE, "r", encoding="utf-8") as f:
+                status = json.load(f)
+        except (OSError, ValueError):
+            return {"aktiv": False, "pausiert": False, "anzahl": 0,
+                    "ereignisse": []}
+        return status if isinstance(status, dict) else {
+            "aktiv": False, "pausiert": False, "anzahl": 0, "ereignisse": []}
 
     def lauf_befehl(self, daten: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
 
-        Dieses Fenster kann die Sequenz nicht selbst ausführen: es ist ein eigener
-        Prozess und sieht weder `AutoClickerState` noch `stop_event`. Es legt
-        deshalb einen Befehl ab (`befehl.py`), den der Hauptprozess in derselben
-        Schleife abholt, in der auch seine Hotkeys ankommen — ein Studio-Knopf ist
-        damit genau so viel wert wie ein Tastendruck, nicht mehr und nicht weniger.
+        Dieses Fenster sieht weder `AutoClickerState` noch `stop_event`; es legt einen
+        Befehl ab, den der Hauptprozess in seiner Hotkey-Schleife abholt.
 
-        **Vor dem Start wird gespeichert.** Der Hauptprozess lädt die Datei; was
-        nur hier im Speicher steht, liefe nicht mit. Ein Start-Knopf, der eine
-        ältere Fassung startet als die angezeigte, wäre schlimmer als keiner.
+        Vor dem Start wird gespeichert — der Hauptprozess lädt die Datei, und ein
+        Start-Knopf, der eine ältere Fassung startet als die angezeigte, wäre
+        schlimmer als keiner.
         """
         from ...befehl import sende
         befehl = (daten or {}).get("befehl") or ""
@@ -158,7 +192,7 @@ class BridgeServicesMixin:
             return self._melde(f"Unbekannter Lauf-Befehl '{befehl}'.", "err")
 
         argumente: dict = {}
-        if befehl == "start":
+        if befehl in ("start", "start_manuell", "zeitplan"):
             if self._dirty:
                 zustand = self.speichern()
                 if zustand["status"]["art"] == "err":
@@ -166,24 +200,37 @@ class BridgeServicesMixin:
             if not self.filepath.exists():
                 return self._melde("Erst speichern — die Datei gibt es noch nicht.", "warn")
             argumente = {"datei": str(self.filepath), "sequenz": self.board.name}
+        if befehl == "zeitplan":
+            zeit = str((daten or {}).get("zeit") or "").strip()
+            if not zeit:
+                return self._melde("Bitte eine Startzeit eingeben.", "warn")
+            argumente["zeit"] = zeit
+        if befehl == "manuell_aktion":
+            aktion = str((daten or {}).get("aktion") or "")
+            if aktion not in ("run", "skip", "continue", "stop"):
+                return self._melde("Unbekannte manuelle Aktion.", "err")
+            argumente["aktion"] = aktion
 
         if not sende(befehl, **argumente):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         text = {"start": f"'{self.board.name}' gestartet.",
+                "start_manuell": f"'{self.board.name}' im Schrittmodus gestartet.",
                 "stop": "Stopp geschickt.",
-                "pause": "Pause umgeschaltet."}[befehl]
+                "pause": "Pause umgeschaltet.",
+                "skip": "Aktuelle Wartezeit wird übersprungen.",
+                "skip_step": "Aktueller Block wird vollständig übersprungen.",
+                "finish": "Zyklus wird sauber abgeschlossen.",
+                "manuell": "Manueller Modus umgeschaltet.",
+                "manuell_aktion": "Entscheidung geschickt.",
+                "zeitplan": f"Start für '{self.board.name}' geplant."}[befehl]
         return self._melde(text)
 
     def punkt_zeigen(self, daten: Optional[dict] = None) -> dict:
         """Setzt die Maus im Hauptprozess auf die Stelle des gewählten Blocks.
 
-        Der kürzeste Weg zu der Frage, die man beim Bauen einer Sequenz am
-        häufigsten hat: **sitzt der Punkt da, wo ich denke?** Ein Blick auf
-        „(4402,561)" beantwortet sie nicht, ein Mauszeiger im Spiel schon.
-
-        Messen kann nur der Hauptprozess (dieses Fenster sieht den Bildschirm
-        nicht), deshalb steht die Auswertung — gespeicherte gegen aktuelle Farbe —
-        in dessen Konsole. Hier bleibt die Rückmeldung, dass der Auftrag raus ist.
+        „Sitzt der Punkt da, wo ich denke?" beantwortet ein Mauszeiger im Spiel, kein
+        Zahlenpaar. Messen kann nur der Hauptprozess — die Auswertung steht deshalb
+        in dessen Konsole.
         """
         lane, row, step = self._einzelner()
         if step is None:
@@ -207,19 +254,36 @@ class BridgeServicesMixin:
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         return self._melde(f"Maus zu #{punkt.id} ({punkt.x},{punkt.y}) — im Spiel nachsehen.")
 
+    def block_testen(self, daten: Optional[dict] = None) -> dict:
+        """Führt den gewählten Block einmal im Hauptprozess aus.
+
+        Gesendet werden nur Datei und Position, nicht ein frei konstruierter
+        Schritt. Der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
+        die auch ein echter Lauf verwenden würde.
+        """
+        lane, row, step = self._einzelner()
+        if step is None or lane is None or row is None:
+            return self._melde("Bitte genau einen Block wählen.", "warn")
+        if self._dirty:
+            zustand = self.speichern()
+            if zustand["status"]["art"] == "err":
+                return zustand
+        loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
+                      if lane.kind == "loop" else -1)
+        from ...befehl import sende
+        if not sende("block_test", datei=str(self.filepath), phase=lane.kind,
+                     phase_index=loop_index, block=int(row)):
+            return self._melde("Block-Test konnte nicht gesendet werden.", "err")
+        return self._melde("Block-Test geschickt — echter Klick/Tastendruck möglich.", "warn")
+
     # ------------------------------------------------------------ Einstellungen
 
     def _config_datei(self) -> tuple:
         """`config.json` als reine Werte — und was beim Lesen schiefging.
 
-        Bewusst nicht `load_config()`: die **schreibt** die Datei, sobald ein
-        Feld fehlt, und gibt bei jedem Aufruf eine Zeile in der Konsole des
-        Hauptprozesses aus. Ein Leser tut weder das eine noch das andere.
-
-        Drei Ergebnisse, und der Unterschied zwischen den letzten beiden ist der
-        wichtige: `({}, "")` heisst „gibt es noch nicht" (dann legt das
-        Speichern sie an), `({}, "…")` heisst „da liegt etwas, das ich nicht
-        verstehe" — und darauf wird nicht geschrieben.
+        Bewusst nicht `load_config()`: die schreibt die Datei, sobald ein Feld fehlt.
+        `({}, "")` heisst „gibt es noch nicht", `({}, "…")` heisst „da liegt etwas
+        Unlesbares" — und darauf wird nicht geschrieben.
         """
         import json
         from ...config import CONFIG_FILE
@@ -237,13 +301,9 @@ class BridgeServicesMixin:
     def config_lesen(self, daten: Optional[dict] = None) -> dict:
         """Werte, Standardwerte, Abschnitte und Beschreibungen in einem Rutsch.
 
-        Der dritte `frage()`-Kanal: keine Momentaufnahme, sondern ein eigener
-        Gegenstand — über `ruf()` geholt zerschösse die Antwort den
-        Editor-Zustand.
-
-        Der Pfad steht absolut dabei, weil `config.json` relativ zum
-        Arbeitsverzeichnis liegt: wer die App aus einem anderen Ordner startet,
-        bearbeitet eine andere Datei, und das darf man nicht raten müssen.
+        Der dritte `frage()`-Kanal. Der Pfad steht absolut dabei: `config.json` liegt
+        relativ zum Arbeitsverzeichnis, und welche Datei gemeint ist, darf man nicht
+        raten müssen.
         """
         from ...config import (
             AppConfig, CONFIG_FILE, config_abschnitte, optionale_felder,
@@ -264,18 +324,12 @@ class BridgeServicesMixin:
     def config_schreiben(self, daten: Optional[dict] = None) -> dict:
         """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.
 
-        **Nur die geänderten Schlüssel**, nicht die ganze Config: der
-        Hauptprozess schreibt dieselbe Datei (Debug-Stufen, Factory Reset,
-        Import), und ein Fenster, das seit einer Stunde offensteht, soll dessen
-        Änderungen nicht mit seinem alten Stand überbügeln. Gemischt wird
-        deshalb gegen die Datei, wie sie **jetzt** aussieht.
+        Nur die geänderten Schlüssel, gemischt gegen die Datei wie sie JETZT aussieht:
+        der Hauptprozess schreibt dieselbe Datei.
 
-        `AppConfig.__post_init__` korrigiert ungültige Werte still (Konfidenz
-        über 1, max unter min, unbekannte Aktion). Im Hauptprozess sieht man das
-        an einer Konsolenzeile — hier sähe sie niemand, deshalb wird der
-        korrigierte Stand gegen das Gesendete gehalten und die Abweichung
-        zurückgemeldet. Die Datei enthält dann etwas anderes als eingegeben, und
-        das darf nicht stillschweigend passieren.
+        `__post_init__` hebt ungültige Werte still auf den Standard; im Studio sähe
+        das niemand, deshalb wird der geschriebene Stand gegen das Gesendete gehalten
+        und die Abweichung zurückgemeldet.
         """
         from ...config import AppConfig, save_config
         werte = (daten or {}).get("werte")
@@ -307,13 +361,8 @@ class BridgeServicesMixin:
     def befehl_offen(self, daten: Optional[dict] = None) -> bool:
         """Liegt der letzte Befehl noch im Briefkasten?
 
-        Die einzige Rückmeldung, die dieses Fenster über den Hauptprozess bekommt:
-        er leert den Kasten beim Lesen. Liegt der Befehl Sekunden später immer
-        noch da, hört niemand zu — das Programm ist zu, oder es hängt. Ohne diese
-        Frage meldete der Knopf „gestartet" und es passierte nichts, was von
-        aussen wie ein kaputter Knopf aussieht.
-
-        Fragt nur, ändert nichts: gehört zu `frage()`, nicht zu `ruf()`.
+        Die einzige Rückmeldung über den Hauptprozess: er leert den Kasten beim Lesen.
+        Liegt der Befehl später noch da, hört niemand zu. Fragt nur, ändert nichts.
         """
         from ...befehl import BEFEHL_DATEI
         try:
@@ -341,10 +390,15 @@ class BridgeServicesMixin:
         self.filepath = Path(pfad)
         # Punkte neu einlesen: zwischen zwei Sequenzen kann im Hauptprozess ein
         # Punkt dazugekommen sein.
-        self.points = load_palette_points(self.sequences_dir)
+        from .model import palette_from_sequence
+        self.points = palette_from_sequence(seq)
+        self._scan_init()
+        self._scan_laden()
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
+        from ...sequence_studio import merke_zuletzt_verwendet
+        merke_zuletzt_verwendet(self.filepath)
         return self._melde(f"Geladen: {name}")
 
     def neu(self, daten: Optional[dict] = None) -> dict:
@@ -362,8 +416,9 @@ class BridgeServicesMixin:
         # zur Laufzeit nichts (der Worker geht durch null Schritte). Ohne sie war
         # der erste Griff nach dem Anlegen immer derselbe: „+ Loop-Phase".
         self.board = sequence_to_board(Sequence(
-            name=basis, loop_phases=[LoopPhase(name="Loop", repeat=1, steps=[])]))
-        self.filepath = Path(self.sequences_dir) / f"{sanitize_filename(basis)}.json"
+            name=basis, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
+        self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
+        self._scan_init()
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
@@ -390,17 +445,10 @@ class BridgeServicesMixin:
     def speichern(self, daten: Optional[dict] = None) -> dict:
         """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen.
 
-        **Ein Scan ohne Konfiguration hält das Speichern nicht auf.** Das tat es
-        einmal, und die Begründung war richtig, aber an der falschen Stelle: ein
-        leerer Scan-Name fiel im Executor durch den Truthiness-Dispatch bis zum
-        Klick durch und wurde zu einem Klick auf (0, 0). Nur hat das den Editor
-        nichts anzugehen — wer einen Block anlegt, um seine Stelle im Ablauf
-        festzuhalten, und die Konfiguration erst danach baut (die entsteht in
-        einem anderen Prozess, mit CTRL+ALT+N), soll das speichern koennen.
-        Repariert ist es jetzt dort, wo es kaputt war: `execute_step` ueberspringt
-        so einen Block mit Ansage.
-
-        Gemeldet wird er trotzdem — still soll er nicht bleiben.
+        Ein Scan ohne Konfiguration hält das Speichern nicht auf: wer einen Block
+        anlegt, um seine Stelle im Ablauf festzuhalten, soll ihn speichern können.
+        Repariert ist der Fall dort, wo er kaputt war — `execute_step` überspringt so
+        einen Block mit Ansage. Gemeldet wird er hier trotzdem.
         """
         if not (self.board.name or "").strip():
             # Der Name ist etwas anderes: er IST der Dateiname. Ohne ihn gibt es
@@ -408,8 +456,26 @@ class BridgeServicesMixin:
             return self._melde("Nicht gespeichert: Sequenz-Name fehlt.", "err")
 
         alt = self.filepath
-        neu = Path(self.sequences_dir) / f"{sanitize_filename(self.board.name)}.json"
+        neu = (Path(self.sequences_dir) / sanitize_filename(self.board.name)
+               / "sequence.json")
         umbenannt = neu != alt
+
+        # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
+        # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
+        alt_ordner = alt.parent
+        neu_ordner = neu.parent
+        verschoben = False
+        if umbenannt and alt.exists():
+            if neu_ordner.exists():
+                return self._melde(
+                    f"Nicht gespeichert: Ordner '{neu_ordner.name}' existiert bereits.",
+                    "err")
+            try:
+                alt_ordner.rename(neu_ordner)
+                verschoben = True
+            except OSError as fehler:
+                return self._melde(f"Sequenzordner konnte nicht umbenannt werden: {fehler}",
+                                   "err")
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
@@ -427,25 +493,29 @@ class BridgeServicesMixin:
             }
             return self.snapshot()
 
-        # Punkte ZUERST: die Sequenz verweist nur noch auf sie. Schlägt das fehl,
-        # zeigten frisch angelegte Referenzen ins Leere — dann lieber gar nicht
-        # speichern, als eine Sequenz mit toten Verweisen zu hinterlassen.
-        if not save_palette_points(self.sequences_dir, self.points):
-            return self._melde("points.json nicht schreibbar — nichts gespeichert.", "err")
-        if not save_sequence_file(board_to_sequence(self.board), neu):
+        from .model import palette_to_points
+        sequence = board_to_sequence(self.board)
+        sequence.points = palette_to_points(self.points)
+        if not save_sequence_file(sequence, neu):
+            if verschoben:
+                try:
+                    neu_ordner.rename(alt_ordner)
+                except OSError:
+                    pass
             return self._melde("Speichern fehlgeschlagen!", "err")
 
         self.filepath = neu
+        if verschoben:
+            self._scan_init()
+            self._scan_laden()
         self._gespeichert = True
         self._dirty = False
         self._stand_merken()
+        from ...sequence_studio import merke_zuletzt_verwendet
+        merke_zuletzt_verwendet(self.filepath)
         text = f"Gespeichert: {neu.name}"
-        if umbenannt and alt.exists():
-            try:
-                os.remove(alt)
-                text = f"Umbenannt → {neu.name} (alte Datei entfernt)"
-            except OSError:
-                text = f"Gespeichert: {neu.name} (alte Datei {alt.name} blieb)"
+        if verschoben:
+            text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
 
         leer = self._scan_ohne_namen()
         if leer:
@@ -458,21 +528,18 @@ class BridgeServicesMixin:
 
         `ziel` ist die Sequenzdatei, die gleich geschrieben wird — beim Umbenennen
         `None`, denn dann entsteht eine neue Datei und es gibt nichts zu
-        überschreiben. `points.json` wird immer geprüft: die schreibt das Studio
+        überschreiben. `sequence.json` wird immer geprüft: die schreibt das Studio
         bei jedem Speichern mit, und der Hauptprozess legt dort während einer
         Aufnahme neue Punkte an.
         """
         if ziel is not None and _mtime(ziel) not in (None, self._stand_datei):
             return Path(ziel).name
-        punkte = _punkte_pfad(self.sequences_dir)
-        if _mtime(punkte) not in (None, self._stand_punkte):
-            return "points.json"
         return ""
 
     def _stand_merken(self) -> None:
         """Nach dem Schreiben (oder Laden) den Stand der Dateien festhalten."""
         self._stand_datei = _mtime(self.filepath)
-        self._stand_punkte = _mtime(_punkte_pfad(self.sequences_dir))
+        self._stand_punkte = self._stand_datei
 
     def rettung_schreiben(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

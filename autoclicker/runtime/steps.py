@@ -100,7 +100,7 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         config = lauffaehige_scan_config(state, step.item_scan)
         if config is None:
             return True
-        slots = list(config.slots)
+        slots = [slot for slot in config.slots if slot.enabled]
         rueckwaerts = config.reverse
     if rueckwaerts:
         slots = list(reversed(slots))
@@ -300,6 +300,12 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
                          "Boss-Watcher: übersprungen", "Boss-Watcher: SKIP!")
             return True
 
+        if state.skip_step_event.is_set():
+            state.skip_step_event.clear()
+            _step_status(debug, phase, step_num, total_steps,
+                         "Block übersprungen", "Boss-Watcher: BLOCK ÜBERSPRUNGEN")
+            return True
+
         scan_count += 1
         found, boss = execute_boss_scan(state, watcher_name)
 
@@ -379,14 +385,13 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> str:
     """Wartet auf eine Farbe an einer Pixel-Position.
 
-    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück:
-      GATE_RUN  = Bedingung erfüllt → der Schritt darf seinen Klick ausführen
-      GATE_SKIP = Schritt ist erledigt (else-Aktion lief / übersprungen) → nächster Schritt
-      GATE_STOP = Sequenz abbrechen (Stop, Notbremse, restart/skip_cycle)
+    Gibt GATE_RUN (Bedingung erfüllt, der Klick darf laufen), GATE_SKIP (Schritt
+    erledigt, else-Aktion lief oder übersprungen) oder GATE_STOP (Sequenz
+    abbrechen) zurück.
 
-    Die Unterscheidung SKIP vs. STOP ist der Kern: mit einem bool klickte der Schritt
-    nach 'else skip'/'else <Punkt>'/'else key' zusätzlich noch sein eigenes Ziel, und
-    ein nicht erfüllter checkcolor-Schritt riss den Rest der Phase mit ab.
+    SKIP vs. STOP ist der Kern: mit einem bool klickte der Schritt nach einem
+    `else` zusätzlich sein eigenes Ziel, und ein nicht erfüllter checkcolor-Schritt
+    riss den Rest der Phase mit ab.
     """
     debug = is_verbose_debug(state)
     wc = step.wait_condition
@@ -438,6 +443,10 @@ def _farb_schleife(state: AutoClickerState, step: SequenceStep, wc, step_num: in
     # aufgenommen zu werden: sonst hinge die Anzeige an der Schleifenfrequenz.
     letztes_bild, bild = 0.0, None
     while not state.stop_event.is_set():
+        if state.skip_step_event.is_set():
+            state.skip_step_event.clear()
+            _step_status(debug, phase, step_num, total_steps, "Block übersprungen")
+            return GATE_SKIP
         if state.skip_event.is_set():
             state.skip_event.clear()
             # SKIP überspringt das WARTEN, nicht den Schritt — der Klick folgt.
@@ -508,12 +517,8 @@ _LIVE_ABSTAND = 1.0
 def _pixel_ausschnitt(x: int, y: int):
     """Bildausschnitt um eine Stelle als Data-URL — oder `None`.
 
-    Die Zahl „RGB(30, 32, 34)" beantwortet nicht, WAS da gerade zu sehen ist.
-    Der Ausschnitt tut es: ein grauer Knopf, ein Ladebildschirm, ein Popup
-    davor. Genau die Frage, für die man sonst das Fenster wechselt.
-
-    Kostet einen zusätzlichen BitBlt über 49×49 Pixel plus PNG-Kodierung. Ohne
-    Pillow gibt `take_screenshot()` `None` zurück — dann eben kein Bild.
+    „RGB(30, 32, 34)" beantwortet nicht, WAS da zu sehen ist; der Ausschnitt tut
+    es. Kostet einen BitBlt über 49×49 Pixel plus PNG-Kodierung; ohne Pillow kein Bild.
     """
     img = take_screenshot((x - _LIVE_RADIUS, y - _LIVE_RADIUS,
                            x + _LIVE_RADIUS + 1, y + _LIVE_RADIUS + 1))
@@ -790,9 +795,22 @@ def _scan_ohne_namen(step: SequenceStep) -> "str | None":
     return None
 
 
+def _block_skip(state: AutoClickerState, phase: str, step_num: int,
+                total_steps: int) -> bool:
+    """Konsumiert den echten Block-Skip und meldet ihn eindeutig."""
+    if not state.skip_step_event.is_set():
+        return False
+    state.skip_step_event.clear()
+    _step_status(is_verbose_debug(state), phase, step_num, total_steps,
+                 "Block übersprungen", "BLOCK ÜBERSPRUNGEN")
+    return True
+
+
 def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                  total_steps: int, phase: str) -> bool:
     """Führt einen einzelnen Schritt aus: Erst warten/prüfen, DANN klicken."""
+    if _block_skip(state, phase, step_num, total_steps):
+        return True
     if check_failsafe(state):
         print(col("\n[FAILSAFE] Maus in Ecke erkannt! Stoppe...", "red"))
         state.stop_event.set()
@@ -879,6 +897,8 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if state.stop_event.is_set():
         return False
+    if _block_skip(state, phase, step_num, total_steps):
+        return True
 
     if step.wait_only:
         # Reines Warten hat keine Wirkung, die man nachpruefen koennte.
@@ -911,6 +931,8 @@ def _wirkung_eingetreten(state: AutoClickerState, vc, timeout: float) -> tuple[b
     ende = time.time() + max(0.0, timeout)
     letzter = "kein Screenshot"
     while True:
+        if state.skip_step_event.is_set():
+            return False, letzter
         img = take_screenshot((vc.pixel[0], vc.pixel[1], vc.pixel[0] + 1, vc.pixel[1] + 1))
         if img is not None:
             aktuell = img.getpixel((0, 0))[:3]
@@ -931,19 +953,12 @@ def _mit_nachpruefung(state: AutoClickerState, step: SequenceStep, step_num: int
                       total_steps: int, phase: str, aktion) -> bool:
     """Fuehrt `aktion` aus und prueft danach, ob sie gewirkt hat.
 
-    Ohne `verify_condition` passiert genau das, was vorher passierte: die Aktion laeuft,
-    fertig. Das ist der Normalfall und kostet keinen Screenshot.
+    Ohne `verify_condition` laeuft die Aktion und fertig — der Normalfall, ohne
+    Screenshot. Mit Bedingung wird sie bis zu `verify_retries` mal WIEDERHOLT: der
+    haeufigste Grund fuer einen wirkungslosen Klick ist voruebergehend.
 
-    Mit Bedingung wird die Aktion bis zu `verify_retries` mal WIEDERHOLT, bevor
-    `else_config` greift. Die Wiederholung ist der eigentliche Gewinn: der haeufigste
-    Grund fuer einen wirkungslosen Klick (Lag, Fenster kurz nicht vorn, Popup davor) ist
-    voruebergehend, und ein zweiter Klick loest ihn. Vorher lief die Sequenz einfach
-    weiter und alles Folgende traf daneben.
-
-    Bleibt die Wirkung auch nach allen Versuchen aus, entscheidet `else_config` —
-    dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung. Ohne else wird der
-    Schritt als erledigt behandelt (GATE_SKIP-Bedeutung: weiter, nicht abbrechen); eine
-    ausgebliebene Wirkung ist ein Hinweis, kein Grund die Sequenz zu reissen.
+    Bleibt die Wirkung aus, entscheidet `else_config`; ohne else gilt der Schritt
+    als erledigt — eine ausgebliebene Wirkung ist ein Hinweis, kein Abbruchgrund.
     """
     vc = step.verify_condition
     if vc is None:
@@ -954,12 +969,16 @@ def _mit_nachpruefung(state: AutoClickerState, step: SequenceStep, step_num: int
     timeout = state.config.verify_timeout
 
     for versuch in range(1, versuche + 1):
+        if _block_skip(state, phase, step_num, total_steps):
+            return True
         if not aktion(state, step, step_num, total_steps, phase):
             return False
         if state.stop_event.is_set():
             return False
 
         erfuellt, vergleich = _wirkung_eingetreten(state, vc, timeout)
+        if _block_skip(state, phase, step_num, total_steps):
+            return True
         if erfuellt:
             _step_status(debug, phase, step_num, total_steps, "Wirkung bestaetigt",
                          f"Nachpruefung erfuellt | {vergleich}")

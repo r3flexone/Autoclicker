@@ -147,7 +147,7 @@ class SequenceBoard:
     def add_loop_lane(self) -> Lane:
         """Hängt eine neue Loop-Phase an (vor der END-Lane, falls vorhanden)."""
         loop_count = len(self.loop_lanes())
-        new_lane = Lane(kind=LANE_LOOP, name=f"Loop {loop_count + 1}", steps=[], repeat=1)
+        new_lane = Lane(kind=LANE_LOOP, name=f"Phase {loop_count + 1}", steps=[], repeat=1)
         # vor END einfügen
         end_idx = next((i for i, ln in enumerate(self.lanes) if ln.kind == LANE_END), len(self.lanes))
         self.lanes.insert(end_idx, new_lane)
@@ -157,14 +157,14 @@ class SequenceBoard:
         """Entfernt eine Loop-Lane (INIT/END bleiben immer erhalten)."""
         if lane.kind == LANE_LOOP and lane in self.lanes:
             self.lanes.remove(lane)
-            # Nur automatisch vergebene Default-Namen ("Loop N") neu
+            # Nur automatisch vergebene Default-Namen ("Loop N"/"Phase N") neu
             # durchnummerieren — benutzerdefinierte Namen ("Farmen") bleiben.
             n = 0
             for ln in self.lanes:
                 if ln.is_loop():
                     n += 1
-                    if re.fullmatch(r"Loop \d+", ln.name):
-                        ln.name = f"Loop {n}"
+                    if re.fullmatch(r"(?:Loop|Phase) \d+", ln.name):
+                        ln.name = f"Phase {n}"
 
 
 def sequence_to_board(seq: Sequence) -> SequenceBoard:
@@ -214,6 +214,19 @@ def board_to_sequence(graph: SequenceBoard) -> Sequence:
     )
 
 
+def palette_from_sequence(seq: Sequence) -> list["PalettePoint"]:
+    """Punkt-Palette direkt aus ihrer Sequenz."""
+    return [PalettePoint(p.id, p.x, p.y, p.name, p.color, p.source)
+            for p in seq.points]
+
+
+def palette_to_points(points: list) -> list:
+    """Studio-Punkte zurück in das Sequenzmodell."""
+    from ...models import ClickPoint
+    return [ClickPoint(p.x, p.y, p.name, p.id, color=p.color, source=p.source)
+            for p in points]
+
+
 # =============================================================================
 # PUNKTE-PALETTE
 # =============================================================================
@@ -229,8 +242,8 @@ class PalettePoint:
     source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'"
 
 
-def save_palette_points(sequences_dir: str, points: list) -> bool:
-    """Schreibt die Palette zurueck nach sequences/points.json.
+def save_palette_points(sequence_file, points: list) -> bool:
+    """Schreibt die Palette in die geöffnete ``sequence.json`` zurück.
 
     Frueher las das Studio die Punkte nur. Das ging, solange die Sequenz ihre
     Koordinaten selbst trug — seit sie das nicht mehr tut, waere eine hier eingetippte
@@ -243,27 +256,31 @@ def save_palette_points(sequences_dir: str, points: list) -> bool:
     from ...persistence.serialization import _point_to_dict
     from ...utils import atomic_write, compact_json
     try:
-        daten = [_point_to_dict(ClickPoint(p.x, p.y, p.name, p.id,
-                                           color=p.color, source=p.source))
-                 for p in points]
-        atomic_write(Path(sequences_dir) / "points.json", compact_json(daten))
+        pfad = Path(sequence_file)
+        bestand = json.loads(pfad.read_text(encoding="utf-8"))
+        bestand["points"] = [
+            _point_to_dict(ClickPoint(p.x, p.y, p.name, p.id,
+                                      color=p.color, source=p.source))
+            for p in points
+        ]
+        atomic_write(pfad, compact_json(bestand))
         return True
-    except (OSError, TypeError, ValueError):
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         return False
 
 
-def load_palette_points(sequences_dir: str) -> list[PalettePoint]:
-    """Lädt die aufgenommenen Punkte aus sequences/points.json.
+def load_palette_points(sequence_file) -> list[PalettePoint]:
+    """Lädt die Punkte aus der geöffneten ``sequence.json``.
 
     Eigene schlanke Ladefunktion statt persistence.load_points, da letztere ein
     AutoClickerState-Objekt braucht — der Subprocess hat keinen State.
     """
-    points_file = Path(sequences_dir) / "points.json"
+    points_file = Path(sequence_file)
     if not points_file.exists():
         return []
     try:
         with open(points_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = json.load(f).get("points") or []
     except (json.JSONDecodeError, IOError, OSError):
         return []
     points: list[PalettePoint] = []
@@ -312,7 +329,7 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     elif new_type == BLOCK_WAIT_CLICK:
         # **Am Punkt, nicht an den rohen Koordinaten.** Eine Bedingung ohne
         # `point_id` landet als `wait_pixel`/`wait_color` in der Datei — eine
-        # Koordinaten-Kopie ausserhalb von points.json, die keine Kalibrierung
+        # Koordinaten-Kopie ausserhalb der Punktliste, die keine Kalibrierung
         # je wieder einholt. Stelle und Farbe holt `aufloesen()` aus dem Punkt;
         # ohne Punkt entsteht gar keine Bedingung (der Aufrufer lehnt den
         # Typwechsel dann ab).

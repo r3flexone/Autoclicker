@@ -9,11 +9,13 @@ from .scan_contract import (
     ART_SCAN,
     ART_SLOT,
     MIN_SLOT,
-    MODI,
+    MODI_ALLE,
+    MODUS_AKTION,
     MODUS_BEREICH,
     MODUS_FINDEN,
     MODUS_KLICK,
     MODUS_MESSEN,
+    MODUS_REGION,
     MODUS_SLOT,
     MODUS_WAHL,
     TREFFER_MIN,
@@ -28,18 +30,22 @@ class ScanInteractionMixin:
     def scan_modus_setzen(self, daten: dict) -> dict:
         """Was ein Klick auf dem Bild bedeutet.
 
-        **Der Rückweg ist die markierte Kachel selbst**: nochmal darauf klicken
-        (bzw. den Buchstaben nochmal drücken) führt zurück ins Auswählen —
-        dieselbe Regel wie bei der ELSE-Aktion im Sequenz-Editor. Ein Modus, in
-        den man nur hinein kommt, ist die Falltür, die es hier nicht geben darf;
-        ESC allein zu haben reicht nicht, denn ESC sieht man einem Bild nicht an.
-
-        `MODUS_WAHL` ist davon ausgenommen: er *ist* der Rückweg, ein Umschalten
-        auf sich selbst wäre bedeutungslos.
+        Nochmal auf denselben Modus führt zurück ins Auswählen — ein Modus, in den
+        man nur hinein kommt, wäre eine Falltür.
         """
         modus = (daten or {}).get("modus") or MODUS_WAHL
-        if modus not in MODI:
+        if modus not in MODI_ALLE:
             return self._scan_melde(f"Unbekannter Modus '{modus}'.", "err")
+        if modus != MODUS_WAHL:
+            gesperrt = self._scan_voraussetzung(daten)
+            if gesperrt is not None:
+                return gesperrt
+        # Region und Aktionspunkt gehören den Erkennungs-Scans und brauchen ein
+        # Ziel; das setzt `region_modus()`. Hier landen sie nur, wenn jemand den
+        # Buchstaben drückt, während gar kein Boss-/Icon-Scan offen ist.
+        if modus in (MODUS_REGION, MODUS_AKTION) and not self._region_ziel:
+            return self._scan_melde(
+                "Erst einen Boss- bzw. Icon-Scan öffnen.", "warn")
         if "fixiert" in (daten or {}):
             self.scan_werkzeug_fixiert = bool((daten or {}).get("fixiert"))
         if (modus == self.scan_modus and modus != MODUS_WAHL
@@ -53,6 +59,8 @@ class ScanInteractionMixin:
         # Jeder Wechsel fängt die Suche von vorn an: ein Suchbereich von vorhin
         # gehört zu einer Absicht von vorhin.
         self._suchbereich = None
+        if modus not in (MODUS_REGION, MODUS_AKTION):
+            self._region_ziel = None
         texte = {
             MODUS_WAHL: "Auswählen: auf einen Slot klicken — daneben klicken "
                         "zieht ein Rechteck um mehrere.",
@@ -62,6 +70,9 @@ class ScanInteractionMixin:
             MODUS_BEREICH: "Bereich: zwei Ecken um den Teil, der zählt.",
             MODUS_FINDEN: "Slots finden: zwei Ecken um das Inventar, dann auf "
                           "einen leeren Slot-Hintergrund darin klicken.",
+            MODUS_REGION: "Region: zwei Ecken um das, was erkannt werden soll.",
+            MODUS_AKTION: "Klickpunkt: die Stelle anklicken, die bei einem "
+                          "Treffer geklickt wird.",
         }
         zurueck = "" if modus == MODUS_WAHL else "  ·  ESC oder nochmal die Kachel = zurück"
         return self._scan_melde(texte[modus] + zurueck, "info")
@@ -86,14 +97,8 @@ class ScanInteractionMixin:
     def _auswahl_slots(self) -> list:
         """Worauf eine Sammel-Aktion wirkt: die Auswahl, sonst der eine Gewählte.
 
-        **Eine Stelle, weil sonst jede Sammel-Aktion ihre eigene Antwort gäbe.**
-        Die Regel stand ausgeschrieben in `scan_slot_loeschen` — und Löschen war
-        lange die einzige Sammel-Aktion, die es gab. Sobald es mehrere sind,
-        muss „was ist gewählt" überall dasselbe heissen; sonst nähme „löschen"
-        dreissig Slots und „Grösse angleichen" nur einen.
-
-        Die Reihenfolge des Rechtecks bleibt erhalten (`_auswahl`), damit
-        Meldungen und Listen in derselben Folge stehen wie die Auswahl selbst.
+        Eine Stelle für alle, sonst nähme „löschen" dreissig Slots und „Grösse
+        angleichen" einen.
         """
         namen = [n for n in self._auswahl if n in self.slots]
         if namen:
@@ -109,6 +114,10 @@ class ScanInteractionMixin:
         gerade dargestellt wird.
         """
         self._scan_laden()
+        if self.scan_modus != MODUS_WAHL:
+            gesperrt = self._scan_voraussetzung(daten)
+            if gesperrt is not None:
+                return gesperrt
         try:
             x, y = int((daten or {})["x"]), int((daten or {})["y"])
         except (KeyError, TypeError, ValueError):
@@ -124,6 +133,10 @@ class ScanInteractionMixin:
             return self._klick_bereich(x, y)
         if self.scan_modus == MODUS_FINDEN:
             return self._klick_finden(x, y)
+        if self.scan_modus == MODUS_REGION:
+            return self._klick_region(x, y)
+        if self.scan_modus == MODUS_AKTION:
+            return self._klick_aktion(x, y)
         return self._klick_waehlen(x, y, bool((daten or {}).get("zusatz")))
 
     def _klick_slot(self, x: int, y: int) -> dict:
@@ -158,7 +171,7 @@ class ScanInteractionMixin:
         self.slots[name] = ItemSlot(
             name=name, scan_region=(x1, y1, x2, y2),
             click_pos=((x1 + x2) // 2, (y1 + y2) // 2),
-            slot_color=farbe)
+            slot_color=farbe, id=self._naechste_slot_id())
         self.scan_art, self.scan_name = ART_SLOT, name
         self._auswahl = [name]
         self._dazu(ART_SLOT, name)
@@ -170,26 +183,10 @@ class ScanInteractionMixin:
     def _klick_finden(self, x: int, y: int) -> dict:
         """Erst den Suchbereich aufziehen, dann den Hintergrund zeigen.
 
-        Der Schritt, der im Studio fehlte: ein volles Inventar sind 45 Slots und
-        damit 90 Klicks, wenn man jeden einzeln aufzieht. Die Erkennung dafür
-        gibt es längst — `erkenne_slots_im_bild()` aus dem Konsolen-Slot-Editor,
-        dieselbe Funktion, die auch `repair` benutzt. Zwei Erkennungen wären
-        zwei Ergebnisse.
-
-        **Gesucht wird in einem Bereich, nicht im ganzen Bild.** Eine Farbe ist
-        kein Ort: liegt neben dem Inventar ein Menü in genau demselben Grau,
-        wird es mitgefunden, und heraus kommen zwanzig Slots, von denen acht
-        keine sind. Das fiel erst beim Erkennen auf, und dann hat man sie schon
-        alle einzeln wegzuräumen. Der Bereich beantwortet dieselbe Frage vorher
-        und mit zwei Klicks.
-
-        Die beiden Ecken schränken deshalb nur die **Suche** ein — anders als
-        `MODUS_BEREICH`, der das Bild zuschneidet und für jede weitere Aufnahme
-        gilt. Das Bild bleibt, wie es ist; nur diese eine Erkennung sieht
-        weniger davon.
-
-        Angelegt wird, was nicht schon einen Slot hat: ein zweiter Durchgang
-        ergänzt also, statt zu verdoppeln.
+        Gesucht wird nur im Bereich, nicht im ganzen Bild: eine Farbe ist kein Ort,
+        und ein Menü im selben Grau käme sonst als Slot mit. Anders als
+        `MODUS_BEREICH` schneidet er das Bild nicht zu und gilt nur für diesen
+        Durchgang. Angelegt wird, was nicht schon einen Slot hat.
         """
         if self._foto is None or self._foto_info is None:
             return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
@@ -250,7 +247,7 @@ class ScanInteractionMixin:
             self.slots[name] = ItemSlot(
                 name=name, scan_region=region,
                 click_pos=((region[0] + region[2]) // 2, (region[1] + region[3]) // 2),
-                slot_color=farbe)
+                slot_color=farbe, id=self._naechste_slot_id())
             self._dazu(ART_SLOT, name)
             neu += 1
         # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
@@ -276,19 +273,9 @@ class ScanInteractionMixin:
     def _gleich_erkennen(self) -> str:
         """Prüft die frisch gefundenen Slots sofort gegen den Item-Bestand.
 
-        **Die Frage nach dem Finden ist nicht „habe ich Slots", sondern „was
-        davon kenne ich schon".** Ohne diesen Durchgang stehen zwanzig gleich
-        aussehende Rechtecke da, und der nächste Schritt — „Items lernen" —
-        lernt stumpf alle zwanzig, auch die neunzehn, die längst im Bestand
-        liegen. Grün markiert heisst: das hier ist erledigt, kümmere dich um den
-        Rest. Stimmt ein Treffer nicht, ändert man ihn rechts oder lernt aus dem
-        Slot ein zweites Item — die Markierung ist ein Vorschlag, keine
-        Festlegung.
-
-        Kostet an einem vollen Inventar rund 0,3 s (45 Slots gegen 45 Items,
-        gemessen) und damit weniger als das Finden selbst. Ohne Items im Bestand
-        ist es augenblicklich und sagt gar nichts — dann gibt es nichts zu
-        erkennen, und eine Meldung darüber wäre nur Rauschen.
+        Die Frage nach dem Finden ist „was davon kenne ich schon" — sonst lernt der
+        nächste Schritt auch die neunzehn, die längst im Bestand liegen. Der Treffer
+        ist ein Vorschlag, keine Festlegung.
         """
         # Die Slot-Liste ist gerade eine andere geworden — was vorher an einem
         # Slot stand, gehört zu einem anderen Stand. Auch dann wegräumen, wenn
@@ -330,15 +317,9 @@ class ScanInteractionMixin:
     def _mit_einzug(self, region: tuple) -> tuple:
         """Zieht den Slot-Rand um `scan_slot_inset` ein.
 
-        **Dieselbe Rechnung wie im Konsolen-Editor** (`slot_auto_detect` in
-        `editors/slot_editor.py`), und sie fehlte hier: die Erkennung liefert
-        das Rechteck der ganzen Zelle samt Rahmen und Schatten. Ohne Einzug
-        lernt jedes Item den Rahmen als Merkmal mit, und beim Vergleich zählt
-        er wie ein Teil des Symbols.
-
-        Nie mehr abziehen, als übrig bleiben darf: bei einer 24-px-Zelle wären
-        zweimal 10 px fast nichts mehr. Von Hand aufgezogene Slots bleiben
-        unangetastet — dort ist das Rechteck genau das, was gemeint war.
+        Die Erkennung liefert die ganze Zelle samt Rahmen; ohne Einzug lernt jedes
+        Item den Rahmen mit. Nie mehr abziehen, als übrig bleiben darf. Von Hand
+        aufgezogene Slots bleiben unangetastet.
         """
         from ...config import CONFIG
         breite, hoehe = region[2] - region[0], region[3] - region[1]
@@ -371,18 +352,10 @@ class ScanInteractionMixin:
     def _slots_suchen(self, bild, farbe: tuple) -> list:
         """Sucht die Slots mit mehreren Toleranzen und nimmt das beste Ergebnis.
 
-        **Eine feste Toleranz reicht nicht.** Gemessen an einem dunklen Inventar:
-        mit dem Standardband (±50 auf Sättigung und Helligkeit) verschmelzen
-        Slots und Panel zu EINER Fläche, und heraus kommt ein einziges Rechteck
-        über dem ganzen Inventar. Wie eng es sein muss, hängt am Kontrast der
-        jeweiligen Oberfläche — bei vier gestellten Panel-Farben lag der Umschlag
-        bei 35, 25, 18 und 8.
-
-        Statt den Nutzer einen Regler suchen zu lassen, wird gemessen: der
-        Durchgang mit den **meisten** Rechtecken gewinnt, und bei Gleichstand das
-        weiteste Band (das ist das nachsichtigste). Ein Ergebnis, in dem ein
-        Rechteck mehr als die halbe Fläche einnimmt, zählt nicht — das ist nie
-        ein Slot, sondern das Panel.
+        Eine feste Toleranz reicht nicht: bei dunklen Oberflächen verschmelzen Slots
+        und Panel zu einer Fläche. Es gewinnt der Durchgang mit den meisten
+        Rechtecken; ein Rechteck über mehr als der halben Fläche zählt nie mit — das
+        ist das Panel.
         """
         from ...config import CONFIG
         flaeche = bild.width * bild.height
@@ -398,27 +371,10 @@ class ScanInteractionMixin:
     def _bestehende_slot_groesse(self) -> Optional[tuple]:
         """Zielgrösse für neu gefundene Slots, wenn schon welche im Scan liegen.
 
-        `erkenne_slots_im_bild()` normalisiert nur INNERHALB eines Suchdurchgangs
-        auf den Median — ein zweiter `finden`-Lauf auf demselben Raster (z.B. weil
-        beim ersten Mal Items im Weg standen) bekommt seinen eigenen Median und
-        weicht dadurch ein paar Pixel vom ersten Durchgang ab, obwohl die Slots im
-        Spiel exakt gleich gross sind. Genau diese Differenz liess Templates aus dem
-        ersten Durchgang beim zweiten als „passt nicht zur Scan-Region" auffallen.
-        Neu gefundene Slots übernehmen deshalb die Grösse, die im Scan schon
-        feststeht, statt bei jedem Durchgang neu zu raten.
-
-        **Gefragt wird nur der offene Scan, nie der ganze Bestand.** Zwei
-        Bedienflächen desselben Spiels sind nicht gleich gross: an einem echten
-        Bestand gemessen hat das Inventar-Raster 64 Hintergrund-Zeilen, die
-        Ausrüstungsreihe 61 — dieselben 3 px, die als „Template 62×60, Slot
-        62×57" auffielen, und sie sind **richtig**. Der Bestand als Bezug hätte
-        die Reihe auf die Höhe des Rasters gezogen und damit ein Template
-        erzeugt, das drei Pixel Fremdes mitlernt.
-
-        Ist der offene Scan noch leer, gibt es keinen Bezug — dann bleibt der
-        Fund, wie er gemessen wurde. Das kostet nichts: liegt der Slot schon im
-        Bestand, wird er ohnehin übernommen statt neu angelegt (`_klick_finden`),
-        und eine wirklich neue Fläche hat keinen Vorgänger, dem sie folgen könnte.
+        `erkenne_slots_im_bild()` normalisiert je Durchgang auf den Median — ein
+        zweiter Lauf weicht deshalb ein paar Pixel ab, obwohl die Slots gleich gross
+        sind. Bezug ist der offene Scan, nie der Bestand: zwei Bedienflächen
+        desselben Spiels sind wirklich verschieden hoch. Leerer Scan = kein Bezug.
         """
         slots = self._scan_slots()
         groessen = [(s.scan_region[2] - s.scan_region[0], s.scan_region[3] - s.scan_region[1])
@@ -439,13 +395,8 @@ class ScanInteractionMixin:
     def _slot_an_stelle(self, region: tuple) -> Optional[str]:
         """Der Name des Slots an dieser Stelle, sonst `None`. Mitte zählt.
 
-        Nicht auf Gleichheit prüfen: die Erkennung normalisiert auf die
-        Median-Grösse, ein von Hand aufgezogener Slot liegt also fast nie exakt
-        gleich — und dann stünden zwei Slots übereinander.
-
-        Gibt den **Namen** zurück und nicht bloss ja/nein: der Suchdurchgang
-        nimmt einen schon vorhandenen Slot in den offenen Scan auf, und dafür
-        muss er wissen, welcher es ist.
+        Nicht auf Gleichheit prüfen — die Erkennung normalisiert auf den Median. Den
+        Namen, weil der Suchdurchgang einen vorhandenen Slot in den Scan aufnimmt.
         """
         mx, my = (region[0] + region[2]) // 2, (region[1] + region[3]) // 2
         for s in self.slots.values():
@@ -478,26 +429,12 @@ class ScanInteractionMixin:
     def _klick_waehlen(self, x: int, y: int, zusatz: bool = False) -> dict:
         """Den kleinsten Slot unter der Stelle auswählen.
 
-        **Nicht den obersten, sondern den kleinsten** — und das ist der
-        Unterschied zwischen „auswählbar" und „für immer da". Ein winziger Slot,
-        der versehentlich in einem grossen liegt, war sonst nicht zu treffen: der
-        grosse fing jeden Klick ab, und gelöscht wird, was gewählt ist. Der
-        kleinste ist ohnehin immer der, den man meint; der grosse bleibt überall
-        sonst anklickbar.
+        Den kleinsten, nicht den obersten: ein Winzling in einem grossen Slot wäre
+        sonst nie zu treffen und damit nie zu löschen. Trefferfläche mindestens
+        `TREFFER_MIN` px — der Slot selbst bleibt, wie er ist.
 
-        Dazu eine Trefferfläche von mindestens `TREFFER_MIN` px: was zwei Pixel
-        gross ist, trifft man auch dann nicht, wenn nichts darüber liegt. Der
-        Slot selbst wird davon nicht angefasst — nur, wo man ihn packen kann.
-
-        Bei gleicher Grösse gewinnt weiterhin der zuletzt angelegte: das ist
-        der, den man gerade vor sich hat.
-
-        **Daneben klicken zieht ein Auswahl-Rechteck auf.** Ein einzelner Slot
-        ist ein Klick; dreissig sind sonst dreissig Klicks und dreissig
-        Bestätigungen. Zwei Ecken, alle darin liegenden sind gewählt, und die
-        Sammel-Aktion arbeitet auf der Auswahl — dieselbe Regel wie im
-        Sequenz-Editor. Mit `zusatz` (STRG) kommt ein einzelner Slot dazu oder
-        fällt heraus.
+        Daneben klicken zieht ein Auswahl-Rechteck auf; `zusatz` (STRG) nimmt einen
+        einzelnen dazu oder heraus.
         """
         if self._ecke is not None:
             return self._rahmen_auswahl(x, y)
@@ -539,19 +476,13 @@ class ScanInteractionMixin:
     def scan_direkt(self, daten: dict) -> dict:
         """Farbe messen bzw. Klickpunkt setzen, OHNE vorher den Modus zu wechseln.
 
-        **Für einen Handgriff erst eine Kachel anzuklicken ist ein Handgriff zu
-        viel.** Die Modi bleiben — sie beantworten „was tut ein Klick gerade",
-        und beim Aufziehen von zwanzig Slots ist genau das die richtige Frage.
-        Aber die beiden Korrekturen, die man *zwischendurch* macht, brauchen
-        keinen Modus: sie gelten dem Slot unter dem Zeiger, und den sieht man.
-
-        - `messen` (ALT-Klick): Hintergrundfarbe an genau dieser Stelle.
-        - `klick` (Doppelklick): Klickpunkt auf genau diese Stelle.
-
-        Beides wählt den Slot gleich mit aus: man hat ihn ja angefasst, und der
-        Inspektor soll danach ihn zeigen und nicht den von vorhin. Trifft der
-        Zeiger keinen Slot, passiert nichts — ohne Ziel gäbe es nichts zu setzen.
+        Ein Modus lohnt sich, solange man dasselbe zwanzigmal tut; eine einzelne
+        Korrektur am Slot unter dem Zeiger ist das Gegenteil davon.
+        `messen` = ALT-Klick, `klick` = Doppelklick. Beides wählt den Slot mit aus.
         """
+        gesperrt = self._scan_voraussetzung({"art": "item"})
+        if gesperrt is not None:
+            return gesperrt
         try:
             x, y = int((daten or {})["x"]), int((daten or {})["y"])
         except (KeyError, TypeError, ValueError):
@@ -615,13 +546,14 @@ class ScanInteractionMixin:
         self._suchbereich = None
         self._auswahl = []
         self._lern_review = []
+        self._region_ziel = None
         self.scan_modus = MODUS_WAHL
         return self.scan_daten()
 
     # ----------------------------------------------------------------- Slots
 
     def scan_slot_setzen(self, daten: dict) -> dict:
-        """Ein Feld eines Slots setzen — Name, Region, Klickpunkt, Farbe."""
+        """Ein Feld eines Slots setzen — Aktiv, Name, Region, Klickpunkt, Farbe."""
         name = str((daten or {}).get("name") or "")
         feld = str((daten or {}).get("feld") or "")
         wert = (daten or {}).get("wert")
@@ -636,6 +568,14 @@ class ScanInteractionMixin:
         # trauen kann, ist kaum besser als keins.
         if feld == "name":
             return self._slot_umbenennen(slot, str(wert or "").strip())
+        if feld == "aktiv":
+            neu = bool(wert)
+            if slot.enabled == neu:
+                return self.scan_daten()
+            self._merke(f"'{name}': {'ein' if neu else 'aus'}")
+            slot.enabled = neu
+            return self._scan_geaendert(
+                f"{slot.name} ist {'eingeschaltet' if neu else 'ausgeschaltet'}.")
         if feld == "farbe":
             self._merke(f"'{name}': Hintergrundfarbe")
             slot.slot_color = rgbwert(wert)
@@ -668,15 +608,9 @@ class ScanInteractionMixin:
         alt = slot.name
         self.slots = {(neu if k == alt else k): v for k, v in self.slots.items()}
         slot.name = neu
-        betroffen = 0
-        for cfg in self.scans.values():
-            if alt in cfg.slot_names:
-                cfg.slot_names = [neu if n == alt else n for n in cfg.slot_names]
-                betroffen += 1
         self._objekte_angleichen()
         self.scan_name = neu
-        zusatz = f" · in {betroffen} Scan(s) nachgezogen" if betroffen else ""
-        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'{zusatz}")
+        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'")
 
     def scan_slot_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Löscht die gewählten Slots — einen oder die ganze Auswahl.
@@ -690,40 +624,23 @@ class ScanInteractionMixin:
             return self._scan_melde("Kein Slot gewählt.", "warn")
         self._merke(f"{len(namen)} Slot(s) gelöscht" if len(namen) > 1
                     else f"'{namen[0]}' gelöscht")
-        betroffen = set()
         for name in namen:
             del self.slots[name]
             self._treffer.pop(name, None)
-            for cfg in self.scans.values():
-                if name in cfg.slot_names:
-                    betroffen.add(cfg.name)
-                    cfg.slot_names = [n for n in cfg.slot_names if n != name]
         self._objekte_angleichen()
         self.scan_name = ""
         self._auswahl = []
-        hinweis = f" · aus {len(betroffen)} Scan(s) entfernt" if betroffen else ""
         was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Slots"
-        return self._scan_geaendert(f"{was} gelöscht{hinweis}", "warn")
+        return self._scan_geaendert(f"{was} gelöscht", "warn")
 
     def scan_verschieben(self, daten: dict) -> dict:
         """Schiebt die gewählten Slots um `dx`/`dy` Pixel — Fläche und Klickpunkt.
 
-        **Ein Slot, der drei Pixel daneben liegt, war nur über vier Zahlenfelder
-        zu retten** — und bei dreissig Slots gar nicht. Dabei ist genau das der
-        Normalfall: das Spielfenster ist umgezogen, die Erkennung sass eine Zeile
-        zu hoch, der Rahmen wurde mitgelernt. Mit Pfeiltasten (SHIFT = zehn
-        Pixel) und Ziehen im Bild ist es ein Handgriff.
+        Der Klickpunkt geht mit, statt neu aus der Mitte gerechnet zu werden: er ist
+        womöglich bewusst aus der Mitte gesetzt.
 
-        Der Klickpunkt geht **mit**, statt neu aus der Mitte gerechnet zu
-        werden: er ist womöglich bewusst aus der Mitte gesetzt (ein Knopf in der
-        Ecke des Slots), und ein Verschieben soll die Fläche verschieben, nicht
-        die Einstellung wegwerfen.
-
-        `zaehlt=False` unterdrückt den Rückgängig-Schritt — dafür gibt es genau
-        einen Grund: das Ziehen im Bild schickt beim Loslassen EINEN Aufruf mit
-        dem Gesamtversatz, aber die Pfeiltaste feuert bei gedrückt gehaltener
-        Taste im Dutzend. Ohne das läge nach zwei Sekunden Halten der ganze
-        Stapel voll mit Ein-Pixel-Schritten und der Schritt davor wäre draussen.
+        `zaehlt=False` unterdrückt den Rückgängig-Schritt — eine gehaltene Pfeiltaste
+        ist EIN Verschieben, nicht dreissig.
         """
         try:
             dx, dy = int((daten or {}).get("dx") or 0), int((daten or {}).get("dy") or 0)
@@ -753,14 +670,8 @@ class ScanInteractionMixin:
     def scan_groesse_angleichen(self, daten: Optional[dict] = None) -> dict:
         """Zieht die gewählten Slots auf dieselbe Grösse, um ihre Mitte herum.
 
-        Der Fall dafür ist der von Hand aufgezogene Slot: zwei Klicks treffen
-        nie zweimal dieselbe Kantenlänge, und ein Template, das aus einer um
-        drei Pixel abweichenden Fläche gelernt wurde, passt beim Vergleich
-        nicht mehr sauber. Die Mitte bleibt stehen — sie ist das, was der
-        Nutzer gemeint hat; die Kante ist die Ungenauigkeit.
-
-        Bezug ist der **Median** der Auswahl, nicht der grösste oder kleinste:
-        ein einzelner Verklicker soll nicht alle anderen verbiegen.
+        Bezug ist der Median der Auswahl, nicht der grösste oder kleinste: ein
+        einzelner Verklicker soll nicht alle anderen verbiegen.
         """
         slots = self._auswahl_slots()
         if len(slots) < 2:
@@ -784,12 +695,8 @@ class ScanInteractionMixin:
     def scan_auswahl_farbe(self, daten: Optional[dict] = None) -> dict:
         """Misst den Hintergrund jedes gewählten Slots neu — jeden an sich selbst.
 
-        **Nicht eine Farbe für alle.** Das wäre der naheliegende Griff und der
-        falsche: Inventare sind selten gleichmässig ausgeleuchtet, und eine
-        gemeinsame Farbe verschöbe die Maske beim Lernen an jedem Slot ein
-        bisschen. Gemessen wird an derselben inneren Ecke wie beim Aufziehen
-        (`_klick_slot`) — also dort, wo bei einem gefüllten Slot am ehesten
-        Hintergrund liegt und nicht das Symbol.
+        Nicht eine Farbe für alle: Inventare sind selten gleichmässig ausgeleuchtet,
+        und eine gemeinsame Farbe verschöbe die Lernmaske an jedem Slot ein bisschen.
         """
         slots = self._auswahl_slots()
         if not slots:
@@ -835,53 +742,5 @@ class ScanInteractionMixin:
         if doppelt:
             teile.append(f"{doppelt} schon bekannt")
         if leer:
-            teile.append(f"{leer} ohne Bild")
+            teile.append(f"{leer} leer oder ohne Bild")
         return self._scan_geaendert("Aus der Auswahl gelernt: " + ", ".join(teile))
-
-    def scan_auswahl_mitglied(self, daten: dict) -> dict:
-        """Nimmt die gewählten Slots in den offenen Scan — oder heraus.
-
-        Zwischen „einer" (Häkchen) und „alle" (Schieber im Kopf) lag nichts.
-        Genau dazwischen liegt aber der Alltag: die Ausrüstungsreihe gehört
-        dazu, die Taschenplätze darunter nicht.
-        """
-        cfg = self.scans.get(self.scan_offen)
-        if cfg is None:
-            return self._scan_melde("Kein Scan offen.", "warn")
-        slots = self._auswahl_slots()
-        if not slots:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        dazu = bool((daten or {}).get("wert"))
-        self._merke(f"{len(slots)} Slot(s) {'dazu' if dazu else 'raus'}")
-        namen = [s.name for s in slots]
-        if dazu:
-            cfg.slot_names += [n for n in namen if n not in cfg.slot_names]
-        else:
-            cfg.slot_names = [n for n in cfg.slot_names if n not in namen]
-        self._objekte_angleichen()
-        return self._scan_geaendert(
-            f"{len(namen)} Slot(s) {'in' if dazu else 'aus'} '{cfg.name}' "
-            f"{'aufgenommen' if dazu else 'entfernt'} "
-            f"— jetzt {len(cfg.slot_names)}.")
-
-    def scan_slot_doppeln(self, daten: Optional[dict] = None) -> dict:
-        """Ein Slot neben dem gewählten — der schnellste Weg zu einer Reihe.
-
-        Versetzt um seine eigene Breite plus zwei Pixel: Inventare stehen im
-        Raster, und die zweite Zelle liegt fast immer genau dort.
-        """
-        slot = self._gewaehlter_slot()
-        if slot is None:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        self._merke("Slot gedoppelt")
-        x1, y1, x2, y2 = slot.scan_region
-        versatz = (x2 - x1) + 2
-        name = next_slot_name(self.slots)
-        self.slots[name] = ItemSlot(
-            name=name, scan_region=(x1 + versatz, y1, x2 + versatz, y2),
-            click_pos=(slot.click_pos[0] + versatz, slot.click_pos[1]),
-            slot_color=slot.slot_color)
-        self.scan_name = name
-        self._auswahl = [name]
-        self._dazu(ART_SLOT, name)
-        return self._scan_geaendert(f"{name} neben '{slot.name}' angelegt.")

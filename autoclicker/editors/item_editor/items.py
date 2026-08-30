@@ -5,7 +5,6 @@ Wird sowohl vom interaktiven Editor (editor.py) als auch von autoscan.py
 und learn.py genutzt.
 """
 
-from pathlib import Path
 from typing import Optional
 
 from ...config import CONFIG
@@ -15,7 +14,7 @@ from ...imaging import (
 from ...models import ItemProfile, AutoClickerState
 from ...persistence import (
     get_existing_categories, get_point_by_id, shift_category_priorities,
-    TEMPLATES_DIR,
+    active_templates_dir,
 )
 from ...utils import (
     confirm, info, is_cancel, naechster_freier_name, parse_non_negative_float,
@@ -92,7 +91,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
                 if img:
                     safe_name = sanitize_filename(item_name)
                     template_file = f"{safe_name}.png"
-                    template_path = Path(TEMPLATES_DIR) / template_file
+                    template_path = active_templates_dir(state) / template_file
                     template_path.parent.mkdir(parents=True, exist_ok=True)
                     img.save(template_path)
                     print(f"  -> Template gespeichert: {template_path}")
@@ -215,7 +214,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                     if img:
                         safe_name = sanitize_filename(new_name)
                         new_template = f"{safe_name}.png"
-                        template_path = Path(TEMPLATES_DIR) / new_template
+                        template_path = active_templates_dir(state) / new_template
                         template_path.parent.mkdir(parents=True, exist_ok=True)
                         img.save(template_path)
                         print(f"  -> Template gespeichert: {template_path}")
@@ -264,4 +263,5 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         template=new_template,
         min_confidence=new_confidence,
         template_variants=list(item.template_variants),
+        enabled=item.enabled,
     )

@@ -64,15 +64,60 @@ def equip(has_tool: bool = True) -> float:
 GLOVES_DOUBLE_CHANCE = 0.05          # alle Skilling-Handschuhe
 CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur is_gathering=True
 
-# "Better fisherman" / "Better lumberjack": geben 25% XP fuer die ZUSAETZLICHE Beute
-# zurueck, die The fisherman / The lumberjack einbringen. Ohne diese Perks gibt es fuer
-# das doppelte Stueck ueberhaupt keine XP ("XP is only given for ONE fish", Wiki).
+
+# ------------------------------------------------------------------
+# Material-Ersparnisse (Stand 18.08.2026)
+# ------------------------------------------------------------------
 #
-# Wirkt nur auf den yield_multiplier, NICHT auf die Handschuh-Verdopplung: der Perk ist
-# laut Wiki an The fisherman/The lumberjack gekoppelt, nicht an die Handschuhe.
+# Jede Ersparnis ist ein EIGENER Schalter, weil jede ein eigener Kauf ist: wer
+# Trickery hat, hat deshalb noch lange kein Seed Storage. Ein gemeinsamer
+# "Materialkosten"-Prozentwert waere kuerzer und waere falsch - man koennte ihn
+# fuer den eigenen Account nicht mehr richtig einstellen.
 #
-# Standardmaessig AUS, weil es ein eigener Kauf ist — nicht jeder mit Fisherman hat auch
-# Better fisherman. Besitzt du sie, hier extra_yield_xp=True beim jeweiligen Skill setzen.
+# Kombiniert wird MULTIPLIKATIV (`spar_faktor`): zwei Upgrades, die je 10% sparen,
+# sparen zusammen 19%, nicht 20%. Jedes greift auf das, was nach dem vorigen noch
+# uebrig ist - genauso wie Clan- und Equipment-Boost bei der Geschwindigkeit, und
+# an derselben Stelle schon einmal per Stoppuhr bestaetigt.
+
+def spar_faktor(*paare: tuple[bool, float]) -> float:
+    """Mehrere Ersparnisse zu einem Kostenfaktor kombinieren.
+
+    `(aktiv, anteil)`-Paare, inaktive zaehlen nicht mit. Ergebnis ist der Anteil
+    der Kosten, der UEBRIG bleibt: `spar_faktor((True, 0.25), (True, 0.10))` = 0.675.
+    """
+    faktor = 1.0
+    for aktiv, anteil in paare:
+        if aktiv:
+            faktor *= (1.0 - anteil)
+    return faktor
+
+
+# Potion of Trickery: spart Saatgut beim Farming. Seit dem Update vom 18.08.2026
+# sind es 25% - vorher lag hier ein fest verdrahtetes cost_multiplier=0.5 (T5).
+POTION_OF_TRICKERY_ACTIVE = True
+POTION_OF_TRICKERY_SAVE = 0.25
+
+# Seed Storage (18.08.2026): 10% Samen gespart. Wirkt auf dieselben Kosten wie
+# Trickery, also multiplikativ dazu -> mit beiden bleiben 67,5% der Samen uebrig.
+SEED_STORAGE_ACTIVE = False
+SEED_STORAGE_SAVE = 0.10
+
+# Ore Storage (18.08.2026): 10% Erz gespart. Wirkt auf die Erz-Zeile der
+# *_bar-Rezepte, also auf dieselbe Zeile wie Smelting Magic - und damit ebenfalls
+# multiplikativ: 30% + 10% ergeben 37%, nicht 40%.
+ORE_STORAGE_ACTIVE = False
+ORE_STORAGE_SAVE = 0.10
+
+# Kostenanteil, der beim Farming uebrig bleibt (Saatgut).
+FARMING_COST_MULTIPLIER = spar_faktor(
+    (POTION_OF_TRICKERY_ACTIVE, POTION_OF_TRICKERY_SAVE),
+    (SEED_STORAGE_ACTIVE, SEED_STORAGE_SAVE),
+)
+
+# "Better fisherman"/"Better lumberjack": 25% XP fuer die ZUSAETZLICHE Beute aus The
+# fisherman/The lumberjack (ohne die Perks gibt es dafuer gar keine XP). Wirkt nur auf
+# den yield_multiplier, nicht auf die Handschuh-Verdopplung. Standardmaessig AUS, weil
+# es ein eigener Kauf ist - besitzt du sie, extra_yield_xp=True beim Skill setzen.
 EXTRA_YIELD_XP_SHARE = 0.25
 
 XP_BOOST_TOTAL = 0.25 + 0.25         # Clan house + House
@@ -90,16 +135,33 @@ NPC_SELL_BOOST_MULTIPLIER = (
     * (1.05 if POTION_OF_NEGOTIATION_ACTIVE else 1.0)
 )
 
-# Player-Market-Steuer: 1% auf Verkaufsangebote ab 100 Gold Gesamtwert (Wiki). Kauf-
+# Player-Market-Steuer: 1% auf Verkaufsangebote AB 100 GOLD GESAMTWERT (Wiki). Kauf-
 # angebote sind steuerfrei -> Materialkosten bleiben unveraendert. Der NPC-Vendor kennt
 # keine Steuer, was den Vergleich Spieler vs. NPC leicht Richtung NPC verschiebt.
-# Die 100-Gold-Untergrenze ist hier egal: ein Stundenertrag liegt immer darueber.
 PLAYER_MARKET_TAX = 0.01
+PLAYER_MARKET_TAX_MIN_TOTAL = 100.0
 
 
-def net_player_price(price: float) -> float:
-    """Was nach Abzug der Marktsteuer beim Verkaeufer ankommt."""
-    return price * (1.0 - PLAYER_MARKET_TAX)
+def net_player_price(preis: float, menge: float = 1.0) -> float:
+    """Was je Stueck nach Marktsteuer beim Verkaeufer ankommt.
+
+    Die Steuer greift erst ab `PLAYER_MARKET_TAX_MIN_TOTAL` Gold GESAMTWERT eines
+    Angebots, deshalb gehoert die Menge dazu: ein einzelner Eichenstamm zu 76 g ist
+    steuerfrei, dieselben 76 g mal 500 Stueck in einem Angebot nicht. Wer die Menge
+    weglaesst, fragt nach genau einem Stueck - und bekommt bei billigen Items dann
+    auch den steuerfreien Preis, statt stillschweigend 1% zu verlieren.
+    """
+    if preis <= 0 or preis * max(menge, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
+        return preis
+    return preis * (1.0 - PLAYER_MARKET_TAX)
+
+
+# Gold ist in der API ein Item wie jedes andere und taucht als Kostenzeile auf
+# (Carpentry zahlt Gold fuer Naegel und Leim). Es hat keinen Markteintrag - ohne
+# diesen Sonderfall kam die Zeile mit Preis 0 durch, und die betroffenen Rezepte
+# sahen billiger aus, als sie sind. Ein Gold kostet ein Gold.
+GOLD_ITEM_ID = 19
+GOLD_ITEM_PRICE = 1.0
 
 
 # Verlaesslichkeit des Nachschubs je Skill: 1.0 = planbar farmbar, kleiner = die
@@ -116,9 +178,30 @@ SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
 AUTO_COOK_CHANCE = 0.5               # Anteil der Faenge, der bereits gekocht ankommt
 AUTO_COOK_SOURCE_SKILL = "Fishing"
 
+# Der Rest des Fangs ist ROHER Fisch, und der ist verkaeuflich. Die Kette hat ihn
+# lange weggeworfen und dabei rund ein Drittel des Ertrags unterschlagen (bei tuna:
+# 154.170 statt ~198.800 Gold/h ausgewiesen). Er wird als Nebenertrag gutgeschrieben,
+# ueber denselben Verkaufsweg wie jedes andere Item - also Kaufgebot oder NPC, je
+# nachdem, was mehr bringt. Auf False steht wieder die alte, pessimistische Rechnung.
+AUTO_COOK_SELL_RAW_REST = True
+
 # Smelting Magic: Chance, Erz beim Ore->Bar-Schmelzen nicht zu verbrauchen (hoechster
 # Tier = 30%, Tiers stacken nicht). Wirkt nur auf *_bar-Rezepte, nicht aufs Schmieden.
-SMITHING_SMELTING_COST_MULTIPLIER = 1.0 - 0.3
+SMELTING_MAGIC_ACTIVE = True
+SMELTING_MAGIC_SAVE = 0.30
+
+# Was von der Erz-Zeile eines *_bar-Rezepts uebrig bleibt: Smelting Magic und Ore
+# Storage greifen an derselben Stelle und werden multiplikativ kombiniert.
+SMITHING_SMELTING_COST_MULTIPLIER = spar_faktor(
+    (SMELTING_MAGIC_ACTIVE, SMELTING_MAGIC_SAVE),
+    (ORE_STORAGE_ACTIVE, ORE_STORAGE_SAVE),
+)
+
+# Ore Storage OHNE Smelting Magic: gilt fuer Erz-Zeilen, die der Perk nicht erfasst
+# (SMELTING_MAGIC_EXCLUDED_ITEM_NAMES) und - im Worst Case - fuer die Nebenzutaten,
+# auf die Smelting Magic moeglicherweise gar nicht wirkt. Das Lager ist ein eigenes
+# Upgrade; dass der Perk eine Zeile auslaesst, macht das Lager dort nicht unwirksam.
+ORE_STORAGE_COST_MULTIPLIER = spar_faktor((ORE_STORAGE_ACTIVE, ORE_STORAGE_SAVE))
 
 # Zutaten, auf die der Perk laut Wiki NICHT wirkt. Abgleich ueber den Item-Namen, damit
 # auch otherworldly_bar erfasst wird (enthaelt Astronomical ore, heisst aber nicht so).
@@ -139,11 +222,14 @@ SKILLS: dict[str, SkillConfig] = {
     "Cooking":     SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),
     "Carpentry":   SkillConfig(equipment_speed_boost=equip(False), gloves_owned=True),
     "Smithing":    SkillConfig(equipment_speed_boost=equip(False)),
-    "Farming":     SkillConfig(equipment_speed_boost=equip(False), cost_multiplier=0.5),  # Trickery T5: 50% Saatgut gespart
+    # Saatgut-Ersparnis: Potion of Trickery + Seed Storage (s. FARMING_COST_MULTIPLIER)
+    "Farming":     SkillConfig(equipment_speed_boost=equip(False), cost_multiplier=FARMING_COST_MULTIPLIER),
     "Crafting":    SkillConfig(equipment_speed_boost=equip(), has_tool=True),
     "Agility":     SkillConfig(equipment_speed_boost=equip(), has_tool=True),
     "Plundering":  SkillConfig(equipment_speed_boost=equip(), has_tool=True, gloves_owned=True),
-    "Brewing":     SkillConfig(equipment_speed_boost=equip(False)),  # Werkzeug unbekannt -> konservativ ohne
+    # Brewing hat ein eigenes Werkzeug (Stand 18.08.2026) - vorher stand hier
+    # konservativ die Grundausruestung ohne Werkzeugbonus.
+    "Brewing":     SkillConfig(equipment_speed_boost=equip(), has_tool=True),
 
     # Keine normalen Markt-Item-Rezepte. Namen exakt wie im Tasks-Block der API.
     "Combat": SkillConfig(excluded=True),
@@ -169,10 +255,26 @@ def skill_cfg(skill_name: str) -> SkillConfig:
 # Markt-Filter (account-unabhaengig)
 # ------------------------------------------------------------------
 
-# Achtung: buyVol ist die Menge AM BESTEN GEBOT, nicht die Tiefe des Buchs - ein Item
-# kann hier scheitern und trotzdem bestens handelbar sein (Details im README).
-MIN_SELL_VOLUME = 10000        # Mindest-BuyVol des Endprodukts fuer den Sofortverkauf
-MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite, damit ein Markt als echt gilt
+# VERKAUFEN und KAUFEN sind zwei verschiedene Fragen an zwei verschiedene Seiten des
+# Buchs, und sie wurden hier lange gemeinsam beantwortet:
+#
+#   verkaufen -> es zaehlen die KAUFGEBOTE (bid, buyVol). Ob jemand teuer anbietet,
+#                ist voellig egal, wenn ich verkaufen will.
+#   kaufen    -> es zaehlen die ANGEBOTE (ask, sellVol).
+#
+# Dazu kam eine pauschale Grenze `MIN_SELL_VOLUME = 10000` auf `buyVol`. Das Feld ist
+# aber die Menge AM BESTEN GEBOT, nicht die Tiefe des Buchs - und damit verwarf die
+# Grenze Items, die bestens handelbar sind: yew_log und yew_plank fielen genauso auf
+# den NPC-Preis zurueck wie oak (bestes Gebot 6.178 Stueck, eine Stufe tiefer 327.915).
+#
+# Die Tiefe beantwortet deshalb, wer sie kennt: der Orderbuch-Durchlauf im Sheet
+# "Begruendung" (`walk_orderbook`), der eine Stunde Produktion wirklich durch die
+# Gebotsstufen verkauft. Hier steht nur noch die Frage, ob es ueberhaupt ein Gebot
+# gibt - und ein duennes Top-Gebot ist eine WARNUNG, kein Ausschluss.
+MIN_SELL_BID_VOLUME = 1        # es muss ein Kaufgebot mit Menge geben, mehr nicht
+MIN_BUY_ASK_VOLUME = 50        # Zutatenkauf: die Angebotsseite muss echt sein
+MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite fuer "beidseitig echter Markt"
+THIN_BID_HOURS = 1.0           # Warnung, wenn das Top-Gebot < 1 h Produktion schluckt
 MAX_SPREAD_RATIO = 1.0         # Warnung ab Ask > 2x Bid
 MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung ab >50% Abweichung vom 24h-Schnitt
 LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
@@ -185,25 +287,15 @@ LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 SHOW_PRICE_SENSITIVITY_CHART = True   # PNG + Excel-Sheet, 1 Request je Top-N-Item
 PRICE_SENSITIVITY_TOP_N = 10
 
-# Farben der Item-Linien im Sensitivitaets-Chart. Feste Reihenfolge, NICHT zyklisch
-# ueber matplotlibs Standardzyklus - der vergibt an Position 4 ein Rot, und Rot ist hier
-# fuer die NPC-Markierung reserviert. Eine Linie in dieser Farbe war von der Markierung
-# nicht zu unterscheiden.
+# Farben der Item-Linien im Sensitivitaets-Chart. Feste Reihenfolge statt matplotlibs
+# Standardzyklus: der vergibt an Position 4 ein Rot, und Rot gehoert hier der
+# NPC-Markierung. Ausgeschlossen ist alles, was mit NPC_MARKER_COLOR verwechselbar ist
+# (Grenze Delta-E 10 bei Normalsicht) - die Markierung traegt ihre Form.
 #
-# Ausgeschlossen ist nicht "Rot" als Familie, sondern nur, was mit NPC_MARKER_COLOR
-# verwechselbar ist. Die Grenze liegt bei Delta-E 10 (Normalsicht): am naechsten kommt
-# orange mit 10.8, dann altrosa 12.8, dunkelorange 13.9, weinrot 15.5, der Rest darueber.
-# Dass Serienfarben naeher an einer Status-Farbe liegen duerfen als Serien untereinander,
-# ist so vorgesehen - die Markierung wird durch ihre FORM getragen (dicker Punkt mit
-# weissem Ring gegen duenne Linie) plus Legendeneintrag, nicht durch den Farbabstand.
-# Das Standard-Rot von matplotlib bleibt draussen: das war identisch mit der Markierung.
-#
-# Die REIHENFOLGE ist kein Geschmack, sondern der Sicherheitsmechanismus: geprueft werden
-# BENACHBARTE Paare, und aehnliche Toene (blau/hellblau, violett/lila, gelb/oliv,
-# magenta/altrosa, orange/dunkelorange) duerfen sich deshalb nicht beruehren. Diese
-# Anordnung legt zusaetzlich die kraeftigen Farben nach vorn - bei TOP_N=10 kommen genau
-# die ersten zehn zum Einsatz. Wer umsortiert oder ergaenzt, prueft neu.
-# Schlechtestes benachbartes Paar: Delta-E 9.1 farbfehlsichtig, 15.6 normalsichtig.
+# Die REIHENFOLGE ist der Sicherheitsmechanismus: geprueft werden BENACHBARTE Paare,
+# aehnliche Toene duerfen sich also nicht beruehren, und die kraeftigen Farben stehen
+# vorn (bei TOP_N=10 kommen genau die ersten zehn zum Einsatz). Wer umsortiert oder
+# ergaenzt, prueft neu. Schlechtestes Paar: Delta-E 9.1 farbfehlsichtig, 15.6 normal.
 PRICE_SENSITIVITY_SERIES_COLORS = [
     "#2a78d6",  # blau
     "#eb6834",  # orange
@@ -280,3 +372,48 @@ MARKET_STATS = ["market_map_count", "rohdaten_count", "in_ketten_count", "realis
 # Plausibilitaetsfenster fuer eine Aktion (deckt auf, wenn BaseTime nicht mehr in ms kommt)
 MIN_PLAUSIBLE_ACTION_SEC = 0.3
 MAX_PLAUSIBLE_ACTION_SEC = 300.0
+
+
+# ------------------------------------------------------------------
+# Historie (SQLite)
+# ------------------------------------------------------------------
+#
+# Excel und Chart werden bei jedem Lauf UEBERSCHRIEBEN - das bleibt so, sie sind die
+# Antwort auf "was farme ich jetzt". Was dabei verloren ging, ist die zweite Frage:
+# "war das gestern auch schon so?". Ein Preissturz sieht in einer Momentaufnahme
+# genauso aus wie ein dauerhaft schlechtes Item.
+#
+# Deshalb eine Datenbank neben den Dateien statt datierter Excel-Kopien: hundert
+# .xlsx im Ordner beantworten keine einzige Frage, ohne dass man sie alle oeffnet.
+HISTORY_PATH = os.path.join(OUTPUT_DIR, "market_history.sqlite")
+HISTORY_ENABLED = True
+
+# Orderbuchtiefe nur fuer die wichtigsten Kandidaten: eine Stufe je Item und Lauf ist
+# die groesste Tabelle von allen, und fuer Item 400 der Rangliste sieht sie nie jemand
+# an. Gespeichert wird, was ohnehin schon abgerufen wurde (Sheet "Begruendung").
+HISTORY_ORDERBOOK_TOP_N = 10
+
+# Aufbewahrung. Die Detailzeilen sind das Grosse (ein paar hundert je Lauf), die
+# Tageswerte das Kleine - deshalb werden Details nach 90 Tagen zu Tageswerten
+# zusammengefasst und geloescht, statt sie ewig mitzuschleppen.
+HISTORY_DETAIL_DAYS = 90
+HISTORY_ORDERBOOK_DAYS = 30
+HISTORY_DAILY_DAYS = 365
+HISTORY_RUN_LIMIT = 100
+
+# Diese Werte gehen in den Config-Hash jedes Laufs. Aendert sich einer, sind zwei
+# Laeufe nicht mehr vergleichbar - und man sieht in der Historie, WARUM ein Item
+# ploetzlich anders dasteht, statt es dem Markt anzulasten.
+CONFIG_HASH_KEYS = [
+    "EQUIPMENT_BASE_BOOST", "EQUIPPED_TOOL_BONUS", "GLOVES_DOUBLE_CHANCE",
+    "CLAN_GATHERERS_SPEED_BOOST", "XP_BOOST_TOTAL", "DAILY_XP_BOOST",
+    "NPC_SELL_BOOST_MULTIPLIER", "PLAYER_MARKET_TAX", "PLAYER_MARKET_TAX_MIN_TOTAL",
+    "POTION_OF_TRICKERY_ACTIVE", "POTION_OF_TRICKERY_SAVE",
+    "SEED_STORAGE_ACTIVE", "SEED_STORAGE_SAVE",
+    "ORE_STORAGE_ACTIVE", "ORE_STORAGE_SAVE",
+    "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
+    "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
+    "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
+    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "MIN_MARKET_VOLUME",
+    "RANKING_BASIS",
+]

@@ -101,14 +101,9 @@ def read_text(
 ) -> list[tuple[str, float]]:
     """Liest Text aus einem PIL-Image.
 
-    Args:
-        img: PIL Image zum Analysieren
-        backend: "easyocr" oder "tesseract" (None = bestes verfügbares)
-        languages: Sprach-Codes (Standard: ["en"])
-        min_confidence: Mindest-Konfidenz (0-1) für Ergebnisse
-
-    Returns:
-        Liste von (text, confidence) Tupeln, sortiert nach Konfidenz absteigend.
+    `backend` ist "easyocr" oder "tesseract" (None = bestes verfügbares),
+    `languages` Sprach-Codes (Standard ["en"]), `min_confidence` die
+    Mindest-Konfidenz (0-1) für Ergebnisse.
     """
     if backend is None:
         backend = _select_backend()
@@ -181,21 +176,11 @@ def detect_boss_name(
 ) -> tuple[bool, Optional[str], str, float, Optional[str]]:
     """Versucht einen Boss-Namen per OCR im Bild zu erkennen.
 
-    Args:
-        img: PIL Image (Screenshot der Boss-Region)
-        boss_names: Liste bekannter Boss-Namen
-        backend: OCR-Backend (None = Auto)
-        languages: Sprach-Codes
-        min_confidence: Mindest-Konfidenz für OCR-Ergebnis
-        new_boss_min_confidence: Mindest-Konfidenz um unbekannten Text als neuen Boss zu melden
+    `img` ist ein Screenshot der Boss-Region, `boss_names` die bekannten Namen.
+    `new_boss_min_confidence` ist die Schwelle, ab der unbekannter Text als neuer
+    Boss gemeldet wird.
 
-    Returns:
-        (success, matched_name, raw_text, duration_ms, new_name_candidate)
-        - success: True wenn ein bekannter Boss erkannt wurde
-        - matched_name: Erkannter Boss-Name (oder None)
-        - raw_text: Gesamter erkannter Text
-        - duration_ms: Dauer in Millisekunden
-        - new_name_candidate: Bester Text wenn kein Boss passte aber Konfidenz >= new_boss_min_confidence
+    Gibt `(success, matched_name, raw_text, duration_ms, new_name_candidate)` zurück.
     """
     start = time.time()
 
@@ -233,23 +218,17 @@ def detect_boss_name(
 def _match_text_to_boss(text: str, boss_names: list[str]) -> Optional[str]:
     """Matcht einen erkannten Text gegen Boss-Namen.
 
-    Muss dieselbe Antwort geben wie `llm_vision.match_boss_name()`: OCR und LLM
-    bekommen laut Vertrag dieselbe (gemergte) Boss-Liste und ersetzen einander je nach
-    Fallback-Einstellung. Zwei Erkenner, die denselben Text auf VERSCHIEDENE Bosse
-    abbilden, führen dieselbe Sequenz unterschiedlich aus — jedes BossProfile hat
-    seine eigene Aktion (skip/scan/restart/klicken).
+    Muss dieselbe Antwort geben wie `llm_vision.match_boss_name()`: beide
+    bekommen dieselbe Boss-Liste und ersetzen einander je nach Fallback, und
+    jedes BossProfile hat seine eigene Aktion.
 
-    Die beiden Regeln, auf die es dabei ankommt:
+    - Enthält der Text mehrere Namen, gewinnt der längste (sonst fand
+      ["Ork", "Orkhäuptling"] in "Der Orkhäuptling erscheint" den *Ork*).
+    - Steckt der Text in mehreren Namen, gewinnt der kürzeste — er behauptet am
+      wenigsten über das Gelesene hinaus.
 
-    - **Enthält der Text mehrere Namen, gewinnt der längste.** In der Liste
-      ["Ork", "Orkhäuptling"] fand die Reihenfolge-Suche bei "Der Orkhäuptling
-      erscheint" den *Ork* — den unspezifischeren, nur weil er vorne stand.
-    - **Steckt der Text in mehreren Namen, gewinnt der kürzeste** — das ist der Name,
-      der am wenigsten über das hinaus behauptet, was tatsächlich gelesen wurde.
-
-    Die Regel steht hier absichtlich ein zweites Mal statt in einem gemeinsamen Modul:
-    `ocr.py` und `llm_vision.py` sind abhängigkeitsfreie Blätter. Ein Test füttert
-    beide mit denselben Eingaben und vergleicht — gemessen statt abgeschrieben.
+    Die Regel steht absichtlich zweimal da: `ocr.py` und `llm_vision.py` sind
+    abhängigkeitsfreie Blätter. Ein Test füttert beide und vergleicht.
     """
     text_lower = text.lower().strip()
     if not text_lower:

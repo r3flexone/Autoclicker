@@ -1220,6 +1220,7 @@ class _PhaseEditor:
         # Events sauber halten, damit der Test-Lauf nicht durch Altzustände abbricht
         self.state.stop_event.clear()
         self.state.skip_event.clear()
+        self.state.skip_step_event.clear()
         ok_run = False
         try:
             ok_run = execute_step(self.state, test_step, num, len(self.steps), "TEST")
@@ -1230,6 +1231,7 @@ class _PhaseEditor:
             # Ein Test darf keine Events (Stop/Skip/Restart) in einen echten Lauf tragen
             self.state.stop_event.clear()
             self.state.skip_event.clear()
+            self.state.skip_step_event.clear()
             self.state.skip_cycle_event.clear()
             self.state.restart_event.clear()
         print(f"\n  {ok('Test fertig.') if ok_run else col('Test abgebrochen.', 'yellow')}")
@@ -1280,14 +1282,12 @@ class _PhaseEditor:
     def _handle_verify(self, user_input: str) -> None:
         """Nachprüfung setzen/entfernen: "hat dieser Schritt gewirkt?".
 
-        Formate:
           verify <Schritt-Nr> <Punkt-Nr> [gone]   — Punkt aus der Punkte-Liste prüfen
           verify <Schritt-Nr> maus [gone]         — Stelle unter der Maus abgreifen
           verify <Schritt-Nr> off                 — Nachprüfung entfernen
 
-        Warum ein eigener Punkt statt des Klickziels: geprüft wird meist NICHT dort,
-        wo geklickt wurde, sondern die Wirkung woanders (Fenster geht auf, Zähler
-        springt). Deshalb eine freie Stelle — dieselbe Mechanik wie `wait <Punkt-Nr>`.
+        Ein eigener Punkt statt des Klickziels, weil die Wirkung meist woanders
+        sichtbar wird (Fenster geht auf, Zähler springt).
         """
         teile = user_input.split()
         if len(teile) < 3:
@@ -1356,12 +1356,9 @@ class _PhaseEditor:
     def _resolve_trigger_color(self, until_gone: bool, point):
         """Liefert (pixel, color, punkt_id, until_gone) für einen color|colorgone-Trigger.
 
-        Standard: die bei der Punkt-Aufnahme gespeicherte Farbe an der Punkt-
-        Position (stimmt meistens). Nur wenn der Punkt keine Farbe hat, wird
-        live an der Mausposition abgegriffen. Override später per 'recolor <Nr>'.
-
-        Im Normalfall ist die Punkt-ID die des übergebenen Punkts - geprüft wird ja
-        genau dort, wo geklickt wird. Nur beim Live-Abgriff entsteht ein eigener Punkt.
+        Standard ist die bei der Punkt-Aufnahme gespeicherte Farbe; nur wenn der Punkt
+        keine hat, wird live an der Mausposition abgegriffen (und dabei ein eigener
+        Punkt angelegt). Override später per 'recolor <Nr>'.
         """
         if point.color:
             print(f"  Nutze Punkt-Farbe RGB{point.color} bei ({point.x}, {point.y}) "

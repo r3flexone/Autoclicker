@@ -1,12 +1,8 @@
-"""
-Serialisierungs-Helfer: konvertieren Dataclasses ↔ JSON-Dicts.
+"""Serialisierungs-Helfer: konvertieren Dataclasses ↔ JSON-Dicts.
 
-Werden sowohl intern von den anderen persistence-Modulen genutzt als auch
-extern von import_export.py (für die ZIP-Bundle-Erstellung).
-
-Die führenden Underscores in den Funktionsnamen sind historisch — sie waren
-ursprünglich modulprivat bevor import_export.py sie übernommen hat. Namen
-bleiben stabil, um nicht alle Callsites anfassen zu müssen.
+Genutzt von den anderen persistence-Modulen UND von import_export.py, damit
+beide dasselbe Format schreiben. Die führenden Underscores sind historisch —
+die Funktionen waren einmal modulprivat.
 """
 
 from dataclasses import asdict
@@ -23,16 +19,10 @@ if TYPE_CHECKING:  # nur fuer die Annotationen unten
     from ..models import BossScanConfig, IconScanConfig
 
 
-# =============================================================================
-# GESCHRIEBEN WIRD NUR, WAS GESETZT IST
-# =============================================================================
-# Jede Datei soll das enthalten, was du eingestellt hast - nicht zusätzlich jedes Feld,
-# das den Standardwert trägt. Der Loader setzt genau diesen Default, also ist das Feld
-# in der Datei überflüssig; und was überflüssig ist, macht die Datei unlesbar.
-#
-# Beim Lesen der Dateien ist der Standardwert die einzige Quelle der Wahrheit: steht ein
-# Feld nicht drin, gilt der Default aus der Dataclass. Deshalb müssen die Tabellen hier
-# und die Dataclasses zusammenpassen - ein Test prüft das.
+# GESCHRIEBEN WIRD NUR, WAS GESETZT IST. Der Loader setzt ohnehin genau den
+# Default, also ist ein Feld auf dem Standardwert in der Datei ueberfluessig -
+# und was ueberfluessig ist, macht die Datei unlesbar. Die Tabellen hier und die
+# Dataclasses muessen deshalb zusammenpassen; ein Test prueft das.
 
 # Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
 _KEIN_DEFAULT = object()
@@ -68,7 +58,7 @@ def _alt_gemeldet(wo: str, feld: str, was_tun: str) -> None:
         return
     _ALT_GEMELDET.add(schluessel)
     print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
-               f"in points.json."))
+               f"in sequence.json."))
     print(hint(f"       {was_tun}."))
 
 
@@ -109,9 +99,10 @@ _ITEM_DEFAULTS = {
     "template": None,
     "min_confidence": DEFAULT_MIN_CONFIDENCE,
     "template_variants": [],
+    "enabled": True,
 }
 
-_SLOT_DEFAULTS = {"slot_color": None}
+_SLOT_DEFAULTS = {"slot_color": None, "enabled": True, "id": 0}
 
 
 def _item_to_dict(item: ItemProfile) -> dict:
@@ -130,6 +121,8 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
         "scan_region": list(slot.scan_region),
         "click_pos": list(slot.click_pos),
         "slot_color": list(slot.slot_color) if slot.slot_color else None,
+        "enabled": slot.enabled,
+        "id": slot.id,
     }, _SLOT_DEFAULTS)
 
 
@@ -145,14 +138,18 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
         scan_region=tuple(data["scan_region"]),
         click_pos=tuple(data["click_pos"]),
         slot_color=tuple(farbe) if farbe else None,
+        # Nur ein echtes JSON-`false` schaltet aus. Kaputte oder alte Werte
+        # fallen auf den sicheren bisherigen Standard „an" zurück.
+        enabled=data.get("enabled", True) is not False,
+        id=int(data.get("id", 0) or 0),
     )
 
 
 def _point_to_dict(p: 'ClickPoint') -> dict:
-    """Serialisiert einen ClickPoint zu einem Dict (points.json / Export).
+    """Serialisiert einen ClickPoint für die Punktliste in sequence.json.
 
     color/source nur wenn gesetzt — hält alte Dateien schlank und vermeidet
-    leere Felder. Zentral, damit points.json-Writer und Export identisch sind.
+    leere Felder. Zentral, damit Speichern und Export identisch sind.
     """
     return {
         "id": p.id, "x": p.x, "y": p.y,
@@ -188,6 +185,7 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
         template=data.get("template"),
         min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
         template_variants=list(dict.fromkeys(varianten)),
+        enabled=data.get("enabled", True),
     )
 
 
@@ -254,8 +252,8 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 _ITEM_SCAN_DEFAULTS = {
     "color_tolerance": 40,
     "learn_unknown": False,
-    "slot_names": [],
-    "item_names": [],
+    "slots": {},
+    "items": {},
     "reverse": False,
     "capture_window_title": None,
     "capture_window_index": 0,
@@ -264,20 +262,13 @@ _ITEM_SCAN_DEFAULTS = {
 
 
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
-    """Serialisiert eine ItemScanConfig zu einem Dict.
-
-    Geschrieben werden nur Namen. Sind die Namenslisten leer (Editoren setzen direkt
-    `slots`/`items`), werden sie aus den aufgelösten Objekten abgeleitet - so muss kein
-    Editor umgebaut werden.
-    """
-    slot_names = list(config.slot_names) or [s.name for s in config.slots]
-    item_names = list(config.item_names) or [i.name for i in config.items]
+    """Serialisiert einen vollständigen, eigenständigen Item-Scan."""
     return _ohne_defaults({
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "learn_unknown": config.learn_unknown,
-        "slot_names": slot_names,
-        "item_names": item_names,
+        "slots": {s.name: _slot_to_dict(s) for s in config.slots},
+        "items": {i.name: _item_to_dict(i) for i in config.items},
         "reverse": config.reverse,
         "capture_window_title": config.capture_window_title,
         "capture_window_index": config.capture_window_index,
@@ -292,6 +283,10 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     Loader und ZIP-Import müssen durch dieselbe Stelle laufen. Sonst verschwindet
     ein neues Feld beim Import still, obwohl eine normal geladene Datei es kennt.
     """
+    slots_data = data.get("slots") or {}
+    items_data = data.get("items") or {}
+    if not isinstance(slots_data, dict) or not isinstance(items_data, dict):
+        raise TypeError("slots/items müssen Objekte sein")
     fenster_rechteck = data.get("capture_window_rect")
     if not isinstance(fenster_rechteck, (list, tuple)) or len(fenster_rechteck) != 4:
         fenster_rechteck = None
@@ -314,8 +309,10 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         fenster_index = 0
     return ItemScanConfig(
         name=data["name"],
-        slot_names=[str(n) for n in data.get("slot_names", [])],
-        item_names=[str(n) for n in data.get("item_names", [])],
+        slots=[_slot_from_dict(str(name), wert)
+               for name, wert in slots_data.items()],
+        items=[_item_from_dict(wert, str(name))
+               for name, wert in items_data.items()],
         color_tolerance=data.get("color_tolerance", 40),
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
@@ -388,14 +385,12 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
 def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict.
 
-    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht — sie
-    stehen dann in `points.json`, und das ist die einzige Stelle, an der sie stehen
-    duerfen. Betrifft drei Paare: den Klick selbst (x/y + recorded_color), den
-    Pruef-Pixel (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
+    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht;
+    betrifft drei Paare — den Klick (x/y + recorded_color), den Pruef-Pixel
+    (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
 
-    `x`/`y` bleiben nur fuer die Schritte uebrig, die gar keinen Punkt haben koennen
-    (Tastendruck, Scans, Screenshot) — dort sind sie ohnehin 0 und fallen durch
-    `_ohne_defaults` weg.
+    `x`/`y` bleiben nur den Schritten, die gar keinen Punkt haben koennen (Taste,
+    Scans, Screenshot) — dort sind sie 0 und fallen durch `_ohne_defaults` weg.
     """
     wc = s.wait_condition
     ec = s.else_config
@@ -440,21 +435,10 @@ def _step_to_dict(s: SequenceStep) -> dict:
     return _ohne_defaults(voll, _STEP_DEFAULTS)
 
 
-# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist. Steht der Wert drin, ist das Feld
-# ueberfluessig und wird nicht geschrieben - der Loader setzt exakt diesen Default.
-#
-# Warum: ein normaler Klick-Schritt hat 27 Felder, davon 21 leer. Eine 67-Schritt-Sequenz
-# war zu vier Fuenfteln aus "wait_pixel": null und Konsorten. Das Problem ist nicht die
-# Dateigroesse, sondern dass man in der JSON nichts mehr findet - und Suchen in der
-# Sequenzdatei ist genau der Weg, einen falsch sitzenden Schritt zu erwischen.
-#
-# delay_before steht NICHT hier: es ergibt sich als einziges nicht aus dem Punkt und
-# bleibt immer sichtbar - eine Wartezeit von 0 will man in der Datei sehen.
-#
-# x/y standen frueher aus demselben Grund nicht hier. Seit die Stelle im Punkt wohnt,
-# sind sie ein abgeleiteter Wert wie jeder andere: bei einem Schritt MIT point_id setzt
-# `_step_to_dict` sie auf 0, und damit raeumt diese Tabelle sie weg. Uebrig bleiben sie
-# nur bei Schritten ohne Stelle (Taste, Scan, Screenshot) - und dort sind sie 0.
+# Was ein Feld bedeutet, wenn es "nicht gesetzt" ist; steht der Wert drin, wird das
+# Feld nicht geschrieben. Ein Klick-Schritt hat 27 Felder, davon 21 leer - und in
+# einer Datei voller "wait_pixel": null findet man nichts mehr.
+# `delay_before` steht NICHT hier: eine Wartezeit von 0 will man sehen.
 _STEP_DEFAULTS = {
     "name": "",
     "x": 0,
@@ -500,6 +484,7 @@ def _sequence_to_dict(seq: Sequence) -> dict:
         "name": seq.name,
         **({"total_cycles": seq.total_cycles} if seq.total_cycles != 1 else {}),
         **({"description": seq.description} if seq.description else {}),
+        "points": [_point_to_dict(p) for p in seq.points],
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
             {

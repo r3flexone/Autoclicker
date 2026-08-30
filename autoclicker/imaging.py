@@ -26,7 +26,7 @@ logger = logging.getLogger("autoclicker")
 from .persistence import ITEMS_DIR, TEMPLATES_DIR
 
 
-def _template_path(template_name: str) -> str | None:
+def _template_path(template_name: str, template_root=None) -> str | None:
     """Löst einen Template-Namen sicher innerhalb von ``TEMPLATES_DIR`` auf.
 
     Scan-Dateien sind normale JSON-Dateien und können auch von Hand verändert
@@ -38,7 +38,7 @@ def _template_path(template_name: str) -> str | None:
     relative = Path(template_name)
     if relative.is_absolute():
         return None
-    root = Path(TEMPLATES_DIR).resolve()
+    root = Path(template_root or TEMPLATES_DIR).resolve()
     candidate = (root / relative).resolve()
     try:
         candidate.relative_to(root)
@@ -87,65 +87,66 @@ def color_distance(c1: tuple, c2: tuple) -> float:
 
 def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: float,
                         pixel_step: int = 2, min_pixels: int = 1) -> bool:
-    """
-    Prüft ob eine Farbe im Bild vorhanden ist (optimiert mit NumPy wenn verfügbar).
+    """Prüft ob eine Farbe im Bild vorhanden ist (mit NumPy wenn verfügbar).
 
-    Args:
-        img: PIL Image
-        target_color: RGB-Tuple (r, g, b)
-        tolerance: Maximale Farbdistanz
-        pixel_step: Schrittweite beim Scannen (1=genau, 2=schneller)
-        min_pixels: Mindestanzahl passender (abgetasteter) Pixel, damit als
-            gefunden gilt. 1 = altes Verhalten (ein Pixel reicht). Werte > 1
-            machen die Erkennung robuster gegen einzelne Rausch-Pixel — der
-            Schwellwert bezieht sich auf das durch pixel_step abgetastete Raster.
-
-    Returns:
-        True wenn mindestens min_pixels passende Pixel gefunden, sonst False
+    `pixel_step` ist die Schrittweite des schnellen ersten Abtastens,
+    `min_pixels` die nötige Anzahl passender Pixel (> 1 macht die Erkennung
+    robuster gegen einzelne Rausch-Pixel). Verfehlt das Raster eine seltene
+    Farbe, wird vollständig geprüft: die Beschleunigung darf nicht davon
+    abhängen, ob ein Marker zufällig auf geraden Pixelkoordinaten liegt.
     """
     min_pixels = max(1, min_pixels)
+    pixel_step = max(1, int(pixel_step))
     if NUMPY_AVAILABLE:
         # Schnelle NumPy-Version (ca. 100x schneller)
         # asarray vermeidet Kopie wenn PIL-Daten bereits im richtigen Format
         img_array = np.asarray(img)
         if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
-            # Nur RGB-Kanäle verwenden, mit pixel_step für Performance
-            rgb = img_array[::pixel_step, ::pixel_step, :3].astype(np.float32)
             target = np.array(target_color, dtype=np.float32)
-            # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
-            sq_distances = np.sum((rgb - target) ** 2, axis=2)
-            matches = int(np.count_nonzero(sq_distances <= tolerance * tolerance))
-            return matches >= min_pixels
+
+            def genug(rgb) -> bool:
+                # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
+                werte = rgb.astype(np.float32)
+                abstaende = np.sum((werte - target) ** 2, axis=2)
+                return int(np.count_nonzero(
+                    abstaende <= tolerance * tolerance)) >= min_pixels
+
+            # In fast allen Fällen trifft schon das kleine Raster. Nur beim
+            # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
+            # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
+            if genug(img_array[::pixel_step, ::pixel_step, :3]):
+                return True
+            return pixel_step > 1 and genug(img_array[:, :, :3])
         return False
     else:
         # Fallback: Langsame PIL-Version
         pixels = img.load()
         width, height = img.size
-        matches = 0
-        for x in range(0, width, pixel_step):
-            for y in range(0, height, pixel_step):
-                pixel = pixels[x, y][:3]
-                if color_distance(pixel, target_color) <= tolerance:
-                    matches += 1
-                    if matches >= min_pixels:
-                        return True
+
+        def genug(schritt: int) -> bool:
+            matches = 0
+            for x in range(0, width, schritt):
+                for y in range(0, height, schritt):
+                    pixel = pixels[x, y][:3]
+                    if color_distance(pixel, target_color) <= tolerance:
+                        matches += 1
+                        if matches >= min_pixels:
+                            return True
+            return False
+
+        if genug(pixel_step):
+            return True
+        if pixel_step > 1:
+            return genug(1)
         return False
 
 
-# =============================================================================
 # TEMPLATE-CACHE
-# =============================================================================
-# Ein Template wurde bisher bei JEDEM Vergleich neu von Platte gelesen und dekodiert -
-# also pro Item x pro Slot x pro Scan-Schritt, in jedem Zyklus, fuer Bytes die sich nie
-# aendern. Bei 20 Items und 5 Slots sind das 100 Dateizugriffe je Scan.
-#
-# Der Cache haelt das dekodierte Bild und die auf eine Slot-Groesse angepasste Variante.
-# Schluessel ist (mtime, size) der Datei: wird ein Template neu gelernt oder ueberschrieben,
-# faellt der Eintrag von selbst raus - kein manuelles Invalidieren, kein Neustart noetig.
-#
-# Ohne Lock: Dict-Zugriffe sind unter dem GIL atomar. Schlimmstenfalls dekodieren zwei
-# Threads (Worker + Async-Boss) dasselbe Bild doppelt - das kostet nichts und geht nicht
-# kaputt. Ein Lock waere hier teurer als der Schaden.
+# Haelt das dekodierte Bild und die auf eine Slot-Groesse angepasste Variante;
+# sonst laege jedes Template pro Item x Slot x Zyklus neu von Platte. Schluessel
+# ist (mtime, size) der Datei - neu Gelerntes faellt von selbst raus. Ohne Lock:
+# Dict-Zugriffe sind unter dem GIL atomar, schlimmstenfalls dekodieren zwei
+# Threads dasselbe Bild doppelt.
 _template_cache: dict = {}
 _TEMPLATE_CACHE_MAX = 256
 
@@ -193,21 +194,11 @@ def _load_template(template_path: str):
 def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
     """Legt einen Alpha-Kanal an: Hintergrund durchsichtig, Item deckend.
 
-    **Das Template besteht sonst zu neun Zehnteln aus Hintergrund.** Gemessen an
-    einem echten Bestand: von 62×60 Pixeln eines Slots sind 10–40 % das Item, der
-    Rest ist die immer gleiche Slot-Fläche. Ein Bildvergleich über das ganze
-    Rechteck stimmt damit hauptsächlich darüber ab, dass beide denselben
-    Hintergrund haben — und nur zu einem Zehntel darüber, ob es dasselbe Item ist.
-
-    **Die Maske merkt sich Stellen, nicht Farben.** Das ist der Grund, warum sie
-    auch dann trägt, wenn dasselbe Item später vor einem anders gefärbten Menü
-    steht: verglichen werden nur die Pixel, an denen beim Lernen das Item sass.
-    Welche Farbe der Hintergrund dort *heute* hat, geht in die Rechnung gar nicht
-    mehr ein.
-
-    Sie steckt IM Template-PNG (Alpha-Kanal), nicht in einer Datei daneben — zwei
-    Dateien, die zusammengehören, laufen irgendwann auseinander. Dieselbe
-    Entscheidung wie beim Ursprung im Screenshot-PNG.
+    Ein Slot besteht zu 60–90 % aus immer gleicher Slot-Fläche; ein Vergleich
+    über das ganze Rechteck stimmt also hauptsächlich über den Hintergrund ab.
+    Die Maske merkt sich Stellen, nicht Farben — deshalb trägt sie auch vor
+    einem anders gefärbten Menü. Sie steckt IM Template-PNG, nicht in einer
+    Datei daneben.
     """
     if img is None or not hintergrund:
         return img
@@ -233,15 +224,10 @@ def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
 def _konfidenz_maskiert(bild, template, maske) -> float:
     """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
 
-    **Warum von Hand und nicht `cv2.matchTemplate(..., mask=)`:** mit Maske kann
-    OpenCV nur `TM_SQDIFF` und `TM_CCORR_NORMED`, und deren Zahlen bedeuten etwas
-    anderes als die bisherige. `min_confidence` steht an jedem Item auf einem
-    Wert, der für CCOEFF gedacht ist — ein Methodenwechsel würde jede gespeicherte
-    Schwelle still verschieben, und niemand wüsste, warum plötzlich alles oder
-    nichts passt.
-
-    Template und Ausschnitt sind hier immer gleich gross (`_template_in_groesse`
-    sorgt dafür), also ist das Ganze genau eine Korrelation und keine Suche.
+    Von Hand statt `cv2.matchTemplate(..., mask=)`: mit Maske kann OpenCV nur
+    `TM_SQDIFF`/`TM_CCORR_NORMED`, deren Zahlen etwas anderes bedeuten — jede
+    gespeicherte `min_confidence` verschöbe sich still. Template und Ausschnitt
+    sind hier immer gleich gross, also genau eine Korrelation und keine Suche.
     """
     wahl = maske > 127
     if int(wahl.sum()) < 16:
@@ -275,9 +261,9 @@ def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
     return skaliert
 
 
-def template_size(template_name: str) -> tuple[int, int] | None:
+def template_size(template_name: str, template_root=None) -> tuple[int, int] | None:
     """Pixelgroesse einer gespeicherten Vorlage, oder ``None`` wenn unlesbar."""
-    template_path = _template_path(template_name)
+    template_path = _template_path(template_name, template_root)
     if template_path is None:
         return None
     template_cv = _load_template(template_path)
@@ -290,25 +276,11 @@ def _groessen_hinweis(template_name: str, tw: int, th: int,
                       iw: int, ih: int, wert: float) -> str:
     """Der Text für den Fall „Template und Slot sind verschieden gross".
 
-    **Die alte Fassung las sich wie ein Defekt und war meistens keiner.** Sie hiess
-    „passt nicht zur Scan-Region", nannte beide Ursachen gleichrangig und empfahl
-    „Template neu aufnehmen" — was im häufigen Fall genau das Falsche ist. Wer sie
-    las, suchte einen Fehler, den er nicht gemacht hat.
-
-    Der häufige Fall ist harmlos und hat einen konkreten Namen: **verschiedene
-    Flächen desselben Spiels haben verschiedene Slot-Höhen.** An einem echten
-    Bestand gemessen hat das Inventar-Raster 64 Hintergrund-Zeilen, die
-    Ausrüstungsreihe 61 — nach dem Einzug 60 und 57. Ein Item der einen Fläche
-    wird beim Scan auch gegen die Slots der anderen gehalten (dafür ist die
-    Erkennung da), und dort kann es nicht passen.
-
-    Deshalb steht hier **die Frage, die beide Fälle unterscheidet**, statt zweier
-    Ursachen nebeneinander: findet der Scan seine übrigen Items noch? Das kann der
-    Code nicht wissen — der Nutzer sieht es in derselben Sekunde.
-
-    Und **kein negativer Prozentwert**: `TM_CCOEFF_NORMED` läuft von -1 bis +1, ein
-    Wert unter 0 heisst „die beiden Bilder haben nichts gemeinsam". Als
-    „-51 % Übereinstimmung" gelesen wirkte das wie eine kaputte Zahl.
+    Meist harmlos: verschiedene Flächen desselben Spiels haben verschiedene
+    Slot-Höhen, und jedes Item wird auch gegen die Slots der anderen gehalten.
+    Deshalb nennt der Text die Frage, die beide Fälle trennt (findet der Scan
+    seine übrigen Items noch?), statt „Template neu aufnehmen" zu empfehlen —
+    und keinen negativen Prozentwert, denn CCOEFF läuft von -1 bis +1.
     """
     aehnlich = "keine Ähnlichkeit" if wert <= 0 else f"nur {wert:.0%} Ähnlichkeit"
     return (
@@ -328,22 +300,16 @@ def _groessen_hinweis(template_name: str, tw: int, th: int,
 def match_template_in_image(img: 'Image.Image', template_name: str,
                             min_confidence: float = DEFAULT_MIN_CONFIDENCE,
                             *, resize_template: bool = True,
-                            report_size_mismatch: bool = True) -> tuple:
-    """
-    Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
+                            report_size_mismatch: bool = True,
+                            template_root=None) -> tuple:
+    """Sucht ein Template-Bild im gegebenen Bild mittels OpenCV Template Matching.
 
-    Args:
-        img: PIL Image (Suchbereich)
-        template_name: Dateiname des Templates (in items/templates/)
-        min_confidence: Mindest-Konfidenz für Match (0.0-1.0)
-        resize_template: Vorlage an eine abweichende Bildgroesse anpassen. Item-
-            Scans setzen dies aus und verwenden stattdessen eine passende Variante.
-        report_size_mismatch: Diagnose fuer alte Aufrufer ausgeben. Bewusste
-            Varianten-/Duplikatpruefungen setzen dies aus.
+    `resize_template` passt die Vorlage an eine abweichende Bildgrösse an;
+    Item-Scans setzen das aus und nehmen eine passende Variante.
+    `report_size_mismatch` schaltet die Diagnose ab (für bewusste Varianten-
+    und Duplikatprüfungen).
 
-    Returns:
-        (match_found: bool, confidence: float, position: tuple or None)
-        position ist (x, y) relativ zum Suchbereich
+    Gibt `(gefunden, konfidenz, (x, y) relativ zum Suchbereich | None)` zurück.
     """
     if not OPENCV_AVAILABLE:
         logger.warning("OpenCV nicht verfügbar für Template Matching")
@@ -353,7 +319,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         logger.warning("NumPy nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
-    template_path = _template_path(template_name)
+    template_path = _template_path(template_name, template_root)
     if template_path is None:
         logger.error("Unsicherer Template-Pfad abgewiesen: %r", template_name)
         return (False, 0.0, None)
@@ -411,13 +377,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
         else:
-            # Bei sehr niedrigen Werten: Grössen-Mismatch als mögliche Ursache loggen.
-            # **Zwei Ursachen, und nur eine ist ein Fehler.** Entweder gehört das
-            # Item zu einem anderen Inventar (dessen Slots eine andere Grösse haben)
-            # — dann ist der Fehlschlag genau richtig, und ein neu aufgenommenes
-            # Template würde nichts verbessern. Oder die Slot-Region hat sich
-            # wirklich verschoben. Die Meldung nannte nur die zweite und schickte
-            # den Leser damit auf die falsche Fährte.
+            # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
+            # melden - siehe _groessen_hinweis(), nur eine der Ursachen ist ein Fehler.
             if (report_size_mismatch and max_val < 0.3
                     and (tw != iw or th != ih)):
                 schluessel = (tw, th, iw, ih)
@@ -491,23 +452,14 @@ def take_screenshot(region: tuple = None) -> Optional['Image.Image']:
 def take_window_screenshot(hwnd: int) -> Optional[tuple]:
     """Bildet EIN Fenster ab — auch wenn etwas davor liegt.
 
-    Gibt `(bild, (l, t, r, b))` zurück: den **Client-Bereich** (Inhalt ohne
-    Titelleiste und Rahmen) und dessen Lage in Bildschirm-Koordinaten, damit
-    alles Weitere rechnet wie bei einem Ausschnitt vom Desktop. `None`, wenn es
-    nicht geht.
+    Gibt `(bild, (l, t, r, b))` zurück: den Client-Bereich und dessen Lage in
+    Bildschirm-Koordinaten, damit alles Weitere rechnet wie bei einem
+    Desktop-Ausschnitt. `None`, wenn es nicht geht.
 
-    **Warum nicht BitBlt vom Desktop:** das kopiert, was auf dem Schirm zu sehen
-    ist — also auch das Studio-Fenster, das davor liegt. Genau der Fall, den man
-    hier nicht will. `PrintWindow` fordert das Fenster stattdessen auf, sich
-    selbst zu zeichnen; ob es dabei sichtbar ist, spielt keine Rolle.
-
-    `PW_RENDERFULLCONTENT` (0x2, ab Windows 8.1) ist der Teil, auf den es
-    ankommt: ohne dieses Flag liefern Fenster mit GPU-beschleunigtem Inhalt
-    (Browser, viele Spiele) ein leeres Rechteck. Eine Garantie ist es trotzdem
-    nicht — manche Vollbild-Spiele geben weiterhin Schwarz zurück. Deshalb prüft
-    der Aufrufer das Ergebnis und fällt notfalls auf den Desktop zurück; ein
-    schwarzes Bild wäre schlimmer als ein verdecktes, weil es aussieht, als
-    hätte es geklappt.
+    BitBlt vom Desktop kopiert, was auf dem Schirm steht — also auch das
+    Studio-Fenster davor. `PrintWindow` mit `PW_RENDERFULLCONTENT` lässt das
+    Fenster sich selbst zeichnen; eine Garantie ist es nicht, deshalb prüft der
+    Aufrufer das Ergebnis mit `ist_leer()`.
     """
     return capture_window(hwnd)
 
@@ -515,10 +467,8 @@ def take_window_screenshot(hwnd: int) -> Optional[tuple]:
 def ist_leer(bild) -> bool:
     """Ist das Bild einfarbig? Dann hat sich das Fenster nicht gezeichnet.
 
-    Der Prüfstein hinter `take_window_screenshot`: manche Fenster liefern trotz
-    `PW_RENDERFULLCONTENT` eine schwarze Fläche. Die sieht aus wie ein Ergebnis,
-    ist aber keines — und alles Weitere (Slots finden, Farbe messen) arbeitete
-    dann auf Nichts, ohne dass es jemand merkt.
+    Manche Fenster liefern trotz `PW_RENDERFULLCONTENT` eine schwarze Fläche.
+    Die sieht aus wie ein Ergebnis, und alles Weitere arbeitete auf Nichts.
     """
     if bild is None:
         return True
@@ -532,11 +482,10 @@ def ist_leer(bild) -> bool:
 def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
     """Gemeinsame Fensteraufnahme für Editor UND laufenden Item-Scan.
 
-    Ergebnis: ``(bild, client_rechteck, hinweis)``. Zuerst wird das Fenster
-    direkt über PrintWindow aufgenommen. Kann sich ein Spiel dort nicht
-    zeichnen, verwenden beide Aufrufer denselben sichtbaren Desktop-Ausschnitt.
-    Der Hinweis ist dann nicht leer, weil bei diesem Fallback nichts vor dem
-    Spielfenster liegen darf.
+    Gibt `(bild, client_rechteck, hinweis)` zurück. Zuerst PrintWindow; kann
+    sich ein Spiel dort nicht zeichnen, nehmen beide Aufrufer denselben
+    Desktop-Ausschnitt — dann ist der Hinweis nicht leer, weil dabei nichts vor
+    dem Spielfenster liegen darf.
     """
     if not hwnd:
         return None

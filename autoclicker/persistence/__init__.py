@@ -43,11 +43,11 @@ from .item_scans import (
     ensure_item_scans_dir, save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
     update_item_in_scans, resolve_scan_references, resolve_klick_referenzen,
+    bind_item_scan_context, flush_item_scan_context,
 )
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
-    SCREENSHOTS_DIR, SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
-    SLOTS_FILE, ITEMS_FILE,
+    SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
     SLOT_PRESETS_DIR, ITEM_PRESETS_DIR,
     init_directories,
 )
@@ -59,6 +59,8 @@ from .sequences import (
     ensure_sequences_dir, save_sequence_file, load_sequence_file,
     list_available_sequences, save_data,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
+    sequence_dir, sequence_file, sequence_templates_dir,
+    active_sequence_dir, active_templates_dir,
     punkt_fuer_stelle, punkte_nachladen, aufloesen,
     resolve_point_references,
 )
@@ -73,8 +75,8 @@ from .serialization import (
 __all__ = [
     # paths
     'BOSS_SCANS_DIR', 'ICON_SCANS_DIR', 'ITEM_SCANS_DIR', 'SLOTS_DIR', 'ITEMS_DIR',
-    'SCREENSHOTS_DIR', 'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
-    'SLOTS_FILE', 'ITEMS_FILE', 'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
+    'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
+    'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
     'init_directories',
     # serialization
     '_item_to_dict', '_slot_to_dict', '_item_from_dict', '_slot_from_dict',
@@ -86,12 +88,15 @@ __all__ = [
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
     'list_available_sequences', 'save_data',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
+    'sequence_dir', 'sequence_file', 'sequence_templates_dir',
+    'active_sequence_dir', 'active_templates_dir',
     'punkt_fuer_stelle', 'punkte_nachladen', 'aufloesen',
     'resolve_point_references',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
     'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',
     'resolve_scan_references', 'resolve_klick_referenzen',
+    'bind_item_scan_context', 'flush_item_scan_context',
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
