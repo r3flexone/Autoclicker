@@ -376,11 +376,20 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
         existing = [(n, it) for n, it in state.global_items.items()
                     if it.template_names()]
     min_confidence = state.config.scan_min_confidence
-    known = _find_matching_existing_item(img, existing, min_confidence)
+    # **Der Vorlagenordner MUSS mit.** Ohne ihn faellt `_template_path()` auf den
+    # globalen `items/templates/` zurueck, den es seit dem Umzug auf
+    # Besitzeinheiten nicht mehr gibt: `template_size()` liefert dann fuer JEDE
+    # Vorlage None, die Dedup-Pruefung findet nie einen Treffer - und
+    # `learn_unknown` legt denselben Slot in jedem Zyklus erneut als neues Item
+    # an. Vier Zeilen tiefer stand der richtige Ordner laengst da.
+    vorlagen_ordner = active_templates_dir(state)
+    known = _find_matching_existing_item(img, existing, min_confidence,
+                                         vorlagen_ordner)
     if known:
         with state.lock:
             known_item = state.global_items.get(known)
-        if known_item is not None and not _item_has_compatible_template(known_item, img):
+        if known_item is not None and not _item_has_compatible_template(
+                known_item, img, vorlagen_ordner):
             breite, hoehe = img.size
             basis = f"{sanitize_filename(known)}_{breite}x{hoehe}"
             template_file = f"{basis}.png"

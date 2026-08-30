@@ -6302,6 +6302,67 @@ import tools.tests.persistenz_basis      # noqa: F401,E402
 import tools.tests.nachklick            # noqa: F401,E402
 import tools.tests.studio_teilen        # noqa: F401,E402
 
+
+import shutil as _shD
+from autoclicker.imaging import (PILLOW_AVAILABLE, OPENCV_AVAILABLE)
+
+# ---------------------------------- Vorlagenordner: Dedup ohne ihn ist blind
+section("Vorlagen werden IM Sequenzordner gesucht, nicht im globalen von frueher")
+
+# **Die Vorlage liegt bei ihrer Sequenz.** Wer `template_root` weglaesst, faellt
+# auf `items/templates/` zurueck - den globalen Ordner aus der Zeit vor den
+# Besitzeinheiten, den es nicht mehr gibt. `template_size()` liefert dann fuer
+# JEDE Vorlage None, und alles, was Groessen vergleicht, sagt "kenne ich nicht".
+#
+# Das ist kein Schoenheitsfehler: daran haengt die Dedup-Pruefung von
+# `learn_unknown`. Findet sie nie einen Treffer, legt der Worker denselben Slot
+# in JEDEM Zyklus erneut als neues Item an.
+if PILLOW_AVAILABLE:
+    from PIL import Image as _ImgD
+    from autoclicker.imaging import template_size as _tsD
+    from autoclicker.editors.item_editor.markers import (
+        _item_has_compatible_template as _ihctD,
+        _find_matching_existing_item as _fmeiD)
+    from autoclicker.models import ItemProfile as _IPD
+
+    _sandD = Path(tempfile.mkdtemp(prefix="vorlagen_"))
+    _ordnerD = _sandD / "sequences" / "farm" / "templates"
+    _ordnerD.mkdir(parents=True)
+    _ImgD.new("RGB", (62, 60), (10, 120, 90)).save(_ordnerD / "bogen_62x60.png")
+    _itemD = _IPD("Bogen", template="bogen_62x60.png")
+    _bildD = _ImgD.new("RGB", (62, 60), (10, 120, 90))
+
+    check("mit Ordner wird die Vorlage gemessen",
+          _tsD("bogen_62x60.png", _ordnerD) == (62, 60))
+    check("ohne Ordner findet sie niemand", _tsD("bogen_62x60.png") is None)
+
+    # Das ist die Zusicherung, an der der Fehler haing: die Dedup-Pruefung.
+    check("mit Ordner gilt das Item als schon versorgt",
+          _ihctD(_itemD, _bildD, _ordnerD) is True)
+    check("ohne Ordner haelt sie es faelschlich fuer neu",
+          _ihctD(_itemD, _bildD) is False)
+
+    if OPENCV_AVAILABLE:
+        check("und die Duplikat-Suche findet es nur mit Ordner",
+              _fmeiD(_bildD, [("Bogen", _itemD)], 0.8, _ordnerD) == "Bogen")
+
+    # Gegenprobe an der Laufzeit selbst: beide Aufrufe in `_lerne_unbekanntes`
+    # muessen den Ordner durchreichen, sonst ist die Kette oben wirkungslos.
+    import inspect as _inspD
+    import autoclicker.runtime.item_scan as _isD
+    _quelleD = _inspD.getsource(_isD)
+    _abschnittD = _quelleD[_quelleD.index("vorlagen_ordner = active_templates_dir"):]
+    _abschnittD = _abschnittD[:_abschnittD.index("template_path =")]
+    check("die Laufzeit reicht den Ordner an die Duplikat-Suche durch",
+          "_find_matching_existing_item(img, existing, min_confidence,\n"
+          "                                         vorlagen_ordner)" in _abschnittD)
+    check("und an die Vorlagen-Pruefung ebenso",
+          "_item_has_compatible_template(\n"
+          "                known_item, img, vorlagen_ordner)" in _abschnittD)
+
+    _shD.rmtree(_sandD, ignore_errors=True)
+
+
 PASS, FAIL = _H.PASS, _H.FAIL
 
 print(f"\n================  {PASS} PASS / {FAIL} FAIL  ================")

@@ -220,7 +220,13 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         if matched_item:
             with state.lock:
                 item = state.global_items.get(matched_item)
-            if item is not None and not _item_has_compatible_template(item, template_img):
+            # Der Vorlagenordner MUSS mitgegeben werden: ohne ihn faellt
+            # `_template_path()` auf den globalen `items/templates/` zurueck, den
+            # es seit dem Umzug auf Besitzeinheiten nicht mehr gibt. Die Pruefung
+            # fand dann nie eine passende Vorlage und legte bei jedem Lauf eine
+            # weitere Variante an - fuer ein Item, das laengst eine hatte.
+            if item is not None and not _item_has_compatible_template(
+                    item, template_img, active_templates_dir(state)):
                 breite, hoehe = template_img.size
                 safe_name = sanitize_filename(f"{matched_item}_{breite}x{hoehe}")
                 template_file = f"{safe_name}.png"
