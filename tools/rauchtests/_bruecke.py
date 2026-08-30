@@ -35,23 +35,63 @@ window.pywebview = {api: new Proxy({}, {get: (t, name) => (d) =>
 
 
 def playwright_da() -> tuple[bool, str]:
-    """(verfuegbar, Grund). Chromium liegt im Image, Playwright nicht immer."""
+    """(verfuegbar, Grund). Chromium liegt im CI-Image, Playwright nicht immer.
+
+    **Ein fehlender Image-Browser ist kein fehlender Browser.** Hier stand
+    einmal `if not _chromium(): return False`, und damit meldete die Schicht auf
+    jedem Rechner ohne das CI-Image "kein Chromium gefunden" — obwohl ein
+    `python -m playwright install chromium` daneben lag und `__enter__` genau
+    dafuer gebaut ist (leerer Pfad = Playwright nimmt seinen eigenen). Auf
+    Windows war das *immer* so, denn `_chromium()` suchte Linux-Pfade; in CI
+    ebenso, denn dort wird `PLAYWRIGHT_BROWSERS_PATH` gar nicht gesetzt. Der
+    Rauchtest-Job installierte also einen Browser, uebersprang sich, und wurde
+    gruen — die Schicht lief nirgends.
+    """
     try:
         import playwright.sync_api  # noqa: F401
     except ImportError:
         return False, "playwright fehlt — nachinstallieren: pip install playwright"
-    if not _chromium():
-        return False, "kein Chromium gefunden (PLAYWRIGHT_BROWSERS_PATH?)"
-    return True, ""
+    if _chromium() or _playwright_eigener():
+        return True, ""
+    return False, ("kein Chromium — nachinstallieren: "
+                   "python -m playwright install chromium")
+
+
+def _playwright_eigener() -> bool:
+    """Liegt Playwrights EIGENER Chromium in seiner Standardablage?
+
+    Nachgesehen wird im dokumentierten Ordner je Betriebssystem, statt
+    `sync_playwright()` nur zum Fragen zu starten: dieser Start ohne
+    anschliessenden Browser hinterlaesst auf Windows einen offenen Task und
+    schreibt beim Aufraeumen einen `TargetClosedError` nach stderr. Der stand
+    dann HINTER dem Ergebnis — ein Fehlertext nach "alles gruen" ist genau die
+    Meldung, die man sich abgewoehnt zu lesen.
+    """
+    if sys.platform == "win32":
+        basis = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"
+    elif sys.platform == "darwin":
+        basis = Path.home() / "Library" / "Caches" / "ms-playwright"
+    else:
+        basis = Path.home() / ".cache" / "ms-playwright"
+    return basis.is_dir() and any(basis.glob("chromium*"))
 
 
 def _chromium() -> str:
-    """Der Pfad zum vorinstallierten Chromium — oder "" fuer Playwrights eigenen."""
-    basis = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"))
+    """Der Pfad zum vorinstallierten Chromium — oder "" fuer Playwrights eigenen.
+
+    Nur fuer ein Image, das den Browser schon mitbringt (CI). Ist nichts
+    gesetzt, bleibt der Rueckgabewert leer und Playwright nimmt seinen eigenen.
+    """
+    roh = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not roh:
+        return ""
+    basis = Path(roh)
     if not basis.is_dir():
         return ""
-    for kandidat in sorted(basis.glob("chromium*/chrome-linux/chrome")):
-        return str(kandidat)
+    # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
+    for muster in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe"):
+        for kandidat in sorted(basis.glob(muster)):
+            return str(kandidat)
     direkt = basis / "chromium"
     return str(direkt) if direkt.exists() else ""
 

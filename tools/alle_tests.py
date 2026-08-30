@@ -37,6 +37,19 @@ from pathlib import Path
 
 WURZEL = Path(__file__).resolve().parents[1]
 
+# **Der Runner darf nicht an der Konsole sterben, an der er berichtet.** Die
+# Unterprozesse laufen laengst auf UTF-8 (`_lauf`), ihre Ausgabe wird hier aber
+# auf STDOUT DIESES Prozesses durchgereicht - und der ist auf einer deutschen
+# Windows-Konsole cp1252. Ein einziges Kaestchen aus einem Fortschrittsbalken
+# riss damit den ganzen Lauf mit `UnicodeEncodeError` ab, nachdem die
+# Vertragssuite bereits gruen durchgelaufen war: hinter einer Pipe blieb davon
+# nur ein Traceback und ein Exitcode, den niemand mehr las. `errors="replace"`
+# statt eines harten Fehlers - ein unbekanntes Zeichen ist ein Darstellungs-
+# problem, kein Testergebnis.
+for _strom in (sys.stdout, sys.stderr):
+    if hasattr(_strom, "reconfigure"):
+        _strom.reconfigure(encoding="utf-8", errors="replace")
+
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
 RAUCHTESTS = ("items", "erkennung", "sequenzen", "teilen", "werkzeuge")

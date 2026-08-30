@@ -80,14 +80,16 @@ try:
     check("beim Bearbeiten ist 'beibehalten' vorausgewaehlt", _behalten == (5, 6, 7, 8))
     _DC.interactive_select = lambda opts, default=0: -1
     with _cl2.redirect_stdout(_io2.StringIO()):
-        check("ESC im Menue bricht ab", _DC.select_scan_region((5, 6, 7, 8)) is None)
+        _abbruch = _DC.select_scan_region((5, 6, 7, 8))
+    check("ESC im Menue bricht ab", _abbruch is None)
     # Ohne bestehende Region gibt es den dritten Eintrag gar nicht - dann darf
     # "beibehalten" auch nicht versehentlich erreichbar sein.
     _DC.interactive_select = lambda opts, default=0: len(opts) - 1
     _DC.safe_input = lambda _p="": "1,2,3,4"
     with _cl2.redirect_stdout(_io2.StringIO()):
-        check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
-              _DC.select_scan_region(None) == (1, 2, 3, 4))
+        _eingabe = _DC.select_scan_region(None)
+    check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
+          _eingabe == (1, 2, 3, 4))
 finally:
     _DC.interactive_select = _alt_sel
 

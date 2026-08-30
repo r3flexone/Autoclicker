@@ -147,11 +147,38 @@ def lauf():
         ziel_id = vorher[0] or "(ohne id)"
 
         # 1. Umbenennen: echtes Tippen, echtes TAB.
+        #
+        # **Dabei darf das Vorschaubild nicht verschwinden.** Der
+        # Zwischenspeicher haengt am ITEM-Namen, das Bild an der Template-DATEI
+        # — und die heisst nach dem Umbenennen genauso. Ohne
+        # `scanVorschauUmbenennen()` galt die Vorschau als fehlend: die Maske
+        # wurde einmal OHNE Bild gezeichnet, dieselben Bytes noch einmal aus
+        # Python geholt und die Spalte ein zweites Mal aufgebaut. Sichtbar war
+        # das als kurzes Flackern. Gemessen wird beides — die Zahl der
+        # Neuaufbauten und ob das Bild durchgehend dasteht.
         namensfeld = f'[id="{ziel_id}"] .scan-maske-felder > input'
+        hatte_bild = f.seite.eval_on_selector(
+            f'[id="{ziel_id}"]', "e => !!e.querySelector('img.mini')")
+        pruefe(hatte_bild, "das Item hat vor dem Umbenennen keine Vorschau")
+        # Jeden Neuaufbau der rechten Spalte mitzaehlen.
+        f.seite.evaluate("""() => {
+          window.__aufbauten = 0;
+          const ziel = document.getElementById('scan-insp');
+          window.__beob = new MutationObserver(() => { window.__aufbauten++; });
+          window.__beob.observe(ziel, {childList: true});
+        }""")
         f.seite.click(namensfeld)
         f.seite.fill(namensfeld, "Zeta")
         f.seite.keyboard.press("Tab")
         f.seite.wait_for_timeout(900)
+        aufbauten = f.seite.evaluate("() => { window.__beob.disconnect();"
+                                     " return window.__aufbauten; }")
+        pruefe(aufbauten <= 1,
+               f"das Umbenennen baut die Spalte {aufbauten}x neu auf (Flackern)")
+        pruefe(f.seite.eval_on_selector(
+                   '[id="maske:item:Zeta"]',
+                   "e => !!e.querySelector('img.mini')"),
+               "die Vorschau ist nach dem Umbenennen weg")
         nach = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
         pruefe(nach[0] == "maske:item:Zeta",

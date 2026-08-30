@@ -2537,6 +2537,26 @@ function scanOrdnungUmbenennen(art, alt, neu) {
   if (i >= 0) merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);
 }
 
+/** Die gemerkte Vorschau auf den neuen Namen mitnehmen.
+ *
+ * Der Zwischenspeicher haengt am ITEM-Namen, das Bild aber an der
+ * Template-DATEI — und die heisst nach dem Umbenennen genauso wie vorher. Ohne
+ * das Mitnehmen galt die Vorschau als fehlend: die Maske wurde einmal ohne Bild
+ * gezeichnet, `scanVorschauenHolen()` holte dieselben Bytes noch einmal aus
+ * Python und baute die Spalte danach ein zweites Mal auf. Sichtbar war das als
+ * kurzes Flackern beim Umbenennen — dasselbe Bild, zwei Neuaufbauten.
+ *
+ * Der alte Eintrag bleibt stehen, aus demselben Grund wie bei
+ * `scanOrdnungUmbenennen()`: lehnt die Bruecke den neuen Namen ab (Dublette,
+ * leer), zeigt die Maske weiter unter dem alten Namen — und braucht dort ihr
+ * Bild.
+ */
+function scanVorschauUmbenennen(art, alt, neu) {
+  if (art !== "item" || !neu || alt === neu) return;
+  const bild = scanVorschauen.get(alt);
+  if (bild) scanVorschauen.set(neu, bild);
+}
+
 /** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
 function scanOrdnungRang(art) {
   const merk = scanOrdnung[art];
@@ -2567,10 +2587,13 @@ function maskeName(art, name, titel, setze) {
   const feld = el("input", {value: name, autocomplete: "off", title: titel});
   feld.addEventListener("change", () => {
     const neu = feld.value.trim();
-    // Beides haengt am Namen: der Anker fuer den Fokus und der Rang in der
-    // Liste. Wer umbenennt, sagt beiden vorher Bescheid.
+    // DREI Dinge haengen am Namen: der Anker fuer den Fokus, der Rang in der
+    // Liste und die gemerkte Vorschau. Wer umbenennt, sagt allen dreien vorher
+    // Bescheid — wer eines vergisst, sieht es sofort: der Fokus springt weg,
+    // die Zeile wandert, oder das Bild blinkt.
     fokusUmbenennung(maskeId(art, name), maskeId(art, neu));
     scanOrdnungUmbenennen(art, name, neu);
+    scanVorschauUmbenennen(art, name, neu);
     setze(feld.value);
   });
   feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
