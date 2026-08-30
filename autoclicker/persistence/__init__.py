@@ -47,8 +47,7 @@ from .item_scans import (
 )
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
-    SCREENSHOTS_DIR, SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
-    SLOTS_FILE, ITEMS_FILE,
+    SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
     SLOT_PRESETS_DIR, ITEM_PRESETS_DIR,
     init_directories,
 )
@@ -76,8 +75,8 @@ from .serialization import (
 __all__ = [
     # paths
     'BOSS_SCANS_DIR', 'ICON_SCANS_DIR', 'ITEM_SCANS_DIR', 'SLOTS_DIR', 'ITEMS_DIR',
-    'SCREENSHOTS_DIR', 'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
-    'SLOTS_FILE', 'ITEMS_FILE', 'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
+    'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
+    'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
     'init_directories',
     # serialization
     '_item_to_dict', '_slot_to_dict', '_item_from_dict', '_slot_from_dict',

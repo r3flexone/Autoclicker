@@ -7,25 +7,25 @@ aufgerufen damit die Ordnerstruktur garantiert existiert.
 
 import os
 
-# Nur noch für das sichere Erkennen/Zurücksetzen alter, typweise getrennter
-# Bestände. Aktuelle Scan-Daten liegen unter sequences/<name>/.
+# Ordner aus der Zeit vor den Besitzeinheiten. Sie werden NICHT mehr beschrieben —
+# aktuelle Daten liegen unter sequences/<name>/. Stehen bleiben sie fuer genau
+# einen Zweck: der Factory-Reset (handlers.py) soll einen solchen Altbestand
+# sicher wegraeumen koennen, falls er auf einer Platte noch herumliegt.
+# `SLOTS_FILE`, `ITEMS_FILE` und `SCREENSHOTS_DIR` (slots/Screenshots) sind mit
+# dem globalen Bestand ersatzlos entfallen; niemand las sie mehr.
 BOSS_SCANS_DIR: str = "boss_scans"
 ICON_SCANS_DIR: str = "icon_scans"
 ITEM_SCANS_DIR: str = "item_scans"
 SLOTS_DIR: str = "slots"
 ITEMS_DIR: str = "items"
-SCREENSHOTS_DIR: str = os.path.join(SLOTS_DIR, "Screenshots")
-# Je Item-Scan ein eingefrorener Bildschirm, auf dem seine Slots liegen. Ein
-# Unterordner in item_scans/ und keine Datei daneben: `list_scan_files()` sieht
-# nur `*.json` im Ordner selbst, ein PNG dort wäre trotzdem Rauschen zwischen
-# den Konfigurationen. Der Ursprung des virtuellen Desktops steht IM PNG (siehe
-# editors/sequence_studio/scans.py) — sonst wäre es eine zweite Datei, die mit
-# der ersten synchron bleiben müsste.
-SCAN_SHOTS_DIR: str = os.path.join(ITEM_SCANS_DIR, "bilder")
+
 SEQUENCE_SCREENSHOTS_DIR: str = "screenshots"
+# Rueckfall von `_template_path()`, wenn ein Aufrufer keinen Ordner mitgibt. Der
+# Ordner existiert im heutigen Layout NICHT — der Rueckfall findet also nichts,
+# und das ist Absicht: er soll auffallen, nicht stillschweigend woandershin
+# greifen. Wer Vorlagen sucht, nimmt `active_templates_dir(state)` bzw.
+# `sequence_templates_dir(name)`.
 TEMPLATES_DIR: str = os.path.join(ITEMS_DIR, "templates")
-SLOTS_FILE: str = os.path.join(SLOTS_DIR, "slots.json")
-ITEMS_FILE: str = os.path.join(ITEMS_DIR, "items.json")
 SLOT_PRESETS_DIR: str = os.path.join("presets", "slots")
 ITEM_PRESETS_DIR: str = os.path.join("presets", "items")
 # Sicherungen des Start-Durchgangs. Der Ordner spiegelt die Datenstruktur darunter

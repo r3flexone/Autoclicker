@@ -29,7 +29,7 @@ from autoclicker.winapi import (
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, init_directories,
-    list_available_sequences,
+    list_available_sequences, sweep_beim_start,
 )
 from autoclicker.diagnose import check_beim_start
 from autoclicker.runtime import print_status
@@ -264,6 +264,12 @@ def main() -> int:
     # Ordner erstellen
     ensure_sequences_dir()
     init_directories()
+
+    # Start-Durchgang: alle JSON-Dateien aufs aktuelle Format heben, BEVOR etwas
+    # geladen wird - dann liest der Rest des Starts schon die aufgeraeumten Dateien.
+    # Meldet nur, wenn es etwas zu melden gab (persistence/sweep.py).
+    if state.config.migrate_on_start:
+        sweep_beim_start()
 
     # Sequenz, Punkte und Scans werden gemeinsam geladen, sobald der Nutzer eine
     # Sequenz auswählt. Ohne Besitzer gibt es bewusst keinen globalen Scan-Bestand.

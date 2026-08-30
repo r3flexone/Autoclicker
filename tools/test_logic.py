@@ -977,32 +977,52 @@ section("Start-Durchgang: alle Dateien beim Programmstart aufs aktuelle Format")
 import os as _os
 from autoclicker.persistence.sweep import sweep as _sweep, sammle_dateien as _sammle
 
+# Gestellt wird die ECHTE Struktur: eine Sequenz ist eine Besitzeinheit
+# (`sequences/<name>/`) mit ihrer sequence.json, ihren Scan-Ordnern und ihrer
+# Boss-Bibliothek. Hier stand einmal die flache Struktur von frueher
+# (`sequences/points.json`, `items/items.json`, `item_scans/` im Wurzelordner) —
+# der Test blieb gruen, waehrend `sammle_dateien()` produktiv nur noch die
+# config.json fand. Ein Test, der eine Welt stellt, die es nicht mehr gibt,
+# misst nichts.
 _sw = Path(tempfile.mkdtemp())
-for _d in ("sequences", "items/presets", "slots/presets", "item_scans",
-           "boss_scans/global", "icon_scans"):
+for _d in ("sequences/alt/item_scans", "sequences/alt/boss_scans",
+           "presets/items", "presets/slots"):
     (_sw / _d).mkdir(parents=True, exist_ok=True)
-(_sw / "sequences/points.json").write_text(json.dumps(
-    [{"id": 1, "x": 100, "y": 200, "name": "A"},
-     {"x": 300, "y": 400, "name": "B", "legacy_flag": True}]), encoding="utf-8")
+
 # Auf aktuellem Schema, aber mit einem toten Feld im Schritt: genau der Fall, den der
 # Durchgang OHNE Migrationsschritt loest - was der Loader nicht kennt, schreibt der
-# Serializer nicht zurueck. Deshalb wird hier auch kein Altschema mehr gestellt: die
-# Sequenz-Kette ist leer, das Aufraeumen macht der Round-Trip.
-(_sw / "sequences/alt.json").write_text(json.dumps(
+# Serializer nicht zurueck. Die Punkte stehen IM selben Dokument - eine eigene
+# points.json gibt es nicht mehr.
+(_sw / "sequences/alt/sequence.json").write_text(json.dumps(
     {"name": "alt", "schema_version": 4, "total_cycles": 1,
+     "points": [{"id": 2, "x": 300, "y": 400, "name": "B", "legacy_flag": True}],
      "init_steps": [], "end_steps": [],
      "loop_phases": [{"name": "L", "repeat": 1, "steps": [
          {"point_id": 2, "delay_before": 1, "clicks": 2, "point_index": 0}]}]}),
     encoding="utf-8")
-(_sw / "items/items.json").write_text(json.dumps(
-    {"K": {"name": "K", "marker_colors": [], "confirm_point": [5, 6], "uralt": 1}}),
+# Ein gueltiger Item-Scan mit Farben als Liste. Der Loader gibt sie als Tupel
+# zurueck - beides ist in JSON dasselbe Array, also darf es KEINE Aenderung sein.
+(_sw / "sequences/alt/item_scans/scan.json").write_text(json.dumps(
+    {"name": "scan",
+     "slots": {"S1": {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5],
+                      "slot_color": [20, 95, 80], "id": 1}},
+     "items": {"K": {"marker_colors": [[20, 95, 80], [210, 15, 150]], "uralt": 1}}}),
     encoding="utf-8")
-(_sw / "item_scans/kaputt.json").write_text("{ kein json", encoding="utf-8")
+(_sw / "sequences/alt/item_scans/kaputt.json").write_text("{ kein json", encoding="utf-8")
 
 _cwd = _os.getcwd()
 try:
     _os.chdir(_sw)
-    check("Sweep findet alle angelegten Dateien", len(_sammle()) == 4)
+    check("Sweep findet alle Dateien der Besitzeinheit", len(_sammle()) == 3)
+    # Die Bibliothek liegt zwischen den Boss-Scans und ist eine Liste, kein Scan.
+    # Mit dem Scan-Loader gelesen waere sie unlesbar und wuerde als "uebersprungen"
+    # gemeldet - dabei ist sie die Datei, die im Betrieb am haeufigsten dazukommt
+    # (ein Lauf legt per LLM entdeckte Bosse dort ab).
+    (_sw / "sequences/alt/boss_scans/bibliothek.json").write_text(
+        json.dumps([{"name": "Drache", "action": "skip", "tot": 1}]), encoding="utf-8")
+    _arten = {p.name: k for p, k, _ in _sammle()}
+    check("die Boss-Bibliothek wird als Bibliothek erkannt, nicht als Scan",
+          _arten.get("bibliothek.json") == _mg.KIND_GLOBAL_BOSSES)
 
     _e1 = _sweep(write=True)
     check("Sweep hebt die Altbestaende", _e1.anzahl_geaendert == 3)
@@ -1010,13 +1030,17 @@ try:
     check("kaputte Datei wird uebersprungen, nicht geschrieben",
           len(_e1.uebersprungen) == 1 and _e1.uebersprungen[0].name == "kaputt.json")
     check("kaputte Datei bleibt unveraendert",
-          (_sw / "item_scans/kaputt.json").read_text(encoding="utf-8") == "{ kein json")
+          (_sw / "sequences/alt/item_scans/kaputt.json").read_text(
+              encoding="utf-8") == "{ kein json")
     # Sicherungen gehoeren unter backups/, nicht neben das Original: dort verstellen sie
     # den Blick auf die Daten und ein *.json-Glob koennte sie erwischen.
-    check("Sicherung liegt unter backups/", (_sw / "backups/sequences/alt.json.bak").exists())
-    check("und NICHT mehr neben dem Original", not (_sw / "sequences/alt.json.bak").exists())
+    check("Sicherung liegt unter backups/ mit gespiegeltem Ordner",
+          (_sw / "backups/sequences/alt/sequence.json.bak").exists())
+    check("und NICHT mehr neben dem Original",
+          not (_sw / "sequences/alt/sequence.json.bak").exists())
     check("Sicherung hat den Stand VOR dem Aufraeumen",
-          "point_index" in (_sw / "backups/sequences/alt.json.bak").read_text(encoding="utf-8"))
+          "point_index" in (_sw / "backups/sequences/alt/sequence.json.bak").read_text(
+              encoding="utf-8"))
 
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
     _e2 = _sweep(write=True)
@@ -1024,39 +1048,59 @@ try:
     check("zweiter Durchgang zaehlt alles als aktuell", _e2.aktuell == 3)
 
     # Ergebnis pruefen: Inhalt gehoben, Sequenz funktionsfaehig
-    _pts = json.loads((_sw / "sequences/points.json").read_text(encoding="utf-8"))
-    check("Start-Durchgang nummeriert Punkte", [p["id"] for p in _pts] == [1, 2])
-    _sq = json.loads((_sw / "sequences/alt.json").read_text(encoding="utf-8"))
+    _sq = json.loads((_sw / "sequences/alt/sequence.json").read_text(encoding="utf-8"))
     check("Start-Durchgang stempelt die Sequenz-Version",
           _sq.get("schema_version") == _mg.SCHEMA_VERSION)
     check("die Punkt-Referenz bleibt unangetastet",
           _sq["loop_phases"][0]["steps"][0]["point_id"] == 2)
+    check("der Punkt selbst steht in derselben Datei",
+          [_p["id"] for _p in _sq["points"]] == [2])
+    check("und sein totes Feld ist weg", "legacy_flag" not in _sq["points"][0])
     # **Das ist der Beleg, dass es ohne Migrationsschritt geht.** `clicks` und
     # `point_index` stehen in keiner Dataclass, der Loader liest sie nicht, der
     # Serializer schreibt sie nicht zurueck - der Round-Trip allein raeumt sie weg.
     check("Start-Durchgang entfernt tote Schritt-Felder ohne Migrationsschritt",
           "clicks" not in _sq["loop_phases"][0]["steps"][0]
           and "point_index" not in _sq["loop_phases"][0]["steps"][0])
-    _it = json.loads((_sw / "items/items.json").read_text(encoding="utf-8"))["K"]
-    # Der Round-Trip raeumt das alte confirm_point weg - der Loader liest es nicht mehr,
-    # also schreibt der Serializer es auch nicht zurueck. Genau dafuer ist der
-    # Durchgang da: er braucht keinen Migrationsschritt, um ein totes Feld loszuwerden.
-    check("Start-Durchgang entfernt das tote confirm_point", "confirm_point" not in _it)
-    check("Start-Durchgang entfernt totes Item-Feld", "uralt" not in _it)
+    _sc = json.loads(
+        (_sw / "sequences/alt/item_scans/scan.json").read_text(encoding="utf-8"))
+    check("Start-Durchgang entfernt totes Item-Feld", "uralt" not in _sc["items"]["K"])
+    check("die Marker-Farben ueberleben unveraendert",
+          _sc["items"]["K"]["marker_colors"] == [[20, 95, 80], [210, 15, 150]])
+    _bb = json.loads(
+        (_sw / "sequences/alt/boss_scans/bibliothek.json").read_text(encoding="utf-8"))
+    check("und die Bibliothek wurde geraeumt statt uebersprungen",
+          isinstance(_bb, list) and "tot" not in _bb[0])
+
+    # **Ein Tupel ist eine Liste.** Der Loader gibt Farben als Tupel zurueck, in der
+    # Datei stehen sie als Array - in JSON dasselbe. Stieg `_zahlen_normalisieren`
+    # nicht in das Tupel hinein, blieben dessen Zahlen int, waehrend die der Liste
+    # float wurden: zwei inhaltsgleiche Dateien galten als verschieden, und JEDER
+    # Start schrieb dieselben Item-Scans neu, legte ein .bak an und meldete eine
+    # Migration, die nichts tut. Genau der Fehler, den `600` gegen `600.0` unten
+    # fuer Zahlen abfaengt - nur eine Klammer weiter.
+    (_sw / "backups/sequences/alt/item_scans/scan.json.bak").unlink(missing_ok=True)
+    _e_t = _sweep(write=True)
+    check("ein Item-Scan mit Farben wird nicht bei jedem Start neu geschrieben",
+          _e_t.anzahl_geaendert == 0
+          and not (_sw / "backups/sequences/alt/item_scans/scan.json.bak").exists())
 
     # Von Hand getippte Wartezeit: `600` statt `600.0`. In JSON ist das dieselbe Zahl,
     # also gibt es nichts aufzuraeumen. Vorher schrieb der Durchgang die Datei deswegen
     # um, legte ein .bak an und meldete eine Migration, die inhaltlich nichts tat —
     # bei JEDEM Start, an dem jemand eine runde Zahl in die JSON getippt hatte.
-    _hand = _sw / "sequences/hand.json"
+    _hand_dir = _sw / "sequences/hand"
+    _hand_dir.mkdir(parents=True, exist_ok=True)
+    _hand = _hand_dir / "sequence.json"
     _hand.write_text(json.dumps(
         {"name": "hand", "schema_version": _mg.SCHEMA_VERSION,
+         "points": [{"id": 1, "x": 10, "y": 20, "name": "H"}],
          "init_steps": [], "end_steps": [],
          "loop_phases": [{"name": "L", "repeat": 1,
                           "steps": [{"point_id": 1, "delay_before": 1.5}]}]}),
         encoding="utf-8")
     _sweep(write=True)                    # einmal in die Normalform bringen
-    (_sw / "backups/sequences/hand.json.bak").unlink(missing_ok=True)
+    (_sw / "backups/sequences/hand/sequence.json.bak").unlink(missing_ok=True)
     # ... und jetzt genau EINE Zahl auf int zurueckdrehen, sonst nichts
     _norm = json.loads(_hand.read_text(encoding="utf-8"))
     _norm["loop_phases"][0]["steps"][0]["delay_before"] = 600
@@ -1068,7 +1112,7 @@ try:
     check("die Datei bleibt dabei unangetastet",
           _hand.read_text(encoding="utf-8") == _vorher)
     check("und es entsteht kein .bak fuer nichts",
-          not (_sw / "backups/sequences/hand.json.bak").exists())
+          not (_sw / "backups/sequences/hand/sequence.json.bak").exists())
 finally:
     _os.chdir(_cwd)
 
@@ -3367,11 +3411,14 @@ try:
     _MG._CHAINS[_MG.KIND_SEQUENCE] = [_gezaehlt]
 
     _esd2()
-    Path(_SQD2, "points.json").write_text(
-        json.dumps([{"id": 5, "x": 100, "y": 200, "name": "Bank"}]), encoding="utf-8")
-    _adatei = Path(_SQD2) / "aufnahme.json"
+    # Die Sequenz ist eine Besitzeinheit: sequence.json in ihrem eigenen Ordner,
+    # Punkte im Feld `points` derselben Datei.
+    _aordner = Path(_SQD2) / "aufnahme"
+    _aordner.mkdir(parents=True, exist_ok=True)
+    _adatei = _aordner / "sequence.json"
     _adatei.write_text(json.dumps({
         "name": "aufnahme", "total_cycles": 1,
+        "points": [{"id": 5, "x": 100, "y": 200, "name": "Bank"}],
         "init_steps": [], "end_steps": [],
         "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
             {"point_id": 5, "delay_before": 0}]}]}), encoding="utf-8")
