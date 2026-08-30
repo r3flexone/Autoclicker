@@ -793,16 +793,34 @@ Diese Transformation wird auf **alle** Koordinaten angewendet: Klick-Punkte, Sca
 
 **Tipp**: Nutze als Referenzpunkte feste UI-Elemente die auf jedem Bildschirm leicht zu finden sind — z.B. die Ecken des Spielfensters oder feste Buttons.
 
-## Sequenzen zwischen PCs teilen (Legacy)
+## Sequenzen zwischen PCs teilen
 
-> **Hinweis**: Für komplette Setups bevorzugt das oben beschriebene Import/Export-System (`CTRL+ALT+I`) verwenden. Der hier beschriebene Weg funktioniert weiter, deckt aber nur Sequenzen ab.
+Eine Sequenz ist eine **vollständige Besitzeinheit**: `sequences/<name>/` enthält
+den Ablauf, die sequenzlokalen Punkte, alle Scans, die Vorlagen und die
+gemerkten Bilder. Den Ordner zu kopieren reicht deshalb — es gibt nichts
+daneben, das mitmüsste.
 
-Sequenzen können auf einen anderen PC kopiert werden (`sequences/`-Ordner). Beim Laden werden die Koordinaten automatisch anhand der **Punkt-Namen** abgeglichen:
+Was dabei **nicht** passiert: die Koordinaten werden beim Laden nicht angepasst.
+Früher glich der Loader Schritte über ihren **Namen** mit lokalen Punkten ab,
+schrieb sie um und speicherte die Datei sofort. Das ist ersatzlos entfallen, und
+zwar aus einem handfesten Grund: aufgenommene Punkte heissen per Default `P<id>`
+— eine fremde Sequenz bringt also einen Schritt namens „P3" mit, und der lokale
+„P3" liegt garantiert woanders. Der Abgleich hat solche Schritte stillschweigend
+verschoben.
 
-- Stimmt ein Name mit einem lokalen Punkt überein → Koordinaten werden aktualisiert
-- Fehlt ein Name lokal → Warnung mit Hinweis, den Punkt erst aufzunehmen (CTRL+ALT+A)
+Geblieben ist die **Diagnose**: passt die Koordinate eines Schritts nicht zum
+gleichnamigen lokalen Punkt, wird das gemeldet — geändert wird nichts.
 
-So muss man Sequenzen nicht neu erstellen, sondern nur die Punkte einmal lokal aufnehmen.
+Für einen anderen Bildschirm gibt es die zwei Wege, die wirklich rechnen:
+
+| Weg | wofür |
+|---|---|
+| Import mit Fenster-Remapping (`CTRL+ALT+I`) | anderer Bildschirm, anderes Fenster — rechnet alle Koordinaten um |
+| Studio → Werkzeuge → Kalibrieren | derselbe Bestand, verschobene Anordnung — mit Vorschau vor dem Anwenden |
+
+Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
+hilft kein Versatz: dann die **Klick-Runde** nehmen (Studio → Werkzeuge oder
+Punkte-Menü → `klick`) und die Sequenz einmal von Hand nachklicken.
 
 ## Laufzeit-Steuerung
 
@@ -1230,6 +1248,11 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
+│   ├── befehl.py           # Briefkasten Studio -> Hauptprozess
+│   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
+│   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
+│   ├── symbol.py           # Programm-Symbol als Geometrie
+│   ├── sequence_studio.py  # Einstiegspunkt des Studio-Subprozesses
 │   ├── utils/              # Hilfsfunktionen
 │   │   ├── console.py      # ANSI-Farben, Status-Tags
 │   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
@@ -1265,6 +1288,8 @@ Autoclicker-Idleclans/
 │       │   ├── scan_contract.py, scan_state.py
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
+│       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
+│       │   ├── bridge_teilen.py, bridge_werkzeuge.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
@@ -1273,17 +1298,17 @@ Autoclicker-Idleclans/
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
+├── AGENTS.md               # dasselbe für Codex (inhaltsgleich zu CLAUDE.md)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
 ├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
 │   └── <name>/
 │       ├── sequence.json   # Ablauf und sequenzlokale Punkte
 │       ├── item_scans/     # Item-Scans mit vollständig eingebetteten Slots/Items
-│       │   ├── *.json
-│       │   └── bilder/     # Eingefrorene Scan-Bilder
-│       ├── boss_scans/     # Boss-Scans und ihre lokale Bibliothek
+│       ├── boss_scans/     # Boss-Scans + bibliothek.json (gilt in jedem Boss-Scan)
 │       ├── icon_scans/     # Icon-Scans
-│       └── templates/      # Lokale Template-Bilder aller Scans
+│       ├── templates/      # Lokale Template-Bilder aller Scans
+│       └── bilder/         # Je Item-Scan ein eingefrorener Bildschirm
 ├── presets/                # Wiederverwendbare Slot-/Item-Presets
 ├── exports/                # Importier-/Exportier-Bundles (ZIP)
 │   └── *.zip
@@ -1292,11 +1317,16 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 └── tools/                  # Hilfswerkzeuge
+    ├── alle_tests.py       # ALLE Tests, ein Aufruf — das vor einem Commit
+    ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
+    ├── tests/              # weitere Sektionen der Vertragssuite
+    ├── rauchtests/         # die echte Seite im Browser vor der echten Brücke
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
+    ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
+    ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
-    ├── test_ocr.py         # OCR-Backend-Test + Texterkennung
-    └── test_logic.py       # große plattformunabhängige Vertragssuite
+    └── test_ocr.py         # OCR-Backend-Test + Texterkennung
 ```
 
 ## Technische Details
@@ -1403,6 +1433,37 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
+### Tests (`tools/alle_tests.py`)
+
+**Ein Kommando, drei Schichten** — das vor einem Commit:
+
+```bash
+python tools/alle_tests.py                      # alles
+python tools/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
+python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
+```
+
+| Schicht | was sie prüft | braucht |
+|---|---|---|
+| Vertragssuite (`tools/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
+| Wurzelmodule (`test_*.py`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
+| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+
+Was fehlt, wird **übersprungen und gesagt**, nicht als Fehler gemeldet. Für die
+volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
+überspringt die Suite über hundert Tests rund um Bilderkennung:
+
+```bash
+pip install opencv-python-headless pillow numpy
+pip install playwright && python -m playwright install chromium
+```
+
+Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie
+ruft die Brücken-Methoden direkt auf, also genau so, wie die Seite es *nicht*
+tut. Ein Tippfehler in einem Methodennamen oder ein Zustand, der einen Neuaufbau
+nicht überlebt, fällt erst im Browser auf.
+
 ### Migrations-Tool (`tools/migrate.py`)
 
 Hebt alle JSON-Dateien aufs aktuelle Format. **Normalerweise brauchst du das nicht** —
@@ -1417,10 +1478,9 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 - Tote Felder entfernen, die es im Code nicht mehr gibt (das ist inzwischen die
   Hauptarbeit: der Durchgang liest jede Datei mit dem Loader und schreibt sie mit dem
   Serializer zurück — was der Loader nicht kennt, kommt nicht wieder)
-- Punkt-IDs nachnummerieren und eingebettete Slot-/Item-Kopien in Scans zu
-  Namens-Referenzen machen
-- Erfasst alle Dateien: config, Punkte, Sequenzen, Item-/Boss-/Icon-Scans,
-  Boss-Bibliothek, Items, Slots und beide Preset-Ordner
+- Erfasst alle Dateien, und zwar über die **Besitzeinheiten**: `config.json`,
+  dann je Sequenzordner die `sequence.json` (mit ihren Punkten), ihre item-,
+  boss- und icon-Scans und ihre Boss-Bibliothek, zuletzt beide Preset-Ordner
 
 > **Sequenzen werden nicht mehr umgerechnet.** Die Schritte, die alte Sequenz-Formate
 > aufs heutige Schema hoben (`steps`/`loop_steps` → `loop_phases`, `delay_after`,
@@ -1614,7 +1674,7 @@ steht auf einmal da.
   dort heisst Aufteilen löschen und neu anlegen
 - Mehrfachauswahl mit STRG; Sammelaktionen (hoch/runter/löschen) auf der ganzen Auswahl
 - Punkte-Palette, Eigenschaften je Block-Typ, Punkt-Picker setzt Position **und** Trigger-Farbe
-- Läuft als Subprozess, lädt/speichert dieselben `sequences/<name>.json` — Konsolen-Editor bleibt voll nutzbar
+- Läuft als Subprozess, lädt/speichert denselben `sequences/<name>/`-Ordner — Konsolen-Editor bleibt voll nutzbar
 
   *War früher ein Node-Graph. Der versprach mit jedem Pixel, dass man Verbindungen ziehen
   darf — es gab aber keinen einzigen Link-Callback, und verschobene Blöcke sprangen zurück.
