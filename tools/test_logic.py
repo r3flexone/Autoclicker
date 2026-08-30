@@ -1310,153 +1310,98 @@ check("Datei-Default ist konstant, nicht der Config-Wert",
 
 
 # ------------------------------------------------------- Import: point_id
-section("Import zieht point_id auf die neu vergebenen Punkt-IDs nach")
+section("Import: ein Weg, und Altbuendel werden abgelehnt statt halb eingelesen")
 import os as _os, zipfile as _zip
-from autoclicker.import_export import import_bundle as _import_bundle
-from autoclicker.models import AutoClickerState as _ACS, ClickPoint as _CP3
+from autoclicker.import_export import (import_bundle as _import_bundle,
+                                       export_bundle as _export_bundle)
+from autoclicker.models import AutoClickerState as _ACS
 
-
-def _bundle_bauen(pfad, punkt_id=1, step_point_id=1):
-    """Minimal-Bundle: ein Punkt + eine Sequenz, deren Schritt auf ihn zeigt."""
-    with _zip.ZipFile(pfad, "w") as zf:
-        zf.writestr("manifest.json", json.dumps(
-            {"version": 1, "reference_points": {"point1": [0, 0], "point2": [10, 10]},
-             "contents": {}}))
-        zf.writestr("points.json", json.dumps(
-            [{"id": punkt_id, "x": 500, "y": 500, "name": "Ofen"}]))
-        zf.writestr("sequences/farm.json", json.dumps(
-            {"name": "farm", "schema_version": 2, "init_steps": [], "end_steps": [],
-             "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
-                 {"x": 500, "y": 500, "delay_before": 0, "name": "Ofen",
-                  "point_id": step_point_id}]}]}))
-
+# **Hier stand die Pruefung eines zweiten, vollstaendigen Import-Wegs.** Buendel
+# aus der Zeit des globalen Bestands brachten `points.json`, `slots.json` und
+# `items.json` mit, und weil die Punkt-IDs damals programmweit galten, konnte
+# eine importierte ID mit einer lokalen kollidieren — daran haing die halbe
+# Sektion. Beides gibt es nicht mehr: eine Sequenz bringt ihre Punkte im eigenen
+# Dokument mit, IDs gelten nur darin, und `_remap_point_ids`/
+# `_referenzierte_punkte` sind ersatzlos entfallen.
+#
+# Der Altweg war zudem nicht bloss Altlast, sondern **kaputt**: Vorlagen landeten
+# in `items/templates/`, wo seit dem Umzug keine Sequenz mehr nachsieht.
+# Gemessen wird deshalb, dass er sauber ABSAGT statt so zu tun, als haette es
+# geklappt.
 
 _alt_cwd = _os.getcwd()
 _imp_dir = tempfile.mkdtemp()
 try:
     _os.chdir(_imp_dir)
-    _bundle = Path(_imp_dir) / "b.zip"
-    _bundle_bauen(_bundle)
 
-    # Lokal existiert bereits ein Punkt #1 an GANZ anderer Stelle
-    _st = _ACS()
-    _st.points = [_CP3(50, 50, "Werkbank", 1)]
-    _ok, _msg = _import_bundle(_st, str(_bundle), import_config=False, merge=True)
+    # --- Ein Buendel im Altformat: erkennbar am fehlenden `layout` ---
+    _alt_bundle = Path(_imp_dir) / "alt.zip"
+    with _zip.ZipFile(_alt_bundle, "w") as _zf:
+        _zf.writestr("manifest.json", json.dumps(
+            {"version": 1, "reference_points": {"point1": [0, 0], "point2": [10, 10]},
+             "contents": {}}))
+        _zf.writestr("sequences/farm.json", json.dumps(
+            {"name": "farm", "schema_version": 2, "init_steps": [], "end_steps": [],
+             "loop_phases": []}))
 
-    _neu = [p for p in _st.points if p.name == "Ofen"]
-    check("importierter Punkt bekommt eine freie ID", bool(_neu) and _neu[0].id != 1)
+    _st_alt = _ACS()
+    _ok_alt, _msg_alt = _import_bundle(_st_alt, str(_alt_bundle), import_config=False)
+    check("ein Altbuendel wird abgelehnt", _ok_alt is False)
+    check("und die Absage sagt, warum und was stattdessen geht",
+          "aelteren Fassung" in _msg_alt and "Studio" in _msg_alt)
+    # Das ist der eigentliche Gewinn gegenueber dem alten Zweig: er meldete
+    # Erfolg und hinterliess nichts Brauchbares.
+    check("abgelehnt heisst: nichts angelegt",
+          not _st_alt.sequences and not Path("sequences").exists())
 
-    _seq = _st.sequences.get("farm")
-    _schritt = _seq.loop_phases[0].steps[0] if _seq else None
-    check("Schritt zeigt auf den importierten Punkt, nicht auf den lokalen",
-          _schritt is not None and _schritt.point_id == _neu[0].id)
+    # --- Der heutige Weg: exportieren, einlesen, alles wieder da ---
+    from autoclicker.persistence import (ensure_sequences_dir as _esd_i,
+                                         save_sequence_file as _ssf_i)
+    from autoclicker.models import (Sequence as _SEQ_i, LoopPhase as _LP_i,
+                                    SequenceStep as _SS_i, ClickPoint as _CP_i)
+    _quelle = _SEQ_i("farm", [], [_LP_i(name="Loop", steps=[
+        _SS_i(delay_before=0, point_id=7)], repeat=1)], [], 1, "",
+        [_CP_i(500, 500, "Ofen", 7)])
+    _esd_i()
+    _ssf_i(_quelle, Path("sequences") / "farm" / "sequence.json")
 
-    # Gegenprobe: der lokale Punkt darf den Schritt nicht an sich ziehen
-    from autoclicker.persistence import resolve_point_references as _rpr
-    _rpr(_st, _seq)
-    check("Aufloesung landet auf den richtigen Koordinaten",
-          (_schritt.x, _schritt.y) == (500, 500))
+    _st_exp = _ACS()
+    _st_exp.sequences = {"farm": _quelle}
+    _neu_bundle = Path(_imp_dir) / "neu.zip"
+    _ok_exp, _ = _export_bundle(_st_exp, str(_neu_bundle), (0, 0), (10, 10))
+    check("ein heutiges Buendel laesst sich schreiben", _ok_exp is True)
 
-    # Ohne Punkt-Import kaeme frueher eine Sequenz ohne Referenzen an - die haette dank
-    # ihrer x/y-Kopie noch funktioniert. Heute waere sie tot, also holt der Import die
-    # gebrauchten Punkte trotzdem mit; "keine Punkte" heisst nur "keine ungenutzten".
-    _st2 = _ACS()
-    _st2.points = [_CP3(50, 50, "Werkbank", 1)]
-    _import_bundle(_st2, str(_bundle), import_points=False, import_config=False)
-    _s2 = _st2.sequences["farm"].loop_phases[0].steps[0]
-    check("ohne Punkt-Import kommt der gebrauchte Punkt trotzdem mit",
-          _s2.point_id is not None)
-    check("und der Schritt landet auf den richtigen Koordinaten",
-          (_s2.x, _s2.y) == (500, 500))
-    check("Koordinaten bleiben erhalten", (_s2.x, _s2.y) == (500, 500))
+    _st_imp = _ACS()
+    _ok_imp, _msg_imp = _import_bundle(_st_imp, str(_neu_bundle), import_config=False,
+                                       merge=False)
+    check("und wieder einlesen", _ok_imp is True)
+    _seq_i = _st_imp.sequences.get("farm")
+    check("die Sequenz kommt an", _seq_i is not None)
+    # Die Punkte reisen IM Dokument mit - ohne sie zeigte der Schritt ins Leere.
+    check("ihr Punkt reist mit", _seq_i is not None
+          and [(_p.id, _p.x, _p.y) for _p in _seq_i.points] == [(7, 500, 500)])
+    _schritt_i = _seq_i.loop_phases[0].steps[0] if _seq_i else None
+    check("und der Schritt zeigt weiterhin auf ihn",
+          _schritt_i is not None and _schritt_i.point_id == 7)
+    check("aufgeloest steht er auf der richtigen Stelle",
+          _schritt_i is not None and (_schritt_i.x, _schritt_i.y) == (500, 500))
 
-    # ------------------------------------------------------------------------
-    # Die EINZELNEN Stufen des Imports
-    # ------------------------------------------------------------------------
-    # `import_bundle()` war eine Funktion mit 292 Zeilen und 69 Verzweigungen -
-    # und zugleich die Stelle, die am meisten auf Platte schreibt. Die Tests
-    # konnten unmoeglich alle Pfade treffen; jeder ungetroffene Pfad schrieb
-    # Dateien. Zerlegt in Stufen ist jede einzeln pruefbar, und genau die drei
-    # Feinheiten unten waren vorher gar nicht erreichbar.
-    import io as _io_i, contextlib as _cl_i
-    from autoclicker.import_export import (
-        _Import as _IMP, _imp_templates as _imp_tpl, _imp_punkte as _imp_pkt,
-        _boss_mit_remap as _imp_boss, _import_meldung as _imp_meld,
-        _IMPORT_MELDUNG as _IMP_TAB, compute_transform as _ct2)
-
-    def _lauf_mit(eintraege: dict, st=None, transform=None, merge=True):
-        """Ein Import-Durchgang ueber ein gestelltes ZIP - ohne import_bundle()."""
-        pfad = Path(_imp_dir) / "stufe.zip"
-        with _zip.ZipFile(pfad, "w") as zf:
-            for name, inhalt in eintraege.items():
-                zf.writestr(name, inhalt if isinstance(inhalt, bytes)
-                            else json.dumps(inhalt))
-        zf2 = _zip.ZipFile(pfad, "r")
-        return _IMP(zf2, zf2.namelist(), st or _ACS(),
-                    transform or _ct2((0, 0), (10, 10), (0, 0), (10, 10)), merge)
-
-    # **Ein Bundle ist eine Datei von aussen.** Ein Eintrag mit `..` im Pfad
-    # schriebe sonst irgendwohin - der Standardfehler beim Auspacken von
-    # Archiven. Die Abwehr war da, aber ungeprueft.
-    _tpl_lauf = _lauf_mit({
-        "templates/gut.png": b"\x89PNG-echt",
-        "templates/../../boese.png": b"\x89PNG-boese",
-    })
-    with _cl_i.redirect_stdout(_io_i.StringIO()):
-        _imp_tpl(_tpl_lauf)
-    check("ein Template im Zielordner wird geschrieben",
-          (Path("items/templates/gut.png")).exists())
-    check("und eines mit .. im Pfad NICHT",
-          not (Path(_imp_dir) / "boese.png").exists()
-          and not (Path(_imp_dir) / "items" / "boese.png").exists())
-    check("gezaehlt wird nur das geschriebene", _tpl_lauf.stats["templates"] == 1)
-
-    # Punkte: eine kollidierende ID bekommt eine neue, und die Zuordnung merkt es
-    # sich - daran haengt, ob die Sequenz-Schritte danach richtig zeigen.
-    _st_k = _ACS()
-    _st_k.points = [_CP3(50, 50, "lokal", 1), _CP3(60, 60, "lokal2", 2)]
-    _pkt_lauf = _lauf_mit({"points.json": [{"id": 1, "x": 9, "y": 9, "name": "fremd"}]},
-                          st=_st_k)
-    _imp_pkt(_pkt_lauf, True, False)
-    check("eine kollidierende Punkt-ID wird neu vergeben",
-          _pkt_lauf.id_map.get(1) not in (None, 1))
-    check("und der neue Punkt kollidiert mit keinem lokalen",
-          len({p.id for p in _st_k.points}) == len(_st_k.points))
-
-    # Der Transform wirkt auf die Koordinate, nicht auf die ID.
-    _st_t = _ACS()
-    _pkt_lauf2 = _lauf_mit({"points.json": [{"id": 5, "x": 100, "y": 200, "name": "P"}]},
-                           st=_st_t, transform=_ct2((0, 0), (10, 10), (0, 0), (20, 20)))
-    _imp_pkt(_pkt_lauf2, True, False)
-    check("der Transform rechnet die Punkt-Koordinate um",
-          (_st_t.points[0].x, _st_t.points[0].y) == (200, 400))
-    check("die ID bleibt, wenn sie frei ist", _st_t.points[0].id == 5)
-
-    # **Nur Klick-Bosse haben eine Stelle.** Bei skip/key steht (0, 0) fuer
-    # "gibt es nicht" - durch den Transform gejagt wanderte das irgendwohin und
-    # sah danach aus wie eine echte Koordinate.
-    from autoclicker.models import (BOSS_ACTION_CLICK as _BAC, BOSS_ACTION_SKIP as _BAS)
-    _boss_lauf = _lauf_mit({}, transform=_ct2((0, 0), (10, 10), (100, 100), (120, 120)))
-    _klick_boss = _imp_boss(_boss_lauf, {"name": "K", "action": _BAC,
-                                         "action_x": 10, "action_y": 10})
-    _skip_boss = _imp_boss(_boss_lauf, {"name": "S", "action": _BAS})
-    check("ein Klick-Boss wird umgerechnet",
-          (_klick_boss.action_x, _klick_boss.action_y) != (10, 10))
-    check("ein Skip-Boss bleibt auf (0, 0)",
-          (_skip_boss.action_x, _skip_boss.action_y) == (0, 0))
-
-    # Die Abschlussmeldung: jede gezaehlte Datenart muss auch vorkommen. Sonst
-    # importiert man etwas und die Meldung verschweigt es - genau das war bei den
-    # globalen Bossen schon einmal fast passiert.
-    _leer_lauf = _lauf_mit({})
-    check("jede gezaehlte Datenart steht in der Meldungstabelle",
-          set(_leer_lauf.stats) <= {k for k, _w in _IMP_TAB})
-    check("nichts importiert wird als solches gemeldet",
-          _imp_meld(_leer_lauf.stats) == "Nichts importiert")
-    check("und sonst stehen Zahl und Wort da",
-          _imp_meld({"slots": 3, "items": 1}) == "3 Slot(s), 1 Item(s)")
-    check("in der Reihenfolge der Tabelle, nicht der des Dicts",
-          _imp_meld({"items": 1, "points": 2}) == "2 Punkt(e), 1 Item(s)")
+    # --- Punkt-IDs sind sequenzlokal, also kann nichts mehr kollidieren ---
+    # Genau deshalb gibt es keine ID-Zuordnung mehr: eine zweite Sequenz mit
+    # demselben Punkt #7 ist kein Konflikt, sondern ein anderer Punkt.
+    _st_zwei = _ACS()
+    _st_zwei.sequences = {"andere": _SEQ_i("andere", [], [_LP_i(
+        name="L", steps=[_SS_i(delay_before=0, point_id=7)], repeat=1)], [], 1, "",
+        [_CP_i(9, 9, "Woanders", 7)])}
+    _import_bundle(_st_zwei, str(_neu_bundle), import_config=False, merge=True)
+    # `merge` weicht einem vorhandenen Ordner aus (farm -> farm_2), der Name
+    # steht also nicht vorher fest; gesucht wird die dazugekommene Sequenz.
+    _dazu = [n for n in _st_zwei.sequences if n != "andere"]
+    check("die Sequenz kommt neben der vorhandenen an", len(_dazu) == 1)
+    _a = _st_zwei.sequences["andere"].points[0]
+    _b = _st_zwei.sequences[_dazu[0]].points[0]
+    check("zwei Sequenzen duerfen denselben Punkt #7 haben",
+          _a.id == _b.id == 7 and (_a.x, _a.y) != (_b.x, _b.y))
 finally:
     _os.chdir(_alt_cwd)
 
@@ -1464,7 +1409,8 @@ finally:
 # ------------------------------------------------- Laden veraendert nichts
 section("Sequenz laden meldet nur, schreibt nicht")
 from autoclicker.editors.sequence_editor.loader import _report_point_mismatches
-from autoclicker.models import Sequence as _Seq3, LoopPhase as _LP3, SequenceStep as _SS3
+from autoclicker.models import (Sequence as _Seq3, LoopPhase as _LP3,
+                                SequenceStep as _SS3, ClickPoint as _CP3)
 
 # Aufgenommene Punkte heissen per Default P<id> - eine Sequenz von einem anderen Rechner
 # bringt also "P3" mit, und der lokale P3 liegt woanders. Frueher wurde der Schritt still

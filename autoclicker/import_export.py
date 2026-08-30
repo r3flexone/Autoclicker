@@ -18,19 +18,10 @@ if TYPE_CHECKING:
     from .models import AutoClickerState
 
 from .persistence import (
-    TEMPLATES_DIR, _item_scan_from_dict,
-    load_sequence_file, _item_from_dict, _slot_from_dict, _boss_profile_from_dict,
-    resolve_scan_references,
-    KIND_ITEMS, KIND_ITEM_SCAN, KIND_POINTS, KIND_SLOTS, migrate,
-    save_data, save_global_slots, save_global_items,
     save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
 )
-from .models import (
-    DEFAULT_MIN_CONFIDENCE,
-    ClickPoint, BossScanConfig, IconScanConfig,
-    BOSS_ACTION_SKIP, BOSS_ACTION_CLICK, ICON_ACTION_CLICK, ACTION_CLICK,
-)
-from .utils import atomic_write, compact_json, sanitize_filename, warn
+from .models import ACTION_CLICK
+from .utils import atomic_write, compact_json, sanitize_filename
 
 logger = logging.getLogger("autoclicker")
 
@@ -473,37 +464,6 @@ def read_manifest(filepath: str) -> tuple[bool, dict | str]:
         return False, str(e)
 
 
-class _Import:
-    """Der Zustand EINES Import-Durchgangs — das, was alle Stufen teilen.
-
-    Der Import war eine Funktion mit 292 Zeilen und zugleich die Stelle, die am
-    meisten auf Platte schreibt; jeder ungetroffene Pfad schrieb Dateien. Jede
-    Stufe ist jetzt eine eigene Funktion, nimmt diesen Durchgang entgegen und
-    zählt in `stats` mit — damit lässt sich jede einzeln prüfen.
-    """
-
-    def __init__(self, zf, names: list, state, transform: dict, merge: bool):
-        self.zf = zf
-        self.names = names
-        self.state = state
-        self.transform = transform
-        self.merge = merge
-        self.stats: dict = {"points": 0, "sequences": 0, "slots": 0, "items": 0,
-                            "item_scans": 0, "boss_scans": 0, "icon_scans": 0,
-                            "templates": 0}
-        # Kollidiert eine importierte Punkt-ID mit einer lokalen, bekommt der Punkt
-        # eine neue — und diese Zuordnung merkt sich das, damit die Sequenz-Schritte
-        # ihre `point_id` nachziehen können.
-        self.id_map: dict[int, int] = {}
-
-    def lies(self, name: str) -> dict:
-        """Eine JSON-Datei aus dem Bundle."""
-        return json.loads(self.zf.read(name).decode("utf-8"))
-
-    def dateien(self, ordner: str, endung: str = ".json") -> list:
-        """Alle Bundle-Einträge eines Ordners."""
-        return [n for n in self.names
-                 if n.startswith(ordner) and n.endswith(endung)]
 
 
 def _validate_bundle(zf: zipfile.ZipFile, names: list[str]) -> dict:
@@ -530,21 +490,15 @@ def _validate_bundle(zf: zipfile.ZipFile, names: list[str]) -> dict:
     if not isinstance(manifest.get("contents", {}), dict):
         raise ValueError("Ungültiges Manifest: 'contents' muss ein Objekt sein")
 
-    expected_types = {
-        "points.json": list,
-        "slots.json": dict,
-        "items.json": dict,
-        "global_bosses.json": list,
-        "config.json": dict,
-    }
+    # Alles im Bundle ist ein Objekt — bis auf die Boss-Bibliothek, die als
+    # Liste in den Boss-Scans der Sequenz liegt. Die Sonderfaelle fuer
+    # `points.json`, `slots.json` und `items.json` sind mit dem globalen
+    # Bestand entfallen; die drei Dateien gibt es in keinem Bundle mehr.
     for name in names:
         if not name.lower().endswith(".json"):
             continue
         data = json.loads(zf.read(name).decode("utf-8"))
-        expected = expected_types.get(name)
-        if (manifest.get("layout") == "sequence-folders"
-                and name.endswith("/boss_scans/bibliothek.json")):
-            expected = list
+        expected = list if name.endswith("/boss_scans/bibliothek.json") else None
         if expected is None and name != MANIFEST_FILE:
             expected = dict
         if expected is not None and not isinstance(data, expected):
@@ -559,16 +513,12 @@ class _ImportTransaction:
         "points", "sequences", "global_slots", "global_items", "item_scans",
         "boss_scans", "icon_scans", "global_bosses",
     )
-    _FIXED_FILES = (
-        "points.json", "config.json", "slots/slots.json", "items/items.json",
-        "boss_scans/global/bosses.json",
-    )
-    _JSON_DIRS = (
-        "sequences", "item_scans", "boss_scans", "icon_scans",
-    )
-    _ROOTS = (
-        "sequences", "slots", "items", "item_scans", "boss_scans", "icon_scans",
-    )
+    # Was ausserhalb der Sequenzordner liegt und ein Import anfassen kann.
+    # Hier standen einmal `points.json`, `slots/slots.json`, `items/items.json`
+    # und `boss_scans/global/bosses.json` — alle vier gibt es nicht mehr, sie
+    # sind in die Besitzeinheit gewandert.
+    _FIXED_FILES = ("config.json",)
+    _ROOTS = ("sequences",)
 
     def __init__(self, state):
         self.state = state
@@ -596,19 +546,13 @@ class _ImportTransaction:
     @classmethod
     def _managed_files(cls) -> set[Path]:
         files = {Path(raw) for raw in cls._FIXED_FILES if Path(raw).is_file()}
-        for raw in cls._JSON_DIRS:
-            root = Path(raw)
-            if root.exists():
-                files.update(path for path in root.rglob("*.json") if path.is_file())
-        # Ein Ordner-Bundle ersetzt ganze Sequenzordner, einschließlich ihrer
-        # lokalen Templates. Für ein echtes Rollback müssen deshalb sämtliche
-        # Dateien darunter gesichert werden, nicht nur die JSON-Struktur.
+        # Ein Ordner-Bundle ersetzt ganze Sequenzordner, einschliesslich ihrer
+        # Vorlagen und gemerkten Bilder. Fuer ein echtes Rollback werden deshalb
+        # saemtliche Dateien darunter gesichert, nicht nur die JSON-Struktur —
+        # ein `rglob("*.json")` liesse die PNGs zurueck.
         sequences = Path("sequences")
         if sequences.exists():
             files.update(path for path in sequences.rglob("*") if path.is_file())
-        templates = Path(TEMPLATES_DIR)
-        if templates.exists():
-            files.update(path for path in templates.rglob("*.png") if path.is_file())
         return files
 
     def __enter__(self):
@@ -650,261 +594,34 @@ class _ImportTransaction:
                 pass
 
 
-def _imp_templates(lauf: _Import) -> None:
-    """Bilddateien auspacken — zuerst, weil Items und Scans darauf verweisen."""
-    templates_dir = Path(TEMPLATES_DIR)
-    templates_dir.mkdir(parents=True, exist_ok=True)
-    resolved_tpl_dir = templates_dir.resolve()
-    for name in lauf.dateien("templates/", ".png"):
-        tpl_name = name[len("templates/"):]
-        tpl_path = templates_dir / tpl_name
-        # Ein Bundle ist eine Datei von aussen: ein Eintrag wie `templates/../../x.png`
-        # schriebe sonst irgendwohin. Nicht paranoid, sondern der Standardfehler beim
-        # Auspacken von Archiven.
-        if not tpl_path.resolve().is_relative_to(resolved_tpl_dir):
-            logger.warning(f"Template-Pfad ausserhalb des Zielordners übersprungen: {name}")
-            continue
-        # Template kann in einem Unterordner liegen (templates/sub/x.png)
-        # — Zielverzeichnis anlegen, sonst FileNotFoundError beim Schreiben.
-        tpl_path.parent.mkdir(parents=True, exist_ok=True)
-        tpl_path.write_bytes(lauf.zf.read(name))
-        lauf.stats["templates"] += 1
 
 
-def _imp_punkte(lauf: _Import, import_points: bool, import_sequences: bool) -> None:
-    """Punkte übernehmen und dabei ID-Kollisionen auflösen.
-
-    Seit die Koordinate nur noch im Punkt steht, wäre eine Sequenz ohne Punkte
-    eine Liste von Schritten, die nirgendwohin zeigen. `import_points=False`
-    heisst deshalb nur „keine Punkte, die niemand braucht".
-    """
-    gebraucht: Optional[set] = None
-    if not import_points and import_sequences:
-        gebraucht = set()
-        for n in lauf.dateien("sequences/"):
-            gebraucht |= _referenzierte_punkte(lauf.lies(n))
-
-    if not (import_points or gebraucht) or "points.json" not in lauf.names:
-        return
-
-    points_data, _m = migrate(lauf.lies("points.json"), KIND_POINTS)
-    if gebraucht is not None:
-        points_data = [p for p in points_data if p.get("id") in gebraucht]
-    with lauf.state.lock:
-        if not lauf.merge:
-            lauf.state.points.clear()
-        existing_ids = {p.id for p in lauf.state.points}
-        next_id = max(existing_ids) + 1 if existing_ids else 1
-        for p in points_data:
-            x, y = remap_point(p["x"], p["y"], lauf.transform)
-            alt_id = p.get("id")
-            pid = alt_id if alt_id is not None else next_id
-            while pid in existing_ids:
-                pid = next_id
-                next_id += 1
-            color_raw = p.get("color")
-            color = tuple(int(v) for v in color_raw) if color_raw else None
-            lauf.state.points.append(ClickPoint(x, y, p.get("name", ""), pid,
-                                                color=color, source=p.get("source", "")))
-            existing_ids.add(pid)
-            next_id = max(next_id, pid + 1)
-            if alt_id is not None:
-                lauf.id_map[alt_id] = pid
-            lauf.stats["points"] += 1
 
 
-def _imp_sequenzen(lauf: _Import) -> None:
-    """Sequenzdateien schreiben und geladen in den State legen."""
-    for name in lauf.dateien("sequences/"):
-        seq_data = lauf.lies(name)
-        _remap_sequence_data(seq_data, lauf.transform)
-        _remap_point_ids(seq_data, lauf.id_map)
-        seq_name = seq_data.get("name", Path(name).stem)
-        seq_path = Path("sequences") / f"{sanitize_filename(seq_name)}.json"
-        seq_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(seq_path, compact_json(seq_data))
-        # Mit den frisch importierten Punkten aufloesen, nicht mit denen von
-        # Platte: points.json wird erst am Ende des Imports geschrieben.
-        seq = load_sequence_file(seq_path, list(lauf.state.points))
-        if seq:
-            with lauf.state.lock:
-                lauf.state.sequences[seq.name] = seq
-            lauf.stats["sequences"] += 1
 
 
-def _imp_slots(lauf: _Import) -> None:
-    if "slots.json" not in lauf.names:
-        return
-    slots_data, _m = migrate(lauf.lies("slots.json"), KIND_SLOTS)
-    with lauf.state.lock:
-        if not lauf.merge:
-            lauf.state.global_slots.clear()
-        for sname, s in slots_data.items():
-            slot = _slot_from_dict(sname, s)
-            slot.scan_region = remap_region(slot.scan_region, lauf.transform)
-            slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1],
-                                         lauf.transform)
-            lauf.state.global_slots[sname] = slot
-            lauf.stats["slots"] += 1
-    save_global_slots(lauf.state)
 
 
-def _imp_items(lauf: _Import) -> None:
-    if "items.json" not in lauf.names:
-        return
-    items_data, _m = migrate(lauf.lies("items.json"), KIND_ITEMS)
-    with lauf.state.lock:
-        if not lauf.merge:
-            lauf.state.global_items.clear()
-        for iname, i in items_data.items():
-            item = _item_from_dict(i, iname)
-            if item.confirm_point:
-                nx, ny = remap_point(item.confirm_point.x, item.confirm_point.y,
-                                     lauf.transform)
-                item.confirm_point = ClickPoint(nx, ny)
-            lauf.state.global_items[iname] = item
-            lauf.stats["items"] += 1
-    save_global_items(lauf.state)
 
 
-def _imp_item_scans(lauf: _Import) -> None:
-    """Item-Scans — Namen plus der optionale Fenster-Anker.
-
-    Die Slot-Koordinaten werden beim Import von `slots.json` umgerechnet, nicht
-    ein zweites Mal pro Scan. Ein gespeicherter Fenster-Anker muss aber
-    mitfolgen, sonst verschiebt die Runtime die Slots noch einmal von der alten
-    Fensterlage aus.
-    """
-    for name in lauf.dateien("item_scans/"):
-        scan_data, _m = migrate(lauf.lies(name), KIND_ITEM_SCAN)
-        config = _item_scan_from_dict(scan_data)
-        if config.capture_window_rect:
-            config.capture_window_rect = remap_region(
-                config.capture_window_rect, lauf.transform)
-        with lauf.state.lock:
-            lauf.state.item_scans[config.name] = config
-        save_item_scan(config)
-        lauf.stats["item_scans"] += 1
-    # Referenzen gegen die (gerade importierten) globalen Slots/Items auflösen -
-    # sonst laufen die Scans bis zum nächsten Start leer.
-    for meldung in resolve_scan_references(lauf.state):
-        print(warn(meldung))
 
 
-def _boss_mit_remap(lauf: _Import, roh: dict):
-    """Ein Boss-Profil aus dem Bundle, Klick-Koordinate umgerechnet.
-
-    Nur Klick-Bosse haben sinnvolle Koordinaten — für skip/key-Bosse sind
-    `action_x/y` bedeutungslos (Default 0) und dürfen nicht durch den
-    Affine-Transform verschoben werden, sonst wandern sie von (0,0) irgendwohin.
-    """
-    boss = _boss_profile_from_dict(roh)
-    if boss.action == BOSS_ACTION_CLICK:
-        boss.action_x, boss.action_y = remap_point(boss.action_x, boss.action_y,
-                                                   lauf.transform)
-    return boss
 
 
-def _imp_boss_scans(lauf: _Import) -> None:
-    for name in lauf.dateien("boss_scans/"):
-        bscan_data = lauf.lies(name)
-        config = BossScanConfig(
-            name=bscan_data["name"],
-            scan_region=remap_region(tuple(bscan_data["scan_region"]), lauf.transform),
-            color_tolerance=bscan_data.get("color_tolerance", 30),
-            default_action=bscan_data.get("default_action", BOSS_ACTION_SKIP),
-            default_scan=bscan_data.get("default_scan"),
-            bosses=[_boss_mit_remap(lauf, b) for b in bscan_data.get("bosses", [])],
-            use_llm=bscan_data.get("use_llm", False),
-            llm_fallback=bscan_data.get("llm_fallback", True),
-            use_ocr=bscan_data.get("use_ocr", False),
-            ocr_fallback=bscan_data.get("ocr_fallback", True),
-        )
-        with lauf.state.lock:
-            lauf.state.boss_scans[config.name] = config
-        save_boss_scan(config)
-        lauf.stats["boss_scans"] += 1
-
-    _imp_globale_bosse(lauf)
 
 
-def _imp_globale_bosse(lauf: _Import) -> None:
-    """Die Boss-Bibliothek — Merge nach Name, der Import gewinnt."""
-    if "global_bosses.json" not in lauf.names:
-        return
-    imported = [_boss_mit_remap(lauf, b) for b in lauf.lies("global_bosses.json")]
-    if not imported:
-        return
-    with lauf.state.lock:
-        imported_names = {b.name for b in imported}
-        lauf.state.global_bosses = [
-            b for b in lauf.state.global_bosses if b.name not in imported_names
-        ] + imported
-    save_global_bosses(lauf.state)
-    lauf.stats["global_bosses"] = len(imported)
 
 
-def _imp_icon_scans(lauf: _Import) -> None:
-    for name in lauf.dateien("icon_scans/"):
-        iscan_data = lauf.lies(name)
-        action = iscan_data.get("action", ICON_ACTION_CLICK)
-        ax, ay = iscan_data.get("action_x", 0), iscan_data.get("action_y", 0)
-        # Wie beim Boss: nur Klick-Aktionen haben eine Stelle, die umzurechnen wäre.
-        if action == ICON_ACTION_CLICK:
-            ax, ay = remap_point(ax, ay, lauf.transform)
-        config = IconScanConfig(
-            name=iscan_data["name"],
-            scan_region=remap_region(tuple(iscan_data["scan_region"]), lauf.transform),
-            template=iscan_data.get("template"),
-            min_confidence=iscan_data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
-            marker_colors=[tuple(c) for c in iscan_data.get("marker_colors", [])],
-            color_tolerance=iscan_data.get("color_tolerance", 30),
-            action=action,
-            action_x=ax,
-            action_y=ay,
-            action_key=iscan_data.get("action_key"),
-            action_delay=iscan_data.get("action_delay", 0),
-        )
-        with lauf.state.lock:
-            lauf.state.icon_scans[config.name] = config
-        save_icon_scan(config)
-        lauf.stats["icon_scans"] += 1
 
 
-def _imp_config(lauf: _Import) -> None:
-    """Die Config — ohne die Felder, die zur MASCHINE gehören, nicht zum Setup."""
-    if "config.json" not in lauf.names:
-        return
-    cfg_data = lauf.lies("config.json")
-    for k in _SENSITIVE_CONFIG_KEYS:
-        cfg_data.pop(k, None)
-    current = lauf.state.config.to_dict()
-    current.update(cfg_data)
-    from .config import AppConfig, save_config, uebernehmen
-    with lauf.state.lock:
-        # Hineinschreiben statt austauschen: state.config ist im Hauptprozess
-        # dasselbe Objekt wie das Modul-CONFIG, und ein Austausch liesse jeden
-        # Leser davon auf dem alten Stand.
-        uebernehmen(lauf.state.config, AppConfig.from_dict(current))
-    save_config(lauf.state.config)
 
 
 # Was in der Abschlussmeldung steht, in dieser Reihenfolge. Als Tabelle statt als
 # neun `if`-Blöcke: eine neue Datenart ist damit eine Zeile, und niemand vergisst
 # die Meldung — genau das war bei `global_bosses` schon einmal passiert (der
 # Schlüssel fehlte im `stats`-Vorbelegung und wurde nur per `.get()` gerettet).
-_IMPORT_MELDUNG = (
-    ("points", "Punkt(e)"), ("sequences", "Sequenz(en)"),
-    ("slots", "Slot(s)"), ("items", "Item(s)"),
-    ("item_scans", "Item-Scan(s)"), ("boss_scans", "Boss-Scan(s)"),
-    ("global_bosses", "globale(r) Boss(e)"), ("icon_scans", "Icon-Scan(s)"),
-    ("templates", "Template(s)"),
-)
 
 
-def _import_meldung(stats: dict) -> str:
-    teile = [f"{stats[k]} {wort}" for k, wort in _IMPORT_MELDUNG if stats.get(k)]
-    return ", ".join(teile) if teile else "Nichts importiert"
 
 
 def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
@@ -1040,39 +757,27 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
 
             _validate_bundle(zf, names)
             manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
-            if manifest.get("layout") == "sequence-folders":
-                with _ImportTransaction(state):
-                    return _import_sequence_bundle(
-                        state, zf, names, manifest, transform,
-                        import_sequences or import_points or import_slots or import_items
-                        or import_item_scans or import_boss_scans or import_icon_scans,
-                        import_config, merge)
+            # **Es gibt genau einen Import-Weg.** Daneben stand bis hierher eine
+            # zweite, vollstaendige Implementierung fuer Buendel aus der Zeit des
+            # globalen Bestands (`points.json`, `slots.json`, `items.json`,
+            # Scan-Ordner im Wurzelverzeichnis). Sie war nicht nur Altlast,
+            # sondern **kaputt**: Vorlagen landeten in `items/templates/`, wo
+            # seit dem Umzug auf Besitzeinheiten keine Sequenz mehr nachsieht,
+            # und `_imp_items` schrieb ueber `save_global_items()`, das ohne
+            # aktiven Item-Scan folgenlos zurueckkehrt. Ein Import, der meldet
+            # "hat geklappt" und nichts Brauchbares hinterlaesst, ist schlechter
+            # als eine Absage.
+            if manifest.get("layout") != "sequence-folders":
+                return False, (
+                    "Bundle aus einer aelteren Fassung (vor den Sequenzordnern) — "
+                    "es laesst sich nicht mehr einlesen. Die Sequenz im Studio neu "
+                    "bauen; das ist inzwischen billiger als der Umweg.")
             with _ImportTransaction(state):
-                lauf = _Import(zf, names, state, transform, merge)
-
-                _imp_templates(lauf)
-                _imp_punkte(lauf, import_points, import_sequences)
-                if import_sequences:
-                    _imp_sequenzen(lauf)
-                if import_slots:
-                    _imp_slots(lauf)
-                if import_items:
-                    _imp_items(lauf)
-                if import_item_scans:
-                    _imp_item_scans(lauf)
-                if import_boss_scans:
-                    _imp_boss_scans(lauf)
-                if import_icon_scans:
-                    _imp_icon_scans(lauf)
-                if import_config:
-                    _imp_config(lauf)
-
-                # Punkte und Sequenzen leben im State; alles andere hat seine Datei
-                # schon in seiner Stufe geschrieben.
-                if lauf.stats["points"] or lauf.stats["sequences"]:
-                    save_data(state)
-
-                return True, _import_meldung(lauf.stats)
+                return _import_sequence_bundle(
+                    state, zf, names, manifest, transform,
+                    import_sequences or import_points or import_slots or import_items
+                    or import_item_scans or import_boss_scans or import_icon_scans,
+                    import_config, merge)
 
     except Exception as e:
         logger.error(f"Import fehlgeschlagen: {e}")
@@ -1116,32 +821,5 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
 _REF_KEYS = ("point_id", "wait_point_id", "else_point_id", "verify_point_id")
 
 
-def _referenzierte_punkte(seq_data: dict) -> set:
-    """Alle Punkt-IDs, auf die diese Sequenz zeigt."""
-    raus = set()
-    for s in _iter_import_steps(seq_data):
-        for key in _REF_KEYS:
-            if s.get(key) is not None:
-                raus.add(s[key])
-    return raus
 
 
-def _remap_point_ids(seq_data: dict, id_map: dict[int, int]) -> None:
-    """Zieht die Punkt-Referenzen der Schritte auf die hier vergebenen IDs nach.
-
-    Der Import vergibt eine neue ID, wenn die alte lokal schon belegt ist; bleibt
-    der Schritt auf der alten stehen, zeigt er auf einen FREMDEN Punkt — und das
-    Auflösen meldet das auch noch als Erfolg.
-
-    Fehlt die Zuordnung, wird die Referenz NICHT fallengelassen: der Schritt
-    wäre danach einer ohne Ziel. Er behält sie und wird beim Laden als verwaist
-    gemeldet — ein Problem, das man sieht und beheben kann.
-    """
-    for s in _iter_import_steps(seq_data):
-        for key in _REF_KEYS:
-            alt = s.get(key)
-            if alt is None:
-                continue
-            neu = id_map.get(alt)
-            if neu is not None and neu != alt:
-                s[key] = neu
