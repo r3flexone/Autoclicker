@@ -145,9 +145,15 @@ Ansicht testbar machen, sondern die Logik aus ihr heraus.**
 
 Automatisiert geprüft werden beide Plattformverträge. Manuell bleiben die echten
 Desktop-Grenzen: globale Hotkeys, Eingabesimulation, Fensterfokus und Screenshots
-in einer Windows- bzw. X11-Sitzung. Auf einer cp1252-Konsole kann die Ausgabe mit
-`UnicodeEncodeError` abbrechen (Box-Zeichen); unter Windows deshalb bei Bedarf
-mit `PYTHONIOENCODING=utf-8` starten.
+in einer Windows- bzw. X11-Sitzung.
+
+**`tools/alle_tests.py` stellt seinen eigenen stdout auf UTF-8** (`reconfigure`,
+`errors="replace"`) und braucht deshalb kein `PYTHONIOENCODING` mehr. Vorher riss
+ein einziges Kaestchen aus einem Fortschrittsbalken den ganzen Lauf mit
+`UnicodeEncodeError` ab — und zwar *nachdem* die Vertragssuite grün durch war:
+die Unterprozesse liefen längst auf UTF-8, nur die Konsole des Runners nicht.
+Hinter einer Pipe blieb davon ein Traceback und ein Exitcode, den niemand mehr
+las. Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.
 
 **Die Konsolen-Editoren sind angefangen, nicht fertig.** Sie standen lange
 vollständig ausserhalb der Suite (rund 3.400 Zeilen). Der Einstieg lief über das,
@@ -265,24 +271,25 @@ einer Tastenfolge füttern — `mehrfach_auswahl` hat so 24 Tests, wo vorher kei
 
 ### Referenzen statt Kopien
 Überall dort, wo früher eine Kopie lag und deshalb still veraltete, gilt jetzt dasselbe
-Muster: **der globale Eintrag ist die Wahrheit, aufgelöst beim Start und vor jedem
-Sequenzlauf.**
+Muster: **der Eintrag der Sequenz ist die Wahrheit, aufgelöst beim Laden und vor jedem
+Sequenzlauf.** „Punkte" heisst dabei das Feld `points` in `sequences/<name>/sequence.json`;
+die IDs gelten nur innerhalb dieser Sequenz.
 
 | wer verweist | worauf | Feld in der Datei | auflösen |
 |---|---|---|---|
-| `SequenceStep` | `points.json` | `point_id` | `aufloesen()` / `resolve_point_references()` |
-| `WaitCondition` | `points.json` | `wait_point_id` | dito |
-| `ElseConfig` | `points.json` | `else_point_id` | dito |
-| `SequenceStep.verify_condition` | `points.json` | `verify_point_id` | dito |
-| `ItemProfile` | `points.json` | `confirm_point_id` | `resolve_klick_referenzen()` |
-| `BossProfile` | `points.json` | `action_point_id` | dito |
-| `IconScanConfig` | `points.json` | `action_point_id` | dito |
-| `ItemScanConfig` | `slots.json`, `items.json` | `slot_names`, `item_names` | `resolve_scan_references()` |
+| `SequenceStep` | Punkte der Sequenz | `point_id` | `aufloesen()` / `resolve_point_references()` |
+| `WaitCondition` | Punkte der Sequenz | `wait_point_id` | dito |
+| `ElseConfig` | Punkte der Sequenz | `else_point_id` | dito |
+| `SequenceStep.verify_condition` | Punkte der Sequenz | `verify_point_id` | dito |
+| `ItemProfile` | Punkte der Sequenz | `confirm_point_id` | `resolve_klick_referenzen()` |
+| `BossProfile` | Punkte der Sequenz | `action_point_id` | dito |
+| `IconScanConfig` | Punkte der Sequenz | `action_point_id` | dito |
+| `ItemScanConfig` | Slots/Items **im Scan selbst** | `slot_names`, `item_names` | `resolve_scan_references()` |
 
 Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
 Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht.
 
-**Eine Koordinate steht in `points.json`, sonst nirgends.** Das gilt ausnahmslos für alle
+**Eine Koordinate steht im Punkt der Sequenz, sonst nirgends.** Das gilt ausnahmslos für alle
 drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `step.x/y`,
 `step.name`, `step.recorded_color`, `wait_condition.pixel/color` und `else_config.x/y/name`
 sind **abgeleitete Arbeitswerte** — im Speicher gefüllt, in der Datei nicht vorhanden.
@@ -432,26 +439,55 @@ einmal durch die Schleuse — und dann verschwindet die Schleuse.** `link` im
 Sequenz-Editor bleibt für Sonderfälle, nicht als Teil des normalen Wegs.
 
 ### Persistenz-Layout
-Mehrere JSON-Dateien an festen Orten (Konstanten in `autoclicker/persistence/paths.py` + `config.py`):
+
+**Eine Sequenz ist eine Besitzeinheit, kein Bündel von Dateitypen.** Alles, was zu
+ihr gehört — Punkte, Scans, Vorlagen, gemerkte Bildschirme —, liegt unter
+`sequences/<name>/`. Programmweit bleibt nur, was wirklich keiner Sequenz gehört:
+Config, Presets, Exporte, Sicherungen, Logs.
+
 ```
-config.json                    AppConfig (alle Settings)
-sequences/points.json          state.points (ClickPoints)
-sequences/<name>.json          eine Sequence pro Datei
-slots/slots.json               state.global_slots
-slots/presets/<name>.json      Slot-Presets
-items/items.json               state.global_items
-items/templates/<name>.png     Item-Templates (PNG, referenziert per Dateiname-only)
-items/presets/<name>.json      Item-Presets
-item_scans/<name>.json         eine ItemScanConfig pro Datei (verweist per Name auf slots/items)
-boss_scans/<name>.json         eine BossScanConfig pro Datei
-boss_scans/global/bosses.json  globale Boss-Bibliothek (state.global_bosses, gilt in jedem Boss-Scan)
-icon_scans/<name>.json         eine IconScanConfig pro Datei (Symbol erkennen → Aktion)
-exports/<name>.zip             Import/Export-Bundles (manifest.json + alle Daten + templates/)
-backups/<pfad>.bak             Sicherungen des Start-Durchgangs (Struktur gespiegelt)
-logs/<timestamp>_<seq>.csv     Session-Log (wenn aktiviert)
-.lauf.json                     Laufstatus fuer das Sequenz-Studio (transient)
-.aufnahme.json                 letzte 3 Ereignisse der Aufnahme (transient)
+config.json                              AppConfig (alle Settings)
+
+sequences/<name>/sequence.json           die Sequenz SAMT ihrer Punkte (Feld `points`)
+sequences/<name>/item_scans/<n>.json     ItemScanConfig — Slots und Items stehen DARIN
+sequences/<name>/boss_scans/<n>.json     BossScanConfig
+sequences/<name>/boss_scans/bibliothek.json   Boss-Bibliothek (gilt in jedem Boss-Scan
+                                              DIESER Sequenz), Liste statt Scan
+sequences/<name>/icon_scans/<n>.json     IconScanConfig (Symbol erkennen → Aktion)
+sequences/<name>/templates/<n>.png       Item-Vorlagen (per Dateiname referenziert)
+sequences/<name>/bilder/<n>.png          je Item-Scan ein eingefrorener Bildschirm
+
+presets/slots/<name>.json                Slot-Presets      (programmweit)
+presets/items/<name>.json                Item-Presets      (programmweit)
+exports/<name>.zip                       Import/Export-Bündel (manifest.json + Sequenzordner)
+backups/<pfad>.bak                       Sicherungen des Start-Durchgangs (Struktur gespiegelt)
+screenshots/                             Screenshot-Schritte zur Laufzeit
+logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
+
+.lauf.json                               Laufstatus fuer das Sequenz-Studio (transient)
+.aufnahme.json                           letzte 3 Ereignisse der Aufnahme (transient)
+.nachklick.json                          Stand der Klick-Runde (transient)
+.befehl.json                             Briefkasten Studio → Hauptprozess (transient)
+.studio-sequenz.json                     zuletzt geoeffnete/gespeicherte Sequenz (transient)
 ```
+
+**Es gibt keinen globalen Bestand mehr.** `sequences/points.json`,
+`slots/slots.json`, `items/items.json` und die Scan-Ordner im Wurzelverzeichnis
+sind ersatzlos entfallen; die Konstanten dafür stehen in `paths.py` nur noch, um
+einen solchen Altbestand beim Zurücksetzen sicher wegräumen zu können. Wer zwei
+Spiele betreibt, hat damit nicht mehr die Slots beider in einer Liste — das war
+der Grund für den Umzug.
+
+Daraus folgt, was ein Loader braucht: **eine Scan-Datei kennt ihre Besitzerin**
+(`owner_sequence`, aus dem Ordnernamen abgeleitet), und ohne Besitzerin lässt sich
+kein Scan speichern (`save_item_scan` wirft). `active_templates_dir(state)` ist
+deshalb der einzige Weg zu einer Vorlage — ein fest getippter `items/templates/`
+zeigt ins Leere.
+
+**Die Punkte stehen im Feld `points` derselben `sequence.json`**, und ihre IDs
+gelten nur innerhalb dieser Sequenz. Eine eigene `points.json` gab es einmal; sie
+zwang zwei Dateien in Gleichschritt, die getrennt gespeichert wurden — genau der
+Fall, an dem ein Punkt fehlte, sobald man ihn brauchte.
 
 **`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
 beschreibt den Zustand JETZT und wird überschrieben statt angehängt
@@ -501,7 +537,7 @@ Umstellungen kosten einen Migrationsschritt statt einer weiteren Verzweigung.
 Zwei Wege, je nach Dateiform:
 
 - **Versioniert** (`_CHAINS`) — nur Dateien mit einem Dict als oberstem Knoten, also
-  heute `sequences/<name>.json`. Die tragen `schema_version`, die Kette hebt Schritt für
+  heute `sequences/<name>/sequence.json`. Die tragen `schema_version`, die Kette hebt Schritt für
   Schritt (Eintrag i: Version i → i+1), Saver stempeln mit `stamp()`.
 - **Normalisiert** (`_NORMALIZER`) — alles andere: `points.json` ist eine Liste,
   `items.json`/`slots.json`/Presets sind Name→Eintrag-Dicts. Da ist kein Platz für ein
@@ -548,12 +584,29 @@ Dateien, die man *nicht* anfasst. Nach dem ersten Start mit einer neuen Version 
 Dateien aktuell, und der Migrationsschritt darf gelöscht werden. Genau so schrumpft das
 Modul.
 
-`sweep.py` erfasst **alle** JSON-Dateien (config, points, sequences, item/boss/icon-Scans,
-globale Bosse, items, slots, beide Preset-Ordner) und macht zwei Dinge pro Datei:
-Migration/Normalisierung **und** einen Round-Trip durch Loader + Serializer. Der
-Round-Trip ist die eigentliche Reinigung — was der Loader nicht kennt, schreibt der
-Serializer nicht zurück. Deshalb werden auch Dateitypen ohne jeden Migrationsschritt
-sauber. `tools/migrate.py` ist nur noch die CLI über derselben Funktion.
+`sweep.py` erfasst **alle** JSON-Dateien und geht dafür über die **Besitzeinheiten**,
+nicht über Dateitypen: `config.json`, dann je Sequenzordner die `sequence.json`
+(mit ihren Punkten), ihre item-/boss-/icon-Scans und ihre Boss-Bibliothek, zuletzt
+die beiden Preset-Ordner. Pro Datei zwei Dinge: Migration/Normalisierung **und**
+einen Round-Trip durch Loader + Serializer. Der Round-Trip ist die eigentliche
+Reinigung — was der Loader nicht kennt, schreibt der Serializer nicht zurück.
+Deshalb werden auch Dateitypen ohne jeden Migrationsschritt sauber.
+`tools/migrate.py` ist nur noch die CLI über derselben Funktion.
+
+**Hier stand einmal die flache Struktur, und der Durchgang war dadurch still tot.**
+Aufgezählt waren `sequences/*.json`, `points.json` und die Scan-Ordner im
+Wurzelverzeichnis — nach dem Umzug auf Besitzeinheiten fand der Glob nichts mehr
+und die Wurzelordner gab es nicht: von dreizehn Datendateien erfasste
+`sammle_dateien()` noch die `config.json`. Auffallen konnte das nicht, denn die
+Tests dazu bauten dieselbe flache Struktur im Temp-Ordner auf und blieben grün.
+Wer hier etwas ergänzt, geht deshalb vom Sequenzordner aus — und stellt im Test
+die Struktur, die die App wirklich schreibt.
+
+**Die Boss-Bibliothek ist eine Liste, kein Scan.** Sie liegt als `bibliothek.json`
+zwischen den Boss-Scan-Konfigurationen und braucht deshalb im Durchgang eine
+eigene Fallunterscheidung; mit dem Scan-Loader gelesen wäre sie unlesbar und
+würde als „übersprungen" gemeldet — ausgerechnet die Datei, die im Betrieb am
+häufigsten dazukommt, denn ein Lauf legt dort entdeckte Bosse ab.
 
 Zwei Regeln für den Start-Durchgang: **still, wenn nichts zu tun ist** (Normalfall — kein
 Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladbare Dateien
@@ -732,22 +785,36 @@ es die Marker-Farben.
   Ereignisarten" und weist selbst darauf hin.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 
-  **Der Import läuft in Stufen, nicht am Stück.** `import_bundle()` war eine
-  Funktion mit 292 Zeilen und 69 Verzweigungen — und zugleich die Stelle, die am
-  meisten auf Platte schreibt (Templates, Slots, Items, drei Scan-Arten,
-  Sequenzen, Punkte, Config). Diese beiden Eigenschaften zusammen sind die
-  unangenehmste Kombination, die eine Codebasis haben kann: die Tests konnten
-  unmöglich alle Pfade treffen, und jeder ungetroffene Pfad schrieb Dateien.
-  Heute trägt `_Import` den Zustand eines Durchgangs (ZIP, State, Transform,
-  `stats`, `id_map`), und `_imp_templates` … `_imp_config` sind einzeln prüfbar;
-  `import_bundle()` ist nur noch der Ablauf.
+  **Es gibt genau EINEN Import-Weg.** Ein Bündel ist ein ZIP aus vollständigen
+  Sequenzordnern (`sequences/<name>/…` plus optional `config.json`), erkennbar am
+  Manifest-Feld `layout: "sequence-folders"`. `_import_sequence_bundle()` packt
+  sie in einen Temp-Ordner, rechnet dort die Koordinaten um
+  (`_remap_sequence_folder`) und verschiebt den fertigen Ordner an seinen Platz —
+  danach lädt `load_sequence_file()` ihn wie jede andere Sequenz.
 
-  **Die Reihenfolge ist die eigentliche Aussage** und nicht beliebig: Templates
-  zuerst (Items verweisen darauf), dann Punkte (Sequenzen verweisen darauf), dann
-  die Sequenzen; Slots und Items vor den Item-Scans, weil die per Namen auf sie
-  zeigen und am Ende aufgelöst werden. Was in der Abschlussmeldung steht, steht
-  als Tabelle (`_IMPORT_MELDUNG`) — ein Test hält sie gegen die Schlüssel in
-  `stats`, sonst importiert man etwas, das die Meldung verschweigt.
+  **Daneben stand bis zum Aufräumen eine zweite, vollständige Implementierung**
+  für Bündel aus der Zeit des globalen Bestands: `_Import` als Durchgangs-Zustand,
+  `_imp_templates` … `_imp_config` als Stufen, `_IMPORT_MELDUNG` als
+  Meldungstabelle, dazu `_remap_point_ids`/`_referenzierte_punkte` für die
+  ID-Kollisionen, die es damals geben konnte. Sie war nicht nur Altlast, sondern
+  **kaputt**: Vorlagen landeten in `items/templates/`, wo seit dem Umzug keine
+  Sequenz mehr nachsieht, und `_imp_items` schrieb über `save_global_items()`,
+  das ohne aktiven Item-Scan folgenlos zurückkehrt. Ein Import, der „hat
+  geklappt" meldet und nichts Brauchbares hinterlässt, ist schlechter als eine
+  Absage — deshalb wird ein Bündel ohne `layout`-Feld heute abgelehnt, mit dem
+  Hinweis, die Sequenz im Studio neu zu bauen. Das Löschen nahm 347 Zeilen und
+  22 Importe mit.
+
+  **Punkt-IDs sind sequenzlokal**, und damit ist die ganze ID-Zuordnung
+  entfallen: zwei Sequenzen dürfen beide einen Punkt #7 haben, das ist kein
+  Konflikt, sondern sind zwei Punkte. Kollidieren können nur noch die
+  Ordner*namen*, und dort weicht `merge=True` auf `<name>_2` aus.
+
+  **`_ImportTransaction` sichert weiterhin vor der ersten Änderung** und rollt
+  bei jedem Fehler zurück. Gesichert wird `config.json` und **jede** Datei unter
+  `sequences/` — nicht nur die JSONs, denn ein Ordner-Bündel ersetzt ganze
+  Sequenzordner samt Vorlagen und gemerkten Bildern.
+
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
@@ -829,7 +896,7 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 
 | Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>.json`, `config.json`, `slots/`+`items/`+`item_scans/` |
+| `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
 
 **Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
 `slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein
@@ -925,8 +992,8 @@ damit die Rückfrage bei ungespeicherten Änderungen greift.
 **Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanTeil`-
 Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
 in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
-Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `slots/slots.json`,
-`items/items.json` und `item_scans/<name>.json` — also wieder andere Dateien
+Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `sequences/<name>/item_scans/<n>.json` — Slots und Items stehen
+darin, es gibt keine globalen Listen daneben — also wieder andere Dateien
 als der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden
 und ein eigener Speichern-Knopf rechts steht.
 
@@ -1545,27 +1612,23 @@ der offene Scan, sonst der Bestand) — ein Slot eines *anderen* Scans bleibt
 unangetastet. Kein Bestätigungsdialog: STRG+Z holt den ganzen Abzug zurück,
 genau wie beim einzelnen Löschen.
 
-Slots und Items unterscheiden sich dabei, und der Unterschied ist der Punkt:
+**Der geöffnete Scan IST der vollständige Bestand** — und damit stellt sich die
+Frage „gehört das hierher" gar nicht mehr. `scanSichtbar()` filtert nur noch nach
+Kategorie; Slots und Items einer Sequenz gehören ihrem Scan, fremde gibt es dort
+nicht zu sehen.
 
-- **Slots sind Bildschirm-Koordinaten** und damit immer genau einem Spiel
-  zugeordnet. In einem fremden Scan angeboten zu werden ist reines Rauschen —
-  **es sei denn, sie liegen im gerade aufgenommenen Bild** (`_slot_im_bild()`,
-  Feld `erkannt`). Dann sieht man sie ja, und sie zu verstecken ist die
-  schlechtere Antwort: ein abgehakter Slot war sonst endgültig weg, sobald man
-  den Reiter wechselte, denn anders als ein Item hatte er keinen zweiten Grund
-  dazustehen — und anhaken kann man nur, was man sieht. Ohne Aufnahme gilt das
-  nicht: `_flaeche()` rechnet die Fläche dann aus den Slots DES SCANS, und die
-  Antwort wäre zirkulär.
-- **Items können geteilt sein**, und dasselbe Item ein zweites Mal zu lernen ist
-  genau das, was man vermeiden will. Deshalb erscheint ein Item auch dann, wenn
-  es **gerade in einem Slot erkannt wird** (`_erkannte_items()`, Feld `erkannt`)
-  — es steht da, bevor jemand auf die Idee kommt, es neu zu lernen, und ein
-  Haken genügt. Gezeichnet wird es türkis, wie sein Rechteck im Bild.
+Hier stand einmal die Regel **„gehört dazu ODER wird gerade gesehen"**
+(`dabei || erkannt`), und sie war die Antwort auf ein Problem, das der globale
+Bestand hatte: Slots zweier Spiele lagen in einer Liste, also musste die Ansicht
+entscheiden, welche sie anbietet. Mit dem Umzug auf Besitzeinheiten ist die Frage
+verschwunden, und mit ihr die Regel — samt `_slot_im_bild()` und dem Slot-Feld
+`erkannt`, das zuletzt berechnet und von niemandem mehr gelesen wurde.
 
-Die Regel „gehört dazu ODER wird gerade gesehen" steht in der **Brücke**, nicht
-im JavaScript: sonst wäre sie nicht messbar. Die Ansicht filtert nur noch auf
-`dabei || erkannt` — in `scanSichtbar()`, seit die Haken-Liste weg ist. Wer die
-Filterung anfasst, fasst genau diese eine Stelle an.
+Beim **Item** bleibt `erkannt` dagegen echt (`_erkannte_items()`, Feld
+`erkannt_in`): es sagt nicht „gehört dazu", sondern **wo** das Item gerade
+gefunden wurde. Das ist die nützlichste Auskunft der Erkennung und der Grund,
+warum ein Treffer ein Vorschlag ist und keine Festlegung — „erkannt" ohne Beleg
+wäre eine Behauptung.
 
 **Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
 stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
@@ -1843,7 +1906,8 @@ ebenso mit: ein Zurück, das die Slots zurückdreht und den Boss-Scan stehen lä
 wäre ein halbes Zurück, und das ist schlimmer als gar keins.
 
 **Der Konsolen-Editor bleibt** (`CTRL+ALT+N`). Er schreibt dieselben Dateien —
-deshalb zählen `boss_scans/`, `icon_scans/` und `boss_scans/global/bosses.json`
+deshalb zählen die `boss_scans/`- und `icon_scans/`-Ordner der Sequenz samt ihrer
+`boss_scans/bibliothek.json`
 seit dem Umbau beim „auf Platte hat sich etwas geändert"-Vergleich mit
 (`_erkennung_pfade()`). Ohne sie meldete der Hinweis ausgerechnet das nicht, woran
 man gerade arbeitet: ein Lauf legt per LLM entdeckte Bosse in der Bibliothek ab.
@@ -2931,5 +2995,5 @@ hätte.
 - **Nicht-DPI-aware Werkzeuge lügen über die Monitor-Geometrie.** Koordinaten aus PowerShell (`System.Windows.Forms.Screen`) oder anderen Prozessen ohne DPI-Awareness sind skaliert und passen nicht zu denen, die die App sieht. Zum Nachmessen einen Prozess nehmen, der `autoclicker.winapi` importiert hat.
 - **OpenCV / Pillow optional**: Code prüft `OPENCV_AVAILABLE` / `PILLOW_AVAILABLE` und degradiert sauber. Neue Features die diese brauchen → Verfügbarkeit prüfen.
 - **Der erste OCR-Aufruf lädt Modelle aus dem Netz.** EasyOCR holt beim allerersten `read_text()` Detection- und Recognition-Modell per Download — Sekunden bis Minuten, und es kann mit HTTP-Fehler scheitern; danach liegt ein Aufruf bei ~300 ms. Passiert das im Worker, steht die Sequenz so lange. Dieselbe Klasse Problem wie beim LLM, weshalb die LLM-Benennung bewusst nicht im Scan läuft (s.o.). Wer `ocr_enabled` neu einschaltet, sollte den ersten Aufruf nicht in einen laufenden Scan legen.
-- **`import_bundle()` schreibt sofort auf Platte, `export_bundle()` nicht.** Der Import legt Templates an und ruft `save_global_slots`, `save_global_items`, `save_item_scan`, `save_boss_scan`, `save_global_bosses`, `save_data` **und `save_config`** — er befüllt also nicht bloss den State. Mit einem frischen `AutoClickerState()` schreibt `save_config()` die Default-Config über die vorhandene `config.json`; die Tests in `test_logic.py` übergeben deshalb `import_config=False`. Für einen vollen Roundtrip die Pfad-Relativität nutzen: Datenordner + `config.json` in einen Temp-Ordner kopieren und vorher dorthin `os.chdir()` — die Konstanten in `persistence/paths.py` sind bewusst CWD-relativ.
+- **`import_bundle()` schreibt sofort auf Platte, `export_bundle()` nicht.** Der Import kopiert ganze Sequenzordner an ihren Platz und ruft **`save_config()`** — er befüllt also nicht bloss den State. Mit einem frischen `AutoClickerState()` schreibt `save_config()` die Default-Config über die vorhandene `config.json`; die Tests in `test_logic.py` übergeben deshalb `import_config=False`. Für einen vollen Roundtrip die Pfad-Relativität nutzen: Datenordner + `config.json` in einen Temp-Ordner kopieren und vorher dorthin `os.chdir()` — die Konstanten in `persistence/paths.py` sind bewusst CWD-relativ.
 - **Race-Condition-Sensibel**: Lange-laufende Loops im Worker (Boss-Watcher, Item-Scan) iterieren über shared dicts — Mutationen aus Editoren können während des Laufens passieren. Im Zweifel `dict(state.x)`-Snapshot unter Lock.
