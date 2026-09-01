@@ -1358,6 +1358,26 @@ Sechs Regeln, an denen der Reiter hängt:
   aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
   liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
   Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Ein Attribut, das allein durch sein DASEIN wirkt, braucht einen Boolean.**
+  `el()` setzte jeden nicht-falsy Wert per `setAttribute` — und
+  `disabled="0"` sperrt genauso wie `disabled="1"`. Im Werkzeug „Punkte
+  verwalten" stand `disabled: punkt.verwendungen.length`: bei 0 Verwendungen
+  (also genau dann, wenn man löschen DARF) war der Knopf gesperrt, bei 3
+  ebenso — er war **immer** tot, in einem Werkzeug, das „sicher löschen"
+  verspricht. `NUR_DASEIN` in `el()` lässt solche Attribute bei falsy Werten
+  jetzt weg; die 27 anderen Aufrufstellen übergaben ohnehin schon Booleans.
+- **Ein verzögerter Schreiber darf keine frischere Meldung begraben.**
+  `briefkastenNachfassen()` meldet nach zwei Sekunden „Kein Hauptprozess
+  erreichbar" — und überschrieb dabei, was der Nutzer inzwischen getan hatte.
+  Es merkt sich deshalb `statusStand` und schweigt, wenn seither jemand anders
+  etwas gemeldet hat.
+- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `wzPruefen()`
+  rief nur `wzMitteZeichnen()`: der Bericht stand in der Mitte, rechts blieb
+  „Noch nichts geprüft." — ausgerechnet die Spalte, die auflistet, WAS geprüft
+  wurde, und ohne die „Alles in Ordnung" eine Behauptung ist. Jeder andere
+  Werkzeug-Befehl geht über `rufWerkzeug` → `zeichneWerkzeuge()` und zeichnet
+  alle drei Spalten; dieser eine ging seinen eigenen Weg, weil er `frage()`
+  direkt ruft.
 - **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `wzInfo()` im
   Werkzeuge-Reiter warf seinen Titel ins `title`-Attribut; sichtbar blieb ein
   nackter Kreis in der Fläche — an zwölf Stellen, in „prüfen" und „kalibrieren"

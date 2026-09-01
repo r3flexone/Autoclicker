@@ -128,8 +128,39 @@ def lauf():
         f.klick_text("#wz-mitte button", "Jetzt prüfen", warten=900)
         pruefe(f.anzahl(".wz-befund") == 2, "zwei Befunde erwartet")
         pruefe("Fehler" in f.status(), f"Status nach Pruefen: {f.status()!r}")
-        pruefe(bool(f.text("#wz-rechts").strip()), "rechts steht nicht, was geprueft wurde")
+        # **Rechts muss der BERICHT stehen, nicht irgendein Text.** Hier stand
+        # `bool(text.strip())` — und „Noch nichts geprüft." ist nicht leer. Der
+        # Pin war damit erfüllt, während die Spalte nie nachgezogen wurde:
+        # `wzPruefen()` rief nur `wzMitteZeichnen()`. Ausgerechnet diese Spalte
+        # listet, WAS geprüft wurde, und ohne sie ist „Alles in Ordnung" eine
+        # Behauptung — genau die Begründung, mit der sie gebaut wurde.
+        pruefe("Noch nichts geprüft" not in f.text("#wz-rechts"),
+               "rechts steht nach dem Pruefen weiter „Noch nichts geprueft.“")
+        pruefe(f.anzahl("#wz-rechts .wz-geprueft") >= 1,
+               f"rechts fehlt die Liste der geprueften Bereiche: "
+               f"{f.text('#wz-rechts')[:80]!r}")
         f.bild("wz_pruefen")
+
+        # --- Punkte verwalten: „sicher loeschen" muss auch loeschen koennen ---
+        # `disabled: punkt.verwendungen.length` — und `el()` setzt jedes nicht
+        # falsy Attribut, also auch `disabled="0"`. Ein vorhandenes
+        # `disabled`-Attribut sperrt unabhaengig von seinem Wert: der Knopf war
+        # bei 0 Verwendungen genauso tot wie bei 3, also immer. In einem
+        # Werkzeug, das „Aufnehmen, nachmessen, umbenennen und sicher loeschen"
+        # verspricht.
+        f.klick_text("#wz-links button", "Punkte verwalten", warten=400)
+        gesperrt = f.seite.eval_on_selector(
+            "#wz-mitte button.gefahr", "e => e.disabled")
+        pruefe(gesperrt is True,
+               "Punkt #1 wird verwendet — der Loeschen-Knopf muesste gesperrt sein")
+        # #3 „Menue" haengt an keinem Block.
+        f.seite.select_option("#wz-mitte select", index=2)
+        f.seite.wait_for_timeout(500)
+        frei = f.seite.eval_on_selector("#wz-mitte button.gefahr", "e => e.disabled")
+        pruefe(frei is False,
+               "Punkt #3 wird nirgends verwendet — der Loeschen-Knopf ist trotzdem gesperrt")
+        pruefe("nirgends verwendet" in f.text("#wz-rechts"),
+               f"rechts fehlt die Freigabe: {f.text('#wz-rechts')[:80]!r}")
 
         # --- Farbfrage: die Stelle hat eine andere Farbe als der Punkt ---
         f.klick_text("#wz-links button", "Kalibrieren", warten=500)

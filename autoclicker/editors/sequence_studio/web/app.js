@@ -5,10 +5,23 @@
 const $ = (id) => document.getElementById(id);
 
 /** Kleiner DOM-Bauer: el("div", {class:"x", onclick:f}, kind, "text") */
+/* HTML-Attribute, die allein durch ihr DASEIN wirken: `disabled="0"` sperrt
+ * genauso wie `disabled="1"`. Ein falsy Wert muss sie deshalb weglassen, sonst
+ * bewirkt eine Zahl das Gegenteil dessen, was dasteht.
+ *
+ * Genau das ist passiert: `disabled: punkt.verwendungen.length` im Werkzeug
+ * „Punkte verwalten". Bei 0 Verwendungen (also genau dann, wenn man loeschen
+ * DARF) wurde `setAttribute("disabled", 0)` gesetzt — und bei 3 ebenso. Der
+ * Loeschen-Knopf war dauerhaft tot, in einem Werkzeug, das „sicher loeschen"
+ * verspricht. */
+const NUR_DASEIN = new Set(["disabled", "checked", "hidden", "readonly",
+                            "required", "selected", "multiple", "open"]);
+
 function el(tag, attrs, ...kinder) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
+    if (NUR_DASEIN.has(k) && !v) continue;
     if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else if (k === "style") n.setAttribute("style", v);
     else if (k === "text") n.textContent = v;
@@ -621,7 +634,14 @@ function zeichne() {
   fokusHerstellen(merk);
 }
 
+/* Wie oft der Status seit Programmstart geschrieben wurde. Ein verzoegerter
+ * Schreiber (s. `briefkastenNachfassen`) merkt sich den Stand und schweigt,
+ * wenn inzwischen jemand anders etwas gemeldet hat — eine zwei Sekunden alte
+ * Warnung darf keine frische Meldung begraben. */
+let statusStand = 0;
+
 function setzeStatus(status) {
+  statusStand += 1;
   const n = $("status");
   n.textContent = (status && status.text) || "";
   // Mit Praefix: „info" allein ist die Klasse des ⓘ-Knopfes (13px, rund), und ein
@@ -1063,14 +1083,29 @@ function laufFlanke(aktiv) {
 async function laufSchicken(befehl, extra) {
   await ruf("lauf_befehl", Object.assign({befehl: befehl}, extra || {}));
   laufNachfassen();
-  // Der Hauptprozess leert den Briefkasten beim Lesen. Liegt der Befehl nach
-  // zwei Sekunden immer noch da, ist keiner da — dann darf hier nicht
-  // „gestartet" stehen bleiben.
+  briefkastenNachfassen();
+}
+
+/** Hört überhaupt jemand zu?
+ *
+ * Der Hauptprozess leert den Briefkasten beim Lesen. Liegt der Befehl nach zwei
+ * Sekunden immer noch da, ist keiner da — dann darf im Fenster nicht
+ * „gestartet" stehen bleiben.
+ *
+ * Steht als eigener Baustein da, weil es **jeden** Briefkasten-Befehl betrifft
+ * und nicht nur die Laufsteuerung. Bei der Klick-Runde fehlte er, und dort ist
+ * die Folge die unangenehmste: die Statuszeile meldete „gestartet", die Ansicht
+ * blieb auf „NICHT GESTARTET" — und man steht im Spiel und klickt eine Runde
+ * lang gegen niemanden. */
+function briefkastenNachfassen() {
+  const stand = statusStand;
   setTimeout(async () => {
-    if (await frage("befehl_offen")) {
-      setzeStatus({art: "warn", text: "Kein Hauptprozess erreichbar — der Befehl " +
-                                       "liegt noch und wird nicht nachgeholt."});
-    }
+    if (!(await frage("befehl_offen"))) return;
+    // Hat inzwischen jemand anders etwas gemeldet, ist diese Warnung zwei
+    // Sekunden alt und wuerde die frischere Meldung ueberschreiben.
+    if (statusStand !== stand) return;
+    setzeStatus({art: "warn", text: "Kein Hauptprozess erreichbar — der Befehl " +
+                                     "liegt noch und wird nicht nachgeholt."});
   }, 2000);
 }
 
@@ -5104,7 +5139,9 @@ function wzPunkteBauen() {
       {punkt_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
     el("button", {class: "btn", onclick: () => mitWarten("werkzeug",
       "werkzeug_punkt_aufnehmen", {punkt_id: punkt.id})}, "✛ Neu messen"),
-    el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length,
+    // Ausdruecklich ein Boolean, nicht die Anzahl: die Absicht ist „gesperrt,
+    // SOLANGE er benutzt wird" — als Zahl gelesen hiess sie das Gegenteil.
+    el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length > 0,
       title: punkt.verwendungen.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
       onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {punkt_id: punkt.id})},
       "Löschen")));
@@ -5375,6 +5412,14 @@ async function wzPruefen() {
     art: !wzBericht.ok || n ? "err" : h ? "warn" : "ok",
   });
   wzMitteZeichnen();
+  // **Auch rechts.** Hier stand nur `wzMitteZeichnen()`, und damit blieb in der
+  // rechten Spalte „Noch nichts geprüft." stehen, während in der Mitte längst
+  // der Bericht lag. Ausgerechnet dort: die Spalte listet, WAS geprüft wurde,
+  // und ohne sie ist „Alles in Ordnung" eine Behauptung — genau die Begründung,
+  // mit der sie gebaut wurde. Jeder andere Werkzeug-Befehl zeichnet beides
+  // (`rufWerkzeug` über `zeichneWerkzeuge`); dieser eine ging seinen eigenen
+  // Weg, weil er `frage()` direkt ruft.
+  wzRechtsZeichnen();
 }
 
 /* ------------------------------------------------------------- Kalibrieren */
@@ -5750,7 +5795,11 @@ function wzKlickenBauen() {
 
   const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
   leiste.appendChild(el("button", {
-    class: "btn haupt", onclick: () => rufWerkzeug("nachklick_starten"),
+    class: "btn haupt",
+    // Wie beim Start einer Sequenz: der Befehl geht in den Briefkasten, und ob
+    // ihn jemand abholt, sieht man erst daran, dass er verschwindet.
+    onclick: async () => { await rufWerkzeug("nachklick_starten");
+                           briefkastenNachfassen(); },
     title: "Startet die Runde im Hauptprozess — geklickt wird danach im Spiel",
   }, "Runde starten"));
   // Zwei Ausgaenge, weil es zwei Absichten gibt. Ein einzelner „Beenden"-Knopf
