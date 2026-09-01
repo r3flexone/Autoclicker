@@ -178,3 +178,106 @@ try:
           _air(_st_r2, "Gibt es nicht", "Egal") is False)
 finally:
     _os.chdir(_ren_cwd)
+
+
+# ---------------------------------------------------------------------------
+section("Geteilte Feld-Abfragen der Item-Editoren")
+
+# **Zwei Abfragen standen vier- bzw. sechsmal nebeneinander** (Prioritaet und
+# Bestaetigungs-Klick), und die Kopien waren schon auseinandergelaufen: die
+# Sperre um `get_point_by_id()` hielt nur EINE von vier. Genau das misst der
+# erste Test hier — er ist der Grund, warum die Zusammenlegung mehr ist als
+# Kosmetik.
+
+import autoclicker.editors._item_felder as _IF
+from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
+
+
+def _feld_folge(fn, eingaben, **kw):
+    """Ruft eine Feld-Abfrage mit einer festen Tastenfolge auf."""
+    folge = list(eingaben)
+    _alt = _IF.safe_input
+    _IF.safe_input = lambda _p="": folge.pop(0) if folge else ""
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            return fn(**kw)
+    finally:
+        _IF.safe_input = _alt
+
+
+class _MessLock:
+    """Ein Lock, das mitzaehlt, ob es genommen wurde."""
+
+    def __init__(self):
+        self.genommen = 0
+
+    def __enter__(self):
+        self.genommen += 1
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+_st_f = _ST_F()
+_st_f.points = [_CP_F(id=7, x=10, y=20, name="Bestaetigen")]
+_st_f.lock = _MessLock()
+
+# --- Bestaetigungs-Klick ---
+check("ein bekannter Punkt kommt mit Wartezeit zurueck",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["7", "1.5"],
+                  state=_st_f, vorgabe_delay=0.5) == (7, 1.5))
+# DIE Eigenschaft, um die es geht: `get_point_by_id()` liest `state.points` und
+# sperrt nicht selbst. Drei der vier Kopien taten es auch nicht.
+check("die Punktsuche laeuft unter state.lock", _st_f.lock.genommen >= 1)
+check("leere Eingabe heisst: kein Bestaetigungs-Klick",
+      _feld_folge(_IF.frage_bestaetigungsklick, [""],
+                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+check("ein unbekannter Punkt setzt nichts und behaelt die Vorgabe",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["99"],
+                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+check("Zahlensalat setzt nichts",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["abc"],
+                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+# Eine unbrauchbare Wartezeit behaelt die Vorgabe, statt den Punkt zu verlieren.
+check("eine unbrauchbare Wartezeit behaelt die Vorgabe",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["7", "keine Zahl"],
+                  state=_st_f, vorgabe_delay=0.5) == (7, 0.5))
+# Abbruch ist etwas anderes als „nichts eingegeben" — `None` als Punkt-ID ist
+# ein gueltiges Ergebnis und taugt deshalb nicht als Abbruch-Zeichen.
+check("abbrechbar: 'cancel' meldet ABBRUCH, nicht (None, delay)",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["cancel"], state=_st_f,
+                  vorgabe_delay=0.5, abbrechbar=True) is _IF.ABBRUCH)
+check("ohne `abbrechbar` ist 'cancel' nur eine unbrauchbare Eingabe",
+      _feld_folge(_IF.frage_bestaetigungsklick, ["cancel"],
+                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+
+# --- Prioritaet ---
+_verschoben = []
+_alt_shift = _IF.shift_category_priorities
+_IF.shift_category_priorities = lambda st, kat: _verschoben.append(kat)
+try:
+    check("eine Zahl kommt als Prioritaet zurueck",
+          _feld_folge(_IF.frage_prioritaet, ["3"], state=_st_f, kategorie="Helme") == 3)
+    check("leere Eingabe behaelt die Vorgabe",
+          _feld_folge(_IF.frage_prioritaet, [""], state=_st_f,
+                      kategorie="Helme", vorgabe=4) == 4)
+    check("Zahlensalat behaelt die Vorgabe",
+          _feld_folge(_IF.frage_prioritaet, ["abc"], state=_st_f,
+                      kategorie="Helme", vorgabe=4) == 4)
+    check("negative Zahlen werden auf 1 gehoben",
+          _feld_folge(_IF.frage_prioritaet, ["-5"], state=_st_f, kategorie="Helme") == 1)
+    # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.
+    check("0 mit Kategorie verschiebt und ergibt 1",
+          _feld_folge(_IF.frage_prioritaet, ["0"], state=_st_f,
+                      kategorie="Helme") == 1 and _verschoben == ["Helme"])
+    # Ohne Kategorie gibt es nichts zu verschieben — das wird gesagt, nicht getan.
+    _verschoben.clear()
+    check("0 ohne Kategorie verschiebt nichts",
+          _feld_folge(_IF.frage_prioritaet, ["0"], state=_st_f,
+                      kategorie=None) == 1 and _verschoben == [])
+    check("abbrechbar: 'cancel' meldet ABBRUCH",
+          _feld_folge(_IF.frage_prioritaet, ["cancel"], state=_st_f,
+                      kategorie="Helme", abbrechbar=True) is _IF.ABBRUCH)
+finally:
+    _IF.shift_category_priorities = _alt_shift

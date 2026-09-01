@@ -9,13 +9,11 @@ mit dem rename-Befehl angepasst werden.
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import (
-    get_point_by_id, save_global_items, active_templates_dir,
-)
+from ...persistence import save_global_items, active_templates_dir
 from ...utils import (
-    col, confirm, err, header, hint, parse_non_negative_float, safe_input,
-    sanitize_filename,
+    col, confirm, err, header, hint, safe_input, sanitize_filename,
 )
+from .._item_felder import frage_bestaetigungsklick
 from ..scan_services import crop_screen_region
 from .items import select_category
 from .markers import (
@@ -79,26 +77,9 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     auto_priority = prio_choice != "2"
 
     # Bestätigungs-Punkt
-    confirm_point_id = None
-    confirm_delay = CONFIG.scan_confirm_delay
-    confirm_input = safe_input("\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ").strip()
-    if confirm_input:
-        try:
-            point_id = int(confirm_input)
-            found_point = get_point_by_id(state, point_id)
-            if found_point:
-                confirm_point_id = point_id
-                delay_input = safe_input(f"  Wartezeit vor Bestätigung (Enter = {confirm_delay}s): ").strip()
-                if delay_input:
-                    delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                    if delay_err:
-                        print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                    else:
-                        confirm_delay = delay_val
-            else:
-                print(f"  -> Punkt #{point_id} existiert nicht, überspringe")
-        except ValueError:
-            pass
+    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+        state, CONFIG.scan_confirm_delay,
+        frage="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
 
     # Konfidenz
     min_confidence = state.config.scan_min_confidence

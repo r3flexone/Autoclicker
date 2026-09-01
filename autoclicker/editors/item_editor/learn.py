@@ -12,12 +12,13 @@ ohne die Daten zu verlieren.
 
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import (
-    get_point_by_id, shift_category_priorities, active_templates_dir,
-)
+from ...persistence import active_templates_dir
 from ...utils import (
     confirm, eindeutiger_name, is_cancel, naechster_freier_name, ok,
-    parse_non_negative_float, safe_input, sanitize_filename,
+    safe_input, sanitize_filename,
+)
+from .._item_felder import (
+    ABBRUCH, frage_bestaetigungsklick, frage_prioritaet,
 )
 from .items import select_category
 from .markers import collect_marker_colors
@@ -66,24 +67,9 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         category = select_category(state, show_explanation=False)
 
         # Bestätigungs-Punkt einmal für alle abfragen
-        confirm_point_id = None
-        confirm_delay = state.config.scan_confirm_delay
-        confirm_input = safe_input("  Bestätigungs-Punkt-ID für alle (Enter = keine): ").strip()
-        if confirm_input:
-            try:
-                point_id = int(confirm_input)
-                found_point = get_point_by_id(state, point_id)
-                if found_point:
-                    confirm_point_id = point_id
-                    delay_input = safe_input(f"  Wartezeit vor Bestätigung (Enter = {confirm_delay}s): ").strip()
-                    if delay_input:
-                        delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                        if delay_err:
-                            print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                        else:
-                            confirm_delay = delay_val
-            except ValueError:
-                pass
+        confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+            state, state.config.scan_confirm_delay,
+            frage="  Bestätigungs-Punkt-ID für alle (Enter = keiner): ")
 
         created_count = 0
         for slot_idx in range(start_slot - 1, end_slot):
@@ -213,55 +199,23 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
 
     category = select_category(state)
 
-    # Priorität
-    priority = 1
-    try:
-        prio_input = safe_input(f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-        if is_cancel(prio_input):
-            print("  -> Abgebrochen")
-            _cleanup_cached_template()
-            return True
-        if prio_input:
-            prio_val = int(prio_input)
-            if prio_val == 0:
-                if category:
-                    shift_category_priorities(state, category)
-                    priority = 1
-                else:
-                    print("  -> Priorität 0 nur mit Kategorie möglich!")
-                    priority = 1
-            else:
-                priority = max(1, prio_val)
-    except ValueError:
-        pass
-
-    # Bestätigungs-Klick abfragen
-    confirm_point_id = None
-    confirm_delay = state.config.scan_confirm_delay
-    print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
-    print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
-    confirm_input = safe_input("  Punkt-ID für Bestätigung (Enter = Nein): ").strip()
-    if is_cancel(confirm_input):
+    priority = frage_prioritaet(state, category, abbrechbar=True)
+    if priority is ABBRUCH:
         print("  -> Abgebrochen")
         _cleanup_cached_template()
         return True
-    if confirm_input:
-        try:
-            point_id = int(confirm_input)
-            found_point = get_point_by_id(state, point_id)
-            if found_point:
-                confirm_point_id = point_id
-                delay_input = safe_input(f"  Wartezeit vor Bestätigung in Sek (Enter = {confirm_delay}): ").strip()
-                if delay_input:
-                    delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                    if delay_err:
-                        print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                    else:
-                        confirm_delay = delay_val
-            else:
-                print(f"  -> Punkt #{point_id} existiert nicht")
-        except ValueError:
-            print("  -> Keine gültige Zahl, keine Bestätigung")
+
+    # Bestätigungs-Klick abfragen
+    print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
+    print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
+    bestaetigung = frage_bestaetigungsklick(
+        state, state.config.scan_confirm_delay,
+        frage="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
+    if bestaetigung is ABBRUCH:
+        print("  -> Abgebrochen")
+        _cleanup_cached_template()
+        return True
+    confirm_point_id, confirm_delay = bestaetigung
 
     item = ItemProfile(item_name, marker_colors, category, priority,
                        confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)

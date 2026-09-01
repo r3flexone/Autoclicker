@@ -16,8 +16,9 @@ UI-Texte sind **Deutsch** — neue Strings ebenso.
 python tools/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
 python tools/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
 python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
-                                # Linter (= pyflakes, aber mit noqa)
+                                # dasselbe ausgeschrieben (so ruft CI es auf)
 
 # Die Schichten einzeln, falls man sie direkt braucht:
 python tools/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
@@ -257,6 +258,20 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 - **Bearbeiten = aktuellen Wert vorauswählen**: `interactive_select(..., default=<idx>)` bei Edit-Flows, damit Enter nichts überschreibt.
 - **Vor Editoren mit Konsolen-Input**: `_block_if_recording(state)` + `_block_if_running(state)` aus `handlers.py` (sonst kollidiert Konsolen-Input mit Worker/Recorder). Beide melden selbst und geben `True` zurück, wenn der Handler abbrechen soll.
 - **Feedback-Bausteine** aus `utils/console.py` nutzen: `ok/err/warn/info/hint`, `header`, `breadcrumb`, `cmd_hint`, `describe_color` — keine rohen ANSI-Strings.
+- **Geteilte Feld-Abfragen** stehen in `editors/_item_felder.py`:
+  `frage_prioritaet()` und `frage_bestaetigungsklick()`. Sie standen vier- bzw.
+  sechsmal ausgeschrieben da (`items.py`, `learn.py`, `autoscan.py`,
+  `item_scan_editor.py`) — die staerkste gemessene Duplikation des Repos, und
+  sie war schon auseinandergelaufen: **`get_point_by_id()` sperrt nicht selbst,
+  und nur EINE der vier Kopien hielt `state.lock`.** Genau dafuer ist so eine
+  Zusammenlegung da; ein Test misst die Sperre. Unterstrich-Modul direkt unter
+  `editors/`, wie `_detection_capture.py` — so kommen das `item_editor/`-Paket
+  und das daneben liegende `item_scan_editor.py` beide daran, ohne dass eines
+  vom anderen abhaengt.
+
+  **Abbruch ist nicht `None`.** Beim Bestaetigungs-Klick ist `None` als Punkt-ID
+  ein gueltiges Ergebnis („kein Klick danach"), taugt also nicht zugleich als
+  Abbruch-Zeichen — dafuer gibt es `ABBRUCH`.
 - **Mehrfachauswahl aus einer Liste**: `mehrfach_auswahl()` aus `editors/item_scan_editor.py`
   (`<Nr>`, `<Von>-<Bis>`, `all`, `clear`, `show`, `done`, `cancel`, optional ein eigener
   Befehl wie `new <Slot-Nr>`). Sie stand vorher zweimal ausgeschrieben da — für Slots und

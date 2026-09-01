@@ -1,0 +1,44 @@
+# Lint-Regeln des Projekts.
+#
+# **Warum es diese Datei gibt.** Die Regeln standen nur in CLAUDE.md und in einer
+# Zeile von `.github/workflows/tests.yml`. Ein Editor, der eine Datei aufmacht,
+# hat davon nichts: er kennt weder die gewuenschte Zeilenlaenge noch weiss er,
+# dass hier absichtlich nur die F-Regeln erzwungen werden. Beides steht jetzt da,
+# wo Werkzeuge es finden — `python -m flake8` ohne Argumente macht damit genau
+# das, was auch die CI macht.
+
+[flake8]
+# Was ERZWUNGEN wird: die F-Regeln (= pyflakes). Tote Importe, Tippfehler in
+# Namen, doppelte Definitionen — alles, was ein echter Fehler ist und keine
+# Geschmacksfrage. Dieselbe Auswahl wie im CI-Job `lint`; wer sie hier aendert,
+# aendert sie dort mit.
+select = F
+
+# Was ANGESTREBT wird, aber (noch) nicht erzwungen ist.
+#
+# Beide Werte sind gemessen, nicht geraten. Die gepflegten Module bleiben unter
+# 100 Spalten (`bridge_werkzeuge.py` max. 98, `nachklick.py` max. 91); darueber
+# liegen 393 Zeilen, und die stehen fast alle in den Konsolen-Editoren und in
+# `market_analysis` — also genau dort, wo auch die Komplexitaet sitzt. Ebenso
+# `max-complexity`: 108 Funktionen liegen darueber, 44 davon in den
+# Konsolen-Editoren.
+#
+# Sie stehen deshalb NICHT in `select`: ein Lauf, der beim Aufmachen 500 Treffer
+# meldet, wird nicht gelesen, und ein rotes CI, das nur Altlasten beschreibt,
+# verdeckt echte Fehler im Rauschen — dieselbe Regel wie beim Ueberspringen
+# fehlender Testpakete. Der Editor liest sie trotzdem und zieht seine Hilfslinie
+# an der richtigen Stelle; nachsehen kann man jederzeit:
+#
+#     python -m flake8 --select=E501 --max-line-length=100 autoclicker/
+#     python -m flake8 --select=C --max-complexity=11 autoclicker/
+#
+# Sinkt eine der beiden Zahlen auf null, gehoert die Regel in `select`.
+max-line-length = 100
+max-complexity = 11
+
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    build,
+    dist

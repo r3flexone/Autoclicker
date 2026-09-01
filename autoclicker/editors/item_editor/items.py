@@ -12,14 +12,12 @@ from ...imaging import (
     OPENCV_AVAILABLE, take_screenshot, select_region,
 )
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import (
-    get_existing_categories, get_point_by_id, shift_category_priorities,
-    active_templates_dir,
-)
+from ...persistence import get_existing_categories, active_templates_dir
 from ...utils import (
-    confirm, info, is_cancel, naechster_freier_name, parse_non_negative_float,
-    safe_input, sanitize_filename,
+    confirm, info, is_cancel, naechster_freier_name, safe_input,
+    sanitize_filename,
 )
+from .._item_felder import frage_bestaetigungsklick, frage_prioritaet
 
 
 def select_category(state: AutoClickerState, show_explanation: bool = True) -> Optional[str]:
@@ -107,48 +105,11 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
         print("         Installieren mit: pip install opencv-python")
 
     category = select_category(state)
+    priority = frage_prioritaet(state, category)
 
-    # Priorität
-    priority = 1
-    try:
-        prio_input = safe_input(f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-        if prio_input:
-            prio_val = int(prio_input)
-            if prio_val == 0:
-                if category:
-                    shift_category_priorities(state, category)
-                    priority = 1
-                else:
-                    print("  -> Priorität 0 nur mit Kategorie möglich!")
-                    priority = 1
-            else:
-                priority = max(1, prio_val)
-    except ValueError:
-        pass
-
-    # Bestätigungs-Klick
-    confirm_point_id = None
-    confirm_delay = CONFIG.scan_confirm_delay
     print("\n  Bestätigungs-Punkt? (z.B. für Popup-Bestätigung)")
-    confirm_input = safe_input("  Punkt-ID (Enter=Nein): ").strip()
-    if confirm_input:
-        try:
-            point_id = int(confirm_input)
-            with state.lock:
-                found_point = get_point_by_id(state, point_id)
-                if found_point:
-                    confirm_point_id = point_id
-                    delay_input = safe_input("  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
-                    if delay_input:
-                        delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                        if delay_err:
-                            print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                        else:
-                            confirm_delay = delay_val
-                else:
-                    print(f"  -> Punkt #{point_id} existiert nicht")
-        except ValueError:
-            pass
+    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+        state, CONFIG.scan_confirm_delay, frage="  Punkt-ID (Enter = keiner): ")
 
     return ItemProfile(
         name=item_name,
@@ -229,29 +190,11 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                 print("  -> OpenCV nicht installiert!")
         elif choice == 4:  # Bestätigungs-Punkt
             print("  Neuer Bestätigungs-Punkt?")
-            confirm_input = safe_input("  Punkt-ID (Enter=entfernen): ").strip()
-            if confirm_input:
-                try:
-                    point_id = int(confirm_input)
-                    with state.lock:
-                        found_point = get_point_by_id(state, point_id)
-                        if found_point:
-                            new_confirm_id = point_id
-                            delay_input = safe_input(f"  Wartezeit (Enter={new_confirm_delay}s): ").strip()
-                            if delay_input:
-                                delay_val, delay_err = parse_non_negative_float(delay_input, "Wartezeit")
-                                if delay_err:
-                                    print(f"  -> {delay_err}, behalte {new_confirm_delay}s")
-                                else:
-                                    new_confirm_delay = delay_val
-                            print("  -> Bestätigung gesetzt")
-                        else:
-                            print(f"  -> Punkt #{point_id} existiert nicht")
-                except ValueError:
-                    print("  -> Ungültige Eingabe")
-            else:
-                new_confirm_id = None
-                print("  -> Bestätigung entfernt")
+            new_confirm_id, new_confirm_delay = frage_bestaetigungsklick(
+                state, new_confirm_delay,
+                frage="  Punkt-ID (Enter = entfernen): ")
+            print("  -> Bestätigung gesetzt" if new_confirm_id is not None
+                  else "  -> Bestätigung entfernt")
 
     return ItemProfile(
         name=new_name,

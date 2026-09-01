@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..models import ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint, parse_non_negative_float
+from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -16,9 +16,9 @@ from ..persistence import (
     save_item_scan, list_available_item_scans, load_item_scan_file,
     bind_item_scan_context,
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
-    save_global_items, shift_category_priorities,
-    get_point_by_id, active_templates_dir
+    save_global_items, active_templates_dir
 )
+from ._item_felder import frage_bestaetigungsklick, frage_prioritaet
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
@@ -352,23 +352,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
 
     category = select_category(state)      # zuerst: die Prioritaets-Verschiebung braucht sie
 
-    priority = 1
-    try:
-        prio_input = safe_input(
-            f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-        if prio_input:
-            prio_val = int(prio_input)
-            if prio_val == 0:
-                if category:
-                    shift_category_priorities(state, category)
-                    priority = 1
-                else:
-                    print("  -> Priorität 0 nur mit Kategorie möglich!")
-                    priority = 1
-            else:
-                priority = max(1, prio_val)
-    except ValueError:
-        pass
+    priority = frage_prioritaet(state, category)
 
     min_confidence = state.config.scan_min_confidence
     try:
@@ -379,29 +363,9 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
     except ValueError:
         print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
 
-    confirm_point_id = None
-    confirm_delay = CONFIG.scan_confirm_delay
-    confirm_input = safe_input("  Bestätigungs-Punkt ID (Enter=Nein): ").strip()
-    if confirm_input:
-        try:
-            point_id = int(confirm_input)
-            with state.lock:
-                found_point = get_point_by_id(state, point_id)
-                if found_point:
-                    confirm_point_id = point_id
-                    delay_input = safe_input(
-                        "  Wartezeit vor Bestätigung (Enter=0.5s): ").strip()
-                    if delay_input:
-                        delay_val, delay_err = parse_non_negative_float(
-                            delay_input, "Wartezeit")
-                        if delay_err:
-                            print(f"  -> {delay_err}, behalte {confirm_delay}s")
-                        else:
-                            confirm_delay = delay_val
-                else:
-                    print(f"  -> Punkt #{point_id} existiert nicht")
-        except ValueError:
-            pass
+    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+        state, CONFIG.scan_confirm_delay,
+        frage="  Bestätigungs-Punkt-ID (Enter = keiner): ")
 
     new_item = ItemProfile(
         name=item_name, marker_colors=[], category=category, priority=priority,
