@@ -965,6 +965,15 @@ def befehl_programm_beenden(state: AutoClickerState, argumente: dict) -> None:
     handle_quit(state, threading.get_ident())
 
 
+# Warum die Runde verworfen wurde. Der Aufrufer weiss es, der Handler nicht —
+# und „Studio geschlossen" bei einem Druck auf „Verwerfen" laesst es aussehen,
+# als haette sich die Runde von selbst beendet.
+VERWERF_GRUND = {
+    "knopf": "im Studio verworfen",
+    "fenster": "Studio geschlossen — Runde verworfen",
+}
+
+
 def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
     """Beendet eine laufende Klick-Runde — übernehmen oder verwerfen.
 
@@ -981,6 +990,13 @@ def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
     """
     from .editors.nachklick import stop_nachklick
     verwerfen = str(argumente.get("verwerfen") or "") in ("1", "true", "True")
+    # **Der Grund kommt vom Aufrufer.** Hier stand fuer JEDES Verwerfen die
+    # Meldung „Studio geschlossen — Runde verworfen" — auch dann, wenn das
+    # Fenster offen stand und jemand einfach auf „Verwerfen" gedrueckt hatte.
+    # Wer das liest und weiss, dass er nichts geschlossen hat, sucht den Fehler
+    # an der falschen Stelle: es sieht aus, als haette sich die Runde von selbst
+    # beendet.
+    grund = str(argumente.get("grund") or "knopf")
     with state.lock:
         laeuft = state.nachklick_aktiv
     if not laeuft:
@@ -988,7 +1004,7 @@ def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
             print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
     if verwerfen:
-        stop_nachklick(state, "Studio geschlossen — Runde verworfen",
+        stop_nachklick(state, VERWERF_GRUND.get(grund, VERWERF_GRUND["knopf"]),
                        uebernehmen=False)
     else:
         stop_nachklick(state, "aus dem Studio übernommen")

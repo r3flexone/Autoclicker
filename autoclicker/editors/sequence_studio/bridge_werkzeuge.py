@@ -588,7 +588,11 @@ class BridgeWerkzeugeMixin:
         """
         from ...befehl import sende
         verwerfen = bool((daten or {}).get("verwerfen"))
-        if not sende("nachklick_stop", verwerfen="1" if verwerfen else "0"):
+        # Warum verworfen wurde, weiss nur der Aufrufer — der Hauptprozess kann
+        # den Knopf nicht vom geschlossenen Fenster unterscheiden.
+        grund = str((daten or {}).get("grund") or "knopf")
+        if not sende("nachklick_stop", verwerfen="1" if verwerfen else "0",
+                     grund=grund):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
         return {"ok": True,
@@ -643,4 +647,4 @@ class BridgeWerkzeugeMixin:
         """
         if not self._nachklick_gestartet:
             return
-        self.nachklick_beenden({"verwerfen": True})
+        self.nachklick_beenden({"verwerfen": True, "grund": "fenster"})

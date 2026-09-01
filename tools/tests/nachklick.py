@@ -496,9 +496,39 @@ _aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
        [_punkt(1, 100, 100), _punkt(2, 200, 200)])
 _ruesten(_s11)
 _klick(_s11, 700, 700, None)
-_bns(_s11, {"verwerfen": "1"})
+_bns(_s11, {"verwerfen": "1", "grund": "fenster"})
 check("der Studio-Abbruch verwirft", (_s11.points[0].x, _s11.points[0].y) == (100, 100))
 check("und beendet die Runde", _s11.nachklick_aktiv is False)
+
+# **Die Meldung sagt, was passiert ist.** Sie lautete fuer JEDES Verwerfen
+# „Studio geschlossen — Runde verworfen" — auch beim Druck auf „Verwerfen" im
+# offenen Fenster. Wer das liest und weiss, dass er nichts geschlossen hat,
+# sucht den Fehler an der falschen Stelle: es sieht aus, als haette sich die
+# Runde von selbst beendet.
+import io as _io_nk
+import contextlib as _cl_nk
+
+
+def _verwerf_text(grund):
+    st = _ST()
+    _aktiv(st, _SEQ(name="Grund", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1), _STEP(point_id=2)])]),
+           [_punkt(1, 10, 10), _punkt(2, 20, 20)])
+    _ruesten(st)
+    puffer = _io_nk.StringIO()
+    with _cl_nk.redirect_stdout(puffer):
+        _bns(st, dict({"verwerfen": "1"}, **({"grund": grund} if grund else {})))
+    return puffer.getvalue()
+
+
+_txt_knopf = _verwerf_text("knopf")
+_txt_fenster = _verwerf_text("fenster")
+check("der Verwerfen-Knopf behauptet kein geschlossenes Fenster",
+      "geschlossen" not in _txt_knopf and "verworfen" in _txt_knopf.lower())
+check("das geschlossene Fenster sagt genau das",
+      "Studio geschlossen" in _txt_fenster)
+check("ohne Grund gilt der Knopf, nicht das Fenster",
+      "geschlossen" not in _verwerf_text(None))
 
 
 # ---------------------------------------------------------------------------
