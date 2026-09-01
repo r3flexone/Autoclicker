@@ -741,11 +741,11 @@ function zeichnePhase(phase) {
 
   if (phase.art === "loop") {
     const wdh = el("input", {type: "number", min: "1", value: phase.wiederholungen,
-                             style: "width:70px", title: "Wiederholungen"});
+                             title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
     wdh.addEventListener("change", () => ruf("phase_setzen",
       {phase: phase.index, feld: "wiederholungen", wert: Number(wdh.value) || 1}));
     const start = el("input", {value: phase.start, placeholder: "HH:MM",
-                               style: "width:74px", title: "Start erst ab dieser Uhrzeit"});
+                               title: "Start erst ab dieser Uhrzeit"});
     start.addEventListener("change", () => ruf("phase_setzen",
       {phase: phase.index, feld: "start", wert: start.value}));
     // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
@@ -758,8 +758,21 @@ function zeichnePhase(phase) {
     // „wegmachen", nicht als „mal". Er steht jetzt unten bei den Sammel-Aktionen
     // und sagt, was er tut (s. u.); hier bleiben nur die beiden Eigenschaften
     // der Phase.
+    //
+    // **Beide Zeilen liegen auf DEMSELBEN Raster** (`auto-fit`, min. 118 px —
+    // dieselbe Regel wie `knopfpaar` darunter). Vorher war das hier ein
+    // `flex` mit fest getippten 70 und 74 px: die Zeile hörte bei rund 60 % auf,
+    // während die Knopfzeile darunter über die volle Breite ging. Zwei Zeilen
+    // mit verschiedenen Kanten übereinander lesen sich als Versehen, und die
+    // beiden Felder waren ausserdem *fast* gleich breit — nah genug, dass es
+    // wie ein Rundungsfehler aussieht, statt wie eine Absicht.
+    //
+    // Damit die halbe Breite auch etwas trägt, bekommen sie ihre Beschriftung:
+    // „× 1" und ein leeres „HH:MM" sagten bis dahin nur im Tooltip, was sie
+    // sind — und ein Tooltip ist keine Beschriftung.
     kopf.appendChild(el("div", {class: "phase-werkzeug"},
-      el("span", {class: "klein mono"}, "×"), wdh, start));
+      el("label", {class: "feld"}, "Läufe je Zyklus", wdh),
+      el("label", {class: "feld"}, "Start ab Uhrzeit", start)));
   }
   // **Was auf ALLE Blöcke der Phase wirkt, steht beieinander** — und nur, wenn
   // es welche gibt. Das Skalieren stand vorher zwischen Wiederholungen und

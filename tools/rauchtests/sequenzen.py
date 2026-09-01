@@ -116,31 +116,60 @@ def lauf():
         f.bild("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
-        # **Nur EIN „×" im Kopf**, und das beschriftet die Wiederholungen. Der
-        # Skalieren-Knopf hiess „Wartezeiten ×" und stand zwischen den beiden
-        # Feldern: ein „×" am ENDE einer Beschriftung liest sich als
-        # „wegmachen", nicht als „mal" — daneben ein zweites als Vorsatz, und
-        # der Kopf sah aus, als liesse sich dort etwas entfernen.
         f.reiter("editor", 600)
-        kopftext = f.text(".phase-kopf.loop")
-        pruefe(kopftext.count("×") == 1,
-               f"nicht genau ein × im Phasenkopf: {kopftext!r}")
+        # **Kein „×" am ENDE einer Beschriftung.** Der Skalieren-Knopf hiess
+        # „Wartezeiten ×" — dort, wo jede andere Oberflaeche ein Schliesskreuz
+        # hat, las sich das als „wegmachen" statt als „mal". Daneben stand ein
+        # zweites × als Vorsatz der Wiederholungen, und der Kopf sah aus, als
+        # liesse sich dort etwas entfernen.
+        knopftexte = f.seite.eval_on_selector_all(
+            ".phase-kopf.loop button", "ns => ns.map(n => n.textContent.trim())")
+        pruefe(not any("×" in t for t in knopftexte),
+               f"ein Knopf im Phasenkopf traegt ein ×: {knopftexte}")
         # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
         # Werkzeugzeile stehen nur die beiden Felder, die die Phase
         # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
         pruefe(f.anzahl(".phase-werkzeug button") == 0,
                "in der Eigenschaften-Zeile der Phase steht ein Knopf")
-        paar = f.seite.eval_on_selector(".phase-kopf.loop .phase-alle", """e => {
-          const b = [...e.querySelectorAll('.btn')];
-          return {anzahl: b.length,
-                  breiten: b.map(n => Math.round(n.getBoundingClientRect().width)),
-                  oben: b.map(n => Math.round(n.getBoundingClientRect().top))};
+        # **Beide Zeilen liegen auf demselben Raster.** Vorher war oben ein
+        # `flex` mit fest getippten 70/74 px und unten ein `knopfpaar`: die
+        # Eigenschaften-Zeile hoerte bei rund 60 % auf, die Knopfzeile ging
+        # ueber die volle Breite. Zwei Kanten uebereinander, die fast, aber
+        # nicht ganz zusammenfallen, lesen sich als Versehen.
+        # Gemessen werden die ZELLEN, nicht die Zeilen-Container: die sind als
+        # Kinder einer Spalten-Flexbox ohnehin immer so breit wie der Kopf —
+        # daran haette ein zu schmaler Inhalt nichts geaendert, und der Test
+        # waere gruen geblieben, ohne die Kante zu sehen, um die es geht.
+        raster = f.seite.eval_on_selector(".phase-kopf.loop", """e => {
+          const kasten = (s) => [...e.querySelectorAll(s)]
+            .map(n => n.getBoundingClientRect());
+          const spanne = (r) => [Math.round(r[0].left),
+                                 Math.round(r[r.length - 1].right)];
+          const zellen = kasten('.phase-werkzeug > *');
+          const knoepfe = kasten('.phase-alle > .btn');
+          return {eig: spanne(zellen), akt: spanne(knoepfe),
+                  zellbreiten: zellen.map(r => Math.round(r.width)),
+                  felder: kasten('.phase-werkzeug input').map(r => Math.round(r.width)),
+                  knoepfe: knoepfe.map(r => Math.round(r.width)),
+                  knopfoben: knoepfe.map(r => Math.round(r.top))};
         }""")
-        pruefe(paar["anzahl"] == 2, f"zwei Sammel-Aktionen erwartet: {paar}")
-        pruefe(len(set(paar["breiten"])) == 1,
-               f"die Sammel-Knoepfe teilen die Zeile nicht gleich: {paar}")
-        pruefe(len(set(paar["oben"])) == 1,
-               f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {paar}")
+        pruefe(raster["eig"] == raster["akt"],
+               f"Eigenschaften und Sammel-Aktionen haben verschiedene Kanten: {raster}")
+        pruefe(len(set(raster["felder"])) == 1,
+               f"die beiden Felder sind verschieden breit: {raster}")
+        # Ein Feld ist so breit wie ein Knopf — dasselbe Raster, nicht nur
+        # zufaellig dieselbe Aussenkante.
+        pruefe(set(raster["felder"]) == set(raster["knoepfe"]),
+               f"Felder und Knoepfe liegen nicht auf demselben Raster: {raster}")
+        pruefe(len(raster["knoepfe"]) == 2 and len(set(raster["knoepfe"])) == 1,
+               f"zwei gleich breite Sammel-Knoepfe erwartet: {raster}")
+        pruefe(len(set(raster["knopfoben"])) == 1,
+               f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {raster}")
+        # Und die Felder sagen selbst, was sie sind — vorher stand das nur im
+        # Tooltip, und ein Tooltip ist keine Beschriftung.
+        kopftext = f.text(".phase-kopf.loop")
+        for wort in ("Läufe je Zyklus", "Start ab Uhrzeit"):
+            pruefe(wort in kopftext, f"'{wort}' fehlt im Phasenkopf: {kopftext!r}")
         f.bild("sequenzen_phasenkopf")
 
         # ------------------------------------------- Die Auswahl gilt ueberall

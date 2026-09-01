@@ -1368,11 +1368,29 @@ Sechs Regeln, an denen der Reiter hängt:
   nennt seine Tätigkeit („Zeiten skalieren …", Auslassungspunkte für „fragt
   noch nach").
 - **Eigenschaften und Sammel-Aktionen stehen nicht in derselben Zeile.** Im
-  Phasenkopf beschreiben Wiederholungen und Startzeit die Phase; „Alle Blöcke
-  wählen" und „Zeiten skalieren" ändern jeden Block darin. Dazwischen gemischt
-  liest sich das Skalieren wie eine dritte Eigenschaft. Die Sammel-Aktionen
-  stehen deshalb unten beieinander als `knopfpaar` — und nur, wenn die Phase
-  überhaupt Blöcke hat.
+  Phasenkopf beschreiben „Läufe je Zyklus" und „Start ab Uhrzeit" die Phase;
+  „Alle Blöcke wählen" und „Zeiten skalieren" ändern jeden Block darin.
+  Dazwischen gemischt liest sich das Skalieren wie eine dritte Eigenschaft. Die
+  Sammel-Aktionen stehen deshalb unten beieinander als `knopfpaar` — und nur,
+  wenn die Phase überhaupt Blöcke hat.
+- **Untereinander stehende Zeilen liegen auf DEMSELBEN Raster.** Der Phasenkopf
+  hatte oben ein `flex` mit fest getippten 70 und 74 px und darunter ein
+  `knopfpaar`: die Eigenschaften-Zeile endete bei 470 px, die Knopfzeile bei
+  584 — und die beiden Felder waren *fast* gleich breit, nah genug, dass es wie
+  ein Rundungsfehler aussieht statt wie Absicht. Beide Zeilen benutzen jetzt
+  dieselbe `auto-fit`-Regel (min. 118 px), also gleiche Spalten, gleiche Kanten
+  und derselbe Umbruchpunkt. Gemessen wird so etwas an den **Zellen**, nicht am
+  Zeilen-Container: der ist als Kind einer Spalten-Flexbox ohnehin immer so
+  breit wie der Kopf, und ein Test darauf bleibt grün, während der Inhalt auf
+  halber Strecke aufhört.
+- **Ein Feld auf halber Breite braucht eine Beschriftung, keinen Tooltip.**
+  Solange die Zeile eng war, mussten „× 1" und ein leeres „HH:MM" sich selbst
+  erklären — das „×" war der Ersatz für das fehlende Wort. Mit der halben
+  Spalte ist Platz für „Läufe je Zyklus" und „Start ab Uhrzeit", und damit
+  entfällt das „×" ersatzlos: es sagt nichts mehr, was nicht dasteht. Nebenbei
+  sind die beiden Eingabefelder dadurch exakt gleich breit — ein Vorsatz vor
+  nur einem der beiden hätte sie um seine eigene Breite gegeneinander
+  verschoben.
 - **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Der Filter „nur aus
   <Scan>" stand als loser Text zwischen lauter Kacheln — Reiterleiste darüber,
   Knopfreihe darunter — und las sich, als gehöre er nicht dazu.
