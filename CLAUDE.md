@@ -2918,6 +2918,23 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   im Punkt. Gemeldet wird einmal je fremdem Fenstertitel; gibt es das Zielfenster
   gerade nicht, wird **nicht** gefiltert und gesagt, warum — ein Filter, der alles
   wegwirft, sähe aus wie ein kaputter Hook.
+
+  **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist**
+  (`get_window_title_at()`, Rückfall auf den Vordergrund). Windows liefert den
+  Button-Down an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
+  durch genau diesen Klick erst aktiv. Im Hook steht damit noch das **vorige**
+  Fenster im Vordergrund, und die Frage „bin ich im Zielfenster?" wird für den
+  Klick davor beantwortet. Ein Klick, der ein anderes Fenster nach vorn holt,
+  zählte deshalb als Klick ins Ziel — in einer echten Runde ist so ein Punkt auf
+  eine Stelle im Studio-Fenster gewandert (Farbe `#1C2333`, dessen eigenes
+  Panel-Grau), unmittelbar nachdem derselbe Filter den Klick davor korrekt
+  abgewiesen hatte. Nachmessbar ohne jede Runde: `get_window_title_at(10, 10)`
+  meldet das Fenster an dieser Stelle, `get_foreground_window_title()` das
+  aktive — auf einem Rechner mit offenem Spiel sind das verschiedene.
+
+  **Mehrere Fenster desselben Spiels sind ausdrücklich in Ordnung.** Geprüft
+  wird der Titel, und drei Instanzen tragen denselben; welche gemeint ist,
+  entscheidet der Nutzer mit dem Klick.
 - **Ein Pixel Abweichung ist keine Korrektur** (`PASST_TOLERANZ`). Der Zeiger wird
   von uns auf die Stelle gesetzt, und trotzdem kommt der Klick gelegentlich einen
   Pixel daneben zurück (DPI-Skalierung). Ohne die Toleranz schriebe jede

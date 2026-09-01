@@ -473,6 +473,32 @@ def is_target_window_active(title_substring: str) -> bool:
     return str(title_substring).casefold() in get_foreground_window_title().casefold()
 
 
+def get_window_title_at(x: int, y: int) -> str:
+    """Titel des Fensters UNTER dieser Stelle — "" wenn keins.
+
+    Der geometrische Gegenpart zum Vordergrund-Titel: ein Klick, der ein
+    Fenster erst aktiviert, wird sonst gegen das VORIGE Fenster geprüft (siehe
+    die ausführliche Begründung im Windows-Backend).
+
+    `liste_fenster()` liefert die sichtbaren Fenster mit ihrem Client-Rechteck,
+    sortiert nach Lage. Eine Stapelreihenfolge kennt X11 hier nicht — bei
+    Überlappung gewinnt deshalb das KLEINSTE treffende Fenster: ein Dialog über
+    einem grossen Spielfenster ist fast immer der obenliegende.
+    """
+    treffer = []
+    for eintrag in liste_fenster():
+        try:
+            titel, rect = eintrag[0], eintrag[1]
+            links, oben, rechts, unten = rect
+        except (TypeError, ValueError, IndexError):
+            continue
+        if links <= x < rechts and oben <= y < unten:
+            treffer.append(((rechts - links) * (unten - oben), titel))
+    if not treffer:
+        return ""
+    return min(treffer)[1]
+
+
 def check_failsafe(state=None) -> bool:
     cfg = state.config if state else CONFIG
     if not cfg.failsafe_enabled:

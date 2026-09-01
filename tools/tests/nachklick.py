@@ -332,12 +332,22 @@ section("Nachklicken: nur Klicks im Zielfenster zählen")
 # ein Schliessen-Kreuz. In einer echten Runde sind so drei Punkte auf
 # Fensterdekoration gewandert (einer auf (3030, 16), also die Titelleiste), und
 # beim Beenden wurde es gespeichert.
+# **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist.**
+# Windows liefert den Button-Down an das Fenster unter dem Zeiger; war das nicht
+# das aktive, wird es durch genau diesen Klick erst aktiv. Im Hook steht damit
+# noch das VORIGE Fenster im Vordergrund, und ein Klick, der ein anderes Fenster
+# nach vorn holt, zaehlte als Klick ins Ziel. Genau so ist in einer echten Runde
+# ein Punkt auf eine Stelle im Studio-Fenster gewandert (Farbe #1C2333, dessen
+# eigenes Panel-Grau) — unmittelbar nachdem derselbe Filter den Klick davor
+# korrekt abgewiesen hatte.
 _vordergrund = ["Idle Clans"]
-_echt_aktiv = _nk.is_target_window_active
+_geklickt = [None]          # None = dieselbe Antwort wie der Vordergrund
 _echt_titel = _nk.get_foreground_window_title
+_echt_unter = _nk.get_window_title_at
 _echt_rect = _nk.get_client_rect_by_title
-_nk.is_target_window_active = lambda t: t.lower() in _vordergrund[0].lower()
 _nk.get_foreground_window_title = lambda: _vordergrund[0]
+_nk.get_window_title_at = lambda x, y: (
+    _vordergrund[0] if _geklickt[0] is None else _geklickt[0])
 _nk.get_client_rect_by_title = lambda t: (0, 0, 800, 600)
 try:
     _s6 = _ST()
@@ -357,7 +367,29 @@ try:
     _klick(_s6, 640, 480, None)
     check("im Zielfenster zählt derselbe Klick",
           [e[2] for e in _s6.nachklick_gesetzt] == [(640, 480)])
-    _stop(_s6, "Test")
+
+    # Der Fall, der in der echten Runde durchgerutscht ist: das Spiel ist noch
+    # VORN, geklickt wird aber ins Studio — der Klick holt es gerade erst nach
+    # vorn. Wer den Vordergrund fragt, bekommt „Idle Clans" und setzt den Punkt
+    # auf eine Stelle im Studio.
+    _geklickt[0] = "Sequenz-Studio"
+    _vorher = list(_s6.nachklick_gesetzt)
+    _index_vorher = _s6.nachklick_index
+    _klick(_s6, 757, 634, None)
+    check("ein Klick, der ein fremdes Fenster erst nach vorn holt, zählt nicht",
+          list(_s6.nachklick_gesetzt) == _vorher)
+    check("und verbraucht auch dann den Punkt nicht",
+          _s6.nachklick_index == _index_vorher)
+
+    # Umgekehrt: das Studio ist vorn, geklickt wird ins Spiel. Der Klick gilt.
+    # Mit diesem zweiten Punkt ist die Runde durch und schreibt sofort — die
+    # Liste der offenen Stellen ist danach leer, geprüft wird also der Punkt.
+    _vordergrund[0] = "Sequenz-Studio"
+    _geklickt[0] = "Idle Clans"
+    _klick(_s6, 321, 123, None)
+    check("ein Klick, der das Spiel erst nach vorn holt, zählt",
+          (_s6.points[1].x, _s6.points[1].y) == (321, 123))
+    _geklickt[0] = None
 
     # Ohne auffindbares Fenster wird NICHT gefiltert: ein Filter, der alles
     # wegwirft, sieht aus wie ein kaputter Hook.
@@ -372,8 +404,8 @@ try:
     # Der einzige Punkt beendet die Runde, also ist er danach schon geschrieben.
     check("und jeder Klick zählt", (_s7.points[0].x, _s7.points[0].y) == (55, 66))
 finally:
-    _nk.is_target_window_active = _echt_aktiv
     _nk.get_foreground_window_title = _echt_titel
+    _nk.get_window_title_at = _echt_unter
     _nk.get_client_rect_by_title = _echt_rect
 
 

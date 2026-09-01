@@ -572,18 +572,30 @@ def send_key(key_name: str) -> bool:
     return True
 
 
+# `WindowFromPoint` nimmt den POINT BY VALUE und gibt ein Handle zurueck: ohne
+# `restype` faellt ctypes auf `c_int` zurueck und schneidet es auf 64 Bit ab.
+user32.WindowFromPoint.argtypes = [wintypes.POINT]
+user32.WindowFromPoint.restype = wintypes.HWND
+user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+user32.GetAncestor.restype = wintypes.HWND
+
+
+def _fenster_titel(hwnd) -> str:
+    """Der Titel eines Fensters — "" bei Fehler oder ohne Titel."""
+    if not hwnd:
+        return ""
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buffer, length + 1)
+    return buffer.value or ""
+
+
 def get_foreground_window_title() -> str:
     """Gibt den Titel des aktuellen Vordergrund-Fensters zurück (leer bei Fehler)."""
     try:
-        hwnd = user32.GetForegroundWindow()
-        if not hwnd:
-            return ""
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return ""
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buffer, length + 1)
-        return buffer.value or ""
+        return _fenster_titel(user32.GetForegroundWindow())
     except (OSError, AttributeError):
         return ""
 
@@ -597,6 +609,32 @@ def is_target_window_active(title_substring: str) -> bool:
         return True
     current = get_foreground_window_title()
     return title_substring.lower() in current.lower()
+
+
+def get_window_title_at(x: int, y: int) -> str:
+    """Titel des Fensters UNTER dieser Bildschirmstelle — "" wenn keins.
+
+    **Warum das etwas anderes ist als der Vordergrund.** Windows liefert einen
+    Klick an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
+    durch genau diesen Klick erst aktiv. Zur Zeit des Button-Down steht im
+    Vordergrund also noch das VORIGE Fenster. Wer im Maus-Hook fragt „bin ich
+    im Zielfenster?", bekommt damit die Antwort für den Klick davor — und ein
+    Klick, der ein anderes Fenster nach vorn holt, zählt fälschlich als Klick
+    ins Ziel.
+
+    `WindowFromPoint` kennt diese Verzögerung nicht: es beantwortet die Frage
+    geometrisch. `GetAncestor(GA_ROOT)` steigt vom getroffenen Steuerelement
+    zum Fenster auf — sonst käme bei einem Knopf dessen leerer Titel zurück.
+    """
+    try:
+        punkt = wintypes.POINT(int(x), int(y))
+        hwnd = user32.WindowFromPoint(punkt)
+        if not hwnd:
+            return ""
+        wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+        return _fenster_titel(wurzel or hwnd)
+    except Exception:
+        return ""
 
 
 # Fenster-Geometrie (für fenster-basiertes Koordinaten-Remapping bei Import/Export)
