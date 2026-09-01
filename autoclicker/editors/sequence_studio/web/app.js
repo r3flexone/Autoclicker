@@ -455,6 +455,16 @@ function fokusMerken() {
   const neu = umbenannt && umbenannt.von === kasten.id ? umbenannt.nach : kasten.id;
   // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
   // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
+  //
+  // Den noch nicht gemeldeten WERT braucht es hier NICHT, und das ist einen
+  // Satz wert, weil es nach einer Luecke aussieht: Tipp-Felder melden erst
+  // beim Verlassen, ein Neuaufbau mitten in der Eingabe muesste das Getippte
+  // also verlieren. Tut er nicht — wird ein fokussiertes, geaendertes `input`
+  // aus dem Dokument entfernt, feuert der Browser vorher sein `change`, und
+  // der Wert ist gemeldet, bevor der Knoten verschwindet. Ihn hier zusaetzlich
+  // zu retten waere nicht nur ueberfluessig, sondern falsch: bei einem
+  // abgelehnten Namen (schon vergeben) stuende danach der abgelehnte Text im
+  // Feld, waehrend die Daten den alten tragen.
   return {id: neu, alt: kasten.id, i: i, start: start, ende: ende};
 }
 
@@ -5191,12 +5201,44 @@ async function wzAufnahmeStoppen() {
   if (antwort.ok) wzAufnahmeBeobachten(true);
 }
 
-/** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke. */
+/** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke.
+ *
+ * **Gefragt wird erst, wenn es etwas zu finden gibt.** `sequenz_liste()` laedt
+ * JEDE Sequenzdatei einzeln (Migration und Punkt-Aufloesung inklusive) — genau
+ * deshalb zieht `zeichne()` sie nicht nach. Der langsame Zweig rief sie
+ * trotzdem im Sekundentakt, unbegrenzt, ab dem Druck auf „Aufnahme starten":
+ * also waehrend der ganzen Aufnahme, und die dauert per Definition lange, weil
+ * der Nutzer so lange im Spiel ist. Solange die Aufnahme laeuft, kann die Datei
+ * aber gar nicht da sein — `stop_recording()` schreibt sie. Der billige
+ * Live-Stand (eine kleine JSON-Datei) sagt, wann das so weit ist.
+ *
+ * Die Wartezeit selbst bleibt unbegrenzt: eine Stunde aufzunehmen ist erlaubt.
+ * Begrenzt wird nur der Fall, in dem die Aufnahme NIE anlaeuft — dann hoert
+ * niemand zu, und das ist eine Meldung wert statt eines stillen Dauerlaufs. */
 function wzAufnahmeBeobachten(schnell = false) {
   const nummer = ++wzAufnahmePoll;
   let versuche = 0;
   const pruefen = async () => {
     if (nummer !== wzAufnahmePoll || !wzAufnahmeGestartet) return;
+    if (!schnell) {
+      // Laeuft sie noch, gibt es nichts zu holen: billig warten statt fragen.
+      if (wzAufnahmeLive && wzAufnahmeLive.aktiv) {
+        versuche = 0;
+        return void setTimeout(pruefen, 1000);
+      }
+      // Der Zaehler steht nur still, solange die Aufnahme laeuft (oben auf 0
+      // gesetzt). Eine Minute Suchen ohne laufende Aufnahme heisst also
+      // entweder „nie angelaufen" oder „gestoppt, aber nichts geschrieben" —
+      // beides gehoert gesagt statt still weitergedreht.
+      if (versuche >= 60) {
+        wzAufnahmeGestartet = false;
+        ++wzAufnahmeLivePoll;
+        wzMitteZeichnen();
+        setzeStatus({text: "Keine laufende Aufnahme — hört der Hauptprozess zu?",
+                     art: "warn"});
+        return;
+      }
+    }
     const liste = (await frage("sequenz_liste")) || [];
     if (liste.some(s => s.name === wzAufnahmeName)) {
       wzAufnahmeGestartet = false;
@@ -6343,6 +6385,14 @@ function tastatur(e) {
       return rufScan("scan_verschieben",
                      {dx: schub[0] * weit, dy: schub[1] * weit, zaehlt: !serie});
     }
+    // **Ein Buchstabe ist erst ohne Modifikator ein Werkzeug.** Die Kacheln
+    // liegen auf V/G/S/F/K/B, die Erkennungs-Werkzeuge auf R/K/T — und geprueft
+    // wurde nur der Buchstabe. Damit schaltete STRG+F (Reflex „suchen") auf
+    // „Hintergrundfarbe", STRG+B auf „Bereich" und STRG+R auf „Region": nichts
+    // sichtbar passiert, aber der NAECHSTE Klick im Bild tut etwas anderes als
+    // erwartet. Genau die Sorte Falle, die ein Modus haben darf und ein
+    // Tastendruck nicht. STRG+S und STRG+Z sind vorher schon abgefangen.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     // **Die Modus-Buchstaben gehoeren der Item-Art.** Ein „S" in der Boss-Ansicht
     // legte sonst einen Slot an — ein Werkzeug fuer etwas, das dort gar nicht
     // vorkommt, und der naechste Klick im Bild haette eine andere Wirkung als

@@ -326,6 +326,64 @@ def lauf():
         pruefe(any("BESTÄTIGUNGSKLICK" in b for b in beschriftungen),
                f"kein Bestaetigungsklick in der Item-Maske: {beschriftungen}")
 
+        # **Ein Buchstabe ist erst ohne Modifikator ein Werkzeug.** Geprueft
+        # wurde nur der Buchstabe: STRG+F (Reflex „suchen") schaltete damit auf
+        # „Hintergrundfarbe", STRG+B auf „Bereich". Sichtbar passiert nichts —
+        # aber der naechste Klick im Bild misst dann eine Farbe, statt
+        # auszuwaehlen.
+        #
+        # Der Fokus muss dafuer AUS dem Textfeld heraus: in einem Eingabefeld
+        # kehrt `tastatur()` schon vorher um, und der Test waere gruen, ohne je
+        # die Stelle erreicht zu haben, um die es geht.
+        f.seite.evaluate("document.activeElement && document.activeElement.blur()")
+        for taste, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
+            f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
+            f.seite.wait_for_timeout(250)
+            f.seite.keyboard.press(f"Control+{taste}")
+            f.seite.wait_for_timeout(300)
+            modus = f.seite.evaluate("SC.modus")
+            pruefe(modus == "wahl", f"{name} wechselt den Modus auf '{modus}'")
+        # Ohne Modifikator muss der Buchstabe weiterhin greifen — sonst hat der
+        # Riegel das Werkzeug gleich mit abgeschaltet. Erst aus dem Textfeld
+        # heraus: in einem Eingabefeld ist „F“ ein Buchstabe und kein Werkzeug.
+        f.seite.evaluate("document.activeElement && document.activeElement.blur()")
+        f.seite.keyboard.press("f")
+        f.seite.wait_for_timeout(300)
+        pruefe(f.seite.evaluate("SC.modus") == "messen",
+               "„F“ allein schaltet nicht mehr auf „Hintergrundfarbe“")
+        f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
+        f.seite.wait_for_timeout(250)
+
+        # **Was getippt und noch nicht gemeldet ist, ueberlebt das
+        # Auto-Speichern.** Es ist der einzige Neuaufbau, der an der Uhr haengt
+        # statt am Nutzer (900 ms nach der letzten Aenderung) — er trifft also
+        # als einziger ein Feld, in dem gerade getippt wird. Dass nichts
+        # verlorengeht, liegt am Browser: ein fokussiertes, geaendertes `input`
+        # feuert sein `change`, bevor es aus dem Dokument fliegt. Das steht hier
+        # als Zusicherung, nicht als Beiwerk — faellt es weg, verschluckt das
+        # Fenster Tastendruecke, und man sucht den Fehler in der Bruecke.
+        f.klick_text("#scan-insp .tabs .tab", "Items")
+        f.seite.wait_for_timeout(300)
+        # Das Namensfeld traegt kein `type` (s. `maskeName`) — ein Selektor auf
+        # `[type=text]` findet es deshalb nicht.
+        felder = "#scan-insp .scan-maske .scan-maske-felder > input:not([type])"
+        namen = f.seite.locator(felder)
+        if namen.count() >= 2:
+            namen.nth(0).fill("Zuerst")
+            namen.nth(0).press("Tab")          # meldet und plant das Speichern
+            f.seite.wait_for_timeout(120)
+            f.seite.locator(felder).nth(1).click()
+            f.seite.locator(felder).nth(1).type("Getippt", delay=20)
+            getippt = f.seite.locator(felder).nth(1).input_value()
+            f.seite.wait_for_timeout(1800)     # laenger als die 900 ms
+            pruefe(getippt in (f.seite.evaluate("SC.items.map(i => i.name)") or []),
+                   f"das Getippte ({getippt!r}) kam nicht in den Daten an: "
+                   f"{f.seite.evaluate('SC.items.map(i => i.name)')}")
+            pruefe(not f.seite.evaluate("SC.dirty"),
+                   "der Entwurf wurde nicht von selbst gespeichert")
+        else:
+            fehler.append("keine zwei Item-Namensfelder fuer die Tipp-Probe")
+
         fehler.extend(f.fehler)
     return fehler
 

@@ -148,6 +148,41 @@ def lauf():
         pruefe("bernommen" in f.status(), f"Uebernehmen: {f.status()!r}")
         f.bild("wz_klick")
 
+        # --- Der Aufnahme-Waechter fragt erst, wenn es etwas zu finden gibt ---
+        # `sequenz_liste()` laedt JEDE Sequenzdatei einzeln — genau deshalb
+        # zieht `zeichne()` sie nicht nach. Der langsame Zweig rief sie
+        # trotzdem im Sekundentakt ab dem Druck auf „Aufnahme starten", also
+        # waehrend der ganzen Aufnahme; und die dauert lange, weil der Nutzer
+        # so lange im Spiel ist. Solange sie laeuft, kann die Datei aber gar
+        # nicht da sein.
+        gezaehlt = f.seite.evaluate("""() => {
+          window.__liste = 0;
+          const alt = window.frage;
+          window.frage = async function (name, daten) {
+            if (name === "sequenz_liste") window.__liste++;
+            return alt(name, daten);
+          };
+          // Aufnahme laeuft: der Waechter darf nur warten.
+          wzAufnahmeGestartet = true;
+          wzAufnahmeName = "Gibt-Es-Nicht";
+          wzAufnahmeLive = {aktiv: true, pausiert: false, anzahl: 0, ereignisse: []};
+          wzAufnahmeBeobachten();
+          return true;
+        }""")
+        pruefe(gezaehlt, "der Waechter liess sich nicht anwerfen")
+        f.seite.wait_for_timeout(3400)
+        waehrend = f.seite.evaluate("window.__liste")
+        pruefe(waehrend == 0,
+               f"der Waechter fragt waehrend der laufenden Aufnahme: {waehrend}x")
+        # Endet sie, muss er sofort nachsehen — sonst faende er sie nie.
+        f.seite.evaluate("wzAufnahmeLive = {aktiv: false, pausiert: false, "
+                         "anzahl: 0, ereignisse: []}")
+        f.seite.wait_for_timeout(2400)
+        danach = f.seite.evaluate("window.__liste")
+        pruefe(danach > 0, "nach dem Ende der Aufnahme fragt der Waechter gar nicht")
+        f.seite.evaluate("wzAufnahmeGestartet = false; ++wzAufnahmePoll; "
+                         "++wzAufnahmeLivePoll;")
+
         fehler.extend(f.fehler)
     return fehler
 
