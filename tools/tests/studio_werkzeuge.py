@@ -354,8 +354,21 @@ check("alle Laufentscheidungen haben sichtbare Knöpfe",
       all(text in _app for text in ("Warten überspringen", "Block überspringen",
                                     "Zyklus abschliessen",
                                     "Schrittweise", "Start planen", "Ausführen")))
-check("Blockkarten zeigen eine sichtbare Mehrfachauswahl",
-      'class: "karte-auswahl"' in _app and '"phase_auswahl"' in _app)
+# Die Auswahl ist SICHTBAR und ERREICHBAR — aber nicht mehr über ein Kästchen.
+# Das sagte dasselbe wie der Amber-Ring, konnte nichts, was STRG+Klick nicht auch
+# kann („dazu" ist derselbe Befehl), und ein Kästchen heisst im Rest des Fensters
+# „gehört dazu"/„ist an". Geprüft wird deshalb die Eigenschaft, nicht das Bauteil:
+# eine gewählte Karte trägt eine eigene Klasse, die Gesten stehen an der Karte,
+# und „alle wählen" gibt es weiterhin.
+check("die gewählte Blockkarte ist sichtbar markiert",
+      '" gewaehlt"' in _app and '.karte.gewaehlt{' in _css)
+check("Mehrfachauswahl ist erreichbar und benannt",
+      '"phase_auswahl"' in _app
+      and 'e.ctrlKey || e.metaKey ? "dazu"' in _app
+      and 'e.shiftKey ? "bereich" : "einzeln"' in _app
+      and "STRG+Klick" in _app)
+check("kein Auswahl-Kästchen auf der Karte — der Ring sagt es schon",
+      "karte-auswahl" not in _app and "karte-auswahl" not in _css)
 check("Mehrfachauswahl hat gemeinsame Wartezeiten und den 0,5-s-Knopf",
       'function zeichneSammelEditor' in _app and '[0, 0.5, 1]' in _app)
 check("leere Start- und Abschlussphasen werden nur bei Bedarf eingeblendet",

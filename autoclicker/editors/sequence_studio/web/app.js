@@ -870,19 +870,18 @@ function zeichneKarte(phase, block) {
       block.else_text + (block.else_greift ? "" : " · greift nie")));
   }
 
-  const auswahl = el("input", {
-    type: "checkbox", class: "karte-auswahl", checked: block.gewaehlt,
-    title: block.gewaehlt ? "Aus Auswahl entfernen" : "Zur Auswahl hinzufügen",
-    onclick: (e) => {
-      e.stopPropagation();
-      gewaehltePhase = null;
-      ruf("waehlen", {phase: phase.index, zeile: block.zeile, modus: "dazu"});
-    },
-    onmousedown: (e) => e.stopPropagation(),
-  });
-
+  // **Kein Auswahl-Häkchen mehr.** Es sagte dasselbe wie der Amber-Ring um die
+  // Karte, nur kleiner — und es konnte nichts, was STRG+Klick nicht auch kann
+  // („dazu" ist derselbe Befehl). Dazu kam eine Zweideutigkeit über den ganzen
+  // Baum: im Scans-Reiter heisst ein Kästchen „gehört dazu" bzw. „ist an", hier
+  // hiess es „ist gerade gewählt". Zwei Bedeutungen für dasselbe Bedienelement,
+  // und die Karte trug beide Zeichen gleichzeitig. Was die Gesten sind, steht
+  // jetzt am Titel der Karte statt in einem Kästchen, das man erst anfassen
+  // muss, um es zu verstehen.
   return el("div", {
     class: "karte" + (block.gewaehlt ? " gewaehlt" : ""),
+    title: "Klick wählt · STRG+Klick nimmt dazu oder heraus · "
+           + "SHIFT+Klick wählt bis hierher · Ziehen sortiert um",
     draggable: "true",
     onclick: (e) => {
       gewaehltePhase = null;
@@ -908,7 +907,6 @@ function zeichneKarte(phase, block) {
     },
   },
     el("div", {class: "karte-kopf", style: "background:" + block.farbe},
-      auswahl,
       el("span", {class: "karte-typ"}, block.label),
       block.titel ? el("span", {class: "karte-titel"}, block.titel) : null,
       block.prueft ? el("span", {class: "marke-klein", title: "prüft nach der Aktion nach"},

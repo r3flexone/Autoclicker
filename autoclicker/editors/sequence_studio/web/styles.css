@@ -298,11 +298,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
    (#0C0F14) — die Grundfarben sind hell. */
 .karte-kopf{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
-.karte-auswahl{appearance:none;width:15px;height:15px;flex:none;margin:0;cursor:pointer;
-  border:1.5px solid #0C0F1499;border-radius:3px;background:#FFFFFF55;position:relative}
-.karte-auswahl:checked{background:#0C0F14;border-color:#0C0F14}
-.karte-auswahl:checked::after{content:"";position:absolute;left:3px;top:0;width:5px;height:9px;
-  border:solid white;border-width:0 2px 2px 0;transform:rotate(45deg)}
 .karte-typ{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
   color:#0C0F14;padding:0;background:none;flex:none;opacity:.75}
 .karte-titel{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;

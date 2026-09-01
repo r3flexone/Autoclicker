@@ -1358,6 +1358,16 @@ Sechs Regeln, an denen der Reiter hängt:
   aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
   liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
   Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Ein Kästchen heisst „gehört dazu", nicht „ist gewählt".** Die Blockkarten
+  trugen eines für die Auswahl — es sagte dasselbe wie der Amber-Ring um die
+  Karte, nur kleiner, und konnte nichts, was STRG+Klick nicht auch kann („dazu"
+  ist derselbe Befehl). Schlimmer war die Zweideutigkeit über den ganzen Baum:
+  im Scans-Reiter bedeutet ein Kästchen „gehört zu diesem Scan" bzw. „ist an",
+  hier bedeutete es „ist gerade markiert" — und eine gewählte Karte trug beide
+  Zeichen gleichzeitig. Das Kästchen ist ersatzlos weg; **der Zustand wird
+  ringsum markiert** (dieselbe Regel wie überall sonst), und was die Gesten
+  sind, steht am Titel der Karte statt in einem Bedienelement, das man erst
+  anfassen muss, um es zu verstehen.
 - **Ein „×" am ENDE einer Beschriftung heisst „wegmachen".** Im Phasenkopf
   hiess der Skalieren-Knopf „Wartezeiten ×" und stand zwischen Wiederholungen
   und Startzeit — daneben das „×", das die Wiederholungen beschriftet. Zwei
