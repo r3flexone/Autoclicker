@@ -38,15 +38,26 @@
       <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
-    <!-- Alles rechts der Reiter gehoert der SEQUENZ. In den Einstellungen wird
-         es ausgeblendet: zwei Speichern-Knoepfe fuer zwei verschiedene Dateien
-         in einer Leiste sind eine Falle — dort speichert nur die rechte Spalte. -->
-    <div class="trenner" data-sequenz></div>
-    <div class="reihe" data-sequenz>
+    <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
+         Auswahl ueberall, ohne Ausnahme. Sie war frueher mit dem Rest
+         ausgeblendet, und das war eine Verwechslung zweier Dinge: die Falle
+         sind zwei SPEICHERN-Knoepfe fuer zwei Dateien in einer Leiste (s. u.),
+         nicht die Auswahl. Ohne sie musste man fuer einen Wechsel erst in den
+         Editor zurueck — ausgerechnet in den Reitern, die am staerksten an der
+         Sequenz haengen: Scans, Teilen und Werkzeuge arbeiten alle in
+         `sequences/<name>/`. Nebenbei behaelt der Kopf damit in jedem Reiter
+         dieselbe Gestalt, statt beim Umschalten drei Gruppen zu verlieren. -->
+    <div class="trenner"></div>
+    <div class="reihe">
       <select id="seq-auswahl" style="width:200px"></select>
       <button class="btn" id="btn-laden">Laden</button>
       <button class="btn" id="btn-neu">Neu</button>
     </div>
+    <!-- Das SPEICHERN bleibt dagegen bei der Sequenz. Scans, Teilen, Werkzeuge
+         und Einstellungen schreiben andere Dateien und haben ihren eigenen
+         Knopf; zwei Speichern-Knoepfe fuer zwei Dateien in einer Leiste sind
+         die Falle, um die es hier geht. Dasselbe gilt fuer „Starten": es
+         startet die Sequenz, nicht den Reiter. -->
     <div class="trenner" data-sequenz></div>
     <div class="reihe" data-sequenz>
       <button class="btn haupt" id="btn-speichern">Speichern</button>

@@ -115,6 +115,43 @@ def lauf():
                f"der Block scrollt mit: {vorher} -> {nachher}")
         f.bild("sequenzen_editor")
 
+        # ------------------------------------------- Die Auswahl gilt ueberall
+        # **Welche Sequenz offen ist, gilt in JEDEM Reiter.** Sie war frueher
+        # mit dem Speichern-Knopf zusammen ausgeblendet — und damit musste man
+        # fuer einen Wechsel erst in den Editor zurueck, ausgerechnet aus den
+        # Reitern, die am staerksten an der Sequenz haengen.
+        for reiter in ("editor", "sequenzen", "lauf", "scans",
+                       "teilen", "werkzeuge", "einstellungen"):
+            f.reiter(reiter, 400)
+            sichtbar = f.seite.eval_on_selector_all(
+                "#seq-auswahl, #btn-laden, #btn-neu",
+                "ns => ns.filter(n => n.offsetParent !== null).length")
+            pruefe(sichtbar == 3,
+                   f"im Reiter '{reiter}' fehlt die Sequenz-Auswahl "
+                   f"({sichtbar}/3 sichtbar)")
+        # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
+        # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
+        f.reiter("scans", 500)
+        pruefe(not f.seite.eval_on_selector(
+            "#btn-speichern", "e => e.offsetParent !== null"),
+            "der Sequenz-Speichern-Knopf steht im Scans-Reiter")
+
+        # **Der offene Reiter folgt dem Wechsel.** Scans, Teilen und Werkzeuge
+        # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den
+        # `zeichne()` nicht anfasst — ohne das Nachziehen stuenden dort die
+        # Daten der VORIGEN Sequenz unter dem Namen der neuen.
+        f.reiter("werkzeuge", 600)
+        f.klick_text("#wz-links button", "Punkte nachklicken", warten=500)
+        pruefe("Alpha" in f.text("#wz-mitte"),
+               f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-mitte')[:120]!r}")
+        f.seite.select_option("#seq-auswahl", "Beta")
+        f.klick("#btn-laden", warten=900)
+        pruefe(f.seite.eval_on_selector("#seq-auswahl", "e => e.value") == "Beta",
+               "die Auswahl steht nach dem Laden nicht auf 'Beta'")
+        pruefe("Beta" in f.text("#wz-mitte"),
+               f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
+               f"{f.text('#wz-mitte')[:120]!r}")
+
         fehler.extend(f.fehler)
     return fehler
 

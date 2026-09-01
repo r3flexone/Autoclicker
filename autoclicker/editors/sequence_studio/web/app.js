@@ -517,11 +517,24 @@ function warteAufBruecke() {
 async function ruf(name, daten) {
   try {
     const antwort = await window.pywebview.api[name](daten === undefined ? null : daten);
-    if (name === "laden" || name === "neu") {
+    const wechsel = name === "laden" || name === "neu";
+    if (wechsel) {
       gewaehltePhase = null;
       offeneSonderphasen.clear();
     }
     uebernimm(antwort);
+    // **Der offene Reiter muss dem Wechsel folgen.** Scans, Teilen und
+    // Werkzeuge lesen alle aus `sequences/<name>/` — ihre Ansicht haengt aber
+    // an eigenem Zustand (`SC`, `T`, `W`), den `zeichne()` nicht anfasst. Seit
+    // die Auswahl in JEDEM Reiter steht, kann der Wechsel auch von dort
+    // kommen, und dann stuenden dort die Slots, Zahlen und Punkte der VORIGEN
+    // Sequenz — mit dem Namen der neuen im Kopf. Genau die Sorte stiller
+    // Fehlanzeige, bei der man den Fehler in den Daten sucht.
+    //
+    // Nur bei einem WIRKLICHEN Wechsel: hat die Bruecke stattdessen nach
+    // ungespeicherten Aenderungen gefragt, ist noch gar nichts geladen —
+    // `fortfahren()` kommt danach ohnehin hier vorbei.
+    if (wechsel && S && !S.frage && ansicht !== "editor") setzeAnsicht(ansicht);
   } catch (e) {
     setzeStatus({text: String(e && e.message ? e.message : e), art: "err"});
   }
@@ -6105,6 +6118,34 @@ async function cfgSpeichern() {
   zeichneEinstellungen();
 }
 
+/** Die Sequenz wechseln — erst offene Scan-Änderungen wegschreiben.
+ *
+ * Die Rückfrage nach ungespeicherten Änderungen kennt nur die SEQUENZ
+ * (`_dirty`); die Scans haben ihren eigenen Merker (`_scan_dirty`), und
+ * `laden` wirft sie über `_scan_init()` wortlos weg. Erreichbar war das kaum,
+ * solange die Auswahl nur im Editor stand — jetzt steht sie im Scans-Reiter
+ * selbst, also direkt neben der Arbeit, die verlorenginge.
+ *
+ * Gefragt wird trotzdem nicht: der Reiter speichert ohnehin von selbst (900 ms
+ * nach der letzten Änderung), ein Verwerfen-Modell gibt es dort gar nicht. Das
+ * hier ist derselbe Griff, nur sofort statt nach der Wartezeit. Scheitert er —
+ * etwa weil die Sequenzdatei ausserhalb geändert wurde —, bleibt es beim
+ * bisherigen Stand, statt die Arbeit im Vorbeigehen mitzunehmen.
+ */
+async function sequenzWechseln(befehl, daten) {
+  if (SC && SC.dirty) {
+    const antwort = await frage("scan_speichern");
+    if (antwort) {
+      SC = antwort;
+      if (SC.dirty) {                       // nicht geschrieben — Grund steht drin
+        await zeichneScans();
+        return;
+      }
+    }
+  }
+  return ruf(befehl, daten);
+}
+
 /* --------------------------------------------------------------- Verdrahtung */
 
 function verdrahte() {
@@ -6112,10 +6153,10 @@ function verdrahte() {
     t.addEventListener("click", () => setzeAnsicht(t.dataset.ansicht));
 
   $("btn-laden").addEventListener("click",
-    () => ruf("laden", {name: $("seq-auswahl").value}));
+    () => sequenzWechseln("laden", {name: $("seq-auswahl").value}));
   $("seq-auswahl").addEventListener("dblclick",
-    () => ruf("laden", {name: $("seq-auswahl").value}));
-  $("btn-neu").addEventListener("click", () => ruf("neu"));
+    () => sequenzWechseln("laden", {name: $("seq-auswahl").value}));
+  $("btn-neu").addEventListener("click", () => sequenzWechseln("neu"));
   $("btn-speichern").addEventListener("click", speichere);
   $("btn-aufnahme").addEventListener("click", () => wzOeffnen("aufnahme"));
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit

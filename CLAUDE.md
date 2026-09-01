@@ -969,6 +969,32 @@ Ausflug überleben.
 | Werkzeuge | prüfen, kalibrieren, Klick-Runde | `werkzeug_daten()` + `werkzeug_/kalib_*` |
 | Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
+**Welche Sequenz offen ist, gilt in JEDEM Reiter — also steht die Auswahl
+überall.** Sie war früher zusammen mit dem Speichern-Knopf ausgeblendet, und das
+verwechselte zwei Dinge: die Falle sind zwei **Speichern**-Knöpfe für zwei
+Dateien in einer Leiste, nicht die Auswahl. Für einen Wechsel musste man
+deshalb erst in den Editor zurück — ausgerechnet aus den Reitern, die am
+stärksten an der Sequenz hängen (Scans, Teilen und Werkzeuge arbeiten alle in
+`sequences/<name>/`). Nebenbei behält der Kopf damit in jedem Reiter dieselbe
+Gestalt, statt beim Umschalten drei Gruppen zu verlieren.
+
+Zwei Dinge hängen daran, und ohne sie wäre es ein Rückschritt:
+
+- **Der offene Reiter folgt dem Wechsel** (`ruf()` ruft danach `setzeAnsicht`
+  erneut). Scans, Teilen und Werkzeuge hängen an eigenem Zustand (`SC`, `T`,
+  `W`), den `zeichne()` nicht anfasst — sonst stünden dort die Slots, Zahlen und
+  Punkte der **vorigen** Sequenz unter dem Namen der neuen. Nicht bei einer
+  Rückfrage (`S.frage`): dann ist noch gar nichts geladen.
+- **Offene Scan-Änderungen werden vorher weggeschrieben** (`sequenzWechseln()`).
+  Die Rückfrage nach ungespeicherten Änderungen kennt nur die Sequenz
+  (`_dirty`); die Scans haben ihren eigenen Merker (`_scan_dirty`), und `laden`
+  wirft sie über `_scan_init()` wortlos weg. Gefragt wird trotzdem nicht — der
+  Reiter speichert ohnehin von selbst, ein Verwerfen-Modell gibt es dort gar
+  nicht. Scheitert das Schreiben, bleibt es beim bisherigen Stand.
+
+Speichern und Starten bleiben dagegen bei der Sequenz: sie meinen die Sequenz,
+nicht den Reiter.
+
 **Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
 befiehlt und **ersetzt** mit der Antwort die Momentaufnahme `S`; `frage()` fragt nur
 und lässt `S` in Ruhe. Übersicht, Laufstatus und die Einstellungen geben keine
@@ -994,8 +1020,8 @@ Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogi
 in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
 Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `sequences/<name>/item_scans/<n>.json` — Slots und Items stehen
 darin, es gibt keine globalen Listen daneben — also wieder andere Dateien
-als der Editor, weshalb auch hier die Sequenz-Bedienelemente im Kopf verschwinden
-und ein eigener Speichern-Knopf rechts steht.
+als der Editor, weshalb auch hier das Sequenz-**Speichern** im Kopf verschwindet
+und ein eigener Speichern-Knopf rechts steht. Die **Auswahl** bleibt (s. u.).
 
 **Der Item-Scan ist das Übergeordnete, nicht die Auswahl.** Wer mehrere Spiele
 betreibt, hat alle Slots und Items aller Spiele in einer Liste — und keiner davon
@@ -2016,10 +2042,11 @@ die abweichende Farbe, nicht eine schon erfasste Stelle) — ohne den Kasten sah
 der Knopf aber aus, als täte er nichts.
 
 
-**Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet ihre
-Sequenz-Bedienelemente hier aus (der Reiter bearbeitet andere Dateien) — damit war
-aber auch der Sequenzname weg, und bei der Klick-Runde ist das genau die Frage, die
-man sich stellt. Ein einzelner Name oben wäre trotzdem falsch gewesen: Prüfen und
+**Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet hier ihr
+Sequenz-Speichern aus (der Reiter bearbeitet andere Dateien) — und blendete
+lange auch die Auswahl mit aus, womit der Sequenzname weg war; bei der
+Klick-Runde ist das genau die Frage, die man sich stellt. Ein einzelner Name
+oben wäre trotzdem falsch gewesen: Prüfen und
 Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
 Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzBezug()`), und
 links steht die offene Sequenz als Einordnung.
@@ -2060,7 +2087,7 @@ Briefkasten-Befehl `daten` — der zieht seit dieser Umstellung auch `points.jso
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
-der ganze Grund, warum die Sequenz-Bedienelemente im Kopf dort verschwinden: zwei
+der ganze Grund, warum das Sequenz-Speichern im Kopf dort verschwindet: zwei
 Speichern-Knöpfe für zwei Dateien in einer Leiste sind eine Falle. Gespeichert wird
 auf Knopfdruck und nicht bei jedem Tastendruck — die Werte greifen in einen laufenden
 Lauf, und eine halb getippte Zahl darf nicht schon gelten.
