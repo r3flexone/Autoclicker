@@ -1057,12 +1057,22 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 /* Erklaerungen sind dieselben aufklappbaren i wie im Editor. Der kleine Wirt
  * reserviert nur die Icon-Breite; der Text erscheint erst nach einem Klick und
  * kann deshalb keine Werkzeugzeile mehr zusammendruecken. */
-.wz-info-kompakt{max-width:880px;display:flex;align-items:center;min-height:18px;
-  margin:6px 0;color:var(--dim)}
+/* Der Titel steht daneben und darf umbrechen: in der schmalen linken Spalte
+   passt „Slots exakt reparieren" nicht in eine Zeile. `align-items:flex-start`
+   statt `center`, damit das ⓘ bei zwei Zeilen an der ERSTEN klebt. */
+.wz-info-kompakt{max-width:880px;display:flex;align-items:flex-start;min-height:18px;
+  margin:6px 0;color:var(--dim);font-size:11.5px;line-height:1.4}
+.wz-info-kompakt .mitinfo{align-items:flex-start;min-width:0;white-space:normal}
 .wz-info-kompakt .info{width:16px;height:16px;font-size:10px}
 .wz-info-kompakt + .hilfe-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
   border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
-.wz-aktion{display:flex;margin:13px 0}
+/* NUR der Abstand. Vorher stand hier zusaetzlich `display:flex` — und weil die
+   Regel weiter unten steht als `.gitter2`/`.gitter3`, gewann sie bei gleicher
+   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-aktion gitter2` bzw.
+   `gitter3 wz-aktion` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
+   war das als Knopfreihe in Textbreite — genau die Ungleichheit, die die
+   Klasse verhindern sollte. Wer eine Reihe will, schreibt `reihe` dazu. */
+.wz-aktion{margin:13px 0}
 .wz-hauptaktion{display:flex;align-items:center;gap:8px;padding:8px 15px}
 .wz-hauptaktion .wz-symbol{width:16px;height:16px}
 

@@ -1358,6 +1358,30 @@ Sechs Regeln, an denen der Reiter hängt:
   aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
   liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
   Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `wzInfo()` im
+  Werkzeuge-Reiter warf seinen Titel ins `title`-Attribut; sichtbar blieb ein
+  nackter Kreis in der Fläche — an zwölf Stellen, in „prüfen" und „kalibrieren"
+  mitten im Nichts, wo er wie ein Rest aussah. Die Beschriftung ist es, die
+  sagt, worüber nachzufragen sich lohnt; sie kostet eine Zeile kleiner Schrift
+  und nicht die Breite, um die es beim Kompakt-Umbau ging (ein Kasten wäre das
+  gewesen).
+- **Zustandsklassen bekommen ein Präfix — auch dort, wo es niemand sieht.** Der
+  Hinweiskasten hiess `wz-info-kompakt info`, und `.info` ist der runde
+  ⓘ-Knopf: 13 px, `flex:none`, zentriert. Der Kasten erbte dessen Gestalt.
+  Solange er NUR das ⓘ enthielt, sahen 13 px richtig aus — mit einer
+  Beschriftung darin stand der Text mittig über den Kasten hinaus, nach links
+  aus dem Fenster heraus. Dieselbe Falle wie einmal beim Status, nur jahrelang
+  unsichtbar. Das `art`-Argument ist dabei **ersatzlos gelöscht** statt auf
+  `art-…` umgeschrieben: zwölf Aufrufe, kein einziger mit drittem Argument, und
+  in der CSS-Datei keine einzige Variante — ein Präfix hätte einen toten Zweig
+  gepflegt.
+- **Eine Klasse, die das Layout setzt, darf keine andere überschreiben.**
+  `.wz-aktion{display:flex}` steht später im Stylesheet als `.gitter2`/
+  `.gitter3` und gewann bei gleicher Spezifität: die beiden Stellen, die
+  ausdrücklich `wz-aktion gitter2` bzw. `gitter3 wz-aktion` schreiben, bekamen
+  nie ihre gleichen Spalten, und die Knopfreihen standen in Textbreite da. Die
+  Klasse trägt jetzt nur noch ihren Abstand; wer eine Reihe will, schreibt
+  `reihe` dazu.
 - **Ein Kästchen heisst „gehört dazu", nicht „ist gewählt".** Die Blockkarten
   trugen eines für die Auswahl — es sagte dasselbe wie der Amber-Ring um die
   Karte, nur kleiner, und konnte nichts, was STRG+Klick nicht auch kann („dazu"
@@ -2085,10 +2109,20 @@ die abweichende Farbe, nicht eine schon erfasste Stelle) — ohne den Kasten sah
 der Knopf aber aus, als täte er nichts.
 
 
-**Jedes Werkzeug sagt, WORAUF es wirkt.** Die Kopfleiste blendet hier ihr
+**Jedes Werkzeug sagt, WORAUF es wirkt** — und „jedes" heisst jedes: „Farben
+analysieren" trug als einziges keine Bezugszeile, während in `WZ_WERKZEUGE`
+`bezug: "bestand"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
+den Bildschirm und schreibt nirgends hin), und weil die Zeile gar nicht
+gezeichnet wurde, fiel die Unwahrheit nicht auf. Dafür gibt es die vierte Art
+**`nichts`** — kein fehlender Wert, sondern eine eigene Aussage, und bei einem
+Werkzeug neben `kalibrieren` und `nachklicken` die beruhigende.
+
+Die Kopfleiste blendet hier ihr
 Sequenz-Speichern aus (der Reiter bearbeitet andere Dateien) — und blendete
 lange auch die Auswahl mit aus, womit der Sequenzname weg war; bei der
-Klick-Runde ist das genau die Frage, die man sich stellt. Ein einzelner Name
+Klick-Runde ist das genau die Frage, die man sich stellt. Seit die Auswahl
+überall steht, ist der frühere Ersatz („offene Sequenz <Name>" links) wieder
+**weg**: er liess den Namen dreimal gleichzeitig dastehen. Ein einzelner Name
 oben wäre trotzdem falsch gewesen: Prüfen und
 Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
 Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzBezug()`), und

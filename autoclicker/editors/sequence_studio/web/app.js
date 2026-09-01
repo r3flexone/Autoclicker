@@ -4835,7 +4835,11 @@ const WZ_WERKZEUGE = [
    kurz: "Fehler und unvollständige Verknüpfungen finden"},
   {key: "punkte", name: "Punkte verwalten", befehl: "points", bezug: "sequenz",
    kurz: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
-  {key: "farben", name: "Farben analysieren", befehl: "color", bezug: "bestand",
+  // `nichts` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
+  // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
+  // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
+  // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
+  {key: "farben", name: "Farben analysieren", befehl: "color", bezug: "nichts",
    kurz: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
   {key: "kalibrieren", name: "Kalibrieren", befehl: "fix", bezug: "bestand",
    kurz: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
@@ -4875,15 +4879,32 @@ function wzKopf(key, titel, text) {
       el("p", {}, text)));
 }
 
-function wzInfo(titel, text, art = "info") {
+function wzInfo(titel, text) {
   // Erklaerungen bleiben aus dem Arbeitsfluss, bis jemand sie braucht. Das
   // Studio verwendet dafuer bereits ueberall dasselbe kleine i; ein eigener
   // Infokasten im Werkzeuge-Reiter war nicht nur unruhig, sondern drueckte bei
   // schmaler Mitte auch die eigentlichen Bedienelemente zusammen.
-  const zeichen = info(text, "werkzeug-" + titel);
-  zeichen.setAttribute("title", titel);
-  zeichen.setAttribute("aria-label", titel);
-  return el("div", {class: "wz-info-kompakt " + art}, zeichen);
+  //
+  // **Der Titel steht daneben, nicht im Tooltip.** Bis hierher wurde er zum
+  // `title`-Attribut gemacht, und uebrig blieb ein nackter Kreis in der
+  // Flaeche — an zwoelf Stellen, in „pruefen" und „kalibrieren" mitten im
+  // Leeren, wo er wie ein Rest aussah. Ueberall sonst im Studio haengt ein ⓘ an
+  // einer BESCHRIFTUNG (`beschriftet()`), und die ist es, die sagt, worueber
+  // es sich lohnt nachzufragen. Eine Zeile kleiner Schrift kostet die Breite
+  // nicht, um die es dem Kompakt-Umbau ging — ein Kasten waere das gewesen.
+  // **Der Kasten hiess `wz-info-kompakt info`** — und `.info` ist der runde
+  // ⓘ-Knopf: 13 px breit, `flex:none`, zentriert. Der Kasten erbte dessen
+  // Gestalt, war 13 px breit statt so breit wie die Spalte, und sein Inhalt
+  // stand mittig darüber hinaus — nach links aus dem Fenster heraus. Dieselbe
+  // Falle wie einmal beim Status („Zustandsklassen bekommen ein Präfix"), nur
+  // hier unsichtbar, solange der Kasten NUR das ⓘ enthielt: 13 px sahen dann
+  // richtig aus.
+  //
+  // Das `art`-Argument ist ersatzlos weg statt auf `art-…` umgeschrieben: es
+  // hatte in zwölf Aufrufen keinen einzigen Nutzer und in der CSS-Datei keine
+  // einzige Variante. Ein Präfix hätte einen toten Zweig gepflegt.
+  return el("div", {class: "wz-info-kompakt"},
+    el("span", {class: "mitinfo"}, titel, info(text, "werkzeug-" + titel)));
 }
 
 /** Die Zeile „worauf wirkt das hier" — als eigener Baustein, damit sie an jedem
@@ -4897,6 +4918,12 @@ function wzBezug(key) {
       el("span", {}, "eine neue Sequenz — die offene Sequenz "),
       el("b", {}, W ? W.sequenz : "—"),
       el("span", {}, " bleibt unverändert"));
+    return kasten;
+  }
+  if (w && w.bezug === "nichts") {
+    kasten.classList.add("eine");
+    kasten.append(el("span", {class: "wz-bezug-marke"}, "Bezug"),
+      el("span", {}, "nichts — es misst nur den Bildschirm und ändert keine Datei"));
     return kasten;
   }
   if (!w || w.bezug === "bestand") {
@@ -4942,16 +4969,16 @@ async function rufWerkzeug(name, daten) {
 
 function wzLinksZeichnen() {
   const ziel = $("wz-links");
-  // Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus (er
-  // bearbeitet andere Dateien). Damit war aber auch der NAME weg, und bei der
-  // Nachklicken ist das genau die Frage, die man sich stellt.
+  // Hier stand „offene Sequenz <Name>". Der Block hatte einen Grund: die
+  // Kopfleiste blendete ihre Sequenz-Bedienelemente in diesem Reiter aus, und
+  // damit war auch der Name weg — bei der Klick-Runde genau die Frage, die man
+  // sich stellt. Seit die AUSWAHL in jedem Reiter steht, ist der Grund weg und
+  // der Name stand dreimal gleichzeitig auf dem Schirm: oben in der Auswahl,
+  // hier, und in der Bezugszeile des Werkzeugs. Von den dreien ist die
+  // Bezugszeile die genaueste — sie sagt nicht nur WELCHE Sequenz offen ist,
+  // sondern ob das Werkzeug sie überhaupt meint.
   const kopf = el("div", {class: "abschnitt"},
-    el("span", {class: "ueberschrift"}, "WERKZEUGE"),
-    el("div", {class: "wz-offen"},
-      el("span", {class: "hint"}, "offene Sequenz"),
-      el("b", {}, W ? W.sequenz : "—"),
-      W && W.offen ? el("span", {class: "punkt-offen", title: "ungespeicherte Änderungen"})
-                   : null));
+    el("span", {class: "ueberschrift"}, "WERKZEUGE"));
   const liste = el("div", {class: "abschnitt wachsend", style: "gap:6px"});
   for (const w of WZ_WERKZEUGE) {
     const knopf = el("button", {
@@ -5008,7 +5035,7 @@ function wzPruefenBauen() {
   raus.push(wzInfo("Was wird geprüft?",
     "Templates, Erkennungsmethoden, Punkt- und Scan-Verweise sowie Stellen "
     + "ausserhalb der angeschlossenen Monitore. Es zählt der zuletzt gespeicherte Stand."));
-  raus.push(el("div", {class: "wz-aktion"},
+  raus.push(el("div", {class: "wz-aktion reihe"},
     el("button", {class: "btn haupt wz-hauptaktion", onclick: wzPruefen},
       wzIcon("pruefen"), el("span", {}, "Jetzt prüfen"))));
 
@@ -5091,6 +5118,10 @@ function wzPunkteBauen() {
 function wzFarbenBauen() {
   const raus = [wzKopf("farben", "Farben analysieren",
     "Liest einen Pixel oder gruppiert die häufigsten Farben eines Bildschirmbereichs.")];
+  // Fuenf Werkzeuge trugen ihre Bezugszeile, dieses nicht — obwohl „jedes
+  // Werkzeug sagt, WORAUF es wirkt" die Regel des Reiters ist. Gerade hier ist
+  // die Antwort die beruhigende: es fasst nichts an.
+  raus.push(wzBezug("farben"));
   raus.push(wzInfo("Aufnahme ohne Studio im Bild",
     "Nach dem Klick ins Spiel wechseln. Punkt und Vollbild starten mit ENTER; bei einer Region " +
     "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
@@ -5787,7 +5818,12 @@ function wzRechtsZeichnen() {
         ? (wzFarbAnalyse.meldung || "Analyse abgeschlossen.")
         : "Noch keine Analyse. Die Farbfelder erscheinen nach der Aufnahme in der Mitte.")));
   if (wzOffen === "klicken")
+    // Als einziges Werkzeug stand hier keine Ueberschrift — die anderen fuenf
+    // haben GEPRUEFT, SO ENTSTEHEN DIE BLOECKE, VERWENDUNGEN, MESSUNG und
+    // VORSCHAU. Uebrig blieb ein Hinweis ohne Dach in einer sonst leeren
+    // Spalte, und der sah aus, als sei die Spalte kaputt.
     return ziel.replaceChildren(el("div", {class: "abschnitt"},
+      el("span", {class: "ueberschrift"}, "GRENZEN DER RUNDE"),
       wzInfo("Was die Runde nicht erreicht",
         "Beobachtete Pixel, Nachprüfungen, ELSE-Klicks und Rad-Schritte kommen "
         + "in einem normalen Durchlauf gar nicht vor. Dafür bleibt walk im "

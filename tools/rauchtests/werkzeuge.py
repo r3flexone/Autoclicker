@@ -71,7 +71,43 @@ def lauf():
         pruefe(f.anzahl("#wz-links button") == soll,
                f"{soll} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
                f"da: {f.anzahl('#wz-links button')}")
-        pruefe("Farm" in f.text("#wz-links"), "die offene Sequenz fehlt links")
+        # **Der Sequenzname steht EINMAL.** Links stand „offene Sequenz Farm" —
+        # eingebaut, als die Kopfleiste ihre Sequenz-Bedienelemente in diesem
+        # Reiter noch ausblendete. Seit die Auswahl in jedem Reiter steht, stand
+        # er dreimal gleichzeitig auf dem Schirm: Auswahl, links, Bezugszeile.
+        pruefe("Farm" not in f.text("#wz-links"),
+               f"der Sequenzname steht wieder doppelt links: {f.text('#wz-links')[:80]!r}")
+
+        # **Jedes Werkzeug sagt, WORAUF es wirkt** — das ist die Regel des
+        # Reiters, und „Farben analysieren" hielt sie als einziges nicht ein.
+        # In der Tabelle stand dort `bezug: "bestand"`, was fuer ein Werkzeug,
+        # das nur misst, schlicht falsch gewesen waere; gezeichnet wurde die
+        # Zeile gar nicht, also fiel die Unwahrheit nicht auf.
+        for w in re.findall(r'\{key: "([a-z]+)"', quelle_wz()):
+            f.klick(f".wz-nav.{w}", warten=350)
+            pruefe(f.anzahl("#wz-mitte .wz-bezug") == 1,
+                   f"Werkzeug '{w}' hat keine Bezugszeile")
+            pruefe(f.anzahl("#wz-rechts .ueberschrift") >= 1,
+                   f"Werkzeug '{w}' hat keine Ueberschrift in der rechten Spalte")
+
+        # **Ein ⓘ haengt an einer BESCHRIFTUNG.** `wzInfo()` warf den Titel in
+        # den Tooltip; uebrig blieb ein nackter Kreis in der Flaeche. Und der
+        # Kasten trug die Klasse `info` — also die des runden ⓘ-Knopfes (13 px,
+        # `flex:none`, zentriert): er erbte dessen Gestalt und sein Inhalt stand
+        # mittig darueber hinaus, nach links aus dem Fenster heraus. Dieselbe
+        # Falle wie einmal beim Status („Zustandsklassen bekommen ein Praefix").
+        f.klick(".wz-nav.pruefen", warten=400)
+        kompakt = f.seite.eval_on_selector_all(".wz-info-kompakt", """ns => ns.map(n => ({
+          klasse: n.className,
+          text: (n.textContent || "").trim(),
+          breit: Math.round(n.getBoundingClientRect().width),
+          links: Math.round(n.getBoundingClientRect().left)}))""")
+        pruefe(kompakt, "kein einziger Hinweis mit ⓘ im Werkzeuge-Reiter")
+        for k in kompakt:
+            pruefe("info" not in k["klasse"].split(),
+                   f"der Hinweiskasten traegt die ⓘ-Knopfklasse: {k}")
+            pruefe(len(k["text"]) > 3, f"Hinweis ohne sichtbaren Titel: {k}")
+            pruefe(k["links"] >= 0, f"Hinweis laeuft links aus dem Fenster: {k}")
 
         # --- Aufnahme: der normale Weg ist vollständig im Studio sichtbar ---
         f.klick_text("#wz-links button", "Sequenz aufnehmen", warten=300)
