@@ -751,23 +751,41 @@ function zeichnePhase(phase) {
     // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
     // sagen, was sie ist. Gedämpft, nicht in Akzentfarbe — es beschriftet nur.
     //
-    // Und der Löschknopf ist deshalb KEIN „×" mehr: zwei gleiche Zeichen in einer
-    // Zeile, eines als Beschriftung und eines als „Phase weg", ist die Sorte
-    // Verwechslung, die man genau einmal macht.
+    // Und es ist das EINZIGE „×" in dieser Zeile. Der Löschknopf trug einmal
+    // eines, was hier schon als Verwechslung notiert war — der Skalieren-Knopf
+    // hiess danach aber „Wartezeiten ×" und brachte es an derselben Stelle
+    // wieder zurück: ein „×" am ENDE einer Beschriftung liest sich als
+    // „wegmachen", nicht als „mal". Er steht jetzt unten bei den Sammel-Aktionen
+    // und sagt, was er tut (s. u.); hier bleiben nur die beiden Eigenschaften
+    // der Phase.
     kopf.appendChild(el("div", {class: "phase-werkzeug"},
-      el("span", {class: "klein mono"}, "×"), wdh, start,
-      el("button", {class: "btn still", title: "Alle Wartezeiten dieser Phase skalieren",
-        onclick: () => {
-          const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-          if (faktor !== null) ruf("phase_skalieren", {phase: phase.index, faktor: faktor});
-        }}, "Wartezeiten ×")));
+      el("span", {class: "klein mono"}, "×"), wdh, start));
   }
+  // **Was auf ALLE Blöcke der Phase wirkt, steht beieinander** — und nur, wenn
+  // es welche gibt. Das Skalieren stand vorher zwischen Wiederholungen und
+  // Startzeit, also zwischen zwei Feldern, die die Phase BESCHREIBEN, während
+  // es selbst jeden Block darin ändert. Ohne Blöcke hatte es ausserdem nichts
+  // zu tun und stand trotzdem da.
   if (phase.bloecke.length) {
     const alle = S.auswahl.phase === phase.index &&
                  S.auswahl.zeilen.length === phase.bloecke.length;
-    kopf.appendChild(el("button", {class: "btn still phase-alle",
-      onclick: () => ruf("phase_auswahl", {phase: phase.index})},
-      alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
+    // `knopfpaar`, nicht `reihe` mit `wachse`: für „mehrere Knöpfe teilen sich
+    // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
+    // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
+    const sammel = el("div", {class: "knopfpaar phase-alle"},
+      el("button", {class: "btn still",
+        onclick: () => ruf("phase_auswahl", {phase: phase.index})},
+        alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
+    if (phase.art === "loop") {
+      sammel.appendChild(el("button", {
+        class: "btn still",
+        title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
+        onclick: () => {
+          const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+          if (faktor !== null) ruf("phase_skalieren", {phase: phase.index, faktor: faktor});
+        }}, "Zeiten skalieren …"));
+    }
+    kopf.appendChild(sammel);
   }
 
   const spalte = el("div", {class: "phase"}, kopf);

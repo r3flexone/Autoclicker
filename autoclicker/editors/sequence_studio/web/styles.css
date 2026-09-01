@@ -266,7 +266,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-name:disabled{color:var(--text)}
 .phase-werkzeug{display:flex;gap:6px;align-items:center}
 .phase-werkzeug input{padding:3px 5px;font-size:11.5px}
-.phase-alle{align-self:flex-start;font-size:11px;padding:4px 7px}
+/* Die Sammel-Aktionen der Phase: frueher EIN Knopf, deshalb stand hier ein
+   `align-self`. Jetzt ein `knopfpaar` (gleiche Spalten, bricht um statt
+   abzuschneiden) — die Groesse bleibt die kleine des Phasenkopfs. */
+.phase-alle > .btn{font-size:11px;padding:4px 7px}
 .phasen-anlegen{gap:8px}
 
 /* ------------------------------------------------------------------- Karten */

@@ -1358,6 +1358,21 @@ Sechs Regeln, an denen der Reiter hängt:
   aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
   liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
   Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Ein „×" am ENDE einer Beschriftung heisst „wegmachen".** Im Phasenkopf
+  hiess der Skalieren-Knopf „Wartezeiten ×" und stand zwischen Wiederholungen
+  und Startzeit — daneben das „×", das die Wiederholungen beschriftet. Zwei
+  gleiche Zeichen in einer Zeile, eines als Vorsatz („mal N") und eines am
+  Wortende, wo jede andere Oberfläche ein Schliesskreuz hat: der Kopf sah aus,
+  als liesse sich dort etwas entfernen. Das Multiplikationszeichen darf
+  beschriften, aber nur **vor** dem Wert und nur einmal je Zeile; ein Knopf
+  nennt seine Tätigkeit („Zeiten skalieren …", Auslassungspunkte für „fragt
+  noch nach").
+- **Eigenschaften und Sammel-Aktionen stehen nicht in derselben Zeile.** Im
+  Phasenkopf beschreiben Wiederholungen und Startzeit die Phase; „Alle Blöcke
+  wählen" und „Zeiten skalieren" ändern jeden Block darin. Dazwischen gemischt
+  liest sich das Skalieren wie eine dritte Eigenschaft. Die Sammel-Aktionen
+  stehen deshalb unten beieinander als `knopfpaar` — und nur, wenn die Phase
+  überhaupt Blöcke hat.
 - **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Der Filter „nur aus
   <Scan>" stand als loser Text zwischen lauter Kacheln — Reiterleiste darüber,
   Knopfreihe darunter — und las sich, als gehöre er nicht dazu.

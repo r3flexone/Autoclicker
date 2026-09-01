@@ -115,6 +115,34 @@ def lauf():
                f"der Block scrollt mit: {vorher} -> {nachher}")
         f.bild("sequenzen_editor")
 
+        # ------------------------------------------------ Der Phasenkopf
+        # **Nur EIN „×" im Kopf**, und das beschriftet die Wiederholungen. Der
+        # Skalieren-Knopf hiess „Wartezeiten ×" und stand zwischen den beiden
+        # Feldern: ein „×" am ENDE einer Beschriftung liest sich als
+        # „wegmachen", nicht als „mal" — daneben ein zweites als Vorsatz, und
+        # der Kopf sah aus, als liesse sich dort etwas entfernen.
+        f.reiter("editor", 600)
+        kopftext = f.text(".phase-kopf.loop")
+        pruefe(kopftext.count("×") == 1,
+               f"nicht genau ein × im Phasenkopf: {kopftext!r}")
+        # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
+        # Werkzeugzeile stehen nur die beiden Felder, die die Phase
+        # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
+        pruefe(f.anzahl(".phase-werkzeug button") == 0,
+               "in der Eigenschaften-Zeile der Phase steht ein Knopf")
+        paar = f.seite.eval_on_selector(".phase-kopf.loop .phase-alle", """e => {
+          const b = [...e.querySelectorAll('.btn')];
+          return {anzahl: b.length,
+                  breiten: b.map(n => Math.round(n.getBoundingClientRect().width)),
+                  oben: b.map(n => Math.round(n.getBoundingClientRect().top))};
+        }""")
+        pruefe(paar["anzahl"] == 2, f"zwei Sammel-Aktionen erwartet: {paar}")
+        pruefe(len(set(paar["breiten"])) == 1,
+               f"die Sammel-Knoepfe teilen die Zeile nicht gleich: {paar}")
+        pruefe(len(set(paar["oben"])) == 1,
+               f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {paar}")
+        f.bild("sequenzen_phasenkopf")
+
         # ------------------------------------------- Die Auswahl gilt ueberall
         # **Welche Sequenz offen ist, gilt in JEDEM Reiter.** Sie war frueher
         # mit dem Speichern-Knopf zusammen ausgeblendet — und damit musste man
