@@ -283,3 +283,56 @@ if _vergessen:
     print("        laeuft nie: " + ", ".join(_vergessen))
 check("und kein Eintrag zeigt auf eine Datei, die es nicht gibt",
       [n for n in _RT if n not in _da] == [])
+
+
+section("Einstellungen: der Schreiber laedt sich selbst neu")
+
+# **Der Schreiber war der Einzige, der sich nicht neu lud.** Der Hauptprozess
+# bekommt den Briefkasten-Befehl und ruft `befehl_config()`; der Studio-Prozess
+# schrieb die Datei und blieb danach auf den Werten vom Programmstart sitzen.
+# Aufgefallen ist es am Bericht-Reiter — „session_log_enabled ist aus", direkt
+# nachdem man es eingeschaltet hatte —, betroffen war aber jeder Reiter, der
+# `CONFIG` liest: OCR/LLM-Lampen und Marker-Schwellen im Scans-Reiter, die
+# Farbtoleranz im Werkzeuge-Reiter, der Fenstertitel im Teilen-Reiter.
+_sand2 = Path(tempfile.mkdtemp(prefix="bericht_cfg_"))
+_cwd = _os.getcwd()
+_os.chdir(_sand2)
+try:
+    Path("sequences").mkdir(exist_ok=True)
+    from autoclicker.config import CONFIG as _CFG, AppConfig as _AC, save_config as _sc
+    from autoclicker.persistence import list_available_sequences, save_data
+    _sc(_AC())
+    _st = _ST()
+    _seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
+                points=[_CP(id=1, x=10, y=20, name="A")])
+    _st.sequences["Farm"] = _seq
+    _st.active_sequence = _seq
+    _st.points = _seq.points
+    save_data(_st)
+    _b2 = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
+
+    _alt_log, _alt_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz
+    _CFG.session_log_enabled = False
+    _vorher = id(_CFG)
+    check("vorher steht der Reiter auf aus", _b2.bericht_daten()["aktiv"] is False)
+
+    _r = _b2.config_schreiben({"werte": {"session_log_enabled": True,
+                                         "punkt_farbtoleranz": 42}})
+    check("das Schreiben geht durch", _r["ok"] is True)
+    check("der Prozess kennt den neuen Wert sofort",
+          _CFG.session_log_enabled is True)
+    check("und der Reiter zeigt ihn ohne Neustart",
+          _b2.bericht_daten()["aktiv"] is True)
+    # Nicht nur das eine Feld: uebernommen wird die ganze Config, also auch das,
+    # was ANDERE Reiter lesen.
+    check("auch Felder anderer Reiter ziehen mit", _CFG.punkt_farbtoleranz == 42)
+    # **Das Objekt darf nicht getauscht werden.** Wer es ersetzt, laesst jeden
+    # mit `from ...config import CONFIG` (imaging, die Scan-Module) dauerhaft auf
+    # den Werten vom Programmstart sitzen — genau der Fehler, gegen den es
+    # `uebernehmen()` gibt.
+    check("und das Config-Objekt bleibt dasselbe", id(_CFG) == _vorher)
+
+    _CFG.session_log_enabled, _CFG.punkt_farbtoleranz = _alt_log, _alt_tol
+finally:
+    _os.chdir(_cwd)
+    _sh.rmtree(_sand2, ignore_errors=True)

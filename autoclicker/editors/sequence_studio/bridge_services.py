@@ -331,7 +331,7 @@ class BridgeServicesMixin:
         das niemand, deshalb wird der geschriebene Stand gegen das Gesendete gehalten
         und die Abweichung zurückgemeldet.
         """
-        from ...config import AppConfig, save_config
+        from ...config import AppConfig, CONFIG, save_config, uebernehmen
         werte = (daten or {}).get("werte")
         if not isinstance(werte, dict) or not werte:
             return {"ok": False, "meldung": "Nichts zu speichern."}
@@ -348,6 +348,22 @@ class BridgeServicesMixin:
                        for k, v in werte.items()
                        if k in fertig and not _gleicher_wert(v, fertig[k])]
         save_config(neu)
+        # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
+        # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
+        # `befehl_config()`; DIESER Prozess hat die Datei geschrieben und blieb
+        # danach auf den Werten vom Programmstart sitzen — jeder Reiter, der
+        # `CONFIG` liest, zeigte bis zum Neustart den alten Stand. Aufgefallen
+        # ist es am Bericht-Reiter („session_log_enabled ist aus", direkt nachdem
+        # man es eingeschaltet hatte); betroffen war der ganze Baum: die
+        # OCR/LLM-Lampen und Marker-Schwellen im Scans-Reiter, die Toleranz beim
+        # Farbvergleich im Werkzeuge-Reiter, der Fenstertitel im Teilen-Reiter.
+        #
+        # `uebernehmen()` statt einer Zuweisung: das Objekt darf nicht getauscht
+        # werden, sonst sitzt jeder mit `from ...config import CONFIG` (imaging,
+        # die Scan-Module) weiter auf dem alten. Genau dafuer gibt es die
+        # Funktion — ihr Docstring nennt diese Stelle als dritten Aufrufer, nur
+        # gerufen hat sie hier nie jemand.
+        uebernehmen(CONFIG, neu)
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # der geschriebenen Datei nichts. Derselbe Briefkasten wie bei Start und
         # Stopp — läuft gerade keiner, verfällt der Befehl (befehl.MAX_ALTER).

@@ -2291,6 +2291,18 @@ das Studio legt ihn nach dem Schreiben ab, `befehl_config()` lädt `config.json`
 und schreibt sie in dasselbe Objekt. Ein laufender Lauf zieht sofort mit — der Worker
 liest `state.config` bei jedem Schritt neu.
 
+**Und der Schreiber lädt sich selbst mit.** `config_schreiben()` ruft
+`uebernehmen(CONFIG, neu)` auf dem eigenen Prozess — das fehlte, und damit war
+ausgerechnet das Fenster, das die Datei geschrieben hat, das einzige, das den neuen
+Stand nicht kannte: der Hauptprozess bekam den Briefkasten-Befehl, der Studio-Prozess
+blieb bis zum Neustart auf den Werten vom Programmstart sitzen. Aufgefallen ist es am
+Bericht-Reiter („session_log_enabled ist aus", direkt nachdem man es eingeschaltet
+hatte); betroffen war jeder Reiter, der `CONFIG` liest — OCR/LLM-Lampen und
+Marker-Schwellen im Scans-Reiter, die Farbtoleranz im Werkzeuge-Reiter, der
+Fenstertitel im Teilen-Reiter. Der Einstellungen-Reiter selbst blieb richtig, weil er
+die **Datei** liest; genau daran sah man den Widerspruch. Ein Test misst beide Hälften:
+der Wert kommt an, und das Objekt bleibt dasselbe.
+
 Regeln für die Ansicht:
 
 - **Abhängige Felder werden blass, nicht unsichtbar.** Dass unter `llm_enabled`
