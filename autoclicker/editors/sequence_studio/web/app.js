@@ -595,16 +595,21 @@ function setzeAnsicht(neu) {
   $("sicht-scans").hidden = neu !== "scans";
   $("sicht-teilen").hidden = neu !== "teilen";
   $("sicht-werkzeuge").hidden = neu !== "werkzeuge";
+  $("sicht-bericht").hidden = neu !== "bericht";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge"].includes(neu);
+    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge",
+                "bericht"].includes(neu);
   if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
   if (neu === "teilen") zeichneTeilen();
   // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
   // den es nach einem Speichern nicht mehr gibt.
   if (neu === "werkzeuge") zeichneWerkzeuge(true);
+  // Bei jedem Oeffnen frisch: waehrend das Fenster offensteht, schreibt ein
+  // Lauf im Hauptprozess weiter in dieselbe CSV.
+  if (neu === "bericht") zeichneBericht();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (neu === "einstellungen") zeichneEinstellungen(true);
@@ -4737,6 +4742,260 @@ function teilenImportZeichnen() {
     onclick: () => rufTeilen("import_starten",
       {teile: teilenImport, modus: teilenModus, merge: teilenMerge})},
     "Bündel einlesen"));
+  ziel.appendChild(rumpf);
+}
+
+/* ------------------------------------------------------------ Ansicht: Bericht
+ *
+ * Der Live-Run zeigt das Jetzt, dieser Reiter das Gestern. Eigener Zustand
+ * neben `S`, wie bei Teilen und Werkzeugen: er liest `logs/`, nicht die
+ * geoeffnete Sequenz.
+ *
+ * Gezeichnet wird mit denselben Bausteinen wie der Werkzeuge-Reiter
+ * (`wz-kennzahlen`, `wz-zwischenkopf`, `abschnitt`) statt mit eigenen. Ein
+ * achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
+ * einbringt — und die Kennzahlen-Kacheln koennen genau das schon: gleiche
+ * Spalten ueber `auto-fit`, gleiche Hoehe, gleiche Schrift. */
+
+let B = null;
+
+async function zeichneBericht(daten) {
+  const antwort = await frage("bericht_daten", daten === undefined ? null : daten);
+  if (!antwort || ansicht !== "bericht") return;
+  B = antwort;
+  const merk = fokusMerken();
+  berichtLinksZeichnen();
+  berichtMitteZeichnen();
+  berichtRechtsZeichnen();
+  fokusHerstellen(merk);
+}
+
+/** Sekunden als h:mm:ss — dieselbe Form wie in `tools/log_report.py`. */
+function berDauer(sek) {
+  const ganz = Math.max(0, Math.round(sek || 0));
+  const h = Math.floor(ganz / 3600), m = Math.floor((ganz % 3600) / 60), s = ganz % 60;
+  const zwei = (n) => String(n).padStart(2, "0");
+  return h ? h + ":" + zwei(m) + ":" + zwei(s) : m + ":" + zwei(s);
+}
+
+/** Grosse Zahlen mit Tausenderpunkten. Gold geht in die Millionen, und
+ *  „143920771" liest niemand. */
+function berZahl(n, stellen) {
+  return (n || 0).toLocaleString("de-DE", {maximumFractionDigits: stellen || 0});
+}
+
+/* Eine Rangzeile: Name links, Anzahl rechts, darunter ein Balken im Verhaeltnis
+ * zum groessten Wert der Liste. VIER Listen benutzen sie (Timeouts, Items,
+ * Erkanntes, Nachpruefung) — eine Bauform fuer alle, sonst hat dieselbe Sache
+ * vier Gestalten. */
+function berRang(name, wert, anteil, zusatz, art) {
+  const zeile = el("div", {class: "ber-rang" + (art ? " " + art : "")},
+    el("span", {class: "ber-rang-name", title: name}, name),
+    el("span", {class: "ber-rang-wert mono"}, wert),
+    el("div", {class: "ber-balken"},
+      el("div", {class: "ber-balken-fuell",
+        style: "width:" + Math.max(2, Math.round(anteil * 100)) + "%"})));
+  if (zusatz) zeile.appendChild(el("span", {class: "ber-rang-zusatz"}, zusatz));
+  return zeile;
+}
+
+function berListe(titel, hilfe, schluessel, eintraege) {
+  const kasten = el("div", {class: "teilen-karte"},
+    ueberschrift(titel, hilfe, schluessel));
+  const hoechst = eintraege.reduce((m, e) => Math.max(m, e.wert), 0) || 1;
+  for (const e of eintraege)
+    kasten.appendChild(berRang(e.name, berZahl(e.wert), e.wert / hoechst,
+      e.zusatz, e.art));
+  return kasten;
+}
+
+/* ------------------------------------------------------------------- links */
+
+function berichtLinksZeichnen() {
+  const ziel = $("ber-links");
+  const kopf = el("div", {class: "abschnitt klebt"},
+    ueberschrift("SITZUNGEN",
+      "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
+      + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
+      + "nicht ueber eine einzelne Datei.", "ber-sitzungen"));
+  if (!B.aktiv) {
+    kopf.appendChild(el("p", {class: "hinweis warnung"},
+      "session_log_enabled ist aus — neue Laeufe schreiben nichts mit."));
+  }
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  if (!B.verfuegbar) {
+    rumpf.appendChild(el("p", {class: "hinweis"}, B.fehler));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  if (!B.sitzungen.length) {
+    rumpf.appendChild(el("p", {class: "hinweis"}, B.ordner
+      ? "Keine Logs in " + B.ordner + "."
+      : "Noch kein Log-Ordner. Er entsteht beim ersten Lauf mit "
+        + "session_log_enabled."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+
+  rumpf.appendChild(berSitzung({
+    datei: "", titel: "Alle zusammen",
+    unten: B.sitzungen.length + " Sitzung(en)",
+  }));
+  for (const s of B.sitzungen) {
+    rumpf.appendChild(berSitzung({
+      datei: s.datei,
+      titel: s.beginn || s.datei,
+      unten: berDauer(s.dauer) + " · " + berZahl(s.klicks) + " Klicks",
+      warnung: s.timeouts ? s.timeouts + "× Timeout" : "",
+    }));
+  }
+  if (B.ausgelassen) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      B.ausgelassen + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
+      + "neuesten 50."));
+  }
+  ziel.appendChild(rumpf);
+}
+
+function berSitzung(s) {
+  const an = (B.gewaehlt || "") === s.datei;
+  const zeile = el("button", {
+    class: "ber-sitzung" + (an ? " an" : ""),
+    onclick: () => zeichneBericht({datei: s.datei}),
+  },
+    el("span", {class: "ber-sitzung-titel"}, s.titel),
+    el("span", {class: "ber-sitzung-unten"}, s.unten));
+  if (s.warnung)
+    zeile.appendChild(el("span", {class: "ber-sitzung-warn"}, s.warnung));
+  return zeile;
+}
+
+/* ------------------------------------------------------------------- Mitte */
+
+function berichtMitteZeichnen() {
+  const ziel = $("ber-mitte");
+  ziel.replaceChildren();
+  const b = B.bericht;
+  if (!b || !b.sitzungen) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Nichts auszuwerten. Der Bericht liest die CSV-Dateien, die ein Lauf mit "
+      + "eingeschaltetem Session-Log hinterlaesst."));
+    return;
+  }
+
+  ziel.appendChild(el("div", {class: "wz-kennzahlen"},
+    wzKennzahl(berDauer(b.dauer), "Laufzeit", "neutral"),
+    wzKennzahl(berZahl(b.klicks), "Klicks", "neutral"),
+    wzKennzahl(berZahl(b.items_gesamt), "Items", "neutral"),
+    wzKennzahl(berZahl(b.timeouts_gesamt), "Timeouts",
+      b.timeouts_gesamt ? "hinweis" : "neutral"),
+    wzKennzahl(berZahl(b.verify_miss_gesamt), "ohne Wirkung",
+      b.verify_miss_gesamt ? "fehler" : "neutral")));
+
+  // DIE Frage, fuer die es den Reiter gibt — deshalb steht sie oben und nicht
+  // zwischen den Item-Zahlen.
+  if (b.timeouts.length) {
+    ziel.appendChild(berListe("TIMEOUTS — WO DIE SEQUENZ HAENGT",
+      "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
+      + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "ber-timeout",
+      b.timeouts.map(([name, n]) => ({name: name, wert: n, art: "warn"}))));
+  } else {
+    ziel.appendChild(el("div", {class: "wz-erfolg"}, wzIcon("ok"),
+      el("div", {}, el("b", {}, "Keine Timeouts"),
+        el("span", {}, "Jede Farb-Bedingung ist aufgegangen."))));
+  }
+
+  if (b.verify_miss.length) {
+    ziel.appendChild(berListe("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
+      "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
+      + "Spiel braucht laenger als verify_timeout.", "ber-verify",
+      b.verify_miss.map(([name, n, gut]) => ({
+        name: name, wert: n, art: "fehler",
+        zusatz: "bestätigt " + gut + "/" + (gut + n),
+      }))));
+  }
+
+  if (b.items.length) {
+    ziel.appendChild(berListe("GEFUNDENE ITEMS", "", "ber-items",
+      b.items.map(([name, n]) => ({name: name, wert: n}))));
+  }
+  if (b.erkannt.length) {
+    ziel.appendChild(berListe("ERKANNT (BOSS/ICON)", "", "ber-erkannt",
+      b.erkannt.map(([name, n]) => ({name: name, wert: n}))));
+  }
+  if (b.stoerungen.length) {
+    ziel.appendChild(berListe("UNTERBRECHUNGEN",
+      "Fokusverluste und Humanize-Pausen. Eine Haeufung heisst, dass das "
+      + "Spielfenster oft nicht vorn war.", "ber-stoer",
+      b.stoerungen.map(([name, n]) => ({name: name, wert: n}))));
+  }
+
+  for (const [datei, fehler] of b.nicht_lesbar) {
+    ziel.appendChild(el("p", {class: "hinweis warnung"},
+      datei + ": nicht lesbar (" + fehler + ")"));
+  }
+  if (b.unbekannt.length) {
+    // Dieselbe Meldung wie in der Konsole: eine neue Ereignisart soll auffallen,
+    // nicht stillschweigend fehlen.
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Nicht ausgewertete Ereignisarten: " + b.unbekannt.join(", ")));
+  }
+}
+
+/* ------------------------------------------------------------------- rechts */
+
+function berichtRechtsZeichnen() {
+  const ziel = $("ber-rechts");
+  const kopf = el("div", {class: "abschnitt klebt"},
+    ueberschrift("ERTRAG",
+      "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
+      + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
+      + "Marktanalyse selbst laeuft getrennt.", "ber-ertrag"));
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  const e = B.ertrag;
+  if (!e) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      "Keine Bewertung: scan_market_value_file ist leer oder es wurden keine "
+      + "Items gefunden. Mit eingetragener marktwert.json steht hier, was der "
+      + "Lauf eingebracht hat."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  if (!e.lesbar) {
+    rumpf.appendChild(el("p", {class: "hinweis warnung"},
+      "Marktwert-Datei nicht lesbar: " + e.datei));
+    ziel.appendChild(rumpf);
+    return;
+  }
+
+  rumpf.appendChild(el("div", {class: "wz-kennzahlen"},
+    wzKennzahl(berZahl(e.gold), "Gold gesamt", "neutral"),
+    wzKennzahl(e.pro_stunde === null ? "—" : berZahl(e.pro_stunde), "Gold/h",
+      "neutral")));
+  // **Obergrenze, keine Abrechnung.** `item_found` heisst „erkannt", nicht
+  // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
+  // liest, muss es lesen, ohne danach zu fragen.
+  rumpf.appendChild(el("p", {class: "hinweis warnung"},
+    "Obergrenze: gezaehlt wird, was der Scan ERKANNT hat — nicht, was "
+    + "eingesammelt und verkauft wurde."));
+
+  const hoechst = e.zeilen.reduce((m, z) => Math.max(m, z[3]), 0) || 1;
+  const liste = el("div", {class: "teilen-karte"});
+  for (const [name, anzahl, wert, summe] of e.zeilen) {
+    liste.appendChild(berRang(name, berZahl(summe), summe / hoechst,
+      anzahl + "× à " + berZahl(wert)));
+  }
+  rumpf.appendChild(liste);
+
+  if (e.ohne_wert.length) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      e.ohne_wert.length + " Item(s) ohne Marktwert: "
+      + e.ohne_wert.map(([name, n]) => name + " (" + n + "×)").join(", ")));
+  }
   ziel.appendChild(rumpf);
 }
 

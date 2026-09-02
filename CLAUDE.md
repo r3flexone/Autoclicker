@@ -791,7 +791,9 @@ es die Marker-Farben.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
 - `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_beim_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe. **Ausgewertet wird er mit
-  `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig). Geloggt wird
+  `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig) — auf der
+  Kommandozeile und im Reiter „Bericht" des Studios, über **dieselbe** Funktion
+  (`auswerten()` rechnet und gibt Daten zurück, `bericht()` druckt sie). Geloggt wird
   nicht nur, *was geklickt* wurde, sondern auch, *was gesehen* wurde: `timeout` (welcher
   Schritt hängt — das diagnostisch wertvollste Ereignis), `item_found`, `detected`,
   `verify_ok`/`verify_miss`. Ohne diese Ereignisse konnte der Bericht die eine Frage
@@ -866,6 +868,7 @@ es die Marker-Farben.
   - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
   - `bridge_teilen.py`: Export/Import im Reiter „Teilen".
   - `bridge_werkzeuge.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
+  - `bridge_bericht.py`: Session-Logs und Ertrag im Reiter „Bericht".
   - `scans.py`: stabile `ScanTeil`-Fassade.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
@@ -968,7 +971,7 @@ Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der
 nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
 wäre nicht zwingend die angezeigte.
 
-**Sieben Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Acht Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -982,6 +985,7 @@ Ausflug überleben.
 | Scans | Slots, Items, Item-Scans auf einem Screenshot | `scan_daten()` + `scan_*` |
 | Teilen | Bündel schreiben und einlesen | `teilen_daten()` + `export_/import_*` |
 | Werkzeuge | prüfen, kalibrieren, Klick-Runde | `werkzeug_daten()` + `werkzeug_/kalib_*` |
+| Bericht | was die vergangenen Läufe hinterlassen haben | `bericht_daten()` |
 | Einstellungen | `config.json` bearbeiten | `config_lesen()` / `config_schreiben()` |
 
 **Welche Sequenz offen ist, gilt in JEDEM Reiter — also steht die Auswahl
@@ -2197,6 +2201,52 @@ Vier Regeln, an denen der Reiter hängt:
 Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über den
 Briefkasten-Befehl `daten` — der zieht seit dieser Umstellung auch `points.json`
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
+
+**Der Reiter „Bericht" liest `logs/`** (`bridge_bericht.py`). Der Live-Run zeigt das
+Jetzt, dieser Reiter das Gestern — und er beantwortet die Frage, die man nach einer
+langen Nacht hat und bis dahin nur auf der Kommandozeile stellen konnte: **welcher
+Schritt läuft am häufigsten in den Timeout?**
+
+Fünf Regeln, an denen er hängt:
+
+- **Gerechnet wird in `tools/log_report.py`**, mit derselben Funktion, die die
+  Kommandozeile benutzt. Dafür ist die Auswertung dort in zwei Hälften zerlegt:
+  `auswerten()` gibt **Daten** zurück und druckt keine Zeile, `bericht()` druckt sie.
+  Eine zweite Auswertung „fürs Fenster" wäre eine, die andere Zahlen nennt als der
+  Weg, den die README beschreibt. Ein Test misst beides — die Zahlen *und* dass
+  `auswerten()` schweigt: eine übrig gebliebene `print`-Zeile landete in der Konsole
+  des Studios, wo sie niemand sieht.
+- **Die Richtung des Imports ist Absicht.** `tools/log_report.py` importiert nichts
+  aus `autoclicker/` — **die Brücke ruft das Werkzeug**, nie umgekehrt. Der Import
+  steht deshalb in der Methode und in einem `try`: `tools/` gehört zum Repo, nicht
+  zum Programm. Fehlt es, erklärt sich der Reiter, statt das Fenster beim Start
+  umfallen zu lassen.
+- **Der Ertrag ist eine Obergrenze, keine Abrechnung.** `item_found` mal
+  `marktwert.json` (`scan_market_value_file`) ist der tatsächliche Ertrag eines Laufs
+  — aber „erkannt" heisst nicht „eingesammelt und verkauft". Das steht **am Wert**
+  und nicht im ⓘ: wer die Zahl liest, muss den Vorbehalt lesen, ohne danach zu
+  fragen. Ohne Wertetabelle gibt es Stückzahlen und sonst nichts; das ist kein
+  Fehlerfall, sondern der Normalfall ohne Marktanalyse. Die Trennung zu
+  `market_analysis/` bleibt eine Datei — importiert wird nichts.
+- **Gelesen werden die neuesten 50 Dateien**, und was wegfällt, wird gesagt. `logs/`
+  wächst mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet; ohne
+  Deckel liest ein halbes Jahr Betrieb bei jedem Klick mit. Eine stillschweigend
+  gekürzte Auswertung wäre schlimmer als eine kurze.
+- **Er baut mit dem, was da ist.** Kennzahlen sind `wz-kennzahlen` (dieselben
+  Kacheln wie im Werkzeuge-Reiter), Karten sind `teilen-karte`, die Spalten sind
+  `abschnitt` — eigene Klassen gibt es nur für die Rangzeile und die
+  Sitzungsauswahl, und **eine** Rangzeile trägt alle vier Listen plus den Ertrag.
+  Ein achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
+  einbringt. Dazu gehört, dass untereinander stehende Blöcke auf **derselben**
+  Kante liegen: die Kennzahlen dürfen 880 px, die Karten kamen mit 720 — gestapelt
+  waren das zwei rechte Kanten, 160 px auseinander und damit nah genug, dass es wie
+  ein Rundungsfehler aussieht statt wie Absicht.
+
+Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: jeder
+`data-ansicht`-Knopf braucht seine Umschalt-Zeile in `setzeAnsicht()` (und keine
+Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tools/rauchtests/` muss in
+`RAUCHTESTS` (`tools/alle_tests.py`) stehen — eine getippte Liste ist genau die
+Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum das Sequenz-Speichern im Kopf dort verschwindet: zwei

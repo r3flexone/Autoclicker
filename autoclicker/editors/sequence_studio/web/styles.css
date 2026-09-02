@@ -1296,3 +1296,44 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   font-size:11.5px;color:var(--muted)}
 /* Tabellenziffern, damit die Zahl beim Runterzaehlen nicht zappelt. */
 .warte-rest{font-variant-numeric:tabular-nums;color:var(--text)}
+
+/* ---------------------------------------------------------------- Bericht */
+/* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `wz-kennzahlen`,
+   Karten sind `teilen-karte`, die Spalten sind `abschnitt`. Eigene Klassen gibt
+   es nur fuer die beiden Dinge, die es sonst nirgends gibt — die Rangzeile und
+   die Sitzungsauswahl. */
+
+/* EINE Bauform fuer VIER Listen (Timeouts, Nachpruefung, Items, Erkanntes) und
+   den Ertrag. Name links, Wert rechts, Balken darunter ueber die volle Breite:
+   der Balken traegt das Verhaeltnis, die Zahl den Wert. Getrennte Gestalten je
+   Liste haetten dieselbe Sache viermal verschieden aussehen lassen. */
+.ber-rang{display:grid;grid-template-columns:1fr auto;gap:3px 10px;
+  padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+.ber-rang:last-child{border-bottom:none}
+.ber-rang-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ber-rang-wert{color:var(--text);font-weight:600}
+/* Dieselben Masse wie `.nk-balken` in der Klick-Runde. Zwei Balken im selben
+   Fenster duerfen nicht unterschiedlich hoch sein. */
+.ber-balken{grid-column:1/-1;height:4px;background:var(--line);
+  border-radius:2px;overflow:hidden}
+.ber-balken-fuell{height:100%;background:var(--dim);border-radius:2px}
+.ber-rang.warn .ber-balken-fuell{background:var(--accent)}
+.ber-rang.fehler .ber-balken-fuell{background:var(--err)}
+.ber-rang-zusatz{grid-column:1/-1;font-size:11px;color:var(--dim)}
+
+/* Die Sitzungsauswahl. Gewaehlt wird ringsum markiert (`box-shadow`), nicht an
+   einer Kante und nicht ueber einen dickeren Rahmen — der liesse die Zeile um
+   einen Pixel wachsen und das ganze Raster bei jedem Wechsel springen. */
+.ber-sitzung{width:100%;display:grid;gap:2px;text-align:left;padding:7px 9px;
+  border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.ber-sitzung:hover{border-color:var(--muted)}
+.ber-sitzung.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ber-sitzung-titel{font-size:12px;color:var(--text)}
+.ber-sitzung-unten{font-size:11px;color:var(--dim);font-family:var(--mono)}
+.ber-sitzung-warn{font-size:11px;color:var(--accent)}
+/* **Untereinander stehende Bloecke liegen auf DERSELBEN Kante.** Die
+   Kennzahlen-Reihe darf 880 px breit werden, die Karten kamen aus dem
+   Teilen-Reiter mit 720 — gestapelt ergab das zwei rechte Kanten, die sich um
+   160 px unterscheiden. Nah genug beieinander, dass es wie ein Rundungsfehler
+   aussieht statt wie Absicht; dieselbe Falle wie einmal im Phasenkopf. */
+#ber-mitte .teilen-karte{max-width:880px}

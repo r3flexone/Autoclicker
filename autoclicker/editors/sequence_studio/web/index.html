@@ -36,6 +36,7 @@
       <button class="tab" data-ansicht="scans">Scans</button>
       <button class="tab" data-ansicht="teilen">Teilen</button>
       <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
+      <button class="tab" data-ansicht="bericht">Bericht</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </div>
     <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
@@ -349,6 +350,18 @@
     <aside class="seite links" id="wz-links"></aside>
     <main class="cfg-mitte" id="wz-mitte"></main>
     <aside class="seite rechts" id="wz-rechts"></aside>
+  </div>
+
+  <!-- Bericht: was die vergangenen Laeufe hinterlassen haben. Der Live-Run
+       zeigt das Jetzt, dieser Reiter das Gestern - und er beantwortet die eine
+       Frage, die man nach einer langen Nacht hat: WELCHER SCHRITT HAENGT.
+       Dieselbe Dreiteilung wie Werkzeuge und Einstellungen (Auswahl, Inhalt,
+       was daran haengt) und dieselben Klassen: ein Reiter, der sich seine
+       eigene Gestalt gibt, kostet mehr als er einbringt. -->
+  <div class="cfg" id="sicht-bericht" hidden>
+    <aside class="seite links" id="ber-links"></aside>
+    <main class="cfg-mitte" id="ber-mitte"></main>
+    <aside class="seite rechts" id="ber-rechts"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,

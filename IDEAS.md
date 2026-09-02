@@ -10,7 +10,10 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
 `.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
-Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert).
+Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
+*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
+über `auswerten()` aus `tools/log_report.py`, Stückzahlen mal
+`scan_market_value_file`).
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
 Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
@@ -124,39 +127,6 @@ Ping bei wichtigen Events: Boss erkannt (LLM), Inventory voll, unerwarteter Stop
 - **Nutzen:** Kein ständiger Blick aufs Fenster nötig. Besonders stark in Kombination mit LLM-Boss-Detection.
 - **Tradeoff:** Webhook-URL als Secret verwalten (nicht ins Repo). Netzwerk-Abhängigkeit.
 - **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in `runtime/actions.py`.
-
-### Bericht-Reiter: die Session-Logs im Studio lesen
-`tools/log_report.py` beantwortet die Frage, die man nach einer langen Nacht hat („welcher
-Schritt läuft am häufigsten in den Timeout?") — erreichbar ist es nur über die
-Kommandozeile, also genau dort nicht, wo man nach dem Lauf hinsieht.
-
-- **Nutzen:** Ein Reiter neben Live-Run: die Sitzungen als Liste, je Sitzung Dauer, Zyklen,
-  die häufigsten Timeouts, gefundene Items, Häufungen von `verify_miss`. Der Live-Run zeigt
-  das Jetzt, der Bericht das Gestern — und eine Disconnect-Nacht fällt hier auf, ohne dass
-  man dafür erst einen Watcher bauen muss.
-- **Symmetrie:** achter Knopf in derselben `.tabs`-Leiste, kein eigener Ort daneben.
-  Innen dieselbe Aufteilung wie Werkzeuge und Scans — Liste links, Bericht in der Mitte,
-  Kopf klebt oben, Knopfreihen als `knopfpaar` mit gleichen Spalten. Ein Reiter, der sich
-  seine eigene Gestalt gibt, kostet mehr als er einbringt.
-- **Tradeoff:** `bericht()` **druckt** heute und gibt nichts zurück; die Brücke braucht eine
-  Datenfunktion darunter, deren Ausgabe die CLI bleibt. `tools/log_report.py` importiert
-  bewusst nichts aus `autoclicker/` — die Richtung stimmt (die Brücke ruft das Werkzeug),
-  muss aber so bleiben. Dazu eine Obergrenze: `logs/` wächst mit jedem Start.
-
-### Was die Nacht wirklich eingebracht hat
-Die Marktanalyse rechnet Gold/h **theoretisch**, das Session-Log schreibt `item_found` mit
-Namen. Beides zusammen ist der tatsächliche Ertrag eines Laufs.
-
-- **Nutzen:** Beantwortet die Frage, für die der ganze Aufbau da ist: lohnt sich diese
-  Sequenz, und welches Item trägt sie. Die Verbindung existiert schon als Datei
-  (`scan_market_value_file` → `output/marktwert.json`) und wird bisher ausschliesslich zum
-  *Sortieren* benutzt.
-- **Tradeoff:** `item_found` heisst „erkannt", nicht „eingesammelt und verkauft" — die Zahl
-  ist eine **Obergrenze** und muss so beschriftet sein, sonst glaubt man ihr mehr, als sie
-  hergibt. Ohne Marktwert-Datei gibt es Stückzahlen und sonst nichts; das ist kein
-  Fehlerfall, sondern der Normalfall ohne Analyse.
-- **Ansatz:** Teil des Bericht-Reiters, keine eigene Ansicht. Die Trennung bleibt:
-  `market_analysis/` wird nicht importiert, gelesen wird die JSON.
 
 ## Erkennung
 

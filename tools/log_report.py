@@ -36,13 +36,18 @@ AUSGEWERTET = {
 }
 
 
-def _lies(pfad: Path) -> list[dict]:
+def _lies(pfad: Path) -> tuple[list[dict], str]:
+    """Zeilen der Datei und, falls sie nicht lesbar war, der Grund.
+
+    Der Grund wird zurueckgegeben statt gedruckt: `auswerten()` darf nichts
+    ausgeben, sonst landet er in der Konsole des Studios statt in seinem
+    Bericht-Reiter.
+    """
     try:
         with open(pfad, "r", encoding="utf-8", newline="") as f:
-            return list(csv.DictReader(f))
+            return list(csv.DictReader(f)), ""
     except (IOError, OSError, csv.Error) as e:
-        print(f"  ! {pfad.name}: nicht lesbar ({e})")
-        return []
+        return [], str(e)
 
 
 def _dauer(zeilen: list[dict]) -> float:
@@ -61,25 +66,48 @@ def _fmt_dauer(sek: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def bericht(pfade: list[Path]) -> None:
+def _rang(zaehler: Counter) -> list[list]:
+    """Counter als absteigend sortierte Paarliste — JSON-tauglich und stabil."""
+    return [[name, n] for name, n in zaehler.most_common()]
+
+
+def auswerten(pfade: list[Path]) -> dict:
+    """Wertet Session-Logs aus und gibt reine Daten zurueck — ohne eine Zeile Ausgabe.
+
+    Getrennt von `bericht()`, weil der Bericht-Reiter des Studios dieselbe
+    Auswertung braucht und mit gedrucktem Text nichts anfangen kann. Die
+    Richtung bleibt dabei, wie sie war: dieses Werkzeug importiert nichts aus
+    `autoclicker/` — die Bruecke ruft es, nicht umgekehrt.
+
+    Die Zahlen kommen doppelt zurueck: einmal ueber alle Dateien zusammen (das,
+    was der Bericht zeigt) und einmal je Sitzung (die Liste, aus der man eine
+    auswaehlt). Zweimal zu lesen waere der naheliegende Weg und der falsche —
+    bei einer Nacht voller Logs liest man dann jede Datei doppelt.
+    """
     gesamt_events = Counter()
     timeouts_je_schritt = Counter()
     items = Counter()
     erkannt = Counter()
     verify_miss = Counter()
     verify_ok = Counter()
-    sessions = 0
+    sitzungen = []
+    nicht_lesbar = []
     gesamt_dauer = 0.0
 
     for pfad in pfade:
-        zeilen = _lies(pfad)
+        zeilen, fehler = _lies(pfad)
+        if fehler:
+            nicht_lesbar.append([pfad.name, fehler])
+            continue
         if not zeilen:
             continue
-        sessions += 1
-        gesamt_dauer += _dauer(zeilen)
+        dauer = _dauer(zeilen)
+        gesamt_dauer += dauer
+        eigen = Counter()
         for z in zeilen:
             ev = z.get("event", "")
             gesamt_events[ev] += 1
+            eigen[ev] += 1
             detail = (z.get("detail") or "").strip()
             if ev == "timeout":
                 timeouts_je_schritt[detail or "(ohne Namen)"] += 1
@@ -91,10 +119,49 @@ def bericht(pfade: list[Path]) -> None:
                 verify_miss[detail or "(ohne Namen)"] += 1
             elif ev == "verify_ok":
                 verify_ok[detail or "(ohne Namen)"] += 1
+        sitzungen.append({
+            "datei": pfad.name,
+            "beginn": (zeilen[0].get("timestamp") or "").strip(),
+            "dauer": dauer,
+            "klicks": eigen.get("click", 0),
+            "timeouts": eigen.get("timeout", 0),
+            "items": eigen.get("item_found", 0),
+            "verify_miss": eigen.get("verify_miss", 0),
+        })
 
+    stoerungen = {k: v for k, v in gesamt_events.items()
+                  if k.startswith(("focus_", "humanize_"))}
+    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(stoerungen)
+    return {
+        "sitzungen": sitzungen,
+        "nicht_lesbar": nicht_lesbar,
+        "dauer": gesamt_dauer,
+        "ereignisse": dict(gesamt_events),
+        "timeouts": _rang(timeouts_je_schritt),
+        "items": _rang(items),
+        "erkannt": _rang(erkannt),
+        "verify_miss": _rang(verify_miss),
+        "verify_ok": dict(verify_ok),
+        "stoerungen": sorted([k, v] for k, v in stoerungen.items()),
+        "unbekannt": sorted(unbekannt),
+    }
+
+
+def bericht(pfade: list[Path]) -> None:
+    daten = auswerten(pfade)
+    for datei, fehler in daten["nicht_lesbar"]:
+        print(f"  ! {datei}: nicht lesbar ({fehler})")
+
+    sessions = len(daten["sitzungen"])
     if not sessions:
         print("Keine lesbaren Logs gefunden.")
         return
+
+    gesamt_events = daten["ereignisse"]
+    timeouts_je_schritt = daten["timeouts"]
+    verify_miss = daten["verify_miss"]
+    verify_ok = daten["verify_ok"]
+    gesamt_dauer = daten["dauer"]
 
     print("=" * 66)
     print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_dauer(gesamt_dauer)}")
@@ -109,8 +176,8 @@ def bericht(pfade: list[Path]) -> None:
     # DIE Frage, fuer die es das Werkzeug gibt
     if timeouts_je_schritt:
         print(f"\n{'-' * 66}\nTIMEOUTS — wo die Sequenz haengt "
-              f"({sum(timeouts_je_schritt.values())} gesamt):")
-        for name, n in timeouts_je_schritt.most_common(10):
+              f"({sum(n for _, n in timeouts_je_schritt)} gesamt):")
+        for name, n in timeouts_je_schritt[:10]:
             print(f"  {n:>5}x  {name}")
         print("       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.")
     else:
@@ -120,8 +187,8 @@ def bericht(pfade: list[Path]) -> None:
     if verify_ok or verify_miss:
         print(f"\n{'-' * 66}\nNACHPRUEFUNG:")
         print(f"  {sum(verify_ok.values())}x bestaetigt, "
-              f"{sum(verify_miss.values())}x ohne Wirkung")
-        for name, n in verify_miss.most_common(10):
+              f"{sum(n for _, n in verify_miss)}x ohne Wirkung")
+        for name, n in verify_miss[:10]:
             gut = verify_ok.get(name, 0)
             quote = f"{gut}/{gut + n}" if (gut + n) else "-"
             print(f"  {n:>5}x ohne Wirkung  {name}   (bestaetigt: {quote})")
@@ -129,27 +196,25 @@ def bericht(pfade: list[Path]) -> None:
             print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
                   "Spiel\n       braucht laenger als verify_timeout.")
 
-    if items:
-        print(f"\n{'-' * 66}\nGEFUNDENE ITEMS ({sum(items.values())} gesamt):")
-        for name, n in items.most_common(15):
+    if daten["items"]:
+        print(f"\n{'-' * 66}\nGEFUNDENE ITEMS "
+              f"({sum(n for _, n in daten['items'])} gesamt):")
+        for name, n in daten["items"][:15]:
             print(f"  {n:>5}x  {name}")
 
-    if erkannt:
+    if daten["erkannt"]:
         print(f"\n{'-' * 66}\nERKANNT (Boss/Icon):")
-        for name, n in erkannt.most_common(10):
+        for name, n in daten["erkannt"][:10]:
             print(f"  {n:>5}x  {name}")
 
-    stoerungen = {k: v for k, v in gesamt_events.items()
-                  if k.startswith(("focus_", "humanize_"))}
-    if stoerungen:
+    if daten["stoerungen"]:
         print(f"\n{'-' * 66}\nUNTERBRECHUNGEN:")
-        for k, v in sorted(stoerungen.items()):
+        for k, v in daten["stoerungen"]:
             print(f"  {v:>5}x  {k}")
 
-    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(stoerungen)
-    if unbekannt:
+    if daten["unbekannt"]:
         # Neue Ereignisarten sollen hier auffallen, nicht stillschweigend fehlen.
-        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(sorted(unbekannt))}")
+        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(daten['unbekannt'])}")
 
 
 def main() -> int:
