@@ -24,6 +24,38 @@ Die Punkte als Marker auf einem Bildschirmfoto, statt nur als Koordinatenpaare.
   Bildschirm von *jetzt*, nicht der vom Zeitpunkt der Aufnahme. Wenn das Spiel gerade
   nicht läuft, zeigt die Vorschau den Desktop.
 
+### Punkte aufräumen: Dubletten zusammenlegen (mit Vorschau)
+CLAUDE.md nennt diesen Durchgang beim Namen und schiebt ihn auf: „Auf die Mitte rücken darf
+nur ein ausdrücklicher Aufräum-Durchgang mit Vorschau." Gemessen an einer echten Aufnahme:
+51 Punkte, davon 14 Dubletten — vier davon (#2/#13/#24/#40) liegen 1,4–6,7 px auseinander
+auf **einem** grünen Knopf.
+
+- **Nutzen:** Jeder Punkt kostet in der Klick-Runde einen Handgriff und in jeder Prüfliste
+  eine Zeile. Vier Punkte auf einem Knopf heissen: viermal nachklicken — und wer einen davon
+  übersieht, hat eine Sequenz, die an genau einer Stelle weiter danebenklickt.
+  `punkt_an_stelle()` verhindert nur *neue* Dubletten; für den Bestand gibt es nichts.
+- **Tradeoff:** Zusammenlegen verschiebt die Klickstelle der beteiligten Schritte um bis zu
+  `punkt_radius`. Bei einem 60-px-Knopf egal, bei einem schmalen Pfeil nicht — deshalb
+  Vorschau statt Automatik: welche Punkte, wie weit auseinander, welche Schritte hängen
+  daran. Der alte Einwand („ein wiederverwendeter Punkt gehört womöglich schon einer
+  anderen Sequenz") ist mit dem Umzug in `sequence.json` **weg**: Punkte sind sequenzlokal,
+  betroffen ist immer nur die offene Sequenz.
+- **Ansatz:** Gruppieren mit derselben Regel wie `punkt_an_stelle()` (Abstand **und** Farbe),
+  Ziel ist die Mitte der Gruppe. Als siebtes Werkzeug im Studio neben „Punkte verwalten" —
+  die Verwendungsliste steht dort schon (`_punkt_verwendungen`).
+
+### Bausteine: eine Sequenz aus einer Sequenz aufrufen
+Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
+
+- **Nutzen:** Ein Schritt-Typ „Sequenz X ausführen". Ändert sich der Weg, ändert man ihn
+  einmal. Dasselbe Argument wie „Referenzen statt Kopien", nur eine Ebene höher.
+- **Tradeoff:** Punkte sind sequenzlokal, der Baustein bringt seine eigenen mit — das passt.
+  Was nicht passt: Live-Run, Phasenleiste und `.lauf.json` beschreiben **eine** Sequenz mit
+  Phasen; ein Aufruf macht daraus einen Stapel, und „Phase 2 von 4" stimmt dann nicht mehr.
+  Dazu die Rekursion (A ruft B ruft A) und die Frage, was `restart` in einem Baustein
+  bedeutet. Deutlich billiger und fast so gut: eine reine Editor-Funktion „Schritte aus
+  Sequenz X hier einfügen" — eine Kopie, aber eine bewusste und einmalige.
+
 ## Performance
 
 ### Ein Screenshot pro Scan statt einer pro Slot
@@ -62,6 +94,27 @@ gezielte Erkennen *des Login-Screens* und die Reaktion darauf.
 - **Ansatz:** Ein Background-Watcher (ähnlich Boss-Watcher). Die Schwelle könnte aus
   dem Log kommen: N `verify_miss` oder `timeout` in Folge = vermutlich Disconnect.
 
+### Fenster-Anker: den Versatz beim Start selbst ausgleichen
+Ein Klick-Punkt steht in Bildschirm-Koordinaten. Zieht das Spielfenster um, stimmt keiner
+mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde), die alle erst
+**hinterher** reparieren.
+
+- **Nutzen:** Die Sequenz merkt sich beim Speichern den Client-Bereich ihres Spielfensters
+  (`get_client_rect_by_title`, wie das Export-Manifest es schon tut). Beim Start wird der
+  aktuelle geholt und die Differenz einmal auf alle aufgelösten Punkte gerechnet — im
+  Speicher, nicht in der Datei. Ein verschobenes Fenster kostet dann gar nichts mehr, und
+  eine zweite Instanz desselben Spiels läuft mit derselben Sequenz.
+- **Tradeoff:** Trägt nur, solange sich das Fenster **verschiebt**. Ändert es die Grösse,
+  müsste skaliert werden, und eine skalierte Klickstelle ist eine geratene — genau deshalb
+  rechnet der Import nur mit zwei bestätigten Referenzpunkten. Zweitens müssten Scan-Regionen
+  und Slots mitwandern, sonst klickt es richtig und erkennt falsch. Und ein Anker, dessen
+  Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der gespeicherte
+  Stand, einmal gemeldet.
+- **Ansatz:** Feld `fenster_anker` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
+  Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
+  gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
+  bleiben, wie sie sind.
+
 ## Safety
 
 ### Session-Zeitlimit
@@ -84,6 +137,54 @@ Ping bei wichtigen Events: Boss erkannt (LLM), Inventory voll, unerwarteter Stop
 - **Tradeoff:** Webhook-URL als Secret verwalten (nicht ins Repo). Netzwerk-Abhängigkeit.
 - **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in `runtime/actions.py`.
 
+### Bericht-Reiter: die Session-Logs im Studio lesen
+`tools/log_report.py` beantwortet die Frage, die man nach einer langen Nacht hat („welcher
+Schritt läuft am häufigsten in den Timeout?") — erreichbar ist es nur über die
+Kommandozeile, also genau dort nicht, wo man nach dem Lauf hinsieht.
+
+- **Nutzen:** Ein Reiter neben Live-Run: die Sitzungen als Liste, je Sitzung Dauer, Zyklen,
+  die häufigsten Timeouts, gefundene Items, Häufungen von `verify_miss`. Der Live-Run zeigt
+  das Jetzt, der Bericht das Gestern — und eine Disconnect-Nacht fällt hier auf, ohne dass
+  man dafür erst einen Watcher bauen muss.
+- **Tradeoff:** `bericht()` **druckt** heute und gibt nichts zurück; die Brücke braucht eine
+  Datenfunktion darunter, deren Ausgabe die CLI bleibt. `tools/log_report.py` importiert
+  bewusst nichts aus `autoclicker/` — die Richtung stimmt (die Brücke ruft das Werkzeug),
+  muss aber so bleiben. Dazu eine Obergrenze: `logs/` wächst mit jedem Start.
+
+### Was die Nacht wirklich eingebracht hat
+Die Marktanalyse rechnet Gold/h **theoretisch**, das Session-Log schreibt `item_found` mit
+Namen. Beides zusammen ist der tatsächliche Ertrag eines Laufs.
+
+- **Nutzen:** Beantwortet die Frage, für die der ganze Aufbau da ist: lohnt sich diese
+  Sequenz, und welches Item trägt sie. Die Verbindung existiert schon als Datei
+  (`scan_market_value_file` → `output/marktwert.json`) und wird bisher ausschliesslich zum
+  *Sortieren* benutzt.
+- **Tradeoff:** `item_found` heisst „erkannt", nicht „eingesammelt und verkauft" — die Zahl
+  ist eine **Obergrenze** und muss so beschriftet sein, sonst glaubt man ihr mehr, als sie
+  hergibt. Ohne Marktwert-Datei gibt es Stückzahlen und sonst nichts; das ist kein
+  Fehlerfall, sondern der Normalfall ohne Analyse.
+- **Ansatz:** Teil des Bericht-Reiters, keine eigene Ansicht. Die Trennung bleibt:
+  `market_analysis/` wird nicht importiert, gelesen wird die JSON.
+
+## Erkennung
+
+### Warten auf Text oder Zahl (OCR-Bedingung)
+`WaitCondition` kennt heute nur Farbe. `ocr.py` kann Text, wird aber ausschliesslich für
+Boss-Namen benutzt.
+
+- **Nutzen:** „warte, bis in dieser Region *Fertig* steht" oder „bis die Menge ≥ 100 ist".
+  Damit fallen Inventory-voll, Cooldowns und Fortschrittsbalken in **eine** Bedingung,
+  statt für jeden Fall eine eigene Farbstelle zu suchen. Ein Farbpixel sagt nicht, wie
+  viel; eine Zahl schon.
+- **Tradeoff:** Der erste EasyOCR-Aufruf lädt Modelle aus dem Netz (Sekunden bis Minuten)
+  und hielte den Worker mitten im Lauf an — dieselbe Falle, wegen der die LLM-Benennung
+  nicht im Scan läuft. Danach kostet jede Prüfung ~300 ms, taugt also nicht für eine enge
+  Schleife. Und kleine Spielschriften erkennt OCR unzuverlässig: ohne Toleranz („enthält"
+  statt „ist gleich") ist es unbrauchbar.
+- **Ansatz:** `WaitCondition` um `ocr_region` + `ocr_text`/`ocr_min` erweitern, ausgewertet
+  an derselben Stelle wie die Farbe (`_farb_schleife`). Vorwärmen beim Programmstart, nicht
+  im Worker. Fehlt OCR, wird gemeldet und übersprungen — wie heute ohne Pillow.
+
 ## Idle-Clans-spezifisch
 
 ### Inventory-Full-Detection
@@ -105,3 +206,17 @@ Bei niedrigem HP automatisch Food klicken (Pixel-Farbtest auf HP-Bar).
 - **XP-Tracker**: OCR oder Pixel-Tracking der XP-Anzeige für Skill-Progress-Schätzung.
 - **Death-Screen-Detection**: Analog zu Disconnect, spezifisch für Ingame-Tod.
 - **Auto-Login**: Automatisches Re-Login nach Session-Timeout (riskant – nur mit gespeicherten Credentials, potenzielles Sicherheitsrisiko).
+- **Punkt-Gesundheit vor dem Start**: alle Punkte einer Sequenz in einem Rutsch gegen ihre
+  gespeicherte Farbe halten, bevor der Lauf beginnt. Fängt ein umgebautes Spiel-UI in zwei
+  Sekunden statt nach einer Stunde Fehlklicks. Haken: die meisten Punkte liegen in
+  Untermenüs, die gerade nicht offen sind — ohne eine Regel dafür meldet der Test fast alles
+  als „weicht ab" und ist damit wertlos. Tragfähig wohl nur für die Punkte der INIT-Phase.
+- **Klick-Runde auch für Scan-Regionen**: heute setzt sie nur Punkte, Slots bleiben `repair`
+  vorbehalten. Eine Runde, die auch eine Region neu aufziehen lässt, spart den Wechsel
+  zwischen zwei Werkzeugen — misst aber schlechter, als `repair` es kann.
+- **Warteschlange mehrerer Sequenzen**: nachts A, morgens B. Der Worker führt genau eine
+  Sequenz aus (`state.active_sequence`), das gehört also eine Ebene darüber und nicht in ihn
+  hinein.
+- **Overlay während des Laufs**: ein durchklickbares Fenster, das die nächste Klickstelle
+  markiert. Beim Suchen eines hängenden Schritts unschlagbar, kostet aber ein zweites
+  GUI-Fenster samt plattformspezifischer Klick-Durchlässigkeit.
