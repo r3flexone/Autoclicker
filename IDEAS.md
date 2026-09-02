@@ -12,6 +12,14 @@ und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
 `.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert).
 
+**Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
+Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
+(`knopfpaar` bzw. `btn breit` — kein drittes Muster daneben), untereinander stehende Zeilen
+auf **derselben** `auto-fit`-Regel (min. 118 px, damit nichts abgeschnitten wird), Zustand
+ringsum markiert statt an einer Kante, und die Vorschau-Quadrate mit fester Kantenlänge.
+Ein neuer Reiter reiht sich in die vorhandene `.tabs`-Leiste ein, statt sich eine zweite
+danebenzustellen.
+
 ## Bedienung
 
 ### Sequenz-Studio: Screenshot-Vorschau in der Punkte-Palette
@@ -23,26 +31,6 @@ Die Punkte als Marker auf einem Bildschirmfoto, statt nur als Koordinatenpaare.
   braucht Pillow/Windows) und als Data-URL in die Seite reichen — und das Bild ist der
   Bildschirm von *jetzt*, nicht der vom Zeitpunkt der Aufnahme. Wenn das Spiel gerade
   nicht läuft, zeigt die Vorschau den Desktop.
-
-### Punkte aufräumen: Dubletten zusammenlegen (mit Vorschau)
-CLAUDE.md nennt diesen Durchgang beim Namen und schiebt ihn auf: „Auf die Mitte rücken darf
-nur ein ausdrücklicher Aufräum-Durchgang mit Vorschau." Gemessen an einer echten Aufnahme:
-51 Punkte, davon 14 Dubletten — vier davon (#2/#13/#24/#40) liegen 1,4–6,7 px auseinander
-auf **einem** grünen Knopf.
-
-- **Nutzen:** Jeder Punkt kostet in der Klick-Runde einen Handgriff und in jeder Prüfliste
-  eine Zeile. Vier Punkte auf einem Knopf heissen: viermal nachklicken — und wer einen davon
-  übersieht, hat eine Sequenz, die an genau einer Stelle weiter danebenklickt.
-  `punkt_an_stelle()` verhindert nur *neue* Dubletten; für den Bestand gibt es nichts.
-- **Tradeoff:** Zusammenlegen verschiebt die Klickstelle der beteiligten Schritte um bis zu
-  `punkt_radius`. Bei einem 60-px-Knopf egal, bei einem schmalen Pfeil nicht — deshalb
-  Vorschau statt Automatik: welche Punkte, wie weit auseinander, welche Schritte hängen
-  daran. Der alte Einwand („ein wiederverwendeter Punkt gehört womöglich schon einer
-  anderen Sequenz") ist mit dem Umzug in `sequence.json` **weg**: Punkte sind sequenzlokal,
-  betroffen ist immer nur die offene Sequenz.
-- **Ansatz:** Gruppieren mit derselben Regel wie `punkt_an_stelle()` (Abstand **und** Farbe),
-  Ziel ist die Mitte der Gruppe. Als siebtes Werkzeug im Studio neben „Punkte verwalten" —
-  die Verwendungsliste steht dort schon (`_punkt_verwendungen`).
 
 ### Bausteine: eine Sequenz aus einer Sequenz aufrufen
 Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
@@ -146,6 +134,10 @@ Kommandozeile, also genau dort nicht, wo man nach dem Lauf hinsieht.
   die häufigsten Timeouts, gefundene Items, Häufungen von `verify_miss`. Der Live-Run zeigt
   das Jetzt, der Bericht das Gestern — und eine Disconnect-Nacht fällt hier auf, ohne dass
   man dafür erst einen Watcher bauen muss.
+- **Symmetrie:** achter Knopf in derselben `.tabs`-Leiste, kein eigener Ort daneben.
+  Innen dieselbe Aufteilung wie Werkzeuge und Scans — Liste links, Bericht in der Mitte,
+  Kopf klebt oben, Knopfreihen als `knopfpaar` mit gleichen Spalten. Ein Reiter, der sich
+  seine eigene Gestalt gibt, kostet mehr als er einbringt.
 - **Tradeoff:** `bericht()` **druckt** heute und gibt nichts zurück; die Brücke braucht eine
   Datenfunktion darunter, deren Ausgabe die CLI bleibt. `tools/log_report.py` importiert
   bewusst nichts aus `autoclicker/` — die Richtung stimmt (die Brücke ruft das Werkzeug),
@@ -181,6 +173,10 @@ Boss-Namen benutzt.
   nicht im Scan läuft. Danach kostet jede Prüfung ~300 ms, taugt also nicht für eine enge
   Schleife. Und kleine Spielschriften erkennt OCR unzuverlässig: ohne Toleranz („enthält"
   statt „ist gleich") ist es unbrauchbar.
+- **Symmetrie:** im Inspektor steht die Text-Bedingung **neben** der Farb-Bedingung im
+  selben Abschnitt und in derselben Form (Überschrift, ⓘ, Zahlenfeld) — nicht als zweiter
+  Abschnitt darunter. Es ist dieselbe Frage („ist der Schritt dran?"), nur eine andere
+  Messung.
 - **Ansatz:** `WaitCondition` um `ocr_region` + `ocr_text`/`ocr_min` erweitern, ausgewertet
   an derselben Stelle wie die Farbe (`_farb_schleife`). Vorwärmen beim Programmstart, nicht
   im Worker. Fehlt OCR, wird gemeldet und übersprungen — wie heute ohne Pillow.
