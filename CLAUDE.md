@@ -2510,9 +2510,31 @@ Regeln beim Erweitern:
   Duplizieren landen die Kopien **hinter der letzten** Gewählten und werden zur
   neuen Auswahl. Jede Kopie einzeln hinter ihr Original zu setzen zerrisse eine
   Mehrfachauswahl in abwechselnd Original/Kopie. Kopiert wird tief
-  (`copy.deepcopy`) und **auf denselben Punkt** — ein Duplikat ist erst mal
-  derselbe Klick, und ein zweiter Punkt an derselben Stelle wäre die Doppelung,
-  die `punkt_fuer_stelle()` überall sonst vermeidet.
+  (`copy.deepcopy`), **und die Kopie bekommt eigene Punkte**.
+
+  Hier stand einmal das Gegenteil („ein Duplikat ist erst mal derselbe Klick"),
+  mit dem Argument, ein zweiter Punkt an derselben Stelle sei die Doppelung, die
+  `punkt_an_stelle()` überall sonst vermeidet. Das Argument stimmt für
+  *unabsichtliche* Dubletten aus einer Aufnahme — hier war es falsch: **man
+  dupliziert einen Block, um ihn zu ändern.** Zeigten beide auf denselben Punkt,
+  verstellte jede Korrektur an der Kopie auch das Original, und auffallen würde
+  es erst viel später an einer Stelle, an der man es nicht mehr sucht. Der Preis
+  sind zwei Punkte auf einer Stelle, bis einer umzieht.
+
+  `_punkte_mitkopieren()` führt dafür **eine Abbildung für den ganzen
+  Durchgang**, und die hat zwei Wirkungen: innerhalb eines Blocks bleibt
+  zusammen, was zusammengehört (bei FARBE+KLICK sind Klick und Prüf-Pixel
+  derselbe Punkt — sonst wartete die Kopie auf eine andere Stelle, als sie
+  klickt), und zwischen mehreren kopierten Blöcken bleibt die Beziehung erhalten
+  (zwei Gewählte auf einem Knopf ergeben zwei Kopien auf **einem** neuen, nicht
+  auf zweien). Eine Referenz ins Leere wird nicht wiederbelebt: sie bleibt, wie
+  sie ist, statt still zu einem Klick auf (0, 0) zu werden.
+
+  **Das Verschieben bleibt davon unberührt**: `punkt_setzen()` ändert weiterhin
+  den PUNKT, und jeder Schritt darauf zieht mit. Genau das will man, wenn zwei
+  Blöcke wirklich denselben Knopf klicken und der Knopf umzieht — ohne das wäre
+  jede Kalibrierung eine halbe. Ein Anlauf, das im Inspektor per Copy-on-Write
+  zu lösen, kurierte nur das Symptom und nahm dabei diese Regel mit.
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.

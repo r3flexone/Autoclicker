@@ -6324,6 +6324,7 @@ import tools.tests.persistenz_basis      # noqa: F401,E402
 import tools.tests.nachklick            # noqa: F401,E402
 import tools.tests.studio_teilen        # noqa: F401,E402
 import tools.tests.bericht              # noqa: F401,E402
+import tools.tests.punkte               # noqa: F401,E402
 
 
 import shutil as _shD
