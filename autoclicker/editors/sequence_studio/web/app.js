@@ -1647,8 +1647,11 @@ function baueStelle(ziel, b) {
   // Beides an der Ueberschrift: der Zusatz fuer WARTEN-Bloecke erklaert, warum
   // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
   ziel.appendChild(ueberschrift(b.typ === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
-    "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
-    "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten. " +
+    "X und Y gelten nur für DIESEN Block. Wird derselbe Punkt auch anderswo " +
+    "benutzt, entsteht beim Ändern ein eigener — die anderen bleiben, wo sie " +
+    "sind. Soll der Knopf für alle umziehen, weil er im Spiel umgezogen ist: " +
+    "Werkzeuge › Punkte verwalten. Die Sequenz speichert übrigens keine eigenen " +
+    "Koordinaten, deshalb ist auch eine getippte Stelle immer ein Punkt. " +
     "Mit ‚Stelle mit der Maus setzen‘ wechselst du danach ins Spiel, bewegst die " +
     "Maus an die Stelle und drückst ENTER. Die Farbe wird mitgemessen; ESC bricht ab." +
     (b.typ === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +

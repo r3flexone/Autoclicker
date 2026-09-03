@@ -2615,6 +2615,23 @@ Regeln beim Erweitern:
 - **`_verschiebe()` ist der eine Weg** für Umsortieren *und* Phasenwechsel. Der
   Index-Ausgleich (`at -= Anzahl entfernter Schritte davor`) gilt nur, wenn Quelle
   und Ziel dieselbe Phase sind — sonst verschiebt sich beim Ziel nichts.
+- **Die STELLE gehört dem Block, Name und Farbe dem Punkt.** Das ist derselbe
+  Satz von zwei Seiten. Name und Farbe beschreiben den Knopf — wer zweimal
+  denselben Knopf klickt, meint auch zweimal dieselbe Farbe; sie ändern sich
+  überall mit. Die Stelle nicht: „dieser Block klickt woanders hin" ist eine
+  Aussage über den **Block**. Wird der Punkt noch anderswo benutzt, spaltet
+  `punkt_setzen()` deshalb einen eigenen ab (copy-on-write) und hängt **jede**
+  Referenz dieses Blocks um — bei FARBE+KLICK sind Klick und Prüf-Pixel derselbe
+  Punkt, und das soll die Verschiebung nicht auseinanderreissen. Vorher zog eine
+  getippte Koordinate alle Schritte mit, die zufällig denselben Punkt benutzten:
+  man korrigierte eine Stelle und verstellte drei andere, ohne es zu sehen.
+
+  **Den PUNKT verschiebt man woanders** — Werkzeuge → „Punkte verwalten"
+  (`werkzeug_punkt_setzen`) oder die Klick-Runde. Dort heisst die Änderung „der
+  Knopf ist umgezogen", und dann sollen alle mit; ohne das wäre jede
+  Kalibrierung eine halbe. Zwei Absichten, zwei Orte, zwei Methoden — und ein
+  Test misst beide Seiten.
+
 - **Was dem Punkt gehört, steht beim Punkt.** Name und Farbe eines Klick-Blocks
   gehören nicht dem Schritt, sondern dem Punkt — sie stehen deshalb im Abschnitt
   KLICK-POSITION, zusammen mit Auswahl und Koordinaten. Vorher stand oben „Name
