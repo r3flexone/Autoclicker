@@ -3945,6 +3945,15 @@ check("Kopf und Favicon benutzen beide diese Datei",
 # CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
 check("das Logo traegt eine Maske statt einer Ersatzfarbe",
       'mask="url(#cutout)"' in _logo12)
+# **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py nimmt
+# `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein `url(#gold)`
+# faellt mit ValueError um. Genau darauf beruht die Plakette: Verlauf, Rand und
+# Innenschatten liegen DARUEBER und werden beim Rastern nicht gesehen, das
+# 16-px-Symbol bleibt eine lesbare flache Flaeche.
+import re as _re12c
+_rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
+check("der Rasterer findet zuerst eine flache Hex-Farbe",
+      bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
 import re as _re12b
 _befehle12 = set(_re12b.findall(r'[A-Za-z]', " ".join(
     _re12b.findall(r'\sd="([^"]+)"', _logo12))))
@@ -3962,7 +3971,7 @@ _flach12 = [p for z in _pixel12 for p in z]
 check("die Rasterung liefert genau 16 x 16 Pixel",
       len(_pixel12) == 16 and all(len(z) == 16 for z in _pixel12))
 check("sie verwendet exakt die Farbe des gelieferten SVGs",
-      all(p[:3] == (0xF2, 0xA3, 0x00) for p in _flach12))
+      all(p[:3] == (0xD9, 0xA4, 0x20) for p in _flach12))
 check("Grund, transparente Aussparungen und Kantenglaettung bleiben erhalten",
       any(p[3] == 255 for p in _flach12)
       and any(p[3] == 0 for p in _flach12)
