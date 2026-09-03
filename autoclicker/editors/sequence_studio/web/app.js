@@ -1042,16 +1042,51 @@ function seqKarte(s) {
     el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
     el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")]));
 
+  // Zwei Knöpfe teilen sich gleiche Spalten (`knopfpaar`): „Öffnen" und
+  // „Löschen" sind verschieden lang, und zwei verschieden breite Knöpfe
+  // nebeneinander lesen sich als zwei Rangstufen. Bei einer defekten Datei
+  // bleibt die erste Spalte leer statt zu verschwinden — sonst säße das
+  // Löschen dort, wo bei den Nachbarkarten das Öffnen steht.
   karte.appendChild(el("div", {class: "seq-fuss"},
     el("span", {class: "klein mono wachse", title: s.datei},
        s.datei + " · " + zeitpunkt(s.geaendert)),
-    // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
-    // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
-    s.defekt ? null : el("button", {
-      class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
-      onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
-    }, s.offen ? "geöffnet" : "Öffnen")));
+    el("div", {class: "knopfpaar"},
+      // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
+      // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
+      s.defekt ? el("span", {}) : el("button", {
+        class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
+        onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
+      }, s.offen ? "geöffnet" : "Öffnen"),
+      el("button", {
+        class: "btn gefahr still", disabled: s.offen,
+        title: s.offen
+          ? "Erst eine andere Sequenz laden — sonst legt der nächste Druck auf "
+            + "Speichern den Ordner wieder an."
+          : "Räumt den ganzen Sequenzordner nach backups/ weg",
+        onclick: () => frageLoeschen(s),
+      }, "Löschen"))));
   return karte;
+}
+
+/** Die Rückfrage vor dem Löschen — mit dem, was wirklich weggeht.
+ *
+ * Eine Sequenz ist eine Besitzeinheit: Scans, Vorlagen und gemerkte Bildschirme
+ * liegen in ihrem Ordner. „Sequenz löschen?" allein verschwiege den halben
+ * Umfang, und der ist genau das, was man hinterher vermisst. */
+function frageLoeschen(s) {
+  // Das Wort kommt fertig gebeugt aus der Bruecke. Ein angehaengtes "n" ergab
+  // "2× Item-Scann" — deutsche Mehrzahl ist keine Regel fuer eine Zeile hier.
+  const teile = (s.umfang || []).map((u) => u.anzahl + "× " + u.wort);
+  zeigeFrage({
+    art: "seq_loeschen",
+    ziel: s.name,
+    titel: "„" + s.name + "“ löschen?",
+    text: "Der ganze Ordner geht weg"
+      + (teile.length ? " — samt " + teile.join(", ") + "." : ".")
+      + " Er wird nach backups/sequences/ verschoben, nicht gelöscht:"
+      + " zurückholen geht von Hand.",
+    weiter: "Löschen",
+  });
 }
 
 /* --------------------------------------------------------- Ansicht: Live-Run */
@@ -1936,13 +1971,24 @@ function schliesseFrage() {
   $("schleier").hidden = true;
 }
 
+/* Die lokale Variable hiess `frage` und verdeckte damit den gleichnamigen
+ * Bruecken-Helfer — solange hier nur `ruf()` vorkam, fiel das nicht auf. Sie
+ * heisst jetzt `offen`, damit der fragende Kanal von hier aus erreichbar ist. */
 async function fortfahren(verwerfen) {
-  const frage = offeneFrage;
+  const offen = offeneFrage;
   schliesseFrage();
-  if (!frage) return;
-  if (frage.art === "speichern") return ruf("speichern", {erzwingen: true});
+  if (!offen) return;
+  // Löschen geht über den fragenden Kanal: es ändert Dateien, nicht die offene
+  // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
+  // Steht vorn, weil es weder speichern noch laden will.
+  if (offen.art === "seq_loeschen") {
+    const antwort = await frage("sequenz_loeschen", {name: offen.ziel});
+    if (antwort) setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "warn"});
+    return zeichneSequenzenliste();
+  }
+  if (offen.art === "speichern") return ruf("speichern", {erzwingen: true});
   if (!verwerfen) await ruf("speichern");
-  if (frage.art === "laden") await ruf("laden", {name: frage.ziel, verwerfen: true});
+  if (offen.art === "laden") await ruf("laden", {name: offen.ziel, verwerfen: true});
   else await ruf("neu", {verwerfen: true});
 }
 

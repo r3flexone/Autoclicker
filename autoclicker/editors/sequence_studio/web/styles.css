@@ -1337,3 +1337,9 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
    160 px unterscheiden. Nah genug beieinander, dass es wie ein Rundungsfehler
    aussieht statt wie Absicht; dieselbe Falle wie einmal im Phasenkopf. */
 #ber-mitte .teilen-karte{max-width:880px}
+/* Zwei Knoepfe in der Fusszeile einer Sequenzkarte teilen sich gleiche Spalten:
+   „Öffnen" und „Löschen" sind verschieden lang, und zwei verschieden breite
+   Knoepfe nebeneinander lesen sich als zwei Rangstufen. `flex:none`, damit das
+   Paar dem Pfad daneben keine Breite wegnimmt — der schrumpft schon selbst. */
+.seq-fuss .knopfpaar{flex:none;grid-template-columns:repeat(2,82px)}
+.seq-fuss .knopfpaar > .btn{white-space:nowrap;padding-left:0;padding-right:0}

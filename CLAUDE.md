@@ -1028,6 +1028,31 @@ und gehört trotzdem zu `frage()`. Geändert wird die Config, nicht die Sequenz 
 Momentaufnahme wäre dafür der falsche Gegenstand. Der Kanal richtet sich also danach,
 was zurückkommt, nicht danach, ob etwas passiert.
 
+**Gelöscht wird dort auch — mit Rückfrage und nach `backups/`.** Eine Sequenz ist
+eine Besitzeinheit: Punkte stehen in ihrer `sequence.json`, Scans, Vorlagen und
+gemerkte Bildschirme liegen daneben. Nur die JSON zu entfernen liesse einen Ordner
+voller Vorlagen zurück, den nie wieder jemand ansieht — also geht der **ganze
+Ordner**, und die Rückfrage nennt, was daran hängt („samt 3 Item-Scans, 12
+Vorlagen"). Ohne diese Angabe löscht man einen Nachmittag Arbeit an Item-Vorlagen
+mit, weil man „nur die Sequenz" wegräumen wollte.
+
+**Verschoben statt entfernt** (`sequenz_loeschen()`): der Ordner landet unter
+`backups/sequences/<name>/`, ein vorhandener Stand dort bekommt einen Zeitstempel
+statt überschrieben zu werden. Dieselbe Regel wie beim Start-Durchgang, und aus
+demselben Grund.
+
+Zwei Absagen gehören dazu: **die offene Sequenz nicht** (der Editor hält sie im
+Speicher — der nächste Druck auf Speichern legte den Ordner wieder an, und das
+Löschen sähe aus, als hätte es nicht gewirkt) und **nicht während eines Laufs**
+(der Worker liest genau aus diesen Ordnern). Eine *defekte* Datei lässt sich
+dagegen sehr wohl löschen — sie ist der häufigste Grund, es zu wollen, und
+deshalb bekommt auch sie ihren Umfang in der Übersicht.
+
+**Die Mehrzahl steht in den Daten, nicht in der Ansicht** (`_UMFANG` trägt beide
+Formen). Ein angehängtes „n" ergab „2× Item-Scann" und „3× gemerkter
+Bildschirmn" — bei drei von fünf Wörtern falsch. Aufgefallen ist es erst am
+gerenderten Dialog; deutsche Mehrzahl ist keine Regel für eine Zeile JavaScript.
+
 Zwei Eigenschaften der Übersicht, die man kennen muss: sie sieht den Ordner **selbst**
 durch statt `list_available_sequences()` zu fragen (die überspringt unlesbare Dateien
 stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau dann sucht
