@@ -465,11 +465,8 @@ class BridgeEditingMixin:
         from ...winapi import get_screen_pixel
 
         if step.point_id is not None:
-            # Dieselbe Regel wie beim Tippen der Zahlen, und deshalb ueber
-            # dieselbe Methode: gehoert der Punkt noch anderen Stellen, spaltet
-            # sich hier einer fuer diesen Block ab. `step.point_id` wird bei
-            # jedem Aufruf neu gelesen — der zweite trifft also schon den neuen
-            # Punkt und aendert ihn an Ort und Stelle.
+            # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der
+            # Zahlen — der Punkt gehört nicht diesem Block allein.
             self.punkt_setzen({"punkt": step.point_id, "feld": "x", "wert": x})
             self.punkt_setzen({"punkt": step.point_id, "feld": "y", "wert": y})
         else:
@@ -579,89 +576,18 @@ class BridgeEditingMixin:
 
     # ---------------------------------------------------------------- Punkte
 
-    @staticmethod
-    def _punkt_im_block(punkt_id: int, step) -> int:
-        """Wie oft DIESER Schritt den Punkt benutzt.
-
-        Vier Stellen kann er haben: Klick, Prüf-Pixel, Nachprüfung, ELSE. Bei
-        FARBE+KLICK sind Klick und Prüf-Pixel bewusst DERSELBE Punkt — deshalb
-        wird gezählt statt nur nachgesehen.
-        """
-        n = 1 if step.point_id == punkt_id else 0
-        for bedingung in (step.wait_condition, step.verify_condition, step.else_config):
-            if bedingung is not None and getattr(bedingung, "point_id", None) == punkt_id:
-                n += 1
-        return n
-
-    def _punkt_fuer_block(self, punkt):
-        """Den Punkt liefern, den DIESER Block verschieben darf.
-
-        Gehört er nur ihm, ist es der Punkt selbst — eine Kopie daneben wäre die
-        Dublette, die `punkt_an_stelle()` überall sonst vermeidet. Wird er auch
-        anderswo benutzt, entsteht eine Kopie und der Block hängt sich um.
-
-        Umgehängt wird dabei JEDE Referenz dieses Blocks: bei FARBE+KLICK sind
-        Klick und Prüf-Pixel derselbe Punkt, und genau das soll die Verschiebung
-        nicht auseinanderreissen.
-        """
-        lane, row, step = self._einzelner()
-        if step is None:
-            return punkt, ""          # keine eindeutige Zugehörigkeit
-        eigen = self._punkt_im_block(punkt.id, step)
-        if not eigen:
-            return punkt, ""          # der Punkt gehört gar nicht zu diesem Block
-        # Items, Boss- und Icon-Scans zählen mit: auch ein Bestätigungsklick
-        # oder eine Scan-Aktion würde sonst stillschweigend mitwandern. Der
-        # Ladevorgang ist durch `_scan_geladen` gedeckelt, also einmal je Sitzung.
-        self._scan_laden()
-        fremd = len(self._punkt_verwendungen(punkt.id)) - eigen
-        if fremd <= 0:
-            return punkt, ""
-        neu = PalettePoint(
-            id=max([p.id for p in self.points], default=0) + 1,
-            x=punkt.x, y=punkt.y, name=punkt.name, color=punkt.color,
-            source="Sequenz-Studio")
-        self.points.append(neu)
-        if step.point_id == punkt.id:
-            step.point_id = neu.id
-        for bedingung in (step.wait_condition, step.verify_condition, step.else_config):
-            if bedingung is not None and getattr(bedingung, "point_id", None) == punkt.id:
-                bedingung.point_id = neu.id
-        return neu, (f"Punkt #{neu.id} für diesen Block angelegt — #{punkt.id} "
-                     f"bleibt an {fremd} anderen Stellen, wo er war.")
-
     def punkt_setzen(self, daten: dict) -> dict:
-        """Ändert einen Punkt — die STELLE dabei nur für diesen einen Block.
+        """Verschiebt oder benennt einen Punkt — alle Schritte darauf ziehen mit.
 
-        Name und Farbe gehören dem Punkt und ändern sich überall mit: sie
-        beschreiben den Knopf, und wer zweimal denselben Knopf klickt, meint
-        auch zweimal dieselbe Farbe.
-
-        **Die Stelle nicht.** „Dieser Block klickt woanders hin" ist eine Aussage
-        über den Block, nicht über den Knopf — und solange der Punkt noch
-        anderswo benutzt wird, zöge ein Verschieben fremde Schritte
-        stillschweigend mit. Vorher stand hier ausdrücklich „alle Schritte darauf
-        ziehen mit", und genau das ist beim Bearbeiten eines einzelnen Blocks das
-        Falsche: man korrigiert eine Stelle und verstellt drei andere, ohne es zu
-        sehen. Deshalb wird der Punkt abgespalten (copy-on-write).
-
-        Wer wirklich den PUNKT verschieben will — der Knopf selbst ist umgezogen,
-        also sollen alle mit —, nimmt „Punkte verwalten" im Werkzeuge-Reiter
-        (`werkzeug_punkt_setzen`) oder die Klick-Runde. Zwei Absichten, zwei
-        Orte; das ist der Grund, warum es beide Methoden gibt.
-
-        Die Zahlenfelder verschieben weiterhin einen PUNKT und nicht den Schritt:
-        die Sequenz hält keine Koordinaten mehr, eine dort eingetippte Stelle
-        wäre beim Speichern verloren.
+        Die Zahlenfelder verschieben den PUNKT, nicht den Schritt: die Sequenz
+        hält keine Koordinaten mehr, eine hier eingetippte Stelle wäre sonst beim
+        Speichern verloren.
         """
         daten = daten or {}
         punkt = self._punkt(daten.get("punkt"))
         if punkt is None:
             return self._melde("Punkt nicht gefunden.", "warn")
         feld, wert = daten.get("feld"), daten.get("wert")
-        abgespalten = ""
-        if feld in ("x", "y"):
-            punkt, abgespalten = self._punkt_fuer_block(punkt)
         try:
             if feld == "x":
                 punkt.x = int(wert)
@@ -679,7 +605,7 @@ class BridgeEditingMixin:
         except (TypeError, ValueError):
             return self._melde(f"'{wert}' ist keine Zahl.", "warn")
         self._punkte_anwenden()
-        return self._geaendert(abgespalten)
+        return self._geaendert()
 
     def punkt_anlegen(self, daten: dict) -> dict:
         """Legt einen Punkt an und hängt ihn an den gewählten Schritt.

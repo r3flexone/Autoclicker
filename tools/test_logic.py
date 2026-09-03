@@ -4444,21 +4444,14 @@ check("und NICHT die Koordinate daneben",
 _b9.block_else({"aktion": ""})
 check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
 
-# --- Ein verschobener PUNKT zieht JEDEN Schritt mit, der auf ihn zeigt ---
+# --- Ein verschobener Punkt zieht JEDEN Schritt mit, der auf ihn zeigt ---
 # Der DPG-Vorgaenger aktualisierte nur den gerade bearbeiteten Schritt; die
 # uebrigen zeigten bis zum naechsten Oeffnen die alte Stelle an, obwohl
 # gespeichert laengst die neue galt.
-#
-# Gemessen wird das seit dem Copy-on-Write am WERKZEUGE-Weg, denn nur dort heisst
-# eine Aenderung noch "der Punkt zieht um". Im Block-Inspektor heisst sie "dieser
-# Block klickt woanders hin" und spaltet einen eigenen Punkt ab
-# (`tools/tests/punkte.py`). Die Eigenschaft, um die es hier geht, ist davon
-# unberuehrt: `_punkte_anwenden()` zieht die abgeleiteten x/y ALLER Schritte nach,
-# nicht nur die des bearbeiteten.
 _b9, _s9 = _bruecke9()
 _b9.board.add_step(_b9.board.lanes[1], _SS(x=10, y=20, delay_before=0, name="Bank",
                                            point_id=1))
-_b9.werkzeug_punkt_setzen({"punkt_id": 1, "feld": "x", "wert": 777})
+_b9.punkt_setzen({"punkt": 1, "feld": "x", "wert": 777})
 check("beide Schritte auf demselben Punkt wandern mit",
       all((s.x, s.y) == (777, 20) for s in _b9.board.lanes[1].steps))
 
@@ -6331,7 +6324,6 @@ import tools.tests.persistenz_basis      # noqa: F401,E402
 import tools.tests.nachklick            # noqa: F401,E402
 import tools.tests.studio_teilen        # noqa: F401,E402
 import tools.tests.bericht              # noqa: F401,E402
-import tools.tests.punkte               # noqa: F401,E402
 
 
 import shutil as _shD
