@@ -3937,8 +3937,21 @@ check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
       _sym12.LOGO_PFAD.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PFAD.exists())
 check("Kopf und Favicon benutzen beide diese Datei",
       _kopf12.count('sequenz-studio-logo.svg') == 2)
-check("das neue Logo behaelt Rotation und transparente Maske",
-      'rotate(180 128 128)' in _logo12 and 'mask="url(#cutout)"' in _logo12)
+# **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Hier stand einmal
+# 'rotate(180 128 128)' — ein Detail genau dieses Motivs, das beim naechsten
+# neu gezeichneten Logo umfaellt, ohne dass etwas kaputt waere. Tragend sind
+# zwei Dinge: die Maske (sonst gibt es keine echte Transparenz) und die
+# Befehlsmenge, die `_pfad_polygone` ueberhaupt lesen kann — ein 'A' aus einem
+# CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
+check("das Logo traegt eine Maske statt einer Ersatzfarbe",
+      'mask="url(#cutout)"' in _logo12)
+import re as _re12b
+_befehle12 = set(_re12b.findall(r'[A-Za-z]', " ".join(
+    _re12b.findall(r'\sd="([^"]+)"', _logo12))))
+check("und benutzt nur die SVG-Befehle, die symbol.py lesen kann",
+      _befehle12 <= {"M", "L", "C", "Z"})
+if not _befehle12 <= {"M", "L", "C", "Z"}:
+    print("        unlesbar: " + ", ".join(sorted(_befehle12 - {"M", "L", "C", "Z"})))
 check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _kopf12)
 
 # Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
