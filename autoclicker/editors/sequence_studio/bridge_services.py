@@ -565,6 +565,22 @@ class BridgeServicesMixin:
                / "sequence.json")
         umbenannt = neu != alt
 
+        # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
+        # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
+        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
+        # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
+        fremd = self._fremd_geaendert(alt)
+        if fremd and not (daten or {}).get("erzwingen"):
+            self._frage = {
+                "art": "speichern",
+                "titel": "Ausserhalb geändert",
+                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
+                        "vermutlich vom Hauptprozess. Speichern überschreibt das.",
+                "weiter": "Trotzdem speichern",
+                "speichern": False,
+            }
+            return self.snapshot()
+
         # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
         # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
         alt_ordner = alt.parent
@@ -581,22 +597,6 @@ class BridgeServicesMixin:
             except OSError as fehler:
                 return self._melde(f"Sequenzordner konnte nicht umbenannt werden: {fehler}",
                                    "err")
-
-        # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
-        # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
-        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
-        # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
-        fremd = self._fremd_geaendert(neu if not umbenannt else None)
-        if fremd and not (daten or {}).get("erzwingen"):
-            self._frage = {
-                "art": "speichern",
-                "titel": "Ausserhalb geändert",
-                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
-                        "vermutlich vom Hauptprozess. Speichern überschreibt das.",
-                "weiter": "Trotzdem speichern",
-                "speichern": False,
-            }
-            return self.snapshot()
 
         from .model import palette_to_points
         sequence = board_to_sequence(self.board)
@@ -631,11 +631,10 @@ class BridgeServicesMixin:
     def _fremd_geaendert(self, ziel) -> str:
         """Welche Datei sich seit dem Laden von aussen geändert hat (leer = keine).
 
-        `ziel` ist die Sequenzdatei, die gleich geschrieben wird — beim Umbenennen
-        `None`, denn dann entsteht eine neue Datei und es gibt nichts zu
-        überschreiben. `sequence.json` wird immer geprüft: die schreibt das Studio
-        bei jedem Speichern mit, und der Hauptprozess legt dort während einer
-        Aufnahme neue Punkte an.
+        `ziel` ist die geladene Datei, auch vor dem Umbenennen: deren Inhalt
+        wird beim anschliessenden Speichern ersetzt. `sequence.json` wird immer
+        geprüft: die schreibt das Studio bei jedem Speichern mit, und der
+        Hauptprozess legt dort während einer Aufnahme neue Punkte an.
         """
         if ziel is not None and _mtime(ziel) not in (None, self._stand_datei):
             return Path(ziel).name
@@ -665,7 +664,10 @@ class BridgeServicesMixin:
             f"{self.filepath.stem}.ungespeichert.json")
         try:
             ziel.parent.mkdir(parents=True, exist_ok=True)
-            if save_sequence_file(board_to_sequence(self.board), ziel):
+            from .model import palette_to_points
+            sequence = board_to_sequence(self.board)
+            sequence.points = palette_to_points(self.points)
+            if save_sequence_file(sequence, ziel):
                 return ziel
         except (IOError, OSError):
             return None

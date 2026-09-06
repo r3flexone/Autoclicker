@@ -149,6 +149,11 @@ class ScanLibraryMixin:
             self._merke(f"'{name}': Unbekanntes lernen")
             cfg.learn_unknown = bool(wert)
             return self._scan_geaendert()
+        if feld == "use_catalog":
+            self._merke(f"'{name}': Katalog")
+            cfg.use_catalog = bool(wert)
+            return self._scan_geaendert(
+                f"'{cfg.name}': Katalog {'an' if cfg.use_catalog else 'aus'}")
         if feld == "reverse":
             self._merke(f"'{name}': Laufrichtung")
             cfg.reverse = bool(wert)
@@ -293,7 +298,8 @@ class ScanLibraryMixin:
         for cfg in self.scans.values():
             try:
                 cfg.owner_sequence = self.board.name
-                save_item_scan(cfg)
+                if not save_item_scan(cfg):
+                    fehler.append(f"{cfg.name}.json")
             except (OSError, ValueError):
                 fehler.append(f"{cfg.name}.json")
         fehler += self._erkennung_speichern()

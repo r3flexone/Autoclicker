@@ -98,6 +98,9 @@ class AppConfig:
     # Pfad zu einer Item-Name -> Gold-pro-Stueck-JSON (schreibt market_analysis).
     # Leer = aus: dann entscheidet wie bisher die von Hand gesetzte Item-Prioritaet.
     scan_market_value_file: str = ""
+    # Pfad zum Item-/Gegner-Katalog aus der Spiel-API (schreibt tools/katalog.py).
+    # Leer = aus: dann bleibt das Benennen frei und die Kategorie Handarbeit.
+    scan_catalog_file: str = ""
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung
     scan_slot_inset: int = 10                       # Pixel-Einzug vom Slot-Rand
     # Gemessen an einem echten Bestand: der Slot-Hintergrund ist nicht EINE
@@ -407,7 +410,7 @@ _CONFIG_SECTIONS = [
         "scan_click_immediate", "scan_park_mouse",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
-        "scan_marker_min_pixels", "scan_market_value_file",
+        "scan_marker_min_pixels", "scan_market_value_file", "scan_catalog_file",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),

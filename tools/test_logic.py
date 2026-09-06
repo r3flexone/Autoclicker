@@ -906,6 +906,12 @@ _MIGRATE_AUSNAHMEN = {
     # gelesen wie eine Fremddatei - fehlerhafte Eintraege fliegen einzeln raus.
     "autoclicker/runtime/item_scan.py":
         "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
+    # Derselbe Fall wie die Marktwert-Datei: der Katalog kommt aus der Spiel-API
+    # (geschrieben von tools/katalog.py), ist Name -> {kategorie, wert} und traegt
+    # kein schema_version. Es gibt nichts zu heben; kaputte Eintraege fliegen
+    # einzeln raus, statt den Katalog unbrauchbar zu machen.
+    "autoclicker/katalog.py":
+        "liest die externe Katalog-JSON (Fremdformat ohne Schema)",
     # Die Bruecke laedt aus zwei transienten Zustandsdateien (.lauf.json aus
     # runtime/status.py, .aufnahme.json aus dem Recorder): kein Bestand, also
     # nichts zu heben. Sequenzen laedt sie ueber load_sequence_file(), und das
@@ -6326,6 +6332,7 @@ import tools.tests.studio_teilen        # noqa: F401,E402
 import tools.tests.bericht              # noqa: F401,E402
 import tools.tests.punkte               # noqa: F401,E402
 import tools.tests.sequenz_loeschen     # noqa: F401,E402
+import tools.tests.katalog               # noqa: F401,E402
 
 
 import shutil as _shD
@@ -6342,7 +6349,7 @@ section("Vorlagen werden IM Sequenzordner gesucht, nicht im globalen von frueher
 # Das ist kein Schoenheitsfehler: daran haengt die Dedup-Pruefung von
 # `learn_unknown`. Findet sie nie einen Treffer, legt der Worker denselben Slot
 # in JEDEM Zyklus erneut als neues Item an.
-if PILLOW_AVAILABLE:
+if PILLOW_AVAILABLE and OPENCV_AVAILABLE:
     from PIL import Image as _ImgD
     from autoclicker.imaging import template_size as _tsD
     from autoclicker.editors.item_editor.markers import (
@@ -6371,21 +6378,11 @@ if PILLOW_AVAILABLE:
         check("und die Duplikat-Suche findet es nur mit Ordner",
               _fmeiD(_bildD, [("Bogen", _itemD)], 0.8, _ordnerD) == "Bogen")
 
-    # Gegenprobe an der Laufzeit selbst: beide Aufrufe in `_lerne_unbekanntes`
-    # muessen den Ordner durchreichen, sonst ist die Kette oben wirkungslos.
-    import inspect as _inspD
-    import autoclicker.runtime.item_scan as _isD
-    _quelleD = _inspD.getsource(_isD)
-    _abschnittD = _quelleD[_quelleD.index("vorlagen_ordner = active_templates_dir"):]
-    _abschnittD = _abschnittD[:_abschnittD.index("template_path =")]
-    check("die Laufzeit reicht den Ordner an die Duplikat-Suche durch",
-          "_find_matching_existing_item(img, existing, min_confidence,\n"
-          "                                         vorlagen_ordner)" in _abschnittD)
-    check("und an die Vorlagen-Pruefung ebenso",
-          "_item_has_compatible_template(\n"
-          "                known_item, img, vorlagen_ordner)" in _abschnittD)
-
+    # Die Weitergabe an beide Helfer prüft test_runtime_hardening durch
+    # einen ausgeführten Lernschritt, unabhängig von Zeilenumbrüchen im Code.
     _shD.rmtree(_sandD, ignore_errors=True)
+else:
+    print("  ÜBERSPRUNGEN: Vorlagengrössen brauchen Pillow und OpenCV")
 
 
 PASS, FAIL = _H.PASS, _H.FAIL

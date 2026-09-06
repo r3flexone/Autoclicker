@@ -255,6 +255,7 @@ _ITEM_SCAN_DEFAULTS = {
     "slots": {},
     "items": {},
     "reverse": False,
+    "use_catalog": False,
     "capture_window_title": None,
     "capture_window_index": 0,
     "capture_window_rect": None,
@@ -270,6 +271,7 @@ def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
         "slots": {s.name: _slot_to_dict(s) for s in config.slots},
         "items": {i.name: _item_to_dict(i) for i in config.items},
         "reverse": config.reverse,
+        "use_catalog": config.use_catalog,
         "capture_window_title": config.capture_window_title,
         "capture_window_index": config.capture_window_index,
         "capture_window_rect": (list(config.capture_window_rect)
@@ -316,6 +318,7 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         color_tolerance=data.get("color_tolerance", 40),
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
+        use_catalog=data.get("use_catalog", False),
         capture_window_title=fenster_titel,
         capture_window_index=fenster_index,
         capture_window_rect=fenster_rechteck,
@@ -503,6 +506,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
     """Parst die Schritt-Liste aus einer Sequence-JSON. Behandelt alle Legacy-Formate."""
     from ..utils import warn
 
+    if not isinstance(steps_data, list) or any(not isinstance(s, dict) for s in steps_data):
+        raise ValueError("Schritte müssen eine Liste von Objekten sein")
     steps = []
     for s in steps_data:
         wait_pixel = s.get("wait_pixel")

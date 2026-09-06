@@ -424,6 +424,28 @@ def _schritt_richtung(reverse: bool) -> bool:
     return confirm("  Slots rückwärts abarbeiten?", default=reverse)
 
 
+def _schritt_katalog(use_catalog: bool, state: AutoClickerState) -> bool:
+    """Schritt 6: Ob dieser Scan den Item-Katalog benutzt.
+
+    Der Schalter gehoert zum Scan und nicht in die Config: wer zwei Spiele
+    betreibt, hat einen Katalog, der nur fuer eines von beiden gilt — dieselbe
+    Ueberlegung wie bei der Laufrichtung.
+    """
+    print(header("SCHRITT 6: ITEM-KATALOG (optional)"))
+    pfad = state.config.scan_catalog_file
+    print("\n  Mit Katalog kennt der Editor die echten Item-Namen des Spiels:")
+    print("  Kategorie und Priorität lassen sich daraus setzen, und die")
+    print("  LLM-Benennung wählt aus den echten Namen statt frei zu raten.")
+    if not pfad:
+        print("  " + warn("Noch keine Katalog-Datei eingetragen."))
+        print("  " + hint("Anlegen mit: python tools/katalog.py"))
+        print("  " + hint("Eintragen unter scan_catalog_file (Studio: Einstellungen)."))
+    else:
+        print(f"  Katalog: {pfad}")
+    print(f"  Aktuell: {'an' if use_catalog else 'aus'}")
+    return confirm("  Katalog für diesen Scan benutzen?", default=use_catalog)
+
+
 def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
     """Bearbeitet eine Item-Scan-Konfiguration (verknüpft globale Slots + Items).
 
@@ -456,6 +478,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         tolerance = existing.color_tolerance
         learn_unknown = existing.learn_unknown
         reverse = existing.reverse
+        use_catalog = existing.use_catalog
         capture_window_title = existing.capture_window_title
         capture_window_index = existing.capture_window_index
         capture_window_rect = existing.capture_window_rect
@@ -469,6 +492,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         tolerance = ItemScanConfig.color_tolerance
         learn_unknown = False
         reverse = False
+        use_catalog = False
         capture_window_title = None
         capture_window_index = 0
         capture_window_rect = None
@@ -543,6 +567,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     tolerance = _schritt_toleranz(tolerance)
     learn_unknown = _schritt_auto_lernen(learn_unknown)
     reverse = _schritt_richtung(reverse)
+    use_catalog = _schritt_katalog(use_catalog, state)
 
     # --- Speichern ----------------------------------------------------------------
     with state.lock:
@@ -563,6 +588,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         name=scan_name, slots=slots, items=items,
         color_tolerance=tolerance, learn_unknown=learn_unknown,
         reverse=reverse,
+        use_catalog=use_catalog,
         capture_window_title=capture_window_title,
         capture_window_index=capture_window_index,
         capture_window_rect=capture_window_rect,

@@ -1221,6 +1221,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
+| `scan_catalog_file` | Pfad zu `katalog.json` aus der Spiel-API (`python tools/katalog.py`) — echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
 
 ### Debug-Einstellungen
 
@@ -1321,6 +1322,9 @@ Autoclicker-Idleclans/
     ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
     ├── tests/              # weitere Sektionen der Vertragssuite
     ├── rauchtests/         # die echte Seite im Browser vor der echten Brücke
+    ├── wurzeltests.py      # Discovery der test_*.py ohne doppelten Vertragslauf
+    ├── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
+    ├── katalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
@@ -1441,6 +1445,7 @@ main.py                      Einstiegspunkt, Event-Loop
 python tools/alle_tests.py                      # alles
 python tools/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
 python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python tools/alle_tests.py --mutationen         # zusätzlich gezielte Gegenproben
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 ```
 
@@ -1458,6 +1463,18 @@ volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
 pip install opencv-python-headless pillow numpy
 pip install playwright && python -m playwright install chromium
 ```
+
+Im Browser-CI gilt `--rauch-pflicht`: Ein fehlender Browser macht diesen Job rot.
+Im Gesamtlauf läuft die Vertragssuite genau einmal; `--nur wurzel` und normale
+Unittest-Discovery behalten den Vertragswrapper. Die PASS-Zahl der Vertragssuite
+zählt einzelne Zusicherungen, nicht unabhängige Testszenarien.
+
+Die CI führt auch `--mutationen` aus: Zehn gezielt entfernte Sicherungen müssen
+durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
+Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
+Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
+`python tools/mutationspruefung.py --fall pause-nach-fokus` wiederholen. Das ist
+eine begrenzte Auswahl kritischer Regressionen, keine vollständige Mutationsabdeckung.
 
 Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie
 ruft die Brücken-Methoden direkt auf, also genau so, wie die Seite es *nicht*

@@ -115,7 +115,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
         compatible = patch(
             "autoclicker.editors.item_editor.markers._item_has_compatible_template",
             return_value=True)
-        with matcher, compatible:
+        # Dieser Test prüft die Vorschau mit einem vorgegebenen Treffer;
+        # die echte Bilderkennung wird separat mit OpenCV geprüft.
+        with matcher, compatible, patch.object(self.bridge, "_hat_opencv", return_value=True):
             state = self.bridge.scan_lernvorschau({"scope": "alle"})
             row = state["review"]["zeilen"][0]
             self.assertEqual(
@@ -140,7 +142,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(state["wahl"], {"art": "item", "name": "Bogen"})
         self.assertIn("bearbeitet", state["status"]["text"])
 
-        with matcher, compatible:
+        with matcher, compatible, patch.object(self.bridge, "_hat_opencv", return_value=True):
             state = self.bridge.scan_lernvorschau({"scope": "alle"})
             row = state["review"]["zeilen"][0]
             self.assertEqual(row["name"], "Bogen")

@@ -112,81 +112,74 @@ def print_status(state: AutoClickerState) -> None:
 # =============================================================================
 
 def sequence_worker(state: AutoClickerState) -> None:
-    """Worker-Thread, der die Sequenz ausführt."""
-    debug = is_verbose_debug(state)
-    show_preview = state.config.debug_detail
-    print(col("\n[START] Sequenz gestartet.", "green"))
-
-    sequence = _prepare_worker_state(state, show_preview)
-    if sequence is None:
-        set_console_title("Autoclicker - bereit")
-        return
-
-    global _last_pause_title_state
-    _last_pause_title_state = False  # Start = laufend (Titel bereits gesetzt)
-    set_console_title(f"> laeuft: {_ascii_title(sequence.name)}")
-
-    # Session-Log starten (wenn aktiviert)
+    """Führt einen Lauf aus und räumt auch nach einem Schrittfehler vollständig auf."""
     from ..session_log import start_session_log
-    state.session_log = start_session_log(state)
-    if state.session_log is not None:
-        print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
-        seq = state.active_sequence
-        log_event(state, "session_start", detail=seq.name if seq and hasattr(seq, "name") else "")
+    import logging
 
-    # Laufstatus für das Sequenz-Studio (anderer Prozess, sieht diesen State nicht).
-    status.schreibe(state, {"aktiv": True, "sequenz": sequence.name,
-                            "zyklen": sequence.total_cycles,
-                            "phasen": _phasen_uebersicht(sequence),
-                            "start": state.start_time}, sofort=True)
-
-    # shutdown_event beendet den Schedule-Watcher IMMER am Worker-Ende (finally),
-    # auch bei regulärem Sequenz-Ende — sonst läuft der Timer als Geister-Thread weiter.
+    debug = is_verbose_debug(state)
     schedule_shutdown = threading.Event()
+    sequence = None
     cycle_count = 0
+    fehler = ""
     try:
+        print(col("\n[START] Sequenz gestartet.", "green"))
+        sequence = _prepare_worker_state(state, state.config.debug_detail)
+        if sequence is None:
+            return
+
+        global _last_pause_title_state
+        _last_pause_title_state = False
+        set_console_title(f"> laeuft: {_ascii_title(sequence.name)}")
+        state.session_log = start_session_log(state)
+        if state.session_log is not None:
+            print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
+            log_event(state, "session_start", detail=sequence.name)
+        status.schreibe(state, {"aktiv": True, "sequenz": sequence.name,
+                                "zyklen": sequence.total_cycles,
+                                "phasen": _phasen_uebersicht(sequence),
+                                "start": state.start_time}, sofort=True)
         _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
-
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
-
         _run_end_phase(state, sequence)
+    except Exception as exc:
+        fehler = f"Fehler: {type(exc).__name__}: {exc}"
+        logging.getLogger("autoclicker").exception("Sequenzlauf fehlgeschlagen")
+        print(err(fehler))
     finally:
+        # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
+        # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
+        grund = fehler or _ende_grund(state)
         schedule_shutdown.set()
-        # Auch bei Abbruch: ein stehengebliebenes „aktiv" behauptet einen Lauf,
-        # den es nicht gibt. Statt zu loeschen bleibt die Zusammenfassung stehen
-        # — die Live-Ansicht war sonst genau in dem Moment leer, in dem man sie
-        # ansieht: direkt nachdem etwas fertig geworden ist.
-        status.beende(state, _ende_grund(state), cycle_count,
-                      time.time() - state.start_time if state.start_time else 0)
+        state.stop_event.set()
+        try:
+            llm_thread = state.llm_thread
+            if llm_thread is not None and llm_thread.is_alive():
+                llm_thread.join(timeout=state.config.llm_timeout + 5)
+            if sequence is not None:
+                status.beende(state, grund, cycle_count,
+                              time.time() - state.start_time if state.start_time else 0)
+        finally:
+            # Der gespeicherte Log-Verweis wird selbst bei einem Close-Fehler
+            # gelöst. is_running bleibt bis zum Ende der Bereinigung gesetzt.
+            try:
+                if state.session_log is not None:
+                    try:
+                        log_event(state, "session_error" if fehler else "session_end",
+                                  detail=fehler,
+                                  extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
+                    finally:
+                        state.session_log.close()
+            finally:
+                with state.lock:
+                    state.session_log = None
+                    state.is_running = False
+                set_console_title("Autoclicker - bereit")
 
-    # Laufenden Async-LLM-Boss-Thread abwarten, bevor Log/Statistik abgeschlossen
-    # werden. Sonst kann der Daemon-Thread nach Sequenz-Ende noch Klicks/Tasten
-    # feuern (Phantom-Aktionen) und Zähler nach der Statistik-Ausgabe mutieren.
-    llm_thread = state.llm_thread
-    if llm_thread is not None and llm_thread.is_alive():
-        join_timeout = state.config.llm_timeout + 5
-        llm_thread.join(timeout=join_timeout)
-        if llm_thread.is_alive() and debug:
-            print(dbg(f"  → Async-LLM-Thread nach {join_timeout}s noch aktiv (Daemon, wird bei Beenden verworfen)"))
-
-    with state.lock:
-        state.is_running = False
-        duration = time.time() - state.start_time if state.start_time else 0
-
-    # Neu entdeckte Boss-Namen informieren (NACH is_running=False, damit der
-    # Stop-Hotkey nicht durch einen blockierenden Prompt eingefroren wird).
-    _confirm_new_bosses(state)
-
-    # Session-Log schliessen
-    if state.session_log is not None:
-        log_event(state, "session_end",
-                  extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
-        state.session_log.close()
-        state.session_log = None
-
-    _print_session_summary(state, cycle_count, duration)
-    set_console_title("Autoclicker - bereit")
+    if sequence is not None:
+        _confirm_new_bosses(state)
+        _print_session_summary(state, cycle_count,
+                               time.time() - state.start_time if state.start_time else 0)
 
 
 def _ende_grund(state: AutoClickerState) -> str:

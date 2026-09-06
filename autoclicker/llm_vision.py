@@ -412,33 +412,88 @@ _ITEM_NAME_SYSTEM_PROMPT = (
 )
 
 
+def _build_item_candidate_prompt(candidates: list[str]) -> str:
+    """System-Prompt für die Auswahl aus einer geschlossenen Namensliste.
+
+    Die Anweisung steht auf Englisch, und das ist gemessen, nicht Geschmack: mit
+    dem deutschen Prompt antwortet das Modell deutsch ("Bogen", "Schwert") —
+    also in einer Sprache, in der die Liste gar nicht steht, und der Abgleich
+    findet nichts. Es nennt dann ausserdem nur die Art des Gegenstands, nicht
+    den Gegenstand: aus derselben Vorlage wird "Bogen" statt "Godlike Bow".
+    """
+    return (
+        "You identify items from the game Idle Clans by their inventory icon.\n"
+        "You MUST answer with exactly one name copied verbatim from the "
+        "CANDIDATES list below. No explanation, no markdown, just the name.\n"
+        "If truly none of them fits, answer UNKNOWN.\n\n"
+        "CANDIDATES:\n" + "\n".join(candidates)
+    )
+
+
+def _closest_candidate(name: str, candidates: list[str]) -> Optional[str]:
+    """Naechster Katalogname zu einer knapp danebenliegenden Antwort.
+
+    Auch mit geschlossener Liste erfindet ein Modell gelegentlich einen
+    plausiblen Namen, den es so nicht gibt ("Pickaxe" statt "Godlike Pickaxe").
+    Gemessen an 56 echten Vorlagen betraf das 3 — zu viele, um sie wegzuwerfen,
+    zu wenige, um der freien Antwort zu trauen. Die Schwelle ist bewusst hoch:
+    lieber kein Name als ein falscher, denn ein falscher wird gespeichert und
+    zieht Kategorie und Prioritaet mit sich.
+    """
+    import difflib
+    treffer = difflib.get_close_matches(name, candidates, n=1, cutoff=0.85)
+    return treffer[0] if treffer else None
+
+
 def suggest_item_name(
     img: 'Image.Image',
     provider: str = PROVIDER_LMSTUDIO,
     endpoint: str = None,
     model: str = None,
     timeout: int = 60,
+    candidates: list[str] = None,
 ) -> Optional[str]:
-    """Fragt das LLM nach einem kurzen Namen für einen Gegenstand auf dem Bild.
+    """Fragt das LLM nach einem Namen für den Gegenstand auf dem Bild.
+
+    Mit `candidates` (den echten Item-Namen aus `katalog.py`) darf das Modell
+    nur noch AUSWAEHLEN statt zu erfinden — aus "Bogen" wird "Godlike Bow".
+    Zurueck kommt dann garantiert ein Name aus der Liste oder None; eine
+    Antwort daneben wird einmal auf den naechsten Kandidaten gezogen und sonst
+    verworfen.
+
+    Ohne `candidates` bleibt alles wie bisher (freier Vorschlag).
 
     Returns:
         Bereinigter Name (max. ~40 Zeichen) oder None wenn nicht erkennbar /
         LLM nicht erreichbar.
     """
+    if candidates:
+        prompt, system_prompt = "Which item is this?", _build_item_candidate_prompt(candidates)
+    else:
+        prompt, system_prompt = "Wie heisst dieser Gegenstand?", _ITEM_NAME_SYSTEM_PROMPT
+
     success, response, _duration = analyze_image(
         img=img,
         provider=provider,
         endpoint=endpoint,
         model=model,
-        prompt="Wie heisst dieser Gegenstand?",
+        prompt=prompt,
         timeout=timeout,
-        system_prompt=_ITEM_NAME_SYSTEM_PROMPT,
+        system_prompt=system_prompt,
+        # Ein Katalogname ist ein paar Tokens lang; der Default (50) reicht.
+        # Mit Liste aber nicht kuerzen — abgeschnitten waere er nicht mehr
+        # woertlich und faende seinen eigenen Eintrag nicht wieder.
+        max_tokens=32 if candidates else 0,
     )
     if not success:
         return None
     name = clean_boss_name(_strip_reasoning_tags(response))
     if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
         return None
+    if candidates:
+        # Woertlich aus der Liste? Sonst einmal heranziehen, sonst nichts.
+        genau = {k.casefold(): k for k in candidates}.get(name.casefold())
+        return genau or _closest_candidate(name, candidates)
     # Auf eine sinnvolle Länge kürzen (Modelle plappern manchmal doch)
     return name[:40].strip()
 

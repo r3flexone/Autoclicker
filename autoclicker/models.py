@@ -526,6 +526,11 @@ class ItemScanConfig:
     # nach vorn aufrueckt. Gehoert zum Scan, nicht in die Config: sonst gaelte die
     # Richtung fuer alle Spiele gleichzeitig.
     reverse: bool = False
+    # Opt-in: Namen und Kategorien aus dem Item-Katalog (`scan_catalog_file`).
+    # Gehoert zum Scan und nicht in die Config — aus demselben Grund wie
+    # `reverse`: wer zwei Spiele betreibt, hat einen Katalog, der nur fuer eines
+    # von beiden gilt. Global gesetzt ordnete er das andere still falsch ein.
+    use_catalog: bool = False
     # Aufnahmequelle des Inventars. Kein HWND: der gilt nur bis zum Schliessen des
     # Fensters. Titel + Instanz finden es beim naechsten Start wieder, das
     # Referenzrechteck macht die Slot-Koordinaten dazu relativ.

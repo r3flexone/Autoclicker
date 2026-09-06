@@ -26,11 +26,11 @@ def ensure_boss_scans_dir(owner: str = "") -> Path:
     return ensure_dir(_boss_scans_dir(owner)) if owner else Path("sequences")
 
 
-def save_boss_scan(config: BossScanConfig) -> None:
+def save_boss_scan(config: BossScanConfig) -> bool:
     """Speichert eine Boss-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Boss-Scan hat keine Besitzer-Sequenz")
-    write_scan(str(_boss_scans_dir(config.owner_sequence)), config.name,
+    return write_scan(str(_boss_scans_dir(config.owner_sequence)), config.name,
                _boss_scan_to_dict(config), "Boss-Scan")
 
 
@@ -68,20 +68,22 @@ def _global_bosses_file(owner: str) -> Path:
     return _boss_scans_dir(owner) / "bibliothek.json"
 
 
-def save_global_bosses(state: AutoClickerState, owner: str = "") -> None:
+def save_global_bosses(state: AutoClickerState, owner: str = "") -> bool:
     """Speichert die globale Boss-Bibliothek (crash-sicher)."""
     with state.lock:
         data = [_boss_profile_to_dict(b) for b in state.global_bosses]
     owner = owner or (state.active_sequence.name if state.active_sequence else "")
     if not owner:
-        return
+        return False
     filepath = _global_bosses_file(owner)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     try:
         atomic_write(filepath, compact_json(data))
         print(save_tag(f"Boss-Bibliothek gespeichert ({len(data)} Boss(e))"))
+        return True
     except (IOError, OSError) as e:
         print(err(f"Boss-Bibliothek konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:

@@ -16,14 +16,19 @@ UI-Texte sind **Deutsch** — neue Strings ebenso.
 python tools/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
 python tools/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
 python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python tools/alle_tests.py --mutationen      # dazu die Gegenproben (so ruft CI es auf)
+python tools/alle_tests.py --nur rauch --rauch-pflicht  # fehlender Browser = rot
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
 
 # Die Schichten einzeln, falls man sie direkt braucht:
 python tools/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
-python -m unittest test_*.py    # Wurzelmodule (enthaelt die Vertragssuite als Wrapper)
+python -m tools.wurzeltests     # Wurzelmodule (--ohne-vertrag laesst den Wrapper weg)
 python -m tools.rauchtests.werkzeuge   # ein Rauchtest im Browser
+python tools/mutationspruefung.py      # Gegenproben einzeln (--fall NAME)
+python tools/katalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
+                                # (--zeige = nur anzeigen, --ziel = anderer Pfad)
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
@@ -86,7 +91,7 @@ Jeder Job muss grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
 Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
 zu testen sagt nichts darüber, ob die älteste noch trägt.
 
-**Der Test-Job läuft weiterhin zweimal: `ohne` und `mit` Bildpaketen.** OpenCV und Pillow sind
+**Der Test-Job läuft dreimal: `ohne`, `pillow` und `mit` Bildpaketen.** OpenCV und Pillow sind
 optional, und der Code degradiert sauber ohne sie — nur überspringt die Suite dann
 **über hundert Tests** (Template-Vergleich, Masken, Slot-Erkennung, die
 Grössen-Meldung): 1.154 statt 1.273. Ein Lauf nur ohne Fremdpakete ist also grün,
@@ -96,6 +101,35 @@ nicht lief. Dieselbe Regel wie bei den Plattform-Stubs: **was das Echte anders m
 als der Ersatz, wird auf beiden Seiten geprüft.** Wer an `imaging.py` arbeitet,
 installiert sie deshalb auch lokal (`pip install opencv-python-headless pillow numpy`)
 — sonst sagt ein grüner Lauf hier nichts über die Stellen, um die es gerade geht.
+
+**Die dritte Achse (`pillow`) ist eine echte Installation, keine Vollständigkeit
+um der Vollständigkeit willen.** Pillow ohne OpenCV ist der Zustand, in dem
+Screenshots und Farbmessung gehen, Template-Vergleich aber nicht — und wer nur
+`ohne` und `mit` prüft, sieht genau die Zweige nie, die das eine haben und das
+andere nicht.
+
+**Ein grüner Exitcode ist kein grüner Lauf.** `vertrag()` verlangt zusätzlich die
+Schlusszeile im Muster `N PASS / 0 FAIL` mit N > 0: eine Suite, die vor ihrem
+Abschluss stirbt, meldete sonst Erfolg, weil niemand mehr etwas gedruckt hat.
+Dasselbe Muster in der Gegenrichtung ist `--rauch-pflicht` — lokal darf ein
+fehlender Browser überspringen, im Browser-Job ist genau das ein Fehler.
+
+**`--mutationen` prüft die Tests, nicht den Code** (`tools/mutationspruefung.py`).
+Jeder Fall entfernt in einem frischen Prozess **eine** Sicherung im Arbeits\-
+speicher und erwartet, dass ein bestimmter Test darüber rot wird. Das ist die
+Gegenprobe, die CLAUDE.md an anderer Stelle von Hand verlangt („Fix entschärfen,
+Test muss rot werden") — nur automatisiert und für die Stellen, an denen es
+schon einmal schiefging. Nur ein Assertion-Fehler zählt als erkannt: ein
+Importfehler, ein übersprungener Test oder ein Timeout beweist nichts.
+
+**Das ist eine gezielte Regressionsprüfung, keine vollständige Mutationsanalyse** —
+die Fälle stehen als Liste in `FAELLE` und wachsen mit den Fehlern, die auffallen,
+nicht mit dem Code.
+
+`tools/wurzeltests.py` gibt es, weil `unittest discover` die Vertragssuite über
+ihren Wrapper ein zweites Mal mitzog: im Gesamtlauf lief sie damit doppelt (und
+die Zähler standen zweimal da). `--ohne-vertrag` lässt genau diesen Wrapper weg;
+einzeln aufgerufen bleibt er drin, sonst fehlte er dort ganz.
 
 **Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
 Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
@@ -187,6 +221,23 @@ Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, la
 3. **Session-Logging** (CSV-Event)
 
 Beim Hinzufügen neuer Klick/Key-Aktionen im Worker: **immer** über die Wrapper gehen, nie direkt `send_click`/`send_key` aufrufen. Sonst umgehen sie Fokus-Check + Humanize + Log.
+
+**Geprüft wird zweimal, und das zweite Mal ist das wichtige** (`_eingabe_freigeben()`).
+Zwischen der ersten Prüfung und dem eigentlichen `send_*` liegen die Humanize-Pausen
+— Mikro-Delays und periodische Breaks, also bis zu mehrere Sekunden. Wer in diesem
+Fenster CTRL+ALT+H drückt oder das Spielfenster verlässt, bekam den Klick trotzdem:
+die Antwort auf „darf ich?" war zu dem Zeitpunkt richtig, zum Zeitpunkt des Klicks
+nicht mehr. Stop, Pause und Fokus werden deshalb **nach** allen Wartezeiten erneut
+gefragt, und zwar in einer Schleife: während man auf die Rückkehr des Fensters
+wartet, kann erneut pausiert werden — erst der gleichzeitig freie Zustand lässt die
+Eingabe durch.
+
+**Der Worker räumt auch nach einem Fehler auf.** `sequence_worker()` liegt
+vollständig in `try/except/finally`: eine Ausnahme in einem Schritt beendete
+früher den Thread, ohne den Schedule-Watcher zu stoppen, das Session-Log zu
+schliessen oder `.lauf.json` abzuschliessen — zurück blieb ein Lauf, der laut
+Statusdatei noch läuft, und ein Timer-Thread als Geist. Gemeldet wird die
+Ausnahme, nicht verschluckt.
 
 ### Debug-Ausgabe vs. manueller Modus (`runtime/debug.py`)
 Drei Dinge, die auseinandergehalten werden müssen — sie hingen früher in einem Flag:
@@ -401,6 +452,75 @@ Feld, das in `ItemScanConfig(...)` in `edit_item_scan()` fehlt, ist nach dem
 Bearbeiten eines bestehenden Scans still weg. Ein Test hält die übergebenen
 Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` — die leitet
 `sync_names()` ab).
+
+### Der Item-Katalog (echte Namen und Kategorien aus der Spiel-API)
+
+**Eine Kategorie heisst „diese Items konkurrieren, nimm nur das beste"**
+(`_filter_scan_results`, Modus `all`: `cat = item.category or item.name`, pro
+Kategorie gewinnt das kleinste `priority`). Sie von Hand zu tippen hat den
+Fehler, den man nicht sehen kann — an einem echten Bestand standen 55 von 56
+Items ohne Kategorie da und das eine mit trug `"Wafen"`.
+
+`tools/katalog.py` holt die Namen deshalb von dort, wo sie herkommen:
+`query.idleclans.com/api/Configuration/game-data`, dieselbe Quelle, aus der auch
+die Wiki gespeist wird — **Scraping braucht es dafür nicht.** Heraus kommen 1006
+Items mit Kategorie und Grundwert plus rund 50 Gegnernamen.
+
+**Die Verbindung ist eine Datei, kein Import** — genau wie bei `marktwert.json`:
+das Werkzeug weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug.
+Gelesen wird in `autoclicker/katalog.py` (Cache am Dateistand, kaputte Einträge
+fliegen einzeln raus). Es liegt **nicht** unter `runtime/`, weil vor allem
+Editoren es brauchen und `runtime/__init__` den Worker samt `imaging` und
+`winapi` nachzöge — dieselbe Überlegung wie bei `befehl.py`.
+
+**Zwei Schalter, und sie beantworten verschiedene Fragen.**
+`config.scan_catalog_file` sagt, **wo** die Datei liegt (eine je Spiel, also
+programmweit); `ItemScanConfig.use_catalog` sagt, **ob** dieser Scan sie
+benutzt. Der zweite gehört zum Scan und nicht in die Config — aus demselben
+Grund wie `reverse`: wer zwei Spiele betreibt, hat einen Katalog, der nur für
+eines von beiden gilt, und global gesetzt ordnete er das andere still falsch
+ein. Im Studio steht er in den Scan-Einstellungen direkt neben „Slots
+rückwärts", der Pfad im Einstellungen-Reiter.
+
+**Das hängt NICHT am LLM.** Die Kategorie folgt aus dem *Namen* — heisst ein
+Item „Citadel Helmet", steht im Katalog „Helm", und ob den Namen ein Mensch
+getippt oder ein Modell vorgeschlagen hat, ist gleichgültig. „Aus Katalog
+einordnen" steht deshalb bei „Items erkennen" und nicht bei den LLM-Sachen;
+`llm_enabled` schaltet nur einen der beiden Wege zum Namen frei.
+
+Vier Entscheidungen, die gemessen sind und nicht geraten:
+
+- **Die Kategorie wird ENG gebildet.** Eine zu weite lässt Klicks still
+  ausfallen, ist also der gefährliche Fehler. `EquipmentSlot` trägt die
+  Bedeutung schon (ein Helm, ein Schild) und wird übernommen; **Slot 7 ist die
+  Ausnahme** — dort liegen 200 Waffen *und* Werkzeuge in derselben Hand, und als
+  eine Kategorie hiesse das: aus Spitzhacke, Beil und Bogen wird genau eines
+  geklickt. Getrennt wird am letzten Wort des Namens (`Godlike Pickaxe` →
+  `Pickaxe`), ebenso bei Slot 0 (`Diamond Ore` → `Ore`).
+- **`AssociatedSkill` und `WeaponType` taugen dafür nicht**, und das steht hier,
+  damit niemand denselben Weg noch einmal einschlägt: alle `godlike_*` tragen
+  Skill 7, Bogen wie Spitzhacke; `WeaponType` ist die *Stufe* (normal → refined
+  → … → godlike → otherworldly), nicht die Art. Und `Category` ist unbrauchbar —
+  662 von 1006 Items stehen auf `0`.
+- **Die Priorität steht NICHT in der Datei**, nur der Wert. Ein Rang gilt immer
+  relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
+  eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
+  besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Der Prompt der geschlossenen Auswahl ist englisch**, und auch das ist
+  gemessen: mit dem deutschen antwortet das Modell deutsch („Bogen", „Schwert")
+  — in einer Sprache, in der die Liste gar nicht steht — und nennt die *Art*
+  statt des Gegenstands. Mit Liste kommt „Godlike Bow" heraus; an 56 echten
+  Vorlagen waren 53 wörtliche Katalognamen, die übrigen drei fängt ein
+  Fuzzy-Abgleich (`difflib`, Schwelle 0.85). **Lieber kein Name als ein
+  falscher**: ein falscher wird gespeichert und zieht Kategorie und Priorität
+  mit sich.
+
+Beim Erweitern: `_katalog_pruefen()` unterscheidet **drei** Gründe (kein Scan
+offen / Schalter aus / keine Datei). Sie zusammenzufassen wäre der Fall, in dem
+man die Datei sucht, obwohl der Schalter fehlt. Und `_merke()` läuft erst, wenn
+wirklich etwas geändert wird (`_katalog_plan` vor `_katalog_uebernehmen`) — ein
+zweiter Klick auf denselben Knopf darf keinen Rückgängig-Stand ablegen, sonst
+tut STRG+Z einmal scheinbar nichts.
 
 **Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
 (aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
@@ -832,8 +952,31 @@ es die Marker-Farben.
   `sequences/` — nicht nur die JSONs, denn ein Ordner-Bündel ersetzt ganze
   Sequenzordner samt Vorlagen und gemerkten Bildern.
 
+  **Ein Bündel ist eine fremde Datei, also wird jeder Pfad darin geprüft**
+  (`_sicherer_bundle_pfad` + eine `resolve()`-Gegenprobe in
+  `_import_sequence_bundle`). `PurePosixPath` allein reicht nicht: unter Windows
+  ist `sequences\..\..\x` **ein** Segment und damit weder absolut noch mit `..`
+  in `parts` — der Backslash, der Doppelpunkt (`C:`) und das Null-Byte werden
+  deshalb am rohen Namen geprüft, bevor überhaupt ein Pfad daraus wird. Und weil
+  eine Namensprüfung immer nur so gut ist wie die Liste der Tricks, die man
+  kennt, muss das Ziel danach zusätzlich **messbar** unterhalb des Temp-Ordners
+  liegen; sonst fliegt der Import mit einer Meldung, statt irgendwohin zu
+  schreiben.
+
+  **Die Boss-Bibliothek wird beim Umrechnen übersprungen.** Sie enthält Profile
+  mit Punkt-IDs und keine eigenen Regionen — ihre Punkte stehen in der
+  `sequence.json` und werden dort genau einmal umgerechnet. Mitgerechnet wäre
+  jeder Bibliotheks-Klick zweimal verschoben.
+
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s.o.), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
+
+  **Ein Saver sagt, ob er gespeichert hat.** `write_scan()` und die `save_*_scan()`
+  darüber geben `bool` zurück statt `None`: ein `IOError` wurde zwar gemeldet, aber
+  der Aufrufer lief weiter, als sei nichts gewesen — im Studio hiess das „Gespeichert"
+  über einer Datei, die nicht geschrieben wurde. Wer speichert, prüft den Rückgabewert
+  und sammelt die Fehlschläge (`_erkennung_speichern()` macht es vor). Ein `try/except`
+  allein reicht nicht: die Ausnahme wird eine Ebene tiefer schon gefangen.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 
@@ -2360,6 +2503,14 @@ anderen: **ein Befehl darf nie nachfeuern.** Wer im Studio auf „Starten" drüc
 während gar kein Hauptprozess läuft, bekommt keine Wirkung — und darf sie auch nicht
 bekommen, sobald einer startet. Dafür sorgen `MAX_ALTER` und das Leeren beim Start.
 
+**Geleert wird durch Umbenennen, nicht durch Lesen-und-dann-Löschen** (`hole()`).
+Der Briefkasten wird alle 250 ms abgefragt und vom anderen Prozess jederzeit
+beschrieben; wer erst liest und danach löscht, wirft einen Befehl weg, der in
+genau diesem Zeitfenster ankam. `Path.replace()` auf einen privaten Namen ist
+atomar: was entnommen ist, ist entnommen, und was danach geschrieben wird, liegt
+beim nächsten Durchgang noch da. Dieselbe Überlegung wie bei `atomic_write()`,
+nur in die andere Richtung.
+
 Über denselben Weg läuft **„Stelle zeigen"**: der Knopf unter einem Klick-Block
 setzt die Maus im Hauptprozess auf dessen Punkt. Das Fenster kann das nicht selbst
 — es sieht den Bildschirm nicht —, und genau deshalb steht auch die Auswertung
@@ -2460,6 +2611,21 @@ legt Punkte an, `save_data()` schreibt die Sequenz. Die Rückfrage ist derselbe
 Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
 Knopfbeschriftung jetzt aus der Brücke, weil sich die Fälle zu sehr
 unterscheiden (bei „ausserhalb geändert" gibt es nichts zu verwerfen).
+
+**Gefragt wird VOR dem Umbenennen, und gefragt wird nach der GELADENEN Datei.**
+Beides war einmal andersherum, und beides machte die Rückfrage genau dann
+wirkungslos, wenn sie zählt: der Ordner wurde zuerst verschoben, und danach
+prüfte `_fremd_geaendert()` den *neuen* Pfad — den es vorher gar nicht gab, also
+war dort nie etwas „fremd geändert". Beim Umbenennen wurde deshalb kommentarlos
+überschrieben, obwohl gerade dort eine Aufnahme des Hauptprozesses im alten
+Ordner liegen kann. Geprüft wird jetzt die Datei, deren Inhalt gleich ersetzt
+wird — also die geladene, vor jeder Bewegung auf der Platte.
+
+**Und die Notsicherung nimmt die Punkte mit.** `_ungespeichert_sichern()`
+schrieb `board_to_sequence(self.board)` ohne `palette_to_points(self.points)`:
+die Sicherung, die man beim Absturz aufmacht, enthielt jeden Schritt mit einer
+`point_id`, die ins Leere zeigt. Ein Rettungsanker, der die halbe Sequenz
+rettet, ist schlimmer als keiner — man merkt den Verlust erst beim Laden.
 
 **Das eigene Symbol braucht zwei Dinge, nicht eins.** Titelleiste und ALT+TAB
 nehmen es aus `WM_SETICON` (`setze_fenster_symbol()`) — aber erst, wenn es das
@@ -2945,6 +3111,14 @@ liefe bei jeder Radbewegung mit — auch wenn gerade niemand aufnimmt.
 ### Boss-Scan vs. Boss-Watcher
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.
 - **Boss-Watcher**: Schleife im Step, prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird (mit `llm_watcher_max_scans` und `llm_watcher_timeout` als Exit-Bedingungen). Erst dann `_execute_boss_action`.
+
+**Ein noch antwortender LLM-Aufruf gehört zum BEENDETEN Lauf.** Mit `llm_async`
+läuft die Erkennung in einem eigenen Thread, und der hängt bis zu `llm_timeout`
+(Standard 60 s) in einer HTTP-Antwort — ein Stopp beendet ihn nicht, er merkt es
+erst danach. `handle_toggle()` lehnt einen Neustart deshalb ab, solange
+`state.llm_thread` noch lebt, und sagt warum. Ohne die Sperre feuerte die
+verspätete Aktion des alten Laufs in den neuen hinein: ein Klick auf eine Stelle,
+die zu einem Boss gehört, den es in diesem Durchgang gar nicht gibt.
 
 **Zwei Zusatz-Erkenner, gleiche Bauart**: OCR (`use_ocr` + `ocr_fallback`) und LLM
 (`use_llm` + `llm_fallback`), beide in `BossScanConfig`, beide zusätzlich per Config

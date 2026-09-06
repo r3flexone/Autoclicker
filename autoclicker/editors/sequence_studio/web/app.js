@@ -3325,6 +3325,19 @@ function scanInspektorBauen() {
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
                     onclick: () => rufScan("scan_rueckgaengig")}, "↶ Zurück")));
+  // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
+  // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
+  // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
+  // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen.
+  if (scanArt === "item" && SC.katalog_an) {
+    kopf.appendChild(el("button", {class: "btn breit",
+      title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
+             + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
+             + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
+             + "vergeben (teuerstes Item einer Kategorie bekommt P1).",
+      onclick: () => rufScan("scan_katalog_anwenden")},
+      "⊞ Aus Katalog einordnen"));
+  }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
   // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
   // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
@@ -3700,10 +3713,18 @@ function scanItemDetails(ziel, i) {
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
   ziel.appendChild(erweitert);
-  if (i.kategorie === "Auto" && (i.vorlagen || []).length) {
+  // Der Knopf hing einmal an `kategorie === "Auto"` — also genau an den Items,
+  // die schon einen Namen vom Auto-Lernen haben. Wer 56 Vorlagen von Hand als
+  // „item_1“ … angelegt hat, fand ihn deshalb nie, obwohl das der Fall ist, für
+  // den man ihn sucht. Gebraucht wird eine Vorlage, sonst gibt es nichts zu sehen.
+  if ((i.vorlagen || []).length) {
     ziel.appendChild(el("button", {class: "btn breit", style: "margin-top:10px",
+      title: SC.katalog_an
+        ? "Wählt einen der echten Item-Namen aus dem Katalog und ordnet danach ein."
+        : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
+          + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
       onclick: () => rufScan("scan_items_autoname", {namen: [i.name]})},
-      "✦ Mit LLM benennen"));
+      SC.katalog_an ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
   }
   ziel.appendChild(scanItemBestaetigung(i));
   if (i.stumm) {
@@ -3780,6 +3801,15 @@ function scanScanDetails(ziel, c) {
     + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
     + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
     + "und nicht in den Einstellungen.", "reverse"));
+  ziel.appendChild(schalter("Item-Katalog benutzen", c.use_catalog,
+    (v) => setze("use_catalog", v),
+    "Mit Katalog kennt der Editor die echten Item-Namen des Spiels: „Aus Katalog "
+    + "einordnen“ setzt Kategorie und Priorität, und die LLM-Benennung wählt aus "
+    + "den echten Namen statt frei zu raten. Die Kategorie hängt am NAMEN, nicht "
+    + "am LLM — sie funktioniert auch, wenn du den Namen selbst tippst. Der "
+    + "Schalter steht hier und nicht in den Einstellungen, weil ein Katalog "
+    + "immer nur für EIN Spiel gilt; wo die Datei liegt, sagt "
+    + "„Item-Katalog“ in den Einstellungen.", "katalog"));
 
   if (c.fehlend.length) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},

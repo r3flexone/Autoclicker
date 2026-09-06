@@ -518,25 +518,179 @@ class ScanLearningMixin:
             f"Vorlage '{datei}' von '{name}' entfernt. Die Bilddatei bleibt als Sicherung bestehen.",
             "warn")
 
+    def _katalog(self):
+        """Der Katalog DIESES Scans — leer, wenn er ihn nicht benutzt.
+
+        Zwei Schalter, und sie beantworten verschiedene Fragen: `scan_catalog_file`
+        sagt, WO der Katalog liegt (eine Datei je Spiel, also programmweit),
+        `ItemScanConfig.use_catalog` sagt, OB dieser Scan ihn benutzt. Wer zwei
+        Spiele betreibt, hat einen Katalog, der nur fuer eines von beiden gilt —
+        dieselbe Ueberlegung wie bei der Laufrichtung.
+
+        Die Config wird frisch gelesen und nicht gemerkt: der Pfad steht im
+        Einstellungen-Reiter desselben Fensters, und ein Katalog, der erst nach
+        einem Neustart greift, ist der Fall, in dem man den Knopf fuer kaputt
+        haelt. `lade_katalog` haengt seinen Cache ohnehin am Dateistand.
+        """
+        from ...katalog import LEER
+        katalog, _grund = self._katalog_pruefen()
+        return katalog if katalog is not None else LEER
+
+    def _katalog_pruefen(self):
+        """(Katalog, Grund) — genau einer von beiden ist gesetzt.
+
+        Drei Gruende, und sie auseinanderzuhalten ist der ganze Zweck: bei
+        "Schalter aus" sucht man sonst die Datei, und bei "keine Datei" den
+        Schalter.
+        """
+        # `CONFIG` statt `load_config()`: diese Pruefung laeuft bei JEDER
+        # Momentaufnahme, also nach jedem Klick — ein Dateizugriff pro Klick
+        # waere zu teuer. Das Objekt haelt der Einstellungen-Reiter aktuell
+        # (`config_schreiben` ruft `uebernehmen(CONFIG, …)` auf dem eigenen
+        # Prozess), und `lade_katalog` haengt seinen Cache am Dateistand.
+        from ...config import CONFIG
+        from ...katalog import lade_katalog
+
+        cfg = self.scans.get(self.scan_offen)
+        if cfg is None:
+            return None, ("Erst einen Item-Scan öffnen — der Katalog wird je Scan "
+                          "ein- und ausgeschaltet.")
+        if not cfg.use_catalog:
+            return None, (f"'{cfg.name}' benutzt den Katalog nicht. Der Schalter steht "
+                          "in den Scan-Einstellungen (Scan-Maske aufklappen).")
+        pfad = CONFIG.scan_catalog_file
+        if not pfad:
+            return None, ("Keine Katalog-Datei eingetragen — Einstellungen → "
+                          "SCAN-EINSTELLUNGEN → 'Item-Katalog'. "
+                          "Anlegen mit: python tools/katalog.py")
+        katalog = lade_katalog(pfad)
+        if not katalog:
+            return None, f"Katalog '{pfad}' ist leer oder nicht lesbar."
+        return katalog, None
+
+    def _katalog_ziel(self, daten: Optional[dict]) -> list:
+        """Worauf eine Katalog-Aktion wirkt: die Auswahl, sonst der offene Scan.
+
+        Dieselbe Bezugsregel wie bei jeder Sammel-Aktion des Reiters
+        (`_scan_slots()`/`_kandidaten()`) — eine ausdrueckliche Auswahl gewinnt,
+        sonst gilt der offene Scan und ohne Scan der Bestand.
+        """
+        namen = [str(n) for n in ((daten or {}).get("namen") or [])]
+        if namen:
+            return [self.items[n] for n in namen if n in self.items]
+        return list(self._kandidaten())
+
+    def _katalog_plan(self, items: list, katalog) -> tuple:
+        """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
+
+        Getrennt vom Anwenden, damit `_merke()` nur bei einer echten Aenderung
+        laeuft. Ein zweiter Klick auf denselben Knopf aendert nichts, und ein
+        Rueckgaengig-Stand, der nichts zurueckdreht, ist ein STRG+Z, das
+        scheinbar wirkungslos ist — danach traut man dem Stapel nicht mehr.
+
+        `Aenderungen` ist eine Liste `(Item, Kategorie, Prioritaet)`.
+        """
+        from ...katalog import raenge
+        bekannt = [(i, katalog.kategorie(i.name), katalog.wert(i.name))
+                   for i in items if katalog.treffer(i.name)]
+        rang = raenge([(i.name, kategorie, wert) for i, kategorie, wert in bekannt])
+
+        aenderungen = []
+        for item, kategorie, _wert in bekannt:
+            neu_prio = rang.get(item.name, item.priority)
+            if item.category != kategorie or item.priority != neu_prio:
+                aenderungen.append((item, kategorie, neu_prio))
+        return aenderungen, len(bekannt)
+
+    @staticmethod
+    def _katalog_uebernehmen(aenderungen: list) -> set:
+        """Traegt den Plan ein und liefert die benutzten Kategorien."""
+        kategorien = set()
+        for item, kategorie, prioritaet in aenderungen:
+            item.category = kategorie
+            item.priority = prioritaet
+            if kategorie:
+                kategorien.add(kategorie)
+        return kategorien
+
+    def scan_katalog_anwenden(self, daten: Optional[dict] = None) -> dict:
+        """Setzt Kategorie und Prioritaet aus dem Katalog — ohne LLM.
+
+        Die Kategorie haengt am NAMEN, nicht am Modell: heisst ein Item
+        "Citadel Helmet", steht im Katalog "Helm", und ob den Namen ein Mensch
+        getippt oder `scan_items_autoname` vorgeschlagen hat, ist gleichgueltig.
+        Deshalb steht dieser Knopf auch ohne `llm_enabled` zur Verfuegung.
+
+        Die Prioritaet wird DICHT innerhalb der bearbeiteten Menge vergeben
+        (teuerstes Item einer Kategorie bekommt P1). Ein Rang aus dem Katalog
+        waere global und damit unbrauchbar — der beste Bogen eines Bestands
+        bekaeme P49, weil 48 teurere im Katalog stehen, die man nicht besitzt.
+
+        Angefasst wird nur, was der Katalog wirklich kennt. Ein Item mit einem
+        selbst vergebenen Namen ("item_12") behaelt, was es hat, statt in eine
+        geratene Kategorie zu rutschen.
+        """
+        katalog, grund = self._katalog_pruefen()
+        if katalog is None:
+            return self._scan_melde(grund, "err")
+
+        ziel = self._katalog_ziel(daten)
+        if not ziel:
+            return self._scan_melde("Keine Items ausgewählt.", "warn")
+
+        aenderungen, bekannt = self._katalog_plan(ziel, katalog)
+        if not bekannt:
+            return self._scan_melde(
+                f"Keiner der {len(ziel)} Namen steht im Katalog. Erst benennen — "
+                "von Hand oder mit „Aus Katalog benennen“.", "warn")
+        if not aenderungen:
+            return self._scan_melde(
+                f"{bekannt} Item(s) im Katalog gefunden — alle stehen schon richtig.",
+                "info")
+
+        self._merke("Aus Katalog eingeordnet")
+        kategorien = self._katalog_uebernehmen(aenderungen)
+        rest = len(ziel) - bekannt
+        zusatz = f"; {rest} nicht im Katalog (unverändert)" if rest else ""
+        return self._scan_geaendert(
+            f"{len(aenderungen)} Item(s) in {len(kategorien)} Kategorie(n) "
+            f"eingeordnet{zusatz}.")
+
     def scan_items_autoname(self, daten: Optional[dict] = None) -> dict:
         """Benennt ausgewählte Auto-Items per konfigurierter LLM-Vision."""
         from ...config import load_config
         config = load_config()
         if not config.llm_enabled:
             return self._scan_melde("LLM-Vision ist in den Einstellungen nicht aktiviert.", "err")
+        # Eine ausdrueckliche Auswahl gewinnt: wer Items markiert und den Knopf
+        # drueckt, meint genau die. Ohne Auswahl bleibt es beim vorsichtigen
+        # Standard (nur auto-gelernte) — sonst benennt ein Fehlgriff den ganzen
+        # von Hand gepflegten Bestand um.
         namen = [str(n) for n in ((daten or {}).get("namen") or [])]
-        kandidaten = [i for i in self.items.values()
-                      if (not namen or i.name in namen)
-                      and i.category == "Auto" and i.template_names()]
+        if namen:
+            kandidaten = [i for i in self.items.values()
+                          if i.name in namen and i.template_names()]
+            leer_text = "Keines der gewählten Items hat eine Vorlage."
+        else:
+            kandidaten = [i for i in self.items.values()
+                          if i.category == "Auto" and i.template_names()]
+            leer_text = ("Keine auto-gelernten Items mit Vorlage gefunden. "
+                         "Für andere Items erst welche auswählen.")
         if not kandidaten:
-            return self._scan_melde("Keine passenden Auto-Items mit Vorlage gefunden.", "warn")
+            return self._scan_melde(leer_text, "warn")
         try:
             from PIL import Image
             from ...llm_vision import suggest_item_name
             from ...utils import sanitize_filename
         except ImportError:
             return self._scan_melde("Pillow oder LLM-Vision ist nicht verfügbar.", "err")
-        umbenannt = 0
+
+        # Mit Katalog darf das Modell nur noch AUSWAEHLEN. Frei geraten nennt es
+        # die Art ("Bogen"), aus der Liste den Gegenstand ("Godlike Bow") — und
+        # nur der zweite laesst sich hinterher einordnen.
+        katalog = self._katalog()
+        auswahl = katalog.namen() or None
+        benannt, umbenannt = [], 0
         for item in list(kandidaten):
             pfad = self.filepath.parent / "templates" / item.template_names()[0]
             try:
@@ -544,7 +698,7 @@ class ScanLearningMixin:
                     vorschlag = suggest_item_name(
                         bild.copy(), provider=config.llm_provider,
                         endpoint=config.llm_endpoint, model=config.llm_model,
-                        timeout=config.llm_timeout)
+                        timeout=config.llm_timeout, candidates=auswahl)
             except (OSError, ValueError):
                 continue
             basis = sanitize_filename(vorschlag).strip() if vorschlag else ""
@@ -557,7 +711,22 @@ class ScanLearningMixin:
             if neu != item.name:
                 self._item_umbenennen(item, neu)
                 umbenannt += 1
-        return self._scan_geaendert(f"{umbenannt} Auto-Item(s) per LLM benannt.")
+                benannt.append(item)
+
+        # **Einordnen gehoert zum Benennen, nicht in einen zweiten Knopf.** Nach
+        # dem Benennen ist die Frage nicht "habe ich Namen", sondern "stehen sie
+        # richtig" — dieselbe Ueberlegung wie bei `_gleich_erkennen()` nach dem
+        # Slot-Finden. Es kostet nichts (kein Netz, kein Modell), und die Namen
+        # kommen ja gerade aus diesem Katalog.
+        if katalog and benannt:
+            aenderungen, _bekannt = self._katalog_plan(benannt, katalog)
+            if aenderungen:
+                kategorien = self._katalog_uebernehmen(aenderungen)
+                return self._scan_geaendert(
+                    f"{umbenannt} Item(s) per LLM benannt, "
+                    f"{len(aenderungen)} davon in {len(kategorien)} Kategorie(n) "
+                    "eingeordnet.")
+        return self._scan_geaendert(f"{umbenannt} Item(s) per LLM benannt.")
 
     # ------------------------------------------------------------- Erkennung
 
