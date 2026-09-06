@@ -50,8 +50,12 @@ class BridgeServicesMixin:
                 geaendert = 0.0
             seq = load_sequence_file(pfad)
             if seq is None:
+                # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
+                # Grund, ueberhaupt loeschen zu wollen — und dann will man
+                # wissen, was am Ordner sonst noch haengt.
                 raus.append({"name": gespeicherter_name, "datei": str(pfad), "defekt": True,
-                             "geaendert": geaendert, "offen": pfad == self.filepath})
+                             "geaendert": geaendert, "offen": pfad == self.filepath,
+                             "umfang": self._sequenz_umfang(pfad.parent)})
                 continue
             raus.append({
                 "name": seq.name,
@@ -68,9 +72,94 @@ class BridgeServicesMixin:
                 "schritte": seq.total_steps(),
                 "geaendert": geaendert,
                 "offen": pfad == self.filepath,
+                "umfang": self._sequenz_umfang(pfad.parent),
                 "warnungen": scan_warnungen(sequence_to_board(seq)),
             })
         return raus
+
+    # Was in einem Sequenzordner ausser der sequence.json noch liegt. Reihenfolge
+    # = Anzeige; der Schluessel ist der Unterordner.
+    #
+    # **Einzahl und Mehrzahl stehen beide da.** Die Ansicht haengte erst ein "n"
+    # an, und das ergab "2x Item-Scann" und "3x gemerkter Bildschirmn" - bei drei
+    # von fuenf Woertern falsch. Deutsche Mehrzahl ist keine Regel, die man in
+    # einer Zeile JavaScript trifft; sie gehoert zu den Daten.
+    _UMFANG = (("item_scans", "Item-Scan", "Item-Scans"),
+               ("boss_scans", "Boss-Scan", "Boss-Scans"),
+               ("icon_scans", "Icon-Scan", "Icon-Scans"),
+               ("templates", "Vorlage", "Vorlagen"),
+               ("bilder", "gemerkter Bildschirm", "gemerkte Bildschirme"))
+
+    @classmethod
+    def _sequenz_umfang(cls, ordner: Path) -> list[dict]:
+        """Was am Sequenzordner haengt — fuer die Rueckfrage vor dem Loeschen.
+
+        Eine Sequenz ist eine **Besitzeinheit**: Scans, Vorlagen und gemerkte
+        Bildschirme liegen in ihrem Ordner und gehen mit ihr. Wer das nicht
+        vorher liest, loescht einen Nachmittag Arbeit an Item-Vorlagen mit, weil
+        er „nur die Sequenz" wegraeumen wollte.
+        """
+        raus = []
+        for unter, eins, viele in cls._UMFANG:
+            try:
+                n = sum(1 for p in (ordner / unter).iterdir() if p.is_file())
+            except OSError:
+                n = 0
+            if n:
+                raus.append({"art": unter, "wort": eins if n == 1 else viele,
+                             "anzahl": n})
+        return raus
+
+    def sequenz_loeschen(self, daten: Optional[dict] = None) -> dict:
+        """Raeumt einen Sequenzordner weg — nach `backups/`, nicht ins Nichts.
+
+        Geloescht wird der ganze Ordner, denn genau so ist eine Sequenz
+        aufgebaut: Punkte stehen in ihrer `sequence.json`, Scans, Vorlagen und
+        gemerkte Bildschirme daneben. Nur die JSON zu entfernen liesse einen
+        Ordner voller Vorlagen zurueck, den nie wieder jemand ansieht.
+
+        **Verschoben statt entfernt.** „Nie Daten verlieren" ist die Regel des
+        Start-Durchgangs, und sie gilt hier erst recht: der Ordner landet unter
+        `backups/sequences/<name>/` und laesst sich von Hand zurueckschieben. Ein
+        vorhandener Stand dort wird nicht ueberschrieben, sondern bekommt einen
+        Zeitstempel — die aelteste Sicherung bleibt die aelteste.
+
+        Zwei Absagen, und beide haben denselben Grund: hinterher stimmte sonst
+        etwas nicht mehr, das niemand mehr nachvollziehen kann.
+
+        * **Die offene Sequenz nicht.** Der Editor haelt sie im Speicher; der
+          naechste Druck auf Speichern legte den Ordner einfach wieder an, und
+          das Loeschen sah aus, als haette es nicht gewirkt.
+        * **Nicht waehrend eines Laufs.** Der Worker liest waehrenddessen
+          Vorlagen und Scan-Dateien aus genau diesem Ordner.
+        """
+        import shutil
+        from datetime import datetime
+        from ...persistence.paths import BACKUPS_DIR
+
+        name = str((daten or {}).get("name") or "").strip()
+        if not name:
+            return {"ok": False, "meldung": "Keine Sequenz genannt."}
+        ordner = Path(self.sequences_dir) / name
+        if not ordner.is_dir():
+            return {"ok": False, "meldung": f"'{name}' gibt es nicht (mehr)."}
+        if ordner.resolve() == self.filepath.parent.resolve():
+            return {"ok": False, "meldung": (
+                f"'{name}' ist gerade geöffnet. Erst eine andere laden — sonst "
+                "legt der nächste Druck auf Speichern den Ordner wieder an.")}
+        if self._laeuft():
+            return {"ok": False, "meldung": (
+                "Eine Sequenz läuft — der Worker liest gerade aus diesen Ordnern.")}
+
+        ziel = Path(BACKUPS_DIR) / "sequences" / name
+        if ziel.exists():
+            ziel = ziel.with_name(f"{name}_{datetime.now():%Y%m%d_%H%M%S}")
+        try:
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(ordner), str(ziel))
+        except (OSError, shutil.Error) as fehler:
+            return {"ok": False, "meldung": f"Konnte nicht wegräumen: {fehler}"}
+        return {"ok": True, "meldung": f"'{name}' liegt jetzt unter {ziel}."}
 
     def lauf_status(self, daten: Optional[dict] = None) -> dict:
         """Was gerade läuft — gelesen aus der Statusdatei des Hauptprozesses.
@@ -331,7 +420,7 @@ class BridgeServicesMixin:
         das niemand, deshalb wird der geschriebene Stand gegen das Gesendete gehalten
         und die Abweichung zurückgemeldet.
         """
-        from ...config import AppConfig, save_config
+        from ...config import AppConfig, CONFIG, save_config, uebernehmen
         werte = (daten or {}).get("werte")
         if not isinstance(werte, dict) or not werte:
             return {"ok": False, "meldung": "Nichts zu speichern."}
@@ -348,6 +437,22 @@ class BridgeServicesMixin:
                        for k, v in werte.items()
                        if k in fertig and not _gleicher_wert(v, fertig[k])]
         save_config(neu)
+        # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
+        # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
+        # `befehl_config()`; DIESER Prozess hat die Datei geschrieben und blieb
+        # danach auf den Werten vom Programmstart sitzen — jeder Reiter, der
+        # `CONFIG` liest, zeigte bis zum Neustart den alten Stand. Aufgefallen
+        # ist es am Bericht-Reiter („session_log_enabled ist aus", direkt nachdem
+        # man es eingeschaltet hatte); betroffen war der ganze Baum: die
+        # OCR/LLM-Lampen und Marker-Schwellen im Scans-Reiter, die Toleranz beim
+        # Farbvergleich im Werkzeuge-Reiter, der Fenstertitel im Teilen-Reiter.
+        #
+        # `uebernehmen()` statt einer Zuweisung: das Objekt darf nicht getauscht
+        # werden, sonst sitzt jeder mit `from ...config import CONFIG` (imaging,
+        # die Scan-Module) weiter auf dem alten. Genau dafuer gibt es die
+        # Funktion — ihr Docstring nennt diese Stelle als dritten Aufrufer, nur
+        # gerufen hat sie hier nie jemand.
+        uebernehmen(CONFIG, neu)
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # der geschriebenen Datei nichts. Derselbe Briefkasten wie bei Start und
         # Stopp — läuft gerade keiner, verfällt der Befehl (befehl.MAX_ALTER).
@@ -460,6 +565,22 @@ class BridgeServicesMixin:
                / "sequence.json")
         umbenannt = neu != alt
 
+        # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
+        # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
+        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
+        # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
+        fremd = self._fremd_geaendert(alt)
+        if fremd and not (daten or {}).get("erzwingen"):
+            self._frage = {
+                "art": "speichern",
+                "titel": "Ausserhalb geändert",
+                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
+                        "vermutlich vom Hauptprozess. Speichern überschreibt das.",
+                "weiter": "Trotzdem speichern",
+                "speichern": False,
+            }
+            return self.snapshot()
+
         # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
         # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
         alt_ordner = alt.parent
@@ -476,22 +597,6 @@ class BridgeServicesMixin:
             except OSError as fehler:
                 return self._melde(f"Sequenzordner konnte nicht umbenannt werden: {fehler}",
                                    "err")
-
-        # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
-        # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
-        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
-        # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
-        fremd = self._fremd_geaendert(neu if not umbenannt else None)
-        if fremd and not (daten or {}).get("erzwingen"):
-            self._frage = {
-                "art": "speichern",
-                "titel": "Ausserhalb geändert",
-                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
-                        "vermutlich vom Hauptprozess. Speichern überschreibt das.",
-                "weiter": "Trotzdem speichern",
-                "speichern": False,
-            }
-            return self.snapshot()
 
         from .model import palette_to_points
         sequence = board_to_sequence(self.board)
@@ -526,11 +631,10 @@ class BridgeServicesMixin:
     def _fremd_geaendert(self, ziel) -> str:
         """Welche Datei sich seit dem Laden von aussen geändert hat (leer = keine).
 
-        `ziel` ist die Sequenzdatei, die gleich geschrieben wird — beim Umbenennen
-        `None`, denn dann entsteht eine neue Datei und es gibt nichts zu
-        überschreiben. `sequence.json` wird immer geprüft: die schreibt das Studio
-        bei jedem Speichern mit, und der Hauptprozess legt dort während einer
-        Aufnahme neue Punkte an.
+        `ziel` ist die geladene Datei, auch vor dem Umbenennen: deren Inhalt
+        wird beim anschliessenden Speichern ersetzt. `sequence.json` wird immer
+        geprüft: die schreibt das Studio bei jedem Speichern mit, und der
+        Hauptprozess legt dort während einer Aufnahme neue Punkte an.
         """
         if ziel is not None and _mtime(ziel) not in (None, self._stand_datei):
             return Path(ziel).name
@@ -560,7 +664,10 @@ class BridgeServicesMixin:
             f"{self.filepath.stem}.ungespeichert.json")
         try:
             ziel.parent.mkdir(parents=True, exist_ok=True)
-            if save_sequence_file(board_to_sequence(self.board), ziel):
+            from .model import palette_to_points
+            sequence = board_to_sequence(self.board)
+            sequence.points = palette_to_points(self.points)
+            if save_sequence_file(sequence, ziel):
                 return ziel
         except (IOError, OSError):
             return None

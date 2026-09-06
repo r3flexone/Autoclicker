@@ -35,15 +35,17 @@ def ensure_dir(directory: str) -> Path:
     return path
 
 
-def write_scan(directory: str, name: str, data: dict, type_label: str) -> None:
+def write_scan(directory: str, name: str, data: dict, type_label: str) -> bool:
     """Schreibt eine Scan-Konfiguration als JSON-Datei (<dir>/<name>.json)."""
     ensure_dir(directory)
     filename = f"{sanitize_filename(name)}.json"
     try:
         atomic_write(Path(directory) / filename, compact_json(data))
         print(save_tag(f"{type_label} '{name}' gespeichert in '{directory}/'"))
+        return True
     except (IOError, OSError) as e:
         print(err(f"{type_label} konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 def list_scan_files(directory: str) -> list[tuple[str, Path]]:

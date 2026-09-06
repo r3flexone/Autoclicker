@@ -30,11 +30,11 @@ def ensure_icon_scans_dir(owner: str = "") -> Path:
     return ensure_dir(_icon_scans_dir(owner)) if owner else Path("sequences")
 
 
-def save_icon_scan(config: IconScanConfig) -> None:
+def save_icon_scan(config: IconScanConfig) -> bool:
     """Speichert eine Icon-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Icon-Scan hat keine Besitzer-Sequenz")
-    write_scan(str(_icon_scans_dir(config.owner_sequence)), config.name,
+    return write_scan(str(_icon_scans_dir(config.owner_sequence)), config.name,
                _icon_scan_to_dict(config), "Icon-Scan")
 
 

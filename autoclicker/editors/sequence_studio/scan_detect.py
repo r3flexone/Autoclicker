@@ -1197,17 +1197,20 @@ class ScanDetectMixin:
         for cfg in self.boss_scans.values():
             try:
                 cfg.owner_sequence = self.board.name
-                save_boss_scan(cfg)
+                if not save_boss_scan(cfg):
+                    fehler.append(f"boss_scans/{cfg.name}.json")
             except (OSError, ValueError):
                 fehler.append(f"boss_scans/{cfg.name}.json")
         for cfg in self.icon_scans.values():
             try:
                 cfg.owner_sequence = self.board.name
-                save_icon_scan(cfg)
+                if not save_icon_scan(cfg):
+                    fehler.append(f"icon_scans/{cfg.name}.json")
             except (OSError, ValueError):
                 fehler.append(f"icon_scans/{cfg.name}.json")
         try:
-            save_global_bosses(_BibliothekState(self.global_bosses), self.board.name)
+            if not save_global_bosses(_BibliothekState(self.global_bosses), self.board.name):
+                fehler.append("boss_scans/bibliothek.json")
         except OSError:
             fehler.append("boss_scans/bibliothek.json")
         return fehler

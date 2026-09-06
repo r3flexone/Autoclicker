@@ -67,8 +67,6 @@ def active_templates_dir(state: AutoClickerState) -> Path:
 def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
     """Speichert eine einzelne Sequenz direkt in die angegebene Datei."""
     filepath = Path(filepath)
-    if filepath.name != "sequence.json":
-        filepath = filepath.parent / sanitize_filename(seq.name) / "sequence.json"
     try:
         atomic_write(filepath, compact_json(stamp(_sequence_to_dict(seq))))
         return True
@@ -90,6 +88,11 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        if not isinstance(data, dict):
+            raise ValueError("Sequenz muss ein JSON-Objekt sein")
+        phasen = data.get("loop_phases", [])
+        if not isinstance(phasen, list) or any(not isinstance(p, dict) for p in phasen):
+            raise ValueError("Loop-Phasen müssen eine Liste von Objekten sein")
         data, meldungen = migrate(data, KIND_SEQUENCE)
         if meldungen:
             print(info(f"'{filepath.stem}' auf Schema {SCHEMA_VERSION} gehoben:"))
@@ -180,6 +183,8 @@ def list_available_sequences() -> list[tuple[str, Path]]:
         try:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
+                if not isinstance(data, dict):
+                    continue
                 name = data.get("name", ordner.name)
                 sequences.append((name, f))
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError,

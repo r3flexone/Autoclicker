@@ -28,6 +28,7 @@ selbst, statt `runtime.status` zu importieren.
 
 import json
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -67,11 +68,22 @@ def hole(max_alter: float = MAX_ALTER) -> Optional[dict]:
     eine Datei, die nicht verarbeitet werden kann, aber liegen bleibt, würde bei
     jedem Durchlauf erneut gelesen und gemeldet.
     """
+    # Erst atomar entnehmen, dann lesen: ein während des Lesens geschriebener
+    # Befehl bleibt im Briefkasten. Der private Name wird nie erneut abgeholt.
+    genommen = BEFEHL_DATEI.with_name(f".{BEFEHL_DATEI.name}.{uuid.uuid4().hex}.tmp")
     try:
-        roh = BEFEHL_DATEI.read_text(encoding="utf-8")
+        BEFEHL_DATEI.replace(genommen)
     except OSError:
         return None
-    verwerfe()
+    try:
+        roh = genommen.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    finally:
+        try:
+            genommen.unlink(missing_ok=True)
+        except OSError:
+            pass
     try:
         daten = json.loads(roh)
     except ValueError:

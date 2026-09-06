@@ -82,6 +82,11 @@ logs/
 # Markt-Analyse - generierte Ausgaben
 market_analysis/output/
 
+# Item-/Gegner-Katalog aus der Spiel-API (tools/katalog.py) — generierte Daten,
+# dieselbe Ueberlegung wie beim Programm-Symbol: eine Kopie im Repo veraltet
+# still, sobald das Spiel Items nachlegt. Neu holen kostet ein Kommando.
+katalog.json
+
 # Das Programm-Symbol wird erzeugt, nicht eingecheckt (tools/symbol.py) —
 # eine Binaerdatei im Repo waere eine Kopie des Motivs, die niemand mitzieht.
 symbol/

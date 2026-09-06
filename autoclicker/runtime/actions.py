@@ -126,6 +126,24 @@ def _humanize_check_break(state: AutoClickerState) -> None:
 # SAFE-WRAPPER (Pflicht-Eintrittspunkte für Klick/Key im Worker)
 # =============================================================================
 
+def _eingabe_freigeben(state: AutoClickerState, label: str) -> bool:
+    """Stop, Pause und Fokus nach allen Wartezeiten erneut prüfen.
+
+    Unter input_lock aufgerufen. Während der Fokus-Rückkehr kann erneut
+    pausiert werden; erst der gleichzeitig freie Zustand erlaubt die Eingabe.
+    """
+    while not state.stop_event.is_set():
+        if state.skip_step_event.is_set():
+            return False
+        if not wait_while_paused(state, label or "Eingabe pausiert"):
+            return False
+        if not _wait_for_target_window(state):
+            return False
+        if not state.pause_event.is_set():
+            return not (state.stop_event.is_set() or state.skip_step_event.is_set())
+    return False
+
+
 def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool:
     """Wrapper für send_click mit Window-Fokus-Check, Humanization und Logging.
 
@@ -138,12 +156,14 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     # falscher Position mehr. input_lock NIEMALS unter state.lock nehmen
     # (Reihenfolge: input_lock zuerst, state.lock danach).
     with state.input_lock:
-        if not _wait_for_target_window(state):
+        if not _eingabe_freigeben(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
+        if not _eingabe_freigeben(state, label):
+            return False
         jx, jy = _humanize_jitter(x, y, state)
         erfolgreich = send_click(
             jx, jy, state.config.click_move_delay, state.config.click_post_delay)
@@ -162,12 +182,14 @@ def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = No
     Windows das Rad-Event an das Fenster unter dem Cursor liefert.
     """
     with state.input_lock:
-        if not _wait_for_target_window(state):
+        if not _eingabe_freigeben(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
+        if not _eingabe_freigeben(state, label):
+            return False
         if x is not None and y is not None:
             x, y = _humanize_jitter(x, y, state)
         erfolgreich = send_scroll(
@@ -183,12 +205,14 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
     # Siehe safe_click: input_lock sichert exklusiven Maus/Tastatur-Zugriff.
     with state.input_lock:
-        if not _wait_for_target_window(state):
+        if not _eingabe_freigeben(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
+        if not _eingabe_freigeben(state, label):
+            return False
         result = send_key(key)
     if not result:
         return False

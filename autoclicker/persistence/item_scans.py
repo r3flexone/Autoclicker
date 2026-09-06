@@ -30,11 +30,11 @@ def ensure_item_scans_dir(owner: str = "") -> Path:
     return ensure_dir(_item_scans_dir(owner))
 
 
-def save_item_scan(config: ItemScanConfig) -> None:
+def save_item_scan(config: ItemScanConfig) -> bool:
     """Speichert eine Item-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Item-Scan hat keine Besitzer-Sequenz")
-    write_scan(str(_item_scans_dir(config.owner_sequence)), config.name,
+    return write_scan(str(_item_scans_dir(config.owner_sequence)), config.name,
                _item_scan_to_dict(config), "Item-Scan")
 
 

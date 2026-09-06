@@ -906,6 +906,12 @@ _MIGRATE_AUSNAHMEN = {
     # gelesen wie eine Fremddatei - fehlerhafte Eintraege fliegen einzeln raus.
     "autoclicker/runtime/item_scan.py":
         "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
+    # Derselbe Fall wie die Marktwert-Datei: der Katalog kommt aus der Spiel-API
+    # (geschrieben von tools/katalog.py), ist Name -> {kategorie, wert} und traegt
+    # kein schema_version. Es gibt nichts zu heben; kaputte Eintraege fliegen
+    # einzeln raus, statt den Katalog unbrauchbar zu machen.
+    "autoclicker/katalog.py":
+        "liest die externe Katalog-JSON (Fremdformat ohne Schema)",
     # Die Bruecke laedt aus zwei transienten Zustandsdateien (.lauf.json aus
     # runtime/status.py, .aufnahme.json aus dem Recorder): kein Bestand, also
     # nichts zu heben. Sequenzen laedt sie ueber load_sequence_file(), und das
@@ -3937,8 +3943,30 @@ check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
       _sym12.LOGO_PFAD.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PFAD.exists())
 check("Kopf und Favicon benutzen beide diese Datei",
       _kopf12.count('sequenz-studio-logo.svg') == 2)
-check("das neue Logo behaelt Rotation und transparente Maske",
-      'rotate(180 128 128)' in _logo12 and 'mask="url(#cutout)"' in _logo12)
+# **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Hier stand einmal
+# 'rotate(180 128 128)' — ein Detail genau dieses Motivs, das beim naechsten
+# neu gezeichneten Logo umfaellt, ohne dass etwas kaputt waere. Tragend sind
+# zwei Dinge: die Maske (sonst gibt es keine echte Transparenz) und die
+# Befehlsmenge, die `_pfad_polygone` ueberhaupt lesen kann — ein 'A' aus einem
+# CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
+check("das Logo traegt eine Maske statt einer Ersatzfarbe",
+      'mask="url(#cutout)"' in _logo12)
+# **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py nimmt
+# `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein `url(#gold)`
+# faellt mit ValueError um. Genau darauf beruht die Plakette: Verlauf, Rand und
+# Innenschatten liegen DARUEBER und werden beim Rastern nicht gesehen, das
+# 16-px-Symbol bleibt eine lesbare flache Flaeche.
+import re as _re12c
+_rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
+check("der Rasterer findet zuerst eine flache Hex-Farbe",
+      bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
+import re as _re12b
+_befehle12 = set(_re12b.findall(r'[A-Za-z]', " ".join(
+    _re12b.findall(r'\sd="([^"]+)"', _logo12))))
+check("und benutzt nur die SVG-Befehle, die symbol.py lesen kann",
+      _befehle12 <= {"M", "L", "C", "Z"})
+if not _befehle12 <= {"M", "L", "C", "Z"}:
+    print("        unlesbar: " + ", ".join(sorted(_befehle12 - {"M", "L", "C", "Z"})))
 check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _kopf12)
 
 # Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
@@ -3949,7 +3977,7 @@ _flach12 = [p for z in _pixel12 for p in z]
 check("die Rasterung liefert genau 16 x 16 Pixel",
       len(_pixel12) == 16 and all(len(z) == 16 for z in _pixel12))
 check("sie verwendet exakt die Farbe des gelieferten SVGs",
-      all(p[:3] == (0xF2, 0xA3, 0x00) for p in _flach12))
+      all(p[:3] == (0xD9, 0xA4, 0x20) for p in _flach12))
 check("Grund, transparente Aussparungen und Kantenglaettung bleiben erhalten",
       any(p[3] == 255 for p in _flach12)
       and any(p[3] == 0 for p in _flach12)
@@ -6301,6 +6329,10 @@ import tools.tests.konsolen_editoren     # noqa: F401,E402
 import tools.tests.persistenz_basis      # noqa: F401,E402
 import tools.tests.nachklick            # noqa: F401,E402
 import tools.tests.studio_teilen        # noqa: F401,E402
+import tools.tests.bericht              # noqa: F401,E402
+import tools.tests.punkte               # noqa: F401,E402
+import tools.tests.sequenz_loeschen     # noqa: F401,E402
+import tools.tests.katalog               # noqa: F401,E402
 
 
 import shutil as _shD
@@ -6317,7 +6349,7 @@ section("Vorlagen werden IM Sequenzordner gesucht, nicht im globalen von frueher
 # Das ist kein Schoenheitsfehler: daran haengt die Dedup-Pruefung von
 # `learn_unknown`. Findet sie nie einen Treffer, legt der Worker denselben Slot
 # in JEDEM Zyklus erneut als neues Item an.
-if PILLOW_AVAILABLE:
+if PILLOW_AVAILABLE and OPENCV_AVAILABLE:
     from PIL import Image as _ImgD
     from autoclicker.imaging import template_size as _tsD
     from autoclicker.editors.item_editor.markers import (
@@ -6346,21 +6378,11 @@ if PILLOW_AVAILABLE:
         check("und die Duplikat-Suche findet es nur mit Ordner",
               _fmeiD(_bildD, [("Bogen", _itemD)], 0.8, _ordnerD) == "Bogen")
 
-    # Gegenprobe an der Laufzeit selbst: beide Aufrufe in `_lerne_unbekanntes`
-    # muessen den Ordner durchreichen, sonst ist die Kette oben wirkungslos.
-    import inspect as _inspD
-    import autoclicker.runtime.item_scan as _isD
-    _quelleD = _inspD.getsource(_isD)
-    _abschnittD = _quelleD[_quelleD.index("vorlagen_ordner = active_templates_dir"):]
-    _abschnittD = _abschnittD[:_abschnittD.index("template_path =")]
-    check("die Laufzeit reicht den Ordner an die Duplikat-Suche durch",
-          "_find_matching_existing_item(img, existing, min_confidence,\n"
-          "                                         vorlagen_ordner)" in _abschnittD)
-    check("und an die Vorlagen-Pruefung ebenso",
-          "_item_has_compatible_template(\n"
-          "                known_item, img, vorlagen_ordner)" in _abschnittD)
-
+    # Die Weitergabe an beide Helfer prüft test_runtime_hardening durch
+    # einen ausgeführten Lernschritt, unabhängig von Zeilenumbrüchen im Code.
     _shD.rmtree(_sandD, ignore_errors=True)
+else:
+    print("  ÜBERSPRUNGEN: Vorlagengrössen brauchen Pillow und OpenCV")
 
 
 PASS, FAIL = _H.PASS, _H.FAIL

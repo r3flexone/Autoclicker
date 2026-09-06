@@ -594,6 +594,12 @@ def handle_toggle(state: AutoClickerState) -> None:
 
         # Jetzt starten
         with state.lock:
+            # Ein noch antwortender LLM-Aufruf gehört zum beendeten Lauf.
+            # Stop erst freigeben, wenn er wirklich beendet ist; sonst könnte
+            # seine verspätete Aktion in den neuen Lauf hineinfeuern.
+            if state.llm_thread is not None and state.llm_thread.is_alive():
+                print(warn("Die vorherige Boss-Erkennung wird noch beendet — bitte danach erneut starten."))
+                return
             state.is_running = True
             state.stop_event.clear()
             state.pause_event.clear()

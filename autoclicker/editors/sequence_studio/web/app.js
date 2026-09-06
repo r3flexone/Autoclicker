@@ -595,16 +595,21 @@ function setzeAnsicht(neu) {
   $("sicht-scans").hidden = neu !== "scans";
   $("sicht-teilen").hidden = neu !== "teilen";
   $("sicht-werkzeuge").hidden = neu !== "werkzeuge";
+  $("sicht-bericht").hidden = neu !== "bericht";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge"].includes(neu);
+    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge",
+                "bericht"].includes(neu);
   if (neu === "scans") zeichneScans(!SC);
   if (neu === "sequenzen") zeichneSequenzenliste();
   if (neu === "teilen") zeichneTeilen();
   // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
   // den es nach einem Speichern nicht mehr gibt.
   if (neu === "werkzeuge") zeichneWerkzeuge(true);
+  // Bei jedem Oeffnen frisch: waehrend das Fenster offensteht, schreibt ein
+  // Lauf im Hauptprozess weiter in dieselbe CSV.
+  if (neu === "bericht") zeichneBericht();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (neu === "einstellungen") zeichneEinstellungen(true);
@@ -1037,16 +1042,51 @@ function seqKarte(s) {
     el("span", {class: "zahl"}, s.phasen.length + " Loop-Phasen"),
     el("span", {class: "zahl"}, s.zyklen ? s.zyklen + " Zyklen" : "endlos")]));
 
+  // Zwei Knöpfe teilen sich gleiche Spalten (`knopfpaar`): „Öffnen" und
+  // „Löschen" sind verschieden lang, und zwei verschieden breite Knöpfe
+  // nebeneinander lesen sich als zwei Rangstufen. Bei einer defekten Datei
+  // bleibt die erste Spalte leer statt zu verschwinden — sonst säße das
+  // Löschen dort, wo bei den Nachbarkarten das Öffnen steht.
   karte.appendChild(el("div", {class: "seq-fuss"},
     el("span", {class: "klein mono wachse", title: s.datei},
        s.datei + " · " + zeitpunkt(s.geaendert)),
-    // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
-    // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
-    s.defekt ? null : el("button", {
-      class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
-      onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
-    }, s.offen ? "geöffnet" : "Öffnen")));
+    el("div", {class: "knopfpaar"},
+      // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
+      // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
+      s.defekt ? el("span", {}) : el("button", {
+        class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
+        onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
+      }, s.offen ? "geöffnet" : "Öffnen"),
+      el("button", {
+        class: "btn gefahr still", disabled: s.offen,
+        title: s.offen
+          ? "Erst eine andere Sequenz laden — sonst legt der nächste Druck auf "
+            + "Speichern den Ordner wieder an."
+          : "Räumt den ganzen Sequenzordner nach backups/ weg",
+        onclick: () => frageLoeschen(s),
+      }, "Löschen"))));
   return karte;
+}
+
+/** Die Rückfrage vor dem Löschen — mit dem, was wirklich weggeht.
+ *
+ * Eine Sequenz ist eine Besitzeinheit: Scans, Vorlagen und gemerkte Bildschirme
+ * liegen in ihrem Ordner. „Sequenz löschen?" allein verschwiege den halben
+ * Umfang, und der ist genau das, was man hinterher vermisst. */
+function frageLoeschen(s) {
+  // Das Wort kommt fertig gebeugt aus der Bruecke. Ein angehaengtes "n" ergab
+  // "2× Item-Scann" — deutsche Mehrzahl ist keine Regel fuer eine Zeile hier.
+  const teile = (s.umfang || []).map((u) => u.anzahl + "× " + u.wort);
+  zeigeFrage({
+    art: "seq_loeschen",
+    ziel: s.name,
+    titel: "„" + s.name + "“ löschen?",
+    text: "Der ganze Ordner geht weg"
+      + (teile.length ? " — samt " + teile.join(", ") + "." : ".")
+      + " Er wird nach backups/sequences/ verschoben, nicht gelöscht:"
+      + " zurückholen geht von Hand.",
+    weiter: "Löschen",
+  });
 }
 
 /* --------------------------------------------------------- Ansicht: Live-Run */
@@ -1931,13 +1971,24 @@ function schliesseFrage() {
   $("schleier").hidden = true;
 }
 
+/* Die lokale Variable hiess `frage` und verdeckte damit den gleichnamigen
+ * Bruecken-Helfer — solange hier nur `ruf()` vorkam, fiel das nicht auf. Sie
+ * heisst jetzt `offen`, damit der fragende Kanal von hier aus erreichbar ist. */
 async function fortfahren(verwerfen) {
-  const frage = offeneFrage;
+  const offen = offeneFrage;
   schliesseFrage();
-  if (!frage) return;
-  if (frage.art === "speichern") return ruf("speichern", {erzwingen: true});
+  if (!offen) return;
+  // Löschen geht über den fragenden Kanal: es ändert Dateien, nicht die offene
+  // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
+  // Steht vorn, weil es weder speichern noch laden will.
+  if (offen.art === "seq_loeschen") {
+    const antwort = await frage("sequenz_loeschen", {name: offen.ziel});
+    if (antwort) setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "warn"});
+    return zeichneSequenzenliste();
+  }
+  if (offen.art === "speichern") return ruf("speichern", {erzwingen: true});
   if (!verwerfen) await ruf("speichern");
-  if (frage.art === "laden") await ruf("laden", {name: frage.ziel, verwerfen: true});
+  if (offen.art === "laden") await ruf("laden", {name: offen.ziel, verwerfen: true});
   else await ruf("neu", {verwerfen: true});
 }
 
@@ -3274,6 +3325,19 @@ function scanInspektorBauen() {
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
                     onclick: () => rufScan("scan_rueckgaengig")}, "↶ Zurück")));
+  // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
+  // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
+  // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
+  // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen.
+  if (scanArt === "item" && SC.katalog_an) {
+    kopf.appendChild(el("button", {class: "btn breit",
+      title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
+             + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
+             + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
+             + "vergeben (teuerstes Item einer Kategorie bekommt P1).",
+      onclick: () => rufScan("scan_katalog_anwenden")},
+      "⊞ Aus Katalog einordnen"));
+  }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
   // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
   // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
@@ -3649,10 +3713,18 @@ function scanItemDetails(ziel, i) {
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
   ziel.appendChild(erweitert);
-  if (i.kategorie === "Auto" && (i.vorlagen || []).length) {
+  // Der Knopf hing einmal an `kategorie === "Auto"` — also genau an den Items,
+  // die schon einen Namen vom Auto-Lernen haben. Wer 56 Vorlagen von Hand als
+  // „item_1“ … angelegt hat, fand ihn deshalb nie, obwohl das der Fall ist, für
+  // den man ihn sucht. Gebraucht wird eine Vorlage, sonst gibt es nichts zu sehen.
+  if ((i.vorlagen || []).length) {
     ziel.appendChild(el("button", {class: "btn breit", style: "margin-top:10px",
+      title: SC.katalog_an
+        ? "Wählt einen der echten Item-Namen aus dem Katalog und ordnet danach ein."
+        : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
+          + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
       onclick: () => rufScan("scan_items_autoname", {namen: [i.name]})},
-      "✦ Mit LLM benennen"));
+      SC.katalog_an ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
   }
   ziel.appendChild(scanItemBestaetigung(i));
   if (i.stumm) {
@@ -3729,6 +3801,15 @@ function scanScanDetails(ziel, c) {
     + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
     + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
     + "und nicht in den Einstellungen.", "reverse"));
+  ziel.appendChild(schalter("Item-Katalog benutzen", c.use_catalog,
+    (v) => setze("use_catalog", v),
+    "Mit Katalog kennt der Editor die echten Item-Namen des Spiels: „Aus Katalog "
+    + "einordnen“ setzt Kategorie und Priorität, und die LLM-Benennung wählt aus "
+    + "den echten Namen statt frei zu raten. Die Kategorie hängt am NAMEN, nicht "
+    + "am LLM — sie funktioniert auch, wenn du den Namen selbst tippst. Der "
+    + "Schalter steht hier und nicht in den Einstellungen, weil ein Katalog "
+    + "immer nur für EIN Spiel gilt; wo die Datei liegt, sagt "
+    + "„Item-Katalog“ in den Einstellungen.", "katalog"));
 
   if (c.fehlend.length) {
     ziel.appendChild(el("p", {class: "hinweis", style: "color:var(--err)"},
@@ -4737,6 +4818,260 @@ function teilenImportZeichnen() {
     onclick: () => rufTeilen("import_starten",
       {teile: teilenImport, modus: teilenModus, merge: teilenMerge})},
     "Bündel einlesen"));
+  ziel.appendChild(rumpf);
+}
+
+/* ------------------------------------------------------------ Ansicht: Bericht
+ *
+ * Der Live-Run zeigt das Jetzt, dieser Reiter das Gestern. Eigener Zustand
+ * neben `S`, wie bei Teilen und Werkzeugen: er liest `logs/`, nicht die
+ * geoeffnete Sequenz.
+ *
+ * Gezeichnet wird mit denselben Bausteinen wie der Werkzeuge-Reiter
+ * (`wz-kennzahlen`, `wz-zwischenkopf`, `abschnitt`) statt mit eigenen. Ein
+ * achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
+ * einbringt — und die Kennzahlen-Kacheln koennen genau das schon: gleiche
+ * Spalten ueber `auto-fit`, gleiche Hoehe, gleiche Schrift. */
+
+let B = null;
+
+async function zeichneBericht(daten) {
+  const antwort = await frage("bericht_daten", daten === undefined ? null : daten);
+  if (!antwort || ansicht !== "bericht") return;
+  B = antwort;
+  const merk = fokusMerken();
+  berichtLinksZeichnen();
+  berichtMitteZeichnen();
+  berichtRechtsZeichnen();
+  fokusHerstellen(merk);
+}
+
+/** Sekunden als h:mm:ss — dieselbe Form wie in `tools/log_report.py`. */
+function berDauer(sek) {
+  const ganz = Math.max(0, Math.round(sek || 0));
+  const h = Math.floor(ganz / 3600), m = Math.floor((ganz % 3600) / 60), s = ganz % 60;
+  const zwei = (n) => String(n).padStart(2, "0");
+  return h ? h + ":" + zwei(m) + ":" + zwei(s) : m + ":" + zwei(s);
+}
+
+/** Grosse Zahlen mit Tausenderpunkten. Gold geht in die Millionen, und
+ *  „143920771" liest niemand. */
+function berZahl(n, stellen) {
+  return (n || 0).toLocaleString("de-DE", {maximumFractionDigits: stellen || 0});
+}
+
+/* Eine Rangzeile: Name links, Anzahl rechts, darunter ein Balken im Verhaeltnis
+ * zum groessten Wert der Liste. VIER Listen benutzen sie (Timeouts, Items,
+ * Erkanntes, Nachpruefung) — eine Bauform fuer alle, sonst hat dieselbe Sache
+ * vier Gestalten. */
+function berRang(name, wert, anteil, zusatz, art) {
+  const zeile = el("div", {class: "ber-rang" + (art ? " " + art : "")},
+    el("span", {class: "ber-rang-name", title: name}, name),
+    el("span", {class: "ber-rang-wert mono"}, wert),
+    el("div", {class: "ber-balken"},
+      el("div", {class: "ber-balken-fuell",
+        style: "width:" + Math.max(2, Math.round(anteil * 100)) + "%"})));
+  if (zusatz) zeile.appendChild(el("span", {class: "ber-rang-zusatz"}, zusatz));
+  return zeile;
+}
+
+function berListe(titel, hilfe, schluessel, eintraege) {
+  const kasten = el("div", {class: "teilen-karte"},
+    ueberschrift(titel, hilfe, schluessel));
+  const hoechst = eintraege.reduce((m, e) => Math.max(m, e.wert), 0) || 1;
+  for (const e of eintraege)
+    kasten.appendChild(berRang(e.name, berZahl(e.wert), e.wert / hoechst,
+      e.zusatz, e.art));
+  return kasten;
+}
+
+/* ------------------------------------------------------------------- links */
+
+function berichtLinksZeichnen() {
+  const ziel = $("ber-links");
+  const kopf = el("div", {class: "abschnitt klebt"},
+    ueberschrift("SITZUNGEN",
+      "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
+      + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
+      + "nicht ueber eine einzelne Datei.", "ber-sitzungen"));
+  if (!B.aktiv) {
+    kopf.appendChild(el("p", {class: "hinweis warnung"},
+      "session_log_enabled ist aus — neue Laeufe schreiben nichts mit."));
+  }
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  if (!B.verfuegbar) {
+    rumpf.appendChild(el("p", {class: "hinweis"}, B.fehler));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  if (!B.sitzungen.length) {
+    rumpf.appendChild(el("p", {class: "hinweis"}, B.ordner
+      ? "Keine Logs in " + B.ordner + "."
+      : "Noch kein Log-Ordner. Er entsteht beim ersten Lauf mit "
+        + "session_log_enabled."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+
+  rumpf.appendChild(berSitzung({
+    datei: "", titel: "Alle zusammen",
+    unten: B.sitzungen.length + " Sitzung(en)",
+  }));
+  for (const s of B.sitzungen) {
+    rumpf.appendChild(berSitzung({
+      datei: s.datei,
+      titel: s.beginn || s.datei,
+      unten: berDauer(s.dauer) + " · " + berZahl(s.klicks) + " Klicks",
+      warnung: s.timeouts ? s.timeouts + "× Timeout" : "",
+    }));
+  }
+  if (B.ausgelassen) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      B.ausgelassen + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
+      + "neuesten 50."));
+  }
+  ziel.appendChild(rumpf);
+}
+
+function berSitzung(s) {
+  const an = (B.gewaehlt || "") === s.datei;
+  const zeile = el("button", {
+    class: "ber-sitzung" + (an ? " an" : ""),
+    onclick: () => zeichneBericht({datei: s.datei}),
+  },
+    el("span", {class: "ber-sitzung-titel"}, s.titel),
+    el("span", {class: "ber-sitzung-unten"}, s.unten));
+  if (s.warnung)
+    zeile.appendChild(el("span", {class: "ber-sitzung-warn"}, s.warnung));
+  return zeile;
+}
+
+/* ------------------------------------------------------------------- Mitte */
+
+function berichtMitteZeichnen() {
+  const ziel = $("ber-mitte");
+  ziel.replaceChildren();
+  const b = B.bericht;
+  if (!b || !b.sitzungen) {
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Nichts auszuwerten. Der Bericht liest die CSV-Dateien, die ein Lauf mit "
+      + "eingeschaltetem Session-Log hinterlaesst."));
+    return;
+  }
+
+  ziel.appendChild(el("div", {class: "wz-kennzahlen"},
+    wzKennzahl(berDauer(b.dauer), "Laufzeit", "neutral"),
+    wzKennzahl(berZahl(b.klicks), "Klicks", "neutral"),
+    wzKennzahl(berZahl(b.items_gesamt), "Items", "neutral"),
+    wzKennzahl(berZahl(b.timeouts_gesamt), "Timeouts",
+      b.timeouts_gesamt ? "hinweis" : "neutral"),
+    wzKennzahl(berZahl(b.verify_miss_gesamt), "ohne Wirkung",
+      b.verify_miss_gesamt ? "fehler" : "neutral")));
+
+  // DIE Frage, fuer die es den Reiter gibt — deshalb steht sie oben und nicht
+  // zwischen den Item-Zahlen.
+  if (b.timeouts.length) {
+    ziel.appendChild(berListe("TIMEOUTS — WO DIE SEQUENZ HAENGT",
+      "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
+      + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "ber-timeout",
+      b.timeouts.map(([name, n]) => ({name: name, wert: n, art: "warn"}))));
+  } else {
+    ziel.appendChild(el("div", {class: "wz-erfolg"}, wzIcon("ok"),
+      el("div", {}, el("b", {}, "Keine Timeouts"),
+        el("span", {}, "Jede Farb-Bedingung ist aufgegangen."))));
+  }
+
+  if (b.verify_miss.length) {
+    ziel.appendChild(berListe("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
+      "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
+      + "Spiel braucht laenger als verify_timeout.", "ber-verify",
+      b.verify_miss.map(([name, n, gut]) => ({
+        name: name, wert: n, art: "fehler",
+        zusatz: "bestätigt " + gut + "/" + (gut + n),
+      }))));
+  }
+
+  if (b.items.length) {
+    ziel.appendChild(berListe("GEFUNDENE ITEMS", "", "ber-items",
+      b.items.map(([name, n]) => ({name: name, wert: n}))));
+  }
+  if (b.erkannt.length) {
+    ziel.appendChild(berListe("ERKANNT (BOSS/ICON)", "", "ber-erkannt",
+      b.erkannt.map(([name, n]) => ({name: name, wert: n}))));
+  }
+  if (b.stoerungen.length) {
+    ziel.appendChild(berListe("UNTERBRECHUNGEN",
+      "Fokusverluste und Humanize-Pausen. Eine Haeufung heisst, dass das "
+      + "Spielfenster oft nicht vorn war.", "ber-stoer",
+      b.stoerungen.map(([name, n]) => ({name: name, wert: n}))));
+  }
+
+  for (const [datei, fehler] of b.nicht_lesbar) {
+    ziel.appendChild(el("p", {class: "hinweis warnung"},
+      datei + ": nicht lesbar (" + fehler + ")"));
+  }
+  if (b.unbekannt.length) {
+    // Dieselbe Meldung wie in der Konsole: eine neue Ereignisart soll auffallen,
+    // nicht stillschweigend fehlen.
+    ziel.appendChild(el("p", {class: "hinweis"},
+      "Nicht ausgewertete Ereignisarten: " + b.unbekannt.join(", ")));
+  }
+}
+
+/* ------------------------------------------------------------------- rechts */
+
+function berichtRechtsZeichnen() {
+  const ziel = $("ber-rechts");
+  const kopf = el("div", {class: "abschnitt klebt"},
+    ueberschrift("ERTRAG",
+      "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
+      + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
+      + "Marktanalyse selbst laeuft getrennt.", "ber-ertrag"));
+  ziel.replaceChildren(kopf);
+
+  const rumpf = el("div", {class: "abschnitt wachsend"});
+  const e = B.ertrag;
+  if (!e) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      "Keine Bewertung: scan_market_value_file ist leer oder es wurden keine "
+      + "Items gefunden. Mit eingetragener marktwert.json steht hier, was der "
+      + "Lauf eingebracht hat."));
+    ziel.appendChild(rumpf);
+    return;
+  }
+  if (!e.lesbar) {
+    rumpf.appendChild(el("p", {class: "hinweis warnung"},
+      "Marktwert-Datei nicht lesbar: " + e.datei));
+    ziel.appendChild(rumpf);
+    return;
+  }
+
+  rumpf.appendChild(el("div", {class: "wz-kennzahlen"},
+    wzKennzahl(berZahl(e.gold), "Gold gesamt", "neutral"),
+    wzKennzahl(e.pro_stunde === null ? "—" : berZahl(e.pro_stunde), "Gold/h",
+      "neutral")));
+  // **Obergrenze, keine Abrechnung.** `item_found` heisst „erkannt", nicht
+  // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
+  // liest, muss es lesen, ohne danach zu fragen.
+  rumpf.appendChild(el("p", {class: "hinweis warnung"},
+    "Obergrenze: gezaehlt wird, was der Scan ERKANNT hat — nicht, was "
+    + "eingesammelt und verkauft wurde."));
+
+  const hoechst = e.zeilen.reduce((m, z) => Math.max(m, z[3]), 0) || 1;
+  const liste = el("div", {class: "teilen-karte"});
+  for (const [name, anzahl, wert, summe] of e.zeilen) {
+    liste.appendChild(berRang(name, berZahl(summe), summe / hoechst,
+      anzahl + "× à " + berZahl(wert)));
+  }
+  rumpf.appendChild(liste);
+
+  if (e.ohne_wert.length) {
+    rumpf.appendChild(el("p", {class: "hinweis"},
+      e.ohne_wert.length + " Item(s) ohne Marktwert: "
+      + e.ohne_wert.map(([name, n]) => name + " (" + n + "×)").join(", ")));
+  }
   ziel.appendChild(rumpf);
 }
 

@@ -31,6 +31,7 @@ from .bridge_contract import (
     scan_warnungen,
     trigger_name,
 )
+from .bridge_bericht import BridgeBerichtMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
 from .bridge_teilen import BridgeTeilenMixin
@@ -65,6 +66,7 @@ __all__ = [
 
 
 class StudioBridge(
+    BridgeBerichtMixin,
     BridgeEditingMixin,
     BridgeServicesMixin,
     BridgeTeilenMixin,
@@ -108,5 +110,6 @@ class StudioBridge(
         # CTRL+ALT+B, nur mit "scans".
         self.start_ansicht: str = "editor"
         self._scan_init()
+        self._bericht_init()
         self._teilen_init()
         self._werkzeuge_init()

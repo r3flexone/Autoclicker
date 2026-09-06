@@ -226,6 +226,7 @@ def _execute_icon_scan_step(state: AutoClickerState, step: SequenceStep,
             label=f"icon:{config.name}", step_num=step_num, total_steps=total_steps,
             phase=phase, debug=debug,
             x=config.action_x, y=config.action_y, key=config.action_key,
+            point_id=config.action_point_id,
             delay=config.action_delay,
         )
 

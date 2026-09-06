@@ -215,6 +215,15 @@ META: dict = {
         "sortiert der Item-Scan seine Klicks nach Wert statt nach der von Hand "
         "getippten Priorität — und jedes Item MIT Wert gewinnt gegen jedes ohne.",
         leer="nach getippter Priorität"),
+    "scan_catalog_file": M(
+        "Item-Katalog", ART_TEXT,
+        "Pfad zur katalog.json aus der Spiel-API (schreibt `python tools/katalog.py`). "
+        "Ist sie gesetzt, kennt das Studio die echten Item-Namen: der Knopf "
+        "„Aus Katalog einordnen“ setzt Kategorie und Priorität, und die "
+        "LLM-Benennung wählt aus den echten Namen statt frei zu raten. "
+        "Die Kategorie hängt am Namen, nicht am LLM — sie funktioniert auch, "
+        "wenn du den Namen selbst tippst.",
+        leer="Kategorie und Namen bleiben Handarbeit"),
     "scan_slot_hsv_tolerance": M(
         "Slot-Toleranz (HSV)", ART_INT,
         "Wie stark ein Slot-Hintergrund vom gelernten Farbton abweichen darf, "

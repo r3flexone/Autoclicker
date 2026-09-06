@@ -369,6 +369,7 @@ def _execute_detection_action(state: AutoClickerState, *, subject: str, action: 
                               label: str, step_num: int, total_steps: int, phase: str,
                               debug: bool, x: int = 0, y: int = 0,
                               key: Optional[str] = None, delay: float = 0,
+                              point_id: Optional[int] = None,
                               scan: Optional[str] = None,
                               scan_mode: str = SCAN_MODE_ALL) -> bool:
     """Führt eine Erkennungs-Aktion aus (geteilt von Boss-Scan und Icon-Scan).
@@ -380,6 +381,18 @@ def _execute_detection_action(state: AutoClickerState, *, subject: str, action: 
     # Eine Zeile pro Erkennung — die Klick-Eintraege darunter sagen nur, WO geklickt
     # wurde, nicht WESHALB. Boss- und Icon-Scan laufen beide hier durch, also steht
     # die Zeile genau einmal statt an jeder Fundstelle.
+    if action == BOSS_ACTION_CLICK:
+        # Nur eine gültige Referenz erlaubt den Klick. (0, 0) selbst kann ein
+        # gültiger Punkt sein und ist deshalb kein Kennzeichen für einen Fehler.
+        with state.lock:
+            seq = state.active_sequence
+            punkt = next((p for p in seq.points if p.id == point_id), None) if seq else None
+            if punkt is not None:
+                x, y = punkt.x, punkt.y
+        if punkt is None:
+            print(err(f"{subject}: Klick entfällt — Zielpunkt fehlt."))
+            return True
+
     log_event(state, "detected", detail=subject, x=x, y=y,
               extra=f"aktion={action}")
     if delay > 0:
@@ -453,6 +466,7 @@ def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
         label=f"boss:{boss.name}", step_num=step_num, total_steps=total_steps,
         phase=phase, debug=debug,
         x=boss.action_x, y=boss.action_y, key=boss.action_key,
+        point_id=boss.action_point_id,
         delay=boss.action_delay, scan=boss.action_scan, scan_mode=boss.action_scan_mode,
     )
 

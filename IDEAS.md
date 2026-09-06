@@ -10,7 +10,18 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
 `.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
-Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert).
+Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
+*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
+über `auswerten()` aus `tools/log_report.py`, Stückzahlen mal
+`scan_market_value_file`).
+
+**Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
+Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
+(`knopfpaar` bzw. `btn breit` — kein drittes Muster daneben), untereinander stehende Zeilen
+auf **derselben** `auto-fit`-Regel (min. 118 px, damit nichts abgeschnitten wird), Zustand
+ringsum markiert statt an einer Kante, und die Vorschau-Quadrate mit fester Kantenlänge.
+Ein neuer Reiter reiht sich in die vorhandene `.tabs`-Leiste ein, statt sich eine zweite
+danebenzustellen.
 
 ## Bedienung
 
@@ -23,6 +34,18 @@ Die Punkte als Marker auf einem Bildschirmfoto, statt nur als Koordinatenpaare.
   braucht Pillow/Windows) und als Data-URL in die Seite reichen — und das Bild ist der
   Bildschirm von *jetzt*, nicht der vom Zeitpunkt der Aufnahme. Wenn das Spiel gerade
   nicht läuft, zeigt die Vorschau den Desktop.
+
+### Bausteine: eine Sequenz aus einer Sequenz aufrufen
+Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
+
+- **Nutzen:** Ein Schritt-Typ „Sequenz X ausführen". Ändert sich der Weg, ändert man ihn
+  einmal. Dasselbe Argument wie „Referenzen statt Kopien", nur eine Ebene höher.
+- **Tradeoff:** Punkte sind sequenzlokal, der Baustein bringt seine eigenen mit — das passt.
+  Was nicht passt: Live-Run, Phasenleiste und `.lauf.json` beschreiben **eine** Sequenz mit
+  Phasen; ein Aufruf macht daraus einen Stapel, und „Phase 2 von 4" stimmt dann nicht mehr.
+  Dazu die Rekursion (A ruft B ruft A) und die Frage, was `restart` in einem Baustein
+  bedeutet. Deutlich billiger und fast so gut: eine reine Editor-Funktion „Schritte aus
+  Sequenz X hier einfügen" — eine Kopie, aber eine bewusste und einmalige.
 
 ## Performance
 
@@ -62,6 +85,27 @@ gezielte Erkennen *des Login-Screens* und die Reaktion darauf.
 - **Ansatz:** Ein Background-Watcher (ähnlich Boss-Watcher). Die Schwelle könnte aus
   dem Log kommen: N `verify_miss` oder `timeout` in Folge = vermutlich Disconnect.
 
+### Fenster-Anker: den Versatz beim Start selbst ausgleichen
+Ein Klick-Punkt steht in Bildschirm-Koordinaten. Zieht das Spielfenster um, stimmt keiner
+mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde), die alle erst
+**hinterher** reparieren.
+
+- **Nutzen:** Die Sequenz merkt sich beim Speichern den Client-Bereich ihres Spielfensters
+  (`get_client_rect_by_title`, wie das Export-Manifest es schon tut). Beim Start wird der
+  aktuelle geholt und die Differenz einmal auf alle aufgelösten Punkte gerechnet — im
+  Speicher, nicht in der Datei. Ein verschobenes Fenster kostet dann gar nichts mehr, und
+  eine zweite Instanz desselben Spiels läuft mit derselben Sequenz.
+- **Tradeoff:** Trägt nur, solange sich das Fenster **verschiebt**. Ändert es die Grösse,
+  müsste skaliert werden, und eine skalierte Klickstelle ist eine geratene — genau deshalb
+  rechnet der Import nur mit zwei bestätigten Referenzpunkten. Zweitens müssten Scan-Regionen
+  und Slots mitwandern, sonst klickt es richtig und erkennt falsch. Und ein Anker, dessen
+  Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der gespeicherte
+  Stand, einmal gemeldet.
+- **Ansatz:** Feld `fenster_anker` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
+  Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
+  gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
+  bleiben, wie sie sind.
+
 ## Safety
 
 ### Session-Zeitlimit
@@ -84,6 +128,29 @@ Ping bei wichtigen Events: Boss erkannt (LLM), Inventory voll, unerwarteter Stop
 - **Tradeoff:** Webhook-URL als Secret verwalten (nicht ins Repo). Netzwerk-Abhängigkeit.
 - **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in `runtime/actions.py`.
 
+## Erkennung
+
+### Warten auf Text oder Zahl (OCR-Bedingung)
+`WaitCondition` kennt heute nur Farbe. `ocr.py` kann Text, wird aber ausschliesslich für
+Boss-Namen benutzt.
+
+- **Nutzen:** „warte, bis in dieser Region *Fertig* steht" oder „bis die Menge ≥ 100 ist".
+  Damit fallen Inventory-voll, Cooldowns und Fortschrittsbalken in **eine** Bedingung,
+  statt für jeden Fall eine eigene Farbstelle zu suchen. Ein Farbpixel sagt nicht, wie
+  viel; eine Zahl schon.
+- **Tradeoff:** Der erste EasyOCR-Aufruf lädt Modelle aus dem Netz (Sekunden bis Minuten)
+  und hielte den Worker mitten im Lauf an — dieselbe Falle, wegen der die LLM-Benennung
+  nicht im Scan läuft. Danach kostet jede Prüfung ~300 ms, taugt also nicht für eine enge
+  Schleife. Und kleine Spielschriften erkennt OCR unzuverlässig: ohne Toleranz („enthält"
+  statt „ist gleich") ist es unbrauchbar.
+- **Symmetrie:** im Inspektor steht die Text-Bedingung **neben** der Farb-Bedingung im
+  selben Abschnitt und in derselben Form (Überschrift, ⓘ, Zahlenfeld) — nicht als zweiter
+  Abschnitt darunter. Es ist dieselbe Frage („ist der Schritt dran?"), nur eine andere
+  Messung.
+- **Ansatz:** `WaitCondition` um `ocr_region` + `ocr_text`/`ocr_min` erweitern, ausgewertet
+  an derselben Stelle wie die Farbe (`_farb_schleife`). Vorwärmen beim Programmstart, nicht
+  im Worker. Fehlt OCR, wird gemeldet und übersprungen — wie heute ohne Pillow.
+
 ## Idle-Clans-spezifisch
 
 ### Inventory-Full-Detection
@@ -105,3 +172,17 @@ Bei niedrigem HP automatisch Food klicken (Pixel-Farbtest auf HP-Bar).
 - **XP-Tracker**: OCR oder Pixel-Tracking der XP-Anzeige für Skill-Progress-Schätzung.
 - **Death-Screen-Detection**: Analog zu Disconnect, spezifisch für Ingame-Tod.
 - **Auto-Login**: Automatisches Re-Login nach Session-Timeout (riskant – nur mit gespeicherten Credentials, potenzielles Sicherheitsrisiko).
+- **Punkt-Gesundheit vor dem Start**: alle Punkte einer Sequenz in einem Rutsch gegen ihre
+  gespeicherte Farbe halten, bevor der Lauf beginnt. Fängt ein umgebautes Spiel-UI in zwei
+  Sekunden statt nach einer Stunde Fehlklicks. Haken: die meisten Punkte liegen in
+  Untermenüs, die gerade nicht offen sind — ohne eine Regel dafür meldet der Test fast alles
+  als „weicht ab" und ist damit wertlos. Tragfähig wohl nur für die Punkte der INIT-Phase.
+- **Klick-Runde auch für Scan-Regionen**: heute setzt sie nur Punkte, Slots bleiben `repair`
+  vorbehalten. Eine Runde, die auch eine Region neu aufziehen lässt, spart den Wechsel
+  zwischen zwei Werkzeugen — misst aber schlechter, als `repair` es kann.
+- **Warteschlange mehrerer Sequenzen**: nachts A, morgens B. Der Worker führt genau eine
+  Sequenz aus (`state.active_sequence`), das gehört also eine Ebene darüber und nicht in ihn
+  hinein.
+- **Overlay während des Laufs**: ein durchklickbares Fenster, das die nächste Klickstelle
+  markiert. Beim Suchen eines hängenden Schritts unschlagbar, kostet aber ein zweites
+  GUI-Fenster samt plattformspezifischer Klick-Durchlässigkeit.

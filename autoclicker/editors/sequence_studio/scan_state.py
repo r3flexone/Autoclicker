@@ -506,6 +506,10 @@ class ScanStateMixin:
                       for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "kategorien": existing_categories(self.items),
+            # Ob der OFFENE Scan den Katalog benutzt UND eine Datei da ist. Die
+            # Ansicht rechnet das nicht selbst nach: sie sieht `config.json`
+            # nicht, und zwei Antworten auf dieselbe Frage liefen auseinander.
+            "katalog_an": bool(self._katalog()),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
             "fenster_id": self.scan_fenster_id,
             # Der Titel ist die dauerhafte Quelle, das HWND nur ihr aktueller
@@ -719,6 +723,7 @@ class ScanStateMixin:
             "toleranz": cfg.color_tolerance,
             "lernen": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
+            "use_catalog": bool(cfg.use_catalog),
             "fenster": ({
                 "titel": cfg.capture_window_title,
                 "instanz": cfg.capture_window_index,

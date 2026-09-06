@@ -89,7 +89,8 @@ def _chromium() -> str:
     if not basis.is_dir():
         return ""
     # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
-    for muster in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe"):
+    for muster in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
+                   "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
         for kandidat in sorted(basis.glob(muster)):
             return str(kandidat)
     direkt = basis / "chromium"

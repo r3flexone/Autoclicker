@@ -24,12 +24,15 @@ der vor dem Commit.
 
 Was fehlt, wird ÜBERSPRUNGEN und gesagt, nicht als Fehler gemeldet: ein roter
 Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen.
+Im Browser-CI macht --rauch-pflicht diese Schicht verbindlich.
+--mutationen ergänzt gezielte Gegenproben in getrennten Prozessen.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -52,7 +55,8 @@ for _strom in (sys.stdout, sys.stderr):
 
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
-RAUCHTESTS = ("items", "erkennung", "sequenzen", "teilen", "werkzeuge")
+RAUCHTESTS = ("items", "erkennung", "sequenzen", "teilen", "werkzeuge",
+              "bericht", "sequenzen_loeschen", "katalog")
 
 SCHICHTEN = ("vertrag", "wurzel", "rauch")
 
@@ -103,19 +107,25 @@ def vertrag() -> Ergebnis:
         if " PASS / " in zeile:
             e.zusammenfassung = zeile.strip().strip("= ")
             break
+    statistik = re.fullmatch(r"([1-9][0-9]*) PASS / 0 FAIL", e.zusammenfassung)
+    e.ok = e.ok and statistik is not None
+    if not e.zusammenfassung:
+        e.zusammenfassung = "Abschluss der Vertragssuite fehlt"
     return e
 
 
-def wurzel() -> Ergebnis:
-    """Die `test_*.py` im Projektstamm — inklusive der Vertragssuite als Wrapper.
+def wurzel(vertrag_separat: bool = False) -> Ergebnis:
+    """Die Wurzeltests; im Gesamtlauf wurde der Vertragswrapper schon ausgeführt.
 
     `discover` statt eines Glob-Musters: die Shell expandiert `test_*.py` auf
     Linux und Windows verschieden, und PowerShell reicht es woertlich weiter.
     """
     e = Ergebnis("Wurzelmodule")
     start = time.monotonic()
-    code, text = _lauf([sys.executable, "-m", "unittest", "discover",
-                        "-s", str(WURZEL), "-p", "test_*.py", "-v"])
+    befehl = [sys.executable, "-m", "tools.wurzeltests"]
+    if vertrag_separat:
+        befehl.append("--ohne-vertrag")
+    code, text = _lauf(befehl)
     e.dauer = time.monotonic() - start
     e.ok = code == 0
     for zeile in reversed(text.splitlines()):
@@ -125,14 +135,18 @@ def wurzel() -> Ergebnis:
     return e
 
 
-def rauch(nur: tuple[str, ...] = RAUCHTESTS) -> Ergebnis:
+def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
     e = Ergebnis("Rauchtests")
     sys.path.insert(0, str(WURZEL))
     from tools.rauchtests._bruecke import playwright_da
 
     da, grund = playwright_da()
     if not da:
-        e.uebersprungen = grund
+        if pflicht:
+            e.ok = False
+            e.zusammenfassung = f"Pflichtprüfung nicht ausführbar: {grund}"
+        else:
+            e.uebersprungen = grund
         return e
 
     start = time.monotonic()
@@ -154,16 +168,31 @@ def main(argv: list[str]) -> int:
                    help="nur diese Schicht (mehrfach erlaubt)")
     p.add_argument("--rauchtest", action="append", choices=RAUCHTESTS,
                    help="nur diesen Rauchtest")
+    p.add_argument("--rauch-pflicht", action="store_true",
+                   help="fehlenden Browser als Fehler melden (Browser-CI)")
+    p.add_argument("--mutationen", action="store_true",
+                   help="zusätzlich gezielte Fehler einschleusen und ihre Erkennung prüfen")
     args = p.parse_args(argv[1:])
     schichten = tuple(args.nur) if args.nur else SCHICHTEN
+    if args.rauch_pflicht and "rauch" not in schichten:
+        p.error("--rauch-pflicht braucht die Schicht rauch")
 
     ergebnisse = []
     if "vertrag" in schichten:
         ergebnisse.append(vertrag())
     if "wurzel" in schichten:
-        ergebnisse.append(wurzel())
+        ergebnisse.append(wurzel(vertrag_separat="vertrag" in schichten))
     if "rauch" in schichten:
-        ergebnisse.append(rauch(tuple(args.rauchtest) if args.rauchtest else RAUCHTESTS))
+        ergebnisse.append(rauch(tuple(args.rauchtest) if args.rauchtest else RAUCHTESTS,
+                                 pflicht=args.rauch_pflicht))
+    if args.mutationen:
+        e = Ergebnis("Gegenproben")
+        start = time.monotonic()
+        code, _ = _lauf([sys.executable, str(WURZEL / "tools" / "mutationspruefung.py")])
+        e.ok = code == 0
+        e.dauer = time.monotonic() - start
+        e.zusammenfassung = "gezielte Mutationsprüfung"
+        ergebnisse.append(e)
 
     breite = 78
     print("\n" + "=" * breite)

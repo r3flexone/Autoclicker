@@ -627,7 +627,8 @@ class _ImportTransaction:
 def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
     """Ein relativer Sequenzpfad im Archiv oder None."""
     pfad = PurePosixPath(name)
-    if (pfad.is_absolute() or ".." in pfad.parts or len(pfad.parts) < 3
+    if ("\\" in name or ":" in name or "\x00" in name
+            or pfad.is_absolute() or ".." in pfad.parts or len(pfad.parts) < 3
             or pfad.parts[0] != "sequences"):
         return None
     return pfad
@@ -640,6 +641,10 @@ def _remap_sequence_folder(ordner: Path, transform: dict) -> None:
     for pfad in ordner.rglob("*.json"):
         data = json.loads(pfad.read_text(encoding="utf-8"))
         relativ = pfad.relative_to(ordner).parts
+        if relativ == ("boss_scans", "bibliothek.json"):
+            # Die Bibliothek enthält Profile mit Punkt-IDs, keine Regionen.
+            # Ihre Punkte werden in sequence.json genau einmal umgerechnet.
+            continue
         if pfad.name == "sequence.json":
             for punkt in data.get("points") or []:
                 punkt["x"], punkt["y"] = remap_point(
@@ -676,7 +681,9 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                 archiv = _sicherer_bundle_pfad(name)
                 if archiv is None or name.endswith("/"):
                     continue
-                ziel = temp_root.joinpath(*archiv.parts[1:])
+                ziel = temp_root.joinpath(*archiv.parts[1:]).resolve()
+                if not ziel.is_relative_to(temp_root.resolve()):
+                    raise ValueError(f"Archivpfad verlässt den Importordner: {name}")
                 ziel.parent.mkdir(parents=True, exist_ok=True)
                 ziel.write_bytes(zf.read(name))
 

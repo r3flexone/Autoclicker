@@ -270,12 +270,62 @@ class BridgeEditingMixin:
         self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
         return self._geaendert()
 
+    _REF_FELDER = ("wait_condition", "verify_condition", "else_config")
+
+    def _punkte_mitkopieren(self, step, abbildung: dict) -> None:
+        """Hängt alle Punkt-Referenzen eines kopierten Schritts auf eigene Punkte um.
+
+        `abbildung` gilt für den ganzen Durchgang: derselbe Ausgangspunkt ergibt
+        denselben neuen. Zwei Wirkungen, und beide sind gewollt.
+
+        **Innerhalb eines Blocks** bleibt zusammen, was zusammengehört: bei
+        FARBE+KLICK sind Klick und Prüf-Pixel derselbe Punkt, und die Kopie soll
+        das auch sein — sonst wartet sie auf eine andere Stelle, als sie klickt.
+
+        **Zwischen mehreren kopierten Blöcken** bleibt die Beziehung erhalten:
+        klicken zwei Gewählte denselben Knopf, tun ihre Kopien das auch. Sonst
+        entstünden bei einer Mehrfachauswahl drei Punkte auf einem Knopf statt
+        zwei.
+        """
+        def neu_fuer(alt_id):
+            if alt_id is None:
+                return None
+            if alt_id not in abbildung:
+                vorlage = self._punkt(alt_id)
+                if vorlage is None:
+                    return alt_id          # zeigt schon ins Leere — nicht erfinden
+                kopie = PalettePoint(
+                    id=max([p.id for p in self.points], default=0) + 1,
+                    x=vorlage.x, y=vorlage.y, name=vorlage.name,
+                    color=vorlage.color, source="Sequenz-Studio")
+                self.points.append(kopie)
+                abbildung[alt_id] = kopie.id
+            return abbildung[alt_id]
+
+        step.point_id = neu_fuer(step.point_id)
+        for feld in self._REF_FELDER:
+            bedingung = getattr(step, feld, None)
+            if bedingung is not None and getattr(bedingung, "point_id", None) is not None:
+                bedingung.point_id = neu_fuer(bedingung.point_id)
+
     def auswahl_duplizieren(self, daten: Optional[dict] = None) -> dict:
         """Legt Kopien der gewählten Blöcke direkt hinter die Auswahl.
 
-        Die Kopie zeigt auf denselben Punkt: ein Duplikat ist erst mal derselbe
-        Klick, und ein zweiter Punkt an derselben Stelle wäre die Doppelung, die
-        `punkt_fuer_stelle()` überall sonst vermeidet.
+        **Die Kopie bekommt eigene Punkte.** Man dupliziert einen Block, um ihn
+        zu ändern — und solange beide auf denselben Punkt zeigen, verstellt jede
+        Korrektur an der Kopie auch das Original. Der Zusammenhang wäre also
+        schon beim Anlegen falsch, und auffallen würde es erst viel später an
+        einer Stelle, an der man ihn nicht mehr sucht.
+
+        Hier stand einmal das Gegenteil („ein Duplikat ist erst mal derselbe
+        Klick"), mit dem Argument, ein zweiter Punkt an derselben Stelle sei die
+        Doppelung, die `punkt_an_stelle()` überall sonst vermeidet. Das stimmt —
+        nur verhindert die Regel dort *unabsichtliche* Dubletten aus einer
+        Aufnahme. Ein Duplikat ist eine Ansage, und der Preis dafür sind zwei
+        Punkte auf einer Stelle, bis einer davon umzieht.
+
+        Wer wirklich zweimal denselben Knopf klicken will, hat den kürzeren Weg:
+        Block anlegen und im Inspektor den vorhandenen Punkt wählen.
 
         Kopiert wird tief — `else_config`, `wait_condition` und `verify_condition`
         sind eigene Objekte, sonst änderte ein Griff an der Kopie das Original mit.
@@ -288,13 +338,22 @@ class BridgeEditingMixin:
         # Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse eine
         # Mehrfachauswahl in abwechselnd Original/Kopie.
         ziel = rows[-1] + 1
+        vorher = len(self.points)
+        abbildung: dict = {}
         for versatz, idx in enumerate(rows):
-            self.board.add_step(lane, copy.deepcopy(lane.steps[idx]), ziel + versatz)
+            kopie = copy.deepcopy(lane.steps[idx])
+            self._punkte_mitkopieren(kopie, abbildung)
+            self.board.add_step(lane, kopie, ziel + versatz)
         # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
         # umstellen, nicht erneut suchen.
         self.sel_rows = {ziel + i for i in range(len(rows))}
         self.sel_anchor = ziel
-        return self._geaendert(f"{_bloecke(len(rows))} dupliziert.")
+        self._punkte_anwenden()
+        neue = len(self.points) - vorher
+        return self._geaendert(
+            f"{_bloecke(len(rows))} dupliziert."
+            + (f" {neue} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
+               f"verschieben, ohne das Original mitzunehmen." if neue else ""))
 
     def auswahl_loeschen(self, daten: Optional[dict] = None) -> dict:
         lane = self.sel_lane

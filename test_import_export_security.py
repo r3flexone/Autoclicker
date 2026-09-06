@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 from test_support import install_platform_stubs
 
@@ -133,24 +134,64 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(Path("points.json").exists())
 
     def test_failed_import_rolls_back_state_and_files(self):
-        sequence = {
-            "name": "neu", "schema_version": 2, "init_steps": [], "end_steps": [],
-            "loop_phases": [],
-        }
+        from autoclicker import import_export as modul
+        original = _write_sequence("bestand")
+        vorher = (original / "sequence.json").read_bytes()
+        manifest = _manifest()
+        manifest["layout"] = "sequence-folders"
         with zipfile.ZipFile("bundle.zip", "w") as zf:
-            zf.writestr("manifest.json", json.dumps(_manifest()))
-            zf.writestr("sequences/neu.json", json.dumps(sequence))
-            zf.writestr("slots.json", json.dumps({"Defekt": {}}))
+            zf.writestr("manifest.json", json.dumps(manifest))
+            zf.writestr("sequences/A/sequence.json", json.dumps(_sequence_data("bestand")))
+            zf.writestr("sequences/A/templates/neu.png", b"neues Bild")
+            zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("defekt")))
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
+        echtes_copytree = modul.shutil.copytree
+        mutiert = []
 
-        ok, _ = import_bundle(state, "bundle.zip", import_config=False)
+        def kopieren(quelle, ziel, *args, **kwargs):
+            if Path(ziel).name == "defekt":
+                mutiert.append((original / "templates/neu.png").read_bytes())
+                raise OSError("Fehler nach dem ersten ersetzten Ordner")
+            return echtes_copytree(quelle, ziel, *args, **kwargs)
+
+        with patch.object(modul.shutil, "copytree", side_effect=kopieren):
+            ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
 
         self.assertFalse(ok)
+        self.assertEqual(mutiert, [b"neues Bild"])
         self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual(state.sequences, {})
-        self.assertFalse(Path("sequences").exists())
-        self.assertFalse(Path("slots").exists())
+        self.assertEqual((original / "sequence.json").read_bytes(), vorher)
+        self.assertFalse((original / "templates/neu.png").exists())
+        self.assertFalse(Path("sequences/defekt").exists())
+
+    def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
+        from autoclicker.import_export import _sicherer_bundle_pfad
+        for name in ("sequences/farm/..\\..\\fremd.txt",
+                     "sequences/farm/C:\\fremd.txt", "sequences/farm/bild.png:strom",
+                     "sequences/farm/../../fremd.txt"):
+            with self.subTest(name=name):
+                self.assertIsNone(_sicherer_bundle_pfad(name))
+
+    def test_boss_bibliothek_ueberlebt_einen_transformierten_import(self):
+        manifest = _manifest()
+        manifest["layout"] = "sequence-folders"
+        bibliothek = [{"name": "Drache", "action": "click", "action_point_id": 7}]
+        seq = _sequence_data("farm")
+        seq["points"] = [{"id": 7, "x": 10, "y": 20}]
+        with zipfile.ZipFile("bundle.zip", "w") as zf:
+            zf.writestr("manifest.json", json.dumps(manifest))
+            zf.writestr("sequences/farm/sequence.json", json.dumps(seq))
+            zf.writestr("sequences/farm/boss_scans/bibliothek.json", json.dumps(bibliothek))
+        ok, meldung = import_bundle(AutoClickerState(), "bundle.zip", import_config=False,
+                                   transform={"scale_x": 1, "scale_y": 1,
+                                              "offset_x": 30, "offset_y": 40})
+        self.assertTrue(ok, meldung)
+        self.assertEqual(json.loads(Path("sequences/farm/boss_scans/bibliothek.json")
+                                    .read_text(encoding="utf-8")), bibliothek)
+        self.assertEqual(json.loads(Path("sequences/farm/sequence.json")
+                                    .read_text(encoding="utf-8"))["points"][0]["x"], 40)
 
     def test_failed_folder_import_rolls_back_nested_sequences(self):
         original = _write_sequence("Bestand")
