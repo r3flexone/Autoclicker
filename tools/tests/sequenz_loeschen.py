@@ -66,10 +66,19 @@ try:
     (_vorlagen / "erz.png").write_bytes(b"x")
     (_vorlagen / "holz.png").write_bytes(b"x")
     # Der Stolperstein selbst: ein Ordner, der so heisst wie die Sequenz — und
-    # der gerade NICHT gemeint ist. Er muss stehenbleiben.
+    # der gerade NICHT gemeint ist.
+    #
+    # **Ob es ihn ueberhaupt geben kann, entscheidet das Dateisystem.** Auf einem
+    # case-insensitiven (Windows, macOS) IST `sequences/Raid` derselbe Ordner wie
+    # `sequences/raid` — genau deshalb blieb der Fehler dort unsichtbar, waehrend
+    # die Ubuntu-Jobs rot standen. Gefragt wird deshalb das Dateisystem und nicht
+    # `sys.platform`: auch Windows kann case-sensitive Verzeichnisse haben.
+    # Geprueft werden beide Seiten — auf der einen bleibt der Fremdordner stehen,
+    # auf der anderen ist er der echte und muss mitgewandert sein.
     _falle = Path("sequences/Raid")
     _falle.mkdir(parents=True, exist_ok=True)
     (_falle / "nicht_gemeint.txt").write_bytes(b"x")
+    _falle_eigen = not _os.path.samefile(_falle, _ordner_raid)
 
     _b = _SB(_farm, dict(list_available_sequences())["Farm"], "sequences")
     _b._laeuft = lambda: False          # kein echter Lauf in der Testumgebung
@@ -109,8 +118,6 @@ try:
     _z = _b.sequenz_loeschen({"name": "Raid"})
     check("eine fremde Sequenz laesst sich loeschen", _z["ok"] is True)
     check("der Ordner ist weg", not _ordner_raid.exists())
-    check("der gleichnamige Fremdordner bleibt unangetastet",
-          (_falle / "nicht_gemeint.txt").exists())
     # **Verschoben, nicht entfernt.** Alles muss mit — die Vorlagen sind der
     # Teil, den man am wenigsten wiederherstellen kann. Die Struktur ist
     # gespiegelt (wie bei `sicherungspfad()`), also steht dort der ORDNERname.
@@ -122,6 +129,12 @@ try:
           sorted(p.name for p in (_bak / "templates").iterdir()) == ["erz.png", "holz.png"])
     check("die Uebersicht zeigt sie nicht mehr",
           [e["name"] for e in _b.sequenz_liste()] == ["Farm"])
+    if _falle_eigen:
+        check("der gleichnamige Fremdordner bleibt unangetastet",
+              (_falle / "nicht_gemeint.txt").exists())
+    else:
+        check("ohne Gross-/Kleinunterschied ist er der echte und wandert mit",
+              (_bak / "nicht_gemeint.txt").exists() and not _falle.exists())
 
     # --- Zweimal derselbe Name ueberschreibt die Sicherung nicht -----------
     _anlegen("Raid")
