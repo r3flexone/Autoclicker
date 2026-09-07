@@ -1180,9 +1180,26 @@ Vorlagen"). Ohne diese Angabe löscht man einen Nachmittag Arbeit an Item-Vorlag
 mit, weil man „nur die Sequenz" wegräumen wollte.
 
 **Verschoben statt entfernt** (`sequenz_loeschen()`): der Ordner landet unter
-`backups/sequences/<name>/`, ein vorhandener Stand dort bekommt einen Zeitstempel
+`backups/sequences/<ordner>/`, ein vorhandener Stand dort bekommt einen Zeitstempel
 statt überschrieben zu werden. Dieselbe Regel wie beim Start-Durchgang, und aus
-demselben Grund.
+demselben Grund — samt der gespiegelten Struktur, also unter dem **Ordner**namen.
+
+**Und der Ordner heisst nicht wie die Sequenz.** `save_data()` legt ihn unter
+`sanitize_filename(name)` an: aus „Raid" wird `sequences/raid`, aus „Mein Lauf"
+wird `mein_lauf`. Der angezeigte Name steht **in** der Datei — wer ihn an
+`sequences/` hängt, greift ins Leere, und wenn zufällig ein Ordner so heisst,
+daneben: der wanderte nach `backups/`, während die echte Sequenz stehenblieb und
+das Löschen „hat geklappt" meldete. Gesucht wird deshalb wie beim Laden über
+`list_available_sequences()`, mit dem Ordnernamen als zweitem Weg (eine defekte
+Datei steht dort nicht, und genau die will man am häufigsten löschen).
+`_sequenz_ordner()` ist die eine Stelle dafür; sie schliesst nebenbei den Pfad,
+denn `name` kommt aus dem Fenster.
+
+**Auf Windows war das unsichtbar.** Das Dateisystem ist dort nicht
+gross-/kleinschreibungsempfindlich, also *ist* `sequences/Raid` derselbe Ordner
+wie `sequences/raid` — die CI-Matrix stand mit drei grünen Windows-Jobs neben
+drei roten Ubuntu-Jobs. Dieselbe Klasse Falle wie bei den Plattform-Stubs: wer
+Pfade nur auf einer Seite prüft, prüft die Hälfte.
 
 Zwei Absagen gehören dazu: **die offene Sequenz nicht** (der Editor hält sie im
 Speicher — der nächste Druck auf Speichern legte den Ordner wieder an, und das

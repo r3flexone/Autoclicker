@@ -19,7 +19,8 @@ def aufbau():
         LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_item_scan,
+        list_available_sequences, save_data, save_item_scan, sequence_dir,
+        sequence_templates_dir,
     )
 
     sandkasten("rauch_seqloesch_")
@@ -40,16 +41,22 @@ def aufbau():
         name="Inventar", owner_sequence="Raid",
         slots=[ItemSlot(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))],
         items=[ItemProfile(name="Erz")]))
-    Path("sequences/Raid/templates").mkdir(parents=True, exist_ok=True)
-    Path("sequences/Raid/templates/erz.png").write_bytes(b"x")
+    # Der Ordner heisst NICHT wie die Sequenz: aus „Raid" macht
+    # `sanitize_filename()` das Verzeichnis `sequences/raid`. Die Pfade kommen
+    # deshalb aus der Persistenz — hier stand einmal der Anzeigename, und der
+    # Rauchtest lief damit an einem Ordner vorbei, den das Studio gar nicht
+    # anfasst.
+    vorlagen = sequence_templates_dir("Raid")
+    vorlagen.mkdir(parents=True, exist_ok=True)
+    (vorlagen / "erz.png").write_bytes(b"x")
 
     b = StudioBridge(farm, Path(dict(list_available_sequences())["Farm"]), "sequences")
     b._laeuft = lambda: False
-    return b
+    return b, sequence_dir("Raid")
 
 
 def lauf():
-    b = aufbau()
+    b, ordner_raid = aufbau()
     fehler = []
 
     def pruefe(bedingung, text):
@@ -93,14 +100,16 @@ def lauf():
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
         f.klick("#dialog-ab", warten=400)
         pruefe(f.anzahl(".seq-karte") == 2, "Abbrechen hat trotzdem geloescht")
-        pruefe(Path("sequences/Raid").is_dir(), "der Ordner ist trotz Abbruch weg")
+        pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
         f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen", warten=400)
         f.klick("#dialog-weg", warten=900)
         pruefe(f.anzahl(".seq-karte") == 1,
                f"nach dem Loeschen 1 Karte erwartet, da: {f.anzahl('.seq-karte')}")
-        pruefe(not Path("sequences/Raid").exists(), "der Ordner steht noch")
-        pruefe(Path("backups/sequences/Raid/templates/erz.png").exists(),
+        pruefe(not ordner_raid.exists(), "der Ordner steht noch")
+        # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
+        sicherung = Path("backups/sequences") / ordner_raid.name
+        pruefe((sicherung / "templates/erz.png").exists(),
                "die Vorlage fehlt in der Sicherung")
         pruefe("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")
         f.bild("sequenzen_geloescht")

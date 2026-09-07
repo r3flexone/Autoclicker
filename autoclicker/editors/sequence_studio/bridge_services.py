@@ -110,6 +110,37 @@ class BridgeServicesMixin:
                              "anzahl": n})
         return raus
 
+    def _sequenz_ordner(self, name: str) -> Optional[Path]:
+        """Ordner einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
+
+        **Der Ordner heisst nicht wie die Sequenz.** `save_data()` legt ihn
+        unter `sanitize_filename(name)` an: aus „Raid" wird `sequences/raid`,
+        aus „Mein Lauf" wird `mein_lauf`. Wer den angezeigten Namen an den Pfad
+        haengt, greift deshalb ins Leere — und im schlimmeren Fall daneben:
+        liegt zufaellig ein Ordner `sequences/Raid`, wanderte der nach
+        `backups/`, waehrend die echte Sequenz stehenblieb und das Loeschen
+        „hat geklappt" meldete.
+
+        Gesucht wird deshalb wie beim Laden ueber `list_available_sequences()`
+        — der Name steht IN der Datei, nicht am Ordner. Eine defekte Datei
+        steht dort nicht, und genau die will man am haeufigsten loeschen;
+        `sequenz_liste()` meldet sie unter ihrem Ordnernamen, also ist der der
+        zweite Weg.
+
+        Nebenbei schliesst das den Pfad: `name` kommt aus dem Fenster, und ein
+        `..` darin fuehrte beim blossen Zusammenhaengen aus `sequences/`
+        heraus. Was hier nicht als Eintrag dasteht, gibt es nicht.
+        """
+        for eintrag, pfad in list_available_sequences():
+            if eintrag == name:
+                return Path(pfad).parent
+        wurzel = Path(self.sequences_dir)
+        if wurzel.is_dir():
+            for ordner in wurzel.iterdir():
+                if ordner.is_dir() and ordner.name == name:
+                    return ordner
+        return None
+
     def sequenz_loeschen(self, daten: Optional[dict] = None) -> dict:
         """Raeumt einen Sequenzordner weg — nach `backups/`, nicht ins Nichts.
 
@@ -120,7 +151,8 @@ class BridgeServicesMixin:
 
         **Verschoben statt entfernt.** „Nie Daten verlieren" ist die Regel des
         Start-Durchgangs, und sie gilt hier erst recht: der Ordner landet unter
-        `backups/sequences/<name>/` und laesst sich von Hand zurueckschieben. Ein
+        `backups/sequences/<ordner>/` — gespiegelte Struktur, also unter dem
+        ORDNERnamen — und laesst sich von Hand zurueckschieben. Ein
         vorhandener Stand dort wird nicht ueberschrieben, sondern bekommt einen
         Zeitstempel — die aelteste Sicherung bleibt die aelteste.
 
@@ -140,8 +172,8 @@ class BridgeServicesMixin:
         name = str((daten or {}).get("name") or "").strip()
         if not name:
             return {"ok": False, "meldung": "Keine Sequenz genannt."}
-        ordner = Path(self.sequences_dir) / name
-        if not ordner.is_dir():
+        ordner = self._sequenz_ordner(name)
+        if ordner is None or not ordner.is_dir():
             return {"ok": False, "meldung": f"'{name}' gibt es nicht (mehr)."}
         if ordner.resolve() == self.filepath.parent.resolve():
             return {"ok": False, "meldung": (
@@ -151,9 +183,13 @@ class BridgeServicesMixin:
             return {"ok": False, "meldung": (
                 "Eine Sequenz läuft — der Worker liest gerade aus diesen Ordnern.")}
 
-        ziel = Path(BACKUPS_DIR) / "sequences" / name
+        # Gespiegelte Struktur, wie bei `sicherungspfad()` im Start-Durchgang:
+        # `sequences/raid` -> `backups/sequences/raid`. Der ORDNERname, nicht
+        # der angezeigte — sonst laege die Sicherung unter einem Pfad, den es so
+        # nie gab, und Zurueckschieben waere kein blosses Verschieben mehr.
+        ziel = Path(BACKUPS_DIR) / "sequences" / ordner.name
         if ziel.exists():
-            ziel = ziel.with_name(f"{name}_{datetime.now():%Y%m%d_%H%M%S}")
+            ziel = ziel.with_name(f"{ordner.name}_{datetime.now():%Y%m%d_%H%M%S}")
         try:
             ziel.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(ordner), str(ziel))
