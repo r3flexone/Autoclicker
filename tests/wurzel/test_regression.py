@@ -9,11 +9,11 @@ import unittest
 
 class RegressionSuiteTest(unittest.TestCase):
     def test_logic_regressions(self):
-        root = Path(__file__).resolve().parent
+        root = Path(__file__).resolve().parents[2]
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         result = subprocess.run(
-            [sys.executable, str(root / "tools" / "test_logic.py")],
+            [sys.executable, str(root / "tests" / "test_logic.py")],
             cwd=root,
             env=env,
             capture_output=True,

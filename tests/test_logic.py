@@ -1,6 +1,6 @@
 """Logik-/Daten-Schicht-Tests — laufen ohne GUI/LLM, plattformunabhängig.
 
-Aufruf:  python tools/test_logic.py   (Exit 0 = alle grün)
+Aufruf:  python tests/test_logic.py   (Exit 0 = alle grün)
 
 Prüft Serialisierung/Persistenz, Backward-Compat, Farb-/Parsing-Helfer und
 das Export-Format. Auf Linux/Mac wird msvcrt gestubbt (auf Windows nicht —
@@ -57,8 +57,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # ausgelagerte Modul fuer sich, und die Schlusszeile saehe nur den letzten Stand.
 # Die Stubs oben stehen trotzdem in dieser Datei: sie muessen VOR dem ersten
 # autoclicker-Import sitzen, und der kommt gleich.
-import tools.tests._harness as _H     # noqa: E402
-from tools.tests._harness import check, section     # noqa: E402
+import tests.vertrag._harness as _H     # noqa: E402
+from tests.vertrag._harness import check, section     # noqa: E402
 
 # ---------------------------------------------------------------- Serializer
 section("Serializer-Round-Trip (Scan-Configs: save-dict -> load_file)")
@@ -5709,7 +5709,7 @@ finally:
     _os.chdir(_cwd16)
 
 
-# Die Scans-Sektionen des Studios stehen in `tools/tests/studio_scans.py` —
+# Die Scans-Sektionen des Studios stehen in `tests/vertrag/studio_scans.py` —
 # ueber 1.200 Zeilen und in sich geschlossen, also das erste eigene Modul.
 
 
@@ -5889,7 +5889,7 @@ else:
 # Flaeche traegt die Aussage - fehlt zu einem Zustand die Fuellungs-Regel, sieht
 # er aus wie der Normalfall und niemand merkt es.
 # Die Seite selbst - frueher hing dieser Block an einer Variablen aus den
-# Scans-Sektionen, die jetzt in `tools/tests/studio_scans.py` stehen. Was eine
+# Scans-Sektionen, die jetzt in `tests/vertrag/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
 _html18 = _H.studio_web_source()
 _zustaende18 = ("treffer", "fremditem", "leer")
@@ -6320,19 +6320,19 @@ if _tote10:
 # Die ausgelagerten Themen-Module
 # Der Einstiegspunkt bleibt genau einer, aber nicht alles muss in dieser Datei
 # stehen (sie war mit ueber 7.000 Zeilen die groesste des Repos). Neue Sektionen
-# kommen als eigenes Modul unter `tools/tests/`, holen ihr Geruest aus
+# kommen als eigenes Modul unter `tests/vertrag/`, holen ihr Geruest aus
 # `_harness.py` und werden hier importiert - Import = ausfuehren.
-import tools.tests.studio_scans          # noqa: F401,E402
-import tools.tests.studio_erkennung     # noqa: F401,E402
-import tools.tests.studio_werkzeuge     # noqa: F401,E402
-import tools.tests.konsolen_editoren     # noqa: F401,E402
-import tools.tests.persistenz_basis      # noqa: F401,E402
-import tools.tests.nachklick            # noqa: F401,E402
-import tools.tests.studio_teilen        # noqa: F401,E402
-import tools.tests.bericht              # noqa: F401,E402
-import tools.tests.punkte               # noqa: F401,E402
-import tools.tests.sequenz_loeschen     # noqa: F401,E402
-import tools.tests.katalog               # noqa: F401,E402
+import tests.vertrag.studio_scans          # noqa: F401,E402
+import tests.vertrag.studio_erkennung     # noqa: F401,E402
+import tests.vertrag.studio_werkzeuge     # noqa: F401,E402
+import tests.vertrag.konsolen_editoren     # noqa: F401,E402
+import tests.vertrag.persistenz_basis      # noqa: F401,E402
+import tests.vertrag.nachklick            # noqa: F401,E402
+import tests.vertrag.studio_teilen        # noqa: F401,E402
+import tests.vertrag.bericht              # noqa: F401,E402
+import tests.vertrag.punkte               # noqa: F401,E402
+import tests.vertrag.sequenz_loeschen     # noqa: F401,E402
+import tests.vertrag.katalog               # noqa: F401,E402
 
 
 import shutil as _shD

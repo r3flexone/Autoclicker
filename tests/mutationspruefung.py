@@ -1,4 +1,4 @@
-"""Gezielte Gegenproben: python tools/mutationspruefung.py [--fall NAME].
+"""Gezielte Gegenproben: python tests/mutationspruefung.py [--fall NAME].
 
 Jeder Fall läuft zuerst unverändert, danach mit einer entfernten Sicherung in
 einem frischen Prozess. Nur Assertion-Fehler erkennen einen Mutanten; Import-
@@ -23,10 +23,10 @@ RUNTIME = "test_runtime_hardening.RuntimeHardeningTest."
 STUDIO = "test_studio_close.StudioCloseTest."
 FAELLE = {
     "browser-pflicht": (
-        "tools.alle_tests", "rauch", "e.ok = False", "e.ok = True",
+        "tests.alle_tests", "rauch", "e.ok = False", "e.ok = True",
         "test_test_runner.TestRunnerTest.test_browser_lokal_optional_aber_als_pflicht_rot"),
     "doppelter-vertragslauf": (
-        "tools.wurzeltests", "sammeln", "continue", "pass",
+        "tests.wurzeltests", "sammeln", "continue", "pass",
         "test_test_runner.TestRunnerTest.test_discovery_entfernt_nur_den_vertragswrapper"),
     "pause-nach-fokus": (
         "autoclicker.runtime.actions", "_eingabe_freigeben",
@@ -59,7 +59,11 @@ FAELLE = {
 
 
 def pruefen(name: str, mutiert: bool) -> int:
-    sys.path.insert(0, str(WURZEL))
+    # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
+    # `tests/wurzel` fuer die Testmodule, die `FAELLE` beim Namen nennt.
+    for _pfad in (WURZEL, WURZEL / "tests" / "wurzel"):
+        if str(_pfad) not in sys.path:
+            sys.path.insert(0, str(_pfad))
     modul, pfad, alt, neu, test = FAELLE[name]
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
     funktion = importlib.import_module(modul)

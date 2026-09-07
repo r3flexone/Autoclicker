@@ -92,10 +92,11 @@ Die vollständige lokale Prüfung entspricht der CI-Matrix:
 
 ```bash
 python -m unittest -v test_*.py
-python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
 ```
 
-`test_regression.py` bindet dabei die große, plattformunabhängige Vertragssuite
-`tools/test_logic.py` ein. Weitere `test_*.py`-Dateien prüfen Sicherheitsgrenzen,
+`tests/wurzel/test_regression.py` bindet dabei die große, plattformunabhängige
+Vertragssuite `tests/test_logic.py` ein. Die übrigen Module in `tests/wurzel/`
+prüfen Sicherheitsgrenzen,
 Editor-UX, Marktberechnung und Laufzeit-Härtungen. GitHub Actions führt die
 Unit-Tests auf Ubuntu und Windows aus; der Lint läuft separat auf Ubuntu.
