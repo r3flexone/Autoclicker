@@ -142,6 +142,25 @@ def lauf():
                f"die Statuszeile sagt nichts vom Einordnen: {status!r}")
         f.bild("katalog_eingeordnet")
 
+        # --- Die Ueberschrift benennt die Kategorie um ----------------------
+        # Ein Eingabefeld IN einer Ueberschrift ist die Stelle, an der ein
+        # Tippfehler unsichtbar bleibt: die Vertragssuite sieht nur, dass die
+        # Bruecken-Methode existiert.
+        f.klick_text("#scan-insp .tabs button", "Items")
+        # Gezielt die Gruppe „Helm" — `.first` traf die Gruppe „Ohne
+        # Kategorie", die in der Liste zuerst steht.
+        feld = f.seite.locator('.scan-kategorie-kopf input[value="Helm"]')
+        pruefe(feld.count() == 1,
+               f"die Ueberschrift 'Helm' ist kein Feld ({feld.count()} Treffer)")
+        feld.fill("Kopfschutz")
+        feld.press("Enter")
+        f.seite.wait_for_timeout(700)
+        pruefe(b.items["Citadel Helmet"].category == "Kopfschutz"
+               and b.items["Centaurs Helmet"].category == "Kopfschutz",
+               "das Umbenennen kam nicht in der Bruecke an: "
+               + str([(n, i.category) for n, i in b.items.items()]))
+        f.bild("kategorie_umbenannt")
+
         # --- Und der Katalog laesst sich HIER holen ------------------------
         # Der Knopf haengt an `meta.aktion` aus `config_meta.py`. Wuerde
         # `M.as_dict()` das Feld nicht mitliefern, waere der Wert schlicht

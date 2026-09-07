@@ -567,6 +567,18 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   der Schlussmeldung, und STRG+Z holt den ganzen Durchgang zurück. Irrt sich
   das Modell, hängt eine fremde Vorlage am Item; sie steht in dessen
   Vorlagenliste und ist dort einzeln lösbar.
+- **Eine Kategorie benennt man an ihrer Überschrift um, nicht Item für
+  Item** (`scan_kategorie_umbenennen`, Feld im `scan-kategorie-kopf`). Sie ist
+  kein eigenes Objekt, sondern ein Feld an jedem Item — Zusammenlegen hiess
+  deshalb, jede Maske einzeln anzufassen, und weil der Katalog bewusst ENG
+  einordnet, ist Zusammenlegen der Normalfall (an einem echten Bestand hatten
+  13 von 23 Kategorien genau ein Item). Leerer Zielname = Kategorie weg,
+  leerer Quellname = die Gruppe „ohne Kategorie"; beides ist dieselbe
+  Bewegung. Zwei Regeln dazu: die Ränge werden danach **dicht** gemacht (zwei
+  P1 in einer Kategorie sind eine Rangfolge, die der Zufall entscheidet), und
+  **wer dazukommt, kommt hinten an** — über die ganze Gruppe zu sortieren
+  verschöbe die handgesetzten Ränge der Zielgruppe, und wer eine Gruppe in
+  eine andere schiebt, sagt damit nichts über deren Reihenfolge.
 - **Ein Zähler am Namen darf die Kategorie nicht kosten.** `_katalog_name()`
   probiert erst den vollen Namen und dann den ohne Zähler (`ohne_zaehler()` in
   `utils/parsing.py`, die Umkehrung zu `eindeutiger_name()`). Die Reihenfolge

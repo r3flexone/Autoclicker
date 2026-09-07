@@ -1919,3 +1919,93 @@ finally:
     _lv_an.suggest_item_name_grund = _echt_an
     _os.chdir(_cwd_an)
     shutil.rmtree(_sand_an, ignore_errors=True)
+
+
+# =============================================================================
+section("Studio-Items: eine Kategorie umbenennen zieht alle ihre Items mit")
+# =============================================================================
+# **Die Kategorie ist kein eigenes Objekt**, sondern ein Feld an jedem Item.
+# Zwei Gruppen zusammenzulegen hiess deshalb, jede Maske einzeln anzufassen —
+# und der Katalog ordnet bewusst ENG ein: an einem echten Bestand hatten
+# dreizehn von dreiundzwanzig Kategorien genau ein Item.
+_sand_kat = tempfile.mkdtemp(prefix="studiokategorie_")
+_cwd_kat = _os.getcwd()
+_os.chdir(_sand_kat)
+try:
+    def _bau_kat():
+        _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+        _b.scan_daten()
+        _b.items = {
+            "Bogen A": _ITEM8(name="Bogen A", category="Bow", priority=1),
+            "Bogen B": _ITEM8(name="Bogen B", category="Bow", priority=2),
+            "Armbrust": _ITEM8(name="Armbrust", category="Crossbow", priority=1),
+            "Stein": _ITEM8(name="Stein"),
+        }
+        return _b
+
+    _bk1 = _bau_kat()
+    _erg_kat = _bk1.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Fernkampf"})
+    check("alle Items der Gruppe ziehen mit",
+          [_bk1.items[n].category for n in ("Bogen A", "Bogen B")] == ["Fernkampf"] * 2)
+    check("und andere Kategorien bleiben unberuehrt",
+          _bk1.items["Armbrust"].category == "Crossbow")
+    check("die Meldung nennt die Anzahl", "2 Item(s)" in _erg_kat["status"]["text"])
+
+    # **Zusammengelegt heisst doppelte Raenge.** Zwei Items mit P1 in derselben
+    # Kategorie sind eine Rangfolge, die der Zufall entscheidet — in Modus
+    # `all` gewinnt eines und das andere wird nie geklickt.
+    _bk2 = _bau_kat()
+    _erg_zus = _bk2.scan_kategorie_umbenennen({"alt": "Crossbow", "neu": "Bow"})
+    _raenge = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
+    check("beim Zusammenlegen werden die Raenge dicht", _raenge == [1, 2, 3])
+    check("und es wird gesagt", "Rang" in _erg_zus["status"]["text"])
+    # Die Reihenfolge bleibt, wie sie war — die Werte des Katalogs holt man sich
+    # mit „Aus Katalog einordnen". Ungefragt umzusortieren wuerde handgesetzte
+    # Raenge ueberschreiben.
+    check("die bisherige Reihenfolge bleibt erhalten",
+          _bk2.items["Bogen A"].priority == 1 and _bk2.items["Bogen B"].priority == 2)
+    # **Wer dazukommt, kommt hinten an.** Ueber die ganze Gruppe nach Rang zu
+    # sortieren waere die naheliegende Fassung und die falsche: die Armbrust
+    # trug P1 und schoebe sich damit vor beide Boegen.
+    check("und das zugezogene Item haengt hinten an",
+          _bk2.items["Armbrust"].priority == 3)
+
+    # Ein leerer Zielname nimmt die Kategorie weg, ein leerer Quellname meint
+    # die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
+    _bk3 = _bau_kat()
+    _bk3.scan_kategorie_umbenennen({"alt": "Bow", "neu": ""})
+    check("ein leerer Zielname nimmt die Kategorie weg",
+          _bk3.items["Bogen A"].category is None)
+    _bk4 = _bau_kat()
+    _bk4.scan_kategorie_umbenennen({"alt": "", "neu": "Sonstiges"})
+    check("und ein leerer Quellname meint 'ohne Kategorie'",
+          _bk4.items["Stein"].category == "Sonstiges"
+          and _bk4.items["Bogen A"].category == "Bow")
+
+    # Kein Rueckgaengig-Stand ohne Aenderung: ein STRG+Z, das nichts
+    # zurueckdreht, ist eins, dem man danach nicht mehr traut.
+    _bk5 = _bau_kat()
+    _tiefe_vorher = _bk5.scan_daten()["undo"]["tiefe"]
+    _erg_leer_kat = _bk5.scan_kategorie_umbenennen({"alt": "Gibtsnicht", "neu": "X"})
+    check("eine leere Gruppe aendert nichts",
+          _erg_leer_kat["status"]["art"] == "warn"
+          and _bk5.scan_daten()["undo"]["tiefe"] == _tiefe_vorher)
+    _bk6 = _bau_kat()
+    _bk6.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Bow"})
+    check("und derselbe Name auch nicht",
+          _bk6.scan_daten()["undo"]["tiefe"] == _tiefe_vorher)
+
+    # STRG+Z holt den ganzen Durchgang zurueck.
+    _bk7 = _bau_kat()
+    _bk7.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Fernkampf"})
+    _bk7.scan_rueckgaengig()
+    check("STRG+Z stellt die alte Kategorie wieder her",
+          _bk7.items["Bogen A"].category == "Bow")
+
+    _quelle_kat = studio_web_source()
+    check("die Ueberschrift ist der Weg dorthin",
+          "scan_kategorie_umbenennen" in _quelle_kat
+          and "scanKategorieKopf" in _quelle_kat)
+finally:
+    _os.chdir(_cwd_kat)
+    shutil.rmtree(_sand_kat, ignore_errors=True)

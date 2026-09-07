@@ -2895,11 +2895,41 @@ function scanListeItems(ziel) {
     const kategorie = (gefroren === null ? (i.kategorie || "") : gefroren)
                       || "Ohne Kategorie";
     if (kategorie !== letzteKategorie) {
-      ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
+      ziel.appendChild(scanKategorieKopf(kategorie, liste));
       letzteKategorie = kategorie;
     }
     ziel.appendChild(scanItemMaske(i, gefroren));
   }
+}
+
+/** Die Gruppenueberschrift — und zugleich der Weg, die Kategorie umzubenennen.
+ *
+ * **Die Kategorie ist kein eigenes Objekt**, sondern ein Feld an jedem Item;
+ * zwei Gruppen zusammenzulegen hiess deshalb, jede Maske einzeln anzufassen.
+ * Der Katalog ordnet bewusst ENG ein (dreizehn Kategorien mit je einem Item bei
+ * einem echten Bestand), Zusammenlegen ist also der Normalfall und kein
+ * Sonderfall.
+ *
+ * Getippt wird in der Ueberschrift selbst: sie traegt den Namen ohnehin, und
+ * ein zweites Feld daneben waere dieselbe Sache an zwei Stellen. Gemeldet wird
+ * bei `change`, nicht bei jedem Tastendruck — sonst zoege jedes Zeichen alle
+ * Items mit.
+ */
+function scanKategorieKopf(kategorie, liste) {
+  const leer = kategorie === "Ohne Kategorie";
+  const wert = leer ? "" : kategorie;
+  const anzahl = liste.filter((i) => (i.kategorie || "") === wert).length;
+  const feld = el("input", {class: "scan-kategorie-feld", value: wert,
+    placeholder: "ohne Kategorie",
+    title: "Umbenennen zieht alle Items dieser Gruppe mit. Leer = Kategorie "
+           + "entfernen. Gleicher Name wie eine andere Gruppe = zusammenlegen."});
+  feld.addEventListener("change", () => {
+    if (feld.value.trim() === wert) return;
+    rufScan("scan_kategorie_umbenennen", {alt: wert, neu: feld.value.trim()});
+  });
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+  return el("div", {class: "scan-kategorie-kopf"}, feld,
+            el("span", {class: "zahl"}, String(anzahl)));
 }
 
 /** Ein Item als kleine Maske: Haken, Name, Kategorie, Prioritaet — in der Liste.

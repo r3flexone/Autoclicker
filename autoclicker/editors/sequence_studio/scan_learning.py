@@ -643,6 +643,66 @@ class ScanLearningMixin:
                 kategorien.add(kategorie)
         return kategorien
 
+    def scan_kategorie_umbenennen(self, daten: Optional[dict] = None) -> dict:
+        """Benennt eine Kategorie um — und damit JEDES Item, das sie trägt.
+
+        **Bis hierhin ging das nur Item für Item.** Die Kategorie ist kein
+        eigenes Objekt, sondern ein Feld an jedem Item; wer zwei Gruppen
+        zusammenlegen wollte, musste jede Maske einzeln anfassen. Bei
+        dreiundzwanzig Kategorien auf sechsundfünfzig Items ist das kein Weg —
+        und Zusammenlegen ist der Normalfall, weil der Katalog bewusst ENG
+        einordnet (dreizehn dieser Kategorien haben genau ein Item).
+
+        Ein leerer Zielname nimmt die Kategorie weg; ein leerer Quellname
+        meint die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
+        """
+        alt = self._kategorie_normalisieren((daten or {}).get("alt")) or None
+        neu = self._kategorie_normalisieren((daten or {}).get("neu")) or None
+        if alt == neu:
+            return self.scan_daten()
+        betroffen = [i for i in self.items.values() if (i.category or None) == alt]
+        if not betroffen:
+            return self._scan_melde(
+                f"Keine Items in '{alt or 'ohne Kategorie'}'.", "warn")
+
+        self._merke(f"Kategorie '{alt or 'ohne'}' → '{neu or 'ohne'}'")
+        for item in betroffen:
+            item.category = neu
+        # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in
+        # derselben Kategorie sind eine Rangfolge, die der Zufall entscheidet —
+        # in Modus `all` gewinnt eines und das andere wird nie geklickt.
+        # Dicht gemacht wird in der bisherigen Reihenfolge: die Werte des
+        # Katalogs holt man sich mit „Aus Katalog einordnen", falls man sie
+        # will. Ungefragt danach umzusortieren würde handgesetzte Ränge
+        # überschreiben.
+        neu_vergeben = self._raenge_dicht(neu, zugezogen=betroffen)
+        zusatz = f", {neu_vergeben} Rang/Ränge neu vergeben" if neu_vergeben else ""
+        return self._scan_geaendert(
+            f"{len(betroffen)} Item(s): '{alt or 'ohne Kategorie'}' → "
+            f"'{neu or 'ohne Kategorie'}'{zusatz}.")
+
+    def _raenge_dicht(self, kategorie, zugezogen: list = None) -> int:
+        """Prioritäten einer Kategorie auf 1..n ziehen — wie viele sich ändern.
+
+        **Wer dazukommt, kommt hinten an.** Nach Priorität und Name über die
+        ganze Gruppe zu sortieren wäre die naheliegende Fassung und die
+        falsche: ein zugezogenes Item mit P1 schöbe sich zwischen die
+        bestehenden und verschöbe deren handgesetzte Ränge. Wer eine Gruppe in
+        eine andere schiebt, sagt damit nichts über die Rangfolge der
+        Zielgruppe.
+        """
+        neu_dabei = {id(i) for i in (zugezogen or [])}
+        gruppe = [i for i in self.items.values()
+                  if (i.category or None) == (kategorie or None)]
+        geordnet = sorted(gruppe,
+                          key=lambda i: (id(i) in neu_dabei, i.priority, i.name))
+        geaendert = 0
+        for nr, item in enumerate(geordnet, 1):
+            if item.priority != nr:
+                item.priority = nr
+                geaendert += 1
+        return geaendert
+
     def scan_katalog_anwenden(self, daten: Optional[dict] = None) -> dict:
         """Setzt Kategorie und Prioritaet aus dem Katalog — ohne LLM.
 

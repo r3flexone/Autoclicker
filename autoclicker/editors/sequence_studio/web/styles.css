@@ -773,8 +773,19 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Trennlinie sagt, wo die Liste aufhoert — sonst liest sich der Editor wie ein
    weiterer Listeneintrag. */
 .erk-insp{gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
-.scan-kategorie-kopf{padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
+/* Die Ueberschrift IST das Eingabefeld: derselbe Ton, kein Rahmen, bis man
+   hineinfaehrt. Ein Feld, das wie ein Feld aussieht, laedt zum Tippen ein —
+   hier soll es zuerst eine Ueberschrift sein. Eine Regel und nicht zwei: die
+   zweite haette die erste ueberschrieben, und beim naechsten Umbau sucht
+   jemand, welche gilt. */
+.scan-kategorie-kopf{display:flex;align-items:center;gap:8px;
+  padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
   letter-spacing:.08em;text-transform:uppercase}
+.scan-kategorie-feld{flex:1;min-width:0;background:none;border:1px solid transparent;
+  color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;
+  padding:1px 4px;border-radius:4px}
+.scan-kategorie-feld:hover{border-color:var(--line)}
+.scan-kategorie-feld:focus{border-color:var(--accent);background:var(--bg)}
 .tabs.klein .tab{font-size:11px;padding:4px 8px}
 /* **Die Leiste nimmt die ganze Breite.** Drei Reiter links zusammengedraengt
    liessen zwei Drittel der Leiste leer stehen — und die Trefferflaeche war
