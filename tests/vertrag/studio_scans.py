@@ -1655,7 +1655,7 @@ import autoclicker.llm_vision as _lv_an                            # noqa: E402
 
 _sand_an = tempfile.mkdtemp(prefix="studioautoname_")
 _cwd_an = _os.getcwd()
-_echt_an = _lv_an.suggest_item_name
+_echt_an = _lv_an.suggest_item_name_grund
 _os.chdir(_sand_an)
 try:
     _hat_pil_an = False
@@ -1711,7 +1711,7 @@ try:
             return b.scan_autoname_ende()
 
         _namen_an = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name = lambda *a, **kw: next(_namen_an, None)
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_namen_an, None), "")
 
         _ba = _bau_an()
         _vorher_an = _ba.scan_daten()["undo"]["tiefe"]
@@ -1740,7 +1740,7 @@ try:
 
         # Ohne Treffer darf kein Stand entstehen: ein STRG+Z, das nichts
         # zurueckdreht, ist eins, dem man danach nicht mehr traut.
-        _lv_an.suggest_item_name = lambda *a, **kw: None
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, "")
         _bl = _bau_an()
         _leer_an = _bl.scan_daten()["undo"]["tiefe"]
         _erg_leer = _durchlauf_an(_bl, {"alle": True})
@@ -1751,7 +1751,7 @@ try:
 
         # Ohne `alle` und ohne Auswahl bleibt es beim vorsichtigen Standard —
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
-        _lv_an.suggest_item_name = lambda *a, **kw: "Godlike Bow"
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
         _bs = _bau_an()
         _erg_std = _durchlauf_an(_bs, {})
         check("ohne 'alle' bleibt es bei den auto-gelernten Items",
@@ -1781,7 +1781,7 @@ try:
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
             _bk.scan_offen = "S"
             _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
-            _lv_an.suggest_item_name = lambda *a, **kw: next(_kat_namen, None)
+            _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_kat_namen, None), "")
             _erg_kat = _durchlauf_an(_bk, {"alle": True})
             check("ein Katalogname bleibt woertlich stehen",
                   "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
@@ -1803,9 +1803,69 @@ try:
         finally:
             _CFG_an.scan_catalog_file = _altkat_an
 
+        # --- Ein Timeout ist nicht "nicht erkannt" ---------------------------
+        # **Die ersten Aufrufe an einen kalten Server dauern**: an einem echten
+        # Bestand ueber 120 s, die folgenden 3,5. Mit llm_timeout auf 60 fielen
+        # genau die ersten Items stumm durch — und standen als "ohne Vorschlag"
+        # da, als haette das Modell hingesehen und nichts erkannt.
+        from autoclicker.llm_vision import TIMEOUT as _TO_an
+        _versuche_an = []
+
+        def _erst_timeout(*a, **kw):
+            _versuche_an.append(kw.get("timeout"))
+            # Beim zweiten Versuch ist das Modell warm — genau der Fall, den
+            # die Wiederholung abdecken soll.
+            return (("Godlike Bow", "") if len(_versuche_an) > 1
+                    else (None, _TO_an))
+
+        _lv_an.suggest_item_name_grund = _erst_timeout
+        _bt = _bau_an()
+        _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
+        _erg_to = _durchlauf_an(_bt, {"alle": True})
+        check("nach einem Timeout wird einmal wiederholt", len(_versuche_an) == 2)
+        check("und der zweite Versuch bekommt mehr Zeit",
+              _versuche_an[1] > _versuche_an[0])
+        check("dann traegt das Item seinen Namen", "Godlike Bow" in _bt.items)
+
+        # Antwortet es auch beim zweiten Mal nicht, wird es als Zeitueber-
+        # schreitung gezaehlt — mit der Abhilfe in der Meldung.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, _TO_an)
+        _bt2 = _bau_an()
+        _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
+        _erg_to2 = _durchlauf_an(_bt2, {"alle": True})
+        _txt_to = _erg_to2["status"]["text"]
+        check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
+              "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
+        check("und die Meldung nennt die Abhilfe", "llm_timeout" in _txt_to)
+
+        # --- Zwei Slots, dasselbe Item ---------------------------------------
+        # **Ein Inventar mit zwei Boegen ergab "Godlike Bow" und "Godlike Bow
+        # 2".** Drei Folgen: der Zaehler-Name steht nicht im Katalog (also keine
+        # Kategorie), beide lagen mit derselben Prioritaet in derselben
+        # Kategorie (in Modus `all` gewinnt eines, das andere wird nie
+        # geklickt), und die zweite Vorlage gehoerte ohnehin zum selben
+        # Gegenstand.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _bd = _bau_an()
+        _erg_dop = _durchlauf_an(_bd, {"alle": True})
+        check("derselbe Name legt kein zweites Item an",
+              "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
+        check("die zweite Vorlage haengt als Variante am Item",
+              sorted(_bd.items["Godlike Bow"].template_names()) == ["a.png", "b.png"])
+        check("und die Meldung sagt es",
+              "angehängt" in _erg_dop["status"]["text"])
+        # Der Name IST die Referenz: ohne `_objekte_angleichen()` kaeme das
+        # geloeschte Item ueber `sync_names()` beim Speichern zurueck.
+        check("das Doppel ist auch aus dem Scan raus",
+              "Item 2" not in (_bd.scans[_bd.scan_offen].item_names
+                               if _bd.scan_offen in _bd.scans else []))
+        check("STRG+Z holt beide Items zurueck",
+              _bd.scan_rueckgaengig() is not None
+              and "Item 1" in _bd.items and "Item 2" in _bd.items)
+
         # --- Abbrechen -------------------------------------------------------
         _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name = lambda *a, **kw: next(_abb_namen, None)
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_abb_namen, None), "")
         _bab = _bau_an()
         _erg_abb = _durchlauf_an(_bab, {"alle": True}, schritte=1)
         # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
@@ -1823,7 +1883,7 @@ try:
 
         # Der Fortschritt steht in der MOMENTAUFNAHME, nicht nur in der Antwort
         # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
-        _lv_an.suggest_item_name = lambda *a, **kw: "Godlike Bow"
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
         _bfs = _bau_an()
         _bfs.scan_autoname_start({"alle": True})
         _stand_an = _bfs.scan_daten()["autoname"]
@@ -1856,6 +1916,6 @@ try:
         check("und zeigt so lange, dass gearbeitet wird",
               "mitArbeit(" in _quelle_an and "arbeitZeigen" in _quelle_an)
 finally:
-    _lv_an.suggest_item_name = _echt_an
+    _lv_an.suggest_item_name_grund = _echt_an
     _os.chdir(_cwd_an)
     shutil.rmtree(_sand_an, ignore_errors=True)

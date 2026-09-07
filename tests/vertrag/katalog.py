@@ -540,6 +540,30 @@ try:
           _erg4_kh["ok"] is False
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
+    # --- Ein Zaehler am Namen darf die Kategorie nicht kosten ---------------
+    # **"Godlike Bow 2" steht nicht im Katalog**, sein Gegenstand aber schon.
+    # An einem echten Bestand standen so acht Items ohne Kategorie neben ihrem
+    # eingeordneten Zwilling — und ohne Kategorie konkurriert ein Item mit
+    # niemandem, wird also in Modus `all` immer geklickt.
+    from autoclicker.utils import ohne_zaehler as _oz_kh
+    check("der Zaehler faellt weg", _oz_kh("Godlike Bow 2") == "Godlike Bow")
+    # Eine Zahl, die zum Namen gehoert, bleibt — der Aufrufer probiert ohnehin
+    # ERST den vollen Namen.
+    check("aber nur der angehaengte", _oz_kh("Bogen") == "Bogen"
+          and _oz_kh("Iron Helmet 12") == "Iron Helmet")
+
+    from autoclicker.katalog import Katalog as _Kat_kh
+    _kat_kh = _Kat_kh({"Godlike Bow": {"kategorie": "Bow", "wert": 9},
+                       "Slot 1": {"kategorie": "Sonder", "wert": 1}})
+    check("ein Item mit Zaehler findet seinen Katalog-Eintrag",
+          _SB_kh._katalog_name("Godlike Bow 2", _kat_kh) == "Godlike Bow")
+    # Was im Katalog steht, gewinnt: "Slot 1" ist dort ein eigener Eintrag und
+    # wird nicht auf "Slot" zurechtgestutzt.
+    check("und ein echter Name mit Zahl bleibt, wie er ist",
+          _SB_kh._katalog_name("Slot 1", _kat_kh) == "Slot 1")
+    check("Unbekanntes bleibt unbekannt",
+          _SB_kh._katalog_name("Irgendwas 2", _kat_kh) == "")
+
     # --- Wie alt ist die Liste? ---------------------------------------------
     # **Der Pfad allein beantwortet die Frage nicht**, die man an eine geholte
     # Liste hat: liegt die Datei ueberhaupt da, und von wann ist sie? Ohne

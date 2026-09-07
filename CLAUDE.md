@@ -543,6 +543,34 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
   eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
   besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Ein Timeout ist nicht dasselbe wie „nicht erkannt".** Beides als `None`
+  zu melden war der Fehler: an einem echten Bestand brauchten die **ersten
+  vier** Aufrufe je über 120 Sekunden (LM Studio lädt das Modell), die
+  folgenden 3,5 — mit `llm_timeout` auf 60 fielen genau die ersten Items stumm
+  durch und standen als „ohne Vorschlag" da. `suggest_item_name_grund()` gibt
+  deshalb `(Name, Grund)` zurück; der Durchgang wiederholt bei `TIMEOUT`
+  **einmal** mit mehr Zeit (der zweite Versuch trifft ein warmes Modell) und
+  zählt einen bleibenden Timeout getrennt, mit der Abhilfe in der Meldung.
+  Genau dieser Kaltstart ist auch die Antwort auf „im Chat geht es besser":
+  dort ist das Modell längst geladen.
+- **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.** Der
+  Durchgang hängte bei einem belegten Namen einen Zähler an, und ein Inventar
+  mit zwei Bögen ergab „Godlike Bow" und „Godlike Bow 2". Drei Folgen, und die
+  erste sieht man gar nicht: der Zähler-Name steht **nicht im Katalog**, das
+  Item blieb also ohne Kategorie neben seinem eingeordneten Zwilling stehen —
+  und ohne Kategorie konkurriert es mit niemandem, wird in Modus `all` also
+  immer geklickt. Zweitens lägen sie eingeordnet zu zweit in derselben
+  Kategorie, wo eines der beiden nie an die Reihe kommt. Und drittens gehört
+  die zweite Vorlage ohnehin zum selben Gegenstand: genau dafür gibt es
+  `template_variants`. Erkennt das Modell einen Namen, den es schon gibt, wird
+  die Vorlage deshalb **angehängt** und das Doppel entfällt — gesagt wird es in
+  der Schlussmeldung, und STRG+Z holt den ganzen Durchgang zurück. Irrt sich
+  das Modell, hängt eine fremde Vorlage am Item; sie steht in dessen
+  Vorlagenliste und ist dort einzeln lösbar.
+- **Ein Zähler am Namen darf die Kategorie nicht kosten.** `_katalog_name()`
+  probiert erst den vollen Namen und dann den ohne Zähler (`ohne_zaehler()` in
+  `utils/parsing.py`, die Umkehrung zu `eindeutiger_name()`). Die Reihenfolge
+  ist die Regel: was im Katalog steht, gewinnt — „Slot 1" bleibt „Slot 1".
 - **Ein Durchgang, den die Seite treibt — sonst gibt es kein Abbrechen.**
   Sechsundfünfzig Vorlagen sind bei drei Sekunden je Modell-Antwort knapp drei
   Minuten; als EIN Brücken-Aufruf kann das niemand stoppen. Ein Abbruch-Flag

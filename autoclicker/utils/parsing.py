@@ -186,6 +186,26 @@ def format_duration(seconds: float) -> str:
 _NAME_EXTRA = " -'()&.,+"
 
 
+def ohne_zaehler(name: str) -> str:
+    """Der Name ohne angehaengten Eindeutigkeits-Zaehler.
+
+    Die Umkehrung zu `eindeutiger_name()`: aus "Godlike Bow 2" wird
+    "Godlike Bow". Gebraucht wird sie beim Katalog — der Name IST dort der
+    Schluessel, und ein angehaengter Zaehler macht ihn unbekannt: das Item
+    stand danach ohne Kategorie da, obwohl sein Gegenstand im Katalog steht.
+
+    Zahlen, die zum Namen gehoeren, bleiben: "Slot 1" ohne Zaehler waere
+    "Slot", und das ist ein anderer Name. Der Aufrufer probiert deshalb ERST
+    den vollen Namen und erst danach diesen hier — was im Katalog steht,
+    gewinnt.
+    """
+    roh = str(name or "").rstrip()
+    teile = roh.rsplit(" ", 1)
+    if len(teile) == 2 and teile[0].strip() and teile[1].isdigit():
+        return teile[0].strip()
+    return roh
+
+
 def bereinige_itemname(name: str) -> str:
     """Ein vorgeschlagener Item-Name — als NAME, nicht als Dateiname.
 

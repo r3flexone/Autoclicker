@@ -206,6 +206,10 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
 # und `utils` schon beim blossen Import nach, und die Vertragssuite importiert
 # es einzeln.
 
+# Der Grund, den `suggest_item_name_grund()` fuer eine Zeitueberschreitung
+# meldet. Als Konstante, damit der Aufrufer ihn nicht am Text erkennen muss.
+TIMEOUT = "timeout"
+
 _DEBUG_ROH_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
 
 
@@ -565,6 +569,19 @@ def suggest_item_name(
     timeout: int = 60,
     candidates: list[str] = None,
 ) -> Optional[str]:
+    """Nur der Name — fuer Aufrufer, die den Grund nicht brauchen."""
+    return suggest_item_name_grund(img, provider, endpoint, model, timeout,
+                                   candidates)[0]
+
+
+def suggest_item_name_grund(
+    img: 'Image.Image',
+    provider: str = PROVIDER_LMSTUDIO,
+    endpoint: str = None,
+    model: str = None,
+    timeout: int = 60,
+    candidates: list[str] = None,
+) -> tuple:
     """Fragt das LLM nach einem Namen für den Gegenstand auf dem Bild.
 
     Mit `candidates` (den echten Item-Namen aus `katalog.py`) darf das Modell
@@ -576,8 +593,16 @@ def suggest_item_name(
     Ohne `candidates` bleibt alles wie bisher (freier Vorschlag).
 
     Returns:
-        Bereinigter Name (max. ~40 Zeichen) oder None wenn nicht erkennbar /
-        LLM nicht erreichbar.
+        `(Name oder None, Grund)`. Der Grund ist "" bei einer Antwort — auch
+        bei einer, die nichts erkannt hat —, sonst `TIMEOUT` oder der
+        Fehlertext.
+
+        **Ein Timeout ist nicht dasselbe wie "nicht erkannt", und beides als
+        `None` zu melden war der Fehler**: an einem echten Bestand brauchten
+        die ERSTEN vier Aufrufe je ueber 120 Sekunden (LM Studio laedt das
+        Modell), die folgenden 3,5. Mit `llm_timeout` auf 60 fielen genau die
+        ersten Items stumm durch und standen als "ohne Vorschlag" da — als
+        haette das Modell sie angesehen und nichts erkannt.
     """
     if candidates:
         prompt, system_prompt = "Which item is this?", _build_item_candidate_prompt(candidates)
@@ -598,16 +623,17 @@ def suggest_item_name(
         max_tokens=32 if candidates else 0,
     )
     if not success:
-        return None
+        grund = TIMEOUT if str(response).startswith("Timeout") else str(response)
+        return None, grund
     name = clean_boss_name(_strip_reasoning_tags(response))
     if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
-        return None
+        return None, ""
     if candidates:
         # Woertlich aus der Liste? Sonst einmal heranziehen, sonst nichts.
         genau = {k.casefold(): k for k in candidates}.get(name.casefold())
-        return genau or _closest_candidate(name, candidates)
+        return (genau or _closest_candidate(name, candidates)), ""
     # Auf eine sinnvolle Länge kürzen (Modelle plappern manchmal doch)
-    return name[:40].strip()
+    return name[:40].strip(), ""
 
 
 def test_connection(provider: str = PROVIDER_LMSTUDIO,

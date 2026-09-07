@@ -589,6 +589,19 @@ class ScanLearningMixin:
             return [self.items[n] for n in namen if n in self.items]
         return list(self._kandidaten())
 
+    @staticmethod
+    def _katalog_name(name: str, katalog) -> str:
+        """Unter welchem Namen dieses Item im Katalog steht — oder "".
+
+        Zwei Anlaeufe, und die Reihenfolge ist die Regel: der volle Name
+        gewinnt, der ohne Eindeutigkeits-Zaehler ist der Rueckfall.
+        """
+        from ...utils import ohne_zaehler
+        if katalog.treffer(name):
+            return name
+        basis = ohne_zaehler(name)
+        return basis if basis != name and katalog.treffer(basis) else ""
+
     def _katalog_plan(self, items: list, katalog) -> tuple:
         """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
 
@@ -600,8 +613,16 @@ class ScanLearningMixin:
         `Aenderungen` ist eine Liste `(Item, Kategorie, Prioritaet)`.
         """
         from ...katalog import raenge
-        bekannt = [(i, katalog.kategorie(i.name), katalog.wert(i.name))
-                   for i in items if katalog.treffer(i.name)]
+        # **Ein angehaengter Zaehler macht den Namen fuer den Katalog
+        # unbekannt.** "Godlike Bow 2" steht dort nicht, und das Item blieb
+        # deshalb ohne Kategorie neben seinem eingeordneten Zwilling stehen.
+        # Erst der volle Name, dann der ohne Zaehler: was im Katalog steht,
+        # gewinnt — "Slot 1" bleibt "Slot 1".
+        bekannt = []
+        for i in items:
+            such = self._katalog_name(i.name, katalog)
+            if such:
+                bekannt.append((i, katalog.kategorie(such), katalog.wert(such)))
         rang = raenge([(i.name, kategorie, wert) for i, kategorie, wert in bekannt])
 
         aenderungen = []
@@ -666,7 +687,7 @@ class ScanLearningMixin:
             f"eingeordnet{zusatz}.")
 
     @staticmethod
-    def _autoname_rest(ohne: int, auswahl) -> str:
+    def _autoname_rest(ohne: int, auswahl, timeouts: int = 0) -> str:
         """Der Nachsatz der Schlussmeldung: was NICHT geklappt hat.
 
         Zwei Dinge, und das zweite ist das wichtigere: ohne Katalog raet das
@@ -679,6 +700,12 @@ class ScanLearningMixin:
         teile = []
         if ohne:
             teile.append(f"{ohne} ohne Vorschlag")
+        if timeouts:
+            # Der Hinweis gehoert an die Zahl: eine Zeitueberschreitung sieht in
+            # der Liste aus wie ein nicht erkanntes Item, hat aber eine ganz
+            # andere Abhilfe.
+            teile.append(f"{timeouts}× Zeitüberschreitung (auch beim zweiten "
+                         "Versuch) — llm_timeout in den Einstellungen erhöhen")
         if not auswahl:
             teile.append("ohne Katalog frei geraten — Einstellungen → "
                          "'Item-Katalog', anlegen mit python tools/katalog.py")
@@ -726,7 +753,7 @@ class ScanLearningMixin:
             return None
         return {"gesamt": lauf["gesamt"], "offen": len(lauf["offen"]),
                 "fertig": lauf["gesamt"] - len(lauf["offen"]),
-                "umbenannt": lauf["umbenannt"]}
+                "umbenannt": lauf["umbenannt"], "varianten": lauf["varianten"]}
 
     def scan_autoname_start(self, daten: Optional[dict] = None) -> dict:
         """Beginnt einen Benenn-Durchgang — **die Seite treibt ihn, Item fuer Item.**
@@ -780,7 +807,9 @@ class ScanLearningMixin:
             "auswahl": katalog.namen() or None,
             "benannt": [],
             "umbenannt": 0,
+            "varianten": 0,
             "ohne": 0,
+            "timeouts": 0,
             "gemerkt": False,
         }
         return self._scan_melde(f"Benennt {len(kandidaten)} Item(s) …", "info")
@@ -794,7 +823,7 @@ class ScanLearningMixin:
             return self.scan_daten()
 
         from PIL import Image
-        from ...llm_vision import suggest_item_name
+        from ...llm_vision import TIMEOUT, suggest_item_name_grund
         from ...utils import bereinige_itemname
 
         config = lauf["config"]
@@ -807,25 +836,53 @@ class ScanLearningMixin:
         pfad = self.filepath.parent / "templates" / item.template_names()[0]
         try:
             with Image.open(pfad) as bild:
-                vorschlag = suggest_item_name(
-                    bild.copy(), provider=config.llm_provider,
-                    endpoint=config.llm_endpoint, model=config.llm_model,
-                    timeout=config.llm_timeout, candidates=lauf["auswahl"])
+                vorlage = bild.copy()
         except (OSError, ValueError):
             lauf["ohne"] += 1
             return self.scan_daten()
 
+        def frag(grenze):
+            return suggest_item_name_grund(
+                vorlage, provider=config.llm_provider,
+                endpoint=config.llm_endpoint, model=config.llm_model,
+                timeout=grenze, candidates=lauf["auswahl"])
+
+        vorschlag, grund = frag(config.llm_timeout)
+        # **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
+        # echten Bestand: die ersten vier Anfragen ueber 120 s, die folgenden
+        # 3,5 s. Der zweite Versuch trifft also ein warmes Modell und kostet
+        # fast nichts — ihn wegzulassen hiesse, den Anfang jedes Durchgangs zu
+        # verschenken. Mehr als einer waere Warten ohne Aussicht: antwortet es
+        # auch dann nicht, liegt es nicht am Aufwaermen.
+        if grund == TIMEOUT:
+            vorschlag, grund = frag(max(config.llm_timeout * 2, 120))
+
         basis = bereinige_itemname(vorschlag) if vorschlag else ""
         if not basis:
-            lauf["ohne"] += 1
+            # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
+            # Modell habe hingesehen und nichts erkannt.
+            lauf["timeouts" if grund == TIMEOUT else "ohne"] += 1
             return self.scan_daten()
 
-        neu, nr = basis, 1
-        while neu in self.items and neu != item.name:
-            nr += 1
-            neu = f"{basis} {nr}"
-        if neu == item.name:
+        if basis == item.name:
             return self.scan_daten()
+
+        # **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.**
+        # Hier stand `"{basis} {nr}"`, und ein Inventar mit zwei Boegen ergab
+        # "Godlike Bow" und "Godlike Bow 2" — mit drei Folgen: der Zaehler-Name
+        # steht nicht im Katalog (das Item blieb ohne Kategorie), beide landeten
+        # in derselben Kategorie mit derselben Prioritaet (in Modus `all` gewinnt
+        # eines, das andere wird nie geklickt), und die zweite Vorlage gehoerte
+        # ohnehin zum selben Gegenstand. Genau dafuer gibt es
+        # `template_variants`: EIN Item, das in beiden Slots erkannt wird.
+        #
+        # Irrt sich das Modell und benennt zwei verschiedene Dinge gleich, haengt
+        # eine fremde Vorlage am Item — sichtbar in dessen Vorlagenliste, dort
+        # einzeln loesbar, und STRG+Z holt den ganzen Durchgang zurueck.
+        bestand = self.items.get(basis)
+        if bestand is not None:
+            return self._autoname_variante(bestand, item, lauf)
+        neu = basis
 
         # **Ein Stand fuer den ganzen Durchgang, und erst beim ersten Treffer.**
         # Vorher abgelegt waere er ein STRG+Z, das nichts zurueckdreht, wenn das
@@ -838,6 +895,26 @@ class ScanLearningMixin:
         self._item_umbenennen(item, neu, merken=False)
         lauf["umbenannt"] += 1
         lauf["benannt"].append(item)
+        return self._scan_geaendert()
+
+    def _autoname_variante(self, bestand, item, lauf: dict) -> dict:
+        """Die Vorlage des Doppels an das bekannte Item haengen, das Doppel weg.
+
+        Der Rueckgaengig-Stand entsteht hier genauso wie beim Umbenennen: EINER
+        fuer den ganzen Durchgang, und erst wenn wirklich etwas passiert.
+        """
+        neu = [n for n in item.template_names() if n not in bestand.template_names()]
+        if not neu and item.name not in self.items:
+            return self.scan_daten()
+        if not lauf["gemerkt"]:
+            self._merke(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
+            lauf["gemerkt"] = True
+        bestand.template_variants = list(bestand.template_variants) + neu
+        self.items.pop(item.name, None)
+        # Der Name IST die Referenz: ohne das Angleichen kaeme das geloeschte
+        # Item beim naechsten Speichern ueber `sync_names()` zurueck.
+        self._objekte_angleichen()
+        lauf["varianten"] += 1
         return self._scan_geaendert()
 
     def scan_autoname_ende(self, daten: Optional[dict] = None) -> dict:
@@ -864,6 +941,11 @@ class ScanLearningMixin:
         geprueft = lauf["gesamt"] - offen
         kopf = (str(lauf["umbenannt"]) + " von " + str(geprueft)
                 + " Item(s) per LLM benannt")
+        # **Eine zusammengelegte Vorlage wird gesagt.** Sonst zaehlt der Nutzer
+        # hinterher weniger Items als Slots und sucht den Fehler beim Lernen.
+        if lauf["varianten"]:
+            kopf += (", " + str(lauf["varianten"])
+                     + " Vorlage(n) an ein bekanntes Item angehängt")
         if abgebrochen:
             kopf += " — abgebrochen, " + str(offen) + " nicht angesehen"
 
@@ -875,9 +957,9 @@ class ScanLearningMixin:
                 return self._scan_geaendert(
                     kopf + ", " + str(len(aenderungen)) + " davon in "
                     + str(len(kategorien)) + " Kategorie(n) eingeordnet"
-                    + self._autoname_rest(lauf["ohne"], lauf["auswahl"]))
+                    + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
         return self._scan_geaendert(
-            kopf + self._autoname_rest(lauf["ohne"], lauf["auswahl"]))
+            kopf + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
 
     # ------------------------------------------------------------- Erkennung
 
