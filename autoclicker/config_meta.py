@@ -54,6 +54,12 @@ class M:
     # Ohne diesen Text liest sich eine 0 wie "aus", und bei click_max_total
     # heisst sie das Gegenteil.
     leer: str = ""
+    # Ein Knopf UNTER dem Feld: `(Bruecken-Methode, Beschriftung)`. Dafuer gibt
+    # es genau einen Fall und einen guten Grund — den Katalog konnte bis hierhin
+    # nur `python tools/katalog.py` anlegen, also ausgerechnet die Datei, ohne
+    # die das LLM frei raet, liess sich im Fenster nicht beschaffen. Wer die
+    # Datei im Feld sieht, soll sie dort auch holen koennen.
+    aktion: tuple = ()
     dep: str = ""            # wirkt nur, wenn dieses bool-Feld AN ist
     dep_nicht: str = ""      # wirkt nur, wenn dieses bool-Feld AUS ist
     dep_min: str = ""        # wirkt nur, wenn dieses Zahlfeld > 0 ist
@@ -69,6 +75,8 @@ class M:
             daten["optionen"] = [{"wert": w, "text": t} for w, t in self.optionen]
         if self.leer:
             daten["leer"] = self.leer
+        if self.aktion:
+            daten["aktion"] = {"befehl": self.aktion[0], "text": self.aktion[1]}
         for name in ("dep", "dep_nicht", "dep_min"):
             wert = getattr(self, name)
             if wert:
@@ -217,13 +225,14 @@ META: dict = {
         leer="nach getippter Priorität"),
     "scan_catalog_file": M(
         "Item-Katalog", ART_TEXT,
-        "Pfad zur katalog.json aus der Spiel-API (schreibt `python tools/katalog.py`). "
-        "Ist sie gesetzt, kennt das Studio die echten Item-Namen: der Knopf "
-        "„Aus Katalog einordnen“ setzt Kategorie und Priorität, und die "
-        "LLM-Benennung wählt aus den echten Namen statt frei zu raten. "
-        "Die Kategorie hängt am Namen, nicht am LLM — sie funktioniert auch, "
-        "wenn du den Namen selbst tippst.",
-        leer="Kategorie und Namen bleiben Handarbeit"),
+        "Pfad zur katalog.json mit den echten Item-Namen des Spiels. Der Knopf "
+        "darunter holt sie aus der offiziellen Spiel-API und trägt den Pfad "
+        "gleich hier ein. Ist sie gesetzt, setzt „Aus Katalog einordnen“ "
+        "Kategorie und Priorität, und die LLM-Benennung wählt aus den echten "
+        "Namen statt frei zu raten. Die Kategorie hängt am Namen, nicht am "
+        "LLM — sie funktioniert auch, wenn du den Namen selbst tippst.",
+        leer="Kategorie und Namen bleiben Handarbeit",
+        aktion=("katalog_holen", "Katalog aus der Spiel-API holen")),
     "scan_slot_hsv_tolerance": M(
         "Slot-Toleranz (HSV)", ART_INT,
         "Wie stark ein Slot-Hintergrund vom gelernten Farbton abweichen darf, "
@@ -288,6 +297,14 @@ META: dict = {
         "Antwort-Länge", ART_INT,
         "Obergrenze für die Antwort des Modells.",
         leer="automatisch (128 / 2048 mit Reasoning)", dep="llm_enabled"),
+    "llm_debug": M(
+        "Antworten mitschreiben", ART_BOOL,
+        "Schreibt zu jeder Anfrage Modell, Prompt, die rohe JSON-Antwort und "
+        "den daraus gelesenen Text in die Konsole — auch das Denk-Feld, das "
+        "sonst verworfen wird. Der Weg, um eine leere Antwort einzuordnen: "
+        "ein Modell ohne Bild-Fähigkeit, ein falscher Modellname und ein "
+        "Reasoning-Modell ohne Token-Reserve sehen von aussen gleich aus.",
+        dep="llm_enabled"),
     "llm_watcher_interval": M(
         "Watcher-Intervall", ART_FLOAT,
         "Wie oft der Boss-Watcher nachsieht.", einheit="s", dep="llm_enabled"),

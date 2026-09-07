@@ -1639,6 +1639,223 @@ try:
           _item_v.template == "b.png" and _item_v.template_variants == [])
     check("die Ansicht bietet Vorlagenpflege und LLM-Namen an",
           "scan_item_vorlage_entfernen" in studio_web_source()
-          and "scan_items_autoname" in studio_web_source())
+          and "scanAutonameLauf" in studio_web_source())
 finally:
     _os.chdir(_cwd_vorlage)
+
+
+# =============================================================================
+section("Studio-Items: alle auf einmal per LLM benennen")
+# =============================================================================
+# Den Knopf gab es nur AM einzelnen Item — richtig fuer die Korrektur eines
+# Namens, falsch fuer den Normalfall: nach dem Lernen heissen sie "Item 1" …
+# "Item 56", und einzeln waeren das sechsundfuenfzig Masken zum Aufklappen.
+import json as _json_an                                            # noqa: E402
+import autoclicker.llm_vision as _lv_an                            # noqa: E402
+
+_sand_an = tempfile.mkdtemp(prefix="studioautoname_")
+_cwd_an = _os.getcwd()
+_echt_an = _lv_an.suggest_item_name
+_os.chdir(_sand_an)
+try:
+    _hat_pil_an = False
+    try:
+        from PIL import Image as _PILImage_an
+        _hat_pil_an = True
+    except ImportError:
+        pass
+
+    if not _hat_pil_an:
+        print("  ----  uebersprungen (Pillow nicht installiert)")
+    else:
+        Path("sequences/s/templates").mkdir(parents=True)
+        for _datei_an in ("a.png", "b.png"):
+            _PILImage_an.new("RGB", (8, 8), (200, 60, 60)).save(
+                Path("sequences/s/templates") / _datei_an)
+        # `scan_items_autoname` liest die Config von PLATTE (`load_config`) und
+        # nicht das Modul-CONFIG: ohne Datei greift der Default und der Befehl
+        # lehnt mit "nicht aktiviert" ab, bevor er irgendetwas tut.
+        Path("config.json").write_text(
+            _json_an.dumps({"llm_enabled": True}), encoding="utf-8")
+
+        def _bau_an():
+            _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+            # **Erst laden, dann stellen.** `_scan_laden()` laeuft beim ersten
+            # `scan_daten()` und holt Slots, Items und Scans von Platte — was
+            # der Test vorher ins Objekt schreibt, waere danach weg. Frueher
+            # fiel das nicht auf, weil der Durchgang EIN Aufruf war und seine
+            # Arbeit vor der ersten Momentaufnahme erledigt hatte.
+            _b.scan_daten()
+            _b.items = {
+                "Item 1": _ITEM8(name="Item 1", template="a.png"),
+                "Item 2": _ITEM8(name="Item 2", template="b.png"),
+                "Ohne Vorlage": _ITEM8(name="Ohne Vorlage"),
+            }
+            return _b
+
+        def _durchlauf_an(b, daten, schritte=None):
+            """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
+
+            `schritte` bricht nach so vielen ab — genau das, was der
+            Abbrechen-Knopf im Arbeits-Kasten tut.
+            """
+            erg = b.scan_autoname_start(daten)
+            if not getattr(b, "_autoname", None):
+                return erg                      # abgelehnt, die Meldung sagt warum
+            n = 0
+            while (getattr(b, "_autoname", None) or {}).get("offen"):
+                if schritte is not None and n >= schritte:
+                    return b.scan_autoname_ende({"abgebrochen": True})
+                b.scan_autoname_schritt()
+                n += 1
+            return b.scan_autoname_ende()
+
+        _namen_an = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name = lambda *a, **kw: next(_namen_an, None)
+
+        _ba = _bau_an()
+        _vorher_an = _ba.scan_daten()["undo"]["tiefe"]
+        _erg_an = _durchlauf_an(_ba, {"alle": True})
+        check("'alle' benennt jedes Item mit Vorlage, nicht nur die Kategorie 'Auto'",
+              "Godlike Bow" in _ba.items and "Citadel Helmet" in _ba.items)
+        # Ein Item ohne Vorlage hat nichts, was man dem Modell zeigen koennte —
+        # es faellt heraus, statt mit einem geratenen Namen dazustehen.
+        check("ein Item ohne Vorlage bleibt unberuehrt", "Ohne Vorlage" in _ba.items)
+        check("und die Meldung nennt beide Zahlen",
+              "2 von 2" in _erg_an["status"]["text"])
+        # **Ohne Katalog raet das Modell frei** und antwortet auf die deutsche
+        # Frage deutsch: heraus kommt die Art ("Bogen") statt des Gegenstands.
+        # Das sieht in der Liste wie ein Ergebnis aus und ist keins.
+        check("und sagt dazu, dass ohne Katalog geraten wurde",
+              "ohne Katalog" in _erg_an["status"]["text"])
+        # **Ein Stand fuer den ganzen Durchgang.** Je Item abgelegt waere der
+        # Zustand von VOR dem Durchgang nach dreissig Items aus dem Stapel
+        # gefallen — also genau der, auf den man zurueck will.
+        check("der ganze Durchgang ist EIN Rueckgaengig-Schritt",
+              _ba.scan_daten()["undo"]["tiefe"] == _vorher_an + 1)
+        _ba.scan_rueckgaengig()
+        check("und ein Zurueck holt alle Namen auf einmal wieder",
+              "Item 1" in _ba.items and "Item 2" in _ba.items
+              and "Godlike Bow" not in _ba.items)
+
+        # Ohne Treffer darf kein Stand entstehen: ein STRG+Z, das nichts
+        # zurueckdreht, ist eins, dem man danach nicht mehr traut.
+        _lv_an.suggest_item_name = lambda *a, **kw: None
+        _bl = _bau_an()
+        _leer_an = _bl.scan_daten()["undo"]["tiefe"]
+        _erg_leer = _durchlauf_an(_bl, {"alle": True})
+        check("erkennt das Modell nichts, entsteht kein Rueckgaengig-Stand",
+              _bl.scan_daten()["undo"]["tiefe"] == _leer_an)
+        check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
+              "2 ohne Vorschlag" in _erg_leer["status"]["text"])
+
+        # Ohne `alle` und ohne Auswahl bleibt es beim vorsichtigen Standard —
+        # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
+        _lv_an.suggest_item_name = lambda *a, **kw: "Godlike Bow"
+        _bs = _bau_an()
+        _erg_std = _durchlauf_an(_bs, {})
+        check("ohne 'alle' bleibt es bei den auto-gelernten Items",
+              _erg_std["status"]["art"] == "warn" and "Item 1" in _bs.items)
+
+        # --- Der Grund, warum die Kategorie nie kam ---------------------------
+        # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
+        # macht Kleinbuchstaben und Unterstriche: aus "Godlike Bow" wurde
+        # `godlike_bow` — und `Katalog.treffer()` vergleicht `casefold()`, nicht
+        # Unterstriche. Der Name kam also woertlich aus dem Katalog und fand
+        # sich darin trotzdem nicht wieder; Kategorie und Prioritaet blieben
+        # IMMER aus. Ein Test, der nur den Namen prueft, sieht das nicht — es
+        # muss die ganze Kette sein.
+        from autoclicker.config import CONFIG as _CFG_an
+        Path("katalog.json").write_text(_json_an.dumps({"items": {
+            "Godlike Bow": {"kategorie": "Bogen", "wert": 900},
+            "Citadel Helmet": {"kategorie": "Helm", "wert": 500},
+        }}), encoding="utf-8")
+        _altkat_an = _CFG_an.scan_catalog_file
+        _CFG_an.scan_catalog_file = str(Path("katalog.json").resolve())
+        try:
+            _bk = _bau_an()
+            # `item_names` gehoert NICHT in den Konstruktor: die Namen sind
+            # die Wahrheit, aber abgeleitet — `sync_names()` fuellt sie aus den
+            # Objekten (`__post_init__`).
+            _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
+                                    items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
+            _bk.scan_offen = "S"
+            _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
+            _lv_an.suggest_item_name = lambda *a, **kw: next(_kat_namen, None)
+            _erg_kat = _durchlauf_an(_bk, {"alle": True})
+            check("ein Katalogname bleibt woertlich stehen",
+                  "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
+            # Ueber `.get()`, damit ein roter erster Check die restliche Suite
+            # nicht mit einem KeyError abreisst — die Gegenprobe ("Fix
+            # entschaerfen, Test muss rot werden") laeuft sonst nur bis hierhin.
+            _gb_an = _bk.items.get("Godlike Bow")
+            _ch_an = _bk.items.get("Citadel Helmet")
+            check("und wird deshalb auch eingeordnet",
+                  _gb_an is not None and _ch_an is not None
+                  and _gb_an.category == "Bogen" and _ch_an.category == "Helm")
+            check("die Meldung nennt das Einordnen mit",
+                  "eingeordnet" in _erg_kat["status"]["text"])
+            # Der teurere von beiden bekommt den ersten Rang — aber innerhalb
+            # SEINER Kategorie, und die haben hier je ein Item.
+            check("und die Prioritaet steht dicht innerhalb der Kategorie",
+                  _gb_an is not None and _ch_an is not None
+                  and _gb_an.priority == 1 and _ch_an.priority == 1)
+        finally:
+            _CFG_an.scan_catalog_file = _altkat_an
+
+        # --- Abbrechen -------------------------------------------------------
+        _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name = lambda *a, **kw: next(_abb_namen, None)
+        _bab = _bau_an()
+        _erg_abb = _durchlauf_an(_bab, {"alle": True}, schritte=1)
+        # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
+        # eine Modell-Antwort zu verbrennen, weil man die zweite nicht mehr
+        # abwarten wollte — und STRG+Z holt den ganzen Durchgang zurueck.
+        check("ein Abbruch behaelt, was bis dahin benannt wurde",
+              "Godlike Bow" in _bab.items and "Item 2" in _bab.items)
+        check("und die Meldung sagt, wie viele nicht angesehen wurden",
+              "abgebrochen" in _erg_abb["status"]["text"]
+              and "1 nicht angesehen" in _erg_abb["status"]["text"])
+        check("danach laeuft kein Durchgang mehr",
+              _bab.scan_daten()["autoname"] is None)
+        check("und ein weiterer Schritt sagt das, statt etwas zu tun",
+              _bab.scan_autoname_schritt()["status"]["art"] == "warn")
+
+        # Der Fortschritt steht in der MOMENTAUFNAHME, nicht nur in der Antwort
+        # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
+        _lv_an.suggest_item_name = lambda *a, **kw: "Godlike Bow"
+        _bfs = _bau_an()
+        _bfs.scan_autoname_start({"alle": True})
+        _stand_an = _bfs.scan_daten()["autoname"]
+        check("die Momentaufnahme traegt den Fortschritt",
+              _stand_an and _stand_an["gesamt"] == 2 and _stand_an["fertig"] == 0)
+        _bfs.scan_autoname_schritt()
+        check("und er waechst mit jedem Schritt",
+              _bfs.scan_daten()["autoname"]["fertig"] == 1)
+        _bfs.scan_autoname_ende()
+
+        # Der Knopf steht im Kopf der rechten Spalte und schickt genau dieses
+        # Feld; die Momentaufnahme sagt ihm, ob das LLM ueberhaupt an ist.
+        _quelle_an = studio_web_source()
+        check("die Seite treibt den Durchgang selbst",
+              "scanAutonameLauf({alle: true})" in _quelle_an
+              and 'rufScan("scan_autoname_start"' in _quelle_an
+              and 'rufScan("scan_autoname_schritt"' in _quelle_an
+              and 'rufScan("scan_autoname_ende"' in _quelle_an)
+        # **Ein Aufruf, der drei Minuten blockiert, laesst sich nicht abbrechen.**
+        # Deshalb steht die Schleife in der Ansicht — und deshalb muss dort auch
+        # der Knopf sein, der sie stoppt.
+        check("und laesst sich dabei abbrechen",
+              "autonameAbbruch" in _quelle_an and "Abbrechen" in _quelle_an)
+        check("und fragt vorher, ob das LLM eingeschaltet ist",
+              "SC.llm_an" in _quelle_an
+              and "llm_an" in _bau_an().scan_daten())
+        # Ein Aufruf, der eine Minute lang rechnet, braucht einen Hinweis —
+        # sonst sieht das Fenster tot aus. `mitWarten` passt nicht: dort wartet
+        # die Bruecke auf ENTER und hat eine feste Grenze.
+        check("und zeigt so lange, dass gearbeitet wird",
+              "mitArbeit(" in _quelle_an and "arbeitZeigen" in _quelle_an)
+finally:
+    _lv_an.suggest_item_name = _echt_an
+    _os.chdir(_cwd_an)
+    shutil.rmtree(_sand_an, ignore_errors=True)

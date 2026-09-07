@@ -950,7 +950,13 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Erklaerung sonst ueber 900 px, und eine Zeile, deren Anfang man beim Ende
    vergessen hat, liest niemand. */
 .cfg-zeile,.cfg-gruppe{max-width:940px}
-.cfg-zeile{display:grid;grid-template-columns:1fr 264px;gap:20px;align-items:start;
+/* **Beide Spalten duerfen schrumpfen.** Mit `1fr 264px` war die rechte Spalte
+   unverhandelbar breit: sobald die Mitte unter rund 310 px fiel (schmales
+   Fenster), ragten Eingabefelder und Knoepfe rechts aus dem Bild — sichtbar
+   als abgeschnittener Text am Rand. `minmax(0, …)` laesst beide Spalten
+   nachgeben; bei genug Platz bleibt das Verhaeltnis wie bisher. */
+.cfg-zeile{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,264px);
+  gap:20px;align-items:start;
   padding:11px 12px;border:1px solid transparent;border-radius:6px}
 .cfg-zeile:hover{background:var(--panel)}
 /* Ringsum markiert, wie ueberall sonst — und ueber box-shadow, damit die
@@ -969,8 +975,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .cfg-rechte{display:flex;flex-direction:column;gap:6px;min-width:0}
 .cfg-einheit{display:flex;align-items:center;gap:7px}
 .cfg-einheit .einheit{font-size:11px;color:var(--dim);flex:none;font-family:var(--mono)}
+/* `align-self:flex-start` laesst das Element seine Textbreite nehmen — ohne
+   Deckel wuchs es damit ueber die Spalte hinaus und aus dem Fenster heraus.
+   Der Deckel ist das Netz; die Beschriftung selbst kuerzt `cfgStandard()`. */
 .cfg-standard{font-size:10.5px;color:var(--dim);font-family:var(--mono);
-  text-align:left;align-self:flex-start;padding:2px 5px;border-radius:4px}
+  text-align:left;align-self:flex-start;padding:2px 5px;border-radius:4px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button.cfg-standard{border:1px solid transparent;background:none}
 button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .cfg-nav{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;

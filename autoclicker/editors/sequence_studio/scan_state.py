@@ -465,6 +465,11 @@ class ScanStateMixin:
 
     def scan_daten(self, daten: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zum Zeichnen braucht — ohne das Bild selbst."""
+        # Lokal wie in `_katalog_pruefen()`: `scan_state` soll `config` nicht
+        # schon beim Import nachziehen. `CONFIG` und nicht `load_config()` —
+        # es gibt EIN Config-Objekt pro Prozess, und der Einstellungen-Reiter
+        # haelt es aktuell.
+        from ...config import CONFIG
         self._scan_laden()
         text, art = self._scan_status
         cfg = self.scans.get(self.scan_offen)
@@ -510,6 +515,12 @@ class ScanStateMixin:
             # Ansicht rechnet das nicht selbst nach: sie sieht `config.json`
             # nicht, und zwei Antworten auf dieselbe Frage liefen auseinander.
             "katalog_an": bool(self._katalog()),
+            # Ob die Sammel-Benennung ueberhaupt etwas tun kann. Die Ansicht
+            # sieht `config.json` nicht — ein Knopf, der jedes Mal nur „ist
+            # nicht aktiviert" meldet, ist schlechter als keiner.
+            "llm_an": bool(CONFIG.llm_enabled),
+            # Laeuft gerade ein Benenn-Durchgang, und wie weit ist er?
+            "autoname": self._autoname_stand(),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
             "fenster_id": self.scan_fenster_id,
             # Der Titel ist die dauerhafte Quelle, das HWND nur ihr aktueller

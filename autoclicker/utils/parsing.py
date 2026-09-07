@@ -180,6 +180,32 @@ def format_duration(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+# Was in einem Item-NAMEN stehen darf, ausser Buchstaben und Ziffern. Eine
+# Whitelist und keine Verbotsliste: so faellt ein Pfadtrenner heraus, ohne dass
+# ihn jemand aufzaehlen muss.
+_NAME_EXTRA = " -'()&.,+"
+
+
+def bereinige_itemname(name: str) -> str:
+    """Ein vorgeschlagener Item-Name — als NAME, nicht als Dateiname.
+
+    **Hier stand `sanitize_filename()`, und das war die falsche Funktion.** Sie
+    macht Kleinbuchstaben und ersetzt Leerzeichen durch Unterstriche: aus
+    "Godlike Bow" wurde `godlike_bow`. Der Name ist aber der Schluessel, unter
+    dem der Katalog nachgeschlagen wird, und `Katalog.treffer()` vergleicht
+    `casefold()` — nicht Unterstriche. Kategorie und Prioritaet blieben deshalb
+    IMMER aus, ausgerechnet bei einem Namen, der woertlich aus dem Katalog
+    kommt und nur noch zugeordnet werden musste.
+
+    Dateinamenssicher muss das Ergebnis nicht sein: wo aus dem Namen wirklich
+    eine Datei wird (`_apply_item_rename`), laeuft `sanitize_filename()` eine
+    Ebene tiefer noch einmal darueber.
+    """
+    roh = " ".join(str(name or "").split())
+    sauber = "".join(c for c in roh if c.isalnum() or c in _NAME_EXTRA)
+    return " ".join(sauber.split()).strip(" .,")
+
+
 def sanitize_filename(name: str) -> str:
     """Bereinigt einen Namen für sichere Dateinamen.
 

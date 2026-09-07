@@ -1070,6 +1070,7 @@ Wird beim ersten Start automatisch erstellt:
   "llm_timeout": 30,
   "llm_reasoning": false,
   "llm_max_tokens": 0,
+  "llm_debug": false,
   "llm_boss_prompt": null,
   "llm_watcher_interval": 5.0,
   "llm_watcher_max_scans": 0,
@@ -1166,6 +1167,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
 | `llm_reasoning` | Reasoning-Modus aktivieren — Ollama: `think: true`, LM Studio: `reasoning_effort: high` (Standard: false) |
 | `llm_max_tokens` | Token-Limit für Antworten (`0` = automatisch: 50 normal / 2048 mit Reasoning) |
+| `llm_debug` | Jede LLM-Anfrage in die Konsole mitschreiben: Modell, Endpunkt, Bildmass, beide Prompts, die **rohe JSON-Antwort** (samt `reasoning_content`, das der Code sonst verwirft) und den daraus gelesenen Text. Der Weg, um eine leere Antwort einzuordnen — ein Modell ohne Bild-Fähigkeit, ein falscher Modellname und ein Reasoning-Modell ohne Token-Reserve sehen von aussen gleich aus. (Standard: false) |
 | `llm_watcher_interval` | Prüf-Intervall des Boss-Watchers in Sekunden (Standard: 5.0) |
 | `llm_watcher_max_scans` | Max. Scans bis Boss-Watcher abbricht (`0` = unbegrenzt) |
 | `llm_watcher_timeout` | Timeout in Sekunden bis Boss-Watcher abbricht (`0` = unbegrenzt) |
@@ -1227,7 +1229,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
-| `scan_catalog_file` | Pfad zu `katalog.json` aus der Spiel-API (`python tools/katalog.py`) — echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
+| `scan_catalog_file` | Pfad zu `katalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/katalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
 
 ### Debug-Einstellungen
 

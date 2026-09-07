@@ -509,7 +509,15 @@ benutzt. Der zweite gehört zum Scan und nicht in die Config — aus demselben
 Grund wie `reverse`: wer zwei Spiele betreibt, hat einen Katalog, der nur für
 eines von beiden gilt, und global gesetzt ordnete er das andere still falsch
 ein. Im Studio steht er in den Scan-Einstellungen direkt neben „Slots
-rückwärts", der Pfad im Einstellungen-Reiter.
+rückwärts", der Pfad im Einstellungen-Reiter — **samt dem Knopf, der die
+Datei holt** (`katalog_holen`, angemeldet über `M.aktion` in
+`config_meta.py`). Bis dahin konnte nur `python tools/katalog.py` sie
+anlegen: ausgerechnet die Datei, ohne die das LLM frei rät und die
+Kategorie leer bleibt, liess sich im Fenster nicht beschaffen. Gerechnet
+wird weiter im Werkzeug — **die Brücke ruft `tools/katalog.py`, nie
+umgekehrt**, dieselbe Richtung wie beim Bericht-Reiter. Ein gesetzter Pfad
+wird dabei aktualisiert und nicht überschrieben, und weder ein Netzfehler
+noch eine leere Antwort fassen die vorhandene Datei an.
 
 **Das hängt NICHT am LLM.** Die Kategorie folgt aus dem *Namen* — heisst ein
 Item „Citadel Helmet", steht im Katalog „Helm", und ob den Namen ein Mensch
@@ -535,6 +543,38 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
   eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
   besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Ein Durchgang, den die Seite treibt — sonst gibt es kein Abbrechen.**
+  Sechsundfünfzig Vorlagen sind bei drei Sekunden je Modell-Antwort knapp drei
+  Minuten; als EIN Brücken-Aufruf kann das niemand stoppen. Ein Abbruch-Flag
+  bräuchte einen zweiten Aufruf **neben** dem laufenden: in pywebview kommt der
+  durch, im Rauchtest-Prüfstand nicht (dort hält der Python-Callback den
+  Dispatcher) — und ein Abbruch, der nur im Fenster funktioniert, ist keiner.
+  Deshalb `scan_autoname_start` → `scan_autoname_schritt` (je Item) →
+  `scan_autoname_ende`: der Zustand liegt in der Brücke, die Seite fragt nur
+  nach dem nächsten Schritt. Das bringt Abbruch, sichtbaren Fortschritt und
+  einen Durchgang, den die Vertragssuite Schritt für Schritt durchspielen kann.
+  Drei Regeln dazu: die Config wird beim Start **eingefroren** (sonst liest
+  `load_config()` je Item die Datei und schreibt eine Konsolenzeile), der
+  Rückgängig-Stand entsteht **einmal und erst beim ersten Treffer**, und ein
+  Abbruch **behält, was bis dahin benannt wurde** — es wegzuwerfen hiesse,
+  zwanzig Modell-Antworten zu verbrennen, weil man die einundzwanzigste nicht
+  mehr abwarten wollte.
+- **Am Katalog-Feld steht, was dahinter liegt** (`_katalog_stand()`,
+  Momentaufnahme `staende`): Umfang und Zeitpunkt der Datei, in **Ortszeit**,
+  und „Datei fehlt“, wenn der Pfad ins Leere zeigt. Der Pfad allein beantwortet
+  die Frage nicht, die man an eine geholte Liste hat — ohne Antwort holt man
+  sie entweder nie wieder oder bei jedem Zweifel neu.
+- **Der vorgeschlagene Name ist ein NAME, kein Dateiname.** Beide
+  `autoname`-Wege (Studio und Konsole) drückten ihn durch
+  `sanitize_filename()` — die macht Kleinbuchstaben und Unterstriche, aus
+  „Godlike Bow" also `godlike_bow`. `Katalog.treffer()` vergleicht aber
+  `casefold()` und keine Unterstriche: der Name kam wörtlich aus dem Katalog
+  und fand sich darin trotzdem nicht wieder, **Kategorie und Priorität blieben
+  also immer aus** — ausgerechnet der halbe Zweck der geschlossenen Auswahl.
+  Dafür gibt es `bereinige_itemname()` (`utils/parsing.py`); wo aus dem Namen
+  wirklich eine Datei wird (`_apply_item_rename`), läuft `sanitize_filename()`
+  eine Ebene tiefer ohnehin noch einmal darüber. Ein Test misst die ganze
+  Kette bis zur Kategorie — einer, der nur den Namen prüft, sieht es nicht.
 - **Der Prompt der geschlossenen Auswahl ist englisch**, und auch das ist
   gemessen: mit dem deutschen antwortet das Modell deutsch („Bogen", „Schwert")
   — in einer Sprache, in der die Liste gar nicht steht — und nennt die *Art*

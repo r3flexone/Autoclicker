@@ -4977,6 +4977,12 @@ _gerufen13 = set(_re13.findall(
 # wartet und bei einem Tippfehler gar nichts tut.
 _gerufen13 |= set(_re13.findall(
     r'\bmitWarten\("(?:ruf|frage|werkzeug)",\s*"([a-z_]+)"', _html13))
+# `mitArbeit()` ist der siebte Kanal — und der Gegenfall zu `mitWarten`: dort
+# wartet die Bruecke auf einen ENTER-Druck, hier RECHNET sie (sechsundfuenfzig
+# Modell-Aufrufe hintereinander). Wie dort waehlt das erste Argument den
+# Kanal darunter, der Methodenname steht also an zweiter Stelle.
+_gerufen13 |= set(_re13.findall(
+    r'\bmitArbeit\("(?:scan|frage)",\s*"([a-z_]+)"', _html13))
 _gerufen13 = sorted(_gerufen13)
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
@@ -4988,14 +4994,14 @@ check("und der Werkzeuge-Reiter (rufWerkzeug)",
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
 # `rufWerkzeug`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
-_BEKANNT13 = _HELFER13 + ("mitWarten",)
+_BEKANNT13 = _HELFER13 + ("mitWarten", "mitArbeit")
 # Gefunden wird JEDE async-Funktion, die einen Bruecken-Namen weiterreicht —
 # nicht nur die mit `ruf` im Namen. `mitWarten` heisst nicht so und waere unter
 # dem alten Muster still durchgerutscht.
 _helfer_da13 = sorted(set(_re13.findall(
     r'\basync function (\w+)\(', _html13)))
 _helfer_da13 = [h for h in _helfer_da13
-               if h.startswith("ruf") or h == "mitWarten"]
+               if h.startswith("ruf") or h in ("mitWarten", "mitArbeit")]
 if not all(h in _BEKANNT13 for h in _helfer_da13):
     print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _BEKANNT13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
@@ -6037,6 +6043,24 @@ if _zuviel17:
 _fehlt17 = sorted(set(_namen17) - set(_META17))
 if _fehlt17:
     print("        vorhanden, aber unbeschrieben: " + ", ".join(_fehlt17))
+
+# --- Ein Knopf am Feld zeigt auf eine Methode, die es gibt ---
+# Sonst ist er ein Bedienelement, das nichts tut — und das gibt es hier nicht
+# (dieselbe Regel wie bei den Kacheln des Teilen-Reiters). Geprueft wird auch,
+# dass die Ansicht ihn ueberhaupt zeichnet: eine Meta-Angabe, die niemand liest,
+# ist ein Knopf, den niemand sieht.
+_aktionen17 = {k: m.aktion for k, m in _META17.items() if m.aktion}
+_tote17 = [f"{k} -> {a[0]}" for k, a in _aktionen17.items()
+           if not callable(getattr(_SB8, a[0], None))]
+check("jeder Feld-Knopf zeigt auf eine Bruecken-Methode", _tote17 == [])
+if _tote17:
+    print("        fehlt in der Bruecke: " + ", ".join(_tote17))
+check("und die Ansicht zeichnet ihn", "cfgAktion(" in _H.studio_web_source())
+# Der Katalog ist der Fall, fuer den es das gibt: bis dahin konnte ihn nur
+# `python tools/katalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
+# frei raet und die Kategorie leer bleibt.
+check("und der Katalog laesst sich im Fenster holen",
+      _aktionen17.get("scan_catalog_file", ("",))[0] == "katalog_holen")
 
 check("jede Art gibt es auch als Bedienelement",
       all(m.art in _ARTEN17 for m in _META17.values()))

@@ -4,7 +4,7 @@ Utils-Subpaket: Konsole, I/O, Parsing.
 Modul-Aufteilung:
     console.py   ANSI-Farben, Status-Tags, Konsolen-Detection, Layout-Helper
     io.py        safe_input, interactive_select, read_key, read_command, wait_while_paused
-    parsing.py   parse_time_input, parse_non_negative_*, format_duration, sanitize_filename, compact_json
+    parsing.py   parse_time_input, parse_non_negative_*, format_duration, sanitize_filename, bereinige_itemname, compact_json
 
 Re-exportiert die komplette bisherige API damit `from .utils import ...`
 und `from autoclicker.utils import ...` aus anderen Modulen unverändert
@@ -26,7 +26,8 @@ from .io import (
 )
 from .parsing import (
     parse_time_input, parse_non_negative_float, parse_non_negative_range,
-    format_duration, sanitize_filename, eindeutiger_name, naechster_freier_name,
+    format_duration, sanitize_filename, bereinige_itemname,
+    eindeutiger_name, naechster_freier_name,
     compact_json, atomic_write,
 )
 
@@ -44,6 +45,6 @@ __all__ = [
     'wait_while_paused',
     # parsing
     'parse_time_input', 'parse_non_negative_float', 'parse_non_negative_range',
-    'format_duration', 'sanitize_filename', 'eindeutiger_name', 'naechster_freier_name',
+    'format_duration', 'sanitize_filename', 'bereinige_itemname', 'eindeutiger_name', 'naechster_freier_name',
     'compact_json', 'atomic_write',
 ]

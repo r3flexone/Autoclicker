@@ -10,7 +10,8 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
 from ...persistence import update_item_in_scans, save_global_items, active_templates_dir
-from ...utils import confirm, is_cancel, safe_input, sanitize_filename, warn, ok, err, info, hint
+from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
+                      bereinige_itemname, warn, ok, err, info, hint)
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -168,7 +169,7 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             model=state.config.llm_model,
             timeout=state.config.llm_timeout,
         )
-        base = sanitize_filename(suggestion).strip() if suggestion else ""
+        base = bereinige_itemname(suggestion) if suggestion else ""
         if not base:
             print(f"    {old_name}: kein Name vom LLM — bleibt.")
             continue

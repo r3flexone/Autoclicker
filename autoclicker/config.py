@@ -122,6 +122,7 @@ class AppConfig:
     llm_boss_prompt: Optional[str] = None           # Custom-Prompt für Boss-Erkennung
     llm_reasoning: bool = False                      # Reasoning/Thinking aktivieren wenn Modell es unterstützt
     llm_max_tokens: int = 0                          # Max. Antwort-Tokens (0 = Auto: 128 / 2048 mit Reasoning)
+    llm_debug: bool = False                          # Jede LLM-Antwort roh in die Konsole schreiben (Prompt, JSON, extrahierter Text)
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
@@ -417,6 +418,7 @@ _CONFIG_SECTIONS = [
     ("LLM VISION (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
         "llm_timeout", "llm_retry_count", "llm_async", "llm_reasoning", "llm_max_tokens", "llm_boss_prompt",
+        "llm_debug",
         "llm_watcher_interval", "llm_watcher_max_scans", "llm_watcher_timeout",
         "boss_learn_global",
     ]),

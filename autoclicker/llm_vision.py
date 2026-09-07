@@ -187,6 +187,104 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
     return base
 
 
+# =============================================================================
+# MITSCHRIFT (config.llm_debug)
+# =============================================================================
+#
+# **Eine leere Antwort hat vier Ursachen, und von aussen sehen sie gleich aus:**
+# das Modell kann keine Bilder, der Modellname stimmt nicht, ein
+# Reasoning-Modell hat alle Tokens verdacht, oder das Bild war schwarz. Ohne
+# die rohe Antwort raet man zwischen ihnen — genau dafuer gab es
+# `_raw_lmstudio_debug()` in `tools/test_llm.py`, also einen zweiten
+# HTTP-Aufruf neben dem echten mit einer anderen Frage. Hier haengt die
+# Mitschrift AM echten Aufruf: was dasteht, ist das, was der Aufrufer bekommen
+# hat, und nicht das, was ein Nachbau bekommen haette.
+#
+# Gelesen wird `CONFIG` und nicht ein eigener Modulschalter — es gibt EIN
+# Config-Objekt pro Prozess, und der Einstellungen-Reiter haelt es aktuell.
+# Beide Importe stehen IN den Funktionen: `llm_vision` zieht sonst `config`
+# und `utils` schon beim blossen Import nach, und die Vertragssuite importiert
+# es einzeln.
+
+_DEBUG_ROH_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
+
+
+def _debug_an() -> bool:
+    """Schreibt die Config gerade jede LLM-Antwort mit?"""
+    try:
+        from .config import CONFIG
+        return bool(CONFIG.llm_debug)
+    except Exception:
+        return False
+
+
+def _debug_ausgabe(zeilen: list) -> None:
+    """Ein Block, EIN Schreibvorgang — dieselbe Regel wie bei `status_line()`.
+
+    Je Zeile einzeln geschrieben stand vor jeder ein `clear_line()`, und das
+    sind achtzig Leerzeichen: dreissig Zeilen roher JSON kamen mit einer
+    achtzig Spalten breiten Treppe davor heraus. Geloescht werden muss die
+    Status-Zeile trotzdem — sie steht ohne Zeilenumbruch da, sonst klebt die
+    erste Mitschrift-Zeile hinten an ihr.
+    """
+    try:
+        from .utils import clear_line, dbg
+        clear_line()
+        marke = dbg("[LLM]")
+    except Exception:
+        marke = "[LLM]"
+    print("\n".join(f"{marke} {z}" for z in zeilen), flush=True)
+
+
+def _debug_anfrage(provider: str, model: str, endpoint: str, prompt: str,
+                   system_prompt: Optional[str], img) -> None:
+    """Was rausgeht: Modell, Endpunkt, Bildmass und beide Prompts.
+
+    Der System-Prompt gehoert dazu und nicht nur die Frage: bei der
+    Item-Benennung entscheidet er ueber die Sprache und darueber, ob das
+    Modell frei raet oder aus dem Katalog auswaehlt — genau die Stelle, an der
+    man sich fragt, warum eine Antwort deutsch ist.
+    """
+    groesse = getattr(img, "size", None)
+    zeilen = [f"-> {provider} · {model} · {endpoint}",
+              f"   Bild: {groesse[0]}×{groesse[1]}" if groesse else "   Bild: (unbekannt)"]
+    if system_prompt:
+        zeilen.append(f"   System: {system_prompt!r}")
+    zeilen.append(f"   Prompt: {prompt!r}")
+    _debug_ausgabe(zeilen)
+
+
+def _debug_antwort(result: dict, text: str, duration_ms: float) -> None:
+    """Was zurueckkam — roh und daneben das, was der Code daraus liest.
+
+    Die rohe Antwort steht MIT dem Denk-Feld da (`reasoning_content`), das
+    `_extract_response_text` verwirft: ein Modell, das alle Tokens ins Denken
+    steckt, liefert einen leeren `content` und sieht sonst aus wie ein
+    kaputter Aufruf.
+    """
+    from .utils import warn
+    roh = json.dumps(result, ensure_ascii=False, indent=2)
+    rest = max(0, len(roh) - _DEBUG_ROH_MAX)
+    zeilen = [f"<- {duration_ms:.0f} ms, roh:"]
+    zeilen += ["   " + z for z in roh[:_DEBUG_ROH_MAX].splitlines()]
+    if rest:
+        zeilen.append(f"   … ({rest} weitere Zeichen abgeschnitten)")
+    if text.strip():
+        zeilen.append(f"   gelesen: {text!r}")
+    else:
+        zeilen.append("   gelesen: (leer) " + warn(
+            "Modell ohne Bild-Faehigkeit, falscher Modellname, leeres Bild "
+            "oder alle Tokens im Reasoning verbraucht"))
+    _debug_ausgabe(zeilen)
+
+
+def _debug_fehler(text: str, duration_ms: float) -> None:
+    """Auch ein Fehlschlag wird mitgeschrieben — sonst fehlt in der Mitschrift
+    ausgerechnet der Aufruf, der nicht funktioniert hat."""
+    from .utils import err
+    _debug_ausgabe([err(f"<- nach {duration_ms:.0f} ms: {text}")])
+
+
 def analyze_image(
     img: 'Image.Image',
     provider: str = PROVIDER_LMSTUDIO,
@@ -245,6 +343,10 @@ def analyze_image(
     else:
         request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
 
+    mitschrift = _debug_an()
+    if mitschrift:
+        _debug_anfrage(provider, model, endpoint, prompt, system_prompt, img)
+
     # API-Anfrage
     start_time = time.time()
     try:
@@ -262,27 +364,37 @@ def analyze_image(
 
             # Antwort extrahieren
             text = _extract_response_text(result, provider)
+            if mitschrift:
+                _debug_antwort(result, text, duration_ms)
             return True, text.strip(), duration_ms
 
     except socket.timeout:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
+        if mitschrift:
+            _debug_fehler(f"Timeout nach {timeout}s", duration_ms)
         return False, f"Timeout nach {timeout}s", duration_ms
 
     except urllib.error.URLError as e:
         duration_ms = (time.time() - start_time) * 1000
         reason = str(getattr(e, 'reason', e))
         logger.error(f"LLM API-Fehler ({provider}): {reason}")
+        if mitschrift:
+            _debug_fehler(f"Verbindungsfehler: {reason}", duration_ms)
         return False, f"Verbindungsfehler: {reason}", duration_ms
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
+        if mitschrift:
+            _debug_fehler(f"Antwort-Fehler: {e}", duration_ms)
         return False, f"Antwort-Fehler: {e}", duration_ms
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
+        if mitschrift:
+            _debug_fehler(f"Fehler: {e}", duration_ms)
         return False, f"Fehler: {e}", duration_ms
 
 
