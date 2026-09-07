@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""EIN Kommando für alle Tests: `python tools/alle_tests.py`.
+"""EIN Kommando für alle Tests: `python tests/alle_tests.py`.
 
 **Warum es das gibt.** Es waren zwei Kommandos, und das stand als Warnung in
 CLAUDE.md, weil genau diese Lücke schon einmal einen roten CI-Lauf gekostet hat:
-`tools/test_logic.py` war grün, gemeldet wurde „alles grün", und die
+`tests/test_logic.py` war grün, gemeldet wurde „alles grün", und die
 Wurzelmodule liefen nie. Eine Regel, an die man sich erinnern muss, ist keine.
 
 Der Grund für die Trennung ist inzwischen weg: die beiden Wurzelmodule, die
@@ -15,8 +15,8 @@ Drei Schichten, von innen nach aussen:
 | Schicht | was sie prüft | braucht |
 |---|---|---|
 | Vertragssuite (`test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`test_*.py`) | Import/Export, Plattformvertrag, Studio-UX | Pillow (sonst übersprungen) |
-| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX | Pillow (sonst übersprungen) |
+| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
 Jede Schicht ist einzeln aufrufbar (`--nur vertrag|wurzel|rauch`) — beim
 Arbeiten an einer Sache will man nicht auf die anderen warten. Der Volllauf ist
@@ -100,7 +100,7 @@ def _lauf(befehl: list[str], umgebung: dict | None = None) -> tuple[int, str]:
 def vertrag() -> Ergebnis:
     e = Ergebnis("Vertragssuite")
     start = time.monotonic()
-    code, text = _lauf([sys.executable, str(WURZEL / "tools" / "test_logic.py")])
+    code, text = _lauf([sys.executable, str(WURZEL / "tests" / "test_logic.py")])
     e.dauer = time.monotonic() - start
     e.ok = code == 0
     for zeile in reversed(text.splitlines()):
@@ -122,7 +122,7 @@ def wurzel(vertrag_separat: bool = False) -> Ergebnis:
     """
     e = Ergebnis("Wurzelmodule")
     start = time.monotonic()
-    befehl = [sys.executable, "-m", "tools.wurzeltests"]
+    befehl = [sys.executable, "-m", "tests.wurzeltests"]
     if vertrag_separat:
         befehl.append("--ohne-vertrag")
     code, text = _lauf(befehl)
@@ -138,7 +138,7 @@ def wurzel(vertrag_separat: bool = False) -> Ergebnis:
 def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
     e = Ergebnis("Rauchtests")
     sys.path.insert(0, str(WURZEL))
-    from tools.rauchtests._bruecke import playwright_da
+    from tests.rauch._bruecke import playwright_da
 
     da, grund = playwright_da()
     if not da:
@@ -152,7 +152,7 @@ def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
     start = time.monotonic()
     fehlgeschlagen = []
     for name in nur:
-        code, _ = _lauf([sys.executable, "-m", f"tools.rauchtests.{name}"])
+        code, _ = _lauf([sys.executable, "-m", f"tests.rauch.{name}"])
         if code != 0:
             fehlgeschlagen.append(name)
     e.dauer = time.monotonic() - start
@@ -188,7 +188,7 @@ def main(argv: list[str]) -> int:
     if args.mutationen:
         e = Ergebnis("Gegenproben")
         start = time.monotonic()
-        code, _ = _lauf([sys.executable, str(WURZEL / "tools" / "mutationspruefung.py")])
+        code, _ = _lauf([sys.executable, str(WURZEL / "tests" / "mutationspruefung.py")])
         e.ok = code == 0
         e.dauer = time.monotonic() - start
         e.zusammenfassung = "gezielte Mutationsprüfung"

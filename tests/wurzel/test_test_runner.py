@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from tools import alle_tests, wurzeltests
+from tests import alle_tests, wurzeltests
 
 
 class TestRunnerTest(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestRunnerTest(unittest.TestCase):
         for argumente, exitcode, meldung in (
                 ([], 0, "ÜBERSPRUNGEN"), (["--rauch-pflicht"], 1, "FAIL")):
             with self.subTest(argumente=argumente), \
-                    patch("tools.rauchtests._bruecke.playwright_da", return_value=(False, "Browser fehlt")), \
+                    patch("tests.rauch._bruecke.playwright_da", return_value=(False, "Browser fehlt")), \
                     patch.object(alle_tests, "_lauf") as lauf, \
                     redirect_stdout(io.StringIO()) as ausgabe:
                 self.assertEqual(alle_tests.main(["runner", "--nur", "rauch", *argumente]), exitcode)
@@ -41,7 +41,7 @@ class TestRunnerTest(unittest.TestCase):
                 lauf.assert_not_called()
 
     def test_roter_browserlauf_bleibt_rot(self):
-        with patch("tools.rauchtests._bruecke.playwright_da", return_value=(True, "")), \
+        with patch("tests.rauch._bruecke.playwright_da", return_value=(True, "")), \
                 patch.object(alle_tests, "_lauf", return_value=(1, "AssertionError")), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(alle_tests.main([

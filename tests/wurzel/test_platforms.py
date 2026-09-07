@@ -1,7 +1,8 @@
 """Vertragstests für die Windows-/Linux-Plattformgrenze.
 
 Die CI hat keinen X-Server. Sie prüft daher Auswahl, Delegation und Fehlerfälle;
-echte globale Eingabe steht im manuellen LINUX_TESTPLAN.md.
+echte globale Eingabe, Fensterfokus und Screenshots bleiben von Hand in einer
+Windows- bzw. X11-Sitzung zu prüfen — automatisieren lässt sich das hier nicht.
 """
 
 import contextlib

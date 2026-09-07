@@ -13,20 +13,20 @@ UI-Texte sind **Deutsch** — neue Strings ebenso.
 ## Run / Lint / Test
 
 ```bash
-python tools/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
-python tools/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
-python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
-python tools/alle_tests.py --mutationen      # dazu die Gegenproben (so ruft CI es auf)
-python tools/alle_tests.py --nur rauch --rauch-pflicht  # fehlender Browser = rot
+python tests/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
+python tests/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
+python tests/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python tests/alle_tests.py --mutationen      # dazu die Gegenproben (so ruft CI es auf)
+python tests/alle_tests.py --nur rauch --rauch-pflicht  # fehlender Browser = rot
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
-python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ test_*.py
+python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
 
 # Die Schichten einzeln, falls man sie direkt braucht:
-python tools/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
-python -m tools.wurzeltests     # Wurzelmodule (--ohne-vertrag laesst den Wrapper weg)
-python -m tools.rauchtests.werkzeuge   # ein Rauchtest im Browser
-python tools/mutationspruefung.py      # Gegenproben einzeln (--fall NAME)
+python tests/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
+python -m tests.wurzeltests     # Wurzelmodule (--ohne-vertrag laesst den Wrapper weg)
+python -m tests.rauch.werkzeuge   # ein Rauchtest im Browser
+python tests/mutationspruefung.py      # Gegenproben einzeln (--fall NAME)
 python tools/katalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
                                 # (--zeige = nur anzeigen, --ziel = anderer Pfad)
 
@@ -42,16 +42,45 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
 ```
 
-**Ein Kommando, drei Schichten: `python tools/alle_tests.py`.**
+**Ein Kommando, drei Schichten: `python tests/alle_tests.py`.**
 
 | Schicht | was sie prüft | braucht |
 |---|---|---|
-| Vertragssuite (`tools/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`test_*.py`) | Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow (sonst übersprungen) |
-| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Vertragssuite (`tests/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
+| Wurzelmodule (`tests/wurzel/`) | Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow (sonst übersprungen) |
+| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+
+**Alles Testbare liegt unter `tests/`, und `tools/` enthält nur noch Werkzeuge.**
+Vorher lagen die drei Schichten an drei Orten: elf `test_*.py` im
+Wurzelverzeichnis, die Vertragssuite in `tools/`, die Rauchtests daneben. Wer
+„die Tests" suchte, musste alle drei kennen — und das Wurzelverzeichnis eines
+Projekts ist der schlechteste Ort für elf Dateien, die man beim Arbeiten am
+Programm nie aufmacht.
+
+| liegt jetzt | war vorher |
+|---|---|
+| `tests/alle_tests.py`, `tests/mutationspruefung.py`, `tests/wurzeltests.py` | `tools/` |
+| `tests/test_logic.py` + `tests/vertrag/` | `tools/test_logic.py` + `tools/tests/` |
+| `tests/wurzel/` | die `test_*.py` im Wurzelverzeichnis |
+| `tests/rauch/` | `tools/rauchtests/` |
+
+Zwei Dinge, die dabei auffallen sollen:
+
+- **`tools/test_llm.py` und `tools/test_ocr.py` sind mitgezogen — nicht.** Sie
+  tragen den `test_`-Präfix, sind aber interaktive Werkzeuge: sie öffnen einen
+  Region-Picker und reden mit einem LLM bzw. einer OCR-Engine. Ein Name, der
+  etwas Falsches verspricht, ist hier sonst ein Fehler; diese beiden bleiben in
+  `tools/`, weil sie **dort** hingehören, und der Baum in der README sagt es
+  ausdrücklich dazu.
+- **`tests/wurzel/` ist ein flacher Ordner ohne `__init__.py`**, und das ist
+  Absicht: `unittest.discover()` legt sein Startverzeichnis selbst in
+  `sys.path`, also findet jedes Modul sein `test_support` weiterhin als
+  schlichten Nachbarn. Das Repo-Wurzelverzeichnis legt `wurzeltests.py`
+  zusätzlich dazu (`autoclicker`, `main`, `market_analysis`) — ohne das liefe
+  nur der Aufruf über `-m`, nicht der ausgeschriebene.
 
 **Hier standen einmal ZWEI Kommandos, und das hat einen roten CI-Lauf gekostet:**
-`tools/test_logic.py` war grün, gemeldet wurde „alles grün", und die Wurzelmodule
+`tests/test_logic.py` war grün, gemeldet wurde „alles grün", und die Wurzelmodule
 liefen nie. Die Warnung dazu stand an dieser Stelle — eine Regel, an die man sich
 erinnern muss, ist keine.
 
@@ -78,7 +107,7 @@ Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Fenster`, `sandkasten`,
 `stelle_bildschirm`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
 Job, weil dort erst ein Browser installiert werden muss.
 
-**`tools/test_logic.py`** prüft Serialisierung,
+**`tests/test_logic.py`** prüft Serialisierung,
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
 deshalb läuft die komplette Logik-Schicht auch hier.
@@ -114,7 +143,7 @@ Abschluss stirbt, meldete sonst Erfolg, weil niemand mehr etwas gedruckt hat.
 Dasselbe Muster in der Gegenrichtung ist `--rauch-pflicht` — lokal darf ein
 fehlender Browser überspringen, im Browser-Job ist genau das ein Fehler.
 
-**`--mutationen` prüft die Tests, nicht den Code** (`tools/mutationspruefung.py`).
+**`--mutationen` prüft die Tests, nicht den Code** (`tests/mutationspruefung.py`).
 Jeder Fall entfernt in einem frischen Prozess **eine** Sicherung im Arbeits\-
 speicher und erwartet, dass ein bestimmter Test darüber rot wird. Das ist die
 Gegenprobe, die CLAUDE.md an anderer Stelle von Hand verlangt („Fix entschärfen,
@@ -126,17 +155,17 @@ Importfehler, ein übersprungener Test oder ein Timeout beweist nichts.
 die Fälle stehen als Liste in `FAELLE` und wachsen mit den Fehlern, die auffallen,
 nicht mit dem Code.
 
-`tools/wurzeltests.py` gibt es, weil `unittest discover` die Vertragssuite über
+`tests/wurzeltests.py` gibt es, weil `unittest discover` die Vertragssuite über
 ihren Wrapper ein zweites Mal mitzog: im Gesamtlauf lief sie damit doppelt (und
 die Zähler standen zweimal da). `--ohne-vertrag` lässt genau diesen Wrapper weg;
 einzeln aufgerufen bleibt er drin, sonst fehlte er dort ganz.
 
-**Ein Einstiegspunkt, mehrere Dateien.** `tools/test_logic.py` war mit über 7.000
+**Ein Einstiegspunkt, mehrere Dateien.** `tests/test_logic.py` war mit über 7.000
 Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
 durchnummerierten Variablennamen (`_b18`, `_sand18`) waren das Symptom: so
 benennt man, wenn der Namensraum voll ist. Neue Sektionen kommen deshalb als
-eigenes Modul unter **`tools/tests/`**, holen Stubs, Zähler und `check`/`section`
-aus `tools/tests/_harness.py` und werden am Ende von `test_logic.py` importiert
+eigenes Modul unter **`tests/vertrag/`**, holen Stubs, Zähler und `check`/`section`
+aus `tests/vertrag/_harness.py` und werden am Ende von `test_logic.py` importiert
 (Import = ausführen, wie im Rest der Datei auch).
 
 Zwei Dinge hängen daran: **die Zähler leben im Harness**, nicht im Aufrufer —
@@ -182,7 +211,7 @@ Automatisiert geprüft werden beide Plattformverträge. Manuell bleiben die echt
 Desktop-Grenzen: globale Hotkeys, Eingabesimulation, Fensterfokus und Screenshots
 in einer Windows- bzw. X11-Sitzung.
 
-**`tools/alle_tests.py` stellt seinen eigenen stdout auf UTF-8** (`reconfigure`,
+**`tests/alle_tests.py` stellt seinen eigenen stdout auf UTF-8** (`reconfigure`,
 `errors="replace"`) und braucht deshalb kein `PYTHONIOENCODING` mehr. Vorher riss
 ein einziges Kaestchen aus einem Fortschrittsbalken den ganzen Lauf mit
 `UnicodeEncodeError` ab — und zwar *nachdem* die Vertragssuite grün durch war:
@@ -2429,8 +2458,8 @@ Fünf Regeln, an denen er hängt:
 
 Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: jeder
 `data-ansicht`-Knopf braucht seine Umschalt-Zeile in `setzeAnsicht()` (und keine
-Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tools/rauchtests/` muss in
-`RAUCHTESTS` (`tools/alle_tests.py`) stehen — eine getippte Liste ist genau die
+Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/rauch/` muss in
+`RAUCHTESTS` (`tests/alle_tests.py`) stehen — eine getippte Liste ist genau die
 Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
@@ -3412,7 +3441,7 @@ sich später als stiller Fehlschlag zu zeigen.
 
 Windows-spezifischer Code darf nur noch in **drei** Dateien stehen —
 `platforms/windows.py`, `utils/io.py`, `utils/console.py`. Ein Test in
-`tools/test_logic.py` (`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf
+`tests/test_logic.py` (`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf
 `ctypes.windll`, `ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt
 die Datei. Er prüft **beide** Richtungen — kein Windows-Aufruf ausserhalb der Liste, und
 kein Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält, sonst

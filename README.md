@@ -84,8 +84,15 @@ sudo apt install build-essential python3-dev
 ```bash
 git clone https://github.com/r3flexone/Autoclicker.git
 cd Autoclicker
-pip install -r requirements.txt
+pip install pillow opencv-python numpy
 python main.py
+```
+
+Unter Linux/X11 kommen drei kleine Plattformpakete dazu — unter Windows kommt
+das aus der WinAPI:
+
+```bash
+pip install pynput python-xlib mss
 ```
 
 ### Minimale Installation unter Windows (nur Grundfunktionen)
@@ -97,33 +104,32 @@ python main.py
 ```
 
 Unter Windows sind dafür keine zusätzlichen Pakete nötig. Linux/X11 benötigt
-auch für die Grundfunktionen `pynput`, `python-xlib` und `mss`; sie werden über
-`requirements.txt` automatisch installiert.
+auch für die Grundfunktionen `pynput`, `python-xlib` und `mss`.
 
 ### Empfohlen (Farberkennung + Template-Matching)
 
 ```bash
-pip install -r requirements.txt
+pip install pillow opencv-python numpy
 python main.py
 ```
 
-Rund 70 MB. Das ist alles, was der normale Betrieb braucht.
+Rund 70 MB. Das ist alles, was der normale Betrieb braucht. Der Code meldet beim
+Start konkret, welches Paket fehlt.
 
 ### Optionale Extras (OCR, visuelle Editoren)
 
-`requirements-optional.txt` enthält `easyocr`, `pytesseract` und `pywebview`. Alle
-drei gehören zu Features, die per Default **abgeschaltet** sind oder nur auf Zuruf
-starten — installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
+Drei Extras: `easyocr`, `pytesseract` und `pywebview`. Alle drei gehören zu
+Features, die per Default **abgeschaltet** sind oder nur auf Zuruf starten —
+installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
 mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet das Studio-Fenster
 (Sequenzen, Scans, Einstellungen) unter Windows über WebView2, das bei Windows
 10/11 in der Regel schon vorhanden ist. Unter Linux braucht `pywebview` ein GTK-
-oder Qt-Backend; für Debian/Ubuntu steht ein Beispiel in
-`requirements-optional.txt`. `dearpygui` steht dort nicht mehr — das eigene Scan-Fenster
-gibt es nicht mehr, seine Arbeit macht der Reiter „Scans".
+oder Qt-Backend, auf Debian/Ubuntu etwa
+`sudo apt install python3-gi gir1.2-webkit2-4.1`.
 
 **Ohne GPU (CPU-only):**
 ```bash
-pip install -r requirements-optional.txt
+pip install easyocr pytesseract pywebview
 python main.py
 ```
 
@@ -141,7 +147,7 @@ Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner
 
 Dann den Rest installieren:
 ```bash
-pip install -r requirements-optional.txt
+pip install easyocr pytesseract pywebview
 python main.py
 ```
 
@@ -1317,20 +1323,22 @@ Autoclicker-Idleclans/
 │   └── YYYY-MM-DD_HHMMSS_<seq>.csv
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
-└── tools/                  # Hilfswerkzeuge
-    ├── alle_tests.py       # ALLE Tests, ein Aufruf — das vor einem Commit
-    ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
-    ├── tests/              # weitere Sektionen der Vertragssuite
-    ├── rauchtests/         # die echte Seite im Browser vor der echten Brücke
-    ├── wurzeltests.py      # Discovery der test_*.py ohne doppelten Vertragslauf
-    ├── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
+├── tests/                  # ALLE Tests — drei Schichten und ihre Läufer
+│   ├── alle_tests.py       # EIN Aufruf für alles — das vor einem Commit
+│   ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
+│   ├── vertrag/            # weitere Sektionen der Vertragssuite
+│   ├── wurzel/             # Wurzelmodule (unittest): Import/Export, Plattform, Studio
+│   ├── rauch/              # die echte Seite im Browser vor der echten Brücke
+│   ├── wurzeltests.py      # Discovery der Wurzelmodule ohne doppelten Vertragslauf
+│   └── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
+└── tools/                  # Hilfswerkzeuge — hier steht kein Test mehr
     ├── katalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
     ├── slot_tester.py      # Slot-Erkennung testen
-    ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse
-    └── test_ocr.py         # OCR-Backend-Test + Texterkennung
+    ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse (Werkzeug, kein Test)
+    └── test_ocr.py         # OCR-Backend-Test + Texterkennung (Werkzeug, kein Test)
 ```
 
 ## Technische Details
@@ -1437,23 +1445,23 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
-### Tests (`tools/alle_tests.py`)
+### Tests (`tests/alle_tests.py`)
 
 **Ein Kommando, drei Schichten** — das vor einem Commit:
 
 ```bash
-python tools/alle_tests.py                      # alles
-python tools/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
-python tools/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
-python tools/alle_tests.py --mutationen         # zusätzlich gezielte Gegenproben
+python tests/alle_tests.py                      # alles
+python tests/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
+python tests/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
+python tests/alle_tests.py --mutationen         # zusätzlich gezielte Gegenproben
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 ```
 
 | Schicht | was sie prüft | braucht |
 |---|---|---|
-| Vertragssuite (`tools/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`test_*.py`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
-| Rauchtests (`tools/rauchtests/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Vertragssuite (`tests/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
+| Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
+| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
 Was fehlt, wird **übersprungen und gesagt**, nicht als Fehler gemeldet. Für die
 volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
@@ -1473,7 +1481,7 @@ Die CI führt auch `--mutationen` aus: Zehn gezielt entfernte Sicherungen müsse
 durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
 Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
 Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
-`python tools/mutationspruefung.py --fall pause-nach-fokus` wiederholen. Das ist
+`python tests/mutationspruefung.py --fall pause-nach-fokus` wiederholen. Das ist
 eine begrenzte Auswahl kritischer Regressionen, keine vollständige Mutationsabdeckung.
 
 Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie

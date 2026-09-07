@@ -1,7 +1,7 @@
 """Das Gerüst, das alle Test-Module teilen: Stubs, Zähler, `check`, `section`.
 
-Der Einstiegspunkt bleibt genau einer — `python tools/test_logic.py`. Neue
-Sektionen kommen in ein eigenes Modul unter `tools/tests/`, das hier sein
+Der Einstiegspunkt bleibt genau einer — `python tests/test_logic.py`. Neue
+Sektionen kommen in ein eigenes Modul unter `tests/vertrag/`, das hier sein
 Gerüst holt und am Ende von `test_logic.py` importiert wird. Die Zähler leben
 in DIESEM Modul: sonst zählte jedes Modul für sich.
 

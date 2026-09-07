@@ -271,11 +271,11 @@ _sh.rmtree(_sand, ignore_errors=True)
 
 section("Kein Rauchtest bleibt unaufgerufen")
 
-# `RAUCHTESTS` in `tools/alle_tests.py` ist eine getippte Liste — genau die Sorte
+# `RAUCHTESTS` in `tests/alle_tests.py` ist eine getippte Liste — genau die Sorte
 # Stelle, die man beim Hinzufuegen einer Datei vergisst. Der Lauf bleibt dann
 # gruen und meldet "5 Ansichten", waehrend die sechste nie lief.
-from tools.alle_tests import RAUCHTESTS as _RT   # noqa: E402
-_da = sorted(p.stem for p in (Path(_WURZEL) / "tools/rauchtests").glob("*.py")
+from tests.alle_tests import RAUCHTESTS as _RT   # noqa: E402
+_da = sorted(p.stem for p in (Path(_WURZEL) / "tests/rauch").glob("*.py")
              if not p.stem.startswith("_"))
 _vergessen = [n for n in _da if n not in _RT]
 check("jeder Rauchtest steht in der Liste des Sammel-Laufs", _vergessen == [])

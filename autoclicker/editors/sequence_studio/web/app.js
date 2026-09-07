@@ -3843,7 +3843,7 @@ const SCAN_ARTEN = ["item", "boss", "icon"];
  * Als Ternaeroperator an jeder Aufrufstelle waeren die Namen sechsmal da, und
  * der Test „jeder Aufruf der Seite passt zur Bruecke" faende keinen davon: er
  * sucht den Methodennamen direkt hinter der oeffnenden Klammer. Hier stehen sie
- * einmal und sind messbar (`tools/tests/studio_erkennung.py`). */
+ * einmal und sind messbar (`tests/vertrag/studio_erkennung.py`). */
 const ERK_BEFEHL = {
   boss: {oeffnen: "boss_scan_oeffnen", neu: "boss_scan_neu",
          scan_feld: "boss_scan_setzen", feld: "boss_setzen",

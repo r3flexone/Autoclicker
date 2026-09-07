@@ -121,7 +121,17 @@ def lauf():
         typen = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(typen[1] == "INPUT", f"'neue Kategorie' oeffnet kein Textfeld: {typen[:3]}")
-        f.seite.wait_for_timeout(1100)          # Autospeichern abwarten
+        # **Der Neuaufbau, den es zu ueberleben gilt, IST das Auto-Speichern** —
+        # also wird auf den gewartet und nicht auf 1100 ms. Der Unterschied ist
+        # hier nicht bloss Stabilitaet: laeuft die Wartezeit ab, bevor der
+        # Neuaufbau kommt, vergleicht die Zusicherung darunter zweimal denselben
+        # unberuehrten Zustand — und ist gruen, ohne etwas geprueft zu haben.
+        # 200 ms Zugabe, weil `SC.dirty` schon vor dem `zeichneScans()` faellt.
+        try:
+            f.seite.wait_for_function("() => !SC.dirty", timeout=15000)
+        except Exception:
+            pass                                # die Zusicherung meldet es genauer
+        f.seite.wait_for_timeout(200)
         typen_danach = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(typen_danach == typen,
@@ -375,7 +385,25 @@ def lauf():
             f.seite.locator(felder).nth(1).click()
             f.seite.locator(felder).nth(1).type("Getippt", delay=20)
             getippt = f.seite.locator(felder).nth(1).input_value()
-            f.seite.wait_for_timeout(1800)     # laenger als die 900 ms
+            # **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand
+            # eine feste Wartezeit von 1800 ms mit dem Kommentar „laenger als
+            # die 900 ms" — nur liegen hier ZWEI Runden hintereinander: das
+            # Auto-Speichern ist entprellt (`clearTimeout` in
+            # `scanAutoSpeichernPlanen`), sein Neuaufbau stoesst das
+            # fokussierte Feld an, und dessen `change` plant die naechsten
+            # 900 ms. Die Rechnung ging also auf ~300 ms Luft aus, und die
+            # frisst ein ausgelasteter CI-Laeufer zwischen Bruecke und
+            # Neuzeichnen auf: gruen auf dem Entwicklungsrechner, rot in CI.
+            #
+            # Gefragt wird deshalb nach beiden Tatsachen zugleich (der Name ist
+            # in den Daten UND nichts ist mehr offen) — kommt einer nicht,
+            # sagen die Zusicherungen darunter weiterhin, welcher.
+            try:
+                f.seite.wait_for_function(
+                    "n => (SC.items || []).some(i => i.name === n) && !SC.dirty",
+                    arg=getippt, timeout=15000)
+            except Exception:
+                pass                            # die Zusicherung meldet es genauer
             pruefe(getippt in (f.seite.evaluate("SC.items.map(i => i.name)") or []),
                    f"das Getippte ({getippt!r}) kam nicht in den Daten an: "
                    f"{f.seite.evaluate('SC.items.map(i => i.name)')}")
