@@ -33,7 +33,8 @@ _os.chdir(_sand)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_item_scan,
+        list_available_sequences, save_data, save_item_scan, sequence_dir,
+        sequence_templates_dir,
     )
 
     def _anlegen(name):
@@ -52,9 +53,23 @@ try:
     save_item_scan(_ISC(name="Inventar", owner_sequence="Raid",
                         slots=[_SLOT(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))],
                         items=[_ITEM(name="Erz")]))
-    (Path("sequences/Raid/templates")).mkdir(parents=True, exist_ok=True)
-    (Path("sequences/Raid/templates/erz.png")).write_bytes(b"x")
-    (Path("sequences/Raid/templates/holz.png")).write_bytes(b"x")
+    # **Der Ordner heisst nicht wie die Sequenz.** `sanitize_filename()` macht
+    # aus „Raid" das Verzeichnis `sequences/raid` — die Pfade kommen deshalb aus
+    # der Persistenz und werden nicht aus dem Anzeigenamen zusammengehaengt.
+    # Genau dieser Unterschied war der Fehler: `sequenz_loeschen()` hing den
+    # angezeigten Namen an `sequences/` und griff daneben.
+    _ordner_raid = sequence_dir("Raid")
+    check("der Ordner traegt den bereinigten Namen, nicht den angezeigten",
+          _ordner_raid.name == "raid" and _ordner_raid.is_dir())
+    _vorlagen = sequence_templates_dir("Raid")
+    _vorlagen.mkdir(parents=True, exist_ok=True)
+    (_vorlagen / "erz.png").write_bytes(b"x")
+    (_vorlagen / "holz.png").write_bytes(b"x")
+    # Der Stolperstein selbst: ein Ordner, der so heisst wie die Sequenz — und
+    # der gerade NICHT gemeint ist. Er muss stehenbleiben.
+    _falle = Path("sequences/Raid")
+    _falle.mkdir(parents=True, exist_ok=True)
+    (_falle / "nicht_gemeint.txt").write_bytes(b"x")
 
     _b = _SB(_farm, dict(list_available_sequences())["Farm"], "sequences")
     _b._laeuft = lambda: False          # kein echter Lauf in der Testumgebung
@@ -81,22 +96,25 @@ try:
     _z = _b.sequenz_loeschen({"name": "Farm"})
     check("die offene Sequenz wird abgelehnt", _z["ok"] is False)
     check("und die Absage sagt, warum", "geöffnet" in _z["meldung"])
-    check("der Ordner steht noch", Path("sequences/Farm").is_dir())
+    check("der Ordner steht noch", sequence_dir("Farm").is_dir())
 
     # --- Waehrend eines Laufs nicht ----------------------------------------
     _b._laeuft = lambda: True
     _z = _b.sequenz_loeschen({"name": "Raid"})
     check("waehrend eines Laufs wird abgelehnt", _z["ok"] is False)
-    check("der Ordner steht auch dann noch", Path("sequences/Raid").is_dir())
+    check("der Ordner steht auch dann noch", _ordner_raid.is_dir())
     _b._laeuft = lambda: False
 
     # --- Der Normalfall -----------------------------------------------------
     _z = _b.sequenz_loeschen({"name": "Raid"})
     check("eine fremde Sequenz laesst sich loeschen", _z["ok"] is True)
-    check("der Ordner ist weg", not Path("sequences/Raid").exists())
+    check("der Ordner ist weg", not _ordner_raid.exists())
+    check("der gleichnamige Fremdordner bleibt unangetastet",
+          (_falle / "nicht_gemeint.txt").exists())
     # **Verschoben, nicht entfernt.** Alles muss mit — die Vorlagen sind der
-    # Teil, den man am wenigsten wiederherstellen kann.
-    _bak = Path("backups/sequences/Raid")
+    # Teil, den man am wenigsten wiederherstellen kann. Die Struktur ist
+    # gespiegelt (wie bei `sicherungspfad()`), also steht dort der ORDNERname.
+    _bak = Path("backups/sequences") / _ordner_raid.name
     check("er liegt unter backups/", _bak.is_dir())
     check("samt sequence.json", (_bak / "sequence.json").exists())
     check("samt Item-Scan", (_bak / "item_scans").is_dir())
@@ -110,13 +128,18 @@ try:
     _b.sequenz_loeschen({"name": "Raid"})
     _stände = sorted(p.name for p in Path("backups/sequences").iterdir())
     check("eine zweite Sicherung bekommt einen Zeitstempel", len(_stände) == 2)
-    check("und die erste bleibt die erste", "Raid" in _stände)
+    check("und die erste bleibt die erste", _ordner_raid.name in _stände)
 
     # --- Was es nicht gibt ---------------------------------------------------
     _z = _b.sequenz_loeschen({"name": "Gibtsnicht"})
     check("ein unbekannter Name ist eine Absage, kein Absturz", _z["ok"] is False)
     _z = _b.sequenz_loeschen({})
     check("ohne Namen passiert nichts", _z["ok"] is False)
+    # `name` kommt aus dem Fenster. Zusammengehaengt fuehrte ein `..` aus
+    # `sequences/` heraus; ueber die Eintragsliste gibt es den Pfad gar nicht.
+    _z = _b.sequenz_loeschen({"name": "../sequences"})
+    check("ein Pfad im Namen greift ins Leere", _z["ok"] is False)
+    check("und der Sequenzordner steht noch", Path("sequences").is_dir())
 finally:
     _os.chdir(_cwd)
     import shutil as _sh
