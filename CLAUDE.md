@@ -33,6 +33,9 @@ python tools/katalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
 python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
+python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
+                                    # (--bild slot|grund, --modell X, --alle-modelle,
+                                    #  --zweistufig, --stimmen 3, --reasoning)
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
@@ -543,6 +546,20 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
   eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
   besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Gemessen wird mit `tools/llm_bench.py`, nicht geschätzt.** Ob eine
+  Änderung am Prompt, am Bild oder am Modell etwas bringt, sieht man nicht —
+  und zweimal hintereinander lag die naheliegende Vermutung daneben: die
+  Lernmaske (83 % des Bildes durchsichtig) ist **besser** als ein neutraler
+  Grund, und der Ausschnitt aus dem gemerkten Screenshot — mit echtem
+  Hintergrund, also so wie das Spiel ihn zeigt — ist **nicht besser** als die
+  freigestellte Vorlage. Beides klingt falsch herum und ist gemessen.
+
+  Das Werkzeug nimmt die Items des Scans, deren Namen im Katalog stehen, als
+  Goldstandard und wärmt vor der Messung auf. **Das Aufwärmen ist der Punkt:**
+  an einem warmen Modell traf `gemma-4-12b-qat` 14 von 14 Vorlagen, an einem
+  kalten 9 von 14 — und die fünf Ausfälle waren vier Zeitüberschreitungen plus
+  ein Treffer, der beim zweiten Lauf sass. Was hier lange wie eine Grenze des
+  Modells aussah, war zum grössten Teil der Kaltstart.
 - **Ein Timeout ist nicht dasselbe wie „nicht erkannt".** Beides als `None`
   zu melden war der Fehler: an einem echten Bestand brauchten die **ersten
   vier** Aufrufe je über 120 Sekunden (LM Studio lädt das Modell), die

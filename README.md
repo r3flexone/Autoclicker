@@ -637,6 +637,22 @@ python tools/test_llm.py             # Verbindungstest + interaktiver Screenshot
 python tools/test_llm.py screenshot  # Einmal-Screenshot direkt analysieren
 ```
 
+**Wie gut trifft die Benennung?** `python tools/llm_bench.py` misst es gegen
+den eigenen Bestand: Items, deren Namen im Katalog stehen, sind der
+Goldstandard, und jede Variante bekommt dieselben Proben.
+
+```bash
+python tools/llm_bench.py                        # Standard: gelernte Vorlagen
+python tools/llm_bench.py --bild slot            # Ausschnitt aus dem gemerkten Bild
+python tools/llm_bench.py --alle-modelle         # jedes Modell des Servers
+python tools/llm_bench.py --zweistufig           # erst die Art, dann der Name
+python tools/llm_bench.py --stimmen 3            # dreimal fragen, Mehrheit
+```
+
+Vor der Messung wird aufgewärmt — der erste Aufruf an einen kalten Server lädt
+das Modell und dauert über zwei Minuten, die folgenden knapp drei Sekunden.
+Geschrieben wird nichts.
+
 ### OCR Texterkennung Boss-Detection
 
 Alternative zu LLM Vision: Lokale OCR-Engine (EasyOCR oder Tesseract) für schnelle, deterministische Texterkennung von Boss-Namen. Besonders nützlich wenn Boss-Namen als Text im Screenshot stehen.
