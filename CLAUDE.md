@@ -546,6 +546,28 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
   eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
   besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Ein Timeout beendet die Boss-Erkennung nicht mehr** (`ist_timeout()`, die
+  Regel an einer Stelle). Dort stand `break`, und `llm_retry_count` daneben
+  wiederholte nur bei „kein Boss erkannt" — ausgerechnet der ERSTE Boss-Scan
+  eines Laufs fiel damit aus, denn der trifft ein kaltes Modell. Der zweite
+  Versuch bekommt mehr Zeit und zählt **nicht** gegen das Wiederholungs-Budget:
+  er beantwortet eine andere Frage. Ein Verbindungsfehler wird dagegen nicht
+  wiederholt — da ist niemand, und Wiederholen wäre nur Warten.
+- **Die Lampe prüft das MODELL, nicht nur den Server** (`test_connection`). Sie
+  nahm `model` entgegen und benutzte es nie: „Verbunden!" stand auch dann da,
+  wenn `llm_model` gar nicht geladen war, und jeder Aufruf danach scheiterte.
+  Ein erreichbarer Server ohne das eingestellte Modell ist deshalb **kein
+  Erfolg** — die Frage ist „kann ich das LLM jetzt benutzen", nicht „antwortet
+  da wer". Im Scans-Reiter kam dazu, dass `llm_pruefen()` mit einem rohen
+  `urlopen(CONFIG.llm_endpoint)` prüfte, und der ist im Normalfall `None`: die
+  Lampe meldete einen `NoneType`-Fehler bei laufendem Server.
+- **`llm_reasoning` und `llm_max_tokens` gelten auch für die Benennung.** Sie
+  wurden nur im Boss-Scan gelesen; wer sie einschaltete, weil die Benennung
+  besser werden soll, änderte nichts. Mit Reasoning wird die Antwort-Länge
+  dabei **nicht** auf 32 gekürzt (`_namens_tokens()`) — sonst sind die Tokens
+  vor dem Namen im Denken aufgebraucht und `content` bleibt leer.
+  `llm_retry_count` bleibt bewusst beim Boss-Scan: die Benennung fragt mit
+  Temperatur 0 und bekäme zweimal dieselbe Antwort.
 - **Gemessen wird mit `tools/llm_bench.py`, nicht geschätzt.** Ob eine
   Änderung am Prompt, am Bild oder am Modell etwas bringt, sieht man nicht —
   und zweimal hintereinander lag die naheliegende Vermutung daneben: die
