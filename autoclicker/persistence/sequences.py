@@ -243,11 +243,6 @@ def _punkt_aus_dict(p: dict) -> ClickPoint:
                       source=p.get("source", ""))
 
 
-def _punkte_aus_datei() -> list[ClickPoint]:
-    """Entfallen: Punkte werden nicht außerhalb einer Sequenz geladen."""
-    return []
-
-
 def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
     """Lädt den Punkt-Pool der aktiven Sequenz frisch von Platte."""
     with state.lock:

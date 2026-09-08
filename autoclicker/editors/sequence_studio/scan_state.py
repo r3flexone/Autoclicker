@@ -74,9 +74,6 @@ class ScanStateMixin:
         # benutzt. Die Weboberfläche schickt die Art bei jedem Handgriff mit;
         # der Wert ist der Rückhalt für den anschliessenden Klick ins Bild.
         self.scan_aufnahme_art: str = "item"
-        # Zeigen die Listen nur, was zum offenen Scan gehört? Mit mehreren
-        # Spielen liegen sonst alle Items aller Spiele untereinander.
-        self.nur_dabei: bool = True
         self._treffer: dict = {}               # Slot-Name -> Erkennungsergebnis
         # Mehrfach-Lernen wird erst als Vorschau aufgebaut und danach bestaetigt.
         # PIL-Crops bleiben im Python-Prozess; die Seite erhaelt nur data:-Bilder.
@@ -532,7 +529,6 @@ class ScanStateMixin:
                                   if cfg and cfg.capture_window_rect else None),
             "schritte": self._schritte(),
             "offen": self.scan_offen,
-            "nur_dabei": self.nur_dabei,
             "wahl": {"art": self.scan_art, "name": self.scan_name},
             # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.

@@ -1384,8 +1384,8 @@ gehört sichtbar irgendwohin. Deshalb gibt es `scan_offen` **neben**
 `scan_art`/`scan_name`: der offene Scan ist der Zusammenhang, die Auswahl ist das
 Ding, das man gerade bearbeitet. Beides an einer Variable hiesse, dass ein Klick
 auf einen Slot den Zusammenhang verliert (so war es zuerst gebaut). Am offenen
-Scan hängen: die Filter der Listen (`nur_dabei`), was im Bild gezeichnet wird,
-welche Items `scan_erkennen()` prüft und welche Toleranz dabei gilt.
+Scan hängen: was im Bild gezeichnet wird, welche Items `scan_erkennen()`
+prüft und welche Toleranz dabei gilt.
 
 **Die Reihenfolge der Reiter ist die Rangfolge**: Scans, dann Slots, dann Items —
 und beim Öffnen steht der Scan-Reiter vorn. Eine Liste, die vor ihrer Klammer
@@ -1800,9 +1800,10 @@ Sechs Regeln, an denen der Reiter hängt:
   sind die beiden Eingabefelder dadurch exakt gleich breit — ein Vorsatz vor
   nur einem der beiden hätte sie um seine eigene Breite gegeneinander
   verschoben.
-- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Der Filter „nur aus
-  <Scan>" stand als loser Text zwischen lauter Kacheln — Reiterleiste darüber,
-  Knopfreihe darunter — und las sich, als gehöre er nicht dazu.
+- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Aufgefallen ist das
+  an einem Filter, der als loser Text zwischen lauter Kacheln stand —
+  Reiterleiste darüber, Knopfreihe darunter — und sich las, als gehöre er nicht
+  dazu. Den Filter gibt es nicht mehr (s. u.), die Regel schon.
 - **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
   dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der
@@ -1917,17 +1918,6 @@ Sechs Regeln, an denen der Reiter hängt:
   erste Lücke, nicht ans Ende) und es wird gesagt. Eine ausdrücklich getippte
   Zahl fasst dagegen niemand an, auch keine doppelte: sie kann gewollt sein, und
   ungefragt zu verschieben wäre schlimmer als die Doppelung.
-
-- **Was man gerade abhakt, bleibt stehen** (`scanZuletztAbgewaehlt`). Der Filter
-  „nur aus <Scan>" zeigt die Mitglieder — nimmt man dort einen Haken weg, fällt
-  der Eintrag aus seiner eigenen Bedingung und verschwindet im selben Moment.
-  Ein Verklicker war damit nicht zurückzunehmen: das Ding, das man wieder
-  anhaken will, ist weg. Gemerkt wird nur, was in **dieser** Ansicht angefasst
-  wurde; beim Wechsel des Zusammenhangs (anderer Scan, anderer Reiter, Filter
-  umgelegt) wird die Liste geleert, sonst wüchse sie zu genau dem Bestand an,
-  den der Filter fernhalten soll. Sichtbar heisst dabei nicht „sieht aus wie ein
-  Mitglied": was nicht dazugehört, ist blass (`.nicht-dabei`) und rutscht
-  innerhalb seiner Kategorie nach unten.
 
 - **Der Fokus hängt an der `id` der Maske** (`maskeId()`, gelesen von
   `fokusMerken()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
@@ -2051,8 +2041,14 @@ engere Menge. Regel beim Erweitern: **wer „alle Slots" meint, fragt
 
 **Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
 Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
-Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Schalter
-entfernt („nur aus …"), nicht weg.
+Listen zeigen deshalb nur, was zu diesem Scan gehört.
+
+**Der Filter dafür ist mit dem globalen Bestand verschwunden**, und das ist
+kein Verlust: seit eine Sequenz eine Besitzeinheit ist, IST der offene Scan der
+vollständige Bestand — es gibt nichts, wovon man ihn abgrenzen müsste. Übrig
+blieben davon `scan_filter()` und `nur_dabei` in der Brücke, ohne dass die
+Ansicht beides je gerufen oder gelesen hätte; beides ist gelöscht. Dieselbe
+Sorte Rest wie `points.json`, nur eine Ebene höher.
 
 **Und es gibt dafür genau EIN Bedienelement.** Bis zum Masken-Umbau gab es drei
 Wege zur selben Frage: den Haken in der Maske, „alle dazu/raus" in der

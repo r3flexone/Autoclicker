@@ -59,15 +59,6 @@ class ScanLibraryMixin:
         self.scan_fenster_id = 0
         return self._scan_melde("Kein Scan offen — der ganze Bestand steht da.", "info")
 
-    def scan_filter(self, daten: Optional[dict] = None) -> dict:
-        """Nur die Mitglieder des offenen Scans zeigen — oder alles.
-
-        „Alles" braucht man zum Hinzufügen, „nur Mitglieder" zum Arbeiten. Ein
-        Schalter statt zweier Listen, weil es dieselben Dinge sind.
-        """
-        self.nur_dabei = bool((daten or {}).get("wert"))
-        return self.scan_daten()
-
     def scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen.
 
