@@ -598,7 +598,10 @@ def _test_llm_connection(state: AutoClickerState) -> None:
         # Leite den Test-Endpoint vom Chat-Endpoint ab
         test_endpoint = endpoint
 
-    success, message = test_connection(provider, test_endpoint)
+    # Mit Modell: ein erreichbarer Server ohne das eingestellte Modell ist
+    # kein Erfolg — danach scheitert jeder Aufruf.
+    success, message = test_connection(provider, test_endpoint,
+                                       state.config.llm_model)
 
     if success:
         print(f"  {ok(message)}")

@@ -601,3 +601,109 @@ finally:
     _CFG_mit.scan_catalog_file = _alt_pfad_kh
     _os.chdir(_cwd_kh)
     _sh_kh.rmtree(_sand_kh, ignore_errors=True)
+
+
+# =============================================================================
+section("LLM: Kaltstart, Modellpruefung und die Config-Felder")
+# =============================================================================
+# Vier Befunde aus einer Durchsicht des LLM-Pfades — jeder eine Stelle, an der
+# etwas STILL nicht passierte: der Worker gab bei einer Zeitueberschreitung auf,
+# die Lampe pruefte einen Endpunkt, den es im Normalfall gar nicht gibt, sie
+# sah nie nach, ob das eingestellte Modell geladen ist, und zwei Config-Felder
+# galten nur fuer den Boss-Scan.
+import autoclicker.runtime.boss_detection as _bd_llm                # noqa: E402
+from autoclicker.llm_vision import (                                # noqa: E402
+    _modell_bekannt as _bekannt_llm, _namens_tokens as _tokens_llm,
+    ist_timeout as _ist_to_llm,
+)
+from autoclicker.models import (                                    # noqa: E402
+    AutoClickerState as _ST_llm, BossProfile as _BP_llm,
+    BossScanConfig as _BSC_llm,
+)
+
+# --- Die Regel, an der alles haengt -----------------------------------------
+check("ein Timeout wird als solcher erkannt", _ist_to_llm("Timeout nach 60s"))
+# Ein Verbindungsfehler ist KEIN Timeout: da ist niemand, und Wiederholen waere
+# nur Warten.
+check("ein Verbindungsfehler nicht",
+      not _ist_to_llm("Verbindungsfehler: [Errno 111]")
+      and not _ist_to_llm("") and not _ist_to_llm(None))
+
+# --- Der Worker gibt bei einem kalten Modell nicht mehr auf ------------------
+_state_llm = _ST_llm()
+_state_llm.config.llm_enabled = True
+_state_llm.config.llm_timeout = 30
+_state_llm.config.llm_retry_count = 0        # KEIN Wiederholungs-Budget
+_cfg_llm = _BSC_llm(name="B", scan_region=(0, 0, 10, 10))
+_bosse_llm = [_BP_llm(name="Kraken")]
+
+_versuche_llm = []
+
+
+def _antworte_llm(**kw):
+    """Erst ein Timeout, dann die Antwort — der gemessene Kaltstart."""
+    _versuche_llm.append(kw.get("timeout"))
+    if len(_versuche_llm) == 1:
+        return False, "Timeout nach 30s", 30000.0
+    return True, "Kraken", 3500.0
+
+
+import autoclicker.llm_vision as _lv_llm                            # noqa: E402
+_echt_analyze_llm = _lv_llm.analyze_image
+try:
+    _lv_llm.analyze_image = _antworte_llm
+    _treffer_llm = _bd_llm._execute_llm_boss_detection(
+        _state_llm, _cfg_llm, object(), False, _bosse_llm)
+    # **Hier stand `break`.** Ausgerechnet der ERSTE Boss-Scan eines Laufs
+    # trifft ein kaltes Modell — und fiel damit aus, waehrend `llm_retry_count`
+    # daneben stand und nur bei „kein Boss erkannt" wiederholte.
+    check("eine Zeitueberschreitung beendet die Erkennung nicht mehr",
+          len(_versuche_llm) == 2)
+    check("und der zweite Versuch bekommt mehr Zeit",
+          _versuche_llm[1] > _versuche_llm[0])
+    check("danach wird der Boss erkannt",
+          _treffer_llm is not None and _treffer_llm.name == "Kraken")
+
+    # Ein Verbindungsfehler wiederholt NICHT: da antwortet niemand, und ein
+    # zweiter Aufruf kostet nur die Wartezeit noch einmal.
+    _versuche_llm.clear()
+    _lv_llm.analyze_image = lambda **kw: (
+        _versuche_llm.append(kw.get("timeout")) or (False, "Verbindungsfehler: tot", 5.0))
+    _bd_llm._execute_llm_boss_detection(
+        _state_llm, _cfg_llm, object(), False, _bosse_llm)
+    check("ein Verbindungsfehler wird nicht wiederholt", len(_versuche_llm) == 1)
+finally:
+    _lv_llm.analyze_image = _echt_analyze_llm
+
+# --- Die Lampe sagt, ob das MODELL da ist -----------------------------------
+check("ein geladenes Modell wird gefunden",
+      _bekannt_llm("google/gemma-4-12b-qat", ["a", "google/gemma-4-12b-qat"]))
+check("ein fehlendes nicht", not _bekannt_llm("gibts/nicht", ["a", "b"]))
+# Ollama haengt ein Tag an: wer den Stamm eintraegt, meint dasselbe Modell.
+check("der Stamm eines Ollama-Namens zaehlt", _bekannt_llm("gemma3n", ["gemma3n:e4b"]))
+# Aber nur in diese Richtung — zwei Tags sind zwei Modelle.
+check("zwei Tags sind aber zwei Modelle",
+      not _bekannt_llm("gemma3n:e4b", ["gemma3n:e2b"]))
+check("ohne eingestelltes Modell wird nichts behauptet", _bekannt_llm("", ["x"]))
+
+# --- Die Token-Grenze der Benennung -----------------------------------------
+# Mit Liste reichen 32 (ein Katalogname ist kurz), mit Reasoning NIE kuerzen:
+# das Modell verbraucht sie erst fuers Denken, und `content` bliebe leer.
+check("mit Liste genuegen 32 Tokens", _tokens_llm(0, False, True) == 32)
+check("mit Reasoning wird nicht gekuerzt", _tokens_llm(0, True, True) == 0)
+check("ein gesetzter Wert gewinnt immer", _tokens_llm(777, True, True) == 777)
+check("ohne Liste gilt der Automatik-Wert", _tokens_llm(0, False, False) == 0)
+
+# --- …und die Benennung reicht die Felder ueberhaupt durch -------------------
+# `llm_reasoning` und `llm_max_tokens` galten nur fuer den Boss-Scan: wer sie
+# einschaltete, weil die BENENNUNG besser werden soll, aenderte nichts.
+_quelle_llm = (_P_kh(__file__).resolve().parents[2]
+               / "autoclicker" / "editors" / "sequence_studio"
+               / "scan_learning.py").read_text(encoding="utf-8")
+check("der Durchgang gibt Reasoning und Token-Grenze mit",
+      "reasoning=config.llm_reasoning" in _quelle_llm
+      and "max_tokens=config.llm_max_tokens" in _quelle_llm)
+_konsole_llm = (_P_kh(__file__).resolve().parents[2] / "autoclicker" / "editors"
+                / "item_editor" / "commands.py").read_text(encoding="utf-8")
+check("und der Konsolen-Weg ebenso",
+      "reasoning=state.config.llm_reasoning" in _konsole_llm)

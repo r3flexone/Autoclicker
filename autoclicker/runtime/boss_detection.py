@@ -287,7 +287,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
     Wiederholt den Scan bei KEIN_BOSS bis zu state.config.llm_retry_count Mal.
     """
     try:
-        from ..llm_vision import analyze_image, match_boss_name
+        from ..llm_vision import analyze_image, ist_timeout, match_boss_name
     except ImportError:
         if debug:
             print(dbg("  → LLM: Import fehlgeschlagen"))
@@ -295,6 +295,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
 
     boss_names = [boss.name for boss in bosses_snapshot]
     max_attempts = 1 + max(0, state.config.llm_retry_count)
+    warm_versucht = False       # der Aufwaerm-Versuch gilt einmal je Scan
 
     for attempt in range(1, max_attempts + 1):
         current_img = img if attempt == 1 else take_screenshot(config.scan_region)
@@ -307,17 +308,35 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
             print(dbg(f"  → LLM-Erkennung ({attempt_info}{state.config.llm_provider}, {state.config.llm_model or 'Standard'})..."))
 
-        success, response, duration = analyze_image(
-            img=current_img,
-            provider=state.config.llm_provider,
-            endpoint=state.config.llm_endpoint,
-            model=state.config.llm_model,
-            prompt=state.config.llm_boss_prompt,
-            boss_names=boss_names,
-            timeout=state.config.llm_timeout,
-            reasoning=state.config.llm_reasoning,
-            max_tokens=state.config.llm_max_tokens,
-        )
+        def _frage(grenze):
+            return analyze_image(
+                img=current_img,
+                provider=state.config.llm_provider,
+                endpoint=state.config.llm_endpoint,
+                model=state.config.llm_model,
+                prompt=state.config.llm_boss_prompt,
+                boss_names=boss_names,
+                timeout=grenze,
+                reasoning=state.config.llm_reasoning,
+                max_tokens=state.config.llm_max_tokens,
+            )
+
+        success, response, duration = _frage(state.config.llm_timeout)
+        # **Ein Timeout ist kein Fehlschlag, sondern ein kaltes Modell.**
+        # Gemessen: die ersten Aufrufe an einen frisch gestarteten Server
+        # brauchen ueber 120 s, die folgenden 3,5. Hier stand `break` — und
+        # damit fiel ausgerechnet der ERSTE Boss-Scan eines Laufs aus, waehrend
+        # `llm_retry_count` daneben stand und nur bei „kein Boss erkannt"
+        # wiederholte. Der zweite Versuch trifft ein warmes Modell und kostet
+        # fast nichts; er zaehlt bewusst NICHT gegen das Wiederholungs-Budget,
+        # denn er beantwortet eine andere Frage.
+        if not success and ist_timeout(response) and not warm_versucht:
+            warm_versucht = True
+            if debug:
+                print(dbg(f"  → LLM: Zeitüberschreitung nach {duration / 1000:.0f}s "
+                          "— das Modell lädt gerade, zweiter Versuch …"))
+            success, response, duration = _frage(
+                max(state.config.llm_timeout * 2, 120))
 
         if not success:
             if debug:

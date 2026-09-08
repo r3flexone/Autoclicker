@@ -168,6 +168,8 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             endpoint=state.config.llm_endpoint,
             model=state.config.llm_model,
             timeout=state.config.llm_timeout,
+            reasoning=state.config.llm_reasoning,
+            max_tokens=state.config.llm_max_tokens,
         )
         base = bereinige_itemname(suggestion) if suggestion else ""
         if not base:

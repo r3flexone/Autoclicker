@@ -1169,23 +1169,26 @@ class ScanDetectMixin:
         Momentaufnahme darf nicht auf ein Netzwerk warten.
         """
         from ...config import CONFIG
-        endpunkt = CONFIG.llm_endpoint
+        from ...llm_vision import chat_endpoint, test_connection
+
         beginn = time.perf_counter()
-        try:
-            import urllib.request
-            urllib.request.urlopen(endpunkt, timeout=_LLM_PROBE_TIMEOUT).read(1)
-            erreichbar, grund = True, ""
-        except Exception as fehler:                                   # noqa: BLE001
-            # Was da schiefgeht, ist nicht unsere Sache — dass es schiefgeht,
-            # schon. Jede Ausnahme heisst hier dasselbe: da antwortet niemand.
-            erreichbar, grund = False, str(fehler)
+        # **Gefragt wird ueber `test_connection()`, nicht mit einem rohen
+        # `urlopen`.** Zwei Fehler hingen daran: der Endpunkt ist im Normalfall
+        # `None` (dann gilt der Standard-Port des Anbieters) — `urlopen(None)`
+        # warf einen `AttributeError`, und die Lampe meldete „nicht
+        # erreichbar: 'NoneType' object has no attribute 'timeout'" bei einem
+        # laufenden Server. Und selbst wenn jemand antwortete, sagte das nichts
+        # darueber, ob das EINGESTELLTE Modell geladen ist; genau daran
+        # scheitert danach jeder Aufruf.
+        erreichbar, meldung = test_connection(
+            CONFIG.llm_provider, CONFIG.llm_endpoint, CONFIG.llm_model)
         self._llm_stand = {
-            "erreichbar": erreichbar, "grund": grund, "endpunkt": endpunkt,
+            "erreichbar": erreichbar, "grund": "" if erreichbar else meldung,
+            "endpunkt": CONFIG.llm_endpoint or chat_endpoint(CONFIG.llm_provider),
             "dauer": round((time.perf_counter() - beginn) * 1000),
         }
         return self._scan_melde(
-            f"{CONFIG.llm_provider} erreichbar ({self._llm_stand['dauer']} ms)."
-            if erreichbar else f"{CONFIG.llm_provider} nicht erreichbar: {grund}",
+            f"{meldung} ({self._llm_stand['dauer']} ms)",
             "ok" if erreichbar else "warn")
 
     # ------------------------------------------------------------- Speichern

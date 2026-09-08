@@ -275,11 +275,18 @@ META: dict = {
     "llm_timeout": M(
         "Timeout", ART_INT,
         "So lange steht der Worker still, wenn das Modell nicht antwortet. "
-        "Deshalb läuft die LLM-Benennung neuer Items bewusst NICHT im Scan.",
+        "Deshalb läuft die LLM-Benennung neuer Items bewusst NICHT im Scan. "
+        "Läuft ein Aufruf ab, wird EINMAL mit mehr Zeit nachgefragt: der erste "
+        "Aufruf an einen frisch gestarteten Server lädt das Modell und dauert "
+        "über zwei Minuten, die folgenden knapp drei Sekunden.",
         einheit="s", dep="llm_enabled"),
     "llm_retry_count": M(
         "Wiederholungen", ART_INT,
-        "Wie oft bei „kein Boss erkannt“ neu gefragt wird.",
+        "Wie oft bei „kein Boss erkannt“ neu gefragt wird — mit einem frischen "
+        "Screenshot, denn im Spiel kann sich inzwischen etwas geändert haben. "
+        "Gilt für Boss- und Icon-Scans, nicht für die Item-Benennung: die "
+        "fragt mit Temperatur 0 und bekäme zweimal dieselbe Antwort. Eine "
+        "Zeitüberschreitung wird davon unabhängig einmal wiederholt.",
         leer="nicht wiederholen", dep="llm_enabled"),
     "llm_async": M(
         "Im Hintergrund", ART_BOOL,
@@ -292,7 +299,9 @@ META: dict = {
     "llm_reasoning": M(
         "Reasoning zulassen", ART_BOOL,
         "Denkschritte erlauben, wenn das Modell sie kann. Genauer und deutlich "
-        "langsamer.", dep="llm_enabled"),
+        "langsamer — und die Antwort-Länge wird dann nicht mehr gekürzt, sonst "
+        "sind die Tokens vor dem eigentlichen Namen aufgebraucht. Gilt für "
+        "Boss-Erkennung UND Item-Benennung.", dep="llm_enabled"),
     "llm_max_tokens": M(
         "Antwort-Länge", ART_INT,
         "Obergrenze für die Antwort des Modells.",

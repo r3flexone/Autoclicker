@@ -902,10 +902,16 @@ class ScanLearningMixin:
             return self.scan_daten()
 
         def frag(grenze):
+            # `llm_reasoning` und `llm_max_tokens` galten nur fuer den
+            # Boss-Scan — wer sie einschaltete, weil die BENENNUNG besser
+            # werden soll, aenderte nichts. Ein Schalter, der an der Stelle
+            # wirkungslos ist, an der man ihn sucht, ist schlimmer als keiner.
             return suggest_item_name_grund(
                 vorlage, provider=config.llm_provider,
                 endpoint=config.llm_endpoint, model=config.llm_model,
-                timeout=grenze, candidates=lauf["auswahl"])
+                timeout=grenze, candidates=lauf["auswahl"],
+                reasoning=config.llm_reasoning,
+                max_tokens=config.llm_max_tokens)
 
         vorschlag, grund = frag(config.llm_timeout)
         # **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
