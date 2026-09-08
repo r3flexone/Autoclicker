@@ -6268,6 +6268,44 @@ if _undok15:
 
 
 
+# --------------------------- Die Doku nennt nur Dateien, die es gibt
+section("CLAUDE.md zeigt auf Dateien, die es wirklich gibt")
+
+# **Eine Doku, die in die Irre fuehrt, ist schlimmer als keine** — und genau das
+# ist passiert: `tools/llm_bench.py` suchte das gemerkte Bild zuerst unter
+# `item_scans/bilder/`, weil CLAUDE.md es an zwei Stellen so schrieb. Der Code
+# legt es daneben ab (`sequences/<name>/bilder/`). Pfade mit Platzhaltern kann
+# kein Test pruefen, Dateinamen sehr wohl.
+_claude16 = (_wurzel15 / "CLAUDE.md").read_text(encoding="utf-8")
+_genannt16 = sorted(set(_re15.findall(r"`([\w/\.]+\.py)`", _claude16)))
+check("der Test findet ueberhaupt Dateinamen", len(_genannt16) > 50)
+
+# Drei Dateien werden mit Absicht genannt, obwohl es sie nicht mehr gibt: die
+# Begruendung, WARUM etwas nicht mehr so gebaut ist, ist laut CLAUDE.md selbst
+# keine Altlast — sie verhindert, dass jemand den alten Weg noch einmal
+# einschlaegt.
+_GELOESCHT16 = {
+    "autoclicker/scan_studio.py",    # das zweite Fenster in Dear PyGui
+    "execution.py",                  # Weiterleitung ohne Inhalt
+    "tools/sync_json.py",            # pflegte Felder nach, die heute fehlen sollen
+}
+_fehlt16 = [d for d in _genannt16
+            if d not in _GELOESCHT16
+            and not list(_wurzel15.rglob(d.split("/")[-1]))]
+check("jede genannte .py-Datei existiert", _fehlt16 == [])
+if _fehlt16:
+    print("        gibt es nicht: " + ", ".join(_fehlt16))
+
+# Und die Ausnahmeliste bleibt ehrlich: taucht eine der drei wieder auf, gehoert
+# sie da nicht mehr hin. Dieselbe Regel wie bei `PLATTFORM_MODULE` — eine Liste,
+# die niemand prueft, waechst zur Fiktion.
+_wieder16 = sorted(d for d in _GELOESCHT16
+                   if list(_wurzel15.rglob(d.split("/")[-1])))
+check("und keine der drei Ausnahmen ist heimlich zurueck", _wieder16 == [])
+if _wieder16:
+    print("        wieder da: " + ", ".join(_wieder16))
+
+
 # --------------------------- Jedes Modul laesst sich ueberhaupt importieren
 section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
 

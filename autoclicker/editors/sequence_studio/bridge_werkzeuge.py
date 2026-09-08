@@ -483,15 +483,10 @@ class BridgeWerkzeugeMixin:
         from .model import load_palette_points
         from ...befehl import sende
         self.points = load_palette_points(self.filepath)
-        self._stand_punkte = self._punkte_stand()
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.
         sende("daten")
-
-    def _punkte_stand(self):
-        from .bridge_contract import _mtime, _punkte_pfad
-        return _mtime(_punkte_pfad(self.filepath))
 
     def _punkt_mit_id(self, punkt_id):
         try:

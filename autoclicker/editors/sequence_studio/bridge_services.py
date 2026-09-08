@@ -789,8 +789,11 @@ class BridgeServicesMixin:
 
     def _stand_merken(self) -> None:
         """Nach dem Schreiben (oder Laden) den Stand der Dateien festhalten."""
+        # EIN Stand fuer beides: die Punkte stehen im Feld `points`
+        # derselben Datei. Hier lag daneben ein `_stand_punkte`, das
+        # dreimal gesetzt und nirgends gelesen wurde — ein Rest aus der
+        # Zeit der eigenen `points.json`.
         self._stand_datei = _mtime(self.filepath)
-        self._stand_punkte = self._stand_datei
 
     def rettung_schreiben(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

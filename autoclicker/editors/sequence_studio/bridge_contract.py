@@ -154,11 +154,6 @@ def _mtime(pfad) -> Optional[float]:
         return None
 
 
-def _punkte_pfad(sequence_file) -> Path:
-    """Die Sequenzdatei enthält zugleich ihren eigenen Punkte-Pool."""
-    return Path(sequence_file)
-
-
 def _bloecke(anzahl: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
     return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"

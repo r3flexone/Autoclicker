@@ -756,8 +756,11 @@ logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
 
 **Es gibt keinen globalen Bestand mehr.** `sequences/points.json`,
 `slots/slots.json`, `items/items.json` und die Scan-Ordner im Wurzelverzeichnis
-sind ersatzlos entfallen; die Konstanten dafür stehen in `paths.py` nur noch, um
-einen solchen Altbestand beim Zurücksetzen sicher wegräumen zu können. Wer zwei
+sind ersatzlos entfallen. In `paths.py` stehen davon nur noch die **Ordner**
+(`SLOTS_DIR`, `ITEMS_DIR`) — für genau einen Zweck: der Factory-Reset soll einen
+solchen Altbestand wegräumen können, falls er auf einer Platte herumliegt. Die
+Dateikonstanten selbst (`SLOTS_FILE`, `ITEMS_FILE`, eine für die Punkte) gibt es
+nicht mehr. Wer zwei
 Spiele betreibt, hat damit nicht mehr die Slots beider in einer Liste — das war
 der Grund für den Umzug.
 
@@ -1217,7 +1220,7 @@ Momentaufnahme, und die Ansicht bietet „Neu laden" an. Zwei Regeln dazu:
 
 - **Kein eigener Schreibvorgang zählt mit** (`_platte_nachziehen()`). Für das
   Speichern war das von Anfang an klar; für zwei andere nicht, und dort log der
-  Hinweis: das gemerkte Bild liegt unter `item_scans/bilder/`, und das **Anlegen
+  Hinweis: das gemerkte Bild liegt unter `sequences/<name>/bilder/`, und das **Anlegen
   des Unterordners** dreht die Änderungszeit von `item_scans/` weiter — der
   Reiter meldete also direkt nach der eigenen ersten Aufnahme eine
   Fremdänderung. Dasselbe beim Löschen einer Scan-Datei. Ein Hinweis, der nach
@@ -1413,7 +1416,7 @@ stammen aus dem Konsolen-Slot-Editor und sind **Ausschnitte** (`take_screenshot(
 deren Ursprung nirgends steht — als Arbeitsfläche benutzt, läge jeder Slot still
 falsch. Genau der Fehler, gegen den der Ursprung im PNG steht.
 
-**Jeder Scan merkt sich seinen Bildschirm.** `item_scans/bilder/<name>.png`, beim
+**Jeder Scan merkt sich seinen Bildschirm.** `sequences/<name>/bilder/<scan>.png`, beim
 Öffnen sofort wieder da — vorher war die Mitte des Reiters leer, bis man einen
 neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
 (Text-Chunk `links`/`oben`), nicht in einer Datei daneben: zwei Dateien, die
@@ -2364,7 +2367,8 @@ Acht Regeln, an denen der Teil hängt:
   Konsolen-Befehl (`icon <Name> else skip`).
 
 **Speichern und Rückgängig umfassen alle drei Arten.** Ein Knopf schreibt Slots,
-Items, Item-Scans, Boss-Scans, Icon-Scans, die Bibliothek **und `points.json`** —
+Items, Item-Scans, Boss-Scans, Icon-Scans, die Bibliothek **und die Punkte
+der Sequenz** —
 ein Klickpunkt einer Boss- oder Icon-Aktion ist ein Punkt, und die Koordinate steht
 dort und sonst nirgends. Der Rückgängig-Abzug (`_erkennung_zustand()`) nimmt sie
 ebenso mit: ein Zurück, das die Slots zurückdreht und den Boss-Scan stehen lässt,
@@ -2532,7 +2536,7 @@ Vier Regeln, an denen der Reiter hängt:
   den Weg zu verschweigen.
 
 Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über den
-Briefkasten-Befehl `daten` — der zieht seit dieser Umstellung auch `points.json`
+Briefkasten-Befehl `daten` — der zieht dabei auch die Punkte der Sequenz
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
 
 **Der Reiter „Bericht" liest `logs/`** (`bridge_bericht.py`). Der Live-Run zeigt das
@@ -2652,8 +2656,8 @@ Regeln für die Ansicht:
 - **Die Suche zeigt alle Abschnitte mit Treffern**, nicht nur den gewählten: wer
   sucht, weiss ja gerade nicht, wo der Wert steht.
 - **Eine Stelle fährt man an** (`scan_park_mouse`): Maus hin, ENTER — derselbe Weg
-  wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht in
-  `points.json`.
+  wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht
+  zu den Punkten der Sequenz.
 
 **Start, Pause und Stopp gehen über einen Briefkasten** (`befehl.py`), nicht direkt:
 dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
@@ -2769,8 +2773,9 @@ etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eine
 Durchgangs nicht mehr in den Editor zurück.
 
 **Zwei Prozesse, ein Ordner — und der Zweite gewinnt nicht mehr kommentarlos.**
-Das Studio merkt sich beim Laden den Zeitstempel von Sequenzdatei und
-`points.json` (`_stand_merken()`); hat sie sich beim Speichern geändert, fragt es
+Das Studio merkt sich beim Laden den Zeitstempel der Sequenzdatei
+(`_stand_merken()`) — die Punkte stehen darin, es ist also EIN Stand für
+beides; hat sie sich beim Speichern geändert, fragt es
 nach, statt zu überschreiben. Der Fall ist Alltag: eine Aufnahme im Hauptprozess
 legt Punkte an, `save_data()` schreibt die Sequenz. Die Rückfrage ist derselbe
 Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
@@ -2924,7 +2929,7 @@ Regeln beim Erweitern:
   `recorded_color`, und die Brücke bog sie **hinterher** auf den Punkt um. Das war
   eine Reparatur, keine Regel: wer `set_block_type()` direkt aufruft — oder die
   Reparatur beim nächsten Umbau vergisst — bekam wieder `wait_pixel`/`wait_color`
-  in der Datei, also eine Koordinaten-Kopie ausserhalb von `points.json`, die
+  in der Datei, also eine Koordinaten-Kopie neben dem Punkt, die
   keine Kalibrierung je einholt. Ein Test misst deshalb die **Funktion**, nicht
   nur den Weg über die Brücke.
 - **Der Typ ist das Ergebnis zweier Eigenschaften, nicht umgekehrt.** KLICK,
@@ -3147,7 +3152,7 @@ Drei Regeln, an denen die Aufnahme hängt:
 - **Der Warte-Marker hat keine eigene Stelle.** Er wird gedrückt, sobald man anfängt zu
   warten — die Maus parkt dabei irgendwo, und diese Position wäre reiner Zufall. Ein
   erster Entwurf legte darauf einen Punkt an; in einer echten Aufnahme stand da dann
-  `Warte auf Farbe bei (4483, 1038) Schwarz (3,4,5)`, also Müll in `points.json`.
+  `Warte auf Farbe bei (4483, 1038) Schwarz (3,4,5)`, also Müll in den Punkten.
 - **Gewartet wird auf die Farbe DES Klicks, der folgt.** Der Marker hängt sich an ihn
   und macht daraus einen Schritt: „warte auf die Farbe dieser Stelle, dann klicke sie" —
   ein Punkt, zweimal referenziert (`point_id` + `wait_point_id`), exakt das, was
@@ -3363,8 +3368,8 @@ Fünf Regeln, an denen die Klick-Runde hängt:
 
 - **Geändert wird nur die Stelle.** Wartezeiten, Farb-Bedingungen,
   Nachprüfungen, ELSE, Scans und die Reihenfolge bleiben — die Runde fasst die
-  Sequenzdatei überhaupt nicht an, sie schreibt `x`, `y` und (nur wenn der Punkt
-  schon eine hatte) die Farbe in `points.json`.
+  Reihenfolge und die Schritte überhaupt nicht an, sie schreibt `x`, `y` und (nur
+  wenn der Punkt schon eine hatte) die Farbe in den Punkt.
 - **Jeder Punkt einmal, in der Reihenfolge des Laufs** (INIT → Loop-Phasen →
   END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
   zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
