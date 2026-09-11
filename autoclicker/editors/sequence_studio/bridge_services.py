@@ -670,6 +670,12 @@ class BridgeServicesMixin:
         self.board = sequence_to_board(Sequence(
             name=basis, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
         self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
+        # **Die Punkte gehoeren der Sequenz, nicht dem Fenster.** `laden()` ersetzt
+        # sie, `neu()` liess sie stehen — und `speichern()` schreibt `self.points`
+        # in die Datei: eine frisch angelegte Sequenz kam damit mit dem ganzen
+        # Punktebestand der vorher offenen auf die Platte. Ein Rest aus der Zeit
+        # der globalen `points.json`, in der genau das richtig war.
+        self.points = []
         self._scan_init()
         self._auswahl_leeren()
         self._dirty = False

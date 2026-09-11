@@ -83,11 +83,18 @@ class BridgeWerkzeugeMixin:
             "laeuft": self._laeuft(),
         }
 
-    def _punkt_verwendungen(self, punkt_id: int) -> list[str]:
-        """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI."""
+    def _punkt_verwendungen(self, punkt_id: int, ausser=None) -> list[str]:
+        """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI.
+
+        `ausser` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
+        benutzt diesen Punkt SONST noch", denn dass der gewählte Block ihn
+        benutzt, weiss man dort schon.
+        """
         raus = []
         for lane in self.board.lanes:
             for nr, step in enumerate(lane.steps, 1):
+                if step is ausser:
+                    continue
                 basis = f"{lane.name} · Block {nr}"
                 if step.point_id == punkt_id:
                     raus.append(basis + " · Stelle")

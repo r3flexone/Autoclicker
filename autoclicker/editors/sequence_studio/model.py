@@ -239,7 +239,7 @@ class PalettePoint:
     y: int
     name: str
     color: Optional[tuple[int, int, int]] = None
-    source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'"
+    source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme"
 
 
 def load_palette_points(sequence_file) -> list[PalettePoint]:

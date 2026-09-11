@@ -342,11 +342,14 @@ section("Nachklicken: nur Klicks im Zielfenster zählen")
 # korrekt abgewiesen hatte.
 _vordergrund = ["Idle Clans"]
 _geklickt = [None]          # None = dieselbe Antwort wie der Vordergrund
-_echt_titel = _nk.get_foreground_window_title
-_echt_unter = _nk.get_window_title_at
+# Die Frage „welches Fenster hat den Klick" beantwortet `_klickfenster` —
+# fuer die Runde UND die Aufnahme. Gestubbt wird deshalb dort.
+import autoclicker.editors._klickfenster as _kf
+_echt_titel = _kf.get_foreground_window_title
+_echt_unter = _kf.get_window_title_at
 _echt_rect = _nk.get_client_rect_by_title
-_nk.get_foreground_window_title = lambda: _vordergrund[0]
-_nk.get_window_title_at = lambda x, y: (
+_kf.get_foreground_window_title = lambda: _vordergrund[0]
+_kf.get_window_title_at = lambda x, y: (
     _vordergrund[0] if _geklickt[0] is None else _geklickt[0])
 _nk.get_client_rect_by_title = lambda t: (0, 0, 800, 600)
 try:
@@ -404,8 +407,8 @@ try:
     # Der einzige Punkt beendet die Runde, also ist er danach schon geschrieben.
     check("und jeder Klick zählt", (_s7.points[0].x, _s7.points[0].y) == (55, 66))
 finally:
-    _nk.get_foreground_window_title = _echt_titel
-    _nk.get_window_title_at = _echt_unter
+    _kf.get_foreground_window_title = _echt_titel
+    _kf.get_window_title_at = _echt_unter
     _nk.get_client_rect_by_title = _echt_rect
 
 

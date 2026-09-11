@@ -308,7 +308,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .karte-nr{font-family:var(--mono);font-size:10px;color:#0C0F1499;margin-left:auto;flex:none}
 .karte-leib{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
 .karte-zeile{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.karte-zeile.mit-farbe,
 .karte-farbe{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.karte-zeile.mit-farbe{font-size:11.5px}
+.karte-zeile .feldchen,
 .karte-farbe .feldchen{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
 .karte-else{display:flex;align-items:center;gap:6px;padding-top:6px;
   border-top:1px dashed var(--line);color:var(--accent);font-size:11px}

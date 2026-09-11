@@ -1500,7 +1500,8 @@ _st6.item_scans = {
         _IS3("S aus", (0, 0, 10, 10), (5, 5), enabled=False)
     ]),
 }
-_st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True)}
+_st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True,
+                                 default_scan="gibtsnicht")}
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
 
 _ber = pruefe_setup(_st6, mit_sequenzen=False)
@@ -1522,6 +1523,24 @@ check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
 check("Fehler und Hinweise sind getrennt",
       len(_ber.fehler) >= 3 and len(_ber.hinweise) >= 2
       and all(b.stufe in (STUFE_FEHLER, STUFE_HINWEIS) for b in _ber.befunde))
+
+# **Der Fallback-Scan ist die fuenfte Referenz auf einen Scan-Namen** - und die
+# einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
+# `_pruefe_sequenzen()` sieht nur die vier im Schritt (`item_scan`, `boss_scan`,
+# `boss_watcher`, `icon_scan`); diese fiel durch, obwohl `runtime/steps.py` sie
+# bei „kein Boss erkannt" wirklich ausfuehrt.
+check("ein Fallback-Scan, den es nicht gibt, wird gemeldet",
+      _hat("Fallback-Scan"))
+
+_st_fb = _ACS()
+_st_fb.item_scans = {"inv": _ISC3(
+    name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
+    items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
+_st_fb.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra", template="t.png")],
+                                default_scan="inv")}
+_fb = pruefe_setup(_st_fb, mit_sequenzen=False)
+check("ein Fallback-Scan, den es GIBT, wird nicht gemeldet",
+      not any("Fallback-Scan" in f"{b.bereich}: {b.text}" for b in _fb.befunde))
 
 # Ein sauberes Setup darf NICHTS melden - sonst gewoehnt man sich das Ignorieren an
 _st7 = _ACS()
@@ -2687,7 +2706,7 @@ _st_rec = AutoClickerState()
 _events = [_RE(_R_CLICK, 0.0, 100, 200, (1, 2, 3)),
            _RE(_R_CLICK, 1.0, 300, 400, None),
            _RE(_R_CLICK, 2.0, 100, 200, (1, 2, 3))]
-_map, _neu = _pfe(_st_rec, _events, "Aufnahme")
+_map, _neu = _pfe(_events)
 check("Recorder legt fuer jede Position einen Punkt an", len(_neu) == 2)
 check("gleiche Position zweimal geklickt -> nur ein Punkt", len(_neu) == 2)
 check("jedes Ereignis mit Stelle hat eine ID", set(_map) == {0, 1, 2})
@@ -2696,12 +2715,64 @@ check("beide Klicks auf dieselbe Stelle teilen sich die ID",
 
 # Der Punkt-Pool einer anderen aktiven Sequenz darf nicht in die neue Aufnahme
 # geraten. Gleiche IDs sind erlaubt, weil IDs nur innerhalb einer Sequenz gelten.
-_st_rec2 = AutoClickerState()
-_st_rec2.points = [_WCP(x=100, y=200, name="schon da", id=42)]
-_map2, _punkte2 = _pfe(_st_rec2, _events, "Aufnahme")
+# **Gemessen wird das an der SIGNATUR, nicht an einem Ergebnis**: die Funktion
+# nahm einen `state` entgegen und benutzte ihn nie - ein Test, der einen
+# uebergebenen Pool "ignoriert" sieht, prueft dann nichts. Ohne den Parameter
+# gibt es den Weg gar nicht mehr, und das ist die staerkere Zusicherung
+# (dieselbe Bauart wie beim geloeschten `scan_reverse`).
+import inspect as _insp_rec
+_sig_pfe = list(_insp_rec.signature(_pfe).parameters)
+check("punkte_fuer_events nimmt nur die Ereignisse", _sig_pfe == ["events"])
+check("kein state in der Signatur - der Pool KANN nicht hineinlecken",
+      "state" not in _sig_pfe)
+_map2, _punkte2 = _pfe(_events)
 check("Recorder baut einen eigenen Punkt-Pool", len(_punkte2) == 2)
-check("Punkte der anderen Sequenz werden nicht referenziert", _map2[0] != 42)
-check("fremder Punkt-Pool bleibt unangetastet", _st_rec2.points[0].id == 42)
+
+# --- Ein Punkt heisst P<ID>, nicht nach seiner Sequenz --------------------
+# Er trug den Sequenznamen als Vorsatz ("aufnahme_214638 3"). Seit die Punkte
+# IN ihrer sequence.json stehen, sagt der nichts mehr - und beim Umbenennen der
+# Sequenz wird er falsch, wobei jeder Punkt einzeln nachzuziehen waere.
+check("die Namen sind kurz und tragen ihre ID",
+      [pt.name for pt in _punkte2] == ["P1", "P2"])
+check("und die Nummer im Namen IST die ID (nicht der Ereignis-Index)",
+      all(pt.name == f"P{pt.id}" for pt in _punkte2))
+check("die Herkunft nennt keine Sequenz mehr",
+      {pt.source for pt in _punkte2} == {"Aufnahme"})
+
+# Die Nummer folgt der ID, nicht der Stelle im Ereignisstrom: eine Aufnahme mit
+# Tastendruecken dazwischen haette sonst P1, P4, P7 - und die Liste schreibt
+# #1, #2, #3 daneben.
+_ev_lueckig = [_RE(_R_KEY, 0.0, key="a"),
+               _RE(_R_CLICK, 1.0, 10, 20, (1, 2, 3)),
+               _RE(_R_KEY, 2.0, key="b"),
+               _RE(_R_CLICK, 3.0, 900, 900, (4, 5, 6))]
+_map4, _punkte4 = _pfe(_ev_lueckig)
+check("Tastendruecke dazwischen verschieben die Nummern nicht",
+      [pt.name for pt in _punkte4] == ["P1", "P2"])
+
+# **Wer einen Punktnamen ERFINDET, nimmt dasselbe Schema.** Drei Wege legen
+# Punkte an, ohne dass jemand einen Namen tippt - die Aufnahme, CTRL+ALT+A und
+# der Rueckfall in `punkt_fuer_stelle()`. Sie standen auf `<Sequenz> <i>`, `P<id>`
+# und `Punkt <id>`: dieselbe Frage, drei Antworten, und in EINER Liste
+# untereinander. Gefragt werden deshalb beide erreichbaren Wege und verglichen -
+# nicht die Implementierung abgeschrieben.
+from autoclicker.persistence.sequences import punkt_fuer_stelle as _pfs
+_st_namen = AutoClickerState()
+_seq_namen = _KSEQ(name="N", init_steps=[], end_steps=[], loop_phases=[], points=[])
+_st_namen.sequences = {"N": _seq_namen}
+_st_namen.active_sequence = _seq_namen
+_st_namen.points = _seq_namen.points
+_id_a = _pfs(_st_namen, 10, 20, (1, 2, 3))
+_id_b = _pfs(_st_namen, 900, 900, (4, 5, 6))
+_namen_pfs = [pt.name for pt in _st_namen.points]
+check("der Rueckfall in punkt_fuer_stelle nimmt P<ID>",
+      _namen_pfs == [f"P{_id_a}", f"P{_id_b}"])
+check("und damit dasselbe Schema wie die Aufnahme",
+      [n[0] for n in _namen_pfs] == [n[0] for n in ("P1", "P2")])
+# Ein uebergebener Name gewinnt weiterhin - der Rueckfall ist ein Rueckfall.
+_id_c = _pfs(_st_namen, 500, 500, None, name="Bankschalter")
+check("ein getippter Name wird nicht ueberschrieben",
+      next(pt.name for pt in _st_namen.points if pt.id == _id_c) == "Bankschalter")
 _aufnahme_ziel = _aufnahme_datei("Neue Aufnahme")
 check("Recorder speichert im Besitzordner der Sequenz",
       _aufnahme_ziel.parts[-3:] == ("sequences", "neue_aufnahme", "sequence.json"))
@@ -2722,7 +2793,7 @@ _st_rec3 = AutoClickerState()
 _ev_nah = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
            _RE(_R_CLICK, 1.0, 103, 202, (32, 135, 111)),   # 3.6 px daneben
            _RE(_R_CLICK, 2.0, 104, 205, (32, 135, 111))]   # 6.4 px daneben
-_map3, _neu3 = _pfe(_st_rec3, _ev_nah, "Nah")
+_map3, _neu3 = _pfe(_ev_nah)
 check("drei Klicks auf denselben Knopf ergeben EINEN Punkt", len(_neu3) == 1)
 check("und alle drei Schritte zeigen darauf",
       _map3[0] == _map3[1] == _map3[2])
@@ -2733,7 +2804,7 @@ check("und alle drei Schritte zeigen darauf",
 _st_rec4 = AutoClickerState()
 _ev_farbe = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
              _RE(_R_CLICK, 1.0, 101, 200, (179, 57, 57))]
-_map4, _neu4 = _pfe(_st_rec4, _ev_farbe, "Farbe")
+_map4, _neu4 = _pfe(_ev_farbe)
 check("abweichende Farbe erzwingt einen eigenen Punkt",
       len(_neu4) == 2 and _map4[0] != _map4[1])
 
@@ -2754,6 +2825,7 @@ check("und der naechste gewinnt, wenn mehrere passen",
            105, 205, (32, 135, 111)).id == 2)
 
 # Die eigentliche Wirkung: Punkt verschieben -> Schritt zieht nach
+_st_rec2 = AutoClickerState()
 _seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
     _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)],
     points=_punkte2)
@@ -2820,7 +2892,7 @@ _ev_alle = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_KEY, 6.0, key="enter"),
             _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
 _st_alle = AutoClickerState()
-_map_alle, _neu_alle = _pfe(_st_alle, _ev_alle, "Alles")
+_map_alle, _neu_alle = _pfe(_ev_alle)
 _steps_alle = _sae(_ev_alle, _map_alle)
 
 check("Tastendruck bekommt keinen Punkt", 3 not in _map_alle)
@@ -2862,7 +2934,7 @@ _ev_echt = [_RE(_R_CLICK, 0.0, 4464, 1357, (32, 135, 111)),
             _RE(_R_WAIT, 1.0),
             _RE(_R_CLICK, 435.34, 4764, 29, (179, 57, 57))]
 _st_echt = AutoClickerState()
-_map_echt, _punkte_echt = _pfe(_st_echt, _ev_echt, "Echt")
+_map_echt, _punkte_echt = _pfe(_ev_echt)
 _steps_echt = _sae(_ev_echt, _map_echt)
 check("echte Aufnahme: 434s Warten werden zur Bedingung, nicht zur Schlafzeit",
       _steps_echt[1].delay_before == 1.0)
@@ -2912,7 +2984,7 @@ _ev_shot = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_SHOT, 1.5),
             _RE(_R_CLICK, 2.0, 30, 40, (4, 5, 6))]
 _st_shot = AutoClickerState()
-_map_shot, _neu_shot = _pfe(_st_shot, _ev_shot, "Shot")
+_map_shot, _neu_shot = _pfe(_ev_shot)
 _steps_shot = _sae(_ev_shot, _map_shot)
 
 check("Screenshot-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_shot)
@@ -2933,7 +3005,7 @@ check("und der Klick danach misst ab dem Marker weiter",
 _g6, _v6 = _mpr([_RE(_R_CLICK, 0.0, 1, 2), _RE(_R_SHOT, 1.0)])
 check("Screenshot-Marker am Ende bleibt (er braucht keinen Klick nach sich)",
       _v6 == 0 and len(_g6) == 2)
-_steps_ende = _sae(_g6, _pfe(AutoClickerState(), _g6, "E")[0])
+_steps_ende = _sae(_g6, _pfe(_g6)[0])
 check("und wird dort zum letzten Schritt", _steps_ende[-1].screenshot_only is True)
 
 # Ein Warte-Marker VOR einem Screenshot-Marker hat nichts zum Anhaengen: der
@@ -2991,7 +3063,7 @@ check("das Rechteck wird normalisiert (links/oben zuerst)",
       and _g_ber[1].region[1] < _g_ber[1].region[3])
 # Der Zeitstempel ist der der ERSTEN Ecke — die 2s Mausweg sind Bedienzeit
 check("der Zeitstempel ist der der ersten Ecke", _g_ber[1].t == 1.0)
-_steps_ber = _sae(_g_ber, _pfe(AutoClickerState(), _g_ber, "B")[0])
+_steps_ber = _sae(_g_ber, _pfe(_g_ber)[0])
 check("der Screenshot sitzt dort, wo die erste Ecke gesetzt wurde",
       _steps_ber[1].delay_before == 1.0)
 # Die Aufnahme erfindet keine Zeit und wirft keine weg: die Summe der Wartezeiten
@@ -3021,7 +3093,7 @@ _ev_watch = [_RE(_R_CLICK, 0.0, 10, 10, (1, 1, 1)),
              _RE(_R_WATCH, 2.0, 500, 600, (9, 9, 9)),
              _RE(_R_CLICK, 3.0, 20, 20, (2, 2, 2))]
 _st_watch = AutoClickerState()
-_map_watch, _punkte_watch = _pfe(_st_watch, _ev_watch, "W")
+_map_watch, _punkte_watch = _pfe(_ev_watch)
 _steps_watch = _sae(_ev_watch, _map_watch)
 # Anders als der Warte-Marker: die Stelle ist BEWUSST gewaehlt, also bekommt sie
 # einen Punkt — points.json ist die einzige Quelle fuer Koordinaten.
@@ -3063,7 +3135,7 @@ _ohne, _gr = _pg(_ev_ph)
 check("die Grenzen verschwinden aus dem Ereignisstrom",
       not any(e.kind == _R_PHASE for e in _ohne) and len(_ohne) == 4)
 check("und werden als Schritt-Indizes gemerkt", _gr == [1, 3])
-_steps_ph = _sae(_ohne, _pfe(AutoClickerState(), _ohne, "P")[0])
+_steps_ph = _sae(_ohne, _pfe(_ohne)[0])
 check("die Grenze frisst keine Wartezeit weg", _steps_ph[1].delay_before == 6.0)
 _ph = _pb(_steps_ph, _gr)
 check("zwei Grenzen ergeben drei Phasen", len(_ph) == 3)
@@ -3098,7 +3170,7 @@ _ev_mix = [_RE(_R_CLICK, 0.0, 1, 1), _RE(_R_WAIT, 1.0), _RE(_R_CLICK, 2.0, 2, 2)
            _RE(_R_PHASE, 3.0), _RE(_R_CLICK, 4.0, 3, 3)]
 _ohne_mix, _gr_mix = _pg(_ev_mix)
 check("ein Warte-Marker verschiebt den Schnitt nicht", _gr_mix == [2])
-_steps_mix = _sae(*(lambda ev: (ev, _pfe(AutoClickerState(), ev, "M")[0]))(_ohne_mix))
+_steps_mix = _sae(*(lambda ev: (ev, _pfe(ev)[0]))(_ohne_mix))
 _ph_mix = _pb(_steps_mix, _gr_mix)
 check("und der Schnitt trifft die richtige Stelle",
       len(_ph_mix[0].steps) == 2 and len(_ph_mix[1].steps) == 1)

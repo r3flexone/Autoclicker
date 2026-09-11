@@ -41,6 +41,7 @@ from ...utils import eindeutiger_name, sanitize_filename
 from .model import hexfarbe, rgbwert
 from .scan_contract import (
     ART_ITEM,
+    referenzen_umbenennen,
     MIN_REGION,
     MODUS_AKTION,
     MODUS_REGION,
@@ -689,10 +690,21 @@ class ScanDetectMixin:
         objekt.action_y = punkt.y if punkt else 0
 
     def _erkennung_umbenennen(self, bestand: dict, cfg, wert, wort: str) -> dict:
-        """Umbenennen eines Boss-/Icon-Scans — Schlüssel und Datei ziehen mit.
+        """Umbenennen eines Boss-/Icon-Scans — Schlüssel, Referenzen und Datei.
 
-        Die alte Datei bleibt liegen, wie beim Item-Scan: eine Sequenz, die noch
-        auf den alten Namen zeigt, verlöre ihren Scan sonst kommentarlos.
+        **Hier stand einmal das Gegenteil**, und die Begründung war „die alte
+        Datei bleibt liegen, sonst verlöre eine Sequenz, die noch auf den alten
+        Namen zeigt, ihren Scan kommentarlos". Das kurierte das Symptom und
+        machte den Schaden grösser: die Referenzen wurden nicht nachgezogen,
+        also zeigte der Block weiter auf den ALTEN Namen und lief gegen die
+        liegengebliebene Datei — jede spätere Änderung am umbenannten Scan
+        wirkte im Lauf nicht. Und weil `_scan_laden()` den Ordner durchsieht,
+        stand der Scan nach dem nächsten Öffnen ZWEIMAL da (gemessen: aus
+        `wache` wurden `['drache', 'wache']`). Ein Umbenennen, das klont, ist
+        kein Umbenennen.
+
+        Es läuft deshalb wie beim Item-Scan: Referenzen nachziehen, dann die
+        alte Datei entfernen.
         """
         neu = sanitize_filename(str(wert or "").strip())
         if not neu or neu == cfg.name:
@@ -705,12 +717,24 @@ class ScanDetectMixin:
         bestand.clear()
         bestand.update(neuer_bestand)
         cfg.name = neu
-        if self.boss_offen == alt and bestand is self.boss_scans:
+        ist_boss = bestand is self.boss_scans
+        if self.boss_offen == alt and ist_boss:
             self.boss_offen = neu
-        if self.icon_offen == alt and bestand is self.icon_scans:
+        if self.icon_offen == alt and not ist_boss:
             self.icon_offen = neu
-        return self._scan_geaendert(
-            f"'{alt}' heisst jetzt '{neu}' — die alte Datei bleibt liegen.", "warn")
+        # Der Name IST die Referenz — Blöcke und Beschriftungen ziehen mit.
+        getroffen = referenzen_umbenennen(self.board, "boss" if ist_boss else "icon",
+                                          alt, neu)
+        unterordner = "boss_scans" if ist_boss else "icon_scans"
+        alt_pfad = (self.filepath.parent / unterordner
+                    / f"{sanitize_filename(alt)}.json")
+        try:
+            alt_pfad.unlink(missing_ok=True)
+        except OSError:
+            return self._scan_melde(
+                f"'{alt}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
+        zusatz = f" ({getroffen}× in der Sequenz nachgezogen)" if getroffen else ""
+        return self._scan_geaendert(f"'{alt}' heisst jetzt '{neu}'.{zusatz}")
 
     def _region_setzen(self, cfg, wert, wer: str) -> dict:
         """Eine Region aus vier getippten Zahlen.

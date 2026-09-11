@@ -456,6 +456,26 @@ Regeln beim Erweitern:
   Gruppe nachzuziehen wäre genauer und wäre falsch: ein wiederverwendeter Punkt
   gehört womöglich schon einer anderen Sequenz, und die zöge stillschweigend mit.
   Auf die Mitte rücken darf nur ein ausdrücklicher Aufräum-Durchgang mit Vorschau.
+
+  **Ein erfundener Punktname heisst `P<ID>` — nie nach seiner Sequenz.** Drei
+  Wege legen Punkte an, ohne dass jemand einen Namen tippt, und sie standen auf
+  drei Schemata: die Aufnahme auf `<Sequenzname> <Ereignis-Index>`, `CTRL+ALT+A`
+  auf `P<ID>`, der Rückfall in `punkt_fuer_stelle()` auf `Punkt <ID>`. In einer
+  Liste standen damit „P3" und „Punkt 4" untereinander — dieselbe Frage, drei
+  Antworten.
+
+  Der Sequenzname war dabei nicht nur uneinheitlich, sondern **falsch**: seit
+  eine Sequenz eine Besitzeinheit ist, liegt der Punkt ohnehin in ihrer
+  `sequence.json` — der Vorsatz sagt nichts, den man nicht schon weiss, und beim
+  Umbenennen der Sequenz wird er unwahr. Richtigstellen hiesse dann, **jeden
+  Punkt einzeln** anzufassen (an einer echten Aufnahme: 51 Stück).
+
+  Zwei Regeln dazu: die Nummer ist die **Punkt-ID** und nicht die Stelle im
+  Ereignisstrom (sonst hiesse der dritte Punkt einer Aufnahme mit Tastendrücken
+  `P7`, während die Liste `#3` daneben schreibt), und ein **übergebener** Name
+  gewinnt immer — `P<ID>` ist der Rückfall, nicht die Vorschrift. Die Herkunft
+  steht getrennt davon in `source` („Aufnahme", „Sequenz-Studio"); auch dort ist
+  der Sequenzname entfallen, aus demselben Grund.
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
@@ -691,6 +711,44 @@ weiter. Lieber ein Slot weniger als ein toter Scan.
 Beim Umbenennen bleibt `update_item_in_scans()` nötig: der Name *ist* die Referenz. Alles
 andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
 
+**Und ein Scan wird ebenfalls per Namen gerufen — an FÜNF Stellen.** Sie stehen
+in `referenzen_umbenennen()` (`scan_contract.py`), damit sie nicht wieder
+auseinanderlaufen:
+
+| wer verweist | Feld | wo |
+|---|---|---|
+| `SequenceStep` | `item_scan` | im Schritt |
+| `SequenceStep` | `boss_scan` | im Schritt |
+| `SequenceStep` | `boss_watcher` | im Schritt (dieselbe Datei wie `boss_scan`) |
+| `SequenceStep` | `icon_scan` | im Schritt |
+| `BossScanConfig` | `default_scan` | in der **Boss-Scan-Datei** — ein *Item*-Scan-Name |
+
+Gemessen an einem echten Umbenenn-Durchgang zog **eine von sechs** Referenzen
+nach (die fünf oben plus die Beschriftung): nur der Item-Scan. Boss, Watcher und
+Icon liefen über `_erkennung_umbenennen()`, und das zog gar nichts nach — es
+liess stattdessen die **alte Datei liegen**, mit der Begründung, eine Sequenz auf
+dem alten Namen verlöre ihren Scan sonst. Das kurierte das Symptom und machte den
+Schaden grösser:
+
+- Der Block zeigte weiter auf den alten Namen und lief gegen die
+  liegengebliebene Datei — **jede spätere Änderung am umbenannten Scan wirkte im
+  Lauf nicht.**
+- `_scan_laden()` sieht den Ordner durch, also stand der Scan nach dem nächsten
+  Öffnen **zweimal** da (aus `wache` wurden `['drache', 'wache']`). Ein
+  Umbenennen, das klont, ist kein Umbenennen.
+
+Zwei Regeln beim Erweitern: **eine sechste Stelle trägt man in `_REF_FELDER`
+ein** (dieselbe Bauart wie `_REF_KEYS` bei den Punkten), und **die Beschriftung
+zieht nur mit, wenn sie abgeleitet ist** — `step.name == f"Boss:{alt}"` wird
+nachgezogen, ein selbst getippter Blockname nicht. Er gehört dem Nutzer, und ihn
+stillschweigend umzuschreiben wäre schlimmer als eine veraltete Beschriftung.
+
+**`default_scan` steht zusätzlich in der Diagnose.** Sie prüft tote Scan-Verweise
+über die vier Felder *im Schritt* (`_pruefe_sequenzen`) — die fünfte steht in
+einer Scan-Datei und fiel deshalb durch, obwohl `runtime/steps.py` sie bei „kein
+Boss erkannt" wirklich ausführt (`execute_item_scan(state, config.default_scan)`).
+Zeigt sie ins Leere, tut der Fallback nichts und sagt es nicht.
+
 **Jeder Klick-Schritt wird MIT `point_id` gebaut**, nicht nachträglich verknüpft. Ein Test
 (`kein Klick-Schritt wird ohne point_id gebaut`) prüft jede `SequenceStep(...)`-Konstruktion
 im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Screenshot) und
@@ -774,6 +832,25 @@ zeigt ins Leere.
 gelten nur innerhalb dieser Sequenz. Eine eigene `points.json` gab es einmal; sie
 zwang zwei Dateien in Gleichschritt, die getrennt gespeichert wurden — genau der
 Fall, an dem ein Punkt fehlte, sobald man ihn brauchte.
+
+**Wer eine Sequenz WECHSELT, wechselt ihre Punkte mit — in beide Richtungen.**
+Der Umzug auf sequenzlokale Punkte hat an zwei Stellen genau eine Zeile
+hinterlassen bzw. vermissen lassen, und die Fehler sind spiegelbildlich:
+
+| wo | was fehlte | was man sah |
+|---|---|---|
+| `neu()` (Studio) | `self.points` wurde nicht geleert | eine frisch angelegte Sequenz kam mit dem **ganzen Punktebestand der vorher offenen** auf die Platte — `speichern()` schreibt `self.points` |
+| `edit_sequence()` (Konsole) | `new_sequence.points` wurde nicht gefüllt | die gespeicherte Sequenz hatte **gar keine Punkte**, während jeder Schritt weiter seine `point_id` trug |
+
+Beides ist derselbe Denkfehler aus der Zeit des globalen Bestands: dort war
+`state.points` die eine Liste für alles, und ein Sequenzwechsel liess sie
+zurecht in Ruhe. Seither ist die Frage bei **jedem** Wechsel des Gegenstands zu
+beantworten — `laden()`, `neu()`, Import, Kalibrierung und der Konsolen-Editor
+tun es heute alle. Regel beim Erweitern: **wer `self.board` bzw.
+`state.active_sequence` setzt, setzt in derselben Zeilengruppe die Punkte.**
+Zwei Tests messen beide Richtungen bis auf die **Platte** — einer, der nur die
+Liste im Speicher prüft, sieht die Wirkung nicht, denn geschrieben wird erst
+beim Speichern.
 
 **`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
 beschreibt den Zustand JETZT und wird überschrieben statt angehängt
@@ -1174,7 +1251,7 @@ es die Marker-Farben.
   - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
     GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
   - `web/`: HTML, CSS, JavaScript und Logo.
-- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
+- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_klickfenster.py` (`geklicktes_fenster`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `nachklick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
@@ -2892,6 +2969,27 @@ Regeln beim Erweitern:
   Blöcke wirklich denselben Knopf klicken und der Knopf umzieht — ohne das wäre
   jede Kalibrierung eine halbe. Ein Anlauf, das im Inspektor per Copy-on-Write
   zu lösen, kurierte nur das Symptom und nahm dabei diese Regel mit.
+
+  **Aber ein geteilter Punkt sagt, dass er geteilt ist** — sonst ist die Regel
+  eine Falle. An einer echten Aufnahme hatte `punkt_an_stelle()` den Klick auf
+  denselben Knopf in Loop 1 und Loop 4 zu EINEM Punkt zusammengelegt (richtig
+  so). Wer dann Loop 1 per „Stelle mit der Maus setzen" eine andere Stelle gab,
+  verstellte Loop 4 mit — und suchte den Fehler in der Aufnahme: „der Punkt war
+  im Loop 4 an einer völlig falschen Stelle". Dass die beiden denselben Punkt
+  teilen, stand nirgends; die Regel dazu stand nur im ⓘ. Drei Dinge dagegen,
+  und keins davon ändert die Regel:
+
+  - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`punkt_andere`,
+    `_punkt_verwendungen(…, ausser=step)`) — als offener `hinweis`, denn das ist
+    Zustand; das Warum bleibt im ⓘ.
+  - Das Verschieben **sagt, wer mitzieht** („zieht 1 weitere Verwendung mit:
+    Loop 4 · Block 2 · Stelle", `_mitgezogen()`), und zwar ohne den Block, an dem
+    man gerade sitzt: der zählt nicht als „weiterer".
+  - **`punkt_abtrennen()`** gibt dem gewählten Block einen eigenen Punkt und
+    lässt die anderen auf dem alten — das Gegenstück zur Verschiebe-Regel für den
+    Fall „dieser eine Block soll einen *anderen* Knopf klicken". Dieselbe Bauart
+    wie beim Duplizieren (`_punkte_mitkopieren`): Klick und Prüf-Pixel eines
+    FARBE+KLICK-Blocks wandern gemeinsam.
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.
@@ -2899,6 +2997,16 @@ Regeln beim Erweitern:
   Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);
   alles Weitere steht rechts. Eine Wartezeit von 0 kommt gar nicht erst auf die Karte —
   „sofort" unter jedem zweiten Block ist Rauschen.
+
+  **Zum Ziel gehört die Farbe des Punkts** (`punkt_farbe`, das Feldchen vor der
+  Stelle) — bei jedem Block, der einen Punkt hat, nicht nur an der
+  Farb-Bedingung. Dort stand sie zuerst allein („wartet bis RGB(…) da"), und ein
+  reiner Klick zeigte nur Koordinaten: beim Umsortieren einer Aufnahme
+  unterscheidet niemand `(4405,555)` von `(4419,550)`, den grünen Knopf vom
+  roten schon. Ohne gemessene Farbe kein Feldchen — ein leeres Kästchen sagt
+  nichts, was der Inspektor nicht besser sagt. Die Stelle ist bei einem Block
+  mit Punkt immer die **erste** Zeile (`_zeilen`); daran hängt die Ansicht das
+  Feldchen, mit derselben CSS-Regel wie das an der Bedingung.
 - **Diskrete Bedienelemente melden sofort, Tipp-Felder erst beim Verlassen** (`change`,
   nicht `input`). Jede Meldung baut die Ansicht neu, und ein Neuaufbau mitten in der
   Eingabe nimmt das Feld weg, in das gerade getippt wird. Dieselbe Regel galt schon in
@@ -3257,6 +3365,30 @@ festgehaltenen Taste. Er ist die Kür: schlägt er fehl, läuft die Aufnahme ohn
 weiter — eine Aufnahme ohne Klicks wäre dagegen sinnlos. Beide Hooks werden auch beim
 Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weiter.
 
+**Der Klick auf einen Studio-Knopf ist keine Spielaktion — und welches Fenster
+den Klick bekam, sagt `geklicktes_fenster()`** (`editors/_klickfenster.py`, geteilt
+mit der Klick-Runde). Start und Stopp sind im Studio echte Knöpfe; ihr Klick darf
+nicht als Block in der Sequenz landen. Gefiltert wird deshalb, was im
+Studio-Fenster ankommt — und zwar am Fenster **unter dem Zeiger**, nicht am
+Vordergrund. Hier stand `get_foreground_window_title()`, und damit fehlte in
+**jeder** Studio-Aufnahme der erste Schritt: „Aufnahme starten" liegt im Studio,
+also ist das Studio vorn, und der erste Klick ins Spiel holt es erst nach vorn.
+Im Hook steht zu diesem Zeitpunkt noch das Studio als Vordergrund — der Klick
+galt als Studio-Klick und flog raus. Am Ende dasselbe umgekehrt: „Aufnahme
+stoppen" bei vorn stehendem Spiel kam als Spielklick in die Sequenz. Gemessen an
+einer echten Aufnahme (`all_dayli`): Loop 1 beginnt ohne den Öffner-Klick, den
+jede andere Phase hat, und der letzte Schritt `(1347, 709)` trägt `#1C2333` — das
+Panel-Grau des Studios.
+
+Es ist derselbe Fehler, der einmal in der Klick-Runde steckte (s. u. bei
+„Koordinaten nach einem Bildschirm-Umbau"), und er stand zweimal im Baum, weil
+die Frage zweimal beantwortet war — die Runde richtig, die Aufnahme nicht.
+Deshalb **ein** Helfer für beide Hook-Editoren; wer einen dritten Maus-Hook baut,
+fragt dort. Der Rückfall auf den Vordergrund bleibt: liefert die geometrische
+Frage nichts, ist die alte Antwort besser als gar keine. Vier Fälle stehen im
+Test — beide Richtungen des Fensterwechsels, dazu Vordergrund gleich und
+Vordergrund als Rückfall.
+
 **Rechtsklick wird bewusst nicht aufgezeichnet**: der Autoclicker kann gar keinen
 ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es gibt kein Modellfeld
 und keinen Editor-Befehl). Ihn mitzuschneiden hiesse, etwas aufzunehmen, das beim
@@ -3384,7 +3516,9 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   wegwirft, sähe aus wie ein kaputter Hook.
 
   **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist**
-  (`get_window_title_at()`, Rückfall auf den Vordergrund). Windows liefert den
+  (`geklicktes_fenster()` in `editors/_klickfenster.py`: `get_window_title_at()`,
+  Rückfall auf den Vordergrund — dieselbe Funktion, die die Aufnahme benutzt,
+  seit ihr an genau dieser Frage der erste Klick fehlte). Windows liefert den
   Button-Down an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
   durch genau diesen Klick erst aktiv. Im Hook steht damit noch das **vorige**
   Fenster im Vordergrund, und die Frage „bin ich im Zielfenster?" wird für den

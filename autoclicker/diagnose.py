@@ -140,6 +140,23 @@ def _pruefe_scan_referenzen(state: AutoClickerState, bericht: Pruefbericht) -> N
                           "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
     bericht.geprueft.append(f"{len(scans)} Item-Scan(s)")
 
+    # **`default_scan` ist die fünfte Referenz auf einen Scan-Namen** — und die
+    # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
+    # `_pruefe_sequenzen()` sieht deshalb nur die vier im Schritt; diese fiel
+    # durch, obwohl `runtime/steps.py` sie bei „kein Boss erkannt" wirklich
+    # ausführt: `execute_item_scan(state, config.default_scan)`. Zeigt sie ins
+    # Leere, tut der Fallback nichts und sagt es nicht.
+    with state.lock:
+        boss_scans = list(state.boss_scans.values())
+    vorhanden = {cfg.name for cfg in scans}
+    for cfg in boss_scans:
+        if cfg.default_scan and cfg.default_scan not in vorhanden:
+            bericht.melde(STUFE_HINWEIS, f"Boss-Scan '{cfg.name}'",
+                          f"Fallback-Scan '{cfg.default_scan}' gibt es nicht",
+                          "im Scans-Reiter einen vorhandenen Item-Scan wählen")
+    if boss_scans:
+        bericht.geprueft.append(f"{len(boss_scans)} Fallback-Scan-Verweis(e)")
+
 
 def _pruefe_llm_ocr(state: AutoClickerState, bericht: Pruefbericht) -> None:
     """Ein Scan mit use_llm/use_ocr nützt nichts, wenn es global aus ist."""

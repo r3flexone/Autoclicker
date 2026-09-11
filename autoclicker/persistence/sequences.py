@@ -354,7 +354,11 @@ def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
             p.color = tuple(color)
         return p.id
 
-    punkt = ClickPoint(x, y, name or f"Punkt {get_next_point_id(state)}",
+    # `P<ID>` ist das EINE Schema fuer erfundene Punktnamen - so benennt auch
+    # CTRL+ALT+A (`handlers.handle_add_point`) und die Aufnahme. Hier stand
+    # `Punkt {n}`: dieselbe Frage, zwei Antworten, und in einer Liste stehen
+    # dann "P3" und "Punkt 4" untereinander.
+    punkt = ClickPoint(x, y, name or f"P{get_next_point_id(state)}",
                        get_next_point_id(state),
                        color=tuple(color) if color else None, source=source)
     state.points.append(punkt)

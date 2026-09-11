@@ -880,8 +880,17 @@ function zeichneKarte(phase, block) {
   // Der Titel steht in der Kopfzeile, nicht im Leib: dort traegt er die Typfarbe
   // mit und steht NEBEN dem Typ statt darunter — eine Zeile weniger pro Karte,
   // und bei 50 Karten untereinander ist das der Unterschied.
+  // Die Farbe des Punkts steht an seiner Stelle (erste Zeile) — bei JEDEM
+  // Block, der einen Punkt hat, nicht nur an der Farb-Bedingung. Beim
+  // Überfliegen unterscheidet man Karten an der Farbe des Knopfs, nicht an
+  // vierstelligen Koordinaten.
   const leib = el("div", {class: "karte-leib"},
-    block.zeilen.map((z) => el("div", {class: "karte-zeile"}, z)));
+    block.zeilen.map((z, i) => (i === 0 && block.punkt_farbe)
+      ? el("div", {class: "karte-zeile mit-farbe"},
+          el("span", {class: "feldchen", style: "background:" + block.punkt_farbe,
+                      title: "Farbe des Punkts " + block.punkt_farbe}),
+          z)
+      : el("div", {class: "karte-zeile"}, z)));
 
   if (block.farbfeld) {
     leib.appendChild(el("div", {class: "karte-farbe"},
@@ -1709,6 +1718,19 @@ function baueStelle(ziel, b) {
       (hex) => ruf("punkt_setzen", {punkt: b.point_id, feld: "farbe", wert: hex}),
       "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
       "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
+    // Zustand, kein ⓘ: WER den Punkt sonst noch benutzt, sieht man sonst erst,
+    // wenn ein anderer Block woanders hinklickt. Und der Rueckweg steht dabei:
+    // ein eigener Punkt fuer diesen Block, die anderen bleiben, wo sie sind.
+    if (b.punkt_andere && b.punkt_andere.length) {
+      ziel.appendChild(el("p", {class: "hinweis"},
+        "Punkt #" + b.point_id + " wird auch benutzt von: " + b.punkt_andere.join(", ")));
+      ziel.appendChild(el("button", {
+        class: "btn breit",
+        title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
+               + b.point_id + ". Danach lässt sich seine Stelle ändern, ohne die anderen zu verstellen.",
+        onclick: () => ruf("punkt_abtrennen"),
+      }, "⧉ Eigenen Punkt für diesen Block"));
+    }
   }
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", b.x, (v) => setzeStelle(b, v, b.y), {step: "1"}),
