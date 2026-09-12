@@ -30,6 +30,7 @@ from ..persistence import (
     save_global_bosses,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
+from ..persistence.boss_scans import boss_scan_name_erlaubt
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -394,7 +395,14 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
         default_scan = existing.default_scan
     else:
         print("\n--- Neuen Boss-Scan erstellen ---")
-        scan_name = safe_input("Name des Boss-Scans: ").strip()
+        while True:
+            scan_name = safe_input("Name des Boss-Scans: ").strip()
+            if is_cancel(scan_name):
+                print(warn("[ABBRUCH] Boss-Scan nicht angelegt."))
+                return
+            if boss_scan_name_erlaubt(scan_name):
+                break
+            print(err("'bibliothek' ist reserviert. Bitte einen anderen Namen wählen."))
         if not scan_name:
             scan_name = f"BossScan_{int(time.time())}"
         scan_region = (0, 0, 100, 100)
@@ -564,7 +572,9 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
     with state.lock:
         state.boss_scans[scan_name] = config
 
-    save_boss_scan(config)
+    if not save_boss_scan(config):
+        print(err("Boss-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
+        return
 
     save_msg = ok(f"Boss-Scan '{scan_name}' gespeichert!")
     print(f"\n{save_msg}")

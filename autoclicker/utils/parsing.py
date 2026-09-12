@@ -306,7 +306,7 @@ def compact_json(data, indent: int = 2) -> str:
     return json_str
 
 
-def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
+def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
     """Schreibt `text` crash-sicher in `path`.
 
     Erst in eine temporäre Datei im selben Verzeichnis, flush + fsync, dann per
@@ -318,7 +318,9 @@ def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as f:
+        binaer = isinstance(text, bytes)
+        with os.fdopen(fd, "wb" if binaer else "w",
+                       **({} if binaer else {"encoding": encoding})) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

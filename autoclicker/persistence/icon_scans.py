@@ -34,8 +34,12 @@ def save_icon_scan(config: IconScanConfig) -> bool:
     """Speichert eine Icon-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Icon-Scan hat keine Besitzer-Sequenz")
-    return write_scan(str(_icon_scans_dir(config.owner_sequence)), config.name,
-               _icon_scan_to_dict(config), "Icon-Scan")
+    try:
+        return write_scan(str(_icon_scans_dir(config.owner_sequence)), config.name,
+                          _icon_scan_to_dict(config), "Icon-Scan")
+    except OSError as e:
+        logger.error(f"Icon-Scan konnte nicht gespeichert werden: {e}")
+        return False
 
 
 def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanConfig]:
@@ -44,6 +48,8 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_ICON_SCAN)
+        if not isinstance(data, dict):
+            raise TypeError("Icon-Scan muss ein JSON-Objekt sein")
 
         return IconScanConfig(
             name=data["name"],
@@ -73,10 +79,12 @@ def list_available_icon_scans(owner: str = "") -> list[tuple[str, Path]]:
 
 def load_all_icon_scans(state: AutoClickerState) -> None:
     """Lädt alle Icon-Scan Konfigurationen."""
-    owner = state.active_sequence.name if state.active_sequence else ""
-    if not owner:
-        state.icon_scans.clear()
-        return
-    ordner = str(_icon_scans_dir(owner))
-    load_all_scans(ordner, lambda pfad: load_icon_scan_file(pfad, owner),
-                   state.icon_scans, "Icon-Scan")
+    with state.lock:
+        owner = state.active_sequence.name if state.active_sequence else ""
+    geladen = {}
+    if owner:
+        ordner = str(_icon_scans_dir(owner))
+        load_all_scans(ordner, lambda pfad: load_icon_scan_file(pfad, owner),
+                       geladen, "Icon-Scan")
+    with state.lock:
+        state.icon_scans = geladen

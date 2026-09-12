@@ -38,6 +38,7 @@ from ...models import (
     VALID_SCAN_MODES,
 )
 from ...utils import eindeutiger_name, sanitize_filename
+from ...persistence.boss_scans import boss_scan_name_erlaubt
 from .model import hexfarbe, rgbwert
 from .scan_contract import (
     ART_ITEM,
@@ -332,6 +333,8 @@ class ScanDetectMixin:
         self._scan_laden()
         name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Boss-Scan"),
                                 self.boss_scans)
+        if not boss_scan_name_erlaubt(name):
+            return self._scan_melde("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         self._merke("Boss-Scan angelegt")
         self.boss_scans[name] = BossScanConfig(name=name, owner_sequence=self.board.name)
         self.boss_offen, self.boss_wahl = name, ""
@@ -707,6 +710,8 @@ class ScanDetectMixin:
         alte Datei entfernen.
         """
         neu = sanitize_filename(str(wert or "").strip())
+        if bestand is self.boss_scans and not boss_scan_name_erlaubt(neu):
+            return self._scan_melde("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         if not neu or neu == cfg.name:
             return self.scan_daten()
         if neu in bestand:

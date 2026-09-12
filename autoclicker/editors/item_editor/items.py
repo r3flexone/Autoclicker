@@ -153,6 +153,11 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
         elif choice == 0:  # Name
             name_input = safe_input(f"  Neuer Name (Enter = '{new_name}'): ").strip()
             if name_input:
+                with state.lock:
+                    kollision = name_input != item.name and name_input in state.global_items
+                if kollision:
+                    print("  -> Name bereits vergeben. Bitte einen anderen Namen wählen.")
+                    continue
                 new_name = name_input
                 print(f"  -> Name geändert zu '{new_name}'")
         elif choice == 1:  # Kategorie

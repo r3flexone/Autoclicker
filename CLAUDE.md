@@ -382,10 +382,11 @@ die IDs gelten nur innerhalb dieser Sequenz.
 | `ItemProfile` | Punkte der Sequenz | `confirm_point_id` | `resolve_klick_referenzen()` |
 | `BossProfile` | Punkte der Sequenz | `action_point_id` | dito |
 | `IconScanConfig` | Punkte der Sequenz | `action_point_id` | dito |
-| `ItemScanConfig` | Slots/Items **im Scan selbst** | `slot_names`, `item_names` | `resolve_scan_references()` |
+| `ItemScanConfig` | eigene Slots und Items | `slots`, `items` (vollständige Objekte) | direkt beim Laden |
 
-Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
-Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht.
+Beim Item-Scan sind `config.slots`/`config.items` der **eigene Bestand des Scans**.
+Beide Listen werden vollständig gespeichert; `slot_names`/`item_names` sind
+abgeleitete Ansichten und keine Referenzen auf einen globalen Bestand.
 
 **Eine Koordinate steht im Punkt der Sequenz, sonst nirgends.** Das gilt ausnahmslos für alle
 drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `step.x/y`,
@@ -690,26 +691,16 @@ wirklich etwas geändert wird (`_katalog_plan` vor `_katalog_uebernehmen`) — e
 zweiter Klick auf denselben Knopf darf keinen Rückgängig-Stand ablegen, sonst
 tut STRG+Z einmal scheinbar nichts.
 
-**Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
-(aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
-Namenslisten aus den Objekten. Ohne das hinterlässt jede Seite eine halbe Config, und beide
-Richtungen gehen kaputt:
+**Der Scan besitzt seine Slots und Items.** `slots`/`items` sind die Wahrheit;
+`slot_names`/`item_names` werden daraus abgeleitet. Gleichnamige Items anderer
+Scans bleiben unabhängig. `resolve_scan_references()` löst nur noch die
+Klick-Punkte auf; `sync_names()` und `update_item_in_scans()` sind derzeit
+wirkungslose Rest-Helfer und kein Vorbild für neue Aufrufer.
 
-- Editoren und Scan-Studio bauen die Config aus **Objekten** → ohne Namen leerte
-  `resolve_scan_references()` beim nächsten Sequenzstart die Objekte wieder. Ein gerade
-  bearbeiteter Scan lief bis zum Neustart ins Leere.
-- Der Loader baut sie aus **Namen** → ohne Objekte zeigte das Menü „0 Slots, 0 Items" und
-  beim Bearbeiten war nichts vorausgewählt.
-
-Regel beim Erweitern: **Anzeige und Vorauswahl immer über `slot_names`/`item_names`**, nie
-über `slots`/`items` — die sind erst nach dem Auflösen gefüllt. Wer `config.slots` von aussen
-setzt, ruft danach `sync_names()`.
-
-Namen, die global fehlen, werden gemeldet und übersprungen — der Scan läuft mit dem Rest
-weiter. Lieber ein Slot weniger als ein toter Scan.
-
-Beim Umbenennen bleibt `update_item_in_scans()` nötig: der Name *ist* die Referenz. Alles
-andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
+Beim Sequenzwechsel werden die geladenen Scan-Dictionaries vollständig ersetzt.
+Eine fehlende Boss-Bibliothek bedeutet eine leere Liste. Der Dateiname
+`bibliothek.json` ist für die Bibliothek reserviert und darf keinem Boss-Scan
+gehören (`boss_scan_name_erlaubt()`); die Prüfung erfolgt auch beim Speichern.
 
 **Und ein Scan wird ebenfalls per Namen gerufen — an FÜNF Stellen.** Sie stehen
 in `referenzen_umbenennen()` (`scan_contract.py`), damit sie nicht wieder
@@ -892,10 +883,10 @@ Die bisherige Regel „Bestandsdateien werden über die Migration gehoben, nicht
 fallengelassen" gilt damit **nur noch für das, was schon eine Migration hat**.
 Für alles Neue ist die Antwort: Default in der Dataclass, fertig.
 
-**Backward Compatibility läuft über Migration, nicht über Sonderfälle im Loader**:
-`persistence/migration.py` hebt geladene Dicts aufs aktuelle Schema (`schema_version`),
-bevor ein Loader sie liest. Loader kennen deshalb **nur das aktuelle Format** — neue
-Umstellungen kosten einen Migrationsschritt statt einer weiteren Verzweigung.
+**Vorhandene Migrationen laufen vor dem Loader.** Neue Umstellungen bekommen
+keinen zusätzlichen Migrationsschritt. Loader lesen das aktuelle Format, verwenden
+Defaults für fehlende Felder und melden falsche JSON-Strukturen als Ladefehler
+(`TypeError` in den `_*_from_dict`-Lesern, gefangen von `LOAD_EXCEPTIONS`).
 
 Zwei Wege, je nach Dateiform:
 
@@ -920,12 +911,10 @@ totes Feld in ein anderes totes Format bringt, ist das Anwachsen, das hier vermi
 werden soll.
 
 Regeln beim Format-Ändern:
-1. Versioniert: `SCHEMA_VERSION` hochzählen, Schritt in `_CHAINS` eintragen.
-   Unversioniert: Normalisierer in `_NORMALIZER` erweitern — muss idempotent bleiben.
-2. Entfallene Felder in `_DEAD_STEP_KEYS` (Schritte) bzw. `_POINT_KEYS` (Punkte)
-   eintragen — dann räumt die Migration sie weg.
-3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
-4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
+1. Dataclass, Loader und Serializer gemeinsam anpassen; fehlende Felder bekommen Defaults.
+2. Entfallene Felder im Serializer entfernen; der Start-Durchgang bereinigt die Dateien.
+3. Keine neuen Ketten oder Normalisierer ergänzen; bestehende nach erledigter Migration entfernen.
+4. Saver stempeln weiterhin mit `stamp()`; `SCHEMA_VERSION` nicht zurückdrehen.
 
 **Ein Migrationsschritt läuft genau so lange, wie es etwas zu heben gibt.** `migrate()`
 ruft zwar jeder Loader auf (ein Test erzwingt das), aber die Schleife
