@@ -88,7 +88,7 @@ def lauf():
 
         # Der Dialog muss sagen, WAS weggeht — der Umfang ist der halbe Grund
         # fuer die Rueckfrage.
-        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen", warten=400)
+        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen")
         pruefe(not f.seite.is_hidden("#schleier"), "der Dialog geht nicht auf")
         text = f.text("#schleier")
         pruefe("Raid" in text, f"der Name fehlt im Dialog: {text!r}")
@@ -98,12 +98,12 @@ def lauf():
         f.bild("sequenzen_loeschen_dialog")
 
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
-        f.klick("#dialog-ab", warten=400)
+        f.klick("#dialog-ab")
         pruefe(f.anzahl(".seq-karte") == 2, "Abbrechen hat trotzdem geloescht")
         pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
-        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen", warten=400)
-        f.klick("#dialog-weg", warten=900)
+        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen")
+        f.klick("#dialog-weg")
         pruefe(f.anzahl(".seq-karte") == 1,
                f"nach dem Loeschen 1 Karte erwartet, da: {f.anzahl('.seq-karte')}")
         pruefe(not ordner_raid.exists(), "der Ordner steht noch")

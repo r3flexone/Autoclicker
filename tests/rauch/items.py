@@ -70,17 +70,17 @@ def lauf():
                "der Rauchtest braucht freien Platz rechts neben dem Bild")
         f.seite.mouse.click(bildrand["x"] + bildrand["width"] * .2,
                             bildrand["y"] + bildrand["height"] * .2)
-        f.seite.wait_for_timeout(400)
+        f.ruhe()
         f.seite.mouse.click(x_draussen,
                             bildrand["y"] + bildrand["height"] * .8)
-        f.seite.wait_for_timeout(700)
+        f.ruhe()
         rechter_bildrand = (b._foto_info["links"]
                             + round(b._foto_info["breite"] / b._foto_info["skala"]))
         pruefe(b._suchbereich is not None
                and b._suchbereich[2] == rechter_bildrand,
                f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._suchbereich}")
         f.seite.keyboard.press("Escape")
-        f.seite.wait_for_timeout(400)
+        f.ruhe()
         pruefe(f.text("#scan-sequenz").strip() == "Rauch",
                "Zielsequenz der Scan-Aufnahme ist nicht sichtbar")
         masken = f.anzahl("#scan-insp .scan-maske")
@@ -98,7 +98,7 @@ def lauf():
         f.seite.eval_on_selector(
             "#scan-insp .kategorie-wahl input",
             "e => e.dispatchEvent(new Event('change', {bubbles: true}))")
-        f.seite.wait_for_timeout(700)
+        f.ruhe()
         typ = f.seite.eval_on_selector("#scan-insp .kategorie-wahl > *", "e => e.tagName")
         pruefe(typ == "SELECT", f"nach dem Anlegen erwartet SELECT, da: {typ}")
 
@@ -117,7 +117,7 @@ def lauf():
           s.value = s.options[s.options.length - 1].value;
           s.dispatchEvent(new Event('change', {bubbles: true}));
         }""")
-        f.seite.wait_for_timeout(400)
+        f.ruhe()
         typen = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(typen[1] == "INPUT", f"'neue Kategorie' oeffnet kein Textfeld: {typen[:3]}")
@@ -131,7 +131,7 @@ def lauf():
             f.seite.wait_for_function("() => !SC.dirty", timeout=15000)
         except Exception:
             pass                                # die Zusicherung meldet es genauer
-        f.seite.wait_for_timeout(200)
+        f.ruhe()
         typen_danach = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(typen_danach == typen,
@@ -149,7 +149,7 @@ def lauf():
         # vorbei neu — beim Umbenennen fehlt die Vorschau unter dem neuen Namen,
         # sie wird nachgeholt, und dieser Aufbau rettete den Fokus nicht.
         f.klick_text("#scan-insp .tabs .tab", "Items")
-        f.seite.wait_for_timeout(300)
+        f.ruhe()
         vorher = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
         pruefe(all(n.startswith("maske:item:") for n in vorher),
@@ -241,7 +241,7 @@ def lauf():
           e.value = "9";
           e.dispatchEvent(new Event('change', {bubbles: true}));
         }""", erste)
-        f.seite.wait_for_timeout(700)
+        f.ruhe()
         nach_prio = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
         pruefe(nach_prio == vor_prio,
@@ -313,7 +313,7 @@ def lauf():
         # in der Spalte, die man damit gerade verlassen hatte.
         f.klick_text("#scan-insp .tabs .tab", "Scans")
         f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] input')
-        f.seite.wait_for_timeout(300)
+        f.ruhe()
         f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] .scan-maske-stand')
         reiter_danach = f.text("#scan-insp .tabs .tab.an")
         pruefe(reiter_danach.startswith("Scans"),
@@ -329,7 +329,7 @@ def lauf():
         # seit jeher.
         f.klick_text("#scan-insp .tabs .tab", "Items")
         f.klick("#scan-insp .scan-maske .scan-maske-felder input")
-        f.seite.wait_for_timeout(300)
+        f.ruhe()
         beschriftungen = f.seite.eval_on_selector_all(
             "#scan-insp .scan-maske-detail .ueberschrift",
             "ns => ns.map(n => n.textContent)")
@@ -348,9 +348,9 @@ def lauf():
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         for taste, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
             f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
-            f.seite.wait_for_timeout(250)
+            f.ruhe()
             f.seite.keyboard.press(f"Control+{taste}")
-            f.seite.wait_for_timeout(300)
+            f.ruhe()
             modus = f.seite.evaluate("SC.modus")
             pruefe(modus == "wahl", f"{name} wechselt den Modus auf '{modus}'")
         # Ohne Modifikator muss der Buchstabe weiterhin greifen — sonst hat der
@@ -358,11 +358,11 @@ def lauf():
         # heraus: in einem Eingabefeld ist „F“ ein Buchstabe und kein Werkzeug.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         f.seite.keyboard.press("f")
-        f.seite.wait_for_timeout(300)
+        f.ruhe()
         pruefe(f.seite.evaluate("SC.modus") == "messen",
                "„F“ allein schaltet nicht mehr auf „Hintergrundfarbe“")
         f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
-        f.seite.wait_for_timeout(250)
+        f.ruhe()
 
         # **Was getippt und noch nicht gemeldet ist, ueberlebt das
         # Auto-Speichern.** Es ist der einzige Neuaufbau, der an der Uhr haengt
@@ -373,7 +373,7 @@ def lauf():
         # als Zusicherung, nicht als Beiwerk — faellt es weg, verschluckt das
         # Fenster Tastendruecke, und man sucht den Fehler in der Bruecke.
         f.klick_text("#scan-insp .tabs .tab", "Items")
-        f.seite.wait_for_timeout(300)
+        f.ruhe()
         # Das Namensfeld traegt kein `type` (s. `maskeName`) — ein Selektor auf
         # `[type=text]` findet es deshalb nicht.
         felder = "#scan-insp .scan-maske .scan-maske-felder > input:not([type])"

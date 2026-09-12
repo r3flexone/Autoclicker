@@ -28,10 +28,35 @@ WEB = WURZEL / "autoclicker" / "editors" / "sequence_studio" / "web"
 
 # Der Proxy: jeder `window.pywebview.api.<name>(daten)`-Aufruf der Seite landet
 # als ein Python-Aufruf auf der Bruecke. Genau ein Argument, wie im Fenster.
+# Der Proxy zaehlt, wie viele Bruecken-Aufrufe gerade unterwegs sind — das
+# ist die eine Groesse, an der ein Test erkennen kann, ob die Seite fertig ist
+# (s. `Fenster.ruhe`). `__offen++` passiert synchron im Klick-Handler, also
+# bevor Playwright den Klick als erledigt meldet.
 STUB = """
-window.pywebview = {api: new Proxy({}, {get: (t, name) => (d) =>
-  window.__bruecke(String(name), d === undefined ? null : d)})};
+window.__offen = 0;
+window.pywebview = {api: new Proxy({}, {get: (t, name) => async (d) => {
+  window.__offen++;
+  try { return await window.__bruecke(String(name), d === undefined ? null : d); }
+  finally { window.__offen--; }
+}})};
 """
+
+# Was `ruhe()` in der Seite abwartet: kein Aufruf offen, und das in zwei
+# Frames hintereinander — ein einzelner ruhiger Frame kann zwischen zwei
+# Gliedern einer Kette liegen (Neuaufbau -> Vorschau nachladen -> Neuaufbau).
+_RUHE = """(ms) => new Promise((res, rej) => {
+  const start = performance.now();
+  let ruhig = 0;
+  const tick = () => {
+    if ((window.__offen || 0) === 0) { if (++ruhig >= 2) return res(true); }
+    else ruhig = 0;
+    if (performance.now() - start > ms)
+      return rej(new Error("Seite kommt nicht zur Ruhe: " + window.__offen
+                           + " Bruecken-Aufruf(e) offen"));
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})"""
 
 
 def playwright_da() -> tuple[bool, str]:
@@ -139,7 +164,7 @@ class Fenster:
         self.seite.expose_function("__bruecke", self._ruf)
         self.seite.add_init_script(STUB)
         self.seite.goto((WEB / "index.html").as_uri())
-        self.seite.wait_for_timeout(600)
+        self.ruhe()
         return self
 
     def __exit__(self, *_):
@@ -163,17 +188,36 @@ class Fenster:
 
     # ---------------------------------------------------------------- Bedienen
 
-    def reiter(self, name: str, warten: int = 700):
+    def ruhe(self, hoechstens: int = 15000):
+        """Wartet, bis die Seite fertig ist — nicht eine feste Zeit lang.
+
+        **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand nach
+        jedem Klick und Reiterwechsel ein `wait_for_timeout(700)`: ein blinder
+        Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen ueber alle
+        acht Rauchtests: 86 s Laufzeit, davon **70 s Schlaf** in 117 Aufrufen,
+        6,5 s echte Arbeit. Fertig ist die Seite, wenn kein Bruecken-Aufruf
+        mehr unterwegs ist (`window.__offen`, gezaehlt im Proxy) und das zwei
+        Frames lang so bleibt — der Neuaufbau nach einer Antwort laeuft in
+        Microtasks, also vor dem naechsten Frame, und eine Kette (Antwort ->
+        Neuaufbau -> Vorschau nachladen) faengt ihr naechstes Glied noch im
+        selben Frame an.
+
+        Was an einem TIMER haengt (Auto-Speichern 900 ms, der Aufnahme-Waechter),
+        sieht das nicht — dort bleibt eine feste Wartezeit, und sie sagt dazu,
+        auf welche Uhr sie wartet.
+        """
+        self.seite.evaluate(_RUHE, hoechstens)
+        return self
+
+    def reiter(self, name: str):
         self.seite.click(f'.tab[data-ansicht="{name}"]')
-        self.seite.wait_for_timeout(warten)
-        return self
+        return self.ruhe()
 
-    def klick(self, wahl: str, warten: int = 700):
+    def klick(self, wahl: str):
         self.seite.click(wahl)
-        self.seite.wait_for_timeout(warten)
-        return self
+        return self.ruhe()
 
-    def klick_text(self, wahl: str, text: str, warten: int = 700):
+    def klick_text(self, wahl: str, text: str):
         """Den Knopf mit diesem Text anklicken — robuster als eine Position.
 
         Ueber `nth-of-type` zu gehen bricht, sobald jemand einen Knopf davor
@@ -198,8 +242,7 @@ class Fenster:
                 letzter = fehler
                 self.seite.wait_for_timeout(150)
                 continue
-            self.seite.wait_for_timeout(warten)
-            return self
+            return self.ruhe()
         raise AssertionError(f"kein '{text}' in {wahl}" + (f" ({letzter})" if letzter else ""))
 
     # ---------------------------------------------------------------- Ablesen

@@ -53,7 +53,7 @@ def lauf():
 
     with Fenster(b, breite=1300, hoehe=560) as f:
         # ---------------------------------------------------------- Übersicht
-        f.reiter("sequenzen", 900)
+        f.reiter("sequenzen")
         karten = f.anzahl(".seq-karte")
         pruefe(karten == 3, f"3 Karten erwartet, da: {karten}")
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
@@ -82,7 +82,7 @@ def lauf():
         f.bild("sequenzen_karten")
 
         # ------------------------------------------------------------- Editor
-        f.reiter("editor", 700)
+        f.reiter("editor")
         pruefe(f.anzahl("#btn-aufnahme") == 1,
                "Verweis auf das Aufnahme-Werkzeug fehlt")
         kopf = ".seite.links .abschnitt.klebt"
@@ -106,7 +106,7 @@ def lauf():
         vorher = f.seite.eval_on_selector(
             kopf, "e => Math.round(e.getBoundingClientRect().top)")
         f.seite.eval_on_selector(".seite.links", "e => { e.scrollTop = 400; }")
-        f.seite.wait_for_timeout(200)
+        f.ruhe()
         nachher = f.seite.eval_on_selector(
             kopf, "e => Math.round(e.getBoundingClientRect().top)")
         gescrollt = f.seite.eval_on_selector(".seite.links", "e => e.scrollTop")
@@ -116,7 +116,7 @@ def lauf():
         f.bild("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
-        f.reiter("editor", 600)
+        f.reiter("editor")
         # **Kein „×" am ENDE einer Beschriftung.** Der Skalieren-Knopf hiess
         # „Wartezeiten ×" — dort, wo jede andere Oberflaeche ein Schliesskreuz
         # hat, las sich das als „wegmachen" statt als „mal". Daneben stand ein
@@ -179,7 +179,7 @@ def lauf():
         # Reitern, die am staerksten an der Sequenz haengen.
         for reiter in ("editor", "sequenzen", "lauf", "scans",
                        "teilen", "werkzeuge", "einstellungen"):
-            f.reiter(reiter, 400)
+            f.reiter(reiter)
             sichtbar = f.seite.eval_on_selector_all(
                 "#seq-auswahl, #btn-laden, #btn-neu",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
@@ -188,7 +188,7 @@ def lauf():
                    f"({sichtbar}/3 sichtbar)")
         # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
-        f.reiter("scans", 500)
+        f.reiter("scans")
         pruefe(not f.seite.eval_on_selector(
             "#btn-speichern", "e => e.offsetParent !== null"),
             "der Sequenz-Speichern-Knopf steht im Scans-Reiter")
@@ -197,12 +197,12 @@ def lauf():
         # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den
         # `zeichne()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
-        f.reiter("werkzeuge", 600)
-        f.klick_text("#wz-links button", "Punkte nachklicken", warten=500)
+        f.reiter("werkzeuge")
+        f.klick_text("#wz-links button", "Punkte nachklicken")
         pruefe("Alpha" in f.text("#wz-mitte"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-mitte')[:120]!r}")
         f.seite.select_option("#seq-auswahl", "Beta")
-        f.klick("#btn-laden", warten=900)
+        f.klick("#btn-laden")
         pruefe(f.seite.eval_on_selector("#seq-auswahl", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
         pruefe("Beta" in f.text("#wz-mitte"),

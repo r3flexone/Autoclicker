@@ -54,7 +54,7 @@ def lauf():
                f"{len(TEILE)} Haken erwartet (je einer pro TEILE), da: {haken}")
         pruefe("probe.zip" in f.text("#teilen-mitte"), "das Buendel fehlt in der Liste")
         f.bild("teilen")
-        f.klick("#teilen-mitte button", warten=800)
+        f.klick("#teilen-mitte button")
         pruefe("gelesen" in f.status(), f"Einlesen: {f.status()!r}")
         pruefe(bool(f.text("#teilen-import").strip()), "rechts steht nichts zum Import")
         f.bild("teilen_import")

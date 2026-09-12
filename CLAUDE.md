@@ -110,6 +110,25 @@ Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Fenster`, `sandkasten`,
 `stelle_bildschirm`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
 Job, weil dort erst ein Browser installiert werden muss.
 
+**Gewartet wird auf den Zustand der Seite, nicht auf die Uhr** (`Fenster.ruhe()`).
+Nach jedem Klick und Reiterwechsel stand ein `wait_for_timeout(700)` — ein blinder
+Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen über alle acht Tests:
+**86 s Laufzeit, davon 70 s Schlaf** in 117 Aufrufen und 6,5 s echte Arbeit. Der
+Prüfstand hat den Brücken-Proxy in der Hand, also zählt er dort, wie viele
+Aufrufe unterwegs sind (`window.__offen`); `ruhe()` wartet, bis das zwei Frames
+lang null ist — der Neuaufbau nach einer Antwort läuft in Microtasks, also vor
+dem nächsten Frame, und eine Kette (Antwort → Neuaufbau → Vorschau nachladen)
+fängt ihr nächstes Glied noch im selben Frame an. `reiter()`, `klick()` und
+`klick_text()` rufen es selbst; ein Test schreibt nach einer eigenen Aktion
+`f.ruhe()`. Ergebnis: 86 s → 27 s, und die Wartezeit wächst nicht mehr mit der
+Zahl der Klicks, sondern mit dem, was die Seite tut. Ohne den Zähler werden
+alle acht Tests rot — die Bedingung trägt, sie ist kein Schmuck.
+
+Fünf feste Wartezeiten bleiben, und jede hängt an einer **Uhr**, die die Seite
+selbst stellt: das Auto-Speichern nach 900 ms und der Aufnahme-Wächter. Wer
+eine neue braucht, schreibt dazu, auf welchen Timer sie wartet — sonst ist sie
+in einem Jahr wieder ein „700, das reicht wohl".
+
 **`tests/test_logic.py`** prüft Serialisierung,
 Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
