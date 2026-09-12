@@ -101,7 +101,7 @@ def lauf():
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.
-        f.klick(".ber-sitzung:nth-of-type(2)", warten=600)
+        f.klick(".ber-sitzung:nth-of-type(2)")
         pruefe(f.anzahl(".ber-sitzung.an") == 1,
                "genau eine Sitzung muss markiert sein")
         mitte = f.text("#ber-mitte")
@@ -112,7 +112,7 @@ def lauf():
         f.bild("bericht_eine")
 
         # Und zurueck auf alles zusammen.
-        f.klick(".ber-sitzung:nth-of-type(1)", warten=600)
+        f.klick(".ber-sitzung:nth-of-type(1)")
         pruefe("Bank oeffnen" in f.text("#ber-mitte"),
                "zurueck auf „alle zusammen“ fehlt der Timeout wieder")
 

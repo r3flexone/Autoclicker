@@ -113,7 +113,7 @@ def lauf():
                "der Katalog-Schalter fehlt in den Scan-Einstellungen")
         f.bild("katalog_schalter")
         schalter.locator("input").click()
-        f.seite.wait_for_timeout(700)
+        f.ruhe()
         pruefe(b.scans["Inventar"].use_catalog is True,
                "der Klick auf den Schalter kam nicht in der Bruecke an")
 
@@ -154,7 +154,7 @@ def lauf():
                f"die Ueberschrift 'Helm' ist kein Feld ({feld.count()} Treffer)")
         feld.fill("Kopfschutz")
         feld.press("Enter")
-        f.seite.wait_for_timeout(700)
+        f.ruhe()
         pruefe(b.items["Citadel Helmet"].category == "Kopfschutz"
                and b.items["Centaurs Helmet"].category == "Kopfschutz",
                "das Umbenennen kam nicht in der Bruecke an: "
@@ -169,7 +169,7 @@ def lauf():
         # `cfgAktion(` im Quelltext und ist trotzdem wirkungslos.
         f.reiter("einstellungen")
         f.seite.fill("#cfg-suche", "Item-Katalog")
-        f.seite.wait_for_timeout(400)
+        f.ruhe()
         knopf = f.seite.locator("#cfg-felder button",
                                 has_text="Katalog aus der Spiel-API holen")
         pruefe(knopf.count() == 1,
@@ -184,7 +184,7 @@ def lauf():
             {"Name": "godlike_bow", "EquipmentSlot": 7, "BaseValue": 900}]}}
         try:
             knopf.click()
-            f.seite.wait_for_timeout(1200)
+            f.ruhe()
         finally:
             tk.hole_spieldaten = echt
         status = f.status()
@@ -192,7 +192,7 @@ def lauf():
                f"der Klick auf 'Katalog holen' kam nicht an: {status!r}")
         # Und danach steht am Feld, was drinliegt und von wann es ist — sonst
         # holt man die Liste entweder nie wieder oder bei jedem Zweifel neu.
-        f.seite.wait_for_timeout(500)
+        f.ruhe()
         stempel = f.seite.locator("#cfg-felder .cfg-rechte p.hinweis")
         pruefe(stempel.count() >= 1 and "1 Items" in (stempel.first.inner_text() or ""),
                "der Stand des Katalogs fehlt am Feld: "
@@ -214,7 +214,7 @@ def lauf():
         # Kante, hinter der es aus dem Fenster geht.
         f.seite.set_viewport_size({"width": 950, "height": 700})
         f.seite.fill("#cfg-suche", "scan_")
-        f.seite.wait_for_timeout(400)
+        f.ruhe()
         raus = f.seite.evaluate("""() => {
             const mitte = document.getElementById('cfg-felder');
             const grenze = mitte.getBoundingClientRect().right;
@@ -265,7 +265,7 @@ def lauf():
         try:
             f.reiter("scans")
             f.klick_text("#scan-insp .tabs button", "Items")
-            f.seite.wait_for_timeout(300)
+            f.ruhe()
             # **Nicht nach „Alle" suchen**: in derselben Leiste steht „alle
             # dazu" aus der Filterzeile, und `klick_text` nimmt den ersten
             # Treffer — geklickt wurde dann der Filter, und der Kasten kam nie.
@@ -301,9 +301,9 @@ def lauf():
         # ohne laufenden Durchgang (der blockiert sonst den Pruefstand).
         f.seite.evaluate("window.__traf = false;"
                          "arbeitZeigen('T', 'x', () => { window.__traf = true; });")
-        f.seite.wait_for_timeout(200)
+        f.ruhe()
         f.seite.click(".warte-kasten button")
-        f.seite.wait_for_timeout(200)
+        f.ruhe()
         pruefe(f.seite.evaluate("window.__traf") is True,
                "ein echter Mausklick erreicht den Abbrechen-Knopf nicht")
         # **Und er quittiert sofort.** Der Abbruch wirkt erst, wenn die laufende

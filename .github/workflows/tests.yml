@@ -36,6 +36,12 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         bilder: [ohne, pillow, mit]
     runs-on: ${{ matrix.os }}
+    # Ein Lauf braucht rund eine Minute. Ohne eigene Grenze gilt die von
+    # GitHub — sechs Stunden —, und genau so lange stand ein Job da, dessen
+    # Runner die Verbindung verloren hatte („The hosted runner lost
+    # communication with the server"). Ein Job, der zehnmal laenger braucht
+    # als sonst, ist kaputt und soll das auch sagen.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -85,6 +91,8 @@ jobs:
   rauchtests:
     name: Rauchtests (Browser)
     runs-on: ubuntu-latest
+    # Rund 90 s im Normalfall — s. die Begruendung oben bei `test`.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -98,6 +106,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
