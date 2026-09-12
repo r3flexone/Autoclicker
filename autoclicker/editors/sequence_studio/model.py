@@ -239,34 +239,7 @@ class PalettePoint:
     y: int
     name: str
     color: Optional[tuple[int, int, int]] = None
-    source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'"
-
-
-def save_palette_points(sequence_file, points: list) -> bool:
-    """Schreibt die Palette in die geöffnete ``sequence.json`` zurück.
-
-    Frueher las das Studio die Punkte nur. Das ging, solange die Sequenz ihre
-    Koordinaten selbst trug — seit sie das nicht mehr tut, waere eine hier eingetippte
-    Position beim Speichern verloren. Deshalb wandert die Palette mit.
-
-    Wie ueberall im Subprozess gilt: die Datei ist der gemeinsame Nenner. Wer im
-    Hauptprozess gleichzeitig speichert, ueberschreibt eine der beiden Fassungen.
-    """
-    from ...models import ClickPoint
-    from ...persistence.serialization import _point_to_dict
-    from ...utils import atomic_write, compact_json
-    try:
-        pfad = Path(sequence_file)
-        bestand = json.loads(pfad.read_text(encoding="utf-8"))
-        bestand["points"] = [
-            _point_to_dict(ClickPoint(p.x, p.y, p.name, p.id,
-                                      color=p.color, source=p.source))
-            for p in points
-        ]
-        atomic_write(pfad, compact_json(bestand))
-        return True
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        return False
+    source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme"
 
 
 def load_palette_points(sequence_file) -> list[PalettePoint]:

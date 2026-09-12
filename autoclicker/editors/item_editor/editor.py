@@ -22,6 +22,57 @@ from .autoscan import item_autoscan_command
 from .commands import handle_rename_command, handle_template_command, handle_templates_command, handle_autoname_command
 from .items import create_item, edit_item
 from .learn import item_learn_command
+from ...persistence.sequences import active_templates_dir, sequence_dir
+from ...utils import atomic_write, sanitize_filename
+
+
+class _ItemTransaktion:
+    """Sichert Scan und Vorlagen auch über zwischendurch speichernde Befehle.
+
+    Preset-Exporte sind ausdrücklich eigene Aktionen. Gesichert werden der
+    bearbeitete Scan und der zugehörige Template-Ordner, nicht die Presets.
+    """
+
+    def __init__(self, state):
+        with state.lock:
+            self.name = state.active_item_scan
+            cfg = state.item_scans.get(self.name)
+            if cfg is None:
+                raise ValueError("Bitte zuerst einen Item-Scan wählen.")
+            self.scan_items = copy.deepcopy(cfg.items)
+            self.datei = (sequence_dir(cfg.owner_sequence) / "item_scans"
+                          / f"{sanitize_filename(cfg.name)}.json")
+        self.ordner = active_templates_dir(state)
+        self.dateien = {p: p.read_bytes() for p in self.ordner.rglob("*") if p.is_file()}
+        self.dateien[self.datei] = self.datei.read_bytes() if self.datei.exists() else None
+
+    def verwerfen(self, state):
+        # Dateien zuerst: schlägt die Wiederherstellung fehl, bleibt die
+        # Sitzung offen und dieselbe Sicherung steht zum Wiederholen bereit.
+        for pfad, inhalt in self.dateien.items():
+            if inhalt is None:
+                pfad.unlink(missing_ok=True)
+            elif not pfad.exists() or pfad.read_bytes() != inhalt:
+                atomic_write(pfad, inhalt)
+        for pfad in self.ordner.rglob("*"):
+            if pfad.is_file() and pfad not in self.dateien:
+                pfad.unlink()
+        with state.lock:
+            cfg = state.item_scans.get(self.name)
+            if cfg is not None:
+                cfg.items = copy.deepcopy(self.scan_items)
+                # Die Arbeitsansicht muss dieselben Objekte wie der Scan sehen.
+                state.global_items = {item.name: item for item in cfg.items}
+
+
+def _abbrechen(state, transaktion) -> bool:
+    try:
+        transaktion.verwerfen(state)
+    except OSError as e:
+        print(err(f"Abbruch konnte nicht vollständig zurückgesetzt werden: {e}"))
+        return False
+    print(col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
+    return True
 
 
 def run_global_item_editor(state: AutoClickerState) -> None:
@@ -34,9 +85,11 @@ def run_global_item_editor(state: AutoClickerState) -> None:
         print("         Installieren mit: pip install pillow")
         return
 
-    # Backup für cancel
-    with state.lock:
-        items_backup = copy.deepcopy(state.global_items)
+    try:
+        transaktion = _ItemTransaktion(state)
+    except (OSError, ValueError) as e:
+        print(err(f"Item-Editor konnte nicht vorbereitet werden: {e}"))
+        return
 
     _print_editor_overview(state)
     _print_item_help()
@@ -50,14 +103,15 @@ def run_global_item_editor(state: AutoClickerState) -> None:
             cmd = user_input.lower()
 
             if cmd in ("done", "d"):
-                save_global_items(state)
+                if not save_global_items(state):
+                    print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
+                    continue
                 print(ok("Item-Editor beendet."))
                 return
             elif is_cancel(cmd):
-                with state.lock:
-                    state.global_items = items_backup
-                print(col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
-                return
+                if _abbrechen(state, transaktion):
+                    return
+                continue
             elif cmd == "":
                 continue
 
@@ -69,10 +123,10 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
         except (KeyboardInterrupt, EOFError):
-            with state.lock:
-                state.global_items = items_backup
-            print("\n" + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
-            return
+            if _abbrechen(state, transaktion):
+                return
+        except OSError as e:
+            print(err(f"Dateioperation fehlgeschlagen: {e}"))
 
 
 def _print_editor_overview(state: AutoClickerState) -> None:
@@ -153,8 +207,8 @@ def _dispatch_command(state: AutoClickerState, cmd: str, user_input: str) -> boo
         with state.lock:
             if state.global_items:
                 print(f"\nItems ({len(state.global_items)}):")
-                sorted_items = sorted(state.global_items.values(), key=lambda x: x.priority)
-                for i, item in enumerate(sorted_items):
+                # Alle Nummernbefehle verwenden dieselbe Einfügereihenfolge.
+                for i, item in enumerate(state.global_items.values()):
                     print(f"  {i+1}. {item}")
             else:
                 print("  (Keine Items)")
@@ -244,6 +298,11 @@ def _handle_edit(state: AutoClickerState, cmd: str) -> None:
         # edit_item OHNE Lock (User-Input)
         new_item = edit_item(state, item)
         if new_item:
+            with state.lock:
+                kollision = new_item.name != name and new_item.name in state.global_items
+            if kollision and not confirm(f"  '{new_item.name}' existiert bereits. Überschreiben?"):
+                print(col("[ABBRUCH]", "yellow") + " Item unverändert.")
+                return
             with state.lock:
                 # Falls Name geändert wurde, alten Eintrag entfernen
                 if new_item.name != name:

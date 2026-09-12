@@ -540,7 +540,44 @@ class BridgeEditingMixin:
             punkt.color = tuple(farbe)
             self._punkte_anwenden()
         gemessen = f" · Farbe {tuple(farbe)}" if farbe else ""
-        return self._geaendert(f"Stelle: ({x}, {y}){gemessen}")
+        return self._geaendert(f"Stelle: ({x}, {y}){gemessen}"
+                               + self._mitgezogen(step.point_id, ausser=step))
+
+    def _mitgezogen(self, punkt_id, ausser=None) -> str:
+        """Nachsatz für eine Verschiebung: welche anderen Verwendungen mitziehen.
+
+        Leer, wenn keine — dann ist die Meldung so kurz wie vorher.
+        """
+        andere = self._punkt_verwendungen(punkt_id, ausser=ausser)
+        if not andere:
+            return ""
+        return (f" — zieht {len(andere)} weitere Verwendung(en) mit: "
+                + ", ".join(andere))
+
+    def punkt_abtrennen(self, daten: Optional[dict] = None) -> dict:
+        """Gibt dem gewählten Block einen eigenen Punkt — die anderen behalten den alten.
+
+        Das Gegenstück zu „X/Y verschieben den Punkt": diese Regel ist richtig,
+        wenn ein Knopf umgezogen ist (dann sollen alle mit), und falsch, wenn
+        EIN Block einen anderen Knopf klicken soll. Für das Zweite gab es keinen
+        Weg — man verstellte die anderen Blöcke mit, ohne es zu sehen. Dieselbe
+        Bauart wie beim Duplizieren (`_punkte_mitkopieren`): Klick und Prüf-Pixel
+        eines FARBE+KLICK-Blocks bleiben zusammen auf dem neuen Punkt.
+        """
+        lane, row, step = self._einzelner()
+        if step is None:
+            return self.snapshot()
+        if step.point_id is None:
+            return self._melde("Dieser Block hat keinen Punkt.", "warn")
+        alt = step.point_id
+        andere = self._punkt_verwendungen(alt, ausser=step)
+        if not andere:
+            return self._melde(f"Punkt #{alt} wird nur von diesem Block benutzt — "
+                               "nichts abzutrennen.", "info")
+        self._punkte_mitkopieren(step, {})
+        self._punkte_anwenden()
+        return self._geaendert(f"Block hat jetzt seinen eigenen Punkt #{step.point_id}; "
+                               f"#{alt} bleibt bei: {', '.join(andere)}")
 
     def block_punkt(self, daten: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
@@ -648,10 +685,15 @@ class BridgeEditingMixin:
             return self._melde("Punkt nicht gefunden.", "warn")
         feld, wert = daten.get("feld"), daten.get("wert")
         try:
-            if feld == "x":
-                punkt.x = int(wert)
-            elif feld == "y":
-                punkt.y = int(wert)
+            if feld in ("x", "y"):
+                setattr(punkt, feld, int(wert))
+                self._punkte_anwenden()
+                # Wer SONST noch mitgezogen ist, steht in der Meldung — der
+                # Inspektor zeigt nur den einen Block, an dem man gerade sitzt,
+                # und der zählt nicht als „weiterer".
+                _lane, _row, gewaehlt = self._einzelner()
+                return self._geaendert(f"Punkt #{punkt.id} verschoben"
+                                       + self._mitgezogen(punkt.id, ausser=gewaehlt))
             elif feld == "name":
                 punkt.name = str(wert or "")
             elif feld == "farbe":

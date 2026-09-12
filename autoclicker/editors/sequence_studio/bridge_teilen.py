@@ -5,7 +5,6 @@ braucht. Beide Wege arbeiten auf einem State, der frisch von Platte kommt:
 exportiert wird der gespeicherte Stand, nicht der im Fenster.
 """
 
-import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -50,14 +49,6 @@ class BridgeTeilenMixin:
                           or getattr(self, "_scan_dirty", False)),
             "status": {"text": text, "art": art},
         }
-
-    @staticmethod
-    def _zaehle_json(pfad, art) -> int:
-        try:
-            daten = json.loads(Path(pfad).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return 0
-        return len(daten) if isinstance(daten, art) else 0
 
     def _bestand_zaehlen(self) -> dict:
         """Was auf Platte liegt — gezählt, nicht geladen."""

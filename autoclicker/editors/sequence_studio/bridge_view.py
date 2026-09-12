@@ -194,6 +194,7 @@ class BridgeViewMixin:
         typ = block_type(step)
         wc = step.wait_condition
         feld = SCAN_FELD.get(typ)
+        punkt = self._punkt(step.point_id)
         block = {
             "zeile": row,
             "typ": typ,
@@ -205,6 +206,14 @@ class BridgeViewMixin:
             "zeilen": self._zeilen(step, typ),
             "prueft": step.verify_condition is not None,
             "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
+            # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
+            # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
+            # Klick zeigte Koordinaten — und Koordinaten unterscheidet niemand
+            # beim Überfliegen von 50 Karten, die Farbe des Knopfs schon. Die
+            # Ansicht hängt sie an die erste Zeile, denn dort steht die Stelle
+            # (`_zeilen`). Ohne gemessene Farbe kein Feldchen: ein leeres
+            # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
+            "punkt_farbe": _hex(punkt.color) if punkt is not None else None,
             "farbfeld": _hex(wc.color) if wc else None,
             "farbtext": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
@@ -223,6 +232,9 @@ class BridgeViewMixin:
         Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
         zweiten Block ist Rauschen, und in der Liste zählt, dass 50 Karten
         untereinander lesbar bleiben.
+
+        Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
+        hängt die Ansicht das Farbfeldchen des Punkts (`punkt_farbe`).
         """
         if typ == BLOCK_SCREENSHOT:
             r = step.screenshot_region
@@ -287,6 +299,16 @@ class BridgeViewMixin:
             "farbe": _hex(BLOCK_COLORS[typ]),
             "name": step.name or "",
             "point_id": step.point_id,
+            # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
+            # „Stelle setzen" verschieben den Punkt, und jeder Block darauf
+            # zieht mit — das stand nur im ⓘ. An einer echten Aufnahme hatte
+            # `punkt_an_stelle()` den Klick auf denselben Knopf in Loop 1 und
+            # Loop 4 zu EINEM Punkt zusammengelegt; wer dann Loop 1 eine
+            # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
+            # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
+            # falschen Stelle"). Die Liste ist Zustand, also Text — nicht ⓘ.
+            "punkt_andere": (self._punkt_verwendungen(step.point_id, ausser=step)
+                             if step.point_id is not None else []),
             "x": step.x,
             "y": step.y,
             "aufgenommene_farbe": _hex(step.recorded_color),

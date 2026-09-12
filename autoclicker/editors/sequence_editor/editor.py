@@ -159,6 +159,15 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     )
 
     with state.lock:
+        # **Die Punkte gehoeren in die Sequenz, nicht nur in den State.** Der
+        # Editor baut jeden Klick-Schritt ueber eine `point_id` aus
+        # `state.points` — und `Sequence(...)` faengt mit einer LEEREN
+        # Punkteliste an. Ohne diese Zeile schrieb `save_data()` die Sequenz mit
+        # `points: []`, und danach zeigte jede `point_id` ins Leere: die
+        # Schritte standen noch da, nur ohne Stelle. Derselbe Umbau
+        # (sequenzlokale Punkte) hat auch `neu()` im Studio die Punkte der
+        # VORIGEN Sequenz erben lassen — hier fehlt, was dort zu viel war.
+        new_sequence.points = list(state.points)
         state.sequences[seq_name] = new_sequence
         state.active_sequence = new_sequence
         state.points = new_sequence.points

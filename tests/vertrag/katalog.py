@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from ._harness import check, section
+from ._harness import check, section, studio_web_source as _studio_web_kh
 
 _repo = Path(__file__).resolve().parent.parent.parent
 if str(_repo) not in sys.path:
@@ -347,3 +347,363 @@ try:
           "Gegenstände" in _gesehen["system_prompt"])
 finally:
     _lv.analyze_image = _echt
+
+
+# =============================================================================
+section("LLM-Mitschrift: was rausgeht und was zurueckkommt")
+# =============================================================================
+# **Eine leere Antwort hat vier Ursachen, und von aussen sehen sie gleich aus:**
+# Modell ohne Bild-Faehigkeit, falscher Modellname, alle Tokens im Reasoning
+# verbraucht, schwarzes Bild. Bis hierhin gab es dafuer nur
+# `_raw_lmstudio_debug()` in `tools/test_llm.py` — einen ZWEITEN HTTP-Aufruf
+# mit einer anderen Frage, der also gerade nicht zeigt, was der echte Aufruf
+# bekommen hat.
+import contextlib as _ctx_mit                                      # noqa: E402
+import io as _io_mit                                               # noqa: E402
+import json as _json_mit                                           # noqa: E402
+from autoclicker.config import CONFIG as _CFG_mit                  # noqa: E402
+
+_ANTWORT_mit = {"choices": [{"message": {
+    "content": "Kraken",
+    # Das Denk-Feld verwirft `_extract_response_text` — genau deshalb muss es
+    # in der Mitschrift stehen: ein Modell, das alle Tokens ins Denken steckt,
+    # liefert einen leeren `content` und sieht sonst aus wie ein Fehler.
+    "reasoning_content": "Ich sehe einen Tintenfisch",
+}}]}
+
+
+class _FakeAntwort_mit:
+    def __init__(self, nutzlast):
+        self._roh = _json_mit.dumps(nutzlast).encode("utf-8")
+
+    def read(self):
+        return self._roh
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _lauf_mit(debug, nutzlast=None):
+    """analyze_image mit gestubbtem HTTP — gibt (Ergebnis, Konsolentext)."""
+    _echt_open = _lv.urllib.request.urlopen
+    _alt_debug = _CFG_mit.llm_debug
+    _CFG_mit.llm_debug = debug
+    _lv.urllib.request.urlopen = lambda *a, **kw: _FakeAntwort_mit(
+        nutzlast if nutzlast is not None else _ANTWORT_mit)
+    puffer = _io_mit.StringIO()
+    try:
+        with _ctx_mit.redirect_stdout(puffer):
+            erg = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
+                                    model="testmodell", prompt="Wer ist das?")
+    finally:
+        _lv.urllib.request.urlopen = _echt_open
+        _CFG_mit.llm_debug = _alt_debug
+    return erg, puffer.getvalue()
+
+
+_hat_pil_mit = False
+try:
+    from PIL import Image as _PIL_mit
+    _BILD_mit = _PIL_mit.new("RGB", (4, 4), (10, 20, 30))
+    _hat_pil_mit = True
+except ImportError:
+    _BILD_mit = None
+
+if not _hat_pil_mit:
+    print("  ----  uebersprungen (Pillow nicht installiert)")
+else:
+    _erg_aus, _text_aus = _lauf_mit(False)
+    check("ohne den Schalter aendert sich am Ergebnis nichts",
+          _erg_aus[0] is True and _erg_aus[1] == "Kraken")
+    check("und die Konsole bleibt still", _text_aus == "")
+
+    _erg_an, _text_an = _lauf_mit(True)
+    check("mit Schalter bleibt das Ergebnis dasselbe",
+          _erg_an[0] is True and _erg_an[1] == "Kraken")
+    check("die Mitschrift nennt Modell und Prompt",
+          "testmodell" in _text_an and "Wer ist das?" in _text_an)
+    check("und die rohe Antwort steht da", '"content": "Kraken"' in _text_an)
+    # Der Punkt der ganzen Mitschrift: das Denk-Feld, das der Code verwirft.
+    check("samt dem Denk-Feld, das der Code selbst verwirft",
+          "reasoning_content" in _text_an
+          and "Tintenfisch" in _text_an)
+    check("und daneben, was daraus gelesen wurde", "gelesen:" in _text_an)
+
+    # Eine leere Antwort ist der haeufigste Fall — und der, bei dem man ohne
+    # Hinweis die Ursache raet.
+    _erg_leer, _text_leer = _lauf_mit(True, {"choices": [{"message": {"content": ""}}]})
+    check("bei leerer Antwort nennt die Mitschrift die moeglichen Ursachen",
+          "leer" in _text_leer and "Bild-F" in _text_leer)
+
+    # Auch ein Fehlschlag wird mitgeschrieben — sonst fehlt in der Mitschrift
+    # ausgerechnet der Aufruf, der nicht funktioniert hat.
+    def _wirf_mit(*a, **kw):
+        raise _lv.urllib.error.URLError("kein Server")
+
+    _echt_open_mit = _lv.urllib.request.urlopen
+    _alt_debug_mit = _CFG_mit.llm_debug
+    _CFG_mit.llm_debug = True
+    _lv.urllib.request.urlopen = _wirf_mit
+    _puffer_mit = _io_mit.StringIO()
+    try:
+        with _ctx_mit.redirect_stdout(_puffer_mit):
+            _erg_fehl = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
+                                          model="testmodell")
+    finally:
+        _lv.urllib.request.urlopen = _echt_open_mit
+        _CFG_mit.llm_debug = _alt_debug_mit
+    check("ein Fehlschlag steht ebenfalls in der Mitschrift",
+          _erg_fehl[0] is False and "kein Server" in _puffer_mit.getvalue())
+
+
+# =============================================================================
+section("Katalog holen: aus dem Fenster statt von der Kommandozeile")
+# =============================================================================
+# **Ausgerechnet die Datei, ohne die das LLM frei raet und die Kategorie leer
+# bleibt, liess sich im Studio nicht beschaffen** — der Einstellungen-Reiter
+# zeigte den Pfad und verwies auf `python tools/katalog.py`. Gerechnet wird
+# weiterhin dort; die Bruecke RUFT das Werkzeug, nie umgekehrt.
+import shutil as _sh_kh                                            # noqa: E402
+import sys as _sys_kh                                              # noqa: E402
+import tempfile as _tmp_kh                                         # noqa: E402
+from pathlib import Path as _P_kh                                  # noqa: E402
+
+from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB_kh  # noqa: E402
+from autoclicker.models import Sequence as _SEQ_kh                 # noqa: E402
+
+_wurzel_kh = _P_kh(__file__).resolve().parents[2]
+if str(_wurzel_kh) not in _sys_kh.path:
+    _sys_kh.path.insert(0, str(_wurzel_kh))
+import tools.katalog as _tk_kh                                     # noqa: E402
+
+_SPIELDATEN_kh = {"Items": {"Items": [
+    {"Name": "godlike_bow", "EquipmentSlot": 7, "BaseValue": 900},
+    {"Name": "citadel_helmet", "EquipmentSlot": 11, "BaseValue": 500},
+]}, "Raids": [{"BossNameLocalizationKey": "kraken"}]}
+
+_sand_kh = _tmp_kh.mkdtemp(prefix="katalogholen_")
+_cwd_kh = _os.getcwd()
+_echt_hole_kh = _tk_kh.hole_spieldaten
+_alt_pfad_kh = _CFG_mit.scan_catalog_file
+_os.chdir(_sand_kh)
+try:
+    def _bau_kh():
+        _P_kh("sequences").mkdir(exist_ok=True)
+        return _SB_kh(_SEQ_kh(name="S"), _P_kh("sequences/s/sequence.json"), "sequences")
+
+    _CFG_mit.scan_catalog_file = ""
+    _tk_kh.hole_spieldaten = lambda *a, **kw: _SPIELDATEN_kh
+    _erg_kh = _bau_kh().katalog_holen()
+    check("der Knopf holt und schreibt die Datei",
+          _erg_kh["ok"] and _P_kh("katalog.json").exists())
+    _inhalt_kh = _json_mit.loads(_P_kh("katalog.json").read_text(encoding="utf-8"))
+    check("mit den echten Namen aus der API",
+          "Godlike Bow" in _inhalt_kh["items"]
+          and _inhalt_kh["items"]["Godlike Bow"]["kategorie"] == "Bow")
+    # Ohne diesen Schritt hat man die Datei und trotzdem keine Wirkung — der
+    # Scan liest den Pfad, nicht den Ordner.
+    check("und traegt den Pfad gleich in die Config ein",
+          _CFG_mit.scan_catalog_file.endswith("katalog.json"))
+    check("die Meldung nennt, was drin ist", "2 Items" in _erg_kh["meldung"])
+
+    # Ein selbst gesetzter Pfad wird AKTUALISIERT, nicht ueberschrieben: wer
+    # zwei Spiele betreibt, hat den Katalog bewusst woanders liegen.
+    _CFG_mit.scan_catalog_file = "eigener/pfad.json"
+    _erg2_kh = _bau_kh().katalog_holen()
+    check("ein eigener Pfad bleibt stehen",
+          _erg2_kh["ok"] and _CFG_mit.scan_catalog_file == "eigener/pfad.json"
+          and _P_kh("eigener/pfad.json").exists())
+
+    # Kein Netz ist der haeufigste Fehlerfall — und darf die vorhandene Datei
+    # nicht zerstoeren. Dieselbe Haltung wie beim Start-Durchgang: lieber
+    # nichts tun als halb schreiben.
+    _vorher_kh = _P_kh("katalog.json").read_text(encoding="utf-8")
+
+    def _wirf_kh(*a, **kw):
+        raise OSError("kein Netz")
+
+    _tk_kh.hole_spieldaten = _wirf_kh
+    _CFG_mit.scan_catalog_file = str(_P_kh("katalog.json"))
+    _erg3_kh = _bau_kh().katalog_holen()
+    check("ohne Netz wird nichts geschrieben",
+          _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["meldung"]
+          and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
+
+    # Eine Antwort ohne Items ist kein Katalog — eine leere Datei zu schreiben
+    # hiesse, die brauchbare gegen eine unbrauchbare zu tauschen.
+    _tk_kh.hole_spieldaten = lambda *a, **kw: {"Items": {"Items": []}}
+    _erg4_kh = _bau_kh().katalog_holen()
+    check("und eine leere Antwort ueberschreibt die gute Datei nicht",
+          _erg4_kh["ok"] is False
+          and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
+
+    # --- Ein Zaehler am Namen darf die Kategorie nicht kosten ---------------
+    # **"Godlike Bow 2" steht nicht im Katalog**, sein Gegenstand aber schon.
+    # An einem echten Bestand standen so acht Items ohne Kategorie neben ihrem
+    # eingeordneten Zwilling — und ohne Kategorie konkurriert ein Item mit
+    # niemandem, wird also in Modus `all` immer geklickt.
+    from autoclicker.utils import ohne_zaehler as _oz_kh
+    check("der Zaehler faellt weg", _oz_kh("Godlike Bow 2") == "Godlike Bow")
+    # Eine Zahl, die zum Namen gehoert, bleibt — der Aufrufer probiert ohnehin
+    # ERST den vollen Namen.
+    check("aber nur der angehaengte", _oz_kh("Bogen") == "Bogen"
+          and _oz_kh("Iron Helmet 12") == "Iron Helmet")
+
+    from autoclicker.katalog import Katalog as _Kat_kh
+    _kat_kh = _Kat_kh({"Godlike Bow": {"kategorie": "Bow", "wert": 9},
+                       "Slot 1": {"kategorie": "Sonder", "wert": 1}})
+    check("ein Item mit Zaehler findet seinen Katalog-Eintrag",
+          _SB_kh._katalog_name("Godlike Bow 2", _kat_kh) == "Godlike Bow")
+    # Was im Katalog steht, gewinnt: "Slot 1" ist dort ein eigener Eintrag und
+    # wird nicht auf "Slot" zurechtgestutzt.
+    check("und ein echter Name mit Zahl bleibt, wie er ist",
+          _SB_kh._katalog_name("Slot 1", _kat_kh) == "Slot 1")
+    check("Unbekanntes bleibt unbekannt",
+          _SB_kh._katalog_name("Irgendwas 2", _kat_kh) == "")
+
+    # --- Wie alt ist die Liste? ---------------------------------------------
+    # **Der Pfad allein beantwortet die Frage nicht**, die man an eine geholte
+    # Liste hat: liegt die Datei ueberhaupt da, und von wann ist sie? Ohne
+    # Antwort holt man sie entweder nie wieder oder bei jedem Zweifel neu.
+    check("ein fehlender Katalog sagt genau das",
+          "fehlt" in _SB_kh._katalog_stand("gibtsnicht.json"))
+    _P_kh("kaputt.json").write_text("{nope", encoding="utf-8")
+    check("und eine kaputte Datei auch",
+          "nicht lesbar" in _SB_kh._katalog_stand("kaputt.json"))
+    check("ohne Pfad steht gar nichts da", _SB_kh._katalog_stand("") == "")
+    _P_kh("stempel.json").write_text(_json_mit.dumps({
+        "_erzeugt": "2026-09-07T16:42:11Z",
+        "items": {"a": {}, "b": {}}, "gegner": ["x"]}), encoding="utf-8")
+    _stempel_kh = _SB_kh._katalog_stand("stempel.json")
+    check("und sonst Umfang und Zeitpunkt",
+          "2 Items" in _stempel_kh and "1 Gegner" in _stempel_kh
+          and "07.09.2026" in _stempel_kh)
+    # **In Ortszeit, nicht in UTC.** Ein Zeitstempel, den man mit der eigenen
+    # Uhr vergleichen soll, darf nicht in einer anderen Zone stehen — 16:42Z
+    # ist hier 18:42, und im Winter 17:42.
+    from datetime import datetime as _dt_kh, timezone as _tz_kh
+    _lokal_kh = _dt_kh(2026, 9, 7, 16, 42, 11, tzinfo=_tz_kh.utc).astimezone()
+    check("in Ortszeit", _lokal_kh.strftime("um %H:%M") in _stempel_kh)
+
+    # Der Weg bis in die Ansicht: `config_lesen()` liefert ihn, und die Seite
+    # zeichnet ihn unter dem Feld.
+    _CFG_mit.scan_catalog_file = "stempel.json"
+    _staende_kh = _bau_kh().config_lesen()["staende"]
+    check("die Einstellungen liefern den Stand mit",
+          "2 Items" in _staende_kh.get("scan_catalog_file", ""))
+    check("und die Ansicht zeichnet ihn",
+          "C.staende" in _studio_web_kh())
+finally:
+    _tk_kh.hole_spieldaten = _echt_hole_kh
+    _CFG_mit.scan_catalog_file = _alt_pfad_kh
+    _os.chdir(_cwd_kh)
+    _sh_kh.rmtree(_sand_kh, ignore_errors=True)
+
+
+# =============================================================================
+section("LLM: Kaltstart, Modellpruefung und die Config-Felder")
+# =============================================================================
+# Vier Befunde aus einer Durchsicht des LLM-Pfades — jeder eine Stelle, an der
+# etwas STILL nicht passierte: der Worker gab bei einer Zeitueberschreitung auf,
+# die Lampe pruefte einen Endpunkt, den es im Normalfall gar nicht gibt, sie
+# sah nie nach, ob das eingestellte Modell geladen ist, und zwei Config-Felder
+# galten nur fuer den Boss-Scan.
+import autoclicker.runtime.boss_detection as _bd_llm                # noqa: E402
+from autoclicker.llm_vision import (                                # noqa: E402
+    _modell_bekannt as _bekannt_llm, _namens_tokens as _tokens_llm,
+    ist_timeout as _ist_to_llm,
+)
+from autoclicker.models import (                                    # noqa: E402
+    AutoClickerState as _ST_llm, BossProfile as _BP_llm,
+    BossScanConfig as _BSC_llm,
+)
+
+# --- Die Regel, an der alles haengt -----------------------------------------
+check("ein Timeout wird als solcher erkannt", _ist_to_llm("Timeout nach 60s"))
+# Ein Verbindungsfehler ist KEIN Timeout: da ist niemand, und Wiederholen waere
+# nur Warten.
+check("ein Verbindungsfehler nicht",
+      not _ist_to_llm("Verbindungsfehler: [Errno 111]")
+      and not _ist_to_llm("") and not _ist_to_llm(None))
+
+# --- Der Worker gibt bei einem kalten Modell nicht mehr auf ------------------
+_state_llm = _ST_llm()
+_state_llm.config.llm_enabled = True
+_state_llm.config.llm_timeout = 30
+_state_llm.config.llm_retry_count = 0        # KEIN Wiederholungs-Budget
+_cfg_llm = _BSC_llm(name="B", scan_region=(0, 0, 10, 10))
+_bosse_llm = [_BP_llm(name="Kraken")]
+
+_versuche_llm = []
+
+
+def _antworte_llm(**kw):
+    """Erst ein Timeout, dann die Antwort — der gemessene Kaltstart."""
+    _versuche_llm.append(kw.get("timeout"))
+    if len(_versuche_llm) == 1:
+        return False, "Timeout nach 30s", 30000.0
+    return True, "Kraken", 3500.0
+
+
+import autoclicker.llm_vision as _lv_llm                            # noqa: E402
+_echt_analyze_llm = _lv_llm.analyze_image
+try:
+    _lv_llm.analyze_image = _antworte_llm
+    _treffer_llm = _bd_llm._execute_llm_boss_detection(
+        _state_llm, _cfg_llm, object(), False, _bosse_llm)
+    # **Hier stand `break`.** Ausgerechnet der ERSTE Boss-Scan eines Laufs
+    # trifft ein kaltes Modell — und fiel damit aus, waehrend `llm_retry_count`
+    # daneben stand und nur bei „kein Boss erkannt" wiederholte.
+    check("eine Zeitueberschreitung beendet die Erkennung nicht mehr",
+          len(_versuche_llm) == 2)
+    check("und der zweite Versuch bekommt mehr Zeit",
+          _versuche_llm[1] > _versuche_llm[0])
+    check("danach wird der Boss erkannt",
+          _treffer_llm is not None and _treffer_llm.name == "Kraken")
+
+    # Ein Verbindungsfehler wiederholt NICHT: da antwortet niemand, und ein
+    # zweiter Aufruf kostet nur die Wartezeit noch einmal.
+    _versuche_llm.clear()
+    _lv_llm.analyze_image = lambda **kw: (
+        _versuche_llm.append(kw.get("timeout")) or (False, "Verbindungsfehler: tot", 5.0))
+    _bd_llm._execute_llm_boss_detection(
+        _state_llm, _cfg_llm, object(), False, _bosse_llm)
+    check("ein Verbindungsfehler wird nicht wiederholt", len(_versuche_llm) == 1)
+finally:
+    _lv_llm.analyze_image = _echt_analyze_llm
+
+# --- Die Lampe sagt, ob das MODELL da ist -----------------------------------
+check("ein geladenes Modell wird gefunden",
+      _bekannt_llm("google/gemma-4-12b-qat", ["a", "google/gemma-4-12b-qat"]))
+check("ein fehlendes nicht", not _bekannt_llm("gibts/nicht", ["a", "b"]))
+# Ollama haengt ein Tag an: wer den Stamm eintraegt, meint dasselbe Modell.
+check("der Stamm eines Ollama-Namens zaehlt", _bekannt_llm("gemma3n", ["gemma3n:e4b"]))
+# Aber nur in diese Richtung — zwei Tags sind zwei Modelle.
+check("zwei Tags sind aber zwei Modelle",
+      not _bekannt_llm("gemma3n:e4b", ["gemma3n:e2b"]))
+check("ohne eingestelltes Modell wird nichts behauptet", _bekannt_llm("", ["x"]))
+
+# --- Die Token-Grenze der Benennung -----------------------------------------
+# Mit Liste reichen 32 (ein Katalogname ist kurz), mit Reasoning NIE kuerzen:
+# das Modell verbraucht sie erst fuers Denken, und `content` bliebe leer.
+check("mit Liste genuegen 32 Tokens", _tokens_llm(0, False, True) == 32)
+check("mit Reasoning wird nicht gekuerzt", _tokens_llm(0, True, True) == 0)
+check("ein gesetzter Wert gewinnt immer", _tokens_llm(777, True, True) == 777)
+check("ohne Liste gilt der Automatik-Wert", _tokens_llm(0, False, False) == 0)
+
+# --- …und die Benennung reicht die Felder ueberhaupt durch -------------------
+# `llm_reasoning` und `llm_max_tokens` galten nur fuer den Boss-Scan: wer sie
+# einschaltete, weil die BENENNUNG besser werden soll, aenderte nichts.
+_quelle_llm = (_P_kh(__file__).resolve().parents[2]
+               / "autoclicker" / "editors" / "sequence_studio"
+               / "scan_learning.py").read_text(encoding="utf-8")
+check("der Durchgang gibt Reasoning und Token-Grenze mit",
+      "reasoning=config.llm_reasoning" in _quelle_llm
+      and "max_tokens=config.llm_max_tokens" in _quelle_llm)
+_konsole_llm = (_P_kh(__file__).resolve().parents[2] / "autoclicker" / "editors"
+                / "item_editor" / "commands.py").read_text(encoding="utf-8")
+check("und der Konsolen-Weg ebenso",
+      "reasoning=state.config.llm_reasoning" in _konsole_llm)

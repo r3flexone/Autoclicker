@@ -10,7 +10,8 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
 from ...persistence import update_item_in_scans, save_global_items, active_templates_dir
-from ...utils import confirm, is_cancel, safe_input, sanitize_filename, warn, ok, err, info, hint
+from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
+                      bereinige_itemname, ok, err, info, hint)
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -48,73 +49,54 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
                 print("  -> Abgebrochen")
                 return
 
-        # Template umbenennen (File-I/O, kein Lock nötig)
-        new_template = None
-        if old_template:
-            old_template_path = active_templates_dir(state) / old_template
-            safe_name = sanitize_filename(new_name)
-            new_template = f"{safe_name}.png"
-            new_template_path = active_templates_dir(state) / new_template
-
-            if old_template_path.exists():
-                try:
-                    old_template_path.rename(new_template_path)
-                    print(f"  + Template umbenannt: {old_template} -> {new_template}")
-                except (OSError, IOError) as e:
-                    print(f"  -> Template-Datei Umbenennung fehlgeschlagen: {e}")
-                    print(f"    Template-Pfad aktualisiert: {new_template}")
-            else:
-                print(f"  -> Template-Datei nicht gefunden: {old_template}")
-                print(f"    Template-Pfad aktualisiert: {new_template}")
-
-        # Mutation unter Lock
-        with state.lock:
-            if old_name not in state.global_items:
-                print(f"  -> Item '{old_name}' nicht mehr vorhanden!")
-                return
-            item = state.global_items[old_name]
-            if new_name in state.global_items and new_name != old_name:
-                del state.global_items[new_name]
-                print(f"  -> '{new_name}' wird überschrieben")
-            item.name = new_name
-            if new_template is not None:
-                item.template = new_template
-            del state.global_items[old_name]
-            state.global_items[new_name] = item
-
-        # Auch in allen Scan-Konfigurationen aktualisieren
-        updated_scans, failed_scans = update_item_in_scans(old_name, new_name)
-        if updated_scans > 0:
-            print(f"  + {updated_scans} Scan-Konfiguration(en) aktualisiert")
-        if failed_scans > 0:
-            print(f"  {warn(f'{failed_scans} Scan-Datei(en) konnten nicht aktualisiert werden!')}")
-
-        print(f"  + Item umbenannt: '{old_name}' -> '{new_name}' (gespeichert)")
+        if _apply_item_rename(state, old_name, new_name, ueberschreiben=name_exists):
+            print(f"  + Item umbenannt: '{old_name}' -> '{new_name}' (Übernehmen mit done)")
     except ValueError:
         print("  -> Format: rename <Nr>")
 
 
-def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str) -> bool:
+def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
+                       *, ueberschreiben: bool = False) -> bool:
     """Benennt ein Item mechanisch um: Template-Datei, global_items, Scan-Configs.
 
     Still (keine Prompts) — für programmatische Aufrufe wie 'autoname'. new_name
-    muss bereits eindeutig sein (Caller stellt das sicher). Gibt False zurück,
-    wenn old_name nicht mehr existiert.
+    muss eindeutig sein, ausser der Aufrufer hat Überschreiben bestätigt.
+    Ein Dateifehler lässt den bisherigen Namen und die Referenz unverändert.
     """
     with state.lock:
         if old_name not in state.global_items:
             return False
-        old_template = state.global_items[old_name].template
+        if new_name != old_name and new_name in state.global_items and not ueberschreiben:
+            print(err(f"'{new_name}' existiert bereits — Umbenennen abgebrochen."))
+            return False
+        item = state.global_items[old_name]
+        old_template = item.template
+        # Der Vorlagenordner gehört der Sequenz; andere Scans dürfen dieselbe
+        # Datei verwenden. Deren Referenzen bleiben beim Umbenennen erhalten.
+        andere_items = [*state.global_items.values(),
+                        *(i for cfg in state.item_scans.values() for i in cfg.items)]
+        erkenner = [*state.icon_scans.values(), *state.global_bosses,
+                    *(b for cfg in state.boss_scans.values() for b in cfg.bosses)]
+        geteilt = old_template and (
+            any(i is not item and old_template in i.template_names() for i in andere_items)
+            or old_template in item.template_variants
+            or any(e.template == old_template for e in erkenner))
 
     new_template = None
     if old_template:
         old_path = active_templates_dir(state) / old_template
-        new_template = f"{sanitize_filename(new_name)}.png"
-        if old_path.exists():
-            try:
-                old_path.rename(active_templates_dir(state) / new_template)
-            except (OSError, IOError):
-                pass  # Pfad trotzdem aktualisieren, Datei bleibt unter altem Namen
+        new_template = old_template if geteilt else f"{sanitize_filename(new_name)}.png"
+        new_path = active_templates_dir(state) / new_template
+        try:
+            if not old_path.is_file():
+                raise OSError(f"Vorlage '{old_template}' fehlt")
+            if old_path != new_path:
+                if new_path.exists():
+                    raise OSError(f"Vorlage '{new_template}' existiert bereits")
+                old_path.rename(new_path)
+        except OSError as e:
+            print(err(f"Umbenennen fehlgeschlagen: {e}"))
+            return False
 
     with state.lock:
         if old_name not in state.global_items:
@@ -167,8 +149,10 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             endpoint=state.config.llm_endpoint,
             model=state.config.llm_model,
             timeout=state.config.llm_timeout,
+            reasoning=state.config.llm_reasoning,
+            max_tokens=state.config.llm_max_tokens,
         )
-        base = sanitize_filename(suggestion).strip() if suggestion else ""
+        base = bereinige_itemname(suggestion) if suggestion else ""
         if not base:
             print(f"    {old_name}: kein Name vom LLM — bleibt.")
             continue

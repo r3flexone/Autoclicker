@@ -76,10 +76,11 @@ def list_slot_presets() -> list[tuple[str, Path, int]]:
 
 def save_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     """Speichert aktuelle Slots als Preset."""
-    if not state.global_slots:
+    with state.lock:
+        data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
+    if not data:
         print(err("Keine Slots vorhanden zum Speichern!"))
         return False
-    data = {name: _slot_to_dict(slot) for name, slot in state.global_slots.items()}
     return _save_preset(data, preset_name, SLOT_PRESETS_DIR, "Slot")
 
 
@@ -94,12 +95,16 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_SLOTS)
+        if not isinstance(data, dict):
+            raise TypeError("Slot-Preset muss ein JSON-Objekt sein")
+        geladen = {name: _slot_from_dict(name, s) for name, s in data.items()}
         with state.lock:
-            state.global_slots.clear()
-            for name, s in data.items():
-                state.global_slots[name] = _slot_from_dict(name, s)
-        save_global_slots(state)
-        print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(state.global_slots)} Slots)"))
+            state.global_slots = geladen
+            hat_scan = state.active_item_scan in state.item_scans
+        # Der Assistent lädt Presets auch vor dem Anlegen seines ersten Scans.
+        if hat_scan and not save_global_slots(state):
+            return False
+        print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(geladen)} Slots)"))
         return True
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
@@ -122,12 +127,13 @@ def list_item_presets() -> list[tuple[str, Path, int]]:
 
 def save_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     """Speichert aktuelle Items als Preset."""
-    if not state.global_items:
+    with state.lock:
+        sorted_items = sorted(state.global_items.items(),
+                              key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
+        data = {name: _item_to_dict(item) for name, item in sorted_items}
+    if not data:
         print(err("Keine Items vorhanden zum Speichern!"))
         return False
-    sorted_items = sorted(state.global_items.items(),
-                          key=lambda kv: (kv[1].category is None, kv[1].category or "", kv[1].priority))
-    data = {name: _item_to_dict(item) for name, item in sorted_items}
     return _save_preset(data, preset_name, ITEM_PRESETS_DIR, "Item")
 
 
@@ -142,12 +148,15 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_ITEMS)
+        if not isinstance(data, dict):
+            raise TypeError("Item-Preset muss ein JSON-Objekt sein")
+        geladen = {name: _item_from_dict(i, name) for name, i in data.items()}
         with state.lock:
-            state.global_items.clear()
-            for name, i in data.items():
-                state.global_items[name] = _item_from_dict(i, name)
-        save_global_items(state)
-        print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(state.global_items)} Items)"))
+            state.global_items = geladen
+            hat_scan = state.active_item_scan in state.item_scans
+        if hat_scan and not save_global_items(state):
+            return False
+        print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(geladen)} Items)"))
         return True
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))

@@ -132,6 +132,8 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
     Zentral, damit globals.py, presets.py und der Import dasselbe lesen - vorher stand
     dieselbe Schleife dreimal da.
     """
+    if not isinstance(data, dict):
+        raise TypeError("Slot muss ein JSON-Objekt sein")
     farbe = data.get("slot_color")
     return ItemSlot(
         name=name,
@@ -161,6 +163,8 @@ def _point_to_dict(p: 'ClickPoint') -> dict:
 
 def _item_from_dict(data: dict, name: str) -> ItemProfile:
     """Deserialisiert ein ItemProfile. `name` kommt aus dem Schlüssel des Dicts."""
+    if not isinstance(data, dict):
+        raise TypeError("Item muss ein JSON-Objekt sein")
     # Ein altes `confirm_point` (Koordinate im Item) wird NICHT mehr gelesen - der
     # Bestätigungsklick ist heute ein Punkt. Bewusst ohne Migration: die Koordinate
     # liesse sich zwar in einen Punkt heben, aber der Weg dorthin (Punkte-Liste durch
@@ -225,6 +229,8 @@ def _boss_profile_to_dict(boss: BossProfile) -> dict:
 
 def _boss_profile_from_dict(data: dict) -> BossProfile:
     """Deserialisiert ein BossProfile aus einem Dict."""
+    if not isinstance(data, dict):
+        raise TypeError("Boss muss ein JSON-Objekt sein")
     return BossProfile(
         name=data["name"],
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
@@ -285,8 +291,10 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     Loader und ZIP-Import müssen durch dieselbe Stelle laufen. Sonst verschwindet
     ein neues Feld beim Import still, obwohl eine normal geladene Datei es kennt.
     """
-    slots_data = data.get("slots") or {}
-    items_data = data.get("items") or {}
+    if not isinstance(data, dict):
+        raise TypeError("Item-Scan muss ein JSON-Objekt sein")
+    slots_data = data.get("slots", {})
+    items_data = data.get("items", {})
     if not isinstance(slots_data, dict) or not isinstance(items_data, dict):
         raise TypeError("slots/items müssen Objekte sein")
     fenster_rechteck = data.get("capture_window_rect")

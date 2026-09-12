@@ -388,14 +388,16 @@ check("die Anleitung zum Maus-Setzen steht nur im Info-Text",
 _inspektor_ui = _app[_app.index("function zeichneInspektor"):
                      _app.index("/* -------------------------------------------------------------------- Dialog")]
 # Offene Texte im Inspektor sind nur ZUSTAND, keine Bedienungsanleitung:
-# fehlender Punkt, fehlende Scan-Datei, Screenshot-Mass, fehlender Prüfpunkt
-# und ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann.
-check("alle Block-Typen haben nur noch fünf begründete offene Zustandsmeldungen",
-      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hinweis') == 5)
+# fehlender Punkt, fehlende Scan-Datei, Screenshot-Mass, fehlender Prüfpunkt,
+# ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann — und ein
+# Punkt, den andere Blöcke mitbenutzen (wer, nicht warum; das steht im ⓘ).
+check("alle Block-Typen haben nur noch sechs begründete offene Zustandsmeldungen",
+      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hinweis') == 6)
 check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
       all(text in _inspektor_ui for text in (
           "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",
-          "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung")))
+          "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung",
+          "wird auch benutzt von")))
 check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
       "const auswirkung = b.else_aktion" in _inspektor_ui
       and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspektor_ui)
@@ -434,19 +436,53 @@ try:
           _geladen.total_cycles == 2 and _geladen.description == "ohne Konsole")
     check("und aus dem Ereignis entsteht ein Block", _geladen.total_steps() == 1)
 
+    # **Gefragt wird das Fenster UNTER dem Klick, nicht der Vordergrund.** Die
+    # Aufnahme wird mit einem Knopf im Studio gestartet, also ist das Studio
+    # vorn — und der erste Klick ins Spiel holt es erst nach vorn. Im Hook
+    # steht zu dem Zeitpunkt noch das Studio im Vordergrund; wer den fragt,
+    # wirft genau diesen Klick weg. In jeder Studio-Aufnahme fehlte damit der
+    # erste Schritt, und am Ende stand umgekehrt der Klick auf „Aufnahme
+    # stoppen" als Spielklick in der Sequenz (gemessen: `(1347, 709)`, Farbe
+    # `#1C2333` = Panel-Grau des Studios). Derselbe Fehler wie in der
+    # Klick-Runde, deshalb derselbe Helfer — und dieselben vier Faelle.
+    import autoclicker.editors._klickfenster as _kf
     _klick_state = _State(recording_active=True)
-    _alt_titel = _rec.get_foreground_window_title
+    _vorn, _unter = ["Idle Clans"], [None]   # None = wie der Vordergrund
+    _alt_vorn, _alt_unter = _kf.get_foreground_window_title, _kf.get_window_title_at
+    _kf.get_foreground_window_title = lambda: _vorn[0]
+    _kf.get_window_title_at = lambda x, y: (
+        _vorn[0] if _unter[0] is None else _unter[0])
+    _aufnehmen = _rec._on_click_factory(_klick_state)
     try:
-        _rec.get_foreground_window_title = lambda: "Sequenz-Studio"
-        _rec._on_click_factory(_klick_state)(10, 20, (1, 2, 3))
+        _vorn[0] = "Sequenz-Studio"
+        _aufnehmen(10, 20, (1, 2, 3))
         check("der Stopp-Klick im Studio wird nicht aufgenommen",
               not _klick_state.recording_events)
-        _rec.get_foreground_window_title = lambda: "Idle Clans"
-        _rec._on_click_factory(_klick_state)(10, 20, (1, 2, 3))
+        _vorn[0] = "Idle Clans"
+        _aufnehmen(10, 20, (1, 2, 3))
         check("derselbe Klick im Spiel wird aufgenommen",
               len(_klick_state.recording_events) == 1)
+
+        # Der Fall, an dem jede Studio-Aufnahme ihren ersten Schritt verlor.
+        _vorn[0], _unter[0] = "Sequenz-Studio", "Idle Clans"
+        _aufnehmen(4578, 490, (140, 77, 74))
+        check("der erste Klick ins Spiel zaehlt, obwohl das Studio noch vorn ist",
+              [(e.x, e.y) for e in _klick_state.recording_events][-1] == (4578, 490))
+        # Und der Klick auf „Aufnahme stoppen" bei vorn stehendem Spiel.
+        _vorn[0], _unter[0] = "Idle Clans", "Sequenz-Studio"
+        _anzahl = len(_klick_state.recording_events)
+        _aufnehmen(1347, 709, (28, 35, 51))
+        check("der Stopp-Klick zaehlt nicht, obwohl das Spiel noch vorn ist",
+              len(_klick_state.recording_events) == _anzahl)
+        # Ohne auffindbares Fenster gilt der Vordergrund — ein Filter, der
+        # dann alles wegwirft, saehe aus wie ein kaputter Hook.
+        _vorn[0], _unter[0] = "Idle Clans", ""
+        _aufnehmen(5, 5, (0, 0, 0))
+        check("ohne Fenster unter dem Zeiger entscheidet der Vordergrund",
+              len(_klick_state.recording_events) == _anzahl + 1)
     finally:
-        _rec.get_foreground_window_title = _alt_titel
+        _kf.get_foreground_window_title = _alt_vorn
+        _kf.get_window_title_at = _alt_unter
 
     _live_events = [
         _RE(_RC, 1.00, 10, 20, (1, 2, 3)),

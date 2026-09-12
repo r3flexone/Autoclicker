@@ -12,17 +12,21 @@ from ..utils import save_tag, err
 # SLOTS
 # =============================================================================
 
-def save_global_slots(state: AutoClickerState) -> None:
+def save_global_slots(state: AutoClickerState) -> bool:
     """Speichert die Slot-Arbeitsansicht in ihrem Item-Scan."""
     from .item_scans import flush_item_scan_context, save_item_scan
     cfg = flush_item_scan_context(state)
     if cfg is None:
-        return
+        print(err("Kein Item-Scan zum Speichern gewählt."))
+        return False
     try:
-        save_item_scan(cfg)
+        if not save_item_scan(cfg):
+            return False
         print(save_tag(f"{len(cfg.slots)} Slot(s) in '{cfg.name}' gespeichert"))
+        return True
     except (IOError, OSError, ValueError) as e:
         print(err(f"Slots konnten nicht gespeichert werden: {e}"))
+        return False
 
 
 def load_global_slots(state: AutoClickerState) -> None:
@@ -35,17 +39,21 @@ def load_global_slots(state: AutoClickerState) -> None:
 # ITEMS
 # =============================================================================
 
-def save_global_items(state: AutoClickerState) -> None:
+def save_global_items(state: AutoClickerState) -> bool:
     """Speichert die Item-Arbeitsansicht in ihrem Item-Scan."""
     from .item_scans import flush_item_scan_context, save_item_scan
     cfg = flush_item_scan_context(state)
     if cfg is None:
-        return
+        print(err("Kein Item-Scan zum Speichern gewählt."))
+        return False
     try:
-        save_item_scan(cfg)
+        if not save_item_scan(cfg):
+            return False
         print(save_tag(f"{len(cfg.items)} Item(s) in '{cfg.name}' gespeichert"))
+        return True
     except (IOError, OSError, ValueError) as e:
         print(err(f"Items konnten nicht gespeichert werden: {e}"))
+        return False
 
 
 def load_global_items(state: AutoClickerState) -> None:

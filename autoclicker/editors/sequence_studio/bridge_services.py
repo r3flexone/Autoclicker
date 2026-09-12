@@ -443,8 +443,56 @@ class BridgeServicesMixin:
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
             "optional": optionale_felder(),
+            # Was hinter einem Feld gerade WIRKLICH liegt — heute nur der
+            # Katalog. Der Pfad allein sagt nicht, ob die Datei da ist und wie
+            # alt sie ist, und genau das ist die Frage, die man an eine
+            # geholte Liste hat.
+            "staende": self._config_staende(),
             "fehler": fehler,
         }
+
+    @staticmethod
+    def _katalog_stand(pfad: str) -> str:
+        """Umfang und Alter der Katalog-Datei — als ein Satz fuer die Ansicht.
+
+        Gelesen wird die Datei selbst und nicht `lade_katalog()`: der Zeitpunkt
+        steht als `_erzeugt` drin, und der `Katalog` traegt nur Items und
+        Gegner. Ein Fehler ist hier kein Fehlerfall, sondern eine Auskunft —
+        „Datei fehlt" ist genau das, was man wissen will, wenn der Knopf
+        scheinbar nichts bewirkt hat.
+        """
+        import json
+        from datetime import datetime, timezone
+        if not pfad:
+            return ""
+        datei = Path(pfad)
+        if not datei.exists():
+            return "Datei fehlt — noch nicht geholt?"
+        try:
+            roh = json.loads(datei.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            return f"nicht lesbar ({e})"
+        anzahl = len(roh.get("items") or {})
+        gegner = len(roh.get("gegner") or [])
+        wann = str(roh.get("_erzeugt") or "")
+        teile = [f"{anzahl} Items", f"{gegner} Gegner"]
+        try:
+            # `_erzeugt` steht in UTC (…Z). Angezeigt wird Ortszeit — ein
+            # Zeitstempel, den man mit der eigenen Uhr vergleichen soll, darf
+            # nicht in einer anderen Zone stehen.
+            roh_zeit = datetime.strptime(wann, "%Y-%m-%dT%H:%M:%SZ")
+            lokal = roh_zeit.replace(tzinfo=timezone.utc).astimezone()
+            teile.append("geholt am " + lokal.strftime("%d.%m.%Y um %H:%M"))
+        except ValueError:
+            if wann:
+                teile.append("geholt am " + wann)
+        return " · ".join(teile)
+
+    def _config_staende(self) -> dict:
+        """Zusatzauskunft je Feld, wo der Wert allein zu wenig sagt."""
+        from ...config import CONFIG
+        stand = self._katalog_stand(str(CONFIG.scan_catalog_file or "").strip())
+        return {"scan_catalog_file": stand} if stand else {}
 
     def config_schreiben(self, daten: Optional[dict] = None) -> dict:
         """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.
@@ -498,6 +546,69 @@ class BridgeServicesMixin:
         # Zeitstempel ist damit veraltet.
         self._cfg_stand = -1.0
         return {"ok": True, "werte": fertig, "korrekturen": korrekturen}
+
+    def katalog_holen(self, daten: Optional[dict] = None) -> dict:
+        """Holt den Item-Katalog aus der Spiel-API und traegt den Pfad ein.
+
+        **Bis hierhin ging das nur auf der Kommandozeile** — ausgerechnet die
+        Datei, ohne die das LLM frei raet und die Kategorie leer bleibt, war
+        die einzige, die man im Fenster nicht beschaffen konnte. Der
+        Einstellungen-Reiter zeigt den Pfad, also gehoert der Knopf dorthin.
+
+        Gerechnet wird in `tools/katalog.py`, mit denselben Funktionen, die die
+        Kommandozeile benutzt — dieselbe Richtung wie beim Bericht-Reiter:
+        **die Bruecke ruft das Werkzeug, nie umgekehrt.** Der Import steht
+        deshalb hier drin und in einem `try`: `tools/` gehoert zum Repo, nicht
+        zum Programm.
+
+        Der Pfad wird nur gesetzt, wenn keiner dasteht: wer einen eigenen
+        eingetragen hat, bekommt seine Datei aktualisiert und nicht seinen
+        Eintrag ueberschrieben.
+        """
+        import sys
+        from ...config import CONFIG
+
+        wurzel = Path(__file__).resolve().parents[3]
+        if str(wurzel) not in sys.path:
+            sys.path.insert(0, str(wurzel))
+        try:
+            from tools.katalog import (baue_katalog, hole_spieldaten,
+                                       _zusammenfassung, STANDARD_ZIEL)
+        except ImportError as e:
+            return {"ok": False,
+                    "meldung": f"tools/katalog.py nicht gefunden ({e})."}
+
+        ziel = Path(str(CONFIG.scan_catalog_file or "").strip() or STANDARD_ZIEL)
+        try:
+            katalog = baue_katalog(hole_spieldaten())
+        except Exception as e:
+            # Netz, DNS, ein geaendertes Antwortformat — alles derselbe Fall
+            # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
+            # damit "geht nicht" nicht die ganze Auskunft ist.
+            return {"ok": False, "meldung": f"Nicht erreichbar: {e}"}
+        if not katalog.get("items"):
+            return {"ok": False, "meldung": "Die API hat keine Items geliefert — "
+                                            "nichts geschrieben."}
+        try:
+            from ...utils import atomic_write
+            import json as _json
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(ziel, _json.dumps(katalog, ensure_ascii=False, indent=1))
+        except OSError as e:
+            return {"ok": False, "meldung": f"Konnte '{ziel}' nicht schreiben: {e}"}
+
+        meldung = _zusammenfassung(katalog).splitlines()[0]
+        if not str(CONFIG.scan_catalog_file or "").strip():
+            erg = self.config_schreiben({"werte": {"scan_catalog_file": str(ziel)}})
+            if not erg.get("ok"):
+                return {"ok": False,
+                        "meldung": f"{meldung} — geschrieben nach '{ziel}', aber der "
+                                   f"Pfad liess sich nicht eintragen: "
+                                   f"{erg.get('meldung', '')}"}
+            return {"ok": True, "meldung": f"{meldung}. Eingetragen: {ziel}",
+                    "pfad": str(ziel)}
+        return {"ok": True, "meldung": f"{meldung}. Aktualisiert: {ziel}",
+                "pfad": str(ziel)}
 
     def befehl_offen(self, daten: Optional[dict] = None) -> bool:
         """Liegt der letzte Befehl noch im Briefkasten?
@@ -559,6 +670,12 @@ class BridgeServicesMixin:
         self.board = sequence_to_board(Sequence(
             name=basis, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
         self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
+        # **Die Punkte gehoeren der Sequenz, nicht dem Fenster.** `laden()` ersetzt
+        # sie, `neu()` liess sie stehen — und `speichern()` schreibt `self.points`
+        # in die Datei: eine frisch angelegte Sequenz kam damit mit dem ganzen
+        # Punktebestand der vorher offenen auf die Platte. Ein Rest aus der Zeit
+        # der globalen `points.json`, in der genau das richtig war.
+        self.points = []
         self._scan_init()
         self._auswahl_leeren()
         self._dirty = False
@@ -678,8 +795,11 @@ class BridgeServicesMixin:
 
     def _stand_merken(self) -> None:
         """Nach dem Schreiben (oder Laden) den Stand der Dateien festhalten."""
+        # EIN Stand fuer beides: die Punkte stehen im Feld `points`
+        # derselben Datei. Hier lag daneben ein `_stand_punkte`, das
+        # dreimal gesetzt und nirgends gelesen wurde — ein Rest aus der
+        # Zeit der eigenen `points.json`.
         self._stand_datei = _mtime(self.filepath)
-        self._stand_punkte = self._stand_datei
 
     def rettung_schreiben(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

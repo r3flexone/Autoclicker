@@ -4,7 +4,7 @@ from typing import Optional
 
 from ...models import ItemScanConfig
 from ...utils import eindeutiger_name, sanitize_filename
-from .scan_contract import ART_ITEM, ART_SCAN, ART_SLOT
+from .scan_contract import ART_ITEM, ART_SCAN, ART_SLOT, referenzen_umbenennen
 
 
 class ScanLibraryMixin:
@@ -59,15 +59,6 @@ class ScanLibraryMixin:
         self.scan_fenster_id = 0
         return self._scan_melde("Kein Scan offen — der ganze Bestand steht da.", "info")
 
-    def scan_filter(self, daten: Optional[dict] = None) -> dict:
-        """Nur die Mitglieder des offenen Scans zeigen — oder alles.
-
-        „Alles" braucht man zum Hinzufügen, „nur Mitglieder" zum Arbeiten. Ein
-        Schalter statt zweier Listen, weil es dieselben Dinge sind.
-        """
-        self.nur_dabei = bool((daten or {}).get("wert"))
-        return self.scan_daten()
-
     def scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen.
 
@@ -119,10 +110,14 @@ class ScanLibraryMixin:
             self.scan_name = neu
             if self.scan_offen == alt:
                 self.scan_offen = neu
-            for lane in self.board.lanes:
-                for step in lane.steps:
-                    if step.item_scan == alt:
-                        step.item_scan = neu
+            # Der Name IST die Referenz, und sie steht an ZWEI Stellen: im
+            # Schritt und als Fallback-Scan eines Boss-Scans, den
+            # `runtime/steps.py` bei „kein Boss erkannt" wirklich ausfuehrt.
+            # Ohne die zweite lief der Fallback nach dem Umbenennen ins Leere.
+            referenzen_umbenennen(self.board, "item", alt, neu)
+            for boss_cfg in getattr(self, "boss_scans", {}).values():
+                if boss_cfg.default_scan == alt:
+                    boss_cfg.default_scan = neu
             # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
             try:
                 self._foto_pfad(alt).replace(self._foto_pfad(neu))

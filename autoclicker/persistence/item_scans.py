@@ -34,8 +34,12 @@ def save_item_scan(config: ItemScanConfig) -> bool:
     """Speichert eine Item-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Item-Scan hat keine Besitzer-Sequenz")
-    return write_scan(str(_item_scans_dir(config.owner_sequence)), config.name,
-               _item_scan_to_dict(config), "Item-Scan")
+    try:
+        return write_scan(str(_item_scans_dir(config.owner_sequence)), config.name,
+                          _item_scan_to_dict(config), "Item-Scan")
+    except OSError as e:
+        logger.error(f"Item-Scan konnte nicht gespeichert werden: {e}")
+        return False
 
 
 def load_item_scan_file(filepath: Path, owner: str = "") -> Optional[ItemScanConfig]:
@@ -69,16 +73,18 @@ def load_all_item_scans(state: AutoClickerState) -> None:
     """Lädt alle eigenständigen Item-Scan-Konfigurationen."""
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-    if not owner:
-        state.item_scans.clear()
-        return
-    ordner = str(_item_scans_dir(owner))
-    load_all_scans(ordner, lambda pfad: load_item_scan_file(pfad, owner),
-                   state.item_scans, "Item-Scan")
+    geladen = {}
+    if owner:
+        ordner = str(_item_scans_dir(owner))
+        load_all_scans(ordner, lambda pfad: load_item_scan_file(pfad, owner),
+                       geladen, "Item-Scan")
     with state.lock:
+        state.item_scans = geladen
         if state.active_item_scan not in state.item_scans:
             state.active_item_scan = next(iter(state.item_scans), "")
-    bind_item_scan_context(state, state.active_item_scan)
+        cfg = geladen.get(state.active_item_scan)
+        state.global_slots = {s.name: s for s in cfg.slots} if cfg else {}
+        state.global_items = {i.name: i for i in cfg.items} if cfg else {}
 
 
 def bind_item_scan_context(state: AutoClickerState, name: str) -> bool:

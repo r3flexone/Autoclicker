@@ -1639,6 +1639,373 @@ try:
           _item_v.template == "b.png" and _item_v.template_variants == [])
     check("die Ansicht bietet Vorlagenpflege und LLM-Namen an",
           "scan_item_vorlage_entfernen" in studio_web_source()
-          and "scan_items_autoname" in studio_web_source())
+          and "scanAutonameLauf" in studio_web_source())
 finally:
     _os.chdir(_cwd_vorlage)
+
+
+# =============================================================================
+section("Studio-Items: alle auf einmal per LLM benennen")
+# =============================================================================
+# Den Knopf gab es nur AM einzelnen Item — richtig fuer die Korrektur eines
+# Namens, falsch fuer den Normalfall: nach dem Lernen heissen sie "Item 1" …
+# "Item 56", und einzeln waeren das sechsundfuenfzig Masken zum Aufklappen.
+import json as _json_an                                            # noqa: E402
+import autoclicker.llm_vision as _lv_an                            # noqa: E402
+
+_sand_an = tempfile.mkdtemp(prefix="studioautoname_")
+_cwd_an = _os.getcwd()
+_echt_an = _lv_an.suggest_item_name_grund
+_os.chdir(_sand_an)
+try:
+    _hat_pil_an = False
+    try:
+        from PIL import Image as _PILImage_an
+        _hat_pil_an = True
+    except ImportError:
+        pass
+
+    if not _hat_pil_an:
+        print("  ----  uebersprungen (Pillow nicht installiert)")
+    else:
+        Path("sequences/s/templates").mkdir(parents=True)
+        for _datei_an in ("a.png", "b.png"):
+            _PILImage_an.new("RGB", (8, 8), (200, 60, 60)).save(
+                Path("sequences/s/templates") / _datei_an)
+        # `scan_items_autoname` liest die Config von PLATTE (`load_config`) und
+        # nicht das Modul-CONFIG: ohne Datei greift der Default und der Befehl
+        # lehnt mit "nicht aktiviert" ab, bevor er irgendetwas tut.
+        Path("config.json").write_text(
+            _json_an.dumps({"llm_enabled": True}), encoding="utf-8")
+
+        def _bau_an():
+            _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+            # **Erst laden, dann stellen.** `_scan_laden()` laeuft beim ersten
+            # `scan_daten()` und holt Slots, Items und Scans von Platte — was
+            # der Test vorher ins Objekt schreibt, waere danach weg. Frueher
+            # fiel das nicht auf, weil der Durchgang EIN Aufruf war und seine
+            # Arbeit vor der ersten Momentaufnahme erledigt hatte.
+            _b.scan_daten()
+            _b.items = {
+                "Item 1": _ITEM8(name="Item 1", template="a.png"),
+                "Item 2": _ITEM8(name="Item 2", template="b.png"),
+                "Ohne Vorlage": _ITEM8(name="Ohne Vorlage"),
+            }
+            return _b
+
+        def _durchlauf_an(b, daten, schritte=None):
+            """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
+
+            `schritte` bricht nach so vielen ab — genau das, was der
+            Abbrechen-Knopf im Arbeits-Kasten tut.
+            """
+            erg = b.scan_autoname_start(daten)
+            if not getattr(b, "_autoname", None):
+                return erg                      # abgelehnt, die Meldung sagt warum
+            n = 0
+            while (getattr(b, "_autoname", None) or {}).get("offen"):
+                if schritte is not None and n >= schritte:
+                    return b.scan_autoname_ende({"abgebrochen": True})
+                b.scan_autoname_schritt()
+                n += 1
+            return b.scan_autoname_ende()
+
+        _namen_an = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_namen_an, None), "")
+
+        _ba = _bau_an()
+        _vorher_an = _ba.scan_daten()["undo"]["tiefe"]
+        _erg_an = _durchlauf_an(_ba, {"alle": True})
+        check("'alle' benennt jedes Item mit Vorlage, nicht nur die Kategorie 'Auto'",
+              "Godlike Bow" in _ba.items and "Citadel Helmet" in _ba.items)
+        # Ein Item ohne Vorlage hat nichts, was man dem Modell zeigen koennte —
+        # es faellt heraus, statt mit einem geratenen Namen dazustehen.
+        check("ein Item ohne Vorlage bleibt unberuehrt", "Ohne Vorlage" in _ba.items)
+        check("und die Meldung nennt beide Zahlen",
+              "2 von 2" in _erg_an["status"]["text"])
+        # **Ohne Katalog raet das Modell frei** und antwortet auf die deutsche
+        # Frage deutsch: heraus kommt die Art ("Bogen") statt des Gegenstands.
+        # Das sieht in der Liste wie ein Ergebnis aus und ist keins.
+        check("und sagt dazu, dass ohne Katalog geraten wurde",
+              "ohne Katalog" in _erg_an["status"]["text"])
+        # **Ein Stand fuer den ganzen Durchgang.** Je Item abgelegt waere der
+        # Zustand von VOR dem Durchgang nach dreissig Items aus dem Stapel
+        # gefallen — also genau der, auf den man zurueck will.
+        check("der ganze Durchgang ist EIN Rueckgaengig-Schritt",
+              _ba.scan_daten()["undo"]["tiefe"] == _vorher_an + 1)
+        _ba.scan_rueckgaengig()
+        check("und ein Zurueck holt alle Namen auf einmal wieder",
+              "Item 1" in _ba.items and "Item 2" in _ba.items
+              and "Godlike Bow" not in _ba.items)
+
+        # Ohne Treffer darf kein Stand entstehen: ein STRG+Z, das nichts
+        # zurueckdreht, ist eins, dem man danach nicht mehr traut.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, "")
+        _bl = _bau_an()
+        _leer_an = _bl.scan_daten()["undo"]["tiefe"]
+        _erg_leer = _durchlauf_an(_bl, {"alle": True})
+        check("erkennt das Modell nichts, entsteht kein Rueckgaengig-Stand",
+              _bl.scan_daten()["undo"]["tiefe"] == _leer_an)
+        check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
+              "2 ohne Vorschlag" in _erg_leer["status"]["text"])
+
+        # Ohne `alle` und ohne Auswahl bleibt es beim vorsichtigen Standard —
+        # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _bs = _bau_an()
+        _erg_std = _durchlauf_an(_bs, {})
+        check("ohne 'alle' bleibt es bei den auto-gelernten Items",
+              _erg_std["status"]["art"] == "warn" and "Item 1" in _bs.items)
+
+        # --- Der Grund, warum die Kategorie nie kam ---------------------------
+        # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
+        # macht Kleinbuchstaben und Unterstriche: aus "Godlike Bow" wurde
+        # `godlike_bow` — und `Katalog.treffer()` vergleicht `casefold()`, nicht
+        # Unterstriche. Der Name kam also woertlich aus dem Katalog und fand
+        # sich darin trotzdem nicht wieder; Kategorie und Prioritaet blieben
+        # IMMER aus. Ein Test, der nur den Namen prueft, sieht das nicht — es
+        # muss die ganze Kette sein.
+        from autoclicker.config import CONFIG as _CFG_an
+        Path("katalog.json").write_text(_json_an.dumps({"items": {
+            "Godlike Bow": {"kategorie": "Bogen", "wert": 900},
+            "Citadel Helmet": {"kategorie": "Helm", "wert": 500},
+        }}), encoding="utf-8")
+        _altkat_an = _CFG_an.scan_catalog_file
+        _CFG_an.scan_catalog_file = str(Path("katalog.json").resolve())
+        try:
+            _bk = _bau_an()
+            # `item_names` gehoert NICHT in den Konstruktor: die Namen sind
+            # die Wahrheit, aber abgeleitet — `sync_names()` fuellt sie aus den
+            # Objekten (`__post_init__`).
+            _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
+                                    items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
+            _bk.scan_offen = "S"
+            _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
+            _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_kat_namen, None), "")
+            _erg_kat = _durchlauf_an(_bk, {"alle": True})
+            check("ein Katalogname bleibt woertlich stehen",
+                  "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
+            # Ueber `.get()`, damit ein roter erster Check die restliche Suite
+            # nicht mit einem KeyError abreisst — die Gegenprobe ("Fix
+            # entschaerfen, Test muss rot werden") laeuft sonst nur bis hierhin.
+            _gb_an = _bk.items.get("Godlike Bow")
+            _ch_an = _bk.items.get("Citadel Helmet")
+            check("und wird deshalb auch eingeordnet",
+                  _gb_an is not None and _ch_an is not None
+                  and _gb_an.category == "Bogen" and _ch_an.category == "Helm")
+            check("die Meldung nennt das Einordnen mit",
+                  "eingeordnet" in _erg_kat["status"]["text"])
+            # Der teurere von beiden bekommt den ersten Rang — aber innerhalb
+            # SEINER Kategorie, und die haben hier je ein Item.
+            check("und die Prioritaet steht dicht innerhalb der Kategorie",
+                  _gb_an is not None and _ch_an is not None
+                  and _gb_an.priority == 1 and _ch_an.priority == 1)
+        finally:
+            _CFG_an.scan_catalog_file = _altkat_an
+
+        # --- Ein Timeout ist nicht "nicht erkannt" ---------------------------
+        # **Die ersten Aufrufe an einen kalten Server dauern**: an einem echten
+        # Bestand ueber 120 s, die folgenden 3,5. Mit llm_timeout auf 60 fielen
+        # genau die ersten Items stumm durch — und standen als "ohne Vorschlag"
+        # da, als haette das Modell hingesehen und nichts erkannt.
+        from autoclicker.llm_vision import TIMEOUT as _TO_an
+        _versuche_an = []
+
+        def _erst_timeout(*a, **kw):
+            _versuche_an.append(kw.get("timeout"))
+            # Beim zweiten Versuch ist das Modell warm — genau der Fall, den
+            # die Wiederholung abdecken soll.
+            return (("Godlike Bow", "") if len(_versuche_an) > 1
+                    else (None, _TO_an))
+
+        _lv_an.suggest_item_name_grund = _erst_timeout
+        _bt = _bau_an()
+        _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
+        _erg_to = _durchlauf_an(_bt, {"alle": True})
+        check("nach einem Timeout wird einmal wiederholt", len(_versuche_an) == 2)
+        check("und der zweite Versuch bekommt mehr Zeit",
+              _versuche_an[1] > _versuche_an[0])
+        check("dann traegt das Item seinen Namen", "Godlike Bow" in _bt.items)
+
+        # Antwortet es auch beim zweiten Mal nicht, wird es als Zeitueber-
+        # schreitung gezaehlt — mit der Abhilfe in der Meldung.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, _TO_an)
+        _bt2 = _bau_an()
+        _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
+        _erg_to2 = _durchlauf_an(_bt2, {"alle": True})
+        _txt_to = _erg_to2["status"]["text"]
+        check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
+              "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
+        check("und die Meldung nennt die Abhilfe", "llm_timeout" in _txt_to)
+
+        # --- Zwei Slots, dasselbe Item ---------------------------------------
+        # **Ein Inventar mit zwei Boegen ergab "Godlike Bow" und "Godlike Bow
+        # 2".** Drei Folgen: der Zaehler-Name steht nicht im Katalog (also keine
+        # Kategorie), beide lagen mit derselben Prioritaet in derselben
+        # Kategorie (in Modus `all` gewinnt eines, das andere wird nie
+        # geklickt), und die zweite Vorlage gehoerte ohnehin zum selben
+        # Gegenstand.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _bd = _bau_an()
+        _erg_dop = _durchlauf_an(_bd, {"alle": True})
+        check("derselbe Name legt kein zweites Item an",
+              "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
+        check("die zweite Vorlage haengt als Variante am Item",
+              sorted(_bd.items["Godlike Bow"].template_names()) == ["a.png", "b.png"])
+        check("und die Meldung sagt es",
+              "angehängt" in _erg_dop["status"]["text"])
+        # Der Name IST die Referenz: ohne `_objekte_angleichen()` kaeme das
+        # geloeschte Item ueber `sync_names()` beim Speichern zurueck.
+        check("das Doppel ist auch aus dem Scan raus",
+              "Item 2" not in (_bd.scans[_bd.scan_offen].item_names
+                               if _bd.scan_offen in _bd.scans else []))
+        check("STRG+Z holt beide Items zurueck",
+              _bd.scan_rueckgaengig() is not None
+              and "Item 1" in _bd.items and "Item 2" in _bd.items)
+
+        # --- Abbrechen -------------------------------------------------------
+        _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_abb_namen, None), "")
+        _bab = _bau_an()
+        _erg_abb = _durchlauf_an(_bab, {"alle": True}, schritte=1)
+        # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
+        # eine Modell-Antwort zu verbrennen, weil man die zweite nicht mehr
+        # abwarten wollte — und STRG+Z holt den ganzen Durchgang zurueck.
+        check("ein Abbruch behaelt, was bis dahin benannt wurde",
+              "Godlike Bow" in _bab.items and "Item 2" in _bab.items)
+        check("und die Meldung sagt, wie viele nicht angesehen wurden",
+              "abgebrochen" in _erg_abb["status"]["text"]
+              and "1 nicht angesehen" in _erg_abb["status"]["text"])
+        check("danach laeuft kein Durchgang mehr",
+              _bab.scan_daten()["autoname"] is None)
+        check("und ein weiterer Schritt sagt das, statt etwas zu tun",
+              _bab.scan_autoname_schritt()["status"]["art"] == "warn")
+
+        # Der Fortschritt steht in der MOMENTAUFNAHME, nicht nur in der Antwort
+        # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
+        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _bfs = _bau_an()
+        _bfs.scan_autoname_start({"alle": True})
+        _stand_an = _bfs.scan_daten()["autoname"]
+        check("die Momentaufnahme traegt den Fortschritt",
+              _stand_an and _stand_an["gesamt"] == 2 and _stand_an["fertig"] == 0)
+        _bfs.scan_autoname_schritt()
+        check("und er waechst mit jedem Schritt",
+              _bfs.scan_daten()["autoname"]["fertig"] == 1)
+        _bfs.scan_autoname_ende()
+
+        # Der Knopf steht im Kopf der rechten Spalte und schickt genau dieses
+        # Feld; die Momentaufnahme sagt ihm, ob das LLM ueberhaupt an ist.
+        _quelle_an = studio_web_source()
+        check("die Seite treibt den Durchgang selbst",
+              "scanAutonameLauf({alle: true})" in _quelle_an
+              and 'rufScan("scan_autoname_start"' in _quelle_an
+              and 'rufScan("scan_autoname_schritt"' in _quelle_an
+              and 'rufScan("scan_autoname_ende"' in _quelle_an)
+        # **Ein Aufruf, der drei Minuten blockiert, laesst sich nicht abbrechen.**
+        # Deshalb steht die Schleife in der Ansicht — und deshalb muss dort auch
+        # der Knopf sein, der sie stoppt.
+        check("und laesst sich dabei abbrechen",
+              "autonameAbbruch" in _quelle_an and "Abbrechen" in _quelle_an)
+        check("und fragt vorher, ob das LLM eingeschaltet ist",
+              "SC.llm_an" in _quelle_an
+              and "llm_an" in _bau_an().scan_daten())
+        # Ein Aufruf, der eine Minute lang rechnet, braucht einen Hinweis —
+        # sonst sieht das Fenster tot aus. `mitWarten` passt nicht: dort wartet
+        # die Bruecke auf ENTER und hat eine feste Grenze.
+        check("und zeigt so lange, dass gearbeitet wird",
+              "mitArbeit(" in _quelle_an and "arbeitZeigen" in _quelle_an)
+finally:
+    _lv_an.suggest_item_name_grund = _echt_an
+    _os.chdir(_cwd_an)
+    shutil.rmtree(_sand_an, ignore_errors=True)
+
+
+# =============================================================================
+section("Studio-Items: eine Kategorie umbenennen zieht alle ihre Items mit")
+# =============================================================================
+# **Die Kategorie ist kein eigenes Objekt**, sondern ein Feld an jedem Item.
+# Zwei Gruppen zusammenzulegen hiess deshalb, jede Maske einzeln anzufassen —
+# und der Katalog ordnet bewusst ENG ein: an einem echten Bestand hatten
+# dreizehn von dreiundzwanzig Kategorien genau ein Item.
+_sand_kat = tempfile.mkdtemp(prefix="studiokategorie_")
+_cwd_kat = _os.getcwd()
+_os.chdir(_sand_kat)
+try:
+    def _bau_kat():
+        _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+        _b.scan_daten()
+        _b.items = {
+            "Bogen A": _ITEM8(name="Bogen A", category="Bow", priority=1),
+            "Bogen B": _ITEM8(name="Bogen B", category="Bow", priority=2),
+            "Armbrust": _ITEM8(name="Armbrust", category="Crossbow", priority=1),
+            "Stein": _ITEM8(name="Stein"),
+        }
+        return _b
+
+    _bk1 = _bau_kat()
+    _erg_kat = _bk1.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Fernkampf"})
+    check("alle Items der Gruppe ziehen mit",
+          [_bk1.items[n].category for n in ("Bogen A", "Bogen B")] == ["Fernkampf"] * 2)
+    check("und andere Kategorien bleiben unberuehrt",
+          _bk1.items["Armbrust"].category == "Crossbow")
+    check("die Meldung nennt die Anzahl", "2 Item(s)" in _erg_kat["status"]["text"])
+
+    # **Zusammengelegt heisst doppelte Raenge.** Zwei Items mit P1 in derselben
+    # Kategorie sind eine Rangfolge, die der Zufall entscheidet — in Modus
+    # `all` gewinnt eines und das andere wird nie geklickt.
+    _bk2 = _bau_kat()
+    _erg_zus = _bk2.scan_kategorie_umbenennen({"alt": "Crossbow", "neu": "Bow"})
+    _raenge = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
+    check("beim Zusammenlegen werden die Raenge dicht", _raenge == [1, 2, 3])
+    check("und es wird gesagt", "Rang" in _erg_zus["status"]["text"])
+    # Die Reihenfolge bleibt, wie sie war — die Werte des Katalogs holt man sich
+    # mit „Aus Katalog einordnen". Ungefragt umzusortieren wuerde handgesetzte
+    # Raenge ueberschreiben.
+    check("die bisherige Reihenfolge bleibt erhalten",
+          _bk2.items["Bogen A"].priority == 1 and _bk2.items["Bogen B"].priority == 2)
+    # **Wer dazukommt, kommt hinten an.** Ueber die ganze Gruppe nach Rang zu
+    # sortieren waere die naheliegende Fassung und die falsche: die Armbrust
+    # trug P1 und schoebe sich damit vor beide Boegen.
+    check("und das zugezogene Item haengt hinten an",
+          _bk2.items["Armbrust"].priority == 3)
+
+    # Ein leerer Zielname nimmt die Kategorie weg, ein leerer Quellname meint
+    # die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
+    _bk3 = _bau_kat()
+    _bk3.scan_kategorie_umbenennen({"alt": "Bow", "neu": ""})
+    check("ein leerer Zielname nimmt die Kategorie weg",
+          _bk3.items["Bogen A"].category is None)
+    _bk4 = _bau_kat()
+    _bk4.scan_kategorie_umbenennen({"alt": "", "neu": "Sonstiges"})
+    check("und ein leerer Quellname meint 'ohne Kategorie'",
+          _bk4.items["Stein"].category == "Sonstiges"
+          and _bk4.items["Bogen A"].category == "Bow")
+
+    # Kein Rueckgaengig-Stand ohne Aenderung: ein STRG+Z, das nichts
+    # zurueckdreht, ist eins, dem man danach nicht mehr traut.
+    _bk5 = _bau_kat()
+    _tiefe_vorher = _bk5.scan_daten()["undo"]["tiefe"]
+    _erg_leer_kat = _bk5.scan_kategorie_umbenennen({"alt": "Gibtsnicht", "neu": "X"})
+    check("eine leere Gruppe aendert nichts",
+          _erg_leer_kat["status"]["art"] == "warn"
+          and _bk5.scan_daten()["undo"]["tiefe"] == _tiefe_vorher)
+    _bk6 = _bau_kat()
+    _bk6.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Bow"})
+    check("und derselbe Name auch nicht",
+          _bk6.scan_daten()["undo"]["tiefe"] == _tiefe_vorher)
+
+    # STRG+Z holt den ganzen Durchgang zurueck.
+    _bk7 = _bau_kat()
+    _bk7.scan_kategorie_umbenennen({"alt": "Bow", "neu": "Fernkampf"})
+    _bk7.scan_rueckgaengig()
+    check("STRG+Z stellt die alte Kategorie wieder her",
+          _bk7.items["Bogen A"].category == "Bow")
+
+    _quelle_kat = studio_web_source()
+    check("die Ueberschrift ist der Weg dorthin",
+          "scan_kategorie_umbenennen" in _quelle_kat
+          and "scanKategorieKopf" in _quelle_kat)
+finally:
+    _os.chdir(_cwd_kat)
+    shutil.rmtree(_sand_kat, ignore_errors=True)

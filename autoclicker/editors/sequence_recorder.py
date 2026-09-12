@@ -18,8 +18,9 @@ from ..models import (
 )
 from ..winapi import (
     install_mouse_hook, remove_mouse_hook, install_keyboard_hook, remove_keyboard_hook,
-    get_cursor_pos, get_foreground_window_title, WHEEL_DELTA,
+    get_cursor_pos, WHEEL_DELTA,
 )
+from ._klickfenster import geklicktes_fenster
 from ..imaging import get_pixel_color
 from ..config import RECORD_STATUS_FILE
 from ..utils import (
@@ -155,11 +156,20 @@ def _on_click_factory(state: AutoClickerState):
         # Start/Stopp sind im Studio echte Knöpfe. Deren Klick darf nicht als
         # Spielaktion im Ergebnis landen. Andere Fenster werden bewusst nicht
         # pauschal gefiltert, damit der freie TUI-Weg unverändert bleibt.
-        try:
-            if "sequenz-studio" in get_foreground_window_title().casefold():
-                return
-        except Exception:
-            pass
+        #
+        # **Gefragt wird das Fenster UNTER dem Klick, nicht der Vordergrund.**
+        # Hier stand `get_foreground_window_title()`, und damit fehlte in
+        # JEDER Studio-Aufnahme der erste Klick: der Knopf „Aufnahme starten"
+        # liegt im Studio, also ist das Studio vorn — und der erste Klick ins
+        # Spiel holt es erst nach vorn. Im Hook steht zu dem Zeitpunkt noch das
+        # Studio als Vordergrund, der Klick galt als Studio-Klick und flog raus.
+        # Am Ende dasselbe umgekehrt: „Aufnahme stoppen" bei vorn stehendem
+        # Spiel kam als Spielklick in die Sequenz (gemessen an einer echten
+        # Aufnahme: letzter Schritt `(1347, 709)`, Farbe `#1C2333` = das
+        # Panel-Grau des Studios). Derselbe Fehler wie einmal in der
+        # Klick-Runde, deshalb derselbe Helfer.
+        if "sequenz-studio" in geklicktes_fenster(x, y).casefold():
+            return
         _anhaengen(state, RecordEvent(REC_CLICK, time.monotonic(), x, y, color))
     return _on_click
 
@@ -356,8 +366,7 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         _status_schreiben(state, [], aktiv=False)
 
 
-def punkte_fuer_events(state: AutoClickerState, events: list,
-                       seq_name: str) -> tuple[dict, list[ClickPoint]]:
+def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
     """Sorgt dafür, dass jedes aufgenommene Ereignis mit Stelle einen Punkt hat.
 
     Gibt `({event_index: point_id}, Punkte)` zurück; ein Punkt an
@@ -368,6 +377,20 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
     Keinen Punkt bekommen: Tastendrücke, Warte-Marker (benutzen den Punkt des
     folgenden Klicks), Screenshot-Marker und Phasengrenzen. Der
     Beobachtungs-Marker bekommt einen — seine Stelle ist bewusst gewählt.
+
+    **Ein Punkt heisst `P<ID>`, nicht nach seiner Sequenz.** Er trug einmal den
+    Sequenznamen als Vorsatz (`aufnahme_214638 3`), und das war schon vor dem
+    Umzug auf Besitzeinheiten nur halb richtig: seither liegt er ohnehin IN
+    dieser Sequenz, der Vorsatz sagt also nichts — er wird beim Umbenennen der
+    Sequenz falsch, und richtigstellen hiesse, jeden Punkt einzeln anzufassen.
+    Die Nummer ist die **Punkt-ID**, nicht der Ereignis-Index: sonst hiesse der
+    dritte Punkt einer Aufnahme mit Tastendrücken `P7`, während die Liste `#3`
+    daneben schreibt.
+
+    Weder `state` noch der Sequenzname kommen hier noch vor, und das ist die
+    Zusicherung: der Punkt-Pool entsteht **allein aus den Ereignissen**. Ein
+    `state` in der Signatur war der Weg, auf dem die Punkte einer anderen
+    Sequenz hineinlecken konnten.
     """
     from ..persistence.sequences import punkt_an_stelle
     punkt_id_fuer: dict[int, int] = {}
@@ -380,8 +403,8 @@ def punkte_fuer_events(state: AutoClickerState, events: list,
             punkt_id_fuer[i] = treffer.id
             continue
         pid = max((p.id for p in punkte), default=0) + 1
-        punkt = ClickPoint(ev.x, ev.y, f"{seq_name} {i + 1}", pid,
-                           color=ev.color, source=f"Aufnahme '{seq_name}'")
+        punkt = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
+                           color=ev.color, source="Aufnahme")
         punkte.append(punkt)
         punkt_id_fuer[i] = pid
     return punkt_id_fuer, punkte
@@ -665,7 +688,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
             description = ""
 
     # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
-    punkt_id_fuer, punkte = punkte_fuer_events(state, events, seq_name)
+    punkt_id_fuer, punkte = punkte_fuer_events(events)
 
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
     steps = schritte_aus_events(events, punkt_id_fuer)

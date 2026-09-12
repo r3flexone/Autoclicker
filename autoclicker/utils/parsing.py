@@ -180,6 +180,52 @@ def format_duration(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+# Was in einem Item-NAMEN stehen darf, ausser Buchstaben und Ziffern. Eine
+# Whitelist und keine Verbotsliste: so faellt ein Pfadtrenner heraus, ohne dass
+# ihn jemand aufzaehlen muss.
+_NAME_EXTRA = " -'()&.,+"
+
+
+def ohne_zaehler(name: str) -> str:
+    """Der Name ohne angehaengten Eindeutigkeits-Zaehler.
+
+    Die Umkehrung zu `eindeutiger_name()`: aus "Godlike Bow 2" wird
+    "Godlike Bow". Gebraucht wird sie beim Katalog — der Name IST dort der
+    Schluessel, und ein angehaengter Zaehler macht ihn unbekannt: das Item
+    stand danach ohne Kategorie da, obwohl sein Gegenstand im Katalog steht.
+
+    Zahlen, die zum Namen gehoeren, bleiben: "Slot 1" ohne Zaehler waere
+    "Slot", und das ist ein anderer Name. Der Aufrufer probiert deshalb ERST
+    den vollen Namen und erst danach diesen hier — was im Katalog steht,
+    gewinnt.
+    """
+    roh = str(name or "").rstrip()
+    teile = roh.rsplit(" ", 1)
+    if len(teile) == 2 and teile[0].strip() and teile[1].isdigit():
+        return teile[0].strip()
+    return roh
+
+
+def bereinige_itemname(name: str) -> str:
+    """Ein vorgeschlagener Item-Name — als NAME, nicht als Dateiname.
+
+    **Hier stand `sanitize_filename()`, und das war die falsche Funktion.** Sie
+    macht Kleinbuchstaben und ersetzt Leerzeichen durch Unterstriche: aus
+    "Godlike Bow" wurde `godlike_bow`. Der Name ist aber der Schluessel, unter
+    dem der Katalog nachgeschlagen wird, und `Katalog.treffer()` vergleicht
+    `casefold()` — nicht Unterstriche. Kategorie und Prioritaet blieben deshalb
+    IMMER aus, ausgerechnet bei einem Namen, der woertlich aus dem Katalog
+    kommt und nur noch zugeordnet werden musste.
+
+    Dateinamenssicher muss das Ergebnis nicht sein: wo aus dem Namen wirklich
+    eine Datei wird (`_apply_item_rename`), laeuft `sanitize_filename()` eine
+    Ebene tiefer noch einmal darueber.
+    """
+    roh = " ".join(str(name or "").split())
+    sauber = "".join(c for c in roh if c.isalnum() or c in _NAME_EXTRA)
+    return " ".join(sauber.split()).strip(" .,")
+
+
 def sanitize_filename(name: str) -> str:
     """Bereinigt einen Namen für sichere Dateinamen.
 
@@ -260,7 +306,7 @@ def compact_json(data, indent: int = 2) -> str:
     return json_str
 
 
-def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
+def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
     """Schreibt `text` crash-sicher in `path`.
 
     Erst in eine temporäre Datei im selben Verzeichnis, flush + fsync, dann per
@@ -272,7 +318,9 @@ def atomic_write(path, text: str, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as f:
+        binaer = isinstance(text, bytes)
+        with os.fdopen(fd, "wb" if binaer else "w",
+                       **({} if binaer else {"encoding": encoding})) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

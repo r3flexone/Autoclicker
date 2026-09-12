@@ -715,32 +715,3 @@ class ScanInteractionMixin:
         rest = f", {daneben} liegen ausserhalb des Bildes" if daneben else ""
         return self._scan_geaendert(f"{gemessen} Hintergrundfarbe(n) gemessen{rest}.")
 
-    def scan_auswahl_lernen(self, daten: Optional[dict] = None) -> dict:
-        """Lernt aus jedem gewählten Slot ein Item — wie `scan_items_lernen`,
-        nur auf der Auswahl.
-
-        Der Fall, für den es das gibt: nach dem Erkennen stehen fünf Slots
-        orange da (nichts erkannt), der Rest grün. Genau die fünf will man
-        lernen — „aus ALLEN Slots lernen" liefe stattdessen über alle
-        fünfundvierzig und würde vierzig Doppelte prüfen.
-        """
-        slots = self._auswahl_slots()
-        if not slots:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        self._merke(f"aus {len(slots)} Slot(s) gelernt")
-        neu, doppelt, leer = 0, 0, 0
-        for slot in slots:
-            ergebnis = self._lerne_aus_slot(slot, dedup=self._hat_opencv())
-            if ergebnis is None:
-                leer += 1
-            elif ergebnis == "":
-                doppelt += 1
-            else:
-                neu += 1
-                self._dazu(ART_ITEM, ergebnis)
-        teile = [f"{neu} neu"]
-        if doppelt:
-            teile.append(f"{doppelt} schon bekannt")
-        if leer:
-            teile.append(f"{leer} leer oder ohne Bild")
-        return self._scan_geaendert("Aus der Auswahl gelernt: " + ", ".join(teile))

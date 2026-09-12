@@ -187,6 +187,123 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
     return base
 
 
+# =============================================================================
+# MITSCHRIFT (config.llm_debug)
+# =============================================================================
+#
+# **Eine leere Antwort hat vier Ursachen, und von aussen sehen sie gleich aus:**
+# das Modell kann keine Bilder, der Modellname stimmt nicht, ein
+# Reasoning-Modell hat alle Tokens verdacht, oder das Bild war schwarz. Ohne
+# die rohe Antwort raet man zwischen ihnen — genau dafuer gab es
+# `_raw_lmstudio_debug()` in `tools/test_llm.py`, also einen zweiten
+# HTTP-Aufruf neben dem echten mit einer anderen Frage. Hier haengt die
+# Mitschrift AM echten Aufruf: was dasteht, ist das, was der Aufrufer bekommen
+# hat, und nicht das, was ein Nachbau bekommen haette.
+#
+# Gelesen wird `CONFIG` und nicht ein eigener Modulschalter — es gibt EIN
+# Config-Objekt pro Prozess, und der Einstellungen-Reiter haelt es aktuell.
+# Beide Importe stehen IN den Funktionen: `llm_vision` zieht sonst `config`
+# und `utils` schon beim blossen Import nach, und die Vertragssuite importiert
+# es einzeln.
+
+# Der Grund, den `suggest_item_name_grund()` fuer eine Zeitueberschreitung
+# meldet. Als Konstante, damit der Aufrufer ihn nicht am Text erkennen muss.
+TIMEOUT = "timeout"
+
+
+def ist_timeout(antwort: str) -> bool:
+    """War dieser Fehlschlag eine Zeitueberschreitung?
+
+    **Der Unterschied entscheidet, ob sich ein zweiter Versuch lohnt.** Ein
+    Timeout heisst fast immer: der Server laedt das Modell gerade (gemessen —
+    die ersten Aufrufe ueber 120 s, die folgenden 3,5), und der naechste
+    Versuch trifft ein warmes Modell. Ein Verbindungsfehler heisst: da ist
+    niemand, und Wiederholen ist nur Warten.
+
+    Die Regel steht hier und nicht bei den Aufrufern: sie haengt am Text, den
+    `analyze_image()` erzeugt, und der gehoert diesem Modul.
+    """
+    return str(antwort or "").startswith("Timeout")
+
+_DEBUG_ROH_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
+
+
+def _debug_an() -> bool:
+    """Schreibt die Config gerade jede LLM-Antwort mit?"""
+    try:
+        from .config import CONFIG
+        return bool(CONFIG.llm_debug)
+    except Exception:
+        return False
+
+
+def _debug_ausgabe(zeilen: list) -> None:
+    """Ein Block, EIN Schreibvorgang — dieselbe Regel wie bei `status_line()`.
+
+    Je Zeile einzeln geschrieben stand vor jeder ein `clear_line()`, und das
+    sind achtzig Leerzeichen: dreissig Zeilen roher JSON kamen mit einer
+    achtzig Spalten breiten Treppe davor heraus. Geloescht werden muss die
+    Status-Zeile trotzdem — sie steht ohne Zeilenumbruch da, sonst klebt die
+    erste Mitschrift-Zeile hinten an ihr.
+    """
+    try:
+        from .utils import clear_line, dbg
+        clear_line()
+        marke = dbg("[LLM]")
+    except Exception:
+        marke = "[LLM]"
+    print("\n".join(f"{marke} {z}" for z in zeilen), flush=True)
+
+
+def _debug_anfrage(provider: str, model: str, endpoint: str, prompt: str,
+                   system_prompt: Optional[str], img) -> None:
+    """Was rausgeht: Modell, Endpunkt, Bildmass und beide Prompts.
+
+    Der System-Prompt gehoert dazu und nicht nur die Frage: bei der
+    Item-Benennung entscheidet er ueber die Sprache und darueber, ob das
+    Modell frei raet oder aus dem Katalog auswaehlt — genau die Stelle, an der
+    man sich fragt, warum eine Antwort deutsch ist.
+    """
+    groesse = getattr(img, "size", None)
+    zeilen = [f"-> {provider} · {model} · {endpoint}",
+              f"   Bild: {groesse[0]}×{groesse[1]}" if groesse else "   Bild: (unbekannt)"]
+    if system_prompt:
+        zeilen.append(f"   System: {system_prompt!r}")
+    zeilen.append(f"   Prompt: {prompt!r}")
+    _debug_ausgabe(zeilen)
+
+
+def _debug_antwort(result: dict, text: str, duration_ms: float) -> None:
+    """Was zurueckkam — roh und daneben das, was der Code daraus liest.
+
+    Die rohe Antwort steht MIT dem Denk-Feld da (`reasoning_content`), das
+    `_extract_response_text` verwirft: ein Modell, das alle Tokens ins Denken
+    steckt, liefert einen leeren `content` und sieht sonst aus wie ein
+    kaputter Aufruf.
+    """
+    from .utils import warn
+    roh = json.dumps(result, ensure_ascii=False, indent=2)
+    rest = max(0, len(roh) - _DEBUG_ROH_MAX)
+    zeilen = [f"<- {duration_ms:.0f} ms, roh:"]
+    zeilen += ["   " + z for z in roh[:_DEBUG_ROH_MAX].splitlines()]
+    if rest:
+        zeilen.append(f"   … ({rest} weitere Zeichen abgeschnitten)")
+    if text.strip():
+        zeilen.append(f"   gelesen: {text!r}")
+    else:
+        zeilen.append("   gelesen: (leer) " + warn(
+            "Modell ohne Bild-Faehigkeit, falscher Modellname, leeres Bild "
+            "oder alle Tokens im Reasoning verbraucht"))
+    _debug_ausgabe(zeilen)
+
+
+def _debug_fehler(text: str, duration_ms: float) -> None:
+    """Auch ein Fehlschlag wird mitgeschrieben — sonst fehlt in der Mitschrift
+    ausgerechnet der Aufruf, der nicht funktioniert hat."""
+    from .utils import err
+    _debug_ausgabe([err(f"<- nach {duration_ms:.0f} ms: {text}")])
+
+
 def analyze_image(
     img: 'Image.Image',
     provider: str = PROVIDER_LMSTUDIO,
@@ -245,6 +362,10 @@ def analyze_image(
     else:
         request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
 
+    mitschrift = _debug_an()
+    if mitschrift:
+        _debug_anfrage(provider, model, endpoint, prompt, system_prompt, img)
+
     # API-Anfrage
     start_time = time.time()
     try:
@@ -262,27 +383,37 @@ def analyze_image(
 
             # Antwort extrahieren
             text = _extract_response_text(result, provider)
+            if mitschrift:
+                _debug_antwort(result, text, duration_ms)
             return True, text.strip(), duration_ms
 
     except socket.timeout:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
+        if mitschrift:
+            _debug_fehler(f"Timeout nach {timeout}s", duration_ms)
         return False, f"Timeout nach {timeout}s", duration_ms
 
     except urllib.error.URLError as e:
         duration_ms = (time.time() - start_time) * 1000
         reason = str(getattr(e, 'reason', e))
         logger.error(f"LLM API-Fehler ({provider}): {reason}")
+        if mitschrift:
+            _debug_fehler(f"Verbindungsfehler: {reason}", duration_ms)
         return False, f"Verbindungsfehler: {reason}", duration_ms
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
+        if mitschrift:
+            _debug_fehler(f"Antwort-Fehler: {e}", duration_ms)
         return False, f"Antwort-Fehler: {e}", duration_ms
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
+        if mitschrift:
+            _debug_fehler(f"Fehler: {e}", duration_ms)
         return False, f"Fehler: {e}", duration_ms
 
 
@@ -445,6 +576,28 @@ def _closest_candidate(name: str, candidates: list[str]) -> Optional[str]:
     return treffer[0] if treffer else None
 
 
+def _namens_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
+    """Wie viele Antwort-Tokens die Benennung bekommt.
+
+    Drei Regeln, und die mittlere ist die, an der man sonst stolpert:
+
+    * Ein ausdruecklich gesetzter Wert (`llm_max_tokens`) gewinnt — dafuer
+      steht er in der Config.
+    * **Mit Reasoning niemals kuerzen.** Ein Reasoning-Modell verbraucht die
+      Tokens erst fuers Denken; mit 32 ist die Antwort zu Ende, bevor der Name
+      kommt, und `content` bleibt leer. Genau dieser Fall steht auch in
+      `_build_lmstudio_request` — dort ist er der Grund fuer den 2048er-Default.
+    * Sonst reichen mit Liste 32: ein Katalogname ist ein paar Tokens lang.
+      Abgeschnitten waere er nicht mehr woertlich und faende seinen eigenen
+      Eintrag nicht wieder — deshalb nicht weniger.
+    """
+    if gewuenscht > 0:
+        return gewuenscht
+    if reasoning:
+        return 0            # 0 = Auto, und Auto heisst mit Reasoning 2048
+    return 32 if mit_liste else 0
+
+
 def suggest_item_name(
     img: 'Image.Image',
     provider: str = PROVIDER_LMSTUDIO,
@@ -452,7 +605,24 @@ def suggest_item_name(
     model: str = None,
     timeout: int = 60,
     candidates: list[str] = None,
+    reasoning: bool = False,
+    max_tokens: int = 0,
 ) -> Optional[str]:
+    """Nur der Name — fuer Aufrufer, die den Grund nicht brauchen."""
+    return suggest_item_name_grund(img, provider, endpoint, model, timeout,
+                                   candidates, reasoning, max_tokens)[0]
+
+
+def suggest_item_name_grund(
+    img: 'Image.Image',
+    provider: str = PROVIDER_LMSTUDIO,
+    endpoint: str = None,
+    model: str = None,
+    timeout: int = 60,
+    candidates: list[str] = None,
+    reasoning: bool = False,
+    max_tokens: int = 0,
+) -> tuple:
     """Fragt das LLM nach einem Namen für den Gegenstand auf dem Bild.
 
     Mit `candidates` (den echten Item-Namen aus `katalog.py`) darf das Modell
@@ -464,8 +634,16 @@ def suggest_item_name(
     Ohne `candidates` bleibt alles wie bisher (freier Vorschlag).
 
     Returns:
-        Bereinigter Name (max. ~40 Zeichen) oder None wenn nicht erkennbar /
-        LLM nicht erreichbar.
+        `(Name oder None, Grund)`. Der Grund ist "" bei einer Antwort — auch
+        bei einer, die nichts erkannt hat —, sonst `TIMEOUT` oder der
+        Fehlertext.
+
+        **Ein Timeout ist nicht dasselbe wie "nicht erkannt", und beides als
+        `None` zu melden war der Fehler**: an einem echten Bestand brauchten
+        die ERSTEN vier Aufrufe je ueber 120 Sekunden (LM Studio laedt das
+        Modell), die folgenden 3,5. Mit `llm_timeout` auf 60 fielen genau die
+        ersten Items stumm durch und standen als "ohne Vorschlag" da — als
+        haette das Modell sie angesehen und nichts erkannt.
     """
     if candidates:
         prompt, system_prompt = "Which item is this?", _build_item_candidate_prompt(candidates)
@@ -480,27 +658,54 @@ def suggest_item_name(
         prompt=prompt,
         timeout=timeout,
         system_prompt=system_prompt,
-        # Ein Katalogname ist ein paar Tokens lang; der Default (50) reicht.
-        # Mit Liste aber nicht kuerzen — abgeschnitten waere er nicht mehr
-        # woertlich und faende seinen eigenen Eintrag nicht wieder.
-        max_tokens=32 if candidates else 0,
+        reasoning=reasoning,
+        max_tokens=_namens_tokens(max_tokens, reasoning, bool(candidates)),
     )
     if not success:
-        return None
+        grund = TIMEOUT if ist_timeout(response) else str(response)
+        return None, grund
     name = clean_boss_name(_strip_reasoning_tags(response))
     if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
-        return None
+        return None, ""
     if candidates:
         # Woertlich aus der Liste? Sonst einmal heranziehen, sonst nichts.
         genau = {k.casefold(): k for k in candidates}.get(name.casefold())
-        return genau or _closest_candidate(name, candidates)
+        return (genau or _closest_candidate(name, candidates)), ""
     # Auf eine sinnvolle Länge kürzen (Modelle plappern manchmal doch)
-    return name[:40].strip()
+    return name[:40].strip(), ""
+
+
+def _modell_bekannt(modell: str, modelle: list) -> bool:
+    """Kennt der Server dieses Modell?
+
+    Ollama haengt an seine Namen ein Tag (`gemma3n:e4b` gegen `gemma3n`), und
+    wer nur den Stamm eintraegt, meint dasselbe Modell. Verglichen wird
+    deshalb der Stamm — aber nur in DIESE Richtung: ein eingetragenes
+    `gemma3n:e4b` passt nicht auf ein geladenes `gemma3n:e2b`, das sind zwei.
+    """
+    if not modell:
+        return True
+    ziel = modell.casefold()
+    for vorhanden in modelle:
+        da = str(vorhanden or "").casefold()
+        if da == ziel or da.split(":", 1)[0] == ziel:
+            return True
+    return False
 
 
 def test_connection(provider: str = PROVIDER_LMSTUDIO,
                     endpoint: str = None, model: str = None) -> tuple[bool, str]:
-    """Testet die Verbindung zum LLM-Provider.
+    """Erreicht der Server — und kennt er das eingestellte Modell?
+
+    **Die zweite Haelfte fehlte, und das war die wichtigere.** `model` wurde
+    entgegengenommen und nie benutzt: die Lampe meldete gruen, solange
+    ueberhaupt jemand antwortete, auch wenn `llm_model` gar nicht geladen war.
+    Danach scheiterte jeder Aufruf, und die Auskunft darueber stand nirgends —
+    man sucht den Fehler beim Bild oder beim Prompt.
+
+    Ein erreichbarer Server ohne das eingestellte Modell ist deshalb **kein
+    Erfolg**: die Frage hinter dieser Pruefung ist nicht „antwortet da wer",
+    sondern „kann ich das LLM jetzt benutzen".
 
     Returns:
         (success: bool, message: str)
@@ -516,22 +721,30 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
         with urllib.request.urlopen(req, timeout=5) as response:
             result = json.loads(response.read().decode("utf-8"))
 
-            if provider == PROVIDER_OLLAMA:
-                models = [m.get("name", "?") for m in result.get("models", [])]
-                vision_models = [m for m in models if any(v in m.lower() for v in
-                                ["gemma", "llava", "bakllava", "moondream", "vision", "minicpm"])]
-                if vision_models:
-                    return True, f"Verbunden! Vision-Modelle: {', '.join(vision_models)}"
-                elif models:
-                    return True, f"Verbunden! Modelle: {', '.join(models[:5])} (kein Vision-Modell erkannt)"
-                else:
-                    return True, "Verbunden! Keine Modelle installiert."
-            else:
-                models = [m.get("id", "?") for m in result.get("data", [])]
-                if models:
-                    return True, f"Verbunden! Modelle: {', '.join(models[:5])}"
-                else:
-                    return True, "Verbunden! Kein Modell geladen."
+        if provider == PROVIDER_OLLAMA:
+            modelle = [m.get("name", "?") for m in result.get("models", [])]
+        else:
+            modelle = [m.get("id", "?") for m in result.get("data", [])]
+
+        if not modelle:
+            return True, "Verbunden! Kein Modell geladen."
+        if not _modell_bekannt(model, modelle):
+            return False, (f"Verbunden — aber '{model}' ist nicht geladen. "
+                           f"Verfügbar: {', '.join(modelle[:5])}"
+                           + (" …" if len(modelle) > 5 else ""))
+        if model:
+            return True, f"Verbunden! '{model}' ist geladen."
+
+        # Ohne eingestelltes Modell bleibt nur die Liste — und bei Ollama der
+        # Hinweis, ob ueberhaupt eines davon Bilder lesen kann.
+        if provider == PROVIDER_OLLAMA:
+            sehend = [m for m in modelle if any(v in m.lower() for v in
+                      ["gemma", "llava", "bakllava", "moondream", "vision", "minicpm"])]
+            if sehend:
+                return True, f"Verbunden! Vision-Modelle: {', '.join(sehend)}"
+            return True, (f"Verbunden! Modelle: {', '.join(modelle[:5])} "
+                          "(kein Vision-Modell erkannt)")
+        return True, f"Verbunden! Modelle: {', '.join(modelle[:5])}"
 
     except urllib.error.URLError as e:
         reason = str(getattr(e, 'reason', e))

@@ -83,11 +83,18 @@ class BridgeWerkzeugeMixin:
             "laeuft": self._laeuft(),
         }
 
-    def _punkt_verwendungen(self, punkt_id: int) -> list[str]:
-        """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI."""
+    def _punkt_verwendungen(self, punkt_id: int, ausser=None) -> list[str]:
+        """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI.
+
+        `ausser` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
+        benutzt diesen Punkt SONST noch", denn dass der gewählte Block ihn
+        benutzt, weiss man dort schon.
+        """
         raus = []
         for lane in self.board.lanes:
             for nr, step in enumerate(lane.steps, 1):
+                if step is ausser:
+                    continue
                 basis = f"{lane.name} · Block {nr}"
                 if step.point_id == punkt_id:
                     raus.append(basis + " · Stelle")
@@ -483,15 +490,10 @@ class BridgeWerkzeugeMixin:
         from .model import load_palette_points
         from ...befehl import sende
         self.points = load_palette_points(self.filepath)
-        self._stand_punkte = self._punkte_stand()
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.
         sende("daten")
-
-    def _punkte_stand(self):
-        from .bridge_contract import _mtime, _punkte_pfad
-        return _mtime(_punkte_pfad(self.filepath))
 
     def _punkt_mit_id(self, punkt_id):
         try:

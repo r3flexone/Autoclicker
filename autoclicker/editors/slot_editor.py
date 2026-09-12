@@ -84,7 +84,9 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
             cmd = user_input.lower()
 
             if cmd in ("done", "d"):
-                save_global_slots(state)
+                if not save_global_slots(state):
+                    print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
+                    continue
                 print(ok("Slot-Editor beendet."))
                 return
             elif is_cancel(cmd):

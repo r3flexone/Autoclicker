@@ -113,8 +113,11 @@ class ClickPoint:
     # übernommen — zuverlässiger als ein Live-Abgriff im Editor, da das Spiel
     # bei der Aufnahme im richtigen Zustand war.
     color: Optional[tuple[int, int, int]] = None
-    # Herkunfts-Kommentar, z.B. "Aufnahme 'Bossfarm'" — bleibt auch nach
-    # Umbenennen des Punkts sichtbar, damit klar bleibt woher er stammt.
+    # Herkunfts-Kommentar, z.B. "Aufnahme" — bleibt auch nach Umbenennen des
+    # Punkts sichtbar, damit klar bleibt WIE er entstanden ist. Die Sequenz
+    # stand hier einmal mit drin und ist entfallen: der Punkt liegt in ihrer
+    # sequence.json, das sagt sie also selbst — und beim Umbenennen wurde die
+    # Angabe still falsch.
     source: str = ""
 
     def __str__(self) -> str:

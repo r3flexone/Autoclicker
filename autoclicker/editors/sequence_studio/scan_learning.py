@@ -470,13 +470,21 @@ class ScanLearningMixin:
             rang += 1
         return rang
 
-    def _item_umbenennen(self, item: ItemProfile, neu: str) -> dict:
-        """Wie beim Slot: der Name ist die Referenz, also ziehen die Scans mit."""
+    def _item_umbenennen(self, item: ItemProfile, neu: str, merken: bool = True) -> dict:
+        """Wie beim Slot: der Name ist die Referenz, also ziehen die Scans mit.
+
+        `merken=False` ist fuer Sammel-Aktionen da: wer sechsundfuenfzig Items
+        in einem Durchgang benennt, legt EINEN Stand vorher ab statt
+        sechsundfuenfzig einzelne — der Stapel ist dreissig tief, und der
+        Zustand vor dem Durchgang waere sonst als Erstes herausgefallen. Genau
+        der Stand, auf den man ihn zurueckdrehen will.
+        """
         if not neu or neu == item.name:
             return self.scan_daten()
         if neu in self.items:
             return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
-        self._merke(f"'{item.name}' umbenannt")
+        if merken:
+            self._merke(f"'{item.name}' umbenannt")
         alt = item.name
         self.items = {(neu if k == alt else k): v for k, v in self.items.items()}
         item.name = neu
@@ -561,8 +569,9 @@ class ScanLearningMixin:
         pfad = CONFIG.scan_catalog_file
         if not pfad:
             return None, ("Keine Katalog-Datei eingetragen — Einstellungen → "
-                          "SCAN-EINSTELLUNGEN → 'Item-Katalog'. "
-                          "Anlegen mit: python tools/katalog.py")
+                          "SCAN-EINSTELLUNGEN → 'Item-Katalog', dort holt der "
+                          "Knopf 'Katalog aus der Spiel-API holen' sie und "
+                          "trägt den Pfad gleich ein.")
         katalog = lade_katalog(pfad)
         if not katalog:
             return None, f"Katalog '{pfad}' ist leer oder nicht lesbar."
@@ -580,6 +589,19 @@ class ScanLearningMixin:
             return [self.items[n] for n in namen if n in self.items]
         return list(self._kandidaten())
 
+    @staticmethod
+    def _katalog_name(name: str, katalog) -> str:
+        """Unter welchem Namen dieses Item im Katalog steht — oder "".
+
+        Zwei Anlaeufe, und die Reihenfolge ist die Regel: der volle Name
+        gewinnt, der ohne Eindeutigkeits-Zaehler ist der Rueckfall.
+        """
+        from ...utils import ohne_zaehler
+        if katalog.treffer(name):
+            return name
+        basis = ohne_zaehler(name)
+        return basis if basis != name and katalog.treffer(basis) else ""
+
     def _katalog_plan(self, items: list, katalog) -> tuple:
         """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
 
@@ -591,8 +613,16 @@ class ScanLearningMixin:
         `Aenderungen` ist eine Liste `(Item, Kategorie, Prioritaet)`.
         """
         from ...katalog import raenge
-        bekannt = [(i, katalog.kategorie(i.name), katalog.wert(i.name))
-                   for i in items if katalog.treffer(i.name)]
+        # **Ein angehaengter Zaehler macht den Namen fuer den Katalog
+        # unbekannt.** "Godlike Bow 2" steht dort nicht, und das Item blieb
+        # deshalb ohne Kategorie neben seinem eingeordneten Zwilling stehen.
+        # Erst der volle Name, dann der ohne Zaehler: was im Katalog steht,
+        # gewinnt — "Slot 1" bleibt "Slot 1".
+        bekannt = []
+        for i in items:
+            such = self._katalog_name(i.name, katalog)
+            if such:
+                bekannt.append((i, katalog.kategorie(such), katalog.wert(such)))
         rang = raenge([(i.name, kategorie, wert) for i, kategorie, wert in bekannt])
 
         aenderungen = []
@@ -612,6 +642,66 @@ class ScanLearningMixin:
             if kategorie:
                 kategorien.add(kategorie)
         return kategorien
+
+    def scan_kategorie_umbenennen(self, daten: Optional[dict] = None) -> dict:
+        """Benennt eine Kategorie um — und damit JEDES Item, das sie trägt.
+
+        **Bis hierhin ging das nur Item für Item.** Die Kategorie ist kein
+        eigenes Objekt, sondern ein Feld an jedem Item; wer zwei Gruppen
+        zusammenlegen wollte, musste jede Maske einzeln anfassen. Bei
+        dreiundzwanzig Kategorien auf sechsundfünfzig Items ist das kein Weg —
+        und Zusammenlegen ist der Normalfall, weil der Katalog bewusst ENG
+        einordnet (dreizehn dieser Kategorien haben genau ein Item).
+
+        Ein leerer Zielname nimmt die Kategorie weg; ein leerer Quellname
+        meint die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
+        """
+        alt = self._kategorie_normalisieren((daten or {}).get("alt")) or None
+        neu = self._kategorie_normalisieren((daten or {}).get("neu")) or None
+        if alt == neu:
+            return self.scan_daten()
+        betroffen = [i for i in self.items.values() if (i.category or None) == alt]
+        if not betroffen:
+            return self._scan_melde(
+                f"Keine Items in '{alt or 'ohne Kategorie'}'.", "warn")
+
+        self._merke(f"Kategorie '{alt or 'ohne'}' → '{neu or 'ohne'}'")
+        for item in betroffen:
+            item.category = neu
+        # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in
+        # derselben Kategorie sind eine Rangfolge, die der Zufall entscheidet —
+        # in Modus `all` gewinnt eines und das andere wird nie geklickt.
+        # Dicht gemacht wird in der bisherigen Reihenfolge: die Werte des
+        # Katalogs holt man sich mit „Aus Katalog einordnen", falls man sie
+        # will. Ungefragt danach umzusortieren würde handgesetzte Ränge
+        # überschreiben.
+        neu_vergeben = self._raenge_dicht(neu, zugezogen=betroffen)
+        zusatz = f", {neu_vergeben} Rang/Ränge neu vergeben" if neu_vergeben else ""
+        return self._scan_geaendert(
+            f"{len(betroffen)} Item(s): '{alt or 'ohne Kategorie'}' → "
+            f"'{neu or 'ohne Kategorie'}'{zusatz}.")
+
+    def _raenge_dicht(self, kategorie, zugezogen: list = None) -> int:
+        """Prioritäten einer Kategorie auf 1..n ziehen — wie viele sich ändern.
+
+        **Wer dazukommt, kommt hinten an.** Nach Priorität und Name über die
+        ganze Gruppe zu sortieren wäre die naheliegende Fassung und die
+        falsche: ein zugezogenes Item mit P1 schöbe sich zwischen die
+        bestehenden und verschöbe deren handgesetzte Ränge. Wer eine Gruppe in
+        eine andere schiebt, sagt damit nichts über die Rangfolge der
+        Zielgruppe.
+        """
+        neu_dabei = {id(i) for i in (zugezogen or [])}
+        gruppe = [i for i in self.items.values()
+                  if (i.category or None) == (kategorie or None)]
+        geordnet = sorted(gruppe,
+                          key=lambda i: (id(i) in neu_dabei, i.priority, i.name))
+        geaendert = 0
+        for nr, item in enumerate(geordnet, 1):
+            if item.priority != nr:
+                item.priority = nr
+                geaendert += 1
+        return geaendert
 
     def scan_katalog_anwenden(self, daten: Optional[dict] = None) -> dict:
         """Setzt Kategorie und Prioritaet aus dem Katalog — ohne LLM.
@@ -656,77 +746,286 @@ class ScanLearningMixin:
             f"{len(aenderungen)} Item(s) in {len(kategorien)} Kategorie(n) "
             f"eingeordnet{zusatz}.")
 
-    def scan_items_autoname(self, daten: Optional[dict] = None) -> dict:
-        """Benennt ausgewählte Auto-Items per konfigurierter LLM-Vision."""
+    @staticmethod
+    def _autoname_rest(ohne: int, auswahl, timeouts: int = 0) -> str:
+        """Der Nachsatz der Schlussmeldung: was NICHT geklappt hat.
+
+        Zwei Dinge, und das zweite ist das wichtigere: ohne Katalog raet das
+        Modell frei und antwortet auf die deutsche Frage auch deutsch — heraus
+        kommt die Art ("Bogen") statt des Gegenstands ("Godlike Bow"). Das
+        sieht in der Liste wie ein Ergebnis aus, ist aber keins, das sich
+        einordnen liesse. Wer es nicht dazusagt, laesst den Nutzer
+        sechsundfuenfzig geratene Namen fuer echte halten.
+        """
+        teile = []
+        if ohne:
+            teile.append(f"{ohne} ohne Vorschlag")
+        if timeouts:
+            # Der Hinweis gehoert an die Zahl: eine Zeitueberschreitung sieht in
+            # der Liste aus wie ein nicht erkanntes Item, hat aber eine ganz
+            # andere Abhilfe.
+            teile.append(f"{timeouts}× Zeitüberschreitung (auch beim zweiten "
+                         "Versuch) — llm_timeout in den Einstellungen erhöhen")
+        if not auswahl:
+            teile.append("ohne Katalog frei geraten — Einstellungen → "
+                         "'Item-Katalog', anlegen mit python tools/katalog.py")
+        return ("; " + "; ".join(teile) + ".") if teile else "."
+
+    def _autoname_ziel(self, daten: Optional[dict]) -> tuple:
+        """Worauf ein Benenn-Durchgang wirkt — `(Items, Grund wenn leer)`.
+
+        Drei Bezuege, und der mittlere ist der Grund fuer den Knopf im Kopf:
+        eine ausdrueckliche Auswahl gewinnt (wer Items markiert, meint genau
+        die), `alle` nimmt jedes Item des offenen Scans, und ohne beides bleibt
+        es beim vorsichtigen Standard — sonst benennt ein Fehlgriff den ganzen
+        von Hand gepflegten Bestand um.
+
+        `alle` gibt es, weil der Normalfall nicht "ein Item" ist: nach dem
+        Lernen heissen sie alle „Item 1“ … „Item 56“, und einzeln benannt
+        waeren das sechsundfuenfzig Masken zum Aufklappen. Der Bezug ist
+        `_kandidaten()` — der offene Scan, sonst der Bestand —, dieselbe Regel
+        wie bei jeder anderen Sammel-Aktion des Reiters.
+        """
+        namen = [str(n) for n in ((daten or {}).get("namen") or [])]
+        if namen:
+            return ([i for i in self.items.values()
+                     if i.name in namen and i.template_names()],
+                    "Keines der gewählten Items hat eine Vorlage.")
+        if (daten or {}).get("alle"):
+            return ([i for i in self._kandidaten() if i.template_names()],
+                    "Kein Item mit Vorlage gefunden — erst Items lernen, "
+                    "dann benennen.")
+        return ([i for i in self.items.values()
+                 if i.category == "Auto" and i.template_names()],
+                "Keine auto-gelernten Items mit Vorlage gefunden. "
+                "Für andere Items erst welche auswählen.")
+
+    def _autoname_stand(self) -> Optional[dict]:
+        """Der Fortschritt fuer die Ansicht, oder `None` ohne Durchgang.
+
+        Er steht in der MOMENTAUFNAHME und nicht nur in der Antwort des
+        Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf, und
+        ein Fortschritt, den nur der Schritt selbst kennt, waere nach dem
+        naechsten Neuzeichnen weg.
+        """
+        lauf = getattr(self, "_autoname", None)
+        if not lauf:
+            return None
+        return {"gesamt": lauf["gesamt"], "offen": len(lauf["offen"]),
+                "fertig": lauf["gesamt"] - len(lauf["offen"]),
+                "umbenannt": lauf["umbenannt"], "varianten": lauf["varianten"]}
+
+    def scan_autoname_start(self, daten: Optional[dict] = None) -> dict:
+        """Beginnt einen Benenn-Durchgang — **die Seite treibt ihn, Item fuer Item.**
+
+        Der ganze Durchgang war einmal EIN Bruecken-Aufruf, und damit gab es
+        kein Abbrechen: sechsundfuenfzig Modell-Aufrufe sind bei drei Sekunden
+        je Vorlage knapp drei Minuten, in denen das Fenster nur zusehen konnte.
+        Ein Abbruch-Flag haette einen zweiten Aufruf NEBEN dem laufenden
+        gebraucht — der kommt in pywebview durch, im Rauchtest-Pruefstand aber
+        nicht, und ein Abbruch, der nur im Fenster funktioniert, ist keiner.
+
+        Also andersherum: der Zustand liegt hier, die Seite fragt nach dem
+        naechsten Schritt. Das kostet einen Aufruf je Item (lokal, billig) und
+        bringt dreierlei — Abbruch jederzeit, sichtbaren Fortschritt, und einen
+        Durchgang, den die Vertragssuite Schritt fuer Schritt durchspielen kann.
+        """
         from ...config import load_config
         config = load_config()
         if not config.llm_enabled:
-            return self._scan_melde("LLM-Vision ist in den Einstellungen nicht aktiviert.", "err")
-        # Eine ausdrueckliche Auswahl gewinnt: wer Items markiert und den Knopf
-        # drueckt, meint genau die. Ohne Auswahl bleibt es beim vorsichtigen
-        # Standard (nur auto-gelernte) — sonst benennt ein Fehlgriff den ganzen
-        # von Hand gepflegten Bestand um.
-        namen = [str(n) for n in ((daten or {}).get("namen") or [])]
-        if namen:
-            kandidaten = [i for i in self.items.values()
-                          if i.name in namen and i.template_names()]
-            leer_text = "Keines der gewählten Items hat eine Vorlage."
-        else:
-            kandidaten = [i for i in self.items.values()
-                          if i.category == "Auto" and i.template_names()]
-            leer_text = ("Keine auto-gelernten Items mit Vorlage gefunden. "
-                         "Für andere Items erst welche auswählen.")
-        if not kandidaten:
-            return self._scan_melde(leer_text, "warn")
+            return self._scan_melde(
+                "LLM-Vision ist in den Einstellungen nicht aktiviert.", "err")
         try:
-            from PIL import Image
-            from ...llm_vision import suggest_item_name
-            from ...utils import sanitize_filename
+            from PIL import Image      # noqa: F401  (nur die Verfuegbarkeit)
+            from ...llm_vision import suggest_item_name    # noqa: F401
         except ImportError:
             return self._scan_melde("Pillow oder LLM-Vision ist nicht verfügbar.", "err")
 
-        # Mit Katalog darf das Modell nur noch AUSWAEHLEN. Frei geraten nennt es
-        # die Art ("Bogen"), aus der Liste den Gegenstand ("Godlike Bow") — und
-        # nur der zweite laesst sich hinterher einordnen.
-        katalog = self._katalog()
-        auswahl = katalog.namen() or None
-        benannt, umbenannt = [], 0
-        for item in list(kandidaten):
-            pfad = self.filepath.parent / "templates" / item.template_names()[0]
-            try:
-                with Image.open(pfad) as bild:
-                    vorschlag = suggest_item_name(
-                        bild.copy(), provider=config.llm_provider,
-                        endpoint=config.llm_endpoint, model=config.llm_model,
-                        timeout=config.llm_timeout, candidates=auswahl)
-            except (OSError, ValueError):
-                continue
-            basis = sanitize_filename(vorschlag).strip() if vorschlag else ""
-            if not basis:
-                continue
-            neu, nr = basis, 1
-            while neu in self.items and neu != item.name:
-                nr += 1
-                neu = f"{basis} {nr}"
-            if neu != item.name:
-                self._item_umbenennen(item, neu)
-                umbenannt += 1
-                benannt.append(item)
+        kandidaten, leer_text = self._autoname_ziel(daten)
+        if not kandidaten:
+            return self._scan_melde(leer_text, "warn")
 
-        # **Einordnen gehoert zum Benennen, nicht in einen zweiten Knopf.** Nach
-        # dem Benennen ist die Frage nicht "habe ich Namen", sondern "stehen sie
-        # richtig" — dieselbe Ueberlegung wie bei `_gleich_erkennen()` nach dem
-        # Slot-Finden. Es kostet nichts (kein Netz, kein Modell), und die Namen
-        # kommen ja gerade aus diesem Katalog.
-        if katalog and benannt:
-            aenderungen, _bekannt = self._katalog_plan(benannt, katalog)
+        # Mit Katalog darf das Modell nur noch AUSWAEHLEN. Frei geraten nennt
+        # es die Art ("Bogen"), aus der Liste den Gegenstand ("Godlike Bow") —
+        # und nur der zweite laesst sich hinterher einordnen. Einmal geholt und
+        # fuer den Durchgang festgehalten: die Liste darf sich zwischen zwei
+        # Schritten nicht aendern, sonst waehlt Item 30 aus einer anderen Menge
+        # als Item 1.
+        katalog = self._katalog()
+        self._autoname = {
+            # **Die Config wird einmal geholt und festgehalten**, nicht je
+            # Schritt: `load_config()` liest die Datei und schreibt eine Zeile
+            # in die Konsole — bei sechsundfuenfzig Vorlagen also
+            # sechsundfuenfzig Dateizugriffe und ebenso viele "[CONFIG]
+            # geladen"-Zeilen mitten in der Mitschrift. Dieselbe Ueberlegung
+            # wie beim Boss-Scan, der alle Flags in einem Lock-Snapshot
+            # einfriert: was einen Durchgang steuert, darf sich waehrenddessen
+            # nicht aendern.
+            "config": config,
+            "offen": [i.name for i in kandidaten],
+            "gesamt": len(kandidaten),
+            "auswahl": katalog.namen() or None,
+            "benannt": [],
+            "umbenannt": 0,
+            "varianten": 0,
+            "ohne": 0,
+            "timeouts": 0,
+            "gemerkt": False,
+        }
+        return self._scan_melde(f"Benennt {len(kandidaten)} Item(s) …", "info")
+
+    def scan_autoname_schritt(self, daten: Optional[dict] = None) -> dict:
+        """Ein Item des laufenden Durchgangs — fragt das Modell, benennt um."""
+        lauf = getattr(self, "_autoname", None)
+        if not lauf:
+            return self._scan_melde("Es läuft kein Benenn-Durchgang.", "warn")
+        if not lauf["offen"]:
+            return self.scan_daten()
+
+        from PIL import Image
+        from ...llm_vision import TIMEOUT, suggest_item_name_grund
+        from ...utils import bereinige_itemname
+
+        config = lauf["config"]
+        item = self.items.get(lauf["offen"].pop(0))
+        if item is None or not item.template_names():
+            # Zwischen Start und Schritt kann gelöscht worden sein.
+            lauf["ohne"] += 1
+            return self.scan_daten()
+
+        pfad = self.filepath.parent / "templates" / item.template_names()[0]
+        try:
+            with Image.open(pfad) as bild:
+                vorlage = bild.copy()
+        except (OSError, ValueError):
+            lauf["ohne"] += 1
+            return self.scan_daten()
+
+        def frag(grenze):
+            # `llm_reasoning` und `llm_max_tokens` galten nur fuer den
+            # Boss-Scan — wer sie einschaltete, weil die BENENNUNG besser
+            # werden soll, aenderte nichts. Ein Schalter, der an der Stelle
+            # wirkungslos ist, an der man ihn sucht, ist schlimmer als keiner.
+            return suggest_item_name_grund(
+                vorlage, provider=config.llm_provider,
+                endpoint=config.llm_endpoint, model=config.llm_model,
+                timeout=grenze, candidates=lauf["auswahl"],
+                reasoning=config.llm_reasoning,
+                max_tokens=config.llm_max_tokens)
+
+        vorschlag, grund = frag(config.llm_timeout)
+        # **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
+        # echten Bestand: die ersten vier Anfragen ueber 120 s, die folgenden
+        # 3,5 s. Der zweite Versuch trifft also ein warmes Modell und kostet
+        # fast nichts — ihn wegzulassen hiesse, den Anfang jedes Durchgangs zu
+        # verschenken. Mehr als einer waere Warten ohne Aussicht: antwortet es
+        # auch dann nicht, liegt es nicht am Aufwaermen.
+        if grund == TIMEOUT:
+            vorschlag, grund = frag(max(config.llm_timeout * 2, 120))
+
+        basis = bereinige_itemname(vorschlag) if vorschlag else ""
+        if not basis:
+            # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
+            # Modell habe hingesehen und nichts erkannt.
+            lauf["timeouts" if grund == TIMEOUT else "ohne"] += 1
+            return self.scan_daten()
+
+        if basis == item.name:
+            return self.scan_daten()
+
+        # **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.**
+        # Hier stand `"{basis} {nr}"`, und ein Inventar mit zwei Boegen ergab
+        # "Godlike Bow" und "Godlike Bow 2" — mit drei Folgen: der Zaehler-Name
+        # steht nicht im Katalog (das Item blieb ohne Kategorie), beide landeten
+        # in derselben Kategorie mit derselben Prioritaet (in Modus `all` gewinnt
+        # eines, das andere wird nie geklickt), und die zweite Vorlage gehoerte
+        # ohnehin zum selben Gegenstand. Genau dafuer gibt es
+        # `template_variants`: EIN Item, das in beiden Slots erkannt wird.
+        #
+        # Irrt sich das Modell und benennt zwei verschiedene Dinge gleich, haengt
+        # eine fremde Vorlage am Item — sichtbar in dessen Vorlagenliste, dort
+        # einzeln loesbar, und STRG+Z holt den ganzen Durchgang zurueck.
+        bestand = self.items.get(basis)
+        if bestand is not None:
+            return self._autoname_variante(bestand, item, lauf)
+        neu = basis
+
+        # **Ein Stand fuer den ganzen Durchgang, und erst beim ersten Treffer.**
+        # Vorher abgelegt waere er ein STRG+Z, das nichts zurueckdreht, wenn das
+        # Modell nichts erkennt; je Item abgelegt waere der Stand von VOR dem
+        # Durchgang nach dreissig Items aus dem Stapel gefallen — also genau
+        # der, auf den man zurueck will.
+        if not lauf["gemerkt"]:
+            self._merke(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
+            lauf["gemerkt"] = True
+        self._item_umbenennen(item, neu, merken=False)
+        lauf["umbenannt"] += 1
+        lauf["benannt"].append(item)
+        return self._scan_geaendert()
+
+    def _autoname_variante(self, bestand, item, lauf: dict) -> dict:
+        """Die Vorlage des Doppels an das bekannte Item haengen, das Doppel weg.
+
+        Der Rueckgaengig-Stand entsteht hier genauso wie beim Umbenennen: EINER
+        fuer den ganzen Durchgang, und erst wenn wirklich etwas passiert.
+        """
+        neu = [n for n in item.template_names() if n not in bestand.template_names()]
+        if not neu and item.name not in self.items:
+            return self.scan_daten()
+        if not lauf["gemerkt"]:
+            self._merke(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
+            lauf["gemerkt"] = True
+        bestand.template_variants = list(bestand.template_variants) + neu
+        self.items.pop(item.name, None)
+        # Der Name IST die Referenz: ohne das Angleichen kaeme das geloeschte
+        # Item beim naechsten Speichern ueber `sync_names()` zurueck.
+        self._objekte_angleichen()
+        lauf["varianten"] += 1
+        return self._scan_geaendert()
+
+    def scan_autoname_ende(self, daten: Optional[dict] = None) -> dict:
+        """Schliesst den Durchgang ab — auch den abgebrochenen.
+
+        **Einordnen gehoert zum Benennen, nicht in einen zweiten Knopf.** Nach
+        dem Benennen ist die Frage nicht "habe ich Namen", sondern "stehen sie
+        richtig" — dieselbe Ueberlegung wie bei `_gleich_erkennen()` nach dem
+        Slot-Finden. Es kostet nichts (kein Netz, kein Modell), und die Namen
+        kommen ja gerade aus diesem Katalog.
+
+        Ein Abbruch laeuft ueber denselben Weg: was bis dahin benannt wurde,
+        wird eingeordnet und bleibt stehen. Es wegzuwerfen hiesse, zwanzig
+        Modell-Antworten zu verbrennen, weil man die einundzwanzigste nicht
+        mehr abwarten wollte — und STRG+Z holt ohnehin den ganzen Durchgang
+        auf einmal zurueck.
+        """
+        lauf = getattr(self, "_autoname", None)
+        if not lauf:
+            return self._scan_melde("Es läuft kein Benenn-Durchgang.", "warn")
+        self._autoname = None
+        abgebrochen = bool((daten or {}).get("abgebrochen"))
+        offen = len(lauf["offen"])
+        geprueft = lauf["gesamt"] - offen
+        kopf = (str(lauf["umbenannt"]) + " von " + str(geprueft)
+                + " Item(s) per LLM benannt")
+        # **Eine zusammengelegte Vorlage wird gesagt.** Sonst zaehlt der Nutzer
+        # hinterher weniger Items als Slots und sucht den Fehler beim Lernen.
+        if lauf["varianten"]:
+            kopf += (", " + str(lauf["varianten"])
+                     + " Vorlage(n) an ein bekanntes Item angehängt")
+        if abgebrochen:
+            kopf += " — abgebrochen, " + str(offen) + " nicht angesehen"
+
+        katalog = self._katalog()
+        if katalog and lauf["benannt"]:
+            aenderungen, _bekannt = self._katalog_plan(lauf["benannt"], katalog)
             if aenderungen:
                 kategorien = self._katalog_uebernehmen(aenderungen)
                 return self._scan_geaendert(
-                    f"{umbenannt} Item(s) per LLM benannt, "
-                    f"{len(aenderungen)} davon in {len(kategorien)} Kategorie(n) "
-                    "eingeordnet.")
-        return self._scan_geaendert(f"{umbenannt} Item(s) per LLM benannt.")
+                    kopf + ", " + str(len(aenderungen)) + " davon in "
+                    + str(len(kategorien)) + " Kategorie(n) eingeordnet"
+                    + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
+        return self._scan_geaendert(
+            kopf + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
 
     # ------------------------------------------------------------- Erkennung
 

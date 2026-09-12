@@ -880,8 +880,17 @@ function zeichneKarte(phase, block) {
   // Der Titel steht in der Kopfzeile, nicht im Leib: dort traegt er die Typfarbe
   // mit und steht NEBEN dem Typ statt darunter — eine Zeile weniger pro Karte,
   // und bei 50 Karten untereinander ist das der Unterschied.
+  // Die Farbe des Punkts steht an seiner Stelle (erste Zeile) — bei JEDEM
+  // Block, der einen Punkt hat, nicht nur an der Farb-Bedingung. Beim
+  // Überfliegen unterscheidet man Karten an der Farbe des Knopfs, nicht an
+  // vierstelligen Koordinaten.
   const leib = el("div", {class: "karte-leib"},
-    block.zeilen.map((z) => el("div", {class: "karte-zeile"}, z)));
+    block.zeilen.map((z, i) => (i === 0 && block.punkt_farbe)
+      ? el("div", {class: "karte-zeile mit-farbe"},
+          el("span", {class: "feldchen", style: "background:" + block.punkt_farbe,
+                      title: "Farbe des Punkts " + block.punkt_farbe}),
+          z)
+      : el("div", {class: "karte-zeile"}, z)));
 
   if (block.farbfeld) {
     leib.appendChild(el("div", {class: "karte-farbe"},
@@ -1709,6 +1718,19 @@ function baueStelle(ziel, b) {
       (hex) => ruf("punkt_setzen", {punkt: b.point_id, feld: "farbe", wert: hex}),
       "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
       "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
+    // Zustand, kein ⓘ: WER den Punkt sonst noch benutzt, sieht man sonst erst,
+    // wenn ein anderer Block woanders hinklickt. Und der Rueckweg steht dabei:
+    // ein eigener Punkt fuer diesen Block, die anderen bleiben, wo sie sind.
+    if (b.punkt_andere && b.punkt_andere.length) {
+      ziel.appendChild(el("p", {class: "hinweis"},
+        "Punkt #" + b.point_id + " wird auch benutzt von: " + b.punkt_andere.join(", ")));
+      ziel.appendChild(el("button", {
+        class: "btn breit",
+        title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
+               + b.point_id + ". Danach lässt sich seine Stelle ändern, ohne die anderen zu verstellen.",
+        onclick: () => ruf("punkt_abtrennen"),
+      }, "⧉ Eigenen Punkt für diesen Block"));
+    }
   }
   ziel.appendChild(el("div", {class: "gitter2"},
     zahlfeld("X", b.x, (v) => setzeStelle(b, v, b.y), {step: "1"}),
@@ -2895,11 +2917,41 @@ function scanListeItems(ziel) {
     const kategorie = (gefroren === null ? (i.kategorie || "") : gefroren)
                       || "Ohne Kategorie";
     if (kategorie !== letzteKategorie) {
-      ziel.appendChild(el("div", {class: "scan-kategorie-kopf"}, kategorie));
+      ziel.appendChild(scanKategorieKopf(kategorie, liste));
       letzteKategorie = kategorie;
     }
     ziel.appendChild(scanItemMaske(i, gefroren));
   }
+}
+
+/** Die Gruppenueberschrift — und zugleich der Weg, die Kategorie umzubenennen.
+ *
+ * **Die Kategorie ist kein eigenes Objekt**, sondern ein Feld an jedem Item;
+ * zwei Gruppen zusammenzulegen hiess deshalb, jede Maske einzeln anzufassen.
+ * Der Katalog ordnet bewusst ENG ein (dreizehn Kategorien mit je einem Item bei
+ * einem echten Bestand), Zusammenlegen ist also der Normalfall und kein
+ * Sonderfall.
+ *
+ * Getippt wird in der Ueberschrift selbst: sie traegt den Namen ohnehin, und
+ * ein zweites Feld daneben waere dieselbe Sache an zwei Stellen. Gemeldet wird
+ * bei `change`, nicht bei jedem Tastendruck — sonst zoege jedes Zeichen alle
+ * Items mit.
+ */
+function scanKategorieKopf(kategorie, liste) {
+  const leer = kategorie === "Ohne Kategorie";
+  const wert = leer ? "" : kategorie;
+  const anzahl = liste.filter((i) => (i.kategorie || "") === wert).length;
+  const feld = el("input", {class: "scan-kategorie-feld", value: wert,
+    placeholder: "ohne Kategorie",
+    title: "Umbenennen zieht alle Items dieser Gruppe mit. Leer = Kategorie "
+           + "entfernen. Gleicher Name wie eine andere Gruppe = zusammenlegen."});
+  feld.addEventListener("change", () => {
+    if (feld.value.trim() === wert) return;
+    rufScan("scan_kategorie_umbenennen", {alt: wert, neu: feld.value.trim()});
+  });
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
+  return el("div", {class: "scan-kategorie-kopf"}, feld,
+            el("span", {class: "zahl"}, String(anzahl)));
 }
 
 /** Ein Item als kleine Maske: Haken, Name, Kategorie, Prioritaet — in der Liste.
@@ -3338,6 +3390,26 @@ function scanInspektorBauen() {
       onclick: () => rufScan("scan_katalog_anwenden")},
       "⊞ Aus Katalog einordnen"));
   }
+  // **Sechsundfuenfzig Masken aufzuklappen ist kein Bedienweg.** Den Knopf gab
+  // es nur AM einzelnen Item — richtig fuer die Korrektur eines Namens, falsch
+  // fuer den Normalfall: nach dem Lernen heissen sie alle „Item 1“ … „Item 56“,
+  // und genau dann will man einmal ueber alle. Er steht deshalb hier oben,
+  // neben dem Katalog-Knopf, mit derselben Bezugsregel (der offene Scan).
+  if (scanArt === "item" && SC.llm_an) {
+    const mitVorlage = (SC.items || []).filter((i) => (i.vorlagen || []).length).length;
+    if (mitVorlage) {
+      kopf.appendChild(el("button", {class: "btn breit",
+        title: mitVorlage + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
+               + (SC.katalog_an
+                  ? "Jeder Name wird aus dem Katalog gewählt, danach werden "
+                    + "Kategorie und Priorität gesetzt."
+                  : "Ohne Katalog rät das Modell frei — die Namen sind dann "
+                    + "Vorschläge, keine echten Item-Namen.")
+               + " Das dauert; STRG+Z nimmt den ganzen Durchgang zurück.",
+        onclick: () => scanAutonameLauf({alle: true})},
+        SC.katalog_an ? "✦ Alle aus Katalog benennen" : "✦ Alle mit LLM benennen"));
+    }
+  }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
   // beim Scrollen stehen (`.scan-kopf` ist `sticky`) — bei sechzig Masken war
   // die Reiterleiste sonst nach drei Umdrehungen weg, und mit ihr der Weg
@@ -3723,7 +3795,7 @@ function scanItemDetails(ziel, i) {
         ? "Wählt einen der echten Item-Namen aus dem Katalog und ordnet danach ein."
         : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
           + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
-      onclick: () => rufScan("scan_items_autoname", {namen: [i.name]})},
+      onclick: () => scanAutonameLauf({namen: [i.name]})},
       SC.katalog_an ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
   }
   ziel.appendChild(scanItemBestaetigung(i));
@@ -5146,6 +5218,9 @@ const WARTE_GRIFFE = {
 };
 
 let warteZaehler = null;
+let arbeitUhr = null;
+let arbeitZeile = null;
+let arbeitEsc = null;
 
 /** Blendet ein, worauf gerade gewartet wird — mit Countdown bis zum Zeitablauf. */
 function warteZeigen(name) {
@@ -5177,8 +5252,124 @@ function warteZeigen(name) {
 function warteWeg() {
   clearInterval(warteZaehler);
   warteZaehler = null;
+  clearInterval(arbeitUhr);
+  arbeitUhr = null;
+  arbeitZeile = null;
+  if (arbeitEsc) document.removeEventListener("keydown", arbeitEsc);
+  arbeitEsc = null;
   const alt = $("warte-huelle");
   if (alt) alt.remove();
+}
+
+/** Zeigt, dass ein langer Aufruf LAEUFT — mit hochzaehlender Uhr.
+ *
+ * Der Unterschied zu `warteZeigen()` ist die Frage dahinter: dort wartet die
+ * Bruecke auf einen ENTER-Druck und hat eine feste Grenze, hier arbeitet sie
+ * und niemand weiss, wie lange. Ein Countdown waere hier eine erfundene Zahl —
+ * die hochzaehlende Uhr sagt nur, dass es weitergeht, und genau das ist die
+ * Frage bei sechsundfuenfzig Modell-Aufrufen hintereinander.
+ */
+function arbeitZeigen(titel, text, abbruch) {
+  const zahl = el("span", {class: "warte-rest"}, "0 s");
+  const zeile = el("div", {class: "warte-text"}, text);
+  let sek = 0;
+  const kasten = el("div", {class: "warte-kasten"},
+    el("div", {class: "warte-titel"}, titel), zeile,
+    // **Ein Abbruch nur da, wo es einen gibt.** Ein Knopf, der einen
+    // einzelnen HTTP-Aufruf nicht stoppen kann, waere ein Bedienelement, das
+    // nichts tut — dieselbe Regel wie bei den Kacheln im Teilen-Reiter.
+    abbruch ? el("button", {class: "btn still breit", style: "margin-top:10px",
+                            id: "arbeit-abbruch",
+                            onclick: () => arbeitAbbrechen(abbruch)}, "Abbrechen") : null,
+    el("div", {class: "warte-fuss"},
+      el("span", {}, abbruch ? "ESC bricht ab" : "läuft …"), zahl));
+  warteWeg();
+  document.body.appendChild(
+    el("div", {class: "warte-huelle", id: "warte-huelle"}, kasten));
+  arbeitZeile = zeile;
+  arbeitUhr = setInterval(() => { sek += 1; zahl.textContent = sek + " s"; }, 1000);
+  if (abbruch) {
+    arbeitEsc = (e) => { if (e.key === "Escape") arbeitAbbrechen(abbruch); };
+    document.addEventListener("keydown", arbeitEsc);
+  }
+}
+
+/** Der Abbruch-Klick, und zwar SICHTBAR.
+ *
+ * **Hier war das „geht nicht".** Der Abbruch wirkt erst, wenn die laufende
+ * Vorlage zurueck ist — und das dauert bis zu `llm_timeout` (Standard 60 s).
+ * Bis dahin stand im Kasten unveraendert „Vorlage 3 von 56", der Knopf sah
+ * unberuehrt aus, und man klickte ihn noch dreimal. Die Wartezeit laesst sich
+ * nicht abkuerzen (die Antwort ist schon unterwegs), die Auskunft darueber
+ * sehr wohl.
+ */
+function arbeitAbbrechen(abbruch) {
+  abbruch();
+  const knopf = $("arbeit-abbruch");
+  if (knopf) {
+    knopf.disabled = true;
+    knopf.textContent = "Bricht ab …";
+  }
+  arbeitSagen("Wartet noch auf die laufende Vorlage — die Antwort ist schon "
+              + "unterwegs und laesst sich nicht zurueckholen.");
+}
+
+/** Die Zeile im Arbeits-Kasten austauschen, ohne ihn neu aufzubauen.
+ *
+ * Neu gebaut ginge auch und faenge die Uhr jedes Mal wieder bei 0 an — bei
+ * sechsundfuenfzig Schritten also eine Uhr, die nie ueber drei Sekunden kommt
+ * und damit nichts mehr sagt. */
+function arbeitSagen(text) {
+  if (arbeitZeile) arbeitZeile.textContent = text;
+}
+
+let autonameAbbruch = false;
+
+/** Treibt einen Benenn-Durchgang: einmal starten, dann Schritt fuer Schritt.
+ *
+ * **Die Schleife steht hier und nicht in der Bruecke, damit es ein Abbrechen
+ * gibt.** Als EIN Aufruf blockierte der Durchgang bei sechsundfuenfzig Items
+ * knapp drei Minuten, und von aussen laesst sich das nicht stoppen: ein
+ * Abbruch-Flag brauchte einen zweiten Aufruf NEBEN dem laufenden.
+ *
+ * Entschieden wird trotzdem drueben — die Seite fragt nur nach dem naechsten
+ * Schritt und zeigt an, was zurueckkommt. Der Zustand (was ist offen, was ist
+ * benannt) liegt vollstaendig in der Bruecke.
+ */
+async function scanAutonameLauf(daten) {
+  autonameAbbruch = false;
+  await rufScan("scan_autoname_start", daten);
+  // Kein Durchgang in der Momentaufnahme heisst: abgelehnt (LLM aus, nichts
+  // mit Vorlage). Die Statuszeile sagt bereits, warum.
+  if (!SC.autoname) return;
+  arbeitZeigen("Items benennen", "", () => { autonameAbbruch = true; });
+  try {
+    while (SC.autoname && SC.autoname.offen > 0 && !autonameAbbruch) {
+      const a = SC.autoname;
+      arbeitSagen("Vorlage " + (a.fertig + 1) + " von " + a.gesamt
+                  + " — " + a.umbenannt + " benannt");
+      await rufScan("scan_autoname_schritt", null);
+    }
+  } finally {
+    warteWeg();
+    await rufScan("scan_autoname_ende", {abgebrochen: autonameAbbruch});
+  }
+}
+
+/** Wie `mitWarten`, nur fuer Aufrufe, die selbst RECHNEN statt auf ENTER zu warten.
+ *
+ * `art` waehlt denselben Kanal, den der Aufruf ohnehin haette: `scan` ersetzt
+ * die Scan-Momentaufnahme, `frage` fragt nur. Der Einstellungen-Reiter braucht
+ * den zweiten — seine Antwort ist keine Momentaufnahme, und ueber `rufScan`
+ * geholt zerschoesse sie den Scans-Reiter.
+ */
+async function mitArbeit(art, name, daten, titel, text) {
+  arbeitZeigen(titel, text);
+  try {
+    return art === "scan" ? await rufScan(name, daten) : await frage(name, daten);
+  } finally {
+    warteWeg();
+  }
 }
 
 /** Ruft eine blockierende Methode und zeigt so lange, worauf gewartet wird.
@@ -6371,9 +6562,43 @@ function cfgZeile(key) {
     aktiv ? null : el("p", {class: "hinweis", style: "margin-top:5px;color:var(--accent)"},
                       cfgWarum(m)));
   const rechts = el("div", {class: "cfg-rechte"},
-    cfgBedienelement(key, m), cfgLeer(key, m), cfgStandard(key, m));
+    cfgBedienelement(key, m), cfgLeer(key, m), cfgStandard(key, m),
+    cfgAktion(key, m));
   return el("div", {class: "cfg-zeile" + (key in cfgGeaendert ? " geaendert" : "") +
                            (aktiv ? "" : " blass")}, links, rechts);
+}
+
+/** Der Knopf UNTER einem Feld, wenn die Meta-Tabelle einen anmeldet.
+ *
+ * **Es gibt genau einen, und der Grund steht in `config_meta.py`:** den
+ * Katalog konnte bis hierhin nur `python tools/katalog.py` anlegen — also
+ * ausgerechnet die Datei, ohne die das LLM frei raet und die Kategorie leer
+ * bleibt, liess sich im Fenster nicht beschaffen. Generisch statt als
+ * Sonderfall, damit der naechste Fall keinen zweiten Bedienweg erfindet.
+ */
+function cfgAktion(key, m) {
+  const stand = (C.staende || {})[key];
+  if (!m.aktion && !stand) return null;
+  return el("div", {class: "spalte", style: "gap:4px;margin-top:6px"},
+    m.aktion ? el("button", {class: "btn still breit",
+      onclick: () => cfgAktionRufen(key, m)}, m.aktion.text) : null,
+    // **Der Pfad sagt nicht, ob die Datei da ist und wie alt sie ist.** Bei
+    // einer Liste, die man holt, ist genau das die Frage — und ohne Antwort
+    // holt man sie entweder nie wieder oder jedes Mal.
+    stand ? el("p", {class: "hinweis", style: "margin:0"}, stand) : null);
+}
+
+async function cfgAktionRufen(key, m) {
+  // Ein Netzabruf dauert, und der Reiter zeichnet sich danach neu: ohne den
+  // Kasten saehe das Fenster in der Zwischenzeit tot aus.
+  const antwort = await mitArbeit("frage", m.aktion.befehl, null,
+    m.aktion.text, "Das kann ein paar Sekunden dauern.");
+  if (!antwort) return;
+  setzeStatus({text: antwort.meldung || "Fertig.",
+               art: antwort.ok ? "ok" : "err"});
+  // Der Wert im Feld kann sich dabei geaendert haben (der Pfad wird
+  // eingetragen) — frisch lesen statt den alten Stand stehen zu lassen.
+  if (antwort.ok) zeichneEinstellungen(true);
 }
 
 function cfgBedienelement(key, m) {
@@ -6483,14 +6708,28 @@ function cfgLeer(key, m) {
   return el("span", {class: "cfg-standard"}, "= " + m.leer);
 }
 
+/** Wie lang der Standardwert IM KNOPF stehen darf, bevor er in den Tooltip
+ *  wandert. Eine Zahl, „an", ein Enum-Text passen; ein Satz nicht. */
+const STD_MAX = 24;
+
 function cfgStandard(key, m) {
   const std = C.standard[key];
   if (cfgGleich(cfgWert(key), std))
     return el("span", {class: "cfg-standard"}, "Standard");
+  // **Ein Knopf sagt, was er TUT** — dieselbe Regel wie beim Rückgängig im
+  // Scans-Reiter. `cfgText()` gibt bei einem leeren Standardwert den
+  // `leer`-Satz zurück ("Kategorie und Namen bleiben Handarbeit"), und der
+  // stand hier als Beschriftung: der Knopf war breiter als seine Spalte und
+  // lief rechts aus dem Fenster. Der Satz steht ohnehin schon eine Zeile
+  // höher an `cfgLeer()` — hier gehört hin, worauf zurückgesetzt wird.
+  const roh = (std === null || std === undefined || std === "")
+    ? "(leer)" : cfgText(std, m);
+  const kurz = roh.length > STD_MAX;
   return el("button", {class: "btn still cfg-standard",
-                       title: "auf den Standardwert zurücksetzen",
+                       title: "auf den Standardwert zurücksetzen"
+                              + (kurz ? ": " + roh : ""),
                        onclick: () => cfgSetzen(key, std)},
-            "↺ Standard: " + cfgText(std, m));
+            "↺ Standard" + (kurz ? "" : ": " + roh));
 }
 
 function zeichneCfgRechts() {

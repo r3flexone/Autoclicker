@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import BossScanConfig, AutoClickerState, BOSS_ACTION_SKIP
-from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn
+from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn, sanitize_filename
 from .migration import KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, migrate
 from .sequences import sequence_dir
 from .serialization import _boss_profile_to_dict, _boss_profile_from_dict, _boss_scan_to_dict
@@ -26,12 +26,24 @@ def ensure_boss_scans_dir(owner: str = "") -> Path:
     return ensure_dir(_boss_scans_dir(owner)) if owner else Path("sequences")
 
 
+def boss_scan_name_erlaubt(name: str) -> bool:
+    """Die Bibliothek und ein Scan dürfen niemals dieselbe Datei belegen."""
+    return sanitize_filename(name) != "bibliothek"
+
+
 def save_boss_scan(config: BossScanConfig) -> bool:
     """Speichert eine Boss-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Boss-Scan hat keine Besitzer-Sequenz")
-    return write_scan(str(_boss_scans_dir(config.owner_sequence)), config.name,
-               _boss_scan_to_dict(config), "Boss-Scan")
+    if not boss_scan_name_erlaubt(config.name):
+        print(err("Der Scan-Name 'bibliothek' ist für die Boss-Bibliothek reserviert."))
+        return False
+    try:
+        return write_scan(str(_boss_scans_dir(config.owner_sequence)), config.name,
+                          _boss_scan_to_dict(config), "Boss-Scan")
+    except OSError as e:
+        print(err(f"Boss-Scan konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanConfig]:
@@ -40,6 +52,8 @@ def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanCon
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_BOSS_SCAN)
+        if not isinstance(data, dict):
+            raise TypeError("Boss-Scan muss ein JSON-Objekt sein")
 
         bosses = [_boss_profile_from_dict(b) for b in data.get("bosses", [])]
 
@@ -63,8 +77,7 @@ def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanCon
 
 
 def _global_bosses_file(owner: str) -> Path:
-    # Unterordner statt boss_scans/*.json — sonst würde die Datei von
-    # list_scan_files als (defekte) Scan-Konfiguration mitgelistet.
+    # Reservierter Dateiname; die Scan-Auswahl schliesst ihn aus.
     return _boss_scans_dir(owner) / "bibliothek.json"
 
 
@@ -88,9 +101,10 @@ def save_global_bosses(state: AutoClickerState, owner: str = "") -> bool:
 
 def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
     """Lädt die globale Boss-Bibliothek (fehlende Datei = leere Bibliothek)."""
-    owner = owner or (state.active_sequence.name if getattr(state, "active_sequence", None) else "")
-    if not owner:
+    with state.lock:
+        owner = owner or (state.active_sequence.name if getattr(state, "active_sequence", None) else "")
         state.global_bosses = []
+    if not owner:
         return
     filepath = _global_bosses_file(owner)
     if not filepath.exists():
@@ -99,8 +113,11 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         data, _meldungen = migrate(data, KIND_GLOBAL_BOSSES)
+        if not isinstance(data, list):
+            raise TypeError("Boss-Bibliothek muss eine JSON-Liste sein")
+        geladen = [_boss_profile_from_dict(b) for b in data]
         with state.lock:
-            state.global_bosses = [_boss_profile_from_dict(b) for b in data]
+            state.global_bosses = geladen
             count = len(state.global_bosses)
         print(load_tag(f"{count} globale(r) Boss(e) geladen"))
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:

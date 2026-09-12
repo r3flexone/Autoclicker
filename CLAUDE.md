@@ -33,6 +33,9 @@ python tools/katalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
 python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
+python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
+                                    # (--bild slot|grund, --modell X, --alle-modelle,
+                                    #  --zweistufig, --stimmen 3, --reasoning)
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
@@ -379,10 +382,11 @@ die IDs gelten nur innerhalb dieser Sequenz.
 | `ItemProfile` | Punkte der Sequenz | `confirm_point_id` | `resolve_klick_referenzen()` |
 | `BossProfile` | Punkte der Sequenz | `action_point_id` | dito |
 | `IconScanConfig` | Punkte der Sequenz | `action_point_id` | dito |
-| `ItemScanConfig` | Slots/Items **im Scan selbst** | `slot_names`, `item_names` | `resolve_scan_references()` |
+| `ItemScanConfig` | eigene Slots und Items | `slots`, `items` (vollständige Objekte) | direkt beim Laden |
 
-Beim Item-Scan sind `config.slots`/`config.items` die **aufgelösten Arbeitslisten** —
-Worker und Editoren nutzen sie unverändert, gespeichert werden sie nicht.
+Beim Item-Scan sind `config.slots`/`config.items` der **eigene Bestand des Scans**.
+Beide Listen werden vollständig gespeichert; `slot_names`/`item_names` sind
+abgeleitete Ansichten und keine Referenzen auf einen globalen Bestand.
 
 **Eine Koordinate steht im Punkt der Sequenz, sonst nirgends.** Das gilt ausnahmslos für alle
 drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `step.x/y`,
@@ -453,6 +457,26 @@ Regeln beim Erweitern:
   Gruppe nachzuziehen wäre genauer und wäre falsch: ein wiederverwendeter Punkt
   gehört womöglich schon einer anderen Sequenz, und die zöge stillschweigend mit.
   Auf die Mitte rücken darf nur ein ausdrücklicher Aufräum-Durchgang mit Vorschau.
+
+  **Ein erfundener Punktname heisst `P<ID>` — nie nach seiner Sequenz.** Drei
+  Wege legen Punkte an, ohne dass jemand einen Namen tippt, und sie standen auf
+  drei Schemata: die Aufnahme auf `<Sequenzname> <Ereignis-Index>`, `CTRL+ALT+A`
+  auf `P<ID>`, der Rückfall in `punkt_fuer_stelle()` auf `Punkt <ID>`. In einer
+  Liste standen damit „P3" und „Punkt 4" untereinander — dieselbe Frage, drei
+  Antworten.
+
+  Der Sequenzname war dabei nicht nur uneinheitlich, sondern **falsch**: seit
+  eine Sequenz eine Besitzeinheit ist, liegt der Punkt ohnehin in ihrer
+  `sequence.json` — der Vorsatz sagt nichts, den man nicht schon weiss, und beim
+  Umbenennen der Sequenz wird er unwahr. Richtigstellen hiesse dann, **jeden
+  Punkt einzeln** anzufassen (an einer echten Aufnahme: 51 Stück).
+
+  Zwei Regeln dazu: die Nummer ist die **Punkt-ID** und nicht die Stelle im
+  Ereignisstrom (sonst hiesse der dritte Punkt einer Aufnahme mit Tastendrücken
+  `P7`, während die Liste `#3` daneben schreibt), und ein **übergebener** Name
+  gewinnt immer — `P<ID>` ist der Rückfall, nicht die Vorschrift. Die Herkunft
+  steht getrennt davon in `source` („Aufnahme", „Sequenz-Studio"); auch dort ist
+  der Sequenzname entfallen, aus demselben Grund.
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
@@ -509,7 +533,15 @@ benutzt. Der zweite gehört zum Scan und nicht in die Config — aus demselben
 Grund wie `reverse`: wer zwei Spiele betreibt, hat einen Katalog, der nur für
 eines von beiden gilt, und global gesetzt ordnete er das andere still falsch
 ein. Im Studio steht er in den Scan-Einstellungen direkt neben „Slots
-rückwärts", der Pfad im Einstellungen-Reiter.
+rückwärts", der Pfad im Einstellungen-Reiter — **samt dem Knopf, der die
+Datei holt** (`katalog_holen`, angemeldet über `M.aktion` in
+`config_meta.py`). Bis dahin konnte nur `python tools/katalog.py` sie
+anlegen: ausgerechnet die Datei, ohne die das LLM frei rät und die
+Kategorie leer bleibt, liess sich im Fenster nicht beschaffen. Gerechnet
+wird weiter im Werkzeug — **die Brücke ruft `tools/katalog.py`, nie
+umgekehrt**, dieselbe Richtung wie beim Bericht-Reiter. Ein gesetzter Pfad
+wird dabei aktualisiert und nicht überschrieben, und weder ein Netzfehler
+noch eine leere Antwort fassen die vorhandene Datei an.
 
 **Das hängt NICHT am LLM.** Die Kategorie folgt aus dem *Namen* — heisst ein
 Item „Citadel Helmet", steht im Katalog „Helm", und ob den Namen ein Mensch
@@ -535,6 +567,114 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   relativ zu den Items *eines* Scans; global vergeben bekäme der beste Bogen
   eines Bestands P49, weil 48 teurere im Katalog stehen, die man gar nicht
   besitzt. `raenge()` vergibt sie dicht innerhalb der bearbeiteten Menge.
+- **Ein Timeout beendet die Boss-Erkennung nicht mehr** (`ist_timeout()`, die
+  Regel an einer Stelle). Dort stand `break`, und `llm_retry_count` daneben
+  wiederholte nur bei „kein Boss erkannt" — ausgerechnet der ERSTE Boss-Scan
+  eines Laufs fiel damit aus, denn der trifft ein kaltes Modell. Der zweite
+  Versuch bekommt mehr Zeit und zählt **nicht** gegen das Wiederholungs-Budget:
+  er beantwortet eine andere Frage. Ein Verbindungsfehler wird dagegen nicht
+  wiederholt — da ist niemand, und Wiederholen wäre nur Warten.
+- **Die Lampe prüft das MODELL, nicht nur den Server** (`test_connection`). Sie
+  nahm `model` entgegen und benutzte es nie: „Verbunden!" stand auch dann da,
+  wenn `llm_model` gar nicht geladen war, und jeder Aufruf danach scheiterte.
+  Ein erreichbarer Server ohne das eingestellte Modell ist deshalb **kein
+  Erfolg** — die Frage ist „kann ich das LLM jetzt benutzen", nicht „antwortet
+  da wer". Im Scans-Reiter kam dazu, dass `llm_pruefen()` mit einem rohen
+  `urlopen(CONFIG.llm_endpoint)` prüfte, und der ist im Normalfall `None`: die
+  Lampe meldete einen `NoneType`-Fehler bei laufendem Server.
+- **`llm_reasoning` und `llm_max_tokens` gelten auch für die Benennung.** Sie
+  wurden nur im Boss-Scan gelesen; wer sie einschaltete, weil die Benennung
+  besser werden soll, änderte nichts. Mit Reasoning wird die Antwort-Länge
+  dabei **nicht** auf 32 gekürzt (`_namens_tokens()`) — sonst sind die Tokens
+  vor dem Namen im Denken aufgebraucht und `content` bleibt leer.
+  `llm_retry_count` bleibt bewusst beim Boss-Scan: die Benennung fragt mit
+  Temperatur 0 und bekäme zweimal dieselbe Antwort.
+- **Gemessen wird mit `tools/llm_bench.py`, nicht geschätzt.** Ob eine
+  Änderung am Prompt, am Bild oder am Modell etwas bringt, sieht man nicht —
+  und zweimal hintereinander lag die naheliegende Vermutung daneben: die
+  Lernmaske (83 % des Bildes durchsichtig) ist **besser** als ein neutraler
+  Grund, und der Ausschnitt aus dem gemerkten Screenshot — mit echtem
+  Hintergrund, also so wie das Spiel ihn zeigt — ist **nicht besser** als die
+  freigestellte Vorlage. Beides klingt falsch herum und ist gemessen.
+
+  Das Werkzeug nimmt die Items des Scans, deren Namen im Katalog stehen, als
+  Goldstandard und wärmt vor der Messung auf. **Das Aufwärmen ist der Punkt:**
+  an einem warmen Modell traf `gemma-4-12b-qat` 14 von 14 Vorlagen, an einem
+  kalten 9 von 14 — und die fünf Ausfälle waren vier Zeitüberschreitungen plus
+  ein Treffer, der beim zweiten Lauf sass. Was hier lange wie eine Grenze des
+  Modells aussah, war zum grössten Teil der Kaltstart.
+- **Ein Timeout ist nicht dasselbe wie „nicht erkannt".** Beides als `None`
+  zu melden war der Fehler: an einem echten Bestand brauchten die **ersten
+  vier** Aufrufe je über 120 Sekunden (LM Studio lädt das Modell), die
+  folgenden 3,5 — mit `llm_timeout` auf 60 fielen genau die ersten Items stumm
+  durch und standen als „ohne Vorschlag" da. `suggest_item_name_grund()` gibt
+  deshalb `(Name, Grund)` zurück; der Durchgang wiederholt bei `TIMEOUT`
+  **einmal** mit mehr Zeit (der zweite Versuch trifft ein warmes Modell) und
+  zählt einen bleibenden Timeout getrennt, mit der Abhilfe in der Meldung.
+  Genau dieser Kaltstart ist auch die Antwort auf „im Chat geht es besser":
+  dort ist das Modell längst geladen.
+- **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.** Der
+  Durchgang hängte bei einem belegten Namen einen Zähler an, und ein Inventar
+  mit zwei Bögen ergab „Godlike Bow" und „Godlike Bow 2". Drei Folgen, und die
+  erste sieht man gar nicht: der Zähler-Name steht **nicht im Katalog**, das
+  Item blieb also ohne Kategorie neben seinem eingeordneten Zwilling stehen —
+  und ohne Kategorie konkurriert es mit niemandem, wird in Modus `all` also
+  immer geklickt. Zweitens lägen sie eingeordnet zu zweit in derselben
+  Kategorie, wo eines der beiden nie an die Reihe kommt. Und drittens gehört
+  die zweite Vorlage ohnehin zum selben Gegenstand: genau dafür gibt es
+  `template_variants`. Erkennt das Modell einen Namen, den es schon gibt, wird
+  die Vorlage deshalb **angehängt** und das Doppel entfällt — gesagt wird es in
+  der Schlussmeldung, und STRG+Z holt den ganzen Durchgang zurück. Irrt sich
+  das Modell, hängt eine fremde Vorlage am Item; sie steht in dessen
+  Vorlagenliste und ist dort einzeln lösbar.
+- **Eine Kategorie benennt man an ihrer Überschrift um, nicht Item für
+  Item** (`scan_kategorie_umbenennen`, Feld im `scan-kategorie-kopf`). Sie ist
+  kein eigenes Objekt, sondern ein Feld an jedem Item — Zusammenlegen hiess
+  deshalb, jede Maske einzeln anzufassen, und weil der Katalog bewusst ENG
+  einordnet, ist Zusammenlegen der Normalfall (an einem echten Bestand hatten
+  13 von 23 Kategorien genau ein Item). Leerer Zielname = Kategorie weg,
+  leerer Quellname = die Gruppe „ohne Kategorie"; beides ist dieselbe
+  Bewegung. Zwei Regeln dazu: die Ränge werden danach **dicht** gemacht (zwei
+  P1 in einer Kategorie sind eine Rangfolge, die der Zufall entscheidet), und
+  **wer dazukommt, kommt hinten an** — über die ganze Gruppe zu sortieren
+  verschöbe die handgesetzten Ränge der Zielgruppe, und wer eine Gruppe in
+  eine andere schiebt, sagt damit nichts über deren Reihenfolge.
+- **Ein Zähler am Namen darf die Kategorie nicht kosten.** `_katalog_name()`
+  probiert erst den vollen Namen und dann den ohne Zähler (`ohne_zaehler()` in
+  `utils/parsing.py`, die Umkehrung zu `eindeutiger_name()`). Die Reihenfolge
+  ist die Regel: was im Katalog steht, gewinnt — „Slot 1" bleibt „Slot 1".
+- **Ein Durchgang, den die Seite treibt — sonst gibt es kein Abbrechen.**
+  Sechsundfünfzig Vorlagen sind bei drei Sekunden je Modell-Antwort knapp drei
+  Minuten; als EIN Brücken-Aufruf kann das niemand stoppen. Ein Abbruch-Flag
+  bräuchte einen zweiten Aufruf **neben** dem laufenden: in pywebview kommt der
+  durch, im Rauchtest-Prüfstand nicht (dort hält der Python-Callback den
+  Dispatcher) — und ein Abbruch, der nur im Fenster funktioniert, ist keiner.
+  Deshalb `scan_autoname_start` → `scan_autoname_schritt` (je Item) →
+  `scan_autoname_ende`: der Zustand liegt in der Brücke, die Seite fragt nur
+  nach dem nächsten Schritt. Das bringt Abbruch, sichtbaren Fortschritt und
+  einen Durchgang, den die Vertragssuite Schritt für Schritt durchspielen kann.
+  Drei Regeln dazu: die Config wird beim Start **eingefroren** (sonst liest
+  `load_config()` je Item die Datei und schreibt eine Konsolenzeile), der
+  Rückgängig-Stand entsteht **einmal und erst beim ersten Treffer**, und ein
+  Abbruch **behält, was bis dahin benannt wurde** — es wegzuwerfen hiesse,
+  zwanzig Modell-Antworten zu verbrennen, weil man die einundzwanzigste nicht
+  mehr abwarten wollte.
+- **Am Katalog-Feld steht, was dahinter liegt** (`_katalog_stand()`,
+  Momentaufnahme `staende`): Umfang und Zeitpunkt der Datei, in **Ortszeit**,
+  und „Datei fehlt“, wenn der Pfad ins Leere zeigt. Der Pfad allein beantwortet
+  die Frage nicht, die man an eine geholte Liste hat — ohne Antwort holt man
+  sie entweder nie wieder oder bei jedem Zweifel neu.
+- **Der vorgeschlagene Name ist ein NAME, kein Dateiname.** Beide
+  `autoname`-Wege (Studio und Konsole) drückten ihn durch
+  `sanitize_filename()` — die macht Kleinbuchstaben und Unterstriche, aus
+  „Godlike Bow" also `godlike_bow`. `Katalog.treffer()` vergleicht aber
+  `casefold()` und keine Unterstriche: der Name kam wörtlich aus dem Katalog
+  und fand sich darin trotzdem nicht wieder, **Kategorie und Priorität blieben
+  also immer aus** — ausgerechnet der halbe Zweck der geschlossenen Auswahl.
+  Dafür gibt es `bereinige_itemname()` (`utils/parsing.py`); wo aus dem Namen
+  wirklich eine Datei wird (`_apply_item_rename`), läuft `sanitize_filename()`
+  eine Ebene tiefer ohnehin noch einmal darüber. Ein Test misst die ganze
+  Kette bis zur Kategorie — einer, der nur den Namen prüft, sieht es nicht.
 - **Der Prompt der geschlossenen Auswahl ist englisch**, und auch das ist
   gemessen: mit dem deutschen antwortet das Modell deutsch („Bogen", „Schwert")
   — in einer Sprache, in der die Liste gar nicht steht — und nennt die *Art*
@@ -551,26 +691,54 @@ wirklich etwas geändert wird (`_katalog_plan` vor `_katalog_uebernehmen`) — e
 zweiter Klick auf denselben Knopf darf keinen Rückgängig-Stand ablegen, sonst
 tut STRG+Z einmal scheinbar nichts.
 
-**Die Namen sind die Wahrheit, die Objekte werden abgeleitet.** `ItemScanConfig.sync_names()`
-(aufgerufen in `__post_init__` und in `resolve_scan_references()`) füllt fehlende
-Namenslisten aus den Objekten. Ohne das hinterlässt jede Seite eine halbe Config, und beide
-Richtungen gehen kaputt:
+**Der Scan besitzt seine Slots und Items.** `slots`/`items` sind die Wahrheit;
+`slot_names`/`item_names` werden daraus abgeleitet. Gleichnamige Items anderer
+Scans bleiben unabhängig. `resolve_scan_references()` löst nur noch die
+Klick-Punkte auf; `sync_names()` und `update_item_in_scans()` sind derzeit
+wirkungslose Rest-Helfer und kein Vorbild für neue Aufrufer.
 
-- Editoren und Scan-Studio bauen die Config aus **Objekten** → ohne Namen leerte
-  `resolve_scan_references()` beim nächsten Sequenzstart die Objekte wieder. Ein gerade
-  bearbeiteter Scan lief bis zum Neustart ins Leere.
-- Der Loader baut sie aus **Namen** → ohne Objekte zeigte das Menü „0 Slots, 0 Items" und
-  beim Bearbeiten war nichts vorausgewählt.
+Beim Sequenzwechsel werden die geladenen Scan-Dictionaries vollständig ersetzt.
+Eine fehlende Boss-Bibliothek bedeutet eine leere Liste. Der Dateiname
+`bibliothek.json` ist für die Bibliothek reserviert und darf keinem Boss-Scan
+gehören (`boss_scan_name_erlaubt()`); die Prüfung erfolgt auch beim Speichern.
 
-Regel beim Erweitern: **Anzeige und Vorauswahl immer über `slot_names`/`item_names`**, nie
-über `slots`/`items` — die sind erst nach dem Auflösen gefüllt. Wer `config.slots` von aussen
-setzt, ruft danach `sync_names()`.
+**Und ein Scan wird ebenfalls per Namen gerufen — an FÜNF Stellen.** Sie stehen
+in `referenzen_umbenennen()` (`scan_contract.py`), damit sie nicht wieder
+auseinanderlaufen:
 
-Namen, die global fehlen, werden gemeldet und übersprungen — der Scan läuft mit dem Rest
-weiter. Lieber ein Slot weniger als ein toter Scan.
+| wer verweist | Feld | wo |
+|---|---|---|
+| `SequenceStep` | `item_scan` | im Schritt |
+| `SequenceStep` | `boss_scan` | im Schritt |
+| `SequenceStep` | `boss_watcher` | im Schritt (dieselbe Datei wie `boss_scan`) |
+| `SequenceStep` | `icon_scan` | im Schritt |
+| `BossScanConfig` | `default_scan` | in der **Boss-Scan-Datei** — ein *Item*-Scan-Name |
 
-Beim Umbenennen bleibt `update_item_in_scans()` nötig: der Name *ist* die Referenz. Alles
-andere (Marker, Template, Priorität) braucht kein Nachziehen mehr.
+Gemessen an einem echten Umbenenn-Durchgang zog **eine von sechs** Referenzen
+nach (die fünf oben plus die Beschriftung): nur der Item-Scan. Boss, Watcher und
+Icon liefen über `_erkennung_umbenennen()`, und das zog gar nichts nach — es
+liess stattdessen die **alte Datei liegen**, mit der Begründung, eine Sequenz auf
+dem alten Namen verlöre ihren Scan sonst. Das kurierte das Symptom und machte den
+Schaden grösser:
+
+- Der Block zeigte weiter auf den alten Namen und lief gegen die
+  liegengebliebene Datei — **jede spätere Änderung am umbenannten Scan wirkte im
+  Lauf nicht.**
+- `_scan_laden()` sieht den Ordner durch, also stand der Scan nach dem nächsten
+  Öffnen **zweimal** da (aus `wache` wurden `['drache', 'wache']`). Ein
+  Umbenennen, das klont, ist kein Umbenennen.
+
+Zwei Regeln beim Erweitern: **eine sechste Stelle trägt man in `_REF_FELDER`
+ein** (dieselbe Bauart wie `_REF_KEYS` bei den Punkten), und **die Beschriftung
+zieht nur mit, wenn sie abgeleitet ist** — `step.name == f"Boss:{alt}"` wird
+nachgezogen, ein selbst getippter Blockname nicht. Er gehört dem Nutzer, und ihn
+stillschweigend umzuschreiben wäre schlimmer als eine veraltete Beschriftung.
+
+**`default_scan` steht zusätzlich in der Diagnose.** Sie prüft tote Scan-Verweise
+über die vier Felder *im Schritt* (`_pruefe_sequenzen`) — die fünfte steht in
+einer Scan-Datei und fiel deshalb durch, obwohl `runtime/steps.py` sie bei „kein
+Boss erkannt" wirklich ausführt (`execute_item_scan(state, config.default_scan)`).
+Zeigt sie ins Leere, tut der Fallback nichts und sagt es nicht.
 
 **Jeder Klick-Schritt wird MIT `point_id` gebaut**, nicht nachträglich verknüpft. Ein Test
 (`kein Klick-Schritt wird ohne point_id gebaut`) prüft jede `SequenceStep(...)`-Konstruktion
@@ -637,8 +805,11 @@ logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
 
 **Es gibt keinen globalen Bestand mehr.** `sequences/points.json`,
 `slots/slots.json`, `items/items.json` und die Scan-Ordner im Wurzelverzeichnis
-sind ersatzlos entfallen; die Konstanten dafür stehen in `paths.py` nur noch, um
-einen solchen Altbestand beim Zurücksetzen sicher wegräumen zu können. Wer zwei
+sind ersatzlos entfallen. In `paths.py` stehen davon nur noch die **Ordner**
+(`SLOTS_DIR`, `ITEMS_DIR`) — für genau einen Zweck: der Factory-Reset soll einen
+solchen Altbestand wegräumen können, falls er auf einer Platte herumliegt. Die
+Dateikonstanten selbst (`SLOTS_FILE`, `ITEMS_FILE`, eine für die Punkte) gibt es
+nicht mehr. Wer zwei
 Spiele betreibt, hat damit nicht mehr die Slots beider in einer Liste — das war
 der Grund für den Umzug.
 
@@ -652,6 +823,25 @@ zeigt ins Leere.
 gelten nur innerhalb dieser Sequenz. Eine eigene `points.json` gab es einmal; sie
 zwang zwei Dateien in Gleichschritt, die getrennt gespeichert wurden — genau der
 Fall, an dem ein Punkt fehlte, sobald man ihn brauchte.
+
+**Wer eine Sequenz WECHSELT, wechselt ihre Punkte mit — in beide Richtungen.**
+Der Umzug auf sequenzlokale Punkte hat an zwei Stellen genau eine Zeile
+hinterlassen bzw. vermissen lassen, und die Fehler sind spiegelbildlich:
+
+| wo | was fehlte | was man sah |
+|---|---|---|
+| `neu()` (Studio) | `self.points` wurde nicht geleert | eine frisch angelegte Sequenz kam mit dem **ganzen Punktebestand der vorher offenen** auf die Platte — `speichern()` schreibt `self.points` |
+| `edit_sequence()` (Konsole) | `new_sequence.points` wurde nicht gefüllt | die gespeicherte Sequenz hatte **gar keine Punkte**, während jeder Schritt weiter seine `point_id` trug |
+
+Beides ist derselbe Denkfehler aus der Zeit des globalen Bestands: dort war
+`state.points` die eine Liste für alles, und ein Sequenzwechsel liess sie
+zurecht in Ruhe. Seither ist die Frage bei **jedem** Wechsel des Gegenstands zu
+beantworten — `laden()`, `neu()`, Import, Kalibrierung und der Konsolen-Editor
+tun es heute alle. Regel beim Erweitern: **wer `self.board` bzw.
+`state.active_sequence` setzt, setzt in derselben Zeilengruppe die Punkte.**
+Zwei Tests messen beide Richtungen bis auf die **Platte** — einer, der nur die
+Liste im Speicher prüft, sieht die Wirkung nicht, denn geschrieben wird erst
+beim Speichern.
 
 **`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
 beschreibt den Zustand JETZT und wird überschrieben statt angehängt
@@ -693,10 +883,10 @@ Die bisherige Regel „Bestandsdateien werden über die Migration gehoben, nicht
 fallengelassen" gilt damit **nur noch für das, was schon eine Migration hat**.
 Für alles Neue ist die Antwort: Default in der Dataclass, fertig.
 
-**Backward Compatibility läuft über Migration, nicht über Sonderfälle im Loader**:
-`persistence/migration.py` hebt geladene Dicts aufs aktuelle Schema (`schema_version`),
-bevor ein Loader sie liest. Loader kennen deshalb **nur das aktuelle Format** — neue
-Umstellungen kosten einen Migrationsschritt statt einer weiteren Verzweigung.
+**Vorhandene Migrationen laufen vor dem Loader.** Neue Umstellungen bekommen
+keinen zusätzlichen Migrationsschritt. Loader lesen das aktuelle Format, verwenden
+Defaults für fehlende Felder und melden falsche JSON-Strukturen als Ladefehler
+(`TypeError` in den `_*_from_dict`-Lesern, gefangen von `LOAD_EXCEPTIONS`).
 
 Zwei Wege, je nach Dateiform:
 
@@ -721,12 +911,10 @@ totes Feld in ein anderes totes Format bringt, ist das Anwachsen, das hier vermi
 werden soll.
 
 Regeln beim Format-Ändern:
-1. Versioniert: `SCHEMA_VERSION` hochzählen, Schritt in `_CHAINS` eintragen.
-   Unversioniert: Normalisierer in `_NORMALIZER` erweitern — muss idempotent bleiben.
-2. Entfallene Felder in `_DEAD_STEP_KEYS` (Schritte) bzw. `_POINT_KEYS` (Punkte)
-   eintragen — dann räumt die Migration sie weg.
-3. Saver stempeln mit `stamp()`, damit frisch geschriebene Dateien sauber sind.
-4. `python tools/migrate.py --write` hebt alle Bestandsdateien in einem Rutsch.
+1. Dataclass, Loader und Serializer gemeinsam anpassen; fehlende Felder bekommen Defaults.
+2. Entfallene Felder im Serializer entfernen; der Start-Durchgang bereinigt die Dateien.
+3. Keine neuen Ketten oder Normalisierer ergänzen; bestehende nach erledigter Migration entfernen.
+4. Saver stempeln weiterhin mit `stamp()`; `SCHEMA_VERSION` nicht zurückdrehen.
 
 **Ein Migrationsschritt läuft genau so lange, wie es etwas zu heben gibt.** `migrate()`
 ruft zwar jeder Loader auf (ein Test erzwingt das), aber die Schleife
@@ -1052,7 +1240,7 @@ es die Marker-Farben.
   - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
     GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
   - `web/`: HTML, CSS, JavaScript und Logo.
-- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
+- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_klickfenster.py` (`geklicktes_fenster`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `nachklick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
@@ -1098,7 +1286,7 @@ Momentaufnahme, und die Ansicht bietet „Neu laden" an. Zwei Regeln dazu:
 
 - **Kein eigener Schreibvorgang zählt mit** (`_platte_nachziehen()`). Für das
   Speichern war das von Anfang an klar; für zwei andere nicht, und dort log der
-  Hinweis: das gemerkte Bild liegt unter `item_scans/bilder/`, und das **Anlegen
+  Hinweis: das gemerkte Bild liegt unter `sequences/<name>/bilder/`, und das **Anlegen
   des Unterordners** dreht die Änderungszeit von `item_scans/` weiter — der
   Reiter meldete also direkt nach der eigenen ersten Aufnahme eine
   Fremdänderung. Dasselbe beim Löschen einer Scan-Datei. Ein Hinweis, der nach
@@ -1262,8 +1450,8 @@ gehört sichtbar irgendwohin. Deshalb gibt es `scan_offen` **neben**
 `scan_art`/`scan_name`: der offene Scan ist der Zusammenhang, die Auswahl ist das
 Ding, das man gerade bearbeitet. Beides an einer Variable hiesse, dass ein Klick
 auf einen Slot den Zusammenhang verliert (so war es zuerst gebaut). Am offenen
-Scan hängen: die Filter der Listen (`nur_dabei`), was im Bild gezeichnet wird,
-welche Items `scan_erkennen()` prüft und welche Toleranz dabei gilt.
+Scan hängen: was im Bild gezeichnet wird, welche Items `scan_erkennen()`
+prüft und welche Toleranz dabei gilt.
 
 **Die Reihenfolge der Reiter ist die Rangfolge**: Scans, dann Slots, dann Items —
 und beim Öffnen steht der Scan-Reiter vorn. Eine Liste, die vor ihrer Klammer
@@ -1294,7 +1482,7 @@ stammen aus dem Konsolen-Slot-Editor und sind **Ausschnitte** (`take_screenshot(
 deren Ursprung nirgends steht — als Arbeitsfläche benutzt, läge jeder Slot still
 falsch. Genau der Fehler, gegen den der Ursprung im PNG steht.
 
-**Jeder Scan merkt sich seinen Bildschirm.** `item_scans/bilder/<name>.png`, beim
+**Jeder Scan merkt sich seinen Bildschirm.** `sequences/<name>/bilder/<scan>.png`, beim
 Öffnen sofort wieder da — vorher war die Mitte des Reiters leer, bis man einen
 neuen Screenshot machte. Der **Ursprung des virtuellen Desktops steht IM PNG**
 (Text-Chunk `links`/`oben`), nicht in einer Datei daneben: zwei Dateien, die
@@ -1678,9 +1866,10 @@ Sechs Regeln, an denen der Reiter hängt:
   sind die beiden Eingabefelder dadurch exakt gleich breit — ein Vorsatz vor
   nur einem der beiden hätte sie um seine eigene Breite gegeneinander
   verschoben.
-- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Der Filter „nur aus
-  <Scan>" stand als loser Text zwischen lauter Kacheln — Reiterleiste darüber,
-  Knopfreihe darunter — und las sich, als gehöre er nicht dazu.
+- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Aufgefallen ist das
+  an einem Filter, der als loser Text zwischen lauter Kacheln stand —
+  Reiterleiste darüber, Knopfreihe darunter — und sich las, als gehöre er nicht
+  dazu. Den Filter gibt es nicht mehr (s. u.), die Regel schon.
 - **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
   dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der
@@ -1795,17 +1984,6 @@ Sechs Regeln, an denen der Reiter hängt:
   erste Lücke, nicht ans Ende) und es wird gesagt. Eine ausdrücklich getippte
   Zahl fasst dagegen niemand an, auch keine doppelte: sie kann gewollt sein, und
   ungefragt zu verschieben wäre schlimmer als die Doppelung.
-
-- **Was man gerade abhakt, bleibt stehen** (`scanZuletztAbgewaehlt`). Der Filter
-  „nur aus <Scan>" zeigt die Mitglieder — nimmt man dort einen Haken weg, fällt
-  der Eintrag aus seiner eigenen Bedingung und verschwindet im selben Moment.
-  Ein Verklicker war damit nicht zurückzunehmen: das Ding, das man wieder
-  anhaken will, ist weg. Gemerkt wird nur, was in **dieser** Ansicht angefasst
-  wurde; beim Wechsel des Zusammenhangs (anderer Scan, anderer Reiter, Filter
-  umgelegt) wird die Liste geleert, sonst wüchse sie zu genau dem Bestand an,
-  den der Filter fernhalten soll. Sichtbar heisst dabei nicht „sieht aus wie ein
-  Mitglied": was nicht dazugehört, ist blass (`.nicht-dabei`) und rutscht
-  innerhalb seiner Kategorie nach unten.
 
 - **Der Fokus hängt an der `id` der Maske** (`maskeId()`, gelesen von
   `fokusMerken()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
@@ -1929,8 +2107,14 @@ engere Menge. Regel beim Erweitern: **wer „alle Slots" meint, fragt
 
 **Ein neuer Scan fängt leer an.** Im Scan-Inspektor standen alle Slots und alle
 Items des *gesamten* Bestands — bei zwei Spielen also die des anderen mit. Die
-Listen zeigen deshalb nur, was zu diesem Scan gehört; der Rest ist ein Schalter
-entfernt („nur aus …"), nicht weg.
+Listen zeigen deshalb nur, was zu diesem Scan gehört.
+
+**Der Filter dafür ist mit dem globalen Bestand verschwunden**, und das ist
+kein Verlust: seit eine Sequenz eine Besitzeinheit ist, IST der offene Scan der
+vollständige Bestand — es gibt nichts, wovon man ihn abgrenzen müsste. Übrig
+blieben davon `scan_filter()` und `nur_dabei` in der Brücke, ohne dass die
+Ansicht beides je gerufen oder gelesen hätte; beides ist gelöscht. Dieselbe
+Sorte Rest wie `points.json`, nur eine Ebene höher.
 
 **Und es gibt dafür genau EIN Bedienelement.** Bis zum Masken-Umbau gab es drei
 Wege zur selben Frage: den Haken in der Maske, „alle dazu/raus" in der
@@ -2245,7 +2429,8 @@ Acht Regeln, an denen der Teil hängt:
   Konsolen-Befehl (`icon <Name> else skip`).
 
 **Speichern und Rückgängig umfassen alle drei Arten.** Ein Knopf schreibt Slots,
-Items, Item-Scans, Boss-Scans, Icon-Scans, die Bibliothek **und `points.json`** —
+Items, Item-Scans, Boss-Scans, Icon-Scans, die Bibliothek **und die Punkte
+der Sequenz** —
 ein Klickpunkt einer Boss- oder Icon-Aktion ist ein Punkt, und die Koordinate steht
 dort und sonst nirgends. Der Rückgängig-Abzug (`_erkennung_zustand()`) nimmt sie
 ebenso mit: ein Zurück, das die Slots zurückdreht und den Boss-Scan stehen lässt,
@@ -2413,7 +2598,7 @@ Vier Regeln, an denen der Reiter hängt:
   den Weg zu verschweigen.
 
 Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über den
-Briefkasten-Befehl `daten` — der zieht seit dieser Umstellung auch `points.json`
+Briefkasten-Befehl `daten` — der zieht dabei auch die Punkte der Sequenz
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
 
 **Der Reiter „Bericht" liest `logs/`** (`bridge_bericht.py`). Der Live-Run zeigt das
@@ -2533,8 +2718,8 @@ Regeln für die Ansicht:
 - **Die Suche zeigt alle Abschnitte mit Treffern**, nicht nur den gewählten: wer
   sucht, weiss ja gerade nicht, wo der Wert steht.
 - **Eine Stelle fährt man an** (`scan_park_mouse`): Maus hin, ENTER — derselbe Weg
-  wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht in
-  `points.json`.
+  wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht
+  zu den Punkten der Sequenz.
 
 **Start, Pause und Stopp gehen über einen Briefkasten** (`befehl.py`), nicht direkt:
 dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
@@ -2650,8 +2835,9 @@ etwas läuft, bleibt die gewählte Ansicht stehen; sonst käme man während eine
 Durchgangs nicht mehr in den Editor zurück.
 
 **Zwei Prozesse, ein Ordner — und der Zweite gewinnt nicht mehr kommentarlos.**
-Das Studio merkt sich beim Laden den Zeitstempel von Sequenzdatei und
-`points.json` (`_stand_merken()`); hat sie sich beim Speichern geändert, fragt es
+Das Studio merkt sich beim Laden den Zeitstempel der Sequenzdatei
+(`_stand_merken()`) — die Punkte stehen darin, es ist also EIN Stand für
+beides; hat sie sich beim Speichern geändert, fragt es
 nach, statt zu überschreiben. Der Fall ist Alltag: eine Aufnahme im Hauptprozess
 legt Punkte an, `save_data()` schreibt die Sequenz. Die Rückfrage ist derselbe
 Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
@@ -2772,6 +2958,27 @@ Regeln beim Erweitern:
   Blöcke wirklich denselben Knopf klicken und der Knopf umzieht — ohne das wäre
   jede Kalibrierung eine halbe. Ein Anlauf, das im Inspektor per Copy-on-Write
   zu lösen, kurierte nur das Symptom und nahm dabei diese Regel mit.
+
+  **Aber ein geteilter Punkt sagt, dass er geteilt ist** — sonst ist die Regel
+  eine Falle. An einer echten Aufnahme hatte `punkt_an_stelle()` den Klick auf
+  denselben Knopf in Loop 1 und Loop 4 zu EINEM Punkt zusammengelegt (richtig
+  so). Wer dann Loop 1 per „Stelle mit der Maus setzen" eine andere Stelle gab,
+  verstellte Loop 4 mit — und suchte den Fehler in der Aufnahme: „der Punkt war
+  im Loop 4 an einer völlig falschen Stelle". Dass die beiden denselben Punkt
+  teilen, stand nirgends; die Regel dazu stand nur im ⓘ. Drei Dinge dagegen,
+  und keins davon ändert die Regel:
+
+  - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`punkt_andere`,
+    `_punkt_verwendungen(…, ausser=step)`) — als offener `hinweis`, denn das ist
+    Zustand; das Warum bleibt im ⓘ.
+  - Das Verschieben **sagt, wer mitzieht** („zieht 1 weitere Verwendung mit:
+    Loop 4 · Block 2 · Stelle", `_mitgezogen()`), und zwar ohne den Block, an dem
+    man gerade sitzt: der zählt nicht als „weiterer".
+  - **`punkt_abtrennen()`** gibt dem gewählten Block einen eigenen Punkt und
+    lässt die anderen auf dem alten — das Gegenstück zur Verschiebe-Regel für den
+    Fall „dieser eine Block soll einen *anderen* Knopf klicken". Dieselbe Bauart
+    wie beim Duplizieren (`_punkte_mitkopieren`): Klick und Prüf-Pixel eines
+    FARBE+KLICK-Blocks wandern gemeinsam.
 - **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
   quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
   Sammelaktionen wären nicht mehr eindeutig.
@@ -2779,6 +2986,16 @@ Regeln beim Erweitern:
   Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);
   alles Weitere steht rechts. Eine Wartezeit von 0 kommt gar nicht erst auf die Karte —
   „sofort" unter jedem zweiten Block ist Rauschen.
+
+  **Zum Ziel gehört die Farbe des Punkts** (`punkt_farbe`, das Feldchen vor der
+  Stelle) — bei jedem Block, der einen Punkt hat, nicht nur an der
+  Farb-Bedingung. Dort stand sie zuerst allein („wartet bis RGB(…) da"), und ein
+  reiner Klick zeigte nur Koordinaten: beim Umsortieren einer Aufnahme
+  unterscheidet niemand `(4405,555)` von `(4419,550)`, den grünen Knopf vom
+  roten schon. Ohne gemessene Farbe kein Feldchen — ein leeres Kästchen sagt
+  nichts, was der Inspektor nicht besser sagt. Die Stelle ist bei einem Block
+  mit Punkt immer die **erste** Zeile (`_zeilen`); daran hängt die Ansicht das
+  Feldchen, mit derselben CSS-Regel wie das an der Bedingung.
 - **Diskrete Bedienelemente melden sofort, Tipp-Felder erst beim Verlassen** (`change`,
   nicht `input`). Jede Meldung baut die Ansicht neu, und ein Neuaufbau mitten in der
   Eingabe nimmt das Feld weg, in das gerade getippt wird. Dieselbe Regel galt schon in
@@ -2805,7 +3022,7 @@ Regeln beim Erweitern:
   `recorded_color`, und die Brücke bog sie **hinterher** auf den Punkt um. Das war
   eine Reparatur, keine Regel: wer `set_block_type()` direkt aufruft — oder die
   Reparatur beim nächsten Umbau vergisst — bekam wieder `wait_pixel`/`wait_color`
-  in der Datei, also eine Koordinaten-Kopie ausserhalb von `points.json`, die
+  in der Datei, also eine Koordinaten-Kopie neben dem Punkt, die
   keine Kalibrierung je einholt. Ein Test misst deshalb die **Funktion**, nicht
   nur den Weg über die Brücke.
 - **Der Typ ist das Ergebnis zweier Eigenschaften, nicht umgekehrt.** KLICK,
@@ -3028,7 +3245,7 @@ Drei Regeln, an denen die Aufnahme hängt:
 - **Der Warte-Marker hat keine eigene Stelle.** Er wird gedrückt, sobald man anfängt zu
   warten — die Maus parkt dabei irgendwo, und diese Position wäre reiner Zufall. Ein
   erster Entwurf legte darauf einen Punkt an; in einer echten Aufnahme stand da dann
-  `Warte auf Farbe bei (4483, 1038) Schwarz (3,4,5)`, also Müll in `points.json`.
+  `Warte auf Farbe bei (4483, 1038) Schwarz (3,4,5)`, also Müll in den Punkten.
 - **Gewartet wird auf die Farbe DES Klicks, der folgt.** Der Marker hängt sich an ihn
   und macht daraus einen Schritt: „warte auf die Farbe dieser Stelle, dann klicke sie" —
   ein Punkt, zweimal referenziert (`point_id` + `wait_point_id`), exakt das, was
@@ -3137,6 +3354,30 @@ festgehaltenen Taste. Er ist die Kür: schlägt er fehl, läuft die Aufnahme ohn
 weiter — eine Aufnahme ohne Klicks wäre dagegen sinnlos. Beide Hooks werden auch beim
 Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weiter.
 
+**Der Klick auf einen Studio-Knopf ist keine Spielaktion — und welches Fenster
+den Klick bekam, sagt `geklicktes_fenster()`** (`editors/_klickfenster.py`, geteilt
+mit der Klick-Runde). Start und Stopp sind im Studio echte Knöpfe; ihr Klick darf
+nicht als Block in der Sequenz landen. Gefiltert wird deshalb, was im
+Studio-Fenster ankommt — und zwar am Fenster **unter dem Zeiger**, nicht am
+Vordergrund. Hier stand `get_foreground_window_title()`, und damit fehlte in
+**jeder** Studio-Aufnahme der erste Schritt: „Aufnahme starten" liegt im Studio,
+also ist das Studio vorn, und der erste Klick ins Spiel holt es erst nach vorn.
+Im Hook steht zu diesem Zeitpunkt noch das Studio als Vordergrund — der Klick
+galt als Studio-Klick und flog raus. Am Ende dasselbe umgekehrt: „Aufnahme
+stoppen" bei vorn stehendem Spiel kam als Spielklick in die Sequenz. Gemessen an
+einer echten Aufnahme (`all_dayli`): Loop 1 beginnt ohne den Öffner-Klick, den
+jede andere Phase hat, und der letzte Schritt `(1347, 709)` trägt `#1C2333` — das
+Panel-Grau des Studios.
+
+Es ist derselbe Fehler, der einmal in der Klick-Runde steckte (s. u. bei
+„Koordinaten nach einem Bildschirm-Umbau"), und er stand zweimal im Baum, weil
+die Frage zweimal beantwortet war — die Runde richtig, die Aufnahme nicht.
+Deshalb **ein** Helfer für beide Hook-Editoren; wer einen dritten Maus-Hook baut,
+fragt dort. Der Rückfall auf den Vordergrund bleibt: liefert die geometrische
+Frage nichts, ist die alte Antwort besser als gar keine. Vier Fälle stehen im
+Test — beide Richtungen des Fensterwechsels, dazu Vordergrund gleich und
+Vordergrund als Rückfall.
+
 **Rechtsklick wird bewusst nicht aufgezeichnet**: der Autoclicker kann gar keinen
 ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es gibt kein Modellfeld
 und keinen Editor-Befehl). Ihn mitzuschneiden hiesse, etwas aufzunehmen, das beim
@@ -3244,8 +3485,8 @@ Fünf Regeln, an denen die Klick-Runde hängt:
 
 - **Geändert wird nur die Stelle.** Wartezeiten, Farb-Bedingungen,
   Nachprüfungen, ELSE, Scans und die Reihenfolge bleiben — die Runde fasst die
-  Sequenzdatei überhaupt nicht an, sie schreibt `x`, `y` und (nur wenn der Punkt
-  schon eine hatte) die Farbe in `points.json`.
+  Reihenfolge und die Schritte überhaupt nicht an, sie schreibt `x`, `y` und (nur
+  wenn der Punkt schon eine hatte) die Farbe in den Punkt.
 - **Jeder Punkt einmal, in der Reihenfolge des Laufs** (INIT → Loop-Phasen →
   END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
   zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
@@ -3264,7 +3505,9 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   wegwirft, sähe aus wie ein kaputter Hook.
 
   **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist**
-  (`get_window_title_at()`, Rückfall auf den Vordergrund). Windows liefert den
+  (`geklicktes_fenster()` in `editors/_klickfenster.py`: `get_window_title_at()`,
+  Rückfall auf den Vordergrund — dieselbe Funktion, die die Aufnahme benutzt,
+  seit ihr an genau dieser Frage der erste Klick fehlte). Windows liefert den
   Button-Down an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
   durch genau diesen Klick erst aktiv. Im Hook steht damit noch das **vorige**
   Fenster im Vordergrund, und die Frage „bin ich im Zielfenster?" wird für den

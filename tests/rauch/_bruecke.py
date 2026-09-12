@@ -221,6 +221,15 @@ class Fenster:
 
 def haupt(name: str, lauf) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
+    # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
+    # `tests/alle_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
+    # Rauchtest einzeln aufruft, hatte das nicht — und eine Fehlermeldung mit
+    # einem „↺" darin riss den Lauf dann mit einem `UnicodeEncodeError` ab,
+    # statt zu sagen, was schiefging. Ausgerechnet im roten Fall.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     da, grund = playwright_da()
     if not da:
         print(f"UEBERSPRUNGEN  {name}: {grund}")

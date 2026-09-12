@@ -44,12 +44,11 @@ from ..utils import (col, err, hint, info, ok, describe_color, warn,
                      atomic_write, compact_json)
 from ..winapi import (
     get_client_rect_by_title,
-    get_foreground_window_title,
-    get_window_title_at,
     install_mouse_hook,
     remove_mouse_hook,
     set_cursor_pos,
 )
+from ._klickfenster import geklicktes_fenster
 
 # Die beiden Block-Typen, die wirklich klicken. `block_type()` ist die eine
 # Klassifikation im Projekt — eine zweite Liste hier wäre die Stelle, an der ein
@@ -273,37 +272,12 @@ def _zielfenster(state: AutoClickerState) -> str:
     return titel
 
 
-def _geklicktes_fenster(x: int, y: int) -> str:
-    """Der Titel des Fensters, in das GEKLICKT wurde — "" wenn unbekannt.
-
-    **Nicht der Vordergrund.** Windows liefert den Button-Down an das Fenster
-    unter dem Zeiger; war das nicht das aktive, wird es durch genau diesen
-    Klick erst aktiv. Im Hook steht im Vordergrund also noch das VORIGE
-    Fenster, und die Frage „bin ich im Zielfenster?" wird für den Klick davor
-    beantwortet. Ein Klick, der ein anderes Fenster nach vorn holt, zählte
-    damit als Klick ins Ziel — in einer echten Runde ist so ein Punkt auf eine
-    Stelle im Studio-Fenster gewandert (Farbe `#1C2333`, also dessen eigenes
-    Panel-Grau), unmittelbar nachdem derselbe Filter den Klick davor korrekt
-    abgewiesen hatte.
-
-    Der Rückfall auf den Vordergrund ist Absicht: liefert die geometrische
-    Frage nichts (kein Fenster, fremder Desktop), ist die alte Antwort immer
-    noch besser als gar keine.
-    """
-    try:
-        titel = (get_window_title_at(x, y) or "").strip()
-    except Exception:
-        titel = ""
-    if titel:
-        return titel
-    try:
-        return (get_foreground_window_title() or "").strip()
-    except Exception:
-        return ""
-
-
 def _im_zielfenster(ziel: str, x: int, y: int) -> bool:
     """True, wenn der Klick im Zielfenster passiert ist (oder nicht gefiltert wird).
+
+    Welches Fenster den Klick bekommen hat, sagt `geklicktes_fenster()` — das
+    Fenster UNTER dem Zeiger, nicht der Vordergrund; die Begründung steht dort,
+    denn die Aufnahme stellt dieselbe Frage.
 
     Mehrere Fenster desselben Spiels sind ausdrücklich in Ordnung: geprüft wird
     der Titel, und drei Instanzen tragen denselben. Welche davon gemeint ist,
@@ -311,7 +285,7 @@ def _im_zielfenster(ziel: str, x: int, y: int) -> bool:
     """
     if not ziel:
         return True
-    fenster = _geklicktes_fenster(x, y)
+    fenster = geklicktes_fenster(x, y)
     if not fenster:
         # Lässt sich weder Fenster noch Vordergrund bestimmen, gilt der Klick.
         # Lieber ein Punkt zu viel als eine Runde, die stumm nichts tut.
@@ -573,7 +547,7 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
     # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
     # schnell zurück muss.
     if not _im_zielfenster(ziel, x, y):
-        fremd = _geklicktes_fenster(x, y) or "?"
+        fremd = geklicktes_fenster(x, y) or "?"
         if fremd not in _gemeldete_fenster:
             _gemeldete_fenster.add(fremd)
             print(f"\n  {warn('[IGNORIERT]')} Klick in „{fremd}“ — Punkte werden "

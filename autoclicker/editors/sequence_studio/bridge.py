@@ -23,7 +23,6 @@ from .bridge_contract import (
     _gleicher_wert,
     _hex,
     _mtime,
-    _punkte_pfad,
     _rgb,
     _stelle,
     _wartetext,
@@ -55,7 +54,6 @@ __all__ = [
     "_gleicher_wert",
     "_hex",
     "_mtime",
-    "_punkte_pfad",
     "_rgb",
     "_stelle",
     "_wartetext",
@@ -89,7 +87,6 @@ class StudioBridge(
         # Dateien (Aufnahme legt Punkte an, `save_data` schreibt die Sequenz) —
         # ohne diesen Vergleich überschreibt das Studio das kommentarlos.
         self._stand_datei: Optional[float] = _mtime(self.filepath)
-        self._stand_punkte: Optional[float] = self._stand_datei
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
         # END hätte bei "eine Position hoch" keine Bedeutung, und die
         # Sammelaktionen wären nicht mehr eindeutig.
