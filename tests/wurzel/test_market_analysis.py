@@ -10,7 +10,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from market_analysis import config as cfg
-from market_analysis import history, pricing
+from market_analysis import extended_json, history, pricing
 from market_analysis.config import (
     COMPREHENSIVE_AVG_FIELDS, GOLD_ITEM_ID, net_player_price, spar_faktor,
 )
@@ -466,6 +466,61 @@ class HistorieTest(unittest.TestCase):
         zeile = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
         self.assertIsNone(zeile["gold_h"])
         self.assertIsNone(zeile["gold_h_real"])
+
+
+class ExtendedJsonTest(unittest.TestCase):
+    """Die Spiel-API schreibt Mongo-Shell-JSON, und ein Update darf den Lauf
+    nicht beenden.
+
+    Hier stand eine Regex, die genau `ObjectId` kannte — als die Achievements
+    `NumberLong(0)` mitbrachten, brach die Analyse ab, obwohl sie diese Felder
+    nie liest. Dieselben Faelle stehen in `tests/vertrag/katalog.py` fuer den
+    Zwilling in `tools/katalog.py`; die beiden Kopien duerfen nicht
+    auseinanderlaufen.
+    """
+
+    ROH = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
+           ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
+           ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
+
+    def test_bekannte_huellen_werden_uebersetzt(self):
+        daten, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(daten["_id"], "61e2b1b0")
+        self.assertEqual(daten["n"], 0)
+        self.assertEqual(daten["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
+        self.assertEqual(daten["d"], 1.5)
+        self.assertIsNone(daten["leer"])
+
+    def test_konstrukt_im_string_bleibt_text(self):
+        daten, _ = extended_json.laden(self.ROH)
+        self.assertEqual(daten["t"], 'nutze ObjectId("x") hier')
+
+    def test_unbekanntes_ueberlebt_und_wird_gemeldet(self):
+        daten, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(daten["u"], 3)                    # ein Skalar bleibt der Skalar
+        self.assertEqual(daten["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
+        self.assertEqual(len(hinweise), 2)
+        self.assertIn("NumberFoo", hinweise[0])
+        self.assertIn("Timestamp", hinweise[1])
+
+    def test_bekanntes_erzeugt_keinen_hinweis(self):
+        _, hinweise = extended_json.laden('{"a": ObjectId("ab"), "b": NumberLong(7)}')
+        self.assertEqual(hinweise, [])
+
+    def test_der_echte_achievement_block(self):
+        """Wortlaut der Zeile, an der der Lauf am 12.09.2026 abbrach."""
+        roh = ('{"Achievements": [{"Name": "achievement_tutorial_completed", '
+               '"CriteriaThreshold" : NumberLong(0), "CriteriaTaskIds" : [], '
+               '"CriteriaValue" : NumberLong(100)}]}')
+        daten, hinweise = extended_json.laden(roh)
+        self.assertEqual(daten["Achievements"][0]["CriteriaValue"], 100)
+        self.assertEqual(hinweise, [])
+
+    def test_unparsbares_wirft_weiterhin(self):
+        """Uebersetzt wird, was uebersetzbar ist — kaputtes JSON bleibt ein Fehler."""
+        import json
+        with self.assertRaises(json.JSONDecodeError):
+            extended_json.laden('{"a": NumberLong(1), "b": }')
 
 
 if __name__ == "__main__":

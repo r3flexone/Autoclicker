@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from datetime import datetime
 
@@ -50,6 +49,7 @@ try:
         kosten_pro_aktion, price_anomaly, resolve_chain, wide_spread,
     )
     from .recipes import build_all_recipes
+    from .extended_json import laden as extended_json_laden
     from . import history as historie
 except ImportError:  # direkter Skriptstart bleibt unterstützt
     from config import (  # type: ignore
@@ -77,6 +77,7 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         kosten_pro_aktion, price_anomaly, resolve_chain, wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
+    from extended_json import laden as extended_json_laden  # type: ignore
     import history as historie  # type: ignore
 
 
@@ -129,15 +130,23 @@ def load_market_map() -> dict:
 
 
 def load_game_data() -> dict:
-    """Game-Data-Endpoint liefert MongoDB-Extended-JSON (ObjectId(...) ist kein valides
-    JSON) - wird vor dem Parsen bereinigt."""
+    """Game-Data-Endpoint liefert MongoDB-Shell-JSON (`ObjectId(...)`, `NumberLong(...)`)
+    - `extended_json.laden` uebersetzt es und meldet, was es nicht kannte.
+
+    **Ein Spiel-Update darf den Lauf nicht beenden.** Hier stand eine Regex, die
+    genau `ObjectId` kannte; als die Achievements `NumberLong` mitbrachten, brach
+    die Analyse ab, obwohl sie diese Felder nie liest. Unbekanntes wird jetzt als
+    Wert uebernommen und als Warnung ausgegeben - der Lauf geht weiter."""
     resp = _get_json(GAME_URL, timeout=60, context="Game-Data-Endpoint")
-    raw = re.sub(r'ObjectId\("([a-f0-9]+)"\)', r'"\1"', resp.text)
     try:
-        return json.loads(raw)
+        game, hinweise = extended_json_laden(resp.text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Game-Data-Endpoint: Antwort ist kein gueltiges JSON ({exc}) - "
-                           "evtl. neues Extended-JSON-Konstrukt neben ObjectId(...).") from exc
+        raise RuntimeError(f"Game-Data-Endpoint: Antwort ist auch nach der Uebersetzung "
+                           f"der Extended-JSON-Konstrukte kein gueltiges JSON ({exc}). "
+                           f"Kontext: ...{resp.text[max(0, exc.pos - 120):exc.pos + 80]}...") from exc
+    for hinweis in hinweise:
+        print(f"⚠ Game-Data-Endpoint: {hinweis}")
+    return game
 
 
 def build_item_info_map(game: dict) -> dict:
@@ -1599,4 +1608,12 @@ def main():
 
 
 if __name__ == "__main__":
+    # Die Meldungen tragen ⚠ und ℹ — in einer Windows-Konsole mit cp1252 (oder
+    # hinter einer Pipe) riss genau das den Lauf NACH der ganzen Rechnung mit
+    # einem UnicodeEncodeError ab. Ein unbekanntes Zeichen ist ein
+    # Darstellungsproblem, kein Ergebnis; dieselbe Regel wie in tests/alle_tests.py.
+    import sys
+    for _strom in (sys.stdout, sys.stderr):
+        if hasattr(_strom, "reconfigure"):
+            _strom.reconfigure(encoding="utf-8", errors="replace")
     main()

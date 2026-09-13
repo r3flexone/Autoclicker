@@ -23,6 +23,7 @@ python market_analysis/analyse.py
 | `history.py` | Laufhistorie in SQLite: was das Überschreiben der Excel-Datei verliert |
 | `verify.py` | Einzelne Items nachrechnen: jeder Zwischenschritt, dazu eine Ingame-Checkliste |
 | `apicheck.py` | Prüft, ob die API noch die erwarteten Felder liefert |
+| `extended_json.py` | Übersetzt das Mongo-Shell-JSON der Game-Data (`ObjectId(…)`, `NumberLong(…)`) in echtes JSON – und meldet, was es nicht kennt, statt abzubrechen |
 
 `config.py` enthält alles Einstellbare – Skills, Upgrades, Schwellenwerte. Die anderen
 Dateien musst du normalerweise nicht anfassen.
@@ -472,9 +473,24 @@ Der Lauf meldet sich selbst, wenn Annahmen brechen:
 - Fehlende Avg-Felder → API hat Feldnamen geändert, die echten Keys stehen in der Meldung
 - API-Skills ohne Eintrag in `SKILLS` → laufen sonst still ohne Boosts mit
 - Kennzahlen-Einbruch gegenüber dem letzten Lauf (`output/run_stats_history.json`)
+- Unbekanntes Extended-JSON-Konstrukt in der Game-Data → wird als Wert übernommen und
+  gemeldet, der Lauf geht weiter (s. u.)
 
 Bei Verdacht auf ein Game-Update: `python market_analysis/apicheck.py` prüft alle
 Feldnamen und Strukturannahmen gegen die Live-API.
+
+**Ein Spiel-Update darf den Lauf nicht beenden.** Die Game-Data kommt nicht als JSON,
+sondern in der Schreibweise der Mongo-Shell – Funktionsaufrufe um Werte herum wie
+`ObjectId("…")` oder `NumberLong(0)`. Lange kannte der Parser genau das erste davon,
+und als die Achievements das zweite mitbrachten, brach die Analyse an einem Feld ab,
+das sie nie liest. `extended_json.py` übersetzt seither alle bekannten Hüllen, nimmt
+ein unbekanntes `Name(…)` als seinen Wert (bzw. als Text, wenn mehrere Argumente
+darin stehen) und meldet es mit `⚠` – neue Items, Skills oder Felder brauchen gar
+nichts: Items kommen aus der API, unbekannte Skills bekommen `DEFAULT_SKILL_CONFIG`.
+Taucht die Meldung auf, trägt man den Namen in `ZAHL_HUELLEN` oder `TEXT_HUELLEN` ein;
+`apicheck.py` listet alle Konstrukte der aktuellen Antwort auf. Dasselbe Modul liegt
+als Kopie in `tools/katalog.py` (der Katalog-Knopf des Autoclickers liest dieselbe
+API) – die beiden Teile importieren einander bewusst nicht.
 
 ## Anpassen
 
