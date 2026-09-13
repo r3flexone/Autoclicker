@@ -45,7 +45,7 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 | Sheet | Bedeutung |
 |---|---|
 | **Empfehlung** | **Die Antwort:** was bringt am meisten Gold pro Zeit, und geht es an Spieler oder NPC. Eine Zeile pro Item, nach Gold/h sortiert |
-| **Begründung** | **Warum** ist ein Item gut oder nicht: eine Stunde Produktion durch die echten Kaufgebot-Stufen im Player Shop gerechnet. Nur die Top 10 |
+| **Begründung** | **Warum** ist ein Item gut oder nicht: eine Stunde Produktion durch die echten Kaufgebot-Stufen im Player Shop gerechnet – für die besten `REASON_CANDIDATES` (30) der Papier-Liste |
 | **Ketten** | Alles selbst gefarmt, nichts zugekauft. **Das ist die Zahl, die zählt.** |
 | **Realistisch_Farmbar** | Nur Ketten mit `FullySelfSufficient` – keine Zutat muss gekauft werden |
 | **Nach_Skill_Level** | Verkaufbare Items sortiert nach Skill und Level |
@@ -125,7 +125,18 @@ leer, rutschst du auf die nächste Stufe – dann steht die Wahrheit in `Gold/h 
 Weicht das Orderbuch stark vom Listenpreis ab, sagt die Bewertung das dazu: Bulk-Endpoint
 und Orderbuch sind zwei Momentaufnahmen.
 
-Umfang über `REASON_TOP_N` in `config.py`, abschalten mit `SHOW_REASON_ANALYSIS = False`.
+Gemessen werden die besten `REASON_CANDIDATES` (30) der nach Papier-Gold/h vorsortierten
+Liste – parallel (`ORDERBUCH_PARALLEL`), ein paar Sekunden. Alle Items zu messen (`0`) geht,
+bringt aber nichts: ein Papier-Wert ist eine Obergrenze, das Buch kann ihn nur drücken, und
+Platz 80 wird dadurch nicht zu Platz 5. Abschalten mit `SHOW_REASON_ANALYSIS = False`.
+
+**`Gold/h realistisch` ist in der Empfehlung bei jeder Zeile gefüllt.** Bei den gemessenen
+steht die Messung (gelb), bei allen anderen der Papier-Wert (grau, kursiv), und die Spalte
+`Gold/h Quelle` sagt, welches von beiden. Hier stand einmal „leer bei allem Ungemessenen –
+eine Zahl dort wäre eine Behauptung, die niemand geprüft hat": das ergab zehn Zahlen und
+184 leere Zellen, weil dazu noch die Begründung auf `REASON_TOP_N = 10` gekürzt wurde und
+die Empfehlung ihre Zahl aus der gekürzten Liste zog. Jede Messung bleibt jetzt, und der
+Rest ist als Papier gekennzeichnet statt weggelassen.
 
 ### Steuer
 
@@ -255,12 +266,15 @@ Handschuhen (der Perk ist laut Wiki an The fisherman/The lumberjack gekoppelt):
 
 Betrifft **nur die XP-Spalten, nicht Gold/h.**
 
-### Wonach die Top-10 sortiert ist
+### Wonach die Empfehlung sortiert ist
 
 Nicht nach dem gerechneten Gold/h, sondern nach **`Gold/h realistisch`**: eine Stunde
 Produktion wird durch das echte Orderbuch verkauft, Marktsteuer abgezogen, der Rest an den
-NPC. Gemessen werden `REASON_CANDIDATES` (30) Kandidaten, angezeigt die besten
-`REASON_TOP_N` (10).
+NPC. Sortiert wird über die eine Zahl, die im Blatt steht – Messung, wo gemessen wurde,
+sonst der Papier-Wert –, jeweils mit der Abwertung aus `SKILL_RELIABILITY`: ein Papaya-Feld
+mit tiefem Buch steht trotzdem nicht über planbar farmbaren Stämmen. „Gemessene zuerst"
+stand hier früher, und das stellte ein Item, das die Messung auf 50k drückte, über
+ungemessene mit 200k – eine Reihenfolge, die man dem Blatt nicht ansieht.
 
 Der Unterschied ist keine Kosmetik – das gerechnete Gold/h unterstellt, dass du beliebig
 viel zum besten Gebot los wirst:

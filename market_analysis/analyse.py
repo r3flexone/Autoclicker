@@ -31,10 +31,10 @@ try:
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBUCH_PARALLEL, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
-        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES, REASON_TOP_N,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
         SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
@@ -59,10 +59,10 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBUCH_PARALLEL, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
-        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES, REASON_TOP_N,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
         SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
@@ -528,12 +528,44 @@ def merge_worst_case_chain(df_chain_best: pd.DataFrame, df_chain_worst: pd.DataF
     return merged
 
 
+# Ein Orderbuch je Item und Lauf. Drei Stellen fragen denselben Endpoint (Begruendung,
+# Preis-Sensitivitaet, Langzeit-Schnitte), und die zehn Items der Sensitivitaet sind
+# immer auch unter den gemessenen - ohne Zwischenspeicher wurden sie doppelt geholt.
+# Nur Treffer werden gemerkt; ein Fehlschlag darf es beim naechsten Mal nochmal versuchen.
+_orderbuch_cache: dict[int, dict] = {}
+
+
 def fetch_orderbook_depth(item_id: int) -> dict | None:
+    if item_id in _orderbuch_cache:
+        return _orderbuch_cache[item_id]
     try:
         r = requests.get(COMPREHENSIVE_URL_TEMPLATE.format(item_id=item_id), timeout=15)
-        return r.json() if r.status_code == 200 else None
+        depth = r.json() if r.status_code == 200 else None
     except Exception:
         return None
+    if depth is not None:
+        _orderbuch_cache[item_id] = depth
+    return depth
+
+
+def orderbuecher_vorladen(item_ids: list, was: str = "Orderbuecher") -> None:
+    """Holt die Buecher aller Items parallel in den Zwischenspeicher.
+
+    Ein Request dauert ~0,4 s, und 164 davon nacheinander sind eine Minute, in der
+    das Fenster stumm ist - "jetzt geht es ewig". Die Abrufe sind reine Wartezeit
+    aufs Netz, also laufen sie zu mehreren (ORDERBUCH_PARALLEL); die Rechnung
+    danach bleibt sequentiell und findet alles im Speicher. Zwischendurch steht,
+    wie weit es ist - Stille sieht aus wie ein Haenger.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    offen = [int(i) for i in dict.fromkeys(item_ids) if int(i) not in _orderbuch_cache]
+    if not offen:
+        return
+    with ThreadPoolExecutor(max_workers=max(1, ORDERBUCH_PARALLEL)) as pool:
+        for n, _ in enumerate(pool.map(fetch_orderbook_depth, offen), 1):
+            if n % 25 == 0 or n == len(offen):
+                print(f"  {was}: {n}/{len(offen)}")
 
 
 def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
@@ -546,6 +578,7 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     print(f"Hole 1-/7-/30-Tage-Durchschnitt fuer {len(unique_ids)} eindeutige Items "
           "(comprehensive-Endpoint, 1 Request/Item, das dauert einen Moment)...")
 
+    orderbuecher_vorladen(unique_ids, "Langzeit-Schnitte")
     rows = []
     fields_missing_warned = False
     for i, item_id in enumerate(unique_ids, 1):
@@ -605,6 +638,7 @@ def build_price_sensitivity_data(df_chain: pd.DataFrame) -> tuple[pd.DataFrame, 
         "Gold/h (Eigenherstellung)", ascending=False
     ).head(PRICE_SENSITIVITY_TOP_N)
 
+    orderbuecher_vorladen(top["ItemID"].tolist(), "Preis-Sensitivitaet")
     rows = []
     npc_items = []
     for _, row in top.iterrows():
@@ -737,7 +771,7 @@ def chain_reliability(chain_skills: str) -> tuple[float, str]:
 
 
 RECOMMENDATION_COLUMNS = [
-    "Rang", "Item", "Skills", "Gold/h realistisch", "Gold/h gewichtet", "Gold/h",
+    "Rang", "Item", "Skills", "Gold/h realistisch", "Gold/h Quelle", "Gold/h gewichtet", "Gold/h",
     "Verlässlichkeit",
     "Gold/h (ungünstigster Fall)",
     "Sek pro Stück", "Stück/h", "Gold pro Stück",
@@ -832,10 +866,9 @@ def print_recommendation(df_rec: pd.DataFrame, top_n: int = 15):
     print(f"{'#':>3}  {'Item':<26}{'Gold/h':>22}  {'Sek/Stk':>8}  {'an':<11}{'Erloes':>10}  Skills")
     for _, r in liste.head(top_n).iterrows():
         # Abgewertete Ketten mit beiden Zahlen zeigen, sonst wirkt die Reihenfolge falsch
-        gemessen = r.get("Gold/h realistisch")
-        if gemessen is not None and not pd.isna(gemessen):
+        if r.get("Gold/h Quelle") == QUELLE_ORDERBUCH:
             # Gemessen schlaegt gerechnet: das ist die Zahl, nach der auch sortiert wird
-            gold = f"{int(gemessen):,} ({r['Gold/h']:,})"
+            gold = f"{int(r['Gold/h realistisch']):,} ({r['Gold/h']:,})"
         elif r["Verlässlichkeit"] < 1:
             gold = f"{r['Gold/h gewichtet']:,} ({r['Gold/h']:,})"
         else:
@@ -932,7 +965,8 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
 
 
 REASON_COLUMNS = [
-    "Rang", "Item", "Gold/h realistisch", "Gold/h (Papier)", "Verkauf an", "Stück/h",
+    "Rang", "Item", "Gold/h realistisch", "Gold/h (Papier)", "Verlässlichkeit",
+    "Verkauf an", "Stück/h",
     "Bestes Gebot (brutto)", "Menge am besten Gebot", "Deckt Stunden",
     "Schnitt bei 1h Produktion (netto)", "Preisverlust",
     # Wer nicht sofort verkaufen muss: eigenes Angebot einstellen statt ins Gebot
@@ -948,6 +982,20 @@ def _num(value) -> float:
     return 0.0 if value is None or pd.isna(value) else float(value)
 
 
+def reason_kandidaten(df_rec: pd.DataFrame) -> pd.DataFrame:
+    """Welche Items durchs Orderbuch gerechnet werden.
+
+    Alle, die auf dem Papier Gold bringen - ein Item mit Gold/h <= 0 wird durch ein
+    duenneres Buch nicht besser, der Request waere verschenkt. `REASON_CANDIDATES`
+    deckelt das auf die besten N (Papier-Reihenfolge), 0 heisst alle.
+    """
+    if df_rec.empty:
+        return df_rec
+    lohnt = pd.to_numeric(df_rec["Gold/h"], errors="coerce").fillna(0) > 0
+    kandidaten = df_rec[lohnt]
+    return kandidaten.head(REASON_CANDIDATES) if REASON_CANDIDATES else kandidaten
+
+
 def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """Warum lohnt sich ein Item - mit den echten Kaufgebot-Stufen aus dem Player Shop.
 
@@ -955,7 +1003,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     Gebot los wirst. Das stimmt nur, solange dort genug Volumen liegt. Hier wird eine
     Stunde Produktion tatsaechlich durchs Orderbuch gerechnet.
 
-    Kostet REASON_TOP_N Live-Requests (1 pro Item).
+    Kostet 1 Live-Request pro gemessenem Item (s. REASON_CANDIDATES).
 
     Zweiter Rueckgabewert sind die abgerufenen Orderbuecher - die Historie speichert
     sie, statt sie ein zweites Mal zu holen."""
@@ -968,12 +1016,14 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
                   if not df_chain.empty and "Nebenertrag/h" in df_chain.columns else {})
     buecher: list = []      # fuer die Historie - abgerufen wird ohnehin schon
 
-    kandidaten = max(REASON_CANDIDATES, REASON_TOP_N)
-    print(f"\nHole Kaufgebot-Stufen fuer {min(kandidaten, len(df_rec))} Kandidaten "
-          f"(1 Request pro Item), sortiere danach nach 'Gold/h realistisch'...")
+    kandidaten_df = reason_kandidaten(df_rec)
+    print(f"\nHole Kaufgebot-Stufen fuer {len(kandidaten_df)} von {len(df_rec)} Items "
+          f"({ORDERBUCH_PARALLEL} Requests parallel), sortiere danach nach 'Gold/h realistisch'...")
+    orderbuecher_vorladen([id_von_item[n] for n in kandidaten_df["Item"] if n in id_von_item],
+                          "Kaufgebot-Stufen")
 
     rows = []
-    for _, r in df_rec.head(kandidaten).iterrows():
+    for _, r in kandidaten_df.iterrows():
         item_id = id_von_item.get(r["Item"])
         an_npc = r["Verkauf an"] == "NPC-Vendor"
         npc = _num(r["NPC-Preis"])
@@ -1041,6 +1091,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Rang": 0,   # wird nach der Neusortierung vergeben
             "Item": r["Item"],
             "Gold/h (Papier)": r["Gold/h"],
+            "Verlässlichkeit": _num(r.get("Verlässlichkeit")) or 1.0,
             "Verkauf an": r["Verkauf an"],
             "Stück/h": round(stueck_h, 1),
             "Bestes Gebot (brutto)": round(top_preis, 2) if top_preis else None,
@@ -1083,8 +1134,16 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         schluessel = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
     else:
         schluessel = df_reason["Gold/h realistisch"]
+    # Dieselbe Abwertung wie beim Papier-Rang (SKILL_RELIABILITY): unplanbarer
+    # Nachschub soll die Empfehlung nicht anfuehren, nur weil sein Buch gerade
+    # tief ist. Solange nur zehn Items gemessen wurden, fiel das Fehlen kaum auf;
+    # ueber den ganzen Bestand stuende sonst ein Papaya-Feld ganz oben.
+    schluessel = schluessel * df_reason["Verlässlichkeit"]
+    # Jede Messung bleibt im Blatt. Hier stand ein `.head(REASON_TOP_N)`, und weil
+    # die Empfehlung ihre gemessene Zahl aus dieser Liste zieht, fielen die
+    # uebrigen Messungen still weg - bezahlt und nie gezeigt.
     df_reason = df_reason.assign(_rang=schluessel).sort_values(
-        "_rang", ascending=False).drop(columns=["_rang"]).head(REASON_TOP_N)
+        "_rang", ascending=False).drop(columns=["_rang"])
     df_reason["Rang"] = range(1, len(df_reason) + 1)
     df_reason = df_reason.reset_index(drop=True)
     # Die Buecher in der Reihenfolge der gemessenen Rangliste: die Historie hebt nur
@@ -1095,28 +1154,51 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     return df_reason, buecher
 
 
-def sortiere_nach_messung(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.DataFrame:
-    """Bringt die Empfehlung in die Reihenfolge der gemessenen Zahl.
+QUELLE_ORDERBUCH = "Orderbuch"
+QUELLE_PAPIER = "Papier"
 
-    Gemessene Items zuerst (nach 'Gold/h realistisch'), dahinter unveraendert der Rest —
-    der wurde nicht durchs Orderbuch gerechnet und darf deshalb nicht so tun, als waere
-    er geprueft. `Rang` wird durchgezaehlt, damit Empfehlung und Begruendung dieselbe
-    Nummer meinen.
+
+def sortiere_nach_messung(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.DataFrame:
+    """Bringt die Empfehlung in die Reihenfolge der einen Zahl, die im Blatt steht.
+
+    `Gold/h realistisch` ist bei jeder Zeile gefuellt: gemessen, wo das Orderbuch
+    abgefragt wurde, sonst der Papier-Wert - und die Spalte `Gold/h Quelle` sagt,
+    welches von beiden. Hier stand einmal "leer bei allem Ungemessenen, eine Zahl
+    dort waere eine Behauptung"; das ergab ein Blatt mit zehn Zahlen und 184 leeren
+    Zellen, und die Rueckmeldung dazu war "es steht ja nicht mal Gold/h da". Die
+    Liste ist nach Papier-Gold/h vorsortiert, die Messung der besten N reicht - der
+    Rest steht mit seinem Papier-Wert da, als solcher gekennzeichnet.
+
+    Sortiert wird ueber DIESELBE Zahl, gewichtet mit der Verlaesslichkeit
+    (SKILL_RELIABILITY) - bei den Gemessenen die Messung, sonst `Gold/h gewichtet`.
+    "Gemessene zuerst" stand hier vorher, und das stellte ein Item, das die Messung
+    auf 50k drueckte, ueber ungemessene mit 200k - eine Rangfolge, die man dem
+    Blatt nicht mehr ansieht. Ein Papier-Wert ist eine Obergrenze (das Buch kann
+    ihn nur druecken), also ist er als Sortierschluessel die ehrliche Annahme.
+
+    `Rang` wird durchgezaehlt und in `df_reason` zurueckgeschrieben, damit
+    Empfehlung und Begruendung dieselbe Nummer meinen.
     """
-    if df_rec.empty or df_reason.empty:
+    if df_rec.empty:
         return df_rec
-    reihenfolge = {item: i for i, item in enumerate(df_reason["Item"])}
-    src = df_rec.copy()
-    src["_pos"] = src["Item"].map(reihenfolge)
-    gemessen = src[src["_pos"].notna()].sort_values("_pos")
-    rest = src[src["_pos"].isna()]
-    raus = pd.concat([gemessen, rest], ignore_index=True).drop(columns=["_pos"])
-    raus["Rang"] = range(1, len(raus) + 1)
-    # Die gemessene Zahl mitnehmen, damit das Empfehlungs-Blatt fuer sich steht.
-    # Leer bei allem, was nicht durchs Orderbuch gerechnet wurde - eine Zahl dort
-    # waere eine Behauptung, die niemand geprueft hat.
+    raus = df_rec.copy()
+    if df_reason.empty:
+        raus["Gold/h realistisch"] = raus["Gold/h"]
+        raus["Gold/h Quelle"] = QUELLE_PAPIER
+        return raus[[c for c in RECOMMENDATION_COLUMNS if c in raus.columns]]
     gemessene_werte = dict(zip(df_reason["Item"], df_reason["Gold/h realistisch"]))
-    raus["Gold/h realistisch"] = raus["Item"].map(gemessene_werte)
+    messung = raus["Item"].map(gemessene_werte)
+    raus["Gold/h realistisch"] = messung.fillna(raus["Gold/h"])
+    raus["Gold/h Quelle"] = messung.notna().map({True: QUELLE_ORDERBUCH, False: QUELLE_PAPIER})
+    faktor = pd.to_numeric(raus["Verlässlichkeit"], errors="coerce").fillna(1.0)
+    schluessel = (messung * faktor).fillna(pd.to_numeric(raus["Gold/h gewichtet"], errors="coerce"))
+    raus = raus.assign(_rang=schluessel).sort_values(
+        "_rang", ascending=False, kind="stable").drop(columns=["_rang"]).reset_index(drop=True)
+    raus["Rang"] = range(1, len(raus) + 1)
+    raenge = dict(zip(raus["Item"], raus["Rang"]))
+    df_reason["Rang"] = df_reason["Item"].map(raenge).fillna(df_reason["Rang"]).astype(int)
+    df_reason.sort_values("Rang", inplace=True)
+    df_reason.reset_index(drop=True, inplace=True)
     return raus[[c for c in RECOMMENDATION_COLUMNS if c in raus.columns]]
 
 
@@ -1149,6 +1231,7 @@ SORT_COLUMN_PER_SHEET = {
 HIGHLIGHT_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
 HIGHLIGHT_HEADER_FILL = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
 HIGHLIGHT_HEADER_FONT = Font(bold=True)
+PAPIER_FONT = Font(italic=True, color="808080")   # ungemessener Papier-Wert
 
 # Auffaellige Rohdaten-Zeilen werden markiert: Zeile orange, Grund-Feld rot.
 ROW_FLAG_FILL = PatternFill(start_color="F6B26B", end_color="F6B26B", fill_type="solid")     # Zeile: kraeftiges Orange
@@ -1235,8 +1318,17 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
             col_letter = get_column_letter(col_idx)
             ws[f"{col_letter}1"].fill = HIGHLIGHT_HEADER_FILL
             ws[f"{col_letter}1"].font = HIGHLIGHT_HEADER_FONT
+            # In der Empfehlung traegt die markierte Spalte zwei Sorten Zahl: gemessen
+            # (gelb) und Papier (grau, kursiv). Ohne den Unterschied im Blatt selbst
+            # saehe ein Papier-Wert aus wie ein geprueftes Ergebnis.
+            quelle_idx = next((c.column for c in header_cells if c.value == "Gold/h Quelle"), None)
+            quelle_letter = get_column_letter(quelle_idx) if quelle_idx else None
             for row in range(2, ws.max_row + 1):
-                ws[f"{col_letter}{row}"].fill = HIGHLIGHT_FILL
+                zelle = ws[f"{col_letter}{row}"]
+                if quelle_letter and ws[f"{quelle_letter}{row}"].value == QUELLE_PAPIER:
+                    zelle.font = PAPIER_FONT
+                else:
+                    zelle.fill = HIGHLIGHT_FILL
 
         # Rohdaten: jede Zeile mit Status != OK komplett orange, das verantwortliche Feld
         # ("AusschlussGrund") zusaetzlich rot. Gold/h-Zelle bleibt vom gelben Sortier-
@@ -1559,7 +1651,8 @@ def main():
     buecher: list = []
     if SHOW_REASON_ANALYSIS and not df_recommendation.empty:
         df_reason, buecher = build_reason_df(df_recommendation, df_chain)
-        df_recommendation = sortiere_nach_messung(df_recommendation, df_reason)
+    # Auch ohne Messung: die Spalte steht bei jeder Zeile, dann eben als Papier-Wert.
+    df_recommendation = sortiere_nach_messung(df_recommendation, df_reason)
 
     print_recommendation(df_recommendation)
     if not df_reason.empty:

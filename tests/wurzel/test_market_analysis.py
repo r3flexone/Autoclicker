@@ -523,5 +523,121 @@ class ExtendedJsonTest(unittest.TestCase):
             extended_json.laden('{"a": NumberLong(1), "b": }')
 
 
+try:                                    # braucht pandas/requests/openpyxl - lokal ja, in CI nicht
+    from market_analysis import analyse as _analyse
+    import pandas as _pd
+except ImportError:                     # pragma: no cover - wird gesagt, nicht verschwiegen
+    _analyse = _pd = None
+
+
+@unittest.skipUnless(_analyse, "pandas/requests/openpyxl fehlen - Messungs-Rangfolge uebersprungen")
+class MessungsRangfolgeTest(unittest.TestCase):
+    """Jede Messung kommt ins Blatt, und die Rangfolge haelt ihr Versprechen.
+
+    Gemeldet als „nur zehn Items haben Gold/h, der Rest ist leer": gemessen wurden
+    30, die Begruendung auf zehn gekuerzt, und die Empfehlung zog ihre Zahl aus der
+    gekuerzten Liste. Dazu wendete der gemessene Rang die Abwertung aus
+    `SKILL_RELIABILITY` nie an - bei zehn Zeilen unsichtbar, ueber den ganzen
+    Bestand ein Papaya-Feld auf Platz 1.
+    """
+
+    @staticmethod
+    def _empfehlung(zeilen):
+        spalten = ["Rang", "Item", "Skills", "Gold/h", "Verkauf an", "NPC-Preis",
+                   "Stück/h", "Erlös pro Stück", "Spieler-Gebot (brutto)",
+                   "Verlässlichkeit", "Warnung"]
+        df = _pd.DataFrame([dict(zip(spalten, z)) for z in zeilen])
+        df["Gold/h gewichtet"] = df["Gold/h"] * df["Verlässlichkeit"]
+        return df
+
+    def test_kandidaten_sind_alle_mit_gold_und_der_deckel_gilt(self):
+        df = self._empfehlung([
+            (1, "a", "Mining", 300, "NPC-Vendor", 3, 100, 3, None, 1.0, None),
+            (2, "b", "Mining", 200, "NPC-Vendor", 2, 100, 2, None, 1.0, None),
+            (3, "c", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
+            (4, "d", "Mining", -50, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
+        ])
+        alt = _analyse.REASON_CANDIDATES
+        try:
+            _analyse.REASON_CANDIDATES = 0
+            self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a", "b"])
+            _analyse.REASON_CANDIDATES = 1
+            self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a"])
+        finally:
+            _analyse.REASON_CANDIDATES = alt
+
+    def test_jede_messung_kommt_in_die_empfehlung(self):
+        """Zwoelf gemessen -> zwoelf Werte im Blatt, nicht die ersten zehn.
+
+        Mehr als zehn, weil genau dort der alte `.head(REASON_TOP_N)` schnitt."""
+        namen = [f"item{i:02d}" for i in range(1, 13)]
+        df_rec = self._empfehlung([
+            (i, name, "Mining", 200 - i, "NPC-Vendor", 2 - i / 100, 100, 2, None, 1.0, None)
+            for i, name in enumerate(namen, start=1)] + [
+            (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
+        df_chain = _pd.DataFrame({"Item": namen + ["nichts"], "ItemID": range(1, 14),
+                                  "RawMaterialCost/h": 0.0, "Nebenertrag/h": 0.0})
+        alt = _analyse.fetch_orderbook_depth
+        try:
+            _analyse.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
+            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+        finally:
+            _analyse.fetch_orderbook_depth = alt
+        self.assertEqual(len(df_reason), 12)
+        raus = _analyse.sortiere_nach_messung(df_rec, df_reason)
+        quelle = dict(zip(raus["Item"], raus["Gold/h Quelle"]))
+        self.assertEqual(sum(q == _analyse.QUELLE_ORDERBUCH for q in quelle.values()), 12)
+        # Das Ungemessene steht trotzdem da - mit Papier-Wert und als solches markiert.
+        self.assertEqual(int(raus["Gold/h realistisch"].notna().sum()), 13)
+        self.assertEqual(quelle["nichts"], _analyse.QUELLE_PAPIER)
+        self.assertEqual(list(raus["Item"][:2]), ["item01", "item02"])
+        self.assertEqual(list(raus["Item"])[-1], "nichts")
+        self.assertEqual(list(raus["Rang"]), list(range(1, 14)))
+        # Und die Begruendung traegt dieselben Nummern wie die Empfehlung.
+        self.assertEqual(dict(zip(df_reason["Item"], df_reason["Rang"])),
+                         {k: v for k, v in zip(raus["Item"], raus["Rang"]) if k != "nichts"})
+
+    def test_sortiert_wird_ueber_die_angezeigte_zahl(self):
+        """Ein gemessenes Item, das die Messung auf 50 drueckt, steht unter einem
+        ungemessenen mit 200 auf dem Papier - nicht "Gemessene zuerst"."""
+        df_rec = self._empfehlung([
+            (1, "gedrueckt", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None),
+            (2, "papier", "Mining", 200, "Spieler", 0, 100, 2, 2, 1.0, None),
+        ])
+        df_reason = _pd.DataFrame({"Rang": [1], "Item": ["gedrueckt"], "Gold/h realistisch": [50]})
+        raus = _analyse.sortiere_nach_messung(df_rec, df_reason)
+        self.assertEqual(list(raus["Item"]), ["papier", "gedrueckt"])
+        self.assertEqual(list(raus["Gold/h realistisch"]), [200, 50])
+        self.assertEqual(list(raus["Gold/h Quelle"]), [_analyse.QUELLE_PAPIER, _analyse.QUELLE_ORDERBUCH])
+        self.assertEqual(int(df_reason.loc[0, "Rang"]), 2)
+
+    def test_ohne_messung_steht_der_papierwert_da(self):
+        df_rec = self._empfehlung([(1, "a", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None)])
+        raus = _analyse.sortiere_nach_messung(df_rec, _pd.DataFrame())
+        self.assertEqual(list(raus["Gold/h realistisch"]), [300])
+        self.assertEqual(list(raus["Gold/h Quelle"]), [_analyse.QUELLE_PAPIER])
+
+    def test_gemessener_rang_wendet_die_verlaesslichkeit_an(self):
+        """NPC-Verkauf, kein Netz: gemessen = NPC-Preis x Stueck/h. Farming (0,5)
+        bringt gemessen mehr und steht trotzdem hinter dem planbaren Item."""
+        df_rec = self._empfehlung([
+            (1, "papaya", "Farming", 200, "NPC-Vendor", 2, 100, 2, None, 0.5, None),
+            (2, "oak", "Woodcutting", 150, "NPC-Vendor", 1.5, 100, 1.5, None, 1.0, None),
+        ])
+        df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
+                                  "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
+        alt = _analyse.fetch_orderbook_depth
+        try:
+            _analyse.fetch_orderbook_depth = lambda item_id: None
+            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+        finally:
+            _analyse.fetch_orderbook_depth = alt
+        self.assertEqual(list(df_reason["Item"]), ["oak", "papaya"])
+        self.assertEqual(list(df_reason["Rang"]), [1, 2])
+        # Der WERT bleibt ungewichtet - abgewertet wird nur der Rang.
+        self.assertEqual(int(df_reason.set_index("Item").loc["papaya", "Gold/h realistisch"]), 200)
+        self.assertEqual(float(df_reason.set_index("Item").loc["papaya", "Verlässlichkeit"]), 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()
