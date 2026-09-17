@@ -602,6 +602,22 @@ umgekehrt**, dieselbe Richtung wie beim Bericht-Reiter. Ein gesetzter Pfad
 wird dabei aktualisiert und nicht überschrieben, und weder ein Netzfehler
 noch eine leere Antwort fassen die vorhandene Datei an.
 
+**Die API schreibt Mongo-Shell-JSON, und ein Spiel-Update darf das Werkzeug
+nicht stoppen.** `Configuration/game-data` kommt mit `ObjectId("…")`,
+`NumberLong(0)` und womöglich morgen etwas Drittem. Der Bereiniger war eine
+Regex, die genau `ObjectId` kannte, dreimal ausgeschrieben (`tools/katalog.py`,
+`market_analysis/analyse.py`, `market_analysis/apicheck.py`) — als die
+Achievements `NumberLong` mitbrachten, starben alle drei an einem Feld, das
+keiner von ihnen liest, und der Katalog-Knopf im Studio meldete „Nicht
+erreichbar". Jetzt ist es ein kleiner Scanner (`bereinige_extended_json` in
+`tools/katalog.py`, Zwilling `market_analysis/extended_json.py` — bewusst
+kopiert, die beiden Teile importieren einander nicht): Bekanntes wird
+übersetzt, ein unbekanntes `Name(…)` als sein Wert übernommen und **gemeldet**
+— das Werkzeug auf stderr, der Studio-Knopf in der Statuszeile (`art: warn`).
+JSON-Strings werden dabei übersprungen; ein `ObjectId(` in einer
+Item-Beschreibung bleibt Text. Auf beiden Seiten stehen dieselben Testfälle,
+damit die Kopien nicht auseinanderlaufen.
+
 **Das hängt NICHT am LLM.** Die Kategorie folgt aus dem *Namen* — heisst ein
 Item „Citadel Helmet", steht im Katalog „Helm", und ob den Namen ein Mensch
 getippt oder ein Modell vorgeschlagen hat, ist gleichgültig. „Aus Katalog

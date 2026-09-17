@@ -6596,8 +6596,10 @@ async function cfgAktionRufen(key, m) {
   const antwort = await mitArbeit("frage", m.aktion.befehl, null,
     m.aktion.text, "Das kann ein paar Sekunden dauern.");
   if (!antwort) return;
+  // Geklappt, aber mit Vorbehalt (ein Konstrukt in der Antwort, das das
+  // Werkzeug nicht kannte): dann sagt die Bruecke die Art selbst.
   setzeStatus({text: antwort.meldung || "Fertig.",
-               art: antwort.ok ? "ok" : "err"});
+               art: antwort.art || (antwort.ok ? "ok" : "err")});
   // Der Wert im Feld kann sich dabei geaendert haben (der Pfad wird
   // eingetragen) — frisch lesen statt den alten Stand stehen zu lassen.
   if (antwort.ok) zeichneEinstellungen(true);

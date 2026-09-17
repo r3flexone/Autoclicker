@@ -33,6 +33,11 @@ from collections import Counter
 
 import requests
 
+try:  # Paketimport (`python -m market_analysis.apicheck`)
+    from .extended_json import laden as extended_json_laden
+except ImportError:  # Skriptstart (`python market_analysis/apicheck.py`)
+    from extended_json import laden as extended_json_laden  # type: ignore
+
 MARKET_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest?includeAveragePrice=true"
 MARKET_ALL_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/all"
 GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
@@ -180,18 +185,26 @@ def load_game():
     if resp is None:
         report["game_data"] = {"error": "nicht erreichbar"}
         return None
-    raw = re.sub(r'ObjectId\("([a-f0-9]+)"\)', r'"\1"', resp.text)
+    # Dieselbe Uebersetzung wie in analyse.py - und genau das ist hier die
+    # Pruefung: kennt sie alle Konstrukte, die die API heute schickt? Ein
+    # unbekanntes ist kein Abbruch, sondern ein Befund (siehe extended_json.py).
     try:
-        game = json.loads(raw)
+        game, hinweise = extended_json_laden(resp.text)
     except json.JSONDecodeError as exc:
-        bad(f"Kein gueltiges JSON nach ObjectId-Bereinigung: {exc}")
+        bad(f"Kein gueltiges JSON nach der Extended-JSON-Uebersetzung: {exc}")
         # Kontext um die Fehlerstelle, damit man sieht, welches Konstrukt stoert
         start = max(0, exc.pos - 200)
-        info(f"Kontext: ...{raw[start:exc.pos + 200]}...")
+        info(f"Kontext: ...{resp.text[start:exc.pos + 200]}...")
         report["game_data"] = {"error": f"JSONDecodeError: {exc}"}
         return None
+    for hinweis in hinweise:
+        bad(hinweis)
+    konstrukte = sorted(set(re.findall(r"\b([A-Z][A-Za-z0-9]+)\s*\(", resp.text)))
+    info(f"Extended-JSON-Konstrukte in der Antwort: {konstrukte or 'keine'}")
     ok(f"geladen, Top-Level-Keys: {sorted(game.keys())}")
-    report["game_data"] = {"top_level_keys": sorted(game.keys())}
+    report["game_data"] = {"top_level_keys": sorted(game.keys()),
+                           "extended_json_konstrukte": konstrukte,
+                           "extended_json_unbekannt": hinweise}
     return game
 
 

@@ -579,8 +579,12 @@ class BridgeServicesMixin:
                     "meldung": f"tools/katalog.py nicht gefunden ({e})."}
 
         ziel = Path(str(CONFIG.scan_catalog_file or "").strip() or STANDARD_ZIEL)
+        # Was das Werkzeug an der Antwort nicht kannte, gehoert in die
+        # Statuszeile — auf stderr saehe es im Studio niemand, und ein neues
+        # Konstrukt nach einem Spiel-Update ist ein Hinweis, kein Abbruch.
+        hinweise: list = []
         try:
-            katalog = baue_katalog(hole_spieldaten())
+            katalog = baue_katalog(hole_spieldaten(hinweise=hinweise))
         except Exception as e:
             # Netz, DNS, ein geaendertes Antwortformat — alles derselbe Fall
             # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
@@ -598,6 +602,10 @@ class BridgeServicesMixin:
             return {"ok": False, "meldung": f"Konnte '{ziel}' nicht schreiben: {e}"}
 
         meldung = _zusammenfassung(katalog).splitlines()[0]
+        art = "ok"
+        if hinweise:
+            meldung += " — " + " ".join(hinweise)
+            art = "warn"
         if not str(CONFIG.scan_catalog_file or "").strip():
             erg = self.config_schreiben({"werte": {"scan_catalog_file": str(ziel)}})
             if not erg.get("ok"):
@@ -605,9 +613,9 @@ class BridgeServicesMixin:
                         "meldung": f"{meldung} — geschrieben nach '{ziel}', aber der "
                                    f"Pfad liess sich nicht eintragen: "
                                    f"{erg.get('meldung', '')}"}
-            return {"ok": True, "meldung": f"{meldung}. Eingetragen: {ziel}",
+            return {"ok": True, "art": art, "meldung": f"{meldung}. Eingetragen: {ziel}",
                     "pfad": str(ziel)}
-        return {"ok": True, "meldung": f"{meldung}. Aktualisiert: {ziel}",
+        return {"ok": True, "art": art, "meldung": f"{meldung}. Aktualisiert: {ziel}",
                 "pfad": str(ziel)}
 
     def befehl_offen(self, daten: Optional[dict] = None) -> bool:

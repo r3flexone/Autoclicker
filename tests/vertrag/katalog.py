@@ -540,6 +540,42 @@ try:
           _erg4_kh["ok"] is False
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
+    # --- Ein Spiel-Update darf den Knopf nicht stoppen ---------------------
+    # Die API schreibt Mongo-Shell-JSON, und der Bereiniger kannte genau EIN
+    # Konstrukt: als `NumberLong(0)` in den Achievements auftauchte, starb der
+    # Knopf an einem Feld, das er nie liest. Bekanntes wird uebersetzt,
+    # Unbekanntes uebernommen und GEMELDET — dieselben Faelle wie beim
+    # Zwilling `market_analysis/extended_json.py`, damit die beiden Kopien
+    # nicht auseinanderlaufen.
+    _roh_kh = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
+               ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
+               ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
+    _json_kh, _unb_kh = _tk_kh.bereinige_extended_json(_roh_kh)
+    _daten_kh = _json_mit.loads(_json_kh)
+    check("ObjectId wird Text, NumberLong Zahl — mit und ohne Anfuehrungszeichen",
+          _daten_kh["_id"] == "61e2b1b0" and _daten_kh["n"] == 0
+          and _daten_kh["m"] == 42 and _daten_kh["d"] == 1.5)
+    check("ein Konstrukt IN einem String bleibt, was es ist",
+          _daten_kh["t"] == 'nutze ObjectId("x") hier')
+    check("ein unbekanntes mit einem Skalar wird der Skalar", _daten_kh["u"] == 3)
+    check("eines mit mehreren Argumenten wird Text statt Abbruch",
+          _daten_kh["w"] == "Timestamp(1, 2)" and _daten_kh["leer"] is None)
+    check("und nur das Unbekannte wird gemeldet",
+          _unb_kh == {"NumberFoo": 1, "Timestamp": 1})
+
+    # Der Knopf reicht die Meldung in die Statuszeile — auf stderr saehe sie
+    # im Studio niemand — und schreibt die Datei trotzdem.
+    def _mit_hinweis_kh(*a, hinweise=None, **kw):
+        if hinweise is not None:
+            hinweise.extend(_tk_kh.extended_json_hinweise({"NumberFoo": 3}))
+        return _SPIELDATEN_kh
+
+    _tk_kh.hole_spieldaten = _mit_hinweis_kh
+    _erg5_kh = _bau_kh().katalog_holen()
+    check("der Knopf schreibt trotzdem und sagt, was fremd war",
+          _erg5_kh["ok"] and _erg5_kh.get("art") == "warn"
+          and "NumberFoo" in _erg5_kh["meldung"] and "2 Items" in _erg5_kh["meldung"])
+
     # --- Ein Zaehler am Namen darf die Kategorie nicht kosten ---------------
     # **"Godlike Bow 2" steht nicht im Katalog**, sein Gegenstand aber schon.
     # An einem echten Bestand standen so acht Items ohne Kategorie neben ihrem
