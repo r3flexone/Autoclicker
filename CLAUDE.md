@@ -7,8 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Autoclicker für Windows und Linux/X11 für das Spiel "Idle Clans".
 Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor,
 OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection
-(Ollama / LM Studio). Wayland wird nicht unterstützt. Code-Sprache und alle
-UI-Texte sind **Deutsch** — neue Strings ebenso.
+(Ollama / LM Studio). Wayland wird nicht unterstützt. **Bezeichner im Code sind
+Englisch, alles Gelesene ist Deutsch** — Kommentare, Docstrings, UI-Texte,
+Meldungen, Testbeschreibungen; neue Strings ebenso. Der Bestand ist noch
+grösstenteils deutsch benannt und wird phasenweise umgestellt (s. „Bezeichner
+auf Englisch" bei den Konventionen).
 
 ## Run / Lint / Test
 
@@ -43,6 +46,8 @@ python tools/log_report.py      # Wertet die Session-Logs aus (welcher Schritt h
                                 # --letzte = nur die neueste Session
 python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
+python tools/rename.py alt=neu  # Benennt einen Bezeichner im ganzen Repo um — token-basiert,
+                                # Kommentare bleiben Prosa (--dry-run, --strings, s. Konventionen)
 ```
 
 **Ein Kommando, drei Schichten: `python tests/alle_tests.py`.**
@@ -3637,6 +3642,70 @@ Boss-/Icon-Scan-Editor wählen ihre Scan-Region über `editors/_detection_captur
 - **Keine neuen Markdown-Dateien**, ausser explizit gefragt. `IDEAS.md` ist das Backlog für noch nicht gebaute Features mit Nutzen+Tradeoff.
 - **Commit-Messages auf Deutsch**, knapper Imperativ-Stil, mehrzeilig erlaubt für Begründung.
 - **Branch-Konvention**: Feature-Branches `claude/<thema>-<hash>`, Push direkt auf den Branch (kein PR ohne expliziten Auftrag).
+
+### Bezeichner auf Englisch, Sprache auf Deutsch
+
+**Was der Rechner liest, ist Englisch; was der Mensch liest, ist Deutsch.**
+Funktionen, Klassen, Variablen, Parameter, Modul- und Dateinamen, JS-Funktionen,
+CSS-Klassen, die Methoden und JSON-Schlüssel der Brücke, die Befehle des
+Briefkastens, Konsolenbefehle und CLI-Flags — Englisch. Kommentare, Docstrings,
+UI-Texte, Meldungen, Hilfetexte, Testbeschreibungen (`check("…")`,
+`section("…")`), Commit-Messages und diese Datei — Deutsch. Ein String, der
+angezeigt wird, ist Sprache; ein String, der etwas *adressiert*
+(`ruf("block_setzen")`, `"start_manuell"`, ein Dispatch-Schlüssel), ist Code.
+
+**Der Bestand ist noch deutsch benannt, und die Umstellung läuft phasenweise**
+— nicht alles auf einmal, sondern je ein grüner PR: (1) Werkzeug und diese
+Regel, (2) Python-Interna unter `autoclicker/`, (3) Brücke und Seite zusammen
+(die Tests halten beide Seiten gegeneinander, also gehen sie nur gemeinsam),
+(4) Modulnamen per `git mv` samt Briefkasten und Statusdateien, (5) `tests/`,
+`tools/`, `market_analysis/`, (6) Doku-Durchgang. Dazwischen gilt: **wer eine
+Stelle anfasst, benennt die deutschen Namen darin um — samt allen Aufrufern.**
+Eine halb umbenannte Funktion (Definition englisch, drei Aufrufer deutsch) gibt
+es nicht; flake8 `--select=F` findet den Rest, die Suite den Rest vom Rest.
+
+**Umbenannt wird mit `tools/rename.py`, nie mit Suchen/Ersetzen.** `neu`, `alt`,
+`leer`, `punkt`, `zeile` sind zugleich Wörter in den Kommentaren, und ein
+Textersatz macht aus „ist neu" ein „ist new" — der Fehler, den niemand sieht.
+Das Werkzeug liest Python mit `tokenize` und JavaScript mit einem eigenen Lexer
+und schreibt **nur Namens-Token** um (auch nach `.`, in `${…}` und als
+Objekt-Schlüssel). In Prosa — Kommentare, Docstrings, Markdown — ersetzt es
+nur, was erkennbar ein Verweis ist: in Backticks, gefolgt von `(`, oder ein
+Name mit Unterstrich (`punkt_setzen` ist nie ein deutsches Wort). Strings
+folgen derselben Regel; `--strings` nimmt zusätzlich die Strings, die den Namen
+als Ganzes oder als Pfad-Glied tragen (`"laden"`, `"autoclicker.befehl"`) — das
+sind die Brücken-Aufrufe der Seite, die Dispatch-Tabellen und die Gegenproben
+in `tests/mutationspruefung.py`, die per Namensstring monkeypatchen. Vorher
+prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
+zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
+findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.
+
+**Nicht Teil der Umstellung sind Schlüssel in gespeicherten Dateien** —
+`config.json`, `sequence.json`, `katalog.json`, `marktwert.json`. Das sind
+Daten, kein Code; wer sie umbenennt, verstellt den Bestand des Nutzers. Sie
+bleiben, bis eine Formatänderung sie ohnehin anfasst — und dann gilt die Regel
+von oben: Default in der Dataclass, kein Migrationsschritt.
+
+**Ein Begriff, ein Wort.** Damit sechs Phasen nicht sechs Vokabeln erzeugen,
+gilt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
+
+| deutsch | englisch | | deutsch | englisch |
+|---|---|---|---|---|
+| Punkt | point | | Momentaufnahme | snapshot |
+| Stelle | position | | Briefkasten | mailbox |
+| Sequenz / Phase / Block | sequence / phase / step | | Befehl (Briefkasten) | command |
+| Bestand | inventory | | Lauf / Laufstatus | run / run status |
+| Vorlage | template | | Haltepunkt | breakpoint |
+| Aufnahme | recording | | Klick-Runde | reclick round |
+| Scan / Slot / Item | scan / slot / item | | Werkzeuge / Bericht / Teilen | tools / report / share |
+| Brücke | bridge | | Einstellungen | settings |
+| Maske (Listeneintrag) | card | | Kachel | tile |
+| Rückgängig | undo | | Marke | badge |
+| laden / speichern | load / save | | zeichnen | render |
+| setzen / anlegen / löschen | set / create / delete | | prüfen | check |
+| holen | fetch | | melden | report |
+| wählen / Auswahl | select / selection | | Treffer | match |
+| Verwendung | usage | | Ertrag | yield |
 
 ### Altlasten werden entfernt, nicht mitgeschleppt
 
