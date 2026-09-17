@@ -441,6 +441,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "verify_until_gone": vc.until_gone if vc else False,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
+            "breakpoint": bool(s.breakpoint),
             "recorded_color": None if klick_am_punkt or not s.recorded_color
                               else list(s.recorded_color)}
     return _ohne_defaults(voll, _STEP_DEFAULTS)
@@ -482,6 +483,7 @@ _STEP_DEFAULTS = {
     "else_name": "",
     "screenshot_only": False,
     "screenshot_region": None,
+    "breakpoint": False,
     "recorded_color": None,
 }
 
@@ -609,6 +611,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,
+            breakpoint=bool(s.get("breakpoint", False)),
             recorded_color=recorded_color,
         )
         steps.append(step)

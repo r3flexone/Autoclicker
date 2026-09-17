@@ -323,6 +323,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .marke-klein{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
   border:1px solid #0C0F1440;color:#0C0F14AA;flex:none}
 .marke-klein.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
+/* Ein Haltepunkt ist ein Zustand, den man beim Ueberfliegen finden muss —
+   deshalb dunkel gefuellt statt nur umrandet: ueber jeder Typfarbe gleich
+   sichtbar, und nicht mit der Warnung (hell) zu verwechseln. */
+.marke-klein.halt{color:#FFFFFF;border-color:#0C0F14;background:#0C0F14CC}
 
 /* Die Einfügestelle liegt zwischen zwei Karten und ist unsichtbar, bis etwas
    darüber schwebt. Die negativen Ränder heben die beiden Flex-Abstände wieder

@@ -945,6 +945,11 @@ function zeichneKarte(phase, block) {
       block.titel ? el("span", {class: "karte-titel"}, block.titel) : null,
       block.prueft ? el("span", {class: "marke-klein", title: "prüft nach der Aktion nach"},
                         "prüft") : null,
+      // Der Haltepunkt steht auf der Karte, nicht nur im Inspektor: „wo hält
+      // es an" ist die Frage, die man beim Überfliegen von fünfzig Karten hat.
+      block.haltepunkt ? el("span", {class: "marke-klein halt",
+                                     title: "Haltepunkt — der Lauf hält vor diesem Block an"},
+                            "⏸ halt") : null,
       block.warnung ? el("span", {class: "marke-klein warn"}, block.warnung) : null,
       el("span", {class: "karte-nr"}, String(block.zeile + 1).padStart(2, "0"))),
     leib);
@@ -1440,20 +1445,27 @@ function zeichneAbschluss(ziel, z) {
   ziel.appendChild(steuerung(false, z));
 }
 
-/** Der Worker wartet wirklich auf diese vier Antworten; keine Konsolentaste. */
+/** Der Worker wartet wirklich auf diese Antworten; keine Konsolentaste.
+ *
+ * Dieselbe Tafel für zwei Anlässe: den manuellen Modus (hält vor JEDEM Block)
+ * und einen Haltepunkt (hält vor DIESEM). Der Unterschied ist die dritte
+ * Kachel — im Schrittmodus schaltet sie ihn aus („Normal weiter"), am
+ * Haltepunkt schaltet sie ihn ein („Ab hier schrittweise"). Das Weiterlaufen
+ * heisst am Haltepunkt „Weiter", denn es fragt danach nicht wieder. */
 function manuelleSteuerung(m) {
   const knopf = (text, aktion, klasse) => el("button", {
     class: "btn" + (klasse ? " " + klasse : ""),
     onclick: () => laufSchicken("manuell_aktion", {aktion: aktion}),
   }, text);
+  const halt = !!m.haltepunkt;
   return el("section", {class: "tafel manuell-tafel"},
-    el("span", {class: "ueberschrift"}, "MANUELLER SCHRITTMODUS"),
+    el("span", {class: "ueberschrift"}, halt ? "⏸ HALTEPUNKT" : "MANUELLER SCHRITTMODUS"),
     el("b", {}, m.titel || "Aktueller Block"),
     el("p", {class: "hinweis"}, m.aktion || ""),
     el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
-      knopf("▶ Ausführen", "run", "haupt"),
+      knopf(halt ? "▶ Weiter" : "▶ Ausführen", "run", "haupt"),
       knopf("↷ Überspringen", "skip"),
-      knopf("Normal weiter", "continue"),
+      halt ? knopf("Ab hier schrittweise", "step") : knopf("Normal weiter", "continue"),
       knopf("■ Stoppen", "stop", "gefahr")));
 }
 
@@ -1572,6 +1584,15 @@ function zeichneInspektor() {
                (v) => ruf("block_setzen", {feld: "delay_max", wert: v}),
                {step: "0.1", min: "0"})));
   }
+
+  // Der Haltepunkt gilt für JEDEN Typ — auch ein Screenshot kann die Stelle
+  // sein, an der man einmal hinsehen will, bevor es weitergeht.
+  ziel.appendChild(schalter("Haltepunkt — vor diesem Block anhalten", b.breakpoint,
+    (an) => ruf("block_setzen", {feld: "breakpoint", wert: an}),
+    "Der Lauf hält hier an und fragt — im Live-Run als Tafel (weiter, überspringen, "
+    + "ab hier schrittweise, stoppen), in der Konsole per Taste. CTRL+ALT+G heisst "
+    + "„weiter“. In einer Loop-Phase hält er in jedem Zyklus; ausschalten, wenn er "
+    + "seinen Dienst getan hat.", "haltepunkt"));
 
   // Ein Warte-Block ohne Trigger beobachtet nichts — dann gibt es auch keine
   // Stelle zu zeigen.
