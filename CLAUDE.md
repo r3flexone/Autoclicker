@@ -318,6 +318,41 @@ sofort in `config.json` persistiert. Regeln:
 - Im Worker nie `state.config.debug_log` direkt lesen, sondern `is_log_debug(state)` —
   sonst schweigt die Stelle in Stufe 2 und im manuellen Modus.
 
+**Ein Haltepunkt ist das Gate des manuellen Modus an genau EINER Stelle**
+(`SequenceStep.breakpoint`, im Studio der Schalter „Haltepunkt" am Block, in der
+Konsole `break <Nr>`, auf der Karte die Marke „⏸ halt"). Der manuelle Modus hält
+vor jedem Block; der Haltepunkt hält vor diesem einen, und danach läuft die
+Sequenz normal weiter. Es ist bewusst **kein** zweiter Mechanismus neben
+`step_gate()`: dieselbe Rückfrage, dieselbe Tafel im Live-Run, dieselben
+Entscheidungen — nur die dritte Kachel wechselt die Richtung („Normal weiter"
+schaltet den Schrittmodus aus, „Ab hier schrittweise" schaltet ihn ein). Die
+fünf Entscheidungen stehen als `GATE_BEFEHLE` an einer Stelle; Konsole und
+Studio sind zwei Wege zu einer Entscheidung, nicht zwei Gates.
+
+Drei Dinge hängen daran:
+
+- **CTRL+ALT+G gibt jedes Gate frei.** „Fortsetzen" ist die Taste, nach der man
+  greift, wenn etwas steht — und vorher setzte sie die *Pause*, während der
+  Worker im Gate stand: zwei Zustände übereinander, und nach dem Gate blieb der
+  Lauf in der Pause hängen. `handle_pause()` prüft deshalb `state.gate_wartet`
+  zuerst. Damit die Konsolenschleife das mitbekommt, liest `read_command()` mit
+  einer Zeitgrenze (0,2 s) und sieht dazwischen auf das Befehls-Event — es war
+  vorher ein blockierender `getch()`.
+- **Wo gefragt wird, entscheidet der Start.** `handle_toggle(aus_studio=…)`
+  schreibt `state.lauf_aus_studio`: ein Studio-Start bekommt die Tafel, ein
+  Hotkey-Start die Konsole, der Countdown-Thread lässt stehen, was der
+  Zeitplan gesetzt hat. Die Tafel steht dabei in **beiden** Fällen im
+  Laufstatus — auch ein Konsolen-Lauf soll dem Studio zeigen, warum er steht,
+  und seine Knöpfe kommen über denselben Briefkasten, den die Konsolenschleife
+  ebenfalls abfragt. Nur die Tastatur liest ausschliesslich der Konsolenweg.
+- **Der Briefkasten nimmt Befehle, solange ein Gate wartet** — nicht nur im
+  Schrittmodus (`befehl_manuell_aktion` prüft `gate_wartet`). Ein Haltepunkt
+  hält einen Lauf an, der sonst gar nicht manuell ist.
+
+Gespeichert wird das Feld, weil das Studio es setzt und der Hauptprozess die
+Datei liest; in einer Loop-Phase hält es in jedem Zyklus. Neu-Format ohne
+Migration, wie überall: fehlt das Feld, gibt es keinen Haltepunkt.
+
 **Die Status-Zeile schreibt sich in EINEM Schreibvorgang** — `status_line()` in
 `utils/console.py`, nicht `clear_line()` gefolgt von einem eigenen `print()`. Beides
 zusammen ergibt zwar dieselben Zeichen, aber zwei einzeln geflushte Blöcke: ein echtes

@@ -205,6 +205,7 @@ class BridgeViewMixin:
             "titel": step.name or "",
             "zeilen": self._zeilen(step, typ),
             "prueft": step.verify_condition is not None,
+            "haltepunkt": bool(step.breakpoint),
             "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
             # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
             # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
@@ -321,6 +322,7 @@ class BridgeViewMixin:
             "boss_scan": step.boss_scan or "",
             "boss_watcher": step.boss_watcher or "",
             "wait_only": step.wait_only,
+            "breakpoint": bool(step.breakpoint),
             "scroll": step.scroll or 0,
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),

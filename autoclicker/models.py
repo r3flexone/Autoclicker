@@ -216,6 +216,11 @@ class SequenceStep:
     # einen aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne die
     # Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
     recorded_color: Optional[tuple[int, int, int]] = None
+    # Haltepunkt: der Lauf haelt VOR diesem Schritt an und fragt — wie im manuellen
+    # Modus, nur an genau dieser Stelle (`step_gate()`). Gespeichert, denn gesetzt
+    # wird er im Studio und ausgefuehrt im Hauptprozess, und der liest die Datei.
+    # Ein Haltepunkt in einer Loop-Phase haelt in jedem Zyklus — das ist gewollt.
+    breakpoint: bool = False
     # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
     # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
     # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
@@ -223,6 +228,11 @@ class SequenceStep:
     unresolved: bool = False
 
     def __str__(self) -> str:
+        # Der Haltepunkt steht VOR der Beschreibung: in einer Liste von fuenfzig
+        # Schritten ist "wo haelt es an" die Frage, die man beim Ueberfliegen hat.
+        return ("[HALT] " if self.breakpoint else "") + self._beschreibung()
+
+    def _beschreibung(self) -> str:
         else_str = self._verify_str() + self._else_str()
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
@@ -780,6 +790,14 @@ class AutoClickerState:
     step_via_studio: bool = False
     step_command: str = ""
     step_command_event: threading.Event = field(default_factory=threading.Event)
+    # Wurde der Lauf aus dem Studio gestartet? Dann bekommt ein Haltepunkt seine
+    # Rueckfrage als Tafel im Live-Run statt in der Konsole — dieselbe Frage wie
+    # `step_via_studio`, nur fuer einen Lauf, der sonst gar nicht manuell ist.
+    lauf_aus_studio: bool = False
+    # True, solange `step_gate()` auf eine Entscheidung wartet (manueller Modus
+    # oder Haltepunkt). Daran erkennen CTRL+ALT+G und der Briefkasten, dass ein
+    # "weiter" gerade das Gate meint und nicht die Pause.
+    gate_wartet: bool = False
 
     # Gespeicherte Sequenzen
     sequences: dict[str, Sequence] = field(default_factory=dict)

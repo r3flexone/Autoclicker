@@ -539,8 +539,13 @@ def handle_finish(state: AutoClickerState) -> None:
     print(f"\n{col('[FINISH]', 'yellow')} Zyklus wird abgeschlossen, dann END-Phase und Stop.")
 
 
-def handle_toggle(state: AutoClickerState) -> None:
-    """Startet oder stoppt die Sequenz."""
+def handle_toggle(state: AutoClickerState, aus_studio: bool | None = False) -> None:
+    """Startet oder stoppt die Sequenz.
+
+    `aus_studio` sagt, wo ein Haltepunkt spaeter fragen soll: False = Hotkey,
+    also Konsole; True = Studio-Knopf, also Tafel im Live-Run; None = so lassen
+    (der Countdown-Thread startet fuer den, der den Zeitplan gestellt hat).
+    """
     # _toggle_lock serialisiert den gesamten Start/Stop-Pfad, damit Countdown-Thread
     # und Main-Thread nicht beide den is_running-Check passieren und doppelt starten.
     with _toggle_lock:
@@ -601,6 +606,9 @@ def handle_toggle(state: AutoClickerState) -> None:
                 print(warn("Die vorherige Boss-Erkennung wird noch beendet — bitte danach erneut starten."))
                 return
             state.is_running = True
+            if aus_studio is not None:
+                state.lauf_aus_studio = bool(aus_studio)
+            state.gate_wartet = False
             state.stop_event.clear()
             state.pause_event.clear()
             state.skip_event.clear()
@@ -649,7 +657,7 @@ def befehl_start(state: AutoClickerState, argumente: dict) -> None:
         state.points = seq.points
     _sequenz_daten_laden(state)
     print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
-    handle_toggle(state)
+    handle_toggle(state, aus_studio=True)
 
 
 def befehl_start_manuell(state: AutoClickerState, argumente: dict) -> None:
@@ -720,14 +728,20 @@ def befehl_manuell(state: AutoClickerState, argumente: dict) -> None:
 
 
 def befehl_manuell_aktion(state: AutoClickerState, argumente: dict) -> None:
-    """Eine der vier Entscheidungen für den wartenden manuellen Schritt."""
+    """Eine der fünf Entscheidungen für das wartende Gate.
+
+    Angenommen wird, solange ein Gate WARTET — nicht nur im Schrittmodus: ein
+    Haltepunkt hält einen Lauf an, der sonst gar nicht manuell ist, und seine
+    Tafel im Live-Run schickt dieselben Befehle.
+    """
+    from .runtime.debug import GATE_BEFEHLE
     aktion = str(argumente.get("aktion") or "")
-    if aktion not in ("run", "skip", "continue", "stop"):
+    if aktion not in GATE_BEFEHLE:
         print(f"\n{err('Unbekannte manuelle Aktion — ignoriert.')}")
         return
     with state.lock:
-        if not state.step_mode or not state.step_via_studio:
-            print(f"\n{info('Der Studio-Schrittmodus ist nicht aktiv.')}")
+        if not state.gate_wartet:
+            print(f"\n{info('Es wartet gerade kein Block auf eine Entscheidung.')}")
             return
         state.step_command = aktion
         state.step_command_event.set()
@@ -744,7 +758,7 @@ def _zeitplan_starten(state: AutoClickerState, zeit_text: str) -> bool:
         print(err(beschreibung))
         return False
     if sekunden < 1:
-        handle_toggle(state)
+        handle_toggle(state, aus_studio=None)
         return True
 
     zielzeit = zielstempel if zielstempel is not None else time.time() + sekunden
@@ -778,7 +792,7 @@ def _zeitplan_starten(state: AutoClickerState, zeit_text: str) -> bool:
             return
         if starten and not state.quit_event.is_set():
             print(f"\n{col('[START]', 'green')} Zeit erreicht — starte Sequenz!")
-            handle_toggle(state)
+            handle_toggle(state, aus_studio=None)
 
     threading.Thread(target=countdown_worker, daemon=True).start()
     print(f"\n{col('[COUNTDOWN]', 'cyan')} '{name}' startet {beschreibung}.")
@@ -802,6 +816,7 @@ def befehl_zeitplan(state: AutoClickerState, argumente: dict) -> None:
     with state.lock:
         state.active_sequence = seq
         state.points = seq.points
+        state.lauf_aus_studio = True
     _sequenz_daten_laden(state)
     _zeitplan_starten(state, zeit_text)
 
@@ -1089,10 +1104,22 @@ BEFEHLE = {
 
 
 def handle_pause(state: AutoClickerState) -> None:
-    """Pausiert oder setzt die Sequenz fort."""
+    """Pausiert oder setzt die Sequenz fort.
+
+    Wartet gerade ein Gate (Haltepunkt oder manueller Modus), heisst
+    „Fortsetzen" genau das: der Block laeuft. Ohne diesen Zweig setzte der
+    Hotkey die Pause, waehrend der Worker im Gate stand — zwei Zustaende
+    uebereinander, und nach dem Gate blieb der Lauf in der Pause haengen.
+    """
     with state.lock:
         if not state.is_running:
             print(f"\n{info('Keine Sequenz läuft.')}")
+            return
+
+        if state.gate_wartet:
+            state.step_command = "run"
+            state.step_command_event.set()
+            print(f"\n{col('[WEITER]', 'green')} Haltepunkt freigegeben.")
             return
 
         if state.pause_event.is_set():

@@ -39,6 +39,13 @@ _KEYS_RUN = ("w", "enter", " ", "right")
 _KEYS_SKIP = ("s", "down")
 _KEYS_CONTINUE = ("c",)
 _KEYS_STOP = ("q", "escape")
+# Nur an einem Haltepunkt: von hier an Schritt fuer Schritt.
+_KEYS_STEP = ("m",)
+
+# Die fuenf Entscheidungen des Gates — dieselben Woerter, die der Briefkasten
+# aus dem Studio bringt (`befehl_manuell_aktion`). Konsole und Studio sind zwei
+# Wege zu EINER Entscheidung, nicht zwei Gates.
+GATE_BEFEHLE = ("run", "skip", "continue", "step", "stop")
 
 # Tasten im Punkte-Durchgang
 _KEYS_VOR = ("w", "d", "enter", " ", "right", "down")
@@ -195,9 +202,16 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
               step_num: int, total_steps: int) -> str:
     """Hält vor dem Schritt an, zeigt das Ziel und wartet auf Bestätigung.
 
-    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück; ohne manuellen Modus immer
-    sofort GATE_RUN. Ausnahme: ein Schritt mit toter Punkt-Referenz läuft NIE —
-    (0, 0) wäre ein Klick in die Bildschirmecke.
+    Gibt GATE_RUN / GATE_SKIP / GATE_STOP zurück; ohne manuellen Modus und ohne
+    Haltepunkt immer sofort GATE_RUN. Ausnahme: ein Schritt mit toter
+    Punkt-Referenz läuft NIE — (0, 0) wäre ein Klick in die Bildschirmecke.
+
+    **Ein Haltepunkt ist dasselbe Gate an genau EINER Stelle.** Der manuelle
+    Modus hält vor jedem Block; `step.breakpoint` hält vor diesem — und danach
+    läuft die Sequenz normal weiter, ausser man wählt „ab hier schrittweise".
+    Zwei Wege zu einer Entscheidung (Konsole oder Studio-Tafel), fünf Befehle
+    (`GATE_BEFEHLE`), und **CTRL+ALT+G gibt jedes Gate frei**: „Fortsetzen"
+    ist die Taste, nach der man greift, wenn etwas steht.
     """
     if step.unresolved:
         print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
@@ -206,11 +220,13 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
                    "oder den Schritt löschen."))
         return GATE_SKIP
 
-    if not is_step_mode(state):
+    haltepunkt = bool(step.breakpoint) and not is_step_mode(state)
+    if not is_step_mode(state) and not haltepunkt:
         return GATE_RUN
 
+    marke = "HALTEPUNKT" if haltepunkt else "MANUELL"
     print()
-    print(col(f"■ MANUELL [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
+    print(col(f"■ {marke} [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
               "yellow"))
     print(col(f"   {describe_step(step)}", "gray"))
 
@@ -227,72 +243,121 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         print(col(f"   Zeiger steht auf {ziel[2]} ({ziel[0]}, {ziel[1]}) - stimmt die Stelle?",
                   "gray"))
 
-    print(col("   [w /→] ausführen   [s /↓] überspringen   [c] normal weiterlaufen   "
-              "[q /ESC] abbrechen", "yellow"))
+    if haltepunkt:
+        print(col("   [w /→ /CTRL+ALT+G] weiter   [s /↓] überspringen   "
+                  "[m] ab hier schrittweise   [q /ESC] abbrechen", "yellow"))
+    else:
+        print(col("   [w /→] ausführen   [s /↓] überspringen   [c] normal weiterlaufen   "
+                  "[q /ESC] abbrechen", "yellow"))
 
     # Das Studio läuft in einem eigenen Prozess. Es kann nicht auf `stdin`
     # antworten und der Worker darf dann auch nicht dort blockieren: der
     # aktuelle Schritt steht im Laufstatus, die Antwort kommt als begrenzter
     # Briefkasten-Befehl und weckt dieses Event. Der TUI-Weg darunter bleibt
-    # exakt wie bisher.
+    # exakt wie bisher — nur dass er zwischen zwei Tastenabfragen ebenfalls
+    # auf das Event sieht, denn CTRL+ALT+G kommt ueber genau diesen Weg.
     with state.lock:
-        studio = bool(state.step_via_studio)
+        studio = bool(state.step_via_studio) or (haltepunkt and bool(state.lauf_aus_studio))
         state.step_command = ""
         state.step_command_event.clear()
-    if studio:
-        from . import status
-        status.schreibe(state, {"manuell": {
-            "aktiv": True,
-            "phase": phase,
-            "block": step_num,
-            "bloecke": total_steps,
-            "titel": step_label(step),
-            "aktion": describe_step(step),
-        }}, sofort=True)
-        while not state.stop_event.is_set():
-            if not state.step_command_event.wait(0.2):
-                status.lebenszeichen(state)
-                continue
-            with state.lock:
-                befehl = state.step_command
-                state.step_command = ""
-                state.step_command_event.clear()
-            if befehl == "run":
-                status.schreibe(state, {"manuell": None}, sofort=True)
-                return GATE_RUN
-            if befehl == "skip":
-                status.schreibe(state, {"manuell": None}, sofort=True)
-                return GATE_SKIP
-            if befehl == "continue":
-                with state.lock:
-                    state.step_mode = False
-                    state.step_via_studio = False
-                status.schreibe(state, {"manuell": None}, sofort=True)
-                return GATE_RUN
-            if befehl == "stop":
-                state.stop_event.set()
-                status.schreibe(state, {"manuell": None}, sofort=True)
-                return GATE_STOP
+        state.gate_wartet = True
+    # Die Tafel steht in BEIDEN Faellen im Laufstatus: auch bei einem Lauf aus
+    # der Konsole soll das Studio sehen, warum es steht — und seine Knoepfe
+    # kommen ueber denselben Briefkasten an, den die Konsolenschleife ebenfalls
+    # abfragt. Nur die Tastatur liest ausschliesslich der Konsolenweg.
+    from . import status
+    status.schreibe(state, {"manuell": {
+        "aktiv": True,
+        "haltepunkt": haltepunkt,
+        "phase": phase,
+        "block": step_num,
+        "bloecke": total_steps,
+        "titel": step_label(step),
+        "aktion": describe_step(step),
+    }}, sofort=True)
+    try:
+        befehl = _gate_studio(state) if studio else _gate_konsole(state)
+    finally:
+        with state.lock:
+            state.gate_wartet = False
         status.schreibe(state, {"manuell": None}, sofort=True)
-        return GATE_STOP
+    return _gate_entscheiden(state, befehl, studio)
 
+
+def _gate_befehl_abholen(state: AutoClickerState) -> str:
+    """Den Befehl aus dem Briefkasten bzw. Hotkey nehmen und das Event leeren."""
+    with state.lock:
+        befehl = state.step_command
+        state.step_command = ""
+        state.step_command_event.clear()
+    return befehl
+
+
+def _gate_studio(state: AutoClickerState) -> str:
+    """Wartet auf die Entscheidung aus dem Studio — liest ausdruecklich KEINE Taste."""
+    from . import status
     while not state.stop_event.is_set():
-        taste = read_command()
+        if not state.step_command_event.wait(0.2):
+            status.lebenszeichen(state)
+            continue
+        befehl = _gate_befehl_abholen(state)
+        if befehl in GATE_BEFEHLE:
+            return befehl
+    return "stop"
+
+
+def _gate_konsole(state: AutoClickerState) -> str:
+    """Wartet auf eine Taste in der Konsole — oder auf CTRL+ALT+G bzw. das Studio."""
+    from . import status
+    while not state.stop_event.is_set():
+        taste = read_command(timeout=0.2)
+        if taste == "":
+            status.lebenszeichen(state)
         if taste in _KEYS_RUN:
-            return GATE_RUN
+            return "run"
         if taste in _KEYS_SKIP:
-            print(dbg("übersprungen"))
-            return GATE_SKIP
+            return "skip"
         if taste in _KEYS_CONTINUE:
-            with state.lock:
-                state.step_mode = False
-            print(dbg("Manueller Modus aus - Sequenz läuft normal weiter"))
-            return GATE_RUN
+            return "continue"
+        if taste in _KEYS_STEP:
+            return "step"
         if taste in _KEYS_STOP:
-            print(col("   Abbruch im manuellen Modus", "red"))
-            state.stop_event.set()
-            return GATE_STOP
-    return GATE_STOP
+            return "stop"
+        if state.step_command_event.is_set():
+            befehl = _gate_befehl_abholen(state)
+            if befehl in GATE_BEFEHLE:
+                return befehl
+    return "stop"
+
+
+def _gate_entscheiden(state: AutoClickerState, befehl: str, studio: bool) -> str:
+    """Einen der fuenf Befehle in GATE_RUN / GATE_SKIP / GATE_STOP uebersetzen.
+
+    `continue` und `step` sind die beiden, die den MODUS aendern: das eine
+    schaltet den Schrittmodus aus (und laesst den Rest normal laufen), das
+    andere ein (ab diesem Block Schritt fuer Schritt) — beides fuehrt den
+    aktuellen Block aus.
+    """
+    if befehl == "skip":
+        print(dbg("übersprungen"))
+        return GATE_SKIP
+    if befehl == "stop":
+        print(col("   Abbruch", "red"))
+        state.stop_event.set()
+        return GATE_STOP
+    if befehl == "continue":
+        with state.lock:
+            state.step_mode = False
+            state.step_via_studio = False
+        print(dbg("Manueller Modus aus - Sequenz läuft normal weiter"))
+        return GATE_RUN
+    if befehl == "step":
+        with state.lock:
+            state.step_mode = True
+            state.step_via_studio = studio
+        print(dbg("Ab hier Schritt für Schritt"))
+        return GATE_RUN
+    return GATE_RUN
 
 
 def walk_points(state: AutoClickerState) -> None:

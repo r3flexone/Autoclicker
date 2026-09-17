@@ -456,7 +456,9 @@ _ergebnisse = {}
 for _taste in ("w", "enter", "s", "q", "c"):
     _st.step_mode = True
     _st.stop_event.clear()
-    _dbg.read_command = (lambda _t=_taste: _t)
+    # `read_command` nimmt seit dem Haltepunkt eine Zeitgrenze entgegen — der
+    # Stub muss sie schlucken, sonst misst der Test die Signatur statt das Gate.
+    _dbg.read_command = (lambda *a, _t=_taste, **k: _t)
     _ergebnisse[_taste] = _dbg.step_gate(_st, _step, "LOOP", 1, 3)
 _dbg.read_command = _orig_read_key
 check("Gate: 'w' fuehrt aus", _ergebnisse["w"] == _dbg.GATE_RUN)
@@ -2463,11 +2465,17 @@ _orig_poll = _IO._read_key_polling
 _gesehen = {}
 try:
     _IO._REAL_CONSOLE = False          # IDE-Konsole erzwingen
-    _IO._read_key_polling = lambda zusatz=None: _gesehen.update(zusatz=zusatz) or "a"
+    _IO._read_key_polling = (lambda zusatz=None, timeout=None:
+                             _gesehen.update(zusatz=zusatz, timeout=timeout) or "a")
     check("IDE-Konsole: read_command liefert den Buchstaben direkt",
           _IO.read_command() == "a")
     check("IDE-Konsole: die Buchstaben werden ans Polling durchgereicht",
           _gesehen["zusatz"] is _IO._VK_BUCHSTABEN)
+    # Die Zeitgrenze des Gates kommt ebenfalls dort an — ohne sie blockierte
+    # das Gate in der Konsole, und CTRL+ALT+G kaeme nie zum Zug.
+    _IO.read_command(timeout=0.2)
+    check("IDE-Konsole: die Zeitgrenze wird ans Polling durchgereicht",
+          _gesehen["timeout"] == 0.2)
 finally:
     _IO._REAL_CONSOLE = _orig_real
     _IO._read_key_polling = _orig_poll
@@ -2484,7 +2492,7 @@ def _walk_pfad(tasten):
     besucht = []
     folge = list(tasten)
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
-    _DBG.read_command = lambda: folge.pop(0) if folge else "q"
+    _DBG.read_command = lambda *a, **k: folge.pop(0) if folge else "q"
     _DBG.set_cursor_pos = lambda x, y: besucht.append(x // 10)
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
@@ -2532,7 +2540,7 @@ def _walk_setzen(tasten, maus, farbe=(9, 9, 9)):
     import autoclicker.imaging as _IMG
     import autoclicker.persistence as _PERS
     _o_pix, _o_save = _IMG.get_pixel_color, _PERS.save_points
-    _DBG.read_command = lambda: folge.pop(0) if folge else "q"
+    _DBG.read_command = lambda *a, **k: folge.pop(0) if folge else "q"
     _DBG.set_cursor_pos = lambda x, y: None
     _DBG.get_cursor_pos = lambda: maus
     _IMG.get_pixel_color = lambda x, y: farbe
@@ -2583,7 +2591,7 @@ def _step_gate_mit(taste):
     st.step_mode = True
     schritt = _SS(x=5, y=5, delay_before=0, name="s")
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
-    _DBG.read_command = lambda: taste
+    _DBG.read_command = lambda *a, **k: taste
     _DBG.set_cursor_pos = lambda x, y: None
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
@@ -6470,6 +6478,7 @@ import tests.vertrag.bericht              # noqa: F401,E402
 import tests.vertrag.punkte               # noqa: F401,E402
 import tests.vertrag.sequenz_loeschen     # noqa: F401,E402
 import tests.vertrag.katalog               # noqa: F401,E402
+import tests.vertrag.haltepunkt            # noqa: F401,E402
 
 
 import shutil as _shD

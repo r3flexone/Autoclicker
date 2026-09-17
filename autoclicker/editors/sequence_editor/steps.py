@@ -113,6 +113,7 @@ def _print_phase_help(full: bool = False) -> None:
     print("  " + hint("Kurzbefehle (machen 'edit' überflüssig, wenn man sie kennt):"))
     print(cmd_hint("color/colorgone <Schritt-Nr>", "Schritt wartet auf / bis WEG der aufgenommenen Farbe, dann Klick"))
     print(cmd_hint("noclick/click <Schritt-Nr>", "nur warten (kein Klick) / wieder normaler Klick"))
+    print(cmd_hint("break <Schritt-Nr>", "Haltepunkt an/aus: der Lauf haelt VOR dem Schritt an und fragt (CTRL+ALT+G = weiter)"))
     print(cmd_hint("recolor <Schritt-Nr>", "Trigger-Farbe per Maus neu setzen (Pixel-Position bleibt)"))
     print(cmd_hint("time <Schritt-Nr> <Sek>", "Wartezeit ändern (z.B. 'time 3 5' oder 'time 3 2-4')"))
     print(cmd_hint("copy <Schritt-Nr>", "Schritt duplizieren (Kopie direkt dahinter)"))
@@ -155,7 +156,7 @@ _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
     "color", "colorgone", "checkcolor", "checkgone", "scroll", "link", "verify",
-    "recolor", "noclick", "click", "time", "copy", "move", "scale", "test",
+    "recolor", "noclick", "click", "time", "copy", "move", "scale", "test", "break",
 ]
 
 # Schlüsselwörter für 'wait <Punkt-Nr> ...': bei einem Punkt geht es nur um die
@@ -330,6 +331,9 @@ class _PhaseEditor:
             return
         if cmd.startswith("noclick "):
             self._handle_make_noclick(user_input)
+            return
+        if cmd.startswith("break "):
+            self._handle_breakpoint(user_input)
             return
         if cmd.startswith("click "):
             self._handle_make_click(user_input)
@@ -926,6 +930,22 @@ class _PhaseEditor:
             return
         step.wait_only = True
         print(f"  + Schritt klickt nicht mehr (nur warten): {step}")
+
+    def _handle_breakpoint(self, user_input: str) -> None:
+        """Haltepunkt an einem Schritt umschalten.
+
+        Format: break <Nr>. Der Lauf haelt VOR dem Schritt an und fragt — wie
+        der manuelle Modus, nur an genau dieser Stelle. Ein Umschalter, kein
+        Setzen: derselbe Befehl nimmt ihn wieder weg.
+        """
+        step = self._get_step_by_num(user_input.split()[1] if len(user_input.split()) > 1 else "")
+        if step is None:
+            return
+        step.breakpoint = not step.breakpoint
+        if step.breakpoint:
+            print(f"  + Haltepunkt gesetzt — der Lauf haelt hier an: {step}")
+        else:
+            print(f"  - Haltepunkt entfernt: {step}")
 
     def _handle_make_click(self, user_input: str) -> None:
         """Setzt einen Schritt auf reinen Klick zurück (entfernt Farb-Trigger / Warte-nur).
