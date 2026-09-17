@@ -60,8 +60,6 @@ SLOTS = {
     6: "Schild", 8: "Amulett", 9: "Pfeile", 10: "Umhang", 11: "Helm",
     13: "Armband", 14: "Guertel", 15: "Pet", 16: "Ohrringe",
 }
-SLOT_WAFFE = 7          # Waffen und Werkzeuge gemeinsam — wird aufgetrennt
-SLOT_KEINE = 0          # keine Ausruestung (Rohstoffe, Verbrauch)
 
 
 def anzeigename(schluessel: str) -> str:

@@ -3,7 +3,7 @@
 Die häufigste Frustration ist "ich starte, und es passiert das Falsche". Die meisten
 Ursachen dafür sind statisch prüfbar — und die Prüfungen gab es auch schon, nur verstreut
 über die Laufzeit und erst dann, wenn es zu spät war: eine Meldung in
-`resolve_point_references()`, eine in `resolve_scan_references()`, eine Warnung im
+`resolve_point_references()`, eine in `resolve_klick_referenzen()`, eine Warnung im
 Boss-Scan. Hier laufen sie an einer Stelle und auf Zuruf.
 
 Zwei Aufrufer:

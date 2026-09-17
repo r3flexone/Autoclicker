@@ -884,6 +884,10 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
         if end is not None and time.time() >= end:
             return None
         time.sleep(0.02)
+    # Die Regel „was ist ein NEUER Druck" steht in `utils/io.py` — und nur
+    # dort. Hier stand sie einmal ausgeschrieben daneben, und die Tests
+    # prueften die Funktion, die niemand rief.
+    from ..utils.io import taste_neu_gedrueckt
     previous = {code: bool(user32.GetAsyncKeyState(code) & 0x8000)
                 for code in codes}
     while end is None or time.time() < end:
@@ -891,7 +895,7 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
             state = user32.GetAsyncKeyState(code)
             was_down = previous[code]
             previous[code] = bool(state & 0x8000)
-            if (previous[code] and not was_down) or bool(state & 0x0001):
+            if taste_neu_gedrueckt(state, was_down):
                 return name
         time.sleep(0.02)
     return None

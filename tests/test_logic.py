@@ -126,7 +126,7 @@ check(f"und kommt im Code nicht mehr vor ({_rev_treffer or 'nirgends'})",
 # `edit_item_scan` BAUT die Config neu auf, statt die vorhandene zu aendern -
 # ein vergessenes Feld ist beim Bearbeiten eines bestehenden Scans still weg.
 # Genau das waere `reverse` beinahe passiert. Abgeleitete Felder gehoeren nicht
-# in die Liste: `slot_names`/`item_names` fuellt `sync_names()` aus den Objekten.
+# in die Liste: `slot_names`/`item_names` sind Properties ueber den Objekten.
 import ast as _ast_rev, dataclasses as _dc_rev
 _src_rev = _ast_rev.parse((Path(__file__).resolve().parent.parent / "autoclicker"
                            / "editors" / "item_scan_editor.py").read_text(encoding="utf-8"))
@@ -972,11 +972,6 @@ for _kind, _daten in _aktuell.items():
         print(f"        -> {_kind} wurde angefasst: {_meld}")
 check("aktuelle Daten werden bei keinem Typ veraendert", _unberuehrt)
 
-# 5. Umbenennen wirkt nur im gewählten Scan, nie dateiübergreifend.
-from autoclicker.persistence.item_scans import update_item_in_scans as _uiis
-check("Umbenennen hat keinen globalen Scan-Durchlauf",
-      _uiis("Kohle", "Steinkohle") == (0, 0))
-
 
 # ------------------------------------------- Start-Durchgang (persistence/sweep)
 section("Start-Durchgang: alle Dateien beim Programmstart aufs aktuelle Format")
@@ -1236,7 +1231,7 @@ check("Loader kennt delay_after nicht mehr",
 
 # ------------------------------- Items/Slots gehören genau einem Scan
 section("Item-Scans besitzen ihre Slots/Items")
-from autoclicker.persistence.item_scans import resolve_scan_references as _resolve_scans
+from autoclicker.persistence.item_scans import resolve_klick_referenzen as _resolve_scans
 from autoclicker.models import ItemScanConfig as _ISC
 
 _st4 = AutoClickerState()
@@ -1443,7 +1438,7 @@ check("und meldet das im Klartext", len(_meld) == 1 and "P3" in _meld[0])
 # -------------------------------------------- Item-Scan: Namen sind die Wahrheit
 section("Item-Scan: Namen und Objekte bleiben synchron")
 from autoclicker.models import ItemScanConfig as _ISC3, ItemSlot as _IS3, ItemProfile as _IP3
-from autoclicker.persistence import resolve_scan_references as _rsr
+from autoclicker.persistence import resolve_klick_referenzen as _rsr
 
 _slot_a, _slot_b = _IS3("S1", (0, 0, 10, 10), (5, 5)), _IS3("S2", (0, 0, 10, 10), (5, 5))
 _item_a = _IP3("Kohle")
@@ -1470,7 +1465,6 @@ check("Namen werden zu Objekten aufgeloest",
 # Nachtraegliche Zuweisung an .slots (der Weg, der urspruenglich schiefging)
 _cfg_spaet = _ISC3(name="spaet")
 _cfg_spaet.slots = [_slot_a]
-_cfg_spaet.sync_names()
 check("nachtraeglich gesetzte Objekte tragen ihre Namen nach",
       _cfg_spaet.slot_names == ["S1"])
 
@@ -4846,6 +4840,15 @@ check("kurzer Druck (nur Bit 0) zaehlt trotzdem", _tng15(0x0001, False) is True)
 check("kurzer Druck zaehlt auch bei gehaltener Vortaste", _tng15(0x0001, True) is True)
 check("nichts gedrueckt = nichts", _tng15(0x0000, False) is False)
 check("losgelassen nach Halten meldet nichts", _tng15(0x0000, True) is False)
+
+# Die Regel oben ist nur dann die Regel, wenn der Windows-Weg sie auch RUFT. Sie
+# stand einmal ein zweites Mal ausgeschrieben in `wait_for_key()` — und dieser
+# Block prüfte fünfmal eine Funktion, die niemand benutzte.
+import inspect as _insp15
+from autoclicker.platforms import windows as _pw15
+check("wait_for_key entscheidet ueber taste_neu_gedrueckt, nicht selbst",
+      "taste_neu_gedrueckt(" in _insp15.getsource(_pw15.wait_for_key)
+      and "& 0x0001" not in _insp15.getsource(_pw15.wait_for_key))
 
 # Die Zeitgrenze gilt auf beiden Plattformen: gestubbt liefert GetAsyncKeyState 0,
 # auf Windows drueckt waehrend des Tests niemand.

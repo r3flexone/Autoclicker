@@ -372,26 +372,6 @@ function scanReviewKategorieAufAuswahl(eingabe) {
   }
 }
 
-function prioritaetsfeld(wert, kategorie, beim_setzen) {
-  const eingabe = el("input", {type: "number", value: wert, min: 0, step: 1});
-  eingabe.addEventListener("change", () => {
-    if (eingabe.value.trim() !== "") beim_setzen(Number(eingabe.value));
-  });
-  eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-  const nachVorn = el("button", {
-    class: "btn still", type: "button", disabled: !kategorie,
-    title: kategorie
-      ? "Ganz nach vorn; alle anderen Items in „" + kategorie + "“ rutschen um eins nach hinten"
-      : "Dafür braucht das Item eine Kategorie",
-    onclick: () => beim_setzen(0),
-  }, "Ganz nach vorn");
-  return el("div", {class: "prioritaets-feld"},
-    el("label", {class: "feld"}, "Priorität", el("div", {class: "reihe"}, eingabe, nachVorn)),
-    el("small", {class: "eingabe-hilfe"},
-      "0 macht daraus P1 und verschiebt alle anderen dieser Kategorie um +1. " +
-      "Eine konfigurierte Marktwert-Datei hat beim Lauf Vorrang."));
-}
-
 function zahlfeld(beschriftung, wert, beim_setzen, extra, hilfe, schluessel) {
   return feld(beschriftung, wert, (v) => beim_setzen(Number(v) || 0),
               Object.assign({type: "number"}, extra || {}), hilfe, schluessel);
@@ -2999,6 +2979,7 @@ function scanItemMaske(i, gefroren) {
       : "Priorität — kleiner gewinnt" + (i.kategorie
           ? " (frei in „" + i.kategorie + "“: P"
             + naechsteFreiePrioritaet(i.kategorie, i.name) + ")"
+            + "; 0 = ganz nach vorn, die anderen rücken um eins"
           : ", zählt nur innerhalb einer Kategorie")});
   prio.addEventListener("change", () => {
     if (prio.value.trim() !== "") setze("prioritaet", Number(prio.value));

@@ -273,7 +273,6 @@ def skill_cfg(skill_name: str) -> SkillConfig:
 # gibt - und ein duennes Top-Gebot ist eine WARNUNG, kein Ausschluss.
 MIN_SELL_BID_VOLUME = 1        # es muss ein Kaufgebot mit Menge geben, mehr nicht
 MIN_BUY_ASK_VOLUME = 50        # Zutatenkauf: die Angebotsseite muss echt sein
-MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite fuer "beidseitig echter Markt"
 THIN_BID_HOURS = 1.0           # Warnung, wenn das Top-Gebot < 1 h Produktion schluckt
 MAX_SPREAD_RATIO = 1.0         # Warnung ab Ask > 2x Bid
 MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung ab >50% Abweichung vom 24h-Schnitt
@@ -414,6 +413,6 @@ CONFIG_HASH_KEYS = [
     "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
     "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
     "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
-    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "MIN_MARKET_VOLUME",
+    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME",
     "RANKING_BASIS",
 ]

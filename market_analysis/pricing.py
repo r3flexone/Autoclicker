@@ -18,19 +18,17 @@ try:
     from .config import (
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_MARKET_VOLUME, MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
     )
 except ImportError:  # direkter Skriptstart
     from config import (  # type: ignore
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_MARKET_VOLUME, MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
     )
 
-
-LEERER_MARKT = {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
 
 
 # ---------------------------------------------------------------
@@ -56,15 +54,6 @@ def valid_buy_market(item: dict | None) -> bool:
     if not item:
         return False
     return item.get("sell", 0) > 0 and item.get("sellVol", 0) >= MIN_BUY_ASK_VOLUME
-
-
-def valid_market(item: dict | None) -> bool:
-    """Beidseitig echter Markt - nur noch fuer Warnungen, nicht fuer Entscheidungen."""
-    if not item:
-        return False
-    return (item.get("buy", 0) > 0 and item.get("sell", 0) > 0
-            and item.get("buyVol", 0) >= MIN_MARKET_VOLUME
-            and item.get("sellVol", 0) >= MIN_MARKET_VOLUME)
 
 
 def wide_spread(item: dict | None) -> bool:

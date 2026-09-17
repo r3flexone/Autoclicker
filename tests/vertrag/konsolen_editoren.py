@@ -121,19 +121,20 @@ finally:
     _DC.get_cursor_pos, _DC.get_pixel_color = _alt_cursor, _alt_pixel
 
 
-section("Item umbenennen: Template, Bestand und Scans ziehen mit")
+section("Item umbenennen: Template, Bestand und Scan ziehen mit")
 
 # `_apply_item_rename` ist der stille Weg (fuer 'autoname'), und still heisst hier:
 # keine Rueckfrage, aber auch keine halbe Aenderung. Drei Dinge haengen am Namen -
-# der Eintrag im Bestand, die Template-DATEI und jede Scan-Referenz. Bleibt eines
+# der Eintrag im Bestand, die Template-DATEI und das Item im Scan. Bleibt eines
 # zurueck, zeigt der Scan ins Leere oder das Template gehoert zum falschen Item.
+# Der Scan traegt dabei DASSELBE Objekt wie der Bestand; ein globaler Durchlauf
+# ueber alle Scan-Dateien (`update_item_in_scans`, zuletzt ein No-op) ist weg.
 
 from autoclicker.editors.item_editor.commands import _apply_item_rename as _air
 from autoclicker.models import (
     AutoClickerState as _ACS_R, ItemProfile as _IPR, ItemScanConfig as _ISCR,
     Sequence as _SEQR,
 )
-import autoclicker.persistence.item_scans as _ismod2
 
 _ren_tmp = Path(tempfile.mkdtemp())
 _ren_cwd = _os.getcwd()
@@ -149,18 +150,8 @@ try:
                                         marker_colors=[(1, 2, 3)])}
     _st_r2.item_scans["Inventar"] = _ISCR(
         name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
-    _gerufen = []
-    _alt_uiis = _ismod2.update_item_in_scans
-    _ismod2.update_item_in_scans = lambda a, n: _gerufen.append((a, n))
-    import autoclicker.editors.item_editor.commands as _cmdmod
-    _alt_uiis2 = _cmdmod.update_item_in_scans
-    _cmdmod.update_item_in_scans = lambda a, n: _gerufen.append((a, n))
-    try:
-        with _cl2.redirect_stdout(_io2.StringIO()):
-            _erfolg = _air(_st_r2, "Alt", "Neu")
-    finally:
-        _ismod2.update_item_in_scans = _alt_uiis
-        _cmdmod.update_item_in_scans = _alt_uiis2
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _erfolg = _air(_st_r2, "Alt", "Neu")
 
     check("das Umbenennen meldet Erfolg", _erfolg is True)
     check("der Eintrag heisst neu",
@@ -173,7 +164,8 @@ try:
           and not Path("sequences/s/templates/alt.png").exists())
     check("und das Profil zeigt auf den neuen Dateinamen",
           _st_r2.global_items["Neu"].template == "neu.png")
-    check("die Scans werden nachgezogen", _gerufen == [("Alt", "Neu")])
+    check("das Item im Scan heisst mit — es ist dasselbe Objekt",
+          [i.name for i in _st_r2.item_scans["Inventar"].items] == ["Neu"])
     check("ein Item, das es nicht gibt, meldet False",
           _air(_st_r2, "Gibt es nicht", "Egal") is False)
 finally:

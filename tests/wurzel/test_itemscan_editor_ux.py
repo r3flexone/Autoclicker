@@ -437,7 +437,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
                   encoding="utf-8")
         self.assertIn("function prioritaetsUebersicht", js)
         self.assertIn("Bereits gesetzte Prioritäten", js)
-        self.assertIn("Ganz nach vorn", js)
+        # „0 = ganz nach vorn" kann die Brücke (`_prioritaet_einordnen`); die
+        # Maske muss es SAGEN — am Feld, in dem man tippt. Hier stand einmal ein
+        # eigener Knopf in `prioritaetsfeld()`, den seit dem Masken-Umbau
+        # niemand mehr rief: der Text war da, das Bedienelement nicht.
+        self.assertIn("0 = ganz nach vorn", js)
+        self.assertNotIn("function prioritaetsfeld", js)
         self.assertIn('"P" + i.prioritaet', js)
         # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
         # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem

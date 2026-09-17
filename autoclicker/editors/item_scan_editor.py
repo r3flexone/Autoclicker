@@ -471,8 +471,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if existing:
         print(f"\n--- Bearbeite Scan: {existing.name} ---")
         scan_name = existing.name
-        # Namen, nicht Objekte: load_item_scan_file() liefert nur die Namen, die
-        # Objekte werden erst von resolve_scan_references() aufgeloest.
+        # Der Assistent arbeitet mit Namen; die Objekte dazu traegt der Scan selbst
+        # (`slots`/`items`), und `mehrfach_auswahl()` waehlt ueber die Namen.
         selected_slot_names = [slot.name for slot in existing.slots if slot.enabled]
         selected_item_names = list(existing.item_names)
         tolerance = existing.color_tolerance

@@ -5,7 +5,7 @@ Modul-Aufteilung:
     paths.py          Verzeichnis-Konstanten + init_directories
     serialization.py  Dataclass ↔ Dict (intern + import_export.py)
     sequences.py      Sequence-Dateien + Punkte
-    item_scans.py     ItemScanConfig + update_item_in_scans
+    item_scans.py     ItemScanConfig + Klick-Referenzen der Scans
     boss_scans.py     BossScanConfig
     globals.py        global_slots, global_items, Kategorien
     presets.py        Slot- und Item-Presets
@@ -42,7 +42,7 @@ from .globals import (
 from .item_scans import (
     ensure_item_scans_dir, save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
-    update_item_in_scans, resolve_scan_references, resolve_klick_referenzen,
+    resolve_klick_referenzen,
     bind_item_scan_context, flush_item_scan_context,
 )
 from .paths import (
@@ -94,8 +94,8 @@ __all__ = [
     'resolve_point_references',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
-    'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',
-    'resolve_scan_references', 'resolve_klick_referenzen',
+    'list_available_item_scans', 'load_all_item_scans',
+    'resolve_klick_referenzen',
     'bind_item_scan_context', 'flush_item_scan_context',
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',

@@ -447,7 +447,7 @@ class ItemProfile:
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
     # Referenz auf den Punkt, der nach dem Klick bestaetigt (Popup o.ae.);
-    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_scan_references().
+    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_klick_referenzen().
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
@@ -561,9 +561,6 @@ class ItemScanConfig:
     def item_names(self, names) -> None:
         wanted = set(names or [])
         self.items = [item for item in self.items if item.name in wanted]
-
-    def sync_names(self) -> None:
-        """Kompatibler No-op: es gibt keine zweite Namens-Wahrheit mehr."""
 
     def __str__(self) -> str:
         learn_str = " [Auto-Lernen]" if self.learn_unknown else ""

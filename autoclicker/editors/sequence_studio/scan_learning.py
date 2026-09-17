@@ -34,54 +34,16 @@ class ScanLearningMixin:
         self._dazu(ART_ITEM, gelernt)
         return self._scan_geaendert(f"'{gelernt}' aus '{slot.name}' gelernt.")
 
-    def scan_items_lernen(self, daten: Optional[dict] = None) -> dict:
-        """Aus jedem Slot ein Item — Doppelte werden übersprungen.
-
-        Der Weg für ein volles Inventar: einmal drücken statt zwanzigmal. Die
-        Doppel-Erkennung braucht OpenCV.
-
-        „Alle" heisst die Slots des offenen Scans (`_scan_slots()`), nicht den ganzen
-        Bestand — sonst liefe der Durchgang bei zwei Spielen auch über die Slots des
-        anderen, die ausserhalb des Bildes liegen.
-        """
-        slots = self._scan_slots()
-        if not slots:
-            return self._scan_melde("Keine Slots vorhanden.", "warn")
-        self._merke("Items gelernt")
-        neu, doppelt, leer = 0, 0, 0
-        for slot in slots:
-            ergebnis = self._lerne_aus_slot(slot, dedup=self._hat_opencv())
-            if ergebnis is None:
-                leer += 1
-            elif ergebnis == "":
-                doppelt += 1
-            else:
-                neu += 1
-                self._dazu(ART_ITEM, ergebnis)
-        teile = [f"{neu} neu"]
-        if doppelt:
-            teile.append(f"{doppelt} schon bekannt")
-        if leer:
-            teile.append(f"{leer} leer oder ohne Bild")
-        return self._scan_geaendert("Gelernt: " + ", ".join(teile))
-
-    def _lerne_aus_slot(self, slot: ItemSlot, dedup: bool = False) -> Optional[str]:
-        """Der Name des neuen Items, `""` bei einem Duplikat, `None` ohne Bild."""
+    def _lerne_aus_slot(self, slot: ItemSlot) -> Optional[str]:
+        """Der Name des neuen Items, `None` ohne Bild."""
         crop = self._foto_crop(slot.scan_region)
         if crop is None:
             return None
-        from ..item_editor.markers import (
-            _find_matching_existing_item, _prepare_learning_image,
-        )
+        from ..item_editor.markers import _prepare_learning_image
         from ...config import CONFIG
         maskiert, marker, ist_leer = _prepare_learning_image(crop, slot.slot_color)
         if ist_leer:
             return None
-        if dedup and self.items:
-            if _find_matching_existing_item(crop, list(self.items.items()),
-                                            CONFIG.scan_min_confidence,
-                                            self.filepath.parent / "templates"):
-                return ""
         name = next_item_name(self.items)
         # Template UND Marker sehen dieselbe maskierte Flaeche als Item an.
         self.items[name] = ItemProfile(
@@ -977,8 +939,9 @@ class ScanLearningMixin:
             lauf["gemerkt"] = True
         bestand.template_variants = list(bestand.template_variants) + neu
         self.items.pop(item.name, None)
-        # Der Name IST die Referenz: ohne das Angleichen kaeme das geloeschte
-        # Item beim naechsten Speichern ueber `sync_names()` zurueck.
+        # Gespeichert wird `cfg.items`, nicht der Arbeitsbestand des Reiters:
+        # ohne das Angleichen stuende das geloeschte Item beim naechsten
+        # Speichern noch im Scan.
         self._objekte_angleichen()
         lauf["varianten"] += 1
         return self._scan_geaendert()

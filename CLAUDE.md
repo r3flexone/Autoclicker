@@ -522,8 +522,8 @@ Eine Falle, die dabei aufgefallen ist und für **jedes** weitere Feld gilt: **de
 Konsolen-Editor baut die Config NEU auf**, statt die vorhandene zu ändern. Ein
 Feld, das in `ItemScanConfig(...)` in `edit_item_scan()` fehlt, ist nach dem
 Bearbeiten eines bestehenden Scans still weg. Ein Test hält die übergebenen
-Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` — die leitet
-`sync_names()` ab).
+Schlüssel gegen die Dataclass (ohne `slot_names`/`item_names` — das sind
+Properties über den Objekten).
 
 ### Der Item-Katalog (echte Namen und Kategorien aus der Spiel-API)
 
@@ -712,9 +712,11 @@ tut STRG+Z einmal scheinbar nichts.
 
 **Der Scan besitzt seine Slots und Items.** `slots`/`items` sind die Wahrheit;
 `slot_names`/`item_names` werden daraus abgeleitet. Gleichnamige Items anderer
-Scans bleiben unabhängig. `resolve_scan_references()` löst nur noch die
-Klick-Punkte auf; `sync_names()` und `update_item_in_scans()` sind derzeit
-wirkungslose Rest-Helfer und kein Vorbild für neue Aufrufer.
+Scans bleiben unabhängig. `resolve_klick_referenzen()` löst die Klick-Punkte
+der Scans auf — mehr gibt es an einem Scan nicht mehr aufzulösen. Die
+Rest-Helfer aus der Zeit des globalen Bestands (`sync_names()` als No-op,
+`update_item_in_scans()` mit festem `(0, 0)`, die Weiterleitung
+`resolve_scan_references()`) sind ersatzlos gelöscht.
 
 Beim Sequenzwechsel werden die geladenen Scan-Dictionaries vollständig ersetzt.
 Eine fehlende Boss-Bibliothek bedeutet eine leere Liste. Der Dateiname
@@ -1683,13 +1685,13 @@ Sechs Regeln, an denen der Reiter hängt:
   *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
   `SLOT_FARBE` muss genau die Zustände abdecken.
 - **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, türkis statt
-  grün). Der Fall entsteht bei einem Scan ohne Items, denn dann prüft
-  `_kandidaten()` den ganzen Bestand — und dort ist es die nützlichste Auskunft
-  überhaupt: das Item kennst du schon aus einem anderen Spiel, es fehlt nur das
-  Häkchen (ein Knopf im Inspektor). Grün zu färben hiesse behaupten, der Scan
-  finde es; er sieht dieses Item gar nicht an. Ein Häkchen ändert nicht, WAS
-  erkannt wurde — `_treffer_mitgliedschaft()` zieht deshalb nur das Merkmal
-  nach, statt neu zu rechnen.
+  grün) — ein Zustand aus der Zeit des globalen Bestands: bei einem Scan ohne
+  Items prüfte `_kandidaten()` alle Items aller Spiele, und ein Treffer aus dem
+  *anderen* Spiel durfte nicht grün werden, denn dieser Scan sah das Item gar
+  nicht an. Seit der Scan seine Items selbst besitzt, gibt es nichts mehr, was
+  erkannt und trotzdem fremd wäre: `_erkennen_lauf()` meldet `fremd` immer als
+  `False`. Farbe (`--slot-fremd`) und Klasse (`.fremditem`) stehen noch in
+  Stylesheet und `SLOT_FARBE`, haben aber keinen Auslöser mehr.
 
 - **Scan, Slot und Item sind Masken — dieselbe Bauform** (`maskeBauen()`, dazu
   `scanScanMaske` / `scanSlotMaske` / `scanItemMaske`). Sie unterscheiden sich
@@ -2182,10 +2184,10 @@ wäre eine Behauptung.
 **Der Name ist die Referenz — also zieht Umbenennen sie nach.** Slots und Items
 stehen in Scans per Name; `_slot_umbenennen`/`_item_umbenennen` ändern jede
 Fundstelle mit und sagen in der Statuszeile, wie viele es waren. Löschen räumt
-sie ebenso weg. Und weil `ItemScanConfig.sync_names()` eine **leere** Namensliste
-aus den Objekten wieder auffüllt, muss nach jeder Änderung an den Namen
-`_objekte_angleichen()` laufen — sonst kommt ein gelöschtes Item beim nächsten
-Speichern zurück. Ein Test pinnt genau das fest.
+sie ebenso weg. Und weil gespeichert wird, was **im Scan** steht
+(`cfg.slots`/`cfg.items`), nicht der Arbeitsbestand des Reiters, muss nach jeder
+Änderung `_objekte_angleichen()` laufen — sonst steht ein gelöschtes Item beim
+nächsten Speichern noch im Scan. Ein Test pinnt genau das fest.
 
 **Der Weg steht als Weg da, nicht als Wand aus Knöpfen** (`_schritte()`).
 Bereich → Slots → Items, mit dem Stand aus den Daten abgeleitet; nur der aktuelle
@@ -2872,8 +2874,9 @@ war dort nie etwas „fremd geändert". Beim Umbenennen wurde deshalb kommentarl
 Ordner liegen kann. Geprüft wird jetzt die Datei, deren Inhalt gleich ersetzt
 wird — also die geladene, vor jeder Bewegung auf der Platte.
 
-**Und die Notsicherung nimmt die Punkte mit.** `_ungespeichert_sichern()`
-schrieb `board_to_sequence(self.board)` ohne `palette_to_points(self.points)`:
+**Und die Notsicherung nimmt die Punkte mit.** `rettung_schreiben()` (beim
+Schliessen des Fensters, nach `backups/`) schrieb einmal
+`board_to_sequence(self.board)` ohne `palette_to_points(self.points)`:
 die Sicherung, die man beim Absturz aufmacht, enthielt jeden Schritt mit einer
 `point_id`, die ins Leere zeigt. Ein Rettungsanker, der die halbe Sequenz
 rettet, ist schlimmer als keiner — man merkt den Verlust erst beim Laden.
@@ -2887,34 +2890,40 @@ dafür gibt es `setze_app_id()`, und die muss **vor dem ersten Fenster** laufen.
 Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
 Ergebnis an genau einer der beiden Stellen.
 
-Gezeichnet wird das Symbol **aus Geometrie, nicht aus einem getippten Raster**
-und nicht aus einer Binärdatei im Repo: `autoclicker/symbol.py` beschreibt das
-Motiv als Liste von Formen (`rr` / `kreis` / `strich` / `zug`, alle im 24er-Raster
-des SVG-viewBox) und rechnet daraus jede Grösse — gerundete Ecken über den
-Alpha-Kanal, Kantenglättung über `PROBEN`² Abtastungen je Pixel. Das vorherige
-16×16-Raster aus Nullen und Einsen hatte alle Fehler eines handgesetzten Rasters
-(Motiv bis an die Kante, scharfe Ecken, Treppen).
+Gezeichnet wird das Symbol **aus der SVG-Datei der Oberfläche, nicht aus
+einem getippten Raster** und nicht aus einer Binärdatei im Repo:
+`web/sequenz-studio-logo.svg` ist die **einzige** Quelle des Motivs. Der Browser
+lädt sie direkt (Kopf und Favicon), `autoclicker/symbol.py` liest sie mit der
+Standardbibliothek — nur gefüllte Pfade aus `M`/`L`/`C`/`Z` plus eine Rotation,
+mehr braucht das Logo nicht — und rastert sie zeilenweise mit Kantenglättung
+(`PROBEN`² Abtastungen je Pixel); die Aussparungen bleiben echte Transparenz
+statt einer dunklen Ersatzfarbe. Hier stand einmal eine Liste von Formen in
+Python, die das SVG von Hand nachzog, und davor ein 16×16-Raster aus Nullen und
+Einsen — beides Kopien des Motivs, die beim nächsten Entwurf veralten.
 
-**Eine Geometrie, drei Verwendungen** — und deshalb liegt sie nicht in
+**Eine Datei, drei Verwendungen** — und der Rasterer liegt deshalb nicht in
 `winapi.py`, sondern in einem Modul, das weder Windows noch Pillow kennt:
 
 | wer | wozu |
 |---|---|
 | `winapi._symbol_bits()` | ICO-Bits für `WM_SETICON` (16 und 32) |
 | `tools/symbol.py` | PNG-Dateien und eine `.ico` für Verknüpfungen |
-| `web/index.html` | das SVG im Kopf der Oberfläche |
+| `web/index.html` | Kopf und Favicon der Oberfläche |
 
-Das SVG ist die einzige der drei, die von Hand nachgezogen wird — ein Test hält
-es **Zahl für Zahl** gegen `MOTIV_KLEIN` (nicht „kommt vor": ein verschobener
-Balken fiele sonst nicht auf).
+Alle drei gehen über `symbol.punkte(kante)` bzw. die Datei selbst; ein Test hält
+fest, dass Kopf und Favicon dieselbe Datei nennen, dass die alte doppelte
+Inline-Zeichnung weg ist, und dass das SVG nur die Befehle benutzt, die
+`_pfad_polygone()` lesen kann — ein `A` aus einem CAD-Export fiele sonst erst
+beim Rastern mit `ValueError` um. Geprüft wird dabei die **Eigenschaft**
+(Maske vorhanden, erste Farbfläche ist eine flache Hex-Farbe, Befehlsmenge),
+nicht die Zeichnung: ein `rotate(180 128 128)` ist ein Detail genau dieses
+Motivs und fällt beim nächsten Entwurf um, ohne dass etwas kaputt wäre.
 
-**Zwei Fassungen, nicht eine skalierte.** `MOTIV` ist das volle Motiv,
-`MOTIV_KLEIN` hat weniger Teile, dickere Striche und eine *gefüllte* statt
-umrandete Fahne. Der Grund ist gemessen: die Fahne der grossen Fassung hat 0,6
-Einheiten Strichstärke — bei 16 px sind das vier Zehntel Pixel, also ein grauer
-Fleck, und die Punktkette ist Krümel. `KLEIN_BIS = 32` liegt genau dort, wo
-Windows aufhört zu fragen: Titelleiste (16) und ALT+TAB/Taskleiste (32) bekommen
-die kleine, die grosse fängt bei der Verknüpfungsgrösse an.
+**Die flache Farbfläche muss die ERSTE im Dokument bleiben.** `symbol.py`
+nimmt das erste `rect` mit Maske und will dort sechs Hex-Ziffern; Verlauf,
+Rand und Innenschatten liegen **darüber** und werden beim Rastern nicht gesehen
+— genau darauf beruht die Plakette, und deshalb bleibt das 16-px-Symbol eine
+lesbare flache Fläche.
 
 **Die Bilddateien werden geschrieben, nicht eingecheckt.** `python tools/symbol.py`
 legt PNGs und eine `.ico` an (ohne Pillow — beide Formate sind von Hand
@@ -3314,8 +3323,8 @@ die nächste sie nicht mehr kennen muss:
    Tastendruck statt ab der letzten echten Aktion gemessen (aus 6 s würde 1 s).
 3. `marker_pruefen()` — haltlose Warte-Marker weg.
 
-Danach ist `schritte_aus_events()` frei von Sonderfällen, und `phasen_aufteilen()`
-schneidet die fertige Liste in INIT/LOOP/END.
+Danach ist `schritte_aus_events()` frei von Sonderfällen, und `phasen_bauen()`
+schneidet die fertige Liste an den gemerkten Grenzen in Loop-Phasen.
 
 **Die Aufnahme erfindet keine Zeit und wirft keine weg.** Die Sekunden zwischen den
 beiden Bereichs-Ecken bleiben in der Wartezeit des *nächsten* Schritts stehen. Bedienzeit

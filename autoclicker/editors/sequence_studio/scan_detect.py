@@ -77,10 +77,6 @@ _SCAN_MODI_TEXT = (
     (SCAN_MODE_EVERY, "alle Treffer"),
 )
 
-# Wie lange ein Erreichbarkeitstest des LLM-Endpunkts warten darf. Kurz: die
-# Frage ist „antwortet da überhaupt jemand", nicht „was sagt das Modell".
-_LLM_PROBE_TIMEOUT = 4
-
 
 class _BibliothekState:
     """Ein `AutoClickerState`-Stellvertreter für die Boss-Bibliothek.

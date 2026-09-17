@@ -9,7 +9,7 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import update_item_in_scans, save_global_items, active_templates_dir
+from ...persistence import save_global_items, active_templates_dir
 from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
                       bereinige_itemname, ok, err, info, hint)
 
@@ -107,8 +107,8 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
             item.template = new_template
         del state.global_items[old_name]
         state.global_items[new_name] = item
-
-    update_item_in_scans(old_name, new_name)
+    # Ein Item gehoert genau einem Scan; der wird danach als Ganzes gespeichert.
+    # Gleichnamige Items anderer Scans ziehen ausdruecklich nicht mit.
     return True
 
 

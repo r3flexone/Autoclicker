@@ -271,11 +271,11 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         from ..persistence import resolve_point_references
         punkt_meldungen = resolve_point_references(state, sequence)
 
-    # Item-/Slot-Referenzen der Scans frisch auflösen: ein Editor kann zwischendurch ein
-    # globales Item geändert haben, und der Scan soll dem folgen. Ausserhalb des Locks,
-    # weil resolve_scan_references selbst lockt.
-    from ..persistence import resolve_scan_references
-    scan_meldungen = resolve_scan_references(state, sequence)
+    # Klick-Ziele der Scans frisch auflösen (Bestätigungsklick, Boss-/Icon-Aktion):
+    # ein Editor kann zwischendurch einen Punkt verschoben haben, und der Scan soll
+    # dem folgen. Ausserhalb des Locks, weil resolve_klick_referenzen selbst lockt.
+    from ..persistence import resolve_klick_referenzen
+    scan_meldungen = resolve_klick_referenzen(state, sequence)
 
     # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
     # klickt als in der Sequenzdatei steht.

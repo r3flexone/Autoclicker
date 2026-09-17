@@ -1,8 +1,5 @@
 """
 Item-Scan-Konfigurationen (eine JSON pro Scan unter item_scans/).
-
-update_item_in_scans lebt hier weil es die Scan-JSONs auf der Platte anfasst,
-auch wenn der Anlass (Item umbenannt) konzeptuell zur Item-Verwaltung gehört.
 """
 
 import json
@@ -108,11 +105,6 @@ def flush_item_scan_context(state: AutoClickerState) -> Optional[ItemScanConfig]
         return cfg
 
 
-def resolve_scan_references(state: AutoClickerState, sequence=None) -> list[str]:
-    """Löst nur Punkt-IDs der Scans gegen die verwendende Sequenz auf."""
-    return resolve_klick_referenzen(state, sequence)
-
-
 def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str]:
     """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
 
@@ -162,13 +154,3 @@ def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str
                 # Kein Rueckfall auf (0, 0): die Aktion wird uebersprungen.
                 traeger.action_x = traeger.action_y = 0
     return meldungen
-
-
-def update_item_in_scans(old_name: str, new_name: str) -> tuple[int, int]:
-    """Kompatibilitäts-Helfer ohne globale Wirkung.
-
-    Ein Item gehört genau einem Scan. Dessen Objekt wird vom Editor direkt
-    umbenannt und anschliessend als kompletter Scan gespeichert; gleichnamige
-    Items anderer Scans dürfen ausdrücklich nicht mitgezogen werden.
-    """
-    return 0, 0
