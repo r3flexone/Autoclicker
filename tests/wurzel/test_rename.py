@@ -124,14 +124,29 @@ class RunTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_collision_refuses_and_writes_nothing(self):
+    def test_same_scope_collision_refuses_and_writes_nothing(self):
+        # `laden` und `load` im selben Rumpf: nach dem Rename staende `load = 2`
+        # UEBER dem Parameter — ein stiller Fehler, den kein Linter sieht.
+        (self.root / "autoclicker/c.py").write_text(
+            "def f(laden):\n    load = 2\n    return laden + load\n", encoding="utf-8")
         out = io.StringIO()
         code = run(self.root, {"laden": "load"}, False, False, False, out=out)
         self.assertEqual(code, 2)
-        self.assertIn("'load' gibt es schon", out.getvalue())
+        self.assertIn("[STOPP] alt und neu im selben Scope: autoclicker/c.py:f", out.getvalue())
         self.assertIn("def laden():", (self.root / "autoclicker/a.py").read_text(encoding="utf-8"))
 
+    def test_other_scopes_only_warn(self):
+        # `load` gibt es in b.js — ein Hinweis, kein Stopp: andere Datei, anderer Scope.
+        out = io.StringIO()
+        code = run(self.root, {"laden": "load"}, False, False, False, out=out)
+        self.assertEqual(code, 0)
+        self.assertIn("[HINWEIS] 'load' kommt schon vor in: autoclicker/b.js", out.getvalue())
+        self.assertIn("def load():", (self.root / "autoclicker/a.py").read_text(encoding="utf-8"))
+        self.assertIn("function load()", (self.root / "autoclicker/b.js").read_text(encoding="utf-8"))
+
     def test_force_and_dry_run(self):
+        (self.root / "autoclicker/c.py").write_text(
+            "def f(laden):\n    load = 2\n    return laden + load\n", encoding="utf-8")
         out = io.StringIO()
         code = run(self.root, {"laden": "load"}, False, True, True, out=out)
         self.assertEqual(code, 0)
@@ -139,7 +154,6 @@ class RunTest(unittest.TestCase):
         self.assertIn("def laden():", (self.root / "autoclicker/a.py").read_text(encoding="utf-8"))
         run(self.root, {"laden": "load"}, False, False, True, out=io.StringIO())
         self.assertIn("def load():", (self.root / "autoclicker/a.py").read_text(encoding="utf-8"))
-        self.assertIn("function load()", (self.root / "autoclicker/b.js").read_text(encoding="utf-8"))
 
     def test_line_endings_are_preserved(self):
         pfad = self.root / "autoclicker/crlf.py"

@@ -61,30 +61,42 @@ class Renamer:
         self.ident = {a: n for a, n in table.items() if "-" not in a}
         self.css_table = {a: n for a, n in table.items() if "-" in a}
         self.seen = set()     # jeder JS-Identifier, den der Lexer gesehen hat
+        self._compile()
 
     # ----------------------------------------------------------- Verweise
 
+    def _compile(self) -> None:
+        """Ein Muster je Regel statt eines je Name — 200 Namen mal 10.000 Token
+        waren sonst zwei Millionen Regex-Laeufe."""
+        def alternation(namen):
+            return "(?:" + "|".join(re.escape(n) for n in sorted(namen, key=len, reverse=True)) + ")"
+        mit = [a for a in self.ident if "_" in a]
+        ohne = [a for a in self.ident if "_" not in a]
+        self._re_underscore = re.compile(r"(?<!\w)" + alternation(mit) + r"\b") if mit else None
+        self._re_backtick = (re.compile(r"`" + alternation(ohne) + r"(?=[`(.])|\b" + alternation(ohne) + r"(?=\()")
+                             if ohne else None)
+        self._re_ident = re.compile(r"(?<![\w$])" + alternation(self.ident) + r"(?![\w$])") if self.ident else None
+        self._re_css = re.compile(r"(?<![\w-])" + alternation(self.css_table) + r"(?![\w-])") if self.css_table else None
+
     def _doc_rule(self, text: str) -> str:
         """Prosa: nur erkennbare Verweise ersetzen (Backticks, `(`, Unterstrich)."""
-        for alt, neu in self.ident.items():
-            if "_" in alt:
-                muster = re.compile(r"(?<!\w)" + re.escape(alt) + r"\b")
-            else:
-                muster = re.compile(r"`" + re.escape(alt) + r"(?=[`(.])|\b" + re.escape(alt) + r"(?=\()")
-            text = muster.sub(lambda m, a=alt, n=neu: m.group(0).replace(a, n), text)
+        if self._re_underscore is not None:
+            text = self._re_underscore.sub(lambda m: self.ident[m.group(0)], text)
+        if self._re_backtick is not None:
+            text = self._re_backtick.sub(
+                lambda m: m.group(0).replace(m.group(0).lstrip("`"), self.ident[m.group(0).lstrip("`")]), text)
         return text
 
     def _string_rule(self, inhalt: str) -> str:
         """String-Inhalt: Verweis-Regel, mit --strings zusaetzlich Pfad-Glieder."""
         neu = self._doc_rule(inhalt)
-        if self.strings and neu.strip() == neu and " " not in neu and neu:
-            for alt, n in self.ident.items():
-                neu = re.sub(r"(?<![\w$])" + re.escape(alt) + r"(?![\w$])", n, neu)
+        if self.strings and self._re_ident is not None and neu.strip() == neu and " " not in neu and neu:
+            neu = self._re_ident.sub(lambda m: self.ident[m.group(0)], neu)
         return neu
 
     def _css_rule(self, text: str) -> str:
-        for alt, neu in self.css_table.items():
-            text = re.sub(r"(?<![\w-])" + re.escape(alt) + r"(?![\w-])", neu, text)
+        if self._re_css is not None:
+            text = self._re_css.sub(lambda m: self.css_table[m.group(0)], text)
         return text
 
     # ------------------------------------------------------------- Python
@@ -286,6 +298,42 @@ def _read(path: Path) -> str:
         return f.read()
 
 
+def scope_name_sets(src: str) -> list:
+    """Je Python-Scope (Modul, Funktion, Lambda, Klasse) die nackten Namen und
+    Parameter darin — Attribute (`x.neu`) zaehlen nicht, verschachtelte
+    Funktionen nur mit ihrem Namen."""
+    import ast
+    try:
+        baum = ast.parse(src)
+    except SyntaxError:
+        return []
+
+    def namen(knoten) -> set:
+        gefunden = set()
+        for k in ast.walk(knoten):
+            if isinstance(k, ast.Name):
+                gefunden.add(k.id)
+            elif isinstance(k, ast.arg):
+                gefunden.add(k.arg)
+            elif isinstance(k, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                gefunden.add(k.name)
+        return gefunden
+
+    scopes = [("<modul>", baum)] + [
+        (getattr(k, "name", "<lambda>"), k) for k in ast.walk(baum)
+        if isinstance(k, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef))]
+    ergebnis = []
+    for bezeichnung, knoten in scopes:
+        eigene = set()
+        for kind in ast.iter_child_nodes(knoten):
+            if isinstance(kind, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                eigene.add(kind.name)
+                continue
+            eigene |= namen(kind)
+        ergebnis.append((bezeichnung, eigene))
+    return ergebnis
+
+
 def identifiers_in(path: Path, src: str) -> set:
     """Alle Bezeichner einer Datei — fuer die Kollisionspruefung."""
     if path.suffix == ".py":
@@ -310,18 +358,29 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
     quellen = [(f, _read(f)) for f in files(root)]
 
-    if not force:
-        kollisionen = {}
-        for f, src in quellen:
-            vorhanden = identifiers_in(f, src) & set(renamer.ident.values())
-            for name in vorhanden:
-                kollisionen.setdefault(name, []).append(f.relative_to(root).as_posix())
-        if kollisionen:
-            for name, wo in sorted(kollisionen.items()):
-                print(f"[STOPP] '{name}' gibt es schon als Bezeichner in: "
-                      + ", ".join(wo[:5]) + (" ..." if len(wo) > 5 else ""), file=out)
-            print("Zwei Dinge unter einem Namen — anderen Namen waehlen oder --force.", file=out)
-            return 2
+    # Zwei Stufen. Ein neuer Name, der irgendwo im Repo schon vorkommt, ist ein
+    # HINWEIS (`f.write` neben `status.schreibe -> write` ist kein Problem). Ein
+    # neuer Name, der im SELBEN Python-Scope wie der alte als nackter Name steht,
+    # ist ein STOPP: `wert = 1; value = 2; use(wert)` wuerde nach dem Umbenennen
+    # still `value = 2` benutzen, und das faengt kein Linter.
+    hinweise, stopps = {}, []
+    for f, src in quellen:
+        for name in identifiers_in(f, src) & set(renamer.ident.values()):
+            hinweise.setdefault(name, []).append(f.relative_to(root).as_posix())
+        if f.suffix == ".py":
+            for scope, namen in scope_name_sets(src):
+                for alt, neu in renamer.ident.items():
+                    if alt in namen and neu in namen:
+                        stopps.append(f"{f.relative_to(root).as_posix()}:{scope}  {alt} und {neu}")
+    for name, wo in sorted(hinweise.items()):
+        print(f"[HINWEIS] '{name}' kommt schon vor in: "
+              + ", ".join(wo[:4]) + (" ..." if len(wo) > 4 else ""), file=out)
+    if stopps and not force:
+        for s in stopps:
+            print(f"[STOPP] alt und neu im selben Scope: {s}", file=out)
+        print("Ein Rename wuerde hier still ueberschatten — von Hand aufloesen oder --force.",
+              file=out)
+        return 2
 
     gesamt = 0
     for f, src in quellen:
@@ -350,7 +409,9 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Bezeichner im Repo umbenennen (token-basiert).")
-    p.add_argument("pairs", nargs="+", metavar="alt=neu")
+    p.add_argument("pairs", nargs="*", metavar="alt=neu")
+    p.add_argument("--table", metavar="DATEI",
+                   help="Tabelle mit einer Zeile alt=neu je Umbenennung (# = Kommentar)")
     p.add_argument("--strings", action="store_true",
                    help="auch Strings, die den Namen als Ganzes oder Pfad-Glied tragen")
     p.add_argument("--dry-run", action="store_true", help="nur zeigen, nichts schreiben")
@@ -358,8 +419,16 @@ def main(argv=None) -> int:
     p.add_argument("--root", default=".", help="Repo-Wurzel (Standard: .)")
     args = p.parse_args(argv)
 
+    paare = list(args.pairs)
+    if args.table:
+        for zeile in Path(args.table).read_text(encoding="utf-8").splitlines():
+            zeile = zeile.split("#", 1)[0].strip()
+            if zeile:
+                paare.append(zeile)
+    if not paare:
+        p.error("keine Umbenennung angegeben (alt=neu oder --table DATEI)")
     table = {}
-    for paar in args.pairs:
+    for paar in paare:
         if "=" not in paar:
             p.error(f"'{paar}' ist kein alt=neu")
         alt, neu = paar.split("=", 1)
