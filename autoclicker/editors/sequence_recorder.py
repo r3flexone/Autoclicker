@@ -340,9 +340,9 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Aufgezeichnet: {arten}")
-        for taste, aktion, beschreibung in AUFNAHME_HOTKEYS:
+        for taste, aktion, label in AUFNAHME_HOTKEYS:
             print(f"  {aktion + ':':24} {col(taste, 'yellow')} "
-                  f"{hint('(' + beschreibung + ')')}")
+                  f"{hint('(' + label + ')')}")
         if not tasten:
             print(f"  {warn('Tastatur-Hook nicht installierbar — Tastendrücke fehlen.')}")
         else:

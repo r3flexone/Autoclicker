@@ -284,14 +284,15 @@ class Renamer:
 
 # ------------------------------------------------------------------ Dateien
 
-def files(root: Path):
+def files(root: Path, python_only: bool = False):
+    suffixes = {".py"} if python_only else TEXT_SUFFIXES
     for wurzel in ROOTS:
         p = root / wurzel
-        if p.is_file():
+        if p.is_file() and p.suffix.lower() in suffixes:
             yield p
         elif p.is_dir():
             for f in sorted(p.rglob("*")):
-                if f.is_file() and f.suffix.lower() in TEXT_SUFFIXES \
+                if f.is_file() and f.suffix.lower() in suffixes \
                         and not (SKIP_DIRS & set(f.relative_to(root).parts[:-1])):
                     yield f
 
@@ -311,30 +312,39 @@ def scope_name_sets(src: str) -> list:
     except SyntaxError:
         return []
 
-    def namen(knoten) -> set:
+    SCOPE_KNOTEN = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+    def eigene_namen(scope) -> set:
+        """Die Namen im Rumpf dieses Scopes — an einer verschachtelten Funktion
+        bleibt nur ihr Name, ihr Rumpf gehoert ihr selbst. Ein `try`/`with`
+        dazwischen aendert daran nichts: abgestiegen wird ueberall, nur nicht
+        in einen fremden Scope."""
         gefunden = set()
-        for k in ast.walk(knoten):
-            if isinstance(k, ast.Name):
-                gefunden.add(k.id)
-            elif isinstance(k, ast.arg):
-                gefunden.add(k.arg)
-            elif isinstance(k, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                gefunden.add(k.name)
+
+        def gehe(knoten):
+            for kind in ast.iter_child_nodes(knoten):
+                if isinstance(kind, SCOPE_KNOTEN):
+                    if hasattr(kind, "name"):
+                        gefunden.add(kind.name)
+                    continue
+                if isinstance(kind, ast.Name):
+                    gefunden.add(kind.id)
+                elif isinstance(kind, ast.arg):
+                    gefunden.add(kind.arg)
+                gehe(kind)
+
+        # Die eigenen Parameter gehoeren zum Scope, obwohl `arguments` ein Kind ist.
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for a in ast.walk(scope.args):
+                if isinstance(a, ast.arg):
+                    gefunden.add(a.arg)
+        gehe(scope)
         return gefunden
 
     scopes = [("<modul>", baum)] + [
         (getattr(k, "name", "<lambda>"), k) for k in ast.walk(baum)
-        if isinstance(k, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef))]
-    ergebnis = []
-    for bezeichnung, knoten in scopes:
-        eigene = set()
-        for kind in ast.iter_child_nodes(knoten):
-            if isinstance(kind, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                eigene.add(kind.name)
-                continue
-            eigene |= namen(kind)
-        ergebnis.append((bezeichnung, eigene))
-    return ergebnis
+        if isinstance(k, SCOPE_KNOTEN)]
+    return [(bezeichnung, eigene_namen(knoten)) for bezeichnung, knoten in scopes]
 
 
 def identifiers_in(path: Path, src: str) -> set:
@@ -355,11 +365,11 @@ def identifiers_in(path: Path, src: str) -> set:
 
 
 def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
-        out=sys.stdout) -> int:
+        out=sys.stdout, python_only: bool = False) -> int:
     renamer = Renamer(table, strings=strings)
     # newline="" laesst CRLF unangetastet — sonst schriebe der Durchgang jede
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
-    quellen = [(f, _read(f)) for f in files(root)]
+    quellen = [(f, _read(f)) for f in files(root, python_only)]
 
     # Zwei Stufen. Ein neuer Name, der irgendwo im Repo schon vorkommt, ist ein
     # HINWEIS (`f.write` neben `status.schreibe -> write` ist kein Problem). Ein
@@ -419,6 +429,9 @@ def main(argv=None) -> int:
                    help="auch Strings, die den Namen als Ganzes oder Pfad-Glied tragen")
     p.add_argument("--dry-run", action="store_true", help="nur zeigen, nichts schreiben")
     p.add_argument("--force", action="store_true", help="Kollisionspruefung uebergehen")
+    p.add_argument("--python-only", action="store_true",
+                   help="nur .py anfassen — fuer Lokale, deren Namen zugleich JSON-Schluessel "
+                        "der Bruecke sind (die Seite folgt erst mit den Schluesseln)")
     p.add_argument("--root", default=".", help="Repo-Wurzel (Standard: .)")
     args = p.parse_args(argv)
 
@@ -440,7 +453,8 @@ def main(argv=None) -> int:
         if "-" not in alt and not re.fullmatch(r"[A-Za-z_$][\w$]*", neu):
             p.error(f"'{neu}' ist kein gueltiger Bezeichner")
         table[alt] = neu
-    return run(Path(args.root), table, args.strings, args.dry_run, args.force)
+    return run(Path(args.root), table, args.strings, args.dry_run, args.force,
+               python_only=args.python_only)
 
 
 if __name__ == "__main__":

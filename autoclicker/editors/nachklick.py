@@ -587,16 +587,16 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
             fertig = state.reclick_index >= len(state.reclick_points)
 
     if punkt is not None:
-        farbe = f"  {describe_color(color)}" if punkt.color and color else ""
+        color_text = f"  {describe_color(color)}" if punkt.color and color else ""
         if gleich:
             # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
             # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
             # als „nichts passiert".
             print(f"  {col('[PASST]', 'green')} #{punkt_id} {name} — "
-                  f"bestätigt, bleibt wo er ist.{farbe}")
+                  f"bestätigt, bleibt wo er ist.{color_text}")
         else:
             print(f"  {col('[GESETZT]', 'green')} #{punkt_id} {name}  "
-                  f"({alt[0]}, {alt[1]}) → ({x}, {y}){farbe}")
+                  f"({alt[0]}, {alt[1]}) → ({x}, {y}){color_text}")
     if fertig:
         stop_nachklick(state, "alle Punkte durch")
     else:
@@ -647,8 +647,8 @@ def _zeige_aktuellen(state: AutoClickerState, verzoegert: bool = False) -> None:
         punkt = next((p for p in pool if p.id == punkt_id), None)
     if punkt is None:
         return
-    farbe = f"  {describe_color(punkt.color)}" if punkt.color else ""
+    color_text = f"  {describe_color(punkt.color)}" if punkt.color else ""
     print(f"  {col(f'→ {i + 1}/{gesamt}', 'cyan')}  #{punkt.id} "
           f"{punkt.name or '(ohne Name)'}   Zeiger steht auf "
-          f"({punkt.x}, {punkt.y}){farbe}")
+          f"({punkt.x}, {punkt.y}){color_text}")
     _springe(punkt.x, punkt.y, verzoegert)
