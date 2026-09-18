@@ -184,14 +184,20 @@ class Renamer:
 
     def javascript(self, src: str) -> str:
         """Identifier umbenennen; Strings, Templates und Kommentare nach Regel."""
+        self.js_scopes = []
+        return self._js_rewrite(src, self.js_scopes)
+
+    def _js_rewrite(self, src: str, scopes) -> str:
+        """Der eigentliche Durchlauf. `scopes` sammelt die nackten Namen je
+        oberster Funktion — `function f(` bei Tiefe 0 oeffnet einen Scope, der
+        mit der schliessenden Klammer endet; Eigenschaften (`x.name`) und
+        Objekt-Schluessel (`{name:`) zaehlen nicht, die Frage ist, ob alt und
+        neu als VARIABLEN nebeneinander stehen. Ein `${...}` in einem Template
+        laeuft rekursiv durch dieselbe Funktion, mit `scopes=None`: es gehoert
+        zum umgebenden Scope und darf die Liste nicht anfassen."""
         out = []
         i, n = 0, len(src)
         last_sig = ""      # letztes bedeutsames Token (fuer Regex-Erkennung)
-        # Nackte Namen je oberster Funktion: `function f(` bei Tiefe 0 oeffnet
-        # einen Scope, der mit der schliessenden Klammer endet. Eigenschaften
-        # (`x.name`) und Objekt-Schluessel (`{name:`) zaehlen nicht — die
-        # Frage ist, ob alt und neu als VARIABLEN nebeneinander stehen.
-        self.js_scopes = []
         depth, scope_name, scope_names = 0, None, set()
         while i < n:
             ch = src[i]
@@ -218,7 +224,7 @@ class Renamer:
                 wort = m.group(0)
                 self.seen.add(wort)
                 rest = src[m.end():m.end() + 2].lstrip()
-                if last_sig == "function" and depth == 0:
+                if scopes is not None and last_sig == "function" and depth == 0:
                     scope_name, scope_names = wort, set()
                 elif scope_name and last_sig != "." and not rest.startswith(":"):
                     scope_names.add(wort)
@@ -229,7 +235,7 @@ class Renamer:
             elif ch == "}":
                 depth -= 1
                 if depth == 0 and scope_name:
-                    self.js_scopes.append((scope_name, scope_names))
+                    scopes.append((scope_name, scope_names))
                     scope_name, scope_names = None, set()
             if not ch.isspace():
                 last_sig = ch
@@ -293,7 +299,7 @@ class Renamer:
                     elif src[k] in "\"'":
                         k = self._js_string_end(src, k, src[k]); continue
                     k += 1
-                out.append("${" + self.javascript(src[j + 2:k - 1]) + "}")
+                out.append("${" + self._js_rewrite(src[j + 2:k - 1], None) + "}")
                 j = k; text_start = j; continue
             j += 1
         out.append(self._doc_rule(src[text_start:]))
