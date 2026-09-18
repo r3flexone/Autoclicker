@@ -45,7 +45,7 @@ class BridgeTeilenMixin:
             "import": self._teilen_import,
             # Was im Fenster noch nicht gespeichert ist, liegt nicht auf Platte
             # und landet deshalb auch nicht im Bündel.
-            "offen": bool(getattr(self, "_dirty", False)
+            "open": bool(getattr(self, "_dirty", False)
                           or getattr(self, "_scan_dirty", False)),
             "status": {"text": text, "kind": kind},
         }

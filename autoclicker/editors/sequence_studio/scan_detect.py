@@ -204,13 +204,13 @@ class ScanDetectMixin:
             "icon_scans": [self._icon_scan_json(c) for c in self.icon_scans.values()],
             "global_bosses": [self._boss_json(b, True) for b in self.global_bosses],
             "boss": {
-                "offen": self.boss_offen,
+                "open": self.boss_offen,
                 "wahl": self.boss_wahl,
                 "wahl_global": self.boss_wahl_global,
                 "test": self._boss_test,
                 "tests": self._boss_tests,
             },
-            "icon": {"offen": self.icon_offen, "test": self._icon_test},
+            "icon": {"open": self.icon_offen, "test": self._icon_test},
             "region_ziel": (list(self._region_ziel) if self._region_ziel else None),
             # Was die Aktionen brauchen: die Punkte kennt die Sequenz-Seite der
             # Brücke, die Item-Scan-Namen der Item-Teil. Beides steht hier

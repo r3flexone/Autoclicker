@@ -450,7 +450,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # fällt niemandem auf.
         self.assertIn('n.querySelector(".scan-review-prio").value', js)
         self.assertIn('n.querySelector(".scan-review-name").value', js)
-        self.assertIn('n.querySelector(".scan-review-kategorie").value()', js)
+        self.assertIn('n.querySelector(".scan-review-category").value()', js)
         self.assertNotIn("inputs[3].value", js)
         self.assertIn("function scanReviewRefreshCategories", js)
         self.assertIn("Auf ausgewählte anwenden", js)
@@ -461,7 +461,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         html = (Path(self.old_cwd) /
                 "autoclicker/editors/sequence_studio/web/index.html").read_text(
                     encoding="utf-8")
-        self.assertNotIn(".scans.gefuehrt.hat-bild #ab-bild{display:none}", html)
+        self.assertNotIn(".scans.guided.has-image #ab-bild{display:none}", html)
         self.assertIn("SCAN EINRICHTEN", html)
         # Die Erklaerung dazu steht weiterhin da, aber im ⓘ statt als Absatz:
         # sie gilt immer und aendert sich nie, also stand sie bei jedem Blick
@@ -471,9 +471,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
                   encoding="utf-8")
         self.assertIn("derselben Aufnahmemethode neu aufgenommen", js)
         self.assertIn("folgen seiner Position automatisch", js)
-        self.assertIn('$("scan-foto-info")', js)
-        self.assertIn('id="scan-foto-info"', html)
-        self.assertIn('id="scan-groesse"', html)
+        self.assertIn('$("scan-photo-info")', js)
+        self.assertIn('id="scan-photo-info"', html)
+        self.assertIn('id="scan-size"', html)
         self.assertNotIn('id="scan-bar-foto"', html)
         self.assertNotIn('id="scan-bar-lernen"', html)
 

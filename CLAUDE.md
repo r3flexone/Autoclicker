@@ -703,7 +703,7 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
   das Modell, hängt eine fremde Vorlage am Item; sie steht in dessen
   Vorlagenliste und ist dort einzeln lösbar.
 - **Eine Kategorie benennt man an ihrer Überschrift um, nicht Item für
-  Item** (`scan_category_rename`, Feld im `scan-kategorie-kopf`). Sie ist
+  Item** (`scan_category_rename`, Feld im `scan-category-header`). Sie ist
   kein eigenes Objekt, sondern ein Feld an jedem Item — Zusammenlegen hiess
   deshalb, jede Maske einzeln anzufassen, und weil der Katalog bewusst ENG
   einordnet, ist Zusammenlegen der Normalfall (an einem echten Bestand hatten
@@ -742,7 +742,7 @@ Vier Entscheidungen, die gemessen sind und nicht geraten:
 - **Der vorgeschlagene Name ist ein NAME, kein Dateiname.** Beide
   `autoname`-Wege (Studio und Konsole) drückten ihn durch
   `sanitize_filename()` — die macht Kleinbuchstaben und Unterstriche, aus
-  „Godlike Bow" also `godlike_bow`. `Catalog.treffer()` vergleicht aber
+  „Godlike Bow" also `godlike_bow`. `Catalog.match()` vergleicht aber
   `casefold()` und keine Unterstriche: der Name kam wörtlich aus dem Katalog
   und fand sich darin trotzdem nicht wieder, **Kategorie und Priorität blieben
   also immer aus** — ausgerechnet der halbe Zweck der geschlossenen Auswahl.
@@ -1729,7 +1729,7 @@ Sechs Regeln, an denen der Reiter hängt:
   „gewählt" sahen gleich aus — **Amber gehört der Auswahl**, sonst markiert die
   Markierung nichts. `--slot-ok`/`--slot-fremd` lagen als `#00FF9C`/`#2DD4BF` zu
   dicht beieinander, um sie im Bild zu trennen. Die Klassenlogik
-  (`.scan-slot.treffer` / `.fremditem` / `.leer`, `SLOT_COLOR` in `app.js`)
+  (`.scan-slot.match` / `.foreign-item` / `.empty`, `SLOT_COLOR` in `app.js`)
   blieb dabei unverändert — nur die Variablen. Ein 1,5-px-Umriss in `var(--dim)` verschwindet
   zwischen bunten Item-Symbolen restlos — genau das war „nichts erkannt" vorher,
   also ausgerechnet der Zustand, den man sucht. Die Fläche trägt die Aussage,
@@ -1740,13 +1740,13 @@ Sechs Regeln, an denen der Reiter hängt:
   wiederholen. Drei Tests halten das zusammen: jeder Zustand braucht Umriss
   *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
   `SLOT_COLOR` muss genau die Zustände abdecken.
-- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, türkis statt
+- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.foreign`, türkis statt
   grün) — ein Zustand aus der Zeit des globalen Bestands: bei einem Scan ohne
   Items prüfte `_candidates()` alle Items aller Spiele, und ein Treffer aus dem
   *anderen* Spiel durfte nicht grün werden, denn dieser Scan sah das Item gar
   nicht an. Seit der Scan seine Items selbst besitzt, gibt es nichts mehr, was
   erkannt und trotzdem fremd wäre: `_detect_run()` meldet `foreign` immer als
-  `False`. Farbe (`--slot-fremd`) und Klasse (`.fremditem`) stehen noch in
+  `False`. Farbe (`--slot-fremd`) und Klasse (`.foreign-item`) stehen noch in
   Stylesheet und `SLOT_COLOR`, haben aber keinen Auslöser mehr.
 
 - **Scan, Slot und Item sind Masken — dieselbe Bauform** (`buildCard()`, dazu
@@ -1775,7 +1775,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Als **Masken** kommen dabei nur die Item-Listen (`scanCardsRight()`): dort
   stehen Dutzende gleichartiger Dinge nebeneinander. Ein Boss- oder Icon-Scan
   ist **eines** — Region, Erkennung, Aktion —, das trägt keine Maske; seine
-  Liste steht am selben Ort, und was zum Gewählten gehört, darunter (`.erk-insp`,
+  Liste steht am selben Ort, und was zum Gewählten gehört, darunter (`.det-insp`,
   durch eine Linie abgesetzt).
 
   Dazu gehört, dass **die Spalte den Platz für ihre Bildlaufleiste reserviert**
@@ -1817,12 +1817,12 @@ Sechs Regeln, an denen der Reiter hängt:
   Namen tippt man. Eingetragen werden beide Namen: lehnt die Brücke den neuen
   ab, behält das Item trotzdem seinen Platz.
 
-- **Der Kopf der rechten Spalte klebt oben** (`.scan-kopf`, `position: sticky`).
+- **Der Kopf der rechten Spalte klebt oben** (`.scan-header`, `position: sticky`).
   Dort stehen Speichern, Rückgängig, „Items erkennen", die Reiterleiste und die
   Filterzeile — bei sechzig Masken war all das nach drei Umdrehungen weg, und
   mit ihm der Weg in eine andere Liste. Er braucht einen eigenen Hintergrund,
   sonst scrollen die Masken sichtbar dahinter durch. Die Reiterleiste nimmt die
-  **ganze** Breite (`.tabs.breit`, gleiche Spalten): drei Reiter links
+  **ganze** Breite (`.tabs.wide`, gleiche Spalten): drei Reiter links
   zusammengedrängt liessen zwei Drittel der Leiste leer, und gleiche Spalten
   verhindern, dass die Zahlen dahinter („Slots 72/85") die Aufteilung bei jedem
   Filterwechsel verschieben.
@@ -1833,16 +1833,16 @@ Sechs Regeln, an denen der Reiter hängt:
   kurzer Stummel neben dem Schalter, „Sortieren" als noch kürzerer darunter und
   die Klappliste dazwischen über die ganze Breite — drei verschiedene Breiten
   untereinander lesen sich wie drei Rangstufen, obwohl es dreimal dasselbe ist.
-  Wo zwei Knöpfe eine Zeile teilen (`.knopfpaar`), bekommen sie **gleiche**
+  Wo zwei Knöpfe eine Zeile teilen (`.button-pair`), bekommen sie **gleiche**
   Spalten: „Items erkennen" nahm sonst den Rest der Zeile und „Rückgängig" nur
   seine Textbreite, und weil dessen Beschriftung den letzten Schritt nennt,
   kippte das Verhältnis bei jeder Änderung.
 
   **Für „nebeneinander" gibt es genau zwei Klassen**, und sie gelten überall:
-  `btn breit` ist EIN Knopf über die volle Breite, `knopfpaar` sind mehrere zu
+  `btn wide` ist EIN Knopf über die volle Breite, `button-pair` sind mehrere zu
   gleichen Teilen. Vorher stand an jeder Zeile eine eigene Mischung aus
-  `wachse`, Abstandhaltern und Textbreite — dieselbe Frage, ein Dutzend
-  Antworten. Ein Test hält fest, dass kein `btn wachse` mehr existiert.
+  `grow`, Abstandhaltern und Textbreite — dieselbe Frage, ein Dutzend
+  Antworten. Ein Test hält fest, dass kein `btn grow` mehr existiert.
 
   Gleiche Spalten dürfen dabei nichts kosten, was man lesen muss: bei fester
   Spaltenzahl schnitten drei Knöpfe in 290 px die Beschriftung ab („Item ler…").
@@ -1884,7 +1884,7 @@ Sechs Regeln, an denen der Reiter hängt:
   und nicht die Breite, um die es beim Kompakt-Umbau ging (ein Kasten wäre das
   gewesen).
 - **Zustandsklassen bekommen ein Präfix — auch dort, wo es niemand sieht.** Der
-  Hinweiskasten hiess `wz-info-kompakt info`, und `.info` ist der runde
+  Hinweiskasten hiess `wz-info-compact info`, und `.info` ist der runde
   ⓘ-Knopf: 13 px, `flex:none`, zentriert. Der Kasten erbte dessen Gestalt.
   Solange er NUR das ⓘ enthielt, sahen 13 px richtig aus — mit einer
   Beschriftung darin stand der Text mittig über den Kasten hinaus, nach links
@@ -1894,12 +1894,12 @@ Sechs Regeln, an denen der Reiter hängt:
   in der CSS-Datei keine einzige Variante — ein Präfix hätte einen toten Zweig
   gepflegt.
 - **Eine Klasse, die das Layout setzt, darf keine andere überschreiben.**
-  `.wz-aktion{display:flex}` steht später im Stylesheet als `.gitter2`/
+  `.wz-action{display:flex}` steht später im Stylesheet als `.gitter2`/
   `.gitter3` und gewann bei gleicher Spezifität: die beiden Stellen, die
-  ausdrücklich `wz-aktion gitter2` bzw. `gitter3 wz-aktion` schreiben, bekamen
+  ausdrücklich `wz-action gitter2` bzw. `gitter3 wz-action` schreiben, bekamen
   nie ihre gleichen Spalten, und die Knopfreihen standen in Textbreite da. Die
   Klasse trägt jetzt nur noch ihren Abstand; wer eine Reihe will, schreibt
-  `reihe` dazu.
+  `row` dazu.
 - **Ein Kästchen heisst „gehört dazu", nicht „ist gewählt".** Die Blockkarten
   trugen eines für die Auswahl — es sagte dasselbe wie der Amber-Ring um die
   Karte, nur kleiner, und konnte nichts, was STRG+Klick nicht auch kann („dazu"
@@ -1923,11 +1923,11 @@ Sechs Regeln, an denen der Reiter hängt:
   Phasenkopf beschreiben „Läufe je Zyklus" und „Start ab Uhrzeit" die Phase;
   „Alle Blöcke wählen" und „Zeiten skalieren" ändern jeden Block darin.
   Dazwischen gemischt liest sich das Skalieren wie eine dritte Eigenschaft. Die
-  Sammel-Aktionen stehen deshalb unten beieinander als `knopfpaar` — und nur,
+  Sammel-Aktionen stehen deshalb unten beieinander als `button-pair` — und nur,
   wenn die Phase überhaupt Blöcke hat.
 - **Untereinander stehende Zeilen liegen auf DEMSELBEN Raster.** Der Phasenkopf
   hatte oben ein `flex` mit fest getippten 70 und 74 px und darunter ein
-  `knopfpaar`: die Eigenschaften-Zeile endete bei 470 px, die Knopfzeile bei
+  `button-pair`: die Eigenschaften-Zeile endete bei 470 px, die Knopfzeile bei
   584 — und die beiden Felder waren *fast* gleich breit, nah genug, dass es wie
   ein Rundungsfehler aussieht statt wie Absicht. Beide Zeilen benutzen jetzt
   dieselbe `auto-fit`-Regel (min. 118 px), also gleiche Spalten, gleiche Kanten
@@ -1943,11 +1943,11 @@ Sechs Regeln, an denen der Reiter hängt:
   sind die beiden Eingabefelder dadurch exakt gleich breit — ein Vorsatz vor
   nur einem der beiden hätte sie um seine eigene Breite gegeneinander
   verschoben.
-- **Auch ein Schalter bekommt seine Fläche** (`.kachel`). Aufgefallen ist das
+- **Auch ein Schalter bekommt seine Fläche** (`.tile`). Aufgefallen ist das
   an einem Filter, der als loser Text zwischen lauter Kacheln stand —
   Reiterleiste darüber, Knopfreihe darunter — und sich las, als gehöre er nicht
   dazu. Den Filter gibt es nicht mehr (s. u.), die Regel schon.
-- **Ein Knopf sieht aus wie ein Knopf.** `.btn.still` hiess einmal „ohne
+- **Ein Knopf sieht aus wie ein Knopf.** `.btn.quiet` hiess einmal „ohne
   Rahmen" (`border-color: transparent`) — damit war „+ neuer Scan" oder „alle
   dazu" ein Stück Text, dem man nicht ansieht, dass man es anklicken kann. Der
   Ton bleibt zurückhaltend (kein Hintergrund, gedämpfte Schrift), die **Fläche**
@@ -1993,20 +1993,20 @@ Sechs Regeln, an denen der Reiter hängt:
   Stellen stehen, denn die Vergabe entscheidet die Zahl, die Sortierung nur
   die Zeile.
 
-  **Sie steht unter dem Schalter, in der ersten Spalte** (`.scan-marke`), nicht
+  **Sie steht unter dem Schalter, in der ersten Spalte** (`.scan-badge`), nicht
   vor dem Namensfeld: dort nahm sie ihm die Breite, liess die Namen ohne ID
   an einer anderen Kante beginnen — und beim Bearbeiten schob sich das Feld
   darüber. In der ersten Spalte steht sie ausserhalb von allem, was sich beim
   Tippen ändert.
 
-  Gezeichnet wird sie als `.zahl` — dieselbe Kachel wie überall sonst, keine
+  Gezeichnet wird sie als `.num` — dieselbe Kachel wie überall sonst, keine
   eigene daneben —, und die **Grösse** in der Zustandszeile ebenso: sie ist ein
   gemessener Wert, kein Satz. Was daneben steht („Item 1", „unbekannt",
   „→ Helme"), ist eine Aussage und bleibt Text. Beide Kacheln stehen auf einer
   Höhe, weil die erste Spalte `align-self: stretch` trägt und ihren Inhalt
   auseinanderzieht; ein Rauchtest misst die Unterkanten.
 
-  **Die ID-Kachel hat eine feste Mindestbreite** (`.scan-marke .zahl`). Ohne
+  **Die ID-Kachel hat eine feste Mindestbreite** (`.scan-badge .num`). Ohne
   sie schob sich „#3" weniger als „#55" und „#123" nochmal anders — jede
   Ziffernzahl saugte sich auf ihre eigene Textbreite zusammen, und in einer
   Liste mit gemischten ein-, zwei- und dreistelligen IDs sprang die Kachel bei
@@ -2213,7 +2213,7 @@ des Slots setzt, braucht keinen Scan als Bezug und ist deshalb immer da.
 **„Alle raus" ist nicht „alle löschen".** Der eine nimmt aus der Mitgliedschaft
 — Slot bzw. Item bleibt im Bestand —, der andere (`scan_delete_all()`)
 nimmt ihn wirklich weg. Fünfzig Slots einzeln durchzuklicken war der Grund,
-warum man diesen Knopf sucht; er steht als `.btn.gefahr` direkt neben „alle
+warum man diesen Knopf sucht; er steht als `.btn.danger` direkt neben „alle
 raus", mit derselben Bezugsregel wie überall (`_scan_slots()`/`_candidates()`:
 der offene Scan, sonst der Bestand) — ein Slot eines *anderen* Scans bleibt
 unangetastet. Kein Bestätigungsdialog: STRG+Z holt den ganzen Abzug zurück,
@@ -2256,8 +2256,8 @@ abweichen, deshalb heisst „erledigt" schlicht: es ist da.
 ahnt: „Items lernen" auf dem alten Bild lernt leere Slots.
 
 **Und die Anleitung klappt sich weg, wenn sie erledigt ist.** Der Weg, das Bild
-und die Modus-Kacheln sind zusammenklappbare Abschnitte (`klapp-kopf` /
-`klapp-rumpf`); untereinander waren sie länger als die Spalte hoch ist, und die
+und die Modus-Kacheln sind zusammenklappbare Abschnitte (`collapse-header` /
+`collapse-body`); untereinander waren sie länger als die Spalte hoch ist, und die
 Listen ganz unten — also das, womit man dauernd arbeitet — erreichte man nur
 über die Bildlaufleiste. „So entsteht ein Scan" klappt sich von selbst zu,
 sobald alle drei Schritte erledigt sind: beim ersten Mal ist es das Wichtigste
@@ -2708,9 +2708,9 @@ Fünf Regeln, an denen er hängt:
   wächst mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet; ohne
   Deckel liest ein halbes Jahr Betrieb bei jedem Klick mit. Eine stillschweigend
   gekürzte Auswertung wäre schlimmer als eine kurze.
-- **Er baut mit dem, was da ist.** Kennzahlen sind `wz-kennzahlen` (dieselben
-  Kacheln wie im Werkzeuge-Reiter), Karten sind `teilen-karte`, die Spalten sind
-  `abschnitt` — eigene Klassen gibt es nur für die Rangzeile und die
+- **Er baut mit dem, was da ist.** Kennzahlen sind `wz-metrics` (dieselben
+  Kacheln wie im Werkzeuge-Reiter), Karten sind `share-card`, die Spalten sind
+  `section` — eigene Klassen gibt es nur für die Rangzeile und die
   Sitzungsauswahl, und **eine** Rangzeile trägt alle vier Listen plus den Ertrag.
   Ein achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
   einbringt. Dazu gehört, dass untereinander stehende Blöcke auf **derselben**
@@ -3053,7 +3053,7 @@ Regeln beim Erweitern:
   und keins davon ändert die Regel:
 
   - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`point_others`,
-    `_point_usages(…, ausser=step)`) — als offener `hinweis`, denn das ist
+    `_point_usages(…, ausser=step)`) — als offener `hint`, denn das ist
     Zustand; das Warum bleibt im ⓘ.
   - Das Verschieben **sagt, wer mitzieht** („zieht 1 weitere Verwendung mit:
     Loop 4 · Block 2 · Stelle", `_moved_along()`), und zwar ohne den Block, an dem
@@ -3141,7 +3141,7 @@ Regeln beim Erweitern:
 - **Alle Typ-Kacheln tragen ihre Farbe**, nicht nur die gewählte — damit ist das
   Raster zugleich die Legende zu den Farben im Board. Ringsum als Rahmen (dieselbe
   Regel wie oben), die gewählte zusätzlich ausgefüllt. `border-color` steht im
-  `style`-Attribut und damit *nach* dem `border`-Kurzformat aus `.typ-chip`;
+  `style`-Attribut und damit *nach* dem `border`-Kurzformat aus `.type-chip`;
   andersherum räumte die Kurzform die Farbe wieder weg.
 - **Was ohne ELSE passiert, steht in der Config — also wird sie gelesen, nicht
   behauptet.** Im Inspektor stand „Ohne ELSE läuft der Schritt in seinen Timeout
@@ -3192,7 +3192,7 @@ Regeln beim Erweitern:
   nennt die Überschrift im Detailteil den Scan nicht noch einmal: sein Name steht
   in derselben Maske eine Zeile darüber. Ein Test misst beide Hälften.
 - **Erklärungen stehen im ⓘ, Zustand und nächster Schritt im Text.** Ein
-  `hinweis`-Absatz sagt, was JETZT gilt („62×60 px", „Zeigt ins Leere: …") oder
+  `hint`-Absatz sagt, was JETZT gilt („62×60 px", „Zeigt ins Leere: …") oder
   was als Nächstes zu tun ist („Noch keine Slots. …"). Alles, was erklärt, WARUM
   etwas so ist, gehört ins ⓘ — es gilt immer, ändert sich nie und steht deshalb
   bei jedem Blick im Weg; `openHelps` merkt sich, welche aufgeklappt sind.
@@ -3223,7 +3223,7 @@ Regeln beim Erweitern:
   Bedienelemente brauchen; unten hat er die volle Breite und liegt da, wo sonst
   nichts passiert. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
   lange Meldung im Kopf war immer abgeschnitten.
-- **Zustandsklassen bekommen ein Präfix** (`art-ok`, `art-warn`, `art-info`).
+- **Zustandsklassen bekommen ein Präfix** (`kind-ok`, `kind-warn`, `kind-info`).
   Ohne das hiess die Statusklasse für „Hinweis" schlicht `info` — und `.info` ist
   der runde ⓘ-Knopf. Der Status erbte dessen Gestalt: ein leerer 13-px-Kreis
   neben dem Start-Knopf, den niemand zuordnen konnte. Eine Klasse ohne Präfix ist

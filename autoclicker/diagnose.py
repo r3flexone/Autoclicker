@@ -29,8 +29,8 @@ from .winapi import get_virtual_desktop
 # Ab wie vielen gleichartigen Befunden nur noch gezählt statt aufgezählt wird.
 _MAX_SINGLE = 8
 
-LEVEL_ERROR = "fehler"     # läuft so nicht (oder tut garantiert das Falsche)
-LEVEL_HINT = "hinweis"   # läuft, ist aber vermutlich nicht gewollt
+LEVEL_ERROR = "error"      # läuft so nicht (oder tut garantiert das Falsche)
+LEVEL_HINT = "hint"      # läuft, ist aber vermutlich nicht gewollt
 
 
 @dataclass

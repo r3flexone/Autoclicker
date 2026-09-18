@@ -54,14 +54,14 @@ def lauf():
     with Fenster(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
         f.reiter("sequences")
-        karten = f.count(".seq-karte")
+        karten = f.count(".seq-card")
         pruefe(karten == 3, f"3 Karten erwartet, da: {karten}")
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
         # rutschte alles darunter hoch: der Phasenbalken der einen lag auf Höhe
         # der Kennzahlen der anderen, und die Übersicht war keine mehr.
-        for teil in ("seq-balken", "seq-zahlen", "seq-fuss"):
+        for teil in ("seq-bar", "seq-numbers", "seq-footer"):
             kanten = f.seite.eval_on_selector_all(
-                f".seq-karte .{teil}",
+                f".seq-card .{teil}",
                 "ns => ns.map(n => Math.round(n.getBoundingClientRect().top))")
             pruefe(len(set(kanten)) == 1,
                    f".{teil} liegt nicht auf einer Linie: {kanten}")
@@ -69,13 +69,13 @@ def lauf():
         # und in die Nachbarkarte malen. `min-width:0` allein reicht dafür nicht:
         # der Text schrumpft rechnerisch, bleibt bei overflow:visible aber sichtbar.
         pfad_overflow = f.seite.eval_on_selector_all(
-            ".seq-fuss .wachse",
+            ".seq-footer .grow",
             "ns => ns.map(n => getComputedStyle(n).overflowX)")
         pruefe(pfad_overflow and all(value != "visible" for value in pfad_overflow),
                f"Sequenzpfade laufen aus ihren Karten: {pfad_overflow}")
         knopf_in_karte = f.seite.eval_on_selector_all(
-            ".seq-karte",
-            "ns => ns.every(k => { const b=k.querySelector('.seq-fuss .btn'); "
+            ".seq-card",
+            "ns => ns.every(k => { const b=k.querySelector('.seq-footer .btn'); "
             "if (!b) return true; const kr=k.getBoundingClientRect(); "
             "const br=b.getBoundingClientRect(); return br.right <= kr.right + 1; })")
         pruefe(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
@@ -83,21 +83,21 @@ def lauf():
 
         # ------------------------------------------------------------- Editor
         f.reiter("editor")
-        pruefe(f.count("#btn-aufnahme") == 1,
+        pruefe(f.count("#btn-recording") == 1,
                "Verweis auf das Aufnahme-Werkzeug fehlt")
-        kopf = ".seite.links .abschnitt.klebt"
+        kopf = ".page.left .section.sticky"
         pruefe(f.count(kopf) == 1, "kein klebender Abschnitt in der linken Spalte")
-        pruefe(f.count(kopf + " #btn-aufnahme") == 1,
+        pruefe(f.count(kopf + " #btn-recording") == 1,
                "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
-        pruefe(f.count("#aufnahme-info, .aufnahme-zeile .info") == 0,
+        pruefe(f.count("#aufnahme-info, .recording-row .info") == 0,
                "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
         feldhoehen = f.seite.eval_on_selector_all(
-            "#seq-zyklen, #seq-bloecke",
+            "#seq-cycles, #seq-blocks",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().height))")
         pruefe(len(feldhoehen) == 2 and feldhoehen[0] == feldhoehen[1],
                f"Zyklen und Bloecke haben verschiedene Kachelhoehen: {feldhoehen}")
         pruefe(f.seite.eval_on_selector(
-            "#seq-bloecke", "e => getComputedStyle(e).borderTopStyle") == "solid",
+            "#seq-blocks", "e => getComputedStyle(e).borderTopStyle") == "solid",
             "der berechneten Blockanzahl fehlt die sichtbare Kachel")
         klebt = f.seite.eval_on_selector(kopf, "e => getComputedStyle(e).position")
         pruefe(klebt == "sticky", f"der oberste Block klebt nicht: {klebt}")
@@ -105,11 +105,11 @@ def lauf():
         # Vorfahren, wäre `position:sticky` gesetzt und trotzdem wirkungslos.
         vorher = f.seite.eval_on_selector(
             kopf, "e => Math.round(e.getBoundingClientRect().top)")
-        f.seite.eval_on_selector(".seite.links", "e => { e.scrollTop = 400; }")
+        f.seite.eval_on_selector(".page.left", "e => { e.scrollTop = 400; }")
         f.ruhe()
         nachher = f.seite.eval_on_selector(
             kopf, "e => Math.round(e.getBoundingClientRect().top)")
-        gescrollt = f.seite.eval_on_selector(".seite.links", "e => e.scrollTop")
+        gescrollt = f.seite.eval_on_selector(".page.left", "e => e.scrollTop")
         pruefe(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
         pruefe(vorher == nachher,
                f"der Block scrollt mit: {vorher} -> {nachher}")
@@ -123,13 +123,13 @@ def lauf():
         # zweites × als Vorsatz der Wiederholungen, und der Kopf sah aus, als
         # liesse sich dort etwas entfernen.
         knopftexte = f.seite.eval_on_selector_all(
-            ".phase-kopf.loop button", "ns => ns.map(n => n.textContent.trim())")
+            ".phase-header.loop button", "ns => ns.map(n => n.textContent.trim())")
         pruefe(not any("×" in t for t in knopftexte),
                f"ein Knopf im Phasenkopf traegt ein ×: {knopftexte}")
         # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
         # Werkzeugzeile stehen nur die beiden Felder, die die Phase
         # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
-        pruefe(f.count(".phase-werkzeug button") == 0,
+        pruefe(f.count(".phase-tool button") == 0,
                "in der Eigenschaften-Zeile der Phase steht ein Knopf")
         # **Beide Zeilen liegen auf demselben Raster.** Vorher war oben ein
         # `flex` mit fest getippten 70/74 px und unten ein `knopfpaar`: die
@@ -140,16 +140,16 @@ def lauf():
         # Kinder einer Spalten-Flexbox ohnehin immer so breit wie der Kopf —
         # daran haette ein zu schmaler Inhalt nichts geaendert, und der Test
         # waere gruen geblieben, ohne die Kante zu sehen, um die es geht.
-        raster = f.seite.eval_on_selector(".phase-kopf.loop", """e => {
+        raster = f.seite.eval_on_selector(".phase-header.loop", """e => {
           const kasten = (s) => [...e.querySelectorAll(s)]
             .map(n => n.getBoundingClientRect());
           const spanne = (r) => [Math.round(r[0].left),
                                  Math.round(r[r.length - 1].right)];
-          const zellen = kasten('.phase-werkzeug > *');
-          const knoepfe = kasten('.phase-alle > .btn');
+          const zellen = kasten('.phase-tool > *');
+          const knoepfe = kasten('.phase-all > .btn');
           return {eig: spanne(zellen), akt: spanne(knoepfe),
                   zellbreiten: zellen.map(r => Math.round(r.width)),
-                  felder: kasten('.phase-werkzeug input').map(r => Math.round(r.width)),
+                  felder: kasten('.phase-tool input').map(r => Math.round(r.width)),
                   knoepfe: knoepfe.map(r => Math.round(r.width)),
                   knopfoben: knoepfe.map(r => Math.round(r.top))};
         }""")
@@ -167,7 +167,7 @@ def lauf():
                f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {raster}")
         # Und die Felder sagen selbst, was sie sind — vorher stand das nur im
         # Tooltip, und ein Tooltip ist keine Beschriftung.
-        kopftext = f.text(".phase-kopf.loop")
+        kopftext = f.text(".phase-header.loop")
         for wort in ("Läufe je Zyklus", "Start ab Uhrzeit"):
             pruefe(wort in kopftext, f"'{wort}' fehlt im Phasenkopf: {kopftext!r}")
         f.image("sequenzen_phasenkopf")
@@ -181,7 +181,7 @@ def lauf():
                        "teilen", "werkzeuge", "einstellungen"):
             f.reiter(reiter)
             sichtbar = f.seite.eval_on_selector_all(
-                "#seq-auswahl, #btn-load, #btn-neu",
+                "#seq-select, #btn-load, #btn-new",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
             pruefe(sichtbar == 3,
                    f"im Reiter '{reiter}' fehlt die Sequenz-Auswahl "
@@ -198,16 +198,16 @@ def lauf():
         # `render()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
         f.reiter("werkzeuge")
-        f.klick_text("#wz-links button", "Punkte nachklicken")
-        pruefe("Alpha" in f.text("#wz-mitte"),
-               f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-mitte')[:120]!r}")
-        f.seite.select_option("#seq-auswahl", "Beta")
+        f.klick_text("#wz-left button", "Punkte nachklicken")
+        pruefe("Alpha" in f.text("#wz-middle"),
+               f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
+        f.seite.select_option("#seq-select", "Beta")
         f.klick("#btn-load")
-        pruefe(f.seite.eval_on_selector("#seq-auswahl", "e => e.value") == "Beta",
+        pruefe(f.seite.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
-        pruefe("Beta" in f.text("#wz-mitte"),
+        pruefe("Beta" in f.text("#wz-middle"),
                f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
-               f"{f.text('#wz-mitte')[:120]!r}")
+               f"{f.text('#wz-middle')[:120]!r}")
 
         fehler.extend(f.fehler)
     return fehler

@@ -107,7 +107,7 @@ def lauf():
         # ueber die Bruecke: dass ein Klick dort ankommt, ist genau das, was ein
         # Logik-Test nicht sehen kann.
         f.klick_text("#scan-insp .tabs button", "Scans")
-        f.klick("#scan-insp .scan-maske")
+        f.klick("#scan-insp .scan-card")
         toggle = f.seite.locator("#scan-insp label", has_text="Item-Katalog benutzen")
         pruefe(toggle.count() == 1,
                "der Katalog-Schalter fehlt in den Scan-Einstellungen")
@@ -149,7 +149,7 @@ def lauf():
         f.klick_text("#scan-insp .tabs button", "Items")
         # Gezielt die Gruppe „Helm" — `.first` traf die Gruppe „Ohne
         # Kategorie", die in der Liste zuerst steht.
-        field = f.seite.locator('.scan-kategorie-kopf input[value="Helm"]')
+        field = f.seite.locator('.scan-category-header input[value="Helm"]')
         pruefe(field.count() == 1,
                f"die Ueberschrift 'Helm' ist kein Feld ({field.count()} Treffer)")
         field.fill("Kopfschutz")
@@ -168,9 +168,9 @@ def lauf():
         # Fehler, den die Vertragssuite nicht sehen kann: dort steht
         # `cfgAction(` im Quelltext und ist trotzdem wirkungslos.
         f.reiter("einstellungen")
-        f.seite.fill("#cfg-suche", "Item-Katalog")
+        f.seite.fill("#cfg-search", "Item-Katalog")
         f.ruhe()
-        knopf = f.seite.locator("#cfg-felder button",
+        knopf = f.seite.locator("#cfg-fields button",
                                 has_text="Katalog aus der Spiel-API holen")
         pruefe(knopf.count() == 1,
                "der Knopf zum Holen fehlt am Katalog-Feld")
@@ -193,7 +193,7 @@ def lauf():
         # Und danach steht am Feld, was drinliegt und von wann es ist — sonst
         # holt man die Liste entweder nie wieder oder bei jedem Zweifel neu.
         f.ruhe()
-        stempel = f.seite.locator("#cfg-felder .cfg-rechte p.hinweis")
+        stempel = f.seite.locator("#cfg-fields .cfg-rights p.hint")
         pruefe(stempel.count() >= 1 and "1 Items" in (stempel.first.inner_text() or ""),
                "der Stand des Katalogs fehlt am Feld: "
                + (stempel.first.inner_text() if stempel.count() else "(nichts)"))
@@ -210,16 +210,16 @@ def lauf():
         # **In einem SCHMALEN Fenster**, sonst tritt der Fall gar nicht ein:
         # bei 1500 px passt auch ein Knopf mit einem ganzen Satz darin, und
         # der Test bliebe gruen, waehrend er bei 950 px aus dem Bild laeuft.
-        # Gemessen wird gegen die Mitte (`#cfg-felder`), denn das ist die
+        # Gemessen wird gegen die Mitte (`#cfg-fields`), denn das ist die
         # Kante, hinter der es aus dem Fenster geht.
         f.seite.set_viewport_size({"width": 950, "height": 700})
-        f.seite.fill("#cfg-suche", "scan_")
+        f.seite.fill("#cfg-search", "scan_")
         f.ruhe()
         raus = f.seite.evaluate("""() => {
-            const mitte = document.getElementById('cfg-felder');
+            const mitte = document.getElementById('cfg-fields');
             const grenze = mitte.getBoundingClientRect().right;
             const raus = [];
-            mitte.querySelectorAll('.cfg-rechte > *').forEach((k) => {
+            mitte.querySelectorAll('.cfg-rights > *').forEach((k) => {
               const r = k.getBoundingClientRect();
               if (r.width && r.right > grenze + 1)
                 raus.push((k.textContent || '').slice(0, 40));
@@ -235,7 +235,7 @@ def lauf():
         # ohnehin schon eine Zeile hoeher am Wert; was zurueckgesetzt wird,
         # liest im Tooltip, wer nachfragt.
         lang = f.seite.evaluate("""() => [...document.querySelectorAll(
-            '#cfg-felder .cfg-standard')].map((k) => (k.textContent || '').trim())
+            '#cfg-fields .cfg-default')].map((k) => (k.textContent || '').trim())
             .filter((t) => t.length > 40)""")
         pruefe(not lang, f"die Standard-Beschriftung ist ein Satz: {lang}")
         f.image("cfg_spaltenbreite")
@@ -269,7 +269,7 @@ def lauf():
             # **Nicht nach „Alle" suchen**: in derselben Leiste steht „alle
             # dazu" aus der Filterzeile, und `klick_text` nimmt den ersten
             # Treffer — geklickt wurde dann der Filter, und der Kasten kam nie.
-            knopf = f.seite.locator(".scan-kopf button", has_text="benennen")
+            knopf = f.seite.locator(".scan-header button", has_text="benennen")
             pruefe(knopf.count() == 1,
                    f"der Sammel-Knopf fehlt im Kopf ({knopf.count()} Treffer)")
 
@@ -282,12 +282,12 @@ def lauf():
             # der Seite getrieben wird statt von einem Abbruch-Flag.)
             f.seite.evaluate("""
                 window.__abb = setInterval(() => {
-                  const b = document.querySelector('.warte-kasten button');
+                  const b = document.querySelector('.wait-box button');
                   if (b) { b.click(); clearInterval(window.__abb); }
                 }, 100);
             """)
             knopf.click()
-            f.seite.wait_for_selector(".warte-kasten", state="detached", timeout=15000)
+            f.seite.wait_for_selector(".wait-box", state="detached", timeout=15000)
         finally:
             lv.suggest_item_name_with_reason = echt_name
 
@@ -302,7 +302,7 @@ def lauf():
         f.seite.evaluate("window.__traf = false;"
                          "showWork('T', 'x', () => { window.__traf = true; });")
         f.ruhe()
-        f.seite.click(".warte-kasten button")
+        f.seite.click(".wait-box button")
         f.ruhe()
         pruefe(f.seite.evaluate("window.__traf") is True,
                "ein echter Mausklick erreicht den Abbrechen-Knopf nicht")
@@ -310,7 +310,7 @@ def lauf():
         # Vorlage zurueck ist — bis zu `llm_timeout`. Ohne Quittung sieht der
         # Knopf in dieser Zeit unberuehrt aus, und man haelt ihn fuer kaputt.
         quittung = f.seite.evaluate(
-            "() => { const b = document.getElementById('arbeit-abbruch');"
+            "() => { const b = document.getElementById('work-cancel');"
             "return b ? [b.disabled, b.textContent] : null; }")
         pruefe(quittung and quittung[0] is True and "Bricht ab" in quittung[1],
                f"der Abbrechen-Knopf quittiert den Klick nicht: {quittung}")

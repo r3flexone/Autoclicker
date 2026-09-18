@@ -79,7 +79,7 @@ class BridgeWerkzeugeMixin:
             # Jede Datei heisst nun `sequence.json`; unterscheidbar ist der
             # bereinigte Besitzer-Ordner.
             "file": self.filepath.parent.name,
-            "offen": bool(self._dirty),
+            "open": bool(self._dirty),
             "running": self._running(),
         }
 

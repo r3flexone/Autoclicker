@@ -169,14 +169,14 @@ check("die Karte hat einen Loeschen-Knopf", '"Löschen"' in _karte)
 check("und er geht ueber die Rueckfrage, nicht direkt an die Bruecke",
       "askDelete(s)" in _karte and 'sequence_delete' not in _karte)
 check("die offene Sequenz laesst sich nicht loeschen — auch nicht im Knopf",
-      re.search(r'class: "btn gefahr still", disabled: s\.offen', _karte) is not None)
+      re.search(r'class: "btn danger quiet", disabled: s\.open', _karte) is not None)
 # Gleiche Spalten: zwei verschieden breite Knoepfe nebeneinander lesen sich als
 # zwei Rangstufen. Dieselbe Klasse wie ueberall sonst, kein drittes Muster.
 check("beide Knoepfe teilen sich gleiche Spalten",
-      'el("div", {class: "knopfpaar"}' in _karte)
-check("und die Klasse ist auch gestaltet", ".seq-fuss .knopfpaar{" in _web)
+      'el("div", {class: "button-pair"}' in _karte)
+check("und die Klasse ist auch gestaltet", ".seq-footer .button-pair{" in _web)
 _forts = _web[_web.index("async function proceed"):_web.index("Ansicht: Scans")]
-check("der Dialog kennt den Loesch-Fall", 'offen.kind === "seq_loeschen"' in _forts)
+check("der Dialog kennt den Loesch-Fall", 'open.kind === "seq_loeschen"' in _forts)
 check("und ruft die Bruecke ueber den fragenden Kanal",
       'ask("sequence_delete"' in _forts)
 check("danach wird die Uebersicht neu gezeichnet",

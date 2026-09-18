@@ -91,7 +91,7 @@ try:
           "item_scan" not in {a["value"] for a in _z["actions"]["icon"]})
 
     _z = _b.boss_scan_new({"name": "Bossfarm"})
-    check("ein neuer Boss-Scan ist sofort offen", _z["boss"]["offen"] == "Bossfarm")
+    check("ein neuer Boss-Scan ist sofort offen", _z["boss"]["open"] == "Bossfarm")
     check("und ungespeichert", _z["dirty"] is True)
     _b.boss_scan_new({"name": "Bossfarm"})
     check("ein zweiter mit demselben Namen bekommt einen eigenen",
@@ -99,7 +99,7 @@ try:
 
     # Der zuletzt angelegte ist der offene — zurueck auf den ersten.
     _z = _b.boss_scan_open({"name": "Bossfarm"})
-    check("ein anderer Scan laesst sich oeffnen", _z["boss"]["offen"] == "Bossfarm")
+    check("ein anderer Scan laesst sich oeffnen", _z["boss"]["open"] == "Bossfarm")
 
     # --- Region ---
     _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region",
@@ -471,5 +471,5 @@ check("jede von der Seite angesprochene Stelle gibt es auch", _ohne == [])
 if _ohne:
     print("        fehlt in index.html: " + ", ".join(_ohne))
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
-      {"ab-erk-wahl", "ab-erk-weg", "scan-bibliothek"} <= _gefragt)
+      {"sec-det-choice", "sec-det-steps", "scan-library"} <= _gefragt)
 check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)

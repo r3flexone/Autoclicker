@@ -64,22 +64,22 @@ _web = _P(__file__).resolve().parents[2] / "autoclicker/editors/sequence_studio/
 _app = (_web / "app.js").read_text(encoding="utf-8")
 _css = (_web / "styles.css").read_text(encoding="utf-8")
 check("jedes Werkzeug hat ein eigenes Linien-Icon",
-      all(f'{k}:' in _app for k in ("pruefen", "kalibrieren", "klicken"))
+      all(f'{k}:' in _app for k in ("check", "calibrate", "reclick"))
       and "function wzIcon(" in _app)
 check("Werkzeugkarten statt einfacher Textknöpfe",
       'class: "wz-nav "' in _app and ".wz-nav{" in _css)
 check("der Inhalt beginnt mit einem gestalteten Werkzeugkopf",
       "function wzHeader(" in _app and ".wz-hero{" in _css)
 check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
-      "function wzMetric(" in _app and ".wz-kennzahlen{" in _css
-      and ".wz-erfolg{" in _css)
+      "function wzMetric(" in _app and ".wz-metrics{" in _css
+      and ".wz-success{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
       'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
-      and ".wz-info-kompakt{" in _css and ".wz-info{" not in _css)
+      and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
 check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
-      'class: "info-glyphe"' in _app
+      'class: "info-glyph"' in _app
       and '"data-hilfe": schluessel || text}, "i")' not in _app
-      and 'r: "6.5"' in _app and ".info-glyphe{" in _css
+      and 'r: "6.5"' in _app and ".info-glyph{" in _css
       and 'styles.css?v=' in (_web / "index.html").read_text(encoding="utf-8")
       and 'app.js?v=' in (_web / "index.html").read_text(encoding="utf-8"))
 
@@ -99,9 +99,9 @@ try:
     check("samt Ordnernamen, wie er auf Platte heisst",
           _d["file"] == _b.filepath.parent.name
           and _P("sequences", _d["file"], "sequence.json").exists())
-    check("samt der Frage, ob sie ungespeichert ist", _d["offen"] is False)
+    check("samt der Frage, ob sie ungespeichert ist", _d["open"] is False)
     _b._dirty = True
-    check("und die Antwort aendert sich mit", _b.tool_data()["offen"] is True)
+    check("und die Antwort aendert sich mit", _b.tool_data()["open"] is True)
     _b._dirty = False
     check("und der Umfang kommt aus der Tabelle",
           [u["key"] for u in _d["umfang"]] == [k for k, _, _ in KALIB_UMFANG])
@@ -268,17 +268,17 @@ try:
           _stopp is not None and _stopp["command"] == "aufnahme_stop")
     _html = (_web / "index.html").read_text(encoding="utf-8")
     check("der sichtbare Knopf steht unter Notiz und ueber den Punkten",
-          _html.index('id="seq-info"') < _html.index('id="btn-aufnahme"') <
-          _html.index('id="punkte-zahl"'))
+          _html.index('id="seq-info"') < _html.index('id="btn-recording"') <
+          _html.index('id="points-count"'))
     check("der reine Werkzeug-Verweis braucht kein Info-i",
           "aufnahme-info" not in _html)
     check("die Blockanzahl bleibt eine berechnete Ausgabe",
-          '<output class="mono" id="seq-bloecke">' in _html)
+          '<output class="mono" id="seq-blocks">' in _html)
     _js = (_web / "app.js").read_text(encoding="utf-8")
     check("auch JavaScript baut dort kein Info-i mehr",
           "aufnahme-info" not in _js)
     check("der Editor-Knopf verweist auf das Werkzeug",
-          'wzOpen("aufnahme")' in _js)
+          'wzOpen("recording")' in _js)
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
           all(wort in _js for wort in ("wzStartRecording", "wzStopRecording",
                                        "wzWatchRecording")))
@@ -361,7 +361,7 @@ check("alle Laufentscheidungen haben sichtbare Knöpfe",
 # eine gewählte Karte trägt eine eigene Klasse, die Gesten stehen an der Karte,
 # und „alle wählen" gibt es weiterhin.
 check("die gewählte Blockkarte ist sichtbar markiert",
-      '" gewaehlt"' in _app and '.karte.gewaehlt{' in _css)
+      '" selected"' in _app and '.card.selected{' in _css)
 check("Mehrfachauswahl ist erreichbar und benannt",
       '"phase_selection"' in _app
       and 'e.ctrlKey || e.metaKey ? "dazu"' in _app
@@ -384,7 +384,7 @@ _stelle_ui = _app[_app.index("function buildPosition"):
                   _app.index("function setPosition")]
 check("die Anleitung zum Maus-Setzen steht nur im Info-Text",
       "Mit ‚Stelle mit der Maus setzen‘" in _stelle_ui
-      and 'el("p", {class: "hinweis"},\n    "Danach:' not in _stelle_ui)
+      and 'el("p", {class: "hint"},\n    "Danach:' not in _stelle_ui)
 _inspektor_ui = _app[_app.index("function renderInspector"):
                      _app.index("/* -------------------------------------------------------------------- Dialog")]
 # Offene Texte im Inspektor sind nur ZUSTAND, keine Bedienungsanleitung:
@@ -392,7 +392,7 @@ _inspektor_ui = _app[_app.index("function renderInspector"):
 # ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann — und ein
 # Punkt, den andere Blöcke mitbenutzen (wer, nicht warum; das steht im ⓘ).
 check("alle Block-Typen haben nur noch sechs begründete offene Zustandsmeldungen",
-      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hinweis') == 6)
+      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hint') == 6)
 check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
       all(text in _inspektor_ui for text in (
           "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",

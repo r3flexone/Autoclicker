@@ -684,7 +684,7 @@ check("und jede Kachel eine eigene Taste",
 _klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
 check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 1)
 check("jeder Kopf sitzt in einem Abschnitt mit passender id",
-      all(f'id="ab-{_k18}"' in _html18 for _k18 in _klapp18))
+      all(f'id="sec-{_k18}"' in _html18 for _k18 in _klapp18))
 _zustand18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
 check("und jeder hat einen Zustand in collapsed",
       _zustand18 is not None
@@ -692,7 +692,7 @@ check("und jeder hat einen Zustand in collapsed",
 # Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
-      _html18.count('class="abschnitt klappbar"') == _html18.count('class="klapp-rumpf'))
+      _html18.count('class="section klappbar"') == _html18.count('class="collapse-body'))
 
 # Die drei Hauptaufgaben sind kein zweiter Satz Klapp-Panels mehr. Sie bilden
 # einen eigenen Assistenten: genau drei feste Karten, von denen jede ueber ihren
@@ -702,14 +702,14 @@ _assistent18 = sorted(set(_re13.findall(r'data-scan-schritt="(\d+)"', _html18)))
 check("der Scan-Assistent hat genau drei erreichbare Schritte",
       _assistent18 == ["1", "2", "3"])
 check("jeder Assistent-Schritt hat einen Inhalt",
-      all(f'id="scan-schritt-{_n18}-inhalt"' in _html18 for _n18 in _assistent18))
+      all(f'id="scan-step-{_n18}-body"' in _html18 for _n18 in _assistent18))
 check("die Fensterliste hat einen sichtbaren Aktualisieren-Knopf",
-      'id="scan-fenster-neu"' in _html18
-      and '$("scan-fenster-neu").addEventListener("click", scanMaintainWindows)' in _html18)
+      'id="scan-window-capture"' in _html18
+      and '$("scan-window-capture").addEventListener("click", scanMaintainWindows)' in _html18)
 check("der Quellenstand wird nicht neben dem Vollbild-Knopf eingequetscht",
-      'class="scan-quelleninfo"' in _html18
-      and '.scan-quellenstand{display:flex;flex-direction:column' in _html18
-      and 'id="scan-quellenname"' in _html18)
+      'class="scan-source-info"' in _html18
+      and '.scan-source-state{display:flex;flex-direction:column' in _html18
+      and 'id="scan-source-name"' in _html18)
 check("die Slot-Suche nimmt Ecken in der mittleren Buehne an",
       'function scanSearchPositionFromStage(e)' in _html18
       and 'SC.modus !== "finden"' in _html18
@@ -770,12 +770,12 @@ check("der Hinweis, wohin der Inhalt umgezogen ist, entfaellt damit",
 # es keine leere ehemalige Haken-Spalte mehr.
 check("die Lernvorschau ist als symmetrisches Raster gebaut",
       'grid-template-areas:". status status" "haken bild felder"' in _html18
-      and 'class: "klein mono scan-review-status"' in _html18
-      and 'class: "scan-review-bild"' in _html18
-      and ".scan-review-bild{grid-area:bild;width:82px;height:82px" in _html18)
+      and 'class: "small mono scan-review-status"' in _html18
+      and 'class: "scan-review-image"' in _html18
+      and ".scan-review-image{grid-area:bild;width:82px;height:82px" in _html18)
 check("gelernte Items haben nur Bild und Felder als Spalten",
-      'maske.classList.add("scan-item-maske")' in _html18
-      and ".scan-maske.scan-item-maske{grid-template-columns:34px 56px minmax(0,1fr)}"
+      'maske.classList.add("scan-item-card")' in _html18
+      and ".scan-card.scan-item-card{grid-template-columns:34px 56px minmax(0,1fr)}"
           in _html18)
 check("ein zweiter Klick klappt ein geoeffnetes Item wieder zu",
       'if (selected && kind === "item")' in _html18
@@ -791,8 +791,8 @@ check("Slots werden als Maske gebaut", "function scanSlotCard(" in _html18)
 check("Scans werden als Maske gebaut", "function scanScanCard(" in _html18)
 check("der gefuehrte Bereich hat ein klar beschriftetes Scan-Namensfeld",
       'id="scan-name"' in _html18
-      and 'callScan("scan_set", {name: SC.offen, field: "name"' in _html18
-      and 'namensfeld.disabled = !offen;' in _html18)
+      and 'callScan("scan_set", {name: SC.open, field: "name"' in _html18
+      and 'namensfeld.disabled = !open;' in _html18)
 _bauform18 = [_n18 for _n18 in ("scanItemCard", "scanSlotCard", "scanScanCard")
               if "buildCard(" not in _html18[_html18.index(f"function {_n18}("):
                                               _html18.index(f"function {_n18}(") + 3000]]
@@ -805,15 +805,15 @@ check("die Bauform vergibt die id", 'id: cardId(kind, name)' in _html18)
 # Darstellungen fuer dieselbe Liste waeren zwei Stellen, an denen ein Feld
 # fehlen kann.
 check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
-      'class: "scan-zeile"' not in _html18[_html18.index("function scanListSlots("):
+      'class: "scan-row"' not in _html18[_html18.index("function scanListSlots("):
                                            _html18.index("function scanListItems(")])
 check("Slots werden nach ihrer stabilen ID geordnet",
       "Number(a.id) > 0 ? Number(a.id)" in _html18
       and "(a.nummer || 0) - (b.nummer || 0)" not in _html18)
 check("ID-Kachel und Vorschaubild haben feste einheitliche Breiten",
-      ".scan-marke{width:34px;min-width:34px}" in _html18
+      ".scan-badge{width:34px;min-width:34px}" in _html18
       and "grid-template-columns:34px 56px minmax(0,1fr)" in _html18
-      and ".scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px" in _html18)
+      and ".scan-card > .mini,.scan-card > .dot{width:56px;height:56px" in _html18)
 
 # **Die Haken-Listen im Scan-Inspektor sind ersatzlos entfallen.** Sie waren der
 # DRITTE Weg zur selben Frage: der Haken in jeder Maske sagt „gehoert zu diesem
@@ -845,7 +845,7 @@ check("beim Wechsel ist kein Mitgliedschaftszustand aufzuräumen",
 # Sichtbar bleiben heisst nicht: aussehen wie ein Mitglied.
 check("kein scanfremder Eintrag wird blass dargestellt",
       "maske.classList.add(\"nicht-dabei\")" not in _html18
-      and ".scan-maske.nicht-dabei{opacity:" not in _html18)
+      and ".scan-card.nicht-dabei{opacity:" not in _html18)
 
 # **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Zwei
 # Bauplaene dafuer waeren zwei Stellen, an denen ein Feld fehlen kann — es gibt
@@ -900,7 +900,7 @@ check("beide Knoepfe fuer scan_recognize heissen gleich",
 # Scan lud, landete auf der Scan-Liste und sah den Namen, den er gerade
 # angeklickt hatte, ein zweites Mal.
 check("die Listen-Vorgabe haengt am offenen Scan",
-      'return SC && SC.offen ? "items" : "scans";' in _html18)
+      'return SC && SC.open ? "items" : "scans";' in _html18)
 check("und eine eigene Entscheidung ueberstimmt sie",
       "if (scanList) return scanList;" in _html18)
 check("das Oeffnen eines Scans setzt sie zurueck",
@@ -1154,14 +1154,14 @@ section("Die Slot-Kachel zeigt die ID, nicht die (bewegliche) Stelle")
 # Und zwar in DERSELBEN Kachel-Klasse wie ueberall sonst (`number`) — eine
 # eigene daneben waere ein zweiter Bauplan fuer dasselbe Aussehen.
 check("die Ansicht zeigt die ID als Kachel",
-      '"#" + s.id' in _html18 and 'el("span", {class: "zahl",' in _html18)
+      '"#" + s.id' in _html18 and 'el("span", {class: "num",' in _html18)
 # Die Stelle im Scan steht nur noch im TOOLTIP — sie ist die Zusatzauskunft,
 # nicht mehr die angezeigte Zahl selbst.
 check("die Stelle im Scan steht nur noch im Tooltip",
       '". von " + s.total' in _html18 and '"#" + s.number' not in _html18)
 # Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel.
 check("und die Groesse daneben ebenso",
-      'el("span", {class: "zahl"}, s.width + "×" + s.height)' in _html18)
+      'el("span", {class: "num"}, s.width + "×" + s.height)' in _html18)
 # Beide auf einer Hoehe: der Schalter oben, die ID unten, und die Spalte
 # so hoch wie die Zeile. Ohne `stretch` waere sie nur so hoch wie ihr Inhalt.
 check("und beide auf einer Hoehe",
@@ -1171,7 +1171,7 @@ check("und beide auf einer Hoehe",
 # Breite an die (gestretchte) Hoehe gebunden; die Spalte braucht dafuer `auto`
 # statt einer festen Breite, sonst gaebe es keinen Spielraum zum Mitwachsen.
 check("die Vorschau ist ein Quadrat, kein Rechteck",
-      ".scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px"
+      ".scan-card > .mini,.scan-card > .dot{width:56px;height:56px"
       in _html18)
 check("und die Spalten bleiben bei jeder Ziffernzahl gleich",
       "grid-template-columns:34px 56px minmax(0,1fr)" in _html18)
@@ -1254,7 +1254,7 @@ finally:
 check("die Ansicht bietet den Knopf pro Art an",
       'callScan("scan_delete_all", {kind: kind})' in _html18)
 check("und er ist deutlich als gefaehrlich markiert",
-      'class: "btn gefahr", disabled: !total.length' in _html18)
+      'class: "btn danger", disabled: !total.length' in _html18)
 
 
 # ============================================================================
@@ -1263,7 +1263,7 @@ section("Die Zahlen-Kachel hat eine feste Breite, egal wie viele Ziffern")
 # **„#3" schob sich sonst weniger als „#55" und „#123" nochmal anders** — die
 # Kachel soll bei jeder Ziffernzahl an derselben Stelle stehen.
 check("die Zahlen-Kachel in der Marke hat eine feste Mindestbreite",
-      ".scan-marke{width:34px;min-width:34px}" in _html18)
+      ".scan-badge{width:34px;min-width:34px}" in _html18)
 
 
 # ============================================================================
@@ -1307,7 +1307,7 @@ check("die Uebersicht spannt jeden Rang auf, nicht nur die belegten",
       and "for (let p = 1; p <= hoechste + 1; p += 1)" in _html18)
 check("ein freier Rang wird als Luecke gezeichnet",
       '"P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", "))' in _html18
-      and ".prioritaets-chip.frei{border:1px dashed" in _html18)
+      and ".priority-chip.free{border:1px dashed" in _html18)
 # Eine getippte P99 darf das nicht auf hundert Kacheln aufspannen.
 check("und eine Ausreisser-Zahl spannt sie nicht auf",
       "PRIO_MAX_SHOW" in _html18)
@@ -1318,8 +1318,8 @@ check("eine doppelte Prioritaet faellt schon in der Liste auf",
       "function priorityDuplicate(item)" in _html18
       and '"P" + i.priority + " doppelt"' in _html18)
 check("und das Feld selbst ist markiert",
-      'class: kollision.length ? "doppelt" : ""' in _html18
-      and ".scan-maske input.doppelt{" in _html18)
+      'class: kollision.length ? "duplicate" : ""' in _html18
+      and ".scan-card input.duplicate{" in _html18)
 
 _sandP = tempfile.mkdtemp(prefix="studioprio_")
 _cwdP = _os.getcwd()
@@ -1404,7 +1404,7 @@ _phase_funktion18 = _html18[_html18.index("function renderPhase("):
                             _html18.index("function dropZone(")]
 check("Loop-Phasen lassen sich im Kopf auswählen",
       "selectedPhase = phase.index" in _phase_funktion18
-      and '" gewaehlt"' in _phase_funktion18)
+      and '" selected"' in _phase_funktion18)
 check("der Phasen-Papierkorb ist vollständig entfernt",
       "papierkorb()" not in _html18 and "phase-loeschen" not in _html18)
 check("Entf löscht die ausgewählte Loop-Phase",
@@ -1422,11 +1422,11 @@ check("und beim Laden sortiert es von selbst",
 check("Reiter und Filter stehen im Kopf, nicht in der Liste",
       "kopf.appendChild(tabs);" in _html18)
 check("und der Kopf klebt oben",
-      ".scan-kopf{position:sticky;top:0" in _html18
-      and 'class: "abschnitt scan-kopf"' in _html18)
+      ".scan-header{position:sticky;top:0" in _html18
+      and 'class: "section scan-header"' in _html18)
 # Ohne eigenen Hintergrund scrollen die Masken sichtbar dahinter durch.
 check("mit eigenem Hintergrund", "background:var(--panel)}" in
-      _html18[_html18.index(".scan-kopf{"):_html18.index(".scan-kopf{") + 120])
+      _html18[_html18.index(".scan-header{"):_html18.index(".scan-header{") + 120])
 # **Der Rueckgaengig-Knopf heisst „Zurück", nicht „'Bogen Zeus': Prioritaet".**
 # Der letzte Schritt IM Namen ist die genauere Auskunft und die schlechtere
 # Beschriftung: sie wurde zweizeilig, wechselte bei jeder Aenderung ihre Laenge,
@@ -1440,7 +1440,7 @@ check("und die Beschreibung steht im Tooltip",
 check("ein Mitgliedschafts-Filterschalter ist ersatzlos weg",
       "nurDabei" not in _html18)
 check("die Reiterleiste nimmt die ganze Breite",
-      ".tabs.breit .tab{flex:1 1 0" in _html18 and '"tabs klein breit"' in _html18)
+      ".tabs.wide .tab{flex:1 1 0" in _html18 and '"tabs small wide"' in _html18)
 # **Der Kopf ist eine Spalte, kein Fliesstext.** „alle dazu" stand als kurzer
 # Stummel neben dem Schalter, „Sortieren" als noch kuerzerer darunter, und die
 # Klappliste dazwischen zog sich ueber alles — drei Breiten untereinander lesen
@@ -1451,30 +1451,30 @@ check("die Filterzeile ist ein Raster mit voller Breite",
 # Ein Schalter ist Text mit Kaestchen davor — als Kachel bekommt er dieselbe
 # Flaeche wie seine Nachbarn, statt als loser Text dazwischen zu haengen.
 check("und der Schalter traegt seine eigene Kachel",
-      ".scan-filter > label.an.kachel{width:100%;justify-self:stretch;" in _html18)
+      ".scan-filter > label.on.tile{width:100%;justify-self:stretch;" in _html18)
 # Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen: vorher nahm
 # „Items erkennen" den Rest und „Rueckgaengig" seine Textbreite — bei einem
 # langen Rueckgaengig-Namen kippte das Verhaeltnis von Zeile zu Zeile.
 check("zwei Knoepfe teilen sich die Zeile gleichmaessig",
       "grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))" in _html18
-      and '"knopfpaar"' in _html18)
+      and '"button-pair"' in _html18)
 # **Gleiche Spalten duerfen nichts kosten, was man lesen muss.** Mit fester
 # Spaltenzahl schnitten drei Knoepfe in 290 px die Beschriftung ab
 # („Item ler…") — ein abgeschnittenes Wort ist schlimmer als eine zweite Zeile.
 check("und schneiden dabei keine Beschriftung ab",
-      "white-space:normal}" in _html18[_html18.index(".knopfpaar > .btn{"):
-                                       _html18.index(".knopfpaar > .btn{") + 90])
+      "white-space:normal}" in _html18[_html18.index(".button-pair > .btn{"):
+                                       _html18.index(".button-pair > .btn{") + 90])
 # Der Wortschatz ist zu zweit vollstaendig: EIN Knopf ueber die volle Breite
 # ist `btn breit`, mehrere nebeneinander sind ein `knopfpaar`. Ein `wachse` in
 # einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
-_knopfzeilen18 = _html18.count('class: "knopfpaar"')
+_knopfzeilen18 = _html18.count('class: "button-pair"')
 check(f"und die Regel gilt ueberall ({_knopfzeilen18} Zeilen)",
       _knopfzeilen18 >= 6)
 check("kein Knopf dehnt sich mehr auf Kosten seiner Nachbarn",
-      '"btn wachse"' not in _html18)
+      '"btn grow"' not in _html18)
 check("und keiner davon dehnt sich mehr auf Kosten des anderen",
-      "wachse" not in _html18[_html18.index('el("div", {class: "knopfpaar"}'):
-                              _html18.index('el("div", {class: "knopfpaar"}') + 1200])
+      "grow" not in _html18[_html18.index('el("div", {class: "button-pair"}'):
+                              _html18.index('el("div", {class: "button-pair"}') + 1200])
 
 
 # ============================================================================
@@ -1562,7 +1562,7 @@ try:
     _z19 = _b19.scan_new({"name": "Inventar"})
     check("ein neu angelegter Scan ueberlebt das Laden von Platte",
           [c["name"] for c in _z19["scans"]] == ["Inventar"])
-    check("und ist offen", _z19["offen"] == "Inventar")
+    check("und ist offen", _z19["open"] == "Inventar")
 
     if not _hat_pil18:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
@@ -1703,7 +1703,7 @@ try:
             if not getattr(b, "_autoname", None):
                 return erg                      # abgelehnt, die Meldung sagt warum
             n = 0
-            while (getattr(b, "_autoname", None) or {}).get("offen"):
+            while (getattr(b, "_autoname", None) or {}).get("open"):
                 if schritte is not None and n >= schritte:
                     return b.scan_autoname_end({"abgebrochen": True})
                 b.scan_autoname_step()

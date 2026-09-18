@@ -74,23 +74,23 @@ def lauf():
     with Fenster(b) as f:
         f.reiter("bericht")
 
-        left = f.text("#ber-links")
+        left = f.text("#rep-left")
         pruefe("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
-        pruefe(f.count(".ber-sitzung") == 3,
-               f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.count('.ber-sitzung')}")
+        pruefe(f.count(".rep-session") == 3,
+               f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.count('.rep-session')}")
 
-        center = f.text("#ber-mitte")
+        center = f.text("#rep-middle")
         pruefe("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
         pruefe("Bank oeffnen" in center, "der haengende Schritt wird nicht genannt")
         # Fuenf Kennzahlen-Kacheln, dieselben wie im Werkzeuge-Reiter.
-        pruefe(f.count("#ber-mitte .wz-kennzahl") == 5,
-               f"5 Kennzahlen erwartet, da: {f.count('#ber-mitte .wz-kennzahl')}")
+        pruefe(f.count("#rep-middle .wz-metric") == 5,
+               f"5 Kennzahlen erwartet, da: {f.count('#rep-middle .wz-metric')}")
         # Jede Rangzeile hat ihren Balken — sonst steht die Liste ohne
         # Verhaeltnis da, und genau das ist der Unterschied zur Konsole.
-        pruefe(f.count("#ber-mitte .ber-rang") == f.count("#ber-mitte .ber-balken"),
+        pruefe(f.count("#rep-middle .rep-rank") == f.count("#rep-middle .rep-bar"),
                "nicht jede Rangzeile hat einen Balken")
 
-        right = f.text("#ber-rechts")
+        right = f.text("#rep-right")
         pruefe("ERTRAG" in right, f"rechts steht kein Ertrag: {right[:120]!r}")
         # 2x Erz a 100 = 200 Gold. Die Tausendertrennung macht daraus nichts
         # anderes, solange es unter 1000 bleibt.
@@ -101,19 +101,19 @@ def lauf():
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.
-        f.klick(".ber-sitzung:nth-of-type(2)")
-        pruefe(f.count(".ber-sitzung.an") == 1,
+        f.klick(".rep-session:nth-of-type(2)")
+        pruefe(f.count(".rep-session.on") == 1,
                "genau eine Sitzung muss markiert sein")
-        center = f.text("#ber-mitte")
+        center = f.text("#rep-middle")
         pruefe("Keine Timeouts" in center,
                f"die gewaehlte Sitzung hat keine Timeouts: {center[:160]!r}")
-        pruefe(f.count(".ber-sitzung") == 3,
+        pruefe(f.count(".rep-session") == 3,
                "die Liste links muss vollstaendig bleiben")
         f.image("bericht_eine")
 
         # Und zurueck auf alles zusammen.
-        f.klick(".ber-sitzung:nth-of-type(1)")
-        pruefe("Bank oeffnen" in f.text("#ber-mitte"),
+        f.klick(".rep-session:nth-of-type(1)")
+        pruefe("Bank oeffnen" in f.text("#rep-middle"),
                "zurueck auf „alle zusammen“ fehlt der Timeout wieder")
 
         fehler.extend(f.fehler)

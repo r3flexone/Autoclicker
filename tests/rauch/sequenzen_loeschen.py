@@ -65,13 +65,13 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("sequences")
-        pruefe(f.count(".seq-karte") == 2,
-               f"2 Karten erwartet, da: {f.count('.seq-karte')}")
+        pruefe(f.count(".seq-card") == 2,
+               f"2 Karten erwartet, da: {f.count('.seq-card')}")
 
         # **Gleiche Spalten heisst gleiche BREITE.** Genau dafuer ist der
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
         breiten = f.seite.eval_on_selector_all(
-            ".seq-karte .knopfpaar .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
+            ".seq-card .button-pair .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
         pruefe(len(breiten) == 4, f"4 Knoepfe erwartet, da: {len(breiten)}")
         pruefe(breiten and max(breiten) - min(breiten) < 0.5,
                f"die Knoepfe sind verschieden breit: {breiten}")
@@ -81,16 +81,16 @@ def lauf():
         # verschiedenen Stellen. Hier stand erst die Kante, und der Rauchtest
         # meldete prompt „360 gegen 725" — richtig gemessen, falsch gefragt.
         pairs = f.seite.eval_on_selector_all(
-            ".seq-karte .knopfpaar",
+            ".seq-card .button-pair",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().width))")
         pruefe(len(set(pairs)) == 1, f"die Knopfpaare sind verschieden breit: {pairs}")
         f.image("sequenzen_loeschen")
 
         # Der Dialog muss sagen, WAS weggeht — der Umfang ist der halbe Grund
         # fuer die Rueckfrage.
-        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen")
-        pruefe(not f.seite.is_hidden("#schleier"), "der Dialog geht nicht auf")
-        text = f.text("#schleier")
+        f.klick_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
+        pruefe(not f.seite.is_hidden("#veil"), "der Dialog geht nicht auf")
+        text = f.text("#veil")
         pruefe("Raid" in text, f"der Name fehlt im Dialog: {text!r}")
         pruefe("Item-Scan" in text and "Vorlage" in text,
                f"der Umfang fehlt im Dialog: {text!r}")
@@ -98,14 +98,14 @@ def lauf():
         f.image("sequenzen_loeschen_dialog")
 
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
-        f.klick("#dialog-ab")
-        pruefe(f.count(".seq-karte") == 2, "Abbrechen hat trotzdem geloescht")
+        f.klick("#dialog-cancel")
+        pruefe(f.count(".seq-card") == 2, "Abbrechen hat trotzdem geloescht")
         pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
-        f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen")
-        f.klick("#dialog-weg")
-        pruefe(f.count(".seq-karte") == 1,
-               f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-karte')}")
+        f.klick_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
+        f.klick("#dialog-discard")
+        pruefe(f.count(".seq-card") == 1,
+               f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-card')}")
         pruefe(not ordner_raid.exists(), "der Ordner steht noch")
         # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
         sicherung = Path("backups/sequences") / ordner_raid.name

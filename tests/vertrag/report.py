@@ -206,7 +206,7 @@ section("Bericht: der achte Reiter ist verdrahtet und symmetrisch")
 
 check("die Seite hat einen Reiter dafuer", 'data-view="bericht"' in _web)
 check("und einen Behaelter in derselben Dreiteilung",
-      'id="sicht-bericht"' in _web and 'id="ber-mitte"' in _web)
+      'id="view-report"' in _web and 'id="rep-middle"' in _web)
 
 # **Jeder Reiter muss im Umschalter stehen.** Ein Knopf ohne die passende
 # `hidden`-Zeile ist ein Reiter, der sich nicht oeffnet — und der Fehler faellt
@@ -214,11 +214,11 @@ check("und einen Behaelter in derselben Dreiteilung",
 # ohne Knopf.
 _knoepfe = set(re.findall(r'data-view="(\w+)"', _web))
 # Gemerkt wird der ANSICHTSNAME, nicht die Element-Id: die beiden sind nicht
-# ueberall gleich (der Reiter „einstellungen" wohnt in `sicht-config`), und ein
+# ueberall gleich (der Reiter „einstellungen" wohnt in `view-settings`), und ein
 # Test auf die Id meldete genau diesen Reiter als nicht verdrahtet.
 _geschaltet = {b for _, b in re.findall(
-    r'\$\("sicht-(\w+)"\)\.hidden = neu !== "(\w+)"', _web)}
-# Der Editor liegt als `rumpf` im Dokument, nicht als `sicht-editor`.
+    r'\$\("view-([\w-]+)"\)\.hidden = neu !== "(\w+)"', _web)}
+# Der Editor liegt als `editor-body` im Dokument, nicht als `view-editor`.
 _offen = (_knoepfe - _geschaltet) - {"editor"}
 check("jeder Reiter-Knopf hat seine Umschalt-Zeile", _offen == set())
 if _offen:
@@ -240,13 +240,13 @@ _bericht_js = _web[_web.index("async function renderReport"):
                    _web.index("/* ----------------------------------------------------- "
                               "Ansicht: Einstellungen */")]
 check("die Kennzahlen sind dieselben Kacheln wie im Werkzeuge-Reiter",
-      "wz-kennzahlen" in _bericht_js and "wzMetric(" in _bericht_js)
+      "wz-metrics" in _bericht_js and "wzMetric(" in _bericht_js)
 check("und die Karten dieselben wie im Teilen-Reiter",
-      "teilen-karte" in _bericht_js)
+      "share-card" in _bericht_js)
 # Dieselbe Pruefung wie bei den `--slot-*`-Variablen: eine benutzte Klasse, die
 # niemand definiert, ist ein unsichtbarer Kasten.
 # Nur was wirklich als KLASSE gesetzt wird. Ein blosses `"ber-..."` faengt auch
-# die Element-Ids (`$("ber-mitte")`) und die Schluessel der Erklaerungen —
+# die Element-Ids (`$("rep-middle")`) und die Schluessel der Erklaerungen —
 # beides ist keine Klasse, und der Test meldete zehn Fehlalarme.
 _benutzt = set()
 for _roh in re.findall(r'class: "([^"]+)"', _bericht_js):

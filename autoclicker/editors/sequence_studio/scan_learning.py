@@ -773,8 +773,8 @@ class ScanLearningMixin:
         lauf = getattr(self, "_autoname", None)
         if not lauf:
             return None
-        return {"total": lauf["total"], "offen": len(lauf["offen"]),
-                "fertig": lauf["total"] - len(lauf["offen"]),
+        return {"total": lauf["total"], "open": len(lauf["open"]),
+                "fertig": lauf["total"] - len(lauf["open"]),
                 "umbenannt": lauf["umbenannt"], "varianten": lauf["varianten"]}
 
     def scan_autoname_start(self, data: Optional[dict] = None) -> dict:
@@ -824,7 +824,7 @@ class ScanLearningMixin:
             # einfriert: was einen Durchgang steuert, darf sich waehrenddessen
             # nicht aendern.
             "config": config,
-            "offen": [i.name for i in candidates],
+            "open": [i.name for i in candidates],
             "total": len(candidates),
             "selection": katalog.names() or None,
             "benannt": [],
@@ -841,7 +841,7 @@ class ScanLearningMixin:
         lauf = getattr(self, "_autoname", None)
         if not lauf:
             return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
-        if not lauf["offen"]:
+        if not lauf["open"]:
             return self.scan_data()
 
         from PIL import Image
@@ -849,7 +849,7 @@ class ScanLearningMixin:
         from ...utils import clean_item_name
 
         config = lauf["config"]
-        item = self.items.get(lauf["offen"].pop(0))
+        item = self.items.get(lauf["open"].pop(0))
         if item is None or not item.template_names():
             # Zwischen Start und Schritt kann gelöscht worden sein.
             lauf["ohne"] += 1
@@ -966,7 +966,7 @@ class ScanLearningMixin:
             return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
         self._autoname = None
         abgebrochen = bool((data or {}).get("abgebrochen"))
-        remaining = len(lauf["offen"])
+        remaining = len(lauf["open"])
         checked = lauf["total"] - remaining
         kopf = (str(lauf["umbenannt"]) + " von " + str(checked)
                 + " Item(s) per LLM benannt")

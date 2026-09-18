@@ -4831,7 +4831,7 @@ check("und keinen anderen, der wait_only setzt",
 _aktion13 = _seite13[_seite13.index("function buildAction"):
                      _seite13.index("function buildPosition")]
 check("die automatisch wechselnde Typ-Kachel wird nicht nochmals als 'ergibt' gezeigt",
-      '"ergibt"' not in _aktion13 and "karte-typ" not in _aktion13)
+      '"ergibt"' not in _aktion13 and "card-type" not in _aktion13)
 
 # --- Tastendruck-Erkennung fuer Fenster-Prozesse ---
 # Das Sequenz-Studio hat keine Konsole, in die man tippen koennte. Auf ENTER zu
@@ -5050,7 +5050,11 @@ _html13 = _H.studio_web_source()
 # `\bruf\w*\(` faenge auch `rufMichNicht()`, und ein blosses `\bruf\(` liess
 # `callTool("calib_reference")` durchrutschen - also ausgerechnet den neuesten
 # Reiter, der am ehesten einen Tippfehler enthaelt.
-_HELFER13 = ("call", "callScan", "callShare", "callTool", "ask")
+# `switchSequence` reicht seinen ersten Parameter an `call()` weiter — beim
+# Umbenennen der Bruecken-Methode `neu` -> `new` war genau dieser Aufruf
+# (`switchSequence("neu")`) der eine, den kein Muster sah: der Knopf „Neu"
+# rief eine Methode, die es nicht mehr gab.
+_HELFER13 = ("call", "callScan", "callShare", "callTool", "ask", "switchSequence")
 _gerufen13 = set(_re13.findall(
     r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13))
 # `withWait()` ist der sechste Kanal und der einzige, bei dem der Methodenname
@@ -5084,7 +5088,7 @@ _BEKANNT13 = _HELFER13 + ("withWait", "withWork")
 _helfer_da13 = sorted(set(_re13.findall(
     r'\basync function (\w+)\(', _html13)))
 _helfer_da13 = [h for h in _helfer_da13
-               if h.startswith("call") or h in ("withWait", "withWork")]
+               if h.startswith("call") or h in ("withWait", "withWork", "switchSequence")]
 if not all(h in _BEKANNT13 for h in _helfer_da13):
     print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _BEKANNT13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
@@ -5289,7 +5293,7 @@ try:
           _nach16["gross"]["phases"][0]["wiederholungen"] == 5
           and _nach16["gross"]["phases"][1]["start"] == "08:30")
     check("die offene Sequenz ist als offen markiert",
-          _nach16["gross"]["offen"] is True and _nach16["klein"]["offen"] is False)
+          _nach16["gross"]["open"] is True and _nach16["klein"]["open"] is False)
     # Der Scan ohne Konfiguration ist die eine Warnung, die man in der Uebersicht
     # sehen will - sonst sucht man den Block hinterher in vier Phasen.
     check("ein Scan ohne Konfiguration wird gemeldet",
@@ -5981,9 +5985,9 @@ else:
 # Scans-Sektionen, die jetzt in `tests/vertrag/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
 _html18 = _H.studio_web_source()
-_zustaende18 = ("treffer", "fremditem", "empty")
+_zustaende18 = ("match", "foreign-item", "empty")
 _fehlend18 = [f"{k}.{z}" for z in _zustaende18
-              for k in ("scan-slot", "scan-fuellung")
+              for k in ("scan-slot", "scan-fill")
               if f".{k}.{z}{{" not in _html18.replace(" ", "")]
 check(f"jeder Slot-Zustand hat Umriss und Fuellung ({_fehlend18 or 'vollstaendig'})",
       not _fehlend18)
@@ -5995,7 +5999,7 @@ check(f"jede --slot-Farbe ist definiert ({sorted(_benutzt18 - _definiert18) or '
       _benutzt18 and not (_benutzt18 - _definiert18))
 # Die JS-Seite liest dieselben Variablen aus, statt Hexwerte zu wiederholen.
 check("und SLOT_COLOR deckt genau die Zustaende ab",
-      sorted(_re13.findall(r"(\w+):\s*s\.getPropertyValue", _html18))
+      sorted(_re13.findall(r"\"?([\w-]+)\"?:\s*s\.getPropertyValue", _html18))
       == sorted(_zustaende18))
 
 # --- Jeder Neuaufbau rettet den Fokus hinueber ---
@@ -6029,13 +6033,13 @@ check("der Detailteil des Scans baut kein eigenes Namensfeld mehr",
 # Bearbeitungsflaeche direkt bei der Auswahl links stehen. Die Maske zeigt den
 # Namen weiterhin, baut aber kein zweites Eingabefeld fuer denselben Wert.
 check("die Scan-Maske zeigt den Namen nur als Beschriftung",
-      'class: "scan-maske-name"' in _js_rumpf18("scanScanCard")
+      'class: "scan-card-name"' in _js_rumpf18("scanScanCard")
       and 'cardName("scan"' not in _js_rumpf18("scanScanCard"))
 check("und die linke Spalte traegt das bearbeitbare Namensfeld",
       'id="scan-name"' in _html18
       and 'field: "name", value: e.target.value' in _html18)
 check("die Klappliste zum Waehlen bleibt",
-      'id="scan-offen"' in _html18)
+      'id="scan-open"' in _html18)
 # Die Ueberschrift im Detailteil nennt den Scan NICHT noch einmal: sein Name
 # steht in derselben Maske eine Zeile darueber.
 check("und der Detailteil wiederholt ihn nicht",
@@ -6064,13 +6068,13 @@ check("es gibt keine globale Mitgliedschaft mehr zu schalten",
 check("und der Mischzustand ist ersatzlos weg",
       "indeterminate" not in _html18 and "unbestimmt" not in _html18)
 
-check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".seite"))
+check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".page"))
 check("und der wachsende Abschnitt darin nicht nochmal",
-      "overflow" not in _css_regel18(".abschnitt.wachsend"))
+      "overflow" not in _css_regel18(".section.growing"))
 # `1 0 auto` und nicht `1`: waechst in den freien Platz, schrumpft aber nie
 # unter seinen Inhalt - genau das war der Fehler.
 check("er darf auch nicht unter seinen Inhalt schrumpfen",
-      "flex:1 0 auto" in _css_regel18(".abschnitt.wachsend"))
+      "flex:1 0 auto" in _css_regel18(".section.growing"))
 
 # --- Das Dear-PyGui-Fenster ist wirklich weg ---
 # Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,

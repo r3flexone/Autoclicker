@@ -54,7 +54,7 @@ class BridgeServicesMixin:
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
                 raus.append({"name": gespeicherter_name, "file": str(path), "defekt": True,
-                             "changed": changed, "offen": path == self.filepath,
+                             "changed": changed, "open": path == self.filepath,
                              "umfang": self._sequence_extent(path.parent)})
                 continue
             raus.append({
@@ -71,7 +71,7 @@ class BridgeServicesMixin:
                            for lp in seq.loop_phases],
                 "schritte": seq.total_steps(),
                 "changed": changed,
-                "offen": path == self.filepath,
+                "open": path == self.filepath,
                 "umfang": self._sequence_extent(path.parent),
                 "warnungen": scan_warnungen(sequence_to_board(seq)),
             })

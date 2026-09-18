@@ -337,9 +337,9 @@ check("FARBE+KLICK traegt beides: Punktfarbe und Bedingung",
       and _karten[3]["color_text"].startswith("wartet bis"))
 _web_pf = _web_src()
 check("die Ansicht haengt das Feldchen an die erste Zeile",
-      "block.point_color" in _web_pf and "karte-zeile mit-farbe" in _web_pf)
+      "block.point_color" in _web_pf and "card-row with-color" in _web_pf)
 check("und zeichnet es wie das an der Bedingung",
-      ".karte-zeile .feldchen,\n.karte-farbe .feldchen{" in _web_pf)
+      ".card-row .swatch,\n.card-color .swatch{" in _web_pf)
 
 # ----------------------------------------------------------------------
 section("Ein geteilter Punkt sagt, dass er geteilt ist")

@@ -68,15 +68,15 @@ def lauf():
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
         # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_TOOLS` fuehrt.
         target = len(re.findall(r'\{key: "', quelle_wz()))
-        pruefe(f.count("#wz-links button") == target,
+        pruefe(f.count("#wz-left button") == target,
                f"{target} Werkzeuge erwartet (je eines aus WZ_TOOLS), "
-               f"da: {f.count('#wz-links button')}")
+               f"da: {f.count('#wz-left button')}")
         # **Der Sequenzname steht EINMAL.** Links stand „offene Sequenz Farm" —
         # eingebaut, als die Kopfleiste ihre Sequenz-Bedienelemente in diesem
         # Reiter noch ausblendete. Seit die Auswahl in jedem Reiter steht, stand
         # er dreimal gleichzeitig auf dem Schirm: Auswahl, links, Bezugszeile.
-        pruefe("Farm" not in f.text("#wz-links"),
-               f"der Sequenzname steht wieder doppelt links: {f.text('#wz-links')[:80]!r}")
+        pruefe("Farm" not in f.text("#wz-left"),
+               f"der Sequenzname steht wieder doppelt links: {f.text('#wz-left')[:80]!r}")
 
         # **Jedes Werkzeug sagt, WORAUF es wirkt** — das ist die Regel des
         # Reiters, und „Farben analysieren" hielt sie als einziges nicht ein.
@@ -85,9 +85,9 @@ def lauf():
         # Zeile gar nicht, also fiel die Unwahrheit nicht auf.
         for w in re.findall(r'\{key: "([a-z]+)"', quelle_wz()):
             f.klick(f".wz-nav.{w}")
-            pruefe(f.count("#wz-mitte .wz-bezug") == 1,
+            pruefe(f.count("#wz-middle .wz-scope") == 1,
                    f"Werkzeug '{w}' hat keine Bezugszeile")
-            pruefe(f.count("#wz-rechts .ueberschrift") >= 1,
+            pruefe(f.count("#wz-right .heading") >= 1,
                    f"Werkzeug '{w}' hat keine Ueberschrift in der rechten Spalte")
 
         # **Ein ⓘ haengt an einer BESCHRIFTUNG.** `wzInfo()` warf den Titel in
@@ -96,8 +96,8 @@ def lauf():
         # `flex:none`, zentriert): er erbte dessen Gestalt und sein Inhalt stand
         # mittig darueber hinaus, nach links aus dem Fenster heraus. Dieselbe
         # Falle wie einmal beim Status („Zustandsklassen bekommen ein Praefix").
-        f.klick(".wz-nav.pruefen")
-        kompakt = f.seite.eval_on_selector_all(".wz-info-kompakt", """ns => ns.map(n => ({
+        f.klick(".wz-nav.check")
+        kompakt = f.seite.eval_on_selector_all(".wz-info-compact", """ns => ns.map(n => ({
           klasse: n.className,
           text: (n.textContent || "").trim(),
           breit: Math.round(n.getBoundingClientRect().width),
@@ -110,23 +110,23 @@ def lauf():
             pruefe(k["links"] >= 0, f"Hinweis laeuft links aus dem Fenster: {k}")
 
         # --- Aufnahme: der normale Weg ist vollständig im Studio sichtbar ---
-        f.klick_text("#wz-links button", "Sequenz aufnehmen")
-        pruefe(f.count(".wz-aufnahme-form input") == 2,
+        f.klick_text("#wz-left button", "Sequenz aufnehmen")
+        pruefe(f.count(".wz-recording-form input") == 2,
                "Name und Zyklen der Aufnahme fehlen")
-        pruefe(f.count(".wz-aufnahme-form textarea") == 1,
+        pruefe(f.count(".wz-recording-form textarea") == 1,
                "Notiz der Aufnahme fehlt")
-        pruefe(f.count(".wz-aufnahme-ausgabe") == 1,
+        pruefe(f.count(".wz-recording-output") == 1,
                "rollende Live-Ausgabe der Aufnahme fehlt")
         tasten = [z.inner_text() for z in
-                  f.seite.query_selector_all("#wz-mitte .wz-tasten .wz-taste")]
+                  f.seite.query_selector_all("#wz-middle .wz-keys .wz-key")]
         pruefe(len(tasten) == 8, f"acht Aufnahme-Hotkeys erwartet, da: {tasten}")
-        pruefe("Aufnahme starten" in f.text("#wz-mitte"), "sichtbarer Start fehlt")
+        pruefe("Aufnahme starten" in f.text("#wz-middle"), "sichtbarer Start fehlt")
         f.image("wz_aufnahme")
 
         # --- Pruefen ---
-        f.klick_text("#wz-links button", "Bestand prüfen")
-        f.klick_text("#wz-mitte button", "Jetzt prüfen")
-        pruefe(f.count(".wz-befund") == 2, "zwei Befunde erwartet")
+        f.klick_text("#wz-left button", "Bestand prüfen")
+        f.klick_text("#wz-middle button", "Jetzt prüfen")
+        pruefe(f.count(".wz-finding") == 2, "zwei Befunde erwartet")
         pruefe("Fehler" in f.status(), f"Status nach Pruefen: {f.status()!r}")
         # **Rechts muss der BERICHT stehen, nicht irgendein Text.** Hier stand
         # `bool(text.strip())` — und „Noch nichts geprüft." ist nicht leer. Der
@@ -134,11 +134,11 @@ def lauf():
         # `wzCheck()` rief nur `wzRenderMiddle()`. Ausgerechnet diese Spalte
         # listet, WAS geprüft wurde, und ohne sie ist „Alles in Ordnung" eine
         # Behauptung — genau die Begründung, mit der sie gebaut wurde.
-        pruefe("Noch nichts geprüft" not in f.text("#wz-rechts"),
+        pruefe("Noch nichts geprüft" not in f.text("#wz-right"),
                "rechts steht nach dem Pruefen weiter „Noch nichts geprueft.“")
-        pruefe(f.count("#wz-rechts .wz-geprueft") >= 1,
+        pruefe(f.count("#wz-right .wz-checked") >= 1,
                f"rechts fehlt die Liste der geprueften Bereiche: "
-               f"{f.text('#wz-rechts')[:80]!r}")
+               f"{f.text('#wz-right')[:80]!r}")
         f.image("wz_pruefen")
 
         # --- Punkte verwalten: „sicher loeschen" muss auch loeschen koennen ---
@@ -148,70 +148,70 @@ def lauf():
         # bei 0 Verwendungen genauso tot wie bei 3, also immer. In einem
         # Werkzeug, das „Aufnehmen, nachmessen, umbenennen und sicher loeschen"
         # verspricht.
-        f.klick_text("#wz-links button", "Punkte verwalten")
+        f.klick_text("#wz-left button", "Punkte verwalten")
         gesperrt = f.seite.eval_on_selector(
-            "#wz-mitte button.gefahr", "e => e.disabled")
+            "#wz-middle button.danger", "e => e.disabled")
         pruefe(gesperrt is True,
                "Punkt #1 wird verwendet — der Loeschen-Knopf muesste gesperrt sein")
         # #3 „Menue" haengt an keinem Block.
-        f.seite.select_option("#wz-mitte select", index=2)
+        f.seite.select_option("#wz-middle select", index=2)
         f.ruhe()
-        frei = f.seite.eval_on_selector("#wz-mitte button.gefahr", "e => e.disabled")
+        frei = f.seite.eval_on_selector("#wz-middle button.danger", "e => e.disabled")
         pruefe(frei is False,
                "Punkt #3 wird nirgends verwendet — der Loeschen-Knopf ist trotzdem gesperrt")
-        pruefe("nirgends verwendet" in f.text("#wz-rechts"),
-               f"rechts fehlt die Freigabe: {f.text('#wz-rechts')[:80]!r}")
+        pruefe("nirgends verwendet" in f.text("#wz-right"),
+               f"rechts fehlt die Freigabe: {f.text('#wz-right')[:80]!r}")
 
         # --- Farbfrage: die Stelle hat eine andere Farbe als der Punkt ---
-        f.klick_text("#wz-links button", "Kalibrieren")
-        pruefe("gesamte gespeicherte Bestand" in f.text("#wz-mitte"),
+        f.klick_text("#wz-left button", "Kalibrieren")
+        pruefe("gesamte gespeicherte Bestand" in f.text("#wz-middle"),
                "der Bezug fehlt beim Kalibrieren")
-        f.klick("#wz-mitte .wz-ref button")
-        pruefe(f.count(".wz-farbfrage") == 1, "keine Farb-Rueckfrage")
-        pruefe(f.count(".wz-farbe") == 2, "beide Farben sollten dastehen")
-        pruefe("Verschiebung" not in f.text("#wz-mitte"),
+        f.klick("#wz-middle .wz-ref button")
+        pruefe(f.count(".wz-color-question") == 1, "keine Farb-Rueckfrage")
+        pruefe(f.count(".wz-color") == 2, "beide Farben sollten dastehen")
+        pruefe("Verschiebung" not in f.text("#wz-middle"),
                "trotz Rueckfrage schon gesetzt")
         f.image("wz_farbfrage")
 
-        f.klick_text(".wz-farbfrage button", "Trotzdem setzen")
+        f.klick_text(".wz-color-question button", "Trotzdem setzen")
         # Der Versatz steht als zwei Kennzahlen unter „BERECHNETER TRANSFORM",
         # nicht mehr als ein Satz „Verschiebung: …". Gemessen wird deshalb der
         # Kennzahlen-Block — der Satz war eine Formulierung, die Zahlen sind
         # die Aussage.
-        kennzahlen = f.text("#wz-mitte .wz-kennzahlen")
+        kennzahlen = f.text("#wz-middle .wz-metrics")
         pruefe("+455" in kennzahlen and "+344" in kennzahlen,
                f"Versatz falsch: {kennzahlen!r}")
-        pruefe(f.count("#wz-mitte input[type=checkbox]") == 3, "drei Umfang-Haken")
-        pruefe("Stelle(n)" in f.text("#wz-rechts"), "keine Vorschau rechts")
+        pruefe(f.count("#wz-middle input[type=checkbox]") == 3, "drei Umfang-Haken")
+        pruefe("Stelle(n)" in f.text("#wz-right"), "keine Vorschau rechts")
         f.image("wz_kalib")
 
-        f.klick_text("#wz-mitte button", "Umrechnen und speichern")
+        f.klick_text("#wz-middle button", "Umrechnen und speichern")
         pruefe("Kalibriert" in f.status(), f"Anwenden: {f.status()!r}")
         pruefe([p.x for p in b.points] == [555, 1355, 855],
                f"Punkte nicht gewandert: {[(p.id, p.x) for p in b.points]}")
 
         # --- Nachklicken: starten UND beenden ---
-        f.klick_text("#wz-links button", "Punkte nachklicken")
-        pruefe("die offene Sequenz" in f.text("#wz-mitte"), "Bezug fehlt")
-        pruefe("Farm" in f.text("#wz-mitte"), "Sequenzname fehlt")
+        f.klick_text("#wz-left button", "Punkte nachklicken")
+        pruefe("die offene Sequenz" in f.text("#wz-middle"), "Bezug fehlt")
+        pruefe("Farm" in f.text("#wz-middle"), "Sequenzname fehlt")
         knoepfe = [k.inner_text() for k in
-                   f.seite.query_selector_all("#wz-mitte button")]
+                   f.seite.query_selector_all("#wz-middle button")]
         pruefe(len(knoepfe) == 3,
                f"starten + uebernehmen + verwerfen erwartet, da: {knoepfe}")
         # Die vier Griffe stehen als TABELLE da, nicht als Absatz - man schlaegt
         # sie mitten im Klicken nach.
         tasten = [z.inner_text() for z in
-                  f.seite.query_selector_all("#wz-mitte .wz-tasten .wz-taste")]
+                  f.seite.query_selector_all("#wz-middle .wz-keys .wz-key")]
         pruefe(len(tasten) == 4, f"vier Hotkeys erwartet, da: {tasten}")
         pruefe("CTRL+ALT+J" in tasten, f"Uebernehmen-Taste fehlt: {tasten}")
-        pruefe("übernimmst" in f.text("#wz-mitte .wz-regel"),
+        pruefe("übernimmst" in f.text("#wz-middle .wz-rule"),
                "die Regel 'nichts wird geschrieben' fehlt")
-        f.klick_text("#wz-mitte button", "Runde starten")
+        f.klick_text("#wz-middle button", "Runde starten")
         pruefe("Farm" in f.status(), f"Start nennt die Sequenz nicht: {f.status()!r}")
         # Verwerfen ist der Ausgang, der NICHTS schreibt - und er muss es sagen.
-        f.klick_text("#wz-mitte button", "Verwerfen")
+        f.klick_text("#wz-middle button", "Verwerfen")
         pruefe("sequence.json" in f.status(), f"Verwerfen: {f.status()!r}")
-        f.klick_text("#wz-mitte button", "Übernehmen")
+        f.klick_text("#wz-middle button", "Übernehmen")
         pruefe("bernommen" in f.status(), f"Uebernehmen: {f.status()!r}")
         f.image("wz_klick")
 

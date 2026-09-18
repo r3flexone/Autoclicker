@@ -47,9 +47,9 @@ def lauf():
                "das Namensfeld des offenen Scans ist nicht bearbeitbar")
         pruefe(namensfeld.input_value() == "Inventar",
                "das Namensfeld zeigt nicht den Namen des offenen Scans")
-        quellenlayout = f.seite.eval_on_selector(".scan-quellenstand", """e => {
-          const info = e.querySelector('.scan-quelleninfo').getBoundingClientRect();
-          const knopf = e.querySelector('#scan-vollbild').getBoundingClientRect();
+        quellenlayout = f.seite.eval_on_selector(".scan-source-state", """e => {
+          const info = e.querySelector('.scan-source-info').getBoundingClientRect();
+          const knopf = e.querySelector('#scan-fullscreen').getBoundingClientRect();
           const breite = e.getBoundingClientRect().width;
           return {info: info.width, knopf: knopf.width, breite};
         }""")
@@ -62,9 +62,9 @@ def lauf():
         # mittlere Buehne gezogen werden. Gespeichert wird der Bildrand, denn
         # nur innerhalb davon gibt es Pixel fuer die Erkennung.
         f.klick('[data-scan-schritt="2"]')
-        f.klick("#scan-slots-finden")
+        f.klick("#scan-slots-find")
         bildrand = f.seite.locator("#scan-overlay").bounding_box()
-        buehnenrand = f.seite.locator("#scan-buehne").bounding_box()
+        buehnenrand = f.seite.locator("#scan-stage").bounding_box()
         x_draussen = bildrand["x"] + bildrand["width"] + 5
         pruefe(x_draussen < buehnenrand["x"] + buehnenrand["width"],
                "der Rauchtest braucht freien Platz rechts neben dem Bild")
@@ -81,45 +81,45 @@ def lauf():
                f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._suchbereich}")
         f.seite.keyboard.press("Escape")
         f.ruhe()
-        pruefe(f.text("#scan-sequenz").strip() == "Rauch",
+        pruefe(f.text("#scan-sequence").strip() == "Rauch",
                "Zielsequenz der Scan-Aufnahme ist nicht sichtbar")
-        masken = f.count("#scan-insp .scan-maske")
+        masken = f.count("#scan-insp .scan-card")
         pruefe(masken == count, f"{count} Item-Masken erwartet, da: {masken}")
-        pruefe(f.count("#scan-insp .kategorie-wahl") == count,
+        pruefe(f.count("#scan-insp .category-chooser") == count,
                "jede Maske braucht ein Kategorie-Bedienelement")
         f.image("items_masken")
 
         # Ohne vorhandene Kategorien ist es ein Textfeld - es gibt nichts zu waehlen.
-        typ = f.seite.eval_on_selector("#scan-insp .kategorie-wahl > *", "e => e.tagName")
+        typ = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
         pruefe(typ == "INPUT", f"ohne Kategorien erwartet INPUT, da: {typ}")
 
         # Eine neue Kategorie anlegen ...
-        f.seite.fill("#scan-insp .kategorie-wahl input", "Helme")
+        f.seite.fill("#scan-insp .category-chooser input", "Helme")
         f.seite.eval_on_selector(
-            "#scan-insp .kategorie-wahl input",
+            "#scan-insp .category-chooser input",
             "e => e.dispatchEvent(new Event('change', {bubbles: true}))")
         f.ruhe()
-        typ = f.seite.eval_on_selector("#scan-insp .kategorie-wahl > *", "e => e.tagName")
+        typ = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
         pruefe(typ == "SELECT", f"nach dem Anlegen erwartet SELECT, da: {typ}")
 
         # ... und sie muss beim NAECHSTEN Item waehlbar sein. Genau dafuer gibt es
         # `refreshCategoryOptions()`; ohne das tippt man sie zwanzigmal.
         options = f.seite.eval_on_selector_all(
-            "#scan-insp .kategorie-wahl select option", "ns => ns.map(n => n.textContent)")
+            "#scan-insp .category-chooser select option", "ns => ns.map(n => n.textContent)")
         pruefe("Helme" in options, f"'Helme' fehlt in der Auswahl: {options[:6]}")
         f.image("items_kategorie")
 
         # Der Tipp-Modus muss einen Neuaufbau ueberleben: der Entwurf speichert
         # 900 ms nach der letzten Aenderung, und das Feld wuerde sonst mitten im
         # Wort wieder zur Auswahlliste.
-        f.seite.eval_on_selector_all("#scan-insp .kategorie-wahl select", """ns => {
+        f.seite.eval_on_selector_all("#scan-insp .category-chooser select", """ns => {
           const s = ns[1];
           s.value = s.options[s.options.length - 1].value;
           s.dispatchEvent(new Event('change', {bubbles: true}));
         }""")
         f.ruhe()
         types = f.seite.eval_on_selector_all(
-            "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
+            "#scan-insp .category-chooser", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(types[1] == "INPUT", f"'neue Kategorie' oeffnet kein Textfeld: {types[:3]}")
         # **Der Neuaufbau, den es zu ueberleben gilt, IST das Auto-Speichern** —
         # also wird auf den gewartet und nicht auf 1100 ms. Der Unterschied ist
@@ -133,7 +133,7 @@ def lauf():
             pass                                # die Zusicherung meldet es genauer
         f.ruhe()
         typen_danach = f.seite.eval_on_selector_all(
-            "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
+            "#scan-insp .category-chooser", "ns => ns.map(n => n.firstElementChild.tagName)")
         pruefe(typen_danach == types,
                f"der Tipp-Modus ueberlebt den Neuaufbau nicht: {types} -> {typen_danach}")
 
@@ -151,7 +151,7 @@ def lauf():
         f.klick_text("#scan-insp .tabs .tab", "Items")
         f.ruhe()
         vorher = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(all(n.startswith("maske:item:") for n in vorher),
                f"jede Item-Maske braucht ihre id: {vorher[:3]}")
         ziel_id = vorher[0] or "(ohne id)"
@@ -166,7 +166,7 @@ def lauf():
         # Python geholt und die Spalte ein zweites Mal aufgebaut. Sichtbar war
         # das als kurzes Flackern. Gemessen wird beides — die Zahl der
         # Neuaufbauten und ob das Bild durchgehend dasteht.
-        namensfeld = f'[id="{ziel_id}"] .scan-maske-felder > input'
+        namensfeld = f'[id="{ziel_id}"] .scan-card-fields > input'
         hatte_bild = f.seite.eval_on_selector(
             f'[id="{ziel_id}"]', "e => !!e.querySelector('img.mini')")
         pruefe(hatte_bild, "das Item hat vor dem Umbenennen keine Vorschau")
@@ -190,14 +190,14 @@ def lauf():
                    "e => !!e.querySelector('img.mini')"),
                "die Vorschau ist nach dem Umbenennen weg")
         nach = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(nach[0] == "maske:item:Zeta",
                f"das Umbenennen verschiebt die Zeile: {nach}")
         pruefe(len(nach) == len(vorher) and nach[1:] == vorher[1:],
                f"die uebrigen Zeilen haben sich bewegt: {vorher} -> {nach}")
         wo = f.seite.evaluate("""() => {
           const a = document.activeElement;
-          const m = a && a.closest ? a.closest('.scan-maske') : null;
+          const m = a && a.closest ? a.closest('.scan-card') : null;
           return m ? m.id : (a ? a.tagName : "nichts");
         }""")
         pruefe(wo == "maske:item:Zeta",
@@ -205,21 +205,21 @@ def lauf():
 
         # 2. Kategorie: sie war der erste Sortierschluessel und damit das letzte
         #    Feld, das die Zeile noch wegspringen liess.
-        f.seite.eval_on_selector_all(".scan-maske .kategorie-wahl select", """(ns, id) => {
-          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
+        f.seite.eval_on_selector_all(".scan-card .category-chooser select", """(ns, id) => {
+          const e = ns.find((n) => n.closest(".scan-card").id === id) || ns[0];
           e.focus();
           e.value = "Helme";
           e.dispatchEvent(new Event('change', {bubbles: true}));
         }""", "maske:item:Zeta")
         f.seite.wait_for_timeout(900)
         nach_kat = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(nach_kat == nach,
                f"die Kategorie verschiebt die Zeile: {nach} -> {nach_kat}")
         # Sie steht dann unter der ALTEN Ueberschrift — das muss dastehen,
         # sonst liest sich die Liste falsch.
         stamp = f.seite.eval_on_selector(
-            '[id="maske:item:Zeta"] .scan-maske-stand', "e => e.textContent")
+            '[id="maske:item:Zeta"] .scan-card-state', "e => e.textContent")
         pruefe("→ Helme" in stamp,
                f"die gewechselte Kategorie wird nicht angesagt: {stamp!r}")
 
@@ -230,38 +230,38 @@ def lauf():
         # naechsten Item weiter.
         f.klick_text("#scan-insp .tabs .tab", "Items")
         vor_prio = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         # Das ERSTE Item auf einen hohen Rang setzen: sortiert die Liste
         # sofort, stuende es danach am Ende seiner Gruppe. Genau daran misst
         # sich, ob die Reihenfolge stehen bleibt.
         erste = vor_prio[0]
-        f.seite.eval_on_selector_all('.scan-maske input[type="number"]', """(ns, id) => {
-          const e = ns.find((n) => n.closest(".scan-maske").id === id) || ns[0];
+        f.seite.eval_on_selector_all('.scan-card input[type="number"]', """(ns, id) => {
+          const e = ns.find((n) => n.closest(".scan-card").id === id) || ns[0];
           e.focus();
           e.value = "9";
           e.dispatchEvent(new Event('change', {bubbles: true}));
         }""", erste)
         f.ruhe()
         nach_prio = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(nach_prio == vor_prio,
                f"die Liste sortiert beim Tippen um: {vor_prio} -> {nach_prio}")
         # Gegenprobe zur Gegenprobe: der Knopf muss sie sehr wohl umsortieren,
         # sonst misst der Test oben nur eine Liste, die sich ohnehin nicht regt.
-        f.klick_text("#scan-insp .scan-kopf button", "↕ Sortieren")
+        f.klick_text("#scan-insp .scan-header button", "↕ Sortieren")
         sortiert = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske", "ns => ns.map(n => n.id)")
+            "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(sortiert != vor_prio,
                f"„Sortieren“ ordnet die Liste nicht um: {sortiert}")
 
         knoepfe = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-kopf button", "ns => ns.map(n => n.textContent)")
+            "#scan-insp .scan-header button", "ns => ns.map(n => n.textContent)")
         pruefe(any("Sortieren" in k for k in knoepfe),
                f"kein Sortier-Knopf im Kopf: {knoepfe}")
         # Und der Kopf bleibt beim Scrollen stehen — sonst ist die Reiterleiste
         # nach drei Umdrehungen weg.
         klebt = f.seite.eval_on_selector(
-            "#scan-insp .scan-kopf", "e => getComputedStyle(e).position")
+            "#scan-insp .scan-header", "e => getComputedStyle(e).position")
         pruefe(klebt == "sticky", f"der Kopf klebt nicht: {klebt}")
 
         # ------------------------------------------------------------------
@@ -269,18 +269,18 @@ def lauf():
         # Schicht, die die Vertragssuite nicht sehen kann: dass ein Reiter
         # ueberhaupt etwas zeichnet, faellt nur im Fenster auf.
         links_vorher = f.seite.eval_on_selector(
-            "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
+            "#view-scans .page.left", "e => e.getBoundingClientRect().height")
         for reiter, kind in (("Slots", "slot"), ("Scans", "scan"), ("Items", "item")):
             f.klick_text("#scan-insp .tabs .tab", reiter)
-            masken = f.count("#scan-insp .scan-maske")
+            masken = f.count("#scan-insp .scan-card")
             pruefe(masken > 0, f"Reiter „{reiter}“ zeichnet keine Maske")
-            eigene = f.count(f'#scan-insp .scan-maske[id^="maske:{kind}:"]')
+            eigene = f.count(f'#scan-insp .scan-card[id^="maske:{kind}:"]')
             pruefe(eigene == masken,
                    f"„{reiter}“: {masken} Masken, davon {eigene} mit {kind}-id")
-            pruefe(f.count("#ab-listen .scan-maske") == 0,
+            pruefe(f.count("#ab-listen .scan-card") == 0,
                    f"„{reiter}“: es steht noch eine Maske in der linken Spalte")
             left = f.seite.eval_on_selector(
-                "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
+                "#view-scans .page.left", "e => e.getBoundingClientRect().height")
             pruefe(left == links_vorher,
                    f"die linke Spalte aendert bei „{reiter}“ ihre Hoehe: "
                    f"{links_vorher} -> {left}")
@@ -291,7 +291,7 @@ def lauf():
                 # im Scan), aber die ID darf sich nicht aendern, wenn ein Slot
                 # ab- und wieder angeschaltet wird (siehe Vertragssuite dafuer).
                 ids = f.seite.eval_on_selector_all(
-                    "#scan-insp .scan-marke .zahl",
+                    "#scan-insp .scan-badge .num",
                     "ns => ns.map(n => n.textContent)")
                 pruefe(ids == ["#" + str(i + 1) for i in range(masken)],
                        f"Slot-IDs nicht wie erwartet: {ids}")
@@ -299,9 +299,9 @@ def lauf():
                 # der ersten Spalte, die andere in der Zustandszeile der
                 # dritten. Ohne `align-self:stretch` laegen sie auseinander.
                 kanten = f.seite.evaluate("""() => {
-                  const m = document.querySelector("#scan-insp .scan-maske");
-                  const n = m.querySelector(".scan-marke .zahl");
-                  const g = m.querySelector(".scan-maske-stand .zahl");
+                  const m = document.querySelector("#scan-insp .scan-card");
+                  const n = m.querySelector(".scan-badge .num");
+                  const g = m.querySelector(".scan-card-state .num");
                   return [Math.round(n.getBoundingClientRect().bottom),
                           Math.round(g.getBoundingClientRect().bottom)];
                 }""")
@@ -312,14 +312,14 @@ def lauf():
         # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand
         # in der Spalte, die man damit gerade verlassen hatte.
         f.klick_text("#scan-insp .tabs .tab", "Scans")
-        f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] input')
+        f.klick('#scan-insp .scan-card[id="maske:scan:Inventar"] input')
         f.ruhe()
-        f.klick('#scan-insp .scan-maske[id="maske:scan:Inventar"] .scan-maske-stand')
-        reiter_danach = f.text("#scan-insp .tabs .tab.an")
+        f.klick('#scan-insp .scan-card[id="maske:scan:Inventar"] .scan-card-state')
+        reiter_danach = f.text("#scan-insp .tabs .tab.on")
         pruefe(reiter_danach.startswith("Scans"),
                f"nach dem Oeffnen steht der Reiter auf „{reiter_danach}“")
         knoepfe = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske-detail button", "ns => ns.map(n => n.textContent)")
+            "#scan-insp .scan-card-detail button", "ns => ns.map(n => n.textContent)")
         pruefe(any("löschen" in k for k in knoepfe),
                f"kein Loesch-Knopf im Detailteil des Scans: {knoepfe}")
         f.image("items_scan_detail")
@@ -328,10 +328,10 @@ def lauf():
         # Bedienelement — im Modell und in den Konsolen-Editoren gibt es sie
         # seit jeher.
         f.klick_text("#scan-insp .tabs .tab", "Items")
-        f.klick("#scan-insp .scan-maske .scan-maske-felder input")
+        f.klick("#scan-insp .scan-card .scan-card-fields input")
         f.ruhe()
         beschriftungen = f.seite.eval_on_selector_all(
-            "#scan-insp .scan-maske-detail .ueberschrift",
+            "#scan-insp .scan-card-detail .heading",
             "ns => ns.map(n => n.textContent)")
         pruefe(any("BESTÄTIGUNGSKLICK" in b for b in beschriftungen),
                f"kein Bestaetigungsklick in der Item-Maske: {beschriftungen}")
@@ -376,7 +376,7 @@ def lauf():
         f.ruhe()
         # Das Namensfeld traegt kein `type` (s. `cardName`) — ein Selektor auf
         # `[type=text]` findet es deshalb nicht.
-        felder = "#scan-insp .scan-maske .scan-maske-felder > input:not([type])"
+        felder = "#scan-insp .scan-card .scan-card-fields > input:not([type])"
         names = f.seite.locator(felder)
         if names.count() >= 2:
             names.nth(0).fill("Zuerst")

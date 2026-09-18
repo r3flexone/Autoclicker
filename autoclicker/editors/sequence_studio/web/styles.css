@@ -35,12 +35,12 @@ body{
 
 /* ---------------------------------------------------------------- Grundformen */
 .app{display:flex;flex-direction:column;height:100%}
-.reihe{display:flex;align-items:center;gap:8px}
-.spalte{display:flex;flex-direction:column;gap:8px}
-.wachse{flex:1;min-width:0}
-.klein{font-size:11.5px;color:var(--dim)}
+.row{display:flex;align-items:center;gap:8px}
+.column{display:flex;flex-direction:column;gap:8px}
+.grow{flex:1;min-width:0}
+.small{font-size:11.5px;color:var(--dim)}
 .mono{font-family:var(--mono)}
-.trenner{width:1px;height:24px;background:var(--line);flex:none}
+.divider{width:1px;height:24px;background:var(--line);flex:none}
 
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 .btn{
@@ -50,18 +50,18 @@ button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 .btn:hover{border-color:var(--dim)}
 /* Ein Knopf, der einen MODUS einschaltet, muss zeigen, dass er an ist — sonst
    klickt man ihn ein zweites Mal und wundert sich. Ringsum wie ueberall. */
-.btn.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
-.btn.haupt{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
-.btn.haupt:hover{filter:brightness(1.08)}
+.btn.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
 /* **Ein Knopf sieht aus wie ein Knopf.** `still` hiess einmal „ohne Rahmen"
    (`border-color:transparent`) — und damit war „+ neuer Scan" oder „alle dazu"
    ein Stueck Text, dem man nicht ansieht, dass man es anklicken kann. Man
    probiert es einmal aus oder eben nicht. Der Ton bleibt zurueckhaltend (kein
    Hintergrund, gedaempfte Schrift), die FLAECHE ist da. */
-.btn.still{background:none;border-color:var(--line);color:var(--muted);padding:5px 9px}
-.btn.still:hover{background:var(--sub);border-color:var(--dim);color:var(--text)}
+.btn.quiet{background:none;border-color:var(--line);color:var(--muted);padding:5px 9px}
+.btn.quiet:hover{background:var(--sub);border-color:var(--dim);color:var(--text)}
 .btn:disabled{opacity:.4;cursor:default}
-.btn.gefahr:hover{border-color:var(--err);color:var(--err)}
+.btn.danger:hover{border-color:var(--err);color:var(--err)}
 
 /* Eingaben tragen den Ton der Flaeche, auf der sie liegen, und trennen sich nur
    durch den Rahmen. Mit --bg (dunkler als die Seitenleiste) sahen sie aus wie
@@ -74,108 +74,108 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 input:disabled,textarea:disabled{background:var(--sub);color:var(--dim)}
 input[type=number]{font-family:var(--mono)}
 textarea{resize:vertical;min-height:52px}
-label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
-.eingabe-hilfe{font-size:10px;line-height:1.25;color:var(--dim)}
-.prioritaets-uebersicht,.prioritaeten-alle{display:flex;flex-direction:column;gap:5px;
+label.field{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.input-help{font-size:10px;line-height:1.25;color:var(--dim)}
+.priority-overview,.priorities-all{display:flex;flex-direction:column;gap:5px;
   padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
-.prioritaets-hinweis{margin:3px 0 0}
-.prioritaets-chips{display:flex;flex-wrap:wrap;gap:4px}
+.priority-hint{margin:3px 0 0}
+.priority-chips{display:flex;flex-wrap:wrap;gap:4px}
 /* Der Rahmen ist von Anfang an da (durchsichtig), damit die gestrichelte
    Luecke daneben nicht zwei Pixel groesser ist als ihre belegten Nachbarn. */
-.prioritaets-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+.priority-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   padding:2px 6px;border-radius:9px;border:1px solid transparent;background:var(--sub);
   font:10.5px var(--mono);color:var(--muted)}
 /* Ein freier Rang ist eine LUECKE, kein Eintrag: gestrichelt und ohne Namen.
    Vorher standen nur die vergebenen da, und ob P2 belegt ist oder fehlt, sah
    man erst, wenn man P1, P3, P4 las und selbst nachzaehlte. */
-.prioritaets-chip.frei{border:1px dashed var(--dim);background:none;color:var(--dim)}
+.priority-chip.free{border:1px dashed var(--dim);background:none;color:var(--dim)}
 /* Zwei Items auf demselben Rang entscheidet die Scan-Reihenfolge — also der
    Zufall. Das ist kein Fehler, aber fast immer ein Versehen. */
-.prioritaets-chip.doppelt{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
-.scan-maske input.doppelt{border-color:var(--accent);color:var(--accent)}
+.priority-chip.duplicate{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+.scan-card input.duplicate{border-color:var(--accent);color:var(--accent)}
 /* Gehoert nicht zum offenen Scan. Der Haken allein ist an einer 30-px-Maske zu
    wenig, um „ist raus" zu lesen — und genau danach sucht man, wenn man gerade
    einen weggeklickt hat. */
-.prioritaets-chip.aktuell{background:#7C9CF526;color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
-.prioritaeten-alle{margin-top:8px;max-height:130px;overflow:auto}
-.prioritaeten-kategorie{display:grid;grid-template-columns:minmax(70px,.35fr) 1fr;gap:7px;
+.priority-chip.current{background:#7C9CF526;color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
+.priorities-all{margin-top:8px;max-height:130px;overflow:auto}
+.priorities-category{display:grid;grid-template-columns:minmax(70px,.35fr) 1fr;gap:7px;
   font-size:10.5px;color:var(--muted)}
-.prioritaeten-kategorie b{color:var(--text);overflow:hidden;text-overflow:ellipsis}
-.scan-review-sammel{display:flex;gap:6px;margin-top:8px}
-.scan-review-sammel input{min-width:0}
-.scan-review-sammel .btn{width:auto;white-space:nowrap}
+.priorities-category b{color:var(--text);overflow:hidden;text-overflow:ellipsis}
+.scan-review-bulk{display:flex;gap:6px;margin-top:8px}
+.scan-review-bulk input{min-width:0}
+.scan-review-bulk .btn{width:auto;white-space:nowrap}
 /* Eine gerechnete Zahl, kein Eingabefeld: `output` sagt das semantisch, bekommt
    aber dieselbe Kachel wie die Eingabe daneben. So haben beide Spalten exakt
    dieselbe Hoehe, ohne einen deaktivierten oder editierbaren Zustand zu zeigen. */
-.feld-still{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
-.feld-still output{display:flex;align-items:center;width:100%;font:inherit;
+.field-quiet{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.field-quiet output{display:flex;align-items:center;width:100%;font:inherit;
   font-family:var(--mono);line-height:1.45;color:var(--text);background:var(--panel);
   border:1px solid var(--line);border-radius:4px;padding:5px 7px}
 /* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
    Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
-label.an{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
+label.on{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
   font-size:12.5px;cursor:pointer}
-label.an input{width:auto}
+label.on input{width:auto}
 /* Kippschalter statt Kaestchen: er zeigt zwei Zustaende als Stellung, nicht als
    Haken — bei den beiden Aktions-Schaltern ist genau das die Aussage. Es bleibt
    ein echtes <input type=checkbox>, nur ohne Systemdarstellung; ein verstecktes
    Element mit einer Attrappe daneben waere fuer Tastatur und Test schlechter. */
-label.an input[type=checkbox]{
+label.on input[type=checkbox]{
   appearance:none;-webkit-appearance:none;flex:none;position:relative;cursor:pointer;
   width:32px;height:18px;border-radius:9px;background:var(--line);border:1px solid var(--line);
   transition:background .12s,border-color .12s;
 }
-label.an input[type=checkbox]::after{
+label.on input[type=checkbox]::after{
   content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
   background:var(--dim);transition:transform .12s,background .12s;
 }
-label.an input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
-label.an input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
-label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label.on input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+label.on input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
+label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 
 /* Das Ziel einer Scan-Aufnahme ist Arbeitskontext, kein Hilfetext. Die
    Akzentkante bindet die Kachel an die eine Sequenz, deren Ordner die Scans,
    Slots, Items und Vorlagen besitzt. Lange Namen duerfen nichts verbreitern. */
-.scan-sequenzbezug{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;
+.scan-sequence-ref{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;
   padding:7px 9px;border:1px solid var(--line);border-left:3px solid var(--accent);
   border-radius:5px;background:linear-gradient(90deg,#F59E0B0A,transparent)}
-.scan-sequenzbezug > span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+.scan-sequence-ref > span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);align-self:baseline}
-.scan-sequenzbezug > strong{min-width:0;overflow:hidden;text-overflow:ellipsis;
+.scan-sequence-ref > strong{min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;color:var(--text);font-size:12px}
-.scan-sequenzbezug > small{grid-column:1/-1;color:var(--dim);font-size:10.5px}
+.scan-sequence-ref > small{grid-column:1/-1;color:var(--dim);font-size:10.5px}
 
 /* --------------------------------------------------------------------- Kopf */
 /* Der Kopf bricht um, statt aus dem Fenster zu laufen: bei 900 px Breite stand
    „Speichern" halb ausserhalb, und ein Knopf, den man nicht erreicht, ist
    schlimmer als eine zweite Zeile. Deshalb auch keine feste Hoehe mehr — die
    waere bei zwei Zeilen eine Zusicherung, die nicht mehr stimmt. */
-.kopf{
+.header{
   min-height:56px;flex:none;display:flex;align-items:center;gap:14px;
   padding:6px 14px;flex-wrap:wrap;
   background:var(--panel);border-bottom:1px solid var(--line);
 }
-.marke{width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex:none}
-.marke img{display:block;width:100%;height:100%}
-.titel{font-size:13px;letter-spacing:.15em;font-weight:700}
-.punkt-offen{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.badge{width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex:none}
+.badge img{display:block;width:100%;height:100%}
+.title{font-size:13px;letter-spacing:.15em;font-weight:700}
+.dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
 /* Nimmt den freien Platz statt einer festen Zeichenzahl: der Deckel stand bei
    46ch, und daneben lag ein Abstandhalter, der den ganzen Rest der Kopfzeile
    aufbrauchte. Eine Meldung wie "Nicht gespeichert: ITEM-SCAN in 'Loop 1'
    (Block 5) hat keinen Namen." war damit immer abgeschnitten. */
-.fusszeile{flex:none;display:flex;align-items:center;gap:10px;padding:5px 14px;
+.footer{flex:none;display:flex;align-items:center;gap:10px;padding:5px 14px;
   background:var(--panel);border-top:1px solid var(--line);font-size:11.5px}
-.lampe-klein{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
-.lampe-klein.offen{background:var(--accent)}
+.lamp-small{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.lamp-small.open{background:var(--accent)}
 .status{min-width:0;font-size:11.5px;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.status.art-ok{color:var(--ok)} .status.art-warn{color:var(--accent)}
-.status.art-err{color:var(--err)}
+.status.kind-ok{color:var(--ok)} .status.kind-warn{color:var(--accent)}
+.status.kind-err{color:var(--err)}
 
 /* -------------------------------------------------------------------- Rumpf */
-.rumpf{flex:1;display:flex;min-height:0}
+.body{flex:1;display:flex;min-height:0}
 /* Die Spalte scrollt selbst, sobald sie laenger wird als das Fenster. Ohne das
    rutschte der untere Abschnitt hinter die Fusszeile, sobald ein Abschnitt
    dazukam — erreichbar war er dann nicht mehr. */
@@ -184,15 +184,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Spalte: bei den Reitern Scans/Slots/Items sprang das Raster jedes Mal um
    rund 15 px, obwohl die Spalte selbst 290 px breit ist. Eine Spalte, die
    beim Umschalten ihre Groesse aendert, war genau die Beschwerde. */
-.seite{width:290px;flex:none;background:var(--panel);display:flex;flex-direction:column;
+.page{width:290px;flex:none;background:var(--panel);display:flex;flex-direction:column;
   min-height:0;overflow-y:auto;scrollbar-gutter:stable}
-.seite.links{border-right:1px solid var(--line)}
-.seite.rechts{width:370px;border-left:1px solid var(--line)}
-.abschnitt{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
+.page.left{border-right:1px solid var(--line)}
+.page.right{width:370px;border-left:1px solid var(--line)}
+.section{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
   flex-direction:column;gap:8px}
 /* Nichts in der Spalte darf schrumpfen: sonst quetscht der Flex-Container die
    Segment-Leisten auf halbe Höhe, sobald der Inhalt länger wird als das Fenster. */
-.abschnitt > *{flex:none}
+.section > *{flex:none}
 /* **Die Spalte scrollt als GANZES — also darf kein Abschnitt darin nochmal
    scrollen.** Zwei ineinander liegende Scrollbereiche in einer Flex-Spalte
    rechnen ihre Hoehe gegeneinander aus: `flex:1` loest gegen die SICHTBARE
@@ -203,44 +203,44 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    dort geht.
    `1 0 auto` statt `1`: waechst in einem hohen Fenster in den freien Platz,
    schrumpft aber NIE unter seinen Inhalt. */
-.abschnitt.wachsend{flex:1 0 auto;border-bottom:none}
-.ueberschrift{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600}
+.section.growing{flex:1 0 auto;border-bottom:none}
+.heading{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600}
 
 /* Zusammenklappbarer Abschnitt. Der Kopf ist der Schalter — eine eigene kleine
    Kachel daneben waere ein zweites Ziel fuer dieselbe Sache. Zugeklappt bleibt
    rechts im Kopf die Kurzauskunft stehen (Modus, Bildgroesse, offener Schritt):
    Platz sparen darf nichts kosten, was man beim Arbeiten braucht. */
-.klapp-kopf{display:flex;align-items:center;gap:8px;width:100%;padding:0;
+.collapse-header{display:flex;align-items:center;gap:8px;width:100%;padding:0;
   background:none;border:none;color:inherit;cursor:pointer;text-align:left;font:inherit}
-.klapp-kopf:hover .ueberschrift{color:var(--muted)}
-.klapp-kopf .pfeil{width:9px;flex:none;color:var(--dim);font-size:9px;line-height:1}
-.klapp-kopf .pfeil::before{content:"\25BE"}
-.abschnitt.zu .klapp-kopf .pfeil::before{content:"\25B8"}
-.klapp-rumpf{display:flex;flex-direction:column;gap:8px}
-.klapp-rumpf > *{flex:none}
-.abschnitt.zu > .klapp-rumpf{display:none}
-.abschnitt.zu{gap:0}
+.collapse-header:hover .heading{color:var(--muted)}
+.collapse-header .arrow{width:9px;flex:none;color:var(--dim);font-size:9px;line-height:1}
+.collapse-header .arrow::before{content:"\25BE"}
+.section.closed .collapse-header .arrow::before{content:"\25B8"}
+.collapse-body{display:flex;flex-direction:column;gap:8px}
+.collapse-body > *{flex:none}
+.section.closed > .collapse-body{display:none}
+.section.closed{gap:0}
 
 /* ------------------------------------------------------------------- Punkte */
-.punkt{
+.point{
   display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;
   background:none;border:1px solid var(--line);cursor:grab;
 }
-.punkt:hover{border-color:var(--dim)}
-.punkt .kugel{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
-.punkt .kugel.ohne{border:1px dashed var(--dim);background:none}
-.punkt .nr{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
-.punkt .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.punkt .xy{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
+.point:hover{border-color:var(--dim)}
+.point .dot{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
+.point .dot.without{border:1px dashed var(--dim);background:none}
+.point .nr{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
+.point .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.point .xy{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
 
 /* -------------------------------------------------------------------- Board */
 .board{
   flex:1;min-width:0;overflow:auto;background:var(--bg);
   background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px;
 }
-.phasen{display:flex;gap:18px;padding:18px 20px 40px;min-width:min-content;align-items:flex-start}
+.phases{display:flex;gap:18px;padding:18px 20px 40px;min-width:min-content;align-items:flex-start}
 .phase{width:286px;flex:none;display:flex;flex-direction:column;gap:8px}
-.phase-kopf{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+.phase-header{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:9px 11px;display:flex;flex-direction:column;gap:7px}
 /* Ringsum, nicht nur an der linken Kante: ein Streifen an einer Seite liest
    sich als Verzierung, ein Ring als Zustand — und im Board stehen die Phasen
@@ -248,15 +248,15 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    scheint. Ueber `box-shadow` statt ueber einen dickeren Rahmen, damit die
    Markierung nichts verschiebt. Dieselbe Regel wie bei der laufenden Kachel im
    Live-Run und bei der gewaehlten Karte. */
-.phase-kopf.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
-.phase-kopf.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
-.phase-kopf.loop.gewaehlt{box-shadow:0 0 0 1px var(--loop),0 0 0 5px #F59E0B26}
-.phase-kopf.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
+.phase-header.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
+.phase-header.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
+.phase-header.loop.selected{box-shadow:0 0 0 1px var(--loop),0 0 0 5px #F59E0B26}
+.phase-header.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
-.phase-kopf.init .phase-name{color:var(--init)}
-.phase-kopf.end .phase-name{color:var(--end)}
-.phase-kopf.loop .phase-name{color:var(--loop)}
+.phase-header.init .phase-name{color:var(--init)}
+.phase-header.end .phase-name{color:var(--end)}
+.phase-header.loop .phase-name{color:var(--loop)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
 /* **Dasselbe Raster wie das `knopfpaar` darunter** — gleiche Spaltenbreite,
@@ -264,113 +264,113 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    getippten 70 und 74 px: die Zeile hoerte bei rund 60 % auf, waehrend die
    Knopfzeile darunter ueber die volle Breite ging, und die beiden Felder waren
    *fast* gleich breit — nah genug, dass es wie ein Rundungsfehler aussieht. */
-.phase-werkzeug{display:grid;gap:6px;
+.phase-tool{display:grid;gap:6px;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))}
-.phase-werkzeug input{padding:3px 5px;font-size:11.5px;width:100%;min-width:0}
+.phase-tool input{padding:3px 5px;font-size:11.5px;width:100%;min-width:0}
 /* Enger als die Felder der Seitenspalte: der Phasenkopf steht im Board, wo
    jede Zeile Hoehe kostet, die den Bloecken fehlt. */
-.phase-werkzeug label.feld{font-size:10.5px;gap:2px;min-width:0}
-.phase-werkzeug .reihe{gap:4px}
+.phase-tool label.field{font-size:10.5px;gap:2px;min-width:0}
+.phase-tool .row{gap:4px}
 /* Die Sammel-Aktionen der Phase: frueher EIN Knopf, deshalb stand hier ein
    `align-self`. Jetzt ein `knopfpaar` (gleiche Spalten, bricht um statt
    abzuschneiden) — die Groesse bleibt die kleine des Phasenkopfs. */
-.phase-alle > .btn{font-size:11px;padding:4px 7px}
-.phasen-anlegen{gap:8px}
+.phase-all > .btn{font-size:11px;padding:4px 7px}
+.phases-create{gap:8px}
 
 /* ------------------------------------------------------------------- Karten */
-.karte{
+.card{
   background:var(--panel);border:1px solid var(--line);border-radius:6px;
   cursor:grab;overflow:hidden;
 }
-.karte:hover{border-color:var(--dim)}
+.card:hover{border-color:var(--dim)}
 /* Der Ring liegt AUSSEN. Ein `inset`-Schatten verschwand unter der farbigen
    Kopfzeile — auf gelbem ITEM-SCAN-Grund war die gewaehlte Karte von einer
    ungewaehlten nicht zu unterscheiden. */
-.karte.gewaehlt{border-color:var(--accent);
+.card.selected{border-color:var(--accent);
   box-shadow:0 0 0 1px var(--accent),0 0 0 5px #F59E0B26}
 /* Die Kopfzeile traegt die Typfarbe ueber die volle Breite, nicht nur ein Chip
    darin: eine Phase liest sich dann als Streifenmuster, statt dass man jede
    Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
    (#0C0F14) — die Grundfarben sind hell. */
-.karte-kopf{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
-.karte-typ{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
+.card-header{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
+.card-type{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
   color:#0C0F14;padding:0;background:none;flex:none;opacity:.75}
-.karte-titel{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;
+.card-title{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* margin-left:auto haelt die Nummer rechts, auch wenn die Karte keinen Titel
    hat und damit das flex:1-Element fehlt, das sie sonst hinueberschiebt. Mit
    Titel ist die Regel wirkungslos — der nimmt den freien Platz schon weg. */
-.karte-nr{font-family:var(--mono);font-size:10px;color:#0C0F1499;margin-left:auto;flex:none}
-.karte-leib{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
-.karte-zeile{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
-.karte-zeile.mit-farbe,
-.karte-farbe{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
-.karte-zeile.mit-farbe{font-size:11.5px}
-.karte-zeile .feldchen,
-.karte-farbe .feldchen{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
-.karte-else{display:flex;align-items:center;gap:6px;padding-top:6px;
+.card-nr{font-family:var(--mono);font-size:10px;color:#0C0F1499;margin-left:auto;flex:none}
+.card-body{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
+.card-row{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.card-row.with-color,
+.card-color{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.card-row.with-color{font-size:11.5px}
+.card-row .swatch,
+.card-color .swatch{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
+.card-else{display:flex;align-items:center;gap:6px;padding-top:6px;
   border-top:1px dashed var(--line);color:var(--accent);font-size:11px}
-.karte-else.tot{color:var(--dim)}
+.card-else.dead{color:var(--dim)}
 /* Die Marken sitzen jetzt auf der farbigen Kopfzeile, also dunkel auf hell. Die
    Warnmarke stand vorher auf Amber — auf einem ITEM-SCAN (ebenfalls Amber) waere
    das Amber auf Amber gewesen, also unlesbar genau dort, wo sie am haeufigsten
    auftaucht. Sie hebt sich deshalb ueber ein helles Feld ab, nicht ueber Farbe. */
-.marke-klein{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
+.badge-small{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
   border:1px solid #0C0F1440;color:#0C0F14AA;flex:none}
-.marke-klein.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
+.badge-small.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
 /* Ein Haltepunkt ist ein Zustand, den man beim Ueberfliegen finden muss —
    deshalb dunkel gefuellt statt nur umrandet: ueber jeder Typfarbe gleich
    sichtbar, und nicht mit der Warnung (hell) zu verwechseln. */
-.marke-klein.halt{color:#FFFFFF;border-color:#0C0F14;background:#0C0F14CC}
+.badge-small.breakpoint{color:#FFFFFF;border-color:#0C0F14;background:#0C0F14CC}
 
 /* Die Einfügestelle liegt zwischen zwei Karten und ist unsichtbar, bis etwas
    darüber schwebt. Die negativen Ränder heben die beiden Flex-Abstände wieder
    auf, die sie sonst zusätzlich zwischen die Karten schöbe. */
-.ablage{height:3px;border-radius:2px;background:transparent;margin:-5px 0}
-.ablage.aktiv{background:var(--accent)}
-.leerzone{border:1px dashed var(--line);border-radius:6px;padding:9px;text-align:center;
+.dropzone{height:3px;border-radius:2px;background:transparent;margin:-5px 0}
+.dropzone.active{background:var(--accent)}
+.empty-zone{border:1px dashed var(--line);border-radius:6px;padding:9px;text-align:center;
   color:var(--dim);font-size:12px;cursor:pointer}
-.leerzone:hover{border-color:var(--accent);color:var(--accent)}
-.leerzone.aktiv{border-color:var(--accent);border-style:solid;color:var(--accent)}
+.empty-zone:hover{border-color:var(--accent);color:var(--accent)}
+.empty-zone.active{border-color:var(--accent);border-style:solid;color:var(--accent)}
 
 /* ---------------------------------------------------------------- Inspektor */
-.insp-kopf{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
+.insp-header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
   align-items:center;gap:8px}
-.sammel-editor{padding:14px;display:flex;flex-direction:column;gap:12px}
-.sammel-schnell{gap:6px;flex-wrap:wrap}
-.insp-punkt{width:9px;height:9px;border-radius:2px;flex:none}
-.typ-chip{
+.bulk-editor{padding:14px;display:flex;flex-direction:column;gap:12px}
+.bulk-quick{gap:6px;flex-wrap:wrap}
+.insp-point{width:9px;height:9px;border-radius:2px;flex:none}
+.type-chip{
   font-family:var(--mono);font-size:9.5px;text-align:center;padding:7px 3px;border-radius:4px;
   background:var(--sub);border:1px solid var(--line);color:var(--muted);cursor:pointer;
 }
-.typ-chip:hover{border-color:var(--dim);color:var(--text)}
+.type-chip:hover{border-color:var(--dim);color:var(--text)}
 /* ELSE hat keine Typ-Farbe — die gewählte Kachel trägt deshalb den Akzent. */
-.typ-chip.an{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
+.type-chip.on{background:var(--accent);border-color:var(--accent);color:#0C0F14;font-weight:600}
 .segment{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
 .segment button{flex:1;padding:5px 4px;font-size:11.5px;color:var(--muted);
   background:var(--panel)}
 .segment button:hover{color:var(--text)}
-.segment button.an{background:var(--accent);color:#0C0F14;font-weight:600}
-.hinweis{font-size:11px;color:var(--dim);line-height:1.5}
+.segment button.on{background:var(--accent);color:#0C0F14;font-weight:600}
+.hint{font-size:11px;color:var(--dim);line-height:1.5}
 /* Ein Hinweis, der nicht erklaert, sondern warnt: hier steht etwas, das nicht
    wirkt. Amber wie alles, was Aufmerksamkeit will — aber ohne Rahmen, damit es
    nicht wie ein Fehler aussieht. Es ist keiner, es ist nur wirkungslos. */
-.hinweis.warnung{color:var(--accent)}
+.hint.warning{color:var(--accent)}
 /* Die Probe steht unten und abgesetzt: sie ändert nichts an der Sequenz, sondern
    fragt den Bildschirm. */
-.insp-fuss{margin-top:6px;padding-top:10px;border-top:1px solid var(--line);
+.insp-footer{margin-top:6px;padding-top:10px;border-top:1px solid var(--line);
   display:flex;flex-direction:column;gap:6px}
-.btn.breit{width:100%;text-align:center}
+.btn.wide{width:100%;text-align:center}
 /* Erklaerungen liegen im Tooltip, nicht im Fluss: in der Eigenschaften-Spalte
    standen sie unter jedem zweiten Feld und schoben das Wesentliche nach unten.
    Was den ZUSTAND meldet ("keine Konfiguration vorhanden"), bleibt sichtbar —
    das muss man lesen, ohne es zu suchen. */
 .info{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
   color:var(--dim);cursor:pointer;flex:none;user-select:none}
-.info-glyphe{display:block;width:100%;height:100%;overflow:visible}
+.info-glyph{display:block;width:100%;height:100%;overflow:visible}
 .info:hover{color:var(--muted)}
-.info.an{color:var(--accent)}
-.mitinfo{display:flex;align-items:center;gap:5px}
+.info.on{color:var(--accent)}
+.with-info{display:flex;align-items:center;gap:5px}
 .empty{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
 /* ---------------------------------------------------------------- Ansichten */
@@ -381,10 +381,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   border-radius:6px;padding:3px;flex:none}
 .tab{padding:4px 12px;border-radius:4px;font-size:12.5px;color:var(--muted)}
 .tab:hover{color:var(--text)}
-.tab.an{background:var(--sub);color:var(--accent);font-weight:600}
+.tab.on{background:var(--sub);color:var(--accent);font-weight:600}
 
 /* ------------------------------------------------------------- Sequenzliste */
-.karten{flex:1;min-height:0;display:grid;align-content:start;
+.cards{flex:1;min-height:0;display:grid;align-content:start;
   grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;
   padding:24px 28px;overflow-y:auto}
 /* **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz, rutschte
@@ -396,65 +396,65 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 
    `align-content:start` in jeder Zelle waere falsch: die Fusszeile soll unten
    stehen, und genau dafuer ist die vierte Zeile `1fr`. */
-.seq-karte{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+.seq-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:16px;display:grid;gap:12px;grid-row:span 5;
   grid-template-rows:subgrid}
-.karten{grid-auto-rows:auto}
+.cards{grid-auto-rows:auto}
 /* Ohne subgrid: dieselbe Aufteilung, nur ohne Abgleich zwischen den Karten. */
 @supports not (grid-template-rows: subgrid) {
-  .seq-karte{grid-template-rows:auto auto auto 1fr auto;grid-row:auto}
+  .seq-card{grid-template-rows:auto auto auto 1fr auto;grid-row:auto}
 }
 /* Leere Zeilen sollen keine Hoehe erfinden — sie sind nur der Platzhalter,
    damit die Nachbarkarte ihre Zeile an derselben Stelle hat. */
-.seq-text:empty,.seq-balken:empty,.seq-zahlen:empty{min-height:0}
+.seq-text:empty,.seq-bar:empty,.seq-numbers:empty{min-height:0}
 .seq-text{display:flex;flex-direction:column;gap:8px}
-.seq-karte.offen{border-color:var(--accent)}
-.seq-karte.defekt{border-color:var(--err)}
-.seq-kopf{display:flex;align-items:baseline;gap:8px}
+.seq-card.open{border-color:var(--accent)}
+.seq-card.broken{border-color:var(--err)}
+.seq-header{display:flex;align-items:baseline;gap:8px}
 .seq-name{font-size:14px;font-weight:600;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.seq-notiz{font-size:12px;color:var(--muted);line-height:1.5;
+.seq-note{font-size:12px;color:var(--muted);line-height:1.5;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Der Phasenbalken ist die eigentliche Idee der Uebersicht: INIT/Loops/END als
    Segmente, Breite nach Schrittzahl. Wie gross eine Sequenz ist und wo ihr
    Gewicht liegt, steht damit im Bild statt in vier Zahlen. */
-.balken{display:flex;gap:3px;height:8px}
-.balken span{border-radius:2px;min-width:3px}
-.seq-zahlen{display:flex;flex-wrap:wrap;gap:6px}
-.zahl{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
+.bar{display:flex;gap:3px;height:8px}
+.bar span{border-radius:2px;min-width:3px}
+.seq-numbers{display:flex;flex-wrap:wrap;gap:6px}
+.num{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.seq-fuss{display:flex;align-items:center;gap:8px;align-self:end;min-width:0}
+.seq-footer{display:flex;align-items:center;gap:8px;align-self:end;min-width:0}
 /* Ein langer Sequenzpfad darf weder den Öffnen-Knopf aus der Karte drücken noch
    sichtbar über ihn und die Nachbarkarte malen. `min-width:0` allein lässt das
    Flex-Element nur schrumpfen — seinen Text zeichnet es ohne overflow trotzdem
    weiter. Der vollständige Pfad bleibt im Footer-Titel der Seite verfügbar. */
-.seq-fuss .wachse{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.seq-fuss .btn{flex:none}
+.seq-footer .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seq-footer .btn{flex:none}
 .seq-warn{font-size:11.5px;color:var(--accent);line-height:1.5}
 
 /* ---------------------------------------------------------------- Live-Run */
 .lauf{flex:1;min-height:0;overflow-y:auto;padding:24px 28px;display:flex;
   flex-direction:column;gap:18px;align-items:stretch}
-.lauf-kopf{display:flex;align-items:center;gap:12px}
-.lampe{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
-.lampe.an{background:var(--ok);box-shadow:0 0 0 4px #3ED07A26}
+.run-header{display:flex;align-items:center;gap:12px}
+.lamp{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
+.lamp.on{background:var(--ok);box-shadow:0 0 0 4px #3ED07A26}
 /* Beendet ist nicht dasselbe wie "nichts da": die Lampe bleibt sichtbar, nur
    ohne den Puls-Ring des laufenden Zustands. */
-.lampe.fertig{background:var(--muted)}
-.zahl.abschluss-ok{color:var(--ok);border-color:#3ED07A59;background:#3ED07A1F}
-.zahl.abschluss-warn{color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
-.zahl.abschluss-err{color:var(--err);border-color:#EF444459;background:#EF44441F}
-.hinweis.abschluss-ok{color:var(--ok)}
-.hinweis.abschluss-warn{color:var(--accent)}
-.hinweis.abschluss-err{color:var(--err)}
+.lamp.done{background:var(--muted)}
+.num.summary-ok{color:var(--ok);border-color:#3ED07A59;background:#3ED07A1F}
+.num.summary-warn{color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
+.num.summary-err{color:var(--err);border-color:#EF444459;background:#EF44441F}
+.hint.summary-ok{color:var(--ok)}
+.hint.summary-warn{color:var(--accent)}
+.hint.summary-err{color:var(--err)}
 /* Wo Schluss war — ein Ring, kein Fuellton: die Phase lief nicht zu Ende. */
-.phasen-kachel.schluss{box-shadow:0 0 0 1px var(--muted)}
-.lauf-name{font-size:18px;font-weight:600;flex:1;min-width:0;
+.phase-tile.end-mark{box-shadow:0 0 0 1px var(--muted)}
+.run-name{font-size:18px;font-weight:600;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tafel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:16px;display:flex;flex-direction:column;gap:10px}
-.fortschritt{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
-.fortschritt span{display:block;height:100%;background:var(--accent);border-radius:3px}
+.progress{height:6px;border-radius:3px;background:var(--bg);overflow:hidden}
+.progress span{display:block;height:100%;background:var(--accent);border-radius:3px}
 /* Die Phasen des Laufs nebeneinander. Die laufende bekommt den Platz (drei
    Spalten), die uebrigen stehen als schmale Kacheln daneben — sonst muesste man
    sich merken, was vorher lief und was noch kommt. INIT und END tragen ihre
@@ -465,167 +465,167 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    (`auto-fit` laesst leere Spalten kollabieren, damit sich wenige Kacheln wie
    vorher ueber die Breite dehnen), und die laufende belegt drei Spalten. Passen
    die drei nicht mehr, klemmt CSS sie auf die vorhandenen. */
-.phasen-leiste{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+.phase-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:10px;align-items:stretch}
-.phasen-kachel{min-width:0;background:var(--panel);border:1px solid var(--line);
+.phase-tile{min-width:0;background:var(--panel);border:1px solid var(--line);
   border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
 /* Ringsum markiert, nicht nur an der Kante — und über `box-shadow` statt über
    einen dickeren Rahmen: der wuerde die Kachel um einen Pixel wachsen lassen und
    damit bei jedem Phasenwechsel das ganze Raster verschieben. */
-.phasen-kachel.laeuft{grid-column:span 3;border-color:var(--accent);
+.phase-tile.running{grid-column:span 3;border-color:var(--accent);
   box-shadow:0 0 0 1px var(--accent)}
-.phasen-kachel.fertig{opacity:.55}
-.phasen-kachel .p-name{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+.phase-tile.done{opacity:.55}
+.phase-tile .p-name{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.phasen-kachel.laeuft .p-name{color:var(--accent)}
-.phasen-kachel[data-kind="init"] .p-name{color:var(--init)}
-.phasen-kachel[data-kind="loop"] .p-name{color:var(--loop)}
-.phasen-kachel[data-kind="end"] .p-name{color:var(--end)}
+.phase-tile.running .p-name{color:var(--accent)}
+.phase-tile[data-kind="init"] .p-name{color:var(--init)}
+.phase-tile[data-kind="loop"] .p-name{color:var(--loop)}
+.phase-tile[data-kind="end"] .p-name{color:var(--end)}
 /* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
    läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
    kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. */
-.phasen-kachel.laeuft[data-kind="init"] .p-name{color:var(--init)}
-.phasen-kachel.laeuft[data-kind="loop"] .p-name{color:var(--loop)}
-.phasen-kachel.laeuft[data-kind="end"] .p-name{color:var(--end)}
-.phasen-kachel .p-lage{font-size:11.5px;color:var(--dim)}
+.phase-tile.running[data-kind="init"] .p-name{color:var(--init)}
+.phase-tile.running[data-kind="loop"] .p-name{color:var(--loop)}
+.phase-tile.running[data-kind="end"] .p-name{color:var(--end)}
+.phase-tile .p-position{font-size:11.5px;color:var(--dim)}
 
 /* Der laufende Block traegt seine Typfarbe — dieselbe wie seine Karte im Board.
    Die Farbe ist die Legende; stuende sie nur im Editor, muesste man beim Blick
    in den Live-Run raten, welcher der neun Typen da gerade laeuft. Die Tafel
    bekommt dafuer eine Kopfzeile ueber die volle Breite, also kein Innenabstand
    oben. */
-.tafel.mit-kopf{padding:0;gap:0}
-.tafel.mit-kopf .karte-kopf{border-radius:6px 6px 0 0;padding:9px 14px}
-.tafel.mit-kopf .karte-kopf .karte-typ{font-size:11px}
-.tafel.mit-kopf .karte-kopf .karte-titel{font-size:13.5px}
-.tafel-leib{padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel.with-header{padding:0;gap:0}
+.panel.with-header .card-header{border-radius:6px 6px 0 0;padding:9px 14px}
+.panel.with-header .card-header .card-type{font-size:11px}
+.panel.with-header .card-header .card-title{font-size:13.5px}
+.panel-body{padding:14px;display:flex;flex-direction:column;gap:10px}
 
 /* Der Warte-Kasten in der Live-Ansicht. Abgesetzt vom Rest der Tafel, weil er
    das Einzige ist, was sich im Sekundentakt ändert — und weil er verschwindet,
    sobald der Block nicht mehr wartet. */
-.warten{background:var(--bg);border:1px solid var(--line);border-radius:6px;
+.waiting{background:var(--bg);border:1px solid var(--line);border-radius:6px;
   padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.warten .kopf{display:flex;align-items:center;gap:8px;font-size:12.5px}
-.warten .rest{font-family:var(--mono);font-size:15px;font-weight:600}
+.waiting .header{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.waiting .remainder{font-family:var(--mono);font-size:15px;font-weight:600}
 /* Beim Zeit-Warten laeuft der Balken voll, WEIL es so gedacht ist — gruen. Beim
    Farb-Trigger zeigt derselbe Balken verbrauchte Frist bis zum Timeout, und die
    ist kein Fortschritt: gedeckt, bis es knapp wird. */
-.warten .fortschritt span{background:var(--ok)}
-.warten.art-farbe .fortschritt span{background:var(--dim)}
-.warten.knapp .fortschritt span{background:var(--accent)}
-.warten.knapp .rest{color:var(--accent)}
+.waiting .progress span{background:var(--ok)}
+.waiting.kind-color .progress span{background:var(--dim)}
+.waiting.tight .progress span{background:var(--accent)}
+.waiting.tight .remainder{color:var(--accent)}
 /* Soll gegen Ist: zwei gleich grosse Felder nebeneinander, damit der Blick den
    Unterschied sieht, bevor er die Zahl liest. */
-.farbpaar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.farbpaar .stueck{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
-.farbpaar .feldchen{width:18px;height:18px;border-radius:4px;border:1px solid #0006;flex:none}
-.farbpaar .feldchen.empty{background:repeating-linear-gradient(45deg,
+.color-pair{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.color-pair .piece{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.color-pair .swatch{width:18px;height:18px;border-radius:4px;border:1px solid #0006;flex:none}
+.color-pair .swatch.empty{background:repeating-linear-gradient(45deg,
   var(--sub) 0 4px,var(--line) 4px 8px)}
 /* Der Live-Ausschnitt um den Prüf-Pixel. Die Zahl RGB(30,32,34) sagt nicht,
    WAS da zu sehen ist — das Bild tut es: grauer Knopf, Ladebildschirm, Popup.
    `pixelated`, weil 49×49 Pixel auf 104 vergrössert sonst zu Brei verlaufen. */
-.pixel-kasten{display:flex;gap:12px;align-items:flex-start}
+.pixel-box{display:flex;gap:12px;align-items:flex-start}
 .live-pixel{width:104px;flex:none;display:flex;flex-direction:column;gap:4px}
-.live-pixel .rahmen{position:relative;width:104px;height:104px;border-radius:6px;
+.live-pixel .frame{position:relative;width:104px;height:104px;border-radius:6px;
   border:1px solid var(--line);overflow:hidden;background:var(--sub)}
 .live-pixel img{width:100%;height:100%;display:block;image-rendering:pixelated}
 /* Das Fadenkreuz markiert die gemessene Stelle — ohne es waere unklar, welcher
    der 2401 Pixel im Bild gemeint ist. */
-.live-pixel .rahmen::after{content:"";position:absolute;left:50%;top:50%;
+.live-pixel .frame::after{content:"";position:absolute;left:50%;top:50%;
   width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px solid var(--accent);
   border-radius:50%;box-shadow:0 0 0 1px #0008}
-.live-pixel .schild{font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
-.marke-treffer{padding:1px 7px;border-radius:9px;font-size:11px;
+.live-pixel .sign{font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
+.badge-match{padding:1px 7px;border-radius:9px;font-size:11px;
   background:#3ED07A22;color:var(--ok)}
-.marke-treffer.daneben{background:#94A3B822;color:var(--muted)}
+.badge-match.beside{background:#94A3B822;color:var(--muted)}
 /* Block breit, Zähler schmal daneben: die Zähler ändern sich selten und
    brauchen keine volle Breite, der Warte-Kasten schon. Unter 1000 px wird
    daraus wieder ein Stapel — 200 px Spalte neben 300 px Rest wäre beides zu eng. */
-.lauf-mitte{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:12px;
+.run-middle{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:12px;
   align-items:start}
-@media (max-width:1000px){.lauf-mitte{grid-template-columns:1fr}}
-.lauf-mitte .kachel{grid-template-columns:1fr}
-@media (max-width:1000px){.lauf-mitte .kachel{
+@media (max-width:1000px){.run-middle{grid-template-columns:1fr}}
+.run-middle .tile{grid-template-columns:1fr}
+@media (max-width:1000px){.run-middle .tile{
   grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}}
-.kachel{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
-.kachel > div{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+.tile{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
+.tile > div{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:12px;display:flex;flex-direction:column;gap:4px}
-.kachel b{font-family:var(--mono);font-size:20px;font-weight:600}
-.kachel small{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
+.tile b{font-family:var(--mono);font-size:20px;font-weight:600}
+.tile small{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
 
 /* -------------------------------------------------------------------- Scans */
 .scans{flex:1;display:flex;min-height:0}
 /* Die Buehne scrollt in beide Richtungen: ein virtueller Desktop ist breiter
    als jedes Fenster, und beim Hineinzoomen soll man sich bewegen koennen. */
-.scan-buehne{flex:1;min-width:0;overflow:auto;background:var(--bg);position:relative;container-type:inline-size;
+.scan-stage{flex:1;min-width:0;overflow:auto;background:var(--bg);position:relative;container-type:inline-size;
   background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px}
-.scan-buehne.such-aktiv{cursor:crosshair}
+.scan-stage.search-active{cursor:crosshair}
 .scan-canvas-bar{position:sticky;top:0;z-index:12;display:flex;align-items:center;
   gap:6px;height:42px;padding:5px 10px;background:color-mix(in srgb,var(--panel) 94%,transparent);
   border-bottom:1px solid var(--line);backdrop-filter:blur(8px);overflow-x:auto;overflow-y:hidden}
-.scan-canvas-bar .trenner{width:1px;height:24px;background:var(--line);margin:0 2px}
+.scan-canvas-bar .divider{width:1px;height:24px;background:var(--line);margin:0 2px}
 .scan-canvas-bar button{height:30px;display:inline-flex;align-items:center;justify-content:center;
   flex:none;white-space:nowrap;line-height:1}
 .scan-tool{padding:5px 9px;border:1px solid transparent;border-radius:5px;color:var(--muted)}
 .scan-tool:hover{border-color:var(--dim);color:var(--text)}
-.scan-tool.an{border-color:var(--accent);color:var(--text);background:#F59E0B18}
-.scan-kurz{display:none}
-.scan-speicherstand{font-size:10.5px;color:var(--muted);white-space:nowrap}
-.scan-speicherstand.offen{color:var(--accent)}
+.scan-tool.on{border-color:var(--accent);color:var(--text);background:#F59E0B18}
+.scan-short{display:none}
+.scan-save-state{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.scan-save-state.open{color:var(--accent)}
 @container (max-width:900px){
   .scan-canvas-bar{gap:3px;padding-inline:6px}
   .scan-canvas-bar .btn,.scan-canvas-bar .scan-tool{padding-inline:7px;font-size:11.5px}
-  .scan-weit{display:none}
-  .scan-kurz{display:inline}
-  .scan-speicherstand{display:none}
+  .scan-wide{display:none}
+  .scan-short{display:inline}
+  .scan-save-state{display:none}
 }
-.scan-ergebnis{position:sticky;top:42px;z-index:11;display:flex;align-items:center;
+.scan-result{position:sticky;top:42px;z-index:11;display:flex;align-items:center;
   flex-wrap:wrap;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
-.scan-ergebnis[hidden]{display:none}
-.scan-ergebnis .kennzahl{font-family:var(--mono);font-size:11px;padding:3px 7px;
+.scan-result[hidden]{display:none}
+.scan-result .metric{font-family:var(--mono);font-size:11px;padding:3px 7px;
   border-radius:10px;background:var(--bg)}
 .scan-review{display:flex;flex-direction:column;gap:8px}
-.scan-review-zeile{display:grid;grid-template-columns:24px 82px minmax(0,1fr);
+.scan-review-row{display:grid;grid-template-columns:24px 82px minmax(0,1fr);
   grid-template-areas:". status status" "haken bild felder";gap:5px 7px;
   align-items:start;padding:7px;border:1px solid var(--line);border-radius:6px;
   background:var(--bg)}
 /* Der Stand gehoert zur ganzen Lernzeile, nicht nur zu den Eingaben. Darunter
    sind Vorschau und die beiden Feldzeilen gleich hoch: kein kleines Bild mehr,
    das in einer fast doppelt so hohen Karte zu schweben scheint. */
-.scan-review-haken{grid-area:haken;align-self:center;justify-self:center}
+.scan-review-check{grid-area:haken;align-self:center;justify-self:center}
 .scan-review-status{grid-area:status;min-width:0}
-.scan-review-bild{grid-area:bild;width:82px;height:82px;object-fit:contain;
+.scan-review-image{grid-area:bild;width:82px;height:82px;object-fit:contain;
   border:1px solid var(--line);border-radius:4px;background:#080A0E}
-.scan-review-bild.empty{border-style:dashed;background:none}
-.scan-review-zeile .felder{grid-area:felder;display:flex;flex-direction:column;
+.scan-review-image.empty{border-style:dashed;background:none}
+.scan-review-row .fields{grid-area:felder;display:flex;flex-direction:column;
   gap:5px;min-width:0}
-.scan-review-zeile input{width:100%}
-.scan-review-sortierung{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}
+.scan-review-row input{width:100%}
+.scan-review-order{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}
 .scan-review-prio{display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--dim)}
-.scan-review-zeile.fertig{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
-.scan-review-zeile.zuordnen{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
-.scan-review-zeile.variante{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
-.scan-review-zeile.anderes{opacity:1;border-color:#7C9CF5;box-shadow:inset 3px 0 0 #7C9CF5}
-.scan-review-zeile.entfernen{opacity:1;border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
-.scan-review-zeile.ueberspringen{opacity:.58}
-.scan-review-aktion{align-self:flex-start;width:auto;padding:4px 8px;font-size:10.5px}
-.scan-erweitert{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
-.scan-erweitert summary{cursor:pointer;color:var(--muted);font-size:11px;user-select:none}
-.scans.gefuehrt #ab-modi{display:none}
-.scan-flaeche{position:relative;line-height:0}
-.scan-flaeche img{display:block;width:100%;height:auto;image-rendering:pixelated}
+.scan-review-row.done{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
+.scan-review-row.assign{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.scan-review-row.variant{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
+.scan-review-row.other{opacity:1;border-color:#7C9CF5;box-shadow:inset 3px 0 0 #7C9CF5}
+.scan-review-row.remove{opacity:1;border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
+.scan-review-row.skip{opacity:.58}
+.scan-review-action{align-self:flex-start;width:auto;padding:4px 8px;font-size:10.5px}
+.scan-advanced{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.scan-advanced summary{cursor:pointer;color:var(--muted);font-size:11px;user-select:none}
+.scans.guided #sec-modes{display:none}
+.scan-surface{position:relative;line-height:0}
+.scan-surface img{display:block;width:100%;height:auto;image-rendering:pixelated}
 /* Kein Bild, aber Slots: die Flaeche ist dann das Rechteck um sie herum. Sie
    traegt ihre Hoehe selbst (das leere <img> hat keine) und sagt gestrichelt,
    dass hier ein Hintergrund fehlt statt schwarz zu sein. */
 /* `outline` und nicht `border`: bei `box-sizing:border-box` frisst ein Rahmen
    zwei Pixel von der Breite, die das Overlay als Bezug nimmt — jede Koordinate
    waere danach um einen Hauch verzogen. Ein Umriss liegt daneben statt drin. */
-.scan-flaeche.ohne-bild{outline:1px dashed var(--line);background:#0F141F}
+.scan-surface.no-image{outline:1px dashed var(--line);background:#0F141F}
 /* Der Hinweis steht UNTER der Flaeche, nicht darin. Drinnen lag er ueber den
    Slots, sobald der Zoom klein war: sein Abstand zaehlt in Schirm-Pixeln, der
    Rand der Flaeche in Bild-Pixeln mal Zoom — bei 45 Slots und 30 % Zoom sind
    40 Bild-Pixel Rand noch 12 Schirm-Pixel, und der Text sass mitten drin. */
-#scan-ohne-bild{margin:8px 2px 0;font-size:11px;color:var(--dim);letter-spacing:.04em}
+#scan-no-image{margin:8px 2px 0;font-size:11px;color:var(--dim);letter-spacing:.04em}
 #scan-overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 /* **Die drei Zustaende muessen auf einem Spielbild lesbar sein**, nicht auf dem
    dunklen Panel: darueber liegen bunte Item-Symbole, und ein 1,5-px-Strich in
@@ -634,40 +634,40 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    Eigene Variablen, damit Umriss, Fuellung, Marke und Liste nicht auseinander
    laufen; ein Test haelt sie gegen die Klassenliste. */
 .scan-slot{fill:none;stroke:var(--slot-offen);stroke-width:2;vector-effect:non-scaling-stroke}
-.scan-slot.gewaehlt{stroke:#fff;stroke-width:3}
+.scan-slot.selected{stroke:#fff;stroke-width:3}
 /* Erkannt UND im Scan: erledigt, kuemmere dich um den Rest. */
-.scan-slot.treffer{stroke:var(--slot-ok)}
+.scan-slot.match{stroke:var(--slot-ok)}
 /* Erkannt, aber noch kein Mitglied dieses Scans: ein anderer Zustand als
    „passt" und deshalb eine andere Farbe. Gruen zu faerben hiesse behaupten,
    der Scan finde es — er sieht dieses Item gar nicht an. Verwandt zum Gruen
    (erkannt ist erkannt), aber klar unterscheidbar. */
-.scan-slot.fremditem{stroke:var(--slot-fremd)}
+.scan-slot.foreign-item{stroke:var(--slot-fremd)}
 /* Nichts erkannt = hier ist zu tun. Das ist der haeufigste Zustand vor dem
    Lernen und muss deshalb der auffaelligste sein, nicht der blasseste. */
 .scan-slot.empty{stroke:var(--slot-offen)}
-.scan-fuellung{fill:var(--slot-offen-f);stroke:none}
-.scan-fuellung.treffer{fill:var(--slot-ok-f)}
-.scan-fuellung.fremditem{fill:var(--slot-fremd-f)}
-.scan-fuellung.empty{fill:var(--slot-offen-f)}
-.scan-fuellung.gewaehlt{fill:#FFFFFF2E}
-.scan-slot.aus{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
-.scan-fuellung.aus{fill:#64748B12}
-.scan-marke.aus,.scan-kreuz.aus{opacity:.45}
+.scan-fill{fill:var(--slot-offen-f);stroke:none}
+.scan-fill.match{fill:var(--slot-ok-f)}
+.scan-fill.foreign-item{fill:var(--slot-fremd-f)}
+.scan-fill.empty{fill:var(--slot-offen-f)}
+.scan-fill.selected{fill:#FFFFFF2E}
+.scan-slot.off{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
+.scan-fill.off{fill:#64748B12}
+.scan-badge.off,.scan-cross.off{opacity:.45}
 /* Ist ein Item-Scan offen, zeigt das Bild, WELCHE Slots er ansieht — genau die
    Frage, fuer die man sonst zwischen Liste und Bild hin und her sieht. */
-.scan-slot.fremd{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
-.scan-marke.fremd{opacity:.45}
-.scan-marke{font-family:var(--mono);fill:var(--text);paint-order:stroke;
+.scan-slot.foreign{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
+.scan-badge.foreign{opacity:.45}
+.scan-badge{font-family:var(--mono);fill:var(--text);paint-order:stroke;
   stroke:#0C0F14;stroke-width:3px;stroke-linejoin:round}
-.scan-kreuz{stroke:#fff;stroke-width:1.2;vector-effect:non-scaling-stroke}
-.scan-vorschau{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
+.scan-cross{stroke:#fff;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.scan-preview{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
   vector-effect:non-scaling-stroke}
-.scan-eck{fill:var(--accent)}
+.scan-corner{fill:var(--accent)}
 /* Der Suchbereich der Slot-Erkennung. Andere Farbe als das Aufziehen eines
    Slots: er schraenkt eine SUCHE ein und ist nach ihr wieder weg, waehrend ein
    Slot-Rechteck bleibt. Gleich aussehende Rechtecke mit verschiedener Bedeutung
    waeren dasselbe Problem wie ein Klick, dessen Wirkung man raten muss. */
-.scan-suchbereich{fill:#7C9CF51A;stroke:#7C9CF5;stroke-dasharray:6 4;stroke-width:1.5;
+.scan-search-area{fill:#7C9CF51A;stroke:#7C9CF5;stroke-dasharray:6 4;stroke-width:1.5;
   vector-effect:non-scaling-stroke}
 /* Die Region eines Boss- oder Icon-Scans. Sie traegt den Zustand ihres letzten
    Tests: gruen erkannt, rot nicht erkannt, sonst neutral. Dieselbe Familie wie
@@ -675,69 +675,69 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    nicht auf dem Panel. */
 .scan-region{fill:none;stroke:var(--muted);stroke-width:2;vector-effect:non-scaling-stroke}
 .scan-region.ok{stroke:var(--slot-ok)}
-.scan-region.fehl{stroke:var(--err)}
+.scan-region.miss{stroke:var(--err)}
 .scan-region-f{fill:#94A3B814;stroke:none}
 .scan-region-f.ok{fill:var(--slot-ok-f)}
-.scan-region-f.fehl{fill:#EF444422}
+.scan-region-f.miss{fill:#EF444422}
 /* Der Klickpunkt der Aktion: gestrichelt und in Amber, weil er kein
    Erkennungs-, sondern ein Handlungsort ist. Ein durchgezogenes Rechteck sähe
    aus wie eine zweite Region. */
-.scan-aktion{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
+.scan-action{fill:none;stroke:var(--accent);stroke-dasharray:4 3;stroke-width:1.5;
   vector-effect:non-scaling-stroke}
 /* Die Listen links: eine Zeile pro Slot/Item/Scan, gewaehlt = Ring wie ueberall. */
-.scan-zeile{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;
+.scan-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;
   background:none;border:1px solid var(--line);width:100%;text-align:left;
   font-size:12px;color:var(--muted)}
-.scan-zeile:hover{border-color:var(--dim);color:var(--text)}
-.scan-zeile.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.scan-zeile .kugel{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
-.scan-zeile .kugel.ohne{border:1px dashed var(--dim);background:none}
-.scan-zeile .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.scan-zeile .mini{width:22px;height:22px;flex:none;border-radius:3px;
+.scan-row:hover{border-color:var(--dim);color:var(--text)}
+.scan-row.on{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-row .dot{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #0006}
+.scan-row .dot.without{border:1px dashed var(--dim);background:none}
+.scan-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-row .mini{width:22px;height:22px;flex:none;border-radius:3px;
   border:1px solid var(--line);image-rendering:pixelated;object-fit:contain;background:var(--bg)}
 /* **Ein Item ist mehr als ein Haken.** Die Liste konnte nur „gehoert dazu /
    gehoert nicht dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in
    die Liste, einen Blick nach rechts und einen Weg zurueck — bei sechzig Items
    sechzig Mal. Die vier Angaben, die man wirklich aendert, passen nebeneinander.
    Spalten: Haken, Vorschau, Felder. */
-.scan-maske{display:grid;grid-template-columns:34px 56px minmax(0,1fr);gap:6px 7px;
+.scan-card{display:grid;grid-template-columns:34px 56px minmax(0,1fr);gap:6px 7px;
   align-items:start;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
   background:var(--bg)}
 /* Items nutzen dieselbe erste Spalte zum Parken wie Slots; nur die ID-Kachel
    fehlt dort. */
-.scan-maske.scan-item-maske{grid-template-columns:34px 56px minmax(0,1fr)}
-.scan-maske:hover{border-color:var(--dim)}
+.scan-card.scan-item-card{grid-template-columns:34px 56px minmax(0,1fr)}
+.scan-card:hover{border-color:var(--dim)}
 /* Ringsum markiert wie ueberall, und ueber box-shadow: ein dickerer Rahmen
    liesse die Maske um einen Pixel wachsen und das Raster springen. */
-.scan-maske.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.scan-maske.aus > .kugel,.scan-maske.aus > .scan-maske-felder{opacity:.48}
+.scan-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-card.off > .dot,.scan-card.off > .scan-card-fields{opacity:.48}
 /* **Ein festes QUADRAT, so hoch wie die zwei Eingabezeilen.** Ein intrinsisch
    grosses Template darf weder seine eigene Vorschau noch die gemeinsame
    Rasterspalte aufziehen. Slot-Farbe, Item-Bild und Leerzustand haben deshalb
    dieselben 56 x 56 px — unabhaengig von Bildmass und Inhalt der Nachbarfelder. */
-.scan-maske > .mini,.scan-maske > .kugel{width:56px;height:56px;
+.scan-card > .mini,.scan-card > .dot{width:56px;height:56px;
   min-width:56px;min-height:56px;border-radius:4px;
   flex:none;object-fit:contain;background:#080A0E;border:1px solid var(--line)}
-.scan-maske > .kugel.ohne{border:1px dashed var(--dim);background:none}
+.scan-card > .dot.without{border:1px dashed var(--dim);background:none}
 /* **Die Feldspalte stretcht mit, damit die Zustandszeile unten steht.** Die
    Zeilenhoehe gibt seit dem festen Quadrat die Vorschau vor (56 px); ohne
    `stretch` blieb die Feldspalte auf ihren 52 px, und die Groessen-Kachel in
    der Zustandszeile stand vier Pixel ueber der ID-Kachel daneben. Zwei
    Kacheln derselben Bauform auf zwei Hoehen — ein Rauchtest misst die
    Unterkanten. */
-.scan-maske-felder{display:flex;flex-direction:column;gap:4px;min-width:0;
+.scan-card-fields{display:flex;flex-direction:column;gap:4px;min-width:0;
   align-self:stretch;justify-content:space-between}
-.scan-maske-name{font-size:11.5px;padding:4px 6px;white-space:nowrap;
+.scan-card-name{font-size:11.5px;padding:4px 6px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 /* Kategorie nimmt den Platz, die Prioritaet ist eine Zahl mit zwei Stellen. */
-.scan-maske-unten{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:5px}
-.scan-maske input,.scan-maske select{font-size:11.5px;padding:4px 6px;width:100%;
+.scan-card-bottom{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:5px}
+.scan-card input,.scan-card select{font-size:11.5px;padding:4px 6px;width:100%;
   min-width:0}
 /* Die Kategorie ist EIN Bedienelement mit zwei Gestalten (Liste oder Textfeld).
    Die Huelle traegt die Breite, damit das Raster beim Wechsel nicht springt. */
-.kategorie-wahl{display:block;min-width:0}
-.kategorie-wahl > *{width:100%;min-width:0}
-.scan-maske-stand{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)}
+.category-chooser{display:block;min-width:0}
+.category-chooser > *{width:100%;min-width:0}
+.scan-card-state{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)}
 /* **Die Stelle im Scan steht UNTER dem Schalter, als eigene Kachel.** Vor dem
    Namensfeld nahm sie ihm die Breite, liess die Namen ohne Nummer an einer
    anderen Kante beginnen — und beim Bearbeiten schob sich das Feld darüber. In
@@ -747,69 +747,69 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    wie die Zustandszeile in der dritten Spalte, und die Groesse daneben ist
    dieselbe Kachel (`zahl`). Ohne `stretch` waere die Spalte nur so hoch wie
    ihr Inhalt, und die beiden lägen ein paar Pixel auseinander. */
-.scan-marke{display:flex;flex-direction:column;align-items:center;gap:5px;
+.scan-badge{display:flex;flex-direction:column;align-items:center;gap:5px;
   align-self:stretch;justify-content:space-between}
 /* Eine feste Breite, sonst schiebt „#3" weniger als „#55" und „#123" noch
    einmal anders — die Kachel soll bei jeder Ziffernzahl an derselben Stelle
    stehen, nicht mit dem Text mitschrumpfen. */
-.scan-marke{width:34px;min-width:34px}
-.scan-marke .zahl{width:34px;min-width:34px;text-align:center}
-.scan-slot-schalter{height:18px;gap:0}
-.slot-aus{color:var(--muted);font-weight:600}
+.scan-badge{width:34px;min-width:34px}
+.scan-badge .num{width:34px;min-width:34px;text-align:center}
+.scan-slot-toggle{height:18px;gap:0}
+.slot-off{color:var(--muted);font-weight:600}
 /* **Die Einstellungen des gewaehlten Items stehen IN seiner Maske.** Sie in eine
    eigene Spalte zu legen hiesse, zwischen zwei Orten hin und her zu sehen, um an
    einem Ding zu arbeiten — und die Maske traegt seine Identitaet ohnehin schon. */
-.scan-maske-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:7px;
+.scan-card-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:7px;
   margin-top:4px;padding-top:8px;border-top:1px solid var(--line)}
 /* Eine Mehrfachauswahl hat keinen Namen und keine Einzelfelder — nur das, was
    auf alle wirkt. Sie steht deshalb UEBER der Liste und abgesetzt, statt als
    weitere Maske in ihr: sonst suchte man, zu welchem Eintrag sie gehoert. */
-.scan-sammel{display:flex;flex-direction:column;gap:7px;padding:9px 10px;
+.scan-bulk{display:flex;flex-direction:column;gap:7px;padding:9px 10px;
   margin-bottom:10px;border:1px solid var(--accent);border-radius:6px;
   background:#F59E0B0F}
 /* Die Filterzeile traegt in 370 px drei Bedienelemente. Ohne Umbruch wird das
    letzte abgeschnitten — und das war ausgerechnet der Kategorie-Filter. */
-.reihe.umbrechend{flex-wrap:wrap}
-#scan-insp .abschnitt > .reihe{flex-wrap:wrap}
+.row.wrapping{flex-wrap:wrap}
+#scan-insp .section > .row{flex-wrap:wrap}
 /* Boss und Icon tragen keine Masken: das Gewaehlte steht unter der Liste. Die
    Trennlinie sagt, wo die Liste aufhoert — sonst liest sich der Editor wie ein
    weiterer Listeneintrag. */
-.erk-insp{gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.det-insp{gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 /* Die Ueberschrift IST das Eingabefeld: derselbe Ton, kein Rahmen, bis man
    hineinfaehrt. Ein Feld, das wie ein Feld aussieht, laedt zum Tippen ein —
    hier soll es zuerst eine Ueberschrift sein. Eine Regel und nicht zwei: die
    zweite haette die erste ueberschrieben, und beim naechsten Umbau sucht
    jemand, welche gilt. */
-.scan-kategorie-kopf{display:flex;align-items:center;gap:8px;
+.scan-category-header{display:flex;align-items:center;gap:8px;
   padding:7px 3px 2px;color:var(--dim);font-size:9.5px;font-weight:600;
   letter-spacing:.08em;text-transform:uppercase}
-.scan-kategorie-feld{flex:1;min-width:0;background:none;border:1px solid transparent;
+.scan-category-field{flex:1;min-width:0;background:none;border:1px solid transparent;
   color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;
   padding:1px 4px;border-radius:4px}
-.scan-kategorie-feld:hover{border-color:var(--line)}
-.scan-kategorie-feld:focus{border-color:var(--accent);background:var(--bg)}
-.tabs.klein .tab{font-size:11px;padding:4px 8px}
+.scan-category-field:hover{border-color:var(--line)}
+.scan-category-field:focus{border-color:var(--accent);background:var(--bg)}
+.tabs.small .tab{font-size:11px;padding:4px 8px}
 /* **Die Leiste nimmt die ganze Breite.** Drei Reiter links zusammengedraengt
    liessen zwei Drittel der Leiste leer stehen — und die Trefferflaeche war
    schmaler, als die Zeile hergibt. Gleiche Spalten, damit die Zahlen dahinter
    („Slots 72/85") die Aufteilung nicht bei jedem Filterwechsel verschieben. */
-.tabs.breit{width:100%}
-.tabs.breit .tab{flex:1 1 0;min-width:0;text-align:center;overflow:hidden;
+.tabs.wide{width:100%}
+.tabs.wide .tab{flex:1 1 0;min-width:0;text-align:center;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 /* **Der Kopf der rechten Spalte bleibt beim Scrollen stehen.** Bei sechzig
    Masken war die Reiterleiste nach drei Umdrehungen weg — und mit ihr der Weg
    in eine andere Liste, der Speichern-Knopf und das Rueckgaengig. Die Spalte
-   selbst ist der Scroll-Bereich (`.seite{overflow-y:auto}`), also klebt der
+   selbst ist der Scroll-Bereich (`.page{overflow-y:auto}`), also klebt der
    Abschnitt daran. Der Hintergrund muss gesetzt sein, sonst scrollen die Masken
    sichtbar dahinter durch. */
 /* **Der oberste Abschnitt einer Spalte bleibt stehen.** Darunter liegt jeweils
    eine Liste, die laenger wird als das Fenster (Punkte, Masken) — und mit ihr
    scrollt sonst genau die Auskunft weg, an der man sich orientiert: welche
    Sequenz bzw. welcher Scan hier offen ist, samt Speichern und Rueckgaengig.
-   Die Spalte selbst ist der Scroll-Bereich (`.seite{overflow-y:auto}`), also
+   Die Spalte selbst ist der Scroll-Bereich (`.page{overflow-y:auto}`), also
    klebt der Abschnitt daran; der Hintergrund muss gesetzt sein, sonst scrollt
    der Inhalt sichtbar dahinter durch. */
-.klebt,.scan-kopf{position:sticky;top:0;z-index:3;background:var(--panel)}
+.sticky,.scan-header{position:sticky;top:0;z-index:3;background:var(--panel)}
 /* **Der Kopf ist eine Spalte, kein Fliesstext.** Jedes Bedienelement nimmt die
    volle Breite — sonst steht „alle dazu" als kurzer Stummel neben dem Schalter,
    „Sortieren" als noch kuerzerer darunter, und die Klappliste dazwischen zieht
@@ -822,7 +822,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Ein Schalter ist Text mit Kaestchen davor. Als Kachel bekommt er dieselbe
    Flaeche wie seine Nachbarn — sonst haengt er als loser Text zwischen
    Reiterleiste und Knopfreihe und liest sich, als gehoere er nicht dazu. */
-.scan-filter > label.an.kachel{width:100%;justify-self:stretch;
+.scan-filter > label.on.tile{width:100%;justify-self:stretch;
   border:1px solid var(--line);border-radius:5px;padding:6px 10px}
 /* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
    nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
@@ -838,101 +838,101 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    („Item ler…", „Hintergrund mes…") — ein abgeschnittenes Wort ist schlimmer
    als eine zweite Zeile. `auto-fit` bricht deshalb um, sobald die Spalte unter
    118 px fiele, und der letzte Knopf nimmt dann die Restbreite. */
-.knopfpaar{display:grid;gap:6px;
+.button-pair{display:grid;gap:6px;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))}
-.knopfpaar > .btn{width:100%;min-width:0;white-space:normal}
+.button-pair > .btn{width:100%;min-width:0;white-space:normal}
 /* Der Umfang steht als eigene Zeile unter den Knoepfen: rechts angeklebt wurde
    er abgeschnitten („6 Slot… · 6 Ite…"), sobald die Knoepfe die Zeile fuellen. */
-.scan-umfang{color:var(--dim)}
+.scan-scope{color:var(--dim)}
 /* Zwei Zeilen, nicht drei Spalten: „Hintergrundfarbe" und sein Hinweis passten
    nebeneinander nicht in 260 px und ueberschrieben sich gegenseitig. */
-.scan-modus{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;
+.scan-mode{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:6px 9px;
   border-radius:4px;background:none;border:1px solid var(--line);width:100%;
   text-align:left;font-size:12px;color:var(--muted)}
-.scan-modus .klein{grid-column:1/-1}
-.scan-modus:hover{border-color:var(--dim);color:var(--text)}
-.scan-modus.an{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.scan-modus .taste{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+.scan-mode .small{grid-column:1/-1}
+.scan-mode:hover{border-color:var(--dim);color:var(--text)}
+.scan-mode.on{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-mode .key{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
 /* Quelle und Rueckweg bekommen jeweils die ganze Breite. Nebeneinander blieb
    dem Fensternamen neben „Zurueck auf Vollbild" nur Platz fuer einzelne
    Woerter; in der schmalen Assistentenkarte zerfiel der Stand in sechs Zeilen. */
-.scan-quellenstand{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0}
-.scan-quelleninfo{display:flex;flex-direction:column;gap:2px;min-width:0;padding:6px 8px;
+.scan-source-state{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0}
+.scan-source-info{display:flex;flex-direction:column;gap:2px;min-width:0;padding:6px 8px;
   border:1px solid var(--line);border-radius:4px;background:var(--sub)}
-.scan-quelle-titel{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;
+.scan-source-title{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
 /* Der eingeschraenkte Bereich ist ein ZUSTAND, der fuer jede weitere Aufnahme
    gilt — also traegt sein kurzer technischer Stand den Akzent. */
-#scan-bereich{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scan-quelleninfo.an{border-color:#F59E0B66}
-.scan-quelleninfo.an #scan-bereich{color:var(--accent)}
-.scan-assistent{display:flex;flex-direction:column;gap:6px;margin-top:9px}
-.scan-assistent-schritt{border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
-.scan-assistent-schritt.offen{border-color:var(--accent);box-shadow:0 0 0 1px #F59E0B33}
-.scan-assistent-kopf{width:100%;display:grid;grid-template-columns:22px minmax(0,1fr) 12px;
+#scan-area{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scan-source-info.on{border-color:#F59E0B66}
+.scan-source-info.on #scan-area{color:var(--accent)}
+.scan-wizard{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.scan-wizard-step{border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
+.scan-wizard-step.open{border-color:var(--accent);box-shadow:0 0 0 1px #F59E0B33}
+.scan-wizard-header{width:100%;display:grid;grid-template-columns:22px minmax(0,1fr) 12px;
   gap:8px;align-items:center;padding:8px;text-align:left}
-.scan-assistent-kopf:hover{background:var(--sub)}
-.scan-assistent-kopf .nr{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
+.scan-wizard-header:hover{background:var(--sub)}
+.scan-wizard-header .nr{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
   font:11px var(--mono);color:var(--dim);background:var(--sub)}
-.scan-assistent-schritt.fertig .nr{color:var(--ok);background:#22C55E18}
-.scan-assistent-schritt.offen .nr{color:#0C0F14;background:var(--accent)}
-.scan-assistent-kopf b{display:block;font-size:12px;font-weight:600}
-.scan-assistent-kopf small{display:block;margin-top:2px;color:var(--dim);font-size:10.5px;
+.scan-wizard-step.done .nr{color:var(--ok);background:#22C55E18}
+.scan-wizard-step.open .nr{color:#0C0F14;background:var(--accent)}
+.scan-wizard-header b{display:block;font-size:12px;font-weight:600}
+.scan-wizard-header small{display:block;margin-top:2px;color:var(--dim);font-size:10.5px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scan-assistent-kopf .pfeil{color:var(--dim);transition:transform .12s}
-.scan-assistent-schritt.offen .pfeil{transform:rotate(90deg);color:var(--accent)}
-.scan-assistent-inhalt{display:flex;flex-direction:column;gap:7px;padding:8px 9px 10px;
+.scan-wizard-header .arrow{color:var(--dim);transition:transform .12s}
+.scan-wizard-step.open .arrow{transform:rotate(90deg);color:var(--accent)}
+.scan-wizard-body{display:flex;flex-direction:column;gap:7px;padding:8px 9px 10px;
   border-top:1px solid var(--line)}
-.scan-assistent-inhalt[hidden]{display:none}
-.scan-assistent-inhalt .feld{margin-top:8px}
-.scan-assistent-haupt{width:100%}
+.scan-wizard-body[hidden]{display:none}
+.scan-wizard-body .field{margin-top:8px}
+.scan-wizard-main{width:100%}
 /* Der Hinweis, dass der Hauptprozess die Dateien angefasst hat. Er traegt den
    Akzent, weil man ihn sonst uebersieht — und uebersehen heisst hier: man sucht
    gelernte Items, die es laengst gibt. */
-.fremdhinweis{border:1px solid var(--accent);border-radius:5px;padding:8px 10px;
+.foreign-hint{border:1px solid var(--accent);border-radius:5px;padding:8px 10px;
   display:flex;flex-direction:column;gap:8px;font-size:11.5px;color:var(--text);
   background:#F59E0B14}
-.scan-fensterwahl{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
+.scan-window-select{width:100%;font-size:11px;padding:5px 6px;border-radius:4px;
   background:var(--sub);color:var(--text);border:1px solid var(--line)}
-.scan-fensterzeile{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.scan-window-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
-.scan-gross{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
+.scan-large{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
   image-rendering:pixelated;max-height:180px;object-fit:contain}
 /* Die Vorlage eines Bosses/Icons in fester Groesse neben ihren Angaben. Fest,
    weil man zwei Vorlagen nebeneinander vergleichen koennen soll — eine, die
    mit ihrem Inhalt waechst, macht daraus zwei verschiedene Fragen. */
-.scan-vorlage{width:104px;height:76px;flex:none;background:var(--bg);
+.scan-template{width:104px;height:76px;flex:none;background:var(--bg);
   border:1px solid var(--line);border-radius:5px;object-fit:contain;
   image-rendering:pixelated}
-.scan-vorlage.quadrat{height:104px}
-.scan-vorlage.empty{display:grid;place-items:center;color:var(--dim);font-size:10.5px;
+.scan-template.square{height:104px}
+.scan-template.empty{display:grid;place-items:center;color:var(--dim);font-size:10.5px;
   border-style:dashed;text-align:center;padding:4px}
 /* Ein gemessenes Farbfeld — 18 px, wie die Marker der Item-Ansicht. Das
    gestrichelte Leerfeld dahinter sagt, dass noch Platz ist. */
-.scan-farbfeld{width:18px;height:18px;border-radius:3px;border:1px solid #0006;flex:none}
-.scan-farbfeld.empty{border:1px dashed var(--dim);background:none}
+.scan-color-swatch{width:18px;height:18px;border-radius:3px;border:1px solid #0006;flex:none}
+.scan-color-swatch.empty{border:1px dashed var(--dim);background:none}
 /* Die Lampe am LLM-Status. 7 px, rund, drei Zustaende: unbekannt (dim),
    erreichbar (ok), nicht erreichbar (err). */
-.scan-lampe{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
-.scan-lampe.an{background:var(--ok)}
-.scan-lampe.aus{background:var(--err)}
+.scan-lamp{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.scan-lamp.on{background:var(--ok)}
+.scan-lamp.off{background:var(--err)}
 /* Eine Ergebniszeile von „alle Bosse gegen dieses Bild halten": Name links,
    Ergebnis rechts, der Grund darunter ueber beide Spalten. Der Grund ist der
    eigentliche Wert — „nicht erkannt" allein sagt nicht, was zu tun ist. */
-.scan-erg-zeile{display:grid;grid-template-columns:1fr auto;gap:2px 8px;
+.scan-result-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;
   padding:6px 8px;border:1px solid var(--line);border-radius:4px;font-size:11.5px}
-.scan-erg-zeile.ok{border-color:#3ED07A59}
-.scan-erg-zeile .grund{grid-column:1/-1;font-size:10.5px;color:var(--dim);
+.scan-result-row.ok{border-color:#3ED07A59}
+.scan-result-row .ground{grid-column:1/-1;font-size:10.5px;color:var(--dim);
   font-family:var(--mono)}
-.scan-erg-zeile.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scan-result-row.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 /* Die Boss-Bibliothek als Kartenraster an der Stelle der Buehne. */
-.scan-karten{padding:14px;display:grid;gap:14px;align-content:start;
+.scan-cards{padding:14px;display:grid;gap:14px;align-content:start;
   grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
-.scan-karten[hidden]{display:none}
-.scan-karte-kopf{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.scan-karte-zahlen{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
-.seq-karte.neu-vom-llm{border-color:var(--accent)}
+.scan-cards[hidden]{display:none}
+.scan-card-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.scan-card-numbers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+.seq-card.new-from-llm{border-color:var(--accent)}
 /* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang sein.
    Im `knopfpaar` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
    `max-width` braucht es dafuer nicht mehr, die Spalte deckelt ihn. */
@@ -940,17 +940,17 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 
 /* ------------------------------------------------------------------- Teilen */
 .teilen{flex:1;display:flex;min-height:0}
-.teilen-karte{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+.share-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:12px 14px;margin-bottom:12px;max-width:720px}
-.teilen-karte h3{font-size:12.5px;font-weight:600;margin-bottom:8px}
-.teilen-zeile{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
-.teilen-zeile .zahl{margin-left:auto}
-.teilen-liste{display:flex;flex-direction:column;gap:4px}
+.share-card h3{font-size:12.5px;font-weight:600;margin-bottom:8px}
+.share-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+.share-row .num{margin-left:auto}
+.share-list{display:flex;flex-direction:column;gap:4px}
 
 /* ------------------------------------------------------------ Einstellungen */
 .cfg{flex:1;display:flex;min-height:0}
-.cfg-mitte{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}
-.cfg-gruppe{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600;
+.cfg-middle{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}
+.cfg-group{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600;
   padding:16px 12px 6px}
 /* Zwei Spalten: links steht, WAS der Wert bedeutet, rechts wird er gesetzt. Die
    rechte Spalte hat eine feste Breite, damit die Bedienelemente aller Zeilen
@@ -959,67 +959,67 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* Gedeckelt statt ueber die volle Breite: auf einem 1600er Fenster liefe die
    Erklaerung sonst ueber 900 px, und eine Zeile, deren Anfang man beim Ende
    vergessen hat, liest niemand. */
-.cfg-zeile,.cfg-gruppe{max-width:940px}
+.cfg-row,.cfg-group{max-width:940px}
 /* **Beide Spalten duerfen schrumpfen.** Mit `1fr 264px` war die rechte Spalte
    unverhandelbar breit: sobald die Mitte unter rund 310 px fiel (schmales
    Fenster), ragten Eingabefelder und Knoepfe rechts aus dem Bild — sichtbar
    als abgeschnittener Text am Rand. `minmax(0, …)` laesst beide Spalten
    nachgeben; bei genug Platz bleibt das Verhaeltnis wie bisher. */
-.cfg-zeile{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,264px);
+.cfg-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,264px);
   gap:20px;align-items:start;
   padding:11px 12px;border:1px solid transparent;border-radius:6px}
-.cfg-zeile:hover{background:var(--panel)}
+.cfg-row:hover{background:var(--panel)}
 /* Ringsum markiert, wie ueberall sonst — und ueber box-shadow, damit die
    Markierung die Zeile nicht um einen Pixel wachsen laesst. */
-.cfg-zeile.geaendert{background:var(--panel);border-color:var(--accent);
+.cfg-row.changed{background:var(--panel);border-color:var(--accent);
   box-shadow:0 0 0 1px var(--accent)}
 /* Abhaengige Felder werden blass, nicht unsichtbar: dass es unter llm_enabled
    dreizehn Felder gibt, ist die halbe Information. Ausgeblendete sucht man in
    der Datei. */
-.cfg-zeile.blass{opacity:.45}
+.cfg-row.faded{opacity:.45}
 .cfg-name{font-size:13px}
-.cfg-zeile.geaendert .cfg-name{color:var(--accent);font-weight:600}
+.cfg-row.changed .cfg-name{color:var(--accent);font-weight:600}
 /* Der Schluessel steht mit, weil er in Logs, README und der Datei selbst
    vorkommt — wer das Feld hier sieht, soll es dort wiedererkennen. */
 .cfg-key{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
-.cfg-rechte{display:flex;flex-direction:column;gap:6px;min-width:0}
-.cfg-einheit{display:flex;align-items:center;gap:7px}
-.cfg-einheit .einheit{font-size:11px;color:var(--dim);flex:none;font-family:var(--mono)}
+.cfg-rights{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cfg-unit{display:flex;align-items:center;gap:7px}
+.cfg-unit .unit{font-size:11px;color:var(--dim);flex:none;font-family:var(--mono)}
 /* `align-self:flex-start` laesst das Element seine Textbreite nehmen — ohne
    Deckel wuchs es damit ueber die Spalte hinaus und aus dem Fenster heraus.
    Der Deckel ist das Netz; die Beschriftung selbst kuerzt `cfgDefault()`. */
-.cfg-standard{font-size:10.5px;color:var(--dim);font-family:var(--mono);
+.cfg-default{font-size:10.5px;color:var(--dim);font-family:var(--mono);
   text-align:left;align-self:flex-start;padding:2px 5px;border-radius:4px;
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-button.cfg-standard{border:1px solid transparent;background:none}
-button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
+button.cfg-default{border:1px solid transparent;background:none}
+button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .cfg-nav{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;
   background:none;border:1px solid transparent;text-align:left;font-size:12.5px;
   color:var(--muted);width:100%}
 .cfg-nav:hover{background:var(--sub);color:var(--text)}
-.cfg-nav.an{background:var(--sub);color:var(--text);
+.cfg-nav.on{background:var(--sub);color:var(--text);
   border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.cfg-nav .zahl{flex:none;color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
+.cfg-nav .num{flex:none;color:var(--accent);border-color:#F59E0B59;background:#F59E0B1F}
 /* Fuellt die Breite unabhaengig von der Anzahl — die Enums haben zwei bis drei
    Werte, und ein festes Drei-Spalten-Raster liesse bei zweien eine Luecke.
    Nicht mono und etwas groesser als die Typ-Kacheln: hier stehen ganze Saetze
    („warten, bis es vorn ist"), keine Schlagworte. */
 .cfg-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px}
-.cfg-chips .typ-chip{font-family:inherit;font-size:11px;padding:7px 6px}
-.cfg-karte{background:var(--bg);border:1px solid var(--line);border-radius:5px;
+.cfg-chips .type-chip{font-family:inherit;font-size:11px;padding:7px 6px}
+.cfg-card{background:var(--bg);border:1px solid var(--line);border-radius:5px;
   padding:8px 10px;display:flex;flex-direction:column;gap:4px}
-.cfg-karte.warn{border-color:var(--accent)}
-.cfg-alt{text-decoration:line-through;color:var(--dim)}
-.cfg-neu{color:var(--accent)}
+.cfg-card.warn{border-color:var(--accent)}
+.cfg-old{text-decoration:line-through;color:var(--dim)}
+.cfg-new{color:var(--accent)}
 
 /* ------------------------------------------------------------------- Dialog */
-.schleier{position:fixed;inset:0;background:#0C0F14CC;display:flex;align-items:center;
+.veil{position:fixed;inset:0;background:#0C0F14CC;display:flex;align-items:center;
   justify-content:center;z-index:20}
 .dialog{background:var(--panel);border:1px solid var(--line);border-radius:8px;
   padding:20px;width:420px;display:flex;flex-direction:column;gap:14px}
 .dialog h2{font-size:14px}
 .dialog p{font-size:12.5px;color:var(--muted);line-height:1.6}
-.dialog .knoepfe{display:flex;gap:8px;justify-content:flex-end}
+.dialog .buttons{display:flex;gap:8px;justify-content:flex-end}
 [hidden]{display:none !important}
 
 /* --- Werkzeuge -----------------------------------------------------------
@@ -1037,22 +1037,22 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   border:1px solid transparent;color:var(--muted);transition:.14s ease}
 .wz-nav:hover{background:var(--sub);border-color:var(--line);color:var(--text);
   transform:translateX(2px)}
-.wz-nav.an{background:linear-gradient(110deg,#F59E0B1C,transparent 75%);
+.wz-nav.on{background:linear-gradient(110deg,#F59E0B1C,transparent 75%);
   border-color:#F59E0B70;color:var(--text);box-shadow:0 0 0 1px #F59E0B18}
 .wz-nav-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;
   justify-content:center;background:var(--sub);color:var(--muted);border:1px solid var(--line)}
-.wz-nav.pruefen .wz-nav-icon{color:var(--ok);background:#3ED07A12}
-.wz-nav.aufnahme .wz-nav-icon{color:#FB7185;background:#FB718512}
-.wz-nav.kalibrieren .wz-nav-icon{color:var(--end);background:#38BDF812}
-.wz-nav.klicken .wz-nav-icon{color:var(--loop);background:#A78BFA12}
-.wz-nav.an .wz-nav-icon{border-color:currentColor}
+.wz-nav.check .wz-nav-icon{color:var(--ok);background:#3ED07A12}
+.wz-nav.recording .wz-nav-icon{color:#FB7185;background:#FB718512}
+.wz-nav.calibrate .wz-nav-icon{color:var(--end);background:#38BDF812}
+.wz-nav.reclick .wz-nav-icon{color:var(--loop);background:#A78BFA12}
+.wz-nav.on .wz-nav-icon{border-color:currentColor}
 .wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
-.wz-nav-titel{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
-.wz-nav-kurz{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
-.wz-befehl{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
+.wz-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
+.wz-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
+.wz-command{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
   border-radius:9px;padding:1px 5px}
-.wz-nav-pfeil{font-size:20px;color:var(--dim);transition:transform .14s}
-.wz-nav:hover .wz-nav-pfeil,.wz-nav.an .wz-nav-pfeil{color:var(--accent);transform:translateX(2px)}
+.wz-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
+.wz-nav:hover .wz-nav-arrow,.wz-nav.on .wz-nav-arrow{color:var(--accent);transform:translateX(2px)}
 /* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows
  * bleiben in der eigenen Karte und konkurrieren nicht mit Statusfarben. */
 .wz-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
@@ -1060,16 +1060,16 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   border-radius:12px;background:linear-gradient(125deg,var(--panel),var(--sub))}
 .wz-hero::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;
   right:-70px;top:-85px;background:currentColor;opacity:.065;filter:blur(2px)}
-.wz-hero.pruefen{color:var(--ok)}
-.wz-hero.aufnahme{color:#FB7185}
-.wz-hero.kalibrieren{color:var(--end)}
-.wz-hero.klicken{color:var(--loop)}
+.wz-hero.check{color:var(--ok)}
+.wz-hero.recording{color:#FB7185}
+.wz-hero.calibrate{color:var(--end)}
+.wz-hero.reclick{color:var(--loop)}
 .wz-hero-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;
   justify-content:center;flex:none;color:currentColor;background:currentColor;
   box-shadow:inset 0 0 0 1px currentColor}
 .wz-hero-icon .wz-symbol{width:28px;height:28px;color:var(--bg);filter:brightness(2)}
 .wz-hero-copy{position:relative;z-index:1;min-width:0}
-.wz-kicker,.wz-zwischenkopf{font-size:9.5px;letter-spacing:.15em;font-weight:700;
+.wz-kicker,.wz-subheader{font-size:9.5px;letter-spacing:.15em;font-weight:700;
   color:currentColor;margin-bottom:3px}
 .wz-hero h2{font-size:18px;line-height:1.2;color:var(--text);margin:0 0 5px}
 .wz-hero p{font-size:12px;line-height:1.5;color:var(--muted);max-width:660px}
@@ -1080,172 +1080,172 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 /* Der Titel steht daneben und darf umbrechen: in der schmalen linken Spalte
    passt „Slots exakt reparieren" nicht in eine Zeile. `align-items:flex-start`
    statt `center`, damit das ⓘ bei zwei Zeilen an der ERSTEN klebt. */
-.wz-info-kompakt{max-width:880px;display:flex;align-items:flex-start;min-height:18px;
+.wz-info-compact{max-width:880px;display:flex;align-items:flex-start;min-height:18px;
   margin:6px 0;color:var(--dim);font-size:11.5px;line-height:1.4}
-.wz-info-kompakt .mitinfo{align-items:flex-start;min-width:0;white-space:normal}
-.wz-info-kompakt .info{width:16px;height:16px;font-size:10px}
-.wz-info-kompakt + .hilfe-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
+.wz-info-compact .with-info{align-items:flex-start;min-width:0;white-space:normal}
+.wz-info-compact .info{width:16px;height:16px;font-size:10px}
+.wz-info-compact + .help-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
   border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
 /* NUR der Abstand. Vorher stand hier zusaetzlich `display:flex` — und weil die
    Regel weiter unten steht als `.gitter2`/`.gitter3`, gewann sie bei gleicher
-   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-aktion gitter2` bzw.
-   `gitter3 wz-aktion` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
+   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-action gitter2` bzw.
+   `gitter3 wz-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
    war das als Knopfreihe in Textbreite — genau die Ungleichheit, die die
    Klasse verhindern sollte. Wer eine Reihe will, schreibt `reihe` dazu. */
-.wz-aktion{margin:13px 0}
-.wz-hauptaktion{display:flex;align-items:center;gap:8px;padding:8px 15px}
-.wz-hauptaktion .wz-symbol{width:16px;height:16px}
+.wz-action{margin:13px 0}
+.wz-main-action{display:flex;align-items:center;gap:8px;padding:8px 15px}
+.wz-main-action .wz-symbol{width:16px;height:16px}
 
-.wz-kennzahlen{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));
+.wz-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));
   gap:8px;max-width:880px;margin:12px 0}
-.wz-kennzahl{min-height:68px;display:flex;flex-direction:column;justify-content:center;
+.wz-metric{min-height:68px;display:flex;flex-direction:column;justify-content:center;
   padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-kennzahl strong{font:700 20px/1.1 var(--mono);color:var(--text)}
-.wz-kennzahl span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
-.wz-kennzahl.fehler{border-color:#EF444466;background:#EF44440B}
-.wz-kennzahl.fehler strong{color:var(--err)}
-.wz-kennzahl.hinweis{border-color:#F59E0B66;background:#F59E0B0B}
-.wz-kennzahl.hinweis strong{color:var(--accent)}
-.wz-erfolg{max-width:880px;display:flex;align-items:center;gap:12px;padding:15px 16px;
+.wz-metric strong{font:700 20px/1.1 var(--mono);color:var(--text)}
+.wz-metric span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.wz-metric.error{border-color:#EF444466;background:#EF44440B}
+.wz-metric.error strong{color:var(--err)}
+.wz-metric.hint{border-color:#F59E0B66;background:#F59E0B0B}
+.wz-metric.hint strong{color:var(--accent)}
+.wz-success{max-width:880px;display:flex;align-items:center;gap:12px;padding:15px 16px;
   margin-top:14px;border:1px solid #3ED07A77;border-radius:9px;background:#3ED07A0D;color:var(--ok)}
-.wz-erfolg .wz-symbol{width:26px;height:26px}
-.wz-erfolg div{display:flex;flex-direction:column}
-.wz-erfolg b{color:var(--text)}
-.wz-erfolg span{font-size:11px;color:var(--muted)}
-.wz-zwischenkopf{max-width:880px;color:var(--dim);margin-top:18px}
+.wz-success .wz-symbol{width:26px;height:26px}
+.wz-success div{display:flex;flex-direction:column}
+.wz-success b{color:var(--text)}
+.wz-success span{font-size:11px;color:var(--muted)}
+.wz-subheader{max-width:880px;color:var(--dim);margin-top:18px}
 
-.wz-befund{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+.wz-finding{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
   margin-top:8px;font-size:12px;display:grid;grid-template-columns:28px 1fr;gap:9px}
-.wz-befund.fehler{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
-.wz-befund.hinweis{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.wz-befund-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;
+.wz-finding.error{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
+.wz-finding.hint{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.wz-finding-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;
   justify-content:center;background:#0002}
-.wz-befund-icon .wz-symbol{width:15px;height:15px}
-.wz-befund.fehler .wz-befund-icon{color:var(--err)}
-.wz-befund.hinweis .wz-befund-icon{color:var(--accent)}
-.wz-befund-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
-.wz-bereich{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wz-finding-icon .wz-symbol{width:15px;height:15px}
+.wz-finding.error .wz-finding-icon{color:var(--err)}
+.wz-finding.hint .wz-finding-icon{color:var(--accent)}
+.wz-finding-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.wz-area{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .wz-ref{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
-.wz-ref > .wz-bereich{flex-basis:100%}
+.wz-ref > .wz-area{flex-basis:100%}
 .wz-ref select{flex:1 1 260px;min-width:0;width:auto}
 .wz-ref > .btn{flex:none}
-.wz-vorschau{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
-.wz-vorschau:last-child{border-bottom:none}
-.wz-geprueft{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
+.wz-preview{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
+.wz-preview:last-child{border-bottom:none}
+.wz-checked{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
   font-size:11.5px;color:var(--muted)}
-.wz-geprueft:last-child{border-bottom:none}
-.wz-geprueft .wz-symbol{width:14px;height:14px;color:var(--ok)}
+.wz-checked:last-child{border-bottom:none}
+.wz-checked .wz-symbol{width:14px;height:14px;color:var(--ok)}
 
 /* Der Bezug steht als Zeile UEBER dem Werkzeug, nicht als Fussnote darunter:
  * „worauf wirkt das" beantwortet man, bevor man den Knopf drueckt. Die Variante
  * fuer genau eine Sequenz ist abgesetzt (Akzentkante) — dort ist die Angabe eine
  * Entscheidung, bei „ganzer Bestand" nur eine Einordnung. */
-.wz-bezug{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
+.wz-scope{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
   border:1px solid var(--line);border-left-width:3px;border-radius:6px;
   padding:8px 11px;margin:10px 0 4px;color:var(--muted);max-width:880px;
   background:linear-gradient(90deg,#F59E0B0A,transparent)}
-.wz-bezug.eine{border-left-color:var(--accent);color:var(--text)}
-.wz-bezug-marke{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+.wz-scope.single{border-left-color:var(--accent);color:var(--text)}
+.wz-scope-badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);flex:none}
 
 /* Die Farb-Rueckfrage: beide Farben nebeneinander, damit man entscheiden kann,
  * statt eine Zahl zu glauben. Ein Abstand von 40 sagt niemandem etwas - zwei
  * Quadrate schon. */
-.wz-farbfrage{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
+.wz-color-question{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
   border-top:1px solid var(--line);padding-top:8px;margin-top:4px}
-.wz-farbreihe{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
-.wz-farbe{width:22px;height:22px;border-radius:4px;border:1px solid var(--line);
+.wz-color-series{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.wz-color{width:22px;height:22px;border-radius:4px;border:1px solid var(--line);
   flex:none}
 
 /* ------------------------------------------------- Punkte nachklicken (Reiter)
  * Die Runde wird im SPIEL bedient, nicht hier: was hier steht, schlaegt man
  * mitten im Klicken nach. Deshalb Tabelle statt Absatz - ein Fliesstext zwingt
  * zum Lesen von vorn, und genau das tut dann niemand. */
-.wz-schritte{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;
+.wz-steps{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;
   align-items:start;margin:10px 0}
-.wz-nummer{width:20px;height:20px;border-radius:50%;background:var(--accent);
+.wz-number{width:20px;height:20px;border-radius:50%;background:var(--accent);
   color:#1b1200;font-size:11px;font-weight:700;display:flex;align-items:center;
   justify-content:center;flex:none}
-.wz-schritt-text{font-size:13px;line-height:1.45}
+.wz-step-text{font-size:13px;line-height:1.45}
 
-.wz-tasten{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:12px}
-.wz-tasten td{padding:5px 6px;border-bottom:1px solid var(--line);
+.wz-keys{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:12px}
+.wz-keys td{padding:5px 6px;border-bottom:1px solid var(--line);
   vertical-align:baseline}
-.wz-tasten tr:last-child td{border-bottom:none}
-.wz-taste{font-family:var(--mono);font-size:11px;
+.wz-keys tr:last-child td{border-bottom:none}
+.wz-key{font-family:var(--mono);font-size:11px;
   white-space:nowrap;background:var(--sub);border:1px solid var(--line);
   border-radius:4px;padding:2px 6px;color:var(--text)}
-.wz-tasten .wz-was{white-space:nowrap;color:var(--text)}
-.wz-tasten .wz-warum{color:var(--muted)}
+.wz-keys .wz-what{white-space:nowrap;color:var(--text)}
+.wz-keys .wz-why{color:var(--muted)}
 
 /* Die eine Regel, an der alles haengt: nichts wird geschrieben, bis jemand
  * uebernimmt. Als Kasten und nicht als Satz im Absatz - wer sie ueberliest,
  * haelt eine abgebrochene Runde fuer gespeichert. */
-.wz-regel{display:flex;gap:8px;align-items:flex-start;font-size:12px;
+.wz-rule{display:flex;gap:8px;align-items:flex-start;font-size:12px;
   border:1px solid var(--accent);border-radius:6px;padding:8px 10px;margin:10px 0;
   background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.wz-regel b{color:var(--accent)}
+.wz-rule b{color:var(--accent)}
 
 /* Aufnahme: dieselben Feldgrössen wie im Editor, aber als ruhiges Formular.
  * Der laufende Zustand ist nicht nur Text — Punkt, Rahmen und Stop-Knopf zeigen
  * auch beim schnellen Blick, dass der globale Hook gerade aktiv ist. */
-.wz-aufnahme-form{max-width:880px;display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);
+.wz-recording-form{max-width:880px;display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);
   gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-aufnahme-form .feld{margin:0}
-.wz-aufnahme-form .wz-aufnahme-notiz{grid-column:1/-1}
-.wz-aufnahme-form textarea{width:100%;resize:vertical;min-height:66px}
-.wz-aufnahme-stand{max-width:880px;display:flex;align-items:center;gap:11px;margin-top:12px;
+.wz-recording-form .field{margin:0}
+.wz-recording-form .wz-recording-note{grid-column:1/-1}
+.wz-recording-form textarea{width:100%;resize:vertical;min-height:66px}
+.wz-recording-state{max-width:880px;display:flex;align-items:center;gap:11px;margin-top:12px;
   padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-aufnahme-stand > div{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
-.wz-aufnahme-stand b{color:var(--text)}
-.wz-aufnahme-stand span{font-size:11px;color:var(--muted);white-space:normal}
-.wz-rec-punkt{flex:none;width:11px;height:11px;border-radius:50%;background:var(--dim)}
-.wz-aufnahme-stand.laeuft{border-color:#FB718577;background:#FB71850B}
-.wz-aufnahme-stand.laeuft .wz-rec-punkt{background:#FB7185;box-shadow:0 0 0 5px #FB718522;
+.wz-recording-state > div{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
+.wz-recording-state b{color:var(--text)}
+.wz-recording-state span{font-size:11px;color:var(--muted);white-space:normal}
+.wz-rec-point{flex:none;width:11px;height:11px;border-radius:50%;background:var(--dim)}
+.wz-recording-state.running{border-color:#FB718577;background:#FB71850B}
+.wz-recording-state.running .wz-rec-point{background:#FB7185;box-shadow:0 0 0 5px #FB718522;
   animation:wz-rec-puls 1.35s ease-in-out infinite}
-.wz-aufnahme-knopf{flex:none}
-.wz-aufnahme-ausgabe{max-width:880px;margin-top:10px;border:1px solid var(--line);
+.wz-recording-button{flex:none}
+.wz-recording-output{max-width:880px;margin-top:10px;border:1px solid var(--line);
   border-radius:8px;overflow:hidden;background:#080B10}
-.wz-ausgabe-kopf{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
+.wz-output-header{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
   border-bottom:1px solid var(--line);font:700 9.5px var(--mono);letter-spacing:.11em;
   color:var(--dim);background:#111722}
-.wz-ausgabe-zaehler{letter-spacing:0;color:var(--muted);font-weight:500}
-.wz-ausgabe-zeilen{min-height:96px;padding:6px 0;display:flex;flex-direction:column;
+.wz-output-counter{letter-spacing:0;color:var(--muted);font-weight:500}
+.wz-output-rows{min-height:96px;padding:6px 0;display:flex;flex-direction:column;
   justify-content:flex-end}
-.wz-ausgabe-zeile{display:grid;grid-template-columns:34px minmax(180px,1fr) 72px minmax(160px,.7fr);
+.wz-output-row{display:grid;grid-template-columns:34px minmax(180px,1fr) 72px minmax(160px,.7fr);
   align-items:center;gap:8px;min-height:28px;padding:3px 10px;font:11px var(--mono);
   color:var(--muted);border-left:2px solid transparent}
-.wz-ausgabe-zeile.neu{color:var(--text);background:#FB718509;border-left-color:#FB7185}
-.wz-ausgabe-nr{text-align:right;color:var(--dim)}
-.wz-ausgabe-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wz-ausgabe-zeit{text-align:right;color:var(--end)}
-.wz-ausgabe-farbtext{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
-.wz-ausgabe-farbe{font-size:15px;line-height:1;text-shadow:0 0 8px currentColor}
-.wz-ausgabe-leer{padding:0 12px 7px;font:11px var(--mono);color:var(--dim)}
-.wz-aufnahme-ablauf{display:grid;grid-template-columns:auto 1fr;gap:10px 9px;font-size:11px;
+.wz-output-row.new{color:var(--text);background:#FB718509;border-left-color:#FB7185}
+.wz-output-nr{text-align:right;color:var(--dim)}
+.wz-output-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wz-output-time{text-align:right;color:var(--end)}
+.wz-output-color-text{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.wz-output-color{font-size:15px;line-height:1;text-shadow:0 0 8px currentColor}
+.wz-output-empty{padding:0 12px 7px;font:11px var(--mono);color:var(--dim)}
+.wz-recording-flow{display:grid;grid-template-columns:auto 1fr;gap:10px 9px;font-size:11px;
   line-height:1.45;color:var(--muted)}
-.wz-aufnahme-ablauf b{color:var(--text);white-space:nowrap}
+.wz-recording-flow b{color:var(--text);white-space:nowrap}
 @keyframes wz-rec-puls{50%{box-shadow:0 0 0 8px #FB71850A}}
 @media(max-width:720px){
-  .wz-aufnahme-form{grid-template-columns:1fr}
-  .wz-aufnahme-form .wz-aufnahme-notiz{grid-column:auto}
-  .wz-aufnahme-stand{align-items:flex-start;flex-wrap:wrap}
-  .wz-aufnahme-knopf{width:100%}
-  .wz-ausgabe-zeile{grid-template-columns:28px minmax(120px,1fr) 60px}
-  .wz-ausgabe-farbtext{grid-column:2/-1;padding-bottom:3px}
+  .wz-recording-form{grid-template-columns:1fr}
+  .wz-recording-form .wz-recording-note{grid-column:auto}
+  .wz-recording-state{align-items:flex-start;flex-wrap:wrap}
+  .wz-recording-button{width:100%}
+  .wz-output-row{grid-template-columns:28px minmax(120px,1fr) 60px}
+  .wz-output-color-text{grid-column:2/-1;padding-bottom:3px}
 }
 
-.aufnahme-zeile{margin-top:4px}
-.manuell-tafel {
+.recording-row{margin-top:4px}
+.manual-panel {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.wz-farbliste { display: flex; flex-direction: column; gap: 6px; }
-.wz-farbzeile {
+.wz-color-list { display: flex; flex-direction: column; gap: 6px; }
+.wz-color-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1255,7 +1255,7 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
   border-radius: 6px;
   background: var(--panel);
 }
-.wz-farbprobe {
+.wz-color-sample {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
@@ -1266,33 +1266,33 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 /* --- Klick-Runde: der Live-Stand aus dem Hauptprozess ------------------- */
 /* Ein Balken statt einer zweiten Zahl: wie weit die Runde ist, sieht man beim
    Klicken aus dem Augenwinkel — eine Zahl muss man lesen. */
-.nk-balken{height:4px;background:var(--line);border-radius:2px;overflow:hidden;
+.rc-bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;
   margin:8px 10px 0}
-.nk-balken-fuell{height:100%;background:var(--accent);border-radius:2px;
+.rc-bar-fill{height:100%;background:var(--accent);border-radius:2px;
   transition:width .18s ease}
 /* Der aktuelle Punkt ist die Antwort auf „was macht das Programm gerade" und
    traegt deshalb den Akzent — dieselbe Bedeutung wie ueberall: das hier. */
-.nk-jetzt{display:flex;align-items:center;gap:8px;padding:8px 10px 4px;
+.rc-now{display:flex;align-items:center;gap:8px;padding:8px 10px 4px;
   font-size:12px}
-.nk-jetzt-marke{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+.rc-now-badge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);font-weight:600}
-.nk-jetzt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+.rc-now-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--text)}
-.nk-jetzt-pos{color:var(--muted);font-variant-numeric:tabular-nums}
-.nk-hinweis{padding:0 10px 8px;display:block}
+.rc-now-pos{color:var(--muted);font-variant-numeric:tabular-nums}
+.rc-hint{padding:0 10px 8px;display:block}
 /* Eine Zeile je erledigtem Punkt. Feste Spalten, damit die Stellen
    untereinander stehen — sonst springt bei jeder Ziffernzahl alles. */
-.nk-zeile{display:grid;grid-template-columns:18px 42px minmax(120px,1fr) minmax(150px,.8fr);
+.rc-row{display:grid;grid-template-columns:18px 42px minmax(120px,1fr) minmax(150px,.8fr);
   gap:8px;align-items:center;padding:3px 10px;font-size:11.5px;color:var(--muted)}
-.nk-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nk-wohin{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
-.nk-art{text-align:center;font-weight:700}
+.rc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-target{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.rc-kind{text-align:center;font-weight:700}
 /* Vier Ausgaenge, vier Farben — „bestaetigt" und „uebersprungen" aendern beide
    nichts, aber nur einer heisst „ich habe hingesehen". */
-.nk-art.nk-passt{color:var(--slot-ok)}
-.nk-art.nk-gesetzt{color:var(--accent)}
-.nk-art.nk-skip{color:var(--dim)}
-.nk-art.nk-fehlt{color:var(--slot-offen)}
+.rc-kind.rc-fits{color:var(--slot-ok)}
+.rc-kind.rc-set{color:var(--accent)}
+.rc-kind.rc-skip{color:var(--dim)}
+.rc-kind.rc-missing{color:var(--slot-offen)}
 
 /* --- „Worauf warte ich gerade?" ---------------------------------------- */
 /* Diese Griffe blockieren die Bruecke bis zu einer Minute (globales Warten auf
@@ -1300,24 +1300,24 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
    ueber ALLES: waehrenddessen ist ohnehin nichts anderes zu holen, und ein
    Hinweis am Rand wird in genau dem Moment uebersehen, in dem man auf den
    Bildschirm im Spiel sieht. */
-.warte-huelle{position:fixed;inset:0;z-index:60;display:flex;
+.wait-shell{position:fixed;inset:0;z-index:60;display:flex;
   align-items:center;justify-content:center;background:#05070Bcc;
   backdrop-filter:blur(1.5px)}
-.warte-kasten{min-width:320px;max-width:min(460px,86vw);padding:18px 20px;
+.wait-box{min-width:320px;max-width:min(460px,86vw);padding:18px 20px;
   border:1px solid var(--accent);border-radius:8px;background:var(--bg);
   box-shadow:0 18px 48px #0009}
-.warte-titel{font-size:13px;font-weight:600;color:var(--accent);
+.wait-title{font-size:13px;font-weight:600;color:var(--accent);
   letter-spacing:.02em;margin-bottom:8px}
-.warte-text{font-size:12.5px;color:var(--text);line-height:1.55}
-.warte-fuss{display:flex;align-items:center;justify-content:space-between;
+.wait-text{font-size:12.5px;color:var(--text);line-height:1.55}
+.wait-footer{display:flex;align-items:center;justify-content:space-between;
   margin-top:14px;padding-top:10px;border-top:1px solid var(--line);
   font-size:11.5px;color:var(--muted)}
 /* Tabellenziffern, damit die Zahl beim Runterzaehlen nicht zappelt. */
-.warte-rest{font-variant-numeric:tabular-nums;color:var(--text)}
+.wait-remaining{font-variant-numeric:tabular-nums;color:var(--text)}
 
 /* ---------------------------------------------------------------- Bericht */
-/* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `wz-kennzahlen`,
-   Karten sind `teilen-karte`, die Spalten sind `abschnitt`. Eigene Klassen gibt
+/* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `wz-metrics`,
+   Karten sind `share-card`, die Spalten sind `abschnitt`. Eigene Klassen gibt
    es nur fuer die beiden Dinge, die es sonst nirgends gibt — die Rangzeile und
    die Sitzungsauswahl. */
 
@@ -1325,39 +1325,39 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
    den Ertrag. Name links, Wert rechts, Balken darunter ueber die volle Breite:
    der Balken traegt das Verhaeltnis, die Zahl den Wert. Getrennte Gestalten je
    Liste haetten dieselbe Sache viermal verschieden aussehen lassen. */
-.ber-rang{display:grid;grid-template-columns:1fr auto;gap:3px 10px;
+.rep-rank{display:grid;grid-template-columns:1fr auto;gap:3px 10px;
   padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
-.ber-rang:last-child{border-bottom:none}
-.ber-rang-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ber-rang-wert{color:var(--text);font-weight:600}
-/* Dieselben Masse wie `.nk-balken` in der Klick-Runde. Zwei Balken im selben
+.rep-rank:last-child{border-bottom:none}
+.rep-rank-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-rank-value{color:var(--text);font-weight:600}
+/* Dieselben Masse wie `.rc-bar` in der Klick-Runde. Zwei Balken im selben
    Fenster duerfen nicht unterschiedlich hoch sein. */
-.ber-balken{grid-column:1/-1;height:4px;background:var(--line);
+.rep-bar{grid-column:1/-1;height:4px;background:var(--line);
   border-radius:2px;overflow:hidden}
-.ber-balken-fuell{height:100%;background:var(--dim);border-radius:2px}
-.ber-rang.warn .ber-balken-fuell{background:var(--accent)}
-.ber-rang.fehler .ber-balken-fuell{background:var(--err)}
-.ber-rang-zusatz{grid-column:1/-1;font-size:11px;color:var(--dim)}
+.rep-bar-fill{height:100%;background:var(--dim);border-radius:2px}
+.rep-rank.warn .rep-bar-fill{background:var(--accent)}
+.rep-rank.error .rep-bar-fill{background:var(--err)}
+.rep-rank-extra{grid-column:1/-1;font-size:11px;color:var(--dim)}
 
 /* Die Sitzungsauswahl. Gewaehlt wird ringsum markiert (`box-shadow`), nicht an
    einer Kante und nicht ueber einen dickeren Rahmen — der liesse die Zeile um
    einen Pixel wachsen und das ganze Raster bei jedem Wechsel springen. */
-.ber-sitzung{width:100%;display:grid;gap:2px;text-align:left;padding:7px 9px;
+.rep-session{width:100%;display:grid;gap:2px;text-align:left;padding:7px 9px;
   border:1px solid var(--line);border-radius:6px;background:var(--bg)}
-.ber-sitzung:hover{border-color:var(--muted)}
-.ber-sitzung.an{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.ber-sitzung-titel{font-size:12px;color:var(--text)}
-.ber-sitzung-unten{font-size:11px;color:var(--dim);font-family:var(--mono)}
-.ber-sitzung-warn{font-size:11px;color:var(--accent)}
+.rep-session:hover{border-color:var(--muted)}
+.rep-session.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rep-session-title{font-size:12px;color:var(--text)}
+.rep-session-bottom{font-size:11px;color:var(--dim);font-family:var(--mono)}
+.rep-session-warn{font-size:11px;color:var(--accent)}
 /* **Untereinander stehende Bloecke liegen auf DERSELBEN Kante.** Die
    Kennzahlen-Reihe darf 880 px breit werden, die Karten kamen aus dem
    Teilen-Reiter mit 720 — gestapelt ergab das zwei rechte Kanten, die sich um
    160 px unterscheiden. Nah genug beieinander, dass es wie ein Rundungsfehler
    aussieht statt wie Absicht; dieselbe Falle wie einmal im Phasenkopf. */
-#ber-mitte .teilen-karte{max-width:880px}
+#rep-middle .share-card{max-width:880px}
 /* Zwei Knoepfe in der Fusszeile einer Sequenzkarte teilen sich gleiche Spalten:
    „Öffnen" und „Löschen" sind verschieden lang, und zwei verschieden breite
    Knoepfe nebeneinander lesen sich als zwei Rangstufen. `flex:none`, damit das
    Paar dem Pfad daneben keine Breite wegnimmt — der schrumpft schon selbst. */
-.seq-fuss .knopfpaar{flex:none;grid-template-columns:repeat(2,82px)}
-.seq-fuss .knopfpaar > .btn{white-space:nowrap;padding-left:0;padding-right:0}
+.seq-footer .button-pair{flex:none;grid-template-columns:repeat(2,82px)}
+.seq-footer .button-pair > .btn{white-space:nowrap;padding-left:0;padding-right:0}

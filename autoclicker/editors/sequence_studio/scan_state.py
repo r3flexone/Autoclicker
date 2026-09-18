@@ -346,7 +346,7 @@ class ScanStateMixin:
             "kind": self.scan_art,
             "name": self.scan_name,
             "selection": list(self._auswahl),
-            "offen": self.scan_offen,
+            "open": self.scan_offen,
             "dirty": self._scan_dirty,
             "area": copy.deepcopy(self.scan_bereich),
             "window_id": self.scan_fenster_id,
@@ -382,7 +382,7 @@ class ScanStateMixin:
         self.scans = stamp["scans"]
         self.scan_art, self.scan_name = stamp["kind"], stamp["name"]
         self._auswahl = [n for n in stamp["selection"] if n in self.slots]
-        self.scan_offen = stamp["offen"]
+        self.scan_offen = stamp["open"]
         self._scan_dirty = stamp["dirty"]
         self.scan_bereich = stamp.get("area")
         self.scan_fenster_id = stamp.get("window_id", 0)
@@ -528,7 +528,7 @@ class ScanStateMixin:
             "window_reference": (list(cfg.capture_window_rect)
                                   if cfg and cfg.capture_window_rect else None),
             "schritte": self._steps(),
-            "offen": self.scan_offen,
+            "open": self.scan_offen,
             "wahl": {"kind": self.scan_art, "name": self.scan_name},
             # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
