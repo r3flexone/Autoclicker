@@ -142,8 +142,8 @@ class Renamer:
         for feld in self._FSTRING_FELD.finditer(inhalt):
             out.append(self._doc_rule(inhalt[pos:feld.start()]))
             ausdruck = feld.group(1)
-            if self._re_ident is not None:
-                ausdruck = self._re_ident.sub(lambda m: self.ident[m.group(0)], ausdruck)
+            for alt, n in self.ident.items():
+                ausdruck = re.sub(r"(?<![\w$])" + re.escape(alt) + r"(?![\w$])", n, ausdruck)
             out.append("{" + ausdruck + "}")
             pos = feld.end()
         out.append(self._doc_rule(inhalt[pos:]))
