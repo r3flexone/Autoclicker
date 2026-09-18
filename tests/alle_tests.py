@@ -55,25 +55,25 @@ for _strom in (sys.stdout, sys.stderr):
 
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
-RAUCHTESTS = ("items", "erkennung", "sequenzen", "teilen", "werkzeuge",
+RAUCHTESTS = ("items", "erkennung", "sequences", "teilen", "werkzeuge",
               "bericht", "sequenzen_loeschen", "katalog")
 
 SCHICHTEN = ("vertrag", "wurzel", "rauch")
 
 
 class Ergebnis:
-    """Was eine Schicht ergeben hat. `uebersprungen` ist kein Fehlschlag."""
+    """Was eine Schicht ergeben hat. `skipped` ist kein Fehlschlag."""
 
     def __init__(self, name: str):
         self.name = name
         self.ok = True
-        self.uebersprungen = ""
+        self.skipped = ""
         self.zusammenfassung = ""
         self.duration = 0.0
 
     def __str__(self) -> str:
-        if self.uebersprungen:
-            return f"  ÜBERSPRUNGEN  {self.name:<14} {self.uebersprungen}"
+        if self.skipped:
+            return f"  ÜBERSPRUNGEN  {self.name:<14} {self.skipped}"
         marke = "OK  " if self.ok else "FAIL"
         return (f"  {marke}          {self.name:<14} {self.zusammenfassung}"
                 f"  ({self.duration:.1f}s)")
@@ -146,7 +146,7 @@ def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
             e.ok = False
             e.zusammenfassung = f"Pflichtprüfung nicht ausführbar: {reason}"
         else:
-            e.uebersprungen = reason
+            e.skipped = reason
         return e
 
     start = time.monotonic()
@@ -204,7 +204,7 @@ def main(argv: list[str]) -> int:
     if rot:
         print(f"  {len(rot)} Schicht(en) rot: {', '.join(rot)}")
         return 1
-    fehlt = [e for e in ergebnisse if e.uebersprungen]
+    fehlt = [e for e in ergebnisse if e.skipped]
     print("  alles grün"
           + (f" ({len(fehlt)} Schicht übersprungen)" if fehlt else ""))
     return 0

@@ -53,7 +53,7 @@ from autoclicker.llm_vision import (                                # noqa: E402
     suggest_item_name_with_reason, test_endpoint_for,
 )
 
-BILDQUELLEN = ("vorlage", "grund", "slot")
+BILDQUELLEN = ("vorlage", "reason", "slot")
 NEUTRAL = (38, 42, 52)      # der Ton der Studio-Flaeche, nicht Schwarz: ein
                             # ausgeschnittenes Item auf Schwarz ist ein anderer
                             # Kontrast als eines in seinem Slot.
@@ -97,11 +97,11 @@ def lade_scan(path: Path) -> dict:
         "name": data.get("name") or path.stem,
         "items": data.get("items") or {},
         "slots": data.get("slots") or {},
-        "toleranz": int(data.get("color_tolerance") or 30),
+        "tolerance": int(data.get("color_tolerance") or 30),
         "vorlagen": path.parent.parent / "templates",
         # `sequences/<name>/bilder/<scan>.png` — neben `item_scans/`, nicht
         # darin (`_photo_path()` im Studio: `filepath.parent / "bilder"`).
-        "bild": path.parent.parent / "bilder" / (path.stem + ".png"),
+        "image": path.parent.parent / "bilder" / (path.stem + ".png"),
     }
 
 
@@ -119,7 +119,7 @@ def lade_foto(path: Path):
     except (OSError, ValueError):
         return None
     try:
-        return image, int(image.info["links"]), int(image.info["oben"])
+        return image, int(image.info["left"]), int(image.info["top"])
     except (KeyError, TypeError, ValueError):
         return image, 0, 0
 
@@ -169,11 +169,11 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
     from autoclicker.runtime.item_scan import _check_profile_match
     from autoclicker.persistence.serialization import _item_from_dict
 
-    foto = lade_foto(scan["bild"])
-    if foto is None:
-        raise SystemExit(f"Kein gemerktes Bild ({scan['bild']}) — "
+    photo = lade_foto(scan["image"])
+    if photo is None:
+        raise SystemExit(f"Kein gemerktes Bild ({scan['image']}) — "
                          "im Scans-Reiter einmal aufnehmen, oder --bild vorlage.")
-    image, left, top = foto
+    image, left, top = photo
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
     stellvertreter = NurConfig(config)
     proben = []
@@ -193,7 +193,7 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
         for item in profile:
             if not katalog.match(item.name):
                 continue
-            if _check_profile_match(item, ausschnitt, scan["toleranz"],
+            if _check_profile_match(item, ausschnitt, scan["tolerance"],
                                     stellvertreter, False,
                                     template_root=scan["vorlagen"]):
                 proben.append((katalog.match(item.name), ausschnitt))
@@ -219,12 +219,12 @@ def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
     Aufruf sieht statt tausend Namen nur noch die paar Dutzend seiner Art —
     und damit ist die Stufe die einzige Frage, die offenbleibt.
     """
-    kategorien = sorted({katalog.category(n) for n in katalog.names()
+    categories = sorted({katalog.category(n) for n in katalog.names()
                          if katalog.category(n)})
     system = ("You identify items from the game Idle Clans by their inventory "
               "icon.\nAnswer with exactly one word copied verbatim from the "
               "CATEGORIES list below. No explanation.\n\nCATEGORIES:\n"
-              + "\n".join(kategorien))
+              + "\n".join(categories))
     ok, antwort, _ms = analyze_image(
         img=image, provider=config.llm_provider, endpoint=config.llm_endpoint,
         model=modell, prompt="Which category is this item?",
@@ -233,7 +233,7 @@ def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
     if not ok:
         return None, (TIMEOUT if str(antwort).startswith("Timeout") else str(antwort))
     kind = clean_boss_name(antwort)
-    passend = {k.casefold(): k for k in kategorien}.get(kind.casefold())
+    passend = {k.casefold(): k for k in categories}.get(kind.casefold())
     if passend is None:
         # Eine erfundene Art ist kein Ergebnis: die zweite Frage haette dann
         # gar keine Kandidaten. Lieber sagen, woran es lag.
@@ -300,7 +300,7 @@ def lauf(proben: list, katalog, config, args, modell: str) -> dict:
         marke = "OK " if richtig else "-- "
         print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
-        "treffer": match, "gesamt": len(proben), "ohne": remaining,
+        "treffer": match, "total": len(proben), "ohne": remaining,
         "sekunden": sum(zeiten) / len(zeiten) if zeiten else 0.0,
         "fehler": fehler,
     }
@@ -356,7 +356,7 @@ def main(argv=None) -> int:
     if args.image == "slot":
         proben = proben_aus_slots(scan, katalog, config, args.limit)
     else:
-        proben = proben_aus_vorlagen(scan, katalog, args.image == "grund", args.limit)
+        proben = proben_aus_vorlagen(scan, katalog, args.image == "reason", args.limit)
     if not proben:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "
@@ -382,7 +382,7 @@ def main(argv=None) -> int:
                   "\033[0m")
         ergebnisse[modell] = lauf(proben, katalog, config, args, modell)
         e = ergebnisse[modell]
-        print(f"  {e['treffer']}/{e['gesamt']} richtig, "
+        print(f"  {e['treffer']}/{e['total']} richtig, "
               f"{e['sekunden']:.1f}s je Item"
               + (f", {e['ohne']} ohne Antwort" if e["ohne"] else ""))
 
@@ -390,7 +390,7 @@ def main(argv=None) -> int:
         print("\nZUSAMMENFASSUNG")
         for modell, e in sorted(ergebnisse.items(),
                                 key=lambda kv: -kv[1]["treffer"]):
-            print(f"  {e['treffer']:>3}/{e['gesamt']}  {e['sekunden']:>6.1f}s  {modell}")
+            print(f"  {e['treffer']:>3}/{e['total']}  {e['sekunden']:>6.1f}s  {modell}")
     return 0
 
 

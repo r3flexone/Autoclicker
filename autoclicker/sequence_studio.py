@@ -35,9 +35,9 @@ def last_edited() -> "Path | None":
     danach von einem anderen Programmteil gespeicherte sequence.json gewinnt
     trotzdem — entscheidend ist das jüngere der beiden Ereignisse.
     """
-    verfuegbar = list_available_sequences()
+    available = list_available_sequences()
     neueste, zeit = None, -1
-    for _, path in verfuegbar:
+    for _, path in available:
         try:
             m = path.stat().st_mtime_ns
         except OSError:
@@ -49,7 +49,7 @@ def last_edited() -> "Path | None":
     try:
         data = json.loads(marker.read_text(encoding="utf-8"))
         folder = str(data.get("ordner") or "") if isinstance(data, dict) else ""
-        gemerkt = next((path for _, path in verfuegbar
+        gemerkt = next((path for _, path in available
                         if path.parent.name == folder), None)
         if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
             return gemerkt
@@ -114,7 +114,7 @@ def _save_scans_on_close(bridge) -> bool:
 
     antwort = bridge.scan_save()
     status = antwort.get("status", {}) if isinstance(antwort, dict) else {}
-    if status.get("art") == "err":
+    if status.get("kind") == "err":
         print(f"\nItem-Scans konnten nicht gespeichert werden: "
               f"{status.get('text', 'unbekannter Fehler')}")
         return False
@@ -149,14 +149,14 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
         send_command("programm_beenden")
 
 
-def _attach_close_handler(fenster, bridge,
+def _attach_close_handler(window, bridge,
                           beenden_mit_fenster: bool = False) -> None:
     """Hängt `_on_close` ans Fenster — über beide pywebview-Schreibweisen.
 
-    Bis pywebview 3.5 hiess das Ereignis `fenster.closing`, danach
-    `fenster.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
+    Bis pywebview 3.5 hiess das Ereignis `window.closing`, danach
+    `window.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
     """
-    for besitzer in (getattr(fenster, "events", None), fenster):
+    for besitzer in (getattr(window, "events", None), window):
         event = getattr(besitzer, "closing", None) if besitzer is not None else None
         if event is not None and hasattr(event, "__iadd__"):
             event += lambda: _on_close(bridge, beenden_mit_fenster)
@@ -199,7 +199,7 @@ def main(argv: list[str]) -> int:
 
     # Titel ohne Sequenznamen: der Name steht im Kopf der Oberflaeche, und
     # `set_window_icon()` findet das Fenster ueber den festen Titel.
-    fenster = webview.create_window(
+    window = webview.create_window(
         WINDOW_TITLE,
         url=INDEX.as_uri(),
         js_api=bridge,
@@ -207,7 +207,7 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _attach_close_handler(fenster, bridge, beenden_mit_fenster)
+    _attach_close_handler(window, bridge, beenden_mit_fenster)
 
     def _after_start() -> None:
         """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
@@ -217,7 +217,7 @@ def main(argv: list[str]) -> int:
         """
         try:
             from .winapi import set_window_icon
-            set_window_icon(WINDOW_TITLE, warten=15.0)
+            set_window_icon(WINDOW_TITLE, waiting=15.0)
         except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
             pass
 

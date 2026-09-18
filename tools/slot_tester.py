@@ -197,12 +197,12 @@ def select_item_scan() -> Path | None:
         print(f"  {number}. {path.parent.parent.name} / {path.stem}")
     while True:
         try:
-            auswahl = int(input("\nScan-Nummer: ").strip()) - 1
+            selection = int(input("\nScan-Nummer: ").strip()) - 1
         except ValueError:
             print("Bitte eine Nummer eingeben.")
             continue
-        if 0 <= auswahl < len(scans):
-            return scans[auswahl]
+        if 0 <= selection < len(scans):
+            return scans[selection]
         print("Ungueltige Nummer!")
 
 

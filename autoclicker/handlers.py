@@ -81,10 +81,10 @@ def _block_if_running(state: AutoClickerState) -> bool:
     wuerden. Stand vorher zwölfmal als identischer Vierzeiler in dieser Datei.
     """
     with state.lock:
-        laeuft = state.is_running
-    if laeuft:
+        running = state.is_running
+    if running:
         print(f"\n{err('Stoppe zuerst den Klicker')} {hint('(CTRL+ALT+S)')}")
-    return laeuft
+    return running
 
 
 def _load_sequence_data(state: AutoClickerState) -> None:
@@ -299,7 +299,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
     with state.lock:
         state.step_mode = not state.step_mode
         active = state.step_mode
-        laeuft = state.is_running
+        running = state.is_running
 
     if active:
         print(f"\n{col('[MANUELL]', 'yellow')} Manueller Modus AN — Wartezeiten werden "
@@ -307,7 +307,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
         print(f"           Im Schritt: {col('w', 'yellow')} ausführen | "
               f"{col('s', 'yellow')} überspringen | "
               f"{col('c', 'yellow')} normal weiter | {col('q', 'yellow')} abbrechen")
-        if not laeuft:
+        if not running:
             print(f"           {hint('Greift beim nächsten Start (CTRL+ALT+S).')}")
             print(f"           {hint('Menü hier schliessen (Enter), dann die Sequenz starten.')}")
     else:
@@ -352,20 +352,20 @@ def handle_show(state: AutoClickerState) -> None:
     if _block_if_running(state):
         return
 
-    sequenzen = list_available_sequences()
-    if not sequenzen:
+    sequences = list_available_sequences()
+    if not sequences:
         print(f"\n{info('Keine Sequenzen vorhanden.')} Erstelle zuerst eine Sequenz.")
         return
     with state.lock:
         active = state.active_sequence.name if state.active_sequence else None
-    vorauswahl = next((i for i, (name, _pfad) in enumerate(sequenzen)
+    vorauswahl = next((i for i, (name, _pfad) in enumerate(sequences)
                        if name == active), 0)
-    auswahl = interactive_select(
-        [name + (" *AKTIV*" if name == active else "") for name, _ in sequenzen],
+    selection = interactive_select(
+        [name + (" *AKTIV*" if name == active else "") for name, _ in sequences],
         title="\nPUNKTE: Sequenz wählen", default=vorauswahl)
-    if auswahl < 0 or auswahl >= len(sequenzen):
+    if selection < 0 or selection >= len(sequences):
         return
-    _name, path = sequenzen[auswahl]
+    _name, path = sequences[selection]
     seq = load_sequence_file(path)
     if seq is None:
         print(err("Sequenz konnte nicht geladen werden."))
@@ -421,7 +421,7 @@ def handle_show(state: AutoClickerState) -> None:
                     return
                 continue
 
-            if user_input.lower() in ("manuell", "m"):
+            if user_input.lower() in ("manual", "m"):
                 handle_step_mode(state)
                 continue
 
@@ -628,8 +628,8 @@ def command_start(state: AutoClickerState, arguments: dict) -> None:
     den Lade-Dialog).
     """
     with state.lock:
-        laeuft = state.is_running or state.countdown_active
-    if laeuft:
+        running = state.is_running or state.countdown_active
+    if running:
         print(f"\n{info('Läuft bereits — der Start aus dem Studio wird ignoriert.')}")
         return
     with state.lock:
@@ -668,7 +668,7 @@ def command_start_manual(state: AutoClickerState, arguments: dict) -> None:
             return
         state.step_mode = True
         state.step_via_studio = True
-    command_start(state, {**arguments, "manuell": True})
+    command_start(state, {**arguments, "manual": True})
     with state.lock:
         # Wurde der Start abgelehnt, darf kein unsichtbar vorgemerkter
         # Schrittmodus beim nächsten Hotkey-Start nachfeuern.
@@ -685,10 +685,10 @@ def command_stop(state: AutoClickerState, arguments: dict) -> None:
     schlimmste Sorte Überraschung.
     """
     with state.lock:
-        laeuft = state.is_running or state.countdown_active
-        if laeuft:
+        running = state.is_running or state.countdown_active
+        if running:
             state.stop_event.set()
-    if laeuft:
+    if running:
         print(f"\n{col('[STUDIO]', 'cyan')} Stoppe Sequenz...")
     else:
         print(f"\n{info('Es läuft nichts — nichts zu stoppen.')}")
@@ -735,15 +735,15 @@ def command_manual_action(state: AutoClickerState, arguments: dict) -> None:
     Tafel im Live-Run schickt dieselben Befehle.
     """
     from .runtime.debug import GATE_COMMANDS
-    aktion = str(arguments.get("action") or "")
-    if aktion not in GATE_COMMANDS:
+    action = str(arguments.get("action") or "")
+    if action not in GATE_COMMANDS:
         print(f"\n{err('Unbekannte manuelle Aktion — ignoriert.')}")
         return
     with state.lock:
         if not state.gate_waiting:
             print(f"\n{info('Es wartet gerade kein Block auf eine Entscheidung.')}")
             return
-        state.step_command = aktion
+        state.step_command = action
         state.step_command_event.set()
 
 
@@ -829,8 +829,8 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
     Laufs passiert nichts — dort gehoert die Maus dem Worker.
     """
     with state.lock:
-        laeuft = state.is_running
-    if laeuft:
+        running = state.is_running
+    if running:
         print(f"\n{info('Die Sequenz laeuft — die Maus gehoert gerade dem Worker.')}")
         return
     try:
@@ -847,17 +847,17 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
     jetzt = get_screen_pixel(x, y)
     if jetzt:
         print(f"       Dort jetzt:  {describe_color(jetzt)}")
-    erwartet = arguments.get("color")
-    if erwartet and jetzt:
+    expected = arguments.get("color")
+    if expected and jetzt:
         try:
             from .imaging import color_distance
-            distance = color_distance(tuple(erwartet), jetzt)
+            distance = color_distance(tuple(expected), jetzt)
         except (TypeError, ValueError):
             distance = None
         if distance is not None:
             gleich = distance <= state.config.pixel_wait_tolerance
             marke = ok("passt") if gleich else warn("weicht ab")
-            print(f"       Gespeichert: {describe_color(tuple(erwartet))}  {marke}")
+            print(f"       Gespeichert: {describe_color(tuple(expected))}  {marke}")
     print(hint("       Maus steht jetzt auf der Stelle."))
 
 
@@ -886,8 +886,8 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
     passiert nichts: der Worker iteriert ueber genau diese Dicts.
     """
     with state.lock:
-        laeuft = state.is_running
-    if laeuft:
+        running = state.is_running
+    if running:
         print(f"\n{info('Die Sequenz laeuft — Scan-Daten werden nach dem Stopp geladen.')}")
         return
 
@@ -991,7 +991,7 @@ def command_quit(state: AutoClickerState, arguments: dict) -> None:
 # als haette sich die Runde von selbst beendet.
 DISCARD_REASON = {
     "knopf": "im Studio verworfen",
-    "fenster": "Studio geschlossen — Runde verworfen",
+    "window": "Studio geschlossen — Runde verworfen",
 }
 
 
@@ -1019,8 +1019,8 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     # beendet.
     reason = str(arguments.get("reason") or "knopf")
     with state.lock:
-        laeuft = state.reclick_active
-    if not laeuft:
+        running = state.reclick_active
+    if not running:
         if not discard:
             print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
@@ -1088,7 +1088,7 @@ COMMANDS = {
     "skip": command_skip,
     "skip_step": command_skip_step,
     "finish": command_finish,
-    "manuell": command_manual,
+    "manual": command_manual,
     "manuell_aktion": command_manual_action,
     "zeitplan": command_schedule,
     "zeigen": command_show,

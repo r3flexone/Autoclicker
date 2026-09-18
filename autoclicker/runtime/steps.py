@@ -540,15 +540,15 @@ def _color_wait_status(state: AutoClickerState, step: SequenceStep, wc,
                       image=None) -> dict:
     """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.wartet`)."""
     return {
-        "bild": image,
-        "art": "farbe",
-        "seit": start_time,
-        "bis": (start_time + timeout) if timeout > 0 else None,
-        "punkt": [wc.pixel[0], wc.pixel[1]],
-        "soll": list(wc.color),
-        "ist": list(current_color) if current_color else None,
+        "image": image,
+        "kind": "color",
+        "since": start_time,
+        "until": (start_time + timeout) if timeout > 0 else None,
+        "point": [wc.pixel[0], wc.pixel[1]],
+        "target": list(wc.color),
+        "actual": list(current_color) if current_color else None,
         "distanz": round(dist, 1) if dist is not None else None,
-        "toleranz": state.config.pixel_wait_tolerance,
+        "tolerance": state.config.pixel_wait_tolerance,
         "bis_weg": bool(wc.until_gone),
         "danach": _timeout_consequence(state, step),
     }
@@ -825,11 +825,11 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # Warte-Kasten des vorherigen darf nicht darüber stehenbleiben.
     # `block_set_type` ist der Schlüssel, nicht die Farbe: die Zuordnung Typ→Farbe ist
     # Anzeige und gehört ins Studio (`BLOCK_COLORS`). Hier steht nur, WAS läuft.
-    status.write_status(state, {"block": step_num, "bloecke": total_steps,
+    status.write_status(state, {"block": step_num, "blocks": total_steps,
                             "block_label": describe_step(step),
-                            "block_titel": step.name or "",
+                            "block_title": step.name or "",
                             "block_set_type": block_type(step),
-                            "block_seit": time.time(), "warten": None})
+                            "block_seit": time.time(), "waiting": None})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
     # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.
@@ -908,13 +908,13 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return True
 
     if step.key_press:
-        aktion = _execute_key
+        action = _execute_key
     elif step.scroll:
-        aktion = _execute_scroll
+        action = _execute_scroll
     else:
-        aktion = _execute_click
+        action = _execute_click
 
-    return _with_verification(state, step, step_num, total_steps, phase, aktion)
+    return _with_verification(state, step, step_num, total_steps, phase, action)
 
 
 # =============================================================================
@@ -929,7 +929,7 @@ def _effect_occurred(state: AutoClickerState, vc, timeout: float) -> tuple[bool,
     """
     tol = state.config.pixel_wait_tolerance
     intervall = max(0.05, state.config.verify_interval)
-    ende = time.time() + max(0.0, timeout)
+    end = time.time() + max(0.0, timeout)
     letzter = "kein Screenshot"
     while True:
         if state.skip_step_event.is_set():
@@ -944,15 +944,15 @@ def _effect_occurred(state: AutoClickerState, vc, timeout: float) -> tuple[bool,
             letzter = color_comparison(vc.color, current, dist, tol)
             if passt:
                 return True, letzter
-        if time.time() >= ende or state.stop_event.is_set():
+        if time.time() >= end or state.stop_event.is_set():
             return False, letzter
         if state.stop_event.wait(intervall):
             return False, letzter
 
 
 def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: int,
-                      total_steps: int, phase: str, aktion) -> bool:
-    """Fuehrt `aktion` aus und prueft danach, ob sie gewirkt hat.
+                      total_steps: int, phase: str, action) -> bool:
+    """Fuehrt `action` aus und prueft danach, ob sie gewirkt hat.
 
     Ohne `verify_condition` laeuft die Aktion und fertig — der Normalfall, ohne
     Screenshot. Mit Bedingung wird sie bis zu `verify_retries` mal WIEDERHOLT: der
@@ -963,7 +963,7 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
     """
     vc = step.verify_condition
     if vc is None:
-        return aktion(state, step, step_num, total_steps, phase)
+        return action(state, step, step_num, total_steps, phase)
 
     debug = is_verbose_debug(state)
     versuche = max(0, state.config.verify_retries) + 1
@@ -972,7 +972,7 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
     for versuch in range(1, versuche + 1):
         if _block_skip(state, phase, step_num, total_steps):
             return True
-        if not aktion(state, step, step_num, total_steps, phase):
+        if not action(state, step, step_num, total_steps, phase):
             return False
         if state.stop_event.is_set():
             return False

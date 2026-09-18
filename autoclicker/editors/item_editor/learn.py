@@ -208,14 +208,14 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     # Bestätigungs-Klick abfragen
     print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
-    bestaetigung = ask_confirm_click(
+    confirmation = ask_confirm_click(
         state, state.config.scan_confirm_delay,
         frage="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
-    if bestaetigung is CANCELLED:
+    if confirmation is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()
         return True
-    confirm_point_id, confirm_delay = bestaetigung
+    confirm_point_id, confirm_delay = confirmation
 
     item = ItemProfile(item_name, marker_colors, category, priority,
                        confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)

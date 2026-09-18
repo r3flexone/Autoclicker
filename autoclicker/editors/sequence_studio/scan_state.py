@@ -137,7 +137,7 @@ class ScanStateMixin:
         Brücke und nicht nur als deaktivierter Knopf in der Seite.
         """
         self._scan_load()
-        kind = str((data or {}).get("art") or self.scan_aufnahme_art or "item")
+        kind = str((data or {}).get("kind") or self.scan_aufnahme_art or "item")
         if kind not in SCAN_KINDS:
             kind = "item"
         self.scan_aufnahme_art = kind
@@ -155,7 +155,7 @@ class ScanStateMixin:
         dazugekommene Datei ändert seinen eigenen Zeitstempel, und genau das
         soll auffallen.
         """
-        stand = {}
+        stamp = {}
         scan_ordner = self.filepath.parent / "item_scans"
         pfade = [scan_ordner]
         pfade += sorted(scan_ordner.glob("*.json")) if scan_ordner.is_dir() else []
@@ -167,10 +167,10 @@ class ScanStateMixin:
         pfade += self._detection_paths()
         for p in pfade:
             try:
-                stand[str(p)] = p.stat().st_mtime
+                stamp[str(p)] = p.stat().st_mtime
             except OSError:
-                stand[str(p)] = 0.0
-        return stand
+                stamp[str(p)] = 0.0
+        return stamp
 
     def _disk_track(self, *pfade) -> None:
         """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
@@ -182,13 +182,13 @@ class ScanStateMixin:
         Ohne Argumente der ganze Stand (nach dem Speichern), mit Argumenten nur die
         genannten Pfade — sonst verschluckt es eine fremde Änderung anderswo.
         """
-        stand = self._disk_state()
+        stamp = self._disk_state()
         if not pfade:
-            self._platte = stand
+            self._platte = stamp
             return
         for path in pfade:
-            if str(path) in stand:
-                self._platte[str(path)] = stand[str(path)]
+            if str(path) in stamp:
+                self._platte[str(path)] = stamp[str(path)]
 
     def _disk_changed_externally(self) -> bool:
         """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
@@ -343,13 +343,13 @@ class ScanStateMixin:
             "slots": copy.deepcopy(self.slots),
             "items": copy.deepcopy(self.items),
             "scans": copy.deepcopy(self.scans),
-            "art": self.scan_art,
+            "kind": self.scan_art,
             "name": self.scan_name,
-            "auswahl": list(self._auswahl),
+            "selection": list(self._auswahl),
             "offen": self.scan_offen,
             "dirty": self._scan_dirty,
-            "bereich": copy.deepcopy(self.scan_bereich),
-            "fenster_id": self.scan_fenster_id,
+            "area": copy.deepcopy(self.scan_bereich),
+            "window_id": self.scan_fenster_id,
             # Der Abzug ist vollständig oder er ist keiner: ein Rückgängig, das
             # die Slots zurückdreht und den Boss-Scan stehen lässt, wäre ein
             # halbes Zurück — und das ist schlimmer als gar keins.
@@ -376,17 +376,17 @@ class ScanStateMixin:
         """
         if not self._undo:
             return self._scan_report("Nichts zum Rückgängigmachen.", "info")
-        was, stand = self._undo.pop()
-        self.slots = stand["slots"]
-        self.items = stand["items"]
-        self.scans = stand["scans"]
-        self.scan_art, self.scan_name = stand["art"], stand["name"]
-        self._auswahl = [n for n in stand["auswahl"] if n in self.slots]
-        self.scan_offen = stand["offen"]
-        self._scan_dirty = stand["dirty"]
-        self.scan_bereich = stand.get("bereich")
-        self.scan_fenster_id = stand.get("fenster_id", 0)
-        self._detection_undo(stand.get("erkennung") or {})
+        was, stamp = self._undo.pop()
+        self.slots = stamp["slots"]
+        self.items = stamp["items"]
+        self.scans = stamp["scans"]
+        self.scan_art, self.scan_name = stamp["kind"], stamp["name"]
+        self._auswahl = [n for n in stamp["selection"] if n in self.slots]
+        self.scan_offen = stamp["offen"]
+        self._scan_dirty = stamp["dirty"]
+        self.scan_bereich = stamp.get("area")
+        self.scan_fenster_id = stamp.get("window_id", 0)
+        self._detection_undo(stamp.get("erkennung") or {})
         # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
         # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
         self._sync_objects()
@@ -423,8 +423,8 @@ class ScanStateMixin:
         ]
         remaining = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
         current = remaining[0] if remaining else 0
-        return [{"nr": nr, "titel": title, "was": was, "fertig": fertig,
-                 "aktuell": nr == current, "befehl": command, "knopf": knopf}
+        return [{"nr": nr, "title": title, "was": was, "fertig": fertig,
+                 "current": nr == current, "befehl": command, "knopf": knopf}
                 for nr, title, was, fertig, command, knopf in raw]
 
     def _canvas_area(self) -> Optional[dict]:
@@ -432,11 +432,11 @@ class ScanStateMixin:
 
         Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild; ohne die
         Ersatzfläche stünde die Mitte leer, obwohl die Slots da sind. Alle
-        Umrechnungen laufen über `left`/`top`/`skala` und stimmen genauso.
+        Umrechnungen laufen über `left`/`top`/`scale` und stimmen genauso.
         `image` sagt, was von beidem dasteht.
         """
         if self._foto_info:
-            return dict(self._foto_info, bild=True)
+            return dict(self._foto_info, image=True)
         regionen = [s.scan_region for s in self._scan_slots() if s.scan_region]
         if not regionen:
             return None
@@ -445,9 +445,9 @@ class ScanStateMixin:
         top = min(r[1] for r in regionen) - rand
         right = max(r[2] for r in regionen) + rand
         bottom = max(r[3] for r in regionen) + rand
-        return {"links": left, "oben": top, "bild": False, "skala": 1.0,
-                "breite": max(1, right - left), "hoehe": max(1, bottom - top),
-                "stand": 0.0}
+        return {"left": left, "top": top, "image": False, "scale": 1.0,
+                "width": max(1, right - left), "height": max(1, bottom - top),
+                "stamp": 0.0}
 
     def _scan_slots(self) -> list:
         """Die Slots des offenen Scans.
@@ -482,13 +482,13 @@ class ScanStateMixin:
         # eine Nummer hat.
         aktive_slots = [s for s in cfg.slots if s.enabled] if cfg else []
         nummern = {s.name: i + 1 for i, s in enumerate(aktive_slots)}
-        erkannt = self._detected_items()
+        detected = self._detected_items()
         return {
             # Scan, Slots, Items und Vorlagen liegen im Ordner dieser Sequenz.
             # Der Bezug muss in der Ansicht vor der Aufnahme sichtbar sein;
             # nur aus dem aktuell offenen Editor darauf zu schliessen ist bei
             # mehreren Sequenzen zu fehleranfaellig.
-            "sequenz": self.board.name,
+            "sequence": self.board.name,
             "aufnahme_bereit": {
                 kind: self._scan_has_config(kind) for kind in SCAN_KINDS
             },
@@ -498,16 +498,16 @@ class ScanStateMixin:
             # Der Suchbereich muss zu SEHEN sein, solange man noch die Farbe
             # zeigen soll — sonst klickt man den Hintergrund an und weiss nicht,
             # worin gesucht wird.
-            "suchbereich": list(self._suchbereich) if self._suchbereich else None,
-            "foto": flaeche,
+            "search_area": list(self._suchbereich) if self._suchbereich else None,
+            "photo": flaeche,
             "slots": [self._slot_json(s, s.name in dabei_slots,
                                       nummern.get(s.name), len(aktive_slots),
                                       bool(cfg.reverse) if cfg else False)
                       for s in self.slots.values()],
-            "items": [self._item_json(i, i.name in dabei_items, erkannt.get(i.name))
+            "items": [self._item_json(i, i.name in dabei_items, detected.get(i.name))
                       for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
-            "kategorien": existing_categories(self.items),
+            "categories": existing_categories(self.items),
             # Ob der OFFENE Scan den Katalog benutzt UND eine Datei da ist. Die
             # Ansicht rechnet das nicht selbst nach: sie sieht `config.json`
             # nicht, und zwei Antworten auf dieselbe Frage liefen auseinander.
@@ -518,21 +518,21 @@ class ScanStateMixin:
             "llm_an": bool(CONFIG.llm_enabled),
             # Laeuft gerade ein Benenn-Durchgang, und wie weit ist er?
             "autoname": self._autoname_state(),
-            "bereich": list(self.scan_bereich) if self.scan_bereich else None,
-            "fenster_id": self.scan_fenster_id,
+            "area": list(self.scan_bereich) if self.scan_bereich else None,
+            "window_id": self.scan_fenster_id,
             # Der Titel ist die dauerhafte Quelle, das HWND nur ihr aktueller
             # Sitzungswert. So bleibt in der Oberfläche auch bei geschlossenem
             # Spiel sichtbar, welches Fenster dieser Scan erwartet.
-            "fenster_titel": cfg.capture_window_title if cfg else None,
-            "fenster_verfuegbar": bool(self.scan_fenster_id),
-            "fenster_referenz": (list(cfg.capture_window_rect)
+            "window_title": cfg.capture_window_title if cfg else None,
+            "window_available": bool(self.scan_fenster_id),
+            "window_reference": (list(cfg.capture_window_rect)
                                   if cfg and cfg.capture_window_rect else None),
             "schritte": self._steps(),
             "offen": self.scan_offen,
-            "wahl": {"art": self.scan_art, "name": self.scan_name},
+            "wahl": {"kind": self.scan_art, "name": self.scan_name},
             # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
-            "auswahl": [n for n in self._auswahl if n in self.slots],
+            "selection": [n for n in self._auswahl if n in self.slots],
             # Was STRG+Z zurücknehmen würde. Der Knopf nennt es beim Namen: ein
             # „Rückgängig" ohne Angabe, WAS es rückgängig macht, drückt man
             # entweder gar nicht oder einmal zu oft.
@@ -542,8 +542,8 @@ class ScanStateMixin:
             # Hat der Hauptprozess die Dateien angefasst? Ein Lauf mit
             # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
             # gelernten Items im Reiter vergeblich.
-            "fremd": self._disk_changed_externally(),
-            "status": {"text": text, "art": kind},
+            "foreign": self._disk_changed_externally(),
+            "status": {"text": text, "kind": kind},
             "ergebnis": self._result_json(),
             "review": self._review_json(),
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
@@ -565,20 +565,20 @@ class ScanStateMixin:
         slots = self._scan_slots()
         slot_namen = {s.name for s in slots}
         match = {n: t for n, t in self._treffer.items() if n in slot_namen}
-        erkannt = [n for n, t in match.items() if t.get("name") and not t.get("fremd")]
-        fremd = [n for n, t in match.items() if t.get("name") and t.get("fremd")]
+        detected = [n for n, t in match.items() if t.get("name") and not t.get("foreign")]
+        foreign = [n for n, t in match.items() if t.get("name") and t.get("foreign")]
         unbekannt = [n for n, t in match.items() if not t.get("name")]
         return {
-            "gesamt": len(slots), "erkannt": len(erkannt), "fremd": len(fremd),
-            "unbekannt": len(unbekannt), "erkannt_slots": erkannt,
-            "fremd_slots": fremd, "unbekannt_slots": unbekannt,
+            "total": len(slots), "detected": len(detected), "foreign": len(foreign),
+            "unbekannt": len(unbekannt), "detected_slots": detected,
+            "foreign_slots": foreign, "unbekannt_slots": unbekannt,
         }
 
     def _review_json(self) -> Optional[dict]:
         if not self._lern_review:
             return None
         return {
-            "zeilen": [
+            "rows": [
                 {k: v for k, v in line.items() if k != "crop"}
                 for line in self._lern_review
             ],
@@ -612,18 +612,18 @@ class ScanStateMixin:
         height = slot.scan_region[3] - slot.scan_region[1]
         return {
             "dabei": dabei,
-            "aktiv": bool(slot.enabled),
+            "active": bool(slot.enabled),
             "name": slot.name,
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
-            "farbe": hexfarbe(slot.slot_color),
-            "breite": width,
-            "hoehe": height,
+            "color": hexfarbe(slot.slot_color),
+            "width": width,
+            "height": height,
             # Zu klein, um je etwas zu erkennen — und im Bild kaum zu treffen.
             # Neu entstehen kann so einer nicht mehr; wer noch einen hat, soll
             # ihn in der LISTE finden, denn dort ist er so gross wie jeder
             # andere. Das ist der zweite Weg zum Löschen.
-            "winzig": width < MIN_SLOT or height < MIN_SLOT,
+            "tiny": width < MIN_SLOT or height < MIN_SLOT,
             "treffer": match,
             # **Stabile Identität.** Bleibt beim Aus- und Wiedereinschalten
             # gleich; die laufende Nummer gehört dagegen nur aktiven Slots.
@@ -631,9 +631,9 @@ class ScanStateMixin:
             # Die Stelle im offenen Scan (1-basiert) und die Stelle im LAUF —
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
             # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
-            "nummer": number,
+            "number": number,
             "lauf": (total - number + 1) if (number and rueckwaerts) else number,
-            "gesamt": total,
+            "total": total,
         }
 
     def _detected_items(self) -> dict:
@@ -651,7 +651,7 @@ class ScanStateMixin:
         return found
 
     def _item_json(self, item: ItemProfile, dabei: bool = False,
-                   erkannt_in=None) -> dict:
+                   detected_in=None) -> dict:
         from ...imaging import template_size
         vorlagen = item.template_names()
         groessen = []
@@ -674,32 +674,32 @@ class ScanStateMixin:
                              if vorlagen else [])
         return {
             "dabei": dabei,
-            "aktiv": bool(item.enabled),
+            "active": bool(item.enabled),
             # Gehört (noch) nicht dazu, wird aber gerade gesehen. Die Ansicht
             # zeigt genau diese beiden Sorten, alles Weitere auf Knopfdruck: ein
             # neuer Scan soll leer anfangen und nicht mit dem Bestand eines
             # fremden Spiels.
-            "erkannt": bool(erkannt_in),
+            "detected": bool(detected_in),
             # In WELCHEN Slots — sonst ist „erkannt" eine Behauptung ohne Beleg,
             # und bei einem Fehlgriff (zwei Items sehen sich ähnlich) fehlt
             # genau die Angabe, an der man ihn bemerkt.
-            "erkannt_in": list(erkannt_in or []),
+            "detected_in": list(detected_in or []),
             "name": item.name,
-            "kategorie": item.category,
-            "prioritaet": item.priority,
+            "category": item.category,
+            "priority": item.priority,
             "konfidenz": item.min_confidence,
             "template": vorlagen[0] if vorlagen else None,
             "vorlagen": vorlagen,
-            "vorlagengroessen": groessen,
-            "fehlende_scan_groessen": fehlende_groessen,
+            "template_sizes": groessen,
+            "missing_scan_sizes": fehlende_groessen,
             "marker": [hexfarbe(c) for c in item.marker_colors],
             # **Der Klick danach.** Manche Spiele fragen nach („wirklich
             # verkaufen?"), und ohne die Bestätigung bleibt das Popup stehen —
             # der nächste Slot wird dann gar nicht mehr erreicht. Das Feld gab
             # es im Modell und in den Konsolen-Editoren seit jeher; im Studio
             # war es die einzige Item-Eigenschaft ohne Bedienelement.
-            "bestaetigung": self._confirmation_json(item),
-            "bestaetigung_verzoegerung": item.confirm_delay,
+            "confirmation": self._confirmation_json(item),
+            "confirmation_delay": item.confirm_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
             "stumm": not vorlagen and not item.marker_colors,
@@ -727,12 +727,12 @@ class ScanStateMixin:
             "name": cfg.name,
             "slots": list(cfg.slot_names),
             "items": list(cfg.item_names),
-            "toleranz": cfg.color_tolerance,
+            "tolerance": cfg.color_tolerance,
             "lernen": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
             "use_catalog": bool(cfg.use_catalog),
-            "fenster": ({
-                "titel": cfg.capture_window_title,
+            "window": ({
+                "title": cfg.capture_window_title,
                 "instanz": cfg.capture_window_index,
                 "referenz": (list(cfg.capture_window_rect)
                               if cfg.capture_window_rect else None),
@@ -766,18 +766,18 @@ class ScanStateMixin:
         """Ein Template als data:-URL, gemerkt an mtime + Name."""
         path = self.filepath.parent / "templates" / dateiname
         try:
-            stand = path.stat().st_mtime
+            stamp = path.stat().st_mtime
         except OSError:
             return ""
         gemerkt = self._vorschau.get(dateiname)
-        if gemerkt and gemerkt[0] == stand:
+        if gemerkt and gemerkt[0] == stamp:
             return gemerkt[1]
         try:
             raw = path.read_bytes()
         except OSError:
             return ""
         url = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
-        self._vorschau[dateiname] = (stand, url)
+        self._vorschau[dateiname] = (stamp, url)
         return url
 
     # ------------------------------------------------------ Auswahl und Modus

@@ -8,14 +8,14 @@ an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 from ._bruecke import Fenster, main, sandkasten
 
 
-def _sequenz(name: str, notiz: str, phasen: int, schritte: int):
+def _sequenz(name: str, notiz: str, phases: int, schritte: int):
     from autoclicker.models import LoopPhase, Sequence, SequenceStep
 
     s = Sequence(name=name, description=notiz, total_cycles=1)
     s.loop_phases = [
         LoopPhase(name=f"P{i}", steps=[SequenceStep(name="x", x=1, y=1, point_id=1)
                                        for _ in range(schritte)])
-        for i in range(phasen)
+        for i in range(phases)
     ]
     return s
 
@@ -28,11 +28,11 @@ def aufbau():
     sandkasten("rauch_sequenzen_")
     zustand = AutoClickerState()
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
-    for name, notiz, phasen, schritte in (("Alpha", "Mit einer Notiz", 1, 50),
+    for name, notiz, phases, schritte in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        zustand.sequences[name] = _sequenz(name, notiz, phasen, schritte)
+        zustand.sequences[name] = _sequenz(name, notiz, phases, schritte)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
     zustand.sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
@@ -53,7 +53,7 @@ def lauf():
 
     with Fenster(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
-        f.reiter("sequenzen")
+        f.reiter("sequences")
         karten = f.count(".seq-karte")
         pruefe(karten == 3, f"3 Karten erwartet, da: {karten}")
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
@@ -177,7 +177,7 @@ def lauf():
         # mit dem Speichern-Knopf zusammen ausgeblendet — und damit musste man
         # fuer einen Wechsel erst in den Editor zurueck, ausgerechnet aus den
         # Reitern, die am staerksten an der Sequenz haengen.
-        for reiter in ("editor", "sequenzen", "lauf", "scans",
+        for reiter in ("editor", "sequences", "lauf", "scans",
                        "teilen", "werkzeuge", "einstellungen"):
             f.reiter(reiter)
             sichtbar = f.seite.eval_on_selector_all(

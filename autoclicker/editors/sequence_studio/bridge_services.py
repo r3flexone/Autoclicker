@@ -45,32 +45,32 @@ class BridgeServicesMixin:
         for path in dateien:
             gespeicherter_name = path.parent.name
             try:
-                geaendert = path.stat().st_mtime
+                changed = path.stat().st_mtime
             except OSError:
-                geaendert = 0.0
+                changed = 0.0
             seq = load_sequence_file(path)
             if seq is None:
                 # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
-                raus.append({"name": gespeicherter_name, "datei": str(path), "defekt": True,
-                             "geaendert": geaendert, "offen": path == self.filepath,
+                raus.append({"name": gespeicherter_name, "file": str(path), "defekt": True,
+                             "changed": changed, "offen": path == self.filepath,
                              "umfang": self._sequence_extent(path.parent)})
                 continue
             raus.append({
                 "name": seq.name,
-                "datei": str(path),
+                "file": str(path),
                 "defekt": False,
                 "beschreibung": seq.description,
-                "zyklen": seq.total_cycles,
+                "cycles": seq.total_cycles,
                 "init": len(seq.init_steps),
                 "end": len(seq.end_steps),
-                "phasen": [{"name": lp.name, "schritte": len(lp.steps),
+                "phases": [{"name": lp.name, "schritte": len(lp.steps),
                             "wiederholungen": lp.repeat,
                             "start": lp.scheduled_start or ""}
                            for lp in seq.loop_phases],
                 "schritte": seq.total_steps(),
-                "geaendert": geaendert,
+                "changed": changed,
                 "offen": path == self.filepath,
                 "umfang": self._sequence_extent(path.parent),
                 "warnungen": scan_warnungen(sequence_to_board(seq)),
@@ -106,8 +106,8 @@ class BridgeServicesMixin:
             except OSError:
                 n = 0
             if n:
-                raus.append({"art": unter, "wort": eins if n == 1 else viele,
-                             "anzahl": n})
+                raus.append({"kind": unter, "wort": eins if n == 1 else viele,
+                             "count": n})
         return raus
 
     def _sequence_folder(self, name: str) -> Optional[Path]:
@@ -171,16 +171,16 @@ class BridgeServicesMixin:
 
         name = str((data or {}).get("name") or "").strip()
         if not name:
-            return {"ok": False, "meldung": "Keine Sequenz genannt."}
+            return {"ok": False, "message": "Keine Sequenz genannt."}
         folder = self._sequence_folder(name)
         if folder is None or not folder.is_dir():
-            return {"ok": False, "meldung": f"'{name}' gibt es nicht (mehr)."}
+            return {"ok": False, "message": f"'{name}' gibt es nicht (mehr)."}
         if folder.resolve() == self.filepath.parent.resolve():
-            return {"ok": False, "meldung": (
+            return {"ok": False, "message": (
                 f"'{name}' ist gerade geöffnet. Erst eine andere laden — sonst "
                 "legt der nächste Druck auf Speichern den Ordner wieder an.")}
         if self._running():
-            return {"ok": False, "meldung": (
+            return {"ok": False, "message": (
                 "Eine Sequenz läuft — der Worker liest gerade aus diesen Ordnern.")}
 
         # Gespiegelte Struktur, wie bei `backup_path()` im Start-Durchgang:
@@ -194,8 +194,8 @@ class BridgeServicesMixin:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(folder), str(target))
         except (OSError, shutil.Error) as fehler:
-            return {"ok": False, "meldung": f"Konnte nicht wegräumen: {fehler}"}
-        return {"ok": True, "meldung": f"'{name}' liegt jetzt unter {target}."}
+            return {"ok": False, "message": f"Konnte nicht wegräumen: {fehler}"}
+        return {"ok": True, "message": f"'{name}' liegt jetzt unter {target}."}
 
     def run_status(self, data: Optional[dict] = None) -> dict:
         """Was gerade läuft — gelesen aus der Statusdatei des Hauptprozesses.
@@ -209,20 +209,20 @@ class BridgeServicesMixin:
             with open(RUN_STATUS_FILE, "r", encoding="utf-8") as f:
                 zustand = json.load(f)
         except (OSError, ValueError):
-            return {"aktiv": False}
+            return {"active": False}
         if not isinstance(zustand, dict):
-            return {"aktiv": False}
-        # Ein abgeschlossener Lauf (`ende`) darf beliebig alt sein — er IST
+            return {"active": False}
+        # Ein abgeschlossener Lauf (`end`) darf beliebig alt sein — er IST
         # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
         # laufend hält.
-        if not zustand.get("aktiv"):
-            return zustand if (zustand.get("ende") or zustand.get("countdown")) else {"aktiv": False}
+        if not zustand.get("active"):
+            return zustand if (zustand.get("end") or zustand.get("countdown")) else {"active": False}
         # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
         # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
         # Farbe wartet, geht durch `execute_step`.
-        if time.time() - float(zustand.get("stand") or 0) > 5:
-            return {"aktiv": False, "verwaist": True}
+        if time.time() - float(zustand.get("stamp") or 0) > 5:
+            return {"active": False, "verwaist": True}
         # Typ → Farbe und Marke: die Laufzeit schreibt nur den Schlüssel, weil
         # `runtime/` die Ansicht nicht kennen darf. Übersetzt wird hier, damit
         # der laufende Block dieselbe Farbe trägt wie seine Karte im Board — die
@@ -237,7 +237,7 @@ class BridgeServicesMixin:
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
     RUN_COMMANDS = ("start", "start_manuell", "stop", "pause", "skip", "skip_step", "finish",
-                    "manuell", "manuell_aktion", "zeitplan")
+                    "manual", "manuell_aktion", "zeitplan")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `COMMANDS`.
     # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
@@ -259,15 +259,15 @@ class BridgeServicesMixin:
         data = data or {}
         name = str(data.get("name") or "").strip()
         if not name:
-            return {"ok": False, "meldung": "Bitte zuerst einen Namen eingeben."}
+            return {"ok": False, "message": "Bitte zuerst einen Namen eingeben."}
         sicher = sanitize_filename(name)
         target = Path(self.sequences_dir) / sicher / "sequence.json"
         if target.exists():
-            return {"ok": False, "meldung": f"'{sicher}' gibt es bereits."}
+            return {"ok": False, "message": f"'{sicher}' gibt es bereits."}
         try:
-            cycles = max(0, int(data.get("zyklen") or 0))
+            cycles = max(0, int(data.get("cycles") or 0))
         except (TypeError, ValueError):
-            return {"ok": False, "meldung": "Zyklen müssen eine ganze Zahl sein."}
+            return {"ok": False, "message": "Zyklen müssen eine ganze Zahl sein."}
         # Die drei Zeilen der vorigen Aufnahme sollen beim neuen Start nicht
         # noch für einen Augenblick als neue Ereignisse aufblitzen.
         from ...config import RECORD_STATUS_FILE
@@ -277,16 +277,16 @@ class BridgeServicesMixin:
             pass
         if not send_command("aufnahme", name=sicher, cycles=cycles,
                      description=str(data.get("beschreibung") or "").strip()):
-            return {"ok": False, "meldung": "Aufnahme konnte nicht gestartet werden."}
+            return {"ok": False, "message": "Aufnahme konnte nicht gestartet werden."}
         return {"ok": True, "name": sicher,
-                "meldung": "Aufnahme startet — jetzt ins Spiel wechseln."}
+                "message": "Aufnahme startet — jetzt ins Spiel wechseln."}
 
     def recording_stop(self, data: Optional[dict] = None) -> dict:
         """Beendet die Aufnahme; der Hauptprozess baut und speichert die Blöcke."""
         from ...mailbox import send_command
         if not send_command("aufnahme_stop"):
-            return {"ok": False, "meldung": "Stopp konnte nicht gesendet werden."}
-        return {"ok": True, "meldung": "Aufnahme wird beendet und gespeichert."}
+            return {"ok": False, "message": "Stopp konnte nicht gesendet werden."}
+        return {"ok": True, "message": "Aufnahme wird beendet und gespeichert."}
 
     def recording_status(self, data: Optional[dict] = None) -> dict:
         """Die rollende Live-Ausgabe der Aufnahme — höchstens drei Zeilen."""
@@ -296,10 +296,10 @@ class BridgeServicesMixin:
             with open(RECORD_STATUS_FILE, "r", encoding="utf-8") as f:
                 status = json.load(f)
         except (OSError, ValueError):
-            return {"aktiv": False, "pausiert": False, "anzahl": 0,
-                    "ereignisse": []}
+            return {"active": False, "pausiert": False, "count": 0,
+                    "events": []}
         return status if isinstance(status, dict) else {
-            "aktiv": False, "pausiert": False, "anzahl": 0, "ereignisse": []}
+            "active": False, "pausiert": False, "count": 0, "events": []}
 
     def run_command(self, data: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -320,7 +320,7 @@ class BridgeServicesMixin:
         if command in ("start", "start_manuell", "zeitplan"):
             if self._dirty:
                 zustand = self.save()
-                if zustand["status"]["art"] == "err":
+                if zustand["status"]["kind"] == "err":
                     return zustand      # Meldung steht schon drin, Start faellt aus
             if not self.filepath.exists():
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
@@ -331,10 +331,10 @@ class BridgeServicesMixin:
                 return self._report("Bitte eine Startzeit eingeben.", "warn")
             arguments["time"] = zeit
         if command == "manuell_aktion":
-            aktion = str((data or {}).get("aktion") or "")
-            if aktion not in ("run", "skip", "continue", "stop"):
+            action = str((data or {}).get("action") or "")
+            if action not in ("run", "skip", "continue", "stop"):
                 return self._report("Unbekannte manuelle Aktion.", "err")
-            arguments["action"] = aktion
+            arguments["action"] = action
 
         if not send_command(command, **arguments):
             return self._report("Befehl konnte nicht abgelegt werden.", "err")
@@ -345,7 +345,7 @@ class BridgeServicesMixin:
                 "skip": "Aktuelle Wartezeit wird übersprungen.",
                 "skip_step": "Aktueller Block wird vollständig übersprungen.",
                 "finish": "Zyklus wird sauber abgeschlossen.",
-                "manuell": "Manueller Modus umgeschaltet.",
+                "manual": "Manueller Modus umgeschaltet.",
                 "manuell_aktion": "Entscheidung geschickt.",
                 "zeitplan": f"Start für '{self.board.name}' geplant."}[command]
         return self._report(text)
@@ -391,7 +391,7 @@ class BridgeServicesMixin:
             return self._report("Bitte genau einen Block wählen.", "warn")
         if self._dirty:
             zustand = self.save()
-            if zustand["status"]["art"] == "err":
+            if zustand["status"]["kind"] == "err":
                 return zustand
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)
@@ -437,9 +437,9 @@ class BridgeServicesMixin:
         raw, fehler = self._config_file()
         return {
             "pfad": str(Path(CONFIG_FILE).resolve()),
-            "werte": AppConfig.from_dict(raw).to_dict(),
+            "values": AppConfig.from_dict(raw).to_dict(),
             "standard": AppConfig().to_dict(),
-            "abschnitte": [{"titel": t, "keys": list(k)} for t, k in config_sections()],
+            "sections": [{"title": t, "keys": list(k)} for t, k in config_sections()],
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
             "optional": optional_fields(),
@@ -447,7 +447,7 @@ class BridgeServicesMixin:
             # Katalog. Der Pfad allein sagt nicht, ob die Datei da ist und wie
             # alt sie ist, und genau das ist die Frage, die man an eine
             # geholte Liste hat.
-            "staende": self._config_states(),
+            "states": self._config_states(),
             "fehler": fehler,
         }
 
@@ -491,8 +491,8 @@ class BridgeServicesMixin:
     def _config_states(self) -> dict:
         """Zusatzauskunft je Feld, wo der Wert allein zu wenig sagt."""
         from ...config import CONFIG
-        stand = self._catalog_state(str(CONFIG.scan_catalog_file or "").strip())
-        return {"scan_catalog_file": stand} if stand else {}
+        stamp = self._catalog_state(str(CONFIG.scan_catalog_file or "").strip())
+        return {"scan_catalog_file": stamp} if stamp else {}
 
     def config_write(self, data: Optional[dict] = None) -> dict:
         """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.
@@ -505,19 +505,19 @@ class BridgeServicesMixin:
         und die Abweichung zurückgemeldet.
         """
         from ...config import AppConfig, CONFIG, save_config, apply_config
-        values = (data or {}).get("werte")
+        values = (data or {}).get("values")
         if not isinstance(values, dict) or not values:
-            return {"ok": False, "meldung": "Nichts zu speichern."}
+            return {"ok": False, "message": "Nichts zu speichern."}
 
         raw, fehler = self._config_file()
         if fehler:
             # Kaputt ist nicht leer: draufschreiben würde den einzigen Rest
             # wegwerfen, den man noch von Hand reparieren kann.
-            return {"ok": False, "meldung": fehler + " — nicht überschrieben."}
+            return {"ok": False, "message": fehler + " — nicht überschrieben."}
 
         new = AppConfig.from_dict({**raw, **values})
         fertig = new.to_dict()
-        korrekturen = [{"key": k, "gesendet": v, "wurde": fertig.get(k)}
+        korrekturen = [{"key": k, "sent": v, "wurde": fertig.get(k)}
                        for k, v in values.items()
                        if k in fertig and not _gleicher_wert(v, fertig[k])]
         save_config(new)
@@ -545,7 +545,7 @@ class BridgeServicesMixin:
         # Was ohne ELSE passiert, steht in derselben Datei — der gemerkte
         # Zeitstempel ist damit veraltet.
         self._cfg_stand = -1.0
-        return {"ok": True, "werte": fertig, "korrekturen": korrekturen}
+        return {"ok": True, "values": fertig, "korrekturen": korrekturen}
 
     def catalog_fetch(self, data: Optional[dict] = None) -> dict:
         """Holt den Item-Katalog aus der Spiel-API und traegt den Pfad ein.
@@ -576,22 +576,22 @@ class BridgeServicesMixin:
                                        _zusammenfassung, STANDARD_ZIEL)
         except ImportError as e:
             return {"ok": False,
-                    "meldung": f"tools/katalog.py nicht gefunden ({e})."}
+                    "message": f"tools/katalog.py nicht gefunden ({e})."}
 
         target = Path(str(CONFIG.scan_catalog_file or "").strip() or STANDARD_ZIEL)
         # Was das Werkzeug an der Antwort nicht kannte, gehoert in die
         # Statuszeile — auf stderr saehe es im Studio niemand, und ein neues
         # Konstrukt nach einem Spiel-Update ist ein Hinweis, kein Abbruch.
-        hinweise: list = []
+        hints: list = []
         try:
-            katalog = baue_katalog(hole_spieldaten(hinweise=hinweise))
+            katalog = baue_katalog(hole_spieldaten(hints=hints))
         except Exception as e:
             # Netz, DNS, ein geaendertes Antwortformat — alles derselbe Fall
             # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
             # damit "geht nicht" nicht die ganze Auskunft ist.
-            return {"ok": False, "meldung": f"Nicht erreichbar: {e}"}
+            return {"ok": False, "message": f"Nicht erreichbar: {e}"}
         if not katalog.get("items"):
-            return {"ok": False, "meldung": "Die API hat keine Items geliefert — "
+            return {"ok": False, "message": "Die API hat keine Items geliefert — "
                                             "nichts geschrieben."}
         try:
             from ...utils import atomic_write
@@ -599,23 +599,23 @@ class BridgeServicesMixin:
             target.parent.mkdir(parents=True, exist_ok=True)
             atomic_write(target, _json.dumps(katalog, ensure_ascii=False, indent=1))
         except OSError as e:
-            return {"ok": False, "meldung": f"Konnte '{target}' nicht schreiben: {e}"}
+            return {"ok": False, "message": f"Konnte '{target}' nicht schreiben: {e}"}
 
         message = _zusammenfassung(katalog).splitlines()[0]
         kind = "ok"
-        if hinweise:
-            message += " — " + " ".join(hinweise)
+        if hints:
+            message += " — " + " ".join(hints)
             kind = "warn"
         if not str(CONFIG.scan_catalog_file or "").strip():
-            erg = self.config_write({"werte": {"scan_catalog_file": str(target)}})
+            erg = self.config_write({"values": {"scan_catalog_file": str(target)}})
             if not erg.get("ok"):
                 return {"ok": False,
-                        "meldung": f"{message} — geschrieben nach '{target}', aber der "
+                        "message": f"{message} — geschrieben nach '{target}', aber der "
                                    f"Pfad liess sich nicht eintragen: "
-                                   f"{erg.get('meldung', '')}"}
-            return {"ok": True, "art": kind, "meldung": f"{message}. Eingetragen: {target}",
+                                   f"{erg.get('message', '')}"}
+            return {"ok": True, "kind": kind, "message": f"{message}. Eingetragen: {target}",
                     "pfad": str(target)}
-        return {"ok": True, "art": kind, "meldung": f"{message}. Aktualisiert: {target}",
+        return {"ok": True, "kind": kind, "message": f"{message}. Aktualisiert: {target}",
                 "pfad": str(target)}
 
     def command_pending(self, data: Optional[dict] = None) -> bool:
@@ -636,8 +636,8 @@ class BridgeServicesMixin:
         if not name:
             return self._report("Keine Sequenz gewählt.", "warn")
         if self._dirty and not (data or {}).get("verwerfen"):
-            self._ask = {"art": "load", "ziel": name,
-                           "titel": "Ungespeicherte Änderungen",
+            self._ask = {"kind": "load", "ziel": name,
+                           "title": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Laden speichern?",
                            "weiter": "Verwerfen", "save": True}
@@ -664,8 +664,8 @@ class BridgeServicesMixin:
     def new(self, data: Optional[dict] = None) -> dict:
         """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
         if self._dirty and not (data or {}).get("verwerfen"):
-            self._ask = {"art": "neu", "ziel": "",
-                           "titel": "Ungespeicherte Änderungen",
+            self._ask = {"kind": "neu", "ziel": "",
+                           "title": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Anlegen speichern?",
                            "weiter": "Verwerfen", "save": True}
@@ -692,10 +692,10 @@ class BridgeServicesMixin:
 
     def sequence_set(self, data: dict) -> dict:
         """Name, Zyklen oder Beschreibung der Sequenz ändern."""
-        feld, value = (data or {}).get("feld"), (data or {}).get("wert")
+        feld, value = (data or {}).get("feld"), (data or {}).get("value")
         if feld == "name":
             self.board.name = str(value or "")
-        elif feld == "zyklen":
+        elif feld == "cycles":
             self.board.total_cycles = max(0, int(value or 0))
         elif feld == "beschreibung":
             self.board.description = str(value or "")
@@ -730,12 +730,12 @@ class BridgeServicesMixin:
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
         # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
         # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
-        fremd = self._changed_externally(old)
-        if fremd and not (data or {}).get("erzwingen"):
+        foreign = self._changed_externally(old)
+        if foreign and not (data or {}).get("erzwingen"):
             self._ask = {
-                "art": "save",
-                "titel": "Ausserhalb geändert",
-                "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
+                "kind": "save",
+                "title": "Ausserhalb geändert",
+                "text": f"{foreign} wurde geändert, seit diese Sequenz geöffnet ist — "
                         "vermutlich vom Hauptprozess. Speichern überschreibt das.",
                 "weiter": "Trotzdem speichern",
                 "save": False,
@@ -783,9 +783,9 @@ class BridgeServicesMixin:
         if verschoben:
             text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
 
-        leer = self._scan_without_name()
-        if leer:
-            return self._report(f"{text} — {leer} hat noch keine Konfiguration "
+        empty = self._scan_without_name()
+        if empty:
+            return self._report(f"{text} — {empty} hat noch keine Konfiguration "
                                f"und wird übersprungen.", "warn")
         return self._report(text)
 

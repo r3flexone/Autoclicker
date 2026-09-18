@@ -129,10 +129,10 @@ class EditorPersistenzTest(unittest.TestCase):
 
     def test_rename_erhaelt_vorlage_eines_anderen_scans(self):
         self.state.global_items["A"].template = "a.png"
-        fremd = ItemScanConfig("Zweiter", items=[ItemProfile("A", template="a.png")],
+        foreign = ItemScanConfig("Zweiter", items=[ItemProfile("A", template="a.png")],
                               owner_sequence="Alt")
-        self.state.item_scans[fremd.name] = fremd
-        item_scans.save_item_scan(fremd)
+        self.state.item_scans[foreign.name] = foreign
+        item_scans.save_item_scan(foreign)
         folder = active_templates_dir(self.state)
         folder.mkdir(parents=True)
         (folder / "a.png").write_bytes(b"Original")
@@ -142,7 +142,7 @@ class EditorPersistenzTest(unittest.TestCase):
             loaded = item_scans.load_item_scan_file(Path(f"sequences/alt/item_scans/{name}.json"))
             item = next(i for i in loaded.items if i.name == ("Neu" if name == "inventar" else "A"))
             self.assertEqual((folder / item.template).read_bytes(), b"Original")
-        self.assertEqual(fremd.items[0].name, "A")
+        self.assertEqual(foreign.items[0].name, "A")
 
     def test_speicherfehler_wird_bis_zum_aufrufer_gemeldet(self):
         for save in (bestand.save_global_items, bestand.save_global_slots):
@@ -161,18 +161,18 @@ class EditorPersistenzTest(unittest.TestCase):
         self.assertEqual(save.call_count, 2)
 
     def test_done_speichert_und_abbruch_durch_tastatur_verwirft(self):
-        for ende in ("done", KeyboardInterrupt(), EOFError()):
-            with self.subTest(ende=type(ende).__name__):
+        for end in ("done", KeyboardInterrupt(), EOFError()):
+            with self.subTest(end=type(end).__name__):
                 self.scan.items = [ItemProfile("A"), ItemProfile("B")]
                 item_scans.bind_item_scan_context(self.state, self.scan.name)
                 item_scans.save_item_scan(self.scan)
                 with patch.object(editor, "PILLOW_AVAILABLE", True), \
-                        patch.object(editor, "safe_input", side_effect=["del 1", ende]):
+                        patch.object(editor, "safe_input", side_effect=["del 1", end]):
                     editor.run_global_item_editor(self.state)
-                erwartet = ["B"] if ende == "done" else ["A", "B"]
+                expected = ["B"] if end == "done" else ["A", "B"]
                 loaded = item_scans.load_item_scan_file(Path("sequences/alt/item_scans/inventar.json"))
-                self.assertEqual(loaded.item_names, erwartet)
-                self.assertEqual(list(self.state.global_items), erwartet)
+                self.assertEqual(loaded.item_names, expected)
+                self.assertEqual(list(self.state.global_items), expected)
 
     def test_studio_lehnt_reservierten_bossnamen_auch_beim_umbenennen_ab(self):
         bridge = StudioBridge(Sequence(name="Alt"), Path("sequences/alt/sequence.json"), "sequences")
@@ -180,7 +180,7 @@ class EditorPersistenzTest(unittest.TestCase):
         bridge.boss_scan_new({"name": "Bibliothek"})
         self.assertEqual(bridge.boss_scans, {})
         bridge.boss_scan_new({"name": "Erlaubt"})
-        bridge.boss_scan_set({"feld": "name", "wert": "bibliothek!"})
+        bridge.boss_scan_set({"feld": "name", "value": "bibliothek!"})
         self.assertEqual(list(bridge.boss_scans), ["Erlaubt"])
 
     def test_reservierter_bossname_ueberschreibt_keine_bibliothek(self):

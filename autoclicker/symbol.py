@@ -128,10 +128,10 @@ def _logo_geometry():
     farb_rect = next((e for e in wurzel if _tag(e) == "rect" and "mask" in e.attrib), None)
     if farb_rect is None:
         raise ValueError("Farbfläche im Studio-Logo fehlt")
-    farbtext = farb_rect.attrib.get("fill", "").lstrip("#")
-    if len(farbtext) != 6:
+    color_text = farb_rect.attrib.get("fill", "").lstrip("#")
+    if len(color_text) != 6:
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
-    color = tuple(int(farbtext[i:i + 2], 16) for i in (0, 2, 4))
+    color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
     maske = next((e for e in wurzel.iter() if _tag(e) == "mask"), None)
     gruppe = (next((e for e in maske.iter() if _tag(e) == "g"), None)
@@ -173,11 +173,11 @@ def _paint(line: bytearray, intervalle, value: int,
     """Setzt Subpixel, deren Mittelpunkt in einem der Intervalle liegt."""
     width = len(line)
     fuellung = bytes((value,))
-    for anfang, ende in intervalle:
+    for anfang, end in intervalle:
         von = max(0, math.ceil((anfang - left) / step - 0.5))
-        bis = min(width, math.ceil((ende - left) / step - 0.5))
-        if bis > von:
-            line[von:bis] = fuellung * (bis - von)
+        until = min(width, math.ceil((end - left) / step - 0.5))
+        if until > von:
+            line[von:until] = fuellung * (until - von)
 
 
 def pixel_rows(edge: int, proben: int = SAMPLES):

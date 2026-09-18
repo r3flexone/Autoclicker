@@ -45,7 +45,7 @@ class Finding:
 @dataclass
 class CheckReport:
     befunde: list[Finding] = field(default_factory=list)
-    geprueft: list[str] = field(default_factory=list)
+    checked: list[str] = field(default_factory=list)
 
     def add_finding(self, level: str, area: str, text: str, tip: str = "") -> None:
         self.befunde.append(Finding(level, area, text, tip))
@@ -89,7 +89,7 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
     template_ordner = sequence_templates_dir(owner) if owner else Path("sequences")
     missing = [(wer, tpl) for wer, tpl in quellen
                if tpl and not (template_ordner / tpl).exists()]
-    report.geprueft.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
+    report.checked.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
     for wer, tpl in missing:
         report.add_finding(LEVEL_ERROR, wer,
                       f"Template '{tpl}' fehlt in {template_ordner}/",
@@ -120,7 +120,7 @@ def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
         if not item.template_names() and not item.marker_colors:
             report.add_finding(LEVEL_HINT, wer,
                           "weder Template noch Farb-Marker — wird in keinem Scan gefunden")
-    report.geprueft.append(f"{len(candidates) + len(items)} Erkennungs-Profile")
+    report.checked.append(f"{len(candidates) + len(items)} Erkennungs-Profile")
 
 
 def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None:
@@ -138,7 +138,7 @@ def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None
         if not any(item.enabled for item in cfg.items) and not cfg.learn_unknown:
             report.add_finding(LEVEL_HINT, f"Item-Scan '{cfg.name}'",
                           "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
-    report.geprueft.append(f"{len(scans)} Item-Scan(s)")
+    report.checked.append(f"{len(scans)} Item-Scan(s)")
 
     # **`default_scan` ist die fünfte Referenz auf einen Scan-Namen** — und die
     # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
@@ -155,7 +155,7 @@ def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None
                           f"Fallback-Scan '{cfg.default_scan}' gibt es nicht",
                           "im Scans-Reiter einen vorhandenen Item-Scan wählen")
     if boss_scans:
-        report.geprueft.append(f"{len(boss_scans)} Fallback-Scan-Verweis(e)")
+        report.checked.append(f"{len(boss_scans)} Fallback-Scan-Verweis(e)")
 
 
 def _check_llm_ocr(state: AutoClickerState, report: CheckReport) -> None:
@@ -186,7 +186,7 @@ def _check_coordinates(state: AutoClickerState, report: CheckReport) -> None:
         points = list(state.points)
     draussen = [p for p in points
                 if not (left <= p.x < right and top <= p.y < bottom)]
-    report.geprueft.append(f"{len(points)} Punkt(e)")
+    report.checked.append(f"{len(points)} Punkt(e)")
     for p in draussen:
         report.add_finding(LEVEL_ERROR, f"Punkt #{p.id} {p.name}".strip(),
                       f"({p.x}, {p.y}) liegt ausserhalb aller Monitore "
@@ -203,7 +203,7 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
     from .persistence import list_available_sequences, load_sequence_file
 
     dateien = list_available_sequences()
-    report.geprueft.append(f"{len(dateien)} Sequenz(en)")
+    report.checked.append(f"{len(dateien)} Sequenz(en)")
 
     for name, path in dateien:
         seq = load_sequence_file(path)
@@ -221,12 +221,12 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
             "boss_watcher": {n for n, _ in list_available_boss_scans(seq.name)},
             "icon_scan": {n for n, _ in list_available_icon_scans(seq.name)},
         }
-        phasen = [("INIT", seq.init_steps)]
-        phasen += [(lp.name, lp.steps) for lp in seq.loop_phases]
-        phasen.append(("END", seq.end_steps))
+        phases = [("INIT", seq.init_steps)]
+        phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
+        phases.append(("END", seq.end_steps))
 
         tote_refs, tote_scans = [], []
-        for phase, steps in phasen:
+        for phase, steps in phases:
             for i, step in enumerate(steps, 1):
                 if step.point_id is not None and step.point_id not in punkt_ids:
                     tote_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
@@ -281,8 +281,8 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
     if not report:
         if not still_wenn_sauber:
             print(f"\n{ok('Setup-Prüfung: nichts zu beanstanden.')}")
-            if report.geprueft:
-                print(f"       {hint('Geprüft: ' + ', '.join(report.geprueft))}")
+            if report.checked:
+                print(f"       {hint('Geprüft: ' + ', '.join(report.checked))}")
         return
 
     print(f"\n{col('=' * 60, 'cyan')}")
@@ -302,8 +302,8 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
             if b.tip:
                 print(f"    {hint('→ ' + b.tip)}")
 
-    if report.geprueft:
-        print(f"\n{info('Geprüft: ' + ', '.join(report.geprueft))}")
+    if report.checked:
+        print(f"\n{info('Geprüft: ' + ', '.join(report.checked))}")
     print(col("=" * 60, "cyan"))
 
 

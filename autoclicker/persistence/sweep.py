@@ -241,21 +241,21 @@ def _write(path: Path, data) -> None:
 
 
 class SweepResult:
-    """Was der Durchgang gefunden hat. `geaendert` ist die Liste (Pfad, Meldungen)."""
+    """Was der Durchgang gefunden hat. `changed` ist die Liste (Pfad, Meldungen)."""
 
     def __init__(self) -> None:
-        self.geaendert: list[tuple[Path, list[str]]] = []
+        self.changed: list[tuple[Path, list[str]]] = []
         self.current: int = 0
-        self.uebersprungen: list[Path] = []
+        self.skipped: list[Path] = []
         self.geschrieben: bool = False
 
     @property
     def changed_count(self) -> int:
-        return len(self.geaendert)
+        return len(self.changed)
 
     def __bool__(self) -> bool:
         """True = es gab etwas zu tun."""
-        return bool(self.geaendert or self.uebersprungen)
+        return bool(self.changed or self.skipped)
 
 
 def sweep(write: bool = False) -> SweepResult:
@@ -273,7 +273,7 @@ def sweep(write: bool = False) -> SweepResult:
     for path, kind, rt in collect_files():
         raw = _load(path)
         if raw is None:
-            result.uebersprungen.append(path)
+            result.skipped.append(path)
             continue
 
         # Auf einer Kopie, damit die Meldungen nicht vom Round-Trip verfaelscht werden.
@@ -285,7 +285,7 @@ def sweep(write: bool = False) -> SweepResult:
             sauber = rt(path)
 
         if sauber is None:
-            result.uebersprungen.append(path)
+            result.skipped.append(path)
             continue
 
         if not messages and _equal(raw, sauber):
@@ -294,7 +294,7 @@ def sweep(write: bool = False) -> SweepResult:
 
         if not messages:
             messages = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
-        result.geaendert.append((path, messages))
+        result.changed.append((path, messages))
         if write:
             _write(path, sauber)
 
@@ -313,18 +313,18 @@ def sweep_on_start() -> SweepResult:
     if not result:
         return result  # Normalfall: alles aktuell, kein Wort darueber
 
-    if result.geaendert:
+    if result.changed:
         print(f"\n{col('[MIGRATION]', 'cyan')} "
               f"{result.changed_count} Datei(en) aufs aktuelle Format gehoben:")
-        for path, messages in result.geaendert:
+        for path, messages in result.changed:
             print(f"            {path.name}")
             for m in messages:
                 print(f"              - {m}")
         print(f"            {hint(f'Sicherungen liegen unter {BACKUPS_DIR}/.')}")
 
-    for path in result.uebersprungen:
+    for path in result.skipped:
         print(warn(f"[MIGRATION] {path.name} nicht lesbar - bleibt unveraendert."))
 
-    if result.geaendert:
+    if result.changed:
         print()
     return result

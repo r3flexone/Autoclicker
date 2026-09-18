@@ -86,7 +86,7 @@ def _point_json(point) -> dict:
         return {}
     return {"id": point.id, "name": point.name or f"Punkt {point.id}",
             "x": point.x, "y": point.y,
-            "farbe": list(point.color) if point.color else None}
+            "color": list(point.color) if point.color else None}
 
 
 def _status_data(state: AutoClickerState) -> dict:
@@ -95,27 +95,27 @@ def _status_data(state: AutoClickerState) -> dict:
         active = state.reclick_active
         ids = list(state.reclick_points)
         i = state.reclick_index
-        verlauf = list(state.reclick_history)
+        history = list(state.reclick_history)
         placed = {entry[0]: entry for entry in state.reclick_set}
         seq = state.reclick_sequence
         pool = list(seq.points if seq is not None else state.points)
-        data = {"aktiv": active, "pausiert": state.reclick_paused and active,
+        data = {"active": active, "pausiert": state.reclick_paused and active,
                  "name": state.reclick_name, "ziel": state.reclick_target,
-                 "sonstige": state.reclick_other}
+                 "others": state.reclick_other}
     points = {p.id: p for p in pool}
     data["index"] = i
-    data["gesamt"] = len(ids)
-    data["punkt"] = _point_json(points.get(ids[i])) if i < len(ids) else {}
+    data["total"] = len(ids)
+    data["point"] = _point_json(points.get(ids[i])) if i < len(ids) else {}
     # Der Verlauf ist das, was die Konsole Zeile für Zeile ausgibt — im Fenster
     # steht er als Liste, damit man ihn beim Klicken überfliegen kann.
-    data["verlauf"] = [
-        {"id": pid, "art": kind,
+    data["history"] = [
+        {"id": pid, "kind": kind,
          "name": (points[pid].name or f"Punkt {pid}") if pid in points else f"Punkt {pid}",
          "alt": list(placed[pid][1]) if pid in placed else None,
          "neu": list(placed[pid][2]) if pid in placed else None}
-        for pid, kind in verlauf]
-    data["geaendert"] = len(placed)
-    data["stand"] = time.time()
+        for pid, kind in history]
+    data["changed"] = len(placed)
+    data["stamp"] = time.time()
     return data
 
 
@@ -285,12 +285,12 @@ def _in_target_window(target: str, x: int, y: int) -> bool:
     """
     if not target:
         return True
-    fenster = clicked_window(x, y)
-    if not fenster:
+    window = clicked_window(x, y)
+    if not window:
         # Lässt sich weder Fenster noch Vordergrund bestimmen, gilt der Klick.
         # Lieber ein Punkt zu viel als eine Runde, die stumm nichts tut.
         return True
-    return target.casefold() in fenster.casefold()
+    return target.casefold() in window.casefold()
 
 
 def start_reclick(state: AutoClickerState, seq: Sequence = None) -> bool:
@@ -412,9 +412,9 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
     # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
     if abschluss is not None:
-        abschluss.update({"aktiv": False, "pausiert": False, "punkt": {},
-                          "grund": reason, "uebernommen": bool(apply_config),
-                          "stand": time.time()})
+        abschluss.update({"active": False, "pausiert": False, "point": {},
+                          "reason": reason, "uebernommen": bool(apply_config),
+                          "stamp": time.time()})
         try:
             atomic_write(_STATUS_PATH, compact_json(abschluss))
         except (OSError, TypeError, ValueError):
@@ -473,7 +473,7 @@ def reclick_skip(state: AutoClickerState) -> None:
         if state.reclick_index >= len(state.reclick_points):
             return
         point_id = state.reclick_points[state.reclick_index]
-        state.reclick_history.append((point_id, "uebersprungen"))
+        state.reclick_history.append((point_id, "skipped"))
         state.reclick_index += 1
         fertig = state.reclick_index >= len(state.reclick_points)
     print(f"  {col('[ÜBERSPRUNGEN]', 'yellow')} #{point_id} bleibt, wo er ist.")
@@ -547,10 +547,10 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
     # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
     # schnell zurück muss.
     if not _in_target_window(target, x, y):
-        fremd = clicked_window(x, y) or "?"
-        if fremd not in _gemeldete_fenster:
-            _gemeldete_fenster.add(fremd)
-            print(f"\n  {warn('[IGNORIERT]')} Klick in „{fremd}“ — Punkte werden "
+        foreign = clicked_window(x, y) or "?"
+        if foreign not in _gemeldete_fenster:
+            _gemeldete_fenster.add(foreign)
+            print(f"\n  {warn('[IGNORIERT]')} Klick in „{foreign}“ — Punkte werden "
                   f"nur in „{target}“ gesetzt.")
             print(hint("     Fenster wechseln und weiterklicken; der Punkt ist "
                        "noch derselbe."))
@@ -582,7 +582,7 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
                     e for e in state.reclick_set if e[0] != point_id]
                 state.reclick_set.append((point_id, old, (x, y), color))
             state.reclick_history.append(
-                (point_id, "passt" if gleich else "gesetzt"))
+                (point_id, "passt" if gleich else "placed"))
             state.reclick_index += 1
             fertig = state.reclick_index >= len(state.reclick_points)
 

@@ -220,11 +220,11 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
                    "oder den Schritt löschen."))
         return GATE_SKIP
 
-    haltepunkt = bool(step.breakpoint) and not is_step_mode(state)
-    if not is_step_mode(state) and not haltepunkt:
+    breakpoint = bool(step.breakpoint) and not is_step_mode(state)
+    if not is_step_mode(state) and not breakpoint:
         return GATE_RUN
 
-    marke = "HALTEPUNKT" if haltepunkt else "MANUELL"
+    marke = "HALTEPUNKT" if breakpoint else "MANUELL"
     print()
     print(col(f"■ {marke} [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
               "yellow"))
@@ -243,7 +243,7 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         print(col(f"   Zeiger steht auf {target[2]} ({target[0]}, {target[1]}) - stimmt die Stelle?",
                   "gray"))
 
-    if haltepunkt:
+    if breakpoint:
         print(col("   [w /→ /CTRL+ALT+G] weiter   [s /↓] überspringen   "
                   "[m] ab hier schrittweise   [q /ESC] abbrechen", "yellow"))
     else:
@@ -257,7 +257,7 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     # exakt wie bisher — nur dass er zwischen zwei Tastenabfragen ebenfalls
     # auf das Event sieht, denn CTRL+ALT+G kommt ueber genau diesen Weg.
     with state.lock:
-        studio = bool(state.step_via_studio) or (haltepunkt and bool(state.run_from_studio))
+        studio = bool(state.step_via_studio) or (breakpoint and bool(state.run_from_studio))
         state.step_command = ""
         state.step_command_event.clear()
         state.gate_waiting = True
@@ -266,21 +266,21 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     # kommen ueber denselben Briefkasten an, den die Konsolenschleife ebenfalls
     # abfragt. Nur die Tastatur liest ausschliesslich der Konsolenweg.
     from . import status
-    status.write_status(state, {"manuell": {
-        "aktiv": True,
-        "haltepunkt": haltepunkt,
+    status.write_status(state, {"manual": {
+        "active": True,
+        "breakpoint": breakpoint,
         "phase": phase,
         "block": step_num,
-        "bloecke": total_steps,
-        "titel": step_label(step),
-        "aktion": describe_step(step),
+        "blocks": total_steps,
+        "title": step_label(step),
+        "action": describe_step(step),
     }}, sofort=True)
     try:
         command = _gate_studio(state) if studio else _gate_console(state)
     finally:
         with state.lock:
             state.gate_waiting = False
-        status.write_status(state, {"manuell": None}, sofort=True)
+        status.write_status(state, {"manual": None}, sofort=True)
     return _gate_decide(state, command, studio)
 
 
@@ -390,7 +390,7 @@ def walk_points(state: AutoClickerState) -> None:
     print(col("   [f] nur die Farbe an dieser Stelle neu einlesen", "yellow"))
     print(col("   (einzelner Tastendruck, kein Enter nötig)", "gray"))
 
-    geaendert = 0
+    changed = 0
     i = 0
     while 0 <= i < len(points):
         p = points[i]
@@ -424,7 +424,7 @@ def walk_points(state: AutoClickerState) -> None:
                     if neue_farbe:
                         p.color = neue_farbe
             save_points(state)
-            geaendert += 1
+            changed += 1
             print(col(f"      gesetzt: {old} -> ({neu_x}, {neu_y})"
                       f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
             i += 1
@@ -438,7 +438,7 @@ def walk_points(state: AutoClickerState) -> None:
             with state.lock:
                 alt_farbe, p.color = p.color, neue_farbe
             save_points(state)
-            geaendert += 1
+            changed += 1
             print(col(f"      Farbe: {color_swatch(alt_farbe) if alt_farbe else '(keine)'}"
                       f"  ->  {color_swatch(neue_farbe)}", "green"))
             continue
@@ -449,8 +449,8 @@ def walk_points(state: AutoClickerState) -> None:
         # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst
         # schiebt jeder Fehlgriff den Durchgang vor und man sucht die Stelle neu.
 
-    if geaendert:
-        print(col(f"   {geaendert} Punkt(e) neu gesetzt und gespeichert.", "green"))
+    if changed:
+        print(col(f"   {changed} Punkt(e) neu gesetzt und gespeichert.", "green"))
         print(col("   Schritte mit point_id ziehen beim nächsten Lauf automatisch nach.",
                   "gray"))
     print(col("   Punkte-Durchgang beendet.", "cyan"))

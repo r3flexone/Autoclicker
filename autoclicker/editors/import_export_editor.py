@@ -607,10 +607,10 @@ def run_calibration(state: AutoClickerState) -> None:
 
     print()
     print(f"  {ok('Kalibriert:')}")
-    beschriftung = {"punkte": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+    beschriftung = {"points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-                    "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
+                    "bosse": "globale Bosse", "sequences": "Sequenzdateien"}
     for key_name, count in number.items():
         if count:
             print(f"    {count:>4}  {beschriftung[key_name]}")
@@ -674,17 +674,17 @@ def _calibration_reference(state: AutoClickerState, points: list, title: str,
     """
     from ..winapi import set_cursor_pos
 
-    auswahl = [p for p in points if ausser is None or (p.x, p.y) != ausser]
-    if not auswahl:
+    selection = [p for p in points if ausser is None or (p.x, p.y) != ausser]
+    if not selection:
         return None
 
     print()
     print(col(f"  {title}:", 'bold'))
-    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in auswahl]
+    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in selection]
     idx = interactive_select(beschriftung, default=0)
     if idx < 0:
         return None
-    point = auswahl[idx]
+    point = selection[idx]
 
     # Maus dorthin, wo der Punkt AKTUELL zeigt — dann sieht man die Abweichung
     set_cursor_pos(point.x, point.y)

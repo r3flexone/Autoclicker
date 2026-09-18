@@ -74,7 +74,7 @@ check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
       "function wzKennzahl(" in _app and ".wz-kennzahlen{" in _css
       and ".wz-erfolg{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
-      'function wzInfo(' in _app and 'info(text, "werkzeug-" + titel)' in _app
+      'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
       and ".wz-info-kompakt{" in _css and ".wz-info{" not in _css)
 check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
       'class: "info-glyphe"' in _app
@@ -89,39 +89,39 @@ section("Studio-Werkzeuge: pruefen findet, was der Konsolen-`check` findet")
 try:
     _sand, _b = _sandkasten()
     _d = _b.tool_data()
-    check("die Punkte stehen zur Auswahl", [p["id"] for p in _d["punkte"]] == [1, 2, 3])
+    check("die Punkte stehen zur Auswahl", [p["id"] for p in _d["points"]] == [1, 2, 3])
     # Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus.
     # Ohne diese Angabe stuende nirgends, welche Sequenz die Klick-Runde meint.
     # Der NAME behaelt seine Schreibweise, der Dateiname wird entschaerft. Beide
     # stehen da, weil beide vorkommen: den Namen sucht man im Fenster, den
     # Dateinamen im Ordner.
-    check("und der Reiter weiss, welche Sequenz offen ist", _d["sequenz"] == "Farm")
+    check("und der Reiter weiss, welche Sequenz offen ist", _d["sequence"] == "Farm")
     check("samt Ordnernamen, wie er auf Platte heisst",
-          _d["datei"] == _b.filepath.parent.name
-          and _P("sequences", _d["datei"], "sequence.json").exists())
+          _d["file"] == _b.filepath.parent.name
+          and _P("sequences", _d["file"], "sequence.json").exists())
     check("samt der Frage, ob sie ungespeichert ist", _d["offen"] is False)
     _b._dirty = True
     check("und die Antwort aendert sich mit", _b.tool_data()["offen"] is True)
     _b._dirty = False
     check("und der Umfang kommt aus der Tabelle",
-          [u["schluessel"] for u in _d["umfang"]] == [k for k, _, _ in KALIB_UMFANG])
+          [u["key"] for u in _d["umfang"]] == [k for k, _, _ in KALIB_UMFANG])
     # Die Ansicht zeigt dieselben Schalter; laufen sie auseinander, schaltet ein
     # Haken etwas anderes als beschriftet.
     check("Slots sind standardmaessig AUS",
-          {u["schluessel"]: u["vorgabe"] for u in _d["umfang"]}["mit_slots"] is False)
+          {u["key"]: u["vorgabe"] for u in _d["umfang"]}["mit_slots"] is False)
 
     _sauber = _b.tool_check()
     check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["befunde"])
-    check("und sagt trotzdem, was geprueft wurde", len(_sauber["geprueft"]) > 0)
+    check("und sagt trotzdem, was geprueft wurde", len(_sauber["checked"]) > 0)
 
     # Jetzt absichtlich kaputt: ein lokaler Scan ohne Slot und Erkennung.
     save_item_scan(_ISC(name="Inventar", owner_sequence="Farm"))
     _kaputt = _b.tool_check()
-    _texte = " | ".join(f"{x['bereich']} {x['text']}" for x in _kaputt["befunde"])
+    _texte = " | ".join(f"{x['area']} {x['text']}" for x in _kaputt["befunde"])
     check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texte)
     check("ein Scan ohne Erkennung ebenso", "keine aktiven Items" in _texte)
     check("Fehler und Hinweise werden getrennt gezaehlt",
-          _kaputt["fehler"] >= 1 and _kaputt["hinweise"] >= 1)
+          _kaputt["fehler"] >= 1 and _kaputt["hints"] >= 1)
     # Gelesen wird von PLATTE, nicht aus dem, was die Reiter offen haben - sonst
     # meldete die Pruefung "sauber", weil sie die halben Daten gar nicht kennt.
     check("gelesen wird vom gespeicherten Stand", _kaputt["ok"])
@@ -137,17 +137,17 @@ try:
     check("ohne Referenzpunkt gibt es nichts anzuwenden",
           _b.calib_apply({})["ok"] is False)
 
-    _erg = _b.calib_reference({"nummer": 1, "point_id": 1})
+    _erg = _b.calib_reference({"number": 1, "point_id": 1})
     check("der Referenzpunkt laesst sich anfahren", _erg["ok"])
     _K = _b.tool_data()["kalibrierung"]
     check("und ergibt den gemessenen Versatz",
           _K["versatz"] == {"x": 40.0, "y": 30.0})
-    check("die Vorschau zeigt, was sich aendern wuerde", len(_K["vorschau"]) == 3)
+    check("die Vorschau zeigt, was sich aendern wuerde", len(_K["preview"]) == 3)
 
     # Der zweite Punkt muss ein anderer sein - sonst waere die Skalierung eine
     # Division durch null.
     check("derselbe Punkt zweimal wird abgelehnt",
-          _b.calib_reference({"nummer": 2, "point_id": 1})["ok"] is False)
+          _b.calib_reference({"number": 2, "point_id": 1})["ok"] is False)
 
     # Von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     check("der Versatz laesst sich von Hand setzen",
@@ -159,11 +159,11 @@ try:
 
     _erg = _b.calib_apply({"mit_scans": True, "mit_sequenzen": True,
                               "mit_slots": False})
-    check("angewendet wird mit Meldung", _erg["ok"] and "Kalibriert" in _erg["meldung"])
+    check("angewendet wird mit Meldung", _erg["ok"] and "Kalibriert" in _erg["message"])
     check("und es entsteht eine Sicherung vorher",
           bool(_erg["sicherung"]) and _P(_erg["sicherung"]).exists())
 
-    _punkte = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["punkte"]}
+    _punkte = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["points"]}
     check("jeder Punkt ist um den Versatz gewandert",
           _punkte == {1: (150, 100), 2: (950, 600), 3: (450, 300)})
     # Der Reiter liest die Punkte danach neu ein - sonst zeigte er den Stand von
@@ -187,17 +187,17 @@ try:
     # Ein Punkt, der sich nicht bewegt hat, ergibt einen Transform ohne Wirkung.
     # Ihn anzuwenden waere ein Schreibvorgang samt Sicherung fuer nichts.
     _b._await_position = lambda: (100, 100, "")
-    _b.calib_reference({"nummer": 1, "point_id": 1})
+    _b.calib_reference({"number": 1, "point_id": 1})
     check("ein Transform ohne Wirkung wird abgelehnt",
           _b.calib_apply({})["ok"] is False)
     check("und die Ansicht sagt es vorher",
-          _b.tool_data()["kalibrierung"]["identitaet"] is True)
+          _b.tool_data()["kalibrierung"]["identity"] is True)
 
     # Abbrechen darf nichts geschrieben haben - bis dahin steht alles nur im Kopf.
     _sequenzdatei = _P("sequences/farm/sequence.json")
     _vorher = _sequenzdatei.read_text(encoding="utf-8")
     _b._await_position = lambda: (500, 500, "")
-    _b.calib_reference({"nummer": 1, "point_id": 1})
+    _b.calib_reference({"number": 1, "point_id": 1})
     check("abbrechen raeumt die Kalibrierung weg", _b.calib_cancel()["ok"])
     check("und hat nichts geschrieben",
           _sequenzdatei.read_text(encoding="utf-8") == _vorher)
@@ -205,12 +205,12 @@ try:
 
     # Ein unbekannter Punkt ist kein Grund, irgendetwas zu rechnen.
     check("ein Punkt, den es nicht gibt, wird abgelehnt",
-          _b.calib_reference({"nummer": 1, "point_id": 99})["ok"] is False)
+          _b.calib_reference({"number": 1, "point_id": 99})["ok"] is False)
 
     # Waehrend eines Laufs wird nicht umgerechnet: die Sequenz klickt sonst
     # mitten im Umbau auf halb verschobene Stellen.
     _b._await_position = lambda: (140, 130, "")
-    _b.calib_reference({"nummer": 1, "point_id": 1})
+    _b.calib_reference({"number": 1, "point_id": 1})
     _b._running = lambda: True
     check("ein laufender Lauf blockiert das Anwenden",
           _b.calib_apply({})["ok"] is False)
@@ -223,8 +223,8 @@ finally:
 section("Studio-Werkzeuge: die Vorschau zaehlt keine Stelle doppelt")
 try:
     _sand, _b = _sandkasten()
-    _b.calib_reference({"nummer": 1, "point_id": 1})
-    _was = [z["was"] for z in _b.tool_data()["kalibrierung"]["vorschau"]]
+    _b.calib_reference({"number": 1, "point_id": 1})
+    _was = [z["was"] for z in _b.tool_data()["kalibrierung"]["preview"]]
     # Die Sequenz hat zwei Klick-Schritte, beide ueber `point_id`. Ihre x/y sind
     # abgeleitet und werden NICHT einzeln umgerechnet - sie hier zu listen hiesse,
     # dieselbe Aenderung zweimal zu versprechen.
@@ -254,7 +254,7 @@ try:
     _sand, _b = _sandkasten()
     _bf.COMMAND_PATH = _P("befehl.json")
     check("der Studio-Knopf kann eine Aufnahme starten",
-          _b.recording_start({"name": "Aufnahme UI", "zyklen": 3,
+          _b.recording_start({"name": "Aufnahme UI", "cycles": 3,
                                "beschreibung": "sichtbar"})["ok"])
     _auftrag = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
@@ -294,12 +294,12 @@ section("Studio-Werkzeuge: Punkte sind vollständig verwaltbar")
 try:
     _sand, _b = _sandkasten()
     _daten = _b.tool_data()
-    _p1 = next(p for p in _daten["punkte"] if p["id"] == 1)
-    check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["verwendungen"]))
+    _p1 = next(p for p in _daten["points"] if p["id"] == 1)
+    check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["usages"]))
     _erg = _b.tool_point_delete({"point_id": 1})
     check("ein verwendeter Punkt wird nicht gelöscht",
           not _erg["ok"] and _b._point_with_id(1) is not None)
-    check("der Löschschutz nennt die Verwendungen", bool(_erg.get("verwendungen")))
+    check("der Löschschutz nennt die Verwendungen", bool(_erg.get("usages")))
 
     _b._await_position = lambda: (333, 444, "")
     _b._color_at = staticmethod(lambda x, y: (12, 34, 56))
@@ -310,10 +310,10 @@ try:
     check("die Farbe wird dabei mitgemessen", _neu.color == (12, 34, 56))
     check("und die Sequenz ist danach ungespeichert", _b._dirty)
 
-    _erg = _b.tool_colors({"art": "punkt"})
+    _erg = _b.tool_colors({"kind": "point"})
     check("der Farbanalysator liefert RGB und Hex",
-          _erg["ok"] and _erg["farben"][0]["rgb"] == [12, 34, 56]
-          and _erg["farben"][0]["hex"] == "#0C2238")
+          _erg["ok"] and _erg["colors"][0]["rgb"] == [12, 34, 56]
+          and _erg["colors"][0]["hex"] == "#0C2238")
 finally:
     _os.chdir(_cwd)
 
@@ -326,7 +326,7 @@ try:
     check("die Wartezeit wird mit deutschem Komma skaliert",
           _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
     _bf.COMMAND_PATH = _P("befehl.json")
-    _b.select({"phase": _loop_index, "zeile": 0})
+    _b.select({"phase": _loop_index, "row": 0})
     _erg = _b.block_test()
     _auftrag = _bf.fetch_command()
     check("der Block-Test wird ausdrücklich angekündigt", "echter" in _erg["status"]["text"])
@@ -365,7 +365,7 @@ check("die gewählte Blockkarte ist sichtbar markiert",
 check("Mehrfachauswahl ist erreichbar und benannt",
       '"phase_selection"' in _app
       and 'e.ctrlKey || e.metaKey ? "dazu"' in _app
-      and 'e.shiftKey ? "bereich" : "einzeln"' in _app
+      and 'e.shiftKey ? "area" : "einzeln"' in _app
       and "STRG+Klick" in _app)
 check("kein Auswahl-Kästchen auf der Karte — der Ring sagt es schon",
       "karte-auswahl" not in _app and "karte-auswahl" not in _css)
@@ -399,7 +399,7 @@ check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messw
           "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung",
           "wird auch benutzt von")))
 check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
-      "const auswirkung = b.else_aktion" in _inspektor_ui
+      "const auswirkung = b.else_action" in _inspektor_ui
       and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspektor_ui)
 
 section("Studio-Aufnahme: kein unsichtbarer Prompt und kein UI-Klick im Block")
@@ -493,16 +493,16 @@ try:
     _live = _rec._status_events(_live_events)
     check("die Live-Ausgabe behaelt genau die letzten drei", len(_live) == 3)
     check("ihre laufenden Nummern bleiben erhalten",
-          [z["nummer"] for z in _live] == [2, 3, 4])
+          [z["number"] for z in _live] == [2, 3, 4])
     check("Zeit, Klick und Farbname stehen getrennt zur Darstellung bereit",
           _live[-1]["zeit"] == "+2.61s" and
           _live[-1]["text"] == "Klick (1378, 756)" and
-          "Dunkelrot (123,51,65)" in _live[-1]["farbtext"])
+          "Dunkelrot (123,51,65)" in _live[-1]["color_text"])
     _live_state = _State(recording_active=True, recording_events=_live_events)
     _rec._write_status(_live_state)
     _gelesen = _b.recording_status()
     check("die Bruecke liefert denselben ueberschriebenen Live-Stand",
-          _gelesen["anzahl"] == 4 and len(_gelesen["ereignisse"]) == 3)
+          _gelesen["count"] == 4 and len(_gelesen["events"]) == 3)
 finally:
     _os.chdir(_cwd)
 
@@ -521,14 +521,14 @@ try:
     check("die offene Sequenz kommt MIT",
           _P(_auftrag["arguments"].get("file", "")).exists())
     check("und der Knopf sagt, welche er meint",
-          "Farm" in _b.reclick_start()["meldung"])
+          "Farm" in _b.reclick_start()["message"])
     _bf.fetch_command()
 
     # Ungespeichertes zuerst: die Runde klickt die Sequenz von PLATTE nach.
     _b._dirty = True
     _erg = _b.reclick_start()
     check("mit offenen Aenderungen wird nicht gestartet", _erg["ok"] is False)
-    check("und der Grund steht dabei", "speichern" in _erg["meldung"].lower())
+    check("und der Grund steht dabei", "speichern" in _erg["message"].lower())
     check("es liegt auch kein Befehl im Briefkasten", _bf.fetch_command() is None)
 
     _b._dirty = False
@@ -598,19 +598,19 @@ try:
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: (200, 10, 30))
 
-    _erg = _b.calib_reference({"nummer": 1, "point_id": 1})
+    _erg = _b.calib_reference({"number": 1, "point_id": 1})
     check("gesetzt wird erst mal nichts", _erg["ok"] is False)
-    check("stattdessen kommt eine Rueckfrage", _erg.get("bestaetigen") is True)
+    check("stattdessen kommt eine Rueckfrage", _erg.get("confirm") is True)
     check("mit beiden Farben zum Vergleich",
-          _erg["erwartet"] == [10, 200, 30] and _erg["gemessen"] == [200, 10, 30])
+          _erg["expected"] == [10, 200, 30] and _erg["gemessen"] == [200, 10, 30])
     check("und dem Abstand samt erlaubter Toleranz",
-          _erg["abstand"] == 190 and _erg["toleranz"] >= 0)
+          _erg["abstand"] == 190 and _erg["tolerance"] >= 0)
     check("die Kalibrierung ist noch leer", _b.tool_data()["kalibrierung"] == {})
 
     # Bestaetigt gilt der Punkt trotzdem - manchmal hat sich das Spiel geaendert.
-    _erg = _b.calib_reference({"nummer": 1, "point_id": 1, "bestaetigt": True})
+    _erg = _b.calib_reference({"number": 1, "point_id": 1, "confirmed": True})
     check("bestaetigt wird er gesetzt", _erg["ok"])
-    check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["meldung"])
+    check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["message"])
     check("jetzt steht die Kalibrierung",
           _b.tool_data()["kalibrierung"]["versatz"] == {"x": 40.0, "y": 30.0})
 finally:
@@ -623,9 +623,9 @@ try:
     # Passende Farbe: keine Rueckfrage, direkt gesetzt.
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: (12, 198, 33))
-    _erg = _b.calib_reference({"nummer": 1, "point_id": 1})
+    _erg = _b.calib_reference({"number": 1, "point_id": 1})
     check("eine passende Farbe geht direkt durch", _erg["ok"])
-    check("und sagt es auch", "passt" in _erg["meldung"])
+    check("und sagt es auch", "passt" in _erg["message"])
 
     # Ein Punkt OHNE gespeicherte Farbe hat nichts, womit man vergleichen kann.
     # Eine Rueckfrage ohne Grundlage gewoehnt man sich ab wegzuklicken.
@@ -633,14 +633,14 @@ try:
     _b.points[1].color = None
     _b._color_at = staticmethod(lambda x, y: (200, 10, 30))
     check("ein Punkt ohne Farbe fragt nicht",
-          _b.calib_reference({"nummer": 1, "point_id": 2})["ok"])
+          _b.calib_reference({"number": 1, "point_id": 2})["ok"])
 
     # Und wenn der Bildschirm sich nicht lesen laesst, ebenfalls nicht.
     _b.calib_cancel()
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: None)
     check("eine unlesbare Stelle fragt auch nicht",
-          _b.calib_reference({"nummer": 1, "point_id": 1})["ok"])
+          _b.calib_reference({"number": 1, "point_id": 1})["ok"])
 finally:
     _os.chdir(_cwd)
 
@@ -660,13 +660,13 @@ try:
     _st3 = _ST()
     _gestoppt = {}
     _echt = _nk.stop_reclick
-    _nk.stop_reclick = lambda state, reason="beendet": _gestoppt.setdefault("grund", reason)
+    _nk.stop_reclick = lambda state, reason="beendet": _gestoppt.setdefault("reason", reason)
     try:
         _bns(_st3, {})
         check("ohne laufende Runde passiert nichts", not _gestoppt)
         _st3.reclick_active = True
         _bns(_st3, {})
-        check("mit laufender Runde wird gestoppt", "grund" in _gestoppt)
+        check("mit laufender Runde wird gestoppt", "reason" in _gestoppt)
     finally:
         _nk.stop_reclick = _echt
 finally:
@@ -735,8 +735,8 @@ from autoclicker.editors.sequence_studio.bridge_contract import WARTE_TIMEOUT as
 check("die Zeitgrenze ist eine Konstante, kein Literal im Aufruf",
       all("timeout=60" not in t for t in _quellen_wt.values()))
 check("und sie steht in der Momentaufnahme",
-      '"warte_timeout": WARTE_TIMEOUT' in
+      '"wait_timeout": WARTE_TIMEOUT' in
       (_studio_wt / "bridge_view.py").read_text(encoding="utf-8"))
 check("wie auch in den Werkzeug-Daten",
-      '"warte_timeout": WARTE_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
+      '"wait_timeout": WARTE_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
 check("der Wert ist eine sinnvolle Zeitgrenze", 10 <= _WT <= 300)

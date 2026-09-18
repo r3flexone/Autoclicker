@@ -222,7 +222,7 @@ try:
     _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)
     _a = _b.scan_catalog_apply()
     check("ohne offenen Scan wird auf den Scan verwiesen",
-          "Scan öffnen" in _a["status"]["text"] and _a["status"]["art"] == "err")
+          "Scan öffnen" in _a["status"]["text"] and _a["status"]["kind"] == "err")
 
     _b.scan_new({"name": "Inv"})
     _b.scan_open({"name": "Inv"})
@@ -237,7 +237,7 @@ try:
           "benutzt den Katalog nicht" in _a["status"]["text"])
     check("und die Momentaufnahme sagt: Katalog aus", _b.scan_data()["katalog_an"] is False)
 
-    _b.scan_set({"name": "Inv", "feld": "use_catalog", "wert": True})
+    _b.scan_set({"name": "Inv", "feld": "use_catalog", "value": True})
     check("der Schalter laesst sich setzen", _b.scans["Inv"].use_catalog is True)
     check("und die Momentaufnahme zieht mit", _b.scan_data()["katalog_an"] is True)
 
@@ -507,7 +507,7 @@ try:
     # Scan liest den Pfad, nicht den Ordner.
     check("und traegt den Pfad gleich in die Config ein",
           _CFG_mit.scan_catalog_file.endswith("katalog.json"))
-    check("die Meldung nennt, was drin ist", "2 Items" in _erg_kh["meldung"])
+    check("die Meldung nennt, was drin ist", "2 Items" in _erg_kh["message"])
 
     # Ein selbst gesetzter Pfad wird AKTUALISIERT, nicht ueberschrieben: wer
     # zwei Spiele betreibt, hat den Katalog bewusst woanders liegen.
@@ -529,7 +529,7 @@ try:
     _CFG_mit.scan_catalog_file = str(_P_kh("katalog.json"))
     _erg3_kh = _bau_kh().catalog_fetch()
     check("ohne Netz wird nichts geschrieben",
-          _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["meldung"]
+          _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["message"]
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
     # Eine Antwort ohne Items ist kein Katalog — eine leere Datei zu schreiben
@@ -565,16 +565,16 @@ try:
 
     # Der Knopf reicht die Meldung in die Statuszeile — auf stderr saehe sie
     # im Studio niemand — und schreibt die Datei trotzdem.
-    def _mit_hinweis_kh(*a, hinweise=None, **kw):
-        if hinweise is not None:
-            hinweise.extend(_tk_kh.extended_json_hinweise({"NumberFoo": 3}))
+    def _mit_hinweis_kh(*a, hints=None, **kw):
+        if hints is not None:
+            hints.extend(_tk_kh.extended_json_hinweise({"NumberFoo": 3}))
         return _SPIELDATEN_kh
 
     _tk_kh.hole_spieldaten = _mit_hinweis_kh
     _erg5_kh = _bau_kh().catalog_fetch()
     check("der Knopf schreibt trotzdem und sagt, was fremd war",
-          _erg5_kh["ok"] and _erg5_kh.get("art") == "warn"
-          and "NumberFoo" in _erg5_kh["meldung"] and "2 Items" in _erg5_kh["meldung"])
+          _erg5_kh["ok"] and _erg5_kh.get("kind") == "warn"
+          and "NumberFoo" in _erg5_kh["message"] and "2 Items" in _erg5_kh["message"])
 
     # --- Ein Zaehler am Namen darf die Kategorie nicht kosten ---------------
     # **"Godlike Bow 2" steht nicht im Katalog**, sein Gegenstand aber schon.
@@ -627,11 +627,11 @@ try:
     # Der Weg bis in die Ansicht: `config_read()` liefert ihn, und die Seite
     # zeichnet ihn unter dem Feld.
     _CFG_mit.scan_catalog_file = "stempel.json"
-    _staende_kh = _bau_kh().config_read()["staende"]
+    _staende_kh = _bau_kh().config_read()["states"]
     check("die Einstellungen liefern den Stand mit",
           "2 Items" in _staende_kh.get("scan_catalog_file", ""))
     check("und die Ansicht zeichnet ihn",
-          "C.staende" in _studio_web_kh())
+          "C.states" in _studio_web_kh())
 finally:
     _tk_kh.hole_spieldaten = _echt_hole_kh
     _CFG_mit.scan_catalog_file = _alt_pfad_kh

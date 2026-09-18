@@ -92,7 +92,7 @@ class ScanLibraryMixin:
         """Ein Feld einer Scan-Konfiguration."""
         name = str((data or {}).get("name") or "")
         feld = str((data or {}).get("feld") or "")
-        value = (data or {}).get("wert")
+        value = (data or {}).get("value")
         cfg = self.scans.get(name)
         if cfg is None:
             return self._scan_report(f"Scan '{name}' gibt es nicht.", "err")
@@ -131,7 +131,7 @@ class ScanLibraryMixin:
                     f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
             return self._scan_changed(
                 f"'{old}' heisst jetzt '{new}'.")
-        if feld == "toleranz":
+        if feld == "tolerance":
             try:
                 tolerance = int(value)
             except (TypeError, ValueError):
@@ -170,7 +170,7 @@ class ScanLibraryMixin:
         Kein Bestätigungsdialog, aus demselben Grund wie beim einzelnen
         Löschen: STRG+Z holt den ganzen Stand zurück, auch diesen.
         """
-        kind = str((data or {}).get("art") or "")
+        kind = str((data or {}).get("kind") or "")
         if kind == ART_SLOT:
             names = [s.name for s in self._scan_slots()]
             if not names:
@@ -193,8 +193,8 @@ class ScanLibraryMixin:
 
     def scan_toggle_all(self, data: dict) -> dict:
         """Schaltet alle Slots oder Items des offenen Scans gemeinsam ein/aus."""
-        kind = str((data or {}).get("art") or "")
-        active = bool((data or {}).get("aktiv"))
+        kind = str((data or {}).get("kind") or "")
+        active = bool((data or {}).get("active"))
         if kind == ART_SLOT:
             entries = self._scan_slots()
             bezeichnung = "Slots"
@@ -205,8 +205,8 @@ class ScanLibraryMixin:
             return self._scan_report(f"Unbekannte Art '{kind}'.", "err")
         if not entries:
             return self._scan_report(f"Keine {bezeichnung} zum Schalten.", "warn")
-        geaendert = [e for e in entries if e.enabled != active]
-        if not geaendert:
+        changed = [e for e in entries if e.enabled != active]
+        if not changed:
             return self.scan_data()
         self._remember(f"{len(entries)} {bezeichnung}: {'ein' if active else 'aus'}")
         for entry in entries:
@@ -281,7 +281,7 @@ class ScanLibraryMixin:
                 "Sequenz wurde ausserhalb geändert — zuerst im Sequenz-Reiter entscheiden.",
                 "warn")
         sequenz_status = sequenz_antwort.get("status") or {}
-        if sequenz_status.get("art") == "err":
+        if sequenz_status.get("kind") == "err":
             return self._scan_report(
                 sequenz_status.get("text") or "Sequenz konnte nicht gespeichert werden.",
                 "err")

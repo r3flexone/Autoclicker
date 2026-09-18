@@ -213,14 +213,14 @@ def coord_context(x: int, y: int) -> str:
         return f"({x}, {y})"
 
     if x < screen_w * 0.33:
-        h_pos = "links"
+        h_pos = "left"
     elif x < screen_w * 0.66:
         h_pos = "mitte"
     else:
         h_pos = "rechts"
 
     if y < screen_h * 0.33:
-        v_pos = "oben"
+        v_pos = "top"
     elif y < screen_h * 0.66:
         v_pos = "mitte"
     else:

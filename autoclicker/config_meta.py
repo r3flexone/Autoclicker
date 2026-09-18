@@ -28,7 +28,7 @@ CONTROL_FLOAT = "float"      # Kommazahl
 CONTROL_RATIO = "ratio"      # Kommazahl 0–1 (wird als Prozent angezeigt)
 CONTROL_TEXT = "text"        # einzeilig
 CONTROL_AREA = "area"        # mehrzeilig
-CONTROL_ENUM = "enum"        # feste Auswahl, `optionen`
+CONTROL_ENUM = "enum"        # feste Auswahl, `options`
 CONTROL_XY = "xy"            # Schalter + Koordinatenpaar (nur `scan_park_mouse`)
 
 CONTROLS = (CONTROL_BOOL, CONTROL_INT, CONTROL_FLOAT, CONTROL_RATIO, CONTROL_TEXT, CONTROL_AREA,
@@ -45,38 +45,38 @@ class M:
     """
     label: str
     kind: str
-    hilfe: str = ""
-    einheit: str = ""
+    help: str = ""
+    unit: str = ""
     # Für CONTROL_ENUM: (Wert, Beschriftung). Der Wert ist der, der in der Datei
     # steht — auch `None` (ocr_backend: automatisch).
-    optionen: tuple = ()
+    options: tuple = ()
     # Was ein leeres Feld bzw. eine 0 bedeutet ("unendlich", "Standard-Port").
     # Ohne diesen Text liest sich eine 0 wie "aus", und bei click_max_total
     # heisst sie das Gegenteil.
-    leer: str = ""
+    empty: str = ""
     # Ein Knopf UNTER dem Feld: `(Bruecken-Methode, Beschriftung)`. Dafuer gibt
     # es genau einen Fall und einen guten Grund — den Katalog konnte bis hierhin
     # nur `python tools/katalog.py` anlegen, also ausgerechnet die Datei, ohne
     # die das LLM frei raet, liess sich im Fenster nicht beschaffen. Wer die
     # Datei im Feld sieht, soll sie dort auch holen koennen.
-    aktion: tuple = ()
+    action: tuple = ()
     dep: str = ""            # wirkt nur, wenn dieses bool-Feld AN ist
     dep_nicht: str = ""      # wirkt nur, wenn dieses bool-Feld AUS ist
     dep_min: str = ""        # wirkt nur, wenn dieses Zahlfeld > 0 ist
 
     def as_dict(self) -> dict:
         """Als JSON-Werte für die Brücke — leere Felder fallen weg."""
-        data = {"label": self.label, "art": self.kind}
-        if self.hilfe:
-            data["hilfe"] = self.hilfe
-        if self.einheit:
-            data["einheit"] = self.einheit
-        if self.optionen:
-            data["optionen"] = [{"wert": w, "text": t} for w, t in self.optionen]
-        if self.leer:
-            data["leer"] = self.leer
-        if self.aktion:
-            data["aktion"] = {"befehl": self.aktion[0], "text": self.aktion[1]}
+        data = {"label": self.label, "kind": self.kind}
+        if self.help:
+            data["help"] = self.help
+        if self.unit:
+            data["unit"] = self.unit
+        if self.options:
+            data["options"] = [{"value": w, "text": t} for w, t in self.options]
+        if self.empty:
+            data["empty"] = self.empty
+        if self.action:
+            data["action"] = {"befehl": self.action[0], "text": self.action[1]}
         for name in ("dep", "dep_nicht", "dep_min"):
             value = getattr(self, name)
             if value:
@@ -100,15 +100,15 @@ META: dict = {
     "click_max_total": M(
         "Klicks gesamt maximal", CONTROL_INT,
         "Notaus über die Menge: nach so vielen Klicks stoppt der Lauf.",
-        leer="unbegrenzt"),
+        empty="unbegrenzt"),
     "click_move_delay": M(
         "Pause vor dem Klick", CONTROL_FLOAT,
         "Zeit zwischen Mausbewegung und Klick. Zu kurz, und das Spiel klickt "
-        "noch dort, wo die Maus vorher stand.", einheit="s"),
+        "noch dort, wo die Maus vorher stand.", unit="s"),
     "click_post_delay": M(
         "Pause nach dem Klick", CONTROL_FLOAT,
         "Zeit, bevor die Maus weiterziehen darf. Der häufigste Grund für einen "
-        "Klick, der im Spiel nicht ankommt.", einheit="s"),
+        "Klick, der im Spiel nicht ankommt.", unit="s"),
 
     # === SICHERHEIT ===
     "failsafe_enabled": M(
@@ -117,10 +117,10 @@ META: dict = {
         "wenn eine Sequenz etwas anderes tut als gedacht."),
     "failsafe_x": M(
         "Fail-Safe X", CONTROL_INT, "Löst aus, sobald die Maus-X-Koordinate "
-        "kleiner oder gleich diesem Wert ist.", einheit="px", dep="failsafe_enabled"),
+        "kleiner oder gleich diesem Wert ist.", unit="px", dep="failsafe_enabled"),
     "failsafe_y": M(
         "Fail-Safe Y", CONTROL_INT, "Löst aus, sobald die Maus-Y-Koordinate "
-        "kleiner oder gleich diesem Wert ist.", einheit="px", dep="failsafe_enabled"),
+        "kleiner oder gleich diesem Wert ist.", unit="px", dep="failsafe_enabled"),
 
     # === PIXEL-ERKENNUNG ===
     "punkt_radius": M(
@@ -128,7 +128,7 @@ META: dict = {
         "Bis zu diesem Abstand gilt eine Stelle als derselbe Punkt und wird "
         "wiederverwendet, statt einen zweiten anzulegen. Man trifft denselben "
         "Knopf beim Aufnehmen nie zweimal pixelgenau — so entstanden vier Punkte "
-        "auf einem Knopf. 0 = nur exakt gleiche Koordinate.", einheit="px"),
+        "auf einem Knopf. 0 = nur exakt gleiche Koordinate.", unit="px"),
     "punkt_farbtoleranz": M(
         "...aber nur bei gleicher Farbe", CONTROL_INT,
         "Weicht die Farbe stärker ab, entsteht IMMER ein eigener Punkt — auch einen Pixel daneben. An einer Farbgrenze klickt man zwei verschiedene Dinge, und zwei Spiele übereinander unterscheiden sich in nichts anderem.",
@@ -141,48 +141,48 @@ META: dict = {
     "pixel_wait_timeout": M(
         "Timeout Farb-Trigger", CONTROL_INT,
         "Wie lange ein Farb-Trigger auf seine Farbe wartet, bevor die Aktion "
-        "unten greift.", einheit="s", leer="unbegrenzt warten"),
+        "unten greift.", unit="s", empty="unbegrenzt warten"),
     "pixel_timeout_action": M(
         "Nach dem Timeout", CONTROL_ENUM,
         "Was passiert, wenn die Farbe nicht kommt und der Block kein ELSE hat. "
         "Die Voreinstellung bricht den ganzen Zyklus ab, nicht nur den Schritt.",
-        optionen=(("skip_cycle", "Zyklus abbrechen"),
+        options=(("skip_cycle", "Zyklus abbrechen"),
                   ("restart", "Sequenz neu starten"),
                   ("stop", "Sequenz stoppen"))),
     "pixel_check_interval": M(
         "Prüf-Intervall", CONTROL_FLOAT,
         "Wie oft die Farbe während des Wartens gemessen wird. Jede Messung ist "
         "ein Screenshot — kürzer heisst schneller reagieren und mehr Last.",
-        einheit="s"),
+        unit="s"),
     "pixel_max_consecutive_timeouts": M(
         "Notbremse nach X Timeouts", CONTROL_INT,
         "Laufen so viele Farb-Trigger hintereinander in ihren Timeout, stimmt "
         "etwas Grundsätzliches nicht (Fenster zu, Spiel abgestürzt).",
-        leer="keine Notbremse"),
+        empty="keine Notbremse"),
     "pixel_consecutive_action": M(
         "Notbremse tut", CONTROL_ENUM, "Was beim Auslösen der Notbremse passiert.",
-        optionen=(("stop", "Sequenz stoppen"),
+        options=(("stop", "Sequenz stoppen"),
                   ("quit", "Programm beenden"),
                   ("exit", "Programm beenden (sofort)")),
         dep_min="pixel_max_consecutive_timeouts"),
     "pixel_show_delay": M(
         "Zeiger-Dauer", CONTROL_FLOAT,
         "Wie lange die Maus beim Farbwarten auf dem Prüf-Pixel stehen bleibt.",
-        einheit="s", dep="debug_show_pixel_position"),
+        unit="s", dep="debug_show_pixel_position"),
 
     # === NACHPRUEFUNG ===
     "verify_timeout": M(
         "Wirkung abwarten", CONTROL_FLOAT,
         "Wie lange die Nachprüfung auf die erwartete Wirkung wartet, bevor sie "
-        "die Aktion wiederholt.", einheit="s"),
+        "die Aktion wiederholt.", unit="s"),
     "verify_retries": M(
         "Wiederholungen", CONTROL_INT,
         "Wie oft die Aktion neu ausgeführt wird, wenn nichts passiert ist. "
         "Der eigentliche Gewinn der Nachprüfung — der häufigste Grund für einen "
-        "wirkungslosen Klick ist vorübergehend.", leer="nicht wiederholen"),
+        "wirkungslosen Klick ist vorübergehend.", empty="nicht wiederholen"),
     "verify_interval": M(
         "Prüf-Intervall", CONTROL_FLOAT,
-        "Wie oft während der Nachprüfung gemessen wird.", einheit="s"),
+        "Wie oft während der Nachprüfung gemessen wird.", unit="s"),
 
     # === SCAN ===
     "scan_click_immediate": M(
@@ -196,10 +196,10 @@ META: dict = {
         "erkannt werden soll."),
     "scan_slot_delay": M(
         "Pause zwischen Slots", CONTROL_FLOAT, "Zeit zwischen zwei Slot-Scans.",
-        einheit="s"),
+        unit="s"),
     "scan_item_click_delay": M(
         "Pause nach Item-Klick", CONTROL_FLOAT,
-        "Zeit nach einem Klick auf ein gefundenes Item.", einheit="s"),
+        "Zeit nach einem Klick auf ein gefundenes Item.", unit="s"),
     "scan_marker_count": M(
         "Marker-Farben", CONTROL_INT,
         "Wie viele häufigste Farben beim Lernen eines Items gemerkt werden. "
@@ -216,13 +216,13 @@ META: dict = {
         "Pixel je Marker", CONTROL_INT,
         "Wie viele abgetastete Pixel eine Marker-Farbe treffen müssen. Über 1 "
         "macht die Erkennung unempfindlich gegen einzelne Rausch-Pixel.",
-        einheit="px"),
+        unit="px"),
     "scan_market_value_file": M(
         "Marktwert-Tabelle", CONTROL_TEXT,
         "Pfad zu einer Item→Gold-JSON aus market_analysis. Ist sie gesetzt, "
         "sortiert der Item-Scan seine Klicks nach Wert statt nach der von Hand "
         "getippten Priorität — und jedes Item MIT Wert gewinnt gegen jedes ohne.",
-        leer="nach getippter Priorität"),
+        empty="nach getippter Priorität"),
     "scan_catalog_file": M(
         "Item-Katalog", CONTROL_TEXT,
         "Pfad zur katalog.json mit den echten Item-Namen des Spiels. Der Knopf "
@@ -231,8 +231,8 @@ META: dict = {
         "Kategorie und Priorität, und die LLM-Benennung wählt aus den echten "
         "Namen statt frei zu raten. Die Kategorie hängt am Namen, nicht am "
         "LLM — sie funktioniert auch, wenn du den Namen selbst tippst.",
-        leer="Kategorie und Namen bleiben Handarbeit",
-        aktion=("catalog_fetch", "Katalog aus der Spiel-API holen")),
+        empty="Kategorie und Namen bleiben Handarbeit",
+        action=("catalog_fetch", "Katalog aus der Spiel-API holen")),
     "scan_slot_hsv_tolerance": M(
         "Slot-Toleranz (HSV)", CONTROL_INT,
         "Wie stark ein Slot-Hintergrund vom gelernten Farbton abweichen darf, "
@@ -241,7 +241,7 @@ META: dict = {
         "Slot-Einzug", CONTROL_INT,
         "Wie viele Pixel vom Slot-Rand ignoriert werden. Der Rahmen des Slots "
         "gehört nicht zum Item und verfälscht sonst jeden Vergleich.",
-        einheit="px"),
+        unit="px"),
     "scan_slot_color_distance": M(
         "Hintergrund-Abstand", CONTROL_INT,
         "Farbabstand, ab dem eine Farbe als Slot-Hintergrund gilt und beim "
@@ -253,7 +253,7 @@ META: dict = {
     "scan_confirm_delay": M(
         "Wartezeit vor Bestätigung", CONTROL_FLOAT,
         "Voreinstellung für neue Items: Pause vor dem Bestätigungs-Klick.",
-        einheit="s"),
+        unit="s"),
 
     # === LLM VISION ===
     "llm_enabled": M(
@@ -263,12 +263,12 @@ META: dict = {
         "wenn ein einzelner Boss-Scan sie anfordert."),
     "llm_provider": M(
         "Anbieter", CONTROL_ENUM, "Welche lokale Server-Software antwortet.",
-        optionen=(("ollama", "Ollama"), ("lmstudio", "LM Studio")),
+        options=(("ollama", "Ollama"), ("lmstudio", "LM Studio")),
         dep="llm_enabled"),
     "llm_endpoint": M(
         "API-Adresse", CONTROL_TEXT,
         "Volle URL, wenn der Server woanders läuft als auf dem Standard-Port.",
-        leer="Standard-Port des Anbieters", dep="llm_enabled"),
+        empty="Standard-Port des Anbieters", dep="llm_enabled"),
     "llm_model": M(
         "Modell", CONTROL_TEXT, "Name des Modells, wie der Server ihn kennt.",
         dep="llm_enabled"),
@@ -279,7 +279,7 @@ META: dict = {
         "Läuft ein Aufruf ab, wird EINMAL mit mehr Zeit nachgefragt: der erste "
         "Aufruf an einen frisch gestarteten Server lädt das Modell und dauert "
         "über zwei Minuten, die folgenden knapp drei Sekunden.",
-        einheit="s", dep="llm_enabled"),
+        unit="s", dep="llm_enabled"),
     "llm_retry_count": M(
         "Wiederholungen", CONTROL_INT,
         "Wie oft bei „kein Boss erkannt“ neu gefragt wird — mit einem frischen "
@@ -287,7 +287,7 @@ META: dict = {
         "Gilt für Boss- und Icon-Scans, nicht für die Item-Benennung: die "
         "fragt mit Temperatur 0 und bekäme zweimal dieselbe Antwort. Eine "
         "Zeitüberschreitung wird davon unabhängig einmal wiederholt.",
-        leer="nicht wiederholen", dep="llm_enabled"),
+        empty="nicht wiederholen", dep="llm_enabled"),
     "llm_async": M(
         "Im Hintergrund", CONTROL_BOOL,
         "Boss-Scan und Watcher in einem eigenen Thread — die Sequenz läuft "
@@ -295,7 +295,7 @@ META: dict = {
     "llm_boss_prompt": M(
         "Eigener Prompt", CONTROL_AREA,
         "Ersetzt den eingebauten Text an das Modell.",
-        leer="eingebauter Prompt", dep="llm_enabled"),
+        empty="eingebauter Prompt", dep="llm_enabled"),
     "llm_reasoning": M(
         "Reasoning zulassen", CONTROL_BOOL,
         "Denkschritte erlauben, wenn das Modell sie kann. Genauer und deutlich "
@@ -305,7 +305,7 @@ META: dict = {
     "llm_max_tokens": M(
         "Antwort-Länge", CONTROL_INT,
         "Obergrenze für die Antwort des Modells.",
-        leer="automatisch (128 / 2048 mit Reasoning)", dep="llm_enabled"),
+        empty="automatisch (128 / 2048 mit Reasoning)", dep="llm_enabled"),
     "llm_debug": M(
         "Antworten mitschreiben", CONTROL_BOOL,
         "Schreibt zu jeder Anfrage Modell, Prompt, die rohe JSON-Antwort und "
@@ -316,14 +316,14 @@ META: dict = {
         dep="llm_enabled"),
     "llm_watcher_interval": M(
         "Watcher-Intervall", CONTROL_FLOAT,
-        "Wie oft der Boss-Watcher nachsieht.", einheit="s", dep="llm_enabled"),
+        "Wie oft der Boss-Watcher nachsieht.", unit="s", dep="llm_enabled"),
     "llm_watcher_max_scans": M(
         "Watcher: max. Scans", CONTROL_INT,
         "Danach gibt der Watcher auf und die Sequenz läuft weiter.",
-        leer="unbegrenzt", dep="llm_enabled"),
+        empty="unbegrenzt", dep="llm_enabled"),
     "llm_watcher_timeout": M(
         "Watcher: Timeout", CONTROL_FLOAT,
-        "Zeitgrenze für den Watcher.", einheit="s", leer="unbegrenzt",
+        "Zeitgrenze für den Watcher.", unit="s", empty="unbegrenzt",
         dep="llm_enabled"),
     "boss_learn_global": M(
         "Neue Bosse global lernen", CONTROL_BOOL,
@@ -339,7 +339,7 @@ META: dict = {
         "allererste Aufruf von EasyOCR lädt Modelle aus dem Netz."),
     "ocr_backend": M(
         "Erkenner", CONTROL_ENUM, "Welche Bibliothek liest den Text.",
-        optionen=((None, "automatisch"), ("easyocr", "EasyOCR"),
+        options=((None, "automatisch"), ("easyocr", "EasyOCR"),
                   ("tesseract", "Tesseract")),
         dep="ocr_enabled"),
     "ocr_languages": M(
@@ -351,7 +351,7 @@ META: dict = {
     "ocr_retry_count": M(
         "Wiederholungen", CONTROL_INT,
         "Wie oft bei zu niedriger Konfidenz neu gelesen wird.",
-        leer="nicht wiederholen", dep="ocr_enabled"),
+        empty="nicht wiederholen", dep="ocr_enabled"),
 
     # === WINDOW-FOKUS ===
     "window_focus_check": M(
@@ -365,7 +365,7 @@ META: dict = {
     "window_focus_action": M(
         "Wenn nicht vorn", CONTROL_ENUM,
         "Was passiert, solange ein anderes Fenster den Fokus hat.",
-        optionen=(("pause", "warten, bis es vorn ist"),
+        options=(("pause", "warten, bis es vorn ist"),
                   ("stop", "Sequenz stoppen")),
         dep="window_focus_check"),
 
@@ -377,26 +377,26 @@ META: dict = {
     "humanize_click_jitter": M(
         "Klick-Streuung", CONTROL_INT,
         "Maximale Abweichung vom Punkt je Klick. Sinnvoll sind 2–5; zu viel "
-        "trifft den Knopf nicht mehr.", einheit="px", leer="exakt auf den Punkt",
+        "trifft den Knopf nicht mehr.", unit="px", empty="exakt auf den Punkt",
         dep="humanize_enabled"),
     "humanize_micro_delay_min": M(
         "Extra-Pause min", CONTROL_FLOAT,
         "Zusätzliche Zufallspause vor Klicks und Tasten, untere Grenze.",
-        einheit="s", dep="humanize_enabled"),
+        unit="s", dep="humanize_enabled"),
     "humanize_micro_delay_max": M(
         "Extra-Pause max", CONTROL_FLOAT,
         "Obere Grenze. Kleiner als das Minimum wird beim Speichern auf das "
-        "Minimum gehoben.", einheit="s", dep="humanize_enabled"),
+        "Minimum gehoben.", unit="s", dep="humanize_enabled"),
     "humanize_break_interval_min": M(
         "Pause alle", CONTROL_FLOAT,
         "Nach so vielen Minuten Laufzeit eine längere Pause einlegen.",
-        einheit="min", leer="keine Pausen", dep="humanize_enabled"),
+        unit="min", empty="keine Pausen", dep="humanize_enabled"),
     "humanize_break_duration_min": M(
         "Pausendauer min", CONTROL_FLOAT, "Untere Grenze der Pausendauer.",
-        einheit="min", dep="humanize_enabled"),
+        unit="min", dep="humanize_enabled"),
     "humanize_break_duration_max": M(
         "Pausendauer max", CONTROL_FLOAT, "Obere Grenze der Pausendauer.",
-        einheit="min", dep="humanize_enabled"),
+        unit="min", dep="humanize_enabled"),
 
     # === AUFNAHME ===
     "record_scroll": M(
@@ -417,7 +417,7 @@ META: dict = {
     "timing_pause_interval": M(
         "Puls während der Pause", CONTROL_FLOAT,
         "Wie oft eine pausierte Sequenz nachsieht, ob es weitergeht.",
-        einheit="s"),
+        unit="s"),
 
     # === DATEIEN ===
     "migrate_on_start": M(

@@ -87,11 +87,11 @@ def _status_events(events: list) -> list[dict]:
         event = events[i]
         delay = None if i == 0 else round(event.t - events[i - 1].t, 2)
         raus.append({
-            "nummer": i + 1,
+            "number": i + 1,
             "text": str(event),
             "zeit": "sofort" if delay is None else f"+{delay:.2f}s",
-            "farbe": list(event.color) if event.color else None,
-            "farbtext": _color_text(event.color),
+            "color": list(event.color) if event.color else None,
+            "color_text": _color_text(event.color),
         })
     return raus
 
@@ -102,16 +102,16 @@ def _write_status(state: AutoClickerState, events: list | None = None,
     try:
         with state.lock:
             liste = list(state.recording_events) if events is None else list(events)
-            laeuft = state.recording_active if active is None else active
+            running = state.recording_active if active is None else active
             pausiert = state.recording_paused
             name = state.recording_ui_name
         atomic_write(_RECORDING_STATUS, compact_json({
-            "aktiv": bool(laeuft),
-            "pausiert": bool(pausiert and laeuft),
+            "active": bool(running),
+            "pausiert": bool(pausiert and running),
             "name": name,
-            "anzahl": len(liste),
-            "ereignisse": _status_events(liste),
-            "stand": time.time(),
+            "count": len(liste),
+            "events": _status_events(liste),
+            "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError, AttributeError):
         pass
@@ -340,8 +340,8 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Aufgezeichnet: {arten}")
-        for key, aktion, label in RECORDING_HOTKEYS:
-            print(f"  {aktion + ':':24} {col(key, 'yellow')} "
+        for key, action, label in RECORDING_HOTKEYS:
+            print(f"  {action + ':':24} {col(key, 'yellow')} "
                   f"{hint('(' + label + ')')}")
         if not tasten:
             print(f"  {warn('Tastatur-Hook nicht installierbar — Tastendrücke fehlen.')}")
@@ -471,17 +471,17 @@ def build_phases(steps: list, grenzen: list[int]) -> list:
     danach etwas einfügen könnte.
     """
     schnitte = [0] + [min(g, len(steps)) for g in grenzen] + [len(steps)]
-    phasen = []
+    phases = []
     for anfang, ende_ in zip(schnitte, schnitte[1:]):
         teil = list(steps[anfang:ende_])
         if not teil:
             continue
-        number = len(phasen) + 1
+        number = len(phases) + 1
         name = "Loop" if number == 1 else f"Loop {number}"
-        phasen.append(LoopPhase(name=name, steps=teil, repeat=1))
-    if not phasen:
-        phasen.append(LoopPhase(name="Loop", steps=[], repeat=1))
-    return phasen
+        phases.append(LoopPhase(name=name, steps=teil, repeat=1))
+    if not phases:
+        phases.append(LoopPhase(name="Loop", steps=[], repeat=1))
+    return phases
 
 
 def check_markers(events: list) -> tuple[list, int]:

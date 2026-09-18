@@ -79,7 +79,7 @@ class ScanInteractionMixin:
 
     def scan_select(self, data: dict) -> dict:
         """Wählt einen Slot, ein Item oder einen Scan aus."""
-        kind = (data or {}).get("art") or ART_SLOT
+        kind = (data or {}).get("kind") or ART_SLOT
         name = str((data or {}).get("name") or "")
         if kind not in (ART_SLOT, ART_ITEM, ART_SCAN):
             return self._scan_report(f"Unbekannte Art '{kind}'.", "err")
@@ -286,17 +286,17 @@ class ScanInteractionMixin:
         if not self.items:
             return ""
         try:
-            found, geprueft, _, fremd, total = self._detect_run()
+            found, checked, _, foreign, total = self._detect_run()
         except Exception:            # OpenCV/NumPy-Innenleben — nie den Fund verlieren
             return ""
-        if not geprueft:
+        if not checked:
             return ""
         remaining = total - found
         text = f" · davon {found} mit bekanntem Item"
         if remaining:
             text += f", {remaining} noch unbekannt"
-        if fremd:
-            text += f" ({fremd} gehören noch nicht zu diesem Scan)"
+        if foreign:
+            text += f" ({foreign} gehören noch nicht zu diesem Scan)"
         return text
 
     def _search_corner(self, x: int, y: int) -> dict:
@@ -480,7 +480,7 @@ class ScanInteractionMixin:
         Korrektur am Slot unter dem Zeiger ist das Gegenteil davon.
         `messen` = ALT-Klick, `klick` = Doppelklick. Beides wählt den Slot mit aus.
         """
-        gesperrt = self._scan_requirement({"art": "item"})
+        gesperrt = self._scan_requirement({"kind": "item"})
         if gesperrt is not None:
             return gesperrt
         try:
@@ -556,7 +556,7 @@ class ScanInteractionMixin:
         """Ein Feld eines Slots setzen — Aktiv, Name, Region, Klickpunkt, Farbe."""
         name = str((data or {}).get("name") or "")
         feld = str((data or {}).get("feld") or "")
-        value = (data or {}).get("wert")
+        value = (data or {}).get("value")
         slot = self.slots.get(name)
         if slot is None:
             return self._scan_report(f"Slot '{name}' gibt es nicht.", "err")
@@ -568,7 +568,7 @@ class ScanInteractionMixin:
         # trauen kann, ist kaum besser als keins.
         if feld == "name":
             return self._slot_rename(slot, str(value or "").strip())
-        if feld == "aktiv":
+        if feld == "active":
             new = bool(value)
             if slot.enabled == new:
                 return self.scan_data()
@@ -576,7 +576,7 @@ class ScanInteractionMixin:
             slot.enabled = new
             return self._scan_changed(
                 f"{slot.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
-        if feld == "farbe":
+        if feld == "color":
             self._remember(f"'{name}': Hintergrundfarbe")
             slot.slot_color = rgbwert(value)
             return self._scan_changed(f"{slot.name}: Hintergrund {value or 'entfernt'}")
@@ -653,7 +653,7 @@ class ScanInteractionMixin:
             return self._scan_report("Kein Slot gewählt.", "warn")
         # Nur der erste Schritt einer Serie kommt auf den Stapel: STRG+Z soll
         # das ganze Verschieben zurücknehmen, nicht dessen letzten Pixel.
-        if (data or {}).get("zaehlt", True):
+        if (data or {}).get("counts", True):
             self._remember(f"{len(slots)} Slot(s) verschoben" if len(slots) > 1
                         else f"'{slots[0].name}' verschoben")
         for slot in slots:
@@ -681,16 +681,16 @@ class ScanInteractionMixin:
         hoehen = sorted(s.scan_region[3] - s.scan_region[1] for s in slots)
         target = (breiten[len(breiten) // 2], hoehen[len(hoehen) // 2])
         self._remember(f"{len(slots)} Slot(s) angeglichen")
-        geaendert = 0
+        changed = 0
         for slot in slots:
             old = tuple(slot.scan_region)
             new = self._to_size(old, target)
             if new != old:
                 slot.scan_region = new
                 self._treffer.pop(slot.name, None)
-                geaendert += 1
+                changed += 1
         return self._scan_changed(
-            f"{geaendert} von {len(slots)} Slot(s) auf {target[0]}×{target[1]} px gezogen.")
+            f"{changed} von {len(slots)} Slot(s) auf {target[0]}×{target[1]} px gezogen.")
 
     def scan_selection_color(self, data: Optional[dict] = None) -> dict:
         """Misst den Hintergrund jedes gewählten Slots neu — jeden an sich selbst.

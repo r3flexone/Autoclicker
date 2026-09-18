@@ -633,9 +633,9 @@ def slot_repair(state: AutoClickerState) -> bool:
 
     # Die gespeicherte Slot-Farbe wiederverwenden — die haengt nicht am Bildschirm-
     # Layout, und nochmal picken zu lassen waere eine Fehlerquelle ohne Gewinn.
-    farben = [s.slot_color for s in old_slots if s.slot_color]
-    if farben:
-        slot_color = max(set(farben), key=farben.count)
+    colors = [s.slot_color for s in old_slots if s.slot_color]
+    if colors:
+        slot_color = max(set(colors), key=colors.count)
         print(f"\n  Slot-Farbe aus dem Bestand: RGB{slot_color}")
     else:
         print("\n  Keine Farbe gespeichert — bitte einmalig picken.")

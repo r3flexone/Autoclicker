@@ -64,28 +64,28 @@ class BridgeViewMixin:
         text, kind = self._status
         frage, self._ask = self._ask, None
         return {
-            "datei": str(self.filepath),
+            "file": str(self.filepath),
             "start_view": self.start_view,
             "name": self.board.name,
             "beschreibung": self.board.description,
-            "zyklen": self.board.total_cycles,
+            "cycles": self.board.total_cycles,
             "dirty": self._dirty,
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
-            "warte_timeout": WARTE_TIMEOUT,
-            "status": {"text": text, "art": kind},
+            "wait_timeout": WARTE_TIMEOUT,
+            "status": {"text": text, "kind": kind},
             "frage": frage,
-            "sequenzen": sorted(name for name, _ in list_available_sequences()),
+            "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_namen": self._scan_names(),
             "typen": [{"key": t, "label": BLOCK_LABELS[t],
-                       "farbe": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
+                       "color": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
             "scan_modi": SCAN_MODI,
-            "else_aktionen": ELSE_AKTIONEN,
+            "else_actions": ELSE_AKTIONEN,
             "ohne_else": self._without_else(),
-            "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
-            "punkte": [self._point_json(p) for p in self.points],
-            "auswahl": self._selection_json(),
+            "phases": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
+            "points": [self._point_json(p) for p in self.points],
+            "selection": self._selection_json(),
             "block": self._block_detail(),
         }
 
@@ -102,20 +102,20 @@ class BridgeViewMixin:
         """
         try:
             from ...config import CONFIG_FILE
-            stand = Path(CONFIG_FILE).stat().st_mtime
+            stamp = Path(CONFIG_FILE).stat().st_mtime
         except OSError:
-            stand = 0.0
-        if stand != self._cfg_stand:
-            self._cfg_stand = stand
+            stamp = 0.0
+        if stamp != self._cfg_stand:
+            self._cfg_stand = stamp
             from ...config import CONFIG
             raw, fehler = self._config_file()
             if fehler:
                 self._cfg_info = {}
             else:
-                aktion = raw.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
+                action = raw.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
                 self._cfg_info = {
                     "sekunden": raw.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
-                    "folge": TIMEOUT_TEXT.get(aktion, aktion),
+                    "folge": TIMEOUT_TEXT.get(action, action),
                     "notbremse": raw.get("pixel_max_consecutive_timeouts",
                                          CONFIG.pixel_max_consecutive_timeouts)}
         return self._cfg_info
@@ -152,17 +152,17 @@ class BridgeViewMixin:
 
     def _point_json(self, p: PalettePoint) -> dict:
         return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
-                "farbe": _hex(p.color), "quelle": p.source}
+                "color": _hex(p.color), "source": p.source}
 
     def _phase_json(self, index: int, lane: Lane) -> dict:
         return {
             "index": index,
-            "art": lane.kind,
+            "kind": lane.kind,
             "name": lane.name,
             "wiederholungen": lane.repeat,
             "start": lane.scheduled_start or "",
-            "loeschbar": lane.kind == LANE_LOOP,
-            "bloecke": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
+            "deletable": lane.kind == LANE_LOOP,
+            "blocks": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
         }
 
     def _selection_json(self) -> dict:
@@ -182,7 +182,7 @@ class BridgeViewMixin:
         delay_max, max_gemischt = gemeinsam("delay_max")
         return {
             "phase": self._sel_index(),
-            "zeilen": rows,
+            "rows": rows,
             "delay_before": delay_before,
             "delay_before_gemischt": before_gemischt,
             "delay_max": delay_max,
@@ -196,17 +196,17 @@ class BridgeViewMixin:
         feld = SCAN_FELD.get(typ)
         point = self._point(step.point_id)
         block = {
-            "zeile": row,
+            "row": row,
             "typ": typ,
             "label": BLOCK_LABELS[typ],
-            "farbe": _hex(BLOCK_COLORS[typ]),
+            "color": _hex(BLOCK_COLORS[typ]),
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
-            "titel": step.name or "",
-            "zeilen": self._lines(step, typ),
-            "prueft": step.verify_condition is not None,
-            "haltepunkt": bool(step.breakpoint),
-            "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
+            "title": step.name or "",
+            "rows": self._lines(step, typ),
+            "checks": step.verify_condition is not None,
+            "breakpoint": bool(step.breakpoint),
+            "selected": self.sel_lane is lane and row in self.sel_rows,
             # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
             # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
             # Klick zeigte Koordinaten — und Koordinaten unterscheidet niemand
@@ -214,9 +214,9 @@ class BridgeViewMixin:
             # Ansicht hängt sie an die erste Zeile, denn dort steht die Stelle
             # (`_lines`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
-            "punkt_farbe": _hex(point.color) if point is not None else None,
-            "farbfeld": _hex(wc.color) if wc else None,
-            "farbtext": self._trigger_text(wc) if wc else "",
+            "point_color": _hex(point.color) if point is not None else None,
+            "color_swatch": _hex(wc.color) if wc else None,
+            "color_text": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
             # Ein ELSE, das nie feuern kann, steht sonst als Zusage auf der Karte.
             "else_greift": else_greift(step),
@@ -235,7 +235,7 @@ class BridgeViewMixin:
         untereinander lesbar bleiben.
 
         Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
-        hängt die Ansicht das Farbfeldchen des Punkts (`punkt_farbe`).
+        hängt die Ansicht das Farbfeldchen des Punkts (`point_color`).
         """
         if typ == BLOCK_SCREENSHOT:
             r = step.screenshot_region
@@ -294,10 +294,10 @@ class BridgeViewMixin:
         wc, vc, ec = step.wait_condition, step.verify_condition, step.else_config
         return {
             "phase": self.board.lanes.index(lane),
-            "zeile": row,
+            "row": row,
             "typ": typ,
             "label": BLOCK_LABELS[typ],
-            "farbe": _hex(BLOCK_COLORS[typ]),
+            "color": _hex(BLOCK_COLORS[typ]),
             "name": step.name or "",
             "point_id": step.point_id,
             # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
@@ -308,11 +308,11 @@ class BridgeViewMixin:
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
             # falschen Stelle"). Die Liste ist Zustand, also Text — nicht ⓘ.
-            "punkt_andere": (self._point_usages(step.point_id, ausser=step)
+            "point_others": (self._point_usages(step.point_id, ausser=step)
                              if step.point_id is not None else []),
             "x": step.x,
             "y": step.y,
-            "aufgenommene_farbe": _hex(step.recorded_color),
+            "captured_color": _hex(step.recorded_color),
             "delay_before": step.delay_before,
             "delay_max": step.delay_max or 0,
             "key_press": step.key_press or "",
@@ -326,13 +326,13 @@ class BridgeViewMixin:
             "scroll": step.scroll or 0,
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),
-            "trigger_punkt": wc.point_id if wc else None,
-            "trigger_pruefen": wc.check_only if wc else False,
+            "trigger_point": wc.point_id if wc else None,
+            "trigger_check": wc.check_only if wc else False,
             "verify": trigger_name(vc),
-            "verify_punkt": vc.point_id if vc else None,
-            "else_aktion": ec.action if ec else "",
+            "verify_point": vc.point_id if vc else None,
+            "else_action": ec.action if ec else "",
             "else_greift": else_greift(step),
-            "else_punkt": ec.point_id if ec else None,
+            "else_point": ec.point_id if ec else None,
             "else_taste": (ec.key or "") if ec else "",
             "else_delay": ec.delay if ec else 0,
         }

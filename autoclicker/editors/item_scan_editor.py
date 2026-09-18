@@ -45,12 +45,12 @@ def parse_range(user_input: str, count: int) -> Optional[tuple[int, int]]:
     if len(parts) != 2:
         return None
     try:
-        von, bis = int(parts[0]), int(parts[1])
+        von, until = int(parts[0]), int(parts[1])
     except ValueError:
         return None
-    if not (1 <= von <= count and 1 <= bis <= count):
+    if not (1 <= von <= count and 1 <= until <= count):
         return None
-    return (min(von, bis), max(von, bis))
+    return (min(von, until), max(von, until))
 
 
 def multi_select(prompt: str, entries: list, selected: list,
@@ -115,12 +115,12 @@ def multi_select(prompt: str, entries: list, selected: list,
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
             area = parse_range(inp, len(entries))
             if area:
-                von, bis = area
-                for nr in range(von, bis + 1):
+                von, until = area
+                for nr in range(von, until + 1):
                     name = entries[nr - 1]
                     if name not in selected:
                         selected.append(name)
-                print(f"  + {von}-{bis} hinzugefügt")
+                print(f"  + {von}-{until} hinzugefügt")
                 continue
             if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
                 print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(entries)}")

@@ -4,7 +4,7 @@ MODUS_WAHL = "wahl"
 MODUS_SLOT = "slot"
 MODUS_MESSEN = "messen"
 MODUS_KLICK = "klick"
-MODUS_BEREICH = "bereich"
+MODUS_BEREICH = "area"
 MODUS_FINDEN = "finden"
 MODI = (
     MODUS_WAHL,
@@ -21,7 +21,7 @@ MODI = (
 # ergibt bei Slots keinen Sinn, ein Slot-Suchlauf bei einem Boss keinen — zwei
 # Arten, zwei Werkzeugkästen.
 MODUS_REGION = "region"
-MODUS_AKTION = "aktion"
+MODUS_AKTION = "action"
 MODI_ERKENNUNG = (
     MODUS_WAHL,
     MODUS_REGION,

@@ -183,14 +183,14 @@ class ScanDetectMixin:
             "icon_offen": self.icon_offen,
         }
 
-    def _detection_undo(self, stand: dict) -> None:
-        self.boss_scans = stand.get("boss_scans", {})
-        self.icon_scans = stand.get("icon_scans", {})
-        self.global_bosses = stand.get("global_bosses", [])
-        self.boss_offen = stand.get("boss_offen", "")
-        self.boss_wahl = stand.get("boss_wahl", "")
-        self.boss_wahl_global = stand.get("boss_wahl_global", False)
-        self.icon_offen = stand.get("icon_offen", "")
+    def _detection_undo(self, stamp: dict) -> None:
+        self.boss_scans = stamp.get("boss_scans", {})
+        self.icon_scans = stamp.get("icon_scans", {})
+        self.global_bosses = stamp.get("global_bosses", [])
+        self.boss_offen = stamp.get("boss_offen", "")
+        self.boss_wahl = stamp.get("boss_wahl", "")
+        self.boss_wahl_global = stamp.get("boss_wahl_global", False)
+        self.icon_offen = stamp.get("icon_offen", "")
         # Ein Testergebnis gehört zu dem Stand, in dem es gemessen wurde.
         self._boss_test = self._icon_test = None
         self._boss_tests = {}
@@ -215,15 +215,15 @@ class ScanDetectMixin:
             # Was die Aktionen brauchen: die Punkte kennt die Sequenz-Seite der
             # Brücke, die Item-Scan-Namen der Item-Teil. Beides steht hier
             # nochmal, weil der Reiter sonst zwei Kanäle bräuchte.
-            "punkte": [{"id": p.id, "name": p.name or f"Punkt {p.id}",
+            "points": [{"id": p.id, "name": p.name or f"Punkt {p.id}",
                         "x": p.x, "y": p.y} for p in self.points],
             "item_scan_namen": sorted(self.scans, key=str.casefold),
-            "aktionen": {
-                "boss": [{"wert": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
+            "actions": {
+                "boss": [{"value": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
                          for a in _BOSS_AKTIONEN],
-                "icon": [{"wert": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
+                "icon": [{"value": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
                          for a in _ICON_AKTIONEN],
-                "scan_modi": [{"wert": w, "text": t} for w, t in _SCAN_MODI_TEXT],
+                "scan_modi": [{"value": w, "text": t} for w, t in _SCAN_MODI_TEXT],
             },
             "bereit": self._ready(),
         }
@@ -232,7 +232,7 @@ class ScanDetectMixin:
         return {
             "name": cfg.name,
             "region": list(cfg.scan_region),
-            "toleranz": cfg.color_tolerance,
+            "tolerance": cfg.color_tolerance,
             "default_action": cfg.default_action,
             "default_scan": cfg.default_scan,
             "use_llm": bool(cfg.use_llm),
@@ -247,15 +247,15 @@ class ScanDetectMixin:
             "name": b.name,
             "global": aus_bibliothek,
             "template": b.template,
-            "vorschau": self._template_url(b.template) if b.template else "",
+            "preview": self._template_url(b.template) if b.template else "",
             "konfidenz": b.min_confidence,
             "marker": [hexfarbe(c) for c in b.marker_colors],
-            "aktion": b.action,
+            "action": b.action,
             "scan": b.action_scan,
             "scan_modus": b.action_scan_mode,
             "point_id": b.action_point_id,
             "taste": b.action_key,
-            "verzoegerung": b.action_delay,
+            "delay": b.action_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie per Bild
             # erkannt — nur noch per OCR/LLM. Das ist keine Warnung, sondern
             # eine Auskunft: der Reiter sagt daneben, ob OCR überhaupt an ist.
@@ -269,14 +269,14 @@ class ScanDetectMixin:
             "name": cfg.name,
             "region": list(cfg.scan_region),
             "template": cfg.template,
-            "vorschau": self._template_url(cfg.template) if cfg.template else "",
+            "preview": self._template_url(cfg.template) if cfg.template else "",
             "konfidenz": cfg.min_confidence,
             "marker": [hexfarbe(c) for c in cfg.marker_colors],
-            "toleranz": cfg.color_tolerance,
-            "aktion": cfg.action,
+            "tolerance": cfg.color_tolerance,
+            "action": cfg.action,
             "point_id": cfg.action_point_id,
             "taste": cfg.action_key,
-            "verzoegerung": cfg.action_delay,
+            "delay": cfg.action_delay,
             "erkennung": ("template" if cfg.template
                           else ("marker" if cfg.marker_colors else "keine")),
             # **Der Ausschnitt zeigt, was der Scan sieht.** Nur für den offenen:
@@ -313,12 +313,12 @@ class ScanDetectMixin:
             "ocr_sprachen": list(CONFIG.ocr_languages or []),
             "ocr_min": CONFIG.ocr_min_confidence,
             "llm_an": bool(CONFIG.llm_enabled),
-            "llm_endpunkt": CONFIG.llm_endpoint,
+            "llm_endpoint": CONFIG.llm_endpoint,
             "llm_modell": CONFIG.llm_model or "",
             "llm_stand": self._llm_stand,
             "boss_learn_global": bool(CONFIG.boss_learn_global),
             "marker_alle": bool(CONFIG.scan_require_all_markers),
-            "marker_noetig": int(CONFIG.scan_min_markers_required),
+            "marker_required": int(CONFIG.scan_min_markers_required),
             "marker_min_pixel": int(CONFIG.scan_marker_min_pixels),
         }
 
@@ -357,13 +357,13 @@ class ScanDetectMixin:
         cfg = self.boss_scans.get(str(data.get("name") or self.boss_offen))
         if cfg is None:
             return self._scan_report("Kein Boss-Scan gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("wert")
+        feld, value = str(data.get("feld") or ""), data.get("value")
 
         if feld == "name":
             return self._detection_rename(self.boss_scans, cfg, value, "Boss-Scan")
         if feld == "region":
             return self._region_set(cfg, value, f"Boss-Scan '{cfg.name}'")
-        if feld == "toleranz":
+        if feld == "tolerance":
             number = self._integer(value)
             if number is None:
                 return self._scan_report("Die Farb-Toleranz muss eine Zahl sein.", "err")
@@ -484,7 +484,7 @@ class ScanDetectMixin:
         boss = self._boss_find(name, aus_bibliothek)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("wert")
+        feld, value = str(data.get("feld") or ""), data.get("value")
 
         if feld == "name":
             new = str(value or "").strip()
@@ -496,7 +496,7 @@ class ScanDetectMixin:
             boss.name = new
             self.boss_wahl = new
             return self._scan_changed(f"Boss heisst jetzt '{new}'.")
-        if feld == "aktion":
+        if feld == "action":
             if value not in VALID_BOSS_ACTIONS:
                 return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
             self._remember(f"Boss '{boss.name}': Aktion")
@@ -599,12 +599,12 @@ class ScanDetectMixin:
         cfg = self.icon_scans.get(str(data.get("name") or self.icon_offen))
         if cfg is None:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("wert")
+        feld, value = str(data.get("feld") or ""), data.get("value")
         if feld == "name":
             return self._detection_rename(self.icon_scans, cfg, value, "Icon-Scan")
         if feld == "region":
             return self._region_set(cfg, value, f"Icon-Scan '{cfg.name}'")
-        if feld == "aktion":
+        if feld == "action":
             if value not in VALID_ICON_ACTIONS:
                 return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
             self._remember(f"'{cfg.name}': Aktion")
@@ -641,7 +641,7 @@ class ScanDetectMixin:
             self._remember(f"{wer}: Konfidenz")
             objekt.min_confidence = number
             return self._scan_changed()
-        if feld == "toleranz":
+        if feld == "tolerance":
             number = self._integer(value)
             if number is None:
                 return self._scan_report("Die Toleranz muss eine ganze Zahl sein.", "err")
@@ -653,11 +653,11 @@ class ScanDetectMixin:
             objekt.template = str(value) or None
             return self._scan_changed()
         if feld == "marker":
-            farben = [rgbwert(h) for h in (value or [])]
+            colors = [rgbwert(h) for h in (value or [])]
             self._remember(f"{wer}: Marker")
-            objekt.marker_colors = [f for f in farben if f]
+            objekt.marker_colors = [f for f in colors if f]
             return self._scan_changed(f"{len(objekt.marker_colors)} Marker-Farbe(n).")
-        if feld == "punkt":
+        if feld == "point":
             point_id = self._integer(value)
             self._remember(f"{wer}: Klickpunkt")
             objekt.action_point_id = point_id
@@ -667,7 +667,7 @@ class ScanDetectMixin:
             self._remember(f"{wer}: Taste")
             objekt.action_key = str(value) or None
             return self._scan_changed()
-        if feld == "verzoegerung":
+        if feld == "delay":
             number = self._decimal(value)
             if number is None or number < 0:
                 return self._scan_report("Die Verzögerung muss eine Zahl ≥ 0 sein.", "err")
@@ -797,11 +797,11 @@ class ScanDetectMixin:
         modus = str(data.get("modus") or MODUS_REGION)
         if modus not in (MODUS_REGION, MODUS_AKTION, MODUS_WAHL):
             return self._scan_report(f"Unbekannter Modus '{modus}'.", "err")
-        kind = str(data.get("art") or "")
+        kind = str(data.get("kind") or "")
         if modus == MODUS_WAHL or (modus == self.scan_modus and self._region_ziel):
             self.scan_modus, self._region_ziel, self._ecke = MODUS_WAHL, None, None
             return self._scan_report("Zurück zum Auswählen.", "info")
-        gesperrt = self._scan_requirement({"art": kind})
+        gesperrt = self._scan_requirement({"kind": kind})
         if gesperrt is not None:
             return gesperrt
         target = self._target_check(kind)
@@ -861,7 +861,7 @@ class ScanDetectMixin:
         # **Ein zu kleines Rechteck laesst das Werkzeug an.** Sonst muesste man
         # nach jedem Verklicken erst wieder die Kachel suchen — und genau dieses
         # Verklicken ist der Grund, warum es zwei Klicks und kein Ziehen sind.
-        if antwort["status"]["art"] in ("warn", "err"):
+        if antwort["status"]["kind"] in ("warn", "err"):
             return antwort
         self._tool_done()
         # Nochmal melden: die Antwort von oben traegt den Modus von VOR dem
@@ -968,13 +968,13 @@ class ScanDetectMixin:
             return self._scan_report(
                 "Die Region liegt ausserhalb des Bildes — erst neu aufnehmen.", "warn")
         from ..item_editor.markers import _collect_markers_silent
-        farben = _collect_markers_silent(crop)
-        if not farben:
+        colors = _collect_markers_silent(crop)
+        if not colors:
             return self._scan_report("Keine Farben gefunden.", "warn")
         self._remember(f"'{objekt.name}': Marker gemessen")
-        objekt.marker_colors = farben
+        objekt.marker_colors = colors
         return self._scan_changed(
-            f"{len(farben)} Marker-Farbe(n) aus der Region gemessen.")
+            f"{len(colors)} Marker-Farbe(n) aus der Region gemessen.")
 
     def _detection_target(self, data: dict):
         """(Profil, Scan-Konfiguration) für Vorlage/Marker/Test.
@@ -982,7 +982,7 @@ class ScanDetectMixin:
         Beim Icon ist beides dasselbe Objekt, beim Boss nicht: die Region gehört
         dem Scan, Vorlage und Marker gehören dem einzelnen Boss.
         """
-        kind = str(data.get("art") or "")
+        kind = str(data.get("kind") or "")
         if kind == "icon":
             cfg = self.icon_scans.get(str(data.get("name") or self.icon_offen))
             return cfg, cfg
@@ -1006,12 +1006,12 @@ class ScanDetectMixin:
         if boss is None or cfg is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
         result = self._profile_check(boss, cfg.scan_region, cfg.color_tolerance)
-        result["aktion"] = self._action_text(boss)
+        result["action"] = self._action_text(boss)
         self._boss_test = result
         self._boss_tests[boss.name] = result
         return self._scan_report(
-            (f"'{boss.name}' erkannt ({result['grund']})." if result["ok"]
-             else f"'{boss.name}' nicht erkannt: {result['grund']}."),
+            (f"'{boss.name}' erkannt ({result['reason']})." if result["ok"]
+             else f"'{boss.name}' nicht erkannt: {result['reason']}."),
             "ok" if result["ok"] else "warn")
 
     def boss_test_all(self, data: Optional[dict] = None) -> dict:
@@ -1032,7 +1032,7 @@ class ScanDetectMixin:
         self._boss_tests = {}
         for boss in bosse:
             result = self._profile_check(boss, cfg.scan_region, cfg.color_tolerance)
-            result["aktion"] = self._action_text(boss)
+            result["action"] = self._action_text(boss)
             self._boss_tests[boss.name] = result
         match = [n for n, e in self._boss_tests.items() if e["ok"]]
         # Die Reihenfolge IST die Priorität: der erste Treffer gewinnt im Lauf.
@@ -1060,13 +1060,13 @@ class ScanDetectMixin:
         if cfg is None:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
         result = self._profile_check(cfg, cfg.scan_region, cfg.color_tolerance)
-        result["aktion"] = self._action_text(cfg)
+        result["action"] = self._action_text(cfg)
         if not result["ok"] and cfg.marker_colors:
             result["vorschlag"] = self._tolerance_proposal(cfg)
         self._icon_test = result
         return self._scan_report(
-            (f"Icon erkannt ({result['grund']})." if result["ok"]
-             else f"Icon nicht erkannt: {result['grund']}."),
+            (f"Icon erkannt ({result['reason']})." if result["ok"]
+             else f"Icon nicht erkannt: {result['reason']}."),
             "ok" if result["ok"] else "warn")
 
     def _profile_check(self, profil, region, tolerance: int) -> dict:
@@ -1095,18 +1095,18 @@ class ScanDetectMixin:
             reason = (f"{found} von {total} Markern" if ok
                      else f"{found} von {total} Markern · nötig {noetig}")
         result = self._test_result(profil, ok, reason)
-        result.update({"konfidenz": round(value, 4), "dauer": round(duration),
-                         "marker_gefunden": found, "marker_gesamt": total,
-                         "marker_noetig": noetig, "toleranz": tolerance,
+        result.update({"konfidenz": round(value, 4), "duration": round(duration),
+                         "marker_gefunden": found, "marker_total": total,
+                         "marker_required": noetig, "tolerance": tolerance,
                          "methode": "Template" if profil.template else "Marker"})
         return result
 
     @staticmethod
     def _test_result(profil, ok: bool, reason: str) -> dict:
-        return {"name": profil.name, "ok": ok, "grund": reason, "methode": None,
-                "konfidenz": None, "dauer": 0, "marker_gefunden": 0,
-                "marker_gesamt": len(profil.marker_colors), "marker_noetig": 0,
-                "toleranz": 0, "aktion": "", "vorschlag": None}
+        return {"name": profil.name, "ok": ok, "reason": reason, "methode": None,
+                "konfidenz": None, "duration": 0, "marker_gefunden": 0,
+                "marker_total": len(profil.marker_colors), "marker_required": 0,
+                "tolerance": 0, "action": "", "vorschlag": None}
 
     @staticmethod
     def _marker_count(profil, crop, tolerance: int) -> tuple:
@@ -1136,26 +1136,26 @@ class ScanDetectMixin:
         for tolerance in range(cfg.color_tolerance + 4, 121, 4):
             found, total, noetig = self._marker_count(cfg, crop, tolerance)
             if total and found >= noetig:
-                return {"feld": "toleranz", "wert": tolerance,
+                return {"feld": "tolerance", "value": tolerance,
                         "text": f"Toleranz auf {tolerance} setzen"}
         return None
 
     def _action_text(self, objekt) -> str:
         """Was bei einem Treffer passieren WÜRDE — als Satz, nicht als Tat."""
-        aktion = objekt.action
-        verzoegerung = getattr(objekt, "action_delay", 0) or 0
-        nachsatz = f" nach {verzoegerung:g} s" if verzoegerung else ""
-        if aktion == BOSS_ACTION_SCAN:
+        action = objekt.action
+        delay = getattr(objekt, "action_delay", 0) or 0
+        nachsatz = f" nach {delay:g} s" if delay else ""
+        if action == BOSS_ACTION_SCAN:
             return f"Item-Scan „{getattr(objekt, 'action_scan', None) or '—'}“{nachsatz}"
-        if aktion == BOSS_ACTION_CLICK:
+        if action == BOSS_ACTION_CLICK:
             point = next((p for p in self.points
                           if p.id == objekt.action_point_id), None)
             wohin = (f"Punkt #{point.id} ({point.name})" if point
                      else "Punkt fehlt — nichts würde geklickt")
             return f"{wohin} klicken{nachsatz}"
-        if aktion == BOSS_ACTION_KEY:
+        if action == BOSS_ACTION_KEY:
             return f"Taste „{objekt.action_key or '—'}“{nachsatz}"
-        return ACTION_TEXT.get(aktion, aktion) + nachsatz
+        return ACTION_TEXT.get(action, action) + nachsatz
 
     def ocr_check(self, data: Optional[dict] = None) -> dict:
         """Ist überhaupt ein OCR-Backend installiert?
@@ -1172,11 +1172,11 @@ class ScanDetectMixin:
             from ... import ocr
             backends = ocr.available_backends()
         except ImportError as fehler:
-            self._ocr_stand = {"da": False, "backends": [], "grund": str(fehler)}
+            self._ocr_stand = {"da": False, "backends": [], "reason": str(fehler)}
             return self._scan_report(f"OCR nicht verfügbar: {fehler}", "warn")
         self._ocr_stand = {
-            "da": bool(backends), "backends": backends, "grund": "",
-            "dauer": round((time.perf_counter() - beginn) * 1000),
+            "da": bool(backends), "backends": backends, "reason": "",
+            "duration": round((time.perf_counter() - beginn) * 1000),
         }
         if not backends:
             return self._scan_report(
@@ -1208,12 +1208,12 @@ class ScanDetectMixin:
         erreichbar, message = test_connection(
             CONFIG.llm_provider, CONFIG.llm_endpoint, CONFIG.llm_model)
         self._llm_stand = {
-            "erreichbar": erreichbar, "grund": "" if erreichbar else message,
-            "endpunkt": CONFIG.llm_endpoint or chat_endpoint(CONFIG.llm_provider),
-            "dauer": round((time.perf_counter() - beginn) * 1000),
+            "erreichbar": erreichbar, "reason": "" if erreichbar else message,
+            "endpoint": CONFIG.llm_endpoint or chat_endpoint(CONFIG.llm_provider),
+            "duration": round((time.perf_counter() - beginn) * 1000),
         }
         return self._scan_report(
-            f"{message} ({self._llm_stand['dauer']} ms)",
+            f"{message} ({self._llm_stand['duration']} ms)",
             "ok" if erreichbar else "warn")
 
     # ------------------------------------------------------------- Speichern

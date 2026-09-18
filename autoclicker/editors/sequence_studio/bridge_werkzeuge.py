@@ -58,29 +58,29 @@ class BridgeWerkzeugeMixin:
         from ..sequence_recorder import RECORDING_HOTKEYS
         self._scan_load()
         return {
-            "punkte": [{"id": p.id, "name": p.name or f"Punkt #{p.id}",
+            "points": [{"id": p.id, "name": p.name or f"Punkt #{p.id}",
                         "x": p.x, "y": p.y,
-                        "farbe": list(p.color) if p.color else None,
-                        "verwendungen": self._point_usages(p.id)}
+                        "color": list(p.color) if p.color else None,
+                        "usages": self._point_usages(p.id)}
                        for p in self.points],
             "kalibrierung": self._calib_json(),
             # Dieselbe Zahl wie in der Momentaufnahme: mehrere Werkzeuge
             # hier warten mit der Maus auf ENTER und blockieren dabei die
             # Bruecke. Der Reiter braucht sie, ohne den Editor zu fragen.
-            "warte_timeout": WARTE_TIMEOUT,
-            "umfang": [{"schluessel": k, "text": t, "vorgabe": v}
+            "wait_timeout": WARTE_TIMEOUT,
+            "umfang": [{"key": k, "text": t, "vorgabe": v}
                        for k, t, v in KALIB_UMFANG],
             "aufnahme_tasten": [list(line) for line in RECORDING_HOTKEYS],
             # Welche Sequenz offen ist, gehoert hierher: die Kopfleiste blendet
             # ihre Bedienelemente in diesem Reiter aus (er bearbeitet andere
             # Dateien), und ohne diese Angabe weiss man bei der Klick-Runde
             # nicht, welche Sequenz man gleich nachklickt.
-            "sequenz": self.board.name,
+            "sequence": self.board.name,
             # Jede Datei heisst nun `sequence.json`; unterscheidbar ist der
             # bereinigte Besitzer-Ordner.
-            "datei": self.filepath.parent.name,
+            "file": self.filepath.parent.name,
             "offen": bool(self._dirty),
-            "laeuft": self._running(),
+            "running": self._running(),
         }
 
     def _point_usages(self, point_id: int, ausser=None) -> list[str]:
@@ -124,12 +124,12 @@ class BridgeWerkzeugeMixin:
     def tool_point_capture(self, data: Optional[dict] = None) -> dict:
         """Legt einen freien Punkt an oder misst einen vorhandenen neu."""
         if self._running():
-            return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
+            return {"ok": False, "message": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         data = data or {}
         point = self._point_with_id(data.get("point_id"))
         x, y, message = self._await_position()
         if x is None:
-            return {"ok": False, "meldung": message + " — nichts geändert."}
+            return {"ok": False, "message": message + " — nichts geändert."}
         color = self._color_at(x, y)
         if point is None:
             from .model import PalettePoint
@@ -141,131 +141,131 @@ class BridgeWerkzeugeMixin:
                 source="Sequenz-Studio",
             )
             self.points.append(point)
-            aktion = "angelegt"
+            action = "angelegt"
         else:
             point.x, point.y = x, y
             if color:
                 point.color = tuple(color)
-            aktion = "neu gemessen"
+            action = "neu gemessen"
         self._points_apply()
         self._dirty = True
         return {"ok": True, "point_id": point.id,
-                "meldung": f"Punkt #{point.id} {aktion}: ({x}, {y})."}
+                "message": f"Punkt #{point.id} {action}: ({x}, {y})."}
 
     def tool_point_set(self, data: Optional[dict] = None) -> dict:
         """Ändert Name, Koordinate oder Farbe eines Punktes aus der Werkzeugliste."""
         data = data or {}
         point = self._point_with_id(data.get("point_id"))
         if point is None:
-            return {"ok": False, "meldung": "Punkt nicht gefunden."}
-        feld, value = str(data.get("feld") or ""), data.get("wert")
+            return {"ok": False, "message": "Punkt nicht gefunden."}
+        feld, value = str(data.get("feld") or ""), data.get("value")
         try:
             if feld in ("x", "y"):
                 setattr(point, feld, int(value))
             elif feld == "name":
                 point.name = str(value or "").strip()
-            elif feld == "farbe":
+            elif feld == "color":
                 from .model import rgbwert
                 point.color = rgbwert(value)
             else:
-                return {"ok": False, "meldung": f"Unbekanntes Feld '{feld}'."}
+                return {"ok": False, "message": f"Unbekanntes Feld '{feld}'."}
         except (TypeError, ValueError):
-            return {"ok": False, "meldung": f"'{value}' ist kein gültiger Wert."}
+            return {"ok": False, "message": f"'{value}' ist kein gültiger Wert."}
         self._points_apply()
         self._dirty = True
-        return {"ok": True, "meldung": f"Punkt #{point.id} geändert."}
+        return {"ok": True, "message": f"Punkt #{point.id} geändert."}
 
     def tool_point_show(self, data: Optional[dict] = None) -> dict:
         """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
         if self._running():
-            return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
+            return {"ok": False, "message": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         point = self._point_with_id((data or {}).get("point_id"))
         if point is None:
-            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+            return {"ok": False, "message": "Punkt nicht gefunden."}
         from ...winapi import set_cursor_pos
         set_cursor_pos(point.x, point.y)
         current = self._color_at(point.x, point.y)
         return {"ok": True, "point_id": point.id,
                 "gespeichert": list(point.color) if point.color else None,
-                "aktuell": list(current) if current else None,
-                "meldung": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
+                "current": list(current) if current else None,
+                "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
 
     def tool_point_delete(self, data: Optional[dict] = None) -> dict:
         """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
         point = self._point_with_id((data or {}).get("point_id"))
         if point is None:
-            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+            return {"ok": False, "message": "Punkt nicht gefunden."}
         verwendet = self._point_usages(point.id)
         if verwendet:
-            return {"ok": False, "verwendungen": verwendet,
-                    "meldung": f"Punkt #{point.id} wird noch {len(verwendet)}× verwendet."}
+            return {"ok": False, "usages": verwendet,
+                    "message": f"Punkt #{point.id} wird noch {len(verwendet)}× verwendet."}
         self.points.remove(point)
         self._dirty = True
-        return {"ok": True, "meldung": f"Punkt #{point.id} gelöscht."}
+        return {"ok": True, "message": f"Punkt #{point.id} gelöscht."}
 
     # ---------------------------------------------------------- Farbanalysator
 
     def tool_colors(self, data: Optional[dict] = None) -> dict:
         """Farbe unter der Maus oder häufigste Farben einer Region/Vollbild."""
         if self._running():
-            return {"ok": False, "meldung": "Eine Sequenz läuft — Analyse ist gesperrt."}
-        kind = str((data or {}).get("art") or "punkt")
-        if kind == "punkt":
+            return {"ok": False, "message": "Eine Sequenz läuft — Analyse ist gesperrt."}
+        kind = str((data or {}).get("kind") or "point")
+        if kind == "point":
             x, y, message = self._await_position()
             if x is None:
-                return {"ok": False, "meldung": message + " — nichts analysiert."}
+                return {"ok": False, "message": message + " — nichts analysiert."}
             color = self._color_at(x, y)
             if not color:
-                return {"ok": False, "meldung": "Farbe konnte nicht gelesen werden."}
+                return {"ok": False, "message": "Farbe konnte nicht gelesen werden."}
             from ...imaging import get_color_name
-            return {"ok": True, "art": "punkt", "stelle": [x, y],
-                    "farben": [self._color_json(tuple(color), 1, 1, get_color_name)],
-                    "meldung": f"Farbe bei ({x}, {y}) gelesen."}
+            return {"ok": True, "kind": "point", "position": [x, y],
+                    "colors": [self._color_json(tuple(color), 1, 1, get_color_name)],
+                    "message": f"Farbe bei ({x}, {y}) gelesen."}
 
         region = None
         if kind == "region":
             x1, y1, message = self._await_position()
             if x1 is None:
-                return {"ok": False, "meldung": message + " — keine erste Ecke."}
+                return {"ok": False, "message": message + " — keine erste Ecke."}
             x2, y2, message = self._await_position()
             if x2 is None:
-                return {"ok": False, "meldung": message + " — keine zweite Ecke."}
+                return {"ok": False, "message": message + " — keine zweite Ecke."}
             region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             if region[2] - region[0] < 2 or region[3] - region[1] < 2:
-                return {"ok": False, "meldung": "Der gewählte Bereich ist zu klein."}
-        elif kind == "vollbild":
+                return {"ok": False, "message": "Der gewählte Bereich ist zu klein."}
+        elif kind == "fullscreen":
             # ENTER ist die Übergabe: Das Studio kann in den Hintergrund, bevor
             # der Screenshot entsteht.
             _, _, message = self._await_position()
             if message:
-                return {"ok": False, "meldung": message + " — nichts analysiert."}
+                return {"ok": False, "message": message + " — nichts analysiert."}
         else:
-            return {"ok": False, "meldung": "Unbekannte Analyseart."}
+            return {"ok": False, "message": "Unbekannte Analyseart."}
 
         from ...imaging import analyze_screen_colors, get_color_name
-        zaehler = analyze_screen_colors(region)
-        if not zaehler:
-            return {"ok": False, "meldung": "Keine Farben gefunden (Pillow installiert?)."}
-        total = sum(zaehler.values())
-        top = sorted(zaehler.items(), key=lambda e: e[1], reverse=True)[:20]
-        return {"ok": True, "art": kind, "region": list(region) if region else None,
-                "farben": [self._color_json(f, n, total, get_color_name) for f, n in top],
-                "meldung": f"{total} Stichproben analysiert."}
+        counters = analyze_screen_colors(region)
+        if not counters:
+            return {"ok": False, "message": "Keine Farben gefunden (Pillow installiert?)."}
+        total = sum(counters.values())
+        top = sorted(counters.items(), key=lambda e: e[1], reverse=True)[:20]
+        return {"ok": True, "kind": kind, "region": list(region) if region else None,
+                "colors": [self._color_json(f, n, total, get_color_name) for f, n in top],
+                "message": f"{total} Stichproben analysiert."}
 
     @staticmethod
     def _color_json(color, count: int, total: int, namensfunktion) -> dict:
         r, g, b = (int(v) for v in color[:3])
         return {"rgb": [r, g, b], "hex": f"#{r:02X}{g:02X}{b:02X}",
-                "name": namensfunktion((r, g, b)), "anzahl": int(count),
+                "name": namensfunktion((r, g, b)), "count": int(count),
                 "anteil": round(100.0 * count / max(1, total), 1)}
 
     def _running(self) -> bool:
         """Läuft gerade eine Sequenz? Aus der Statusdatei, wie im Live-Run."""
         try:
-            stand = self.run_status()
+            stamp = self.run_status()
         except Exception:                                        # noqa: BLE001
             return False
-        return bool(isinstance(stand, dict) and stand.get("aktiv"))
+        return bool(isinstance(stamp, dict) and stamp.get("active"))
 
     def _calib_json(self) -> dict:
         """Der Stand der laufenden Kalibrierung — leer, solange keine läuft."""
@@ -279,8 +279,8 @@ class BridgeWerkzeugeMixin:
                         "y": round(transform.get("offset_y", 0.0), 1)},
             "skalierung": {"x": round(transform.get("scale_x", 1.0), 4),
                            "y": round(transform.get("scale_y", 1.0), 4)},
-            "identitaet": self._is_identity(transform),
-            "vorschau": self._kalib.get("vorschau", []),
+            "identity": self._is_identity(transform),
+            "preview": self._kalib.get("preview", []),
         }
 
     @staticmethod
@@ -303,15 +303,15 @@ class BridgeWerkzeugeMixin:
         try:
             report = check_setup(self._inventory())
         except Exception as e:                                   # noqa: BLE001
-            return {"ok": False, "meldung": f"Prüfung fehlgeschlagen: {e}",
-                    "befunde": [], "geprueft": []}
+            return {"ok": False, "message": f"Prüfung fehlgeschlagen: {e}",
+                    "befunde": [], "checked": []}
         return {
             "ok": True,
-            "befunde": [{"stufe": b.level, "bereich": b.area, "text": b.text,
+            "befunde": [{"stufe": b.level, "area": b.area, "text": b.text,
                          "tipp": b.tip} for b in report.befunde],
-            "geprueft": list(report.geprueft),
+            "checked": list(report.checked),
             "fehler": sum(1 for b in report.befunde if b.level == LEVEL_ERROR),
-            "hinweise": sum(1 for b in report.befunde if b.level != LEVEL_ERROR),
+            "hints": sum(1 for b in report.befunde if b.level != LEVEL_ERROR),
         }
 
     # ------------------------------------------------------------- Kalibrieren
@@ -330,29 +330,29 @@ class BridgeWerkzeugeMixin:
         Referenzpunkt, der danebenliegt, verschiebt nicht sich selbst, sondern
         ALLES — das ist der eine Handgriff, bei dem ein Vergreifen den ganzen
         Bestand kostet. Weicht die Farbe an der neuen Stelle von der
-        gespeicherten ab, kommt deshalb `bestaetigen` zurück statt eines
+        gespeicherten ab, kommt deshalb `confirm` zurück statt eines
         gesetzten Punktes. Mit `bestaetigt: true` gilt er trotzdem: manchmal hat
         sich das Spiel geändert, und dann ist die abweichende Farbe richtig.
         Verboten wird nichts, es geht nur nicht mehr aus Versehen.
         """
         data = data or {}
-        number = 2 if int(data.get("nummer") or 1) == 2 else 1
+        number = 2 if int(data.get("number") or 1) == 2 else 1
         point = self._point_with_id(data.get("point_id"))
         if point is None:
-            return {"ok": False, "meldung": "Punkt nicht gefunden."}
+            return {"ok": False, "message": "Punkt nicht gefunden."}
         if number == 2 and not self._kalib.get("ref1"):
-            return {"ok": False, "meldung": "Erst den ersten Referenzpunkt setzen."}
+            return {"ok": False, "message": "Erst den ersten Referenzpunkt setzen."}
         if number == 2 and self._kalib["ref1"]["point_id"] == point.id:
             return {"ok": False,
-                    "meldung": "Der zweite Punkt muss ein anderer sein — "
+                    "message": "Der zweite Punkt muss ein anderer sein — "
                                "am besten weit weg vom ersten."}
 
         x, y, message = self._await_position()
         if x is None:
-            return {"ok": False, "meldung": message + " — nichts geändert."}
+            return {"ok": False, "message": message + " — nichts geändert."}
 
         pruefung = self._color_check(point, x, y)
-        if pruefung is not None and not data.get("bestaetigt"):
+        if pruefung is not None and not data.get("confirmed"):
             return pruefung
 
         self._kalib[f"ref{number}"] = {
@@ -370,7 +370,7 @@ class BridgeWerkzeugeMixin:
             zusatz = " — Farbe weicht ab, trotzdem übernommen"
         elif gemessen and point.color:
             zusatz = " — Farbe passt"
-        return {"ok": True, "meldung": f"{point.name or point.id}: "
+        return {"ok": True, "message": f"{point.name or point.id}: "
                                        f"({point.x}, {point.y}) → ({x}, {y}){zusatz}"}
 
     @staticmethod
@@ -404,14 +404,14 @@ class BridgeWerkzeugeMixin:
             return None
         return {
             "ok": False,
-            "bestaetigen": True,
+            "confirm": True,
             "point_id": point.id,
-            "erwartet": list(point.color),
+            "expected": list(point.color),
             "gemessen": list(gemessen),
             "abstand": distance,
-            "toleranz": CONFIG.punkt_farbtoleranz,
-            "stelle": [x, y],
-            "meldung": (f"Andere Farbe als gespeichert (Abstand {distance}, erlaubt "
+            "tolerance": CONFIG.punkt_farbtoleranz,
+            "position": [x, y],
+            "message": (f"Andere Farbe als gespeichert (Abstand {distance}, erlaubt "
                         f"{CONFIG.punkt_farbtoleranz}). Triffst du wirklich "
                         f"'{point.name or point.id}'?"),
         }
@@ -424,7 +424,7 @@ class BridgeWerkzeugeMixin:
         Zugeständnis macht der Konsolen-Weg mit `_adjust_offset()`.
         """
         if not self._kalib.get("transform"):
-            return {"ok": False, "meldung": "Es läuft keine Kalibrierung."}
+            return {"ok": False, "message": "Es läuft keine Kalibrierung."}
         transform = dict(self._kalib["transform"])
         for achse in ("x", "y"):
             value = (data or {}).get(achse)
@@ -433,15 +433,15 @@ class BridgeWerkzeugeMixin:
             try:
                 transform[f"offset_{achse}"] = float(value)
             except (TypeError, ValueError):
-                return {"ok": False, "meldung": f"'{value}' ist keine Zahl."}
+                return {"ok": False, "message": f"'{value}' ist keine Zahl."}
         self._kalib["transform"] = transform
         self._calib_preview()
-        return {"ok": True, "meldung": "Versatz übernommen."}
+        return {"ok": True, "message": "Versatz übernommen."}
 
     def calib_cancel(self, data: Optional[dict] = None) -> dict:
         """Alles vergessen. Geschrieben wurde bis hierher nichts."""
         self._kalib = {}
-        return {"ok": True, "meldung": "Kalibrierung verworfen — nichts geändert."}
+        return {"ok": True, "message": "Kalibrierung verworfen — nichts geändert."}
 
     def calib_apply(self, data: Optional[dict] = None) -> dict:
         """Sichern, umrechnen, den Hauptprozess neu laden lassen.
@@ -460,13 +460,13 @@ class BridgeWerkzeugeMixin:
         from ...import_export import calibrate_inventory, backup_before_calibration
         transform = self._kalib.get("transform")
         if not transform:
-            return {"ok": False, "meldung": "Es läuft keine Kalibrierung."}
+            return {"ok": False, "message": "Es läuft keine Kalibrierung."}
         if self._is_identity(transform):
             return {"ok": False,
-                    "meldung": "Der Transform ändert nichts — nichts zu tun."}
+                    "message": "Der Transform ändert nichts — nichts zu tun."}
         if self._running():
             return {"ok": False,
-                    "meldung": "Eine Sequenz läuft. Erst stoppen — sonst klickt "
+                    "message": "Eine Sequenz läuft. Erst stoppen — sonst klickt "
                                "sie mitten im Umrechnen auf halb verschobene Stellen."}
 
         umfang = {k: bool((data or {}).get(k, v)) for k, _, v in KALIB_UMFANG}
@@ -475,7 +475,7 @@ class BridgeWerkzeugeMixin:
         try:
             zaehlung = calibrate_inventory(state, transform, **umfang)
         except Exception as e:                                   # noqa: BLE001
-            return {"ok": False, "meldung": f"Kalibrierung fehlgeschlagen: {e}"}
+            return {"ok": False, "message": f"Kalibrierung fehlgeschlagen: {e}"}
 
         self._kalib = {}
         self._after_calibration()
@@ -483,7 +483,7 @@ class BridgeWerkzeugeMixin:
         message = f"Kalibriert: {parts or 'nichts geändert'}."
         if sicherung:
             message += f" Sicherung: {sicherung}"
-        return {"ok": True, "meldung": message, "sicherung": sicherung or ""}
+        return {"ok": True, "message": message, "sicherung": sicherung or ""}
 
     def _after_calibration(self) -> None:
         """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
@@ -528,14 +528,14 @@ class BridgeWerkzeugeMixin:
         from ...import_export import calibration_preview
         transform = self._kalib.get("transform")
         if not transform:
-            self._kalib["vorschau"] = []
+            self._kalib["preview"] = []
             return
         try:
             lines = calibration_preview(self._inventory(), transform)
         except Exception:                                        # noqa: BLE001
-            self._kalib["vorschau"] = []
+            self._kalib["preview"] = []
             return
-        self._kalib["vorschau"] = [
+        self._kalib["preview"] = [
             {"was": str(was), "vorher": list(vorher), "nachher": list(nachher)}
             for was, vorher, nachher in lines[:40]
         ]
@@ -553,21 +553,21 @@ class BridgeWerkzeugeMixin:
         from ...mailbox import send_command
         if self._running():
             return {"ok": False,
-                    "meldung": "Eine Sequenz läuft — Nachklicken braucht die "
+                    "message": "Eine Sequenz läuft — Nachklicken braucht die "
                                "Maus für sich."}
         if self._dirty:
             return {"ok": False,
-                    "meldung": "Erst speichern: die Runde klickt die Sequenz von "
+                    "message": "Erst speichern: die Runde klickt die Sequenz von "
                                "Platte nach, nicht die im Fenster."}
         # Die Datei MIT: der Hauptprozess hat womoeglich eine ganz andere Sequenz
         # geladen als die hier offene. Ohne sie klickt man eine Runde lang die
         # Punkte einer fremden Sequenz nach - dieselbe Falle, die `command_start`
         # laengst vermeidet.
         if not send_command("nachklick", file=str(self.filepath)):
-            return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
+            return {"ok": False, "message": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = True
         return {"ok": True,
-                "meldung": f"Nachklicken für '{self.board.name}' gestartet — der "
+                "message": f"Nachklicken für '{self.board.name}' gestartet — der "
                            "Zeiger steht auf dem ersten Punkt, geklickt wird im Spiel."}
 
     def reclick_end(self, data: Optional[dict] = None) -> dict:
@@ -592,13 +592,13 @@ class BridgeWerkzeugeMixin:
         discard = bool((data or {}).get("verwerfen"))
         # Warum verworfen wurde, weiss nur der Aufrufer — der Hauptprozess kann
         # den Knopf nicht vom geschlossenen Fenster unterscheiden.
-        reason = str((data or {}).get("grund") or "knopf")
+        reason = str((data or {}).get("reason") or "knopf")
         if not send_command("nachklick_stop", discard="1" if discard else "0",
                      reason=reason):
-            return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
+            return {"ok": False, "message": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
         return {"ok": True,
-                "meldung": ("Verworfen — sequence.json bleibt, wie sie war."
+                "message": ("Verworfen — sequence.json bleibt, wie sie war."
                             if discard else
                             "Übernommen — was gesetzt wurde, steht im "
                             "Konsolenfenster.")}
@@ -623,21 +623,21 @@ class BridgeWerkzeugeMixin:
         import json
         import time
         from ...config import RECLICK_STATUS_FILE
-        leer = {"aktiv": False, "index": 0, "gesamt": 0, "verlauf": [],
-                "punkt": {}, "verwaist": False}
+        empty = {"active": False, "index": 0, "total": 0, "history": [],
+                "point": {}, "verwaist": False}
         try:
             with open(RECLICK_STATUS_FILE, "r", encoding="utf-8") as f:
-                stand = json.load(f)
+                stamp = json.load(f)
         except (OSError, ValueError):
-            return leer
-        if not isinstance(stand, dict):
-            return leer
+            return empty
+        if not isinstance(stamp, dict):
+            return empty
         # Ein abgestuerzter Hauptprozess hinterlaesst ein „aktiv" ohne jemanden
         # dahinter. Am Alter erkennbar, und nur solange es aktiv behauptet: eine
         # abgeschlossene Runde ist Vergangenheit und darf alt sein.
-        old = time.time() - float(stand.get("stand") or 0)
-        stand["verwaist"] = bool(stand.get("aktiv") and old > self.NACHKLICK_ALTER)
-        return stand
+        old = time.time() - float(stamp.get("stamp") or 0)
+        stamp["verwaist"] = bool(stamp.get("active") and old > self.NACHKLICK_ALTER)
+        return stamp
 
     def reclick_on_close(self) -> None:
         """Beim Zumachen des Fensters: eine offene Runde verwerfen.
@@ -649,4 +649,4 @@ class BridgeWerkzeugeMixin:
         """
         if not self._nachklick_gestartet:
             return
-        self.reclick_end({"verwerfen": True, "grund": "fenster"})
+        self.reclick_end({"verwerfen": True, "reason": "window"})

@@ -90,8 +90,8 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
 
         if not isinstance(data, dict):
             raise ValueError("Sequenz muss ein JSON-Objekt sein")
-        phasen = data.get("loop_phases", [])
-        if not isinstance(phasen, list) or any(not isinstance(p, dict) for p in phasen):
+        phases = data.get("loop_phases", [])
+        if not isinstance(phases, list) or any(not isinstance(p, dict) for p in phases):
             raise ValueError("Loop-Phasen müssen eine Liste von Objekten sein")
         data, messages = migrate(data, KIND_SEQUENCE)
         if messages:

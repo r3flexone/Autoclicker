@@ -171,10 +171,10 @@ def _load_template(template_path: str):
         logger.error(f"Template nicht gefunden: {template_path}")
         return None
 
-    stand = (st.st_mtime, st.st_size)
+    stamp = (st.st_mtime, st.st_size)
     entry = _template_cache.get(template_path)
-    if entry is not None and entry["stand"] == stand:
-        return entry["bild"]
+    if entry is not None and entry["stamp"] == stamp:
+        return entry["image"]
 
     # UNCHANGED statt COLOR: ein Template mit Alpha-Kanal traegt darin seine
     # Maske. Ohne das faellt sie beim Laden weg und niemand merkt es.
@@ -187,7 +187,7 @@ def _load_template(template_path: str):
 
     if len(_template_cache) >= _TEMPLATE_CACHE_MAX:
         _template_cache.clear()
-    _template_cache[template_path] = {"stand": stand, "bild": image, "skaliert": {}}
+    _template_cache[template_path] = {"stamp": stamp, "image": image, "skaliert": {}}
     return image
 
 

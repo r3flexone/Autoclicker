@@ -96,11 +96,11 @@ class LinuxBackendTests(unittest.TestCase):
             self.assertEqual(1, linux_x11.poll_hotkey())
 
     def test_fensteraufloesung_bevorzugt_exakten_titel(self):
-        fenster = [
+        window = [
             ("Idle Clans - Hilfe", (0, 0, 100, 100), 1),
             ("Idle Clans", (200, 100, 500, 400), 2),
         ]
-        with patch.object(linux_x11, "list_windows", return_value=fenster):
+        with patch.object(linux_x11, "list_windows", return_value=window):
             self.assertEqual(2, linux_x11.resolve_window("Idle Clans")[2])
 
     def test_linux_pixelmessung_nutzt_plattformaufnahme(self):

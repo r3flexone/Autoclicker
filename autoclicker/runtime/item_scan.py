@@ -209,9 +209,9 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
         # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
         rueckwaerts = config.reverse
-        fenster_titel = config.capture_window_title
+        window_title = config.capture_window_title
         fenster_index = config.capture_window_index
-        fenster_referenz = (tuple(config.capture_window_rect)
+        window_reference = (tuple(config.capture_window_rect)
                             if config.capture_window_rect else None)
 
     found_items = []
@@ -233,18 +233,18 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     # beide Wege sehen wirklich dieselben Pixel aus derselben Aufnahmemethode.
     fensterbild = None
     window_rect = None
-    if fenster_titel:
-        fenster = resolve_window(fenster_titel, fenster_index, fenster_referenz)
-        if fenster is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' nicht "
+    if window_title:
+        window = resolve_window(window_title, fenster_index, window_reference)
+        if window is None:
+            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' nicht "
                       "gefunden. Spiel öffnen oder die Aufnahmequelle im Studio "
                       "neu wählen."))
             return []
         if debug:
             screenshot_start = time.time()
-        aufnahme = take_consistent_window_screenshot(fenster[2])
+        aufnahme = take_consistent_window_screenshot(window[2])
         if aufnahme is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' konnte "
+            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' konnte "
                       "nicht aufgenommen werden."))
             return []
         fensterbild, window_rect, hinweis = aufnahme
@@ -255,11 +255,11 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
                 print(warn(f"Item-Scan '{scan_name}':{hinweis}"))
         if debug:
             screenshot_ms = (time.time() - screenshot_start) * 1000
-            print(dbg(f"Fenster '{fenster_titel}' einmal aufgenommen: "
+            print(dbg(f"Fenster '{window_title}' einmal aufgenommen: "
                       f"{fensterbild.size[0]}x{fensterbild.size[1]}px "
                       f"in {screenshot_ms:.0f}ms"))
 
-        referenz = fenster_referenz or window_rect
+        referenz = window_reference or window_rect
         try:
             slots_to_scan = [ItemSlot(
                 name=slot.name,
@@ -490,10 +490,10 @@ def load_market_values(path: str) -> dict:
         st = os.stat(path)
     except OSError:
         return {}
-    stand = (st.st_mtime, st.st_size)
+    stamp = (st.st_mtime, st.st_size)
     entry = _marktwert_cache.get(path)
-    if entry is not None and entry["stand"] == stand:
-        return entry["werte"]
+    if entry is not None and entry["stamp"] == stamp:
+        return entry["values"]
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -509,7 +509,7 @@ def load_market_values(path: str) -> dict:
             values[str(name)] = float(value)
         except (TypeError, ValueError):
             continue
-    _marktwert_cache[path] = {"stand": stand, "werte": values}
+    _marktwert_cache[path] = {"stamp": stamp, "values": values}
     return values
 
 

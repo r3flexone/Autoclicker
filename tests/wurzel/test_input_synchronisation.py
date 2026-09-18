@@ -52,12 +52,12 @@ class EingabeSynchronisationTest(unittest.TestCase):
                         entschieden.set()
                     return original_pause(s, text)
 
-                def gesendet(*_args):
+                def sent(*_args):
                     entschieden.set()
                     return True
 
                 sender = [mocks.enter_context(patch.object(actions, "send_" + name,
-                                                          side_effect=gesendet))
+                                                          side_effect=sent))
                           for name in ("click", "key", "scroll")]
                 mocks.enter_context(patch.object(actions, "is_target_window_active", side_effect=fokus))
                 mocks.enter_context(patch.object(actions, "get_foreground_window_title", return_value="Editor"))

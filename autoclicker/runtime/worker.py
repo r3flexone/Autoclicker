@@ -134,9 +134,9 @@ def sequence_worker(state: AutoClickerState) -> None:
         if state.session_log is not None:
             print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
             log_event(state, "session_start", detail=sequence.name)
-        status.write_status(state, {"aktiv": True, "sequenz": sequence.name,
-                                "zyklen": sequence.total_cycles,
-                                "phasen": _phase_overview(sequence),
+        status.write_status(state, {"active": True, "sequence": sequence.name,
+                                "cycles": sequence.total_cycles,
+                                "phases": _phase_overview(sequence),
                                 "start": state.start_time}, sofort=True)
         _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
@@ -351,7 +351,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
             status.write_status(state, {"phase": "INIT", "phase_index": -1,
                                     "phase_pos": _phase_pos(sequence, "init"),
                                     "durchlauf": 1, "wiederholungen": 1,
-                                    "bloecke": total_init}, sofort=True)
+                                    "blocks": total_init}, sofort=True)
             for i, step in enumerate(sequence.init_steps):
                 if state.stop_event.is_set() or state.quit_event.is_set():
                     break
@@ -393,7 +393,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 state.clicked_categories.clear()
 
             cycle_str = f"Zyklus {cycle_count}" if total_cycles == 0 else f"Zyklus {cycle_count}/{total_cycles}"
-            status.write_status(state, {"zyklus": cycle_count, "zyklen": total_cycles},
+            status.write_status(state, {"cycle": cycle_count, "cycles": total_cycles},
                             sofort=True)
 
             # LOOP-Phasen
@@ -432,15 +432,15 @@ def _phase_overview(sequence) -> list[dict]:
     """
     raus = []
     if sequence.init_steps:
-        raus.append({"name": "INIT", "art": "init",
+        raus.append({"name": "INIT", "kind": "init",
                      "schritte": len(sequence.init_steps)})
     for phase in sequence.loop_phases:
-        raus.append({"name": phase.name, "art": "loop",
+        raus.append({"name": phase.name, "kind": "loop",
                      "schritte": len(phase.steps),
                      "wiederholungen": phase.repeat,
                      "start": phase.scheduled_start or ""})
     if sequence.end_steps:
-        raus.append({"name": "END", "art": "end",
+        raus.append({"name": "END", "kind": "end",
                      "schritte": len(sequence.end_steps)})
     return raus
 
@@ -486,7 +486,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         status.write_status(state, {"phase": loop_phase.name, "phase_index": idx,
                                 "phase_pos": _phase_pos(sequence, "loop", idx),
                                 "wiederholungen": loop_phase.repeat,
-                                "bloecke": total_steps}, sofort=True)
+                                "blocks": total_steps}, sofort=True)
 
         for repeat_num in range(1, loop_phase.repeat + 1):
             if state.stop_event.is_set() or state.quit_event.is_set():
@@ -524,7 +524,7 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
     status.write_status(state, {"phase": "END", "phase_index": -1,
                             "phase_pos": _phase_pos(sequence, "end"),
                             "durchlauf": 1, "wiederholungen": 1,
-                            "bloecke": total_end}, sofort=True)
+                            "blocks": total_end}, sofort=True)
 
     for i, step in enumerate(sequence.end_steps):
         if state.quit_event.is_set():

@@ -55,15 +55,15 @@ class ScanCaptureMixin:
         cfg = self.scans.get(self.scan_offen)
         image, hinweis, fenster_genutzt, ausrichtung_warnung = None, "", False, False
         if cfg is not None and cfg.capture_window_title:
-            fenster = resolve_window(
+            window = resolve_window(
                 cfg.capture_window_title, cfg.capture_window_index,
                 cfg.capture_window_rect)
-            if fenster is None:
+            if window is None:
                 self.scan_fenster_id = 0
                 return self._scan_report(
                     f"Fenster '{cfg.capture_window_title}' nicht gefunden. Spiel "
                     "öffnen oder rechts eine andere Aufnahmequelle wählen.", "err")
-            self.scan_fenster_id = int(fenster[2])
+            self.scan_fenster_id = int(window[2])
             image, area, hinweis = self._window_image()
             if image is None:
                 return self._scan_report(
@@ -183,20 +183,20 @@ class ScanCaptureMixin:
             self.scan_bereich = tuple(cfg.capture_window_rect)
         try:
             from ...winapi import resolve_window
-            fenster = resolve_window(
+            window = resolve_window(
                 cfg.capture_window_title, cfg.capture_window_index,
                 cfg.capture_window_rect)
         except ImportError:
-            fenster = None
-        if fenster is None:
+            window = None
+        if window is None:
             return False
-        self.scan_fenster_id = int(fenster[2])
+        self.scan_fenster_id = int(window[2])
         return True
 
     @staticmethod
     def _area_from(data: dict) -> Optional[tuple]:
         """Liest `area` aus einer Anfrage — vier Zahlen oder nichts."""
-        raw = (data or {}).get("bereich")
+        raw = (data or {}).get("area")
         if not raw or len(raw) != 4:
             return None
         try:
@@ -216,9 +216,9 @@ class ScanCaptureMixin:
         if self._foto_info is None:
             return ""
         f = self._foto_info
-        rand = (f["links"], f["oben"],
-                f["links"] + round(f["breite"] / f["skala"]),
-                f["oben"] + round(f["hoehe"] / f["skala"]))
+        rand = (f["left"], f["top"],
+                f["left"] + round(f["width"] / f["scale"]),
+                f["top"] + round(f["height"] / f["scale"]))
         draussen = [s for s in self._scan_slots() if s.scan_region
                     and not (rand[0] <= s.scan_region[0] and s.scan_region[2] <= rand[2]
                              and rand[1] <= s.scan_region[1] and s.scan_region[3] <= rand[3])]
@@ -242,25 +242,25 @@ class ScanCaptureMixin:
             return gesperrt
         neuer_bereich = self._area_from(data or {})
         try:
-            fenster_id = int((data or {}).get("fenster") or 0)
+            window_id = int((data or {}).get("window") or 0)
         except (TypeError, ValueError):
-            fenster_id = 0
+            window_id = 0
 
         cfg = self.scans.get(self.scan_offen)
-        if fenster_id:
+        if window_id:
             try:
                 from ...winapi import list_windows
-                fenster = list_windows()
+                window = list_windows()
             except ImportError:
-                fenster = []
-            selected = next((e for e in fenster if int(e[2]) == fenster_id), None)
+                window = []
+            selected = next((e for e in window if int(e[2]) == window_id), None)
             if selected is None:
                 return self._scan_report(
                     "Das gewählte Fenster ist nicht mehr offen. Liste neu wählen.", "err")
             title, rechteck, _kennung = selected
-            gleich = [e for e in fenster if e[0].casefold() == title.casefold()]
+            gleich = [e for e in window if e[0].casefold() == title.casefold()]
             index = next((i for i, e in enumerate(gleich)
-                          if int(e[2]) == fenster_id), 0)
+                          if int(e[2]) == window_id), 0)
             if cfg is not None:
                 aenderung = (cfg.capture_window_title != title
                               or cfg.capture_window_index != index
@@ -275,7 +275,7 @@ class ScanCaptureMixin:
                     if cfg.capture_window_rect is None:
                         cfg.capture_window_rect = tuple(rechteck)
                     self._scan_dirty = True
-            self.scan_fenster_id = fenster_id
+            self.scan_fenster_id = window_id
             self.scan_bereich = tuple(rechteck)
         else:
             if cfg is not None and (cfg.capture_window_title
@@ -311,7 +311,7 @@ class ScanCaptureMixin:
             from ...winapi import list_windows
         except ImportError:
             return []
-        return [{"titel": title, "bereich": list(rechteck), "id": kennung}
+        return [{"title": title, "area": list(rechteck), "id": kennung}
                 for title, rechteck, kennung in list_windows()]
 
     def _click_area(self, x: int, y: int) -> dict:
@@ -332,7 +332,7 @@ class ScanCaptureMixin:
             return self._scan_report("Zu klein — nochmal aufziehen.", "warn")
 
         ausschnitt = crop_region(self._foto, (x1, y1, x2, y2),
-                                 int(self._foto_info["links"]), int(self._foto_info["oben"]))
+                                 int(self._foto_info["left"]), int(self._foto_info["top"]))
         if ausschnitt is None:
             return self._scan_report("Der Bereich liegt nicht im Bild.", "warn")
         # Ein von Hand gesetzter Ausschnitt ist kleiner als das Fenster — ab
@@ -374,8 +374,8 @@ class ScanCaptureMixin:
         try:
             from PIL import PngImagePlugin
             info = PngImagePlugin.PngInfo()
-            info.add_text("links", str(int(left)))
-            info.add_text("oben", str(int(top)))
+            info.add_text("left", str(int(left)))
+            info.add_text("top", str(int(top)))
             path = self._photo_path(self.scan_offen)
             path.parent.mkdir(parents=True, exist_ok=True)
             image.save(path, "PNG", pnginfo=info)
@@ -403,7 +403,7 @@ class ScanCaptureMixin:
             return False
         text = getattr(image, "text", {}) or {}
         try:
-            left, top = int(text.get("links", 0)), int(text.get("oben", 0))
+            left, top = int(text.get("left", 0)), int(text.get("top", 0))
         except (TypeError, ValueError):
             left, top = 0, 0
         self._foto = image.convert("RGB")
@@ -428,25 +428,25 @@ class ScanCaptureMixin:
         schirm = get_virtual_desktop()
         return None if schirm and tuple(schirm) == tuple(rechteck) else rechteck
 
-    def _display_image(self, left: int, top: int, stand: float) -> None:
+    def _display_image(self, left: int, top: int, stamp: float) -> None:
         """Verkleinert das Original für die Übertragung und merkt die Geometrie."""
         image = self._foto
-        skala = min(1.0, FOTO_MAX_BREITE / image.width) if image.width else 1.0
-        anzeige = image if skala >= 1.0 else image.resize(
-            (max(1, int(image.width * skala)), max(1, int(image.height * skala))))
+        scale = min(1.0, FOTO_MAX_BREITE / image.width) if image.width else 1.0
+        anzeige = image if scale >= 1.0 else image.resize(
+            (max(1, int(image.width * scale)), max(1, int(image.height * scale))))
         self._foto_bild = _als_datenurl(anzeige, "PNG")
         self._foto_info = {
-            "links": left, "oben": top,
-            "breite": anzeige.width, "hoehe": anzeige.height,
-            "skala": round(anzeige.width / image.width, 6) if image.width else 1.0,
-            "stand": stand,
+            "left": left, "top": top,
+            "width": anzeige.width, "height": anzeige.height,
+            "scale": round(anzeige.width / image.width, 6) if image.width else 1.0,
+            "stamp": stamp,
         }
 
     def scan_image(self, data: Optional[dict] = None) -> str:
         """Das Bild als data:-URL — getrennt geholt, weil es gross ist.
 
         Stünde es in `scan_data()`, ginge es bei jedem Klick erneut durch die
-        Brücke. Die Seite holt es einmal je Aufnahme (`foto.stand` ändert sich).
+        Brücke. Die Seite holt es einmal je Aufnahme (`photo.stand` ändert sich).
         """
         return self._foto_bild
 
@@ -454,8 +454,8 @@ class ScanCaptureMixin:
         """Die Farbe an einer Bildschirmstelle — aus dem Originalbild."""
         if self._foto is None or self._foto_info is None:
             return None
-        px = int(x) - int(self._foto_info["links"])
-        py = int(y) - int(self._foto_info["oben"])
+        px = int(x) - int(self._foto_info["left"])
+        py = int(y) - int(self._foto_info["top"])
         if not (0 <= px < self._foto.width and 0 <= py < self._foto.height):
             return None
         try:
@@ -469,5 +469,5 @@ class ScanCaptureMixin:
         if self._foto is None or self._foto_info is None or not region:
             return None
         return crop_region(self._foto, tuple(region),
-                           int(self._foto_info["links"]), int(self._foto_info["oben"]))
+                           int(self._foto_info["left"]), int(self._foto_info["top"]))
 

@@ -29,7 +29,7 @@ def _counters(state) -> dict:
     with state.lock:
         return {"klicks": state.total_clicks, "items": state.items_found,
                 "tasten": state.key_presses, "timeouts": state.timeouts,
-                "uebersprungen": state.skipped_cycles, "neustarts": state.restarts}
+                "skipped": state.skipped_cycles, "neustarts": state.restarts}
 
 
 def write_status(state, teil: dict, sofort: bool = False) -> None:
@@ -47,8 +47,8 @@ def write_status(state, teil: dict, sofort: bool = False) -> None:
         return
     _zuletzt = jetzt
     try:
-        _state["zaehler"] = _counters(state)
-        _state["stand"] = time.time()
+        _state["counters"] = _counters(state)
+        _state["stamp"] = time.time()
         atomic_write(STATUS_PATH, compact_json(_state))
     except (OSError, TypeError, ValueError, AttributeError):
         pass
@@ -57,18 +57,18 @@ def write_status(state, teil: dict, sofort: bool = False) -> None:
 def waiting_for(state, teil) -> None:
     """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
 
-    Zeiten stehen als absolute Zeitstempel darin (`seit`, `bis`), nicht als
+    Zeiten stehen als absolute Zeitstempel darin (`since`, `until`), nicht als
     Restsekunden: mit Restwerten ruckelte der Countdown im Sekundenraster des
     Workers. Beide Prozesse laufen auf derselben Uhr.
 
     Das Abmelden schreibt sofort — zwischen „Farbe erkannt" und dem nächsten
     Block liegt noch die eigene Aktion des Schritts.
     """
-    write_status(state, {"warten": teil}, sofort=teil is None)
+    write_status(state, {"waiting": teil}, sofort=teil is None)
 
 
 def heartbeat(state) -> None:
-    """„Ich lebe noch" — schiebt `stand` vor, ohne etwas zu ändern.
+    """„Ich lebe noch" — schiebt `stamp` vor, ohne etwas zu ändern.
 
     Der Leser erkennt einen abgestürzten Lauf am Alter des Zeitstempels; ohne
     Lebenszeichen sähe genau der Lauf tot aus, der gerade wartet. Gehört
@@ -91,11 +91,11 @@ def schedule_run(sequence: str, zielzeit: float) -> None:
     _zuletzt = 0.0
     try:
         atomic_write(STATUS_PATH, compact_json({
-            "aktiv": False,
+            "active": False,
             "countdown": True,
-            "sequenz": sequence,
+            "sequence": sequence,
             "zielzeit": float(zielzeit),
-            "stand": time.time(),
+            "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError):
         pass
@@ -118,23 +118,23 @@ def end_schedule() -> None:
 # `phase`/`phase_pos` bleiben bewusst drin: WO ein Lauf aufgehoert hat, ist die
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
-_MOMENT_FIELDS = ("block", "bloecke", "block_titel", "block_label", "block_set_type",
-                  "block_seit", "warten", "durchlauf", "manuell")
+_MOMENT_FIELDS = ("block", "blocks", "block_title", "block_label", "block_set_type",
+                  "block_seit", "waiting", "durchlauf", "manual")
 
 
 def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:
     """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
 
     Der letzte Stand bleibt als abgeschlossener Lauf liegen (`aktiv: False`
-    plus `ende`), bis der nächste Start ihn überschreibt; sonst wäre die
+    plus `end`), bis der nächste Start ihn überschreibt; sonst wäre die
     Live-Ansicht genau dann leer, wenn man sie ansieht. Der Leser unterscheidet
     drei Fälle am Inhalt:
 
     | Datei | bedeutet |
     |---|---|
-    | `aktiv: True`, `stand` frisch | läuft |
-    | `aktiv: True`, `stand` älter als 5 s | abgestürzt (verwaist) |
-    | `aktiv: False` mit `ende` | fertig, hier ist die Zusammenfassung |
+    | `aktiv: True`, `stamp` frisch | läuft |
+    | `aktiv: True`, `stamp` älter als 5 s | abgestürzt (verwaist) |
+    | `aktiv: False` mit `end` | fertig, hier ist die Zusammenfassung |
 
     Die Altersregel gilt nur für den ersten Fall. Ohne `state` (der Lauf lief
     gar nicht erst an) wird gelöscht — eine Zusammenfassung ohne Zahlen wäre keine.
@@ -144,19 +144,19 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
     _state.clear()
     _zuletzt = 0.0
     try:
-        if state is None or not letzter.get("sequenz"):
+        if state is None or not letzter.get("sequence"):
             STATUS_PATH.unlink(missing_ok=True)
             return
         for feld in _MOMENT_FIELDS:
             letzter.pop(feld, None)
         letzter.update({
-            "aktiv": False,
-            "ende": time.time(),
-            "grund": reason,
+            "active": False,
+            "end": time.time(),
+            "reason": reason,
             "gelaufen": cycles,
-            "dauer": duration,
-            "zaehler": _counters(state),
-            "stand": time.time(),
+            "duration": duration,
+            "counters": _counters(state),
+            "stamp": time.time(),
         })
         atomic_write(STATUS_PATH, compact_json(letzter))
     except (OSError, TypeError, ValueError, AttributeError):

@@ -371,7 +371,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .info:hover{color:var(--muted)}
 .info.an{color:var(--accent)}
 .mitinfo{display:flex;align-items:center;gap:5px}
-.leer{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
+.empty{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
 
 /* ---------------------------------------------------------------- Ansichten */
 /* Die Umschaltleiste im Kopf. Welche Ansicht offen ist, ist reiner
@@ -519,7 +519,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .farbpaar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .farbpaar .stueck{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
 .farbpaar .feldchen{width:18px;height:18px;border-radius:4px;border:1px solid #0006;flex:none}
-.farbpaar .feldchen.leer{background:repeating-linear-gradient(45deg,
+.farbpaar .feldchen.empty{background:repeating-linear-gradient(45deg,
   var(--sub) 0 4px,var(--line) 4px 8px)}
 /* Der Live-Ausschnitt um den Prüf-Pixel. Die Zahl RGB(30,32,34) sagt nicht,
    WAS da zu sehen ist — das Bild tut es: grauer Knopf, Ladebildschirm, Popup.
@@ -596,7 +596,7 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-review-status{grid-area:status;min-width:0}
 .scan-review-bild{grid-area:bild;width:82px;height:82px;object-fit:contain;
   border:1px solid var(--line);border-radius:4px;background:#080A0E}
-.scan-review-bild.leer{border-style:dashed;background:none}
+.scan-review-bild.empty{border-style:dashed;background:none}
 .scan-review-zeile .felder{grid-area:felder;display:flex;flex-direction:column;
   gap:5px;min-width:0}
 .scan-review-zeile input{width:100%}
@@ -644,11 +644,11 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-slot.fremditem{stroke:var(--slot-fremd)}
 /* Nichts erkannt = hier ist zu tun. Das ist der haeufigste Zustand vor dem
    Lernen und muss deshalb der auffaelligste sein, nicht der blasseste. */
-.scan-slot.leer{stroke:var(--slot-offen)}
+.scan-slot.empty{stroke:var(--slot-offen)}
 .scan-fuellung{fill:var(--slot-offen-f);stroke:none}
 .scan-fuellung.treffer{fill:var(--slot-ok-f)}
 .scan-fuellung.fremditem{fill:var(--slot-fremd-f)}
-.scan-fuellung.leer{fill:var(--slot-offen-f)}
+.scan-fuellung.empty{fill:var(--slot-offen-f)}
 .scan-fuellung.gewaehlt{fill:#FFFFFF2E}
 .scan-slot.aus{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
 .scan-fuellung.aus{fill:#64748B12}
@@ -906,12 +906,12 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   border:1px solid var(--line);border-radius:5px;object-fit:contain;
   image-rendering:pixelated}
 .scan-vorlage.quadrat{height:104px}
-.scan-vorlage.leer{display:grid;place-items:center;color:var(--dim);font-size:10.5px;
+.scan-vorlage.empty{display:grid;place-items:center;color:var(--dim);font-size:10.5px;
   border-style:dashed;text-align:center;padding:4px}
 /* Ein gemessenes Farbfeld — 18 px, wie die Marker der Item-Ansicht. Das
    gestrichelte Leerfeld dahinter sagt, dass noch Platz ist. */
 .scan-farbfeld{width:18px;height:18px;border-radius:3px;border:1px solid #0006;flex:none}
-.scan-farbfeld.leer{border:1px dashed var(--dim);background:none}
+.scan-farbfeld.empty{border:1px dashed var(--dim);background:none}
 /* Die Lampe am LLM-Status. 7 px, rund, drei Zustaende: unbekannt (dim),
    erreichbar (ok), nicht erreichbar (err). */
 .scan-lampe{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}

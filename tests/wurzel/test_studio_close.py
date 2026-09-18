@@ -71,11 +71,11 @@ class StudioCloseTest(unittest.TestCase):
         with patch("autoclicker.persistence._scan_store.atomic_write",
                    side_effect=OSError("Datenträger voll")):
             antwort = bridge.scan_save()
-        self.assertEqual(antwort["status"]["art"], "err")
+        self.assertEqual(antwort["status"]["kind"], "err")
         self.assertTrue(bridge._scan_dirty)
         self.assertFalse(Path("sequences/test/item_scans/inventar.json").exists())
         antwort = bridge.scan_save()
-        self.assertEqual(antwort["status"]["art"], "ok")
+        self.assertEqual(antwort["status"]["kind"], "ok")
         self.assertFalse(bridge._scan_dirty)
         self.assertTrue(Path("sequences/test/item_scans/inventar.json").exists())
 
@@ -83,7 +83,7 @@ class StudioCloseTest(unittest.TestCase):
         bridge = SimpleNamespace(
             _scan_dirty=True,
             scan_save=Mock(return_value={
-                "status": {"art": "ok", "text": "gespeichert"},
+                "status": {"kind": "ok", "text": "gespeichert"},
             }),
         )
 
@@ -105,7 +105,7 @@ class StudioCloseTest(unittest.TestCase):
         bridge = SimpleNamespace(
             _scan_dirty=True,
             scan_save=Mock(return_value={
-                "status": {"art": "err", "text": "Datenträger voll"},
+                "status": {"kind": "err", "text": "Datenträger voll"},
             }),
         )
 

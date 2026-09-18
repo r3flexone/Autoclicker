@@ -77,7 +77,7 @@ try:
 
     # Und jetzt das, was vorher schiefging: die Kopie verschieben.
     _b.sel_rows = {1}
-    _b.point_set({"punkt": _kopie.point_id, "feld": "x", "wert": 555})
+    _b.point_set({"point": _kopie.point_id, "feld": "x", "value": 555})
     check("die Kopie laesst sich verschieben", _b._point(_kopie.point_id).x == 555)
     check("und das Original bleibt, wo es war", _b._point(_orig.point_id).x == 100)
 
@@ -87,7 +87,7 @@ try:
     _b = _bruecke([_STEP(point_id=1), _STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200)])
     _waehle(_b, 0)
-    _b.point_set({"punkt": 1, "feld": "x", "wert": 777})
+    _b.point_set({"point": 1, "feld": "x", "value": 777})
     check("ein geteilter Punkt wird verschoben, nicht gespalten",
           len(_b.points) == 1 and _b._point(1).x == 777)
     check("und beide Bloecke ziehen mit",
@@ -165,7 +165,7 @@ try:
     # Gemessen wird bis auf die PLATTE. Ein Test, der nur `self.points` prueft,
     # sieht die Wirkung nicht: geschrieben wird erst beim Speichern, und dort
     # steht die Punkteliste im selben Dict wie die Sequenz.
-    _b.sequence_set({"feld": "name", "wert": "Frisch"})
+    _b.sequence_set({"feld": "name", "value": "Frisch"})
     _b.save()
     import json as _js
     _datei = _js.loads(
@@ -270,9 +270,9 @@ try:
         _br.icon_scans["lupe"] = _ISC(name="lupe", owner_sequence="Ref")
         _br.scan_offen, _br.boss_offen, _br.icon_offen = "beutel", "wache", "lupe"
         _br._detection_save()
-        _br.scan_set({"name": "beutel", "feld": "name", "wert": "tasche"})
-        _br.boss_scan_set({"name": "wache", "feld": "name", "wert": "drache"})
-        _br.icon_set({"name": "lupe", "feld": "name", "wert": "brille"})
+        _br.scan_set({"name": "beutel", "feld": "name", "value": "tasche"})
+        _br.boss_scan_set({"name": "wache", "feld": "name", "value": "drache"})
+        _br.icon_set({"name": "lupe", "feld": "name", "value": "brille"})
 
     _sr = _br.board.lanes[1].steps
     check("der Item-Scan-Block zeigt auf den neuen Namen",
@@ -325,19 +325,19 @@ _seq_pf = _SEQ(name="Farben", loop_phases=[_PHASE(name="A", steps=[
              _CP(3, 4, "blind", 2)])
 _br_pf = _SB(_seq_pf, Path("sequences/farben.json"), "sequences")
 _br_pf._points_apply()      # wie nach dem Laden: `load_sequence_file` loest auf
-_karten = _br_pf.snapshot()["phasen"][1]["bloecke"]
+_karten = _br_pf.snapshot()["phases"][1]["blocks"]
 check("ein Klick-Block traegt die Farbe seines Punkts",
-      _karten[0]["punkt_farbe"] == "#20876F")
+      _karten[0]["point_color"] == "#20876F")
 check("und die Stelle steht in seiner ersten Zeile",
-      _karten[0]["zeilen"][0].startswith("#1 "))
-check("ohne gemessene Farbe kein Feldchen", _karten[1]["punkt_farbe"] is None)
-check("ein Block ohne Punkt hat keins", _karten[2]["punkt_farbe"] is None)
+      _karten[0]["rows"][0].startswith("#1 "))
+check("ohne gemessene Farbe kein Feldchen", _karten[1]["point_color"] is None)
+check("ein Block ohne Punkt hat keins", _karten[2]["point_color"] is None)
 check("FARBE+KLICK traegt beides: Punktfarbe und Bedingung",
-      _karten[3]["punkt_farbe"] == "#20876F" and _karten[3]["farbfeld"] == "#20876F"
-      and _karten[3]["farbtext"].startswith("wartet bis"))
+      _karten[3]["point_color"] == "#20876F" and _karten[3]["color_swatch"] == "#20876F"
+      and _karten[3]["color_text"].startswith("wartet bis"))
 _web_pf = _web_src()
 check("die Ansicht haengt das Feldchen an die erste Zeile",
-      "block.punkt_farbe" in _web_pf and "karte-zeile mit-farbe" in _web_pf)
+      "block.point_color" in _web_pf and "karte-zeile mit-farbe" in _web_pf)
 check("und zeichnet es wie das an der Bedingung",
       ".karte-zeile .feldchen,\n.karte-farbe .feldchen{" in _web_pf)
 
@@ -366,28 +366,28 @@ _seq_gp = _SEQ(name="Geteilt", loop_phases=[
            _CP(99, 99, "anderer", 2, color=(1, 2, 3))])
 _br_gp = _SB(_seq_gp, Path("sequences/geteilt.json"), "sequences")
 _br_gp._points_apply()
-_br_gp.select({"phase": 1, "zeile": 0})
+_br_gp.select({"phase": 1, "row": 0})
 _insp = _br_gp.snapshot()["block"]
 check("der Inspektor nennt die anderen Verwendungen des Punkts",
-      _insp["punkt_andere"] == ["Loop 4 · Block 2 · Stelle"])
+      _insp["point_others"] == ["Loop 4 · Block 2 · Stelle"])
 check("den eigenen Pruef-Pixel zaehlt er dabei nicht mit",
-      all("Loop · Block 1" not in v for v in _insp["punkt_andere"]))
-_br_gp.select({"phase": 2, "zeile": 0})
+      all("Loop · Block 1" not in v for v in _insp["point_others"]))
+_br_gp.select({"phase": 2, "row": 0})
 check("ein Block mit eigenem Punkt hat keine",
-      _br_gp.snapshot()["block"]["punkt_andere"] == [])
+      _br_gp.snapshot()["block"]["point_others"] == [])
 
-_br_gp.select({"phase": 1, "zeile": 0})
-_z_gp = _br_gp.point_set({"punkt": 1, "feld": "x", "wert": 20})
+_br_gp.select({"phase": 1, "row": 0})
+_z_gp = _br_gp.point_set({"point": 1, "feld": "x", "value": 20})
 check("das Verschieben sagt, wer mitzieht",
       "zieht 1 weitere" in _z_gp["status"]["text"]
       and "Loop 4 · Block 2" in _z_gp["status"]["text"])
 check("und Loop 4 ist wirklich mitgezogen - das ist die Regel, nicht der Fehler",
       _br_gp.board.lanes[2].steps[1].x == 20)
-_br_gp.select({"phase": 2, "zeile": 0})
-_z_gp2 = _br_gp.point_set({"punkt": 2, "feld": "x", "wert": 98})
+_br_gp.select({"phase": 2, "row": 0})
+_z_gp2 = _br_gp.point_set({"point": 2, "feld": "x", "value": 98})
 check("ein ungeteilter Punkt bekommt keinen Nachsatz",
       "zieht" not in _z_gp2["status"]["text"])
-_br_gp.select({"phase": 1, "zeile": 0})
+_br_gp.select({"phase": 1, "row": 0})
 
 # Abtrennen: Loop 1 bekommt einen eigenen Punkt, Loop 4 behaelt #1 - und beim
 # FARBE+KLICK wandern Klick UND Pruef-Pixel gemeinsam (wie beim Duplizieren).
@@ -401,7 +401,7 @@ check("Loop 4 behaelt den alten Punkt",
       _br_gp.board.lanes[2].steps[1].point_id == 1)
 check("und die Meldung sagt beides",
       f"#{_s1.point_id}" in _z_ab["status"]["text"] and "#1 bleibt bei" in _z_ab["status"]["text"])
-_br_gp.point_set({"punkt": _s1.point_id, "feld": "x", "wert": 30})
+_br_gp.point_set({"point": _s1.point_id, "feld": "x", "value": 30})
 check("danach verschiebt sich nur noch dieser Block",
       _s1.x == 30 and _br_gp.board.lanes[2].steps[1].x == 20)
 check("ein zweites Abtrennen tut nichts und sagt es",
@@ -409,4 +409,4 @@ check("ein zweites Abtrennen tut nichts und sagt es",
       and _br_gp.board.lanes[1].steps[0].point_id == _s1.point_id)
 _web_gp = _web_src()
 check("die Ansicht zeigt die Verwendungen und den Abtrennen-Knopf",
-      "b.punkt_andere" in _web_gp and 'ruf("point_detach")' in _web_gp)
+      "b.point_others" in _web_gp and 'ruf("point_detach")' in _web_gp)

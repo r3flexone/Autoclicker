@@ -64,7 +64,7 @@ def lauf():
             fehler.append(text)
 
     with Fenster(b) as f:
-        f.reiter("sequenzen")
+        f.reiter("sequences")
         pruefe(f.count(".seq-karte") == 2,
                f"2 Karten erwartet, da: {f.count('.seq-karte')}")
 

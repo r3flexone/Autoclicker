@@ -55,7 +55,7 @@ class BridgeEditingMixin:
         lane = self._lane(data.get("phase"))
         if lane is None:
             return self._report("Phase nicht gefunden.", "err")
-        feld, value = data.get("feld"), data.get("wert")
+        feld, value = data.get("feld"), data.get("value")
         if feld == "name":
             # Nur Loop-Phasen tragen einen Namen: INIT und END heissen in der Datei
             # gar nicht, `board_to_sequence()` wirft ihren Namen weg. Eine Umbenennung
@@ -92,15 +92,15 @@ class BridgeEditingMixin:
             return self._report("Der Faktor muss eine Zahl sein.", "warn")
         if faktor <= 0:
             return self._report("Der Faktor muss grösser als 0 sein.", "warn")
-        geaendert = 0
+        changed = 0
         for step in lane.steps:
             if step.delay_before > 0:
                 step.delay_before = round(step.delay_before * faktor, 2)
-                geaendert += 1
+                changed += 1
             if step.delay_max:
                 step.delay_max = round(step.delay_max * faktor, 2)
         return self._changed(
-            f"{geaendert} Wartezeit(en) in '{lane.name}' × {faktor:g} skaliert.")
+            f"{changed} Wartezeit(en) in '{lane.name}' × {faktor:g} skaliert.")
 
     # --------------------------------------------------------------- Auswahl
 
@@ -123,7 +123,7 @@ class BridgeEditingMixin:
         if lane is None:
             self._selection_clear()
             return self.snapshot()
-        row = int(data.get("zeile", 0))
+        row = int(data.get("row", 0))
         if not (0 <= row < len(lane.steps)):
             self._selection_clear()
             return self.snapshot()
@@ -134,10 +134,10 @@ class BridgeEditingMixin:
                 self._selection_clear()
             else:
                 self.sel_anchor = row
-        elif modus == "bereich" and self.sel_lane is lane and self.sel_rows:
+        elif modus == "area" and self.sel_lane is lane and self.sel_rows:
             anker = self.sel_anchor if self.sel_anchor is not None else row
-            von, bis = sorted((anker, row))
-            area = set(range(von, bis + 1))
+            von, until = sorted((anker, row))
+            area = set(range(von, until + 1))
             # Derselbe Umschalt-Klick ist ein echter Schalter: ist der ganze
             # Bereich schon gewählt, wird er entfernt; sonst kommt er dazu.
             if area <= self.sel_rows:
@@ -179,7 +179,7 @@ class BridgeEditingMixin:
         if feld not in ("delay_before", "delay_max"):
             return self._report(f"'{feld}' lässt sich nicht gesammelt setzen.", "warn")
         try:
-            value = _FELDER[feld](data.get("wert"))
+            value = _FELDER[feld](data.get("value"))
         except (TypeError, ValueError):
             return self._report("Die Wartezeit muss eine Zahl sein.", "warn")
         rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
@@ -203,10 +203,10 @@ class BridgeEditingMixin:
         """Punkt aus der Palette als Klick-Block einsetzen (mit `point_id`)."""
         data = data or {}
         lane = self._lane(data.get("phase"))
-        point = self._point(data.get("punkt"))
+        point = self._point(data.get("point"))
         if lane is None or point is None:
             return self._report("Punkt oder Phase nicht gefunden.", "err")
-        at = data.get("zeile")
+        at = data.get("row")
         at = len(lane.steps) if at is None else max(0, min(int(at), len(lane.steps)))
         self.board.add_step(lane, step_from_point(point), at=at)
         self._selection_set(lane, at)
@@ -242,13 +242,13 @@ class BridgeEditingMixin:
         target = self._lane(data.get("nach_phase"))
         if source is None or target is None:
             return self.snapshot()
-        von_zeile = int(data.get("von_zeile", 0))
-        at = int(data.get("nach_zeile", 0))
+        from_row = int(data.get("from_row", 0))
+        at = int(data.get("to_row", 0))
         # Wird ein Schritt aus der aktuellen Auswahl gezogen, wandert die ganze
         # Auswahl mit — sonst nur der angefasste.
         rows = (sorted(self.sel_rows)
-                if (self.sel_lane is source and von_zeile in self.sel_rows)
-                else [von_zeile])
+                if (self.sel_lane is source and from_row in self.sel_rows)
+                else [from_row])
         self._move(source, rows, target, at)
         return self._report("")
 
@@ -408,7 +408,7 @@ class BridgeEditingMixin:
     def block_set(self, data: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
         data = data or {}
-        feld, value = data.get("feld"), data.get("wert")
+        feld, value = data.get("feld"), data.get("value")
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
@@ -427,7 +427,7 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        values = data.get("werte")
+        values = data.get("values")
         if not values:
             step.screenshot_region = None
         else:
@@ -504,7 +504,7 @@ class BridgeEditingMixin:
         """
         x, y, message = self._await_position()
         if x is None:
-            return {"ok": False, "meldung": message + " — nichts geändert."}
+            return {"ok": False, "message": message + " — nichts geändert."}
         return {"ok": True, "x": x, "y": y}
 
     def point_capture(self, data: Optional[dict] = None) -> dict:
@@ -526,8 +526,8 @@ class BridgeEditingMixin:
         if step.point_id is not None:
             # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der
             # Zahlen — der Punkt gehört nicht diesem Block allein.
-            self.point_set({"punkt": step.point_id, "feld": "x", "wert": x})
-            self.point_set({"punkt": step.point_id, "feld": "y", "wert": y})
+            self.point_set({"point": step.point_id, "feld": "x", "value": x})
+            self.point_set({"point": step.point_id, "feld": "y", "value": y})
         else:
             self.point_create({"x": x, "y": y})
 
@@ -590,7 +590,7 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        point = self._point(data.get("punkt"))
+        point = self._point(data.get("point"))
         if point is None:
             return self._report("Punkt nicht gefunden.", "warn")
         old = step.point_id
@@ -623,7 +623,7 @@ class BridgeEditingMixin:
             weg = self._else_cleanup(step)
             return self._changed(weg, "warn" if weg else "ok")
         if cond is None:
-            point_id = data.get("punkt", step.point_id)
+            point_id = data.get("point", step.point_id)
             point = self._point(point_id)
             if point is None:
                 return self._report(
@@ -635,8 +635,8 @@ class BridgeEditingMixin:
             cond.until_gone = (wahl == TRIGGER_WEG)
         if "pruefen" in data:
             cond.check_only = bool(data["pruefen"])
-        if data.get("punkt") is not None:
-            point = self._point(data["punkt"])
+        if data.get("point") is not None:
+            point = self._point(data["point"])
             if point is not None:
                 cond.point_id = point.id
                 self._points_apply()
@@ -648,15 +648,15 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        aktion = data.get("aktion") or ""
-        if not aktion:
+        action = data.get("action") or ""
+        if not action:
             step.else_config = None
             return self._changed()
-        if aktion not in ELSE_AKTIONEN:
-            return self._report(f"Unbekannte ELSE-Aktion '{aktion}'.", "err")
-        ec = ensure_else(step, aktion)
-        if "punkt" in data and data["punkt"] is not None:
-            point = self._point(data["punkt"])
+        if action not in ELSE_AKTIONEN:
+            return self._report(f"Unbekannte ELSE-Aktion '{action}'.", "err")
+        ec = ensure_else(step, action)
+        if "point" in data and data["point"] is not None:
+            point = self._point(data["point"])
             if point is None:
                 return self._report("Punkt nicht gefunden.", "warn")
             # Nur die Referenz zählt: `x`/`y`/`name` sind abgeleitet und stehen
@@ -680,10 +680,10 @@ class BridgeEditingMixin:
         Speichern verloren.
         """
         data = data or {}
-        point = self._point(data.get("punkt"))
+        point = self._point(data.get("point"))
         if point is None:
             return self._report("Punkt nicht gefunden.", "warn")
-        feld, value = data.get("feld"), data.get("wert")
+        feld, value = data.get("feld"), data.get("value")
         try:
             if feld in ("x", "y"):
                 setattr(point, feld, int(value))
@@ -696,7 +696,7 @@ class BridgeEditingMixin:
                                        + self._moved_along(point.id, ausser=selected))
             elif feld == "name":
                 point.name = str(value or "")
-            elif feld == "farbe":
+            elif feld == "color":
                 # Die Farbe ist das, was ein Farb-Trigger prueft — sie von Hand zu
                 # setzen ist deshalb eine echte Aenderung am Verhalten, nicht bloss
                 # Anzeige. Leer heisst „keine gemessene Farbe", nicht Schwarz.

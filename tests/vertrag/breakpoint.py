@@ -106,7 +106,7 @@ try:
     _dbg.read_command = lambda *a, **k: ""
     _erg = {}
     _t = threading.Thread(target=lambda: _erg.setdefault(
-        "wert", _dbg.step_gate(_st, _halt, "LOOP", 1, 2)))
+        "value", _dbg.step_gate(_st, _halt, "LOOP", 1, 2)))
     _t.start()
     _frist = time.time() + 1.0
     while not _st.gate_waiting and time.time() < _frist:
@@ -114,11 +114,11 @@ try:
     check("waehrend das Gate wartet, ist es als wartend markiert", _st.gate_waiting is True)
     # Auch ein Lauf aus der Konsole zeigt dem Studio, warum er steht.
     check("und die Tafel steht auch beim Konsolen-Gate im Laufstatus",
-          (_status._state.get("manuell") or {}).get("haltepunkt") is True)
+          (_status._state.get("manual") or {}).get("breakpoint") is True)
     _hnd.handle_pause(_st)
     _t.join(1.5)
     check("CTRL+ALT+G laesst den Block laufen statt zu pausieren",
-          _erg.get("wert") == _dbg.GATE_RUN and not _st.pause_event.is_set())
+          _erg.get("value") == _dbg.GATE_RUN and not _st.pause_event.is_set())
     check("und der Lauf bleibt danach normal", _st.step_mode is False)
 
     # Ohne wartendes Gate bleibt CTRL+ALT+G die Pause, die es immer war.
@@ -141,10 +141,10 @@ def _studio_gate(st, step):
     """Das Gate in einem Thread, bis die Tafel im Laufstatus steht."""
     erg = {}
     t = threading.Thread(target=lambda: erg.setdefault(
-        "wert", _dbg.step_gate(st, step, "LOOP", 1, 2)))
+        "value", _dbg.step_gate(st, step, "LOOP", 1, 2)))
     t.start()
     frist = time.time() + 1.0
-    while not _status._state.get("manuell") and time.time() < frist:
+    while not _status._state.get("manual") and time.time() < frist:
         time.sleep(0.01)
     return t, erg
 
@@ -157,26 +157,26 @@ try:
     _st.run_from_studio = True
     _st.is_running = True
     _t, _erg = _studio_gate(_st, _halt)
-    _tafel = _status._state.get("manuell") or {}
+    _tafel = _status._state.get("manual") or {}
     check("die Tafel im Live-Run sagt, dass es ein Haltepunkt ist",
-          _tafel.get("aktiv") is True and _tafel.get("haltepunkt") is True
+          _tafel.get("active") is True and _tafel.get("breakpoint") is True
           and _tafel.get("block") == 1)
     # Die Antwort kommt als Briefkasten-Befehl — auch ohne Schrittmodus.
     _hnd.command_manual_action(_st, {"action": "step"})
     _t.join(1.5)
     check("'ab hier schrittweise' aus dem Studio fuehrt aus und schaltet um",
-          _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is True
+          _erg.get("value") == _dbg.GATE_RUN and _st.step_mode is True
           and _st.step_via_studio is True)
-    check("und raeumt die Tafel weg", _status._state.get("manuell") is None)
+    check("und raeumt die Tafel weg", _status._state.get("manual") is None)
 
     # Im Schrittmodus meldet die Tafel KEINEN Haltepunkt — es ist das normale Gate.
     _t, _erg = _studio_gate(_st, _halt)
     check("im Schrittmodus traegt die Tafel keine Haltepunkt-Marke",
-          (_status._state.get("manuell") or {}).get("haltepunkt") is False)
+          (_status._state.get("manual") or {}).get("breakpoint") is False)
     _hnd.command_manual_action(_st, {"action": "continue"})
     _t.join(1.5)
     check("'Normal weiter' schaltet den Schrittmodus wieder aus",
-          _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is False)
+          _erg.get("value") == _dbg.GATE_RUN and _st.step_mode is False)
 
     # Ein Befehl ohne wartendes Gate wird nicht vorgemerkt — er feuerte sonst
     # beim naechsten Halt nach.
@@ -219,25 +219,25 @@ from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s
 _schritt = _STEP(x=5, y=6, delay_before=0, name="Bank", point_id=1)
 _seq = _SEQ(name="H", loop_phases=[_PHASE(name="Loop", repeat=1, steps=[_schritt])])
 _b = _SB(_seq, Path("sequences/H.json"), "sequences")
-_b.select({"phase": 1, "zeile": 0})
-_b.block_set({"feld": "breakpoint", "wert": True})
-_karte = _b.snapshot()["phasen"][1]["bloecke"][0]
+_b.select({"phase": 1, "row": 0})
+_b.block_set({"feld": "breakpoint", "value": True})
+_karte = _b.snapshot()["phases"][1]["blocks"][0]
 check("der Schalter setzt das Feld am Schritt", _schritt.breakpoint is True)
-check("die Karte traegt die Marke", _karte.get("haltepunkt") is True)
+check("die Karte traegt die Marke", _karte.get("breakpoint") is True)
 check("der Inspektor zeigt den Zustand", _b.snapshot()["block"]["breakpoint"] is True)
 check("und das Speichern nimmt ihn mit",
       _b2s(_b.board).loop_phases[0].steps[0].breakpoint is True)
-_b.block_set({"feld": "breakpoint", "wert": False})
+_b.block_set({"feld": "breakpoint", "value": False})
 check("der Schalter nimmt ihn auch wieder weg", _schritt.breakpoint is False)
 
 # Die Seite ruft genau dieses Feld — sonst stuende ein Schalter da, der nichts tut.
 _web = (Path(__file__).resolve().parents[2] / "autoclicker" / "editors"
         / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
 check("der Inspektor schaltet ueber block_set/breakpoint",
-      '{feld: "breakpoint", wert: an}' in _web)
-check("die Karte zeigt die Marke", "block.haltepunkt" in _web)
+      '{feld: "breakpoint", value: an}' in _web)
+check("die Karte zeigt die Marke", "block.breakpoint" in _web)
 check("die Tafel im Live-Run kennt den Haltepunkt und 'ab hier schrittweise'",
-      "m.haltepunkt" in _web and '"step"' in _web)
+      "m.breakpoint" in _web and '"step"' in _web)
 
 # Konsolen-Editor: `break <Nr>` schaltet um.
 from autoclicker.editors.sequence_editor.steps import _PhaseEditor as _PE, _KNOWN_COMMANDS as _KC

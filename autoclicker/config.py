@@ -464,12 +464,12 @@ def config_sections() -> list:
     """
     zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
     alle = [f.name for f in fields(AppConfig)]
-    abschnitte = [(title, [k for k in keys if k in alle])
+    sections = [(title, [k for k in keys if k in alle])
                   for title, keys in _CONFIG_SECTIONS]
     remainder = [k for k in alle if k not in zugeordnet]
     if remainder:
-        abschnitte.append(("SONSTIGE", remainder))
-    return abschnitte
+        sections.append(("SONSTIGE", remainder))
+    return sections
 
 
 def optional_fields() -> list:

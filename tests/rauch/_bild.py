@@ -21,7 +21,7 @@ def inventar(spalten: int = 3, lines: int = 2):
     """Ein Raster aus verschiedenfarbigen Items. Gibt `(bild, slot_ecken)`."""
     from PIL import Image
     image = Image.new("RGB", (800, 600), (18, 21, 27))
-    farben = [(200, 60, 60), (60, 200, 90), (70, 110, 230),
+    colors = [(200, 60, 60), (60, 200, 90), (70, 110, 230),
               (230, 190, 60), (180, 80, 210), (60, 200, 210)]
     ecken = []
     for i in range(spalten * lines):
@@ -31,7 +31,7 @@ def inventar(spalten: int = 3, lines: int = 2):
                 image.putpixel((x, y), (48, 54, 68))     # Slot-Hintergrund
         for x in range(sx + 14, sx + 48):
             for y in range(sy + 12, sy + 48):
-                image.putpixel((x, y), farben[i % len(farben)])
+                image.putpixel((x, y), colors[i % len(colors)])
         ecken.append((sx, sy))
     return image, ecken
 

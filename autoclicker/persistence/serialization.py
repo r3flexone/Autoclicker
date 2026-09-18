@@ -308,11 +308,11 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
                 window_rect = None
         except (TypeError, ValueError):
             window_rect = None
-    fenster_titel = data.get("capture_window_title")
-    if not isinstance(fenster_titel, str) or not fenster_titel.strip():
-        fenster_titel = None
+    window_title = data.get("capture_window_title")
+    if not isinstance(window_title, str) or not window_title.strip():
+        window_title = None
     else:
-        fenster_titel = fenster_titel.strip()
+        window_title = window_title.strip()
     try:
         fenster_index = max(0, int(data.get("capture_window_index", 0)))
     except (TypeError, ValueError):
@@ -327,7 +327,7 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
         use_catalog=data.get("use_catalog", False),
-        capture_window_title=fenster_titel,
+        capture_window_title=window_title,
         capture_window_index=fenster_index,
         capture_window_rect=window_rect,
     )

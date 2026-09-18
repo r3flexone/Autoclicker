@@ -80,10 +80,10 @@ try:
     check("das Buendel steht auf Platte", Path("exports/probe.zip").exists())
     check("und in der Liste", [e["name"] for e in _z["exporte"]] == ["probe.zip"])
     _z = _b.export_start({"teile": {k: False for k, _ in _TEILE}})
-    check("ohne Auswahl wird nichts geschrieben", _z["status"]["art"] == "warn")
+    check("ohne Auswahl wird nichts geschrieben", _z["status"]["kind"] == "warn")
 
     _z = _b.import_check({"pfad": "gibtsnicht.zip"})
-    check("eine fehlende Datei ist ein Fehler", _z["status"]["art"] == "err")
+    check("eine fehlende Datei ist ein Fehler", _z["status"]["kind"] == "err")
     check("und nichts bleibt gewaehlt", _z["import"] is None)
 
     _z = _b.import_check({"pfad": "exports/probe.zip"})
@@ -93,7 +93,7 @@ try:
 
     _z = _b.import_start({"teile": {k: True for k, _ in _TEILE},
                             "modus": "identity", "merge": True})
-    check("der Import laeuft durch", _z["status"]["art"] == "ok")
+    check("der Import laeuft durch", _z["status"]["kind"] == "ok")
     check("und das Fenster liest danach neu", len(_b.points) >= 2)
 
     # **Der Import schreibt auf Platte, nicht nur in den Speicher.**

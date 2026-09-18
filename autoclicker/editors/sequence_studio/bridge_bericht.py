@@ -50,8 +50,8 @@ class BridgeBerichtMixin:
         Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
-        if isinstance(data, dict) and "datei" in data:
-            self._bericht_wahl = str(data.get("datei") or "")
+        if isinstance(data, dict) and "file" in data:
+            self._bericht_wahl = str(data.get("file") or "")
 
         folder = self._report_folder()
         alle = self._report_files(folder)
@@ -60,7 +60,7 @@ class BridgeBerichtMixin:
             return self._report_empty(folder, fehler)
 
         total = auswerten(alle)
-        names = {s["datei"] for s in total["sitzungen"]}
+        names = {s["file"] for s in total["sitzungen"]}
         # Eine Wahl, deren Datei es nicht mehr gibt, fällt auf „alle" zurück
         # statt einen leeren Bericht zu zeigen: der Ordner wird aufgeräumt,
         # das Fenster steht derweil offen.
@@ -75,10 +75,10 @@ class BridgeBerichtMixin:
 
         return {
             "ordner": str(folder.resolve()) if folder else "",
-            "aktiv": bool(self._report_config("session_log_enabled", False)),
-            "verfuegbar": True,
+            "active": bool(self._report_config("session_log_enabled", False)),
+            "available": True,
             "fehler": "",
-            "gewaehlt": self._bericht_wahl,
+            "selected": self._bericht_wahl,
             # Neueste zuerst: danach sucht man. Die Auswertung selbst liest in
             # Dateireihenfolge, das ändert an den Summen nichts.
             "sitzungen": list(reversed(total["sitzungen"])),
@@ -126,10 +126,10 @@ class BridgeBerichtMixin:
     def _report_empty(self, folder: Optional[Path], fehler: str) -> dict:
         return {
             "ordner": str(folder.resolve()) if folder else "",
-            "aktiv": bool(self._report_config("session_log_enabled", False)),
-            "verfuegbar": False,
+            "active": bool(self._report_config("session_log_enabled", False)),
+            "available": False,
             "fehler": fehler,
-            "gewaehlt": "",
+            "selected": "",
             "sitzungen": [],
             "ausgelassen": 0,
             "bericht": None,
@@ -150,22 +150,22 @@ class BridgeBerichtMixin:
         miss = raw["verify_miss"]
         return {
             "sitzungen": len(raw["sitzungen"]),
-            "dauer": raw["dauer"],
-            "klicks": raw["ereignisse"].get("click", 0),
-            "tasten": raw["ereignisse"].get("key", 0),
-            "scrolls": raw["ereignisse"].get("scroll", 0),
+            "duration": raw["duration"],
+            "klicks": raw["events"].get("click", 0),
+            "tasten": raw["events"].get("key", 0),
+            "scrolls": raw["events"].get("scroll", 0),
             "timeouts": raw["timeouts"][:RANG_ZEILEN],
-            "timeouts_gesamt": sum(n for _, n in raw["timeouts"]),
+            "timeouts_total": sum(n for _, n in raw["timeouts"]),
             "items": raw["items"][:RANG_ZEILEN],
-            "items_gesamt": sum(n for _, n in raw["items"]),
-            "erkannt": raw["erkannt"][:RANG_ZEILEN],
+            "items_total": sum(n for _, n in raw["items"]),
+            "detected": raw["detected"][:RANG_ZEILEN],
             # Beide Seiten der Nachprüfung: „12x ohne Wirkung" allein sagt
             # nichts, solange nicht dabeisteht, wie oft es geklappt hat.
-            "verify_ok_gesamt": sum(verify_ok.values()),
-            "verify_miss_gesamt": sum(n for _, n in miss),
+            "verify_ok_total": sum(verify_ok.values()),
+            "verify_miss_total": sum(n for _, n in miss),
             "verify_miss": [[name, n, verify_ok.get(name, 0)]
                             for name, n in miss[:RANG_ZEILEN]],
-            "stoerungen": raw["stoerungen"],
+            "disturbances": raw["disturbances"],
             "unbekannt": raw["unbekannt"],
             "nicht_lesbar": raw["nicht_lesbar"],
         }
@@ -188,8 +188,8 @@ class BridgeBerichtMixin:
         from ...runtime.item_scan import load_market_values
         values = load_market_values(path)
         if not values:
-            return {"datei": path, "lesbar": False, "zeilen": [],
-                    "gold": 0.0, "pro_stunde": None, "ohne_wert": []}
+            return {"file": path, "lesbar": False, "rows": [],
+                    "gold": 0.0, "pro_stunde": None, "without_value": []}
 
         lines, ohne, gold = [], [], 0.0
         for name, count in raw["items"]:
@@ -201,12 +201,12 @@ class BridgeBerichtMixin:
             gold += summe
             lines.append([name, count, value, summe])
         lines.sort(key=lambda z: z[3], reverse=True)
-        stunden = raw["dauer"] / 3600 if raw["dauer"] > 0 else 0
+        stunden = raw["duration"] / 3600 if raw["duration"] > 0 else 0
         return {
-            "datei": path,
+            "file": path,
             "lesbar": True,
-            "zeilen": lines,
+            "rows": lines,
             "gold": gold,
             "pro_stunde": (gold / stunden) if stunden else None,
-            "ohne_wert": ohne,
+            "without_value": ohne,
         }

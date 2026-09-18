@@ -754,11 +754,11 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     """
     if not isinstance(title, str) or not title.strip():
         return None
-    fenster = list_windows()
+    window = list_windows()
     target = title.strip().casefold()
-    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    candidates = [e for e in window if e[0].strip().casefold() == target]
     if not candidates:
-        candidates = [e for e in fenster if target in e[0].casefold()]
+        candidates = [e for e in window if target in e[0].casefold()]
     if not candidates:
         return None
     try:
@@ -1120,30 +1120,30 @@ def _icon_bits(edge: int = 32) -> bytes:
     nach oben.
     """
     kopf = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
-    farben = bytearray()
+    colors = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
     for line in reversed(list(symbol.pixel_rows(edge))):
         for r, g, b, a in line:
-            farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
+            colors += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.
-    return kopf + bytes(farben) + bytes(((edge + 31) // 32 * 4) * edge)
+    return kopf + bytes(colors) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
-def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(titel_substring: str, waiting: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
     Symbol von `python.exe`.
 
-    `warten` ist wesentlich: `webview.start(func)` ruft `func` auf, sobald die
+    `waiting` ist wesentlich: `webview.start(func)` ruft `func` auf, sobald die
     Schleife läuft — das Fenster steht da noch nicht, und ohne Frist fiel der
     Aufruf still auf `False`. Fehler werden geschluckt: ein fehlendes Symbol ist
     kein Grund, ein Fenster nicht zu öffnen.
     """
-    frist = time.monotonic() + max(0.0, warten)
+    frist = time.monotonic() + max(0.0, waiting)
     hwnd = _find_window_by_title(titel_substring)
     while not hwnd and time.monotonic() < frist:
         time.sleep(0.1)

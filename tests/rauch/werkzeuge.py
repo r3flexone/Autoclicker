@@ -67,9 +67,9 @@ def lauf():
         # Zahl.** Hier stand `== 4`, als es vier Werkzeuge gab; mit dem fuenften
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
         # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_WERKZEUGE` fuehrt.
-        soll = len(re.findall(r'\{key: "', quelle_wz()))
-        pruefe(f.count("#wz-links button") == soll,
-               f"{soll} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
+        target = len(re.findall(r'\{key: "', quelle_wz()))
+        pruefe(f.count("#wz-links button") == target,
+               f"{target} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
                f"da: {f.count('#wz-links button')}")
         # **Der Sequenzname steht EINMAL.** Links stand „offene Sequenz Farm" —
         # eingebaut, als die Kopfleiste ihre Sequenz-Bedienelemente in diesem
@@ -232,7 +232,7 @@ def lauf():
           // Aufnahme laeuft: der Waechter darf nur warten.
           wzAufnahmeGestartet = true;
           wzAufnahmeName = "Gibt-Es-Nicht";
-          wzAufnahmeLive = {aktiv: true, pausiert: false, anzahl: 0, ereignisse: []};
+          wzAufnahmeLive = {active: true, pausiert: false, count: 0, events: []};
           wzAufnahmeBeobachten();
           return true;
         }""")

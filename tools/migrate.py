@@ -49,7 +49,7 @@ def main() -> int:
 
     result = sweep(write=schreiben)
 
-    for path, messages in result.geaendert:
+    for path, messages in result.changed:
         try:
             name = path.relative_to(ROOT)
         except ValueError:
@@ -57,16 +57,16 @@ def main() -> int:
         print(f"  {name}")
         for m in messages:
             print(f"      - {m}")
-    for path in result.uebersprungen:
+    for path in result.skipped:
         print(f"  [UEBERSPRUNGEN] {path.name}: nicht ladbar, bleibt unveraendert")
 
     print(f"\n{result.changed_count} angepasst, {result.current} bereits aktuell, "
-          f"{len(result.uebersprungen)} uebersprungen.")
-    if result.geaendert and not schreiben:
+          f"{len(result.skipped)} uebersprungen.")
+    if result.changed and not schreiben:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")
-    elif result.geaendert:
+    elif result.changed:
         print("Geschrieben. Ein zweiter Lauf sollte nichts mehr finden.")
-    return 1 if result.uebersprungen else 0
+    return 1 if result.skipped else 0
 
 
 if __name__ == "__main__":

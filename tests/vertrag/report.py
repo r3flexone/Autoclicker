@@ -77,10 +77,10 @@ with redirect_stdout(_puffer):
     _d = _auswerten([_eins, _zwei])
 check("die Auswertung gibt keine Zeile aus", _puffer.getvalue() == "")
 check("beide Sitzungen sind erfasst", len(_d["sitzungen"]) == 2)
-check("die Laufzeit zaehlt zusammen", _d["dauer"] == 5400.0)
-check("und jede Sitzung traegt ihre eigene", _d["sitzungen"][1]["dauer"] == 1800.0)
+check("die Laufzeit zaehlt zusammen", _d["duration"] == 5400.0)
+check("und jede Sitzung traegt ihre eigene", _d["sitzungen"][1]["duration"] == 1800.0)
 check("jede Sitzung kennt ihren Dateinamen",
-      [s["datei"] for s in _d["sitzungen"]] == [_eins.name, _zwei.name])
+      [s["file"] for s in _d["sitzungen"]] == [_eins.name, _zwei.name])
 check("und den Beginn aus der ersten Zeile",
       _d["sitzungen"][0]["beginn"] == "2026-01-01 00:00:00")
 
@@ -91,7 +91,7 @@ check("die Timeouts stehen absteigend", _d["timeouts"] == [["Bank oeffnen", 2],
 check("die Items ebenso", _d["items"] == [["Erz", 3], ["Holz", 1]])
 check("die Nachpruefung kommt von beiden Seiten",
       _d["verify_miss"] == [["Verkaufen", 1]] and _d["verify_ok"] == {"Verkaufen": 1})
-check("Unterbrechungen werden getrennt gefuehrt", _d["stoerungen"] == [["focus_lost", 1]])
+check("Unterbrechungen werden getrennt gefuehrt", _d["disturbances"] == [["focus_lost", 1]])
 check("und nichts bleibt unausgewertet", _d["unbekannt"] == [])
 
 # Gegenprobe: eine neue Ereignisart soll auffallen, nicht stillschweigend fehlen.
@@ -142,48 +142,48 @@ try:
 
     _z = _b.report_data()
     check("der Reiter findet die Logs", len(_z["sitzungen"]) == 2)
-    check("die neueste steht oben", _z["sitzungen"][0]["datei"] == _zwei.name)
+    check("die neueste steht oben", _z["sitzungen"][0]["file"] == _zwei.name)
     check("ohne Wahl gilt alles zusammen",
-          _z["gewaehlt"] == "" and _z["bericht"]["sitzungen"] == 2)
+          _z["selected"] == "" and _z["bericht"]["sitzungen"] == 2)
     check("und die Zahlen sind die der Auswertung",
-          _z["bericht"]["timeouts_gesamt"] == 3 and _z["bericht"]["klicks"] == 3)
+          _z["bericht"]["timeouts_total"] == 3 and _z["bericht"]["klicks"] == 3)
     # Die Ranglisten kommen gekuerzt — angezeigt werden ohnehin nur die obersten.
     check("die Rangliste ist gedeckelt",
           len(_z["bericht"]["timeouts"]) <= 10)
     check("die Nachpruefung traegt beide Seiten je Zeile",
           _z["bericht"]["verify_miss"] == [["Verkaufen", 1, 1]])
 
-    _z = _b.report_data({"datei": _zwei.name})
+    _z = _b.report_data({"file": _zwei.name})
     check("eine einzelne Sitzung laesst sich waehlen",
-          _z["gewaehlt"] == _zwei.name and _z["bericht"]["sitzungen"] == 1)
+          _z["selected"] == _zwei.name and _z["bericht"]["sitzungen"] == 1)
     check("und zeigt nur deren Zahlen", _z["bericht"]["klicks"] == 1)
     check("die Liste links bleibt vollstaendig", len(_z["sitzungen"]) == 2)
 
     # Eine Wahl, deren Datei es nicht mehr gibt, faellt auf „alle" zurueck statt
     # einen leeren Bericht zu zeigen: der Ordner wird aufgeraeumt, waehrend das
     # Fenster offen steht.
-    _z = _b.report_data({"datei": "weggeraeumt.csv"})
+    _z = _b.report_data({"file": "weggeraeumt.csv"})
     check("eine verschwundene Wahl faellt auf alle zurueck",
-          _z["gewaehlt"] == "" and _z["bericht"]["sitzungen"] == 2)
+          _z["selected"] == "" and _z["bericht"]["sitzungen"] == 2)
 
     check("ohne Marktwert-Datei gibt es keine Bewertung", _z["ertrag"] is None)
 
     # --- Ertrag: Stueckzahl mal Wert, und es ist eine Obergrenze -------------
     Path("marktwert.json").write_text('{"Erz": 100, "Silber": 5}', encoding="utf-8")
     CONFIG.scan_market_value_file = "marktwert.json"
-    _z = _b.report_data({"datei": ""})
+    _z = _b.report_data({"file": ""})
     _e = _z["ertrag"]
     check("mit Marktwert-Datei wird gerechnet", _e is not None and _e["lesbar"])
     # 3x Erz a 100 = 300. Holz hat keinen Wert und darf nicht mitzaehlen.
     check("gezaehlt wird Stueckzahl mal Wert", _e["gold"] == 300.0)
     check("und pro Stunde ueber die Laufzeit", round(_e["pro_stunde"], 2) == 200.0)
-    check("Items ohne Wert stehen getrennt", _e["ohne_wert"] == [["Holz", 1]])
+    check("Items ohne Wert stehen getrennt", _e["without_value"] == [["Holz", 1]])
     check("die Zeilen tragen Anzahl, Wert und Summe",
-          _e["zeilen"] == [["Erz", 3, 100.0, 300.0]])
+          _e["rows"] == [["Erz", 3, 100.0, 300.0]])
     # Ein Wert in der Tabelle, den der Lauf nie gesehen hat, taucht nicht auf:
     # gezaehlt wird, was IM LOG steht.
     check("ein ungesehenes Item taucht nicht auf",
-          all(z[0] != "Silber" for z in _e["zeilen"]))
+          all(z[0] != "Silber" for z in _e["rows"]))
 
     Path("marktwert.json").write_text("kaputt{", encoding="utf-8")
     from autoclicker.runtime.item_scan import _marktwert_cache
@@ -314,15 +314,15 @@ try:
     _alt_log, _alt_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz
     _CFG.session_log_enabled = False
     _vorher = id(_CFG)
-    check("vorher steht der Reiter auf aus", _b2.report_data()["aktiv"] is False)
+    check("vorher steht der Reiter auf aus", _b2.report_data()["active"] is False)
 
-    _r = _b2.config_write({"werte": {"session_log_enabled": True,
+    _r = _b2.config_write({"values": {"session_log_enabled": True,
                                          "punkt_farbtoleranz": 42}})
     check("das Schreiben geht durch", _r["ok"] is True)
     check("der Prozess kennt den neuen Wert sofort",
           _CFG.session_log_enabled is True)
     check("und der Reiter zeigt ihn ohne Neustart",
-          _b2.report_data()["aktiv"] is True)
+          _b2.report_data()["active"] is True)
     # Nicht nur das eine Feld: uebernommen wird die ganze Config, also auch das,
     # was ANDERE Reiter lesen.
     check("auch Felder anderer Reiter ziehen mit", _CFG.punkt_farbtoleranz == 42)

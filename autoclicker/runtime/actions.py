@@ -286,10 +286,10 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
 
         # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
         # Hier zugleich das Lebenszeichen: `waiting_for()` schreibt mit.
-        status.waiting_for(state, {"art": "zeit", "text": message,
-                              "seit": time.time() - (seconds - remaining),
-                              "bis": time.time() + remaining,
-                              "gesamt": round(seconds, 2)})
+        status.waiting_for(state, {"kind": "zeit", "text": message,
+                              "since": time.time() - (seconds - remaining),
+                              "until": time.time() + remaining,
+                              "total": round(seconds, 2)})
 
         if state.skip_event.is_set():
             state.skip_event.clear()

@@ -66,9 +66,9 @@ def _fmt_dauer(sek: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _rang(zaehler: Counter) -> list[list]:
+def _rang(counters: Counter) -> list[list]:
     """Counter als absteigend sortierte Paarliste — JSON-tauglich und stabil."""
-    return [[name, n] for name, n in zaehler.most_common()]
+    return [[name, n] for name, n in counters.most_common()]
 
 
 def auswerten(pfade: list[Path]) -> dict:
@@ -87,7 +87,7 @@ def auswerten(pfade: list[Path]) -> dict:
     gesamt_events = Counter()
     timeouts_je_schritt = Counter()
     items = Counter()
-    erkannt = Counter()
+    detected = Counter()
     verify_miss = Counter()
     verify_ok = Counter()
     sitzungen = []
@@ -114,35 +114,35 @@ def auswerten(pfade: list[Path]) -> dict:
             elif ev == "item_found":
                 items[detail] += 1
             elif ev == "detected":
-                erkannt[detail] += 1
+                detected[detail] += 1
             elif ev == "verify_miss":
                 verify_miss[detail or "(ohne Namen)"] += 1
             elif ev == "verify_ok":
                 verify_ok[detail or "(ohne Namen)"] += 1
         sitzungen.append({
-            "datei": path.name,
+            "file": path.name,
             "beginn": (lines[0].get("timestamp") or "").strip(),
-            "dauer": duration,
+            "duration": duration,
             "klicks": eigen.get("click", 0),
             "timeouts": eigen.get("timeout", 0),
             "items": eigen.get("item_found", 0),
             "verify_miss": eigen.get("verify_miss", 0),
         })
 
-    stoerungen = {k: v for k, v in gesamt_events.items()
+    disturbances = {k: v for k, v in gesamt_events.items()
                   if k.startswith(("focus_", "humanize_"))}
-    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(stoerungen)
+    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(disturbances)
     return {
         "sitzungen": sitzungen,
         "nicht_lesbar": nicht_lesbar,
-        "dauer": gesamt_dauer,
-        "ereignisse": dict(gesamt_events),
+        "duration": gesamt_dauer,
+        "events": dict(gesamt_events),
         "timeouts": _rang(timeouts_je_schritt),
         "items": _rang(items),
-        "erkannt": _rang(erkannt),
+        "detected": _rang(detected),
         "verify_miss": _rang(verify_miss),
         "verify_ok": dict(verify_ok),
-        "stoerungen": sorted([k, v] for k, v in stoerungen.items()),
+        "disturbances": sorted([k, v] for k, v in disturbances.items()),
         "unbekannt": sorted(unbekannt),
     }
 
@@ -157,11 +157,11 @@ def report(pfade: list[Path]) -> None:
         print("Keine lesbaren Logs gefunden.")
         return
 
-    gesamt_events = data["ereignisse"]
+    gesamt_events = data["events"]
     timeouts_je_schritt = data["timeouts"]
     verify_miss = data["verify_miss"]
     verify_ok = data["verify_ok"]
-    gesamt_dauer = data["dauer"]
+    gesamt_dauer = data["duration"]
 
     print("=" * 66)
     print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_dauer(gesamt_dauer)}")
@@ -202,14 +202,14 @@ def report(pfade: list[Path]) -> None:
         for name, n in data["items"][:15]:
             print(f"  {n:>5}x  {name}")
 
-    if data["erkannt"]:
+    if data["detected"]:
         print(f"\n{'-' * 66}\nERKANNT (Boss/Icon):")
-        for name, n in data["erkannt"][:10]:
+        for name, n in data["detected"][:10]:
             print(f"  {n:>5}x  {name}")
 
-    if data["stoerungen"]:
+    if data["disturbances"]:
         print(f"\n{'-' * 66}\nUNTERBRECHUNGEN:")
-        for k, v in data["stoerungen"]:
+        for k, v in data["disturbances"]:
             print(f"  {v:>5}x  {k}")
 
     if data["unbekannt"]:

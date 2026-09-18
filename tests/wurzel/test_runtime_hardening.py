@@ -105,14 +105,14 @@ class RuntimeHardeningTest(unittest.TestCase):
         angekommen = threading.Event()
         original = actions.wait_while_paused
 
-        def warten(s, text):
+        def waiting(s, text):
             angekommen.set()
             return original(s, text)
 
         with patch.object(steps, "check_failsafe", return_value=False), \
                 patch.object(steps, "print_step_detail"), \
                 patch.object(steps.status, "write_status"), \
-                patch.object(actions, "wait_while_paused", side_effect=warten), \
+                patch.object(actions, "wait_while_paused", side_effect=waiting), \
                 patch.object(actions, "send_click", return_value=True) as senden:
             t = threading.Thread(target=steps.execute_step, args=(
                 state, SequenceStep(point_id=1, delay_before=0), 1, 1, "INIT"))
@@ -181,7 +181,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch.object(worker, "_run_main_loop", side_effect=RuntimeError("Schritt kaputt")), \
                 patch.object(worker, "set_console_title"), \
                 patch.object(worker.status, "write_status"), \
-                patch.object(worker.status, "finish_run") as ende:
+                patch.object(worker.status, "finish_run") as end:
             try:
                 worker.sequence_worker(state)
             except RuntimeError:
@@ -190,7 +190,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertTrue(state.stop_event.is_set())
         self.assertIsNone(state.session_log)
         protokoll.close.assert_called_once()
-        self.assertIn("Fehler", ende.call_args.args[1])
+        self.assertIn("Fehler", end.call_args.args[1])
 
     def test_block_skip_during_delay_prevents_the_action(self):
         """Ein Live-Block-Skip darf nach der Wartezeit nicht doch noch klicken."""

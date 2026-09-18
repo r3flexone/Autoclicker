@@ -416,10 +416,10 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     if not isinstance(title, str) or not title.strip():
         return None
     target = title.strip().casefold()
-    fenster = list_windows()
-    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    window = list_windows()
+    candidates = [e for e in window if e[0].strip().casefold() == target]
     if not candidates:
-        candidates = [e for e in fenster if target in e[0].casefold()]
+        candidates = [e for e in window if target in e[0].casefold()]
     if not candidates:
         return None
     try:
@@ -589,7 +589,7 @@ def set_app_id(_app_id: str = APP_ID) -> bool:
     return False
 
 
-def set_window_icon(_titel_substring: str, warten: float = 0.0) -> bool:
-    if warten > 0:
-        time.sleep(min(float(warten), 0.05))
+def set_window_icon(_titel_substring: str, waiting: float = 0.0) -> bool:
+    if waiting > 0:
+        time.sleep(min(float(waiting), 0.05))
     return False

@@ -40,14 +40,14 @@ class BridgeTeilenMixin:
         return {
             "teile": [{"key": k, "text": t} for k, t in TEILE],
             "bestand": self._inventory_count(),
-            "fenster": self._window_layout(),
+            "window": self._window_layout(),
             "exporte": self._export_list(),
             "import": self._teilen_import,
             # Was im Fenster noch nicht gespeichert ist, liegt nicht auf Platte
             # und landet deshalb auch nicht im Bündel.
             "offen": bool(getattr(self, "_dirty", False)
                           or getattr(self, "_scan_dirty", False)),
-            "status": {"text": text, "art": kind},
+            "status": {"text": text, "kind": kind},
         }
 
     def _inventory_count(self) -> dict:
@@ -71,10 +71,10 @@ class BridgeTeilenMixin:
         except Exception:                                        # noqa: BLE001
             rechteck = None
         if not rechteck:
-            return {"titel": title, "gefunden": False}
+            return {"title": title, "gefunden": False}
         l, o, r, u = rechteck
-        return {"titel": title, "gefunden": True, "rechteck": [l, o, r, u],
-                "breite": r - l, "hoehe": u - o}
+        return {"title": title, "gefunden": True, "rechteck": [l, o, r, u],
+                "width": r - l, "height": u - o}
 
     @staticmethod
     def _export_list() -> list:
@@ -89,8 +89,8 @@ class BridgeTeilenMixin:
             except OSError:
                 continue
             found.append({"name": path.name, "kb": round(stat.st_size / 1024, 1),
-                             "stand": stat.st_mtime})
-        return sorted(found, key=lambda e: e["stand"], reverse=True)
+                             "stamp": stat.st_mtime})
+        return sorted(found, key=lambda e: e["stamp"], reverse=True)
 
     # ------------------------------------------------------------- Bestand
 
@@ -147,9 +147,9 @@ class BridgeTeilenMixin:
             return self._share_report("Nichts ausgewählt.", "warn")
 
         lage = self._window_layout()
-        fenster = tuple(lage["rechteck"]) if lage and lage.get("gefunden") else None
-        if fenster:
-            ref1, ref2 = (fenster[0], fenster[1]), (fenster[2], fenster[3])
+        window = tuple(lage["rechteck"]) if lage and lage.get("gefunden") else None
+        if window:
+            ref1, ref2 = (window[0], window[1]), (window[2], window[3])
         else:
             ref1, ref2 = self._fallback_reference()
 
@@ -167,11 +167,11 @@ class BridgeTeilenMixin:
             include_item_scans=parts["sequences"],
             include_boss_scans=parts["sequences"],
             include_icon_scans=parts["sequences"],
-            include_config=parts["config"], source_window=fenster)
+            include_config=parts["config"], source_window=window)
         if not erfolg:
             return self._share_report(f"Export fehlgeschlagen: {result}", "err")
         kb = os.path.getsize(result) / 1024
-        zusatz = ("" if fenster else
+        zusatz = ("" if window else
                   "  Ohne offenes Spielfenster: der Empfänger setzt zwei Punkte von Hand.")
         return self._share_report(f"{path.name} geschrieben ({kb:.1f} KB)." + zusatz)
 
@@ -193,8 +193,8 @@ class BridgeTeilenMixin:
         """Öffnet den Dateidialog des Fensters und prüft die Wahl."""
         try:
             import webview
-            fenster = webview.windows[0]
-            wahl = fenster.create_file_dialog(
+            window = webview.windows[0]
+            wahl = window.create_file_dialog(
                 webview.OPEN_DIALOG, allow_multiple=False,
                 file_types=("Bündel (*.zip)", "Alle Dateien (*.*)"))
         except Exception:                                        # noqa: BLE001
@@ -223,11 +223,11 @@ class BridgeTeilenMixin:
         content = result.get("contents", {}) or {}
         self._teilen_import = {
             "pfad": path,
-            "datei": Path(path).name,
+            "file": Path(path).name,
             "erstellt": result.get("created", ""),
             "inhalt": {k: self._content_number(content.get(k)) for k, _ in TEILE},
-            "quelle_fenster": list(source) if source else None,
-            "ziel_fenster": list(target) if target else None,
+            "source_window": list(source) if source else None,
+            "target_window": list(target) if target else None,
             # Automatisch geht nur, wenn beide Seiten ihr Fenster kennen.
             "auto": bool(source and target),
         }
@@ -254,8 +254,8 @@ class BridgeTeilenMixin:
         if str(data.get("modus") or "auto") == "auto" and self._teilen_import["auto"]:
             from ...import_export import transform_from_windows
             transform = transform_from_windows(
-                tuple(self._teilen_import["quelle_fenster"]),
-                tuple(self._teilen_import["ziel_fenster"]))
+                tuple(self._teilen_import["source_window"]),
+                tuple(self._teilen_import["target_window"]))
 
         from ...import_export import import_bundle
         state = self._inventory()

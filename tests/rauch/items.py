@@ -74,8 +74,8 @@ def lauf():
         f.seite.mouse.click(x_draussen,
                             bildrand["y"] + bildrand["height"] * .8)
         f.ruhe()
-        rechter_bildrand = (b._foto_info["links"]
-                            + round(b._foto_info["breite"] / b._foto_info["skala"]))
+        rechter_bildrand = (b._foto_info["left"]
+                            + round(b._foto_info["width"] / b._foto_info["scale"]))
         pruefe(b._suchbereich is not None
                and b._suchbereich[2] == rechter_bildrand,
                f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._suchbereich}")
@@ -104,9 +104,9 @@ def lauf():
 
         # ... und sie muss beim NAECHSTEN Item waehlbar sein. Genau dafuer gibt es
         # `kategorieOptionenAktualisieren()`; ohne das tippt man sie zwanzigmal.
-        optionen = f.seite.eval_on_selector_all(
+        options = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl select option", "ns => ns.map(n => n.textContent)")
-        pruefe("Helme" in optionen, f"'Helme' fehlt in der Auswahl: {optionen[:6]}")
+        pruefe("Helme" in options, f"'Helme' fehlt in der Auswahl: {options[:6]}")
         f.image("items_kategorie")
 
         # Der Tipp-Modus muss einen Neuaufbau ueberleben: der Entwurf speichert
@@ -218,10 +218,10 @@ def lauf():
                f"die Kategorie verschiebt die Zeile: {nach} -> {nach_kat}")
         # Sie steht dann unter der ALTEN Ueberschrift — das muss dastehen,
         # sonst liest sich die Liste falsch.
-        stand = f.seite.eval_on_selector(
+        stamp = f.seite.eval_on_selector(
             '[id="maske:item:Zeta"] .scan-maske-stand', "e => e.textContent")
-        pruefe("→ Helme" in stand,
-               f"die gewechselte Kategorie wird nicht angesagt: {stand!r}")
+        pruefe("→ Helme" in stamp,
+               f"die gewechselte Kategorie wird nicht angesagt: {stamp!r}")
 
         # ------------------------------------------------------------------
         # **Beim Tippen springt nichts, auf Knopfdruck schon.** Sortierte sich

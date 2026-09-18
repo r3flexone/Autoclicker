@@ -196,8 +196,8 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
     schreibt der nächste `save_data()` den alten Stand aus dem Speicher wieder über
     die frisch umgerechnete Datei.
     """
-    phasen = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
-    for steps in phasen:
+    phases = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
+    for steps in phases:
         for s in steps:
             # Referenzierte Stellen ueberspringen: ihr Punkt ist schon umgerechnet,
             # und der naechste `resolve()`-Lauf holt den Wert ohnehin von dort.
@@ -254,14 +254,14 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
     from .persistence import list_available_sequences, save_points
     from .utils import atomic_write, compact_json
 
-    number = {"punkte": 0, "slots": 0, "items": 0, "item_scans": 0,
-            "boss_scans": 0, "icon_scans": 0, "bosse": 0, "sequenzen": 0}
+    number = {"points": 0, "slots": 0, "items": 0, "item_scans": 0,
+            "boss_scans": 0, "icon_scans": 0, "bosse": 0, "sequences": 0}
 
     # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
     with state.lock:
         for p in state.points:
             p.x, p.y = remap_point(p.x, p.y, transform)
-            number["punkte"] += 1
+            number["points"] += 1
 
         if mit_scans:
             for cfg in state.item_scans.values():
@@ -336,7 +336,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
             _remap_sequence_data(data, transform)
             try:
                 atomic_write(path, compact_json(data))
-                number["sequenzen"] += 1
+                number["sequences"] += 1
             except (IOError, OSError) as e:
                 logger.warning("Kalibrierung: %s nicht schreibbar (%s)", path.name, e)
 
@@ -365,7 +365,7 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
     try:
         with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
             names = []
-            zaehler = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
+            counters = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
                        "templates": 0}
             if include_data:
                 for name, hauptdatei in list_available_sequences():
@@ -375,13 +375,13 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
                         relativ = PurePosixPath(source.relative_to(folder).as_posix())
                         zf.write(source, str(archiv_wurzel / relativ))
                         parts = relativ.parts
-                        if parts and parts[0] in zaehler and source.suffix.lower() == ".json":
-                            zaehler[parts[0]] += 1
+                        if parts and parts[0] in counters and source.suffix.lower() == ".json":
+                            counters[parts[0]] += 1
                         if parts and parts[0] == "templates" and source.suffix.lower() == ".png":
-                            zaehler["templates"] += 1
+                            counters["templates"] += 1
                     names.append(name)
                 manifest["contents"]["sequences"] = names
-                manifest["contents"].update({k: v for k, v in zaehler.items() if v})
+                manifest["contents"].update({k: v for k, v in counters.items() if v})
             if include_config:
                 zf.writestr("config.json", compact_json(_export_config(state.config)))
                 manifest["contents"]["config"] = True

@@ -478,19 +478,19 @@ _st.stop_event.clear()
 _studio_ergebnis = {}
 _studio_thread = _threading_step.Thread(
     target=lambda: _studio_ergebnis.setdefault(
-        "wert", _dbg.step_gate(_st, _step, "LOOP", 2, 3)))
+        "value", _dbg.step_gate(_st, _step, "LOOP", 2, 3)))
 _studio_thread.start()
 _frist = _time_step.time() + 1.0
-while not (_status_step._state.get("manuell")) and _time_step.time() < _frist:
+while not (_status_step._state.get("manual")) and _time_step.time() < _frist:
     _time_step.sleep(0.01)
 with _st.lock:
     _st.step_command = "skip"
     _st.step_command_event.set()
 _studio_thread.join(1.0)
 check("Studio-Gate wartet auf den sichtbaren Befehl",
-      _studio_ergebnis.get("wert") == _dbg.GATE_SKIP)
+      _studio_ergebnis.get("value") == _dbg.GATE_SKIP)
 check("und räumt die sichtbare Rückfrage danach weg",
-      _status_step._state.get("manuell") is None)
+      _status_step._state.get("manual") is None)
 _st.step_via_studio = False
 _st.step_mode = False
 check("Gate ohne manuellen Modus: sofort run",
@@ -1031,7 +1031,7 @@ try:
     check("Sweep hebt die Altbestaende", _e1.changed_count == 3)
     check("Sweep meldet 'es gab was zu tun'", bool(_e1) is True)
     check("kaputte Datei wird uebersprungen, nicht geschrieben",
-          len(_e1.uebersprungen) == 1 and _e1.uebersprungen[0].name == "kaputt.json")
+          len(_e1.skipped) == 1 and _e1.skipped[0].name == "kaputt.json")
     check("kaputte Datei bleibt unveraendert",
           (_sw / "sequences/alt/item_scans/kaputt.json").read_text(
               encoding="utf-8") == "{ kein json")
@@ -1421,7 +1421,7 @@ from autoclicker.models import (Sequence as _Seq3, LoopPhase as _LP3,
 _st3 = _ACS()
 _st3.points = [_CP3(50, 50, "P3", 3)]
 _fremd = _SS3(x=900, y=900, delay_before=0, name="P3")
-_seq3 = _Seq3("fremd", [], [_LP3("Loop", [_fremd])], [])
+_seq3 = _Seq3("foreign", [], [_LP3("Loop", [_fremd])], [])
 _report_point_mismatches(_st3, _seq3)
 check("Schritt-Koordinaten bleiben unangetastet", (_fremd.x, _fremd.y) == (900, 900))
 check("keine Referenz wird stillschweigend gesetzt", _fremd.point_id is None)
@@ -1491,7 +1491,7 @@ _diag_items = {
 _st6.item_scans = {
     "inv": _ISC3(name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
                   items=list(_diag_items.values())),
-    "leer": _ISC3(name="leer"),
+    "empty": _ISC3(name="empty"),
     "aus": _ISC3(name="aus", slots=[
         _IS3("S aus", (0, 0, 10, 10), (5, 5), enabled=False)
     ]),
@@ -1545,7 +1545,7 @@ _st7.item_scans = {"inv": _ISC3(
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
 _sauber = check_setup(_st7, mit_sequenzen=False)
 check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
-check("trotzdem steht da, was geprueft wurde", len(_sauber.geprueft) >= 3)
+check("trotzdem steht da, was geprueft wurde", len(_sauber.checked) >= 3)
 
 
 # ------------------------------------------------------- Template-Cache
@@ -1989,8 +1989,8 @@ class _FakeLP:
 class _FakeSeq:
     # `init_steps` gehoert dazu, seit _run_loop_phases die Phasen-Position in den
     # Laufstatus schreibt: die haengt am Versatz "gibt es eine INIT-Phase?".
-    def __init__(self, phasen):
-        self.loop_phases = phasen
+    def __init__(self, phases):
+        self.loop_phases = phases
         self.init_steps = []
 
 
@@ -2006,7 +2006,7 @@ class _EinTick:
     def wait(self, timeout=None): self._fertig = True; return True   # -> break
 
 
-def _watcher_tick(phasen, h, m, pending=None, last=None):
+def _watcher_tick(phases, h, m, pending=None, last=None):
     """Laesst den echten _schedule_watcher einen Tick zur Uhrzeit h:m laufen."""
     pending = {} if pending is None else pending
     last = {} if last is None else last
@@ -2019,25 +2019,25 @@ def _watcher_tick(phasen, h, m, pending=None, last=None):
     _WK.datetime = _FixeZeit
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
-            _sw(phasen, pending, last, _EinTick(), _th.Lock(), _th.Event())
+            _sw(phases, pending, last, _EinTick(), _th.Lock(), _th.Event())
     finally:
         _WK.datetime = orig_dt
     return pending
 
 
-def _timer_lauf(phasen, h, m):
+def _timer_lauf(phases, h, m):
     """Ein Watcher-Tick zur Uhrzeit h:m, danach ein echter Phasen-Durchlauf.
 
     Beide Seiten sind die Original-Funktionen; nur execute_step ist gestubbt und
     protokolliert, welche Phase wirklich drankam.
     """
-    pending = _watcher_tick(phasen, h, m)
+    pending = _watcher_tick(phases, h, m)
     gelaufen = []
     orig_step = _WK.execute_step
     _WK.execute_step = lambda s, step, i, n, ph: (gelaufen.append(step), True)[1]
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
-            _rlp(AutoClickerState(), _FakeSeq(phasen), pending, _th.Lock(), "Zyklus 1", False)
+            _rlp(AutoClickerState(), _FakeSeq(phases), pending, _th.Lock(), "Zyklus 1", False)
     finally:
         _WK.execute_step = orig_step
     return gelaufen
@@ -3628,9 +3628,9 @@ def _lauf(wirkt_ab_klick, retries, else_cfg=None):
     st.config.click_move_delay = st.config.click_post_delay = 0.0
     st.config.verify_timeout, st.config.verify_interval = 0.06, 0.02
     st.config.verify_retries = retries
-    zaehler = {"shots": 0}
+    counters = {"shots": 0}
     def _shot(region=None):
-        zaehler["shots"] += 1
+        counters["shots"] += 1
         return _FakeImg((0, 255, 0) if st.total_clicks >= wirkt_ab_klick else (255, 0, 0))
     alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
     _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
@@ -3640,7 +3640,7 @@ def _lauf(wirkt_ab_klick, retries, else_cfg=None):
                    else_config=else_cfg)
         with _cl2.redirect_stdout(_io2.StringIO()):
             erg = _RS.execute_step(st, step, 1, 1, "Loop")
-        return erg, st.total_clicks, zaehler["shots"]
+        return erg, st.total_clicks, counters["shots"]
     finally:
         _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
 
@@ -3663,16 +3663,16 @@ check("mit else_config greift else nach dem letzten Versuch", _erg_e is True)
 def _lauf_ohne():
     st = AutoClickerState(); st.config = AppConfig()
     st.config.click_move_delay = st.config.click_post_delay = 0.0
-    zaehler = {"shots": 0}
+    counters = {"shots": 0}
     def _shot(region=None):
-        zaehler["shots"] += 1
+        counters["shots"] += 1
         return _FakeImg((0, 255, 0))
     alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
     _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _RS.execute_step(st, _SS(x=1, y=2, delay_before=0.0, point_id=1), 1, 1, "Loop")
-        return zaehler["shots"]
+        return counters["shots"]
     finally:
         _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
 check("ohne Nachpruefung kostet der Schritt keinen Screenshot", _lauf_ohne() == 0)
@@ -3878,7 +3878,7 @@ from autoclicker.platforms.windows import (
 import autoclicker.symbol as _sym12
 
 _t0_12 = _t12.monotonic()
-_erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", warten=0.5)
+_erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", waiting=0.5)
 _dauer12 = _t12.monotonic() - _t0_12
 check("ohne passendes Fenster wird die Frist ausgeschoepft und dann aufgegeben",
       _erg12 is False and _dauer12 >= 0.45)
@@ -4282,12 +4282,12 @@ def _namen8(b, phase):
 
 def _waehle8(b, phase, *lines):
     for i, line in enumerate(lines):
-        b.select({"phase": phase, "zeile": line, "modus": "einzeln" if i == 0 else "dazu"})
+        b.select({"phase": phase, "row": line, "modus": "einzeln" if i == 0 else "dazu"})
 
 
-def _zieh8(b, von_phase, von_zeile, nach_phase, nach_zeile):
-    b.drag({"von_phase": von_phase, "von_zeile": von_zeile,
-              "nach_phase": nach_phase, "nach_zeile": nach_zeile})
+def _zieh8(b, von_phase, from_row, nach_phase, to_row):
+    b.drag({"von_phase": von_phase, "from_row": from_row,
+              "nach_phase": nach_phase, "to_row": to_row})
 
 
 INIT8, LOOP8, END8 = 0, 1, 2
@@ -4403,7 +4403,7 @@ _b8 = _bruecke8()
 _z8 = _b8.selection_duplicate()
 check("ohne Auswahl passiert nichts - mit Ansage",
       _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"]
-      and _z8["status"]["art"] == "warn")
+      and _z8["status"]["kind"] == "warn")
 
 # --- Kein Schritt geht je verloren ---
 _b8 = _bruecke8()
@@ -4419,17 +4419,17 @@ check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
 # nicht mehr eindeutig - deshalb faengt ein Klick in einer anderen Spalte neu an.
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 1)
-_b8.select({"phase": INIT8, "zeile": 0, "modus": "dazu"})
+_b8.select({"phase": INIT8, "row": 0, "modus": "dazu"})
 check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
       _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
 
 # --- Auswahl muss sich ebenso leicht wieder abwählen lassen ---
 _b8 = _bruecke8()
-_b8.select({"phase": LOOP8, "zeile": 1, "modus": "einzeln"})
-_b8.select({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+_b8.select({"phase": LOOP8, "row": 1, "modus": "einzeln"})
+_b8.select({"phase": LOOP8, "row": 3, "modus": "area"})
 check("Umschalt-Klick waehlt den Bereich ab dem festen Anker",
       _b8.sel_rows == {1, 2, 3})
-_b8.select({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+_b8.select({"phase": LOOP8, "row": 3, "modus": "area"})
 check("derselbe Umschalt-Klick waehlt den Bereich wieder ab",
       _b8.sel_lane is None and _b8.sel_rows == set())
 
@@ -4441,13 +4441,13 @@ check("derselbe Phasenknopf hebt die Auswahl wieder auf", _b8.sel_lane is None)
 
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 2, 4)
-_b8.selection_set({"feld": "delay_before", "wert": "0.5"})
+_b8.selection_set({"feld": "delay_before", "value": "0.5"})
 check("eine Wartezeit lässt sich für die Auswahl gemeinsam setzen",
       [s.delay_before for s in _b8.board.lanes[LOOP8].steps]
       == [0.5, 0, 0.5, 0, 0.5])
 check("der Snapshot liefert den gemeinsamen Wert für den Sammel-Inspektor",
-      _b8.snapshot()["auswahl"]["delay_before"] == 0.5
-      and not _b8.snapshot()["auswahl"]["delay_before_gemischt"])
+      _b8.snapshot()["selection"]["delay_before"] == 0.5
+      and not _b8.snapshot()["selection"]["delay_before_gemischt"])
 
 
 
@@ -4472,7 +4472,7 @@ def _bruecke9():
     b.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3)),
                 _PP8(id=2, x=30, y=40, name="Tresen", color=(9, 9, 9)),
                 _PP8(id=3, x=50, y=60, name="Ausgang")]
-    b.select({"phase": 1, "zeile": 0})
+    b.select({"phase": 1, "row": 0})
     return b, b.board.lanes[1].steps[0]
 
 
@@ -4504,7 +4504,7 @@ _s9.point_id = None
 _zustand9 = _b9.block_trigger({"wahl": _TDA8})
 check("ohne Punkt entsteht KEINE Bedingung auf (0,0)", _s9.wait_condition is None)
 check("und die Ablehnung wird begruendet",
-      "Punkt" in _zustand9["status"]["text"] and _zustand9["status"]["art"] == "warn")
+      "Punkt" in _zustand9["status"]["text"] and _zustand9["status"]["kind"] == "warn")
 
 # --- Die Nachpruefung ist dieselbe Bedingung, nur danach ---
 _b9, _s9 = _bruecke9()
@@ -4515,13 +4515,13 @@ check("und laesst den Vor-Trigger in Ruhe", _s9.wait_condition is None)
 
 # --- ELSE-Klick: eine Referenz, keine Koordinaten ---
 _b9, _s9 = _bruecke9()
-_b9.block_else({"aktion": "click", "punkt": 2})
+_b9.block_else({"action": "click", "point": 2})
 check("der ELSE-Klick zeigt auf einen Punkt", _s9.else_config.point_id == 2)
 _d9 = _s2d9(_s9)
 check("gespeichert wird die Referenz", _d9.get("else_point_id") == 2)
 check("und NICHT die Koordinate daneben",
       _d9.get("else_x", 0) == 0 and _d9.get("else_y", 0) == 0)
-_b9.block_else({"aktion": ""})
+_b9.block_else({"action": ""})
 check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
 
 # --- Ein verschobener Punkt zieht JEDEN Schritt mit, der auf ihn zeigt ---
@@ -4531,7 +4531,7 @@ check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
 _b9, _s9 = _bruecke9()
 _b9.board.add_step(_b9.board.lanes[1], _SS(x=10, y=20, delay_before=0, name="Bank",
                                            point_id=1))
-_b9.point_set({"punkt": 1, "feld": "x", "wert": 777})
+_b9.point_set({"point": 1, "feld": "x", "value": 777})
 check("beide Schritte auf demselben Punkt wandern mit",
       all((s.x, s.y) == (777, 20) for s in _b9.board.lanes[1].steps))
 
@@ -4564,7 +4564,7 @@ _b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
 _fehler10, _typen10 = [], []
 for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _typen10.append(_b10.select({"phase": 1, "zeile": _r10})["block"]["typ"])
+        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["typ"])
     except Exception as _e10:                                    # noqa: BLE001
         _fehler10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
 check("jeder Block-Typ laesst sich anzeigen", _fehler10 == [])
@@ -4575,7 +4575,7 @@ check("und wird als das erkannt, was er ist",
       _typen10 == ["click", "key", "screenshot", "wait", "item_scan", "boss_scan",
                    "icon_scan", "boss_watcher"])
 # Umschalten in jeden Typ und zurueck - set_block_type raeumt die Diskriminatoren
-_b10.select({"phase": 1, "zeile": 0})
+_b10.select({"phase": 1, "row": 0})
 _fehler10b = []
 for _t10 in [t["key"] for t in _b10.snapshot()["typen"]]:
     _z10 = _b10.block_set_type({"typ": _t10})
@@ -4589,7 +4589,7 @@ check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 # ausserhalb von points.json nicht geben soll. Der Typwechsel bindet sie deshalb an
 # den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
 # block_trigger schon hatte.
-_b10.select({"phase": 1, "zeile": 0})
+_b10.select({"phase": 1, "row": 0})
 _b10.block_set_type({"typ": "click"})
 _b10.block_set_type({"typ": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
@@ -4599,14 +4599,14 @@ _d10b = _s2d9(_seq10.loop_phases[0].steps[0])
 check("gespeichert wird auch hier die Referenz, keine Farb-Kopie",
       _d10b.get("wait_point_id") == 1 and _d10b.get("wait_pixel") is None
       and _d10b.get("wait_color") is None)
-_b10.select({"phase": 1, "zeile": 1})            # Taste, ohne Punkt
+_b10.select({"phase": 1, "row": 1})            # Taste, ohne Punkt
 _b10.block_set_type({"typ": "click"})
 _zustand10 = _b10.block_set_type({"typ": "wait_click"})
 check("ohne Punkt wird FARBE+KLICK abgelehnt",
       _seq10.loop_phases[0].steps[1].wait_condition is None
       and _zustand10["block"]["typ"] == "click")
 check("und auch das wird begruendet",
-      _zustand10["status"]["art"] == "warn" and "Punkt" in _zustand10["status"]["text"])
+      _zustand10["status"]["kind"] == "warn" and "Punkt" in _zustand10["status"]["text"])
 
 # Und zwar in `set_block_type()` SELBST, nicht als Reparatur danach. Die Funktion
 # legte die Bedingung auf die rohen step.x/y an, und die Bruecke bog sie hinterher
@@ -4673,7 +4673,7 @@ try:
     check("eine kaputte Datei ergibt keinen Befehl", _bf13.fetch_command() is None)
     check("und wird trotzdem weggeraeumt", not _bf13.COMMAND_PATH.exists())
 
-    _bf13.COMMAND_PATH.write_text(json.dumps({"stand": __import__("time").time()}), encoding="utf-8")
+    _bf13.COMMAND_PATH.write_text(json.dumps({"stamp": __import__("time").time()}), encoding="utf-8")
     check("ein Eintrag ohne Befehl zaehlt nicht", _bf13.fetch_command() is None)
 
     # Zweimal senden staut nichts an: wer zweimal stoppt, meint einmal stoppen.
@@ -4725,7 +4725,7 @@ try:
     _b14._dirty = True
     _zustand14b = _b14.run_command({"befehl": "start"})
     check("ohne Sequenz-Namen faellt der Start aus",
-          _zustand14b["status"]["art"] == "err" and _bf13.fetch_command() is None)
+          _zustand14b["status"]["kind"] == "err" and _bf13.fetch_command() is None)
 
     # Stopp und Pause gehen ohne Speichern durch - sie betreffen den Lauf, nicht
     # die Datei.
@@ -4734,7 +4734,7 @@ try:
     check("Stopp braucht kein Speichern", _bf13.fetch_command()["command"] == "stop")
     # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
     _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
-    _b14.select({"phase": 1, "zeile": 0})
+    _b14.select({"phase": 1, "row": 0})
     _b14.point_show()
     _zeig14 = _bf13.fetch_command()
     check("die Probe schickt Stelle, Punkt und Farbe mit",
@@ -4744,15 +4744,15 @@ try:
           and _zeig14["arguments"]["color"] == [1, 2, 3])
     # Ein Block ohne Stelle hat nichts zu zeigen - und schickt deshalb nichts.
     _b14.board.add_step(_b14.board.lanes[1], _SS(delay_before=0, key_press="a"))
-    _b14.select({"phase": 1, "zeile": 1})
+    _b14.select({"phase": 1, "row": 1})
     _zustand14d = _b14.point_show()
     check("ohne Stelle wird nichts geschickt",
-          _bf13.fetch_command() is None and _zustand14d["status"]["art"] == "warn")
-    _b14.select({"phase": 1, "zeile": 0})
+          _bf13.fetch_command() is None and _zustand14d["status"]["kind"] == "warn")
+    _b14.select({"phase": 1, "row": 0})
 
     _zustand14c = _b14.run_command({"befehl": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
-          _zustand14c["status"]["art"] == "err" and _bf13.fetch_command() is None)
+          _zustand14c["status"]["kind"] == "err" and _bf13.fetch_command() is None)
 
     # Die einzige Rueckmeldung, die das Fenster ueber den Hauptprozess bekommt: er
     # leert den Kasten. Liegt der Befehl noch, hoert niemand zu - dann darf im
@@ -4772,19 +4772,19 @@ finally:
 _schritt11 = _SS(x=5, y=6, delay_before=0, name="Rad", point_id=1, scroll=-3)
 _seq11 = _SEQ8(name="R", loop_phases=[_LP8(name="Loop", repeat=1, steps=[_schritt11])])
 _b11 = _SB8(_seq11, Path("sequences/R.json"), "sequences")
-_b11.select({"phase": 1, "zeile": 0})
-_b11.block_set({"feld": "delay_before", "wert": 2.0})
+_b11.select({"phase": 1, "row": 0})
+_b11.block_set({"feld": "delay_before", "value": 2.0})
 from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s11
 _raus11 = _b2s11(_b11.board).loop_phases[0].steps[0]
 check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
       _raus11.scroll == -3 and _raus11 is _schritt11)
 check("die Karte verschweigt es trotzdem nicht",
-      any("Rad -3" in z for z in _b11.snapshot()["phasen"][1]["bloecke"][0]["zeilen"]))
+      any("Rad -3" in z for z in _b11.snapshot()["phases"][1]["blocks"][0]["rows"]))
 
 # --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
-_zustand11 = _b11.block_set({"feld": "gibtsnicht", "wert": 1})
+_zustand11 = _b11.block_set({"feld": "gibtsnicht", "value": 1})
 check("ein unbekanntes Feld meldet sich als Fehler",
-      _zustand11["status"]["art"] == "err")
+      _zustand11["status"]["kind"] == "err")
 check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
 
 # --- Der Typ-Chip ist das EINE Bedienelement fuer 'nur warten' ---
@@ -4877,7 +4877,7 @@ import autoclicker.winapi as _wa15
 _b15 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
     _SS(delay_before=0, screenshot_only=True, screenshot_region=(0, 0, 100, 100))])]),
     Path("sequences/S.json"), "sequences")
-_b15.select({"phase": 1, "zeile": 0})
+_b15.select({"phase": 1, "row": 0})
 
 _echt15 = (_io15.wait_for_global_key, _wa15.get_cursor_pos)
 try:
@@ -4897,7 +4897,7 @@ try:
     _ecken15 = iter([(300, 200), (301, 201)])
     _z15 = _b15.area_capture()
     check("ein zu kleiner Bereich meldet sich und aendert nichts",
-          _z15["status"]["art"] == "warn"
+          _z15["status"]["kind"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 
     # ESC bei der ZWEITEN Ecke: auch die erste darf dann nicht stehenbleiben.
@@ -4906,14 +4906,14 @@ try:
     _io15.wait_for_global_key = lambda *a, **k: next(_tasten15)
     _z15 = _b15.area_capture()
     check("ESC nach der ersten Ecke laesst den alten Bereich ganz stehen",
-          _z15["status"]["art"] == "warn"
+          _z15["status"]["kind"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 
     # Keine Taste innerhalb der Zeitgrenze: dasselbe, nur mit anderem Grund.
     _io15.wait_for_global_key = lambda *a, **k: None
     _z15 = _b15.area_capture()
     check("ohne Tastendruck passiert ebenfalls nichts",
-          _z15["status"]["art"] == "warn"
+          _z15["status"]["kind"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 finally:
     _io15.wait_for_global_key, _wa15.get_cursor_pos = _echt15
@@ -4983,11 +4983,11 @@ try:
     check("Speichern merkt die zuletzt verwendete Sequenz",
           json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
           == _b12.filepath.parent.name)
-    check("gemeldet wird er trotzdem", _zustand12["status"]["art"] == "warn")
+    check("gemeldet wird er trotzdem", _zustand12["status"]["kind"] == "warn")
     check("und die Meldung nennt die Scan-Art",
           "ITEM-SCAN" in _zustand12["status"]["text"])
     check("die Karte warnt weiterhin",
-          _zustand12["phasen"][1]["bloecke"][0]["warnung"] == "Name fehlt")
+          _zustand12["phases"][1]["blocks"][0]["warnung"] == "Name fehlt")
 
     # Der leere Name muss die Datei ueberleben - sonst waere der Block beim
     # naechsten Oeffnen ein Klick-Block und die Stelle im Ablauf falsch.
@@ -4999,7 +4999,7 @@ try:
     _b12.board.name = ""
     _z12b = _b12.save()
     check("ohne Sequenz-Namen wird weiterhin nicht gespeichert",
-          _z12b["status"]["art"] == "err")
+          _z12b["status"]["kind"] == "err")
     check("und die Meldung sagt die Folge zuerst",
           _z12b["status"]["text"].startswith("Nicht gespeichert"))
 finally:
@@ -5284,10 +5284,10 @@ try:
           any(e.get("defekt") for e in _liste16))
     check("die Kennzahlen stimmen mit der Datei ueberein",
           _nach16["gross"]["schritte"] == 4 and _nach16["gross"]["init"] == 1
-          and len(_nach16["gross"]["phasen"]) == 2)
+          and len(_nach16["gross"]["phases"]) == 2)
     check("Wiederholungen und Startzeit stehen an der Phase",
-          _nach16["gross"]["phasen"][0]["wiederholungen"] == 5
-          and _nach16["gross"]["phasen"][1]["start"] == "08:30")
+          _nach16["gross"]["phases"][0]["wiederholungen"] == 5
+          and _nach16["gross"]["phases"][1]["start"] == "08:30")
     check("die offene Sequenz ist als offen markiert",
           _nach16["gross"]["offen"] is True and _nach16["klein"]["offen"] is False)
     # Der Scan ohne Konfiguration ist die eine Warnung, die man in der Uebersicht
@@ -5297,7 +5297,7 @@ try:
           and "ITEM-SCAN" in _nach16["gross"]["warnungen"][0])
     check("und eine saubere Sequenz meldet nichts", _nach16["klein"]["warnungen"] == [])
     check("eine kaputte Datei bringt die Uebersicht nicht um",
-          Path(_nach16["kaputt"]["datei"]) == _kaputt16)
+          Path(_nach16["kaputt"]["file"]) == _kaputt16)
 
     # Gegenprobe zur Wiederverwendung: Speichern und Uebersicht duerfen nicht zwei
     # getrennte Regeln haben. Beide fragen scan_warnungen() - der Test misst das,
@@ -5315,23 +5315,23 @@ try:
 
     # --- Laufstatus: nichts laeuft ist der Normalfall, kein Fehler ---
     from autoclicker.config import RUN_STATUS_FILE as _rsf16
-    check("ohne Statusdatei laeuft nichts", _b16.run_status() == {"aktiv": False})
+    check("ohne Statusdatei laeuft nichts", _b16.run_status() == {"active": False})
 
     Path(_rsf16).write_text("{kaputt", encoding="utf-8")
     check("eine unlesbare Statusdatei ist auch nur 'nichts laeuft'",
-          _b16.run_status() == {"aktiv": False})
+          _b16.run_status() == {"active": False})
 
     Path(_rsf16).write_text(json.dumps(
-        {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
-    check("ein frischer Stand kommt durch", _b16.run_status()["sequenz"] == "S")
+        {"active": True, "sequence": "S", "stamp": _time16.time()}), encoding="utf-8")
+    check("ein frischer Stand kommt durch", _b16.run_status()["sequence"] == "S")
 
     # Aelter als 5 s heisst: der Schreiber lebt nicht mehr. Ein hart abgeschossener
     # Hauptprozess soll nicht ewig als "laeuft" in der Oberflaeche stehen.
     Path(_rsf16).write_text(json.dumps(
-        {"aktiv": True, "sequenz": "S", "stand": _time16.time() - 60}), encoding="utf-8")
+        {"active": True, "sequence": "S", "stamp": _time16.time() - 60}), encoding="utf-8")
     _verwaist16 = _b16.run_status()
     check("ein alter Stand gilt als verwaist",
-          _verwaist16 == {"aktiv": False, "verwaist": True})
+          _verwaist16 == {"active": False, "verwaist": True})
 
     # --- Die Phasen-Uebersicht: alle Phasen, nicht nur die laufende ---
     # Die Liste steht im Laufstatus, weil die Ansicht sie sonst aus der GEOEFFNETEN
@@ -5348,7 +5348,7 @@ try:
     _liste16 = _pu16(_seq16)
     check("die Uebersicht nennt jede Phase",
           [p["name"] for p in _liste16] == ["INIT", "Farmen", "Verkaufen", "END"])
-    check("und ihre Art", [p["art"] for p in _liste16]
+    check("und ihre Art", [p["kind"] for p in _liste16]
           == ["init", "loop", "loop", "end"])
     check("eine zeitgesteuerte Phase bringt ihre Uhrzeit mit",
           _liste16[2]["start"] == "07:00" and _liste16[1]["start"] == "")
@@ -5385,7 +5385,7 @@ try:
                    _PP8(id=2, x=22, y=22, name="B", color=None),
                    _PP8(id=3, x=33, y=33, name="C", color=None)]
     _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
-    _b20.select({"phase": _lane20, "zeile": 0})
+    _b20.select({"phase": _lane20, "row": 0})
     for _welche20, _soll20 in (("klick", 11), ("trigger", 22), ("else", 33)):
         _bf19.discard_command()
         _b20.point_show({"welche": _welche20})
@@ -5402,7 +5402,7 @@ try:
     _b19 = _SB8(_SEQ8(name="M", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(x=0, y=0, delay_before=0)])]), Path("sequences") / "m.json", "sequences")
     _lane19 = next(i for i, ln in enumerate(_b19.board.lanes) if ln.steps)
-    _b19.select({"phase": _lane19, "zeile": 0})
+    _b19.select({"phase": _lane19, "row": 0})
     _schritt19 = _b19.board.lanes[_lane19].steps[0]
     _alt19 = (_io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
     try:
@@ -5429,7 +5429,7 @@ try:
         _io18.wait_for_global_key = lambda tasten, timeout=0: "escape"
         _z19 = _b19.point_capture()
         check("ESC aendert nichts", (_schritt19.x, _schritt19.y) == (700, 500)
-              and _z19["status"]["art"] == "warn")
+              and _z19["status"]["kind"] == "warn")
     finally:
         _io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel = _alt19
 
@@ -5451,7 +5451,7 @@ try:
         '{"name": "fremd"}', encoding="utf-8")
     _z18 = _b18.save()
     check("eine fremde Aenderung fuehrt zur Rueckfrage",
-          (_z18["frage"] or {}).get("art") == "save")
+          (_z18["frage"] or {}).get("kind") == "save")
     check("und die Datei ist unangetastet",
           "fremd" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     check("die Frage nennt die Datei",
@@ -5459,7 +5459,7 @@ try:
 
     _z18 = _b18.save({"erzwingen": True})
     check("mit Erzwingen wird geschrieben",
-          _z18["frage"] is None and "fremd" not in
+          _z18["frage"] is None and "foreign" not in
           Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     _z18 = _b18.save()
     check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
@@ -5474,21 +5474,21 @@ try:
     # Laufzeit schreibt nur den Schluessel (sie darf die Ansicht nicht kennen),
     # uebersetzt wird in der Bruecke - dieser Test haelt beide Seiten gegeneinander.
     Path(_rsf16).write_text(json.dumps(
-        {"aktiv": True, "sequenz": "S", "stand": _time16.time(),
+        {"active": True, "sequence": "S", "stamp": _time16.time(),
          "block_set_type": "boss_scan"}), encoding="utf-8")
     _laufend16 = _b16.run_status()
     _b16c = _SB8(_SEQ8(name="F", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(delay_before=0, boss_scan="drache")])]), Path("sequences/F.json"), "sequences")
-    _karte16 = [b for p in _b16c.snapshot()["phasen"] for b in p["bloecke"]][0]
+    _karte16 = [b for p in _b16c.snapshot()["phases"] for b in p["blocks"]][0]
     check("die Live-Ansicht faerbt wie das Board",
-          _laufend16.get("block_farbe") == _karte16["farbe"] is not None)
+          _laufend16.get("block_farbe") == _karte16["color"] is not None)
     check("und traegt dieselbe Marke",
           _laufend16.get("block_marke") == _karte16["label"] == "BOSS-SCAN")
 
     # Ohne Typ wird keine Farbe erfunden - eine Statusdatei aus einer aelteren
     # Fassung hat das Feld nicht.
     Path(_rsf16).write_text(json.dumps(
-        {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
+        {"active": True, "sequence": "S", "stamp": _time16.time()}), encoding="utf-8")
     check("ohne Typ bleibt die Kopfzeile neutral",
           "block_farbe" not in _b16.run_status())
 
@@ -5530,8 +5530,8 @@ try:
 
     _fs16 = _FakeState16()
     _stat16.finish_run()
-    _stat16.write_status(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A"}, sofort=True)
-    _stat16.write_status(_fs16, {"block": 3, "bloecke": 9}, sofort=True)
+    _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A"}, sofort=True)
+    _stat16.write_status(_fs16, {"block": 3, "blocks": 9}, sofort=True)
     # .get() statt [] ueberall hier unten: faellt der Merge weg, fehlt der
     # Schluessel ganz - und ein KeyError risse die restliche Suite mit, statt
     # eine Zeile FAIL zu melden. Genau der Fall, den dieser Test faengt.
@@ -5542,7 +5542,7 @@ try:
     check("der zweite Schreiber loescht den ersten nicht",
           _gelesen16.get("phase") == "A" and _gelesen16.get("block") == 3)
     check("die Zaehler kommen aus dem State",
-          _gelesen16.get("zaehler", {}).get("klicks") == 7)
+          _gelesen16.get("counters", {}).get("klicks") == 7)
 
     # Die Drossel wirft den SCHREIBVORGANG weg, nicht die Information: sonst zeigte
     # der naechste Schreibvorgang einen Block, der laengst durch ist.
@@ -5551,15 +5551,15 @@ try:
     _stat16.write_status(_fs16, {}, sofort=True)
     check("aber seine Information ist nicht verloren", _lauf16().get("block") == 4)
 
-    # Ein wartender Lauf ist kein toter Lauf: das Lebenszeichen haelt `stand`
+    # Ein wartender Lauf ist kein toter Lauf: das Lebenszeichen haelt `stamp`
     # frisch, ohne etwas zu aendern. Ohne das saehe ein Schritt, der auf eine Farbe
     # wartet, nach 5 s verwaist aus - der Fall, fuer den man die Ansicht aufmacht.
-    _alt16 = _lauf16().get("stand", 0)
+    _alt16 = _lauf16().get("stamp", 0)
     _time16.sleep(0.25)
     _stat16.heartbeat(_fs16)
     _neu16 = _lauf16()
     check("ein Lebenszeichen schiebt den Zeitstempel vor",
-          _neu16.get("stand", 0) > _alt16)
+          _neu16.get("stamp", 0) > _alt16)
     check("und aendert sonst nichts", _neu16.get("block") == 4)
 
     # Gegenprobe zum Lebenszeichen: der Aufruf muss auch DORT stehen, wo der
@@ -5585,7 +5585,7 @@ try:
     # Fundstelle nennt `status.heartbeat()` ebenfalls, und gegen das Wort
     # geprueft blieb der Test gruen, nachdem der Aufruf darunter entfernt war.
     # `waiting_for()` zaehlt mit: es schreibt ueber dieselbe Funktion und schiebt
-    # `stand` genauso vor - wer es ruft, braucht daneben kein Lebenszeichen.
+    # `stamp` genauso vor - wer es ruft, braucht daneben kein Lebenszeichen.
     _stumm16 = [n for n, f in _schleifen16
                 if "status.heartbeat(state)" not in _insp16.getsource(f)
                 and "status.waiting_for(state, " not in _insp16.getsource(f)]
@@ -5598,16 +5598,16 @@ try:
     # zwoelf Sekunden fast geschafft, bei 300 s Timeout gerade erst angefangen.
     _stat16.write_status(_fs16, {"block": 5}, sofort=True)
     _time16.sleep(0.25)     # Setzen ist gedrosselt wie jeder andere Schreibvorgang
-    _stat16.waiting_for(_fs16, {"art": "zeit", "text": "Vor Klick", "seit": 1.0,
-                           "bis": 7.0, "gesamt": 6.0})
+    _stat16.waiting_for(_fs16, {"kind": "zeit", "text": "Vor Klick", "since": 1.0,
+                           "until": 7.0, "total": 6.0})
     check("der Warte-Teil kommt in die Datei",
-          _lauf16().get("warten", {}).get("art") == "zeit")
+          _lauf16().get("waiting", {}).get("kind") == "zeit")
     check("und laesst den Rest des Zustands stehen", _lauf16().get("block") == 5)
     # Das Abmelden umgeht die Drossel: zwischen "Farbe erkannt" und dem naechsten
     # Block liegt noch die eigene Aktion des Schritts - solange stuende in der
     # Ansicht "wartet auf Farbe", obwohl laengst geklickt wurde.
     _stat16.waiting_for(_fs16, None)
-    check("das Abmelden wird nicht gedrosselt", _lauf16().get("warten") is None)
+    check("das Abmelden wird nicht gedrosselt", _lauf16().get("waiting") is None)
 
     # Jede Warteschleife meldet sich selbst wieder ab - auf JEDEM Ausgang, sonst
     # laeuft die Restzeit in der Ansicht ins Negative. Deshalb `finally`.
@@ -5619,7 +5619,7 @@ try:
     # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
     # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
     check("der Blockwechsel raeumt den Warte-Kasten ab",
-          '"warten": None' in _insp16.getsource(_stp16.execute_step))
+          '"waiting": None' in _insp16.getsource(_stp16.execute_step))
 
     # Was nach dem Timeout kommt, gehoert neben den Countdown: dass in 8 s
     # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
@@ -5701,7 +5701,7 @@ try:
     check("...und der Boss-Watcher ist bewusst NICHT dabei",
           "boss_watcher" in _sfeld12.values() and "boss_watcher" not in _es16)
 
-    _falsch16 = [n for n, (s, soll) in _faelle16.items() if _eg16(s) is not soll]
+    _falsch16 = [n for n, (s, target) in _faelle16.items() if _eg16(s) is not target]
     check("die Oberflaeche weiss, wo ELSE feuern kann", _falsch16 == [])
     if _falsch16:
         print("        falsch beurteilt: " + ", ".join(_falsch16))
@@ -5726,7 +5726,7 @@ try:
     _b17.points = [_PP8(id=1, x=1, y=2, name="P", color=(3, 4, 5))]
     # Die Lane mit dem Schritt suchen: sequence_to_board legt INIT und END mit an.
     _lane17 = next(i for i, ln in enumerate(_b17.board.lanes) if ln.steps)
-    _b17.select({"phase": _lane17, "zeile": 0})
+    _b17.select({"phase": _lane17, "row": 0})
     _schritt17 = _b17.board.lanes[_lane17].steps[0]
     _z17 = _b17.block_set_type({"typ": "click"})
     check("Typwechsel ohne Ausloeser raeumt das ELSE weg",
@@ -5736,10 +5736,10 @@ try:
     _b17.block_set_type({"typ": "wait_click"})
     check("zurueckgestellt ist der Ausloeser wieder da",
           _schritt17.wait_condition is not None)
-    check("...aber ohne ELSE", _b17._block_detail()["else_aktion"] == "")
+    check("...aber ohne ELSE", _b17._block_detail()["else_action"] == "")
 
     # Dasselbe ueber den Trigger-Schalter statt ueber den Typ.
-    _b17.block_else({"aktion": "skip"})
+    _b17.block_else({"action": "skip"})
     _b17.block_trigger({"wahl": _TKEIN8})
     check("Trigger entfernen raeumt das ELSE ebenfalls weg",
           _schritt17.else_config is None)
@@ -5747,48 +5747,48 @@ try:
     # Ein ELSE, das weiterhin ausgeloest werden kann, bleibt unangetastet -
     # sonst raeumte der Aufraeumer genau das weg, wofuer er da ist.
     _b17.block_trigger({"wahl": _TDA8})
-    _b17.block_else({"aktion": "restart"})
-    _b17.block_set({"feld": "name", "wert": "neu"})
+    _b17.block_else({"action": "restart"})
+    _b17.block_set({"feld": "name", "value": "neu"})
     check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
 
     # --- Am Ende bleibt die Zusammenfassung stehen ---
     # Hier wurde die Datei frueher geloescht, und die Live-Ansicht war genau in
     # dem Moment leer, in dem man sie ansieht: direkt nachdem etwas fertig
     # geworden ist.
-    _stat16.write_status(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A",
-                             "phase_pos": 1, "block": 5, "warten": {"art": "zeit"}},
+    _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A",
+                             "phase_pos": 1, "block": 5, "waiting": {"kind": "zeit"}},
                      sofort=True)
     _stat16.finish_run(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
     _ende16 = _lauf16()
     check("am Ende steht die Zusammenfassung da", Path(_rsf16).exists())
-    check("sie ist nicht mehr aktiv", _ende16.get("aktiv") is False)
-    check("nennt den Grund", _ende16.get("grund") == "alle Zyklen durchgelaufen")
+    check("sie ist nicht mehr aktiv", _ende16.get("active") is False)
+    check("nennt den Grund", _ende16.get("reason") == "alle Zyklen durchgelaufen")
     check("die gelaufenen Zyklen und die Dauer",
-          _ende16.get("gelaufen") == 12 and _ende16.get("dauer") == 90.5)
-    check("die Zaehler", _ende16.get("zaehler", {}).get("klicks") == 7)
-    check("und die Sequenz", _ende16.get("sequenz") == "S")
+          _ende16.get("gelaufen") == 12 and _ende16.get("duration") == 90.5)
+    check("die Zaehler", _ende16.get("counters", {}).get("klicks") == 7)
+    check("und die Sequenz", _ende16.get("sequence") == "S")
     # Wo Schluss war, bleibt drin; was einen MOMENT beschreibt, nicht: ein
     # "wartet auf Farbe" in einer Zusammenfassung waere eine Behauptung ueber
     # etwas, das laengst vorbei ist.
     check("die Stelle bleibt erhalten", _ende16.get("phase_pos") == 1)
     check("der laufende Block nicht", "block" not in _ende16)
-    check("und das Warten auch nicht", "warten" not in _ende16)
+    check("und das Warten auch nicht", "waiting" not in _ende16)
 
     # Der Leser darf sie NICHT als verwaist verwerfen - sie ist Vergangenheit,
     # sie DARF alt sein. Nur ein Lauf, der sich fuer aktiv haelt, hat ein Alter.
-    _ende16["stand"] = _time16.time() - 600
+    _ende16["stamp"] = _time16.time() - 600
     Path(_rsf16).write_text(json.dumps(_ende16), encoding="utf-8")
     _gelesen16 = _b16.run_status()
     check("eine alte Zusammenfassung bleibt lesbar",
-          _gelesen16.get("ende") and _gelesen16.get("grund"))
-    Path(_rsf16).write_text(json.dumps({"aktiv": True, "sequenz": "S",
-                                        "stand": _time16.time() - 600}), encoding="utf-8")
+          _gelesen16.get("end") and _gelesen16.get("reason"))
+    Path(_rsf16).write_text(json.dumps({"active": True, "sequence": "S",
+                                        "stamp": _time16.time() - 600}), encoding="utf-8")
     check("ein alter AKTIVER Lauf gilt weiter als verwaist",
           _b16.run_status().get("verwaist") is True)
 
     # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
     # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
-    _stat16.write_status(_fs16, {"aktiv": True}, sofort=True)
+    _stat16.write_status(_fs16, {"active": True}, sofort=True)
     check("und der naechste Lauf faengt bei null an", "block" not in _lauf16())
 
     # Ohne State (der Lauf lief gar nicht erst an) gibt es nichts zusammenzufassen.
@@ -5981,7 +5981,7 @@ else:
 # Scans-Sektionen, die jetzt in `tests/vertrag/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
 _html18 = _H.studio_web_source()
-_zustaende18 = ("treffer", "fremditem", "leer")
+_zustaende18 = ("treffer", "fremditem", "empty")
 _fehlend18 = [f"{k}.{z}" for z in _zustaende18
               for k in ("scan-slot", "scan-fuellung")
               if f".{k}.{z}{{" not in _html18.replace(" ", "")]
@@ -6007,8 +6007,8 @@ def _js_rumpf18(name: str) -> str:
     """Der Text einer JS-Funktion bis zur naechsten auf Spaltenebene 0."""
     start = _html18.index(f"function {name}(")
     remainder = _html18[start + 10:]
-    ende = _re13.search(r"\n(?:async )?function ", remainder)
-    return remainder[:ende.start()] if ende else remainder
+    end = _re13.search(r"\n(?:async )?function ", remainder)
+    return remainder[:end.start()] if end else remainder
 
 _neuaufbau18 = ("zeichne", "zeichneScans", "zeichneEinstellungen")
 _ohne_fokus18 = [n for n in _neuaufbau18
@@ -6033,7 +6033,7 @@ check("die Scan-Maske zeigt den Namen nur als Beschriftung",
       and 'maskeName("scan"' not in _js_rumpf18("scanScanMaske"))
 check("und die linke Spalte traegt das bearbeitbare Namensfeld",
       'id="scan-name"' in _html18
-      and 'feld: "name", wert: e.target.value' in _html18)
+      and 'feld: "name", value: e.target.value' in _html18)
 check("die Klappliste zum Waehlen bleibt",
       'id="scan-offen"' in _html18)
 # Die Ueberschrift im Detailteil nennt den Scan NICHT noch einmal: sein Name
@@ -6049,8 +6049,8 @@ check("und der Detailteil wiederholt ihn nicht",
 # uebrig. Im Scans-Reiter war das die Liste (Scans/Slots/Items) - auf wenige
 # Pixel gequetscht und unerreichbar, obwohl die Spalte scrollte.
 def _css_regel18(wahl: str) -> str:
-    stelle = _html18.index("\n" + wahl + "{")
-    return _html18[stelle + len(wahl) + 2:_html18.index("}", stelle)]
+    position = _html18.index("\n" + wahl + "{")
+    return _html18[position + len(wahl) + 2:_html18.index("}", position)]
 
 # --- Der „alle"-Schieber hat drei Stellungen, nicht zwei ---
 # Ueber 56 Schaltern stand er meistens weder auf ein noch auf aus - deshalb gab
@@ -6132,7 +6132,7 @@ if _fehlt17:
 # (dieselbe Regel wie bei den Kacheln des Teilen-Reiters). Geprueft wird auch,
 # dass die Ansicht ihn ueberhaupt zeichnet: eine Meta-Angabe, die niemand liest,
 # ist ein Knopf, den niemand sieht.
-_aktionen17 = {k: m.aktion for k, m in _META17.items() if m.aktion}
+_aktionen17 = {k: m.action for k, m in _META17.items() if m.action}
 _tote17 = [f"{k} -> {a[0]}" for k, a in _aktionen17.items()
            if not callable(getattr(_SB8, a[0], None))]
 check("jeder Feld-Knopf zeigt auf eine Bruecken-Methode", _tote17 == [])
@@ -6148,7 +6148,7 @@ check("und der Katalog laesst sich im Fenster holen",
 check("jede Art gibt es auch als Bedienelement",
       all(m.kind in _ARTEN17 for m in _META17.values()))
 check("Kacheln nur bei enum - und enum nie ohne Kacheln",
-      all(bool(m.optionen) == (m.kind == "enum") for m in _META17.values()))
+      all(bool(m.options) == (m.kind == "enum") for m in _META17.values()))
 
 # --- Abhaengigkeiten zeigen auf Felder, die es gibt ---
 # Ein `dep` ins Leere macht das Feld dauerhaft blass: es waere sichtbar,
@@ -6171,7 +6171,7 @@ if _kaputt17:
 # anderes. Beide Seiten messen, nicht eine abschreiben.
 _untauglich17 = []
 for _k17, _m17 in _META17.items():
-    for _wert17, _text17 in _m17.optionen:
+    for _wert17, _text17 in _m17.options:
         if getattr(_AC17(**{_k17: _wert17}), _k17) != _wert17:
             _untauglich17.append(f"{_k17}={_wert17!r}")
 check("jede angebotene Auswahl ueberlebt __post_init__", _untauglich17 == [])
@@ -6216,7 +6216,7 @@ try:
     # Ohne Datei: Standardwerte, kein Fehler, und der Pfad ist absolut.
     _gelesen17 = _b17.config_read()
     check("ohne config.json kommen die Standardwerte",
-          _gelesen17["werte"]["click_per_point"] == 1 and not _gelesen17["fehler"])
+          _gelesen17["values"]["click_per_point"] == 1 and not _gelesen17["fehler"])
     check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["pfad"]))
     check("die Beschreibungen kommen mit",
           _gelesen17["meta"]["click_per_point"]["label"] == "Klicks pro Punkt")
@@ -6227,7 +6227,7 @@ try:
     # dieselbe Datei, und ein Fenster, das seit einer Stunde offensteht, darf
     # dessen Aenderungen nicht mit seinem alten Stand ueberbuegeln.
     _sc17(_AC17(window_focus_title="Idle Clans X", scan_marker_count=9))
-    _antwort17 = _b17.config_write({"werte": {"click_post_delay": 0.25}})
+    _antwort17 = _b17.config_write({"values": {"click_post_delay": 0.25}})
     check("das Speichern meldet Erfolg", _antwort17["ok"])
     _datei17 = json.loads(Path("config.json").read_text(encoding="utf-8"))
     check("der geaenderte Wert steht in der Datei", _datei17["click_post_delay"] == 0.25)
@@ -6246,7 +6246,7 @@ try:
           _auftrag17 is not None and _auftrag17["command"] == "config")
 
     # Eine Korrektur wird gemeldet statt still hingenommen.
-    _antwort17 = _b17.config_write({"werte": {"scan_min_confidence": 1.5}})
+    _antwort17 = _b17.config_write({"values": {"scan_min_confidence": 1.5}})
     check("eine Korrektur wird zurueckgemeldet",
           [k["key"] for k in _antwort17["korrekturen"]] == ["scan_min_confidence"]
           and _antwort17["korrekturen"][0]["wurde"] == 0.8)
@@ -6255,17 +6255,17 @@ try:
 
     # Ein `600` von Hand darf nicht als Korrektur gelten, nur weil der Loader
     # eine 600.0 daraus macht.
-    _antwort17 = _b17.config_write({"werte": {"pixel_show_delay": 1}})
+    _antwort17 = _b17.config_write({"values": {"pixel_show_delay": 1}})
     check("eine ganze Zahl in einem Kommafeld ist keine Korrektur",
           _antwort17["korrekturen"] == [])
 
     # Nichts zu tun ist kein Fehler, aber auch kein Schreibvorgang.
-    check("ohne Werte wird nicht geschrieben", _b17.config_write({"werte": {}})["ok"] is False)
+    check("ohne Werte wird nicht geschrieben", _b17.config_write({"values": {}})["ok"] is False)
 
     # Kaputt ist nicht leer: draufschreiben wuerde den einzigen Rest wegwerfen,
     # den man noch von Hand reparieren kann.
     Path("config.json").write_text("{kein json", encoding="utf-8")
-    _antwort17 = _b17.config_write({"werte": {"click_per_point": 3}})
+    _antwort17 = _b17.config_write({"values": {"click_per_point": 3}})
     check("eine unlesbare config.json wird nicht ueberschrieben",
           not _antwort17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
     check("und der Leser meldet sie statt Standardwerte zu behaupten",
@@ -6478,7 +6478,7 @@ import tests.vertrag.report              # noqa: F401,E402
 import tests.vertrag.points               # noqa: F401,E402
 import tests.vertrag.sequence_delete     # noqa: F401,E402
 import tests.vertrag.katalog               # noqa: F401,E402
-import tests.vertrag.haltepunkt            # noqa: F401,E402
+import tests.vertrag.breakpoint            # noqa: F401,E402
 
 
 import shutil as _shD

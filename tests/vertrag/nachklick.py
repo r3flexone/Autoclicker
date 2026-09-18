@@ -499,7 +499,7 @@ _aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s11)
 _klick(_s11, 700, 700, None)
-_bns(_s11, {"discard": "1", "reason": "fenster"})
+_bns(_s11, {"discard": "1", "reason": "window"})
 check("der Studio-Abbruch verwirft", (_s11.points[0].x, _s11.points[0].y) == (100, 100))
 check("und beendet die Runde", _s11.reclick_active is False)
 
@@ -525,7 +525,7 @@ def _verwerf_text(reason):
 
 
 _txt_knopf = _verwerf_text("knopf")
-_txt_fenster = _verwerf_text("fenster")
+_txt_fenster = _verwerf_text("window")
 check("der Verwerfen-Knopf behauptet kein geschlossenes Fenster",
       "geschlossen" not in _txt_knopf and "verworfen" in _txt_knopf.lower())
 check("das geschlossene Fenster sagt genau das",
@@ -577,23 +577,23 @@ try:
             return _json_nk.load(f)
 
     _st0 = _stand()
-    check("das Ruesten schreibt sofort einen Stand", _st0["aktiv"] is True)
+    check("das Ruesten schreibt sofort einen Stand", _st0["active"] is True)
     check("mit Gesamtzahl und Startindex",
-          _st0["gesamt"] == 3 and _st0["index"] == 0)
+          _st0["total"] == 3 and _st0["index"] == 0)
     check("und dem Punkt, der als Naechstes dran ist",
-          _st0["punkt"]["id"] == 1 and _st0["punkt"]["x"] == 100)
+          _st0["point"]["id"] == 1 and _st0["point"]["x"] == 100)
     check("die Farbe kommt mit, wenn der Punkt eine hat",
-          _st0["punkt"]["farbe"] == [10, 20, 30])
+          _st0["point"]["color"] == [10, 20, 30])
 
     # --- Ein Klick weit daneben ist "gesetzt", einer daneben-daneben "passt" ---
     _klick(_s12, 150, 160, (44, 55, 66))
     _st1 = _stand()
-    check("nach dem Klick steht der naechste Punkt da", _st1["punkt"]["id"] == 2)
+    check("nach dem Klick steht der naechste Punkt da", _st1["point"]["id"] == 2)
     check("und der erledigte im Verlauf",
-          [v["art"] for v in _st1["verlauf"]] == ["gesetzt"])
+          [v["kind"] for v in _st1["history"]] == ["placed"])
     check("mit alter und neuer Stelle",
-          _st1["verlauf"][0]["alt"] == [100, 100]
-          and _st1["verlauf"][0]["neu"] == [150, 160])
+          _st1["history"][0]["alt"] == [100, 100]
+          and _st1["history"][0]["neu"] == [150, 160])
 
     # **Das ist der Grund fuer `reclick_history`**: ein bestaetigter Punkt
     # (innerhalb MATCH_TOLERANCE) landet bewusst NICHT in `reclick_set`.
@@ -602,24 +602,24 @@ try:
     _klick(_s12, 200, 200, None)
     _st2 = _stand()
     check("ein bestaetigter Punkt heisst 'passt', nicht 'uebersprungen'",
-          [v["art"] for v in _st2["verlauf"]] == ["gesetzt", "passt"])
-    check("und zaehlt trotzdem nicht als Aenderung", _st2["geaendert"] == 1)
+          [v["kind"] for v in _st2["history"]] == ["placed", "passt"])
+    check("und zaehlt trotzdem nicht als Aenderung", _st2["changed"] == 1)
 
     _skip(_s12)
     _st3 = _stand()
     check("ein uebersprungener steht als solcher im Verlauf",
-          [v["art"] for v in _st3["verlauf"]]
-          == ["gesetzt", "passt", "uebersprungen"])
+          [v["kind"] for v in _st3["history"]]
+          == ["placed", "passt", "skipped"])
 
     # Der dritte Punkt WAR der letzte — die Runde endet damit von selbst, und
     # der Abschluss traegt den vollstaendigen Verlauf. Wuerde er erst nach dem
     # Leeren geschrieben, staende hier eine leere Runde: ausgerechnet in dem
     # Moment, in dem man nachsieht, was sie ergeben hat.
-    check("die abgeschlossene Runde bleibt lesbar", _st3["aktiv"] is False)
+    check("die abgeschlossene Runde bleibt lesbar", _st3["active"] is False)
     check("und sagt, wie viele Stellen sich geaendert haben",
-          _st3["geaendert"] == 1)
-    check("und warum sie zu Ende ist", "alle Punkte durch" in _st3.get("grund", ""))
-    check("der Verlauf ueberlebt das Ende vollstaendig", len(_st3["verlauf"]) == 3)
+          _st3["changed"] == 1)
+    check("und warum sie zu Ende ist", "alle Punkte durch" in _st3.get("reason", ""))
+    check("der Verlauf ueberlebt das Ende vollstaendig", len(_st3["history"]) == 3)
     check("waehrend der State selbst geraeumt ist",
           _s12.reclick_history == [] and _s12.reclick_active is False)
 finally:

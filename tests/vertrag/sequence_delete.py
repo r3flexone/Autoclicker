@@ -85,14 +85,14 @@ try:
 
     _liste = {e["name"]: e for e in _b.sequence_list()}
     check("beide Sequenzen stehen in der Uebersicht", set(_liste) == {"Farm", "Raid"})
-    _umfang = {u["art"]: u["anzahl"] for u in _liste["Raid"]["umfang"]}
+    _umfang = {u["kind"]: u["count"] for u in _liste["Raid"]["umfang"]}
     check("der Umfang nennt die Scans", _umfang.get("item_scans") == 1)
     check("und die Vorlagen", _umfang.get("templates") == 2)
     check("eine Sequenz ohne Beiwerk hat keinen Umfang", _liste["Farm"]["umfang"] == [])
     # **Die Mehrzahl steht fertig in den Daten.** Die Ansicht haengte erst ein
     # "n" an — das ergibt "Vorlagen" und "Item-Scann". Bei drei von fuenf
     # Woertern falsch, und aufgefallen ist es erst am gerenderten Dialog.
-    _woerter = {u["art"]: u["wort"] for u in _liste["Raid"]["umfang"]}
+    _woerter = {u["kind"]: u["wort"] for u in _liste["Raid"]["umfang"]}
     check("bei einem bleibt die Einzahl", _woerter.get("item_scans") == "Item-Scan")
     check("bei mehreren steht die richtige Mehrzahl",
           _woerter.get("templates") == "Vorlagen")
@@ -104,7 +104,7 @@ try:
     # --- Die offene Sequenz nicht ------------------------------------------
     _z = _b.sequence_delete({"name": "Farm"})
     check("die offene Sequenz wird abgelehnt", _z["ok"] is False)
-    check("und die Absage sagt, warum", "geöffnet" in _z["meldung"])
+    check("und die Absage sagt, warum", "geöffnet" in _z["message"])
     check("der Ordner steht noch", sequence_dir("Farm").is_dir())
 
     # --- Waehrend eines Laufs nicht ----------------------------------------
@@ -176,7 +176,7 @@ check("beide Knoepfe teilen sich gleiche Spalten",
       'el("div", {class: "knopfpaar"}' in _karte)
 check("und die Klasse ist auch gestaltet", ".seq-fuss .knopfpaar{" in _web)
 _forts = _web[_web.index("async function fortfahren"):_web.index("Ansicht: Scans")]
-check("der Dialog kennt den Loesch-Fall", 'offen.art === "seq_loeschen"' in _forts)
+check("der Dialog kennt den Loesch-Fall", 'offen.kind === "seq_loeschen"' in _forts)
 check("und ruft die Bruecke ueber den fragenden Kanal",
       'frage("sequence_delete"' in _forts)
 check("danach wird die Uebersicht neu gezeichnet",

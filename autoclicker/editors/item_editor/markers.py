@@ -123,8 +123,8 @@ def _prepare_learning_image(img: 'Image.Image', slot_color: tuple = None):
 
     maskiert = with_background_mask(img, slot_color)
     marker = _collect_markers_silent(maskiert, slot_color)
-    leer = bool(slot_color) and not marker
-    return maskiert, marker, leer
+    empty = bool(slot_color) and not marker
+    return maskiert, marker, empty
 
 
 def _find_matching_existing_item(img: 'Image.Image', existing_items: list,

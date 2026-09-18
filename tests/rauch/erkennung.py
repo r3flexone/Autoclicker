@@ -21,17 +21,17 @@ def aufbau():
     # Art gibt es kein Foto, und alles, was eines braucht (Marker messen,
     # testen), stuende offen.
     b.boss_scan_new({"name": "Bossfarm"})
-    b.scan_screenshot({"art": "boss"})
-    b.boss_scan_set({"feld": "region", "wert": list(region)})
+    b.scan_screenshot({"kind": "boss"})
+    b.boss_scan_set({"feld": "region", "value": list(region)})
     b.boss_new({"name": "Ancient Dragon"})
-    b.marker_measure({"art": "boss"})
-    b.boss_set({"feld": "aktion", "wert": "item_scan"})
+    b.marker_measure({"kind": "boss"})
+    b.boss_set({"feld": "action", "value": "item_scan"})
     b.boss_new({"name": "Hydra", "global": True})
     b.icon_scan_new({"name": "Mission nicht machbar"})
-    b.scan_screenshot({"art": "icon"})
-    b.icon_set({"feld": "region", "wert": list(region)})
-    b.marker_measure({"art": "icon"})
-    b.icon_set({"feld": "aktion", "wert": "click"})
+    b.scan_screenshot({"kind": "icon"})
+    b.icon_set({"feld": "region", "value": list(region)})
+    b.marker_measure({"kind": "icon"})
+    b.icon_set({"feld": "action", "value": "click"})
     return b
 
 

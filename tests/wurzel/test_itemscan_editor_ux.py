@@ -43,8 +43,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
             for y in range(20, 50):
                 self.bridge._foto.putpixel((x, y), (190, 50, 60))
         self.bridge._foto_info = {
-            "links": 0, "oben": 0, "breite": 120, "hoehe": 80,
-            "skala": 1.0, "stand": 1.0,
+            "left": 0, "top": 0, "width": 120, "height": 80,
+            "scale": 1.0, "stamp": 1.0,
         }
         slot = ItemSlot(
             name="Slot 1", scan_region=(10, 10, 60, 60),
@@ -69,11 +69,11 @@ class ItemscanEditorUxTest(unittest.TestCase):
         vorher = cfg.color_tolerance
 
         state = self.bridge.scan_set({
-            "name": "Inventar", "feld": "toleranz", "wert": "keine Zahl",
+            "name": "Inventar", "feld": "tolerance", "value": "keine Zahl",
         })
 
         self.assertEqual(cfg.color_tolerance, vorher)
-        self.assertEqual(state["status"]["art"], "err")
+        self.assertEqual(state["status"]["kind"], "err")
         self.assertIn("ganze Zahl", state["status"]["text"])
 
     def test_one_shot_tool_and_pin(self):
@@ -94,10 +94,10 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIsNotNone(state["review"])
         self.assertFalse(Path("sequences/test/templates").exists())
 
-        row = state["review"]["zeilen"][0]
-        state = self.bridge.scan_learn_preview_apply({"zeilen": [{
-            "slot": row["slot"], "ausgewaehlt": True,
-            "name": "Roter Helm", "kategorie": "Helme",
+        row = state["review"]["rows"][0]
+        state = self.bridge.scan_learn_preview_apply({"rows": [{
+            "slot": row["slot"], "ticked": True,
+            "name": "Roter Helm", "category": "Helme",
         }]})
         self.assertIn("Roter Helm", self.bridge.items)
         self.assertEqual(self.bridge.items["Roter Helm"].category, "Helme")
@@ -119,42 +119,42 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # die echte Bilderkennung wird separat mit OpenCV geprüft.
         with matcher, compatible, patch.object(self.bridge, "_has_opencv", return_value=True):
             state = self.bridge.scan_learn_preview({"scope": "alle"})
-            row = state["review"]["zeilen"][0]
+            row = state["review"]["rows"][0]
             self.assertEqual(
-                (row["name"], row["kategorie"], row["prioritaet"]),
+                (row["name"], row["category"], row["priority"]),
                 ("Bogen", "Waffen", 4))
-            self.assertEqual(row["vorhanden"], "Bogen")
+            self.assertEqual(row["existing"], "Bogen")
             self.assertEqual(row["neu_name"], "Item 1")
-            self.assertFalse(row["kann_hinzufuegen"])
-            self.assertTrue(row["ausgewaehlt"])
+            self.assertFalse(row["can_add"])
+            self.assertTrue(row["ticked"])
             self.assertTrue(row["im_scan"])
 
-            state = self.bridge.scan_learn_preview_apply({"zeilen": [{
-                "slot": row["slot"], "ausgewaehlt": True,
-                "name": row["name"], "kategorie": "Fernkampf",
-                "prioritaet": 2,
+            state = self.bridge.scan_learn_preview_apply({"rows": [{
+                "slot": row["slot"], "ticked": True,
+                "name": row["name"], "category": "Fernkampf",
+                "priority": 2,
             }]})
 
         self.assertEqual(list(self.bridge.items), ["Bogen"])
         self.assertEqual(self.bridge.scans["Inventar"].item_names, ["Bogen"])
         self.assertEqual(self.bridge.items["Bogen"].category, "Fernkampf")
         self.assertEqual(self.bridge.items["Bogen"].priority, 2)
-        self.assertEqual(state["wahl"], {"art": "item", "name": "Bogen"})
+        self.assertEqual(state["wahl"], {"kind": "item", "name": "Bogen"})
         self.assertIn("bearbeitet", state["status"]["text"])
 
         with matcher, compatible, patch.object(self.bridge, "_has_opencv", return_value=True):
             state = self.bridge.scan_learn_preview({"scope": "alle"})
-            row = state["review"]["zeilen"][0]
+            row = state["review"]["rows"][0]
             self.assertEqual(row["name"], "Bogen")
-            self.assertEqual((row["kategorie"], row["prioritaet"]), ("Fernkampf", 2))
+            self.assertEqual((row["category"], row["priority"]), ("Fernkampf", 2))
             self.assertTrue(row["im_scan"])
             self.assertNotIn("gesperrt", row)
-            self.assertTrue(row["ausgewaehlt"])
+            self.assertTrue(row["ticked"])
 
-            state = self.bridge.scan_learn_preview_apply({"zeilen": [{
-                "slot": row["slot"], "ausgewaehlt": False,
-                "vorhanden": "Bogen", "als_anders": False,
-                "name": "Bogen", "kategorie": "Fernkampf", "prioritaet": 2,
+            state = self.bridge.scan_learn_preview_apply({"rows": [{
+                "slot": row["slot"], "ticked": False,
+                "existing": "Bogen", "als_anders": False,
+                "name": "Bogen", "category": "Fernkampf", "priority": 2,
             }]})
 
         self.assertIn("Bogen", self.bridge.items)
@@ -196,21 +196,21 @@ class ItemscanEditorUxTest(unittest.TestCase):
             return_value=True)
         with matcher, compatible:
             state = self.bridge.scan_learn_preview({"scope": "alle"})
-            rows = state["review"]["zeilen"]
+            rows = state["review"]["rows"]
             self.assertEqual(len(rows), 2)
-            self.assertTrue(all(row["ausgewaehlt"] for row in rows))
+            self.assertTrue(all(row["ticked"] for row in rows))
 
             # Eine abgewählte Zeile bedeutet nur „nicht lernen“, nicht löschen.
-            self.bridge.scan_learn_preview_apply({"zeilen": [
-                {"slot": rows[0]["slot"], "ausgewaehlt": False},
-                {"slot": rows[1]["slot"], "ausgewaehlt": True},
+            self.bridge.scan_learn_preview_apply({"rows": [
+                {"slot": rows[0]["slot"], "ticked": False},
+                {"slot": rows[1]["slot"], "ticked": True},
             ]})
             self.assertIn("Bogen", cfg.item_names)
 
             state = self.bridge.scan_learn_preview({"scope": "alle"})
-            rows = state["review"]["zeilen"]
-            state = self.bridge.scan_learn_preview_apply({"zeilen": [
-                {"slot": row["slot"], "ausgewaehlt": False} for row in rows
+            rows = state["review"]["rows"]
+            state = self.bridge.scan_learn_preview_apply({"rows": [
+                {"slot": row["slot"], "ticked": False} for row in rows
             ]})
 
         self.assertIn("Bogen", cfg.item_names)
@@ -220,11 +220,11 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.bridge.items["Bekannt"] = ItemProfile(name="Bekannt")
         self.bridge._sync_objects()
         self.bridge._treffer = {
-            "Slot 1": {"name": "Bekannt", "fremd": False},
+            "Slot 1": {"name": "Bekannt", "foreign": False},
         }
         result = self.bridge.scan_data()["ergebnis"]
-        self.assertEqual(result["fremd"], 0)
-        self.assertEqual(result["gesamt"], 1)
+        self.assertEqual(result["foreign"], 0)
+        self.assertEqual(result["total"], 1)
         self.assertIn("Bekannt", self.bridge.scans["Inventar"].item_names)
 
     def test_category_reuses_existing_spelling_and_allows_new_names(self):
@@ -234,32 +234,32 @@ class ItemscanEditorUxTest(unittest.TestCase):
         }
 
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "kategorie", "wert": "helme",
+            "name": "Ruestung", "feld": "category", "value": "helme",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helme")
 
         state = self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "kategorie", "wert": "Traenke",
+            "name": "Ruestung", "feld": "category", "value": "Traenke",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Traenke")
-        self.assertEqual(state["kategorien"], ["Helme", "Traenke"])
+        self.assertEqual(state["categories"], ["Helme", "Traenke"])
 
         # Leerraum zählt nicht mit: „ Helme " und „Helme  Gross" gegen
         # „Helme Gross" wären sonst eigene Kategorien — und Items derselben
         # Kategorie konkurrieren miteinander, eine getrennte verliert still
         # ihre Gruppe.
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "kategorie", "wert": "  helme  ",
+            "name": "Ruestung", "feld": "category", "value": "  helme  ",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helme")
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "kategorie", "wert": "Schwere   Helme",
+            "name": "Ruestung", "feld": "category", "value": "Schwere   Helme",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Schwere Helme")
         # Weiter wird NICHT geraten: ein getipptes Wort stillschweigend in ein
         # anderes zu ändern ist schlimmer als der Tippfehler selbst.
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "kategorie", "wert": "Helmr",
+            "name": "Ruestung", "feld": "category", "value": "Helmr",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helmr")
 
@@ -302,7 +302,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         }
 
         state = self.bridge.scan_item_set({
-            "name": "Eisenhelm", "feld": "prioritaet", "wert": 0,
+            "name": "Eisenhelm", "feld": "priority", "value": 0,
         })
 
         self.assertEqual(self.bridge.items["Eisenhelm"].priority, 1)
@@ -314,11 +314,11 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.bridge.items["Goldhelm"] = ItemProfile(
             name="Goldhelm", category="Helme", priority=1)
         state = self.bridge.scan_learn_preview({"scope": "alle"})
-        row = state["review"]["zeilen"][0]
+        row = state["review"]["rows"][0]
 
-        self.bridge.scan_learn_preview_apply({"zeilen": [{
-            "slot": row["slot"], "ausgewaehlt": True,
-            "name": "Eisenhelm", "kategorie": "Helme", "prioritaet": 0,
+        self.bridge.scan_learn_preview_apply({"rows": [{
+            "slot": row["slot"], "ticked": True,
+            "name": "Eisenhelm", "category": "Helme", "priority": 0,
         }]})
 
         self.assertEqual(self.bridge.items["Eisenhelm"].priority, 1)
@@ -336,9 +336,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
 
         state = self.bridge.scan_learn_preview({"scope": "alle"})
 
-        self.assertEqual(len(state["review"]["zeilen"]), 2)
+        self.assertEqual(len(state["review"]["rows"]), 2)
         self.assertEqual(
-            [row["prioritaet"] for row in state["review"]["zeilen"]], [1, 1])
+            [row["priority"] for row in state["review"]["rows"]], [1, 1])
 
     def test_completely_empty_slot_is_not_offered_or_learned(self):
         self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
@@ -372,13 +372,13 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 "autoclicker.editors.item_editor.markers._find_matching_existing_item",
                 return_value=None):
             state = self.bridge.scan_learn_preview({"scope": "alle"})
-        row = state["review"]["zeilen"][0]
+        row = state["review"]["rows"][0]
         self.assertIn("Roter Helm", state["review"]["itemnamen"])
 
-        self.bridge.scan_learn_preview_apply({"zeilen": [{
-            "slot": row["slot"], "ausgewaehlt": True,
-            "name": "Roter Helm", "kategorie": "Falsche Kategorie",
-            "prioritaet": 99,
+        self.bridge.scan_learn_preview_apply({"rows": [{
+            "slot": row["slot"], "ticked": True,
+            "name": "Roter Helm", "category": "Falsche Kategorie",
+            "priority": 99,
         }]})
 
         self.assertEqual(list(self.bridge.items), ["Roter Helm"])
@@ -423,7 +423,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 template_root=templates))
 
         data = self.bridge._item_json(item)
-        self.assertEqual(data["vorlagengroessen"], [[62, 57], [50, 50]])
+        self.assertEqual(data["template_sizes"], [[62, 57], [50, 50]])
 
         from autoclicker.persistence.serialization import _item_from_dict, _item_to_dict
         gespeicherte_daten = _item_to_dict(item)
@@ -443,14 +443,14 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # niemand mehr rief: der Text war da, das Bedienelement nicht.
         self.assertIn("0 = ganz nach vorn", js)
         self.assertNotIn("function prioritaetsfeld", js)
-        self.assertIn('"P" + i.prioritaet', js)
+        self.assertIn('"P" + i.priority', js)
         # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
         # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem
         # <select> wurde. Ein Import, der die Priorität als Kategorie liest,
         # fällt niemandem auf.
         self.assertIn('n.querySelector(".scan-review-prio").value', js)
         self.assertIn('n.querySelector(".scan-review-name").value', js)
-        self.assertIn('n.querySelector(".scan-review-kategorie").wert()', js)
+        self.assertIn('n.querySelector(".scan-review-kategorie").value()', js)
         self.assertNotIn("inputs[3].value", js)
         self.assertIn("function scanReviewKategorienAktualisieren", js)
         self.assertIn("Auf ausgewählte anwenden", js)
@@ -483,13 +483,13 @@ class ItemscanEditorUxTest(unittest.TestCase):
         with patch("autoclicker.winapi.list_windows", return_value=[
                 ("Mein Spiel", old_rect, 77)]):
             state = self.bridge.scan_area_set({
-                "bereich": list(old_rect), "fenster": 77,
+                "area": list(old_rect), "window": 77,
             })
 
         cfg = self.bridge.scans["Inventar"]
         self.assertEqual(cfg.capture_window_title, "Mein Spiel")
         self.assertEqual(cfg.capture_window_rect, old_rect)
-        self.assertEqual(state["fenster_titel"], "Mein Spiel")
+        self.assertEqual(state["window_title"], "Mein Spiel")
 
         image = Image.new("RGB", (120, 80), (25, 35, 45))
         image.putpixel((20, 20), (200, 50, 60))
