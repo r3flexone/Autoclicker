@@ -419,8 +419,8 @@ class Renamer:
 
 # ------------------------------------------------------------------ Dateien
 
-def files(root: Path, python_only: bool = False):
-    suffixes = {".py"} if python_only else TEXT_SUFFIXES
+def files(root: Path, python_only: bool = False, js_only: bool = False):
+    suffixes = {".py"} if python_only else {".js", ".html"} if js_only else TEXT_SUFFIXES
     for wurzel in ROOTS:
         p = root / wurzel
         if p.is_file() and p.suffix.lower() in suffixes:
@@ -501,11 +501,11 @@ def identifiers_in(path: Path, src: str) -> set:
 
 def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
         out=sys.stdout, python_only: bool = False, keys: bool = False,
-        py_idents: bool = True) -> int:
+        py_idents: bool = True, js_only: bool = False) -> int:
     renamer = Renamer(table, strings=strings, keys=keys, py_idents=py_idents)
     # newline="" laesst CRLF unangetastet — sonst schriebe der Durchgang jede
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
-    quellen = [(f, _read(f)) for f in files(root, python_only)]
+    quellen = [(f, _read(f)) for f in files(root, python_only, js_only)]
 
     # Zwei Stufen. Ein neuer Name, der irgendwo im Repo schon vorkommt, ist ein
     # HINWEIS (`f.write` neben `status.schreibe -> write` ist kein Problem). Ein
@@ -578,6 +578,9 @@ def main(argv=None) -> int:
     p.add_argument("--no-py-idents", action="store_true",
                    help="Python-Bezeichner in Ruhe lassen — nur Strings (und JS). Fuer --keys, "
                         "wenn der Schluessel in Python auch eine Lokale ist")
+    p.add_argument("--js-only", action="store_true",
+                   help="nur .js und .html anfassen — fuer Lokale der Seite, deren Namen in "
+                        "Python etwas anderes bedeuten")
     p.add_argument("--python-only", action="store_true",
                    help="nur .py anfassen — fuer Lokale, deren Namen zugleich JSON-Schluessel "
                         "der Bruecke sind (die Seite folgt erst mit den Schluesseln)")
@@ -607,7 +610,7 @@ def main(argv=None) -> int:
         table[alt] = neu
     return run(Path(args.root), table, args.strings, args.dry_run, args.force,
                python_only=args.python_only, keys=args.keys,
-               py_idents=not args.no_py_idents)
+               py_idents=not args.no_py_idents, js_only=args.js_only)
 
 
 if __name__ == "__main__":
