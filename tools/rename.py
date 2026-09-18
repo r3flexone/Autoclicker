@@ -58,9 +58,10 @@ _JS_REGEX_BEFORE = {"(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";",
 class Renamer:
     """Ein Durchgang mit einer Tabelle alt -> neu."""
 
-    def __init__(self, table: dict, strings: bool = False) -> None:
+    def __init__(self, table: dict, strings: bool = False, keys: bool = False) -> None:
         self.table = dict(table)
         self.strings = strings
+        self.keys = keys
         self.ident = {a: n for a, n in table.items() if "-" not in a}
         self.css_table = {a: n for a, n in table.items() if "-" in a}
         self.seen = set()     # jeder JS-Identifier, den der Lexer gesehen hat
@@ -91,7 +92,10 @@ class Renamer:
         return text
 
     def _string_rule(self, inhalt: str) -> str:
-        """String-Inhalt: Verweis-Regel, mit --strings zusaetzlich Pfad-Glieder."""
+        """String-Inhalt: Verweis-Regel, mit --strings zusaetzlich Pfad-Glieder,
+        mit --keys nur der String, der GENAU der Schluessel ist."""
+        if self.keys and inhalt in self.ident:
+            return self.ident[inhalt]
         neu = self._doc_rule(inhalt)
         if self.strings and self._re_ident is not None and neu.strip() == neu and " " not in neu and neu:
             neu = self._re_ident.sub(lambda m: self.ident[m.group(0)], neu)
@@ -183,6 +187,12 @@ class Renamer:
         out = []
         i, n = 0, len(src)
         last_sig = ""      # letztes bedeutsames Token (fuer Regex-Erkennung)
+        # Nackte Namen je oberster Funktion: `function f(` bei Tiefe 0 oeffnet
+        # einen Scope, der mit der schliessenden Klammer endet. Eigenschaften
+        # (`x.name`) und Objekt-Schluessel (`{name:`) zaehlen nicht — die
+        # Frage ist, ob alt und neu als VARIABLEN nebeneinander stehen.
+        self.js_scopes = []
+        depth, scope_name, scope_names = 0, None, set()
         while i < n:
             ch = src[i]
             if src.startswith("//", i):
@@ -207,8 +217,20 @@ class Renamer:
             if m:
                 wort = m.group(0)
                 self.seen.add(wort)
+                rest = src[m.end():m.end() + 2].lstrip()
+                if last_sig == "function" and depth == 0:
+                    scope_name, scope_names = wort, set()
+                elif scope_name and last_sig != "." and not rest.startswith(":"):
+                    scope_names.add(wort)
                 out.append(self.ident.get(wort, wort))
                 i = m.end(); last_sig = wort; continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and scope_name:
+                    self.js_scopes.append((scope_name, scope_names))
+                    scope_name, scope_names = None, set()
             if not ch.isspace():
                 last_sig = ch
             out.append(ch); i += 1
@@ -387,8 +409,8 @@ def identifiers_in(path: Path, src: str) -> set:
 
 
 def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
-        out=sys.stdout, python_only: bool = False) -> int:
-    renamer = Renamer(table, strings=strings)
+        out=sys.stdout, python_only: bool = False, keys: bool = False) -> int:
+    renamer = Renamer(table, strings=strings, keys=keys)
     # newline="" laesst CRLF unangetastet — sonst schriebe der Durchgang jede
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
     quellen = [(f, _read(f)) for f in files(root, python_only)]
@@ -407,6 +429,13 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
                 for alt, neu in renamer.ident.items():
                     if alt in namen and neu in namen:
                         stopps.append(f"{f.relative_to(root).as_posix()}:{scope}  {alt} und {neu}")
+        elif f.suffix == ".js":
+            probe = Renamer({})
+            probe.javascript(src)
+            for scope, namen in probe.js_scopes:
+                for alt, neu in renamer.ident.items():
+                    if alt in namen and neu in namen:
+                        stopps.append(f"{f.relative_to(root).as_posix()}:{scope}()  {alt} und {neu}")
     for name, wo in sorted(hinweise.items()):
         print(f"[HINWEIS] '{name}' kommt schon vor in: "
               + ", ".join(wo[:4]) + (" ..." if len(wo) > 4 else ""), file=out)
@@ -451,6 +480,9 @@ def main(argv=None) -> int:
                    help="auch Strings, die den Namen als Ganzes oder Pfad-Glied tragen")
     p.add_argument("--dry-run", action="store_true", help="nur zeigen, nichts schreiben")
     p.add_argument("--force", action="store_true", help="Kollisionspruefung uebergehen")
+    p.add_argument("--keys", action="store_true",
+                   help="JSON-Schluessel: Strings nur, wenn sie GENAU der Schluessel sind "
+                        "(nicht als Pfad-Glied wie bei --strings), JS-Identifier wie immer")
     p.add_argument("--python-only", action="store_true",
                    help="nur .py anfassen — fuer Lokale, deren Namen zugleich JSON-Schluessel "
                         "der Bruecke sind (die Seite folgt erst mit den Schluesseln)")
@@ -476,7 +508,7 @@ def main(argv=None) -> int:
             p.error(f"'{neu}' ist kein gueltiger Bezeichner")
         table[alt] = neu
     return run(Path(args.root), table, args.strings, args.dry_run, args.force,
-               python_only=args.python_only)
+               python_only=args.python_only, keys=args.keys)
 
 
 if __name__ == "__main__":

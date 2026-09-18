@@ -108,6 +108,30 @@ class JavascriptRenameTest(unittest.TestCase):
         self.assertGreater(len(renamer.seen), 500)
 
 
+class KeysModeTest(unittest.TestCase):
+    def test_keys_touch_only_exact_strings(self):
+        # JSON-Schluessel der Bruecke: in Python ein String, in JS ein Identifier.
+        # `--strings` traefe `art` auch in "scan-art" (CSS-Klasse); `--keys` nicht.
+        r = Renamer({"art": "kind"}, keys=True)
+        self.assertEqual(r.python('d = {"art": 1, "scan-art": 2}\nk = "art"\n'),
+                         'd = {"kind": 1, "scan-art": 2}\nk = "kind"\n')
+        self.assertEqual(r.javascript('z.art; ({art: 1}); x["art"]; c("scan-art"); ds.art'),
+                         'z.kind; ({kind: 1}); x["kind"]; c("scan-art"); ds.kind')
+
+    def test_js_scope_collision_stops(self):
+        # `farbe -> color` in einer Funktion, die schon ein nacktes `color` hat,
+        # wuerde still ueberschatten; `x.color` (Eigenschaft) zaehlt nicht.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); (root / "autoclicker").mkdir()
+            (root / "autoclicker/a.js").write_text(
+                "function f(farbe) { const color = 1; return farbe; }\n"
+                "function g(farbe) { return x.color + farbe; }\n", encoding="utf-8")
+            out = io.StringIO()
+            self.assertEqual(run(root, {"farbe": "color"}, False, True, False, out=out), 2)
+            self.assertIn("a.js:f()  farbe und color", out.getvalue())
+            self.assertNotIn("a.js:g()", out.getvalue())
+
+
 class CssAndProseTest(unittest.TestCase):
     def test_css_class_everywhere(self):
         r = Renamer({"scan-marke": "scan-badge"})
