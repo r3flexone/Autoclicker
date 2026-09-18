@@ -31,6 +31,16 @@ class PythonRenameTest(unittest.TestCase):
         self.assertIn("f'{point} ist neu'", neu)                      # Text im f-String bleibt
         self.assertIn("# Der Punkt ist neu; `set_point()` setzt ihn. set_point wird gerufen.", neu)
 
+    def test_fstring_as_single_token(self):
+        # Vor Python 3.12 kommt ein f-String als EIN STRING-Token — genau der Weg,
+        # den CI auf 3.10 nimmt und der lokal (3.14) nie betreten wird. Deshalb
+        # wird die Funktion hier direkt mit dem Token gefuettert.
+        r = Renamer({"punkt": "point", "breite": "width", "neu": "new"})
+        self.assertEqual(r._rewrite_string_token("f'{punkt} ist neu'"), "f'{point} ist neu'")
+        self.assertEqual(r._rewrite_string_token('f"{{neu}} {punkt.x:{breite}}"'),
+                         'f"{{neu}} {point.x:{width}}"')
+        self.assertEqual(r._rewrite_string_token('rf"\\d{punkt}"'), 'rf"\\d{point}"')
+
     def test_strings_only_with_flag(self):
         src = 'befehle = {"block_setzen": block_setzen, "laden": laden}\nmeld("laden fehlgeschlagen")\n'
         table = {"block_setzen": "set_block", "laden": "load"}

@@ -136,11 +136,33 @@ class Renamer:
             return literal
         prefix, quote = m.group(1), m.group(2)
         inhalt = literal[len(prefix) + len(quote):-len(quote)]
-        if "\n" in inhalt or len(inhalt) > 200:
+        if "f" in prefix.lower():
+            neu = self._fstring_rule(inhalt)
+        elif "\n" in inhalt or len(inhalt) > 200:
             neu = self._doc_rule(inhalt)           # Docstring / langer Text
         else:
             neu = self._string_rule(inhalt)
         return prefix + quote + neu + quote
+
+    # Ein `{…}`-Feld eines f-Strings, eine Klammerebene tief (`{x:{breite}}`);
+    # `{{` und `}}` sind Text.
+    _FSTRING_FELD = re.compile(r"(?<!\{)\{(?!\{)((?:[^{}]|\{[^{}]*\})*)\}")
+
+    def _fstring_rule(self, inhalt: str) -> str:
+        """Vor Python 3.12 ist ein f-String EIN Token: der Text darin folgt der
+        Verweis-Regel, die Ausdruecke in `{…}` sind Code. Ab 3.12 liefert
+        `tokenize` beides getrennt (FSTRING_MIDDLE + NAME), und dieser Weg
+        wird gar nicht erst betreten — auf beiden Wegen kommt dasselbe heraus."""
+        out, pos = [], 0
+        for feld in self._FSTRING_FELD.finditer(inhalt):
+            out.append(self._doc_rule(inhalt[pos:feld.start()]))
+            ausdruck = feld.group(1)
+            if self._re_ident is not None:
+                ausdruck = self._re_ident.sub(lambda m: self.ident[m.group(0)], ausdruck)
+            out.append("{" + ausdruck + "}")
+            pos = feld.end()
+        out.append(self._doc_rule(inhalt[pos:]))
+        return "".join(out)
 
     @staticmethod
     def _apply(lines: list, edits: list) -> str:
