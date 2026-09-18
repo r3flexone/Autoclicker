@@ -25,14 +25,14 @@ if TYPE_CHECKING:  # nur fuer die Annotationen unten
 # Dataclasses muessen deshalb zusammenpassen; ein Test prueft das.
 
 # Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
-_KEIN_DEFAULT = object()
+_NO_DEFAULT = object()
 
 
 # Schon gemeldete Altfelder - sonst steht dieselbe Zeile bei 40 Items vierzigmal da.
 _ALT_GEMELDET: set = set()
 
 
-def _klick_referenz(data: dict, wo: str, was_tun: str):
+def _click_reference(data: dict, wo: str, was_tun: str):
     """`action_point_id` lesen - und ein altes `action_x/y` melden statt es zu schlucken.
 
     Boss- und Icon-Aktionen klicken heute einen Punkt. Die alte Koordinate im Scan war
@@ -40,11 +40,11 @@ def _klick_referenz(data: dict, wo: str, was_tun: str):
     Reparatur im Punkte-Menue noch einer Kalibrierung ueber die Punkte.
     """
     if data.get("action_point_id") is None and (data.get("action_x") or data.get("action_y")):
-        _alt_gemeldet(wo, "action_x/action_y", was_tun)
+        _legacy_reported(wo, "action_x/action_y", was_tun)
     return data.get("action_point_id")
 
 
-def _alt_gemeldet(wo: str, feld: str, was_tun: str) -> None:
+def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
     """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
 
     Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
@@ -53,34 +53,34 @@ def _alt_gemeldet(wo: str, feld: str, was_tun: str) -> None:
     verschwinden darf es trotzdem nicht.
     """
     from ..utils import hint, warn
-    schluessel = f"{wo}:{feld}"
-    if schluessel in _ALT_GEMELDET:
+    key_name = f"{wo}:{feld}"
+    if key_name in _ALT_GEMELDET:
         return
-    _ALT_GEMELDET.add(schluessel)
+    _ALT_GEMELDET.add(key_name)
     print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
                f"in sequence.json."))
     print(hint(f"       {was_tun}."))
 
 
-def _ist_default(wert, default) -> bool:
+def _is_default(value, default) -> bool:
     """Trägt das Feld seinen Standardwert?
 
     In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"scroll": 0` als
     False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
     (0 vs 0.0) sollen dagegen als gleich zählen.
     """
-    if isinstance(wert, bool) != isinstance(default, bool):
+    if isinstance(value, bool) != isinstance(default, bool):
         return False
-    if isinstance(wert, (int, float)) and isinstance(default, (int, float)):
-        return wert == default
-    return type(wert) is type(default) and wert == default
+    if isinstance(value, (int, float)) and isinstance(default, (int, float)):
+        return value == default
+    return type(value) is type(default) and value == default
 
 
-def _ohne_defaults(daten: dict, defaults: dict) -> dict:
+def _without_defaults(data: dict, defaults: dict) -> dict:
     """Entfernt alle Felder, die ihren Standardwert tragen."""
-    return {k: v for k, v in daten.items()
-            if not (defaults.get(k, _KEIN_DEFAULT) is not _KEIN_DEFAULT
-                    and _ist_default(v, defaults[k]))}
+    return {k: v for k, v in data.items()
+            if not (defaults.get(k, _NO_DEFAULT) is not _NO_DEFAULT
+                    and _is_default(v, defaults[k]))}
 
 
 # =============================================================================
@@ -112,12 +112,12 @@ def _item_to_dict(item: ItemProfile) -> dict:
     # Der Bestätigungsklick steht als ID drin, nicht als Koordinate: die wohnt im Punkt.
     # `confirm_point` ist nur der aufgelöste Arbeitswert und wird nicht geschrieben.
     d.pop("confirm_point", None)
-    return _ohne_defaults(d, _ITEM_DEFAULTS)
+    return _without_defaults(d, _ITEM_DEFAULTS)
 
 
 def _slot_to_dict(slot: 'ItemSlot') -> dict:
     """Serialisiert einen ItemSlot - ohne `name` (steht im Schlüssel)."""
-    return _ohne_defaults({
+    return _without_defaults({
         "scan_region": list(slot.scan_region),
         "click_pos": list(slot.click_pos),
         "slot_color": list(slot.slot_color) if slot.slot_color else None,
@@ -134,12 +134,12 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
     """
     if not isinstance(data, dict):
         raise TypeError("Slot muss ein JSON-Objekt sein")
-    farbe = data.get("slot_color")
+    color = data.get("slot_color")
     return ItemSlot(
         name=name,
         scan_region=tuple(data["scan_region"]),
         click_pos=tuple(data["click_pos"]),
-        slot_color=tuple(farbe) if farbe else None,
+        slot_color=tuple(color) if color else None,
         # Nur ein echtes JSON-`false` schaltet aus. Kaputte oder alte Werte
         # fallen auf den sicheren bisherigen Standard „an" zurück.
         enabled=data.get("enabled", True) is not False,
@@ -171,7 +171,7 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
     # alle Item-Loader reichen) kostet mehr, als das Feld neu zu setzen. Gemeldet wird
     # es, damit es nicht still verschwindet.
     if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
-        _alt_gemeldet(f"Item '{name}'", "confirm_point",
+        _legacy_reported(f"Item '{name}'", "confirm_point",
                       "Bestätigungs-Punkt im Item-Editor neu setzen")
     varianten = data.get("template_variants", [])
     if not isinstance(varianten, list):
@@ -213,7 +213,7 @@ _BOSS_DEFAULTS = {
 
 def _boss_profile_to_dict(boss: BossProfile) -> dict:
     """Serialisiert ein BossProfile zu einem Dict."""
-    return _ohne_defaults({
+    return _without_defaults({
         "name": boss.name,
         "marker_colors": [list(c) for c in boss.marker_colors],
         "template": boss.template,
@@ -239,7 +239,7 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
         action=data.get("action", BOSS_ACTION_SCAN),
         action_scan=data.get("action_scan"),
         action_scan_mode=data.get("action_scan_mode", SCAN_MODE_ALL),
-        action_point_id=_klick_referenz(data, f"Boss '{data.get('name', '?')}'",
+        action_point_id=_click_reference(data, f"Boss '{data.get('name', '?')}'",
                                         "Klick-Punkt im Boss-Scan-Editor neu setzen"),
         action_key=data.get("action_key"),
         action_delay=data.get("action_delay", 0),
@@ -270,7 +270,7 @@ _ITEM_SCAN_DEFAULTS = {
 
 def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
     """Serialisiert einen vollständigen, eigenständigen Item-Scan."""
-    return _ohne_defaults({
+    return _without_defaults({
         "name": config.name,
         "color_tolerance": config.color_tolerance,
         "learn_unknown": config.learn_unknown,
@@ -297,17 +297,17 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     items_data = data.get("items", {})
     if not isinstance(slots_data, dict) or not isinstance(items_data, dict):
         raise TypeError("slots/items müssen Objekte sein")
-    fenster_rechteck = data.get("capture_window_rect")
-    if not isinstance(fenster_rechteck, (list, tuple)) or len(fenster_rechteck) != 4:
-        fenster_rechteck = None
+    window_rect = data.get("capture_window_rect")
+    if not isinstance(window_rect, (list, tuple)) or len(window_rect) != 4:
+        window_rect = None
     else:
         try:
-            fenster_rechteck = tuple(int(wert) for wert in fenster_rechteck)
-            if (fenster_rechteck[2] <= fenster_rechteck[0]
-                    or fenster_rechteck[3] <= fenster_rechteck[1]):
-                fenster_rechteck = None
+            window_rect = tuple(int(value) for value in window_rect)
+            if (window_rect[2] <= window_rect[0]
+                    or window_rect[3] <= window_rect[1]):
+                window_rect = None
         except (TypeError, ValueError):
-            fenster_rechteck = None
+            window_rect = None
     fenster_titel = data.get("capture_window_title")
     if not isinstance(fenster_titel, str) or not fenster_titel.strip():
         fenster_titel = None
@@ -319,17 +319,17 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         fenster_index = 0
     return ItemScanConfig(
         name=data["name"],
-        slots=[_slot_from_dict(str(name), wert)
-               for name, wert in slots_data.items()],
-        items=[_item_from_dict(wert, str(name))
-               for name, wert in items_data.items()],
+        slots=[_slot_from_dict(str(name), value)
+               for name, value in slots_data.items()],
+        items=[_item_from_dict(value, str(name))
+               for name, value in items_data.items()],
         color_tolerance=data.get("color_tolerance", 40),
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
         use_catalog=data.get("use_catalog", False),
         capture_window_title=fenster_titel,
         capture_window_index=fenster_index,
-        capture_window_rect=fenster_rechteck,
+        capture_window_rect=window_rect,
     )
 
 
@@ -347,7 +347,7 @@ _BOSS_SCAN_DEFAULTS = {
 
 def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
     """Serialisiert eine BossScanConfig zu einem Dict (ohne globale Bosse)."""
-    return _ohne_defaults({
+    return _without_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),
         "color_tolerance": config.color_tolerance,
@@ -375,7 +375,7 @@ _ICON_SCAN_DEFAULTS = {
 
 def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
     """Serialisiert eine IconScanConfig zu einem Dict."""
-    return _ohne_defaults({
+    return _without_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),
         "template": config.template,
@@ -401,7 +401,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
     (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
 
     `x`/`y` bleiben nur den Schritten, die gar keinen Punkt haben koennen (Taste,
-    Scans, Screenshot) — dort sind sie 0 und fallen durch `_ohne_defaults` weg.
+    Scans, Screenshot) — dort sind sie 0 und fallen durch `_without_defaults` weg.
     """
     wc = s.wait_condition
     ec = s.else_config
@@ -441,9 +441,10 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "verify_until_gone": vc.until_gone if vc else False,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
+            "breakpoint": bool(s.breakpoint),
             "recorded_color": None if klick_am_punkt or not s.recorded_color
                               else list(s.recorded_color)}
-    return _ohne_defaults(voll, _STEP_DEFAULTS)
+    return _without_defaults(voll, _STEP_DEFAULTS)
 
 
 # Was ein Feld bedeutet, wenn es "nicht gesetzt" ist; steht der Wert drin, wird das
@@ -482,6 +483,7 @@ _STEP_DEFAULTS = {
     "else_name": "",
     "screenshot_only": False,
     "screenshot_region": None,
+    "breakpoint": False,
     "recorded_color": None,
 }
 
@@ -609,6 +611,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,
+            breakpoint=bool(s.get("breakpoint", False)),
             recorded_color=recorded_color,
         )
         steps.append(step)

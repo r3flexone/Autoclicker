@@ -52,17 +52,17 @@ from .model import (
 class BridgeViewMixin:
     """Erzeugt den vollständigen, JSON-fähigen Zustand für die Weboberfläche."""
 
-    def snapshot(self, daten: Optional[dict] = None) -> dict:
+    def snapshot(self, data: Optional[dict] = None) -> dict:
         """Der komplette Zustand als JSON-Werte — alles, was die Ansicht braucht.
 
-        `daten` wird nicht gelesen, muss aber dastehen: die Oberfläche ruft jede
+        `data` wird nicht gelesen, muss aber dastehen: die Oberfläche ruft jede
         Brücken-Methode über denselben Helfer (`ruf()`), und der reicht `null`
         durch, wenn es nichts zu übergeben gibt. Ohne den Parameter scheitert der
         allererste Aufruf mit „takes 1 positional argument" — und weil das der
         Aufruf ist, der die Ansicht überhaupt erst füllt, bleibt das Fenster leer.
         """
-        text, art = self._status
-        frage, self._frage = self._frage, None
+        text, kind = self._status
+        frage, self._ask = self._ask, None
         return {
             "datei": str(self.filepath),
             "start_ansicht": self.start_ansicht,
@@ -74,7 +74,7 @@ class BridgeViewMixin:
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
             "warte_timeout": WARTE_TIMEOUT,
-            "status": {"text": text, "art": art},
+            "status": {"text": text, "art": kind},
             "frage": frage,
             "sequenzen": sorted(name for name, _ in list_available_sequences()),
             "scan_namen": self._scan_namen(),
@@ -108,15 +108,15 @@ class BridgeViewMixin:
         if stand != self._cfg_stand:
             self._cfg_stand = stand
             from ...config import CONFIG
-            roh, fehler = self._config_datei()
+            raw, fehler = self._config_datei()
             if fehler:
                 self._cfg_info = {}
             else:
-                aktion = roh.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
+                aktion = raw.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
                 self._cfg_info = {
-                    "sekunden": roh.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
+                    "sekunden": raw.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
                     "folge": TIMEOUT_TEXT.get(aktion, aktion),
-                    "notbremse": roh.get("pixel_max_consecutive_timeouts",
+                    "notbremse": raw.get("pixel_max_consecutive_timeouts",
                                          CONFIG.pixel_max_consecutive_timeouts)}
         return self._cfg_info
 
@@ -131,16 +131,16 @@ class BridgeViewMixin:
         wird bei jeder Momentaufnahme, damit eine im Hauptprozess angelegte
         Konfiguration beim nächsten Klick auftaucht.
         """
-        def namen(auflisten) -> list[str]:
+        def names(auflisten) -> list[str]:
             try:
                 return sorted(name for name, _ in auflisten(self.board.name))
             except OSError:
                 return []
 
-        bosse = namen(list_available_boss_scans)
+        bosse = names(list_available_boss_scans)
         return {
-            BLOCK_ITEM_SCAN: namen(list_available_item_scans),
-            BLOCK_ICON_SCAN: namen(list_available_icon_scans),
+            BLOCK_ITEM_SCAN: names(list_available_item_scans),
+            BLOCK_ICON_SCAN: names(list_available_icon_scans),
             BLOCK_BOSS_SCAN: bosse,
             BLOCK_BOSS_WATCHER: bosse,
         }
@@ -174,9 +174,9 @@ class BridgeViewMixin:
         ]
 
         def gemeinsam(feld: str):
-            werte = [getattr(step, feld) for step in steps]
-            gemischt = bool(werte) and any(wert != werte[0] for wert in werte[1:])
-            return (None if gemischt or not werte else werte[0]), gemischt
+            values = [getattr(step, feld) for step in steps]
+            gemischt = bool(values) and any(value != values[0] for value in values[1:])
+            return (None if gemischt or not values else values[0]), gemischt
 
         delay_before, before_gemischt = gemeinsam("delay_before")
         delay_max, max_gemischt = gemeinsam("delay_max")
@@ -194,7 +194,7 @@ class BridgeViewMixin:
         typ = block_type(step)
         wc = step.wait_condition
         feld = SCAN_FELD.get(typ)
-        punkt = self._punkt(step.point_id)
+        point = self._punkt(step.point_id)
         block = {
             "zeile": row,
             "typ": typ,
@@ -205,6 +205,7 @@ class BridgeViewMixin:
             "titel": step.name or "",
             "zeilen": self._zeilen(step, typ),
             "prueft": step.verify_condition is not None,
+            "haltepunkt": bool(step.breakpoint),
             "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
             # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
             # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
@@ -213,7 +214,7 @@ class BridgeViewMixin:
             # Ansicht hängt sie an die erste Zeile, denn dort steht die Stelle
             # (`_zeilen`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
-            "punkt_farbe": _hex(punkt.color) if punkt is not None else None,
+            "punkt_farbe": _hex(point.color) if point is not None else None,
             "farbfeld": _hex(wc.color) if wc else None,
             "farbtext": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
@@ -242,20 +243,20 @@ class BridgeViewMixin:
         if typ in SCAN_FELD:
             name = (getattr(step, SCAN_FELD[typ]) or "").strip() or "(kein Name)"
             modus = f" · {step.item_scan_mode}" if typ == BLOCK_ITEM_SCAN else ""
-            zeilen = [f"{name}{modus}"]
+            lines = [f"{name}{modus}"]
         elif typ == BLOCK_KEY:
-            zeilen = [f"Taste „{step.key_press}“"]
+            lines = [f"Taste „{step.key_press}“"]
         elif typ == BLOCK_WAIT:
-            zeilen = []
+            lines = []
         else:
-            zeilen = [_stelle(step)]
+            lines = [_stelle(step)]
         if step.scroll:
             # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
             # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
-            zeilen.append(f"Rad {step.scroll:+d}")
-        if step.delay_before or step.delay_max or not zeilen:
-            zeilen.append(_wartetext(step))
-        return zeilen
+            lines.append(f"Rad {step.scroll:+d}")
+        if step.delay_before or step.delay_max or not lines:
+            lines.append(_wartetext(step))
+        return lines
 
     def _trigger_text(self, wc: WaitCondition) -> str:
         was = "prüft" if wc.check_only else "wartet bis"
@@ -267,8 +268,8 @@ class BridgeViewMixin:
         if ec is None:
             return ""
         if ec.action == ELSE_CLICK:
-            ziel = f"#{ec.point_id}" if ec.point_id is not None else "(kein Punkt)"
-            return f"sonst: klick {ziel}"
+            target = f"#{ec.point_id}" if ec.point_id is not None else "(kein Punkt)"
+            return f"sonst: klick {target}"
         if ec.action == ELSE_KEY:
             return f"sonst: Taste „{ec.key or '?'}“"
         return {ELSE_SKIP: "sonst: Schritt überspringen",
@@ -302,7 +303,7 @@ class BridgeViewMixin:
             # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
             # „Stelle setzen" verschieben den Punkt, und jeder Block darauf
             # zieht mit — das stand nur im ⓘ. An einer echten Aufnahme hatte
-            # `punkt_an_stelle()` den Klick auf denselben Knopf in Loop 1 und
+            # `point_at_position()` den Klick auf denselben Knopf in Loop 1 und
             # Loop 4 zu EINEM Punkt zusammengelegt; wer dann Loop 1 eine
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
@@ -321,6 +322,7 @@ class BridgeViewMixin:
             "boss_scan": step.boss_scan or "",
             "boss_watcher": step.boss_watcher or "",
             "wait_only": step.wait_only,
+            "breakpoint": bool(step.breakpoint),
             "scroll": step.scroll or 0,
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),
@@ -337,13 +339,13 @@ class BridgeViewMixin:
 
     # --------------------------------------------------------------- Zustand
 
-    def _melde(self, text: str, art: str = "ok") -> dict:
-        self._status = (text, art)
+    def _melde(self, text: str, kind: str = "ok") -> dict:
+        self._status = (text, kind)
         return self.snapshot()
 
-    def _geaendert(self, text: str = "", art: str = "ok") -> dict:
+    def _geaendert(self, text: str = "", kind: str = "ok") -> dict:
         self._dirty = True
-        return self._melde(text, art)
+        return self._melde(text, kind)
 
     def _punkt(self, point_id) -> Optional[PalettePoint]:
         if point_id is None:

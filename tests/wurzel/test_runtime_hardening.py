@@ -38,65 +38,65 @@ class RuntimeHardeningTest(unittest.TestCase):
         state.active_sequence = Sequence("farm")
         item = ItemProfile(name="Bogen", template="bogen.png")
         state.global_items[item.name] = item
-        bild = Mock(size=(10, 10))
+        image = Mock(size=(10, 10))
         slot = ItemSlot("Slot", (0, 0, 10, 10), (5, 5))
         with tempfile.TemporaryDirectory() as temp:
-            ordner = Path(temp) / "sequences/farm/templates"
+            folder = Path(temp) / "sequences/farm/templates"
             with patch.object(imaging, "OPENCV_AVAILABLE", True), \
-                    patch("autoclicker.persistence.active_templates_dir", return_value=ordner), \
+                    patch("autoclicker.persistence.active_templates_dir", return_value=folder), \
                     patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
-                          return_value=(bild, [], False)), \
+                          return_value=(image, [], False)), \
                     patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
                           return_value="Bogen") as suche, \
                     patch("autoclicker.editors.item_editor.markers._item_has_compatible_template",
-                          return_value=True) as groesse:
-                item_scan._learn_unknown_slot_item(state, slot, bild, False)
-            suche.assert_called_once_with(bild, [("Bogen", item)],
-                                          state.config.scan_min_confidence, ordner)
-            groesse.assert_called_once_with(item, bild, ordner)
-            bild.save.assert_not_called()
+                          return_value=True) as size:
+                item_scan._learn_unknown_slot_item(state, slot, image, False)
+            suche.assert_called_once_with(image, [("Bogen", item)],
+                                          state.config.scan_min_confidence, folder)
+            size.assert_called_once_with(item, image, folder)
+            image.save.assert_not_called()
             self.assertEqual(list(state.global_items), ["Bogen"])
 
     def test_neuer_befehl_bleibt_waehrend_des_lesens_erhalten(self):
-        from autoclicker import befehl
+        from autoclicker import mailbox
         with tempfile.TemporaryDirectory() as temp, \
-                patch.object(befehl, "BEFEHL_DATEI", Path(temp) / "briefkasten.json"):
-            befehl.sende("start")
+                patch.object(mailbox, "COMMAND_PATH", Path(temp) / "briefkasten.json"):
+            mailbox.send_command("start")
             lesen = Path.read_text
 
-            def mit_neuem_befehl(pfad, *args, **kwargs):
-                text = lesen(pfad, *args, **kwargs)
-                befehl.sende("stop")
+            def mit_neuem_befehl(path, *args, **kwargs):
+                text = lesen(path, *args, **kwargs)
+                mailbox.send_command("stop")
                 return text
 
             with patch.object(Path, "read_text", mit_neuem_befehl):
-                self.assertEqual(befehl.hole()["befehl"], "start")
-            self.assertEqual(befehl.hole()["befehl"], "stop")
-            self.assertIsNone(befehl.hole())
+                self.assertEqual(mailbox.fetch_command()["command"], "start")
+            self.assertEqual(mailbox.fetch_command()["command"], "stop")
+            self.assertIsNone(mailbox.fetch_command())
 
     def test_loader_lehnt_falsche_json_strukturen_kontrolliert_ab(self):
         import json
         from autoclicker.persistence import load_sequence_file
-        for daten in ([1], {"name": "Defekt", "loop_phases": [None]},
+        for data in ([1], {"name": "Defekt", "loop_phases": [None]},
                       {"name": "Defekt", "init_steps": [None]},
                       {"name": "Defekt", "loop_phases": {}},
                       {"name": "Defekt", "end_steps": "kein Array"}):
-            with self.subTest(daten=daten), tempfile.TemporaryDirectory() as temp:
-                pfad = Path(temp) / "sequence.json"
-                pfad.write_text(json.dumps(daten), encoding="utf-8")
-                self.assertIsNone(load_sequence_file(pfad))
+            with self.subTest(data=data), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "sequence.json"
+                path.write_text(json.dumps(data), encoding="utf-8")
+                self.assertIsNone(load_sequence_file(path))
 
     def test_stopp_im_mikrodelay_verhindert_jede_eingabe(self):
-        for art, argumente in (("click", (10, 20)), ("key", ("a",)),
+        for kind, arguments in (("click", (10, 20)), ("key", ("a",)),
                                ("scroll", (1,))):
-            with self.subTest(art=art):
+            with self.subTest(kind=kind):
                 state = AutoClickerState()
                 with patch.object(actions, "_humanize_delay",
                                   side_effect=lambda s: s.stop_event.set()), \
                         patch.object(actions, "_humanize_check_break"), \
                         patch.object(actions, "_wait_for_target_window", return_value=True), \
-                        patch.object(actions, "send_" + art, return_value=True) as senden:
-                    self.assertFalse(getattr(actions, "safe_" + art)(state, *argumente))
+                        patch.object(actions, "send_" + kind, return_value=True) as senden:
+                    self.assertFalse(getattr(actions, "safe_" + kind)(state, *arguments))
                 senden.assert_not_called()
 
     def test_pause_sperrt_auch_einen_klick_ohne_wartezeit(self):
@@ -111,7 +111,7 @@ class RuntimeHardeningTest(unittest.TestCase):
 
         with patch.object(steps, "check_failsafe", return_value=False), \
                 patch.object(steps, "print_step_detail"), \
-                patch.object(steps.status, "schreibe"), \
+                patch.object(steps.status, "write_status"), \
                 patch.object(actions, "wait_while_paused", side_effect=warten), \
                 patch.object(actions, "send_click", return_value=True) as senden:
             t = threading.Thread(target=steps.execute_step, args=(
@@ -131,20 +131,20 @@ class RuntimeHardeningTest(unittest.TestCase):
         state.config.window_focus_check = True
         state.config.window_focus_title = "Spiel"
         state.config.window_focus_action = "stop"
-        fokus = {"aktiv": True}
+        fokus = {"active": True}
         with patch.object(actions, "is_target_window_active",
-                          side_effect=lambda _titel: fokus["aktiv"]), \
+                          side_effect=lambda _titel: fokus["active"]), \
                 patch.object(actions, "get_foreground_window_title", return_value="Editor"), \
                 patch.object(actions, "_humanize_check_break",
-                             side_effect=lambda _s: fokus.update(aktiv=False)), \
+                             side_effect=lambda _s: fokus.update(active=False)), \
                 patch.object(actions, "send_click", return_value=True) as senden:
             self.assertFalse(actions.safe_click(state, 10, 20))
         senden.assert_not_called()
 
     def test_boss_und_icon_klicken_nur_einen_existierenden_punkt(self):
-        from autoclicker.persistence import resolve_klick_referenzen
-        for art in ("boss", "icon"):
-            with self.subTest(art=art):
+        from autoclicker.persistence import resolve_click_references
+        for kind in ("boss", "icon"):
+            with self.subTest(kind=kind):
                 state = AutoClickerState()
                 state.active_sequence = Sequence("Test")
                 boss = BossProfile(name="Boss", action="click", action_point_id=7)
@@ -153,7 +153,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 state.icon_scans["I"] = icon
 
                 def ausfuehren():
-                    if art == "boss":
+                    if kind == "boss":
                         return boss_detection._execute_boss_action(
                             state, boss, SequenceStep(boss_scan="B"), 1, 1, "INIT", False)
                     return steps._execute_icon_scan_step(
@@ -161,12 +161,12 @@ class RuntimeHardeningTest(unittest.TestCase):
 
                 with patch.object(steps, "execute_icon_scan", return_value=True), \
                         patch.object(boss_detection, "safe_click", return_value=True) as klicken:
-                    resolve_klick_referenzen(state)
+                    resolve_click_references(state)
                     ausfuehren()
                     klicken.assert_not_called()
                     # Auch (0, 0) kann ein gültiger Punkt sein: die ID entscheidet.
                     state.active_sequence.points = [ClickPoint(0, 0, "Ziel", 7)]
-                    resolve_klick_referenzen(state)
+                    resolve_click_references(state)
                     ausfuehren()
                     self.assertEqual(klicken.call_args.args[1:3], (0, 0))
                     self.assertEqual(klicken.call_count, 1)
@@ -180,8 +180,8 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch("autoclicker.session_log.start_session_log", return_value=protokoll), \
                 patch.object(worker, "_run_main_loop", side_effect=RuntimeError("Schritt kaputt")), \
                 patch.object(worker, "set_console_title"), \
-                patch.object(worker.status, "schreibe"), \
-                patch.object(worker.status, "beende") as ende:
+                patch.object(worker.status, "write_status"), \
+                patch.object(worker.status, "finish_run") as ende:
             try:
                 worker.sequence_worker(state)
             except RuntimeError:
@@ -216,18 +216,18 @@ class RuntimeHardeningTest(unittest.TestCase):
         """Das schnelle 2er-Raster darf seltene Marker nicht verschlucken."""
         from PIL import Image
 
-        bild = Image.new("RGB", (5, 5), (0, 0, 0))
+        image = Image.new("RGB", (5, 5), (0, 0, 0))
         marker = (105, 130, 80)
         # Beide Treffer liegen ausserhalb von [::2, ::2]. Genau diese Lage trat
         # bei zwei gelernten Markern von Item 7 auf.
-        bild.putpixel((1, 1), marker)
-        bild.putpixel((3, 3), marker)
+        image.putpixel((1, 1), marker)
+        image.putpixel((3, 3), marker)
 
         self.assertTrue(imaging.find_color_in_image(
-            bild, marker, 0, pixel_step=2, min_pixels=2))
+            image, marker, 0, pixel_step=2, min_pixels=2))
         with patch.object(imaging, "NUMPY_AVAILABLE", False):
             self.assertTrue(imaging.find_color_in_image(
-                bild, marker, 0, pixel_step=2, min_pixels=2))
+                image, marker, 0, pixel_step=2, min_pixels=2))
 
     def test_failed_input_is_not_logged_as_success(self):
         state = AutoClickerState()

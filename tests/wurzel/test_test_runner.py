@@ -27,14 +27,14 @@ class TestRunnerTest(unittest.TestCase):
         self.assertNotIn("alles grün", ausgabe.getvalue())
 
     def test_browser_lokal_optional_aber_als_pflicht_rot(self):
-        for argumente, exitcode, meldung in (
+        for arguments, exitcode, message in (
                 ([], 0, "ÜBERSPRUNGEN"), (["--rauch-pflicht"], 1, "FAIL")):
-            with self.subTest(argumente=argumente), \
+            with self.subTest(arguments=arguments), \
                     patch("tests.rauch._bruecke.playwright_da", return_value=(False, "Browser fehlt")), \
                     patch.object(alle_tests, "_lauf") as lauf, \
                     redirect_stdout(io.StringIO()) as ausgabe:
-                self.assertEqual(alle_tests.main(["runner", "--nur", "rauch", *argumente]), exitcode)
-                self.assertIn(meldung, ausgabe.getvalue())
+                self.assertEqual(alle_tests.main(["runner", "--nur", "rauch", *arguments]), exitcode)
+                self.assertIn(message, ausgabe.getvalue())
                 self.assertIn("Browser fehlt", ausgabe.getvalue())
                 if exitcode:
                     self.assertNotIn("alles grün", ausgabe.getvalue())
@@ -51,9 +51,9 @@ class TestRunnerTest(unittest.TestCase):
         for code in (0, 1):
             befehle = []
 
-            def lauf(befehl):
-                befehle.append(befehl)
-                if "test_logic.py" in befehl[-1]:
+            def lauf(command):
+                befehle.append(command)
+                if "test_logic.py" in command[-1]:
                     return code, "1 PASS / 0 FAIL " if code == 0 else "0 PASS / 1 FAIL "
                 return 0, "OK"
 

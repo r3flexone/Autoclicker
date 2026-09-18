@@ -216,6 +216,11 @@ class SequenceStep:
     # einen aufgenommenen Klick nachträglich in einen Farb-Trigger umzuwandeln, ohne die
     # Farbe erneut abgreifen zu müssen. Beeinflusst die Ausführung NICHT.
     recorded_color: Optional[tuple[int, int, int]] = None
+    # Haltepunkt: der Lauf haelt VOR diesem Schritt an und fragt — wie im manuellen
+    # Modus, nur an genau dieser Stelle (`step_gate()`). Gespeichert, denn gesetzt
+    # wird er im Studio und ausgefuehrt im Hauptprozess, und der liest die Datei.
+    # Ein Haltepunkt in einer Loop-Phase haelt in jedem Zyklus — das ist gewollt.
+    breakpoint: bool = False
     # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
     # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
     # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
@@ -223,6 +228,11 @@ class SequenceStep:
     unresolved: bool = False
 
     def __str__(self) -> str:
+        # Der Haltepunkt steht VOR der Beschreibung: in einer Liste von fuenfzig
+        # Schritten ist "wo haelt es an" die Frage, die man beim Ueberfliegen hat.
+        return ("[HALT] " if self.breakpoint else "") + self._description()
+
+    def _description(self) -> str:
         else_str = self._verify_str() + self._else_str()
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
@@ -235,9 +245,9 @@ class SequenceStep:
             return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
         if self.scroll:
             richtung = "hoch" if self.scroll > 0 else "runter"
-            ziel = f"{self.name} " if self.name else ""
+            target = f"{self.name} " if self.name else ""
             return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
-                    f"bei {ziel}({self.x}, {self.y}){else_str}")
+                    f"bei {target}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
         if self.icon_scan:
@@ -290,13 +300,13 @@ class SequenceStep:
         zustand = "WEG" if wc.until_gone else "DA"
         pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
         if wc.check_only:
-            art = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+            kind = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
         else:
-            art = f"warte bis Farbe {zustand} bei {pixel}"
+            kind = f"warte bis Farbe {zustand} bei {pixel}"
         if self.delay_before > 0:
             # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
-            return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
-        return art
+            return f"warte {self._delay_str()}, dann {kind.removeprefix('warte ')}"
+        return kind
 
     def _verify_str(self) -> str:
         """Was NACH der Aktion geprüft wird — leer, wenn nichts geprüft wird.
@@ -447,7 +457,7 @@ class ItemProfile:
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
     # Referenz auf den Punkt, der nach dem Klick bestaetigt (Popup o.ae.);
-    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_scan_references().
+    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_click_references().
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
@@ -465,17 +475,17 @@ class ItemProfile:
 
     def template_names(self) -> list[str]:
         """Alle Vorlagen ohne leere oder doppelte Dateinamen."""
-        ergebnis = []
+        result = []
         for name in [self.template, *self.template_variants]:
-            if isinstance(name, str) and name and name not in ergebnis:
-                ergebnis.append(name)
-        return ergebnis
+            if isinstance(name, str) and name and name not in result:
+                result.append(name)
+        return result
 
     def __str__(self) -> str:
         vorlagen = self.template_names()
         if vorlagen:
-            anzahl = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
-            template_str = f"Template: {vorlagen[0]}{anzahl} (≥{self.min_confidence:.0%})"
+            count = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
+            template_str = f"Template: {vorlagen[0]}{count} (≥{self.min_confidence:.0%})"
         else:
             colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:3]])
             if len(self.marker_colors) > 3:
@@ -561,9 +571,6 @@ class ItemScanConfig:
     def item_names(self, names) -> None:
         wanted = set(names or [])
         self.items = [item for item in self.items if item.name in wanted]
-
-    def sync_names(self) -> None:
-        """Kompatibler No-op: es gibt keine zweite Namens-Wahrheit mehr."""
 
     def __str__(self) -> str:
         learn_str = " [Auto-Lernen]" if self.learn_unknown else ""
@@ -783,6 +790,14 @@ class AutoClickerState:
     step_via_studio: bool = False
     step_command: str = ""
     step_command_event: threading.Event = field(default_factory=threading.Event)
+    # Wurde der Lauf aus dem Studio gestartet? Dann bekommt ein Haltepunkt seine
+    # Rueckfrage als Tafel im Live-Run statt in der Konsole — dieselbe Frage wie
+    # `step_via_studio`, nur fuer einen Lauf, der sonst gar nicht manuell ist.
+    run_from_studio: bool = False
+    # True, solange `step_gate()` auf eine Entscheidung wartet (manueller Modus
+    # oder Haltepunkt). Daran erkennen CTRL+ALT+G und der Briefkasten, dass ein
+    # "weiter" gerade das Gate meint und nicht die Pause.
+    gate_waiting: bool = False
 
     # Gespeicherte Sequenzen
     sequences: dict[str, Sequence] = field(default_factory=dict)
@@ -889,41 +904,41 @@ class AutoClickerState:
     # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
     # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie
     # wird nie gespeichert. Was sie ERGIBT, steht danach in sequence.json.
-    nachklick_aktiv: bool = False
+    reclick_active: bool = False
     # Pausiert: Klicks gehen durch, ohne einen Punkt zu setzen. Dafür da, dass
     # man zwischendurch im Spiel navigieren kann (Dialog wegklicken, scrollen),
     # ohne dass die Runde einen Punkt verbraucht.
-    nachklick_pausiert: bool = False
+    reclick_paused: bool = False
     # Die Punkt-IDs in der Reihenfolge, in der die Sequenz sie klickt.
-    nachklick_punkte: list = field(default_factory=list)
-    nachklick_index: int = 0
+    reclick_points: list = field(default_factory=list)
+    reclick_index: int = 0
     # Was die Runde ERGEBEN hat: (Punkt-ID, alt, neu, Farbe) je gesetztem Punkt.
     # Das ist kein Protokoll, sondern das Ergebnis selbst — die Punkte werden
     # erst beim Übernehmen daraus geschrieben. Bis dahin ist ein Abbruch
     # folgenlos, und „nichts passiert" bleibt von „alles gleich geblieben"
     # unterscheidbar.
-    nachklick_gesetzt: list = field(default_factory=list)
+    reclick_set: list = field(default_factory=list)
     # Was die Runde GETAN hat: (Punkt-ID, Art) je erledigtem Punkt, in der
     # Reihenfolge des Durchgangs. Art ist "passt", "gesetzt", "uebersprungen"
     # oder "fehlt". Ableiten liesse sich das NICHT: ein bestaetigter Punkt
-    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `nachklick_gesetzt`,
+    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `reclick_set`,
     # und ohne diese Liste saehe er im Fenster genauso aus wie ein
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
-    # `nachklick_gesetzt`.
-    nachklick_verlauf: list = field(default_factory=list)
+    # `reclick_set`.
+    reclick_history: list = field(default_factory=list)
     # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE,
     # Rad). Steht im Banner und im Studio — eine Runde, die schweigt, was sie
     # auslaesst, sieht vollstaendiger aus als sie ist.
-    nachklick_sonstige: int = 0
+    reclick_other: int = 0
     # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus
     # `window_focus_title`). **Ohne den frisst die Runde jeden Klick** — auch den
     # auf das Studio-Fenster, die Konsole oder ein Schliessen-Kreuz, und schreibt
     # dessen Stelle in den Punkt. Leer = kein Filter (Fenster nicht gefunden).
-    nachklick_ziel: str = ""
+    reclick_target: str = ""
     # Woher die Reihenfolge kam — nur für die Anzeige. Die Runde arbeitet auf
     # Punkten; welche Sequenz sie sortiert hat, ändert daran nichts (und die
     # geladene Sequenz wechselt dadurch ausdrücklich NICHT).
-    nachklick_name: str = ""
+    reclick_name: str = ""
     # Die Runde darf aus dem Studio eine andere als die aktive Sequenz erhalten.
     # Ihr eigener Punkt-Pool bleibt deshalb als expliziter Laufzeitkontext hier.
-    nachklick_sequence: Optional[Sequence] = None
+    reclick_sequence: Optional[Sequence] = None

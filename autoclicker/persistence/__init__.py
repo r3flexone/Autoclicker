@@ -5,7 +5,7 @@ Modul-Aufteilung:
     paths.py          Verzeichnis-Konstanten + init_directories
     serialization.py  Dataclass ↔ Dict (intern + import_export.py)
     sequences.py      Sequence-Dateien + Punkte
-    item_scans.py     ItemScanConfig + update_item_in_scans
+    item_scans.py     ItemScanConfig + Klick-Referenzen der Scans
     boss_scans.py     BossScanConfig
     globals.py        global_slots, global_items, Kategorien
     presets.py        Slot- und Item-Presets
@@ -29,7 +29,7 @@ from .migration import (
     KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
     file_version, migrate, needs_migration, stamp,
 )
-from .sweep import sweep, sweep_beim_start, SweepErgebnis
+from .sweep import sweep, sweep_on_start, SweepResult
 from .icon_scans import (
     ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
     list_available_icon_scans, load_all_icon_scans,
@@ -42,7 +42,7 @@ from .globals import (
 from .item_scans import (
     ensure_item_scans_dir, save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
-    update_item_in_scans, resolve_scan_references, resolve_klick_referenzen,
+    resolve_click_references,
     bind_item_scan_context, flush_item_scan_context,
 )
 from .paths import (
@@ -61,7 +61,7 @@ from .sequences import (
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
     sequence_dir, sequence_file, sequence_templates_dir,
     active_sequence_dir, active_templates_dir,
-    punkt_fuer_stelle, punkte_nachladen, aufloesen,
+    point_for_position, reload_points, resolve,
     resolve_point_references,
 )
 from .serialization import (
@@ -90,12 +90,12 @@ __all__ = [
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
     'sequence_dir', 'sequence_file', 'sequence_templates_dir',
     'active_sequence_dir', 'active_templates_dir',
-    'punkt_fuer_stelle', 'punkte_nachladen', 'aufloesen',
+    'point_for_position', 'reload_points', 'resolve',
     'resolve_point_references',
     # item_scans
     'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
-    'list_available_item_scans', 'load_all_item_scans', 'update_item_in_scans',
-    'resolve_scan_references', 'resolve_klick_referenzen',
+    'list_available_item_scans', 'load_all_item_scans',
+    'resolve_click_references',
     'bind_item_scan_context', 'flush_item_scan_context',
     # boss_scans
     'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
@@ -117,5 +117,5 @@ __all__ = [
     'SCHEMA_VERSION',
     'file_version', 'migrate', 'needs_migration', 'stamp',
     # sweep
-    'sweep', 'sweep_beim_start', 'SweepErgebnis',
+    'sweep', 'sweep_on_start', 'SweepResult',
 ]

@@ -162,7 +162,7 @@ def transform_from_windows(src_window: tuple[int, int, int, int],
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
 
 
-def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
+def transform_from_offset(old: tuple[int, int], new: tuple[int, int]) -> dict:
     """Reine Verschiebung aus EINEM Referenzpunkt: wo er war, wo er hingehört.
 
     Ein Punkt kann nur verschieben, nicht skalieren (dafür `compute_transform`).
@@ -170,10 +170,10 @@ def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> di
     geändert hat — genau das passiert beim Umordnen der Bildschirme.
     """
     return {"scale_x": 1.0, "scale_y": 1.0,
-            "offset_x": neu[0] - alt[0], "offset_y": neu[1] - alt[1]}
+            "offset_x": new[0] - old[0], "offset_y": new[1] - old[1]}
 
 
-def ist_identitaet(transform: dict) -> bool:
+def is_identity(transform: dict) -> bool:
     """True, wenn der Transform nichts verändern würde."""
     return (transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0
             and round(transform["offset_x"]) == 0 and round(transform["offset_y"]) == 0)
@@ -183,7 +183,7 @@ def ist_identitaet(transform: dict) -> bool:
 # Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand. Der Import
 # kann das nicht ersetzen: er legt Daten an, statt vorhandene zu korrigieren.
 
-def kalibrier_vorschau(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
+def calibration_preview(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
     """Was der Transform ändern würde — (Bezeichnung, vorher, nachher), ohne Mutation."""
     return [(label, (x, y), remap_point(x, y, transform))
             for label, x, y in collect_click_positions(state)]
@@ -200,7 +200,7 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
     for steps in phasen:
         for s in steps:
             # Referenzierte Stellen ueberspringen: ihr Punkt ist schon umgerechnet,
-            # und der naechste `aufloesen()`-Lauf holt den Wert ohnehin von dort.
+            # und der naechste `resolve()`-Lauf holt den Wert ohnehin von dort.
             if s.point_id is None:
                 s.x, s.y = remap_point(s.x, s.y, transform)
             if s.wait_condition is not None and s.wait_condition.point_id is None:
@@ -213,7 +213,7 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
                 s.screenshot_region = remap_region(s.screenshot_region, transform)
 
 
-def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
+def backup_before_calibration(state: 'AutoClickerState') -> str | None:
     """Legt vor dem Umrechnen ein vollständiges Export-ZIP als Sicherung an.
 
     Kein eigenes Backup-Format: der Export kann das längst, und der Import
@@ -223,19 +223,19 @@ def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
 
     # Derselbe Ordner, in dem der Editor seine Exporte sucht — damit die Sicherung
     # im Import-Menue ohne Pfadeingabe auftaucht.
-    ziel = Path("exports") / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
-    ziel.parent.mkdir(parents=True, exist_ok=True)
+    target = Path("exports") / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
+    target.parent.mkdir(parents=True, exist_ok=True)
     # Referenzpunkte sind hier bedeutungslos (es wird nichts remappt beim
     # Zurückspielen), aber identisch dürfen sie nicht sein — sonst rechnet ein
     # späterer Import mit einer Nulldistanz.
-    erfolg, meldung = export_bundle(state, str(ziel), (0, 0), (1000, 1000))
+    erfolg, message = export_bundle(state, str(target), (0, 0), (1000, 1000))
     if not erfolg:
-        logger.warning("Sicherung vor Kalibrierung fehlgeschlagen: %s", meldung)
+        logger.warning("Sicherung vor Kalibrierung fehlgeschlagen: %s", message)
         return None
-    return str(ziel)
+    return str(target)
 
 
-def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
+def calibrate_inventory(state: 'AutoClickerState', transform: dict,
                        mit_scans: bool = True, mit_sequenzen: bool = True,
                        mit_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
@@ -254,14 +254,14 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
     from .persistence import list_available_sequences, save_points
     from .utils import atomic_write, compact_json
 
-    zahl = {"punkte": 0, "slots": 0, "items": 0, "item_scans": 0,
+    number = {"punkte": 0, "slots": 0, "items": 0, "item_scans": 0,
             "boss_scans": 0, "icon_scans": 0, "bosse": 0, "sequenzen": 0}
 
     # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
     with state.lock:
         for p in state.points:
             p.x, p.y = remap_point(p.x, p.y, transform)
-            zahl["punkte"] += 1
+            number["punkte"] += 1
 
         if mit_scans:
             for cfg in state.item_scans.values():
@@ -272,19 +272,19 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                         slot.scan_region = remap_region(slot.scan_region, transform)
                         slot.click_pos = remap_point(
                             slot.click_pos[0], slot.click_pos[1], transform)
-                        zahl["slots"] += 1
+                        number["slots"] += 1
                 for item in cfg.items:
                     if item.confirm_point is not None:
                         cp = item.confirm_point
                         cp.x, cp.y = remap_point(cp.x, cp.y, transform)
-                        zahl["items"] += 1
+                        number["items"] += 1
                 # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar.
                 # Wird nur eine Hälfte transformiert, würde die Runtime beim
                 # nächsten Lauf ein zweites, falsches Remapping anwenden.
                 if cfg.capture_window_rect:
                     cfg.capture_window_rect = remap_region(
                         cfg.capture_window_rect, transform)
-                    zahl["item_scans"] += 1
+                    number["item_scans"] += 1
 
             for cfg in state.boss_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:
@@ -292,18 +292,18 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 for b in cfg.bosses:
                     b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-                zahl["boss_scans"] += 1
+                number["boss_scans"] += 1
 
             for b in state.global_bosses:
                 b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-                zahl["bosse"] += 1
+                number["bosse"] += 1
 
             for cfg in state.icon_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:
                     cfg.owner_sequence = state.active_sequence.name
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
-                zahl["icon_scans"] += 1
+                number["icon_scans"] += 1
 
         # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
         # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
@@ -327,20 +327,20 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
 
     # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
     if mit_sequenzen:
-        for _name, pfad in list_available_sequences():
+        for _name, path in list_available_sequences():
             try:
-                daten = json.loads(pfad.read_text(encoding="utf-8"))
+                data = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-                logger.warning("Kalibrierung: %s nicht lesbar (%s)", pfad.name, e)
+                logger.warning("Kalibrierung: %s nicht lesbar (%s)", path.name, e)
                 continue
-            _remap_sequence_data(daten, transform)
+            _remap_sequence_data(data, transform)
             try:
-                atomic_write(pfad, compact_json(daten))
-                zahl["sequenzen"] += 1
+                atomic_write(path, compact_json(data))
+                number["sequenzen"] += 1
             except (IOError, OSError) as e:
-                logger.warning("Kalibrierung: %s nicht schreibbar (%s)", pfad.name, e)
+                logger.warning("Kalibrierung: %s nicht schreibbar (%s)", path.name, e)
 
-    return zahl
+    return number
 
 
 # =============================================================================
@@ -364,23 +364,23 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
 
     try:
         with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
-            namen = []
+            names = []
             zaehler = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
                        "templates": 0}
             if include_data:
                 for name, hauptdatei in list_available_sequences():
-                    ordner = Path(hauptdatei).parent
-                    archiv_wurzel = PurePosixPath("sequences", ordner.name)
-                    for quelle in sorted(p for p in ordner.rglob("*") if p.is_file()):
-                        relativ = PurePosixPath(quelle.relative_to(ordner).as_posix())
-                        zf.write(quelle, str(archiv_wurzel / relativ))
-                        teile = relativ.parts
-                        if teile and teile[0] in zaehler and quelle.suffix.lower() == ".json":
-                            zaehler[teile[0]] += 1
-                        if teile and teile[0] == "templates" and quelle.suffix.lower() == ".png":
+                    folder = Path(hauptdatei).parent
+                    archiv_wurzel = PurePosixPath("sequences", folder.name)
+                    for source in sorted(p for p in folder.rglob("*") if p.is_file()):
+                        relativ = PurePosixPath(source.relative_to(folder).as_posix())
+                        zf.write(source, str(archiv_wurzel / relativ))
+                        parts = relativ.parts
+                        if parts and parts[0] in zaehler and source.suffix.lower() == ".json":
+                            zaehler[parts[0]] += 1
+                        if parts and parts[0] == "templates" and source.suffix.lower() == ".png":
                             zaehler["templates"] += 1
-                    namen.append(name)
-                manifest["contents"]["sequences"] = namen
+                    names.append(name)
+                manifest["contents"]["sequences"] = names
                 manifest["contents"].update({k: v for k, v in zaehler.items() if v})
             if include_config:
                 zf.writestr("config.json", compact_json(_export_config(state.config)))
@@ -565,12 +565,12 @@ class _ImportTransaction:
         return False
 
     def rollback(self) -> None:
-        from .config import uebernehmen
+        from .config import apply_config
 
         with self.state.lock:
             for field, value in self.state_snapshot.items():
                 setattr(self.state, field, value)
-            uebernehmen(self.state.config, self.config_snapshot)
+            apply_config(self.state.config, self.config_snapshot)
 
         for target in self._managed_files():
             target.unlink()
@@ -624,31 +624,31 @@ class _ImportTransaction:
 
 
 
-def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
+def _safe_bundle_path(name: str) -> Optional[PurePosixPath]:
     """Ein relativer Sequenzpfad im Archiv oder None."""
-    pfad = PurePosixPath(name)
+    path = PurePosixPath(name)
     if ("\\" in name or ":" in name or "\x00" in name
-            or pfad.is_absolute() or ".." in pfad.parts or len(pfad.parts) < 3
-            or pfad.parts[0] != "sequences"):
+            or path.is_absolute() or ".." in path.parts or len(path.parts) < 3
+            or path.parts[0] != "sequences"):
         return None
-    return pfad
+    return path
 
 
-def _remap_sequence_folder(ordner: Path, transform: dict) -> None:
+def _remap_sequence_folder(folder: Path, transform: dict) -> None:
     """Transformiert alle koordinatenhaltigen JSON-Dateien eines Importordners."""
-    if ist_identitaet(transform):
+    if is_identity(transform):
         return
-    for pfad in ordner.rglob("*.json"):
-        data = json.loads(pfad.read_text(encoding="utf-8"))
-        relativ = pfad.relative_to(ordner).parts
+    for path in folder.rglob("*.json"):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        relativ = path.relative_to(folder).parts
         if relativ == ("boss_scans", "bibliothek.json"):
             # Die Bibliothek enthält Profile mit Punkt-IDs, keine Regionen.
             # Ihre Punkte werden in sequence.json genau einmal umgerechnet.
             continue
-        if pfad.name == "sequence.json":
-            for punkt in data.get("points") or []:
-                punkt["x"], punkt["y"] = remap_point(
-                    int(punkt.get("x", 0)), int(punkt.get("y", 0)), transform)
+        if path.name == "sequence.json":
+            for point in data.get("points") or []:
+                point["x"], point["y"] = remap_point(
+                    int(point.get("x", 0)), int(point.get("y", 0)), transform)
             _remap_sequence_data(data, transform)
         elif relativ and relativ[0] == "item_scans":
             for slot in (data.get("slots") or {}).values():
@@ -662,7 +662,7 @@ def _remap_sequence_folder(ordner: Path, transform: dict) -> None:
         elif relativ and relativ[0] in ("boss_scans", "icon_scans"):
             if data.get("scan_region"):
                 data["scan_region"] = list(remap_region(tuple(data["scan_region"]), transform))
-        atomic_write(pfad, compact_json(data))
+        atomic_write(path, compact_json(data))
 
 
 def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
@@ -678,57 +678,57 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
         temp_root = Path(temp)
         if import_sequences:
             for name in names:
-                archiv = _sicherer_bundle_pfad(name)
+                archiv = _safe_bundle_path(name)
                 if archiv is None or name.endswith("/"):
                     continue
-                ziel = temp_root.joinpath(*archiv.parts[1:]).resolve()
-                if not ziel.is_relative_to(temp_root.resolve()):
+                target = temp_root.joinpath(*archiv.parts[1:]).resolve()
+                if not target.is_relative_to(temp_root.resolve()):
                     raise ValueError(f"Archivpfad verlässt den Importordner: {name}")
-                ziel.parent.mkdir(parents=True, exist_ok=True)
-                ziel.write_bytes(zf.read(name))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(zf.read(name))
 
-            for quelle in sorted(p for p in temp_root.iterdir() if p.is_dir()):
-                hauptdatei = quelle / "sequence.json"
+            for source in sorted(p for p in temp_root.iterdir() if p.is_dir()):
+                hauptdatei = source / "sequence.json"
                 if not hauptdatei.is_file():
-                    raise ValueError(f"{quelle.name}: sequence.json fehlt")
-                _remap_sequence_folder(quelle, transform)
+                    raise ValueError(f"{source.name}: sequence.json fehlt")
+                _remap_sequence_folder(source, transform)
                 data = json.loads(hauptdatei.read_text(encoding="utf-8"))
                 if not isinstance(data, dict):
-                    raise ValueError(f"{quelle.name}/sequence.json ist ungültig")
+                    raise ValueError(f"{source.name}/sequence.json ist ungültig")
 
-                basis = sanitize_filename(str(data.get("name") or quelle.name))
-                ziel = ensure_sequences_dir() / basis
+                basis = sanitize_filename(str(data.get("name") or source.name))
+                target = ensure_sequences_dir() / basis
                 if merge:
                     nummer = 2
-                    while ziel.exists():
-                        ziel = ensure_sequences_dir() / f"{basis}_{nummer}"
+                    while target.exists():
+                        target = ensure_sequences_dir() / f"{basis}_{nummer}"
                         nummer += 1
-                    if ziel.name != basis:
-                        data["name"] = ziel.name
+                    if target.name != basis:
+                        data["name"] = target.name
                         atomic_write(hauptdatei, compact_json(data))
-                elif ziel.exists():
-                    shutil.rmtree(ziel)
-                shutil.copytree(quelle, ziel)
-                seq = load_sequence_file(ziel / "sequence.json")
+                elif target.exists():
+                    shutil.rmtree(target)
+                shutil.copytree(source, target)
+                seq = load_sequence_file(target / "sequence.json")
                 if seq is None:
-                    raise ValueError(f"{ziel.name}: importierte Sequenz ist nicht lesbar")
+                    raise ValueError(f"{target.name}: importierte Sequenz ist nicht lesbar")
                 with state.lock:
                     state.sequences[seq.name] = seq
                 importierte.append(seq.name)
 
         if import_config and "config.json" in names:
-            roh = json.loads(zf.read("config.json").decode("utf-8"))
-            if isinstance(roh, dict):
-                erlaubt = {k: v for k, v in roh.items() if k not in _SENSITIVE_CONFIG_KEYS}
-                for key, wert in erlaubt.items():
+            raw = json.loads(zf.read("config.json").decode("utf-8"))
+            if isinstance(raw, dict):
+                erlaubt = {k: v for k, v in raw.items() if k not in _SENSITIVE_CONFIG_KEYS}
+                for key, value in erlaubt.items():
                     if hasattr(state.config, key):
-                        setattr(state.config, key, wert)
+                        setattr(state.config, key, value)
                 save_config(state.config)
 
-    teile = [f"{len(importierte)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
+    parts = [f"{len(importierte)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
     if import_config and "config.json" in names:
-        teile.append("Einstellungen")
-    return True, ", ".join(teile)
+        parts.append("Einstellungen")
+    return True, ", ".join(parts)
 
 
 def import_bundle(state: 'AutoClickerState', filepath: str,

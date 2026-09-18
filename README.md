@@ -501,6 +501,7 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `recolor <Nr>` | Trigger-Farbe eines Schritts per Maus neu setzen (Pixel-Position bleibt) |
 | `time <Nr> <Zeit>` | Wartezeit eines bestehenden Schritts ändern |
 | `noclick <Nr>` / `click <Nr>` | Schritt auf „nur warten" bzw. wieder auf Klick umstellen |
+| `break <Nr>` | Haltepunkt an/aus: der Lauf hält **vor** diesem Schritt an und fragt (weiter / überspringen / ab hier schrittweise / abbrechen) |
 | `del <Nr>` | Schritt löschen |
 | `clear` | Alle Schritte löschen |
 | `show` | Aktuelle Schritte anzeigen |
@@ -851,8 +852,20 @@ Während eine Sequenz läuft:
 
 - **CTRL+ALT+S** - Stoppt die Sequenz komplett
 - **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschliessen, dann END-Phase + Stop)
-- **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten)
+- **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten); steht der Lauf an einem Haltepunkt, heisst es „weiter"
 - **CTRL+ALT+K** - Überspringt die aktuelle Wartezeit
+
+### Haltepunkte
+
+Ein Block kann einen **Haltepunkt** tragen (Studio: Schalter „Haltepunkt" im
+Inspektor, Karte zeigt „⏸ halt"; Konsole: `break <Nr>`). Der Lauf geht bis dorthin
+und hält **vor** dem Block an — wie der manuelle Schrittmodus, nur an genau dieser
+Stelle. Im Live-Run des Studios erscheint dieselbe Tafel wie im Schrittmodus:
+**Weiter**, **Überspringen**, **Ab hier schrittweise** (schaltet in den
+Schrittmodus, jeder weitere Block fragt), **Stoppen**. In der Konsole dieselben
+Tasten (`w`, `s`, `m`, `q`), und **CTRL+ALT+G** heisst dort „weiter". In einer
+Loop-Phase hält der Haltepunkt in jedem Zyklus — ausschalten, wenn er seinen Dienst
+getan hat.
 
 ### Timeout-Verhalten bei Farb-Triggern
 
@@ -1276,7 +1289,7 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
-│   ├── befehl.py           # Briefkasten Studio -> Hauptprozess
+│   ├── mailbox.py          # Briefkasten Studio -> Hauptprozess
 │   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
 │   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
 │   ├── symbol.py           # Programm-Symbol als Geometrie

@@ -46,7 +46,7 @@ ART_BIBLIOTHEK = "bibliothek"
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
 # Oberflächenzustand (`scanArt` in app.js) — die Brücke bekommt bei jedem Befehl
 # gesagt, worauf er wirkt, statt sich eine vierte Wahrheit zu merken.
-ARTEN = ("item", "boss", "icon")
+SCAN_KINDS = ("item", "boss", "icon")
 
 MIN_SLOT = 8
 TREFFER_MIN = 14
@@ -71,7 +71,7 @@ _REF_VORSATZ = {"item_scan": "Scan:", "boss_scan": "Boss:",
                 "boss_watcher": "Watcher:", "icon_scan": "Icon:"}
 
 
-def referenzen_umbenennen(board, art: str, alt: str, neu: str) -> int:
+def referenzen_umbenennen(board, kind: str, old: str, new: str) -> int:
     """Zieht jede Sequenz-Referenz auf einen Scan nach. Gibt die Anzahl zurück.
 
     **Der Name IST die Referenz** — ein Scan wird per Namen aus dem Schritt
@@ -89,16 +89,16 @@ def referenzen_umbenennen(board, art: str, alt: str, neu: str) -> int:
       **nicht** angefasst: er gehört dem Nutzer, und ihn stillschweigend
       umzuschreiben wäre schlimmer als eine veraltete Beschriftung.
     """
-    felder = _REF_FELDER.get(art, ((), None))[0]
+    felder = _REF_FELDER.get(kind, ((), None))[0]
     getroffen = 0
     for lane in getattr(board, "lanes", []):
         for step in lane.steps:
             for feld in felder:
-                if getattr(step, feld, None) != alt:
+                if getattr(step, feld, None) != old:
                     continue
-                setattr(step, feld, neu)
+                setattr(step, feld, new)
                 getroffen += 1
                 vorsatz = _REF_VORSATZ[feld]
-                if step.name == f"{vorsatz}{alt}":
-                    step.name = f"{vorsatz}{neu}"
+                if step.name == f"{vorsatz}{old}":
+                    step.name = f"{vorsatz}{new}"
     return getroffen

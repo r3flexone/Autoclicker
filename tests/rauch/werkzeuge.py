@@ -9,11 +9,11 @@ from ._bruecke import Fenster, main, sandkasten
 def quelle_wz() -> str:
     """Der `WZ_WERKZEUGE`-Block aus `app.js` — die Liste, die die Seite zeichnet."""
     # Absolut, denn `sandkasten()` wechselt vorher das Arbeitsverzeichnis.
-    datei = (Path(__file__).resolve().parents[2]
+    file = (Path(__file__).resolve().parents[2]
              / "autoclicker/editors/sequence_studio/web/app.js")
-    quelle = datei.read_text(encoding="utf-8")
-    ab = quelle.index("const WZ_WERKZEUGE = [")
-    return quelle[ab:quelle.index("];", ab)]
+    source = file.read_text(encoding="utf-8")
+    ab = source.index("const WZ_WERKZEUGE = [")
+    return source[ab:source.index("];", ab)]
 
 
 def aufbau():
@@ -68,9 +68,9 @@ def lauf():
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
         # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_WERKZEUGE` fuehrt.
         soll = len(re.findall(r'\{key: "', quelle_wz()))
-        pruefe(f.anzahl("#wz-links button") == soll,
+        pruefe(f.count("#wz-links button") == soll,
                f"{soll} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
-               f"da: {f.anzahl('#wz-links button')}")
+               f"da: {f.count('#wz-links button')}")
         # **Der Sequenzname steht EINMAL.** Links stand „offene Sequenz Farm" —
         # eingebaut, als die Kopfleiste ihre Sequenz-Bedienelemente in diesem
         # Reiter noch ausblendete. Seit die Auswahl in jedem Reiter steht, stand
@@ -85,9 +85,9 @@ def lauf():
         # Zeile gar nicht, also fiel die Unwahrheit nicht auf.
         for w in re.findall(r'\{key: "([a-z]+)"', quelle_wz()):
             f.klick(f".wz-nav.{w}")
-            pruefe(f.anzahl("#wz-mitte .wz-bezug") == 1,
+            pruefe(f.count("#wz-mitte .wz-bezug") == 1,
                    f"Werkzeug '{w}' hat keine Bezugszeile")
-            pruefe(f.anzahl("#wz-rechts .ueberschrift") >= 1,
+            pruefe(f.count("#wz-rechts .ueberschrift") >= 1,
                    f"Werkzeug '{w}' hat keine Ueberschrift in der rechten Spalte")
 
         # **Ein ⓘ haengt an einer BESCHRIFTUNG.** `wzInfo()` warf den Titel in
@@ -111,22 +111,22 @@ def lauf():
 
         # --- Aufnahme: der normale Weg ist vollständig im Studio sichtbar ---
         f.klick_text("#wz-links button", "Sequenz aufnehmen")
-        pruefe(f.anzahl(".wz-aufnahme-form input") == 2,
+        pruefe(f.count(".wz-aufnahme-form input") == 2,
                "Name und Zyklen der Aufnahme fehlen")
-        pruefe(f.anzahl(".wz-aufnahme-form textarea") == 1,
+        pruefe(f.count(".wz-aufnahme-form textarea") == 1,
                "Notiz der Aufnahme fehlt")
-        pruefe(f.anzahl(".wz-aufnahme-ausgabe") == 1,
+        pruefe(f.count(".wz-aufnahme-ausgabe") == 1,
                "rollende Live-Ausgabe der Aufnahme fehlt")
         tasten = [z.inner_text() for z in
                   f.seite.query_selector_all("#wz-mitte .wz-tasten .wz-taste")]
         pruefe(len(tasten) == 8, f"acht Aufnahme-Hotkeys erwartet, da: {tasten}")
         pruefe("Aufnahme starten" in f.text("#wz-mitte"), "sichtbarer Start fehlt")
-        f.bild("wz_aufnahme")
+        f.image("wz_aufnahme")
 
         # --- Pruefen ---
         f.klick_text("#wz-links button", "Bestand prüfen")
         f.klick_text("#wz-mitte button", "Jetzt prüfen")
-        pruefe(f.anzahl(".wz-befund") == 2, "zwei Befunde erwartet")
+        pruefe(f.count(".wz-befund") == 2, "zwei Befunde erwartet")
         pruefe("Fehler" in f.status(), f"Status nach Pruefen: {f.status()!r}")
         # **Rechts muss der BERICHT stehen, nicht irgendein Text.** Hier stand
         # `bool(text.strip())` — und „Noch nichts geprüft." ist nicht leer. Der
@@ -136,10 +136,10 @@ def lauf():
         # Behauptung — genau die Begründung, mit der sie gebaut wurde.
         pruefe("Noch nichts geprüft" not in f.text("#wz-rechts"),
                "rechts steht nach dem Pruefen weiter „Noch nichts geprueft.“")
-        pruefe(f.anzahl("#wz-rechts .wz-geprueft") >= 1,
+        pruefe(f.count("#wz-rechts .wz-geprueft") >= 1,
                f"rechts fehlt die Liste der geprueften Bereiche: "
                f"{f.text('#wz-rechts')[:80]!r}")
-        f.bild("wz_pruefen")
+        f.image("wz_pruefen")
 
         # --- Punkte verwalten: „sicher loeschen" muss auch loeschen koennen ---
         # `disabled: punkt.verwendungen.length` — und `el()` setzt jedes nicht
@@ -167,11 +167,11 @@ def lauf():
         pruefe("gesamte gespeicherte Bestand" in f.text("#wz-mitte"),
                "der Bezug fehlt beim Kalibrieren")
         f.klick("#wz-mitte .wz-ref button")
-        pruefe(f.anzahl(".wz-farbfrage") == 1, "keine Farb-Rueckfrage")
-        pruefe(f.anzahl(".wz-farbe") == 2, "beide Farben sollten dastehen")
+        pruefe(f.count(".wz-farbfrage") == 1, "keine Farb-Rueckfrage")
+        pruefe(f.count(".wz-farbe") == 2, "beide Farben sollten dastehen")
         pruefe("Verschiebung" not in f.text("#wz-mitte"),
                "trotz Rueckfrage schon gesetzt")
-        f.bild("wz_farbfrage")
+        f.image("wz_farbfrage")
 
         f.klick_text(".wz-farbfrage button", "Trotzdem setzen")
         # Der Versatz steht als zwei Kennzahlen unter „BERECHNETER TRANSFORM",
@@ -181,9 +181,9 @@ def lauf():
         kennzahlen = f.text("#wz-mitte .wz-kennzahlen")
         pruefe("+455" in kennzahlen and "+344" in kennzahlen,
                f"Versatz falsch: {kennzahlen!r}")
-        pruefe(f.anzahl("#wz-mitte input[type=checkbox]") == 3, "drei Umfang-Haken")
+        pruefe(f.count("#wz-mitte input[type=checkbox]") == 3, "drei Umfang-Haken")
         pruefe("Stelle(n)" in f.text("#wz-rechts"), "keine Vorschau rechts")
-        f.bild("wz_kalib")
+        f.image("wz_kalib")
 
         f.klick_text("#wz-mitte button", "Umrechnen und speichern")
         pruefe("Kalibriert" in f.status(), f"Anwenden: {f.status()!r}")
@@ -213,7 +213,7 @@ def lauf():
         pruefe("sequence.json" in f.status(), f"Verwerfen: {f.status()!r}")
         f.klick_text("#wz-mitte button", "Übernehmen")
         pruefe("bernommen" in f.status(), f"Uebernehmen: {f.status()!r}")
-        f.bild("wz_klick")
+        f.image("wz_klick")
 
         # --- Der Aufnahme-Waechter fragt erst, wenn es etwas zu finden gibt ---
         # `sequenz_liste()` laedt JEDE Sequenzdatei einzeln — genau deshalb

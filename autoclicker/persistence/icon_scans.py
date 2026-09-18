@@ -16,7 +16,7 @@ from ..models import (
 from .migration import KIND_ICON_SCAN, migrate
 from .sequences import sequence_dir
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
-from .serialization import _icon_scan_to_dict, _klick_referenz
+from .serialization import _icon_scan_to_dict, _click_reference
 
 logger = logging.getLogger("autoclicker")
 
@@ -59,7 +59,7 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
             marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
             color_tolerance=data.get("color_tolerance", 30),
             action=data.get("action", ICON_ACTION_CLICK),
-            action_point_id=_klick_referenz(
+            action_point_id=_click_reference(
                 data, f"Icon-Scan '{data['name']}'",
                 "Klick-Punkt im Icon-Scan-Editor neu setzen"),
             action_key=data.get("action_key"),
@@ -81,10 +81,10 @@ def load_all_icon_scans(state: AutoClickerState) -> None:
     """Lädt alle Icon-Scan Konfigurationen."""
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-    geladen = {}
+    loaded = {}
     if owner:
-        ordner = str(_icon_scans_dir(owner))
-        load_all_scans(ordner, lambda pfad: load_icon_scan_file(pfad, owner),
-                       geladen, "Icon-Scan")
+        folder = str(_icon_scans_dir(owner))
+        load_all_scans(folder, lambda path: load_icon_scan_file(path, owner),
+                       loaded, "Icon-Scan")
     with state.lock:
-        state.icon_scans = geladen
+        state.icon_scans = loaded

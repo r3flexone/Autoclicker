@@ -14,7 +14,7 @@ wie sie sind; geschrieben wird `x`, `y` und (wenn der Punkt eine hatte) die
 Farbe im Punkt-Pool der jeweiligen `sequence.json`.
 
 **Geschrieben wird erst am Schluss, und nur auf ausdrückliches Übernehmen.**
-Bis dahin liegen die neuen Stellen in `state.nachklick_gesetzt` und die Punkte
+Bis dahin liegen die neuen Stellen in `state.reclick_set` und die Punkte
 sind unverändert — auch im Speicher. Das ist der Unterschied zwischen einer
 abgebrochenen Runde und einer halb überschriebenen `sequence.json`: wer das
 Fenster zumacht, das Programm beendet oder verwirft, verliert die Runde und
@@ -39,7 +39,7 @@ from ..models import (
     Sequence,
     block_type,
 )
-from ..config import NACHKLICK_STATUS_FILE
+from ..config import RECLICK_STATUS_FILE
 from ..utils import (col, err, hint, info, ok, describe_color, warn,
                      atomic_write, compact_json)
 from ..winapi import (
@@ -77,46 +77,46 @@ _gemeldete_fenster: set = set()
 # Der Rückkanal zum Studio-Fenster: dieselbe Bauart wie `.aufnahme.json` bei der
 # Aufnahme und `.lauf.json` beim Lauf. Kein Log — die Datei beschreibt den Stand
 # JETZT und wird überschrieben.
-_STATUS_DATEI = Path(NACHKLICK_STATUS_FILE)
+_STATUS_DATEI = Path(RECLICK_STATUS_FILE)
 
 
-def _punkt_json(punkt) -> dict:
+def _punkt_json(point) -> dict:
     """Ein Punkt so, wie ihn die Anzeige braucht."""
-    if punkt is None:
+    if point is None:
         return {}
-    return {"id": punkt.id, "name": punkt.name or f"Punkt {punkt.id}",
-            "x": punkt.x, "y": punkt.y,
-            "farbe": list(punkt.color) if punkt.color else None}
+    return {"id": point.id, "name": point.name or f"Punkt {point.id}",
+            "x": point.x, "y": point.y,
+            "farbe": list(point.color) if point.color else None}
 
 
 def _status_daten(state: AutoClickerState) -> dict:
     """Der Stand der Runde als reine Daten — unter Lock gelesen, wie überall."""
     with state.lock:
-        aktiv = state.nachklick_aktiv
-        ids = list(state.nachklick_punkte)
-        i = state.nachklick_index
-        verlauf = list(state.nachklick_verlauf)
-        gesetzt = {eintrag[0]: eintrag for eintrag in state.nachklick_gesetzt}
-        seq = state.nachklick_sequence
+        active = state.reclick_active
+        ids = list(state.reclick_points)
+        i = state.reclick_index
+        verlauf = list(state.reclick_history)
+        gesetzt = {entry[0]: entry for entry in state.reclick_set}
+        seq = state.reclick_sequence
         pool = list(seq.points if seq is not None else state.points)
-        daten = {"aktiv": aktiv, "pausiert": state.nachklick_pausiert and aktiv,
-                 "name": state.nachklick_name, "ziel": state.nachklick_ziel,
-                 "sonstige": state.nachklick_sonstige}
-    punkte = {p.id: p for p in pool}
-    daten["index"] = i
-    daten["gesamt"] = len(ids)
-    daten["punkt"] = _punkt_json(punkte.get(ids[i])) if i < len(ids) else {}
+        data = {"aktiv": active, "pausiert": state.reclick_paused and active,
+                 "name": state.reclick_name, "ziel": state.reclick_target,
+                 "sonstige": state.reclick_other}
+    points = {p.id: p for p in pool}
+    data["index"] = i
+    data["gesamt"] = len(ids)
+    data["punkt"] = _punkt_json(points.get(ids[i])) if i < len(ids) else {}
     # Der Verlauf ist das, was die Konsole Zeile für Zeile ausgibt — im Fenster
     # steht er als Liste, damit man ihn beim Klicken überfliegen kann.
-    daten["verlauf"] = [
-        {"id": pid, "art": art,
-         "name": (punkte[pid].name or f"Punkt {pid}") if pid in punkte else f"Punkt {pid}",
+    data["verlauf"] = [
+        {"id": pid, "art": kind,
+         "name": (points[pid].name or f"Punkt {pid}") if pid in points else f"Punkt {pid}",
          "alt": list(gesetzt[pid][1]) if pid in gesetzt else None,
          "neu": list(gesetzt[pid][2]) if pid in gesetzt else None}
-        for pid, art in verlauf]
-    daten["geaendert"] = len(gesetzt)
-    daten["stand"] = time.time()
-    return daten
+        for pid, kind in verlauf]
+    data["geaendert"] = len(gesetzt)
+    data["stand"] = time.time()
+    return data
 
 
 def _status_schreiben(state: AutoClickerState) -> None:
@@ -153,9 +153,9 @@ def klickpunkte(seq: Sequence) -> tuple[list, list]:
 
     klicks, sonstige = [], []
 
-    def merke(ziel: list, punkt_id) -> None:
+    def merke(target: list, punkt_id) -> None:
         if punkt_id is not None and punkt_id not in klicks and punkt_id not in sonstige:
-            ziel.append(punkt_id)
+            target.append(punkt_id)
 
     # **Erst alle Klicks, dann der Rest.** In einem Durchgang landete eine
     # Stelle, die ein früher Schritt nur BEOBACHTET und ein späterer klickt,
@@ -174,7 +174,7 @@ def klickpunkte(seq: Sequence) -> tuple[list, list]:
 
 def nachklick_laeuft(state: AutoClickerState) -> bool:
     with state.lock:
-        return state.nachklick_aktiv
+        return state.reclick_active
 
 
 def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
@@ -204,11 +204,11 @@ def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
             print(f"\n{err('Ein Countdown läuft — er würde mitten in die Runde starten')} "
                   f"{hint('(CTRL+ALT+S bricht ihn ab)')}")
             return None
-        if state.nachklick_aktiv:
+        if state.reclick_active:
             return None
         if seq is None:
             seq = state.active_sequence
-        punkte = {p.id: p for p in seq.points} if seq is not None else {}
+        points = {p.id: p for p in seq.points} if seq is not None else {}
 
     if seq is None:
         print(f"\n{err('Keine Sequenz geladen.')} "
@@ -218,23 +218,23 @@ def ruesten(state: AutoClickerState, seq: Sequence = None) -> tuple:
     ids, sonstige = klickpunkte(seq)
     # Ein Punkt, den es nicht mehr gibt, ist kein Ziel — der Schritt zeigt ins
     # Leere und wird beim Lauf ohnehin übersprungen.
-    ids = [i for i in ids if i in punkte]
+    ids = [i for i in ids if i in points]
     if not ids:
         print(f"\n{info('Diese Sequenz hat keinen einzigen Klick-Schritt mit Punkt.')}")
         return None
 
-    ziel = _zielfenster(state)
+    target = _zielfenster(state)
     with state.lock:
-        state.nachklick_aktiv = True
-        state.nachklick_pausiert = False
-        state.nachklick_punkte = ids
-        state.nachklick_index = 0
-        state.nachklick_gesetzt = []
-        state.nachklick_verlauf = []
-        state.nachklick_sonstige = len(sonstige)
-        state.nachklick_ziel = ziel
-        state.nachklick_name = seq.name
-        state.nachklick_sequence = seq
+        state.reclick_active = True
+        state.reclick_paused = False
+        state.reclick_points = ids
+        state.reclick_index = 0
+        state.reclick_set = []
+        state.reclick_history = []
+        state.reclick_other = len(sonstige)
+        state.reclick_target = target
+        state.reclick_name = seq.name
+        state.reclick_sequence = seq
     _gemeldete_fenster.clear()
     _status_schreiben(state)
     return ids, sonstige
@@ -262,17 +262,17 @@ def _zielfenster(state: AutoClickerState) -> str:
     if not titel:
         return ""
     try:
-        gefunden = get_client_rect_by_title(titel) is not None
+        found = get_client_rect_by_title(titel) is not None
     except Exception:
-        gefunden = False
-    if not gefunden:
+        found = False
+    if not found:
         print(f"  {warn(f'Fenster „{titel}“ nicht gefunden')} "
               f"{hint('— es zählt JEDER Klick, auch der auf ein anderes Fenster.')}")
         return ""
     return titel
 
 
-def _im_zielfenster(ziel: str, x: int, y: int) -> bool:
+def _im_zielfenster(target: str, x: int, y: int) -> bool:
     """True, wenn der Klick im Zielfenster passiert ist (oder nicht gefiltert wird).
 
     Welches Fenster den Klick bekommen hat, sagt `geklicktes_fenster()` — das
@@ -283,14 +283,14 @@ def _im_zielfenster(ziel: str, x: int, y: int) -> bool:
     der Titel, und drei Instanzen tragen denselben. Welche davon gemeint ist,
     entscheidet der Nutzer mit dem Klick.
     """
-    if not ziel:
+    if not target:
         return True
     fenster = geklicktes_fenster(x, y)
     if not fenster:
         # Lässt sich weder Fenster noch Vordergrund bestimmen, gilt der Klick.
         # Lieber ein Punkt zu viel als eine Runde, die stumm nichts tut.
         return True
-    return ziel.casefold() in fenster.casefold()
+    return target.casefold() in fenster.casefold()
 
 
 def start_nachklick(state: AutoClickerState, seq: Sequence = None) -> bool:
@@ -302,15 +302,15 @@ def start_nachklick(state: AutoClickerState, seq: Sequence = None) -> bool:
 
     if not install_mouse_hook(_on_click_factory(state), None):
         with state.lock:
-            state.nachklick_aktiv = False
-            state.nachklick_punkte = []
+            state.reclick_active = False
+            state.reclick_points = []
         print(f"\n{err('Maus-Hook konnte nicht installiert werden!')}")
         print("  Mögliche Ursache: Administratorrechte erforderlich.")
         return False
 
     with state.lock:
-        ziel, name = state.nachklick_ziel, state.nachklick_name
-    _banner(name, len(ids), ziel, sonstige)
+        target, name = state.reclick_target, state.reclick_name
+    _banner(name, len(ids), target, sonstige)
     _zeige_aktuellen(state)
     return True
 
@@ -326,21 +326,21 @@ TASTEN = (
 )
 
 
-def _banner(name: str, anzahl: int, ziel: str, sonstige: list) -> None:
+def _banner(name: str, count: int, target: str, sonstige: list) -> None:
     """Was die Runde tut, was sie nicht tut, und womit man sie bedient."""
     print(f"\n{col('╔══ PUNKTE NACHKLICKEN ══╗', 'cyan')}")
-    print(f"  {anzahl} Punkt(e) aus „{name}“, in der Reihenfolge des Laufs.")
+    print(f"  {count} Punkt(e) aus „{name}“, in der Reihenfolge des Laufs.")
     print(f"  {col('So geht es:', 'cyan')} der Zeiger steht jedes Mal schon auf der "
           "gespeicherten")
     print("  Stelle. Stimmt sie noch — klicken. Stimmt sie nicht — hinfahren und "
           "dort klicken.")
-    if ziel:
-        print(f"  Gezählt wird nur, was in {col(ziel, 'cyan')} geklickt wird; in "
+    if target:
+        print(f"  Gezählt wird nur, was in {col(target, 'cyan')} geklickt wird; in "
               "jedem anderen")
         print("  Fenster kannst du klicken, ohne einen Punkt zu verbrauchen.")
     print()
-    for taste, was, warum in TASTEN:
-        print(f"    {col(taste.ljust(11), 'yellow')} {was.ljust(13)}"
+    for key, was, warum in TASTEN:
+        print(f"    {col(key.ljust(11), 'yellow')} {was.ljust(13)}"
               f"{hint(warum)}")
     print()
     # **Der wichtigste Satz steht allein.** Alles bleibt in der Schwebe, bis
@@ -358,12 +358,12 @@ def _banner(name: str, anzahl: int, ziel: str, sonstige: list) -> None:
               f"{hint('(beobachtete Pixel, ELSE, Rad) — dafür bleibt walk.')}")
 
 
-def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
-                   uebernehmen: bool = True) -> None:
+def stop_nachklick(state: AutoClickerState, reason: str = "beendet",
+                   apply_config: bool = True) -> None:
     """Beendet die Runde und schreibt das Ergebnis — oder wirft es weg.
 
     **Erst hier wird überhaupt etwas geändert.** Während der Runde stehen die
-    neuen Stellen in `nachklick_gesetzt`; die Punkte selbst sind unangetastet,
+    neuen Stellen in `reclick_set`; die Punkte selbst sind unangetastet,
     auch im Speicher. `uebernehmen=False` heisst deshalb schlicht: Liste weg,
     fertig — es gibt nichts zurückzudrehen.
 
@@ -375,45 +375,45 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     # **Der Abschluss wird eingesammelt, bevor die Listen geleert werden.**
     # Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde —
     # ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
-    # Dieselbe Regel wie `status.beende()`: die Zusammenfassung bleibt stehen.
+    # Dieselbe Regel wie `status.finish_run()`: die Zusammenfassung bleibt stehen.
     abschluss = _status_daten(state) if nachklick_laeuft(state) else None
     with state.lock:
-        if not state.nachklick_aktiv:
+        if not state.reclick_active:
             return
-        state.nachklick_aktiv = False
-        state.nachklick_pausiert = False
-        gesetzt = list(state.nachklick_gesetzt)
-        offen = len(state.nachklick_punkte) - state.nachklick_index
-        ziel_sequence = state.nachklick_sequence
-        punkte = {p.id: p for p in (
+        state.reclick_active = False
+        state.reclick_paused = False
+        gesetzt = list(state.reclick_set)
+        offen = len(state.reclick_points) - state.reclick_index
+        ziel_sequence = state.reclick_sequence
+        points = {p.id: p for p in (
             ziel_sequence.points if ziel_sequence is not None else state.points)}
-        if uebernehmen:
-            for punkt_id, _alt, neu, neue_farbe in gesetzt:
-                punkt = punkte.get(punkt_id)
-                if punkt is None:
+        if apply_config:
+            for punkt_id, _alt, new, neue_farbe in gesetzt:
+                point = points.get(punkt_id)
+                if point is None:
                     continue
-                punkt.x, punkt.y = neu
+                point.x, point.y = new
                 # Die Farbe gehört zur Position — aber nur, wenn der Punkt vorher
                 # eine hatte. Sonst schliche sich ein Farb-Trigger ein, den
                 # niemand gesetzt hat. Dieselbe Regel wie in `walk_points`.
-                if punkt.color and neue_farbe:
-                    punkt.color = neue_farbe
-        state.nachklick_punkte = []
-        state.nachklick_index = 0
-        state.nachklick_gesetzt = []
-        state.nachklick_verlauf = []
-        state.nachklick_sonstige = 0
-        state.nachklick_ziel = ""
-        state.nachklick_name = ""
-        state.nachklick_sequence = None
+                if point.color and neue_farbe:
+                    point.color = neue_farbe
+        state.reclick_points = []
+        state.reclick_index = 0
+        state.reclick_set = []
+        state.reclick_history = []
+        state.reclick_other = 0
+        state.reclick_target = ""
+        state.reclick_name = ""
+        state.reclick_sequence = None
     remove_mouse_hook()
     _gemeldete_fenster.clear()
     # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
-    # dieselbe Regel wie bei `status.beende()`: sonst ist das Fenster genau
+    # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
     # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
     if abschluss is not None:
         abschluss.update({"aktiv": False, "pausiert": False, "punkt": {},
-                          "grund": grund, "uebernommen": bool(uebernehmen),
+                          "grund": reason, "uebernommen": bool(apply_config),
                           "stand": time.time()})
         try:
             atomic_write(_STATUS_DATEI, compact_json(abschluss))
@@ -424,19 +424,19 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     # schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
     # Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
     # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
-    if gesetzt and uebernehmen:
+    if gesetzt and apply_config:
         from ..persistence import save_sequence_file, sequence_file
         if ziel_sequence is not None:
             save_sequence_file(ziel_sequence, sequence_file(ziel_sequence.name))
 
-    print(f"\n{col('[NACHKLICK]', 'cyan')} {grund}.")
+    print(f"\n{col('[NACHKLICK]', 'cyan')} {reason}.")
     if not gesetzt:
         print("  Nichts geändert.")
-    elif uebernehmen:
+    elif apply_config:
         print(f"  {ok(f'{len(gesetzt)} Punkt(e) neu gesetzt und gespeichert.')}")
-        for punkt_id, altpos, neu, _f in gesetzt[:12]:
+        for punkt_id, altpos, new, _f in gesetzt[:12]:
             print(hint(f"     #{punkt_id}  ({altpos[0]}, {altpos[1]}) → "
-                       f"({neu[0]}, {neu[1]})"))
+                       f"({new[0]}, {new[1]})"))
         if len(gesetzt) > 12:
             print(hint(f"     … und {len(gesetzt) - 12} weitere"))
         print(hint("  Jeder Schritt, der sie benutzt, zieht beim nächsten Lauf mit —"))
@@ -444,17 +444,17 @@ def stop_nachklick(state: AutoClickerState, grund: str = "beendet",
     else:
         print(f"  {warn(f'{len(gesetzt)} gesetzte Stelle(n) verworfen')} "
               f"{hint('— sequence.json ist unverändert.')}")
-    if offen > 0 and uebernehmen:
+    if offen > 0 and apply_config:
         print(hint(f"  {offen} Punkt(e) standen noch aus — sie blieben, wo sie waren."))
 
 
 def nachklick_pause(state: AutoClickerState) -> None:
     """Klicks gehen durch, ohne einen Punkt zu setzen — und zurück."""
     with state.lock:
-        if not state.nachklick_aktiv:
+        if not state.reclick_active:
             return
-        state.nachklick_pausiert = not state.nachklick_pausiert
-        pausiert = state.nachklick_pausiert
+        state.reclick_paused = not state.reclick_paused
+        pausiert = state.reclick_paused
     _status_schreiben(state)
     if pausiert:
         print(f"\n{col('[PAUSE]', 'yellow')} Klicks setzen KEINEN Punkt — "
@@ -468,14 +468,14 @@ def nachklick_pause(state: AutoClickerState) -> None:
 def nachklick_ueberspringen(state: AutoClickerState) -> None:
     """Diesen Punkt lassen, wo er ist, und zum nächsten."""
     with state.lock:
-        if not state.nachklick_aktiv:
+        if not state.reclick_active:
             return
-        if state.nachklick_index >= len(state.nachklick_punkte):
+        if state.reclick_index >= len(state.reclick_points):
             return
-        punkt_id = state.nachklick_punkte[state.nachklick_index]
-        state.nachklick_verlauf.append((punkt_id, "uebersprungen"))
-        state.nachklick_index += 1
-        fertig = state.nachklick_index >= len(state.nachklick_punkte)
+        punkt_id = state.reclick_points[state.reclick_index]
+        state.reclick_history.append((punkt_id, "uebersprungen"))
+        state.reclick_index += 1
+        fertig = state.reclick_index >= len(state.reclick_points)
     print(f"  {col('[ÜBERSPRUNGEN]', 'yellow')} #{punkt_id} bleibt, wo er ist.")
     if fertig:
         stop_nachklick(state, "alle Punkte durch")
@@ -493,22 +493,22 @@ def nachklick_zurueck(state: AutoClickerState) -> None:
     Eintrag raus.
     """
     with state.lock:
-        if not state.nachklick_aktiv:
+        if not state.reclick_active:
             return
-        if state.nachklick_index <= 0:
+        if state.reclick_index <= 0:
             print(f"  {hint('Schon beim ersten Punkt.')}")
             return
-        state.nachklick_index -= 1
+        state.reclick_index -= 1
         # Zurueck heisst zurueck — auch in der Anzeige. Bliebe der
         # Eintrag stehen, zeigte das Fenster einen Punkt als erledigt,
         # den die Runde gleich noch einmal abfragt.
-        if state.nachklick_verlauf:
-            state.nachklick_verlauf.pop()
-        punkt_id = state.nachklick_punkte[state.nachklick_index]
+        if state.reclick_history:
+            state.reclick_history.pop()
+        punkt_id = state.reclick_points[state.reclick_index]
         verworfen = None
-        for i, eintrag in enumerate(state.nachklick_gesetzt):
-            if eintrag[0] == punkt_id:
-                verworfen = state.nachklick_gesetzt.pop(i)[1]
+        for i, entry in enumerate(state.reclick_set):
+            if entry[0] == punkt_id:
+                verworfen = state.reclick_set.pop(i)[1]
                 break
     if verworfen:
         print(f"  {col('[ZURÜCK]', 'yellow')} #{punkt_id} zählt wieder als "
@@ -526,7 +526,7 @@ def _on_click_factory(state: AutoClickerState):
 def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
     """Ein Klick im Spiel: die neue Stelle des aktuellen Punktes."""
     with state.lock:
-        if not state.nachklick_aktiv or state.nachklick_pausiert:
+        if not state.reclick_active or state.reclick_paused:
             return
         # **Nur echte Klicks zählen.** Läuft der Worker, sind seine eigenen
         # Klicks für den Hook nicht von einem Handgriff zu unterscheiden — die
@@ -535,23 +535,23 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
         # gar nicht erst so weit kommen; das hier ist die zweite Tür.
         if state.is_running:
             return
-        if state.nachklick_index >= len(state.nachklick_punkte):
+        if state.reclick_index >= len(state.reclick_points):
             return
-        ziel = state.nachklick_ziel
-        punkt_id = state.nachklick_punkte[state.nachklick_index]
-        seq = state.nachklick_sequence
+        target = state.reclick_target
+        punkt_id = state.reclick_points[state.reclick_index]
+        seq = state.reclick_sequence
         pool = seq.points if seq is not None else state.points
-        punkt = next((p for p in pool if p.id == punkt_id), None)
+        point = next((p for p in pool if p.id == punkt_id), None)
 
     # **Ein Klick ausserhalb des Spiels ist kein Punkt.** Ausserhalb des Locks,
     # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
     # schnell zurück muss.
-    if not _im_zielfenster(ziel, x, y):
+    if not _im_zielfenster(target, x, y):
         fremd = geklicktes_fenster(x, y) or "?"
         if fremd not in _gemeldete_fenster:
             _gemeldete_fenster.add(fremd)
             print(f"\n  {warn('[IGNORIERT]')} Klick in „{fremd}“ — Punkte werden "
-                  f"nur in „{ziel}“ gesetzt.")
+                  f"nur in „{target}“ gesetzt.")
             print(hint("     Fenster wechseln und weiterklicken; der Punkt ist "
                        "noch derselbe."))
         return
@@ -559,44 +559,44 @@ def _setze_punkt(state: AutoClickerState, x: int, y: int, color) -> None:
     with state.lock:
         # Zwischen den beiden Locks kann die Runde beendet oder weitergerückt
         # sein (CTRL+ALT+K, CTRL+ALT+J) — dann gilt dieser Klick nicht mehr.
-        if (not state.nachklick_aktiv
-                or state.nachklick_index >= len(state.nachklick_punkte)
-                or state.nachklick_punkte[state.nachklick_index] != punkt_id):
+        if (not state.reclick_active
+                or state.reclick_index >= len(state.reclick_points)
+                or state.reclick_points[state.reclick_index] != punkt_id):
             return
-        if punkt is None:
-            state.nachklick_verlauf.append((punkt_id, "fehlt"))
-            state.nachklick_index += 1
-            fertig = state.nachklick_index >= len(state.nachklick_punkte)
-            name, alt, gleich = "", None, False
+        if point is None:
+            state.reclick_history.append((punkt_id, "fehlt"))
+            state.reclick_index += 1
+            fertig = state.reclick_index >= len(state.reclick_points)
+            name, old, gleich = "", None, False
         else:
             # **Der Punkt wird NICHT angefasst.** Die neue Stelle kommt auf die
             # Liste; geschrieben wird sie erst beim Übernehmen. Damit ist ein
             # Abbruch wirklich ein Abbruch — es gibt nichts zurückzudrehen.
-            alt = (punkt.x, punkt.y)
+            old = (point.x, point.y)
             # Ein Pixel Abweichung ist keine Korrektur — siehe PASST_TOLERANZ.
-            gleich = (abs(alt[0] - x) <= PASST_TOLERANZ
-                      and abs(alt[1] - y) <= PASST_TOLERANZ)
-            name = punkt.name or f"Punkt {punkt.id}"
+            gleich = (abs(old[0] - x) <= PASST_TOLERANZ
+                      and abs(old[1] - y) <= PASST_TOLERANZ)
+            name = point.name or f"Punkt {point.id}"
             if not gleich:
-                state.nachklick_gesetzt = [
-                    e for e in state.nachklick_gesetzt if e[0] != punkt_id]
-                state.nachklick_gesetzt.append((punkt_id, alt, (x, y), color))
-            state.nachklick_verlauf.append(
+                state.reclick_set = [
+                    e for e in state.reclick_set if e[0] != punkt_id]
+                state.reclick_set.append((punkt_id, old, (x, y), color))
+            state.reclick_history.append(
                 (punkt_id, "passt" if gleich else "gesetzt"))
-            state.nachklick_index += 1
-            fertig = state.nachklick_index >= len(state.nachklick_punkte)
+            state.reclick_index += 1
+            fertig = state.reclick_index >= len(state.reclick_points)
 
-    if punkt is not None:
-        farbe = f"  {describe_color(color)}" if punkt.color and color else ""
+    if point is not None:
+        color_text = f"  {describe_color(color)}" if point.color and color else ""
         if gleich:
             # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
             # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
             # als „nichts passiert".
             print(f"  {col('[PASST]', 'green')} #{punkt_id} {name} — "
-                  f"bestätigt, bleibt wo er ist.{farbe}")
+                  f"bestätigt, bleibt wo er ist.{color_text}")
         else:
             print(f"  {col('[GESETZT]', 'green')} #{punkt_id} {name}  "
-                  f"({alt[0]}, {alt[1]}) → ({x}, {y}){farbe}")
+                  f"({old[0]}, {old[1]}) → ({x}, {y}){color_text}")
     if fertig:
         stop_nachklick(state, "alle Punkte durch")
     else:
@@ -636,19 +636,19 @@ def _zeige_aktuellen(state: AutoClickerState, verzoegert: bool = False) -> None:
     # eine Schreibvorgang fuer das Studio-Fenster.
     _status_schreiben(state)
     with state.lock:
-        if not state.nachklick_aktiv:
+        if not state.reclick_active:
             return
-        i, gesamt = state.nachklick_index, len(state.nachklick_punkte)
-        if i >= gesamt:
+        i, total = state.reclick_index, len(state.reclick_points)
+        if i >= total:
             return
-        punkt_id = state.nachklick_punkte[i]
-        seq = state.nachklick_sequence
+        punkt_id = state.reclick_points[i]
+        seq = state.reclick_sequence
         pool = seq.points if seq is not None else state.points
-        punkt = next((p for p in pool if p.id == punkt_id), None)
-    if punkt is None:
+        point = next((p for p in pool if p.id == punkt_id), None)
+    if point is None:
         return
-    farbe = f"  {describe_color(punkt.color)}" if punkt.color else ""
-    print(f"  {col(f'→ {i + 1}/{gesamt}', 'cyan')}  #{punkt.id} "
-          f"{punkt.name or '(ohne Name)'}   Zeiger steht auf "
-          f"({punkt.x}, {punkt.y}){farbe}")
-    _springe(punkt.x, punkt.y, verzoegert)
+    color_text = f"  {describe_color(point.color)}" if point.color else ""
+    print(f"  {col(f'→ {i + 1}/{total}', 'cyan')}  #{point.id} "
+          f"{point.name or '(ohne Name)'}   Zeiger steht auf "
+          f"({point.x}, {point.y}){color_text}")
+    _springe(point.x, point.y, verzoegert)

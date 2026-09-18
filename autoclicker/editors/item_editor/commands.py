@@ -9,9 +9,9 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import update_item_in_scans, save_global_items, active_templates_dir
+from ...persistence import save_global_items, active_templates_dir
 from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
-                      bereinige_itemname, ok, err, info, hint)
+                      clean_item_name, ok, err, info, hint)
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -107,8 +107,8 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
             item.template = new_template
         del state.global_items[old_name]
         state.global_items[new_name] = item
-
-    update_item_in_scans(old_name, new_name)
+    # Ein Item gehoert genau einem Scan; der wird danach als Ganzes gespeichert.
+    # Gleichnamige Items anderer Scans ziehen ausdruecklich nicht mit.
     return True
 
 
@@ -152,7 +152,7 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             reasoning=state.config.llm_reasoning,
             max_tokens=state.config.llm_max_tokens,
         )
-        base = bereinige_itemname(suggestion) if suggestion else ""
+        base = clean_item_name(suggestion) if suggestion else ""
         if not base:
             print(f"    {old_name}: kein Name vom LLM — bleibt.")
             continue
@@ -308,8 +308,8 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         # Dieselbe Slot-Groesse wird bewusst aktualisiert.
         template_file = passende[0]
     elif item.template_names():
-        breite, hoehe = img.size
-        basis = f"{safe_name}_{breite}x{hoehe}"
+        width, height = img.size
+        basis = f"{safe_name}_{width}x{height}"
         template_file = f"{basis}.png"
         nummer = 2
         while (active_templates_dir(state) / template_file).exists():

@@ -32,7 +32,7 @@ from ..utils import is_cancel, parse_non_negative_float, safe_input
 ABBRUCH = object()
 
 
-def frage_prioritaet(state: AutoClickerState, kategorie: Optional[str],
+def frage_prioritaet(state: AutoClickerState, category: Optional[str],
                      vorgabe: int = 1, *, abbrechbar: bool = False):
     """Fragt die Priorität ab. Gibt die Zahl zurück — oder `ABBRUCH`.
 
@@ -43,23 +43,23 @@ def frage_prioritaet(state: AutoClickerState, kategorie: Optional[str],
     Eine Fehleingabe behält die Vorgabe — dieselbe Haltung wie überall in den
     Editoren: wiederholen statt abbrechen.
     """
-    prioritaet = max(1, int(vorgabe or 1))
+    priority = max(1, int(vorgabe or 1))
     eingabe = safe_input(
-        f"  Priorität (1=beste, 0=beste+verschieben, Enter={prioritaet}): ").strip()
+        f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
     if abbrechbar and is_cancel(eingabe):
         return ABBRUCH
     if not eingabe:
-        return prioritaet
+        return priority
     try:
-        wert = int(eingabe)
+        value = int(eingabe)
     except ValueError:
-        return prioritaet
-    if wert != 0:
-        return max(1, wert)
-    if not kategorie:
+        return priority
+    if value != 0:
+        return max(1, value)
+    if not category:
         print("  -> Priorität 0 nur mit Kategorie möglich!")
         return 1
-    shift_category_priorities(state, kategorie)
+    shift_category_priorities(state, category)
     return 1
 
 
@@ -90,15 +90,15 @@ def frage_bestaetigungsklick(state: AutoClickerState, vorgabe_delay: float, *,
         print("  -> Keine Zahl — kein Bestätigungs-Klick gesetzt")
         return None, wartezeit
     with state.lock:
-        gefunden = get_point_by_id(state, punkt_id) is not None
-    if not gefunden:
+        found = get_point_by_id(state, punkt_id) is not None
+    if not found:
         print(f"  -> Punkt #{punkt_id} existiert nicht")
         return None, wartezeit
-    dauer = safe_input(f"  Wartezeit vor Bestätigung (Enter = {wartezeit}s): ").strip()
-    if dauer:
-        wert, fehler = parse_non_negative_float(dauer, "Wartezeit")
+    duration = safe_input(f"  Wartezeit vor Bestätigung (Enter = {wartezeit}s): ").strip()
+    if duration:
+        value, fehler = parse_non_negative_float(duration, "Wartezeit")
         if fehler:
             print(f"  -> {fehler}, behalte {wartezeit}s")
         else:
-            wartezeit = wert
+            wartezeit = value
     return punkt_id, wartezeit

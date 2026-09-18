@@ -15,7 +15,7 @@ Kopie verschieben — und das Original wanderte mit.
 Dazu die Frage eine Ebene darüber: **wem gehören die Punkte?** Der Sequenz, in
 deren `sequence.json` sie stehen — und damit muss jeder Wechsel des Gegenstands
 sie mitwechseln. Der Umzug auf sequenzlokale Punkte hat das an zwei Stellen
-spiegelbildlich verfehlt: `neu()` im Studio liess die Punkte der VORIGEN Sequenz
+spiegelbildlich verfehlt: `new()` im Studio liess die Punkte der VORIGEN Sequenz
 stehen (und `speichern()` schrieb sie mit), `edit_sequence()` in der Konsole
 liess sie ganz weg (und schrieb eine Sequenz ohne eine einzige Stelle). Gemessen
 wird beides an der Datei, nicht an der Liste im Speicher.
@@ -41,10 +41,10 @@ try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import list_available_sequences, save_data
 
-    def _bruecke(steps, punkte):
+    def _bruecke(steps, points):
         st = _ST()
         seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=steps)],
-                   points=punkte)
+                   points=points)
         st.sequences["Farm"] = seq
         st.active_sequence = seq
         st.points = seq.points
@@ -149,7 +149,7 @@ try:
     # ------------------------------------------------------------------
     section("Eine neue Sequenz faengt ohne Punkte an")
 
-    # `laden()` ersetzt die Punkte, `neu()` liess sie stehen - und
+    # `laden()` ersetzt die Punkte, `new()` liess sie stehen - und
     # `speichern()` schreibt `self.points` in die Datei. Eine frisch angelegte
     # Sequenz kam damit mit dem ganzen Punktebestand der vorher offenen auf die
     # Platte: ein Rest aus der Zeit der globalen `points.json`, in der genau das
@@ -159,7 +159,7 @@ try:
                   [_CP(id=1, x=100, y=200, name="Bank"),
                    _CP(id=2, x=300, y=400, name="Truhe")])
     check("die Ausgangssequenz hat ihre zwei Punkte", len(_b.points) == 2)
-    _b.neu()
+    _b.new()
     check("nach 'neu' ist die Punkteliste leer", _b.points == [])
 
     # Gemessen wird bis auf die PLATTE. Ein Test, der nur `self.points` prueft,
@@ -344,7 +344,7 @@ check("und zeichnet es wie das an der Bedingung",
 # ----------------------------------------------------------------------
 section("Ein geteilter Punkt sagt, dass er geteilt ist")
 
-# **Der Fall aus einer echten Aufnahme.** `punkt_an_stelle()` legt den Klick auf
+# **Der Fall aus einer echten Aufnahme.** `point_at_position()` legt den Klick auf
 # denselben Knopf in Loop 1 und Loop 4 auf EINEN Punkt - richtig so. Wer dann
 # Loop 1 eine andere Stelle gibt („Stelle mit der Maus setzen"), verschiebt den
 # Punkt, und Loop 4 zieht mit: der Block dort klickt ploetzlich woanders hin,

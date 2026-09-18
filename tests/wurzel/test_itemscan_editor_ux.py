@@ -401,11 +401,11 @@ class ItemscanEditorUxTest(unittest.TestCase):
         templates.mkdir(parents=True, exist_ok=True)
 
         def pattern(size, offset):
-            bild = Image.new("RGB", size, (18, 22, 28))
+            image = Image.new("RGB", size, (18, 22, 28))
             for x in range(4 + offset, size[0] - 4, 7):
-                bild.paste((210, 40 + offset, 75),
+                image.paste((210, 40 + offset, 75),
                            (x, 5, min(x + 3, size[0]), size[1] - 5))
-            return bild
+            return image
 
         pattern((62, 57), 0).save(templates / "robe.png")
         passend = pattern((50, 50), 1)
@@ -428,8 +428,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
         from autoclicker.persistence.serialization import _item_from_dict, _item_to_dict
         gespeicherte_daten = _item_to_dict(item)
         self.assertEqual(gespeicherte_daten["template_variants"], ["robe_50x50.png"])
-        geladen = _item_from_dict(gespeicherte_daten, "Robe")
-        self.assertEqual(geladen.template_names(), ["robe.png", "robe_50x50.png"])
+        loaded = _item_from_dict(gespeicherte_daten, "Robe")
+        self.assertEqual(loaded.template_names(), ["robe.png", "robe_50x50.png"])
 
     def test_priority_is_visible_with_category_context(self):
         js = (Path(self.old_cwd) /
@@ -437,7 +437,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
                   encoding="utf-8")
         self.assertIn("function prioritaetsUebersicht", js)
         self.assertIn("Bereits gesetzte Prioritäten", js)
-        self.assertIn("Ganz nach vorn", js)
+        # „0 = ganz nach vorn" kann die Brücke (`_prioritaet_einordnen`); die
+        # Maske muss es SAGEN — am Feld, in dem man tippt. Hier stand einmal ein
+        # eigener Knopf in `prioritaetsfeld()`, den seit dem Masken-Umbau
+        # niemand mehr rief: der Text war da, das Bedienelement nicht.
+        self.assertIn("0 = ganz nach vorn", js)
+        self.assertNotIn("function prioritaetsfeld", js)
         self.assertIn('"P" + i.prioritaet', js)
         # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
         # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem
@@ -475,7 +480,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def test_window_source_moves_editor_slots_with_the_game(self):
         old_rect = (0, 0, 120, 80)
         new_rect = (200, 100, 320, 180)
-        with patch("autoclicker.winapi.liste_fenster", return_value=[
+        with patch("autoclicker.winapi.list_windows", return_value=[
                 ("Mein Spiel", old_rect, 77)]):
             state = self.bridge.scan_bereich_setzen({
                 "bereich": list(old_rect), "fenster": 77,
@@ -486,12 +491,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(cfg.capture_window_rect, old_rect)
         self.assertEqual(state["fenster_titel"], "Mein Spiel")
 
-        bild = Image.new("RGB", (120, 80), (25, 35, 45))
-        bild.putpixel((20, 20), (200, 50, 60))
+        image = Image.new("RGB", (120, 80), (25, 35, 45))
+        image.putpixel((20, 20), (200, 50, 60))
         with patch("autoclicker.winapi.resolve_window",
                    return_value=("Mein Spiel", new_rect, 88)), patch(
                 "autoclicker.imaging.take_consistent_window_screenshot",
-                return_value=(bild, new_rect, "")):
+                return_value=(image, new_rect, "")):
             state = self.bridge.scan_foto()
 
         slot = self.bridge.slots["Slot 1"]
@@ -597,9 +602,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
         state.item_scans = {
             "Inventar": ItemScanConfig(
                 name="Inventar", slots=[active, parked], items=[item])}
-        bild = Image.new("RGB", (20, 20), (200, 50, 60))
+        image = Image.new("RGB", (20, 20), (200, 50, 60))
 
-        with patch.object(runtime, "take_screenshot", return_value=bild) as capture, \
+        with patch.object(runtime, "take_screenshot", return_value=image) as capture, \
                 patch.object(runtime, "_check_profile_match", return_value=(True, 1.0)), \
                 patch.object(runtime, "_park_mouse_for_scan"):
             result = runtime.execute_item_scan(state, "Inventar")
@@ -607,8 +612,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual([slot.name for slot in state.item_scans["Inventar"].slots],
                          ["Aktiv", "Geparkt"])
         self.assertEqual(capture.call_count, 1)
-        self.assertEqual([treffer[0] for treffer in result], [(10, 10)])
-        self.assertEqual([treffer[1].name for treffer in result], ["Treffer"])
+        self.assertEqual([match[0] for match in result], [(10, 10)])
+        self.assertEqual([match[1].name for match in result], ["Treffer"])
 
 
 if __name__ == "__main__":

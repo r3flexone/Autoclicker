@@ -1,12 +1,12 @@
 """Laufstatus für Beobachter ausserhalb des Prozesses (Sequenz-Studio).
 
 Kein Log: die Datei beschreibt den Zustand JETZT und wird überschrieben.
-Am Ende bleibt die Zusammenfassung des letzten Laufs stehen (`beende()`).
+Am Ende bleibt die Zusammenfassung des letzten Laufs stehen (`finish_run()`).
 Eine Datei statt eines Sockets, weil der gemeinsame Nenner der beiden
 Prozesse überall sonst schon die Datei ist.
 
 Drei Schreiber führen ihren Teil ein, statt ihn zu ersetzen: der Worker
-kennt Zyklus und Phase, `execute_step` den Block, `wartet()` das Warten.
+kennt Zyklus und Phase, `execute_step` den Block, `waiting_for()` das Warten.
 Höchstens alle 200 ms ein Schreibvorgang (`sofort=True` umgeht die Drossel);
 Schreibfehler werden geschluckt — ein Beobachter darf den Lauf nie stören.
 """
@@ -17,14 +17,14 @@ from pathlib import Path
 from ..config import RUN_STATUS_FILE
 from ..utils import atomic_write, compact_json
 
-STATUS_DATEI = Path(RUN_STATUS_FILE)
+STATUS_PATH = Path(RUN_STATUS_FILE)
 
-_MINDESTABSTAND = 0.2
+_MIN_INTERVAL = 0.2
 _zuletzt = 0.0
 _zustand: dict = {}
 
 
-def _zaehler(state) -> dict:
+def _counters(state) -> dict:
     """Die Zähler aus dem State — unter Lock gelesen, wie überall."""
     with state.lock:
         return {"klicks": state.total_clicks, "items": state.items_found,
@@ -32,7 +32,7 @@ def _zaehler(state) -> dict:
                 "uebersprungen": state.skipped_cycles, "neustarts": state.restarts}
 
 
-def schreibe(state, teil: dict, sofort: bool = False) -> None:
+def write_status(state, teil: dict, sofort: bool = False) -> None:
     """Führt `teil` in den Laufzustand ein und schreibt ihn auf Platte.
 
     `sofort=True` umgeht die Drossel — für Ereignisse, die man nicht verpassen
@@ -43,18 +43,18 @@ def schreibe(state, teil: dict, sofort: bool = False) -> None:
     global _zuletzt
     _zustand.update(teil)
     jetzt = time.monotonic()
-    if not sofort and jetzt - _zuletzt < _MINDESTABSTAND:
+    if not sofort and jetzt - _zuletzt < _MIN_INTERVAL:
         return
     _zuletzt = jetzt
     try:
-        _zustand["zaehler"] = _zaehler(state)
+        _zustand["zaehler"] = _counters(state)
         _zustand["stand"] = time.time()
-        atomic_write(STATUS_DATEI, compact_json(_zustand))
+        atomic_write(STATUS_PATH, compact_json(_zustand))
     except (OSError, TypeError, ValueError, AttributeError):
         pass
 
 
-def wartet(state, teil) -> None:
+def waiting_for(state, teil) -> None:
     """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
 
     Zeiten stehen als absolute Zeitstempel darin (`seit`, `bis`), nicht als
@@ -64,10 +64,10 @@ def wartet(state, teil) -> None:
     Das Abmelden schreibt sofort — zwischen „Farbe erkannt" und dem nächsten
     Block liegt noch die eigene Aktion des Schritts.
     """
-    schreibe(state, {"warten": teil}, sofort=teil is None)
+    write_status(state, {"warten": teil}, sofort=teil is None)
 
 
-def lebenszeichen(state) -> None:
+def heartbeat(state) -> None:
     """„Ich lebe noch" — schiebt `stand` vor, ohne etwas zu ändern.
 
     Der Leser erkennt einen abgestürzten Lauf am Alter des Zeitstempels; ohne
@@ -75,10 +75,10 @@ def lebenszeichen(state) -> None:
     deshalb in jede Schleife, die den Worker länger aufhält. Kostet nichts —
     die Drossel lässt höchstens fünf Schreibvorgänge pro Sekunde durch.
     """
-    schreibe(state, {})
+    write_status(state, {})
 
 
-def plane(sequenz: str, zielzeit: float) -> None:
+def schedule_run(sequence: str, zielzeit: float) -> None:
     """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
 
     Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
@@ -90,10 +90,10 @@ def plane(sequenz: str, zielzeit: float) -> None:
     _zustand.clear()
     _zuletzt = 0.0
     try:
-        atomic_write(STATUS_DATEI, compact_json({
+        atomic_write(STATUS_PATH, compact_json({
             "aktiv": False,
             "countdown": True,
-            "sequenz": sequenz,
+            "sequenz": sequence,
             "zielzeit": float(zielzeit),
             "stand": time.time(),
         }))
@@ -101,13 +101,13 @@ def plane(sequenz: str, zielzeit: float) -> None:
         pass
 
 
-def plan_beenden() -> None:
+def end_schedule() -> None:
     """Entfernt nur eine Countdown-Anzeige, nie die Laufzusammenfassung."""
     try:
         import json
-        daten = json.loads(STATUS_DATEI.read_text(encoding="utf-8"))
-        if isinstance(daten, dict) and daten.get("countdown"):
-            STATUS_DATEI.unlink(missing_ok=True)
+        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("countdown"):
+            STATUS_PATH.unlink(missing_ok=True)
     except (OSError, ValueError):
         pass
 
@@ -118,11 +118,11 @@ def plan_beenden() -> None:
 # `phase`/`phase_pos` bleiben bewusst drin: WO ein Lauf aufgehoert hat, ist die
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
-_MOMENT_FELDER = ("block", "bloecke", "block_titel", "block_label", "block_typ",
+_MOMENT_FIELDS = ("block", "bloecke", "block_titel", "block_label", "block_typ",
                   "block_seit", "warten", "durchlauf", "manuell")
 
 
-def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> None:
+def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:
     """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
 
     Der letzte Stand bleibt als abgeschlossener Lauf liegen (`aktiv: False`
@@ -145,19 +145,19 @@ def beende(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> 
     _zuletzt = 0.0
     try:
         if state is None or not letzter.get("sequenz"):
-            STATUS_DATEI.unlink(missing_ok=True)
+            STATUS_PATH.unlink(missing_ok=True)
             return
-        for feld in _MOMENT_FELDER:
+        for feld in _MOMENT_FIELDS:
             letzter.pop(feld, None)
         letzter.update({
             "aktiv": False,
             "ende": time.time(),
-            "grund": grund,
-            "gelaufen": zyklen,
-            "dauer": dauer,
-            "zaehler": _zaehler(state),
+            "grund": reason,
+            "gelaufen": cycles,
+            "dauer": duration,
+            "zaehler": _counters(state),
             "stand": time.time(),
         })
-        atomic_write(STATUS_DATEI, compact_json(letzter))
+        atomic_write(STATUS_PATH, compact_json(letzter))
     except (OSError, TypeError, ValueError, AttributeError):
         pass

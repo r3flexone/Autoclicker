@@ -28,9 +28,9 @@ class LinuxBackendTests(unittest.TestCase):
         linux_x11.flush_hotkey_messages()
 
     def test_linux_backend_erfuellt_vertrag(self):
-        fehlend = [name for name in BACKEND_FUNCTIONS
+        missing = [name for name in BACKEND_FUNCTIONS
                    if not callable(getattr(linux_x11, name, None))]
-        self.assertEqual([], fehlend)
+        self.assertEqual([], missing)
 
     def test_selector_waehlt_linux_backend(self):
         with patch("autoclicker.platforms.sys.platform", "linux"):
@@ -100,7 +100,7 @@ class LinuxBackendTests(unittest.TestCase):
             ("Idle Clans - Hilfe", (0, 0, 100, 100), 1),
             ("Idle Clans", (200, 100, 500, 400), 2),
         ]
-        with patch.object(linux_x11, "liste_fenster", return_value=fenster):
+        with patch.object(linux_x11, "list_windows", return_value=fenster):
             self.assertEqual(2, linux_x11.resolve_window("Idle Clans")[2])
 
     def test_linux_pixelmessung_nutzt_plattformaufnahme(self):
@@ -133,9 +133,9 @@ class LinuxBackendTests(unittest.TestCase):
 
 class WindowsBackendTests(unittest.TestCase):
     def test_windows_backend_erfuellt_vertrag(self):
-        fehlend = [name for name in BACKEND_FUNCTIONS
+        missing = [name for name in BACKEND_FUNCTIONS
                    if not callable(getattr(windows, name, None))]
-        self.assertEqual([], fehlend)
+        self.assertEqual([], missing)
 
     def test_windows_klick_bricht_bei_mausfehler_ab(self):
         with patch.object(windows, "set_cursor_pos", return_value=False), \

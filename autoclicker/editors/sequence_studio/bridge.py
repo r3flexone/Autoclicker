@@ -101,7 +101,7 @@ class StudioBridge(
         # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.
         self._gespeichert = False
         self._status = ("", "info")
-        self._frage: Optional[dict] = None
+        self._ask: Optional[dict] = None
         # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber
         # er kommt von aussen: CTRL+ALT+V startet denselben Prozess wie
         # CTRL+ALT+B, nur mit "scans".

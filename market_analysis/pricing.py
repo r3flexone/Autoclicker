@@ -18,19 +18,17 @@ try:
     from .config import (
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_MARKET_VOLUME, MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
     )
 except ImportError:  # direkter Skriptstart
     from config import (  # type: ignore
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_MARKET_VOLUME, MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
     )
 
-
-LEERER_MARKT = {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
 
 
 # ---------------------------------------------------------------
@@ -56,15 +54,6 @@ def valid_buy_market(item: dict | None) -> bool:
     if not item:
         return False
     return item.get("sell", 0) > 0 and item.get("sellVol", 0) >= MIN_BUY_ASK_VOLUME
-
-
-def valid_market(item: dict | None) -> bool:
-    """Beidseitig echter Markt - nur noch fuer Warnungen, nicht fuer Entscheidungen."""
-    if not item:
-        return False
-    return (item.get("buy", 0) > 0 and item.get("sell", 0) > 0
-            and item.get("buyVol", 0) >= MIN_MARKET_VOLUME
-            and item.get("sellVol", 0) >= MIN_MARKET_VOLUME)
 
 
 def wide_spread(item: dict | None) -> bool:
@@ -128,7 +117,7 @@ class Verkaufsweg(NamedTuple):
     an_npc: bool
     spieler_netto: float   # was der Player-Markt netto braechte (0 = kein Weg)
     npc_preis: float
-    grund: str             # leer, solange ueberhaupt ein Weg existiert
+    reason: str             # leer, solange ueberhaupt ein Weg existiert
 
 
 def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
@@ -193,10 +182,10 @@ def zutat_preis(item_id, market_map: dict) -> Zutatenpreis:
     """
     if item_id == GOLD_ITEM_ID:
         return Zutatenpreis(GOLD_ITEM_PRICE, True)
-    eintrag = market_map.get(item_id)
-    if not eintrag:
+    entry = market_map.get(item_id)
+    if not entry:
         return Zutatenpreis(0.0, False)
-    preis = eintrag.get("sell", 0) or 0.0
+    preis = entry.get("sell", 0) or 0.0
     if preis <= 0:
         return Zutatenpreis(0.0, False)
     return Zutatenpreis(float(preis), True)
@@ -250,9 +239,9 @@ def kosten_pro_aktion(costs: list, market_map: dict, aktionen_pro_stunde: float 
 
 def _zutat_name(item_id, item_info_map: dict | None) -> str:
     if item_info_map:
-        eintrag = item_info_map.get(item_id)
-        if eintrag and eintrag.get("name"):
-            return str(eintrag["name"])
+        entry = item_info_map.get(item_id)
+        if entry and entry.get("name"):
+            return str(entry["name"])
     return f"item_{item_id}"
 
 
@@ -317,11 +306,11 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
 
     # Kein eigenes Recipe -> am Markt kaufen
     if item_id not in recipe_by_output:
-        eintrag = market_map.get(item_id)
+        entry = market_map.get(item_id)
         preis, bekannt = zutat_preis(item_id, market_map)
-        sell_vol = eintrag.get("sellVol", 0) if eintrag else 0
+        sell_vol = entry.get("sellVol", 0) if entry else 0
         ratio = (qty_needed / sell_vol) if sell_vol > 0 else 0.0
-        if not valid_buy_market(eintrag):
+        if not valid_buy_market(entry):
             ratio = max(ratio, 999.0)   # erzwingt LiquidityWarning
         return _leer(preis * qty_needed, ratio, False, bekannt,
                      () if bekannt else (_zutat_name(item_id, item_info_map),))

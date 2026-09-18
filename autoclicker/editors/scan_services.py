@@ -28,10 +28,10 @@ def map_point_between_rects(point: tuple[int, int], source_rect: tuple,
 def map_region_between_rects(region: tuple[int, int, int, int], source_rect: tuple,
                              target_rect: tuple) -> tuple[int, int, int, int]:
     """Überträgt beide Ecken einer Bildschirmregion zwischen Fensterlagen."""
-    links, oben = map_point_between_rects((region[0], region[1]), source_rect, target_rect)
-    rechts, unten = map_point_between_rects((region[2], region[3]), source_rect, target_rect)
-    return (min(links, rechts), min(oben, unten),
-            max(links, rechts), max(oben, unten))
+    left, top = map_point_between_rects((region[0], region[1]), source_rect, target_rect)
+    right, bottom = map_point_between_rects((region[2], region[3]), source_rect, target_rect)
+    return (min(left, right), min(top, bottom),
+            max(left, right), max(top, bottom))
 
 
 def crop_screen_region(source_img, region: tuple[int, int, int, int],

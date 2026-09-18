@@ -14,7 +14,7 @@ from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
 from ...persistence import active_templates_dir
 from ...utils import (
-    confirm, eindeutiger_name, is_cancel, naechster_freier_name, ok,
+    confirm, unique_name, is_cancel, next_free_name, ok,
     safe_input, sanitize_filename,
 )
 from .._item_felder import (
@@ -75,7 +75,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         for slot_idx in range(start_slot - 1, end_slot):
             slot = slot_list[slot_idx]
             with state.lock:
-                item_name = eindeutiger_name(f"{slot.name} Item", state.global_items)
+                item_name = unique_name(f"{slot.name} Item", state.global_items)
 
             priority = slot_idx - start_slot + 2
 
@@ -180,7 +180,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     # Item-Name abfragen. Nicht `len(...) + 1` — das schlaegt nach dem ersten Loeschen
     # einen bereits vergebenen Namen vor, und der Name ist hier die Referenz.
     with state.lock:
-        vorschlag = naechster_freier_name("Item", state.global_items)
+        vorschlag = next_free_name("Item", state.global_items)
     item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}'): ").strip()
     if is_cancel(item_name):
         _cleanup_cached_template()

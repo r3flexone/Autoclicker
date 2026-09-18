@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 from autoclicker.persistence.migration import SCHEMA_VERSION  # noqa: E402
 from autoclicker.persistence.paths import BACKUPS_DIR  # noqa: E402
-from autoclicker.persistence.sweep import sammle_dateien, sweep  # noqa: E402
+from autoclicker.persistence.sweep import collect_files, sweep  # noqa: E402
 
 
 def main() -> int:
@@ -41,32 +41,32 @@ def main() -> int:
     print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if schreiben
           else "nur anzeigen (--write zum Schreiben)")
 
-    dateien = sammle_dateien()
+    dateien = collect_files()
     if not dateien:
         print("\nKeine Dateien gefunden - nichts zu tun.")
         return 0
     print(f"Gefundene Dateien: {len(dateien)}\n")
 
-    ergebnis = sweep(write=schreiben)
+    result = sweep(write=schreiben)
 
-    for pfad, meldungen in ergebnis.geaendert:
+    for path, messages in result.geaendert:
         try:
-            name = pfad.relative_to(ROOT)
+            name = path.relative_to(ROOT)
         except ValueError:
-            name = pfad
+            name = path
         print(f"  {name}")
-        for m in meldungen:
+        for m in messages:
             print(f"      - {m}")
-    for pfad in ergebnis.uebersprungen:
-        print(f"  [UEBERSPRUNGEN] {pfad.name}: nicht ladbar, bleibt unveraendert")
+    for path in result.uebersprungen:
+        print(f"  [UEBERSPRUNGEN] {path.name}: nicht ladbar, bleibt unveraendert")
 
-    print(f"\n{ergebnis.anzahl_geaendert} angepasst, {ergebnis.aktuell} bereits aktuell, "
-          f"{len(ergebnis.uebersprungen)} uebersprungen.")
-    if ergebnis.geaendert and not schreiben:
+    print(f"\n{result.changed_count} angepasst, {result.aktuell} bereits aktuell, "
+          f"{len(result.uebersprungen)} uebersprungen.")
+    if result.geaendert and not schreiben:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")
-    elif ergebnis.geaendert:
+    elif result.geaendert:
         print("Geschrieben. Ein zweiter Lauf sollte nichts mehr finden.")
-    return 1 if ergebnis.uebersprungen else 0
+    return 1 if result.uebersprungen else 0
 
 
 if __name__ == "__main__":

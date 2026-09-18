@@ -69,17 +69,17 @@ class Ergebnis:
         self.ok = True
         self.uebersprungen = ""
         self.zusammenfassung = ""
-        self.dauer = 0.0
+        self.duration = 0.0
 
     def __str__(self) -> str:
         if self.uebersprungen:
             return f"  ÜBERSPRUNGEN  {self.name:<14} {self.uebersprungen}"
         marke = "OK  " if self.ok else "FAIL"
         return (f"  {marke}          {self.name:<14} {self.zusammenfassung}"
-                f"  ({self.dauer:.1f}s)")
+                f"  ({self.duration:.1f}s)")
 
 
-def _lauf(befehl: list[str], umgebung: dict | None = None) -> tuple[int, str]:
+def _lauf(command: list[str], umgebung: dict | None = None) -> tuple[int, str]:
     """Ein Unterprozess mit geerbter Ausgabe — und dem Text zum Auswerten.
 
     Warum als Unterprozess und nicht per Import: die Vertragssuite stubbt
@@ -90,7 +90,7 @@ def _lauf(befehl: list[str], umgebung: dict | None = None) -> tuple[int, str]:
     umw["PYTHONUTF8"] = "1"
     umw["PYTHONIOENCODING"] = "utf-8"
     umw.update(umgebung or {})
-    fertig = subprocess.run(befehl, cwd=WURZEL, env=umw, capture_output=True,
+    fertig = subprocess.run(command, cwd=WURZEL, env=umw, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     sys.stdout.write(fertig.stdout)
     sys.stderr.write(fertig.stderr)
@@ -101,11 +101,11 @@ def vertrag() -> Ergebnis:
     e = Ergebnis("Vertragssuite")
     start = time.monotonic()
     code, text = _lauf([sys.executable, str(WURZEL / "tests" / "test_logic.py")])
-    e.dauer = time.monotonic() - start
+    e.duration = time.monotonic() - start
     e.ok = code == 0
-    for zeile in reversed(text.splitlines()):
-        if " PASS / " in zeile:
-            e.zusammenfassung = zeile.strip().strip("= ")
+    for line in reversed(text.splitlines()):
+        if " PASS / " in line:
+            e.zusammenfassung = line.strip().strip("= ")
             break
     statistik = re.fullmatch(r"([1-9][0-9]*) PASS / 0 FAIL", e.zusammenfassung)
     e.ok = e.ok and statistik is not None
@@ -122,15 +122,15 @@ def wurzel(vertrag_separat: bool = False) -> Ergebnis:
     """
     e = Ergebnis("Wurzelmodule")
     start = time.monotonic()
-    befehl = [sys.executable, "-m", "tests.wurzeltests"]
+    command = [sys.executable, "-m", "tests.wurzeltests"]
     if vertrag_separat:
-        befehl.append("--ohne-vertrag")
-    code, text = _lauf(befehl)
-    e.dauer = time.monotonic() - start
+        command.append("--ohne-vertrag")
+    code, text = _lauf(command)
+    e.duration = time.monotonic() - start
     e.ok = code == 0
-    for zeile in reversed(text.splitlines()):
-        if zeile.startswith("Ran ") or zeile.startswith("OK") or "FAILED" in zeile:
-            e.zusammenfassung = zeile.strip()
+    for line in reversed(text.splitlines()):
+        if line.startswith("Ran ") or line.startswith("OK") or "FAILED" in line:
+            e.zusammenfassung = line.strip()
             break
     return e
 
@@ -140,13 +140,13 @@ def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
     sys.path.insert(0, str(WURZEL))
     from tests.rauch._bruecke import playwright_da
 
-    da, grund = playwright_da()
+    da, reason = playwright_da()
     if not da:
         if pflicht:
             e.ok = False
-            e.zusammenfassung = f"Pflichtprüfung nicht ausführbar: {grund}"
+            e.zusammenfassung = f"Pflichtprüfung nicht ausführbar: {reason}"
         else:
-            e.uebersprungen = grund
+            e.uebersprungen = reason
         return e
 
     start = time.monotonic()
@@ -155,7 +155,7 @@ def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
         code, _ = _lauf([sys.executable, "-m", f"tests.rauch.{name}"])
         if code != 0:
             fehlgeschlagen.append(name)
-    e.dauer = time.monotonic() - start
+    e.duration = time.monotonic() - start
     e.ok = not fehlgeschlagen
     e.zusammenfassung = (f"{len(nur)} Ansichten"
                          + (f", rot: {', '.join(fehlgeschlagen)}" if fehlgeschlagen else ""))
@@ -190,15 +190,15 @@ def main(argv: list[str]) -> int:
         start = time.monotonic()
         code, _ = _lauf([sys.executable, str(WURZEL / "tests" / "mutationspruefung.py")])
         e.ok = code == 0
-        e.dauer = time.monotonic() - start
+        e.duration = time.monotonic() - start
         e.zusammenfassung = "gezielte Mutationsprüfung"
         ergebnisse.append(e)
 
-    breite = 78
-    print("\n" + "=" * breite)
+    width = 78
+    print("\n" + "=" * width)
     for e in ergebnisse:
         print(e)
-    print("=" * breite)
+    print("=" * width)
 
     rot = [e.name for e in ergebnisse if not e.ok]
     if rot:

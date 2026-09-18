@@ -1151,7 +1151,7 @@ section("Die Slot-Kachel zeigt die ID, nicht die (bewegliche) Stelle")
 # **Sie steht UNTER dem Schalter, als eigene Kachel.** Vor dem Namensfeld nahm
 # sie ihm die Breite, liess die Namen ohne Nummer an einer anderen Kante
 # beginnen — und beim Bearbeiten schob sich das Feld darueber.
-# Und zwar in DERSELBEN Kachel-Klasse wie ueberall sonst (`zahl`) — eine
+# Und zwar in DERSELBEN Kachel-Klasse wie ueberall sonst (`number`) — eine
 # eigene daneben waere ein zweiter Bauplan fuer dasselbe Aussehen.
 check("die Ansicht zeigt die ID als Kachel",
       '"#" + s.id' in _html18 and 'el("span", {class: "zahl",' in _html18)
@@ -1655,7 +1655,7 @@ import autoclicker.llm_vision as _lv_an                            # noqa: E402
 
 _sand_an = tempfile.mkdtemp(prefix="studioautoname_")
 _cwd_an = _os.getcwd()
-_echt_an = _lv_an.suggest_item_name_grund
+_echt_an = _lv_an.suggest_item_name_with_reason
 _os.chdir(_sand_an)
 try:
     _hat_pil_an = False
@@ -1693,13 +1693,13 @@ try:
             }
             return _b
 
-        def _durchlauf_an(b, daten, schritte=None):
+        def _durchlauf_an(b, data, schritte=None):
             """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
 
             `schritte` bricht nach so vielen ab — genau das, was der
             Abbrechen-Knopf im Arbeits-Kasten tut.
             """
-            erg = b.scan_autoname_start(daten)
+            erg = b.scan_autoname_start(data)
             if not getattr(b, "_autoname", None):
                 return erg                      # abgelehnt, die Meldung sagt warum
             n = 0
@@ -1711,7 +1711,7 @@ try:
             return b.scan_autoname_ende()
 
         _namen_an = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_namen_an, None), "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_namen_an, None), "")
 
         _ba = _bau_an()
         _vorher_an = _ba.scan_daten()["undo"]["tiefe"]
@@ -1740,7 +1740,7 @@ try:
 
         # Ohne Treffer darf kein Stand entstehen: ein STRG+Z, das nichts
         # zurueckdreht, ist eins, dem man danach nicht mehr traut.
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, "")
         _bl = _bau_an()
         _leer_an = _bl.scan_daten()["undo"]["tiefe"]
         _erg_leer = _durchlauf_an(_bl, {"alle": True})
@@ -1751,7 +1751,7 @@ try:
 
         # Ohne `alle` und ohne Auswahl bleibt es beim vorsichtigen Standard —
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bs = _bau_an()
         _erg_std = _durchlauf_an(_bs, {})
         check("ohne 'alle' bleibt es bei den auto-gelernten Items",
@@ -1760,7 +1760,7 @@ try:
         # --- Der Grund, warum die Kategorie nie kam ---------------------------
         # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
         # macht Kleinbuchstaben und Unterstriche: aus "Godlike Bow" wurde
-        # `godlike_bow` — und `Katalog.treffer()` vergleicht `casefold()`, nicht
+        # `godlike_bow` — und `Catalog.match()` vergleicht `casefold()`, nicht
         # Unterstriche. Der Name kam also woertlich aus dem Katalog und fand
         # sich darin trotzdem nicht wieder; Kategorie und Prioritaet blieben
         # IMMER aus. Ein Test, der nur den Namen prueft, sieht das nicht — es
@@ -1781,7 +1781,7 @@ try:
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
             _bk.scan_offen = "S"
             _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
-            _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_kat_namen, None), "")
+            _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_kat_namen, None), "")
             _erg_kat = _durchlauf_an(_bk, {"alle": True})
             check("ein Katalogname bleibt woertlich stehen",
                   "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
@@ -1818,7 +1818,7 @@ try:
             return (("Godlike Bow", "") if len(_versuche_an) > 1
                     else (None, _TO_an))
 
-        _lv_an.suggest_item_name_grund = _erst_timeout
+        _lv_an.suggest_item_name_with_reason = _erst_timeout
         _bt = _bau_an()
         _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
         _erg_to = _durchlauf_an(_bt, {"alle": True})
@@ -1829,7 +1829,7 @@ try:
 
         # Antwortet es auch beim zweiten Mal nicht, wird es als Zeitueber-
         # schreitung gezaehlt — mit der Abhilfe in der Meldung.
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: (None, _TO_an)
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, _TO_an)
         _bt2 = _bau_an()
         _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
         _erg_to2 = _durchlauf_an(_bt2, {"alle": True})
@@ -1845,7 +1845,7 @@ try:
         # Kategorie (in Modus `all` gewinnt eines, das andere wird nie
         # geklickt), und die zweite Vorlage gehoerte ohnehin zum selben
         # Gegenstand.
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bd = _bau_an()
         _erg_dop = _durchlauf_an(_bd, {"alle": True})
         check("derselbe Name legt kein zweites Item an",
@@ -1865,7 +1865,7 @@ try:
 
         # --- Abbrechen -------------------------------------------------------
         _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: (next(_abb_namen, None), "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_abb_namen, None), "")
         _bab = _bau_an()
         _erg_abb = _durchlauf_an(_bab, {"alle": True}, schritte=1)
         # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
@@ -1883,7 +1883,7 @@ try:
 
         # Der Fortschritt steht in der MOMENTAUFNAHME, nicht nur in der Antwort
         # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
-        _lv_an.suggest_item_name_grund = lambda *a, **kw: ("Godlike Bow", "")
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bfs = _bau_an()
         _bfs.scan_autoname_start({"alle": True})
         _stand_an = _bfs.scan_daten()["autoname"]
@@ -1916,7 +1916,7 @@ try:
         check("und zeigt so lange, dass gearbeitet wird",
               "mitArbeit(" in _quelle_an and "arbeitZeigen" in _quelle_an)
 finally:
-    _lv_an.suggest_item_name_grund = _echt_an
+    _lv_an.suggest_item_name_with_reason = _echt_an
     _os.chdir(_cwd_an)
     shutil.rmtree(_sand_an, ignore_errors=True)
 

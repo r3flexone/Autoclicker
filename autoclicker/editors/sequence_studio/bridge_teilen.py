@@ -30,13 +30,13 @@ class BridgeTeilenMixin:
 
     # ------------------------------------------------------------ Anzeige
 
-    def _teilen_melde(self, text: str, art: str = "ok") -> dict:
-        self._teilen_status = (text, art)
+    def _teilen_melde(self, text: str, kind: str = "ok") -> dict:
+        self._teilen_status = (text, kind)
         return self.teilen_daten()
 
-    def teilen_daten(self, daten: Optional[dict] = None) -> dict:
+    def teilen_daten(self, data: Optional[dict] = None) -> dict:
         """Was der Reiter zeichnet. Fragt nur — ändert nichts."""
-        text, art = self._teilen_status
+        text, kind = self._teilen_status
         return {
             "teile": [{"key": k, "text": t} for k, t in TEILE],
             "bestand": self._bestand_zaehlen(),
@@ -47,7 +47,7 @@ class BridgeTeilenMixin:
             # und landet deshalb auch nicht im Bündel.
             "offen": bool(getattr(self, "_dirty", False)
                           or getattr(self, "_scan_dirty", False)),
-            "status": {"text": text, "art": art},
+            "status": {"text": text, "art": kind},
         }
 
     def _bestand_zaehlen(self) -> dict:
@@ -79,18 +79,18 @@ class BridgeTeilenMixin:
     @staticmethod
     def _export_liste() -> list:
         """Die vorhandenen Bündel, neueste zuerst."""
-        ordner = Path("exports")
-        if not ordner.is_dir():
+        folder = Path("exports")
+        if not folder.is_dir():
             return []
-        gefunden = []
-        for pfad in ordner.glob("*.zip"):
+        found = []
+        for path in folder.glob("*.zip"):
             try:
-                stat = pfad.stat()
+                stat = path.stat()
             except OSError:
                 continue
-            gefunden.append({"name": pfad.name, "kb": round(stat.st_size / 1024, 1),
+            found.append({"name": path.name, "kb": round(stat.st_size / 1024, 1),
                              "stand": stat.st_mtime})
-        return sorted(gefunden, key=lambda e: e["stand"], reverse=True)
+        return sorted(found, key=lambda e: e["stand"], reverse=True)
 
     # ------------------------------------------------------------- Bestand
 
@@ -101,12 +101,12 @@ class BridgeTeilenMixin:
         Config wird hineingeschrieben statt getauscht: es gibt ein Config-Objekt
         pro Prozess.
         """
-        from ...config import CONFIG, uebernehmen
+        from ...config import CONFIG, apply_config
         from ...persistence import list_available_sequences, load_sequence_file
         state = AutoClickerState()
-        uebernehmen(state.config, CONFIG)
-        for name, pfad in list_available_sequences():
-            seq = load_sequence_file(pfad)
+        apply_config(state.config, CONFIG)
+        for name, path in list_available_sequences():
+            seq = load_sequence_file(path)
             if seq is not None:
                 state.sequences[seq.name or name] = seq
         seq = state.sequences.get(self.board.name)
@@ -115,35 +115,35 @@ class BridgeTeilenMixin:
             state.points = seq.points
             from ...persistence import (
                 load_all_boss_scans, load_all_icon_scans, load_all_item_scans,
-                load_global_bosses, resolve_klick_referenzen,
+                load_global_bosses, resolve_click_references,
             )
             load_all_item_scans(state)
             load_all_boss_scans(state)
             load_all_icon_scans(state)
             load_global_bosses(state, seq.name)
-            resolve_klick_referenzen(state, seq)
+            resolve_click_references(state, seq)
         return state
 
     @staticmethod
-    def _gewaehlte_teile(daten: dict) -> dict:
+    def _gewaehlte_teile(data: dict) -> dict:
         """Welche Teile angehakt sind — fehlende gelten als gewählt."""
-        roh = (daten or {}).get("teile")
-        if not isinstance(roh, dict):
+        raw = (data or {}).get("teile")
+        if not isinstance(raw, dict):
             return {k: True for k, _ in TEILE}
-        return {k: bool(roh.get(k, True)) for k, _ in TEILE}
+        return {k: bool(raw.get(k, True)) for k, _ in TEILE}
 
     # -------------------------------------------------------------- Export
 
-    def export_starten(self, daten: Optional[dict] = None) -> dict:
+    def export_starten(self, data: Optional[dict] = None) -> dict:
         """Schreibt ein Bündel nach `exports/`.
 
         Die Referenzpunkte kommen aus der Fenstergrösse, wenn das Spielfenster
         offen ist — dann rechnet der Import die Koordinaten selbst um. Sonst
         bleiben die Ecken des virtuellen Desktops als grobe Bezugsgrösse.
         """
-        daten = daten or {}
-        teile = self._gewaehlte_teile(daten)
-        if not any(teile.values()):
+        data = data or {}
+        parts = self._gewaehlte_teile(data)
+        if not any(parts.values()):
             return self._teilen_melde("Nichts ausgewählt.", "warn")
 
         lage = self._fensterlage()
@@ -153,27 +153,27 @@ class BridgeTeilenMixin:
         else:
             ref1, ref2 = self._ersatz_referenz()
 
-        name = sanitize_filename(str(daten.get("name") or "").strip())
+        name = sanitize_filename(str(data.get("name") or "").strip())
         if not name:
             name = "autoclicker_export_" + datetime.now().strftime("%Y-%m-%d_%H%M%S")
         Path("exports").mkdir(exist_ok=True)
-        pfad = Path("exports") / f"{name}.zip"
+        path = Path("exports") / f"{name}.zip"
 
         from ...import_export import export_bundle
-        erfolg, ergebnis = export_bundle(
-            self._bestand(), str(pfad), ref1, ref2,
-            include_points=teile["sequences"], include_sequences=teile["sequences"],
-            include_slots=teile["sequences"], include_items=teile["sequences"],
-            include_item_scans=teile["sequences"],
-            include_boss_scans=teile["sequences"],
-            include_icon_scans=teile["sequences"],
-            include_config=teile["config"], source_window=fenster)
+        erfolg, result = export_bundle(
+            self._bestand(), str(path), ref1, ref2,
+            include_points=parts["sequences"], include_sequences=parts["sequences"],
+            include_slots=parts["sequences"], include_items=parts["sequences"],
+            include_item_scans=parts["sequences"],
+            include_boss_scans=parts["sequences"],
+            include_icon_scans=parts["sequences"],
+            include_config=parts["config"], source_window=fenster)
         if not erfolg:
-            return self._teilen_melde(f"Export fehlgeschlagen: {ergebnis}", "err")
-        kb = os.path.getsize(ergebnis) / 1024
+            return self._teilen_melde(f"Export fehlgeschlagen: {result}", "err")
+        kb = os.path.getsize(result) / 1024
         zusatz = ("" if fenster else
                   "  Ohne offenes Spielfenster: der Empfänger setzt zwei Punkte von Hand.")
-        return self._teilen_melde(f"{pfad.name} geschrieben ({kb:.1f} KB)." + zusatz)
+        return self._teilen_melde(f"{path.name} geschrieben ({kb:.1f} KB)." + zusatz)
 
     @staticmethod
     def _ersatz_referenz() -> tuple:
@@ -189,7 +189,7 @@ class BridgeTeilenMixin:
 
     # -------------------------------------------------------------- Import
 
-    def datei_waehlen(self, daten: Optional[dict] = None) -> dict:
+    def datei_waehlen(self, data: Optional[dict] = None) -> dict:
         """Öffnet den Dateidialog des Fensters und prüft die Wahl."""
         try:
             import webview
@@ -202,56 +202,56 @@ class BridgeTeilenMixin:
                 "Dateidialog nicht verfügbar — Pfad von Hand eintragen.", "warn")
         if not wahl:
             return self.teilen_daten()
-        pfad = wahl[0] if isinstance(wahl, (list, tuple)) else wahl
-        return self.import_pruefen({"pfad": pfad})
+        path = wahl[0] if isinstance(wahl, (list, tuple)) else wahl
+        return self.import_pruefen({"pfad": path})
 
-    def import_pruefen(self, daten: Optional[dict] = None) -> dict:
+    def import_pruefen(self, data: Optional[dict] = None) -> dict:
         """Liest das Manifest und sagt, was drinsteht und wie umgerechnet wird."""
-        pfad = str((daten or {}).get("pfad") or "").strip().strip('"')
-        if not pfad:
+        path = str((data or {}).get("pfad") or "").strip().strip('"')
+        if not path:
             self._teilen_import = None
             return self.teilen_daten()
         from ...import_export import read_manifest
-        erfolg, ergebnis = read_manifest(pfad)
+        erfolg, result = read_manifest(path)
         if not erfolg:
             self._teilen_import = None
-            return self._teilen_melde(str(ergebnis), "err")
+            return self._teilen_melde(str(result), "err")
 
-        quelle = ergebnis.get("source_window")
+        source = result.get("source_window")
         lage = self._fensterlage()
-        ziel = lage["rechteck"] if lage and lage.get("gefunden") else None
-        inhalt = ergebnis.get("contents", {}) or {}
+        target = lage["rechteck"] if lage and lage.get("gefunden") else None
+        content = result.get("contents", {}) or {}
         self._teilen_import = {
-            "pfad": pfad,
-            "datei": Path(pfad).name,
-            "erstellt": ergebnis.get("created", ""),
-            "inhalt": {k: self._inhalt_zahl(inhalt.get(k)) for k, _ in TEILE},
-            "quelle_fenster": list(quelle) if quelle else None,
-            "ziel_fenster": list(ziel) if ziel else None,
+            "pfad": path,
+            "datei": Path(path).name,
+            "erstellt": result.get("created", ""),
+            "inhalt": {k: self._inhalt_zahl(content.get(k)) for k, _ in TEILE},
+            "quelle_fenster": list(source) if source else None,
+            "ziel_fenster": list(target) if target else None,
             # Automatisch geht nur, wenn beide Seiten ihr Fenster kennen.
-            "auto": bool(quelle and ziel),
+            "auto": bool(source and target),
         }
-        return self._teilen_melde(f"{Path(pfad).name} gelesen.")
+        return self._teilen_melde(f"{Path(path).name} gelesen.")
 
     @staticmethod
-    def _inhalt_zahl(wert) -> int:
-        if isinstance(wert, list):
-            return len(wert)
-        if isinstance(wert, (int, float)):
-            return int(wert)
-        return 1 if wert else 0
+    def _inhalt_zahl(value) -> int:
+        if isinstance(value, list):
+            return len(value)
+        if isinstance(value, (int, float)):
+            return int(value)
+        return 1 if value else 0
 
-    def import_starten(self, daten: Optional[dict] = None) -> dict:
+    def import_starten(self, data: Optional[dict] = None) -> dict:
         """Spielt das geprüfte Bündel ein und lädt den Reiter danach neu."""
-        daten = daten or {}
+        data = data or {}
         if not self._teilen_import:
             return self._teilen_melde("Erst eine Datei wählen.", "warn")
-        teile = self._gewaehlte_teile(daten)
-        if not any(teile.values()):
+        parts = self._gewaehlte_teile(data)
+        if not any(parts.values()):
             return self._teilen_melde("Nichts ausgewählt.", "warn")
 
         transform = None
-        if str(daten.get("modus") or "auto") == "auto" and self._teilen_import["auto"]:
+        if str(data.get("modus") or "auto") == "auto" and self._teilen_import["auto"]:
             from ...import_export import transform_from_windows
             transform = transform_from_windows(
                 tuple(self._teilen_import["quelle_fenster"]),
@@ -259,20 +259,20 @@ class BridgeTeilenMixin:
 
         from ...import_export import import_bundle
         state = self._bestand()
-        erfolg, ergebnis = import_bundle(
+        erfolg, result = import_bundle(
             state, self._teilen_import["pfad"], transform=transform,
-            import_points=teile["sequences"], import_sequences=teile["sequences"],
-            import_slots=teile["sequences"], import_items=teile["sequences"],
-            import_item_scans=teile["sequences"],
-            import_boss_scans=teile["sequences"],
-            import_icon_scans=teile["sequences"],
-            import_config=teile["config"], merge=bool(daten.get("merge", True)))
+            import_points=parts["sequences"], import_sequences=parts["sequences"],
+            import_slots=parts["sequences"], import_items=parts["sequences"],
+            import_item_scans=parts["sequences"],
+            import_boss_scans=parts["sequences"],
+            import_icon_scans=parts["sequences"],
+            import_config=parts["config"], merge=bool(data.get("merge", True)))
         if not erfolg:
-            return self._teilen_melde(f"Import fehlgeschlagen: {ergebnis}", "err")
+            return self._teilen_melde(f"Import fehlgeschlagen: {result}", "err")
 
         # Der Import hat auf Platte geschrieben — beide Seiten müssen nachlesen.
         self._nach_import()
-        return self._teilen_melde(str(ergebnis))
+        return self._teilen_melde(str(result))
 
     def _nach_import(self) -> None:
         """Fenster und Hauptprozess auf den neuen Stand bringen."""
@@ -282,8 +282,8 @@ class BridgeTeilenMixin:
         self._undo = []
         self._scan_laden()
         try:
-            from ...befehl import sende
-            sende("daten")
+            from ...mailbox import send_command
+            send_command("daten")
         except (ImportError, OSError):
             pass
 

@@ -12,7 +12,7 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
-from autoclicker.import_export import export_bundle, import_bundle, kalibriere_bestand
+from autoclicker.import_export import export_bundle, import_bundle, calibrate_inventory
 from autoclicker.models import (
     AutoClickerState, ClickPoint, ItemScanConfig, ItemSlot, Sequence,
 )
@@ -149,11 +149,11 @@ class ImportExportSecurityTest(unittest.TestCase):
         echtes_copytree = modul.shutil.copytree
         mutiert = []
 
-        def kopieren(quelle, ziel, *args, **kwargs):
-            if Path(ziel).name == "defekt":
+        def kopieren(source, target, *args, **kwargs):
+            if Path(target).name == "defekt":
                 mutiert.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
-            return echtes_copytree(quelle, ziel, *args, **kwargs)
+            return echtes_copytree(source, target, *args, **kwargs)
 
         with patch.object(modul.shutil, "copytree", side_effect=kopieren):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
@@ -167,12 +167,12 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(Path("sequences/defekt").exists())
 
     def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
-        from autoclicker.import_export import _sicherer_bundle_pfad
+        from autoclicker.import_export import _safe_bundle_path
         for name in ("sequences/farm/..\\..\\fremd.txt",
                      "sequences/farm/C:\\fremd.txt", "sequences/farm/bild.png:strom",
                      "sequences/farm/../../fremd.txt"):
             with self.subTest(name=name):
-                self.assertIsNone(_sicherer_bundle_pfad(name))
+                self.assertIsNone(_safe_bundle_path(name))
 
     def test_boss_bibliothek_ueberlebt_einen_transformierten_import(self):
         manifest = _manifest()
@@ -184,10 +184,10 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("manifest.json", json.dumps(manifest))
             zf.writestr("sequences/farm/sequence.json", json.dumps(seq))
             zf.writestr("sequences/farm/boss_scans/bibliothek.json", json.dumps(bibliothek))
-        ok, meldung = import_bundle(AutoClickerState(), "bundle.zip", import_config=False,
+        ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False,
                                    transform={"scale_x": 1, "scale_y": 1,
                                               "offset_x": 30, "offset_y": 40})
-        self.assertTrue(ok, meldung)
+        self.assertTrue(ok, message)
         self.assertEqual(json.loads(Path("sequences/farm/boss_scans/bibliothek.json")
                                     .read_text(encoding="utf-8")), bibliothek)
         self.assertEqual(json.loads(Path("sequences/farm/sequence.json")
@@ -281,7 +281,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         transform = {"scale_x": 1.0, "scale_y": 1.0,
                      "offset_x": 50, "offset_y": -10}
 
-        counts = kalibriere_bestand(
+        counts = calibrate_inventory(
             state, transform, mit_scans=True, mit_sequenzen=False,
             mit_slots=True)
 

@@ -76,11 +76,6 @@ input[type=number]{font-family:var(--mono)}
 textarea{resize:vertical;min-height:52px}
 label.feld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
 .eingabe-hilfe{font-size:10px;line-height:1.25;color:var(--dim)}
-.scan-item-sortierung{display:flex;flex-direction:column;gap:9px}
-.prioritaets-feld{display:flex;flex-direction:column;gap:3px;min-width:0}
-.prioritaets-feld .reihe{gap:5px}
-.prioritaets-feld input{min-width:54px}
-.prioritaets-feld .btn{width:auto;white-space:nowrap;padding-left:8px;padding-right:8px}
 .prioritaets-uebersicht,.prioritaeten-alle{display:flex;flex-direction:column;gap:5px;
   padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
 .prioritaets-hinweis{margin:3px 0 0}
@@ -323,6 +318,10 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .marke-klein{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
   border:1px solid #0C0F1440;color:#0C0F14AA;flex:none}
 .marke-klein.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
+/* Ein Haltepunkt ist ein Zustand, den man beim Ueberfliegen finden muss —
+   deshalb dunkel gefuellt statt nur umrandet: ueber jeder Typfarbe gleich
+   sichtbar, und nicht mit der Warnung (hell) zu verwechseln. */
+.marke-klein.halt{color:#FFFFFF;border-color:#0C0F14;background:#0C0F14CC}
 
 /* Die Einfügestelle liegt zwischen zwei Karten und ist unsichtbar, bis etwas
    darüber schwebt. Die negativen Ränder heben die beiden Flex-Abstände wieder
@@ -934,9 +933,6 @@ label.an input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-karte-kopf{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .scan-karte-zahlen{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
 .seq-karte.neu-vom-llm{border-color:var(--accent)}
-/* Der Weg oben in der linken Spalte, wenn die Erkennungs-Arten offen sind:
-   dieselbe Schrittleiste wie beim Item-Scan, nur mit anderen Schritten. */
-.scan-testleiste{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
 /* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang sein.
    Im `knopfpaar` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
    `max-width` braucht es dafuer nicht mehr, die Spalte deckelt ihn. */
@@ -1134,7 +1130,6 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .wz-ref > .wz-bereich{flex-basis:100%}
 .wz-ref select{flex:1 1 260px;min-width:0;width:auto}
 .wz-ref > .btn{flex:none}
-.wz-wert{font-size:13px;padding:2px 0}
 .wz-vorschau{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
 .wz-vorschau:last-child{border-bottom:none}
 .wz-geprueft{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
@@ -1153,7 +1148,6 @@ button.cfg-standard:hover{border-color:var(--line);color:var(--text)}
 .wz-bezug.eine{border-left-color:var(--accent);color:var(--text)}
 .wz-bezug-marke{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);flex:none}
-.wz-offen{display:flex;align-items:center;gap:6px;font-size:12px}
 
 /* Die Farb-Rueckfrage: beide Farben nebeneinander, damit man entscheiden kann,
  * statt eine Zahl zu glauben. Ein Abstand von 40 sagt niemandem etwas - zwei

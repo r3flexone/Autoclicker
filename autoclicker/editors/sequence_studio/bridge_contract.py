@@ -78,6 +78,7 @@ _FELDER = {
     "boss_scan": lambda v: str(v or ""),
     "boss_watcher": lambda v: str(v or ""),
     "wait_only": lambda v: bool(v),
+    "breakpoint": lambda v: bool(v),
     "scroll": lambda v: (int(v) if int(v or 0) != 0 else None),
 }
 
@@ -133,7 +134,7 @@ def _gleicher_wert(a, b) -> bool:
     JSON kennt nur eine Zahl: eine von Hand getippte `600` und die `600.0`, die
     nach dem Laden dasteht, sind dieselbe Einstellung — als Korrektur gemeldet
     wäre das eine Falschmeldung bei jedem zweiten Feld (dieselbe Rechnung wie
-    `_gleich()` im Start-Durchgang). `bool` bleibt ausgenommen: ein `True`, das
+    `_equal()` im Start-Durchgang). `bool` bleibt ausgenommen: ein `True`, das
     als `1` durchginge, versteckte ein umgekipptes Flag.
     """
     if isinstance(a, bool) != isinstance(b, bool):
@@ -146,17 +147,17 @@ def _gleicher_wert(a, b) -> bool:
     return a == b
 
 
-def _mtime(pfad) -> Optional[float]:
+def _mtime(path) -> Optional[float]:
     """Zeitstempel einer Datei — `None`, wenn es sie (noch) nicht gibt."""
     try:
-        return Path(pfad).stat().st_mtime
+        return Path(path).stat().st_mtime
     except OSError:
         return None
 
 
-def _bloecke(anzahl: int) -> str:
+def _bloecke(count: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
-    return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"
+    return "1 Block" if count == 1 else f"{count} Blöcke"
 
 
 def scan_warnungen(board: SequenceBoard) -> list[str]:

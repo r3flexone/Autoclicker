@@ -40,23 +40,23 @@ class _ItemTransaktion:
             if cfg is None:
                 raise ValueError("Bitte zuerst einen Item-Scan wählen.")
             self.scan_items = copy.deepcopy(cfg.items)
-            self.datei = (sequence_dir(cfg.owner_sequence) / "item_scans"
+            self.file = (sequence_dir(cfg.owner_sequence) / "item_scans"
                           / f"{sanitize_filename(cfg.name)}.json")
-        self.ordner = active_templates_dir(state)
-        self.dateien = {p: p.read_bytes() for p in self.ordner.rglob("*") if p.is_file()}
-        self.dateien[self.datei] = self.datei.read_bytes() if self.datei.exists() else None
+        self.folder = active_templates_dir(state)
+        self.dateien = {p: p.read_bytes() for p in self.folder.rglob("*") if p.is_file()}
+        self.dateien[self.file] = self.file.read_bytes() if self.file.exists() else None
 
     def verwerfen(self, state):
         # Dateien zuerst: schlägt die Wiederherstellung fehl, bleibt die
         # Sitzung offen und dieselbe Sicherung steht zum Wiederholen bereit.
-        for pfad, inhalt in self.dateien.items():
-            if inhalt is None:
-                pfad.unlink(missing_ok=True)
-            elif not pfad.exists() or pfad.read_bytes() != inhalt:
-                atomic_write(pfad, inhalt)
-        for pfad in self.ordner.rglob("*"):
-            if pfad.is_file() and pfad not in self.dateien:
-                pfad.unlink()
+        for path, content in self.dateien.items():
+            if content is None:
+                path.unlink(missing_ok=True)
+            elif not path.exists() or path.read_bytes() != content:
+                atomic_write(path, content)
+        for path in self.folder.rglob("*"):
+            if path.is_file() and path not in self.dateien:
+                path.unlink()
         with state.lock:
             cfg = state.item_scans.get(self.name)
             if cfg is not None:

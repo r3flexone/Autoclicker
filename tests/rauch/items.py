@@ -11,8 +11,8 @@ def aufbau():
     from autoclicker.models import Sequence
 
     sandkasten("rauch_items_")
-    bild, ecken = inventar()
-    stelle_bildschirm(bild)
+    image, ecken = inventar()
+    stelle_bildschirm(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
@@ -29,14 +29,14 @@ def aufbau():
 
 
 def lauf():
-    b, anzahl = aufbau()
+    b, count = aufbau()
     fehler = []
 
     def pruefe(bedingung, text):
         if not bedingung:
             fehler.append(text)
 
-    pruefe(len(b.items) == anzahl, f"{anzahl} Items erwartet, gelernt: {sorted(b.items)}")
+    pruefe(len(b.items) == count, f"{count} Items erwartet, gelernt: {sorted(b.items)}")
 
     with Fenster(b) as f:
         f.reiter("scans")
@@ -83,11 +83,11 @@ def lauf():
         f.ruhe()
         pruefe(f.text("#scan-sequenz").strip() == "Rauch",
                "Zielsequenz der Scan-Aufnahme ist nicht sichtbar")
-        masken = f.anzahl("#scan-insp .scan-maske")
-        pruefe(masken == anzahl, f"{anzahl} Item-Masken erwartet, da: {masken}")
-        pruefe(f.anzahl("#scan-insp .kategorie-wahl") == anzahl,
+        masken = f.count("#scan-insp .scan-maske")
+        pruefe(masken == count, f"{count} Item-Masken erwartet, da: {masken}")
+        pruefe(f.count("#scan-insp .kategorie-wahl") == count,
                "jede Maske braucht ein Kategorie-Bedienelement")
-        f.bild("items_masken")
+        f.image("items_masken")
 
         # Ohne vorhandene Kategorien ist es ein Textfeld - es gibt nichts zu waehlen.
         typ = f.seite.eval_on_selector("#scan-insp .kategorie-wahl > *", "e => e.tagName")
@@ -107,7 +107,7 @@ def lauf():
         optionen = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl select option", "ns => ns.map(n => n.textContent)")
         pruefe("Helme" in optionen, f"'Helme' fehlt in der Auswahl: {optionen[:6]}")
-        f.bild("items_kategorie")
+        f.image("items_kategorie")
 
         # Der Tipp-Modus muss einen Neuaufbau ueberleben: der Entwurf speichert
         # 900 ms nach der letzten Aenderung, und das Feld wuerde sonst mitten im
@@ -270,22 +270,22 @@ def lauf():
         # ueberhaupt etwas zeichnet, faellt nur im Fenster auf.
         links_vorher = f.seite.eval_on_selector(
             "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
-        for reiter, art in (("Slots", "slot"), ("Scans", "scan"), ("Items", "item")):
+        for reiter, kind in (("Slots", "slot"), ("Scans", "scan"), ("Items", "item")):
             f.klick_text("#scan-insp .tabs .tab", reiter)
-            masken = f.anzahl("#scan-insp .scan-maske")
+            masken = f.count("#scan-insp .scan-maske")
             pruefe(masken > 0, f"Reiter „{reiter}“ zeichnet keine Maske")
-            eigene = f.anzahl(f'#scan-insp .scan-maske[id^="maske:{art}:"]')
+            eigene = f.count(f'#scan-insp .scan-maske[id^="maske:{kind}:"]')
             pruefe(eigene == masken,
-                   f"„{reiter}“: {masken} Masken, davon {eigene} mit {art}-id")
-            pruefe(f.anzahl("#ab-listen .scan-maske") == 0,
+                   f"„{reiter}“: {masken} Masken, davon {eigene} mit {kind}-id")
+            pruefe(f.count("#ab-listen .scan-maske") == 0,
                    f"„{reiter}“: es steht noch eine Maske in der linken Spalte")
-            links = f.seite.eval_on_selector(
+            left = f.seite.eval_on_selector(
                 "#sicht-scans .seite.links", "e => e.getBoundingClientRect().height")
-            pruefe(links == links_vorher,
+            pruefe(left == links_vorher,
                    f"die linke Spalte aendert bei „{reiter}“ ihre Hoehe: "
-                   f"{links_vorher} -> {links}")
-            f.bild("items_reiter_" + reiter.lower())
-            if art == "slot":
+                   f"{links_vorher} -> {left}")
+            f.image("items_reiter_" + reiter.lower())
+            if kind == "slot":
                 # Die Kachel zeigt die stabile ID, nicht die Stelle im Scan —
                 # in dieser Sitzung fallen beide zusammen (Anlegen == Reihenfolge
                 # im Scan), aber die ID darf sich nicht aendern, wenn ein Slot
@@ -322,7 +322,7 @@ def lauf():
             "#scan-insp .scan-maske-detail button", "ns => ns.map(n => n.textContent)")
         pruefe(any("löschen" in k for k in knoepfe),
                f"kein Loesch-Knopf im Detailteil des Scans: {knoepfe}")
-        f.bild("items_scan_detail")
+        f.image("items_scan_detail")
 
         # **Der Bestaetigungsklick** war die einzige Item-Eigenschaft ohne
         # Bedienelement — im Modell und in den Konsolen-Editoren gibt es sie
@@ -346,10 +346,10 @@ def lauf():
         # kehrt `tastatur()` schon vorher um, und der Test waere gruen, ohne je
         # die Stelle erreicht zu haben, um die es geht.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
-        for taste, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
+        for key, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
             f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
             f.ruhe()
-            f.seite.keyboard.press(f"Control+{taste}")
+            f.seite.keyboard.press(f"Control+{key}")
             f.ruhe()
             modus = f.seite.evaluate("SC.modus")
             pruefe(modus == "wahl", f"{name} wechselt den Modus auf '{modus}'")
@@ -377,10 +377,10 @@ def lauf():
         # Das Namensfeld traegt kein `type` (s. `maskeName`) — ein Selektor auf
         # `[type=text]` findet es deshalb nicht.
         felder = "#scan-insp .scan-maske .scan-maske-felder > input:not([type])"
-        namen = f.seite.locator(felder)
-        if namen.count() >= 2:
-            namen.nth(0).fill("Zuerst")
-            namen.nth(0).press("Tab")          # meldet und plant das Speichern
+        names = f.seite.locator(felder)
+        if names.count() >= 2:
+            names.nth(0).fill("Zuerst")
+            names.nth(0).press("Tab")          # meldet und plant das Speichern
             f.seite.wait_for_timeout(120)
             f.seite.locator(felder).nth(1).click()
             f.seite.locator(felder).nth(1).type("Getippt", delay=20)

@@ -12,7 +12,7 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
-from autoclicker.sequence_studio import _beim_schliessen, _scans_beim_schliessen_speichern
+from autoclicker.sequence_studio import _on_close, _save_scans_on_close
 from autoclicker.models import Sequence, SequenceStep, ClickPoint, ItemScanConfig
 from autoclicker.persistence.sequences import save_sequence_file, load_sequence_file
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
@@ -31,19 +31,19 @@ class StudioCloseTest(unittest.TestCase):
     def _bruecke(self):
         seq = Sequence("test", init_steps=[SequenceStep(point_id=7)],
                        points=[ClickPoint(10, 20, "Ziel", 7)])
-        pfad = Path("sequences/test/sequence.json")
-        self.assertTrue(save_sequence_file(seq, pfad))
-        return StudioBridge(seq, pfad, "sequences")
+        path = Path("sequences/test/sequence.json")
+        self.assertTrue(save_sequence_file(seq, path))
+        return StudioBridge(seq, path, "sequences")
 
     def test_rettung_ist_am_gemeldeten_pfad_vollstaendig_ladbar(self):
         bridge = self._bruecke()
         original = bridge.filepath.read_bytes()
         bridge.points[0].x = 123
         bridge._dirty = True
-        pfad = bridge.rettung_schreiben()
-        self.assertIsNotNone(pfad)
-        self.assertTrue(pfad.is_file())
-        seq = load_sequence_file(pfad)
+        path = bridge.rettung_schreiben()
+        self.assertIsNotNone(path)
+        self.assertTrue(path.is_file())
+        seq = load_sequence_file(path)
         self.assertEqual([(p.id, p.x, p.y) for p in seq.points], [(7, 123, 20)])
         self.assertFalse(seq.init_steps[0].unresolved)
         self.assertEqual(seq.init_steps[0].x, 123)
@@ -51,9 +51,9 @@ class StudioCloseTest(unittest.TestCase):
 
     def test_umbenennen_prueft_fremdaenderung_vor_dem_verschieben(self):
         bridge = self._bruecke()
-        daten = json.loads(bridge.filepath.read_text(encoding="utf-8"))
-        daten["points"][0]["x"] = 999
-        bridge.filepath.write_text(json.dumps(daten), encoding="utf-8")
+        data = json.loads(bridge.filepath.read_text(encoding="utf-8"))
+        data["points"][0]["x"] = 999
+        bridge.filepath.write_text(json.dumps(data), encoding="utf-8")
         os.utime(bridge.filepath, (2000000000, 2000000000))
         bridge.board.name = "neu"
         bridge._dirty = True
@@ -87,7 +87,7 @@ class StudioCloseTest(unittest.TestCase):
             }),
         )
 
-        self.assertTrue(_scans_beim_schliessen_speichern(bridge))
+        self.assertTrue(_save_scans_on_close(bridge))
 
         bridge.scan_speichern.assert_called_once_with()
 
@@ -97,7 +97,7 @@ class StudioCloseTest(unittest.TestCase):
             scan_speichern=Mock(),
         )
 
-        self.assertFalse(_scans_beim_schliessen_speichern(bridge))
+        self.assertFalse(_save_scans_on_close(bridge))
 
         bridge.scan_speichern.assert_not_called()
 
@@ -109,7 +109,7 @@ class StudioCloseTest(unittest.TestCase):
             }),
         )
 
-        self.assertFalse(_scans_beim_schliessen_speichern(bridge))
+        self.assertFalse(_save_scans_on_close(bridge))
 
     def test_only_auto_started_window_closes_the_main_program(self):
         bridge = SimpleNamespace(
@@ -117,12 +117,12 @@ class StudioCloseTest(unittest.TestCase):
             nachklick_beim_schliessen=Mock(),
             rettung_schreiben=Mock(return_value=None),
         )
-        with patch("autoclicker.befehl.sende") as sende:
-            _beim_schliessen(bridge, False)
-            sende.assert_not_called()
-            _beim_schliessen(bridge, True)
-            _beim_schliessen(bridge, True)
-            sende.assert_called_once_with("programm_beenden")
+        with patch("autoclicker.mailbox.send_command") as send_command:
+            _on_close(bridge, False)
+            send_command.assert_not_called()
+            _on_close(bridge, True)
+            _on_close(bridge, True)
+            send_command.assert_called_once_with("programm_beenden")
 
 
 if __name__ == "__main__":

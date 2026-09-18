@@ -464,9 +464,9 @@ def get_screen_center() -> tuple[int, int]:
     rect = get_virtual_desktop()
     if rect:
         return (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
-    groesse = get_screen_size()
-    if groesse:
-        return groesse[0] // 2, groesse[1] // 2
+    size = get_screen_size()
+    if size:
+        return size[0] // 2, size[1] // 2
     return 960, 540
 
 
@@ -580,7 +580,7 @@ user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
 user32.GetAncestor.restype = wintypes.HWND
 
 
-def _fenster_titel(hwnd) -> str:
+def _window_title(hwnd) -> str:
     """Der Titel eines Fensters — "" bei Fehler oder ohne Titel."""
     if not hwnd:
         return ""
@@ -595,7 +595,7 @@ def _fenster_titel(hwnd) -> str:
 def get_foreground_window_title() -> str:
     """Gibt den Titel des aktuellen Vordergrund-Fensters zurück (leer bei Fehler)."""
     try:
-        return _fenster_titel(user32.GetForegroundWindow())
+        return _window_title(user32.GetForegroundWindow())
     except (OSError, AttributeError):
         return ""
 
@@ -627,12 +627,12 @@ def get_window_title_at(x: int, y: int) -> str:
     zum Fenster auf — sonst käme bei einem Knopf dessen leerer Titel zurück.
     """
     try:
-        punkt = wintypes.POINT(int(x), int(y))
-        hwnd = user32.WindowFromPoint(punkt)
+        point = wintypes.POINT(int(x), int(y))
+        hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
         wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _fenster_titel(wurzel or hwnd)
+        return _window_title(wurzel or hwnd)
     except Exception:
         return ""
 
@@ -675,7 +675,7 @@ def _find_window_by_title(title_substring: str):
     return found[0] if found else None
 
 
-def liste_fenster() -> list:
+def list_windows() -> list:
     """Alle sichtbaren Fenster als `(titel, (l, t, r, b), hwnd)`.
 
     Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: dasselbe
@@ -683,7 +683,7 @@ def liste_fenster() -> list:
     Client-Bereich; Fenster ohne Titel, ohne Fläche oder ausserhalb aller
     Monitore fallen weg. Sortiert nach Lage (oben vor unten, links vor rechts).
     """
-    gefunden = []
+    found = []
 
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
@@ -702,14 +702,14 @@ def liste_fenster() -> list:
             return True
         if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
             return True
-        breite, hoehe = rect.right - rect.left, rect.bottom - rect.top
-        if breite < 80 or hoehe < 80:
+        width, height = rect.right - rect.left, rect.bottom - rect.top
+        if width < 80 or height < 80:
             return True
         # Das Handle kommt mit: nur damit laesst sich das Fenster spaeter
         # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
         # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
         # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
-        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe),
+        found.append((titel, (pt.x, pt.y, pt.x + width, pt.y + height),
                          int(hwnd)))
         return True
 
@@ -719,10 +719,10 @@ def liste_fenster() -> list:
         return []
     schirm = get_virtual_desktop()
     if schirm:
-        gefunden = [e for e in gefunden
+        found = [e for e in found
                     if e[1][0] < schirm[2] and e[1][2] > schirm[0]
                     and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
-    return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
+    return sorted(found, key=lambda e: (e[1][1], e[1][0]))
 
 
 def get_client_rect_by_handle(hwnd: int):
@@ -748,33 +748,33 @@ def get_client_rect_by_handle(hwnd: int):
 def resolve_window(title: str, instance: int = 0, reference_rect=None):
     """Findet eine gespeicherte Fensterquelle erneut.
 
-    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`liste_fenster`.
+    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`list_windows`.
     Exakte Titel gewinnen; bei mehreren gleichnamigen die gemerkte Instanz, und
     ist deren Index weg, das geometrisch ähnlichste Fenster.
     """
     if not isinstance(title, str) or not title.strip():
         return None
-    fenster = liste_fenster()
-    ziel = title.strip().casefold()
-    kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
-    if not kandidaten:
-        kandidaten = [e for e in fenster if ziel in e[0].casefold()]
-    if not kandidaten:
+    fenster = list_windows()
+    target = title.strip().casefold()
+    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    if not candidates:
+        candidates = [e for e in fenster if target in e[0].casefold()]
+    if not candidates:
         return None
     try:
         index = int(instance)
     except (TypeError, ValueError):
         index = 0
-    if 0 <= index < len(kandidaten):
-        return kandidaten[index]
+    if 0 <= index < len(candidates):
+        return candidates[index]
     if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
         try:
             ref = tuple(int(v) for v in reference_rect)
-            return min(kandidaten, key=lambda e: sum(
+            return min(candidates, key=lambda e: sum(
                 abs(int(e[1][i]) - ref[i]) for i in range(4)))
         except (TypeError, ValueError):
             pass
-    return kandidaten[0]
+    return candidates[0]
 
 
 def get_client_rect_by_title(title_substring: str):
@@ -884,6 +884,10 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
         if end is not None and time.time() >= end:
             return None
         time.sleep(0.02)
+    # Die Regel „was ist ein NEUER Druck" steht in `utils/io.py` — und nur
+    # dort. Hier stand sie einmal ausgeschrieben daneben, und die Tests
+    # prueften die Funktion, die niemand rief.
+    from ..utils.io import key_newly_pressed
     previous = {code: bool(user32.GetAsyncKeyState(code) & 0x8000)
                 for code in codes}
     while end is None or time.time() < end:
@@ -891,7 +895,7 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
             state = user32.GetAsyncKeyState(code)
             was_down = previous[code]
             previous[code] = bool(state & 0x8000)
-            if (previous[code] and not was_down) or bool(state & 0x0001):
+            if key_newly_pressed(state, was_down):
                 return name
         time.sleep(0.02)
     return None
@@ -1089,7 +1093,7 @@ def unregister_hotkeys() -> None:
 # `symbol.py` rastert sie hier nur in die Form, die Windows haben will. Auch
 # `tools/symbol.py` macht daraus PNG-/ICO-Dateien für eine Verknüpfung; es gibt
 # deshalb keine zweite Beschreibung des Motivs, die auseinanderlaufen könnte.
-def setze_app_id(app_id: str = APP_ID) -> bool:
+def set_app_id(app_id: str = APP_ID) -> bool:
     """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
 
     Die Taskleiste nimmt nicht das Symbol aus `WM_SETICON`, solange sie das
@@ -1104,7 +1108,7 @@ def setze_app_id(app_id: str = APP_ID) -> bool:
         return False
 
 
-def _symbol_bits(kante: int = 32) -> bytes:
+def _icon_bits(edge: int = 32) -> bytes:
     """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
 
     Ein DIB statt `CreateIcon()` mit rohen Farbbits: das erzeugt eine
@@ -1115,20 +1119,20 @@ def _symbol_bits(kante: int = 32) -> bytes:
     Formats: die Höhe im Kopf zählt doppelt, und DIB-Zeilen stehen von unten
     nach oben.
     """
-    kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    kopf = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
-    # DIB-Zeilen stehen von UNTEN nach oben, `punkte()` liefert von oben —
+    # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
-    for zeile in reversed(list(symbol.punkte(kante))):
-        for r, g, b, a in zeile:
+    for line in reversed(list(symbol.pixel_rows(edge))):
+        for r, g, b, a in line:
             farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.
-    return kopf + bytes(farben) + bytes(((kante + 31) // 32 * 4) * kante)
+    return kopf + bytes(farben) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
-def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
@@ -1161,14 +1165,14 @@ def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
         # Jede Grösse wird in ihrer Grösse gezeichnet, nicht eine hochgerechnet:
         # 0 = klein (Titelleiste, 16 px), 1 = gross (ALT+TAB und Taskleiste, die
         # daraus ihre 24 px skaliert). Ein gedehntes 16er sah dort matschig aus.
-        for art, kante in ((0, 16), (1, 32)):
-            bits = _symbol_bits(kante)
+        for kind, edge in ((0, 16), (1, 32)):
+            bits = _icon_bits(edge)
             # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
             symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
-                                                     kante, kante, 0)
+                                                     edge, edge, 0)
             if not symbol:
                 return False
-            user32.SendMessageW(hwnd, WM_SETICON, art, symbol)
+            user32.SendMessageW(hwnd, WM_SETICON, kind, symbol)
         return True
     except (OSError, ValueError, AttributeError):
         return False

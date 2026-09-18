@@ -11,8 +11,8 @@ def aufbau():
     from autoclicker.models import Sequence
 
     sandkasten("rauch_erk_")
-    bild, region = flaeche_mit_marke()
-    stelle_bildschirm(bild)
+    image, region = flaeche_mit_marke()
+    stelle_bildschirm(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
@@ -45,15 +45,15 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("scans")
-        for art in ("item", "boss", "icon"):
-            f.klick(f'#scan-art button[data-scan-art="{art}"]')
-            pruefe(bool(f.text("#sicht-scans").strip()), f"{art}: Ansicht leer")
-            if art in ("boss", "icon"):
+        for kind in ("item", "boss", "icon"):
+            f.klick(f'#scan-art button[data-scan-art="{kind}"]')
+            pruefe(bool(f.text("#sicht-scans").strip()), f"{kind}: Ansicht leer")
+            if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
-                marke = "Boss-Scan testen" if art == "boss" else "Icon-Scan testen"
+                marke = "Boss-Scan testen" if kind == "boss" else "Icon-Scan testen"
                 f.klick_text("#sicht-scans button", marke)
-                pruefe(bool(f.status().strip()), f"{art}: Test meldete nichts")
-            f.bild(f"erkennung_{art}")
+                pruefe(bool(f.status().strip()), f"{kind}: Test meldete nichts")
+            f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.
         f.klick('#scan-art button[data-scan-art="item"]')
         pruefe("Aufnahme" in f.text("#sicht-scans"),

@@ -1,8 +1,5 @@
 """
 Item-Scan-Konfigurationen (eine JSON pro Scan unter item_scans/).
-
-update_item_in_scans lebt hier weil es die Scan-JSONs auf der Platte anfasst,
-auch wenn der Anlass (Item umbenannt) konzeptuell zur Item-Verwaltung gehört.
 """
 
 import json
@@ -73,16 +70,16 @@ def load_all_item_scans(state: AutoClickerState) -> None:
     """Lädt alle eigenständigen Item-Scan-Konfigurationen."""
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-    geladen = {}
+    loaded = {}
     if owner:
-        ordner = str(_item_scans_dir(owner))
-        load_all_scans(ordner, lambda pfad: load_item_scan_file(pfad, owner),
-                       geladen, "Item-Scan")
+        folder = str(_item_scans_dir(owner))
+        load_all_scans(folder, lambda path: load_item_scan_file(path, owner),
+                       loaded, "Item-Scan")
     with state.lock:
-        state.item_scans = geladen
+        state.item_scans = loaded
         if state.active_item_scan not in state.item_scans:
             state.active_item_scan = next(iter(state.item_scans), "")
-        cfg = geladen.get(state.active_item_scan)
+        cfg = loaded.get(state.active_item_scan)
         state.global_slots = {s.name: s for s in cfg.slots} if cfg else {}
         state.global_items = {i.name: i for i in cfg.items} if cfg else {}
 
@@ -108,12 +105,7 @@ def flush_item_scan_context(state: AutoClickerState) -> Optional[ItemScanConfig]
         return cfg
 
 
-def resolve_scan_references(state: AutoClickerState, sequence=None) -> list[str]:
-    """Löst nur Punkt-IDs der Scans gegen die verwendende Sequenz auf."""
-    return resolve_klick_referenzen(state, sequence)
-
-
-def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str]:
+def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str]:
     """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
 
     | wer | Feld | fuellt |
@@ -122,13 +114,13 @@ def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str
     | `BossProfile` | `action_point_id` | `action_x`, `action_y` |
     | `IconScanConfig` | `action_point_id` | `action_x`, `action_y` |
 
-    Gleiches Muster wie `aufloesen()`. Eine tote Referenz wird gemeldet und das
+    Gleiches Muster wie `resolve()`. Eine tote Referenz wird gemeldet und das
     Klick-Ziel bleibt leer — die Aktion tut dann nichts, statt auf (0, 0) zu klicken.
     """
-    meldungen = []
+    messages = []
     with state.lock:
         seq = sequence or state.active_sequence
-        punkte = {p.id: p for p in (seq.points if seq else [])}
+        points = {p.id: p for p in (seq.points if seq else [])}
         items = [item for cfg in state.item_scans.values() for item in cfg.items]
         bosse = list(state.global_bosses)
         for cfg in state.boss_scans.values():
@@ -136,39 +128,29 @@ def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str
         icons = list(state.icon_scans.values())
 
     def hol(pid, wo):
-        punkt = punkte.get(pid)
-        if punkt is None:
-            meldungen.append(f"{wo} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
+        point = points.get(pid)
+        if point is None:
+            messages.append(f"{wo} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
                              f"- Klick entfaellt")
-        return punkt
+        return point
 
     with state.lock:
         for item in items:
             if item.confirm_point_id is None:
                 item.confirm_point = None
                 continue
-            punkt = hol(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
-            item.confirm_point = ClickPoint(punkt.x, punkt.y, punkt.name,
-                                            punkt.id) if punkt else None
+            point = hol(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
+            item.confirm_point = ClickPoint(point.x, point.y, point.name,
+                                            point.id) if point else None
 
         for traeger, wo in ([(b, f"Boss '{b.name}'") for b in bosse]
                             + [(i, f"Icon-Scan '{i.name}'") for i in icons]):
             if traeger.action_point_id is None:
                 continue
-            punkt = hol(traeger.action_point_id, wo)
-            if punkt is not None:
-                traeger.action_x, traeger.action_y = punkt.x, punkt.y
+            point = hol(traeger.action_point_id, wo)
+            if point is not None:
+                traeger.action_x, traeger.action_y = point.x, point.y
             else:
                 # Kein Rueckfall auf (0, 0): die Aktion wird uebersprungen.
                 traeger.action_x = traeger.action_y = 0
-    return meldungen
-
-
-def update_item_in_scans(old_name: str, new_name: str) -> tuple[int, int]:
-    """Kompatibilitäts-Helfer ohne globale Wirkung.
-
-    Ein Item gehört genau einem Scan. Dessen Objekt wird vom Editor direkt
-    umbenannt und anschliessend als kompletter Scan gespeichert; gleichnamige
-    Items anderer Scans dürfen ausdrücklich nicht mitgezogen werden.
-    """
-    return 0, 0
+    return messages

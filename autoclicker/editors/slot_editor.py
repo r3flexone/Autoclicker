@@ -9,7 +9,7 @@ from typing import Optional
 
 from ..models import ItemSlot, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
+from ..utils import safe_input, sanitize_filename, next_free_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
 from ..winapi import get_cursor_pos
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, NUMPY_AVAILABLE,
@@ -232,10 +232,10 @@ def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
     """Erstellt einen neuen Slot interaktiv."""
     # `len(...) + 1` stand hier und schlug nach dem ersten Loeschen einen Namen vor,
     # den es schon gibt - dann fragte der Editor nach dem Ueberschreiben, obwohl man
-    # nur "der naechste, bitte" gemeint hat. `naechster_freier_name()` fuellt Luecken
+    # nur "der naechste, bitte" gemeint hat. `next_free_name()` fuellt Luecken
     # und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect` weiter unten).
     with state.lock:
-        vorschlag = naechster_freier_name("Slot", state.global_slots)
+        vorschlag = next_free_name("Slot", state.global_slots)
 
     slot_name = safe_input(f"  Slot-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
     if is_cancel(slot_name):
@@ -478,7 +478,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         # Namen, und das Dict überschreibt ihn kommentarlos. 'add' und der
         # Item-Lernpfad sichern das längst ab — hier fehlte es.
         with state.lock:
-            slot_name = naechster_freier_name("Slot", state.global_slots)
+            slot_name = next_free_name("Slot", state.global_slots)
             new_slot = ItemSlot(
                 name=slot_name,
                 scan_region=scan_region,
@@ -559,12 +559,12 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     (andere Reihenfolge, ein Slot mehr erkannt, halb verdeckt) — dann lieber nichts
     tun als 20 Regionen falsch überschreiben.
     """
-    meldungen = []
+    messages = []
     if len(neue_rects) != len(alte_slots):
-        meldungen.append(
+        messages.append(
             f"{len(neue_rects)} Slot(s) erkannt, aber {len(alte_slots)} gespeichert — "
             f"die Zuordnung waere geraten.")
-        return [], None, meldungen
+        return [], None, messages
 
     ox, oy = offset
     paare = []
@@ -574,8 +574,8 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
         paare.append((slot, neue_region))
 
     # Einzelversaetze: bei einer reinen Verschiebung sind alle gleich
-    versaetze = [(neu[0] - slot.scan_region[0], neu[1] - slot.scan_region[1])
-                 for slot, neu in paare]
+    versaetze = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
+                 for slot, new in paare]
     xs = [v[0] for v in versaetze]
     ys = [v[1] for v in versaetze]
     streuung = max(max(xs) - min(xs), max(ys) - min(ys))
@@ -583,28 +583,28 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     # Groessen muessen ebenfalls passen — sonst hat sich die Aufloesung geaendert
     # und eine reine Verschiebung waere die falsche Antwort.
     groessen_diff = 0
-    for slot, neu in paare:
+    for slot, new in paare:
         alt_b = slot.scan_region[2] - slot.scan_region[0]
         alt_h = slot.scan_region[3] - slot.scan_region[1]
         groessen_diff = max(groessen_diff,
-                            abs((neu[2] - neu[0]) - alt_b),
-                            abs((neu[3] - neu[1]) - alt_h))
+                            abs((new[2] - new[0]) - alt_b),
+                            abs((new[3] - new[1]) - alt_h))
 
     if groessen_diff > _REPAIR_MAX_GROESSEN_DIFF:
-        meldungen.append(
+        messages.append(
             f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
             f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
     if streuung > _REPAIR_MAX_STREUUNG:
-        meldungen.append(
+        messages.append(
             f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
             f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
 
-    if meldungen:
-        return [], None, meldungen
+    if messages:
+        return [], None, messages
 
     # Mittlerer Versatz nur zur Anzeige/Weitergabe
     versatz = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
-    return paare, versatz, meldungen
+    return paare, versatz, messages
 
 
 _REPAIR_MAX_STREUUNG = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
@@ -668,12 +668,12 @@ def slot_repair(state: AutoClickerState) -> bool:
     print(f"  {len(neue_rects)} Slot(s) erkannt.")
 
     inset = state.config.scan_slot_inset
-    paare, versatz, meldungen = _zuordnung_pruefen(
+    paare, versatz, messages = _zuordnung_pruefen(
         alte_slots, neue_rects, inset, (region[0], region[1]))
 
     if not paare:
         print()
-        for m in meldungen:
+        for m in messages:
             print(f"  {err(m)}")
         print(f"  {info('Nichts geaendert.')}")
         print(f"  {hint('Tipp: Bereich enger markieren, oder die Slots muessen alle')}")
@@ -682,8 +682,8 @@ def slot_repair(state: AutoClickerState) -> bool:
 
     print()
     print(col("  VORSCHAU:", 'bold'))
-    for slot, neu in paare[:12]:
-        print(f"    {slot.name:<18} {slot.scan_region}  ->  {neu}")
+    for slot, new in paare[:12]:
+        print(f"    {slot.name:<18} {slot.scan_region}  ->  {new}")
     if len(paare) > 12:
         print(f"    {info(f'... und {len(paare) - 12} weitere')}")
     print()
@@ -697,17 +697,17 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
         return False
 
-    from ..import_export import sichere_vor_kalibrierung
-    sicherung = sichere_vor_kalibrierung(state)
+    from ..import_export import backup_before_calibration
+    sicherung = backup_before_calibration(state)
     if sicherung:
         print(f"  {ok('Sicherung angelegt:')} {sicherung}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
     with state.lock:
-        for slot, neu in paare:
-            slot.scan_region = neu
-            slot.click_pos = ((neu[0] + neu[2]) // 2, (neu[1] + neu[3]) // 2)
+        for slot, new in paare:
+            slot.scan_region = new
+            slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
     save_global_slots(state)
@@ -719,20 +719,20 @@ def slot_repair(state: AutoClickerState) -> bool:
     print(f"  {info('Dieser Versatz wurde gemessen, nicht mit der Maus gesetzt —')}")
     print(f"  {info('er ist genauer als eine Kalibrierung von Hand.')}")
     if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
-        from ..import_export import (transform_aus_verschiebung, kalibriere_bestand,
-                                     kalibrier_vorschau)
+        from ..import_export import (transform_from_offset, calibrate_inventory,
+                                     calibration_preview)
         from .import_export_editor import _ausserhalb_der_monitore
-        t = transform_aus_verschiebung((0, 0), versatz)
+        t = transform_from_offset((0, 0), versatz)
 
         # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
         # genauer gemessen, aber er stammt von EINEM Bildschirm: liegen Punkte auf
         # einem anderen, stimmt er fuer die nicht. Gleiche Schreiboperation,
         # gleiche Absicherung.
-        vorschau = kalibrier_vorschau(state, t)
+        vorschau = calibration_preview(state, t)
         print()
         print(col("  VORSCHAU (Auszug):", 'bold'))
-        for label, alt, neu in vorschau[:8]:
-            print(f"    {label:<32} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+        for label, old, new in vorschau[:8]:
+            print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
         if len(vorschau) > 8:
             print(f"    {info(f'... und {len(vorschau) - 8} weitere')}")
         draussen = _ausserhalb_der_monitore([n for _, _, n in vorschau])
@@ -746,9 +746,9 @@ def slot_repair(state: AutoClickerState) -> bool:
         # mit_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
         # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
         # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
-        zahl = kalibriere_bestand(state, t, mit_scans=True, mit_sequenzen=True,
+        number = calibrate_inventory(state, t, mit_scans=True, mit_sequenzen=True,
                                   mit_slots=False)
         print(f"  {ok('Uebernommen:')} "
-              + ", ".join(f"{v} {k}" for k, v in zahl.items() if v))
+              + ", ".join(f"{v} {k}" for k, v in number.items() if v))
         print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")
     return True

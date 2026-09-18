@@ -21,9 +21,9 @@ if str(_repo) not in sys.path:
 section("Katalog: Nachschlagen und Raenge")
 # =============================================================================
 
-from autoclicker.katalog import Katalog, lade_katalog, raenge, LEER  # noqa: E402
+from autoclicker.katalog import Catalog, load_catalog, ranks, EMPTY  # noqa: E402
 
-_k = Katalog({
+_k = Catalog({
     "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
     "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
     "Bronze Helmet": {"kategorie": "Helm", "wert": 32},
@@ -31,23 +31,23 @@ _k = Katalog({
 }, ["Black Dragon", "Banshee"])
 
 check("kennt seine Items", len(_k) == 4 and bool(_k))
-check("leerer Katalog ist falsy", not Katalog() and not LEER)
-check("Kategorie ueber den Namen", _k.kategorie("Citadel Helmet") == "Helm")
+check("leerer Katalog ist falsy", not Catalog() and not EMPTY)
+check("Kategorie ueber den Namen", _k.category("Citadel Helmet") == "Helm")
 # Ein Modell antwortet mal so, mal so — und zwei Schreibweisen desselben Namens
 # ergaeben ueber `_kategorie_normalisieren` zwei Kategorien mit demselben Wort.
-check("Schreibweise egal beim Nachschlagen", _k.kategorie("citadel HELMET") == "Helm")
-check("zurueck kommt die Katalog-Schreibweise", _k.treffer("citadel helmet") == "Citadel Helmet")
-check("Leerraum stoert nicht", _k.treffer("  Citadel Helmet  ") == "Citadel Helmet")
-check("unbekannter Name -> None", _k.kategorie("Gibtsnicht") is None)
-check("unbekannter Name hat keinen Wert", _k.wert("Gibtsnicht") is None)
-check("Wert kommt als Zahl", _k.wert("Godlike Pickaxe") == 500000.0)
+check("Schreibweise egal beim Nachschlagen", _k.category("citadel HELMET") == "Helm")
+check("zurueck kommt die Katalog-Schreibweise", _k.match("citadel helmet") == "Citadel Helmet")
+check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet")
+check("unbekannter Name -> None", _k.category("Gibtsnicht") is None)
+check("unbekannter Name hat keinen Wert", _k.value("Gibtsnicht") is None)
+check("Wert kommt als Zahl", _k.value("Godlike Pickaxe") == 500000.0)
 check("Gegner stehen bereit", _k.gegner == ["Black Dragon", "Banshee"])
-check("namen() ist die geschlossene Liste", "Godlike Pickaxe" in _k.namen() and len(_k.namen()) == 4)
+check("names() ist die geschlossene Liste", "Godlike Pickaxe" in _k.names() and len(_k.names()) == 4)
 
 # Der Rang gilt INNERHALB des Scans und dicht. Ein globaler Rang aus dem Katalog
 # waere unbrauchbar: der beste Bogen eines Bestands bekaeme P49, weil 48 teurere
 # im Katalog stehen, die man gar nicht besitzt.
-_r = raenge([("Citadel Helmet", "Helm", 15000), ("Centaurs Helmet", "Helm", 20000),
+_r = ranks([("Citadel Helmet", "Helm", 15000), ("Centaurs Helmet", "Helm", 20000),
              ("Bronze Helmet", "Helm", 32), ("Godlike Pickaxe", "Pickaxe", 500000)])
 check("teuerstes der Kategorie bekommt P1", _r["Centaurs Helmet"] == 1)
 check("Raenge sind dicht", sorted(_r[n] for n in ("Centaurs Helmet", "Citadel Helmet",
@@ -55,10 +55,10 @@ check("Raenge sind dicht", sorted(_r[n] for n in ("Centaurs Helmet", "Citadel He
 check("jede Kategorie faengt bei 1 an", _r["Godlike Pickaxe"] == 1)
 # Zwei Vorlagen desselben Items sind dasselbe Item; zwei verschiedene Zahlen
 # dafuer waeren eine Rangfolge, die per Zufall entscheidet.
-_rd = raenge([("Citadel Helmet", "Helm", 15000), ("Citadel Helmet", "Helm", 15000),
+_rd = ranks([("Citadel Helmet", "Helm", 15000), ("Citadel Helmet", "Helm", 15000),
               ("Bronze Helmet", "Helm", 32)])
 check("gleicher Name -> gleicher Rang", _rd["Citadel Helmet"] == 1 and _rd["Bronze Helmet"] == 2)
-check("leere Eingabe ergibt leere Raenge", raenge([]) == {})
+check("leere Eingabe ergibt leere Raenge", ranks([]) == {})
 
 
 # =============================================================================
@@ -66,16 +66,16 @@ section("Katalog: Datei lesen (Fremdformat, faellt nie um)")
 # =============================================================================
 
 _sand = Path(tempfile.mkdtemp(prefix="katalog_test_"))
-check("kein Pfad -> leer", not lade_katalog(""))
-check("Datei fehlt -> leer", not lade_katalog(str(_sand / "gibtsnicht.json")))
+check("kein Pfad -> leer", not load_catalog(""))
+check("Datei fehlt -> leer", not load_catalog(str(_sand / "gibtsnicht.json")))
 
 _kaputt = _sand / "kaputt.json"
 _kaputt.write_text("{ das ist kein json", encoding="utf-8")
-check("kaputte Datei -> leer statt Absturz", not lade_katalog(str(_kaputt)))
+check("kaputte Datei -> leer statt Absturz", not load_catalog(str(_kaputt)))
 
 _liste = _sand / "liste.json"
 _liste.write_text("[1, 2, 3]", encoding="utf-8")
-check("Liste statt Objekt -> leer", not lade_katalog(str(_liste)))
+check("Liste statt Objekt -> leer", not load_catalog(str(_liste)))
 
 _gut = _sand / "gut.json"
 _gut.write_text(json.dumps({
@@ -87,16 +87,16 @@ _gut.write_text(json.dumps({
     },
     "gegner": ["Black Dragon", ""],
 }), encoding="utf-8")
-_gl = lade_katalog(str(_gut))
-check("gute Eintraege kommen an", _gl.kategorie("Citadel Helmet") == "Helm")
+_gl = load_catalog(str(_gut))
+check("gute Eintraege kommen an", _gl.category("Citadel Helmet") == "Helm")
 # Ein kaputter Eintrag darf den Katalog nicht mitnehmen — dieselbe Haltung wie
 # bei der Marktwert-Datei: einzeln raus, nicht alles weg.
-check("kaputter Eintrag fliegt einzeln raus", _gl.treffer("Kaputt") is None)
-check("fehlender Wert wird 0", _gl.wert("Ohne Wert") == 0.0)
-check("unbrauchbarer Wert wird 0", _gl.wert("Wert ist Text") == 0.0)
+check("kaputter Eintrag fliegt einzeln raus", _gl.match("Kaputt") is None)
+check("fehlender Wert wird 0", _gl.value("Ohne Wert") == 0.0)
+check("unbrauchbarer Wert wird 0", _gl.value("Wert ist Text") == 0.0)
 check("leerer Gegnername faellt weg", _gl.gegner == ["Black Dragon"])
 check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
-      lade_katalog(str(_gut)) is _gl)
+      load_catalog(str(_gut)) is _gl)
 
 
 # =============================================================================
@@ -150,9 +150,9 @@ check("Quelle steht in der Datei", "idleclans" in _gebaut["_quelle"])
 # Beide Enden gegeneinander: was das Werkzeug schreibt, muss der Loader lesen.
 _rund = _sand / "rund.json"
 _rund.write_text(json.dumps(_gebaut), encoding="utf-8")
-_rl = lade_katalog(str(_rund))
+_rl = load_catalog(str(_rund))
 check("was tools/katalog.py schreibt, liest autoclicker/katalog.py",
-      _rl.kategorie("Godlike Bow") == "Bow" and _rl.wert("Bronze Helmet") == 32.0)
+      _rl.category("Godlike Bow") == "Bow" and _rl.value("Bronze Helmet") == 32.0)
 
 
 # =============================================================================
@@ -165,7 +165,7 @@ from autoclicker.persistence.serialization import (  # noqa: E402
 )
 
 check("Standard ist aus", ItemScanConfig(name="x").use_catalog is False)
-# Aus ist der Normalfall und wird nicht geschrieben (`_ohne_defaults`).
+# Aus ist der Normalfall und wird nicht geschrieben (`_without_defaults`).
 check("aus wird nicht in die Datei geschrieben",
       "use_catalog" not in _item_scan_to_dict(ItemScanConfig(name="x")))
 _an = ItemScanConfig(name="x", use_catalog=True)
@@ -540,19 +540,55 @@ try:
           _erg4_kh["ok"] is False
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
+    # --- Ein Spiel-Update darf den Knopf nicht stoppen ---------------------
+    # Die API schreibt Mongo-Shell-JSON, und der Bereiniger kannte genau EIN
+    # Konstrukt: als `NumberLong(0)` in den Achievements auftauchte, starb der
+    # Knopf an einem Feld, das er nie liest. Bekanntes wird uebersetzt,
+    # Unbekanntes uebernommen und GEMELDET — dieselben Faelle wie beim
+    # Zwilling `market_analysis/extended_json.py`, damit die beiden Kopien
+    # nicht auseinanderlaufen.
+    _roh_kh = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
+               ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
+               ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
+    _json_kh, _unb_kh = _tk_kh.bereinige_extended_json(_roh_kh)
+    _daten_kh = _json_mit.loads(_json_kh)
+    check("ObjectId wird Text, NumberLong Zahl — mit und ohne Anfuehrungszeichen",
+          _daten_kh["_id"] == "61e2b1b0" and _daten_kh["n"] == 0
+          and _daten_kh["m"] == 42 and _daten_kh["d"] == 1.5)
+    check("ein Konstrukt IN einem String bleibt, was es ist",
+          _daten_kh["t"] == 'nutze ObjectId("x") hier')
+    check("ein unbekanntes mit einem Skalar wird der Skalar", _daten_kh["u"] == 3)
+    check("eines mit mehreren Argumenten wird Text statt Abbruch",
+          _daten_kh["w"] == "Timestamp(1, 2)" and _daten_kh["leer"] is None)
+    check("und nur das Unbekannte wird gemeldet",
+          _unb_kh == {"NumberFoo": 1, "Timestamp": 1})
+
+    # Der Knopf reicht die Meldung in die Statuszeile — auf stderr saehe sie
+    # im Studio niemand — und schreibt die Datei trotzdem.
+    def _mit_hinweis_kh(*a, hinweise=None, **kw):
+        if hinweise is not None:
+            hinweise.extend(_tk_kh.extended_json_hinweise({"NumberFoo": 3}))
+        return _SPIELDATEN_kh
+
+    _tk_kh.hole_spieldaten = _mit_hinweis_kh
+    _erg5_kh = _bau_kh().katalog_holen()
+    check("der Knopf schreibt trotzdem und sagt, was fremd war",
+          _erg5_kh["ok"] and _erg5_kh.get("art") == "warn"
+          and "NumberFoo" in _erg5_kh["meldung"] and "2 Items" in _erg5_kh["meldung"])
+
     # --- Ein Zaehler am Namen darf die Kategorie nicht kosten ---------------
     # **"Godlike Bow 2" steht nicht im Katalog**, sein Gegenstand aber schon.
     # An einem echten Bestand standen so acht Items ohne Kategorie neben ihrem
     # eingeordneten Zwilling — und ohne Kategorie konkurriert ein Item mit
     # niemandem, wird also in Modus `all` immer geklickt.
-    from autoclicker.utils import ohne_zaehler as _oz_kh
+    from autoclicker.utils import without_counter as _oz_kh
     check("der Zaehler faellt weg", _oz_kh("Godlike Bow 2") == "Godlike Bow")
     # Eine Zahl, die zum Namen gehoert, bleibt — der Aufrufer probiert ohnehin
     # ERST den vollen Namen.
     check("aber nur der angehaengte", _oz_kh("Bogen") == "Bogen"
           and _oz_kh("Iron Helmet 12") == "Iron Helmet")
 
-    from autoclicker.katalog import Katalog as _Kat_kh
+    from autoclicker.katalog import Catalog as _Kat_kh
     _kat_kh = _Kat_kh({"Godlike Bow": {"kategorie": "Bow", "wert": 9},
                        "Slot 1": {"kategorie": "Sonder", "wert": 1}})
     check("ein Item mit Zaehler findet seinen Katalog-Eintrag",
@@ -613,8 +649,8 @@ section("LLM: Kaltstart, Modellpruefung und die Config-Felder")
 # galten nur fuer den Boss-Scan.
 import autoclicker.runtime.boss_detection as _bd_llm                # noqa: E402
 from autoclicker.llm_vision import (                                # noqa: E402
-    _modell_bekannt as _bekannt_llm, _namens_tokens as _tokens_llm,
-    ist_timeout as _ist_to_llm,
+    _model_known as _bekannt_llm, _name_tokens as _tokens_llm,
+    is_timeout as _ist_to_llm,
 )
 from autoclicker.models import (                                    # noqa: E402
     AutoClickerState as _ST_llm, BossProfile as _BP_llm,

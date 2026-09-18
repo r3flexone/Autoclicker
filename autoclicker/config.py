@@ -25,7 +25,7 @@ SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 # `Path.glob("*.json")` erfasst auch Dateien mit führendem Punkt, die Datei
 # stünde also als Sequenz im Studio-Menü, im Konsolen-Menü und in der
 # Start-Migration — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
-# `zuletzt_bearbeitet()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
+# `last_edited()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
 # unter backups/ liegen statt neben dem Original.
 RUN_STATUS_FILE: str = ".lauf.json"
 # Rollende Live-Ausgabe der Sequenz-Aufnahme für das Studio. Kein Bestand und
@@ -35,7 +35,7 @@ RECORD_STATUS_FILE: str = ".aufnahme.json"
 # vorherigen passiert ist. Sie laeuft im Hauptprozess (systemweiter Maus-Hook),
 # bedient wird sie aber oft aus dem Studio — ohne diese Datei stuende dort nur
 # "laeuft", waehrend die Konsole jeden Schritt einzeln meldet.
-NACHKLICK_STATUS_FILE: str = ".nachklick.json"
+RECLICK_STATUS_FILE: str = ".nachklick.json"
 # Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
 STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequenz.json"
@@ -326,8 +326,8 @@ class AppConfig:
 DEFAULT_CONFIG = AppConfig().to_dict()
 
 
-def uebernehmen(ziel: AppConfig, quelle: AppConfig) -> None:
-    """Schreibt alle Werte aus `quelle` in `ziel` — ohne das Objekt zu tauschen.
+def apply_config(target: AppConfig, source: AppConfig) -> None:
+    """Schreibt alle Werte aus `source` in `target` — ohne das Objekt zu tauschen.
 
     Im Prozess gibt es EIN Config-Objekt: `state.config` IST das Modul-`CONFIG`.
     Wer es austauscht, lässt jeden mit `from .config import CONFIG` (imaging, die
@@ -337,7 +337,7 @@ def uebernehmen(ziel: AppConfig, quelle: AppConfig) -> None:
     nach einem Speichern im Studio.
     """
     for f in fields(AppConfig):
-        setattr(ziel, f.name, getattr(quelle, f.name))
+        setattr(target, f.name, getattr(source, f.name))
 
 
 def load_config() -> AppConfig:
@@ -453,7 +453,7 @@ _CONFIG_SECTIONS = [
 ]
 
 
-def config_abschnitte() -> list:
+def config_sections() -> list:
     """Die Abschnitte in Datei-Reihenfolge, inklusive noch nicht zugeordneter Felder.
 
     Dieselbe Einteilung, die `save_config()` schreibt — deshalb hier und nicht im
@@ -466,13 +466,13 @@ def config_abschnitte() -> list:
     alle = [f.name for f in fields(AppConfig)]
     abschnitte = [(titel, [k for k in keys if k in alle])
                   for titel, keys in _CONFIG_SECTIONS]
-    rest = [k for k in alle if k not in zugeordnet]
-    if rest:
-        abschnitte.append(("SONSTIGE", rest))
+    remainder = [k for k in alle if k not in zugeordnet]
+    if remainder:
+        abschnitte.append(("SONSTIGE", remainder))
     return abschnitte
 
 
-def optionale_felder() -> list:
+def optional_fields() -> list:
     """Felder, die `None` erlauben — dort heisst ein leeres Eingabefeld `null`.
 
     Bei allen anderen heisst leer `0` bzw. `""`, und der Unterschied ist nicht
@@ -488,7 +488,7 @@ def save_config(config: AppConfig) -> None:
     data = config.to_dict()
 
     entries = []
-    for section_name, keys in config_abschnitte():
+    for section_name, keys in config_sections():
         for key in keys:
             if key in data:
                 entries.append((section_name, key, json.dumps(data[key], ensure_ascii=False)))

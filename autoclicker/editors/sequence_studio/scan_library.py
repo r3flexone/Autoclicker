@@ -3,14 +3,14 @@
 from typing import Optional
 
 from ...models import ItemScanConfig
-from ...utils import eindeutiger_name, sanitize_filename
+from ...utils import unique_name, sanitize_filename
 from .scan_contract import ART_ITEM, ART_SCAN, ART_SLOT, referenzen_umbenennen
 
 
 class ScanLibraryMixin:
     """Verwaltet die Scan-Bibliothek und ihre Beziehungen zu Slots und Items."""
 
-    def scan_oeffnen(self, daten: Optional[dict] = None) -> dict:
+    def scan_oeffnen(self, data: Optional[dict] = None) -> dict:
         """Wählt den Item-Scan, in dessen Zusammenhang gearbeitet wird.
 
         Der Scan ist hier das Übergeordnete: mit mehreren Spielen liegen sonst
@@ -20,7 +20,7 @@ class ScanLibraryMixin:
 
         Ein leerer Name macht ihn wieder zu — dann sieht man den ganzen Bestand.
         """
-        name = str((daten or {}).get("name") or "")
+        name = str((data or {}).get("name") or "")
         self._scan_laden()
         if name and name not in self.scans:
             return self._scan_melde(f"Scan '{name}' gibt es nicht.", "err")
@@ -33,9 +33,9 @@ class ScanLibraryMixin:
                 # Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild.
                 # Dass seine Slots trotzdem dastehen, ist die halbe Antwort auf
                 # „warum ist die Mitte leer" — die andere Hälfte ist der Knopf.
-                quelle = self.scans[name].capture_window_title
-                quelltext = (f" Fenster '{quelle}' ist momentan nicht offen."
-                             if quelle and not self.scan_fenster_id else "")
+                source = self.scans[name].capture_window_title
+                quelltext = (f" Fenster '{source}' ist momentan nicht offen."
+                             if source and not self.scan_fenster_id else "")
                 if self._flaeche():
                     return self._scan_melde(
                         f"'{name}' geöffnet — kein Bild gemerkt, die Slots stehen "
@@ -46,10 +46,10 @@ class ScanLibraryMixin:
                     f"'{name}' geöffnet — noch kein Bild dazu. Screenshot aufnehmen."
                     + quelltext,
                     "info")
-            quelle = self.scans[name].capture_window_title
-            if quelle and not self.scan_fenster_id:
+            source = self.scans[name].capture_window_title
+            if source and not self.scan_fenster_id:
                 return self._scan_melde(
-                    f"'{name}' geöffnet, Bild von zuletzt. Fenster '{quelle}' ist "
+                    f"'{name}' geöffnet, Bild von zuletzt. Fenster '{source}' ist "
                     "momentan nicht offen.", "warn")
             return self._scan_melde(f"'{name}' geöffnet, Bild von zuletzt.")
         self._foto = None
@@ -59,7 +59,7 @@ class ScanLibraryMixin:
         self.scan_fenster_id = 0
         return self._scan_melde("Kein Scan offen — der ganze Bestand steht da.", "info")
 
-    def scan_neu(self, daten: Optional[dict] = None) -> dict:
+    def scan_neu(self, data: Optional[dict] = None) -> dict:
         """Eine neue Item-Scan-Konfiguration — leer, aber mit eindeutigem Namen.
 
         **Erst laden, dann anlegen.** `_scan_laden()` ersetzt `self.scans`
@@ -69,7 +69,7 @@ class ScanLibraryMixin:
         aufgerufen aber sehr wohl.
         """
         self._scan_laden()
-        name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
+        name = unique_name(str((data or {}).get("name") or "Neuer Scan"), self.scans)
         self._merke("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
         self.scans[name].owner_sequence = self.board.name
@@ -88,76 +88,76 @@ class ScanLibraryMixin:
         self.scan_fenster_id = 0
         return self._scan_geaendert(f"Scan '{name}' angelegt und geöffnet.")
 
-    def scan_setzen(self, daten: dict) -> dict:
+    def scan_setzen(self, data: dict) -> dict:
         """Ein Feld einer Scan-Konfiguration."""
-        name = str((daten or {}).get("name") or "")
-        feld = str((daten or {}).get("feld") or "")
-        wert = (daten or {}).get("wert")
+        name = str((data or {}).get("name") or "")
+        feld = str((data or {}).get("feld") or "")
+        value = (data or {}).get("wert")
         cfg = self.scans.get(name)
         if cfg is None:
             return self._scan_melde(f"Scan '{name}' gibt es nicht.", "err")
 
         if feld == "name":
-            neu = sanitize_filename(str(wert or "").strip())
-            if not neu or neu == cfg.name:
+            new = sanitize_filename(str(value or "").strip())
+            if not new or new == cfg.name:
                 return self.scan_daten()
-            if neu in self.scans:
-                return self._scan_melde(f"'{neu}' gibt es schon.", "warn")
+            if new in self.scans:
+                return self._scan_melde(f"'{new}' gibt es schon.", "warn")
             self._merke(f"Scan '{cfg.name}' umbenannt")
-            alt = cfg.name
-            self.scans = {(neu if k == alt else k): v for k, v in self.scans.items()}
-            cfg.name = neu
-            self.scan_name = neu
-            if self.scan_offen == alt:
-                self.scan_offen = neu
+            old = cfg.name
+            self.scans = {(new if k == old else k): v for k, v in self.scans.items()}
+            cfg.name = new
+            self.scan_name = new
+            if self.scan_offen == old:
+                self.scan_offen = new
             # Der Name IST die Referenz, und sie steht an ZWEI Stellen: im
             # Schritt und als Fallback-Scan eines Boss-Scans, den
             # `runtime/steps.py` bei „kein Boss erkannt" wirklich ausfuehrt.
             # Ohne die zweite lief der Fallback nach dem Umbenennen ins Leere.
-            referenzen_umbenennen(self.board, "item", alt, neu)
+            referenzen_umbenennen(self.board, "item", old, new)
             for boss_cfg in getattr(self, "boss_scans", {}).values():
-                if boss_cfg.default_scan == alt:
-                    boss_cfg.default_scan = neu
+                if boss_cfg.default_scan == old:
+                    boss_cfg.default_scan = new
             # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
             try:
-                self._foto_pfad(alt).replace(self._foto_pfad(neu))
+                self._foto_pfad(old).replace(self._foto_pfad(new))
             except OSError:
                 pass
-            alt_pfad = self.filepath.parent / "item_scans" / f"{sanitize_filename(alt)}.json"
+            alt_pfad = self.filepath.parent / "item_scans" / f"{sanitize_filename(old)}.json"
             try:
                 alt_pfad.unlink(missing_ok=True)
             except OSError:
                 return self._scan_melde(
-                    f"'{alt}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
+                    f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
             return self._scan_geaendert(
-                f"'{alt}' heisst jetzt '{neu}'.")
+                f"'{old}' heisst jetzt '{new}'.")
         if feld == "toleranz":
             try:
-                toleranz = int(wert)
+                tolerance = int(value)
             except (TypeError, ValueError):
                 return self._scan_melde(
                     "Die Farb-Toleranz muss eine ganze Zahl sein.", "err")
             self._merke(f"'{name}': Farb-Toleranz")
-            cfg.color_tolerance = max(0, toleranz)
+            cfg.color_tolerance = max(0, tolerance)
             return self._scan_geaendert()
         if feld == "lernen":
             self._merke(f"'{name}': Unbekanntes lernen")
-            cfg.learn_unknown = bool(wert)
+            cfg.learn_unknown = bool(value)
             return self._scan_geaendert()
         if feld == "use_catalog":
             self._merke(f"'{name}': Katalog")
-            cfg.use_catalog = bool(wert)
+            cfg.use_catalog = bool(value)
             return self._scan_geaendert(
                 f"'{cfg.name}': Katalog {'an' if cfg.use_catalog else 'aus'}")
         if feld == "reverse":
             self._merke(f"'{name}': Laufrichtung")
-            cfg.reverse = bool(wert)
+            cfg.reverse = bool(value)
             return self._scan_geaendert(
                 f"'{cfg.name}': Slots laufen "
                 f"{'rückwärts' if cfg.reverse else 'vorwärts'}")
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
 
-    def scan_alle_loeschen(self, daten: dict) -> dict:
+    def scan_alle_loeschen(self, data: dict) -> dict:
         """Löscht alle Slots bzw. alle Items dieses Scans auf einen Schlag.
 
         Einzeln durchzuklicken war bei fünfzig Stück der Grund, warum man diesen
@@ -170,59 +170,59 @@ class ScanLibraryMixin:
         Kein Bestätigungsdialog, aus demselben Grund wie beim einzelnen
         Löschen: STRG+Z holt den ganzen Stand zurück, auch diesen.
         """
-        art = str((daten or {}).get("art") or "")
-        if art == ART_SLOT:
-            namen = [s.name for s in self._scan_slots()]
-            if not namen:
+        kind = str((data or {}).get("art") or "")
+        if kind == ART_SLOT:
+            names = [s.name for s in self._scan_slots()]
+            if not names:
                 return self._scan_melde("Keine Slots zum Löschen.", "warn")
-            self._auswahl = namen
+            self._auswahl = names
             return self.scan_slot_loeschen()
-        if art == ART_ITEM:
-            namen = [i.name for i in self._kandidaten()]
-            if not namen:
+        if kind == ART_ITEM:
+            names = [i.name for i in self._kandidaten()]
+            if not names:
                 return self._scan_melde("Keine Items zum Löschen.", "warn")
-            self._merke(f"{len(namen)} Item(s) gelöscht" if len(namen) > 1
-                        else f"'{namen[0]}' gelöscht")
-            for name in namen:
+            self._merke(f"{len(names)} Item(s) gelöscht" if len(names) > 1
+                        else f"'{names[0]}' gelöscht")
+            for name in names:
                 del self.items[name]
             self._objekte_angleichen()
             self.scan_name = ""
-            was = f"'{namen[0]}'" if len(namen) == 1 else f"{len(namen)} Items"
+            was = f"'{names[0]}'" if len(names) == 1 else f"{len(names)} Items"
             return self._scan_geaendert(f"{was} gelöscht.", "warn")
-        return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
+        return self._scan_melde(f"Unbekannte Art '{kind}'.", "err")
 
-    def scan_alle_schalten(self, daten: dict) -> dict:
+    def scan_alle_schalten(self, data: dict) -> dict:
         """Schaltet alle Slots oder Items des offenen Scans gemeinsam ein/aus."""
-        art = str((daten or {}).get("art") or "")
-        aktiv = bool((daten or {}).get("aktiv"))
-        if art == ART_SLOT:
-            eintraege = self._scan_slots()
+        kind = str((data or {}).get("art") or "")
+        active = bool((data or {}).get("aktiv"))
+        if kind == ART_SLOT:
+            entries = self._scan_slots()
             bezeichnung = "Slots"
-        elif art == ART_ITEM:
-            eintraege = list(self.items.values())
+        elif kind == ART_ITEM:
+            entries = list(self.items.values())
             bezeichnung = "Items"
         else:
-            return self._scan_melde(f"Unbekannte Art '{art}'.", "err")
-        if not eintraege:
+            return self._scan_melde(f"Unbekannte Art '{kind}'.", "err")
+        if not entries:
             return self._scan_melde(f"Keine {bezeichnung} zum Schalten.", "warn")
-        geaendert = [e for e in eintraege if e.enabled != aktiv]
+        geaendert = [e for e in entries if e.enabled != active]
         if not geaendert:
             return self.scan_daten()
-        self._merke(f"{len(eintraege)} {bezeichnung}: {'ein' if aktiv else 'aus'}")
-        for eintrag in eintraege:
-            eintrag.enabled = aktiv
+        self._merke(f"{len(entries)} {bezeichnung}: {'ein' if active else 'aus'}")
+        for entry in entries:
+            entry.enabled = active
         return self._scan_geaendert(
-            f"Alle {len(eintraege)} {bezeichnung} sind "
-            f"{'eingeschaltet' if aktiv else 'ausgeschaltet'}.")
+            f"Alle {len(entries)} {bezeichnung} sind "
+            f"{'eingeschaltet' if active else 'ausgeschaltet'}.")
 
-    def scan_loeschen(self, daten: Optional[dict] = None) -> dict:
+    def scan_loeschen(self, data: Optional[dict] = None) -> dict:
         """Löscht die offene Scan-Konfiguration samt Datei."""
         # Die Scan-Maske kennt ihren Namen selbst und schickt ihn mit. Der
         # globale Auswahlzustand kann inzwischen schon wieder auf einem Slot
         # oder Item stehen; davon darf der Löschknopf seiner sichtbaren Maske
         # nicht abhängen. Ohne Namen bleibt der offene Scan der sinnvolle
         # Rückfall für ältere Aufrufer.
-        name = str((daten or {}).get("name") or self.scan_offen)
+        name = str((data or {}).get("name") or self.scan_offen)
         if name not in self.scans:
             return self._scan_melde("Kein Scan gewählt.", "warn")
         # STRG+Z holt die Konfiguration zurück, nicht die Dateien: die JSON
@@ -236,9 +236,9 @@ class ScanLibraryMixin:
             self._foto_pfad(name).unlink(missing_ok=True)
         except OSError:
             pass
-        pfad = self.filepath.parent / "item_scans" / f"{sanitize_filename(name)}.json"
+        path = self.filepath.parent / "item_scans" / f"{sanitize_filename(name)}.json"
         try:
-            pfad.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
         except OSError:
             return self._scan_melde(f"'{name}' entfernt, die Datei blieb liegen.", "warn")
         # Auch Löschen ist ein eigener Schreibvorgang: es dreht die
@@ -248,7 +248,7 @@ class ScanLibraryMixin:
 
     # --------------------------------------------------------------- Sichern
 
-    def scan_speichern(self, daten: Optional[dict] = None) -> dict:
+    def scan_speichern(self, data: Optional[dict] = None) -> dict:
         """Schreibt Slots, Items und alle Scan-Konfigurationen.
 
         Ein Knopf für alle Dateiarten des Reiters, weil sie zusammen entstehen:
@@ -261,7 +261,7 @@ class ScanLibraryMixin:
         nirgends. Bliebe er ungeschrieben, zeigte die gespeicherte Aktion beim
         nächsten Start ins Leere.
 
-        Danach erfährt der Hauptprozess davon (Briefkasten-Befehl `daten`) —
+        Danach erfährt der Hauptprozess davon (Briefkasten-Befehl `data`) —
         sonst arbeitete er bis zum nächsten `CTRL+ALT+L` mit dem alten Stand.
         """
         from ...persistence import save_item_scan
@@ -275,7 +275,7 @@ class ScanLibraryMixin:
             self.slots, self.items, self.scans, self.boss_scans,
             self.icon_scans, self.global_bosses, self.scan_offen,
         )
-        sequenz_antwort = self.speichern(daten)
+        sequenz_antwort = self.speichern(data)
         if sequenz_antwort.get("frage"):
             return self._scan_melde(
                 "Sequenz wurde ausserhalb geändert — zuerst im Sequenz-Reiter entscheiden.",
@@ -305,8 +305,8 @@ class ScanLibraryMixin:
         # Der eigene Schreibvorgang darf sich nicht selbst als Fremdaenderung
         # melden - sonst stuende der Hinweis nach jedem Speichern da.
         self._platte_nachziehen()
-        from ...befehl import sende
-        sende("daten")
+        from ...mailbox import send_command
+        send_command("daten")
         return self._scan_melde(
             f"{len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Item-Scan(s), {len(self.boss_scans)} Boss-Scan(s), "

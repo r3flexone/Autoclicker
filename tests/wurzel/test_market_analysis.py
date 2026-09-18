@@ -10,7 +10,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from market_analysis import config as cfg
-from market_analysis import history, pricing
+from market_analysis import extended_json, history, pricing
 from market_analysis.config import (
     COMPREHENSIVE_AVG_FIELDS, GOLD_ITEM_ID, net_player_price, spar_faktor,
 )
@@ -193,8 +193,8 @@ class MarktwegTest(unittest.TestCase):
     def test_ohne_jeden_weg_kommt_ein_grund(self):
         weg = pricing.effective_sell_price(500, MARKT, INFO)
         self.assertEqual(weg.preis, 0.0)
-        self.assertIn("CanNotBeTraded", weg.grund)
-        self.assertIn("CanNotBeSoldToGameShop", weg.grund)
+        self.assertIn("CanNotBeTraded", weg.reason)
+        self.assertIn("CanNotBeSoldToGameShop", weg.reason)
 
     def test_vergleich_laeuft_netto_gegen_netto(self):
         """Spielergebot verliert Steuer, der NPC nicht – sonst wäre der Vergleich schief."""
@@ -226,19 +226,19 @@ class ZutatenpreisTest(unittest.TestCase):
         self.assertFalse(bekannt)
 
     def test_goldkosten_landen_in_der_summe(self):
-        bild = pricing.kosten_pro_aktion(
+        image = pricing.kosten_pro_aktion(
             [{"Item": 100, "Amount": 1}, {"Item": GOLD_ITEM_ID, "Amount": 250}],
             MARKT, item_info_map=INFO)
-        self.assertTrue(bild.vollstaendig)
-        self.assertAlmostEqual(bild.kosten, 90 + 250)
+        self.assertTrue(image.vollstaendig)
+        self.assertAlmostEqual(image.kosten, 90 + 250)
 
     def test_fehlende_zutat_macht_die_kosten_unvollstaendig(self):
-        bild = pricing.kosten_pro_aktion(
+        image = pricing.kosten_pro_aktion(
             [{"Item": 100, "Amount": 1}, {"Item": 999, "Amount": 2}],
             MARKT, item_info_map=INFO)
-        self.assertFalse(bild.vollstaendig)
-        self.assertEqual(bild.fehlende, ("item_999",))
-        self.assertAlmostEqual(bild.kosten, 90)       # nur die bekannte Zeile
+        self.assertFalse(image.vollstaendig)
+        self.assertEqual(image.fehlende, ("item_999",))
+        self.assertAlmostEqual(image.kosten, 90)       # nur die bekannte Zeile
 
 
 class KettenTest(unittest.TestCase):
@@ -310,13 +310,13 @@ class KettenTest(unittest.TestCase):
 
     def test_auto_cook_abschaltbar(self):
         """Ohne den Schalter steht wieder die alte, pessimistische Rechnung da."""
-        alt = pricing.AUTO_COOK_SELL_RAW_REST
+        old = pricing.AUTO_COOK_SELL_RAW_REST
         try:
             pricing.AUTO_COOK_SELL_RAW_REST = False
             k = pricing.resolve_chain(201, MARKT, self.rezepte, self.fisch, INFO)
             self.assertEqual(k.nebenertrag, 0.0)
         finally:
-            pricing.AUTO_COOK_SELL_RAW_REST = alt
+            pricing.AUTO_COOK_SELL_RAW_REST = old
 
     def test_zyklus_bricht_die_rekursion(self):
         rezepte = {
@@ -362,12 +362,12 @@ class HistorieTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def _zeile(self, item="oak", **rest):
+    def _zeile(self, item="oak", **remainder):
         basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
                  "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                  "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
                  "warnungen": ""}
-        basis.update(rest)
+        basis.update(remainder)
         return basis
 
     def test_lauf_speichert_zeitpunkt_version_und_confighash(self):
@@ -407,15 +407,15 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(ids, {0, 1})
 
     def test_alte_details_werden_zu_tageswerten_und_verschwinden(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile(gold_h=1000)])
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile(gold_h=2000)])
 
-        bericht = history.aufraeumen(self.conn)
-        self.assertEqual(bericht["verdichtet"], 1)
-        self.assertEqual(bericht["items"], 1)
+        report = history.aufraeumen(self.conn)
+        self.assertEqual(report["verdichtet"], 1)
+        self.assertEqual(report["items"], 1)
         tage = self.conn.execute("SELECT tag, gold_h FROM daily").fetchall()
         self.assertEqual(len(tage), 1)
         self.assertAlmostEqual(tage[0]["gold_h"], 1000)
@@ -423,8 +423,8 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0], 1)
 
     def test_verdichten_ist_wiederholbar(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
         grenze = (datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS)).strftime("%Y-%m-%d")
         history.verdichte_bis(self.conn, grenze)
@@ -432,8 +432,8 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0], 1)
 
     def test_alte_orderbuecher_verschwinden_frueher_als_details(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS + 2)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS + 2)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
             history.schreibe_orderbuch(
                 self.conn, run_id,
@@ -447,25 +447,196 @@ class HistorieTest(unittest.TestCase):
             with history.lauf(self.conn) as run_id:
                 history.schreibe_items(self.conn, run_id, [self._zeile()])
         history.aufraeumen(self.conn)
-        anzahl = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-        self.assertEqual(anzahl, cfg.HISTORY_RUN_LIMIT)
+        count = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+        self.assertEqual(count, cfg.HISTORY_RUN_LIMIT)
 
     def test_verlauf_liest_details_und_tageswerte(self):
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
-        eintraege = history.verlauf(self.conn, "oak")
-        self.assertEqual(len(eintraege), 1)
-        self.assertEqual(eintraege[0]["quelle"], "detail")
-        self.assertAlmostEqual(eintraege[0]["gold_h"], 1000)
+        entries = history.verlauf(self.conn, "oak")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["quelle"], "detail")
+        self.assertAlmostEqual(entries[0]["gold_h"], 1000)
 
     def test_leere_werte_bleiben_leer(self):
         """Ein fehlendes Gold/h ist nicht 0 – auch nicht in der Datenbank."""
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id,
                                    [self._zeile(gold_h=None, gold_h_real=float("nan"))])
-        zeile = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
-        self.assertIsNone(zeile["gold_h"])
-        self.assertIsNone(zeile["gold_h_real"])
+        line = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
+        self.assertIsNone(line["gold_h"])
+        self.assertIsNone(line["gold_h_real"])
+
+
+class ExtendedJsonTest(unittest.TestCase):
+    """Die Spiel-API schreibt Mongo-Shell-JSON, und ein Update darf den Lauf
+    nicht beenden.
+
+    Hier stand eine Regex, die genau `ObjectId` kannte — als die Achievements
+    `NumberLong(0)` mitbrachten, brach die Analyse ab, obwohl sie diese Felder
+    nie liest. Dieselben Faelle stehen in `tests/vertrag/katalog.py` fuer den
+    Zwilling in `tools/katalog.py`; die beiden Kopien duerfen nicht
+    auseinanderlaufen.
+    """
+
+    ROH = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
+           ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
+           ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
+
+    def test_bekannte_huellen_werden_uebersetzt(self):
+        data, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(data["_id"], "61e2b1b0")
+        self.assertEqual(data["n"], 0)
+        self.assertEqual(data["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
+        self.assertEqual(data["d"], 1.5)
+        self.assertIsNone(data["leer"])
+
+    def test_konstrukt_im_string_bleibt_text(self):
+        data, _ = extended_json.laden(self.ROH)
+        self.assertEqual(data["t"], 'nutze ObjectId("x") hier')
+
+    def test_unbekanntes_ueberlebt_und_wird_gemeldet(self):
+        data, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(data["u"], 3)                    # ein Skalar bleibt der Skalar
+        self.assertEqual(data["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
+        self.assertEqual(len(hinweise), 2)
+        self.assertIn("NumberFoo", hinweise[0])
+        self.assertIn("Timestamp", hinweise[1])
+
+    def test_bekanntes_erzeugt_keinen_hinweis(self):
+        _, hinweise = extended_json.laden('{"a": ObjectId("ab"), "b": NumberLong(7)}')
+        self.assertEqual(hinweise, [])
+
+    def test_der_echte_achievement_block(self):
+        """Wortlaut der Zeile, an der der Lauf am 12.09.2026 abbrach."""
+        raw = ('{"Achievements": [{"Name": "achievement_tutorial_completed", '
+               '"CriteriaThreshold" : NumberLong(0), "CriteriaTaskIds" : [], '
+               '"CriteriaValue" : NumberLong(100)}]}')
+        data, hinweise = extended_json.laden(raw)
+        self.assertEqual(data["Achievements"][0]["CriteriaValue"], 100)
+        self.assertEqual(hinweise, [])
+
+    def test_unparsbares_wirft_weiterhin(self):
+        """Uebersetzt wird, was uebersetzbar ist — kaputtes JSON bleibt ein Fehler."""
+        import json
+        with self.assertRaises(json.JSONDecodeError):
+            extended_json.laden('{"a": NumberLong(1), "b": }')
+
+
+try:                                    # braucht pandas/requests/openpyxl - lokal ja, in CI nicht
+    from market_analysis import analyse as _analyse
+    import pandas as _pd
+except ImportError:                     # pragma: no cover - wird gesagt, nicht verschwiegen
+    _analyse = _pd = None
+
+
+@unittest.skipUnless(_analyse, "pandas/requests/openpyxl fehlen - Messungs-Rangfolge uebersprungen")
+class MessungsRangfolgeTest(unittest.TestCase):
+    """Jede Messung kommt ins Blatt, und die Rangfolge haelt ihr Versprechen.
+
+    Gemeldet als „nur zehn Items haben Gold/h, der Rest ist leer": gemessen wurden
+    30, die Begruendung auf zehn gekuerzt, und die Empfehlung zog ihre Zahl aus der
+    gekuerzten Liste. Dazu wendete der gemessene Rang die Abwertung aus
+    `SKILL_RELIABILITY` nie an - bei zehn Zeilen unsichtbar, ueber den ganzen
+    Bestand ein Papaya-Feld auf Platz 1.
+    """
+
+    @staticmethod
+    def _empfehlung(lines):
+        spalten = ["Rang", "Item", "Skills", "Gold/h", "Verkauf an", "NPC-Preis",
+                   "Stück/h", "Erlös pro Stück", "Spieler-Gebot (brutto)",
+                   "Verlässlichkeit", "Warnung"]
+        df = _pd.DataFrame([dict(zip(spalten, z)) for z in lines])
+        df["Gold/h gewichtet"] = df["Gold/h"] * df["Verlässlichkeit"]
+        return df
+
+    def test_kandidaten_sind_alle_mit_gold_und_der_deckel_gilt(self):
+        df = self._empfehlung([
+            (1, "a", "Mining", 300, "NPC-Vendor", 3, 100, 3, None, 1.0, None),
+            (2, "b", "Mining", 200, "NPC-Vendor", 2, 100, 2, None, 1.0, None),
+            (3, "c", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
+            (4, "d", "Mining", -50, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
+        ])
+        old = _analyse.REASON_CANDIDATES
+        try:
+            _analyse.REASON_CANDIDATES = 0
+            self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a", "b"])
+            _analyse.REASON_CANDIDATES = 1
+            self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a"])
+        finally:
+            _analyse.REASON_CANDIDATES = old
+
+    def test_jede_messung_kommt_in_die_empfehlung(self):
+        """Zwoelf gemessen -> zwoelf Werte im Blatt, nicht die ersten zehn.
+
+        Mehr als zehn, weil genau dort der alte `.head(REASON_TOP_N)` schnitt."""
+        names = [f"item{i:02d}" for i in range(1, 13)]
+        df_rec = self._empfehlung([
+            (i, name, "Mining", 200 - i, "NPC-Vendor", 2 - i / 100, 100, 2, None, 1.0, None)
+            for i, name in enumerate(names, start=1)] + [
+            (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
+        df_chain = _pd.DataFrame({"Item": names + ["nichts"], "ItemID": range(1, 14),
+                                  "RawMaterialCost/h": 0.0, "Nebenertrag/h": 0.0})
+        old = _analyse.fetch_orderbook_depth
+        try:
+            _analyse.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
+            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+        finally:
+            _analyse.fetch_orderbook_depth = old
+        self.assertEqual(len(df_reason), 12)
+        raus = _analyse.sortiere_nach_messung(df_rec, df_reason)
+        source = dict(zip(raus["Item"], raus["Gold/h Quelle"]))
+        self.assertEqual(sum(q == _analyse.QUELLE_ORDERBUCH for q in source.values()), 12)
+        # Das Ungemessene steht trotzdem da - mit Papier-Wert und als solches markiert.
+        self.assertEqual(int(raus["Gold/h realistisch"].notna().sum()), 13)
+        self.assertEqual(source["nichts"], _analyse.QUELLE_PAPIER)
+        self.assertEqual(list(raus["Item"][:2]), ["item01", "item02"])
+        self.assertEqual(list(raus["Item"])[-1], "nichts")
+        self.assertEqual(list(raus["Rang"]), list(range(1, 14)))
+        # Und die Begruendung traegt dieselben Nummern wie die Empfehlung.
+        self.assertEqual(dict(zip(df_reason["Item"], df_reason["Rang"])),
+                         {k: v for k, v in zip(raus["Item"], raus["Rang"]) if k != "nichts"})
+
+    def test_sortiert_wird_ueber_die_angezeigte_zahl(self):
+        """Ein gemessenes Item, das die Messung auf 50 drueckt, steht unter einem
+        ungemessenen mit 200 auf dem Papier - nicht "Gemessene zuerst"."""
+        df_rec = self._empfehlung([
+            (1, "gedrueckt", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None),
+            (2, "papier", "Mining", 200, "Spieler", 0, 100, 2, 2, 1.0, None),
+        ])
+        df_reason = _pd.DataFrame({"Rang": [1], "Item": ["gedrueckt"], "Gold/h realistisch": [50]})
+        raus = _analyse.sortiere_nach_messung(df_rec, df_reason)
+        self.assertEqual(list(raus["Item"]), ["papier", "gedrueckt"])
+        self.assertEqual(list(raus["Gold/h realistisch"]), [200, 50])
+        self.assertEqual(list(raus["Gold/h Quelle"]), [_analyse.QUELLE_PAPIER, _analyse.QUELLE_ORDERBUCH])
+        self.assertEqual(int(df_reason.loc[0, "Rang"]), 2)
+
+    def test_ohne_messung_steht_der_papierwert_da(self):
+        df_rec = self._empfehlung([(1, "a", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None)])
+        raus = _analyse.sortiere_nach_messung(df_rec, _pd.DataFrame())
+        self.assertEqual(list(raus["Gold/h realistisch"]), [300])
+        self.assertEqual(list(raus["Gold/h Quelle"]), [_analyse.QUELLE_PAPIER])
+
+    def test_gemessener_rang_wendet_die_verlaesslichkeit_an(self):
+        """NPC-Verkauf, kein Netz: gemessen = NPC-Preis x Stueck/h. Farming (0,5)
+        bringt gemessen mehr und steht trotzdem hinter dem planbaren Item."""
+        df_rec = self._empfehlung([
+            (1, "papaya", "Farming", 200, "NPC-Vendor", 2, 100, 2, None, 0.5, None),
+            (2, "oak", "Woodcutting", 150, "NPC-Vendor", 1.5, 100, 1.5, None, 1.0, None),
+        ])
+        df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
+                                  "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
+        old = _analyse.fetch_orderbook_depth
+        try:
+            _analyse.fetch_orderbook_depth = lambda item_id: None
+            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+        finally:
+            _analyse.fetch_orderbook_depth = old
+        self.assertEqual(list(df_reason["Item"]), ["oak", "papaya"])
+        self.assertEqual(list(df_reason["Rang"]), [1, 2])
+        # Der WERT bleibt ungewichtet - abgewertet wird nur der Rang.
+        self.assertEqual(int(df_reason.set_index("Item").loc["papaya", "Gold/h realistisch"]), 200)
+        self.assertEqual(float(df_reason.set_index("Item").loc["papaya", "Verlässlichkeit"]), 0.5)
 
 
 if __name__ == "__main__":

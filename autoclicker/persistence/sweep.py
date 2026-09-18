@@ -38,67 +38,67 @@ from .paths import BACKUPS_DIR, ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
 # Serializer schreibt nur aktuelle Felder - was dazwischen wegfaellt, war Altbestand.
 # Deshalb werden auch Dateitypen sauber, die gar keinen Migrationsschritt haben.
 
-def _lade(pfad: Path):
+def _load(path: Path):
     try:
-        with open(pfad, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return None
 
 
-def _rt_sequence(pfad: Path):
+def _rt_sequence(path: Path):
     from .sequences import load_sequence_file
-    seq = load_sequence_file(pfad)
+    seq = load_sequence_file(path)
     # stamp() wie in save_sequence_file - ohne Stempel gilt die Datei beim naechsten
     # Start wieder als Schema 0 und laeuft die ganze Kette erneut.
     return stamp(ser._sequence_to_dict(seq)) if seq else None
 
 
-def _rt_item_scan(pfad: Path):
+def _rt_item_scan(path: Path):
     from .item_scans import load_item_scan_file
-    cfg = load_item_scan_file(pfad)
+    cfg = load_item_scan_file(path)
     return ser._item_scan_to_dict(cfg) if cfg else None
 
 
-def _rt_boss_scan(pfad: Path):
+def _rt_boss_scan(path: Path):
     from .boss_scans import load_boss_scan_file
-    cfg = load_boss_scan_file(pfad)
+    cfg = load_boss_scan_file(path)
     return ser._boss_scan_to_dict(cfg) if cfg else None
 
 
-def _rt_icon_scan(pfad: Path):
+def _rt_icon_scan(path: Path):
     from .icon_scans import load_icon_scan_file
-    cfg = load_icon_scan_file(pfad)
+    cfg = load_icon_scan_file(path)
     return ser._icon_scan_to_dict(cfg) if cfg else None
 
 
-def _rt_items(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_ITEMS)
+def _rt_items(path: Path):
+    data, _ = migrate(_load(path), KIND_ITEMS)
     if not isinstance(data, dict):
         return None
     return {name: ser._item_to_dict(ser._item_from_dict(i, name))
             for name, i in data.items()}
 
 
-def _rt_slots(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_SLOTS)
+def _rt_slots(path: Path):
+    data, _ = migrate(_load(path), KIND_SLOTS)
     if not isinstance(data, dict):
         return None
     return {name: ser._slot_to_dict(ser._slot_from_dict(name, s))
             for name, s in data.items()}
 
 
-def _rt_bosses(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_GLOBAL_BOSSES)
+def _rt_bosses(path: Path):
+    data, _ = migrate(_load(path), KIND_GLOBAL_BOSSES)
     if not isinstance(data, list):
         return None
     return [ser._boss_profile_to_dict(ser._boss_profile_from_dict(b)) for b in data]
 
 
-def _rt_config(pfad: Path):
+def _rt_config(path: Path):
     """config.json: from_dict wirft unbekannte Keys weg, to_dict schreibt die aktuellen."""
     from ..config import AppConfig
-    data = _lade(pfad)
+    data = _load(path)
     return AppConfig.from_dict(data).to_dict() if isinstance(data, dict) else None
 
 
@@ -112,7 +112,7 @@ def _sequences_dir() -> Path:
     return Path(SEQUENCES_DIR)
 
 
-def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
+def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     """Alle JSON-Dateien der App mit Typ und Round-Trip-Funktion.
 
     Alle Pfade sind relativ zum Arbeitsverzeichnis - genau wie im laufenden Programm.
@@ -138,8 +138,8 @@ def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
     # `sequence.json` und werden mit ihr round-getrippt.
     seq_dir = _sequences_dir()
     if seq_dir.is_dir():
-        for ordner in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
-            haupt = ordner / "sequence.json"
+        for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
+            haupt = folder / "sequence.json"
             if haupt.exists():
                 dateien.append((haupt, KIND_SEQUENCE, _rt_sequence))
             for unter, kind, rt in (
@@ -147,33 +147,33 @@ def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
                 ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
                 ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
             ):
-                d = ordner / unter
+                d = folder / unter
                 if not d.is_dir():
                     continue
-                for datei in sorted(d.glob("*.json")):
+                for file in sorted(d.glob("*.json")):
                     # Die Boss-Bibliothek liegt als `bibliothek.json` zwischen den
                     # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
                     # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
                     # unlesbar und wuerde als "uebersprungen" gemeldet.
-                    if unter == "boss_scans" and datei.name == "bibliothek.json":
-                        dateien.append((datei, KIND_GLOBAL_BOSSES, _rt_bosses))
+                    if unter == "boss_scans" and file.name == "bibliothek.json":
+                        dateien.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
                     else:
-                        dateien.append((datei, kind, rt))
+                        dateien.append((file, kind, rt))
 
     # Presets sind programmweit und gehoeren keiner Sequenz.
-    for ordner, kind, rt in (
+    for folder, kind, rt in (
         (ITEM_PRESETS_DIR, KIND_ITEMS, _rt_items),
         (SLOT_PRESETS_DIR, KIND_SLOTS, _rt_slots),
     ):
-        d = Path(ordner)
+        d = Path(folder)
         if d.is_dir():
-            for datei in sorted(d.glob("*.json")):
-                dateien.append((datei, kind, rt))
+            for file in sorted(d.glob("*.json")):
+                dateien.append((file, kind, rt))
 
     return dateien
 
 
-def _zahlen_normalisieren(x):
+def _normalize_numbers(x):
     """int und float derselben Zahl angleichen - JSON kennt nur EINEN Zahlentyp.
 
     Ohne das galt eine von Hand auf `600` getippte Wartezeit als aufzuraeumen
@@ -194,21 +194,21 @@ def _zahlen_normalisieren(x):
     if isinstance(x, (int, float)):
         return float(x)
     if isinstance(x, dict):
-        return {k: _zahlen_normalisieren(v) for k, v in x.items()}
+        return {k: _normalize_numbers(v) for k, v in x.items()}
     if isinstance(x, (list, tuple)):
-        return [_zahlen_normalisieren(v) for v in x]
+        return [_normalize_numbers(v) for v in x]
     return x
 
 
-def _gleich(a, b) -> bool:
+def _equal(a, b) -> bool:
     """Inhaltsgleich? Normalisierter JSON-Text, damit Schluesselreihenfolge,
     Einrueckung und der Python-Zahlentyp nicht als Aenderung durchgehen."""
-    return (json.dumps(_zahlen_normalisieren(a), sort_keys=True, ensure_ascii=False)
-            == json.dumps(_zahlen_normalisieren(b), sort_keys=True, ensure_ascii=False))
+    return (json.dumps(_normalize_numbers(a), sort_keys=True, ensure_ascii=False)
+            == json.dumps(_normalize_numbers(b), sort_keys=True, ensure_ascii=False))
 
 
-def sicherungspfad(pfad: Path) -> Path:
-    """Wohin die .bak-Kopie von `pfad` gehoert: unter BACKUPS_DIR, Struktur gespiegelt.
+def backup_path(path: Path) -> Path:
+    """Wohin die .bak-Kopie von `path` gehoert: unter BACKUPS_DIR, Struktur gespiegelt.
 
     `sequences/all_dayli.json` -> `backups/sequences/all_dayli.json.bak`. Die
     Unterordner sind noetig, sonst ueberschrieben `item_scans/foo.json` und
@@ -217,7 +217,7 @@ def sicherungspfad(pfad: Path) -> Path:
     Absolute Pfade werden relativ zum Arbeitsverzeichnis gelegt; liegt eine Datei
     ausserhalb, bleibt nur ihr Name uebrig.
     """
-    p = Path(pfad)
+    p = Path(path)
     if p.is_absolute():
         try:
             p = p.relative_to(Path.cwd())
@@ -226,21 +226,21 @@ def sicherungspfad(pfad: Path) -> Path:
     return Path(BACKUPS_DIR) / p.with_suffix(p.suffix + ".bak")
 
 
-def _schreibe(pfad: Path, data) -> None:
+def _write(path: Path, data) -> None:
     """Sicherung anlegen, dann schreiben - im selben Format wie die App selbst.
 
     compact_json + atomic_write, sonst wechselte die Formatierung bei jedem Save
     hin und her. Die Sicherung liegt unter `backups/` statt neben dem Original,
     damit ein `*.json`-Glob sie nicht erwischt; der Ordner entsteht erst hier.
     """
-    backup = sicherungspfad(pfad)
+    backup = backup_path(path)
     if not backup.exists():
         backup.parent.mkdir(parents=True, exist_ok=True)
-        backup.write_text(pfad.read_text(encoding="utf-8"), encoding="utf-8")
-    atomic_write(pfad, compact_json(data))
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    atomic_write(path, compact_json(data))
 
 
-class SweepErgebnis:
+class SweepResult:
     """Was der Durchgang gefunden hat. `geaendert` ist die Liste (Pfad, Meldungen)."""
 
     def __init__(self) -> None:
@@ -250,7 +250,7 @@ class SweepErgebnis:
         self.geschrieben: bool = False
 
     @property
-    def anzahl_geaendert(self) -> int:
+    def changed_count(self) -> int:
         return len(self.geaendert)
 
     def __bool__(self) -> bool:
@@ -258,7 +258,7 @@ class SweepErgebnis:
         return bool(self.geaendert or self.uebersprungen)
 
 
-def sweep(write: bool = False) -> SweepErgebnis:
+def sweep(write: bool = False) -> SweepResult:
     """Alle Dateien pruefen und (bei write=True) sauber zurueckschreiben.
 
     Gibt ein SweepErgebnis zurueck und druckt selbst NICHTS - die Ausgabe entscheidet
@@ -267,41 +267,41 @@ def sweep(write: bool = False) -> SweepErgebnis:
     Einen Punkte-Kontext gibt es nicht mehr: eine Sequenz bringt ihre Punkte im
     eigenen Feld mit, `load_sequence_file()` loest sie daraus auf.
     """
-    ergebnis = SweepErgebnis()
-    ergebnis.geschrieben = write
+    result = SweepResult()
+    result.geschrieben = write
 
-    for pfad, kind, rt in sammle_dateien():
-        roh = _lade(pfad)
-        if roh is None:
-            ergebnis.uebersprungen.append(pfad)
+    for path, kind, rt in collect_files():
+        raw = _load(path)
+        if raw is None:
+            result.uebersprungen.append(path)
             continue
 
         # Auf einer Kopie, damit die Meldungen nicht vom Round-Trip verfaelscht werden.
-        _, meldungen = migrate(json.loads(json.dumps(roh)), kind)
+        _, messages = migrate(json.loads(json.dumps(raw)), kind)
 
         # Die Loader melden ihre Migration selbst - hier stumm, sonst stehen dieselben
         # Zeilen doppelt im Protokoll.
         with contextlib.redirect_stdout(io.StringIO()):
-            sauber = rt(pfad)
+            sauber = rt(path)
 
         if sauber is None:
-            ergebnis.uebersprungen.append(pfad)
+            result.uebersprungen.append(path)
             continue
 
-        if not meldungen and _gleich(roh, sauber):
-            ergebnis.aktuell += 1
+        if not messages and _equal(raw, sauber):
+            result.aktuell += 1
             continue
 
-        if not meldungen:
-            meldungen = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
-        ergebnis.geaendert.append((pfad, meldungen))
+        if not messages:
+            messages = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
+        result.geaendert.append((path, messages))
         if write:
-            _schreibe(pfad, sauber)
+            _write(path, sauber)
 
-    return ergebnis
+    return result
 
 
-def sweep_beim_start() -> SweepErgebnis:
+def sweep_on_start() -> SweepResult:
     """Start-Durchgang: schreibt, und meldet nur wenn es etwas zu melden gab.
 
     Bewusst nach `init_directories()` und VOR dem Laden aufrufen - dann liest der Rest
@@ -309,22 +309,22 @@ def sweep_beim_start() -> SweepErgebnis:
     """
     from ..utils import col, hint, warn
 
-    ergebnis = sweep(write=True)
-    if not ergebnis:
-        return ergebnis  # Normalfall: alles aktuell, kein Wort darueber
+    result = sweep(write=True)
+    if not result:
+        return result  # Normalfall: alles aktuell, kein Wort darueber
 
-    if ergebnis.geaendert:
+    if result.geaendert:
         print(f"\n{col('[MIGRATION]', 'cyan')} "
-              f"{ergebnis.anzahl_geaendert} Datei(en) aufs aktuelle Format gehoben:")
-        for pfad, meldungen in ergebnis.geaendert:
-            print(f"            {pfad.name}")
-            for m in meldungen:
+              f"{result.changed_count} Datei(en) aufs aktuelle Format gehoben:")
+        for path, messages in result.geaendert:
+            print(f"            {path.name}")
+            for m in messages:
                 print(f"              - {m}")
         print(f"            {hint(f'Sicherungen liegen unter {BACKUPS_DIR}/.')}")
 
-    for pfad in ergebnis.uebersprungen:
-        print(warn(f"[MIGRATION] {pfad.name} nicht lesbar - bleibt unveraendert."))
+    for path in result.uebersprungen:
+        print(warn(f"[MIGRATION] {path.name} nicht lesbar - bleibt unveraendert."))
 
-    if ergebnis.geaendert:
+    if result.geaendert:
         print()
-    return ergebnis
+    return result

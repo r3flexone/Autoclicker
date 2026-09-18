@@ -13,14 +13,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, uebernehmen
+from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, apply_config
 from .models import AutoClickerState, ClickPoint
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences, sequence_file,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
-    load_all_item_scans, resolve_klick_referenzen, resolve_point_references,
+    load_all_item_scans, resolve_click_references, resolve_point_references,
     load_all_boss_scans, load_global_bosses, load_all_icon_scans,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
@@ -65,7 +65,7 @@ def _block_if_recording(state: AutoClickerState) -> bool:
     """
     with state.lock:
         recording = state.recording_active
-        nachklick = state.nachklick_aktiv
+        nachklick = state.reclick_active
     if recording or nachklick:
         was = "Aufnahme" if recording else "Klick-Runde"
         print(f"\n{err(was + ' läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
@@ -87,7 +87,7 @@ def _block_if_running(state: AutoClickerState) -> bool:
     return laeuft
 
 
-def _sequenz_daten_laden(state: AutoClickerState) -> None:
+def _load_sequence_data(state: AutoClickerState) -> None:
     """Bindet alle Scans und TUI-Arbeitsansichten an die aktive Sequenz."""
     load_all_item_scans(state)
     load_all_boss_scans(state)
@@ -97,7 +97,7 @@ def _sequenz_daten_laden(state: AutoClickerState) -> None:
         seq = state.active_sequence
     if seq is not None:
         resolve_point_references(state, seq)
-        resolve_klick_referenzen(state, seq)
+        resolve_click_references(state, seq)
 
 
 def handle_record(state: AutoClickerState) -> None:
@@ -135,7 +135,7 @@ def handle_undo(state: AutoClickerState) -> None:
     """
     with state.lock:
         recording = state.recording_active
-        nachklick = state.nachklick_aktiv
+        nachklick = state.reclick_active
     if nachklick:
         from .editors.nachklick import nachklick_zurueck
         nachklick_zurueck(state)
@@ -241,7 +241,7 @@ def handle_reset(state: AutoClickerState) -> None:
         # Config auf Standard zurücksetzen — hineinschreiben, nicht austauschen
         # (s. config.uebernehmen: state.config IST das Modul-CONFIG).
         with state.lock:
-            uebernehmen(state.config, AppConfig())
+            apply_config(state.config, AppConfig())
 
         print(f"\n{ok('Factory Reset abgeschlossen!')}")
         print(ok("Das Programm ist jetzt wie frisch von GitHub."))
@@ -268,13 +268,13 @@ def handle_item_scan_editor(state: AutoClickerState) -> None:
     if _block_if_running(state):
         return
     with state.lock:
-        aktiv = state.active_sequence is not None
-    if not aktiv:
+        active = state.active_sequence is not None
+    if not active:
         handle_switch(state)
         with state.lock:
             if state.active_sequence is None:
                 return
-    _sequenz_daten_laden(state)
+    _load_sequence_data(state)
     from .editors.item_scan_editor import run_item_scan_menu
     run_item_scan_menu(state)
 
@@ -298,10 +298,10 @@ def handle_step_mode(state: AutoClickerState) -> None:
     """
     with state.lock:
         state.step_mode = not state.step_mode
-        aktiv = state.step_mode
+        active = state.step_mode
         laeuft = state.is_running
 
-    if aktiv:
+    if active:
         print(f"\n{col('[MANUELL]', 'yellow')} Manueller Modus AN — Wartezeiten werden "
               "übersprungen, jeder Schritt wartet auf Bestätigung.")
         print(f"           Im Schritt: {col('w', 'yellow')} ausführen | "
@@ -314,7 +314,7 @@ def handle_step_mode(state: AutoClickerState) -> None:
         print(f"\n{col('[MANUELL]', 'cyan')} Manueller Modus AUS — normaler Ablauf.")
 
 
-def handle_debug_toggle(state: AutoClickerState, stufe: str) -> None:
+def handle_debug_toggle(state: AutoClickerState, level: str) -> None:
     """Schaltet eine der beiden Ausgabe-Stufen um (Punkte-Menü -> 'log' / 'detail').
 
     Wird direkt in config.json gespeichert, damit die Einstellung den Neustart übersteht -
@@ -323,17 +323,17 @@ def handle_debug_toggle(state: AutoClickerState, stufe: str) -> None:
     from .config import save_config
 
     with state.lock:
-        if stufe == "log":
+        if level == "log":
             state.config.debug_log = not state.config.debug_log
-            aktiv, name = state.config.debug_log, "Stufe 1 (alles ausgeben)"
+            active, name = state.config.debug_log, "Stufe 1 (alles ausgeben)"
         else:
             state.config.debug_detail = not state.config.debug_detail
-            aktiv, name = state.config.debug_detail, "Stufe 2 (Detail + Zeiger)"
+            active, name = state.config.debug_detail, "Stufe 2 (Detail + Zeiger)"
         log_an, detail_an = state.config.debug_log, state.config.debug_detail
         snapshot = state.config
 
     save_config(snapshot)
-    zustand = col('AN', 'green') if aktiv else col('AUS', 'cyan')
+    zustand = col('AN', 'green') if active else col('AUS', 'cyan')
     print(f"\n{col('[DEBUG]', 'cyan')} {name}: {zustand}")
     print(f"         Jetzt aktiv: Stufe 1 {'an' if log_an else 'aus'}, "
           f"Stufe 2 {'an' if detail_an else 'aus'}")
@@ -357,16 +357,16 @@ def handle_show(state: AutoClickerState) -> None:
         print(f"\n{info('Keine Sequenzen vorhanden.')} Erstelle zuerst eine Sequenz.")
         return
     with state.lock:
-        aktiv = state.active_sequence.name if state.active_sequence else None
+        active = state.active_sequence.name if state.active_sequence else None
     vorauswahl = next((i for i, (name, _pfad) in enumerate(sequenzen)
-                       if name == aktiv), 0)
+                       if name == active), 0)
     auswahl = interactive_select(
-        [name + (" *AKTIV*" if name == aktiv else "") for name, _ in sequenzen],
+        [name + (" *AKTIV*" if name == active else "") for name, _ in sequenzen],
         title="\nPUNKTE: Sequenz wählen", default=vorauswahl)
     if auswahl < 0 or auswahl >= len(sequenzen):
         return
-    _name, pfad = sequenzen[auswahl]
-    seq = load_sequence_file(pfad)
+    _name, path = sequenzen[auswahl]
+    seq = load_sequence_file(path)
     if seq is None:
         print(err("Sequenz konnte nicht geladen werden."))
         return
@@ -430,8 +430,8 @@ def handle_show(state: AutoClickerState) -> None:
                 continue
 
             if user_input.lower() in ("check", "pruefen", "prüfen"):
-                from .diagnose import pruefe_setup, print_bericht
-                print_bericht(pruefe_setup(state))
+                from .diagnose import check_setup, print_report
+                print_report(check_setup(state))
                 continue
 
             if user_input.lower() in ("fix", "kalib", "kalibrieren"):
@@ -539,8 +539,13 @@ def handle_finish(state: AutoClickerState) -> None:
     print(f"\n{col('[FINISH]', 'yellow')} Zyklus wird abgeschlossen, dann END-Phase und Stop.")
 
 
-def handle_toggle(state: AutoClickerState) -> None:
-    """Startet oder stoppt die Sequenz."""
+def handle_toggle(state: AutoClickerState, aus_studio: bool | None = False) -> None:
+    """Startet oder stoppt die Sequenz.
+
+    `aus_studio` sagt, wo ein Haltepunkt spaeter fragen soll: False = Hotkey,
+    also Konsole; True = Studio-Knopf, also Tafel im Live-Run; None = so lassen
+    (der Countdown-Thread startet fuer den, der den Zeitplan gestellt hat).
+    """
     # _toggle_lock serialisiert den gesamten Start/Stop-Pfad, damit Countdown-Thread
     # und Main-Thread nicht beide den is_running-Check passieren und doppelt starten.
     with _toggle_lock:
@@ -560,7 +565,7 @@ def handle_toggle(state: AutoClickerState) -> None:
         # ein Zeitablauf hat darin nichts verloren. Betrifft ausdrücklich auch
         # den Countdown-Thread, der hier ebenfalls hereinkommt.
         with state.lock:
-            if state.nachklick_aktiv:
+            if state.reclick_active:
                 print(f"\n{err('Punkte werden gerade nachgeklickt — kein Start')} "
                       f"{hint('(CTRL+ALT+J beendet die Runde)')}")
                 return
@@ -601,6 +606,9 @@ def handle_toggle(state: AutoClickerState) -> None:
                 print(warn("Die vorherige Boss-Erkennung wird noch beendet — bitte danach erneut starten."))
                 return
             state.is_running = True
+            if aus_studio is not None:
+                state.run_from_studio = bool(aus_studio)
+            state.gate_waiting = False
             state.stop_event.clear()
             state.pause_event.clear()
             state.skip_event.clear()
@@ -610,8 +618,8 @@ def handle_toggle(state: AutoClickerState) -> None:
             worker.start()
 
 
-def befehl_start(state: AutoClickerState, argumente: dict) -> None:
-    """Startet die Sequenz aus `datei` — Befehl aus dem Sequenz-Studio.
+def command_start(state: AutoClickerState, arguments: dict) -> None:
+    """Startet die Sequenz aus `file` — Befehl aus dem Sequenz-Studio.
 
     Frisch von Platte, nicht aus dem Speicher: der Hauptprozess hat von den
     Änderungen im Studio nichts mitbekommen. Verweigert wird nur, was auch ein
@@ -625,7 +633,7 @@ def befehl_start(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{info('Läuft bereits — der Start aus dem Studio wird ignoriert.')}")
         return
     with state.lock:
-        if not argumente.get("manuell") and state.step_via_studio:
+        if not arguments.get("manual") and state.step_via_studio:
             state.step_mode = False
             state.step_via_studio = False
     # Vorher fragen, nicht hinterher: handle_toggle() lehnt während einer Aufnahme
@@ -633,26 +641,26 @@ def befehl_start(state: AutoClickerState, argumente: dict) -> None:
     if _block_if_recording(state):
         return
 
-    roh = str(argumente.get("datei") or "").strip()
-    if not roh:
+    raw = str(arguments.get("file") or "").strip()
+    if not raw:
         print(f"\n{err('Start aus dem Studio ohne Datei — ignoriert.')}")
         return
-    pfad = Path(roh)
-    seq = load_sequence_file(pfad)
+    path = Path(raw)
+    seq = load_sequence_file(path)
     if seq is None:
-        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+        print(f"\n{err(f'{path.name} konnte nicht geladen werden')} "
               f"{hint('(im Studio gespeichert?)')}")
         return
 
     with state.lock:
         state.active_sequence = seq
         state.points = seq.points
-    _sequenz_daten_laden(state)
+    _load_sequence_data(state)
     print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
-    handle_toggle(state)
+    handle_toggle(state, aus_studio=True)
 
 
-def befehl_start_manuell(state: AutoClickerState, argumente: dict) -> None:
+def command_start_manual(state: AutoClickerState, arguments: dict) -> None:
     """Lädt und startet wie `start`, hält aber vor jedem Block im Studio."""
     with state.lock:
         if state.is_running or state.countdown_active:
@@ -660,7 +668,7 @@ def befehl_start_manuell(state: AutoClickerState, argumente: dict) -> None:
             return
         state.step_mode = True
         state.step_via_studio = True
-    befehl_start(state, {**argumente, "manuell": True})
+    command_start(state, {**arguments, "manuell": True})
     with state.lock:
         # Wurde der Start abgelehnt, darf kein unsichtbar vorgemerkter
         # Schrittmodus beim nächsten Hotkey-Start nachfeuern.
@@ -669,7 +677,7 @@ def befehl_start_manuell(state: AutoClickerState, argumente: dict) -> None:
             state.step_via_studio = False
 
 
-def befehl_stop(state: AutoClickerState, argumente: dict) -> None:
+def command_stop(state: AutoClickerState, arguments: dict) -> None:
     """Stoppt einen laufenden Durchgang — Befehl aus dem Sequenz-Studio.
 
     Bewusst nicht `handle_toggle()`: das ist ein Umschalter und würde starten,
@@ -686,68 +694,74 @@ def befehl_stop(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{info('Es läuft nichts — nichts zu stoppen.')}")
 
 
-def befehl_pause(state: AutoClickerState, argumente: dict) -> None:
+def command_pause(state: AutoClickerState, arguments: dict) -> None:
     """Pausiert oder setzt fort — dieselbe Bedeutung wie CTRL+ALT+G."""
     handle_pause(state)
 
 
-def befehl_skip(state: AutoClickerState, argumente: dict) -> None:
+def command_skip(state: AutoClickerState, arguments: dict) -> None:
     """Überspringt die aktuelle Wartezeit — derselbe Weg wie der Hotkey."""
     handle_skip(state)
 
 
-def befehl_skip_step(state: AutoClickerState, argumente: dict) -> None:
+def command_skip_step(state: AutoClickerState, arguments: dict) -> None:
     """Verwirft den aktuellen Block vollständig — einschliesslich Aktion."""
     handle_skip_step(state)
 
 
-def befehl_finish(state: AutoClickerState, argumente: dict) -> None:
+def command_finish(state: AutoClickerState, arguments: dict) -> None:
     """Beendet nach dem aktuellen Zyklus samt END-Phase."""
     handle_finish(state)
 
 
-def befehl_manuell(state: AutoClickerState, argumente: dict) -> None:
+def command_manual(state: AutoClickerState, arguments: dict) -> None:
     """Schaltet den manuellen Lauf um; Entscheidungen kommen aus dem Studio."""
     with state.lock:
         state.step_mode = not state.step_mode
         state.step_via_studio = state.step_mode
-        aktiv = state.step_mode
-        if not aktiv:
+        active = state.step_mode
+        if not active:
             state.step_command = "continue"
             state.step_command_event.set()
     print(f"\n{col('[MANUELL]', 'yellow')} Studio-Schrittmodus "
-          f"{'AN' if aktiv else 'AUS'}.")
+          f"{'AN' if active else 'AUS'}.")
 
 
-def befehl_manuell_aktion(state: AutoClickerState, argumente: dict) -> None:
-    """Eine der vier Entscheidungen für den wartenden manuellen Schritt."""
-    aktion = str(argumente.get("aktion") or "")
-    if aktion not in ("run", "skip", "continue", "stop"):
+def command_manual_action(state: AutoClickerState, arguments: dict) -> None:
+    """Eine der fünf Entscheidungen für das wartende Gate.
+
+    Angenommen wird, solange ein Gate WARTET — nicht nur im Schrittmodus: ein
+    Haltepunkt hält einen Lauf an, der sonst gar nicht manuell ist, und seine
+    Tafel im Live-Run schickt dieselben Befehle.
+    """
+    from .runtime.debug import GATE_COMMANDS
+    aktion = str(arguments.get("action") or "")
+    if aktion not in GATE_COMMANDS:
         print(f"\n{err('Unbekannte manuelle Aktion — ignoriert.')}")
         return
     with state.lock:
-        if not state.step_mode or not state.step_via_studio:
-            print(f"\n{info('Der Studio-Schrittmodus ist nicht aktiv.')}")
+        if not state.gate_waiting:
+            print(f"\n{info('Es wartet gerade kein Block auf eine Entscheidung.')}")
             return
         state.step_command = aktion
         state.step_command_event.set()
 
 
-def _zeitplan_starten(state: AutoClickerState, zeit_text: str) -> bool:
+def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
     """Startet den nicht-interaktiven Countdown für TUI und Studio gemeinsam."""
     try:
-        sekunden, beschreibung, zielstempel = parse_time_input(zeit_text)
+        seconds, description, zielstempel = parse_time_input(zeit_text)
     except ValueError as e:
         print(err(str(e)))
         return False
-    if sekunden < 0:
-        print(err(beschreibung))
+    if seconds < 0:
+        print(err(description))
         return False
-    if sekunden < 1:
-        handle_toggle(state)
+    if seconds < 1:
+        handle_toggle(state, aus_studio=None)
         return True
 
-    zielzeit = zielstempel if zielstempel is not None else time.time() + sekunden
+    zielzeit = zielstempel if zielstempel is not None else time.time() + seconds
     with state.lock:
         if state.countdown_active or state.is_running:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
@@ -756,36 +770,36 @@ def _zeitplan_starten(state: AutoClickerState, zeit_text: str) -> bool:
         name = state.active_sequence.name if state.active_sequence else "?"
 
     from .runtime import status as laufstatus
-    laufstatus.plane(name, zielzeit)
+    laufstatus.schedule_run(name, zielzeit)
 
     def countdown_worker():
         starten = False
         try:
             while not state.stop_event.is_set() and not state.quit_event.is_set():
-                rest = zielzeit - time.time()
-                if rest <= 0:
+                remainder = zielzeit - time.time()
+                if remainder <= 0:
                     starten = True
                     break
-                if state.stop_event.wait(min(0.5, max(0.05, rest))):
+                if state.stop_event.wait(min(0.5, max(0.05, remainder))):
                     break
         finally:
             with state.lock:
                 state.countdown_active = False
-            laufstatus.plan_beenden()
+            laufstatus.end_schedule()
         if state.stop_event.is_set():
             state.stop_event.clear()
             print(f"\n{col('[ABBRUCH]', 'yellow')} Zeitplan abgebrochen.")
             return
         if starten and not state.quit_event.is_set():
             print(f"\n{col('[START]', 'green')} Zeit erreicht — starte Sequenz!")
-            handle_toggle(state)
+            handle_toggle(state, aus_studio=None)
 
     threading.Thread(target=countdown_worker, daemon=True).start()
-    print(f"\n{col('[COUNTDOWN]', 'cyan')} '{name}' startet {beschreibung}.")
+    print(f"\n{col('[COUNTDOWN]', 'cyan')} '{name}' startet {description}.")
     return True
 
 
-def befehl_zeitplan(state: AutoClickerState, argumente: dict) -> None:
+def command_schedule(state: AutoClickerState, arguments: dict) -> None:
     """Plant eine vom Studio gewählte Sequenz ohne Konsolen-Rückfrage."""
     if _block_if_recording(state):
         return
@@ -793,20 +807,21 @@ def befehl_zeitplan(state: AutoClickerState, argumente: dict) -> None:
         if state.is_running or state.countdown_active:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
             return
-    roh = str(argumente.get("datei") or "").strip()
-    zeit_text = str(argumente.get("zeit") or "").strip()
-    seq = load_sequence_file(Path(roh)) if roh else None
+    raw = str(arguments.get("file") or "").strip()
+    zeit_text = str(arguments.get("time") or "").strip()
+    seq = load_sequence_file(Path(raw)) if raw else None
     if seq is None:
         print(f"\n{err('Zeitplan ohne lesbare Sequenz — ignoriert.')}")
         return
     with state.lock:
         state.active_sequence = seq
         state.points = seq.points
-    _sequenz_daten_laden(state)
-    _zeitplan_starten(state, zeit_text)
+        state.run_from_studio = True
+    _load_sequence_data(state)
+    _start_schedule(state, zeit_text)
 
 
-def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
+def command_show(state: AutoClickerState, arguments: dict) -> None:
     """Setzt die Maus auf eine Stelle — „sitzt der Punkt noch da, wo er soll?".
 
     Gemessen wird hier, weil nur dieser Prozess messen kann: neben der
@@ -819,55 +834,55 @@ def befehl_zeigen(state: AutoClickerState, argumente: dict) -> None:
         print(f"\n{info('Die Sequenz laeuft — die Maus gehoert gerade dem Worker.')}")
         return
     try:
-        x, y = int(argumente.get("x")), int(argumente.get("y"))
+        x, y = int(arguments.get("x")), int(arguments.get("y"))
     except (TypeError, ValueError):
         print(f"\n{err('Zeigen ohne Stelle — ignoriert.')}")
         return
 
     set_cursor_pos(x, y)
-    name = str(argumente.get("name") or "").strip()
-    nummer = argumente.get("punkt")
+    name = str(arguments.get("name") or "").strip()
+    nummer = arguments.get("point")
     kopf = f"#{nummer} " if nummer else ""
     print(f"\n{col('[STUDIO]', 'cyan')} {kopf}{name} {coord_context(x, y)}")
     jetzt = get_screen_pixel(x, y)
     if jetzt:
         print(f"       Dort jetzt:  {describe_color(jetzt)}")
-    erwartet = argumente.get("farbe")
+    erwartet = arguments.get("color")
     if erwartet and jetzt:
         try:
             from .imaging import color_distance
-            abstand = color_distance(tuple(erwartet), jetzt)
+            distance = color_distance(tuple(erwartet), jetzt)
         except (TypeError, ValueError):
-            abstand = None
-        if abstand is not None:
-            gleich = abstand <= state.config.pixel_wait_tolerance
+            distance = None
+        if distance is not None:
+            gleich = distance <= state.config.pixel_wait_tolerance
             marke = ok("passt") if gleich else warn("weicht ab")
             print(f"       Gespeichert: {describe_color(tuple(erwartet))}  {marke}")
     print(hint("       Maus steht jetzt auf der Stelle."))
 
 
-def befehl_config(state: AutoClickerState, argumente: dict) -> None:
+def command_config(state: AutoClickerState, arguments: dict) -> None:
     """Laedt config.json neu — das Studio hat sie gerade geschrieben.
 
     Weil `state.config` dasselbe Objekt ist wie das Modul-`CONFIG`, erreicht das
     Neuladen jeden Leser, auch die Editoren und `imaging`. Ein laufender Lauf
     zieht sofort mit: der Worker liest `state.config` bei jedem Schritt neu.
     """
-    from .config import load_config, uebernehmen as _uebernehmen
+    from .config import load_config, apply_config as _uebernehmen
 
-    neu = load_config()
+    new = load_config()
     with state.lock:
-        _uebernehmen(state.config, neu)
+        _uebernehmen(state.config, new)
         log_an = state.config.debug_log or state.config.debug_detail
     # Die Ausgabe-Stufen haengen am Logger, der nur beim Start gesetzt wurde.
     init_logging(log_an)
     print(f"\n{col('[STUDIO]', 'cyan')} Einstellungen neu geladen.")
 
 
-def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
+def command_data(state: AutoClickerState, arguments: dict) -> None:
     """Laedt Slots, Items und Scan-Konfigurationen neu — das Studio hat gespeichert.
 
-    Der Gegenpart zu `befehl_config` fuer die Scan-Daten. Waehrend eines Laufs
+    Der Gegenpart zu `command_config` fuer die Scan-Daten. Waehrend eines Laufs
     passiert nichts: der Worker iteriert ueber genau diese Dicts.
     """
     with state.lock:
@@ -880,17 +895,17 @@ def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
     # eingebettete Slots/Items werden gemeinsam neu geladen. Ein globaler Pool
     # würde hier Daten einer anderen Sequenz in den laufenden Kontext mischen.
     with state.lock:
-        aktiv = state.active_sequence
-    if aktiv is not None:
-        pfad = sequence_file(aktiv.name)
-        frisch = load_sequence_file(pfad)
+        active = state.active_sequence
+    if active is not None:
+        path = sequence_file(active.name)
+        frisch = load_sequence_file(path)
         if frisch is not None:
             with state.lock:
-                state.sequences.pop(aktiv.name, None)
+                state.sequences.pop(active.name, None)
                 state.sequences[frisch.name] = frisch
                 state.active_sequence = frisch
                 state.points = frisch.points
-        _sequenz_daten_laden(state)
+        _load_sequence_data(state)
     else:
         with state.lock:
             state.points.clear()
@@ -900,14 +915,14 @@ def befehl_daten(state: AutoClickerState, argumente: dict) -> None:
             state.global_slots.clear()
             state.global_items.clear()
     with state.lock:
-        anzahl = (len(state.global_slots), len(state.global_items),
+        count = (len(state.global_slots), len(state.global_items),
                   len(state.item_scans), len(state.points))
     print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
-          f"{anzahl[0]} Slot(s), {anzahl[1]} Item(s), {anzahl[2]} Item-Scan(s), "
-          f"{anzahl[3]} Punkt(e).")
+          f"{count[0]} Slot(s), {count[1]} Item(s), {count[2]} Item-Scan(s), "
+          f"{count[3]} Punkt(e).")
 
 
-def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
+def command_reclick(state: AutoClickerState, arguments: dict) -> None:
     """Startet die Klick-Runde — der Studio-Knopf statt `klick` im Punkte-Menü.
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
@@ -927,45 +942,45 @@ def befehl_nachklick(state: AutoClickerState, argumente: dict) -> None:
     if _block_if_recording(state) or _block_if_running(state):
         return
 
-    roh = str(argumente.get("datei") or "").strip()
-    if not roh:
+    raw = str(arguments.get("file") or "").strip()
+    if not raw:
         print(f"\n{err('Klick-Runde aus dem Studio ohne Datei — ignoriert.')}")
         return
     # Reihenfolge und Punkte kommen aus derselben atomaren Sequenzdatei. Die im
     # Hauptprozess aktive Sequenz bleibt dabei absichtlich unverändert.
-    seq = load_sequence_file(Path(roh))
+    seq = load_sequence_file(Path(raw))
     if seq is None:
-        print(f"\n{err(f'{Path(roh).name} konnte nicht geladen werden')} "
+        print(f"\n{err(f'{Path(raw).name} konnte nicht geladen werden')} "
               f"{hint('(im Studio gespeichert?)')}")
         return
 
     start_nachklick(state, seq)
 
 
-def befehl_aufnahme(state: AutoClickerState, argumente: dict) -> None:
+def command_recording(state: AutoClickerState, arguments: dict) -> None:
     """Startet die normale Sequenz-Aufnahme über einen Knopf im Studio."""
     if _block_if_recording(state) or _block_if_running(state):
         return
     from .editors.sequence_recorder import start_recording
     try:
-        zyklen = max(0, int(argumente.get("zyklen") or 0))
+        cycles = max(0, int(arguments.get("cycles") or 0))
     except (TypeError, ValueError):
-        zyklen = 0
+        cycles = 0
     start_recording(
         state,
-        name=str(argumente.get("name") or "").strip(),
-        cycles=zyklen,
-        description=str(argumente.get("beschreibung") or "").strip(),
+        name=str(arguments.get("name") or "").strip(),
+        cycles=cycles,
+        description=str(arguments.get("description") or "").strip(),
     )
 
 
-def befehl_aufnahme_stop(state: AutoClickerState, argumente: dict) -> None:
+def command_recording_stop(state: AutoClickerState, arguments: dict) -> None:
     """Beendet eine Studio-Aufnahme; ihre Angaben wurden beim Start gesetzt."""
     from .editors.sequence_recorder import stop_recording
     stop_recording(state)
 
 
-def befehl_programm_beenden(state: AutoClickerState, argumente: dict) -> None:
+def command_quit(state: AutoClickerState, arguments: dict) -> None:
     """Das automatisch gestartete Studio wurde geschlossen — Hauptprozess mit."""
     import threading
     handle_quit(state, threading.get_ident())
@@ -974,13 +989,13 @@ def befehl_programm_beenden(state: AutoClickerState, argumente: dict) -> None:
 # Warum die Runde verworfen wurde. Der Aufrufer weiss es, der Handler nicht —
 # und „Studio geschlossen" bei einem Druck auf „Verwerfen" laesst es aussehen,
 # als haette sich die Runde von selbst beendet.
-VERWERF_GRUND = {
+DISCARD_REASON = {
     "knopf": "im Studio verworfen",
     "fenster": "Studio geschlossen — Runde verworfen",
 }
 
 
-def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
+def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     """Beendet eine laufende Klick-Runde — übernehmen oder verwerfen.
 
     Gestartet wird sie aus dem Studio, beendet ging bisher nur ueber die Taste.
@@ -995,41 +1010,41 @@ def befehl_nachklick_stop(state: AutoClickerState, argumente: dict) -> None:
     kehrt es wortlos zurueck - deshalb sagt es hier jemand.
     """
     from .editors.nachklick import stop_nachklick
-    verwerfen = str(argumente.get("verwerfen") or "") in ("1", "true", "True")
+    verwerfen = str(arguments.get("discard") or "") in ("1", "true", "True")
     # **Der Grund kommt vom Aufrufer.** Hier stand fuer JEDES Verwerfen die
     # Meldung „Studio geschlossen — Runde verworfen" — auch dann, wenn das
     # Fenster offen stand und jemand einfach auf „Verwerfen" gedrueckt hatte.
     # Wer das liest und weiss, dass er nichts geschlossen hat, sucht den Fehler
     # an der falschen Stelle: es sieht aus, als haette sich die Runde von selbst
     # beendet.
-    grund = str(argumente.get("grund") or "knopf")
+    reason = str(arguments.get("reason") or "knopf")
     with state.lock:
-        laeuft = state.nachklick_aktiv
+        laeuft = state.reclick_active
     if not laeuft:
         if not verwerfen:
             print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
     if verwerfen:
-        stop_nachklick(state, VERWERF_GRUND.get(grund, VERWERF_GRUND["knopf"]),
-                       uebernehmen=False)
+        stop_nachklick(state, DISCARD_REASON.get(reason, DISCARD_REASON["knopf"]),
+                       apply_config=False)
     else:
         stop_nachklick(state, "aus dem Studio übernommen")
 
 
-def befehl_block_test(state: AutoClickerState, argumente: dict) -> None:
+def command_step_test(state: AutoClickerState, arguments: dict) -> None:
     """Führt genau einen gespeicherten Block ohne Wartezeit/Trigger aus."""
     if _block_if_recording(state) or _block_if_running(state):
         return
-    pfad = Path(str(argumente.get("datei") or ""))
-    seq = load_sequence_file(pfad) if str(pfad) else None
+    path = Path(str(arguments.get("file") or ""))
+    seq = load_sequence_file(path) if str(path) else None
     if seq is None:
         print(f"\n{err('Block-Test ohne lesbare Sequenz — ignoriert.')}")
         return
-    art = str(argumente.get("phase") or "")
+    kind = str(arguments.get("phase") or "")
     try:
-        block = int(argumente.get("block"))
-        phase_index = int(argumente.get("phase_index", -1))
-        schritte = (seq.init_steps if art == "init" else seq.end_steps if art == "end"
+        block = int(arguments.get("block"))
+        phase_index = int(arguments.get("phase_index", -1))
+        schritte = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
                     else seq.loop_phases[phase_index].steps)
         step = schritte[block]
     except (TypeError, ValueError, IndexError):
@@ -1038,7 +1053,7 @@ def befehl_block_test(state: AutoClickerState, argumente: dict) -> None:
     with state.lock:
         state.active_sequence = seq
         state.points = seq.points
-    _sequenz_daten_laden(state)
+    _load_sequence_data(state)
     probe = copy.deepcopy(step)
     probe.delay_before = 0.0
     probe.delay_max = None
@@ -1065,34 +1080,46 @@ def befehl_block_test(state: AutoClickerState, argumente: dict) -> None:
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
 # `StudioBridge.lauf_befehl()` ueberhaupt senden kann; laufen die beiden Seiten
 # auseinander, hat ein Knopf keine Wirkung mehr und niemand merkt es.
-BEFEHLE = {
-    "start": befehl_start,
-    "start_manuell": befehl_start_manuell,
-    "stop": befehl_stop,
-    "pause": befehl_pause,
-    "skip": befehl_skip,
-    "skip_step": befehl_skip_step,
-    "finish": befehl_finish,
-    "manuell": befehl_manuell,
-    "manuell_aktion": befehl_manuell_aktion,
-    "zeitplan": befehl_zeitplan,
-    "zeigen": befehl_zeigen,
-    "config": befehl_config,
-    "daten": befehl_daten,
-    "aufnahme": befehl_aufnahme,
-    "aufnahme_stop": befehl_aufnahme_stop,
-    "programm_beenden": befehl_programm_beenden,
-    "nachklick": befehl_nachklick,
-    "nachklick_stop": befehl_nachklick_stop,
-    "block_test": befehl_block_test,
+COMMANDS = {
+    "start": command_start,
+    "start_manuell": command_start_manual,
+    "stop": command_stop,
+    "pause": command_pause,
+    "skip": command_skip,
+    "skip_step": command_skip_step,
+    "finish": command_finish,
+    "manuell": command_manual,
+    "manuell_aktion": command_manual_action,
+    "zeitplan": command_schedule,
+    "zeigen": command_show,
+    "config": command_config,
+    "daten": command_data,
+    "aufnahme": command_recording,
+    "aufnahme_stop": command_recording_stop,
+    "programm_beenden": command_quit,
+    "nachklick": command_reclick,
+    "nachklick_stop": command_reclick_stop,
+    "block_test": command_step_test,
 }
 
 
 def handle_pause(state: AutoClickerState) -> None:
-    """Pausiert oder setzt die Sequenz fort."""
+    """Pausiert oder setzt die Sequenz fort.
+
+    Wartet gerade ein Gate (Haltepunkt oder manueller Modus), heisst
+    „Fortsetzen" genau das: der Block laeuft. Ohne diesen Zweig setzte der
+    Hotkey die Pause, waehrend der Worker im Gate stand — zwei Zustaende
+    uebereinander, und nach dem Gate blieb der Lauf in der Pause haengen.
+    """
     with state.lock:
         if not state.is_running:
             print(f"\n{info('Keine Sequenz läuft.')}")
+            return
+
+        if state.gate_waiting:
+            state.step_command = "run"
+            state.step_command_event.set()
+            print(f"\n{col('[WEITER]', 'green')} Haltepunkt freigegeben.")
             return
 
         if state.pause_event.is_set():
@@ -1110,7 +1137,7 @@ def handle_skip(state: AutoClickerState) -> None:
     Gegenstand hängt am Zustand — wie bei CTRL+ALT+U.
     """
     with state.lock:
-        nachklick = state.nachklick_aktiv
+        nachklick = state.reclick_active
     if nachklick:
         from .editors.nachklick import nachklick_ueberspringen
         nachklick_ueberspringen(state)
@@ -1162,17 +1189,17 @@ def handle_switch(state: AutoClickerState) -> None:
     if choice == -1 or choice >= len(sequences):
         return
 
-    _name, pfad = sequences[choice]
-    seq = load_sequence_file(pfad)
+    _name, path = sequences[choice]
+    seq = load_sequence_file(path)
     if seq is None:
-        print(f"\n{err(f'{pfad.name} konnte nicht geladen werden')} "
+        print(f"\n{err(f'{path.name} konnte nicht geladen werden')} "
               f"{hint('(Datei beschädigt?)')}")
         return
 
     with state.lock:
         state.active_sequence = seq
         state.points = seq.points
-    _sequenz_daten_laden(state)
+    _load_sequence_data(state)
     print(f"\n{ok(f'Gewechselt zu: {seq.name}')}")
     print(f"     Starten mit {col('CTRL+ALT+S', 'yellow')}")
 
@@ -1261,7 +1288,7 @@ def handle_schedule(state: AutoClickerState) -> None:
 
         # Ab hier derselbe Countdown wie beim Studio. Nur die Eingabe und die
         # Bestätigung sind TUI-spezifisch; Ablauf, Abbruch und Statusdatei nicht.
-        _zeitplan_starten(state, time_input)
+        _start_schedule(state, time_input)
         return
 
     except (KeyboardInterrupt, EOFError):
@@ -1299,7 +1326,7 @@ def handle_record_sequence(state: AutoClickerState) -> None:
     (Fenster zu, Programm aus) verwirft.
     """
     with state.lock:
-        nachklick = state.nachklick_aktiv
+        nachklick = state.reclick_active
     if nachklick:
         from .editors.nachklick import stop_nachklick
         stop_nachklick(state, "übernommen")
@@ -1311,7 +1338,7 @@ def handle_record_sequence(state: AutoClickerState) -> None:
 def handle_record_pause(state: AutoClickerState) -> None:
     """Pausiert/Setzt die laufende Sequenz-Aufnahme oder Klick-Runde fort."""
     with state.lock:
-        nachklick = state.nachklick_aktiv
+        nachklick = state.reclick_active
     if nachklick:
         from .editors.nachklick import nachklick_pause
         nachklick_pause(state)
@@ -1411,14 +1438,14 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     with state.lock:
         was_recording = state.recording_active
         state.recording_active = False
-        war_nachklick = state.nachklick_aktiv
+        war_nachklick = state.reclick_active
     if war_nachklick:
         # **Beenden ist kein Übernehmen.** Vorher schrieb dieser Pfad, was bis
         # dahin gesetzt war — und damit landeten in einer echten Runde drei
         # Klicks auf Fensterdekoration dauerhaft in sequence.json. Wer übernehmen
         # will, drückt CTRL+ALT+J; alles andere lässt die Punkte in Ruhe.
         from .editors.nachklick import stop_nachklick
-        stop_nachklick(state, "beim Beenden verworfen", uebernehmen=False)
+        stop_nachklick(state, "beim Beenden verworfen", apply_config=False)
     if was_recording:
         from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()

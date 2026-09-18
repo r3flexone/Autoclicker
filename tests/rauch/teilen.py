@@ -49,15 +49,15 @@ def lauf():
         # Sequenzordner liegen, sind es zwei, und die Zahl war nur noch ein
         # Pin auf einen Stand, den es nicht mehr gibt.
         from autoclicker.editors.sequence_studio.bridge_teilen import TEILE
-        haken = f.anzahl("#teilen-export input[type=checkbox]")
+        haken = f.count("#teilen-export input[type=checkbox]")
         pruefe(haken == len(TEILE),
                f"{len(TEILE)} Haken erwartet (je einer pro TEILE), da: {haken}")
         pruefe("probe.zip" in f.text("#teilen-mitte"), "das Buendel fehlt in der Liste")
-        f.bild("teilen")
+        f.image("teilen")
         f.klick("#teilen-mitte button")
         pruefe("gelesen" in f.status(), f"Einlesen: {f.status()!r}")
         pruefe(bool(f.text("#teilen-import").strip()), "rechts steht nichts zum Import")
-        f.bild("teilen_import")
+        f.image("teilen_import")
         fehler.extend(f.fehler)
     return fehler
 

@@ -86,8 +86,8 @@ def spar_faktor(*paare: tuple[bool, float]) -> float:
     der Kosten, der UEBRIG bleibt: `spar_faktor((True, 0.25), (True, 0.10))` = 0.675.
     """
     faktor = 1.0
-    for aktiv, anteil in paare:
-        if aktiv:
+    for active, anteil in paare:
+        if active:
             faktor *= (1.0 - anteil)
     return faktor
 
@@ -273,7 +273,6 @@ def skill_cfg(skill_name: str) -> SkillConfig:
 # gibt - und ein duennes Top-Gebot ist eine WARNUNG, kein Ausschluss.
 MIN_SELL_BID_VOLUME = 1        # es muss ein Kaufgebot mit Menge geben, mehr nicht
 MIN_BUY_ASK_VOLUME = 50        # Zutatenkauf: die Angebotsseite muss echt sein
-MIN_MARKET_VOLUME = 50         # Mindest-Volumen je Seite fuer "beidseitig echter Markt"
 THIN_BID_HOURS = 1.0           # Warnung, wenn das Top-Gebot < 1 h Produktion schluckt
 MAX_SPREAD_RATIO = 1.0         # Warnung ab Ask > 2x Bid
 MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung ab >50% Abweichung vom 24h-Schnitt
@@ -322,15 +321,24 @@ NPC_MARKER_COLOR = "#d03b3b"          # reserviert: "NPC-Verkauf gleich gut oder
 # Sheet "Begruendung": rechnet eine Stunde Produktion durch die echten Kaufgebot-Stufen
 # im Player Shop, statt zu unterstellen, dass alles zum besten Gebot weggeht.
 SHOW_REASON_ANALYSIS = True
-REASON_TOP_N = 10                     # so viele Zeilen stehen am Ende in der Begruendung
 
-# Wie viele Kandidaten VORHER durchs Orderbuch gerechnet werden. Muss groesser sein als
-# REASON_TOP_N, sonst kann die Messung die Rangfolge nicht mehr aendern: das Papier-
-# Gold/h unterstellt, dass du beliebig viel zum besten Gebot los wirst, und genau das
-# hebelt ein duennes Buch aus. Ein Item mit Platz 1 auf dem Papier kann nach 12 Minuten
-# sein Top-Gebot leergeraeumt haben, waehrend Platz 12 acht Stunden lang traegt.
-# Kostet 1 Request pro Kandidat.
+# Wie viele Items durchs Orderbuch gerechnet werden: die besten N der nach
+# Papier-Gold/h vorsortierten Liste (1 Request je Item, parallel, s. u.). 0 heisst
+# alle, die auf dem Papier Gold bringen - unnoetig fuer die Rangfolge, denn ein
+# Papier-Wert ist eine Obergrenze und Platz 80 wird durch ein Orderbuch nicht zu
+# Platz 5. Was nicht gemessen wird, steht trotzdem im Blatt: mit seinem
+# Papier-Wert, in `Gold/h Quelle` als "Papier" gekennzeichnet und grau gesetzt.
+#
+# Hier stand einmal ein REASON_TOP_N = 10 daneben, das die Begruendung kuerzte -
+# und weil die Empfehlung ihre Zahl aus der gekuerzten Liste zog, standen von 30
+# Messungen zehn im Blatt und 184 Zellen blieben leer. Jede Messung bleibt jetzt.
 REASON_CANDIDATES = 30
+
+# So viele Orderbuch-Requests laufen gleichzeitig. Ein Request ist ~0,4 s reine
+# Wartezeit aufs Netz; nacheinander waren 164 davon eine Minute, in der nichts zu
+# sehen war. Acht parallel bringen es auf rund zehn Sekunden. Hoeher lohnt kaum,
+# und irgendwann drosselt die API - 1 heisst wieder streng nacheinander.
+ORDERBUCH_PARALLEL = 8
 
 # Preis-Position: aktueller Erloes gegen den 30-Tage-Schnitt desselben Items. Ab dieser
 # Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).
@@ -414,6 +422,6 @@ CONFIG_HASH_KEYS = [
     "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
     "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
     "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
-    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "MIN_MARKET_VOLUME",
+    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME",
     "RANKING_BASIS",
 ]

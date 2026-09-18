@@ -26,7 +26,7 @@ check("und laesst keine Temp-Datei liegen",
 # **Der eigentliche Zweck: geht das Schreiben schief, bleibt die ALTE Datei stehen.**
 # Gestellt wird der Absturz genau dort, wo er im Ernstfall passiert - in der Temp-Datei,
 # also nach dem Anlegen und vor dem `os.replace()`. Ohne die Temp-Datei-Technik stuende
-# hier jetzt eine halb geschriebene, unlesbare `daten.json`.
+# hier jetzt eine halb geschriebene, unlesbare `data.json`.
 import autoclicker.utils.parsing as _pmod
 _echtes_fsync, _echtes_replace = _pmod.os.fsync, _pmod.os.replace
 
@@ -226,13 +226,13 @@ section("Eine frisch geschriebene Sequenz ist sofort sichtbar")
 
 # `list_available_sequences()` cacht. War der Schluessel die mtime des ORDNERS,
 # liessen zwei im selben Tick geschriebene Sequenzen die zweite unsichtbar werden
-# (NTFS stempelt Verzeichnisse grob) - und `zuletzt_bearbeitet()` nannte die
+# (NTFS stempelt Verzeichnisse grob) - und `last_edited()` nannte die
 # falsche. Der Test friert die Ordner-Zeit ein und bildet die grobe Aufloesung
 # nach; mit dem alten Schluessel ist er auf jeder Plattform rot.
 import json as _js_seq
 
 from autoclicker.persistence import sequences as _seqmod
-from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb_seq
+from autoclicker.sequence_studio import last_edited as _zb_seq
 
 _seq_cwd = _os.getcwd()
 _seq_tmp = tempfile.mkdtemp()
@@ -240,10 +240,10 @@ _os.chdir(_seq_tmp)
 try:
     Path("sequences").mkdir()
 
-    def _schreibe_seq(ordner, name):
-        pfad = Path("sequences", ordner, "sequence.json")
-        pfad.parent.mkdir()
-        pfad.write_text(_js_seq.dumps({
+    def _schreibe_seq(folder, name):
+        path = Path("sequences", folder, "sequence.json")
+        path.parent.mkdir()
+        path.write_text(_js_seq.dumps({
             "name": name, "schema_version": 4, "total_cycles": 1,
             "points": [], "init_steps": [], "end_steps": [], "loop_phases": []}),
             encoding="utf-8")
@@ -266,7 +266,7 @@ try:
     _os.utime(Path("sequences/erste/sequence.json"), (_ordnerzeit, _ordnerzeit))
     _os.utime(Path("sequences/zweite/sequence.json"),
               (_ordnerzeit + 100, _ordnerzeit + 100))
-    check("und zuletzt_bearbeitet() findet die neuere",
+    check("und last_edited() findet die neuere",
           _zb_seq() == Path("sequences/zweite/sequence.json"))
 
     # Der Cache soll trotzdem einer bleiben: gleiche Lage, gleiche Liste.
@@ -298,8 +298,8 @@ _win_namen = dict(_re_hk.findall(
 check("der Test findet ueberhaupt Windows-Hotkeys", len(_win_namen) > 20)
 
 from autoclicker.platforms import common as _common_hk
-_id_name = {wert: name for name, wert in vars(_common_hk).items()
-            if name.startswith("HOTKEY_") and isinstance(wert, int)}
+_id_name = {value: name for name, value in vars(_common_hk).items()
+            if name.startswith("HOTKEY_") and isinstance(value, int)}
 
 _lin_ids = {_id_name[i] for i in _BIND if i in _id_name}
 check("beide Backends kennen dieselben Hotkey-IDs",
@@ -343,7 +343,7 @@ section("Alle Aufnahme-Marker liegen auf derselben Ebene")
 # dieselbe Bedeutung und nur einen anderen Gegenstand.
 _marker_ids = ["HOTKEY_RECORD_COLOR", "HOTKEY_RECORD_SCREENSHOT",
                "HOTKEY_REC_PHASE", "HOTKEY_REC_REGION", "HOTKEY_REC_WATCH"]
-_name_id = {name: wert for name, wert in vars(_common_hk).items()
+_name_id = {name: value for name, value in vars(_common_hk).items()
             if name.startswith("HOTKEY_")}
 
 _ohne_shift = [n for n in _marker_ids

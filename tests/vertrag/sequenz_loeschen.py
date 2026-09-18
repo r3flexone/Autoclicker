@@ -120,7 +120,7 @@ try:
     check("der Ordner ist weg", not _ordner_raid.exists())
     # **Verschoben, nicht entfernt.** Alles muss mit — die Vorlagen sind der
     # Teil, den man am wenigsten wiederherstellen kann. Die Struktur ist
-    # gespiegelt (wie bei `sicherungspfad()`), also steht dort der ORDNERname.
+    # gespiegelt (wie bei `backup_path()`), also steht dort der ORDNERname.
     _bak = Path("backups/sequences") / _ordner_raid.name
     check("er liegt unter backups/", _bak.is_dir())
     check("samt sequence.json", (_bak / "sequence.json").exists())

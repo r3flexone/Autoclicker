@@ -47,18 +47,18 @@ def platform_name() -> str:
 
 
 def environment_warnings() -> list[str]:
-    meldungen = []
+    messages = []
     if _session_type() == "wayland":
-        meldungen.append(
+        messages.append(
             "Wayland erkannt: globale Hotkeys, Eingabesimulation und "
             "Fensteraufnahme benötigen eine X11-Sitzung.")
     elif not os.environ.get("DISPLAY"):
-        meldungen.append("Keine X11-Sitzung gefunden: DISPLAY ist nicht gesetzt.")
+        messages.append("Keine X11-Sitzung gefunden: DISPLAY ist nicht gesetzt.")
     for modul, paket in (
             ("pynput", "pynput"), ("Xlib", "python-xlib"), ("mss", "mss")):
         if find_spec(modul) is None:
-            meldungen.append(f"Linux-Abhängigkeit fehlt: pip install {paket}")
-    return meldungen
+            messages.append(f"Linux-Abhängigkeit fehlt: pip install {paket}")
+    return messages
 
 
 def _pynput():
@@ -111,8 +111,8 @@ def get_screen_center() -> tuple[int, int]:
     if rechteck:
         return ((rechteck[0] + rechteck[2]) // 2,
                 (rechteck[1] + rechteck[3]) // 2)
-    groesse = get_screen_size()
-    return (groesse[0] // 2, groesse[1] // 2) if groesse else (960, 540)
+    size = get_screen_size()
+    return (size[0] // 2, size[1] // 2) if size else (960, 540)
 
 
 def capture_screen(region=None):
@@ -121,17 +121,17 @@ def capture_screen(region=None):
         from PIL import Image
         with _mss_desktop() as bildschirm:
             if region:
-                links, oben, rechts, unten = (int(v) for v in region)
-                if rechts <= links or unten <= oben:
+                left, top, right, bottom = (int(v) for v in region)
+                if right <= left or bottom <= top:
                     return None
                 monitor = {
-                    "left": links, "top": oben,
-                    "width": rechts - links, "height": unten - oben,
+                    "left": left, "top": top,
+                    "width": right - left, "height": bottom - top,
                 }
             else:
                 monitor = bildschirm.monitors[0]
-            roh = bildschirm.grab(monitor)
-            return Image.frombytes("RGB", roh.size, roh.rgb)
+            raw = bildschirm.grab(monitor)
+            return Image.frombytes("RGB", raw.size, raw.rgb)
     except (ImportError, OSError, RuntimeError, ValueError) as fehler:
         logger.error("Linux-Screenshot fehlgeschlagen: %s", fehler)
         return None
@@ -143,8 +143,8 @@ def capture_window(_handle: int):
 
 
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
-    bild = capture_screen((int(x), int(y), int(x) + 1, int(y) + 1))
-    return tuple(bild.getpixel((0, 0))[:3]) if bild is not None else None
+    image = capture_screen((int(x), int(y), int(x) + 1, int(y) + 1))
+    return tuple(image.getpixel((0, 0))[:3]) if image is not None else None
 
 
 def get_cursor_pos() -> tuple[int, int]:
@@ -217,13 +217,13 @@ def send_key(key_name: str) -> bool:
     name = str(key_name).strip().lower()
     try:
         keyboard, _ = _pynput()
-        taste = _keyboard_key(keyboard, name)
-        if taste is None:
+        key = _keyboard_key(keyboard, name)
+        if key is None:
             print(err(f"Unbekannte Taste: '{key_name}'"))
             return False
         controller = keyboard.Controller()
-        controller.press(taste)
-        controller.release(taste)
+        controller.press(key)
+        controller.release(key)
         return True
     except (ImportError, OSError, RuntimeError) as fehler:
         logger.error("Linux-Tastendruck fehlgeschlagen: %s", fehler)
@@ -261,8 +261,8 @@ def remove_mouse_hook() -> None:
         _mouse_listener = None
 
 
-def _key_name(keyboard, taste) -> str | None:
-    char = getattr(taste, "char", None)
+def _key_name(keyboard, key) -> str | None:
+    char = getattr(key, "char", None)
     if isinstance(char, str) and len(char) == 1:
         return char.lower()
     mapping = {
@@ -274,7 +274,7 @@ def _key_name(keyboard, taste) -> str | None:
     }
     for nummer in range(1, 13):
         mapping[getattr(keyboard.Key, f"f{nummer}")] = f"f{nummer}"
-    return mapping.get(taste)
+    return mapping.get(key)
 
 
 def install_keyboard_hook(on_key_down) -> bool:
@@ -285,19 +285,19 @@ def install_keyboard_hook(on_key_down) -> bool:
         keyboard, _ = _pynput()
         modifier = set()
         steuerung = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
-        alt = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+        old = {keyboard.Key.old, keyboard.Key.alt_l, keyboard.Key.alt_r,
                keyboard.Key.alt_gr}
 
-        def on_press(taste):
-            if taste in steuerung or taste in alt:
-                modifier.add(taste)
+        def on_press(key):
+            if key in steuerung or key in old:
+                modifier.add(key)
                 return
-            name = _key_name(keyboard, taste)
+            name = _key_name(keyboard, key)
             if name in KEY_NAMES and not modifier:
                 on_key_down(name)
 
-        def on_release(taste):
-            modifier.discard(taste)
+        def on_release(key):
+            modifier.discard(key)
 
         _keyboard_listener = keyboard.Listener(
             on_press=on_press, on_release=on_release)
@@ -363,7 +363,7 @@ def _client_ids(display, root) -> list[int]:
     return []
 
 
-def liste_fenster() -> list:
+def list_windows() -> list:
     try:
         from Xlib import X, error as xerror
     except ImportError:
@@ -372,7 +372,7 @@ def liste_fenster() -> list:
     try:
         display = _x_display()
         root = display.screen().root
-        gefunden = []
+        found = []
         for xid in _client_ids(display, root):
             try:
                 window = display.create_resource_object("window", xid)
@@ -381,10 +381,10 @@ def liste_fenster() -> list:
                 titel = _window_title(display, window)
                 rect = _window_rect(window, root)
                 if titel and rect and rect[2] - rect[0] >= 80 and rect[3] - rect[1] >= 80:
-                    gefunden.append((titel, rect, xid))
+                    found.append((titel, rect, xid))
             except (AttributeError, TypeError, xerror.XError):
                 continue
-        return sorted(gefunden, key=lambda eintrag: (eintrag[1][1], eintrag[1][0]))
+        return sorted(found, key=lambda entry: (entry[1][1], entry[1][0]))
     except (OSError, RuntimeError, xerror.DisplayError, xerror.XError):
         return []
     finally:
@@ -415,33 +415,33 @@ def get_client_rect_by_handle(handle: int):
 def resolve_window(title: str, instance: int = 0, reference_rect=None):
     if not isinstance(title, str) or not title.strip():
         return None
-    ziel = title.strip().casefold()
-    fenster = liste_fenster()
-    kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
-    if not kandidaten:
-        kandidaten = [e for e in fenster if ziel in e[0].casefold()]
-    if not kandidaten:
+    target = title.strip().casefold()
+    fenster = list_windows()
+    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    if not candidates:
+        candidates = [e for e in fenster if target in e[0].casefold()]
+    if not candidates:
         return None
     try:
         index = int(instance)
     except (TypeError, ValueError):
         index = 0
-    if 0 <= index < len(kandidaten):
-        return kandidaten[index]
+    if 0 <= index < len(candidates):
+        return candidates[index]
     if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
         try:
             ref = tuple(int(v) for v in reference_rect)
-            return min(kandidaten, key=lambda e: sum(
+            return min(candidates, key=lambda e: sum(
                 abs(e[1][i] - ref[i]) for i in range(4)))
         except (TypeError, ValueError):
             pass
-    return kandidaten[0]
+    return candidates[0]
 
 
 def get_client_rect_by_title(title_substring: str):
-    ziel = str(title_substring or "").casefold()
-    eintrag = next((e for e in liste_fenster() if ziel in e[0].casefold()), None)
-    return eintrag[1] if eintrag else None
+    target = str(title_substring or "").casefold()
+    entry = next((e for e in list_windows() if target in e[0].casefold()), None)
+    return entry[1] if entry else None
 
 
 def get_foreground_window_title() -> str:
@@ -480,23 +480,23 @@ def get_window_title_at(x: int, y: int) -> str:
     Fenster erst aktiviert, wird sonst gegen das VORIGE Fenster geprüft (siehe
     die ausführliche Begründung im Windows-Backend).
 
-    `liste_fenster()` liefert die sichtbaren Fenster mit ihrem Client-Rechteck,
+    `list_windows()` liefert die sichtbaren Fenster mit ihrem Client-Rechteck,
     sortiert nach Lage. Eine Stapelreihenfolge kennt X11 hier nicht — bei
     Überlappung gewinnt deshalb das KLEINSTE treffende Fenster: ein Dialog über
     einem grossen Spielfenster ist fast immer der obenliegende.
     """
-    treffer = []
-    for eintrag in liste_fenster():
+    match = []
+    for entry in list_windows():
         try:
-            titel, rect = eintrag[0], eintrag[1]
-            links, oben, rechts, unten = rect
+            titel, rect = entry[0], entry[1]
+            left, top, right, bottom = rect
         except (TypeError, ValueError, IndexError):
             continue
-        if links <= x < rechts and oben <= y < unten:
-            treffer.append(((rechts - links) * (unten - oben), titel))
-    if not treffer:
+        if left <= x < right and top <= y < bottom:
+            match.append(((right - left) * (bottom - top), titel))
+    if not match:
         return ""
-    return min(treffer)[1]
+    return min(match)[1]
 
 
 def check_failsafe(state=None) -> bool:
@@ -585,11 +585,11 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
     return result["name"]
 
 
-def setze_app_id(_app_id: str = APP_ID) -> bool:
+def set_app_id(_app_id: str = APP_ID) -> bool:
     return False
 
 
-def setze_fenster_symbol(_titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(_titel_substring: str, warten: float = 0.0) -> bool:
     if warten > 0:
         time.sleep(min(float(warten), 0.05))
     return False
