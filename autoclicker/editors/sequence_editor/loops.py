@@ -74,12 +74,12 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 # einen Namen vor, den es schon gibt. Doppelte Phasennamen sind zwar
                 # erlaubt (der Zeitplan haengt an der Position, nicht am Namen) -
                 # aber zwei Zeilen "Loop 3" in der Liste sind trotzdem eine Zumutung.
-                vorschlag = next_free_name(
+                proposal = next_free_name(
                     "Loop", {p.name: p for p in loop_phases})
                 loop_name = safe_input(
-                    f"  Name der Loop-Phase (Enter = '{vorschlag}'): ").strip()
+                    f"  Name der Loop-Phase (Enter = '{proposal}'): ").strip()
                 if not loop_name:
-                    loop_name = vorschlag
+                    loop_name = proposal
 
                 print(f"\n  Schritte für {loop_name} hinzufügen:")
                 steps = edit_phase(state, [], loop_name)

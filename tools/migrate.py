@@ -60,7 +60,7 @@ def main() -> int:
     for path in result.uebersprungen:
         print(f"  [UEBERSPRUNGEN] {path.name}: nicht ladbar, bleibt unveraendert")
 
-    print(f"\n{result.changed_count} angepasst, {result.aktuell} bereits aktuell, "
+    print(f"\n{result.changed_count} angepasst, {result.current} bereits aktuell, "
           f"{len(result.uebersprungen)} uebersprungen.")
     if result.geaendert and not schreiben:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")

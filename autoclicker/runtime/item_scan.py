@@ -393,10 +393,10 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             width, height = img.size
             basis = f"{sanitize_filename(known)}_{width}x{height}"
             template_file = f"{basis}.png"
-            nummer = 2
+            number = 2
             while (active_templates_dir(state) / template_file).exists():
-                template_file = f"{basis}_{nummer}.png"
-                nummer += 1
+                template_file = f"{basis}_{number}.png"
+                number += 1
             template_path = active_templates_dir(state) / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)

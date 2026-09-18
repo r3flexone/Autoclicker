@@ -291,10 +291,10 @@ class ScanInteractionMixin:
             return ""
         if not geprueft:
             return ""
-        offen = total - found
+        remaining = total - found
         text = f" · davon {found} mit bekanntem Item"
-        if offen:
-            text += f", {offen} noch unbekannt"
+        if remaining:
+            text += f", {remaining} noch unbekannt"
         if fremd:
             text += f" ({fremd} gehören noch nicht zu diesem Scan)"
         return text
@@ -438,8 +438,8 @@ class ScanInteractionMixin:
         """
         if self._ecke is not None:
             return self._rahmen_auswahl(x, y)
-        gewaehlt = self._slot_unter(x, y)
-        if gewaehlt is None:
+        selected = self._slot_unter(x, y)
+        if selected is None:
             # Nichts getroffen: das ist der Anfang eines Rechtecks, nicht
             # „nichts". Aufgehoben wird die Auswahl mit ESC oder mit einem
             # Rechteck, in dem nichts liegt.
@@ -447,10 +447,10 @@ class ScanInteractionMixin:
             return self._scan_melde(
                 "Auswahl-Rechteck: zweite Ecke — oder ESC.", "info")
         if zusatz:
-            return self._auswahl_umschalten(gewaehlt)
+            return self._auswahl_umschalten(selected)
         self.scan_art = ART_SLOT
-        self.scan_name = gewaehlt
-        self._auswahl = [gewaehlt]
+        self.scan_name = selected
+        self._auswahl = [selected]
         return self.scan_daten()
 
     def _slot_unter(self, x: int, y: int) -> Optional[str]:
@@ -462,7 +462,7 @@ class ScanInteractionMixin:
         auseinanderlaufen — und dann träfe derselbe Zeiger je nach Handgriff
         einen anderen Slot.
         """
-        gewaehlt, kleinste = None, None
+        selected, kleinste = None, None
         for slot in self.slots.values():
             x1, y1, x2, y2 = self._trefferflaeche(slot.scan_region)
             if not (x1 <= x <= x2 and y1 <= y <= y2):
@@ -470,8 +470,8 @@ class ScanInteractionMixin:
             flaeche = ((slot.scan_region[2] - slot.scan_region[0]) *
                        (slot.scan_region[3] - slot.scan_region[1]))
             if kleinste is None or flaeche <= kleinste:
-                gewaehlt, kleinste = slot.name, flaeche
-        return gewaehlt
+                selected, kleinste = slot.name, flaeche
+        return selected
 
     def scan_direkt(self, data: dict) -> dict:
         """Farbe messen bzw. Klickpunkt setzen, OHNE vorher den Modus zu wechseln.

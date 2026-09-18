@@ -253,21 +253,21 @@ class ScanCaptureMixin:
                 fenster = list_windows()
             except ImportError:
                 fenster = []
-            gewaehlt = next((e for e in fenster if int(e[2]) == fenster_id), None)
-            if gewaehlt is None:
+            selected = next((e for e in fenster if int(e[2]) == fenster_id), None)
+            if selected is None:
                 return self._scan_melde(
                     "Das gewählte Fenster ist nicht mehr offen. Liste neu wählen.", "err")
-            titel, rechteck, _kennung = gewaehlt
-            gleich = [e for e in fenster if e[0].casefold() == titel.casefold()]
+            title, rechteck, _kennung = selected
+            gleich = [e for e in fenster if e[0].casefold() == title.casefold()]
             index = next((i for i, e in enumerate(gleich)
                           if int(e[2]) == fenster_id), 0)
             if cfg is not None:
-                aenderung = (cfg.capture_window_title != titel
+                aenderung = (cfg.capture_window_title != title
                               or cfg.capture_window_index != index
                               or cfg.capture_window_rect is None)
                 if aenderung:
                     self._merke("Fensterquelle gewählt")
-                    cfg.capture_window_title = titel
+                    cfg.capture_window_title = title
                     cfg.capture_window_index = index
                     # Beim ersten Verankern gelten vorhandene Slots für die
                     # aktuelle Lage. Danach bleibt die alte Referenz bis zur
@@ -311,8 +311,8 @@ class ScanCaptureMixin:
             from ...winapi import list_windows
         except ImportError:
             return []
-        return [{"titel": titel, "bereich": list(rechteck), "id": kennung}
-                for titel, rechteck, kennung in list_windows()]
+        return [{"titel": title, "bereich": list(rechteck), "id": kennung}
+                for title, rechteck, kennung in list_windows()]
 
     def _klick_bereich(self, x: int, y: int) -> dict:
         """Zwei Ecken schränken das Bild ein — zugeschnitten, nicht neu geholt.

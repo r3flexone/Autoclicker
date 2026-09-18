@@ -44,14 +44,14 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
     Editoren: wiederholen statt abbrechen.
     """
     priority = max(1, int(vorgabe or 1))
-    eingabe = safe_input(
+    user_input = safe_input(
         f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-    if abbrechbar and is_cancel(eingabe):
+    if abbrechbar and is_cancel(user_input):
         return CANCELLED
-    if not eingabe:
+    if not user_input:
         return priority
     try:
-        value = int(eingabe)
+        value = int(user_input)
     except ValueError:
         return priority
     if value != 0:
@@ -63,7 +63,7 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
     return 1
 
 
-def ask_confirm_click(state: AutoClickerState, vorgabe_delay: float, *,
+def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
                              frage: str = "  Bestätigungs-Punkt-ID (Enter = keiner): ",
                              abbrechbar: bool = False):
     """Fragt Punkt-ID und Wartezeit eines Bestätigungs-Klicks ab.
@@ -71,28 +71,28 @@ def ask_confirm_click(state: AutoClickerState, vorgabe_delay: float, *,
     Manche Spiele fragen nach („wirklich verkaufen?"); ohne den Klick danach
     bleibt das Popup stehen, und der Scan erreicht den nächsten Slot nicht mehr.
 
-    Rückgabe `(punkt_id, wartezeit)` — `punkt_id` ist `None`, wenn keiner gesetzt
+    Rückgabe `(point_id, wartezeit)` — `point_id` ist `None`, wenn keiner gesetzt
     werden soll (leere Eingabe, unbekannte ID, Zahlensalat). Bei Abbruch
     `CANCELLED`.
 
     **Der Punkt wird unter `state.lock` gesucht.** `get_point_by_id()` läuft über
     `state.points`, und die Liste kann sich unter einem laufenden Worker ändern.
     """
-    wartezeit = vorgabe_delay
-    eingabe = safe_input(frage).strip()
-    if abbrechbar and is_cancel(eingabe):
+    wartezeit = default_delay
+    user_input = safe_input(frage).strip()
+    if abbrechbar and is_cancel(user_input):
         return CANCELLED
-    if not eingabe:
+    if not user_input:
         return None, wartezeit
     try:
-        punkt_id = int(eingabe)
+        point_id = int(user_input)
     except ValueError:
         print("  -> Keine Zahl — kein Bestätigungs-Klick gesetzt")
         return None, wartezeit
     with state.lock:
-        found = get_point_by_id(state, punkt_id) is not None
+        found = get_point_by_id(state, point_id) is not None
     if not found:
-        print(f"  -> Punkt #{punkt_id} existiert nicht")
+        print(f"  -> Punkt #{point_id} existiert nicht")
         return None, wartezeit
     duration = safe_input(f"  Wartezeit vor Bestätigung (Enter = {wartezeit}s): ").strip()
     if duration:
@@ -101,4 +101,4 @@ def ask_confirm_click(state: AutoClickerState, vorgabe_delay: float, *,
             print(f"  -> {fehler}, behalte {wartezeit}s")
         else:
             wartezeit = value
-    return punkt_id, wartezeit
+    return point_id, wartezeit

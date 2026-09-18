@@ -79,14 +79,14 @@ CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur is_gatherin
 # uebrig ist - genauso wie Clan- und Equipment-Boost bei der Geschwindigkeit, und
 # an derselben Stelle schon einmal per Stoppuhr bestaetigt.
 
-def spar_faktor(*paare: tuple[bool, float]) -> float:
+def spar_faktor(*pairs: tuple[bool, float]) -> float:
     """Mehrere Ersparnisse zu einem Kostenfaktor kombinieren.
 
     `(aktiv, anteil)`-Paare, inaktive zaehlen nicht mit. Ergebnis ist der Anteil
     der Kosten, der UEBRIG bleibt: `spar_faktor((True, 0.25), (True, 0.10))` = 0.675.
     """
     faktor = 1.0
-    for active, anteil in paare:
+    for active, anteil in pairs:
         if active:
             faktor *= (1.0 - anteil)
     return faktor

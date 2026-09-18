@@ -547,15 +547,15 @@ def run_calibration(state: AutoClickerState) -> None:
         return
 
     # --- Vorschau ----------------------------------------------------------------
-    vorschau = calibration_preview(state, transform)
+    preview = calibration_preview(state, transform)
     print()
     print(col("  VORSCHAU (Auszug):", 'bold'))
-    for label, old, new in vorschau[:12]:
+    for label, old, new in preview[:12]:
         print(f"    {label:<34} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
-    if len(vorschau) > 12:
-        print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
+    if len(preview) > 12:
+        print(f"    {info(f'... und {len(preview) - 12} weitere')}")
 
-    draussen = _outside_all_monitors([new for _, _, new in vorschau])
+    draussen = _outside_all_monitors([new for _, _, new in preview])
     if draussen:
         print()
         print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
@@ -647,14 +647,14 @@ def _adjust_offset(transform: dict) -> dict | None:
     new = []
     for achse, value in (("X", vx), ("Y", vy)):
         while True:
-            eingabe = safe_input(f"    {achse}-Versatz (Enter = {value:+d}): ").strip()
-            if is_cancel(eingabe):
+            user_input = safe_input(f"    {achse}-Versatz (Enter = {value:+d}): ").strip()
+            if is_cancel(user_input):
                 return None
-            if not eingabe:
+            if not user_input:
                 new.append(value)
                 break
             try:
-                new.append(int(round(float(eingabe.replace(",", ".")))))
+                new.append(int(round(float(user_input.replace(",", ".")))))
                 break
             except ValueError:
                 # Wiederholen statt abbrechen — wie in den anderen Editoren
@@ -666,7 +666,7 @@ def _adjust_offset(transform: dict) -> dict | None:
             "offset_x": new[0], "offset_y": new[1]}
 
 
-def _calibration_reference(state: AutoClickerState, points: list, titel: str,
+def _calibration_reference(state: AutoClickerState, points: list, title: str,
                     ausser: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
@@ -679,7 +679,7 @@ def _calibration_reference(state: AutoClickerState, points: list, titel: str,
         return None
 
     print()
-    print(col(f"  {titel}:", 'bold'))
+    print(col(f"  {title}:", 'bold'))
     beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in auswahl]
     idx = interactive_select(beschriftung, default=0)
     if idx < 0:
@@ -698,12 +698,12 @@ def _calibration_reference(state: AutoClickerState, points: list, titel: str,
     return (point.x, point.y), new
 
 
-def _outside_all_monitors(ziele: list[tuple[int, int]]) -> int:
+def _outside_all_monitors(targets: list[tuple[int, int]]) -> int:
     """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
     from ..diagnose import _virtueller_desktop
     rect = _virtueller_desktop()
     if rect is None:
         return 0
     left, top, right, bottom = rect
-    return sum(1 for x, y in ziele
+    return sum(1 for x, y in targets
                if not (left <= x < right and top <= y < bottom))

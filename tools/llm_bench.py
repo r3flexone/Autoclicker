@@ -276,7 +276,7 @@ def aufwaermen(image, config, modell: str) -> float:
 def lauf(proben: list, katalog, config, args, modell: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
     candidates = katalog.names()
-    match, offen, zeiten, fehler = 0, 0, [], []
+    match, remaining, zeiten, fehler = 0, 0, [], []
     for wahrheit, image in proben:
         start = time.time()
         if args.zweistufig:
@@ -294,13 +294,13 @@ def lauf(proben: list, katalog, config, args, modell: str) -> dict:
         richtig = bool(name) and name.casefold() == wahrheit.casefold()
         match += 1 if richtig else 0
         if not name:
-            offen += 1
+            remaining += 1
         if not richtig:
             fehler.append((wahrheit, name or f"— ({reason})"))
         marke = "OK " if richtig else "-- "
         print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
-        "treffer": match, "gesamt": len(proben), "ohne": offen,
+        "treffer": match, "gesamt": len(proben), "ohne": remaining,
         "sekunden": sum(zeiten) / len(zeiten) if zeiten else 0.0,
         "fehler": fehler,
     }

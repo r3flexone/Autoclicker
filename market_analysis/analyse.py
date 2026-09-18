@@ -559,13 +559,13 @@ def orderbuecher_vorladen(item_ids: list, was: str = "Orderbuecher") -> None:
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    offen = [int(i) for i in dict.fromkeys(item_ids) if int(i) not in _orderbuch_cache]
-    if not offen:
+    remaining = [int(i) for i in dict.fromkeys(item_ids) if int(i) not in _orderbuch_cache]
+    if not remaining:
         return
     with ThreadPoolExecutor(max_workers=max(1, ORDERBUCH_PARALLEL)) as pool:
-        for n, _ in enumerate(pool.map(fetch_orderbook_depth, offen), 1):
-            if n % 25 == 0 or n == len(offen):
-                print(f"  {was}: {n}/{len(offen)}")
+        for n, _ in enumerate(pool.map(fetch_orderbook_depth, remaining), 1):
+            if n % 25 == 0 or n == len(remaining):
+                print(f"  {was}: {n}/{len(remaining)}")
 
 
 def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
@@ -809,8 +809,8 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
         # der NPC-Preis nicht.
         stueck_h = _num(r.get("Stück/h"))
         spieler_netto = net_player_price(spieler, stueck_h or 1.0) if spieler else 0.0
-        gewaehlt, alternative = (npc, spieler_netto) if an_npc else (spieler_netto, npc)
-        vorteil = (gewaehlt / alternative - 1) if alternative > 0 else None
+        selected, alternative = (npc, spieler_netto) if an_npc else (spieler_netto, npc)
+        vorteil = (selected / alternative - 1) if alternative > 0 else None
 
         warn = []
         if r.get("SpielerMarktDuenn"):

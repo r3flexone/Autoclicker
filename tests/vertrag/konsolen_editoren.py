@@ -218,31 +218,31 @@ _st_f.lock = _MessLock()
 # --- Bestaetigungs-Klick ---
 check("ein bekannter Punkt kommt mit Wartezeit zurueck",
       _feld_folge(_IF.ask_confirm_click, ["7", "1.5"],
-                  state=_st_f, vorgabe_delay=0.5) == (7, 1.5))
+                  state=_st_f, default_delay=0.5) == (7, 1.5))
 # DIE Eigenschaft, um die es geht: `get_point_by_id()` liest `state.points` und
 # sperrt nicht selbst. Drei der vier Kopien taten es auch nicht.
 check("die Punktsuche laeuft unter state.lock", _st_f.lock.genommen >= 1)
 check("leere Eingabe heisst: kein Bestaetigungs-Klick",
       _feld_folge(_IF.ask_confirm_click, [""],
-                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
 check("ein unbekannter Punkt setzt nichts und behaelt die Vorgabe",
       _feld_folge(_IF.ask_confirm_click, ["99"],
-                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
 check("Zahlensalat setzt nichts",
       _feld_folge(_IF.ask_confirm_click, ["abc"],
-                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
 # Eine unbrauchbare Wartezeit behaelt die Vorgabe, statt den Punkt zu verlieren.
 check("eine unbrauchbare Wartezeit behaelt die Vorgabe",
       _feld_folge(_IF.ask_confirm_click, ["7", "keine Zahl"],
-                  state=_st_f, vorgabe_delay=0.5) == (7, 0.5))
+                  state=_st_f, default_delay=0.5) == (7, 0.5))
 # Abbruch ist etwas anderes als „nichts eingegeben" — `None` als Punkt-ID ist
 # ein gueltiges Ergebnis und taugt deshalb nicht als Abbruch-Zeichen.
 check("abbrechbar: 'cancel' meldet ABBRUCH, nicht (None, delay)",
       _feld_folge(_IF.ask_confirm_click, ["cancel"], state=_st_f,
-                  vorgabe_delay=0.5, abbrechbar=True) is _IF.CANCELLED)
+                  default_delay=0.5, abbrechbar=True) is _IF.CANCELLED)
 check("ohne `abbrechbar` ist 'cancel' nur eine unbrauchbare Eingabe",
       _feld_folge(_IF.ask_confirm_click, ["cancel"],
-                  state=_st_f, vorgabe_delay=0.5) == (None, 0.5))
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
 
 # --- Prioritaet ---
 _verschoben = []

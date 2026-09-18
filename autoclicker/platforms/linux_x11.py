@@ -208,8 +208,8 @@ def _keyboard_key(keyboard, name: str):
         "left": keyboard.Key.left, "right": keyboard.Key.right,
         "up": keyboard.Key.up, "down": keyboard.Key.down,
     }
-    for nummer in range(1, 13):
-        sondertasten[f"f{nummer}"] = getattr(keyboard.Key, f"f{nummer}")
+    for number in range(1, 13):
+        sondertasten[f"f{number}"] = getattr(keyboard.Key, f"f{number}")
     return sondertasten.get(name, name if len(name) == 1 else None)
 
 
@@ -272,8 +272,8 @@ def _key_name(keyboard, key) -> str | None:
         keyboard.Key.left: "left", keyboard.Key.right: "right",
         keyboard.Key.up: "up", keyboard.Key.down: "down",
     }
-    for nummer in range(1, 13):
-        mapping[getattr(keyboard.Key, f"f{nummer}")] = f"f{nummer}"
+    for number in range(1, 13):
+        mapping[getattr(keyboard.Key, f"f{number}")] = f"f{number}"
     return mapping.get(key)
 
 
@@ -378,10 +378,10 @@ def list_windows() -> list:
                 window = display.create_resource_object("window", xid)
                 if window.get_attributes().map_state != X.IsViewable:
                     continue
-                titel = _window_title(display, window)
+                title = _window_title(display, window)
                 rect = _window_rect(window, root)
-                if titel and rect and rect[2] - rect[0] >= 80 and rect[3] - rect[1] >= 80:
-                    found.append((titel, rect, xid))
+                if title and rect and rect[2] - rect[0] >= 80 and rect[3] - rect[1] >= 80:
+                    found.append((title, rect, xid))
             except (AttributeError, TypeError, xerror.XError):
                 continue
         return sorted(found, key=lambda entry: (entry[1][1], entry[1][0]))
@@ -488,12 +488,12 @@ def get_window_title_at(x: int, y: int) -> str:
     match = []
     for entry in list_windows():
         try:
-            titel, rect = entry[0], entry[1]
+            title, rect = entry[0], entry[1]
             left, top, right, bottom = rect
         except (TypeError, ValueError, IndexError):
             continue
         if left <= x < right and top <= y < bottom:
-            match.append(((right - left) * (bottom - top), titel))
+            match.append(((right - left) * (bottom - top), title))
     if not match:
         return ""
     return min(match)[1]

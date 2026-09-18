@@ -699,10 +699,10 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                 basis = sanitize_filename(str(data.get("name") or source.name))
                 target = ensure_sequences_dir() / basis
                 if merge:
-                    nummer = 2
+                    number = 2
                     while target.exists():
-                        target = ensure_sequences_dir() / f"{basis}_{nummer}"
-                        nummer += 1
+                        target = ensure_sequences_dir() / f"{basis}_{number}"
+                        number += 1
                     if target.name != basis:
                         data["name"] = target.name
                         atomic_write(hauptdatei, compact_json(data))

@@ -137,7 +137,7 @@ try:
     check("ohne Referenzpunkt gibt es nichts anzuwenden",
           _b.kalib_anwenden({})["ok"] is False)
 
-    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _erg = _b.kalib_referenz({"nummer": 1, "point_id": 1})
     check("der Referenzpunkt laesst sich anfahren", _erg["ok"])
     _K = _b.werkzeug_daten()["kalibrierung"]
     check("und ergibt den gemessenen Versatz",
@@ -147,7 +147,7 @@ try:
     # Der zweite Punkt muss ein anderer sein - sonst waere die Skalierung eine
     # Division durch null.
     check("derselbe Punkt zweimal wird abgelehnt",
-          _b.kalib_referenz({"nummer": 2, "punkt_id": 1})["ok"] is False)
+          _b.kalib_referenz({"nummer": 2, "point_id": 1})["ok"] is False)
 
     # Von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     check("der Versatz laesst sich von Hand setzen",
@@ -187,7 +187,7 @@ try:
     # Ein Punkt, der sich nicht bewegt hat, ergibt einen Transform ohne Wirkung.
     # Ihn anzuwenden waere ein Schreibvorgang samt Sicherung fuer nichts.
     _b._stelle_abwarten = lambda: (100, 100, "")
-    _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _b.kalib_referenz({"nummer": 1, "point_id": 1})
     check("ein Transform ohne Wirkung wird abgelehnt",
           _b.kalib_anwenden({})["ok"] is False)
     check("und die Ansicht sagt es vorher",
@@ -197,7 +197,7 @@ try:
     _sequenzdatei = _P("sequences/farm/sequence.json")
     _vorher = _sequenzdatei.read_text(encoding="utf-8")
     _b._stelle_abwarten = lambda: (500, 500, "")
-    _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _b.kalib_referenz({"nummer": 1, "point_id": 1})
     check("abbrechen raeumt die Kalibrierung weg", _b.kalib_abbrechen()["ok"])
     check("und hat nichts geschrieben",
           _sequenzdatei.read_text(encoding="utf-8") == _vorher)
@@ -205,12 +205,12 @@ try:
 
     # Ein unbekannter Punkt ist kein Grund, irgendetwas zu rechnen.
     check("ein Punkt, den es nicht gibt, wird abgelehnt",
-          _b.kalib_referenz({"nummer": 1, "punkt_id": 99})["ok"] is False)
+          _b.kalib_referenz({"nummer": 1, "point_id": 99})["ok"] is False)
 
     # Waehrend eines Laufs wird nicht umgerechnet: die Sequenz klickt sonst
     # mitten im Umbau auf halb verschobene Stellen.
     _b._stelle_abwarten = lambda: (140, 130, "")
-    _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _b.kalib_referenz({"nummer": 1, "point_id": 1})
     _b._laeuft = lambda: True
     check("ein laufender Lauf blockiert das Anwenden",
           _b.kalib_anwenden({})["ok"] is False)
@@ -223,7 +223,7 @@ finally:
 section("Studio-Werkzeuge: die Vorschau zaehlt keine Stelle doppelt")
 try:
     _sand, _b = _sandkasten()
-    _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _b.kalib_referenz({"nummer": 1, "point_id": 1})
     _was = [z["was"] for z in _b.werkzeug_daten()["kalibrierung"]["vorschau"]]
     # Die Sequenz hat zwei Klick-Schritte, beide ueber `point_id`. Ihre x/y sind
     # abgeleitet und werden NICHT einzeln umgerechnet - sie hier zu listen hiesse,
@@ -296,7 +296,7 @@ try:
     _daten = _b.werkzeug_daten()
     _p1 = next(p for p in _daten["punkte"] if p["id"] == 1)
     check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["verwendungen"]))
-    _erg = _b.werkzeug_punkt_loeschen({"punkt_id": 1})
+    _erg = _b.werkzeug_punkt_loeschen({"point_id": 1})
     check("ein verwendeter Punkt wird nicht gelöscht",
           not _erg["ok"] and _b._punkt_mit_id(1) is not None)
     check("der Löschschutz nennt die Verwendungen", bool(_erg.get("verwendungen")))
@@ -304,7 +304,7 @@ try:
     _b._stelle_abwarten = lambda: (333, 444, "")
     _b._farbe_an = staticmethod(lambda x, y: (12, 34, 56))
     _erg = _b.werkzeug_punkt_aufnehmen({"name": "Neu"})
-    _neu = _b._punkt_mit_id(_erg.get("punkt_id"))
+    _neu = _b._punkt_mit_id(_erg.get("point_id"))
     check("ein freier Punkt lässt sich im Studio aufnehmen",
           _erg["ok"] and (_neu.x, _neu.y) == (333, 444))
     check("die Farbe wird dabei mitgemessen", _neu.color == (12, 34, 56))
@@ -598,7 +598,7 @@ try:
     _b.points[0].color = (10, 200, 30)
     _b._farbe_an = staticmethod(lambda x, y: (200, 10, 30))
 
-    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _erg = _b.kalib_referenz({"nummer": 1, "point_id": 1})
     check("gesetzt wird erst mal nichts", _erg["ok"] is False)
     check("stattdessen kommt eine Rueckfrage", _erg.get("bestaetigen") is True)
     check("mit beiden Farben zum Vergleich",
@@ -608,7 +608,7 @@ try:
     check("die Kalibrierung ist noch leer", _b.werkzeug_daten()["kalibrierung"] == {})
 
     # Bestaetigt gilt der Punkt trotzdem - manchmal hat sich das Spiel geaendert.
-    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1, "bestaetigt": True})
+    _erg = _b.kalib_referenz({"nummer": 1, "point_id": 1, "bestaetigt": True})
     check("bestaetigt wird er gesetzt", _erg["ok"])
     check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["meldung"])
     check("jetzt steht die Kalibrierung",
@@ -623,7 +623,7 @@ try:
     # Passende Farbe: keine Rueckfrage, direkt gesetzt.
     _b.points[0].color = (10, 200, 30)
     _b._farbe_an = staticmethod(lambda x, y: (12, 198, 33))
-    _erg = _b.kalib_referenz({"nummer": 1, "punkt_id": 1})
+    _erg = _b.kalib_referenz({"nummer": 1, "point_id": 1})
     check("eine passende Farbe geht direkt durch", _erg["ok"])
     check("und sagt es auch", "passt" in _erg["meldung"])
 
@@ -633,14 +633,14 @@ try:
     _b.points[1].color = None
     _b._farbe_an = staticmethod(lambda x, y: (200, 10, 30))
     check("ein Punkt ohne Farbe fragt nicht",
-          _b.kalib_referenz({"nummer": 1, "punkt_id": 2})["ok"])
+          _b.kalib_referenz({"nummer": 1, "point_id": 2})["ok"])
 
     # Und wenn der Bildschirm sich nicht lesen laesst, ebenfalls nicht.
     _b.kalib_abbrechen()
     _b.points[0].color = (10, 200, 30)
     _b._farbe_an = staticmethod(lambda x, y: None)
     check("eine unlesbare Stelle fragt auch nicht",
-          _b.kalib_referenz({"nummer": 1, "punkt_id": 1})["ok"])
+          _b.kalib_referenz({"nummer": 1, "point_id": 1})["ok"])
 finally:
     _os.chdir(_cwd)
 

@@ -117,14 +117,14 @@ def _write_status(state: AutoClickerState, events: list | None = None,
         pass
 
 
-def _report_event(ereignis: RecordEvent, idx: int, delay: float | None) -> None:
+def _report_event(event: RecordEvent, idx: int, delay: float | None) -> None:
     """Eine Zeile pro aufgezeichnetem Ereignis — der Nutzer sieht nur die Konsole."""
-    color = f" {describe_color(ereignis.color)}" if ereignis.color else ""
+    color = f" {describe_color(event.color)}" if event.color else ""
     zeit = "sofort" if delay is None else f"+{delay:.2f}s"
-    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}  {zeit}{color}")
+    print(f"  {col('[REC]', 'red')} #{idx} {event}  {zeit}{color}")
 
 
-def _append_event(state: AutoClickerState, ereignis: RecordEvent) -> bool:
+def _append_event(state: AutoClickerState, event: RecordEvent) -> bool:
     """Hängt ein Ereignis an die Aufnahme. False = Aufnahme aus oder pausiert.
 
     Mausrad-Ereignisse werden mit dem direkt davor verschmolzen (siehe
@@ -134,19 +134,19 @@ def _append_event(state: AutoClickerState, ereignis: RecordEvent) -> bool:
         if not state.recording_active or state.recording_paused:
             return False
         vorherige = state.recording_events[-1] if state.recording_events else None
-        delay = None if vorherige is None else round(ereignis.t - vorherige.t, 2)
-        if (ereignis.kind == REC_SCROLL and vorherige is not None
+        delay = None if vorherige is None else round(event.t - vorherige.t, 2)
+        if (event.kind == REC_SCROLL and vorherige is not None
                 and vorherige.kind == REC_SCROLL
-                and ereignis.t - vorherige.t <= _SCROLL_MERGE_GAP):
-            vorherige.scroll += ereignis.scroll
-            vorherige.t = ereignis.t
-            idx, ereignis = len(state.recording_events), vorherige
+                and event.t - vorherige.t <= _SCROLL_MERGE_GAP):
+            vorherige.scroll += event.scroll
+            vorherige.t = event.t
+            idx, event = len(state.recording_events), vorherige
         else:
-            state.recording_events.append(ereignis)
+            state.recording_events.append(event)
             idx = len(state.recording_events)
         events = list(state.recording_events)
     _write_status(state, events)
-    _report_event(ereignis, idx, delay)
+    _report_event(event, idx, delay)
     return True
 
 
@@ -285,9 +285,9 @@ def mark_phase(state: AutoClickerState) -> None:
     if not _recording_running(state):
         return
     with state.lock:
-        gesetzt = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
+        placed = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
     _append_event(state, RecordEvent(REC_PHASE, time.monotonic()))
-    print(f"       {hint(f'ab hier: Phase {gesetzt + 2}')}")
+    print(f"       {hint(f'ab hier: Phase {placed + 2}')}")
 
 
 def discard_last(state: AutoClickerState) -> None:
@@ -393,21 +393,21 @@ def points_for_events(events: list) -> tuple[dict, list[ClickPoint]]:
     Sequenz hineinlecken konnten.
     """
     from ..persistence.sequences import point_at_position
-    punkt_id_fuer: dict[int, int] = {}
+    point_id_for: dict[int, int] = {}
     points: list[ClickPoint] = []
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
         match = point_at_position(points, ev.x, ev.y, ev.color)
         if match is not None:
-            punkt_id_fuer[i] = match.id
+            point_id_for[i] = match.id
             continue
         pid = max((p.id for p in points), default=0) + 1
         point = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
                            color=ev.color, source="Aufnahme")
         points.append(point)
-        punkt_id_fuer[i] = pid
-    return punkt_id_fuer, points
+        point_id_for[i] = pid
+    return point_id_for, points
 
 
 def merge_regions(events: list) -> tuple[list, int]:
@@ -420,22 +420,22 @@ def merge_regions(events: list) -> tuple[list, int]:
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener Einzel-Ecken)` zurück.
     """
-    behalten, verworfen = [], 0
-    offen = None
+    keep, discarded = [], 0
+    remaining = None
     for ev in events:
         if ev.kind != REC_REGION:
-            behalten.append(ev)
+            keep.append(ev)
             continue
-        if offen is None:
-            offen = ev
+        if remaining is None:
+            remaining = ev
             continue
-        x1, x2 = sorted((offen.x, ev.x))
-        y1, y2 = sorted((offen.y, ev.y))
-        behalten.append(RecordEvent(REC_SCREENSHOT, offen.t, region=(x1, y1, x2, y2)))
-        offen = None
-    if offen is not None:
-        verworfen = 1
-    return behalten, verworfen
+        x1, x2 = sorted((remaining.x, ev.x))
+        y1, y2 = sorted((remaining.y, ev.y))
+        keep.append(RecordEvent(REC_SCREENSHOT, remaining.t, region=(x1, y1, x2, y2)))
+        remaining = None
+    if remaining is not None:
+        discarded = 1
+    return keep, discarded
 
 
 def phase_boundaries(events: list) -> tuple[list, list[int]]:
@@ -446,7 +446,7 @@ def phase_boundaries(events: list) -> tuple[list, list[int]]:
     des nächsten Schritts und dessen Wartezeit begänne am Tastendruck. Gezählt
     wird in Schritten, denn Warte-Marker erzeugen keinen eigenen.
     """
-    behalten, grenzen = [], []
+    keep, grenzen = [], []
     erzeugte = 0
     for ev in events:
         if ev.kind == REC_PHASE:
@@ -454,8 +454,8 @@ def phase_boundaries(events: list) -> tuple[list, list[int]]:
             continue
         if ev.kind != REC_WAIT_COLOR:
             erzeugte += 1
-        behalten.append(ev)
-    return behalten, grenzen
+        keep.append(ev)
+    return keep, grenzen
 
 
 def build_phases(steps: list, grenzen: list[int]) -> list:
@@ -476,8 +476,8 @@ def build_phases(steps: list, grenzen: list[int]) -> list:
         teil = list(steps[anfang:ende_])
         if not teil:
             continue
-        nummer = len(phasen) + 1
-        name = "Loop" if nummer == 1 else f"Loop {nummer}"
+        number = len(phasen) + 1
+        name = "Loop" if number == 1 else f"Loop {number}"
         phasen.append(LoopPhase(name=name, steps=teil, repeat=1))
     if not phasen:
         phasen.append(LoopPhase(name="Loop", steps=[], repeat=1))
@@ -492,18 +492,18 @@ def check_markers(events: list) -> tuple[list, int]:
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener)` zurück.
     """
-    behalten, verworfen = [], 0
+    keep, discarded = [], 0
     for i, ev in enumerate(events):
         if ev.kind == REC_WAIT_COLOR:
             naechster = events[i + 1] if i + 1 < len(events) else None
             if naechster is None or naechster.kind not in (REC_CLICK, REC_SCROLL):
-                verworfen += 1
+                discarded += 1
                 continue
-        behalten.append(ev)
-    return behalten, verworfen
+        keep.append(ev)
+    return keep, discarded
 
 
-def steps_from_events(events: list, punkt_id_fuer: dict) -> list:
+def steps_from_events(events: list, point_id_for: dict) -> list:
     """Baut die SequenceSteps.
 
     Ein Warte-Marker wird kein eigener Schritt: er hängt sich an den folgenden
@@ -524,13 +524,13 @@ def steps_from_events(events: list, punkt_id_fuer: dict) -> list:
         bedingung = None
         vorher = events[i - 1] if i > 0 else None
         if vorher is not None and vorher.kind == REC_WAIT_COLOR:
-            pid = punkt_id_fuer.get(i)
+            pid = point_id_for.get(i)
             bedingung = WaitCondition(point_id=pid)
             # Uhr anhalten: die Zeit bis zum MARKER zaehlt, die danach ist das Warten.
             davor = events[i - 2] if i > 1 else None
             delay = 0.0 if davor is None else round(vorher.t - davor.t, 2)
 
-        pid = punkt_id_fuer.get(i)
+        pid = point_id_for.get(i)
         if ev.kind == REC_KEY:
             steps.append(SequenceStep(delay_before=delay, key_press=ev.key))
         elif ev.kind == REC_SCREENSHOT:
@@ -548,7 +548,7 @@ def steps_from_events(events: list, punkt_id_fuer: dict) -> list:
             steps.append(SequenceStep(
                 delay_before=delay, wait_only=True, name="Beobachten",
                 recorded_color=ev.color,
-                wait_condition=WaitCondition(point_id=punkt_id_fuer.get(i))))
+                wait_condition=WaitCondition(point_id=point_id_for.get(i))))
         elif ev.kind == REC_SCROLL:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay, scroll=ev.scroll,
                                       point_id=pid, recorded_color=ev.color,
@@ -594,9 +594,9 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     events, grenzen = phase_boundaries(events)
 
-    events, verworfen = check_markers(events)
-    if verworfen:
-        print(f"\n{warn(f'{verworfen} Warte-Marker verworfen — danach kam kein Klick.')}")
+    events, discarded = check_markers(events)
+    if discarded:
+        print(f"\n{warn(f'{discarded} Warte-Marker verworfen — danach kam kein Klick.')}")
         print(hint("       Ein Marker wartet auf die Farbe DES Klicks, der ihm folgt."))
 
     if not events:
@@ -611,8 +611,8 @@ def stop_recording(state: AutoClickerState) -> str | None:
     # Aufteilung erst im Editor und kann sie beim Benennen nicht mehr einordnen.
     # Namen wie in build_phases(), damit hier dasselbe steht wie danach in der
     # Datei. Der Schnitt liegt VOR dem Schritt mit diesem Index.
-    def _phase_name(nummer):
-        return "Loop" if nummer == 1 else f"Loop {nummer}"
+    def _phase_name(number):
+        return "Loop" if number == 1 else f"Loop {number}"
 
     _schnitt = {g: _phase_name(nr + 2) for nr, g in enumerate(grenzen)}
     if grenzen:
@@ -688,10 +688,10 @@ def stop_recording(state: AutoClickerState) -> str | None:
             description = ""
 
     # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
-    punkt_id_fuer, points = points_for_events(events)
+    point_id_for, points = points_for_events(events)
 
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
-    steps = steps_from_events(events, punkt_id_fuer)
+    steps = steps_from_events(events, point_id_for)
     # INIT und END bleiben leer: eine Aufnahme sieht nicht, welcher Abschnitt
     # nur einmal laufen soll. Das steht im Studio an der Phase.
     loop_phases = build_phases(steps, grenzen)

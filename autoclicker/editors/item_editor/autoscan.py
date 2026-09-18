@@ -211,10 +211,10 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                 width, height = template_img.size
                 safe_name = sanitize_filename(f"{matched_item}_{width}x{height}")
                 template_file = f"{safe_name}.png"
-                nummer = 2
+                number = 2
                 while (active_templates_dir(state) / template_file).exists():
-                    template_file = f"{safe_name}_{nummer}.png"
-                    nummer += 1
+                    template_file = f"{safe_name}_{number}.png"
+                    number += 1
                 template_path = active_templates_dir(state) / template_file
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 template_img.save(template_path)

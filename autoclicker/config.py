@@ -464,8 +464,8 @@ def config_sections() -> list:
     """
     zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
     alle = [f.name for f in fields(AppConfig)]
-    abschnitte = [(titel, [k for k in keys if k in alle])
-                  for titel, keys in _CONFIG_SECTIONS]
+    abschnitte = [(title, [k for k in keys if k in alle])
+                  for title, keys in _CONFIG_SECTIONS]
     remainder = [k for k in alle if k not in zugeordnet]
     if remainder:
         abschnitte.append(("SONSTIGE", remainder))

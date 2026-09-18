@@ -887,15 +887,15 @@ class _PhaseEditor:
             # Koordinatenvergleich erraten musste; jetzt steht er in der Datei.
             pixel = (step.x, step.y)
             color = step.recorded_color
-            punkt_id = step.point_id
+            point_id = step.point_id
             print(f"  Nutze aufgenommene Farbe RGB{color} bei ({step.x}, {step.y})")
         else:
             px, py, color = capture_pixel_color()
             if color is None:
                 return False
             pixel = (px, py)
-            punkt_id = self._point_for(px, py, color, "Prüf-Pixel")
-        step.wait_condition = WaitCondition(point_id=punkt_id, pixel=pixel, color=color,
+            point_id = self._point_for(px, py, color, "Prüf-Pixel")
+        step.wait_condition = WaitCondition(point_id=point_id, pixel=pixel, color=color,
                                             until_gone=until_gone)
         return True
 
@@ -1329,30 +1329,30 @@ class _PhaseEditor:
             px, py, color = capture_pixel_color()
             if color is None:
                 return
-            punkt_id = self._point_for(px, py, color, "Nachprüfung")
+            point_id = self._point_for(px, py, color, "Nachprüfung")
         else:
             try:
-                punkt_id = int(target)
+                point_id = int(target)
             except ValueError:
                 print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
                 return
             with self.state.lock:
-                point = get_point_by_id(self.state, punkt_id)
+                point = get_point_by_id(self.state, point_id)
             if not point:
-                print(f"  -> Punkt #{punkt_id} nicht gefunden! {hint('(siehe points)')}")
+                print(f"  -> Punkt #{point_id} nicht gefunden! {hint('(siehe points)')}")
                 return
             if not point.color:
-                print(warn(f"  -> Punkt #{punkt_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
+                print(warn(f"  -> Punkt #{point_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
                 print(hint("     Im Punkte-Menü mit 'walk' die Farbe nachtragen."))
                 return
             px, py = point.x, point.y
 
-        step.verify_condition = WaitCondition(point_id=punkt_id, pixel=(px, py),
+        step.verify_condition = WaitCondition(point_id=point_id, pixel=(px, py),
                                               until_gone=until_gone)
         # Farbe direkt aus dem Punkt mitnehmen, damit die Anzeige sofort stimmt;
         # gespeichert wird nur die Referenz.
         with self.state.lock:
-            p = get_point_by_id(self.state, punkt_id)
+            p = get_point_by_id(self.state, point_id)
         if p and p.color:
             step.verify_condition.color = p.color
         zustand = "WEG ist" if until_gone else "DA ist"
@@ -1374,7 +1374,7 @@ class _PhaseEditor:
                                      source="Sequenz-Editor")
 
     def _resolve_trigger_color(self, until_gone: bool, point):
-        """Liefert (pixel, color, punkt_id, until_gone) für einen color|colorgone-Trigger.
+        """Liefert (pixel, color, point_id, until_gone) für einen color|colorgone-Trigger.
 
         Standard ist die bei der Punkt-Aufnahme gespeicherte Farbe; nur wenn der Punkt
         keine hat, wird live an der Mausposition abgegriffen (und dabei ein eigener

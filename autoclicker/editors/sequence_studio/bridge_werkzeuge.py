@@ -83,7 +83,7 @@ class BridgeWerkzeugeMixin:
             "laeuft": self._laeuft(),
         }
 
-    def _punkt_verwendungen(self, punkt_id: int, ausser=None) -> list[str]:
+    def _punkt_verwendungen(self, point_id: int, ausser=None) -> list[str]:
         """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI.
 
         `ausser` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
@@ -96,26 +96,26 @@ class BridgeWerkzeugeMixin:
                 if step is ausser:
                     continue
                 basis = f"{lane.name} · Block {nr}"
-                if step.point_id == punkt_id:
+                if step.point_id == point_id:
                     raus.append(basis + " · Stelle")
-                if step.wait_condition and step.wait_condition.point_id == punkt_id:
+                if step.wait_condition and step.wait_condition.point_id == point_id:
                     raus.append(basis + " · Prüf-Pixel")
-                if step.verify_condition and step.verify_condition.point_id == punkt_id:
+                if step.verify_condition and step.verify_condition.point_id == point_id:
                     raus.append(basis + " · Nachprüfung")
-                if step.else_config and step.else_config.point_id == punkt_id:
+                if step.else_config and step.else_config.point_id == point_id:
                     raus.append(basis + " · ELSE")
         for item in self.items.values():
-            if item.confirm_point_id == punkt_id:
+            if item.confirm_point_id == point_id:
                 raus.append(f"Item '{item.name}' · Bestätigung")
         for name, cfg in self.boss_scans.items():
             for boss in cfg.bosses:
-                if boss.action_point_id == punkt_id:
+                if boss.action_point_id == point_id:
                     raus.append(f"Boss '{boss.name}' in '{name}' · Aktion")
         for boss in self.global_bosses:
-            if boss.action_point_id == punkt_id:
+            if boss.action_point_id == point_id:
                 raus.append(f"Boss '{boss.name}' aus Bibliothek · Aktion")
         for name, cfg in self.icon_scans.items():
-            if cfg.action_point_id == punkt_id:
+            if cfg.action_point_id == point_id:
                 raus.append(f"Icon-Scan '{name}' · Aktion")
         return raus
 
@@ -126,7 +126,7 @@ class BridgeWerkzeugeMixin:
         if self._laeuft():
             return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         data = data or {}
-        point = self._punkt_mit_id(data.get("punkt_id"))
+        point = self._punkt_mit_id(data.get("point_id"))
         x, y, message = self._stelle_abwarten()
         if x is None:
             return {"ok": False, "meldung": message + " — nichts geändert."}
@@ -149,13 +149,13 @@ class BridgeWerkzeugeMixin:
             aktion = "neu gemessen"
         self._punkte_anwenden()
         self._dirty = True
-        return {"ok": True, "punkt_id": point.id,
+        return {"ok": True, "point_id": point.id,
                 "meldung": f"Punkt #{point.id} {aktion}: ({x}, {y})."}
 
     def werkzeug_punkt_setzen(self, data: Optional[dict] = None) -> dict:
         """Ändert Name, Koordinate oder Farbe eines Punktes aus der Werkzeugliste."""
         data = data or {}
-        point = self._punkt_mit_id(data.get("punkt_id"))
+        point = self._punkt_mit_id(data.get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         feld, value = str(data.get("feld") or ""), data.get("wert")
@@ -179,20 +179,20 @@ class BridgeWerkzeugeMixin:
         """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
         if self._laeuft():
             return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
-        point = self._punkt_mit_id((data or {}).get("punkt_id"))
+        point = self._punkt_mit_id((data or {}).get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         from ...winapi import set_cursor_pos
         set_cursor_pos(point.x, point.y)
-        aktuell = self._farbe_an(point.x, point.y)
-        return {"ok": True, "punkt_id": point.id,
+        current = self._farbe_an(point.x, point.y)
+        return {"ok": True, "point_id": point.id,
                 "gespeichert": list(point.color) if point.color else None,
-                "aktuell": list(aktuell) if aktuell else None,
+                "aktuell": list(current) if current else None,
                 "meldung": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
 
     def werkzeug_punkt_loeschen(self, data: Optional[dict] = None) -> dict:
         """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
-        point = self._punkt_mit_id((data or {}).get("punkt_id"))
+        point = self._punkt_mit_id((data or {}).get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         verwendet = self._punkt_verwendungen(point.id)
@@ -319,7 +319,7 @@ class BridgeWerkzeugeMixin:
     def kalib_referenz(self, data: dict) -> dict:
         """Einen Referenzpunkt neu setzen: Maus auf die Stelle, ENTER.
 
-        `nummer` ist 1 oder 2. Der erste Punkt gibt die Verschiebung, der zweite
+        `number` ist 1 oder 2. Der erste Punkt gibt die Verschiebung, der zweite
         zusätzlich die Skalierung — den braucht man nur, wenn sich auch die
         Auflösung geändert hat.
 
@@ -336,13 +336,13 @@ class BridgeWerkzeugeMixin:
         Verboten wird nichts, es geht nur nicht mehr aus Versehen.
         """
         data = data or {}
-        nummer = 2 if int(data.get("nummer") or 1) == 2 else 1
-        point = self._punkt_mit_id(data.get("punkt_id"))
+        number = 2 if int(data.get("nummer") or 1) == 2 else 1
+        point = self._punkt_mit_id(data.get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
-        if nummer == 2 and not self._kalib.get("ref1"):
+        if number == 2 and not self._kalib.get("ref1"):
             return {"ok": False, "meldung": "Erst den ersten Referenzpunkt setzen."}
-        if nummer == 2 and self._kalib["ref1"]["punkt_id"] == point.id:
+        if number == 2 and self._kalib["ref1"]["point_id"] == point.id:
             return {"ok": False,
                     "meldung": "Der zweite Punkt muss ein anderer sein — "
                                "am besten weit weg vom ersten."}
@@ -355,11 +355,11 @@ class BridgeWerkzeugeMixin:
         if pruefung is not None and not data.get("bestaetigt"):
             return pruefung
 
-        self._kalib[f"ref{nummer}"] = {
-            "punkt_id": point.id, "name": point.name or f"Punkt #{point.id}",
+        self._kalib[f"ref{number}"] = {
+            "point_id": point.id, "name": point.name or f"Punkt #{point.id}",
             "alt": [point.x, point.y], "neu": [x, y],
         }
-        if nummer == 1:
+        if number == 1:
             # Ein neuer erster Punkt macht den zweiten bedeutungslos: er wurde
             # gegen eine andere Verschiebung gemessen.
             self._kalib.pop("ref2", None)
@@ -405,7 +405,7 @@ class BridgeWerkzeugeMixin:
         return {
             "ok": False,
             "bestaetigen": True,
-            "punkt_id": point.id,
+            "point_id": point.id,
             "erwartet": list(point.color),
             "gemessen": list(gemessen),
             "abstand": distance,
@@ -495,9 +495,9 @@ class BridgeWerkzeugeMixin:
         # Neustart auf die alten Stellen.
         send_command("daten")
 
-    def _punkt_mit_id(self, punkt_id):
+    def _punkt_mit_id(self, point_id):
         try:
-            gesucht = int(punkt_id)
+            gesucht = int(point_id)
         except (TypeError, ValueError):
             return None
         return next((p for p in self.points if p.id == gesucht), None)

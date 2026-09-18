@@ -253,7 +253,7 @@ class ScanDetectMixin:
             "aktion": b.action,
             "scan": b.action_scan,
             "scan_modus": b.action_scan_mode,
-            "punkt_id": b.action_point_id,
+            "point_id": b.action_point_id,
             "taste": b.action_key,
             "verzoegerung": b.action_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie per Bild
@@ -264,7 +264,7 @@ class ScanDetectMixin:
         }
 
     def _icon_scan_json(self, cfg: IconScanConfig) -> dict:
-        offen = cfg.name == self.icon_offen
+        remaining = cfg.name == self.icon_offen
         return {
             "name": cfg.name,
             "region": list(cfg.scan_region),
@@ -274,7 +274,7 @@ class ScanDetectMixin:
             "marker": [hexfarbe(c) for c in cfg.marker_colors],
             "toleranz": cfg.color_tolerance,
             "aktion": cfg.action,
-            "punkt_id": cfg.action_point_id,
+            "point_id": cfg.action_point_id,
             "taste": cfg.action_key,
             "verzoegerung": cfg.action_delay,
             "erkennung": ("template" if cfg.template
@@ -282,7 +282,7 @@ class ScanDetectMixin:
             # **Der Ausschnitt zeigt, was der Scan sieht.** Nur für den offenen:
             # bei zwanzig Icon-Scans wären das zwanzig Bilder in jeder
             # Momentaufnahme, und neunzehn davon sieht niemand an.
-            "ausschnitt": self._region_bild(cfg.scan_region) if offen else "",
+            "ausschnitt": self._region_bild(cfg.scan_region) if remaining else "",
         }
 
     def _region_bild(self, region) -> str:
@@ -658,9 +658,9 @@ class ScanDetectMixin:
             objekt.marker_colors = [f for f in farben if f]
             return self._scan_geaendert(f"{len(objekt.marker_colors)} Marker-Farbe(n).")
         if feld == "punkt":
-            punkt_id = self._ganzzahl(value)
+            point_id = self._ganzzahl(value)
             self._merke(f"{wer}: Klickpunkt")
-            objekt.action_point_id = punkt_id
+            objekt.action_point_id = point_id
             self._aktion_punkt_anwenden(objekt)
             return self._scan_geaendert()
         if feld == "taste":

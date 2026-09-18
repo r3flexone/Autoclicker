@@ -1048,7 +1048,7 @@ try:
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
     _e2 = _sweep(write=True)
     check("zweiter Durchgang aendert nichts mehr", _e2.changed_count == 0)
-    check("zweiter Durchgang zaehlt alles als aktuell", _e2.aktuell == 3)
+    check("zweiter Durchgang zaehlt alles als aktuell", _e2.current == 3)
 
     # Ergebnis pruefen: Inhalt gehoben, Sequenz funktionsfaehig
     _sq = json.loads((_sw / "sequences/alt/sequence.json").read_text(encoding="utf-8"))

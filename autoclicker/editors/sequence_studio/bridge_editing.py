@@ -543,12 +543,12 @@ class BridgeEditingMixin:
         return self._geaendert(f"Stelle: ({x}, {y}){gemessen}"
                                + self._mitgezogen(step.point_id, ausser=step))
 
-    def _mitgezogen(self, punkt_id, ausser=None) -> str:
+    def _mitgezogen(self, point_id, ausser=None) -> str:
         """Nachsatz für eine Verschiebung: welche anderen Verwendungen mitziehen.
 
         Leer, wenn keine — dann ist die Meldung so kurz wie vorher.
         """
-        andere = self._punkt_verwendungen(punkt_id, ausser=ausser)
+        andere = self._punkt_verwendungen(point_id, ausser=ausser)
         if not andere:
             return ""
         return (f" — zieht {len(andere)} weitere Verwendung(en) mit: "
@@ -623,8 +623,8 @@ class BridgeEditingMixin:
             weg = self._else_aufraeumen(step)
             return self._geaendert(weg, "warn" if weg else "ok")
         if cond is None:
-            punkt_id = data.get("punkt", step.point_id)
-            point = self._punkt(punkt_id)
+            point_id = data.get("punkt", step.point_id)
+            point = self._punkt(point_id)
             if point is None:
                 return self._melde(
                     "Ohne Punkt gibt es nichts zu prüfen — erst einen wählen.", "warn")
@@ -691,9 +691,9 @@ class BridgeEditingMixin:
                 # Wer SONST noch mitgezogen ist, steht in der Meldung — der
                 # Inspektor zeigt nur den einen Block, an dem man gerade sitzt,
                 # und der zählt nicht als „weiterer".
-                _lane, _row, gewaehlt = self._einzelner()
+                _lane, _row, selected = self._einzelner()
                 return self._geaendert(f"Punkt #{point.id} verschoben"
-                                       + self._mitgezogen(point.id, ausser=gewaehlt))
+                                       + self._mitgezogen(point.id, ausser=selected))
             elif feld == "name":
                 point.name = str(value or "")
             elif feld == "farbe":

@@ -936,12 +936,12 @@ def _effect_occurred(state: AutoClickerState, vc, timeout: float) -> tuple[bool,
             return False, letzter
         img = take_screenshot((vc.pixel[0], vc.pixel[1], vc.pixel[0] + 1, vc.pixel[1] + 1))
         if img is not None:
-            aktuell = img.getpixel((0, 0))[:3]
-            dist = color_distance(aktuell, vc.color)
+            current = img.getpixel((0, 0))[:3]
+            dist = color_distance(current, vc.color)
             passt = dist <= tol
             if vc.until_gone:
                 passt = not passt
-            letzter = color_comparison(vc.color, aktuell, dist, tol)
+            letzter = color_comparison(vc.color, current, dist, tol)
             if passt:
                 return True, letzter
         if time.time() >= ende or state.stop_event.is_set():

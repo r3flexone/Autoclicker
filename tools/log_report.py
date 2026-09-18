@@ -167,11 +167,11 @@ def report(pfade: list[Path]) -> None:
     print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_dauer(gesamt_dauer)}")
     print("=" * 66)
 
-    klicks = gesamt_events.get("click", 0)
-    print(f"\nAktionen: {klicks} Klick(s), {gesamt_events.get('key', 0)} Taste(n), "
+    clicks = gesamt_events.get("click", 0)
+    print(f"\nAktionen: {clicks} Klick(s), {gesamt_events.get('key', 0)} Taste(n), "
           f"{gesamt_events.get('scroll', 0)} Scroll(s)")
-    if gesamt_dauer > 0 and klicks:
-        print(f"          {klicks / (gesamt_dauer / 3600):.0f} Klicks/Stunde")
+    if gesamt_dauer > 0 and clicks:
+        print(f"          {clicks / (gesamt_dauer / 3600):.0f} Klicks/Stunde")
 
     # DIE Frage, fuer die es das Werkzeug gibt
     if timeouts_je_schritt:

@@ -62,18 +62,18 @@ class BridgeTeilenMixin:
     def _fensterlage() -> Optional[dict]:
         """Das Spielfenster, aus dem die Referenzpunkte kommen — oder None."""
         from ...config import CONFIG
-        titel = CONFIG.window_focus_title
-        if not titel:
+        title = CONFIG.window_focus_title
+        if not title:
             return None
         try:
             from ...winapi import get_client_rect_by_title
-            rechteck = get_client_rect_by_title(titel)
+            rechteck = get_client_rect_by_title(title)
         except Exception:                                        # noqa: BLE001
             rechteck = None
         if not rechteck:
-            return {"titel": titel, "gefunden": False}
+            return {"titel": title, "gefunden": False}
         l, o, r, u = rechteck
-        return {"titel": titel, "gefunden": True, "rechteck": [l, o, r, u],
+        return {"titel": title, "gefunden": True, "rechteck": [l, o, r, u],
                 "breite": r - l, "hoehe": u - o}
 
     @staticmethod

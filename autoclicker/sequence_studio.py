@@ -157,9 +157,9 @@ def _attach_close_handler(fenster, bridge,
     `fenster.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
     """
     for besitzer in (getattr(fenster, "events", None), fenster):
-        ereignis = getattr(besitzer, "closing", None) if besitzer is not None else None
-        if ereignis is not None and hasattr(ereignis, "__iadd__"):
-            ereignis += lambda: _on_close(bridge, beenden_mit_fenster)
+        event = getattr(besitzer, "closing", None) if besitzer is not None else None
+        if event is not None and hasattr(event, "__iadd__"):
+            event += lambda: _on_close(bridge, beenden_mit_fenster)
             return
 
 

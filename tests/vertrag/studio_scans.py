@@ -1505,7 +1505,7 @@ try:
           _bB.items["Trank"].confirm_point_id == _pidB)
     _itemB = next(i for i in _bB.scan_daten()["items"] if i["name"] == "Trank")
     check("und die Ansicht nennt ihn beim Namen",
-          _itemB["bestaetigung"]["punkt_id"] == _pidB
+          _itemB["bestaetigung"]["point_id"] == _pidB
           and "OK-Knopf" in _itemB["bestaetigung"]["text"])
     # **Die Koordinate steht in points.json, sonst nirgends.** `confirm_point`
     # ist der abgeleitete Arbeitswert — dieselbe Rolle wie `action_x/y`.

@@ -705,8 +705,8 @@ class BridgeServicesMixin:
 
     def _scan_without_name(self) -> Optional[str]:
         """Erster Scan-Block mit leerem Namen, als lesbare Stelle."""
-        offen = scan_warnungen(self.board)
-        return offen[0] if offen else None
+        remaining = scan_warnungen(self.board)
+        return remaining[0] if remaining else None
 
     def speichern(self, data: Optional[dict] = None) -> dict:
         """Schreibt Punkte und Sequenz. Die Datei folgt dem Sequenz-Namen.

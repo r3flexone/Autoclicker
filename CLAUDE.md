@@ -3761,7 +3761,12 @@ Suite laufen lassen, sie findet beide:**
 
 Aus demselben Grund gibt es `--python-only`: Lokale wie `punkt`, `wert`,
 `kategorie` sind zugleich JSON-Schlüssel der Brücke, und der JS-Lexer würde
-`z.kategorie` umschreiben, während Python weiter `"kategorie"` schickt.
+`z.kategorie` umschreiben, während Python weiter `"kategorie"` schickt. Mit
+Unterstrich ist es umgekehrt: `punkt_id` wird nach der Verweis-Regel **auch in
+Strings** umgeschrieben (`data.get("punkt_id")` → `"point_id"`), während die
+Seite weiter `punkt_id` schickt. Dann die Seite für genau diesen Schlüssel
+nachziehen (`Renamer({...}).javascript()` auf `app.js`) — das ist ohnehin die
+Richtung von Phase 3 — oder den Namen aus der Tabelle lassen.
 
 **Nicht Teil der Umstellung sind Schlüssel in gespeicherten Dateien** —
 `config.json`, `sequence.json`, `katalog.json`, `marktwert.json`. Das sind

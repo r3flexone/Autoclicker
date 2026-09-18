@@ -55,14 +55,14 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
     # es schon gibt - und weil der Name die Referenz IST, folgt darauf die Rueckfrage
     # nach dem Ueberschreiben. `next_free_name()` fuellt Luecken.
     with state.lock:
-        vorschlag = next_free_name("Item", state.global_items)
+        proposal = next_free_name("Item", state.global_items)
 
-    item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
+    item_name = safe_input(f"  Item-Name (Enter = '{proposal}', 'cancel'): ").strip()
     if is_cancel(item_name):
         print("  -> Item-Erstellung abgebrochen")
         return None
     if not item_name:
-        item_name = vorschlag
+        item_name = proposal
 
     # Prüfen ob Name schon existiert
     with state.lock:

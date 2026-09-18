@@ -80,10 +80,10 @@ def lauf():
         # einem Raster, ihre Fusszeilen enden also zwangslaeufig an
         # verschiedenen Stellen. Hier stand erst die Kante, und der Rauchtest
         # meldete prompt „360 gegen 725" — richtig gemessen, falsch gefragt.
-        paare = f.seite.eval_on_selector_all(
+        pairs = f.seite.eval_on_selector_all(
             ".seq-karte .knopfpaar",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().width))")
-        pruefe(len(set(paare)) == 1, f"die Knopfpaare sind verschieden breit: {paare}")
+        pruefe(len(set(pairs)) == 1, f"die Knopfpaare sind verschieden breit: {pairs}")
         f.image("sequenzen_loeschen")
 
         # Der Dialog muss sagen, WAS weggeht — der Umfang ist der halbe Grund

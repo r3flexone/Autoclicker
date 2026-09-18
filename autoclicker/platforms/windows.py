@@ -693,8 +693,8 @@ def list_windows() -> list:
             return True
         puffer = ctypes.create_unicode_buffer(laenge + 1)
         user32.GetWindowTextW(hwnd, puffer, laenge + 1)
-        titel = (puffer.value or "").strip()
-        if not titel:
+        title = (puffer.value or "").strip()
+        if not title:
             return True
         rect = wintypes.RECT()
         pt = wintypes.POINT(0, 0)
@@ -709,7 +709,7 @@ def list_windows() -> list:
         # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
         # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
         # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
-        found.append((titel, (pt.x, pt.y, pt.x + width, pt.y + height),
+        found.append((title, (pt.x, pt.y, pt.x + width, pt.y + height),
                          int(hwnd)))
         return True
 

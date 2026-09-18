@@ -841,8 +841,8 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
 
     set_cursor_pos(x, y)
     name = str(arguments.get("name") or "").strip()
-    nummer = arguments.get("point")
-    kopf = f"#{nummer} " if nummer else ""
+    number = arguments.get("point")
+    kopf = f"#{number} " if number else ""
     print(f"\n{col('[STUDIO]', 'cyan')} {kopf}{name} {coord_context(x, y)}")
     jetzt = get_screen_pixel(x, y)
     if jetzt:

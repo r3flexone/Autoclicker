@@ -210,7 +210,7 @@ class ScanStateMixin:
             return self._scan_melde(
                 "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
                 "— „Speichern“ behält sie.", "warn")
-        offen = self.scan_offen
+        remaining = self.scan_offen
         self._scan_geladen = False
         self._ecke = self._suchbereich = None
         self._auswahl, self._treffer = [], {}
@@ -227,10 +227,10 @@ class ScanStateMixin:
         self._scan_laden()
         # Der vorher offene Scan bleibt offen, wenn es ihn noch gibt — sonst
         # steht man nach dem Nachladen woanders als vorher.
-        if offen and offen in self.scans:
-            self.scan_offen = offen
-            self.scan_art, self.scan_name = ART_SCAN, offen
-            self._foto_laden(offen)
+        if remaining and remaining in self.scans:
+            self.scan_offen = remaining
+            self.scan_art, self.scan_name = ART_SCAN, remaining
+            self._foto_laden(remaining)
         return self._scan_melde(
             f"Neu geladen: {len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Scan(s).")
@@ -421,11 +421,11 @@ class ScanStateMixin:
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
              hat_items, "scan_lernvorschau", "Items prüfen & lernen"),
         ]
-        offen = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
-        aktuell = offen[0] if offen else 0
-        return [{"nr": nr, "titel": titel, "was": was, "fertig": fertig,
-                 "aktuell": nr == aktuell, "befehl": command, "knopf": knopf}
-                for nr, titel, was, fertig, command, knopf in raw]
+        remaining = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
+        current = remaining[0] if remaining else 0
+        return [{"nr": nr, "titel": title, "was": was, "fertig": fertig,
+                 "aktuell": nr == current, "befehl": command, "knopf": knopf}
+                for nr, title, was, fertig, command, knopf in raw]
 
     def _flaeche(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
@@ -605,7 +605,7 @@ class ScanStateMixin:
             return False
 
     def _slot_json(self, slot: ItemSlot, dabei: bool = False,
-                   nummer: Optional[int] = None, total: int = 0,
+                   number: Optional[int] = None, total: int = 0,
                    rueckwaerts: bool = False) -> dict:
         match = self._treffer.get(slot.name)
         width = slot.scan_region[2] - slot.scan_region[0]
@@ -631,8 +631,8 @@ class ScanStateMixin:
             # Die Stelle im offenen Scan (1-basiert) und die Stelle im LAUF —
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
             # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
-            "nummer": nummer,
-            "lauf": (total - nummer + 1) if (nummer and rueckwaerts) else nummer,
+            "nummer": number,
+            "lauf": (total - number + 1) if (number and rueckwaerts) else number,
             "gesamt": total,
         }
 
@@ -716,9 +716,9 @@ class ScanStateMixin:
             return None
         point = next((p for p in self.points if p.id == item.confirm_point_id), None)
         if point is None:
-            return {"punkt_id": item.confirm_point_id, "fehlt": True,
+            return {"point_id": item.confirm_point_id, "fehlt": True,
                     "text": f"Punkt #{item.confirm_point_id} fehlt"}
-        return {"punkt_id": point.id, "fehlt": False,
+        return {"point_id": point.id, "fehlt": False,
                 "text": (point.name or f"Punkt {point.id}")
                         + f" ({point.x}, {point.y})"}
 

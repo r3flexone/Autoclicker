@@ -205,8 +205,8 @@ class ScanLearningMixin:
         by_slot = {str(z.get("slot") or ""): z for z in eingaben if isinstance(z, dict)}
 
         def ist_ausgewaehlt(line: dict) -> bool:
-            eingabe = by_slot.get(line["slot"], {})
-            return bool(eingabe.get("ausgewaehlt", line["ausgewaehlt"]))
+            user_input = by_slot.get(line["slot"], {})
+            return bool(user_input.get("ausgewaehlt", line["ausgewaehlt"]))
 
         ausgewaehlt = [
             line for line in self._lern_review if ist_ausgewaehlt(line)
@@ -227,15 +227,15 @@ class ScanLearningMixin:
 
         vergeben = set(self.items)
         for line in ausgewaehlt:
-            eingabe = by_slot.get(line["slot"], {})
-            als_anders = bool(eingabe.get("als_anders", False))
+            user_input = by_slot.get(line["slot"], {})
+            als_anders = bool(user_input.get("als_anders", False))
             erkannter_name = str(line.get("vorhanden") or "")
             if erkannter_name and not als_anders:
                 # Der Name ist die Identität des erkannten Items. Geändert wird
                 # er nur über die ausdrückliche Aktion „Als anderes Item lernen“.
                 basis = erkannter_name
             else:
-                basis = (str(eingabe.get("name") or line["name"]).strip()
+                basis = (str(user_input.get("name") or line["name"]).strip()
                          or line["name"])
             slot = self.slots.get(line["slot"])
             if slot is None:
@@ -254,10 +254,10 @@ class ScanLearningMixin:
                 if erkannter_name and not als_anders and basis not in metadaten_gesetzt:
                     vorher = (existing.category, existing.priority)
                     category = self._kategorie_normalisieren(
-                        eingabe.get("kategorie", line["kategorie"]))
+                        user_input.get("kategorie", line["kategorie"]))
                     priority, verschoben = self._prioritaet_einordnen(
                         category,
-                        eingabe.get("prioritaet", line["prioritaet"]),
+                        user_input.get("prioritaet", line["prioritaet"]),
                         ausnehmen=existing,
                     )
                     existing.category = category
@@ -288,9 +288,9 @@ class ScanLearningMixin:
             name = unique_name(basis, vergeben)
             vergeben.add(name)
             marker = _collect_markers_silent(crop, slot.slot_color)
-            category = self._kategorie_normalisieren(eingabe.get("kategorie"))
+            category = self._kategorie_normalisieren(user_input.get("kategorie"))
             priority, _ = self._prioritaet_einordnen(
-                category, eingabe.get("prioritaet", line["prioritaet"]))
+                category, user_input.get("prioritaet", line["prioritaet"]))
             self.items[name] = ItemProfile(
                 name=name, marker_colors=[tuple(c) for c in marker],
                 category=category, priority=priority,
@@ -301,9 +301,9 @@ class ScanLearningMixin:
             self._dazu(ART_ITEM, name)
             new.append(name)
         self._lern_review = []
-        gewaehlt = new + varianten + bearbeitet
-        if gewaehlt:
-            self.scan_art, self.scan_name = ART_ITEM, gewaehlt[0]
+        selected = new + varianten + bearbeitet
+        if selected:
+            self.scan_art, self.scan_name = ART_ITEM, selected[0]
         parts = []
         if new:
             parts.append(f"{len(new)} neue Item(s)")
@@ -381,16 +381,16 @@ class ScanLearningMixin:
                 item.confirm_point = None
                 return self._scan_geaendert(f"{name}: kein Bestätigungsklick mehr.")
             try:
-                punkt_id = int(value)
+                point_id = int(value)
             except (TypeError, ValueError):
                 return self._scan_melde("Der Bestätigungsklick braucht einen Punkt.",
                                         "err")
-            if not any(p.id == punkt_id for p in self.points):
-                return self._scan_melde(f"Punkt #{punkt_id} gibt es nicht.", "err")
+            if not any(p.id == point_id for p in self.points):
+                return self._scan_melde(f"Punkt #{point_id} gibt es nicht.", "err")
             self._merke(f"'{name}': Bestätigungsklick")
-            item.confirm_point_id = punkt_id
+            item.confirm_point_id = point_id
             self._bestaetigung_anwenden(item)
-            return self._scan_geaendert(f"{name}: bestätigt über Punkt #{punkt_id}.")
+            return self._scan_geaendert(f"{name}: bestätigt über Punkt #{point_id}.")
         if feld == "bestaetigung_verzoegerung":
             try:
                 number = float(value)
@@ -875,7 +875,7 @@ class ScanLearningMixin:
                 reasoning=config.llm_reasoning,
                 max_tokens=config.llm_max_tokens)
 
-        vorschlag, reason = frag(config.llm_timeout)
+        proposal, reason = frag(config.llm_timeout)
         # **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
         # echten Bestand: die ersten vier Anfragen ueber 120 s, die folgenden
         # 3,5 s. Der zweite Versuch trifft also ein warmes Modell und kostet
@@ -883,9 +883,9 @@ class ScanLearningMixin:
         # verschenken. Mehr als einer waere Warten ohne Aussicht: antwortet es
         # auch dann nicht, liegt es nicht am Aufwaermen.
         if reason == TIMEOUT:
-            vorschlag, reason = frag(max(config.llm_timeout * 2, 120))
+            proposal, reason = frag(max(config.llm_timeout * 2, 120))
 
-        basis = clean_item_name(vorschlag) if vorschlag else ""
+        basis = clean_item_name(proposal) if proposal else ""
         if not basis:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.
@@ -966,8 +966,8 @@ class ScanLearningMixin:
             return self._scan_melde("Es läuft kein Benenn-Durchgang.", "warn")
         self._autoname = None
         abgebrochen = bool((data or {}).get("abgebrochen"))
-        offen = len(lauf["offen"])
-        geprueft = lauf["gesamt"] - offen
+        remaining = len(lauf["offen"])
+        geprueft = lauf["gesamt"] - remaining
         kopf = (str(lauf["umbenannt"]) + " von " + str(geprueft)
                 + " Item(s) per LLM benannt")
         # **Eine zusammengelegte Vorlage wird gesagt.** Sonst zaehlt der Nutzer
@@ -976,7 +976,7 @@ class ScanLearningMixin:
             kopf += (", " + str(lauf["varianten"])
                      + " Vorlage(n) an ein bekanntes Item angehängt")
         if abgebrochen:
-            kopf += " — abgebrochen, " + str(offen) + " nicht angesehen"
+            kopf += " — abgebrochen, " + str(remaining) + " nicht angesehen"
 
         katalog = self._katalog()
         if katalog and lauf["benannt"]:
@@ -1062,9 +1062,9 @@ class ScanLearningMixin:
         """
         cfg = self.scans.get(self.scan_offen)
         if cfg is not None:
-            gewaehlt = [self.items[n] for n in cfg.item_names
+            selected = [self.items[n] for n in cfg.item_names
                         if n in self.items and self.items[n].enabled]
-            return sorted(gewaehlt, key=lambda i: i.priority)
+            return sorted(selected, key=lambda i: i.priority)
         return sorted((i for i in self.items.values() if i.enabled),
                       key=lambda i: i.priority)
 

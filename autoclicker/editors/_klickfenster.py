@@ -35,11 +35,11 @@ def clicked_window(x: int, y: int) -> str:
     noch besser als gar keine.
     """
     try:
-        titel = (get_window_title_at(x, y) or "").strip()
+        title = (get_window_title_at(x, y) or "").strip()
     except Exception:
-        titel = ""
-    if titel:
-        return titel
+        title = ""
+    if title:
+        return title
     try:
         return (get_foreground_window_title() or "").strip()
     except Exception:

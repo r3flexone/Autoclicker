@@ -180,13 +180,13 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     # Item-Name abfragen. Nicht `len(...) + 1` — das schlaegt nach dem ersten Loeschen
     # einen bereits vergebenen Namen vor, und der Name ist hier die Referenz.
     with state.lock:
-        vorschlag = next_free_name("Item", state.global_items)
-    item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}'): ").strip()
+        proposal = next_free_name("Item", state.global_items)
+    item_name = safe_input(f"  Item-Name (Enter = '{proposal}'): ").strip()
     if is_cancel(item_name):
         _cleanup_cached_template()
         return True
     if not item_name:
-        item_name = vorschlag
+        item_name = proposal
 
     with state.lock:
         name_exists = item_name in state.global_items

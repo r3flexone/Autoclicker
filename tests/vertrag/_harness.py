@@ -84,8 +84,8 @@ def check(name: str, cond) -> None:
         print(f"  FAIL  {name}")
 
 
-def section(titel: str) -> None:
-    print(f"\n=== {titel} ===")
+def section(title: str) -> None:
+    print(f"\n=== {title} ===")
 
 
 def studio_web_source() -> str:

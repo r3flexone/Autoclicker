@@ -245,7 +245,7 @@ class SweepResult:
 
     def __init__(self) -> None:
         self.geaendert: list[tuple[Path, list[str]]] = []
-        self.aktuell: int = 0
+        self.current: int = 0
         self.uebersprungen: list[Path] = []
         self.geschrieben: bool = False
 
@@ -289,7 +289,7 @@ def sweep(write: bool = False) -> SweepResult:
             continue
 
         if not messages and _equal(raw, sauber):
-            result.aktuell += 1
+            result.current += 1
             continue
 
         if not messages:

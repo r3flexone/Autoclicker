@@ -311,10 +311,10 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         width, height = img.size
         basis = f"{safe_name}_{width}x{height}"
         template_file = f"{basis}.png"
-        nummer = 2
+        number = 2
         while (active_templates_dir(state) / template_file).exists():
-            template_file = f"{basis}_{nummer}.png"
-            nummer += 1
+            template_file = f"{basis}_{number}.png"
+            number += 1
     else:
         template_file = f"{safe_name}.png"
     template_path = active_templates_dir(state) / template_file

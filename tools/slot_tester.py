@@ -193,8 +193,8 @@ def select_item_scan() -> Path | None:
         print(f"[FEHLER] Keine Item-Scans unter {SEQUENCES_DIR} gefunden!")
         return None
     print("\nVerfuegbare Item-Scans:")
-    for nummer, path in enumerate(scans, 1):
-        print(f"  {nummer}. {path.parent.parent.name} / {path.stem}")
+    for number, path in enumerate(scans, 1):
+        print(f"  {number}. {path.parent.parent.name} / {path.stem}")
     while True:
         try:
             auswahl = int(input("\nScan-Nummer: ").strip()) - 1

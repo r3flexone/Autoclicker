@@ -33,15 +33,15 @@ from .icon_scan_editor import run_icon_scan_editor
 # ausgeschrieben: <Nr>, <Von>-<Bis>, all, clear, show, done, cancel. Zwei Kopien sind
 # zwei Verhaltensweisen — eine Korrektur an der einen ging an der anderen vorbei.
 
-def parse_range(eingabe: str, count: int) -> Optional[tuple[int, int]]:
+def parse_range(user_input: str, count: int) -> Optional[tuple[int, int]]:
     """'1-5' → (1, 5), aufsteigend normalisiert.
 
     None, wenn es kein Bereich ist oder eine Grenze ausserhalb 1..anzahl liegt.
     '5-1' ergibt (1, 5) — wer rueckwaerts tippt, meint dasselbe.
     """
-    if "-" not in eingabe:
+    if "-" not in user_input:
         return None
-    parts = eingabe.split("-")
+    parts = user_input.split("-")
     if len(parts) != 2:
         return None
     try:
@@ -53,12 +53,12 @@ def parse_range(eingabe: str, count: int) -> Optional[tuple[int, int]]:
     return (min(von, bis), max(von, bis))
 
 
-def multi_select(prompt: str, entries: list, gewaehlt: list,
+def multi_select(prompt: str, entries: list, selected: list,
                      line, extra_praefix: str = "", extra_fn=None,
                      leer_fehler: str = "") -> Optional[list]:
     """Mehrfachauswahl aus einer nummerierten Liste. None = Abbruch.
 
-    `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `gewaehlt`
+    `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `selected`
     die Vorauswahl. `line(index, name, markiert)` liefert die Anzeigezeile.
 
     `extra_praefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
@@ -67,17 +67,17 @@ def multi_select(prompt: str, entries: list, gewaehlt: list,
 
     `leer_fehler` erzwingt mindestens einen Eintrag bei 'done'.
     """
-    gewaehlt = list(gewaehlt)
+    selected = list(selected)
     befehle = ["done", "cancel", "all", "clear", "show"]
     if extra_praefix:
         befehle.append(extra_praefix)
 
     def _show():
-        print(f"\n{len(gewaehlt)}/{len(entries)} ausgewählt:")
+        print(f"\n{len(selected)}/{len(entries)} ausgewählt:")
         if not entries:
             print("  (nichts vorhanden)")
         for i, name in enumerate(entries):
-            print(line(i, name, name in gewaehlt))
+            print(line(i, name, name in selected))
 
     while True:
         try:
@@ -85,19 +85,19 @@ def multi_select(prompt: str, entries: list, gewaehlt: list,
             inp = raw.lower()
 
             if inp in ("done", "d"):
-                if leer_fehler and not gewaehlt:
+                if leer_fehler and not selected:
                     print("  " + err(leer_fehler) + " "
                           + hint("('<Nr>' = wählen, 'cancel' = Editor verlassen)"))
                     continue
-                return gewaehlt
+                return selected
             if is_cancel(inp):
                 return None
             if inp == "all":
-                gewaehlt = list(entries)
+                selected = list(entries)
                 print(f"  + Alle {len(entries)} ausgewählt")
                 continue
             if inp == "clear":
-                gewaehlt = []
+                selected = []
                 print("  + Auswahl gelöscht")
                 continue
             if inp in ("show", "s"):
@@ -108,8 +108,8 @@ def multi_select(prompt: str, entries: list, gewaehlt: list,
                 if neuer:
                     if neuer not in entries:
                         entries.append(neuer)
-                    if neuer not in gewaehlt:
-                        gewaehlt.append(neuer)
+                    if neuer not in selected:
+                        selected.append(neuer)
                 continue
 
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
@@ -118,8 +118,8 @@ def multi_select(prompt: str, entries: list, gewaehlt: list,
                 von, bis = area
                 for nr in range(von, bis + 1):
                     name = entries[nr - 1]
-                    if name not in gewaehlt:
-                        gewaehlt.append(name)
+                    if name not in selected:
+                        selected.append(name)
                 print(f"  + {von}-{bis} hinzugefügt")
                 continue
             if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
@@ -135,11 +135,11 @@ def multi_select(prompt: str, entries: list, gewaehlt: list,
                 print(f"  -> Ungültig! 1-{len(entries)}")
                 continue
             name = entries[nr - 1]
-            if name in gewaehlt:
-                gewaehlt.remove(name)
+            if name in selected:
+                selected.remove(name)
                 print(f"  - {name} entfernt")
             else:
-                gewaehlt.append(name)
+                selected.append(name)
                 print(f"  + {name} hinzugefügt")
         except (KeyboardInterrupt, EOFError):
             return None
@@ -266,17 +266,17 @@ def _step_presets(state: AutoClickerState) -> bool:
         cur_slots = len(state.global_slots)
         cur_items = len(state.global_items)
 
-    for presets, titel, aktuell, laden in (
+    for presets, title, current, laden in (
         (slot_presets, "Slot-Presets", cur_slots, load_slot_preset),
         (item_presets, "Item-Presets", cur_items, load_item_preset),
     ):
         if not presets:
             continue
-        kind = titel.split("-")[0]
-        print(f"\n{titel}:")
+        kind = title.split("-")[0]
+        print(f"\n{title}:")
         for i, (name, _pfad, count) in enumerate(presets):
             print(f"  [{i+1}] {name} ({count} {kind}s)")
-        print(f"  [0] Aktuelle {kind}s verwenden ({aktuell} geladen)")
+        print(f"  [0] Aktuelle {kind}s verwenden ({current} geladen)")
 
         while True:
             try:
@@ -298,7 +298,7 @@ def _step_presets(state: AutoClickerState) -> bool:
     return True
 
 
-def _new_item_from_template(state: AutoClickerState, eingabe: str,
+def _new_item_from_template(state: AutoClickerState, user_input: str,
                              slot_list: list, available_slots: dict,
                              available_items: dict) -> Optional[str]:
     """Legt ein Item aus einem Slot-Screenshot an. Gibt den Namen zurück, oder None.
@@ -311,9 +311,9 @@ def _new_item_from_template(state: AutoClickerState, eingabe: str,
         return None
 
     slot_num = None
-    if eingabe.lower().startswith("new "):
+    if user_input.lower().startswith("new "):
         try:
-            slot_num = int(eingabe[4:])
+            slot_num = int(user_input[4:])
         except ValueError:
             pass
     if slot_num is None:
@@ -507,13 +507,13 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print(f"\nBefehle: '<Nr>', '<Von>-<Bis>' (z.B. 1-5), 'all', 'clear', "
           f"'show / s', 'done / d', 'cancel / {cancel_hint()}")
 
-    gewaehlt = multi_select(
+    selected = multi_select(
         "[Slots] > ", slot_list, selected_slot_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_slots[name]}",
         leer_fehler="Mindestens 1 Slot erforderlich!")
-    if gewaehlt is None:
+    if selected is None:
         return
-    selected_slot_names = gewaehlt
+    selected_slot_names = selected
 
     # --- Schritt 2: Items ---------------------------------------------------------
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))
@@ -547,15 +547,15 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print(f"  show / s | done / d | cancel / {cancel_hint()}")
     print("-" * 40)
 
-    gewaehlt = multi_select(
+    selected = multi_select(
         "[Items] > ", item_list, selected_item_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_items[name]}",
         extra_praefix="new",
         extra_fn=lambda raw: _new_item_from_template(
             state, raw, slot_list, available_slots, available_items))
-    if gewaehlt is None:
+    if selected is None:
         return
-    selected_item_names = gewaehlt
+    selected_item_names = selected
 
     if not selected_item_names:
         print(f"\n{info('Keine Items ausgewählt.')}")

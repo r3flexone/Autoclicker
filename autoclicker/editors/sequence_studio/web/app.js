@@ -3831,7 +3831,7 @@ function scanItemBestaetigung(i) {
     + "Kalibrierung erfasst sie mit.", "bestaetigung"));
   const wahl = auswahl("Punkt", [{wert: "", text: "— keine Bestätigung —"}].concat(
     SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
-    i.bestaetigung ? i.bestaetigung.punkt_id : "", (v) => setze("bestaetigung", v));
+    i.bestaetigung ? i.bestaetigung.point_id : "", (v) => setze("bestaetigung", v));
   kasten.appendChild(wahl);
   // Ein Punkt, den es nicht mehr gibt, wird GESAGT statt verschwiegen: der
   // Lauf klickt sonst nichts, und man sucht den Fehler bei der Erkennung.
@@ -4335,7 +4335,7 @@ function erkAktionsFelder(objekt, art, name) {
   if (objekt.aktion === "click") {
     felder.push(auswahl("Punkt", [{wert: "", text: "— keiner —"}].concat(
       SC.punkte.map((p) => ({wert: p.id, text: "#" + p.id + " " + p.name}))),
-      objekt.punkt_id === null || objekt.punkt_id === undefined ? "" : objekt.punkt_id,
+      objekt.point_id === null || objekt.point_id === undefined ? "" : objekt.point_id,
       (v) => setze("punkt", v === "" ? null : Number(v))));
     felder.push(el("button", {class: "btn still", disabled: !fotoDa(),
       onclick: () => rufScan("region_modus", {art: art, modus: "aktion"})},
@@ -4726,8 +4726,8 @@ function erkOverlay(svg, px) {
   // Der Klickpunkt der Aktion: gestrichelt und in Amber — er ist ein
   // Handlungsort, keine Erkennung.
   const objekt = scanArt === "boss" ? erkBoss() : c;
-  const punkt = objekt && objekt.punkt_id !== null && objekt.punkt_id !== undefined
-    ? SC.punkte.find((p) => p.id === objekt.punkt_id) : null;
+  const punkt = objekt && objekt.point_id !== null && objekt.point_id !== undefined
+    ? SC.punkte.find((p) => p.id === objekt.point_id) : null;
   if (!punkt || objekt.aktion !== "click") return;
   const [ax, ay] = scanZuBild(punkt.x, punkt.y);
   const arm = 9 * px;
@@ -5645,7 +5645,7 @@ function wzPunkteBauen() {
       setzeStatus({art: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
       const a = await mitWarten("werkzeug", "werkzeug_punkt_aufnehmen",
                                 {name: neuName.value});
-      if (a && a.ok) wzPunktId = a.punkt_id;
+      if (a && a.ok) wzPunktId = a.point_id;
     }}, "＋ Neuen Punkt aufnehmen")));
   if (!punkt) {
     raus.push(el("p", {class: "leer"}, "Noch keine Punkte in dieser Sequenz."));
@@ -5655,7 +5655,7 @@ function wzPunkteBauen() {
     text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), punkt.id,
     (v) => { wzPunktId = Number(v); wzMitteZeichnen(); wzRechtsZeichnen(); }));
   const setze = (feld, wert) => rufWerkzeug("werkzeug_punkt_setzen",
-    {punkt_id: punkt.id, feld: feld, wert: wert});
+    {point_id: punkt.id, feld: feld, wert: wert});
   raus.push(feld("Name", punkt.name, (v) => setze("name", v)));
   raus.push(el("div", {class: "gitter2"},
     zahlfeld("X", punkt.x, (v) => setze("x", v), {step: "1"}),
@@ -5664,14 +5664,14 @@ function wzPunkteBauen() {
     (v) => setze("farbe", v)));
   raus.push(el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
     el("button", {class: "btn", onclick: () => rufWerkzeug("werkzeug_punkt_zeigen",
-      {punkt_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
+      {point_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
     el("button", {class: "btn", onclick: () => mitWarten("werkzeug",
-      "werkzeug_punkt_aufnehmen", {punkt_id: punkt.id})}, "✛ Neu messen"),
+      "werkzeug_punkt_aufnehmen", {point_id: punkt.id})}, "✛ Neu messen"),
     // Ausdruecklich ein Boolean, nicht die Anzahl: die Absicht ist „gesperrt,
     // SOLANGE er benutzt wird" — als Zahl gelesen hiess sie das Gegenteil.
     el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length > 0,
       title: punkt.verwendungen.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
-      onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {punkt_id: punkt.id})},
+      onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {point_id: punkt.id})},
       "Löschen")));
   if (punkt.verwendungen.length) raus.push(el("p", {class: "hinweis"},
     "Löschen ist gesperrt: Dieser Punkt wird noch " + punkt.verwendungen.length + "× verwendet."));
@@ -6031,13 +6031,13 @@ function wzFarbfrageBauen() {
   const leiste = el("div", {style: "display:flex;gap:8px"});
   leiste.appendChild(el("button", {
     class: "btn", onclick: async () => {
-      const n = f.nummer, id = f.punkt_id;
+      const n = f.nummer, id = f.point_id;
       wzFarbfrage = null;
       // Auch „Trotzdem setzen" misst die Stelle NEU — kalib_referenz wartet
       // in jedem Fall auf ENTER. Ohne den Hinweis sieht der Knopf aus, als
       // habe er nichts getan.
       await mitWarten("werkzeug", "kalib_referenz",
-                      {nummer: n, punkt_id: id, bestaetigt: true});
+                      {nummer: n, point_id: id, bestaetigt: true});
     },
   }, "Trotzdem setzen"));
   leiste.appendChild(el("button", {
@@ -6063,7 +6063,7 @@ function wzFarbfrageBauen() {
 function wzWeitesterPunkt(ref1) {
   let beste = W.punkte[0], weit = -1;
   for (const p of W.punkte) {
-    if (ref1 && p.id === ref1.punkt_id) continue;
+    if (ref1 && p.id === ref1.point_id) continue;
     const d = Math.hypot(p.x - (ref1 ? ref1.alt[0] : 0), p.y - (ref1 ? ref1.alt[1] : 0));
     if (d > weit) { weit = d; beste = p; }
   }
@@ -6080,7 +6080,7 @@ function wzRefZeile(nummer, gesetzt) {
   for (const p of W.punkte)
     wahl.appendChild(el("option", {value: String(p.id)},
       "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"));
-  if (gesetzt) wahl.value = String(gesetzt.punkt_id);
+  if (gesetzt) wahl.value = String(gesetzt.point_id);
   // Der zweite Punkt soll WEIT weg vom ersten liegen — genau das steht als
   // Hinweis darueber. Der erste Eintrag der Liste ist aber der erste Punkt
   // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
@@ -6092,7 +6092,7 @@ function wzRefZeile(nummer, gesetzt) {
     onclick: async () => {
       setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
       const antwort = await mitWarten("frage", "kalib_referenz",
-        {nummer, punkt_id: Number(wahl.value)});
+        {nummer, point_id: Number(wahl.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
       if (antwort && antwort.bestaetigen) { wzFarbfrage = {...antwort, nummer}; }
