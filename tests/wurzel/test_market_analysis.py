@@ -484,7 +484,7 @@ class ExtendedJsonTest(unittest.TestCase):
            ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
 
     def test_bekannte_huellen_werden_uebersetzt(self):
-        data, hinweise = extended_json.laden(self.ROH)
+        data, hinweise = extended_json.load(self.ROH)
         self.assertEqual(data["_id"], "61e2b1b0")
         self.assertEqual(data["n"], 0)
         self.assertEqual(data["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
@@ -492,11 +492,11 @@ class ExtendedJsonTest(unittest.TestCase):
         self.assertIsNone(data["leer"])
 
     def test_konstrukt_im_string_bleibt_text(self):
-        data, _ = extended_json.laden(self.ROH)
+        data, _ = extended_json.load(self.ROH)
         self.assertEqual(data["t"], 'nutze ObjectId("x") hier')
 
     def test_unbekanntes_ueberlebt_und_wird_gemeldet(self):
-        data, hinweise = extended_json.laden(self.ROH)
+        data, hinweise = extended_json.load(self.ROH)
         self.assertEqual(data["u"], 3)                    # ein Skalar bleibt der Skalar
         self.assertEqual(data["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
         self.assertEqual(len(hinweise), 2)
@@ -504,7 +504,7 @@ class ExtendedJsonTest(unittest.TestCase):
         self.assertIn("Timestamp", hinweise[1])
 
     def test_bekanntes_erzeugt_keinen_hinweis(self):
-        _, hinweise = extended_json.laden('{"a": ObjectId("ab"), "b": NumberLong(7)}')
+        _, hinweise = extended_json.load('{"a": ObjectId("ab"), "b": NumberLong(7)}')
         self.assertEqual(hinweise, [])
 
     def test_der_echte_achievement_block(self):
@@ -512,7 +512,7 @@ class ExtendedJsonTest(unittest.TestCase):
         raw = ('{"Achievements": [{"Name": "achievement_tutorial_completed", '
                '"CriteriaThreshold" : NumberLong(0), "CriteriaTaskIds" : [], '
                '"CriteriaValue" : NumberLong(100)}]}')
-        data, hinweise = extended_json.laden(raw)
+        data, hinweise = extended_json.load(raw)
         self.assertEqual(data["Achievements"][0]["CriteriaValue"], 100)
         self.assertEqual(hinweise, [])
 
@@ -520,7 +520,7 @@ class ExtendedJsonTest(unittest.TestCase):
         """Uebersetzt wird, was uebersetzbar ist — kaputtes JSON bleibt ein Fehler."""
         import json
         with self.assertRaises(json.JSONDecodeError):
-            extended_json.laden('{"a": NumberLong(1), "b": }')
+            extended_json.load('{"a": NumberLong(1), "b": }')
 
 
 try:                                    # braucht pandas/requests/openpyxl - lokal ja, in CI nicht

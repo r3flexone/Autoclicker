@@ -22,7 +22,7 @@ Nebenläufigkeit im Programm.
 Warum dieses Modul nicht unter `runtime/` liegt, wo sein Zwilling steht: das
 Studio müsste dafür `autoclicker.runtime` importieren, und dessen `__init__`
 zieht den Worker samt `imaging` und `winapi` nach. Das Fenster braucht nichts
-davon. Aus demselben Grund liest `StudioBridge.lauf_status()` die Statusdatei
+davon. Aus demselben Grund liest `StudioBridge.run_status()` die Statusdatei
 selbst, statt `runtime.status` zu importieren.
 """
 

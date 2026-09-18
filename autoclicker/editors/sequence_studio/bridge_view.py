@@ -65,7 +65,7 @@ class BridgeViewMixin:
         frage, self._ask = self._ask, None
         return {
             "datei": str(self.filepath),
-            "start_ansicht": self.start_ansicht,
+            "start_view": self.start_view,
             "name": self.board.name,
             "beschreibung": self.board.description,
             "zyklen": self.board.total_cycles,
@@ -77,19 +77,19 @@ class BridgeViewMixin:
             "status": {"text": text, "art": kind},
             "frage": frage,
             "sequenzen": sorted(name for name, _ in list_available_sequences()),
-            "scan_namen": self._scan_namen(),
+            "scan_namen": self._scan_names(),
             "typen": [{"key": t, "label": BLOCK_LABELS[t],
                        "farbe": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
             "scan_modi": SCAN_MODI,
             "else_aktionen": ELSE_AKTIONEN,
-            "ohne_else": self._ohne_else(),
+            "ohne_else": self._without_else(),
             "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "punkte": [self._point_json(p) for p in self.points],
-            "auswahl": self._auswahl_json(),
+            "auswahl": self._selection_json(),
             "block": self._block_detail(),
         }
 
-    def _ohne_else(self) -> dict:
+    def _without_else(self) -> dict:
         """Was ohne ELSE nach dem Timeout passiert — laut `config.json`.
 
         Die Antwort steht in der Config des Hauptprozesses (`pixel_wait_timeout`,
@@ -97,7 +97,7 @@ class BridgeViewMixin:
         nicht nur den Schritt — genau der Unterschied entscheidet, ob man ELSE braucht.
 
         Gelesen wird am Zeitstempel der Datei, nicht bei jeder Momentaufnahme; und
-        über `_config_datei()` statt `load_config()`, denn die schreibt die Datei und
+        über `_config_file()` statt `load_config()`, denn die schreibt die Datei und
         gibt eine Konsolenzeile aus. Scheitert das Lesen, bleibt das Feld leer.
         """
         try:
@@ -108,7 +108,7 @@ class BridgeViewMixin:
         if stand != self._cfg_stand:
             self._cfg_stand = stand
             from ...config import CONFIG
-            raw, fehler = self._config_datei()
+            raw, fehler = self._config_file()
             if fehler:
                 self._cfg_info = {}
             else:
@@ -120,7 +120,7 @@ class BridgeViewMixin:
                                          CONFIG.pixel_max_consecutive_timeouts)}
         return self._cfg_info
 
-    def _scan_namen(self) -> dict:
+    def _scan_names(self) -> dict:
         """Welche Scan-Konfigurationen es gibt — je Block-Typ eine Liste.
 
         Ein Scan-Block verweist per Name auf eine Datei; ein Tippfehler ergab einen
@@ -165,7 +165,7 @@ class BridgeViewMixin:
             "bloecke": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
         }
 
-    def _auswahl_json(self) -> dict:
+    def _selection_json(self) -> dict:
         """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor."""
         rows = sorted(self.sel_rows)
         steps = [] if self.sel_lane is None else [
@@ -194,7 +194,7 @@ class BridgeViewMixin:
         typ = block_type(step)
         wc = step.wait_condition
         feld = SCAN_FELD.get(typ)
-        point = self._punkt(step.point_id)
+        point = self._point(step.point_id)
         block = {
             "zeile": row,
             "typ": typ,
@@ -203,7 +203,7 @@ class BridgeViewMixin:
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
             "titel": step.name or "",
-            "zeilen": self._zeilen(step, typ),
+            "zeilen": self._lines(step, typ),
             "prueft": step.verify_condition is not None,
             "haltepunkt": bool(step.breakpoint),
             "gewaehlt": self.sel_lane is lane and row in self.sel_rows,
@@ -212,7 +212,7 @@ class BridgeViewMixin:
             # Klick zeigte Koordinaten — und Koordinaten unterscheidet niemand
             # beim Überfliegen von 50 Karten, die Farbe des Knopfs schon. Die
             # Ansicht hängt sie an die erste Zeile, denn dort steht die Stelle
-            # (`_zeilen`). Ohne gemessene Farbe kein Feldchen: ein leeres
+            # (`_lines`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
             "punkt_farbe": _hex(point.color) if point is not None else None,
             "farbfeld": _hex(wc.color) if wc else None,
@@ -227,7 +227,7 @@ class BridgeViewMixin:
         }
         return block
 
-    def _zeilen(self, step: SequenceStep, typ: str) -> list[str]:
+    def _lines(self, step: SequenceStep, typ: str) -> list[str]:
         """Ein bis drei knappe Zeilen im Kartenkörper.
 
         Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
@@ -276,7 +276,7 @@ class BridgeViewMixin:
                 ELSE_SKIP_CYCLE: "sonst: Zyklus abbrechen",
                 ELSE_RESTART: "sonst: Sequenz neu starten"}.get(ec.action, f"sonst: {ec.action}")
 
-    def _einzelner(self) -> tuple[Optional[Lane], int, Optional[SequenceStep]]:
+    def _single(self) -> tuple[Optional[Lane], int, Optional[SequenceStep]]:
         """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind."""
         if self.sel_lane is None or len(self.sel_rows) != 1:
             return None, -1, None
@@ -287,7 +287,7 @@ class BridgeViewMixin:
 
     def _block_detail(self) -> Optional[dict]:
         """Alle Felder des gewählten Schritts für die Eigenschaften-Spalte."""
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return None
         typ = block_type(step)
@@ -308,7 +308,7 @@ class BridgeViewMixin:
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
             # falschen Stelle"). Die Liste ist Zustand, also Text — nicht ⓘ.
-            "punkt_andere": (self._punkt_verwendungen(step.point_id, ausser=step)
+            "punkt_andere": (self._point_usages(step.point_id, ausser=step)
                              if step.point_id is not None else []),
             "x": step.x,
             "y": step.y,
@@ -339,20 +339,20 @@ class BridgeViewMixin:
 
     # --------------------------------------------------------------- Zustand
 
-    def _melde(self, text: str, kind: str = "ok") -> dict:
+    def _report(self, text: str, kind: str = "ok") -> dict:
         self._status = (text, kind)
         return self.snapshot()
 
-    def _geaendert(self, text: str = "", kind: str = "ok") -> dict:
+    def _changed(self, text: str = "", kind: str = "ok") -> dict:
         self._dirty = True
-        return self._melde(text, kind)
+        return self._report(text, kind)
 
-    def _punkt(self, point_id) -> Optional[PalettePoint]:
+    def _point(self, point_id) -> Optional[PalettePoint]:
         if point_id is None:
             return None
         return next((p for p in self.points if p.id == int(point_id)), None)
 
-    def _punkte_anwenden(self) -> None:
+    def _points_apply(self) -> None:
         """Zieht die abgeleiteten Werte aller Schritte aus der Palette nach.
 
         Dasselbe, was `resolve_point_references()` vor jedem Lauf tut — nur hier
@@ -363,19 +363,19 @@ class BridgeViewMixin:
         """
         for lane in self.board.lanes:
             for step in lane.steps:
-                p = self._punkt(step.point_id)
+                p = self._point(step.point_id)
                 if p is not None:
                     step.x, step.y = p.x, p.y
                     step.name = p.name or step.name
                     step.recorded_color = p.color
                 for cond in (step.wait_condition, step.verify_condition):
-                    q = self._punkt(cond.point_id) if cond is not None else None
+                    q = self._point(cond.point_id) if cond is not None else None
                     if q is not None:
                         cond.pixel = (q.x, q.y)
                         if q.color:
                             cond.color = tuple(q.color)
                 ec = step.else_config
-                r = self._punkt(ec.point_id) if ec is not None else None
+                r = self._point(ec.point_id) if ec is not None else None
                 if r is not None:
                     ec.x, ec.y, ec.name = r.x, r.y, r.name or ""
 

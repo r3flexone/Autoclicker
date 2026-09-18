@@ -49,7 +49,7 @@ try:
         kosten_pro_aktion, price_anomaly, resolve_chain, wide_spread,
     )
     from .recipes import build_all_recipes
-    from .extended_json import laden as extended_json_laden
+    from .extended_json import load as extended_json_laden
     from . import history as historie
 except ImportError:  # direkter Skriptstart bleibt unterstützt
     from config import (  # type: ignore
@@ -77,7 +77,7 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         kosten_pro_aktion, price_anomaly, resolve_chain, wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
-    from extended_json import laden as extended_json_laden  # type: ignore
+    from extended_json import load as extended_json_laden  # type: ignore
     import history as historie  # type: ignore
 
 

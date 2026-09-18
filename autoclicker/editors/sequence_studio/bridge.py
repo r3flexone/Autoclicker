@@ -105,8 +105,8 @@ class StudioBridge(
         # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber
         # er kommt von aussen: CTRL+ALT+V startet denselben Prozess wie
         # CTRL+ALT+B, nur mit "scans".
-        self.start_ansicht: str = "editor"
+        self.start_view: str = "editor"
         self._scan_init()
-        self._bericht_init()
-        self._teilen_init()
-        self._werkzeuge_init()
+        self._report_init()
+        self._share_init()
+        self._tools_init()

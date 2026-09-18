@@ -44,7 +44,7 @@ FAELLE = {
         RUNTIME + "test_worker_fehler_raeumt_lauf_und_log_auf"),
     "rettung-punkte": (
         "autoclicker.editors.sequence_studio.bridge_services",
-        "BridgeServicesMixin.rettung_schreiben",
+        "BridgeServicesMixin.rescue_write",
         "sequence.points = palette_to_points(self.points)", "sequence.points = []",
         STUDIO + "test_rettung_ist_am_gemeldeten_pfad_vollstaendig_ladbar"),
     "scan-schreibfehler": (

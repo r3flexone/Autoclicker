@@ -34,7 +34,7 @@ check("kennt seine Items", len(_k) == 4 and bool(_k))
 check("leerer Katalog ist falsy", not Catalog() and not EMPTY)
 check("Kategorie ueber den Namen", _k.category("Citadel Helmet") == "Helm")
 # Ein Modell antwortet mal so, mal so — und zwei Schreibweisen desselben Namens
-# ergaeben ueber `_kategorie_normalisieren` zwei Kategorien mit demselben Wort.
+# ergaeben ueber `_category_normalize` zwei Kategorien mit demselben Wort.
 check("Schreibweise egal beim Nachschlagen", _k.category("citadel HELMET") == "Helm")
 check("zurueck kommt die Katalog-Schreibweise", _k.match("citadel helmet") == "Citadel Helmet")
 check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet")
@@ -220,37 +220,37 @@ try:
     # 1. Kein Scan offen — der Schalter haengt am Scan, also gibt es ohne Scan
     #    gar keine Antwort auf "benutzt du den Katalog?".
     _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)
-    _a = _b.scan_katalog_anwenden()
+    _a = _b.scan_catalog_apply()
     check("ohne offenen Scan wird auf den Scan verwiesen",
           "Scan öffnen" in _a["status"]["text"] and _a["status"]["art"] == "err")
 
-    _b.scan_neu({"name": "Inv"})
-    _b.scan_oeffnen({"name": "Inv"})
+    _b.scan_new({"name": "Inv"})
+    _b.scan_open({"name": "Inv"})
     for _n in ("Citadel Helmet", "Centaurs Helmet", "item_7"):
         _b.items[_n] = ItemProfile(name=_n)
-        _b._dazu("item", _n)
+        _b._add_to_scan("item", _n)
 
     # 2. Scan offen, Schalter aus — hier sucht man sonst die DATEI, obwohl der
     #    Schalter fehlt. Die Meldung muss das unterscheiden.
-    _a = _b.scan_katalog_anwenden()
+    _a = _b.scan_catalog_apply()
     check("bei ausgeschaltetem Schalter wird der Schalter genannt",
           "benutzt den Katalog nicht" in _a["status"]["text"])
-    check("und die Momentaufnahme sagt: Katalog aus", _b.scan_daten()["katalog_an"] is False)
+    check("und die Momentaufnahme sagt: Katalog aus", _b.scan_data()["katalog_an"] is False)
 
-    _b.scan_setzen({"name": "Inv", "feld": "use_catalog", "wert": True})
+    _b.scan_set({"name": "Inv", "feld": "use_catalog", "wert": True})
     check("der Schalter laesst sich setzen", _b.scans["Inv"].use_catalog is True)
-    check("und die Momentaufnahme zieht mit", _b.scan_daten()["katalog_an"] is True)
+    check("und die Momentaufnahme zieht mit", _b.scan_data()["katalog_an"] is True)
 
     # 3. Schalter an, aber keine Datei eingetragen.
     _cfgmod.CONFIG.scan_catalog_file = ""
-    _a = _b.scan_katalog_anwenden()
+    _a = _b.scan_catalog_apply()
     check("ohne Datei wird die Datei genannt", "Katalog-Datei" in _a["status"]["text"])
     check("ohne Datei ist der Knopf in der Ansicht aus",
-          _b.scan_daten()["katalog_an"] is False)
+          _b.scan_data()["katalog_an"] is False)
 
     # --- Jetzt greift es ---
     _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)
-    _a = _b.scan_katalog_anwenden()
+    _a = _b.scan_catalog_apply()
     check("zwei bekannte Items werden eingeordnet",
           _b.items["Citadel Helmet"].category == "Helm"
           and _b.items["Centaurs Helmet"].category == "Helm")
@@ -267,17 +267,17 @@ try:
     check("die Aenderung gilt als ungespeichert", _b._scan_dirty is True)
 
     # Zweiter Lauf aendert nichts mehr und sagt das, statt "0 eingeordnet" zu melden.
-    _a2 = _b.scan_katalog_anwenden()
+    _a2 = _b.scan_catalog_apply()
     check("ein zweiter Lauf meldet 'steht schon richtig'",
           "schon richtig" in _a2["status"]["text"])
 
     # Rueckgaengig nimmt die ganze Einordnung zurueck, nicht die halbe.
-    _b.scan_rueckgaengig()
+    _b.scan_undo()
     check("STRG+Z nimmt die Einordnung zurueck",
           _b.items["Citadel Helmet"].category is None)
 
     # Eine ausdrueckliche Auswahl gewinnt ueber den ganzen Scan.
-    _b.scan_katalog_anwenden({"namen": ["Citadel Helmet"]})
+    _b.scan_catalog_apply({"namen": ["Citadel Helmet"]})
     check("mit Auswahl wirkt es nur auf die Auswahl",
           _b.items["Citadel Helmet"].category == "Helm"
           and _b.items["Centaurs Helmet"].category is None)
@@ -496,7 +496,7 @@ try:
 
     _CFG_mit.scan_catalog_file = ""
     _tk_kh.hole_spieldaten = lambda *a, **kw: _SPIELDATEN_kh
-    _erg_kh = _bau_kh().katalog_holen()
+    _erg_kh = _bau_kh().catalog_fetch()
     check("der Knopf holt und schreibt die Datei",
           _erg_kh["ok"] and _P_kh("katalog.json").exists())
     _inhalt_kh = _json_mit.loads(_P_kh("katalog.json").read_text(encoding="utf-8"))
@@ -512,7 +512,7 @@ try:
     # Ein selbst gesetzter Pfad wird AKTUALISIERT, nicht ueberschrieben: wer
     # zwei Spiele betreibt, hat den Katalog bewusst woanders liegen.
     _CFG_mit.scan_catalog_file = "eigener/pfad.json"
-    _erg2_kh = _bau_kh().katalog_holen()
+    _erg2_kh = _bau_kh().catalog_fetch()
     check("ein eigener Pfad bleibt stehen",
           _erg2_kh["ok"] and _CFG_mit.scan_catalog_file == "eigener/pfad.json"
           and _P_kh("eigener/pfad.json").exists())
@@ -527,7 +527,7 @@ try:
 
     _tk_kh.hole_spieldaten = _wirf_kh
     _CFG_mit.scan_catalog_file = str(_P_kh("katalog.json"))
-    _erg3_kh = _bau_kh().katalog_holen()
+    _erg3_kh = _bau_kh().catalog_fetch()
     check("ohne Netz wird nichts geschrieben",
           _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["meldung"]
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
@@ -535,7 +535,7 @@ try:
     # Eine Antwort ohne Items ist kein Katalog — eine leere Datei zu schreiben
     # hiesse, die brauchbare gegen eine unbrauchbare zu tauschen.
     _tk_kh.hole_spieldaten = lambda *a, **kw: {"Items": {"Items": []}}
-    _erg4_kh = _bau_kh().katalog_holen()
+    _erg4_kh = _bau_kh().catalog_fetch()
     check("und eine leere Antwort ueberschreibt die gute Datei nicht",
           _erg4_kh["ok"] is False
           and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
@@ -571,7 +571,7 @@ try:
         return _SPIELDATEN_kh
 
     _tk_kh.hole_spieldaten = _mit_hinweis_kh
-    _erg5_kh = _bau_kh().katalog_holen()
+    _erg5_kh = _bau_kh().catalog_fetch()
     check("der Knopf schreibt trotzdem und sagt, was fremd war",
           _erg5_kh["ok"] and _erg5_kh.get("art") == "warn"
           and "NumberFoo" in _erg5_kh["meldung"] and "2 Items" in _erg5_kh["meldung"])
@@ -592,28 +592,28 @@ try:
     _kat_kh = _Kat_kh({"Godlike Bow": {"kategorie": "Bow", "wert": 9},
                        "Slot 1": {"kategorie": "Sonder", "wert": 1}})
     check("ein Item mit Zaehler findet seinen Katalog-Eintrag",
-          _SB_kh._katalog_name("Godlike Bow 2", _kat_kh) == "Godlike Bow")
+          _SB_kh._catalog_name("Godlike Bow 2", _kat_kh) == "Godlike Bow")
     # Was im Katalog steht, gewinnt: "Slot 1" ist dort ein eigener Eintrag und
     # wird nicht auf "Slot" zurechtgestutzt.
     check("und ein echter Name mit Zahl bleibt, wie er ist",
-          _SB_kh._katalog_name("Slot 1", _kat_kh) == "Slot 1")
+          _SB_kh._catalog_name("Slot 1", _kat_kh) == "Slot 1")
     check("Unbekanntes bleibt unbekannt",
-          _SB_kh._katalog_name("Irgendwas 2", _kat_kh) == "")
+          _SB_kh._catalog_name("Irgendwas 2", _kat_kh) == "")
 
     # --- Wie alt ist die Liste? ---------------------------------------------
     # **Der Pfad allein beantwortet die Frage nicht**, die man an eine geholte
     # Liste hat: liegt die Datei ueberhaupt da, und von wann ist sie? Ohne
     # Antwort holt man sie entweder nie wieder oder bei jedem Zweifel neu.
     check("ein fehlender Katalog sagt genau das",
-          "fehlt" in _SB_kh._katalog_stand("gibtsnicht.json"))
+          "fehlt" in _SB_kh._catalog_state("gibtsnicht.json"))
     _P_kh("kaputt.json").write_text("{nope", encoding="utf-8")
     check("und eine kaputte Datei auch",
-          "nicht lesbar" in _SB_kh._katalog_stand("kaputt.json"))
-    check("ohne Pfad steht gar nichts da", _SB_kh._katalog_stand("") == "")
+          "nicht lesbar" in _SB_kh._catalog_state("kaputt.json"))
+    check("ohne Pfad steht gar nichts da", _SB_kh._catalog_state("") == "")
     _P_kh("stempel.json").write_text(_json_mit.dumps({
         "_erzeugt": "2026-09-07T16:42:11Z",
         "items": {"a": {}, "b": {}}, "gegner": ["x"]}), encoding="utf-8")
-    _stempel_kh = _SB_kh._katalog_stand("stempel.json")
+    _stempel_kh = _SB_kh._catalog_state("stempel.json")
     check("und sonst Umfang und Zeitpunkt",
           "2 Items" in _stempel_kh and "1 Gegner" in _stempel_kh
           and "07.09.2026" in _stempel_kh)
@@ -624,10 +624,10 @@ try:
     _lokal_kh = _dt_kh(2026, 9, 7, 16, 42, 11, tzinfo=_tz_kh.utc).astimezone()
     check("in Ortszeit", _lokal_kh.strftime("um %H:%M") in _stempel_kh)
 
-    # Der Weg bis in die Ansicht: `config_lesen()` liefert ihn, und die Seite
+    # Der Weg bis in die Ansicht: `config_read()` liefert ihn, und die Seite
     # zeichnet ihn unter dem Feld.
     _CFG_mit.scan_catalog_file = "stempel.json"
-    _staende_kh = _bau_kh().config_lesen()["staende"]
+    _staende_kh = _bau_kh().config_read()["staende"]
     check("die Einstellungen liefern den Stand mit",
           "2 Items" in _staende_kh.get("scan_catalog_file", ""))
     check("und die Ansicht zeichnet ihn",

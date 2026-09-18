@@ -27,7 +27,7 @@ MODI_ERKENNUNG = (
     MODUS_REGION,
     MODUS_AKTION,
 )
-# Was `scan_modus_setzen()` überhaupt annimmt. Reihenfolge egal, Menge zählt.
+# Was `scan_mode_set()` überhaupt annimmt. Reihenfolge egal, Menge zählt.
 MODI_ALLE = MODI + (MODUS_REGION, MODUS_AKTION)
 
 ART_SLOT = "slot"

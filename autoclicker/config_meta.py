@@ -232,7 +232,7 @@ META: dict = {
         "Namen statt frei zu raten. Die Kategorie hängt am Namen, nicht am "
         "LLM — sie funktioniert auch, wenn du den Namen selbst tippst.",
         leer="Kategorie und Namen bleiben Handarbeit",
-        aktion=("katalog_holen", "Katalog aus der Spiel-API holen")),
+        aktion=("catalog_fetch", "Katalog aus der Spiel-API holen")),
     "scan_slot_hsv_tolerance": M(
         "Slot-Toleranz (HSV)", CONTROL_INT,
         "Wie stark ein Slot-Hintergrund vom gelernten Farbton abweichen darf, "

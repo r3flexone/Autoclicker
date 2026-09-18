@@ -140,7 +140,7 @@ try:
     CONFIG.session_log_dir = "logs"
     CONFIG.scan_market_value_file = ""
 
-    _z = _b.bericht_daten()
+    _z = _b.report_data()
     check("der Reiter findet die Logs", len(_z["sitzungen"]) == 2)
     check("die neueste steht oben", _z["sitzungen"][0]["datei"] == _zwei.name)
     check("ohne Wahl gilt alles zusammen",
@@ -153,7 +153,7 @@ try:
     check("die Nachpruefung traegt beide Seiten je Zeile",
           _z["bericht"]["verify_miss"] == [["Verkaufen", 1, 1]])
 
-    _z = _b.bericht_daten({"datei": _zwei.name})
+    _z = _b.report_data({"datei": _zwei.name})
     check("eine einzelne Sitzung laesst sich waehlen",
           _z["gewaehlt"] == _zwei.name and _z["bericht"]["sitzungen"] == 1)
     check("und zeigt nur deren Zahlen", _z["bericht"]["klicks"] == 1)
@@ -162,7 +162,7 @@ try:
     # Eine Wahl, deren Datei es nicht mehr gibt, faellt auf „alle" zurueck statt
     # einen leeren Bericht zu zeigen: der Ordner wird aufgeraeumt, waehrend das
     # Fenster offen steht.
-    _z = _b.bericht_daten({"datei": "weggeraeumt.csv"})
+    _z = _b.report_data({"datei": "weggeraeumt.csv"})
     check("eine verschwundene Wahl faellt auf alle zurueck",
           _z["gewaehlt"] == "" and _z["bericht"]["sitzungen"] == 2)
 
@@ -171,7 +171,7 @@ try:
     # --- Ertrag: Stueckzahl mal Wert, und es ist eine Obergrenze -------------
     Path("marktwert.json").write_text('{"Erz": 100, "Silber": 5}', encoding="utf-8")
     CONFIG.scan_market_value_file = "marktwert.json"
-    _z = _b.bericht_daten({"datei": ""})
+    _z = _b.report_data({"datei": ""})
     _e = _z["ertrag"]
     check("mit Marktwert-Datei wird gerechnet", _e is not None and _e["lesbar"])
     # 3x Erz a 100 = 300. Holz hat keinen Wert und darf nicht mitzaehlen.
@@ -189,11 +189,11 @@ try:
     from autoclicker.runtime.item_scan import _marktwert_cache
     _marktwert_cache.clear()
     check("eine unlesbare Wertetabelle wird gemeldet, nicht verschluckt",
-          _b.bericht_daten()["ertrag"]["lesbar"] is False)
+          _b.report_data()["ertrag"]["lesbar"] is False)
 
     CONFIG.scan_market_value_file = ""
     CONFIG.session_log_dir = "gibtsnicht"
-    _z = _b.bericht_daten()
+    _z = _b.report_data()
     check("ohne Log-Ordner bleibt der Reiter leer statt zu werfen",
           _z["sitzungen"] == [] and _z["bericht"]["sitzungen"] == 0)
 
@@ -262,8 +262,8 @@ if _ohne_css:
 # ueber `ruf()` laufen: eine Antwort von hier als Momentaufnahme zu behandeln
 # zerschoesse den Editor-Zustand.
 check("der Reiter geht ueber den fragenden Kanal",
-      'frage("bericht_daten"' in _bericht_js)
-check("und nicht ueber den befehlenden", 'ruf("bericht_daten"' not in _web)
+      'frage("report_data"' in _bericht_js)
+check("und nicht ueber den befehlenden", 'ruf("report_data"' not in _web)
 
 import shutil as _sh  # noqa: E402
 _sh.rmtree(_sand, ignore_errors=True)
@@ -314,15 +314,15 @@ try:
     _alt_log, _alt_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz
     _CFG.session_log_enabled = False
     _vorher = id(_CFG)
-    check("vorher steht der Reiter auf aus", _b2.bericht_daten()["aktiv"] is False)
+    check("vorher steht der Reiter auf aus", _b2.report_data()["aktiv"] is False)
 
-    _r = _b2.config_schreiben({"werte": {"session_log_enabled": True,
+    _r = _b2.config_write({"werte": {"session_log_enabled": True,
                                          "punkt_farbtoleranz": 42}})
     check("das Schreiben geht durch", _r["ok"] is True)
     check("der Prozess kennt den neuen Wert sofort",
           _CFG.session_log_enabled is True)
     check("und der Reiter zeigt ihn ohne Neustart",
-          _b2.bericht_daten()["aktiv"] is True)
+          _b2.report_data()["aktiv"] is True)
     # Nicht nur das eine Feld: uebernommen wird die ganze Config, also auch das,
     # was ANDERE Reiter lesen.
     check("auch Felder anderer Reiter ziehen mit", _CFG.punkt_farbtoleranz == 42)

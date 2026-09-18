@@ -823,12 +823,12 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
     # `warten: None` gehört dazu: der neue Block wartet noch auf nichts, und der
     # Warte-Kasten des vorherigen darf nicht darüber stehenbleiben.
-    # `block_typ` ist der Schlüssel, nicht die Farbe: die Zuordnung Typ→Farbe ist
+    # `block_set_type` ist der Schlüssel, nicht die Farbe: die Zuordnung Typ→Farbe ist
     # Anzeige und gehört ins Studio (`BLOCK_COLORS`). Hier steht nur, WAS läuft.
     status.write_status(state, {"block": step_num, "bloecke": total_steps,
                             "block_label": describe_step(step),
                             "block_titel": step.name or "",
-                            "block_typ": block_type(step),
+                            "block_set_type": block_type(step),
                             "block_seit": time.time(), "warten": None})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,

@@ -208,11 +208,11 @@ try:
         _le(_st_l, "click", "Bank", "ok")
         _le(_st_l, "timeout", "Ofen")
         _log.close()
-        _zeilen = Path(_log.path).read_text(encoding="utf-8").splitlines()
-        check("die Kopfzeile steht drin", _zeilen and "," in _zeilen[0])
-        check("beide Ereignisse sind geschrieben", len(_zeilen) == 3)
+        _lines = Path(_log.path).read_text(encoding="utf-8").splitlines()
+        check("die Kopfzeile steht drin", _lines and "," in _lines[0])
+        check("beide Ereignisse sind geschrieben", len(_lines) == 3)
         check("und das diagnostisch wichtigste ist dabei",
-              any("timeout" in z for z in _zeilen))
+              any("timeout" in z for z in _lines))
         # `log_report.py` wertet genau diese Datei aus - ein Ereignis, das es nicht
         # kennt, meldet es als "nicht ausgewertete Ereignisart".
         from tools.log_report import AUSGEWERTET as _BE

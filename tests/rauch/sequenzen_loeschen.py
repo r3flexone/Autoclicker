@@ -1,6 +1,6 @@
 """Rauchtest: eine Sequenz im Übersichts-Reiter löschen.
 
-Die Vertragssuite ruft `sequenz_loeschen()` direkt auf. Was sie nicht sehen
+Die Vertragssuite ruft `sequence_delete()` direkt auf. Was sie nicht sehen
 kann: ob der Knopf den Dialog aufmacht, ob dort steht, *was* weggeht, und ob die
 Übersicht danach wirklich eine Karte weniger hat. Dazu die Symmetrie der beiden
 Knöpfe — gleiche Spalten heisst gleiche gemessene Breite, nicht „sieht ähnlich
@@ -51,7 +51,7 @@ def aufbau():
     (vorlagen / "erz.png").write_bytes(b"x")
 
     b = StudioBridge(farm, Path(dict(list_available_sequences())["Farm"]), "sequences")
-    b._laeuft = lambda: False
+    b._running = lambda: False
     return b, sequence_dir("Raid")
 
 

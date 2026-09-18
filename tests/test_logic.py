@@ -481,7 +481,7 @@ _studio_thread = _threading_step.Thread(
         "wert", _dbg.step_gate(_st, _step, "LOOP", 2, 3)))
 _studio_thread.start()
 _frist = _time_step.time() + 1.0
-while not (_status_step._zustand.get("manuell")) and _time_step.time() < _frist:
+while not (_status_step._state.get("manuell")) and _time_step.time() < _frist:
     _time_step.sleep(0.01)
 with _st.lock:
     _st.step_command = "skip"
@@ -490,7 +490,7 @@ _studio_thread.join(1.0)
 check("Studio-Gate wartet auf den sichtbaren Befehl",
       _studio_ergebnis.get("wert") == _dbg.GATE_SKIP)
 check("und räumt die sichtbare Rückfrage danach weg",
-      _status_step._zustand.get("manuell") is None)
+      _status_step._state.get("manuell") is None)
 _st.step_via_studio = False
 _st.step_mode = False
 check("Gate ohne manuellen Modus: sofort run",
@@ -519,10 +519,10 @@ def _detail_zeilen(step):
     return [z for z in buf.getvalue().splitlines() if z.strip()]
 
 
-_zeilen = _detail_zeilen(SequenceStep(x=10, y=20, delay_before=0, name="Klick 15"))
-check("Detail: Klick-Schritt belegt genau eine Zeile", len(_zeilen) == 1)
+_lines = _detail_zeilen(SequenceStep(x=10, y=20, delay_before=0, name="Klick 15"))
+check("Detail: Klick-Schritt belegt genau eine Zeile", len(_lines) == 1)
 check("Detail: Zeile nennt Schritt, Name und Ziel",
-      "15/67" in _zeilen[0] and "Klick 15" in _zeilen[0] and "(10, 20)" in _zeilen[0])
+      "15/67" in _lines[0] and "Klick 15" in _lines[0] and "(10, 20)" in _lines[0])
 
 # Nur wo es wirklich mehr zu sagen gibt, kommen Zusatzzeilen dazu
 _zeilen_farbe = _detail_zeilen(SequenceStep(
@@ -1399,10 +1399,10 @@ try:
     _import_bundle(_st_zwei, str(_neu_bundle), import_config=False, merge=True)
     # `merge` weicht einem vorhandenen Ordner aus (farm -> farm_2), der Name
     # steht also nicht vorher fest; gesucht wird die dazugekommene Sequenz.
-    _dazu = [n for n in _st_zwei.sequences if n != "andere"]
-    check("die Sequenz kommt neben der vorhandenen an", len(_dazu) == 1)
+    _add_to_scan = [n for n in _st_zwei.sequences if n != "andere"]
+    check("die Sequenz kommt neben der vorhandenen an", len(_add_to_scan) == 1)
     _a = _st_zwei.sequences["andere"].points[0]
-    _b = _st_zwei.sequences[_dazu[0]].points[0]
+    _b = _st_zwei.sequences[_add_to_scan[0]].points[0]
     check("zwei Sequenzen duerfen denselben Punkt #7 haben",
           _a.id == _b.id == 7 and (_a.x, _a.y) != (_b.x, _b.y))
 finally:
@@ -2093,12 +2093,12 @@ check("zaehlt weiter bis frei", _en("Slot 1", {"Slot 1": 1, "Slot 1 2": 1}) == "
 check("funktioniert auch mit einem Set", _en("A", {"A"}) == "A 2")
 check("leeres Verzeichnis: Name bleibt", _en("A", {}) == "A")
 # Der Fall aus der Praxis: 'Slot 2' geloescht -> len+1 zeigt auf das bestehende 'Slot 3'
-_bestand = {"Slot 1": 1, "Slot 3": 1}
-_vorschlag = f"Slot {len(_bestand) + 1}"
+_inventory = {"Slot 1": 1, "Slot 3": 1}
+_vorschlag = f"Slot {len(_inventory) + 1}"
 check("len+1 trifft nach einem 'del' einen bestehenden Namen",
-      _vorschlag == "Slot 3" and _vorschlag in _bestand)
+      _vorschlag == "Slot 3" and _vorschlag in _inventory)
 check("...und wird auf einen freien Namen ausgewichen",
-      _en(_vorschlag, _bestand) == "Slot 3 2")
+      _en(_vorschlag, _inventory) == "Slot 3 2")
 
 # Durchnummerierte Serien nehmen die erste FREIE Nummer statt einen Zaehler
 # anzuhaengen — 'Slot 3 2' waere ein Name, den niemand lesen will.
@@ -3993,7 +3993,7 @@ check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
 # --- Das Studio laedt die Config nicht zweimal ---
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
-# _ohne_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
+# _without_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
 _quelle_br12 = Path(
     "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
     encoding="utf-8")
@@ -4005,7 +4005,7 @@ check("die Bruecke ruft load_config() nirgends auf", _lader12 == [])
 if _lader12:
     print("        Zeilen: " + ", ".join(str(z) for z in _lader12))
 check("sie liest die Datei stattdessen selbst",
-      "_config_datei" in _quelle_br12)
+      "_config_file" in _quelle_br12)
 
 # --- EINE SVG-Datei, alle Verwendungen ---
 # Der Kopf und das Favicon laden die Datei direkt; symbol.py rastert genau diese
@@ -4282,11 +4282,11 @@ def _namen8(b, phase):
 
 def _waehle8(b, phase, *lines):
     for i, line in enumerate(lines):
-        b.waehlen({"phase": phase, "zeile": line, "modus": "einzeln" if i == 0 else "dazu"})
+        b.select({"phase": phase, "zeile": line, "modus": "einzeln" if i == 0 else "dazu"})
 
 
 def _zieh8(b, von_phase, von_zeile, nach_phase, nach_zeile):
-    b.ziehen({"von_phase": von_phase, "von_zeile": von_zeile,
+    b.drag({"von_phase": von_phase, "von_zeile": von_zeile,
               "nach_phase": nach_phase, "nach_zeile": nach_zeile})
 
 
@@ -4340,26 +4340,26 @@ check("Ziehen ans Ende einer Phase haengt an", _namen8(_b8, END8) == ["Z", "3"])
 # --- Sammel-Verschieben mit den Pfeilen ---
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 1, 2)
-_b8.auswahl_verschieben({"delta": 1})
+_b8.selection_move({"delta": 1})
 check("Pfeil runter schiebt die ganze Auswahl",
       _namen8(_b8, LOOP8) == ["1", "4", "2", "3", "5"] and sorted(_b8.sel_rows) == [2, 3])
-_b8.auswahl_verschieben({"delta": -1})
+_b8.selection_move({"delta": -1})
 check("Pfeil hoch bringt sie zurueck",
       _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"] and sorted(_b8.sel_rows) == [1, 2])
 # An den Raendern passiert nichts (und es wird nichts verschluckt)
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 1)
-_b8.auswahl_verschieben({"delta": -1})
+_b8.selection_move({"delta": -1})
 check("am oberen Rand bleibt die Reihenfolge stehen",
       _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
 _waehle8(_b8, LOOP8, 3, 4)
-_b8.auswahl_verschieben({"delta": 1})
+_b8.selection_move({"delta": 1})
 check("am unteren Rand ebenso", _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
 
 # --- Sammel-Loeschen ---
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 2, 4)
-_b8.auswahl_loeschen()
+_b8.selection_delete()
 check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
       _namen8(_b8, LOOP8) == ["2", "4"])
 check("und leert die Auswahl", _b8.sel_lane is None and _b8.sel_rows == set())
@@ -4368,7 +4368,7 @@ check("und leert die Auswahl", _b8.sel_lane is None and _b8.sel_rows == set())
 # Ein Block, der einem vorhandenen fast gleicht, ist beim Bauen der Normalfall.
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 1)
-_b8.auswahl_duplizieren()
+_b8.selection_duplicate()
 check("die Kopie liegt direkt hinter dem Original",
       _namen8(_b8, LOOP8) == ["1", "2", "2", "3", "4", "5"])
 check("und ist die neue Auswahl", sorted(_b8.sel_rows) == [2])
@@ -4384,7 +4384,7 @@ check("sie zeigt auf denselben Punkt",
 _b8 = _bruecke8()
 _b8.board.lanes[LOOP8].steps[0].else_config = _ECx(action="skip")
 _waehle8(_b8, LOOP8, 0)
-_b8.auswahl_duplizieren()
+_b8.selection_duplicate()
 _b8.board.lanes[LOOP8].steps[1].else_config.action = "restart"
 check("die Kopie haengt nicht am Original",
       _b8.board.lanes[LOOP8].steps[0].else_config.action == "skip")
@@ -4394,13 +4394,13 @@ check("die Kopie haengt nicht am Original",
 # in abwechselnd Original/Kopie.
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 2)
-_b8.auswahl_duplizieren()
+_b8.selection_duplicate()
 check("eine Mehrfachauswahl bleibt als Block beisammen",
       _namen8(_b8, LOOP8) == ["1", "2", "3", "1", "3", "4", "5"])
 check("und die Kopien sind zusammenhaengend gewaehlt", sorted(_b8.sel_rows) == [3, 4])
 
 _b8 = _bruecke8()
-_z8 = _b8.auswahl_duplizieren()
+_z8 = _b8.selection_duplicate()
 check("ohne Auswahl passiert nichts - mit Ansage",
       _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"]
       and _z8["status"]["art"] == "warn")
@@ -4419,29 +4419,29 @@ check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
 # nicht mehr eindeutig - deshalb faengt ein Klick in einer anderen Spalte neu an.
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 1)
-_b8.waehlen({"phase": INIT8, "zeile": 0, "modus": "dazu"})
+_b8.select({"phase": INIT8, "zeile": 0, "modus": "dazu"})
 check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
       _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
 
 # --- Auswahl muss sich ebenso leicht wieder abwählen lassen ---
 _b8 = _bruecke8()
-_b8.waehlen({"phase": LOOP8, "zeile": 1, "modus": "einzeln"})
-_b8.waehlen({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+_b8.select({"phase": LOOP8, "zeile": 1, "modus": "einzeln"})
+_b8.select({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
 check("Umschalt-Klick waehlt den Bereich ab dem festen Anker",
       _b8.sel_rows == {1, 2, 3})
-_b8.waehlen({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
+_b8.select({"phase": LOOP8, "zeile": 3, "modus": "bereich"})
 check("derselbe Umschalt-Klick waehlt den Bereich wieder ab",
       _b8.sel_lane is None and _b8.sel_rows == set())
 
 _b8 = _bruecke8()
-_b8.phase_auswahl({"phase": LOOP8})
+_b8.phase_selection({"phase": LOOP8})
 check("Alle-Blöcke wählt die ganze Phase", _b8.sel_rows == set(range(5)))
-_b8.phase_auswahl({"phase": LOOP8})
+_b8.phase_selection({"phase": LOOP8})
 check("derselbe Phasenknopf hebt die Auswahl wieder auf", _b8.sel_lane is None)
 
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 2, 4)
-_b8.auswahl_setzen({"feld": "delay_before", "wert": "0.5"})
+_b8.selection_set({"feld": "delay_before", "wert": "0.5"})
 check("eine Wartezeit lässt sich für die Auswahl gemeinsam setzen",
       [s.delay_before for s in _b8.board.lanes[LOOP8].steps]
       == [0.5, 0, 0.5, 0, 0.5])
@@ -4472,7 +4472,7 @@ def _bruecke9():
     b.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3)),
                 _PP8(id=2, x=30, y=40, name="Tresen", color=(9, 9, 9)),
                 _PP8(id=3, x=50, y=60, name="Ausgang")]
-    b.waehlen({"phase": 1, "zeile": 0})
+    b.select({"phase": 1, "zeile": 0})
     return b, b.board.lanes[1].steps[0]
 
 
@@ -4531,19 +4531,19 @@ check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
 _b9, _s9 = _bruecke9()
 _b9.board.add_step(_b9.board.lanes[1], _SS(x=10, y=20, delay_before=0, name="Bank",
                                            point_id=1))
-_b9.punkt_setzen({"punkt": 1, "feld": "x", "wert": 777})
+_b9.point_set({"punkt": 1, "feld": "x", "wert": 777})
 check("beide Schritte auf demselben Punkt wandern mit",
       all((s.x, s.y) == (777, 20) for s in _b9.board.lanes[1].steps))
 
 # --- Eine neue Stelle wird zum Punkt, nicht zu einer Koordinate im Schritt ---
 _b9, _s9 = _bruecke9()
 _s9.point_id = None
-_b9.punkt_anlegen({"x": 111, "y": 222})
+_b9.point_create({"x": 111, "y": 222})
 check("ein Blanko-Block bekommt einen echten Punkt",
       _s9.point_id == 4 and len(_b9.points) == 4)
 check("und der Punkt traegt seine Herkunft",
       _b9.points[-1].source == "Sequenz-Studio")
-_b9.punkt_anlegen({"x": 111, "y": 222})
+_b9.point_create({"x": 111, "y": 222})
 check("dieselbe Stelle ergibt KEINEN zweiten Punkt", len(_b9.points) == 4)
 
 # --- Jeder Block-Typ laesst sich anzeigen und umschalten ---
@@ -4564,7 +4564,7 @@ _b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
 _fehler10, _typen10 = [], []
 for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _typen10.append(_b10.waehlen({"phase": 1, "zeile": _r10})["block"]["typ"])
+        _typen10.append(_b10.select({"phase": 1, "zeile": _r10})["block"]["typ"])
     except Exception as _e10:                                    # noqa: BLE001
         _fehler10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
 check("jeder Block-Typ laesst sich anzeigen", _fehler10 == [])
@@ -4575,10 +4575,10 @@ check("und wird als das erkannt, was er ist",
       _typen10 == ["click", "key", "screenshot", "wait", "item_scan", "boss_scan",
                    "icon_scan", "boss_watcher"])
 # Umschalten in jeden Typ und zurueck - set_block_type raeumt die Diskriminatoren
-_b10.waehlen({"phase": 1, "zeile": 0})
+_b10.select({"phase": 1, "zeile": 0})
 _fehler10b = []
 for _t10 in [t["key"] for t in _b10.snapshot()["typen"]]:
-    _z10 = _b10.block_typ({"typ": _t10})
+    _z10 = _b10.block_set_type({"typ": _t10})
     if _z10["block"]["typ"] != _t10:
         _fehler10b.append(_t10)
 check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
@@ -4589,9 +4589,9 @@ check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 # ausserhalb von points.json nicht geben soll. Der Typwechsel bindet sie deshalb an
 # den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
 # block_trigger schon hatte.
-_b10.waehlen({"phase": 1, "zeile": 0})
-_b10.block_typ({"typ": "click"})
-_b10.block_typ({"typ": "wait_click"})
+_b10.select({"phase": 1, "zeile": 0})
+_b10.block_set_type({"typ": "click"})
+_b10.block_set_type({"typ": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
 check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
       _wc10 is not None and _wc10.point_id == 1)
@@ -4599,9 +4599,9 @@ _d10b = _s2d9(_seq10.loop_phases[0].steps[0])
 check("gespeichert wird auch hier die Referenz, keine Farb-Kopie",
       _d10b.get("wait_point_id") == 1 and _d10b.get("wait_pixel") is None
       and _d10b.get("wait_color") is None)
-_b10.waehlen({"phase": 1, "zeile": 1})            # Taste, ohne Punkt
-_b10.block_typ({"typ": "click"})
-_zustand10 = _b10.block_typ({"typ": "wait_click"})
+_b10.select({"phase": 1, "zeile": 1})            # Taste, ohne Punkt
+_b10.block_set_type({"typ": "click"})
+_zustand10 = _b10.block_set_type({"typ": "wait_click"})
 check("ohne Punkt wird FARBE+KLICK abgelehnt",
       _seq10.loop_phases[0].steps[1].wait_condition is None
       and _zustand10["block"]["typ"] == "click")
@@ -4691,7 +4691,7 @@ finally:
 from autoclicker.handlers import COMMANDS as _BEF13
 
 check("jeder Befehl der Bruecke hat einen Handler",
-      sorted(_SB8.ALLE_BEFEHLE) == sorted(_BEF13))
+      sorted(_SB8.ALL_COMMANDS) == sorted(_BEF13))
 
 # --- Die Bruecke speichert vor dem Start ---
 # Der Hauptprozess laedt die DATEI. Was nur im Speicher steht, liefe nicht mit -
@@ -4708,7 +4708,7 @@ try:
     _b14 = _SB8(_seq14, Path("sequences/lauf/sequence.json"), "sequences")
     _b14.board.total_cycles = 7          # ungespeicherte Aenderung
     _b14._dirty = True
-    _zustand14 = _b14.lauf_befehl({"befehl": "start"})
+    _zustand14 = _b14.run_command({"befehl": "start"})
     check("der Start speichert die offene Sequenz zuerst",
           _b14._dirty is False and Path("sequences/lauf/sequence.json").exists())
     _auftrag14 = _bf13.fetch_command()
@@ -4723,19 +4723,19 @@ try:
     # Scheitert das Speichern, wird NICHT gestartet: sonst liefe die alte Fassung.
     _b14.board.name = ""
     _b14._dirty = True
-    _zustand14b = _b14.lauf_befehl({"befehl": "start"})
+    _zustand14b = _b14.run_command({"befehl": "start"})
     check("ohne Sequenz-Namen faellt der Start aus",
           _zustand14b["status"]["art"] == "err" and _bf13.fetch_command() is None)
 
     # Stopp und Pause gehen ohne Speichern durch - sie betreffen den Lauf, nicht
     # die Datei.
     _b14.board.name = "Lauf"
-    _b14.lauf_befehl({"befehl": "stop"})
+    _b14.run_command({"befehl": "stop"})
     check("Stopp braucht kein Speichern", _bf13.fetch_command()["command"] == "stop")
     # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
     _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
-    _b14.waehlen({"phase": 1, "zeile": 0})
-    _b14.punkt_zeigen()
+    _b14.select({"phase": 1, "zeile": 0})
+    _b14.point_show()
     _zeig14 = _bf13.fetch_command()
     check("die Probe schickt Stelle, Punkt und Farbe mit",
           _zeig14 is not None and _zeig14["command"] == "zeigen"
@@ -4744,24 +4744,24 @@ try:
           and _zeig14["arguments"]["color"] == [1, 2, 3])
     # Ein Block ohne Stelle hat nichts zu zeigen - und schickt deshalb nichts.
     _b14.board.add_step(_b14.board.lanes[1], _SS(delay_before=0, key_press="a"))
-    _b14.waehlen({"phase": 1, "zeile": 1})
-    _zustand14d = _b14.punkt_zeigen()
+    _b14.select({"phase": 1, "zeile": 1})
+    _zustand14d = _b14.point_show()
     check("ohne Stelle wird nichts geschickt",
           _bf13.fetch_command() is None and _zustand14d["status"]["art"] == "warn")
-    _b14.waehlen({"phase": 1, "zeile": 0})
+    _b14.select({"phase": 1, "zeile": 0})
 
-    _zustand14c = _b14.lauf_befehl({"befehl": "tanzen"})
+    _zustand14c = _b14.run_command({"befehl": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
           _zustand14c["status"]["art"] == "err" and _bf13.fetch_command() is None)
 
     # Die einzige Rueckmeldung, die das Fenster ueber den Hauptprozess bekommt: er
     # leert den Kasten. Liegt der Befehl noch, hoert niemand zu - dann darf im
     # Studio nicht "gestartet" stehen bleiben.
-    check("ein geleerter Briefkasten heisst: angekommen", _b14.befehl_offen() is False)
-    _b14.lauf_befehl({"befehl": "pause"})
-    check("ein liegengebliebener Befehl ist erkennbar", _b14.befehl_offen() is True)
+    check("ein geleerter Briefkasten heisst: angekommen", _b14.command_pending() is False)
+    _b14.run_command({"befehl": "pause"})
+    check("ein liegengebliebener Befehl ist erkennbar", _b14.command_pending() is True)
     _bf13.fetch_command()
-    check("und nach dem Abholen wieder nicht", _b14.befehl_offen() is False)
+    check("und nach dem Abholen wieder nicht", _b14.command_pending() is False)
 finally:
     _os.chdir(_cwd14)
 
@@ -4772,8 +4772,8 @@ finally:
 _schritt11 = _SS(x=5, y=6, delay_before=0, name="Rad", point_id=1, scroll=-3)
 _seq11 = _SEQ8(name="R", loop_phases=[_LP8(name="Loop", repeat=1, steps=[_schritt11])])
 _b11 = _SB8(_seq11, Path("sequences/R.json"), "sequences")
-_b11.waehlen({"phase": 1, "zeile": 0})
-_b11.block_setzen({"feld": "delay_before", "wert": 2.0})
+_b11.select({"phase": 1, "zeile": 0})
+_b11.block_set({"feld": "delay_before", "wert": 2.0})
 from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s11
 _raus11 = _b2s11(_b11.board).loop_phases[0].steps[0]
 check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
@@ -4782,7 +4782,7 @@ check("die Karte verschweigt es trotzdem nicht",
       any("Rad -3" in z for z in _b11.snapshot()["phasen"][1]["bloecke"][0]["zeilen"]))
 
 # --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
-_zustand11 = _b11.block_setzen({"feld": "gibtsnicht", "wert": 1})
+_zustand11 = _b11.block_set({"feld": "gibtsnicht", "wert": 1})
 check("ein unbekanntes Feld meldet sich als Fehler",
       _zustand11["status"]["art"] == "err")
 check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
@@ -4799,21 +4799,21 @@ _b13.block_trigger({"wahl": _TDA8})
 check("Ausgangslage: Farbe+Klick mit Trigger",
       _b13.snapshot()["block"]["typ"] == "wait_click")
 
-_b13.block_typ({"typ": "wait"})
+_b13.block_set_type({"typ": "wait"})
 check("der Chip WARTEN macht daraus einen Warte-Block",
       _b13.snapshot()["block"]["typ"] == "wait"
       and _b13.snapshot()["block"]["wait_only"] is True)
 check("und laesst den Farb-Trigger stehen", _s13.wait_condition is not None)
 
-_b13.block_typ({"typ": "wait_click"})
+_b13.block_set_type({"typ": "wait_click"})
 check("der Chip FARBE+KLICK ist der verlustfreie Weg zurueck",
       _b13.snapshot()["block"]["typ"] == "wait_click"
       and _s13.wait_condition is not None and _s13.wait_condition.point_id == 1)
 
 # KLICK verliert den Trigger - das ist keine Nebenwirkung, sondern die Bedeutung
 # von KLICK. Nur deshalb braucht es FARBE+KLICK als zweiten Rueckweg.
-_b13.block_typ({"typ": "wait"})
-_b13.block_typ({"typ": "click"})
+_b13.block_set_type({"typ": "wait"})
+_b13.block_set_type({"typ": "click"})
 check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is None)
 
 # Die Bruecke konnte das alles schon vorher - der Fehler sass in der ANSICHT, und
@@ -4877,7 +4877,7 @@ import autoclicker.winapi as _wa15
 _b15 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
     _SS(delay_before=0, screenshot_only=True, screenshot_region=(0, 0, 100, 100))])]),
     Path("sequences/S.json"), "sequences")
-_b15.waehlen({"phase": 1, "zeile": 0})
+_b15.select({"phase": 1, "zeile": 0})
 
 _echt15 = (_io15.wait_for_global_key, _wa15.get_cursor_pos)
 try:
@@ -4887,7 +4887,7 @@ try:
     _ecken15 = iter([(900, 700), (300, 200)])
     _io15.wait_for_global_key = lambda *a, **k: "enter"
     _wa15.get_cursor_pos = lambda: next(_ecken15)
-    _z15 = _b15.bereich_aufnehmen()
+    _z15 = _b15.area_capture()
     check("zwei ENTER ergeben einen Bereich",
           _z15["block"]["screenshot_region"] == [300, 200, 900, 700])
     check("und die Meldung nennt die Groesse", "600×500" in _z15["status"]["text"])
@@ -4895,7 +4895,7 @@ try:
     # Ein Bereich, der keiner ist, wird gemeldet statt still gespeichert.
     _vorher15 = _z15["block"]["screenshot_region"]
     _ecken15 = iter([(300, 200), (301, 201)])
-    _z15 = _b15.bereich_aufnehmen()
+    _z15 = _b15.area_capture()
     check("ein zu kleiner Bereich meldet sich und aendert nichts",
           _z15["status"]["art"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
@@ -4904,14 +4904,14 @@ try:
     _ecken15 = iter([(10, 10), (20, 20)])
     _tasten15 = iter(["enter", "escape"])
     _io15.wait_for_global_key = lambda *a, **k: next(_tasten15)
-    _z15 = _b15.bereich_aufnehmen()
+    _z15 = _b15.area_capture()
     check("ESC nach der ersten Ecke laesst den alten Bereich ganz stehen",
           _z15["status"]["art"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 
     # Keine Taste innerhalb der Zeitgrenze: dasselbe, nur mit anderem Grund.
     _io15.wait_for_global_key = lambda *a, **k: None
-    _z15 = _b15.bereich_aufnehmen()
+    _z15 = _b15.area_capture()
     check("ohne Tastendruck passiert ebenfalls nichts",
           _z15["status"]["art"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
@@ -4972,7 +4972,7 @@ try:
     _seq12 = _SEQ8(name="S", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
         _SS(delay_before=0, item_scan="")])])
     _b12 = _SB8(_seq12, Path("sequences/S.json"), "sequences")
-    _zustand12 = _b12.speichern()
+    _zustand12 = _b12.save()
     # Gegen den TATSAECHLICHEN Pfad pruefen, nicht gegen "S.json": die Datei folgt
     # dem sanitisierten Namen (hier "s.json"). Auf Windows faellt der Unterschied
     # nicht auf - dort ist das Dateisystem gross/klein-blind -, auf Linux riss der
@@ -4997,7 +4997,7 @@ try:
 
     # Der Sequenz-Name ist etwas anderes: er IST der Dateiname.
     _b12.board.name = ""
-    _z12b = _b12.speichern()
+    _z12b = _b12.save()
     check("ohne Sequenz-Namen wird weiterhin nicht gespeichert",
           _z12b["status"]["art"] == "err")
     check("und die Meldung sagt die Folge zuerst",
@@ -5048,7 +5048,7 @@ _html13 = _H.studio_web_source()
 #
 # Das Muster endet deshalb auf `\(` und listet die Helfer einzeln: ein blosses
 # `\bruf\w*\(` faenge auch `rufMichNicht()`, und ein blosses `\bruf\(` liess
-# `rufWerkzeug("kalib_referenz")` durchrutschen - also ausgerechnet den neuesten
+# `rufWerkzeug("calib_reference")` durchrutschen - also ausgerechnet den neuesten
 # Reiter, der am ehesten einen Tippfehler enthaelt.
 _HELFER13 = ("ruf", "rufScan", "rufTeilen", "rufWerkzeug", "frage")
 _gerufen13 = set(_re13.findall(
@@ -5069,11 +5069,11 @@ _gerufen13 |= set(_re13.findall(
 _gerufen13 = sorted(_gerufen13)
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
-      "sequenz_liste" in _gerufen13 and "lauf_status" in _gerufen13)
+      "sequence_list" in _gerufen13 and "run_status" in _gerufen13)
 check("und der Scans-Reiter ist mit erfasst (rufScan)",
-      "scan_daten" in _gerufen13 and "scan_klick" in _gerufen13)
+      "scan_data" in _gerufen13 and "scan_click" in _gerufen13)
 check("und der Werkzeuge-Reiter (rufWerkzeug)",
-      "werkzeug_pruefen" in _gerufen13 and "kalib_referenz" in _gerufen13)
+      "tool_check" in _gerufen13 and "calib_reference" in _gerufen13)
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
 # `rufWerkzeug`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
@@ -5276,7 +5276,7 @@ try:
 
     _b16 = _SB8(_SEQ8(name="gross"),
                 Path("sequences") / "gross" / "sequence.json", "sequences")
-    _liste16 = _b16.sequenz_liste()
+    _liste16 = _b16.sequence_list()
     _nach16 = {e["name"]: e for e in _liste16}
 
     check("die Uebersicht findet jede Datei", len(_liste16) == 3)
@@ -5304,7 +5304,7 @@ try:
     # indem er beide Seiten befragt und vergleicht.
     _b16b = _SB8(_SEQ8(name="gross"),
                  Path("sequences") / "gross" / "sequence.json", "sequences")
-    _b16b.laden({"name": "gross"})
+    _b16b.load({"name": "gross"})
     check("Laden merkt die zuletzt verwendete Sequenz",
           json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
           == "gross")
@@ -5315,21 +5315,21 @@ try:
 
     # --- Laufstatus: nichts laeuft ist der Normalfall, kein Fehler ---
     from autoclicker.config import RUN_STATUS_FILE as _rsf16
-    check("ohne Statusdatei laeuft nichts", _b16.lauf_status() == {"aktiv": False})
+    check("ohne Statusdatei laeuft nichts", _b16.run_status() == {"aktiv": False})
 
     Path(_rsf16).write_text("{kaputt", encoding="utf-8")
     check("eine unlesbare Statusdatei ist auch nur 'nichts laeuft'",
-          _b16.lauf_status() == {"aktiv": False})
+          _b16.run_status() == {"aktiv": False})
 
     Path(_rsf16).write_text(json.dumps(
         {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
-    check("ein frischer Stand kommt durch", _b16.lauf_status()["sequenz"] == "S")
+    check("ein frischer Stand kommt durch", _b16.run_status()["sequenz"] == "S")
 
     # Aelter als 5 s heisst: der Schreiber lebt nicht mehr. Ein hart abgeschossener
     # Hauptprozess soll nicht ewig als "laeuft" in der Oberflaeche stehen.
     Path(_rsf16).write_text(json.dumps(
         {"aktiv": True, "sequenz": "S", "stand": _time16.time() - 60}), encoding="utf-8")
-    _verwaist16 = _b16.lauf_status()
+    _verwaist16 = _b16.run_status()
     check("ein alter Stand gilt als verwaist",
           _verwaist16 == {"aktiv": False, "verwaist": True})
 
@@ -5385,10 +5385,10 @@ try:
                    _PP8(id=2, x=22, y=22, name="B", color=None),
                    _PP8(id=3, x=33, y=33, name="C", color=None)]
     _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
-    _b20.waehlen({"phase": _lane20, "zeile": 0})
+    _b20.select({"phase": _lane20, "zeile": 0})
     for _welche20, _soll20 in (("klick", 11), ("trigger", 22), ("else", 33)):
         _bf19.discard_command()
-        _b20.punkt_zeigen({"welche": _welche20})
+        _b20.point_show({"welche": _welche20})
         _auftrag20 = _bf19.fetch_command()
         check(f"'{_welche20}' zeigt auf die richtige Stelle",
               (_auftrag20 or {}).get("arguments", {}).get("x") == _soll20)
@@ -5402,18 +5402,18 @@ try:
     _b19 = _SB8(_SEQ8(name="M", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(x=0, y=0, delay_before=0)])]), Path("sequences") / "m.json", "sequences")
     _lane19 = next(i for i, ln in enumerate(_b19.board.lanes) if ln.steps)
-    _b19.waehlen({"phase": _lane19, "zeile": 0})
+    _b19.select({"phase": _lane19, "zeile": 0})
     _schritt19 = _b19.board.lanes[_lane19].steps[0]
     _alt19 = (_io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
     try:
         _io18.wait_for_global_key = lambda tasten, timeout=0: "enter"
         _wa18.get_cursor_pos = lambda: (640, 480)
         _wa18.get_screen_pixel = lambda x, y: (10, 20, 30)
-        _z19 = _b19.punkt_aufnehmen()
+        _z19 = _b19.point_capture()
         check("ohne Punkt entsteht einer an der Mausposition",
               _schritt19.point_id is not None and (_schritt19.x, _schritt19.y) == (640, 480))
         check("die Farbe wird dabei gemessen",
-              _b19._punkt(_schritt19.point_id).color == (10, 20, 30))
+              _b19._point(_schritt19.point_id).color == (10, 20, 30))
         check("und die Meldung nennt beides",
               "640" in _z19["status"]["text"] and "10" in _z19["status"]["text"])
 
@@ -5421,13 +5421,13 @@ try:
         # zweiten anzulegen - dieselbe Regel wie beim Tippen der Zahlen.
         _wa18.get_cursor_pos = lambda: (700, 500)
         _vorher19 = len(_b19.points)
-        _b19.punkt_aufnehmen()
+        _b19.point_capture()
         check("ein zweiter Aufruf verschiebt statt anzulegen",
               len(_b19.points) == _vorher19 and (_schritt19.x, _schritt19.y) == (700, 500))
 
         # ESC laesst alles, wie es war.
         _io18.wait_for_global_key = lambda tasten, timeout=0: "escape"
-        _z19 = _b19.punkt_aufnehmen()
+        _z19 = _b19.point_capture()
         check("ESC aendert nichts", (_schritt19.x, _schritt19.y) == (700, 500)
               and _z19["status"]["art"] == "warn")
     finally:
@@ -5441,7 +5441,7 @@ try:
         _SS(x=1, y=2, delay_before=0, point_id=1)])]),
         Path("sequences") / "w" / "sequence.json", "sequences")
     _b18.points = [_PP8(id=1, x=1, y=2, name="P", color=None)]
-    _z18 = _b18.speichern()
+    _z18 = _b18.save()
     check("das erste Speichern geht ohne Rueckfrage",
           _z18["frage"] is None and Path("sequences/w/sequence.json").exists())
 
@@ -5449,19 +5449,19 @@ try:
     _time16.sleep(0.01)
     Path("sequences/w/sequence.json").write_text(
         '{"name": "fremd"}', encoding="utf-8")
-    _z18 = _b18.speichern()
+    _z18 = _b18.save()
     check("eine fremde Aenderung fuehrt zur Rueckfrage",
-          (_z18["frage"] or {}).get("art") == "speichern")
+          (_z18["frage"] or {}).get("art") == "save")
     check("und die Datei ist unangetastet",
           "fremd" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     check("die Frage nennt die Datei",
           "sequence.json" in (_z18["frage"] or {}).get("text", ""))
 
-    _z18 = _b18.speichern({"erzwingen": True})
+    _z18 = _b18.save({"erzwingen": True})
     check("mit Erzwingen wird geschrieben",
           _z18["frage"] is None and "fremd" not in
           Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
-    _z18 = _b18.speichern()
+    _z18 = _b18.save()
     check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
           _z18["frage"] is None)
 
@@ -5475,8 +5475,8 @@ try:
     # uebersetzt wird in der Bruecke - dieser Test haelt beide Seiten gegeneinander.
     Path(_rsf16).write_text(json.dumps(
         {"aktiv": True, "sequenz": "S", "stand": _time16.time(),
-         "block_typ": "boss_scan"}), encoding="utf-8")
-    _laufend16 = _b16.lauf_status()
+         "block_set_type": "boss_scan"}), encoding="utf-8")
+    _laufend16 = _b16.run_status()
     _b16c = _SB8(_SEQ8(name="F", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(delay_before=0, boss_scan="drache")])]), Path("sequences/F.json"), "sequences")
     _karte16 = [b for p in _b16c.snapshot()["phasen"] for b in p["bloecke"]][0]
@@ -5490,7 +5490,7 @@ try:
     Path(_rsf16).write_text(json.dumps(
         {"aktiv": True, "sequenz": "S", "stand": _time16.time()}), encoding="utf-8")
     check("ohne Typ bleibt die Kopfzeile neutral",
-          "block_farbe" not in _b16.lauf_status())
+          "block_farbe" not in _b16.run_status())
 
     # Und die Klassifikation ist EINE: die Laufzeit schreibt genau den Schluessel,
     # den das Studio faerbt. Zwei Kopien der Regel waeren zwei Stellen, an denen
@@ -5656,7 +5656,7 @@ try:
     # deshalb aus der Config statt sie zu behaupten.
     from autoclicker.config import load_config as _lc16
     _cfg16 = _lc16()
-    _oe16 = _b16._ohne_else()
+    _oe16 = _b16._without_else()
     check("das Studio nennt den Timeout aus der Config",
           _oe16.get("sekunden") == _cfg16.pixel_wait_timeout)
 
@@ -5726,14 +5726,14 @@ try:
     _b17.points = [_PP8(id=1, x=1, y=2, name="P", color=(3, 4, 5))]
     # Die Lane mit dem Schritt suchen: sequence_to_board legt INIT und END mit an.
     _lane17 = next(i for i, ln in enumerate(_b17.board.lanes) if ln.steps)
-    _b17.waehlen({"phase": _lane17, "zeile": 0})
+    _b17.select({"phase": _lane17, "zeile": 0})
     _schritt17 = _b17.board.lanes[_lane17].steps[0]
-    _z17 = _b17.block_typ({"typ": "click"})
+    _z17 = _b17.block_set_type({"typ": "click"})
     check("Typwechsel ohne Ausloeser raeumt das ELSE weg",
           _schritt17.else_config is None)
     check("und sagt es", "ELSE entfernt" in _z17["status"]["text"])
     # Zurueck: der Abschnitt ist wieder da, aber leer - frisch auswaehlbar.
-    _b17.block_typ({"typ": "wait_click"})
+    _b17.block_set_type({"typ": "wait_click"})
     check("zurueckgestellt ist der Ausloeser wieder da",
           _schritt17.wait_condition is not None)
     check("...aber ohne ELSE", _b17._block_detail()["else_aktion"] == "")
@@ -5748,7 +5748,7 @@ try:
     # sonst raeumte der Aufraeumer genau das weg, wofuer er da ist.
     _b17.block_trigger({"wahl": _TDA8})
     _b17.block_else({"aktion": "restart"})
-    _b17.block_setzen({"feld": "name", "wert": "neu"})
+    _b17.block_set({"feld": "name", "wert": "neu"})
     check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
 
     # --- Am Ende bleibt die Zusammenfassung stehen ---
@@ -5778,13 +5778,13 @@ try:
     # sie DARF alt sein. Nur ein Lauf, der sich fuer aktiv haelt, hat ein Alter.
     _ende16["stand"] = _time16.time() - 600
     Path(_rsf16).write_text(json.dumps(_ende16), encoding="utf-8")
-    _gelesen16 = _b16.lauf_status()
+    _gelesen16 = _b16.run_status()
     check("eine alte Zusammenfassung bleibt lesbar",
           _gelesen16.get("ende") and _gelesen16.get("grund"))
     Path(_rsf16).write_text(json.dumps({"aktiv": True, "sequenz": "S",
                                         "stand": _time16.time() - 600}), encoding="utf-8")
     check("ein alter AKTIVER Lauf gilt weiter als verwaist",
-          _b16.lauf_status().get("verwaist") is True)
+          _b16.run_status().get("verwaist") is True)
 
     # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
     # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
@@ -6143,7 +6143,7 @@ check("und die Ansicht zeichnet ihn", "cfgAktion(" in _H.studio_web_source())
 # `python tools/katalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
 # frei raet und die Kategorie leer bleibt.
 check("und der Katalog laesst sich im Fenster holen",
-      _aktionen17.get("scan_catalog_file", ("",))[0] == "katalog_holen")
+      _aktionen17.get("scan_catalog_file", ("",))[0] == "catalog_fetch")
 
 check("jede Art gibt es auch als Bedienelement",
       all(m.kind in _ARTEN17 for m in _META17.values()))
@@ -6214,7 +6214,7 @@ try:
     _b17 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
 
     # Ohne Datei: Standardwerte, kein Fehler, und der Pfad ist absolut.
-    _gelesen17 = _b17.config_lesen()
+    _gelesen17 = _b17.config_read()
     check("ohne config.json kommen die Standardwerte",
           _gelesen17["werte"]["click_per_point"] == 1 and not _gelesen17["fehler"])
     check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["pfad"]))
@@ -6227,7 +6227,7 @@ try:
     # dieselbe Datei, und ein Fenster, das seit einer Stunde offensteht, darf
     # dessen Aenderungen nicht mit seinem alten Stand ueberbuegeln.
     _sc17(_AC17(window_focus_title="Idle Clans X", scan_marker_count=9))
-    _antwort17 = _b17.config_schreiben({"werte": {"click_post_delay": 0.25}})
+    _antwort17 = _b17.config_write({"werte": {"click_post_delay": 0.25}})
     check("das Speichern meldet Erfolg", _antwort17["ok"])
     _datei17 = json.loads(Path("config.json").read_text(encoding="utf-8"))
     check("der geaenderte Wert steht in der Datei", _datei17["click_post_delay"] == 0.25)
@@ -6246,7 +6246,7 @@ try:
           _auftrag17 is not None and _auftrag17["command"] == "config")
 
     # Eine Korrektur wird gemeldet statt still hingenommen.
-    _antwort17 = _b17.config_schreiben({"werte": {"scan_min_confidence": 1.5}})
+    _antwort17 = _b17.config_write({"werte": {"scan_min_confidence": 1.5}})
     check("eine Korrektur wird zurueckgemeldet",
           [k["key"] for k in _antwort17["korrekturen"]] == ["scan_min_confidence"]
           and _antwort17["korrekturen"][0]["wurde"] == 0.8)
@@ -6255,21 +6255,21 @@ try:
 
     # Ein `600` von Hand darf nicht als Korrektur gelten, nur weil der Loader
     # eine 600.0 daraus macht.
-    _antwort17 = _b17.config_schreiben({"werte": {"pixel_show_delay": 1}})
+    _antwort17 = _b17.config_write({"werte": {"pixel_show_delay": 1}})
     check("eine ganze Zahl in einem Kommafeld ist keine Korrektur",
           _antwort17["korrekturen"] == [])
 
     # Nichts zu tun ist kein Fehler, aber auch kein Schreibvorgang.
-    check("ohne Werte wird nicht geschrieben", _b17.config_schreiben({"werte": {}})["ok"] is False)
+    check("ohne Werte wird nicht geschrieben", _b17.config_write({"werte": {}})["ok"] is False)
 
     # Kaputt ist nicht leer: draufschreiben wuerde den einzigen Rest wegwerfen,
     # den man noch von Hand reparieren kann.
     Path("config.json").write_text("{kein json", encoding="utf-8")
-    _antwort17 = _b17.config_schreiben({"werte": {"click_per_point": 3}})
+    _antwort17 = _b17.config_write({"werte": {"click_per_point": 3}})
     check("eine unlesbare config.json wird nicht ueberschrieben",
           not _antwort17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
     check("und der Leser meldet sie statt Standardwerte zu behaupten",
-          bool(_b17.config_lesen()["fehler"]))
+          bool(_b17.config_read()["fehler"]))
 finally:
     _os.chdir(_cwd17)
 
@@ -6476,7 +6476,7 @@ import tests.vertrag.nachklick            # noqa: F401,E402
 import tests.vertrag.studio_teilen        # noqa: F401,E402
 import tests.vertrag.report              # noqa: F401,E402
 import tests.vertrag.points               # noqa: F401,E402
-import tests.vertrag.sequenz_loeschen     # noqa: F401,E402
+import tests.vertrag.sequence_delete     # noqa: F401,E402
 import tests.vertrag.katalog               # noqa: F401,E402
 import tests.vertrag.haltepunkt            # noqa: F401,E402
 

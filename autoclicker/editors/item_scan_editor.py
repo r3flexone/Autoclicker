@@ -266,7 +266,7 @@ def _step_presets(state: AutoClickerState) -> bool:
         cur_slots = len(state.global_slots)
         cur_items = len(state.global_items)
 
-    for presets, title, current, laden in (
+    for presets, title, current, load in (
         (slot_presets, "Slot-Presets", cur_slots, load_slot_preset),
         (item_presets, "Item-Presets", cur_items, load_item_preset),
     ):
@@ -288,7 +288,7 @@ def _step_presets(state: AutoClickerState) -> bool:
                     break
                 nr = int(wahl)
                 if 1 <= nr <= len(presets):
-                    laden(state, presets[nr - 1][0])
+                    load(state, presets[nr - 1][0])
                     break
                 print(f"  -> Ungültig! 0-{len(presets)}")
             except ValueError:

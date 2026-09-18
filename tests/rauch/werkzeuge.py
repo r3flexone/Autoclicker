@@ -48,8 +48,8 @@ def aufbau():
     b = StudioBridge(seq, Path(dict(list_available_sequences())["Farm"]), "sequences")
     # Maus und Bildschirm gibt es hier nicht: beide werden gestellt, alles andere
     # laeuft wie im Fenster.
-    b._stelle_abwarten = lambda: (555, 444, "")
-    b._farbe_an = staticmethod(lambda x, y: (200, 10, 30))
+    b._await_position = lambda: (555, 444, "")
+    b._color_at = staticmethod(lambda x, y: (200, 10, 30))
     return b
 
 
@@ -216,7 +216,7 @@ def lauf():
         f.image("wz_klick")
 
         # --- Der Aufnahme-Waechter fragt erst, wenn es etwas zu finden gibt ---
-        # `sequenz_liste()` laedt JEDE Sequenzdatei einzeln — genau deshalb
+        # `sequence_list()` laedt JEDE Sequenzdatei einzeln — genau deshalb
         # zieht `zeichne()` sie nicht nach. Der langsame Zweig rief sie
         # trotzdem im Sekundentakt ab dem Druck auf „Aufnahme starten", also
         # waehrend der ganzen Aufnahme; und die dauert lange, weil der Nutzer
@@ -226,7 +226,7 @@ def lauf():
           window.__liste = 0;
           const alt = window.frage;
           window.frage = async function (name, daten) {
-            if (name === "sequenz_liste") window.__liste++;
+            if (name === "sequence_list") window.__liste++;
             return alt(name, daten);
           };
           // Aufnahme laeuft: der Waechter darf nur warten.

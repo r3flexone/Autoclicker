@@ -493,7 +493,7 @@ function ueberschrift(text, hilfe, schluessel) {
 /* -------------------------------------------------------------------- Brücke */
 
 let S = null;             // letzte Momentaufnahme
-let ziehen = null;        // was gerade gezogen wird
+let drag = null;        // was gerade gezogen wird
 let aktiveAblage = null;  // hervorgehobene Einfügestelle
 let offeneFrage = null;
 let gewaehltePhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
@@ -510,7 +510,7 @@ function warteAufBruecke() {
 async function ruf(name, daten) {
   try {
     const antwort = await window.pywebview.api[name](daten === undefined ? null : daten);
-    const wechsel = name === "laden" || name === "neu";
+    const wechsel = name === "load" || name === "neu";
     if (wechsel) {
       gewaehltePhase = null;
       offeneSonderphasen.clear();
@@ -675,9 +675,9 @@ function zeichnePunkte() {
   for (const p of liste) {
     ziel.appendChild(el("div", {
       class: "punkt", draggable: "true", title: p.quelle || "",
-      ondragstart: (e) => { ziehen = {art: "punkt", punkt: p.id};
+      ondragstart: (e) => { drag = {art: "punkt", punkt: p.id};
                             e.dataTransfer.effectAllowed = "copy"; },
-      ondragend: () => { ziehen = null; loescheAblage(); },
+      ondragend: () => { drag = null; loescheAblage(); },
     },
       // Ohne aufgenommene Farbe bleibt das Feld LEER (nur Rahmen). Vorher stand
       // dort die Linienfarbe als Füllung — das behauptete eine Farbe, die nie
@@ -706,7 +706,7 @@ function zeichnePhasen() {
   const verborgen = S.phasen.filter((phase) => phase.art !== "loop" &&
     !phase.bloecke.length && !offeneSonderphasen.has(phase.art));
   const werkzeuge = el("div", {class: "phase phasen-anlegen"},
-    el("button", {class: "leerzone", onclick: () => ruf("phase_anhaengen")}, "+ Phase"));
+    el("button", {class: "leerzone", onclick: () => ruf("phase_append")}, "+ Phase"));
   for (const phase of verborgen) {
     const titel = phase.art === "init" ? "+ Startphase (einmal davor)"
                                        : "+ Abschlussphase (einmal danach)";
@@ -726,7 +726,7 @@ function zeichnePhase(phase) {
     onclick: (e) => {
       if (phase.art !== "loop" || e.target.closest("input, button")) return;
       gewaehltePhase = phase.index;
-      ruf("auswahl_leeren");
+      ruf("selection_clear");
     }});
   // INIT und END tragen keinen frei wählbaren Namen — sie bekommen deshalb auch
   // kein Eingabefeld, das nichts annimmt.
@@ -735,7 +735,7 @@ function zeichnePhase(phase) {
   const name = phase.art === "loop"
     ? el("input", {class: "phase-name wachse", value: phase.name})
     : el("span", {class: "phase-name wachse"}, sondername);
-  name.addEventListener("change", () => ruf("phase_setzen",
+  name.addEventListener("change", () => ruf("phase_set",
     {phase: phase.index, feld: "name", wert: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
   // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
@@ -747,11 +747,11 @@ function zeichnePhase(phase) {
   if (phase.art === "loop") {
     const wdh = el("input", {type: "number", min: "1", value: phase.wiederholungen,
                              title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
-    wdh.addEventListener("change", () => ruf("phase_setzen",
+    wdh.addEventListener("change", () => ruf("phase_set",
       {phase: phase.index, feld: "wiederholungen", wert: Number(wdh.value) || 1}));
     const start = el("input", {value: phase.start, placeholder: "HH:MM",
                                title: "Start erst ab dieser Uhrzeit"});
-    start.addEventListener("change", () => ruf("phase_setzen",
+    start.addEventListener("change", () => ruf("phase_set",
       {phase: phase.index, feld: "start", wert: start.value}));
     // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
     // sagen, was sie ist. Gedämpft, nicht in Akzentfarbe — es beschriftet nur.
@@ -792,7 +792,7 @@ function zeichnePhase(phase) {
     // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
     const sammel = el("div", {class: "knopfpaar phase-alle"},
       el("button", {class: "btn still",
-        onclick: () => ruf("phase_auswahl", {phase: phase.index})},
+        onclick: () => ruf("phase_selection", {phase: phase.index})},
         alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
     if (phase.art === "loop") {
       sammel.appendChild(el("button", {
@@ -800,7 +800,7 @@ function zeichnePhase(phase) {
         title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
         onclick: () => {
           const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-          if (faktor !== null) ruf("phase_skalieren", {phase: phase.index, faktor: faktor});
+          if (faktor !== null) ruf("phase_scale", {phase: phase.index, faktor: faktor});
         }}, "Zeiten skalieren …"));
     }
     kopf.appendChild(sammel);
@@ -814,8 +814,8 @@ function zeichnePhase(phase) {
   spalte.appendChild(ablage(phase.index, phase.bloecke.length));
   spalte.appendChild(el("button", {
     class: "leerzone",
-    onclick: () => ruf("block_anhaengen", {phase: phase.index}),
-    ondragover: (e) => { if (ziehen) { e.preventDefault(); markiere(e.currentTarget); } },
+    onclick: () => ruf("block_append", {phase: phase.index}),
+    ondragover: (e) => { if (drag) { e.preventDefault(); markiere(e.currentTarget); } },
     ondragleave: () => loescheAblage(),
     ondrop: (e) => abwerfen(e, phase.index, phase.bloecke.length),
   }, phase.bloecke.length ? "+ Block" : "leer — Block anlegen oder Punkt herziehen"));
@@ -826,7 +826,7 @@ function zeichnePhase(phase) {
 function ablage(phase, zeile) {
   return el("div", {
     class: "ablage",
-    ondragover: (e) => { if (ziehen) { e.preventDefault(); markiere(e.currentTarget); } },
+    ondragover: (e) => { if (drag) { e.preventDefault(); markiere(e.currentTarget); } },
     ondragleave: () => loescheAblage(),
     ondrop: (e) => abwerfen(e, phase, zeile),
   });
@@ -848,11 +848,11 @@ function abwerfen(e, phase, zeile) {
   e.preventDefault();
   e.stopPropagation();
   loescheAblage();
-  const was = ziehen;
-  ziehen = null;
+  const was = drag;
+  drag = null;
   if (!was) return;
-  if (was.art === "punkt") ruf("punkt_einfuegen", {phase: phase, zeile: zeile, punkt: was.punkt});
-  else ruf("ziehen", {von_phase: was.phase, von_zeile: was.zeile,
+  if (was.art === "punkt") ruf("point_insert", {phase: phase, zeile: zeile, punkt: was.punkt});
+  else ruf("drag", {von_phase: was.phase, von_zeile: was.zeile,
                       nach_phase: phase, nach_zeile: zeile});
 }
 
@@ -899,15 +899,15 @@ function zeichneKarte(phase, block) {
     draggable: "true",
     onclick: (e) => {
       gewaehltePhase = null;
-      return ruf("waehlen", {
+      return ruf("select", {
         phase: phase.index, zeile: block.zeile,
         modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "bereich" : "einzeln")});
     },
-    ondragstart: (e) => { ziehen = {art: "block", phase: phase.index, zeile: block.zeile};
+    ondragstart: (e) => { drag = {art: "block", phase: phase.index, zeile: block.zeile};
                           e.dataTransfer.effectAllowed = "move"; },
-    ondragend: () => { ziehen = null; loescheAblage(); },
+    ondragend: () => { drag = null; loescheAblage(); },
     ondragover: (e) => {
-      if (!ziehen) return;
+      if (!drag) return;
       e.preventDefault();
       const r = e.currentTarget.getBoundingClientRect();
       const unten = e.clientY > r.top + r.height / 2;
@@ -981,7 +981,7 @@ function phasenBalken(s) {
 
 async function zeichneSequenzenliste() {
   const ziel = $("sicht-sequenzen");
-  const liste = await frage("sequenz_liste");
+  const liste = await frage("sequence_list");
   // Zwischen Frage und Antwort kann umgeschaltet worden sein — dann gehoert
   // die Antwort in eine Ansicht, die niemand mehr ansieht.
   if (ansicht !== "sequenzen") return;
@@ -1049,7 +1049,7 @@ function seqKarte(s) {
       // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
       s.defekt ? el("span", {}) : el("button", {
         class: "btn" + (s.offen ? "" : " haupt"), disabled: s.offen,
-        onclick: async () => { await ruf("laden", {name: s.name}); setzeAnsicht("editor"); },
+        onclick: async () => { await ruf("load", {name: s.name}); setzeAnsicht("editor"); },
       }, s.offen ? "geöffnet" : "Öffnen"),
       el("button", {
         class: "btn gefahr still", disabled: s.offen,
@@ -1115,7 +1115,7 @@ function laufFlanke(aktiv) {
 
 /** Einen Lauf-Befehl abschicken, nachfassen — und melden, wenn niemand zuhört. */
 async function laufSchicken(befehl, extra) {
-  await ruf("lauf_befehl", Object.assign({befehl: befehl}, extra || {}));
+  await ruf("run_command", Object.assign({befehl: befehl}, extra || {}));
   laufNachfassen();
   briefkastenNachfassen();
 }
@@ -1134,7 +1134,7 @@ async function laufSchicken(befehl, extra) {
 function briefkastenNachfassen() {
   const stand = statusStand;
   setTimeout(async () => {
-    if (!(await frage("befehl_offen"))) return;
+    if (!(await frage("command_pending"))) return;
     // Hat inzwischen jemand anders etwas gemeldet, ist diese Warnung zwei
     // Sekunden alt und wuerde die frischere Meldung ueberschreiben.
     if (statusStand !== stand) return;
@@ -1152,14 +1152,14 @@ function briefkastenNachfassen() {
  */
 function laufNachfassen() {
   for (const ms of [400, 900, 1600]) {
-    setTimeout(async () => laufFlanke(!!((await frage("lauf_status")) || {}).aktiv), ms);
+    setTimeout(async () => laufFlanke(!!((await frage("run_status")) || {}).aktiv), ms);
   }
 }
 
 function flankenPuls() {
   setInterval(async () => {
     if (ansicht === "lauf") return;      // dort fragt schon der schnelle Takt
-    const z = await frage("lauf_status");
+    const z = await frage("run_status");
     laufFlanke(!!(z && z.aktiv));
   }, 2000);
 }
@@ -1314,7 +1314,7 @@ function phasenLeiste(z, beendet) {
 }
 
 async function zeichneLauf() {
-  const z = await frage("lauf_status");
+  const z = await frage("run_status");
   laufFlanke(!!(z && z.aktiv));   // auch hier mitfuehren, sonst kippt die Flanke
   if (ansicht !== "lauf") return;
   const ziel = $("sicht-lauf");
@@ -1539,7 +1539,7 @@ function zeichneInspektor() {
              (t.key === b.typ
                ? ";background:" + t.farbe + ";color:#0C0F14;font-weight:600"
                : ""),
-      onclick: () => ruf("block_typ", {typ: t.key}),
+      onclick: () => ruf("block_set_type", {typ: t.key}),
     }, t.label))));
 
   // Die drei Klick-/Warte-Typen unterscheiden sich in genau zwei Eigenschaften.
@@ -1554,21 +1554,21 @@ function zeichneInspektor() {
     // (Punkt #1)" und weiter unten nochmal „Punkt": zweimal dieselbe Sache an
     // zwei Stellen, und man musste raten, welche die führende ist.
     if (b.point_id === null || b.point_id === undefined) {
-      ziel.appendChild(feld("Name", b.name, (v) => ruf("block_setzen", {feld: "name", wert: v})));
+      ziel.appendChild(feld("Name", b.name, (v) => ruf("block_set", {feld: "name", wert: v})));
     }
     ziel.appendChild(el("div", {class: "gitter2"},
       zahlfeld("Wartezeit (s)", b.delay_before,
-               (v) => ruf("block_setzen", {feld: "delay_before", wert: v}),
+               (v) => ruf("block_set", {feld: "delay_before", wert: v}),
                {step: "0.1", min: "0"}),
       zahlfeld("bis (0 = fest)", b.delay_max,
-               (v) => ruf("block_setzen", {feld: "delay_max", wert: v}),
+               (v) => ruf("block_set", {feld: "delay_max", wert: v}),
                {step: "0.1", min: "0"})));
   }
 
   // Der Haltepunkt gilt für JEDEN Typ — auch ein Screenshot kann die Stelle
   // sein, an der man einmal hinsehen will, bevor es weitergeht.
   ziel.appendChild(schalter("Haltepunkt — vor diesem Block anhalten", b.breakpoint,
-    (an) => ruf("block_setzen", {feld: "breakpoint", wert: an}),
+    (an) => ruf("block_set", {feld: "breakpoint", wert: an}),
     "Der Lauf hält hier an und fragt — im Live-Run als Tafel (weiter, überspringen, "
     + "ab hier schrittweise, stoppen), in der Konsole per Taste. CTRL+ALT+G heisst "
     + "„weiter“. In einer Loop-Phase hält er in jedem Zyklus; ausschalten, wenn er "
@@ -1580,7 +1580,7 @@ function zeichneInspektor() {
       (b.typ === "wait" && b.trigger !== "kein")) baueStelle(ziel, b);
   if (b.typ === "key") {
     ziel.appendChild(feld("Taste", b.key_press,
-      (v) => ruf("block_setzen", {feld: "key_press", wert: v}), {placeholder: "enter, space, f1"}));
+      (v) => ruf("block_set", {feld: "key_press", wert: v}), {placeholder: "enter, space, f1"}));
   }
   baueScan(ziel, b);
   if (b.typ === "screenshot") baueScreenshot(ziel, b);
@@ -1625,12 +1625,12 @@ function baueProbe(ziel, b) {
   fuss.appendChild(el("button", {
     class: "btn breit",
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
-    onclick: () => ruf("block_testen"),
+    onclick: () => ruf("block_test"),
   }, "▶ Block einmal testen"));
   for (const [welche, text, punkt] of stellen) {
     fuss.appendChild(el("button", {
       class: "btn breit",
-      onclick: () => ruf("punkt_zeigen", {welche: welche}),
+      onclick: () => ruf("point_show", {welche: welche}),
     }, "◎ " + text + " zeigen (#" + punkt + ")"));
   }
   ziel.appendChild(fuss);
@@ -1645,7 +1645,7 @@ function zeichneSammelEditor(anzahl) {
     });
     eingabe.addEventListener("change", () => {
       if (eingabe.value.trim() !== "") {
-        ruf("auswahl_setzen", {feld: feldname, wert: Number(eingabe.value)});
+        ruf("selection_set", {feld: feldname, wert: Number(eingabe.value)});
       }
     });
     eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
@@ -1656,7 +1656,7 @@ function zeichneSammelEditor(anzahl) {
       anzahl + " Blöcke gemeinsam bearbeiten. Verschieben: ALT+↑/↓, löschen: Entf."),
     el("span", {class: "ueberschrift"}, "WARTEZEIT FÜR AUSWAHL"),
     el("div", {class: "reihe sammel-schnell"}, [0, 0.5, 1].map((sekunden) =>
-      el("button", {class: "btn still", onclick: () => ruf("auswahl_setzen",
+      el("button", {class: "btn still", onclick: () => ruf("selection_set",
         {feld: "delay_before", wert: sekunden})}, String(sekunden).replace(".", ",") + " s"))),
     el("div", {class: "gitter2"},
       zeitfeld("Wartezeit (s)", "delay_before", S.auswahl.delay_before,
@@ -1678,13 +1678,13 @@ function baueAktion(ziel, b) {
     "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
     "warten. Die Kacheln oben zeigen das Ergebnis automatisch an.", "aktion"));
   ziel.appendChild(schalter("klickt an der Stelle", klickt, (an) =>
-    ruf("block_typ", {typ: an ? (farbe ? "wait_click" : "click") : "wait"})));
+    ruf("block_set_type", {typ: an ? (farbe ? "wait_click" : "click") : "wait"})));
   ziel.appendChild(schalter("wartet auf eine Farbe", farbe, (an) => {
     // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
     // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
     // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
     if (!klickt) ruf("block_trigger", {wahl: an ? "da" : "kein"});
-    else ruf("block_typ", {typ: an ? "wait_click" : "click"});
+    else ruf("block_set_type", {typ: an ? "wait_click" : "click"});
   }));
 }
 
@@ -1705,18 +1705,18 @@ function baueStelle(ziel, b) {
       "oder hier eine Stelle eintragen, dann entsteht ein Punkt dafür."));
   } else {
     ziel.appendChild(auswahl("Punkt", punktListe(b.point_id), b.point_id === null ? "" : b.point_id,
-      (v) => v && ruf("block_punkt", {punkt: Number(v)})));
+      (v) => v && ruf("block_point", {punkt: Number(v)})));
   }
   // Alles, was dem Punkt gehört, steht beieinander: welcher, wie er heisst,
   // welche Farbe er trägt, wo er liegt.
   if (b.point_id !== null && b.point_id !== undefined) {
     const p = S.punkte.find((q) => q.id === b.point_id);
     ziel.appendChild(feld("Name des Punkts", b.name,
-      (v) => ruf("punkt_setzen", {punkt: b.point_id, feld: "name", wert: v}), null,
+      (v) => ruf("point_set", {punkt: b.point_id, feld: "name", wert: v}), null,
       "Der Name gehört dem Punkt, nicht diesem Block: er ändert sich überall, " +
       "wo derselbe Punkt benutzt wird.", "punktname"));
     ziel.appendChild(farbfeld("Farbe des Punkts", p && p.farbe,
-      (hex) => ruf("punkt_setzen", {punkt: b.point_id, feld: "farbe", wert: hex}),
+      (hex) => ruf("point_set", {punkt: b.point_id, feld: "farbe", wert: hex}),
       "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
       "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
     // Zustand, kein ⓘ: WER den Punkt sonst noch benutzt, sieht man sonst erst,
@@ -1729,7 +1729,7 @@ function baueStelle(ziel, b) {
         class: "btn breit",
         title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
                + b.point_id + ". Danach lässt sich seine Stelle ändern, ohne die anderen zu verstellen.",
-        onclick: () => ruf("punkt_abtrennen"),
+        onclick: () => ruf("point_detach"),
       }, "⧉ Eigenen Punkt für diesen Block"));
     }
   }
@@ -1742,7 +1742,7 @@ function baueStelle(ziel, b) {
   ziel.appendChild(el("button", {
     class: "btn breit",
     title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
-    onclick: () => mitWarten("ruf", "punkt_aufnehmen"),
+    onclick: () => mitWarten("ruf", "point_capture"),
   }, "✛ Stelle mit der Maus setzen"));
   // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
   // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
@@ -1753,17 +1753,17 @@ function baueStelle(ziel, b) {
   // von KLICK. Was seine Beschriftung erklaerte, steht am ⓘ der Ueberschrift.
   if (b.scroll) {
     ziel.appendChild(zahlfeld("Mausrad (Stufen, 0 = kein Rad)", b.scroll,
-      (v) => ruf("block_setzen", {feld: "scroll", wert: v}), {step: "1"}));
+      (v) => ruf("block_set", {feld: "scroll", wert: v}), {step: "1"}));
   }
 }
 
 function setzeStelle(b, x, y) {
   if (b.point_id === null || b.point_id === undefined) {
-    ruf("punkt_anlegen", {x: x, y: y});
+    ruf("point_create", {x: x, y: y});
   } else {
     // Zwei Felder, ein Punkt: nur die geänderte Achse schicken.
-    if (x !== b.x) ruf("punkt_setzen", {punkt: b.point_id, feld: "x", wert: x});
-    if (y !== b.y) ruf("punkt_setzen", {punkt: b.point_id, feld: "y", wert: y});
+    if (x !== b.x) ruf("point_set", {punkt: b.point_id, feld: "x", wert: x});
+    if (y !== b.y) ruf("point_set", {punkt: b.point_id, feld: "y", wert: y});
   }
 }
 
@@ -1797,12 +1797,12 @@ function baueScan(ziel, b) {
     (n) => ({wert: n, text: n})));
   if (wert && !vorhanden.includes(wert)) werte.push({wert: wert, text: wert + " — fehlt"});
   ziel.appendChild(auswahl("Konfiguration", werte, wert,
-    (v) => ruf("block_setzen", {feld: feldname, wert: v}),
+    (v) => ruf("block_set", {feld: feldname, wert: v}),
     "Im Item-/Boss-/Icon-Editor angelegt (Hauptprozess, CTRL+ALT+N). " +
     "Ohne Konfiguration wird nicht gespeichert.", "scan"));
   if (b.typ === "item_scan") {
     ziel.appendChild(auswahl("Modus", S.scan_modi.map((m) => ({wert: m, text: m})),
-      b.item_scan_mode, (v) => ruf("block_setzen", {feld: "item_scan_mode", wert: v})));
+      b.item_scan_mode, (v) => ruf("block_set", {feld: "item_scan_mode", wert: v})));
   }
 }
 
@@ -1810,10 +1810,10 @@ function baueScreenshot(ziel, b) {
   ziel.appendChild(ueberschrift("SCREENSHOT"));
   const hatBereich = !!b.screenshot_region;
   ziel.appendChild(schalter("Bereich statt Vollbild", hatBereich,
-    (an) => ruf("block_bereich", {werte: an ? (b.screenshot_region || [0, 0, 100, 100]) : null})));
+    (an) => ruf("block_area", {werte: an ? (b.screenshot_region || [0, 0, 100, 100]) : null})));
   if (!hatBereich) return;
   const r = b.screenshot_region.slice();
-  const setze = (i) => (v) => { r[i] = v; ruf("block_bereich", {werte: r}); };
+  const setze = (i) => (v) => { r[i] = v; ruf("block_area", {werte: r}); };
 
   // Der eigentliche Weg: die Ecke anfahren statt sie auszurechnen. Vier Zahlen
   // sagen niemandem, wo der Bereich liegt — sie bleiben trotzdem stehen, fuer
@@ -1828,7 +1828,7 @@ function baueScreenshot(ziel, b) {
     // wie eines, das den Klick verschluckt hat.
     setzeStatus({text: "Ecke 1 anfahren + ENTER, dann Ecke 2 + ENTER (ESC bricht ab)",
                  art: "warn"});
-    mitWarten("ruf", "bereich_aufnehmen");
+    mitWarten("ruf", "area_capture");
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
   ziel.appendChild(el("div", {class: "gitter2"},
@@ -1985,7 +1985,7 @@ function zeigeFrage(frage) {
   $("dialog-titel").textContent = frage.titel || "Rückfrage";
   $("dialog-text").textContent = frage.text || "";
   $("dialog-weg").textContent = frage.weiter || "Weiter";
-  $("dialog-speichern").hidden = !frage.speichern;
+  $("dialog-save").hidden = !frage.save;
   $("schleier").hidden = false;
 }
 
@@ -2005,13 +2005,13 @@ async function fortfahren(verwerfen) {
   // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
   // Steht vorn, weil es weder speichern noch laden will.
   if (offen.art === "seq_loeschen") {
-    const antwort = await frage("sequenz_loeschen", {name: offen.ziel});
+    const antwort = await frage("sequence_delete", {name: offen.ziel});
     if (antwort) setzeStatus({text: antwort.meldung, art: antwort.ok ? "ok" : "warn"});
     return zeichneSequenzenliste();
   }
-  if (offen.art === "speichern") return ruf("speichern", {erzwingen: true});
-  if (!verwerfen) await ruf("speichern");
-  if (offen.art === "laden") await ruf("laden", {name: offen.ziel, verwerfen: true});
+  if (offen.art === "save") return ruf("save", {erzwingen: true});
+  if (!verwerfen) await ruf("save");
+  if (offen.art === "load") await ruf("load", {name: offen.ziel, verwerfen: true});
   else await ruf("new", {verwerfen: true});
 }
 
@@ -2032,7 +2032,7 @@ let SC = null;
  * der Inhalt. Dieselbe Regel wie bei `klappZu` — die Vorgabe gilt, bis jemand
  * einen Reiter anfasst. */
 let scanListe = null;
-/* Wohin der Reiter nach dem naechsten `scan_oeffnen` springt. `null` heisst
+/* Wohin der Reiter nach dem naechsten `scan_open` springt. `null` heisst
  * „zurueck auf die Vorgabe" — bei offenem Scan sind das seine Items, also das,
  * weswegen man ihn geoeffnet hat. Wer ihn aus der Scan-Liste heraus oeffnet,
  * bleibt dort stehen: sonst verschwindet die Maske, die sich gerade
@@ -2112,7 +2112,7 @@ async function zeichneScans(frisch) {
   // eindeutiger Besitzerwechsel und erzwingt dann eine frische Aufnahme.
   if (SC && S && SC.sequenz !== S.name) frisch = true;
   if (frisch || !SC) {
-    const antwort = await frage("scan_daten");
+    const antwort = await frage("scan_data");
     if (!antwort || ansicht !== "scans") return;
     SC = antwort;
   }
@@ -2140,22 +2140,22 @@ async function rufScan(name, daten) {
   SC = antwort;
   // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
   // der jemand gerade tippt.
-  if (name === "scan_neu_laden" || name === "scan_lernvorschau_uebernehmen")
+  if (name === "scan_reload" || name === "scan_learn_preview_apply")
     scanOrdnungVergessen();
   // **Einen Scan zu oeffnen ist ein Wechsel des Zusammenhangs.** Danach gilt
   // wieder die Vorgabe — und die sind bei offenem Scan seine Items, also das,
   // weswegen man ihn geoeffnet hat. Vorher landete man auf der Scan-Liste und
   // sah den Namen, den man gerade angeklickt hatte, ein zweites Mal.
-  if (name === "scan_oeffnen") {
+  if (name === "scan_open") {
     scanListe = scanReiterNachOeffnen;
     scanReiterNachOeffnen = null;
     scanOrdnungVergessen();
   }
-  if (name === "scan_foto")
+  if (name === "scan_screenshot")
     scanAssistentSchritt = SC.schritte[1].fertig ? 3 : 2;
-  else if (name === "scan_lernvorschau" || name === "scan_erkennen")
+  else if (name === "scan_learn_preview" || name === "scan_recognize")
     scanAssistentSchritt = 3;
-  else if (name === "scan_modus_setzen" && daten &&
+  else if (name === "scan_mode_set" && daten &&
            (daten.modus === "finden" || daten.modus === "slot"))
     scanAssistentSchritt = 2;
   await zeichneScans();
@@ -2164,11 +2164,11 @@ async function rufScan(name, daten) {
 
 function scanAutoSpeichernPlanen(ursache) {
   clearTimeout(scanAutoSaveTimer);
-  if (!SC || !SC.dirty || ursache === "scan_speichern") return;
+  if (!SC || !SC.dirty || ursache === "scan_save") return;
   const stand = $("scan-speicherstand");
   if (stand) { stand.textContent = "Entwurf wird gespeichert …"; stand.classList.add("offen"); }
   scanAutoSaveTimer = setTimeout(async () => {
-    const antwort = await frage("scan_speichern");
+    const antwort = await frage("scan_save");
     if (!antwort) return;
     SC = antwort;
     await zeichneScans();
@@ -2237,7 +2237,7 @@ function scanErgebnisNaechster(feld) {
   if (!namen.length) return;
   const aktuell = namen.indexOf(SC.wahl.name);
   const name = namen[(aktuell + 1) % namen.length];
-  rufScan("scan_waehlen", {art: "slot", name: name});
+  rufScan("scan_select", {art: "slot", name: name});
 }
 
 /** Gibt es ein echtes Bild — oder nur die aus den Slots gerechnete Flaeche? */
@@ -2278,7 +2278,7 @@ async function scanBildPflegen() {
   if (marke !== scanFotoStand) {
     scanFotoStand = marke;
     if (fotoDa()) {
-      const url = await frage("scan_bild");
+      const url = await frage("scan_image");
       if (url) bild.src = url;
     } else {
       bild.removeAttribute("src");
@@ -2359,7 +2359,7 @@ function scanWerkzeuge() {
       // markierten Kachel UND im Hinweis unter dem Raster.
       title: an && m.key !== "wahl"
         ? "Nochmal klicken = zurück zum Auswählen" : "",
-      onclick: () => rufScan("scan_modus_setzen", {modus: m.key, art: scanArt}),
+      onclick: () => rufScan("scan_mode_set", {modus: m.key, art: scanArt}),
     },
       el("span", {}, m.text),
       el("span", {class: "taste"}, m.taste),
@@ -2474,7 +2474,7 @@ async function scanFensterPflegen() {
   neu.disabled = !SC.pillow || !bereit;
   if (!SC.pillow) { wahl.hidden = true; return; }
   wahl.disabled = !bereit;
-  scanFenster = (await frage("scan_fenster")) || [];
+  scanFenster = (await frage("scan_windows")) || [];
   wahl.hidden = false;
   wahl.replaceChildren();
   wahl.appendChild(el("option", {value: ""}, scanFenster.length
@@ -2632,7 +2632,7 @@ function scanFilterzeile(filter, offen) {
           + " aus „" + SC.offen + "“ — nicht nur aus der Mitgliedschaft. "
           + "STRG+Z nimmt es zurück."
         : "Nichts zu löschen.",
-      onclick: () => rufScan("scan_alle_loeschen", {art: art})},
+      onclick: () => rufScan("scan_delete_all", {art: art})},
       gesamt.length + " " + (art === "slot" ? "Slots" : "Items") + " löschen"));
   }
   if (offen === "items" && SC.kategorien.length) {
@@ -2782,7 +2782,7 @@ function maskeBauen(art, name, gewaehlt, teile, detail, beimWaehlen) {
   maske.addEventListener("click", (e) => {
     if (e.target.closest("input, label, button, select, summary, details")) return;
     if (gewaehlt && art === "item") {
-      rufScan("scan_waehlen", {art: "item", name: ""});
+      rufScan("scan_select", {art: "item", name: ""});
     } else if (!gewaehlt) {
       beimWaehlen();
     }
@@ -2820,7 +2820,7 @@ function scanListeSlots(ziel) {
  * Groesse, Klickpunkt und was zuletzt darin erkannt wurde. Die Zahlen dazu
  * klappen im Detailteil auf, wie beim Item die Konfidenz. */
 function scanSlotMaske(s) {
-  const setze = (feld, wert) => rufScan("scan_slot_setzen",
+  const setze = (feld, wert) => rufScan("scan_slot_set",
                                         {name: s.name, feld: feld, wert: wert});
   const gewaehlt = SC.auswahl.includes(s.name)
                 || (SC.wahl.art === "slot" && SC.wahl.name === s.name);
@@ -2852,7 +2852,7 @@ function scanSlotMaske(s) {
                   style: s.farbe ? "background:" + s.farbe : ""}),
      felder],
     (kasten) => scanSlotDetails(kasten, s),
-    () => rufScan("scan_waehlen", {art: "slot", name: s.name}));
+    () => rufScan("scan_select", {art: "slot", name: s.name}));
   maske.classList.toggle("aus", !s.aktiv);
   return maske;
 }
@@ -2948,7 +2948,7 @@ function scanKategorieKopf(kategorie, liste) {
            + "entfernen. Gleicher Name wie eine andere Gruppe = zusammenlegen."});
   feld.addEventListener("change", () => {
     if (feld.value.trim() === wert) return;
-    rufScan("scan_kategorie_umbenennen", {alt: wert, neu: feld.value.trim()});
+    rufScan("scan_category_rename", {alt: wert, neu: feld.value.trim()});
   });
   feld.addEventListener("keydown", (e) => { if (e.key === "Enter") feld.blur(); });
   return el("div", {class: "scan-kategorie-kopf"}, feld,
@@ -2964,7 +2964,7 @@ function scanKategorieKopf(kategorie, liste) {
  * darunter auf. Name, Kategorie und Prioritaet stehen NUR hier — dieselbe Sache
  * an zwei Stellen waeren zwei Wahrheiten. */
 function scanItemMaske(i, gefroren) {
-  const setze = (feld, wert) => rufScan("scan_item_setzen",
+  const setze = (feld, wert) => rufScan("scan_item_set",
                                         {name: i.name, feld: feld, wert: wert});
   const gewaehlt = SC.wahl.art === "item" && SC.wahl.name === i.name;
   const bild = scanVorschauen.get(i.name);
@@ -3022,7 +3022,7 @@ function scanItemMaske(i, gefroren) {
     // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
     // keine Liste mehr.
     (kasten) => scanItemDetails(kasten, i),
-    () => rufScan("scan_waehlen", {art: "item", name: i.name}));
+    () => rufScan("scan_select", {art: "item", name: i.name}));
   maske.classList.add("scan-item-maske");
   maske.classList.toggle("aus", !i.aktiv);
   return maske;
@@ -3114,7 +3114,7 @@ function scanScanMaske(c) {
     // der, an dem man arbeitet. Der Reiter bleibt dabei stehen — sonst
     // verschwindet die Maske, die sich gerade aufgeklappt hat.
     () => { scanReiterNachOeffnen = "scans";
-            rufScan("scan_oeffnen", {name: c.name}); });
+            rufScan("scan_open", {name: c.name}); });
 }
 
 /** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
@@ -3123,7 +3123,7 @@ async function scanVorschauenHolen(namen) {
   if (!fehlend.length) return;
   // Vormerken, damit ein zweiter Aufbau nicht nochmal fragt.
   for (const n of fehlend) scanVorschauen.set(n, "");
-  const antwort = await frage("scan_vorschau", {namen: fehlend});
+  const antwort = await frage("scan_preview", {namen: fehlend});
   if (!antwort) return;
   let neu = false;
   for (const [name, url] of Object.entries(antwort)) {
@@ -3242,7 +3242,7 @@ function svgEl(tag, attrs, text) {
 
 /** Die gewaehlten Slots — die Auswahl, sonst der eine im Inspektor.
  *
- * Dieselbe Frage wie `_auswahl_slots()` in der Bruecke, und sie muss dieselbe
+ * Dieselbe Frage wie `_selection_slots()` in der Bruecke, und sie muss dieselbe
  * Antwort geben: was man ziehen kann, ist genau das, worauf „loeschen" und
  * „Groesse angleichen" wirken. Die Seite beantwortet sie nur fuer die Geste
  * (was liegt unter dem Zeiger), gerechnet wird weiterhin drueben. */
@@ -3345,13 +3345,13 @@ function scanInspektorBauen() {
         + "Lauf Items dazugelernt."),
       el("div", {class: "reihe"},
         SC.dirty ? el("button", {class: "btn haupt", onclick: async () => {
-          await rufScan("scan_speichern");
-          await rufScan("scan_neu_laden", {verwerfen: true});
+          await rufScan("scan_save");
+          await rufScan("scan_reload", {verwerfen: true});
         }}, "Speichern & neu laden") : null,
-        el("button", {class: "btn", onclick: () => rufScan("scan_neu_laden",
+        el("button", {class: "btn", onclick: () => rufScan("scan_reload",
                                                            {verwerfen: true})},
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
-    el("button", {class: "btn haupt", onclick: () => rufScan("scan_speichern")},
+    el("button", {class: "btn haupt", onclick: () => rufScan("scan_save")},
        "Speichern"),
     el("div", {class: "knopfpaar"},
       scanArt === "item"
@@ -3362,7 +3362,7 @@ function scanInspektorBauen() {
         ? el("button", {class: "btn", disabled: !fotoDa() || !SC.slots.length,
                         title: "Hält jeden Slot gegen die Item-Profile und schreibt "
                                + "das Ergebnis an Bild und Item-Liste",
-                        onclick: () => rufScan("scan_erkennen")}, "Items erkennen")
+                        onclick: () => rufScan("scan_recognize")}, "Items erkennen")
         : el("button", {class: "btn", disabled: !fotoDa() || !erkScan(),
                         title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
                         onclick: () => erkTesten()},
@@ -3378,7 +3378,7 @@ function scanInspektorBauen() {
                       ? "STRG+Z — nimmt zurück: " + SC.undo.was
                         + " (" + SC.undo.tiefe + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
-                    onclick: () => rufScan("scan_rueckgaengig")}, "↶ Zurück")));
+                    onclick: () => rufScan("scan_undo")}, "↶ Zurück")));
   // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
   // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
   // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
@@ -3389,7 +3389,7 @@ function scanInspektorBauen() {
              + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
              + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
              + "vergeben (teuerstes Item einer Kategorie bekommt P1).",
-      onclick: () => rufScan("scan_katalog_anwenden")},
+      onclick: () => rufScan("scan_catalog_apply")},
       "⊞ Aus Katalog einordnen"));
   }
   // **Sechsundfuenfzig Masken aufzuklappen ist kein Bedienweg.** Den Knopf gab
@@ -3434,7 +3434,7 @@ function scanInspektorBauen() {
     filter.appendChild(el("button", {class: "btn still", disabled: !eintraege.length,
       title: "Schaltet alle " + (art === "slot" ? "Slots" : "Items")
              + (irgendAn ? " aus." : " ein."),
-      onclick: () => rufScan("scan_alle_schalten",
+      onclick: () => rufScan("scan_toggle_all",
                              {art: art, aktiv: !irgendAn})},
       irgendAn ? "Alle aus" : "Alle ein"));
   }
@@ -3614,7 +3614,7 @@ function scanReview(ziel) {
   liste.appendChild(el("datalist", {id: itemsId},
     [...bekannteNamen].map((name) => el("option", {value: name}))));
   liste.appendChild(el("div", {class: "knopfpaar", style: "margin-top:8px"},
-    el("button", {class: "btn", onclick: () => rufScan("scan_lernvorschau_abbrechen")}, "Abbrechen"),
+    el("button", {class: "btn", onclick: () => rufScan("scan_learn_preview_cancel")}, "Abbrechen"),
     el("button", {class: "btn haupt", onclick: scanReviewUebernehmen}, "Auswahl anwenden")));
   ziel.appendChild(liste);
 }
@@ -3634,7 +3634,7 @@ function scanReviewUebernehmen() {
     kategorie: n.querySelector(".scan-review-kategorie").wert(),
     prioritaet: Number(n.querySelector(".scan-review-prio").value),
   }));
-  rufScan("scan_lernvorschau_uebernehmen", {zeilen: zeilen});
+  rufScan("scan_learn_preview_apply", {zeilen: zeilen});
 }
 
 /** Was zum gewaehlten Slot gehoert — im Detailteil seiner Maske.
@@ -3643,17 +3643,17 @@ function scanReviewUebernehmen() {
  * beim Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
  * steht beim Ding; hier bleibt, was man daran EINSTELLT. */
 function scanSlotDetails(ziel, s) {
-  const setze = (feld, wert) => rufScan("scan_slot_setzen", {name: s.name, feld: feld, wert: wert});
+  const setze = (feld, wert) => rufScan("scan_slot_set", {name: s.name, feld: feld, wert: wert});
 
   ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn still",
       title: "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt",
-      onclick: () => rufScan("scan_modus_setzen", {modus: "klick"})},
+      onclick: () => rufScan("scan_mode_set", {modus: "klick"})},
       "Klickpunkt setzen"),
     el("button", {class: "btn still", disabled: !fotoDa(),
       title: "Die Farbe des leeren Slots — sie wird beim Item-Lernen abgezogen, "
              + "damit nicht der Rahmen als Merkmal gelernt wird",
-      onclick: () => rufScan("scan_modus_setzen", {modus: "messen"})},
+      onclick: () => rufScan("scan_mode_set", {modus: "messen"})},
       "Hintergrund messen")));
 
   const erweitert = el("details", {class: "scan-erweitert"},
@@ -3678,9 +3678,9 @@ function scanSlotDetails(ziel, s) {
 
   ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn", disabled: !fotoDa(),
-                  onclick: () => rufScan("scan_item_lernen", {slot: s.name})},
+                  onclick: () => rufScan("scan_item_learn", {slot: s.name})},
        "Item lernen"),
-    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
+    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_delete")},
        "löschen")));
   if (fotoDa()) {
     // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
@@ -3689,7 +3689,7 @@ function scanSlotDetails(ziel, s) {
     ziel.appendChild(el("button", {class: "btn still",
       title: SC.offen ? "Alle Slots aus „" + SC.offen + "“ — nicht der ganze Bestand"
                       : "Alle Slots im Bestand (kein Scan offen)",
-      onclick: () => rufScan("scan_lernvorschau", {scope: "alle"})},
+      onclick: () => rufScan("scan_learn_preview", {scope: "alle"})},
       SC.offen ? "Items dieses Scans prüfen & lernen" : "alle Items prüfen & lernen"));
   }
   // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
@@ -3722,22 +3722,22 @@ function scanInspAuswahl(ziel) {
     "ihre Mitte herum: ein einzelner Verklicker soll nicht alle anderen " +
     "verbiegen.", "auswahl-lage"));
   ziel.appendChild(el("button", {class: "btn breit",
-    onclick: () => rufScan("scan_groesse_angleichen")}, "Grösse angleichen"));
+    onclick: () => rufScan("scan_align_size")}, "Grösse angleichen"));
 
   ziel.appendChild(ueberschrift("HINTERGRUND UND ITEMS",
     "Gemessen wird jeder Slot an sich selbst — eine gemeinsame Farbe für alle " +
     "wäre an jedem einzelnen ein bisschen falsch.", "auswahl-lernen"));
   ziel.appendChild(el("button", {class: "btn breit", disabled: !fotoDa(),
-    onclick: () => rufScan("scan_auswahl_farbe")}, "Hintergrund neu messen"));
+    onclick: () => rufScan("scan_selection_color")}, "Hintergrund neu messen"));
   ziel.appendChild(el("button", {class: "btn breit", disabled: !fotoDa(),
     title: "Aus jedem gewählten Slot ein Item — Doppelte werden übersprungen",
-    onclick: () => rufScan("scan_lernvorschau", {scope: "auswahl"})},
+    onclick: () => rufScan("scan_learn_preview", {scope: "auswahl"})},
     SC.auswahl.length + " Items prüfen & lernen"));
 
   ziel.appendChild(el("div", {class: "knopfpaar", style: "margin-top:14px"},
-    el("button", {class: "btn", onclick: () => rufScan("scan_abbrechen")},
+    el("button", {class: "btn", onclick: () => rufScan("scan_cancel")},
        "Auswahl aufheben"),
-    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_loeschen")},
+    el("button", {class: "btn gefahr", onclick: () => rufScan("scan_slot_delete")},
        SC.auswahl.length + " löschen")));
 }
 
@@ -3748,7 +3748,7 @@ function scanInspAuswahl(ziel) {
  * trägt seine Identität ohnehin schon. Dieselbe Regel wie „was dem Punkt
  * gehört, steht beim Punkt" im Sequenz-Editor. */
 function scanItemDetails(ziel, i) {
-  const setze = (feld, wert) => rufScan("scan_item_setzen", {name: i.name, feld: feld, wert: wert});
+  const setze = (feld, wert) => rufScan("scan_item_set", {name: i.name, feld: feld, wert: wert});
   const bild = scanVorschauen.get(i.name);
   if (bild) ziel.appendChild(el("img", {class: "scan-gross", src: bild}));
   if ((i.erkannt_in || []).length) {
@@ -3770,7 +3770,7 @@ function scanItemDetails(ziel, i) {
       (i.vorlagen || []).map((v) => el("div", {class: "reihe"},
         el("span", {class: "hinweis mono wachse"}, v),
         el("button", {class: "btn still", title: "Nur vom Item lösen; Datei bleibt erhalten",
-          onclick: () => rufScan("scan_item_vorlage_entfernen", {name: i.name, datei: v})},
+          onclick: () => rufScan("scan_item_remove_template", {name: i.name, datei: v})},
           "Vorlage entfernen")))));
   }
   if ((i.fehlende_scan_groessen || []).length) {
@@ -3806,7 +3806,7 @@ function scanItemDetails(ziel, i) {
       "Weder Template noch Marker — dieses Item wird nie erkannt."));
   }
   ziel.appendChild(el("button", {class: "btn gefahr", style: "margin-top:14px",
-    onclick: () => rufScan("scan_item_loeschen")}, "Item löschen"));
+    onclick: () => rufScan("scan_item_delete")}, "Item löschen"));
 }
 
 /** Der Klick NACH dem Klick: „wirklich verkaufen?" wegdrücken.
@@ -3821,7 +3821,7 @@ function scanItemDetails(ziel, i) {
  * bekannten Punkt wählen, oder die Stelle im Bild anklicken (dasselbe Werkzeug,
  * das Boss und Icon schon benutzen). */
 function scanItemBestaetigung(i) {
-  const setze = (feld, wert) => rufScan("scan_item_setzen",
+  const setze = (feld, wert) => rufScan("scan_item_set",
                                         {name: i.name, feld: feld, wert: wert});
   const kasten = el("div", {class: "spalte", style: "gap:7px"});
   kasten.appendChild(ueberschrift("BESTÄTIGUNGSKLICK",
@@ -3842,7 +3842,7 @@ function scanItemBestaetigung(i) {
   kasten.appendChild(el("button", {class: "btn still", disabled: !fotoDa(),
     title: "Die Stelle im Bild anklicken — dabei entsteht ein Punkt, oder ein "
            + "vorhandener an derselben Stelle wird wiederverwendet",
-    onclick: () => rufScan("region_modus", {art: "item", modus: "aktion"})},
+    onclick: () => rufScan("region_mode", {art: "item", modus: "aktion"})},
     "Stelle im Bild anklicken"));
   if (i.bestaetigung) {
     kasten.appendChild(zahlfeld("Wartezeit (s)", i.bestaetigung_verzoegerung,
@@ -3855,7 +3855,7 @@ function scanItemBestaetigung(i) {
 
 /** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske. */
 function scanScanDetails(ziel, c) {
-  const setze = (feld, wert) => rufScan("scan_setzen", {name: c.name, feld: feld, wert: wert});
+  const setze = (feld, wert) => rufScan("scan_set", {name: c.name, feld: feld, wert: wert});
 
   ziel.appendChild(ueberschrift("EINSTELLUNGEN",
     "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
@@ -3893,7 +3893,7 @@ function scanScanDetails(ziel, c) {
   ziel.appendChild(el("button", {class: "btn gefahr",
     title: "Entfernt die Konfiguration und ihre Datei. STRG+Z holt die "
            + "Konfiguration zurück, den gemerkten Screenshot nicht.",
-    onclick: () => rufScan("scan_loeschen", {name: c.name})}, "Diesen Scan löschen"));
+    onclick: () => rufScan("scan_delete", {name: c.name})}, "Diesen Scan löschen"));
 }
 
 /* ------------------------------------------- Ansicht: Bosse und Icon-Scans */
@@ -3919,12 +3919,12 @@ const SCAN_ARTEN = ["item", "boss", "icon"];
  * sucht den Methodennamen direkt hinter der oeffnenden Klammer. Hier stehen sie
  * einmal und sind messbar (`tests/vertrag/studio_erkennung.py`). */
 const ERK_BEFEHL = {
-  boss: {oeffnen: "boss_scan_oeffnen", neu: "boss_scan_neu",
-         scan_feld: "boss_scan_setzen", feld: "boss_setzen",
-         loeschen: "boss_scan_loeschen", testen: "boss_testen"},
-  icon: {oeffnen: "icon_scan_oeffnen", neu: "icon_scan_neu",
-         scan_feld: "icon_setzen", feld: "icon_setzen",
-         loeschen: "icon_scan_loeschen", testen: "icon_testen"},
+  boss: {oeffnen: "boss_scan_open", neu: "boss_scan_new",
+         scan_feld: "boss_scan_set", feld: "boss_set",
+         loeschen: "boss_scan_delete", testen: "boss_test"},
+  icon: {oeffnen: "icon_scan_open", neu: "icon_scan_new",
+         scan_feld: "icon_set", feld: "icon_set",
+         loeschen: "icon_scan_delete", testen: "icon_test"},
 };
 
 /** Der Befehlsname fuer die offene Art. */
@@ -3970,7 +3970,7 @@ function scanArtSetzen(art) {
   // Eine andere Art ist ein anderer Zusammenhang: die Vorgabe gilt wieder.
   scanListe = null;
   // Ein Werkzeug der alten Art wuerde in der neuen etwas anderes tun.
-  rufScan("scan_abbrechen");
+  rufScan("scan_cancel");
 }
 
 /** Welche Bloecke der linken Spalte gelten — und wo die Aufnahme gerade haengt. */
@@ -4137,7 +4137,7 @@ function erkRegionSchritt(c) {
       zahlfeld("Rechts", r[2], (v) => setze(2, v), {step: 1}),
       zahlfeld("Unten", r[3], (v) => setze(3, v), {step: 1})),
     el("button", {class: "btn haupt scan-assistent-haupt", disabled: !fotoDa(),
-      onclick: () => rufScan("region_modus", {art: scanArt, modus: "region"})},
+      onclick: () => rufScan("region_mode", {art: scanArt, modus: "region"})},
       "Region im Bild aufziehen"),
   ]);
 }
@@ -4152,10 +4152,10 @@ function erkBosseSchritt(c) {
     el("p", {class: "hinweis"}, "Jeder Boss hat eine eigene Erkennung und eine "
       + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
     el("button", {class: "btn haupt scan-assistent-haupt",
-      onclick: () => rufScan("boss_neu")}, "+ Boss anlegen"),
+      onclick: () => rufScan("boss_new")}, "+ Boss anlegen"),
     el("button", {class: "btn still scan-assistent-haupt", disabled: !fotoDa()
         || !erkBosse().length,
-      onclick: () => rufScan("boss_alle_testen")}, "Alle gegen dieses Bild halten"),
+      onclick: () => rufScan("boss_test_all")}, "Alle gegen dieses Bild halten"),
   ]);
 }
 
@@ -4180,7 +4180,7 @@ function erkWegeSchritt(c) {
         ? "noch nicht geprüft"
         : (b.ocr_stand.da ? b.ocr_stand.backends.join(", ")
                           : "kein Backend installiert")),
-      el("button", {class: "btn still", onclick: () => rufScan("ocr_pruefen")},
+      el("button", {class: "btn still", onclick: () => rufScan("ocr_check")},
          "prüfen")),
     el("p", {class: "hinweis"}, !b.ocr_an
       ? "OCR ist in den Einstellungen aus (ocr_enabled) — dieser Schalter "
@@ -4203,7 +4203,7 @@ function erkWegeSchritt(c) {
         !b.llm_stand ? "noch nicht geprüft"
           : (b.llm_stand.erreichbar ? "erreichbar (" + b.llm_stand.dauer + " ms)"
                                     : "nicht erreichbar")),
-      el("button", {class: "btn still", onclick: () => rufScan("llm_pruefen")}, "testen")),
+      el("button", {class: "btn still", onclick: () => rufScan("llm_check")}, "testen")),
     el("p", {class: "hinweis"}, b.llm_an
       ? erkReihenfolge(c)
       : "LLM ist in den Einstellungen aus (llm_enabled) — dieser Schalter greift "
@@ -4282,7 +4282,7 @@ function erkErkennungsFelder(objekt, art, name) {
       disabled: !fotoDa() || !SC.opencv,
       title: SC.opencv ? "Lernt die Region aus dem eingefrorenen Bild"
                        : "Ohne OpenCV gibt es kein Template-Matching",
-      onclick: () => rufScan("vorlage_aufnehmen", Object.assign(
+      onclick: () => rufScan("template_capture", Object.assign(
         {art: art}, name ? {name: name} : {}))}, "Vorlage neu aufnehmen") : null,
     !template ? el("div", {class: "scan-marker"},
       objekt.marker.map((h) => el("span", {class: "scan-farbfeld", style: "background:" + h,
@@ -4295,7 +4295,7 @@ function erkErkennungsFelder(objekt, art, name) {
       el("div", {class: "feld-still"}, "gemessen",
         el("span", {class: "mono"}, objekt.marker.length + " Farben"))) : null,
     !template ? el("button", {class: "btn scan-assistent-haupt", disabled: !fotoDa(),
-      onclick: () => rufScan("marker_messen", Object.assign(
+      onclick: () => rufScan("marker_measure", Object.assign(
         {art: art}, name ? {name: name} : {}))}, "Marker im Bild neu messen") : null,
     !template ? el("p", {class: "hinweis"}, "min. Pixel über 1 halten — sonst löst "
       + "ein einzelner Rausch-Pixel den Scan aus (Einstellung "
@@ -4338,7 +4338,7 @@ function erkAktionsFelder(objekt, art, name) {
       objekt.point_id === null || objekt.point_id === undefined ? "" : objekt.point_id,
       (v) => setze("punkt", v === "" ? null : Number(v))));
     felder.push(el("button", {class: "btn still", disabled: !fotoDa(),
-      onclick: () => rufScan("region_modus", {art: art, modus: "aktion"})},
+      onclick: () => rufScan("region_mode", {art: art, modus: "aktion"})},
       "Stelle im Bild anklicken"));
   }
   if (objekt.aktion === "key")
@@ -4443,7 +4443,7 @@ function erkBossZeile(b, global, verdeckt) {
     class: "scan-zeile" + (gewaehlt ? " an" : ""),
     style: verdeckt ? "opacity:.5" : null,
     title: verdeckt ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
-    onclick: () => rufScan("boss_waehlen", {name: b.name, global: !!global}),
+    onclick: () => rufScan("boss_select", {name: b.name, global: !!global}),
   },
     b.vorschau ? el("img", {class: "mini", src: b.vorschau})
                : el("span", {class: "kugel" + (b.marker.length ? "" : " ohne"),
@@ -4470,7 +4470,7 @@ function erkListeIcons(ziel) {
     const test = SC.icon.test && SC.icon.test.name === c.name ? SC.icon.test : null;
     ziel.appendChild(el("button", {
       class: "scan-zeile" + (SC.icon.offen === c.name ? " an" : ""),
-      onclick: () => rufScan("icon_scan_oeffnen", {name: c.name}),
+      onclick: () => rufScan("icon_scan_open", {name: c.name}),
     },
       c.vorschau ? el("img", {class: "mini", src: c.vorschau})
                  : el("span", {class: "kugel" + (c.marker.length ? "" : " ohne"),
@@ -4553,10 +4553,10 @@ function erkBibliothekKarte(b) {
   karte.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: offen ? "btn haupt" : "btn still",
       onclick: () => { scanListe = "bosse";
-                       rufScan("boss_waehlen", {name: b.name, global: true}); }},
+                       rufScan("boss_select", {name: b.name, global: true}); }},
       offen ? "Aktion zuweisen" : "bearbeiten"),
     el("button", {class: "btn still",
-      onclick: () => rufScan("boss_loeschen", {name: b.name, global: true})}, "löschen")));
+      onclick: () => rufScan("boss_delete", {name: b.name, global: true})}, "löschen")));
   return karte;
 }
 
@@ -4616,14 +4616,14 @@ function erkInspBossScan(ziel, c) {
 function erkInspBoss(ziel, c, b) {
   ziel.appendChild(el("div", {class: "knopfpaar"},
     el("button", {class: "btn still",
-      onclick: () => rufScan("boss_waehlen", {name: ""})}, "‹ zurück zum Scan"),
+      onclick: () => rufScan("boss_select", {name: ""})}, "‹ zurück zum Scan"),
     el("button", {class: "btn still",
-      onclick: () => rufScan("boss_loeschen")}, "löschen")));
+      onclick: () => rufScan("boss_delete")}, "löschen")));
   ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
-    onclick: () => rufScan("boss_testen")}, "Diesen Boss testen"));
+    onclick: () => rufScan("boss_test")}, "Diesen Boss testen"));
   ziel.appendChild(ueberschrift("BOSS", "Der Name ist zugleich das, was OCR und "
     + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "bossname"));
-  ziel.appendChild(feld("Name", b.name, (v) => rufScan("boss_setzen",
+  ziel.appendChild(feld("Name", b.name, (v) => rufScan("boss_set",
     {name: b.name, global: b.global, feld: "name", wert: v})));
   if (b.global) {
     ziel.appendChild(el("p", {class: "hinweis"},
@@ -4636,19 +4636,19 @@ function erkInspBoss(ziel, c, b) {
   ziel.appendChild(ueberschrift("AKTION BEI TREFFER",
     "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
   ziel.appendChild(erkAktionsKacheln(SC.aktionen.boss, b.aktion,
-    (v) => rufScan("boss_setzen", {name: b.name, global: b.global,
+    (v) => rufScan("boss_set", {name: b.name, global: b.global,
                                    feld: "aktion", wert: v})));
   for (const teil of erkAktionsFelder(b, "boss", b.name))
     if (teil) ziel.appendChild(teil);
   ziel.appendChild(el("button", {class: "btn still", style: "margin-top:14px",
     title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
-    onclick: () => rufScan("boss_global_verschieben", {name: b.name, global: b.global})},
+    onclick: () => rufScan("boss_move_global", {name: b.name, global: b.global})},
     b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
 }
 
 function erkInspIcon(ziel, c) {
   ziel.appendChild(el("button", {class: "btn haupt", disabled: !fotoDa(),
-    onclick: () => rufScan("icon_testen")}, "Icon-Scan testen"));
+    onclick: () => rufScan("icon_test")}, "Icon-Scan testen"));
   ziel.appendChild(ueberschrift("ICON-SCAN „" + c.name + "“",
     "Erkennt EIN Symbol in einer Region und tut dann etwas. Ein Block vom Typ "
     + "ICON-SCAN verweist per Name hierauf.", "iconscan"));
@@ -4662,7 +4662,7 @@ function erkInspIcon(ziel, c) {
     + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])
     + " ab (" + c.region[0] + ", " + c.region[1] + ")."));
   ziel.appendChild(el("button", {class: "btn", disabled: !fotoDa(),
-    onclick: () => rufScan("region_modus", {art: "icon", modus: "region"})},
+    onclick: () => rufScan("region_mode", {art: "icon", modus: "region"})},
     "Region neu aufziehen"));
   ziel.appendChild(ueberschrift("AKTION BEI FUND",
     "Was passiert, wenn das Symbol da ist.", "iconaktion"));
@@ -4693,7 +4693,7 @@ function erkInspBibliothek(ziel) {
     + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
     + "Scan, der sie gefunden hat."));
   ziel.appendChild(el("button", {class: "btn haupt",
-    onclick: () => rufScan("boss_neu", {global: true})}, "+ Boss anlegen"));
+    onclick: () => rufScan("boss_new", {global: true})}, "+ Boss anlegen"));
   ziel.appendChild(el("button", {class: "btn still",
     onclick: () => { scanListe = "bosse"; zeichneScans(); }}, "zurück zum Scan"));
 }
@@ -4749,7 +4749,7 @@ let teilenModus = "auto";
 let teilenMerge = true;
 
 async function zeichneTeilen(frisch) {
-  const antwort = await frage("teilen_daten");
+  const antwort = await frage("share_data");
   if (!antwort || ansicht !== "teilen") return;
   T = antwort;
   for (const t of T.teile) {
@@ -4811,7 +4811,7 @@ function teilenExportZeichnen() {
         : "Kein Fenstertitel eingestellt (window_focus_title) — der Empfänger "
           + "setzt beim Import zwei Punkte von Hand.")));
   rumpf.appendChild(el("button", {class: "btn haupt",
-    onclick: () => rufTeilen("export_starten",
+    onclick: () => rufTeilen("export_start",
       {teile: teilenExport, name: ($("teilen-name") || {}).value || ""})},
     "Bündel schreiben"));
   ziel.appendChild(rumpf);
@@ -4831,7 +4831,7 @@ function teilenMitteZeichnen() {
       el("span", {class: "mono"}, e.name),
       el("span", {class: "zahl mono"}, e.kb + " KB"),
       el("button", {class: "btn still",
-        onclick: () => rufTeilen("import_pruefen", {pfad: "exports/" + e.name})},
+        onclick: () => rufTeilen("import_check", {pfad: "exports/" + e.name})},
         "einlesen")));
   }
   karte.appendChild(liste);
@@ -4853,10 +4853,10 @@ function teilenImportZeichnen() {
       "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
     // EIN Knopf ueber die volle Breite heisst `btn breit` — `wachse` in einer
     // `reihe` war dasselbe mit einer zweiten Schreibweise.
-    el("button", {class: "btn breit", onclick: () => rufTeilen("datei_waehlen")},
+    el("button", {class: "btn breit", onclick: () => rufTeilen("file_choose")},
       "Datei wählen …"),
     feld("oder Pfad", i ? i.pfad : "",
-      (v) => rufTeilen("import_pruefen", {pfad: v})));
+      (v) => rufTeilen("import_check", {pfad: v})));
   ziel.replaceChildren(kopf);
 
   const rumpf = el("div", {class: "abschnitt wachsend"});
@@ -4889,7 +4889,7 @@ function teilenImportZeichnen() {
     ? "Gleiche Namen werden übersprungen."
     : "Achtung: gleiche Namen werden überschrieben."));
   rumpf.appendChild(el("button", {class: "btn haupt",
-    onclick: () => rufTeilen("import_starten",
+    onclick: () => rufTeilen("import_start",
       {teile: teilenImport, modus: teilenModus, merge: teilenMerge})},
     "Bündel einlesen"));
   ziel.appendChild(rumpf);
@@ -4910,7 +4910,7 @@ function teilenImportZeichnen() {
 let B = null;
 
 async function zeichneBericht(daten) {
-  const antwort = await frage("bericht_daten", daten === undefined ? null : daten);
+  const antwort = await frage("report_data", daten === undefined ? null : daten);
   if (!antwort || ansicht !== "bericht") return;
   B = antwort;
   const merk = fokusMerken();
@@ -5197,7 +5197,7 @@ let wzFarbAnalyse = null;
 /* ------------------------------------------------- Griffe mit der Maus warten */
 
 /* **Jeder Aufruf, der die Bruecke blockiert, steht hier.** Diese Methoden warten
- * per `_stelle_abwarten()` bzw. `bereich_aufnehmen()` global auf ENTER — bis zu
+ * per `_await_position()` bzw. `area_capture()` global auf ENTER — bis zu
  * `warte_timeout` Sekunden. Solange kommt keine Antwort zurueck; die Seite kann
  * also nichts anzeigen, was aus der Bruecke kaeme, und muss VOR dem Aufruf
  * sagen, worauf gewartet wird. Ohne das sah es aus, als tue das Fenster nichts —
@@ -5211,12 +5211,12 @@ let wzFarbAnalyse = null;
  * Ein Test haelt die Tabelle gegen die Bruecke: eine wartende Methode, die hier
  * fehlt, ist genau die, bei der das Fenster wieder stumm ist. */
 const WARTE_GRIFFE = {
-  punkt_aufnehmen: ["Stelle aufnehmen", 1],
-  bereich_aufnehmen: ["Screenshot-Bereich aufziehen", 2],
-  maus_stelle: ["Parkposition setzen", 1],
-  werkzeug_punkt_aufnehmen: ["Punkt aufnehmen", 1],
-  werkzeug_farben: ["Farbe messen", 1],
-  kalib_referenz: ["Referenzpunkt setzen", 1],
+  point_capture: ["Stelle aufnehmen", 1],
+  area_capture: ["Screenshot-Bereich aufziehen", 2],
+  mouse_position: ["Parkposition setzen", 1],
+  tool_point_capture: ["Punkt aufnehmen", 1],
+  tool_colors: ["Farbe messen", 1],
+  calib_reference: ["Referenzpunkt setzen", 1],
 };
 
 let warteZaehler = null;
@@ -5350,11 +5350,11 @@ async function scanAutonameLauf(daten) {
       const a = SC.autoname;
       arbeitSagen("Vorlage " + (a.fertig + 1) + " von " + a.gesamt
                   + " — " + a.umbenannt + " benannt");
-      await rufScan("scan_autoname_schritt", null);
+      await rufScan("scan_autoname_step", null);
     }
   } finally {
     warteWeg();
-    await rufScan("scan_autoname_ende", {abgebrochen: autonameAbbruch});
+    await rufScan("scan_autoname_end", {abgebrochen: autonameAbbruch});
   }
 }
 
@@ -5506,7 +5506,7 @@ function wzBezug(key) {
 }
 
 async function zeichneWerkzeuge(frisch) {
-  const antwort = await frage("werkzeug_daten");
+  const antwort = await frage("tool_data");
   if (!antwort || ansicht !== "werkzeuge") return;
   W = antwort;
   for (const u of W.umfang)
@@ -5643,7 +5643,7 @@ function wzPunkteBauen() {
   raus.push(el("div", {class: "wz-aktion gitter2"}, neuName,
     el("button", {class: "btn haupt", onclick: async () => {
       setzeStatus({art: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
-      const a = await mitWarten("werkzeug", "werkzeug_punkt_aufnehmen",
+      const a = await mitWarten("werkzeug", "tool_point_capture",
                                 {name: neuName.value});
       if (a && a.ok) wzPunktId = a.point_id;
     }}, "＋ Neuen Punkt aufnehmen")));
@@ -5654,7 +5654,7 @@ function wzPunkteBauen() {
   raus.push(auswahl("Punkt", punkte.map(p => ({wert: p.id,
     text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), punkt.id,
     (v) => { wzPunktId = Number(v); wzMitteZeichnen(); wzRechtsZeichnen(); }));
-  const setze = (feld, wert) => rufWerkzeug("werkzeug_punkt_setzen",
+  const setze = (feld, wert) => rufWerkzeug("tool_point_set",
     {point_id: punkt.id, feld: feld, wert: wert});
   raus.push(feld("Name", punkt.name, (v) => setze("name", v)));
   raus.push(el("div", {class: "gitter2"},
@@ -5663,15 +5663,15 @@ function wzPunkteBauen() {
   raus.push(farbfeld("Gespeicherte Farbe", punkt.farbe ? hexfarbe(punkt.farbe) : "",
     (v) => setze("farbe", v)));
   raus.push(el("div", {class: "reihe", style: "gap:8px;flex-wrap:wrap"},
-    el("button", {class: "btn", onclick: () => rufWerkzeug("werkzeug_punkt_zeigen",
+    el("button", {class: "btn", onclick: () => rufWerkzeug("tool_point_show",
       {point_id: punkt.id})}, "◎ Zeigen & Farbe prüfen"),
     el("button", {class: "btn", onclick: () => mitWarten("werkzeug",
-      "werkzeug_punkt_aufnehmen", {point_id: punkt.id})}, "✛ Neu messen"),
+      "tool_point_capture", {point_id: punkt.id})}, "✛ Neu messen"),
     // Ausdruecklich ein Boolean, nicht die Anzahl: die Absicht ist „gesperrt,
     // SOLANGE er benutzt wird" — als Zahl gelesen hiess sie das Gegenteil.
     el("button", {class: "btn gefahr", disabled: punkt.verwendungen.length > 0,
       title: punkt.verwendungen.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
-      onclick: () => rufWerkzeug("werkzeug_punkt_loeschen", {point_id: punkt.id})},
+      onclick: () => rufWerkzeug("tool_point_delete", {point_id: punkt.id})},
       "Löschen")));
   if (punkt.verwendungen.length) raus.push(el("p", {class: "hinweis"},
     "Löschen ist gesperrt: Dieser Punkt wird noch " + punkt.verwendungen.length + "× verwendet."));
@@ -5692,7 +5692,7 @@ function wzFarbenBauen() {
     "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
   const starten = async (art) => {
     setzeStatus({art: "info", text: "Ins Spiel wechseln und mit ENTER bestätigen …"});
-    wzFarbAnalyse = await mitWarten("werkzeug", "werkzeug_farben", {art: art});
+    wzFarbAnalyse = await mitWarten("werkzeug", "tool_colors", {art: art});
     wzMitteZeichnen(); wzRechtsZeichnen();
   };
   raus.push(el("div", {class: "gitter3 wz-aktion"},
@@ -5775,7 +5775,7 @@ async function wzAufnahmeStarten() {
     setzeStatus({text: "Bitte zuerst einen Namen eingeben.", art: "err"});
     return;
   }
-  const antwort = await frage("aufnahme_starten", {
+  const antwort = await frage("recording_start", {
     name: name, zyklen: wzAufnahmeZyklen, beschreibung: wzAufnahmeBeschreibung});
   if (!antwort) return;
   setzeStatus({text: antwort.meldung || "", art: antwort.ok ? "ok" : "err"});
@@ -5822,7 +5822,7 @@ function wzAufnahmeLiveStarten() {
   const nummer = ++wzAufnahmeLivePoll;
   const lesen = async () => {
     if (nummer !== wzAufnahmeLivePoll || !wzAufnahmeGestartet) return;
-    const status = await frage("aufnahme_status");
+    const status = await frage("recording_status");
     if (status) {
       wzAufnahmeLive = status;
       wzAufnahmeAusgabeFuellen($("wz-aufnahme-ausgabe"));
@@ -5833,7 +5833,7 @@ function wzAufnahmeLiveStarten() {
 }
 
 async function wzAufnahmeStoppen() {
-  const antwort = await frage("aufnahme_stoppen");
+  const antwort = await frage("recording_stop");
   if (!antwort) return;
   setzeStatus({text: antwort.meldung || "", art: antwort.ok ? "ok" : "err"});
   if (antwort.ok) wzAufnahmeBeobachten(true);
@@ -5841,7 +5841,7 @@ async function wzAufnahmeStoppen() {
 
 /** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke.
  *
- * **Gefragt wird erst, wenn es etwas zu finden gibt.** `sequenz_liste()` laedt
+ * **Gefragt wird erst, wenn es etwas zu finden gibt.** `sequence_list()` laedt
  * JEDE Sequenzdatei einzeln (Migration und Punkt-Aufloesung inklusive) — genau
  * deshalb zieht `zeichne()` sie nicht nach. Der langsame Zweig rief sie
  * trotzdem im Sekundentakt, unbegrenzt, ab dem Druck auf „Aufnahme starten":
@@ -5877,11 +5877,11 @@ function wzAufnahmeBeobachten(schnell = false) {
         return;
       }
     }
-    const liste = (await frage("sequenz_liste")) || [];
+    const liste = (await frage("sequence_list")) || [];
     if (liste.some(s => s.name === wzAufnahmeName)) {
       wzAufnahmeGestartet = false;
       ++wzAufnahmeLivePoll;
-      await ruf("laden", {name: wzAufnahmeName});
+      await ruf("load", {name: wzAufnahmeName});
       setzeAnsicht("editor");
       setzeStatus({text: "Aufnahme gespeichert — die erzeugten Blöcke sind geöffnet.", art: "ok"});
       return;
@@ -5930,7 +5930,7 @@ function wzGeprueftBauen() {
 
 async function wzPruefen() {
   setzeStatus({text: "Prüfe…", art: "info"});
-  wzBericht = await frage("werkzeug_pruefen");
+  wzBericht = await frage("tool_check");
   if (!wzBericht) return;
   const n = wzBericht.fehler || 0, h = wzBericht.hinweise || 0;
   setzeStatus({
@@ -5995,10 +5995,10 @@ function wzKalibBauen() {
     const leiste = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
     leiste.appendChild(el("button", {
       class: "btn haupt", disabled: !!K.identitaet,
-      onclick: () => rufWerkzeug("kalib_anwenden", {...wzUmfang}),
+      onclick: () => rufWerkzeug("calib_apply", {...wzUmfang}),
     }, "Umrechnen und speichern"));
     leiste.appendChild(el("button", {
-      class: "btn", onclick: () => rufWerkzeug("kalib_abbrechen"),
+      class: "btn", onclick: () => rufWerkzeug("calib_cancel"),
     }, "Verwerfen"));
     raus.push(leiste);
     raus.push(wzInfo("Sicherung und laufende Sequenz",
@@ -6033,10 +6033,10 @@ function wzFarbfrageBauen() {
     class: "btn", onclick: async () => {
       const n = f.nummer, id = f.point_id;
       wzFarbfrage = null;
-      // Auch „Trotzdem setzen" misst die Stelle NEU — kalib_referenz wartet
+      // Auch „Trotzdem setzen" misst die Stelle NEU — calib_reference wartet
       // in jedem Fall auf ENTER. Ohne den Hinweis sieht der Knopf aus, als
       // habe er nichts getan.
-      await mitWarten("werkzeug", "kalib_referenz",
+      await mitWarten("werkzeug", "calib_reference",
                       {nummer: n, point_id: id, bestaetigt: true});
     },
   }, "Trotzdem setzen"));
@@ -6091,7 +6091,7 @@ function wzRefZeile(nummer, gesetzt) {
     class: "btn",
     onclick: async () => {
       setzeStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", art: "info"});
-      const antwort = await mitWarten("frage", "kalib_referenz",
+      const antwort = await mitWarten("frage", "calib_reference",
         {nummer, point_id: Number(wahl.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
@@ -6122,7 +6122,7 @@ function wzVersatzFelder(v) {
     kasten.append(el("span", {}, achse.toUpperCase()), feld);
   }
   kasten.appendChild(el("button", {
-    class: "btn", onclick: () => rufWerkzeug("kalib_versatz",
+    class: "btn", onclick: () => rufWerkzeug("calib_offset",
       {x: felder.x.value, y: felder.y.value}),
   }, "Übernehmen"));
   kasten.appendChild(wzInfo("Versatz von Hand",
@@ -6280,7 +6280,7 @@ function wzNachklickLiveStarten() {
   let ruhig = 0;
   const lesen = async () => {
     if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
-    const stand = await frage("nachklick_status");
+    const stand = await frage("reclick_status");
     if (nummer !== wzNachklickPoll || wzOffen !== "klicken") return;
     if (stand) {
       const lief = wzNachklickLive.aktiv;
@@ -6326,7 +6326,7 @@ function wzKlickenBauen() {
     class: "btn haupt",
     // Wie beim Start einer Sequenz: der Befehl geht in den Briefkasten, und ob
     // ihn jemand abholt, sieht man erst daran, dass er verschwindet.
-    onclick: async () => { await rufWerkzeug("nachklick_starten");
+    onclick: async () => { await rufWerkzeug("reclick_start");
                            briefkastenNachfassen(); },
     title: "Startet die Runde im Hauptprozess — geklickt wird danach im Spiel",
   }, "Runde starten"));
@@ -6336,11 +6336,11 @@ function wzKlickenBauen() {
   // liegt drueben) - die Knoepfe stehen deshalb immer da, und der Hauptprozess
   // sagt, was er vorgefunden hat.
   leiste.appendChild(el("button", {
-    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden"),
+    class: "btn", onclick: () => rufWerkzeug("reclick_end"),
     title: "Schreibt die gesetzten Stellen nach sequence.json (= CTRL+ALT+J)",
   }, "Übernehmen"));
   leiste.appendChild(el("button", {
-    class: "btn", onclick: () => rufWerkzeug("nachklick_beenden", {verwerfen: true}),
+    class: "btn", onclick: () => rufWerkzeug("reclick_end", {verwerfen: true}),
     title: "Beendet die Runde, ohne etwas zu schreiben",
   }, "Verwerfen"));
   raus.push(leiste);
@@ -6428,7 +6428,7 @@ function wzRechtsZeichnen() {
 }
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
- * liegt sein Zustand neben `S`: `C` ist die Antwort von `config_lesen()`,
+ * liegt sein Zustand neben `S`: `C` ist die Antwort von `config_read()`,
  * `cfgGeaendert` sammelt, was noch nicht geschrieben ist.
  *
  * Gespeichert wird auf Knopfdruck: die Werte greifen in einen laufenden Lauf,
@@ -6441,7 +6441,7 @@ let cfgKorrekturen = [];
 
 async function zeichneEinstellungen(frisch) {
   if (frisch || !C) {
-    const antwort = await frage("config_lesen");
+    const antwort = await frage("config_read");
     // Zwischen Frage und Antwort kann umgeschaltet worden sein.
     if (!antwort || ansicht !== "einstellungen") return;
     C = antwort;
@@ -6693,7 +6693,7 @@ function cfgStelle(key, m, wert) {
 async function cfgStelleAufnehmen(key) {
   setzeStatus({text: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab).",
                art: "warn"});
-  const antwort = await mitWarten("frage", "maus_stelle");
+  const antwort = await mitWarten("frage", "mouse_position");
   if (!antwort) return;
   if (!antwort.ok) return setzeStatus({text: antwort.meldung || "Abgebrochen.", art: "warn"});
   cfgSetzen(key, [antwort.x, antwort.y]);
@@ -6796,7 +6796,7 @@ async function cfgSpeichern() {
   const werte = Object.assign({}, cfgGeaendert);
   const anzahl = Object.keys(werte).length;
   if (!anzahl) return;
-  const antwort = await frage("config_schreiben", {werte: werte});
+  const antwort = await frage("config_write", {werte: werte});
   if (!antwort) return;
   if (!antwort.ok)
     return setzeStatus({text: antwort.meldung || "Nicht gespeichert.", art: "err"});
@@ -6814,7 +6814,7 @@ async function cfgSpeichern() {
  *
  * Die Rückfrage nach ungespeicherten Änderungen kennt nur die SEQUENZ
  * (`_dirty`); die Scans haben ihren eigenen Merker (`_scan_dirty`), und
- * `laden` wirft sie über `_scan_init()` wortlos weg. Erreichbar war das kaum,
+ * `load` wirft sie über `_scan_init()` wortlos weg. Erreichbar war das kaum,
  * solange die Auswahl nur im Editor stand — jetzt steht sie im Scans-Reiter
  * selbst, also direkt neben der Arbeit, die verlorenginge.
  *
@@ -6826,7 +6826,7 @@ async function cfgSpeichern() {
  */
 async function sequenzWechseln(befehl, daten) {
   if (SC && SC.dirty) {
-    const antwort = await frage("scan_speichern");
+    const antwort = await frage("scan_save");
     if (antwort) {
       SC = antwort;
       if (SC.dirty) {                       // nicht geschrieben — Grund steht drin
@@ -6844,25 +6844,25 @@ function verdrahte() {
   for (const t of document.querySelectorAll(".tab"))
     t.addEventListener("click", () => setzeAnsicht(t.dataset.ansicht));
 
-  $("btn-laden").addEventListener("click",
-    () => sequenzWechseln("laden", {name: $("seq-auswahl").value}));
+  $("btn-load").addEventListener("click",
+    () => sequenzWechseln("load", {name: $("seq-auswahl").value}));
   $("seq-auswahl").addEventListener("dblclick",
-    () => sequenzWechseln("laden", {name: $("seq-auswahl").value}));
+    () => sequenzWechseln("load", {name: $("seq-auswahl").value}));
   $("btn-neu").addEventListener("click", () => sequenzWechseln("neu"));
-  $("btn-speichern").addEventListener("click", speichere);
+  $("btn-save").addEventListener("click", speichere);
   $("btn-aufnahme").addEventListener("click", () => wzOeffnen("aufnahme"));
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-lauf").addEventListener("click", () => laufSchicken(laufLief ? "stop" : "start"));
-  $("btn-block-weg").addEventListener("click", () => ruf("auswahl_loeschen"));
-  $("btn-block-kopie").addEventListener("click", () => ruf("auswahl_duplizieren"));
+  $("btn-block-weg").addEventListener("click", () => ruf("selection_delete"));
+  $("btn-block-kopie").addEventListener("click", () => ruf("selection_duplicate"));
 
   $("seq-name").addEventListener("change", (e) =>
-    ruf("sequenz_setzen", {feld: "name", wert: e.target.value}));
+    ruf("sequence_set", {feld: "name", wert: e.target.value}));
   $("seq-zyklen").addEventListener("change", (e) =>
-    ruf("sequenz_setzen", {feld: "zyklen", wert: Number(e.target.value) || 0}));
+    ruf("sequence_set", {feld: "zyklen", wert: Number(e.target.value) || 0}));
   $("seq-info").addEventListener("change", (e) =>
-    ruf("sequenz_setzen", {feld: "beschreibung", wert: e.target.value}));
+    ruf("sequence_set", {feld: "beschreibung", wert: e.target.value}));
   $("punkt-filter").addEventListener("input", zeichnePunkte);
   // Das Feld selbst wird beim Neuaufbau nicht ersetzt (es steht fest im
   // Dokument), deshalb darf es bei jedem Tastendruck melden.
@@ -6874,23 +6874,23 @@ function verdrahte() {
   for (const knopf of document.querySelectorAll("[data-scan-art]"))
     knopf.addEventListener("click", () => scanArtSetzen(knopf.dataset.scanArt));
   for (const knopf of document.querySelectorAll("[data-erk-tool]"))
-    knopf.addEventListener("click", () => rufScan("region_modus",
+    knopf.addEventListener("click", () => rufScan("region_mode",
       {art: scanArt, modus: knopf.dataset.erkTool}));
 
   $("scan-offen").addEventListener("change", (e) => {
     scanAssistentSchritt = null;
-    rufScan("scan_oeffnen", {name: e.target.value});
+    rufScan("scan_open", {name: e.target.value});
   });
   $("scan-name").addEventListener("change", (e) => {
     if (!SC || !SC.offen) return;
-    rufScan("scan_setzen", {name: SC.offen, feld: "name", wert: e.target.value});
+    rufScan("scan_set", {name: SC.offen, feld: "name", wert: e.target.value});
   });
   $("scan-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") e.target.blur();
   });
   $("scan-neu").addEventListener("click", () => {
     scanAssistentSchritt = 1;
-    rufScan("scan_neu");
+    rufScan("scan_new");
   });
   $("scan-frei").addEventListener("click", () => {
     scanGefuehrt = !scanGefuehrt;
@@ -6902,32 +6902,32 @@ function verdrahte() {
       scanSchritte();
     }));
   $("scan-slots-finden").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: "finden", art: scanArt}));
+    rufScan("scan_mode_set", {modus: "finden", art: scanArt}));
   $("scan-slot-neu").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: "slot", art: scanArt}));
-  $("scan-test").addEventListener("click", () => rufScan("scan_erkennen"));
+    rufScan("scan_mode_set", {modus: "slot", art: scanArt}));
+  $("scan-test").addEventListener("click", () => rufScan("scan_recognize"));
   $("scan-lernen").addEventListener("click", () =>
-    rufScan("scan_lernvorschau", {scope: "alle"}));
+    rufScan("scan_learn_preview", {scope: "alle"}));
   document.querySelectorAll("[data-scan-tool]").forEach((knopf) =>
     knopf.addEventListener("click", () =>
-      rufScan("scan_modus_setzen", {modus: knopf.dataset.scanTool, art: scanArt})));
+      rufScan("scan_mode_set", {modus: knopf.dataset.scanTool, art: scanArt})));
   $("scan-pin").addEventListener("click", () =>
-    rufScan("scan_modus_setzen", {modus: SC.modus, art: scanArt,
+    rufScan("scan_mode_set", {modus: SC.modus, art: scanArt,
                                    fixiert: !SC.werkzeug_fixiert}));
-  $("scan-foto").addEventListener("click", () => rufScan("scan_foto", {art: scanArt}));
+  $("scan-foto").addEventListener("click", () => rufScan("scan_screenshot", {art: scanArt}));
   $("scan-vollbild").addEventListener("click", () =>
-    rufScan("scan_bereich_setzen", {art: scanArt}));
+    rufScan("scan_area_set", {art: scanArt}));
   $("scan-aufziehen").addEventListener("click",
-    () => rufScan("scan_modus_setzen", {modus: "bereich", art: scanArt}));
+    () => rufScan("scan_mode_set", {modus: "bereich", art: scanArt}));
   $("scan-fenster-neu").addEventListener("click", scanFensterPflegen);
   $("scan-fenster").addEventListener("change", (e) => {
     const wahl = scanFenster[Number(e.target.value)];
     // Waehlen nimmt NICHT auf — das tut der Knopf darueber. Vorher stand hier
     // beides in einem Griff, und dann sah es aus, als handele die Liste von
     // selbst und der Knopf gar nicht (er holte dasselbe Bild noch einmal).
-    if (wahl) rufScan("scan_bereich_setzen",
+    if (wahl) rufScan("scan_area_set",
       {art: scanArt, bereich: wahl.bereich, fenster: wahl.id});
-    else rufScan("scan_bereich_setzen", {art: scanArt});
+    else rufScan("scan_area_set", {art: scanArt});
   });
   $("scan-fit").addEventListener("click", scanEinpassen);
   $("scan-1zu1").addEventListener("click", () => {
@@ -6957,11 +6957,11 @@ function verdrahte() {
     if (!stelle) return;
     // ALT misst den Hintergrund des Slots unter dem Zeiger — ohne den Umweg
     // ueber die Modus-Kachel. Der haeufigste Handgriff nach dem Finden.
-    if (e.altKey) return rufScan("scan_direkt", {x: stelle[0], y: stelle[1],
+    if (e.altKey) return rufScan("scan_direct", {x: stelle[0], y: stelle[1],
                                                  was: "messen", art: scanArt});
     // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
     // Geste wie im Sequenz-Editor.
-    rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt,
+    rufScan("scan_click", {x: stelle[0], y: stelle[1], art: scanArt,
                            zusatz: e.ctrlKey || e.metaKey});
   });
   // Beim automatischen Finden darf eine Ecke auch im freien Teil der MITTLEREN
@@ -6969,17 +6969,17 @@ function verdrahte() {
   // liegen ausserhalb dieses Elements und koennen die Geste nie ausloesen.
   buehne.addEventListener("click", (e) => {
     const stelle = scanSuchStelleAusBuehne(e);
-    if (stelle) rufScan("scan_klick", {x: stelle[0], y: stelle[1], art: scanArt});
+    if (stelle) rufScan("scan_click", {x: stelle[0], y: stelle[1], art: scanArt});
   });
   flaeche.addEventListener("dblclick", (e) => {
     const stelle = scanStelleAusEvent(e);
-    if (stelle) rufScan("scan_direkt",
+    if (stelle) rufScan("scan_direct",
       {x: stelle[0], y: stelle[1], was: "klick", art: scanArt});
   });
 
   // **Einen gewaehlten Slot zieht man, statt vier Zahlen zu tippen.** Gepackt
   // wird nur, was schon gewaehlt IST — damit braucht die Seite keine eigene
-  // Trefferregel (die liegt in `_slot_unter()` in Python und soll dort bleiben),
+  // Trefferregel (die liegt in `_slot_under()` in Python und soll dort bleiben),
   // und die Geste liest sich wie ueberall sonst: erst auswaehlen, dann ziehen.
   flaeche.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || !SC || SC.modus !== "wahl" || SC.ecke) return;
@@ -7024,7 +7024,7 @@ function verdrahte() {
     scanZiehStart = scanZiehVersatz = null;
     if (!dx && !dy) return;
     scanZiehGemacht = true;
-    rufScan("scan_verschieben", {dx: dx, dy: dy});
+    rufScan("scan_move", {dx: dx, dy: dy});
   });
   // Mit STRG zoomen, wie in jedem Bildbetrachter; ohne STRG scrollt die Buehne.
   $("scan-buehne").addEventListener("wheel", (e) => {
@@ -7051,10 +7051,10 @@ function verdrahte() {
 
   $("dialog-ab").addEventListener("click", schliesseFrage);
   $("dialog-weg").addEventListener("click", () => fortfahren(true));
-  $("dialog-speichern").addEventListener("click", () => fortfahren(false));
+  $("dialog-save").addEventListener("click", () => fortfahren(false));
 
   // Ziehen über dem Board darf nicht als "Datei öffnen" enden.
-  document.addEventListener("dragover", (e) => { if (ziehen) e.preventDefault(); });
+  document.addEventListener("dragover", (e) => { if (drag) e.preventDefault(); });
   document.addEventListener("drop", (e) => e.preventDefault());
   document.addEventListener("keydown", tastatur);
 }
@@ -7063,7 +7063,7 @@ async function speichere() {
   // Ein Feld, in dem gerade getippt wird, meldet seinen Wert erst beim Verlassen.
   // Ohne das Blur ginge die letzte Eingabe beim Speichern verloren.
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  await ruf("speichern");
+  await ruf("save");
   // Nur hier nachziehen, nicht in `zeichne()`: die Liste liest jede Sequenzdatei
   // einmal, und `zeichne()` läuft nach JEDEM Befehl. Ändern kann sich die Liste
   // ohnehin nur durch ein Speichern (Umbenennen legt eine neue Datei an).
@@ -7079,19 +7079,19 @@ function tastatur(e) {
   if (e.key === "Escape") {
     if (offeneFrage) return schliesseFrage();
     if (imTextfeld()) return document.activeElement.blur();
-    if (ansicht === "scans") return rufScan("scan_abbrechen");
+    if (ansicht === "scans") return rufScan("scan_cancel");
     if (ansicht === "einstellungen") return;
     if (gewaehltePhase !== null) {
       gewaehltePhase = null;
       return zeichnePhasen();
     }
-    return ruf("auswahl_leeren");
+    return ruf("selection_clear");
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
     // Derselbe Griff, drei Dateien: welche gemeint ist, sagt der offene Reiter.
     if (ansicht === "einstellungen") return cfgSpeichern();
-    if (ansicht === "scans") return rufScan("scan_speichern");
+    if (ansicht === "scans") return rufScan("scan_save");
     return speichere();
   }
   if (imTextfeld() || offeneFrage) return;
@@ -7100,7 +7100,7 @@ function tastatur(e) {
     // Rueckgaengig dem Feld, nicht dem Reiter.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
-      return rufScan("scan_rueckgaengig");
+      return rufScan("scan_undo");
     }
     // **Pfeiltasten schieben die Auswahl.** Ein Slot, der drei Pixel daneben
     // liegt, war vorher nur ueber vier Zahlenfelder zu retten — und dreissig
@@ -7115,7 +7115,7 @@ function tastatur(e) {
       const jetzt = Date.now();
       const serie = jetzt - scanSchubZeit < 900;
       scanSchubZeit = jetzt;
-      return rufScan("scan_verschieben",
+      return rufScan("scan_move",
                      {dx: schub[0] * weit, dy: schub[1] * weit, zaehlt: !serie});
     }
     // **Ein Buchstabe ist erst ohne Modifikator ein Werkzeug.** Die Kacheln
@@ -7132,11 +7132,11 @@ function tastatur(e) {
     // die Leiste behauptet.
     if (scanArt === "item") {
       const modus = SCAN_MODI.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
-      if (modus) { e.preventDefault(); return rufScan("scan_modus_setzen",
+      if (modus) { e.preventDefault(); return rufScan("scan_mode_set",
         {modus: modus.key, art: scanArt}); }
       if (e.key === "Delete" && SC && SC.wahl.art === "slot") {
         e.preventDefault();
-        return rufScan("scan_slot_loeschen");
+        return rufScan("scan_slot_delete");
       }
       return;
     }
@@ -7146,7 +7146,7 @@ function tastatur(e) {
     const werkzeug = {r: "region", k: "aktion"}[e.key.toLowerCase()];
     if (werkzeug) {
       e.preventDefault();
-      return rufScan("region_modus", {art: scanArt, modus: werkzeug});
+      return rufScan("region_mode", {art: scanArt, modus: werkzeug});
     }
     if (e.key.toLowerCase() === "t" && SC && erkScan()) {
       e.preventDefault();
@@ -7154,7 +7154,7 @@ function tastatur(e) {
     }
     if (e.key === "Delete" && scanArt === "boss" && SC && SC.boss.wahl) {
       e.preventDefault();
-      return rufScan("boss_loeschen");
+      return rufScan("boss_delete");
     }
     return;
   }
@@ -7164,15 +7164,15 @@ function tastatur(e) {
     e.preventDefault();
     const phase = gewaehltePhase;
     gewaehltePhase = null;
-    return ruf("phase_loeschen", {phase: phase});
+    return ruf("phase_delete", {phase: phase});
   }
-  if (e.key === "Delete") { e.preventDefault(); return ruf("auswahl_loeschen"); }
+  if (e.key === "Delete") { e.preventDefault(); return ruf("selection_delete"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an
-    return ruf("auswahl_duplizieren");
+    return ruf("selection_duplicate");
   }
-  if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); return ruf("auswahl_verschieben", {delta: -1}); }
-  if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); return ruf("auswahl_verschieben", {delta: 1}); }
+  if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); return ruf("selection_move", {delta: -1}); }
+  if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); return ruf("selection_move", {delta: 1}); }
 }
 
 warteAufBruecke().then(async () => {
@@ -7181,5 +7181,5 @@ warteAufBruecke().then(async () => {
   await ruf("snapshot");
   // CTRL+ALT+V startet denselben Prozess wie CTRL+ALT+B, nur mit vorgewaehltem
   // Reiter. Erst NACH der ersten Momentaufnahme, weil sie den Wunsch mitbringt.
-  if (S && S.start_ansicht && S.start_ansicht !== "editor") setzeAnsicht(S.start_ansicht);
+  if (S && S.start_view && S.start_view !== "editor") setzeAnsicht(S.start_view);
 });

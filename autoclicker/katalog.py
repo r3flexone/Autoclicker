@@ -42,7 +42,7 @@ class Catalog:
     Nachgeschlagen wird ohne Ruecksicht auf Gross-/Kleinschreibung: ein Modell
     antwortet mal `Godlike Bow`, mal `godlike bow`, und beides meint dasselbe.
     Zurueck kommt immer die Schreibweise aus dem Katalog — sonst entstuenden
-    ueber `_kategorie_normalisieren` zwei Kategorien mit demselben Wort.
+    ueber `_category_normalize` zwei Kategorien mit demselben Wort.
     """
 
     def __init__(self, items: Optional[dict] = None,

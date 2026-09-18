@@ -1,6 +1,6 @@
 """Rauchtest Bericht-Reiter: Session-Logs im Fenster lesen.
 
-Die Vertragssuite ruft `bericht_daten()` direkt auf — also genau so, wie die
+Die Vertragssuite ruft `report_data()` direkt auf — also genau so, wie die
 Seite es *nicht* tut. Was sie nicht sehen kann: ob der Reiter sich überhaupt
 öffnet, ob die drei Spalten etwas enthalten, und ob ein Klick auf eine Sitzung
 den Bericht wirklich austauscht. Genau dort liegen die Fehler, die im Fenster

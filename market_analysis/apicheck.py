@@ -34,9 +34,9 @@ from collections import Counter
 import requests
 
 try:  # Paketimport (`python -m market_analysis.apicheck`)
-    from .extended_json import laden as extended_json_laden
+    from .extended_json import load as extended_json_laden
 except ImportError:  # Skriptstart (`python market_analysis/apicheck.py`)
-    from extended_json import laden as extended_json_laden  # type: ignore
+    from extended_json import load as extended_json_laden  # type: ignore
 
 MARKET_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest?includeAveragePrice=true"
 MARKET_ALL_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/all"

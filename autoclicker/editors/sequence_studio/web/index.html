@@ -51,7 +51,7 @@
     <div class="trenner"></div>
     <div class="reihe">
       <select id="seq-auswahl" style="width:200px"></select>
-      <button class="btn" id="btn-laden">Laden</button>
+      <button class="btn" id="btn-load">Laden</button>
       <button class="btn" id="btn-neu">Neu</button>
     </div>
     <!-- Das SPEICHERN bleibt dagegen bei der Sequenz. Scans, Teilen, Werkzeuge
@@ -61,7 +61,7 @@
          startet die Sequenz, nicht den Reiter. -->
     <div class="trenner" data-sequenz></div>
     <div class="reihe" data-sequenz>
-      <button class="btn haupt" id="btn-speichern">Speichern</button>
+      <button class="btn haupt" id="btn-save">Speichern</button>
       <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
     </div>
     <div class="trenner" data-sequenz></div>
@@ -278,7 +278,7 @@
           <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
           <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
-               Modus (scan_direkt in scans.py). Sie gehoeren hierher, weil hier
+               Modus (scan_direct in scans.py). Sie gehoeren hierher, weil hier
                steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
                ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
                und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
@@ -400,7 +400,7 @@
     <div class="knoepfe">
       <button class="btn" id="dialog-ab">Abbrechen</button>
       <button class="btn gefahr" id="dialog-weg">Verwerfen</button>
-      <button class="btn haupt" id="dialog-speichern">Speichern &amp; weiter</button>
+      <button class="btn haupt" id="dialog-save">Speichern &amp; weiter</button>
     </div>
   </div>
 </div>

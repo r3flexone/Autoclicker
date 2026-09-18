@@ -17,21 +17,21 @@ def aufbau():
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
     # **Erst der Scan, dann das Bild.** Die Aufnahme braucht ein eindeutiges
-    # Speicherziel (`_scan_voraussetzung`) — ohne offenen Scan der jeweiligen
+    # Speicherziel (`_scan_requirement`) — ohne offenen Scan der jeweiligen
     # Art gibt es kein Foto, und alles, was eines braucht (Marker messen,
     # testen), stuende offen.
-    b.boss_scan_neu({"name": "Bossfarm"})
-    b.scan_foto({"art": "boss"})
-    b.boss_scan_setzen({"feld": "region", "wert": list(region)})
-    b.boss_neu({"name": "Ancient Dragon"})
-    b.marker_messen({"art": "boss"})
-    b.boss_setzen({"feld": "aktion", "wert": "item_scan"})
-    b.boss_neu({"name": "Hydra", "global": True})
-    b.icon_scan_neu({"name": "Mission nicht machbar"})
-    b.scan_foto({"art": "icon"})
-    b.icon_setzen({"feld": "region", "wert": list(region)})
-    b.marker_messen({"art": "icon"})
-    b.icon_setzen({"feld": "aktion", "wert": "click"})
+    b.boss_scan_new({"name": "Bossfarm"})
+    b.scan_screenshot({"art": "boss"})
+    b.boss_scan_set({"feld": "region", "wert": list(region)})
+    b.boss_new({"name": "Ancient Dragon"})
+    b.marker_measure({"art": "boss"})
+    b.boss_set({"feld": "aktion", "wert": "item_scan"})
+    b.boss_new({"name": "Hydra", "global": True})
+    b.icon_scan_new({"name": "Mission nicht machbar"})
+    b.scan_screenshot({"art": "icon"})
+    b.icon_set({"feld": "region", "wert": list(region)})
+    b.marker_measure({"art": "icon"})
+    b.icon_set({"feld": "aktion", "wert": "click"})
     return b
 
 

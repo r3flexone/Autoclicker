@@ -153,7 +153,7 @@ def hinweise(unbekannt: dict[str, int]) -> list[str]:
             for name, count in sorted(unbekannt.items())]
 
 
-def laden(text: str) -> tuple[object, list[str]]:
+def load(text: str) -> tuple[object, list[str]]:
     """Text der API -> `(daten, hinweise)`; wirft `json.JSONDecodeError`, wenn
     auch nach der Uebersetzung kein JSON herauskommt."""
     sauber, unbekannt = bereinigen(text)

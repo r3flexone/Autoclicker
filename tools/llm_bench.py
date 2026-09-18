@@ -100,7 +100,7 @@ def lade_scan(path: Path) -> dict:
         "toleranz": int(data.get("color_tolerance") or 30),
         "vorlagen": path.parent.parent / "templates",
         # `sequences/<name>/bilder/<scan>.png` — neben `item_scans/`, nicht
-        # darin (`_foto_pfad()` im Studio: `filepath.parent / "bilder"`).
+        # darin (`_photo_path()` im Studio: `filepath.parent / "bilder"`).
         "bild": path.parent.parent / "bilder" / (path.stem + ".png"),
     }
 

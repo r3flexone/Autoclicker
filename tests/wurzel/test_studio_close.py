@@ -40,7 +40,7 @@ class StudioCloseTest(unittest.TestCase):
         original = bridge.filepath.read_bytes()
         bridge.points[0].x = 123
         bridge._dirty = True
-        path = bridge.rettung_schreiben()
+        path = bridge.rescue_write()
         self.assertIsNotNone(path)
         self.assertTrue(path.is_file())
         seq = load_sequence_file(path)
@@ -57,7 +57,7 @@ class StudioCloseTest(unittest.TestCase):
         os.utime(bridge.filepath, (2000000000, 2000000000))
         bridge.board.name = "neu"
         bridge._dirty = True
-        antwort = bridge.speichern()
+        antwort = bridge.save()
         self.assertTrue(antwort["frage"])
         self.assertTrue(bridge.filepath.exists())
         self.assertFalse(Path("sequences/neu").exists())
@@ -65,16 +65,16 @@ class StudioCloseTest(unittest.TestCase):
 
     def test_scan_schreibfehler_bleibt_ungespeichert_und_ist_wiederholbar(self):
         bridge = self._bruecke()
-        bridge._scan_laden()
+        bridge._scan_load()
         bridge.scans["Inventar"] = ItemScanConfig(name="Inventar", owner_sequence="test")
         bridge._scan_dirty = True
         with patch("autoclicker.persistence._scan_store.atomic_write",
                    side_effect=OSError("Datenträger voll")):
-            antwort = bridge.scan_speichern()
+            antwort = bridge.scan_save()
         self.assertEqual(antwort["status"]["art"], "err")
         self.assertTrue(bridge._scan_dirty)
         self.assertFalse(Path("sequences/test/item_scans/inventar.json").exists())
-        antwort = bridge.scan_speichern()
+        antwort = bridge.scan_save()
         self.assertEqual(antwort["status"]["art"], "ok")
         self.assertFalse(bridge._scan_dirty)
         self.assertTrue(Path("sequences/test/item_scans/inventar.json").exists())
@@ -82,29 +82,29 @@ class StudioCloseTest(unittest.TestCase):
     def test_dirty_item_scans_are_saved(self):
         bridge = SimpleNamespace(
             _scan_dirty=True,
-            scan_speichern=Mock(return_value={
+            scan_save=Mock(return_value={
                 "status": {"art": "ok", "text": "gespeichert"},
             }),
         )
 
         self.assertTrue(_save_scans_on_close(bridge))
 
-        bridge.scan_speichern.assert_called_once_with()
+        bridge.scan_save.assert_called_once_with()
 
     def test_clean_item_scans_are_not_saved_again(self):
         bridge = SimpleNamespace(
             _scan_dirty=False,
-            scan_speichern=Mock(),
+            scan_save=Mock(),
         )
 
         self.assertFalse(_save_scans_on_close(bridge))
 
-        bridge.scan_speichern.assert_not_called()
+        bridge.scan_save.assert_not_called()
 
     def test_save_error_is_reported_as_failure(self):
         bridge = SimpleNamespace(
             _scan_dirty=True,
-            scan_speichern=Mock(return_value={
+            scan_save=Mock(return_value={
                 "status": {"art": "err", "text": "Datenträger voll"},
             }),
         )
@@ -114,8 +114,8 @@ class StudioCloseTest(unittest.TestCase):
     def test_only_auto_started_window_closes_the_main_program(self):
         bridge = SimpleNamespace(
             _scan_dirty=False,
-            nachklick_beim_schliessen=Mock(),
-            rettung_schreiben=Mock(return_value=None),
+            reclick_on_close=Mock(),
+            rescue_write=Mock(return_value=None),
         )
         with patch("autoclicker.mailbox.send_command") as send_command:
             _on_close(bridge, False)

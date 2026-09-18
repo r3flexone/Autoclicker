@@ -56,7 +56,7 @@ try:
     # **Der Ordner heisst nicht wie die Sequenz.** `sanitize_filename()` macht
     # aus „Raid" das Verzeichnis `sequences/raid` — die Pfade kommen deshalb aus
     # der Persistenz und werden nicht aus dem Anzeigenamen zusammengehaengt.
-    # Genau dieser Unterschied war der Fehler: `sequenz_loeschen()` hing den
+    # Genau dieser Unterschied war der Fehler: `sequence_delete()` hing den
     # angezeigten Namen an `sequences/` und griff daneben.
     _ordner_raid = sequence_dir("Raid")
     check("der Ordner traegt den bereinigten Namen, nicht den angezeigten",
@@ -81,9 +81,9 @@ try:
     _falle_eigen = not _os.path.samefile(_falle, _ordner_raid)
 
     _b = _SB(_farm, dict(list_available_sequences())["Farm"], "sequences")
-    _b._laeuft = lambda: False          # kein echter Lauf in der Testumgebung
+    _b._running = lambda: False          # kein echter Lauf in der Testumgebung
 
-    _liste = {e["name"]: e for e in _b.sequenz_liste()}
+    _liste = {e["name"]: e for e in _b.sequence_list()}
     check("beide Sequenzen stehen in der Uebersicht", set(_liste) == {"Farm", "Raid"})
     _umfang = {u["art"]: u["anzahl"] for u in _liste["Raid"]["umfang"]}
     check("der Umfang nennt die Scans", _umfang.get("item_scans") == 1)
@@ -102,20 +102,20 @@ try:
               for _, eins, viele in BridgeServicesMixin._UMFANG))
 
     # --- Die offene Sequenz nicht ------------------------------------------
-    _z = _b.sequenz_loeschen({"name": "Farm"})
+    _z = _b.sequence_delete({"name": "Farm"})
     check("die offene Sequenz wird abgelehnt", _z["ok"] is False)
     check("und die Absage sagt, warum", "geöffnet" in _z["meldung"])
     check("der Ordner steht noch", sequence_dir("Farm").is_dir())
 
     # --- Waehrend eines Laufs nicht ----------------------------------------
-    _b._laeuft = lambda: True
-    _z = _b.sequenz_loeschen({"name": "Raid"})
+    _b._running = lambda: True
+    _z = _b.sequence_delete({"name": "Raid"})
     check("waehrend eines Laufs wird abgelehnt", _z["ok"] is False)
     check("der Ordner steht auch dann noch", _ordner_raid.is_dir())
-    _b._laeuft = lambda: False
+    _b._running = lambda: False
 
     # --- Der Normalfall -----------------------------------------------------
-    _z = _b.sequenz_loeschen({"name": "Raid"})
+    _z = _b.sequence_delete({"name": "Raid"})
     check("eine fremde Sequenz laesst sich loeschen", _z["ok"] is True)
     check("der Ordner ist weg", not _ordner_raid.exists())
     # **Verschoben, nicht entfernt.** Alles muss mit — die Vorlagen sind der
@@ -128,7 +128,7 @@ try:
     check("und samt Vorlagen",
           sorted(p.name for p in (_bak / "templates").iterdir()) == ["erz.png", "holz.png"])
     check("die Uebersicht zeigt sie nicht mehr",
-          [e["name"] for e in _b.sequenz_liste()] == ["Farm"])
+          [e["name"] for e in _b.sequence_list()] == ["Farm"])
     if _falle_eigen:
         check("der gleichnamige Fremdordner bleibt unangetastet",
               (_falle / "nicht_gemeint.txt").exists())
@@ -138,19 +138,19 @@ try:
 
     # --- Zweimal derselbe Name ueberschreibt die Sicherung nicht -----------
     _anlegen("Raid")
-    _b.sequenz_loeschen({"name": "Raid"})
+    _b.sequence_delete({"name": "Raid"})
     _stände = sorted(p.name for p in Path("backups/sequences").iterdir())
     check("eine zweite Sicherung bekommt einen Zeitstempel", len(_stände) == 2)
     check("und die erste bleibt die erste", _ordner_raid.name in _stände)
 
     # --- Was es nicht gibt ---------------------------------------------------
-    _z = _b.sequenz_loeschen({"name": "Gibtsnicht"})
+    _z = _b.sequence_delete({"name": "Gibtsnicht"})
     check("ein unbekannter Name ist eine Absage, kein Absturz", _z["ok"] is False)
-    _z = _b.sequenz_loeschen({})
+    _z = _b.sequence_delete({})
     check("ohne Namen passiert nichts", _z["ok"] is False)
     # `name` kommt aus dem Fenster. Zusammengehaengt fuehrte ein `..` aus
     # `sequences/` heraus; ueber die Eintragsliste gibt es den Pfad gar nicht.
-    _z = _b.sequenz_loeschen({"name": "../sequences"})
+    _z = _b.sequence_delete({"name": "../sequences"})
     check("ein Pfad im Namen greift ins Leere", _z["ok"] is False)
     check("und der Sequenzordner steht noch", Path("sequences").is_dir())
 finally:
@@ -167,7 +167,7 @@ finally:
 _karte = _web[_web.index("function seqKarte"):_web.index("function frageLoeschen")]
 check("die Karte hat einen Loeschen-Knopf", '"Löschen"' in _karte)
 check("und er geht ueber die Rueckfrage, nicht direkt an die Bruecke",
-      "frageLoeschen(s)" in _karte and 'sequenz_loeschen' not in _karte)
+      "frageLoeschen(s)" in _karte and 'sequence_delete' not in _karte)
 check("die offene Sequenz laesst sich nicht loeschen — auch nicht im Knopf",
       re.search(r'class: "btn gefahr still", disabled: s\.offen', _karte) is not None)
 # Gleiche Spalten: zwei verschieden breite Knoepfe nebeneinander lesen sich als
@@ -178,7 +178,7 @@ check("und die Klasse ist auch gestaltet", ".seq-fuss .knopfpaar{" in _web)
 _forts = _web[_web.index("async function fortfahren"):_web.index("Ansicht: Scans")]
 check("der Dialog kennt den Loesch-Fall", 'offen.art === "seq_loeschen"' in _forts)
 check("und ruft die Bruecke ueber den fragenden Kanal",
-      'frage("sequenz_loeschen"' in _forts)
+      'frage("sequence_delete"' in _forts)
 check("danach wird die Uebersicht neu gezeichnet",
       "zeichneSequenzenliste()" in _forts)
 # Die lokale Variable hiess `frage` und verdeckte den gleichnamigen Helfer.

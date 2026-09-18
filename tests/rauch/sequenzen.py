@@ -181,7 +181,7 @@ def lauf():
                        "teilen", "werkzeuge", "einstellungen"):
             f.reiter(reiter)
             sichtbar = f.seite.eval_on_selector_all(
-                "#seq-auswahl, #btn-laden, #btn-neu",
+                "#seq-auswahl, #btn-load, #btn-neu",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
             pruefe(sichtbar == 3,
                    f"im Reiter '{reiter}' fehlt die Sequenz-Auswahl "
@@ -190,7 +190,7 @@ def lauf():
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
         f.reiter("scans")
         pruefe(not f.seite.eval_on_selector(
-            "#btn-speichern", "e => e.offsetParent !== null"),
+            "#btn-save", "e => e.offsetParent !== null"),
             "der Sequenz-Speichern-Knopf steht im Scans-Reiter")
 
         # **Der offene Reiter folgt dem Wechsel.** Scans, Teilen und Werkzeuge
@@ -202,7 +202,7 @@ def lauf():
         pruefe("Alpha" in f.text("#wz-mitte"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-mitte')[:120]!r}")
         f.seite.select_option("#seq-auswahl", "Beta")
-        f.klick("#btn-laden")
+        f.klick("#btn-load")
         pruefe(f.seite.eval_on_selector("#seq-auswahl", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
         pruefe("Beta" in f.text("#wz-mitte"),

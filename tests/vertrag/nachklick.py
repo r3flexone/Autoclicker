@@ -35,7 +35,7 @@ from autoclicker.models import (
 )
 
 
-def _punkt(pid, x, y, color=None, name=""):
+def _point(pid, x, y, color=None, name=""):
     return _CP(id=pid, x=x, y=y, name=name or f"P{pid}", color=color)
 
 
@@ -115,8 +115,8 @@ _os.chdir(_sand)
 try:
     Path("sequences").mkdir()
     _s = _ST()
-    _punkte_s = [_punkt(1, 100, 100, (10, 20, 30)), _punkt(2, 200, 200),
-                 _punkt(3, 300, 300)]
+    _punkte_s = [_point(1, 100, 100, (10, 20, 30)), _point(2, 200, 200),
+                 _point(3, 300, 300)]
     _schritt = _STEP(point_id=2, delay_before=7.5,
                      wait_condition=_WAIT(point_id=2, color=(1, 2, 3)),
                      else_config=_ELSE(action="skip"))
@@ -222,7 +222,7 @@ try:
     _s2 = _ST()
     _aktiv(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
-           [_punkt(1, 100, 100), _punkt(2, 222, 333), _punkt(3, 300, 300)])
+           [_point(1, 100, 100), _point(2, 222, 333), _point(3, 300, 300)])
     _ruesten(_s2)
 
     _gesprungen.clear()
@@ -277,7 +277,7 @@ section("Nachklicken: es läuft nichts von selbst")
 _s3 = _ST()
 _aktiv(_s3, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
-       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
+       [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s3)
 _s3.is_running = True
 _klick(_s3, 999, 888, None)
@@ -301,7 +301,7 @@ _hd.sequence_worker = lambda *a, **k: _gestartet.append(a)
 try:
     _s4 = _ST()
     _aktiv(_s4, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1)])]), [_punkt(1, 10, 10)])
+        _STEP(point_id=1)])]), [_point(1, 10, 10)])
     _ruesten(_s4)
     _hd.handle_toggle(_s4)
     check("ein Start während der Runde startet keinen Worker", _gestartet == [])
@@ -319,7 +319,7 @@ finally:
 # mitten in die Runde feuern. Deshalb faengt sie gar nicht erst an.
 _s5 = _ST()
 _aktiv(_s5, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
-    _STEP(point_id=1)])]), [_punkt(1, 10, 10)])
+    _STEP(point_id=1)])]), [_point(1, 10, 10)])
 _s5.countdown_active = True
 check("mit gestelltem Countdown startet keine Runde", _ruesten(_s5) is None)
 
@@ -356,7 +356,7 @@ try:
     _s6 = _ST()
     _aktiv(_s6, _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
-           [_punkt(1, 100, 100), _punkt(2, 200, 200)], "Idle Clans")
+           [_point(1, 100, 100), _point(2, 200, 200)], "Idle Clans")
     _ruesten(_s6)
     check("das Zielfenster steht in der Runde", _s6.reclick_target == "Idle Clans")
 
@@ -399,7 +399,7 @@ try:
     _nk.get_client_rect_by_title = lambda t: None
     _s7 = _ST()
     _aktiv(_s7, _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
-        _STEP(point_id=1)])]), [_punkt(1, 100, 100)], "Gibt Es Nicht")
+        _STEP(point_id=1)])]), [_point(1, 100, 100)], "Gibt Es Nicht")
     _ruesten(_s7)
     check("ohne auffindbares Fenster wird nicht gefiltert", _s7.reclick_target == "")
     _vordergrund[0] = "Irgendwas"
@@ -422,7 +422,7 @@ section("Nachklicken: ein Pixel Abweichung ist keine Korrektur")
 _s8 = _ST()
 _aktiv(_s8, _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
-       [_punkt(1, 6233, 412, (33, 140, 116)), _punkt(2, 200, 200)])
+       [_point(1, 6233, 412, (33, 140, 116)), _point(2, 200, 200)])
 _ruesten(_s8)
 _klick(_s8, 6233, 411, (200, 10, 10))
 check("ein Pixel daneben zählt als bestätigt, nicht als Änderung",
@@ -456,7 +456,7 @@ try:
     _s9 = _ST()
     _aktiv(_s9, _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
-           [_punkt(1, 100, 100, (1, 2, 3)), _punkt(2, 200, 200)])
+           [_point(1, 100, 100, (1, 2, 3)), _point(2, 200, 200)])
     _ruesten(_s9)
     _klick(_s9, 3030, 16, (99, 99, 99))       # Titelleiste erwischt
     check("die Stelle ist erfasst", len(_s9.reclick_set) == 1)
@@ -483,7 +483,7 @@ finally:
 _s10 = _ST()
 _aktiv(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
-       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
+       [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s10)
 _klick(_s10, 4444, 55, None)          # etwas gesetzt, aber nicht übernommen
 _hd.handle_quit(_s10, 0)
@@ -496,7 +496,7 @@ from autoclicker.handlers import command_reclick_stop as _bns
 _s11 = _ST()
 _aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
-       [_punkt(1, 100, 100), _punkt(2, 200, 200)])
+       [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s11)
 _klick(_s11, 700, 700, None)
 _bns(_s11, {"discard": "1", "reason": "fenster"})
@@ -516,7 +516,7 @@ def _verwerf_text(reason):
     st = _ST()
     _aktiv(st, _SEQ(name="Grund", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
-           [_punkt(1, 10, 10), _punkt(2, 20, 20)])
+           [_point(1, 10, 10), _point(2, 20, 20)])
     _ruesten(st)
     puffer = _io_nk.StringIO()
     with _cl_nk.redirect_stdout(puffer):
@@ -567,8 +567,8 @@ try:
     _s12 = _ST()
     _aktiv(_s12, _SEQ(name="Sicht", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
-           [_punkt(1, 100, 100, (10, 20, 30)), _punkt(2, 200, 200),
-            _punkt(3, 300, 300)])
+           [_point(1, 100, 100, (10, 20, 30)), _point(2, 200, 200),
+            _point(3, 300, 300)])
     _ruesten(_s12)
 
     def _stand():
@@ -638,7 +638,7 @@ try:
     _s13 = _ST()
     _aktiv(_s13, _SEQ(name="Zurueck", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
-           [_punkt(1, 100, 100), _punkt(2, 200, 200)])
+           [_point(1, 100, 100), _point(2, 200, 200)])
     _ruesten(_s13)
     _klick(_s13, 400, 400, None)
     check("ein Eintrag steht im Verlauf", len(_s13.reclick_history) == 1)

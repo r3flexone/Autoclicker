@@ -65,8 +65,8 @@ def aufbau():
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
-    b.scan_neu({"name": "Inventar"})
-    b.scan_oeffnen({"name": "Inventar"})
+    b.scan_new({"name": "Inventar"})
+    b.scan_open({"name": "Inventar"})
     # Die Vorlagen stehen HIER und nicht spaeter im Lauf: `SC` wird beim
     # Reiterwechsel nicht neu von der Bruecke geholt (das ist Absicht — der
     # Scans-Reiter haelt seinen eigenen Zustand), also saehe die Seite eine
@@ -76,7 +76,7 @@ def aufbau():
     for i, name in enumerate(BEKANNT + [FREMD]):
         mini_png(vorlagen / f"t{i}.png")
         b.items[name] = ItemProfile(name=name, template=f"t{i}.png")
-        b._dazu("item", name)
+        b._add_to_scan("item", name)
     return b
 
 

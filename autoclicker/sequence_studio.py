@@ -112,7 +112,7 @@ def _save_scans_on_close(bridge) -> bool:
     if not getattr(bridge, "_scan_dirty", False):
         return False
 
-    antwort = bridge.scan_speichern()
+    antwort = bridge.scan_save()
     status = antwort.get("status", {}) if isinstance(antwort, dict) else {}
     if status.get("art") == "err":
         print(f"\nItem-Scans konnten nicht gespeichert werden: "
@@ -131,12 +131,12 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
     # er nirgends mehr sieht. Verworfen, nicht uebernommen: wer zumacht, hat
     # nicht uebernommen.
     try:
-        bridge.nachklick_beim_schliessen()
+        bridge.reclick_on_close()
     except Exception:
         pass
     _save_scans_on_close(bridge)
 
-    target = bridge.rettung_schreiben()
+    target = bridge.rescue_write()
     if target is not None:
         print(f"\nUngespeicherte Aenderungen gesichert: {target}")
         print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
@@ -187,7 +187,7 @@ def main(argv: list[str]) -> int:
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
     if scans:
-        bridge.start_ansicht = "scans"
+        bridge.start_view = "scans"
 
     # VOR dem ersten Fenster: sonst sortiert die Taskleiste es unter python.exe
     # ein. Die Titelleiste bekommt ihr Symbol weiter unten - zwei Mechanismen.

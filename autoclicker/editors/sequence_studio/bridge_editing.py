@@ -37,31 +37,31 @@ class BridgeEditingMixin:
             return None
         return self.board.lanes[i] if 0 <= i < len(self.board.lanes) else None
 
-    def phase_anhaengen(self, data: Optional[dict] = None) -> dict:
+    def phase_append(self, data: Optional[dict] = None) -> dict:
         lane = self.board.add_loop_lane()
-        return self._geaendert(f"Phase '{lane.name}' angelegt.")
+        return self._changed(f"Phase '{lane.name}' angelegt.")
 
-    def phase_loeschen(self, data: dict) -> dict:
+    def phase_delete(self, data: dict) -> dict:
         lane = self._lane((data or {}).get("phase"))
         if lane is None or lane.kind != LANE_LOOP:
-            return self._melde("INIT und END lassen sich nicht löschen.", "warn")
+            return self._report("INIT und END lassen sich nicht löschen.", "warn")
         self.board.delete_loop_lane(lane)
-        self._auswahl_leeren()
-        return self._geaendert(f"Phase '{lane.name}' gelöscht.")
+        self._selection_clear()
+        return self._changed(f"Phase '{lane.name}' gelöscht.")
 
-    def phase_setzen(self, data: dict) -> dict:
+    def phase_set(self, data: dict) -> dict:
         """Name, Wiederholungen oder Startzeit einer Phase ändern."""
         data = data or {}
         lane = self._lane(data.get("phase"))
         if lane is None:
-            return self._melde("Phase nicht gefunden.", "err")
+            return self._report("Phase nicht gefunden.", "err")
         feld, value = data.get("feld"), data.get("wert")
         if feld == "name":
             # Nur Loop-Phasen tragen einen Namen: INIT und END heissen in der Datei
             # gar nicht, `board_to_sequence()` wirft ihren Namen weg. Eine Umbenennung
             # dort anzunehmen hiesse, sie beim nächsten Öffnen still zu verlieren.
             if lane.kind != LANE_LOOP:
-                return self._melde("INIT und END tragen keinen eigenen Namen.", "warn")
+                return self._report("INIT und END tragen keinen eigenen Namen.", "warn")
             lane.name = str(value or "").strip() or lane.name
         elif feld == "wiederholungen":
             lane.repeat = max(1, int(value or 1))
@@ -72,26 +72,26 @@ class BridgeEditingMixin:
             else:
                 m = re.fullmatch(r"(\d{1,2}):(\d{2})", raw)
                 if not m:
-                    return self._melde(f"Startzeit '{raw}' — erwartet HH:MM.", "warn")
+                    return self._report(f"Startzeit '{raw}' — erwartet HH:MM.", "warn")
                 hh, mm = int(m.group(1)), int(m.group(2))
                 if not (0 <= hh <= 23 and 0 <= mm <= 59):
-                    return self._melde(f"Startzeit '{raw}' ausserhalb 00:00–23:59.", "warn")
+                    return self._report(f"Startzeit '{raw}' ausserhalb 00:00–23:59.", "warn")
                 lane.scheduled_start = f"{hh:02d}:{mm:02d}"
         else:
-            return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
-        return self._geaendert()
+            return self._report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._changed()
 
-    def phase_skalieren(self, data: dict) -> dict:
+    def phase_scale(self, data: dict) -> dict:
         """Multipliziert alle Wartezeiten einer Phase mit demselben Faktor."""
         lane = self._lane((data or {}).get("phase"))
         if lane is None:
-            return self._melde("Phase nicht gefunden.", "err")
+            return self._report("Phase nicht gefunden.", "err")
         try:
             faktor = float(str((data or {}).get("faktor") or "").replace(",", "."))
         except ValueError:
-            return self._melde("Der Faktor muss eine Zahl sein.", "warn")
+            return self._report("Der Faktor muss eine Zahl sein.", "warn")
         if faktor <= 0:
-            return self._melde("Der Faktor muss grösser als 0 sein.", "warn")
+            return self._report("Der Faktor muss grösser als 0 sein.", "warn")
         geaendert = 0
         for step in lane.steps:
             if step.delay_before > 0:
@@ -99,20 +99,20 @@ class BridgeEditingMixin:
                 geaendert += 1
             if step.delay_max:
                 step.delay_max = round(step.delay_max * faktor, 2)
-        return self._geaendert(
+        return self._changed(
             f"{geaendert} Wartezeit(en) in '{lane.name}' × {faktor:g} skaliert.")
 
     # --------------------------------------------------------------- Auswahl
 
-    def _auswahl_leeren(self) -> None:
+    def _selection_clear(self) -> None:
         self.sel_lane, self.sel_rows = None, set()
         self.sel_anchor = None
 
-    def _auswahl_setzen(self, lane: Lane, row: int) -> None:
+    def _selection_set(self, lane: Lane, row: int) -> None:
         self.sel_lane, self.sel_rows = lane, {row}
         self.sel_anchor = row
 
-    def waehlen(self, data: dict) -> dict:
+    def select(self, data: dict) -> dict:
         """Klick auf eine Karte. `modus`: einzeln / dazu / bereich.
 
         Die Auswahl fängt in einer anderen Phase immer neu an — siehe
@@ -121,17 +121,17 @@ class BridgeEditingMixin:
         data = data or {}
         lane = self._lane(data.get("phase"))
         if lane is None:
-            self._auswahl_leeren()
+            self._selection_clear()
             return self.snapshot()
         row = int(data.get("zeile", 0))
         if not (0 <= row < len(lane.steps)):
-            self._auswahl_leeren()
+            self._selection_clear()
             return self.snapshot()
         modus = data.get("modus") or "einzeln"
         if modus == "dazu" and self.sel_lane is lane:
             self.sel_rows.symmetric_difference_update({row})
             if not self.sel_rows:
-                self._auswahl_leeren()
+                self._selection_clear()
             else:
                 self.sel_anchor = row
         elif modus == "bereich" and self.sel_lane is lane and self.sel_rows:
@@ -145,74 +145,74 @@ class BridgeEditingMixin:
             else:
                 self.sel_rows.update(area)
             if not self.sel_rows:
-                self._auswahl_leeren()
+                self._selection_clear()
         else:
-            self._auswahl_setzen(lane, row)
+            self._selection_set(lane, row)
         return self.snapshot()
 
-    def auswahl_leeren(self, data: Optional[dict] = None) -> dict:
-        self._auswahl_leeren()
+    def selection_clear(self, data: Optional[dict] = None) -> dict:
+        self._selection_clear()
         return self.snapshot()
 
-    def phase_auswahl(self, data: dict) -> dict:
+    def phase_selection(self, data: dict) -> dict:
         """Wählt alle Blöcke einer Phase oder hebt deren Auswahl auf."""
         lane = self._lane((data or {}).get("phase"))
         if lane is None or not lane.steps:
-            self._auswahl_leeren()
+            self._selection_clear()
             return self.snapshot()
         alle_gewaehlt = self.sel_lane is lane and self.sel_rows == set(range(len(lane.steps)))
         if alle_gewaehlt:
-            self._auswahl_leeren()
+            self._selection_clear()
         else:
             self.sel_lane = lane
             self.sel_rows = set(range(len(lane.steps)))
             self.sel_anchor = 0
         return self.snapshot()
 
-    def auswahl_setzen(self, data: dict) -> dict:
+    def selection_set(self, data: dict) -> dict:
         """Setzt ein gemeinsames Feld auf allen gewählten Blöcken."""
         data = data or {}
         lane = self.sel_lane
         feld = data.get("feld")
         if lane is None or not self.sel_rows:
-            return self._melde("Keine Blöcke ausgewählt.", "warn")
+            return self._report("Keine Blöcke ausgewählt.", "warn")
         if feld not in ("delay_before", "delay_max"):
-            return self._melde(f"'{feld}' lässt sich nicht gesammelt setzen.", "warn")
+            return self._report(f"'{feld}' lässt sich nicht gesammelt setzen.", "warn")
         try:
             value = _FELDER[feld](data.get("wert"))
         except (TypeError, ValueError):
-            return self._melde("Die Wartezeit muss eine Zahl sein.", "warn")
+            return self._report("Die Wartezeit muss eine Zahl sein.", "warn")
         rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
         for row in rows:
             setattr(lane.steps[row], feld, value)
-        return self._geaendert(
+        return self._changed(
             f"Wartezeit für {_bloecke(len(rows))} gemeinsam gesetzt.")
 
     # -------------------------------------------------------------- Struktur
 
-    def block_anhaengen(self, data: dict) -> dict:
+    def block_append(self, data: dict) -> dict:
         """Blanko-Block ans Ende einer Phase. Hat noch keine Stelle — deshalb (0,0)."""
         lane = self._lane((data or {}).get("phase"))
         if lane is None:
-            return self._melde("Phase nicht gefunden.", "err")
+            return self._report("Phase nicht gefunden.", "err")
         self.board.add_step(lane, SequenceStep(x=0, y=0, delay_before=0.0))
-        self._auswahl_setzen(lane, len(lane.steps) - 1)
-        return self._geaendert()
+        self._selection_set(lane, len(lane.steps) - 1)
+        return self._changed()
 
-    def punkt_einfuegen(self, data: dict) -> dict:
+    def point_insert(self, data: dict) -> dict:
         """Punkt aus der Palette als Klick-Block einsetzen (mit `point_id`)."""
         data = data or {}
         lane = self._lane(data.get("phase"))
-        point = self._punkt(data.get("punkt"))
+        point = self._point(data.get("punkt"))
         if lane is None or point is None:
-            return self._melde("Punkt oder Phase nicht gefunden.", "err")
+            return self._report("Punkt oder Phase nicht gefunden.", "err")
         at = data.get("zeile")
         at = len(lane.steps) if at is None else max(0, min(int(at), len(lane.steps)))
         self.board.add_step(lane, step_from_point(point), at=at)
-        self._auswahl_setzen(lane, at)
-        return self._geaendert()
+        self._selection_set(lane, at)
+        return self._changed()
 
-    def _verschiebe(self, source: Lane, rows: list[int], target: Lane, at: int) -> None:
+    def _move(self, source: Lane, rows: list[int], target: Lane, at: int) -> None:
         """Trägt `rows` aus `source` in `target` ab Position `at` ein.
 
         Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
@@ -235,7 +235,7 @@ class BridgeEditingMixin:
         self.sel_anchor = at
         self._dirty = True
 
-    def ziehen(self, data: dict) -> dict:
+    def drag(self, data: dict) -> dict:
         """Ziel eines Drag&Drop mit Karten."""
         data = data or {}
         source = self._lane(data.get("von_phase"))
@@ -249,10 +249,10 @@ class BridgeEditingMixin:
         rows = (sorted(self.sel_rows)
                 if (self.sel_lane is source and von_zeile in self.sel_rows)
                 else [von_zeile])
-        self._verschiebe(source, rows, target, at)
-        return self._melde("")
+        self._move(source, rows, target, at)
+        return self._report("")
 
-    def auswahl_verschieben(self, data: dict) -> dict:
+    def selection_move(self, data: dict) -> dict:
         """Verschiebt die Auswahl als Block um eine Position (−1 hoch, +1 runter)."""
         delta = int((data or {}).get("delta", 0))
         lane = self.sel_lane
@@ -268,11 +268,11 @@ class BridgeEditingMixin:
         folge = rows if delta < 0 else list(reversed(rows))
         self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
         self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
-        return self._geaendert()
+        return self._changed()
 
     _REF_FELDER = ("wait_condition", "verify_condition", "else_config")
 
-    def _punkte_mitkopieren(self, step, abbildung: dict) -> None:
+    def _points_copy_along(self, step, abbildung: dict) -> None:
         """Hängt alle Punkt-Referenzen eines kopierten Schritts auf eigene Punkte um.
 
         `abbildung` gilt für den ganzen Durchgang: derselbe Ausgangspunkt ergibt
@@ -291,7 +291,7 @@ class BridgeEditingMixin:
             if alt_id is None:
                 return None
             if alt_id not in abbildung:
-                vorlage = self._punkt(alt_id)
+                vorlage = self._point(alt_id)
                 if vorlage is None:
                     return alt_id          # zeigt schon ins Leere — nicht erfinden
                 kopie = PalettePoint(
@@ -308,7 +308,7 @@ class BridgeEditingMixin:
             if bedingung is not None and getattr(bedingung, "point_id", None) is not None:
                 bedingung.point_id = neu_fuer(bedingung.point_id)
 
-    def auswahl_duplizieren(self, data: Optional[dict] = None) -> dict:
+    def selection_duplicate(self, data: Optional[dict] = None) -> dict:
         """Legt Kopien der gewählten Blöcke direkt hinter die Auswahl.
 
         **Die Kopie bekommt eigene Punkte.** Man dupliziert einen Block, um ihn
@@ -332,7 +332,7 @@ class BridgeEditingMixin:
         """
         lane = self.sel_lane
         if lane is None or not self.sel_rows:
-            return self._melde("Nichts ausgewählt — erst einen Block anklicken.", "warn")
+            return self._report("Nichts ausgewählt — erst einen Block anklicken.", "warn")
         rows = sorted(self.sel_rows)
         # Alle Kopien hinter den LETZTEN Gewählten, in der Reihenfolge der
         # Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse eine
@@ -342,20 +342,20 @@ class BridgeEditingMixin:
         abbildung: dict = {}
         for versatz, idx in enumerate(rows):
             kopie = copy.deepcopy(lane.steps[idx])
-            self._punkte_mitkopieren(kopie, abbildung)
+            self._points_copy_along(kopie, abbildung)
             self.board.add_step(lane, kopie, target + versatz)
         # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
         # umstellen, nicht erneut suchen.
         self.sel_rows = {target + i for i in range(len(rows))}
         self.sel_anchor = target
-        self._punkte_anwenden()
+        self._points_apply()
         neue = len(self.points) - vorher
-        return self._geaendert(
+        return self._changed(
             f"{_bloecke(len(rows))} dupliziert."
             + (f" {neue} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
                f"verschieben, ohne das Original mitzunehmen." if neue else ""))
 
-    def auswahl_loeschen(self, data: Optional[dict] = None) -> dict:
+    def selection_delete(self, data: Optional[dict] = None) -> dict:
         lane = self.sel_lane
         if lane is None or not self.sel_rows:
             return self.snapshot()
@@ -363,12 +363,12 @@ class BridgeEditingMixin:
         for idx in sorted(self.sel_rows, reverse=True):
             self.board.delete_step(lane, idx)
         count = len(self.sel_rows)
-        self._auswahl_leeren()
-        return self._geaendert(f"{_bloecke(count)} gelöscht.")
+        self._selection_clear()
+        return self._changed(f"{_bloecke(count)} gelöscht.")
 
     # ---------------------------------------------------------- Block-Felder
 
-    def _else_aufraeumen(self, step: SequenceStep) -> str:
+    def _else_cleanup(self, step: SequenceStep) -> str:
         """Entfernt ein ELSE, das nach dieser Änderung nichts mehr auslösen kann.
 
         Wer den Trigger wegnimmt oder den Typ umstellt, hat den einzigen Auslöser
@@ -385,7 +385,7 @@ class BridgeEditingMixin:
         step.else_config = None
         return "ELSE entfernt — dieser Block kann es nicht mehr auslösen."
 
-    def block_typ(self, data: dict) -> dict:
+    def block_set_type(self, data: dict) -> dict:
         """Stellt den Block-Typ um.
 
         FARBE+KLICK braucht einen Punkt — er ist die Quelle für Stelle UND Farbe.
@@ -393,38 +393,38 @@ class BridgeEditingMixin:
         die niemand mehr nachziehen kann.
         """
         typ = (data or {}).get("typ")
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None or typ not in BLOCK_LABELS:
             return self.snapshot()
         if (typ == BLOCK_WAIT_CLICK and step.wait_condition is None
                 and step.point_id is None):
-            return self._melde("FARBE+KLICK braucht einen Punkt — erst eine Stelle wählen.",
+            return self._report("FARBE+KLICK braucht einen Punkt — erst eine Stelle wählen.",
                                "warn")
         set_block_type(step, typ)
-        self._punkte_anwenden()
-        weg = self._else_aufraeumen(step)
-        return self._geaendert(weg, "warn" if weg else "ok")
+        self._points_apply()
+        weg = self._else_cleanup(step)
+        return self._changed(weg, "warn" if weg else "ok")
 
-    def block_setzen(self, data: dict) -> dict:
+    def block_set(self, data: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
         data = data or {}
         feld, value = data.get("feld"), data.get("wert")
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         wandeln = _FELDER.get(feld)
         if wandeln is None:
-            return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+            return self._report(f"Unbekanntes Feld '{feld}'.", "err")
         try:
             setattr(step, feld, wandeln(value))
         except (TypeError, ValueError):
-            return self._melde(f"'{value}' passt nicht zu {feld}.", "warn")
-        return self._geaendert()
+            return self._report(f"'{value}' passt nicht zu {feld}.", "warn")
+        return self._changed()
 
-    def block_bereich(self, data: dict) -> dict:
+    def block_area(self, data: dict) -> dict:
         """Screenshot-Bereich setzen (`values` = [x1,y1,x2,y2]) oder auf Vollbild zurück."""
         data = data or {}
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         values = data.get("werte")
@@ -434,10 +434,10 @@ class BridgeEditingMixin:
             try:
                 step.screenshot_region = tuple(int(v) for v in values[:4])
             except (TypeError, ValueError):
-                return self._melde("Bereich braucht vier ganze Zahlen.", "warn")
-        return self._geaendert()
+                return self._report("Bereich braucht vier ganze Zahlen.", "warn")
+        return self._changed()
 
-    def bereich_aufnehmen(self, data: Optional[dict] = None) -> dict:
+    def area_capture(self, data: Optional[dict] = None) -> dict:
         """Beide Ecken des Screenshot-Bereichs mit der Maus setzen — in einem Zug.
 
         Vier Zahlenfelder sind kein Weg, einen Bildschirmbereich zu bestimmen: Maus
@@ -447,7 +447,7 @@ class BridgeEditingMixin:
         Abgebrochen wird bei ESC und Zeitablauf vollständig — auch nach der ersten
         Ecke bleibt der alte Bereich stehen. Der Zahlenweg bleibt daneben stehen.
         """
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
 
@@ -461,7 +461,7 @@ class BridgeEditingMixin:
             key = wait_for_global_key(("enter", "escape"),
                                     timeout=WARTE_TIMEOUT)
             if key != "enter":
-                return self._melde(
+                return self._report(
                     "Abgebrochen — der Bereich bleibt, wie er war."
                     if key == "escape" else
                     "Nichts gedrückt — der Bereich bleibt, wie er war.", "warn")
@@ -471,14 +471,14 @@ class BridgeEditingMixin:
         x1, x2 = min(x1, x2), max(x1, x2)
         y1, y2 = min(y1, y2), max(y1, y2)
         if x2 - x1 < 2 or y2 - y1 < 2:
-            return self._melde(
+            return self._report(
                 f"Bereich zu klein: {x2 - x1}×{y2 - y1} Pixel — nichts geändert.", "warn")
 
         step.screenshot_region = (x1, y1, x2, y2)
         self._dirty = True
-        return self._melde(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
+        return self._report(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
 
-    def _stelle_abwarten(self) -> tuple:
+    def _await_position(self) -> tuple:
         """Wartet auf ENTER und gibt `(x, y, "")` zurück — bei Abbruch `(None, None, Grund)`.
 
         Der gemeinsame Teil von „Stelle mit der Maus setzen" und „Maus parken": das
@@ -495,91 +495,91 @@ class BridgeEditingMixin:
         x, y = get_cursor_pos()
         return x, y, ""
 
-    def maus_stelle(self, data: Optional[dict] = None) -> dict:
+    def mouse_position(self, data: Optional[dict] = None) -> dict:
         """Die aktuelle Mausposition — für die Einstellungen, ohne Punkt anzulegen.
 
-        `punkt_aufnehmen()` ist der Weg für einen Block; `scan_park_mouse` ist
+        `point_capture()` ist der Weg für einen Block; `scan_park_mouse` ist
         aber kein Punkt und gehört nicht in die Punktliste der `sequence.json`. Übrig bleibt die
         Geste: Maus hin, ENTER.
         """
-        x, y, message = self._stelle_abwarten()
+        x, y, message = self._await_position()
         if x is None:
             return {"ok": False, "meldung": message + " — nichts geändert."}
         return {"ok": True, "x": x, "y": y}
 
-    def punkt_aufnehmen(self, data: Optional[dict] = None) -> dict:
+    def point_capture(self, data: Optional[dict] = None) -> dict:
         """Setzt die Stelle des Blocks auf die aktuelle Mausposition.
 
-        Derselbe Weg wie `bereich_aufnehmen()`, nur mit einer Ecke. Gesetzt wird über
+        Derselbe Weg wie `area_capture()`, nur mit einer Ecke. Gesetzt wird über
         dieselben Methoden wie sonst, damit die üblichen Regeln gelten: ein
         vorhandener Punkt an derselben Stelle wird wiederverwendet.
         """
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
 
-        x, y, message = self._stelle_abwarten()
+        x, y, message = self._await_position()
         if x is None:
-            return self._melde(message + " — die Stelle bleibt, wie sie war.", "warn")
+            return self._report(message + " — die Stelle bleibt, wie sie war.", "warn")
         from ...winapi import get_screen_pixel
 
         if step.point_id is not None:
             # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der
             # Zahlen — der Punkt gehört nicht diesem Block allein.
-            self.punkt_setzen({"punkt": step.point_id, "feld": "x", "wert": x})
-            self.punkt_setzen({"punkt": step.point_id, "feld": "y", "wert": y})
+            self.point_set({"punkt": step.point_id, "feld": "x", "wert": x})
+            self.point_set({"punkt": step.point_id, "feld": "y", "wert": y})
         else:
-            self.punkt_anlegen({"x": x, "y": y})
+            self.point_create({"x": x, "y": y})
 
         # Farbe gleich mitmessen: ein Punkt ohne Farbe taugt für keinen
         # Farb-Trigger, und der Bildschirm zeigt gerade genau das Richtige —
         # deshalb steht man ja mit der Maus dort.
-        point = self._punkt(step.point_id)
+        point = self._point(step.point_id)
         color = get_screen_pixel(x, y)
         if point is not None and color is not None:
             point.color = tuple(color)
-            self._punkte_anwenden()
+            self._points_apply()
         gemessen = f" · Farbe {tuple(color)}" if color else ""
-        return self._geaendert(f"Stelle: ({x}, {y}){gemessen}"
-                               + self._mitgezogen(step.point_id, ausser=step))
+        return self._changed(f"Stelle: ({x}, {y}){gemessen}"
+                               + self._moved_along(step.point_id, ausser=step))
 
-    def _mitgezogen(self, point_id, ausser=None) -> str:
+    def _moved_along(self, point_id, ausser=None) -> str:
         """Nachsatz für eine Verschiebung: welche anderen Verwendungen mitziehen.
 
         Leer, wenn keine — dann ist die Meldung so kurz wie vorher.
         """
-        andere = self._punkt_verwendungen(point_id, ausser=ausser)
+        andere = self._point_usages(point_id, ausser=ausser)
         if not andere:
             return ""
         return (f" — zieht {len(andere)} weitere Verwendung(en) mit: "
                 + ", ".join(andere))
 
-    def punkt_abtrennen(self, data: Optional[dict] = None) -> dict:
+    def point_detach(self, data: Optional[dict] = None) -> dict:
         """Gibt dem gewählten Block einen eigenen Punkt — die anderen behalten den alten.
 
         Das Gegenstück zu „X/Y verschieben den Punkt": diese Regel ist richtig,
         wenn ein Knopf umgezogen ist (dann sollen alle mit), und falsch, wenn
         EIN Block einen anderen Knopf klicken soll. Für das Zweite gab es keinen
         Weg — man verstellte die anderen Blöcke mit, ohne es zu sehen. Dieselbe
-        Bauart wie beim Duplizieren (`_punkte_mitkopieren`): Klick und Prüf-Pixel
+        Bauart wie beim Duplizieren (`_points_copy_along`): Klick und Prüf-Pixel
         eines FARBE+KLICK-Blocks bleiben zusammen auf dem neuen Punkt.
         """
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         if step.point_id is None:
-            return self._melde("Dieser Block hat keinen Punkt.", "warn")
+            return self._report("Dieser Block hat keinen Punkt.", "warn")
         old = step.point_id
-        andere = self._punkt_verwendungen(old, ausser=step)
+        andere = self._point_usages(old, ausser=step)
         if not andere:
-            return self._melde(f"Punkt #{old} wird nur von diesem Block benutzt — "
+            return self._report(f"Punkt #{old} wird nur von diesem Block benutzt — "
                                "nichts abzutrennen.", "info")
-        self._punkte_mitkopieren(step, {})
-        self._punkte_anwenden()
-        return self._geaendert(f"Block hat jetzt seinen eigenen Punkt #{step.point_id}; "
+        self._points_copy_along(step, {})
+        self._points_apply()
+        return self._changed(f"Block hat jetzt seinen eigenen Punkt #{step.point_id}; "
                                f"#{old} bleibt bei: {', '.join(andere)}")
 
-    def block_punkt(self, data: dict) -> dict:
+    def block_point(self, data: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
 
         Prüft der Schritt seine eigene Stelle (Farb-Trigger auf demselben Punkt),
@@ -587,19 +587,19 @@ class BridgeEditingMixin:
         vorher geprüft hat.
         """
         data = data or {}
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        point = self._punkt(data.get("punkt"))
+        point = self._point(data.get("punkt"))
         if point is None:
-            return self._melde("Punkt nicht gefunden.", "warn")
+            return self._report("Punkt nicht gefunden.", "warn")
         old = step.point_id
         step.point_id = point.id
         for cond in (step.wait_condition, step.verify_condition):
             if cond is not None and (cond.point_id == old or cond.point_id is None):
                 cond.point_id = point.id
-        self._punkte_anwenden()
-        return self._geaendert()
+        self._points_apply()
+        return self._changed()
 
     def block_trigger(self, data: dict) -> dict:
         """Farb-Trigger des Schritts: kein / da / weg, plus 'nur prüfen'.
@@ -609,24 +609,24 @@ class BridgeEditingMixin:
         anzulegen. Dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert".
         """
         data = data or {}
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         feld = "verify_condition" if data.get("welche") == "verify" else "wait_condition"
-        return self._trigger_setzen(step, feld, data)
+        return self._trigger_set(step, feld, data)
 
-    def _trigger_setzen(self, step: SequenceStep, feld: str, data: dict) -> dict:
+    def _trigger_set(self, step: SequenceStep, feld: str, data: dict) -> dict:
         wahl = data.get("wahl")
         cond: Optional[WaitCondition] = getattr(step, feld)
         if wahl == TRIGGER_KEIN:
             setattr(step, feld, None)
-            weg = self._else_aufraeumen(step)
-            return self._geaendert(weg, "warn" if weg else "ok")
+            weg = self._else_cleanup(step)
+            return self._changed(weg, "warn" if weg else "ok")
         if cond is None:
             point_id = data.get("punkt", step.point_id)
-            point = self._punkt(point_id)
+            point = self._point(point_id)
             if point is None:
-                return self._melde(
+                return self._report(
                     "Ohne Punkt gibt es nichts zu prüfen — erst einen wählen.", "warn")
             cond = WaitCondition(point_id=point.id, pixel=(point.x, point.y),
                                  color=tuple(point.color) if point.color else (0, 0, 0))
@@ -636,43 +636,43 @@ class BridgeEditingMixin:
         if "pruefen" in data:
             cond.check_only = bool(data["pruefen"])
         if data.get("punkt") is not None:
-            point = self._punkt(data["punkt"])
+            point = self._point(data["punkt"])
             if point is not None:
                 cond.point_id = point.id
-                self._punkte_anwenden()
-        return self._geaendert()
+                self._points_apply()
+        return self._changed()
 
     def block_else(self, data: dict) -> dict:
         """ELSE-Aktion setzen oder entfernen (leere Aktion = keine)."""
         data = data or {}
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         aktion = data.get("aktion") or ""
         if not aktion:
             step.else_config = None
-            return self._geaendert()
+            return self._changed()
         if aktion not in ELSE_AKTIONEN:
-            return self._melde(f"Unbekannte ELSE-Aktion '{aktion}'.", "err")
+            return self._report(f"Unbekannte ELSE-Aktion '{aktion}'.", "err")
         ec = ensure_else(step, aktion)
         if "punkt" in data and data["punkt"] is not None:
-            point = self._punkt(data["punkt"])
+            point = self._point(data["punkt"])
             if point is None:
-                return self._melde("Punkt nicht gefunden.", "warn")
+                return self._report("Punkt nicht gefunden.", "warn")
             # Nur die Referenz zählt: `x`/`y`/`name` sind abgeleitet und stehen
             # nicht in der Datei. Der DPG-Vorgänger liess genau diese drei von Hand
             # eintippen — beim nächsten Öffnen war die Eingabe weg.
             ec.point_id = point.id
-            self._punkte_anwenden()
+            self._points_apply()
         if "taste" in data:
             ec.key = str(data["taste"] or "").strip() or None
         if "delay" in data:
             ec.delay = max(0.0, float(data["delay"] or 0))
-        return self._geaendert()
+        return self._changed()
 
     # ---------------------------------------------------------------- Punkte
 
-    def punkt_setzen(self, data: dict) -> dict:
+    def point_set(self, data: dict) -> dict:
         """Verschiebt oder benennt einen Punkt — alle Schritte darauf ziehen mit.
 
         Die Zahlenfelder verschieben den PUNKT, nicht den Schritt: die Sequenz
@@ -680,20 +680,20 @@ class BridgeEditingMixin:
         Speichern verloren.
         """
         data = data or {}
-        point = self._punkt(data.get("punkt"))
+        point = self._point(data.get("punkt"))
         if point is None:
-            return self._melde("Punkt nicht gefunden.", "warn")
+            return self._report("Punkt nicht gefunden.", "warn")
         feld, value = data.get("feld"), data.get("wert")
         try:
             if feld in ("x", "y"):
                 setattr(point, feld, int(value))
-                self._punkte_anwenden()
+                self._points_apply()
                 # Wer SONST noch mitgezogen ist, steht in der Meldung — der
                 # Inspektor zeigt nur den einen Block, an dem man gerade sitzt,
                 # und der zählt nicht als „weiterer".
-                _lane, _row, selected = self._einzelner()
-                return self._geaendert(f"Punkt #{point.id} verschoben"
-                                       + self._mitgezogen(point.id, ausser=selected))
+                _lane, _row, selected = self._single()
+                return self._changed(f"Punkt #{point.id} verschoben"
+                                       + self._moved_along(point.id, ausser=selected))
             elif feld == "name":
                 point.name = str(value or "")
             elif feld == "farbe":
@@ -702,26 +702,26 @@ class BridgeEditingMixin:
                 # Anzeige. Leer heisst „keine gemessene Farbe", nicht Schwarz.
                 point.color = _rgb(value)
             else:
-                return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
+                return self._report(f"Unbekanntes Feld '{feld}'.", "err")
         except (TypeError, ValueError):
-            return self._melde(f"'{value}' ist keine Zahl.", "warn")
-        self._punkte_anwenden()
-        return self._geaendert()
+            return self._report(f"'{value}' ist keine Zahl.", "warn")
+        self._points_apply()
+        return self._changed()
 
-    def punkt_anlegen(self, data: dict) -> dict:
+    def point_create(self, data: dict) -> dict:
         """Legt einen Punkt an und hängt ihn an den gewählten Schritt.
 
         Für den Blanko-Block: er hat noch keine Stelle und bliebe ohne Punkt ein
         Klick auf (0,0).
         """
         data = data or {}
-        lane, row, step = self._einzelner()
+        lane, row, step = self._single()
         if step is None:
             return self.snapshot()
         try:
             x, y = int(data.get("x", 0)), int(data.get("y", 0))
         except (TypeError, ValueError):
-            return self._melde("Stelle braucht zwei ganze Zahlen.", "warn")
+            return self._report("Stelle braucht zwei ganze Zahlen.", "warn")
         # Denselben Punkt wiederverwenden, wenn schon einer dort liegt: klickt eine
         # Sequenz zweimal denselben Knopf, ist das EIN Punkt — sonst wandert beim
         # Nachjustieren nur die Hälfte mit.
@@ -735,5 +735,5 @@ class BridgeEditingMixin:
                 source="Sequenz-Studio")
             self.points.append(point)
         step.point_id = point.id
-        self._punkte_anwenden()
-        return self._geaendert(f"Punkt #{point.id} gesetzt.")
+        self._points_apply()
+        return self._changed(f"Punkt #{point.id} gesetzt.")

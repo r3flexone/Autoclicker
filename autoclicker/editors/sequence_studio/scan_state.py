@@ -79,7 +79,7 @@ class ScanStateMixin:
         # PIL-Crops bleiben im Python-Prozess; die Seite erhaelt nur data:-Bilder.
         self._lern_review: list = []
         # Der Rückgängig-Stapel: `(Beschreibung, Abzug)` je Schritt, jüngster
-        # zuletzt. Siehe `_merke()` — hier gab es bis dahin gar nichts, und ein
+        # zuletzt. Siehe `_remember()` — hier gab es bis dahin gar nichts, und ein
         # Rechteck über dreissig Slots plus Entf war endgültig.
         self._undo: list = []
         self._scan_dirty = False
@@ -91,20 +91,20 @@ class ScanStateMixin:
         # Boss- und Icon-Scans liegen im selben Reiter, auf derselben Aufnahme
         # und mit demselben Rückgängig-Stapel. Ihr Zustand lebt in
         # `scan_detect.py`; von hier aus wird er nur mitgeführt.
-        self._erkennung_init()
+        self._detection_init()
 
-    def _scan_laden(self) -> None:
+    def _scan_load(self) -> None:
         """Slots, Items und Scan-Konfigurationen von Platte — einmal je Sitzung.
 
         Nicht im Konstruktor: wer das Studio für eine Sequenz aufmacht, soll nicht
-        auf Dateien warten, die er vielleicht nie ansieht. `_platte_stand()` merkt
+        auf Dateien warten, die er vielleicht nie ansieht. `_disk_state()` merkt
         sich dabei, wie sie aussahen — der Hauptprozess schreibt dieselben.
         """
         if self._scan_geladen:
             return
         self._scan_geladen = True
-        self.scans = self._scans_laden()
-        self._erkennung_laden()
+        self.scans = self._scans_load()
+        self._detection_load()
         # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
         # Sequenzen (`last_edited()` in `sequence_studio.py`) und aus
         # demselben Grund: ein echtes „zuletzt geöffnet" müsste jemand
@@ -116,11 +116,11 @@ class ScanStateMixin:
         if self._scan_stand:
             neuster = max(self._scan_stand, key=lambda n: self._scan_stand[n])
             self.scan_offen = neuster
-            self._scan_arbeitsbestand(neuster)
-            self._foto_laden(neuster)
-        self._platte = self._platte_stand()
+            self._scan_working_set(neuster)
+            self._photo_load(neuster)
+        self._platte = self._disk_state()
 
-    def _scan_hat_konfiguration(self, kind: str) -> bool:
+    def _scan_has_config(self, kind: str) -> bool:
         """Ist für die gewünschte Aufnahmeart wirklich ein Scan geöffnet?"""
         if kind == "boss":
             return self.boss_offen in self.boss_scans
@@ -128,7 +128,7 @@ class ScanStateMixin:
             return self.icon_offen in self.icon_scans
         return self.scan_offen in self.scans
 
-    def _scan_voraussetzung(self, data: Optional[dict] = None) -> Optional[dict]:
+    def _scan_requirement(self, data: Optional[dict] = None) -> Optional[dict]:
         """Sperrt Aufnahme und Bildwerkzeuge ohne eindeutiges Speicherziel.
 
         Ein Bild oder Slot ohne Scan lebte vorher nur im Arbeitsspeicher. Beim
@@ -136,19 +136,19 @@ class ScanStateMixin:
         nach dem Schliessen war er weg. Darum gilt die Reihenfolge zentral in der
         Brücke und nicht nur als deaktivierter Knopf in der Seite.
         """
-        self._scan_laden()
+        self._scan_load()
         kind = str((data or {}).get("art") or self.scan_aufnahme_art or "item")
         if kind not in SCAN_KINDS:
             kind = "item"
         self.scan_aufnahme_art = kind
-        if self._scan_hat_konfiguration(kind):
+        if self._scan_has_config(kind):
             return None
         name = {"item": "Item-Scan", "boss": "Boss-Scan", "icon": "Icon-Scan"}[kind]
-        return self._scan_melde(
+        return self._scan_report(
             f"Zuerst einen {name} anlegen oder öffnen — erst danach können Bild "
             "und Bereiche dazu erfasst werden.", "warn")
 
-    def _platte_stand(self) -> dict:
+    def _disk_state(self) -> dict:
         """Pfad -> Änderungszeit für alles, was der Reiter von Platte liest.
 
         Der Ordner der Scans kommt als Ganzes mit: eine gelöschte oder neu
@@ -164,7 +164,7 @@ class ScanStateMixin:
         # entdeckter Boss landet im Lauf in der Bibliothek. Ohne diese Pfade
         # meldete „auf Platte hat sich etwas geändert" ausgerechnet das nicht,
         # woran man gerade arbeitet.
-        pfade += self._erkennung_pfade()
+        pfade += self._detection_paths()
         for p in pfade:
             try:
                 stand[str(p)] = p.stat().st_mtime
@@ -172,7 +172,7 @@ class ScanStateMixin:
                 stand[str(p)] = 0.0
         return stand
 
-    def _platte_nachziehen(self, *pfade) -> None:
+    def _disk_track(self, *pfade) -> None:
         """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
 
         Das gemerkte Bild liegt unter `item_scans/bilder/`, und das Anlegen des
@@ -182,7 +182,7 @@ class ScanStateMixin:
         Ohne Argumente der ganze Stand (nach dem Speichern), mit Argumenten nur die
         genannten Pfade — sonst verschluckt es eine fremde Änderung anderswo.
         """
-        stand = self._platte_stand()
+        stand = self._disk_state()
         if not pfade:
             self._platte = stand
             return
@@ -190,16 +190,16 @@ class ScanStateMixin:
             if str(path) in stand:
                 self._platte[str(path)] = stand[str(path)]
 
-    def _platte_fremd(self) -> bool:
+    def _disk_changed_externally(self) -> bool:
         """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
 
         „Jemand anders" ist im Alltag der eigene Hauptprozess: Auto-Lernen im
         Lauf schreibt `items.json`, der Konsolen-Editor schreibt Scans. Eigene
-        Speicherungen zählen nicht mit — `scan_speichern()` zieht den Stand nach.
+        Speicherungen zählen nicht mit — `scan_save()` zieht den Stand nach.
         """
-        return bool(self._scan_geladen) and self._platte_stand() != self._platte
+        return bool(self._scan_geladen) and self._disk_state() != self._platte
 
-    def scan_neu_laden(self, data: Optional[dict] = None) -> dict:
+    def scan_reload(self, data: Optional[dict] = None) -> dict:
         """Liest Slots, Items und Scans neu von Platte.
 
         **Ungespeichertes wird nicht kommentarlos verworfen.** Der erste Druck
@@ -207,7 +207,7 @@ class ScanStateMixin:
         Regel wie überall, wo hier etwas verloren gehen kann.
         """
         if self._scan_dirty and not (data or {}).get("verwerfen"):
-            return self._scan_melde(
+            return self._scan_report(
                 "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
                 "— „Speichern“ behält sie.", "warn")
         remaining = self.scan_offen
@@ -224,22 +224,22 @@ class ScanStateMixin:
         self._boss_test = self._icon_test = None
         self._boss_tests = {}
         self._region_ziel = None
-        self._scan_laden()
+        self._scan_load()
         # Der vorher offene Scan bleibt offen, wenn es ihn noch gibt — sonst
         # steht man nach dem Nachladen woanders als vorher.
         if remaining and remaining in self.scans:
             self.scan_offen = remaining
             self.scan_art, self.scan_name = ART_SCAN, remaining
-            self._foto_laden(remaining)
-        return self._scan_melde(
+            self._photo_load(remaining)
+        return self._scan_report(
             f"Neu geladen: {len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Scan(s).")
 
-    def _naechste_slot_id(self) -> int:
+    def _next_slot_id(self) -> int:
         """Die nächste freie Slot-ID — dieselbe Rechnung wie bei Punkten."""
         return max((s.id for s in self.slots.values()), default=0) + 1
 
-    def _slot_ids_vergeben(self) -> None:
+    def _slot_ids_assign(self) -> None:
         """Backfill für Altbestand ohne Slot-ID.
 
         Neue Slots bekommen ihre ID bei der Entstehung (`scan_interaction.py`);
@@ -258,13 +258,13 @@ class ScanStateMixin:
                       key=lambda s: _natuerlich(s.name))
         if not ohne:
             return
-        naechste = self._naechste_slot_id()
+        naechste = self._next_slot_id()
         for slot in ohne:
             slot.id = naechste
             naechste += 1
         self._scan_dirty = True
 
-    def _scans_laden(self) -> dict:
+    def _scans_load(self) -> dict:
         """Alle Item-Scan-Konfigurationen als Name -> Config.
 
         Nebenbei wird der Änderungszeitpunkt jeder Datei gemerkt: daran hängt,
@@ -286,21 +286,21 @@ class ScanStateMixin:
                 self._scan_stand[key_name] = 0.0
         return found
 
-    def _scan_arbeitsbestand(self, name: str) -> None:
+    def _scan_working_set(self, name: str) -> None:
         """Bindet Listen und Werkzeuge an den Besitz des geöffneten Scans."""
         cfg = self.scans.get(name)
         self.slots = {slot.name: slot for slot in cfg.slots} if cfg else {}
         self.items = {item.name: item for item in cfg.items} if cfg else {}
-        self._slot_ids_vergeben()
+        self._slot_ids_assign()
 
-    def _objekte_angleichen(self) -> None:
+    def _sync_objects(self) -> None:
         """Schreibt den Arbeitsbestand in den geöffneten Scan zurück."""
         cfg = self.scans.get(self.scan_offen)
         if cfg is not None:
             cfg.slots = list(self.slots.values())
             cfg.items = list(self.items.values())
 
-    def _dazu(self, kind: str, name: str) -> bool:
+    def _add_to_scan(self, kind: str, name: str) -> bool:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
         Wer in einem offenen Scan etwas anlegt, legt es für ihn an — sonst wäre es
@@ -313,18 +313,18 @@ class ScanStateMixin:
         bestand = self.slots if kind == ART_SLOT else self.items
         if name not in bestand:
             return False
-        self._objekte_angleichen()
+        self._sync_objects()
         return True
 
-    def _scan_melde(self, text: str, kind: str = "ok") -> dict:
+    def _scan_report(self, text: str, kind: str = "ok") -> dict:
         self._scan_status = (text, kind)
-        return self.scan_daten()
+        return self.scan_data()
 
-    def _scan_geaendert(self, text: str = "", kind: str = "ok") -> dict:
+    def _scan_changed(self, text: str = "", kind: str = "ok") -> dict:
         self._scan_dirty = True
-        return self._scan_melde(text, kind) if text else self.scan_daten()
+        return self._scan_report(text, kind) if text else self.scan_data()
 
-    def _werkzeug_fertig(self) -> None:
+    def _tool_done(self) -> None:
         """Einmal-Werkzeuge fallen nach erfolgreicher Aktion ins Auswaehlen zurueck."""
         if not self.scan_werkzeug_fixiert:
             self.scan_modus = MODUS_WAHL
@@ -337,7 +337,7 @@ class ScanStateMixin:
 
     # ----------------------------------------------------------- Rückgängig
 
-    def _zustand(self) -> dict:
+    def _state(self) -> dict:
         """Ein vollständiger Abzug dessen, was dieser Reiter bearbeitet."""
         return {
             "slots": copy.deepcopy(self.slots),
@@ -353,10 +353,10 @@ class ScanStateMixin:
             # Der Abzug ist vollständig oder er ist keiner: ein Rückgängig, das
             # die Slots zurückdreht und den Boss-Scan stehen lässt, wäre ein
             # halbes Zurück — und das ist schlimmer als gar keins.
-            "erkennung": self._erkennung_zustand(),
+            "erkennung": self._detection_state(),
         }
 
-    def _merke(self, was: str) -> None:
+    def _remember(self, was: str) -> None:
         """Legt den Stand VOR einer Änderung auf den Rückgängig-Stapel.
 
         Ein vollständiger Abzug statt einzelner Rückwärts-Schritte: eine Aktion rührt
@@ -364,10 +364,10 @@ class ScanStateMixin:
         jedem Scan), und ein vergessener Rückwärts-Schritt drehte die Daten halb
         zurück. Aufgerufen von der Methode, die ändert — nicht von der Oberfläche.
         """
-        self._undo.append((was, self._zustand()))
+        self._undo.append((was, self._state()))
         del self._undo[:-UNDO_TIEFE]
 
-    def scan_rueckgaengig(self, data: Optional[dict] = None) -> dict:
+    def scan_undo(self, data: Optional[dict] = None) -> dict:
         """Nimmt den letzten Schritt zurück (STRG+Z).
 
         Was auf Platte passiert ist, holt das nicht zurück: ein gelöschter Scan kommt
@@ -375,7 +375,7 @@ class ScanStateMixin:
         Meldung, statt ein vollständiges Zurück zu versprechen.
         """
         if not self._undo:
-            return self._scan_melde("Nichts zum Rückgängigmachen.", "info")
+            return self._scan_report("Nichts zum Rückgängigmachen.", "info")
         was, stand = self._undo.pop()
         self.slots = stand["slots"]
         self.items = stand["items"]
@@ -386,19 +386,19 @@ class ScanStateMixin:
         self._scan_dirty = stand["dirty"]
         self.scan_bereich = stand.get("bereich")
         self.scan_fenster_id = stand.get("fenster_id", 0)
-        self._erkennung_zurueck(stand.get("erkennung") or {})
+        self._detection_undo(stand.get("erkennung") or {})
         # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
         # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
-        self._objekte_angleichen()
+        self._sync_objects()
         # Ein Treffer gehört zu dem Slot-Stand, in dem er gemessen wurde. Was es
         # nicht mehr gibt, fliegt raus — der Rest bleibt gültig, denn das Bild
         # hat sich nicht geändert.
         self._treffer = {n: t for n, t in self._treffer.items() if n in self.slots}
-        return self._scan_melde(
+        return self._scan_report(
             f"Rückgängig: {was}. ({len(self._undo)} weitere Schritte)"
             if self._undo else f"Rückgängig: {was}.", "warn")
 
-    def _schritte(self) -> list:
+    def _steps(self) -> list:
         """Die drei Schritte zu einem neuen Scan, mit ihrem Stand.
 
         Zwischen Schritt 2 und 3 liegt das Spiel: Slots nimmt man oft am leeren
@@ -414,12 +414,12 @@ class ScanStateMixin:
         raw = [
             (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
                 "wählen.", self._foto is not None,
-             "scan_foto", "Screenshot aufnehmen"),
+             "scan_screenshot", "Screenshot aufnehmen"),
             (2, "Slots", "Bereich um das Inventar aufziehen, dann auf einen "
                 "LEEREN Slot-Hintergrund klicken.", hat_slots,
              "modus:" + MODUS_FINDEN, "Slots finden"),
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
-             hat_items, "scan_lernvorschau", "Items prüfen & lernen"),
+             hat_items, "scan_learn_preview", "Items prüfen & lernen"),
         ]
         remaining = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
         current = remaining[0] if remaining else 0
@@ -427,7 +427,7 @@ class ScanStateMixin:
                  "aktuell": nr == current, "befehl": command, "knopf": knopf}
                 for nr, title, was, fertig, command, knopf in raw]
 
-    def _flaeche(self) -> Optional[dict]:
+    def _canvas_area(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
 
         Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild; ohne die
@@ -460,21 +460,21 @@ class ScanStateMixin:
 
     # -------------------------------------------------------- Momentaufnahme
 
-    def scan_daten(self, data: Optional[dict] = None) -> dict:
+    def scan_data(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zum Zeichnen braucht — ohne das Bild selbst."""
-        # Lokal wie in `_katalog_pruefen()`: `scan_state` soll `config` nicht
+        # Lokal wie in `_catalog_check()`: `scan_state` soll `config` nicht
         # schon beim Import nachziehen. `CONFIG` und nicht `load_config()` —
         # es gibt EIN Config-Objekt pro Prozess, und der Einstellungen-Reiter
         # haelt es aktuell.
         from ...config import CONFIG
-        self._scan_laden()
+        self._scan_load()
         text, kind = self._scan_status
         cfg = self.scans.get(self.scan_offen)
         dabei_slots = set(cfg.slot_names) if cfg else set()
         dabei_items = set(cfg.item_names) if cfg else set()
         # Einmal gerechnet: die Arbeitsfläche steht in der Aufnahme UND
         # entscheidet, welche fremden Slots gerade zu sehen sind.
-        flaeche = self._flaeche()
+        flaeche = self._canvas_area()
         # **Die Nummer eines Slots ist seine Stelle im Scan**, nicht eine
         # erfundene ID: `ItemSlot` hat keine, der Name IST der Schlüssel — und
         # genau diese Reihenfolge läuft `execute_item_scan()` ab. „#7" heisst
@@ -482,7 +482,7 @@ class ScanStateMixin:
         # eine Nummer hat.
         aktive_slots = [s for s in cfg.slots if s.enabled] if cfg else []
         nummern = {s.name: i + 1 for i, s in enumerate(aktive_slots)}
-        erkannt = self._erkannte_items()
+        erkannt = self._detected_items()
         return {
             # Scan, Slots, Items und Vorlagen liegen im Ordner dieser Sequenz.
             # Der Bezug muss in der Ansicht vor der Aufnahme sichtbar sein;
@@ -490,7 +490,7 @@ class ScanStateMixin:
             # mehreren Sequenzen zu fehleranfaellig.
             "sequenz": self.board.name,
             "aufnahme_bereit": {
-                kind: self._scan_hat_konfiguration(kind) for kind in SCAN_KINDS
+                kind: self._scan_has_config(kind) for kind in SCAN_KINDS
             },
             "modus": self.scan_modus,
             "werkzeug_fixiert": self.scan_werkzeug_fixiert,
@@ -511,13 +511,13 @@ class ScanStateMixin:
             # Ob der OFFENE Scan den Katalog benutzt UND eine Datei da ist. Die
             # Ansicht rechnet das nicht selbst nach: sie sieht `config.json`
             # nicht, und zwei Antworten auf dieselbe Frage liefen auseinander.
-            "katalog_an": bool(self._katalog()),
+            "katalog_an": bool(self._catalog()),
             # Ob die Sammel-Benennung ueberhaupt etwas tun kann. Die Ansicht
             # sieht `config.json` nicht — ein Knopf, der jedes Mal nur „ist
             # nicht aktiviert" meldet, ist schlechter als keiner.
             "llm_an": bool(CONFIG.llm_enabled),
             # Laeuft gerade ein Benenn-Durchgang, und wie weit ist er?
-            "autoname": self._autoname_stand(),
+            "autoname": self._autoname_state(),
             "bereich": list(self.scan_bereich) if self.scan_bereich else None,
             "fenster_id": self.scan_fenster_id,
             # Der Titel ist die dauerhafte Quelle, das HWND nur ihr aktueller
@@ -527,7 +527,7 @@ class ScanStateMixin:
             "fenster_verfuegbar": bool(self.scan_fenster_id),
             "fenster_referenz": (list(cfg.capture_window_rect)
                                   if cfg and cfg.capture_window_rect else None),
-            "schritte": self._schritte(),
+            "schritte": self._steps(),
             "offen": self.scan_offen,
             "wahl": {"art": self.scan_art, "name": self.scan_name},
             # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
@@ -542,23 +542,23 @@ class ScanStateMixin:
             # Hat der Hauptprozess die Dateien angefasst? Ein Lauf mit
             # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
             # gelernten Items im Reiter vergeblich.
-            "fremd": self._platte_fremd(),
+            "fremd": self._disk_changed_externally(),
             "status": {"text": text, "art": kind},
-            "ergebnis": self._ergebnis_json(),
+            "ergebnis": self._result_json(),
             "review": self._review_json(),
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
             # anzubieten, die nichts tun: ohne Pillow gibt es kein Bild, ohne
             # OpenCV kein Template-Matching (also keine Erkennung und kein
             # Erkennen von Doppelten beim Lernen).
-            "opencv": self._hat_opencv(),
-            "pillow": self._hat_pillow(),
+            "opencv": self._has_opencv(),
+            "pillow": self._has_pillow(),
             # Boss- und Icon-Scans liegen in derselben Momentaufnahme: sie
             # teilen sich Bühne, Zoom, Rückgängig und Speichern-Knopf. Zwei
             # Aufnahmen hiessen zwei Wahrheiten über dasselbe Bild.
-            **self._erkennung_json(),
+            **self._detection_json(),
         }
 
-    def _ergebnis_json(self) -> Optional[dict]:
+    def _result_json(self) -> Optional[dict]:
         """Kompakte Auswertung des letzten Testscans fuer die Ergebnisleiste."""
         if not self._treffer:
             return None
@@ -589,7 +589,7 @@ class ScanStateMixin:
         }
 
     @staticmethod
-    def _hat_opencv() -> bool:
+    def _has_opencv() -> bool:
         try:
             from ...imaging import OPENCV_AVAILABLE
             return bool(OPENCV_AVAILABLE)
@@ -597,7 +597,7 @@ class ScanStateMixin:
             return False
 
     @staticmethod
-    def _hat_pillow() -> bool:
+    def _has_pillow() -> bool:
         try:
             from ...imaging import PILLOW_AVAILABLE
             return bool(PILLOW_AVAILABLE)
@@ -636,7 +636,7 @@ class ScanStateMixin:
             "gesamt": total,
         }
 
-    def _erkannte_items(self) -> dict:
+    def _detected_items(self) -> dict:
         """Item-Name -> die Slots, in denen es gerade erkannt wird.
 
         Ein erkanntes Item steht deshalb im Scan-Inspektor, bevor jemand es ein
@@ -698,14 +698,14 @@ class ScanStateMixin:
             # der nächste Slot wird dann gar nicht mehr erreicht. Das Feld gab
             # es im Modell und in den Konsolen-Editoren seit jeher; im Studio
             # war es die einzige Item-Eigenschaft ohne Bedienelement.
-            "bestaetigung": self._bestaetigung_json(item),
+            "bestaetigung": self._confirmation_json(item),
             "bestaetigung_verzoegerung": item.confirm_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
             "stumm": not vorlagen and not item.marker_colors,
         }
 
-    def _bestaetigung_json(self, item: ItemProfile) -> Optional[dict]:
+    def _confirmation_json(self, item: ItemProfile) -> Optional[dict]:
         """Der Bestätigungsklick eines Items — als Punkt, nie als Zahlenpaar.
 
         Die Koordinate steht in der Punktliste der `sequence.json`, sonst nirgends; `confirm_point`
@@ -743,14 +743,14 @@ class ScanStateMixin:
                         [n for n in cfg.item_names if n not in self.items]),
         }
 
-    def scan_vorschau(self, data: Optional[dict] = None) -> dict:
+    def scan_preview(self, data: Optional[dict] = None) -> dict:
         """Template-Bilder als data:-URLs — nur die angefragten Namen.
 
-        Getrennt von `scan_daten()` aus demselben Grund wie der Screenshot: bei
+        Getrennt von `scan_data()` aus demselben Grund wie der Screenshot: bei
         fünfzig Items wären das 200 KB, die sonst bei jedem Klick mitliefen. Die
         Seite merkt sie sich und fragt nur nach, was sie noch nicht hat.
         """
-        self._scan_laden()
+        self._scan_load()
         names = (data or {}).get("namen") or []
         result = {}
         for name in names:

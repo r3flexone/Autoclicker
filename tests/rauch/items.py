@@ -16,15 +16,15 @@ def aufbau():
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
-    b.scan_neu({"name": "Inventar"})
-    b.scan_foto()
+    b.scan_new({"name": "Inventar"})
+    b.scan_screenshot()
     for sx, sy in ecken:
-        b.scan_modus_setzen({"modus": "slot"})
-        b.scan_klick({"x": sx, "y": sy})
-        b.scan_klick({"x": sx + 62, "y": sy + 60})
-    b.scan_lernvorschau({"scope": "alle"})
-    b.scan_lernvorschau_uebernehmen({})
-    b.scan_erkennen()
+        b.scan_mode_set({"modus": "slot"})
+        b.scan_click({"x": sx, "y": sy})
+        b.scan_click({"x": sx + 62, "y": sy + 60})
+    b.scan_learn_preview({"scope": "alle"})
+    b.scan_learn_preview_apply({})
+    b.scan_recognize()
     return b, len(ecken)
 
 
@@ -347,7 +347,7 @@ def lauf():
         # die Stelle erreicht zu haben, um die es geht.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         for key, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
-            f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
+            f.seite.evaluate("rufScan('scan_mode_set', {modus:'wahl', art:'item'})")
             f.ruhe()
             f.seite.keyboard.press(f"Control+{key}")
             f.ruhe()
@@ -361,7 +361,7 @@ def lauf():
         f.ruhe()
         pruefe(f.seite.evaluate("SC.modus") == "messen",
                "„F“ allein schaltet nicht mehr auf „Hintergrundfarbe“")
-        f.seite.evaluate("rufScan('scan_modus_setzen', {modus:'wahl', art:'item'})")
+        f.seite.evaluate("rufScan('scan_mode_set', {modus:'wahl', art:'item'})")
         f.ruhe()
 
         # **Was getippt und noch nicht gemeldet ist, ueberlebt das

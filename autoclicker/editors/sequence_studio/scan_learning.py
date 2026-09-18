@@ -14,7 +14,7 @@ from .scan_model import existing_categories, next_item_name, save_template
 class ScanLearningMixin:
     """Lernt Item-Profile und prüft sie mit derselben Logik wie die Laufzeit."""
 
-    def scan_item_lernen(self, data: Optional[dict] = None) -> dict:
+    def scan_item_learn(self, data: Optional[dict] = None) -> dict:
         """Lernt ein Item aus der Region eines Slots: Template + Marker-Farben.
 
         Genau das, was `execute_item_scan()` beim Auto-Lernen tut — nur mit dem
@@ -24,19 +24,19 @@ class ScanLearningMixin:
         name = str((data or {}).get("slot") or "") or self.scan_name
         slot = self.slots.get(name)
         if slot is None:
-            return self._scan_melde("Kein Slot gewählt.", "warn")
-        self._merke("Item gelernt")
-        gelernt = self._lerne_aus_slot(slot)
+            return self._scan_report("Kein Slot gewählt.", "warn")
+        self._remember("Item gelernt")
+        gelernt = self._learn_from_slot(slot)
         if gelernt is None:
-            return self._scan_melde(
+            return self._scan_report(
                 "Kein Item in diesem Slot — leer oder ohne Bild.", "info")
         self.scan_art, self.scan_name = ART_ITEM, gelernt
-        self._dazu(ART_ITEM, gelernt)
-        return self._scan_geaendert(f"'{gelernt}' aus '{slot.name}' gelernt.")
+        self._add_to_scan(ART_ITEM, gelernt)
+        return self._scan_changed(f"'{gelernt}' aus '{slot.name}' gelernt.")
 
-    def _lerne_aus_slot(self, slot: ItemSlot) -> Optional[str]:
+    def _learn_from_slot(self, slot: ItemSlot) -> Optional[str]:
         """Der Name des neuen Items, `None` ohne Bild."""
-        crop = self._foto_crop(slot.scan_region)
+        crop = self._photo_crop(slot.scan_region)
         if crop is None:
             return None
         from ..item_editor.markers import _prepare_learning_image
@@ -60,14 +60,14 @@ class ScanLearningMixin:
         )
         return name
 
-    def scan_lernvorschau(self, data: Optional[dict] = None) -> dict:
+    def scan_learn_preview(self, data: Optional[dict] = None) -> dict:
         """Bereitet mehrere Items vor, ohne Bestand oder Templates zu veraendern."""
         scope = str((data or {}).get("scope") or "alle")
-        slots = self._auswahl_slots() if scope == "auswahl" else self._scan_slots()
+        slots = self._selection_slots() if scope == "auswahl" else self._scan_slots()
         if not slots:
-            return self._scan_melde("Keine Slots fuer die Lernvorschau.", "warn")
+            return self._scan_report("Keine Slots fuer die Lernvorschau.", "warn")
         if self._foto is None:
-            return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
+            return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
 
         from ..item_editor.markers import (
             _find_matching_existing_item, _item_has_compatible_template,
@@ -79,7 +79,7 @@ class ScanLearningMixin:
         leere_slots = 0
         vergeben = set(self.items)
         for slot in slots:
-            crop = self._foto_crop(slot.scan_region)
+            crop = self._photo_crop(slot.scan_region)
             if crop is None:
                 continue
             maskiert, _marker, is_blank = _prepare_learning_image(
@@ -90,7 +90,7 @@ class ScanLearningMixin:
             match = (_find_matching_existing_item(
                 crop, list(self.items.items()), CONFIG.scan_min_confidence,
                 self.filepath.parent / "templates")
-                if self._hat_opencv() else None)
+                if self._has_opencv() else None)
             kompatibel = bool(
                 match and _item_has_compatible_template(
                     self.items[match], crop, self.filepath.parent / "templates"))
@@ -128,15 +128,15 @@ class ScanLearningMixin:
                 # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
                 # bewusst abwaehlen und damit aus genau diesem Scan entfernen.
                 "ausgewaehlt": True,
-                "bild": self._bild_url(maskiert), "crop": maskiert,
+                "bild": self._image_url(maskiert), "crop": maskiert,
             })
         self._lern_review = review
         if not review:
             if leere_slots:
-                return self._scan_melde(
+                return self._scan_report(
                     f"{leere_slots} leere Slot(s) übersprungen — nichts zu lernen.",
                     "info")
-            return self._scan_melde("Keiner der Slots liegt im Screenshot.", "warn")
+            return self._scan_report("Keiner der Slots liegt im Screenshot.", "warn")
         doppelt = sum(bool(z["duplikat"]) for z in review)
         varianten = sum(bool(z["variante"]) for z in review)
         parts = []
@@ -147,11 +147,11 @@ class ScanLearningMixin:
         if leere_slots:
             parts.append(f"{leere_slots} leere übersprungen")
         zusatz = " - " + ", ".join(parts) if parts else ""
-        return self._scan_melde(
+        return self._scan_report(
             f"{len(review)} Vorschlaege vorbereitet{zusatz}.", "info")
 
     @staticmethod
-    def _bild_url(img) -> str:
+    def _image_url(img) -> str:
         try:
             with io.BytesIO() as stream:
                 img.save(stream, format="PNG")
@@ -159,11 +159,11 @@ class ScanLearningMixin:
         except (OSError, ValueError):
             return ""
 
-    def scan_lernvorschau_abbrechen(self, data: Optional[dict] = None) -> dict:
+    def scan_learn_preview_cancel(self, data: Optional[dict] = None) -> dict:
         self._lern_review = []
-        return self._scan_melde("Lernvorschau verworfen.", "info")
+        return self._scan_report("Lernvorschau verworfen.", "info")
 
-    def _kategorie_normalisieren(self, value) -> Optional[str]:
+    def _category_normalize(self, value) -> Optional[str]:
         """Verwendet bei gleicher Schreibweise die bereits bekannte Kategorie.
 
         Leerraum zaehlt nicht mit; darueber hinaus wird NICHTS geraten. Ein getipptes
@@ -180,7 +180,7 @@ class ScanLearningMixin:
                 return existing
         return new
 
-    def _prioritaet_einordnen(self, category: Optional[str], value,
+    def _priority_place(self, category: Optional[str], value,
                               ausnehmen: Optional[ItemProfile] = None) -> tuple[int, int]:
         """Wertet die TUI-Sonderzahl 0 aus; liefert (Prioritaet, verschoben)."""
         try:
@@ -199,7 +199,7 @@ class ScanLearningMixin:
                 verschoben += 1
         return 1, verschoben
 
-    def scan_lernvorschau_uebernehmen(self, data: Optional[dict] = None) -> dict:
+    def scan_learn_preview_apply(self, data: Optional[dict] = None) -> dict:
         """Uebernimmt Items und die gewuenschte Mitgliedschaft im offenen Scan."""
         eingaben = (data or {}).get("zeilen") or []
         by_slot = {str(z.get("slot") or ""): z for z in eingaben if isinstance(z, dict)}
@@ -213,12 +213,12 @@ class ScanLearningMixin:
         ]
         if not ausgewaehlt:
             self._lern_review = []
-            return self._scan_melde(
+            return self._scan_report(
                 "Keine Items ausgewählt; nichts gelernt oder geändert.", "info")
 
         from ..item_editor.markers import _collect_markers_silent
         from ...config import CONFIG
-        self._merke("Item-Auswahl der Lernvorschau uebernommen")
+        self._remember("Item-Auswahl der Lernvorschau uebernommen")
         new = []
         varianten = []
         unveraendert = set()
@@ -253,9 +253,9 @@ class ScanLearningMixin:
                 # Standardfeldern überschrieben.
                 if erkannter_name and not als_anders and basis not in metadaten_gesetzt:
                     vorher = (existing.category, existing.priority)
-                    category = self._kategorie_normalisieren(
+                    category = self._category_normalize(
                         user_input.get("kategorie", line["kategorie"]))
-                    priority, verschoben = self._prioritaet_einordnen(
+                    priority, verschoben = self._priority_place(
                         category,
                         user_input.get("prioritaet", line["prioritaet"]),
                         ausnehmen=existing,
@@ -269,7 +269,7 @@ class ScanLearningMixin:
                 from ..item_editor.markers import _item_has_compatible_template
                 if _item_has_compatible_template(
                         existing, crop, self.filepath.parent / "templates"):
-                    self._objekte_angleichen()
+                    self._sync_objects()
                     if basis not in bearbeitet:
                         unveraendert.add(basis)
                     continue
@@ -282,14 +282,14 @@ class ScanLearningMixin:
                         existing.template = file
                     if basis not in varianten:
                         varianten.append(basis)
-                    self._objekte_angleichen()
+                    self._sync_objects()
                 continue
 
             name = unique_name(basis, vergeben)
             vergeben.add(name)
             marker = _collect_markers_silent(crop, slot.slot_color)
-            category = self._kategorie_normalisieren(user_input.get("kategorie"))
-            priority, _ = self._prioritaet_einordnen(
+            category = self._category_normalize(user_input.get("kategorie"))
+            priority, _ = self._priority_place(
                 category, user_input.get("prioritaet", line["prioritaet"]))
             self.items[name] = ItemProfile(
                 name=name, marker_colors=[tuple(c) for c in marker],
@@ -298,7 +298,7 @@ class ScanLearningMixin:
                                        template_dir=self.filepath.parent / "templates"),
                 min_confidence=CONFIG.scan_min_confidence,
             )
-            self._dazu(ART_ITEM, name)
+            self._add_to_scan(ART_ITEM, name)
             new.append(name)
         self._lern_review = []
         selected = new + varianten + bearbeitet
@@ -314,30 +314,30 @@ class ScanLearningMixin:
         if unveraendert:
             parts.append(f"{len(unveraendert)} bereits vollständig eingerichtet")
         text = ", ".join(parts) + "." if parts else "Keine Änderungen."
-        return self._scan_geaendert(text)
+        return self._scan_changed(text)
 
-    def scan_item_setzen(self, data: dict) -> dict:
+    def scan_item_set(self, data: dict) -> dict:
         """Ein Feld eines Items — Aktiv, Name, Kategorie, Priorität, Konfidenz."""
         name = str((data or {}).get("name") or "")
         feld = str((data or {}).get("feld") or "")
         value = (data or {}).get("wert")
         item = self.items.get(name)
         if item is None:
-            return self._scan_melde(f"Item '{name}' gibt es nicht.", "err")
+            return self._scan_report(f"Item '{name}' gibt es nicht.", "err")
 
         if feld == "name":
-            return self._item_umbenennen(item, str(value or "").strip())
+            return self._item_rename(item, str(value or "").strip())
         if feld == "aktiv":
             new = bool(value)
             if item.enabled == new:
-                return self.scan_daten()
-            self._merke(f"'{name}': {'ein' if new else 'aus'}")
+                return self.scan_data()
+            self._remember(f"'{name}': {'ein' if new else 'aus'}")
             item.enabled = new
-            return self._scan_geaendert(
+            return self._scan_changed(
                 f"{item.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
         if feld == "kategorie":
-            self._merke(f"'{name}': Kategorie")
-            item.category = self._kategorie_normalisieren(value)
+            self._remember(f"'{name}': Kategorie")
+            item.category = self._category_normalize(value)
             # **Ein Rang, den es schon gibt, ist kein Rang.** Items derselben
             # Kategorie konkurrieren miteinander; bei gleicher Zahl entscheidet
             # die Scan-Reihenfolge, also der Zufall. Wer ein Item in eine
@@ -345,68 +345,68 @@ class ScanLearningMixin:
             # ist der nächste freie Platz die einzige Antwort, die nicht rät.
             # Eine ausdrücklich getippte Zahl bleibt dagegen stehen (der Zweig
             # 'prioritaet' unten fasst sie nicht an).
-            frei = self._freie_prioritaet(item)
+            frei = self._free_priority(item)
             if frei is None:
-                return self._scan_geaendert()
+                return self._scan_changed()
             old = item.priority
             item.priority = frei
-            return self._scan_geaendert(
+            return self._scan_changed(
                 f"{name}: P{old} war in '{item.category}' vergeben — jetzt P{frei}.")
         if feld == "prioritaet":
-            self._merke(f"'{name}': Priorität")
-            item.priority, verschoben = self._prioritaet_einordnen(
+            self._remember(f"'{name}': Priorität")
+            item.priority, verschoben = self._priority_place(
                 item.category, value, ausnehmen=item)
             try:
                 nach_vorn = int(value) == 0
             except (TypeError, ValueError):
                 nach_vorn = False
             if nach_vorn and not item.category:
-                return self._scan_geaendert(
+                return self._scan_changed(
                     f"{name}: Priorität 1. Für 'ganz nach vorn' erst eine Kategorie wählen.",
                     "warn")
             zusatz = (f"; {verschoben} andere Item(s) in '{item.category}' nach hinten gerückt"
                       if verschoben else "")
-            return self._scan_geaendert(f"{name}: Priorität {item.priority}{zusatz}.")
+            return self._scan_changed(f"{name}: Priorität {item.priority}{zusatz}.")
         if feld == "konfidenz":
-            self._merke(f"'{name}': Konfidenz")
+            self._remember(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(value or 0)))
-            return self._scan_geaendert()
+            return self._scan_changed()
         if feld == "bestaetigung":
             # Leer heisst „keine Bestätigung" — und das ist etwas anderes als
             # Punkt 0. Ein Punkt, den es nicht gibt, wird abgelehnt statt still
             # gesetzt: sonst klickte der Lauf auf (0, 0).
             if value in (None, "", "0", 0):
-                self._merke(f"'{name}': Bestätigungsklick")
+                self._remember(f"'{name}': Bestätigungsklick")
                 item.confirm_point_id = None
                 item.confirm_point = None
-                return self._scan_geaendert(f"{name}: kein Bestätigungsklick mehr.")
+                return self._scan_changed(f"{name}: kein Bestätigungsklick mehr.")
             try:
                 point_id = int(value)
             except (TypeError, ValueError):
-                return self._scan_melde("Der Bestätigungsklick braucht einen Punkt.",
+                return self._scan_report("Der Bestätigungsklick braucht einen Punkt.",
                                         "err")
             if not any(p.id == point_id for p in self.points):
-                return self._scan_melde(f"Punkt #{point_id} gibt es nicht.", "err")
-            self._merke(f"'{name}': Bestätigungsklick")
+                return self._scan_report(f"Punkt #{point_id} gibt es nicht.", "err")
+            self._remember(f"'{name}': Bestätigungsklick")
             item.confirm_point_id = point_id
-            self._bestaetigung_anwenden(item)
-            return self._scan_geaendert(f"{name}: bestätigt über Punkt #{point_id}.")
+            self._confirmation_apply(item)
+            return self._scan_changed(f"{name}: bestätigt über Punkt #{point_id}.")
         if feld == "bestaetigung_verzoegerung":
             try:
                 number = float(value)
             except (TypeError, ValueError):
-                return self._scan_melde("Die Wartezeit muss eine Zahl sein.", "err")
+                return self._scan_report("Die Wartezeit muss eine Zahl sein.", "err")
             if number < 0:
-                return self._scan_melde("Die Wartezeit kann nicht negativ sein.", "err")
-            self._merke(f"'{name}': Wartezeit vor der Bestätigung")
+                return self._scan_report("Die Wartezeit kann nicht negativ sein.", "err")
+            self._remember(f"'{name}': Wartezeit vor der Bestätigung")
             item.confirm_delay = number
-            return self._scan_geaendert()
-        return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
+            return self._scan_changed()
+        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
 
-    def _bestaetigung_anwenden(self, item) -> None:
+    def _confirmation_apply(self, item) -> None:
         """Zieht `confirm_point` an der Referenz nach — abgeleiteter Arbeitswert.
 
-        Dieselbe Rolle wie `_aktion_punkt_anwenden()` bei Boss und Icon: die
+        Dieselbe Rolle wie `_action_point_apply()` bei Boss und Icon: die
         Koordinate steht in der Punktliste der `sequence.json`, der Serializer schreibt sie hier
         nicht, und gefüllt wird sie nur, damit die Anzeige etwas zu zeigen hat.
         """
@@ -415,7 +415,7 @@ class ScanLearningMixin:
         item.confirm_point = (ClickPoint(x=point.x, y=point.y, name=point.name or "")
                               if point else None)
 
-    def _freie_prioritaet(self, item: ItemProfile) -> Optional[int]:
+    def _free_priority(self, item: ItemProfile) -> Optional[int]:
         """Der nächste freie Rang der Kategorie — oder None, wenn keiner nötig.
 
         Nur bei einer echten Kollision: sitzt das Item allein auf seiner Zahl,
@@ -432,7 +432,7 @@ class ScanLearningMixin:
             rang += 1
         return rang
 
-    def _item_umbenennen(self, item: ItemProfile, new: str, merken: bool = True) -> dict:
+    def _item_rename(self, item: ItemProfile, new: str, merken: bool = True) -> dict:
         """Wie beim Slot: der Name ist die Referenz, also ziehen die Scans mit.
 
         `merken=False` ist fuer Sammel-Aktionen da: wer sechsundfuenfzig Items
@@ -442,41 +442,41 @@ class ScanLearningMixin:
         der Stand, auf den man ihn zurueckdrehen will.
         """
         if not new or new == item.name:
-            return self.scan_daten()
+            return self.scan_data()
         if new in self.items:
-            return self._scan_melde(f"'{new}' gibt es schon.", "warn")
+            return self._scan_report(f"'{new}' gibt es schon.", "warn")
         if merken:
-            self._merke(f"'{item.name}' umbenannt")
+            self._remember(f"'{item.name}' umbenannt")
         old = item.name
         self.items = {(new if k == old else k): v for k, v in self.items.items()}
         item.name = new
-        self._objekte_angleichen()
+        self._sync_objects()
         self.scan_name = new
-        return self._scan_geaendert(f"'{old}' heisst jetzt '{new}'")
+        return self._scan_changed(f"'{old}' heisst jetzt '{new}'")
 
-    def scan_item_loeschen(self, data: Optional[dict] = None) -> dict:
+    def scan_item_delete(self, data: Optional[dict] = None) -> dict:
         name = self.scan_name if self.scan_art == ART_ITEM else ""
         item = self.items.get(name)
         if item is None:
-            return self._scan_melde("Kein Item gewählt.", "warn")
-        self._merke(f"'{name}' gelöscht")
+            return self._scan_report("Kein Item gewählt.", "warn")
+        self._remember(f"'{name}' gelöscht")
         del self.items[name]
-        self._objekte_angleichen()
+        self._sync_objects()
         self.scan_name = ""
         # Das Template bleibt liegen: es kann zu einem Boss gehören (beide
         # teilen sich den lokalen Template-Ordner), und eine Datei zu löschen, die einem
         # anderen gehört, ist der stille Datenverlust, den es hier nicht gibt.
-        return self._scan_geaendert(f"'{name}' gelöscht.", "warn")
+        return self._scan_changed(f"'{name}' gelöscht.", "warn")
 
-    def scan_item_vorlage_entfernen(self, data: Optional[dict] = None) -> dict:
+    def scan_item_remove_template(self, data: Optional[dict] = None) -> dict:
         """Löst eine fehlerhafte Vorlage vom Item, ohne fremde Dateien zu löschen."""
         data = data or {}
         name = str(data.get("name") or self.scan_name)
         file = str(data.get("datei") or "")
         item = self.items.get(name)
         if item is None or file not in item.template_names():
-            return self._scan_melde("Vorlage nicht gefunden.", "err")
-        self._merke(f"'{name}': Vorlage entfernt")
+            return self._scan_report("Vorlage nicht gefunden.", "err")
+        self._remember(f"'{name}': Vorlage entfernt")
         if item.template == file:
             varianten = [v for v in item.template_variants if v != file]
             item.template = varianten.pop(0) if varianten else None
@@ -484,11 +484,11 @@ class ScanLearningMixin:
         else:
             item.template_variants = [v for v in item.template_variants if v != file]
         self._vorschau.pop(file, None)
-        return self._scan_geaendert(
+        return self._scan_changed(
             f"Vorlage '{file}' von '{name}' entfernt. Die Bilddatei bleibt als Sicherung bestehen.",
             "warn")
 
-    def _katalog(self):
+    def _catalog(self):
         """Der Katalog DIESES Scans — leer, wenn er ihn nicht benutzt.
 
         Zwei Schalter, und sie beantworten verschiedene Fragen: `scan_catalog_file`
@@ -503,10 +503,10 @@ class ScanLearningMixin:
         haelt. `load_catalog` haengt seinen Cache ohnehin am Dateistand.
         """
         from ...katalog import EMPTY
-        katalog, _grund = self._katalog_pruefen()
+        katalog, _grund = self._catalog_check()
         return katalog if katalog is not None else EMPTY
 
-    def _katalog_pruefen(self):
+    def _catalog_check(self):
         """(Katalog, Grund) — genau einer von beiden ist gesetzt.
 
         Drei Gruende, und sie auseinanderzuhalten ist der ganze Zweck: bei
@@ -516,7 +516,7 @@ class ScanLearningMixin:
         # `CONFIG` statt `load_config()`: diese Pruefung laeuft bei JEDER
         # Momentaufnahme, also nach jedem Klick — ein Dateizugriff pro Klick
         # waere zu teuer. Das Objekt haelt der Einstellungen-Reiter aktuell
-        # (`config_schreiben` ruft `apply_config(CONFIG, …)` auf dem eigenen
+        # (`config_write` ruft `apply_config(CONFIG, …)` auf dem eigenen
         # Prozess), und `load_catalog` haengt seinen Cache am Dateistand.
         from ...config import CONFIG
         from ...katalog import load_catalog
@@ -539,20 +539,20 @@ class ScanLearningMixin:
             return None, f"Katalog '{path}' ist leer oder nicht lesbar."
         return katalog, None
 
-    def _katalog_ziel(self, data: Optional[dict]) -> list:
+    def _catalog_target(self, data: Optional[dict]) -> list:
         """Worauf eine Katalog-Aktion wirkt: die Auswahl, sonst der offene Scan.
 
         Dieselbe Bezugsregel wie bei jeder Sammel-Aktion des Reiters
-        (`_scan_slots()`/`_kandidaten()`) — eine ausdrueckliche Auswahl gewinnt,
+        (`_scan_slots()`/`_candidates()`) — eine ausdrueckliche Auswahl gewinnt,
         sonst gilt der offene Scan und ohne Scan der Bestand.
         """
         names = [str(n) for n in ((data or {}).get("namen") or [])]
         if names:
             return [self.items[n] for n in names if n in self.items]
-        return list(self._kandidaten())
+        return list(self._candidates())
 
     @staticmethod
-    def _katalog_name(name: str, katalog) -> str:
+    def _catalog_name(name: str, katalog) -> str:
         """Unter welchem Namen dieses Item im Katalog steht — oder "".
 
         Zwei Anlaeufe, und die Reihenfolge ist die Regel: der volle Name
@@ -564,10 +564,10 @@ class ScanLearningMixin:
         basis = without_counter(name)
         return basis if basis != name and katalog.match(basis) else ""
 
-    def _katalog_plan(self, items: list, katalog) -> tuple:
+    def _catalog_plan(self, items: list, katalog) -> tuple:
         """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
 
-        Getrennt vom Anwenden, damit `_merke()` nur bei einer echten Aenderung
+        Getrennt vom Anwenden, damit `_remember()` nur bei einer echten Aenderung
         laeuft. Ein zweiter Klick auf denselben Knopf aendert nichts, und ein
         Rueckgaengig-Stand, der nichts zurueckdreht, ist ein STRG+Z, das
         scheinbar wirkungslos ist — danach traut man dem Stapel nicht mehr.
@@ -582,7 +582,7 @@ class ScanLearningMixin:
         # gewinnt — "Slot 1" bleibt "Slot 1".
         bekannt = []
         for i in items:
-            such = self._katalog_name(i.name, katalog)
+            such = self._catalog_name(i.name, katalog)
             if such:
                 bekannt.append((i, katalog.category(such), katalog.value(such)))
         rang = ranks([(i.name, category, value) for i, category, value in bekannt])
@@ -595,7 +595,7 @@ class ScanLearningMixin:
         return aenderungen, len(bekannt)
 
     @staticmethod
-    def _katalog_uebernehmen(aenderungen: list) -> set:
+    def _catalog_apply(aenderungen: list) -> set:
         """Traegt den Plan ein und liefert die benutzten Kategorien."""
         kategorien = set()
         for item, category, priority in aenderungen:
@@ -605,7 +605,7 @@ class ScanLearningMixin:
                 kategorien.add(category)
         return kategorien
 
-    def scan_kategorie_umbenennen(self, data: Optional[dict] = None) -> dict:
+    def scan_category_rename(self, data: Optional[dict] = None) -> dict:
         """Benennt eine Kategorie um — und damit JEDES Item, das sie trägt.
 
         **Bis hierhin ging das nur Item für Item.** Die Kategorie ist kein
@@ -618,16 +618,16 @@ class ScanLearningMixin:
         Ein leerer Zielname nimmt die Kategorie weg; ein leerer Quellname
         meint die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
         """
-        old = self._kategorie_normalisieren((data or {}).get("alt")) or None
-        new = self._kategorie_normalisieren((data or {}).get("neu")) or None
+        old = self._category_normalize((data or {}).get("alt")) or None
+        new = self._category_normalize((data or {}).get("neu")) or None
         if old == new:
-            return self.scan_daten()
+            return self.scan_data()
         betroffen = [i for i in self.items.values() if (i.category or None) == old]
         if not betroffen:
-            return self._scan_melde(
+            return self._scan_report(
                 f"Keine Items in '{old or 'ohne Kategorie'}'.", "warn")
 
-        self._merke(f"Kategorie '{old or 'ohne'}' → '{new or 'ohne'}'")
+        self._remember(f"Kategorie '{old or 'ohne'}' → '{new or 'ohne'}'")
         for item in betroffen:
             item.category = new
         # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in
@@ -637,13 +637,13 @@ class ScanLearningMixin:
         # Katalogs holt man sich mit „Aus Katalog einordnen", falls man sie
         # will. Ungefragt danach umzusortieren würde handgesetzte Ränge
         # überschreiben.
-        neu_vergeben = self._raenge_dicht(new, zugezogen=betroffen)
+        neu_vergeben = self._ranks_dense(new, zugezogen=betroffen)
         zusatz = f", {neu_vergeben} Rang/Ränge neu vergeben" if neu_vergeben else ""
-        return self._scan_geaendert(
+        return self._scan_changed(
             f"{len(betroffen)} Item(s): '{old or 'ohne Kategorie'}' → "
             f"'{new or 'ohne Kategorie'}'{zusatz}.")
 
-    def _raenge_dicht(self, category, zugezogen: list = None) -> int:
+    def _ranks_dense(self, category, zugezogen: list = None) -> int:
         """Prioritäten einer Kategorie auf 1..n ziehen — wie viele sich ändern.
 
         **Wer dazukommt, kommt hinten an.** Nach Priorität und Name über die
@@ -665,7 +665,7 @@ class ScanLearningMixin:
                 geaendert += 1
         return geaendert
 
-    def scan_katalog_anwenden(self, data: Optional[dict] = None) -> dict:
+    def scan_catalog_apply(self, data: Optional[dict] = None) -> dict:
         """Setzt Kategorie und Prioritaet aus dem Katalog — ohne LLM.
 
         Die Kategorie haengt am NAMEN, nicht am Modell: heisst ein Item
@@ -682,34 +682,34 @@ class ScanLearningMixin:
         selbst vergebenen Namen ("item_12") behaelt, was es hat, statt in eine
         geratene Kategorie zu rutschen.
         """
-        katalog, reason = self._katalog_pruefen()
+        katalog, reason = self._catalog_check()
         if katalog is None:
-            return self._scan_melde(reason, "err")
+            return self._scan_report(reason, "err")
 
-        target = self._katalog_ziel(data)
+        target = self._catalog_target(data)
         if not target:
-            return self._scan_melde("Keine Items ausgewählt.", "warn")
+            return self._scan_report("Keine Items ausgewählt.", "warn")
 
-        aenderungen, bekannt = self._katalog_plan(target, katalog)
+        aenderungen, bekannt = self._catalog_plan(target, katalog)
         if not bekannt:
-            return self._scan_melde(
+            return self._scan_report(
                 f"Keiner der {len(target)} Namen steht im Katalog. Erst benennen — "
                 "von Hand oder mit „Aus Katalog benennen“.", "warn")
         if not aenderungen:
-            return self._scan_melde(
+            return self._scan_report(
                 f"{bekannt} Item(s) im Katalog gefunden — alle stehen schon richtig.",
                 "info")
 
-        self._merke("Aus Katalog eingeordnet")
-        kategorien = self._katalog_uebernehmen(aenderungen)
+        self._remember("Aus Katalog eingeordnet")
+        kategorien = self._catalog_apply(aenderungen)
         remainder = len(target) - bekannt
         zusatz = f"; {remainder} nicht im Katalog (unverändert)" if remainder else ""
-        return self._scan_geaendert(
+        return self._scan_changed(
             f"{len(aenderungen)} Item(s) in {len(kategorien)} Kategorie(n) "
             f"eingeordnet{zusatz}.")
 
     @staticmethod
-    def _autoname_rest(ohne: int, auswahl, timeouts: int = 0) -> str:
+    def _autoname_remaining(ohne: int, auswahl, timeouts: int = 0) -> str:
         """Der Nachsatz der Schlussmeldung: was NICHT geklappt hat.
 
         Zwei Dinge, und das zweite ist das wichtigere: ohne Katalog raet das
@@ -733,7 +733,7 @@ class ScanLearningMixin:
                          "'Item-Katalog', anlegen mit python tools/katalog.py")
         return ("; " + "; ".join(parts) + ".") if parts else "."
 
-    def _autoname_ziel(self, data: Optional[dict]) -> tuple:
+    def _autoname_target(self, data: Optional[dict]) -> tuple:
         """Worauf ein Benenn-Durchgang wirkt — `(Items, Grund wenn leer)`.
 
         Drei Bezuege, und der mittlere ist der Grund fuer den Knopf im Kopf:
@@ -745,7 +745,7 @@ class ScanLearningMixin:
         `alle` gibt es, weil der Normalfall nicht "ein Item" ist: nach dem
         Lernen heissen sie alle „Item 1“ … „Item 56“, und einzeln benannt
         waeren das sechsundfuenfzig Masken zum Aufklappen. Der Bezug ist
-        `_kandidaten()` — der offene Scan, sonst der Bestand —, dieselbe Regel
+        `_candidates()` — der offene Scan, sonst der Bestand —, dieselbe Regel
         wie bei jeder anderen Sammel-Aktion des Reiters.
         """
         names = [str(n) for n in ((data or {}).get("namen") or [])]
@@ -754,7 +754,7 @@ class ScanLearningMixin:
                      if i.name in names and i.template_names()],
                     "Keines der gewählten Items hat eine Vorlage.")
         if (data or {}).get("alle"):
-            return ([i for i in self._kandidaten() if i.template_names()],
+            return ([i for i in self._candidates() if i.template_names()],
                     "Kein Item mit Vorlage gefunden — erst Items lernen, "
                     "dann benennen.")
         return ([i for i in self.items.values()
@@ -762,7 +762,7 @@ class ScanLearningMixin:
                 "Keine auto-gelernten Items mit Vorlage gefunden. "
                 "Für andere Items erst welche auswählen.")
 
-    def _autoname_stand(self) -> Optional[dict]:
+    def _autoname_state(self) -> Optional[dict]:
         """Der Fortschritt fuer die Ansicht, oder `None` ohne Durchgang.
 
         Er steht in der MOMENTAUFNAHME und nicht nur in der Antwort des
@@ -795,17 +795,17 @@ class ScanLearningMixin:
         from ...config import load_config
         config = load_config()
         if not config.llm_enabled:
-            return self._scan_melde(
+            return self._scan_report(
                 "LLM-Vision ist in den Einstellungen nicht aktiviert.", "err")
         try:
             from PIL import Image      # noqa: F401  (nur die Verfuegbarkeit)
             from ...llm_vision import suggest_item_name    # noqa: F401
         except ImportError:
-            return self._scan_melde("Pillow oder LLM-Vision ist nicht verfügbar.", "err")
+            return self._scan_report("Pillow oder LLM-Vision ist nicht verfügbar.", "err")
 
-        candidates, leer_text = self._autoname_ziel(data)
+        candidates, leer_text = self._autoname_target(data)
         if not candidates:
-            return self._scan_melde(leer_text, "warn")
+            return self._scan_report(leer_text, "warn")
 
         # Mit Katalog darf das Modell nur noch AUSWAEHLEN. Frei geraten nennt
         # es die Art ("Bogen"), aus der Liste den Gegenstand ("Godlike Bow") —
@@ -813,7 +813,7 @@ class ScanLearningMixin:
         # fuer den Durchgang festgehalten: die Liste darf sich zwischen zwei
         # Schritten nicht aendern, sonst waehlt Item 30 aus einer anderen Menge
         # als Item 1.
-        katalog = self._katalog()
+        katalog = self._catalog()
         self._autoname = {
             # **Die Config wird einmal geholt und festgehalten**, nicht je
             # Schritt: `load_config()` liest die Datei und schreibt eine Zeile
@@ -834,15 +834,15 @@ class ScanLearningMixin:
             "timeouts": 0,
             "gemerkt": False,
         }
-        return self._scan_melde(f"Benennt {len(candidates)} Item(s) …", "info")
+        return self._scan_report(f"Benennt {len(candidates)} Item(s) …", "info")
 
-    def scan_autoname_schritt(self, data: Optional[dict] = None) -> dict:
+    def scan_autoname_step(self, data: Optional[dict] = None) -> dict:
         """Ein Item des laufenden Durchgangs — fragt das Modell, benennt um."""
         lauf = getattr(self, "_autoname", None)
         if not lauf:
-            return self._scan_melde("Es läuft kein Benenn-Durchgang.", "warn")
+            return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
         if not lauf["offen"]:
-            return self.scan_daten()
+            return self.scan_data()
 
         from PIL import Image
         from ...llm_vision import TIMEOUT, suggest_item_name_with_reason
@@ -853,7 +853,7 @@ class ScanLearningMixin:
         if item is None or not item.template_names():
             # Zwischen Start und Schritt kann gelöscht worden sein.
             lauf["ohne"] += 1
-            return self.scan_daten()
+            return self.scan_data()
 
         path = self.filepath.parent / "templates" / item.template_names()[0]
         try:
@@ -861,7 +861,7 @@ class ScanLearningMixin:
                 vorlage = image.copy()
         except (OSError, ValueError):
             lauf["ohne"] += 1
-            return self.scan_daten()
+            return self.scan_data()
 
         def frag(grenze):
             # `llm_reasoning` und `llm_max_tokens` galten nur fuer den
@@ -890,10 +890,10 @@ class ScanLearningMixin:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.
             lauf["timeouts" if reason == TIMEOUT else "ohne"] += 1
-            return self.scan_daten()
+            return self.scan_data()
 
         if basis == item.name:
-            return self.scan_daten()
+            return self.scan_data()
 
         # **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.**
         # Hier stand `"{basis} {nr}"`, und ein Inventar mit zwei Boegen ergab
@@ -909,7 +909,7 @@ class ScanLearningMixin:
         # einzeln loesbar, und STRG+Z holt den ganzen Durchgang zurueck.
         bestand = self.items.get(basis)
         if bestand is not None:
-            return self._autoname_variante(bestand, item, lauf)
+            return self._autoname_variant(bestand, item, lauf)
         new = basis
 
         # **Ein Stand fuer den ganzen Durchgang, und erst beim ersten Treffer.**
@@ -918,14 +918,14 @@ class ScanLearningMixin:
         # Durchgang nach dreissig Items aus dem Stapel gefallen — also genau
         # der, auf den man zurueck will.
         if not lauf["gemerkt"]:
-            self._merke(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
+            self._remember(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
             lauf["gemerkt"] = True
-        self._item_umbenennen(item, new, merken=False)
+        self._item_rename(item, new, merken=False)
         lauf["umbenannt"] += 1
         lauf["benannt"].append(item)
-        return self._scan_geaendert()
+        return self._scan_changed()
 
-    def _autoname_variante(self, bestand, item, lauf: dict) -> dict:
+    def _autoname_variant(self, bestand, item, lauf: dict) -> dict:
         """Die Vorlage des Doppels an das bekannte Item haengen, das Doppel weg.
 
         Der Rueckgaengig-Stand entsteht hier genauso wie beim Umbenennen: EINER
@@ -933,25 +933,25 @@ class ScanLearningMixin:
         """
         new = [n for n in item.template_names() if n not in bestand.template_names()]
         if not new and item.name not in self.items:
-            return self.scan_daten()
+            return self.scan_data()
         if not lauf["gemerkt"]:
-            self._merke(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
+            self._remember(str(lauf["gesamt"]) + " Item(s) per LLM benannt")
             lauf["gemerkt"] = True
         bestand.template_variants = list(bestand.template_variants) + new
         self.items.pop(item.name, None)
         # Gespeichert wird `cfg.items`, nicht der Arbeitsbestand des Reiters:
         # ohne das Angleichen stuende das geloeschte Item beim naechsten
         # Speichern noch im Scan.
-        self._objekte_angleichen()
+        self._sync_objects()
         lauf["varianten"] += 1
-        return self._scan_geaendert()
+        return self._scan_changed()
 
-    def scan_autoname_ende(self, data: Optional[dict] = None) -> dict:
+    def scan_autoname_end(self, data: Optional[dict] = None) -> dict:
         """Schliesst den Durchgang ab — auch den abgebrochenen.
 
         **Einordnen gehoert zum Benennen, nicht in einen zweiten Knopf.** Nach
         dem Benennen ist die Frage nicht "habe ich Namen", sondern "stehen sie
-        richtig" — dieselbe Ueberlegung wie bei `_gleich_erkennen()` nach dem
+        richtig" — dieselbe Ueberlegung wie bei `_detect_immediately()` nach dem
         Slot-Finden. Es kostet nichts (kein Netz, kein Modell), und die Namen
         kommen ja gerade aus diesem Katalog.
 
@@ -963,7 +963,7 @@ class ScanLearningMixin:
         """
         lauf = getattr(self, "_autoname", None)
         if not lauf:
-            return self._scan_melde("Es läuft kein Benenn-Durchgang.", "warn")
+            return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
         self._autoname = None
         abgebrochen = bool((data or {}).get("abgebrochen"))
         remaining = len(lauf["offen"])
@@ -978,21 +978,21 @@ class ScanLearningMixin:
         if abgebrochen:
             kopf += " — abgebrochen, " + str(remaining) + " nicht angesehen"
 
-        katalog = self._katalog()
+        katalog = self._catalog()
         if katalog and lauf["benannt"]:
-            aenderungen, _bekannt = self._katalog_plan(lauf["benannt"], katalog)
+            aenderungen, _bekannt = self._catalog_plan(lauf["benannt"], katalog)
             if aenderungen:
-                kategorien = self._katalog_uebernehmen(aenderungen)
-                return self._scan_geaendert(
+                kategorien = self._catalog_apply(aenderungen)
+                return self._scan_changed(
                     kopf + ", " + str(len(aenderungen)) + " davon in "
                     + str(len(kategorien)) + " Kategorie(n) eingeordnet"
-                    + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
-        return self._scan_geaendert(
-            kopf + self._autoname_rest(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
+                    + self._autoname_remaining(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
+        return self._scan_changed(
+            kopf + self._autoname_remaining(lauf["ohne"], lauf["auswahl"], lauf["timeouts"]))
 
     # ------------------------------------------------------------- Erkennung
 
-    def scan_erkennen(self, data: Optional[dict] = None) -> dict:
+    def scan_recognize(self, data: Optional[dict] = None) -> dict:
         """Was steckt gerade in welchem Slot? — mit der Rechnung der Laufzeit.
 
         Der Punkt der ganzen Ansicht: statt einen Scan zu starten und am
@@ -1001,20 +1001,20 @@ class ScanLearningMixin:
         gefragt wird `_check_profile_match()` — dieselbe Funktion, die im Lauf
         entscheidet.
         """
-        self._scan_laden()
+        self._scan_load()
         if self._foto is None:
-            return self._scan_melde("Erst einen Screenshot aufnehmen.", "warn")
+            return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
         if not any(slot.enabled for slot in self._scan_slots()):
-            return self._scan_melde("Keine aktiven Slots vorhanden.", "warn")
-        found, geprueft, tolerance, _, total = self._erkennen_lauf()
-        return self._scan_melde(
+            return self._scan_report("Keine aktiven Slots vorhanden.", "warn")
+        found, geprueft, tolerance, _, total = self._detect_run()
+        return self._scan_report(
             f"{found} von {total} Slot(s) erkannt "
             f"(Toleranz {tolerance}, {geprueft} Item(s) geprüft).")
 
-    def _erkennen_lauf(self) -> tuple:
+    def _detect_run(self) -> tuple:
         """Füllt `_treffer`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
 
-        Getrennt von `scan_erkennen()`, weil es zwei Anlässe gibt und nur einer eine
+        Getrennt von `scan_recognize()`, weil es zwei Anlässe gibt und nur einer eine
         eigene Meldung schreibt — die Rechnung darf es trotzdem nur einmal geben.
 
         `total` ist die Zahl der Slots des offenen Scans, nicht die des Bestands.
@@ -1024,14 +1024,14 @@ class ScanLearningMixin:
         from ...runtime.item_scan import _check_profile_match
         from ...config import CONFIG
 
-        tolerance = self._toleranz()
-        candidates = self._kandidaten()
+        tolerance = self._tolerance()
+        candidates = self._candidates()
         stellvertreter = _NurConfig(CONFIG)
         self._treffer = {}
         found = 0
         slots = [slot for slot in self._scan_slots() if slot.enabled]
         for slot in slots:
-            crop = self._foto_crop(slot.scan_region)
+            crop = self._photo_crop(slot.scan_region)
             if crop is None:
                 self._treffer[slot.name] = {"name": None, "grund": "ausserhalb des Bildes"}
                 continue
@@ -1053,7 +1053,7 @@ class ScanLearningMixin:
                 }
         return found, len(candidates), tolerance, 0, len(slots)
 
-    def _kandidaten(self) -> list:
+    def _candidates(self) -> list:
         """Welche Items geprüft werden — die des gewählten Scans, sonst alle.
 
         Ist ein Scan offen, ist genau seine Liste die interessante: sie
@@ -1068,7 +1068,7 @@ class ScanLearningMixin:
         return sorted((i for i in self.items.values() if i.enabled),
                       key=lambda i: i.priority)
 
-    def _toleranz(self) -> int:
+    def _tolerance(self) -> int:
         cfg = self.scans.get(self.scan_offen)
         if cfg is not None:
             return cfg.color_tolerance

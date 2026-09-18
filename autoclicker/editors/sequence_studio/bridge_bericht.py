@@ -36,7 +36,7 @@ RANG_ZEILEN = 10
 class BridgeBerichtMixin:
     """Der Reiter „Bericht": Session-Logs lesen und bewerten."""
 
-    def _bericht_init(self) -> None:
+    def _report_init(self) -> None:
         # Welche Sitzung offen ist. "" heisst „alle zusammen" — der Normalfall,
         # denn die Frage nach dem hängenden Schritt stellt sich über die Nacht
         # und nicht über eine einzelne Datei.
@@ -44,7 +44,7 @@ class BridgeBerichtMixin:
 
     # ------------------------------------------------------------ Momentaufnahme
 
-    def bericht_daten(self, data: Optional[dict] = None) -> dict:
+    def report_data(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zeichnet. Eigener Gegenstand, nicht die Sequenz.
 
         Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
@@ -53,11 +53,11 @@ class BridgeBerichtMixin:
         if isinstance(data, dict) and "datei" in data:
             self._bericht_wahl = str(data.get("datei") or "")
 
-        folder = self._bericht_ordner()
-        alle = self._bericht_dateien(folder)
-        auswerten, fehler = self._bericht_werkzeug()
+        folder = self._report_folder()
+        alle = self._report_files(folder)
+        auswerten, fehler = self._report_tool()
         if auswerten is None:
-            return self._bericht_leer(folder, fehler)
+            return self._report_empty(folder, fehler)
 
         total = auswerten(alle)
         names = {s["datei"] for s in total["sitzungen"]}
@@ -75,39 +75,39 @@ class BridgeBerichtMixin:
 
         return {
             "ordner": str(folder.resolve()) if folder else "",
-            "aktiv": bool(self._bericht_config("session_log_enabled", False)),
+            "aktiv": bool(self._report_config("session_log_enabled", False)),
             "verfuegbar": True,
             "fehler": "",
             "gewaehlt": self._bericht_wahl,
             # Neueste zuerst: danach sucht man. Die Auswertung selbst liest in
             # Dateireihenfolge, das ändert an den Summen nichts.
             "sitzungen": list(reversed(total["sitzungen"])),
-            "ausgelassen": max(0, len(self._bericht_alle_dateien(folder)) - len(alle)),
-            "bericht": self._bericht_kurz(report),
-            "ertrag": self._ertrag(report),
+            "ausgelassen": max(0, len(self._report_all_files(folder)) - len(alle)),
+            "bericht": self._report_brief(report),
+            "ertrag": self._yield(report),
         }
 
     # ------------------------------------------------------------ Dateien
 
-    def _bericht_config(self, feld: str, vorgabe):
+    def _report_config(self, feld: str, vorgabe):
         from ...config import CONFIG
         return getattr(CONFIG, feld, vorgabe)
 
-    def _bericht_ordner(self) -> Optional[Path]:
-        folder = Path(self._bericht_config("session_log_dir", "logs") or "logs")
+    def _report_folder(self) -> Optional[Path]:
+        folder = Path(self._report_config("session_log_dir", "logs") or "logs")
         return folder if folder.is_dir() else None
 
     @staticmethod
-    def _bericht_alle_dateien(folder: Optional[Path]) -> list:
+    def _report_all_files(folder: Optional[Path]) -> list:
         if folder is None:
             return []
         return sorted(folder.glob("*.csv"))
 
-    def _bericht_dateien(self, folder: Optional[Path]) -> list:
-        return self._bericht_alle_dateien(folder)[-MAX_DATEIEN:]
+    def _report_files(self, folder: Optional[Path]) -> list:
+        return self._report_all_files(folder)[-MAX_DATEIEN:]
 
     @staticmethod
-    def _bericht_werkzeug():
+    def _report_tool():
         """`auswerten` aus `tools/log_report.py`, oder der Grund, warum nicht.
 
         Der Import steht hier und nicht am Modulkopf: `tools/` gehört nicht zum
@@ -123,10 +123,10 @@ class BridgeBerichtMixin:
             return None, f"tools/log_report.py nicht gefunden ({e})"
         return auswerten, ""
 
-    def _bericht_leer(self, folder: Optional[Path], fehler: str) -> dict:
+    def _report_empty(self, folder: Optional[Path], fehler: str) -> dict:
         return {
             "ordner": str(folder.resolve()) if folder else "",
-            "aktiv": bool(self._bericht_config("session_log_enabled", False)),
+            "aktiv": bool(self._report_config("session_log_enabled", False)),
             "verfuegbar": False,
             "fehler": fehler,
             "gewaehlt": "",
@@ -139,7 +139,7 @@ class BridgeBerichtMixin:
     # ------------------------------------------------------------ Auswertung
 
     @staticmethod
-    def _bericht_kurz(raw: dict) -> dict:
+    def _report_brief(raw: dict) -> dict:
         """Die Auswertung auf das eingedampft, was der Reiter zeigt.
 
         Die vollständigen Ranglisten mitzuschicken wäre bei einer Nacht mit
@@ -170,7 +170,7 @@ class BridgeBerichtMixin:
             "nicht_lesbar": raw["nicht_lesbar"],
         }
 
-    def _ertrag(self, raw: dict) -> Optional[dict]:
+    def _yield(self, raw: dict) -> Optional[dict]:
         """Stückzahlen mal Marktwert — der tatsächliche Ertrag eines Laufs.
 
         **Die Zahl ist eine Obergrenze, keine Abrechnung.** `item_found` heisst
@@ -182,7 +182,7 @@ class BridgeBerichtMixin:
         Ohne eingetragene Marktwert-Datei gibt es Stückzahlen und sonst nichts.
         Das ist kein Fehlerfall, sondern der Normalfall ohne Marktanalyse.
         """
-        path = str(self._bericht_config("scan_market_value_file", "") or "")
+        path = str(self._report_config("scan_market_value_file", "") or "")
         if not path or not raw["items"]:
             return None
         from ...runtime.item_scan import load_market_values

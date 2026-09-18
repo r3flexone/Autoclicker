@@ -21,7 +21,7 @@ STATUS_PATH = Path(RUN_STATUS_FILE)
 
 _MIN_INTERVAL = 0.2
 _zuletzt = 0.0
-_zustand: dict = {}
+_state: dict = {}
 
 
 def _counters(state) -> dict:
@@ -41,15 +41,15 @@ def write_status(state, teil: dict, sofort: bool = False) -> None:
     verloren.
     """
     global _zuletzt
-    _zustand.update(teil)
+    _state.update(teil)
     jetzt = time.monotonic()
     if not sofort and jetzt - _zuletzt < _MIN_INTERVAL:
         return
     _zuletzt = jetzt
     try:
-        _zustand["zaehler"] = _counters(state)
-        _zustand["stand"] = time.time()
-        atomic_write(STATUS_PATH, compact_json(_zustand))
+        _state["zaehler"] = _counters(state)
+        _state["stand"] = time.time()
+        atomic_write(STATUS_PATH, compact_json(_state))
     except (OSError, TypeError, ValueError, AttributeError):
         pass
 
@@ -87,7 +87,7 @@ def schedule_run(sequence: str, zielzeit: float) -> None:
     ohnehin vollständig neu auf.
     """
     global _zuletzt
-    _zustand.clear()
+    _state.clear()
     _zuletzt = 0.0
     try:
         atomic_write(STATUS_PATH, compact_json({
@@ -118,7 +118,7 @@ def end_schedule() -> None:
 # `phase`/`phase_pos` bleiben bewusst drin: WO ein Lauf aufgehoert hat, ist die
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
-_MOMENT_FIELDS = ("block", "bloecke", "block_titel", "block_label", "block_typ",
+_MOMENT_FIELDS = ("block", "bloecke", "block_titel", "block_label", "block_set_type",
                   "block_seit", "warten", "durchlauf", "manuell")
 
 
@@ -140,8 +140,8 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
     gar nicht erst an) wird gelöscht — eine Zusammenfassung ohne Zahlen wäre keine.
     """
     global _zuletzt
-    letzter = dict(_zustand)
-    _zustand.clear()
+    letzter = dict(_state)
+    _state.clear()
     _zuletzt = 0.0
     try:
         if state is None or not letzter.get("sequenz"):

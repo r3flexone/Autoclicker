@@ -49,7 +49,7 @@ check("die Schrittbeschreibung sagt es vorneweg",
 section("Haltepunkt: das Gate haelt ohne Schrittmodus an")
 # =============================================================================
 
-def _zustand():
+def _state():
     st = _ST()
     st.step_mode = False
     st.step_via_studio = False
@@ -67,14 +67,14 @@ try:
     # Ohne Haltepunkt und ohne Schrittmodus fragt niemand — und liest auch keine Taste.
     _gefragt = []
     _dbg.read_command = lambda *a, **k: _gefragt.append(1) or "w"
-    _st = _zustand()
+    _st = _state()
     check("ein Block ohne Haltepunkt laeuft ungefragt durch",
           _dbg.step_gate(_st, _frei, "LOOP", 1, 2) == _dbg.GATE_RUN and not _gefragt)
 
     # Mit Haltepunkt haelt das Gate — dieselben Tasten wie im manuellen Modus.
     _ergebnis = {}
     for _taste in ("w", "s", "q"):
-        _st = _zustand()
+        _st = _state()
         _dbg.read_command = (lambda *a, _t=_taste, **k: _t)
         _ergebnis[_taste] = (_dbg.step_gate(_st, _halt, "LOOP", 1, 2), _st.step_mode)
     check("'w' laesst den Block laufen — und der Lauf bleibt normal",
@@ -83,7 +83,7 @@ try:
     check("'q' bricht ab", _ergebnis["q"][0] == _dbg.GATE_STOP)
 
     # 'm' ist neu und gibt es nur am Haltepunkt: ab hier Schritt fuer Schritt.
-    _st = _zustand()
+    _st = _state()
     _dbg.read_command = lambda *a, **k: "m"
     check("'m' fuehrt den Block aus UND schaltet den Schrittmodus ein",
           _dbg.step_gate(_st, _halt, "LOOP", 1, 2) == _dbg.GATE_RUN
@@ -91,7 +91,7 @@ try:
     check("das Gate ist danach nicht mehr als wartend markiert", _st.gate_waiting is False)
 
     # Im Schrittmodus ist der Haltepunkt kein zweites Gate — es fragt ohnehin.
-    _st = _zustand()
+    _st = _state()
     _st.step_mode = True
     _dbg.read_command = lambda *a, **k: "w"
     check("im Schrittmodus fragt der Haltepunkt nicht doppelt (ein 'w' reicht)",
@@ -101,7 +101,7 @@ try:
     # Der Hotkey ist die Taste, nach der man greift, wenn etwas steht. Die
     # Konsole liefert dabei keine Taste (leerer String = Zeitablauf), und das
     # Gate sieht zwischen zwei Abfragen nach, ob jemand "weiter" gesagt hat.
-    _st = _zustand()
+    _st = _state()
     _st.is_running = True
     _dbg.read_command = lambda *a, **k: ""
     _erg = {}
@@ -114,7 +114,7 @@ try:
     check("waehrend das Gate wartet, ist es als wartend markiert", _st.gate_waiting is True)
     # Auch ein Lauf aus der Konsole zeigt dem Studio, warum er steht.
     check("und die Tafel steht auch beim Konsolen-Gate im Laufstatus",
-          (_status._zustand.get("manuell") or {}).get("haltepunkt") is True)
+          (_status._state.get("manuell") or {}).get("haltepunkt") is True)
     _hnd.handle_pause(_st)
     _t.join(1.5)
     check("CTRL+ALT+G laesst den Block laufen statt zu pausieren",
@@ -122,7 +122,7 @@ try:
     check("und der Lauf bleibt danach normal", _st.step_mode is False)
 
     # Ohne wartendes Gate bleibt CTRL+ALT+G die Pause, die es immer war.
-    _st = _zustand()
+    _st = _state()
     _st.is_running = True
     _hnd.handle_pause(_st)
     check("ohne Gate pausiert CTRL+ALT+G wie bisher", _st.pause_event.is_set())
@@ -144,7 +144,7 @@ def _studio_gate(st, step):
         "wert", _dbg.step_gate(st, step, "LOOP", 1, 2)))
     t.start()
     frist = time.time() + 1.0
-    while not _status._zustand.get("manuell") and time.time() < frist:
+    while not _status._state.get("manuell") and time.time() < frist:
         time.sleep(0.01)
     return t, erg
 
@@ -153,11 +153,11 @@ _orig_read = _dbg.read_command
 _dbg.read_command = lambda *a, **k: (_ for _ in ()).throw(AssertionError("Studio-Gate liest die Konsole"))
 _dbg.set_cursor_pos = lambda *a, **k: None
 try:
-    _st = _zustand()
+    _st = _state()
     _st.run_from_studio = True
     _st.is_running = True
     _t, _erg = _studio_gate(_st, _halt)
-    _tafel = _status._zustand.get("manuell") or {}
+    _tafel = _status._state.get("manuell") or {}
     check("die Tafel im Live-Run sagt, dass es ein Haltepunkt ist",
           _tafel.get("aktiv") is True and _tafel.get("haltepunkt") is True
           and _tafel.get("block") == 1)
@@ -167,12 +167,12 @@ try:
     check("'ab hier schrittweise' aus dem Studio fuehrt aus und schaltet um",
           _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is True
           and _st.step_via_studio is True)
-    check("und raeumt die Tafel weg", _status._zustand.get("manuell") is None)
+    check("und raeumt die Tafel weg", _status._state.get("manuell") is None)
 
     # Im Schrittmodus meldet die Tafel KEINEN Haltepunkt — es ist das normale Gate.
     _t, _erg = _studio_gate(_st, _halt)
     check("im Schrittmodus traegt die Tafel keine Haltepunkt-Marke",
-          (_status._zustand.get("manuell") or {}).get("haltepunkt") is False)
+          (_status._state.get("manuell") or {}).get("haltepunkt") is False)
     _hnd.command_manual_action(_st, {"action": "continue"})
     _t.join(1.5)
     check("'Normal weiter' schaltet den Schrittmodus wieder aus",
@@ -219,21 +219,21 @@ from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s
 _schritt = _STEP(x=5, y=6, delay_before=0, name="Bank", point_id=1)
 _seq = _SEQ(name="H", loop_phases=[_PHASE(name="Loop", repeat=1, steps=[_schritt])])
 _b = _SB(_seq, Path("sequences/H.json"), "sequences")
-_b.waehlen({"phase": 1, "zeile": 0})
-_b.block_setzen({"feld": "breakpoint", "wert": True})
+_b.select({"phase": 1, "zeile": 0})
+_b.block_set({"feld": "breakpoint", "wert": True})
 _karte = _b.snapshot()["phasen"][1]["bloecke"][0]
 check("der Schalter setzt das Feld am Schritt", _schritt.breakpoint is True)
 check("die Karte traegt die Marke", _karte.get("haltepunkt") is True)
 check("der Inspektor zeigt den Zustand", _b.snapshot()["block"]["breakpoint"] is True)
 check("und das Speichern nimmt ihn mit",
       _b2s(_b.board).loop_phases[0].steps[0].breakpoint is True)
-_b.block_setzen({"feld": "breakpoint", "wert": False})
+_b.block_set({"feld": "breakpoint", "wert": False})
 check("der Schalter nimmt ihn auch wieder weg", _schritt.breakpoint is False)
 
 # Die Seite ruft genau dieses Feld — sonst stuende ein Schalter da, der nichts tut.
 _web = (Path(__file__).resolve().parents[2] / "autoclicker" / "editors"
         / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
-check("der Inspektor schaltet ueber block_setzen/breakpoint",
+check("der Inspektor schaltet ueber block_set/breakpoint",
       '{feld: "breakpoint", wert: an}' in _web)
 check("die Karte zeigt die Marke", "block.haltepunkt" in _web)
 check("die Tafel im Live-Run kennt den Haltepunkt und 'ab hier schrittweise'",

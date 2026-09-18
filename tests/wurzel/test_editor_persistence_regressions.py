@@ -145,20 +145,20 @@ class EditorPersistenzTest(unittest.TestCase):
         self.assertEqual(fremd.items[0].name, "A")
 
     def test_speicherfehler_wird_bis_zum_aufrufer_gemeldet(self):
-        for speichern in (bestand.save_global_items, bestand.save_global_slots):
-            with self.subTest(speichern=speichern.__name__), \
+        for save in (bestand.save_global_items, bestand.save_global_slots):
+            with self.subTest(save=save.__name__), \
                     patch.object(item_scans, "save_item_scan", return_value=False):
                 self.ausgabe.seek(0)
                 self.ausgabe.truncate()
-                self.assertIs(speichern(self.state), False)
+                self.assertIs(save(self.state), False)
                 self.assertNotIn("[SAVE]", self.ausgabe.getvalue())
 
     def test_done_bleibt_bei_speicherfehler_offen(self):
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
-                patch.object(editor, "save_global_items", side_effect=[False, True]) as speichern, \
+                patch.object(editor, "save_global_items", side_effect=[False, True]) as save, \
                 patch.object(editor, "safe_input", side_effect=["done", "done"]):
             editor.run_global_item_editor(self.state)
-        self.assertEqual(speichern.call_count, 2)
+        self.assertEqual(save.call_count, 2)
 
     def test_done_speichert_und_abbruch_durch_tastatur_verwirft(self):
         for ende in ("done", KeyboardInterrupt(), EOFError()):
@@ -177,10 +177,10 @@ class EditorPersistenzTest(unittest.TestCase):
     def test_studio_lehnt_reservierten_bossnamen_auch_beim_umbenennen_ab(self):
         bridge = StudioBridge(Sequence(name="Alt"), Path("sequences/alt/sequence.json"), "sequences")
         bridge._scan_geladen = True
-        bridge.boss_scan_neu({"name": "Bibliothek"})
+        bridge.boss_scan_new({"name": "Bibliothek"})
         self.assertEqual(bridge.boss_scans, {})
-        bridge.boss_scan_neu({"name": "Erlaubt"})
-        bridge.boss_scan_setzen({"feld": "name", "wert": "bibliothek!"})
+        bridge.boss_scan_new({"name": "Erlaubt"})
+        bridge.boss_scan_set({"feld": "name", "wert": "bibliothek!"})
         self.assertEqual(list(bridge.boss_scans), ["Erlaubt"])
 
     def test_reservierter_bossname_ueberschreibt_keine_bibliothek(self):
@@ -210,7 +210,7 @@ class EditorPersistenzTest(unittest.TestCase):
         item_scans.save_item_scan(self.scan)
         scan_datei = Path("sequences/alt/item_scans/inventar.json")
         vorher = scan_datei.read_bytes()
-        for kind, laden, attribut in (
+        for kind, load, attribut in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
             file = Path("presets") / kind / "defekt.json"
@@ -220,12 +220,12 @@ class EditorPersistenzTest(unittest.TestCase):
             for data in ([], {"Gueltig": gueltig, "Defekt": None}):
                 with self.subTest(kind=kind, data=data):
                     file.write_text(json.dumps(data), encoding="utf-8")
-                    self.assertFalse(laden(self.state, "defekt"))
+                    self.assertFalse(load(self.state, "defekt"))
                     self.assertEqual(getattr(self.state, attribut), bestand_vorher)
                     self.assertEqual(scan_datei.read_bytes(), vorher)
 
     def test_preset_meldet_speicherfehler(self):
-        for kind, laden, speichern in (
+        for kind, load, save in (
                 ("items", presets.load_item_preset, "save_global_items"),
                 ("slots", presets.load_slot_preset, "save_global_slots")):
             with self.subTest(kind=kind):
@@ -233,18 +233,18 @@ class EditorPersistenzTest(unittest.TestCase):
                 file.parent.mkdir(parents=True, exist_ok=True)
                 entry = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
                 file.write_text(json.dumps({"Neu": entry}), encoding="utf-8")
-                with patch.object(presets, speichern, return_value=False) as speichern_mock:
-                    self.assertFalse(laden(self.state, "neu"))
+                with patch.object(presets, save, return_value=False) as speichern_mock:
+                    self.assertFalse(load(self.state, "neu"))
                 speichern_mock.assert_called_once()
 
     def test_scan_speichern_faengt_fehler_beim_ordner_anlegen_ab(self):
-        for speichern, cfg in (
+        for save, cfg in (
                 (item_scans.save_item_scan, self.scan),
                 (boss_scans.save_boss_scan, BossScanConfig("Boss", owner_sequence="Alt")),
                 (icon_scans.save_icon_scan, IconScanConfig("Icon", owner_sequence="Alt"))):
-            with self.subTest(speichern=speichern.__name__), \
+            with self.subTest(save=save.__name__), \
                     patch.object(Path, "mkdir", side_effect=PermissionError("gesperrt")):
-                self.assertFalse(speichern(cfg))
+                self.assertFalse(save(cfg))
 
 
 if __name__ == "__main__":

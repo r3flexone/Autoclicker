@@ -1078,7 +1078,7 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
 # Was das Studio dem Hauptprozess sagen darf. Die Tabelle ist die Grenze: was
 # hier nicht steht, wird gemeldet und verworfen — ein Dateiname ist kein Grund,
 # beliebige Handler aufzurufen. Ein Test hält sie gegen die Befehle, die
-# `StudioBridge.lauf_befehl()` ueberhaupt senden kann; laufen die beiden Seiten
+# `StudioBridge.run_command()` ueberhaupt senden kann; laufen die beiden Seiten
 # auseinander, hat ein Knopf keine Wirkung mehr und niemand merkt es.
 COMMANDS = {
     "start": command_start,

@@ -37,8 +37,8 @@ def lauf():
             fehler.append(text)
 
     # Erst ein Buendel schreiben, damit der Reiter etwas zu zeigen hat.
-    z = b.teilen_daten()
-    z = b.export_starten({"teile": {k: True for k in z["bestand"]}, "name": "probe"})
+    z = b.share_data()
+    z = b.export_start({"teile": {k: True for k in z["bestand"]}, "name": "probe"})
     pruefe(z["status"]["art"] == "ok", f"Export: {z['status']}")
 
     with Fenster(b) as f:

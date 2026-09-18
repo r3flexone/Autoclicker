@@ -6,7 +6,7 @@ braucht, und die man dann in einem Fenster sucht, das schon offen ist.
 
 **Warum das hier laufen KANN, obwohl es Maus und Bildschirm braucht.** Der
 Studio-Prozess sieht `AutoClickerState` nicht, aber er sieht sehr wohl das
-Betriebssystem: der Scans-Reiter nimmt Screenshots auf, und `punkt_aufnehmen()`
+Betriebssystem: der Scans-Reiter nimmt Screenshots auf, und `point_capture()`
 liest die Mausposition über eine globale Taste. Genau dieselben zwei Griffe
 braucht eine Kalibrierung. Der Umweg über den Briefkasten ist deshalb nur da
 nötig, wo wirklich der Hauptprozess gemeint ist — bei der Klick-Runde, die einen
@@ -37,7 +37,7 @@ KALIB_UMFANG = (
 class BridgeWerkzeugeMixin:
     """Prüfen, kalibrieren, Klick-Runde starten."""
 
-    def _werkzeuge_init(self) -> None:
+    def _tools_init(self) -> None:
         # Eine angefangene Kalibrierung: Referenzpunkte und der daraus
         # gerechnete Transform. Reiner Sitzungszustand - gespeichert wird erst
         # beim Anwenden, und ein halb gesetzter Referenzpunkt darf nichts ändern.
@@ -49,21 +49,21 @@ class BridgeWerkzeugeMixin:
 
     # ------------------------------------------------------------ Momentaufnahme
 
-    def werkzeug_daten(self, data: Optional[dict] = None) -> dict:
+    def tool_data(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zeichnet. Eigener Gegenstand, nicht die Sequenz.
 
         Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
         from ..sequence_recorder import RECORDING_HOTKEYS
-        self._scan_laden()
+        self._scan_load()
         return {
             "punkte": [{"id": p.id, "name": p.name or f"Punkt #{p.id}",
                         "x": p.x, "y": p.y,
                         "farbe": list(p.color) if p.color else None,
-                        "verwendungen": self._punkt_verwendungen(p.id)}
+                        "verwendungen": self._point_usages(p.id)}
                        for p in self.points],
-            "kalibrierung": self._kalib_json(),
+            "kalibrierung": self._calib_json(),
             # Dieselbe Zahl wie in der Momentaufnahme: mehrere Werkzeuge
             # hier warten mit der Maus auf ENTER und blockieren dabei die
             # Bruecke. Der Reiter braucht sie, ohne den Editor zu fragen.
@@ -80,10 +80,10 @@ class BridgeWerkzeugeMixin:
             # bereinigte Besitzer-Ordner.
             "datei": self.filepath.parent.name,
             "offen": bool(self._dirty),
-            "laeuft": self._laeuft(),
+            "laeuft": self._running(),
         }
 
-    def _punkt_verwendungen(self, point_id: int, ausser=None) -> list[str]:
+    def _point_usages(self, point_id: int, ausser=None) -> list[str]:
         """Alle Referenzen auf einen Punkt, lesbar für Löschschutz und UI.
 
         `ausser` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
@@ -121,16 +121,16 @@ class BridgeWerkzeugeMixin:
 
     # --------------------------------------------------------- Punkte verwalten
 
-    def werkzeug_punkt_aufnehmen(self, data: Optional[dict] = None) -> dict:
+    def tool_point_capture(self, data: Optional[dict] = None) -> dict:
         """Legt einen freien Punkt an oder misst einen vorhandenen neu."""
-        if self._laeuft():
+        if self._running():
             return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         data = data or {}
-        point = self._punkt_mit_id(data.get("point_id"))
-        x, y, message = self._stelle_abwarten()
+        point = self._point_with_id(data.get("point_id"))
+        x, y, message = self._await_position()
         if x is None:
             return {"ok": False, "meldung": message + " — nichts geändert."}
-        color = self._farbe_an(x, y)
+        color = self._color_at(x, y)
         if point is None:
             from .model import PalettePoint
             point = PalettePoint(
@@ -147,15 +147,15 @@ class BridgeWerkzeugeMixin:
             if color:
                 point.color = tuple(color)
             aktion = "neu gemessen"
-        self._punkte_anwenden()
+        self._points_apply()
         self._dirty = True
         return {"ok": True, "point_id": point.id,
                 "meldung": f"Punkt #{point.id} {aktion}: ({x}, {y})."}
 
-    def werkzeug_punkt_setzen(self, data: Optional[dict] = None) -> dict:
+    def tool_point_set(self, data: Optional[dict] = None) -> dict:
         """Ändert Name, Koordinate oder Farbe eines Punktes aus der Werkzeugliste."""
         data = data or {}
-        point = self._punkt_mit_id(data.get("point_id"))
+        point = self._point_with_id(data.get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         feld, value = str(data.get("feld") or ""), data.get("wert")
@@ -171,31 +171,31 @@ class BridgeWerkzeugeMixin:
                 return {"ok": False, "meldung": f"Unbekanntes Feld '{feld}'."}
         except (TypeError, ValueError):
             return {"ok": False, "meldung": f"'{value}' ist kein gültiger Wert."}
-        self._punkte_anwenden()
+        self._points_apply()
         self._dirty = True
         return {"ok": True, "meldung": f"Punkt #{point.id} geändert."}
 
-    def werkzeug_punkt_zeigen(self, data: Optional[dict] = None) -> dict:
+    def tool_point_show(self, data: Optional[dict] = None) -> dict:
         """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
-        if self._laeuft():
+        if self._running():
             return {"ok": False, "meldung": "Eine Sequenz läuft — die Maus gehört dem Worker."}
-        point = self._punkt_mit_id((data or {}).get("point_id"))
+        point = self._point_with_id((data or {}).get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         from ...winapi import set_cursor_pos
         set_cursor_pos(point.x, point.y)
-        current = self._farbe_an(point.x, point.y)
+        current = self._color_at(point.x, point.y)
         return {"ok": True, "point_id": point.id,
                 "gespeichert": list(point.color) if point.color else None,
                 "aktuell": list(current) if current else None,
                 "meldung": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
 
-    def werkzeug_punkt_loeschen(self, data: Optional[dict] = None) -> dict:
+    def tool_point_delete(self, data: Optional[dict] = None) -> dict:
         """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
-        point = self._punkt_mit_id((data or {}).get("point_id"))
+        point = self._point_with_id((data or {}).get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
-        verwendet = self._punkt_verwendungen(point.id)
+        verwendet = self._point_usages(point.id)
         if verwendet:
             return {"ok": False, "verwendungen": verwendet,
                     "meldung": f"Punkt #{point.id} wird noch {len(verwendet)}× verwendet."}
@@ -205,29 +205,29 @@ class BridgeWerkzeugeMixin:
 
     # ---------------------------------------------------------- Farbanalysator
 
-    def werkzeug_farben(self, data: Optional[dict] = None) -> dict:
+    def tool_colors(self, data: Optional[dict] = None) -> dict:
         """Farbe unter der Maus oder häufigste Farben einer Region/Vollbild."""
-        if self._laeuft():
+        if self._running():
             return {"ok": False, "meldung": "Eine Sequenz läuft — Analyse ist gesperrt."}
         kind = str((data or {}).get("art") or "punkt")
         if kind == "punkt":
-            x, y, message = self._stelle_abwarten()
+            x, y, message = self._await_position()
             if x is None:
                 return {"ok": False, "meldung": message + " — nichts analysiert."}
-            color = self._farbe_an(x, y)
+            color = self._color_at(x, y)
             if not color:
                 return {"ok": False, "meldung": "Farbe konnte nicht gelesen werden."}
             from ...imaging import get_color_name
             return {"ok": True, "art": "punkt", "stelle": [x, y],
-                    "farben": [self._farbe_json(tuple(color), 1, 1, get_color_name)],
+                    "farben": [self._color_json(tuple(color), 1, 1, get_color_name)],
                     "meldung": f"Farbe bei ({x}, {y}) gelesen."}
 
         region = None
         if kind == "region":
-            x1, y1, message = self._stelle_abwarten()
+            x1, y1, message = self._await_position()
             if x1 is None:
                 return {"ok": False, "meldung": message + " — keine erste Ecke."}
-            x2, y2, message = self._stelle_abwarten()
+            x2, y2, message = self._await_position()
             if x2 is None:
                 return {"ok": False, "meldung": message + " — keine zweite Ecke."}
             region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
@@ -236,7 +236,7 @@ class BridgeWerkzeugeMixin:
         elif kind == "vollbild":
             # ENTER ist die Übergabe: Das Studio kann in den Hintergrund, bevor
             # der Screenshot entsteht.
-            _, _, message = self._stelle_abwarten()
+            _, _, message = self._await_position()
             if message:
                 return {"ok": False, "meldung": message + " — nichts analysiert."}
         else:
@@ -249,25 +249,25 @@ class BridgeWerkzeugeMixin:
         total = sum(zaehler.values())
         top = sorted(zaehler.items(), key=lambda e: e[1], reverse=True)[:20]
         return {"ok": True, "art": kind, "region": list(region) if region else None,
-                "farben": [self._farbe_json(f, n, total, get_color_name) for f, n in top],
+                "farben": [self._color_json(f, n, total, get_color_name) for f, n in top],
                 "meldung": f"{total} Stichproben analysiert."}
 
     @staticmethod
-    def _farbe_json(color, count: int, total: int, namensfunktion) -> dict:
+    def _color_json(color, count: int, total: int, namensfunktion) -> dict:
         r, g, b = (int(v) for v in color[:3])
         return {"rgb": [r, g, b], "hex": f"#{r:02X}{g:02X}{b:02X}",
                 "name": namensfunktion((r, g, b)), "anzahl": int(count),
                 "anteil": round(100.0 * count / max(1, total), 1)}
 
-    def _laeuft(self) -> bool:
+    def _running(self) -> bool:
         """Läuft gerade eine Sequenz? Aus der Statusdatei, wie im Live-Run."""
         try:
-            stand = self.lauf_status()
+            stand = self.run_status()
         except Exception:                                        # noqa: BLE001
             return False
         return bool(isinstance(stand, dict) and stand.get("aktiv"))
 
-    def _kalib_json(self) -> dict:
+    def _calib_json(self) -> dict:
         """Der Stand der laufenden Kalibrierung — leer, solange keine läuft."""
         if not self._kalib:
             return {}
@@ -279,12 +279,12 @@ class BridgeWerkzeugeMixin:
                         "y": round(transform.get("offset_y", 0.0), 1)},
             "skalierung": {"x": round(transform.get("scale_x", 1.0), 4),
                            "y": round(transform.get("scale_y", 1.0), 4)},
-            "identitaet": self._ist_identitaet(transform),
+            "identitaet": self._is_identity(transform),
             "vorschau": self._kalib.get("vorschau", []),
         }
 
     @staticmethod
-    def _ist_identitaet(transform: dict) -> bool:
+    def _is_identity(transform: dict) -> bool:
         if not transform:
             return True
         from ...import_export import is_identity
@@ -292,7 +292,7 @@ class BridgeWerkzeugeMixin:
 
     # ------------------------------------------------------------------ Prüfen
 
-    def werkzeug_pruefen(self, data: Optional[dict] = None) -> dict:
+    def tool_check(self, data: Optional[dict] = None) -> dict:
         """`check` aus dem Punkte-Menü: fehlende Templates, tote Verweise, Koordinaten.
 
         Gerechnet wird auf einem frischen State von Platte, nicht auf dem, was
@@ -301,7 +301,7 @@ class BridgeWerkzeugeMixin:
         """
         from ...diagnose import LEVEL_ERROR, check_setup
         try:
-            report = check_setup(self._bestand())
+            report = check_setup(self._inventory())
         except Exception as e:                                   # noqa: BLE001
             return {"ok": False, "meldung": f"Prüfung fehlgeschlagen: {e}",
                     "befunde": [], "geprueft": []}
@@ -316,7 +316,7 @@ class BridgeWerkzeugeMixin:
 
     # ------------------------------------------------------------- Kalibrieren
 
-    def kalib_referenz(self, data: dict) -> dict:
+    def calib_reference(self, data: dict) -> dict:
         """Einen Referenzpunkt neu setzen: Maus auf die Stelle, ENTER.
 
         `number` ist 1 oder 2. Der erste Punkt gibt die Verschiebung, der zweite
@@ -337,7 +337,7 @@ class BridgeWerkzeugeMixin:
         """
         data = data or {}
         number = 2 if int(data.get("nummer") or 1) == 2 else 1
-        point = self._punkt_mit_id(data.get("point_id"))
+        point = self._point_with_id(data.get("point_id"))
         if point is None:
             return {"ok": False, "meldung": "Punkt nicht gefunden."}
         if number == 2 and not self._kalib.get("ref1"):
@@ -347,11 +347,11 @@ class BridgeWerkzeugeMixin:
                     "meldung": "Der zweite Punkt muss ein anderer sein — "
                                "am besten weit weg vom ersten."}
 
-        x, y, message = self._stelle_abwarten()
+        x, y, message = self._await_position()
         if x is None:
             return {"ok": False, "meldung": message + " — nichts geändert."}
 
-        pruefung = self._farbe_pruefen(point, x, y)
+        pruefung = self._color_check(point, x, y)
         if pruefung is not None and not data.get("bestaetigt"):
             return pruefung
 
@@ -363,8 +363,8 @@ class BridgeWerkzeugeMixin:
             # Ein neuer erster Punkt macht den zweiten bedeutungslos: er wurde
             # gegen eine andere Verschiebung gemessen.
             self._kalib.pop("ref2", None)
-        self._kalib_rechnen()
-        gemessen = self._farbe_an(x, y)
+        self._calib_compute()
+        gemessen = self._color_at(x, y)
         zusatz = ""
         if pruefung is not None:
             zusatz = " — Farbe weicht ab, trotzdem übernommen"
@@ -374,7 +374,7 @@ class BridgeWerkzeugeMixin:
                                        f"({point.x}, {point.y}) → ({x}, {y}){zusatz}"}
 
     @staticmethod
-    def _farbe_an(x: int, y: int):
+    def _color_at(x: int, y: int):
         """Die Bildschirmfarbe an einer Stelle — oder None, wenn nicht lesbar."""
         try:
             from ...imaging import get_pixel_color
@@ -382,7 +382,7 @@ class BridgeWerkzeugeMixin:
         except Exception:                                        # noqa: BLE001
             return None
 
-    def _farbe_pruefen(self, point, x: int, y: int) -> Optional[dict]:
+    def _color_check(self, point, x: int, y: int) -> Optional[dict]:
         """`None`, wenn die Farbe passt — sonst die Rückfrage.
 
         Verglichen wird mit `punkt_farbtoleranz`, derselben Schwelle, an der auch
@@ -396,7 +396,7 @@ class BridgeWerkzeugeMixin:
         from ...config import CONFIG
         if not point.color:
             return None
-        gemessen = self._farbe_an(x, y)
+        gemessen = self._color_at(x, y)
         if not gemessen:
             return None
         distance = max(abs(a - b) for a, b in zip(point.color, gemessen))
@@ -416,7 +416,7 @@ class BridgeWerkzeugeMixin:
                         f"'{point.name or point.id}'?"),
         }
 
-    def kalib_versatz(self, data: dict) -> dict:
+    def calib_offset(self, data: dict) -> dict:
         """Den gemessenen Versatz von Hand nachziehen.
 
         Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
@@ -435,15 +435,15 @@ class BridgeWerkzeugeMixin:
             except (TypeError, ValueError):
                 return {"ok": False, "meldung": f"'{value}' ist keine Zahl."}
         self._kalib["transform"] = transform
-        self._kalib_vorschau()
+        self._calib_preview()
         return {"ok": True, "meldung": "Versatz übernommen."}
 
-    def kalib_abbrechen(self, data: Optional[dict] = None) -> dict:
+    def calib_cancel(self, data: Optional[dict] = None) -> dict:
         """Alles vergessen. Geschrieben wurde bis hierher nichts."""
         self._kalib = {}
         return {"ok": True, "meldung": "Kalibrierung verworfen — nichts geändert."}
 
-    def kalib_anwenden(self, data: Optional[dict] = None) -> dict:
+    def calib_apply(self, data: Optional[dict] = None) -> dict:
         """Sichern, umrechnen, den Hauptprozess neu laden lassen.
 
         Vor dem Umrechnen entsteht ein vollständiges Export-ZIP
@@ -461,16 +461,16 @@ class BridgeWerkzeugeMixin:
         transform = self._kalib.get("transform")
         if not transform:
             return {"ok": False, "meldung": "Es läuft keine Kalibrierung."}
-        if self._ist_identitaet(transform):
+        if self._is_identity(transform):
             return {"ok": False,
                     "meldung": "Der Transform ändert nichts — nichts zu tun."}
-        if self._laeuft():
+        if self._running():
             return {"ok": False,
                     "meldung": "Eine Sequenz läuft. Erst stoppen — sonst klickt "
                                "sie mitten im Umrechnen auf halb verschobene Stellen."}
 
         umfang = {k: bool((data or {}).get(k, v)) for k, _, v in KALIB_UMFANG}
-        state = self._bestand()
+        state = self._inventory()
         sicherung = backup_before_calibration(state)
         try:
             zaehlung = calibrate_inventory(state, transform, **umfang)
@@ -478,14 +478,14 @@ class BridgeWerkzeugeMixin:
             return {"ok": False, "meldung": f"Kalibrierung fehlgeschlagen: {e}"}
 
         self._kalib = {}
-        self._nach_kalibrierung()
+        self._after_calibration()
         parts = ", ".join(f"{n} {name}" for name, n in sorted(zaehlung.items()) if n)
         message = f"Kalibriert: {parts or 'nichts geändert'}."
         if sicherung:
             message += f" Sicherung: {sicherung}"
         return {"ok": True, "meldung": message, "sicherung": sicherung or ""}
 
-    def _nach_kalibrierung(self) -> None:
+    def _after_calibration(self) -> None:
         """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
         from .model import load_palette_points
         from ...mailbox import send_command
@@ -495,14 +495,14 @@ class BridgeWerkzeugeMixin:
         # Neustart auf die alten Stellen.
         send_command("daten")
 
-    def _punkt_mit_id(self, point_id):
+    def _point_with_id(self, point_id):
         try:
             gesucht = int(point_id)
         except (TypeError, ValueError):
             return None
         return next((p for p in self.points if p.id == gesucht), None)
 
-    def _kalib_rechnen(self) -> None:
+    def _calib_compute(self) -> None:
         """Aus den gesetzten Referenzpunkten einen Transform bauen."""
         from ...import_export import compute_transform, transform_from_offset
         ref1 = self._kalib.get("ref1")
@@ -517,9 +517,9 @@ class BridgeWerkzeugeMixin:
         else:
             self._kalib["transform"] = transform_from_offset(
                 tuple(ref1["alt"]), tuple(ref1["neu"]))
-        self._kalib_vorschau()
+        self._calib_preview()
 
-    def _kalib_vorschau(self) -> None:
+    def _calib_preview(self) -> None:
         """Was sich ändern WÜRDE — ohne etwas anzufassen.
 
         Der Grund, warum die Kalibrierung im Fenster besser ist als in der
@@ -531,7 +531,7 @@ class BridgeWerkzeugeMixin:
             self._kalib["vorschau"] = []
             return
         try:
-            lines = calibration_preview(self._bestand(), transform)
+            lines = calibration_preview(self._inventory(), transform)
         except Exception:                                        # noqa: BLE001
             self._kalib["vorschau"] = []
             return
@@ -542,7 +542,7 @@ class BridgeWerkzeugeMixin:
 
     # -------------------------------------------------------------- Klick-Runde
 
-    def nachklick_starten(self, data: Optional[dict] = None) -> dict:
+    def reclick_start(self, data: Optional[dict] = None) -> dict:
         """Die Klick-Runde im HAUPTPROZESS starten (`klick` im Punkte-Menü).
 
         Das eine Werkzeug, das hier nicht laufen kann: es braucht einen
@@ -551,7 +551,7 @@ class BridgeWerkzeugeMixin:
         Briefkasten; bedient wird danach im Spiel, nicht im Fenster.
         """
         from ...mailbox import send_command
-        if self._laeuft():
+        if self._running():
             return {"ok": False,
                     "meldung": "Eine Sequenz läuft — Nachklicken braucht die "
                                "Maus für sich."}
@@ -570,7 +570,7 @@ class BridgeWerkzeugeMixin:
                 "meldung": f"Nachklicken für '{self.board.name}' gestartet — der "
                            "Zeiger steht auf dem ersten Punkt, geklickt wird im Spiel."}
 
-    def nachklick_beenden(self, data: Optional[dict] = None) -> dict:
+    def reclick_end(self, data: Optional[dict] = None) -> dict:
         """Die Runde beenden — übernehmen oder verwerfen (`verwerfen: true`).
 
         Ein Knopf, der etwas anfängt, muss es auch beenden können. Ohne das bleibt
@@ -608,7 +608,7 @@ class BridgeWerkzeugeMixin:
     # stumm, ist der Hauptprozess weg und nicht etwa besonders langsam.
     NACHKLICK_ALTER = 5.0
 
-    def nachklick_status(self, data: Optional[dict] = None) -> dict:
+    def reclick_status(self, data: Optional[dict] = None) -> dict:
         """Was die Runde GERADE macht — gelesen aus `.nachklick.json`.
 
         Der Zustand liegt im Hauptprozess (dort haengt der Maus-Hook), und ohne
@@ -639,7 +639,7 @@ class BridgeWerkzeugeMixin:
         stand["verwaist"] = bool(stand.get("aktiv") and old > self.NACHKLICK_ALTER)
         return stand
 
-    def nachklick_beim_schliessen(self) -> None:
+    def reclick_on_close(self) -> None:
         """Beim Zumachen des Fensters: eine offene Runde verwerfen.
 
         Sie gehört diesem Fenster — es hat sie gestartet, und seine Anleitung ist
@@ -649,4 +649,4 @@ class BridgeWerkzeugeMixin:
         """
         if not self._nachklick_gestartet:
             return
-        self.nachklick_beenden({"verwerfen": True, "grund": "fenster"})
+        self.reclick_end({"verwerfen": True, "grund": "fenster"})
