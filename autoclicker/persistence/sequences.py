@@ -109,7 +109,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
             )
             for lp in data.get("loop_phases", [])
         ]
-        seq_points = _als_punkte(data.get("points", []))
+        seq_points = _as_points(data.get("points", []))
         seq = Sequence(
             data["name"],
             _parse_steps(data.get("init_steps", [])),
@@ -123,7 +123,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in aufloesen({p.id: p for p in seq.points}, seq, still=True):
+        for m in resolve({p.id: p for p in seq.points}, seq, still=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -138,7 +138,7 @@ _seq_cache: list[tuple[str, Path]] = []
 _seq_cache_key: tuple = ()
 
 
-def _verzeichnis_kennung(seq_dir: Path) -> tuple:
+def _dir_fingerprint(seq_dir: Path) -> tuple:
     """Was der Cache vergleicht: die Eintraege selbst, nicht die Ordner-Uhr.
 
     Die mtime des Ordners ist auf grober Zeitaufloesung unsicher (NTFS) — zwei
@@ -168,7 +168,7 @@ def list_available_sequences() -> list[tuple[str, Path]]:
         return []
 
     try:
-        current_key = _verzeichnis_kennung(seq_dir)
+        current_key = _dir_fingerprint(seq_dir)
     except OSError:
         return []
 
@@ -235,7 +235,7 @@ def load_points(state: AutoClickerState) -> None:
         state.points = state.active_sequence.points if state.active_sequence else []
 
 
-def _punkt_aus_dict(p: dict) -> ClickPoint:
+def _point_from_dict(p: dict) -> ClickPoint:
     """Ein rohes Punkt-Dict (schon migriert) als ClickPoint."""
     farbe = p.get("color")
     return ClickPoint(p["x"], p["y"], p.get("name", ""), p["id"],
@@ -243,7 +243,7 @@ def _punkt_aus_dict(p: dict) -> ClickPoint:
                       source=p.get("source", ""))
 
 
-def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
+def reload_points(state: AutoClickerState) -> list[ClickPoint]:
     """Lädt den Punkt-Pool der aktiven Sequenz frisch von Platte."""
     with state.lock:
         seq = state.active_sequence
@@ -266,7 +266,7 @@ def punkte_nachladen(state: AutoClickerState) -> list[ClickPoint]:
 # Altlast, die dieses Projekt nicht mitschleppt.
 
 
-def _als_punkte(points) -> list[ClickPoint]:
+def _as_points(points) -> list[ClickPoint]:
     """Punkte-Liste vereinheitlichen: ClickPoints ODER rohe Dicts rein, ClickPoints raus.
 
     Noetig, weil die Aufrufer beides liefern — der Sweep rohe Dicts (er will den
@@ -276,7 +276,7 @@ def _als_punkte(points) -> list[ClickPoint]:
     for p in points or []:
         if isinstance(p, dict):
             try:
-                raus.append(_punkt_aus_dict(p))
+                raus.append(_point_from_dict(p))
             except (KeyError, TypeError, ValueError):
                 continue
         else:
@@ -297,7 +297,7 @@ def get_next_point_id(state: AutoClickerState) -> int:
     return max(p.id for p in state.points) + 1
 
 
-def punkt_an_stelle(punkte, x: int, y: int, color=None,
+def point_at_position(punkte, x: int, y: int, color=None,
                     radius: Optional[int] = None,
                     farbtoleranz: Optional[int] = None):
     """Der vorhandene Punkt an dieser Stelle — oder None. Die eine Regel.
@@ -335,18 +335,18 @@ def punkt_an_stelle(punkte, x: int, y: int, color=None,
     return beste
 
 
-def punkt_fuer_stelle(state: AutoClickerState, x: int, y: int,
+def point_for_position(state: AutoClickerState, x: int, y: int,
                       color=None, name: str = "", source: str = "") -> int:
     """ID des Punktes an (x, y) - liegt dort keiner, wird einer angelegt.
 
     DER Weg, wie ein Editor an eine Stelle kommt; deshalb gibt es eine ID
     zurueck und keinen Punkt. Ein vorhandener an derselben Stelle wird
-    wiederverwendet (`punkt_an_stelle()`), sonst wandert beim Nachjustieren nur
+    wiederverwendet (`point_at_position()`), sonst wandert beim Nachjustieren nur
     eine von zwei Stellen mit.
 
     Ohne state.lock aufrufen bzw. den Aufrufer sperren lassen — schreibt state.points.
     """
-    p = punkt_an_stelle(state.points, x, y, color)
+    p = point_at_position(state.points, x, y, color)
     if p is not None:
         # Farbe nachtragen, falls der vorhandene Punkt noch keine hatte: ein
         # Farb-Trigger braucht sie, ein reiner Klickpunkt kam bisher ohne aus.
@@ -374,7 +374,7 @@ def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoi
     return next((p for p in state.points if p.id == point_id), None)
 
 
-def _phasen(sequence):
+def _phases(sequence):
     """(Phasenname, Schrittliste) fuer INIT, jede Loop-Phase und END."""
     raus = [("INIT", sequence.init_steps)]
     for lp in sequence.loop_phases:
@@ -383,7 +383,7 @@ def _phasen(sequence):
     return raus
 
 
-def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
+def resolve(punkte: dict, sequence, still: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `punkte` ist id -> ClickPoint.
 
     Vier Referenzen pro Schritt:
@@ -403,7 +403,7 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
     """
     meldungen = []
 
-    for phase_name, steps in _phasen(sequence):
+    for phase_name, steps in _phases(sequence):
         for i, step in enumerate(steps, 1):
             ort = f"{phase_name}[{i}]"
 
@@ -487,7 +487,7 @@ def aufloesen(punkte: dict, sequence, still: bool = False) -> list[str]:
 
 def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:
     """Löst Schritt-Referenzen gegen den Punkt-Pool ihrer Sequenz auf."""
-    return aufloesen({p.id: p for p in sequence.points}, sequence)
+    return resolve({p.id: p for p in sequence.points}, sequence)
 
 
 def print_points(state: AutoClickerState) -> None:

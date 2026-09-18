@@ -101,10 +101,10 @@ class BridgeTeilenMixin:
         Config wird hineingeschrieben statt getauscht: es gibt ein Config-Objekt
         pro Prozess.
         """
-        from ...config import CONFIG, uebernehmen
+        from ...config import CONFIG, apply_config
         from ...persistence import list_available_sequences, load_sequence_file
         state = AutoClickerState()
-        uebernehmen(state.config, CONFIG)
+        apply_config(state.config, CONFIG)
         for name, pfad in list_available_sequences():
             seq = load_sequence_file(pfad)
             if seq is not None:
@@ -115,13 +115,13 @@ class BridgeTeilenMixin:
             state.points = seq.points
             from ...persistence import (
                 load_all_boss_scans, load_all_icon_scans, load_all_item_scans,
-                load_global_bosses, resolve_klick_referenzen,
+                load_global_bosses, resolve_click_references,
             )
             load_all_item_scans(state)
             load_all_boss_scans(state)
             load_all_icon_scans(state)
             load_global_bosses(state, seq.name)
-            resolve_klick_referenzen(state, seq)
+            resolve_click_references(state, seq)
         return state
 
     @staticmethod
@@ -282,8 +282,8 @@ class BridgeTeilenMixin:
         self._undo = []
         self._scan_laden()
         try:
-            from ...befehl import sende
-            sende("daten")
+            from ...befehl import send_command
+            send_command("daten")
         except (ImportError, OSError):
             pass
 

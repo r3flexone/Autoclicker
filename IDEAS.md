@@ -148,7 +148,7 @@ Boss-Namen benutzt.
   Abschnitt darunter. Es ist dieselbe Frage („ist der Schritt dran?"), nur eine andere
   Messung.
 - **Ansatz:** `WaitCondition` um `ocr_region` + `ocr_text`/`ocr_min` erweitern, ausgewertet
-  an derselben Stelle wie die Farbe (`_farb_schleife`). Vorwärmen beim Programmstart, nicht
+  an derselben Stelle wie die Farbe (`_color_loop`). Vorwärmen beim Programmstart, nicht
   im Worker. Fehlt OCR, wird gemeldet und übersprungen — wie heute ohne Pillow.
 
 ## Idle-Clans-spezifisch

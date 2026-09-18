@@ -172,7 +172,7 @@ function kategorieWahl(wert, beim_setzen, opts) {
   let gesperrt = false;
 
   const werte = () => kategorienWerte(kategorieZusatz().concat(aktuell));
-  const melde = (v) => {
+  const add_finding = (v) => {
     aktuell = v;
     // Ein uebernommener Name steht beim naechsten Aufbau in der Liste — also
     // ist das Tippen hier zu Ende. Bleibt das Feld leer, bleibt es offen:
@@ -196,7 +196,7 @@ function kategorieWahl(wert, beim_setzen, opts) {
     s.optionen();
     s.addEventListener("change", () => {
       if (s.value === KATEGORIE_NEU) return tausche(true, "");
-      melde(s.value);
+      add_finding(s.value);
     });
     return s;
   };
@@ -205,7 +205,7 @@ function kategorieWahl(wert, beim_setzen, opts) {
     const e = el("input", {value: vorgabe, autocomplete: "off",
       placeholder: opts.platzhalter || "Neue Kategorie",
       title: "Neuen Namen tippen — beim nächsten Item steht er in der Liste"});
-    e.addEventListener("change", () => melde(e.value.trim()));
+    e.addEventListener("change", () => add_finding(e.value.trim()));
     e.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") e.blur();
       // ESC fuehrt zurueck in die Liste, sonst waere das Tippen eine Falltuer:
@@ -280,14 +280,14 @@ function prioritaetsBelegung(kategorie) {
   }
   const hoechste = items.length ? Math.max(...items.map((i) => i.prioritaet)) : 0;
   if (hoechste + 1 > PRIO_MAX_ZEIGEN) {
-    const raenge = [...belegt.keys()].sort((a, b) => a - b);
+    const ranks = [...belegt.keys()].sort((a, b) => a - b);
     // Der naechste freie gehoert dazu — sonst nennt die Uebersicht keinen,
     // und genau den sucht man.
     let frei = 1;
     while (belegt.has(frei)) frei += 1;
-    if (!raenge.includes(frei)) raenge.push(frei);
-    raenge.sort((a, b) => a - b);
-    return raenge.map((p) => ({prio: p, namen: belegt.get(p) || []}));
+    if (!ranks.includes(frei)) ranks.push(frei);
+    ranks.sort((a, b) => a - b);
+    return ranks.map((p) => ({prio: p, namen: belegt.get(p) || []}));
   }
   const alle = [];
   for (let p = 1; p <= hoechste + 1; p += 1) alle.push({prio: p, namen: belegt.get(p) || []});
@@ -2590,11 +2590,11 @@ function scanListenBlock(tabs, filter, ziel) {
     // Zwei Listen, weil es zwei Orte sind: die Bosse DIESES Scans und die,
     // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
     // verlieren, an dem alles haengt.
-    for (const [key, text, zahl] of [["bosse", "Bosse", erkBosse().length],
+    for (const [key, text, number] of [["bosse", "Bosse", erkBosse().length],
                                      ["bibliothek", "Bibliothek",
                                       SC.global_bosses.length]]) {
       an(tabs, el("button", {class: "tab" + (offen === key ? " an" : ""),
-        onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + zahl));
+        onclick: () => { scanListe = key; zeichneScans(); }}, text + " " + number));
     }
     if (!ziel) return undefined;
     return offen === "bibliothek" ? erkListeBibliothek(ziel) : erkListeBosse(ziel);
@@ -5229,7 +5229,7 @@ function warteZeigen(name) {
   const [was, drucke] = WARTE_GRIFFE[name] || ["Stelle setzen", 1];
   const grenze = (S && S.warte_timeout) || (W && W.warte_timeout) || 60;
   let rest = Math.round(grenze);
-  const zahl = el("span", {class: "warte-rest"}, rest + " s");
+  const number = el("span", {class: "warte-rest"}, rest + " s");
   const kasten = el("div", {class: "warte-kasten"},
     el("div", {class: "warte-titel"}, was),
     el("div", {class: "warte-text"},
@@ -5237,7 +5237,7 @@ function warteZeigen(name) {
       el("b", {}, "ENTER"),
       drucke > 1 ? " — " + drucke + "× nacheinander, eine Ecke je Druck." : "."),
     el("div", {class: "warte-fuss"},
-      el("span", {}, "ESC bricht ab"), zahl));
+      el("span", {}, "ESC bricht ab"), number));
   warteWeg();
   document.body.appendChild(
     el("div", {class: "warte-huelle", id: "warte-huelle"}, kasten));
@@ -5246,7 +5246,7 @@ function warteZeigen(name) {
   // von selbst, und die Bruecke meldet „Nichts gedrueckt".
   warteZaehler = setInterval(() => {
     rest -= 1;
-    zahl.textContent = Math.max(0, rest) + " s";
+    number.textContent = Math.max(0, rest) + " s";
     if (rest <= 0) clearInterval(warteZaehler);
   }, 1000);
 }
@@ -5272,7 +5272,7 @@ function warteWeg() {
  * Frage bei sechsundfuenfzig Modell-Aufrufen hintereinander.
  */
 function arbeitZeigen(titel, text, abbruch) {
-  const zahl = el("span", {class: "warte-rest"}, "0 s");
+  const number = el("span", {class: "warte-rest"}, "0 s");
   const zeile = el("div", {class: "warte-text"}, text);
   let sek = 0;
   const kasten = el("div", {class: "warte-kasten"},
@@ -5284,12 +5284,12 @@ function arbeitZeigen(titel, text, abbruch) {
                             id: "arbeit-abbruch",
                             onclick: () => arbeitAbbrechen(abbruch)}, "Abbrechen") : null,
     el("div", {class: "warte-fuss"},
-      el("span", {}, abbruch ? "ESC bricht ab" : "läuft …"), zahl));
+      el("span", {}, abbruch ? "ESC bricht ab" : "läuft …"), number));
   warteWeg();
   document.body.appendChild(
     el("div", {class: "warte-huelle", id: "warte-huelle"}, kasten));
   arbeitZeile = zeile;
-  arbeitUhr = setInterval(() => { sek += 1; zahl.textContent = sek + " s"; }, 1000);
+  arbeitUhr = setInterval(() => { sek += 1; number.textContent = sek + " s"; }, 1000);
   if (abbruch) {
     arbeitEsc = (e) => { if (e.key === "Escape") arbeitAbbrechen(abbruch); };
     document.addEventListener("keydown", arbeitEsc);
@@ -6185,7 +6185,7 @@ function wzTastenTabelle(tasten = WZ_TASTEN) {
 
 /* Was ein erledigter Punkt geworden ist. Vier Ausgaenge, weil die Runde vier
  * kennt — und „bestaetigt" von „uebersprungen" zu unterscheiden ist der ganze
- * Grund fuer `nachklick_verlauf`: beide aendern nichts, aber nur einer heisst
+ * Grund fuer `reclick_history`: beide aendern nichts, aber nur einer heisst
  * „ich habe hingesehen". */
 const WZ_NK_ART = {
   passt: ["✓", "nk-passt", "bestätigt — bleibt, wo er ist"],
@@ -6674,14 +6674,14 @@ function cfgStelle(key, m, wert) {
     neu[i] = Math.round(Number(v) || 0);
     cfgSetzen(key, neu);
   };
-  const zahl = (i) => {
+  const number = (i) => {
     const f = el("input", {type: "number", step: "1", value: xy[i], disabled: !an});
     f.addEventListener("change", () => setzeXY(i, f.value));
     return f;
   };
   return el("div", {class: "spalte", style: "gap:6px"},
     schalter(an ? "parken" : "aus", an, (v) => cfgSetzen(key, v ? [xy[0], xy[1]] : false)),
-    an ? el("div", {class: "gitter2"}, zahl(0), zahl(1)) : null,
+    an ? el("div", {class: "gitter2"}, number(0), number(1)) : null,
     // Eine Stelle faehrt man an, statt sie zu tippen — derselbe Weg wie beim
     // Klick-Block. Messen kann das nur ein Prozess auf demselben Rechner, und
     // das ist dieser hier.

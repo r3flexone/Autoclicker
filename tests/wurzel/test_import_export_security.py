@@ -12,7 +12,7 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
-from autoclicker.import_export import export_bundle, import_bundle, kalibriere_bestand
+from autoclicker.import_export import export_bundle, import_bundle, calibrate_inventory
 from autoclicker.models import (
     AutoClickerState, ClickPoint, ItemScanConfig, ItemSlot, Sequence,
 )
@@ -167,12 +167,12 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(Path("sequences/defekt").exists())
 
     def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
-        from autoclicker.import_export import _sicherer_bundle_pfad
+        from autoclicker.import_export import _safe_bundle_path
         for name in ("sequences/farm/..\\..\\fremd.txt",
                      "sequences/farm/C:\\fremd.txt", "sequences/farm/bild.png:strom",
                      "sequences/farm/../../fremd.txt"):
             with self.subTest(name=name):
-                self.assertIsNone(_sicherer_bundle_pfad(name))
+                self.assertIsNone(_safe_bundle_path(name))
 
     def test_boss_bibliothek_ueberlebt_einen_transformierten_import(self):
         manifest = _manifest()
@@ -281,7 +281,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         transform = {"scale_x": 1.0, "scale_y": 1.0,
                      "offset_x": 50, "offset_y": -10}
 
-        counts = kalibriere_bestand(
+        counts = calibrate_inventory(
             state, transform, mit_scans=True, mit_sequenzen=False,
             mit_slots=True)
 

@@ -25,7 +25,7 @@ from ..imaging import (
 )
 from ..persistence import (
     save_icon_scan, list_available_icon_scans, load_icon_scan_file,
-    punkt_fuer_stelle, active_templates_dir,
+    point_for_position, active_templates_dir,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
 
@@ -107,7 +107,7 @@ def _select_icon_action(state: AutoClickerState,
             # dieser Klick eine Koordinate, die weder eine Reparatur im Punkte-Menue
             # noch eine Kalibrierung ueber die Punkte je erreicht.
             with state.lock:
-                pid = punkt_fuer_stelle(state, x, y, None, "Icon-Scan Klick",
+                pid = point_for_position(state, x, y, None, "Icon-Scan Klick",
                                         source="Icon-Scan-Editor")
             result["action_point_id"] = pid
             print(f"  → Klick-Position: ({x}, {y})  [Punkt #{pid}]")

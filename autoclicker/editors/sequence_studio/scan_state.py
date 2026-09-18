@@ -8,7 +8,7 @@ from typing import Optional
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
 from .model import hexfarbe
 from .scan_contract import (
-    ARTEN,
+    SCAN_KINDS,
     ART_SCAN,
     ART_SLOT,
     MIN_SLOT,
@@ -106,7 +106,7 @@ class ScanStateMixin:
         self.scans = self._scans_laden()
         self._erkennung_laden()
         # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
-        # Sequenzen (`zuletzt_bearbeitet()` in `sequence_studio.py`) und aus
+        # Sequenzen (`last_edited()` in `sequence_studio.py`) und aus
         # demselben Grund: ein echtes „zuletzt geöffnet" müsste jemand
         # mitschreiben, und das Dateisystem weiss es schon.
         #
@@ -138,7 +138,7 @@ class ScanStateMixin:
         """
         self._scan_laden()
         art = str((daten or {}).get("art") or self.scan_aufnahme_art or "item")
-        if art not in ARTEN:
+        if art not in SCAN_KINDS:
             art = "item"
         self.scan_aufnahme_art = art
         if self._scan_hat_konfiguration(art):
@@ -490,7 +490,7 @@ class ScanStateMixin:
             # mehreren Sequenzen zu fehleranfaellig.
             "sequenz": self.board.name,
             "aufnahme_bereit": {
-                art: self._scan_hat_konfiguration(art) for art in ARTEN
+                art: self._scan_hat_konfiguration(art) for art in SCAN_KINDS
             },
             "modus": self.scan_modus,
             "werkzeug_fixiert": self.scan_werkzeug_fixiert,

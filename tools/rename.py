@@ -43,7 +43,10 @@ from pathlib import Path
 
 ROOTS = ["autoclicker", "market_analysis", "tools", "tests", "main.py",
          "README.md", "CLAUDE.md", "IDEAS.md", ".github"]
-SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules", "output", "symbol"}
+# `rename_tables` ist das Protokoll der Durchgaenge: die Tabelle einer Phase traegt
+# die ALTEN Namen links, und der Durchgang selbst wuerde sie umschreiben.
+SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules", "output", "symbol",
+             "rename_tables"}
 TEXT_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".yml", ".yaml", ".txt"}
 
 _JS_IDENT = re.compile(r"[A-Za-z_$][\w$]*")

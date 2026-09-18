@@ -94,9 +94,9 @@ def _ersatz(name: str, inneres: str, unbekannt: dict[str, int]) -> str:
     """Der JSON-Text, der fuer `Name(inneres)` an dieselbe Stelle kommt."""
     inneres = inneres.strip()
     if name in ZAHL_HUELLEN:
-        zahl = _als_zahl(inneres)
-        if zahl is not None:
-            return zahl
+        number = _als_zahl(inneres)
+        if number is not None:
+            return number
     elif name in TEXT_HUELLEN:
         if _SKALAR.match(inneres) and inneres.startswith('"'):
             return inneres

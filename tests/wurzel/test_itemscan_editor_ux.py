@@ -480,7 +480,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def test_window_source_moves_editor_slots_with_the_game(self):
         old_rect = (0, 0, 120, 80)
         new_rect = (200, 100, 320, 180)
-        with patch("autoclicker.winapi.liste_fenster", return_value=[
+        with patch("autoclicker.winapi.list_windows", return_value=[
                 ("Mein Spiel", old_rect, 77)]):
             state = self.bridge.scan_bereich_setzen({
                 "bereich": list(old_rect), "fenster": 77,

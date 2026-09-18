@@ -206,12 +206,12 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
 # und `utils` schon beim blossen Import nach, und die Vertragssuite importiert
 # es einzeln.
 
-# Der Grund, den `suggest_item_name_grund()` fuer eine Zeitueberschreitung
+# Der Grund, den `suggest_item_name_with_reason()` fuer eine Zeitueberschreitung
 # meldet. Als Konstante, damit der Aufrufer ihn nicht am Text erkennen muss.
 TIMEOUT = "timeout"
 
 
-def ist_timeout(antwort: str) -> bool:
+def is_timeout(antwort: str) -> bool:
     """War dieser Fehlschlag eine Zeitueberschreitung?
 
     **Der Unterschied entscheidet, ob sich ein zweiter Versuch lohnt.** Ein
@@ -225,7 +225,7 @@ def ist_timeout(antwort: str) -> bool:
     """
     return str(antwort or "").startswith("Timeout")
 
-_DEBUG_ROH_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
+_DEBUG_RAW_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
 
 
 def _debug_an() -> bool:
@@ -237,7 +237,7 @@ def _debug_an() -> bool:
         return False
 
 
-def _debug_ausgabe(zeilen: list) -> None:
+def _debug_print(zeilen: list) -> None:
     """Ein Block, EIN Schreibvorgang — dieselbe Regel wie bei `status_line()`.
 
     Je Zeile einzeln geschrieben stand vor jeder ein `clear_line()`, und das
@@ -255,7 +255,7 @@ def _debug_ausgabe(zeilen: list) -> None:
     print("\n".join(f"{marke} {z}" for z in zeilen), flush=True)
 
 
-def _debug_anfrage(provider: str, model: str, endpoint: str, prompt: str,
+def _debug_request(provider: str, model: str, endpoint: str, prompt: str,
                    system_prompt: Optional[str], img) -> None:
     """Was rausgeht: Modell, Endpunkt, Bildmass und beide Prompts.
 
@@ -270,10 +270,10 @@ def _debug_anfrage(provider: str, model: str, endpoint: str, prompt: str,
     if system_prompt:
         zeilen.append(f"   System: {system_prompt!r}")
     zeilen.append(f"   Prompt: {prompt!r}")
-    _debug_ausgabe(zeilen)
+    _debug_print(zeilen)
 
 
-def _debug_antwort(result: dict, text: str, duration_ms: float) -> None:
+def _debug_response(result: dict, text: str, duration_ms: float) -> None:
     """Was zurueckkam — roh und daneben das, was der Code daraus liest.
 
     Die rohe Antwort steht MIT dem Denk-Feld da (`reasoning_content`), das
@@ -283,9 +283,9 @@ def _debug_antwort(result: dict, text: str, duration_ms: float) -> None:
     """
     from .utils import warn
     roh = json.dumps(result, ensure_ascii=False, indent=2)
-    rest = max(0, len(roh) - _DEBUG_ROH_MAX)
+    rest = max(0, len(roh) - _DEBUG_RAW_MAX)
     zeilen = [f"<- {duration_ms:.0f} ms, roh:"]
-    zeilen += ["   " + z for z in roh[:_DEBUG_ROH_MAX].splitlines()]
+    zeilen += ["   " + z for z in roh[:_DEBUG_RAW_MAX].splitlines()]
     if rest:
         zeilen.append(f"   … ({rest} weitere Zeichen abgeschnitten)")
     if text.strip():
@@ -294,14 +294,14 @@ def _debug_antwort(result: dict, text: str, duration_ms: float) -> None:
         zeilen.append("   gelesen: (leer) " + warn(
             "Modell ohne Bild-Faehigkeit, falscher Modellname, leeres Bild "
             "oder alle Tokens im Reasoning verbraucht"))
-    _debug_ausgabe(zeilen)
+    _debug_print(zeilen)
 
 
-def _debug_fehler(text: str, duration_ms: float) -> None:
+def _debug_error(text: str, duration_ms: float) -> None:
     """Auch ein Fehlschlag wird mitgeschrieben — sonst fehlt in der Mitschrift
     ausgerechnet der Aufruf, der nicht funktioniert hat."""
     from .utils import err
-    _debug_ausgabe([err(f"<- nach {duration_ms:.0f} ms: {text}")])
+    _debug_print([err(f"<- nach {duration_ms:.0f} ms: {text}")])
 
 
 def analyze_image(
@@ -364,7 +364,7 @@ def analyze_image(
 
     mitschrift = _debug_an()
     if mitschrift:
-        _debug_anfrage(provider, model, endpoint, prompt, system_prompt, img)
+        _debug_request(provider, model, endpoint, prompt, system_prompt, img)
 
     # API-Anfrage
     start_time = time.time()
@@ -384,14 +384,14 @@ def analyze_image(
             # Antwort extrahieren
             text = _extract_response_text(result, provider)
             if mitschrift:
-                _debug_antwort(result, text, duration_ms)
+                _debug_response(result, text, duration_ms)
             return True, text.strip(), duration_ms
 
     except socket.timeout:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
         if mitschrift:
-            _debug_fehler(f"Timeout nach {timeout}s", duration_ms)
+            _debug_error(f"Timeout nach {timeout}s", duration_ms)
         return False, f"Timeout nach {timeout}s", duration_ms
 
     except urllib.error.URLError as e:
@@ -399,21 +399,21 @@ def analyze_image(
         reason = str(getattr(e, 'reason', e))
         logger.error(f"LLM API-Fehler ({provider}): {reason}")
         if mitschrift:
-            _debug_fehler(f"Verbindungsfehler: {reason}", duration_ms)
+            _debug_error(f"Verbindungsfehler: {reason}", duration_ms)
         return False, f"Verbindungsfehler: {reason}", duration_ms
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
         if mitschrift:
-            _debug_fehler(f"Antwort-Fehler: {e}", duration_ms)
+            _debug_error(f"Antwort-Fehler: {e}", duration_ms)
         return False, f"Antwort-Fehler: {e}", duration_ms
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
         if mitschrift:
-            _debug_fehler(f"Fehler: {e}", duration_ms)
+            _debug_error(f"Fehler: {e}", duration_ms)
         return False, f"Fehler: {e}", duration_ms
 
 
@@ -576,7 +576,7 @@ def _closest_candidate(name: str, candidates: list[str]) -> Optional[str]:
     return treffer[0] if treffer else None
 
 
-def _namens_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
+def _name_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
     """Wie viele Antwort-Tokens die Benennung bekommt.
 
     Drei Regeln, und die mittlere ist die, an der man sonst stolpert:
@@ -609,11 +609,11 @@ def suggest_item_name(
     max_tokens: int = 0,
 ) -> Optional[str]:
     """Nur der Name — fuer Aufrufer, die den Grund nicht brauchen."""
-    return suggest_item_name_grund(img, provider, endpoint, model, timeout,
+    return suggest_item_name_with_reason(img, provider, endpoint, model, timeout,
                                    candidates, reasoning, max_tokens)[0]
 
 
-def suggest_item_name_grund(
+def suggest_item_name_with_reason(
     img: 'Image.Image',
     provider: str = PROVIDER_LMSTUDIO,
     endpoint: str = None,
@@ -659,10 +659,10 @@ def suggest_item_name_grund(
         timeout=timeout,
         system_prompt=system_prompt,
         reasoning=reasoning,
-        max_tokens=_namens_tokens(max_tokens, reasoning, bool(candidates)),
+        max_tokens=_name_tokens(max_tokens, reasoning, bool(candidates)),
     )
     if not success:
-        grund = TIMEOUT if ist_timeout(response) else str(response)
+        grund = TIMEOUT if is_timeout(response) else str(response)
         return None, grund
     name = clean_boss_name(_strip_reasoning_tags(response))
     if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
@@ -675,7 +675,7 @@ def suggest_item_name_grund(
     return name[:40].strip(), ""
 
 
-def _modell_bekannt(modell: str, modelle: list) -> bool:
+def _model_known(modell: str, modelle: list) -> bool:
     """Kennt der Server dieses Modell?
 
     Ollama haengt an seine Namen ein Tag (`gemma3n:e4b` gegen `gemma3n`), und
@@ -728,7 +728,7 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
 
         if not modelle:
             return True, "Verbunden! Kein Modell geladen."
-        if not _modell_bekannt(model, modelle):
+        if not _model_known(model, modelle):
             return False, (f"Verbunden — aber '{model}' ist nicht geladen. "
                            f"Verfügbar: {', '.join(modelle[:5])}"
                            + (" …" if len(modelle) > 5 else ""))

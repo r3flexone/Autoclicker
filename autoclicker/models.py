@@ -230,9 +230,9 @@ class SequenceStep:
     def __str__(self) -> str:
         # Der Haltepunkt steht VOR der Beschreibung: in einer Liste von fuenfzig
         # Schritten ist "wo haelt es an" die Frage, die man beim Ueberfliegen hat.
-        return ("[HALT] " if self.breakpoint else "") + self._beschreibung()
+        return ("[HALT] " if self.breakpoint else "") + self._description()
 
-    def _beschreibung(self) -> str:
+    def _description(self) -> str:
         else_str = self._verify_str() + self._else_str()
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
@@ -457,7 +457,7 @@ class ItemProfile:
     category: Optional[str] = None  # Wenn None, ist jedes Item seine eigene Kategorie
     priority: int = 1  # 1 = beste, höher = schlechter (innerhalb der Kategorie)
     # Referenz auf den Punkt, der nach dem Klick bestaetigt (Popup o.ae.);
-    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_klick_referenzen().
+    # `confirm_point` darunter ist der abgeleitete Wert aus resolve_click_references().
     confirm_point_id: Optional[int] = None
     confirm_point: Optional[ClickPoint] = None  # abgeleitet: Punkt für die Bestätigung
     confirm_delay: float = 0.5  # Wartezeit vor Bestätigungs-Klick
@@ -793,11 +793,11 @@ class AutoClickerState:
     # Wurde der Lauf aus dem Studio gestartet? Dann bekommt ein Haltepunkt seine
     # Rueckfrage als Tafel im Live-Run statt in der Konsole — dieselbe Frage wie
     # `step_via_studio`, nur fuer einen Lauf, der sonst gar nicht manuell ist.
-    lauf_aus_studio: bool = False
+    run_from_studio: bool = False
     # True, solange `step_gate()` auf eine Entscheidung wartet (manueller Modus
     # oder Haltepunkt). Daran erkennen CTRL+ALT+G und der Briefkasten, dass ein
     # "weiter" gerade das Gate meint und nicht die Pause.
-    gate_wartet: bool = False
+    gate_waiting: bool = False
 
     # Gespeicherte Sequenzen
     sequences: dict[str, Sequence] = field(default_factory=dict)
@@ -904,41 +904,41 @@ class AutoClickerState:
     # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
     # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie
     # wird nie gespeichert. Was sie ERGIBT, steht danach in sequence.json.
-    nachklick_aktiv: bool = False
+    reclick_active: bool = False
     # Pausiert: Klicks gehen durch, ohne einen Punkt zu setzen. Dafür da, dass
     # man zwischendurch im Spiel navigieren kann (Dialog wegklicken, scrollen),
     # ohne dass die Runde einen Punkt verbraucht.
-    nachklick_pausiert: bool = False
+    reclick_paused: bool = False
     # Die Punkt-IDs in der Reihenfolge, in der die Sequenz sie klickt.
-    nachklick_punkte: list = field(default_factory=list)
-    nachklick_index: int = 0
+    reclick_points: list = field(default_factory=list)
+    reclick_index: int = 0
     # Was die Runde ERGEBEN hat: (Punkt-ID, alt, neu, Farbe) je gesetztem Punkt.
     # Das ist kein Protokoll, sondern das Ergebnis selbst — die Punkte werden
     # erst beim Übernehmen daraus geschrieben. Bis dahin ist ein Abbruch
     # folgenlos, und „nichts passiert" bleibt von „alles gleich geblieben"
     # unterscheidbar.
-    nachklick_gesetzt: list = field(default_factory=list)
+    reclick_set: list = field(default_factory=list)
     # Was die Runde GETAN hat: (Punkt-ID, Art) je erledigtem Punkt, in der
     # Reihenfolge des Durchgangs. Art ist "passt", "gesetzt", "uebersprungen"
     # oder "fehlt". Ableiten liesse sich das NICHT: ein bestaetigter Punkt
-    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `nachklick_gesetzt`,
+    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `reclick_set`,
     # und ohne diese Liste saehe er im Fenster genauso aus wie ein
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
-    # `nachklick_gesetzt`.
-    nachklick_verlauf: list = field(default_factory=list)
+    # `reclick_set`.
+    reclick_history: list = field(default_factory=list)
     # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE,
     # Rad). Steht im Banner und im Studio — eine Runde, die schweigt, was sie
     # auslaesst, sieht vollstaendiger aus als sie ist.
-    nachklick_sonstige: int = 0
+    reclick_other: int = 0
     # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus
     # `window_focus_title`). **Ohne den frisst die Runde jeden Klick** — auch den
     # auf das Studio-Fenster, die Konsole oder ein Schliessen-Kreuz, und schreibt
     # dessen Stelle in den Punkt. Leer = kein Filter (Fenster nicht gefunden).
-    nachklick_ziel: str = ""
+    reclick_target: str = ""
     # Woher die Reihenfolge kam — nur für die Anzeige. Die Runde arbeitet auf
     # Punkten; welche Sequenz sie sortiert hat, ändert daran nichts (und die
     # geladene Sequenz wechselt dadurch ausdrücklich NICHT).
-    nachklick_name: str = ""
+    reclick_name: str = ""
     # Die Runde darf aus dem Studio eine andere als die aktive Sequenz erhalten.
     # Ihr eigener Punkt-Pool bleibt deshalb als expliziter Laufzeitkontext hier.
-    nachklick_sequence: Optional[Sequence] = None
+    reclick_sequence: Optional[Sequence] = None

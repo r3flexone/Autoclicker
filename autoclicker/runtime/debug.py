@@ -43,13 +43,13 @@ _KEYS_STOP = ("q", "escape")
 _KEYS_STEP = ("m",)
 
 # Die fuenf Entscheidungen des Gates — dieselben Woerter, die der Briefkasten
-# aus dem Studio bringt (`befehl_manuell_aktion`). Konsole und Studio sind zwei
+# aus dem Studio bringt (`command_manual_action`). Konsole und Studio sind zwei
 # Wege zu EINER Entscheidung, nicht zwei Gates.
-GATE_BEFEHLE = ("run", "skip", "continue", "step", "stop")
+GATE_COMMANDS = ("run", "skip", "continue", "step", "stop")
 
 # Tasten im Punkte-Durchgang
-_KEYS_VOR = ("w", "d", "enter", " ", "right", "down")
-_KEYS_ZURUECK = ("a", "left", "up")
+_KEYS_NEXT = ("w", "d", "enter", " ", "right", "down")
+_KEYS_BACK = ("a", "left", "up")
 
 
 def is_log_debug(state: AutoClickerState) -> bool:
@@ -210,7 +210,7 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     Modus hält vor jedem Block; `step.breakpoint` hält vor diesem — und danach
     läuft die Sequenz normal weiter, ausser man wählt „ab hier schrittweise".
     Zwei Wege zu einer Entscheidung (Konsole oder Studio-Tafel), fünf Befehle
-    (`GATE_BEFEHLE`), und **CTRL+ALT+G gibt jedes Gate frei**: „Fortsetzen"
+    (`GATE_COMMANDS`), und **CTRL+ALT+G gibt jedes Gate frei**: „Fortsetzen"
     ist die Taste, nach der man greift, wenn etwas steht.
     """
     if step.unresolved:
@@ -257,16 +257,16 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     # exakt wie bisher — nur dass er zwischen zwei Tastenabfragen ebenfalls
     # auf das Event sieht, denn CTRL+ALT+G kommt ueber genau diesen Weg.
     with state.lock:
-        studio = bool(state.step_via_studio) or (haltepunkt and bool(state.lauf_aus_studio))
+        studio = bool(state.step_via_studio) or (haltepunkt and bool(state.run_from_studio))
         state.step_command = ""
         state.step_command_event.clear()
-        state.gate_wartet = True
+        state.gate_waiting = True
     # Die Tafel steht in BEIDEN Faellen im Laufstatus: auch bei einem Lauf aus
     # der Konsole soll das Studio sehen, warum es steht — und seine Knoepfe
     # kommen ueber denselben Briefkasten an, den die Konsolenschleife ebenfalls
     # abfragt. Nur die Tastatur liest ausschliesslich der Konsolenweg.
     from . import status
-    status.schreibe(state, {"manuell": {
+    status.write_status(state, {"manuell": {
         "aktiv": True,
         "haltepunkt": haltepunkt,
         "phase": phase,
@@ -276,15 +276,15 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         "aktion": describe_step(step),
     }}, sofort=True)
     try:
-        befehl = _gate_studio(state) if studio else _gate_konsole(state)
+        befehl = _gate_studio(state) if studio else _gate_console(state)
     finally:
         with state.lock:
-            state.gate_wartet = False
-        status.schreibe(state, {"manuell": None}, sofort=True)
-    return _gate_entscheiden(state, befehl, studio)
+            state.gate_waiting = False
+        status.write_status(state, {"manuell": None}, sofort=True)
+    return _gate_decide(state, befehl, studio)
 
 
-def _gate_befehl_abholen(state: AutoClickerState) -> str:
+def _gate_take_command(state: AutoClickerState) -> str:
     """Den Befehl aus dem Briefkasten bzw. Hotkey nehmen und das Event leeren."""
     with state.lock:
         befehl = state.step_command
@@ -298,21 +298,21 @@ def _gate_studio(state: AutoClickerState) -> str:
     from . import status
     while not state.stop_event.is_set():
         if not state.step_command_event.wait(0.2):
-            status.lebenszeichen(state)
+            status.heartbeat(state)
             continue
-        befehl = _gate_befehl_abholen(state)
-        if befehl in GATE_BEFEHLE:
+        befehl = _gate_take_command(state)
+        if befehl in GATE_COMMANDS:
             return befehl
     return "stop"
 
 
-def _gate_konsole(state: AutoClickerState) -> str:
+def _gate_console(state: AutoClickerState) -> str:
     """Wartet auf eine Taste in der Konsole — oder auf CTRL+ALT+G bzw. das Studio."""
     from . import status
     while not state.stop_event.is_set():
         taste = read_command(timeout=0.2)
         if taste == "":
-            status.lebenszeichen(state)
+            status.heartbeat(state)
         if taste in _KEYS_RUN:
             return "run"
         if taste in _KEYS_SKIP:
@@ -324,13 +324,13 @@ def _gate_konsole(state: AutoClickerState) -> str:
         if taste in _KEYS_STOP:
             return "stop"
         if state.step_command_event.is_set():
-            befehl = _gate_befehl_abholen(state)
-            if befehl in GATE_BEFEHLE:
+            befehl = _gate_take_command(state)
+            if befehl in GATE_COMMANDS:
                 return befehl
     return "stop"
 
 
-def _gate_entscheiden(state: AutoClickerState, befehl: str, studio: bool) -> str:
+def _gate_decide(state: AutoClickerState, befehl: str, studio: bool) -> str:
     """Einen der fuenf Befehle in GATE_RUN / GATE_SKIP / GATE_STOP uebersetzen.
 
     `continue` und `step` sind die beiden, die den MODUS aendern: das eine
@@ -403,7 +403,7 @@ def walk_points(state: AutoClickerState) -> None:
         taste = read_command()
         if taste in _KEYS_STOP:
             break
-        if taste in _KEYS_ZURUECK:
+        if taste in _KEYS_BACK:
             i = max(0, i - 1)
             continue
 
@@ -443,7 +443,7 @@ def walk_points(state: AutoClickerState) -> None:
                       f"  ->  {color_swatch(neue_farbe)}", "green"))
             continue
 
-        if taste in _KEYS_VOR:
+        if taste in _KEYS_NEXT:
             i += 1
             continue
         # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst

@@ -249,8 +249,8 @@ class ScanCaptureMixin:
         cfg = self.scans.get(self.scan_offen)
         if fenster_id:
             try:
-                from ...winapi import liste_fenster
-                fenster = liste_fenster()
+                from ...winapi import list_windows
+                fenster = list_windows()
             except ImportError:
                 fenster = []
             gewaehlt = next((e for e in fenster if int(e[2]) == fenster_id), None)
@@ -308,11 +308,11 @@ class ScanCaptureMixin:
         `frage()` und nicht `ruf()`: es ändert nichts, es beantwortet nur etwas.
         """
         try:
-            from ...winapi import liste_fenster
+            from ...winapi import list_windows
         except ImportError:
             return []
         return [{"titel": titel, "bereich": list(rechteck), "id": kennung}
-                for titel, rechteck, kennung in liste_fenster()]
+                for titel, rechteck, kennung in list_windows()]
 
     def _klick_bereich(self, x: int, y: int) -> dict:
         """Zwei Ecken schränken das Bild ein — zugeschnitten, nicht neu geholt.

@@ -46,7 +46,7 @@ ART_BIBLIOTHEK = "bibliothek"
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
 # Oberflächenzustand (`scanArt` in app.js) — die Brücke bekommt bei jedem Befehl
 # gesagt, worauf er wirkt, statt sich eine vierte Wahrheit zu merken.
-ARTEN = ("item", "boss", "icon")
+SCAN_KINDS = ("item", "boss", "icon")
 
 MIN_SLOT = 8
 TREFFER_MIN = 14

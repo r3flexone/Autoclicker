@@ -22,7 +22,7 @@ from autoclicker.persistence import globals as bestand
 from autoclicker.persistence.sequences import active_templates_dir
 from autoclicker.editors.item_editor import editor, commands
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
-from autoclicker.handlers import _sequenz_daten_laden
+from autoclicker.handlers import _load_sequence_data
 
 
 class EditorPersistenzTest(unittest.TestCase):
@@ -48,7 +48,7 @@ class EditorPersistenzTest(unittest.TestCase):
         self.state.icon_scans = {"Icon": IconScanConfig("Icon", owner_sequence="Alt")}
         self.state.global_bosses = [BossProfile("Drache")]
         self.state.active_sequence = Sequence(name="Neu")
-        _sequenz_daten_laden(self.state)
+        _load_sequence_data(self.state)
         self.assertEqual(self.state.item_scans, {})
         self.assertEqual(self.state.icon_scans, {})
         self.assertEqual(self.state.global_bosses, [])
@@ -65,7 +65,7 @@ class EditorPersistenzTest(unittest.TestCase):
         neu = ItemScanConfig("Neu", items=[ItemProfile("NeuItem")], owner_sequence="Neu")
         item_scans.save_item_scan(neu)
         self.state.active_sequence = Sequence(name="Neu")
-        _sequenz_daten_laden(self.state)
+        _load_sequence_data(self.state)
         self.assertEqual(list(self.state.item_scans), ["Neu"])
         self.assertEqual(list(self.state.global_items), ["NeuItem"])
         self.assertIs(self.state.global_items["NeuItem"], self.state.item_scans["Neu"].items[0])

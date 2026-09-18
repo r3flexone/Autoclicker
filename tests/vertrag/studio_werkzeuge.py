@@ -252,18 +252,18 @@ finally:
 section("Studio: Sequenz-Aufnahme geht an den Hauptprozess")
 try:
     _sand, _b = _sandkasten()
-    _bf.BEFEHL_DATEI = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("befehl.json")
     check("der Studio-Knopf kann eine Aufnahme starten",
           _b.aufnahme_starten({"name": "Aufnahme UI", "zyklen": 3,
                                "beschreibung": "sichtbar"})["ok"])
-    _auftrag = _bf.hole()
+    _auftrag = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
           _auftrag is not None and _auftrag["befehl"] == "aufnahme")
     check("alle Angaben stehen vor dem Spielen fest",
           _auftrag["argumente"] == {"name": "aufnahme_ui", "zyklen": 3,
                                      "beschreibung": "sichtbar"})
     check("auch Stoppen geht sichtbar im Studio", _b.aufnahme_stoppen()["ok"])
-    _stopp = _bf.hole()
+    _stopp = _bf.fetch_command()
     check("und sendet den eigenen Stopp-Befehl",
           _stopp is not None and _stopp["befehl"] == "aufnahme_stop")
     _html = (_web / "index.html").read_text(encoding="utf-8")
@@ -325,17 +325,17 @@ try:
     _b.phase_skalieren({"phase": _loop_index, "faktor": "0,5"})
     check("die Wartezeit wird mit deutschem Komma skaliert",
           _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
-    _bf.BEFEHL_DATEI = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("befehl.json")
     _b.waehlen({"phase": _loop_index, "zeile": 0})
     _erg = _b.block_testen()
-    _auftrag = _bf.hole()
+    _auftrag = _bf.fetch_command()
     check("der Block-Test wird ausdrücklich angekündigt", "echter" in _erg["status"]["text"])
     check("getestet wird nur die gespeicherte Blockposition",
           _auftrag and _auftrag["befehl"] == "block_test"
           and _auftrag["argumente"]["phase"] == "loop"
           and _auftrag["argumente"]["block"] == 0)
     _erg = _b.lauf_befehl({"befehl": "skip_step"})
-    _auftrag = _bf.hole()
+    _auftrag = _bf.fetch_command()
     check("der echte Block-Skip wird ohne KeyError abgelegt und bestätigt",
           _auftrag and _auftrag["befehl"] == "skip_step"
           and "vollständig" in _erg["status"]["text"])
@@ -344,7 +344,7 @@ finally:
 
 
 section("Studio-Live-Run: alle Laufentscheidungen sind verdrahtet")
-from autoclicker.handlers import BEFEHLE as _BEFEHLE_NEU
+from autoclicker.handlers import COMMANDS as _BEFEHLE_NEU
 check("Studio und Hauptprozess kennen dieselben Befehle",
       sorted(_SB.ALLE_BEFEHLE) == sorted(_BEFEHLE_NEU))
 check("Warte- und Block-Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
@@ -509,9 +509,9 @@ finally:
 section("Studio-Werkzeuge: die Klick-Runde geht an den Hauptprozess")
 try:
     _sand, _b = _sandkasten()
-    _bf.BEFEHL_DATEI = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("befehl.json")
     check("gestartet wird ueber den Briefkasten", _b.nachklick_starten()["ok"])
-    _auftrag = _bf.hole()
+    _auftrag = _bf.fetch_command()
     check("und der Befehl heisst 'nachklick'",
           _auftrag is not None and _auftrag["befehl"] == "nachklick")
     # DIE Sache, die hier schiefgehen kann: der Hauptprozess hat womoeglich eine
@@ -522,14 +522,14 @@ try:
           _P(_auftrag["argumente"].get("datei", "")).exists())
     check("und der Knopf sagt, welche er meint",
           "Farm" in _b.nachklick_starten()["meldung"])
-    _bf.hole()
+    _bf.fetch_command()
 
     # Ungespeichertes zuerst: die Runde klickt die Sequenz von PLATTE nach.
     _b._dirty = True
     _erg = _b.nachklick_starten()
     check("mit offenen Aenderungen wird nicht gestartet", _erg["ok"] is False)
     check("und der Grund steht dabei", "speichern" in _erg["meldung"].lower())
-    check("es liegt auch kein Befehl im Briefkasten", _bf.hole() is None)
+    check("es liegt auch kein Befehl im Briefkasten", _bf.fetch_command() is None)
 
     _b._dirty = False
     _b._laeuft = lambda: True
@@ -552,7 +552,7 @@ try:
     _st2.active_sequence = _fremd
     save_data(_st2)
 
-    from autoclicker.handlers import befehl_nachklick as _bn
+    from autoclicker.handlers import command_reclick as _bn
     import autoclicker.editors.nachklick as _nk
     _gestartet = {}
 
@@ -648,14 +648,14 @@ finally:
 section("Studio-Werkzeuge: die Klick-Runde laesst sich beenden")
 try:
     _sand, _b = _sandkasten()
-    _bf.BEFEHL_DATEI = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("befehl.json")
     check("beenden geht ueber den Briefkasten", _b.nachklick_beenden()["ok"])
-    _auftrag = _bf.hole()
+    _auftrag = _bf.fetch_command()
     check("und heisst 'nachklick_stop'",
           _auftrag is not None and _auftrag["befehl"] == "nachklick_stop")
 
     # Der Hauptprozess sagt, was er vorgefunden hat - hier wird nicht geraten.
-    from autoclicker.handlers import befehl_nachklick_stop as _bns
+    from autoclicker.handlers import command_reclick_stop as _bns
     import autoclicker.editors.nachklick as _nk
     _st3 = _ST()
     _gestoppt = {}
@@ -664,7 +664,7 @@ try:
     try:
         _bns(_st3, {})
         check("ohne laufende Runde passiert nichts", not _gestoppt)
-        _st3.nachklick_aktiv = True
+        _st3.reclick_active = True
         _bns(_st3, {})
         check("mit laufender Runde wird gestoppt", "grund" in _gestoppt)
     finally:
@@ -694,7 +694,7 @@ _quellen_wt = {n: (_studio_wt / f"{n}.py").read_text(encoding="utf-8")
 _appjs_wt = (_studio_wt / "web" / "app.js").read_text(encoding="utf-8")
 
 # Welche oeffentlichen Methoden warten? Eine Methode wartet, wenn ihr Rumpf
-# `_stelle_abwarten()` oder `warte_auf_taste(` enthaelt.
+# `_stelle_abwarten()` oder `wait_for_global_key(` enthaelt.
 _wartend = set()
 for _text in _quellen_wt.values():
     _teile = _re_wt.split(r"\n    def ", _text)
@@ -702,7 +702,7 @@ for _text in _quellen_wt.values():
         _name = _teil.split("(", 1)[0]
         if _name.startswith("_"):
             continue
-        if "_stelle_abwarten()" in _teil or "warte_auf_taste(" in _teil:
+        if "_stelle_abwarten()" in _teil or "wait_for_global_key(" in _teil:
             _wartend.add(_name)
 
 check("der Test findet ueberhaupt wartende Methoden", len(_wartend) >= 5)

@@ -134,9 +134,9 @@ def sequence_worker(state: AutoClickerState) -> None:
         if state.session_log is not None:
             print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
             log_event(state, "session_start", detail=sequence.name)
-        status.schreibe(state, {"aktiv": True, "sequenz": sequence.name,
+        status.write_status(state, {"aktiv": True, "sequenz": sequence.name,
                                 "zyklen": sequence.total_cycles,
-                                "phasen": _phasen_uebersicht(sequence),
+                                "phasen": _phase_overview(sequence),
                                 "start": state.start_time}, sofort=True)
         _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
@@ -149,7 +149,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     finally:
         # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
         # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
-        grund = fehler or _ende_grund(state)
+        grund = fehler or _end_reason(state)
         schedule_shutdown.set()
         state.stop_event.set()
         try:
@@ -157,7 +157,7 @@ def sequence_worker(state: AutoClickerState) -> None:
             if llm_thread is not None and llm_thread.is_alive():
                 llm_thread.join(timeout=state.config.llm_timeout + 5)
             if sequence is not None:
-                status.beende(state, grund, cycle_count,
+                status.finish_run(state, grund, cycle_count,
                               time.time() - state.start_time if state.start_time else 0)
         finally:
             # Der gespeicherte Log-Verweis wird selbst bei einem Close-Fehler
@@ -182,7 +182,7 @@ def sequence_worker(state: AutoClickerState) -> None:
                                time.time() - state.start_time if state.start_time else 0)
 
 
-def _ende_grund(state: AutoClickerState) -> str:
+def _end_reason(state: AutoClickerState) -> str:
     """Warum der Lauf zu Ende ist — in einem Satzteil.
 
     Steht in der Zusammenfassung der Live-Ansicht: hat er die Zyklen geschafft
@@ -273,9 +273,9 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
 
     # Klick-Ziele der Scans frisch auflösen (Bestätigungsklick, Boss-/Icon-Aktion):
     # ein Editor kann zwischendurch einen Punkt verschoben haben, und der Scan soll
-    # dem folgen. Ausserhalb des Locks, weil resolve_klick_referenzen selbst lockt.
-    from ..persistence import resolve_klick_referenzen
-    scan_meldungen = resolve_klick_referenzen(state, sequence)
+    # dem folgen. Ausserhalb des Locks, weil resolve_click_references selbst lockt.
+    from ..persistence import resolve_click_references
+    scan_meldungen = resolve_click_references(state, sequence)
 
     # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
     # klickt als in der Sequenzdatei steht.
@@ -348,7 +348,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
         if has_init and not state.stop_event.is_set():
             print(col("\n[INIT] Führe Initialisierung aus...", "green"))
             total_init = len(sequence.init_steps)
-            status.schreibe(state, {"phase": "INIT", "phase_index": -1,
+            status.write_status(state, {"phase": "INIT", "phase_index": -1,
                                     "phase_pos": _phase_pos(sequence, "init"),
                                     "durchlauf": 1, "wiederholungen": 1,
                                     "bloecke": total_init}, sofort=True)
@@ -393,7 +393,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 state.clicked_categories.clear()
 
             cycle_str = f"Zyklus {cycle_count}" if total_cycles == 0 else f"Zyklus {cycle_count}/{total_cycles}"
-            status.schreibe(state, {"zyklus": cycle_count, "zyklen": total_cycles},
+            status.write_status(state, {"zyklus": cycle_count, "zyklen": total_cycles},
                             sofort=True)
 
             # LOOP-Phasen
@@ -423,7 +423,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
     return cycle_count
 
 
-def _phasen_uebersicht(sequence) -> list[dict]:
+def _phase_overview(sequence) -> list[dict]:
     """Alle Phasen des Laufs in der Reihenfolge, in der sie drankommen.
 
     Steht einmal beim Start im Laufstatus; aus der geöffneten Sequenz liesse sich
@@ -446,7 +446,7 @@ def _phasen_uebersicht(sequence) -> list[dict]:
 
 
 def _phase_pos(sequence, art: str, idx: int = 0) -> int:
-    """Position einer Phase in `_phasen_uebersicht()`.
+    """Position einer Phase in `_phase_overview()`.
 
     Die Ansicht kennt nur diese eine Liste; `phase_index` (−1 für INIT/END)
     reicht ihr nicht. Die Rechnung steht deshalb hier und nicht dreimal an den
@@ -483,7 +483,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                 continue
 
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
-        status.schreibe(state, {"phase": loop_phase.name, "phase_index": idx,
+        status.write_status(state, {"phase": loop_phase.name, "phase_index": idx,
                                 "phase_pos": _phase_pos(sequence, "loop", idx),
                                 "wiederholungen": loop_phase.repeat,
                                 "bloecke": total_steps}, sofort=True)
@@ -491,7 +491,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         for repeat_num in range(1, loop_phase.repeat + 1):
             if state.stop_event.is_set() or state.quit_event.is_set():
                 break
-            status.schreibe(state, {"durchlauf": repeat_num}, sofort=True)
+            status.write_status(state, {"durchlauf": repeat_num}, sofort=True)
 
             if debug:
                 print(dbg(f"Loop {repeat_num}/{loop_phase.repeat} von '{loop_phase.name}'"))
@@ -521,7 +521,7 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
 
     print(col("\n[END] Führe End-Sequenz aus...", "cyan"))
     total_end = len(sequence.end_steps)
-    status.schreibe(state, {"phase": "END", "phase_index": -1,
+    status.write_status(state, {"phase": "END", "phase_index": -1,
                             "phase_pos": _phase_pos(sequence, "end"),
                             "durchlauf": 1, "wiederholungen": 1,
                             "bloecke": total_end}, sofort=True)

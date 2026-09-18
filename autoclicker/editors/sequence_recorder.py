@@ -392,13 +392,13 @@ def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
     `state` in der Signatur war der Weg, auf dem die Punkte einer anderen
     Sequenz hineinlecken konnten.
     """
-    from ..persistence.sequences import punkt_an_stelle
+    from ..persistence.sequences import point_at_position
     punkt_id_fuer: dict[int, int] = {}
     punkte: list[ClickPoint] = []
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
-        treffer = punkt_an_stelle(punkte, ev.x, ev.y, ev.color)
+        treffer = point_at_position(punkte, ev.x, ev.y, ev.color)
         if treffer is not None:
             punkt_id_fuer[i] = treffer.id
             continue

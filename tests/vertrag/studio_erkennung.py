@@ -19,7 +19,7 @@ from pathlib import Path
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 from autoclicker.editors.sequence_studio.scans import (
-    ARTEN as _ARTEN, MIN_REGION as _MIN_REGION, MODI as _MODI,
+    SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODI as _MODI,
     MODI_ALLE as _MODI_ALLE, MODUS_AKTION as _M_AKTION,
     MODUS_REGION as _M_REGION, MODUS_WAHL as _M_WAHL,
 )

@@ -185,8 +185,8 @@ class BridgeBerichtMixin:
         pfad = str(self._bericht_config("scan_market_value_file", "") or "")
         if not pfad or not roh["items"]:
             return None
-        from ...runtime.item_scan import lade_marktwerte
-        werte = lade_marktwerte(pfad)
+        from ...runtime.item_scan import load_market_values
+        werte = load_market_values(pfad)
         if not werte:
             return {"datei": pfad, "lesbar": False, "zeilen": [],
                     "gold": 0.0, "pro_stunde": None, "ohne_wert": []}

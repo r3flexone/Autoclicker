@@ -249,12 +249,12 @@ def coord_context(x: int, y: int) -> str:
 _letzte_status_laenge = 0
 
 
-def _sichtbare_laenge(text: str) -> int:
+def _visible_length(text: str) -> int:
     """Länge ohne ANSI-Sequenzen — die belegen keine Spalte."""
     return len(_ANSI_RE.sub("", text))
 
 
-def _leer_und(text: str) -> str:
+def _clear_and(text: str) -> str:
     """Baut 'Zeile löschen + text' als EINEN String."""
     return "\r" + " " * max(_letzte_status_laenge, 80) + "\r" + text
 
@@ -262,7 +262,7 @@ def _leer_und(text: str) -> str:
 def clear_line() -> None:
     """Löscht die aktuelle Konsolenzeile."""
     global _letzte_status_laenge
-    print(_leer_und(""), end="", flush=True)
+    print(_clear_and(""), end="", flush=True)
     _letzte_status_laenge = 0
 
 
@@ -281,8 +281,8 @@ def status_line(text: str) -> None:
     was zu überschreiben wäre.
     """
     global _letzte_status_laenge
-    print(_leer_und(text), end="", flush=True)
-    _letzte_status_laenge = _sichtbare_laenge(text.rsplit("\n", 1)[-1])
+    print(_clear_and(text), end="", flush=True)
+    _letzte_status_laenge = _visible_length(text.rsplit("\n", 1)[-1])
 
 
 def set_console_title(text: str) -> None:

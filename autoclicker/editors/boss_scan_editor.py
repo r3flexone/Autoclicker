@@ -26,11 +26,11 @@ from ..imaging import (
 )
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, punkt_fuer_stelle, active_templates_dir,
+    list_available_item_scans, point_for_position, active_templates_dir,
     save_global_bosses,
 )
 from ._detection_capture import capture_markers, select_scan_region, prompt_key
-from ..persistence.boss_scans import boss_scan_name_erlaubt
+from ..persistence.boss_scans import boss_scan_name_allowed
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -159,7 +159,7 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
             # dieser Klick eine Koordinate, die weder eine Reparatur im Punkte-Menue
             # noch eine Kalibrierung ueber die Punkte je erreicht.
             with state.lock:
-                pid = punkt_fuer_stelle(state, x, y, None, "Boss-Klick",
+                pid = point_for_position(state, x, y, None, "Boss-Klick",
                                         source="Boss-Scan-Editor")
             result["action_point_id"] = pid
             print(f"  → Klick-Position: ({x}, {y})  [Punkt #{pid}]")
@@ -400,7 +400,7 @@ def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) 
             if is_cancel(scan_name):
                 print(warn("[ABBRUCH] Boss-Scan nicht angelegt."))
                 return
-            if boss_scan_name_erlaubt(scan_name):
+            if boss_scan_name_allowed(scan_name):
                 break
             print(err("'bibliothek' ist reserviert. Bitte einen anderen Namen wählen."))
         if not scan_name:

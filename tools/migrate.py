@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 from autoclicker.persistence.migration import SCHEMA_VERSION  # noqa: E402
 from autoclicker.persistence.paths import BACKUPS_DIR  # noqa: E402
-from autoclicker.persistence.sweep import sammle_dateien, sweep  # noqa: E402
+from autoclicker.persistence.sweep import collect_files, sweep  # noqa: E402
 
 
 def main() -> int:
@@ -41,7 +41,7 @@ def main() -> int:
     print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if schreiben
           else "nur anzeigen (--write zum Schreiben)")
 
-    dateien = sammle_dateien()
+    dateien = collect_files()
     if not dateien:
         print("\nKeine Dateien gefunden - nichts zu tun.")
         return 0
@@ -60,7 +60,7 @@ def main() -> int:
     for pfad in ergebnis.uebersprungen:
         print(f"  [UEBERSPRUNGEN] {pfad.name}: nicht ladbar, bleibt unveraendert")
 
-    print(f"\n{ergebnis.anzahl_geaendert} angepasst, {ergebnis.aktuell} bereits aktuell, "
+    print(f"\n{ergebnis.changed_count} angepasst, {ergebnis.aktuell} bereits aktuell, "
           f"{len(ergebnis.uebersprungen)} uebersprungen.")
     if ergebnis.geaendert and not schreiben:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")

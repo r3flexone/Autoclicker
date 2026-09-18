@@ -363,7 +363,7 @@ def _client_ids(display, root) -> list[int]:
     return []
 
 
-def liste_fenster() -> list:
+def list_windows() -> list:
     try:
         from Xlib import X, error as xerror
     except ImportError:
@@ -416,7 +416,7 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     if not isinstance(title, str) or not title.strip():
         return None
     ziel = title.strip().casefold()
-    fenster = liste_fenster()
+    fenster = list_windows()
     kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
     if not kandidaten:
         kandidaten = [e for e in fenster if ziel in e[0].casefold()]
@@ -440,7 +440,7 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
 
 def get_client_rect_by_title(title_substring: str):
     ziel = str(title_substring or "").casefold()
-    eintrag = next((e for e in liste_fenster() if ziel in e[0].casefold()), None)
+    eintrag = next((e for e in list_windows() if ziel in e[0].casefold()), None)
     return eintrag[1] if eintrag else None
 
 
@@ -480,13 +480,13 @@ def get_window_title_at(x: int, y: int) -> str:
     Fenster erst aktiviert, wird sonst gegen das VORIGE Fenster geprüft (siehe
     die ausführliche Begründung im Windows-Backend).
 
-    `liste_fenster()` liefert die sichtbaren Fenster mit ihrem Client-Rechteck,
+    `list_windows()` liefert die sichtbaren Fenster mit ihrem Client-Rechteck,
     sortiert nach Lage. Eine Stapelreihenfolge kennt X11 hier nicht — bei
     Überlappung gewinnt deshalb das KLEINSTE treffende Fenster: ein Dialog über
     einem grossen Spielfenster ist fast immer der obenliegende.
     """
     treffer = []
-    for eintrag in liste_fenster():
+    for eintrag in list_windows():
         try:
             titel, rect = eintrag[0], eintrag[1]
             links, oben, rechts, unten = rect
@@ -585,11 +585,11 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
     return result["name"]
 
 
-def setze_app_id(_app_id: str = APP_ID) -> bool:
+def set_app_id(_app_id: str = APP_ID) -> bool:
     return False
 
 
-def setze_fenster_symbol(_titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(_titel_substring: str, warten: float = 0.0) -> bool:
     if warten > 0:
         time.sleep(min(float(warten), 0.05))
     return False

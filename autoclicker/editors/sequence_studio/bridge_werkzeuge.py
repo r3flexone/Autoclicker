@@ -13,7 +13,7 @@ nötig, wo wirklich der Hauptprozess gemeint ist — bei der Klick-Runde, die ei
 Maus-Hook installiert.
 
 **Gerechnet wird mit denselben Funktionen wie in der Konsole**
-(`import_export.kalibriere_bestand`, `diagnose.pruefe_setup`). Eine zweite
+(`import_export.calibrate_inventory`, `diagnose.check_setup`). Eine zweite
 Rechnung „für das Fenster" wäre eine, die etwas anderes tut als der Weg, den die
 README beschreibt.
 """
@@ -287,8 +287,8 @@ class BridgeWerkzeugeMixin:
     def _ist_identitaet(transform: dict) -> bool:
         if not transform:
             return True
-        from ...import_export import ist_identitaet
-        return bool(ist_identitaet(transform))
+        from ...import_export import is_identity
+        return bool(is_identity(transform))
 
     # ------------------------------------------------------------------ Prüfen
 
@@ -299,9 +299,9 @@ class BridgeWerkzeugeMixin:
         die Reiter gerade offen haben — sonst prüfte der Bericht einen Ausschnitt
         und meldete „sauber", weil er die halben Daten gar nicht kennt.
         """
-        from ...diagnose import STUFE_FEHLER, pruefe_setup
+        from ...diagnose import LEVEL_ERROR, check_setup
         try:
-            bericht = pruefe_setup(self._bestand())
+            bericht = check_setup(self._bestand())
         except Exception as e:                                   # noqa: BLE001
             return {"ok": False, "meldung": f"Prüfung fehlgeschlagen: {e}",
                     "befunde": [], "geprueft": []}
@@ -310,8 +310,8 @@ class BridgeWerkzeugeMixin:
             "befunde": [{"stufe": b.stufe, "bereich": b.bereich, "text": b.text,
                          "tipp": b.tipp} for b in bericht.befunde],
             "geprueft": list(bericht.geprueft),
-            "fehler": sum(1 for b in bericht.befunde if b.stufe == STUFE_FEHLER),
-            "hinweise": sum(1 for b in bericht.befunde if b.stufe != STUFE_FEHLER),
+            "fehler": sum(1 for b in bericht.befunde if b.stufe == LEVEL_ERROR),
+            "hinweise": sum(1 for b in bericht.befunde if b.stufe != LEVEL_ERROR),
         }
 
     # ------------------------------------------------------------- Kalibrieren
@@ -386,7 +386,7 @@ class BridgeWerkzeugeMixin:
         """`None`, wenn die Farbe passt — sonst die Rückfrage.
 
         Verglichen wird mit `punkt_farbtoleranz`, derselben Schwelle, an der auch
-        `punkt_an_stelle()` entscheidet, ob zwei Stellen dieselbe sind. Zwei
+        `point_at_position()` entscheidet, ob zwei Stellen dieselbe sind. Zwei
         Toleranzen für dieselbe Frage wären zwei Antworten.
 
         Fehlt eine der beiden Farben, wird NICHT gefragt: ein Punkt ohne
@@ -447,7 +447,7 @@ class BridgeWerkzeugeMixin:
         """Sichern, umrechnen, den Hauptprozess neu laden lassen.
 
         Vor dem Umrechnen entsteht ein vollständiges Export-ZIP
-        (`sichere_vor_kalibrierung`): die Kalibrierung schreibt Punkte, Slots,
+        (`backup_before_calibration`): die Kalibrierung schreibt Punkte, Slots,
         Scans und Sequenzdateien in einem Rutsch um, und ohne Rückweg wäre ein
         danebenliegender Referenzpunkt teuer.
 
@@ -457,7 +457,7 @@ class BridgeWerkzeugeMixin:
         das die Slots misst. Nach einer Reparatur dürfen sie kein zweites Mal
         wandern.
         """
-        from ...import_export import kalibriere_bestand, sichere_vor_kalibrierung
+        from ...import_export import calibrate_inventory, backup_before_calibration
         transform = self._kalib.get("transform")
         if not transform:
             return {"ok": False, "meldung": "Es läuft keine Kalibrierung."}
@@ -471,9 +471,9 @@ class BridgeWerkzeugeMixin:
 
         umfang = {k: bool((daten or {}).get(k, v)) for k, _, v in KALIB_UMFANG}
         state = self._bestand()
-        sicherung = sichere_vor_kalibrierung(state)
+        sicherung = backup_before_calibration(state)
         try:
-            zaehlung = kalibriere_bestand(state, transform, **umfang)
+            zaehlung = calibrate_inventory(state, transform, **umfang)
         except Exception as e:                                   # noqa: BLE001
             return {"ok": False, "meldung": f"Kalibrierung fehlgeschlagen: {e}"}
 
@@ -488,12 +488,12 @@ class BridgeWerkzeugeMixin:
     def _nach_kalibrierung(self) -> None:
         """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
         from .model import load_palette_points
-        from ...befehl import sende
+        from ...befehl import send_command
         self.points = load_palette_points(self.filepath)
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.
-        sende("daten")
+        send_command("daten")
 
     def _punkt_mit_id(self, punkt_id):
         try:
@@ -504,7 +504,7 @@ class BridgeWerkzeugeMixin:
 
     def _kalib_rechnen(self) -> None:
         """Aus den gesetzten Referenzpunkten einen Transform bauen."""
-        from ...import_export import compute_transform, transform_aus_verschiebung
+        from ...import_export import compute_transform, transform_from_offset
         ref1 = self._kalib.get("ref1")
         if not ref1:
             self._kalib.pop("transform", None)
@@ -515,7 +515,7 @@ class BridgeWerkzeugeMixin:
                 tuple(ref1["alt"]), tuple(ref2["alt"]),
                 tuple(ref1["neu"]), tuple(ref2["neu"]))
         else:
-            self._kalib["transform"] = transform_aus_verschiebung(
+            self._kalib["transform"] = transform_from_offset(
                 tuple(ref1["alt"]), tuple(ref1["neu"]))
         self._kalib_vorschau()
 
@@ -525,13 +525,13 @@ class BridgeWerkzeugeMixin:
         Der Grund, warum die Kalibrierung im Fenster besser ist als in der
         Konsole: dort scrollt die Liste weg, hier steht sie neben dem Knopf.
         """
-        from ...import_export import kalibrier_vorschau
+        from ...import_export import calibration_preview
         transform = self._kalib.get("transform")
         if not transform:
             self._kalib["vorschau"] = []
             return
         try:
-            zeilen = kalibrier_vorschau(self._bestand(), transform)
+            zeilen = calibration_preview(self._bestand(), transform)
         except Exception:                                        # noqa: BLE001
             self._kalib["vorschau"] = []
             return
@@ -550,7 +550,7 @@ class BridgeWerkzeugeMixin:
         pumpt — sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Deshalb der
         Briefkasten; bedient wird danach im Spiel, nicht im Fenster.
         """
-        from ...befehl import sende
+        from ...befehl import send_command
         if self._laeuft():
             return {"ok": False,
                     "meldung": "Eine Sequenz läuft — Nachklicken braucht die "
@@ -561,9 +561,9 @@ class BridgeWerkzeugeMixin:
                                "Platte nach, nicht die im Fenster."}
         # Die Datei MIT: der Hauptprozess hat womoeglich eine ganz andere Sequenz
         # geladen als die hier offene. Ohne sie klickt man eine Runde lang die
-        # Punkte einer fremden Sequenz nach - dieselbe Falle, die `befehl_start`
+        # Punkte einer fremden Sequenz nach - dieselbe Falle, die `command_start`
         # laengst vermeidet.
-        if not sende("nachklick", datei=str(self.filepath)):
+        if not send_command("nachklick", datei=str(self.filepath)):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = True
         return {"ok": True,
@@ -588,12 +588,12 @@ class BridgeWerkzeugeMixin:
         ehrlicher, als hier zu raten und den Knopf womöglich zu sperren, während
         sehr wohl eine Runde läuft.
         """
-        from ...befehl import sende
+        from ...befehl import send_command
         verwerfen = bool((daten or {}).get("verwerfen"))
         # Warum verworfen wurde, weiss nur der Aufrufer — der Hauptprozess kann
         # den Knopf nicht vom geschlossenen Fenster unterscheiden.
         grund = str((daten or {}).get("grund") or "knopf")
-        if not sende("nachklick_stop", verwerfen="1" if verwerfen else "0",
+        if not send_command("nachklick_stop", verwerfen="1" if verwerfen else "0",
                      grund=grund):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
@@ -622,11 +622,11 @@ class BridgeWerkzeugeMixin:
         """
         import json
         import time
-        from ...config import NACHKLICK_STATUS_FILE
+        from ...config import RECLICK_STATUS_FILE
         leer = {"aktiv": False, "index": 0, "gesamt": 0, "verlauf": [],
                 "punkt": {}, "verwaist": False}
         try:
-            with open(NACHKLICK_STATUS_FILE, "r", encoding="utf-8") as f:
+            with open(RECLICK_STATUS_FILE, "r", encoding="utf-8") as f:
                 stand = json.load(f)
         except (OSError, ValueError):
             return leer

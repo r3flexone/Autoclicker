@@ -134,7 +134,7 @@ def _gleicher_wert(a, b) -> bool:
     JSON kennt nur eine Zahl: eine von Hand getippte `600` und die `600.0`, die
     nach dem Laden dasteht, sind dieselbe Einstellung — als Korrektur gemeldet
     wäre das eine Falschmeldung bei jedem zweiten Feld (dieselbe Rechnung wie
-    `_gleich()` im Start-Durchgang). `bool` bleibt ausgenommen: ein `True`, das
+    `_equal()` im Start-Durchgang). `bool` bleibt ausgenommen: ein `True`, das
     als `1` durchginge, versteckte ein umgekipptes Flag.
     """
     if isinstance(a, bool) != isinstance(b, bool):

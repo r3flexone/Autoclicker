@@ -251,7 +251,7 @@ def read_key() -> str:
     return _read_key_polling()
 
 
-def taste_neu_gedrueckt(zustand: int, war_unten: bool) -> bool:
+def key_newly_pressed(zustand: int, war_unten: bool) -> bool:
     """Bedeutet dieser GetAsyncKeyState-Wert einen NEUEN Tastendruck?
 
     Zwei Wege, und beide werden gebraucht: `0x8000` ("haelt gerade") plus Flanke
@@ -263,7 +263,7 @@ def taste_neu_gedrueckt(zustand: int, war_unten: bool) -> bool:
     return (bool(zustand & 0x8000) and not war_unten) or bool(zustand & 0x0001)
 
 
-def warte_auf_taste(tasten: tuple = ("enter", "escape"),
+def wait_for_global_key(tasten: tuple = ("enter", "escape"),
                     timeout: float = 60.0) -> "str | None":
     """Wartet global auf eine der Tasten — ohne Konsole, ohne Fenster-Fokus.
 
@@ -279,7 +279,7 @@ def warte_auf_taste(tasten: tuple = ("enter", "escape"),
 # Buchstabentasten fuer Menue-Befehle (w/a/s/c/q ...). Bewusst NICHT in _VK_MAP:
 # das gilt fuer interactive_select, wo Buchstaben nichts zu suchen haben — dort
 # navigiert man mit Pfeilen und waehlt mit Ziffern.
-_VK_BUCHSTABEN = {0x41 + _n: chr(ord('a') + _n) for _n in range(26)}
+_VK_LETTERS = {0x41 + _n: chr(ord('a') + _n) for _n in range(26)}
 
 
 def read_command(timeout: float | None = None) -> str:
@@ -300,7 +300,7 @@ def read_command(timeout: float | None = None) -> str:
                     return ""
                 time.sleep(0.02)
         return (read_key() or "").lower()
-    return _read_key_polling(zusatz=_VK_BUCHSTABEN, timeout=timeout)
+    return _read_key_polling(zusatz=_VK_LETTERS, timeout=timeout)
 
 
 # =============================================================================

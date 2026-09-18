@@ -166,7 +166,7 @@ def execute_icon_scan(state: AutoClickerState, scan_name: str) -> bool:
 # ITEM-SCAN (Hauptfunktion)
 # =============================================================================
 
-def lauffaehige_scan_config(state: AutoClickerState, scan_name: str):
+def runnable_scan_config(state: AutoClickerState, scan_name: str):
     """Gibt die Scan-Config zurück, oder None samt Meldung wenn sie nicht laufen kann.
 
     Aufrufer MUSS state.lock halten.
@@ -199,7 +199,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
     # während wir iterieren (RuntimeError bei dict/list changed during iteration).
     with state.lock:
-        config = lauffaehige_scan_config(state, scan_name)
+        config = runnable_scan_config(state, scan_name)
         if config is None:
             return []
         slots_snapshot = [slot for slot in config.slots if slot.enabled]
@@ -365,8 +365,8 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     from ..persistence import save_global_items, active_templates_dir
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
-    maskiert, marker_colors, ist_leer = _prepare_learning_image(img, slot.slot_color)
-    if ist_leer:
+    maskiert, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
+    if is_blank:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
         return
@@ -476,7 +476,7 @@ def _park_mouse_for_scan(park_pos) -> None:
 _marktwert_cache: dict = {}
 
 
-def lade_marktwerte(pfad: str) -> dict:
+def load_market_values(pfad: str) -> dict:
     """Item-Name -> Gold pro Stueck. Leeres Dict, wenn aus oder nicht lesbar.
 
     Die Datei schreibt `market_analysis` (dort `export_market_values`). Sie ist die
@@ -513,7 +513,7 @@ def lade_marktwerte(pfad: str) -> dict:
     return werte
 
 
-def _effektive_prioritaet(item, gespeichert: int, werte: dict) -> float:
+def _effective_priority(item, gespeichert: int, werte: dict) -> float:
     """Wonach sortiert wird - kleiner gewinnt, wie bei der gespeicherten Prioritaet.
 
     Hat das Item einen Marktwert, zaehlt der (negiert, damit "wertvoller" = "kleiner").
@@ -534,10 +534,10 @@ def _effektive_prioritaet(item, gespeichert: int, werte: dict) -> float:
 
 def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, debug: bool) -> list:
     """Filtert Scan-Treffer nach Modus (every / all / best) und Kategorie-Konflikt."""
-    werte = lade_marktwerte(state.config.scan_market_value_file)
+    werte = load_market_values(state.config.scan_market_value_file)
     if werte:
         # Prioritaet fuer diesen Lauf ersetzen - die Liste traegt sie als drittes Element.
-        found_items = [(slot, item, _effektive_prioritaet(item, prio, werte))
+        found_items = [(slot, item, _effective_priority(item, prio, werte))
                        for slot, item, prio in found_items]
         if debug:
             print(dbg(f"  → Sortierung nach Marktwert ({len(werte)} Items bekannt)"))

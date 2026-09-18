@@ -329,10 +329,10 @@ def _zahl(wert):
     if wert is None:
         return None
     try:
-        zahl = float(wert)
+        number = float(wert)
     except (TypeError, ValueError):
         return None
-    return None if zahl != zahl else zahl      # NaN faellt raus
+    return None if number != number else number      # NaN faellt raus
 
 
 def _text(wert) -> str:

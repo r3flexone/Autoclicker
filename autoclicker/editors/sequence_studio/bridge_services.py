@@ -183,7 +183,7 @@ class BridgeServicesMixin:
             return {"ok": False, "meldung": (
                 "Eine Sequenz läuft — der Worker liest gerade aus diesen Ordnern.")}
 
-        # Gespiegelte Struktur, wie bei `sicherungspfad()` im Start-Durchgang:
+        # Gespiegelte Struktur, wie bei `backup_path()` im Start-Durchgang:
         # `sequences/raid` -> `backups/sequences/raid`. Der ORDNERname, nicht
         # der angezeigte — sonst laege die Sicherung unter einem Pfad, den es so
         # nie gab, und Zurueckschieben waere kein blosses Verschieben mehr.
@@ -233,13 +233,13 @@ class BridgeServicesMixin:
             zustand["block_marke"] = BLOCK_LABELS[typ]
         return zustand
 
-    # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `BEFEHLE`
+    # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `COMMANDS`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
     LAUF_BEFEHLE = ("start", "start_manuell", "stop", "pause", "skip", "skip_step", "finish",
                     "manuell", "manuell_aktion", "zeitplan")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
-    # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `BEFEHLE`.
+    # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `COMMANDS`.
     # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
     # systemweiten Maus-Hook und muss deshalb drueben laufen.
     ALLE_BEFEHLE = LAUF_BEFEHLE + ("zeigen", "config", "daten", "aufnahme",
@@ -255,7 +255,7 @@ class BridgeServicesMixin:
         begrenzten Befehl in den gemeinsamen Briefkasten. Alle Angaben gehen mit,
         damit der Abschluss nicht unsichtbar in der Konsole auf Eingaben wartet.
         """
-        from ...befehl import sende
+        from ...befehl import send_command
         daten = daten or {}
         name = str(daten.get("name") or "").strip()
         if not name:
@@ -275,7 +275,7 @@ class BridgeServicesMixin:
             Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
         except OSError:
             pass
-        if not sende("aufnahme", name=sicher, zyklen=zyklen,
+        if not send_command("aufnahme", name=sicher, zyklen=zyklen,
                      beschreibung=str(daten.get("beschreibung") or "").strip()):
             return {"ok": False, "meldung": "Aufnahme konnte nicht gestartet werden."}
         return {"ok": True, "name": sicher,
@@ -283,8 +283,8 @@ class BridgeServicesMixin:
 
     def aufnahme_stoppen(self, daten: Optional[dict] = None) -> dict:
         """Beendet die Aufnahme; der Hauptprozess baut und speichert die Blöcke."""
-        from ...befehl import sende
-        if not sende("aufnahme_stop"):
+        from ...befehl import send_command
+        if not send_command("aufnahme_stop"):
             return {"ok": False, "meldung": "Stopp konnte nicht gesendet werden."}
         return {"ok": True, "meldung": "Aufnahme wird beendet und gespeichert."}
 
@@ -311,7 +311,7 @@ class BridgeServicesMixin:
         Start-Knopf, der eine ältere Fassung startet als die angezeigte, wäre
         schlimmer als keiner.
         """
-        from ...befehl import sende
+        from ...befehl import send_command
         befehl = (daten or {}).get("befehl") or ""
         if befehl not in self.LAUF_BEFEHLE:
             return self._melde(f"Unbekannter Lauf-Befehl '{befehl}'.", "err")
@@ -336,7 +336,7 @@ class BridgeServicesMixin:
                 return self._melde("Unbekannte manuelle Aktion.", "err")
             argumente["aktion"] = aktion
 
-        if not sende(befehl, **argumente):
+        if not send_command(befehl, **argumente):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         text = {"start": f"'{self.board.name}' gestartet.",
                 "start_manuell": f"'{self.board.name}' im Schrittmodus gestartet.",
@@ -373,8 +373,8 @@ class BridgeServicesMixin:
         if punkt is None:
             return self._melde("Diese Stelle hat keinen Punkt zum Zeigen.", "warn")
 
-        from ...befehl import sende
-        if not sende("zeigen", x=punkt.x, y=punkt.y, punkt=punkt.id,
+        from ...befehl import send_command
+        if not send_command("zeigen", x=punkt.x, y=punkt.y, punkt=punkt.id,
                      name=punkt.name or "", farbe=list(punkt.color) if punkt.color else None):
             return self._melde("Befehl konnte nicht abgelegt werden.", "err")
         return self._melde(f"Maus zu #{punkt.id} ({punkt.x},{punkt.y}) — im Spiel nachsehen.")
@@ -395,8 +395,8 @@ class BridgeServicesMixin:
                 return zustand
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)
-        from ...befehl import sende
-        if not sende("block_test", datei=str(self.filepath), phase=lane.kind,
+        from ...befehl import send_command
+        if not send_command("block_test", datei=str(self.filepath), phase=lane.kind,
                      phase_index=loop_index, block=int(row)):
             return self._melde("Block-Test konnte nicht gesendet werden.", "err")
         return self._melde("Block-Test geschickt — echter Klick/Tastendruck möglich.", "warn")
@@ -431,7 +431,7 @@ class BridgeServicesMixin:
         raten müssen.
         """
         from ...config import (
-            AppConfig, CONFIG_FILE, config_abschnitte, optionale_felder,
+            AppConfig, CONFIG_FILE, config_sections, optional_fields,
         )
         from ...config_meta import META
         roh, fehler = self._config_datei()
@@ -439,10 +439,10 @@ class BridgeServicesMixin:
             "pfad": str(Path(CONFIG_FILE).resolve()),
             "werte": AppConfig.from_dict(roh).to_dict(),
             "standard": AppConfig().to_dict(),
-            "abschnitte": [{"titel": t, "keys": list(k)} for t, k in config_abschnitte()],
+            "abschnitte": [{"titel": t, "keys": list(k)} for t, k in config_sections()],
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
-            "optional": optionale_felder(),
+            "optional": optional_fields(),
             # Was hinter einem Feld gerade WIRKLICH liegt — heute nur der
             # Katalog. Der Pfad allein sagt nicht, ob die Datei da ist und wie
             # alt sie ist, und genau das ist die Frage, die man an eine
@@ -455,8 +455,8 @@ class BridgeServicesMixin:
     def _katalog_stand(pfad: str) -> str:
         """Umfang und Alter der Katalog-Datei — als ein Satz fuer die Ansicht.
 
-        Gelesen wird die Datei selbst und nicht `lade_katalog()`: der Zeitpunkt
-        steht als `_erzeugt` drin, und der `Katalog` traegt nur Items und
+        Gelesen wird die Datei selbst und nicht `load_catalog()`: der Zeitpunkt
+        steht als `_erzeugt` drin, und der `Catalog` traegt nur Items und
         Gegner. Ein Fehler ist hier kein Fehlerfall, sondern eine Auskunft —
         „Datei fehlt" ist genau das, was man wissen will, wenn der Knopf
         scheinbar nichts bewirkt hat.
@@ -504,7 +504,7 @@ class BridgeServicesMixin:
         das niemand, deshalb wird der geschriebene Stand gegen das Gesendete gehalten
         und die Abweichung zurückgemeldet.
         """
-        from ...config import AppConfig, CONFIG, save_config, uebernehmen
+        from ...config import AppConfig, CONFIG, save_config, apply_config
         werte = (daten or {}).get("werte")
         if not isinstance(werte, dict) or not werte:
             return {"ok": False, "meldung": "Nichts zu speichern."}
@@ -523,7 +523,7 @@ class BridgeServicesMixin:
         save_config(neu)
         # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
         # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
-        # `befehl_config()`; DIESER Prozess hat die Datei geschrieben und blieb
+        # `command_config()`; DIESER Prozess hat die Datei geschrieben und blieb
         # danach auf den Werten vom Programmstart sitzen — jeder Reiter, der
         # `CONFIG` liest, zeigte bis zum Neustart den alten Stand. Aufgefallen
         # ist es am Bericht-Reiter („session_log_enabled ist aus", direkt nachdem
@@ -531,17 +531,17 @@ class BridgeServicesMixin:
         # OCR/LLM-Lampen und Marker-Schwellen im Scans-Reiter, die Toleranz beim
         # Farbvergleich im Werkzeuge-Reiter, der Fenstertitel im Teilen-Reiter.
         #
-        # `uebernehmen()` statt einer Zuweisung: das Objekt darf nicht getauscht
+        # `apply_config()` statt einer Zuweisung: das Objekt darf nicht getauscht
         # werden, sonst sitzt jeder mit `from ...config import CONFIG` (imaging,
         # die Scan-Module) weiter auf dem alten. Genau dafuer gibt es die
         # Funktion — ihr Docstring nennt diese Stelle als dritten Aufrufer, nur
         # gerufen hat sie hier nie jemand.
-        uebernehmen(CONFIG, neu)
+        apply_config(CONFIG, neu)
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # der geschriebenen Datei nichts. Derselbe Briefkasten wie bei Start und
-        # Stopp — läuft gerade keiner, verfällt der Befehl (befehl.MAX_ALTER).
-        from ...befehl import sende
-        sende("config")
+        # Stopp — läuft gerade keiner, verfällt der Befehl (befehl.MAX_AGE).
+        from ...befehl import send_command
+        send_command("config")
         # Was ohne ELSE passiert, steht in derselben Datei — der gemerkte
         # Zeitstempel ist damit veraltet.
         self._cfg_stand = -1.0
@@ -624,9 +624,9 @@ class BridgeServicesMixin:
         Die einzige Rückmeldung über den Hauptprozess: er leert den Kasten beim Lesen.
         Liegt der Befehl später noch da, hört niemand zu. Fragt nur, ändert nichts.
         """
-        from ...befehl import BEFEHL_DATEI
+        from ...befehl import COMMAND_PATH
         try:
-            return BEFEHL_DATEI.exists()
+            return COMMAND_PATH.exists()
         except OSError:
             return False
 
@@ -636,7 +636,7 @@ class BridgeServicesMixin:
         if not name:
             return self._melde("Keine Sequenz gewählt.", "warn")
         if self._dirty and not (daten or {}).get("verwerfen"):
-            self._frage = {"art": "laden", "ziel": name,
+            self._ask = {"art": "laden", "ziel": name,
                            "titel": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Laden speichern?",
@@ -657,14 +657,14 @@ class BridgeServicesMixin:
         self._auswahl_leeren()
         self._dirty = False
         self._stand_merken()
-        from ...sequence_studio import merke_zuletzt_verwendet
-        merke_zuletzt_verwendet(self.filepath)
+        from ...sequence_studio import remember_last_used
+        remember_last_used(self.filepath)
         return self._melde(f"Geladen: {name}")
 
     def neu(self, daten: Optional[dict] = None) -> dict:
         """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
         if self._dirty and not (daten or {}).get("verwerfen"):
-            self._frage = {"art": "neu", "ziel": "",
+            self._ask = {"art": "neu", "ziel": "",
                            "titel": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Anlegen speichern?",
@@ -703,7 +703,7 @@ class BridgeServicesMixin:
             return self._melde(f"Unbekanntes Feld '{feld}'.", "err")
         return self._geaendert()
 
-    def _scan_ohne_namen(self) -> Optional[str]:
+    def _scan_without_name(self) -> Optional[str]:
         """Erster Scan-Block mit leerem Namen, als lesbare Stelle."""
         offen = scan_warnungen(self.board)
         return offen[0] if offen else None
@@ -732,7 +732,7 @@ class BridgeServicesMixin:
         # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
         fremd = self._fremd_geaendert(alt)
         if fremd and not (daten or {}).get("erzwingen"):
-            self._frage = {
+            self._ask = {
                 "art": "speichern",
                 "titel": "Ausserhalb geändert",
                 "text": f"{fremd} wurde geändert, seit diese Sequenz geöffnet ist — "
@@ -777,13 +777,13 @@ class BridgeServicesMixin:
         self._gespeichert = True
         self._dirty = False
         self._stand_merken()
-        from ...sequence_studio import merke_zuletzt_verwendet
-        merke_zuletzt_verwendet(self.filepath)
+        from ...sequence_studio import remember_last_used
+        remember_last_used(self.filepath)
         text = f"Gespeichert: {neu.name}"
         if verschoben:
             text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
 
-        leer = self._scan_ohne_namen()
+        leer = self._scan_without_name()
         if leer:
             return self._melde(f"{text} — {leer} hat noch keine Konfiguration "
                                f"und wird übersprungen.", "warn")
@@ -820,11 +820,11 @@ class BridgeServicesMixin:
         """
         if not self._dirty:
             return None
-        from ...persistence.sweep import sicherungspfad
-        # sicherungspfad() liefert "<name>.json.bak" — hier soll die Datei lesbar
+        from ...persistence.sweep import backup_path
+        # backup_path() liefert "<name>.json.bak" — hier soll die Datei lesbar
         # heissen und eine echte .json-Endung tragen, damit man sie direkt
         # zurückkopieren kann.
-        ziel = sicherungspfad(self.filepath).with_name(
+        ziel = backup_path(self.filepath).with_name(
             f"{self.filepath.stem}.ungespeichert.json")
         try:
             ziel.parent.mkdir(parents=True, exist_ok=True)

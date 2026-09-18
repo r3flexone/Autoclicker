@@ -37,8 +37,8 @@ from ...models import (
     VALID_ICON_ACTIONS,
     VALID_SCAN_MODES,
 )
-from ...utils import eindeutiger_name, sanitize_filename
-from ...persistence.boss_scans import boss_scan_name_erlaubt
+from ...utils import unique_name, sanitize_filename
+from ...persistence.boss_scans import boss_scan_name_allowed
 from .model import hexfarbe, rgbwert
 from .scan_contract import (
     ART_ITEM,
@@ -327,9 +327,9 @@ class ScanDetectMixin:
     def boss_scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Ein neuer Boss-Scan — leer, mit eindeutigem Namen, sofort offen."""
         self._scan_laden()
-        name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Boss-Scan"),
+        name = unique_name(str((daten or {}).get("name") or "Neuer Boss-Scan"),
                                 self.boss_scans)
-        if not boss_scan_name_erlaubt(name):
+        if not boss_scan_name_allowed(name):
             return self._scan_melde("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         self._merke("Boss-Scan angelegt")
         self.boss_scans[name] = BossScanConfig(name=name, owner_sequence=self.board.name)
@@ -364,11 +364,11 @@ class ScanDetectMixin:
         if feld == "region":
             return self._region_setzen(cfg, wert, f"Boss-Scan '{cfg.name}'")
         if feld == "toleranz":
-            zahl = self._ganzzahl(wert)
-            if zahl is None:
+            number = self._ganzzahl(wert)
+            if number is None:
                 return self._scan_melde("Die Farb-Toleranz muss eine Zahl sein.", "err")
             self._merke(f"'{cfg.name}': Farb-Toleranz")
-            cfg.color_tolerance = max(0, zahl)
+            cfg.color_tolerance = max(0, number)
             return self._scan_geaendert()
         if feld == "default_action":
             if wert not in VALID_BOSS_ACTIONS:
@@ -464,7 +464,7 @@ class ScanDetectMixin:
         cfg = self.boss_scans.get(self.boss_offen)
         if cfg is None and not in_bibliothek:
             return self._scan_melde("Erst einen Boss-Scan anlegen oder öffnen.", "warn")
-        name = eindeutiger_name(str(daten.get("name") or "Neuer Boss"), self._boss_namen())
+        name = unique_name(str(daten.get("name") or "Neuer Boss"), self._boss_namen())
         self._merke(f"Boss '{name}' angelegt")
         boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
         if in_bibliothek:
@@ -573,7 +573,7 @@ class ScanDetectMixin:
     def icon_scan_neu(self, daten: Optional[dict] = None) -> dict:
         """Ein neuer Icon-Scan — das kleinste Modell: Region, Erkennung, Aktion."""
         self._scan_laden()
-        name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Icon-Scan"),
+        name = unique_name(str((daten or {}).get("name") or "Neuer Icon-Scan"),
                                 self.icon_scans)
         self._merke("Icon-Scan angelegt")
         self.icon_scans[name] = IconScanConfig(name=name, owner_sequence=self.board.name)
@@ -635,18 +635,18 @@ class ScanDetectMixin:
         an denen eine Prüfung fehlen kann.
         """
         if feld == "konfidenz":
-            zahl = self._kommazahl(wert)
-            if zahl is None or not 0 < zahl <= 1:
+            number = self._kommazahl(wert)
+            if number is None or not 0 < number <= 1:
                 return self._scan_melde("Konfidenz muss zwischen 0 und 1 liegen.", "err")
             self._merke(f"{wer}: Konfidenz")
-            objekt.min_confidence = zahl
+            objekt.min_confidence = number
             return self._scan_geaendert()
         if feld == "toleranz":
-            zahl = self._ganzzahl(wert)
-            if zahl is None:
+            number = self._ganzzahl(wert)
+            if number is None:
                 return self._scan_melde("Die Toleranz muss eine ganze Zahl sein.", "err")
             self._merke(f"{wer}: Toleranz")
-            objekt.color_tolerance = max(0, zahl)
+            objekt.color_tolerance = max(0, number)
             return self._scan_geaendert()
         if feld == "template":
             self._merke(f"{wer}: Vorlage")
@@ -668,11 +668,11 @@ class ScanDetectMixin:
             objekt.action_key = str(wert) or None
             return self._scan_geaendert()
         if feld == "verzoegerung":
-            zahl = self._kommazahl(wert)
-            if zahl is None or zahl < 0:
+            number = self._kommazahl(wert)
+            if number is None or number < 0:
                 return self._scan_melde("Die Verzögerung muss eine Zahl ≥ 0 sein.", "err")
             self._merke(f"{wer}: Verzögerung")
-            objekt.action_delay = zahl
+            objekt.action_delay = number
             return self._scan_geaendert()
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
 
@@ -706,7 +706,7 @@ class ScanDetectMixin:
         alte Datei entfernen.
         """
         neu = sanitize_filename(str(wert or "").strip())
-        if bestand is self.boss_scans and not boss_scan_name_erlaubt(neu):
+        if bestand is self.boss_scans and not boss_scan_name_allowed(neu):
             return self._scan_melde("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         if not neu or neu == cfg.name:
             return self.scan_daten()
@@ -873,7 +873,7 @@ class ScanDetectMixin:
 
         **Wer im Editor eine Stelle erzeugt, legt einen Punkt an.** Ein
         vorhandener an derselben Stelle wird wiederverwendet
-        (`punkt_an_stelle()` — die eine Regel dafür); sonst wäre derselbe Knopf
+        (`point_at_position()` — die eine Regel dafür); sonst wäre derselbe Knopf
         zweimal in der Punktliste und beim Nachjustieren wanderte die Hälfte.
         """
         cfg = self._region_objekt()
@@ -910,9 +910,9 @@ class ScanDetectMixin:
 
     def _punkt_fuer_aktion(self, x: int, y: int, farbe, name: str):
         """Der Punkt an dieser Stelle — vorhandener oder neuer."""
-        from ...persistence.sequences import punkt_an_stelle
+        from ...persistence.sequences import point_at_position
         from .model import PalettePoint
-        punkt = punkt_an_stelle(self.points, x, y, farbe)
+        punkt = point_at_position(self.points, x, y, farbe)
         if punkt is None:
             punkt = PalettePoint(
                 id=max([p.id for p in self.points], default=0) + 1,

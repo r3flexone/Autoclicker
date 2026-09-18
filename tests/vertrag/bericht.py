@@ -288,7 +288,7 @@ check("und kein Eintrag zeigt auf eine Datei, die es nicht gibt",
 section("Einstellungen: der Schreiber laedt sich selbst neu")
 
 # **Der Schreiber war der Einzige, der sich nicht neu lud.** Der Hauptprozess
-# bekommt den Briefkasten-Befehl und ruft `befehl_config()`; der Studio-Prozess
+# bekommt den Briefkasten-Befehl und ruft `command_config()`; der Studio-Prozess
 # schrieb die Datei und blieb danach auf den Werten vom Programmstart sitzen.
 # Aufgefallen ist es am Bericht-Reiter — „session_log_enabled ist aus", direkt
 # nachdem man es eingeschaltet hatte —, betroffen war aber jeder Reiter, der
@@ -329,7 +329,7 @@ try:
     # **Das Objekt darf nicht getauscht werden.** Wer es ersetzt, laesst jeden
     # mit `from ...config import CONFIG` (imaging, die Scan-Module) dauerhaft auf
     # den Werten vom Programmstart sitzen — genau der Fehler, gegen den es
-    # `uebernehmen()` gibt.
+    # `apply_config()` gibt.
     check("und das Config-Objekt bleibt dasselbe", id(_CFG) == _vorher)
 
     _CFG.session_log_enabled, _CFG.punkt_farbtoleranz = _alt_log, _alt_tol

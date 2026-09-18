@@ -36,7 +36,7 @@ logger = logging.getLogger("autoclicker")
 _cache: dict = {}
 
 
-class Katalog:
+class Catalog:
     """Name -> Kategorie und Wert, plus die Gegnerliste.
 
     Nachgeschlagen wird ohne Ruecksicht auf Gross-/Kleinschreibung: ein Modell
@@ -83,10 +83,10 @@ class Katalog:
         return list(self.items)
 
 
-LEER = Katalog()
+EMPTY = Catalog()
 
 
-def lade_katalog(pfad: str) -> Katalog:
+def load_catalog(pfad: str) -> Catalog:
     """Katalog aus `pfad`. Leerer Katalog, wenn aus oder nicht lesbar.
 
     Nicht lesbar ist kein Abbruchgrund: der Katalog verbessert das Benennen und
@@ -94,11 +94,11 @@ def lade_katalog(pfad: str) -> Katalog:
     scheitern hiesse, dass man die Wirkung sucht, die nie eintritt.
     """
     if not pfad:
-        return LEER
+        return EMPTY
     try:
         st = os.stat(pfad)
     except OSError:
-        return LEER
+        return EMPTY
     stand = (st.st_mtime, st.st_size)
     eintrag = _cache.get(pfad)
     if eintrag is not None and eintrag["stand"] == stand:
@@ -108,10 +108,10 @@ def lade_katalog(pfad: str) -> Katalog:
             roh = json.load(f)
     except (json.JSONDecodeError, IOError, OSError, UnicodeDecodeError) as e:
         logger.error(f"Katalog-Datei nicht lesbar ({pfad}): {e}")
-        return LEER
+        return EMPTY
     if not isinstance(roh, dict):
         logger.error(f"Katalog-Datei ist kein Objekt: {pfad}")
-        return LEER
+        return EMPTY
 
     items = {}
     for name, eintraege in (roh.get("items") or {}).items():
@@ -126,12 +126,12 @@ def lade_katalog(pfad: str) -> Katalog:
                             "wert": wert}
     gegner = [str(g) for g in (roh.get("gegner") or []) if g]
 
-    katalog = Katalog(items, gegner)
+    katalog = Catalog(items, gegner)
     _cache[pfad] = {"stand": stand, "katalog": katalog}
     return katalog
 
 
-def raenge(namen_und_werte: list) -> dict:
+def ranks(namen_und_werte: list) -> dict:
     """Dichte Prioritaeten je Kategorie: teuerstes Item bekommt P1.
 
     `namen_und_werte` ist eine Liste `(name, kategorie, wert)`. Zurueck kommt

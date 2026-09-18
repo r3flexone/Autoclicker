@@ -14,13 +14,13 @@ geschrieben und wird jetzt vom Scans-Reiter des Sequenz-Studios benutzt
 from pathlib import Path
 
 from ...models import ItemSlot, ItemProfile
-from ...utils import sanitize_filename, naechster_freier_name
+from ...utils import sanitize_filename, next_free_name
 from ..scan_services import crop_screen_region
 
 
 def next_slot_name(slots: dict[str, ItemSlot]) -> str:
     """Liefert einen freien Standard-Slotnamen ('Slot 1', 'Slot 2', ...)."""
-    return naechster_freier_name("Slot", slots)
+    return next_free_name("Slot", slots)
 
 
 def normalize_region(x1: int, y1: int, x2: int, y2: int) -> tuple[int, int, int, int]:
@@ -34,7 +34,7 @@ def normalize_region(x1: int, y1: int, x2: int, y2: int) -> tuple[int, int, int,
 
 def next_item_name(items: dict[str, ItemProfile]) -> str:
     """Liefert einen freien Standard-Itemnamen ('Item 1', 'Item 2', ...)."""
-    return naechster_freier_name("Item", items)
+    return next_free_name("Item", items)
 
 
 def existing_categories(items: dict[str, ItemProfile]) -> list[str]:
@@ -63,8 +63,8 @@ def save_template(img, name: str, hintergrund=None, *, template_dir) -> str | No
     # Vergleich stimmt sonst zu neun Zehnteln ueber die Slot-Flaeche ab.
     if hintergrund:
         try:
-            from ...imaging import mit_hintergrund_maske
-            img = mit_hintergrund_maske(img, hintergrund)
+            from ...imaging import with_background_mask
+            img = with_background_mask(img, hintergrund)
         except ImportError:
             pass
     zielordner = Path(template_dir)

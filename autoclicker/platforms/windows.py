@@ -580,7 +580,7 @@ user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
 user32.GetAncestor.restype = wintypes.HWND
 
 
-def _fenster_titel(hwnd) -> str:
+def _window_title(hwnd) -> str:
     """Der Titel eines Fensters — "" bei Fehler oder ohne Titel."""
     if not hwnd:
         return ""
@@ -595,7 +595,7 @@ def _fenster_titel(hwnd) -> str:
 def get_foreground_window_title() -> str:
     """Gibt den Titel des aktuellen Vordergrund-Fensters zurück (leer bei Fehler)."""
     try:
-        return _fenster_titel(user32.GetForegroundWindow())
+        return _window_title(user32.GetForegroundWindow())
     except (OSError, AttributeError):
         return ""
 
@@ -632,7 +632,7 @@ def get_window_title_at(x: int, y: int) -> str:
         if not hwnd:
             return ""
         wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _fenster_titel(wurzel or hwnd)
+        return _window_title(wurzel or hwnd)
     except Exception:
         return ""
 
@@ -675,7 +675,7 @@ def _find_window_by_title(title_substring: str):
     return found[0] if found else None
 
 
-def liste_fenster() -> list:
+def list_windows() -> list:
     """Alle sichtbaren Fenster als `(titel, (l, t, r, b), hwnd)`.
 
     Für den Fall, den `get_client_rect_by_title()` nicht lösen kann: dasselbe
@@ -748,13 +748,13 @@ def get_client_rect_by_handle(hwnd: int):
 def resolve_window(title: str, instance: int = 0, reference_rect=None):
     """Findet eine gespeicherte Fensterquelle erneut.
 
-    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`liste_fenster`.
+    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`list_windows`.
     Exakte Titel gewinnen; bei mehreren gleichnamigen die gemerkte Instanz, und
     ist deren Index weg, das geometrisch ähnlichste Fenster.
     """
     if not isinstance(title, str) or not title.strip():
         return None
-    fenster = liste_fenster()
+    fenster = list_windows()
     ziel = title.strip().casefold()
     kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
     if not kandidaten:
@@ -887,7 +887,7 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
     # Die Regel „was ist ein NEUER Druck" steht in `utils/io.py` — und nur
     # dort. Hier stand sie einmal ausgeschrieben daneben, und die Tests
     # prueften die Funktion, die niemand rief.
-    from ..utils.io import taste_neu_gedrueckt
+    from ..utils.io import key_newly_pressed
     previous = {code: bool(user32.GetAsyncKeyState(code) & 0x8000)
                 for code in codes}
     while end is None or time.time() < end:
@@ -895,7 +895,7 @@ def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
             state = user32.GetAsyncKeyState(code)
             was_down = previous[code]
             previous[code] = bool(state & 0x8000)
-            if taste_neu_gedrueckt(state, was_down):
+            if key_newly_pressed(state, was_down):
                 return name
         time.sleep(0.02)
     return None
@@ -1093,7 +1093,7 @@ def unregister_hotkeys() -> None:
 # `symbol.py` rastert sie hier nur in die Form, die Windows haben will. Auch
 # `tools/symbol.py` macht daraus PNG-/ICO-Dateien für eine Verknüpfung; es gibt
 # deshalb keine zweite Beschreibung des Motivs, die auseinanderlaufen könnte.
-def setze_app_id(app_id: str = APP_ID) -> bool:
+def set_app_id(app_id: str = APP_ID) -> bool:
     """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
 
     Die Taskleiste nimmt nicht das Symbol aus `WM_SETICON`, solange sie das
@@ -1108,7 +1108,7 @@ def setze_app_id(app_id: str = APP_ID) -> bool:
         return False
 
 
-def _symbol_bits(kante: int = 32) -> bytes:
+def _icon_bits(kante: int = 32) -> bytes:
     """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
 
     Ein DIB statt `CreateIcon()` mit rohen Farbbits: das erzeugt eine
@@ -1121,9 +1121,9 @@ def _symbol_bits(kante: int = 32) -> bytes:
     """
     kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
-    # DIB-Zeilen stehen von UNTEN nach oben, `punkte()` liefert von oben —
+    # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
-    for zeile in reversed(list(symbol.punkte(kante))):
+    for zeile in reversed(list(symbol.pixel_rows(kante))):
         for r, g, b, a in zeile:
             farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
@@ -1132,7 +1132,7 @@ def _symbol_bits(kante: int = 32) -> bytes:
     return kopf + bytes(farben) + bytes(((kante + 31) // 32 * 4) * kante)
 
 
-def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
@@ -1166,7 +1166,7 @@ def setze_fenster_symbol(titel_substring: str, warten: float = 0.0) -> bool:
         # 0 = klein (Titelleiste, 16 px), 1 = gross (ALT+TAB und Taskleiste, die
         # daraus ihre 24 px skaliert). Ein gedehntes 16er sah dort matschig aus.
         for art, kante in ((0, 16), (1, 32)):
-            bits = _symbol_bits(kante)
+            bits = _icon_bits(kante)
             # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
             symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
                                                      kante, kante, 0)

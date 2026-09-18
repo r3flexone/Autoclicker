@@ -119,9 +119,9 @@ def _prepare_learning_image(img: 'Image.Image', slot_color: tuple = None):
     ueberspringt. Ohne gemessene Slot-Farbe ist keine sichere Leer-Erkennung
     moeglich; dann bleibt das Bild bewusst lernbar.
     """
-    from ...imaging import mit_hintergrund_maske
+    from ...imaging import with_background_mask
 
-    maskiert = mit_hintergrund_maske(img, slot_color)
+    maskiert = with_background_mask(img, slot_color)
     marker = _collect_markers_silent(maskiert, slot_color)
     leer = bool(slot_color) and not marker
     return maskiert, marker, leer

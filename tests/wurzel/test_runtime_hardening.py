@@ -60,19 +60,19 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_neuer_befehl_bleibt_waehrend_des_lesens_erhalten(self):
         from autoclicker import befehl
         with tempfile.TemporaryDirectory() as temp, \
-                patch.object(befehl, "BEFEHL_DATEI", Path(temp) / "briefkasten.json"):
-            befehl.sende("start")
+                patch.object(befehl, "COMMAND_PATH", Path(temp) / "briefkasten.json"):
+            befehl.send_command("start")
             lesen = Path.read_text
 
             def mit_neuem_befehl(pfad, *args, **kwargs):
                 text = lesen(pfad, *args, **kwargs)
-                befehl.sende("stop")
+                befehl.send_command("stop")
                 return text
 
             with patch.object(Path, "read_text", mit_neuem_befehl):
-                self.assertEqual(befehl.hole()["befehl"], "start")
-            self.assertEqual(befehl.hole()["befehl"], "stop")
-            self.assertIsNone(befehl.hole())
+                self.assertEqual(befehl.fetch_command()["befehl"], "start")
+            self.assertEqual(befehl.fetch_command()["befehl"], "stop")
+            self.assertIsNone(befehl.fetch_command())
 
     def test_loader_lehnt_falsche_json_strukturen_kontrolliert_ab(self):
         import json
@@ -111,7 +111,7 @@ class RuntimeHardeningTest(unittest.TestCase):
 
         with patch.object(steps, "check_failsafe", return_value=False), \
                 patch.object(steps, "print_step_detail"), \
-                patch.object(steps.status, "schreibe"), \
+                patch.object(steps.status, "write_status"), \
                 patch.object(actions, "wait_while_paused", side_effect=warten), \
                 patch.object(actions, "send_click", return_value=True) as senden:
             t = threading.Thread(target=steps.execute_step, args=(
@@ -142,7 +142,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         senden.assert_not_called()
 
     def test_boss_und_icon_klicken_nur_einen_existierenden_punkt(self):
-        from autoclicker.persistence import resolve_klick_referenzen
+        from autoclicker.persistence import resolve_click_references
         for art in ("boss", "icon"):
             with self.subTest(art=art):
                 state = AutoClickerState()
@@ -161,12 +161,12 @@ class RuntimeHardeningTest(unittest.TestCase):
 
                 with patch.object(steps, "execute_icon_scan", return_value=True), \
                         patch.object(boss_detection, "safe_click", return_value=True) as klicken:
-                    resolve_klick_referenzen(state)
+                    resolve_click_references(state)
                     ausfuehren()
                     klicken.assert_not_called()
                     # Auch (0, 0) kann ein gültiger Punkt sein: die ID entscheidet.
                     state.active_sequence.points = [ClickPoint(0, 0, "Ziel", 7)]
-                    resolve_klick_referenzen(state)
+                    resolve_click_references(state)
                     ausfuehren()
                     self.assertEqual(klicken.call_args.args[1:3], (0, 0))
                     self.assertEqual(klicken.call_count, 1)
@@ -180,8 +180,8 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch("autoclicker.session_log.start_session_log", return_value=protokoll), \
                 patch.object(worker, "_run_main_loop", side_effect=RuntimeError("Schritt kaputt")), \
                 patch.object(worker, "set_console_title"), \
-                patch.object(worker.status, "schreibe"), \
-                patch.object(worker.status, "beende") as ende:
+                patch.object(worker.status, "write_status"), \
+                patch.object(worker.status, "finish_run") as ende:
             try:
                 worker.sequence_worker(state)
             except RuntimeError:

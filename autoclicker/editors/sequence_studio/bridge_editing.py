@@ -319,7 +319,7 @@ class BridgeEditingMixin:
 
         Hier stand einmal das Gegenteil („ein Duplikat ist erst mal derselbe
         Klick"), mit dem Argument, ein zweiter Punkt an derselben Stelle sei die
-        Doppelung, die `punkt_an_stelle()` überall sonst vermeidet. Das stimmt —
+        Doppelung, die `point_at_position()` überall sonst vermeidet. Das stimmt —
         nur verhindert die Regel dort *unabsichtliche* Dubletten aus einer
         Aufnahme. Ein Duplikat ist eine Ansage, und der Preis dafür sind zwei
         Punkte auf einer Stelle, bis einer davon umzieht.
@@ -453,12 +453,12 @@ class BridgeEditingMixin:
 
         # Erst hier importiert: das Modul soll ohne Windows ladbar bleiben, und
         # die Tests messen alles andere an dieser Klasse plattformfrei.
-        from ...utils.io import warte_auf_taste
+        from ...utils.io import wait_for_global_key
         from ...winapi import get_cursor_pos
 
         ecken = []
         for _ in (1, 2):
-            taste = warte_auf_taste(("enter", "escape"),
+            taste = wait_for_global_key(("enter", "escape"),
                                     timeout=WARTE_TIMEOUT)
             if taste != "enter":
                 return self._melde(
@@ -486,10 +486,10 @@ class BridgeEditingMixin:
         globale Taste.
         """
         # Erst hier importiert — das Modul bleibt ohne Windows ladbar.
-        from ...utils.io import warte_auf_taste
+        from ...utils.io import wait_for_global_key
         from ...winapi import get_cursor_pos
 
-        taste = warte_auf_taste(("enter", "escape"), timeout=WARTE_TIMEOUT)
+        taste = wait_for_global_key(("enter", "escape"), timeout=WARTE_TIMEOUT)
         if taste != "enter":
             return None, None, ("Abgebrochen" if taste == "escape" else "Nichts gedrückt")
         x, y = get_cursor_pos()

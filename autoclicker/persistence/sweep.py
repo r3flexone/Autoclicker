@@ -38,7 +38,7 @@ from .paths import BACKUPS_DIR, ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
 # Serializer schreibt nur aktuelle Felder - was dazwischen wegfaellt, war Altbestand.
 # Deshalb werden auch Dateitypen sauber, die gar keinen Migrationsschritt haben.
 
-def _lade(pfad: Path):
+def _load(pfad: Path):
     try:
         with open(pfad, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -73,7 +73,7 @@ def _rt_icon_scan(pfad: Path):
 
 
 def _rt_items(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_ITEMS)
+    data, _ = migrate(_load(pfad), KIND_ITEMS)
     if not isinstance(data, dict):
         return None
     return {name: ser._item_to_dict(ser._item_from_dict(i, name))
@@ -81,7 +81,7 @@ def _rt_items(pfad: Path):
 
 
 def _rt_slots(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_SLOTS)
+    data, _ = migrate(_load(pfad), KIND_SLOTS)
     if not isinstance(data, dict):
         return None
     return {name: ser._slot_to_dict(ser._slot_from_dict(name, s))
@@ -89,7 +89,7 @@ def _rt_slots(pfad: Path):
 
 
 def _rt_bosses(pfad: Path):
-    data, _ = migrate(_lade(pfad), KIND_GLOBAL_BOSSES)
+    data, _ = migrate(_load(pfad), KIND_GLOBAL_BOSSES)
     if not isinstance(data, list):
         return None
     return [ser._boss_profile_to_dict(ser._boss_profile_from_dict(b)) for b in data]
@@ -98,7 +98,7 @@ def _rt_bosses(pfad: Path):
 def _rt_config(pfad: Path):
     """config.json: from_dict wirft unbekannte Keys weg, to_dict schreibt die aktuellen."""
     from ..config import AppConfig
-    data = _lade(pfad)
+    data = _load(pfad)
     return AppConfig.from_dict(data).to_dict() if isinstance(data, dict) else None
 
 
@@ -112,7 +112,7 @@ def _sequences_dir() -> Path:
     return Path(SEQUENCES_DIR)
 
 
-def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
+def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     """Alle JSON-Dateien der App mit Typ und Round-Trip-Funktion.
 
     Alle Pfade sind relativ zum Arbeitsverzeichnis - genau wie im laufenden Programm.
@@ -173,7 +173,7 @@ def sammle_dateien() -> list[tuple[Path, str, RoundTrip]]:
     return dateien
 
 
-def _zahlen_normalisieren(x):
+def _normalize_numbers(x):
     """int und float derselben Zahl angleichen - JSON kennt nur EINEN Zahlentyp.
 
     Ohne das galt eine von Hand auf `600` getippte Wartezeit als aufzuraeumen
@@ -194,20 +194,20 @@ def _zahlen_normalisieren(x):
     if isinstance(x, (int, float)):
         return float(x)
     if isinstance(x, dict):
-        return {k: _zahlen_normalisieren(v) for k, v in x.items()}
+        return {k: _normalize_numbers(v) for k, v in x.items()}
     if isinstance(x, (list, tuple)):
-        return [_zahlen_normalisieren(v) for v in x]
+        return [_normalize_numbers(v) for v in x]
     return x
 
 
-def _gleich(a, b) -> bool:
+def _equal(a, b) -> bool:
     """Inhaltsgleich? Normalisierter JSON-Text, damit Schluesselreihenfolge,
     Einrueckung und der Python-Zahlentyp nicht als Aenderung durchgehen."""
-    return (json.dumps(_zahlen_normalisieren(a), sort_keys=True, ensure_ascii=False)
-            == json.dumps(_zahlen_normalisieren(b), sort_keys=True, ensure_ascii=False))
+    return (json.dumps(_normalize_numbers(a), sort_keys=True, ensure_ascii=False)
+            == json.dumps(_normalize_numbers(b), sort_keys=True, ensure_ascii=False))
 
 
-def sicherungspfad(pfad: Path) -> Path:
+def backup_path(pfad: Path) -> Path:
     """Wohin die .bak-Kopie von `pfad` gehoert: unter BACKUPS_DIR, Struktur gespiegelt.
 
     `sequences/all_dayli.json` -> `backups/sequences/all_dayli.json.bak`. Die
@@ -226,21 +226,21 @@ def sicherungspfad(pfad: Path) -> Path:
     return Path(BACKUPS_DIR) / p.with_suffix(p.suffix + ".bak")
 
 
-def _schreibe(pfad: Path, data) -> None:
+def _write(pfad: Path, data) -> None:
     """Sicherung anlegen, dann schreiben - im selben Format wie die App selbst.
 
     compact_json + atomic_write, sonst wechselte die Formatierung bei jedem Save
     hin und her. Die Sicherung liegt unter `backups/` statt neben dem Original,
     damit ein `*.json`-Glob sie nicht erwischt; der Ordner entsteht erst hier.
     """
-    backup = sicherungspfad(pfad)
+    backup = backup_path(pfad)
     if not backup.exists():
         backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_text(pfad.read_text(encoding="utf-8"), encoding="utf-8")
     atomic_write(pfad, compact_json(data))
 
 
-class SweepErgebnis:
+class SweepResult:
     """Was der Durchgang gefunden hat. `geaendert` ist die Liste (Pfad, Meldungen)."""
 
     def __init__(self) -> None:
@@ -250,7 +250,7 @@ class SweepErgebnis:
         self.geschrieben: bool = False
 
     @property
-    def anzahl_geaendert(self) -> int:
+    def changed_count(self) -> int:
         return len(self.geaendert)
 
     def __bool__(self) -> bool:
@@ -258,7 +258,7 @@ class SweepErgebnis:
         return bool(self.geaendert or self.uebersprungen)
 
 
-def sweep(write: bool = False) -> SweepErgebnis:
+def sweep(write: bool = False) -> SweepResult:
     """Alle Dateien pruefen und (bei write=True) sauber zurueckschreiben.
 
     Gibt ein SweepErgebnis zurueck und druckt selbst NICHTS - die Ausgabe entscheidet
@@ -267,11 +267,11 @@ def sweep(write: bool = False) -> SweepErgebnis:
     Einen Punkte-Kontext gibt es nicht mehr: eine Sequenz bringt ihre Punkte im
     eigenen Feld mit, `load_sequence_file()` loest sie daraus auf.
     """
-    ergebnis = SweepErgebnis()
+    ergebnis = SweepResult()
     ergebnis.geschrieben = write
 
-    for pfad, kind, rt in sammle_dateien():
-        roh = _lade(pfad)
+    for pfad, kind, rt in collect_files():
+        roh = _load(pfad)
         if roh is None:
             ergebnis.uebersprungen.append(pfad)
             continue
@@ -288,7 +288,7 @@ def sweep(write: bool = False) -> SweepErgebnis:
             ergebnis.uebersprungen.append(pfad)
             continue
 
-        if not meldungen and _gleich(roh, sauber):
+        if not meldungen and _equal(roh, sauber):
             ergebnis.aktuell += 1
             continue
 
@@ -296,12 +296,12 @@ def sweep(write: bool = False) -> SweepErgebnis:
             meldungen = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
         ergebnis.geaendert.append((pfad, meldungen))
         if write:
-            _schreibe(pfad, sauber)
+            _write(pfad, sauber)
 
     return ergebnis
 
 
-def sweep_beim_start() -> SweepErgebnis:
+def sweep_on_start() -> SweepResult:
     """Start-Durchgang: schreibt, und meldet nur wenn es etwas zu melden gab.
 
     Bewusst nach `init_directories()` und VOR dem Laden aufrufen - dann liest der Rest
@@ -315,7 +315,7 @@ def sweep_beim_start() -> SweepErgebnis:
 
     if ergebnis.geaendert:
         print(f"\n{col('[MIGRATION]', 'cyan')} "
-              f"{ergebnis.anzahl_geaendert} Datei(en) aufs aktuelle Format gehoben:")
+              f"{ergebnis.changed_count} Datei(en) aufs aktuelle Format gehoben:")
         for pfad, meldungen in ergebnis.geaendert:
             print(f"            {pfad.name}")
             for m in meldungen:

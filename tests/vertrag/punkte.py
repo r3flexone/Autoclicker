@@ -344,7 +344,7 @@ check("und zeichnet es wie das an der Bedingung",
 # ----------------------------------------------------------------------
 section("Ein geteilter Punkt sagt, dass er geteilt ist")
 
-# **Der Fall aus einer echten Aufnahme.** `punkt_an_stelle()` legt den Klick auf
+# **Der Fall aus einer echten Aufnahme.** `point_at_position()` legt den Klick auf
 # denselben Knopf in Loop 1 und Loop 4 auf EINEN Punkt - richtig so. Wer dann
 # Loop 1 eine andere Stelle gibt („Stelle mit der Maus setzen"), verschiebt den
 # Punkt, und Loop 4 zieht mit: der Block dort klickt ploetzlich woanders hin,

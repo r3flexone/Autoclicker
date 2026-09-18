@@ -26,7 +26,7 @@ def ensure_boss_scans_dir(owner: str = "") -> Path:
     return ensure_dir(_boss_scans_dir(owner)) if owner else Path("sequences")
 
 
-def boss_scan_name_erlaubt(name: str) -> bool:
+def boss_scan_name_allowed(name: str) -> bool:
     """Die Bibliothek und ein Scan dürfen niemals dieselbe Datei belegen."""
     return sanitize_filename(name) != "bibliothek"
 
@@ -35,7 +35,7 @@ def save_boss_scan(config: BossScanConfig) -> bool:
     """Speichert eine Boss-Scan Konfiguration."""
     if not config.owner_sequence:
         raise ValueError("Boss-Scan hat keine Besitzer-Sequenz")
-    if not boss_scan_name_erlaubt(config.name):
+    if not boss_scan_name_allowed(config.name):
         print(err("Der Scan-Name 'bibliothek' ist für die Boss-Bibliothek reserviert."))
         return False
     try:

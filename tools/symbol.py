@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from autoclicker.symbol import punkte              # noqa: E402
+from autoclicker.symbol import pixel_rows          # noqa: E402
 
 # Was Windows tatsächlich anfragt: 16 (Titelleiste), 32 (ALT+TAB), 48 (grosse
 # Kacheln, 150 % Skalierung), 256 (Verknüpfung, Explorer-Vorschau). Die Grössen
@@ -32,7 +32,7 @@ GROESSEN = (16, 32, 48, 64, 128, 256)
 def png_bytes(kante: int) -> bytes:
     """Ein PNG mit Alphakanal, ohne Pillow zusammengesetzt."""
     roh = bytearray()
-    for zeile in punkte(kante):
+    for zeile in pixel_rows(kante):
         roh.append(0)                              # Filter 0 = keiner
         for r, g, b, a in zeile:
             roh += bytes((r, g, b, a))

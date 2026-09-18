@@ -105,7 +105,7 @@ def flush_item_scan_context(state: AutoClickerState) -> Optional[ItemScanConfig]
         return cfg
 
 
-def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str]:
+def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str]:
     """Fuellt die Klick-Ziele, die per Punkt-ID gespeichert sind.
 
     | wer | Feld | fuellt |
@@ -114,7 +114,7 @@ def resolve_klick_referenzen(state: AutoClickerState, sequence=None) -> list[str
     | `BossProfile` | `action_point_id` | `action_x`, `action_y` |
     | `IconScanConfig` | `action_point_id` | `action_x`, `action_y` |
 
-    Gleiches Muster wie `aufloesen()`. Eine tote Referenz wird gemeldet und das
+    Gleiches Muster wie `resolve()`. Eine tote Referenz wird gemeldet und das
     Klick-Ziel bleibt leer — die Aktion tut dann nichts, statt auf (0, 0) zu klicken.
     """
     meldungen = []

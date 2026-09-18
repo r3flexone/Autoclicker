@@ -53,7 +53,7 @@ def _zustand():
     st = _ST()
     st.step_mode = False
     st.step_via_studio = False
-    st.lauf_aus_studio = False
+    st.run_from_studio = False
     st.stop_event.clear()
     return st
 
@@ -88,7 +88,7 @@ try:
     check("'m' fuehrt den Block aus UND schaltet den Schrittmodus ein",
           _dbg.step_gate(_st, _halt, "LOOP", 1, 2) == _dbg.GATE_RUN
           and _st.step_mode is True and _st.step_via_studio is False)
-    check("das Gate ist danach nicht mehr als wartend markiert", _st.gate_wartet is False)
+    check("das Gate ist danach nicht mehr als wartend markiert", _st.gate_waiting is False)
 
     # Im Schrittmodus ist der Haltepunkt kein zweites Gate — es fragt ohnehin.
     _st = _zustand()
@@ -109,9 +109,9 @@ try:
         "wert", _dbg.step_gate(_st, _halt, "LOOP", 1, 2)))
     _t.start()
     _frist = time.time() + 1.0
-    while not _st.gate_wartet and time.time() < _frist:
+    while not _st.gate_waiting and time.time() < _frist:
         time.sleep(0.01)
-    check("waehrend das Gate wartet, ist es als wartend markiert", _st.gate_wartet is True)
+    check("waehrend das Gate wartet, ist es als wartend markiert", _st.gate_waiting is True)
     # Auch ein Lauf aus der Konsole zeigt dem Studio, warum er steht.
     check("und die Tafel steht auch beim Konsolen-Gate im Laufstatus",
           (_status._zustand.get("manuell") or {}).get("haltepunkt") is True)
@@ -154,7 +154,7 @@ _dbg.read_command = lambda *a, **k: (_ for _ in ()).throw(AssertionError("Studio
 _dbg.set_cursor_pos = lambda *a, **k: None
 try:
     _st = _zustand()
-    _st.lauf_aus_studio = True
+    _st.run_from_studio = True
     _st.is_running = True
     _t, _erg = _studio_gate(_st, _halt)
     _tafel = _status._zustand.get("manuell") or {}
@@ -162,7 +162,7 @@ try:
           _tafel.get("aktiv") is True and _tafel.get("haltepunkt") is True
           and _tafel.get("block") == 1)
     # Die Antwort kommt als Briefkasten-Befehl — auch ohne Schrittmodus.
-    _hnd.befehl_manuell_aktion(_st, {"aktion": "step"})
+    _hnd.command_manual_action(_st, {"aktion": "step"})
     _t.join(1.5)
     check("'ab hier schrittweise' aus dem Studio fuehrt aus und schaltet um",
           _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is True
@@ -173,7 +173,7 @@ try:
     _t, _erg = _studio_gate(_st, _halt)
     check("im Schrittmodus traegt die Tafel keine Haltepunkt-Marke",
           (_status._zustand.get("manuell") or {}).get("haltepunkt") is False)
-    _hnd.befehl_manuell_aktion(_st, {"aktion": "continue"})
+    _hnd.command_manual_action(_st, {"aktion": "continue"})
     _t.join(1.5)
     check("'Normal weiter' schaltet den Schrittmodus wieder aus",
           _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is False)
@@ -182,10 +182,10 @@ try:
     # beim naechsten Halt nach.
     _st.step_command = ""
     _st.step_command_event.clear()
-    _hnd.befehl_manuell_aktion(_st, {"aktion": "run"})
+    _hnd.command_manual_action(_st, {"aktion": "run"})
     check("ohne wartendes Gate wird kein Befehl vorgemerkt",
           _st.step_command == "" and not _st.step_command_event.is_set())
-    _hnd.befehl_manuell_aktion(_st, {"aktion": "kaputt"})
+    _hnd.command_manual_action(_st, {"aktion": "kaputt"})
     check("ein unbekannter Befehl wird abgewiesen", _st.step_command == "")
 finally:
     _dbg.read_command = _orig_read
@@ -201,12 +201,12 @@ section("Haltepunkt: der Start merkt sich, wer gefragt wird")
 # braeuchte eine Sequenz, ein Fenster und einen Bildschirm.
 import inspect as _inspect
 _quelle = _inspect.getsource(_hnd)
-check("befehl_start startet mit aus_studio=True",
+check("command_start startet mit aus_studio=True",
       "handle_toggle(state, aus_studio=True)" in _quelle)
 check("der Countdown laesst die Herkunft stehen",
       _quelle.count("handle_toggle(state, aus_studio=None)") >= 2)
 check("handle_toggle schreibt die Herkunft an den Lauf",
-      "state.lauf_aus_studio = bool(aus_studio)" in _quelle)
+      "state.run_from_studio = bool(aus_studio)" in _quelle)
 
 
 # =============================================================================

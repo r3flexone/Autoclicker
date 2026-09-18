@@ -162,7 +162,7 @@ def transform_from_windows(src_window: tuple[int, int, int, int],
 IDENTITY_TRANSFORM = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 0, "offset_y": 0}
 
 
-def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
+def transform_from_offset(alt: tuple[int, int], neu: tuple[int, int]) -> dict:
     """Reine Verschiebung aus EINEM Referenzpunkt: wo er war, wo er hingehört.
 
     Ein Punkt kann nur verschieben, nicht skalieren (dafür `compute_transform`).
@@ -173,7 +173,7 @@ def transform_aus_verschiebung(alt: tuple[int, int], neu: tuple[int, int]) -> di
             "offset_x": neu[0] - alt[0], "offset_y": neu[1] - alt[1]}
 
 
-def ist_identitaet(transform: dict) -> bool:
+def is_identity(transform: dict) -> bool:
     """True, wenn der Transform nichts verändern würde."""
     return (transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0
             and round(transform["offset_x"]) == 0 and round(transform["offset_y"]) == 0)
@@ -183,7 +183,7 @@ def ist_identitaet(transform: dict) -> bool:
 # Dasselbe Remapping wie beim Import, nur auf den EIGENEN Bestand. Der Import
 # kann das nicht ersetzen: er legt Daten an, statt vorhandene zu korrigieren.
 
-def kalibrier_vorschau(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
+def calibration_preview(state: 'AutoClickerState', transform: dict) -> list[tuple[str, tuple, tuple]]:
     """Was der Transform ändern würde — (Bezeichnung, vorher, nachher), ohne Mutation."""
     return [(label, (x, y), remap_point(x, y, transform))
             for label, x, y in collect_click_positions(state)]
@@ -200,7 +200,7 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
     for steps in phasen:
         for s in steps:
             # Referenzierte Stellen ueberspringen: ihr Punkt ist schon umgerechnet,
-            # und der naechste `aufloesen()`-Lauf holt den Wert ohnehin von dort.
+            # und der naechste `resolve()`-Lauf holt den Wert ohnehin von dort.
             if s.point_id is None:
                 s.x, s.y = remap_point(s.x, s.y, transform)
             if s.wait_condition is not None and s.wait_condition.point_id is None:
@@ -213,7 +213,7 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
                 s.screenshot_region = remap_region(s.screenshot_region, transform)
 
 
-def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
+def backup_before_calibration(state: 'AutoClickerState') -> str | None:
     """Legt vor dem Umrechnen ein vollständiges Export-ZIP als Sicherung an.
 
     Kein eigenes Backup-Format: der Export kann das längst, und der Import
@@ -235,7 +235,7 @@ def sichere_vor_kalibrierung(state: 'AutoClickerState') -> str | None:
     return str(ziel)
 
 
-def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
+def calibrate_inventory(state: 'AutoClickerState', transform: dict,
                        mit_scans: bool = True, mit_sequenzen: bool = True,
                        mit_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
@@ -254,14 +254,14 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
     from .persistence import list_available_sequences, save_points
     from .utils import atomic_write, compact_json
 
-    zahl = {"punkte": 0, "slots": 0, "items": 0, "item_scans": 0,
+    number = {"punkte": 0, "slots": 0, "items": 0, "item_scans": 0,
             "boss_scans": 0, "icon_scans": 0, "bosse": 0, "sequenzen": 0}
 
     # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
     with state.lock:
         for p in state.points:
             p.x, p.y = remap_point(p.x, p.y, transform)
-            zahl["punkte"] += 1
+            number["punkte"] += 1
 
         if mit_scans:
             for cfg in state.item_scans.values():
@@ -272,19 +272,19 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                         slot.scan_region = remap_region(slot.scan_region, transform)
                         slot.click_pos = remap_point(
                             slot.click_pos[0], slot.click_pos[1], transform)
-                        zahl["slots"] += 1
+                        number["slots"] += 1
                 for item in cfg.items:
                     if item.confirm_point is not None:
                         cp = item.confirm_point
                         cp.x, cp.y = remap_point(cp.x, cp.y, transform)
-                        zahl["items"] += 1
+                        number["items"] += 1
                 # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar.
                 # Wird nur eine Hälfte transformiert, würde die Runtime beim
                 # nächsten Lauf ein zweites, falsches Remapping anwenden.
                 if cfg.capture_window_rect:
                     cfg.capture_window_rect = remap_region(
                         cfg.capture_window_rect, transform)
-                    zahl["item_scans"] += 1
+                    number["item_scans"] += 1
 
             for cfg in state.boss_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:
@@ -292,18 +292,18 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 for b in cfg.bosses:
                     b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-                zahl["boss_scans"] += 1
+                number["boss_scans"] += 1
 
             for b in state.global_bosses:
                 b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-                zahl["bosse"] += 1
+                number["bosse"] += 1
 
             for cfg in state.icon_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:
                     cfg.owner_sequence = state.active_sequence.name
                 cfg.scan_region = remap_region(cfg.scan_region, transform)
                 cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
-                zahl["icon_scans"] += 1
+                number["icon_scans"] += 1
 
         # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
         # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
@@ -336,11 +336,11 @@ def kalibriere_bestand(state: 'AutoClickerState', transform: dict,
             _remap_sequence_data(daten, transform)
             try:
                 atomic_write(pfad, compact_json(daten))
-                zahl["sequenzen"] += 1
+                number["sequenzen"] += 1
             except (IOError, OSError) as e:
                 logger.warning("Kalibrierung: %s nicht schreibbar (%s)", pfad.name, e)
 
-    return zahl
+    return number
 
 
 # =============================================================================
@@ -565,12 +565,12 @@ class _ImportTransaction:
         return False
 
     def rollback(self) -> None:
-        from .config import uebernehmen
+        from .config import apply_config
 
         with self.state.lock:
             for field, value in self.state_snapshot.items():
                 setattr(self.state, field, value)
-            uebernehmen(self.state.config, self.config_snapshot)
+            apply_config(self.state.config, self.config_snapshot)
 
         for target in self._managed_files():
             target.unlink()
@@ -624,7 +624,7 @@ class _ImportTransaction:
 
 
 
-def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
+def _safe_bundle_path(name: str) -> Optional[PurePosixPath]:
     """Ein relativer Sequenzpfad im Archiv oder None."""
     pfad = PurePosixPath(name)
     if ("\\" in name or ":" in name or "\x00" in name
@@ -636,7 +636,7 @@ def _sicherer_bundle_pfad(name: str) -> Optional[PurePosixPath]:
 
 def _remap_sequence_folder(ordner: Path, transform: dict) -> None:
     """Transformiert alle koordinatenhaltigen JSON-Dateien eines Importordners."""
-    if ist_identitaet(transform):
+    if is_identity(transform):
         return
     for pfad in ordner.rglob("*.json"):
         data = json.loads(pfad.read_text(encoding="utf-8"))
@@ -678,7 +678,7 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
         temp_root = Path(temp)
         if import_sequences:
             for name in names:
-                archiv = _sicherer_bundle_pfad(name)
+                archiv = _safe_bundle_path(name)
                 if archiv is None or name.endswith("/"):
                     continue
                 ziel = temp_root.joinpath(*archiv.parts[1:]).resolve()

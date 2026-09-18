@@ -487,8 +487,8 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     Optional ein zweiter Punkt, dann wird zusätzlich skaliert (andere Auflösung).
     """
     from ..import_export import (
-        compute_transform, transform_aus_verschiebung, ist_identitaet,
-        kalibrier_vorschau, kalibriere_bestand,
+        compute_transform, transform_from_offset, is_identity,
+        calibration_preview, calibrate_inventory,
     )
     print(header("KALIBRIERUNG"))
     print(f"  {breadcrumb('Punkte', 'Kalibrierung')}")
@@ -510,7 +510,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
     p_alt, p_neu = ref1
-    transform = transform_aus_verschiebung(p_alt, p_neu)
+    transform = transform_from_offset(p_alt, p_neu)
 
     versatz = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
     print()
@@ -542,12 +542,12 @@ def run_kalibrierung(state: AutoClickerState) -> None:
             print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
             return
 
-    if ist_identitaet(transform):
+    if is_identity(transform):
         print(f"\n  {info('Der Versatz ist null — nichts zu tun.')}")
         return
 
     # --- Vorschau ----------------------------------------------------------------
-    vorschau = kalibrier_vorschau(state, transform)
+    vorschau = calibration_preview(state, transform)
     print()
     print(col("  VORSCHAU (Auszug):", 'bold'))
     for label, alt, neu in vorschau[:12]:
@@ -595,14 +595,14 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
 
-    from ..import_export import sichere_vor_kalibrierung
-    sicherung = sichere_vor_kalibrierung(state)
+    from ..import_export import backup_before_calibration
+    sicherung = backup_before_calibration(state)
     if sicherung:
         print(f"  {ok('Sicherung angelegt:')} {sicherung}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
-    zahl = kalibriere_bestand(state, transform, mit_scans=mit_scans,
+    number = calibrate_inventory(state, transform, mit_scans=mit_scans,
                               mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
 
     print()
@@ -611,7 +611,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
                     "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
-    for schluessel, anzahl in zahl.items():
+    for schluessel, anzahl in number.items():
         if anzahl:
             print(f"    {anzahl:>4}  {beschriftung[schluessel]}")
     if mit_sequenzen:

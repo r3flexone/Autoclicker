@@ -303,7 +303,7 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
         # **Am Punkt, nicht an den rohen Koordinaten.** Eine Bedingung ohne
         # `point_id` landet als `wait_pixel`/`wait_color` in der Datei — eine
         # Koordinaten-Kopie ausserhalb der Punktliste, die keine Kalibrierung
-        # je wieder einholt. Stelle und Farbe holt `aufloesen()` aus dem Punkt;
+        # je wieder einholt. Stelle und Farbe holt `resolve()` aus dem Punkt;
         # ohne Punkt entsteht gar keine Bedingung (der Aufrufer lehnt den
         # Typwechsel dann ab).
         if step.wait_condition is None and step.point_id is not None:

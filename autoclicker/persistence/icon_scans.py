@@ -16,7 +16,7 @@ from ..models import (
 from .migration import KIND_ICON_SCAN, migrate
 from .sequences import sequence_dir
 from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
-from .serialization import _icon_scan_to_dict, _klick_referenz
+from .serialization import _icon_scan_to_dict, _click_reference
 
 logger = logging.getLogger("autoclicker")
 
@@ -59,7 +59,7 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
             marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
             color_tolerance=data.get("color_tolerance", 30),
             action=data.get("action", ICON_ACTION_CLICK),
-            action_point_id=_klick_referenz(
+            action_point_id=_click_reference(
                 data, f"Icon-Scan '{data['name']}'",
                 "Klick-Punkt im Icon-Scan-Editor neu setzen"),
             action_key=data.get("action_key"),

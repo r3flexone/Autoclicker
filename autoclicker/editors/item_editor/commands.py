@@ -11,7 +11,7 @@ from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
 from ...persistence import save_global_items, active_templates_dir
 from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
-                      bereinige_itemname, ok, err, info, hint)
+                      clean_item_name, ok, err, info, hint)
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -152,7 +152,7 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             reasoning=state.config.llm_reasoning,
             max_tokens=state.config.llm_max_tokens,
         )
-        base = bereinige_itemname(suggestion) if suggestion else ""
+        base = clean_item_name(suggestion) if suggestion else ""
         if not base:
             print(f"    {old_name}: kein Name vom LLM — bleibt.")
             continue

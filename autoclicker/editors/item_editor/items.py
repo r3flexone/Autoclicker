@@ -14,7 +14,7 @@ from ...imaging import (
 from ...models import ItemProfile, AutoClickerState
 from ...persistence import get_existing_categories, active_templates_dir
 from ...utils import (
-    confirm, info, is_cancel, naechster_freier_name, safe_input,
+    confirm, info, is_cancel, next_free_name, safe_input,
     sanitize_filename,
 )
 from .._item_felder import frage_bestaetigungsklick, frage_prioritaet
@@ -53,9 +53,9 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
     """Erstellt ein neues Item interaktiv."""
     # Nicht `len(...) + 1`: nach dem ersten Loeschen schlaegt das einen Namen vor, den
     # es schon gibt - und weil der Name die Referenz IST, folgt darauf die Rueckfrage
-    # nach dem Ueberschreiben. `naechster_freier_name()` fuellt Luecken.
+    # nach dem Ueberschreiben. `next_free_name()` fuellt Luecken.
     with state.lock:
-        vorschlag = naechster_freier_name("Item", state.global_items)
+        vorschlag = next_free_name("Item", state.global_items)
 
     item_name = safe_input(f"  Item-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
     if is_cancel(item_name):

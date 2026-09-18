@@ -1368,9 +1368,9 @@ class _PhaseEditor:
         Jede Stelle, die ein Editor erzeugt, muss als Punkt existieren; sonst hätte
         der Schritt eine Koordinate, die nirgends sonst steht.
         """
-        from ...persistence import punkt_fuer_stelle
+        from ...persistence import point_for_position
         with self.state.lock:
-            return punkt_fuer_stelle(self.state, x, y, color, name,
+            return point_for_position(self.state, x, y, color, name,
                                      source="Sequenz-Editor")
 
     def _resolve_trigger_color(self, until_gone: bool, point):

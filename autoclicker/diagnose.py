@@ -3,7 +3,7 @@
 Die häufigste Frustration ist "ich starte, und es passiert das Falsche". Die meisten
 Ursachen dafür sind statisch prüfbar — und die Prüfungen gab es auch schon, nur verstreut
 über die Laufzeit und erst dann, wenn es zu spät war: eine Meldung in
-`resolve_point_references()`, eine in `resolve_klick_referenzen()`, eine Warnung im
+`resolve_point_references()`, eine in `resolve_click_references()`, eine Warnung im
 Boss-Scan. Hier laufen sie an einer Stelle und auf Zuruf.
 
 Zwei Aufrufer:
@@ -27,14 +27,14 @@ from .utils import col, err, hint, info, ok, warn
 from .winapi import get_virtual_desktop
 
 # Ab wie vielen gleichartigen Befunden nur noch gezählt statt aufgezählt wird.
-_MAX_EINZELN = 8
+_MAX_SINGLE = 8
 
-STUFE_FEHLER = "fehler"     # läuft so nicht (oder tut garantiert das Falsche)
-STUFE_HINWEIS = "hinweis"   # läuft, ist aber vermutlich nicht gewollt
+LEVEL_ERROR = "fehler"     # läuft so nicht (oder tut garantiert das Falsche)
+LEVEL_HINT = "hinweis"   # läuft, ist aber vermutlich nicht gewollt
 
 
 @dataclass
-class Befund:
+class Finding:
     """Ein Prüfergebnis: wo, was, und was man dagegen tut."""
     stufe: str
     bereich: str
@@ -43,20 +43,20 @@ class Befund:
 
 
 @dataclass
-class Pruefbericht:
-    befunde: list[Befund] = field(default_factory=list)
+class CheckReport:
+    befunde: list[Finding] = field(default_factory=list)
     geprueft: list[str] = field(default_factory=list)
 
-    def melde(self, stufe: str, bereich: str, text: str, tipp: str = "") -> None:
-        self.befunde.append(Befund(stufe, bereich, text, tipp))
+    def add_finding(self, stufe: str, bereich: str, text: str, tipp: str = "") -> None:
+        self.befunde.append(Finding(stufe, bereich, text, tipp))
 
     @property
-    def fehler(self) -> list[Befund]:
-        return [b for b in self.befunde if b.stufe == STUFE_FEHLER]
+    def errors(self) -> list[Finding]:
+        return [b for b in self.befunde if b.stufe == LEVEL_ERROR]
 
     @property
-    def hinweise(self) -> list[Befund]:
-        return [b for b in self.befunde if b.stufe == STUFE_HINWEIS]
+    def hints(self) -> list[Finding]:
+        return [b for b in self.befunde if b.stufe == LEVEL_HINT]
 
     def __bool__(self) -> bool:
         """True = es gibt etwas zu melden."""
@@ -67,7 +67,7 @@ class Pruefbericht:
 # Einzelprüfungen
 # ---------------------------------------------------------------------------
 
-def _pruefe_templates(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_templates(state: AutoClickerState, bericht: CheckReport) -> None:
     """Jedes referenzierte Template-PNG muss auf Platte liegen.
 
     Fehlt es, meldet das Matching still `(False, 0.0, None)` — das Item wird nie erkannt,
@@ -91,12 +91,12 @@ def _pruefe_templates(state: AutoClickerState, bericht: Pruefbericht) -> None:
                if tpl and not (template_ordner / tpl).exists()]
     bericht.geprueft.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
     for wer, tpl in fehlend:
-        bericht.melde(STUFE_FEHLER, wer,
+        bericht.add_finding(LEVEL_ERROR, wer,
                       f"Template '{tpl}' fehlt in {template_ordner}/",
                       "Template neu aufnehmen oder den Verweis entfernen")
 
 
-def _pruefe_erkennung(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_detection(state: AutoClickerState, bericht: CheckReport) -> None:
     """Ein Profil ohne Template UND ohne Marker wird nie erkannt.
 
     `_check_profile_match` gibt in dem Fall immer False zurück — der Scan läuft, findet
@@ -113,36 +113,36 @@ def _pruefe_erkennung(state: AutoClickerState, bericht: Pruefbericht) -> None:
 
     for wer, profil in kandidaten:
         if not profil.template and not profil.marker_colors:
-            bericht.melde(STUFE_FEHLER, wer,
+            bericht.add_finding(LEVEL_ERROR, wer,
                           "weder Template noch Farb-Marker — wird nie erkannt",
                           "Template aufnehmen oder Marker-Farben setzen")
     for wer, item in items:
         if not item.template_names() and not item.marker_colors:
-            bericht.melde(STUFE_HINWEIS, wer,
+            bericht.add_finding(LEVEL_HINT, wer,
                           "weder Template noch Farb-Marker — wird in keinem Scan gefunden")
     bericht.geprueft.append(f"{len(kandidaten) + len(items)} Erkennungs-Profile")
 
 
-def _pruefe_scan_referenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_scan_references(state: AutoClickerState, bericht: CheckReport) -> None:
     """Ein eigenständiger Scan braucht mindestens Slots und Erkennung."""
     with state.lock:
         scans = list(state.item_scans.values())
 
     for cfg in scans:
         if not cfg.slots:
-            bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_ERROR, f"Item-Scan '{cfg.name}'",
                           "kein einziger Slot — der Scan kann nichts absuchen")
         elif not any(slot.enabled for slot in cfg.slots):
-            bericht.melde(STUFE_FEHLER, f"Item-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_ERROR, f"Item-Scan '{cfg.name}'",
                           "kein Slot ist eingeschaltet — der Scan kann nichts absuchen")
         if not any(item.enabled for item in cfg.items) and not cfg.learn_unknown:
-            bericht.melde(STUFE_HINWEIS, f"Item-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_HINT, f"Item-Scan '{cfg.name}'",
                           "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
     bericht.geprueft.append(f"{len(scans)} Item-Scan(s)")
 
     # **`default_scan` ist die fünfte Referenz auf einen Scan-Namen** — und die
     # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
-    # `_pruefe_sequenzen()` sieht deshalb nur die vier im Schritt; diese fiel
+    # `_check_sequences()` sieht deshalb nur die vier im Schritt; diese fiel
     # durch, obwohl `runtime/steps.py` sie bei „kein Boss erkannt" wirklich
     # ausführt: `execute_item_scan(state, config.default_scan)`. Zeigt sie ins
     # Leere, tut der Fallback nichts und sagt es nicht.
@@ -151,14 +151,14 @@ def _pruefe_scan_referenzen(state: AutoClickerState, bericht: Pruefbericht) -> N
     vorhanden = {cfg.name for cfg in scans}
     for cfg in boss_scans:
         if cfg.default_scan and cfg.default_scan not in vorhanden:
-            bericht.melde(STUFE_HINWEIS, f"Boss-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           f"Fallback-Scan '{cfg.default_scan}' gibt es nicht",
                           "im Scans-Reiter einen vorhandenen Item-Scan wählen")
     if boss_scans:
         bericht.geprueft.append(f"{len(boss_scans)} Fallback-Scan-Verweis(e)")
 
 
-def _pruefe_llm_ocr(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_llm_ocr(state: AutoClickerState, bericht: CheckReport) -> None:
     """Ein Scan mit use_llm/use_ocr nützt nichts, wenn es global aus ist."""
     with state.lock:
         scans = list(state.boss_scans.values())
@@ -167,16 +167,16 @@ def _pruefe_llm_ocr(state: AutoClickerState, bericht: Pruefbericht) -> None:
 
     for cfg in scans:
         if cfg.use_llm and not llm_an:
-            bericht.melde(STUFE_HINWEIS, f"Boss-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           "use_llm ist an, llm_enabled global aus — LLM wird ignoriert",
                           "llm_enabled in config.json setzen oder use_llm abschalten")
         if cfg.use_ocr and not ocr_an:
-            bericht.melde(STUFE_HINWEIS, f"Boss-Scan '{cfg.name}'",
+            bericht.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           "use_ocr ist an, ocr_enabled global aus — OCR wird ignoriert",
                           "ocr_enabled in config.json setzen oder use_ocr abschalten")
 
 
-def _pruefe_koordinaten(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_coordinates(state: AutoClickerState, bericht: CheckReport) -> None:
     """Punkte ausserhalb aller Monitore klicken ins Nichts."""
     rect = get_virtual_desktop()
     if rect is None:
@@ -188,14 +188,14 @@ def _pruefe_koordinaten(state: AutoClickerState, bericht: Pruefbericht) -> None:
                 if not (links <= p.x < rechts and oben <= p.y < unten)]
     bericht.geprueft.append(f"{len(punkte)} Punkt(e)")
     for p in draussen:
-        bericht.melde(STUFE_FEHLER, f"Punkt #{p.id} {p.name}".strip(),
+        bericht.add_finding(LEVEL_ERROR, f"Punkt #{p.id} {p.name}".strip(),
                       f"({p.x}, {p.y}) liegt ausserhalb aller Monitore "
                       f"({links},{oben})-({rechts},{unten})",
                       "Bildschirm-Layout geaendert? Punkte-Menue -> 'fix' rechnet "
                       "alle Koordinaten aus einem neu gesetzten Punkt um")
 
 
-def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
+def _check_sequences(state: AutoClickerState, bericht: CheckReport) -> None:
     """Sequenzdateien: tote Punkt-Referenzen und Verweise auf nicht existierende Scans.
 
     Liest alle Sequenzdateien — deshalb nur auf Zuruf, nicht beim Start.
@@ -208,7 +208,7 @@ def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
     for name, pfad in dateien:
         seq = load_sequence_file(pfad)
         if seq is None:
-            bericht.melde(STUFE_FEHLER, f"Sequenz '{name}'",
+            bericht.add_finding(LEVEL_ERROR, f"Sequenz '{name}'",
                           f"{pfad.name} ist nicht ladbar", "Datei prüfen oder neu anlegen")
             continue
 
@@ -235,48 +235,48 @@ def _pruefe_sequenzen(state: AutoClickerState, bericht: Pruefbericht) -> None:
                     if verweis and verweis not in namen:
                         tote_scans.append(f"{phase}[{i}] → {feld} '{verweis}'")
 
-        for eintrag in _gekuerzt(tote_refs):
-            bericht.melde(STUFE_HINWEIS, f"Sequenz '{seq.name}'",
+        for eintrag in _truncated(tote_refs):
+            bericht.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
                           f"{eintrag} gibt es nicht mehr",
                           "Punkt im Punkte-Editor dieser Sequenz neu setzen")
-        for eintrag in _gekuerzt(tote_scans):
-            bericht.melde(STUFE_FEHLER, f"Sequenz '{seq.name}'",
+        for eintrag in _truncated(tote_scans):
+            bericht.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
                           f"{eintrag} existiert nicht")
 
         if seq.total_steps() == 0:
-            bericht.melde(STUFE_HINWEIS, f"Sequenz '{seq.name}'", "hat keine Schritte")
+            bericht.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'", "hat keine Schritte")
         for lp in seq.loop_phases:
             if not lp.steps:
-                bericht.melde(STUFE_HINWEIS, f"Sequenz '{seq.name}'",
+                bericht.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
                               f"Loop-Phase '{lp.name}' ist leer")
 
 
-def _gekuerzt(eintraege: list[str]) -> list[str]:
+def _truncated(eintraege: list[str]) -> list[str]:
     """Lange Listen abschneiden — 40 gleichartige Zeilen liest niemand."""
-    if len(eintraege) <= _MAX_EINZELN:
+    if len(eintraege) <= _MAX_SINGLE:
         return eintraege
-    rest = len(eintraege) - _MAX_EINZELN
-    return eintraege[:_MAX_EINZELN] + [f"... und {rest} weitere"]
+    rest = len(eintraege) - _MAX_SINGLE
+    return eintraege[:_MAX_SINGLE] + [f"... und {rest} weitere"]
 
 
 # ---------------------------------------------------------------------------
 # Öffentliche API
 # ---------------------------------------------------------------------------
 
-def pruefe_setup(state: AutoClickerState, mit_sequenzen: bool = True) -> Pruefbericht:
+def check_setup(state: AutoClickerState, mit_sequenzen: bool = True) -> CheckReport:
     """Prüft das geladene Setup. `mit_sequenzen=False` lässt den Datei-Scan weg."""
-    bericht = Pruefbericht()
-    _pruefe_templates(state, bericht)
-    _pruefe_erkennung(state, bericht)
-    _pruefe_scan_referenzen(state, bericht)
-    _pruefe_llm_ocr(state, bericht)
-    _pruefe_koordinaten(state, bericht)
+    bericht = CheckReport()
+    _check_templates(state, bericht)
+    _check_detection(state, bericht)
+    _check_scan_references(state, bericht)
+    _check_llm_ocr(state, bericht)
+    _check_coordinates(state, bericht)
     if mit_sequenzen:
-        _pruefe_sequenzen(state, bericht)
+        _check_sequences(state, bericht)
     return bericht
 
 
-def print_bericht(bericht: Pruefbericht, still_wenn_sauber: bool = False) -> None:
+def print_report(bericht: CheckReport, still_wenn_sauber: bool = False) -> None:
     """Gibt den Bericht aus. `still_wenn_sauber` unterdrückt die Erfolgsmeldung."""
     if not bericht:
         if not still_wenn_sauber:
@@ -290,9 +290,9 @@ def print_bericht(bericht: Pruefbericht, still_wenn_sauber: bool = False) -> Non
     print(col("=" * 60, "cyan"))
 
     for ueberschrift, liste, stil in (
-        (f"{len(bericht.fehler)} Fehler — so läuft es nicht:", bericht.fehler, err),
-        (f"{len(bericht.hinweise)} Hinweis(e) — läuft, ist aber evtl. nicht gewollt:",
-         bericht.hinweise, warn),
+        (f"{len(bericht.errors)} Fehler — so läuft es nicht:", bericht.errors, err),
+        (f"{len(bericht.hints)} Hinweis(e) — läuft, ist aber evtl. nicht gewollt:",
+         bericht.hints, warn),
     ):
         if not liste:
             continue
@@ -307,10 +307,10 @@ def print_bericht(bericht: Pruefbericht, still_wenn_sauber: bool = False) -> Non
     print(col("=" * 60, "cyan"))
 
 
-def check_beim_start(state: AutoClickerState) -> Pruefbericht:
+def check_on_start(state: AutoClickerState) -> CheckReport:
     """Start-Prüfung: ohne Sequenzdateien, und still wenn alles in Ordnung ist."""
-    bericht = pruefe_setup(state, mit_sequenzen=False)
+    bericht = check_setup(state, mit_sequenzen=False)
     if bericht:
-        print_bericht(bericht)
+        print_report(bericht)
         print(f"{hint('Vollständige Prüfung inkl. Sequenzen: CTRL+ALT+P → check')}")
     return bericht

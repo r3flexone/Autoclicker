@@ -1195,8 +1195,8 @@ def sortiere_nach_messung(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.D
     raus = raus.assign(_rang=schluessel).sort_values(
         "_rang", ascending=False, kind="stable").drop(columns=["_rang"]).reset_index(drop=True)
     raus["Rang"] = range(1, len(raus) + 1)
-    raenge = dict(zip(raus["Item"], raus["Rang"]))
-    df_reason["Rang"] = df_reason["Item"].map(raenge).fillna(df_reason["Rang"]).astype(int)
+    ranks = dict(zip(raus["Item"], raus["Rang"]))
+    df_reason["Rang"] = df_reason["Item"].map(ranks).fillna(df_reason["Rang"]).astype(int)
     df_reason.sort_values("Rang", inplace=True)
     df_reason.reset_index(drop=True, inplace=True)
     return raus[[c for c in RECOMMENDATION_COLUMNS if c in raus.columns]]
@@ -1368,10 +1368,10 @@ def historie_zeilen(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
     """
     if df_chain.empty:
         return []
-    gemessen, raenge = {}, {}
+    gemessen, ranks = {}, {}
     if not df_reason.empty:
         gemessen = dict(zip(df_reason["Item"], df_reason["Gold/h realistisch"]))
-        raenge = dict(zip(df_reason["Item"], df_reason["Rang"]))
+        ranks = dict(zip(df_reason["Item"], df_reason["Rang"]))
 
     zeilen = []
     for _, r in df_chain.iterrows():
@@ -1398,7 +1398,7 @@ def historie_zeilen(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
             "gold_h": r.get("Gold/h (Eigenherstellung)"),
             "gold_h_real": gemessen.get(name),
             "verkaufsweg": "NPC-Vendor" if bool(r.get("SoldToNPC")) else "Spieler",
-            "rang": raenge.get(name),
+            "rang": ranks.get(name),
             "warnungen": ", ".join(warnungen),
         })
     return zeilen

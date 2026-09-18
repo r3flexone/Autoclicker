@@ -260,8 +260,8 @@ def lauf():
             _t.sleep(1.5)
             return ("Citadel Helmet", "") if len(gefragt) == 1 else (None, "")
 
-        echt_name = lv.suggest_item_name_grund
-        lv.suggest_item_name_grund = langsam
+        echt_name = lv.suggest_item_name_with_reason
+        lv.suggest_item_name_with_reason = langsam
         try:
             f.reiter("scans")
             f.klick_text("#scan-insp .tabs button", "Items")
@@ -289,7 +289,7 @@ def lauf():
             knopf.click()
             f.seite.wait_for_selector(".warte-kasten", state="detached", timeout=15000)
         finally:
-            lv.suggest_item_name_grund = echt_name
+            lv.suggest_item_name_with_reason = echt_name
 
         pruefe(len(gefragt) < 3,
                f"der Abbruch hat nichts gestoppt: {len(gefragt)} von 3 gefragt")

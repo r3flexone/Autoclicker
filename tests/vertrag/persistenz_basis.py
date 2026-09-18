@@ -226,13 +226,13 @@ section("Eine frisch geschriebene Sequenz ist sofort sichtbar")
 
 # `list_available_sequences()` cacht. War der Schluessel die mtime des ORDNERS,
 # liessen zwei im selben Tick geschriebene Sequenzen die zweite unsichtbar werden
-# (NTFS stempelt Verzeichnisse grob) - und `zuletzt_bearbeitet()` nannte die
+# (NTFS stempelt Verzeichnisse grob) - und `last_edited()` nannte die
 # falsche. Der Test friert die Ordner-Zeit ein und bildet die grobe Aufloesung
 # nach; mit dem alten Schluessel ist er auf jeder Plattform rot.
 import json as _js_seq
 
 from autoclicker.persistence import sequences as _seqmod
-from autoclicker.sequence_studio import zuletzt_bearbeitet as _zb_seq
+from autoclicker.sequence_studio import last_edited as _zb_seq
 
 _seq_cwd = _os.getcwd()
 _seq_tmp = tempfile.mkdtemp()
@@ -266,7 +266,7 @@ try:
     _os.utime(Path("sequences/erste/sequence.json"), (_ordnerzeit, _ordnerzeit))
     _os.utime(Path("sequences/zweite/sequence.json"),
               (_ordnerzeit + 100, _ordnerzeit + 100))
-    check("und zuletzt_bearbeitet() findet die neuere",
+    check("und last_edited() findet die neuere",
           _zb_seq() == Path("sequences/zweite/sequence.json"))
 
     # Der Cache soll trotzdem einer bleiben: gleiche Lage, gleiche Liste.

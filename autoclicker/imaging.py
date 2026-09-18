@@ -104,7 +104,7 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
             target = np.array(target_color, dtype=np.float32)
 
-            def genug(rgb) -> bool:
+            def enough(rgb) -> bool:
                 # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
                 werte = rgb.astype(np.float32)
                 abstaende = np.sum((werte - target) ** 2, axis=2)
@@ -114,16 +114,16 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
             # In fast allen Fällen trifft schon das kleine Raster. Nur beim
             # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
             # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
-            if genug(img_array[::pixel_step, ::pixel_step, :3]):
+            if enough(img_array[::pixel_step, ::pixel_step, :3]):
                 return True
-            return pixel_step > 1 and genug(img_array[:, :, :3])
+            return pixel_step > 1 and enough(img_array[:, :, :3])
         return False
     else:
         # Fallback: Langsame PIL-Version
         pixels = img.load()
         width, height = img.size
 
-        def genug(schritt: int) -> bool:
+        def enough(schritt: int) -> bool:
             matches = 0
             for x in range(0, width, schritt):
                 for y in range(0, height, schritt):
@@ -134,10 +134,10 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
                             return True
             return False
 
-        if genug(pixel_step):
+        if enough(pixel_step):
             return True
         if pixel_step > 1:
-            return genug(1)
+            return enough(1)
         return False
 
 
@@ -191,7 +191,7 @@ def _load_template(template_path: str):
     return bild
 
 
-def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
+def with_background_mask(img: 'Image.Image', hintergrund) -> 'Image.Image':
     """Legt einen Alpha-Kanal an: Hintergrund durchsichtig, Item deckend.
 
     Ein Slot besteht zu 60–90 % aus immer gleicher Slot-Fläche; ein Vergleich
@@ -221,7 +221,7 @@ def mit_hintergrund_maske(img: 'Image.Image', hintergrund) -> 'Image.Image':
     return ergebnis
 
 
-def _konfidenz_maskiert(bild, template, maske) -> float:
+def _masked_confidence(bild, template, maske) -> float:
     """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
 
     Von Hand statt `cv2.matchTemplate(..., mask=)`: mit Maske kann OpenCV nur
@@ -241,7 +241,7 @@ def _konfidenz_maskiert(bild, template, maske) -> float:
     return float((a * b).sum() / nenner) if nenner > 0 else 0.0
 
 
-def _template_in_groesse(template_path: str, bild, breite: int, hoehe: int):
+def _template_at_size(template_path: str, bild, breite: int, hoehe: int):
     """Gibt das Template in der gewünschten Grösse zurück (skaliert + gemerkt).
 
     Die Grössen-Anpassung greift, wenn eine Slot-Region nach dem Erstellen des Templates
@@ -272,7 +272,7 @@ def template_size(template_name: str, template_root=None) -> tuple[int, int] | N
     return (int(template_cv.shape[1]), int(template_cv.shape[0]))
 
 
-def _groessen_hinweis(template_name: str, tw: int, th: int,
+def _size_hint(template_name: str, tw: int, th: int,
                       iw: int, ih: int, wert: float) -> str:
     """Der Text für den Fall „Template und Slot sind verschieden gross".
 
@@ -344,7 +344,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
             logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
-            template_cv = _template_in_groesse(template_path, template_cv, iw, ih)
+            template_cv = _template_at_size(template_path, template_cv, iw, ih)
 
         # Debug: Scan-Bild und Template speichern zum Vergleich
         if CONFIG.debug_save_templates:
@@ -365,7 +365,7 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             template_cv = np.ascontiguousarray(template_cv[:, :, :3])
 
         if maske is not None and template_cv.shape[:2] == img_cv.shape[:2]:
-            max_val = _konfidenz_maskiert(img_cv, template_cv, maske)
+            max_val = _masked_confidence(img_cv, template_cv, maske)
             max_loc = (0, 0)
         else:
             # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
@@ -378,13 +378,13 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             return (True, max_val, max_loc)
         else:
             # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
-            # melden - siehe _groessen_hinweis(), nur eine der Ursachen ist ein Fehler.
+            # melden - siehe _size_hint(), nur eine der Ursachen ist ein Fehler.
             if (report_size_mismatch and max_val < 0.3
                     and (tw != iw or th != ih)):
                 schluessel = (tw, th, iw, ih)
                 if schluessel not in _gemeldete_groessen:
                     _gemeldete_groessen.add(schluessel)
-                    logger.warning(_groessen_hinweis(template_name, tw, th, iw, ih,
+                    logger.warning(_size_hint(template_name, tw, th, iw, ih,
                                                      max_val))
             return (False, max_val, None)
 
@@ -459,12 +459,12 @@ def take_window_screenshot(hwnd: int) -> Optional[tuple]:
     BitBlt vom Desktop kopiert, was auf dem Schirm steht — also auch das
     Studio-Fenster davor. `PrintWindow` mit `PW_RENDERFULLCONTENT` lässt das
     Fenster sich selbst zeichnen; eine Garantie ist es nicht, deshalb prüft der
-    Aufrufer das Ergebnis mit `ist_leer()`.
+    Aufrufer das Ergebnis mit `is_blank()`.
     """
     return capture_window(hwnd)
 
 
-def ist_leer(bild) -> bool:
+def is_blank(bild) -> bool:
     """Ist das Bild einfarbig? Dann hat sich das Fenster nicht gezeichnet.
 
     Manche Fenster liefern trotz `PW_RENDERFULLCONTENT` eine schwarze Fläche.
@@ -490,7 +490,7 @@ def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
     if not hwnd:
         return None
     direkt = take_window_screenshot(hwnd)
-    if direkt is not None and not ist_leer(direkt[0]):
+    if direkt is not None and not is_blank(direkt[0]):
         return direkt[0], tuple(direkt[1]), ""
 
     rechteck = get_client_rect_by_handle(hwnd)

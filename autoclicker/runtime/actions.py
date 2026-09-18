@@ -126,7 +126,7 @@ def _humanize_check_break(state: AutoClickerState) -> None:
 # SAFE-WRAPPER (Pflicht-Eintrittspunkte für Klick/Key im Worker)
 # =============================================================================
 
-def _eingabe_freigeben(state: AutoClickerState, label: str) -> bool:
+def _input_allowed(state: AutoClickerState, label: str) -> bool:
     """Stop, Pause und Fokus nach allen Wartezeiten erneut prüfen.
 
     Unter input_lock aufgerufen. Während der Fokus-Rückkehr kann erneut
@@ -156,13 +156,13 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     # falscher Position mehr. input_lock NIEMALS unter state.lock nehmen
     # (Reihenfolge: input_lock zuerst, state.lock danach).
     with state.input_lock:
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         jx, jy = _humanize_jitter(x, y, state)
         erfolgreich = send_click(
@@ -182,13 +182,13 @@ def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = No
     Windows das Rad-Event an das Fenster unter dem Cursor liefert.
     """
     with state.input_lock:
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         if x is not None and y is not None:
             x, y = _humanize_jitter(x, y, state)
@@ -205,13 +205,13 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
     """Wrapper für send_key mit Window-Fokus-Check, Humanization und Logging."""
     # Siehe safe_click: input_lock sichert exklusiven Maus/Tastatur-Zugriff.
     with state.input_lock:
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         _humanize_check_break(state)
         if state.stop_event.is_set():
             return False
         _humanize_delay(state)
-        if not _eingabe_freigeben(state, label):
+        if not _input_allowed(state, label):
             return False
         result = send_key(key)
     if not result:
@@ -268,15 +268,15 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     debug_active = is_verbose_debug(state)
     last_remaining = -1
     try:
-        return _warte_schleife(state, seconds, remaining, debug_active, last_remaining,
+        return _wait_loop(state, seconds, remaining, debug_active, last_remaining,
                                phase, step_num, total_steps, message)
     finally:
         # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
         # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
-        status.wartet(state, None)
+        status.waiting_for(state, None)
 
 
-def _warte_schleife(state: AutoClickerState, seconds: float, remaining: float,
+def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
                     debug_active: bool, last_remaining: int, phase: str,
                     step_num: int, total_steps: int, message: str) -> bool:
     """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
@@ -284,9 +284,9 @@ def _warte_schleife(state: AutoClickerState, seconds: float, remaining: float,
         if state.stop_event.is_set():
             return False
 
-        # Ein wartender Lauf ist kein toter Lauf — siehe status.lebenszeichen().
-        # Hier zugleich das Lebenszeichen: `wartet()` schreibt mit.
-        status.wartet(state, {"art": "zeit", "text": message,
+        # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
+        # Hier zugleich das Lebenszeichen: `waiting_for()` schreibt mit.
+        status.waiting_for(state, {"art": "zeit", "text": message,
                               "seit": time.time() - (seconds - remaining),
                               "bis": time.time() + remaining,
                               "gesamt": round(seconds, 2)})

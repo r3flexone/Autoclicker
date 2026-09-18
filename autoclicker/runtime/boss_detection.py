@@ -287,7 +287,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
     Wiederholt den Scan bei KEIN_BOSS bis zu state.config.llm_retry_count Mal.
     """
     try:
-        from ..llm_vision import analyze_image, ist_timeout, match_boss_name
+        from ..llm_vision import analyze_image, is_timeout, match_boss_name
     except ImportError:
         if debug:
             print(dbg("  → LLM: Import fehlgeschlagen"))
@@ -308,7 +308,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
             print(dbg(f"  → LLM-Erkennung ({attempt_info}{state.config.llm_provider}, {state.config.llm_model or 'Standard'})..."))
 
-        def _frage(grenze):
+        def _ask(grenze):
             return analyze_image(
                 img=current_img,
                 provider=state.config.llm_provider,
@@ -321,7 +321,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
                 max_tokens=state.config.llm_max_tokens,
             )
 
-        success, response, duration = _frage(state.config.llm_timeout)
+        success, response, duration = _ask(state.config.llm_timeout)
         # **Ein Timeout ist kein Fehlschlag, sondern ein kaltes Modell.**
         # Gemessen: die ersten Aufrufe an einen frisch gestarteten Server
         # brauchen ueber 120 s, die folgenden 3,5. Hier stand `break` — und
@@ -330,12 +330,12 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         # wiederholte. Der zweite Versuch trifft ein warmes Modell und kostet
         # fast nichts; er zaehlt bewusst NICHT gegen das Wiederholungs-Budget,
         # denn er beantwortet eine andere Frage.
-        if not success and ist_timeout(response) and not warm_versucht:
+        if not success and is_timeout(response) and not warm_versucht:
             warm_versucht = True
             if debug:
                 print(dbg(f"  → LLM: Zeitüberschreitung nach {duration / 1000:.0f}s "
                           "— das Modell lädt gerade, zweiter Versuch …"))
-            success, response, duration = _frage(
+            success, response, duration = _ask(
                 max(state.config.llm_timeout * 2, 120))
 
         if not success:

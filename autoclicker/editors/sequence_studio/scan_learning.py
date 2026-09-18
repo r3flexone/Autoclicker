@@ -5,7 +5,7 @@ import io
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
-from ...utils import eindeutiger_name
+from ...utils import unique_name
 from .model import hexfarbe
 from .scan_contract import ART_ITEM
 from .scan_model import existing_categories, next_item_name, save_template
@@ -41,8 +41,8 @@ class ScanLearningMixin:
             return None
         from ..item_editor.markers import _prepare_learning_image
         from ...config import CONFIG
-        maskiert, marker, ist_leer = _prepare_learning_image(crop, slot.slot_color)
-        if ist_leer:
+        maskiert, marker, is_blank = _prepare_learning_image(crop, slot.slot_color)
+        if is_blank:
             return None
         name = next_item_name(self.items)
         # Template UND Marker sehen dieselbe maskierte Flaeche als Item an.
@@ -82,9 +82,9 @@ class ScanLearningMixin:
             crop = self._foto_crop(slot.scan_region)
             if crop is None:
                 continue
-            maskiert, _marker, ist_leer = _prepare_learning_image(
+            maskiert, _marker, is_blank = _prepare_learning_image(
                 crop, slot.slot_color)
-            if ist_leer:
+            if is_blank:
                 leere_slots += 1
                 continue
             treffer = (_find_matching_existing_item(
@@ -285,7 +285,7 @@ class ScanLearningMixin:
                     self._objekte_angleichen()
                 continue
 
-            name = eindeutiger_name(basis, vergeben)
+            name = unique_name(basis, vergeben)
             vergeben.add(name)
             marker = _collect_markers_silent(crop, slot.slot_color)
             kategorie = self._kategorie_normalisieren(eingabe.get("kategorie"))
@@ -393,13 +393,13 @@ class ScanLearningMixin:
             return self._scan_geaendert(f"{name}: bestätigt über Punkt #{punkt_id}.")
         if feld == "bestaetigung_verzoegerung":
             try:
-                zahl = float(wert)
+                number = float(wert)
             except (TypeError, ValueError):
                 return self._scan_melde("Die Wartezeit muss eine Zahl sein.", "err")
-            if zahl < 0:
+            if number < 0:
                 return self._scan_melde("Die Wartezeit kann nicht negativ sein.", "err")
             self._merke(f"'{name}': Wartezeit vor der Bestätigung")
-            item.confirm_delay = zahl
+            item.confirm_delay = number
             return self._scan_geaendert()
         return self._scan_melde(f"Unbekanntes Feld '{feld}'.", "err")
 
@@ -500,11 +500,11 @@ class ScanLearningMixin:
         Die Config wird frisch gelesen und nicht gemerkt: der Pfad steht im
         Einstellungen-Reiter desselben Fensters, und ein Katalog, der erst nach
         einem Neustart greift, ist der Fall, in dem man den Knopf fuer kaputt
-        haelt. `lade_katalog` haengt seinen Cache ohnehin am Dateistand.
+        haelt. `load_catalog` haengt seinen Cache ohnehin am Dateistand.
         """
-        from ...katalog import LEER
+        from ...katalog import EMPTY
         katalog, _grund = self._katalog_pruefen()
-        return katalog if katalog is not None else LEER
+        return katalog if katalog is not None else EMPTY
 
     def _katalog_pruefen(self):
         """(Katalog, Grund) — genau einer von beiden ist gesetzt.
@@ -516,10 +516,10 @@ class ScanLearningMixin:
         # `CONFIG` statt `load_config()`: diese Pruefung laeuft bei JEDER
         # Momentaufnahme, also nach jedem Klick — ein Dateizugriff pro Klick
         # waere zu teuer. Das Objekt haelt der Einstellungen-Reiter aktuell
-        # (`config_schreiben` ruft `uebernehmen(CONFIG, …)` auf dem eigenen
-        # Prozess), und `lade_katalog` haengt seinen Cache am Dateistand.
+        # (`config_schreiben` ruft `apply_config(CONFIG, …)` auf dem eigenen
+        # Prozess), und `load_catalog` haengt seinen Cache am Dateistand.
         from ...config import CONFIG
-        from ...katalog import lade_katalog
+        from ...katalog import load_catalog
 
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
@@ -534,7 +534,7 @@ class ScanLearningMixin:
                           "SCAN-EINSTELLUNGEN → 'Item-Katalog', dort holt der "
                           "Knopf 'Katalog aus der Spiel-API holen' sie und "
                           "trägt den Pfad gleich ein.")
-        katalog = lade_katalog(pfad)
+        katalog = load_catalog(pfad)
         if not katalog:
             return None, f"Katalog '{pfad}' ist leer oder nicht lesbar."
         return katalog, None
@@ -558,10 +558,10 @@ class ScanLearningMixin:
         Zwei Anlaeufe, und die Reihenfolge ist die Regel: der volle Name
         gewinnt, der ohne Eindeutigkeits-Zaehler ist der Rueckfall.
         """
-        from ...utils import ohne_zaehler
+        from ...utils import without_counter
         if katalog.treffer(name):
             return name
-        basis = ohne_zaehler(name)
+        basis = without_counter(name)
         return basis if basis != name and katalog.treffer(basis) else ""
 
     def _katalog_plan(self, items: list, katalog) -> tuple:
@@ -574,7 +574,7 @@ class ScanLearningMixin:
 
         `Aenderungen` ist eine Liste `(Item, Kategorie, Prioritaet)`.
         """
-        from ...katalog import raenge
+        from ...katalog import ranks
         # **Ein angehaengter Zaehler macht den Namen fuer den Katalog
         # unbekannt.** "Godlike Bow 2" steht dort nicht, und das Item blieb
         # deshalb ohne Kategorie neben seinem eingeordneten Zwilling stehen.
@@ -585,7 +585,7 @@ class ScanLearningMixin:
             such = self._katalog_name(i.name, katalog)
             if such:
                 bekannt.append((i, katalog.kategorie(such), katalog.wert(such)))
-        rang = raenge([(i.name, kategorie, wert) for i, kategorie, wert in bekannt])
+        rang = ranks([(i.name, kategorie, wert) for i, kategorie, wert in bekannt])
 
         aenderungen = []
         for item, kategorie, _wert in bekannt:
@@ -845,8 +845,8 @@ class ScanLearningMixin:
             return self.scan_daten()
 
         from PIL import Image
-        from ...llm_vision import TIMEOUT, suggest_item_name_grund
-        from ...utils import bereinige_itemname
+        from ...llm_vision import TIMEOUT, suggest_item_name_with_reason
+        from ...utils import clean_item_name
 
         config = lauf["config"]
         item = self.items.get(lauf["offen"].pop(0))
@@ -868,7 +868,7 @@ class ScanLearningMixin:
             # Boss-Scan — wer sie einschaltete, weil die BENENNUNG besser
             # werden soll, aenderte nichts. Ein Schalter, der an der Stelle
             # wirkungslos ist, an der man ihn sucht, ist schlimmer als keiner.
-            return suggest_item_name_grund(
+            return suggest_item_name_with_reason(
                 vorlage, provider=config.llm_provider,
                 endpoint=config.llm_endpoint, model=config.llm_model,
                 timeout=grenze, candidates=lauf["auswahl"],
@@ -885,7 +885,7 @@ class ScanLearningMixin:
         if grund == TIMEOUT:
             vorschlag, grund = frag(max(config.llm_timeout * 2, 120))
 
-        basis = bereinige_itemname(vorschlag) if vorschlag else ""
+        basis = clean_item_name(vorschlag) if vorschlag else ""
         if not basis:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.

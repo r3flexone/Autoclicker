@@ -10,7 +10,7 @@ from typing import Optional
 
 from ...models import LoopPhase, AutoClickerState
 from ...utils import (
-    cancel_hint, confirm, hint, is_cancel, naechster_freier_name, safe_input,
+    cancel_hint, confirm, hint, is_cancel, next_free_name, safe_input,
     suggest_command,
 )
 from .helpers import parse_uhrzeit
@@ -74,7 +74,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 # einen Namen vor, den es schon gibt. Doppelte Phasennamen sind zwar
                 # erlaubt (der Zeitplan haengt an der Position, nicht am Namen) -
                 # aber zwei Zeilen "Loop 3" in der Liste sind trotzdem eine Zumutung.
-                vorschlag = naechster_freier_name(
+                vorschlag = next_free_name(
                     "Loop", {p.name: p for p in loop_phases})
                 loop_name = safe_input(
                     f"  Name der Loop-Phase (Enter = '{vorschlag}'): ").strip()

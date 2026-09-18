@@ -28,7 +28,7 @@ WINDOW_TITLE = "Sequenz-Studio"
 INDEX = Path(__file__).parent / "editors" / "sequence_studio" / "web" / "index.html"
 
 
-def zuletzt_bearbeitet() -> "Path | None":
+def last_edited() -> "Path | None":
     """Die zuletzt geöffnete oder gespeicherte Sequenz, oder None.
 
     Der Studio-Merker trägt den Zeitpunkt des letzten Öffnens/Speicherns. Eine
@@ -58,7 +58,7 @@ def zuletzt_bearbeitet() -> "Path | None":
     return neueste
 
 
-def merke_zuletzt_verwendet(pfad) -> bool:
+def remember_last_used(pfad) -> bool:
     """Merkt eine vorhandene Sequenz als zuletzt geöffnet/gespeichert."""
     pfad = Path(pfad)
     if not pfad.is_file():
@@ -88,7 +88,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
                 if seq:
                     return seq, path
     else:
-        letzte = zuletzt_bearbeitet()
+        letzte = last_edited()
         if letzte is not None:
             seq = load_sequence_file(letzte)
             if seq:
@@ -107,7 +107,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
     return Sequence(name=base), path
 
 
-def _scans_beim_schliessen_speichern(bridge) -> bool:
+def _save_scans_on_close(bridge) -> bool:
     """Speichert offene Scan-Änderungen synchron vor dem Fensterschliessen."""
     if not getattr(bridge, "_scan_dirty", False):
         return False
@@ -123,7 +123,7 @@ def _scans_beim_schliessen_speichern(bridge) -> bool:
     return True
 
 
-def _beim_schliessen(bridge, beenden_mit_fenster: bool = False) -> None:
+def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
     """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
     # Zuerst die Klick-Runde: sie haengt im Hauptprozess an einem systemweiten
     # Maus-Hook, und ihre Bedienung steht nur in diesem Fenster. Bleibt sie
@@ -134,7 +134,7 @@ def _beim_schliessen(bridge, beenden_mit_fenster: bool = False) -> None:
         bridge.nachklick_beim_schliessen()
     except Exception:
         pass
-    _scans_beim_schliessen_speichern(bridge)
+    _save_scans_on_close(bridge)
 
     ziel = bridge.rettung_schreiben()
     if ziel is not None:
@@ -144,14 +144,14 @@ def _beim_schliessen(bridge, beenden_mit_fenster: bool = False) -> None:
         # Nur das automatisch gestartete Hauptfenster besitzt den Hauptprozess.
         # Ein per Hotkey zusätzlich geöffnetes Studio darf ihn beim Schliessen
         # nicht überraschend mitnehmen.
-        from .befehl import sende
+        from .befehl import send_command
         bridge._beenden_gesendet = True
-        sende("programm_beenden")
+        send_command("programm_beenden")
 
 
-def _haenge_schliesser_an(fenster, bridge,
+def _attach_close_handler(fenster, bridge,
                           beenden_mit_fenster: bool = False) -> None:
-    """Hängt `_beim_schliessen` ans Fenster — über beide pywebview-Schreibweisen.
+    """Hängt `_on_close` ans Fenster — über beide pywebview-Schreibweisen.
 
     Bis pywebview 3.5 hiess das Ereignis `fenster.closing`, danach
     `fenster.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
@@ -159,7 +159,7 @@ def _haenge_schliesser_an(fenster, bridge,
     for besitzer in (getattr(fenster, "events", None), fenster):
         ereignis = getattr(besitzer, "closing", None) if besitzer is not None else None
         if ereignis is not None and hasattr(ereignis, "__iadd__"):
-            ereignis += lambda: _beim_schliessen(bridge, beenden_mit_fenster)
+            ereignis += lambda: _on_close(bridge, beenden_mit_fenster)
             return
 
 
@@ -182,7 +182,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     seq, path = _resolve_sequence(seq_name)
-    merke_zuletzt_verwendet(path)
+    remember_last_used(path)
 
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
@@ -192,13 +192,13 @@ def main(argv: list[str]) -> int:
     # VOR dem ersten Fenster: sonst sortiert die Taskleiste es unter python.exe
     # ein. Die Titelleiste bekommt ihr Symbol weiter unten - zwei Mechanismen.
     try:
-        from .winapi import setze_app_id
-        setze_app_id()
+        from .winapi import set_app_id
+        set_app_id()
     except Exception:          # noqa: BLE001 - eine Kennung ist kein Startgrund
         pass
 
     # Titel ohne Sequenznamen: der Name steht im Kopf der Oberflaeche, und
-    # `setze_fenster_symbol()` findet das Fenster ueber den festen Titel.
+    # `set_window_icon()` findet das Fenster ueber den festen Titel.
     fenster = webview.create_window(
         WINDOW_TITLE,
         url=INDEX.as_uri(),
@@ -207,34 +207,34 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _haenge_schliesser_an(fenster, bridge, beenden_mit_fenster)
+    _attach_close_handler(fenster, bridge, beenden_mit_fenster)
 
-    def _nach_dem_start() -> None:
+    def _after_start() -> None:
         """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
 
         Deshalb die Frist: zum Zeitpunkt dieses Aufrufs existiert das Fenster nicht,
-        und `setze_fenster_symbol()` fiele still auf `False` zurück.
+        und `set_window_icon()` fiele still auf `False` zurück.
         """
         try:
-            from .winapi import setze_fenster_symbol
-            setze_fenster_symbol(WINDOW_TITLE, warten=15.0)
+            from .winapi import set_window_icon
+            set_window_icon(WINDOW_TITLE, warten=15.0)
         except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
             pass
 
     try:
         # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).
-        webview.start(_nach_dem_start)
+        webview.start(_after_start)
     except KeyboardInterrupt:
         # CTRL+C im Hauptprozess trifft diesen Subprozess mit (gleiche
         # Konsolengruppe); ohne den Zweig saehe das Zumachen wie ein Absturz aus.
         print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Abgebrochen.")
         return 0
 
-    _schlussmeldung(bridge)
+    _closing_message(bridge)
     return 0
 
 
-def _schlussmeldung(bridge) -> None:
+def _closing_message(bridge) -> None:
     """Sagt beim Zumachen, was passiert ist — und was jetzt noch zu tun ist.
 
     Landet in der Konsole des Hauptprozesses. Der Hinweis aufs Neuladen ist der

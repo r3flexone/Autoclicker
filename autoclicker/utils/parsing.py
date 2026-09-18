@@ -186,10 +186,10 @@ def format_duration(seconds: float) -> str:
 _NAME_EXTRA = " -'()&.,+"
 
 
-def ohne_zaehler(name: str) -> str:
+def without_counter(name: str) -> str:
     """Der Name ohne angehaengten Eindeutigkeits-Zaehler.
 
-    Die Umkehrung zu `eindeutiger_name()`: aus "Godlike Bow 2" wird
+    Die Umkehrung zu `unique_name()`: aus "Godlike Bow 2" wird
     "Godlike Bow". Gebraucht wird sie beim Katalog — der Name IST dort der
     Schluessel, und ein angehaengter Zaehler macht ihn unbekannt: das Item
     stand danach ohne Kategorie da, obwohl sein Gegenstand im Katalog steht.
@@ -206,13 +206,13 @@ def ohne_zaehler(name: str) -> str:
     return roh
 
 
-def bereinige_itemname(name: str) -> str:
+def clean_item_name(name: str) -> str:
     """Ein vorgeschlagener Item-Name — als NAME, nicht als Dateiname.
 
     **Hier stand `sanitize_filename()`, und das war die falsche Funktion.** Sie
     macht Kleinbuchstaben und ersetzt Leerzeichen durch Unterstriche: aus
     "Godlike Bow" wurde `godlike_bow`. Der Name ist aber der Schluessel, unter
-    dem der Katalog nachgeschlagen wird, und `Katalog.treffer()` vergleicht
+    dem der Katalog nachgeschlagen wird, und `Catalog.treffer()` vergleicht
     `casefold()` — nicht Unterstriche. Kategorie und Prioritaet blieben deshalb
     IMMER aus, ausgerechnet bei einem Namen, der woertlich aus dem Katalog
     kommt und nur noch zugeordnet werden musste.
@@ -253,10 +253,10 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
-def naechster_freier_name(praefix: str, vergeben) -> str:
+def next_free_name(praefix: str, vergeben) -> str:
     """Erste freie Nummer einer Serie: 'Slot 1', 'Slot 2', ...
 
-    Fuer durchnummerierte Serien die bessere Wahl als `eindeutiger_name`: sie
+    Fuer durchnummerierte Serien die bessere Wahl als `unique_name`: sie
     fuellt Luecken auf, waehrend ein angehaengter Zaehler 'Slot 3 2' ergaebe.
     """
     n = 1
@@ -265,7 +265,7 @@ def naechster_freier_name(praefix: str, vergeben) -> str:
     return f"{praefix} {n}"
 
 
-def eindeutiger_name(basis: str, vergeben) -> str:
+def unique_name(basis: str, vergeben) -> str:
     """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
 
     Items, Slots und Presets liegen in Name→Eintrag-Dicts: ein doppelter Name
@@ -287,9 +287,9 @@ def eindeutiger_name(basis: str, vergeben) -> str:
 # Das Vorzeichen MUSS mit: auf einem Monitor links vom Hauptbildschirm sind x/y negativ,
 # und ohne `-?` blieben genau diese Koordinaten mehrzeilig stehen - ausgerechnet die,
 # die man am ehesten nachschlagen will.
-_ZAHL = r'(-?\d+)'
-_KOMPAKT = [
-    (re.compile(r'\[\s*\n\s*' + r',\s*\n\s*'.join([_ZAHL] * n) + r'\s*\n\s*\]'),
+_NUMBER = r'(-?\d+)'
+_COMPACT = [
+    (re.compile(r'\[\s*\n\s*' + r',\s*\n\s*'.join([_NUMBER] * n) + r'\s*\n\s*\]'),
      '[' + ', '.join(f'\\{i + 1}' for i in range(n)) + ']')
     for n in (4, 3, 2)
 ]
@@ -301,7 +301,7 @@ def compact_json(data, indent: int = 2) -> str:
     `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
     """
     json_str = json.dumps(data, indent=indent, ensure_ascii=False)
-    for muster, ersatz in _KOMPAKT:
+    for muster, ersatz in _COMPACT:
         json_str = muster.sub(ersatz, json_str)
     return json_str
 

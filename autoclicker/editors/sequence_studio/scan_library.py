@@ -3,7 +3,7 @@
 from typing import Optional
 
 from ...models import ItemScanConfig
-from ...utils import eindeutiger_name, sanitize_filename
+from ...utils import unique_name, sanitize_filename
 from .scan_contract import ART_ITEM, ART_SCAN, ART_SLOT, referenzen_umbenennen
 
 
@@ -69,7 +69,7 @@ class ScanLibraryMixin:
         aufgerufen aber sehr wohl.
         """
         self._scan_laden()
-        name = eindeutiger_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
+        name = unique_name(str((daten or {}).get("name") or "Neuer Scan"), self.scans)
         self._merke("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
         self.scans[name].owner_sequence = self.board.name
@@ -305,8 +305,8 @@ class ScanLibraryMixin:
         # Der eigene Schreibvorgang darf sich nicht selbst als Fremdaenderung
         # melden - sonst stuende der Hinweis nach jedem Speichern da.
         self._platte_nachziehen()
-        from ...befehl import sende
-        sende("daten")
+        from ...befehl import send_command
+        send_command("daten")
         return self._scan_melde(
             f"{len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Item-Scan(s), {len(self.boss_scans)} Boss-Scan(s), "

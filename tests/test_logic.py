@@ -148,7 +148,7 @@ r = roundtrip(_boss_scan_to_dict, load_boss_scan_file, bsc)
 check("BossScan flags (llm/ocr)", r.use_llm and not r.llm_fallback and r.use_ocr and not r.ocr_fallback)
 check("BossScan region/tol/default", r.scan_region == (1, 2, 3, 4) and r.color_tolerance == 33 and r.default_action == "skip")
 # Das Klick-Ziel ist eine Punkt-ID; action_x/y sind abgeleitet und stehen nicht in der
-# Datei - gefuellt werden sie von resolve_klick_referenzen(), s. eigener Abschnitt.
+# Datei - gefuellt werden sie von resolve_click_references(), s. eigener Abschnitt.
 check("BossScan boss action", r.bosses[0].name == "Drache" and r.bosses[0].action == "click" and r.bosses[0].action_point_id == 4)
 check("BossScan speichert keine Klick-Koordinate",
       "action_x" not in _boss_scan_to_dict(bsc)["bosses"][0])
@@ -637,7 +637,7 @@ section("Punkt-Referenzen: auch Bestaetigung, Boss- und Icon-Aktion")
 # stehenliess. Boss- und Icon-Klick hingen an gar keinem Punkt.
 from autoclicker.models import (ItemProfile as _IP, BossScanConfig as _BSC2,
                                 IconScanConfig as _ISC2)
-from autoclicker.persistence import resolve_klick_referenzen as _rkr
+from autoclicker.persistence import resolve_click_references as _rkr
 from autoclicker.persistence.serialization import _item_to_dict
 
 _st5 = AutoClickerState()
@@ -978,13 +978,13 @@ check("aktuelle Daten werden bei keinem Typ veraendert", _unberuehrt)
 # ------------------------------------------- Start-Durchgang (persistence/sweep)
 section("Start-Durchgang: alle Dateien beim Programmstart aufs aktuelle Format")
 import os as _os
-from autoclicker.persistence.sweep import sweep as _sweep, sammle_dateien as _sammle
+from autoclicker.persistence.sweep import sweep as _sweep, collect_files as _sammle
 
 # Gestellt wird die ECHTE Struktur: eine Sequenz ist eine Besitzeinheit
 # (`sequences/<name>/`) mit ihrer sequence.json, ihren Scan-Ordnern und ihrer
 # Boss-Bibliothek. Hier stand einmal die flache Struktur von frueher
 # (`sequences/points.json`, `items/items.json`, `item_scans/` im Wurzelordner) —
-# der Test blieb gruen, waehrend `sammle_dateien()` produktiv nur noch die
+# der Test blieb gruen, waehrend `collect_files()` produktiv nur noch die
 # config.json fand. Ein Test, der eine Welt stellt, die es nicht mehr gibt,
 # misst nichts.
 _sw = Path(tempfile.mkdtemp())
@@ -1028,7 +1028,7 @@ try:
           _arten.get("bibliothek.json") == _mg.KIND_GLOBAL_BOSSES)
 
     _e1 = _sweep(write=True)
-    check("Sweep hebt die Altbestaende", _e1.anzahl_geaendert == 3)
+    check("Sweep hebt die Altbestaende", _e1.changed_count == 3)
     check("Sweep meldet 'es gab was zu tun'", bool(_e1) is True)
     check("kaputte Datei wird uebersprungen, nicht geschrieben",
           len(_e1.uebersprungen) == 1 and _e1.uebersprungen[0].name == "kaputt.json")
@@ -1047,7 +1047,7 @@ try:
 
     # Zweiter Durchgang: nur noch die kaputte Datei bleibt uebrig, sonst still
     _e2 = _sweep(write=True)
-    check("zweiter Durchgang aendert nichts mehr", _e2.anzahl_geaendert == 0)
+    check("zweiter Durchgang aendert nichts mehr", _e2.changed_count == 0)
     check("zweiter Durchgang zaehlt alles als aktuell", _e2.aktuell == 3)
 
     # Ergebnis pruefen: Inhalt gehoben, Sequenz funktionsfaehig
@@ -1076,7 +1076,7 @@ try:
           isinstance(_bb, list) and "tot" not in _bb[0])
 
     # **Ein Tupel ist eine Liste.** Der Loader gibt Farben als Tupel zurueck, in der
-    # Datei stehen sie als Array - in JSON dasselbe. Stieg `_zahlen_normalisieren`
+    # Datei stehen sie als Array - in JSON dasselbe. Stieg `_normalize_numbers`
     # nicht in das Tupel hinein, blieben dessen Zahlen int, waehrend die der Liste
     # float wurden: zwei inhaltsgleiche Dateien galten als verschieden, und JEDER
     # Start schrieb dieselben Item-Scans neu, legte ein .bak an und meldete eine
@@ -1085,7 +1085,7 @@ try:
     (_sw / "backups/sequences/alt/item_scans/scan.json.bak").unlink(missing_ok=True)
     _e_t = _sweep(write=True)
     check("ein Item-Scan mit Farben wird nicht bei jedem Start neu geschrieben",
-          _e_t.anzahl_geaendert == 0
+          _e_t.changed_count == 0
           and not (_sw / "backups/sequences/alt/item_scans/scan.json.bak").exists())
 
     # Von Hand getippte Wartezeit: `600` statt `600.0`. In JSON ist das dieselbe Zahl,
@@ -1111,7 +1111,7 @@ try:
     _vorher = _hand.read_text(encoding="utf-8")
 
     _e3 = _sweep(write=True)
-    check("von Hand getippte 600 gilt nicht als Aenderung", _e3.anzahl_geaendert == 0)
+    check("von Hand getippte 600 gilt nicht als Aenderung", _e3.changed_count == 0)
     check("die Datei bleibt dabei unangetastet",
           _hand.read_text(encoding="utf-8") == _vorher)
     check("und es entsteht kein .bak fuer nichts",
@@ -1122,7 +1122,7 @@ finally:
 # Die Struktur unter backups/ wird gespiegelt. Ohne das ueberschriebe die Sicherung von
 # item_scans/foo.json die von boss_scans/foo.json - gleicher Name, anderer Ordner, und
 # eine der beiden haette keine Sicherung mehr.
-from autoclicker.persistence.sweep import sicherungspfad as _sp
+from autoclicker.persistence.sweep import backup_path as _sp
 check("Sicherung landet unter backups/ mit gespiegeltem Ordner",
       _sp(Path("sequences/all_dayli.json")) == Path("backups/sequences/all_dayli.json.bak"))
 check("gleiche Dateinamen in verschiedenen Ordnern kollidieren nicht",
@@ -1135,16 +1135,16 @@ check("absoluter Pfad wird relativ zum Arbeitsverzeichnis gelegt",
 check("Pfad ausserhalb des Arbeitsverzeichnisses behaelt nur den Namen",
       _sp(Path(tempfile.gettempdir()) / "fremd.json") == Path("backups/fremd.json.bak"))
 
-# _gleich muss die Zahlentypen angleichen, ohne echte Unterschiede zu verschlucken.
+# _equal muss die Zahlentypen angleichen, ohne echte Unterschiede zu verschlucken.
 # Beide Richtungen, sonst waere auch ein "alles ist gleich" gruen.
-from autoclicker.persistence.sweep import _gleich as _gl
-check("_gleich: 600 und 600.0 sind dieselbe Zahl", _gl({"d": 600}, {"d": 600.0}))
-check("_gleich: auch verschachtelt", _gl({"s": [{"d": 1}]}, {"s": [{"d": 1.0}]}))
-check("_gleich: echte Wertaenderung faellt weiterhin auf", not _gl({"d": 600}, {"d": 700}))
+from autoclicker.persistence.sweep import _equal as _gl
+check("_equal: 600 und 600.0 sind dieselbe Zahl", _gl({"d": 600}, {"d": 600.0}))
+check("_equal: auch verschachtelt", _gl({"s": [{"d": 1}]}, {"s": [{"d": 1.0}]}))
+check("_equal: echte Wertaenderung faellt weiterhin auf", not _gl({"d": 600}, {"d": 700}))
 # bool ist in Python ein int - ohne Sonderfall waere ein umgekipptes Flag unsichtbar
-check("_gleich: True geht nicht als 1.0 durch", not _gl({"b": True}, {"b": 1.0}))
-check("_gleich: fehlender Schluessel faellt weiterhin auf", not _gl({"d": 1}, {"d": 1, "x": 2}))
-check("_gleich: Zeichenkette bleibt Zeichenkette", not _gl({"d": "600"}, {"d": 600}))
+check("_equal: True geht nicht als 1.0 durch", not _gl({"b": True}, {"b": 1.0}))
+check("_equal: fehlender Schluessel faellt weiterhin auf", not _gl({"d": 1}, {"d": 1, "x": 2}))
+check("_equal: Zeichenkette bleibt Zeichenkette", not _gl({"d": "600"}, {"d": 600}))
 
 # Abschaltbar, falls man Altbestand einfrieren will
 check("migrate_on_start ist ein Config-Feld mit Default an",
@@ -1200,7 +1200,7 @@ check("Round-Trip aendert keinen Schritt ohne Referenz", _abweichungen == [])
 # ja nicht in der Datei) und kommen erst durch das Aufloesen zurueck. Genau diese zwei
 # Haelften zusammen muessen den Ausgangszustand ergeben - sonst geht beim Speichern
 # etwas verloren, das niemand wiederherstellen kann.
-from autoclicker.persistence.sequences import aufloesen as _aufl
+from autoclicker.persistence.sequences import resolve as _aufl
 _pool = {7: _CP(x=100, y=200, name="Klick", id=7),
          8: _CP(x=5, y=6, name="Pruef", id=8, color=(7, 8, 9)),
          9: _CP(x=10, y=11, name="Ausweich", id=9)}
@@ -1233,7 +1233,7 @@ check("Loader kennt delay_after nicht mehr",
 
 # ------------------------------- Items/Slots gehören genau einem Scan
 section("Item-Scans besitzen ihre Slots/Items")
-from autoclicker.persistence.item_scans import resolve_klick_referenzen as _resolve_scans
+from autoclicker.persistence.item_scans import resolve_click_references as _resolve_scans
 from autoclicker.models import ItemScanConfig as _ISC
 
 _st4 = AutoClickerState()
@@ -1440,7 +1440,7 @@ check("und meldet das im Klartext", len(_meld) == 1 and "P3" in _meld[0])
 # -------------------------------------------- Item-Scan: Namen sind die Wahrheit
 section("Item-Scan: Namen und Objekte bleiben synchron")
 from autoclicker.models import ItemScanConfig as _ISC3, ItemSlot as _IS3, ItemProfile as _IP3
-from autoclicker.persistence import resolve_klick_referenzen as _rsr
+from autoclicker.persistence import resolve_click_references as _rsr
 
 _slot_a, _slot_b = _IS3("S1", (0, 0, 10, 10), (5, 5)), _IS3("S2", (0, 0, 10, 10), (5, 5))
 _item_a = _IP3("Kohle")
@@ -1479,7 +1479,7 @@ check("Datei enthaelt den vollständigen Scan-Bestand",
 
 # ------------------------------------------------------- Setup-Pruefung
 section("Setup-Pruefung findet die stillen Fehler")
-from autoclicker.diagnose import pruefe_setup, STUFE_FEHLER, STUFE_HINWEIS
+from autoclicker.diagnose import check_setup, LEVEL_ERROR, LEVEL_HINT
 from autoclicker.models import (BossProfile as _BP2, BossScanConfig as _BSC2,
                                 IconScanConfig as _ISC4)
 
@@ -1500,7 +1500,7 @@ _st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True,
                                  default_scan="gibtsnicht")}
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
 
-_ber = pruefe_setup(_st6, mit_sequenzen=False)
+_ber = check_setup(_st6, mit_sequenzen=False)
 _texte = [f"{b.bereich}: {b.text}" for b in _ber.befunde]
 
 
@@ -1517,12 +1517,12 @@ check("Scan nur mit ausgeschaltetem Slot wird gefunden",
       _hat("kein Slot ist eingeschaltet"))
 check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
 check("Fehler und Hinweise sind getrennt",
-      len(_ber.fehler) >= 3 and len(_ber.hinweise) >= 2
-      and all(b.stufe in (STUFE_FEHLER, STUFE_HINWEIS) for b in _ber.befunde))
+      len(_ber.errors) >= 3 and len(_ber.hints) >= 2
+      and all(b.stufe in (LEVEL_ERROR, LEVEL_HINT) for b in _ber.befunde))
 
 # **Der Fallback-Scan ist die fuenfte Referenz auf einen Scan-Namen** - und die
 # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
-# `_pruefe_sequenzen()` sieht nur die vier im Schritt (`item_scan`, `boss_scan`,
+# `_check_sequences()` sieht nur die vier im Schritt (`item_scan`, `boss_scan`,
 # `boss_watcher`, `icon_scan`); diese fiel durch, obwohl `runtime/steps.py` sie
 # bei „kein Boss erkannt" wirklich ausfuehrt.
 check("ein Fallback-Scan, den es nicht gibt, wird gemeldet",
@@ -1534,7 +1534,7 @@ _st_fb.item_scans = {"inv": _ISC3(
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
 _st_fb.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra", template="t.png")],
                                 default_scan="inv")}
-_fb = pruefe_setup(_st_fb, mit_sequenzen=False)
+_fb = check_setup(_st_fb, mit_sequenzen=False)
 check("ein Fallback-Scan, den es GIBT, wird nicht gemeldet",
       not any("Fallback-Scan" in f"{b.bereich}: {b.text}" for b in _fb.befunde))
 
@@ -1543,7 +1543,7 @@ _st7 = _ACS()
 _st7.item_scans = {"inv": _ISC3(
     name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
-_sauber = pruefe_setup(_st7, mit_sequenzen=False)
+_sauber = check_setup(_st7, mit_sequenzen=False)
 check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
 check("trotzdem steht da, was geprueft wurde", len(_sauber.geprueft) >= 3)
 
@@ -1572,11 +1572,11 @@ else:
     check("geaendertes Template wird neu geladen", _c is not _a and int(_c[0, 0, 0]) == 255)
 
     # Skalierte Variante wird ebenfalls gemerkt
-    _s1 = _img._template_in_groesse(_tpl, _c, 16, 16)
-    _s2 = _img._template_in_groesse(_tpl, _c, 16, 16)
+    _s1 = _img._template_at_size(_tpl, _c, 16, 16)
+    _s2 = _img._template_at_size(_tpl, _c, 16, 16)
     check("skalierte Variante kommt aus dem Cache", _s1 is _s2 and _s1.shape[:2] == (16, 16))
     check("passende Groesse wird nicht skaliert",
-          _img._template_in_groesse(_tpl, _c, 8, 8) is _c)
+          _img._template_at_size(_tpl, _c, 8, 8) is _c)
 
     check("fehlendes Template meldet sauber None", _img._load_template(_tpl + "_weg") is None)
 
@@ -2085,7 +2085,7 @@ check("Phasen ohne Startzeit laufen weiterhin jedes Mal",
 
 # ------------------------------------------------------- Eindeutige Namen
 section("Namensvergabe kollidiert nicht mit bestehenden Eintraegen")
-from autoclicker.utils import eindeutiger_name as _en
+from autoclicker.utils import unique_name as _en
 
 check("freier Name bleibt unveraendert", _en("Slot 5", {"Slot 1": 1}) == "Slot 5")
 check("belegter Name bekommt eine 2", _en("Slot 1", {"Slot 1": 1}) == "Slot 1 2")
@@ -2102,7 +2102,7 @@ check("...und wird auf einen freien Namen ausgewichen",
 
 # Durchnummerierte Serien nehmen die erste FREIE Nummer statt einen Zaehler
 # anzuhaengen — 'Slot 3 2' waere ein Name, den niemand lesen will.
-from autoclicker.utils import naechster_freier_name as _nf
+from autoclicker.utils import next_free_name as _nf
 
 check("Serie: leeres Verzeichnis beginnt bei 1", _nf("Slot", {}) == "Slot 1")
 check("Serie: Luecke wird aufgefuellt", _nf("Slot", {"Slot 1": 1, "Slot 3": 1}) == "Slot 2")
@@ -2123,7 +2123,7 @@ check("Auto-Erkennung vergibt lesbare Namen",
       _vergeben == ["Slot 2", "Slot 4", "Slot 5", "Slot 6"])
 
 # Beide Helfer haben ihren Platz: fuer einen VORGEGEBENEN Namen gibt es keine Serie
-check("eindeutiger_name bleibt fuer vorgegebene Namen zustaendig",
+check("unique_name bleibt fuer vorgegebene Namen zustaendig",
       _en("Beutel oben", {"Beutel oben": 1}) == "Beutel oben 2")
 
 # --- Und niemand rechnet den Namen wieder selbst aus ---
@@ -2160,12 +2160,12 @@ from autoclicker.models import (ItemSlot as _KIS, ItemProfile as _KIP,
     Sequence as _KSEQ, SequenceStep as _KSS, LoopPhase as _KLP,
     WaitCondition as _KWC, ElseConfig as _KEC, ClickPoint as _KCP)
 
-_t = _IE.transform_aus_verschiebung((100, 200), (140, 175))       # +40 / -25
+_t = _IE.transform_from_offset((100, 200), (140, 175))       # +40 / -25
 check("ein Punkt ergibt eine reine Verschiebung",
       (_t["offset_x"], _t["offset_y"], _t["scale_x"], _t["scale_y"]) == (40, -25, 1.0, 1.0))
 check("gleicher Punkt = Identitaet (nichts zu tun)",
-      _IE.ist_identitaet(_IE.transform_aus_verschiebung((5, 5), (5, 5))))
-check("verschobener Punkt ist keine Identitaet", not _IE.ist_identitaet(_t))
+      _IE.is_identity(_IE.transform_from_offset((5, 5), (5, 5))))
+check("verschobener Punkt ist keine Identitaet", not _IE.is_identity(_t))
 # Zwei Punkte koennen zusaetzlich skalieren — fuer den Fall geaenderter Aufloesung
 check("zwei Punkte skalieren zusaetzlich",
       _IE.remap_point(400, 600, _IE.compute_transform((0,0), (1000,1000),
@@ -2211,20 +2211,20 @@ def _kalib_state():
 
 # Die Vorschau darf nichts anfassen — sonst waere ein 'nein' beim Nachfragen wirkungslos
 _vs, _, _, _ = _kalib_state()
-_vorschau = _IE.kalibrier_vorschau(_vs, _t)
+_vorschau = _IE.calibration_preview(_vs, _t)
 check("Vorschau laesst den Bestand unveraendert",
       (_vs.points[0].x, _vs.points[0].y) == (100, 200))
 check("Vorschau meldet vorher und nachher",
       ("Punkt #1 Bank", (100, 200), (140, 175)) in _vorschau)
 
-# In einem temporaeren Verzeichnis arbeiten: kalibriere_bestand SCHREIBT
+# In einem temporaeren Verzeichnis arbeiten: calibrate_inventory SCHREIBT
 _kalib_tmp = tempfile.mkdtemp()
 _kalib_cwd = _os.getcwd()
 _os.chdir(_kalib_tmp)
 try:
     _st, _schritt, _trig, _shot = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _zahl = _IE.kalibriere_bestand(_st, _t, mit_scans=True, mit_sequenzen=True)
+        _zahl = _IE.calibrate_inventory(_st, _t, mit_scans=True, mit_sequenzen=True)
 
     for _was, _ist, _soll in [
         ("Punkt (der Referenzpunkt selbst)", (_st.points[0].x, _st.points[0].y), (140, 175)),
@@ -2260,7 +2260,7 @@ try:
     # Umfang muss sich begrenzen lassen
     _st2, _schritt2, _, _ = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _IE.kalibriere_bestand(_st2, _t, mit_scans=False, mit_sequenzen=False)
+        _IE.calibrate_inventory(_st2, _t, mit_scans=False, mit_sequenzen=False)
     check("nur Punkte: Punkt wandert",
           (_st2.points[0].x, _st2.points[0].y) == (140, 175))
     check("nur Punkte: Slot bleibt unberuehrt",
@@ -2273,7 +2273,7 @@ try:
     # Nach einer Reparatur duerfen die Slots kein zweites Mal wandern.
     _st4, _schritt4, _, _ = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _z4 = _IE.kalibriere_bestand(_st4, _t, mit_scans=True, mit_sequenzen=True,
+        _z4 = _IE.calibrate_inventory(_st4, _t, mit_scans=True, mit_sequenzen=True,
                                      mit_slots=False)
     check("ohne Slots: Slot-Region bleibt exakt stehen",
           _st4.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
@@ -2307,7 +2307,7 @@ try:
         "end_steps": []}), encoding="utf-8")
     _st3 = AutoClickerState()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _IE.kalibriere_bestand(_st3, _t, mit_scans=False, mit_sequenzen=True)
+        _IE.calibrate_inventory(_st3, _t, mit_scans=False, mit_sequenzen=True)
     _d = json.loads(_sq.read_text(encoding="utf-8"))
     _s0, _s1 = _d["init_steps"][0], _d["loop_phases"][0]["steps"][0]
     check("nicht geladene Sequenzdatei wird mitgerechnet",
@@ -2345,7 +2345,7 @@ try:
           (_r["offset_x"], _r["offset_y"]) == (0, -25))
     _r = _anpassen_mit(["0", "0"])
     check("Versatz anpassen: beide auf 0 -> Identitaet",
-          _IE.ist_identitaet(_r))
+          _IE.is_identity(_r))
     _r = _anpassen_mit(["", "-24"])
     check("Versatz anpassen: Y von Hand korrigiert",
           (_r["offset_x"], _r["offset_y"]) == (2, -24))
@@ -2359,7 +2359,7 @@ try:
 
     # Gegen-Verschiebung muss exakt zum Ausgangswert zurueckfuehren
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _IE.kalibriere_bestand(_st3, _IE.transform_aus_verschiebung((140, 175), (100, 200)),
+        _IE.calibrate_inventory(_st3, _IE.transform_from_offset((140, 175), (100, 200)),
                                mit_scans=False, mit_sequenzen=True)
     _d2 = json.loads(_sq.read_text(encoding="utf-8"))
     check("Rueckrechnung trifft den Ausgangswert genau",
@@ -2455,9 +2455,9 @@ import autoclicker.utils.io as _IO
 
 check("_VK_MAP enthaelt weiterhin keine Buchstaben (nur fuer interactive_select)",
       not any(0x41 <= _vk <= 0x5A for _vk in _IO._VK_MAP))
-check("read_command kennt alle 26 Buchstaben", len(_IO._VK_BUCHSTABEN) == 26)
+check("read_command kennt alle 26 Buchstaben", len(_IO._VK_LETTERS) == 26)
 check("die Befehlstasten w/a/s/c/d/q sind dabei",
-      all(_b in _IO._VK_BUCHSTABEN.values() for _b in "wascdq"))
+      all(_b in _IO._VK_LETTERS.values() for _b in "wascdq"))
 
 # In der IDE-Konsole liest read_command per Polling MIT den Buchstaben — ohne Enter.
 _orig_real = _IO._REAL_CONSOLE
@@ -2470,7 +2470,7 @@ try:
     check("IDE-Konsole: read_command liefert den Buchstaben direkt",
           _IO.read_command() == "a")
     check("IDE-Konsole: die Buchstaben werden ans Polling durchgereicht",
-          _gesehen["zusatz"] is _IO._VK_BUCHSTABEN)
+          _gesehen["zusatz"] is _IO._VK_LETTERS)
     # Die Zeitgrenze des Gates kommt ebenfalls dort an — ohne sie blockierte
     # das Gate in der Konsole, und CTRL+ALT+G kaeme nie zum Zug.
     _IO.read_command(timeout=0.2)
@@ -2754,11 +2754,11 @@ check("Tastendruecke dazwischen verschieben die Nummern nicht",
 
 # **Wer einen Punktnamen ERFINDET, nimmt dasselbe Schema.** Drei Wege legen
 # Punkte an, ohne dass jemand einen Namen tippt - die Aufnahme, CTRL+ALT+A und
-# der Rueckfall in `punkt_fuer_stelle()`. Sie standen auf `<Sequenz> <i>`, `P<id>`
+# der Rueckfall in `point_for_position()`. Sie standen auf `<Sequenz> <i>`, `P<id>`
 # und `Punkt <id>`: dieselbe Frage, drei Antworten, und in EINER Liste
 # untereinander. Gefragt werden deshalb beide erreichbaren Wege und verglichen -
 # nicht die Implementierung abgeschrieben.
-from autoclicker.persistence.sequences import punkt_fuer_stelle as _pfs
+from autoclicker.persistence.sequences import point_for_position as _pfs
 _st_namen = AutoClickerState()
 _seq_namen = _KSEQ(name="N", init_steps=[], end_steps=[], loop_phases=[], points=[])
 _st_namen.sequences = {"N": _seq_namen}
@@ -2767,7 +2767,7 @@ _st_namen.points = _seq_namen.points
 _id_a = _pfs(_st_namen, 10, 20, (1, 2, 3))
 _id_b = _pfs(_st_namen, 900, 900, (4, 5, 6))
 _namen_pfs = [pt.name for pt in _st_namen.points]
-check("der Rueckfall in punkt_fuer_stelle nimmt P<ID>",
+check("der Rueckfall in point_for_position nimmt P<ID>",
       _namen_pfs == [f"P{_id_a}", f"P{_id_b}"])
 check("und damit dasselbe Schema wie die Aufnahme",
       [n[0] for n in _namen_pfs] == [n[0] for n in ("P1", "P2")])
@@ -2786,7 +2786,7 @@ check("Recorder legt keine direkte JSON-Datei mehr unter sequences/ an",
 # Koordinatenvergleich entstand pro Klick ein eigener Punkt: in einer echten
 # Aufnahme lagen vier Punkte auf EINEM gruenen Knopf (#2/#13/#24/#40, 1.4-6.7 px
 # auseinander, Farbe identisch).
-from autoclicker.persistence.sequences import punkt_an_stelle as _pas
+from autoclicker.persistence.sequences import point_at_position as _pas
 import autoclicker.config as _cfg_pas
 _cfg_pas.CONFIG.punkt_radius = 8
 _cfg_pas.CONFIG.punkt_farbtoleranz = 10
@@ -3371,7 +3371,7 @@ try:
 finally:
     sys.stdout = _echt_out
 check("ANSI-Codes zaehlen nicht zur Zeilenbreite",
-      _CONS._sichtbare_laenge(_CONS.col("abc", "red")) == 3)
+      _CONS._visible_length(_CONS.col("abc", "red")) == 3)
 
 # Eine Meldung, die die Status-Zeile bewusst abschliesst (\n mittendrin), darf die
 # Breite nicht aus dem Teil DAVOR nehmen — dort steht nichts mehr zu ueberschreiben.
@@ -3417,7 +3417,7 @@ check("und laesst den aufgenommenen Punkt in Ruhe",
 # heben gibt, danach nie wieder. Gemessen mit einem GESTELLTEN Schritt - an einen
 # echten gehaengt waere der Test beim naechsten Loeschen wieder faellig.
 import autoclicker.persistence.migration as _MG
-from autoclicker.persistence.sweep import sweep_beim_start as _sweep_start
+from autoclicker.persistence.sweep import sweep_on_start as _sweep_start
 from autoclicker.persistence import (ensure_sequences_dir as _esd2,
                                      load_sequence_file as _lsf2)
 from autoclicker.config import SEQUENCES_DIR as _SQD2
@@ -3425,11 +3425,11 @@ from autoclicker.config import SEQUENCES_DIR as _SQD2
 _once_tmp = tempfile.mkdtemp()
 _once_cwd = _os.getcwd()
 _os.chdir(_once_tmp)
-_zaehler = {"n": 0}
+_counters = {"n": 0}
 _orig_kette = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
 try:
     def _gezaehlt(data, context):
-        _zaehler["n"] += 1
+        _counters["n"] += 1
         data["von_der_migration"] = True
         return ["gestellter Schritt gelaufen"]
     # Auf Position 0: hebt von Version 0 auf 1. Die restlichen Stufen bis
@@ -3451,7 +3451,7 @@ try:
 
     with _cl2.redirect_stdout(_io2.StringIO()):
         _sweep_start()
-    _nach_erstem = _zaehler["n"]
+    _nach_erstem = _counters["n"]
     _dat = json.loads(_adatei.read_text(encoding="utf-8"))
     check("erster Start hebt die Datei auf die aktuelle Version",
           _dat["schema_version"] == _MG.SCHEMA_VERSION)
@@ -3462,7 +3462,7 @@ try:
         _sweep_start()
         _sweep_start()
     check("weitere Starts rufen keinen Migrationsschritt mehr auf",
-          _zaehler["n"] == _nach_erstem)
+          _counters["n"] == _nach_erstem)
     check("weitere Starts lassen die Datei unveraendert",
           _adatei.read_text(encoding="utf-8") == _inhalt_vorher)
 
@@ -3470,7 +3470,7 @@ try:
         for _ in range(20):
             _lsf2(_adatei, [])
     check("Sequenz laden ruft keinen Migrationsschritt mehr auf",
-          _zaehler["n"] == _nach_erstem)
+          _counters["n"] == _nach_erstem)
 finally:
     _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette
     _os.chdir(_once_cwd)
@@ -3846,7 +3846,7 @@ import ast as _ast11
 
 _falsches_nachladen11 = []
 for _pfad11, _funktion11 in (
-        ("autoclicker/handlers.py", "befehl_start"),
+        ("autoclicker/handlers.py", "command_start"),
         ("autoclicker/handlers.py", "handle_switch"),
         ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
     _baum11 = _ast11.parse(Path(_pfad11).read_text(encoding="utf-8"))
@@ -3855,7 +3855,7 @@ for _pfad11, _funktion11 in (
             _namen11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
                         if isinstance(_n11, _ast11.Call)
                         and isinstance(_n11.func, _ast11.Name)}
-            if "load_sequence_file" in _namen11 and "punkte_nachladen" in _namen11:
+            if "load_sequence_file" in _namen11 and "reload_points" in _namen11:
                 _falsches_nachladen11.append(f"{_pfad11}:{_funktion11}")
 check("kein Ladeweg mischt einen separaten Punkte-Pool hinein",
       _falsches_nachladen11 == [])
@@ -3869,11 +3869,11 @@ section("Das Fenster-Symbol wartet auf sein Fenster")
 
 # `webview.start(func)` ruft func auf, BEVOR das Fenster steht - nachgemessen:
 # zum Zeitpunkt des Aufrufs findet EnumWindows nichts, zwei Sekunden spaeter
-# schon. Ohne Frist fiel setze_fenster_symbol() still auf False, und das Studio
+# schon. Ohne Frist fiel set_window_icon() still auf False, und das Studio
 # behielt das Symbol von python.exe.
 import time as _t12
 from autoclicker.platforms.windows import (
-    setze_fenster_symbol as _sfs12, _symbol_bits as _sb12,
+    set_window_icon as _sfs12, _icon_bits as _sb12,
 )
 import autoclicker.symbol as _sym12
 
@@ -3938,7 +3938,7 @@ if _symbol_loecher12:
 # Orientierungshilfe festzuschreiben, wird jedes Pixel mit der kanonischen
 # SVG-Rasterung verglichen. Das deckt Umdrehen, Kanalreihenfolge und Alpha ab.
 _bits12 = _sb12(32)
-_soll12 = list(_sym12.punkte(32))
+_soll12 = list(_sym12.pixel_rows(32))
 check("die Zeilen stehen von unten nach oben in der Datei",
       all(_symbolpixel12(_bits12, 32, x, y)
           == (_soll12[y][x][2], _soll12[y][x][1], _soll12[y][x][0], _soll12[y][x][3])
@@ -3969,18 +3969,18 @@ except ImportError:
     _pillow_da2 = False
 if _pillow_da2:
     check("eine einfarbige Flaeche gilt als leer",
-          _img12.ist_leer(_PIL12.new("RGB", (8, 8), (0, 0, 0))) is True)
+          _img12.is_blank(_PIL12.new("RGB", (8, 8), (0, 0, 0))) is True)
     _bunt12 = _PIL12.new("RGB", (8, 8), (0, 0, 0))
     _bunt12.putpixel((4, 4), (255, 0, 0))
-    check("ein Bild mit Inhalt nicht", _img12.ist_leer(_bunt12) is False)
-check("und None erst recht", _img12.ist_leer(None) is True)
+    check("ein Bild mit Inhalt nicht", _img12.is_blank(_bunt12) is False)
+check("und None erst recht", _img12.is_blank(None) is True)
 
 # Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
 # spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
 # Fassungen desselben Spiels ist er dreimal derselbe.
 _quelle_wf12 = Path("autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle_wf12))
-             if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "liste_fenster")
+             if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "list_windows")
 _anhaenge12 = [_n12 for _n12 in _ast11.walk(_lf12)
                if isinstance(_n12, _ast11.Call)
                and isinstance(_n12.func, _ast11.Attribute)
@@ -4012,16 +4012,16 @@ check("sie liest die Datei stattdessen selbst",
 # Datei fuer Windows und tools/symbol.py. Damit ist das neue Logo nicht nur im
 # grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
 _kopf12 = _H.studio_web_source()
-_logo12 = _sym12.LOGO_PFAD.read_text(encoding="utf-8")
+_logo12 = _sym12.LOGO_PATH.read_text(encoding="utf-8")
 check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
-      _sym12.LOGO_PFAD.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PFAD.exists())
+      _sym12.LOGO_PATH.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PATH.exists())
 check("Kopf und Favicon benutzen beide diese Datei",
       _kopf12.count('sequenz-studio-logo.svg') == 2)
 # **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Hier stand einmal
 # 'rotate(180 128 128)' — ein Detail genau dieses Motivs, das beim naechsten
 # neu gezeichneten Logo umfaellt, ohne dass etwas kaputt waere. Tragend sind
 # zwei Dinge: die Maske (sonst gibt es keine echte Transparenz) und die
-# Befehlsmenge, die `_pfad_polygone` ueberhaupt lesen kann — ein 'A' aus einem
+# Befehlsmenge, die `_path_polygons` ueberhaupt lesen kann — ein 'A' aus einem
 # CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
 check("das Logo traegt eine Maske statt einer Ersatzfarbe",
       'mask="url(#cutout)"' in _logo12)
@@ -4046,7 +4046,7 @@ check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not 
 # Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
 # Ecken UND transparenten Aussparungen im Innern ergeben. Zwischenwerte im
 # Alpha-Kanal beweisen, dass die Kanten geglaettet statt hart gerastert werden.
-_pixel12 = list(_sym12.punkte(16))
+_pixel12 = list(_sym12.pixel_rows(16))
 _flach12 = [p for z in _pixel12 for p in z]
 check("die Rasterung liefert genau 16 x 16 Pixel",
       len(_pixel12) == 16 and all(len(z) == 16 for z in _pixel12))
@@ -4093,7 +4093,7 @@ check("und die Laengen decken die Datei genau ab",
 # Titelleiste und Taskleiste sind zwei Mechanismen. Das Fenstersymbol reichte
 # fuer die eine; die andere sortierte das Fenster weiter unter python.exe ein und
 # zeigte dessen Symbol. Erst eine eigene AppUserModelID loest es aus der Gruppe.
-from autoclicker.platforms.windows import setze_app_id as _said12, APP_ID as _AID12
+from autoclicker.platforms.windows import set_app_id as _said12, APP_ID as _AID12
 
 check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
 if sys.platform == "win32":
@@ -4115,7 +4115,7 @@ _main12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_quelle12))
                if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "main")
 _zeile_id12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
                if isinstance(_n12, _ast11.Call) and isinstance(_n12.func, _ast11.Name)
-               and _n12.func.id == "setze_app_id"]
+               and _n12.func.id == "set_app_id"]
 _zeile_fenster12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
                     if isinstance(_n12, _ast11.Call)
                     and isinstance(_n12.func, _ast11.Attribute)
@@ -4135,8 +4135,8 @@ section("Item-Klicks koennen nach Marktwert statt nach Handpriorität sortieren"
 # Autoclicker liest sie, falls in seiner config.json ein Pfad steht. Kein Import in
 # irgendeine Richtung - ein Test prueft genau das.
 import json as _js6, tempfile as _tf6, os as _os6
-from autoclicker.runtime.item_scan import (lade_marktwerte as _lmw,
-                                           _effektive_prioritaet as _eprio,
+from autoclicker.runtime.item_scan import (load_market_values as _lmw,
+                                           _effective_priority as _eprio,
                                            _marktwert_cache as _mwc)
 from autoclicker.models import ItemProfile as _IP6
 
@@ -4374,7 +4374,7 @@ check("die Kopie liegt direkt hinter dem Original",
 check("und ist die neue Auswahl", sorted(_b8.sel_rows) == [2])
 # Die Kopie zeigt auf DENSELBEN Punkt: ein Duplikat ist erst mal derselbe Klick,
 # und ein zweiter Punkt an derselben Stelle waere genau die Doppelung, die
-# punkt_fuer_stelle() ueberall sonst vermeidet.
+# point_for_position() ueberall sonst vermeidet.
 check("sie zeigt auf denselben Punkt",
       _b8.board.lanes[LOOP8].steps[2].point_id
       == _b8.board.lanes[LOOP8].steps[1].point_id)
@@ -4619,7 +4619,7 @@ _sbt10(_mit_punkt10, "wait_click")
 check("set_block_type haengt die Bedingung selbst an den Punkt",
       _mit_punkt10.wait_condition is not None
       and _mit_punkt10.wait_condition.point_id == 7)
-# pixel/color sind ABGELEITET und stehen auf ihrem Default, bis `aufloesen()`
+# pixel/color sind ABGELEITET und stehen auf ihrem Default, bis `resolve()`
 # sie aus dem Punkt fuellt - vorher standen hier step.x/y und recorded_color,
 # also eine zweite Kopie der Stelle.
 check("und legt keine Koordinaten-Kopie an",
@@ -4645,42 +4645,42 @@ _sand13 = _tf5.mkdtemp(prefix="befehl_")
 _cwd13 = _os.getcwd()
 _os.chdir(_sand13)
 try:
-    _bf13.BEFEHL_DATEI = Path(_bf13.BEFEHL_DATEI.name)   # relativ zum Sandkasten
+    _bf13.COMMAND_PATH = Path(_bf13.COMMAND_PATH.name)   # relativ zum Sandkasten
 
-    check("ohne Briefkasten kommt nichts zurueck", _bf13.hole() is None)
+    check("ohne Briefkasten kommt nichts zurueck", _bf13.fetch_command() is None)
 
-    _bf13.sende("start", datei="sequences/x.json", sequenz="X")
-    _auftrag13 = _bf13.hole()
+    _bf13.send_command("start", datei="sequences/x.json", sequenz="X")
+    _auftrag13 = _bf13.fetch_command()
     check("ein gesendeter Befehl kommt an",
           _auftrag13 is not None and _auftrag13["befehl"] == "start")
     check("mit seinen Argumenten",
           _auftrag13["argumente"] == {"datei": "sequences/x.json", "sequenz": "X"})
     check("und der Briefkasten ist danach leer",
-          not _bf13.BEFEHL_DATEI.exists() and _bf13.hole() is None)
+          not _bf13.COMMAND_PATH.exists() and _bf13.fetch_command() is None)
 
     # Ein Befehl von frueher darf NICHT nachfeuern. Das ist die gefaehrlichste
     # Stelle des ganzen Kanals: er loest Klicks aus.
-    _bf13.sende("start", datei="sequences/x.json")
-    _alt13 = json.loads(_bf13.BEFEHL_DATEI.read_text(encoding="utf-8"))
-    _alt13["stand"] = _alt13["stand"] - (_bf13.MAX_ALTER + 5)
-    _bf13.BEFEHL_DATEI.write_text(json.dumps(_alt13), encoding="utf-8")
-    check("ein zu alter Befehl wird verworfen", _bf13.hole() is None)
-    check("und liegt danach auch nicht mehr da", not _bf13.BEFEHL_DATEI.exists())
+    _bf13.send_command("start", datei="sequences/x.json")
+    _alt13 = json.loads(_bf13.COMMAND_PATH.read_text(encoding="utf-8"))
+    _alt13["stand"] = _alt13["stand"] - (_bf13.MAX_AGE + 5)
+    _bf13.COMMAND_PATH.write_text(json.dumps(_alt13), encoding="utf-8")
+    check("ein zu alter Befehl wird verworfen", _bf13.fetch_command() is None)
+    check("und liegt danach auch nicht mehr da", not _bf13.COMMAND_PATH.exists())
 
     # Unlesbares fliegt genauso raus - sonst wird es bei JEDEM Schleifendurchlauf
     # erneut gelesen und gemeldet.
-    _bf13.BEFEHL_DATEI.write_text("{kein json", encoding="utf-8")
-    check("eine kaputte Datei ergibt keinen Befehl", _bf13.hole() is None)
-    check("und wird trotzdem weggeraeumt", not _bf13.BEFEHL_DATEI.exists())
+    _bf13.COMMAND_PATH.write_text("{kein json", encoding="utf-8")
+    check("eine kaputte Datei ergibt keinen Befehl", _bf13.fetch_command() is None)
+    check("und wird trotzdem weggeraeumt", not _bf13.COMMAND_PATH.exists())
 
-    _bf13.BEFEHL_DATEI.write_text(json.dumps({"stand": __import__("time").time()}), encoding="utf-8")
-    check("ein Eintrag ohne Befehl zaehlt nicht", _bf13.hole() is None)
+    _bf13.COMMAND_PATH.write_text(json.dumps({"stand": __import__("time").time()}), encoding="utf-8")
+    check("ein Eintrag ohne Befehl zaehlt nicht", _bf13.fetch_command() is None)
 
     # Zweimal senden staut nichts an: wer zweimal stoppt, meint einmal stoppen.
-    _bf13.sende("stop")
-    _bf13.sende("stop")
-    check("der zweite Befehl ueberschreibt den ersten", _bf13.hole()["befehl"] == "stop")
-    check("und danach ist Ruhe", _bf13.hole() is None)
+    _bf13.send_command("stop")
+    _bf13.send_command("stop")
+    check("der zweite Befehl ueberschreibt den ersten", _bf13.fetch_command()["befehl"] == "stop")
+    check("und danach ist Ruhe", _bf13.fetch_command() is None)
 finally:
     _os.chdir(_cwd13)
 
@@ -4688,7 +4688,7 @@ finally:
 # Der Test, um den es hier eigentlich geht: die Bruecke darf nur senden, was der
 # Hauptprozess auch ausfuehrt. Laufen die Listen auseinander, tut ein Knopf im
 # Studio einfach nichts - keine Meldung, kein Fehler, nur Stille.
-from autoclicker.handlers import BEFEHLE as _BEF13
+from autoclicker.handlers import COMMANDS as _BEF13
 
 check("jeder Befehl der Bruecke hat einen Handler",
       sorted(_SB8.ALLE_BEFEHLE) == sorted(_BEF13))
@@ -4702,7 +4702,7 @@ _cwd14 = _os.getcwd()
 _os.chdir(_sand14)
 try:
     Path("sequences").mkdir()
-    _bf13.BEFEHL_DATEI = Path(_bf13.BEFEHL_DATEI.name)
+    _bf13.COMMAND_PATH = Path(_bf13.COMMAND_PATH.name)
     _seq14 = _SEQ8(name="Lauf", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
         _SS(x=1, y=2, delay_before=0, name="K", point_id=1)])])
     _b14 = _SB8(_seq14, Path("sequences/lauf/sequence.json"), "sequences")
@@ -4711,7 +4711,7 @@ try:
     _zustand14 = _b14.lauf_befehl({"befehl": "start"})
     check("der Start speichert die offene Sequenz zuerst",
           _b14._dirty is False and Path("sequences/lauf/sequence.json").exists())
-    _auftrag14 = _bf13.hole()
+    _auftrag14 = _bf13.fetch_command()
     check("und schickt genau diese Datei mit",
           _auftrag14 is not None
           and Path(_auftrag14["argumente"]["datei"]) == Path("sequences/lauf/sequence.json"))
@@ -4725,18 +4725,18 @@ try:
     _b14._dirty = True
     _zustand14b = _b14.lauf_befehl({"befehl": "start"})
     check("ohne Sequenz-Namen faellt der Start aus",
-          _zustand14b["status"]["art"] == "err" and _bf13.hole() is None)
+          _zustand14b["status"]["art"] == "err" and _bf13.fetch_command() is None)
 
     # Stopp und Pause gehen ohne Speichern durch - sie betreffen den Lauf, nicht
     # die Datei.
     _b14.board.name = "Lauf"
     _b14.lauf_befehl({"befehl": "stop"})
-    check("Stopp braucht kein Speichern", _bf13.hole()["befehl"] == "stop")
+    check("Stopp braucht kein Speichern", _bf13.fetch_command()["befehl"] == "stop")
     # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
     _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
     _b14.waehlen({"phase": 1, "zeile": 0})
     _b14.punkt_zeigen()
-    _zeig14 = _bf13.hole()
+    _zeig14 = _bf13.fetch_command()
     check("die Probe schickt Stelle, Punkt und Farbe mit",
           _zeig14 is not None and _zeig14["befehl"] == "zeigen"
           and _zeig14["argumente"]["x"] == 10 and _zeig14["argumente"]["y"] == 20
@@ -4747,12 +4747,12 @@ try:
     _b14.waehlen({"phase": 1, "zeile": 1})
     _zustand14d = _b14.punkt_zeigen()
     check("ohne Stelle wird nichts geschickt",
-          _bf13.hole() is None and _zustand14d["status"]["art"] == "warn")
+          _bf13.fetch_command() is None and _zustand14d["status"]["art"] == "warn")
     _b14.waehlen({"phase": 1, "zeile": 0})
 
     _zustand14c = _b14.lauf_befehl({"befehl": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
-          _zustand14c["status"]["art"] == "err" and _bf13.hole() is None)
+          _zustand14c["status"]["art"] == "err" and _bf13.fetch_command() is None)
 
     # Die einzige Rueckmeldung, die das Fenster ueber den Hauptprozess bekommt: er
     # leert den Kasten. Liegt der Befehl noch, hoert niemand zu - dann darf im
@@ -4760,7 +4760,7 @@ try:
     check("ein geleerter Briefkasten heisst: angekommen", _b14.befehl_offen() is False)
     _b14.lauf_befehl({"befehl": "pause"})
     check("ein liegengebliebener Befehl ist erkennbar", _b14.befehl_offen() is True)
-    _bf13.hole()
+    _bf13.fetch_command()
     check("und nach dem Abholen wieder nicht", _b14.befehl_offen() is False)
 finally:
     _os.chdir(_cwd14)
@@ -4840,7 +4840,7 @@ check("die automatisch wechselnde Typ-Kachel wird nicht nochmals als 'ergibt' ge
 # nie zurueck. Geprueft wird die Regel, nicht die API: ein Test, der echte
 # Tastendruecke ins System schickt, tippt in das Fenster, das gerade vorn ist.
 import time as _t15
-from autoclicker.utils.io import taste_neu_gedrueckt as _tng15, warte_auf_taste as _wat15
+from autoclicker.utils.io import key_newly_pressed as _tng15, wait_for_global_key as _wat15
 
 check("gehalten + vorher oben = neuer Druck", _tng15(0x8000, False) is True)
 check("gehalten + vorher schon unten = kein neuer Druck", _tng15(0x8000, True) is False)
@@ -4854,8 +4854,8 @@ check("losgelassen nach Halten meldet nichts", _tng15(0x0000, True) is False)
 # Block prüfte fünfmal eine Funktion, die niemand benutzte.
 import inspect as _insp15
 from autoclicker.platforms import windows as _pw15
-check("wait_for_key entscheidet ueber taste_neu_gedrueckt, nicht selbst",
-      "taste_neu_gedrueckt(" in _insp15.getsource(_pw15.wait_for_key)
+check("wait_for_key entscheidet ueber key_newly_pressed, nicht selbst",
+      "key_newly_pressed(" in _insp15.getsource(_pw15.wait_for_key)
       and "& 0x0001" not in _insp15.getsource(_pw15.wait_for_key))
 
 # Die Zeitgrenze gilt auf beiden Plattformen: gestubbt liefert GetAsyncKeyState 0,
@@ -4879,13 +4879,13 @@ _b15 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
     Path("sequences/S.json"), "sequences")
 _b15.waehlen({"phase": 1, "zeile": 0})
 
-_echt15 = (_io15.warte_auf_taste, _wa15.get_cursor_pos)
+_echt15 = (_io15.wait_for_global_key, _wa15.get_cursor_pos)
 try:
     # Beide Ecken in EINEM Aufruf: zwischendurch zum Fenster zurueckzufahren ist
     # genau der Weg, den die Maus-Aufnahme ersparen soll. Hier kommt Ecke 1 unten
     # rechts und Ecke 2 oben links - verkehrt herum, die Bruecke muss sortieren.
     _ecken15 = iter([(900, 700), (300, 200)])
-    _io15.warte_auf_taste = lambda *a, **k: "enter"
+    _io15.wait_for_global_key = lambda *a, **k: "enter"
     _wa15.get_cursor_pos = lambda: next(_ecken15)
     _z15 = _b15.bereich_aufnehmen()
     check("zwei ENTER ergeben einen Bereich",
@@ -4903,20 +4903,20 @@ try:
     # ESC bei der ZWEITEN Ecke: auch die erste darf dann nicht stehenbleiben.
     _ecken15 = iter([(10, 10), (20, 20)])
     _tasten15 = iter(["enter", "escape"])
-    _io15.warte_auf_taste = lambda *a, **k: next(_tasten15)
+    _io15.wait_for_global_key = lambda *a, **k: next(_tasten15)
     _z15 = _b15.bereich_aufnehmen()
     check("ESC nach der ersten Ecke laesst den alten Bereich ganz stehen",
           _z15["status"]["art"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 
     # Keine Taste innerhalb der Zeitgrenze: dasselbe, nur mit anderem Grund.
-    _io15.warte_auf_taste = lambda *a, **k: None
+    _io15.wait_for_global_key = lambda *a, **k: None
     _z15 = _b15.bereich_aufnehmen()
     check("ohne Tastendruck passiert ebenfalls nichts",
           _z15["status"]["art"] == "warn"
           and _z15["block"]["screenshot_region"] == _vorher15)
 finally:
-    _io15.warte_auf_taste, _wa15.get_cursor_pos = _echt15
+    _io15.wait_for_global_key, _wa15.get_cursor_pos = _echt15
 
 
 # --- Die Scan-Konfigurationen kommen zur Auswahl, statt getippt zu werden ---
@@ -5006,7 +5006,7 @@ finally:
     _os.chdir(_cwd12)
 
 # --- ...und zur Laufzeit uebersprungen statt in die Ecke geklickt ---
-from autoclicker.runtime.steps import _scan_ohne_namen as _son12
+from autoclicker.runtime.steps import _scan_without_name as _son12
 
 check("ein leerer Item-Scan wird als unfertig erkannt",
       _son12(_SS(delay_before=0, item_scan="")) == "ITEM-SCAN")
@@ -5021,7 +5021,7 @@ check("und ein Boss-Watcher ohne Namen ebenfalls erkannt",
 
 # Jede Scan-Art, die der Dispatcher kennt, muss auch hier stehen - sonst faellt
 # genau die eine wieder bis zum Klick durch.
-from autoclicker.runtime.steps import _SCAN_FELDER as _sf12
+from autoclicker.runtime.steps import _SCAN_FIELDS as _sf12
 from autoclicker.editors.sequence_studio.bridge import SCAN_FELD as _sfeld12
 check("Executor und Studio kennen dieselben Scan-Felder",
       sorted(f for f, _ in _sf12) == sorted(_sfeld12.values()))
@@ -5124,7 +5124,7 @@ check("snapshot(None) liefert denselben Zustand wie snapshot()", _gleich13)
 # umbenannt und niemand merkt es: JavaScript wirft bei `undefined` nicht, es
 # zeigt einfach nichts an - "wartet auf die Farbe bei (undefined)" statt eines
 # Fehlers. Deshalb werden hier die Namen gegeneinander gehalten.
-from autoclicker.runtime.steps import _farb_wartestatus as _fws13
+from autoclicker.runtime.steps import _color_wait_status as _fws13
 
 class _CfgW13:
     pixel_wait_tolerance = 30
@@ -5138,7 +5138,7 @@ _farbfelder13 = set(_fws13(_StW13(), _SS(delay_before=0), _wc13, (9, 9, 9), 4.0,
 # Der Zeit-Zweig hat keine eigene Funktion - er steht als Dict-Literal in der
 # Schleife, also wird er dort gelesen.
 import autoclicker.runtime.actions as _act13
-_zeitquelle13 = _inspect13.getsource(_act13._warte_schleife)
+_zeitquelle13 = _inspect13.getsource(_act13._wait_loop)
 _zeitfelder13 = set(_re13.findall(r'"(\w+)":', _zeitquelle13))
 _kasten13 = _html13[_html13.index("function warteKasten("):]
 _kasten13 = _kasten13[:_kasten13.index("\nfunction ")]
@@ -5188,8 +5188,8 @@ try:
     # Das Studio startet ohne Namen, wenn im Hauptprozess keine Sequenz aktiv ist
     # oder wenn man es direkt aufruft. Ein leeres Fenster ist da fast nie gemeint.
     from autoclicker.sequence_studio import (
-        merke_zuletzt_verwendet as _mz14,
-        zuletzt_bearbeitet as _zb14,
+        remember_last_used as _mz14,
+        last_edited as _zb14,
     )
     _alt14 = Path("sequences") / "aelter" / "sequence.json"
     _alt14.parent.mkdir(parents=True)
@@ -5309,9 +5309,9 @@ try:
           json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
           == "gross")
     check("Speichern und Uebersicht benutzen dieselbe Regel",
-          _b16b._scan_ohne_namen() == _nach16["gross"]["warnungen"][0])
+          _b16b._scan_without_name() == _nach16["gross"]["warnungen"][0])
     check("und ohne leeren Scan sagen beide nichts",
-          _sw16(_s2b16(_SEQ8(name="x"))) == [] and _b16._scan_ohne_namen() is None)
+          _sw16(_s2b16(_SEQ8(name="x"))) == [] and _b16._scan_without_name() is None)
 
     # --- Laufstatus: nichts laeuft ist der Normalfall, kein Fehler ---
     from autoclicker.config import RUN_STATUS_FILE as _rsf16
@@ -5336,7 +5336,7 @@ try:
     # --- Die Phasen-Uebersicht: alle Phasen, nicht nur die laufende ---
     # Die Liste steht im Laufstatus, weil die Ansicht sie sonst aus der GEOEFFNETEN
     # Sequenz holen muesste - laufen kann eine ganz andere.
-    from autoclicker.runtime.worker import (_phasen_uebersicht as _pu16,
+    from autoclicker.runtime.worker import (_phase_overview as _pu16,
                                             _phase_pos as _pp16)
     _seq16 = _SEQ8(name="P",
                    init_steps=[_SS(x=1, y=1, delay_before=0)],
@@ -5387,15 +5387,15 @@ try:
     _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
     _b20.waehlen({"phase": _lane20, "zeile": 0})
     for _welche20, _soll20 in (("klick", 11), ("trigger", 22), ("else", 33)):
-        _bf19.verwerfe()
+        _bf19.discard_command()
         _b20.punkt_zeigen({"welche": _welche20})
-        _auftrag20 = _bf19.hole()
+        _auftrag20 = _bf19.fetch_command()
         check(f"'{_welche20}' zeigt auf die richtige Stelle",
               (_auftrag20 or {}).get("argumente", {}).get("x") == _soll20)
-    _bf19.verwerfe()
+    _bf19.discard_command()
 
     # --- Stelle mit der Maus setzen ---
-    # Die Windows-Teile (warte_auf_taste, get_cursor_pos, get_screen_pixel) sind
+    # Die Windows-Teile (wait_for_global_key, get_cursor_pos, get_screen_pixel) sind
     # hier gestubbt; geprueft wird, was die Bruecke daraus macht.
     import autoclicker.utils.io as _io18
     import autoclicker.winapi as _wa18
@@ -5404,9 +5404,9 @@ try:
     _lane19 = next(i for i, ln in enumerate(_b19.board.lanes) if ln.steps)
     _b19.waehlen({"phase": _lane19, "zeile": 0})
     _schritt19 = _b19.board.lanes[_lane19].steps[0]
-    _alt19 = (_io18.warte_auf_taste, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
+    _alt19 = (_io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
     try:
-        _io18.warte_auf_taste = lambda tasten, timeout=0: "enter"
+        _io18.wait_for_global_key = lambda tasten, timeout=0: "enter"
         _wa18.get_cursor_pos = lambda: (640, 480)
         _wa18.get_screen_pixel = lambda x, y: (10, 20, 30)
         _z19 = _b19.punkt_aufnehmen()
@@ -5426,12 +5426,12 @@ try:
               len(_b19.points) == _vorher19 and (_schritt19.x, _schritt19.y) == (700, 500))
 
         # ESC laesst alles, wie es war.
-        _io18.warte_auf_taste = lambda tasten, timeout=0: "escape"
+        _io18.wait_for_global_key = lambda tasten, timeout=0: "escape"
         _z19 = _b19.punkt_aufnehmen()
         check("ESC aendert nichts", (_schritt19.x, _schritt19.y) == (700, 500)
               and _z19["status"]["art"] == "warn")
     finally:
-        _io18.warte_auf_taste, _wa18.get_cursor_pos, _wa18.get_screen_pixel = _alt19
+        _io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel = _alt19
 
     # --- Zwei Prozesse, eine Datei: der Zweite darf nicht kommentarlos gewinnen ---
     # Studio und Hauptprozess teilen sich den Ordner. Eine Aufnahme legt Punkte
@@ -5509,7 +5509,7 @@ try:
     # `Path.glob("*.json")` erfasst auch Dateien mit fuehrendem Punkt. Laege der
     # Laufstatus in sequences/, stuende er im Studio-Menue, im Konsolen-Menue und
     # in der Start-Migration - und weil er sich sekuendlich aendert, gewaenne er
-    # jedes Mal zuletzt_bearbeitet(). Dieselbe Falle wie bei den .bak-Sicherungen.
+    # jedes Mal last_edited(). Dieselbe Falle wie bei den .bak-Sicherungen.
     from autoclicker.persistence import list_available_sequences as _las16
     check("der Laufstatus liegt nicht im Sequenz-Ordner",
           Path(_rsf16).parent != Path("sequences"))
@@ -5520,7 +5520,7 @@ try:
 
     # --- Der Schreiber: zwei Quellen, ein Zustand ---
     # Der Worker weiss die Phase, execute_step weiss den Block. Keiner kennt das
-    # Ganze - deshalb fuehrt schreibe() seinen Teil ein, statt ihn zu ersetzen.
+    # Ganze - deshalb fuehrt write_status() seinen Teil ein, statt ihn zu ersetzen.
     from autoclicker.runtime import status as _stat16
 
     class _FakeState16:
@@ -5529,9 +5529,9 @@ try:
         timeouts, skipped_cycles, restarts = 0, 0, 0
 
     _fs16 = _FakeState16()
-    _stat16.beende()
-    _stat16.schreibe(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A"}, sofort=True)
-    _stat16.schreibe(_fs16, {"block": 3, "bloecke": 9}, sofort=True)
+    _stat16.finish_run()
+    _stat16.write_status(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A"}, sofort=True)
+    _stat16.write_status(_fs16, {"block": 3, "bloecke": 9}, sofort=True)
     # .get() statt [] ueberall hier unten: faellt der Merge weg, fehlt der
     # Schluessel ganz - und ein KeyError risse die restliche Suite mit, statt
     # eine Zeile FAIL zu melden. Genau der Fall, den dieser Test faengt.
@@ -5546,9 +5546,9 @@ try:
 
     # Die Drossel wirft den SCHREIBVORGANG weg, nicht die Information: sonst zeigte
     # der naechste Schreibvorgang einen Block, der laengst durch ist.
-    _stat16.schreibe(_fs16, {"block": 4})
+    _stat16.write_status(_fs16, {"block": 4})
     check("ein gedrosselter Aufruf schreibt nicht", _lauf16().get("block") == 3)
-    _stat16.schreibe(_fs16, {}, sofort=True)
+    _stat16.write_status(_fs16, {}, sofort=True)
     check("aber seine Information ist nicht verloren", _lauf16().get("block") == 4)
 
     # Ein wartender Lauf ist kein toter Lauf: das Lebenszeichen haelt `stand`
@@ -5556,7 +5556,7 @@ try:
     # wartet, nach 5 s verwaist aus - der Fall, fuer den man die Ansicht aufmacht.
     _alt16 = _lauf16().get("stand", 0)
     _time16.sleep(0.25)
-    _stat16.lebenszeichen(_fs16)
+    _stat16.heartbeat(_fs16)
     _neu16 = _lauf16()
     check("ein Lebenszeichen schiebt den Zeitstempel vor",
           _neu16.get("stand", 0) > _alt16)
@@ -5577,18 +5577,18 @@ try:
     # Abmelden in ein `finally` passt. Gegen die Huelle geprueft waere der Test
     # gruen geblieben, obwohl die Schleife selbst stumm ist.
     _schleifen16 = [
-        ("_warte_schleife", _act16._warte_schleife),
-        ("_farb_schleife", _stp16._farb_schleife),
+        ("_wait_loop", _act16._wait_loop),
+        ("_color_loop", _stp16._color_loop),
         ("_execute_boss_watcher_step", _stp16._execute_boss_watcher_step),
     ]
     # Auf den AUFRUF pruefen, nicht auf das Wort: der Kommentar ueber jeder
-    # Fundstelle nennt `status.lebenszeichen()` ebenfalls, und gegen das Wort
+    # Fundstelle nennt `status.heartbeat()` ebenfalls, und gegen das Wort
     # geprueft blieb der Test gruen, nachdem der Aufruf darunter entfernt war.
-    # `wartet()` zaehlt mit: es schreibt ueber dieselbe Funktion und schiebt
+    # `waiting_for()` zaehlt mit: es schreibt ueber dieselbe Funktion und schiebt
     # `stand` genauso vor - wer es ruft, braucht daneben kein Lebenszeichen.
     _stumm16 = [n for n, f in _schleifen16
-                if "status.lebenszeichen(state)" not in _insp16.getsource(f)
-                and "status.wartet(state, " not in _insp16.getsource(f)]
+                if "status.heartbeat(state)" not in _insp16.getsource(f)
+                and "status.waiting_for(state, " not in _insp16.getsource(f)]
     check("jede lange Warteschleife gibt ein Lebenszeichen", _stumm16 == [])
     if _stumm16:
         print("        ohne Lebenszeichen: " + ", ".join(_stumm16))
@@ -5596,9 +5596,9 @@ try:
     # --- Der Warte-Kasten: worauf der Block gerade wartet ---
     # "seit 12 s" allein beantwortet die Frage nicht: bei 15 s Wartezeit sind
     # zwoelf Sekunden fast geschafft, bei 300 s Timeout gerade erst angefangen.
-    _stat16.schreibe(_fs16, {"block": 5}, sofort=True)
+    _stat16.write_status(_fs16, {"block": 5}, sofort=True)
     _time16.sleep(0.25)     # Setzen ist gedrosselt wie jeder andere Schreibvorgang
-    _stat16.wartet(_fs16, {"art": "zeit", "text": "Vor Klick", "seit": 1.0,
+    _stat16.waiting_for(_fs16, {"art": "zeit", "text": "Vor Klick", "seit": 1.0,
                            "bis": 7.0, "gesamt": 6.0})
     check("der Warte-Teil kommt in die Datei",
           _lauf16().get("warten", {}).get("art") == "zeit")
@@ -5606,7 +5606,7 @@ try:
     # Das Abmelden umgeht die Drossel: zwischen "Farbe erkannt" und dem naechsten
     # Block liegt noch die eigene Aktion des Schritts - solange stuende in der
     # Ansicht "wartet auf Farbe", obwohl laengst geklickt wurde.
-    _stat16.wartet(_fs16, None)
+    _stat16.waiting_for(_fs16, None)
     check("das Abmelden wird nicht gedrosselt", _lauf16().get("warten") is None)
 
     # Jede Warteschleife meldet sich selbst wieder ab - auf JEDEM Ausgang, sonst
@@ -5614,7 +5614,7 @@ try:
     _ohne_abmeldung16 = [n for n, f in [("wait_with_pause_skip", _act16.wait_with_pause_skip),
                                         ("_execute_wait_for_color", _stp16._execute_wait_for_color)]
                          if "finally:" not in _insp16.getsource(f)
-                         or "status.wartet(state, None)" not in _insp16.getsource(f)]
+                         or "status.waiting_for(state, None)" not in _insp16.getsource(f)]
     check("jede Warteschleife meldet sich wieder ab", _ohne_abmeldung16 == [])
     # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
     # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
@@ -5637,12 +5637,12 @@ try:
     _st16 = _StFake16()
     _schritt16 = SequenceStep(x=1, y=2)
     check("ohne else nennt der Status die globale Timeout-Aktion",
-          _stp16._timeout_folge(_st16, _schritt16) == "Sequenz stoppen")
+          _stp16._timeout_consequence(_st16, _schritt16) == "Sequenz stoppen")
     _st16.config.pixel_timeout_action = "skip_cycle"
     check("...und folgt ihr, wenn sie sich aendert",
-          _stp16._timeout_folge(_st16, _schritt16) == "Zyklus abbrechen, nächster Zyklus")
+          _stp16._timeout_consequence(_st16, _schritt16) == "Zyklus abbrechen, nächster Zyklus")
     _schritt16.else_config = _EC16(action="skip")
-    check("mit else gewinnt else", _stp16._timeout_folge(_st16, _schritt16)
+    check("mit else gewinnt else", _stp16._timeout_consequence(_st16, _schritt16)
           == "ELSE: Schritt überspringen")
     # Die Texttabelle liegt in models.py, weil zwei Anzeigen sie brauchen, die
     # sich nicht kennen duerfen. Ein neuer Aktionstyp ohne Text stuende in beiden
@@ -5668,7 +5668,7 @@ try:
     # eine neue Timeout-Aktion vergessen werden kann - und die eine davon sagte
     # dem Nutzer dann etwas anderes, als die Sequenz spaeter tut.
     check("Editor und Laufzeit nennen dieselbe Folge",
-          _oe16.get("folge") == _stp16._timeout_folge(_StCfg16(), SequenceStep(x=1, y=2)))
+          _oe16.get("folge") == _stp16._timeout_consequence(_StCfg16(), SequenceStep(x=1, y=2)))
     check("jede Timeout-Aktion hat einen Text",
           all(a in _TT16 for a in ("skip_cycle", "restart", "stop")))
 
@@ -5711,7 +5711,7 @@ try:
     # Quelltext - die Handler selbst laufen nur mit echtem Windows.
     _quelle16 = _insp16.getsource(_stp16)
     _ausloeser16 = _quelle16.count("execute_else_action(state, step") + \
-        _quelle16.count("_gate_nach_else(state, step")
+        _quelle16.count("_gate_after_else(state, step")
     check("der Test kennt alle Ausloeser-Stellen der Laufzeit", _ausloeser16 >= 8)
 
     # --- Faellt der Ausloeser weg, faellt das ELSE mit ---
@@ -5755,10 +5755,10 @@ try:
     # Hier wurde die Datei frueher geloescht, und die Live-Ansicht war genau in
     # dem Moment leer, in dem man sie ansieht: direkt nachdem etwas fertig
     # geworden ist.
-    _stat16.schreibe(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A",
+    _stat16.write_status(_fs16, {"aktiv": True, "sequenz": "S", "phase": "A",
                              "phase_pos": 1, "block": 5, "warten": {"art": "zeit"}},
                      sofort=True)
-    _stat16.beende(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
+    _stat16.finish_run(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
     _ende16 = _lauf16()
     check("am Ende steht die Zusammenfassung da", Path(_rsf16).exists())
     check("sie ist nicht mehr aktiv", _ende16.get("aktiv") is False)
@@ -5788,11 +5788,11 @@ try:
 
     # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
     # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
-    _stat16.schreibe(_fs16, {"aktiv": True}, sofort=True)
+    _stat16.write_status(_fs16, {"aktiv": True}, sofort=True)
     check("und der naechste Lauf faengt bei null an", "block" not in _lauf16())
 
     # Ohne State (der Lauf lief gar nicht erst an) gibt es nichts zusammenzufassen.
-    _stat16.beende()
+    _stat16.finish_run()
     check("ein Lauf ohne Zahlen laesst nichts liegen", not Path(_rsf16).exists())
 finally:
     _os.chdir(_cwd16)
@@ -5832,7 +5832,7 @@ else:
                                     r.randrange(120, 256)))
         return b
 
-    _m = _imgm.mit_hintergrund_maske(_slotbild(_HG_M, 1), _HG_M)
+    _m = _imgm.with_background_mask(_slotbild(_HG_M, 1), _HG_M)
     check("die Maske steckt im Bild, nicht daneben", _m.mode == "RGBA")
     _alpha = list(_m.getchannel("A").getdata())
     _deckend = sum(1 for a in _alpha if a > 127)
@@ -5851,8 +5851,8 @@ else:
     _imgm._template_cache.clear()
     try:
         _m.save(_osm.path.join(_dirm, "gelernt.png"))
-        _gleich = _imgm.match_template_in_image(_slotbild(_HG_M, 1), "gelernt.png", 0.8)
-        check("im eigenen Slot wird es erkannt", _gleich[0] and _gleich[1] > 0.99)
+        _equal = _imgm.match_template_in_image(_slotbild(_HG_M, 1), "gelernt.png", 0.8)
+        check("im eigenen Slot wird es erkannt", _equal[0] and _equal[1] > 0.99)
 
         _anderes_menue = _slotbild((90, 40, 120), 1)      # violetter Hintergrund
         _fremd = _imgm.match_template_in_image(_anderes_menue, "gelernt.png", 0.8)
@@ -5887,7 +5887,7 @@ else:
         _alte_grenze = _cfgm.CONFIG.scan_slot_color_distance
         _cfgm.CONFIG.scan_slot_color_distance = _ACrev().scan_slot_color_distance
         _roh_marker = _cms_m(_mit_rand, _HG_M)
-        _mask_marker = _cms_m(_imgm.mit_hintergrund_maske(_mit_rand, _HG_M), _HG_M)
+        _mask_marker = _cms_m(_imgm.with_background_mask(_mit_rand, _HG_M), _HG_M)
         check("der Slot-Rand ist keine Marker-Farbe mehr",
               (20, 95, 80) not in _mask_marker)
         check("die Item-Farbe schon", (210, 15, 150) in _mask_marker)
@@ -5952,7 +5952,7 @@ else:
         # TM_CCOEFF_NORMED laeuft von -1 bis +1; unter 0 heisst "die beiden Bilder
         # haben nichts gemeinsam". Als "-51 % Übereinstimmung" gelesen wirkte das
         # wie eine kaputte Zahl, und der Leser sucht den Fehler in der Rechnung.
-        from autoclicker.imaging import _groessen_hinweis as _gh_m
+        from autoclicker.imaging import _size_hint as _gh_m
         check("ein Wert unter 0 wird als 'keine Ähnlichkeit' ausgegeben",
               "keine Ähnlichkeit" in _gh_m("x.png", 62, 57, 62, 60, -0.51)
               and "-51" not in _gh_m("x.png", 62, 57, 62, 60, -0.51))
@@ -6107,10 +6107,10 @@ section("Einstellungen: jedes Feld beschrieben, jeder Wert schreibbar")
 
 from dataclasses import fields as _felder17
 from autoclicker.config import (
-    AppConfig as _AC17, config_abschnitte as _abs17, optionale_felder as _opt17,
-    save_config as _sc17, uebernehmen as _ueb17,
+    AppConfig as _AC17, config_sections as _abs17, optional_fields as _opt17,
+    save_config as _sc17, apply_config as _ueb17,
 )
-from autoclicker.config_meta import ARTEN as _ARTEN17, META as _META17
+from autoclicker.config_meta import CONTROLS as _ARTEN17, META as _META17
 
 _namen17 = [f.name for f in _felder17(_AC17)]
 
@@ -6179,7 +6179,7 @@ if _untauglich17:
     print("        wird beim Speichern verworfen: " + ", ".join(_untauglich17))
 
 # --- Die Abschnitte decken alles ab ---
-# `config_abschnitte()` haengt Nichtzugeordnetes hinten an (damit nichts
+# `config_sections()` haengt Nichtzugeordnetes hinten an (damit nichts
 # unsichtbar wird). Genau das darf aber nie noetig sein - sonst steht ein Feld
 # in der Datei woanders als in seiner Gruppe.
 _gruppen17 = _abs17()
@@ -6241,7 +6241,7 @@ try:
     # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
     # einem Neustart, obwohl die Datei schon neu ist.
     import autoclicker.befehl as _bf17
-    _auftrag17 = _bf17.hole()
+    _auftrag17 = _bf17.fetch_command()
     check("der Hauptprozess bekommt Bescheid",
           _auftrag17 is not None and _auftrag17["befehl"] == "config")
 
@@ -6281,7 +6281,7 @@ finally:
 # `.config` ist ausserhalb von main.py ein Fehler.
 _ziel17, _quelle17 = _AC17(), _AC17(click_per_point=7, llm_model="x")
 _ueb17(_ziel17, _quelle17)
-check("uebernehmen() traegt alle Werte ueber",
+check("apply_config() traegt alle Werte ueber",
       _ziel17.click_per_point == 7 and _ziel17.llm_model == "x")
 check("und laesst das Objekt in Ruhe", _ziel17 is not _quelle17)
 

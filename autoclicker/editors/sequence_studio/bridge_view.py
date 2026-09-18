@@ -62,7 +62,7 @@ class BridgeViewMixin:
         Aufruf ist, der die Ansicht überhaupt erst füllt, bleibt das Fenster leer.
         """
         text, art = self._status
-        frage, self._frage = self._frage, None
+        frage, self._ask = self._ask, None
         return {
             "datei": str(self.filepath),
             "start_ansicht": self.start_ansicht,
@@ -303,7 +303,7 @@ class BridgeViewMixin:
             # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
             # „Stelle setzen" verschieben den Punkt, und jeder Block darauf
             # zieht mit — das stand nur im ⓘ. An einer echten Aufnahme hatte
-            # `punkt_an_stelle()` den Klick auf denselben Knopf in Loop 1 und
+            # `point_at_position()` den Klick auf denselben Knopf in Loop 1 und
             # Loop 4 zu EINEM Punkt zusammengelegt; wer dann Loop 1 eine
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig

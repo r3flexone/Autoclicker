@@ -81,7 +81,7 @@ def file_version(data) -> int:
 # {"x":.., "y":..} - ein Feld, das der Loader seit der Umstellung auf Punkt-Referenzen
 # gar nicht mehr liest. Einen Normalisierer zu pflegen, der ein totes Feld in ein
 # anderes totes Format bringt, ist genau das Anwachsen, das dieses Modul vermeiden
-# soll. Ein altes confirm_point meldet jetzt der Loader (`_alt_gemeldet`), und der
+# soll. Ein altes confirm_point meldet jetzt der Loader (`_legacy_reported`), und der
 # Bestaetigungs-Punkt wird einmal neu gesetzt.
 
 

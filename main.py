@@ -29,9 +29,9 @@ from autoclicker.winapi import (
 )
 from autoclicker.persistence import (
     ensure_sequences_dir, init_directories,
-    list_available_sequences, sweep_beim_start,
+    list_available_sequences, sweep_on_start,
 )
-from autoclicker.diagnose import check_beim_start
+from autoclicker.diagnose import check_on_start
 from autoclicker.runtime import print_status
 from autoclicker.utils import col, err, info, warn, hint, init_logging
 from autoclicker.handlers import (
@@ -42,9 +42,9 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_sequence_studio, handle_scan_studio, BEFEHLE
+    handle_sequence_studio, handle_scan_studio, COMMANDS
 )
-from autoclicker.befehl import hole as hole_befehl, verwerfe as verwirf_befehle
+from autoclicker.befehl import fetch_command as hole_befehl, discard_command as verwirf_befehle
 
 
 def print_banner() -> None:
@@ -189,7 +189,7 @@ def _pruefe_befehle(state) -> None:
     if auftrag is None:
         return
     name = auftrag["befehl"]
-    fn = BEFEHLE.get(name)
+    fn = COMMANDS.get(name)
     if fn is None:
         print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
         return
@@ -269,7 +269,7 @@ def main() -> int:
     # geladen wird - dann liest der Rest des Starts schon die aufgeraeumten Dateien.
     # Meldet nur, wenn es etwas zu melden gab (persistence/sweep.py).
     if state.config.migrate_on_start:
-        sweep_beim_start()
+        sweep_on_start()
 
     # Sequenz, Punkte und Scans werden gemeinsam geladen, sobald der Nutzer eine
     # Sequenz auswählt. Ohne Besitzer gibt es bewusst keinen globalen Scan-Bestand.
@@ -284,7 +284,7 @@ def main() -> int:
     # Setup pruefen - meldet nur, wenn etwas nicht stimmt (Sequenzdateien bleiben
     # aussen vor, das waere beim Start eine Bremse; die volle Pruefung liegt auf
     # CTRL+ALT+P -> check).
-    check_beim_start(state)
+    check_on_start(state)
 
     # Hotkeys registrieren
     if not register_hotkeys():

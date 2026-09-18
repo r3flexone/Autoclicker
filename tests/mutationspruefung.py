@@ -29,12 +29,12 @@ FAELLE = {
         "tests.wurzeltests", "sammeln", "continue", "pass",
         "test_test_runner.TestRunnerTest.test_discovery_entfernt_nur_den_vertragswrapper"),
     "pause-nach-fokus": (
-        "autoclicker.runtime.actions", "_eingabe_freigeben",
+        "autoclicker.runtime.actions", "_input_allowed",
         "if not state.pause_event.is_set():", "if True:",
         "test_input_synchronisation.EingabeSynchronisationTest"),
     **{f"stopp-nach-delay-{art}": (
         "autoclicker.runtime.actions", f"safe_{art}",
-        "_humanize_delay(state)\n        if not _eingabe_freigeben(state, label):\n            return False",
+        "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
         "_humanize_delay(state)",
         RUNTIME + "test_stopp_im_mikrodelay_verhindert_jede_eingabe")
        for art in ("click", "key", "scroll")},
@@ -53,7 +53,7 @@ FAELLE = {
         STUDIO + "test_scan_schreibfehler_bleibt_ungespeichert_und_ist_wiederholbar"),
     "import-rollback": (
         "autoclicker.import_export", "_ImportTransaction.rollback",
-        "from .config import uebernehmen", "return\n    from .config import uebernehmen",
+        "from .config import apply_config", "return\n    from .config import apply_config",
         "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_state_and_files"),
 }
 

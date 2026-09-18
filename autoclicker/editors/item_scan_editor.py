@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..models import ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, naechster_freier_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint
+from ..utils import safe_input, sanitize_filename, next_free_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -337,7 +337,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
 
     item_name = safe_input("  Item-Name: ").strip()
     if not item_name:
-        item_name = naechster_freier_name("Item", available_items)
+        item_name = next_free_name("Item", available_items)
     if item_name in available_items:
         if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
             print("  -> Abgebrochen")

@@ -47,10 +47,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from autoclicker.config import load_config                          # noqa: E402
-from autoclicker.katalog import lade_katalog                        # noqa: E402
+from autoclicker.katalog import load_catalog                        # noqa: E402
 from autoclicker.llm_vision import (                                # noqa: E402
     TIMEOUT, analyze_image, chat_endpoint, clean_boss_name,
-    suggest_item_name_grund, test_endpoint_for,
+    suggest_item_name_with_reason, test_endpoint_for,
 )
 
 BILDQUELLEN = ("vorlage", "grund", "slot")
@@ -77,7 +77,7 @@ class NurConfig:
 def finde_scan(pfad: str = "") -> Path:
     """Die Scan-Datei — angegeben oder die zuletzt bearbeitete.
 
-    Dieselbe Regel wie `zuletzt_bearbeitet()` im Studio: ein echtes „zuletzt
+    Dieselbe Regel wie `last_edited()` im Studio: ein echtes „zuletzt
     geoeffnet" muesste jemand mitschreiben, und das Dateisystem weiss es schon.
     """
     if pfad:
@@ -205,7 +205,7 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
 
 def frage_einstufig(bild, kandidaten: list, config, modell: str) -> tuple:
     """Ein Aufruf mit der ganzen Namensliste — der Weg, den das Studio geht."""
-    return suggest_item_name_grund(
+    return suggest_item_name_with_reason(
         bild, provider=config.llm_provider, endpoint=config.llm_endpoint,
         model=modell, timeout=max(config.llm_timeout, 120),
         candidates=kandidaten)
@@ -267,7 +267,7 @@ def mit_stimmen(frage, stimmen: int) -> tuple:
 def aufwaermen(bild, config, modell: str) -> float:
     """Ein Aufruf vor der Messung — er misst das Laden, nicht die Frage."""
     start = time.time()
-    suggest_item_name_grund(bild, provider=config.llm_provider,
+    suggest_item_name_with_reason(bild, provider=config.llm_provider,
                             endpoint=config.llm_endpoint, model=modell,
                             timeout=300, candidates=["Godlike Bow"])
     return time.time() - start
@@ -347,7 +347,7 @@ def main(argv=None) -> int:
     config = load_config()
     if args.reasoning:
         config.llm_reasoning = True
-    katalog = lade_katalog(config.scan_catalog_file)
+    katalog = load_catalog(config.scan_catalog_file)
     if not katalog:
         raise SystemExit("Kein Katalog — Einstellungen → 'Item-Katalog', "
                          "oder python tools/katalog.py")
