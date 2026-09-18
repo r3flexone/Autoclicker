@@ -5,6 +5,7 @@
     python tools/rename.py alt=neu --dry-run              # nur zeigen
     python tools/rename.py alt=neu --strings              # auch Protokoll-Strings
     python tools/rename.py scan-marke=scan-badge          # CSS-Klasse (Bindestrich)
+    python tools/rename.py .karte=.card                    # CSS-Klasse OHNE Bindestrich
 
 Warum kein Suchen/Ersetzen: `neu`, `alt`, `leer`, `punkt` sind zugleich Woerter
 in den Kommentaren, und die bleiben deutsch. Ein Textersatz macht aus „ist neu"
@@ -27,7 +28,12 @@ Drei Regeln, die dabei gelten:
   ist nie gemeint.
 
 Ein Name mit Bindestrich ist eine CSS-Klasse: die lebt ohnehin nur in Strings
-und Stylesheet, also wird sie ueberall mit Wortgrenze ersetzt.
+und Stylesheet, also wird sie ueberall mit Wortgrenze ersetzt. Eine Klasse OHNE
+Bindestrich (`.karte=.card`) ist zugleich ein Wort — sie wird nur dort ersetzt,
+wo sie als Klasse steht: als Selektor (`.karte`, `"#x .karte"`), in einer
+reinen Klassenliste (`"karte gewaehlt"`, `" ohne"`) und in einem zitierten
+Klassen-Attribut (`class: "karte"`). Element-IDs ohne Bindestrich gibt es nur
+drei; die gehen von Hand.
 
 Vor dem Schreiben prueft das Werkzeug, ob der NEUE Name schon irgendwo als
 Bezeichner vorkommt — dann bricht es ab, denn zwei Dinge unter einem Namen sind
@@ -50,6 +56,12 @@ SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules", "output", "symbol",
 TEXT_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".yml", ".yaml", ".txt"}
 
 _JS_IDENT = re.compile(r"[A-Za-z_$][\w$]*")
+# Ein String, der NUR aus Klassennamen besteht (`"karte gewaehlt"`, `" ohne"`):
+# so sehen Klassenlisten aus, und so sieht ein deutscher Satz nie aus.
+_CLASS_LIST = re.compile(r"^\s*[A-Za-z][\w-]*(?:\s+[A-Za-z][\w-]*)*\s*$")
+# Ein Klassen-Attribut IN einem String — Tests, die JS oder HTML zitieren
+# (`'class: "feld"' in _html18`).
+_CLASS_ATTR = re.compile(r'(class(?:Name)?\s*[:=]\s*")([^"]*)(")')
 # Nach diesen Token faengt ein `/` ein Regex-Literal an, sonst ist es Division.
 _JS_REGEX_BEFORE = {"(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";",
                     "return", "typeof", "in", "of", "+", "-", "*", "%", "<", ">"}
@@ -62,8 +74,13 @@ class Renamer:
         self.table = dict(table)
         self.strings = strings
         self.keys = keys
-        self.ident = {a: n for a, n in table.items() if "-" not in a}
-        self.css_table = {a: n for a, n in table.items() if "-" in a}
+        # Drei Sorten Eintrag: `.karte=.card` ist eine Klasse OHNE Bindestrich
+        # (nur in Selektoren und Klassenlisten, denn `karte` ist auch ein Wort),
+        # `scan-marke=scan-badge` eine mit (ueberall mit Wortgrenze — so ein
+        # Token steht nie in Prosa), alles andere ein Bezeichner.
+        self.css_words = {a[1:]: n[1:] for a, n in table.items() if a.startswith(".")}
+        self.ident = {a: n for a, n in table.items() if "-" not in a and not a.startswith(".")}
+        self.css_table = {a: n for a, n in table.items() if "-" in a and not a.startswith(".")}
         self.seen = set()     # jeder JS-Identifier, den der Lexer gesehen hat
         self._compile()
 
@@ -81,6 +98,11 @@ class Renamer:
                              if ohne else None)
         self._re_ident = re.compile(r"(?<![\w$])" + alternation(self.ident) + r"(?![\w$])") if self.ident else None
         self._re_css = re.compile(r"(?<![\w-])" + alternation(self.css_table) + r"(?![\w-])") if self.css_table else None
+        if self.css_words:
+            self._re_cls = re.compile(r"(?<![\w-])" + alternation(self.css_words) + r"(?![\w-])")
+            self._re_cls_sel = re.compile(r"(?<=\.)" + alternation(self.css_words) + r"(?![\w-])")
+        else:
+            self._re_cls = self._re_cls_sel = None
 
     def _doc_rule(self, text: str) -> str:
         """Prosa: nur erkennbare Verweise ersetzen (Backticks, `(`, Unterstrich)."""
@@ -91,7 +113,7 @@ class Renamer:
                 lambda m: m.group(0).replace(m.group(0).lstrip("`"), self.ident[m.group(0).lstrip("`")]), text)
         return text
 
-    def _string_rule(self, inhalt: str) -> str:
+    def _string_rule(self, inhalt: str, class_context: bool = False) -> str:
         """String-Inhalt: Verweis-Regel, mit --strings zusaetzlich Pfad-Glieder,
         mit --keys nur der String, der GENAU der Schluessel ist."""
         if self.keys and inhalt in self.ident:
@@ -99,12 +121,56 @@ class Renamer:
         neu = self._doc_rule(inhalt)
         if self.strings and self._re_ident is not None and neu.strip() == neu and " " not in neu and neu:
             neu = self._re_ident.sub(lambda m: self.ident[m.group(0)], neu)
-        return neu
+        # CSS-Klassen leben in Strings — in Python genauso wie in JavaScript
+        # (Selektoren der Rauchtests, zitierter Quelltext der Vertragssuite).
+        return self._class_rule(self._css_rule(neu), class_context)
 
     def _css_rule(self, text: str) -> str:
         if self._re_css is not None:
             text = self._re_css.sub(lambda m: self.css_table[m.group(0)], text)
         return text
+
+    def _class_rule(self, inhalt: str, class_context: bool = False) -> str:
+        """String-Inhalt: Klassen ohne Bindestrich nur dort, wo eine Klasse
+        steht — als Selektor (`.karte`, `"#x .karte"`), in einem zitierten
+        Klassen-Attribut (`class: "feld"`) oder, wenn der Aufrufer weiss, dass
+        der String ein Klassen-Attribut FUELLT (`class_context`), als reine
+        Klassenliste (`"karte gewaehlt"`, `" ohne"`). Ohne diesen Zusammenhang
+        bleibt `"karte"` ein Wort: `"die karte ist zahl"` sieht einer
+        Klassenliste zum Verwechseln aehnlich."""
+        if self._re_cls is None:
+            return inhalt
+        ersatz = lambda m: self.css_words[m.group(0)]   # noqa: E731
+        inhalt = self._re_cls_sel.sub(ersatz, inhalt)
+        if class_context and _CLASS_LIST.match(inhalt):
+            return self._re_cls.sub(ersatz, inhalt)
+        return _CLASS_ATTR.sub(lambda m: m.group(1) + self._re_cls.sub(ersatz, m.group(2)) + m.group(3),
+                               inhalt)
+
+    # Was VOR einem String steht, wenn er eine Klassenliste ist: `class:`,
+    # `class=`, `className =`, `classList.add(` — auf derselben Zeile, und
+    # dazwischen kein `,` oder `}` auf Klammertiefe null (sonst ist das
+    # Attribut schon zu Ende, und der String ist die Beschriftung daneben).
+    _CLASS_CTX = re.compile(r"(?:class(?:Name)?\s*[:=]|classList\.\w+\()")
+
+    @classmethod
+    def _in_class_context(cls, line_before: str) -> bool:
+        treffer = None
+        for treffer in cls._CLASS_CTX.finditer(line_before):
+            pass
+        if treffer is None:
+            return False
+        depth = 0
+        for ch in line_before[treffer.end():]:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+                if depth < 0:
+                    return False
+            elif ch == "," and depth == 0:
+                return False
+        return True
 
     # ------------------------------------------------------------- Python
 
@@ -129,7 +195,9 @@ class Renamer:
                 if neu != tok.string:
                     edits.append((r1, c1, r2, c2, neu))
             elif tok.type == getattr(tokenize, "FSTRING_MIDDLE", -1):
-                neu = self._doc_rule(tok.string)
+                # Dieselben Regeln wie fuer den Text eines f-Strings vor 3.12
+                # (`_fstring_rule`) — sonst hinge das Ergebnis an der Python-Version.
+                neu = self._class_rule(self._css_rule(self._doc_rule(tok.string)))
                 if neu != tok.string:
                     edits.append((r1, c1, r2, c2, neu))
         return self._apply(lines, edits)
@@ -145,8 +213,10 @@ class Renamer:
         elif "\n" in inhalt or len(inhalt) > 200:
             neu = self._doc_rule(inhalt)           # Docstring / langer Text
         else:
-            neu = self._string_rule(inhalt)
-        return prefix + quote + neu + quote
+            return prefix + quote + self._string_rule(inhalt) + quote
+        # Auch ein langer String traegt Klassen: die JS-Schnipsel der Rauchtests
+        # (`evaluate("""…""")`) und f-String-Selektoren (`f".karte.{name}"`).
+        return prefix + quote + self._class_rule(self._css_rule(neu)) + quote
 
     # Ein `{…}`-Feld eines f-Strings, eine Klammerebene tief (`{x:{breite}}`);
     # `{{` und `}}` sind Text.
@@ -211,7 +281,9 @@ class Renamer:
                 out.append(self._doc_rule(src[i:j])); i = j; continue
             if ch in "\"'":
                 j = self._js_string_end(src, i, ch)
-                out.append(ch + self._string_rule(src[i + 1:j - 1]) + ch)
+                zeile_davor = src[src.rfind("\n", 0, i) + 1:i]
+                out.append(ch + self._string_rule(src[i + 1:j - 1],
+                                                  self._in_class_context(zeile_davor)) + ch)
                 i = j; last_sig = "str"; continue
             if ch == "`":
                 j, text = self._js_template(src, i)
@@ -311,13 +383,22 @@ class Renamer:
         def script(m):
             return m.group(1) + self.javascript(m.group(2)) + m.group(3)
         src = re.sub(r"(<script[^>]*>)(.*?)(</script>)", script, src, flags=re.S)
-        return self._css_rule(self._doc_rule(src))
+        # `_class_rule` sieht das ganze Dokument als einen String: die
+        # Klassenlisten stehen in `class="…"`, und genau die faengt es.
+        return self._class_rule(self._css_rule(self._doc_rule(src)))
 
     def prose(self, src: str) -> str:
-        return self._css_rule(self._doc_rule(src))
+        return self._selector_rule(self._css_rule(self._doc_rule(src)))
 
     def css(self, src: str) -> str:
-        return self._css_rule(src)
+        return self._selector_rule(self._css_rule(src))
+
+    def _selector_rule(self, text: str) -> str:
+        """Nur `.karte` als Selektor — in einem Stylesheet und in Markdown ist
+        das die einzige Form, in der eine Klasse ohne Bindestrich vorkommt."""
+        if self._re_cls_sel is None:
+            return text
+        return self._re_cls_sel.sub(lambda m: self.css_words[m.group(0)], text)
 
     def rewrite(self, path: Path, src: str) -> str:
         suffix = path.suffix.lower()
@@ -354,7 +435,7 @@ def _read(path: Path) -> str:
 
 def scope_name_sets(src: str) -> list:
     """Je Python-Scope (Modul, Funktion, Lambda, Klasse) die nackten Namen und
-    Parameter darin — Attribute (`x.neu`) zaehlen nicht, verschachtelte
+    Parameter darin — Attribute (`x.new`) zaehlen nicht, verschachtelte
     Funktionen nur mit ihrem Namen."""
     import ast
     try:
@@ -510,7 +591,10 @@ def main(argv=None) -> int:
         alt, neu = paar.split("=", 1)
         if not alt or not neu or alt == neu:
             p.error(f"'{paar}': beide Seiten muessen gesetzt und verschieden sein")
-        if "-" not in alt and not re.fullmatch(r"[A-Za-z_$][\w$]*", neu):
+        if alt.startswith("."):
+            if not re.fullmatch(r"\.[A-Za-z][\w-]*", neu):
+                p.error(f"'{paar}': eine Klasse (.alt) braucht auch rechts eine Klasse (.neu)")
+        elif "-" not in alt and not re.fullmatch(r"[A-Za-z_$][\w$]*", neu):
             p.error(f"'{neu}' ist kein gueltiger Bezeichner")
         table[alt] = neu
     return run(Path(args.root), table, args.strings, args.dry_run, args.force,

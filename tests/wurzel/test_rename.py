@@ -139,6 +139,37 @@ class CssAndProseTest(unittest.TestCase):
         self.assertEqual(r.javascript('el("div", {class: "scan-marke"})'), 'el("div", {class: "scan-badge"})')
         self.assertEqual(r.html('<div class="scan-marke">'), '<div class="scan-badge">')
 
+    def test_bare_class_only_where_a_class_stands(self):
+        # `karte` ist ein Wort UND eine Klasse. Ersetzt wird nur, was als Klasse
+        # dasteht: Selektor, Klassenliste im class-Kontext, zitiertes Attribut.
+        r = Renamer({".karte": ".card", ".zahl": ".num"})
+        self.assertEqual(r.css(".karte{x:1}.seq-karte{}.karte.zahl .zahl{}"),
+                         ".card{x:1}.seq-karte{}.card.num .num{}")
+        self.assertEqual(r.html('<div class="karte zahl">karte</div>'),
+                         '<div class="card num">karte</div>')
+        js = ('el("div", {class: "karte" + (an ? " zahl" : "")}, "karte");\n'
+              'x.classList.toggle("zahl", z); q(".seq-fuss .karte"); s("die karte ist zahl");\n'
+              '// die karte bleibt\n')
+        self.assertEqual(r.javascript(js),
+                         'el("div", {class: "card" + (an ? " num" : "")}, "karte");\n'
+                         'x.classList.toggle("num", z); q(".seq-fuss .card"); s("die karte ist zahl");\n'
+                         '// die karte bleibt\n')
+        # Python-Tests zitieren Selektoren und JS-Quelltext; ein Wort bleibt.
+        py = ('f.count("#wz-rechts .karte")\ncheck("x", \'class: "karte zahl"\' in _html)\n'
+              'meld("karte fehlt")\nkarte = 1\n'
+              'f.seite.evaluate("""() => {\n  return q(".karte").length;\n}""")\n')
+        self.assertEqual(r.python(py),
+                         'f.count("#wz-rechts .card")\ncheck("x", \'class: "card num"\' in _html)\n'
+                         'meld("karte fehlt")\nkarte = 1\n'
+                         'f.seite.evaluate("""() => {\n  return q(".card").length;\n}""")\n')
+        self.assertEqual(r.prose("Die Karte (`.karte`) traegt `.zahl`; karte bleibt."),
+                         "Die Karte (`.card`) traegt `.num`; karte bleibt.")
+
+    def test_hyphen_class_also_in_python_strings(self):
+        r = Renamer({"scan-marke": "scan-badge"})
+        self.assertEqual(r.python('f.count(".scan-marke .zahl")\nf.count(f".scan-marke.{n}")\n'),
+                         'f.count(".scan-badge .zahl")\nf.count(f".scan-badge.{n}")\n')
+
     def test_markdown_references_only(self):
         md = "Der Punkt (`punkt_setzen()`) ist neu. `neu()` ist alt; neu bleibt neu.\n"
         neu = Renamer({"punkt_setzen": "set_point", "neu": "fresh"}).prose(md)
