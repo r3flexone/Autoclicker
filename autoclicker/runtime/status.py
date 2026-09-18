@@ -147,8 +147,8 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
         if state is None or not letzter.get("sequence"):
             STATUS_PATH.unlink(missing_ok=True)
             return
-        for feld in _MOMENT_FIELDS:
-            letzter.pop(feld, None)
+        for field in _MOMENT_FIELDS:
+            letzter.pop(field, None)
         letzter.update({
             "active": False,
             "end": time.time(),

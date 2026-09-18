@@ -69,7 +69,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         vorher = cfg.color_tolerance
 
         state = self.bridge.scan_set({
-            "name": "Inventar", "feld": "tolerance", "value": "keine Zahl",
+            "name": "Inventar", "field": "tolerance", "value": "keine Zahl",
         })
 
         self.assertEqual(cfg.color_tolerance, vorher)
@@ -234,12 +234,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
         }
 
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "category", "value": "helme",
+            "name": "Ruestung", "field": "category", "value": "helme",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helme")
 
         state = self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "category", "value": "Traenke",
+            "name": "Ruestung", "field": "category", "value": "Traenke",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Traenke")
         self.assertEqual(state["categories"], ["Helme", "Traenke"])
@@ -249,17 +249,17 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # Kategorie konkurrieren miteinander, eine getrennte verliert still
         # ihre Gruppe.
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "category", "value": "  helme  ",
+            "name": "Ruestung", "field": "category", "value": "  helme  ",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helme")
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "category", "value": "Schwere   Helme",
+            "name": "Ruestung", "field": "category", "value": "Schwere   Helme",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Schwere Helme")
         # Weiter wird NICHT geraten: ein getipptes Wort stillschweigend in ein
         # anderes zu ändern ist schlimmer als der Tippfehler selbst.
         self.bridge.scan_item_set({
-            "name": "Ruestung", "feld": "category", "value": "Helmr",
+            "name": "Ruestung", "field": "category", "value": "Helmr",
         })
         self.assertEqual(self.bridge.items["Ruestung"].category, "Helmr")
 
@@ -280,16 +280,16 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # die Maske in der Item-Liste und die Lern-Vorschau. Vorher war es
         # zweimal ein freies Textfeld mit einer `<datalist>` daneben — ein
         # Angebot, das man kennen musste, und tippen war der einzige Weg.
-        self.assertIn("function kategorieWahl(", js)
-        self.assertEqual(js.count("kategorieWahl("), 4)   # Definition + 3 Aufrufe
+        self.assertIn("function categoryChooser(", js)
+        self.assertEqual(js.count("categoryChooser("), 4)   # Definition + 3 Aufrufe
         # Vorhandene stehen zur Wahl …
-        self.assertIn("kategorienWerte(", js)
+        self.assertIn("categoryValues(", js)
         self.assertIn('el("option", {value: k}, k)', js)
         # … eine neue lässt sich trotzdem anlegen …
         self.assertIn("＋ neue Kategorie", js)
-        self.assertIn("KATEGORIE_NEU", js)
+        self.assertIn("CATEGORY_NEW", js)
         # … und ist danach überall wählbar, ohne sie ein zweites Mal zu tippen.
-        self.assertIn("function kategorieOptionenAktualisieren", js)
+        self.assertIn("function refreshCategoryOptions", js)
         # Getippt wird nur, wenn es nichts zu wählen gibt — sonst wäre das
         # Auswählen wieder das Angebot, das man kennen muss.
         self.assertIn("tausche(!vorhandene.length", js)
@@ -302,7 +302,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         }
 
         state = self.bridge.scan_item_set({
-            "name": "Eisenhelm", "feld": "priority", "value": 0,
+            "name": "Eisenhelm", "field": "priority", "value": 0,
         })
 
         self.assertEqual(self.bridge.items["Eisenhelm"].priority, 1)
@@ -435,7 +435,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         js = (Path(self.old_cwd) /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
-        self.assertIn("function prioritaetsUebersicht", js)
+        self.assertIn("function priorityOverview", js)
         self.assertIn("Bereits gesetzte Prioritäten", js)
         # „0 = ganz nach vorn" kann die Brücke (`_priority_place`); die
         # Maske muss es SAGEN — am Feld, in dem man tippt. Hier stand einmal ein
@@ -452,7 +452,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn('n.querySelector(".scan-review-name").value', js)
         self.assertIn('n.querySelector(".scan-review-kategorie").value()', js)
         self.assertNotIn("inputs[3].value", js)
-        self.assertIn("function scanReviewKategorienAktualisieren", js)
+        self.assertIn("function scanReviewRefreshCategories", js)
         self.assertIn("Auf ausgewählte anwenden", js)
         self.assertIn("neue Vorlage für", js)
         self.assertIn("Gelernte Slot-Größen", js)

@@ -58,7 +58,7 @@ class StudioCloseTest(unittest.TestCase):
         bridge.board.name = "neu"
         bridge._dirty = True
         antwort = bridge.save()
-        self.assertTrue(antwort["frage"])
+        self.assertTrue(antwort["question"])
         self.assertTrue(bridge.filepath.exists())
         self.assertFalse(Path("sequences/neu").exists())
         self.assertEqual(load_sequence_file(bridge.filepath).points[0].x, 999)

@@ -3706,10 +3706,10 @@ _SCAN_FLUECHTIG["BossScanConfig"].add("owner_sequence")
 _SCAN_FLUECHTIG["IconScanConfig"].add("owner_sequence")
 
 
-def _probe_wert(feld):
+def _probe_wert(field):
     """Ein Wert, der garantiert vom Default abweicht (None = Feld nicht pruefbar)."""
-    t = str(feld.type)
-    d = feld.default if feld.default is not _dc5.MISSING else None
+    t = str(field.type)
+    d = field.default if field.default is not _dc5.MISSING else None
     if "bool" in t:
         return not bool(d)
     if "float" in t:
@@ -4441,7 +4441,7 @@ check("derselbe Phasenknopf hebt die Auswahl wieder auf", _b8.sel_lane is None)
 
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 2, 4)
-_b8.selection_set({"feld": "delay_before", "value": "0.5"})
+_b8.selection_set({"field": "delay_before", "value": "0.5"})
 check("eine Wartezeit lässt sich für die Auswahl gemeinsam setzen",
       [s.delay_before for s in _b8.board.lanes[LOOP8].steps]
       == [0.5, 0, 0.5, 0, 0.5])
@@ -4531,7 +4531,7 @@ check("leere Aktion nimmt das ELSE wieder weg", _s9.else_config is None)
 _b9, _s9 = _bruecke9()
 _b9.board.add_step(_b9.board.lanes[1], _SS(x=10, y=20, delay_before=0, name="Bank",
                                            point_id=1))
-_b9.point_set({"point": 1, "feld": "x", "value": 777})
+_b9.point_set({"point": 1, "field": "x", "value": 777})
 check("beide Schritte auf demselben Punkt wandern mit",
       all((s.x, s.y) == (777, 20) for s in _b9.board.lanes[1].steps))
 
@@ -4577,7 +4577,7 @@ check("und wird als das erkannt, was er ist",
 # Umschalten in jeden Typ und zurueck - set_block_type raeumt die Diskriminatoren
 _b10.select({"phase": 1, "row": 0})
 _fehler10b = []
-for _t10 in [t["key"] for t in _b10.snapshot()["typen"]]:
+for _t10 in [t["key"] for t in _b10.snapshot()["types"]]:
     _z10 = _b10.block_set_type({"typ": _t10})
     if _z10["block"]["typ"] != _t10:
         _fehler10b.append(_t10)
@@ -4773,7 +4773,7 @@ _schritt11 = _SS(x=5, y=6, delay_before=0, name="Rad", point_id=1, scroll=-3)
 _seq11 = _SEQ8(name="R", loop_phases=[_LP8(name="Loop", repeat=1, steps=[_schritt11])])
 _b11 = _SB8(_seq11, Path("sequences/R.json"), "sequences")
 _b11.select({"phase": 1, "row": 0})
-_b11.block_set({"feld": "delay_before", "value": 2.0})
+_b11.block_set({"field": "delay_before", "value": 2.0})
 from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s11
 _raus11 = _b2s11(_b11.board).loop_phases[0].steps[0]
 check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
@@ -4782,7 +4782,7 @@ check("die Karte verschweigt es trotzdem nicht",
       any("Rad -3" in z for z in _b11.snapshot()["phases"][1]["blocks"][0]["rows"]))
 
 # --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
-_zustand11 = _b11.block_set({"feld": "gibtsnicht", "value": 1})
+_zustand11 = _b11.block_set({"field": "gibtsnicht", "value": 1})
 check("ein unbekanntes Feld meldet sich als Fehler",
       _zustand11["status"]["kind"] == "err")
 check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
@@ -4822,14 +4822,14 @@ check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is
 import re as _re13b
 
 _seite13 = _H.studio_web_source()
-_schalter13 = _re13b.findall(r'schalter\(\s*"([^"]*)"', _seite13)
+_schalter13 = _re13b.findall(r'toggle\(\s*"([^"]*)"', _seite13)
 check("die Ansicht hat ueberhaupt Schalter", len(_schalter13) >= 2)
 check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
       not any("nur warten" in s for s in _schalter13))
 check("und keinen anderen, der wait_only setzt",
-      'feld: "wait_only"' not in _seite13)
-_aktion13 = _seite13[_seite13.index("function baueAktion"):
-                     _seite13.index("function baueStelle")]
+      'field: "wait_only"' not in _seite13)
+_aktion13 = _seite13[_seite13.index("function buildAction"):
+                     _seite13.index("function buildPosition")]
 check("die automatisch wechselnde Typ-Kachel wird nicht nochmals als 'ergibt' gezeigt",
       '"ergibt"' not in _aktion13 and "karte-typ" not in _aktion13)
 
@@ -4940,7 +4940,7 @@ try:
     _b14 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(delay_before=0, item_scan="")])]),
         Path("sequences/s/sequence.json"), "sequences")
-    _namen14 = _b14.snapshot()["scan_namen"]
+    _namen14 = _b14.snapshot()["scan_names"]
     check("die Momentaufnahme nennt die vorhandenen Item-Scans",
           _namen14["item_scan"] == ["amboss", "beutel"])
     check("ein leerer Ordner ergibt eine leere Liste, keinen Fehler",
@@ -4953,7 +4953,7 @@ try:
     # einzige gemeinsame Nenner - ein einmal gefuellter Cache waere hier falsch.
     (_besitz14 / "icon_scans" / "lupe.json").write_text("{}", encoding="utf-8")
     check("eine neu angelegte Konfiguration erscheint sofort",
-          _b14.snapshot()["scan_namen"]["icon_scan"] == ["lupe"])
+          _b14.snapshot()["scan_names"]["icon_scan"] == ["lupe"])
 finally:
     _os.chdir(_sc_cwd)
 
@@ -5031,7 +5031,7 @@ check("Executor und Studio kennen dieselben Scan-Felder",
 section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 
 # Dieselbe Klasse Fehler wie bei den dpg-Signaturen weiter oben, nur eine Ebene
-# tiefer: die Seite ruft die Bruecke ueber EINEN Helfer (`ruf()`), und der reicht
+# tiefer: die Seite ruft die Bruecke ueber EINEN Helfer (`call()`), und der reicht
 # immer genau ein Argument durch - `null`, wenn es nichts zu uebergeben gibt.
 # `snapshot()` nahm keins an, also scheiterte ausgerechnet der Aufruf, der die
 # Ansicht ueberhaupt erst fuellt: das Fenster ging auf und blieb leer, mit
@@ -5041,50 +5041,50 @@ section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 import inspect as _inspect13, re as _re13
 
 _html13 = _H.studio_web_source()
-# JEDER Kanal: `ruf()` befiehlt, `frage()` fragt nur, `rufScan()`, `rufTeilen()`
-# und `rufWerkzeug()` bedienen ihre Reiter. Fehlt einer im Muster, ist der Fehler
+# JEDER Kanal: `call()` befiehlt, `ask()` fragt nur, `callScan()`, `callShare()`
+# und `callTool()` bedienen ihre Reiter. Fehlt einer im Muster, ist der Fehler
 # nicht "falsche Logik", sondern "Name existiert gar nicht" - eine leere Ansicht
 # mit einer Zeile in der Statusleiste, und aufgefallen waere es erst beim Klicken.
 #
 # Das Muster endet deshalb auf `\(` und listet die Helfer einzeln: ein blosses
 # `\bruf\w*\(` faenge auch `rufMichNicht()`, und ein blosses `\bruf\(` liess
-# `rufWerkzeug("calib_reference")` durchrutschen - also ausgerechnet den neuesten
+# `callTool("calib_reference")` durchrutschen - also ausgerechnet den neuesten
 # Reiter, der am ehesten einen Tippfehler enthaelt.
-_HELFER13 = ("ruf", "rufScan", "rufTeilen", "rufWerkzeug", "frage")
+_HELFER13 = ("call", "callScan", "callShare", "callTool", "ask")
 _gerufen13 = set(_re13.findall(
     r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13))
-# `mitWarten()` ist der sechste Kanal und der einzige, bei dem der Methodenname
+# `withWait()` ist der sechste Kanal und der einzige, bei dem der Methodenname
 # NICHT das erste Argument ist: davor steht, welcher Helfer darunter laeuft
-# ("ruf" / "frage" / "werkzeug"). Ohne diese Zeile faellt jede blockierende
+# ("call" / "ask" / "tool"). Ohne diese Zeile faellt jede blockierende
 # Methode aus der Pruefung — also ausgerechnet die, die eine Minute lang
 # wartet und bei einem Tippfehler gar nichts tut.
 _gerufen13 |= set(_re13.findall(
-    r'\bmitWarten\("(?:ruf|frage|werkzeug)",\s*"([a-z_]+)"', _html13))
-# `mitArbeit()` ist der siebte Kanal — und der Gegenfall zu `mitWarten`: dort
+    r'\bwithWait\("(?:call|ask|tool)",\s*"([a-z_]+)"', _html13))
+# `withWork()` ist der siebte Kanal — und der Gegenfall zu `withWait`: dort
 # wartet die Bruecke auf einen ENTER-Druck, hier RECHNET sie (sechsundfuenfzig
 # Modell-Aufrufe hintereinander). Wie dort waehlt das erste Argument den
 # Kanal darunter, der Methodenname steht also an zweiter Stelle.
 _gerufen13 |= set(_re13.findall(
-    r'\bmitArbeit\("(?:scan|frage)",\s*"([a-z_]+)"', _html13))
+    r'\bwithWork\("(?:scan|ask)",\s*"([a-z_]+)"', _html13))
 _gerufen13 = sorted(_gerufen13)
 check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
       "sequence_list" in _gerufen13 and "run_status" in _gerufen13)
-check("und der Scans-Reiter ist mit erfasst (rufScan)",
+check("und der Scans-Reiter ist mit erfasst (callScan)",
       "scan_data" in _gerufen13 and "scan_click" in _gerufen13)
-check("und der Werkzeuge-Reiter (rufWerkzeug)",
+check("und der Werkzeuge-Reiter (callTool)",
       "tool_check" in _gerufen13 and "calib_reference" in _gerufen13)
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
-# `rufWerkzeug`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
-_BEKANNT13 = _HELFER13 + ("mitWarten", "mitArbeit")
+# `callTool`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
+_BEKANNT13 = _HELFER13 + ("withWait", "withWork")
 # Gefunden wird JEDE async-Funktion, die einen Bruecken-Namen weiterreicht —
-# nicht nur die mit `ruf` im Namen. `mitWarten` heisst nicht so und waere unter
+# nicht nur die mit `call` im Namen. `withWait` heisst nicht so und waere unter
 # dem alten Muster still durchgerutscht.
 _helfer_da13 = sorted(set(_re13.findall(
     r'\basync function (\w+)\(', _html13)))
 _helfer_da13 = [h for h in _helfer_da13
-               if h.startswith("ruf") or h in ("mitWarten", "mitArbeit")]
+               if h.startswith("call") or h in ("withWait", "withWork")]
 if not all(h in _BEKANNT13 for h in _helfer_da13):
     print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _BEKANNT13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
@@ -5095,7 +5095,7 @@ check("jede gerufene Methode gibt es in der Bruecke", _fehlend13 == [])
 if _fehlend13:
     print("        fehlt in bridge.py: " + ", ".join(_fehlend13))
 
-# `ruf()` uebergibt IMMER ein Argument - auch bei `ruf("snapshot")`, dann `null`.
+# `call()` uebergibt IMMER ein Argument - auch bei `call("snapshot")`, dann `null`.
 _unpassend13 = []
 for _name13 in _gerufen13:
     _f13 = getattr(_SB8, _name13, None)
@@ -5140,7 +5140,7 @@ _farbfelder13 = set(_fws13(_StW13(), _SS(delay_before=0), _wc13, (9, 9, 9), 4.0,
 import autoclicker.runtime.actions as _act13
 _zeitquelle13 = _inspect13.getsource(_act13._wait_loop)
 _zeitfelder13 = set(_re13.findall(r'"(\w+)":', _zeitquelle13))
-_kasten13 = _html13[_html13.index("function warteKasten("):]
+_kasten13 = _html13[_html13.index("function waitBox("):]
 _kasten13 = _kasten13[:_kasten13.index("\nfunction ")]
 _gelesen13 = set(_re13.findall(r"\bw\.([a-z_]+)", _kasten13))
 check("der Warte-Kasten liest ueberhaupt Felder", len(_gelesen13) >= 6)
@@ -5241,8 +5241,8 @@ finally:
 section("Sequenz-Studio: Uebersicht und Laufstatus")
 
 # Beide Methoden sind der zweite Kanal: sie geben KEINE Momentaufnahme zurueck,
-# sondern einen eigenen Gegenstand. Die Seite holt sie deshalb ueber `frage()` -
-# ueber `ruf()` landete die Antwort in `S`, und ein Blick in die Uebersicht waere
+# sondern einen eigenen Gegenstand. Die Seite holt sie deshalb ueber `ask()` -
+# ueber `call()` landete die Antwort in `S`, und ein Blick in die Uebersicht waere
 # ein Datenverlust im Editor.
 import threading as _thr16, time as _time16
 from autoclicker.editors.sequence_studio.bridge import scan_warnungen as _sw16
@@ -5443,7 +5443,7 @@ try:
     _b18.points = [_PP8(id=1, x=1, y=2, name="P", color=None)]
     _z18 = _b18.save()
     check("das erste Speichern geht ohne Rueckfrage",
-          _z18["frage"] is None and Path("sequences/w/sequence.json").exists())
+          _z18["question"] is None and Path("sequences/w/sequence.json").exists())
 
     # Jetzt schreibt "der Hauptprozess" dazwischen.
     _time16.sleep(0.01)
@@ -5451,19 +5451,19 @@ try:
         '{"name": "fremd"}', encoding="utf-8")
     _z18 = _b18.save()
     check("eine fremde Aenderung fuehrt zur Rueckfrage",
-          (_z18["frage"] or {}).get("kind") == "save")
+          (_z18["question"] or {}).get("kind") == "save")
     check("und die Datei ist unangetastet",
           "fremd" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     check("die Frage nennt die Datei",
-          "sequence.json" in (_z18["frage"] or {}).get("text", ""))
+          "sequence.json" in (_z18["question"] or {}).get("text", ""))
 
     _z18 = _b18.save({"erzwingen": True})
     check("mit Erzwingen wird geschrieben",
-          _z18["frage"] is None and "foreign" not in
+          _z18["question"] is None and "foreign" not in
           Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
     _z18 = _b18.save()
     check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
-          _z18["frage"] is None)
+          _z18["question"] is None)
 
     check("es gibt keine zweite Punkt-Datei mit eigenem Konfliktstand",
           not Path("sequences/points.json").exists())
@@ -5748,7 +5748,7 @@ try:
     # sonst raeumte der Aufraeumer genau das weg, wofuer er da ist.
     _b17.block_trigger({"wahl": _TDA8})
     _b17.block_else({"action": "restart"})
-    _b17.block_set({"feld": "name", "value": "neu"})
+    _b17.block_set({"field": "name", "value": "neu"})
     check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
 
     # --- Am Ende bleibt die Zusammenfassung stehen ---
@@ -5994,7 +5994,7 @@ _definiert18 = set(_re13.findall(r"(--slot-[\w-]+)\s*:", _html18))
 check(f"jede --slot-Farbe ist definiert ({sorted(_benutzt18 - _definiert18) or 'alle'})",
       _benutzt18 and not (_benutzt18 - _definiert18))
 # Die JS-Seite liest dieselben Variablen aus, statt Hexwerte zu wiederholen.
-check("und SLOT_FARBE deckt genau die Zustaende ab",
+check("und SLOT_COLOR deckt genau die Zustaende ab",
       sorted(_re13.findall(r"(\w+):\s*s\.getPropertyValue", _html18))
       == sorted(_zustaende18))
 
@@ -6010,10 +6010,10 @@ def _js_rumpf18(name: str) -> str:
     end = _re13.search(r"\n(?:async )?function ", remainder)
     return remainder[:end.start()] if end else remainder
 
-_neuaufbau18 = ("zeichne", "zeichneScans", "zeichneEinstellungen")
+_neuaufbau18 = ("render", "renderScans", "renderSettings")
 _ohne_fokus18 = [n for n in _neuaufbau18
-                 if "fokusMerken()" not in _js_rumpf18(n)
-                 or "fokusHerstellen(" not in _js_rumpf18(n)]
+                 if "rememberFocus()" not in _js_rumpf18(n)
+                 or "restoreFocus(" not in _js_rumpf18(n)]
 check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
       not _ohne_fokus18)
 
@@ -6023,23 +6023,23 @@ check(f"jeder Neuaufbau merkt sich den Fokus ({_ohne_fokus18 or 'alle'})",
 # gab es beim Klick-Block schon einmal ("Name (Punkt #1)" oben, "Punkt" unten) -
 # zwei Felder fuer denselben Wert, und man muss raten, welches fuehrt.
 check("der Detailteil des Scans baut kein eigenes Namensfeld mehr",
-      'feld("Name"' not in _js_rumpf18("scanScanDetails")
-      and "maskeName(" not in _js_rumpf18("scanScanDetails"))
+      'field("Name"' not in _js_rumpf18("scanScanDetails")
+      and "cardName(" not in _js_rumpf18("scanScanDetails"))
 # Der gefuehrte Arbeitsweg zeigt die Scan-Maske rechts nicht. Deshalb muss die
 # Bearbeitungsflaeche direkt bei der Auswahl links stehen. Die Maske zeigt den
 # Namen weiterhin, baut aber kein zweites Eingabefeld fuer denselben Wert.
 check("die Scan-Maske zeigt den Namen nur als Beschriftung",
-      'class: "scan-maske-name"' in _js_rumpf18("scanScanMaske")
-      and 'maskeName("scan"' not in _js_rumpf18("scanScanMaske"))
+      'class: "scan-maske-name"' in _js_rumpf18("scanScanCard")
+      and 'cardName("scan"' not in _js_rumpf18("scanScanCard"))
 check("und die linke Spalte traegt das bearbeitbare Namensfeld",
       'id="scan-name"' in _html18
-      and 'feld: "name", value: e.target.value' in _html18)
+      and 'field: "name", value: e.target.value' in _html18)
 check("die Klappliste zum Waehlen bleibt",
       'id="scan-offen"' in _html18)
 # Die Ueberschrift im Detailteil nennt den Scan NICHT noch einmal: sein Name
 # steht in derselben Maske eine Zeile darueber.
 check("und der Detailteil wiederholt ihn nicht",
-      'ueberschrift("SCAN' not in _js_rumpf18("scanScanDetails"))
+      'heading("SCAN' not in _js_rumpf18("scanScanDetails"))
 
 # --- In einer scrollenden Spalte darf kein Abschnitt nochmal scrollen ---
 # `.seite` scrollt als Ganzes. Setzt ein Abschnitt darin zusaetzlich
@@ -6138,7 +6138,7 @@ _tote17 = [f"{k} -> {a[0]}" for k, a in _aktionen17.items()
 check("jeder Feld-Knopf zeigt auf eine Bruecken-Methode", _tote17 == [])
 if _tote17:
     print("        fehlt in der Bruecke: " + ", ".join(_tote17))
-check("und die Ansicht zeichnet ihn", "cfgAktion(" in _H.studio_web_source())
+check("und die Ansicht zeichnet ihn", "cfgAction(" in _H.studio_web_source())
 # Der Katalog ist der Fall, fuer den es das gibt: bis dahin konnte ihn nur
 # `python tools/katalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
 # frei raet und die Kategorie leer bleibt.

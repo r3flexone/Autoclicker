@@ -164,10 +164,10 @@ finally:
 # Klick einen Ordner nimmt.** Der Knopf muss also ueber den Dialog gehen, und
 # der Dialog muss den Fall kennen — fehlt einer der beiden Teile, passiert
 # entweder nichts oder zu viel.
-_karte = _web[_web.index("function seqKarte"):_web.index("function frageLoeschen")]
+_karte = _web[_web.index("function seqCard"):_web.index("function askDelete")]
 check("die Karte hat einen Loeschen-Knopf", '"Löschen"' in _karte)
 check("und er geht ueber die Rueckfrage, nicht direkt an die Bruecke",
-      "frageLoeschen(s)" in _karte and 'sequence_delete' not in _karte)
+      "askDelete(s)" in _karte and 'sequence_delete' not in _karte)
 check("die offene Sequenz laesst sich nicht loeschen — auch nicht im Knopf",
       re.search(r'class: "btn gefahr still", disabled: s\.offen', _karte) is not None)
 # Gleiche Spalten: zwei verschieden breite Knoepfe nebeneinander lesen sich als
@@ -175,12 +175,12 @@ check("die offene Sequenz laesst sich nicht loeschen — auch nicht im Knopf",
 check("beide Knoepfe teilen sich gleiche Spalten",
       'el("div", {class: "knopfpaar"}' in _karte)
 check("und die Klasse ist auch gestaltet", ".seq-fuss .knopfpaar{" in _web)
-_forts = _web[_web.index("async function fortfahren"):_web.index("Ansicht: Scans")]
+_forts = _web[_web.index("async function proceed"):_web.index("Ansicht: Scans")]
 check("der Dialog kennt den Loesch-Fall", 'offen.kind === "seq_loeschen"' in _forts)
 check("und ruft die Bruecke ueber den fragenden Kanal",
-      'frage("sequence_delete"' in _forts)
+      'ask("sequence_delete"' in _forts)
 check("danach wird die Uebersicht neu gezeichnet",
-      "zeichneSequenzenliste()" in _forts)
-# Die lokale Variable hiess `frage` und verdeckte den gleichnamigen Helfer.
+      "renderSequenceList()" in _forts)
+# Die lokale Variable hiess `ask` und verdeckte den gleichnamigen Helfer.
 check("die lokale Variable verdeckt den Bruecken-Helfer nicht mehr",
-      "const frage = offeneFrage" not in _web)
+      "const ask = openQuestion" not in _web)

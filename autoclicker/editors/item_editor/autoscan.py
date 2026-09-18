@@ -79,7 +79,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     # Bestätigungs-Punkt
     confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
-        frage="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
+        prompt="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
 
     # Konfidenz
     min_confidence = state.config.scan_min_confidence

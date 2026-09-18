@@ -237,7 +237,7 @@ try:
           "benutzt den Katalog nicht" in _a["status"]["text"])
     check("und die Momentaufnahme sagt: Katalog aus", _b.scan_data()["katalog_an"] is False)
 
-    _b.scan_set({"name": "Inv", "feld": "use_catalog", "value": True})
+    _b.scan_set({"name": "Inv", "field": "use_catalog", "value": True})
     check("der Schalter laesst sich setzen", _b.scans["Inv"].use_catalog is True)
     check("und die Momentaufnahme zieht mit", _b.scan_data()["katalog_an"] is True)
 

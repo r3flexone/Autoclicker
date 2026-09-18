@@ -22,16 +22,16 @@ def aufbau():
     # testen), stuende offen.
     b.boss_scan_new({"name": "Bossfarm"})
     b.scan_screenshot({"kind": "boss"})
-    b.boss_scan_set({"feld": "region", "value": list(region)})
+    b.boss_scan_set({"field": "region", "value": list(region)})
     b.boss_new({"name": "Ancient Dragon"})
     b.marker_measure({"kind": "boss"})
-    b.boss_set({"feld": "action", "value": "item_scan"})
+    b.boss_set({"field": "action", "value": "item_scan"})
     b.boss_new({"name": "Hydra", "global": True})
     b.icon_scan_new({"name": "Mission nicht machbar"})
     b.scan_screenshot({"kind": "icon"})
-    b.icon_set({"feld": "region", "value": list(region)})
+    b.icon_set({"field": "region", "value": list(region)})
     b.marker_measure({"kind": "icon"})
-    b.icon_set({"feld": "action", "value": "click"})
+    b.icon_set({"field": "action", "value": "click"})
     return b
 
 
@@ -46,7 +46,7 @@ def lauf():
     with Fenster(b) as f:
         f.reiter("scans")
         for kind in ("item", "boss", "icon"):
-            f.klick(f'#scan-art button[data-scan-art="{kind}"]')
+            f.klick(f'#scan-art button[data-scan-kind="{kind}"]')
             pruefe(bool(f.text("#sicht-scans").strip()), f"{kind}: Ansicht leer")
             if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
@@ -55,7 +55,7 @@ def lauf():
                 pruefe(bool(f.status().strip()), f"{kind}: Test meldete nichts")
             f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.
-        f.klick('#scan-art button[data-scan-art="item"]')
+        f.klick('#scan-art button[data-scan-kind="item"]')
         pruefe("Aufnahme" in f.text("#sicht-scans"),
                "die Aufnahme-Karte kam nicht zum Item-Assistenten zurueck")
         fehler.extend(f.fehler)

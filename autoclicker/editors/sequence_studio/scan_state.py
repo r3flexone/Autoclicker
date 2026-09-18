@@ -6,7 +6,7 @@ import re as _re
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
-from .model import hexfarbe
+from .model import hex_color
 from .scan_contract import (
     SCAN_KINDS,
     ART_SCAN,
@@ -616,7 +616,7 @@ class ScanStateMixin:
             "name": slot.name,
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
-            "color": hexfarbe(slot.slot_color),
+            "color": hex_color(slot.slot_color),
             "width": width,
             "height": height,
             # Zu klein, um je etwas zu erkennen — und im Bild kaum zu treffen.
@@ -692,7 +692,7 @@ class ScanStateMixin:
             "vorlagen": vorlagen,
             "template_sizes": groessen,
             "missing_scan_sizes": fehlende_groessen,
-            "marker": [hexfarbe(c) for c in item.marker_colors],
+            "marker": [hex_color(c) for c in item.marker_colors],
             # **Der Klick danach.** Manche Spiele fragen nach („wirklich
             # verkaufen?"), und ohne die Bestätigung bleibt das Popup stehen —
             # der nächste Slot wird dann gar nicht mehr erreicht. Das Feld gab

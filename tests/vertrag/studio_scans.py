@@ -659,7 +659,7 @@ finally:
 # Ein Modus ohne Knopf ist ein Modus, den niemand erreicht; ein Knopf ohne Modus
 # meldet "Unbekannter Modus". Beide Seiten messen, nicht eine abschreiben.
 _html18 = studio_web_source()
-_block18 = _html18[_html18.index("const SCAN_MODI = ["):]
+_block18 = _html18[_html18.index("const SCAN_MODES = ["):]
 _block18 = _block18[:_block18.index("];")]
 _kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
 check("jeder Modus der Bruecke hat eine Kachel", sorted(_kacheln18) == sorted(_MODI18))
@@ -676,7 +676,7 @@ check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
 
 # --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
-# Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`klappZu`) muessen
+# Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`collapsed`) muessen
 # denselben Schluessel tragen. Ein Tippfehler in einem davon ist kein Fehler,
 # den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
 # oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
@@ -685,8 +685,8 @@ _klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
 check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 1)
 check("jeder Kopf sitzt in einem Abschnitt mit passender id",
       all(f'id="ab-{_k18}"' in _html18 for _k18 in _klapp18))
-_zustand18 = _re13.search(r'let klappZu = \{([^}]*)\}', _html18)
-check("und jeder hat einen Zustand in klappZu",
+_zustand18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
+check("und jeder hat einen Zustand in collapsed",
       _zustand18 is not None
       and sorted(_re13.findall(r'(\w+):', _zustand18.group(1))) == _klapp18)
 # Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
@@ -705,25 +705,25 @@ check("jeder Assistent-Schritt hat einen Inhalt",
       all(f'id="scan-schritt-{_n18}-inhalt"' in _html18 for _n18 in _assistent18))
 check("die Fensterliste hat einen sichtbaren Aktualisieren-Knopf",
       'id="scan-fenster-neu"' in _html18
-      and '$("scan-fenster-neu").addEventListener("click", scanFensterPflegen)' in _html18)
+      and '$("scan-fenster-neu").addEventListener("click", scanMaintainWindows)' in _html18)
 check("der Quellenstand wird nicht neben dem Vollbild-Knopf eingequetscht",
       'class="scan-quelleninfo"' in _html18
       and '.scan-quellenstand{display:flex;flex-direction:column' in _html18
       and 'id="scan-quellenname"' in _html18)
 check("die Slot-Suche nimmt Ecken in der mittleren Buehne an",
-      'function scanSuchStelleAusBuehne(e)' in _html18
+      'function scanSearchPositionFromStage(e)' in _html18
       and 'SC.modus !== "finden"' in _html18
       and 'buehne.addEventListener("click"' in _html18)
 check("und begrenzt sie auf die vorhandenen Bildpixel",
       'bx = Math.max(0, Math.min(SC.photo.width, bx));' in _html18
       and 'by = Math.max(0, Math.min(SC.photo.height, by));' in _html18)
 check("Aufnahmequelle und Bildwerkzeuge bleiben bis zum Scan gesperrt",
-      "function scanKonfigurationOffen()" in _html18
+      "function scanConfigOpen()" in _html18
       and "neu.disabled = !SC.pillow || !bereit" in _html18
       and "wahl.disabled = !bereit" in _html18
       and "Zuerst einen Scan anlegen oder auswählen" in _html18)
 check("jeder Screenshot nennt der Bruecke seine Scan-Art",
-      'rufScan("scan_screenshot", {kind: scanArt})' in _html18)
+      'callScan("scan_screenshot", {kind: scanKind})' in _html18)
 
 
 # ============================================================================
@@ -732,9 +732,9 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 # **Ein Haken war zu wenig.** Die Liste konnte nur „gehoert dazu / gehoert nicht
 # dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in die Liste,
 # einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
-_maske18 = _html18[_html18.index("function scanItemMaske("):]
+_maske18 = _html18[_html18.index("function scanItemCard("):]
 _maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
-for _feld18, _was18 in (('maskeName("item"', "Name"), ('setze("category"', "Kategorie"),
+for _feld18, _was18 in (('cardName("item"', "Name"), ('setze("category"', "Kategorie"),
                         ('setze("priority"', "Prioritaet")):
     check(f"die Maske setzt {_was18}", _feld18 in _maske18)
 
@@ -751,11 +751,11 @@ check("es gibt keinen zweiten Bauplan fuer ein Item",
 # verschwunden ist. Jetzt wandert der Block als Ganzes, und die linke Spalte
 # steht still.
 check("es gibt eine Regel, wo die Masken stehen",
-      "function scanMaskenRechts()" in _html18)
+      "function scanCardsRight()" in _html18)
 check("und sie gilt fuer alle Item-Listen",
-      'function scanMaskenRechts() {\n  return scanArt === "item";' in _html18)
+      'function scanCardsRight() {\n  return scanKind === "item";' in _html18)
 check("Reiter, Filter und Liste baut EINE Funktion",
-      "function scanListenBlock(tabs, filter, ziel)" in _html18)
+      "function scanListBlock(tabs, filter, ziel)" in _html18)
 # Und der zweite Listen-Block in der linken Spalte ist ersatzlos weg — samt
 # der Funktion, die je Reiter entschied, welcher der beiden ihn fuellt.
 check("und links bleibt gar nichts mehr stehen",
@@ -779,7 +779,7 @@ check("gelernte Items haben nur Bild und Felder als Spalten",
           in _html18)
 check("ein zweiter Klick klappt ein geoeffnetes Item wieder zu",
       'if (selected && kind === "item")' in _html18
-      and 'rufScan("scan_select", {kind: "item", name: ""})' in _html18)
+      and 'callScan("scan_select", {kind: "item", name: ""})' in _html18)
 check("Bedienelemente klappen das Item beim Bearbeiten nicht zu",
       'e.target.closest("input, label, button, select, summary, details")' in _html18)
 
@@ -787,26 +787,26 @@ check("Bedienelemente klappen das Item beim Bearbeiten nicht zu",
 # dem, was drinsteht — nicht darin, wie man sie anfasst. Vorher war ein Slot
 # eine Knopfzeile mit vier Zahlenfeldern in einer anderen Spalte, ein Item eine
 # Maske; dieselbe Frage („wie benenne ich das um") hatte zwei Antworten.
-check("Slots werden als Maske gebaut", "function scanSlotMaske(" in _html18)
-check("Scans werden als Maske gebaut", "function scanScanMaske(" in _html18)
+check("Slots werden als Maske gebaut", "function scanSlotCard(" in _html18)
+check("Scans werden als Maske gebaut", "function scanScanCard(" in _html18)
 check("der gefuehrte Bereich hat ein klar beschriftetes Scan-Namensfeld",
       'id="scan-name"' in _html18
-      and 'rufScan("scan_set", {name: SC.offen, feld: "name"' in _html18
+      and 'callScan("scan_set", {name: SC.offen, field: "name"' in _html18
       and 'namensfeld.disabled = !offen;' in _html18)
-_bauform18 = [_n18 for _n18 in ("scanItemMaske", "scanSlotMaske", "scanScanMaske")
-              if "maskeBauen(" not in _html18[_html18.index(f"function {_n18}("):
+_bauform18 = [_n18 for _n18 in ("scanItemCard", "scanSlotCard", "scanScanCard")
+              if "buildCard(" not in _html18[_html18.index(f"function {_n18}("):
                                               _html18.index(f"function {_n18}(") + 3000]]
 check(f"und alle drei ueber dieselbe Bauform ({_bauform18 or 'alle'})", not _bauform18)
-# Der Fokus-Anker haengt an der id; ohne sie zaehlt `fokusMerken()` die
+# Der Fokus-Anker haengt an der id; ohne sie zaehlt `rememberFocus()` die
 # Position ueber die ganze Spalte (s. u.).
-check("die Bauform vergibt die id", 'id: maskeId(kind, name)' in _html18)
+check("die Bauform vergibt die id", 'id: cardId(kind, name)' in _html18)
 
 # **Die alte Zeilen-Darstellung ist weg, nicht danebengestellt.** Zwei
 # Darstellungen fuer dieselbe Liste waeren zwei Stellen, an denen ein Feld
 # fehlen kann.
 check("es gibt keine Slot-Zeile mehr neben der Slot-Maske",
-      'class: "scan-zeile"' not in _html18[_html18.index("function scanListeSlots("):
-                                           _html18.index("function scanListeItems(")])
+      'class: "scan-zeile"' not in _html18[_html18.index("function scanListSlots("):
+                                           _html18.index("function scanListItems(")])
 check("Slots werden nach ihrer stabilen ID geordnet",
       "Number(a.id) > 0 ? Number(a.id)" in _html18
       and "(a.nummer || 0) - (b.nummer || 0)" not in _html18)
@@ -867,7 +867,7 @@ for _art18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
 # seiner Gruppe. Eine `<datalist>` daneben war ein Angebot, das man kennen
 # musste; sechzig Masken haetten sich ausserdem eine id teilen muessen.
 check("die Maske waehlt die Kategorie ueber das gemeinsame Bedienelement",
-      "kategorieWahl(i.category" in _maske18)
+      "categoryChooser(i.category" in _maske18)
 check("und baut kein eigenes Textfeld mehr dafuer",
       "list: listenId" not in _html18 and "kategorienListe(" not in _html18)
 
@@ -875,13 +875,13 @@ check("und baut kein eigenes Textfeld mehr dafuer",
 # Bruecken-Antwort neu gebaut, und der Entwurf speichert 900 ms nach der letzten
 # Aenderung von selbst: wer „+ neue Kategorie" waehlt und anfaengt zu tippen,
 # saehe sein Feld sonst mitten im Wort wieder zur Auswahlliste werden. Dieselbe
-# Mechanik wie bei `offeneHilfen` und `klappZu`.
+# Mechanik wie bei `openHelps` und `collapsed`.
 check("es gibt einen Merker fuer offene Tipp-Felder",
-      "const kategorieFrei = new Set()" in _html18)
+      "const categoryFree = new Set()" in _html18)
 check("und jede Stelle bringt ihren Schluessel mit",
       _html18.count("key:") >= 3)
 check("ein uebernommener Name beendet das Tippen",
-      "if (key && v) kategorieFrei.delete(key);" in _html18)
+      "if (key && v) categoryFree.delete(key);" in _html18)
 
 # Dieselbe Rueckweg-Regel wie ueberall: hinein mit einem Klick, heraus auch.
 check("ESC fuehrt aus dem Tippen zurueck in die Liste",
@@ -902,25 +902,25 @@ check("beide Knoepfe fuer scan_recognize heissen gleich",
 check("die Listen-Vorgabe haengt am offenen Scan",
       'return SC && SC.offen ? "items" : "scans";' in _html18)
 check("und eine eigene Entscheidung ueberstimmt sie",
-      "if (scanListe) return scanListe;" in _html18)
+      "if (scanList) return scanList;" in _html18)
 check("das Oeffnen eines Scans setzt sie zurueck",
-      "scanListe = scanReiterNachOeffnen;" in _html18)
+      "scanList = scanTabAfterOpen;" in _html18)
 # **Mit einer Ausnahme, und die ist der Grund fuer die Variable.** Wer einen
 # Scan aus der Scan-Liste heraus oeffnet, arbeitet an Scans — springt der
 # Reiter dann auf „Items", verschwindet genau die Maske, die sich soeben mit
 # seinen Einstellungen aufgeklappt hat. Und damit war er nicht mehr zu
 # loeschen: der Knopf stand in einer Spalte, die man mit dem Klick verliess.
 check("aus der Scan-Liste heraus bleibt er stehen",
-      'scanReiterNachOeffnen = "scans";' in _html18)
+      'scanTabAfterOpen = "scans";' in _html18)
 check("und der Wunsch gilt genau einmal",
-      "scanReiterNachOeffnen = null;" in _html18)
+      "scanTabAfterOpen = null;" in _html18)
 check("der Loesch-Knopf liegt im Detailteil des Scans",
       '"scan_delete"' in _html18[_html18.index("function scanScanDetails("):
                                    _html18.index("function scanScanDetails(") + 3000])
 _scan_details18 = _html18[_html18.index("function scanScanDetails("):
                           _html18.index("function scanScanDetails(") + 3000]
 check("der Loesch-Knopf nennt den Scan seiner sichtbaren Maske",
-      'rufScan("scan_delete", {name: c.name})' in _scan_details18)
+      'callScan("scan_delete", {name: c.name})' in _scan_details18)
 
 
 # ============================================================================
@@ -989,21 +989,21 @@ try:
     # **Die Stelle im Scan und die Stelle im LAUF gehen auseinander**, sobald
     # „Slots rückwärts" an ist.
     check("vorwaerts sind beide gleich", _slotsN[_namenN[0]]["lauf"] == 1)
-    _bN.scan_set({"name": "Inv", "feld": "reverse", "value": True})
+    _bN.scan_set({"name": "Inv", "field": "reverse", "value": True})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("rueckwaerts dreht sich die Lauf-Stelle um",
           [_slotsN[n]["lauf"] for n in _namenN] == [3, 2, 1])
     check("die Stelle im Scan bleibt dieselbe",
           [_slotsN[n]["number"] for n in _namenN] == [1, 2, 3])
 
-    _zN = _bN.scan_slot_set({"name": _namenN[1], "feld": "active", "value": False})
+    _zN = _bN.scan_slot_set({"name": _namenN[1], "field": "active", "value": False})
     _slotsN = {s["name"]: s for s in _zN["slots"]}
     check("ein Slot lässt sich ausschalten, ohne seine Daten zu löschen",
           _slotsN[_namenN[1]]["active"] is False
           and _namenN[1] in _bN.slots and len(_bN.scans["Inv"].slots) == 3)
     check("nur aktive Slots bekommen eine laufende Nummer",
           [_slotsN[n]["number"] for n in _namenN] == [1, None, 2])
-    _bN.scan_slot_set({"name": _namenN[1], "feld": "active", "value": True})
+    _bN.scan_slot_set({"name": _namenN[1], "field": "active", "value": True})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("und derselbe Schalter schaltet ihn wieder ein",
           _slotsN[_namenN[1]]["active"] is True
@@ -1011,7 +1011,7 @@ try:
 
     # Die ID übersteht echte Bearbeitung; eine Mitgliedschaft gibt es nicht mehr.
     _idN = _slotsN[_namenN[1]]["id"]
-    _bN.scan_slot_set({"name": _namenN[1], "feld": "name", "value": "Mitte"})
+    _bN.scan_slot_set({"name": _namenN[1], "field": "name", "value": "Mitte"})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("die ID bleibt beim Umbenennen gleich", _slotsN["Mitte"]["id"] == _idN)
     check("die Stelle im Scan bleibt beim Umbenennen gleich",
@@ -1024,8 +1024,8 @@ try:
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("ein neuer Slot hat sofort eine Stelle", _slotsN["Weiter"]["number"] == 4)
     check("und eine stabile ID", _slotsN["Weiter"]["id"] > 0)
-    _slot_maskeN = _html18[_html18.index("function scanSlotMaske("):
-                            _html18.index("function scanSlotStand(")]
+    _slot_maskeN = _html18[_html18.index("function scanSlotCard("):
+                            _html18.index("function scanSlotState(")]
     check("jede Slot-Kachel baut einen echten Ein-Aus-Schalter",
           'type: "checkbox"' in _slot_maskeN
           and 'setze("active", box.checked)' in _slot_maskeN
@@ -1036,16 +1036,16 @@ try:
     _itemN = _ITEM8(name="Parkbar", marker_colors=[(1, 2, 3)])
     _bN.items[_itemN.name] = _itemN
     _bN._sync_objects()
-    _zN = _bN.scan_item_set({"name": "Parkbar", "feld": "active", "value": False})
+    _zN = _bN.scan_item_set({"name": "Parkbar", "field": "active", "value": False})
     _itemsN = {i["name"]: i for i in _zN["items"]}
     check("ein Item lässt sich ausschalten, ohne seine Daten zu löschen",
           _itemsN["Parkbar"]["active"] is False
           and "Parkbar" in _bN.items and len(_bN.scans["Inv"].items) == 1)
-    _bN.scan_item_set({"name": "Parkbar", "feld": "active", "value": True})
+    _bN.scan_item_set({"name": "Parkbar", "field": "active", "value": True})
     check("und dasselbe Item lässt sich wieder einschalten",
           _bN.items["Parkbar"].enabled is True)
-    _item_maskeN = _html18[_html18.index("function scanItemMaske("):
-                            _html18.index("function scanItemStand(")]
+    _item_maskeN = _html18[_html18.index("function scanItemCard("):
+                            _html18.index("function scanItemState(")]
     check("jede Item-Kachel baut einen echten Ein-Aus-Schalter",
           'type: "checkbox"' in _item_maskeN
           and 'setze("active", box.checked)' in _item_maskeN
@@ -1179,12 +1179,12 @@ check("und die Spalten bleiben bei jeder Ziffernzahl gleich",
 # Zwei Eigenschaften, die der Pin weiter oben nicht nennt: wohin der Altbestand
 # faellt, und was bei gleicher Lage entscheidet. Slots ohne ID landen am ENDE —
 # vorn stuende der ungepflegte Rest ueber allem anderen.
-_sort18 = _html18[_html18.index("function scanListeSlots("):]
+_sort18 = _html18[_html18.index("function scanListSlots("):]
 _sort18 = _sort18[:_sort18.index("\nfunction ", 10)]
 check("Slots ohne ID stehen hinten, nicht vorn",
       "Number.MAX_SAFE_INTEGER" in _sort18)
 check("und bei gleicher Lage entscheidet der Name natuerlich sortiert",
-      "nachNamen(a.name, b.name)" in _sort18)
+      "byName(a.name, b.name)" in _sort18)
 
 
 # ============================================================================
@@ -1252,7 +1252,7 @@ finally:
     shutil.rmtree(_sandL, ignore_errors=True)
 
 check("die Ansicht bietet den Knopf pro Art an",
-      'rufScan("scan_delete_all", {kind: kind})' in _html18)
+      'callScan("scan_delete_all", {kind: kind})' in _html18)
 check("und er ist deutlich als gefaehrlich markiert",
       'class: "btn gefahr", disabled: !total.length' in _html18)
 
@@ -1270,25 +1270,25 @@ check("die Zahlen-Kachel in der Marke hat eine feste Mindestbreite",
 section("Der Fokus ueberlebt ein Umbenennen")
 
 # **Ein Umbenennen aendert die Identitaet — und damit die id, an der der Fokus
-# haengt.** Ohne den Hinweis suchte `fokusHerstellen()` nach dem alten Namen und
+# haengt.** Ohne den Hinweis suchte `restoreFocus()` nach dem alten Namen und
 # fand nichts; genau beim Namen tippt man aber, und genau dort faellt es auf.
 check("wer umbenennt, sagt die neue id an",
-      "function fokusUmbenennung(von, nach)" in _html18)
-check("und maskeName() tut es fuer alle drei Arten",
-      "fokusUmbenennung(maskeId(kind, name), maskeId(kind, neu));" in _html18)
+      "function focusRename(von, nach)" in _html18)
+check("und cardName() tut es fuer alle drei Arten",
+      "focusRename(cardId(kind, name), cardId(kind, neu));" in _html18)
 # **Umbenennen aendert den Namen, nicht den Rang.** Die gemerkte Reihenfolge
 # haengt am Namen — ohne das Nachziehen galt ein gerade umbenanntes Item als
 # neu und rutschte ans Ende seiner Gruppe. Genau beim Namen tippt man aber.
 check("und der Rang wird ebenfalls nachgezogen",
-      "scanOrdnungUmbenennen(kind, name, neu);" in _html18
-      and "function scanOrdnungUmbenennen(kind, alt, neu)" in _html18)
+      "scanOrderRename(kind, name, neu);" in _html18
+      and "function scanOrderRename(kind, alt, neu)" in _html18)
 # Lehnt die Bruecke den neuen Namen ab, heisst das Item weiter wie vorher —
 # und behaelt trotzdem seinen Platz.
 check("beide Namen stehen dafuer im Merkposten",
       "merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);" in _html18)
-check("fokusMerken loest den Hinweis genau einmal ein",
-      "const umbenannt = fokusUmbenannt;" in _html18
-      and "fokusUmbenannt = null;" in _html18)
+check("rememberFocus loest den Hinweis genau einmal ein",
+      "const umbenannt = focusRenamed;" in _html18
+      and "focusRenamed = null;" in _html18)
 # Lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst die Maske
 # danach weiter wie vorher — und der Fokus soll trotzdem stehen bleiben.
 check("und die alte id bleibt als Rueckfall",
@@ -1303,19 +1303,19 @@ section("Prioritaeten: welche vergeben sind, und was ein neues Item bekommt")
 # beantworten.** Die Uebersicht zeigte nur die vergebenen Raenge; ob P2 belegt
 # ist oder fehlt, sah man erst, wenn man P1, P3, P4 las und selbst nachzaehlte.
 check("die Uebersicht spannt jeden Rang auf, nicht nur die belegten",
-      "function prioritaetsBelegung(category)" in _html18
+      "function priorityAllocation(category)" in _html18
       and "for (let p = 1; p <= hoechste + 1; p += 1)" in _html18)
 check("ein freier Rang wird als Luecke gezeichnet",
       '"P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", "))' in _html18
       and ".prioritaets-chip.frei{border:1px dashed" in _html18)
 # Eine getippte P99 darf das nicht auf hundert Kacheln aufspannen.
 check("und eine Ausreisser-Zahl spannt sie nicht auf",
-      "PRIO_MAX_ZEIGEN" in _html18)
+      "PRIO_MAX_SHOW" in _html18)
 # Zwei Items auf demselben Rang entscheidet die Scan-Reihenfolge — also der
 # Zufall. Das steht AM FELD, nicht erst im aufgeklappten Detail: getippt wird
 # in der Maske.
 check("eine doppelte Prioritaet faellt schon in der Liste auf",
-      "function prioritaetDoppelt(item)" in _html18
+      "function priorityDuplicate(item)" in _html18
       and '"P" + i.priority + " doppelt"' in _html18)
 check("und das Feld selbst ist markiert",
       'class: kollision.length ? "doppelt" : ""' in _html18
@@ -1335,7 +1335,7 @@ try:
     # **Ein Rang, den es schon gibt, ist kein Rang.** Wer ein Item in eine
     # Kategorie schiebt, hat ueber seine Prioritaet nichts gesagt — dann ist der
     # naechste freie Platz die einzige Antwort, die nicht raet.
-    _zP = _bP.scan_item_set({"name": "Neu", "feld": "category", "value": "Helme"})
+    _zP = _bP.scan_item_set({"name": "Neu", "field": "category", "value": "Helme"})
     check("ein Item in einer besetzten Kategorie ruecht auf den freien Rang",
           _bP.items["Neu"].priority == 3)
     check("und es wird gesagt, statt still zu passieren",
@@ -1345,23 +1345,23 @@ try:
     _bP.items["Helm B"].priority = 3
     _bP.items["Neu"].category = None
     _bP.items["Neu"].priority = 1
-    _zP = _bP.scan_item_set({"name": "Neu", "feld": "category", "value": "Helme"})
+    _zP = _bP.scan_item_set({"name": "Neu", "field": "category", "value": "Helme"})
     check("und zwar auf die erste Luecke", _bP.items["Neu"].priority == 2)
 
     # Sitzt es allein auf seiner Zahl, wird nichts verschoben.
     _bP.items["Frei"] = _ITEM8(name="Frei", category=None, priority=9)
-    _bP.scan_item_set({"name": "Frei", "feld": "category", "value": "Helme"})
+    _bP.scan_item_set({"name": "Frei", "field": "category", "value": "Helme"})
     check("eine freie Zahl bleibt, wie sie ist", _bP.items["Frei"].priority == 9)
 
     # Eine ausdruecklich getippte Zahl fasst niemand an — auch keine doppelte:
     # sie kann gewollt sein, und ungefragt zu verschieben waere schlimmer.
-    _bP.scan_item_set({"name": "Frei", "feld": "priority", "value": 1})
+    _bP.scan_item_set({"name": "Frei", "field": "priority", "value": 1})
     check("eine getippte Zahl gilt, auch wenn sie doppelt ist",
           _bP.items["Frei"].priority == 1)
 
     # Ohne Kategorie gibt es keine Konkurrenz und damit nichts einzuordnen.
     _bP.items["Solo"] = _ITEM8(name="Solo", category=None, priority=1)
-    _bP.scan_item_set({"name": "Solo", "feld": "category", "value": ""})
+    _bP.scan_item_set({"name": "Solo", "field": "category", "value": ""})
     check("ohne Kategorie bleibt alles, wie es ist",
           _bP.items["Solo"].priority == 1)
 finally:
@@ -1375,17 +1375,17 @@ section("Die Liste sortiert sich beim Laden, nicht beim Tippen")
 # **Sortierte sich die Liste nach JEDER Aenderung neu, springt genau das Item
 # weg, an dem man gerade tippt**: man tippt eine 2, die Zeile rutscht drei
 # Plaetze hoch, und das naechste Feld ist ein anderes.
-check("die Reihenfolge wird gemerkt", "let scanOrdnung = {item: null, slot: null}"
+check("die Reihenfolge wird gemerkt", "let scanOrder = {item: null, slot: null}"
       in _html18)
 check("und beim Zeichnen angewandt statt neu gerechnet",
-      "const rang = scanOrdnungRang(\"item\");" in _html18
+      "const rang = scanOrderRank(\"item\");" in _html18
       and "rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)" in _html18)
 # **Die Kategorie war der erste Sortierschluessel und damit das letzte Feld,
 # das die Zeile noch wegspringen liess.** Steht eine gemerkte Reihenfolge, gilt
 # ausschliesslich sie — auch fuer die Gruppen.
 check("mit Merkposten entscheidet nur er",
-      "function scanOrdnungGruppe(kind)" in _html18
-      and "const gruppe = scanOrdnungGruppe(\"item\");" in _html18)
+      "function scanOrderGroup(kind)" in _html18
+      and "const gruppe = scanOrderGroup(\"item\");" in _html18)
 check("die Ueberschrift kommt aus der eingefrorenen Gruppe",
       "const gefroren = gruppe ? gruppe(i.name) : null;" in _html18)
 # Sonst reisst ein gerade geaendertes Item eine zweite Ueberschrift mitten in
@@ -1400,20 +1400,20 @@ check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
 # Der Phasen-Papierkorb stand früher in einer zu breiten Werkzeugzeile und lief
 # optisch unter END. Loop-Phasen werden wie Blöcke ausgewählt und mit Entf
 # gelöscht; ein zweiter Löschweg in der Kachel wäre nur wieder uneindeutig.
-_phase_funktion18 = _html18[_html18.index("function zeichnePhase("):
-                            _html18.index("function ablage(")]
+_phase_funktion18 = _html18[_html18.index("function renderPhase("):
+                            _html18.index("function dropZone(")]
 check("Loop-Phasen lassen sich im Kopf auswählen",
-      "gewaehltePhase = phase.index" in _phase_funktion18
+      "selectedPhase = phase.index" in _phase_funktion18
       and '" gewaehlt"' in _phase_funktion18)
 check("der Phasen-Papierkorb ist vollständig entfernt",
       "papierkorb()" not in _html18 and "phase-loeschen" not in _html18)
 check("Entf löscht die ausgewählte Loop-Phase",
-      'e.key === "Delete" && gewaehltePhase !== null' in _html18
-      and 'ruf("phase_delete", {phase: phase})' in _html18)
+      'e.key === "Delete" && selectedPhase !== null' in _html18
+      and 'call("phase_delete", {phase: phase})' in _html18)
 _frisch18 = ["scan_reload", "scan_learn_preview_apply", "scan_open"]
 check("und beim Laden sortiert es von selbst",
-      all(n in _html18[_html18.index("async function rufScan("):
-                       _html18.index("async function rufScan(") + 1400]
+      all(n in _html18[_html18.index("async function callScan("):
+                       _html18.index("async function callScan(") + 1400]
           for n in _frisch18))
 
 # **Der Kopf bleibt beim Scrollen stehen.** Bei sechzig Masken war die
@@ -1500,7 +1500,7 @@ try:
     _itemB = next(i for i in _zB["items"] if i["name"] == "Trank")
     check("ohne Bestaetigung steht dort nichts", _itemB["confirmation"] is None)
 
-    _zB = _bB.scan_item_set({"name": "Trank", "feld": "confirmation", "value": _pidB})
+    _zB = _bB.scan_item_set({"name": "Trank", "field": "confirmation", "value": _pidB})
     check("ein Punkt laesst sich setzen",
           _bB.items["Trank"].confirm_point_id == _pidB)
     _itemB = next(i for i in _bB.scan_data()["items"] if i["name"] == "Trank")
@@ -1516,20 +1516,20 @@ try:
 
     # Ein Punkt, den es nicht gibt, wird ABGELEHNT statt still gesetzt: sonst
     # klickte der Lauf auf (0, 0).
-    _zB = _bB.scan_item_set({"name": "Trank", "feld": "confirmation", "value": 999})
+    _zB = _bB.scan_item_set({"name": "Trank", "field": "confirmation", "value": 999})
     check("ein unbekannter Punkt wird abgelehnt", _zB["status"]["kind"] == "err")
     check("und der alte bleibt stehen", _bB.items["Trank"].confirm_point_id == _pidB)
 
-    _bB.scan_item_set({"name": "Trank", "feld": "confirmation_delay",
+    _bB.scan_item_set({"name": "Trank", "field": "confirmation_delay",
                           "value": 1.25})
     check("die Wartezeit davor ist einstellbar",
           _bB.items["Trank"].confirm_delay == 1.25)
     check("eine negative wird abgelehnt",
-          _bB.scan_item_set({"name": "Trank", "feld": "confirmation_delay",
+          _bB.scan_item_set({"name": "Trank", "field": "confirmation_delay",
                                 "value": -1})["status"]["kind"] == "err")
 
     # Leer heisst „keine Bestaetigung" und ist etwas anderes als Punkt 0.
-    _bB.scan_item_set({"name": "Trank", "feld": "confirmation", "value": ""})
+    _bB.scan_item_set({"name": "Trank", "field": "confirmation", "value": ""})
     check("und sie laesst sich wieder abschalten",
           _bB.items["Trank"].confirm_point_id is None
           and _bB.items["Trank"].confirm_point is None)
@@ -1639,7 +1639,7 @@ try:
           _item_v.template == "b.png" and _item_v.template_variants == [])
     check("die Ansicht bietet Vorlagenpflege und LLM-Namen an",
           "scan_item_remove_template" in studio_web_source()
-          and "scanAutonameLauf" in studio_web_source())
+          and "scanAutonameRun" in studio_web_source())
 finally:
     _os.chdir(_cwd_vorlage)
 
@@ -1898,23 +1898,23 @@ try:
         # Feld; die Momentaufnahme sagt ihm, ob das LLM ueberhaupt an ist.
         _quelle_an = studio_web_source()
         check("die Seite treibt den Durchgang selbst",
-              "scanAutonameLauf({alle: true})" in _quelle_an
-              and 'rufScan("scan_autoname_start"' in _quelle_an
-              and 'rufScan("scan_autoname_step"' in _quelle_an
-              and 'rufScan("scan_autoname_end"' in _quelle_an)
+              "scanAutonameRun({alle: true})" in _quelle_an
+              and 'callScan("scan_autoname_start"' in _quelle_an
+              and 'callScan("scan_autoname_step"' in _quelle_an
+              and 'callScan("scan_autoname_end"' in _quelle_an)
         # **Ein Aufruf, der drei Minuten blockiert, laesst sich nicht abbrechen.**
         # Deshalb steht die Schleife in der Ansicht — und deshalb muss dort auch
         # der Knopf sein, der sie stoppt.
         check("und laesst sich dabei abbrechen",
-              "autonameAbbruch" in _quelle_an and "Abbrechen" in _quelle_an)
+              "autonameCancel" in _quelle_an and "Abbrechen" in _quelle_an)
         check("und fragt vorher, ob das LLM eingeschaltet ist",
               "SC.llm_an" in _quelle_an
               and "llm_an" in _bau_an().scan_data())
         # Ein Aufruf, der eine Minute lang rechnet, braucht einen Hinweis —
-        # sonst sieht das Fenster tot aus. `mitWarten` passt nicht: dort wartet
+        # sonst sieht das Fenster tot aus. `withWait` passt nicht: dort wartet
         # die Bruecke auf ENTER und hat eine feste Grenze.
         check("und zeigt so lange, dass gearbeitet wird",
-              "mitArbeit(" in _quelle_an and "arbeitZeigen" in _quelle_an)
+              "withWork(" in _quelle_an and "showWork" in _quelle_an)
 finally:
     _lv_an.suggest_item_name_with_reason = _echt_an
     _os.chdir(_cwd_an)
@@ -2005,7 +2005,7 @@ try:
     _quelle_kat = studio_web_source()
     check("die Ueberschrift ist der Weg dorthin",
           "scan_category_rename" in _quelle_kat
-          and "scanKategorieKopf" in _quelle_kat)
+          and "scanCategoryHeader" in _quelle_kat)
 finally:
     _os.chdir(_cwd_kat)
     shutil.rmtree(_sand_kat, ignore_errors=True)

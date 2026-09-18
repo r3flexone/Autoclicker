@@ -103,7 +103,7 @@ def lauf():
         pruefe(typ == "SELECT", f"nach dem Anlegen erwartet SELECT, da: {typ}")
 
         # ... und sie muss beim NAECHSTEN Item waehlbar sein. Genau dafuer gibt es
-        # `kategorieOptionenAktualisieren()`; ohne das tippt man sie zwanzigmal.
+        # `refreshCategoryOptions()`; ohne das tippt man sie zwanzigmal.
         options = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl select option", "ns => ns.map(n => n.textContent)")
         pruefe("Helme" in options, f"'Helme' fehlt in der Auswahl: {options[:6]}")
@@ -118,15 +118,15 @@ def lauf():
           s.dispatchEvent(new Event('change', {bubbles: true}));
         }""")
         f.ruhe()
-        typen = f.seite.eval_on_selector_all(
+        types = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
-        pruefe(typen[1] == "INPUT", f"'neue Kategorie' oeffnet kein Textfeld: {typen[:3]}")
+        pruefe(types[1] == "INPUT", f"'neue Kategorie' oeffnet kein Textfeld: {types[:3]}")
         # **Der Neuaufbau, den es zu ueberleben gilt, IST das Auto-Speichern** —
         # also wird auf den gewartet und nicht auf 1100 ms. Der Unterschied ist
         # hier nicht bloss Stabilitaet: laeuft die Wartezeit ab, bevor der
         # Neuaufbau kommt, vergleicht die Zusicherung darunter zweimal denselben
         # unberuehrten Zustand — und ist gruen, ohne etwas geprueft zu haben.
-        # 200 ms Zugabe, weil `SC.dirty` schon vor dem `zeichneScans()` faellt.
+        # 200 ms Zugabe, weil `SC.dirty` schon vor dem `renderScans()` faellt.
         try:
             f.seite.wait_for_function("() => !SC.dirty", timeout=15000)
         except Exception:
@@ -134,8 +134,8 @@ def lauf():
         f.ruhe()
         typen_danach = f.seite.eval_on_selector_all(
             "#scan-insp .kategorie-wahl", "ns => ns.map(n => n.firstElementChild.tagName)")
-        pruefe(typen_danach == typen,
-               f"der Tipp-Modus ueberlebt den Neuaufbau nicht: {typen} -> {typen_danach}")
+        pruefe(typen_danach == types,
+               f"der Tipp-Modus ueberlebt den Neuaufbau nicht: {types} -> {typen_danach}")
 
         # ------------------------------------------------------------------
         # **Kein Feld eines Items laesst die Zeile springen — und der Fokus
@@ -145,7 +145,7 @@ def lauf():
         # die Zeile ist woanders. Zwei Ursachen lagen dahinter, beide nur im
         # Fenster messbar: die gemerkte Reihenfolge haengt am NAMEN (ein
         # umbenanntes Item galt als neu und rutschte ans Ende), und
-        # `scanVorschauenHolen()` baut die rechte Spalte an `zeichneScans()`
+        # `scanFetchPreviews()` baut die rechte Spalte an `renderScans()`
         # vorbei neu — beim Umbenennen fehlt die Vorschau unter dem neuen Namen,
         # sie wird nachgeholt, und dieser Aufbau rettete den Fokus nicht.
         f.klick_text("#scan-insp .tabs .tab", "Items")
@@ -161,7 +161,7 @@ def lauf():
         # **Dabei darf das Vorschaubild nicht verschwinden.** Der
         # Zwischenspeicher haengt am ITEM-Namen, das Bild an der Template-DATEI
         # — und die heisst nach dem Umbenennen genauso. Ohne
-        # `scanVorschauUmbenennen()` galt die Vorschau als fehlend: die Maske
+        # `scanPreviewRename()` galt die Vorschau als fehlend: die Maske
         # wurde einmal OHNE Bild gezeichnet, dieselben Bytes noch einmal aus
         # Python geholt und die Spalte ein zweites Mal aufgebaut. Sichtbar war
         # das als kurzes Flackern. Gemessen wird beides — die Zahl der
@@ -343,11 +343,11 @@ def lauf():
         # auszuwaehlen.
         #
         # Der Fokus muss dafuer AUS dem Textfeld heraus: in einem Eingabefeld
-        # kehrt `tastatur()` schon vorher um, und der Test waere gruen, ohne je
+        # kehrt `keyboard()` schon vorher um, und der Test waere gruen, ohne je
         # die Stelle erreicht zu haben, um die es geht.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         for key, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
-            f.seite.evaluate("rufScan('scan_mode_set', {modus:'wahl', art:'item'})")
+            f.seite.evaluate("callScan('scan_mode_set', {modus:'wahl', art:'item'})")
             f.ruhe()
             f.seite.keyboard.press(f"Control+{key}")
             f.ruhe()
@@ -361,7 +361,7 @@ def lauf():
         f.ruhe()
         pruefe(f.seite.evaluate("SC.modus") == "messen",
                "„F“ allein schaltet nicht mehr auf „Hintergrundfarbe“")
-        f.seite.evaluate("rufScan('scan_mode_set', {modus:'wahl', art:'item'})")
+        f.seite.evaluate("callScan('scan_mode_set', {modus:'wahl', art:'item'})")
         f.ruhe()
 
         # **Was getippt und noch nicht gemeldet ist, ueberlebt das
@@ -374,7 +374,7 @@ def lauf():
         # Fenster Tastendruecke, und man sucht den Fehler in der Bruecke.
         f.klick_text("#scan-insp .tabs .tab", "Items")
         f.ruhe()
-        # Das Namensfeld traegt kein `type` (s. `maskeName`) — ein Selektor auf
+        # Das Namensfeld traegt kein `type` (s. `cardName`) — ein Selektor auf
         # `[type=text]` findet es deshalb nicht.
         felder = "#scan-insp .scan-maske .scan-maske-felder > input:not([type])"
         names = f.seite.locator(felder)
@@ -389,7 +389,7 @@ def lauf():
             # eine feste Wartezeit von 1800 ms mit dem Kommentar „laenger als
             # die 900 ms" — nur liegen hier ZWEI Runden hintereinander: das
             # Auto-Speichern ist entprellt (`clearTimeout` in
-            # `scanAutoSpeichernPlanen`), sein Neuaufbau stoesst das
+            # `scanScheduleAutosave`), sein Neuaufbau stoesst das
             # fokussierte Feld an, und dessen `change` plant die naechsten
             # 900 ms. Die Rechnung ging also auf ~300 ms Luft aus, und die
             # frisst ein ausgelasteter CI-Laeufer zwischen Bruecke und

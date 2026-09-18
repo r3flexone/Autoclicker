@@ -7,12 +7,12 @@ from ._bruecke import Fenster, main, sandkasten
 
 
 def quelle_wz() -> str:
-    """Der `WZ_WERKZEUGE`-Block aus `app.js` — die Liste, die die Seite zeichnet."""
+    """Der `WZ_TOOLS`-Block aus `app.js` — die Liste, die die Seite zeichnet."""
     # Absolut, denn `sandkasten()` wechselt vorher das Arbeitsverzeichnis.
     file = (Path(__file__).resolve().parents[2]
              / "autoclicker/editors/sequence_studio/web/app.js")
     source = file.read_text(encoding="utf-8")
-    ab = source.index("const WZ_WERKZEUGE = [")
+    ab = source.index("const WZ_TOOLS = [")
     return source[ab:source.index("];", ab)]
 
 
@@ -66,10 +66,10 @@ def lauf():
         # **Gegen die Tabelle in der Seite gemessen, nicht gegen eine getippte
         # Zahl.** Hier stand `== 4`, als es vier Werkzeuge gab; mit dem fuenften
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
-        # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_WERKZEUGE` fuehrt.
+        # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_TOOLS` fuehrt.
         target = len(re.findall(r'\{key: "', quelle_wz()))
         pruefe(f.count("#wz-links button") == target,
-               f"{target} Werkzeuge erwartet (je eines aus WZ_WERKZEUGE), "
+               f"{target} Werkzeuge erwartet (je eines aus WZ_TOOLS), "
                f"da: {f.count('#wz-links button')}")
         # **Der Sequenzname steht EINMAL.** Links stand „offene Sequenz Farm" —
         # eingebaut, als die Kopfleiste ihre Sequenz-Bedienelemente in diesem
@@ -131,7 +131,7 @@ def lauf():
         # **Rechts muss der BERICHT stehen, nicht irgendein Text.** Hier stand
         # `bool(text.strip())` — und „Noch nichts geprüft." ist nicht leer. Der
         # Pin war damit erfüllt, während die Spalte nie nachgezogen wurde:
-        # `wzPruefen()` rief nur `wzMitteZeichnen()`. Ausgerechnet diese Spalte
+        # `wzCheck()` rief nur `wzRenderMiddle()`. Ausgerechnet diese Spalte
         # listet, WAS geprüft wurde, und ohne sie ist „Alles in Ordnung" eine
         # Behauptung — genau die Begründung, mit der sie gebaut wurde.
         pruefe("Noch nichts geprüft" not in f.text("#wz-rechts"),
@@ -217,23 +217,23 @@ def lauf():
 
         # --- Der Aufnahme-Waechter fragt erst, wenn es etwas zu finden gibt ---
         # `sequence_list()` laedt JEDE Sequenzdatei einzeln — genau deshalb
-        # zieht `zeichne()` sie nicht nach. Der langsame Zweig rief sie
+        # zieht `render()` sie nicht nach. Der langsame Zweig rief sie
         # trotzdem im Sekundentakt ab dem Druck auf „Aufnahme starten", also
         # waehrend der ganzen Aufnahme; und die dauert lange, weil der Nutzer
         # so lange im Spiel ist. Solange sie laeuft, kann die Datei aber gar
         # nicht da sein.
         gezaehlt = f.seite.evaluate("""() => {
           window.__liste = 0;
-          const alt = window.frage;
-          window.frage = async function (name, daten) {
+          const alt = window.ask;
+          window.ask = async function (name, daten) {
             if (name === "sequence_list") window.__liste++;
             return alt(name, daten);
           };
           // Aufnahme laeuft: der Waechter darf nur warten.
-          wzAufnahmeGestartet = true;
-          wzAufnahmeName = "Gibt-Es-Nicht";
-          wzAufnahmeLive = {active: true, pausiert: false, count: 0, events: []};
-          wzAufnahmeBeobachten();
+          wzRecordingStarted = true;
+          wzRecordingName = "Gibt-Es-Nicht";
+          wzRecordingLive = {active: true, pausiert: false, count: 0, events: []};
+          wzWatchRecording();
           return true;
         }""")
         pruefe(gezaehlt, "der Waechter liess sich nicht anwerfen")
@@ -242,13 +242,13 @@ def lauf():
         pruefe(waehrend == 0,
                f"der Waechter fragt waehrend der laufenden Aufnahme: {waehrend}x")
         # Endet sie, muss er sofort nachsehen — sonst faende er sie nie.
-        f.seite.evaluate("wzAufnahmeLive = {aktiv: false, pausiert: false, "
-                         "anzahl: 0, ereignisse: []}")
+        f.seite.evaluate("wzRecordingLive = {active: false, pausiert: false, "
+                         "count: 0, events: []}")
         f.seite.wait_for_timeout(2400)
         danach = f.seite.evaluate("window.__liste")
         pruefe(danach > 0, "nach dem Ende der Aufnahme fragt der Waechter gar nicht")
-        f.seite.evaluate("wzAufnahmeGestartet = false; ++wzAufnahmePoll; "
-                         "++wzAufnahmeLivePoll;")
+        f.seite.evaluate("wzRecordingStarted = false; ++wzRecordingPoll; "
+                         "++wzRecordingLivePoll;")
 
         fehler.extend(f.fehler)
     return fehler

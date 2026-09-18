@@ -69,7 +69,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         # Bestätigungs-Punkt einmal für alle abfragen
         confirm_point_id, confirm_delay = ask_confirm_click(
             state, state.config.scan_confirm_delay,
-            frage="  Bestätigungs-Punkt-ID für alle (Enter = keiner): ")
+            prompt="  Bestätigungs-Punkt-ID für alle (Enter = keiner): ")
 
         created_count = 0
         for slot_idx in range(start_slot - 1, end_slot):
@@ -210,7 +210,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
     confirmation = ask_confirm_click(
         state, state.config.scan_confirm_delay,
-        frage="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
+        prompt="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
     if confirmation is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()

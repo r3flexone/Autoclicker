@@ -30,14 +30,14 @@
       <span class="titel">SEQUENZ-STUDIO</span>
     </div>
     <div class="tabs">
-      <button class="tab an" data-ansicht="editor">Editor</button>
-      <button class="tab" data-ansicht="sequences">Sequenzen</button>
-      <button class="tab" data-ansicht="lauf">Live-Run</button>
-      <button class="tab" data-ansicht="scans">Scans</button>
-      <button class="tab" data-ansicht="teilen">Teilen</button>
-      <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
-      <button class="tab" data-ansicht="bericht">Bericht</button>
-      <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
+      <button class="tab an" data-view="editor">Editor</button>
+      <button class="tab" data-view="sequences">Sequenzen</button>
+      <button class="tab" data-view="lauf">Live-Run</button>
+      <button class="tab" data-view="scans">Scans</button>
+      <button class="tab" data-view="teilen">Teilen</button>
+      <button class="tab" data-view="werkzeuge">Werkzeuge</button>
+      <button class="tab" data-view="bericht">Bericht</button>
+      <button class="tab" data-view="einstellungen">Einstellungen</button>
     </div>
     <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
          Auswahl ueberall, ohne Ausnahme. Sie war frueher mit dem Rest
@@ -132,7 +132,7 @@
   </div>
 
   <!-- Die beiden anderen Ansichten. Sie liegen im Dokument statt gebaut zu
-       werden, damit `setzeAnsicht()` nur `hidden` umlegen muss: der Editor
+       werden, damit `setView()` nur `hidden` umlegen muss: der Editor
        behaelt so seinen DOM (und mit ihm Scrollstand und Tippfokus), waehrend
        man drueben nachsieht, was gerade laeuft. -->
   <div class="karten" id="sicht-sequenzen" hidden></div>
@@ -149,16 +149,16 @@
            es geht, ist aber ein Rechteck auf einem Bild — sie gehoert dorthin,
            wo das Bild steht.
 
-           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanArt`) wie
-           `ansicht` und `scanListe`: er aendert nichts an den Daten. Die Buehne
+           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanKind`) wie
+           `view` und `scanList`: er aendert nichts an den Daten. Die Buehne
            (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
            dasselbe Bild, nur eine andere Frage daran. -->
       <div class="abschnitt" id="ab-scanart">
         <span class="ueberschrift">SCAN-ART</span>
         <div class="segment" id="scan-art">
-          <button data-scan-art="item">Items</button>
-          <button data-scan-art="boss">Bosse</button>
-          <button data-scan-art="icon">Icons</button>
+          <button data-scan-kind="item">Items</button>
+          <button data-scan-kind="boss">Bosse</button>
+          <button data-scan-kind="icon">Icons</button>
         </div>
         <!-- Kein Info-i: Das Speicherziel ist vor jeder Aufnahme notwendiger
              Kontext und muss deshalb ohne weiteren Klick sichtbar sein. -->

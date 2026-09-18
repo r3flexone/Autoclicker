@@ -789,8 +789,8 @@ _SCAN_FIELDS = (
 
 def _scan_without_name(step: SequenceStep) -> "str | None":
     """Beschriftung der Scan-Art, wenn deren Name gesetzt aber leer ist."""
-    for feld, beschriftung in _SCAN_FIELDS:
-        value = getattr(step, feld, None)
+    for field, beschriftung in _SCAN_FIELDS:
+        value = getattr(step, field, None)
         if value is not None and not str(value).strip():
             return beschriftung
     return None

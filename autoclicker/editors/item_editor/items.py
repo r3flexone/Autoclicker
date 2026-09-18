@@ -109,7 +109,7 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
 
     print("\n  Bestätigungs-Punkt? (z.B. für Popup-Bestätigung)")
     confirm_point_id, confirm_delay = ask_confirm_click(
-        state, CONFIG.scan_confirm_delay, frage="  Punkt-ID (Enter = keiner): ")
+        state, CONFIG.scan_confirm_delay, prompt="  Punkt-ID (Enter = keiner): ")
 
     return ItemProfile(
         name=item_name,
@@ -197,7 +197,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
             print("  Neuer Bestätigungs-Punkt?")
             new_confirm_id, new_confirm_delay = ask_confirm_click(
                 state, new_confirm_delay,
-                frage="  Punkt-ID (Enter = entfernen): ")
+                prompt="  Punkt-ID (Enter = entfernen): ")
             print("  -> Bestätigung gesetzt" if new_confirm_id is not None
                   else "  -> Bestätigung entfernt")
 

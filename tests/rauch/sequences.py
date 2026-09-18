@@ -195,7 +195,7 @@ def lauf():
 
         # **Der offene Reiter folgt dem Wechsel.** Scans, Teilen und Werkzeuge
         # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den
-        # `zeichne()` nicht anfasst — ohne das Nachziehen stuenden dort die
+        # `render()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
         f.reiter("werkzeuge")
         f.klick_text("#wz-links button", "Punkte nachklicken")

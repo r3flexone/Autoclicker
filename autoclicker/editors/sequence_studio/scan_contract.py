@@ -44,7 +44,7 @@ ART_ICON_SCAN = "icon_scan"
 ART_BIBLIOTHEK = "bibliothek"
 
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
-# Oberflächenzustand (`scanArt` in app.js) — die Brücke bekommt bei jedem Befehl
+# Oberflächenzustand (`scanKind` in app.js) — die Brücke bekommt bei jedem Befehl
 # gesagt, worauf er wirkt, statt sich eine vierte Wahrheit zu merken.
 SCAN_KINDS = ("item", "boss", "icon")
 
@@ -93,12 +93,12 @@ def referenzen_umbenennen(board, kind: str, old: str, new: str) -> int:
     getroffen = 0
     for lane in getattr(board, "lanes", []):
         for step in lane.steps:
-            for feld in felder:
-                if getattr(step, feld, None) != old:
+            for field in felder:
+                if getattr(step, field, None) != old:
                     continue
-                setattr(step, feld, new)
+                setattr(step, field, new)
                 getroffen += 1
-                vorsatz = _REF_VORSATZ[feld]
+                vorsatz = _REF_VORSATZ[field]
                 if step.name == f"{vorsatz}{old}":
                     step.name = f"{vorsatz}{new}"
     return getroffen

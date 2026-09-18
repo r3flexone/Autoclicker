@@ -44,7 +44,7 @@ def _click_reference(data: dict, wo: str, was_tun: str):
     return data.get("action_point_id")
 
 
-def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
+def _legacy_reported(wo: str, field: str, was_tun: str) -> None:
     """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
 
     Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
@@ -53,11 +53,11 @@ def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
     verschwinden darf es trotzdem nicht.
     """
     from ..utils import hint, warn
-    key_name = f"{wo}:{feld}"
+    key_name = f"{wo}:{field}"
     if key_name in _ALT_GEMELDET:
         return
     _ALT_GEMELDET.add(key_name)
-    print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
+    print(warn(f"{wo}: '{field}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
                f"in sequence.json."))
     print(hint(f"       {was_tun}."))
 

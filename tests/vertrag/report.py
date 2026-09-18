@@ -204,7 +204,7 @@ finally:
 
 section("Bericht: der achte Reiter ist verdrahtet und symmetrisch")
 
-check("die Seite hat einen Reiter dafuer", 'data-ansicht="bericht"' in _web)
+check("die Seite hat einen Reiter dafuer", 'data-view="bericht"' in _web)
 check("und einen Behaelter in derselben Dreiteilung",
       'id="sicht-bericht"' in _web and 'id="ber-mitte"' in _web)
 
@@ -212,7 +212,7 @@ check("und einen Behaelter in derselben Dreiteilung",
 # `hidden`-Zeile ist ein Reiter, der sich nicht oeffnet — und der Fehler faellt
 # erst beim Klicken auf. Beide Richtungen: kein Knopf ohne Zeile, keine Zeile
 # ohne Knopf.
-_knoepfe = set(re.findall(r'data-ansicht="(\w+)"', _web))
+_knoepfe = set(re.findall(r'data-view="(\w+)"', _web))
 # Gemerkt wird der ANSICHTSNAME, nicht die Element-Id: die beiden sind nicht
 # ueberall gleich (der Reiter „einstellungen" wohnt in `sicht-config`), und ein
 # Test auf die Id meldete genau diesen Reiter als nicht verdrahtet.
@@ -236,11 +236,11 @@ check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
 # **Symmetrie:** der Reiter baut mit dem, was da ist. Die Kennzahlen sind
 # dieselben Kacheln wie im Werkzeuge-Reiter, die Karten dieselben wie im Teilen-
 # Reiter — und jede eigene Klasse, die er trotzdem braucht, ist definiert.
-_bericht_js = _web[_web.index("async function zeichneBericht"):
+_bericht_js = _web[_web.index("async function renderReport"):
                    _web.index("/* ----------------------------------------------------- "
                               "Ansicht: Einstellungen */")]
 check("die Kennzahlen sind dieselben Kacheln wie im Werkzeuge-Reiter",
-      "wz-kennzahlen" in _bericht_js and "wzKennzahl(" in _bericht_js)
+      "wz-kennzahlen" in _bericht_js and "wzMetric(" in _bericht_js)
 check("und die Karten dieselben wie im Teilen-Reiter",
       "teilen-karte" in _bericht_js)
 # Dieselbe Pruefung wie bei den `--slot-*`-Variablen: eine benutzte Klasse, die
@@ -259,11 +259,11 @@ if _ohne_css:
     print("        ohne CSS: " + ", ".join(_ohne_css))
 
 # Der Reiter fragt nur — er aendert die Sequenz nicht und darf deshalb nie
-# ueber `ruf()` laufen: eine Antwort von hier als Momentaufnahme zu behandeln
+# ueber `call()` laufen: eine Antwort von hier als Momentaufnahme zu behandeln
 # zerschoesse den Editor-Zustand.
 check("der Reiter geht ueber den fragenden Kanal",
-      'frage("report_data"' in _bericht_js)
-check("und nicht ueber den befehlenden", 'ruf("report_data"' not in _web)
+      'ask("report_data"' in _bericht_js)
+check("und nicht ueber den befehlenden", 'call("report_data"' not in _web)
 
 import shutil as _sh  # noqa: E402
 _sh.rmtree(_sand, ignore_errors=True)

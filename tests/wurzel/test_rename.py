@@ -103,7 +103,7 @@ class JavascriptRenameTest(unittest.TestCase):
         js = (REPO / "autoclicker/editors/sequence_studio/web/app.js").read_text(encoding="utf-8")
         renamer = Renamer({"gibt_es_nicht_xyz": "nope"})
         self.assertEqual(renamer.javascript(js), js)
-        self.assertIn("zeichne", renamer.seen)
+        self.assertIn("render", renamer.seen)
         self.assertNotIn("Studio", renamer.seen)      # steht nur in Strings/Kommentaren …
         self.assertGreater(len(renamer.seen), 500)
 

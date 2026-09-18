@@ -365,7 +365,7 @@ def _new_item_from_template(state: AutoClickerState, user_input: str,
 
     confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
-        frage="  Bestätigungs-Punkt-ID (Enter = keiner): ")
+        prompt="  Bestätigungs-Punkt-ID (Enter = keiner): ")
 
     new_item = ItemProfile(
         name=item_name, marker_colors=[], category=category, priority=priority,

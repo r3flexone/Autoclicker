@@ -305,7 +305,7 @@ class ScanCaptureMixin:
         Titel ist dann dreimal derselbe, unterscheidbar sind sie nur an der
         Lage — die steht deshalb mit dabei und die Liste ist danach sortiert.
 
-        `frage()` und nicht `ruf()`: es ändert nichts, es beantwortet nur etwas.
+        `ask()` und nicht `call()`: es ändert nichts, es beantwortet nur etwas.
         """
         try:
             from ...winapi import list_windows

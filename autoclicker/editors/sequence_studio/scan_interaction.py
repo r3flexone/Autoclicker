@@ -3,7 +3,7 @@
 from typing import Optional
 
 from ...models import ItemSlot
-from .model import hexfarbe, rgbwert
+from .model import hex_color, rgbwert
 from .scan_contract import (
     ART_ITEM,
     ART_SCAN,
@@ -176,7 +176,7 @@ class ScanInteractionMixin:
         self._auswahl = [name]
         self._add_to_scan(ART_SLOT, name)
         self._tool_done()
-        gemessen = f" · Hintergrund {hexfarbe(color)}" if color else ""
+        gemessen = f" · Hintergrund {hex_color(color)}" if color else ""
         return self._scan_changed(
             f"{name}: {x2 - x1}×{y2 - y1} px{gemessen}")
 
@@ -214,7 +214,7 @@ class ScanInteractionMixin:
             return self._scan_report(f"Erkennung fehlgeschlagen: {fehler}", "err")
         if not rechtecke:
             return self._scan_report(
-                f"Nichts gefunden zu {hexfarbe(color)} — auf eine LEERE Stelle im "
+                f"Nichts gefunden zu {hex_color(color)} — auf eine LEERE Stelle im "
                 "Slot klicken, nicht auf ein Item.", "warn")
 
         self._remember("Slots gesucht")
@@ -266,7 +266,7 @@ class ScanInteractionMixin:
             parts.append(f"{dazu} schon vorhandene in den Scan aufgenommen")
         if schon:
             parts.append(f"{schon} war(en) schon dabei")
-        return self._scan_changed(f"{', '.join(parts)} · Hintergrund {hexfarbe(color)}"
+        return self._scan_changed(f"{', '.join(parts)} · Hintergrund {hex_color(color)}"
                                     f"{self._inset_hint()}"
                                     f"{self._detect_immediately()}")
 
@@ -415,7 +415,7 @@ class ScanInteractionMixin:
         self._remember("Hintergrundfarbe gemessen")
         slot.slot_color = color
         self._tool_done()
-        return self._scan_changed(f"{slot.name}: Hintergrund {hexfarbe(color)}")
+        return self._scan_changed(f"{slot.name}: Hintergrund {hex_color(color)}")
 
     def _click_clickpoint(self, x: int, y: int) -> dict:
         slot = self._selected_slot()
@@ -555,7 +555,7 @@ class ScanInteractionMixin:
     def scan_slot_set(self, data: dict) -> dict:
         """Ein Feld eines Slots setzen — Aktiv, Name, Region, Klickpunkt, Farbe."""
         name = str((data or {}).get("name") or "")
-        feld = str((data or {}).get("feld") or "")
+        field = str((data or {}).get("field") or "")
         value = (data or {}).get("value")
         slot = self.slots.get(name)
         if slot is None:
@@ -566,9 +566,9 @@ class ScanInteractionMixin:
         # einen Schritt auf den Stapel, der nichts zurückzunehmen hat — und
         # STRG+Z täte einmal scheinbar gar nichts. Ein Rückgängig, dem man nicht
         # trauen kann, ist kaum besser als keins.
-        if feld == "name":
+        if field == "name":
             return self._slot_rename(slot, str(value or "").strip())
-        if feld == "active":
+        if field == "active":
             new = bool(value)
             if slot.enabled == new:
                 return self.scan_data()
@@ -576,22 +576,22 @@ class ScanInteractionMixin:
             slot.enabled = new
             return self._scan_changed(
                 f"{slot.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
-        if feld == "color":
+        if field == "color":
             self._remember(f"'{name}': Hintergrundfarbe")
             slot.slot_color = rgbwert(value)
             return self._scan_changed(f"{slot.name}: Hintergrund {value or 'entfernt'}")
-        if feld in ("x1", "y1", "x2", "y2"):
+        if field in ("x1", "y1", "x2", "y2"):
             self._remember(f"'{name}': Fläche")
             values = list(slot.scan_region)
-            values[("x1", "y1", "x2", "y2").index(feld)] = int(value or 0)
+            values[("x1", "y1", "x2", "y2").index(field)] = int(value or 0)
             slot.scan_region = normalize_region(*values)
             return self._scan_changed()
-        if feld in ("kx", "ky"):
+        if field in ("kx", "ky"):
             self._remember(f"'{name}': Klickpunkt")
             kx, ky = slot.click_pos
-            slot.click_pos = (int(value or 0), ky) if feld == "kx" else (kx, int(value or 0))
+            slot.click_pos = (int(value or 0), ky) if field == "kx" else (kx, int(value or 0))
             return self._scan_changed()
-        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
     def _slot_rename(self, slot: ItemSlot, new: str) -> dict:
         """Umbenennen heisst hier: die Referenz in jedem Scan mitziehen.

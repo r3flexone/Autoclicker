@@ -230,10 +230,10 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
             for i, step in enumerate(steps, 1):
                 if step.point_id is not None and step.point_id not in punkt_ids:
                     tote_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
-                for feld, names in bekannt.items():
-                    verweis = getattr(step, feld, None)
+                for attr, names in bekannt.items():
+                    verweis = getattr(step, attr, None)
                     if verweis and verweis not in names:
-                        tote_scans.append(f"{phase}[{i}] → {feld} '{verweis}'")
+                        tote_scans.append(f"{phase}[{i}] → {attr} '{verweis}'")
 
         for entry in _truncated(tote_refs):
             report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
@@ -289,14 +289,14 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
     print(col("  SETUP-PRÜFUNG", "bold"))
     print(col("=" * 60, "cyan"))
 
-    for ueberschrift, liste, stil in (
+    for heading, liste, stil in (
         (f"{len(report.errors)} Fehler — so läuft es nicht:", report.errors, err),
         (f"{len(report.hints)} Hinweis(e) — läuft, ist aber evtl. nicht gewollt:",
          report.hints, warn),
     ):
         if not liste:
             continue
-        print(f"\n{stil(ueberschrift)}")
+        print(f"\n{stil(heading)}")
         for b in liste:
             print(f"  {col(b.area, 'cyan')}: {b.text}")
             if b.tip:

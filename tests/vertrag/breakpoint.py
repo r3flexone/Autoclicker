@@ -220,21 +220,21 @@ _schritt = _STEP(x=5, y=6, delay_before=0, name="Bank", point_id=1)
 _seq = _SEQ(name="H", loop_phases=[_PHASE(name="Loop", repeat=1, steps=[_schritt])])
 _b = _SB(_seq, Path("sequences/H.json"), "sequences")
 _b.select({"phase": 1, "row": 0})
-_b.block_set({"feld": "breakpoint", "value": True})
+_b.block_set({"field": "breakpoint", "value": True})
 _karte = _b.snapshot()["phases"][1]["blocks"][0]
 check("der Schalter setzt das Feld am Schritt", _schritt.breakpoint is True)
 check("die Karte traegt die Marke", _karte.get("breakpoint") is True)
 check("der Inspektor zeigt den Zustand", _b.snapshot()["block"]["breakpoint"] is True)
 check("und das Speichern nimmt ihn mit",
       _b2s(_b.board).loop_phases[0].steps[0].breakpoint is True)
-_b.block_set({"feld": "breakpoint", "value": False})
+_b.block_set({"field": "breakpoint", "value": False})
 check("der Schalter nimmt ihn auch wieder weg", _schritt.breakpoint is False)
 
 # Die Seite ruft genau dieses Feld — sonst stuende ein Schalter da, der nichts tut.
 _web = (Path(__file__).resolve().parents[2] / "autoclicker" / "editors"
         / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
 check("der Inspektor schaltet ueber block_set/breakpoint",
-      '{feld: "breakpoint", value: an}' in _web)
+      '{field: "breakpoint", value: an}' in _web)
 check("die Karte zeigt die Marke", "block.breakpoint" in _web)
 check("die Tafel im Live-Run kennt den Haltepunkt und 'ab hier schrittweise'",
       "m.breakpoint" in _web and '"step"' in _web)

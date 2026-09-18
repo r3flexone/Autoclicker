@@ -79,9 +79,9 @@ class EditorPersistenzTest(unittest.TestCase):
 
     def test_edit_fragt_vor_namenskollision(self):
         with patch.object(editor, "edit_item", return_value=ItemProfile("B")), \
-                patch.object(editor, "confirm", return_value=False) as frage:
+                patch.object(editor, "confirm", return_value=False) as ask:
             editor._handle_edit(self.state, "edit 1")
-        frage.assert_called_once()
+        ask.assert_called_once()
         self.assertEqual(list(self.state.global_items), ["A", "B"])
         self.assertEqual(self.state.global_items["B"].priority, 1)
 
@@ -180,7 +180,7 @@ class EditorPersistenzTest(unittest.TestCase):
         bridge.boss_scan_new({"name": "Bibliothek"})
         self.assertEqual(bridge.boss_scans, {})
         bridge.boss_scan_new({"name": "Erlaubt"})
-        bridge.boss_scan_set({"feld": "name", "value": "bibliothek!"})
+        bridge.boss_scan_set({"field": "name", "value": "bibliothek!"})
         self.assertEqual(list(bridge.boss_scans), ["Erlaubt"])
 
     def test_reservierter_bossname_ueberschreibt_keine_bibliothek(self):

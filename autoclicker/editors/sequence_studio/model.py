@@ -67,7 +67,7 @@ BLOCK_COLORS = {
 }
 
 
-def hexfarbe(rgb) -> Optional[str]:
+def hex_color(rgb) -> Optional[str]:
     """(r,g,b) -> '#RRGGBB'. Unbrauchbare Werte ergeben None statt einer Falschfarbe.
 
     Steht hier und nicht in `bridge.py`, weil der Scans-Reiter sie genauso

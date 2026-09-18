@@ -31,7 +31,7 @@ class BridgeServicesMixin:
     def sequence_list(self, data: Optional[dict] = None) -> list[dict]:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
 
-        Keine Momentaufnahme — deshalb über `frage()` zu holen, sonst zerschösse die
+        Keine Momentaufnahme — deshalb über `ask()` zu holen, sonst zerschösse die
         Antwort den Editor-Zustand. Über `load_sequence_file()`, damit Migration und
         Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
@@ -61,7 +61,7 @@ class BridgeServicesMixin:
                 "name": seq.name,
                 "file": str(path),
                 "defekt": False,
-                "beschreibung": seq.description,
+                "description": seq.description,
                 "cycles": seq.total_cycles,
                 "init": len(seq.init_steps),
                 "end": len(seq.end_steps),
@@ -200,7 +200,7 @@ class BridgeServicesMixin:
     def run_status(self, data: Optional[dict] = None) -> dict:
         """Was gerade läuft — gelesen aus der Statusdatei des Hauptprozesses.
 
-        Der zweite `frage()`-Kanal, und nie ein Fehler: dass nichts läuft, ist der
+        Der zweite `ask()`-Kanal, und nie ein Fehler: dass nichts läuft, ist der
         Normalfall. Die Datei ist der gemeinsame Nenner zwischen beiden Prozessen.
         """
         import json
@@ -276,7 +276,7 @@ class BridgeServicesMixin:
         except OSError:
             pass
         if not send_command("aufnahme", name=sicher, cycles=cycles,
-                     description=str(data.get("beschreibung") or "").strip()):
+                     description=str(data.get("description") or "").strip()):
             return {"ok": False, "message": "Aufnahme konnte nicht gestartet werden."}
         return {"ok": True, "name": sicher,
                 "message": "Aufnahme startet — jetzt ins Spiel wechseln."}
@@ -426,7 +426,7 @@ class BridgeServicesMixin:
     def config_read(self, data: Optional[dict] = None) -> dict:
         """Werte, Standardwerte, Abschnitte und Beschreibungen in einem Rutsch.
 
-        Der dritte `frage()`-Kanal. Der Pfad steht absolut dabei: `config.json` liegt
+        Der dritte `ask()`-Kanal. Der Pfad steht absolut dabei: `config.json` liegt
         relativ zum Arbeitsverzeichnis, und welche Datei gemeint ist, darf man nicht
         raten müssen.
         """
@@ -692,15 +692,15 @@ class BridgeServicesMixin:
 
     def sequence_set(self, data: dict) -> dict:
         """Name, Zyklen oder Beschreibung der Sequenz ändern."""
-        feld, value = (data or {}).get("feld"), (data or {}).get("value")
-        if feld == "name":
+        field, value = (data or {}).get("field"), (data or {}).get("value")
+        if field == "name":
             self.board.name = str(value or "")
-        elif feld == "cycles":
+        elif field == "cycles":
             self.board.total_cycles = max(0, int(value or 0))
-        elif feld == "beschreibung":
+        elif field == "description":
             self.board.description = str(value or "")
         else:
-            return self._report(f"Unbekanntes Feld '{feld}'.", "err")
+            return self._report(f"Unbekanntes Feld '{field}'.", "err")
         return self._changed()
 
     def _scan_without_name(self) -> Optional[str]:

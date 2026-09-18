@@ -55,17 +55,17 @@ class BridgeEditingMixin:
         lane = self._lane(data.get("phase"))
         if lane is None:
             return self._report("Phase nicht gefunden.", "err")
-        feld, value = data.get("feld"), data.get("value")
-        if feld == "name":
+        field, value = data.get("field"), data.get("value")
+        if field == "name":
             # Nur Loop-Phasen tragen einen Namen: INIT und END heissen in der Datei
             # gar nicht, `board_to_sequence()` wirft ihren Namen weg. Eine Umbenennung
             # dort anzunehmen hiesse, sie beim nächsten Öffnen still zu verlieren.
             if lane.kind != LANE_LOOP:
                 return self._report("INIT und END tragen keinen eigenen Namen.", "warn")
             lane.name = str(value or "").strip() or lane.name
-        elif feld == "wiederholungen":
+        elif field == "wiederholungen":
             lane.repeat = max(1, int(value or 1))
-        elif feld == "start":
+        elif field == "start":
             raw = str(value or "").strip()
             if not raw:
                 lane.scheduled_start = None
@@ -78,7 +78,7 @@ class BridgeEditingMixin:
                     return self._report(f"Startzeit '{raw}' ausserhalb 00:00–23:59.", "warn")
                 lane.scheduled_start = f"{hh:02d}:{mm:02d}"
         else:
-            return self._report(f"Unbekanntes Feld '{feld}'.", "err")
+            return self._report(f"Unbekanntes Feld '{field}'.", "err")
         return self._changed()
 
     def phase_scale(self, data: dict) -> dict:
@@ -173,18 +173,18 @@ class BridgeEditingMixin:
         """Setzt ein gemeinsames Feld auf allen gewählten Blöcken."""
         data = data or {}
         lane = self.sel_lane
-        feld = data.get("feld")
+        field = data.get("field")
         if lane is None or not self.sel_rows:
             return self._report("Keine Blöcke ausgewählt.", "warn")
-        if feld not in ("delay_before", "delay_max"):
-            return self._report(f"'{feld}' lässt sich nicht gesammelt setzen.", "warn")
+        if field not in ("delay_before", "delay_max"):
+            return self._report(f"'{field}' lässt sich nicht gesammelt setzen.", "warn")
         try:
-            value = _FELDER[feld](data.get("value"))
+            value = _FELDER[field](data.get("value"))
         except (TypeError, ValueError):
             return self._report("Die Wartezeit muss eine Zahl sein.", "warn")
         rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
         for row in rows:
-            setattr(lane.steps[row], feld, value)
+            setattr(lane.steps[row], field, value)
         return self._changed(
             f"Wartezeit für {_bloecke(len(rows))} gemeinsam gesetzt.")
 
@@ -303,8 +303,8 @@ class BridgeEditingMixin:
             return abbildung[alt_id]
 
         step.point_id = neu_fuer(step.point_id)
-        for feld in self._REF_FELDER:
-            bedingung = getattr(step, feld, None)
+        for field in self._REF_FELDER:
+            bedingung = getattr(step, field, None)
             if bedingung is not None and getattr(bedingung, "point_id", None) is not None:
                 bedingung.point_id = neu_fuer(bedingung.point_id)
 
@@ -408,17 +408,17 @@ class BridgeEditingMixin:
     def block_set(self, data: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
         data = data or {}
-        feld, value = data.get("feld"), data.get("value")
+        field, value = data.get("field"), data.get("value")
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        wandeln = _FELDER.get(feld)
+        wandeln = _FELDER.get(field)
         if wandeln is None:
-            return self._report(f"Unbekanntes Feld '{feld}'.", "err")
+            return self._report(f"Unbekanntes Feld '{field}'.", "err")
         try:
-            setattr(step, feld, wandeln(value))
+            setattr(step, field, wandeln(value))
         except (TypeError, ValueError):
-            return self._report(f"'{value}' passt nicht zu {feld}.", "warn")
+            return self._report(f"'{value}' passt nicht zu {field}.", "warn")
         return self._changed()
 
     def block_area(self, data: dict) -> dict:
@@ -526,8 +526,8 @@ class BridgeEditingMixin:
         if step.point_id is not None:
             # Vorhandenen Punkt verschieben: dieselbe Regel wie beim Tippen der
             # Zahlen — der Punkt gehört nicht diesem Block allein.
-            self.point_set({"point": step.point_id, "feld": "x", "value": x})
-            self.point_set({"point": step.point_id, "feld": "y", "value": y})
+            self.point_set({"point": step.point_id, "field": "x", "value": x})
+            self.point_set({"point": step.point_id, "field": "y", "value": y})
         else:
             self.point_create({"x": x, "y": y})
 
@@ -612,14 +612,14 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        feld = "verify_condition" if data.get("welche") == "verify" else "wait_condition"
-        return self._trigger_set(step, feld, data)
+        field = "verify_condition" if data.get("welche") == "verify" else "wait_condition"
+        return self._trigger_set(step, field, data)
 
-    def _trigger_set(self, step: SequenceStep, feld: str, data: dict) -> dict:
+    def _trigger_set(self, step: SequenceStep, field: str, data: dict) -> dict:
         wahl = data.get("wahl")
-        cond: Optional[WaitCondition] = getattr(step, feld)
+        cond: Optional[WaitCondition] = getattr(step, field)
         if wahl == TRIGGER_KEIN:
-            setattr(step, feld, None)
+            setattr(step, field, None)
             weg = self._else_cleanup(step)
             return self._changed(weg, "warn" if weg else "ok")
         if cond is None:
@@ -630,7 +630,7 @@ class BridgeEditingMixin:
                     "Ohne Punkt gibt es nichts zu prüfen — erst einen wählen.", "warn")
             cond = WaitCondition(point_id=point.id, pixel=(point.x, point.y),
                                  color=tuple(point.color) if point.color else (0, 0, 0))
-            setattr(step, feld, cond)
+            setattr(step, field, cond)
         if wahl in (TRIGGER_DA, TRIGGER_WEG):
             cond.until_gone = (wahl == TRIGGER_WEG)
         if "pruefen" in data:
@@ -683,10 +683,10 @@ class BridgeEditingMixin:
         point = self._point(data.get("point"))
         if point is None:
             return self._report("Punkt nicht gefunden.", "warn")
-        feld, value = data.get("feld"), data.get("value")
+        field, value = data.get("field"), data.get("value")
         try:
-            if feld in ("x", "y"):
-                setattr(point, feld, int(value))
+            if field in ("x", "y"):
+                setattr(point, field, int(value))
                 self._points_apply()
                 # Wer SONST noch mitgezogen ist, steht in der Meldung — der
                 # Inspektor zeigt nur den einen Block, an dem man gerade sitzt,
@@ -694,15 +694,15 @@ class BridgeEditingMixin:
                 _lane, _row, selected = self._single()
                 return self._changed(f"Punkt #{point.id} verschoben"
                                        + self._moved_along(point.id, ausser=selected))
-            elif feld == "name":
+            elif field == "name":
                 point.name = str(value or "")
-            elif feld == "color":
+            elif field == "color":
                 # Die Farbe ist das, was ein Farb-Trigger prueft — sie von Hand zu
                 # setzen ist deshalb eine echte Aenderung am Verhalten, nicht bloss
                 # Anzeige. Leer heisst „keine gemessene Farbe", nicht Schwarz.
                 point.color = _rgb(value)
             else:
-                return self._report(f"Unbekanntes Feld '{feld}'.", "err")
+                return self._report(f"Unbekanntes Feld '{field}'.", "err")
         except (TypeError, ValueError):
             return self._report(f"'{value}' ist keine Zahl.", "warn")
         self._points_apply()

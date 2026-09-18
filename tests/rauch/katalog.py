@@ -108,11 +108,11 @@ def lauf():
         # Logik-Test nicht sehen kann.
         f.klick_text("#scan-insp .tabs button", "Scans")
         f.klick("#scan-insp .scan-maske")
-        schalter = f.seite.locator("#scan-insp label", has_text="Item-Katalog benutzen")
-        pruefe(schalter.count() == 1,
+        toggle = f.seite.locator("#scan-insp label", has_text="Item-Katalog benutzen")
+        pruefe(toggle.count() == 1,
                "der Katalog-Schalter fehlt in den Scan-Einstellungen")
         f.image("katalog_schalter")
-        schalter.locator("input").click()
+        toggle.locator("input").click()
         f.ruhe()
         pruefe(b.scans["Inventar"].use_catalog is True,
                "der Klick auf den Schalter kam nicht in der Bruecke an")
@@ -149,11 +149,11 @@ def lauf():
         f.klick_text("#scan-insp .tabs button", "Items")
         # Gezielt die Gruppe „Helm" — `.first` traf die Gruppe „Ohne
         # Kategorie", die in der Liste zuerst steht.
-        feld = f.seite.locator('.scan-kategorie-kopf input[value="Helm"]')
-        pruefe(feld.count() == 1,
-               f"die Ueberschrift 'Helm' ist kein Feld ({feld.count()} Treffer)")
-        feld.fill("Kopfschutz")
-        feld.press("Enter")
+        field = f.seite.locator('.scan-kategorie-kopf input[value="Helm"]')
+        pruefe(field.count() == 1,
+               f"die Ueberschrift 'Helm' ist kein Feld ({field.count()} Treffer)")
+        field.fill("Kopfschutz")
+        field.press("Enter")
         f.ruhe()
         pruefe(b.items["Citadel Helmet"].category == "Kopfschutz"
                and b.items["Centaurs Helmet"].category == "Kopfschutz",
@@ -166,7 +166,7 @@ def lauf():
         # `M.as_dict()` das Feld nicht mitliefern, waere der Wert schlicht
         # `undefined`, die Seite liefe weiter und der Knopf fehlte — genau der
         # Fehler, den die Vertragssuite nicht sehen kann: dort steht
-        # `cfgAktion(` im Quelltext und ist trotzdem wirkungslos.
+        # `cfgAction(` im Quelltext und ist trotzdem wirkungslos.
         f.reiter("einstellungen")
         f.seite.fill("#cfg-suche", "Item-Katalog")
         f.ruhe()
@@ -300,7 +300,7 @@ def lauf():
         # `pointer-events:none` haette. Hier klickt Playwright wie ein Nutzer,
         # ohne laufenden Durchgang (der blockiert sonst den Pruefstand).
         f.seite.evaluate("window.__traf = false;"
-                         "arbeitZeigen('T', 'x', () => { window.__traf = true; });")
+                         "showWork('T', 'x', () => { window.__traf = true; });")
         f.ruhe()
         f.seite.click(".warte-kasten button")
         f.ruhe()
@@ -314,7 +314,7 @@ def lauf():
             "return b ? [b.disabled, b.textContent] : null; }")
         pruefe(quittung and quittung[0] is True and "Bricht ab" in quittung[1],
                f"der Abbrechen-Knopf quittiert den Klick nicht: {quittung}")
-        f.seite.evaluate("warteWeg()")
+        f.seite.evaluate("hideWait()")
         status = f.status()
         pruefe("abgebrochen" in status,
                f"die Statuszeile sagt nichts vom Abbruch: {status!r}")

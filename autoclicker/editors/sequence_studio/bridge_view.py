@@ -31,7 +31,7 @@ from ...persistence import (
 from .bridge_contract import (
     ELSE_AKTIONEN,
     SCAN_FELD,
-    SCAN_MODI,
+    SCAN_MODES,
     TYP_REIHENFOLGE,
     WARTE_TIMEOUT,
     _hex,
@@ -56,18 +56,18 @@ class BridgeViewMixin:
         """Der komplette Zustand als JSON-Werte — alles, was die Ansicht braucht.
 
         `data` wird nicht gelesen, muss aber dastehen: die Oberfläche ruft jede
-        Brücken-Methode über denselben Helfer (`ruf()`), und der reicht `null`
+        Brücken-Methode über denselben Helfer (`call()`), und der reicht `null`
         durch, wenn es nichts zu übergeben gibt. Ohne den Parameter scheitert der
         allererste Aufruf mit „takes 1 positional argument" — und weil das der
         Aufruf ist, der die Ansicht überhaupt erst füllt, bleibt das Fenster leer.
         """
         text, kind = self._status
-        frage, self._ask = self._ask, None
+        ask, self._ask = self._ask, None
         return {
             "file": str(self.filepath),
             "start_view": self.start_view,
             "name": self.board.name,
-            "beschreibung": self.board.description,
+            "description": self.board.description,
             "cycles": self.board.total_cycles,
             "dirty": self._dirty,
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
@@ -75,14 +75,14 @@ class BridgeViewMixin:
             # Zeitablauf der Bruecke laeuft.
             "wait_timeout": WARTE_TIMEOUT,
             "status": {"text": text, "kind": kind},
-            "frage": frage,
+            "question": ask,
             "sequences": sorted(name for name, _ in list_available_sequences()),
-            "scan_namen": self._scan_names(),
-            "typen": [{"key": t, "label": BLOCK_LABELS[t],
+            "scan_names": self._scan_names(),
+            "types": [{"key": t, "label": BLOCK_LABELS[t],
                        "color": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
-            "scan_modi": SCAN_MODI,
+            "scan_modes": SCAN_MODES,
             "else_actions": ELSE_AKTIONEN,
-            "ohne_else": self._without_else(),
+            "without_else": self._without_else(),
             "phases": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "points": [self._point_json(p) for p in self.points],
             "selection": self._selection_json(),
@@ -173,8 +173,8 @@ class BridgeViewMixin:
             if 0 <= row < len(self.sel_lane.steps)
         ]
 
-        def gemeinsam(feld: str):
-            values = [getattr(step, feld) for step in steps]
+        def gemeinsam(field: str):
+            values = [getattr(step, field) for step in steps]
             gemischt = bool(values) and any(value != values[0] for value in values[1:])
             return (None if gemischt or not values else values[0]), gemischt
 
@@ -193,7 +193,7 @@ class BridgeViewMixin:
         """Eine Karte im Board — knapp genug, dass 50 davon untereinander passen."""
         typ = block_type(step)
         wc = step.wait_condition
-        feld = SCAN_FELD.get(typ)
+        field = SCAN_FELD.get(typ)
         point = self._point(step.point_id)
         block = {
             "row": row,
@@ -222,7 +222,7 @@ class BridgeViewMixin:
             "else_greift": else_greift(step),
             # Ein Scan ohne Namen wird beim Speichern abgelehnt — die Karte sagt
             # das schon vorher, sonst sucht man den Block hinterher in vier Phasen.
-            "warnung": ("Name fehlt" if feld and not (getattr(step, feld) or "").strip()
+            "warnung": ("Name fehlt" if field and not (getattr(step, field) or "").strip()
                         else None),
         }
         return block

@@ -69,9 +69,9 @@ check("jedes Werkzeug hat ein eigenes Linien-Icon",
 check("Werkzeugkarten statt einfacher Textknöpfe",
       'class: "wz-nav "' in _app and ".wz-nav{" in _css)
 check("der Inhalt beginnt mit einem gestalteten Werkzeugkopf",
-      "function wzKopf(" in _app and ".wz-hero{" in _css)
+      "function wzHeader(" in _app and ".wz-hero{" in _css)
 check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
-      "function wzKennzahl(" in _app and ".wz-kennzahlen{" in _css
+      "function wzMetric(" in _app and ".wz-kennzahlen{" in _css
       and ".wz-erfolg{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
       'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
@@ -255,7 +255,7 @@ try:
     _bf.COMMAND_PATH = _P("befehl.json")
     check("der Studio-Knopf kann eine Aufnahme starten",
           _b.recording_start({"name": "Aufnahme UI", "cycles": 3,
-                               "beschreibung": "sichtbar"})["ok"])
+                               "description": "sichtbar"})["ok"])
     _auftrag = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
           _auftrag is not None and _auftrag["command"] == "aufnahme")
@@ -278,10 +278,10 @@ try:
     check("auch JavaScript baut dort kein Info-i mehr",
           "aufnahme-info" not in _js)
     check("der Editor-Knopf verweist auf das Werkzeug",
-          'wzOeffnen("aufnahme")' in _js)
+          'wzOpen("aufnahme")' in _js)
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
-          all(wort in _js for wort in ("wzAufnahmeStarten", "wzAufnahmeStoppen",
-                                       "wzAufnahmeBeobachten")))
+          all(wort in _js for wort in ("wzStartRecording", "wzStopRecording",
+                                       "wzWatchRecording")))
     from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
           _b.tool_data()["aufnahme_tasten"] ==
@@ -370,9 +370,9 @@ check("Mehrfachauswahl ist erreichbar und benannt",
 check("kein Auswahl-Kästchen auf der Karte — der Ring sagt es schon",
       "karte-auswahl" not in _app and "karte-auswahl" not in _css)
 check("Mehrfachauswahl hat gemeinsame Wartezeiten und den 0,5-s-Knopf",
-      'function zeichneSammelEditor' in _app and '[0, 0.5, 1]' in _app)
+      'function renderBulkEditor' in _app and '[0, 0.5, 1]' in _app)
 check("leere Start- und Abschlussphasen werden nur bei Bedarf eingeblendet",
-      'offeneSonderphasen' in _app and "+ Startphase" in _app
+      'openSpecialPhases' in _app and "+ Startphase" in _app
       and "+ Abschlussphase" in _app)
 check("der eindeutige Block-Test startet ohne zusätzlichen Browser-Dialog",
       'window.confirm("Diesen Block' not in _app)
@@ -380,12 +380,12 @@ check("unter den eindeutigen Aktionsknöpfen steht kein doppelter Erklärungstex
       "Zeigen setzt nur die Maus" not in _app)
 check("die Phasen-Skalierung ist am Knopf eindeutig benannt",
       "Wartezeiten ×" in _app and '"Zeit ×"' not in _app)
-_stelle_ui = _app[_app.index("function baueStelle"):
-                  _app.index("function setzeStelle")]
+_stelle_ui = _app[_app.index("function buildPosition"):
+                  _app.index("function setPosition")]
 check("die Anleitung zum Maus-Setzen steht nur im Info-Text",
       "Mit ‚Stelle mit der Maus setzen‘" in _stelle_ui
       and 'el("p", {class: "hinweis"},\n    "Danach:' not in _stelle_ui)
-_inspektor_ui = _app[_app.index("function zeichneInspektor"):
+_inspektor_ui = _app[_app.index("function renderInspector"):
                      _app.index("/* -------------------------------------------------------------------- Dialog")]
 # Offene Texte im Inspektor sind nur ZUSTAND, keine Bedienungsanleitung:
 # fehlender Punkt, fehlende Scan-Datei, Screenshot-Mass, fehlender Prüfpunkt,
@@ -707,12 +707,12 @@ for _text in _quellen_wt.values():
 
 check("der Test findet ueberhaupt wartende Methoden", len(_wartend) >= 5)
 
-_tabelle_wt = _appjs_wt[_appjs_wt.index("const WARTE_GRIFFE = {"):]
+_tabelle_wt = _appjs_wt[_appjs_wt.index("const WAIT_ACTIONS = {"):]
 _tabelle_wt = _tabelle_wt[:_tabelle_wt.index("};")]
 _genannt = set(_re_wt.findall(r"^\s*(\w+):\s*\[", _tabelle_wt, _re_wt.M))
 
 _fehlt = sorted(_wartend - _genannt)
-check("jede wartende Bruecken-Methode steht in WARTE_GRIFFE", _fehlt == [])
+check("jede wartende Bruecken-Methode steht in WAIT_ACTIONS", _fehlt == [])
 if _fehlt:
     print("        ohne Hinweis: " + ", ".join(_fehlt))
 
@@ -723,11 +723,11 @@ check("und kein Eintrag fuer etwas, das nicht wartet", _zuviel == [])
 if _zuviel:
     print("        wartet gar nicht: " + ", ".join(_zuviel))
 
-# Und die Seite muss sie auch WIRKLICH ueber mitWarten() rufen — ein Eintrag in
+# Und die Seite muss sie auch WIRKLICH ueber withWait() rufen — ein Eintrag in
 # der Tabelle allein zeigt noch keinen Kasten.
 for _m in sorted(_wartend):
-    _direkt = _re_wt.findall(r'(?:ruf|frage|rufWerkzeug)\("' + _m + r'"', _appjs_wt)
-    check(f"'{_m}' wird nur ueber mitWarten gerufen", not _direkt)
+    _direkt = _re_wt.findall(r'(?:call|ask|callTool)\("' + _m + r'"', _appjs_wt)
+    check(f"'{_m}' wird nur ueber withWait gerufen", not _direkt)
 
 # Die Zeitgrenze steht an EINER Stelle und wird mitgeliefert: ohne das liefe der
 # Countdown der Seite neben dem echten Zeitablauf der Bruecke.

@@ -39,7 +39,7 @@ from ...models import (
 )
 from ...utils import unique_name, sanitize_filename
 from ...persistence.boss_scans import boss_scan_name_allowed
-from .model import hexfarbe, rgbwert
+from .model import hex_color, rgbwert
 from .scan_contract import (
     ART_ITEM,
     referenzen_umbenennen,
@@ -223,7 +223,7 @@ class ScanDetectMixin:
                          for a in _BOSS_AKTIONEN],
                 "icon": [{"value": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
                          for a in _ICON_AKTIONEN],
-                "scan_modi": [{"value": w, "text": t} for w, t in _SCAN_MODI_TEXT],
+                "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODI_TEXT],
             },
             "bereit": self._ready(),
         }
@@ -249,7 +249,7 @@ class ScanDetectMixin:
             "template": b.template,
             "preview": self._template_url(b.template) if b.template else "",
             "konfidenz": b.min_confidence,
-            "marker": [hexfarbe(c) for c in b.marker_colors],
+            "marker": [hex_color(c) for c in b.marker_colors],
             "action": b.action,
             "scan": b.action_scan,
             "scan_modus": b.action_scan_mode,
@@ -271,7 +271,7 @@ class ScanDetectMixin:
             "template": cfg.template,
             "preview": self._template_url(cfg.template) if cfg.template else "",
             "konfidenz": cfg.min_confidence,
-            "marker": [hexfarbe(c) for c in cfg.marker_colors],
+            "marker": [hex_color(c) for c in cfg.marker_colors],
             "tolerance": cfg.color_tolerance,
             "action": cfg.action,
             "point_id": cfg.action_point_id,
@@ -357,35 +357,35 @@ class ScanDetectMixin:
         cfg = self.boss_scans.get(str(data.get("name") or self.boss_offen))
         if cfg is None:
             return self._scan_report("Kein Boss-Scan gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("value")
+        field, value = str(data.get("field") or ""), data.get("value")
 
-        if feld == "name":
+        if field == "name":
             return self._detection_rename(self.boss_scans, cfg, value, "Boss-Scan")
-        if feld == "region":
+        if field == "region":
             return self._region_set(cfg, value, f"Boss-Scan '{cfg.name}'")
-        if feld == "tolerance":
+        if field == "tolerance":
             number = self._integer(value)
             if number is None:
                 return self._scan_report("Die Farb-Toleranz muss eine Zahl sein.", "err")
             self._remember(f"'{cfg.name}': Farb-Toleranz")
             cfg.color_tolerance = max(0, number)
             return self._scan_changed()
-        if feld == "default_action":
+        if field == "default_action":
             if value not in VALID_BOSS_ACTIONS:
                 return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
             self._remember(f"'{cfg.name}': Fallback-Aktion")
             cfg.default_action = str(value)
             return self._scan_changed(
                 f"Ohne erkannten Boss: {ACTION_TEXT.get(cfg.default_action, cfg.default_action)}.")
-        if feld == "default_scan":
+        if field == "default_scan":
             self._remember(f"'{cfg.name}': Fallback-Scan")
             cfg.default_scan = str(value) or None
             return self._scan_changed()
-        if feld in ("use_llm", "llm_fallback", "use_ocr", "ocr_fallback"):
-            self._remember(f"'{cfg.name}': {feld}")
-            setattr(cfg, feld, bool(value))
+        if field in ("use_llm", "llm_fallback", "use_ocr", "ocr_fallback"):
+            self._remember(f"'{cfg.name}': {field}")
+            setattr(cfg, field, bool(value))
             return self._scan_changed(self._ways_text(cfg), "info")
-        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
     @staticmethod
     def _ways_text(cfg: BossScanConfig) -> str:
@@ -484,9 +484,9 @@ class ScanDetectMixin:
         boss = self._boss_find(name, aus_bibliothek)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("value")
+        field, value = str(data.get("field") or ""), data.get("value")
 
-        if feld == "name":
+        if field == "name":
             new = str(value or "").strip()
             if not new or new == boss.name:
                 return self.scan_data()
@@ -496,24 +496,24 @@ class ScanDetectMixin:
             boss.name = new
             self.boss_wahl = new
             return self._scan_changed(f"Boss heisst jetzt '{new}'.")
-        if feld == "action":
+        if field == "action":
             if value not in VALID_BOSS_ACTIONS:
                 return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
             self._remember(f"Boss '{boss.name}': Aktion")
             boss.action = str(value)
             return self._scan_changed(
                 f"Bei Treffer: {ACTION_TEXT.get(boss.action, boss.action)}.")
-        if feld == "scan":
+        if field == "scan":
             self._remember(f"Boss '{boss.name}': Item-Scan")
             boss.action_scan = str(value) or None
             return self._scan_changed()
-        if feld == "scan_modus":
+        if field == "scan_modus":
             if value not in VALID_SCAN_MODES:
                 return self._scan_report(f"Unbekannter Scan-Modus '{value}'.", "err")
             self._remember(f"Boss '{boss.name}': Scan-Modus")
             boss.action_scan_mode = str(value)
             return self._scan_changed()
-        return self._profile_field(boss, feld, value, f"Boss '{boss.name}'")
+        return self._profile_field(boss, field, value, f"Boss '{boss.name}'")
 
     def boss_delete(self, data: Optional[dict] = None) -> dict:
         """Entfernt einen Boss aus seinem Scan bzw. aus der Bibliothek."""
@@ -599,19 +599,19 @@ class ScanDetectMixin:
         cfg = self.icon_scans.get(str(data.get("name") or self.icon_offen))
         if cfg is None:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
-        feld, value = str(data.get("feld") or ""), data.get("value")
-        if feld == "name":
+        field, value = str(data.get("field") or ""), data.get("value")
+        if field == "name":
             return self._detection_rename(self.icon_scans, cfg, value, "Icon-Scan")
-        if feld == "region":
+        if field == "region":
             return self._region_set(cfg, value, f"Icon-Scan '{cfg.name}'")
-        if feld == "action":
+        if field == "action":
             if value not in VALID_ICON_ACTIONS:
                 return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
             self._remember(f"'{cfg.name}': Aktion")
             cfg.action = str(value)
             return self._scan_changed(
                 f"Bei Fund: {ACTION_TEXT.get(cfg.action, cfg.action)}.")
-        return self._profile_field(cfg, feld, value, f"Icon-Scan '{cfg.name}'")
+        return self._profile_field(cfg, field, value, f"Icon-Scan '{cfg.name}'")
 
     def icon_scan_delete(self, data: Optional[dict] = None) -> dict:
         self._scan_load()
@@ -627,54 +627,54 @@ class ScanDetectMixin:
 
     # ------------------------------------------------- Geteilte Feld-Setzer
 
-    def _profile_field(self, objekt, feld: str, value, wer: str) -> dict:
+    def _profile_field(self, objekt, field: str, value, wer: str) -> dict:
         """Die Felder, die Boss und Icon gemeinsam haben.
 
         Beide erkennen über Template **oder** Farb-Marker und handeln danach —
         das sind dieselben sechs Felder. Zwei Setzer dafür wären zwei Stellen,
         an denen eine Prüfung fehlen kann.
         """
-        if feld == "konfidenz":
+        if field == "konfidenz":
             number = self._decimal(value)
             if number is None or not 0 < number <= 1:
                 return self._scan_report("Konfidenz muss zwischen 0 und 1 liegen.", "err")
             self._remember(f"{wer}: Konfidenz")
             objekt.min_confidence = number
             return self._scan_changed()
-        if feld == "tolerance":
+        if field == "tolerance":
             number = self._integer(value)
             if number is None:
                 return self._scan_report("Die Toleranz muss eine ganze Zahl sein.", "err")
             self._remember(f"{wer}: Toleranz")
             objekt.color_tolerance = max(0, number)
             return self._scan_changed()
-        if feld == "template":
+        if field == "template":
             self._remember(f"{wer}: Vorlage")
             objekt.template = str(value) or None
             return self._scan_changed()
-        if feld == "marker":
+        if field == "marker":
             colors = [rgbwert(h) for h in (value or [])]
             self._remember(f"{wer}: Marker")
             objekt.marker_colors = [f for f in colors if f]
             return self._scan_changed(f"{len(objekt.marker_colors)} Marker-Farbe(n).")
-        if feld == "point":
+        if field == "point":
             point_id = self._integer(value)
             self._remember(f"{wer}: Klickpunkt")
             objekt.action_point_id = point_id
             self._action_point_apply(objekt)
             return self._scan_changed()
-        if feld == "taste":
+        if field == "taste":
             self._remember(f"{wer}: Taste")
             objekt.action_key = str(value) or None
             return self._scan_changed()
-        if feld == "delay":
+        if field == "delay":
             number = self._decimal(value)
             if number is None or number < 0:
                 return self._scan_report("Die Verzögerung muss eine Zahl ≥ 0 sein.", "err")
             self._remember(f"{wer}: Verzögerung")
             objekt.action_delay = number
             return self._scan_changed()
-        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
     def _action_point_apply(self, objekt) -> None:
         """Zieht `action_x/y` an der Referenz nach.
@@ -1136,7 +1136,7 @@ class ScanDetectMixin:
         for tolerance in range(cfg.color_tolerance + 4, 121, 4):
             found, total, noetig = self._marker_count(cfg, crop, tolerance)
             if total and found >= noetig:
-                return {"feld": "tolerance", "value": tolerance,
+                return {"field": "tolerance", "value": tolerance,
                         "text": f"Toleranz auf {tolerance} setzen"}
         return None
 

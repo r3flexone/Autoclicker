@@ -25,7 +25,7 @@ from ...models import (
     WaitCondition,
     block_type,
 )
-from .model import BLOCK_LABELS, SequenceBoard, hexfarbe, rgbwert
+from .model import BLOCK_LABELS, SequenceBoard, hex_color, rgbwert
 
 # Reihenfolge der Block-Typen in der Typ-Auswahl: erst die drei Klick-Formen,
 # dann Taste, dann die Scans, zuletzt der Screenshot.
@@ -50,7 +50,7 @@ TRIGGER_KEIN = "kein"
 TRIGGER_DA = "da"
 TRIGGER_WEG = "weg"
 
-SCAN_MODI = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
+SCAN_MODES = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
 ELSE_AKTIONEN = [ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY]
 
 # Welches Feld hält den Namen eines Scan-Blocks? Ein Scan-Block mit leerem Namen
@@ -73,7 +73,7 @@ _FELDER = {
     "delay_max": lambda v: (float(v) if float(v or 0) > 0 else None),
     "key_press": lambda v: (str(v).strip() or None),
     "item_scan": lambda v: str(v or ""),
-    "item_scan_mode": lambda v: (str(v) if v in SCAN_MODI else SCAN_MODE_ALL),
+    "item_scan_mode": lambda v: (str(v) if v in SCAN_MODES else SCAN_MODE_ALL),
     "icon_scan": lambda v: str(v or ""),
     "boss_scan": lambda v: str(v or ""),
     "boss_watcher": lambda v: str(v or ""),
@@ -85,7 +85,7 @@ _FELDER = {
 
 # Die beiden Farbhelfer liegen in `model.py` — der Scans-Reiter braucht sie
 # genauso, und zwei Exemplare wären die Kopie, die irgendwann anders rundet.
-_hex = hexfarbe
+_hex = hex_color
 _rgb = rgbwert
 
 
@@ -125,7 +125,7 @@ def else_greift(step: SequenceStep) -> bool:
     """Kann ELSE bei diesem Schritt überhaupt feuern?"""
     if step.wait_condition is not None or step.verify_condition is not None:
         return True
-    return any(getattr(step, feld, None) is not None for feld in _ELSE_SCANS)
+    return any(getattr(step, field, None) is not None for field in _ELSE_SCANS)
 
 
 def _gleicher_wert(a, b) -> bool:
@@ -173,7 +173,7 @@ def scan_warnungen(board: SequenceBoard) -> list[str]:
     for lane in board.lanes:
         for row, step in enumerate(lane.steps, start=1):
             typ = block_type(step)
-            feld = SCAN_FELD.get(typ)
-            if feld is not None and not (getattr(step, feld) or "").strip():
+            field = SCAN_FELD.get(typ)
+            if field is not None and not (getattr(step, field) or "").strip():
                 raus.append(f"{BLOCK_LABELS[typ]} in '{lane.name}' (Block {row})")
     return raus

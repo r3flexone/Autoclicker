@@ -6,7 +6,7 @@ from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
 from ...utils import unique_name
-from .model import hexfarbe
+from .model import hex_color
 from .scan_contract import ART_ITEM
 from .scan_model import existing_categories, next_item_name, save_template
 
@@ -319,15 +319,15 @@ class ScanLearningMixin:
     def scan_item_set(self, data: dict) -> dict:
         """Ein Feld eines Items — Aktiv, Name, Kategorie, Priorität, Konfidenz."""
         name = str((data or {}).get("name") or "")
-        feld = str((data or {}).get("feld") or "")
+        field = str((data or {}).get("field") or "")
         value = (data or {}).get("value")
         item = self.items.get(name)
         if item is None:
             return self._scan_report(f"Item '{name}' gibt es nicht.", "err")
 
-        if feld == "name":
+        if field == "name":
             return self._item_rename(item, str(value or "").strip())
-        if feld == "active":
+        if field == "active":
             new = bool(value)
             if item.enabled == new:
                 return self.scan_data()
@@ -335,7 +335,7 @@ class ScanLearningMixin:
             item.enabled = new
             return self._scan_changed(
                 f"{item.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
-        if feld == "category":
+        if field == "category":
             self._remember(f"'{name}': Kategorie")
             item.category = self._category_normalize(value)
             # **Ein Rang, den es schon gibt, ist kein Rang.** Items derselben
@@ -352,7 +352,7 @@ class ScanLearningMixin:
             item.priority = frei
             return self._scan_changed(
                 f"{name}: P{old} war in '{item.category}' vergeben — jetzt P{frei}.")
-        if feld == "priority":
+        if field == "priority":
             self._remember(f"'{name}': Priorität")
             item.priority, verschoben = self._priority_place(
                 item.category, value, ausnehmen=item)
@@ -367,11 +367,11 @@ class ScanLearningMixin:
             zusatz = (f"; {verschoben} andere Item(s) in '{item.category}' nach hinten gerückt"
                       if verschoben else "")
             return self._scan_changed(f"{name}: Priorität {item.priority}{zusatz}.")
-        if feld == "konfidenz":
+        if field == "konfidenz":
             self._remember(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(value or 0)))
             return self._scan_changed()
-        if feld == "confirmation":
+        if field == "confirmation":
             # Leer heisst „keine Bestätigung" — und das ist etwas anderes als
             # Punkt 0. Ein Punkt, den es nicht gibt, wird abgelehnt statt still
             # gesetzt: sonst klickte der Lauf auf (0, 0).
@@ -391,7 +391,7 @@ class ScanLearningMixin:
             item.confirm_point_id = point_id
             self._confirmation_apply(item)
             return self._scan_changed(f"{name}: bestätigt über Punkt #{point_id}.")
-        if feld == "confirmation_delay":
+        if field == "confirmation_delay":
             try:
                 number = float(value)
             except (TypeError, ValueError):
@@ -401,7 +401,7 @@ class ScanLearningMixin:
             self._remember(f"'{name}': Wartezeit vor der Bestätigung")
             item.confirm_delay = number
             return self._scan_changed()
-        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
     def _confirmation_apply(self, item) -> None:
         """Zieht `confirm_point` an der Referenz nach — abgeleiteter Arbeitswert.
@@ -1048,7 +1048,7 @@ class ScanLearningMixin:
                 found += 1
                 self._treffer[slot.name] = {
                     "name": match.name,
-                    "color": hexfarbe(match.marker_colors[0]) if match.marker_colors else None,
+                    "color": hex_color(match.marker_colors[0]) if match.marker_colors else None,
                     "foreign": False,
                 }
         return found, len(candidates), tolerance, 0, len(slots)

@@ -12,7 +12,7 @@ from ...models import Sequence
 from .bridge_contract import (
     ELSE_AKTIONEN,
     SCAN_FELD,
-    SCAN_MODI,
+    SCAN_MODES,
     TRIGGER_DA,
     TRIGGER_KEIN,
     TRIGGER_WEG,
@@ -42,7 +42,7 @@ from .scans import ScanTeil
 __all__ = [
     "ELSE_AKTIONEN",
     "SCAN_FELD",
-    "SCAN_MODI",
+    "SCAN_MODES",
     "StudioBridge",
     "TRIGGER_DA",
     "TRIGGER_KEIN",

@@ -139,3 +139,16 @@ zyklus=cycle
 
 # data-*-Attribute, die die Seite ueber dataset.<schluessel> liest
 data-vorhanden=data-existing
+
+# Nachtrag aus Phase 3c: `feld` und `frage` waren als Schluessel bis dahin
+# ausgespart, weil die Seite gleichnamige Funktionen hatte (`feld()`, `frage()`).
+# Mit deren Umbenennung ging die Seite von selbst auf `field:`/`S.question` —
+# die Bruecke musste nachziehen. Dazu die letzten deutschen Schluessel der
+# Momentaufnahme.
+feld=field
+frage=question
+beschreibung=description
+scan_namen=scan_names
+typen=types
+scan_modi=scan_modes
+ohne_else=without_else

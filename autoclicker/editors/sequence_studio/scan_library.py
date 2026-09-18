@@ -91,13 +91,13 @@ class ScanLibraryMixin:
     def scan_set(self, data: dict) -> dict:
         """Ein Feld einer Scan-Konfiguration."""
         name = str((data or {}).get("name") or "")
-        feld = str((data or {}).get("feld") or "")
+        field = str((data or {}).get("field") or "")
         value = (data or {}).get("value")
         cfg = self.scans.get(name)
         if cfg is None:
             return self._scan_report(f"Scan '{name}' gibt es nicht.", "err")
 
-        if feld == "name":
+        if field == "name":
             new = sanitize_filename(str(value or "").strip())
             if not new or new == cfg.name:
                 return self.scan_data()
@@ -131,7 +131,7 @@ class ScanLibraryMixin:
                     f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
             return self._scan_changed(
                 f"'{old}' heisst jetzt '{new}'.")
-        if feld == "tolerance":
+        if field == "tolerance":
             try:
                 tolerance = int(value)
             except (TypeError, ValueError):
@@ -140,22 +140,22 @@ class ScanLibraryMixin:
             self._remember(f"'{name}': Farb-Toleranz")
             cfg.color_tolerance = max(0, tolerance)
             return self._scan_changed()
-        if feld == "lernen":
+        if field == "lernen":
             self._remember(f"'{name}': Unbekanntes lernen")
             cfg.learn_unknown = bool(value)
             return self._scan_changed()
-        if feld == "use_catalog":
+        if field == "use_catalog":
             self._remember(f"'{name}': Katalog")
             cfg.use_catalog = bool(value)
             return self._scan_changed(
                 f"'{cfg.name}': Katalog {'an' if cfg.use_catalog else 'aus'}")
-        if feld == "reverse":
+        if field == "reverse":
             self._remember(f"'{name}': Laufrichtung")
             cfg.reverse = bool(value)
             return self._scan_changed(
                 f"'{cfg.name}': Slots laufen "
                 f"{'rückwärts' if cfg.reverse else 'vorwärts'}")
-        return self._scan_report(f"Unbekanntes Feld '{feld}'.", "err")
+        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
     def scan_delete_all(self, data: dict) -> dict:
         """Löscht alle Slots bzw. alle Items dieses Scans auf einen Schlag.
@@ -276,7 +276,7 @@ class ScanLibraryMixin:
             self.icon_scans, self.global_bosses, self.scan_offen,
         )
         sequenz_antwort = self.save(data)
-        if sequenz_antwort.get("frage"):
+        if sequenz_antwort.get("question"):
             return self._scan_report(
                 "Sequenz wurde ausserhalb geändert — zuerst im Sequenz-Reiter entscheiden.",
                 "warn")

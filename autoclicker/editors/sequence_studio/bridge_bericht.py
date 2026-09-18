@@ -47,7 +47,7 @@ class BridgeBerichtMixin:
     def report_data(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zeichnet. Eigener Gegenstand, nicht die Sequenz.
 
-        Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
+        Geht deshalb über `ask()` und nicht über `call()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
         if isinstance(data, dict) and "file" in data:
@@ -89,9 +89,9 @@ class BridgeBerichtMixin:
 
     # ------------------------------------------------------------ Dateien
 
-    def _report_config(self, feld: str, vorgabe):
+    def _report_config(self, field: str, vorgabe):
         from ...config import CONFIG
-        return getattr(CONFIG, feld, vorgabe)
+        return getattr(CONFIG, field, vorgabe)
 
     def _report_folder(self) -> Optional[Path]:
         folder = Path(self._report_config("session_log_dir", "logs") or "logs")

@@ -210,7 +210,7 @@ class Fenster:
         return self
 
     def reiter(self, name: str):
-        self.seite.click(f'.tab[data-ansicht="{name}"]')
+        self.seite.click(f'.tab[data-view="{name}"]')
         return self.ruhe()
 
     def klick(self, wahl: str):

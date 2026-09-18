@@ -52,7 +52,7 @@ class BridgeWerkzeugeMixin:
     def tool_data(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zeichnet. Eigener Gegenstand, nicht die Sequenz.
 
-        Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
+        Geht deshalb über `ask()` und nicht über `call()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
         from ..sequence_recorder import RECORDING_HOTKEYS
@@ -158,17 +158,17 @@ class BridgeWerkzeugeMixin:
         point = self._point_with_id(data.get("point_id"))
         if point is None:
             return {"ok": False, "message": "Punkt nicht gefunden."}
-        feld, value = str(data.get("feld") or ""), data.get("value")
+        field, value = str(data.get("field") or ""), data.get("value")
         try:
-            if feld in ("x", "y"):
-                setattr(point, feld, int(value))
-            elif feld == "name":
+            if field in ("x", "y"):
+                setattr(point, field, int(value))
+            elif field == "name":
                 point.name = str(value or "").strip()
-            elif feld == "color":
+            elif field == "color":
                 from .model import rgbwert
                 point.color = rgbwert(value)
             else:
-                return {"ok": False, "message": f"Unbekanntes Feld '{feld}'."}
+                return {"ok": False, "message": f"Unbekanntes Feld '{field}'."}
         except (TypeError, ValueError):
             return {"ok": False, "message": f"'{value}' ist kein gültiger Wert."}
         self._points_apply()
@@ -617,8 +617,8 @@ class BridgeWerkzeugeMixin:
         allein die Konsole. Genau das braucht man aber waehrend des Klickens, und
         zwar dort, wo die Knoepfe sind.
 
-        Reine Auskunft, also `frage()`-Kanal: eine Momentaufnahme kommt hier nicht
-        zurueck, und ueber `ruf()` geholt zerschoesse die Antwort den Editor.
+        Reine Auskunft, also `ask()`-Kanal: eine Momentaufnahme kommt hier nicht
+        zurueck, und ueber `call()` geholt zerschoesse die Antwort den Editor.
         """
         import json
         import time

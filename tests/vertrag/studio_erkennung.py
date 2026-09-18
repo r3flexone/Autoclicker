@@ -33,13 +33,13 @@ _web = studio_web_source()
 # ---------------------------------------------------------------------------
 section("Erkennungs-Scans: die Seite erfindet weder Methoden noch Aktionswerte")
 
-# **Dieselbe Klasse Fehler wie beim `ruf()`-Vertrag, nur eine Ebene tiefer.**
+# **Dieselbe Klasse Fehler wie beim `call()`-Vertrag, nur eine Ebene tiefer.**
 # Boss und Icon beantworten dieselben Fragen mit anderen Methoden; als
 # Ternaeroperator ueber ein halbes Dutzend Aufrufstellen verteilt faende der
 # Vertragstest in `test_logic.py` keinen einzigen davon (er sucht nach
-# `rufScan("name"`). Deshalb stehen sie in EINER Tabelle — und die wird hier
+# `callScan("name"`). Deshalb stehen sie in EINER Tabelle — und die wird hier
 # gemessen.
-_tabelle = _web[_web.index("const ERK_BEFEHL = {"):]
+_tabelle = _web[_web.index("const DET_COMMAND = {"):]
 _tabelle = _tabelle[:_tabelle.index("};")]
 _befehle = sorted(set(re.findall(r':\s*"([a-z_]+)"', _tabelle)))
 check("die Befehlstabelle der Erkennungs-Arten ist da", len(_befehle) >= 8)
@@ -60,10 +60,10 @@ check("und jede nimmt das eine Argument an, das die Seite schickt", _unpassend =
 # Die SCAN-ART-Kacheln im HTML gegen die Arten der Bruecke — Zug um Zug, nicht
 # als Menge: die Reihenfolge ist die Rangfolge (Items zuerst, das ist der Fall,
 # den es am laengsten gibt).
-_kacheln = re.findall(r'data-scan-art="([a-z]+)"', _web)
+_kacheln = re.findall(r'data-scan-kind="([a-z]+)"', _web)
 check("jede Scan-Art hat eine Kachel, in der Reihenfolge der Bruecke",
       _kacheln == list(_ARTEN))
-_js_arten = re.search(r'const SCAN_ARTEN = \[([^\]]+)\]', _web)
+_js_arten = re.search(r'const SCAN_KINDS = \[([^\]]+)\]', _web)
 check("und die Seite fuehrt dieselbe Liste",
       _js_arten is not None
       and re.findall(r'"([a-z]+)"', _js_arten.group(1)) == list(_ARTEN))
@@ -86,7 +86,7 @@ try:
     check("die Aktionskacheln kommen aus models.py — Icons",
           {a["value"] for a in _z["actions"]["icon"]} == _V_ICON)
     check("und die Scan-Modi ebenso",
-          {m["value"] for m in _z["actions"]["scan_modi"]} == _V_MODI)
+          {m["value"] for m in _z["actions"]["scan_modes"]} == _V_MODI)
     check("ein Item-Scan taucht als Aktionsziel gar nicht bei Icons auf",
           "item_scan" not in {a["value"] for a in _z["actions"]["icon"]})
 
@@ -102,17 +102,17 @@ try:
     check("ein anderer Scan laesst sich oeffnen", _z["boss"]["offen"] == "Bossfarm")
 
     # --- Region ---
-    _z = _b.boss_scan_set({"name": "Bossfarm", "feld": "region",
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region",
                               "value": [1164, 296, 742, 188]})
     _region = _b.boss_scans["Bossfarm"].scan_region
     check("eine verdrehte Region wird normalisiert", _region == (742, 188, 1164, 296))
     _vorher = dict(_b.boss_scans["Bossfarm"].__dict__)
-    _z = _b.boss_scan_set({"name": "Bossfarm", "feld": "region",
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region",
                               "value": [10, 10, 10 + _MIN_REGION - 1, 40]})
     check("eine zu schmale Region wird abgelehnt statt gesetzt",
           _b.boss_scans["Bossfarm"].scan_region == (742, 188, 1164, 296))
     check("und sie sagt warum", _z["status"]["kind"] == "warn")
-    _z = _b.boss_scan_set({"name": "Bossfarm", "feld": "region", "value": ["a", 1, 2, 3]})
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region", "value": ["a", 1, 2, 3]})
     check("Buchstaben in einer Region sind ein Fehler", _z["status"]["kind"] == "err")
 
     # --- Bosse ---
@@ -123,20 +123,20 @@ try:
     check("und faengt mit 'ueberspringen' an — erkannt, aber noch nichts entschieden",
           _boss.action == "skip")
 
-    _z = _b.boss_set({"feld": "konfidenz", "value": 0.85})
+    _z = _b.boss_set({"field": "konfidenz", "value": 0.85})
     check("die Konfidenz laesst sich einzeln setzen", _boss.min_confidence == 0.85)
-    _z = _b.boss_set({"feld": "konfidenz", "value": 1.4})
+    _z = _b.boss_set({"field": "konfidenz", "value": 1.4})
     check("eine Konfidenz ueber 1 wird abgelehnt", _boss.min_confidence == 0.85)
     check("und begruendet", _z["status"]["kind"] == "err")
-    _z = _b.boss_set({"feld": "action", "value": "gibtsnicht"})
+    _z = _b.boss_set({"field": "action", "value": "gibtsnicht"})
     check("ein erfundener Aktionswert wird abgelehnt", _boss.action == "skip")
-    _b.boss_set({"feld": "action", "value": "item_scan"})
-    _b.boss_set({"feld": "scan", "value": "Inventar"})
-    _b.boss_set({"feld": "delay", "value": 1.5})
+    _b.boss_set({"field": "action", "value": "item_scan"})
+    _b.boss_set({"field": "scan", "value": "Inventar"})
+    _b.boss_set({"field": "delay", "value": 1.5})
     check("Aktion, Ziel und Verzoegerung stehen einzeln",
           (_boss.action, _boss.action_scan, _boss.action_delay)
           == ("item_scan", "Inventar", 1.5))
-    _z = _b.boss_set({"feld": "delay", "value": -1})
+    _z = _b.boss_set({"field": "delay", "value": -1})
     check("eine negative Verzoegerung wird abgelehnt", _boss.action_delay == 1.5)
 
     # **Der Name IST die Referenz** — und ein zweiter gleichen Namens verdeckt
@@ -173,13 +173,13 @@ try:
     _b.icon_scan_new({"name": "Mission nicht machbar"})
     check("ein Icon-Scan ist sofort offen", _b.icon_offen == "Mission nicht machbar")
     _icon = _b.icon_scans["Mission nicht machbar"]
-    _b.icon_set({"feld": "region", "value": [100, 100, 158, 158]})
-    _b.icon_set({"feld": "action", "value": "click"})
-    _b.icon_set({"feld": "tolerance", "value": 18})
+    _b.icon_set({"field": "region", "value": [100, 100, 158, 158]})
+    _b.icon_set({"field": "action", "value": "click"})
+    _b.icon_set({"field": "tolerance", "value": 18})
     check("Region, Aktion und Toleranz stehen einzeln",
           (_icon.scan_region, _icon.action, _icon.color_tolerance)
           == ((100, 100, 158, 158), "click", 18))
-    _z = _b.icon_set({"feld": "action", "value": "item_scan"})
+    _z = _b.icon_set({"field": "action", "value": "item_scan"})
     check("ein Item-Scan ist als Icon-Aktion nicht erlaubt", _icon.action == "click")
 
     # --- Werkzeuge ---
@@ -277,15 +277,15 @@ try:
                   _b._scan_dirty == _dirty_vorher)
 
             # --- Der Vorschlag ist der Kern des Fehlerfalls ---
-            _b.icon_set({"feld": "tolerance", "value": 0})
-            _b.icon_set({"feld": "region", "value": [400, 400, 460, 460]})
+            _b.icon_set({"field": "tolerance", "value": 0})
+            _b.icon_set({"field": "region", "value": [400, 400, 460, 460]})
             _z = _b.icon_test({})
             _t = _z["icon"]["test"]
             check("ausserhalb des Symbols wird nichts erkannt", _t["ok"] is False)
             check("und der Grund steht dabei", "Marker" in _t["reason"])
 
             # --- Vorlage aufnehmen ---
-            _b.icon_set({"feld": "region", "value": [300, 200, 340, 240]})
+            _b.icon_set({"field": "region", "value": [300, 200, 340, 240]})
             _z = _b.template_capture({"kind": "icon"})
             _ic = _b.icon_scans["Mission nicht machbar"]
             check("die Vorlage wird als Datei angelegt", bool(_ic.template))
@@ -293,7 +293,7 @@ try:
                   (Path("sequences/s/templates") / _ic.template).exists())
 
             # --- Klickpunkt ueber einen Punkt, nie ueber Zahlen ---
-            _b.icon_set({"feld": "action", "value": "click"})
+            _b.icon_set({"field": "action", "value": "click"})
             _b.region_mode({"kind": "icon", "modus": _M_AKTION})
             _z = _b.scan_click({"x": 500, "y": 320})
             _ic = _b.icon_scans["Mission nicht machbar"]
@@ -307,14 +307,14 @@ try:
             # wanderte die Haelfte.
             _b.boss_scan_open({"name": "Bossfarm"})
             _b.boss_new({"name": "Hydra"})
-            _b.boss_set({"feld": "action", "value": "click"})
+            _b.boss_set({"field": "action", "value": "click"})
             _b.region_mode({"kind": "boss", "modus": _M_AKTION})
             _b.scan_click({"x": 500, "y": 320})
             check("ein zweiter Klick auf dieselbe Stelle legt keinen zweiten Punkt an",
                   len(_b.points) == 1)
 
             # --- Boss testen, alle testen ---
-            _b.boss_scan_set({"name": "Bossfarm", "feld": "region",
+            _b.boss_scan_set({"name": "Bossfarm", "field": "region",
                                  "value": [300, 200, 340, 240]})
             _b.marker_measure({"kind": "boss"})
             _z = _b.boss_test({})
@@ -431,7 +431,7 @@ check("die Momentaufnahme importiert kein OCR-Backend",
                / "autoclicker/editors/sequence_studio/scan_detect.py")
               .read_text("utf-8"))[0])
 check("dafuer gibt es einen eigenen Knopf", callable(getattr(_SB, "ocr_check", None)))
-check("und die Seite drueckt ihn", 'rufScan("ocr_check")' in _web)
+check("und die Seite drueckt ihn", 'callScan("ocr_check")' in _web)
 
 # **Das ELSE gehoert dem Block, nicht dem Scan.** `IconScanConfig` hat kein
 # else-Feld; eins hier einzufuehren hiesse, dieselbe Sache an zwei Stellen zu

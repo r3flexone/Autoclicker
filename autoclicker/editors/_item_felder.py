@@ -64,7 +64,7 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
 
 
 def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
-                             frage: str = "  Bestätigungs-Punkt-ID (Enter = keiner): ",
+                             prompt: str = "  Bestätigungs-Punkt-ID (Enter = keiner): ",
                              abbrechbar: bool = False):
     """Fragt Punkt-ID und Wartezeit eines Bestätigungs-Klicks ab.
 
@@ -79,7 +79,7 @@ def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
     `state.points`, und die Liste kann sich unter einem laufenden Worker ändern.
     """
     wartezeit = default_delay
-    user_input = safe_input(frage).strip()
+    user_input = safe_input(prompt).strip()
     if abbrechbar and is_cancel(user_input):
         return CANCELLED
     if not user_input:

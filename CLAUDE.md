@@ -1436,12 +1436,12 @@ Gestalt, statt beim Umschalten drei Gruppen zu verlieren.
 
 Zwei Dinge hängen daran, und ohne sie wäre es ein Rückschritt:
 
-- **Der offene Reiter folgt dem Wechsel** (`ruf()` ruft danach `setzeAnsicht`
+- **Der offene Reiter folgt dem Wechsel** (`call()` ruft danach `setView`
   erneut). Scans, Teilen und Werkzeuge hängen an eigenem Zustand (`SC`, `T`,
-  `W`), den `zeichne()` nicht anfasst — sonst stünden dort die Slots, Zahlen und
+  `W`), den `render()` nicht anfasst — sonst stünden dort die Slots, Zahlen und
   Punkte der **vorigen** Sequenz unter dem Namen der neuen. Nicht bei einer
-  Rückfrage (`S.frage`): dann ist noch gar nichts geladen.
-- **Offene Scan-Änderungen werden vorher weggeschrieben** (`sequenzWechseln()`).
+  Rückfrage (`S.question`): dann ist noch gar nichts geladen.
+- **Offene Scan-Änderungen werden vorher weggeschrieben** (`switchSequence()`).
   Die Rückfrage nach ungespeicherten Änderungen kennt nur die Sequenz
   (`_dirty`); die Scans haben ihren eigenen Merker (`_scan_dirty`), und `load`
   wirft sie über `_scan_init()` wortlos weg. Gefragt wird trotzdem nicht — der
@@ -1451,17 +1451,17 @@ Zwei Dinge hängen daran, und ohne sie wäre es ein Rückschritt:
 Speichern und Starten bleiben dagegen bei der Sequenz: sie meinen die Sequenz,
 nicht den Reiter.
 
-**Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `ruf()`
-befiehlt und **ersetzt** mit der Antwort die Momentaufnahme `S`; `frage()` fragt nur
+**Zwei Kanäle zur Brücke, und die Unterscheidung ist keine Kosmetik.** `call()`
+befiehlt und **ersetzt** mit der Antwort die Momentaufnahme `S`; `ask()` fragt nur
 und lässt `S` in Ruhe. Übersicht, Laufstatus und die Einstellungen geben keine
-Momentaufnahme zurück, sondern einen eigenen Gegenstand — über `ruf()` geholt
+Momentaufnahme zurück, sondern einen eigenen Gegenstand — über `call()` geholt
 zerschösse ihre Antwort den Editor-Zustand, und ein Blick in die Übersicht wäre ein
 Datenverlust. Wer eine Methode ergänzt, entscheidet zuerst, welcher der beiden Kanäle
 gemeint ist. Der Test `jeder Aufruf der Seite passt zur Brücke` erfasst **beide**
 Schreibweisen.
 
 `config_write()` ist der Sonderfall, der die Regel bestätigt: sie **ändert** etwas
-und gehört trotzdem zu `frage()`. Geändert wird die Config, nicht die Sequenz — eine
+und gehört trotzdem zu `ask()`. Geändert wird die Config, nicht die Sequenz — eine
 Momentaufnahme wäre dafür der falsche Gegenstand. Der Kanal richtet sich also danach,
 was zurückkommt, nicht danach, ob etwas passiert.
 
@@ -1729,17 +1729,17 @@ Sechs Regeln, an denen der Reiter hängt:
   „gewählt" sahen gleich aus — **Amber gehört der Auswahl**, sonst markiert die
   Markierung nichts. `--slot-ok`/`--slot-fremd` lagen als `#00FF9C`/`#2DD4BF` zu
   dicht beieinander, um sie im Bild zu trennen. Die Klassenlogik
-  (`.scan-slot.treffer` / `.fremditem` / `.leer`, `SLOT_FARBE` in `app.js`)
+  (`.scan-slot.treffer` / `.fremditem` / `.leer`, `SLOT_COLOR` in `app.js`)
   blieb dabei unverändert — nur die Variablen. Ein 1,5-px-Umriss in `var(--dim)` verschwindet
   zwischen bunten Item-Symbolen restlos — genau das war „nichts erkannt" vorher,
   also ausgerechnet der Zustand, den man sucht. Die Fläche trägt die Aussage,
   der Strich schärft sie.
 
   Marke im Bild und Zeile in der Liste lesen **dieselben** Variablen
-  (`SLOT_FARBE` liest sie einmal aus `getComputedStyle`), statt Hexwerte zu
+  (`SLOT_COLOR` liest sie einmal aus `getComputedStyle`), statt Hexwerte zu
   wiederholen. Drei Tests halten das zusammen: jeder Zustand braucht Umriss
   *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
-  `SLOT_FARBE` muss genau die Zustände abdecken.
+  `SLOT_COLOR` muss genau die Zustände abdecken.
 - **Erkannt ist nicht dasselbe wie im Scan** (`treffer.fremd`, türkis statt
   grün) — ein Zustand aus der Zeit des globalen Bestands: bei einem Scan ohne
   Items prüfte `_candidates()` alle Items aller Spiele, und ein Treffer aus dem
@@ -1747,10 +1747,10 @@ Sechs Regeln, an denen der Reiter hängt:
   nicht an. Seit der Scan seine Items selbst besitzt, gibt es nichts mehr, was
   erkannt und trotzdem fremd wäre: `_detect_run()` meldet `foreign` immer als
   `False`. Farbe (`--slot-fremd`) und Klasse (`.fremditem`) stehen noch in
-  Stylesheet und `SLOT_FARBE`, haben aber keinen Auslöser mehr.
+  Stylesheet und `SLOT_COLOR`, haben aber keinen Auslöser mehr.
 
-- **Scan, Slot und Item sind Masken — dieselbe Bauform** (`maskeBauen()`, dazu
-  `scanScanMaske` / `scanSlotMaske` / `scanItemMaske`). Sie unterscheiden sich
+- **Scan, Slot und Item sind Masken — dieselbe Bauform** (`buildCard()`, dazu
+  `scanScanCard` / `scanSlotCard` / `scanItemCard`). Sie unterscheiden sich
   in dem, was drinsteht, nicht darin, wie man sie anfasst: Haken (gehört zu
   diesem Scan), Vorschau bzw. Farbe, Name, darunter die zweite Zeile — beim
   Item Kategorie und Priorität, bei Slot und Scan der Stand.
@@ -1761,7 +1761,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Auflösung wie beim Klick-Block im Sequenz-Editor.
 
 - **Der ganze Listen-Block steht RECHTS: Reiter, Filter und Masken zusammen**
-  (`scanListenBlock()`, gerufen aus `scanInspektor()`). Der Schnitt geht nach
+  (`scanListBlock()`, gerufen aus `scanInspector()`). Der Schnitt geht nach
   Verantwortung, nicht nach Scan-Art: **links, wie der Scan entsteht** (Auswahl,
   Assistent, Modus-Kacheln), **rechts, was drin ist.**
 
@@ -1772,7 +1772,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Hinweistext musste erklären, wohin der Inhalt verschwunden ist. Beides ist mit
   dem Umzug weg; `#ab-listen` und `nur-reiter` sind ersatzlos gelöscht.
 
-  Als **Masken** kommen dabei nur die Item-Listen (`scanMaskenRechts()`): dort
+  Als **Masken** kommen dabei nur die Item-Listen (`scanCardsRight()`): dort
   stehen Dutzende gleichartiger Dinge nebeneinander. Ein Boss- oder Icon-Scan
   ist **eines** — Region, Erkennung, Aktion —, das trägt keine Maske; seine
   Liste steht am selben Ort, und was zum Gewählten gehört, darunter (`.erk-insp`,
@@ -1793,10 +1793,10 @@ Sechs Regeln, an denen der Reiter hängt:
   Klick auf ihn öffnete ihn, das Öffnen schaltete auf die Item-Liste um, und
   seine Einstellungen standen in einer Spalte, die man damit gerade verlassen
   hatte. Deshalb bleibt der Reiter stehen, wenn man einen Scan **aus der
-  Scan-Liste heraus** öffnet (`scanReiterNachOeffnen`).
+  Scan-Liste heraus** öffnet (`scanTabAfterOpen`).
 
 - **Sortiert wird beim Laden und auf Knopfdruck, nicht beim Tippen**
-  (`scanOrdnung`, Knopf „↕ Sortieren"). Sortierte sich die Liste nach *jeder*
+  (`scanOrder`, Knopf „↕ Sortieren"). Sortierte sich die Liste nach *jeder*
   Änderung neu, springt genau die Zeile weg, an der man gerade arbeitet: man
   tippt eine 2, die Zeile rutscht drei Plätze, und der nächste TAB landet im
   Feld eines anderen Items. Gemerkt wird deshalb die Reihenfolge des letzten
@@ -1806,12 +1806,12 @@ Sechs Regeln, an denen der Reiter hängt:
   **Kein Feld eines Items verschiebt seine Zeile** — auch die Kategorie nicht.
   Sie war der erste Sortierschlüssel und damit das letzte Feld, das noch
   sprang; eingefroren wird sie deshalb zusammen mit dem Rang
-  (`scanOrdnungGruppe()`), und die Gruppenüberschriften kommen aus dieser
+  (`scanOrderGroup()`), und die Gruppenüberschriften kommen aus dieser
   Momentaufnahme statt aus dem aktuellen Wert. Sonst risse ein gerade
   geändertes Item eine zweite Überschrift mitten in die Liste. Wohin es beim
   nächsten Sortieren wandert, sagt seine Zustandszeile („→ Helme").
 
-  **Umbenennen ändert den Namen, nicht den Rang** (`scanOrdnungUmbenennen()`).
+  **Umbenennen ändert den Namen, nicht den Rang** (`scanOrderRename()`).
   Der Merkposten hängt am Namen — ohne das Nachziehen galt ein gerade
   umbenanntes Item als neu und rutschte ans Ende seiner Gruppe, und genau beim
   Namen tippt man. Eingetragen werden beide Namen: lehnt die Brücke den neuen
@@ -1862,19 +1862,19 @@ Sechs Regeln, an denen der Reiter hängt:
   verwalten" stand `disabled: punkt.verwendungen.length`: bei 0 Verwendungen
   (also genau dann, wenn man löschen DARF) war der Knopf gesperrt, bei 3
   ebenso — er war **immer** tot, in einem Werkzeug, das „sicher löschen"
-  verspricht. `NUR_DASEIN` in `el()` lässt solche Attribute bei falsy Werten
+  verspricht. `PRESENCE_ONLY` in `el()` lässt solche Attribute bei falsy Werten
   jetzt weg; die 27 anderen Aufrufstellen übergaben ohnehin schon Booleans.
 - **Ein verzögerter Schreiber darf keine frischere Meldung begraben.**
-  `briefkastenNachfassen()` meldet nach zwei Sekunden „Kein Hauptprozess
+  `mailboxFollowUp()` meldet nach zwei Sekunden „Kein Hauptprozess
   erreichbar" — und überschrieb dabei, was der Nutzer inzwischen getan hatte.
-  Es merkt sich deshalb `statusStand` und schweigt, wenn seither jemand anders
+  Es merkt sich deshalb `statusStamp` und schweigt, wenn seither jemand anders
   etwas gemeldet hat.
-- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `wzPruefen()`
-  rief nur `wzMitteZeichnen()`: der Bericht stand in der Mitte, rechts blieb
+- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `wzCheck()`
+  rief nur `wzRenderMiddle()`: der Bericht stand in der Mitte, rechts blieb
   „Noch nichts geprüft." — ausgerechnet die Spalte, die auflistet, WAS geprüft
   wurde, und ohne die „Alles in Ordnung" eine Behauptung ist. Jeder andere
-  Werkzeug-Befehl geht über `rufWerkzeug` → `zeichneWerkzeuge()` und zeichnet
-  alle drei Spalten; dieser eine ging seinen eigenen Weg, weil er `frage()`
+  Werkzeug-Befehl geht über `callTool` → `renderTools()` und zeichnet
+  alle drei Spalten; dieser eine ging seinen eigenen Weg, weil er `ask()`
   direkt ruft.
 - **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `wzInfo()` im
   Werkzeuge-Reiter warf seinen Titel ins `title`-Attribut; sichtbar blieb ein
@@ -1989,7 +1989,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Slots bekam „Slot 2" damit die ID 12 und „Slot 3" die 23. Die IDs waren
   stabil und trotzdem unbrauchbar: eine Kennung, die in Sprüngen dasteht,
   liest niemand als Kennung, sondern als Fehler. Dieselbe Regel wie bei
-  `nachNamen()` in der Ansicht, nur eine Ebene tiefer — und sie muss an beiden
+  `byName()` in der Ansicht, nur eine Ebene tiefer — und sie muss an beiden
   Stellen stehen, denn die Vergabe entscheidet die Zahl, die Sortierung nur
   die Zeile.
 
@@ -2039,17 +2039,17 @@ Sechs Regeln, an denen der Reiter hängt:
   Ansicht erfindet keine Reparatur für Bestandsdaten.
 
   Bei gleicher Lage entscheidet der Name **natürlich sortiert**
-  (`nachNamen()`, `numeric: true`) — ein reiner Zeichenvergleich stellt
+  (`byName()`, `numeric: true`) — ein reiner Zeichenvergleich stellt
   „Slot 10" zwischen „Slot 1" und „Slot 2", und bei fünfundvierzig
   durchnummerierten Slots ist die Liste damit sortiert und trotzdem unlesbar.
   Die Items bleiben bei Kategorie und Rang: sie haben keine ID.
 
-- **Welche Priorität frei ist, steht da** (`prioritaetsBelegung()`). Die
+- **Welche Priorität frei ist, steht da** (`priorityAllocation()`). Die
   Übersicht zeigte nur die vergebenen Ränge; ob P2 belegt ist oder fehlt, sah
   man erst, wenn man P1, P3, P4 las und selbst nachzählte. Sie spannt deshalb
   jeden Rang von 1 bis zum höchsten belegten plus eins auf — der nächste freie
   steht immer da —, und eine Lücke ist gestrichelt statt beschriftet. Eine
-  getippte P99 spannt das nicht auf hundert Kacheln auf (`PRIO_MAX_ZEIGEN`).
+  getippte P99 spannt das nicht auf hundert Kacheln auf (`PRIO_MAX_SHOW`).
 
   **Eine doppelte Priorität fällt schon in der Liste auf**, nicht erst im
   aufgeklappten Detail: getippt wird in der Maske. Bei gleicher Zahl entscheidet
@@ -2062,26 +2062,26 @@ Sechs Regeln, an denen der Reiter hängt:
   Zahl fasst dagegen niemand an, auch keine doppelte: sie kann gewollt sein, und
   ungefragt zu verschieben wäre schlimmer als die Doppelung.
 
-- **Der Fokus hängt an der `id` der Maske** (`maskeId()`, gelesen von
-  `fokusMerken()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
+- **Der Fokus hängt an der `id` der Maske** (`cardId()`, gelesen von
+  `rememberFocus()`). Ohne sie klettert `closest("[id]")` bis zur ganzen Spalte,
   und die gemerkte Position zählt über **alle** Masken hinweg — bei sechzig
   Items rund zweihundert Felder. Genau die drei Angaben, die man dort tippt,
   sortieren die Liste aber um (Kategorie, Priorität, Name): nach dem Neuaufbau
   stand an derselben Position das Feld eines **fremden** Items, der Cursor
   sprang weg, und wer weitertippte, änderte das falsche. Ein Umbenennen ändert
-  die id selbst — `fokusUmbenennung()` sagt sie vorher an, und die alte bleibt
+  die id selbst — `focusRename()` sagt sie vorher an, und die alte bleibt
   als Rückfall, falls die Brücke den Namen ablehnt. Gemessen wird das im
   **Rauchtest**: einen Fokus sieht die Vertragssuite nicht.
 
-  **Der Schutz sitzt in `scanInspektor()`, nicht bei den Aufrufern.**
-  `zeichneScans()` hatte ihn, aber es gibt einen zweiten Weg: sobald ein
-  nachgeladenes Template ankommt, baut `scanVorschauenHolen()` die Spalte
+  **Der Schutz sitzt in `scanInspector()`, nicht bei den Aufrufern.**
+  `renderScans()` hatte ihn, aber es gibt einen zweiten Weg: sobald ein
+  nachgeladenes Template ankommt, baut `scanFetchPreviews()` die Spalte
   direkt neu. Genau das passiert beim Umbenennen — unter dem neuen Namen gibt
   es noch keine Vorschau —, und dort ging der Fokus verloren, während er beim
   Tippen einer Priorität stehen blieb. Ein Schutz, an den jeder Aufrufer denken
   muss, ist einer, den einer vergisst.
 
-- **Ein Item hat einen Klick DANACH** (`scanItemBestaetigung()`,
+- **Ein Item hat einen Klick DANACH** (`scanItemConfirmation()`,
   `ItemProfile.confirm_point_id`). Manche Spiele fragen nach („wirklich
   verkaufen?"); ohne die Bestätigung bleibt das Popup stehen, und der Scan
   erreicht den nächsten Slot gar nicht mehr. Das Feld gibt es im Modell und in
@@ -2095,7 +2095,7 @@ Sechs Regeln, an denen der Reiter hängt:
   `action_point_id`. Ein zweites Werkzeug daneben wäre dieselbe Frage mit einer
   zweiten Antwort.
 
-- **Die Kategorie wird gewählt, nicht getippt** (`kategorieWahl()`). Ein freies
+- **Die Kategorie wird gewählt, nicht getippt** (`categoryChooser()`). Ein freies
   Textfeld allein hat das Problem, das man nicht sehen kann: „Helme", „helme"
   und „Helmr" sind drei Kategorien — und Items derselben Kategorie konkurrieren
   miteinander (das kleinere P gewinnt), eine vertippte trennt ein Item still von
@@ -2110,11 +2110,11 @@ Sechs Regeln, an denen der Reiter hängt:
   neunundfünfzig gewesen, die der Browser ignoriert.
 
   Drei Regeln dazu:
-  - **Der Tipp-Modus überlebt den Neuaufbau** (`kategorieFrei`, Schlüssel je
+  - **Der Tipp-Modus überlebt den Neuaufbau** (`categoryFree`, Schlüssel je
     Stelle). Die Ansicht wird nach jeder Brücken-Antwort neu gebaut, und der
     Entwurf speichert 900 ms nach der letzten Änderung von selbst: sonst würde
     das Feld mitten im Wort wieder zur Auswahlliste. Dieselbe Mechanik wie
-    `offeneHilfen` und `klappZu`, derselbe Grund wie bei `fokusMerken()`.
+    `openHelps` und `collapsed`, derselbe Grund wie bei `rememberFocus()`.
   - **Der Rückweg ist ESC**, solange es etwas zu wählen gibt — hinein mit einem
     Klick, heraus auch. Ein Modus, in den man nur hinein kommt, ist eine
     Falltür; dieselbe Regel wie bei den Modus-Kacheln und der ELSE-Kachel.
@@ -2125,11 +2125,11 @@ Sechs Regeln, an denen der Reiter hängt:
 
   Dasselbe Bedienelement steht in der Lern-Vorschau: dort entstehen die
   Kategorien, und dort tippte man sie zwanzigmal. Damit eine in Zeile 1
-  angelegte in Zeile 2 wählbar ist, zieht `kategorieOptionenAktualisieren()`
+  angelegte in Zeile 2 wählbar ist, zieht `refreshCategoryOptions()`
   die Listen aller offenen Felder nach.
 
   Und weil die Kategorie dort jetzt eine Auswahlliste sein kann, liest
-  `scanReviewUebernehmen()` die Zeilen **über Klassen statt über Positionen**.
+  `scanReviewApply()` die Zeilen **über Klassen statt über Positionen**.
   Vorher wurden die Felder durchnummeriert gegriffen; wer eines dazwischen
   einbaut, verschiebt still alle folgenden — ein Import, der die Priorität als
   Kategorie liest, fällt niemandem auf.
@@ -2148,19 +2148,19 @@ Sechs Regeln, an denen der Reiter hängt:
 - **Mit offenem Scan sind die Items die Arbeit, nicht sein Name.** Die
   Listen-Leiste stand immer auf „Scans": wer einen Scan lud, sah den Namen, den
   er gerade angeklickt hatte, ein zweites Mal und musste erst auf „Items"
-  klicken. `scanListe = null` heisst „noch nicht entschieden" — dann gilt
-  `scanListeAktiv()` (bei offenem Scan: Items). Sobald jemand einen Reiter
+  klicken. `scanList = null` heisst „noch nicht entschieden" — dann gilt
+  `scanActiveList()` (bei offenem Scan: Items). Sobald jemand einen Reiter
   anfasst, steht dort seine Entscheidung; **das Öffnen eines Scans setzt sie
   zurück**, denn das ist ein Wechsel des Zusammenhangs. Dieselbe Mechanik wie
-  `klappZu`.
+  `collapsed`.
 
-  **Mit einer Ausnahme, und die ist der Grund für `scanReiterNachOeffnen`:** wer
+  **Mit einer Ausnahme, und die ist der Grund für `scanTabAfterOpen`:** wer
   einen Scan aus der Scan-Liste heraus öffnet, arbeitet gerade an Scans. Springt
   der Reiter dann auf „Items", verschwindet genau die Maske, die sich soeben mit
   seinen Einstellungen aufgeklappt hat — und damit war der Scan **nicht mehr zu
   löschen**. Der Wunsch gilt genau einmal und wird danach gelöscht.
 
-- **Der Reiter folgt der Auswahl, aber nur beim Wechsel** (`scanReiterFolgen()`).
+- **Der Reiter folgt der Auswahl, aber nur beim Wechsel** (`scanFollowTab()`).
   Ein Klick INS BILD wählt einen Slot, und der steht in der Slot-Liste; ist
   gerade die Item-Liste offen, geschieht rechts sonst nichts und der Klick sieht
   wirkungslos aus. Beim blossen Neuzeichnen darf dagegen nichts umschalten —
@@ -2220,7 +2220,7 @@ unangetastet. Kein Bestätigungsdialog: STRG+Z holt den ganzen Abzug zurück,
 genau wie beim einzelnen Löschen.
 
 **Der geöffnete Scan IST der vollständige Bestand** — und damit stellt sich die
-Frage „gehört das hierher" gar nicht mehr. `scanSichtbar()` filtert nur noch nach
+Frage „gehört das hierher" gar nicht mehr. `scanVisible()` filtert nur noch nach
 Kategorie; Slots und Items einer Sequenz gehören ihrem Scan, fremde gibt es dort
 nicht zu sehen.
 
@@ -2268,12 +2268,12 @@ Zwei Regeln, ohne die es ein Rückschritt wäre:
 - **Zugeklappt bleibt die Auskunft stehen**, nur die Bedienelemente gehen weg —
   im Kopf steht dann der offene Schritt, die Bildgrösse bzw. der aktuelle Modus.
   Platz sparen darf nichts kosten, was man beim Arbeiten braucht.
-- **Die Automatik überstimmt keine Entscheidung.** `klappZu[…] === null` heisst
-  „noch nichts entschieden" und lässt `klappVorgabe()` gelten; sobald jemand
+- **Die Automatik überstimmt keine Entscheidung.** `collapsed[…] === null` heisst
+  „noch nichts entschieden" und lässt `collapseDefault()` gelten; sobald jemand
   einen Kopf anfasst, steht dort true/false und die Vorgabe schweigt. Ein
   Bedienelement, das zurückspringt, ist keine Hilfe.
 
-**Die Bühne springt zum gewählten Slot** (`scanZeigeGewaehlten()`). Liste und
+**Die Bühne springt zum gewählten Slot** (`scanShowSelected()`). Liste und
 Bild waren zwei getrennte Welten: einen Slot in der Liste anzuklicken markierte
 ihn im Bild — nur sah man das nicht, wenn er gerade ausserhalb lag, und bei 45
 Slots auf 1:1 ist das der Normalfall. Gescrollt wird **nur beim Wechsel der
@@ -2350,7 +2350,7 @@ Vier Eigenschaften, an denen das hängt:
 **Das Bild passt sich der Fenstergrösse an — aber nur, wenn niemand gezoomt
 hat.** Die Bühne ändert ihre Grösse mit dem Fenster, das Bild tat es nicht: wer
 klein aufnahm und dann gross zog, sah es in einer Ecke kleben, und ein Bereich
-liess sich bei 31 % kaum noch treffen. `scanZoomHand` unterscheidet die beiden
+liess sich bei 31 % kaum noch treffen. `scanZoomManual` unterscheidet die beiden
 Fälle: 1:1 und STRG+Rad sind eine Ansage und bleiben stehen, die Fenstergrösse
 ist keine. Der Aufruf ist gebündelt (120 ms), sonst baut jedes Ziehen am
 Fensterrand das Overlay ein Dutzend Mal neu.
@@ -2463,16 +2463,16 @@ nur über einen Durchlauf erreichbar.
 
 Acht Regeln, an denen der Teil hängt:
 
-- **Die Scan-Art ist Oberflächenzustand** (`scanArt` in `app.js`), wie `ansicht`
-  und `scanListe`: sie steht nicht in der Momentaufnahme und nicht in der Brücke.
+- **Die Scan-Art ist Oberflächenzustand** (`scanKind` in `app.js`), wie `view`
+  und `scanList`: sie steht nicht in der Momentaufnahme und nicht in der Brücke.
   Die Bühne (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
   dasselbe Bild, nur eine andere Frage daran. Wo ein Befehl trotzdem wissen muss,
-  worauf er wirkt, **sagt der Aufruf es** (`{art: "boss"}`); nur solange ein
+  worauf er wirkt, **sagt der Aufruf es** (`{kind: "boss"}`); nur solange ein
   Werkzeug scharf ist, merkt sich die Brücke das Ziel (`_region_ziel`) — und
   `_tool_done()` räumt es mit weg.
 - **Die Aufnahme ist EIN Schritt und gehört allen drei Arten.** Die Karte
   existiert genau einmal im Dokument und **wandert** in den Assistenten der
-  offenen Art (`scanArtPflegen()`). Zwei Fassungen davon wären zwei Stellen, an
+  offenen Art (`scanMaintainKind()`). Zwei Fassungen davon wären zwei Stellen, an
   denen eine Änderung an der Aufnahme vergessen werden kann — sie muss deshalb
   auch wieder zurückwandern, sonst fehlt dem Item-Assistenten sein erster Schritt.
 - **Testen ist folgenlos.** `boss_test`/`icon_test` erkennen, zeigen und
@@ -2488,7 +2488,7 @@ Acht Regeln, an denen der Teil hängt:
   (`_tolerance_proposal()`) — ein Klick. Ein Test, der nur „fehlgeschlagen" sagt,
   lässt einen genau dort stehen, wo man vorher war.
 - **Die Aktionswerte kommen aus `models.py`**, über die Momentaufnahme
-  (`actions.boss` / `actions.icon` / `actions.scan_modi`). Die Ansicht erfindet
+  (`actions.boss` / `actions.icon` / `actions.scan_modes`). Die Ansicht erfindet
   keine Namen: ein getipptes `"skipcycle"` wäre ein Wert, den `__post_init__`
   beim Speichern still auf den Standard hebt — der Klick sähe aus, als hätte er
   gewirkt. Ein Test hält die Listen gegen `VALID_*_ACTIONS`.
@@ -2566,7 +2566,7 @@ Briefkasten-Befehl `nachklick`.
 Konsole jeden Schritt einzeln meldete — und *welcher Punkt gerade dran ist* ist
 genau die Frage, die man beim Klicken hat. Dieselbe Bauart wie `.lauf.json` und
 `.aufnahme.json`: kein Log, sondern der Stand JETZT, überschrieben bei jeder
-Bewegung der Runde. Gelesen wird er über `reclick_status()` im `frage()`-Kanal.
+Bewegung der Runde. Gelesen wird er über `reclick_status()` im `ask()`-Kanal.
 
 Drei Regeln dazu:
 
@@ -2591,7 +2591,7 @@ dieselbe Rechnung wie beim Laufstatus, und aus demselben Grund: ein abgestürzte
 Hauptprozess hinterlässt sonst eine Runde, der niemand mehr zusieht.
 
 
-**Ein Griff mit der Maus sagt, dass er wartet** (`WARTE_GRIFFE` in `app.js`,
+**Ein Griff mit der Maus sagt, dass er wartet** (`WAIT_ACTIONS` in `app.js`,
 `WARTE_TIMEOUT` in `bridge_contract.py`). Acht Aufrufe der Seite warten über
 `_await_position()` bzw. `area_capture()` **global auf ENTER** — und der
 Brücken-Aufruf blockiert dabei bis zu einer Minute. Die Seite bekommt in dieser
@@ -2601,8 +2601,8 @@ Stelle und Bereich im Editor, „Punkt aufnehmen" und „Neu messen", das Messen
 Farben-Werkzeug, der Referenzpunkt der Kalibrierung und die Parkposition in den
 Einstellungen.
 
-`mitWarten(art, name, daten)` legt den Kasten davor und ruft darunter den Kanal,
-den der Aufruf ohnehin hätte (`ruf` / `frage` / `rufWerkzeug`). Drei Regeln:
+`withWait(kind, name, daten)` legt den Kasten davor und ruft darunter den Kanal,
+den der Aufruf ohnehin hätte (`"call"` / `"ask"` / `"tool"`). Drei Regeln:
 
 - **Die Zeitgrenze steht an EINER Stelle** und wird mitgeliefert
   (`wait_timeout` in Momentaufnahme und Werkzeug-Daten). Ein Countdown, der
@@ -2613,7 +2613,7 @@ den der Aufruf ohnehin hätte (`ruf` / `frage` / `rufWerkzeug`). Drei Regeln:
   sagt deshalb vorher, wie viele kommen, statt eine Ecke 1/2 zu behaupten, die
   sie nicht sehen kann.
 - **Ein Test hält beide Seiten gegeneinander**: welche Methoden warten, steht in
-  der Brücke; dass die Seite sie über `mitWarten` ruft, in `app.js`. Er prüft
+  der Brücke; dass die Seite sie über `withWait` ruft, in `app.js`. Er prüft
   beide Richtungen — eine wartende Methode ohne Eintrag ist genau die, bei der
   das Fenster wieder stumm ist, und ein Eintrag für etwas, das gar nicht wartet,
   verspricht einen Kasten, den niemand je sieht.
@@ -2625,7 +2625,7 @@ der Knopf aber aus, als täte er nichts.
 
 
 **Jedes Werkzeug sagt, WORAUF es wirkt** — und „jedes" heisst jedes: „Farben
-analysieren" trug als einziges keine Bezugszeile, während in `WZ_WERKZEUGE`
+analysieren" trug als einziges keine Bezugszeile, während in `WZ_TOOLS`
 `bezug: "bestand"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
 den Bildschirm und schreibt nirgends hin), und weil die Zeile gar nicht
 gezeichnet wurde, fiel die Unwahrheit nicht auf. Dafür gibt es die vierte Art
@@ -2640,7 +2640,7 @@ Klick-Runde ist das genau die Frage, die man sich stellt. Seit die Auswahl
 **weg**: er liess den Namen dreimal gleichzeitig dastehen. Ein einzelner Name
 oben wäre trotzdem falsch gewesen: Prüfen und
 Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
-Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzBezug()`), und
+Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzScope()`), und
 links steht die offene Sequenz als Einordnung.
 
 Daran hing ein echter Fehler: `command_reclick` nahm `state.active_sequence` aus
@@ -2719,7 +2719,7 @@ Fünf Regeln, an denen er hängt:
   ein Rundungsfehler aussieht statt wie Absicht.
 
 Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: jeder
-`data-ansicht`-Knopf braucht seine Umschalt-Zeile in `setzeAnsicht()` (und keine
+`data-view`-Knopf braucht seine Umschalt-Zeile in `setView()` (und keine
 Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/rauch/` muss in
 `RAUCHTESTS` (`tests/alle_tests.py`) stehen — eine getippte Liste ist genau die
 Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
@@ -3086,8 +3086,8 @@ Regeln beim Erweitern:
   der DPG-Fassung. Folge davon: `STRG+S` muss vorher `blur()` auslösen, sonst geht der
   zuletzt getippte Wert verloren.
 
-  **Und jeder Neuaufbau rettet den Fokus hinüber** (`fokusMerken()` /
-  `fokusHerstellen()`). Weil Tipp-Felder beim *Verlassen* melden, ist es genau der
+  **Und jeder Neuaufbau rettet den Fokus hinüber** (`rememberFocus()` /
+  `restoreFocus()`). Weil Tipp-Felder beim *Verlassen* melden, ist es genau der
   TAB-Sprung, der den Neuaufbau auslöst — bis die Brücke antwortet, steht der
   Fokus schon im nächsten Feld, und `replaceChildren()` wirft es weg. Sichtbar
   wurde das beim Item: Namen tippen, TAB nach Kategorie, Cursor weg, nochmal
@@ -3095,7 +3095,7 @@ Regeln beim Erweitern:
   Elements mit `id`, nicht das Element selbst (das gibt es danach nicht mehr) und
   auch kein eigener Schlüssel je Feld — den müsste jeder Feld-Bauer mitschleppen,
   und ein vergessener fiele nicht auf. Ein Test hält fest, dass **alle drei**
-  Neuaufbauten (`zeichne`, `zeichneScans`, `zeichneEinstellungen`) es tun.
+  Neuaufbauten (`render`, `renderScans`, `renderSettings`) es tun.
 - **Ein Trigger ohne Punkt wird abgelehnt**, statt eine Bedingung auf (0, 0) anzulegen —
   dieselbe Haltung wie „es gibt bewusst keinen Rückfallwert" bei `point_id`. Das gilt
   auch für den *Typwechsel*: **`set_block_type()` legt die Bedingung selbst am Punkt an**
@@ -3195,8 +3195,8 @@ Regeln beim Erweitern:
   `hinweis`-Absatz sagt, was JETZT gilt („62×60 px", „Zeigt ins Leere: …") oder
   was als Nächstes zu tun ist („Noch keine Slots. …"). Alles, was erklärt, WARUM
   etwas so ist, gehört ins ⓘ — es gilt immer, ändert sich nie und steht deshalb
-  bei jedem Blick im Weg; `offeneHilfen` merkt sich, welche aufgeklappt sind.
-  `schalter()`, `zahlfeld()`, `color_swatch()`, `selection()` und `ueberschrift()`
+  bei jedem Blick im Weg; `openHelps` merkt sich, welche aufgeklappt sind.
+  `toggle()`, `numberField()`, `color_swatch()`, `selection()` und `heading()`
   nehmen dafür alle `hilfe, schluessel` entgegen — ein Erklärungsabsatz **unter**
   einem dieser Bedienelemente ist deshalb fast immer ein Fehler.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
@@ -3626,7 +3626,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
   `KEYS` in `editors/nachklick.py`; das Studio zeigt sie als **Tabelle**
-  (`WZ_TASTEN` in `app.js`), und ein Test hält beide gegeneinander. Was man
+  (`WZ_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
   mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
   Lesen von vorn, und dann liest ihn niemand.
 
@@ -3712,7 +3712,7 @@ Briefkastens, Konsolenbefehle und CLI-Flags — Englisch. Kommentare, Docstrings
 UI-Texte, Meldungen, Hilfetexte, Testbeschreibungen (`check("…")`,
 `section("…")`), Commit-Messages und diese Datei — Deutsch. Ein String, der
 angezeigt wird, ist Sprache; ein String, der etwas *adressiert*
-(`ruf("block_set")`, `"start_manuell"`, ein Dispatch-Schlüssel), ist Code.
+(`call("block_set")`, `"start_manuell"`, ein Dispatch-Schlüssel), ist Code.
 
 **Der Bestand ist noch deutsch benannt, und die Umstellung läuft phasenweise**
 — nicht alles auf einmal, sondern je ein grüner PR: (1) Werkzeug und diese
@@ -3740,8 +3740,8 @@ prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
 zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
 findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.
 
-**Zwei Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
-Suite laufen lassen, sie findet beide:**
+**Drei Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
+Suite laufen lassen, sie findet alle drei:**
 
 - **Keyword-Argumente, die zu JSON-Schlüsseln werden, sind Strings in
   Verkleidung.** `send_command("zeigen", punkt=…)` schreibt `{"punkt": …}` in
@@ -3753,11 +3753,22 @@ Suite laufen lassen, sie findet beide:**
   vollständig englisch, und das Modul heisst seither `mailbox.py` (vorher
   befehl).
 - **Tests, die JS-Quelltext als Python-String tragen**, werden nach der
-  Verweis-Regel umgeschrieben (`values()` → `values()`), während `app.js`
+  Verweis-Regel umgeschrieben (`werte()` wird zu `values()`), während `app.js`
   unverändert bleibt — der Vergleich schlägt dann fehl. Betroffen sind
   Quelltext-Prüfungen (`… in _html18`) und JS-Schnipsel in Rauchtests
-  (`seite.evaluate("""…""")`). Zurücksetzen, nicht die Seite nachziehen: die
-  Seite kommt in Phase 3 als Ganzes.
+  (`seite.evaluate("""…""")`). In Phase 2 hiess das: zurücksetzen, die Seite
+  kommt später als Ganzes. Seit Phase 3c gilt die Umkehrung — die Seite ist
+  umbenannt, und was die Verweis-Regel in den Tests NICHT mitzieht (ein Name
+  ohne `(` dahinter, ein `\bname` in einer Regex — die Wortgrenze steht dort
+  hinter einem `b`), wird von Hand nachgezogen.
+- **Die Seite hängt am DOM, und das DOM hat seine eigenen Namen.** Ein
+  `t.dataset.ansicht` ist das Attribut `data-ansicht` in `index.html`; wird
+  `ansicht` zu `view`, liest die Seite `dataset.view` — und findet nichts, bis
+  das Attribut `data-view` heisst. Dasselbe bei `S.frage`: eine JS-Eigenschaft
+  ist zugleich der JSON-Schlüssel, den die Brücke schreibt, und ein Klick auf
+  einen Tab sieht danach aus wie ein Klick ins Leere (alle acht Rauchtests rot,
+  kein einziger `pageerror`). Nach einem JS-Durchgang deshalb `dataset.*` gegen
+  die `data-*`-Attribute und `S.*` gegen die Momentaufnahme halten.
 
 Aus demselben Grund gibt es `--python-only`: Lokale wie `point`, `value`,
 `category` sind zugleich JSON-Schlüssel der Brücke, und der JS-Lexer würde

@@ -34,9 +34,9 @@ check("jeder anhakbare Teil hat sein Argument auf beiden Seiten", _fehlend == []
 if _fehlend:
     print("        ohne Argument: " + ", ".join(_fehlend))
 
-check("die Seite hat einen Reiter dafuer", 'data-ansicht="teilen"' in _web)
-check("und ruft die Bruecke ueber einen eigenen Kanal", "rufTeilen(" in _web)
-_gerufen = sorted(set(re.findall(r'rufTeilen\("([a-z_]+)"', _web)))
+check("die Seite hat einen Reiter dafuer", 'data-view="teilen"' in _web)
+check("und ruft die Bruecke ueber einen eigenen Kanal", "callShare(" in _web)
+_gerufen = sorted(set(re.findall(r'callShare\("([a-z_]+)"', _web)))
 _ohne = [n for n in _gerufen if not callable(getattr(_SB, n, None))]
 check("jeden gerufenen Namen gibt es in der Bruecke", _ohne == [])
 
